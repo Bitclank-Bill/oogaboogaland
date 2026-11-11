@@ -27876,6 +27876,118 @@ const privatePadChecks = async () => {
   record("private pads: a record that can't be written, kept or read stops the pad, and so does a pad used up",
     unwritable.error === "storage" && dropped.error === "storage" && unreadable.error === "record" && usedUp === "exhausted", JSON.stringify({ unwritable, dropped, unreadable, usedUp }));
 };
+// Rule: what the eraser's cursor covers is what it erases, one footprint for a tap, the same ground whichever way it
+// travels, the bare board put back in one pass; and an eraser line stored before the footprint draws as it always did.
+const chalkboardEraserChecks = async (BL) => {
+  const EW = 32, EH = 40, W = 1200, H = 750, nodes = new Map(), timers = [], C = BL.chalkBoard, bareFill = { bare: true };
+  let stored = null, rect = { left: 0, top: 0, width: 800, height: 500 }, saved = null;
+  // A canvas that keeps what is filled and stroked, with the path each used.
+  const calls = [], state = { path: [] };
+  const ctx = new Proxy(state, { get: (t, k) => k in t ? t[k] : k === "createPattern" ? () => bareFill : k === "measureText" ? () => ({ width: 30 })
+    : k === "beginPath" ? () => { t.path = []; } : k === "moveTo" || k === "lineTo" ? (x, y) => { t.path.push([x, y]); }
+    : k === "fill" ? () => { calls.push({ op: "fill", style: t.fillStyle, path: t.path }); }
+    : k === "stroke" ? () => { calls.push({ op: "stroke", style: t.strokeStyle, width: t.lineWidth, cap: t.lineCap, path: t.path }); } : () => {}, set: (t, k, v) => (t[k] = v, true) });
+  const element = () => ({ handlers: {}, style: {}, dataset: {}, hidden: false, disabled: false, value: "", textContent: "",
+    classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {}, focus() {}, blur() {}, addEventListener(type, fn) { this.handlers[type] = fn; } });
+  const document = { pointerLockElement: null, createElement: () => ({ getContext: () => ctx }), getElementById(id) {
+    if (!nodes.has(id)) nodes.set(id, Object.assign(element(), id === "chalk-modal" ? { open: false, showModal() { this.open = true; }, close() { if (this.open) { this.open = false; this.handlers.close(); } } }
+      : id === "chalk-canvas" ? { getContext: () => ctx, getBoundingClientRect: () => rect, setPointerCapture() {}, hasPointerCapture: () => true, releasePointerCapture() {} } : {}));
+    return nodes.get(id);
+  } };
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "YellowBrokeIt", display: "Yellow" } }) }));
+  const window = { BL: { chalkBoard: C, net: f.net } };
+  // Boards kept from before the footprint: an eraser line at either stored width, over a line of chalk.
+  const old = [{ t: "c", s: 2, p: [0.1, 0.5, 0.9, 0.5] }, { t: "e", s: 4, p: [0.2, 0.4, 0.3, 0.6] }, { t: "e", p: [0.5, 0.4, 0.6, 0.6] }];
+  saved = JSON.stringify(old);
+  runInNewContext(await readFile(join(root, "src/js/chalkboard.js"), "utf8"), { window, document, AbortController, setTimeout: fn => timers.push(fn), clearTimeout() {},
+    requestAnimationFrame: () => 1, cancelAnimationFrame() {}, localStorage: { getItem: k => k === "ooga-chalkboard-v3" ? saved : null, setItem(k, v) { stored = JSON.parse(v); } } });
+  const board = window.BL.chalkboard.create({ renderer: {}, onOpen() {}, onClose() {}, onRefused() {} });
+  const dialog = document.getElementById("chalk-modal"), canvas = document.getElementById("chalk-canvas"), pointerNode = document.getElementById("chalk-pointer"), held = document.getElementById("chalk-held");
+  const pointer = (type, x, y) => canvas.handlers[type]({ isPrimary: true, button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, preventDefault() {} });
+  const stroke = (...points) => { pointer("pointerdown", ...points[0]); for (const p of points.slice(1)) pointer("pointermove", ...p); pointer("pointerup", ...points.at(-1)); };
+  // The pixels a set of fills covers, by pixel centre, on the bare board's fill only.
+  const covered = (from) => {
+    const cells = new Set();
+    for (const { op, style, path } of calls.slice(from)) {
+      if (op !== "fill" || style !== bareFill) continue;
+      const xs = path.map(p => p[0]), ys = path.map(p => p[1]);
+      for (let y = Math.min(...ys); y < Math.max(...ys); y++) for (let x = Math.min(...xs); x < Math.max(...xs); x++) {
+        let inside = false;
+        for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+          const [ax, ay] = path[i], [bx, by] = path[j];
+          if ((ay > y + 0.5) !== (by > y + 0.5) && x + 0.5 < (bx - ax) * (y + 0.5 - ay) / (by - ay) + ax) inside = !inside;
+        }
+        if (inside) cells.add(`${x},${y}`);
+      }
+    }
+    return cells;
+  };
+  const box = (l, t) => { const cells = new Set(); for (let y = t; y < t + EH; y++) for (let x = l; x < l + EW; x++) cells.add(`${x},${y}`); return cells; };
+  const same = (a, b) => a.size === b.size && [...a].every(c => b.has(c));
+  const holds = (a, b) => [...b].every(c => a.has(c));
+  const corner = (x, y) => [Math.round(Math.round(x / rect.width * 1000) / 1000 * W - EW / 2), Math.round(Math.round(y / rect.height * 1000) / 1000 * H - EH / 2)];
+  // Old marks: repainted at open, a 192 and a 48 wide band, butt-ended, with their smudges, and no bare-board fill.
+  board.open(null);
+  const bands = calls.filter(c => c.op === "stroke" && c.cap === "butt").map(c => [c.width, c.style]);
+  const oldDrawn = JSON.stringify(bands) === JSON.stringify([[192, "rgba(27,65,52,0.9)"], [128, "rgba(177,196,167,0.11)"], [48, "rgba(27,65,52,0.9)"], [32, "rgba(177,196,167,0.11)"]])
+    && calls.every(c => c.style !== bareFill);
+  document.getElementById("chalk-eraser").handlers.click();
+  // The cursor is the footprint at this board's size on screen, centred where a press would erase, at any size.
+  const sizes = [];
+  for (const [width, height, x, y] of [[800, 500, 401, 251], [1200, 750, 333, 444], [360, 225, 100, 77]]) {
+    rect = { left: 10, top: 20, width, height };
+    pointer("pointermove", x + 10, y + 20);
+    const [l, t] = corner(x, y), near = (a, b) => Math.abs(parseFloat(a) - b) < 1e-6;
+    sizes.push(near(held.style.width, EW * width / W) && near(held.style.height, EH * height / H)
+      && near(pointerNode.style.left, (l + EW / 2) * width / W) && near(pointerNode.style.top, (t + EH / 2) * height / H));
+  }
+  rect = { left: 0, top: 0, width: 1200, height: 750 };
+  const cursor = sizes.every(Boolean);
+  // A tap erases exactly one footprint.
+  let from = calls.length; stroke([600, 300]);
+  const [tapL, tapT] = corner(600, 300), tap = same(covered(from), box(tapL, tapT));
+  // A drag covers the whole rectangle at both ends, and the same ground either way, whichever way it goes.
+  const directions = [];
+  for (const [ax, ay, bx, by] of [[300, 300, 500, 300], [300, 300, 300, 500], [300, 300, 500, 450], [500, 300, 300, 450], [300, 200, 301, 400]]) {
+    from = calls.length; stroke([ax, ay], [bx, by]); const forward = covered(from);
+    from = calls.length; stroke([bx, by], [ax, ay]); const backward = covered(from);
+    directions.push(same(forward, backward) && holds(forward, box(...corner(ax, ay))) && holds(forward, box(...corner(bx, by))));
+  }
+  const swept = directions.every(Boolean);
+  // A level drag covers its rectangle's height and nothing more: no band that widens with the line's direction.
+  from = calls.length; stroke([300, 300], [500, 300]);
+  const levelCells = covered(from), [levelL] = corner(300, 300), [levelR] = corner(500, 300), level = levelCells.size === (levelR - levelL + EW) * EH;
+  // A pointer that stops a little past the last point it laid still erases to where the cursor stands.
+  from = calls.length; stroke([700, 500], [800, 500], [802, 500]);
+  const [endL, endT] = corner(802, 500), reached = holds(covered(from), box(endL, endT));
+  const erasers = calls.filter(c => c.style === bareFill).length;
+  dialog.close();
+  const kept = stored.slice(0, old.length), oldKept = JSON.stringify(kept) === JSON.stringify(old);
+  const newMarks = stored.slice(old.length), tagged = newMarks.length > 0 && newMarks.every(m => m.t === "e" && m.s === 4 && m.f === 1);
+  const tapMark = JSON.stringify(newMarks[0].p) === JSON.stringify([0.5, 0.4, 0.5, 0.4]);
+  record("chalkboard eraser: the cursor is the footprint at any board size, a tap erases one footprint, a drag sweeps the same ground either way and reaches where the pointer stopped; marks stored before it draw their old band and stay as stored",
+    oldDrawn && cursor && tap && swept && level && reached && oldKept && tagged && tapMark && erasers > 0, JSON.stringify({ oldDrawn, bands, sizes, tap, directions, level, reached, oldKept, tagged, tapMark, erasers }));
+  // A replay paints the same as the stroke did, and another's live edit paints the same footprint.
+  from = calls.length; board.open(null); const replayed = covered(from); dialog.close();
+  await f.net.start(); const ws = f.sockets[0], room = v => ws.onmessage({ data: JSON.stringify(v) });
+  room({ t: "welcome", you: { id: 71 }, players: [{ id: 72, login: "peer", display: "Peer", body: "w-s-bitcoin", zone: "outside", x: 0, y: 0, z: 0, yaw: 0 }], now: Date.now(), features: [C.FEATURE] });
+  room({ t: "chalk-board", marks: [...old, { t: "e", s: 4, f: 1, p: [0.25, 0.25, 0.25, 0.25] }], editor: 72 });
+  const roomKept = f.net.state.chalk?.board.marks.at(-1).f === 1 && f.net.state.chalk.board.marks[1].f === undefined;
+  from = calls.length; room({ t: "chalk", id: 72, k: "line", m: "e", p: [500, 400, 500, 400] });
+  const live = same(covered(from), box(584, 280));
+  from = calls.length; room({ t: "chalk", id: 72, k: "more", p: [600, 400] });
+  const liveMore = same(covered(from), (() => { const cells = new Set(); for (let y = 280; y < 320; y++) for (let x = 584; x < 736; x++) cells.add(`${x},${y}`); return cells; })());
+  // The contract: a new line is told apart, the board reads back with it, nothing else may carry it.
+  const b = C.board([]), s = C.session(b); C.apply(b, { k: "line", m: "e", p: [10, 10, 20, 20] }, s); C.apply(b, { k: "line", m: "c", p: [10, 10, 20, 20] }, s);
+  const applied = b.marks[0].f === 1 && b.marks[0].s === 4 && b.marks[1].f === undefined && b.marks[1].s === 2;
+  const line = (mark) => ({ p: [0, 0, 1, 1], ...mark });
+  const accepted = [{ t: "e", s: 4, f: 1 }, { t: "e", s: 4 }, { t: "e" }, { t: "c", s: 2 }].every(m => C.restore([line(m)]));
+  const refused = [{ t: "c", s: 2, f: 1 }, { t: "e", s: 4, f: 2 }, { t: "e", s: 4, f: "1" }].every(m => C.restore([line(m)]) === null);
+  const widened = C.widen([line({ t: "e", s: 4, f: 1 })])[0].f === 1;
+  record("chalkboard eraser marks: a replay and another's live edit paint the footprint; the contract tags new eraser lines, keeps their width for older readers, reads back old and new, and refuses a bad tag",
+    replayed.size > 0 && roomKept && live && liveMore && applied && accepted && refused && widened, JSON.stringify({ replayed: replayed.size, roomKept, live, liveMore, applied, accepted, refused, widened }));
+  board.dispose?.(); f.net.dispose();
+};
 // Rule (#391): the chalkboard on the page edits only through the shared contract. Alone it keeps the visitor's own
 // board; signed in to a room that shares it, it opens only once the room says this page holds it, sends what it
 // draws and types, follows another's writing, and shuts with a reason when the board is taken from it.
@@ -27885,7 +27997,7 @@ const chalkboardClientChecks = async (BL) => {
   const element = () => ({ handlers: {}, style: {}, dataset: {}, hidden: false, disabled: false, value: "", textContent: "",
     classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {}, focus() {}, blur() {}, addEventListener(type, fn) { this.handlers[type] = fn; } });
   const ctx = new Proxy({}, { get: (t, k) => k in t ? t[k] : k === "measureText" ? () => ({ width: 30 }) : () => {}, set: (t, k, v) => (t[k] = v, true) });
-  const document = { pointerLockElement: null, getElementById(id) {
+  const document = { pointerLockElement: null, createElement: () => ({ getContext: () => ctx }), getElementById(id) {
     if (!nodes.has(id)) nodes.set(id, Object.assign(element(), id === "chalk-modal" ? { open: false, showModal() { this.open = true; }, close() { if (this.open) { this.open = false; this.handlers.close(); } } }
       : id === "chalk-canvas" ? { getContext: () => ctx, getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 500 }), setPointerCapture() {}, hasPointerCapture: () => true, releasePointerCapture() {} } : {}));
     return nodes.get(id);
@@ -30567,6 +30679,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await reactionWireChecks(BL);
   await persistentSlotChecks(BL);
   await chalkboardClientChecks(BL);
+  await chalkboardEraserChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
   await playersTabChecks(BL);

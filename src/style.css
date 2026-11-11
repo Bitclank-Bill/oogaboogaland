@@ -5641,7 +5641,8 @@ body.tess-touring #joy-look {
 .chalk-pointer { position: absolute; display: none; width: 1px; height: 1px; pointer-events: none; z-index: 2; }
 .chalk-pointer.visible { display: block; }
 .chalk-pointer .chalk-held { position: absolute; left: -5px; top: -5px; width: 38px; height: 10px; border-radius: 4px; background: #e5e8d0; transform: rotate(-38deg) scale(2); transform-origin: 5px 5px; box-shadow: 0 2px 4px #061f18b0; }
-.chalk-pointer.eraser .chalk-held { left: -29px; top: -19px; width: 52px; height: 32px; border: 3px solid #b8a183; background: #44413c; transform: rotate(-18deg) scale(4); transform-origin: center; }
+/* chalkboard.js sizes it to the eraser's footprint; all its look stays inside that box, see-through to aim by. */
+.chalk-pointer.eraser .chalk-held { left: 0; top: 0; box-sizing: border-box; border: 1px solid #b8a183; border-radius: 0; background: linear-gradient(#b8a183 0 22%, #44413c8c 22%); box-shadow: none; transform: translate(-50%, -50%); }
 
 @media (max-width: 600px) {
   .chalk-modal { width: 98vw; padding: 7px; border-width: 4px; }

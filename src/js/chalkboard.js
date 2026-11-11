@@ -12,7 +12,14 @@
   const W = 1200, H = 750, BOARD_W = 2.25, BOARD_H = 1.3125, BOARD_Y = 0.5625, BOARD_FACE_Z = -1 / 16 + 0.002;
   const GRID_W = 240, GRID_H = 150, WASH_MS = 650, DRAW_MS = 700, WASH_BANDS = 6, WORLD_UPDATE_MS = 100;
   const TEXT_FONT = "58.125px 'Bradley Hand', 'Marker Felt', cursive", TEXT_SIZE = 60, TEXT_LINE = 84.375, TEXT_MARGIN = 32;
+  // The eraser's footprint, an upright rectangle in canvas pixels. Narrower than a typed digit's pitch (about 31) and as
+  // tall as one, so a tap takes one character; a drawn digit of the message (50 wide, 60 from its neighbours) takes a
+  // short scrub, with room either side.
+  const ERASER_W = 32, ERASER_H = 40;
   const clamp = (v) => Math.max(0, Math.min(1, v));
+  // Where the footprint's corner lands for a point on the board, on whole pixels so its edges are clean. The drawn
+  // cursor and the painted sweep both come from these.
+  const eraserLeft = (x) => Math.round(x * W - ERASER_W / 2), eraserTop = (y) => Math.round(y * H - ERASER_H / 2);
   const read = (key) => {
     try {
       const raw = localStorage.getItem(key);
@@ -25,7 +32,7 @@
         if (mark.t === "t") {
           if (typeof mark.ch !== "string" || Array.from(mark.ch).length !== 1 || /[\x00-\x1f\x7f]/.test(mark.ch) || mark.p.length !== 2) return false;
         } else if ((mark.t !== "c" && mark.t !== "e") || (mark.s !== undefined && mark.s !== 2 && mark.s !== 4)
-          || mark.p.length < 2 || mark.p.length % 2 || mark.p.length > 2000) return false;
+          || (mark.f !== undefined && (mark.f !== 1 || mark.t !== "e")) || mark.p.length < 2 || mark.p.length % 2 || mark.p.length > 2000) return false;
         points += mark.p.length / 2;
         return points <= MAX_POINTS && mark.p.every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1);
       });
@@ -73,7 +80,7 @@
   const create = ({ renderer, onOpen, onClose, onRefused }) => {
     const dialog = document.getElementById("chalk-modal"), frame = document.getElementById("chalk-frame");
     const canvas = document.getElementById("chalk-canvas"), ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
-    const pointer = document.getElementById("chalk-pointer"), caret = document.getElementById("chalk-caret"), typeInput = document.getElementById("chalk-type-input"), hint = document.getElementById("chalk-hint");
+    const pointer = document.getElementById("chalk-pointer"), held = document.getElementById("chalk-held"), caret = document.getElementById("chalk-caret"), typeInput = document.getElementById("chalk-type-input"), hint = document.getElementById("chalk-hint");
     const eraser = document.getElementById("chalk-eraser"), chalk = document.getElementById("chalk-chalk");
     const keyboard = document.getElementById("chalk-keyboard"), clean = document.getElementById("chalk-clean"), reset = document.getElementById("chalk-reset");
     const closeButton = document.getElementById("chalk-close");
@@ -104,7 +111,31 @@
       const r = canvas.getBoundingClientRect();
       return [clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height)];
     };
+    // The bare board, drawn once: what an eraser puts back, a single pattern fill however many marks replay.
+    const bare = document.createElement("canvas");
+    bare.width = W; bare.height = H;
+    const bareCtx = bare.getContext("2d", { alpha: false, willReadFrequently: true });
+    bareCtx.fillStyle = "#1b4034"; bareCtx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 2025; i++) {
+      const x = (i * 1973 % (W - 3)), y = (i * 839 % (H - 1));
+      bareCtx.fillStyle = i % 3 ? "#325549" : "#15392f";
+      bareCtx.fillRect(x, y, 1 + i % 2, 1);
+    }
+    const bareFill = ctx.createPattern(bare, "no-repeat");
+    // One step of an eraser line (`f`): the footprint swept from point to point, the convex hull of its rectangle at
+    // both ends, so it covers the same ground whichever way it travels and a tap covers one footprint.
+    const sweepSegment = (p, i) => {
+      const forward = eraserLeft(p[i - 2]) <= eraserLeft(p[i]), a = forward ? i - 2 : i, b = forward ? i : i - 2;
+      const ax = eraserLeft(p[a]), ay = eraserTop(p[a + 1]), bx = eraserLeft(p[b]), by = eraserTop(p[b + 1]);
+      ctx.beginPath(); ctx.moveTo(ax, ay);
+      if (ay <= by) { ctx.lineTo(ax + ERASER_W, ay); ctx.lineTo(bx + ERASER_W, by); ctx.lineTo(bx + ERASER_W, by + ERASER_H); ctx.lineTo(bx, by + ERASER_H); ctx.lineTo(ax, ay + ERASER_H); }
+      else { ctx.lineTo(bx, by); ctx.lineTo(bx + ERASER_W, by); ctx.lineTo(bx + ERASER_W, by + ERASER_H); ctx.lineTo(ax + ERASER_W, ay + ERASER_H); ctx.lineTo(ax, ay + ERASER_H); }
+      ctx.closePath();
+      ctx.fillStyle = bareFill; ctx.fill();
+    };
+    // An eraser line stored before the footprint (no `f`) keeps its old wide band, so what it erased stays erased.
     const paintSegment = (mark, i) => {
+      if (mark.t === "e" && mark.f) { sweepSegment(mark.p, i); return; }
       const p = mark.p, size = mark.s || 1;
       ctx.lineCap = mark.t === "e" ? "butt" : "round";
       ctx.lineJoin = "round";
@@ -130,14 +161,7 @@
       ctx.fillStyle = "rgba(239,244,220,0.82)";
       ctx.fillText(mark.ch, x, y);
     };
-    const paintBase = () => {
-      ctx.fillStyle = "#1b4034"; ctx.fillRect(0, 0, W, H);
-      for (let i = 0; i < 2025; i++) {
-        const x = (i * 1973 % (W - 3)), y = (i * 839 % (H - 1));
-        ctx.fillStyle = i % 3 ? "#325549" : "#15392f";
-        ctx.fillRect(x, y, 1 + i % 2, 1);
-      }
-    };
+    const paintBase = () => ctx.drawImage(bare, 0, 0);
     const paint = () => {
       paintBase();
       for (const mark of board().marks) {
@@ -263,6 +287,7 @@
       chalk.setAttribute("aria-pressed", String(tool === "c"));
       keyboard.setAttribute("aria-pressed", String(tool === "k"));
       pointer.classList.toggle("eraser", tool === "e");
+      if (tool !== "e") held.style.width = held.style.height = "";
       frame.classList.toggle("has-tool", !!tool);
       frame.classList.toggle("typing", tool === "k");
       caret.hidden = tool !== "k";
@@ -276,8 +301,17 @@
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left, y = e.clientY - r.top;
       if (x < 0 || y < 0 || x > r.width || y > r.height) { pointer.classList.remove("visible"); return; }
-      pointer.style.left = `${x}px`;
-      pointer.style.top = `${y}px`;
+      if (tool === "e") {
+        // Drawn from the footprint and the board's size on screen now: the cursor is exactly what a press would erase.
+        const [tx, ty] = thousandths(e), scaleX = r.width / W, scaleY = r.height / H;
+        pointer.style.left = `${(eraserLeft(tx / 1000) + ERASER_W / 2) * scaleX}px`;
+        pointer.style.top = `${(eraserTop(ty / 1000) + ERASER_H / 2) * scaleY}px`;
+        held.style.width = `${ERASER_W * scaleX}px`;
+        held.style.height = `${ERASER_H * scaleY}px`;
+      } else {
+        pointer.style.left = `${x}px`;
+        pointer.style.top = `${y}px`;
+      }
       pointer.classList.add("visible");
     };
     // In thousandths of the board, as edits carry them.
@@ -286,6 +320,7 @@
     const addPoint = (e) => {
       if (!stroke) return;
       const [x, y] = thousandths(e);
+      stroke.endX = x; stroke.endY = y;
       if (Math.hypot(x - stroke.x, y - stroke.y) < 3) return;
       const failed = edit(stroke.line ? { k: "more", p: [x, y] } : { k: "line", m: stroke.m, p: [stroke.x, stroke.y, x, y] });
       stroke.x = x; stroke.y = y; stroke.line = !failed;
@@ -295,9 +330,18 @@
       changed = true;
       markWorld();
     };
-    // A press that never moved leaves a dot of chalk, and nothing for the eraser.
+    // A press that never moved leaves a dot of chalk, or one footprint of the eraser, which also goes the last little
+    // way to where the pointer stopped.
     const finishStroke = () => {
-      if (stroke && !stroke.line && stroke.m === "c" && !edit({ k: "line", m: "c", p: [stroke.x, stroke.y, Math.min(1000, stroke.x + 1), stroke.y] })) {
+      if (stroke && stroke.m === "e") {
+        const { x, y, endX, endY, line } = stroke;
+        if ((!line || endX !== x || endY !== y) && !edit(line ? { k: "more", p: [endX, endY] } : { k: "line", m: "e", p: [x, y, endX, endY] })) {
+          const mark = lastMark();
+          paintSegment(mark, mark.p.length - 2);
+          changed = true;
+          markWorld();
+        }
+      } else if (stroke && !stroke.line && stroke.m === "c" && !edit({ k: "line", m: "c", p: [stroke.x, stroke.y, Math.min(1000, stroke.x + 1), stroke.y] })) {
         paintSegment(lastMark(), 2);
         changed = true;
         markWorld();
@@ -329,7 +373,7 @@
       if (stroke || !e.isPrimary || e.button !== 0 || !tool || b.marks.length >= MAX_STROKES || b.points >= MAX_POINTS) return;
       e.preventDefault();
       const [x, y] = thousandths(e);
-      stroke = { m: tool, x, y, line: false };
+      stroke = { m: tool, x, y, endX: x, endY: y, line: false };
       activePointer = e.pointerId;
       canvas.setPointerCapture(e.pointerId);
       movePointer(e);
@@ -466,6 +510,7 @@
           const canvas = node.geometry.imageSurface.canvas;
           canvas.width = canvas.height = 0;
         }
+        bare.width = bare.height = 0;
         node = null;
       },
       get openNow() { return dialog.open; },
