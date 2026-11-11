@@ -7425,16 +7425,16 @@ const gameRulesChecks = async () => {
       // A guest's page numbers its own Ooga 0: the seat map turns its numbering back to seats.
       const guestMap = L.seatMap(2, 1), guestSeat = (i) => guestMap.toSeat[i], hostMap = L.seatMap(2, 0), hostSeat = (i) => hostMap.toSeat[i];
       const hostPick = hostMap.toSeat[S.mvp(tieAll, hostSeat)], guestPick = guestMap.toSeat[S.mvp(tieAll, guestSeat)];
-      const hostRow = S.lineup(tieAll, hostSeat).map(hostSeat).join(), guestRow = S.lineup(tieAll, guestSeat).map(guestSeat).join();
-      const out = { teams, worth: S.worth({ captures: 2, rescues: 1, hits: 4 }), plain: S.mvp(plain), plainRow: S.lineup(plain).join(), red: S.mvp(red), redRow: S.lineup(red).join(), tieWorth: S.mvp(tieWorth), tieMined: S.mvp(tieMined), tieAll: S.mvp(tieAll),
-        none: S.mvp(none), noneRow: S.lineup(none).length, hostPick, guestPick, hostRow, guestRow };
-      const page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), sc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
-      record("block trophy winners: the winning side is listed in seat order and its most valuable Ooga is the most worth, a tie to more mined, then more brought home, then the lower seat, the same on a host's and a guest's page; no winner, no row; the trophy card shows each as a still portrait drawn once with its name, the MVP under a crown with accessible words, and nothing stands live on a cloud beside it",
-        out.teams === "blue,blue,red,red" && out.worth === 12 && out.plain === 1 && out.plainRow === "0,1" && out.red === 3 && out.redRow === "2,3" && out.tieWorth === 1 && out.tieMined === 1 && out.tieAll === 0
-        && out.none === 2 && out.noneRow === 0 && out.hostPick === 0 && out.guestPick === 0 && out.hostRow === "0,1" && out.guestRow === "0,1"
-        && page.includes('id="block-lineup-list"') && page.includes('id="block-crown-icon"') && /tag\.setAttribute\("aria-label", "Most valuable Ooga"\)/.test(sc) && /SIM\.mvp\(sim, seatOfActor\)/.test(sc) && /SIM\.lineup\(sim, seatOfActor\)/.test(sc)
-        && /hudMod\.renderFaceIcon\(face, actors\[i\]\.cave, null, LINEUP_PX\)/.test(sc) && /trophyShow\(winner, worth, mvp\)/.test(sc) && !/posePodium|podiumView|BM\.crown|dataset\.lineup/.test(sc)
-        && /<div class="block-trophy-board">[\s\S]*id="block-lineup"[\s\S]*class="block-trophy-sides"/.test(page), JSON.stringify(out));
+      const out = { teams, worth: S.worth({ captures: 2, rescues: 1, hits: 4 }), plain: S.mvp(plain), red: S.mvp(red), tieWorth: S.mvp(tieWorth), tieMined: S.mvp(tieMined), tieAll: S.mvp(tieAll), none: S.mvp(none), hostPick, guestPick };
+      const page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), sc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), trophyCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+      record("block trophy MVP: the winning side's most valuable Ooga is the most worth, a tie to more mined, then more brought home, then the lower seat, the same on a host's and a guest's page; with no winner, of everyone; the trophy's podium, tables and medal use it and break ties by seat; the card has one picture of the winners, its stage, and no portrait row",
+        out.teams === "blue,blue,red,red" && out.worth === 12 && out.plain === 1 && out.red === 3 && out.tieWorth === 1 && out.tieMined === 1 && out.tieAll === 0 && out.none === 2 && out.hostPick === 0 && out.guestPick === 0
+        && /const mvp = SIM\.mvp\(sim, seatOfActor\), worth = SIM\.worth;/.test(sc) && /trophyShow\(winner, worth, mvp\)/.test(sc) && (sc.match(/\|\| seatOfActor\(a\) - seatOfActor\(b\)\)/g) || []).length === 2
+        && !/lineup|renderFaceIcon|posePodium|podiumView|BM\.crown/i.test(sc) && !/block-lineup|block-crown/.test(page + trophyCss) && !("lineup" in S)
+        // The card shows what the MVP's worth counts (blocks brought home too), keeps names whole on a line and its buttons in view.
+        && /\$\{sim\.actors\[mvp\]\.captures\} mined · \$\{sim\.actors\[mvp\]\.rescues\} brought home · \$\{sim\.actors\[mvp\]\.hits\} splats/.test(sc) && /home\.textContent = String\(sim\.actors\[i\]\.rescues\);/.test(sc)
+        && (page.match(/<small title="Blocks brought home">Home<\/small>/g) || []).length === 2 && /\.block-side-panel li span \{ overflow: hidden; white-space: nowrap; text-overflow: ellipsis; \}/.test(trophyCss)
+        && /\.block-trophy-board \.actions \{ position: sticky; bottom: 0;/.test(trophyCss) && /grid-template-columns: minmax\(0, 1fr\) 6ch 6ch 6ch;/.test(trophyCss), JSON.stringify(out));
     }
     // The hook takes the rivals' block off its stand wherever on it the hook is aimed, low or high, from the open side,
     // on every map: a hook aimed low once bit the stand under the block and pulled the Ooga in instead.

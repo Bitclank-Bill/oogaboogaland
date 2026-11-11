@@ -737,9 +737,10 @@
       if (a.hits > sim.actors[shooter].hits) shooter = i;
       if (a.longShot > sim.actors[sniper].longShot) sniper = i;
     }
-    const rows = [["Round MVP", `${nameOf(mvp)} · ${sim.actors[mvp].captures} mined · ${sim.actors[mvp].hits} splats`], ["Most splats", `${nameOf(shooter)} · ${sim.actors[shooter].hits}`]];
+    // The MVP's line shows all three things its worth counts: blocks mined, blocks brought home and splats landed.
+    const rows = [["Round MVP", `${nameOf(mvp)} · ${sim.actors[mvp].captures} mined · ${sim.actors[mvp].rescues} brought home · ${sim.actors[mvp].hits} splats`], ["Most splats", `${nameOf(shooter)} · ${sim.actors[shooter].hits}`]];
     if (sim.actors[sniper].longShot > 0) rows.push(["Longest sniper shot", `${nameOf(sniper)} · ${Math.round(sim.actors[sniper].longShot)} m`]);
-    rows.push(["Your round", `${me.captures} mined · ${me.hits} splats · ${me.splats} splatted`], ["Fastest win", game.state.block.best ? fmt(game.state.block.best) : "—"], ["Rounds won", `${game.state.block.wins} of ${game.state.block.games}`]);
+    rows.push(["Your round", `${me.captures} mined · ${me.rescues} brought home · ${me.hits} splats · ${me.splats} splatted`], ["Fastest win", game.state.block.best ? fmt(game.state.block.best) : "—"], ["Rounds won", `${game.state.block.wins} of ${game.state.block.games}`]);
     // Each highlight a medal: gold for the MVP, silver and bronze for the shots, the visitor's own in plain wood.
     const MEDALS = ["gold", "silver", "bronze"];
     for (let k = 0; k < rows.length; k++) {
@@ -751,43 +752,22 @@
       li.append(span, b);
       el.stats.append(li);
     }
-    // The winning side's Oogas on the card, in seat order (`SIM.lineup`, so every page shows the same row): each a still
-    // portrait of its own character, drawn once here, with its name, the most valuable under the crown.
-    const winners = SIM.lineup(sim, seatOfActor);
-    el.lineupList.textContent = "";
-    el.lineup.hidden = !winners.length;
-    if (winners.length) {
-      el.lineup.dataset.team = sim.winner;
-      el.lineupHead.textContent = `${TEAM_NAME[sim.winner]}'s winners`;
-      for (const i of winners) {
-        const li = document.createElement("li"), face = document.createElement("canvas"), name = document.createElement("span");
-        face.className = "block-lineup-face"; face.setAttribute("aria-hidden", "true");
-        if (actors[i] && actors[i].cave) hudMod.renderFaceIcon(face, actors[i].cave, null, LINEUP_PX);
-        name.textContent = nameOf(i);
-        if (i === mvp) {
-          li.dataset.mvp = "true";
-          const crown = el.crownIcon.cloneNode(true), tag = document.createElement("span");
-          crown.removeAttribute("id"); crown.removeAttribute("hidden");
-          tag.className = "block-mvp"; tag.textContent = "MVP"; tag.setAttribute("aria-label", "Most valuable Ooga");
-          li.append(crown, face, name, tag);
-        } else li.append(face, name);
-        el.lineupList.append(li);
-      }
-    }
-    // The sides, every Ooga and bot on each, best first: blocks mined and splats; the visitor's row and the MVP marked.
+    // The sides, every Ooga and bot on each, best first: blocks mined, blocks brought home and splats; the visitor's row
+    // and the MVP marked. A name keeps to one line (its whole in the title).
     for (const t of SIM.TEAMS) {
       const list = t === "blue" ? el.sideBlue : el.sideRed, ids = [];
       for (let i = 0; i < sim.actors.length; i++) if (sim.actors[i].team === t) ids.push(i);
-      ids.sort((a, b) => worth(sim.actors[b]) - worth(sim.actors[a]) || a - b);
+      ids.sort((a, b) => worth(sim.actors[b]) - worth(sim.actors[a]) || seatOfActor(a) - seatOfActor(b));
       list.textContent = "";
       for (const i of ids) {
-        const li = document.createElement("li"), name = document.createElement("span"), mined = document.createElement("b"), hits = document.createElement("b");
-        name.textContent = nameOf(i);
+        const li = document.createElement("li"), name = document.createElement("span"), mined = document.createElement("b"), home = document.createElement("b"), hits = document.createElement("b");
+        name.textContent = name.title = nameOf(i);
         mined.textContent = String(sim.actors[i].captures);
+        home.textContent = String(sim.actors[i].rescues);
         hits.textContent = String(sim.actors[i].hits);
         li.classList.toggle("you", i === 0 && !onDeck());
         li.classList.toggle("mvp", i === mvp);
-        li.append(name, mined, hits);
+        li.append(name, mined, home, hits);
         list.append(li);
       }
       list.closest("[data-team]").classList.toggle("won", t === winner);
@@ -832,7 +812,8 @@
   const trophyShow = (winner, worth, mvp) => {
     const order = [];
     for (let i = 0; i < sim.actors.length; i++) if (sim.actors[i].team === winner) order.push(i);
-    order.sort((a, b) => (b === mvp) - (a === mvp) || worth(sim.actors[b]) - worth(sim.actors[a]) || a - b);
+    // The MVP first, then by worth; a tie by seat, so every page of a live round stands them the same way.
+    order.sort((a, b) => (b === mvp) - (a === mvp) || worth(sim.actors[b]) - worth(sim.actors[a]) || seatOfActor(a) - seatOfActor(b));
     order.length = Math.min(order.length, PODIUM.length);
     const spot = sim.actors.map(() => -1);
     for (let k = 0; k < order.length; k++) spot[order[k]] = k;
@@ -2177,8 +2158,6 @@
   const preview = { spin: 0, wide: false };
   // A local actor's seat: in a live round every page numbers its actors its own way, and the seat is what they share.
   const seatOfActor = (i) => round && round.map ? round.map.toSeat[i] : i;
-  // The side of a winner's portrait on the trophy card, in CSS pixels.
-  const LINEUP_PX = 56;
   // The weapons preview beside it: each tool of the arsenal (`SIM.ARSENAL`) in turn, its held model turning over the
   // Ooga's head and its name and blurb on a card. It steps on by itself every `SHOW_S`; a press of the card's buttons
   // steps it and holds it there `SHOW_HOLD_S`. Reduced motion: no turning and no stepping by itself.
@@ -2754,10 +2733,6 @@
     el.paintBtn = document.getElementById("block-paint");
     el.toolBar = document.getElementById("block-tools");
     el.toolName = document.getElementById("block-tool-name");
-    el.lineup = document.getElementById("block-lineup");
-    el.lineupHead = document.getElementById("block-lineup-head");
-    el.lineupList = document.getElementById("block-lineup-list");
-    el.crownIcon = document.getElementById("block-crown-icon");
     el.weaponCard = document.getElementById("block-weapon-card");
     el.intro = document.getElementById("block-intro");
     el.weaponName = document.getElementById("block-weapon-name");

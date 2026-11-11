@@ -11704,84 +11704,6 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   display: none;
 }
 
-/* The trophy card's winners: the winning side's Oogas in a row that wraps, each a still portrait over its name, the
-   most valuable under a crown with an MVP tag. */
-.block-lineup h3 {
-  margin: 6px 0 2px;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  text-align: center;
-  opacity: 0.85;
-}
-
-.block-lineup ol {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin: 4px 0 8px;
-  padding: 0;
-  list-style: none;
-}
-
-.block-lineup li {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 72px;
-  max-width: 104px;
-  padding: 14px 6px 5px;
-  border: 2px solid var(--wood-edge);
-  border-radius: 8px;
-  background: rgba(30, 20, 12, 0.6);
-  font-size: 12px;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.block-lineup[data-team="blue"] li {
-  border-color: #3a8dff;
-}
-
-.block-lineup[data-team="red"] li {
-  border-color: #ff4a3a;
-}
-
-.block-lineup li[data-mvp="true"] {
-  border-color: #edbd32;
-  background: rgba(120, 84, 10, 0.75);
-  color: #ffe27a;
-  font-weight: bold;
-}
-
-.block-lineup-face {
-  width: 56px;
-  height: 56px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.block-lineup .block-crown {
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  width: 27px;
-  height: 21px;
-  transform: translateX(-50%);
-}
-
-.block-mvp {
-  padding: 0 4px;
-  border-radius: 3px;
-  background: #edbd32;
-  color: #2a1a08;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-}
-
 /* The board's weapons preview: its card up by the weapon turning over the Ooga on show. The Ooga stands a share of
    the view's height right of its middle, so on a view less wide for its height the card keeps further right, clear of
    the weapon (the scene also holds the weapon left of the card's edge). */
@@ -12635,7 +12557,7 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .block-trophy-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; text-align: left; }
 .block-side-panel { padding: 4px 8px 6px; border: 2px solid var(--stone-dk); border-radius: 9px 7px 10px 8px; background: var(--tablet); box-shadow: var(--tablet-shadow); }
 .block-side-panel.won { border-color: #f5c542; box-shadow: var(--tablet-shadow), 0 0 0 2px rgba(245, 197, 66, 0.35), 0 0 18px rgba(245, 197, 66, 0.35); }
-.block-side-panel h3, .block-side-panel li { display: grid; grid-template-columns: minmax(0, 1fr) 7ch 7ch; align-items: baseline; gap: 4px; }
+.block-side-panel h3, .block-side-panel li { display: grid; grid-template-columns: minmax(0, 1fr) 6ch 6ch 6ch; align-items: baseline; gap: 4px; }
 .block-side-panel h3 { margin: 2px 0 4px; font-size: 14px; }
 .block-side-panel[data-team="blue"] h3 span { color: #58b4ff; }
 .block-side-panel[data-team="red"] h3 span { color: #ff7a5c; }
@@ -12643,7 +12565,8 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .block-side-panel h3 small { color: var(--muted); font-size: 10px; text-align: right; text-transform: uppercase; }
 .block-side-panel ol { margin: 0; padding: 0; list-style: none; }
 .block-side-panel li { padding: 3px 4px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px; }
-.block-side-panel li span { overflow-wrap: break-word; }
+/* A name keeps to one line and ends in an ellipsis; its whole is the title. */
+.block-side-panel li span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .block-side-panel li b { text-align: right; font-variant-numeric: tabular-nums; }
 .block-side-panel li.you { background: rgba(245, 197, 66, 0.16); border-radius: 4px; }
 .block-side-panel li.mvp span::before { content: "♛ "; color: #f5c542; }
@@ -12656,7 +12579,8 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .block-badge[data-medal="wood"]::before { border-radius: 4px; background: linear-gradient(#b98a52, #6f4a25); }
 .block-badge span { color: var(--accent-text); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
 .block-badge b { font-size: 13px; overflow-wrap: anywhere; }
-.block-trophy-board .actions { margin-top: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* The buttons stay in view: if the board must scroll on a very short screen, they hold to its foot. */
+.block-trophy-board .actions { position: sticky; bottom: 0; z-index: 1; margin-top: 8px; padding-top: 4px; grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--wood); box-shadow: 0 0 0 6px var(--wood); border-radius: 4px; }
 .block-trophy-board .actions button[data-role="go"] { background: linear-gradient(#ffe27a, #f0b62a); color: var(--ink); }
 .block-trophy-board .actions button[data-role="go"]:hover, .block-trophy-board .actions button[data-role="go"].virtual-hover { background: linear-gradient(#fff0a8, #ffe27a); }
 .block-trophy-board .actions button[data-role="choose"] { background: linear-gradient(#a6d97f, #5f9e3f); color: #13260b; }
@@ -12667,12 +12591,15 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 @keyframes block-trophy-pop { from { transform: translateX(-50%) rotate(-2deg) scale(0.2); opacity: 0; } to { transform: translateX(-50%) rotate(-2deg); opacity: 1; } }
 @keyframes block-trophy-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes block-trophy-twinkle { from { opacity: 0.25; } to { opacity: 1; } }
-/* Wide screens: the sides and the medals side by side under the score, so the window keeps its height. */
+/* Wide screens: the two sides run the card's width under the score, so names have room, and the medals run three
+   across under them, so the window keeps its height and nothing scrolls. */
 @media (min-width: 980px) and (min-height: 600px) {
   #block-results.block-trophy { width: min(1000px, calc(100vw - 40px)); }
-  .block-trophy-board { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 12px; align-items: start; }
-  .block-trophy-tally, .block-trophy-board .help, .block-trophy-board .actions { grid-column: 1 / -1; }
-  .block-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+  .block-trophy-board { padding-bottom: 10px; }
+  .block-final { font-size: 52px; }
+  .block-trophy-time { font-size: 30px; margin: 0; }
+  .block-trophy-board .help { margin-bottom: 6px; }
+  .block-badges { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 8px 0 0; }
 }
 /* Phones and short screens: smaller numbers and rows, so the card fits without scrolling where it can. */
 @media (max-width: 560px), (max-height: 700px) {
@@ -12689,7 +12616,7 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
   .block-trophy-board .help { font-size: 11px; margin-bottom: 6px; }
   .block-trophy-sides { gap: 6px; }
   .block-side-panel { padding: 3px 5px 4px; }
-  .block-side-panel h3, .block-side-panel li { grid-template-columns: minmax(0, 1fr) 3.5ch 3.5ch; gap: 2px; }
+  .block-side-panel h3, .block-side-panel li { grid-template-columns: minmax(0, 1fr) 3.5ch 3.5ch 3.5ch; gap: 2px; }
   .block-side-panel h3 small { font-size: 8px; }
   .block-side-panel li { font-size: 10.5px; padding: 2px; }
   .block-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }

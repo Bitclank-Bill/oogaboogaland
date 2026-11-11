@@ -84,16 +84,16 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
   Walking onto one refills grenades, rockets, nets and the crate stock as your stand does, then it goes dark for 15 s
   (`CACHE_S`). A real Bitcoin block found while you play makes every cache and quiz pad ready again.
 
-## The winners on the trophy card
+## The trophy's most valuable Ooga
 
-Under the score the trophy card shows the winning side's Oogas in seat order (`SIM.lineup`), bots too: each a still
-portrait of its own character (the hud's face icon, `renderFaceIcon`, drawn once to a small canvas when the card
-shows, never per frame) over its name, in a row that wraps on a narrow screen. Its most valuable Ooga (`SIM.mvp`)
-wears a crown and an MVP tag: the most worth (`SIM.worth`: three a block mined, two a block brought home, one a splat
-landed), a tie going to more mined, then more brought home, then the lower seat. Both read only what every frame
-already carries (the winner and each Ooga's counts) and a page's seat map, so every page of a live round shows the
-same row and crown and the wire is unchanged; solo, a seat is an actor's index. The same Ooga tops the trophy's podium
-and is marked in its side's table. The row is still: nothing in it animates.
+The trophy screen has one picture of the winners, its own stage. The most valuable Ooga of the winning side (`SIM.mvp`)
+stands on top of the heap hoisting the golden block, is crowned in its side's table and named on the Round MVP medal
+with what its worth counts: the most worth (`SIM.worth`: three a block mined, two a block brought home, one a splat
+landed), a tie going to more mined, then more brought home, then the lower seat. It reads only what every frame
+already carries (the winner and each Ooga's counts) and a page's seat map, and the podium's places and the tables'
+order break ties by seat too, so every page of a live round shows the same and the wire is unchanged; solo, a seat is
+an actor's index. The tables show blocks mined, blocks brought home and splats, a name on one line; on a wide screen
+they run the card's width with the medals three across under them, and the card's buttons hold to its foot.
 
 ## The board's weapons preview
 
@@ -229,7 +229,7 @@ head: `npm test -- block arcade` needs real Chrome on real hardware before merge
 
 When a round ends (`finish` in `scene-block.js`) the results card is a trophy screen in Cloud Hopper's results style:
 "Ooga Arcade" over the gold pixel-block title, a banner naming the winning side, the final score big in team colours
-beside the round's time in gold, the two sides' tables (every Ooga and bot: blocks mined and splats; the winners'
+beside the round's time in gold, the two sides' tables (every Ooga and bot: blocks mined, blocks brought home and splats, a name on one line; the winners'
 table lit, their MVP crowned, the visitor's row marked), medals for the round's MVP, most splats and longest sniper
 shot plus the visitor's round, fastest win and rounds won, and the same three buttons.
 
