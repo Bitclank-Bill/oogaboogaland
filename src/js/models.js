@@ -1372,18 +1372,20 @@
         return fineBake(v, bake.origin, bake.emissive);
       });
       // The torso, TORSO_RISE taller than it was authored, in proportion: its hip band two units tall, not three, and
-      // its chest the longer for it (`TORSO_FROM`, a new height's authored one, in units), narrow at the waist over the
-      // belt and easing out into a full chest (`SIDE`, how far its sides move), deeper before and behind (`DEEP`), which
-      // runs out under each arm's shoulder its whole height (`REACH`, how far short of the arm's middle it stops) so the
-      // shoulder sits in the torso. Its hip band fits the body over the thighs and slopes in to the waist (`BAND_IN`), and
+      // its chest the longer for it (`TORSO_FROM`, a new height's authored one, in units), easing out into a full chest
+      // (`SIDE`, how far its sides move; a slim build's waist comes in over the belt first, the others' keeps its width),
+      // deeper before and behind (`DEEP`), which runs out under each arm's shoulder its whole height (`REACH`, how far
+      // short of the arm's middle it stops) so the shoulder sits in the torso. Its hip band fits the body over the thighs
+      // and slopes in to the waist (`BAND_IN`, a slim build's the more), and
       // the loincloth is a wrap close round them, a panel before and behind and a shorter one down each hip, in place of
       // the authored flaps. `TORSO_KNOTS` maps an authored height on the torso to its new one, for what a hook hung there.
       const TORSO_KNOTS = [[0, 0], [3, 2], [4, 3], [8, 8 + TORSO_RISE]];
       const TORSO_FROM = TORSO_KNOTS.map(([a, b]) => [b, a]);
-      const SIDE = [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]];
+      // A slim build's waist comes in over the belt; the others' lower torso keeps its width up into the chest.
+      const SIDE = traits.slim ? [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]] : [[4.75, 0], [5.1, 0.5], [9, 0.5]];
       const REACH = [[4.5, 3], [5, 2.5], [5.5, 1.75], [8.5, 1.75], [9, 2.25]];
       const DEEP = [[4.5, 0, 0], [5, 0.5, 0], [5.5, 0.5, 0.5], [8.5, 0.5, 0.5], [9, 0.25, 0.25]];
-      const BAND_UNITS = 2, BAND_IN = [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]], WRAP = [2, 2.5, 1.25];
+      const BAND_UNITS = 2, BAND_IN = traits.slim ? [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]] : [[1, 0, 0], [2, 0.4, 0.5]], WRAP = [2, 2.5, 1.25];
       const TORSO_EDGES = [...upEdges(half(4), half(4)), ...rimEdges(1, half(3), half(3), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
       const CX = 4.5 * F, CZ = 3 * F, at = [0, 0, 0];
       // The run of a row through the torso's middle, along x at depth z (or along z at column x), or null.
