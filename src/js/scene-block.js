@@ -1353,7 +1353,7 @@
       if (k === "sniper") b.disabled = !a.sniper;
       if (k === "grenade" || k === "rocket" || k === "net") b.disabled = a[k] <= 0;
       if (k === "pass") b.disabled = !a.carrying && !a.holding;
-      if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearVend(sim, a);
+      if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a);
       if (k === "grab") b.setAttribute("aria-pressed", String(a.holding || tool === "grab"));
     }
   };
