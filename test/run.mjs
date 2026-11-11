@@ -8515,8 +8515,12 @@ const gameRulesChecks = async () => {
         && held.every(n => n > 0 && n <= 400) && thrown.every(n => n > 0 && n <= 400), JSON.stringify({ absent, guns, held, thrown }));
     }
     const racked = H.racks.flatMap(([, , rows]) => rows.map(([id]) => id));
-    record("arcade block hall: three racks hold the game's eight weapons, each from its own held model",
-      racked.length === 8 && racked.filter(Number.isInteger).every((i, k) => i === k) && racked.includes("hook") && H.pictures.length === 4, JSON.stringify(racked));
+    // Every gun the game holds hangs there by its own `GUNS` index (the sniper rifle, the Golden AK and the hook's
+    // launcher among them), with the hook's head, and each row has a peg height on its rack.
+    const hung = racked.filter(Number.isInteger), hallGuns = BL.blockModels.GUNS;
+    record("arcade block hall: three racks hold the game's nine weapons, each from its own held model: every gun in the game's list once, the hook launcher among them, and the hook's head",
+      racked.length === 9 && hung.length === hallGuns.length && hung.every((i, k) => i === k && BL.blockModels.gun(i * 2).faces.length > 0) && ["sniper", "gold", "hook"].every((k) => hung.includes(hallGuns.indexOf(k)))
+      && racked.includes("hook") && H.racks.every(([, , rows]) => rows.length <= 3) && /BM\.gun\(i \* 2\)/.test(readFileSync(new URL("../src/js/arcade-scene-models.js", import.meta.url), "utf8")) && H.pictures.length === 4, JSON.stringify(racked));
     // The zipline off the ledge: the survey over the scene's world, ledge to island, is clean and the ride ends on the island's top.
     const Z = BL.zipline, far = (z) => z <= H.stop.z + 1;
     const q = { support: (x, z) => far(z) ? H.cloudY : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => far(z) };
