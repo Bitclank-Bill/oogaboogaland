@@ -672,6 +672,11 @@
           src[i * 3 + 1] = m[1] * verts[v] + m[5] * verts[v + 1] + m[9] * verts[v + 2] + m[13] - frame.y;
           src[i * 3 + 2] = x * frame.sr + z * frame.cr;
         }
+        // Clipping only cuts between a face's corners, so a face whose lowest corner is no lower than the lowest point
+        // found so far cannot lower it.
+        let lowest = Infinity;
+        for (let i = 0; i < count; i++) lowest = Math.min(lowest, src[i * 3 + 1]);
+        if (lowest >= frame.minimum) continue;
         for (let edge = 0; edge < 4 && count >= 3; edge++) {
           const axis = edge < 2 ? 0 : 2, sign = edge & 1 ? -1 : 1;
           const bound = edge === 0 ? frame.maxX : edge === 1 ? frame.minX : edge === 2 ? frame.maxZ : frame.minZ;
