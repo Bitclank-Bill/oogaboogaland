@@ -1298,9 +1298,18 @@
     const at = onIsland(a.x, a.z) && (a.y >= -CONFIG.RIM || inGrave(a.x, a.z)) ? restSpot(a.x, a.z) : restSpot(a.edgeX, a.edgeZ);
     o.x = at.x; o.y = 0; o.z = at.z;
   };
-  // Splatted with the Golden AKs or a hook in its hands (`wield`, the tool selected, or for a bot or a guest the last it
-  // fired; a hook in use always counts), the Ooga drops that one thing: anyone may walk over it, and `DROP_BACK_S` later
+  // Splatted with the Golden AKs or a hook in its hands (`wield`, the tool selected, the host's own each frame and a
+  // guest's by its `wield` action; for a bot the last it fired; a hook in use always counts), the Ooga drops that one thing: anyone may walk over it, and `DROP_BACK_S` later
   // it returns to its owner. One put away stays put away.
+  // The tools a player can have in hand, by index on the wire; `wield` takes a guest's choice (sent only when it changes)
+  // on the host, refusing an unknown tool or one the Ooga doesn't own.
+  const WIELD = ["paint", "grenade", "rocket", "net", "sniper", "gold", "ak", "hook", "grab"];
+  const wield = (sim, id, t) => {
+    const a = sim.actors[id], k = Math.round(t), kind = WIELD[k];
+    if (!a || !Number.isInteger(k) || !kind || kind === "gold" && !a.gold || kind === "hook" && !a.hook) return false;
+    a.wield = kind;
+    return true;
+  };
   const dropWielded = (sim, a) => {
     const held = a.hk ? "hook" : a.wield || a.lastKind;
     if (held === "gold" && a.gold) {
@@ -2987,7 +2996,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { WIELD, wield, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

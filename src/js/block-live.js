@@ -176,7 +176,7 @@
   const ACTION_CALLS = {
     fire: (s, id, y, p, k) => SIM.fire(s, id, y, p, W.KINDS[k]), grapple: (s, id, y, p) => SIM.grapple(s, id, y, p), build: (s, id, y) => SIM.build(s, id, y), grab: (s, id, y) => SIM.grab(s, id, y),
     pass: (s, id, y) => SIM.pass(s, id, y), launch: (s, id) => SIM.launch(s, id), zip: (s, id, y) => SIM.zip(s, id, y), hopOn: (s, id) => SIM.hopOn(s, id), callRide: (s, id) => SIM.callRide(s, id),
-    drop: (s, id) => SIM.drop(s, id), escape: (s, id) => SIM.escape(s, id), cutChute: (s, id) => SIM.cutChute(s, id)
+    drop: (s, id) => SIM.drop(s, id), wield: (s, id, t) => SIM.wield(s, id, t), escape: (s, id) => SIM.escape(s, id), cutChute: (s, id) => SIM.cutChute(s, id)
   };
   const blankInput = () => ({ x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 });
   const STALE_MS = 500;

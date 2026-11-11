@@ -23,7 +23,7 @@
   // A map still offered for play, by id (a saved pick of a retired one is ignored).
   const playable = (id) => MAPS.indexOf(id) >= FIRST_MAP;
   // What a guest asks its host to do for it, by index on the wire: `yaw` and `pitch` go in thousandths of a radian.
-  const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "escape", "cutChute"];
+  const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "escape", "cutChute", "wield"];
   const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
   const integer = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const session = v => typeof v === "string" && /^[a-f0-9]{16}$/.test(v);

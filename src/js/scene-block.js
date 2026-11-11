@@ -466,6 +466,7 @@
     setupRound(m, map);
     start(m.seed);
     sim.duel = !!m.duel;
+    if (role === "guest") acts("wield", 0, SIM.WIELD.indexOf(tool));
     if (sim.duel) notice("Just the two of you: you can score even while your own block is away", 5000);
   };
   const joinDeckNow = (m) => {
@@ -1271,6 +1272,8 @@
     // Say the new weapon, whatever changed it, so it shows with the bar hidden too.
     if (k !== tool && TOOL_NAMES[k]) notice(TOOL_NAMES[k], 900);
     tool = k;
+    // A guest tells the host what is in hand, only when it changes: it decides what a splat drops.
+    if (round && round.role === "guest") acts("wield", 0, SIM.WIELD.indexOf(k));
     updateTools();
   };
   // The next tool along (or back), skipping any that are empty, then Lift for the crates; G steps through them.
