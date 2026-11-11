@@ -212,7 +212,7 @@
       // The gun sits in the right hand, its muzzle along the arm; the caveman's own club stays home.
       let gun = null, gunL = null;
       if (cave) {
-        const h = cave.headOffset / 1.1, u = h / 16;
+        const h = cave.traits.height, u = h / 16;
         gun = createNode({ geometry: BM.gun(0), position: { x: 0, y: -10 * u, z: 0.03 }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: h / 1.5, y: h / 1.5, z: h / 1.5 }, visible: false });
         addChild(cave.parts.armR, gun);
         // The left hand's golden AK, shown only with the pair.
