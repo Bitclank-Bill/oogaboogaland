@@ -29,8 +29,9 @@
   const CONF = 0.25, KEEP = 0.18, FRESH = 0.5, GAP = 0.5;
   const LAG_MIN = Math.floor(RATE * 60 / MAX_BPM), LAG_MAX = Math.ceil(RATE * 60 / MIN_BPM);
   // The analysis: the low-pass's corner, and how many samples the analyser holds (enough for a frame of 0.17 s); for the
-  // screen, the whole signal's FFT size, its range in dB and the spectrum's lowest and highest frequencies.
-  const KICK_HZ = 150, WAVE = 8192, FFT = 2048, DB_MIN = -92, DB_MAX = -22, LOW_HZ = 35, HIGH_HZ = 16000;
+  // screen, the whole signal's FFT size, its range in dB, the spectrum's lowest and highest frequencies, and the power a
+  // band's level is raised to so loud, compressed music still moves the bars rather than holding them up.
+  const KICK_HZ = 150, WAVE = 8192, FFT = 2048, DB_MIN = -90, DB_MAX = -20, LOW_HZ = 35, HIGH_HZ = 16000, SPREAD = 2.2;
   // The player: its volume, how long a stall may last, the first retry's wait (doubling to RETRY_MAX), and how long
   // Web Audio may hand silence for a stream that plays before the plain element takes over.
   const VOLUME = 0.32, STALL_MS = 12000, RETRY_MS = 5000, RETRY_MAX = 60000, SILENT_S = 4;
@@ -219,7 +220,8 @@
       lastTime = element.currentTime;
       return track.read(context.currentTime - (context.outputLatency || context.baseLatency || 0), out);
     };
-    // The screen's spectrum: `out`'s bands, low to high on a log scale, each the loudest bin in it (0 to 1). False when
+    // The screen's spectrum: `out`'s bands, low to high on a log scale, each the loudest bin in it (0 to 1, raised to
+    // SPREAD). False when
     // there is nothing to read (the screen then makes its own from the beat). The bands' bins are worked out once.
     const spectrum = (out) => {
       if (mode !== "live" || plain || !whole) return false;
@@ -233,7 +235,7 @@
       for (let i = 0; i < n; i++) {
         let most = 0;
         for (let b = edges[i]; b < edges[i + 1]; b++) if (bins[b] > most) most = bins[b];
-        out[i] = most / 255;
+        out[i] = (most / 255) ** SPREAD;
       }
       return true;
     };

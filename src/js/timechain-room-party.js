@@ -1,7 +1,8 @@
 // Room 3, the Block Party: a club under a dome of light (the shortlist mock-up's `buildParty`). The dome plays the
 // mock-up's light show: rings of the fee bands' colours stepping down from the crown on the beat, bands sweeping round it
 // in spirals and a scatter of warm LED dots twinkling over it. The whole floor is LED tiles whose rings step out through
-// the same colours on every beat. The DJ booth stands at the front, its face an LED screen of the music's spectrum and
+// the same colours on every beat, and the wall under the dome is an LED wall all the way round but for the doors, the
+// music's spectrum mirrored round it from the front with its wave over it. The DJ booth stands at the front, its face an LED screen of the music's spectrum and
 // wave with the room's name in the middle; behind it a truss of laser projectors, and one on each speaker stack, throws
 // fans, tunnels, scans and sheets of beams that change look every phrase. A stack of speakers either side thumps and the
 // mirror ball turns under the crown. The latest block hangs on the dome over the booth. EDM Sessions plays live
@@ -41,6 +42,9 @@
   // first as it stood at SHOW_T; its LED dots a cell a fortieth of a radian round, about one in seven lit, in DOT_GROUPS
   // nodes that twinkle in turn, sorted DOT_BIAS metres nearer for Canvas 2D.
   const DOME_W = 512, DOME_H = 192, DOME_FPS = 30, SHOW_T = 10.2, DOT_GROUPS = 6, DOT = 0.075, DOT_BIAS = -1.5;
+  // The LED wall is sorted WALL_BIAS metres nearer for Canvas 2D, in front of the wall's own large faces but behind what
+  // stands in the room.
+  const WALL_BIAS = -0.5;
   // The lasers: an RGB projector's colours; NB beams a projector, each a thin bar BEAM_LEN long stretched to whatever it
   // meets, with a dot where it lands; a new look every PHRASE beats.
   const RGB = ["#2bff5a", "#ff2b3a", "#3b5bff", "#2bf2ff", "#ff2bea", "#ffe62b", "#f4f2ff"];
@@ -53,7 +57,15 @@
   const BODY = { w: 0.3, h: 0.17, d: 0.32 }, TILT = 0.32, KNOB = 0.26, HANG = [-3.2, -1.6, 0, 1.6, 3.2], APERTURE = [0, -0.012, 0.182];
   // The booth's screen: a canvas W by H wrapped round the booth's face across HALF either side of the middle, from Y0 to
   // Y1, repainted at most FPS times a second: BARS bars of ROWS segments either side of the name, and a wave of WAVE points.
-  const SCREEN = { W: 1024, H: 144, HALF: 18.5 * DEG, Y0: 0.16, Y1: 0.92, FPS: 60, BARS: 40, ROWS: 14, WAVE: 256, LOGO_W: 300, LOGO_H: 104 };
+  const SCREEN = { W: 1024, H: 144, HALF: 18.5 * DEG, Y0: 0.16, Y1: 0.92, FPS: 60, BARS: 40, ROWS: 14, LOGO_W: 300, LOGO_H: 104 };
+  // The music as the room reads it once a frame for both screens: BANDS bands of its spectrum, low to high, and WAVE
+  // points of its wave.
+  const MUSIC = { BANDS: 96, WAVE: 512 };
+  // The LED wall round the room: a canvas W by H wrapped round just inside the wall below the dome (INSET), from Y0 over
+  // the skirting to Y1 under the screen's amber edge, all the way round but DOOR either side of the doors (their frame,
+  // bulbs and the Exit button), repainted with the booth's screen; the spectrum mirrored round it, bass behind the booth
+  // and treble by the doors, in bars of SEG-pixel segments, in HUES hues round the room.
+  const WALL = { W: 2048, H: 96, INSET: 0.995, Y0: 0.14, Y1: 3.62, DOOR: 2.8, SEG: 4, HUES: 48 };
   const polar = (r, b) => ({ x: r * Math.sin(b * DEG), z: r * Math.cos(b * DEG) });
   const boothZ = (L) => -(L.r0 - 2.7);
   const trussZ = (L) => boothZ(L) - 0.45;
@@ -306,13 +318,12 @@
   // The screen's painter, made once per canvas: a dim grid of LED pixels; bars of segments either side of the name, bass
   // next to it and treble at the ends, coloured up through the fee bands with a peak over each; the wave across it all;
   // the name on its plate swelling on the kick; the edges flashing on the kick and the whole of it flooding warm in a
-  // drop. `paint(dt, t, kick, boom, hit, radio)` reads the music's spectrum and wave from `radio`, or, where it can't,
-  // makes them from the beat.
+  // drop. `paint(dt, t, kick, boom, bands, wave)` takes the music as the room read it (MUSIC).
   const screens = new WeakMap();
   const screenOf = (canvas) => {
     let screen = screens.get(canvas);
     if (screen) return screen;
-    const P = RM.paintKit, { W, H, BARS, ROWS, WAVE, LOGO_W, LOGO_H } = SCREEN, ctx = canvas.getContext("2d"), c = [0, 0, 0];
+    const P = RM.paintKit, { W, H, BARS, ROWS, LOGO_W, LOGO_H } = SCREEN, WAVE = MUSIC.WAVE / 2, ctx = canvas.getContext("2d"), c = [0, 0, 0];
     const back = CH.canvas(W, H), b = back.getContext("2d");
     b.fillStyle = "#06030b"; b.fillRect(0, 0, W, H);
     b.fillStyle = "rgba(154,92,255,0.09)";
@@ -323,15 +334,14 @@
     P.pix(l, name, LOGO_W / 2, LOGO_H / 2, Math.min(LOGO_H * 0.42, (LOGO_W - 40) / P.pixWidth(name, 1)), C.label);
     const rows = [];
     for (let r = 0; r < ROWS; r++) rows.push(rgbStyle(band(r / (ROWS - 1) * 5 / 6, c)));
-    const raw = new Float32Array(BARS), level = new Float32Array(BARS), peak = new Float32Array(BARS), wave = new Float32Array(WAVE);
+    const level = new Float32Array(BARS), peak = new Float32Array(BARS);
     const inner = (W - LOGO_W) / 2 - 12, pitch = (inner - 10) / BARS, bw = pitch * 0.68, rowH = (H - 20) / ROWS, segH = rowH * 0.72;
-    const paint = (dt, t, kick, boom, hit, radio) => {
-      if (!radio || !radio.spectrum(raw)) for (let i = 0; i < BARS; i++) {
-        const f = i / BARS, shimmer = (0.5 + 0.5 * Math.sin(t * 7.3 + i * 0.9)) * (0.5 + 0.5 * Math.sin(t * 3.1 - i * 0.37));
-        raw[i] = Math.min(1, kick * hit * Math.pow(1 - f, 1.4) * 0.95 + 0.3 * shimmer * (0.4 + 0.6 * hit));
-      }
+    const paint = (dt, t, kick, boom, bands, wave) => {
       for (let i = 0; i < BARS; i++) {
-        level[i] = raw[i] > level[i] ? raw[i] : Math.max(raw[i], level[i] - dt * 2.2);
+        // Each bar the loudest of its share of the bands.
+        let raw = 0;
+        for (let k = Math.floor(i * MUSIC.BANDS / BARS), end = Math.max(k + 1, Math.floor((i + 1) * MUSIC.BANDS / BARS)); k < end; k++) if (bands[k] > raw) raw = bands[k];
+        level[i] = raw > level[i] ? raw : Math.max(raw, level[i] - dt * 2.2);
         peak[i] = level[i] > peak[i] ? level[i] : Math.max(0, peak[i] - dt * 0.45);
       }
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
@@ -351,11 +361,10 @@
         const x = inner - (i + 1) * pitch + (pitch - bw) / 2, y = H - 10 - (r + 1) * rowH + (rowH - segH);
         ctx.fillRect(x, y, bw, 2.5); ctx.fillRect(W - x - bw, y, bw, 2.5);
       }
-      if (!radio || !radio.scope(wave)) for (let i = 0; i < WAVE; i++) wave[i] = (0.55 * Math.sin(i * 0.11 + t * 9) + 0.3 * Math.sin(i * 0.37 - t * 13)) * (0.15 + 0.5 * kick * hit);
       ctx.globalCompositeOperation = "lighter"; ctx.strokeStyle = "rgba(60,200,255,0.85)"; ctx.lineWidth = 2.5;
       ctx.beginPath();
       for (let i = 0; i < WAVE; i++) {
-        const x = i / (WAVE - 1) * W, y = H / 2 - Math.max(-1, Math.min(1, wave[i])) * H * 0.42;
+        const x = i / (WAVE - 1) * W, y = H / 2 - Math.max(-1, Math.min(1, wave[i * 2])) * H * 0.42;
         if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
       }
       ctx.stroke();
@@ -370,6 +379,96 @@
     screen = { paint };
     screens.set(canvas, screen);
     return screen;
+  };
+
+  // ---------- the LED wall ----------
+  // A band just inside the wall below the dome, from Y0 to Y1, round the room but for the doors, built a metre along +z
+  // as the dome's screen is, so a node a metre back maps it by the same curve: its canvas's columns by azimuth (the seam
+  // over the doors), its rows by height.
+  const wallGeometry = (L, canvas) => {
+    const geo = blank(), r = L.R * WALL.INSET, el = (y) => Math.asin((y - L.c) / r), gap = Math.asin(WALL.DOOR / ROOMS.radiusAt(L, WALL.Y0)), cols = 168, rows = 4;
+    const at = (az, y) => { const p = ROOMS.onSphere(L, az, el(y), WALL.INSET); return [p.x, p.y, p.z + 1]; };
+    for (let k = 0; k < cols; k++) for (let j = 0; j < rows; j++) {
+      const a0 = -Math.PI + gap + (TAU - 2 * gap) * k / cols, a1 = -Math.PI + gap + (TAU - 2 * gap) * (k + 1) / cols;
+      const y0 = WALL.Y0 + (WALL.Y1 - WALL.Y0) * j / rows, y1 = WALL.Y0 + (WALL.Y1 - WALL.Y0) * (j + 1) / rows, m = ROOMS.onSphere(L, (a0 + a1) / 2, el((y0 + y1) / 2));
+      face(geo, [at(a0, y0), at(a1, y0), at(a1, y1), at(a0, y1)], [255, 255, 255], 1, [-m.x, L.c - m.y, -m.z]);
+    }
+    geo.castShadow = false;
+    geo.imageSurface = { canvas, version: 1, rect: [-Math.PI, WALL.Y0, TAU, WALL.Y1 - WALL.Y0], curve: [1, 0, 0], tessellated: true };
+    return geo;
+  };
+  // The wall's painter, made once per canvas: a dim grid of LED pixels; the spectrum's bars mirrored round the room
+  // (bass either side of the front, treble meeting at the doors), cut into segments, each bar in a hue that turns round
+  // the room, with a peak over each; the wave all the way round; a pulse of light running from the front round both
+  // sides to the doors on every beat, brightest on the kick; the edges flashing on the kick, and all of it flooding warm
+  // in a drop. `paint(dt, t, beat, kick, boom, bands, wave)` takes the music as the room read it (MUSIC).
+  const walls = new WeakMap();
+  const wallOf = (canvas) => {
+    let wall = walls.get(canvas);
+    if (wall) return wall;
+    const { W, H, SEG, HUES } = WALL, BARS = MUSIC.BANDS, WAVE = MUSIC.WAVE, ctx = canvas.getContext("2d"), c = [0, 0, 0];
+    const back = CH.canvas(W, H), b = back.getContext("2d");
+    b.fillStyle = "#06030b"; b.fillRect(0, 0, W, H);
+    b.fillStyle = "rgba(154,92,255,0.1)";
+    for (let y = 1; y < H; y += 4) for (let x = 1; x < W; x += 4) b.fillRect(x, y, 2, 2);
+    // The gaps between segments, laid over the bars in one go.
+    const gaps = CH.canvas(W, H), g = gaps.getContext("2d");
+    g.fillStyle = "#06030b";
+    for (let y = H - 2 - SEG; y > 0; y -= SEG) g.fillRect(0, y, W, 1);
+    const hues = [];
+    for (let k = 0; k < HUES; k++) hues.push(rgbStyle(band(k / HUES, c)));
+    const level = new Float32Array(BARS), peak = new Float32Array(BARS), half = W / 2, pitch = half / BARS, bw = Math.max(2, pitch - 3), top = H - 4;
+    const paint = (dt, t, beat, kick, boom, bands, wave) => {
+      for (let i = 0; i < BARS; i++) {
+        level[i] = bands[i] > level[i] ? bands[i] : Math.max(bands[i], level[i] - dt * 2);
+        peak[i] = level[i] > peak[i] ? level[i] : Math.max(0, peak[i] - dt * 0.4);
+      }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(back, 0, 0);
+      const turn = t * 0.06;
+      for (let i = 0; i < BARS; i++) {
+        const h = Math.round(level[i] * top);
+        if (h < 2) continue;
+        const x = half + i * pitch + (pitch - bw) / 2, y = H - 2 - h;
+        ctx.fillStyle = hues[(Math.floor((i / BARS * 0.5 + turn) * HUES) % HUES + HUES) % HUES];
+        ctx.fillRect(x, y, bw, h); ctx.fillRect(W - x - bw, y, bw, h);
+      }
+      ctx.drawImage(gaps, 0, 0);
+      ctx.fillStyle = "#f4f2ff";
+      for (let i = 0; i < BARS; i++) {
+        const h = Math.round(peak[i] * top);
+        if (h < 4) continue;
+        const x = half + i * pitch + (pitch - bw) / 2;
+        ctx.fillRect(x, H - 3 - h, bw, 2); ctx.fillRect(W - x - bw, H - 3 - h, bw, 2);
+      }
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(60,200,255,0.8)"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < WAVE; i++) {
+        const x = i / (WAVE - 1) * W, y = H / 2 - Math.max(-1, Math.min(1, wave[i])) * H * 0.4;
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+      const run = (beat - Math.floor(beat)) * half;
+      ctx.fillStyle = "#ffffff"; ctx.globalAlpha = 0.12 + 0.45 * kick;
+      ctx.fillRect(half + run - 14, 0, 28, H); ctx.fillRect(half - run - 14, 0, 28, H);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = PURPLE; ctx.globalAlpha = 0.8 * kick;
+      ctx.fillRect(0, 0, W, 2); ctx.fillRect(0, H - 2, W, 2);
+      if (boom > 0) { ctx.fillStyle = FLASH; ctx.globalAlpha = boom * 0.22; ctx.fillRect(0, 0, W, H); }
+      ctx.globalAlpha = 1;
+    };
+    wall = { paint };
+    walls.set(canvas, wall);
+    return wall;
+  };
+  // The music when the radio can't be read: a spectrum and a wave made from the beat, into `bands` and `wave`.
+  const madeUp = (t, kick, hit, bands, wave) => {
+    for (let i = 0; i < bands.length; i++) {
+      const shimmer = (0.5 + 0.5 * Math.sin(t * 7.3 + i * 0.37)) * (0.5 + 0.5 * Math.sin(t * 3.1 - i * 0.15));
+      bands[i] = Math.min(1, kick * hit * Math.pow(1 - i / bands.length, 1.4) * 0.95 + 0.3 * shimmer * (0.4 + 0.6 * hit));
+    }
+    for (let i = 0; i < wave.length; i++) wave[i] = (0.55 * Math.sin(i * 0.055 + t * 9) + 0.3 * Math.sin(i * 0.185 - t * 13)) * (0.15 + 0.5 * kick * hit);
   };
 
   // ---------- the rest ----------
@@ -450,6 +549,11 @@
     K.render({ sky: [0.3, 0.24, 0.42], ground: [0.12, 0.08, 0.16], direct: [0.4, 0.34, 0.5], directStrength: 0.12, ambientFloor: 0.3, bloomStrength: 0.95 });
     K.dome((ctx, D) => showOf(ctx.canvas, D).paint(SHOW_T * 1.3, SHOW_T * 5, SHOW_T * 0.05, 0.55, 0.6, 0), { w: DOME_W, h: DOME_H, smooth: true });
     domeDots(L).forEach((geo, g) => K.node(`dots${g}`, geo, 0, 0, 0, { glow: true, depthBias: DOT_BIAS }));
+    // The LED wall round the room, first painted (as the booth's screen is) from the room's own beat.
+    const wallCanvas = CH.canvas(WALL.W, WALL.H), firstBands = new Float32Array(MUSIC.BANDS), firstWave = new Float32Array(MUSIC.WAVE);
+    madeUp(0, 0.6, 1, firstBands, firstWave);
+    wallOf(wallCanvas).paint(0.1, 0, 0, 0.6, 0, firstBands, firstWave);
+    K.node("wall", wallGeometry(L, wallCanvas), 0, 0, -1, { glow: true, depthBias: WALL_BIAS, target: { kind: "booth", tip: "LED wall", radius: 1.5, data: { say: "Block Party · the music round the room" } } });
     // The floor: near black, under each tile its colour as the floor starts, dimmed, between black seams (hidden under
     // the tiles, but where Canvas 2D sorts a large piece of the floor over one, it shows a tile rather than a hole), and
     // the chain from the doors to the tiles.
@@ -477,7 +581,7 @@
     K.sector(0, rb0 - 0.04, rb0, a0, a1, 0.1, 0.98, C.bezel, { steps: 40 });
     for (const y of [0.115, 0.945]) K.sector(0, rb0 - 0.05, rb0 - 0.04, a0, a1, y, y + 0.012, PURPLE, { emissive: 1, glow: true, steps: 40 });
     const screenCanvas = CH.canvas(SCREEN.W, SCREEN.H);
-    screenOf(screenCanvas).paint(0.1, 0, 0.6, 0, 1, null);
+    screenOf(screenCanvas).paint(0.1, 0, 0.6, 0, firstBands, firstWave);
     K.node("screen", screenGeometry(rs, screenCanvas), 0, 0, -rs,
       { glow: true, depthBias: -0.3, target: { kind: "booth", tip: "DJ booth", radius: 1.3, data: { say: "Block Party · the bass drops on every block" } } });
     arcSolids(K, (rb0 + rb1) / 2, 160, 200, 0.42);
@@ -586,6 +690,7 @@
     const records = [nodes.record0, nodes.record1], meters = [nodes.meter0, nodes.meter1], ball = nodes.ball, wave = nodes.wave, drop = nodes.drop;
     const domeSurface = built.dome && built.dome.geometry.imageSurface, domeShow = domeSurface && shows.get(domeSurface.canvas);
     const screenSurface = nodes.screen.geometry.imageSurface, screen = screenOf(screenSurface.canvas);
+    const wallSurface = nodes.wall.geometry.imageSurface, wall = wallOf(wallSurface.canvas), music = new Float32Array(MUSIC.BANDS), shape = new Float32Array(MUSIC.WAVE);
     const e0 = ROOMS.edgeEl(L, 0) / DEG;
     // The planned colours of the floor's and the ball's lights, which the beat and the drop scale.
     const floorRgb = built.lights[2].slice(4, 7), ballRgb = built.lights[3].slice(4, 7), screenRgb = built.lights[8].slice(4, 7);
@@ -643,12 +748,14 @@
           domeSurface.version++;
         }
         for (let g = 0; g < dots.length; g++) dots[g].glow = 0.2 + 0.4 * (0.5 + 0.5 * Math.sin(t * 2.3 + g * 1.7)) + (g === step % dots.length ? 0.7 * kick : 0) + boom;
-        // The booth's screen, from the music.
+        // The booth's screen and the LED wall, from the music read once for both (or made from the beat).
         screenDt += dt;
         if ((screenWait -= dt) <= 0) {
           screenWait = 1 / SCREEN.FPS;
-          screen.paint(screenDt, t, kick, boom, hit, radio);
-          screenSurface.version++; screenDt = 0;
+          if (!radio.spectrum(music) || !radio.scope(shape)) madeUp(t, kick, hit, music, shape);
+          screen.paint(screenDt, t, kick, boom, music, shape);
+          wall.paint(screenDt, t, beat, kick, boom, music, shape);
+          screenSurface.version++; wallSurface.version++; screenDt = 0;
         }
         // The cones thump on the beat, harder in a drop.
         const push = 0.025 * kick * (1 + boom);
