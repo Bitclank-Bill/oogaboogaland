@@ -11461,7 +11461,7 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   display: none;
 }
 
-/* The chosen weapon's name, over the bar for a moment after it changes. */
+/* The chosen weapon's name, standing over its slot (`data-at`, placed by the scene) for as long as it is chosen. */
 .block-tool-name {
   position: absolute;
   right: 0;
@@ -11483,6 +11483,12 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   opacity: 1;
 }
 
+.block-tool-name[data-at="slot"] {
+  right: auto;
+  transform: translateX(-50%);
+  transition: opacity 0.25s, left 0.15s ease-out;
+}
+
 @media (max-width: 480px) {
   .block-slots button {
     width: 44px;
@@ -11498,6 +11504,10 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
 @media (prefers-reduced-motion: reduce) {
   .block-slots button,
   .block-tool-name {
+    transition: none;
+  }
+
+  .block-tool-name[data-at="slot"] {
     transition: none;
   }
 }
@@ -11561,11 +11571,6 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
     justify-content: center;
   }
 
-  .block-tool-name {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-  }
 }
 
 /* Block Frenzy's sprint gauge in the strip. */

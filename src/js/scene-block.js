@@ -687,6 +687,8 @@
     { const c = BM.TEAM[sim.team]; el.toolBar.style.setProperty("--block-team", c.paint); el.toolBar.style.setProperty("--block-team-deep", c.deep); el.toolBar.style.setProperty("--block-team-light", c.light); }
     el.map.hidden = mapHidden;
     placeBar();
+    // The chosen weapon's name stands over its slot from the round's start.
+    showToolName(tool);
     for (const li of el.feedItems) { li.textContent = ""; delete li.dataset.team; }
     el.notice.hidden = false;
     hud.el.act.hidden = !COARSE;
@@ -1398,14 +1400,20 @@
     notice(`Scope ${scope.zoom + 1}×`, 600);
   };
   const TOOL_NAMES = { paint: "1 · Paint marker", grenade: "2 · Grenade launcher", rocket: "3 · Rocket launcher", net: "4 · Net launcher", sniper: "5 · Sniper rifle", gold: "6 · Golden Dual AKs", ak: "7 · Ooga AK", hook: "8 · Grappling hook", grab: "Lift" };
-  // The chosen weapon's name over the bar for a moment (it shows with the bar's slots hidden too).
-  let nameTimer = 0;
+  // The chosen weapon's name stands over its slot for as long as it is chosen (over the bar's end when the slots are
+  // hidden or it has none, as Lift). Measured only when the choice, the bar or the page's size changes, never per frame.
   const hideToolName = () => { el.toolName.dataset.show = "false"; };
+  const placeToolName = () => {
+    const n = el.toolName, b = bar.min ? null : el.tools.find((s) => s.dataset.tool === tool && s.parentNode.classList.contains("block-slots"));
+    if (!b) { delete n.dataset.at; n.style.left = ""; return; }
+    const half = n.offsetWidth / 2, x = clamp(b.offsetLeft + b.offsetWidth / 2, half, Math.max(half, el.toolBar.offsetWidth - half));
+    n.dataset.at = "slot"; n.style.left = `${x}px`;
+  };
   const showToolName = (k) => {
+    if (!TOOL_NAMES[k]) return;
     el.toolName.textContent = TOOL_NAMES[k];
     el.toolName.dataset.show = "true";
-    window.clearTimeout(nameTimer);
-    nameTimer = window.setTimeout(hideToolName, 1500);
+    placeToolName();
   };
   const chooseTool = (k) => {
     // The rifle out starts at the scope's widest step; put away, the view goes back if the scope changed it.
@@ -1415,8 +1423,8 @@
       scope.on = false;
     }
     // Say the new weapon, whatever changed it, so it shows with the bar hidden too.
-    if (k !== tool && TOOL_NAMES[k]) showToolName(k);
     tool = k;
+    showToolName(k);
     // A guest tells the host what is in hand, only when it changes: it decides what a hook or Golden AK fire can take.
     if (round && round.role === "guest") acts("wield", 0, SIM.WIELD.indexOf(k));
     updateTools();
@@ -1466,10 +1474,11 @@
     t.dataset.min = String(bar.min);
     el.barMin.setAttribute("aria-pressed", String(bar.min));
     el.barMin.textContent = bar.min ? "+" : "–";
-    if (COARSE || bar.x === null) { t.style.left = t.style.top = t.style.right = t.style.bottom = ""; return; }
+    if (COARSE || bar.x === null) { t.style.left = t.style.top = t.style.right = t.style.bottom = ""; if (el.toolName && el.toolName.dataset.show === "true") placeToolName(); return; }
     const box = t.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
     bar.x = clamp(bar.x, 0, Math.max(0, W - box.width)); bar.y = clamp(bar.y, 0, Math.max(0, H - box.height));
     t.style.right = t.style.bottom = "auto"; t.style.left = `${bar.x}px`; t.style.top = `${bar.y}px`;
+    if (el.toolName && el.toolName.dataset.show === "true") placeToolName();
   };
   const toggleBar = () => { bar.min = !bar.min; placeBar(); saveBar(); };
   const onBarDown = (e) => {
@@ -2982,7 +2991,6 @@
     window.clearTimeout(hintTimer);
     window.clearTimeout(centerTimer);
     window.clearTimeout(noticeTimer);
-    window.clearTimeout(nameTimer);
     hideToolName();
     for (const b of el.teams) b.removeEventListener("click", el.onTeam);
     for (const b of el.targets) b.removeEventListener("click", el.onTarget);

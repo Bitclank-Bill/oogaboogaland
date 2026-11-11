@@ -7537,7 +7537,10 @@ const gameRulesChecks = async () => {
         fresh.paint.join() === "ready," && fresh.sniper.join() === "ready," && fresh.ak.join() === "ready,30" && fresh.grenade.join() === "ready,3" && fresh.gold.join() === "locked," && fresh.hook.join() === "locked," && fresh.crate === "3"
         && out.join() === "empty0,empty0,empty0" && owned.join() === "ready,,ready,…,…" && settled.join() === ",7"
         && slots.length === 8 && named && slots[4][1] === "sniper" && !/data-tool="sniper"[^>]*disabled/.test(bar) && html.includes('id="block-tool-name"')
-        && /\.block-slots button\[aria-pressed="true"\] \{[^}]*transform: translateY\(-4px\) scale\(1\.22\)/.test(css) && /prefers-reduced-motion: reduce\) \{\s*\.block-slots button,\s*\.block-tool-name \{\s*transition: none/.test(css),
+        && /\.block-slots button\[aria-pressed="true"\] \{[^}]*transform: translateY\(-4px\) scale\(1\.22\)/.test(css)
+        // The chosen weapon's name stays up over its slot: no timer hides it, and it moves with the choice.
+        && !/nameTimer|setTimeout\(hideToolName/.test(scene) && /tool = k;\s*showToolName\(k\);/.test(scene) && /placeBar\(\);\s*\/\/ The chosen weapon's name stands over its slot from the round's start\.\s*showToolName\(tool\);/.test(scene) && /n\.dataset\.at = "slot"; n\.style\.left = `\$\{x\}px`;/.test(scene)
+        && /prefers-reduced-motion: reduce\) \{[^@]*\.block-tool-name\[data-at="slot"\] \{\s*transition: none;/.test(css) && /prefers-reduced-motion: reduce\) \{\s*\.block-slots button,\s*\.block-tool-name \{\s*transition: none/.test(css),
         JSON.stringify({ fresh, out, owned, settled, slots: slots.map((m) => m[1]), named }));
     }
     // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
