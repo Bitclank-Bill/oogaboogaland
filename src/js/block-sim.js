@@ -54,7 +54,7 @@
     // A captive is dragged by the feet to the nearest edge at `GORILLA_DRAG`, swung over the wind-up (`GORILLA_THROW_S`)
     // and thrown off at `GORILLA_THROW`, up at `GORILLA_THROW_UP`, its steering knocked out for `THROWN_S`.
     GORILLA_DRAG: 7.5, GORILLA_DRAG_R: 0.5, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
-    GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 3.5, HOMER_SEEK: 20, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, DROP_IN_H: 14, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
+    GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 9, HOMER_SEEK: 34, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, DROP_IN_H: 14, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
     POWER_R: 1.1, POWER_RESPAWN: 20, BOOTS_S: 6, BOOTS: 1.5, HALVING_S: 12, COLD_S: 12, LASER_S: 25, BEAM_S: 3, BEAM_LEN: 30, BEAM_R: 0.45,
     // Free Hardware Wallets (DSB Land's VAC 2, brought over): a vending machine each side; a device taken goes off when
     // its fuse runs out, and a blast sets off any other within `WALLET_CHAIN`, knocking everyone near it back.
@@ -103,7 +103,7 @@
     // AK's 0.09 s), from a `AK_MAG`-round magazine that reloads itself in `AK_RELOAD` when it runs dry.
     ak: { speed: 38, lift: 1.0, gravity: 6, life: 1.0, r: 0.42, blast: 0, cool: 0.09, max: 0 },
     // The monkeys' heat-seekers: a little missile that steers for the nearest rival (`target`), splatting it.
-    homer: { speed: 16, lift: 0, gravity: 0, life: 2.8, r: 0.55, blast: 0, cool: 0, max: 0 }
+    homer: { speed: 25, lift: 0, gravity: 0, life: 2.4, r: 0.8, blast: 0, cool: 0, max: 0 }
   };
   const KINDS = ["paint", "grenade", "rocket", "net"];
   // The six devices from the wallet store, in its order.
@@ -1292,7 +1292,7 @@
         m.live = true; m.kind = "homer"; m.team = a.team; m.owner = id; m.t = 0; m.ox = a.x; m.oz = a.z;
         m.x = a.x + ox; m.y = a.y + 1.1; m.z = a.z + oz;
         // Up and out first, then it turns for its prey.
-        m.vx = Math.sin(yaw) * sp * 0.6 + ox * 3; m.vy = sp * 0.5; m.vz = Math.cos(yaw) * sp * 0.6 + oz * 3;
+        m.vx = Math.sin(yaw) * sp * 0.6 + ox * 3; m.vy = sp * 0.25; m.vz = Math.cos(yaw) * sp * 0.6 + oz * 3;
         m.target = seekTarget(sim, m);
       }
       emit(sim, "homers", a.team, id, a.x, a.y + 1.1, a.z);
@@ -3010,8 +3010,10 @@
         // A heat-seeker steers for its rival's chest, finding another if that one is splatted or trapped.
         let t = s.target >= 0 ? sim.actors[s.target] : null;
         if (!t || !open(t)) { s.target = seekTarget(sim, s); t = s.target >= 0 ? sim.actors[s.target] : null; }
-        if (t && s.t > 0.15) {
-          const dx = t.x - s.x, dy = t.y + 1 - s.y, dz = t.z - s.z, d = Math.hypot(dx, dy, dz) || 1, sp = tool.speed, k = Math.min(1, CONFIG.HOMER_TURN * dt);
+        if (t && s.t > 0.08) {
+          // Steers for where its rival is running to, by the time it can get there.
+          const near = Math.hypot(t.x - s.x, t.z - s.z) / tool.speed;
+          const dx = t.x + t.vx * near - s.x, dy = t.y + 1 - s.y, dz = t.z + t.vz * near - s.z, d = Math.hypot(dx, dy, dz) || 1, sp = tool.speed, k = Math.min(1, CONFIG.HOMER_TURN * dt);
           s.vx += (dx / d * sp - s.vx) * k; s.vy += (dy / d * sp - s.vy) * k; s.vz += (dz / d * sp - s.vz) * k;
           const v = Math.hypot(s.vx, s.vy, s.vz) || 1;
           s.vx *= sp / v; s.vy *= sp / v; s.vz *= sp / v;
