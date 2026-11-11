@@ -176,7 +176,8 @@
       // A built geometry placed as it is.
       add: (geo, x, y, z, o = {}) => place(geo, x, y, z, o),
       // A node of its own, for what moves or swaps, named for the kind's `animate`; a geometry, or a builder run in a
-      // fresh kit whose parts make its mesh, in the node's own frame.
+      // fresh kit whose parts make its mesh, in the node's own frame. With `proxy` it is never drawn: a stand-in a
+      // target's `pick` names for clicks, where its real mesh is too fine to test.
       node: (name, geometry, x = 0, y = 0, z = 0, o = {}) => {
         let geo = geometry;
         if (typeof geometry === "function") {
@@ -186,7 +187,7 @@
           if (geo && !sub.body.length) noShadow(geo);
         }
         // A node with a `parent` stands in that node's own frame; any other in this group's, turned with it.
-        const p = o.parent ? { x, y, z } : at(x, y, z), spec = { name, geometry: geo, x: p.x, y: p.y, z: p.z, rx: o.rx || 0, ry: (o.parent ? 0 : yawOf(m)) + (o.ry || 0), rz: o.rz || 0, scale: o.scale || 1, parent: o.parent || null, sightHidden: !!o.glow, depthBias: o.depthBias || 0, target: o.target || null };
+        const p = o.parent ? { x, y, z } : at(x, y, z), spec = { name, geometry: geo, x: p.x, y: p.y, z: p.z, rx: o.rx || 0, ry: (o.parent ? 0 : yawOf(m)) + (o.ry || 0), rz: o.rz || 0, scale: o.scale || 1, parent: o.parent || null, sightHidden: !!o.glow, depthBias: o.depthBias || 0, target: o.target || null, proxy: !!o.proxy };
         into.nodes.push(spec);
         if (geo) into.geometries.push(geo);
         return spec;
@@ -732,12 +733,15 @@
       addChild(root, lockPad.pad, lockSign);
     }
     // The kind's own place: its static meshes, then its nodes by name.
-    if (into.bodyGeo) addChild(root, createNode({ geometry: into.bodyGeo }));
+    const body = into.bodyGeo ? createNode({ geometry: into.bodyGeo }) : null;
+    if (body) addChild(root, body);
     if (into.flatGeo) addChild(root, createNode({ geometry: into.flatGeo, sightHidden: true }));
     if (into.glowGeo) addChild(root, createNode({ geometry: into.glowGeo, sightHidden: true }));
     const nodes = {}, targets = [];
     for (const spec of into.nodes) {
       const node = createNode({ geometry: spec.geometry, position: { x: spec.x, y: spec.y, z: spec.z }, rotation: { x: spec.rx, y: spec.ry, z: spec.rz }, scale: { x: spec.scale, y: spec.scale, z: spec.scale }, sightHidden: spec.sightHidden, depthBias: spec.depthBias || 0 });
+      // A stand-in a click is tested against, never drawn.
+      if (spec.proxy) { node.visible = false; node.pickProxy = true; }
       addChild(spec.parent && nodes[spec.parent] ? nodes[spec.parent] : root, node);
       if (spec.name) nodes[spec.name] = node;
       if (spec.target) targets.push({ node, ...spec.target });
@@ -751,7 +755,7 @@
     const lights = [...into.lights];
     // The doorway's own light, and a dim one in the vestibule.
     lights.push([0, 2.6, L.doorZ - 1.6, 6, 0.7, 0.46, 0.2], [0, DOOR.height - 0.4, L.doorZ + DOOR.vestibule * 0.5, 3.2, 0.32, 0.2, 0.08]);
-    return { root, layout: L, room: into.room, doors, exitButton, exitSign, lockPad, lockSign, lights, nodes, targets, live, seats: into.seats.map((s) => ({ ...s, sitter: null })), solids: into.solids, render: into.render || null, crown: cap };
+    return { root, layout: L, room: into.room, body, doors, exitButton, exitSign, lockPad, lockSign, lights, nodes, targets, live, seats: into.seats.map((s) => ({ ...s, sitter: null })), solids: into.solids, render: into.render || null, crown: cap };
   };
   // A room's construction as steps, each a slice of a frame at the doorway: a kind may split its own costly parts
   // (`steps`, run before its plan, each building something its plan then reads from a cache).

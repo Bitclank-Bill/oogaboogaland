@@ -145,6 +145,133 @@
     return nearest;
   };
 
+  // A mesh's triangles in the cells of a coarse grid over its own frame, each cell with its triangles and the box round
+  // them, made once a geometry in one pass over its faces (nothing sorted), so a ray tests only the triangles of the
+  // cells it passes through.
+  const GRIDS = new WeakMap();
+  const gridOf = (geometry) => {
+    let grid = GRIDS.get(geometry);
+    if (grid) return grid;
+    const v = geometry.verts, faces = geometry.faces;
+    let tris = 0, x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (const face of faces) tris += Math.max(0, face.i.length - 2);
+    for (let i = 0; i < v.length; i += 3) {
+      if (v[i] < x0) x0 = v[i];
+      if (v[i] > x1) x1 = v[i];
+      if (v[i + 1] < y0) y0 = v[i + 1];
+      if (v[i + 1] > y1) y1 = v[i + 1];
+      if (v[i + 2] < z0) z0 = v[i + 2];
+      if (v[i + 2] > z1) z1 = v[i + 2];
+    }
+    // About a dozen triangles a cell, and no more than 24 cells along any side.
+    const ex = x1 - x0 + 1e-6, ey = y1 - y0 + 1e-6, ez = z1 - z0 + 1e-6, size = Math.max(Math.max(ex, ey, ez) / 24, Math.cbrt(ex * ey * ez * 12 / Math.max(1, tris)));
+    const nx = Math.ceil(ex / size), ny = Math.ceil(ey / size), nz = Math.ceil(ez / size), cells = nx * ny * nz;
+    const corners = new Uint32Array(tris * 3), cellOf = new Uint32Array(tris), start = new Uint32Array(cells + 1);
+    let n = 0;
+    for (const face of faces) for (let k = 1; k + 1 < face.i.length; k++, n++) {
+      const a = face.i[0] * 3, b = face.i[k] * 3, c = face.i[k + 1] * 3;
+      corners[n * 3] = a; corners[n * 3 + 1] = b; corners[n * 3 + 2] = c;
+      const cx = Math.min(nx - 1, Math.floor(((v[a] + v[b] + v[c]) / 3 - x0) / size));
+      const cy = Math.min(ny - 1, Math.floor(((v[a + 1] + v[b + 1] + v[c + 1]) / 3 - y0) / size));
+      const cz = Math.min(nz - 1, Math.floor(((v[a + 2] + v[b + 2] + v[c + 2]) / 3 - z0) / size));
+      cellOf[n] = (cx * ny + cy) * nz + cz;
+      start[cellOf[n] + 1]++;
+    }
+    for (let c = 0; c < cells; c++) start[c + 1] += start[c];
+    const order = new Uint32Array(tris), fill = start.slice(0, cells), box = new Float64Array(cells * 6);
+    for (let c = 0; c < cells; c++) for (let axis = 0; axis < 3; axis++) { box[c * 6 + axis] = Infinity; box[c * 6 + 3 + axis] = -Infinity; }
+    for (let t = 0; t < tris; t++) {
+      const c = cellOf[t], o = c * 6;
+      order[fill[c]++] = t;
+      for (let k = 0; k < 3; k++) {
+        const p = corners[t * 3 + k];
+        for (let axis = 0; axis < 3; axis++) { const q = v[p + axis]; if (q < box[o + axis]) box[o + axis] = q; if (q > box[o + 3 + axis]) box[o + 3 + axis] = q; }
+      }
+    }
+    grid = { v, corners, order, start, box, cells, all: [x0, y0, z0, x1, y1, z1] };
+    GRIDS.set(geometry, grid);
+    return grid;
+  };
+  // Whether a ray (its direction not necessarily a unit) passes through the box at `o` in `b` before `limit`.
+  const crosses = (b, o, ox, oy, oz, dx, dy, dz, limit) => {
+    let near = 0, far = limit;
+    for (let axis = 0; axis < 3; axis++) {
+      const p = axis === 0 ? ox : axis === 1 ? oy : oz, d = axis === 0 ? dx : axis === 1 ? dy : dz, lo = b[o + axis] - 1e-6, hi = b[o + 3 + axis] + 1e-6;
+      if (Math.abs(d) < 1e-12) { if (p < lo || p > hi) return false; continue; }
+      let a = (lo - p) / d, c = (hi - p) / d;
+      if (a > c) { const s = a; a = c; c = s; }
+      if (a > near) near = a;
+      if (c < far) far = c;
+      if (near > far) return false;
+    }
+    return true;
+  };
+  // Where a ray in a grid's frame first meets one of its triangles, if nearer than `limit`; `limit` otherwise.
+  const gridRay = (g, ox, oy, oz, dx, dy, dz, limit) => {
+    if (!crosses(g.all, 0, ox, oy, oz, dx, dy, dz, limit)) return limit;
+    const v = g.v, C = g.corners;
+    let nearest = limit;
+    for (let c = 0; c < g.cells; c++) {
+      if (g.start[c] === g.start[c + 1] || !crosses(g.box, c * 6, ox, oy, oz, dx, dy, dz, nearest)) continue;
+      for (let k = g.start[c]; k < g.start[c + 1]; k++) {
+        const t = g.order[k], a = C[t * 3], b = C[t * 3 + 1], e = C[t * 3 + 2];
+        const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], wx = v[e] - v[a], wy = v[e + 1] - v[a + 1], wz = v[e + 2] - v[a + 2];
+        const px = dy * wz - dz * wy, py = dz * wx - dx * wz, pz = dx * wy - dy * wx, det = ux * px + uy * py + uz * pz;
+        if (Math.abs(det) < 1e-14) continue;
+        const sx = ox - v[a], sy = oy - v[a + 1], sz = oz - v[a + 2], u = (sx * px + sy * py + sz * pz) / det;
+        if (u < 0 || u > 1) continue;
+        const qx = sy * uz - sz * uy, qy = sz * ux - sx * uz, qz = sx * uy - sy * ux, w = (dx * qx + dy * qy + dz * qz) / det;
+        if (w < 0 || u + w > 1) continue;
+        const along = (wx * qx + wy * qy + wz * qz) / det;
+        if (along > 1e-5 && along < nearest) nearest = along;
+      }
+    }
+    return nearest;
+  };
+  // Clicks that land where they are drawn: the meshes of every target that asks for it (`pick` in a kind's target, and
+  // then the live pictures) and the room's own body in their way, cast once a ray each frame. A target is hit only where
+  // its own mesh is the nearest of them, so it neither reaches past its edges nor through a wall or a roof in front of
+  // it. A node marked `pickProxy` stands in for a part too fine to test; it is never drawn, and is tested all the same.
+  const sharpPicker = () => {
+    const meshes = [], INV = math.mat4.create(), last = { ox: NaN, oy: NaN, oz: NaN, dx: NaN, dy: NaN, dz: NaN, frame: -1 }, hit = { owner: null, t: Infinity };
+    let frame = 0, warmed = 0;
+    const shown = (node) => { for (let n = node; n; n = n.parent) if (!n.visible) return false; return true; };
+    const add = (node, owner) => { meshes.push({ node, owner }); for (const child of node.children) add(child, owner); };
+    const cast = (ray) => {
+      hit.owner = null; hit.t = Infinity;
+      for (const m of meshes) {
+        const node = m.node, geometry = node.geometry;
+        if (!geometry || !geometry.faces.length || !node.pickProxy && !shown(node)) continue;
+        // A stand-in is never drawn, so the renderer never places it: it is placed here, under its drawn parent.
+        if (node.pickProxy) { BL.scene.updateLocal(node); if (node.parent) math.mat4.multiply(node.world, node.parent.world, node.local); else node.world.set(node.local); }
+        math.mat4.invert(INV, node.world);
+        const M = INV;
+        const ox = M[0] * ray.ox + M[4] * ray.oy + M[8] * ray.oz + M[12], oy = M[1] * ray.ox + M[5] * ray.oy + M[9] * ray.oz + M[13], oz = M[2] * ray.ox + M[6] * ray.oy + M[10] * ray.oz + M[14];
+        const dx = M[0] * ray.dx + M[4] * ray.dy + M[8] * ray.dz, dy = M[1] * ray.dx + M[5] * ray.dy + M[9] * ray.dz, dz = M[2] * ray.dx + M[6] * ray.dy + M[10] * ray.dz;
+        const t = gridRay(gridOf(geometry), ox, oy, oz, dx, dy, dz, hit.t);
+        if (t < hit.t) { hit.t = t; hit.owner = m.owner; }
+      }
+    };
+    return {
+      add,
+      // The scene moves between frames, so a ray asked again in a later frame is cast again. A second in, the grids
+      // are made a mesh a frame, so the first pointer over the room finds them ready.
+      tick() {
+        if (++frame > 60 && warmed < meshes.length) { const g = meshes[warmed++].node.geometry; if (g && g.faces.length) gridOf(g); }
+      },
+      pickRay: (owner) => (ray) => {
+        if (ray.ox !== last.ox || ray.oy !== last.oy || ray.oz !== last.oz || ray.dx !== last.dx || ray.dy !== last.dy || ray.dz !== last.dz || frame !== last.frame) {
+          last.ox = ray.ox; last.oy = ray.oy; last.oz = ray.oz; last.dx = ray.dx; last.dy = ray.dy; last.dz = ray.dz; last.frame = frame;
+          cast(ray);
+        }
+        return hit.owner === owner ? hit.t : NaN;
+      }
+    };
+  };
+
+  // What the room's own body is to the picker: in the way, and never anything to tap.
+  const BODY = { kind: "body" };
+
   const TIPS = {
     exit: "Exit · press Space beside it to walk out",
     door: "The way out · use the Exit button",
@@ -235,14 +362,31 @@
         out.minAlong = a0; out.maxAlong = a1; out.minAcross = out.minContactAcross = c0 - wide; out.maxAcross = out.maxContactAcross = c1 + wide;
       }
       if (!out.node) return false;
-      // Only a pass that can be made: the sidestep the crew will take (away from the solid's middle) and the way on past
-      // it must both be walkable, or the Ooga stops at the solid as it always has, rather than wedge itself beside the
-      // next one.
-      const mid = (out.minAcross + out.maxAcross) / 2, side = Math.abs(mid) < 0.02 ? 1 : Math.sign(mid);
-      const across = side > 0 ? out.minAcross - SHOULDER_SIDE : out.maxAcross + SHOULDER_SIDE, on = out.maxAlong + r + 0.2;
-      const sx = p.x + fz * across, sz = p.z - fx * across;
-      if (!walkable(p.x, p.z, sx, sz, feet, cave.bodyHeight, cave) || !walkable(sx, sz, sx + fx * on, sz + fz * on, feet, cave.bodyHeight, cave)) out.node = null;
-      return !!out.node;
+      // Only a pass that can be made, to one side (away from the solid's middle, as the crew takes it, `side` 1 to its
+      // left edge and -1 to its right) or the other (a solid further on gets a pass of its own). When only the other side is open,
+      // the solid's edge on the blocked side is reported further out, so its middle lies there and the crew goes the
+      // open way (its sidestep reads only the open edge); when neither is, the Ooga stops at the solid as it always has
+      // rather than wedge itself beside the next one.
+      // The crew slants out as it closes, so it is beside the solid as it reaches it: the spot beside the solid's near
+      // edge must be clear, and the way on from there past its far edge.
+      const open = (side, past = 0.1) => {
+        const across = side > 0 ? out.minAcross - SHOULDER_SIDE : out.maxAcross + SHOULDER_SIDE, near = Math.max(0, out.minAlong), on = out.maxAlong - near + past;
+        const sx = p.x + fx * near + fz * across, sz = p.z + fz * near - fx * across;
+        return walkable(sx, sz, sx, sz, feet, cave.bodyHeight, cave) && walkable(sx, sz, sx + fx * on, sz + fz * on, feet, cave.bodyHeight, cave);
+      };
+      const mid = (out.minAcross + out.maxAcross) / 2, natural = Math.abs(mid) < 0.02 ? 1 : Math.sign(mid);
+      let side = natural;
+      // Nearly head on, either way would do: take the one that stays clear further on.
+      if (Math.abs(mid) < 0.25 && !open(side, 1.5) && open(-side, 1.5)) side = -side;
+      if (!open(side)) {
+        if (!open(-side)) { out.node = null; return false; }
+        side = -side;
+      }
+      if (side !== natural) {
+        if (natural > 0) out.minAcross = Math.min(out.minAcross, -out.maxAcross - 0.05);
+        else out.maxAcross = Math.max(out.maxAcross, -out.minAcross + 0.05);
+      }
+      return true;
     };
     // The room's solids never move, and a pass lets go once the line past one is walkable.
     const shoulderObstacleActive = () => true;
@@ -313,16 +457,25 @@
     const all = built.live.map((live, i) => slot(L, live, prepared && prepared.slots[i]));
     // The charts' close-up pages through every live picture that names the charts' board.
     const charts = all.filter((s) => s.spec.board === "charts" && s.spec.panel !== undefined);
+    // A room whose targets name their meshes (`pick`, true for the target's own node) is picked where things are drawn
+    // (`sharpPicker`): those meshes, its live pictures and its body in their way.
+    const sharp = built.targets.some((t) => t.pick) ? sharpPicker() : null;
     all.forEach((s) => {
       if (!s.spec.tip && !s.spec.board) return;
       const owner = target(s.node, { kind: "live", slot: s, tip: s.spec.tip || "" });
-      owner.pickRay = facePick(s.node);
+      if (sharp) { sharp.add(s.node, owner); owner.pickRay = sharp.pickRay(owner); } else owner.pickRay = facePick(s.node);
     });
     let holdingsVersion = 0, chartIndex = 0, chartVersion = 0;
     const holdings = BL.timechainData.create(() => { holdingsDirty = true; });
     let holdingsDirty = true;
     // The kind's own targets (its furniture and exhibits) and the doorway's.
-    for (const t of built.targets) target(t.node, { kind: t.kind, tip: t.tip, index: t.index, data: t.data }, t.radius);
+    for (const t of built.targets) {
+      const owner = target(t.node, { kind: t.kind, tip: t.tip, index: t.index, data: t.data }, t.radius);
+      if (!t.pick) continue;
+      for (const name of t.pick === true ? [""] : t.pick) sharp.add(name ? built.nodes[name] : t.node, owner);
+      owner.pickRay = sharp.pickRay(owner);
+    }
+    if (sharp && built.body) sharp.add(built.body, BODY);
     target(built.exitButton, { kind: "exit" }, 0.45);
     for (const leaf of built.doors) target(leaf, { kind: "door" }, 1.6);
     // Each of the room's seats takes the visitor's Ooga, facing the way it faces; standing up leaves it behind it.
@@ -690,10 +843,12 @@
       const o = hit.owner;
       return o.kind === "chair" ? `${o.tip}${TIPS.chair}` : o.tip || TIPS[o.kind] || "";
     };
+    // The ray under a tap, handed to a kind's own tap so it can tell where on a thing the tap fell (the Temple's koi pond).
+    const tapRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
     Object.assign(hooks, {
       onHover: (hit, p) => { if (hit && !guide.stage && !lock.on) hud.tooltip.show(tipFor(hit), p.x, p.y); else hud.tooltip.hide(); },
       onHoverMove: (hit, p) => { if (!guide.stage && !lock.on) hud.tooltip.show(tipFor(hit), p.x, p.y); },
-      onTap: (hit) => {
+      onTap: (hit, p) => {
         if (!hit || guide.stage) return;
         const o = hit.owner;
         if (o.kind === "exit") { if (nearExit()) walkOut(); else hud.toast("Walk up to the Exit button, then press it"); }
@@ -713,7 +868,7 @@
           const s = seats[o.index], p = avatar && avatar.root.position;
           if (!p || !s || s.sitter || nearChair() !== s || !people.sitPlayer(s)) hud.toast(COARSE ? "Walk up to a free seat, then tap SIT" : "Walk up to a free seat and press Space to sit");
         } else if (o.kind === "table") hud.toast(`${room.name} · ${shared ? "shared with whoever chose it" : "a solo copy, just for you"}`);
-        else if (motion && motion.tap && motion.tap(o, hud)) return;
+        else if (motion && motion.tap && motion.tap(o, hud, p ? (renderer.ray(p.x, p.y, camera, tapRay), tapRay) : null)) return;
         else if (o.data && o.data.say) hud.toast(o.data.say);
       },
       ...pilot.hooks,
@@ -834,6 +989,7 @@
       const heard = avatar ? avatar.root.position : camera.target;
       ear.x = heard.x; ear.y = heard.y; ear.z = heard.z;
       if (motion) motion.update(dt, elapsed);
+      if (sharp) sharp.tick();
       stepTweens(dt);
       fx.update(dt, elapsed);
     };

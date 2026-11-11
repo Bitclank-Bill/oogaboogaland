@@ -500,6 +500,9 @@
       viewRotation(headRotation, rollingForward[0], rollingForward[1], rollingForward[2], sleepCameraUp.x, sleepCameraUp.y, sleepCameraUp.z, orbit.yaw);
     };
     const viewMode = () => !player() ? "detached" : closeWanted ? "first-person" : shoulderView ? "shoulder" : armed() ? "birds-eye" : "orbit";
+    // How far a seated Ooga's head follows the view: only as far as the view is its own eyes. Seen from outside it sits
+    // looking straight out from the seat (a lying or armed seat looks where it likes).
+    const seatedLook = (cave) => cave && cave.camp.seat && !cave.camp.seat.lying && !cave.camp.seat.allowWeapons ? closeMix : 1;
     const birdsEye = () => armed() && !closeWanted && !shoulderView;
     const captureControl = (out) => {
       const cave = player(), overhead = birdsEye();
@@ -1241,7 +1244,7 @@
       }
       if (Math.hypot(dx, dz) > 0.05 && !cave.camp.seat?.lying) {
         const turn = Math.atan2(Math.sin(Math.atan2(dx, dz) - cave.root.rotation.y), Math.cos(Math.atan2(dx, dz) - cave.root.rotation.y));
-        crew.look(cave.root.rotation.y + turn * (1 - Math.exp(-20 * dt)), pitch, 1);
+        crew.look(cave.root.rotation.y + turn * (1 - Math.exp(-20 * dt)), pitch, seatedLook(cave));
       }
       const weaponTurn = Math.atan2(Math.sin(cave.root.rotation.y - overheadWeaponYaw), Math.cos(cave.root.rotation.y - overheadWeaponYaw));
       const weaponYaw = overheadWeaponYaw + weaponTurn * overheadMix - cave.root.rotation.y;
@@ -2799,13 +2802,14 @@
 
     const poseAim = () => {
       if (player()?.grabbedBy || player()?.camp.seat?.lying) return;
+      const mix = seatedLook(player());
       if (aimPreserveFacing) {
-        crew.look(aimBodyYaw, aimBodyPitch, 1);
-        player().parts.head.rotation.y = aimBodyHeadYaw;
+        crew.look(aimBodyYaw, aimBodyPitch, mix);
+        player().parts.head.rotation.y = aimBodyHeadYaw * mix;
         return;
       }
       const turn = Math.atan2(Math.sin(orbit.yaw + Math.PI - aimBodyYaw), Math.cos(orbit.yaw + Math.PI - aimBodyYaw));
-      crew.look(aimBodyYaw + turn * aimMix, aimBodyPitch + (orbit.pitch - aimBodyPitch) * aimMix, 1);
+      crew.look(aimBodyYaw + turn * aimMix, aimBodyPitch + (orbit.pitch - aimBodyPitch) * aimMix, mix);
     };
     const updateAim = (cave, dt) => {
       syncJetpackHud(); syncWeaponHud();
