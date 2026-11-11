@@ -7585,7 +7585,7 @@ const gameRulesChecks = async () => {
       record("block scoring rule in a live round: host, guest and viewer all start under the match's rule, and classic when it names none; the board has both choices in the owner's words, the scene fixes the rule as the round starts and sends the first in's pick",
         a.anyTime === true && b.anyTime === true && dk.anyTime === true && C2.seen.sim.anyTime === false && D2.seen.sim.anyTime === false
         && /data-rule="home" aria-pressed="true" aria-label="Block must be home \(classic\)"/.test(pageSrc) && /data-rule="any" aria-pressed="false" aria-label="Block doesn't need to be home"/.test(pageSrc)
-        && /sim\.anyTime = selection\.rule === "any";\s*SIM\.reset\(sim, seed\);/.test(sceneSrc) && /round\.setOptions\(round\.match\.size, round\.match\.map, WIRE\.RULES\.indexOf\(k\)\)/.test(sceneSrc) && !/\bduel\b/.test(sceneSrc),
+        && /sim\.anyTime = selection\.rule === "any";\s*SIM\.reset\(sim, seed\);/.test(sceneSrc) && /round\.setOptions\(round\.match\.size, WIRE\.MAPS\.indexOf\(selection\.map\), WIRE\.RULES\.indexOf\(k\)\)/.test(sceneSrc) && !/\bduel\b/.test(sceneSrc),
         JSON.stringify({ host: a.anyTime, guest: b.anyTime, viewer: dk.anyTime, plain: [C2.seen.sim.anyTime, D2.seen.sim.anyTime] }));
     }
     record("block live: roles and NPC fill from the seats", A.seen.role === "host" && B.seen.role === "guest" && D.seen.role === "watch" && a.actors[3].bot === true && !a.actors[0].bot && !b.actors[0].bot);
@@ -7614,6 +7614,53 @@ const gameRulesChecks = async () => {
       record("block sniper: a guest's pick and shot reach the host as wield and fire actions the wire accepts, and the host fires the rifle for it off any tower",
         asked === true && !!parsed && parsed.a.length === 8 && W.ACTIONS[parsed.a[0]] === "wield" && W.ACTIONS[parsed.a[4]] === "fire" && W.KINDS[parsed.a[7]] === "sniper"
         && g.wield === "sniper" && !!shot && g.y < S.CONFIG.TOWER_TOP - 1 && g.lastKind === "sniper", JSON.stringify({ asked, msg, wield: g.wield, shot: !!shot }));
+    }
+    // A guest's every tool choice, Lift (the last) included, reaches the host in the action's kind slot with a fire
+    // beside it: the whole message passes the wire's check and both act on the host's sim.
+    {
+      const g = a.actors[mv], q0 = B.sent.length;
+      g.gold = true; g.hook = 1; a.hooks[0].state = 1; a.hooks[0].holder = mv; g.cooldown = g.splat = g.trapped = 0; g.y = 0;
+      const reached = S.WIELD.map((kind, idx) => {
+        B.live.act("wield", 0, idx); B.live.act("fire", 0, 0.4, 0, "paint");
+        B.live.after(1, still());
+        const msg = B.sent.slice(q0).filter(m => m.k === "input" && m.a).pop(), parsed = msg ? W.parse({ ...msg, v: W.WIRE }) : null;
+        g.cooldown = 0; const shots = a.shots.filter(x => x.live && x.owner === mv).length;
+        if (parsed) { A.input({ ...parsed, from: 1, s: match.s, q: 2000 + idx }); A.live.hostStep(); }
+        return { kind, parsed: !!parsed, slot: parsed ? parsed.a[3] : -1, yaw: parsed ? parsed.a[1] : null, wield: g.wield, fired: a.shots.filter(x => x.live && x.owner === mv).length > shots || g.lastKind === "paint" };
+      });
+      record("block live wield: every tool a guest can choose, Lift included, goes in the action's kind slot (never the yaw's), passes the wire's check with a fire beside it, and sets the guest's tool on the host",
+        reached.length === 9 && reached.every((r, idx) => r.parsed && r.slot === idx && r.yaw === 0 && r.wield === r.kind && r.fired) && S.WIELD.length <= W.KINDS.length, JSON.stringify(reached));
+      g.wield = "paint";
+    }
+    // What is in hand travels in the frame: a guest draws each Ooga's tool, and a page that takes over as host keeps it,
+    // so a hook still takes Golden AKs held out after a handover; a bot's (no choice) stays its last fired.
+    {
+      const hostSim = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), hmap = L.seatMap(2, 0), gmap = L.seatMap(2, 1);
+      for (const q of hostSim.actors) { q.x = 300 + q.id * 5; q.z = 300; q.y = 0; } hostSim.gorillas.length = 0;
+      const r1 = hostSim.actors[2], bot = hostSim.actors[3];
+      r1.gold = true; r1.wield = "gold"; r1.lastKind = "ak"; bot.bot = true; bot.wield = ""; bot.lastKind = "net"; hostSim.actors[1].wield = "grab"; hostSim.actors[1].lastKind = "sniper";
+      const buf = new DataView(new ArrayBuffer(W.FRAME_MAX)), len = L.encode(hostSim, hmap, 1, 1, 1, buf), frame = new DataView(buf.buffer.slice(0, len));
+      const guest = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }); guest.gorillas.length = 0;
+      const ok = L.validFrame(frame, guest, gmap); L.decode(frame, guest, gmap, new Float32Array(16));
+      const onGuest = (seat) => guest.actors[gmap.toLocal[seat]];
+      const seen = { valid: ok, rival: onGuest(2).wield === "gold" && S.heldOf(onGuest(2)) === "gold", bot: onGuest(3).wield === "" && S.heldOf(onGuest(3)) === "net", lift: onGuest(1).wield === "grab" };
+      // Now the guest's page hosts: its own Ooga (the old seat 1, local 0) hooks the rival who has the AKs out.
+      const me = guest.actors[0], rv = onGuest(2);
+      for (const q of guest.actors) { q.guard = 0; q.bot = q !== me && q.bot; } me.x = 8; me.z = 9; rv.x = 8; rv.z = 3; me.hook = 1; guest.hooks[0].state = 1; guest.hooks[0].holder = 0; me.gold = false;
+      S.grapple(guest, 0, Math.PI, Math.atan2(1 - S.CONFIG.SHOT_Y, 6));
+      for (let i = 0; i < 120; i++) { for (const q of guest.actors) q.guard = 0; S.tick(guest, S.CONFIG.STEP, still()); }
+      seen.handover = me.gold && !rv.gold;
+      const sceneSrc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
+      seen.drawn = /const held = i === 0 \? tool : SIM\.heldOf\(s\) \|\| "paint"/.test(sceneSrc) && !/s\.lastKind \|\| "paint"/.test(sceneSrc);
+      // The results count seats by the round's own map, kept until the board shows again, never a page's own numbering.
+      seen.seats = /liveSeats = map;/.test(sceneSrc) && /const showBoard = \(\) => \{\s*liveSeats = null;/.test(sceneSrc) && /const seatOfActor = \(i\) => liveSeats \? liveSeats\.toSeat\[i\] : i;/.test(sceneSrc) && !/round\.map/.test(sceneSrc);
+      const tie = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }); tie.over = true; tie.winner = "blue"; for (const q of tie.actors) Object.assign(q, { captures: 1, rescues: 0, hits: 1 });
+      seen.sameMvp = hmap.toSeat[S.mvp(tie, (i) => hmap.toSeat[i])] === gmap.toSeat[S.mvp(tie, (i) => gmap.toSeat[i])] && hmap.toSeat[S.mvp(tie, (i) => hmap.toSeat[i])] === 0;
+      // The first waiter's Scoring pick goes to the match with their board's map, in a round as in the lobby.
+      seen.rule = /if \(firstRegistered\(\)\) round\.setOptions\(round\.match\.size, WIRE\.MAPS\.indexOf\(selection\.map\), WIRE\.RULES\.indexOf\(k\)\);\s*if \(boardInMatch\) return;/.test(sceneSrc);
+      seen.defaultMap = S.create().map === "town" || S.ARENA.id === "town";
+      record("block live held tools: the frame carries what each Ooga has in hand, a guest draws it and keeps a bot's last fired, a page that takes over hosts with it (a hook still takes AKs held out), the results count seats by the round's own map to the board (the same MVP on host and guest in a tie), the first waiter's Scoring pick is sent in a round, and a new sim is on Ooga Town",
+        Object.values(seen).every(Boolean), JSON.stringify(seen));
     }
     const leftA = { ...match, seats: [10, 0, 30, 0] };
     A.tell(leftA); record("block live: a leaver's seat falls back to an NPC", a.actors[mv].bot === true);
@@ -7765,7 +7812,7 @@ const gameRulesChecks = async () => {
     // own side carries it back, a quiz trap that holds and protects until answered, a net that slows and grounds, a
     // crate pushed by walking into it, and three captures deciding the round. Nothing here repeats a formula.
     const S = BL.blockSim, A = S.ARENA, still = { x: 0, z: 0, sprint: 0, jump: 0 };
-    const sim = S.create({ team: "blue", seed: 7, prep: 0 });
+    const sim = S.create({ map: "fort", team: "blue", seed: 7, prep: 0 });
     for (const a of sim.actors) if (a.id) a.bot = false;
     // Still air, so nothing drifts.
     Object.assign(sim.weather, { left: 1e9 });
@@ -7844,7 +7891,7 @@ const gameRulesChecks = async () => {
       JSON.stringify({ picked, dropped, held, regrab, noScoreAway, scored, splatted, stays, rescued, returned, trapped, frozen, shielded, freed, netted, pushed, caught, lifted, stacked, bonked }));
     // An expert that loses its crate target must free its hands so it can rescue a block.
     const expertFixture = () => {
-      const r = S.create({ skill: "expert", prep: 0 }), bot = r.actors[1];
+      const r = S.create({ map: "fort", skill: "expert", prep: 0 }), bot = r.actors[1];
       for (const actor of r.actors) { actor.bot = false; actor.x = 18; actor.z = -35; }
       Object.assign(bot, { x: 0, z: 20, y: 0, bot: true });
       Object.assign(r.weather, { left: 1e9 });
@@ -7903,7 +7950,7 @@ const gameRulesChecks = async () => {
       JSON.stringify({ blockedWait, holding: blockedCrate.bot.holding }));
     // Piggyback: a fixture with the visitor and one bot teammate on Fort Chaos, the rivals out of the way.
     const piggy = () => {
-      const r = S.create({ team: "blue", seed: 2, prep: 0, size: 3 });
+      const r = S.create({ map: "fort", team: "blue", seed: 2, prep: 0, size: 3 });
       for (const b of r.actors) { b.x = 18; b.z = -35; b.bot = false; }
       Object.assign(r.weather, { left: 1e9 });
       const run = (s, input = still) => { for (let n = 0; n < Math.round(s / S.CONFIG.STEP); n++) S.tick(r, S.CONFIG.STEP, { ...input }); };
@@ -7955,7 +8002,7 @@ const gameRulesChecks = async () => {
       record("block frenzy piggyback: a rider beside a wall or post sits clear of it, not inside it",
         on && me.ride === 2 && clear, JSON.stringify({ on, ride: me.ride, rider: [me.x, me.z], gap: Math.hypot(me.x - cx, me.z - cz) }));
     }
-    const round = (seed) => { const r = S.create({ team: "red", seed }); r.actors[0].bot = "auto"; for (let t = 0; t < 900 && !r.over; t += 1 / 30) S.step(r, 1 / 30, still), r.eventCount = 0; return JSON.stringify({ over: r.over, winner: r.winner, score: r.score, time: Math.round(r.time) }); };
+    const round = (seed) => { const r = S.create({ map: "fort", team: "red", seed }); r.actors[0].bot = "auto"; for (let t = 0; t < 900 && !r.over; t += 1 / 30) S.step(r, 1 / 30, still), r.eventCount = 0; return JSON.stringify({ over: r.over, winner: r.winner, score: r.score, time: Math.round(r.time) }); };
     const a = round(3), b = round(3);
     record("block frenzy rounds: a seeded round replays exactly and reaches three captures", a === b && JSON.parse(a).over && Math.max(...Object.values(JSON.parse(a).score)) === S.CONFIG.CAPTURES, JSON.stringify({ a, b }));
     {
@@ -8426,7 +8473,7 @@ const gameRulesChecks = async () => {
       // The play strip repaints only when something it shows moved (`stripChanged`, the scene's own test before it
       // touches the DOM): never on an unchanged frame or inside a clock second, on every input it shows, and afresh for
       // a new round or visit (`shown` cleared, as `start` does).
-      const sim = S.create({ seed: 5, prep: 0 }), me = sim.actors[0], view = S.stripView(), changed = () => S.stripChanged(sim, view);
+      const sim = S.create({ map: "fort", seed: 5, prep: 0 }), me = sim.actors[0], view = S.stripView(), changed = () => S.stripChanged(sim, view);
       const first = changed(), quiet = [changed(), changed(), changed()].every((c) => !c);
       sim.time = 0.4; const subSecond = !changed(); sim.time = 1; const second = changed() && !changed();
       const misses = [];

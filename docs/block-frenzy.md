@@ -40,7 +40,8 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   match carries `rule`, which every page and the host's sim read; other boards show it and can't change it). Until the
   first in picks, a lobby of exactly two people, who are dealt one a side and would otherwise each sit on the other's
   block, plays "doesn't need to be home" and any other count plays classic (`blockWire.ruleFor`); the pick leaves with
-  the first in. The lobby's status line, the start of the round, the status strip and the help card all name the rule.
+  whoever made it, however they stop being first in (the Worker keeps who picked, `picker`, and `pickOf` counts it only
+  while they are `reg[0]`). The first in waiting through a round can pick for the next. The lobby's status line, the start of the round, the status strip and the help card all name the rule.
 - **Passing.** `Tab` (or `T`, or the Pass button) throws the carried block about 12 m ahead in an arc. Anyone who
   could pick it up can catch it in the air, so a teammate can take a pass and a rival can intercept. Uncaught, it
   lands and lies as a dropped block. Bots pass when a rival closes in and a free teammate stands nearer home.
@@ -90,7 +91,8 @@ The trophy screen has one picture of the winners, its own stage. The most valuab
 stands on top of the heap hoisting the golden block, is crowned in its side's table and named on the Round MVP medal
 with what its worth counts: the most worth (`SIM.worth`: three a block mined, two a block brought home, one a splat
 landed), a tie going to more mined, then more brought home, then the lower seat. It reads only what every frame
-already carries (the winner and each Ooga's counts) and a page's seat map, and the podium's places and the tables'
+already carries (the winner and each Ooga's counts) and the round's seat map (kept by the scene until the board shows
+again, since a guest's results can come after the lobby message ends the round), and the podium's places and the tables'
 order break ties by seat too, so every page of a live round shows the same and the wire is unchanged; solo, a seat is
 an actor's index. The tables show blocks mined, blocks brought home and splats, a name on one line; on a wide screen
 they run the card's width with the medals three across under them, and the card's buttons hold to its foot.
@@ -162,8 +164,10 @@ side that holds both pairs wins nothing more. The feed and a notice name who rec
 ## The special weapons take each other
 
 Only the two special weapons take each other, and only out of a rival's hands (`heldOf`: the tool selected, `wield`,
-the host's own each frame and a guest's sent as a `wield` action when it changes, checked on the host against what the
-Ooga owns; for a bot, the last it fired; a hook in use always counts):
+the host's own each frame and a guest's sent as a `wield` action when it changes, its tool's index in the action's kind
+slot, checked on the host against what the Ooga owns; for a bot, the last it fired; a hook in use always counts). The
+frame carries it for every Ooga (one byte: the tool chosen and the last fired), so guests draw what each has in hand
+and a page that takes over as host keeps it:
 
 - A hook that reaches a rival with the Golden AKs in hand takes the pair straight into the thrower's arsenal, if they
   have none, and comes back (`goldhook`). With the AKs put away, the hook passes them by.
@@ -173,8 +177,8 @@ Ooga owns; for a bot, the last it fired; a hook in use always counts):
 Nothing else takes either: paint, the Ooga AK, the sniper rifle, grenades, rockets, nets, thrown crates, the monkeys,
 laser eyes, gorillas and bonks all splat as before and the victim keeps what they hold. Nothing is dropped on a splat.
 Bots now and then hook a rival who has the Golden AKs out, in reach and in sight, and fire the Golden AKs whenever they
-hold them, so a hook holder in their sights can lose it. The frame no longer carries dropped pairs, and the drop
-events are gone: `WIRE` is 4.
+hold them, so a hook holder in their sights can lose it. The frame no longer carries dropped pairs but carries
+what each Ooga has in hand, and the drop events are gone: `WIRE` is 4.
 
 ## The grappling hook (BF2.1c)
 

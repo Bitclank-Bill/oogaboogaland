@@ -49,7 +49,9 @@
   const seatRef = (v, map) => u8(v == null || v < 0 ? 255 : map.toSeat[v]);
   const localRef = (map) => { const v = r8(); return v === 255 ? -1 : map.toLocal[v]; };
   const BUDGET = W.FRAME_MAX - 64, MAX_SHOTS = 32, MAX_EVENTS = 24;
-  const ACTOR_BYTES = NUMBERS.reduce((n, f) => n + (f[2] === 2 ? 2 : 1), 0) + 2 + 2 + 12;
+  // Each actor: its numbers, two bytes of switches, its ride and rider, the hook's tip and end, and one byte for what
+  // is in hand (`HELD`).
+  const ACTOR_BYTES = NUMBERS.reduce((n, f) => n + (f[2] === 2 ? 2 : 1), 0) + 2 + 2 + 12 + 1;
   const ACTOR_AT = {}; NUMBERS.reduce((n, f) => { ACTOR_AT[f[0]] = n; return n + (f[2] === 2 ? 2 : 1); }, 0);
   const SWITCH_AT = NUMBERS.reduce((n, f) => n + (f[2] === 2 ? 2 : 1), 0);
   // A frame is the host's word: every count, enum and seat is checked against this page's pools before anything is
@@ -64,7 +66,8 @@
       if (o + ACTOR_BYTES > len) return false;
       const grabbed = v.getUint8(o + ACTOR_AT.grabbed), hk = v.getUint8(o + ACTOR_AT.hk), flight = v.getUint8(o + ACTOR_AT.flight);
       const ride = v.getUint8(o + SWITCH_AT + 2), rider = v.getUint8(o + SWITCH_AT + 3), carried = v.getUint16(o + SWITCH_AT, true) >> 14;
-      if (grabbed > sim.gorillas.length || hk > 5 || flight > 2 || ride > seats || rider > seats || carried > 2) return false;
+      const held = v.getUint8(o + ACTOR_BYTES - 1);
+      if (grabbed > sim.gorillas.length || hk > 5 || flight > 2 || ride > seats || rider > seats || carried > 2 || (held >> 4) > SIM.WIELD.length || (held & 15) >= SIM.WIELD.length) return false;
       o += ACTOR_BYTES;
     }
     if (o + 4 > len) return false;
@@ -75,8 +78,6 @@
     let n = v.getUint8(o++);
     if (n > sim.shots.length) return false;
     for (let i = 0; i < n; i++) { if (o + 15 > len || v.getUint8(o) >= SHOT_KINDS.length || !teamOk(v.getUint8(o + 1)) || !seatOk(v.getUint8(o + 2))) return false; o += 15; }
-    // The dropped Golden AKs: one byte of which are lying, then each one's place.
-    if (o + 1 > len) return false;
     if (o + sim.gorillas.length * 10 + sim.ghosts.length * 9 + sim.hooks.length * 8 > len) return false;
     for (let i = 0; i < sim.gorillas.length; i++) { if (!seatOk(v.getUint8(o + 9))) return false; o += 10; }
     o += sim.ghosts.length * 9;
@@ -105,6 +106,9 @@
       dv.setUint16(at, bits, true); at += 2;
       u8(a.ride ? map.toSeat[a.ride - 1] + 1 : 0); u8(a.rider ? map.toSeat[a.rider - 1] + 1 : 0);
       pos(a.hookTip); pos(a.hookEnd);
+      // What is in hand (`HELD`): the tool chosen, plus one (0 for none, a bot's), over the last one fired. Guests draw
+      // it, and a page that takes over as host decides steals by it (`blockSim.heldOf`).
+      u8((SIM.WIELD.indexOf(a.wield) + 1) << 4 | Math.max(0, SIM.WIELD.indexOf(a.lastKind)));
     }
     let mask = 0;
     for (let i = 0; i < sim.crates.length; i++) if (sim.crates[i].live) mask |= 1 << i;
@@ -153,6 +157,8 @@
       const ride = r8(), rider = r8();
       a.ride = ride ? map.toLocal[ride - 1] + 1 : 0; a.rider = rider ? map.toLocal[rider - 1] + 1 : 0;
       readPos(a.hookTip); readPos(a.hookEnd);
+      const held = r8();
+      a.wield = held >> 4 ? SIM.WIELD[(held >> 4) - 1] : ""; a.lastKind = SIM.WIELD[held & 15];
     }
     const mask = r32();
     for (let i = 0; i < sim.crates.length; i++) { const c = sim.crates[i]; c.live = !!(mask >>> i & 1); if (c.live) { c.team = TEAM_NAME[r8()]; readPos(c); } }
@@ -174,7 +180,7 @@
   const ACTION_CALLS = {
     fire: (s, id, y, p, k) => SIM.fire(s, id, y, p, W.KINDS[k]), grapple: (s, id, y, p) => SIM.grapple(s, id, y, p), build: (s, id, y) => SIM.build(s, id, y), grab: (s, id, y) => SIM.grab(s, id, y),
     pass: (s, id, y) => SIM.pass(s, id, y), launch: (s, id) => SIM.launch(s, id), zip: (s, id, y) => SIM.zip(s, id, y), hopOn: (s, id) => SIM.hopOn(s, id), callRide: (s, id) => SIM.callRide(s, id),
-    drop: (s, id) => SIM.drop(s, id), wield: (s, id, t) => SIM.wield(s, id, t), escape: (s, id) => SIM.escape(s, id), cutChute: (s, id) => SIM.cutChute(s, id)
+    drop: (s, id) => SIM.drop(s, id), wield: (s, id, y, p, k) => SIM.wield(s, id, k), escape: (s, id) => SIM.escape(s, id), cutChute: (s, id) => SIM.cutChute(s, id)
   };
   const blankInput = () => ({ x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 });
   const STALE_MS = 500;
@@ -264,8 +270,11 @@
     // frame says so. Returns what the scene would branch on: true on a page that decides, true-ish for a guest.
     const act = (name, id, a = 0, b = 0, c) => {
       if (role !== "host" && role !== "guest") return false;
-      if (role !== "guest") return ACTION_CALLS[name](sim, id, a, b, c === undefined ? 0 : W.KINDS.indexOf(c) >= 0 ? W.KINDS.indexOf(c) : 0);
-      if (actions.length < 16) actions.push(W.ACTIONS.indexOf(name), Math.round(a * 1000), Math.round(b * 1000), c === undefined ? 0 : Math.max(0, W.KINDS.indexOf(c)));
+      // The kind slot (0 to `KINDS.length - 1`) carries a shot's kind, or for `wield` the tool's own index (`SIM.WIELD`,
+      // as many), never the yaw slot, whose range a tool's index times 1000 would pass.
+      const k = name === "wield" ? Math.round(a) : c === undefined ? 0 : Math.max(0, W.KINDS.indexOf(c));
+      if (role !== "guest") return ACTION_CALLS[name](sim, id, a, b, k);
+      if (actions.length < 16) actions.push(W.ACTIONS.indexOf(name), name === "wield" ? 0 : Math.round(a * 1000), Math.round(b * 1000), k);
       return true;
     };
     const INPUT_MSG = { t: "bf", v: W.WIRE, k: "input", s: "", q: 0, x: 0, z: 0, f: 0, b: 0, a: undefined };

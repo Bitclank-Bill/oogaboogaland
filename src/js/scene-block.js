@@ -485,6 +485,9 @@
   };
   // Borrows the board's picks for the round: `kept` restores them when the board comes back.
   const setupRound = (m, map) => {
+    // The round's seat map, kept until the board shows again: a guest's results can come after the lobby message has
+    // ended the round (`blockLive` drops its map then), and every page must count seats the same way.
+    liveSeats = map;
     kept ||= { team: selection.team, size: selection.size, map: selection.map, target: selection.target, skill: selection.skill, rule: selection.rule };
     selection.team = map.team; selection.size = m.size; selection.map = WIRE.MAPS[m.map]; selection.target = C.CAPTURES; selection.skill = "normal"; selection.rule = WIRE.RULES[m.rule] || "home";
     liveCast = liveNames(m, map);
@@ -656,6 +659,7 @@
     return true;
   };
   const showBoard = () => {
+    liveSeats = null;
     el.tip.textContent = TIPS[tipK++ % TIPS.length];
     { const t = document.getElementById("block-intro-tip"); if (t) t.textContent = el.tip.textContent; }
     paused = aiming = false;
@@ -1833,7 +1837,10 @@
       if (a.chute.visible) a.chute.geometry = BM.chute(TEAM_INDEX[s.team]);
       // The gun in hand: the visitor's chosen tool, a bot's last throw, the hook launcher while its hook is out; none
       // while carrying, lifting or riding.
-      const g = s.hook > 0 && (s.hk || (i === 0 && tool === "hook")) ? GUN_OF.hook : GUN_OF[i === 0 && tool !== "hook" ? tool : s.lastKind || "paint"];
+      // Another Ooga shows what it has in hand (`blockSim.heldOf`, the frame's word on a guest), a special weapon only
+      // while it still has one.
+      const held = i === 0 ? tool : SIM.heldOf(s) || "paint", kind = held === "gold" && !s.gold || held === "hook" && !s.hook ? "paint" : held;
+      const g = s.hook > 0 && (s.hk || kind === "hook") ? GUN_OF.hook : GUN_OF[kind];
       const armed = phase === "play" && g >= 0 && !s.carrying && !s.holding && !s.riding && !s.climbing && !s.flight && s.splat <= 0 && s.trapped <= 0 && s.burnt <= 0 && s.slip <= 0;
       if (a.gun) {
         a.gun.visible = armed;
@@ -2198,7 +2205,9 @@
   // view circles the fort.
   const preview = { spin: 0, wide: false };
   // A local actor's seat: in a live round every page numbers its actors its own way, and the seat is what they share.
-  const seatOfActor = (i) => round && round.map ? round.map.toSeat[i] : i;
+  // The round's own seat map (`liveSeats`), kept to the results; solo, an actor's index.
+  let liveSeats = null;
+  const seatOfActor = (i) => liveSeats ? liveSeats.toSeat[i] : i;
   // The weapons preview beside it: each tool of the arsenal (`SIM.ARSENAL`) in turn, its held model turning over the
   // Ooga's head and its name and blurb on a card. It steps on by itself every `SHOW_S`; a press of the card's buttons
   // steps it and holds it there `SHOW_HOLD_S`. Reduced motion: no turning and no stepping by itself.
@@ -2425,7 +2434,10 @@
   // The scoring rule: the visitor's own pick, remembered; in a match the first in's, sent to the match (everyone's
   // board, theirs too, then shows the match's word).
   const chooseRule = (k) => {
-    if (boardInMatch) { if (firstRegistered()) round.setOptions(round.match.size, round.match.map, WIRE.RULES.indexOf(k)); return; }
+    // The first in sends it, in the lobby or waiting through a round, with the map their board shows, as the size
+    // buttons and the map do.
+    if (firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(selection.map), WIRE.RULES.indexOf(k));
+    if (boardInMatch) return;
     selection.rule = k;
     for (const b of el.rules) b.setAttribute("aria-pressed", String(b.dataset.rule === k));
     el.boardHelp.textContent = helpLine("Pick a side.", k, selection.target);
