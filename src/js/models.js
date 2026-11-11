@@ -828,14 +828,20 @@
   const CLUB_REST = { x: 0.95, z: 0 };
   // ---- The refined body ----------------------------------------------------------------------------------------------
   // Every Ooga is authored on the sixteenths grid of `buildCaveman` (a character file's `u`) and drawn at FINE times that
-  // detail, as Kortik and his sister are. Once every hook has run, each authored part is drawn again on the fine grid:
-  // the head is the same head with every cell split in eight, so no face changes; the torso keeps its cells and has its
-  // edges rounded; arms, fists, legs and feet are drawn anew, longer in the leg (`LEG_UNITS` from hip to sole, five
-  // before), and take their colours from the authored part region by region, so a sleeve, a cuff, a boot or a glove stays
-  // where its owner drew it, and whatever a hook built out past the plain part rides along. Nothing here draws from
-  // `k.rand`: the body's own small variation is hashed from each fine cell.
-  const FINE = 2, LEG_UNITS = 8;
+  // detail. Once every hook has run, each authored part is drawn again on the fine grid: the head is the same head with
+  // every cell split FINE ways each way, rounded behind its face, whose cells all stay, so no face changes; the torso
+  // keeps its cells, TORSO_RISE taller (the head and arms lifted with it), its hip band shorter and its chest longer,
+  // narrow at the waist and full through the chest into the shoulders, over a hip band fitted to the thighs and a
+  // loincloth wrapped close round them; arms and legs are drawn anew from smooth profiles over plain block fists and
+  // feet, the legs `LEG_UNITS` from hip to sole (five authored) and LEGS_IN closer together. Every shape here is given in
+  // authored units and drawn at whatever FINE is. Colours come from the authored part region by region, so a sleeve, a
+  // cuff, a boot or a glove stays where its owner drew it, and whatever a hook built out past the plain part rides along.
+  // Nothing here draws from `k.rand`: the body's own small variation and the cloth's weave are hashed from the grid.
+  const FINE = 4, LEG_UNITS = 7, FOOT_UNITS = 1.5, TORSO_RISE = 1, LEGS_IN = 0.5;
   const fineMix = (x, y, z) => ((Math.imul(x + 101, 73856093) ^ Math.imul(y + 37, 19349663) ^ Math.imul(z + 13, 83492791)) >>> 0) % 1000;
+  // The body's grain, half an authored unit across at any FINE, so speckle and weave keep one size and their faces merge.
+  const GRAIN = Math.max(1, FINE / 2);
+  const grainMix = (x, y, z, salt) => fineMix(Math.floor(x / GRAIN) + salt, Math.floor(y / GRAIN), Math.floor(z / GRAIN));
   const upscaled = (v) => {
     const out = makeVox();
     for (const [key, c] of v.map) {
@@ -845,60 +851,80 @@
     }
     return out;
   };
-  // Rounds a fine map's convex edges by one cell: a cell open on two perpendicular sides goes where the body runs at least
-  // two cells on behind it both ways, so a strap or a single authored cell keeps its corners. `vertical` edges run up
-  // the part, `top` and `bottom` edges along its top and foot.
-  const chamfer = (v, { vertical = true, top = false, bottom = false } = {}) => {
-    const drop = [], has = v.has;
-    const cut = (x, y, z, ax, ay, az, bx, by, bz) => !has(x + ax, y + ay, z + az) && !has(x + bx, y + by, z + bz)
-      && has(x - ax, y - ay, z - az) && has(x - 2 * ax, y - 2 * ay, z - 2 * az) && has(x - bx, y - by, z - bz) && has(x - 2 * bx, y - 2 * by, z - 2 * bz);
+  // Rounds a fine map's convex edges: a cell goes when it lies outside the quarter circle of radius r that edge is rounded
+  // to, judged by how deep it sits under each of the edge's two faces, and when the body runs on behind it both ways
+  // past the rounding, so a brim, a strap or a single authored cell keeps its shape. Each of `edges` is
+  // [axis a, the side a's face looks to, axis b, the side b's face looks to, r]; `keep(x, y, z)` protects a cell. Every
+  // cell is judged on the map as it was.
+  const rounded = (v, edges, keep) => {
+    const drop = [], p = [0, 0, 0], q = [0, 0, 0];
+    const at = (a, da, b, db) => {
+      q[0] = p[0]; q[1] = p[1]; q[2] = p[2]; q[a] += da; q[b] += db;
+      return v.has(q[0], q[1], q[2]);
+    };
     for (const [key] of v.map) {
       voxCoords(key, CELL);
-      const x = CELL[0], y = CELL[1], z = CELL[2];
-      let gone = false;
-      for (let s = -1; s <= 1 && !gone; s += 2) {
-        if (vertical) gone = cut(x, y, z, s, 0, 0, 0, 0, 1) || cut(x, y, z, s, 0, 0, 0, 0, -1);
-        if (!gone && top) gone = cut(x, y, z, s, 0, 0, 0, 1, 0) || cut(x, y, z, 0, 0, s, 0, 1, 0);
-        if (!gone && bottom) gone = cut(x, y, z, s, 0, 0, 0, -1, 0) || cut(x, y, z, 0, 0, s, 0, -1, 0);
+      p[0] = CELL[0]; p[1] = CELL[1]; p[2] = CELL[2];
+      if (keep && keep(p[0], p[1], p[2])) continue;
+      for (const [a, sa, b, sb, r] of edges) {
+        let i = 0, j = 0;
+        while (i < r && at(a, sa * (i + 1), b, 0)) i++;
+        if (i >= r) continue;
+        while (j < r && at(b, sb * (j + 1), a, 0)) j++;
+        if (j >= r) continue;
+        const di = r - i - 0.5, dj = r - j - 0.5;
+        if (di * di + dj * dj <= r * r) continue;
+        if (!at(a, sa * i, b, sb * j) || at(a, sa * (i + 1), b, sb * j) || at(a, sa * i, b, sb * (j + 1))) continue;
+        let deep = true;
+        for (let n = 1; n <= r - i + 1 && deep; n++) deep = at(a, -sa * n, b, 0);
+        for (let n = 1; n <= r - j + 1 && deep; n++) deep = at(b, -sb * n, a, 0);
+        if (deep) { drop.push(key); break; }
       }
-      if (gone) drop.push(key);
     }
     for (const key of drop) v.map.delete(key);
     return v;
   };
-  // A rounded-rectangle cross-section about (cx, cz): half width, half depth and corner radius, measured to cell middles.
-  const inSection = (x, z, cx, cz, hx, hz, rc) => {
-    const dx = Math.abs(x + 0.5 - cx), dz = Math.abs(z + 0.5 - cz);
+  // A rounding radius given in half units, in fine cells.
+  const half = (n) => Math.max(1, Math.round(n * FINE / 2));
+  // Edge lists for `rounded`, axes 0 x, 1 y, 2 z: the four edges running up a part, then those along its top and foot.
+  const upEdges = (back, front) => [[0, -1, 2, -1, back], [0, 1, 2, -1, back], [0, -1, 2, 1, front], [0, 1, 2, 1, front]];
+  const rimEdges = (dir, side, back, front) => [[1, dir, 0, -1, side], [1, dir, 0, 1, side], [1, dir, 2, -1, back], [1, dir, 2, 1, front]];
+  // Is a point (dx, dz) from a rounded rectangle's middle inside it: half width hx, half depth hz, corner radius rc?
+  const inRound = (dx, dz, hx, hz, rc) => {
+    dx = Math.abs(dx); dz = Math.abs(dz);
     if (dx > hx + 1e-6 || dz > hz + 1e-6) return false;
     const qx = dx - (hx - rc), qz = dz - (hz - rc);
     return qx <= 0 || qz <= 0 || qx * qx + qz * qz <= rc * rc + 1e-6;
   };
-  // An arm from the fist up, a row of fine cells at a time about its axis at x = z = 3 (an authored arm's middle):
-  // [half width, half depth, corner radius, how far the middle sits forward]. A round fist, a wrist, a forearm swelling
-  // behind, the elbow's point, the biceps swelling in front and a rounded shoulder; a slim build's shoulder is the arm's
-  // own width. Twenty-two rows, the authored arm's eleven units.
-  const ARM_ROWS = [
-    [3, 3, 2.2, 0], [3.5, 3.5, 2, 0], [3.5, 3.5, 2, 0], [3.5, 3.5, 2, 0], [3.5, 3.5, 2, 0], [3, 3, 2.2, 0],
-    [2, 2, 1.4, 0], [2.5, 2.5, 1.8, 0], [3, 3, 2.2, 0], [3, 3, 2.2, 0], [3, 3, 2, 0], [3, 3, 2, 0], [3, 3, 2.2, 0],
-    [3, 3, 2.6, 0], [3, 3, 2.2, 0], [3.5, 3.5, 2.6, 0], [3.5, 3.5, 2.6, 0]
-  ];
-  const SHOULDER_ROWS = [[4, 4, 2.9, 0], [4.5, 4.5, 3.4, 0], [4.5, 4.5, 3.4, 0], [4, 4, 3.1, 0], [3, 3, 2.4, 0]];
-  const SLIM_SHOULDER_ROWS = [[3, 3, 2.2, 0], [3, 3, 2.2, 0], [3, 3, 2.2, 0], [2.5, 2.5, 2, 0], [2, 2, 1.6, 0]];
-  // Which authored row a fine arm row takes its colours from: the fist from the fist's two, the arm from its six, the
-  // shoulder from its three.
-  const armSourceY = (y) => y < 6 ? Math.floor(y / 3) : y < 17 ? 2 + Math.floor((y - 6) * 6 / 11) : 8 + Math.floor((y - 17) * 3 / 5);
-  // A leg above the foot, rows 4 to 15 about its axis at x = z = 4: an ankle, a calf swelling behind, a knee with its cap
-  // and a thigh as wide as the authored leg. The foot below is drawn by `footCell`.
-  const LEG_ROWS = [
-    [2.5, 2.5, 1.8, 0], [2.5, 2.5, 1.8, 0], [3, 3, 2.2, 0], [3, 3, 2.2, 0], [3.5, 3.5, 2.6, 0], [3.5, 3.5, 2.6, 0],
-    [3, 3, 2.4, 0], [3, 3, 2.4, 0], [3.5, 3.5, 2.2, 0], [4, 4, 2.4, 0], [4, 4, 2.2, 0], [4, 4, 2, 0]
-  ];
-  // A leg's authored rows are two of foot and three of leg; the leg's end rows keep their thickness (a cuff, a boot's
-  // top) and its middle row stretches.
-  const legSourceY = (y) => y < 4 ? y >> 1 : y < 6 ? 2 : y < 14 ? 3 : 4;
-  // The foot: a narrower rounded heel under the ankle, widening to the ball, its top falling toward the toes.
-  const footCell = (x, y, z) => y < 2 ? inSection(x, z, 4, 2.5, 3, 2.5, 2) || inSection(x, z, 4, 7, 4, 4, 2.4)
-    : y === 2 ? inSection(x, z, 4, 3, 3, 3, 2) || inSection(x, z, 4, 6.5, 3.5, 3.5, 2.4) : inSection(x, z, 4, 4, 3, 4, 2);
+  // A profile's values at y: knots [y, ...values], straight between them and held past either end, written into `out`.
+  const profile = (knots, y, out) => {
+    let i = 1;
+    while (i < knots.length - 1 && y > knots[i][0]) i++;
+    const a = knots[i - 1], b = knots[i], t = Math.max(0, Math.min(1, (y - a[0]) / (b[0] - a[0])));
+    for (let n = 1; n < a.length; n++) out[n - 1] = a[n] + (b[n] - a[n]) * t;
+    return out;
+  };
+  // The arm in authored units from the fist's foot, about its axis 1.5 in from the authored arm's corner: the fist a
+  // plain block (FIST_HALF each way, FIST_TOP tall), then [y, half width, half depth, corner radius]: a wrist and forearm,
+  // the upper arm swelling smoothly into the shoulder's deltoid and rolling over at its top, which stands half a unit
+  // over the pivot (11), level with the torso's top. A slim build's shoulder is its arm's width, rounded over.
+  const FIST_TOP = 3, FIST_HALF = 2, ARM_TOP = 11.5;
+  const ARM_PROFILE = [[3, 1.5, 1.5, 0.8], [6, 1.5, 1.5, 1], [8, 2.4, 2, 1.4], [8.6, 2.5, 2, 1.5], [10.4, 2.5, 2, 1.6], [11, 2.3, 1.85, 1.6],
+    [11.3, 2, 1.6, 1.4], [11.5, 1.6, 1.3, 1.1]];
+  const SLIM_ARM_PROFILE = [[3, 1.5, 1.5, 0.8], [10.6, 1.5, 1.5, 1], [11.5, 1.1, 1.1, 0.8]];
+  // Which authored row a height on the arm takes its colours from: the fist from the fist's two, the arm from its six,
+  // the shoulder from its three.
+  const armSourceY = (y) => y < FIST_TOP ? Math.min(1, Math.floor(y / 1.5)) : y < 8.5 ? Math.min(7, 2 + Math.floor((y - 3) * 6 / 5.5)) : Math.min(10, 8 + Math.floor(y - 8.5));
+  // The leg in authored units from the sole, about its axis 2 in from the authored leg's corner: the foot a plain block
+  // FOOT_UNITS tall, as wide as the shin, then [y, half width, half depth, corner radius]: from the ankle the leg widens
+  // evenly all the way to the hip, where it is as wide as the authored leg, so it is already narrowing where it leaves
+  // the loincloth and nothing bulges under the cloth. `THIGH` is its top, for the hips.
+  const FOOT_BOX = [0.5, 3.5, 0, 5];
+  const LEG_PROFILE = [[FOOT_UNITS, 1.5, 1.5, 0.9], [2.5, 1.5, 1.5, 0.9], [LEG_UNITS, 2, 2, 1.2]];
+  const THIGH = LEG_PROFILE[LEG_PROFILE.length - 1];
+  // A leg's authored rows are two of foot and three of leg: the foot's lower row its sole, the leg's end rows keep their
+  // thickness (a cuff, a boot's top) and its middle row stretches.
+  const legSourceY = (y) => y < 1 ? 0 : y < FOOT_UNITS ? 1 : y < 2.5 ? 2 : y < 6 ? 3 : 4;
   // A part's authored map read as colours: the cell itself, or the nearest one in its row, or in the nearest row.
   const colourSource = (v) => {
     const rows = new Map();
@@ -968,11 +994,16 @@
     }
     return fine;
   };
-  const ARM_ROWS_OF = (oy) => { let a = Infinity, b = -Infinity; for (let y = 0; y < 22; y++) if (armSourceY(y) === oy) { a = Math.min(a, y); b = y; } return a <= b ? [a, b] : [oy * FINE, oy * FINE + 1]; };
-  const LEG_ROWS_OF = (oy) => oy < 2 ? [oy * FINE, oy * FINE + 1] : oy === 2 ? [4, 5] : oy === 3 ? [6, 13] : oy === 4 ? [14, 15] : [oy * FINE + 6, oy * FINE + 7];
-  // A leg's authored height mapped onto the longer leg, for anything a hook hung on a leg that is not a voxel map: the
-  // foot drops by the extra length and the leg above it stretches.
-  const legHeight = (y, u) => y <= -3 * u ? y - (LEG_UNITS - 5) * u : y * (LEG_UNITS - 2) / 3;
+  // The fine rows an authored row became on a part drawn from `source` up to `top` units, or its own rows for one past it.
+  const rowsOf = (source, top) => (oy) => {
+    let a = Infinity, b = -Infinity;
+    for (let y = 0; (y + 0.5) / FINE < top; y++) if (source((y + 0.5) / FINE) === oy) { a = Math.min(a, y); b = y; }
+    return a <= b ? [a, b] : [oy * FINE, oy * FINE + FINE - 1];
+  };
+  const ARM_ROWS_OF = rowsOf(armSourceY, ARM_TOP), LEG_ROWS_OF = rowsOf(legSourceY, LEG_UNITS);
+  // A leg's authored height mapped onto the refined leg, for anything a hook hung on a leg that is not a voxel map: the
+  // foot drops to the sole and shallows to the refined foot, and the leg above it stretches.
+  const legHeight = (y, u) => y <= -3 * u ? -LEG_UNITS * u + (y + 5 * u) * FOOT_UNITS / 2 : y * (LEG_UNITS - FOOT_UNITS) / 3;
   // The shared body every contributor gets. A character file (src/characters/<handle>.js)
   // adds its own look through `dress` hooks, each called with the build kit `k` at a fixed
   // point, so the hashed jitter draws in the same order for every build:
@@ -1054,7 +1085,8 @@
     // nose: the beard's nose jitter pair; lid: closed-eye colour; headEmissive: lit head indices
     // loin: the loincloth's two colours, fur and spot unless a torso hook names its own.
     // legH: the root's height over the soles, for anything a hook stands on the ground beside its Ooga.
-    const k = { traits, h, u, rand, P, color, jit, skinJ, hairJ, leopard, vg, root, parts, legH, armX: 0, eyeCells, nose: [P.nose, P.skin], lid: null, headEmissive: undefined, loin: null };
+    // fine: how many fine cells a refine hook's maps run to an authored unit (see FINE).
+    const k = { traits, h, u, rand, P, color, jit, skinJ, hairJ, leopard, vg, root, parts, legH, fine: FINE, armX: 0, eyeCells, nose: [P.nose, P.skin], lid: null, headEmissive: undefined, loin: null };
     // Hashed from the cell, never drawn from rand, so no character's existing draws move.
     const cellMix = (x, y, z) => ((Math.imul(x + 11, 73856093) ^ Math.imul(y + 7, 19349663) ^ Math.imul(z + 5, 83492791)) >>> 0) % 7;
     // The loincloth every Ooga wears: a flap front and back that hangs over the thighs, cut ragged at the hem.
@@ -1136,7 +1168,8 @@
     parts.armR = arm(-1);
     parts.armL = arm(1);
     // club(k) returns { voxels, palette, goldPalette } for a voxel item, or { default, gold }
-    // geometry, plus optional rest and carry angles.
+    // geometry, plus optional rest and carry angles ({ x, y, z } in the rotation's YXZ order, y 0
+    // when left out: a quarter turn in y with the tilt in z turns a blade about its haft).
     const club = dress.club ? dress.club(k) : {};
     const clubV = club.voxels || clubVoxels(rand);
     const clubOrigin = { x: -1 * u, y: -1 * u, z: -1 * u };
@@ -1148,7 +1181,7 @@
     };
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
-      rotation: { x: clubRest.x, y: 0, z: clubRest.z },
+      rotation: { x: clubRest.x, y: clubRest.y || 0, z: clubRest.z },
       geometry: skins.club.default
     });
     addChild(parts.armR, parts.club);
@@ -1265,18 +1298,20 @@
     if (dress.extras) dress.extras(k);
     // The refined body (see FINE): every authored part drawn again on the fine grid, after every hook. A character's
     // `refine(k, part, v, side)` hook may paint the fine maps before they bake: "head", "closed" and "portrait" (the
-    // head's three faces), "torso", "arm", "fingers" and "leg" (with its side), in fine cells of the part's own frame.
+    // head's three faces), "torso", "arm", "fingers" and "leg" (with its side), in fine cells of the part's own frame,
+    // `k.fine` of them to an authored unit.
+    const weaves = new Map();
     {
-      const fineU = u / FINE, bakeOf = new Map(), done = new Map();
+      const F = FINE, fineU = u / F, bakeOf = new Map(), done = new Map();
       for (const bake of bakes) bakeOf.set(bake.geo, bake);
       const fineBake = (v, origin, emissive) => {
         const geo = voxelGeometry(v, { unit: fineU, palette, origin, emissive, rects: true });
         bakes.push({ v, origin, emissive, geo, unit: fineU, rects: true });
         return geo;
       };
-      // The body's own fine variation: skin and hair speckled cell by cell, a fleck or two in the fur.
+      // The body's own fine variation: skin and hair speckled grain by grain, a fleck or two in the fur.
       const fineBody = (c, x, y, z, salt) => {
-        const m = fineMix(x + salt, y, z);
+        const m = grainMix(x, y, z, salt);
         return c === P.skin || c === P.skinDk ? (m < 40 ? P.skinDk : P.skin)
           : c === P.hair || c === P.hairDk ? (m < 120 ? P.hairDk : P.hair) : c === P.fur && m < 25 ? P.spot : c;
       };
@@ -1288,70 +1323,227 @@
         (seen || done.set(key, {}).get(key))[tag] = out;
         return out;
       };
+      // Cloth gets a weave: a few grains of every colour a part wears widely, outside the body's own colours and
+      // anything glowing, a shade darker or lighter, as Kortik's robe and his sister's overalls are. The shades join the
+      // palette once a build, each after its colour, and a second colourway shades them from its own (see tint).
+      const weave = (c, dark) => {
+        let pair = weaves.get(c);
+        if (!pair) {
+          const rgb = palette[c];
+          pair = [palette.length, palette.length + 1];
+          palette.push(rgb.map((value) => clamp255(value * 0.86)), rgb.map((value) => clamp255(value * 1.08)));
+          weaves.set(c, pair);
+        }
+        return pair[dark ? 0 : 1];
+      };
+      const BODY_COLOURS = new Set([P.skin, P.skinDk, P.hair, P.hairDk, P.fur, P.spot, P.white, P.black, P.nose, P.stubble]);
+      const fabric = (v, salt, emissive, keep) => {
+        const counts = new Map();
+        for (const c of v.map.values()) counts.set(c, (counts.get(c) || 0) + 1);
+        for (const [key, c] of v.map) {
+          if (BODY_COLOURS.has(c) || counts.get(c) < 4 * F * F * F || emissive && emissive[c] !== undefined) continue;
+          voxCoords(key, CELL);
+          if (keep && keep(CELL[0], CELL[1], CELL[2])) continue;
+          const m = grainMix(CELL[0], CELL[1], CELL[2], salt);
+          if (m < 70) v.map.set(key, weave(c, true));
+          else if (m >= 975) v.map.set(key, weave(c, false));
+        }
+        return v;
+      };
+      // The head rounds at the back, over its crown and under it, but its face (the front plane and all before it,
+      // from the brow down: eyes, nose, mouth, beard and paint) keeps every cell, so no face changes.
+      const faceKeep = (x, y, z) => z >= 5 * F && y < 6 * F;
+      const HEAD_EDGES = [...upEdges(half(4), half(3)), ...rimEdges(1, half(4), half(4), half(3)), ...rimEdges(-1, half(2), half(3), half(2))];
+      const roundHead = (v) => fabric(rounded(upscaled(v), HEAD_EDGES, faceKeep), 900, k.headEmissive, faceKeep);
       const head = (geo, part) => once(geo, part, (bake) => {
-        const v = upscaled(bake.v);
+        const v = roundHead(bake.v);
         if (dress.refine) dress.refine(k, part, v);
         return fineBake(v, bake.origin, bake.emissive);
       });
+      // The face button is the same rounded head, cut to the portrait's bounds.
+      const portrait = (geo) => once(geo, "portrait", (bake) => {
+        const full = roundHead(headVox), v = makeVox();
+        const lo = portraitMin.map((n) => n * F), hi = portraitMax.map((n) => n * F + F - 1);
+        for (const [key, c] of full.map) {
+          voxCoords(key, CELL);
+          if (CELL[0] >= lo[0] && CELL[0] <= hi[0] && CELL[1] >= lo[1] && CELL[1] <= hi[1] && CELL[2] >= lo[2] && CELL[2] <= hi[2]) v.map.set(key, c);
+        }
+        if (dress.refine) dress.refine(k, "portrait", v);
+        return fineBake(v, bake.origin, bake.emissive);
+      });
+      // The torso, TORSO_RISE taller than it was authored, in proportion: its hip band two units tall, not three, and
+      // its chest the longer for it (`TORSO_FROM`, a new height's authored one, in units), narrow at the waist over the
+      // belt and easing out into a full chest (`SIDE`, how far its sides move), deeper before and behind (`DEEP`), which
+      // runs out under each arm's shoulder its whole height (`REACH`, how far short of the arm's middle it stops) so the
+      // shoulder sits in the torso. Its hip band fits the body over the thighs and slopes in to the waist (`BAND_IN`), and
+      // the loincloth is a wrap close round them, a panel before and behind and a shorter one down each hip, in place of
+      // the authored flaps. `TORSO_KNOTS` maps an authored height on the torso to its new one, for what a hook hung there.
+      const TORSO_KNOTS = [[0, 0], [3, 2], [4, 3], [8, 8 + TORSO_RISE]];
+      const TORSO_FROM = TORSO_KNOTS.map(([a, b]) => [b, a]);
+      const SIDE = [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]];
+      const REACH = [[4.5, 3], [5, 2.5], [5.5, 1.75], [8.5, 1.75], [9, 2.25]];
+      const DEEP = [[4.5, 0, 0], [5, 0.5, 0], [5.5, 0.5, 0.5], [8.5, 0.5, 0.5], [9, 0.25, 0.25]];
+      const BAND_UNITS = 2, BAND_IN = [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]], WRAP = [2, 2.5, 1.25];
+      const TORSO_EDGES = [...upEdges(half(4), half(4)), ...rimEdges(1, half(3), half(3), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
+      const CX = 4.5 * F, CZ = 3 * F, at = [0, 0, 0];
+      // The run of a row through the torso's middle, along x at depth z (or along z at column x), or null.
+      const runX = (v, y, z) => {
+        if (!v.has(CX - 1, y, z) || !v.has(CX, y, z)) return null;
+        let lo = CX - 1, hi = CX;
+        while (v.has(lo - 1, y, z)) lo--;
+        while (v.has(hi + 1, y, z)) hi++;
+        return [lo, hi];
+      };
+      const runZ = (v, x, y) => {
+        if (!v.has(x, y, CZ - 1) || !v.has(x, y, CZ)) return null;
+        let lo = CZ - 1, hi = CZ;
+        while (v.has(x, y, lo - 1)) lo--;
+        while (v.has(x, y, hi + 1)) hi++;
+        return [lo, hi];
+      };
+      // Where the thighs stand in the torso's fine cells: the outermost column clear of them each side, and the depths
+      // just before and behind them.
+      const hips = () => {
+        const sx = parts.torso.scale.x * fineU, sz = parts.torso.scale.z * fineU, legX = Math.abs(parts.legR.position.x), legZ = parts.legR.position.z - 0.5 * u;
+        const xR = Math.ceil(CX - 0.5 + (legX + THIGH[1] * u) / sx);
+        return { xL: 2 * CX - 1 - xR, xR, zf: Math.ceil(CZ - 0.5 + (legZ + THIGH[2] * u) / sz), zb: Math.floor(CZ - 0.5 + (legZ - THIGH[2] * u) / sz) };
+      };
       const torso = (geo) => once(geo, "torso", (bake) => {
-        const v = chamfer(upscaled(bake.v), { top: true, bottom: true });
+        const old = upscaled(bake.v), v = makeVox(), sx = parts.torso.scale.x, top = (8 + TORSO_RISE) * F;
+        const [loinA, loinB] = k.loin || [P.fur, P.spot];
+        // In proportion: each new row from its authored one, anything over the authored torso raised.
+        const newRows = new Map();
+        for (let y = 0; y < top; y++) {
+          const from = Math.min(8 * F - 1, Math.floor(profile(TORSO_FROM, (y + 0.5) / F, at)[0] * F));
+          if (!newRows.has(from)) newRows.set(from, []);
+          newRows.get(from).push(y);
+        }
+        const rowsFor = (y) => y < 0 ? [y] : y >= 8 * F ? [y + TORSO_RISE * F] : newRows.get(y) || [];
+        for (const [key, c] of old.map) {
+          voxCoords(key, CELL);
+          const x = CELL[0], y = CELL[1], z = CELL[2];
+          // The authored flaps go; the wrap below takes their place.
+          if (y < 0 && y >= -3 * F && (z < F || z >= 5 * F) && x >= 2 * F && x < 7 * F && (c === loinA || c === loinB)) continue;
+          for (const n of rowsFor(y)) v.set(x, n, z, c);
+        }
+        // The hip band, refitted to the thighs and sloping in to the waist, and anything a hook built out past it kept
+        // against it.
+        const { xL, xR, zf, zb } = hips(), band = colourSource(v), bandRows = BAND_UNITS * F;
+        for (const key of [...v.map.keys()]) {
+          voxCoords(key, CELL);
+          if (CELL[1] >= 0 && CELL[1] < bandRows) v.map.delete(key);
+        }
+        for (let y = 0; y < bandRows; y++) {
+          profile(BAND_IN, (y + 0.5) / F, at);
+          const inX = Math.round(at[0] * F), inZ = Math.round(at[1] * F);
+          for (let x = xL + inX; x <= xR - inX; x++) for (let z = zb + inZ; z <= zf; z++) v.set(x, y, z, band(Math.max(0, Math.min(9 * F - 1, x)), y, Math.max(0, Math.min(6 * F - 1, z))));
+        }
+        for (const [key, c] of old.map) {
+          voxCoords(key, CELL);
+          let x = CELL[0], z = CELL[2];
+          if (x >= 0 && x < 9 * F && z >= 0 && z < 6 * F) continue;
+          x += x < 0 ? xL : x >= 9 * F ? xR - (9 * F - 1) : 0;
+          z += z < 0 ? zb : z >= 6 * F ? zf - (6 * F - 1) : 0;
+          for (const n of rowsFor(CELL[1])) if (n >= 0 && n < bandRows) v.set(x, n, z, c);
+        }
+        // The chest deeper, the waist in and the chest out, and its sides into the shoulders.
+        const reach = [Math.abs(parts.armR.position.x) / sx / fineU, Math.abs(parts.armL.position.x) / sx / fineU];
+        for (let y = bandRows; y < top; y++) {
+          const yc = (y + 0.5) / F;
+          profile(DEEP, yc, at);
+          const front = Math.round(at[0] * F), back = Math.round(at[1] * F);
+          if (front || back) for (let x = 0; x < 9 * F; x++) {
+            const run = runZ(v, x, y);
+            if (!run || run[1] - run[0] < 2.5 * F) continue;
+            const cf = v.get(x, y, run[1]), cb = v.get(x, y, run[0]);
+            for (let n = 1; n <= front; n++) v.set(x, y, run[1] + n, cf);
+            for (let n = 1; n <= back; n++) v.set(x, y, run[0] - n, cb);
+          }
+          const by = Math.round(profile(SIDE, yc, at)[0] * F), short = yc >= REACH[0][0] ? profile(REACH, yc, at)[0] * F : Infinity;
+          for (let z = -F; z < 7 * F; z++) {
+            const run = runX(v, y, z);
+            if (!run || run[1] - run[0] < 4.5 * F) continue;
+            const [lo, hi] = run;
+            if (by < 0) {
+              for (let n = 0; n < -by; n++) { v.del(lo + n, y, z); v.del(hi - n, y, z); }
+              continue;
+            }
+            const cl = v.get(lo, y, z), ch = v.get(hi, y, z);
+            const toL = Math.min(lo - by, Math.ceil(CX - (reach[0] - short) - 0.5)), toR = Math.max(hi + by, Math.floor(CX + (reach[1] - short) - 0.5));
+            for (let x = lo - 1; x >= toL; x--) v.set(x, y, z, cl);
+            for (let x = hi + 1; x <= toR; x++) v.set(x, y, z, ch);
+          }
+        }
+        // The wrap: front and back panels clear of the band's rounded corners, the back a little longer over the seat, a
+        // shorter one down each hip, each hem a little torn: teeth a grain wide, most a cell or two short, now and then
+        // one nicked deeper (`WRAP`, each panel's length in units).
+        const wrap = (x, y, z) => v.set(x, y, z, grainMix(x, y, z, 900) < 140 ? loinB : loinA);
+        const hem = (x, z, units) => {
+          const m = grainMix(x, 0, z, 811);
+          return Math.round(units * F) - (m > 965 ? 3 : m < 150 ? 2 : m < 450 ? 1 : 0);
+        };
+        for (let x = xL + F; x <= xR - F; x++) {
+          for (let y = -1, n = hem(x, zf, WRAP[0]); y >= -n; y--) wrap(x, y, zf);
+          for (let y = -1, n = hem(x, zb, WRAP[1]); y >= -n; y--) wrap(x, y, zb);
+        }
+        for (let z = zb + F; z <= zf - F; z++) for (const x of [xL, xR]) for (let y = -1, n = hem(z, x, WRAP[2]); y >= -n; y--) wrap(x, y, z);
+        rounded(v, TORSO_EDGES);
         for (const [key, c] of v.map) {
           if (c !== P.skin && c !== P.fur) continue;
           voxCoords(key, CELL);
-          const m = fineMix(CELL[0] + 300, CELL[1], CELL[2]);
+          const m = grainMix(CELL[0], CELL[1], CELL[2], 300);
           if (c === P.skin && m < 30) v.map.set(key, P.skinDk);
           else if (c === P.fur && m < 25) v.map.set(key, P.spot);
         }
+        fabric(v, 300, bake.emissive);
         if (dress.refine) dress.refine(k, "torso", v);
         return fineBake(v, bake.origin, bake.emissive);
       });
+      // The arm about its axis, the fist a plain block as Kortik's is, its colours the authored part's.
       const arm = (geo) => once(geo, "arm", (bake) => {
-        const src = colourSource(bake.v), v = makeVox(), shoulder = traits.slim ? SLIM_SHOULDER_ROWS : SHOULDER_ROWS;
-        for (let y = 0; y < 22; y++) {
-          const [hx, hz, rc, off] = y < 17 ? ARM_ROWS[y] : shoulder[y - 17], sy = armSourceY(y);
-          for (let x = -2; x <= 7; x++) for (let z = -2; z <= 8; z++) {
-            if (inSection(x, z, 3, 3 + off, hx, hz, rc)) v.set(x, y, z, fineBody(src(Math.floor(x / FINE), sy, Math.floor(z / FINE)), x, y, z, 0));
+        const src = colourSource(bake.v), v = makeVox(), knots = traits.slim ? SLIM_ARM_PROFILE : ARM_PROFILE, A = 1.5;
+        for (let y = 0; y < ARM_TOP * F; y++) {
+          const yc = (y + 0.5) / F, sy = armSourceY(yc);
+          if (yc < FIST_TOP) at[0] = at[1] = FIST_HALF, at[2] = 0;
+          else profile(knots, yc, at);
+          const [hx, hz, rc] = at;
+          for (let x = Math.floor((A - hx) * F) - 1; x <= Math.ceil((A + hx) * F); x++) for (let z = Math.floor((A - hz) * F) - 1; z <= Math.ceil((A + hz) * F); z++) {
+            const xc = (x + 0.5) / F, zc = (z + 0.5) / F;
+            if (inRound(xc - A, zc - A, hx, hz, rc)) v.set(x, y, z, fineBody(src(Math.floor(xc), sy, Math.floor(zc)), x, y, z, 0));
           }
         }
-        layExtras(v, extrasOf(bake.v, PLAIN_ARM), ARM_ROWS_OF, 3, 3);
+        layExtras(v, extrasOf(bake.v, PLAIN_ARM), ARM_ROWS_OF, 1.5 * F, 1.5 * F);
+        fabric(v, 100, bake.emissive);
         if (dress.refine) dress.refine(k, "arm", v);
         return fineBake(v, bake.origin, bake.emissive);
       });
-      // Curled fingers across the fist's face, one cell each, every other one a shade darker where they are skin.
+      // The fist is the hand, as Kortik's is: no fingers on it. The finger nodes stay for the poses and rigs that name
+      // them, holding one cell inside the fist where nothing sees it.
       const fingers = (geo) => once(geo, "fingers", (bake) => {
-        let c;
-        for (const value of bake.v.map.values()) { c = value; break; }
-        const v = makeVox(), bare = c === P.skin || c === P.skinDk;
-        for (let x = 1; x <= 4; x++) for (let y = 1; y <= 4; y++) {
-          v.set(x, y, 7, bare ? (y === 4 ? P.skin : x % 2 ? P.skin : P.skinDk) : c);
-        }
-        v.del(1, 4, 7); v.del(4, 4, 7);
+        const v = makeVox();
+        v.set(0, 0, 0, P.skin);
         if (dress.refine) dress.refine(k, "fingers", v);
-        return fineBake(v, bake.origin, bake.emissive);
+        return fineBake(v, { x: -fineU / 2, y: -fineU / 2, z: -fineU / 2 }, bake.emissive);
       });
+      // The leg about its axis over the foot, a plain block as Kortik's is, no toes.
       const leg = (geo, side) => once(geo, side < 0 ? "legR" : "legL", (bake) => {
-        const old = bake.v, src = colourSource(old), v = makeVox(), salt = side < 0 ? 500 : 700;
-        let toe;
-        for (let x = 0; x <= 3 && toe === undefined; x++) toe = old.get(x, 0, 6);
-        for (let y = 0; y < 16; y++) {
-          const row = y < 4 ? null : LEG_ROWS[y - 4], sy = legSourceY(y);
-          for (let x = -1; x <= 8; x++) for (let z = -2; z <= 10; z++) {
-            const inside = row ? inSection(x, z, 4, 4 + row[3], row[0], row[1], row[2]) : footCell(x, y, z);
-            if (inside) v.set(x, y, z, fineBody(src(Math.floor(x / FINE), sy, Math.min(5, Math.floor(z / FINE))), x, y, z, salt));
+        const old = bake.v, src = colourSource(old), v = makeVox(), salt = side < 0 ? 500 : 700, A = 2;
+        for (let y = 0; y < LEG_UNITS * F; y++) {
+          const yc = (y + 0.5) / F, sy = legSourceY(yc);
+          if (yc < FOOT_UNITS) {
+            for (let x = FOOT_BOX[0] * F; x < FOOT_BOX[1] * F; x++) for (let z = FOOT_BOX[2] * F; z < FOOT_BOX[3] * F; z++) {
+              v.set(x, y, z, fineBody(src(Math.floor((x + 0.5) / F), sy, Math.min(5, Math.floor((z + 0.5) / F * 6 / 5))), x, y, z, salt));
+            }
+            continue;
+          }
+          const [hx, hz, rc] = profile(LEG_PROFILE, yc, at);
+          for (let x = Math.floor((A - hx) * F) - 1; x <= Math.ceil((A + hx) * F); x++) for (let z = Math.floor((A - hz) * F) - 1; z <= Math.ceil((A + hz) * F); z++) {
+            const xc = (x + 0.5) / F, zc = (z + 0.5) / F;
+            if (inRound(xc - A, zc - A, hx, hz, rc)) v.set(x, y, z, fineBody(src(Math.floor(xc), sy, Math.min(5, Math.floor(zc))), x, y, z, salt));
           }
         }
-        // Bare feet get toes, the big one on the inner side; a shoe or a boot keeps a rounded toe cap.
-        const inner = (x) => side < 0 ? x : 7 - x;
-        if (toe === P.skin || toe === P.skinDk) {
-          for (const [x, top, long] of [[6, 1, 1], [7, 1, 1], [4, 1, 1], [2, 0, 1], [0, 0, 0]]) {
-            for (let y = 0; y <= top; y++) for (let z = 11; z <= 11 + long; z++) v.set(inner(x), y, z, fineBody(P.skin, inner(x), y, z, salt));
-          }
-          v.del(inner(7), 1, 12);
-        } else if (toe !== undefined) {
-          for (let x = 1; x <= 6; x++) { v.set(x, 0, 11, toe); v.set(x, 1, 11, toe); }
-          for (let x = 2; x <= 5; x++) v.set(x, 0, 12, toe);
-        }
-        layExtras(v, extrasOf(old, PLAIN_LEG), LEG_ROWS_OF, 4, 4);
+        layExtras(v, extrasOf(old, PLAIN_LEG), LEG_ROWS_OF, 2 * F, 2 * F);
+        fabric(v, salt, bake.emissive);
         if (dress.refine) dress.refine(k, "leg", v, side);
         return fineBake(v, { x: bake.origin.x, y: -legH, z: bake.origin.z }, bake.emissive);
       });
@@ -1367,10 +1559,52 @@
         }
         return out;
       };
+      // The legs stand closer, so the hips need be no wider than the waist and chest carry them.
+      parts.legR.position.x += LEGS_IN * u;
+      parts.legL.position.x -= LEGS_IN * u;
+      // The longer torso lifts the head and the arms, and what a hook hung on the torso or on the root over the hip
+      // keeps its place on it: a piece beside an arm (a cub carried on it) rises with the arm, anything else by how far
+      // its middle's height moved; one standing before the hip band comes back with the band's front.
+      const rise = TORSO_RISE * u, oldFront = 3 * u * parts.torso.scale.z;
+      const torsoY = (y) => {
+        if (y <= 0) return y;
+        for (let i = 1; i < TORSO_KNOTS.length; i++) {
+          const [a0, b0] = TORSO_KNOTS[i - 1], [a1, b1] = TORSO_KNOTS[i];
+          if (y <= a1 * u) return (b0 + (y / u - a0) * (b1 - b0) / (a1 - a0)) * u;
+        }
+        return y + rise;
+      };
+      const span = (node, x0, y0, z0, out) => {
+        const px = x0 + node.position.x, py = y0 + node.position.y, pz = z0 + node.position.z;
+        if (node.geometry && node.geometry.verts && node.geometry.verts.length) {
+          const b = BL.scene.boundsOf(node.geometry), s = node.scale;
+          out[0] = Math.min(out[0], px + b.min[0] * s.x); out[1] = Math.max(out[1], px + b.max[0] * s.x);
+          out[2] = Math.min(out[2], py + b.min[1] * s.y); out[3] = Math.max(out[3], py + b.max[1] * s.y);
+          out[4] = Math.min(out[4], pz + b.min[2] * s.z);
+        }
+        for (const child of node.children) span(child, px, py, pz, out);
+        return out;
+      };
+      const { zf } = hips(), newFront = ((zf + 1) * fineU - 3 * u) * parts.torso.scale.z;
+      const keepOn = (node, frame) => {
+        const box = span(node, 0, 0, 0, [Infinity, -Infinity, Infinity, -Infinity, Infinity]);
+        if (box[2] > box[3]) return;
+        const armX = Math.abs(parts.armL.position.x), c = (box[2] + box[3]) / 2;
+        const beside = frame === root && box[3] > 0 && (box[1] > -armX - 2.5 * u && box[0] < -armX + 2.5 * u || box[1] > armX - 2.5 * u && box[0] < armX + 2.5 * u);
+        node.position.y += beside ? rise : torsoY(c) - c;
+        if (box[4] >= oldFront - u && box[2] < 6 * u) node.position.z += newFront - oldFront;
+      };
+      for (const child of parts.torso.children) keepOn(child, parts.torso);
+      for (const child of root.children) {
+        if (child !== parts.legR && child !== parts.legL && child !== parts.torso && child !== parts.armR && child !== parts.armL && child !== parts.head && child !== parts.gun) keepOn(child, root);
+      }
+      parts.head.position.y += rise;
+      parts.armR.position.y += rise;
+      parts.armL.position.y += rise;
       const previousHead = headOpen;
       headOpen = head(headOpen, "head");
       headClosed = head(headClosed, "closed");
-      portraitHead = head(portraitHead, "portrait");
+      portraitHead = portrait(portraitHead);
       parts.head.geometry = parts.head.geometry === previousHead ? headOpen : head(parts.head.geometry, "head");
       parts.torso.geometry = torso(parts.torso.geometry);
       for (const key of ["armR", "armL"]) parts[key].geometry = arm(parts[key].geometry);
@@ -1387,6 +1621,10 @@
     let tint = null;
     if (dress.tint) {
       const alt = dress.tint(k, palette), live = new Set([headClosed, portraitHead]);
+      for (const [c, [dark, light]] of weaves) {
+        alt[dark] = alt[c].map((value) => clamp255(value * 0.86));
+        alt[light] = alt[c].map((value) => clamp255(value * 1.08));
+      }
       const visit = (node) => {
         if (node.geometry) live.add(node.geometry);
         for (const child of node.children) visit(child);
@@ -1424,7 +1662,7 @@
         if (twin) BL.compactGeometry.pack(twin, { immutable: true, renderOnly: true, precision: 64 });
       }
     }
-    return { root, parts, traits, headOffset: 1.1 * h + legH - 5 * u, headOpen, headClosed, portraitHead, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
+    return { root, parts, traits, headOffset: 1.1 * h + legH + TORSO_RISE * u - 5 * u, headOpen, headClosed, portraitHead, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
   // Callers get fresh nodes over shared geometry: one build per contributor, GPU records survive a scene swap.

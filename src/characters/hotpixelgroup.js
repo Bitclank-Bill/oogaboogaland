@@ -195,7 +195,8 @@
       refine(k, part, v) {
         if (part !== "arm") return;
         const bone = k.color("#e8e5d5"), band = [];
-        for (let y = 6; y <= 9; y++) for (let x = -3; x <= 8; x++) for (let z = -3; z <= 8; z++) {
+        const f = k.fine;
+        for (let y = 3 * f; y < 5 * f; y++) for (let x = -2 * f; x <= 5 * f; x++) for (let z = -2 * f; z <= 5 * f; z++) {
           if (v.has(x, y, z)) continue;
           if (v.has(x + 1, y, z) || v.has(x - 1, y, z) || v.has(x, y, z + 1) || v.has(x, y, z - 1)) band.push(x, y, z);
         }
