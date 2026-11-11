@@ -779,13 +779,16 @@
     let leaving = false;
     // Leaving: the same Ooga goes back out to the island's passage behind the sphere's doors.
     const exitNote = (signedOut) => ({ room: room.id, mode: signedOut ? "solo" : visit.mode, character: avatar ? avatar.traits.name : null, jetpack: visit.jetpack || null });
+    // The view and mode the room was in when the visitor pressed Exit, which the island gives back once the walk out
+    // is done.
+    let exitView = null;
     // A walked-out exit hands over mid-stride without the fade, with where its eye stood from the handover point
     // (`pose`), so the island starts from the same view; any other way out (signed out, Leave far from the doors)
     // fades as before. Under the `release` hub policy the island is built again on the way out, so that build happens
     // behind the fade too rather than freezing the room's last frame.
     const handOff = (signedOut = false, pose = null) => {
       if (leaving) return;
-      world.sphereExit = { ...exitNote(signedOut), pose };
+      world.sphereExit = { ...exitNote(signedOut), pose, view: pose ? exitView : null };
       world.pilot = avatar ? avatar.traits.name : null;
       BL.net.setBody(null);
       BL.net.setZone("none");
@@ -815,6 +818,7 @@
       if (!avatar || !nearExit() && Math.hypot(avatar.root.position.x - L.doorStep.x, avatar.root.position.z - L.doorStep.z) > 3) { handOff(); return; }
       // The doorway hands the island an eye pose, even when the room was explored in orbit or detached.
       if (pilot.player !== avatar && !pilot.possess(avatar)) return;
+      exitView = pilot.viewState();
       pilot.enterClose();
       guide.stage = "toDoor"; guide.t = 0;
       guided = true;
@@ -929,6 +933,8 @@
           if (guide.t > GUIDE_LIMIT) arrive(L.arrival);
           doors.want = 0;
           finishGuide();
+          // In, the view and mode the visitor walked up to the keypad in (first person and carry only for the walk).
+          if (visit.view) pilot.adopt(visit.view);
         }
       } else if (guide.stage === "toDoor") {
         if (steerTo(L.doorStep.x, L.doorStep.z, dt) || guide.t > GUIDE_LIMIT) { guide.stage = "open"; guide.t = 0; doors.want = 1; }
