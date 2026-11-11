@@ -599,7 +599,10 @@
   };
   // Where a loose block may come to rest: open ground the bots can walk to. A flood at ground level from the side's
   // start, through the map's fixed blocks (`resolve`, a body's own collision), worked out once a map, on the same
-  // half-metre grid as the terrain. `restSpot` writes the nearest such spot to (x, z) into REST.
+  // half-metre grid as the terrain. `restSpot` writes the nearest such spot to (x, z) into REST. A block coming down
+  // from a height `y` (a landing on a roof, a carrier dropping it up there) never passes through what it came down
+  // on: a spot under a floor or a roof lower than `y` (`roof`, the lowest floating block over each cell) is no place
+  // for it, so it slides off to the nearest open ground beside, not into the cave or under the deck below.
   const REST_CELL = 0.5, REST = { x: 0, z: 0 }, REST_BODY = { x: 0, y: 0, z: 0, crouch: false }, restCache = {};
   // Graves are widened by a body's radius in `clearLine`, so a block resting nearer than that could never be walked to;
   // half a cell more because `restSpot` keeps the exact point of any cell it accepts.
@@ -615,7 +618,7 @@
   const restFor = () => {
     let G = restCache[ARENA.id];
     if (G) return G;
-    const nx = Math.round(2 * ARENA.W / REST_CELL) + 1, nz = Math.round(2 * ARENA.L / REST_CELL) + 1, walk = new Uint8Array(nx * nz), keep = CRATES;
+    const nx = Math.round(2 * ARENA.W / REST_CELL) + 1, nz = Math.round(2 * ARENA.L / REST_CELL) + 1, walk = new Uint8Array(nx * nz), roof = new Float32Array(nx * nz), keep = CRATES;
     CRATES = [];
     const clear = (i, j) => {
       const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L;
@@ -626,27 +629,29 @@
     };
     const si = Math.round((0.25 + ARENA.W) / REST_CELL), sj = Math.round((ARENA.spawnZ + 0.25 + ARENA.L) / REST_CELL), stack = [si * nz + sj];
     walk[si * nz + sj] = 1;
+    roof[si * nz + sj] = ceilingAt(si * REST_CELL - ARENA.W, sj * REST_CELL - ARENA.L, 0, REST_CELL * 0.5);
     while (stack.length) {
       const k = stack.pop(), i = Math.floor(k / nz), j = k % nz;
       for (let d = 0; d < 4; d++) {
         const ni = i + (d === 0 ? 1 : d === 1 ? -1 : 0), nj = j + (d === 2 ? 1 : d === 3 ? -1 : 0);
         if (ni < 0 || nj < 0 || ni >= nx || nj >= nz || walk[ni * nz + nj] || !clear(ni, nj)) continue;
         walk[ni * nz + nj] = 1;
+        roof[ni * nz + nj] = ceilingAt(ni * REST_CELL - ARENA.W, nj * REST_CELL - ARENA.L, 0, REST_CELL * 0.5);
         stack.push(ni * nz + nj);
       }
     }
     CRATES = keep;
-    G = restCache[ARENA.id] = { walk, nx, nz };
+    G = restCache[ARENA.id] = { walk, roof, nx, nz };
     return G;
   };
-  const restSpot = (x, z) => {
-    const G = restFor(), { walk, nx, nz } = G;
+  const restSpot = (x, z, y = 0) => {
+    const G = restFor(), { walk, roof, nx, nz } = G;
     const i0 = Math.max(0, Math.min(nx - 1, Math.round((x + ARENA.W) / REST_CELL))), j0 = Math.max(0, Math.min(nz - 1, Math.round((z + ARENA.L) / REST_CELL)));
-    if (walk[i0 * nz + j0]) { REST.x = x; REST.z = z; return REST; }
+    if (walk[i0 * nz + j0] && roof[i0 * nz + j0] >= y) { REST.x = x; REST.z = z; return REST; }
     for (let r = 1, top = Math.max(nx, nz); r < top; r++) {
       let best = -1, bd = Infinity;
       for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) {
-        if ((i !== i0 - r && i !== i0 + r && j !== j0 - r && j !== j0 + r) || i < 0 || j < 0 || i >= nx || j >= nz || !walk[i * nz + j]) continue;
+        if ((i !== i0 - r && i !== i0 + r && j !== j0 - r && j !== j0 + r) || i < 0 || j < 0 || i >= nx || j >= nz || !walk[i * nz + j] || roof[i * nz + j] < y) continue;
         const d = (i - i0) ** 2 + (j - j0) ** 2;
         if (d < bd) { bd = d; best = i * nz + j; }
       }
@@ -931,13 +936,14 @@
   const dropFlag = (sim, a, why) => {
     const f = a.carrying && sim.flags[a.carrying];
     if (!f) return false;
-    // It comes to rest on open ground under or nearest the carrier (`restSpot`), never up on a roof the bots can't reach.
+    // It comes to rest on open ground nearest the carrier (`restSpot`), never up on a roof the bots can't reach nor
+    // down through the roof or floor the carrier stands on.
     f.state = "dropped";
     f.carrier = null;
     a.blocked = f.team;
     a.carrying = null;
     if (onIsland(a.x, a.z) && (a.y >= -CONFIG.RIM || inGrave(a.x, a.z))) {
-      const at = restSpot(a.x, a.z);
+      const at = restSpot(a.x, a.z, a.y);
       f.x = at.x; f.y = 0; f.z = at.z;
       emit(sim, why, f.team, a.id, f.x, 0, f.z);
       return true;
@@ -981,12 +987,16 @@
     const outside = !isleIn(nx, nz, 0.4);
     if (outside || (ny > 0 && solidAt(nx, ny, nz))) { f.vx = f.vz = 0; f.vy = Math.min(f.vy, 0); }
     else { f.x = nx; f.z = nz; }
+    // What it lands on is a top it came down onto, one at or under where it was a step ago: struck from underneath (a
+    // ceiling, a hut's floor), a slab's own top is over it and no landing, and it falls back.
+    const was = f.y;
     f.y = Math.max(ny, -1);
-    const ground = groundAt(f.x, f.z, f.y + 0.3, 0.2);
+    const ground = groundAt(f.x, f.z, Math.max(was, f.y), 0.2);
     // Falling below the surface (only an open grave lets it) always ends the flight, whichever way it went in.
     if (f.y <= ground || (f.y < 0 && f.vy <= 0)) {
-      // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach.
-      const at = restSpot(f.x, f.z);
+      // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach, off the
+      // edge of what it landed on and never through it.
+      const at = restSpot(f.x, f.z, ground);
       f.state = "dropped";
       f.x = at.x; f.y = 0; f.z = at.z;
       if (f.thrower >= 0) sim.actors[f.thrower].blocked = f.team;
@@ -1571,7 +1581,7 @@
       a.carrying = f.team; a.blocked = null;
       emit(sim, "pickup", f.team, a.id, f.x, 0, f.z);
     } else {
-      const at = restSpot(reached ? a.x + Math.sin(a.heading) * 1.2 : f.x, reached ? a.z + Math.cos(a.heading) * 1.2 : f.z);
+      const at = restSpot(reached ? a.x + Math.sin(a.heading) * 1.2 : f.x, reached ? a.z + Math.cos(a.heading) * 1.2 : f.z, reached ? a.y : f.y);
       f.state = "dropped"; f.x = at.x; f.y = 0; f.z = at.z; f.thrower = -1;
       emit(sim, "landed", f.team, a.id, f.x, f.y, f.z);
     }
