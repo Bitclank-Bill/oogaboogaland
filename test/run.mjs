@@ -7571,21 +7571,24 @@ const gameRulesChecks = async () => {
       picked && dropped && held && regrab && noScoreAway && scored && splatted && stays && rescued && returned && trapped && frozen && shielded && freed && netted && pushed && caught && bonked,
       JSON.stringify({ picked, dropped, held, regrab, noScoreAway, scored, splatted, stays, rescued, returned, trapped, frozen, shielded, freed, netted, pushed, caught, lifted, stacked, bonked }));
     {
-      // A loose block never passes through a roof or a floor. On every map, over every floating slab (a cave's roof, a
-      // hut's or the deck's floor, a tower's platform): a block coming down onto it, and one let go by a carrier
-      // standing on it, rest on open ground beside it with nothing lower than that slab's top overhead, where a body
-      // coming down on the same spot stands on the slab; a block thrown up into it from underneath never gets over it and falls back
-      // to where it was thrown from; and a real throw from the air lands off a cave's roof while one inside the tunnel stays in.
+      // A loose block lies on what it came down onto, never under it. On every map, over every floating slab (a cave's
+      // roof, a hut's or the deck's floor, a tower's platform): a block coming down onto it, and one let go by a
+      // carrier standing on it, lies on that slab's top where a body can stand (or, on a top out of a jetpack's reach,
+      // on open ground beside it and not underneath); a block thrown up into it from underneath never gets over it and
+      // falls back to where it was thrown from. On a cave's roof on every map: a body coming down stands on it, a real
+      // throw from the air lands on it, a carrier splatted up there leaves the block up there, a bot fetches it from
+      // there, and a real throw inside the tunnel stays in the cave. A block on a crate falls when the crate is lifted.
       const roofStats = {}, roofFails = [];
       for (const map of S.MAPS) {
         const r = S.create({ team: "blue", seed: 7, prep: 0, map });
         for (const a of r.actors) a.bot = false;
         Object.assign(r.weather, { left: 1e9 });
+        for (const g of r.gorillas) { g.state = 3; g.t = 1e9; }
         S.tick(r, S.CONFIG.STEP, still);
-        const M = S.ARENA, f = r.flags.red, body = r.actors[0], count = roofStats[map] = { slabs: 0, caves: 0, under: 0 };
+        const M = S.ARENA, f = r.flags.red, body = r.actors[0], count = roofStats[map] = { slabs: 0, caves: 0, under: 0, high: 0, fetch: 0 };
         // The lowest floating bottom over a point, read off the map's own boxes: what a block there would have fallen through.
         const lowest = (x, z) => M.BLOCKS.reduce((low, b) => b[5] > 0 && x > b[0] && x < b[1] && z > b[2] && z < b[3] ? Math.min(low, b[5]) : low, Infinity);
-        const park = () => { for (const a of r.actors) Object.assign(a, { x: 0.25 + a.id * 0.9, z: a.team === "blue" ? M.spawnZ : -M.spawnZ, y: 0, vx: 0, vy: 0, vz: 0, carrying: null, grounded: true, splat: 0, blocked: null }); };
+        const park = () => { for (const a of r.actors) Object.assign(a, { x: 0.25 + a.id * 0.9, z: a.team === "blue" ? M.spawnZ : -M.spawnZ, y: 0, vx: 0, vy: 0, vz: 0, carrying: null, grounded: true, splat: 0, guard: 0, blocked: null }); };
         const fly = (x, y, z, vy) => {
           park();
           Object.assign(f, { state: "flying", x, y, z, vx: 0, vy, vz: 0, carrier: null, thrower: -1, t: 0, hookedBy: -1 });
@@ -7594,22 +7597,31 @@ const gameRulesChecks = async () => {
           return peak;
         };
         const fail = (what, b) => { if (roofFails.length < 4) roofFails.push(`${map} ${what} [${b.join(",")}] -> ${f.state} ${f.x.toFixed(2)},${f.y},${f.z.toFixed(2)}`); };
-        const rests = (top) => f.state === "dropped" && f.y === 0 && lowest(f.x, f.z) >= top;
+        // Lying on the slab `b` where a body stands, or off a top too high to reach and not under it.
+        const stand = { x: 0, y: 0, z: 0, crouch: false };
+        const rests = (b) => {
+          if (f.state !== "dropped") return false;
+          if (b[4] > S.CONFIG.LOOSE_TOP) return f.y === 0 && lowest(f.x, f.z) >= b[4];
+          Object.assign(stand, { x: f.x, y: f.y, z: f.z });
+          S.resolve(stand, S.CONFIG.BODY_R * 0.95);
+          return f.y === b[4] && f.x >= b[0] && f.x <= b[1] && f.z >= b[2] && f.z <= b[3] && stand.x === f.x && stand.z === f.z;
+        };
         let caveRoof = null;
         for (const b of M.BLOCKS) {
           if (!(b[5] > 0) || b[1] - b[0] < 1 || b[3] - b[2] < 1) continue;
           const x = (b[0] + b[1]) / 2, z = (b[2] + b[3]) / 2, top = b[4];
           if (S.groundAt(x, z, 99, 0.2) !== top) continue;
           count.slabs++;
+          if (top > S.CONFIG.LOOSE_TOP) count.high++;
           if (M.rockKind.get(b) === "cave") { count.caves++; caveRoof = caveRoof || b; }
           // Coming down onto it.
           fly(x, top + 2, z, 0);
-          if (!rests(top)) fail("landing", b);
+          if (!rests(b)) fail("landing", b);
           // Let go by a carrier standing on it.
           park();
           Object.assign(body, { x, z, y: top, carrying: "red" });
           Object.assign(f, { state: "carried", carrier: 0 });
-          if (!S.drop(r, 0) || !rests(top)) fail("drop", b);
+          if (!S.drop(r, 0) || !rests(b)) fail("drop", b);
           // Thrown up into it from the ground underneath, where there is ground to stand on.
           const at = S.restSpot(x, z);
           if (at.x !== x || at.z !== z || b[5] > 2.5 || lowest(x, z) !== b[5]) continue;
@@ -7623,7 +7635,7 @@ const gameRulesChecks = async () => {
         Object.assign(body, { x, z, y: top + 2, grounded: false });
         for (let i = 0; i < 180; i++) S.tick(r, S.CONFIG.STEP, still);
         if (!(body.grounded && body.y === top)) fail("body y " + body.y, caveRoof);
-        // A real throw from the air beside the roof, across it: the block comes down on the roof and ends off it.
+        // A real throw from the air beside the roof, across it: the block comes down on the roof and lies there.
         park();
         Object.assign(body, { x, z: caveRoof[2] - 1.5, y: top + 1.5, grounded: false, carrying: "red" });
         Object.assign(f, { state: "carried", carrier: 0 });
@@ -7632,9 +7644,27 @@ const gameRulesChecks = async () => {
         // Slowed so it comes down mid-roof whatever the roof's length.
         f.vz = (1.5 + span / 2 - 0.6) / air;
         body.y = 0; body.x = 0.25; body.z = M.spawnZ; body.grounded = true;
-        let onRoof = false;
-        for (let t = 0; t < 4 && f.state === "flying"; t += S.CONFIG.STEP) { S.tick(r, S.CONFIG.STEP, still); if (f.state === "flying" && f.z > caveRoof[2] && f.z < caveRoof[3] && f.y < top + 0.5) onRoof = true; }
-        if (!(thrown && onRoof && rests(top))) fail("throw onRoof " + onRoof, caveRoof);
+        for (let t = 0; t < 4 && f.state === "flying"; t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, still);
+        if (!(thrown && rests(caveRoof))) fail("throw", caveRoof);
+        // A carrier splatted on the roof by a rival beside them leaves the block on the roof.
+        park();
+        const rival = r.actors.find((a) => a.team === "red");
+        Object.assign(body, { x, z, y: top, carrying: "red" });
+        Object.assign(f, { state: "carried", carrier: 0 });
+        Object.assign(rival, { x, z: z - 0.9, y: top, cooldown: 0 });
+        S.tick(r, S.CONFIG.STEP, still);
+        S.fire(r, rival.id, 0);
+        for (let t = 0; t < 1 && body.splat <= 0; t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, still);
+        if (!(body.splat > 0 && !body.carrying && rests(caveRoof))) fail("splat " + body.splat, caveRoof);
+        // A bot on the field beside the cave fetches it from the roof: up on the jetpack and onto the block.
+        fly(x, top + 2, z, 0);
+        const bot = r.actors[1];
+        Object.assign(bot, { x: x - Math.sign(x) * 9, z, bot: true, role: "attack" });
+        let took = 0;
+        for (; took < 30 && f.state !== "carried"; took += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, still);
+        count.fetch = Math.round(took);
+        if (!(f.state === "carried" && f.carrier === bot.id)) fail("bot fetch, bot at " + [bot.x, bot.y, bot.z].map((v) => v.toFixed(1)), caveRoof);
+        bot.bot = false;
         // A real throw down the flank tunnel from inside it: the ceiling stops it and it stays in the cave.
         const spot = M.hookSpots.find((h) => h[1] === 0 && lowest(h[0], h[2]) === 2.5 && h[0] > M.fieldW);
         park();
@@ -7645,8 +7675,19 @@ const gameRulesChecks = async () => {
         let peak = 0;
         for (let t = 0; t < 4 && f.state === "flying"; t += S.CONFIG.STEP) { S.tick(r, S.CONFIG.STEP, still); peak = Math.max(peak, f.y); }
         if (!(inside && f.state === "dropped" && f.y === 0 && peak < top && lowest(f.x, f.z) === 2.5 && f.z > spot[2] - 4)) fail("in cave peak " + peak, caveRoof);
+        // On the top crate of one of the map's own stacks the block lies on the crate; lift the crate and it falls to
+        // what was under it.
+        const crate = r.crates.find((c) => c.live && !r.crates.some((o) => o.live && o !== c && o.x === c.x && o.z === c.z && o.y > c.y));
+        fly(crate.x, crate.y + S.CONFIG.CRATE_H + 2, crate.z, 0);
+        const on = f.state === "dropped" && f.y === crate.y + S.CONFIG.CRATE_H && f.x === crate.x && f.z === crate.z;
+        Object.assign(body, { x: crate.x, z: crate.z - 1.3, y: crate.y });
+        const lifted = S.grab(r, 0, 0);
+        body.x = 0.25; body.z = M.spawnZ; body.y = 0;
+        for (let t = 0; t < 2 && (f.state === "flying" || f.y > crate.y); t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, still);
+        if (!(on && lifted && f.state === "dropped" && f.y === crate.y)) fail("crate on " + on + " lifted " + lifted, [crate.x, crate.y, crate.z]);
+        body.holding = false;
       }
-      record("block frenzy roofs: on every map a block landing on, or dropped on, a cave's roof, a floor or a platform rests on open ground beside it and never underneath, one thrown up from underneath falls back, and a body stands on the same roof",
+      record("block frenzy roofs: on every map a block landing on, or dropped on, a cave's roof, a floor or a platform lies on it and never underneath, one thrown up from underneath falls back, a body stands on the same roof, a splatted carrier leaves the block up there, a bot fetches it from a cave's roof, and a block on a lifted crate falls",
         !roofFails.length && S.MAPS.every((m) => roofStats[m].caves > 0 && roofStats[m].under > 0), JSON.stringify({ roofStats, roofFails }));
     }
     // An expert that loses its crate target must free its hands so it can rescue a block.
@@ -7858,20 +7899,29 @@ const gameRulesChecks = async () => {
         const hidden = I.hookSpots.length >= 3 && I.hookSpots.every(([x, y, z]) => y < 0.5 ? reached(x, z) : Math.abs(S.groundAt(x, z, y + 0.1) - y) < 0.05);
         rows[map] = { mirrored, clearOfBuildings, clearOfSpots, walked, ladders, caves, hidden };
         // Loose blocks, through the same flood: dropped from the top of every fixed block, and landing from the air on it.
-        const cr = r.actors[0], red = r.flags.red, rests = (f) => f.state === "dropped" && f.y === 0 && reached(f.x, f.z);
+        // Each lies on a top in a jetpack's reach where a body stands, or on ground walked to that is not under a floor
+        // or roof lower than the top it came from.
+        const cr = r.actors[0], red = r.flags.red, stood = { x: 0, y: 0, z: 0, crouch: false };
+        const rests = (f, top) => {
+          if (f.state !== "dropped") return false;
+          if (f.y === 0) return reached(f.x, f.z) && I.BLOCKS.every((c) => !(c[5] > 0 && c[5] < top && f.x > c[0] && f.x < c[1] && f.z > c[2] && f.z < c[3]));
+          Object.assign(stood, { x: f.x, y: f.y, z: f.z });
+          S.resolve(stood, S.CONFIG.BODY_R * 0.95);
+          return f.y <= S.CONFIG.LOOSE_TOP && S.groundAt(f.x, f.z, f.y + 0.01, 0) === f.y && stood.x === f.x && stood.z === f.z;
+        };
         let dropped = true, landed = true;
         for (const b of I.BLOCKS) {
           const x = (b[0] + b[1]) / 2, z = (b[2] + b[3]) / 2;
           Object.assign(cr, { x, z, y: b[4], vx: 0, vy: 0, vz: 0, splat: 0, trapped: 0, carrying: "red", blocked: null, grounded: true });
           Object.assign(red, { state: "carried", carrier: 0, homeT: 0 });
-          dropped &&= S.drop(r, 0) && rests(red);
+          dropped &&= S.drop(r, 0) && rests(red, b[4]);
           cr.carrying = null;
           Object.assign(red, { state: "flying", carrier: null, thrower: -1, t: 1, x, y: b[4] + 1.2, z, vx: 0, vy: -2, vz: 0 });
           Object.assign(cr, { x: 0, z: I.spawnZ, y: 0 });
           r.prep = 1;
           for (let t = 0; t < 2 && red.state === "flying"; t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, still);
           r.eventCount = 0;
-          landed &&= rests(red);
+          landed &&= rests(red, b[4]);
         }
         // A gorilla's grab on the mound's lower tier.
         const mound = rocks.find((b) => I.rockKind.get(b) === "mound" && b[4] === 1 && b[0] < 0 && b[2] > 0), g = r.gorillas[0], tierX = mound[1] - 0.3, tierZ = (mound[2] + mound[3]) / 2;
@@ -7880,9 +7930,9 @@ const gameRulesChecks = async () => {
         Object.assign(g, { x: tierX + 1, z: tierZ, wx: tierX + 1, wz: tierZ, hx: tierX + 1, hz: tierZ, state: 0, t: 0, holding: -1 });
         r.prep = 0;
         S.tick(r, S.CONFIG.STEP, still);
-        loose[map] = { dropped, landed, grabbed: cr.grabbed > 0 && rests(red) };
+        loose[map] = { dropped, landed, grabbed: cr.grabbed > 0 && rests(red, 1) };
       }
-      record("block frenzy loose blocks: on every map a block dropped from the top of any block, landing on it from the air, or dropped by a gorilla's grab on a mound comes to rest on ground the bots can walk to",
+      record("block frenzy loose blocks: on every map a block dropped from the top of any block, landing on it from the air, or dropped by a gorilla's grab on a mound lies on a top where a body can stand or on ground the bots can walk to, never under what it came down on",
         Object.values(loose).every((v) => Object.values(v).every(Boolean)), JSON.stringify(loose));
       record("block frenzy terrain: on every map the mounds, caves and outcrops are mirrored half round, clear of the buildings and every spot in use, and the forts, stands, catapults, ladders and hiding spots stay reachable on foot",
         Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));

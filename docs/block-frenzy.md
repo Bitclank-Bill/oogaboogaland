@@ -28,9 +28,15 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 - **Blocks.** Touch the rivals' block, on its stand or wherever it lies, to carry it. A carrier who is splatted,
   trapped or drops it (`K`) leaves it where they stood, and it stays there, as long as it takes: the carrier's
   teammates can grab it and run on, and its own side must pick it up and carry it all the way back to its stand.
-  A loose block always comes to rest on open ground the bots can reach (`restSpot`): dropped or landing on a cave's
-  roof, a hut's floor or the centre deck, it slides off to the nearest open ground beside it, never through it into
-  the cave or the space underneath. One thrown up into a roof or a floor from underneath falls back where it was.
+  A loose block lies on what it came down onto (`restOn`): the ground, or a top a body can stand on, such as a cave's
+  roof, a hut's floor, the centre deck, a wall, a tower's platform or a crate. It never passes through a roof or a
+  floor into the cave or the space underneath, and one thrown up into a roof or a floor from underneath falls back
+  where it was. Where it can't lie as it fell (against a parapet, in a hut's window) it lies at the nearest spot on
+  the same top where a body can stand. Only a top higher than a jump and a jetpack reach from the ground
+  (`LOOSE_TOP`, 7 m: the higher jungle canopies and the towers' rails) sends it to the nearest open ground beside
+  (`restSpot`), as does a carrier falling past the island's edge. A block on a crate falls when the crate goes.
+  Bots fetch a block from a top (`fetchUp`): to the open ground beside it on their own side (`launchSpot`), a jump
+  and the jetpack straight up from a full tank until their feet clear the top, then straight at the block.
   A carrier can't pick the same block up again until they have left its circle.
 - **Scoring.** Their block onto your stand while your own block is home. Reaching your stand while yours is away
   scores nothing yet (a NOT YET! banner says why), and a carrier who waits there scores the moment it returns.
