@@ -886,16 +886,20 @@
       else if (action === "jetpack-toggle") hud.toast("No jetpacks in the Sphere");
       else if (action.startsWith("mode-") && !guide.stage) pilot.modeAction(action);
     });
-    const mode = document.getElementById("sphere-mode"), subtitle = document.getElementById("sphere-subtitle");
+    const mode = document.getElementById("sphere-mode"), subtitle = document.getElementById("sphere-subtitle"), leaveButton = document.getElementById("sphere-leave");
     if (subtitle) subtitle.textContent = `TCS · ${room.name}`;
-    // The chip under the title: the room and its size, or that this is a solo copy; checked once a second.
+    // The way out, beside the Ooga's face, for the visit.
+    if (leaveButton) leaveButton.hidden = false;
+    // The chip beside the banner's buttons (the room's name is under the title): whether the room is locked and how many
+    // are here, or that this is a solo copy; hidden when it has nothing to say; checked once a second.
     let modeWait = 0;
     const showMode = () => {
       if (!mode) return;
       let others = 0;
       if (shared) for (const rec of BL.net.remotes.values()) if (rec.zone === room.zone && rec.body) others++;
-      const text = shared ? `${room.name}${isLocked() ? " · LOCKED" : ""}${others ? ` · ${others + 1} here` : ""}` : `${room.name} · Solo visit · not signed in`;
+      const text = shared ? `${isLocked() ? "LOCKED" : ""}${isLocked() && others ? " · " : ""}${others ? `${others + 1} here` : ""}` : "Solo visit";
       if (mode.textContent !== text) mode.textContent = text;
+      if (mode.hidden !== !text) mode.hidden = !text;
     };
     showMode();
     if (guide.stage) hud.hint(`Entering ${room.name}`, 5000);
@@ -1077,6 +1081,8 @@
       const count = input.targetCount;
       input.dispose();
       hud.dispose();
+      if (leaveButton) leaveButton.hidden = true;
+      if (mode) mode.hidden = false;
       shell.input = shell.debug = null;
       return { targets: count };
     };

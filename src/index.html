@@ -323,7 +323,6 @@
       </button>
       <nav class="presets" aria-label="Timechain Sphere room" data-scene="timechain" hidden>
         <span class="sphere-mode" id="sphere-mode" role="status"></span>
-        <button type="button" class="leave" data-action="leave">Leave<span> room</span></button>
       </nav>
       <nav class="presets" aria-label="₿IFRÖST" data-scene="bifrost" hidden>
         <button type="button" data-preset="core">Core</button>
@@ -629,6 +628,12 @@
 
     <div class="equipment-hud" id="equipment-hud">
       <div class="weapon-equipment-row">
+      <button type="button" class="leave-hud" id="sphere-leave" data-action="leave" aria-label="Leave room" title="Leave room" hidden>
+        <svg class="leave-icon" viewBox="0 0 14 14" shape-rendering="crispEdges" aria-hidden="true">
+          <path fill="#e8891a" d="M1 1h7v2H1zM1 3h2v8H1zM1 11h7v2H1z" />
+          <path fill="#f2efe4" d="M4 6h6v2H4zM9 3h1v8H9zM10 4h1v6H10zM11 5h1v4H11zM12 6h1v2H12z" />
+        </svg>
+      </button>
       <button type="button" class="mode-hud" id="destination-hud" data-action="mode-preset" data-selected="false"
         aria-labelledby="detached-destination-name destination-hud-label" title="Map · cycle destinations" hidden>
         <img class="freeroam-icon" id="freeroam-icon" alt="" aria-hidden="true">

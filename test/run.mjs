@@ -21015,7 +21015,7 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
       emptyViews, deniedWeapons, requests: B.stats().requests, paused: D.reader.status("recent"), hash: location.hash, remotes: D.remotes === null };
   })()`);
   record("timechain room: a signed-out arrival at /sphere-1 is a solo copy of the Conference Room, with its lock, that publishes nothing, with its mode named and every live picture painted",
-    painted && r.room === 1 && r.kind === "conference" && r.radius === 10.5 && r.lock && r.mode === "solo" && r.zone === "none" && r.body === null && r.chip.includes("Solo visit · not signed in") && r.subtitle === "TCS · Conference Room"
+    painted && r.room === 1 && r.kind === "conference" && r.radius === 10.5 && r.lock && r.mode === "solo" && r.zone === "none" && r.body === null && r.chip === "Solo visit" && r.subtitle === "TCS · Conference Room"
       && r.hash === "#/sphere-1" && r.requests === 0 && r.paused === "PAUSED" && r.remotes, JSON.stringify(r));
   record("timechain room: scroll reaches shoulder and orbit, nothing lets go of the Ooga, and every view stays empty-handed with no jetpack",
     r.before === "first-person" && r.shoulder === "shoulder" && r.orbit === "orbit" && r.kept && r.after === "first-person"
@@ -24338,7 +24338,7 @@ scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: 
 scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] }), factoryGreeter] });
 scene("hangar", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("hangar", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("bifrost", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("bifrost", { required: ["#joy-move", "#joy-look", ".leave"] })] });
-scene("timechain", { url: roomPage(1), opts: PHONE_SIZE, steps: [phone("timechain", { required: ["#joy-move", "#joy-look", ".leave", "#sphere-mode"] })] });
+scene("timechain", { url: roomPage(1), opts: PHONE_SIZE, steps: [phone("timechain", { required: ["#joy-move", "#joy-look", "#sphere-leave", "#sphere-mode"] })] });
 // The keypad's controls are its physical keys: from the first person a phone shows, each is on screen with nothing of
 // the page's over it (the hint over the view takes no pointer, so it is checked as text, not as a control).
 const sphereKeypadPhone = phone("hub", { play: `(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} T.gate.engage(); B.advance(0.6, 1 / 60); })()`, required: [] });
