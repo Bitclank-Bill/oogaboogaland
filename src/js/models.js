@@ -969,6 +969,10 @@
   // cuff, a boot or a glove stays where its owner drew it, and whatever a hook built out past the plain part rides along.
   // Nothing here draws from `k.rand`: the body's own small variation and the cloth's weave are hashed from the grid.
   const FINE = 4, LEG_UNITS = 7, FOOT_UNITS = 1.5, TORSO_RISE = 1, LEGS_IN = 0.5;
+  // The refined body's proportions as shares of an Ooga's height, for what is set beside an Ooga before one is built:
+  // the hip over the soles (a built Ooga's root stands there), and how much higher than authored the torso's top, the
+  // head and the shoulders stand.
+  const BODY = { hip: LEG_UNITS / 16, rise: TORSO_RISE / 16 };
   // Every Ooga is built through here, many cells at a time, so the hot paths keep Math's functions at hand.
   const { imul, floor, abs } = Math;
   const fineMix = (x, y, z) => ((imul(x + 101, 73856093) ^ imul(y + 37, 19349663) ^ imul(z + 13, 83492791)) >>> 0) % 1000;
@@ -1939,7 +1943,12 @@
         const armX = Math.abs(parts.armL.position.x), c = (box[2] + box[3]) / 2;
         const beside = frame === root && box[3] > 0 && (box[1] > -armX - 2.5 * u && box[0] < -armX + 2.5 * u || box[1] > armX - 2.5 * u && box[0] < armX + 2.5 * u);
         node.position.y += beside ? rise : torsoY(c) - c;
-        if (box[4] >= oldFront - u && box[2] < 6 * u) node.position.z += newFront - oldFront;
+        if (beside || box[4] < oldFront - u) return;
+        // One worn on the front keeps to it: over the hip band it comes back with the band's front, and on the chest (a
+        // medallion) it comes out with the deeper chest, by as much as that stands out at its new height (`DEEP`).
+        const y = torsoY(c) / u;
+        if (y >= BAND_UNITS) node.position.z += Math.round(profile(DEEP, y, at)[0] * F) / F * u * (frame === parts.torso ? 1 : parts.torso.scale.z);
+        else if (box[2] < 6 * u) node.position.z += newFront - oldFront;
       };
       for (const child of parts.torso.children) keepOn(child, parts.torso);
       for (const child of root.children) {
@@ -2806,5 +2815,5 @@
     for (const geo of set) if (geo.foliageLods?.owner === geo) { set.add(geo.foliageLods.medium); set.add(geo.foliageLods.far); }
     return set;
   };
-  BL.models = { GUN_BANANA_SCALE, characterGeometry, foliageLods, paintFoliageAtlas, addLods, beam, forwardLathe, turn, shaded, torus, along, chain, railParts, columnParts, deckGrid, deckPosts, deckParts, deckRailSpans, stairParts, stairTreads, lanternParts, LANTERN_GLASS, geometry, pushVert, face, cutCylinder, voxCoords, box, bevelBox, panel, lathe, glassVessel, attachGlassShell, tube, ring, polyline, merge, forward, moved, turnedX, turnedY, turnedZ, prism, cached, cachedSteps, variants, scopedMap, track, setScope, withScope, release, assertReleased, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, spareMagazine, caveman, CLUB_PALETTE, GOLD_CLUB_PALETTE, labRoom, buildableGeos, crate, die, dieRotationFor, SWAG, TIER_COLORS };
+  BL.models = { GUN_BANANA_SCALE, BODY, characterGeometry, foliageLods, paintFoliageAtlas, addLods, beam, forwardLathe, turn, shaded, torus, along, chain, railParts, columnParts, deckGrid, deckPosts, deckParts, deckRailSpans, stairParts, stairTreads, lanternParts, LANTERN_GLASS, geometry, pushVert, face, cutCylinder, voxCoords, box, bevelBox, panel, lathe, glassVessel, attachGlassShell, tube, ring, polyline, merge, forward, moved, turnedX, turnedY, turnedZ, prism, cached, cachedSteps, variants, scopedMap, track, setScope, withScope, release, assertReleased, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, spareMagazine, caveman, CLUB_PALETTE, GOLD_CLUB_PALETTE, labRoom, buildableGeos, crate, die, dieRotationFor, SWAG, TIER_COLORS };
 })();
