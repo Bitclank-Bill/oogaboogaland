@@ -1383,7 +1383,7 @@
       const TORSO_FROM = TORSO_KNOTS.map(([a, b]) => [b, a]);
       // A slim build's waist comes in over the belt; the others' lower torso keeps its width up into the chest.
       const SIDE = traits.slim ? [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]] : [[4.75, 0], [5.1, 0.5], [9, 0.5]];
-      const REACH = [[4.5, 3], [5, 2.5], [5.5, 1.75], [7.5, 1.5], [9, 1.5]];
+      const REACH = [[4.25, 3.5], [4.75, 2.9], [5.25, 2.35], [5.75, 1.95], [6.5, 1.65], [7.5, 1.5], [9, 1.5]];
       const DEEP = [[4.5, 0], [5, 0.5], [8.5, 0.5], [9, 0.25]];
       // The back, by how far it stands out past the authored torso, in units up it: rising a little from the waist and
       // level from there to the top, smooth across, so no ledge or bump shows on it.
@@ -1392,7 +1392,7 @@
       // The shoulder line keeps nearly square into the shoulders (its top's side edges barely rounded), so the upper back
       // meets each deltoid rather than falling away before it.
       const TORSO_EDGES = [...upEdges(half(3), half(4)), ...rimEdges(1, half(1), half(2), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
-      const TORSO_SOFT = [...upEdges(half(1), half(1)), ...rimEdges(1, half(1), half(1), half(1))];
+      const TORSO_SOFT = [...upEdges(half(1), half(1)), ...rimEdges(1, half(1), half(1), half(1)), ...rimEdges(-1, half(2), half(1), half(1))];
       const CX = 4.5 * F, CZ = 3 * F, at = [0, 0, 0];
       // The run of a row through the torso's middle, along x at depth z (or along z at column x), or null.
       const runX = (v, y, z) => {
