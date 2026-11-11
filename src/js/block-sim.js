@@ -92,7 +92,7 @@
     net: { speed: 30, lift: 0.3, gravity: 3, life: 1, r: 1.7, blast: 0, cool: 0.8, max: 3 },
     crate: { speed: 12, lift: 2.5, gravity: 14, life: 2.5, r: 0.9, blast: 0, cool: 0.6, max: 0 },
     // The sniper rifle, in every Ooga's hands from the start and fired from anywhere: fast, flat and long.
-    sniper: { speed: 60, lift: 0, gravity: 0.6, life: 0.85, r: 0.35, blast: 0, cool: 0.35, max: 0 },
+    sniper: { speed: 160, lift: 0, gravity: 0.6, life: 0.32, r: 0.35, blast: 0, cool: 0.35, max: 0 },
     // The Golden Dual AKs: one in each hand, full auto, both firing every round (two balls `GOLD_SIDE` either side of
     // the Ooga), never empty. There are `GOLD_GUNS` pairs a round: mining a block wins a pair while any are left, and
     // once it wins nothing, takes one from a rival who holds it (`stealOnMine`).

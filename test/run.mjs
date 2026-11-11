@@ -7412,7 +7412,7 @@ const gameRulesChecks = async () => {
     });
     record("block sniper: the rifle is in every Ooga's arsenal at the start of a round and after a reset on every map, fires from open ground with no tower near, keeps its cooldown, splats a rival 18 m off and counts the long shot",
       rifle.length === S.MAPS.length && rifle.every((r) => r.armed && r.off && r.fired && r.shot && r.soon && r.hit && r.far > 17 && r.far < 19 && r.hits === 1 && r.again)
-      && S.TOOLS.sniper.max === 0 && S.TOOLS.sniper.cool === 0.35 && S.TOOLS.sniper.speed === 60, JSON.stringify(rifle));
+      && S.TOOLS.sniper.max === 0 && S.TOOLS.sniper.cool === 0.35 && S.TOOLS.sniper.speed === 160, JSON.stringify(rifle));
     // The results' line-up and its most valuable Ooga are the rules' word, so every page agrees: the winning side in seat
     // order, and of it the most worth (three a block mined, two a block brought home, one a splat landed), a tie to
     // more mined, then more brought home, then the lower seat, whatever a page's own numbering.

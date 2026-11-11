@@ -119,7 +119,7 @@ ones you can use.
 - **Golden Dual AKs** (`6`). One in each hand, full auto, both firing every round, never empty. Two pairs a round:
   scoring a capture wins a pair while any are left, and a capture that wins nothing from the pool takes one thing from the rivals (see Mining a block takes one).
 - **Sniper rifle** (`5`). In every Ooga's arsenal from the start of a round, on every map, solo and live, and fired
-  from anywhere (`sniper` on an actor is 1 throughout): fast, flat and long (60 m/s, about 50 m, semi-automatic: a shot
+  from anywhere (`sniper` on an actor is 1 throughout): fast, flat and long (160 m/s, about 50 m, semi-automatic: a shot
   a click, 0.35 s apart, no ammunition and no reload). With it out, right click brings up a first-person scope with four
   zoom steps (34°, 20°, 11° and 6° of view; right click, wheel, two-finger swipe or `+` `−`); in first person it is
   always scoped. Putting it away restores any view the scope changed. A guest's shot is a `fire` action of kind
