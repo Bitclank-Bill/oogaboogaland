@@ -373,10 +373,11 @@
     const wire = () => {
       if (!leads.length || wired === "bare") return {};
       const plugType = POWER[kind], mains = leads.filter((l) => l.type === "mains"), lan = leads.filter((l) => l.type === "lan");
-      // On the plinth's back: a plate under each cord where it comes over the back edge (a PDU or a three-phase socket
-      // under all of a machine's mains cords), in the cords' order across it and kept apart, so every cord comes
-      // straight down to its socket and none crosses another; a cord's socket is `place`'s.
-      const place = new Map(), yc = -0.33, Wf = T.face("+z", 0, 0, 0.6), GAP = 0.03, EDGE = 0.56;
+      // On the plinth's back: a plate under each cord where it comes over the back edge (one duplex under two 120 V
+      // cords that come over side by side, a PDU or a three-phase socket under all of a machine's mains cords), in the
+      // cords' order across it and kept apart, so every cord comes straight down to its socket and none crosses
+      // another; a cord's socket is `place`'s.
+      const place = new Map(), yc = -0.33, Wf = T.face("+z", 0, 0, 0.6), GAP = 0.03, EDGE = 0.56, PAIR = 0.12;
       const sockets = { push: (u, i, q) => { if (u.leads[i]) place.set(u.leads[i], q); } };
       if (wired) {
         const endX = (l) => l.pts[l.pts.length - 1][0], order = leads.slice().sort((a, b) => endX(a) - endX(b)), units = [];
@@ -386,7 +387,13 @@
           // A PDU's cords take its sockets from the left end, so it stands where those sockets are under them.
           if (one.kind === "pdu") one.d -= -one.w / 2 + 0.09 + (one.leads.length - 1) * 0.045;
           if (lan.length) { const jack = unitOf("lan", 0.112, lan); units.push(...(jack.d < one.d ? [jack, one] : [one, jack])); } else units.push(one);
-        } else for (const l of order) units.push(unitOf(l.type === "lan" ? "lan" : plugType === "6-15" || plugType === "6-20" ? plugType : "duplex", 0.112, [l]));
+        } else for (let i = 0; i < order.length; i++) {
+          const l = order[i], n = order[i + 1];
+          if (l.type === "lan") units.push(unitOf("lan", 0.112, [l]));
+          else if (plugType === "6-15" || plugType === "6-20") units.push(unitOf(plugType, 0.112, [l]));
+          else if (n && n.type === "mains" && endX(n) - endX(l) <= PAIR) { units.push(unitOf("duplex", 0.112, [l, n])); i++; }
+          else units.push(unitOf("duplex", 0.112, [l]));
+        }
         // With no cable to it, the Ethernet jack on the side with more room.
         if (!lan.length) {
           const a = units[0], b = units[units.length - 1], jack = { kind: "lan", w: 0.112, leads: [] };
@@ -428,7 +435,8 @@
             Wf.say("400V 3~", 0.0022, "#1a1a1a", lx, yc + 0.07, -0.0725, 0.2);
             sockets.push(u, 0, { x: cx, y: yc - 0.01, z: 0.7 });
           } else {
-            // A wall plate: its sockets (two for 120 V, the cord in the top one; one for a 240 V circuit) or the Ethernet jack.
+            // A wall plate: its sockets (two for 120 V, a lone cord in the top one; one for a 240 V circuit) or the
+            // Ethernet jack.
             Wf.B(u.w, 0.184, 0.006, "#eeeae0", lx, yc, -0.003);
             const at = u.kind === "duplex" ? [yc + 0.046, yc - 0.046] : [yc + 0.01];
             for (const sy of u.kind === "duplex" ? [yc] : [yc + 0.075, yc - 0.065]) Wf.Y(0.004, 0.004, 0.003, "#c9ccd2", lx, sy, -0.0075, { rx: HALF, seg: 8 });
@@ -447,7 +455,7 @@
               if (u.kind === "6-20") { slot(-0.0102, 0.006, true); slot(0.0102, 0.006, false); slot(0.0102, 0.006, true); }
               Wf.Y(0.0035, 0.0035, LIFT, "#1a1a1a", lx, ys - 0.012, -0.011, { rx: HALF, seg: 8 });
               Wf.say(u.kind === "duplex" ? "120V" : u.kind === "6-15" ? "240V 15A" : "240V 20A", 0.0016, "#8a8478", lx, ys - 0.034, -0.0085, 0.1);
-              sockets.push(u, i, { x: cx, y: ys, z: 0.612 });
+              sockets.push(u, i, { x: cx, y: ys, z: 0.612, under: i === 1 });
             });
           }
         }
@@ -478,7 +486,10 @@
             if (type !== "wart") back = along([q.x, q.y, back], [0, 0, 1], [l.r * 2 + 0.004, l.r * 2 + 0.004, 0.016], type === "rj45" ? l.color : color)[2];
           }
           const zd = Math.max(hang, back + 0.03);
-          pts.push([end[0], end[1], 0.57], [end[0], 0.022, 0.636], [end[0], -0.07, zd], [q.x, over, zd], [q.x, q.y, zd], [q.x, q.y, back]);
+          pts.push([end[0], end[1], 0.57], [end[0], 0.022, 0.636], [end[0], -0.07, zd]);
+          // Into the lower socket of a duplex, the cord comes down beside the plug above and in under it.
+          if (q.under) { const x = q.x + PLUGS[type][0] / 2 + l.r + 0.006; pts.push([x, over, zd], [x, q.y, zd]); } else pts.push([q.x, over, zd]);
+          pts.push([q.x, q.y, zd], [q.x, q.y, back]);
         } else {
           // Unplugged: the plug lying at the cord's end, its prongs out behind it.
           if (type === "3ph") {
