@@ -7738,6 +7738,38 @@ const gameRulesChecks = async () => {
       }
       record("block frenzy island: on every map an Ooga walks off the open edge and, fallen all the way, is back in its own block zone; a block carried over drops at the edge and goes home; the rock under the rim holds a body out; the jetpack brings the visitor and a bot back after a throw",
         Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
+      // The jetpack's power is the island's, on the timer it always had: held, it reaches its top speed, climbs (the old
+      // gate pinned it near 1.5 m/s, about 2.1 m in 1.5 s), a full tank from a jump empties about 4.7 s after the press
+      // as it did, it settles at the ceiling without a bounce, leaves a faster throw alone, and a roof stops it.
+      {
+        const C = S.CONFIG, idle = { x: 0, z: 0, jump: 0, jet: 0 }, held = { ...idle, jet: 1 };
+        const air = (y, vy = 0, map = "fort", x = 0, z = 12) => { const r = fresh(map), o = r.actors[0]; o.x = x; o.z = z; o.y = y; o.vy = vy; o.grounded = false; return [r, o]; };
+        const clear = S.ARENAS.fort.BLOCKS.every((b) => 0 < b[0] - 1 || 0 > b[1] + 1 || 12 < b[2] - 1 || 12 > b[3] + 1);
+        let [r, o] = air(3), peak = 0;
+        for (let t = 0; t < 1.5; t += C.STEP) { S.tick(r, C.STEP, held); peak = Math.max(peak, o.vy); }
+        const out = { clear, peak, climb: o.y - 3 };
+        r = fresh(); o = r.actors[0]; o.x = 0; o.z = 12;
+        const press = { ...held, jump: 1 };
+        r.inputs = [press];
+        out.tank = 0;
+        for (; out.tank < 8 && o.fuel > 0; out.tank += C.STEP) S.tick(r, C.STEP, idle);
+        [r, o] = air(9); o.fuel = 99;
+        let top = 0, settled = Infinity;
+        for (let t = 0; t < 6; t += C.STEP) { S.tick(r, C.STEP, held); top = Math.max(top, o.y); if (t > 4) settled = Math.min(settled, o.y); }
+        Object.assign(out, { top, settled });
+        [r, o] = air(3, 9); o.jetting = true;
+        S.tick(r, C.STEP, held);
+        out.thrown = o.vy;
+        const roofs = [["fort", 2, 0, 2.2], ["town", 0, 32.25, 2.7], ["haunted", 0, 36, 2.7]];
+        out.roofs = roofs.map(([map, x, z, roof]) => {
+          const [q, a] = air(Math.max(0, roof - C.HEIGHT - 0.5), C.JET_RISE, map, x, z);
+          let head = 0;
+          for (let t = 0; t < 1.5; t += C.STEP) { S.tick(q, C.STEP, held); head = Math.max(head, a.y + C.HEIGHT); }
+          return head <= roof + 1e-6 && head > roof - 0.05;
+        });
+        record("block frenzy jetpack: held it reaches the island's top speed and climbs, a full tank lasts its old held time, it settles at the ceiling with no bounce, a faster throw keeps its speed, and a roof stops it",
+          out.clear && out.peak >= C.JET_RISE * 0.9 && out.climb > 6 && Math.abs(out.tank - 4.7) < 0.15 && out.top <= C.JET_CEILING + 1e-6 && out.settled > C.JET_CEILING - 0.05 && out.thrown > C.JET_RISE && out.roofs.every(Boolean), JSON.stringify(out));
+      }
     }
     {
       // Hub-style terrain on every map: the boxes come in turned pairs, stand clear of the buildings and every spot the
