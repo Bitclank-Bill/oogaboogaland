@@ -5641,8 +5641,18 @@ body.tess-touring #joy-look {
 .chalk-pointer { position: absolute; display: none; width: 1px; height: 1px; pointer-events: none; z-index: 2; }
 .chalk-pointer.visible { display: block; }
 .chalk-pointer .chalk-held { position: absolute; left: -5px; top: -5px; width: 38px; height: 10px; border-radius: 4px; background: #e5e8d0; transform: rotate(-38deg) scale(2); transform-origin: 5px 5px; box-shadow: 0 2px 4px #061f18b0; }
-/* chalkboard.js sizes it to the eraser's footprint; all its look stays inside that box, see-through to aim by. */
-.chalk-pointer.eraser .chalk-held { left: 0; top: 0; box-sizing: border-box; border: 1px solid #b8a183; border-radius: 0; background: linear-gradient(#b8a183 0 22%, #44413c8c 22%); box-shadow: none; transform: translate(-50%, -50%); }
+/* A block eraser from above: wooden back, darker edge, grey felt along the working edge with some dust on it. chalkboard.js sizes it to the eraser's footprint, and all its look stays inside that box. */
+.chalk-pointer.eraser .chalk-held {
+  left: 0; top: 0; box-sizing: border-box; border: 1px solid #3f2813; border-radius: 0;
+  background:
+    radial-gradient(circle at 24% 86%, #eef0e2 0 3%, #eef0e200 5%),
+    radial-gradient(circle at 58% 92%, #e4e7d8 0 2.5%, #e4e7d800 4.5%),
+    radial-gradient(circle at 78% 83%, #eef0e2 0 2%, #eef0e200 4%),
+    linear-gradient(to top, #8d8f88 0 24%, #4f3219 24% 28%, #4f321900 28%),
+    repeating-linear-gradient(92deg, #a9783f00 0 11%, #8f622f55 11% 14%),
+    linear-gradient(#d2a56c, #b98a51);
+  box-shadow: inset 0 0 0 1px #8a5c2c; transform: translate(-50%, -50%);
+}
 
 @media (max-width: 600px) {
   .chalk-modal { width: 98vw; padding: 7px; border-width: 4px; }

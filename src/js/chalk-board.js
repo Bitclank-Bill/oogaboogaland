@@ -3,7 +3,7 @@
 // the same way. A board is `{ marks, points }`: marks in drawing order, each a chalk or eraser line (`t` "c" or
 // "e", width `s` 2 or 4, points `p` as x, y pairs from 0 to 1) or a typed character (`t` "t", `ch`, `p` its
 // baseline's start), and `points` their point count. An eraser line with `f` 1 sweeps the eraser's footprint
-// (chalkboard.js) and restores the bare board; one stored without it keeps its old wide band, so what it erased stays
+// (chalkboard.js) and leaves a dusty smudge; one stored without it keeps its old wide band, so what it erased stays
 // erased. `f` is a field of its own, and `s` stays 4, so a page or room from before it still reads the board. An edit
 // travels as small integers (thousandths of the board) so a frame stays under the room's message limit:
 //   { k: "line", m, p }   a new line, chalk or eraser (`m` "c" or "e"), from its first points (2 to CHUNK of them)

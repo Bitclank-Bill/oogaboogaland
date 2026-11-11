@@ -15,7 +15,7 @@
   // The eraser's footprint, an upright rectangle in canvas pixels. Narrower than a typed digit's pitch (about 31) and as
   // tall as one, so a tap takes one character; a drawn digit of the message (50 wide, 60 from its neighbours) takes a
   // short scrub, with room either side.
-  const ERASER_W = 32, ERASER_H = 40;
+  const ERASER_W = 32, ERASER_H = 40, SMUDGE_TURNS = 8, SMUDGE_TILE = 256;
   const clamp = (v) => Math.max(0, Math.min(1, v));
   // Where the footprint's corner lands for a point on the board, on whole pixels so its edges are clean. The drawn
   // cursor and the painted sweep both come from these.
@@ -111,27 +111,57 @@
       const r = canvas.getBoundingClientRect();
       return [clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height)];
     };
-    // The bare board, drawn once: what an eraser puts back, a single pattern fill however many marks replay.
-    const bare = document.createElement("canvas");
-    bare.width = W; bare.height = H;
-    const bareCtx = bare.getContext("2d", { alpha: false, willReadFrequently: true });
-    bareCtx.fillStyle = "#1b4034"; bareCtx.fillRect(0, 0, W, H);
-    for (let i = 0; i < 2025; i++) {
-      const x = (i * 1973 % (W - 3)), y = (i * 839 % (H - 1));
-      bareCtx.fillStyle = i % 3 ? "#325549" : "#15392f";
-      bareCtx.fillRect(x, y, 1 + i % 2, 1);
-    }
-    const bareFill = ctx.createPattern(bare, "no-repeat");
+    // What a felt eraser leaves, one repeating tile pair for each of SMUDGE_TURNS drag directions, drawn the first time
+    // it is needed and from a fixed seed, so every page draws the same. `floor` is the dusty haze and streaks; `ceiling`
+    // is the floor with thin broken dashes on top.
+    const smudges = [];
+    const smudgeFor = (turn) => {
+      if (smudges[turn]) return smudges[turn];
+      let seed = turn * 2654435761 + 12345 | 0;
+      const random = () => { seed = Math.imul(seed ^ seed >>> 15, 0x2c1b3c6d) + 0x9e3779b9 | 0; return ((seed ^ seed >>> 13) >>> 0) / 4294967296; };
+      const tile = () => {
+        const c = document.createElement("canvas");
+        c.width = c.height = SMUDGE_TILE;
+        return [c, c.getContext("2d", { alpha: false, willReadFrequently: true })];
+      };
+      const along = turn * Math.PI / SMUDGE_TURNS, ux = Math.cos(along), uy = Math.sin(along);
+      // A line along the drag, drawn again a tile away each way so the tile repeats without a seam.
+      const streak = (t, length, width, style) => {
+        const x = random() * SMUDGE_TILE, y = random() * SMUDGE_TILE;
+        t.lineCap = "round"; t.lineWidth = width; t.strokeStyle = style;
+        for (let ox = -SMUDGE_TILE; ox <= SMUDGE_TILE; ox += SMUDGE_TILE) for (let oy = -SMUDGE_TILE; oy <= SMUDGE_TILE; oy += SMUDGE_TILE) {
+          t.beginPath(); t.moveTo(x + ox, y + oy); t.lineTo(x + ox + ux * length, y + oy + uy * length); t.stroke();
+        }
+      };
+      const [floorTile, floor] = tile(), [ceilingTile, ceiling] = tile();
+      floor.fillStyle = "#21473a"; floor.fillRect(0, 0, SMUDGE_TILE, SMUDGE_TILE);
+      for (let i = 0; i < 60; i++) streak(floor, 50 + random() * 150, 5 + random() * 12, `rgba(177,196,167,${0.02 + random() * 0.05})`);
+      for (let i = 0; i < 40; i++) streak(floor, 50 + random() * 150, 4 + random() * 10, `rgba(27,64,52,${0.25 + random() * 0.35})`);
+      for (let i = 0; i < 80; i++) streak(floor, 30 + random() * 120, 1 + random() * 1.5, `rgba(186,204,176,${0.04 + random() * 0.08})`);
+      for (let i = 0; i < 40; i++) streak(floor, 30 + random() * 110, 1 + random() * 2, `rgba(21,57,47,${0.12 + random() * 0.18})`);
+      ceiling.drawImage(floorTile, 0, 0);
+      for (let i = 0; i < 200; i++) streak(ceiling, 5 + random() * 18, 1, `rgba(226,236,212,${0.2 + random() * 0.2})`);
+      return smudges[turn] = { floor: ctx.createPattern(floorTile, "repeat"), ceiling: ctx.createPattern(ceilingTile, "repeat") };
+    };
     // One step of an eraser line (`f`): the footprint swept from point to point, the convex hull of its rectangle at
-    // both ends, so it covers the same ground whichever way it travels and a tap covers one footprint.
+    // both ends, so it covers the same ground whichever way it travels and a tap covers one footprint. Inside it each
+    // pixel is held between the smudge's floor and ceiling: everything goes to the haze, and chalk survives only in the
+    // ceiling's dashes. Clamping twice changes nothing, so a slow drag and a quick one leave the same, and a repaint
+    // matches. The streaks follow the last few points; a tap's direction comes from where it landed.
     const sweepSegment = (p, i) => {
       const forward = eraserLeft(p[i - 2]) <= eraserLeft(p[i]), a = forward ? i - 2 : i, b = forward ? i : i - 2;
       const ax = eraserLeft(p[a]), ay = eraserTop(p[a + 1]), bx = eraserLeft(p[b]), by = eraserTop(p[b + 1]);
+      const back = Math.max(0, i - 8), dx = (p[i] - p[back]) * W, dy = (p[i + 1] - p[back + 1]) * H;
+      const turn = Math.hypot(dx, dy) < 1 ? (Math.round(p[i] * 1000) * 31 + Math.round(p[i + 1] * 1000) * 17) % SMUDGE_TURNS
+        : Math.round(Math.atan2(dy, dx) / Math.PI * SMUDGE_TURNS) & SMUDGE_TURNS - 1;
+      const smudge = smudgeFor(turn);
       ctx.beginPath(); ctx.moveTo(ax, ay);
       if (ay <= by) { ctx.lineTo(ax + ERASER_W, ay); ctx.lineTo(bx + ERASER_W, by); ctx.lineTo(bx + ERASER_W, by + ERASER_H); ctx.lineTo(bx, by + ERASER_H); ctx.lineTo(ax, ay + ERASER_H); }
       else { ctx.lineTo(bx, by); ctx.lineTo(bx + ERASER_W, by); ctx.lineTo(bx + ERASER_W, by + ERASER_H); ctx.lineTo(ax + ERASER_W, ay + ERASER_H); ctx.lineTo(ax, ay + ERASER_H); }
       ctx.closePath();
-      ctx.fillStyle = bareFill; ctx.fill();
+      ctx.globalCompositeOperation = "darken"; ctx.fillStyle = smudge.ceiling; ctx.fill();
+      ctx.globalCompositeOperation = "lighten"; ctx.fillStyle = smudge.floor; ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
     };
     // An eraser line stored before the footprint (no `f`) keeps its old wide band, so what it erased stays erased.
     const paintSegment = (mark, i) => {
@@ -161,7 +191,14 @@
       ctx.fillStyle = "rgba(239,244,220,0.82)";
       ctx.fillText(mark.ch, x, y);
     };
-    const paintBase = () => ctx.drawImage(bare, 0, 0);
+    const paintBase = () => {
+      ctx.fillStyle = "#1b4034"; ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 2025; i++) {
+        const x = (i * 1973 % (W - 3)), y = (i * 839 % (H - 1));
+        ctx.fillStyle = i % 3 ? "#325549" : "#15392f";
+        ctx.fillRect(x, y, 1 + i % 2, 1);
+      }
+    };
     const paint = () => {
       paintBase();
       for (const mark of board().marks) {
@@ -510,7 +547,6 @@
           const canvas = node.geometry.imageSurface.canvas;
           canvas.width = canvas.height = 0;
         }
-        bare.width = bare.height = 0;
         node = null;
       },
       get openNow() { return dialog.open; },
