@@ -12111,15 +12111,25 @@ const blockWalk = { name: "block walk", why: "rule: W A S D move the visitor's O
   record("block walk: W and S run the Ooga forward and back on screen, A and D step it left and right, Q turns it and the camera left and E right", ok, JSON.stringify(rows));
 } };
 const blockQuiz = { name: "block quiz", why: "rule: a quiz trap holds the visitor until a right answer, a wrong one locks the answers, and a right one frees them", run: async (b) => {
+  // A captured mouse, stood in for (a headless page can't hold one): the trap must let it go, and a right answer take it back.
+  await b.evaluate(`(() => { const c = document.getElementById("scene"); window.__lock = { el: c, exits: 0, takes: 0, was: c.requestPointerLock };
+    Object.defineProperty(document, "pointerLockElement", { configurable: true, get: () => window.__lock.el });
+    document.exitPointerLock = () => { window.__lock.el = null; window.__lock.exits++; };
+    c.requestPointerLock = () => { window.__lock.el = c; window.__lock.takes++; }; })()`);
   const r = await b.evaluate(`(() => { const B = window.__ooga, D = B.block, s = D.sim, a = s.actors[0], t = s.traps[2];
     a.x = t.x; a.z = t.z + 0.5; B.advance(0.2, 1 / 60);
-    const open = D.quiz.open && !document.getElementById("block-quiz").hidden && a.trapped > 0;
+    const open = D.quiz.open && !document.getElementById("block-quiz").hidden && a.trapped > 0 && window.__lock.exits === 1 && document.pointerLockElement === null;
     D.answer((D.quiz.right + 1) % 4);
     const locked = D.quiz.locked && a.trapped > 0;
     return { open, locked }; })()`);
   await b.evaluate(`new Promise((resolve) => setTimeout(resolve, 2700))`);
-  const f = await b.evaluate(`(() => { const B = window.__ooga, D = B.block, a = D.sim.actors[0]; const fresh = !D.quiz.locked && D.quiz.asked === 2; D.answer(D.quiz.right); B.advance(0.1, 1 / 60); return { fresh, free: a.trapped === 0 && !D.quiz.open && document.getElementById("block-quiz").hidden }; })()`);
-  record("block quiz: a trap opens the question, a wrong answer locks the card and brings another, a right answer breaks the bubble", r.open && r.locked && f.fresh && f.free, JSON.stringify({ ...r, ...f }));
+  // The right answer, clicked with the real mouse at the free cursor.
+  const at = await b.evaluate(`(() => { const D = window.__ooga.block, q = document.querySelectorAll("#block-quiz [data-answer]")[D.quiz.right].getBoundingClientRect(); return { fresh: !D.quiz.locked && D.quiz.asked === 2, x: q.left + q.width / 2, y: q.top + q.height / 2 }; })()`);
+  await b.click(at.x, at.y);
+  const f = await b.evaluate(`(() => { const B = window.__ooga, D = B.block, a = D.sim.actors[0]; B.advance(0.1, 1 / 60); const back = window.__lock.takes === 1 && document.pointerLockElement === document.getElementById("scene");
+    const c = document.getElementById("scene"); delete document.pointerLockElement; delete document.exitPointerLock; c.requestPointerLock = window.__lock.was; if (!window.__lock.was) delete c.requestPointerLock; delete window.__lock;
+    return { back, free: a.trapped === 0 && !D.quiz.open && document.getElementById("block-quiz").hidden }; })()`);
+  record("block quiz: a trap frees a captured mouse and opens the question, a wrong answer locks the card and brings another, a right answer clicked at the free cursor breaks the bubble and captures the mouse again", r.open && r.locked && at.fresh && f.free && f.back, JSON.stringify({ ...r, ...at, ...f }));
 } };
 const blockRun = `(() => { const B = window.__ooga, D = B.block; D.start(); for (let i = 0; i < 80 && D.phase === "play"; i++) D.simulate(15, true); B.advance(0.3, 1 / 30); const save = B.game.state.block; return { ok: D.phase === "results" && !document.getElementById("block-results").hidden && save.games === 1 && save.wins === (D.result.won ? 1 : 0), phase: D.phase, result: D.result, save }; })()`;
 const dropStart = { name: "drop start", why: "regression: Space on the title card also launched the flight", run: async (b) => {

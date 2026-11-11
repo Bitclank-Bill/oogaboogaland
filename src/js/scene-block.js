@@ -124,7 +124,7 @@
   let aiming = false;
   const scope = { zoom: 0, tool: "paint", first: false, island: false };
   // The quiz: the deck of question indices still to ask this visit, the one on the card and where its right answer sits.
-  const quiz = { open: false, deck: [], index: -1, right: -1, locked: false, lockTimer: 0, asked: 0, solved: 0 };
+  const quiz = { open: false, deck: [], index: -1, right: -1, locked: false, lockTimer: 0, asked: 0, solved: 0, relock: false };
   const placed = [];
   // `face` is where the visitor's Ooga faces and aims; `yaw` is the camera's, which follows it round.
   // `lift` is how far the chase camera has risen over something behind the Ooga, `dist` how far back it sits, `close`
@@ -327,15 +327,20 @@
     quiz.locked = false;
     quiz.asked++;
   };
+  // The card frees the cursor so its answers can be clicked; the mouse is captured again as the bubble breaks if it was
+  // captured when it closed round the Ooga (`quiz.relock`).
   const openQuiz = () => {
     quiz.open = true;
+    quiz.relock = locked();
+    if (quiz.relock) document.exitPointerLock();
+    trigger = false;
     nextQuestion();
     el.quizNote.textContent = COARSE ? "Tap the right answer to break the bubble." : "Click or press 1 to 4. Right answer breaks the bubble.";
     el.quiz.hidden = false;
     hud.el.act.hidden = el.paintBtn.hidden = true;
   };
   const closeQuiz = () => {
-    quiz.open = quiz.locked = false;
+    quiz.open = quiz.locked = quiz.relock = false;
     window.clearTimeout(quiz.lockTimer);
     if (el.quiz) el.quiz.hidden = true;
     if (phase === "play" && hud) hud.el.act.hidden = el.paintBtn.hidden = !COARSE;
@@ -347,7 +352,7 @@
       el.answers[k].dataset.mark = "right";
       audio.cues.right();
       quiz.solved++;
-      closeQuiz();
+      leaveQuiz();
       acts("escape", 0);
       center("FREE!", 900);
       notice(item.fact, 4500);
@@ -365,6 +370,7 @@
       el.quizNote.textContent = "Try this one.";
     }, WRONG_LOCK_MS);
   };
+  const leaveQuiz = () => { const back = quiz.relock; closeQuiz(); if (back && !paused) lockMouse(); };
   const onAnswer = (e) => { const k = Number(e.currentTarget.dataset.answer); e.currentTarget.blur(); answer(k); };
 
   // P, or Escape once the mouse is free and the view is back on the chase camera, holds the round: nothing moves until
@@ -1142,7 +1148,7 @@
         if (!me) say(e.actor, LINES.free, 1.4);
       } else if (e.type === "timeout") {
         fx.burst(e.x, 1.2, e.z, 10, QUIZ_BITS, 2);
-        if (me) { closeQuiz(); notice("The bubble wore off. Run!", 2200); }
+        if (me) { leaveQuiz(); notice("The bubble wore off. Run!", 2200); }
       } else if (e.type === "win") say(e.actor, LINES.win, 2.4);
     }
     } finally { sim.eventCount = 0; }
@@ -1482,7 +1488,7 @@
     cam.pitch = cam.first ? clamp(cam.pitch + e.movementY * 2.2e-3 * k, -0.7, 1.15) : clamp(cam.pitch + e.movementY * 2.2e-3, CAM.pitch[0], CAM.pitch[1]);
   };
   const lockMouse = () => {
-    if (COARSE || locked() || !el.canvas.requestPointerLock || panelLive()) return;
+    if (COARSE || locked() || !el.canvas.requestPointerLock || panelLive() || quiz.open) return;
     const lock = el.canvas.requestPointerLock();
     if (lock && lock.catch) lock.catch(() => { });
   };
