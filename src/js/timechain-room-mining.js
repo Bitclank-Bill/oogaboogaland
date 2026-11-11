@@ -2,7 +2,7 @@
 // about a million times more hashes per joule than in 2009. The dome is seventeen years of network hashrate on a log
 // scale wrapped round the room, from 2009 by the door on the left to today on the right, shaded by era (CPU, GPU,
 // FPGA, ASIC) right over that era's exhibits, the hash units labelled over the door where the chart starts and ends;
-// the crown spells today's rate out, live from mempool.space when it can read it. Thirteen exhibits stand round a ring
+// the crown spells today's rate out, live from mempool.space when it can read it. Eighteen exhibits stand round a ring
 // in date order, each a model (1.6 times life size) on a plinth with its plaque, the floor's ring ticked for every year
 // right under that year's tick on the dome and each exhibit's date dotted on it; a tap, or Space in front of one,
 // opens it in the model viewer (`model-viewer.js`), up close in 3D beside all its stats and sources. Satoshi's
@@ -35,6 +35,10 @@
     s3: { href: "https://www.coindesk.com/markets/2014/06/30/bitmain-releases-energy-efficient-478ghs-antminer-s3", label: "CoinDesk · Bitmain releases the 478 GH/s AntMiner S3 (2014)" },
     s7: { href: "https://www.asicminervalue.com/miners/bitmain/antminer-s7", label: "ASIC Miner Value · Antminer S7" },
     s21: { href: "https://support.bitmain.com/hc/en-us/articles/23794895251609-S21-Specification", label: "Bitmain · S21 specification" },
+    m3: { href: "https://www.asicminervalue.com/miners/microbt/whatsminer-m3", label: "ASIC Miner Value · WhatsMiner M3" },
+    s15: { href: "https://www.asicminervalue.com/miners/bitmain/antminer-s15-28th", label: "ASIC Miner Value · Antminer S15" },
+    m50s: { href: "https://hashrateindex.com/blog/hardware-overview-microbts-whatsminer-m50s-series/", label: "Hashrate Index · WhatsMiner M50S series" },
+    xp19: { href: "https://www.asicminervalue.com/miners/bitmain/antminer-s19-xp", label: "ASIC Miner Value · Antminer S19 XP" },
     proto: { href: "https://proto.xyz/products/rig", label: "Proto · Rig specifications" },
     protoReview: { href: "https://hashrateindex.com/blog/proto-rig-review-blocks-open-source-revolution-challenges-bitcoin-minings-status-quo/", label: "Hashrate Index · Proto Rig review" },
     xp: { href: "https://support.bitmain.com/hc/en-us/articles/34523540504857-S21-XP-Hyd-Specification", label: "Bitmain · S21 XP Hyd specification" },
@@ -90,6 +94,18 @@
       about: "Bitmain's S9 sold in vast numbers from 2016: three hash boards in an aluminium shell, a fan at each end and a power supply beside it. It carried the network through the 2017 run and kept hashing wherever power was cheap long after.",
       specs: [["Hashrate", "13.5-14 TH/s"], ["Power", "~1,375 W"], ["Efficiency", "~98 J/TH"], ["Chips", "189 × BM1387 (16 nm)"], ["Size", "350 × 135 × 158 mm"], ["Weight", "4.2 kg"], ["Power supply", "separate (APW3)"], ["Released", "2016"]],
       note: "Model 1.6 times life size, its power supply beside it.", sources: [SRC.hw] },
+    { year: 2018.05, title: "M3", name: "WhatsMiner M3", model: "m3", jth: 167,
+      text: "A new rival to the S9: 12 TH/s from MicroBT.",
+      stats: [["Hashrate", "12 TH/s"], ["Power", "2,000 W"], ["J/TH", "~167"]],
+      about: "MicroBT's WhatsMiner M3, on sale from early 2018, took on Bitmain's S9 with about 12 TH/s for about 2,000 W in a compact aluminium box with a fan at each end. The WhatsMiner line that followed made MicroBT Bitmain's biggest competitor.",
+      specs: [["Hashrate", "~12 TH/s"], ["Power", "~2,000 W"], ["Efficiency", "~167 J/TH"], ["Size", "125 × 155 × 335 mm"], ["Weight", "8.1 kg"], ["Released", "early 2018"]],
+      note: "Figures as listed by miner databases; model 1.6 times life size.", sources: [SRC.m3] },
+    { year: 2018.95, title: "S15", name: "Antminer S15", model: "s15", jth: 57,
+      text: "Bitmain's first 7 nm miner: 28 TH/s at 57 joules a terahash.",
+      stats: [["Hashrate", "28 TH/s"], ["Power", "1,596 W"], ["J/TH", "57"]],
+      about: "In December 2018 Bitmain brought 7 nm chips to mining with the S15: two S9s' worth of hashing in a box not much bigger, its power supply on top. The S17 took those chips further a few months later.",
+      specs: [["Hashrate", "28 TH/s"], ["Power", "1,596 W"], ["Efficiency", "57 J/TH"], ["Chips", "288 × BM1391 (7 nm)"], ["Size", "176 × 221 × 279 mm"], ["Weight", "7 kg"], ["Power supply", "APW8, on top"], ["Released", "December 2018"]],
+      note: "Figures from Bitmain's specification as commonly listed; model 1.6 times life size.", sources: [SRC.s15] },
     { year: 2019.3, title: "S17", name: "Antminer S17 Pro", model: "s17", jth: 39.5,
       text: "7 nm chips pass 50 TH/s in one box.",
       stats: [["Hashrate", "53 TH/s"], ["Power", "2,094 W"], ["J/TH", "39.5"]],
@@ -102,6 +118,18 @@
       about: "The S19 Pro set the shape miners still have: a long box with two fans at each end and the power supply on top, past 100 TH/s for the first time.",
       specs: [["Hashrate", "110 TH/s"], ["Power", "3,250 W"], ["Efficiency", "29.5 J/TH"], ["Chips", "7 nm"], ["Size", "400 × 195.5 × 290 mm"], ["Weight", "13.2-14.4 kg"], ["Released", "2020"]],
       note: "Weight varies by batch; model 1.6 times life size.", sources: [SRC.hw] },
+    { year: 2022.25, title: "M50S", name: "WhatsMiner M50S", model: "m50s", jth: 26,
+      text: "126 TH/s from Bitmain's biggest rival.",
+      stats: [["Hashrate", "126 TH/s"], ["Power", "3,276 W"], ["J/TH", "~26"]],
+      about: "MicroBT's WhatsMiner line made it the other big name in mining hardware. Its M50S of 2022 put 126 TH/s in a long aluminium box with a big fan at each end and the power supply on top, at about 26 joules a terahash, and its + and ++ versions went faster still.",
+      specs: [["Hashrate", "126 TH/s"], ["Power", "3,276 W (±5%)"], ["Efficiency", "~26 J/TH"], ["Variants", "M50S+ 136 TH/s, M50S++ 160 TH/s"], ["Size", "~430 × 155 × 240 mm"], ["Weight", "~12.5 kg"], ["Released", "2022"]],
+      note: "Figures as listed by Hashrate Index and sellers; size varies by listing. Model 1.6 times life size.", sources: [SRC.m50s] },
+    { year: 2022.55, title: "S19 XP", name: "Antminer S19 XP", model: "s19xp", jth: 21.5,
+      text: "The S19's shape on 5 nm chips: 140 TH/s at 21.5 joules a terahash.",
+      stats: [["Hashrate", "140 TH/s"], ["Power", "3,010 W"], ["J/TH", "21.5"]],
+      about: "In 2022 Bitmain moved the S19 onto its 5 nm BM1366 chips: the same long box with two fans at each end and the power supply on top, now at 140 TH/s and the best efficiency of its generation, the step on the way to the S21.",
+      specs: [["Hashrate", "140 TH/s"], ["Power", "~3,010 W"], ["Efficiency", "21.5 J/TH"], ["Chips", "BM1366 (5 nm)"], ["Size", "400 × 195 × 290 mm"], ["Weight", "~14.2-14.5 kg"], ["Released", "2022"]],
+      note: "Figures as commonly listed; model 1.6 times life size.", sources: [SRC.xp19] },
     { year: 2023.85, title: "S21", name: "Antminer S21", model: "s21", jth: 17.5,
       text: "200 TH/s in one box, below 20 joules a terahash.",
       stats: [["Hashrate", "200 TH/s"], ["Power", "3,500 W"], ["J/TH", "17.5"]],
@@ -163,9 +191,13 @@
     s3: { len: 331, wid: 137, hei: 160, psu: "atx", fans: 1, color: "#a3aab3", frame: "#6f767e", text: "S3" },
     s7: { len: 301, wid: 123, hei: 155, psu: "side", fans: 1, color: "#bcc2c9", frame: "#7f868e", text: "S7" },
     s9: { len: 350, wid: 135, hei: 158, psu: "side", fans: 1, color: "#b8bec6", frame: "#8d939b", text: "S9" },
-    s17: { len: 298, wid: 178, hei: 296, psu: "top", fans: 2, color: "#aab0b8", frame: "#7f858d", text: "S17 PRO" },
-    s19: { len: 400, wid: 195.5, hei: 290, psu: "top", fans: 2, color: "#b4b9bf", frame: "#868c94", text: "S19 PRO" },
-    s21: { len: 400, wid: 195, hei: 290, psu: "top", fans: 2, color: "#7d838c", frame: "#555a62", text: "S21" },
+    m3: { len: 335, wid: 125, hei: 155, psu: "none", fans: 1, color: "#b9bfc6", frame: "#848a92", text: "M3", maker: "WHATSMINER", brand: "MICROBT" },
+    s15: { len: 279, wid: 176, hei: 221, psu: "top", fans: 1, fan: 120, color: "#adb3ba", frame: "#7b8189", text: "S15", psuName: "APW8" },
+    s17: { len: 298, wid: 178, hei: 296, psu: "top", fans: 2, color: "#aab0b8", frame: "#7f858d", text: "S17 PRO", psuName: "APW9" },
+    s19: { len: 400, wid: 195.5, hei: 290, psu: "top", fans: 2, color: "#b4b9bf", frame: "#868c94", text: "S19 PRO", psuName: "APW12" },
+    m50s: { len: 430, wid: 155, hei: 240, psu: "top", fans: 1, color: "#c3c8ce", frame: "#8a9097", text: "M50S", maker: "WHATSMINER", brand: "MICROBT", psuName: "MICROBT" },
+    s19xp: { len: 400, wid: 195.5, hei: 290, psu: "top", fans: 2, color: "#b9bec4", frame: "#80868e", text: "S19 XP", psuName: "APW12" },
+    s21: { len: 400, wid: 195, hei: 290, psu: "top", fans: 2, color: "#7d838c", frame: "#555a62", text: "S21", psuName: "APW12" },
     hydro: { len: 410, wid: 170, hei: 209, psu: "in", fans: 0, color: "#3a3e45", frame: "#25282d", text: "S21 XP HYD" }
   };
   // Rows of pixels ("#" filled) as one flat geometry facing -z, its middle at the origin, each `px` across and `py`
@@ -296,16 +328,16 @@
       F.Y(0.3 * r, 0.3 * r, 0.006, C.hub, 0, 0, -0.005, { rx: HALF, seg: 14 });
       F.Y(0.2 * r, 0.2 * r, 0.002, "#c8102e", 0, 0, -0.009, { rx: HALF, seg: 14 });
     };
-    // An Antminer's label, `w` across, its middle at frame F's origin: ANTMINER and the model over a barcode, the QR
-    // code beside them and BITMAIN under it.
-    const label = (F, w, text) => {
+    // A miner's label, `w` across, its middle at frame F's origin: its line (ANTMINER, say) and the model over a
+    // barcode, the QR code beside them and its maker under it.
+    const label = (F, w, text, line = "ANTMINER", maker = "BITMAIN") => {
       const h = w * 0.46, z = -LIFT - 0.0015, q = h * 0.7 / 21;
       F.B(w, h, LIFT, C.label, 0, 0, -LIFT / 2);
-      F.say("ANTMINER", w * 0.0105, C.ink, w * 0.16, h * 0.28, z, 0.1);
+      F.say(line, w * Math.min(0.0105, 0.4 / (line.length * 6)), C.ink, w * 0.16, h * 0.28, z, 0.1);
       F.say(text, w * Math.min(0.0105, 0.36 / (text.length * 6)), C.ink, w * 0.16, h * 0.02, z, 0.1);
       F.dots(BARCODE, w * 0.012, h * 0.2, C.ink, w * 0.16, -h * 0.28, z, 0.05);
       F.dots(QR, q, q, C.ink, -w * 0.3, h * 0.04, z, 0.05);
-      F.say("BITMAIN", w * 0.005, "#55504a", -w * 0.3, -h * 0.42, z, 0.1);
+      F.say(maker, w * 0.005, "#55504a", -w * 0.3, -h * 0.42, z, 0.1);
     };
     // The control board's panel at frame F's origin, `w` by `h`: the network port with its two lights, the status
     // lights, the IP Report button and the reset hole, in a column when the panel stands tall.
@@ -750,7 +782,7 @@
     // power supply on top (or beside it, the S9's, with its cables), the control board's ports at the front and its
     // label on the side; the hydro-cooled one has a closed front with its couplings, hoses, handles and power terminal.
     const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(52) : 0, body = hei - top, et = 0.04;
-    const f = A.fans ? Math.min(wid * 0.9, body / A.fans * 0.94) : 0, holes = [];
+    const f = A.fans ? Math.min(wid * 0.9, body / A.fans * 0.94, A.fan ? mm(A.fan) : Infinity) : 0, holes = [];
     for (let n = 0; n < A.fans; n++) holes.push(body * (n + 0.5) / A.fans);
     B(wid, body, len - 2 * et, A.color, 0, body / 2, 0);
     // Each end a plate a little proud of the shell all round: round the fans, set back in it under their guards, or
@@ -764,7 +796,7 @@
       for (const yy of [body * 0.1, body * 0.9]) for (let i = 0; i < 4; i++) screw(F, -len * 0.33 + i * len * 0.22, yy);
     }
     const lw = Math.min(len * 0.5, 0.3, (0.4 * body - 0.01) / 0.23);
-    label(T.face("-x", -wid / 2, body * 0.5, len * 0.04), lw, A.text);
+    label(T.face("-x", -wid / 2, body * 0.5, len * 0.04), lw, A.text, A.maker, A.brand);
     if (A.fans) {
       const room = (wid - f) / 2;
       if (room >= 0.045) ports(T.face("-z", -(wid + f) / 4, body * 0.78, -len / 2), room - 0.016, 0.09);
@@ -796,7 +828,7 @@
       for (let i = 0; i < 9; i++) Pt.B(pw * 0.6, 0.006, LIFT, "#16181b", 0, -pl * 0.4 + i * 0.016, -LIFT / 2);
       const Ps = T.face("-x", -pw / 2, body + top / 2, pl * 0.2);
       Ps.B(0.08, top * 0.6, LIFT, C.label, 0, 0, -LIFT / 2);
-      Ps.say(kind === "s17" ? "APW9" : "APW12", 0.0024, C.ink, 0, 0, -0.0035, 0.1);
+      Ps.say(A.psuName, Math.min(0.0024, 0.072 / (A.psuName.length * 6)), C.ink, 0, 0, -0.0035, 0.1);
       const In = T.face("-z", pw * 0.25, body + top / 2, -pl / 2);
       In.B(0.04, top * 0.6, 0.006, "#0b0b0d", 0, 0, -0.003);
       for (let i = 0; i < 3; i++) In.B(0.004, 0.008, LIFT, "#c9ccd2", -0.01 + i * 0.01, 0, -0.007);
