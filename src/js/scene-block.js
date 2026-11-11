@@ -27,7 +27,7 @@
   const SIM = BL.blockSim, BM = BL.blockModels, C = SIM.CONFIG;
   // An AK's round, as the island rifle's (crew.js `GUN_FLASH_TIME`, `GUN_KICK`): how long the flash shows, how long the
   // kick lasts, and where on the gun the muzzle is. `SHOT_IDLE` is the seconds-since-a-round of a gun not lately fired.
-  const FLASH_S = 0.035, KICK_S = 0.045, SHOT_IDLE = 1, MUZZLE = { x: 0, y: 0.063, z: 0.93 };
+  const FLASH_S = 0.035, KICK_S = 0.045, SHOT_IDLE = 1, MUZZLE = { x: 0, y: 0.063, z: 1.02 };
   const gunKick = (since) => { const k = Math.max(0, 1 - since / KICK_S); return k * k; };
   const { clamp, damp } = math;
   const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible, updateWorld, boundsOf } = BL.scene;
@@ -61,8 +61,8 @@
   const SMOKE_BITS = ["#3d3d44", "#6a6a72"].map((c) => models.particleGeometry(c, 0.12, 0));
   const STAR_BITS = ["#ffe066", "#fff3d6"].map((c) => models.particleGeometry(c, 0.09, 1));
   const TOOL_KEYS = { 1: "paint", 2: "grenade", 3: "rocket", 4: "net", 5: "sniper", 6: "gold", 7: "ak", 8: "hook" };
-  // Each tool's gun (`BM.gun` takes the gun's index times two plus the team's); Lift shows none.
-  const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1, hook: -1 };
+  // Each tool's gun (`BM.gun` takes the gun's index times two plus the team's; the hook's is its launcher); Lift shows none.
+  const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1, hook: 7 };
   const WEATHER_WORDS = { clear: "Clear", storm: "Storm" };
   const RAIN = 140;
   const MAP_HOUR = { fort: 17.7, town: 12.5, jungle: 11, haunted: 0.8 }, MAP_CLOUDS = { fort: 0.3, town: 0.15, jungle: 0.85, haunted: 0.25 };
@@ -236,7 +236,7 @@
         place(node);
         pet = { node, x: 0, y: 0, z: 0, heading: 0, step: 0, warm: false };
       }
-      // The grappling hook's rope and head (Cloud Hopper's models), hung in world space while it is out, and a coiled
+      // The grappling hook's rope and head, hung in world space while it is out, and a coiled
       // hook on the hip while it is held.
       const rope = place(createNode({ geometry: BM.rope(), visible: false, sightHidden: true }));
       const hookHead = place(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true }));
@@ -1624,7 +1624,7 @@
       if (s.holding) a.held.geometry = BM.crate(TEAM_INDEX[s.team]);
       a.trolley.visible = s.riding;
       // The hook on the hip while held; the rope and head while it flies, bites, or comes back.
-      a.hookHip.visible = s.hook > 0 && !s.hk && !(i === 0 && cam.first);
+      a.hookHip.visible = s.hook > 0 && !s.hk && !(i === 0 && (cam.first || tool === "hook"));
       a.rope.visible = a.hookHead.visible = s.hook > 0 && s.hk > 0;
       if (s.hk > 0) {
         const hx = s.x + Math.sin(s.heading) * 0.3, hy = s.y + 1.25, hz = s.z + Math.cos(s.heading) * 0.3, t = s.hookTip;
@@ -1646,8 +1646,9 @@
         if (s.monkeys > 0) a.monkeys[m].position.y = 0.82 + Math.abs(Math.sin(elapsed * 6 + m * 1.7)) * 0.08;
       }
       if (a.chute.visible) a.chute.geometry = BM.chute(TEAM_INDEX[s.team]);
-      // The gun in hand: the visitor's chosen tool, a bot's last throw; none while carrying, lifting or riding.
-      const g = GUN_OF[i === 0 ? tool : s.lastKind || "paint"];
+      // The gun in hand: the visitor's chosen tool, a bot's last throw, the hook launcher while its hook is out; none
+      // while carrying, lifting or riding.
+      const g = s.hook > 0 && (s.hk || (i === 0 && tool === "hook")) ? GUN_OF.hook : GUN_OF[i === 0 && tool !== "hook" ? tool : s.lastKind || "paint"];
       const armed = phase === "play" && g >= 0 && !s.carrying && !s.holding && !s.riding && !s.climbing && !s.flight && s.splat <= 0 && s.trapped <= 0 && s.burnt <= 0 && s.slip <= 0;
       if (a.gun) {
         a.gun.visible = armed;
@@ -1924,7 +1925,7 @@
       // The sniper's scope narrows the view; the gun in hand sits low and right of the eye.
       const scopedNow = tool === "sniper" && me.sniper > 0;
       camera.fov = damp(camera.fov, (scopedNow ? ZOOMS[scope.zoom] : aiming ? AIM_FOV : 58) * Math.PI / 180, 10, dt);
-      const g = GUN_OF[tool], showGun = g >= 0 && !scopedNow && !me.carrying && !me.holding && !me.riding && !me.climbing && me.splat <= 0 && me.trapped <= 0;
+      const g = tool === "hook" && me.hook <= 0 ? -1 : GUN_OF[tool], showGun = g >= 0 && !scopedNow && !me.carrying && !me.holding && !me.riding && !me.climbing && me.splat <= 0 && me.trapped <= 0;
       fpGun.visible = showGun;
       if (showGun) {
         fpGun.geometry = BM.gun(g * 2 + TEAM_INDEX[me.team]);

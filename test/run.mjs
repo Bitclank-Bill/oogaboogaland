@@ -8469,6 +8469,23 @@ const gameRulesChecks = async () => {
       GA.r === A.HAUNT.arena.r && GA.wall === A.HAUNT.arena.wall && GA.spots[1] === A.HAUNT.arena.wall + 1.2 && built.length === GA.elixirs.length
       && built.every((t, k) => t.elixir.x === GA.elixirs[k].x && t.elixir.y === GA.elixirs[k].y && t.elixir.z === GA.elixirs[k].z),
       JSON.stringify({ r: GA.r, wall: GA.wall, built: built.map((t) => t.elixir), elixirs: GA.elixirs }));
+    // Block Frenzy's models on the builders they load with: everything its scene and the hall's racks place is built here,
+    // and each tool's gun is one cached mesh a team, kept modest.
+    let modelsLoad = "";
+    try { runInNewContext(await readFile(new URL("../src/js/block-models.js", import.meta.url), "utf8"), context); } catch (e) { modelsLoad = String(e); }
+    {
+      const BM = BL.blockModels || {}, sources = ["scene-block.js", "arcade-scene-models.js"].map(f => readFileSync(new URL(`../src/js/${f}`, import.meta.url), "utf8")).join("\n");
+      const placed = [...new Set([...sources.matchAll(/\bBM\.(\w+)/g)].map(m => m[1]))], absent = placed.filter(n => BM[n] === undefined);
+      const guns = (BM.GUNS || []).map((kind, i) => { const blue = BM.gun(i * 2), red = BM.gun(i * 2 + 1); return { kind, faces: blue.faces.length, shared: BM.gun(i * 2) === blue, teams: blue !== red && red.faces.length === blue.faces.length }; });
+      const held = ["hookHead", "rope", "monkey"].map(n => BM[n]().faces.length), thrown = [BM.rocket(0), BM.grenade(1), BM.cache(0), BM.cache(1), BM.crate(0), BM.rack(1), BM.power(4)].map(g => g.faces.length);
+      // The file loads, every name it exports is defined, and the scene asks the models and the sim for nothing they lack.
+      const undefinedNames = Object.keys(BM).filter(n => BM[n] === undefined), simAsked = [...new Set([...sources.matchAll(/\bSIM\.(\w+)/g)].map(m => m[1]))].filter(n => !(n in BL.blockSim));
+      record("block models: the file loads with every exported name defined, and the scene reads nothing the models or the sim lack",
+        modelsLoad === "" && Object.keys(BM).length > 40 && undefinedNames.length === 0 && absent.length === 0 && simAsked.length === 0, JSON.stringify({ modelsLoad, undefinedNames, absent, simAsked }));
+      record("block models: each tool's gun, the hook launcher among them, is one cached mesh a team of at most 400 faces",
+        placed.length > 40 && guns.length === 8 && guns[7].kind === "hook" && guns.every(g => g.shared && g.teams && g.faces > 100 && g.faces <= 400)
+        && held.every(n => n > 0 && n <= 400) && thrown.every(n => n > 0 && n <= 400), JSON.stringify({ absent, guns, held, thrown }));
+    }
     const racked = H.racks.flatMap(([, , rows]) => rows.map(([id]) => id));
     record("arcade block hall: three racks hold the game's eight weapons, each from its own held model",
       racked.length === 8 && racked.filter(Number.isInteger).every((i, k) => i === k) && racked.includes("hook") && H.pictures.length === 4, JSON.stringify(racked));
