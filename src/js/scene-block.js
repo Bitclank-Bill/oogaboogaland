@@ -1,5 +1,5 @@
 // Block Frenzy: capture the flag on Fort Chaos, Bitcoin themed. Each side guards its Bitcoin block, a glowing cube in
-// its team's colour on a stand in its fort; steal the other side's, carry it home and touch your own stand while your own block is
+// its team's colour on a stand in its fort; steal the other side's, carry it home and touch your own stand, or throw it into your zone, while your own block is
 // home. Paint splats a rival for a moment (a carrier drops what they carry) and nobody dies. Two a side: the visitor
 // and a teammate against two rivals, the three bots run by `block-sim.js`. First to three captures.
 //
@@ -949,7 +949,7 @@
         if (me) { center("BACK HOME", 1000); notice(COARSE ? "You fell off the island · hold Jump in the air to jetpack back next time" : "You fell off the island · hold Space in the air to jetpack back next time", 2600); }
       } else if (e.type === "go") {
         center("GO!", 900);
-        notice(`First to ${sim.target} · steal the ${sim.rival} block · bring it home · ${COARSE ? "Pass" : "Tab"} throws it to a friend`, 4500);
+        notice(`First to ${sim.target} · steal the ${sim.rival} block · bring it home · ${COARSE ? "Pass" : "Tab"} throws it to a friend or into your zone`, 4500);
       } else if (e.type === "build") {
         fx.burst(e.x, 0.6, e.z, 8, WOOD_BITS, 1.6);
         if (me) updateTools();
@@ -2292,7 +2292,7 @@
   const chooseTarget = (n) => {
     selection.target = n;
     for (const b of el.targets) b.setAttribute("aria-pressed", String(Number(b.dataset.target) === n));
-    el.boardHelp.textContent = `Pick a side. Steal the rivals' Bitcoin block (their colour), carry it to your own stand while your block is home. First to ${n} capture${n === 1 ? "" : "s"} wins.`;
+    el.boardHelp.textContent = `Pick a side. Steal the rivals' Bitcoin block (their colour), carry it to your own stand or throw it into your zone while your block is home. First to ${n} capture${n === 1 ? "" : "s"} wins.`;
     savePicks();
   };
   // A new team size casts the round again: a fresh sim and a fresh set of Oogas.
