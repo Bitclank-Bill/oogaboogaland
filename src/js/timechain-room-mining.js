@@ -2,8 +2,9 @@
 // about a million times more hashes per joule than in 2009. The dome is seventeen years of network hashrate on a log
 // scale wrapped round the room, from 2009 by the door on the left to today on the right, shaded by era (CPU, GPU,
 // FPGA, ASIC) right over that era's exhibits, the hash units labelled over the door where the chart starts and ends;
-// the crown spells today's rate out, live from mempool.space when it can read it. Eleven exhibits stand round a ring
-// in date order, each a model (1.6 times life size) on a plinth with its plaque; a tap, or Space in front of one,
+// the crown spells today's rate out, live from mempool.space when it can read it. Thirteen exhibits stand round a ring
+// in date order, each a model (1.6 times life size) on a plinth with its plaque, the floor's ring ticked for every year
+// right under that year's tick on the dome and each exhibit's date dotted on it; a tap, or Space in front of one,
 // opens it in the model viewer (`model-viewer.js`), up close in 3D beside all its stats and sources. Satoshi's
 // machine is the one Sergio Demian Lerner's Patoshi research points to: a single high-end 2009 desktop, its CPU
 // sweeping five nonce ranges at once. A big S21 turns slowly on a plinth in the middle.
@@ -14,7 +15,7 @@
   const { box, merge } = BL.models;
   const { own } = RM.helpers;
   const C = {
-    amber: "#f7931a", amberText: "#ffb04d", white: "#f4efe6", grey: "#a89c8b", ink: "#14110e", stone: "#d8d0c2", post: "#3a3530",
+    amber: "#f7931a", amberText: "#ffb04d", glow: "#ffc93c", glowText: "#ffd66b", white: "#f4efe6", grey: "#a89c8b", ink: "#14110e",
     alu: "#b8bec6", dark: "#1c1e22", beige: "#cfc6b0", pcb: "#1f6b3a", chip: "#111111", fanPlate: "#2a2d32", fanHole: "#0d0e10",
     blade: "#41454c", hub: "#7a8089", led: "#3ce07a", cable: "#1d6fd6", label: "#e8e8ea",
     boss: "#17191c", sticker: "#e2ddd0", guard: "#5f646b", screw: "#5d636b"
@@ -31,6 +32,8 @@
     gpu: { href: "https://en.bitcoin.it/wiki/Non-specialized_hardware_comparison", label: "Bitcoin Wiki · non-specialized hardware" },
     hw: { href: "https://en.bitcoin.it/wiki/Mining_hardware_comparison", label: "Bitcoin Wiki · mining hardware" },
     avalon: { href: "https://en.bitcoin.it/wiki/Avalon1", label: "Bitcoin Wiki · Avalon1" },
+    s3: { href: "https://www.coindesk.com/markets/2014/06/30/bitmain-releases-energy-efficient-478ghs-antminer-s3", label: "CoinDesk · Bitmain releases the 478 GH/s AntMiner S3 (2014)" },
+    s7: { href: "https://www.asicminervalue.com/miners/bitmain/antminer-s7", label: "ASIC Miner Value · Antminer S7" },
     s21: { href: "https://support.bitmain.com/hc/en-us/articles/23794895251609-S21-Specification", label: "Bitmain · S21 specification" },
     xp: { href: "https://support.bitmain.com/hc/en-us/articles/34523540504857-S21-XP-Hyd-Specification", label: "Bitmain · S21 XP Hyd specification" },
     hashrate: { href: "https://mempool.space/graphs/mining/hashrate-difficulty", label: "mempool.space · network hashrate" }
@@ -66,6 +69,18 @@
       about: "An ASIC does one thing. Avalon's A3256, made at 110 nm, was the first Bitcoin ASIC on sale; its first batch of miners shipped in January 2013, and ASICMiner's Block Erupter put an ASIC on a USB stick the same year. From here on, only chips made to mine could keep up.",
       specs: [["Avalon Batch 1", "66.3 GH/s on 620 W, $1,299"], ["Its chip", "A3256, 110 nm (TSMC)"], ["First shipped", "January 2013"], ["Block Erupter USB", "~336 MH/s on ~2.6 W"], ["Efficiency", "Avalon ~9.4 J/GH, the stick ~7.6 J/GH"]],
       note: "Figures from the Bitcoin Wiki.", sources: [SRC.hw, SRC.avalon] },
+    { year: 2014.5, title: "S3", name: "Antminer S3", model: "s3", jth: 770,
+      text: "Half a terahash on the power of a few light bulbs.",
+      stats: [["Hashrate", "478 GH/s"], ["Power", "366 W"], ["J/TH", "~770"]],
+      about: "Bitmain's S3 shipped in July 2014: 32 of its BM1382 chips in a small aluminium box with a fan at each end, run from an ordinary ATX power supply its owner brought. It was the box many home miners ran through the long bear market of 2014 and 2015.",
+      specs: [["Hashrate", "478 GH/s (±5%)"], ["Power", "366 W at the wall"], ["Efficiency", "~0.77 J/GH (~770 J/TH)"], ["Chips", "32 × BM1382 (28 nm)"], ["Size", "331 × 137 × 160 mm"], ["Power supply", "standard ATX, not included"], ["Released", "July 2014"]],
+      note: "From Bitmain's launch specification; model 1.6 times life size, an ATX power supply beside it.", sources: [SRC.s3, SRC.hw] },
+    { year: 2015.7, title: "S7", name: "Antminer S7", model: "s7", jth: 273,
+      text: "Ten times the S3 a year later, at a third of its joules a terahash.",
+      stats: [["Hashrate", "4.73 TH/s"], ["Power", "1,293 W"], ["J/TH", "~273"]],
+      about: "Bitmain's S7 of 2015 put 135 of its BM1385 chips on three hash boards in an aluminium case with a fan at each end and its APW3 power supply beside it: about ten times the S3's hashrate a year later, at about a third of its joules a terahash.",
+      specs: [["Hashrate", "4.73 TH/s"], ["Power", "1,293 W"], ["Efficiency", "~273 J/TH"], ["Chips", "135 × BM1385 (28 nm)"], ["Size", "301 × 123 × 155 mm"], ["Weight", "3.9 kg"], ["Power supply", "separate (APW3)"], ["Released", "2015"]],
+      note: "Figures as commonly listed from Bitmain's specification; model 1.6 times life size.", sources: [SRC.s7, SRC.hw] },
     { year: 2016.4, title: "S9", name: "Antminer S9", model: "s9", jth: 98,
       text: "The workhorse of its era, still hashing in places years later.",
       stats: [["Hashrate", "14 TH/s"], ["Power", "1,375 W"], ["J/TH", "98"]],
@@ -122,9 +137,9 @@
   // The eras' tints are faint: the dome's screen shows its canvas about twice as bright as it is painted.
   const ERAS = [["CPU", 2009, 2010.5, "rgba(120,160,255,.06)"], ["GPU", 2010.5, 2011.5, "rgba(80,220,140,.06)"], ["FPGA", 2011.5, 2013, "rgba(230,200,60,.06)"], ["ASIC", 2013, END, "rgba(247,147,26,.04)"]];
   const UNITS = [[6, "MH/s"], [9, "GH/s"], [12, "TH/s"], [15, "PH/s"], [18, "EH/s"], [21, "ZH/s"]];
-  // The exhibits' azimuths: their years', pushed apart where years crowd so neighbours keep 13 degrees.
-  const AZ = [];
-  MINERS.forEach((ex, i) => { const a = azOf(ex.year); AZ.push(i && a < AZ[i - 1] + 13 ? AZ[i - 1] + 13 : a); });
+  // The exhibits' azimuths: their years', pushed apart where years crowd so neighbours keep 9 degrees.
+  const AZ = [], S21 = MINERS.findIndex((ex) => ex.model === "s21");
+  MINERS.forEach((ex, i) => { const a = azOf(ex.year); AZ.push(i && a < AZ[i - 1] + 9 ? AZ[i - 1] + 9 : a); });
   const headingTo = (x, z, tx, tz) => Math.atan2(-(tx - x), -(tz - z));
   // Plinths (their top at TOP), and the big S21's scale.
   const TOP = 0.9, BIG = 2.2;
@@ -136,6 +151,8 @@
   // and the viewer always has a true order to draw them in.
   const mm = (v) => v * 1.6e-3, LIFT = 0.002, HALF = Math.PI / 2;
   const ANTMINER = {
+    s3: { len: 331, wid: 137, hei: 160, psu: "atx", fans: 1, color: "#a3aab3", frame: "#6f767e", text: "S3" },
+    s7: { len: 301, wid: 123, hei: 155, psu: "side", fans: 1, color: "#bcc2c9", frame: "#7f868e", text: "S7" },
     s9: { len: 350, wid: 135, hei: 158, psu: "side", fans: 1, color: "#b8bec6", frame: "#8d939b", text: "S9" },
     s17: { len: 298, wid: 178, hei: 296, psu: "top", fans: 2, color: "#aab0b8", frame: "#7f858d", text: "S17 PRO" },
     s19: { len: 400, wid: 195.5, hei: 290, psu: "top", fans: 2, color: "#b4b9bf", frame: "#868c94", text: "S19 PRO" },
@@ -735,26 +752,26 @@
       for (let i = 0; i < 3; i++) In.B(0.004, 0.008, LIFT, "#c9ccd2", -0.01 + i * 0.01, 0, -0.007);
       grille(T.face("+z", pw * 0.2, body + top / 2, pl / 2), top * 0.86);
     }
-    if (A.psu === "side") {
-      const pl = mm(260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2, pz = 0.02;
+    if (A.psu === "side" || A.psu === "atx") {
+      const atx = A.psu === "atx", pl = mm(atx ? 160 : 260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2, pz = 0.02;
       B(pw, ph, pl, "#2a2d32", px, ph / 2, pz);
       grille(T.face("-z", px, ph / 2, pz - pl / 2), ph * 0.86);
       const Pt = T.face("+y", px, ph, pz);
       for (let i = 0; i < 6; i++) Pt.B(pw * 0.6, 0.006, LIFT, "#16181b", 0, -pl * 0.4 + i * 0.016, -LIFT / 2);
       Pt.B(0.1, 0.06, LIFT, C.label, 0, pl * 0.15, -LIFT / 2);
-      Pt.say("APW3", 0.004, C.ink, 0, pl * 0.15, -0.0035, 0.1);
+      Pt.say(atx ? "ATX" : "APW3", 0.004, C.ink, 0, pl * 0.15, -0.0035, 0.1);
       T.face("+z", px, ph / 2, pz + pl / 2).B(0.04, 0.03, 0.006, "#0b0b0d", 0, 0, -0.003);
       for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) {
-        const yy = ph * (0.35 + r * 0.35), z = 0.1 + c * 0.06;
+        const yy = ph * (0.35 + r * 0.35), z = -0.02 + c * 0.06;
         T.cable([[px - pw / 2, yy, z], [wid / 2 + 0.012, yy, z]], 0.01, "#121214");
         B(0.012, 0.022, 0.03, "#0b0b0d", wid / 2 + 0.006, yy, z);
       }
     }
     return {};
   };
-  // The plinth every exhibit stands on: pale stone with an amber band under its top.
+  // The plinth every exhibit stands on: dark concrete with an amber band under its top.
   const plinth = own(() => merge(
-    box({ w: 1.2, h: TOP, d: 1.2, color: C.stone, offset: { y: TOP / 2 } }),
+    box({ w: 1.2, h: TOP, d: 1.2, color: CONCRETE, offset: { y: TOP / 2 } }),
     box({ w: 1.24, h: 0.04, d: 1.24, color: C.amber, emissive: 1, offset: { y: TOP - 0.04 } })
   ));
   // Each exhibit's model alone, at the museum's size, for the viewer.
@@ -799,7 +816,7 @@
   const plaques = own(() => MINERS.map((ex) => {
     const canvas = CH.canvas(PLAQUE.w, PLAQUE.h);
     paintPlaque(canvas.getContext("2d"), ex);
-    return RM.flatPicture(canvas, 1, 0.79);
+    return RM.flatPicture(canvas, 0.94, 0.74);
   }));
   // The sign on the middle plinth's front.
   const paintSign = (ctx, w, h) => {
@@ -833,29 +850,39 @@
   };
 
   // ---------- its door ----------
-  // A museum's gallery doors: dark green lacquer leaves with brass-lined panels and brass push and kick plates, between
-  // stone pilasters under a cornice.
+  // The room's dress, one palette throughout: charcoal steel and concrete, and Bitcoin orange lit, so it glows yellow;
+  // the floor's markings are painted in that glow's colour (C.glow) to match.
+  const STEEL = "#34373d", STEEL_DARK = "#26282d", CONCRETE = "#4a4c51";
+  // The door: dark steel leaves, each in a raised frame studded with rivets, with a small window, a push bar, an
+  // amber strip down the edge where they meet and a hazard-striped kick plate.
   const door = {
-    casing: "#d8d2c4", frame: "#3a2a1a", header: "#2a2420", word: "#d4a63a", strip: null, chain: false,
-    leaf: "#1f3a2e", seam: "#0e1c16", plate: "#2a2420", face: "#d4a63a", mark: "#2a2420",
+    casing: "#2a2c31", frame: STEEL, header: STEEL_DARK, word: C.amber, strip: C.amber, chain: false,
+    leaf: "#30333a", seam: "#121316", plate: STEEL_DARK, face: C.amber, mark: STEEL_DARK,
     leafFace(side, H) {
-      const brass = "#b08a3a", panel = (x0, y0, x1, y1) => {
-        H.rect(x0, y0, x1, y0 + 0.02, brass, 0.15, 1); H.rect(x0, y1 - 0.02, x1, y1, brass, 0.15, 1);
-        H.rect(x0, y0, x0 + 0.02, y1, brass, 0.15, 1); H.rect(x1 - 0.02, y0, x1, y1, brass, 0.15, 1);
-      };
-      panel(-0.55, 0.45, 0.55, 1.45); panel(-0.55, 1.7, 0.55, 2.95);
-      H.rect(H.inner + side * 0.06, 1.05, H.inner + side * 0.16, 1.45, "#d4a63a", 0.25, 2);
-      H.rect(-0.75, 0.04, 0.75, 0.28, brass, 0.15, 1);
+      const h = H.W / 2, top = H.D - 0.14, rim = "#40444b", rivet = "#7a8089";
+      for (const [x0, y0, x1, y1] of [[-h + 0.08, top - 0.06, h - 0.08, top], [-h + 0.08, 0.36, h - 0.08, 0.42], [-h + 0.08, 0.42, -h + 0.14, top - 0.06], [h - 0.14, 0.42, h - 0.08, top - 0.06]]) H.rect(x0, y0, x1, y1, rim, 0, 1);
+      for (let x = -h + 0.2; x < h - 0.15; x += 0.25) for (const y of [0.39, top - 0.03]) H.disc(x, y, 0.012, rivet, 0, 6, 2);
+      for (let y = 0.7; y < top - 0.2; y += 0.35) for (const x of [-h + 0.11, h - 0.11]) H.disc(x, y, 0.012, rivet, 0, 6, 2);
+      H.rect(H.inner, 0.05, H.inner - Math.sign(H.inner) * 0.03, H.D - 0.05, C.amber, 0.7, 1);
+      H.rect(-0.22, 1.75, 0.22, 2.45, "#0d1014", 0.3, 1);
+      for (const [x0, y0, x1, y1] of [[-0.24, 2.45, 0.24, 2.47], [-0.24, 1.73, 0.24, 1.75], [-0.24, 1.75, -0.22, 2.45], [0.22, 1.75, 0.24, 2.45]]) H.rect(x0, y0, x1, y1, C.amber, 0.5, 2);
+      for (const x of [-h + 0.13, h - 0.13]) H.rect(x - 0.03, 0.98, x + 0.03, 1.12, STEEL_DARK, 0, 2);
+      H.rect(-h + 0.11, 1.02, h - 0.11, 1.08, "#a7adb5", 0.1, 3);
+      H.rect(-h + 0.06, 0.06, h - 0.06, 0.3, "#141414", 0, 1);
+      for (let x = -h + 0.1; x + 0.24 < h - 0.06; x += 0.13) H.line(x, 0.08, x + 0.2, 0.28, 0.05, C.amber, 0.3, 2);
     }
   };
+  // Steel pilasters either side of the doors, each with an amber strip, and a steel lintel over them.
   const doorTrim = (K, L) => {
     const d = RM.doorway(L), z = d.Z - 0.14, x = d.W + d.F + 0.14;
     for (const sx of [-1, 1]) {
-      K.box(0.22, d.head - 0.3, 0.16, "#cfc8b8", sx * x, (d.head - 0.3) / 2 + 0.15, z);
-      K.box(0.3, 0.15, 0.2, "#bdb6a6", sx * x, 0.075, z);
-      K.box(0.3, 0.15, 0.2, "#bdb6a6", sx * x, d.head - 0.075, z);
+      K.box(0.22, d.head - 0.3, 0.16, STEEL, sx * x, (d.head - 0.3) / 2 + 0.15, z);
+      K.box(0.04, d.head - 0.5, 0.004, C.amber, sx * x, (d.head - 0.3) / 2 + 0.15, z - 0.082, { emissive: 0.85, glow: true });
+      K.box(0.3, 0.15, 0.2, STEEL_DARK, sx * x, 0.075, z);
+      K.box(0.3, 0.15, 0.2, STEEL_DARK, sx * x, d.head - 0.075, z);
     }
-    K.box(2 * x + 0.5, 0.14, 0.3, "#cfc8b8", 0, d.head + 0.07, d.Z - 0.15);
+    K.box(2 * x + 0.5, 0.14, 0.3, STEEL, 0, d.head + 0.07, d.Z - 0.15);
+    K.box(2 * x + 0.4, 0.03, 0.004, C.amber, 0, d.head + 0.07, d.Z - 0.302, { emissive: 0.85, glow: true });
   };
 
   const plan = (K, L) => {
@@ -878,9 +905,12 @@
       const trace = () => { ctx.beginPath(); points.forEach(([yr, lg], i) => { const x = X(yr), y = D.y(elOf(lg)); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); };
       trace(); ctx.lineTo(X(END), base); ctx.lineTo(X(START), base); ctx.closePath(); ctx.fillStyle = "rgba(247,147,26,.08)"; ctx.fill();
       trace(); ctx.strokeStyle = C.amber; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.stroke();
+      // Every year a tick across the chart's foot, above and below it, and its year under it: right over that year's
+      // tick on the floor.
+      ctx.fillStyle = "rgba(255,255,255,.22)"; ctx.fillRect(X(START), base - 1, X(2026) - X(START), 2);
       for (let yr = START; yr <= 2026; yr++) {
-        ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(X(yr) - 1, base, 2, 10);
-        if (yr % 2) D.text(ctx, String(yr), azOf(yr), lo - 2.2, 0.74, C.grey, 600, D.MONO);
+        ctx.fillStyle = "rgba(255,255,255,.45)"; ctx.fillRect(X(yr) - 1.5, base - 12, 3, 24);
+        D.text(ctx, String(yr), azOf(yr), lo - 2.2, 0.74, C.grey, 600, D.MONO);
       }
       D.text(ctx, "about 5 MH/s", azOf(START) + 1, elOf(6.74) + 4.5, 0.92, C.white, 700, D.FONT, "left");
       D.text(ctx, "about 1 ZH/s · 2026", azOf(END) - 1, elOf(21.01) + 3.5, 1, C.amberText, 700, D.FONT, "right");
@@ -891,42 +921,55 @@
     K.live({ cap: true, el0: hi + 13, inset: 0.97, w: CROWN, h: CROWN, tip: "The network's hashrate today",
       key: (f) => { const v = f.reader.value("hashrate"); return `${f.reader.status("hashrate")}|${v ? v.current : ""}|${f.reader.at("hashrate")}`; },
       paint: (ctx, f, now) => paintCrown(ctx, f.reader, now) });
-    // The exhibits' ring: plinths `rx` out, the amber ring on the floor `ringR` out with a dot and the year at each.
+    // The exhibits' ring: plinths `rx` out, and the ring on the floor `ringR` out with a tick for every year.
     const rx = L.r0 - 3.4, ringR = rx - 1.9;
     K.floor((ctx, F) => {
-      ctx.fillStyle = "#1f1c19"; ctx.fillRect(0, 0, F.N, F.N);
-      ctx.strokeStyle = "#2c2824"; ctx.lineWidth = 3;
-      for (let v = -1.2 * Math.ceil(F.rf / 1.2); v < F.rf; v += 1.2) {
+      // Polished concrete in slabs 2.4 m square, each its own shade, flecked with aggregate, a thin seam between them.
+      const rnd = P.rng(2140), slab = 2.4, first = -slab * Math.ceil(F.rf / slab);
+      ctx.fillStyle = "#2b2c30"; ctx.fillRect(0, 0, F.N, F.N);
+      for (let x = first; x < F.rf; x += slab) for (let z = first; z < F.rf; z += slab) {
+        ctx.fillStyle = `rgba(${rnd() < 0.5 ? "255,255,255" : "0,0,0"},${(0.015 + rnd() * 0.03).toFixed(3)})`;
+        ctx.fillRect(F.X(x), F.Y(z), slab * F.s, slab * F.s);
+      }
+      for (let i = 0; i < 6000; i++) {
+        const v = rnd() < 0.5 ? 255 : 0;
+        ctx.fillStyle = `rgba(${v},${v},${v},${(0.04 + rnd() * 0.06).toFixed(3)})`;
+        ctx.fillRect(rnd() * F.N, rnd() * F.N, 1 + rnd() * 2, 1 + rnd() * 2);
+      }
+      ctx.strokeStyle = "#1d1e21"; ctx.lineWidth = 2;
+      for (let v = first; v < F.rf; v += slab) {
         ctx.beginPath(); ctx.moveTo(F.X(v), 0); ctx.lineTo(F.X(v), F.N); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, F.Y(v)); ctx.lineTo(F.N, F.Y(v)); ctx.stroke();
       }
-      ctx.strokeStyle = C.amber; ctx.lineWidth = 0.08 * F.s; ctx.beginPath(); ctx.arc(F.X(0), F.Y(0), ringR * F.s, 0, P.TAU); ctx.stroke();
-      F.path(0, L.doorZ, 0, ringR + 0.1);
-      MINERS.forEach((ex, i) => {
-        const a = AZ[i] * P.DEG, sx = Math.sin(a), sz = -Math.cos(a);
-        ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(F.X(sx * ringR), F.Y(sz * ringR), 0.16 * F.s, 0, P.TAU); ctx.fill();
-        // The year, reading from inside the ring toward its exhibit.
-        ctx.save(); ctx.translate(F.X(sx * (ringR - 0.7)), F.Y(sz * (ringR - 0.7))); ctx.rotate(a);
-        P.pix(ctx, String(Math.floor(ex.year)), 0, 0, 0.36 * F.s, C.amberText);
+      ctx.strokeStyle = C.glow; ctx.lineWidth = 0.08 * F.s; ctx.beginPath(); ctx.arc(F.X(0), F.Y(0), ringR * F.s, 0, P.TAU); ctx.stroke();
+      F.path(0, L.doorZ, 0, ringR + 0.1, 0.7, C.glow);
+      // Every year a tick across the ring and its year inside it, reading from inside, right under that year's tick on the
+      // dome.
+      const on = (deg, r) => { const a = deg * P.DEG; return [F.X(Math.sin(a) * r), F.Y(-Math.cos(a) * r)]; };
+      ctx.strokeStyle = C.glow; ctx.lineWidth = 0.06 * F.s;
+      for (let yr = START; yr <= 2026; yr++) {
+        const [x0, y0] = on(azOf(yr), ringR - 0.32), [x1, y1] = on(azOf(yr), ringR + 0.32), [x, y] = on(azOf(yr), ringR - 0.78);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.save(); ctx.translate(x, y); ctx.rotate(azOf(yr) * P.DEG);
+        P.pix(ctx, String(yr), 0, 0, 0.3 * F.s, C.glowText);
         ctx.restore();
-      });
+      }
     });
-    // The exhibits: plinth, model, the plaque on its post to the plinth's right as seen from the middle.
+    // The exhibits: plinth, model, and the plaque on the plinth's face toward the middle, under its amber band.
     const cards = plaques();
     MINERS.forEach((ex, i) => {
       const a = AZ[i] * P.DEG, x = rx * Math.sin(a), z = -rx * Math.cos(a), g = K.group(x, 0, z, headingTo(x, z, 0, 0));
       const target = { kind: "exhibit", tip: `${Math.floor(ex.year)} · ${ex.name} · tap to see it up close`, radius: 0.95, index: i };
       g.node(null, plinth(), 0, 0, 0, { target });
       model(g, ex.model, 1, TOP + 0.005);
-      g.box(0.08, 0.88, 0.08, C.post, -1.25, 0.44, -0.25);
-      g.node(null, cards[i], -1.25, 0.98, -0.3, { ry: Math.PI, rx: -0.55, glow: true, target });
-      g.solid({ x: -0.57, z: -0.05, hx: 1.2, hz: 0.66 });
+      g.node(null, cards[i], 0, 0.45, -0.604, { ry: Math.PI, glow: true, target });
+      g.solid({ x: 0, z: 0, hx: 0.66, hz: 0.66 });
     });
     // The middle: a round plinth with an amber ring, its sign toward the doors, and a big S21 turning on it.
-    K.cyl(1.2, 1.3, TOP, C.stone, 0, TOP / 2, 0, { seg: 48 });
+    K.cyl(1.2, 1.3, TOP, CONCRETE, 0, TOP / 2, 0, { seg: 48 });
     K.torus(1.2, 0.03, C.amber, 0, TOP, 0, { emissive: 1, glow: true, seg: 64 });
     K.picture(1.6, 0.5, 1000, 310, paintSign, 0, 0.55, 1.29, { rx: -0.1, target: { kind: "sign", tip: "One S21 against the 2012 network", radius: 0.9, data: { say: "One S21 (200 TH/s) outhashes the whole 2012 network (~16 TH/s) about 13 times over" } } });
-    K.node("turntable", (k) => model(k, "s21", BIG, 0), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: 8 } });
+    K.node("turntable", (k) => model(k, "s21", BIG, 0), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: S21 } });
     K.solid({ x: 0, z: 0, r: 1.38 });
     // Two benches either side of the middle, facing the turning S21, each seating two.
     for (const side of [-1, 1]) {
@@ -934,7 +977,7 @@
       const seats = [-0.55, 0.55].map((x) => b.seat(x, 0, 0, 0.46, 0, 1.3));
       b.node(null, (k) => {
         k.box(2, 0.08, 0.5, "#4a3a2c", 0, 0.42, 0);
-        for (const x of [-0.85, 0.85]) k.box(0.1, 0.38, 0.42, "#2a2420", x, 0.19, 0);
+        for (const x of [-0.85, 0.85]) k.box(0.1, 0.38, 0.42, STEEL, x, 0.19, 0);
         k.box(1.9, 0.02, 0.03, C.amber, 0, 0.36, 0.26, { emissive: 0.7 });
       }, 0, 0, 0, { target: { kind: "chair", tip: "Bench", radius: 1, index: seats[0].index } });
       b.solid({ x: 0, z: 0, hx: 1.05, hz: 0.3 });
@@ -960,7 +1003,7 @@
     });
     // Space's action: the nearest exhibit within reach and in front of the Ooga, or the turning S21 in the middle.
     const acts = MINERS.map((ex, i) => ({ key: `look${i}`, label: "LOOK", hint: `Space · Look at the ${ex.name} up close`, tap: "Tap LOOK to see it up close", run: () => look(i) }));
-    const middle = { key: "look-middle", label: "LOOK", hint: "Space · Look at the Antminer S21 up close", tap: "Tap LOOK to see it up close", run: () => look(8) };
+    const middle = { key: "look-middle", label: "LOOK", hint: "Space · Look at the Antminer S21 up close", tap: "Tap LOOK to see it up close", run: () => look(S21) };
     let act = null, best = 0;
     const consider = (a, ax, az, reach, x, z, fx, fz) => {
       const dx = ax - x, dz = az - z, d = Math.hypot(dx, dz), f = Math.hypot(fx, fz) || 1;

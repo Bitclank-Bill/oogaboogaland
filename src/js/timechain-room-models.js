@@ -314,14 +314,15 @@
     const rf = L.r0, N = Math.min(2048, Math.max(512, Math.ceil(rf * 2 * 64 / 128) * 128)), s = N / (2 * rf);
     return { N, s, rf, X: (x) => N / 2 + x * s, Y: (z) => N / 2 + z * s };
   };
-  // The Sphere's amber chain inlaid along a line, a link a tile long with its dark square, and round a ring.
+  // The Sphere's amber chain inlaid along a line, a link a tile long with its dark square (a room may give its own
+  // colour), and round a ring.
   const chainKit = (F, ctx) => ({
-    path: (x0, z0, x1, z1, width = 0.7) => {
+    path: (x0, z0, x1, z1, width = 0.7, color = "#e8891a") => {
       const { X, Y, s } = F, dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz), k = Math.max(1, Math.round(len / 0.8)), a = Math.atan2(-dx, dz);
       for (let i = 0; i < k; i++) {
         const t = (i + 0.5) / k;
         ctx.save(); ctx.translate(X(x0 + dx * t), Y(z0 + dz * t)); ctx.rotate(a);
-        ctx.fillStyle = "#e8891a"; ctx.fillRect(-width / 2 * s, -len / k / 2 * s + 1.5, width * s, len / k * s - 3);
+        ctx.fillStyle = color; ctx.fillRect(-width / 2 * s, -len / k / 2 * s + 1.5, width * s, len / k * s - 3);
         ctx.fillStyle = "#1a1410"; ctx.fillRect(-0.12 * s, -0.12 * s, 0.24 * s, 0.24 * s);
         ctx.restore();
       }
