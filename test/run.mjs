@@ -7507,12 +7507,16 @@ const gameRulesChecks = async () => {
     put(me, theirs.x + 4, theirs.z);
     put(me, sim.flags.red.x, sim.flags.red.z);
     const regrab = me.carrying === "red";
+    // The feed and notices tell a carry from a throw by the event's y: 0 for a carry.
+    const carried = (type) => { for (let i = 0; i < sim.eventCount; i++) if (sim.events[i].type === type) return sim.events[i].y === 0; return false; };
     sim.flags.blue.state = "carried"; sim.flags.blue.carrier = 2;
+    sim.eventCount = 0;
     put(me, mine.x, mine.z);
-    const noScoreAway = sim.score.blue === 0 && me.carrying === "red";
+    const noScoreAway = sim.score.blue === 0 && me.carrying === "red" && carried("waiting");
     sim.flags.blue.state = "home"; sim.flags.blue.carrier = null;
+    sim.eventCount = 0;
     put(me, mine.x + 0.2, mine.z);
-    const scored = sim.score.blue === 1 && sim.flags.red.state === "home" && !me.carrying;
+    const scored = sim.score.blue === 1 && sim.flags.red.state === "home" && !me.carrying && carried("capture");
     put(me, theirs.x, theirs.z);
     put(me, theirs.x + 4, theirs.z + 3);
     const rival = sim.actors[2];
@@ -7612,8 +7616,11 @@ const gameRulesChecks = async () => {
         r = fresh(map); seen = lob(r, 1, "red", blue.x + C.STAND_R + 0.05, blue.z);
         row.justOutside = noScore(r, r.flags.red) && !seen.some((k) => k.type === "capture") && seen.some((k) => k.type === "landed");
         // Your own block away: no score, the block lies there, and the thrower is told.
-        r = fresh(map); Object.assign(r.flags.blue, { state: "dropped", x: 0, z: 0, y: 0 }); seen = lob(r, 1, "red", blue.x + 0.5, blue.z);
-        row.ownAway = noScore(r, r.flags.red) && seen.some((k) => k.type === "waiting" && k.actor === 1 && k.team === "blue" && k.y === 1) && seen.some((k) => k.type === "landed");
+        r = fresh(map);
+        const away = S.restSpot(10, 10), clear = r.actors.every((k) => Math.hypot(k.x - away.x, k.z - away.z) > C.PICK_R * 2);
+        Object.assign(r.flags.blue, { state: "dropped", x: away.x, z: away.z, y: 0 });
+        seen = lob(r, 1, "red", blue.x + 0.5, blue.z);
+        row.ownAway = clear && r.flags.blue.state === "dropped" && noScore(r, r.flags.red) && seen.some((k) => k.type === "waiting" && k.actor === 1 && k.team === "blue" && k.y === 1) && seen.some((k) => k.type === "landed");
         // A side's own block, into the rivals' zone or its own.
         r = fresh(map); lob(r, 0, "blue", red.x + 0.5, red.z);
         row.ownBlockThere = noScore(r, r.flags.blue);
