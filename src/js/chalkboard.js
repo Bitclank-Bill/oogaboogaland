@@ -12,10 +12,10 @@
   const W = 1200, H = 750, BOARD_W = 2.25, BOARD_H = 1.3125, BOARD_Y = 0.5625, BOARD_FACE_Z = -1 / 16 + 0.002;
   const GRID_W = 240, GRID_H = 150, WASH_MS = 650, DRAW_MS = 700, WASH_BANDS = 6, WORLD_UPDATE_MS = 100;
   const TEXT_FONT = "58.125px 'Bradley Hand', 'Marker Felt', cursive", TEXT_SIZE = 60, TEXT_LINE = 84.375, TEXT_MARGIN = 32;
-  // The eraser's footprint, an upright rectangle in canvas pixels. Narrower than a typed digit's pitch (about 31) and as
-  // tall as one, so a tap takes one character; a drawn digit of the message (50 wide, 60 from its neighbours) takes a
-  // short scrub, with room either side.
-  const ERASER_W = 32, ERASER_H = 40, SMUDGE_TURNS = 8, SMUDGE_TILE = 256;
+  // The eraser's footprint in canvas pixels: a long block, upright, about 2.2 times as long as it is wide. As wide as a
+  // typed digit's ink (about 25, on a pitch of 31) and taller than a line's glyphs but short of the next line (84), so a
+  // tap takes one character; a drawn digit of the message (50 wide, 60 from its neighbours) takes a short scrub.
+  const ERASER_W = 26, ERASER_H = 58, SMUDGE_TURNS = 8, SMUDGE_TILE = 256;
   const clamp = (v) => Math.max(0, Math.min(1, v));
   // Where the footprint's corner lands for a point on the board, on whole pixels so its edges are clean. The drawn
   // cursor and the painted sweep both come from these.

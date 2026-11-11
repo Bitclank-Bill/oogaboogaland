@@ -13677,7 +13677,7 @@ const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser p
   await b.evaluate(`(() => { const c = document.getElementById("chalk-canvas"); window.__chalkPixels = () => c.getContext("2d").getImageData(0, 0, 1200, 750).data; window.__chalkBefore = __chalkPixels(); document.getElementById("chalk-eraser").click(); })()`);
   const onBoard = await b.evaluate(`(() => { const r = document.getElementById("chalk-canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
   const boardAt = (x, y) => ({ x: onBoard.left + x / 1200 * onBoard.width, y: onBoard.top + y / 750 * onBoard.height });
-  await b.drag(boardAt(589, 290), boardAt(589, 350)); await b.drag(boardAt(611, 350), boardAt(611, 290)); await b.sleep(50);
+  await b.drag(boardAt(586, 296), boardAt(586, 344)); await b.drag(boardAt(614, 344), boardAt(614, 296)); await b.drag(boardAt(600, 296), boardAt(600, 344)); await b.sleep(50);
   const scrub = await b.evaluate(`(() => { const now = __chalkPixels(), then = __chalkBefore, swept = (x, y) => x >= 570 && x < 630 && y >= 266 && y < 374; let outside = 0, ink = 0, left = 0, h = 2166136261;
     for (let y = 0; y < 750; y++) for (let x = 0; x < 1200; x++) { const i = (y * 1200 + x) * 4; h = Math.imul(Math.imul(Math.imul(h ^ now[i], 16777619) ^ now[i + 1], 16777619) ^ now[i + 2], 16777619);
       if (!swept(x, y) && (now[i] !== then[i] || now[i + 1] !== then[i + 1] || now[i + 2] !== then[i + 2])) outside++;
@@ -27911,7 +27911,7 @@ const privatePadChecks = async () => {
 // travels, held to the smudge's floor and ceiling and the same on every repaint; and an eraser line stored before the
 // footprint draws as it always did.
 const chalkboardEraserChecks = async (BL) => {
-  const EW = 32, EH = 40, W = 1200, H = 750, nodes = new Map(), timers = [], C = BL.chalkBoard, tiles = new Map();
+  const EW = 26, EH = 58, W = 1200, H = 750, nodes = new Map(), timers = [], C = BL.chalkBoard, tiles = new Map();
   let stored = null, rect = { left: 0, top: 0, width: 800, height: 500 }, saved = null;
   // A canvas that keeps what is filled and stroked, with the path each used.
   const calls = [], state = { path: [] };
@@ -28015,9 +28015,9 @@ const chalkboardEraserChecks = async (BL) => {
   room({ t: "chalk-board", marks: [...old, { t: "e", s: 4, f: 1, p: [0.25, 0.25, 0.25, 0.25] }], editor: 72 });
   const roomKept = f.net.state.chalk?.board.marks.at(-1).f === 1 && f.net.state.chalk.board.marks[1].f === undefined;
   from = calls.length; room({ t: "chalk", id: 72, k: "line", m: "e", p: [500, 400, 500, 400] });
-  const live = same(covered(from), box(584, 280));
+  const live = same(covered(from), box(587, 271));
   from = calls.length; room({ t: "chalk", id: 72, k: "more", p: [600, 400] });
-  const liveMore = same(covered(from), (() => { const cells = new Set(); for (let y = 280; y < 320; y++) for (let x = 584; x < 736; x++) cells.add(`${x},${y}`); return cells; })());
+  const liveMore = same(covered(from), (() => { const cells = new Set(); for (let y = 271; y < 329; y++) for (let x = 587; x < 733; x++) cells.add(`${x},${y}`); return cells; })());
   // The contract: a new line is told apart, the board reads back with it, nothing else may carry it.
   const b = C.board([]), s = C.session(b); C.apply(b, { k: "line", m: "e", p: [10, 10, 20, 20] }, s); C.apply(b, { k: "line", m: "c", p: [10, 10, 20, 20] }, s);
   const applied = b.marks[0].f === 1 && b.marks[0].s === 4 && b.marks[1].f === undefined && b.marks[1].s === 2;
