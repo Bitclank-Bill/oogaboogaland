@@ -2,7 +2,7 @@
 
 Capture the flag on Fort Chaos, Bitcoin themed, reached down Ooga Arcade's upper hall, by zipline (and directly at `/blockfrenzy`).
 Each side guards its Bitcoin block, a glowing cube in its team's colour on a stand inside its fort. Steal the other
-side's block, carry it home and touch your own stand while your own block is home. Two Oogas a side: the visitor and
+side's block, carry it home and touch your own stand, or throw it down into your capture zone, while your own block is home. Two Oogas a side: the visitor and
 a teammate against two rivals, the three bots run by the rules module. First to three captures wins. Nobody dies,
 nobody loses health and nobody is removed: paint wears off.
 
@@ -33,9 +33,14 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   A carrier can't pick the same block up again until they have left its circle.
 - **Scoring.** Their block onto your stand while your own block is home. Reaching your stand while yours is away
   scores nothing yet (a NOT YET! banner says why), and a carrier who waits there scores the moment it returns.
+  A throw scores too: their block coming down in your capture zone (within `STAND_R` of your stand, or `GOAL_R` of a
+  map's own scoring spot, on the ground rather than a roof over it, including falling there off a wall) is a capture
+  for whoever threw it, while your own block is home. If it isn't, the same banner says so and the block lies where it
+  landed. A side can't score by throwing its own block, and a block off a hook's rope is not a throw.
 - **Passing.** `Tab` (or `T`, or the Pass button) throws the carried block about 12 m ahead in an arc. Anyone who
   could pick it up can catch it in the air, so a teammate can take a pass and a rival can intercept. Uncaught, it
-  lands and lies as a dropped block. Bots pass when a rival closes in and a free teammate stands nearer home.
+  lands and lies as a dropped block, unless it comes down in the thrower's capture zone (Scoring, above); caught, it is
+  carried as usual and scores nothing by the throw. Bots pass when a rival closes in and a free teammate stands nearer home.
 - **Tools.** Paint without end; three paint grenades (lobbed, burst on landing), one paint rocket (straight, bigger
   burst) and three nets (slow a rival and stop their jumps for 4 s). A paint hit or burst splats a rival for 2 s, then
   2.5 s of protection. Grenades, rockets and nets refill on your own stand.
@@ -170,8 +175,9 @@ a character file hangs on its Ooga as `parts.dog` is let off the lead in this sc
 
 The global tier plays the rules through the sim's own calls: pickup, a drop held until you step out, scoring only
 with your own block home, a splat dropping the carrier's block, which stays until its own side carries it home, a
-quiz trap holding and shielding, a net slowing and grounding, a crate pushed, a pass caught, a crate lifted, stacked
-and thrown to stun, and a seeded round on
+quiz trap holding and shielding, a net slowing and grounding, a crate pushed, a pass caught, a throw home (scoring and crediting the thrower at a stand and a map's own spot, with no score with
+your own block away, for a side's own block, just outside the zone, when caught, or off a hook; ending the round at
+its target), a crate lifted, stacked and thrown to stun, and a seeded round on
 autopilot replaying exactly to three captures. The `block` scene runs the title card and Escape, W S and A D on screen,
 a quiz trap through a wrong and a right answer, an autopilot round to its saved results, and the round trip.
 

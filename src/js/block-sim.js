@@ -4,7 +4,8 @@
 // player's input.
 //
 // Each team keeps its flag on the stand inside its fort. Touch the other team's flag (on its stand or where it was
-// dropped) to carry it; carry it home and touch your own stand while your own flag is home to capture. Captures
+// dropped) to carry it; carry it home and touch your own stand while your own flag is home to capture, or throw it
+// (`pass`) so it comes down in your capture zone while your own flag is home, which captures for the thrower. Captures
 // return both flags. A carrier can drop the flag (`drop`), and a splatted, netted-and-splatted or trapped carrier
 // drops it too. A dropped flag stays where it fell, as long as it takes: the carrier's teammates can grab it and run
 // on, and its own team has to pick it up and carry it all the way back to its stand. A carrier can't pick the same
@@ -927,6 +928,34 @@
     f.hookedBy = -1;
     f.graceT = 0;
   };
+  // A team's capture zone: within `STAND_R` of its stand, or `GOAL_R` of a map's own scoring spot (`goals`), and low
+  // enough to be down there rather than on a roof above it.
+  const inZone = (team, x, y, z) => {
+    if (y >= 1.4) return false;
+    const s = ARENA.stands[team], g = ARENA.goals && ARENA.goals[team];
+    return (x - s.x) ** 2 + (z - s.z) ** 2 < CONFIG.STAND_R * CONFIG.STAND_R || (!!g && (x - g.x) ** 2 + (z - g.z) ** 2 < CONFIG.GOAL_R * CONFIG.GOAL_R);
+  };
+  // Block `f` mined for `a`'s side, by `a` carrying it in or throwing it in (`thrown` 1: the event's y says which).
+  // (x, z) is where it happened. Both blocks go home; `a` is credited, wherever it now stands.
+  const capture = (sim, a, f, x, z, thrown) => {
+    homeFlag(f);
+    homeFlag(sim.flags[a.team]);
+    a.captures++;
+    sim.score[a.team]++;
+    emit(sim, "capture", a.team, a.id, x, thrown, z);
+    // A Golden AK for the miner while any are left.
+    if (sim.goldLeft > 0 && !a.gold) {
+      sim.goldLeft--;
+      a.gold = true;
+      emit(sim, "gold", a.team, a.id, a.x, a.y, a.z);
+    }
+    if (sim.score[a.team] >= sim.target) {
+      const stand = ARENA.stands[a.team];
+      sim.over = true;
+      sim.winner = a.team;
+      emit(sim, "win", a.team, a.id, stand.x, 0, stand.z);
+    }
+  };
   // A carrier lets go: the flag lies at their feet and counts down home.
   const dropFlag = (sim, a, why) => {
     const f = a.carrying && sim.flags[a.carrying];
@@ -955,7 +984,7 @@
     return !sim.over && a.splat <= 0 && dropFlag(sim, a, "drop");
   };
   // Throw the carried block along `yaw` in a long arc (a pass). Anyone who could pick it up can catch it in the air;
-  // its thrower only after `PASS_SAFE`. Where it lands it lies as a dropped block.
+  // its thrower only after `PASS_SAFE`. Where it lands it lies as a dropped block, unless that is a capture (`flyFlag`).
   const pass = (sim, id = 0, yaw = sim.actors[id].heading) => {
     use(sim);
     const a = sim.actors[id], f = a.carrying && sim.flags[a.carrying];
@@ -971,7 +1000,9 @@
     emit(sim, "pass", f.team, id, f.x, f.y, f.z);
     return true;
   };
-  // A block in flight: gravity; it lands on whatever it falls onto, or drops where it struck a wall.
+  // A block in flight: gravity; it lands on whatever it falls onto, or drops where it struck a wall. Thrown by a rival
+  // of its side into that rival's capture zone, it is mined there if the thrower's own block is home; if not, it lies
+  // as any landed block and the thrower is told why. A block off a hook's rope has no thrower, so it never scores.
   const flyFlag = (sim, f, dt) => {
     // On a hook's rope it goes where the rope takes it (`stepHook`).
     if (f.hookedBy >= 0) return;
@@ -985,6 +1016,12 @@
     const ground = groundAt(f.x, f.z, f.y + 0.3, 0.2);
     // Falling below the surface (only an open grave lets it) always ends the flight, whichever way it went in.
     if (f.y <= ground || (f.y < 0 && f.vy <= 0)) {
+      // Judged where it truly came down, before `restSpot` moves it.
+      const a = f.thrower >= 0 ? sim.actors[f.thrower] : null;
+      if (a && a.team !== f.team && inZone(a.team, f.x, f.y, f.z)) {
+        if (sim.flags[a.team].state === "home") { capture(sim, a, f, f.x, f.z, 1); return; }
+        emit(sim, "waiting", a.team, a.id, f.x, 1, f.z);
+      }
       // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach.
       const at = restSpot(f.x, f.z);
       f.state = "dropped";
@@ -1601,6 +1638,8 @@
   // reeling or yanking a target nobody can name comes home instead.
   const settleHooks = (sim) => {
     for (const a of sim.actors) if (a.hk === H_YANK || a.hk === H_REEL) { a.hk = H_BACK; a.hookTarget = -1; }
+    // Nor who threw a block: one in the air at the handover lands without scoring, whatever this page last remembered.
+    for (const t of TEAMS) sim.flags[t].thrower = -1;
   };
   const hookBack = (sim, a, why) => {
     // Let go of a block still on the rope, and it lands where it is.
@@ -2519,9 +2558,9 @@
     }
     const stand = ARENA.stands[a.team], home = a.y < 1.4 && (a.x - stand.x) ** 2 + (a.z - stand.z) ** 2 < CONFIG.STAND_R * CONFIG.STAND_R;
     // Where a stolen block is mined: the stand, or a map's own scoring spot (`goals`) where it has one.
-    const gl = ARENA.goals ? ARENA.goals[a.team] : stand, gr = ARENA.goals ? CONFIG.GOAL_R : CONFIG.STAND_R;
+    const gl = ARENA.goals ? ARENA.goals[a.team] : stand;
     // A map with its own spot scores there and at the stand both.
-    const atGoal = home || (a.y < 1.4 && (a.x - gl.x) ** 2 + (a.z - gl.z) ** 2 < gr * gr);
+    const atGoal = inZone(a.team, a.x, a.y, a.z);
     if (home && refill(a)) emit(sim, "refill", a.team, a.id, a.x, a.y, a.z);
     // Up a tower the rifle is in hand (`sniper` 1); stepping off leaves it on the rack.
     const up = onTower(a) ? 1 : 0;
@@ -2608,22 +2647,7 @@
     if (a.carrying === theirs.team && atGoal && own.state === "home") {
       const f = sim.flags[a.carrying];
       a.carrying = null;
-      homeFlag(f);
-      homeFlag(own);
-      a.captures++;
-      sim.score[a.team]++;
-      emit(sim, "capture", a.team, a.id, a.x, 0, a.z);
-      // A Golden AK for the miner while any are left.
-      if (sim.goldLeft > 0 && !a.gold) {
-        sim.goldLeft--;
-        a.gold = true;
-        emit(sim, "gold", a.team, a.id, a.x, a.y, a.z);
-      }
-      if (sim.score[a.team] >= sim.target) {
-        sim.over = true;
-        sim.winner = a.team;
-        emit(sim, "win", a.team, a.id, stand.x, 0, stand.z);
-      }
+      capture(sim, a, f, a.x, a.z, 0);
     }
   };
 

@@ -7570,6 +7570,105 @@ const gameRulesChecks = async () => {
     record("block frenzy rules: pickup, a drop held until you step out, scoring only with your own block home, a splat drops the carrier's block, which stays until its side touches it home, a quiz trap holds and shields, a net slows and grounds, a crate pushes, a pass is caught, a crate stacks and a thrown one stuns",
       picked && dropped && held && regrab && noScoreAway && scored && splatted && stays && rescued && returned && trapped && frozen && shielded && freed && netted && pushed && caught && bonked,
       JSON.stringify({ picked, dropped, held, regrab, noScoreAway, scored, splatted, stays, rescued, returned, trapped, frozen, shielded, freed, netted, pushed, caught, lifted, stacked, bonked }));
+    {
+      // A throw home: the rivals' block coming down in the thrower's capture zone is a capture for the thrower, on the
+      // same terms as carrying it in. `lob` throws through `pass`, then sets where the block comes down from.
+      const C = S.CONFIG, R2 = (e, c) => Math.hypot(e.x - c.x, e.z - c.z);
+      const fresh = (map, target = C.CAPTURES) => {
+        const r = S.create({ team: "blue", seed: 7, prep: 0, map, target });
+        r.actors.forEach((a, i) => { a.bot = false; a.x = i * 2 - 3; a.z = 0; a.y = 0; });
+        return r;
+      };
+      const settle = (r, more = 0) => {
+        const seen = [];
+        const look = () => { S.tick(r, C.STEP, still); for (let i = 0; i < r.eventCount; i++) seen.push({ ...r.events[i] }); r.eventCount = 0; };
+        for (let t = 0; t < 3 && (r.flags.red.state === "flying" || r.flags.blue.state === "flying"); t += C.STEP) look();
+        for (let t = 0; t < more; t += C.STEP) look();
+        return seen;
+      };
+      const hold = (r, id, team) => { const f = r.flags[team]; f.state = "carried"; f.carrier = id; r.actors[id].carrying = team; return f; };
+      const lob = (r, id, team, x, z, y = 0.8, vx = 0, vz = 0) => {
+        const f = hold(r, id, team);
+        r.eventCount = 0;
+        S.pass(r, id, 0);
+        f.x = x; f.y = y; f.z = z; f.vx = vx; f.vy = 0; f.vz = vz;
+        return settle(r);
+      };
+      const scoredBy = (r, seen, id, team, c, radius) => {
+        const e = seen.find((k) => k.type === "capture"), a = r.actors[id];
+        return !!e && e.actor === id && e.team === team && e.y === 1 && R2(e, c) < radius && r.score[team] === 1 && a.captures === 1 && a.gold && r.goldLeft === C.GOLD_GUNS - 1 &&
+          r.actors.every((k) => k === a || k.captures === 0) && r.flags.red.state === "home" && r.flags.blue.state === "home" && r.flags.red.thrower === -1 && !seen.some((k) => k.type === "landed");
+      };
+      const noScore = (r, f) => r.score.blue === 0 && r.score.red === 0 && r.actors.every((k) => k.captures === 0) && f.state === "dropped";
+      const rows = {};
+      for (const map of S.MAPS) {
+        const I = S.ARENAS[map], blue = I.stands.blue, red = I.stands.red, row = rows[map] = {};
+        let r = fresh(map), seen = lob(r, 1, "red", blue.x + 0.5, blue.z);
+        row.stand = scoredBy(r, seen, 1, "blue", blue, C.STAND_R);
+        r = fresh(map); seen = lob(r, 2, "blue", red.x - 0.5, red.z);
+        row.redStand = scoredBy(r, seen, 2, "red", red, C.STAND_R);
+        r = fresh(map); seen = lob(r, 1, "red", blue.x + C.STAND_R - 0.05, blue.z);
+        row.justInside = r.score.blue === 1;
+        r = fresh(map); seen = lob(r, 1, "red", blue.x + C.STAND_R + 0.05, blue.z);
+        row.justOutside = noScore(r, r.flags.red) && !seen.some((k) => k.type === "capture") && seen.some((k) => k.type === "landed");
+        // Your own block away: no score, the block lies there, and the thrower is told.
+        r = fresh(map); Object.assign(r.flags.blue, { state: "dropped", x: 0, z: 0, y: 0 }); seen = lob(r, 1, "red", blue.x + 0.5, blue.z);
+        row.ownAway = noScore(r, r.flags.red) && seen.some((k) => k.type === "waiting" && k.actor === 1 && k.team === "blue" && k.y === 1) && seen.some((k) => k.type === "landed");
+        // A side's own block, into the rivals' zone or its own.
+        r = fresh(map); lob(r, 0, "blue", red.x + 0.5, red.z);
+        row.ownBlockThere = noScore(r, r.flags.blue);
+        r = fresh(map); seen = lob(r, 0, "blue", blue.x + 0.5, blue.z);
+        row.ownBlockHome = noScore(r, r.flags.blue) && !seen.some((k) => k.type === "waiting");
+        // The rivals' block landing in the rivals' own zone is no capture for the thrower either.
+        r = fresh(map); lob(r, 1, "red", red.x + 0.5, red.z);
+        row.theirZone = noScore(r, r.flags.red);
+      }
+      // A map with its own scoring spot counts there as well as at the stand, to `GOAL_R`, and not on the roof over a stand.
+      const H = S.ARENAS.haunted, goal = H.goals.blue, stand = H.stands.blue;
+      let r = fresh("haunted"), seen = lob(r, 1, "red", goal.x + 0.5, goal.z);
+      const goalSpot = scoredBy(r, seen, 1, "blue", goal, C.GOAL_R);
+      r = fresh("haunted"); lob(r, 1, "red", goal.x + C.GOAL_R - 0.05, goal.z);
+      const goalInside = r.score.blue === 1;
+      r = fresh("haunted"); lob(r, 1, "red", goal.x + C.GOAL_R + 0.05, goal.z);
+      const goalOutside = noScore(r, r.flags.red);
+      r = fresh("haunted"); lob(r, 1, "red", stand.x, stand.z, 3.2);
+      const roof = noScore(r, r.flags.red);
+      // Struck a wall inside the zone: at 6 m/s it would have flown past the ring, but it falls where it hit.
+      r = fresh("haunted"); S.tick(r, C.STEP, still);
+      let wall = null;
+      for (let k = 0; k < 72 && !wall; k++) for (let d = 1; d < C.GOAL_R - 0.1 && !wall; d += 0.05) {
+        const th = k / 72 * Math.PI * 2;
+        if (S.solidAt(goal.x + Math.sin(th) * d, 0.65, goal.z + Math.cos(th) * d)) wall = { th, d };
+      }
+      seen = wall ? lob(r, 1, "red", goal.x + Math.sin(wall.th) * (wall.d - 0.6), goal.z + Math.cos(wall.th) * (wall.d - 0.6), 0.7, Math.sin(wall.th) * 6, Math.cos(wall.th) * 6) : [];
+      const hit = seen.find((k) => k.type === "capture"), offWall = !!wall && !!hit && r.score.blue === 1 && Math.abs(R2(hit, goal) - wall.d) < 0.15;
+      // A real arc through `pass` alone, from just the throw's range out, in by the gate.
+      const arcFrom = (r) => { const a = r.actors[1], s = S.ARENAS.fort.stands.blue; a.x = s.x; a.z = s.z - 13.7; a.y = 0; a.vx = a.vz = 0; hold(r, 1, "red"); r.eventCount = 0; return S.pass(r, 1, 0); };
+      r = fresh("fort");
+      const arcThrew = arcFrom(r); seen = settle(r);
+      const arc = arcThrew && scoredBy(r, seen, 1, "blue", S.ARENAS.fort.stands.blue, C.STAND_R);
+      // Caught short of the zone: the catcher carries it, and the throw scores nothing.
+      r = fresh("fort"); arcFrom(r);
+      const catcher = r.actors[0], fs = S.ARENAS.fort.stands.blue; catcher.x = fs.x; catcher.z = fs.z - 2.6;
+      for (let t = 0; t < 1.5 && r.flags.red.state === "flying"; t += C.STEP) S.tick(r, C.STEP, still);
+      const caught = catcher.carrying === "red" && r.flags.red.state === "carried" && r.score.blue === 0 && r.actors[1].captures === 0;
+      // A block off a hook's rope never lands as a throw: on the rope it doesn't fall, a promoted host forgets any thrower.
+      r = fresh("fort");
+      const hooked = hold(r, 1, "red"), bs = S.ARENAS.fort.stands.blue;
+      S.pass(r, 1, 0); hooked.x = bs.x; hooked.y = 0.8; hooked.z = bs.z; hooked.vx = hooked.vy = hooked.vz = 0; hooked.hookedBy = 1;
+      for (let t = 0; t < 0.5; t += C.STEP) S.tick(r, C.STEP, still);
+      const onRope = hooked.state === "flying" && r.score.blue === 0;
+      hooked.hookedBy = -1; S.settleHooks(r); settle(r);
+      const offRope = noScore(r, hooked);
+      // Three throws home end the round, for the thrower's side, with a Golden AK only the first time.
+      r = fresh("fort");
+      let ended = true;
+      for (let n = 1; n <= C.CAPTURES; n++) { seen = lob(r, 1, "red", bs.x, bs.z); ended = ended && r.score.blue === n && r.over === (n === C.CAPTURES) && seen.some((k) => k.type === "win") === (n === C.CAPTURES); }
+      ended = ended && r.winner === "blue" && r.actors[1].captures === C.CAPTURES && r.goldLeft === C.GOLD_GUNS - 1;
+      const out = { goalSpot, goalInside, goalOutside, roof, offWall, arc, caught, onRope, offRope, ended };
+      record("block frenzy throw home: a rival block landing in the thrower's zone scores and credits the thrower at every map's stand and a map's own spot, off a wall too; never with your own block away, for a side's own block, just outside, on a roof, caught or off a hook; and it ends the round",
+        Object.values(out).every(Boolean) && Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify({ out, rows }));
+    }
     // An expert that loses its crate target must free its hands so it can rescue a block.
     const expertFixture = () => {
       const r = S.create({ skill: "expert", prep: 0 }), bot = r.actors[1];

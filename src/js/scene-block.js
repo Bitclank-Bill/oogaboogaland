@@ -793,7 +793,7 @@
     if ((t === "splat" || t === "bonk") && e.by >= 0) feed(`${nameOf(e.by)} ${t === "bonk" ? "bonked" : "splatted"} ${who}`, sim.actors[e.by].team);
     else if (t === "pickup") feed(`${who} grabbed the ${TEAM_NAME[e.team]} block`, sim.actors[e.actor].team);
     else if (t === "rescue") feed(`${who} sent the ${TEAM_NAME[e.team]} block home`, e.team);
-    else if (t === "capture") feed(`${who} mined a block! ${TEAM_NAME[e.team]} ${sim.score[e.team]}`, e.team);
+    else if (t === "capture") feed(`${who} ${e.y ? "threw it home" : "mined a block"}! ${TEAM_NAME[e.team]} ${sim.score[e.team]}`, e.team);
     else if (t === "power") feed(`${who} got ${({ boots: "lightning boots", halving: "the halving", cold: "cold storage", laser: "laser eyes", monkeys: "the monkeys" })[SIM.POWERS[e.y]]}`, e.team);
     else if (t === "zip") feed(`${who} took the zipline`, e.team);
     else if (t === "trap") feed(`${who} is stuck in a quiz`, e.team);
@@ -992,8 +992,8 @@
       else if (e.type === "zip") { if (me) { center("ZIP!", 700); notice("Space lets go early", 1600); } }
       else if (e.type === "unzip") { if (me) updateTools(); }
       else if (e.type === "waiting") {
-        if (me) { center("NOT YET!", 1200); notice("Your own block isn't home, so you can't score. Hold on here while your team brings it back, or go get it", 4000); }
-        else if (mine) notice("Teammate is waiting at our stand · get our block home so they can score", 3000);
+        if (me) { center("NOT YET!", 1200); notice(e.y ? "Your own block isn't home, so that throw can't score. Theirs lies where it landed" : "Your own block isn't home, so you can't score. Hold on here while your team brings it back, or go get it", 4000); }
+        else if (mine) notice(e.y ? "Teammate's throw can't score · our block isn't home" : "Teammate is waiting at our stand · get our block home so they can score", 3000);
       } else if (e.type === "lift" || e.type === "set") {
         if (e.actor === you) updateTools();
         if (e.type === "set") fx.burst(e.x, e.y + 0.2, e.z, 6, WOOD_BITS, 1.2);
