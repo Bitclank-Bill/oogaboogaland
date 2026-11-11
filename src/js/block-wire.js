@@ -20,6 +20,8 @@
   // changes: a round is on `FIRST_MAP` or later.
   const MAPS = ["fort", "town", "jungle", "haunted"];
   const FIRST_MAP = 1;
+  // A map still offered for play, by id (a saved pick of a retired one is ignored).
+  const playable = (id) => MAPS.indexOf(id) >= FIRST_MAP;
   // What a guest asks its host to do for it, by index on the wire: `yaw` and `pitch` go in thousandths of a radian.
   const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "dropWallet", "throwWallet", "takeWallet", "escape", "cutChute"];
   const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
@@ -27,6 +29,8 @@
   const session = v => typeof v === "string" && /^[a-f0-9]{16}$/.test(v);
   const eligible = p => !!p && p.zone === ZONE && !!p.body && !p.body.startsWith("gorilla:");
   // The side size a round runs at: the size picked, grown if more have registered than it seats.
+  // The size a match will start at, as things stand: its pick grown to seat everyone who has joined.
+  const plannedSize = (m) => sizeFor(m.size, m.reg.length);
   const sizeFor = (wanted, count) => Math.min(MAX_SIDE, Math.max(MIN_SIDE, wanted, Math.ceil(count / 2)));
   // The live players dealt at random as evenly as possible across the two sides (two face each other, three split
   // 2-1, four 2-2), in a side's first seats. `seats` is 2 * size long: blue's seats, then red's; a 0 is an NPC.
@@ -54,7 +58,8 @@
     const base = { t: "bf", k: m.k };
     if (["hello", "unreg", "beat", "alone"].includes(m.k)) return base;
     // The map already picked on the board, by index: only the first to register's counts.
-    if (m.k === "reg") return m.m === undefined ? base : integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, m: m.m } : null;
+    // A retired map (an older page's default) is no pick at all, so its Register still registers; `opt` stays strict.
+    if (m.k === "reg") return m.m === undefined || integer(m.m, 0, FIRST_MAP - 1) ? base : integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, m: m.m } : null;
     if (m.k === "watch") return integer(m.on, 0, 1) ? { ...base, on: m.on } : null;
     if (m.k === "ready") return integer(m.r, 0, 1) ? { ...base, r: m.r } : null;
     if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
@@ -74,5 +79,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, FIRST_MAP, ACTIONS, KINDS, parse, eligible, sizeFor, split, duel, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, FIRST_MAP, playable, plannedSize, ACTIONS, KINDS, parse, eligible, sizeFor, split, duel, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
 })();

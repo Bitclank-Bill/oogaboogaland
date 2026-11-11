@@ -54,7 +54,7 @@
     // A captive is dragged by the feet to the nearest edge at `GORILLA_DRAG`, swung over the wind-up (`GORILLA_THROW_S`)
     // and thrown off at `GORILLA_THROW`, up at `GORILLA_THROW_UP`, its steering knocked out for `THROWN_S`.
     GORILLA_DRAG: 7.5, GORILLA_DRAG_R: 0.5, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
-    GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 9, HOMER_SEEK: 34, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, DROP_IN_H: 14, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
+    SHOT_STEP: 0.12, BOT_CARRY: 0.88, GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 9, HOMER_SEEK: 34, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, DROP_IN_H: 14, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
     POWER_R: 1.1, POWER_RESPAWN: 20, BOOTS_S: 6, BOOTS: 1.5, HALVING_S: 12, COLD_S: 12, LASER_S: 25, BEAM_S: 3, BEAM_LEN: 30, BEAM_R: 0.45,
     // Free Hardware Wallets (DSB Land's VAC 2, brought over): a vending machine each side; a device taken goes off when
     // its fuse runs out, and a blast sets off any other within `WALLET_CHAIN`, knocking everyone near it back.
@@ -110,6 +110,8 @@
   // The six devices from the wallet store, in its order.
   const WALLETS = ["Rektdger", "ClownCard", "BrickBox02", "Passpoor", "Jaded", "SeedSnitcher"];
   // The small pitch that cancels a nearly flat tool's lob and fall over `dist`, so its round arrives where it was aimed.
+  // How far a bot tips its shot up or down to meet a target above or below it, crouched or standing (`heightOf`).
+  const aimRise = (a, t, dist) => Math.atan2(t.y + heightOf(t) * 0.6 - (a.y + CONFIG.SHOT_Y), Math.max(1, dist));
   const flatPitch = (dist, tool) => { const t = dist / tool.speed; return -(tool.lift * t - 0.5 * tool.gravity * t * t) / Math.max(1, dist); };
   const WALLET_THROW = { speed: CONFIG.WALLET_SPEED, lift: CONFIG.WALLET_LIFT, gravity: CONFIG.WALLET_GRAVITY };
   // The maps. A map is its blocks, each [x0, x1, z0, z1, top, bottom] (bottom 0 unless it floats: a floor, a roof or
@@ -1271,7 +1273,7 @@
     a.cooldown = a.bot ? (sim.bots.akCool && (kind === "ak" || kind === "gold") ? sim.bots.akCool : Math.max(tool.cool, sim.bots.cool)) : tool.cool;
     a.heading = yaw;
     if (kind !== "crate") a.lastKind = kind;
-    emit(sim, kind === "paint" || kind === "gold" || kind === "ak" ? "fire" : "throw", a.team, id, s.x, s.y, s.z);
+    emit(sim, kind === "paint" ? "fire" : kind === "gold" || kind === "ak" ? "gunfire" : "throw", a.team, id, s.x, s.y, s.z);
     // The golden pair: one AK in each hand, both firing every round, so a second shot goes out from the left.
     if (kind === "gold") {
       const ox = Math.cos(yaw) * CONFIG.GOLD_SIDE, oz = -Math.sin(yaw) * CONFIG.GOLD_SIDE;
@@ -2353,7 +2355,7 @@
           a.aim = 0;
           const dist = Math.sqrt(best), yaw = a.heading + (sim.rng() - 0.5) * 2 * sim.bots.spread;
           const kind = a.gold ? "gold" : "paint";
-          fire(sim, a.id, yaw, flatPitch(dist, TOOLS[kind]), kind);
+          fire(sim, a.id, yaw, flatPitch(dist, TOOLS[kind]) + aimRise(a, t, dist), kind);
         }
       }
       return;
@@ -2421,7 +2423,7 @@
     const d = Math.hypot(goal.x - a.x, goal.z - a.z);
     // An autopiloted player (`auto`, the suite's and the debug handle's) runs at the player's sprint.
     // A bot with the rivals' block sprints for home, as a visitor would.
-    const speed = (a.bot === "auto" ? CONFIG.SPEED * CONFIG.SPRINT : sim.bots.speed * (a.carrying && a.carrying !== a.team ? 1.3 : 1)) * (a.rider ? CONFIG.MOUNT_SLOW : 1) * (a.netted > 0 ? CONFIG.NET_SLOW : 1) * (a.boots > 0 ? CONFIG.BOOTS : 1) * (a.burnt > 0 ? CONFIG.BURN_SLOW : 1);
+    const speed = (a.bot === "auto" ? CONFIG.SPEED * CONFIG.SPRINT : sim.bots.speed * (a.carrying && a.carrying !== a.team ? 1.3 : 1)) * (a.carrying ? CONFIG.BOT_CARRY : 1) * (a.rider ? CONFIG.MOUNT_SLOW : 1) * (a.netted > 0 ? CONFIG.NET_SLOW : 1) * (a.boots > 0 ? CONFIG.BOOTS : 1) * (a.burnt > 0 ? CONFIG.BURN_SLOW : 1);
     // Burnt feet: a bot hops until they cool.
     if (a.burnt > 0 && a.grounded) a.botJump = true;
     if (a.botStop) a.vx = a.vz = 0;
@@ -2507,7 +2509,7 @@
         const lead = dist / TOOLS[kind].speed;
         const yaw = Math.atan2(t.x + t.vx * lead - a.x, t.z + t.vz * lead - a.z) + (sim.rng() - 0.5) * 2 * sim.bots.spread;
         // Paint and the AKs go straight at the chest; a grenade arcs to its range.
-        const pitch = kind === "grenade" ? lobPitch(dist) : kind === "rocket" ? -0.03 : kind === "net" ? Math.min(0.12, Math.max(-0.12, (dist - 8) * -0.006)) : flatPitch(dist, TOOLS[kind]);
+        const pitch = kind === "grenade" ? lobPitch(dist) : kind === "rocket" ? -0.03 : kind === "net" ? Math.min(0.12, Math.max(-0.12, (dist - 8) * -0.006)) : flatPitch(dist, TOOLS[kind]) + aimRise(a, t, dist);
         fire(sim, a.id, yaw, pitch, kind);
       }
     }
@@ -3026,43 +3028,48 @@
           s.vx *= sp / v; s.vy *= sp / v; s.vz *= sp / v;
         }
       }
-      s.vy -= tool.gravity * dt;
-      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-      let hit = null;
-      for (const a of sim.actors) {
-        if (a.team === s.team || !open(a)) continue;
-        // A crate is big: it counts a little over the head and under the feet.
-        const dy = s.y - a.y, slack = s.kind === "crate" ? 0.45 : s.kind === "net" ? 0.9 : 0.15;
-        if (dy > -slack && dy < heightOf(a) + slack && (s.x - a.x) ** 2 + (s.z - a.z) ** 2 < tool.r * tool.r) { hit = a; break; }
-      }
-      // A gorilla in the way takes it, stunned.
-      // A ghost in the way pops.
-      if (!hit && sim.ghosts.length) {
-        let gh = null;
-        for (const g of sim.ghosts) if (g.state !== 2 && Math.abs(s.y - g.y) < 0.9 && (s.x - g.x) ** 2 + (s.z - g.z) ** 2 < 0.8) { gh = g; break; }
-        if (gh) { s.live = false; if (tool.blast) burst(sim, s); popGhost(sim, gh, s.owner); continue; }
-      }
-      if (!hit && s.kind !== "net" && s.kind !== "crate") {
-        let gHit = null;
-        for (const g of sim.gorillas) if (g.state !== G_STUN && s.y < 2.3 && (s.x - g.x) ** 2 + (s.z - g.z) ** 2 < 0.95) { gHit = g; break; }
-        if (gHit) {
-          s.live = false;
-          if (tool.blast) burst(sim, s);
-          // A sharp gorilla dodges paint (the bots' skill sets how sharp).
-          else if ((gHit.state !== G_ROAM && gHit.state !== G_CHASE) || sim.rng() >= sim.bots.gorilla.dodge) stunGorilla(sim, gHit, s.owner);
-          continue;
+      // Moved in pieces no longer than `SHOT_STEP`, each tested, so a fast round can't pass through a thin wall or Ooga
+      // between two ticks.
+      const n = Math.max(1, Math.ceil(Math.hypot(s.vx, s.vy, s.vz) * dt / CONFIG.SHOT_STEP)), h = dt / n;
+      moving: for (let k = 0; k < n && s.live; k++) {
+        s.vy -= tool.gravity * h;
+        s.x += s.vx * h; s.y += s.vy * h; s.z += s.vz * h;
+        let hit = null;
+        for (const a of sim.actors) {
+          if (a.team === s.team || !open(a)) continue;
+          // A crate is big: it counts a little over the head and under the feet.
+          const dy = s.y - a.y, slack = s.kind === "crate" ? 0.45 : s.kind === "net" ? 0.9 : 0.15;
+          if (dy > -slack && dy < heightOf(a) + slack && (s.x - a.x) ** 2 + (s.z - a.z) ** 2 < tool.r * tool.r) { hit = a; break; }
         }
+        // A gorilla in the way takes it, stunned.
+        // A ghost in the way pops.
+        if (!hit && sim.ghosts.length) {
+          let gh = null;
+          for (const g of sim.ghosts) if (g.state !== 2 && Math.abs(s.y - g.y) < 0.9 && (s.x - g.x) ** 2 + (s.z - g.z) ** 2 < 0.8) { gh = g; break; }
+          if (gh) { s.live = false; if (tool.blast) burst(sim, s); popGhost(sim, gh, s.owner); continue moving; }
+        }
+        if (!hit && s.kind !== "net" && s.kind !== "crate") {
+          let gHit = null;
+          for (const g of sim.gorillas) if (g.state !== G_STUN && s.y < 2.3 && (s.x - g.x) ** 2 + (s.z - g.z) ** 2 < 0.95) { gHit = g; break; }
+          if (gHit) {
+            s.live = false;
+            if (tool.blast) burst(sim, s);
+            // A sharp gorilla dodges paint (the bots' skill sets how sharp).
+            else if ((gHit.state !== G_ROAM && gHit.state !== G_CHASE) || sim.rng() >= sim.bots.gorilla.dodge) stunGorilla(sim, gHit, s.owner);
+            continue moving;
+          }
+        }
+        const solid = !hit && solidAt(s.x, s.y, s.z), spent = s.t > tool.life;
+        if (!hit && !solid && !spent) continue moving;
+        s.live = false;
+        if (tool.blast) burst(sim, s);
+        else if (hit && s.kind === "net") {
+          hit.netted = CONFIG.NET_S;
+          emit(sim, "net", hit.team, hit.id, hit.x, hit.y + 1, hit.z);
+        } else if (hit) splat(sim, hit, s.kind === "crate", s);
+        if (s.kind === "crate") landCrate(sim, s);
+        else if (!hit) emit(sim, s.kind === "net" ? "netmiss" : "miss", s.team, s.owner, s.x, Math.max(0.02, s.y), s.z);
       }
-      const solid = !hit && solidAt(s.x, s.y, s.z), spent = s.t > tool.life;
-      if (!hit && !solid && !spent) continue;
-      s.live = false;
-      if (tool.blast) burst(sim, s);
-      else if (hit && s.kind === "net") {
-        hit.netted = CONFIG.NET_S;
-        emit(sim, "net", hit.team, hit.id, hit.x, hit.y + 1, hit.z);
-      } else if (hit) splat(sim, hit, s.kind === "crate", s);
-      if (s.kind === "crate") landCrate(sim, s);
-      else if (!hit) emit(sim, s.kind === "net" ? "netmiss" : "miss", s.team, s.owner, s.x, Math.max(0.02, s.y), s.z);
     }
   };
   // Advance by any frame time in fixed substeps (at most four a call, as the other games do). Stops when the round is
@@ -3092,7 +3099,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

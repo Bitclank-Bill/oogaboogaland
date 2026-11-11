@@ -619,7 +619,6 @@
   });
   // A rider's trolley: a pulley block on the cable with a hand bar under it.
   const trolley = cached(() => merge(box({ w: 0.14, h: 0.18, d: 0.3, color: METAL, offset: { y: 0.1 } }), box({ w: 0.6, h: 0.05, d: 0.05, color: DARK, offset: { y: -0.15 } }), box({ w: 0.04, h: 0.3, d: 0.04, color: DARK, offset: { y: 0 } })));
-  // An ammo cache: an olive box with an orange band and a glowing lid while it's ready; grey and dark while it rests.
   // An ammo box: a green steel can with a stencil band, carry handles and latches, its lid propped open on a row of
   // brass rounds while it's ready; shut, grey and empty while it refills.
   const cache = variants((i) => {

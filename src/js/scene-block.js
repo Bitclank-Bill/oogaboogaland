@@ -93,7 +93,7 @@
       if (TARGETS.includes(p.target)) selection.target = p.target;
       if (SIZES.includes(p.size)) selection.size = p.size;
       if (SIM.SKILLS[p.skill]) selection.skill = p.skill;
-      if (SIM.ARENAS[p.map] && WIRE.MAPS.indexOf(p.map) !== 0) selection.map = p.map;
+      if (SIM.ARENAS[p.map] && WIRE.playable(p.map)) selection.map = p.map;
     } catch { /* nothing saved, or storage closed: the defaults stand */ }
   };
   const savePicks = () => {
@@ -243,7 +243,7 @@
       const hookHead = place(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true }));
       const hookHip = createNode({ geometry: BM.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
       addChild(body, hookHip);
-      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, flash, flashL, shot: SHOT_IDLE, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
+      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, flash, flashL, shot: SHOT_IDLE, kick: 0, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
     });
   };
   const disposeActors = () => {
@@ -467,7 +467,7 @@
     if (role === "watch") { setupRound(m, map); joinDeckNow(m); return; }
     setupRound(m, map);
     start(m.seed);
-    sim.duel = WIRE.duel(m.seats, m.size);
+    sim.duel = !!m.duel;
     if (sim.duel) notice("Just the two of you: you can score even while your own block is away", 5000);
   };
   const joinDeckNow = (m) => {
@@ -536,7 +536,10 @@
     if (fpGun) fpGun.visible = fpGunL.visible = false;
   };
   // "2v2 on Ooga Town", as the board's own button names the map.
-  const matchLine = (m) => `${m.size}v${m.size} on ${(el.maps.find((b) => b.dataset.map === WIRE.MAPS[m.map]) || { textContent: WIRE.MAPS[m.map] }).textContent}`;
+  // The size a round will run at: the size picked, grown to seat everyone who has joined (`blockWire.sizeFor`, as the
+  // Worker does when it starts).
+  const sizeOf = (m) => WIRE.plannedSize(m);
+  const matchLine = (m) => `${sizeOf(m)}v${sizeOf(m)} on ${(el.maps.find((b) => b.dataset.map === WIRE.MAPS[m.map]) || { textContent: WIRE.MAPS[m.map] }).textContent}`;
   // In a match, the board's solo picks don't apply: they show what the match will play and are muted, all but the map
   // for whoever chooses it (and Detail, which is this page's own). Leaving, they go back to the visitor's picks.
   let boardInMatch = false;
@@ -545,7 +548,7 @@
     boardInMatch = inMatch;
     for (const b of [...el.sizes, ...el.targets, ...el.skills, ...el.teams]) b.disabled = inMatch;
     for (const b of el.maps) b.disabled = inMatch && !chooses;
-    const size = inMatch ? m.size : selection.size, target = inMatch ? C.CAPTURES : selection.target, skill = inMatch ? "normal" : selection.skill;
+    const size = inMatch ? sizeOf(m) : selection.size, target = inMatch ? C.CAPTURES : selection.target, skill = inMatch ? "normal" : selection.skill;
     for (const b of el.sizes) b.setAttribute("aria-pressed", String(Number(b.dataset.size) === size));
     for (const b of el.targets) b.setAttribute("aria-pressed", String(Number(b.dataset.target) === target));
     for (const b of el.skills) b.setAttribute("aria-pressed", String(b.dataset.skill === skill));
@@ -567,17 +570,17 @@
     el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Multiplayer";
     const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
     el.liveStatus.textContent = chairsFull ? "The viewing chairs are full. You can register for the next round or go back."
-      : !m || !count && !play ? "Play with whoever's here. The first to join is the host and picks the map and size. NPCs fill any empty seats."
-      : waiting ? `You're the host · waiting for someone to join · ${matchLine(m)}. You can still change the size here and the map below.`
-      : solo ? `You're first in, so you're the host · ${matchLine(m)}. Pick the size here and the map below, then start now or wait for players.`
+      : !m || !count && !play ? "Play with whoever's here. The first to join picks the map and size. NPCs fill any empty seats."
+      : waiting ? `You're first in · waiting for someone to join · ${matchLine(m)}. You can still change the size here and the map below.`
+      : solo ? `You're first in, so you pick · ${matchLine(m)}. Pick the size here and the map below, then start now or wait for players.`
       : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Join now for the next round.`)
       : m.phase === "countdown" ? `Starting in a moment · ${matchLine(m)}.`
-      : !me ? `${count} waiting · ${matchLine(m)} · ${whoName(m.reg[0])} is the host. Join them.`
-      : `${count} of ${m.size * 2} seats filled, NPCs take the rest · ${matchLine(m)}. ${mine ? "You're the host: pick the size here and the map below." : `${whoName(m.reg[0])} is the host and picks the size and map.`} The round starts when everyone is Ready.`;
+      : !me ? `${count} waiting · ${matchLine(m)} · ${whoName(m.reg[0])} was first in and picks. Join them.`
+      : `${count} of ${sizeOf(m) * 2} seats filled, NPCs take the rest · ${matchLine(m)}. ${mine ? "You were first in: pick the size here and the map below." : `${whoName(m.reg[0])} was first in and picks the size and map.`} The round starts when everyone is Ready.`;
     el.liveList.textContent = "";
-    if (m) for (let i = 0; i < m.reg.length; i++) { const li = document.createElement("li"); li.textContent = `${m.ready[i] ? "✓ " : ""}${m.reg[i] === self ? "You" : whoName(m.reg[i])}${i === 0 ? " · host" : ""}${m.ready[i] ? " · ready" : ""}`; el.liveList.append(li); }
+    if (m) for (let i = 0; i < m.reg.length; i++) { const li = document.createElement("li"); li.textContent = `${m.ready[i] ? "✓ " : ""}${m.reg[i] === self ? "You" : whoName(m.reg[i])}${i === 0 ? " · first in" : ""}${m.ready[i] ? " · ready" : ""}`; el.liveList.append(li); }
     el.liveSizes.hidden = !(mine && m.phase === "lobby");
-    if (m) for (const b of el.liveSizes.querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.liveSize) === m.size));
+    if (m) for (const b of el.liveSizes.querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.liveSize) === sizeOf(m)));
     el.liveReg.textContent = me ? "Leave match" : play ? "Join next round" : "Join match";
     el.liveReg.classList.toggle("is-leave", me);
     el.liveReg.hidden = seated || !!m && m.reg.length >= WIRE.MAX_PLAYERS && !me;
@@ -771,12 +774,9 @@
   // Each event's sound, quieter the further it happened from the visitor's Ooga; the visitor's own moments play full.
   const hear = (e, me, mine) => {
     const p = sim.actors[0], k = me ? 1 : clamp(1 - Math.hypot(e.x - p.x, e.z - p.z) / 32, 0.12, 1), c = audio.cues, t = e.type;
-    if (t === "fire") {
-      // An AK's round sounds and kicks as the island rifle's does (`SHOT_IDLE` is how long since one, on each actor).
-      const shooter = e.actor >= 0 ? sim.actors[e.actor] : null;
-      if (shooter && (shooter.lastKind === "ak" || shooter.lastKind === "gold")) { c.gun(k); if (actors && actors[e.actor]) actors[e.actor].shot = 0; }
-      else c.fire(k);
-    }
+    if (t === "fire") c.fire(k);
+    // An AK's round sounds and kicks as the island rifle's does (`shot` is how long since one, on each actor).
+    else if (t === "gunfire") { c.gun(k); if (actors && e.actor >= 0 && actors[e.actor]) actors[e.actor].shot = 0; }
     else if (t === "throw") { const kind = e.actor >= 0 ? sim.actors[e.actor].lastKind : ""; if (kind === "sniper") c.sniper(k); else if (kind === "rocket") c.rocket(k); else if (kind === "net") c.hookThrow(k); else c.throw(k); }
     else if (t === "splat") c.splat(me ? 1 : k);
     else if (t === "miss" || t === "netmiss") c.miss(k);
@@ -1776,8 +1776,10 @@
         a.gunL.visible = armed && g === GUN_OF.gold;
         if (a.gunL.visible) a.gunL.geometry = a.gun.geometry;
       }
-      a.shot = Math.min(SHOT_IDLE, a.shot + dt);
+      // Read before the frame's time is added, so a round fired just now always shows, at any frame rate.
       a.flash.visible = a.flashL.visible = armed && a.shot < FLASH_S;
+      a.kick = gunKick(a.shot);
+      a.shot = Math.min(SHOT_IDLE, a.shot + dt);
       // A crate to the head shows stars, not paint.
       a.blob.visible = s.splat > 0 && !s.bonked;
       if (s.trapped > 0) a.bubble.rotation.y = elapsed * 0.8;
@@ -1867,7 +1869,7 @@
         // Gun up and forward, the other hand under it; a big launcher sits higher, on the shoulder.
         const kick = s.cooldown > (s.bot ? sim.bots.cool : SIM.TOOLS.paint.cool) - 0.12 ? 0.18 : 0;
         // One kick a round from an AK, gone before the next (crew.js's rifle).
-        const round = gunKick(a.shot);
+        const round = a.kick;
         p.armR.rotation.x = (g === 2 ? -1.75 : -1.45) - kick - 0.11 * round;
         p.armL.rotation.x = (g === 2 ? -1.9 : -1.25) - (g === GUN_OF.gold ? 0.11 * round : 0);
       } else if (s.ride) {
@@ -2089,12 +2091,12 @@
         const fx2 = Math.sin(cam.yaw) * c, fz2 = Math.cos(cam.yaw) * c, fy2 = Math.sin(up), rx = -Math.cos(cam.yaw), rz = Math.sin(cam.yaw);
         // A round pulls the gun back and tips it up a touch, as the island rifle does at the eye.
         // The AKs are the island's full-size rifle, its stock almost at the eye: held smaller and further out.
-        const rifle = g === GUN_OF.ak || g === GUN_OF.gold, size = rifle ? 0.6 : 1, round = gunKick(actors[0].shot), reach = (rifle ? 0.68 : 0.55) - 0.04 * round;
+        const rifle = g === GUN_OF.ak || g === GUN_OF.gold, size = rifle ? 0.6 : 1, round = actors[0].kick, reach = (rifle ? 0.68 : 0.55) - 0.04 * round;
         setVec(fpGun.scale, size, size, size); setVec(fpGunL.scale, size, size, size);
         setVec(fpGun.position, camera.position.x + fx2 * reach + rx * 0.24, eye + fy2 * reach - (g === 2 ? 0.12 : 0.22) - 0.02 * round, camera.position.z + fz2 * reach + rz * 0.24);
         fpGun.rotation.y = cam.yaw;
         fpGun.rotation.x = -up - 0.035 * round;
-        fpFlash.visible = fpFlashL.visible = actors[0].shot < FLASH_S;
+        fpFlash.visible = fpFlashL.visible = actors[0].flash.visible;
       }
       // With the golden pair, the second AK sits low and left.
       fpGunL.visible = showGun && tool === "gold";
@@ -2303,6 +2305,8 @@
     // Escape steps back one thing at a time, as on the island: the captured mouse, then the view, then a pause, then
     // the board, then the Arcade.
     if (e.key === "Escape") {
+      // The quiz card holds Escape: it never leaves the round (or a live seat) from under the question.
+      if (phase === "play" && quiz.open) { if (locked()) document.exitPointerLock(); return; }
       if (phase === "play" && locked()) document.exitPointerLock();
       else if (phase === "play" && !paused && (cam.first || cam.island)) setMode("chase");
       else if (phase === "play" && !paused && !quiz.open) setPaused(true);
@@ -2372,7 +2376,8 @@
   };
   const chooseMap = (id) => {
     // Registered behind someone else, the board shows the map they picked.
-    if (registered() && !firstRegistered()) { notice(round.match.phase === "countdown" ? "The map is set for this round" : "The first registered picks the map", 1800); return; }
+    // In a match, only the first in has the map buttons (`boardFollowsMatch`); this only guards a stray call.
+    if (registered() && !firstRegistered()) return;
     if (showMap(id)) savePicks();
     if (firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
   };
@@ -2925,6 +2930,8 @@
     });
   };
   const leave = () => {
+    // The board's own picks back, whatever match it was showing (it is shown again on the next visit).
+    boardFollowsMatch(null, false, false);
     if (round) { round.dispose(); round = null; }
     if (el.live) el.live.hidden = true;
     if (el.watch) el.watch.hidden = true;

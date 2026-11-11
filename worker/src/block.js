@@ -43,7 +43,7 @@ export const block = {
     if (p) { p.block = m; p.ws.serializeAttachment(room.attachment(p)); }
   },
   view(m) {
-    return { t: "bf", k: "match", s: m.s, phase: m.phase, size: m.size, map: m.map, reg: m.reg, ready: m.ready, seats: m.seats, host: m.host, epoch: m.epoch, tag: m.tag, seed: m.seed, start: m.start, win: m.win, now: Date.now() };
+    return { t: "bf", k: "match", s: m.s, phase: m.phase, size: m.size, map: m.map, reg: m.reg, ready: m.ready, seats: m.seats, duel: !!m.duel, host: m.host, epoch: m.epoch, tag: m.tag, seed: m.seed, start: m.start, win: m.win, now: Date.now() };
   },
   tell(room, m, to = null) {
     if (m) block.save(room, m);
@@ -85,12 +85,14 @@ export const block = {
     m.size = W.sizeFor(m.size, m.reg.length);
     m.seats = W.split(m.reg, m.size, random);
     m.s = sessionId(); m.tag = tagOf(m.s); m.seed = (Math.floor(random() * 0x7ffffffe) + 1);
+    // One person a side when it starts (`blockWire.duel`): every page reads the match's word, never its own.
+    m.duel = W.duel(m.seats, m.size);
     m.host = 0; block.elect(room, m); m.win = -1;
     if (m.reg.length === 1) block.play(m);
     else { m.phase = "countdown"; m.start = now + W.COUNTDOWN_MS; }
   },
   play(m) { m.phase = "play"; m.start = 0; m.reg = []; m.ready = []; m.q = -1; },
-  unseat(m) { m.phase = "lobby"; m.seats = []; m.host = 0; m.start = 0; },
+  unseat(m) { m.phase = "lobby"; m.seats = []; m.host = 0; m.start = 0; m.duel = false; },
   leave(room, id) {
     const m = room.blockMatch;
     if (!m) return;
