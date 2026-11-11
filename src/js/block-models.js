@@ -380,8 +380,9 @@
   };
   // A team's block: a cube in its team's colour, glowing, with darker edges, a cream ₿ standing proud on four faces and
   // a band of Bitcoin orange round its foot, so the two sides' blocks never look alike.
-  const block = variants((i) => {
-    const t = SIM.TEAMS[i], parts = [], body = TEAM[t].paint, edge = TEAM[t].deep;
+  // The cube itself in any colours: the teams' blocks, and the trophy's golden one (`goldBlock`).
+  const cube = (body, edge) => {
+    const parts = [];
     parts.push(box({ w: SIZE, h: SIZE, d: SIZE, color: body, emissive: 0.85 }));
     for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) parts.push(box({ w: 0.06, h: SIZE + 0.02, d: 0.06, color: edge, emissive: 0.3, offset: { x: sx * SIZE / 2, z: sz * SIZE / 2 } }));
     for (const sy of [1, -1]) {
@@ -393,6 +394,22 @@
     for (let k = 0; k < 4; k++) glyphFace(parts, k * Math.PI / 2);
     parts.push(box({ w: SIZE + 0.05, h: 0.05, d: SIZE + 0.05, color: ORANGE, emissive: 0.8, offset: { y: -SIZE / 2 + 0.06 } }));
     const geo = merge(...parts);
+    geo.castShadow = false;
+    return geo;
+  };
+  const block = variants((i) => cube(TEAM[SIM.TEAMS[i]].paint, TEAM[SIM.TEAMS[i]].deep));
+  const goldBlock = cached(() => cube("#f2c230", "#b8901c"));
+  // The trophy's sunburst: wedges round a hole, alternately the winning team's light colour and gold, glowing, in the xy
+  // plane and seen from both sides, the scene turning it behind the winners.
+  const trophyRays = variants((i) => {
+    const geo = geometry(), N = 16, R = 6, IN = 1.1, HALF = Math.PI / N * 0.42, tones = [hexToRgb(TEAM[SIM.TEAMS[i]].light), hexToRgb("#ffe48a")];
+    for (let k = 0; k < N; k++) {
+      const a = k * Math.PI * 2 / N, rgb = tones[k & 1];
+      const p = [pushVert(geo, Math.cos(a - HALF) * IN, Math.sin(a - HALF) * IN, 0), pushVert(geo, Math.cos(a - HALF) * R, Math.sin(a - HALF) * R, 0),
+        pushVert(geo, Math.cos(a + HALF) * R, Math.sin(a + HALF) * R, 0), pushVert(geo, Math.cos(a + HALF) * IN, Math.sin(a + HALF) * IN, 0)];
+      face(geo, p, rgb, { emissive: 1 });
+      face(geo, [p[3], p[2], p[1], p[0]], rgb, { emissive: 1 });
+    }
     geo.castShadow = false;
     return geo;
   });
@@ -940,15 +957,6 @@
     geo.castShadow = false;
     return geo;
   });
-  // The crown over the round's most valuable Ooga on the results' line-up: a gold band, five points and three stones.
-  const crown = cached(() => {
-    const parts = [box({ w: 0.44, h: 0.12, d: 0.44, color: "#edbd32", emissive: 0.5, offset: { y: 0.06 } }), box({ w: 0.46, h: 0.04, d: 0.46, color: "#a87c14", emissive: 0.3, offset: { y: 0.02 } })];
-    for (const [x, z] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18], [0, 0.2], [0, -0.2], [0.2, 0], [-0.2, 0]]) parts.push(box({ w: 0.08, h: 0.14, d: 0.08, color: "#ffe27a", emissive: 0.7, offset: { x, y: 0.19, z } }));
-    for (const [x, z, c] of [[0, 0.225, "#ff4a3a"], [0, -0.225, "#ff4a3a"], [0.225, 0, "#3a8dff"], [-0.225, 0, "#3a8dff"]]) parts.push(box({ w: 0.07, h: 0.06, d: 0.07, color: c, emissive: 0.9, offset: { x, y: 0.07, z } }));
-    const geo = merge(...parts);
-    geo.castShadow = false;
-    return geo;
-  });
   // A cargo net hung on a climb's face: rope squares from the ground to its top, `w` wide, in its own frame facing +z.
   const net2 = variants((key) => {
     const [w10, top10] = key.split(":").map(Number), w = w10 / 10, top = top10 / 10, parts = [];
@@ -1008,5 +1016,5 @@
     for (const s of [-1, 1]) parts.push(box({ w: 0.36, h: 0.14, d: 0.16, color: sheet, emissive: 0.5, offset: { x: s * 0.6, y: 0.08, z: 0.12 } }));
     return merge(...parts);
   });
-  BL.blockModels = { hookHead, rope, crown, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, goldBlock, trophyRays, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

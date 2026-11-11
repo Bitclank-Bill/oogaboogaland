@@ -7429,10 +7429,12 @@ const gameRulesChecks = async () => {
       const out = { teams, worth: S.worth({ captures: 2, rescues: 1, hits: 4 }), plain: S.mvp(plain), plainRow: S.lineup(plain).join(), red: S.mvp(red), redRow: S.lineup(red).join(), tieWorth: S.mvp(tieWorth), tieMined: S.mvp(tieMined), tieAll: S.mvp(tieAll),
         none: S.mvp(none), noneRow: S.lineup(none).length, hostPick, guestPick, hostRow, guestRow };
       const page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), sc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
-      record("block results line-up: the winning side stands in seat order and its most valuable Ooga is the most worth, a tie to more mined, then more brought home, then the lower seat, the same on a host's and a guest's page; no winner, no line-up; the card names them and marks the MVP with a crown and accessible words",
+      record("block trophy winners: the winning side is listed in seat order and its most valuable Ooga is the most worth, a tie to more mined, then more brought home, then the lower seat, the same on a host's and a guest's page; no winner, no row; the trophy card shows each as a still portrait drawn once with its name, the MVP under a crown with accessible words, and nothing stands live on a cloud beside it",
         out.teams === "blue,blue,red,red" && out.worth === 12 && out.plain === 1 && out.plainRow === "0,1" && out.red === 3 && out.redRow === "2,3" && out.tieWorth === 1 && out.tieMined === 1 && out.tieAll === 0
         && out.none === 2 && out.noneRow === 0 && out.hostPick === 0 && out.guestPick === 0 && out.hostRow === "0,1" && out.guestRow === "0,1"
-        && page.includes('id="block-lineup-list"') && page.includes('id="block-crown-icon"') && /tag\.setAttribute\("aria-label", "Most valuable Ooga"\)/.test(sc) && /SIM\.mvp\(sim, seatOfActor\)/.test(sc) && /SIM\.lineup\(sim, seatOfActor\)/.test(sc), JSON.stringify(out));
+        && page.includes('id="block-lineup-list"') && page.includes('id="block-crown-icon"') && /tag\.setAttribute\("aria-label", "Most valuable Ooga"\)/.test(sc) && /SIM\.mvp\(sim, seatOfActor\)/.test(sc) && /SIM\.lineup\(sim, seatOfActor\)/.test(sc)
+        && /hudMod\.renderFaceIcon\(face, actors\[i\]\.cave, null, LINEUP_PX\)/.test(sc) && /trophyShow\(winner, worth, mvp\)/.test(sc) && !/posePodium|podiumView|BM\.crown|dataset\.lineup/.test(sc)
+        && /<div class="block-trophy-board">[\s\S]*id="block-lineup"[\s\S]*class="block-trophy-sides"/.test(page), JSON.stringify(out));
     }
     // The hook takes the rivals' block off its stand wherever on it the hook is aimed, low or high, from the open side,
     // on every map: a hook aimed low once bit the stand under the block and pulled the Ooga in instead.
@@ -8639,6 +8641,13 @@ const gameRulesChecks = async () => {
     record("arcade block hall: three racks hold the game's nine weapons, each from its own held model: every gun in the game's list once, the hook launcher among them, and the hook's head",
       racked.length === 9 && hung.length === hallGuns.length && hung.every((i, k) => i === k && BL.blockModels.gun(i * 2).faces.length > 0) && ["sniper", "gold", "hook"].every((k) => hung.includes(hallGuns.indexOf(k)))
       && racked.includes("hook") && H.racks.every(([, , rows]) => rows.length <= 3) && /BM\.gun\(i \* 2\)/.test(readFileSync(new URL("../src/js/arcade-scene-models.js", import.meta.url), "utf8")) && H.pictures.length === 4, JSON.stringify(racked));
+    {
+      // Block Frenzy's trophy stage: the golden block is the teams' cube in gold, and each side's sunburst glows in its own colour.
+      const T = BL.blockModels, gold = T.goldBlock(), rays = [T.trophyRays(0), T.trophyRays(1)];
+      record("block frenzy trophy: the golden block and each side's sunburst build, the rays glowing in that side's colour",
+        gold.faces.length === T.block(0).faces.length && rays.every((r) => r.faces.length > 0 && r.faces.every((f) => f.emissive === 1)) && rays[0].faces[0].color.join() !== rays[1].faces[0].color.join(),
+        JSON.stringify({ gold: gold.faces.length, rays: rays.map((r) => r.faces.length) }));
+    }
     // The zipline off the ledge: the survey over the scene's world, ledge to island, is clean and the ride ends on the island's top.
     const Z = BL.zipline, far = (z) => z <= H.stop.z + 1;
     const q = { support: (x, z) => far(z) ? H.cloudY : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => far(z) };
@@ -12349,7 +12358,10 @@ const blockQuiz = { name: "block quiz", why: "rule: a quiz trap holds the visito
     return { back, free: a.trapped === 0 && !D.quiz.open && document.getElementById("block-quiz").hidden }; })()`);
   record("block quiz: a trap frees a captured mouse and opens the question, a wrong answer locks the card and brings another, a right answer clicked at the free cursor breaks the bubble and captures the mouse again", r.open && r.locked && at.fresh && f.free && f.back, JSON.stringify({ ...r, ...at, ...f }));
 } };
-const blockRun = `(() => { const B = window.__ooga, D = B.block; D.start(); for (let i = 0; i < 80 && D.phase === "play"; i++) D.simulate(15, true); B.advance(0.3, 1 / 30); const save = B.game.state.block; return { ok: D.phase === "results" && !document.getElementById("block-results").hidden && save.games === 1 && save.wins === (D.result.won ? 1 : 0), phase: D.phase, result: D.result, save }; })()`;
+// The results are the trophy screen: the winning side named on its banner and its colour, and every Ooga of both sides in the tables.
+const blockRun = `(() => { const B = window.__ooga, D = B.block; D.start(); for (let i = 0; i < 80 && D.phase === "play"; i++) D.simulate(15, true); B.advance(0.3, 1 / 30); const save = B.game.state.block, card = document.getElementById("block-results"), w = D.sim.winner;
+  const trophy = card.dataset.team === w && document.getElementById("block-result-title").textContent === (w === "blue" ? "Blue" : "Red") + " wins!" && document.querySelectorAll("#block-side-blue li, #block-side-red li").length === D.sim.actors.length && card.querySelector('[data-team="' + w + '"].won') !== null;
+  return { ok: D.phase === "results" && !card.hidden && trophy && save.games === 1 && save.wins === (D.result.won ? 1 : 0), phase: D.phase, result: D.result, save, trophy }; })()`;
 const dropStart = { name: "drop start", why: "regression: Space on the title card also launched the flight", run: async (b) => {
   const st = () => b.evaluate(`({ phase: window.__ooga.drop.phase, card: !document.querySelector('[data-intro="drop"]').hidden })`);
   const fresh = await st();
