@@ -349,7 +349,7 @@
       watchNow() { if (match && match.phase === "play") { startedTag = -1; beginRound(); } },
       watchFeed: (on) => command("watch", { on: on ? 1 : 0 }),
       hello: () => command("hello"), register: (m) => command("reg", { m }), unregister: () => command("unreg"), setReady: (r) => command("ready", { r: r ? 1 : 0 }), startAlone: () => command("alone"),
-      setOptions: (n, m) => command("opt", { n, m }),
+      setOptions: (n, m, r) => command("opt", r === undefined ? { n, m } : { n, m, r }),
       dispose() { endRound(); offs.forEach(off => off()); }
     };
   };

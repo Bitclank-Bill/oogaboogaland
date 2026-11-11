@@ -85,7 +85,9 @@
   // The side, the Ooga, the captures to win, the Oogas a side and the bots' skill the visitor picked on the board; the
   // last three are remembered in this browser (`PICKS_KEY`) for next time.
   const TARGETS = [1, 3, 5, 7], SIZES = [2, 3, 4, 5], PICKS_KEY = "oogaboogaland.blockPicks";
-  const selection = { team: "blue", ooga: null, target: 3, size: 3, skill: "normal", map: "town" };
+  // `rule` is the scoring rule: "home" (your own block must be home, classic) or "any" (it needn't be).
+  const selection = { team: "blue", ooga: null, target: 3, size: 3, skill: "normal", map: "town", rule: "home" };
+  const RULE_WORDS = { home: "block must be home (classic)", any: "block doesn't need to be home" };
   const loadPicks = () => {
     try {
       const p = JSON.parse(localStorage.getItem(PICKS_KEY) || "{}");
@@ -93,10 +95,11 @@
       if (SIZES.includes(p.size)) selection.size = p.size;
       if (SIM.SKILLS[p.skill]) selection.skill = p.skill;
       if (SIM.ARENAS[p.map] && WIRE.playable(p.map)) selection.map = p.map;
+      if (WIRE.RULES.includes(p.rule)) selection.rule = p.rule;
     } catch { /* nothing saved, or storage closed: the defaults stand */ }
   };
   const savePicks = () => {
-    try { localStorage.setItem(PICKS_KEY, JSON.stringify({ target: selection.target, size: selection.size, skill: selection.skill, map: selection.map })); } catch { /* the picks last this visit */ }
+    try { localStorage.setItem(PICKS_KEY, JSON.stringify({ target: selection.target, size: selection.size, skill: selection.skill, map: selection.map, rule: selection.rule })); } catch { /* the picks last this visit */ }
   };
 
   let home = "hub";
@@ -452,8 +455,8 @@
   };
   // Borrows the board's picks for the round: `kept` restores them when the board comes back.
   const setupRound = (m, map) => {
-    kept ||= { team: selection.team, size: selection.size, map: selection.map, target: selection.target, skill: selection.skill };
-    selection.team = map.team; selection.size = m.size; selection.map = WIRE.MAPS[m.map]; selection.target = C.CAPTURES; selection.skill = "normal";
+    kept ||= { team: selection.team, size: selection.size, map: selection.map, target: selection.target, skill: selection.skill, rule: selection.rule };
+    selection.team = map.team; selection.size = m.size; selection.map = WIRE.MAPS[m.map]; selection.target = C.CAPTURES; selection.skill = "normal"; selection.rule = WIRE.RULES[m.rule] || "home";
     liveCast = liveNames(m, map);
     const changed = sim.map !== selection.map;
     recast();
@@ -467,9 +470,9 @@
     if (role === "watch") { setupRound(m, map); joinDeckNow(m); return; }
     setupRound(m, map);
     start(m.seed);
-    sim.duel = !!m.duel;
     if (role === "guest") acts("wield", 0, SIM.WIELD.indexOf(tool));
-    if (sim.duel) notice("Just the two of you: you can score even while your own block is away", 5000);
+    // The rule in force, the match's word on every page.
+    notice(`Scoring: ${RULE_WORDS[selection.rule]}`, 5000);
   };
   const joinDeckNow = (m) => {
     SIM.reset(sim, m.seed);
@@ -541,7 +544,9 @@
   // The size a round will run at: the size picked, grown to seat everyone who has joined (`blockWire.sizeFor`, as the
   // Worker does when it starts).
   const sizeOf = (m) => WIRE.plannedSize(m);
-  const matchLine = (m) => `${sizeOf(m)}v${sizeOf(m)} on ${(el.maps.find((b) => b.dataset.map === WIRE.MAPS[m.map]) || { textContent: WIRE.MAPS[m.map] }).textContent}`;
+  const matchLine = (m) => `${sizeOf(m)}v${sizeOf(m)} on ${(el.maps.find((b) => b.dataset.map === WIRE.MAPS[m.map]) || { textContent: WIRE.MAPS[m.map] }).textContent} · ${RULE_WORDS[WIRE.RULES[m.rule] || "home"]}`;
+  // The board's help line, for the rule and the captures in force.
+  const helpLine = (lead, rule, target) => `${lead} Steal the rivals' Bitcoin block (their colour), carry it to your own stand${rule === "any" ? " (your own block doesn't need to be home)" : " while your block is home"}. First to ${target} capture${target === 1 ? "" : "s"} wins.`;
   // In a match, the board's solo picks don't apply: they show what the match will play and are muted, all but the map
   // for whoever chooses it (and Detail, which is this page's own). Leaving, they go back to the visitor's picks.
   let boardInMatch = false;
@@ -550,6 +555,9 @@
     boardInMatch = inMatch;
     for (const b of [...el.sizes, ...el.targets, ...el.skills, ...el.teams]) b.disabled = inMatch;
     for (const b of el.maps) b.disabled = inMatch && !chooses;
+    // The scoring rule is the match's: the first in picks it, everyone else's board shows it.
+    const rule = inMatch ? WIRE.RULES[m.rule] || "home" : selection.rule;
+    for (const b of el.rules) { b.disabled = inMatch && !chooses; b.setAttribute("aria-pressed", String(b.dataset.rule === rule)); }
     const size = inMatch ? sizeOf(m) : selection.size, target = inMatch ? C.CAPTURES : selection.target, skill = inMatch ? "normal" : selection.skill;
     for (const b of el.sizes) b.setAttribute("aria-pressed", String(Number(b.dataset.size) === size));
     for (const b of el.targets) b.setAttribute("aria-pressed", String(Number(b.dataset.target) === target));
@@ -557,7 +565,7 @@
     for (const b of el.teams) b.setAttribute("aria-pressed", String(!inMatch && b.dataset.team === selection.team));
     const start = document.querySelector('#block-board [data-action="block-start"]');
     if (start) start.hidden = inMatch;
-    el.boardHelp.textContent = `${inMatch ? "Sides are dealt when the round starts." : "Pick a side."} Steal the rivals' Bitcoin block (their colour), carry it to your own stand${inMatch && m.reg.length === 2 ? ". With just the two of you, your own block needn't be home" : " while your block is home"}. First to ${target} capture${target === 1 ? "" : "s"} wins.`;
+    el.boardHelp.textContent = helpLine(inMatch ? "Sides are dealt when the round starts." : "Pick a side.", rule, target);
   };
   const whoName = (id) => { const rec = BL.net.remotes.get(id); return rec ? (rec.display || rec.login || "an Ooga") : BL.net.state.selfId === id ? "You" : "an Ooga"; };
   const renderLive = (m) => {
@@ -572,7 +580,7 @@
     el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Multiplayer";
     const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
     el.liveStatus.textContent = chairsFull ? "The viewing chairs are full. You can register for the next round or go back."
-      : !m || !count && !play ? "Play with whoever's here. The first to join picks the map and size. NPCs fill any empty seats."
+      : !m || !count && !play ? "Play with whoever's here. The first to join picks the map, size and scoring. NPCs fill any empty seats."
       : waiting ? `You're first in · waiting for someone to join · ${matchLine(m)}. You can still change the size here and the map below.`
       : solo ? `You're first in, so you pick · ${matchLine(m)}. Pick the size here and the map below, then start now or wait for players.`
       : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Join now for the next round.`)
@@ -633,6 +641,8 @@
     if (onDeck() && round) round.watchFeed(false);
     you = 0; watchVisit = false; chairsGreeted = false;
     if (kept) { Object.assign(selection, kept); kept = null; liveCast = null; if (sim) { const was = sim.map; recast(); if (was !== selection.map) { buildMap(); mapBase = null; } } }
+    // Back on the visitor's own picks, the Scoring buttons show their own rule again.
+    if (el.rules && !boardInMatch) for (const b of el.rules) b.setAttribute("aria-pressed", String(b.dataset.rule === selection.rule));
     phase = "board";
     followMatchMap();
     if (el.againBtn) el.againBtn.textContent = "Again";
@@ -659,6 +669,8 @@
     sim.target = selection.target;
     sim.skill = selection.skill;
     sim.bots = SIM.SKILLS[selection.skill];
+    // The scoring rule is fixed here, as the round starts: the board's pick, which in a match is the match's.
+    sim.anyTime = selection.rule === "any";
     SIM.reset(sim, seed);
     strip.shown = false;
     paintTeams();
@@ -781,7 +793,7 @@
     const own = sim.flags[sim.team], theirs = sim.flags[sim.rival], me = sim.actors[0];
     el.scoreBlue.textContent = String(sim.score.blue);
     el.scoreRed.textContent = String(sim.score.red);
-    el.own.textContent = STATE_WORDS[own.state] + (sim.duel && own.state !== "home" ? " · you can still score" : "");
+    el.own.textContent = STATE_WORDS[own.state] + (sim.anyTime && own.state !== "home" ? " · you can still score" : "");
     el.own.dataset.state = own.state;
     el.theirs.textContent = me.carrying ? "carrying!" : STATE_WORDS[theirs.state];
     el.theirs.dataset.state = me.carrying ? "carried" : theirs.state;
@@ -2293,7 +2305,16 @@
   const chooseTarget = (n) => {
     selection.target = n;
     for (const b of el.targets) b.setAttribute("aria-pressed", String(Number(b.dataset.target) === n));
-    el.boardHelp.textContent = `Pick a side. Steal the rivals' Bitcoin block (their colour), carry it to your own stand while your block is home. First to ${n} capture${n === 1 ? "" : "s"} wins.`;
+    el.boardHelp.textContent = helpLine("Pick a side.", selection.rule, n);
+    savePicks();
+  };
+  // The scoring rule: the visitor's own pick, remembered; in a match the first in's, sent to the match (everyone's
+  // board, theirs too, then shows the match's word).
+  const chooseRule = (k) => {
+    if (boardInMatch) { if (firstRegistered()) round.setOptions(round.match.size, round.match.map, WIRE.RULES.indexOf(k)); return; }
+    selection.rule = k;
+    for (const b of el.rules) b.setAttribute("aria-pressed", String(b.dataset.rule === k));
+    el.boardHelp.textContent = helpLine("Pick a side.", k, selection.target);
     savePicks();
   };
   // A new team size casts the round again: a fresh sim and a fresh set of Oogas.
@@ -2630,6 +2651,9 @@
     chooseSkill(selection.skill);
     for (const b of el.maps) b.setAttribute("aria-pressed", String(b.dataset.map === selection.map));
     el.boardHelp = document.getElementById("block-board-help");
+    el.rules = [...document.querySelectorAll("#block-board [data-rule]")];
+    el.onRule = (e) => { chooseRule(e.currentTarget.dataset.rule); e.currentTarget.blur(); };
+    for (const b of el.rules) { b.addEventListener("click", el.onRule); b.setAttribute("aria-pressed", String(b.dataset.rule === selection.rule)); }
     el.onTarget = (e) => { chooseTarget(Number(e.currentTarget.dataset.target)); e.currentTarget.blur(); };
     for (const b of el.targets) b.addEventListener("click", el.onTarget);
     chooseTarget(selection.target);
@@ -2899,6 +2923,7 @@
     hideToolName();
     for (const b of el.teams) b.removeEventListener("click", el.onTeam);
     for (const b of el.targets) b.removeEventListener("click", el.onTarget);
+    for (const b of el.rules) b.removeEventListener("click", el.onRule);
     for (const b of el.sizes) b.removeEventListener("click", el.onSize);
     for (const b of el.maps) b.removeEventListener("click", el.onMap);
     for (const b of el.skills) b.removeEventListener("click", el.onSkill);

@@ -31,11 +31,16 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   A loose block always comes to rest on open ground the bots can reach (`restSpot`): dropped or landing on a roof or the
   centre deck, it ends on the ground under it or nearest it.
   A carrier can't pick the same block up again until they have left its circle.
-- **Scoring.** Their block onto your stand while your own block is home. Reaching your stand while yours is away
-  scores nothing yet (a NOT YET! banner says why), and a carrier who waits there scores the moment it returns. A live
-  round with exactly one person on each side when it starts (`duel`; NPCs in any other seats, and never a solo round
-  against NPCs) drops that rule for the whole round, even if one of them leaves: the block need not be home. The lobby,
-  the start of the round, the status strip and the help card all say so.
+- **Scoring.** Their block onto your stand, by the round's rule, the board's Scoring setting. "Block must be home
+  (classic)", the default: your own block must be home; reaching your stand while yours is away scores nothing yet (a
+  NOT YET! banner says why), and a carrier who waits there scores the moment it returns. "Block doesn't need to be
+  home": it scores at once. The rule is one flag on the sim (`anyTime`), set as the round starts and never changed in
+  it; bots carry home and score the same way under both, waiting on the stand only where the rule makes them. Solo, the
+  visitor picks it and it is remembered with the other picks. In a live round the first in picks it (`opt`'s `r`; the
+  match carries `rule`, which every page and the host's sim read; other boards show it and can't change it). Until the
+  first in picks, a lobby of exactly two people, who are dealt one a side and would otherwise each sit on the other's
+  block, plays "doesn't need to be home" and any other count plays classic (`blockWire.ruleFor`); the pick leaves with
+  the first in. The lobby's status line, the start of the round, the status strip and the help card all name the rule.
 - **Passing.** `Tab` (or `T`, or the Pass button) throws the carried block about 12 m ahead in an arc. Anyone who
   could pick it up can catch it in the air, so a teammate can take a pass and a rival can intercept. Uncaught, it
   lands and lies as a dropped block. Bots pass when a rival closes in and a free teammate stands nearer home.
@@ -237,7 +242,7 @@ physical touch controls and browser performance still require verification.
 ## Live rounds
 Signed-in Oogas only, on a Worker that lists `block-v1` in welcome; anywhere else the game is solo as before.
 
-- **Registry** (`worker/src/block.js`, contract in `block-wire.js`): one match a room. `reg`/`unreg`/`ready`/`opt` in the lobby; the first in picks the map and size (2v2 to 4v4, `MIN_SIDE` to `MAX_SIDE`; NPCs fill any empty seat, so there is never a 1v1); `reg` carries the map already picked on their board, and registered players' boards follow the match's map, grown if more have registered than it seats. With two or more registered, everyone ready starts a 3 s countdown. One person alone chooses: Start with NPCs (`alone`, at once with NPCs) or Wait for players (marks them ready, which starts nothing until someone else registers and readies). If the others leave, the choice comes back.
+- **Registry** (`worker/src/block.js`, contract in `block-wire.js`): one match a room. `reg`/`unreg`/`ready`/`opt` in the lobby; the first in picks the map, size and scoring rule (2v2 to 4v4, `MIN_SIDE` to `MAX_SIDE`; NPCs fill any empty seat, so there is never a 1v1); `reg` carries the map already picked on their board, and registered players' boards follow the match's map, grown if more have registered than it seats. With two or more registered, everyone ready starts a 3 s countdown. One person alone chooses: Start with NPCs (`alone`, at once with NPCs) or Wait for players (marks them ready, which starts nothing until someone else registers and readies). If the others leave, the choice comes back.
 - **Teams:** random and as even as can be (`split`); empty seats are NPCs.
 - **Host:** one seated page runs `block-sim.js`, chosen by the room (longest in the room, a visible page first). If it leaves, the next seated page continues from its last snapshot; if no seated human is left, the round ends. A leaver's seat goes to an NPC.
 - **No joining mid-round.** Late arrivals sit in the viewing chairs (`block-viewer.js`, `phase === "watch"`), a row of plain chairs in a blank white space above the game, as do visitors sent by `BL.blockLive.openWatchDeck(go)`. A viewer has no body, sends no input or position and is local to its page; it asks for the feed (`watch`) and receives every other frame, drawn smoothly between them, and only the match draws. The wheel, a pinch or the scope's +/- keys zoom the view (local only, stopping at the default view); a dark sports-style scoreboard in the corner, with a small table per player of blocks mined, stolen (counted on the viewer from who starts carrying the other side's block) and splats landed and the block-mined sound (once per capture, read from the score) come from the same match state. It has no voice in this version. It can register for the next round from there.

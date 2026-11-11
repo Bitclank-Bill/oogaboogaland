@@ -845,7 +845,8 @@
   // Everyone back to their fort, both flags home, the forts' crates back, the score at nil and the clock at zero.
   const reset = (sim, seed = sim.seed) => {
     sim.seed = seed;
-    sim.duel = false;
+    // The scoring rule (`anyTime`: your own block need not be home) is the round's, set by whoever starts it.
+    sim.anyTime = !!sim.anyTime;
     sim.rng = mulberry32(seed);
     use(sim);
     for (const c of sim.crates) c.live = false;
@@ -2545,8 +2546,8 @@
       emit(sim, "return", own.team, a.id, own.x, 0, own.z);
     }
     // At home with their block while your own is away: no score yet, said once a visit to the stand.
-    // A live round of one person a side (`sim.duel`, `blockWire.duel`): a stolen block need not be home to score.
-    const mayScore = own.state === "home" || sim.duel;
+    // Under the round's "needn't be home" rule (`sim.anyTime`, set as it starts) a stolen block scores at once.
+    const mayScore = own.state === "home" || sim.anyTime;
     if (a.carrying === theirs.team && atGoal && !mayScore && !a.waiting) {
       a.waiting = true;
       emit(sim, "waiting", a.team, a.id, gl.x, 0, gl.z);

@@ -7319,9 +7319,27 @@ const gameRulesChecks = async () => {
     const flat = ["paint", "ak", "gold"].map((kind) => { const T = S.TOOLS[kind], d = 20, t = d / T.speed, p = S.flatPitch(d, T), y = (T.lift + Math.sin(p) * T.speed) * t - 0.5 * T.gravity * t * t; return Math.abs(y) < 0.1 && T.speed * T.life >= 25 && T.gravity <= 1.5; });
     record("block shots: paint and the AKs arrive within 10 cm of the aim at 20 m with about their old reach", flat.every(Boolean), JSON.stringify(flat));
 
-    // A round of one person a side may score with its own block away, and no other.
-    const scoring = (duel) => { const s = S.create({ team: "blue", seed: 3, size: 2, map: "fort", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue; s.duel = duel; s.flags.blue.state = "dropped"; s.flags.blue.x = 0; s.flags.blue.z = 0; s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0; S.tick(s, S.CONFIG.STEP, still()); return a.captures; };
-    record("block duels: only a one-person-a-side round scores with its own block away", scoring(true) === 1 && scoring(false) === 0, JSON.stringify({ duel: scoring(true), normal: scoring(false) }));
+    // The round's scoring rule, one flag set as it starts: classic waits for your own block to be home (and says so
+    // once), "doesn't need to be home" scores at once, for a bot as for a person; a reset keeps the round's rule.
+    const scoring = (anyTime, bot = false) => {
+      const s = S.create({ team: "blue", seed: 3, size: 2, map: "fort", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue;
+      s.anyTime = anyTime; S.reset(s, 3); a.bot = bot;
+      s.flags.blue.state = "dropped"; s.flags.blue.x = 0; s.flags.blue.z = 0; s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0;
+      S.tick(s, S.CONFIG.STEP, still());
+      let waited = false; for (let i = 0; i < s.eventCount; i++) waited = waited || s.events[i].type === "waiting";
+      const first = a.captures;
+      // Classic: the carrier who waits scores the moment its own block is home again.
+      if (!anyTime) { s.flags.blue.state = "home"; s.flags.blue.x = st.x; s.flags.blue.z = st.z; S.tick(s, S.CONFIG.STEP, still()); }
+      return { first, waited, later: a.captures, kept: s.anyTime, score: s.score.blue };
+    };
+    const rules = { any: scoring(true), classic: scoring(false), anyBot: scoring(true, true), classicBot: scoring(false, true), fresh: S.create({ team: "blue", seed: 3, size: 2, map: "fort", prep: 0 }).anyTime, duel: "duel" in S.create({ team: "blue", seed: 3, size: 2, map: "fort", prep: 0 }) || "duel" in W };
+    const optBase = { t: "bf", v: W.WIRE, k: "opt", n: 2, m: W.FIRST_MAP }, ruleWire = { rules: W.RULES.join(), none: W.ruleFor(-1, 1) + "" + W.ruleFor(-1, 2) + W.ruleFor(-1, 3) + W.ruleFor(-1, 8), picked: W.ruleFor(0, 2) + "" + W.ruleFor(1, 5),
+      plain: JSON.stringify(W.parse(optBase)), home: W.parse({ ...optBase, r: 0 })?.r, any: W.parse({ ...optBase, r: 1 })?.r, bad: [2, -1, 0.5, "1", null, true].map((r) => W.parse({ ...optBase, r })).every((v) => v === null), old: W.parse({ ...optBase, v: W.WIRE - 1, r: 1 }) };
+    record("block scoring rule: classic needs your own block home, says so once and scores the moment it returns; doesn't-need-to-be-home scores at once; bots the same; a reset keeps the round's rule and a new sim is classic; the duel rule is gone",
+      rules.any.first === 1 && !rules.any.waited && rules.any.kept === true && rules.classic.first === 0 && rules.classic.waited && rules.classic.later === 1 && rules.classic.kept === false
+      && rules.anyBot.first === 1 && rules.classicBot.first === 0 && rules.classicBot.later === 1 && rules.fresh === false && !rules.duel, JSON.stringify(rules));
+    record("block scoring rule on the wire: opt may carry the rule, 0 or 1, and nothing else; left out, no pick; unpicked, two people play doesn't-need-to-be-home and any other count classic; a pick always stands; an older page's message is refused",
+      ruleWire.rules === "home,any" && ruleWire.none === "0100" && ruleWire.picked === "01" && ruleWire.plain === JSON.stringify({ t: "bf", k: "opt", n: 2, m: W.FIRST_MAP }) && ruleWire.home === 0 && ruleWire.any === 1 && ruleWire.bad && ruleWire.old === null && W.WIRE === 3, JSON.stringify(ruleWire));
 
     // Mining a block takes one thing from the other side, by the sim's seeded pick; the wallets and their machines are gone.
     const mine = (setup, seed = 3, left = 0) => { const s = S.create({ team: "blue", seed, size: 3, map: "town", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue; s.goldLeft = left; s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0; setup(s, a); S.tick(s, S.CONFIG.STEP, still()); return s; };
@@ -7489,15 +7507,25 @@ const gameRulesChecks = async () => {
       const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
       const net = { state: { selfId }, serverNow: () => context.clock + (context.skew || 0), subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m, a: m.a && m.a.slice() }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };
       const seen = { sim: null, started: 0 }, live = L.create({ net, now: () => context.clock, resolveBody: () => {}, onMatch: () => {}, onHost: () => { seen.tookOver = true; },
-        onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; S.reset(s, m.seed); live.bind(s); } });
+        onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; s.anyTime = W.RULES[m.rule] === "any"; S.reset(s, m.seed); live.bind(s); } });
       return { live, sent, bins, seen, tell: m => { for (const f of subs) f({ k: "match", ...m }); }, input: m => { for (const f of subs) f({ k: "input", ...m }); }, frame: b => { for (const f of frames_) f(b); } };
     };
     { const a = session(1); a.live.register(1); record("block live: registering sends the map picked on the board", a.sent.length === 1 && a.sent[0].k === "reg" && a.sent[0].m === 1, JSON.stringify(a.sent)); a.live.dispose?.(); }
     context.clock = 1000;
-    const match = { s: "0123456789abcdef", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [10, 20, 30, 0], host: 10, epoch: 1, tag: 99, seed: 5 };
+    const match = { s: "0123456789abcdef", phase: "play", size: 2, map: 0, rule: 1, reg: [], ready: [], seats: [10, 20, 30, 0], host: 10, epoch: 1, tag: 99, seed: 5 };
     const A = session(10), B = session(20), D = session(40);
     A.tell(match); B.tell(match); D.tell(match);
     const a = A.seen.sim, b = B.seen.sim, dk = D.seen.sim;
+    {
+      // The match's rule is every page's: host, guest and viewer start the round under it; a match without one is classic.
+      const C2 = session(10), D2 = session(20), plainMatch = { ...match, s: "fedcba9876543210", tag: 98 }; delete plainMatch.rule; C2.tell(plainMatch); D2.tell(plainMatch);
+      const sceneSrc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), pageSrc = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+      record("block scoring rule in a live round: host, guest and viewer all start under the match's rule, and classic when it names none; the board has both choices in the owner's words, the scene fixes the rule as the round starts and sends the first in's pick",
+        a.anyTime === true && b.anyTime === true && dk.anyTime === true && C2.seen.sim.anyTime === false && D2.seen.sim.anyTime === false
+        && /data-rule="home" aria-pressed="true" aria-label="Block must be home \(classic\)"/.test(pageSrc) && /data-rule="any" aria-pressed="false" aria-label="Block doesn't need to be home"/.test(pageSrc)
+        && /sim\.anyTime = selection\.rule === "any";\s*SIM\.reset\(sim, seed\);/.test(sceneSrc) && /round\.setOptions\(round\.match\.size, round\.match\.map, WIRE\.RULES\.indexOf\(k\)\)/.test(sceneSrc) && !/\bduel\b/.test(sceneSrc),
+        JSON.stringify({ host: a.anyTime, guest: b.anyTime, viewer: dk.anyTime, plain: [C2.seen.sim.anyTime, D2.seen.sim.anyTime] }));
+    }
     record("block live: roles and NPC fill from the seats", A.seen.role === "host" && B.seen.role === "guest" && D.seen.role === "watch" && a.actors[3].bot === true && !a.actors[0].bot && !b.actors[0].bot);
     const mv = A.live.map.toLocal[1], before = a.actors[mv].x;
     A.input({ from: 1, s: match.s, q: 1, x: 1000, z: 0, f: 0, b: 1 });
@@ -7523,7 +7551,7 @@ const gameRulesChecks = async () => {
       const shot = a.shots.find(x => x.live && x.kind === "sniper" && x.owner === mv);
       record("block sniper: a guest's pick and shot reach the host as wield and fire actions the wire accepts, and the host fires the rifle for it off any tower",
         asked === true && !!parsed && parsed.a.length === 8 && W.ACTIONS[parsed.a[0]] === "wield" && W.ACTIONS[parsed.a[4]] === "fire" && W.KINDS[parsed.a[7]] === "sniper"
-        && g.wield === "sniper" && !!shot && g.y < S.CONFIG.TOWER_TOP - 1 && g.lastKind === "sniper" && W.WIRE === 2, JSON.stringify({ asked, msg, wield: g.wield, shot: !!shot }));
+        && g.wield === "sniper" && !!shot && g.y < S.CONFIG.TOWER_TOP - 1 && g.lastKind === "sniper", JSON.stringify({ asked, msg, wield: g.wield, shot: !!shot }));
     }
     const leftA = { ...match, seats: [10, 0, 30, 0] };
     A.tell(leftA); record("block live: a leaver's seat falls back to an NPC", a.actors[mv].bot === true);

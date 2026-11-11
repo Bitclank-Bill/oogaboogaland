@@ -5,7 +5,7 @@
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
-  const FEATURE = "block-v1", ZONE = "block-frenzy", WIRE = 2;
+  const FEATURE = "block-v1", ZONE = "block-frenzy", WIRE = 3;
   // The `place` that arrives on the watch deck to spectate, for a portal or anything else that opens the game to watch.
   const WATCH_DECK_PLACE = "watch-deck";
   // The most a side may hold: change this one number to change the cap on the page and in the Worker.
@@ -41,9 +41,11 @@
     for (let i = 0; i < deck.length; i++) { const side = (i + first) & 1; seats[side * size + used[side]++] = deck[i]; }
     return seats;
   };
-  // Exactly one person on each side when the round starts, NPCs in any other seats (not a solo round, nor two people on
-  // a side): a block need not be home to score, for the whole round.
-  const duel = (seats, size) => seats.slice(0, size).filter(Boolean).length === 1 && seats.slice(size).filter(Boolean).length === 1;
+  // The scoring rule, by index on the wire: your own block must be home to score (classic), or needn't be. A match
+  // plays the first in's pick (`pick` 0 or 1, by `opt`); until they pick (-1), two people, who are dealt one a side and
+  // would otherwise each sit on the other's block, play "needn't be home" and any other count plays classic.
+  const RULES = ["home", "any"];
+  const ruleFor = (pick, count) => pick === 0 || pick === 1 ? pick : count === 2 ? 1 : 0;
   const allReady = m => m.reg.length > 0 && m.ready.length === m.reg.length && m.ready.every(Boolean);
   // A round only starts itself with two humans all ready; one person alone starts by choosing to (`alone`).
   const canStart = m => m.reg.length >= 2 && allReady(m);
@@ -62,7 +64,8 @@
     if (m.k === "reg") return m.m === undefined || integer(m.m, 0, FIRST_MAP - 1) ? base : integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, m: m.m } : null;
     if (m.k === "watch") return integer(m.on, 0, 1) ? { ...base, on: m.on } : null;
     if (m.k === "ready") return integer(m.r, 0, 1) ? { ...base, r: m.r } : null;
-    if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
+    // `r`, the scoring rule, only when the first in chooses it: left out, the match's rule stays as it is.
+    if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, FIRST_MAP, MAPS.length - 1) && (m.r === undefined || integer(m.r, 0, RULES.length - 1)) ? (m.r === undefined ? { ...base, n: m.n, m: m.m } : { ...base, n: m.n, m: m.m, r: m.r }) : null;
     if (!session(m.s)) return null;
     base.s = m.s;
     if (m.k === "go") return base;
@@ -79,5 +82,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, FIRST_MAP, playable, plannedSize, ACTIONS, KINDS, parse, eligible, sizeFor, split, duel, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, FIRST_MAP, playable, plannedSize, ACTIONS, KINDS, parse, eligible, sizeFor, split, RULES, ruleFor, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
 })();
