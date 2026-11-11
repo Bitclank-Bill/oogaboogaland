@@ -2,9 +2,9 @@
 // about a million times more hashes per joule than in 2009. The dome is seventeen years of network hashrate on a log
 // scale wrapped round the room, from 2009 by the door on the left to today on the right, shaded by era (CPU, GPU,
 // FPGA, ASIC) right over that era's exhibits, the hash units labelled over the door where the chart starts and ends;
-// the crown spells today's rate out, live from mempool.space when it can read it. Eighteen exhibits stand round a ring
+// the crown spells today's rate out, live from mempool.space when it can read it. Nineteen exhibits stand round a ring
 // in date order, each a model (1.6 times life size) on a plinth with its plaque, the floor's ring ticked for every year
-// right under that year's tick on the dome and each exhibit's date dotted on it; a tap, or Space in front of one,
+// right under that year's tick on the dome; a tap, or Space in front of one,
 // opens it in the model viewer (`model-viewer.js`), up close in 3D beside all its stats and sources. Satoshi's
 // machine is the one Sergio Demian Lerner's Patoshi research points to: a single high-end 2009 desktop, its CPU
 // sweeping five nonce ranges at once. A big S21 turns slowly on a plinth in the middle.
@@ -32,6 +32,8 @@
     gpu: { href: "https://en.bitcoin.it/wiki/Non-specialized_hardware_comparison", label: "Bitcoin Wiki · non-specialized hardware" },
     hw: { href: "https://en.bitcoin.it/wiki/Mining_hardware_comparison", label: "Bitcoin Wiki · mining hardware" },
     avalon: { href: "https://en.bitcoin.it/wiki/Avalon1", label: "Bitcoin Wiki · Avalon1" },
+    erupter: { href: "https://bitcoinmagazine.com/business/btcguild-starts-selling-asicminer-usbs-sells-out-in-40-minutes-1372542639", label: "Bitcoin Magazine · BTC Guild sells out ASICMiner's USBs in 40 minutes (2013)" },
+    asicminer: { href: "https://en.bitcoin.it/wiki/ASICMiner", label: "Bitcoin Wiki · ASICMiner" },
     s3: { href: "https://www.coindesk.com/markets/2014/06/30/bitmain-releases-energy-efficient-478ghs-antminer-s3", label: "CoinDesk · Bitmain releases the 478 GH/s AntMiner S3 (2014)" },
     s7: { href: "https://www.asicminervalue.com/miners/bitmain/antminer-s7", label: "ASIC Miner Value · Antminer S7" },
     s21: { href: "https://support.bitmain.com/hc/en-us/articles/23794895251609-S21-Specification", label: "Bitmain · S21 specification" },
@@ -70,12 +72,18 @@
       about: "FPGAs are chips whose logic is wired by a program. Wired for SHA-256 and nothing else, two of them matched a graphics card's hashrate on the power of a light bulb, the first step from general-purpose hardware toward chips made only to mine.",
       specs: [["Chips", "2 × Xilinx Spartan-6 LX150 FPGA"], ["Hashrate", "400 MH/s"], ["Power", "17.2 W"], ["Efficiency", "23 MH/J"], ["Price", "$550 (2011)"]],
       note: "Figures from the Bitcoin Wiki's mining hardware table.", sources: [SRC.hw] },
-    { year: 2013.05, title: "ASIC", name: "Avalon and Block Erupter", model: "avalon", jth: 9400,
-      text: "The first chips made only for SHA-256. Avalon's first batch shipped in January 2013.",
-      stats: [["Avalon", "66.3 GH/s"], ["USB stick", "~336 MH/s"], ["J/TH", "~9,400"]],
-      about: "An ASIC does one thing. Avalon's A3256, made at 110 nm, was the first Bitcoin ASIC on sale; its first batch of miners shipped in January 2013, and ASICMiner's Block Erupter put an ASIC on a USB stick the same year. From here on, only chips made to mine could keep up.",
-      specs: [["Avalon Batch 1", "66.3 GH/s on 620 W, $1,299"], ["Its chip", "A3256, 110 nm (TSMC)"], ["First shipped", "January 2013"], ["Block Erupter USB", "~336 MH/s on ~2.6 W"], ["Efficiency", "Avalon ~9.4 J/GH, the stick ~7.6 J/GH"]],
-      note: "Figures from the Bitcoin Wiki.", sources: [SRC.hw, SRC.avalon] },
+    { year: 2013.05, title: "ASIC", name: "Avalon Batch 1", model: "avalon", jth: 9400,
+      text: "The first miner on chips made only for SHA-256, shipped in January 2013.",
+      stats: [["Hashrate", "66.3 GH/s"], ["Power", "620 W"], ["J/TH", "~9,400"]],
+      about: "An ASIC does one thing. Avalon's A3256, made at 110 nm, was the first Bitcoin ASIC on sale, and its first batch of miners shipped in January 2013: one box that outhashed a room of graphics cards. From here on, only chips made to mine could keep up.",
+      specs: [["Hashrate", "66.3 GH/s"], ["Power", "620 W at the wall"], ["Efficiency", "~9.4 J/GH (~9,400 J/TH)"], ["Chips", "A3256, 110 nm (TSMC)"], ["Price", "$1,299"], ["First shipped", "January 2013"]],
+      note: "Figures from the Bitcoin Wiki; model 1.6 times life size, unplugged, its cords lying behind it.", sources: [SRC.hw, SRC.avalon] },
+    { year: 2013.48, title: "USB ASIC", name: "Block Erupter USB", model: "erupter", jth: 7600,
+      text: "An ASIC on a USB stick: a third of a gigahash from any spare port.",
+      stats: [["Hashrate", "336 MH/s"], ["Power", "~2.55 W"], ["J/TH", "~7,600"]],
+      about: "ASICMiner put its own 130 nm chip on a USB stick, powered from the port it plugged into and cooled by its own heatsink. When BTC Guild offered a thousand of them at 1 BTC each in June 2013, they sold out in forty minutes. Plugged by the handful into powered hubs, with a desk fan blowing across them, they brought ASIC mining to anyone with a laptop.",
+      specs: [["Hashrate", "336 MH/s"], ["Power", "~2.55 W from the USB port"], ["Efficiency", "~7.6 J/GH (~7,600 J/TH)"], ["Chip", "ASICMiner's own, 130 nm"], ["Price", "1 BTC (June 2013)"], ["Shown", "7 sticks in a powered hub: ~2.35 GH/s"]],
+      note: "Figures from the Bitcoin Wiki and Bitcoin Magazine; model 1.6 times life size, seven sticks in a hub run from a 2013 laptop.", sources: [SRC.erupter, SRC.hw, SRC.asicminer] },
     { year: 2014.5, title: "S3", name: "Antminer S3", model: "s3", jth: 770,
       text: "Half a terahash on the power of a few light bulbs.",
       stats: [["Hashrate", "478 GH/s"], ["Power", "366 W"], ["J/TH", "~770"]],
@@ -717,11 +725,13 @@
       }
       return {};
     }
+    // A cord's plug lying where it ends, along the cord's last run in z.
+    const plug = (x, z, color = "#151517") => { B(0.032, 0.02, 0.046, color, x, 0.012, z); for (const sx of [-1, 1]) B(0.004, 0.012, 0.014, "#c9ccd2", x + sx * 0.008, 0.012, z + 0.03); };
     if (kind === "avalon") {
       // Avalon's first batch: a black steel box on rubber feet, the orange band, its big front fan behind the guard,
-      // vents down its side, the ports and inlet at the back; beside it four Block Erupters in a powered USB hub, and
-      // the little desk fan their owners set blowing on them.
-      const aw = mm(200), ah = mm(320), ad = mm(300), ax = -0.16, af = 0.012;
+      // vents down its side, the ports and inlet at the back; unplugged, as a museum shows it, its power cord and its
+      // network cable lying behind it.
+      const aw = mm(200), ah = mm(320), ad = mm(300), ax = 0, af = 0.012;
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) Y(0.012, 0.014, af, "#0c0c0e", ax + sx * (aw / 2 - 0.03), af / 2, sz * (ad / 2 - 0.03), { seg: 10 });
       B(aw, ah, ad - 0.03, "#232327", ax, af + ah / 2, 0.015);
       bay("-z", ax, af, -ad / 2, aw, ah, [af + ah * 0.42], aw * 0.82, "#232327", 0.03);
@@ -733,22 +743,51 @@
       Bk.B(0.04, 0.03, 0.006, "#0b0b0d", 0.05, af + 0.08, -0.003);
       Bk.B(0.017, 0.014, 0.006, "#0b0b0d", -0.04, af + 0.2, -0.003);
       Bk.lit(0.004, 0.004, LIFT, C.led, -0.04, af + 0.215, -0.007);
-      const hx = 0.24, hy = mm(22);
+      T.cable([[ax - 0.05, af + 0.08, ad / 2 + 0.006], [ax - 0.05, af + 0.08, ad / 2 + 0.07], [ax - 0.05, 0.008, ad / 2 + 0.13], [ax - 0.05, 0.008, 0.44]], 0.012, "#151517");
+      plug(ax - 0.05, 0.463);
+      T.cable([[ax + 0.04, af + 0.2, ad / 2 + 0.006], [ax + 0.04, af + 0.2, ad / 2 + 0.05], [ax + 0.04, 0.007, ad / 2 + 0.12], [ax + 0.04, 0.007, 0.36], [ax + 0.2, 0.007, 0.36]], 0.007, "#2b6fd8");
+      B(0.03, 0.012, 0.016, "#d5d8de", ax + 0.215, 0.007, 0.36);
+      return {};
+    }
+    if (kind === "erupter") {
+      // ASICMiner's USB Block Erupters, seven of them standing in a powered USB hub: each a blue board on a gold
+      // heatsink with its light, the hub's own lights under them; the hub's power brick and its cord, its lead to an
+      // open 2013 laptop running the miner; and the little desk fan their owners set blowing across them.
+      const hx = -0.16, hy = mm(22);
       B(mm(150), hy, mm(55), "#e9e9e6", hx, hy / 2, 0);
       for (let i = 0; i < 7; i++) {
-        const x = hx - 0.105 + i * 0.035;
-        T.face("-z", x, hy / 2, -mm(27.5)).lit(0.004, 0.004, LIFT, "#4aa3ff", 0, 0, -LIFT / 2, i < 4 ? 0.95 : 0.2);
-        if (i >= 4) { T.face("+y", x, hy, 0).B(0.018, 0.008, LIFT, "#0b0b0d", 0, 0, -LIFT / 2); continue; }
-        const sy = hy + mm(50);
+        const x = hx - 0.105 + i * 0.035, sy = hy + mm(50);
+        T.face("-z", x, hy / 2, -mm(27.5)).lit(0.004, 0.004, LIFT, "#4aa3ff", 0, 0, -LIFT / 2, 0.95);
         B(mm(13), mm(14), mm(5), "#c9ccd2", x, hy + mm(7), 0);
         B(mm(3), mm(86), mm(28), "#2556b4", x, sy + mm(4), 0);
         B(mm(8), mm(52), mm(26), "#c9a23a", x + mm(6), sy + mm(6), 0);
         for (let f = 0; f < 4; f++) B(mm(10), mm(46), 0.003, "#d6b14a", x + mm(13), sy + mm(6), -mm(10) + f * mm(6.5));
         T.face("-x", x - mm(1.5), sy + mm(38), mm(8)).lit(0.004, 0.004, LIFT, C.led, 0, 0, -LIFT / 2);
       }
-      T.cable([[hx + mm(75), 0.006, 0], [0.5, 0.006, 0], [0.5, 0.006, 0.4]], 0.008, "#151517");
+      // The power brick behind the hub, and its cord to the plug lying beside it.
+      B(mm(62), mm(30), mm(42), "#1a1a1c", hx, mm(15), 0.2);
+      T.cable([[hx, hy * 0.5, mm(27.5) + 0.004], [hx, 0.008, 0.1], [hx, 0.008, 0.2 - mm(21) - 0.002]], 0.008, "#151517");
+      T.cable([[hx, mm(15), 0.2 + mm(21) + 0.004], [hx, 0.008, 0.33], [hx - 0.12, 0.008, 0.38], [hx - 0.12, 0.008, 0.45]], 0.009, "#151517");
+      plug(hx - 0.12, 0.473);
+      // The laptop, a silver 2013 one open toward the visitor: its base with the keyboard and trackpad, and the lid
+      // with the miner's log on its screen.
+      const lx = 0.3, lz = 0.06, W = mm(325), Hb = mm(17), D = mm(227), Hl = mm(212);
+      B(W, Hb, D, "#b9bdc3", lx, Hb / 2, lz);
+      const kz = lz + D * 0.1, u = W * 0.82 / 13;
+      B(W * 0.86, LIFT, D * 0.44, "#1f2023", lx, Hb + LIFT / 2, kz);
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 13; c++) B(u - 0.005, 0.004, u - 0.005, "#2c2d31", lx + (6 - c) * u, Hb + LIFT + 0.002, kz + (2 - r) * u);
+      B(W * 0.3, LIFT, D * 0.22, "#c9cdd2", lx, Hb + LIFT / 2, lz - D * 0.31);
+      const Lid = T.at(lx, Hb, lz + D / 2 - 0.007, 0, 0.26);
+      Lid.B(W, Hl, 0.012, "#b9bdc3", 0, Hl / 2, 0);
+      const Sc = Lid.face("-z", 0, 0, -0.006);
+      Sc.B(W - 0.016, Hl - 0.016, LIFT, "#0b0c0e", 0, Hl / 2, -LIFT / 2);
+      Sc.lit(W * 0.88, Hl * 0.8, LIFT, "#07140d", 0, Hl * 0.52, lay(0), 0.7);
+      ["BFGMINER 3.1.1", "7 USB ERUPTERS FOUND", "ERU 0-6  336 MH/S EACH", "TOTAL  2.35 GH/S", "POOL  BTC GUILD", "ACCEPTED 1284  REJ 3"].forEach((line, i) =>
+        Sc.say(line, 0.0034, i ? "#7cff8a" : "#ffd66b", 0, Hl * 0.83 - i * 0.042, ink(0), 0.6));
+      // Its lead from the hub's end round to the laptop's side.
+      T.cable([[hx + mm(75) + 0.004, hy * 0.5, 0], [-0.02, 0.008, 0.01], [-0.0, 0.008, 0.12], [lx - W / 2 - 0.004, Hb * 0.5, 0.12]], 0.007, "#151517");
       // The desk fan: its base, stem, motor, four blades and the cage, blowing across the sticks.
-      const fx = 0.44, fz = -0.2, fh = 0.2, Fn = T.at(fx, fh, fz, 2.16);
+      const fx = -0.48, fz = -0.18, fh = 0.2, Fn = T.at(fx, fh, fz, -2.06);
       Y(0.05, 0.056, 0.014, "#e9e9e6", fx, 0.007, fz, { seg: 16 });
       Y(0.008, 0.008, fh - 0.03, "#d6d6d2", fx, 0.014 + (fh - 0.03) / 2, fz, { seg: 10 });
       Fn.Y(0.024, 0.026, 0.05, "#e9e9e6", 0, 0, 0.03, { rx: HALF, seg: 14 });
