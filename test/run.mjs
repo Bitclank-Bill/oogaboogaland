@@ -7435,6 +7435,9 @@ const gameRulesChecks = async () => {
         blurbs: AR.every(([, , b]) => b.length >= 30 && b.length <= 80 && b.endsWith(".")), numbers: S.TOOLS.grenade.max === 3 && S.TOOLS.net.max === 3 && S.TOOLS.rocket.max === 1 && S.CONFIG.AK_MAG === 30 && S.CONFIG.HOOKS === 2 && S.TOOLS.paint.max === 0 && S.TOOLS.gold.max === 0,
         buttons: /data-weapon-step="-1" aria-label="Previous weapon"/.test(html) && /data-weapon-step="1" aria-label="Next weapon"/.test(html) && html.includes('id="block-weapon-blurb"'),
         calm: /if \(!CLOUD_CALM\) \{\s*show\.spin = [^}]*showWeapon\(show\.i \+ 1\);\s*\}/.test(scene), hidden: /#block-board\[hidden\] ~ \.block-weapon-card \{\s*display: none/.test(css.replace(/#block-board\[hidden\] ~ \.block-preview-name,\s*/, "")) };
+      record("block board: no Ooga picker, only the Ooga's name; the cast still starts from the visitor's own Ooga, then the one driven in, then the roster's first",
+        !/<select[^>]*id="block-ooga"/.test(html) && !html.includes("block-preview-pick") && /<p class="block-ooga" id="block-ooga"><\/p>/.test(html) && !/oogaPick|previewPick/.test(scene)
+        && /const first = own \|\| selection\.ooga \|\| names\[0\] \|\| null;/.test(scene) && /el\.previewName\.firstChild\.textContent = el\.oogaName\.textContent = /.test(scene), "");
       record("block weapons preview: the board's list covers every tool of the arsenal in key order under its slot's name, each with a short line whose numbers are the rules', with previous and next buttons, hidden with the board and still under reduced motion",
         Object.values(preview).every(Boolean), JSON.stringify({ preview, arsenal: AR.map(([k, n]) => k + ":" + n) }));
       const named = slots.every((m, i) => Number(m[4]) === i + 1 && keys[i + 1] === m[1] && m[2].length > 4 && m[3] === `${m[2]} (${i + 1})` && (m[5].match(/<path/g) || []).length >= 5);

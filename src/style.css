@@ -11283,16 +11283,12 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   }
 }
 
-/* Block Frenzy's Ooga picker on the board, and the touch paint button above the jump. */
+/* Block Frenzy's Ooga by name on the board (a narrow screen, where it isn't on show), and the touch paint button above the jump. */
 .block-ooga {
-  width: 100%;
-  min-height: 40px;
-  padding: 6px 8px;
-  border: 2px solid var(--wood-edge);
-  border-radius: 6px;
-  background: #2a1d12;
+  margin: 0;
+  font-size: 16px;
+  font-weight: bold;
   color: #f3e6cc;
-  font: inherit;
 }
 
 .block-paint {
@@ -11692,22 +11688,6 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   border-radius: 8px;
   background: rgba(30, 20, 12, 0.82);
   color: #f3e6cc;
-}
-
-.block-preview-pick {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 3px;
-  margin-top: 4px;
-  min-width: 220px;
-}
-
-.block-preview-pick label {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.8;
 }
 
 .block-preview-name b {

@@ -15,7 +15,7 @@ Solo by default. Signed-in Oogas can also play together: see Live rounds below.
 | `block-sim.js` | The rules as pure functions, no DOM or scene: the arena, actors, blocks, throws, crates, quiz traps, weather and bots, on a 1/120 s fixed step that allocates nothing. Seeded, so a seed replays a round. |
 | `block-trivia.js` | 35 multiple-choice Bitcoin questions, each with a one-line fact, for the quiz traps. |
 | `block-models.js` | Cached geometry: Fort Chaos, the stands, the two team blocks, crates, paint balls, grenades, rockets, nets, splats, quiz pads and bubbles, rain, and the arsenal: each tool's gun in a shared frame (`gun(index * 2 + team)` over `GUNS`, the grip at the origin and the muzzle along +z), the hook launcher among them, the hook's head and rope, the monkey and the ammo box. |
-| `scene-block.js` | The scene: the side and Ooga picker, the round, the HUD, the cameras, the quiz card and the results. Registers `BL.scenes.block`. |
+| `scene-block.js` | The scene: the side picker, the round, the HUD, the cameras, the quiz card and the results. Registers `BL.scenes.block`. |
 
 Shared files touched, each by the smallest change: `arcade-models.js`, `arcade-scene-models.js` and `scene-arcade.js` (the entry hall: `BLOCK_HALL`, its walk, sight and light, and its zipline off the ledge; the stage stays rock's four cabinets, and the Rally poster moved just beside the mouth),
 `game.js` (a `block` save slot: rounds, wins, fastest win, validated on load), `routes.js` (`/blockfrenzy`),
@@ -201,7 +201,7 @@ A jumps, through the shared controls.
 
 ## Characters
 
-The board picks the visitor's Ooga from the roster, alphabetically; a signed-in visitor plays their own. A companion
+The board has no Ooga picker: a signed-in visitor plays their own Ooga, anyone else the one they drove in (`world.pilot`) or the roster's first, and the board shows it turning (wide screens) with its name. A companion
 a character file hangs on its Ooga as `parts.dog` is let off the lead in this scene and trots along behind it
 (`poseCompanions`); everywhere else it stays where the character file put it.
 

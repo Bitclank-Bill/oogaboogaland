@@ -257,7 +257,9 @@
     }
     actors = null;
   };
-  // A new Ooga picked on the board: the four are cast again round it.
+  // Another Ooga for a visitor with none of their own (the board has no picker: a signed-in visitor plays their own
+  // Ooga, anyone else the one they drove in or the roster's first; this stays for the debug handle): the cast is made
+  // again round it.
   const chooseOoga = (name) => {
     if (BL.net.ownAmong(contributors.activeRoster)) return;
     selection.ooga = name;
@@ -2110,12 +2112,8 @@
     el.previewName.hidden = !preview.wide;
     if (el.weaponCard.hidden === preview.wide) el.weaponCard.hidden = !preview.wide;
     if (show.node) show.node.visible = preview.wide;
-    // The Ooga picker sits under the Ooga on show when there is one, else in the board.
-    const home = preview.wide ? el.previewPick : el.oogaSlot;
-    if (el.oogaPick.parentNode !== home) {
-      home.append(el.oogaPick);
-      el.oogaHead.hidden = preview.wide;
-    }
+    // The Ooga's name is under the Ooga on show when there is one, else in the board.
+    if (el.oogaSlot.hidden !== preview.wide) el.oogaSlot.hidden = preview.wide;
     // Up in the clouds, far above the map, whose island lies below the view.
     if (!preview.wide) {
       const a = elapsed * 0.12;
@@ -2568,7 +2566,7 @@
   // The name under the Ooga on show.
   const nameShowcase = () => {
     const n = actors && actors[0] ? actors[0].name : null;
-    el.previewName.firstChild.textContent = n ? contributors.traitsFor(n).display || n : "";
+    el.previewName.firstChild.textContent = el.oogaName.textContent = n ? contributors.traitsFor(n).display || n : "";
   };
 
   const enter = (ctx) => {
@@ -2655,9 +2653,8 @@
     el.fuel = document.getElementById("block-fuel");
     el.fuelK = -1;
     el.previewName = document.getElementById("block-preview-name");
-    el.previewPick = document.getElementById("block-preview-pick");
     el.oogaSlot = document.getElementById("block-ooga-slot");
-    el.oogaHead = el.oogaSlot.querySelector("h3");
+    el.oogaName = document.getElementById("block-ooga");
     el.previewName.hidden = true;
     el.map = document.getElementById("block-map");
     el.mapCtx = el.map.getContext("2d");
@@ -2700,9 +2697,6 @@
     window.addEventListener("pointercancel", onTriggerUp);
     window.addEventListener("blur", onTriggerUp);
     el.paintBtn.addEventListener("pointerdown", el.onPaint);
-    el.oogaPick = document.getElementById("block-ooga");
-    el.onOoga = () => { chooseOoga(el.oogaPick.value); el.oogaPick.blur(); };
-    el.oogaPick.addEventListener("change", el.onOoga);
     el.answers = [...document.querySelectorAll("#block-quiz [data-answer]")];
     for (const b of el.answers) b.addEventListener("click", onAnswer);
     quiz.asked = quiz.solved = 0;
@@ -2747,19 +2741,6 @@
     for (let i = 0; i < actors.length; i++) sim.actors[i].name = actors[i].name;
     paintTeams();
     nameShowcase();
-    // The board's Ooga picker: the roster by the name shown, held to their own Ooga for a signed-in visitor.
-    el.oogaPick.textContent = "";
-    // In alphabetical order by the name shown, so anyone can find theirs in a long roster.
-    const names = contributors.activeRoster.map((c) => [c.name, contributors.traitsFor(c.name).display || c.name]);
-    names.sort((p, q) => p[1].localeCompare(q[1], undefined, { sensitivity: "base" }));
-    for (const [name, shown] of names) {
-      const o = document.createElement("option");
-      o.value = name;
-      o.textContent = shown;
-      el.oogaPick.append(o);
-    }
-    el.oogaPick.value = actors[0].name || "";
-    el.oogaPick.disabled = !!BL.net.ownAmong(contributors.activeRoster);
     // X is the mouse-look switch here, never a descent.
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, onAction: act, pressActions: true, canDescend: () => false });
     blockScene.agentControls = controls;
@@ -2934,7 +2915,6 @@
     el.cross.hidden = true;
     cam.first = cam.island = false;
     move.crouch = 0;
-    el.oogaPick.removeEventListener("change", el.onOoga);
     el.paintBtn.hidden = true;
     for (const b of el.answers) b.removeEventListener("click", onAnswer);
     closeQuiz();
