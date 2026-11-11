@@ -19482,15 +19482,28 @@ const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics 
         samples.push({end,px,depth,side,error,half:(side^end)?-fz:fz,outside:Math.abs(fx)>=B.arcadeModels.HOCKEY.d*W.SCALE/2||Math.abs(fz)>=B.arcadeModels.HOCKEY.w*W.SCALE/2,scale:r.parts.armR.scale.y,x:r.root.position.x,z:r.root.position.z});
       }
     }
+    let reversalStep=0,reversalError=0,previousFeet=null;
+    for(let frame=0;frame<24;frame++){
+      presentation.restore();table.e=0;poseGame.orientation(0);pointer.x=frame%2?.005:-.005;pointer.depth=0;poseGame.peerInput(-pointer.x,0);poseGame.update(1/60);
+      lastPose=rigs.map(pose);presentation.update(1/60);B.scene.updateWorld(poseRoot);
+      const feet=rigs.map((r,side)=>{
+        poseGame.mallet(side,handles);const m=r.parts.armR.world,grip=r.parts.fingersR.position.y;
+        reversalError=Math.max(reversalError,Math.hypot(m[12]+m[4]*grip-handles.x,m[13]+m[5]*grip-handles.y,m[14]+m[6]*grip-handles.z));
+        const foot=r.root.world,leg=r.traits.height*5/16;return [foot[12]-foot[4]*leg,foot[14]-foot[6]*leg];
+      });
+      if(previousFeet)for(let side=0;side<2;side++)reversalStep=Math.max(reversalStep,Math.hypot(feet[side][0]-previousFeet[side][0],feet[side][1]-previousFeet[side][1]));
+      previousFeet=feet;
+    }
     if (${!!process.env.HOCKEY_SHOTS}) window.__hockeyCapture={poseRoot,rigs,poseGame,table};
     presentation.dispose();
     poseRestored&&=rigs.every((r,i)=>pose(r)===lastPose[i]);
     net.hockeyTables=savedTables;poseGame.stop();game.stop();remote.stop();
-    return {samples,poseRestored,slowStrike,fastStrike,feedback,noReplay,invalid,frames,bytes,largest,physicsMs,positive,negative,halfway,final,mapped,geometry,seats,lifecycle,closed,watchers:__ooga.carnival.watchers,zone:net.state.zone};
+    return {samples,poseRestored,reversalStep,reversalError,slowStrike,fastStrike,feedback,noReplay,invalid,frames,bytes,largest,physicsMs,positive,negative,halfway,final,mapped,geometry,seats,lifecycle,closed,watchers:__ooga.carnival.watchers,zone:net.state.zone};
   })()`);
   record("hockey pilot: real two-human physics produces bounded compact frames and both directions of the far mallet", result.invalid===0&&result.frames>10&&result.largest<=256&&result.positive&&result.negative,JSON.stringify(result));
   record("hockey pilot: faster pointer strokes transfer more speed to the puck without a smash",result.slowStrike>0&&result.fastStrike>result.slowStrike&&result.fastStrike<=7501,JSON.stringify({slow:result.slowStrike,fast:result.fastStrike}));
   record("hockey pilot: small and tall humans keep palm contact across both halves without arm stretch, stand outside their half and restore every joint",result.poseRestored&&result.samples.every(s=>s.error<.003&&s.half>=.17&&s.outside&&s.scale===1),JSON.stringify({restored:result.poseRestored,samples:result.samples}));
+  record("hockey pilot: rapid small reversals keep a continuous stance and immediate rigid palm contact",result.reversalStep<.05&&result.reversalError<.003,JSON.stringify({step:result.reversalStep,error:result.reversalError}));
   record("hockey pilot: spectators interpolate two frames without extrapolation; sessions deliver one start and finish and release subscriptions",result.halfway===200&&result.final===400&&result.lifecycle&&result.feedback&&result.noReplay,JSON.stringify(result));
   record("hockey pilot: all three rendered table transforms match the enlarged hall contract, real seats straddle them, no roster audience and Arcade audio zone remains",result.mapped&&result.geometry.length===3&&result.seats[0].z>-4.75&&result.seats[1].z< -4.75&&result.watchers===0&&result.zone==="arcade.hall",JSON.stringify(result));
   if (process.env.HOCKEY_SHOTS) {

@@ -47,15 +47,29 @@
       // authored straight arm can keep its palm on the handle without shrinking or stretching.
       const stand = Math.sqrt(across * across + Math.max(0, hand * hand - (height - shoulder) ** 2)) + 0.04;
       const tx = target.x - center[0], tz = sign * (target.z - center[1]), rimX = halfW + 0.14, rimZ = halfL + 0.14;
-      const gap = rimZ - tz;
-      let fx = tx + (tx > 0 ? -1 : 1) * Math.sqrt(Math.max(0, stand * stand - gap * gap)), fz = rimZ;
+      const gap = rimZ - tz, offset = Math.sqrt(Math.max(0, stand * stand - gap * gap));
+      const continuous = rec.end === end && rec.session === net.hockeyTables[slot >> 1]?.s && Number.isFinite(rec.footX);
+      const previousX = rec.footX - center[0], previousZ = sign * (rec.footZ - center[1]);
+      const maximum = (shoulderRadius + hand) ** 2 - height * height + across * across;
+      // Both ends of the comfortable reach circle are valid. Keep the nearby one when the
+      // mallet crosses the centre instead of flipping the Ooga across the rail each frame.
+      let fx = tx + (continuous ? previousX < tx ? -1 : 1 : tx > 0 ? -1 : 1) * offset, fz = rimZ;
       let distance = (fx - tx) ** 2 + (fz - tz) ** 2;
+      let cost = distance > maximum ? Infinity : continuous ? (fx - previousX) ** 2 + (fz - previousZ) ** 2 : distance;
       for (let rail = -1; rail <= 1; rail += 2) {
         const x = rail * rimX, dx = x - tx;
         const z = Math.max(Math.abs(across) + 0.05, Math.min(rimZ, tz + Math.sqrt(Math.max(0, stand * stand - dx * dx))));
         const d = dx * dx + (z - tz) ** 2;
-        if (d >= stand * stand - 1e-8 && d < distance) { fx = x; fz = z; distance = d; }
+        const nextCost = continuous ? (x - previousX) ** 2 + (z - previousZ) ** 2 : d;
+        if (d >= stand * stand - 1e-8 && d <= maximum && nextCost < cost) { fx = x; fz = z; distance = d; cost = nextCost; }
       }
+      // Small reversals need no step while the previous feet remain in the rigid arm's reach.
+      // An unreachable cursor jump still moves the body immediately; the mallet is never delayed.
+      const previousDistance = (previousX - tx) ** 2 + (previousZ - tz) ** 2;
+      if (continuous && previousDistance >= stand * stand && previousDistance <= maximum - 1e-6) {
+        fx = previousX; fz = previousZ; distance = previousDistance;
+      }
+      rec.end = end; rec.session = net.hockeyTables[slot >> 1]?.s;
       fx += center[0]; fz = center[1] + sign * fz;
       const dx = target.x - fx, dz = target.z - fz;
       const forward = Math.sqrt(Math.max(0, distance - across * across));

@@ -2,6 +2,12 @@
 
 Scope: the three existing air hockey tables only. Keep this change in draft until the signed-in staging checks below are complete. No deployment or paid load test was performed for this draft. Other Arcade corrections and Cloud Hopper placement changes are separate work.
 
+## Moving-player follow-up (November 11, 2026)
+
+Human Oogas move around the outside of their own half to keep their original rigid palm on the displayed mallet. A previous stance is retained while the target remains reachable; otherwise the nearest reachable rail stance is used. Crossing the centre no longer flips between two valid foot positions. New sessions and opposite ends discard that continuity. Large unreachable cursor jumps still reposition the body immediately, without delaying the mallet or stretching the arm.
+
+The focused browser regression passes 7/7. Across 100 targets on both ends with small/tall rigs, maximum measured palm error is 0.00000153 m, with unchanged arm scale, feet outside the correct half and full pose restoration. A 24-frame rapid centre-crossing fixture moves the feet by at most 0.00648 m per frame and keeps palm error below 0.00000111 m. These are local geometry checks, not authenticated network-latency or physical-device measurements; the staging gates below remain open.
+
 ## Player flow and authority
 
 A player can open the same table from either end. In a signed-in match, the first player keeps the end they approached and the shared table orientation follows that seat. A second player opening that table before it starts takes the opposite seat, resets readiness, and both must press **Face off**. The first player can press **Face off** alone to start with the existing AI mallet. There is no roster-generated opponent Ooga. Signed-in solo play has a presentation-only Clanker (the existing Arcade staff rig at the same 0.72 scale): it walks behind the far rail during the countdown, then follows the AI mallet. Its approach uses the server match start time, so late spectators see the current pose without extra movement packets. It has no account, voice peer, interactive target or simulation authority. Joining an active or finished session cannot replace either seat; the visitor returns to the hall to watch. Results reserve the table until a player returns to the hall, disconnects, or expires. Play again returns to the hall for a fresh reservation.
