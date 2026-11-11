@@ -100,6 +100,11 @@ and source size are bounded. Statements, callbacks, getters, expressions, spread
 templates and prototype keys cannot become automatic output. No parser dependency
 is installed.
 
+Every Ooga, data-only or not, is drawn at twice its authored voxel detail with the
+shared refined body (see `FINE` in `src/js/models.js`); head cells, `hatY` and
+`portrait` bounds stay on the authored grid. Painting at the finer detail itself is a
+`refine` dress hook, which is custom code.
+
 Custom `dress` hooks and drawing helpers go to manual review. A conservative screen
 rejects known instruction-injection markers, invisible direction controls, network
 access, dynamic execution, encoded code and ambient browser/process access. This

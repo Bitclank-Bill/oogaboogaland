@@ -983,6 +983,7 @@
   //   headgear(k)  nodes on the head              extras(k)    nodes on the root, last
   //   tint(k, palette)  a second colourway: return an alternate palette and every
   //                     voxel part is baked again under it, paired in `tint`
+  //   refine(k, part, v, side)  paints a part's fine map before it bakes (see FINE)
   // `look` flags read here: slim, bald, cleanShaven, wideEyes, hairless, noBrow, noPupils,
   // face ("nose" | "smirk" | "beard" | "none"), eyeColor, eyeGlow, hatY.
   // A character file may keep the slot numbers its first build was given; every later build registers that
