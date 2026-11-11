@@ -72,10 +72,10 @@ test("the page and the Worker share one cap of four a side", () => {
   assert.equal(W.duel([7, 0, 9, 0], 2), true); assert.equal(W.duel([7, 8, 9, 0], 2), false); assert.equal(W.duel([7, 0, 0, 0], 2), false);
 });
 test("the input message is bounded and its widest form fits the room's frame limit", () => {
-  const input = { t: "bf", v: W.WIRE, k: "input", s: "0123456789abcdef", q: 2147483647, x: -1000, z: -1000, f: -7000, b: 15, a: Array(4).fill([14, -7000, -2000, 7]).flat() };
+  const input = { t: "bf", v: W.WIRE, k: "input", s: "0123456789abcdef", q: 2147483647, x: -1000, z: -1000, f: -7000, b: 15, a: Array(4).fill([W.ACTIONS.length - 1, -7000, -2000, W.KINDS.length - 1]).flat() };
   assert.ok(protocol.parseClientMessage(JSON.stringify(input)));
   assert.ok(JSON.stringify(input).length <= protocol.MESSAGE_MAX);
-  for (const patch of [{ x: 1001 }, { b: 16 }, { q: -1 }, { s: "x" }, { f: 7001 }, { a: [] }, { a: [1, 0, 0] }, { a: [99, 0, 0, 0] }, { a: Array(20).fill(0) }, { v: 2 }]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...input, ...patch })), null, JSON.stringify(patch));
+  for (const patch of [{ x: 1001 }, { b: 16 }, { q: -1 }, { s: "x" }, { f: 7001 }, { a: [] }, { a: [1, 0, 0] }, { a: [99, 0, 0, 0] }, { a: Array(20).fill(0) }, { v: W.WIRE + 1 }, { v: W.WIRE - 1 }]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...input, ...patch })), null, JSON.stringify(patch));
 });
 test("random teams are as even as can be, and every empty seat is an NPC", () => {
   const rand = (seed => () => (seed = seed * 16807 % 2147483647) / 2147483647)(7);
@@ -92,7 +92,8 @@ test("the first to register brings the map picked on the board: bounded, and the
   const base = { t: "bf", v: W.WIRE, k: "reg" };
   assert.deepEqual(protocol.parseClientMessage(JSON.stringify(base)), { t: "bf", k: "reg" }, "the map is optional");
   assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m: 1 })).m, 1);
-  for (const m of [-1, 0, W.MAPS.length, 1.5, "1", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, String(m));
+  for (const m of [-1, W.MAPS.length, 1.5, "1", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, String(m));
+  assert.deepEqual(protocol.parseClientMessage(JSON.stringify({ ...base, m: 0 })), { t: "bf", k: "reg" }, "a retired map is no pick");
   const h = harness(t), [a, b] = await crowd(h, 2);
   send(h, a, "reg", { m: 1 });
   assert.equal(h.room.blockMatch.map, 1, "Town, from the board");
