@@ -1432,7 +1432,9 @@
         if (owner.kind !== "exhibit") return false;
         look(owner.index);
         return true;
-      }
+      },
+      // Leaving the room with an exhibit open (Back, a lost visit) closes the viewer, and with it the museum's models.
+      dispose() { BL.modelViewer.close(); }
     };
   };
   BL.timechainRoomKinds.mining = { plan, animate, door };
