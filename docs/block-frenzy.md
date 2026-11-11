@@ -95,6 +95,17 @@ order break ties by seat too, so every page of a live round shows the same and t
 an actor's index. The tables show blocks mined, blocks brought home and splats, a name on one line; on a wide screen
 they run the card's width with the medals three across under them, and the card's buttons hold to its foot.
 
+## Your record
+
+The game's save slot (`game.state.block`, in the page's one save under `oogaboogaland.v1`, validated on load) keeps the
+visitor's own running tally in this browser: rounds played (`games`) and won (`wins`), the fastest win in milliseconds
+(`best`), and their own blocks mined (`mined`), blocks brought home (`home`), splats landed (`splats`), times splatted
+(`splatted`) and rounds as the most valuable Ooga (`mvps`). A finished round adds to it once, solo or live
+(`SIM.tallyOf`, the same per-actor counts the trophy card shows, into `game.recordBlock`); a round left early isn't
+over and adds nothing, nor does one watched from the chairs. A save from before the tally keeps its rounds and best
+and starts the new counts at 0. Nothing is sent anywhere: a record across devices needs the server and is not built.
+The board's Record panel shows it under Your record, and the trophy card's last medal in short.
+
 ## The board's weapons preview
 
 On a wide screen the board shows, with the visitor's Ooga turning on its cloud, each tool of the arsenal in turn

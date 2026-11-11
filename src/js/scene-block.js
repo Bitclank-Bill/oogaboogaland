@@ -653,6 +653,8 @@
     for (const b of el.teams) b.setAttribute("aria-pressed", String(b.dataset.team === selection.team));
     el.best.textContent = game.state.block.best ? fmt(game.state.block.best) : "none yet";
     el.record.textContent = `${game.state.block.wins} won of ${game.state.block.games}`;
+    // The visitor's own running tally, this browser's.
+    { const b = game.state.block; el.recMined.textContent = String(b.mined); el.recHome.textContent = String(b.home); el.recSplats.textContent = String(b.splats); el.recSplatted.textContent = String(b.splatted); el.recMvps.textContent = String(b.mvps); }
   };
   const fmt = (ms) => {
     const s = Math.floor(ms / 1000);
@@ -709,8 +711,11 @@
     closeQuiz();
     phase = "results";
     const won = sim.winner === sim.team, ms = Math.round(sim.time * 1000);
-    // The fastest win is kept for the usual first to three; every round still counts.
-    const best = kept ? false : game.recordBlock({ won, ms: sim.target === C.CAPTURES ? ms : 0 });
+    // The round's most valuable Ooga (the winners' best by the rules' word, `SIM.mvp`, so every page crowns the same one).
+    const mvp = SIM.mvp(sim, seatOfActor);
+    // A finished round, solo or live, joins the visitor's own record once (`SIM.tallyOf`: their counts in it; the fastest
+    // win only for the usual first to three). Not from the viewing chairs: a round only watched adds nothing.
+    const tally = onDeck() ? null : SIM.tallyOf(sim, 0, mvp), best = tally ? game.recordBlock(tally) : false;
     if (kept) el.againBtn.textContent = "New game?";
     result = { won, ms, best };
     el.strip.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
@@ -728,9 +733,8 @@
     el.summary.textContent = `${won ? "Your side mined it" : "The rivals mined it this time · here's to the next round"} · first to ${sim.target}${best ? " · fastest win yet!" : ""}`;
     const me = sim.actors[0];
     el.stats.innerHTML = "";
-    // The round's highlights: its most valuable Ooga (the winners' best by the rules' word, `SIM.mvp`, so every page
-    // crowns the same one; it tops the podium), the sharpest shot, the longest sniper hit.
-    const mvp = SIM.mvp(sim, seatOfActor), worth = SIM.worth;
+    // The round's highlights: its most valuable Ooga (it tops the podium), the sharpest shot, the longest sniper hit.
+    const worth = SIM.worth;
     let shooter = 0, sniper = 0;
     for (let i = 1; i < sim.actors.length; i++) {
       const a = sim.actors[i];
@@ -740,7 +744,7 @@
     // The MVP's line shows all three things its worth counts: blocks mined, blocks brought home and splats landed.
     const rows = [["Round MVP", `${nameOf(mvp)} · ${sim.actors[mvp].captures} mined · ${sim.actors[mvp].rescues} brought home · ${sim.actors[mvp].hits} splats`], ["Most splats", `${nameOf(shooter)} · ${sim.actors[shooter].hits}`]];
     if (sim.actors[sniper].longShot > 0) rows.push(["Longest sniper shot", `${nameOf(sniper)} · ${Math.round(sim.actors[sniper].longShot)} m`]);
-    rows.push(["Your round", `${me.captures} mined · ${me.rescues} brought home · ${me.hits} splats · ${me.splats} splatted`], ["Fastest win", game.state.block.best ? fmt(game.state.block.best) : "—"], ["Rounds won", `${game.state.block.wins} of ${game.state.block.games}`]);
+    rows.push(["Your round", `${me.captures} mined · ${me.rescues} brought home · ${me.hits} splats · ${me.splats} splatted`], ["Fastest win", game.state.block.best ? fmt(game.state.block.best) : "—"], ["Your record", `${game.state.block.wins} won of ${game.state.block.games} · ${game.state.block.mined} mined · ${game.state.block.mvps} MVP`]);
     // Each highlight a medal: gold for the MVP, silver and bronze for the shots, the visitor's own in plain wood.
     const MEDALS = ["gold", "silver", "bronze"];
     for (let k = 0; k < rows.length; k++) {
@@ -2699,7 +2703,7 @@
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: { x: 0, y: 8, z: 0 } });
-    for (const id of ["board", "results", "strip", "center", "struggle", "struggle-fill", "struggle-left", "struggle-meter", "struggle-word", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "trophy-stage", "final-blue", "final-red", "trophy-time", "side-blue", "side-red", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
+    for (const id of ["board", "results", "strip", "center", "struggle", "struggle-fill", "struggle-left", "struggle-meter", "struggle-word", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "rec-mined", "rec-home", "rec-splats", "rec-splatted", "rec-mvps", "trophy-stage", "final-blue", "final-red", "trophy-time", "side-blue", "side-red", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
       el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = document.getElementById(`block-${id}`);
     }
     el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";

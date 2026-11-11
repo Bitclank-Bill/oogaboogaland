@@ -7429,7 +7429,7 @@ const gameRulesChecks = async () => {
       const page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), sc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), trophyCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
       record("block trophy MVP: the winning side's most valuable Ooga is the most worth, a tie to more mined, then more brought home, then the lower seat, the same on a host's and a guest's page; with no winner, of everyone; the trophy's podium, tables and medal use it and break ties by seat; the card has one picture of the winners, its stage, and no portrait row",
         out.teams === "blue,blue,red,red" && out.worth === 12 && out.plain === 1 && out.red === 3 && out.tieWorth === 1 && out.tieMined === 1 && out.tieAll === 0 && out.none === 2 && out.hostPick === 0 && out.guestPick === 0
-        && /const mvp = SIM\.mvp\(sim, seatOfActor\), worth = SIM\.worth;/.test(sc) && /trophyShow\(winner, worth, mvp\)/.test(sc) && (sc.match(/\|\| seatOfActor\(a\) - seatOfActor\(b\)\)/g) || []).length === 2
+        && /const mvp = SIM\.mvp\(sim, seatOfActor\);/.test(sc) && /trophyShow\(winner, worth, mvp\)/.test(sc) && (sc.match(/\|\| seatOfActor\(a\) - seatOfActor\(b\)\)/g) || []).length === 2
         && !/lineup|renderFaceIcon|posePodium|podiumView|BM\.crown/i.test(sc) && !/block-lineup|block-crown/.test(page + trophyCss) && !("lineup" in S)
         // The card shows what the MVP's worth counts (blocks brought home too), keeps names whole on a line and its buttons in view.
         && /\$\{sim\.actors\[mvp\]\.captures\} mined · \$\{sim\.actors\[mvp\]\.rescues\} brought home · \$\{sim\.actors\[mvp\]\.hits\} splats/.test(sc) && /home\.textContent = String\(sim\.actors\[i\]\.rescues\);/.test(sc)
@@ -7469,6 +7469,30 @@ const gameRulesChecks = async () => {
       const out = { first, whileOut, flew, second, third, took, carrying, afterBlock, botWaits: bot.a.hookWait > 0, playerWaits: m.a.hookWait, cool: "HOOK_COOL" in S.CONFIG || "HOOK_YANK_COOL" in S.CONFIG || "hCool" in m.a };
       record("block hook: no recharge: a hook that missed fires again the moment it is back, and again, and after pulling a block in; never while it is still out; only a bot waits between throws",
         first && !whileOut && flew > 5 && flew < 240 && second && third && took && carrying && afterBlock && out.botWaits && out.playerWaits === 0 && !out.cool, JSON.stringify(out));
+    }
+    // The visitor's own running tally, this browser's: a finished round adds their counts once, solo or live; it adds up
+    // over rounds, survives a reload, takes in a save from before the tally without losing its rounds and best, and a
+    // round left early (not over) or only watched adds nothing.
+    {
+      const KEY = "oogaboogaland.v1", was = store.get(KEY);
+      store.set(KEY, JSON.stringify({ block: { wins: 2, games: 5, best: 61000 } }));
+      const g1 = BL.game.create({ catalog: [] }), old = { ...g1.state.block };
+      const round = (winner, time, stats, target = S.CONFIG.CAPTURES) => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0, target }); s.winner = winner; s.over = winner !== undefined; s.time = time; Object.assign(s.actors[0], stats); return s; };
+      const first = round("blue", 50, { captures: 2, rescues: 1, hits: 4, splats: 3 }), second = round("red", 70, { captures: 1, rescues: 0, hits: 2, splats: 5 }), left = round(undefined, 30, { captures: 2, rescues: 2, hits: 9, splats: 1 });
+      const t1 = S.tallyOf(first, 0, 0), t2 = S.tallyOf(second, 0, 3), t3 = S.tallyOf(left, 0, 0), longer = S.tallyOf(round("blue", 20, {}, 5), 0, 1);
+      const fastest = g1.recordBlock(t1), slower = g1.recordBlock(t2); if (t3) g1.recordBlock(t3);
+      const after = { ...g1.state.block }, reloaded = { ...BL.game.create({ catalog: [] }).state.block };
+      store.set(KEY, JSON.stringify({ block: { wins: 1, games: 2, best: 0, mined: -4, home: 7, splats: "x", splatted: 2.9, mvps: 9 } }));
+      const mended = { ...BL.game.create({ catalog: [] }).state.block };
+      if (was === undefined) store.delete(KEY); else store.set(KEY, was);
+      const want = JSON.stringify({ wins: 3, games: 7, best: 50000, mined: 3, home: 1, splats: 6, splatted: 8, mvps: 1 });
+      const sceneSrc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), pageSrc = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+      record("block record: a finished round adds the visitor's own counts to a running tally once, two rounds add up, a reload keeps it, a save from before the tally keeps its rounds and best, bad counts start at 0, and a round left early or watched from the chairs adds nothing; the board and the trophy card show it",
+        JSON.stringify(old) === JSON.stringify({ wins: 2, games: 5, best: 61000, mined: 0, home: 0, splats: 0, splatted: 0, mvps: 0 }) && JSON.stringify(t1) === JSON.stringify({ won: true, ms: 50000, mined: 2, home: 1, splats: 4, splatted: 3, mvp: true })
+        && t2.won === false && t2.mvp === false && t3 === null && longer.ms === 0 && fastest === true && slower === false && JSON.stringify(after) === want && JSON.stringify(reloaded) === want
+        && JSON.stringify(mended) === JSON.stringify({ wins: 1, games: 2, best: 0, mined: 0, home: 7, splats: 0, splatted: 2, mvps: 2 })
+        && /const tally = onDeck\(\) \? null : SIM\.tallyOf\(sim, 0, mvp\), best = tally \? game\.recordBlock\(tally\) : false;/.test(sceneSrc) && (sceneSrc.match(/recordBlock\(/g) || []).length === 1
+        && ["mined", "home", "splats", "splatted", "mvps"].every((k) => pageSrc.includes(`id="block-rec-${k}"`)), JSON.stringify({ old, t1, t2, t3, after, reloaded, mended }));
     }
     // The weapons bar: what a slot shows is the rules' word (not yours yet, yours and out, ready, and the count beside
     // it), and the page's eight slots stand in key order, each named, the sniper rifle always among them.

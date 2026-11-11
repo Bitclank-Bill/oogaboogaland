@@ -1321,6 +1321,15 @@
     }
     return best;
   };
+  // What a finished round adds to a player's own running tally (`game.recordBlock`): whether their side won, the
+  // round's time when it was the usual first to `CAPTURES` (else 0, so it can't be a fastest win), their blocks mined,
+  // blocks brought home, splats landed and times splatted, and whether they were the most valuable (`mvpId`). Null for
+  // a round that isn't over: one left early adds nothing.
+  const tallyOf = (sim, id, mvpId) => {
+    const a = sim.actors[id];
+    if (!sim.over || !a) return null;
+    return { won: sim.winner === a.team, ms: sim.target === CONFIG.CAPTURES ? Math.round(sim.time * 1000) : 0, mined: a.captures, home: a.rescues, splats: a.hits, splatted: a.splats, mvp: mvpId === id };
+  };
   // The arsenal as the board shows it, in key order: each tool, its name and a line on what it does.
   const ARSENAL = [
     ["paint", "Paint marker", "Paint without end. A hit splats a rival for a moment."],
@@ -3028,7 +3037,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { WIELD, wield, worth, mvp, ARSENAL, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { WIELD, wield, worth, mvp, tallyOf, ARSENAL, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();
