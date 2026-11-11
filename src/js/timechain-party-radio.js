@@ -10,8 +10,9 @@
 // the tempo by autocorrelation every EVERY seconds and the beat's phase from the onsets' Fourier component at that
 // tempo, and says whether to trust it (`live`). Both are pure, load in Node and allocate nothing as they run.
 //
-// `create` is the player: one <audio> through a gain to the speakers and through the low-pass to an analyser, a
-// context only after a gesture, the page-wide mute on the gain (the lights still follow a muted room), a watchdog and
+// `create` is the player: one <audio> through a gain to the speakers, through the low-pass to an analyser and, whole,
+// to a second analyser whose spectrum and wave the booth's screen shows (`spectrum`, `scope`), a context only after a
+// gesture, the page-wide mute on the gain (the lights still follow a muted room), a watchdog and
 // retries with backoff. Where a browser hands Web Audio silence for a live stream (Safari has), or the stream stops
 // answering cross-origin, it falls back to a plain element: heard, not analysed, the lights on their own steady beat.
 // Off under `nosim` (unless `timechain=1`) and `timechain=0`, with the room's other feeds.
@@ -27,8 +28,9 @@
   const RATE = 100, SPAN = 8 * RATE, RECENT = 2 * RATE, MIN_BPM = 90, MAX_BPM = 180, LEAN = 125, EVERY = 0.5, WARM = 3;
   const CONF = 0.25, KEEP = 0.18, FRESH = 0.5, GAP = 0.5;
   const LAG_MIN = Math.floor(RATE * 60 / MAX_BPM), LAG_MAX = Math.ceil(RATE * 60 / MIN_BPM);
-  // The analysis: the low-pass's corner, and how many samples the analyser holds (enough for a frame of 0.17 s).
-  const KICK_HZ = 150, WAVE = 8192;
+  // The analysis: the low-pass's corner, and how many samples the analyser holds (enough for a frame of 0.17 s); for the
+  // screen, the whole signal's FFT size, its range in dB and the spectrum's lowest and highest frequencies.
+  const KICK_HZ = 150, WAVE = 8192, FFT = 2048, DB_MIN = -92, DB_MAX = -22, LOW_HZ = 35, HIGH_HZ = 16000;
   // The player: its volume, how long a stall may last, the first retry's wait (doubling to RETRY_MAX), and how long
   // Web Audio may hand silence for a stream that plays before the plain element takes over.
   const VOLUME = 0.32, STALL_MS = 12000, RETRY_MS = 5000, RETRY_MAX = 60000, SILENT_S = 4;
@@ -133,6 +135,7 @@
     const enabled = q.get("timechain") !== "0" && (!q.has("nosim") || q.get("timechain") === "1");
     let track = tracker();
     let context = null, filter = null, analyser = null, sink = null, gain = null, wave = null, beats = null, element = null, source = null;
+    let whole = null, bins = null, signal = null, edges = null;
     let mode = enabled ? "waiting" : "off", plain = false, disposed = false, timer = 0, watchdog = 0, epoch = 0;
     let failures = 0, quiet = 0, lastTime = -1, starts = 0;
     const applyVolume = () => {
@@ -169,7 +172,9 @@
         // The analyser reaches the speakers through a silent gain, so every browser keeps running it.
         sink = context.createGain(); sink.gain.value = 0;
         filter.connect(analyser); analyser.connect(sink); sink.connect(context.destination);
-        wave = new Float32Array(WAVE);
+        whole = context.createAnalyser(); whole.fftSize = FFT; whole.minDecibels = DB_MIN; whole.maxDecibels = DB_MAX; whole.smoothingTimeConstant = 0.55;
+        whole.connect(sink);
+        wave = new Float32Array(WAVE); bins = new Uint8Array(FFT / 2); signal = new Float32Array(FFT);
         track = tracker(context.sampleRate / meter(context.sampleRate).block);
       }
       if (context.state === "suspended") context.resume().catch(() => {});
@@ -178,7 +183,7 @@
       element = new Audio(); element.preload = "none";
       if (!plain) {
         element.crossOrigin = "anonymous";
-        source = context.createMediaElementSource(element); source.connect(gain); source.connect(filter);
+        source = context.createMediaElementSource(element); source.connect(gain); source.connect(filter); source.connect(whole);
       }
       mode = "connecting";
       applyVolume();
@@ -214,6 +219,35 @@
       lastTime = element.currentTime;
       return track.read(context.currentTime - (context.outputLatency || context.baseLatency || 0), out);
     };
+    // The screen's spectrum: `out`'s bands, low to high on a log scale, each the loudest bin in it (0 to 1). False when
+    // there is nothing to read (the screen then makes its own from the beat). The bands' bins are worked out once.
+    const spectrum = (out) => {
+      if (mode !== "live" || plain || !whole) return false;
+      whole.getByteFrequencyData(bins);
+      const n = out.length;
+      if (!edges || edges.length !== n + 1) {
+        edges = new Uint16Array(n + 1);
+        const hz = context.sampleRate / FFT;
+        for (let i = 0; i <= n; i++) edges[i] = Math.min(bins.length, Math.max(i ? edges[i - 1] + 1 : 1, Math.round(LOW_HZ * (HIGH_HZ / LOW_HZ) ** (i / n) / hz)));
+      }
+      for (let i = 0; i < n; i++) {
+        let most = 0;
+        for (let b = edges[i]; b < edges[i + 1]; b++) if (bins[b] > most) most = bins[b];
+        out[i] = most / 255;
+      }
+      return true;
+    };
+    // The screen's wave: `out` samples of the newest half of the analyser's window from a rising zero crossing, so it
+    // stands still on a steady note.
+    const scope = (out) => {
+      if (mode !== "live" || plain || !whole) return false;
+      whole.getFloatTimeDomainData(signal);
+      const span = FFT / 2;
+      let from = 0;
+      for (let i = 1; i < FFT - span; i++) if (signal[i - 1] < 0 && signal[i] >= 0) { from = i; break; }
+      for (let i = 0; i < out.length; i++) out[i] = signal[from + Math.floor(i * span / out.length)];
+      return true;
+    };
     const reading = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 };
     // A line for a tap on the booth, the decks or the speakers.
     const words = () => {
@@ -227,7 +261,7 @@
       return reading.live ? `Live · ${STATION.name} · ${Math.round(reading.bpm)} BPM · the lights follow the beat${muted}` : `Live · ${STATION.name} · finding the beat${muted}`;
     };
     return {
-      sample, words,
+      sample, spectrum, scope, words,
       get stats() { return { mode, plain, starts, failures, contexts: context ? 1 : 0, elements: element ? 1 : 0, ...track.read(context ? context.currentTime : 0, reading) }; },
       dispose() {
         if (disposed) return;
@@ -237,9 +271,9 @@
         document.removeEventListener("keydown", gesture);
         offSound();
         dropElement();
-        for (const node of [filter, analyser, sink, gain]) if (node) node.disconnect();
+        for (const node of [filter, analyser, whole, sink, gain]) if (node) node.disconnect();
         if (context) context.close().catch(() => {});
-        context = filter = analyser = sink = gain = wave = beats = null;
+        context = filter = analyser = whole = sink = gain = wave = beats = bins = signal = null;
         mode = "disposed";
       }
     };

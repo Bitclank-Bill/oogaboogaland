@@ -215,7 +215,8 @@
       // A tap target over a node (`kind`, `tip` and what the scene does with it).
       target: (spec, kind, tip, radius = 0.8, extra = null) => { spec.target = { kind, tip, radius, ...extra }; return spec; },
       // The dome's and the floor's paint, and a live picture on the dome.
-      dome: (paint) => { into.domePaint = paint; },
+      // `size` ({ w, h, smooth }) for a dome a kind repaints as it plays: a small canvas, drawn up smooth.
+      dome: (paint, size = null) => { into.domePaint = paint; into.domeSize = size; },
       floor: (paint) => { into.floorPaint = paint; },
       live: (spec) => { into.live.push(spec); return spec; },
       // The room's light: overrides of the scene's render options (sky, ground, direct, ambient floor, bloom).
@@ -233,11 +234,11 @@
   // the seam, the front in the middle) and a row per height, so a node at z -1 maps it by its curve (gl-renderer
   // `uCanvasCurve`). `D` turns degrees into its pixels and says how large a metre of the dome is there.
   const DOME_W = 4096, DOME_H = 1024;
-  const domeMap = (L) => {
+  const domeMap = (L, W = DOME_W, H = DOME_H) => {
     let yLow = Infinity;
     for (let a = -180; a <= 180; a += 2) { const p = ROOMS.onSphere(L, a * DEG, ROOMS.edgeEl(L, a * DEG)); yLow = Math.min(yLow, p.y); }
     yLow -= 0.05;
-    const yHigh = L.crown, span = yHigh - yLow, W = DOME_W, H = DOME_H;
+    const yHigh = L.crown, span = yHigh - yLow;
     const x = (az) => ((((az + 180) / 360) % 1) + 1) % 1 * W;
     const y = (el) => (yHigh - (L.c + L.R * Math.sin(el * DEG))) / span * H;
     const elAt = (row) => Math.asin(Math.max(-1, Math.min(1, (yHigh - row / H * span - L.c) / L.R))) / DEG;
@@ -305,7 +306,7 @@
   const paintDome = perRoom((id) => {
     const into = plan(id);
     if (!into.domePaint) return null;
-    const D = domeMap(ROOMS.layout(id)), canvas = BL.timechainCharts.canvas(D.W, D.H), ctx = canvas.getContext("2d");
+    const size = into.domeSize, D = size ? domeMap(ROOMS.layout(id), size.w, size.h) : domeMap(ROOMS.layout(id)), canvas = BL.timechainCharts.canvas(D.W, D.H), ctx = canvas.getContext("2d");
     ctx.fillStyle = "#0b0a09"; ctx.fillRect(0, 0, D.W, D.H);
     into.domePaint(ctx, { ...D, ...paintKit, text: domeText(D), pixText: domePix(D), sky: domeSky(D), stars: domeStars(D), wrap: domeWrap(D) });
     return canvas;
@@ -397,6 +398,7 @@
     if (!canvas) return null;
     const D = domeMap(ROOMS.layout(id)), geo = { verts: parts.screen.verts, faces: parts.screen.faces, lines: [], castShadow: false };
     geo.imageSurface = { canvas, version: 1, rect: [-Math.PI, D.yLow, TAU, D.span], curve: [1, 0, 0], tessellated: true };
+    if (plan(id).domeSize && plan(id).domeSize.smooth) geo.imageSurface.smooth = true;
     return geo;
   });
   // The floor's disc in rings and sectors, so Canvas 2D sorts it under what stands on it, with the floor's canvas
@@ -711,7 +713,8 @@
     const L = ROOMS.layout(id), into = plan(id), root = createNode(), parts = sphereParts(id);
     const dome = domeGeometry(id), floor = floorGeometry(id), rake = rakeGeometry(id), cap = L.c;
     addChild(root, createNode({ geometry: parts.wall }), createNode({ geometry: parts.glow, sightHidden: true }));
-    if (dome) addChild(root, createNode({ geometry: dome, position: { x: 0, y: 0, z: -1 } }));
+    const domeNode = dome ? createNode({ geometry: dome, position: { x: 0, y: 0, z: -1 } }) : null;
+    if (domeNode) addChild(root, domeNode);
     if (floor) addChild(root, createNode({ geometry: floor, position: { x: 0, y: L.yMin + 0.002, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } }));
     if (rake) addChild(root, createNode({ geometry: rake.body }), createNode({ geometry: rake.glow, sightHidden: true }));
     addChild(root, createNode({ geometry: bay(id) }), createNode({ geometry: vestibule(id) }), createNode({ geometry: vestibuleGlow(id), sightHidden: true }));
@@ -755,7 +758,7 @@
     const lights = [...into.lights];
     // The doorway's own light, and a dim one in the vestibule.
     lights.push([0, 2.6, L.doorZ - 1.6, 6, 0.7, 0.46, 0.2], [0, DOOR.height - 0.4, L.doorZ + DOOR.vestibule * 0.5, 3.2, 0.32, 0.2, 0.08]);
-    return { root, layout: L, room: into.room, body, doors, exitButton, exitSign, lockPad, lockSign, lights, nodes, targets, live, seats: into.seats.map((s) => ({ ...s, sitter: null })), solids: into.solids, render: into.render || null, crown: cap };
+    return { root, layout: L, room: into.room, body, dome: domeNode, doors, exitButton, exitSign, lockPad, lockSign, lights, nodes, targets, live, seats: into.seats.map((s) => ({ ...s, sitter: null })), solids: into.solids, render: into.render || null, crown: cap };
   };
   // A room's construction as steps, each a slice of a frame at the doorway: a kind may split its own costly parts
   // (`steps`, run before its plan, each building something its plan then reads from a cache).
