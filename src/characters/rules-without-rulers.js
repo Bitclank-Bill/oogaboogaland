@@ -88,16 +88,13 @@
         if (part !== "head" && part !== "closed" && part !== "portrait") return;
         const f = k.fine, pumpkin = k.color(PUMPKIN), pumpkinDk = k.color(PUMPKIN_DK), stem = k.color(STEM), stemDk = k.color(STEM_DK);
         const front = 6 * f - 1, face = new Map();
-        let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-        for (const key of v.map.keys()) {
-          const [x, y, z] = key.split(",").map(Number);
-          lo = [Math.min(lo[0], x), Math.min(lo[1], y), Math.min(lo[2], z)];
-          hi = [Math.max(hi[0], x), Math.max(hi[1], y), Math.max(hi[2], z)];
-          if (z !== front) continue;
-          const c = v.get(x, y, z);
-          if (c !== pumpkin && c !== pumpkinDk) face.set(x + "," + y, c);
-        }
-        v.map.clear();
+        const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+        v.each((x, y, z, c) => {
+          lo[0] = Math.min(lo[0], x); lo[1] = Math.min(lo[1], y); lo[2] = Math.min(lo[2], z);
+          hi[0] = Math.max(hi[0], x); hi[1] = Math.max(hi[1], y); hi[2] = Math.max(hi[2], z);
+          if (z === front && c !== pumpkin && c !== pumpkinDk) face.set(x + "," + y, c);
+        });
+        v.clear();
         const cx = 3.5, cy = 4, cz = 2.5, ax = 4.5, az = 3.5, hy = 4, n = 2.6, m = 2.4, top = {};
         for (let x = -f; x < 8 * f; x++) for (let z = -f; z < 6 * f; z++) {
           const dx = ((x + 0.5) / f - cx) / ax, dz = ((z + 0.5) / f - cz) / az;
@@ -122,10 +119,9 @@
           v.set(Math.round(cx * f) + x + (y > crown + f ? 1 : 0), y, Math.round(cz * f) + z, (x + z) % 2 ? stemDk : stem);
         }
         // Whatever the authored part did not reach stays empty (the face button keeps to its bounds).
-        for (const key of [...v.map.keys()]) {
-          const [x, y, z] = key.split(",").map(Number);
-          if (x < lo[0] || y < lo[1] || z < lo[2] || x > hi[0] || z > hi[2]) v.map.delete(key);
-        }
+        const outside = [];
+        v.each((x, y, z) => { if (x < lo[0] || y < lo[1] || z < lo[2] || x > hi[0] || z > hi[2]) outside.push(x, y, z); });
+        for (let i = 0; i < outside.length; i += 3) v.del(outside[i], outside[i + 1], outside[i + 2]);
       },
       headgear(k) {
         const h = k.h, u = k.u;
