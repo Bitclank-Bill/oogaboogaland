@@ -7380,10 +7380,25 @@ const gameRulesChecks = async () => {
     const panelChecks = { fort: !W.playable("fort") && W.playable("town") && W.playable("clank") === (W.MAPS.indexOf("clank") > 0), five: W.plannedSize({ size: 2, reg: [1, 2, 3, 4, 5] }) === 3, two: W.plannedSize({ size: 3, reg: [1, 2] }) === 3, retiredReg: !!W.parse({ v: W.WIRE, k: "reg", m: 0 }) && W.parse({ v: W.WIRE, k: "reg", m: 0 }).m === undefined, strictOpt: W.parse({ v: W.WIRE, k: "opt", n: 2, m: 0 }) === null };
     record("block lobby and guest cue: a guest hears an AK round as gunfire, a saved Fort Chaos pick isn't playable, the panel's size counts everyone who has joined, and a retired map on Register is no pick while Options stays strict", heard.includes("gunfire") && !heard.includes("fire") && cue && Object.values(panelChecks).every(Boolean), JSON.stringify({ heard, cue, ...panelChecks }));
     record("block wallets removed: no wallet or vending state in the sim, an actor or the wire, and a frame's length is exact", Object.values(gone).every(Boolean), JSON.stringify(gone));
+    // The sniper rifle is every Ooga's from the start, on every map, and fires and hits from open ground, no tower near.
+    const rifle = S.MAPS.map((map) => {
+      const s = S.create({ team: "blue", seed: 4, size: 2, map, prep: 0 }), a = s.actors[0], b = s.actors[2], armed = s.actors.every((q) => q.sniper === 1);
+      for (const q of s.actors) { q.bot = false; q.guard = 0; q.x = 200; q.z = 200; } s.gorillas.length = 0;
+      a.x = b.x = 8; a.y = b.y = 0; a.z = 9; b.z = -9;
+      const off = a.y === 0 && S.TEAMS.every((k) => { const [x0, x1, z0, z1] = S.ARENA.towers[k]; return !(a.x > x0 && a.x < x1 && a.z > z0 && a.z < z1); }), fired = S.fire(s, 0, Math.PI, 0, "sniper"), shot = s.shots.some((x) => x.live && x.kind === "sniper" && x.owner === 0);
+      const soon = !S.fire(s, 0, Math.PI, 0, "sniper");
+      for (let n = 0; n < 120 && b.splat <= 0; n++) { for (const q of s.actors) q.guard = 0; S.tick(s, S.CONFIG.STEP, still()); }
+      const hit = b.splat > 0, far = a.longShot, hits = a.hits;
+      S.reset(s, 9);
+      return { map, armed, off, fired, shot, soon, hit, far: +far.toFixed(1), hits, again: s.actors.every((q) => q.sniper === 1) };
+    });
+    record("block sniper: the rifle is in every Ooga's arsenal at the start of a round and after a reset on every map, fires from open ground with no tower near, keeps its cooldown, splats a rival 18 m off and counts the long shot",
+      rifle.length === S.MAPS.length && rifle.every((r) => r.armed && r.off && r.fired && r.shot && r.soon && r.hit && r.far > 17 && r.far < 19 && r.hits === 1 && r.again)
+      && S.TOOLS.sniper.max === 0 && S.TOOLS.sniper.cool === 0.35 && S.TOOLS.sniper.speed === 60, JSON.stringify(rifle));
     // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
     const session = (selfId) => {
       const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
-      const net = { state: { selfId }, serverNow: () => context.clock + (context.skew || 0), subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };
+      const net = { state: { selfId }, serverNow: () => context.clock + (context.skew || 0), subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m, a: m.a && m.a.slice() }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };
       const seen = { sim: null, started: 0 }, live = L.create({ net, now: () => context.clock, resolveBody: () => {}, onMatch: () => {}, onHost: () => { seen.tookOver = true; },
         onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; S.reset(s, m.seed); live.bind(s); } });
       return { live, sent, bins, seen, tell: m => { for (const f of subs) f({ k: "match", ...m }); }, input: m => { for (const f of subs) f({ k: "input", ...m }); }, frame: b => { for (const f of frames_) f(b); } };
@@ -7408,6 +7423,19 @@ const gameRulesChecks = async () => {
     record("block live: no game action works from the chairs", D.live.act("drop", 0) === false && D.sent.filter(m => m.k === "input").length === 0);
     B.live.after(1, still());
     record("block live: a guest sends bounded input", B.sent.some(m => m.k === "input" && m.q === 0 && m.s === match.s));
+    // A guest picks the sniper rifle and fires it from the ground: both go to the host as actions, which the wire takes
+    // and the host's rules allow.
+    {
+      const g = a.actors[mv]; g.cooldown = g.splat = g.trapped = g.guard = 0; g.y = 0; g.wield = "paint";
+      const asked = B.live.act("wield", 0, S.WIELD.indexOf("sniper")) && B.live.act("fire", 0, 0.5, 0, "sniper");
+      B.live.after(1, still());
+      const msg = B.sent.filter(m => m.k === "input" && m.a).pop(), parsed = msg ? W.parse({ ...msg, v: W.WIRE }) : null;
+      if (parsed) { A.input({ ...parsed, from: 1, s: match.s, q: 1000 }); A.live.hostStep(); }
+      const shot = a.shots.find(x => x.live && x.kind === "sniper" && x.owner === mv);
+      record("block sniper: a guest's pick and shot reach the host as wield and fire actions the wire accepts, and the host fires the rifle for it off any tower",
+        asked === true && !!parsed && parsed.a.length === 8 && W.ACTIONS[parsed.a[0]] === "wield" && W.ACTIONS[parsed.a[4]] === "fire" && W.KINDS[parsed.a[7]] === "sniper"
+        && g.wield === "sniper" && !!shot && g.y < S.CONFIG.TOWER_TOP - 1 && g.lastKind === "sniper" && W.WIRE === 2, JSON.stringify({ asked, msg, wield: g.wield, shot: !!shot }));
+    }
     const leftA = { ...match, seats: [10, 0, 30, 0] };
     A.tell(leftA); record("block live: a leaver's seat falls back to an NPC", a.actors[mv].bot === true);
     const handed = { ...match, seats: [0, 20, 30, 0], host: 20, epoch: 2 };

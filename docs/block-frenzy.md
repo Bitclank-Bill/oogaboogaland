@@ -55,8 +55,8 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   seeded 3.5 to 8 s.
 - **Trees (Gorilla Jungle).** Every canopy has a one-way ledge at its leaves' top: fly or jump up through the leaves
   from below, and come down on top to stand there. The leaves themselves stay decor, so nobody hides inside them, and
-  the chase camera comes in front of (or over) leaves as it does walls. The two trees before each sniper tower stand
-  low (3.5 m), so the scope sees over them.
+  the chase camera comes in front of (or over) leaves as it does walls. The two trees before each tower stand
+  low (3.5 m), so a scope up there sees over them.
 - **Weather.** A seeded run of clear and stormy spells. Storms darken the light and bring rain and lightning.
 - **Movement.** Jump, and jump again in the air: a double jump reaches 2.55 m and clears the forts' 2.4 m walls, the
   stilt huts' floors and the centre deck, carrying or not. Shift sprints for up to 4 s, refilling after a rest. C
@@ -68,17 +68,13 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
 
 ## Towers, ziplines and ammo caches
 
-- **Sniper towers.** One beside each end on every map: four posts, an open platform 6.4 m up (`TOWER_TOP`) with a
-  parapet, and a ladder up its inward side (a climb zone, not a block). Standing on either tower's platform puts
-  the sniper rifle within reach as one more weapon (`5` or `G`); nothing changes by itself on arrival. The rifle fires only from a platform: fast, flat and long
-  (60 m/s, semi-automatic: a shot a click, 0.35 s apart, no ammunition). With it out, right click brings up a first-person
-  scope with four zoom steps (34°, 20°, 11° and 6° of view; right click, wheel, two-finger swipe or `+` `−`), and stepping off the platform with it out restores the
-  tool you had and any view the scope changed. The results card names the round's longest sniper hit.
+- **Towers.** One beside each end on every map: four posts, an open platform 6.4 m up (`TOWER_TOP`) with a
+  parapet, and a ladder up its inward side (a climb zone, not a block). A good perch for the sniper rifle, which no
+  longer needs one; the rack on the platform is dressing.
 - **Ziplines.** Each tower's cable leaves from the platform's ladder side and runs down into the other end. `Space` (or the
   Zip button) by the cable rides it at 15 m/s, hands on the cable; at its end, or on a jump, you let go and fall. From
   your own tower it is a raid into their fort; with their block in hand, their tower's line takes you home. Closed
-  while fortifying and while holding a crate. A carrier who climbs their tower keeps the rifle on `5` and is told the
-  zipline is the way home.
+  while fortifying and while holding a crate. Reaching the cable says which way it rides.
 - **Ammo caches.** Five on Fort Chaos (each stilt hut's floor and the centre deck; the other maps place their own).
   Walking onto one refills grenades, rockets, nets and the crate stock as your stand does, then it goes dark for 15 s
   (`CACHE_S`). A real Bitcoin block found while you play makes every cache and quiz pad ready again.
@@ -92,7 +88,14 @@ ones you can use.
   30-round magazine that reloads itself in 1.4 s when it runs dry.
 - **Golden Dual AKs** (`6`). One in each hand, full auto, both firing every round, never empty. Two pairs a round:
   scoring a capture wins a pair while any are left, and a capture that wins nothing from the pool takes one thing from the rivals (see Mining a block takes one).
-- **Sniper rifle** (`5`). Tower-only, above.
+- **Sniper rifle** (`5`). In every Ooga's arsenal from the start of a round, on every map, solo and live, and fired
+  from anywhere (`sniper` on an actor is 1 throughout): fast, flat and long (60 m/s, about 50 m, semi-automatic: a shot
+  a click, 0.35 s apart, no ammunition and no reload). With it out, right click brings up a first-person scope with four
+  zoom steps (34°, 20°, 11° and 6° of view; right click, wheel, two-finger swipe or `+` `−`); in first person it is
+  always scoped. Putting it away restores any view the scope changed. A guest's shot is a `fire` action of kind
+  `sniper`, checked on the host as any other; the wire is unchanged (the `rifle` and `unrifle` events keep their
+  places in `EVENT_TYPES` and are no longer sent). Bots don't use it. The results card names the round's longest
+  sniper hit.
 
 Paint balls, the AKs and the rifle splat as paint does; nobody is removed and nobody has health.
 
@@ -151,8 +154,8 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 | Left click or Enter | Throw the chosen tool at the crosshair (the crate, when holding one) |
 | U | Hide or show the weapons bar (its handle drags it; both remembered on this device; on touch it stays put) |
 | 8, R | With the grappling hook found: 8 picks it (then click fires), R fires it at the crosshair; press again, or jump, to let go |
-| 1 to 7, G | Pick a weapon (paint, grenade, rocket, net, sniper rifle on a tower, Golden Dual AKs once won, Ooga AK); G steps through the ones you can use |
-| Right click | Aim, as the island's precision aim: held, the view narrows; up a tower it steps the sniper scope in (four steps); in the Island view it returns to the chase camera |
+| 1 to 7, G | Pick a weapon (paint, grenade, rocket, net, sniper rifle, Golden Dual AKs once won, Ooga AK); G steps through the ones you can use |
+| Right click | Aim, as the island's precision aim: held, the view narrows; with the sniper rifle out it brings up the scope and steps it in (four steps); in the Island view it returns to the chase camera |
 | Space, Space again in the air | Jump, double jump; held in the air, the jetpack |
 | Space beside a zipline or catapult | Use it (as Space uses what is beside you on the island) |
 | Shift (held) | Sprint |

@@ -10,7 +10,7 @@
 // arrows or the look stick turns. The keys follow the island's: W A S D move from where the Ooga faces, Shift
 // sprints, Space jumps (again in the air) or uses what stands beside it (a zipline or catapult), a
 // left click or Enter throws the chosen tool (1 to 7 pick one, G steps through them), X or a click captures the
-// mouse, a right click aims (the scope on a tower), Tab or T throws what is in hand, B drops a crate, F lifts, stacks and sets crates, K
+// mouse, a right click aims (the scope with the sniper rifle out), Tab or T throws what is in hand, B drops a crate, F lifts, stacks and sets crates, K
 // drops the block, C crouches while held, V switches views, P pauses, and Escape steps back one thing at a time
 // (the mouse, the view, a pause, the board, the Arcade). On touch the act button jumps, `#block-paint` throws and the tool bar picks. A round
 // opens with the sim's fortifying time. The intro card, the board (side and Ooga), the tool bar, the quiz card and the
@@ -119,13 +119,13 @@
     if (ev.type === "fees" && ev.nextFee > 0) live.fee = ev.nextFee;
     else if (ev.type === "block") live.block = ev.height;
   };
-  // The sniper scope: its zoom step (`ZOOMS`, degrees of view), and the tool and view to go back to off the tower.
+  // The sniper scope: its zoom step (`ZOOMS`, degrees of view), and the view to go back to when the rifle is put away.
   const ZOOMS = [34, 20, 11, 6];
   // Holding the right button aims, as the island's precision aim: the view narrows to AIM_FOV degrees (turning slows
   // with it) until the button comes up.
   const AIM_FOV = 36;
   let aiming = false;
-  const scope = { zoom: 0, tool: "paint", first: false, island: false };
+  const scope = { zoom: 0, first: false, island: false };
   // The quiz: the deck of question indices still to ask this visit, the one on the card and where its right answer sits.
   const quiz = { open: false, deck: [], index: -1, right: -1, locked: false, lockTimer: 0, asked: 0, solved: 0, relock: false };
   const placed = [];
@@ -804,7 +804,6 @@
     else if (t === "hookmiss") c.hookMiss(k);
     else if (me && t === "trap") c.trap();
     else if (me && (t === "refill" || t === "cache")) c.refill();
-    else if (me && t === "rifle") c.rifle();
     else if (me && t === "zip") c.zipOn();
     else if (me && t === "unzip") c.zipOff();
     else if (me && (t === "jump" || t === "jump2")) c.jump();
@@ -1011,23 +1010,6 @@
       else if (e.type === "goldget") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { center("GOLDEN AKs!", 900); notice("You picked up the Golden Dual AKs (6)", 2200); chooseTool("gold"); } }
       else if (e.type === "goldback") { if (me) { notice("Nobody took them · your Golden Dual AKs are back (6)", 2200); updateTools(); } }
       else if (e.type === "hookback") { if (me) { notice("Nobody took it · your grappling hook is back (8)", 2200); updateTools(); } }
-      else if (e.type === "rifle") {
-        // On a tower the rifle is a choice, nothing more: the tool and the view stay as they are.
-        if (me) {
-          scope.zoom = 0;
-          if (sim.actors[0].carrying) notice(COARSE ? "Zip rides their line straight into our fort!" : "Space by the cable rides their zipline straight home! (5 for the sniper rifle)", 3600);
-          else notice(COARSE ? "Sniper on the tool bar" : "5 for the sniper rifle", 2200);
-          updateTools();
-        }
-      } else if (e.type === "unrifle") {
-        if (me) {
-          // Off the tower the rifle stays on its rack: the tool goes back, and the view if the scope changed it.
-          if (tool === "sniper") chooseTool(scope.tool);
-          if (scope.on && !scope.first && cam.first) setMode(scope.island ? "island" : "chase", true);
-          scope.on = false;
-          updateTools();
-        }
-      }
       else if (e.type === "boing") {
         fx.burst(e.x, 0.3, e.z, 6, ORANGE_BITS, 1.4);
         if (me && !trampSeen) { trampSeen = true; notice("BOING! Jump again at the top to go even higher", 2400); }
@@ -1247,7 +1229,6 @@
     if (!ok && a.splat > 0) notice(`Splatted · throwing again in ${Math.ceil(a.splat)} s`, 900);
     else if (!ok && a.trapped > 0) notice("Answer the question to get out first", 1100);
     else if (!ok && tool === "gold" && !a.gold) notice("Mine a block to win the Golden Dual AKs, or take them from whoever has them", 1800);
-    else if (!ok && tool === "sniper" && a.sniper <= 0) notice("The sniper rifle stays in the towers · climb one to use it", 1600);
     else if (!ok && tool !== "paint" && a[tool] <= 0) notice(`Out of ${tool}s · refill on your stand or an ammo cache`, 1400);
     return ok;
   };
@@ -1261,14 +1242,19 @@
     if (!ok && a.hCool > 0) notice(`Hook recharging · ${Math.ceil(a.hCool)} s`, 900);
     return ok;
   };
-  const scoped = () => tool === "sniper" && sim && sim.actors[0].sniper > 0 && cam.first;
+  const scoped = () => tool === "sniper" && !!sim && cam.first;
   const zoomScope = (dir) => {
     scope.zoom = clamp(scope.zoom + dir, 0, ZOOMS.length - 1);
     notice(`Scope ${scope.zoom + 1}×`, 600);
   };
   const TOOL_NAMES = { paint: "1 · Paint", grenade: "2 · Grenade", rocket: "3 · Rocket", net: "4 · Net", sniper: "5 · Sniper", gold: "6 · Golden AKs", ak: "7 · AK", hook: "8 · Hook", grab: "Lift" };
   const chooseTool = (k) => {
-    if (k === "sniper" && tool !== "sniper") scope.tool = tool;
+    // The rifle out starts at the scope's widest step; put away, the view goes back if the scope changed it.
+    if (k === "sniper" && tool !== "sniper") scope.zoom = 0;
+    else if (k !== "sniper" && tool === "sniper") {
+      if (scope.on && !scope.first && cam.first) setMode(scope.island ? "island" : "chase", true);
+      scope.on = false;
+    }
     // Say the new weapon, whatever changed it, so it shows with the bar hidden too.
     if (k !== tool && TOOL_NAMES[k]) notice(TOOL_NAMES[k], 900);
     tool = k;
@@ -1287,14 +1273,14 @@
     }
     chooseTool(ORDER[i]);
   };
-  // Right click aims, as on the island: up a tower it steps the scope in (round to its widest); in the Island view it
+  // Right click aims, as on the island: with the sniper rifle out it steps the scope in (round to its widest); in the Island view it
   // returns to the chase camera; otherwise holding it narrows the view to aim. G and the number keys switch weapons.
   const onRightDown = (e) => {
     if (e.button !== 2 || phase !== "play" || paused) return;
     e.preventDefault();
     if (scoped()) zoomScope(scope.zoom >= ZOOMS.length - 1 ? -(ZOOMS.length - 1) : 1);
-    // With the rifle out on a platform, right click brings the scope up; stepping off puts the view back.
-    else if (tool === "sniper" && sim.actors[0].sniper > 0 && !cam.first) { scope.on = true; scope.first = false; scope.island = cam.island; scope.zoom = 0; setMode("first", true); }
+    // With the rifle out, right click brings the scope up; putting the rifle away puts the view back.
+    else if (tool === "sniper" && !cam.first) { scope.on = true; scope.first = false; scope.island = cam.island; scope.zoom = 0; setMode("first", true); }
     else if (cam.island) setMode("chase");
     else aiming = true;
   };
@@ -1350,7 +1336,6 @@
       if (n) n.textContent = k === "paint" || k === "sniper" || k === "gold" ? "" : k === "hook" ? (a.hook && (a.hk || a.hCool > 0) ? "…" : "") : k === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : k === "crate" ? String(a.crates) : String(a[k]);
       if (k === "gold") b.disabled = !a.gold;
       if (k === "hook") b.disabled = !a.hook;
-      if (k === "sniper") b.disabled = !a.sniper;
       if (k === "grenade" || k === "rocket" || k === "net") b.disabled = a[k] <= 0;
       if (k === "pass") b.disabled = !a.carrying && !a.holding;
       if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a);
@@ -1456,7 +1441,6 @@
       chooseTool(k); return;
     }
     if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them or take them", 1800); return; }
-    if (k === "sniper" && !a.sniper) { notice("The sniper rifle stays up the towers · climb a ladder", 1600); return; }
     chooseTool(k);
   };
   const onCrouchKey = (e) => { if (!panelLive() && (e.key === "c" || e.key === "C")) move.crouch = e.type === "keydown" ? 1 : 0; };
@@ -1485,7 +1469,7 @@
     if ((!guest || SIM.nearCatapult(sim, a) || SIM.nearEnemyCatapult(sim, a)) && acts("launch", 0)) return true;
     if (acts("zip", 0, cam.face)) return true;
     if (cam.island) return false;
-    notice(sim.prep > 0 ? "The zipline opens when the round starts" : a.holding ? "Put the crate down first (F)" : "Climb a sniper tower's ladder and stand by the cable to ride", 1600);
+    notice(sim.prep > 0 ? "The zipline opens when the round starts" : a.holding ? "Put the crate down first (F)" : "Climb a tower's ladder and stand by the cable to ride", 1600);
     return false;
   };
   // Piggyback: H climbs on the nearest teammate's back (H again, or Space, gets down); J calls a bot teammate to
@@ -1923,7 +1907,7 @@
       setVec(camera.target, x + Math.sin(cam.yaw) * c * 10, eye + Math.sin(up) * 10, z + Math.cos(cam.yaw) * c * 10);
       }
       // The sniper's scope narrows the view; the gun in hand sits low and right of the eye.
-      const scopedNow = tool === "sniper" && me.sniper > 0;
+      const scopedNow = tool === "sniper";
       camera.fov = damp(camera.fov, (scopedNow ? ZOOMS[scope.zoom] : aiming ? AIM_FOV : 58) * Math.PI / 180, 10, dt);
       const g = tool === "hook" && me.hook <= 0 ? -1 : GUN_OF[tool], showGun = g >= 0 && !scopedNow && !me.carrying && !me.holding && !me.riding && !me.climbing && me.splat <= 0 && me.trapped <= 0;
       fpGun.visible = showGun;
@@ -2288,7 +2272,7 @@
         add(createNode({ geometry: BL.hubModels.rock(k % 3), sightHidden: true, position: { x: b[0] + (b[1] - b[0]) * fx, y: -0.08, z: b[2] + (b[3] - b[2]) * fz }, rotation: { x: 0, y: k * 1.9, z: 0 }, scale: { x: sc, y: sc, z: sc } }));
       }
     }
-    // The stands, and the sniper towers' ladders and rifle racks and the ziplines, where this map has them.
+    // The stands, and the sniper towers' ladders, their rifle racks (dressing: the rifle is every Ooga's) and the ziplines, where this map has them.
     const mapIndex = SIM.MAPS.indexOf(selection.map);
     for (const t of SIM.TEAMS) {
       const st = A.stands[t], l = A.ladders[t], [x0, x1, z0, z1] = A.towers[t], i = TEAM_INDEX[t];

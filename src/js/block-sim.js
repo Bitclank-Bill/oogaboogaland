@@ -90,7 +90,7 @@
     // The net launcher: flat and fast, opening wide in flight.
     net: { speed: 30, lift: 0.3, gravity: 3, life: 1, r: 1.7, blast: 0, cool: 0.8, max: 3 },
     crate: { speed: 12, lift: 2.5, gravity: 14, life: 2.5, r: 0.9, blast: 0, cool: 0.6, max: 0 },
-    // The sniper rifle: it stays in the sniper towers, so it fires only from a tower's platform; fast, flat and long.
+    // The sniper rifle, in every Ooga's hands from the start and fired from anywhere: fast, flat and long.
     sniper: { speed: 60, lift: 0, gravity: 0.6, life: 0.85, r: 0.35, blast: 0, cool: 0.35, max: 0 },
     // The Golden Dual AKs: one in each hand, full auto, both firing every round (two balls `GOLD_SIDE` either side of
     // the Ooga), never empty. There are `GOLD_GUNS` pairs a round: mining a block wins a pair while any are left, and
@@ -125,8 +125,8 @@
   const flip = (list) => list.map(([x, z]) => [-x, -z]);
   const TEAMS = ["blue", "red"];
   // A sniper tower beside each end, on every map: four posts, a platform at `TOWER_TOP`, a parapet with a gap over the
-  // ladder on the side facing in, and no roof, so the camera sees a sniper. The ladder is a climb zone, not a block (`ladders`); the rifle
-  // rack is on the platform; the zipline leaves from the platform's gap side and runs down into the other end (`zips`).
+  // ladder on the side facing in, and no roof, so the camera sees a sniper. The ladder is a climb zone, not a block (`ladders`); a rifle
+  // rack dresses the platform (the rifle itself is every Ooga's, anywhere); the zipline leaves from the platform's gap side and runs down into the other end (`zips`).
   const TOP = CONFIG.TOWER_TOP, RAIL = TOP + 0.9;
   const TOWER = [-19, -16, 24.5, 27.5], GAP = [25.4, 26.6];
   const towerBlocks = ([x0, x1, z0, z1], GAP = [25.4, 26.6]) => [
@@ -778,7 +778,7 @@
       id: i, slot: i % size, name: names[i] || null, team: i < size ? team : rival, bot: i > 0, role: i % size % 2 ? "defend" : "attack",
       x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, heading: 0, moving: 0, carrying: null, splat: 0, guard: 0, cooldown: 0,
       blocked: null, stuck: 0, lastX: 0, lastZ: 0, detour: 0, aim: 0, trapped: 0, think: 0, grounded: true, jumps: 0, crouch: false,
-      waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 0, crates: 0, holding: false, bonked: false,
+      waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 1, crates: 0, holding: false, bonked: false,
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", wield: "", grabbed: 0, grabFill: 0, flung: false, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       knock: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
       detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
@@ -859,7 +859,7 @@
       a.stamina = CONFIG.SPRINT_S; a.tired = a.sprinting = a.waiting = a.holding = a.bonked = false; a.rest = 0;
       a.captures = a.splats = a.hits = a.longShot = a.rescues = 0;
       a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabFill = 0; a.flung = false;
-      a.sniper = 0; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.laser = a.beam = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
+      a.sniper = 1; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.laser = a.beam = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
       a.knock = 0; a.wield = ""; a.ride = a.rider = a.calling = 0;
       a.hook = a.hk = a.hookT = a.hookLen = a.hCool = a.flingT = 0; a.hookTarget = -1; a.hookHold = false;
       a.route = ""; a.routeT = a.jetT = a.hopT = a.crateT = a.stacks = a.crateGo = a.routeBan = 0; a.botClimb = false;
@@ -1247,7 +1247,7 @@
     }
     if (la.beam > 0) return false;
     const a = la, tool = TOOLS[kind];
-    if (sim.over || !tool || a.splat > 0 || a.trapped > 0 || a.cooldown > 0 || (tool.max && a[kind] <= 0) || (kind === "crate") !== a.holding || (kind === "sniper" && !onTower(a)) || a.burnt > 0 || a.slip > 0 || a.grabbed || (kind === "gold" && !a.gold) || (kind === "ak" && (a.akMag <= 0 || a.akReload > 0))) return false;
+    if (sim.over || !tool || a.splat > 0 || a.trapped > 0 || a.cooldown > 0 || (tool.max && a[kind] <= 0) || (kind === "crate") !== a.holding || a.burnt > 0 || a.slip > 0 || a.grabbed || (kind === "gold" && !a.gold) || (kind === "ak" && (a.akMag <= 0 || a.akReload > 0))) return false;
     let s = null;
     for (let i = 0; i < sim.shots.length && !s; i++) if (!sim.shots[i].live) s = sim.shots[i];
     if (!s) return false;
@@ -2429,9 +2429,6 @@
     // A map with its own spot scores there and at the stand both.
     const atGoal = home || (a.y < 1.4 && (a.x - gl.x) ** 2 + (a.z - gl.z) ** 2 < gr * gr);
     if (home && refill(a)) emit(sim, "refill", a.team, a.id, a.x, a.y, a.z);
-    // Up a tower the rifle is in hand (`sniper` 1); stepping off leaves it on the rack.
-    const up = onTower(a) ? 1 : 0;
-    if (up !== a.sniper) { a.sniper = up; emit(sim, up ? "rifle" : "unrifle", a.team, a.id, a.x, a.y, a.z); }
     for (const c of sim.caches) {
       if (c.dark > 0 || Math.abs(a.y - c.y) > 0.5 || (a.x - c.x) ** 2 + (a.z - c.z) ** 2 > CONFIG.CACHE_R * CONFIG.CACHE_R) continue;
       if (refill(a)) { c.dark = CONFIG.CACHE_S; emit(sim, "cache", a.team, a.id, c.x, c.y, c.z); }

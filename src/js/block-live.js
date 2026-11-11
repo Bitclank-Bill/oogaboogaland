@@ -8,6 +8,8 @@
   "use strict";
   const BL = window.BL, W = BL.blockWire, SIM = BL.blockSim;
   // Every event block-sim emits, by index on the wire. An unlisted one is dropped; the suite checks the list is whole.
+  // `rifle` and `unrifle` are no longer raised (the sniper rifle is always in hand); they keep their places so the
+  // indices, and so the wire, stay as they were.
   const EVENT_TYPES = ["golddrop", "goldget", "goldback", "hookdrop", "hookback", "gunfire", "boing", "bolt", "boltwarn", "boo", "build", "burn", "cache", "callride", "capture", "chute", "chuteoff", "clean", "climbed", "cooled", "edgedrop", "enemycat", "ghostback", "ghostpop", "go", "gold", "goldsteal", "gorillahit", "gorillahooked", "grab", "homers", "hookbite", "hookbounce", "hookget", "hookhide", "hookrelease", "hooksteal", "hookthrow", "hookwarn", "hopoff", "hopon", "jump", "jump2", "land", "landed", "laseroff", "laseron", "launch", "lift", "mined", "miss", "net", "netsteal", "newblock", "pass", "pickup", "power", "puddle", "refill", "reload", "reloaded", "rescue", "respawn", "return", "set", "slip", "smash", "splat", "steady", "struggle", "thrown", "touchdown", "trap", "unnet", "unzip", "waiting", "weather", "win", "winded", "windup", "yank", "zip", "fire", "throw", "bonk", "boom", "pop", "breakfree", "letgo", "netmiss", "rifle", "unrifle", "drop", "knock", "escape", "timeout", "hookmiss"];
   const EVENT_INDEX = new Map(EVENT_TYPES.map((t, i) => [t, i]));
   // Events the rules only ever raise for a real Ooga; the suite checks the list against block-sim.js.
