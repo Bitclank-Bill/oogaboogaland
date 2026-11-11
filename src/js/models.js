@@ -306,6 +306,7 @@
   };
   // Exposed voxel faces emitted as run-merged quads.
   const CELL = [0, 0, 0];
+  const SIX = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
   const voxelFaces = (iterate, has, emit) => {
     const F = { py: [], ny: [], px: [], nx: [], pz: [], nz: [] };
     iterate((x, y, z, c) => {
@@ -1240,12 +1241,24 @@
       // Ears on a bare head; hair covers them otherwise.
       if (!hairy && !dress.skull) for (const x of [-1, 7]) v.fill(x, x, 2, 3, 2, 3, P.skinDk);
       if (dress.crown) dress.crown(k, v);
+      // Ragged hair: a few exposed cells go. One cut out of the middle of a flat stretch of hair behind the face (a cell
+      // with hair or head on every side but its outer one) is a hole, so it goes back once the pass is over; the draws
+      // are taken as ever, so nobody's later ones move, and the outline stays ragged.
+      const whole = new Set(v.map.keys()), torn = [];
       for (const [key, c] of [...v.map]) {
         if (c !== P.hair && c !== P.hairDk) continue;
         voxCoords(key, CELL);
         const x = CELL[0], y = CELL[1], z = CELL[2];
         const exposed = !v.has(x + 1, y, z) || !v.has(x - 1, y, z) || !v.has(x, y, z + 1) || !v.has(x, y, z - 1) || !v.has(x, y + 1, z);
-        if (exposed && rand() < 0.07) v.del(x, y, z);
+        if (exposed && rand() < 0.07) { v.del(x, y, z); torn.push(key, c); }
+      }
+      for (let i = 0; i < torn.length; i += 2) {
+        voxCoords(torn[i], CELL);
+        const x = CELL[0], y = CELL[1], z = CELL[2];
+        if (z >= 5) continue;
+        let open = 0;
+        for (const [dx, dy, dz] of SIX) if (!whole.has(voxKey(x + dx, y + dy, z + dz))) open++;
+        if (open <= 1) v.map.set(torn[i], torn[i + 1]);
       }
       if (hairy) {
         for (let x = 0; x <= 6; x++) for (let z = 0; z <= 5; z++) if (rand() < 0.08) v.set(x, 9, z, rand() < 0.5 ? P.hair : P.hairDk);
@@ -1483,8 +1496,15 @@
         }
         // The wrap: front and back panels clear of the band's rounded corners, the back a little longer over the seat, a
         // shorter one down each hip, each hem a little torn: teeth a grain wide, most a cell or two short, now and then
-        // one nicked deeper (`WRAP`, each panel's length in units).
-        const wrap = (x, y, z) => v.set(x, y, z, grainMix(x, y, z, 900) < 140 ? loinB : loinA);
+        // one nicked deeper (`WRAP`, each panel's length in units). Only an Ooga that wore loin flaps gets one: a
+        // character whose own torso has trousers, shorts or a suit and no flaps keeps its clothes bare.
+        let flapped = false;
+        for (const [key, c] of bake.v.map) {
+          if (c !== loinA && c !== loinB) continue;
+          voxCoords(key, CELL);
+          if (CELL[1] < 0) { flapped = true; break; }
+        }
+        const wrap = (x, y, z) => { if (flapped) v.set(x, y, z, grainMix(x, y, z, 900) < 140 ? loinB : loinA); };
         const hem = (x, z, units) => {
           const m = grainMix(x, 0, z, 811);
           return Math.round(units * F) - (m > 965 ? 3 : m < 150 ? 2 : m < 450 ? 1 : 0);
