@@ -1588,7 +1588,8 @@
       const { zf } = hips(), newFront = ((zf + 1) * fineU - 3 * u) * parts.torso.scale.z;
       const keepOn = (node, frame) => {
         const box = span(node, 0, 0, 0, [Infinity, -Infinity, Infinity, -Infinity, Infinity]);
-        if (box[2] > box[3]) return;
+        // Nothing to move, or a piece that stands on the ground beside its Ooga (a pet at k.legH): it stays there.
+        if (box[2] > box[3] || frame === root && box[2] <= -legH + 1.5 * u) return;
         const armX = Math.abs(parts.armL.position.x), c = (box[2] + box[3]) / 2;
         const beside = frame === root && box[3] > 0 && (box[1] > -armX - 2.5 * u && box[0] < -armX + 2.5 * u || box[1] > armX - 2.5 * u && box[0] < armX + 2.5 * u);
         node.position.y += beside ? rise : torsoY(c) - c;

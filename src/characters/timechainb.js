@@ -63,10 +63,10 @@
         v.fill(1, 5, 10, 10, 1, 4, goldDk);
         v.fill(2, 4, 11, 11, 2, 3, gold);
       },
-      // A lion cub carried on the right arm
+      // A lion cub carried on the right arm, standing as high off the ground whatever the legs' length (k.legH)
       extras(k) {
         const u = k.u;
-        k.parts.lion = createNode({ geometry: voxelGeometry(lionVoxels(k.rand), { unit: u, palette: LION_PALETTE, origin: { x: k.armX + 1.5 * u, y: -1 * u, z: -2 * u } }) });
+        k.parts.lion = createNode({ geometry: voxelGeometry(lionVoxels(k.rand), { unit: u, palette: LION_PALETTE, origin: { x: k.armX + 1.5 * u, y: 4 * u - k.legH, z: -2 * u } }) });
         addChild(k.root, k.parts.lion);
       }
     }
