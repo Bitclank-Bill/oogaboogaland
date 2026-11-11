@@ -461,6 +461,8 @@
     if (role === "watch") { setupRound(m, map); joinDeckNow(m); return; }
     setupRound(m, map);
     start(m.seed);
+    sim.duel = WIRE.duel(m.seats, m.size);
+    if (sim.duel) notice("Just the two of you: you can score even while your own block is away", 5000);
   };
   const joinDeckNow = (m) => {
     SIM.reset(sim, m.seed);
@@ -719,7 +721,7 @@
     const own = sim.flags[sim.team], theirs = sim.flags[sim.rival], me = sim.actors[0];
     el.scoreBlue.textContent = String(sim.score.blue);
     el.scoreRed.textContent = String(sim.score.red);
-    el.own.textContent = STATE_WORDS[own.state];
+    el.own.textContent = STATE_WORDS[own.state] + (sim.duel && own.state !== "home" ? " · you can still score" : "");
     el.own.dataset.state = own.state;
     el.theirs.textContent = me.carrying ? "carrying!" : STATE_WORDS[theirs.state];
     el.theirs.dataset.state = me.carrying ? "carried" : theirs.state;

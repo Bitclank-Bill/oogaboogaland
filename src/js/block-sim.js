@@ -43,7 +43,7 @@
     SPEED: 6.2, SPRINT: 1.55, SPRINT_S: 4, SPRINT_REST: 0.8, SPRINT_REFILL: 5, SPRINT_MIN: 0.3, BOT_SPEED: 5.5, ACCEL: 30,
     SHOT_Y: 1.3, BOT_COOLDOWN: 1.4, BOT_RANGE: 12, BOT_SPREAD: 0.2, BOT_AIM: 0.6, GUARD_RANGE: 10,
     MAX_SHOTS: 96, MAX_EVENTS: 48, STEP: 1 / 120,
-    TRAP_R: 0.95, TRAP_MAX_S: 25, TRAP_REARM_S: 8, BOT_THINK: [3.5, 8], MAX_SIDE: 5,
+    TRAP_R: 0.95, TRAP_MAX_S: 25, TRAP_REARM_S: 8, BOT_THINK: [3.5, 8], MIN_SIDE: 2, MAX_SIDE: 5,
     PREP_S: 20, CRATE_HALF: 0.6, CRATE_H: 1.1, MAX_CRATES: 32, CRATE_STOCK: 3, PUSH: 0.55, STAND_CLEAR: 2.4,
     NET_S: 4, NET_SLOW: 0.4, PASS_SPEED: 13, PASS_LIFT: 5, PASS_GRAVITY: 13, PASS_SAFE: 0.45, CATCH_R: 1.5,
     WEATHER_S: [24, 42],
@@ -772,13 +772,13 @@
   // A round. `team` is the player's colour; `seed` seeds the bots and the weather; `prep` the fortifying seconds.
   // `names` names the four Oogas: the player first, then their teammate, then the two rivals (only carried for the
   // scene).
-  // `size` Oogas a side (1 to `MAX_SIDE`): the player first, then their teammates, then the rivals. `skill` picks the
+  // `size` Oogas a side (`MIN_SIDE` to `MAX_SIDE`; never one against one, NPCs filling any empty place): the player first, then their teammates, then the rivals. `skill` picks the
   // bots' `SKILLS`.
   const create = ({ team = "blue", seed = 1, names = [], prep = CONFIG.PREP_S, target = CONFIG.CAPTURES, size = 2, skill = "normal", map = "fort" } = {}) => {
     map = ARENAS[map] ? map : "fort";
     const A = ARENAS[map];
     const rival = other(team);
-    size = Math.max(1, Math.min(CONFIG.MAX_SIDE, size | 0));
+    size = Math.max(CONFIG.MIN_SIDE, Math.min(CONFIG.MAX_SIDE, size | 0));
     const actors = Array.from({ length: size * 2 }, (_, i) => ({
       id: i, slot: i % size, name: names[i] || null, team: i < size ? team : rival, bot: i > 0, role: i % size % 2 ? "defend" : "attack",
       x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, heading: 0, moving: 0, carrying: null, splat: 0, guard: 0, cooldown: 0,
@@ -851,6 +851,7 @@
   // Everyone back to their fort, both flags home, the forts' crates back, the score at nil and the clock at zero.
   const reset = (sim, seed = sim.seed) => {
     sim.seed = seed;
+    sim.duel = false;
     sim.rng = mulberry32(seed);
     use(sim);
     for (const c of sim.crates) c.live = false;
@@ -2601,11 +2602,13 @@
       emit(sim, "return", own.team, a.id, own.x, 0, own.z);
     }
     // At home with their block while your own is away: no score yet, said once a visit to the stand.
-    if (a.carrying === theirs.team && atGoal && own.state !== "home" && !a.waiting) {
+    // A live round of one person a side (`sim.duel`, `blockWire.duel`): a stolen block need not be home to score.
+    const mayScore = own.state === "home" || sim.duel;
+    if (a.carrying === theirs.team && atGoal && !mayScore && !a.waiting) {
       a.waiting = true;
       emit(sim, "waiting", a.team, a.id, gl.x, 0, gl.z);
     } else if (!atGoal) a.waiting = false;
-    if (a.carrying === theirs.team && atGoal && own.state === "home") {
+    if (a.carrying === theirs.team && atGoal && mayScore) {
       const f = sim.flags[a.carrying];
       a.carrying = null;
       homeFlag(f);

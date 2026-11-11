@@ -7308,13 +7308,18 @@ const gameRulesChecks = async () => {
       return deck.actors[deckMap.toLocal[3]].captures === 2;
     })(), `max ${biggest}, avg ${Math.round(total / frames)} bytes`);
     context.blockFrameBytes = { biggest, average: Math.round(total / frames) };
-    // 1v1 is a real match with bots and flags, and a solo step is untouched by the new input table.
+    // A size under the minimum is grown to two a side (never a 1v1), a real match with bots and flags, and a solo step
+    // is untouched by the new input table.
     const one = S.create({ team: "blue", seed: 9, size: 1, map: "fort", prep: 0 });
     one.actors[1].bot = true;
     for (let i = 0; i < 1200; i++) S.tick(one, S.CONFIG.STEP, still());
     const solo = (t) => { const s = S.create({ team: "blue", seed: 77, size: 3, map: "town", prep: 1 }); if (t) s.inputs = null; for (let i = 0; i < 1800; i++) S.tick(s, S.CONFIG.STEP, still()); return s.actors.map(a => a.x + a.z).join(","); };
-    record("block live: 1v1 runs, and a solo round is unchanged", one.actors.length === 2 && one.time > 9 && solo(false) === solo(true));
-    // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
+    record("block live: there is no 1v1 (a size of one runs two a side), and a solo round is unchanged", one.size === 2 && one.actors.length === 4 && one.time > 9 && solo(false) === solo(true));
+
+    // A round of one person a side may score with its own block away, and no other.
+    const scoring = (duel) => { const s = S.create({ team: "blue", seed: 3, size: 2, map: "fort", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue; s.duel = duel; s.flags.blue.state = "dropped"; s.flags.blue.x = 0; s.flags.blue.z = 0; s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0; S.tick(s, S.CONFIG.STEP, still()); return a.captures; };
+    record("block duels: only a one-person-a-side round scores with its own block away", scoring(true) === 1 && scoring(false) === 0, JSON.stringify({ duel: scoring(true), normal: scoring(false) }));
+    // The session over a fake room: a guest\'s input moves its actor on the host, a leaver becomes an NPC, the host hands over.
     const session = (selfId) => {
       const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
       const net = { state: { selfId }, serverNow: () => context.clock + (context.skew || 0), subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };

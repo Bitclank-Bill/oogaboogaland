@@ -68,7 +68,8 @@ test("the page and the Worker share one cap of four a side", () => {
   assert.ok(protocol.parseClientMessage(JSON.stringify(base)));
   for (const n of [0, 5, 1.5, "2", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, n })), null, String(n));
   for (const m of [-1, W.MAPS.length, null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null);
-  assert.equal(W.sizeFor(1, 8), 4); assert.equal(W.sizeFor(1, 3), 2); assert.equal(W.sizeFor(4, 1), 4); assert.equal(W.sizeFor(1, 1), 1);
+  assert.equal(W.sizeFor(1, 8), 4); assert.equal(W.sizeFor(1, 3), 2); assert.equal(W.sizeFor(4, 1), 4); assert.equal(W.sizeFor(1, 1), 2, "never a 1v1");
+  assert.equal(W.duel([7, 0, 9, 0], 2), true); assert.equal(W.duel([7, 8, 9, 0], 2), false); assert.equal(W.duel([7, 0, 0, 0], 2), false);
 });
 test("the input message is bounded and its widest form fits the room's frame limit", () => {
   const input = { t: "bf", v: 1, k: "input", s: "0123456789abcdef", q: 2147483647, x: -1000, z: -1000, f: -7000, b: 15, a: Array(4).fill([14, -7000, -2000, 7]).flat() };
@@ -166,7 +167,8 @@ test("only the first registered picks the map and size, and the size grows to se
   const h = harness(t), [a, b, c] = await crowd(h, 3);
   send(h, a, "reg"); send(h, b, "reg"); send(h, c, "reg");
   send(h, b, "opt", { n: 4, m: 3 }); assert.equal(h.room.blockMatch.size, 2); assert.equal(h.room.blockMatch.map, 0);
-  send(h, a, "opt", { n: 1, m: 2 }); assert.equal(h.room.blockMatch.size, 1); assert.equal(h.room.blockMatch.map, 2);
+  send(h, a, "opt", { n: 1, m: 3 }); assert.equal(h.room.blockMatch.map, 0, "a size of one is refused");
+  send(h, a, "opt", { n: 3, m: 2 }); assert.equal(h.room.blockMatch.size, 3); assert.equal(h.room.blockMatch.map, 2);
   for (const x of [a, b, c]) send(h, x, "ready", { r: 1 });
   assert.equal(h.room.blockMatch.size, 2, "three players need two a side");
 });

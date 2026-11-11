@@ -9,7 +9,7 @@
   // The `place` that arrives on the watch deck to spectate, for a portal or anything else that opens the game to watch.
   const WATCH_DECK_PLACE = "watch-deck";
   // The most a side may hold: change this one number to change the cap on the page and in the Worker.
-  const MAX_SIDE = 4, MIN_SIDE = 1, MAX_PLAYERS = MAX_SIDE * 2;
+  const MAX_SIDE = 4, MIN_SIDE = 2, MAX_PLAYERS = MAX_SIDE * 2;
   // The viewing chairs: at most this many viewers a match, enforced by the room. Bounds their share of the frames.
   const MAX_VIEWERS = 5;
   const HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000, COUNTDOWN_MS = 3000;
@@ -34,6 +34,9 @@
     for (let i = 0; i < deck.length; i++) { const side = (i + first) & 1; seats[side * size + used[side]++] = deck[i]; }
     return seats;
   };
+  // Exactly one person on each side when the round starts, NPCs in any other seats (not a solo round, nor two people on
+  // a side): a block need not be home to score, for the whole round.
+  const duel = (seats, size) => seats.slice(0, size).filter(Boolean).length === 1 && seats.slice(size).filter(Boolean).length === 1;
   const allReady = m => m.reg.length > 0 && m.ready.length === m.reg.length && m.ready.every(Boolean);
   // A round only starts itself with two humans all ready; one person alone starts by choosing to (`alone`).
   const canStart = m => m.reg.length >= 2 && allReady(m);
@@ -68,5 +71,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, duel, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
 })();
