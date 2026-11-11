@@ -31359,6 +31359,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         // locally at all when the host first puts the Ooga to sleep.
         {
           const rows = [];
+          crew.sleepDiagnostics(true);
           for (const mode of ["rest", "waiting", ""]) for (const retained of [false, true]) {
             sleeper.state = "away"; crew.refreshStates(true);
             const held = sleeper.bedroll;
@@ -31381,11 +31382,20 @@ record("character visibility source bakes: ownership wrappers share exact immuta
               && sr.quaternion === sleeper.sleepRotation && sleeper.parts.head.geometry === sleeper.headClosed
               && Math.hypot(sr.position.x - bed.x - Math.sin(bed.node.rotation.y) * travel.restZ,
                 sr.position.y - bed.y - travel.restY, sr.position.z - bed.z - Math.cos(bed.node.rotation.y) * travel.restZ) < 1e-5;
-            rows.push({ mode, retained, followed, settled });
+            const trace = crew.sleepDiagnostics().history.filter(e => e.before.name === sleeper.traits.name).at(-1);
+            const captured = trace?.fromHost === "host" && trace.reason === (retained ? "retained-hub" : "host-change")
+              && trace.before.position.x === 12 && trace.before.travel.mode === mode && trace.after.travel.mode === "rest"
+              && trace.after.bed.owner === sleeper.traits.name;
+            rows.push({ mode, retained, followed, settled, captured });
             sync.dispose();
           }
           record("NPC sync: sleeping handoff and retained-hub resume rebuild valid bed ownership and settled pose from stale rest, waiting or absent travel",
-            rows.every(row => row.followed && row.settled), JSON.stringify(rows));
+            rows.every(row => row.followed && row.settled && row.captured), JSON.stringify(rows));
+          for (let i = 0; i < 70; i++) crew.resumeFromHost(sleeper, "bounded-test");
+          const bounded = crew.sleepDiagnostics().history.length === 64;
+          crew.sleepDiagnostics(false); crew.resumeFromHost(sleeper);
+          record("NPC sleep diagnostics: opt-in evidence is capped at 64 handoffs, copies the current pose and clears when disabled",
+            bounded && crew.sleepDiagnostics().history.length === 0 && crew.sleepDiagnostics().current.some(c => c.name === sleeper.traits.name));
         }
         // Real host frames, applied by a real follower at the host's 4 Hz: a
         // same-status move under SNAP plays across, while a status change under
