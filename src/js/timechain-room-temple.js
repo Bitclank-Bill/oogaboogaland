@@ -434,7 +434,10 @@
         for (let i = 0; i < n; i++) {
           const u = (i + 0.5) / n * len, v = (r() - 0.5) * 0.16, rad = 0.3 + r() * 0.06, corners = 7 + Math.floor(r() * 3), turn = r() * TAU, sq = 0.82 + r() * 0.15, pts = [];
           for (let c = 0; c < corners; c++) { const t = turn + c / corners * TAU, rr = rad * (0.95 + r() * 0.07); pts.push(at(u + Math.cos(t) * rr * sq, v + Math.sin(t) * rr)); }
-          paver(geo, pts, 0.022 + r() * 0.01, tone(), SIDE);
+          const tone1 = tone(), h1 = 0.022 + r() * 0.01, [cx, cz] = at(u, v);
+          // Where a stepping path sets out from the paved one, the paving carries it.
+          if (offPath(cx, cz, 1.6) < rad) continue;
+          paver(geo, pts, h1, tone1, SIDE);
         }
       }
     }
@@ -491,6 +494,8 @@
   const LANTERN_AT = [[-2.0, 7.2], [2.0, 7.2], [-2.0, 4.3], [2.0, 4.3], [-2.0, 1.75], [2.0, 1.75], [POND.x - 1.6, 4.5], [BELL.x - 2.4, BELL.z + 2.6], [-6.3, -1.5]];
   // The paper lamps along the hall's front, the pagoda's tiers and the bamboo's clumps.
   const PAPER = [-3.0, -1.5, 0, 1.5, 3.0], TIERS = 5, CLUMPS = 6;
+  // The torii's plaque: its size, height, how far out in front of the strut and how far it leans forward.
+  const PLAQUE = { w: 0.48, h: 0.62, y: 3.12, z: 0.175, lean: 0.08 };
   // The cranes flying round under the dome, high against its sky near the crown and at about half life size, so they
   // read as far off: how many, the loop's radius, height and pace (radians a second), how much the loop swings in and
   // out, how far apart the V's ranks fly, and their size.
@@ -507,10 +512,11 @@
   // The stone paths, each [x0, z0, x1, z1, width]: up from the door to the deck, across to the pond's bridge, from the
   // bridge on to the bell tower's step and from the deck to the pagoda. Nothing stands on them but the walkers.
   const PATHS = [[0, 14.0, 0, -0.4, 2.0], [0.8, 3.0, POND.x, 3.0, 1.2], [POND.x, BRIDGE.z1 - 0.45, BELL_STEP.x, BELL_STEP.z, 1.2], [-0.8, 1.2, PAGODA.x + 1.6, PAGODA.z + 1.0, 1.2]];
-  // How far (x, z) is from a path's edge (negative on it).
-  const offPath = (x, z) => {
+  // How far (x, z) is from a path's edge (negative on it), of the paths at least `wide` across.
+  const offPath = (x, z, wide = 0) => {
     let best = Infinity;
     for (const [x0, z0, x1, z1, w] of PATHS) {
+      if (w < wide) continue;
       const dx = x1 - x0, dz = z1 - z0, t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / (dx * dx + dz * dz)));
       best = Math.min(best, Math.hypot(x - x0 - dx * t, z - z0 - dz * t) - w / 2);
     }
@@ -525,7 +531,12 @@
     ["#262422", [[0.08, 0.01, 0.045, "#d8401b"], [-0.03, -0.015, 0.04, "#f4f1e6"], [-0.09, 0.01, 0.03, "#d8401b"]]],
     ["#a8682e", [[0.11, 0, 0.035, "#c98a4a"]]]
   ];
-  const KOI = Array.from({ length: 10 }, (_, i) => ({ r: 0.7 + (i % 4) * 0.55, a: i * 0.9, w: (i % 2 ? 1 : -1) * (0.3 + i * 0.03) }));
+  // The koi, each with its own ways: where it starts (`r` out from the middle, `a` round), the speed it likes to cruise
+  // at (m/s), the two slow rhythms (rad/s) its wandering turns follow and their phase, and how deep it keeps.
+  const KOI = Array.from({ length: 10 }, (_, i) => {
+    const h = (n) => ((Math.sin((i + 1) * n) * 43758.5453) % 1 + 1) % 1;
+    return { r: 0.7 + (i % 4) * 0.55, a: i * 0.9, cruise: 0.08 + 0.13 * h(12.9), f1: 0.15 + 0.2 * h(78.2), f2: 0.4 + 0.3 * h(37.7), p: TAU * h(4.1), depth: 0.035 * h(91.3) };
+  });
   const PETALS = 30, SMOKE = 7, STREAKS = 12, RIPPLES = 4, PELLETS = 18;
   // The pond's water stands `WATER` up, deep enough for the koi to swim under it and be seen through it.
   const WATER = 0.08;
@@ -963,8 +974,9 @@
       for (const y of [0.32, 2.05]) { const rr = ROOMS.radiusAt(L, y) - 0.07; R2.box(2 * rr * Math.sin(half) + 0.02, 0.1, 0.06, C.dark, 0, y, -rr * Math.cos(half)); }
     }
 
-    // The torii over the path: two red pillars on black feet, the tie beam through them, the plaque between it and the
-    // red lintel, and the black top beam whose ends sweep up.
+    // The torii over the path: two red pillars on black feet, the tie beam through them, the strut between it and the
+    // red lintel with the plaque hung on it, and the black top beam whose ends sweep up. The plaque is a board of black
+    // lacquer in a raised gold frame, leaning forward over the path as a torii's plaque does, with ₿ in gold on it.
     const torZ = L.doorZ - 5.2;
     K.node("torii", (k) => {
       for (const x of [-1.6, 1.6]) {
@@ -979,14 +991,39 @@
       k.box(4.5, 0.16, 0.28, C.red, 0, 3.45, 0);
       k.box(3.9, 0.22, 0.36, C.dark, 0, 3.64, 0);
       for (const side of [-1, 1]) k.box(0.72, 0.2, 0.36, C.dark, side * 2.2, 3.7, 0, { rz: side * 0.2 });
+      k.box(0.1, 0.1, 0.1, C.dark, 0, 3.12, 0.105);
+      const G = k.group(0, PLAQUE.y, PLAQUE.z, 0, PLAQUE.lean);
+      G.box(PLAQUE.w, PLAQUE.h, 0.05, "#141210", 0, 0, 0);
+      const fw = 0.035, fd = 0.012, fz = 0.025 + fd / 2;
+      for (const sy of [-1, 1]) G.box(PLAQUE.w, fw, fd, C.gold, 0, sy * (PLAQUE.h - fw) / 2, fz, { emissive: 0.12 });
+      for (const sx of [-1, 1]) G.box(fw, PLAQUE.h - 2 * fw, fd, C.gold, sx * (PLAQUE.w - fw) / 2, 0, fz, { emissive: 0.12 });
     }, 0, 0, torZ, { target: { kind: "torii", tip: "Torii · the gate into the temple's grounds", radius: 3.4, pick: ["torii", "toriiPlaque"] } });
     for (const x of [-1.6, 1.6]) K.solid({ x, z: torZ, r: 0.27 });
-    K.picture(0.42, 0.56, 240, 320, (c, w, h) => {
-      c.fillStyle = "#151515"; c.fillRect(0, 0, w, h);
-      c.strokeStyle = C.gold; c.lineWidth = 10; c.strokeRect(12, 12, w - 24, h - 24);
-      c.fillStyle = C.gold; c.textAlign = "center"; c.textBaseline = "middle"; c.font = RM.paintKit.font(700, 190, RM.paintKit.SERIF);
-      c.fillText("₿", w / 2, h / 2 + 8);
-    }, 0, 3.12, torZ + 0.075, { emissive: 0.55, name: "toriiPlaque" });
+    // Its face inside the frame, 3 mm proud of the board: the lacquer's faint grain, and the ₿ drawn as the letter B
+    // with its two strokes through the top and the foot (no font is asked for the ₿ itself, which many lack), in gold
+    // shaded from the light down, with a dark edge to lift it.
+    const faceW = PLAQUE.w - 0.08, faceH = PLAQUE.h - 0.08, out = 0.028;
+    K.picture(faceW, faceH, 400, Math.round(400 * faceH / faceW), (c, w, h) => {
+      c.fillStyle = "#141210"; c.fillRect(0, 0, w, h);
+      const gr = RM.paintKit.rng(17);
+      for (let i = 0; i < 70; i++) { c.fillStyle = `rgba(255,240,220,${(0.015 + gr() * 0.03).toFixed(3)})`; c.fillRect(0, gr() * h, w, 1 + gr() * 2); }
+      const size = h * 0.62, base = h * 0.5 + size * 0.36;
+      c.font = RM.paintKit.font(700, size, RM.paintKit.SERIF); c.textAlign = "center"; c.textBaseline = "alphabetic";
+      const mt = c.measureText("B"), left = w / 2 - (mt.actualBoundingBoxLeft || mt.width / 2), gw = (mt.actualBoundingBoxLeft || mt.width / 2) + (mt.actualBoundingBoxRight || mt.width / 2);
+      const top = base - (mt.actualBoundingBoxAscent || size * 0.7), gh = base - top, bw = gw * 0.085;
+      const gold = c.createLinearGradient(0, top - gh * 0.15, 0, base + gh * 0.15);
+      gold.addColorStop(0, "#f6dc8c"); gold.addColorStop(0.5, "#d9aa45"); gold.addColorStop(1, "#a8762a");
+      const glyph = (dx, dy, style) => {
+        c.fillStyle = style;
+        c.fillText("B", w / 2 + dx, base + dy);
+        for (const fx of [0.3, 0.56]) {
+          c.fillRect(left + gw * fx - bw / 2 + dx, top - gh * 0.16 + dy, bw, gh * 0.22);
+          c.fillRect(left + gw * fx - bw / 2 + dx, base - gh * 0.06 + dy, bw, gh * 0.22);
+        }
+      };
+      glyph(4, 5, "#3a2610");
+      glyph(0, 0, gold);
+    }, 0, PLAQUE.y - out * Math.sin(PLAQUE.lean), torZ + PLAQUE.z + out * Math.cos(PLAQUE.lean), { emissive: 0.3, name: "toriiPlaque", rx: PLAQUE.lean });
 
     // The stone lanterns, and the clipped azaleas lining the path to the deck, low enough to walk through.
     const flame = noShadow(BL.models.box({ w: 0.3, h: 0.26, d: 0.3, color: C.lamp, emissive: 0.95 }));
@@ -1249,30 +1286,60 @@
     for (let i = 0; i < PETALS; i++) K.node(`petal${i}`, noShadow(petal), CHERRY[i % 2][0], 2, CHERRY[i % 2][1], { glow: true });
 
     // Red-crowned cranes in a loose V, circling high over the grounds under the dome, their wings beating and now and
-    // then held in a glide: a white body, the long neck, the black face and red crown, the black of the inner wing's
-    // trailing edge and the tail, and the legs trailing. Every crane shares one body and one pair of wings.
+    // then held in a glide. Each is built as the bird is: a streamlined white body tapering to the tail, with the black
+    // plumes of the inner wing drooping over it; the neck stretched out ahead, black down the throat with the white
+    // of the nape behind it; the head with its black face, the red crown and the long bill; and the legs trailing out
+    // behind the tail. Every crane shares one body and one set of wings.
+    const WHITE = "#f2efe6", INK = "#1e1d1c", PRIMARY = "#e4e1d8";
     const craneBody = (k) => {
-      k.add(blob(0.11, 0.1, 0.32, "#f4f1e6", 10, 0.15), 0, 0, 0);
-      along(k, 0, 0.03, 0.26, 0, 0.09, 0.62, 0.035, 0.022, "#f4f1e6", 6);
-      k.ball(0.045, "#1c1c1c", 0, 0.1, 0.66, { seg: 8 });
-      k.ball(0.022, "#c8281e", 0, 0.138, 0.665, { seg: 6, emissive: 0.25 });
-      along(k, 0, 0.095, 0.69, 0, 0.08, 0.84, 0.012, 0.004, "#8a7a4a", 5);
-      k.add(blob(0.09, 0.05, 0.13, "#1c1c1c", 8), 0, 0.01, -0.3);
-      for (const sx of [-0.04, 0.04]) along(k, sx, -0.05, -0.18, sx, -0.08, -0.85, 0.012, 0.008, "#2a2a2a", 4);
+      const body = ballGeo(1, WHITE, 12, 0.15), v = body.verts;
+      for (let i = 0; i < v.length; i += 3) { const z = v[i + 2], taper = z < 0 ? 1 + z * 0.45 : 1 - z * z * 0.3; v[i] *= 0.1 * taper; v[i + 1] *= 0.085 * taper; v[i + 2] = z * 0.3; }
+      k.add(body, 0, 0, 0);
+      k.add(blob(0.075, 0.028, 0.14, INK, 8), 0, 0.032, -0.29, { rx: 0.12 });
+      const neck = [[0.02, 0.24], [0.04, 0.42], [0.055, 0.57], [0.064, 0.7]];
+      for (let n = 0; n < 3; n++) {
+        const [y0, z0] = neck[n], [y1, z1] = neck[n + 1];
+        along(k, 0, y0, z0, 0, y1, z1, 0.034 - n * 0.004, 0.03 - n * 0.004, INK, 6);
+        along(k, 0, y0 + 0.016, z0 - 0.01, 0, y1 + 0.014, z1 - 0.01, 0.021 - n * 0.003, 0.018 - n * 0.003, WHITE, 6);
+      }
+      k.ball(0.034, WHITE, 0, 0.07, 0.722, { seg: 8 });
+      k.ball(0.028, INK, 0, 0.065, 0.75, { seg: 8 });
+      k.ball(0.017, "#c8281e", 0, 0.098, 0.728, { seg: 6, emissive: 0.25 });
+      along(k, 0, 0.064, 0.77, 0, 0.055, 0.93, 0.011, 0.002, "#8f8656", 5);
+      for (const sx of [-0.03, 0.03]) {
+        along(k, sx, -0.05, -0.12, sx, -0.062, -0.56, 0.011, 0.008, "#3b3a38", 4);
+        along(k, sx, -0.062, -0.56, sx, -0.066, -0.66, 0.007, 0.003, "#3b3a38", 4);
+      }
     };
-    const wing = (side) => {
-      const geo = blank(), W = (pts, c) => { const P = pts.map(([x, z]) => [x * side, 0, z]); face(geo, P, c, 0.15, UP); face(geo, P, c, 0.15, DOWN); };
-      W([[0.03, 0.16], [0.55, 0.15], [0.55, -0.1], [0.03, -0.13]], "#f4f1e6");
-      W([[0.03, -0.13], [0.55, -0.1], [0.55, -0.2], [0.03, -0.24]], "#1c1c1c");
-      W([[0.55, 0.15], [1.02, 0.07], [1.08, -0.05], [0.55, -0.1]], "#f4f1e6");
+    // A wing in two parts, the arm and the hand, so the hand bends to the beat a little behind the arm: the arm's white
+    // coverts over the black of its secondaries, whose tips scallop its trailing edge; the hand's white coverts and its
+    // six primaries spread like fingers. Both faces of each, as a wing is seen from above and below.
+    const feathers = (side, part) => {
+      const geo = blank(), W = (pts, c, y = 0) => { const P = pts.map(([x, z]) => [x * side, y, z]); face(geo, P, c, 0.15, UP); face(geo, P, c, 0.15, DOWN); };
+      if (part === "arm") {
+        W([[0.02, 0.12], [0.5, 0.11], [0.5, -0.05], [0.02, -0.06]], WHITE);
+        W([[0.02, -0.06], [0.5, -0.05], [0.5, -0.13], [0.02, -0.15]], INK);
+        for (let f = 0; f < 6; f++) {
+          const xa = 0.02 + f * 0.08, xb = xa + 0.08, za = -0.15 + (xa - 0.02) / 0.48 * 0.02, zb = -0.15 + (xb - 0.02) / 0.48 * 0.02;
+          W([[xa, za], [xb, zb], [(xa + xb) / 2 + 0.01, (za + zb) / 2 - 0.045]], INK);
+        }
+      } else {
+        W([[0, 0.11], [0.3, 0.08], [0.3, -0.11], [0, -0.13]], WHITE);
+        for (let f = 0; f < 6; f++) {
+          const zb = 0.064 - f * 0.032, xt = 0.62 - f * 0.028, zt = zb + 0.01 - f * 0.022;
+          W([[0.3, zb + 0.016], [xt, zt + 0.007], [xt + 0.004, zt - 0.008], [0.3, zb - 0.016]], PRIMARY);
+        }
+      }
       return noShadow(geo);
     };
-    const wingL = wing(1), wingR = wing(-1);
+    const arms = [feathers(1, "arm"), feathers(-1, "arm")], hands = [feathers(1, "hand"), feathers(-1, "hand")];
     let craneGeo = null;
     for (let i = 0; i < BIRDS; i++) {
       craneGeo = noShadow(K.node(`bird${i}`, craneGeo || craneBody, 0, FLIGHT.y, -FLIGHT.r, { glow: true, scale: FLIGHT.scale }).geometry);
-      K.node(`wingL${i}`, wingL, 0.07, 0.04, 0.05, { parent: `bird${i}`, glow: true });
-      K.node(`wingR${i}`, wingR, -0.07, 0.04, 0.05, { parent: `bird${i}`, glow: true });
+      for (const [s, side, j] of [["L", 1, 0], ["R", -1, 1]]) {
+        K.node(`wing${s}${i}`, arms[j], side * 0.07, 0.035, 0.04, { parent: `bird${i}`, glow: true });
+        K.node(`hand${s}${i}`, hands[j], side * 0.5, 0, 0, { parent: `wing${s}${i}`, glow: true });
+      }
     }
 
     // The raked rock garden: a stone curb, three mossy rocks in their rings, and the rake leaning on the curb.
@@ -1330,21 +1397,25 @@
       for (let b = 0; b < 9; b++) { const a = ir() * TAU, h = 0.5 + ir() * 0.35, lx = Math.cos(a) * 0.12, lz = Math.sin(a) * 0.12; along(K, POND.x + dx + lx * 0.3, 0.02, POND.z + dz + lz * 0.3, POND.x + dx + lx * 1.6, h, POND.z + dz + lz * 1.6, 0.014, 0.004, b % 2 ? "#4f7d32" : "#5c8c3a", 4); }
       for (let f = 0; f < 3; f++) { const a = ir() * TAU; K.add(blob(0.045, 0.035, 0.045, "#5b3a8a", 6, 0.2), POND.x + dx + Math.cos(a) * 0.12, 0.62 + ir() * 0.18, POND.z + dz + Math.sin(a) * 0.12); }
     }
-    // Each koi nose to +x, about 0.36 m long: its body tapering to the tail, the forked tail fin, the dorsal fin, the
-    // pectoral fins and its pattern in patches standing a little off its back, lit a little to read under the water.
+    // Each koi nose to +x, about 0.36 m long: its body tapering to the tail, the dorsal fin, the pectoral fins and its
+    // pattern in patches standing a little off its back, lit a little to read under the water; and the forked tail fin
+    // on a node of its own, hinged where it meets the body, so it beats as the koi swims.
     const koiGeo = KOI_KINDS.map(([color, patches]) => {
-      const body = ballGeo(1, color, 12, 0.45), v = body.verts, fins = blank(), fin = color === "#262422" ? "#3a3532" : color;
+      const body = ballGeo(1, color, 12, 0.45), v = body.verts, fins = blank(), tail = blank(), fin = color === "#262422" ? "#3a3532" : color;
       for (let i = 0; i < v.length; i += 3) { const x = v[i], taper = x < 0 ? 1 + x * 0.6 : 1 - x * x * 0.15; v[i] = x * 0.17; v[i + 1] *= 0.04 * taper; v[i + 2] *= 0.062 * taper; }
-      face(fins, [[-0.13, 0.008, 0], [-0.29, 0.008, 0.095], [-0.235, 0.008, 0]], fin, 0.4, UP);
-      face(fins, [[-0.13, 0.008, 0], [-0.235, 0.008, 0], [-0.29, 0.008, -0.095]], fin, 0.4, UP);
+      face(tail, [[0, 0.008, 0], [-0.16, 0.008, 0.095], [-0.105, 0.008, 0]], fin, 0.4, UP);
+      face(tail, [[0, 0.008, 0], [-0.105, 0.008, 0], [-0.16, 0.008, -0.095]], fin, 0.4, UP);
       for (const s of [1, -1]) {
         face(fins, [[0.06, 0.033, 0], [-0.07, 0.033, 0], [-0.02, 0.07, 0]], fin, 0.4, [0, 0, s]);
         face(fins, [[0.08, 0.002, s * 0.05], [0.0, 0.002, s * 0.05], [0.03, 0.002, s * 0.12]], fin, 0.4, UP);
       }
       const spots = patches.map(([px, pz, ps, pc]) => { const g = blob(ps, 0.012, ps * 0.8, pc, 8, 0.45); for (let i = 1; i < g.verts.length; i += 3) g.verts[i] += 0.036; for (let i = 0; i < g.verts.length; i += 3) { g.verts[i] += px; g.verts[i + 2] += pz; } return g; });
-      return noShadow(merge(body, fins, ...spots));
+      return { body: noShadow(merge(body, fins, ...spots)), tail: noShadow(tail) };
     });
-    KOI.forEach((k, i) => K.node(`koi${i}`, koiGeo[i % KOI_KINDS.length], POND.x, WATER - 0.055, POND.z));
+    KOI.forEach((k, i) => {
+      K.node(`koi${i}`, koiGeo[i % KOI_KINDS.length].body, POND.x, WATER - 0.055, POND.z);
+      K.node(`koiTail${i}`, koiGeo[i % KOI_KINDS.length].tail, -0.13, 0, 0, { parent: `koi${i}` });
+    });
     const ring = noShadow(BL.models.torus(1, 0.012, "#d8f0f6", 0.6, 32, 4));
     for (let i = 0; i < RIPPLES; i++) K.node(`ripple${i}`, ring, POND.x, -5, POND.z, { glow: true });
     // Koi food: little pellets thrown from the visitor's hand, floating where they land until a koi takes them.
@@ -1477,10 +1548,10 @@
   // found while here.
   const animate = (nodes, built) => {
     const named = (prefix, n) => Array.from({ length: n }, (_, i) => nodes[`${prefix}${i}`]);
-    const koi = named("koi", KOI.length), petals = named("petal", PETALS), smoke = named("smoke", SMOKE), streaks = named("fall", STREAKS);
+    const koi = named("koi", KOI.length), tails = named("koiTail", KOI.length), petals = named("petal", PETALS), smoke = named("smoke", SMOKE), streaks = named("fall", STREAKS);
     const lamps = named("lamp", LANTERN_AT.length), paper = named("paper", PAPER.length), tips = named("tip", 3);
     const crowns = named("crown", TREES.length), bamboo = named("bamboo", CLUMPS), winds = named("wind", TIERS * 4), ripples = named("ripple", RIPPLES), pellets = named("pellet", PELLETS);
-    const birds = named("bird", BIRDS), wingsL = named("wingL", BIRDS), wingsR = named("wingR", BIRDS);
+    const birds = named("bird", BIRDS), wingsL = named("wingL", BIRDS), wingsR = named("wingR", BIRDS), handsL = named("handL", BIRDS), handsR = named("handR", BIRDS);
     const bell = nodes.bell, striker = nodes.striker, gong = nodes.gong, mallet = nodes.mallet, bowl = nodes.bowl;
     const rest = { gong: gong.rotation.x, bell: bell.rotation.z, striker: striker.rotation.z, mallet: mallet.rotation.x };
     const ear = built.ear, audio = sounds(), wake = () => { audio.wake(); };
@@ -1499,9 +1570,11 @@
     const rippleAt = new Float32Array(RIPPLES * 3);
     for (let i = 0; i < RIPPLES; i++) rippleAt[i * 3 + 2] = -1;
     const doing = { rustle: 0, winds: 0, feed: 0, waft: 0, smokeT: 0, bowl: -1, ripple: 0, pellet: 0, rise: 3 };
-    // The koi: where each is and which way it heads (radians, from +x toward +z), kept here so they steer.
-    const kx = new Float32Array(KOI.length), kz = new Float32Array(KOI.length), kh = new Float32Array(KOI.length), kb = new Float32Array(KOI.length);
-    KOI.forEach((k, i) => { kx[i] = POND.x + Math.cos(k.a) * k.r * 0.9; kz[i] = POND.z + Math.sin(k.a) * k.r * 0.75; kh[i] = k.a + Math.PI / 2; });
+    // The koi: where each is, which way it heads (radians, from +x toward +z), how fast it is turning and swimming, the
+    // burst of its tail it is in and the time to its next, its tail's beat, and the rise of a bite.
+    const N = KOI.length, kx = new Float32Array(N), kz = new Float32Array(N), kh = new Float32Array(N), kw = new Float32Array(N), kv = new Float32Array(N);
+    const kburst = new Float32Array(N), knext = new Float32Array(N), ktail = new Float32Array(N), kb = new Float32Array(N);
+    KOI.forEach((k, i) => { kx[i] = POND.x + Math.cos(k.a) * k.r * 0.9; kz[i] = POND.z + Math.sin(k.a) * k.r * 0.75; kh[i] = k.a + Math.PI / 2; kv[i] = k.cruise; knext[i] = Math.random() * 8; ktail[i] = i * 1.3; });
     // The pellets thrown: each [state (0 none, 1 flying, 2 afloat), time, from x, y, z, to x, z, flight seconds], and
     // how long each has left afloat.
     const pel = new Float32Array(PELLETS * 8), afloat = new Float32Array(PELLETS);
@@ -1576,30 +1649,61 @@
             n.position.y = WATER + 0.006 + 0.003 * Math.sin(t * 2.4 + i) - (afloat[i] < 1.5 ? (1.5 - afloat[i]) * 0.03 : 0);
           }
         }
-        // The koi steer: each swims its own slow round of the pond, or to the nearest pellet afloat within reach, faster
-        // and rising to take it; they keep inside the water, and now and then one dimples the surface.
-        for (let i = 0; i < koi.length; i++) {
-          const k = KOI[i], n = koi[i], a = k.a + t * k.w * 0.5;
-          let tx = POND.x + Math.cos(a) * k.r * 0.9, tz = POND.z + Math.sin(a) * k.r * 0.75, food = -1, best = 3.5;
+        // The koi: each wanders as it likes, its turns following two slow rhythms of its own and eased in and out, never
+        // snapped; it curves back from the pond's edge before it reaches it, and round a koi close ahead of it. Its speed
+        // is its own cruise, waxing and waning, with now and then a flick of the tail that drives it on and lets it glide
+        // back down; food afloat within reach draws it over, quicker, rising to take it. Its tail beats faster the faster
+        // it swims and swings out of a turn; its body sways only a little against the beat.
+        for (let i = 0; i < N; i++) {
+          const k = KOI[i], n = koi[i];
+          let food = -1, best = 3.5;
           for (let j = 0; j < PELLETS; j++) {
             if (pel[j * 8] !== 2) continue;
-            const d = Math.hypot(n.position.x - pel[j * 8 + 5], n.position.z - pel[j * 8 + 6]);
+            const d = Math.hypot(kx[i] - pellets[j].position.x, kz[i] - pellets[j].position.z);
             if (d < best) { best = d; food = j; }
           }
-          if (food >= 0) { tx = n.position.x + (pellets[food].position.x - n.position.x); tz = n.position.z + (pellets[food].position.z - n.position.z); }
-          const ex = (kx[i] - POND.x) / (POND.rx * 0.84), ez = (kz[i] - POND.z) / (POND.rz * 0.84);
-          if (ex * ex + ez * ez > 1) { tx = POND.x; tz = POND.z; }
-          const want = Math.atan2(tz - kz[i], tx - kx[i]);
-          let turn = want - kh[i];
-          turn -= TAU * Math.round(turn / TAU);
-          kh[i] += Math.max(-2.4 * dt, Math.min(2.4 * dt, turn));
-          const speed = food >= 0 ? 0.7 : 0.28 + 0.06 * Math.sin(t * 0.7 + i);
-          kx[i] += Math.cos(kh[i]) * speed * dt; kz[i] += Math.sin(kh[i]) * speed * dt;
-          if (food >= 0 && best < 0.09) { pel[food * 8] = 0; pellets[food].position.y = -5; kb[i] = 0.6; }
+          let want = 0.55 * Math.sin(t * k.f1 + k.p) + 0.35 * Math.sin(t * k.f2 + k.p * 1.7);
+          if (food >= 0) {
+            let d = Math.atan2(pellets[food].position.z - kz[i], pellets[food].position.x - kx[i]) - kh[i];
+            d -= TAU * Math.round(d / TAU);
+            want = d * 2.2;
+          }
+          const ex = (kx[i] - POND.x) / (POND.rx * 0.8), ez = (kz[i] - POND.z) / (POND.rz * 0.8), e = Math.hypot(ex, ez);
+          // (After food it goes right up to the rim, where the pellets may float.)
+          const edge = food >= 0 ? 1.08 : 0.6;
+          if (e > edge) {
+            let d = Math.atan2(POND.z - kz[i], POND.x - kx[i]) - kh[i];
+            d -= TAU * Math.round(d / TAU);
+            want += d * 2.6 * smooth(edge, edge + 0.4, e);
+          }
+          const ch = Math.cos(kh[i]), sh = Math.sin(kh[i]);
+          for (let j = 0; j < N; j++) {
+            if (j === i) continue;
+            const dx = kx[j] - kx[i], dz = kz[j] - kz[i], dd = Math.hypot(dx, dz);
+            if (dd > 0.3 || dd < 1e-4 || (dx * ch + dz * sh) / dd < 0.3) continue;
+            want -= Math.sign(ch * dz - sh * dx || 1) * 1.4 * (1 - dd / 0.3);
+          }
+          // Closing on food it turns tighter and slows, so it takes the pellet rather than circling it.
+          const tight = food >= 0 ? 3 : 1.8;
+          want = Math.max(-tight, Math.min(tight, want));
+          kw[i] += (want - kw[i]) * (1 - Math.exp(-dt * 2.5));
+          kh[i] += kw[i] * dt;
+          if ((knext[i] -= dt) <= 0) { knext[i] = 4 + Math.random() * 9; kburst[i] = 0.4 + Math.random() * 0.4; }
+          kburst[i] = Math.max(0, kburst[i] - dt);
+          const cruise = k.cruise * (0.65 + 0.5 * (0.5 + 0.5 * Math.sin(t * k.f1 * 0.7 + k.p * 2)));
+          const goal = food >= 0 ? (0.4 + k.cruise) * Math.min(1, 0.25 + best / 0.6) : kburst[i] > 0 ? k.cruise * 2.6 : cruise;
+          kv[i] += (goal - kv[i]) * (1 - Math.exp(-dt * (goal > kv[i] ? 3 : 0.7)));
+          kx[i] += Math.cos(kh[i]) * kv[i] * dt; kz[i] += Math.sin(kh[i]) * kv[i] * dt;
+          const qx = (kx[i] - POND.x) / (POND.rx * 0.88), qz = (kz[i] - POND.z) / (POND.rz * 0.88), q = Math.hypot(qx, qz);
+          if (q > 1) { kx[i] = POND.x + (kx[i] - POND.x) / q; kz[i] = POND.z + (kz[i] - POND.z) / q; }
+          if (food >= 0 && best < 0.11) { pel[food * 8] = 0; pellets[food].position.y = -5; kb[i] = 0.6; }
           kb[i] = Math.max(0, kb[i] - dt);
+          ktail[i] += dt * (5 + kv[i] * 26);
+          const sway = Math.min(1, 0.25 + kv[i] * 3);
           n.position.x = kx[i]; n.position.z = kz[i];
-          n.position.y = WATER - 0.055 + (food >= 0 && best < 0.5 ? 0.025 : 0) + kb[i] * 0.03;
-          n.rotation.y = -kh[i] + Math.sin(t * (5 + speed * 9) + i) * (0.08 + speed * 0.12);
+          n.position.y = WATER - 0.055 - k.depth + (food >= 0 && best < 0.5 ? 0.025 + k.depth : 0) + kb[i] * 0.03;
+          n.rotation.y = -kh[i] + 0.035 * sway * Math.sin(ktail[i] - 1.2);
+          tails[i].rotation.y = 0.38 * sway * Math.sin(ktail[i]) + kw[i] * 0.25;
         }
         if ((doing.rise -= dt) <= 0) { doing.rise = 2.5 + Math.random() * 4; const i = Math.floor(Math.random() * koi.length); ripple(kx[i], kz[i]); }
         for (let i = 0; i < ripples.length; i++) {
@@ -1633,17 +1737,19 @@
           paper[i].rotation.z = (0.035 + 0.3 * kick) * Math.sin(t * (kick > 0.02 ? 2.6 : 0.8) + i * 1.3); paper[i].rotation.x = 0.025 * Math.sin(t * 0.6 + i * 2.1);
         }
         // The cranes: the leader goes round its loop, swinging in and out and rising and falling a little, the rest
-        // strung behind it to either side in a V, each heading along its path and banked into the turn; their wings
-        // beat, and now and then the flock glides.
+        // strung behind it to either side in a V, each heading along its path and banked into the turn. Their wings
+        // beat as a crane's do, a quick downstroke and an easier upstroke, the hands following the arms a little behind
+        // and bending further, the body bobbing against the beat; now and then the flock glides, wings held out flat with
+        // the hands a little drooped.
         for (let i = 0; i < BIRDS; i++) {
           const rank = Math.ceil(i / 2), side = i === 0 ? 0 : i % 2 ? 1 : -1, n = birds[i];
           const th = t * FLIGHT.w - rank * 0.09, out = FLIGHT.r + side * rank * FLIGHT.apart, r1 = out + FLIGHT.swing * Math.sin(2 * th), r2 = out + FLIGHT.swing * Math.sin(2 * th + 0.02);
           const x = r1 * Math.cos(th), z = r1 * Math.sin(th), dx = r2 * Math.cos(th + 0.01) - x, dz = r2 * Math.sin(th + 0.01) - z;
-          const glide = smooth(0.62, 0.82, 0.5 + 0.5 * Math.sin(t * 0.37 + rank * 0.25)), beat = t * 6.2 + i * 0.7;
-          const flap = (1 - glide) * (0.14 + 0.55 * Math.sin(beat)) + glide * 0.06;
-          n.position.x = x; n.position.z = z; n.position.y = FLIGHT.y + 0.35 * Math.sin(3 * th) + rank * 0.12 - (1 - glide) * 0.04 * Math.sin(beat);
+          const glide = smooth(0.62, 0.82, 0.5 + 0.5 * Math.sin(t * 0.37 + rank * 0.25)), beat = t * 7.5 + i * 0.7, stroke = Math.sin(beat - 0.35 * Math.sin(beat));
+          const arm = (1 - glide) * (0.12 + 0.42 * stroke) + glide * 0.05, hand = (1 - glide) * (0.05 + 0.32 * Math.sin(beat - 0.9)) - glide * 0.06;
+          n.position.x = x; n.position.z = z; n.position.y = FLIGHT.y + 0.35 * Math.sin(3 * th) + rank * 0.12 - (1 - glide) * 0.035 * stroke;
           n.rotation.y = Math.atan2(dx, dz); n.rotation.z = 0.16;
-          wingsL[i].rotation.z = flap; wingsR[i].rotation.z = -flap;
+          wingsL[i].rotation.z = arm; wingsR[i].rotation.z = -arm; handsL[i].rotation.z = hand; handsR[i].rotation.z = -hand;
         }
         // Streaks run down both falls: the even ones the lower, the odd ones the upper.
         for (let i = 0; i < streaks.length; i++) streaks[i].position.y = i % 2 ? 2.25 - ((t * 1.5 + i * 0.37) % 1) * 0.85 : 1.08 - ((t * 1.7 + i * 0.37) % 1) * 0.92;
