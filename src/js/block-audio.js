@@ -187,9 +187,7 @@
       hookThrow: (k = 1) => { blip("triangle", 500, 2600, 0.01, 0.1, 0.17, 0.12 * k); },
       hookBite: (k = 1) => { blip("sine", 140, 60, 0.01, 0.1, 0.2, 0.28 * k); splatNoise(0.15 * k, 0.12); },
       hookOff: (k = 1) => { blip("triangle", 900, 1500, 0.01, 0.04, 0.08, 0.1 * k); },
-      hookMiss: (k = 1) => { blip("triangle", 2200, 300, 0.02, 0.25, 0.4, 0.1 * k); },
-      // A wallet's fuse: a short beep, higher (`urgency` 0 to 2) as it runs out.
-      beep: (k = 1, urgency = 0) => blip("square", 1400 + urgency * 500, 1400 + urgency * 500, 0.002, 0.03, 0.03, 0.08 * k)
+      hookMiss: (k = 1) => { blip("triangle", 2200, 300, 0.02, 0.25, 0.4, 0.1 * k); }
     };
     // The held layers follow `state` each frame: rain from the weather (0 to 1), the whir from the zipline.
     const update = () => {

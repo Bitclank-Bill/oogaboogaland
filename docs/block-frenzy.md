@@ -91,8 +91,7 @@ ones you can use.
 - **Ooga AK** (`7`). The island's rifle: a tap fires one round, a held trigger fires on full auto every 0.09 s, from a
   30-round magazine that reloads itself in 1.4 s when it runs dry.
 - **Golden Dual AKs** (`6`). One in each hand, full auto, both firing every round, never empty. Two pairs a round:
-  scoring a capture wins a pair while any are left, and a wallet bomb stuck on whoever holds a pair takes it when it
-  goes off.
+  scoring a capture wins a pair while any are left, and a capture that wins nothing from the pool takes one thing from the rivals (see Mining a block takes one).
 - **Sniper rifle** (`5`). Tower-only, above.
 
 Paint balls, the AKs and the rifle splat as paint does; nobody is removed and nobody has health.
@@ -105,9 +104,17 @@ Every map is an oval floating island in OBL's voxel style (`W`, `L` its half siz
 
 Each map has hub-style terrain in the island's own rock (`terrain`, half a map turned half round so the maps stay mirrored), the map's own pieces and, round every field, `ringTerrain`'s massifs: walk-through caves that join up (flanks and behind each fort, `massif`), cliffs (`cliff`), and more mounds and outcrops. The pieces: a two-tier grassy mound (`mound`: 1 m then 2 m, each a jump up, for high ground), a walk-through rock cave (`cave`: 3 m wide, walls and a roof to stand on, cover and a flanking way, never a dead end), and a tall outcrop breaking a long lane (`outcrop`), mossy boulders from the hub's kit at its foot. They stand on a half-metre grid so the voxel island meshes exactly what the sim collides with (`rocks`, joined to `BLOCKS`), clear of every fort, stand, catapult, ladder, zipline and spot the game uses; the bots steer round them as they do any building.
 
+## Mining a block takes one
+
+A capture that wins nothing from the Golden AK pool (`goldLeft` empty, or the miner already has a pair) takes one thing from the other side (`stealOnMine`, called from the capture in `touchFlags`), so one capture never gives two. In order: a pair of Golden AKs to the miner if the miner has none and a rival holds some; else a hook to the miner likewise; else the Golden AKs, then a hook, to a teammate without one. If no rival holds either, nothing is taken. Which rival loses it and which teammate gains it is the sim's seeded pick. The feed, and a notice for the one who gains it and the one who loses it, say so.
+
+## Dropped on a splat
+
+An Ooga splatted with the Golden AKs or a hook in its hands drops that one thing where it stood (`dropWielded`). In its hands means the tool selected (`wield`; for a bot or a guest, the last it fired), and a hook in use always counts; one put away stays put away, so at most one thing drops. It comes to rest on open ground as a block does. Anyone on either side, its owner too once up, takes it by walking over it unless they have one already. After `DROP_BACK_S` (10 s) it returns to its owner, or if the owner has one again, a pair goes back to the pool and a hook back into hiding. Bots fetch a dropped hook as they do a hidden one; they don't go out of their way for dropped AKs, but take them if they walk over them. The hooks' own slots carry a dropped hook; the Golden AKs have a fixed pool of `GOLD_GUNS`, one byte on the wire when none are lying.
+
 ## The grappling hook (BF2.1c)
 
-A special weapon, two a round, hidden at seeded spots from each map's hand-checked `hookSpots` (in the cave, on the mound's top, behind the outcrop, up a jungle tree): one in each half, the same spot turned half round. Walk over one to take it (it shows on the hip); `R` or tool `8` then fires it at the crosshair (range 24 m). Cloud Hopper's hook head, rope and flight (`BL.grapple.toward`, shared; the sim keeps its own state, `hk`): a bite on rock, a tree, a wall or the island's edge pulls the Ooga in on a rope that only shortens (`BL.grapple.pullSpeed` and `tether`), swinging it under the bite (hold C to stop the pull and swing), until it arrives or lets go (R again, or a jump), keeping its speed. A block, on its stand, loose or held by a rival (after a moment's warning, `hookwarn`), is pulled in along the rope into the thrower's hands: the rival block is carried, your own loose block goes home, as touching them would; hands already full, it lands on reachable ground beside them. Anything else the hook meets that is not an Ooga pulls the Ooga to it. A teammate is ignored and the hook can miss; it then recharges for `HOOK_COOL`. A gorilla hooked is stunned and drops its captive, with a cooldown before the hook can do that again. It can be stolen with a wallet bomb exactly as the Golden AKs are (`hooksteal`), and bots fetch the ground-level ones, hook carriers and captors in reach, and bite the rim to pull themselves back after a fall; expert bots aim wallet bombs at hook holders.
+A special weapon, two a round, hidden at seeded spots from each map's hand-checked `hookSpots` (in the cave, on the mound's top, behind the outcrop, up a jungle tree): one in each half, the same spot turned half round. Walk over one to take it (it shows on the hip); `R` or tool `8` then fires it at the crosshair (range 24 m). Cloud Hopper's hook head, rope and flight (`BL.grapple.toward`, shared; the sim keeps its own state, `hk`): a bite on rock, a tree, a wall or the island's edge pulls the Ooga in on a rope that only shortens (`BL.grapple.pullSpeed` and `tether`), swinging it under the bite (hold C to stop the pull and swing), until it arrives or lets go (R again, or a jump), keeping its speed. A block, on its stand, loose or held by a rival (after a moment's warning, `hookwarn`), is pulled in along the rope into the thrower's hands: the rival block is carried, your own loose block goes home, as touching them would; hands already full, it lands on reachable ground beside them. Anything else the hook meets that is not an Ooga pulls the Ooga to it. A teammate is ignored and the hook can miss; it then recharges for `HOOK_COOL`. A gorilla hooked is stunned and drops its captive, with a cooldown before the hook can do that again. It can be taken by mining a block, as the Golden AKs can (`hooksteal`), and bots fetch the ground-level ones, hook carriers and captors in reach, and bite the rim to pull themselves back after a fall.
 
 ## Gorillas (BF2.2, BF2.3)
 
@@ -147,10 +154,10 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 | 1 to 7, G | Pick a weapon (paint, grenade, rocket, net, sniper rifle on a tower, Golden Dual AKs once won, Ooga AK); G steps through the ones you can use |
 | Right click | Aim, as the island's precision aim: held, the view narrows; up a tower it steps the sniper scope in (four steps); in the Island view it returns to the chase camera |
 | Space, Space again in the air | Jump, double jump; held in the air, the jetpack |
-| Space beside a zipline, catapult or FREE WALLETS machine | Use it (as Space uses what is beside you on the island) |
+| Space beside a zipline or catapult | Use it (as Space uses what is beside you on the island) |
 | Shift (held) | Sprint |
-| Tab or T | Throw what is in hand: the block to a teammate, a held crate, or a wallet bomb (which can take a rival's Golden Dual AKs) |
-| K | Drop the block (or set a held wallet down) |
+| Tab or T | Throw what is in hand: the block to a teammate, or a held crate |
+| K | Drop the block |
 | B | Place a new crate from your stock |
 | F | Lift the crate in front, or set the held one down (stacking it) |
 | C (held) | Crouch |
@@ -163,7 +170,7 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 R fires the grappling hook at the crosshair (or lets it go), when you have one; the Ooga AK reloads itself when its magazine runs dry, and no other tool reloads.
 
 Touch: the left stick moves, the right stick turns, Jump and Throw! buttons, a tool bar (its Ride button uses a
-zipline, catapult or wallet machine) and a View button; Main menu goes back to the board. A gamepad drives the sticks and
+zipline or catapult) and a View button; Main menu goes back to the board. A gamepad drives the sticks and
 A jumps, through the shared controls.
 
 ## Characters

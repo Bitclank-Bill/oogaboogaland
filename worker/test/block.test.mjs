@@ -44,7 +44,7 @@ const harness = t => {
     await h.room.fetch({ url: "https://island.invalid/room", headers: new Headers({ upgrade: "websocket", "x-player-id": String(id), "x-player-login": login, "x-player-contributor": "0" }) });
     return accepted[before];
   };
-  const send = (ws, msg) => h.room.webSocketMessage(ws, JSON.stringify(msg.t === "bf" ? { v: 1, ...msg } : msg));
+  const send = (ws, msg) => h.room.webSocketMessage(ws, JSON.stringify(msg.t === "bf" ? { v: W.WIRE, ...msg } : msg));
   h.join=join;h.send=send;h.wake=async()=>{if(h.room.flushTimer)clearTimeout(h.room.flushTimer);h.room=new context.Room(ctx,{});await initialized;return h.room;};
   return h;
 };
@@ -64,7 +64,7 @@ const frame = (m, q = 1, size = 64) => { const b = new ArrayBuffer(size), v = ne
 
 test("the page and the Worker share one cap of four a side", () => {
   assert.equal(W.MAX_SIDE, 4); assert.equal(W.MAX_PLAYERS, 8);
-  const base = { t: "bf", v: 1, k: "opt", n: 4, m: 1 };
+  const base = { t: "bf", v: W.WIRE, k: "opt", n: 4, m: 1 };
   assert.ok(protocol.parseClientMessage(JSON.stringify(base)));
   for (const n of [0, 5, 1.5, "2", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, n })), null, String(n));
   for (const m of [-1, 0, W.MAPS.length, null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, "Fort Chaos is retired");
@@ -72,7 +72,7 @@ test("the page and the Worker share one cap of four a side", () => {
   assert.equal(W.duel([7, 0, 9, 0], 2), true); assert.equal(W.duel([7, 8, 9, 0], 2), false); assert.equal(W.duel([7, 0, 0, 0], 2), false);
 });
 test("the input message is bounded and its widest form fits the room's frame limit", () => {
-  const input = { t: "bf", v: 1, k: "input", s: "0123456789abcdef", q: 2147483647, x: -1000, z: -1000, f: -7000, b: 15, a: Array(4).fill([14, -7000, -2000, 7]).flat() };
+  const input = { t: "bf", v: W.WIRE, k: "input", s: "0123456789abcdef", q: 2147483647, x: -1000, z: -1000, f: -7000, b: 15, a: Array(4).fill([14, -7000, -2000, 7]).flat() };
   assert.ok(protocol.parseClientMessage(JSON.stringify(input)));
   assert.ok(JSON.stringify(input).length <= protocol.MESSAGE_MAX);
   for (const patch of [{ x: 1001 }, { b: 16 }, { q: -1 }, { s: "x" }, { f: 7001 }, { a: [] }, { a: [1, 0, 0] }, { a: [99, 0, 0, 0] }, { a: Array(20).fill(0) }, { v: 2 }]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...input, ...patch })), null, JSON.stringify(patch));
@@ -89,7 +89,7 @@ test("random teams are as even as can be, and every empty seat is an NPC", () =>
   }
 });
 test("the first to register brings the map picked on the board: bounded, and theirs alone", async t => {
-  const base = { t: "bf", v: 1, k: "reg" };
+  const base = { t: "bf", v: W.WIRE, k: "reg" };
   assert.deepEqual(protocol.parseClientMessage(JSON.stringify(base)), { t: "bf", k: "reg" }, "the map is optional");
   assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m: 1 })).m, 1);
   for (const m of [-1, 0, W.MAPS.length, 1.5, "1", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, String(m));

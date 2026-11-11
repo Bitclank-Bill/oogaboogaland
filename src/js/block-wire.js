@@ -5,7 +5,7 @@
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
-  const FEATURE = "block-v1", ZONE = "block-frenzy", WIRE = 1;
+  const FEATURE = "block-v1", ZONE = "block-frenzy", WIRE = 2;
   // The `place` that arrives on the watch deck to spectate, for a portal or anything else that opens the game to watch.
   const WATCH_DECK_PLACE = "watch-deck";
   // The most a side may hold: change this one number to change the cap on the page and in the Worker.
@@ -23,7 +23,7 @@
   // A map still offered for play, by id (a saved pick of a retired one is ignored).
   const playable = (id) => MAPS.indexOf(id) >= FIRST_MAP;
   // What a guest asks its host to do for it, by index on the wire: `yaw` and `pitch` go in thousandths of a radian.
-  const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "dropWallet", "throwWallet", "takeWallet", "escape", "cutChute"];
+  const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "escape", "cutChute"];
   const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
   const integer = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const session = v => typeof v === "string" && /^[a-f0-9]{16}$/.test(v);

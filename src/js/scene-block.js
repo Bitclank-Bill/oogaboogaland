@@ -8,7 +8,7 @@
 // their stands, at a carrier's back or lying where they fell, pooled crates, throws and splats, the weather (a
 // sign, rain and lightning in a storm), and a chase camera behind the visitor's Ooga that a captured mouse, Q E, the
 // arrows or the look stick turns. The keys follow the island's: W A S D move from where the Ooga faces, Shift
-// sprints, Space jumps (again in the air) or uses what stands beside it (a zipline, catapult or wallet machine), a
+// sprints, Space jumps (again in the air) or uses what stands beside it (a zipline or catapult), a
 // left click or Enter throws the chosen tool (1 to 7 pick one, G steps through them), X or a click captures the
 // mouse, a right click aims (the scope on a tower), Tab or T throws what is in hand, B drops a crate, F lifts, stacks and sets crates, K
 // drops the block, C crouches while held, V switches views, P pauses, and Escape steps back one thing at a time
@@ -59,7 +59,6 @@
   const LASER_BITS = ["#ff3a1a", "#ffd0a0"].map((c) => models.particleGeometry(c, 0.08, 1));
   const GHOST_BITS = ["#e8eefc", "#b9a8ff"].map((c) => models.particleGeometry(c, 0.1, 1));
   const SMOKE_BITS = ["#3d3d44", "#6a6a72"].map((c) => models.particleGeometry(c, 0.12, 0));
-  const BLAST_BITS = ["#ff8a1f", "#ffd66b", "#3d3d44", "#efe6cc"].map((c, i) => models.particleGeometry(c, 0.09, i < 2 ? 1 : 0));
   const STAR_BITS = ["#ffe066", "#fff3d6"].map((c) => models.particleGeometry(c, 0.09, 1));
   const TOOL_KEYS = { 1: "paint", 2: "grenade", 3: "rocket", 4: "net", 5: "sniper", 6: "gold", 7: "ak", 8: "hook" };
   // Each tool's gun (`BM.gun` takes the gun's index times two plus the team's); Lift shows none.
@@ -107,7 +106,7 @@
   // touch or debug call reaches it, so nothing acts while paused. Resume, Board and Sound stay open while paused.
   const inRound = () => phase === "play" && !paused;
   let sim = null, phase = "board", sceneTime = 0, stateTimer = 0, hintTimer = 0, lineN = 0, result = null;
-  let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, fpFlash = null, fpFlashL = null, walletNodes = null, vendNodes = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
+  let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, fpFlash = null, fpFlashL = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
   let mapRoot = null, fireNode = null, dancers = null, burnSeen = false, peelNodes = null, catapults = null, catNear = false;
   const iceNodes = {};
   let tool = "paint", flash = 0, flashT = 0, audio = null, unfeed = null;
@@ -390,12 +389,11 @@
     move.jump = move.crouch = 0;
     controls.reset();
     if (on) {
-      closeWalletMenu();
       if (locked()) document.exitPointerLock();
       center(COARSE ? "PAUSED · Main menu for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
     } else el.center.hidden = true;
   };
-  const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
+  const TIPS = ["Hold Space in the air to jetpack back to the island.", "Mining a block takes a rival's hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
   // The struggle meter, shown while a gorilla holds the visitor's Ooga. It repaints only when the bar moves a step or
   // the count of presses left changes.
@@ -412,8 +410,8 @@
   };
   // The grouped controls list (`CONTROL_GROUPS`), the same on the menu and in the in-play Help.
   const CONTROL_GROUPS = [
-    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult, wallets"], ["Space, E or click", "Mash to break a gorilla's grip"]]],
-    ["Weapons", [["1 to 8", "Pick a weapon"], ["G", "Next weapon"], ["Click", "Fire"], ["Right click", "Aim, or sniper scope"], ["Y", "Throw a wallet"]]],
+    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult"], ["Space, E or click", "Mash to break a gorilla's grip"]]],
+    ["Weapons", [["1 to 8", "Pick a weapon"], ["G", "Next weapon"], ["Click", "Fire"], ["Right click", "Aim, or sniper scope"]]],
     ["Hook", [["R", "Fire at the crosshair, or let go"], ["Jump", "Let go"], ["C held", "Stop pulling, swing"]]],
     ["Blocks", [["Touch", "Pick up or send home"], ["K", "Drop"], ["Tab or T", "Throw to a teammate"], ["F", "Lift or set a crate"], ["B", "Place a crate"]]],
     ["View", [["X", "Capture the mouse"], ["V", "Change view"], ["U", "Hide the weapons bar"], ["N", "Hide the map"], ["?", "Help"], ["P", "Pause"], ["Esc", "Step back"]]]
@@ -621,7 +619,6 @@
     { const t = document.getElementById("block-intro-tip"); if (t) t.textContent = el.tip.textContent; }
     paused = aiming = false;
     closeQuiz();
-    closeWalletMenu();
     if (liveRound() && !sim.over) round.unregister();
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
@@ -691,7 +688,6 @@
   };
   const finish = () => {
     closeQuiz();
-    closeWalletMenu();
     phase = "results";
     const won = sim.winner === sim.team, ms = Math.round(sim.time * 1000);
     // The fastest win is kept for the usual first to three; every round still counts.
@@ -843,22 +839,24 @@
     else if (t === "hopon") feed(`${who} climbed on ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} back`, e.team);
     else if (t === "boo") feed(`A ghost spooked ${e.actor === 0 ? "you" : who}!`, e.team);
     else if (t === "ghostpop" && e.actor >= 0) feed(`${nameOf(e.actor)} popped a ghost`, sim.actors[e.actor].team);
-    else if (t === "rekt") feed(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)}'s wallet rekt ${who}` : `${who} got rekt by a free wallet`, e.by >= 0 ? sim.actors[e.by].team : e.team);
     else if (t === "grab") feed(`A gorilla grabbed ${e.actor === 0 ? "you" : who}!`, e.team);
     else if (t === "breakfree") feed(`${who} wriggled free of a gorilla`, e.team);
     else if (t === "netsteal") feed(`${who} took the block off ${e.by === 0 ? "you" : nameOf(e.by)} in the net`, e.team);
     else if (t === "thrown") feed(`A gorilla threw ${e.actor === 0 ? "you" : who} off the island`, e.team);
     else if (t === "respawn") feed(`${who} fell off the island`, e.team);
     else if (t === "hookget") feed(`${who} found a grappling hook`, e.team);
-    else if (t === "hooksteal") feed(`${who} stole ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} grappling hook`, e.team);
+    else if (t === "hooksteal") feed(`${who} took ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} grappling hook with a mined block`, e.team);
     else if (t === "yank") feed(`${nameOf(e.actor)} yanked the ${TEAM_NAME[e.team]} block away`, sim.actors[e.actor].team);
     else if (t === "gorillahooked") feed(`${nameOf(e.actor)} hooked a gorilla`, sim.actors[e.actor].team);
     else if (t === "edgedrop") feed(`The ${TEAM_NAME[e.team]} block dropped at the edge`, e.team);
     else if (t === "gorillahit" && e.actor >= 0) feed(`${nameOf(e.actor)} stunned a gorilla`, sim.actors[e.actor].team);
     else if (t === "gold") feed(`${who} won the Golden Dual AKs!`, e.team);
+    else if (t === "golddrop") feed(`${who} dropped the Golden Dual AKs`, e.team);
+    else if (t === "hookdrop") feed(`${who} dropped a grappling hook`, e.team);
+    else if (t === "goldget") feed(`${who} picked up the Golden Dual AKs`, e.team);
     else if (t === "enemycat") feed(`${who} tried the enemy catapult and was flung off the island!`, sim.actors[e.actor].team);
     else if (t === "launch") feed(`${who} catapulted toward the ${TEAM_NAME[SIM.other(e.team)]} fort!`, e.team);
-    else if (t === "goldsteal") feed(`${who} wallet-bombed ${nameOf(e.by)} and stole the Golden Dual AKs!`, e.team);
+    else if (t === "goldsteal") feed(`${who} took ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} Golden Dual AKs with a mined block!`, e.team);
     else if (t === "mined") feed(e.x ? `Bitcoin block ${e.x} found!` : "A Bitcoin block was found!", null);
   };
   // The mini-map: the field turned so the rivals' fort is at the top, the forts and towers drawn once
@@ -921,10 +919,9 @@
       g.fillStyle = BM.TEAM[t].paint;
       g.fillRect(mapX(f.x) - 2, mapY(f.z) - 2, 4, 4);
     }
-    g.fillStyle = "#e0262c";
-    for (const v of sim.vends) g.fillRect(mapX(v.x) - 2, mapY(v.z) - 2, 4, 4);
-    g.fillStyle = "#ff8a1f";
-    for (const w of sim.wallets) if (w.live && w.state) g.fillRect(mapX(w.x) - 1, mapY(w.z) - 1, 3, 3);
+    g.fillStyle = "#f2c230";
+    for (const d of sim.drops) if (d.live) g.fillRect(mapX(d.x) - 2, mapY(d.z) - 2, 4, 4);
+    for (const h of sim.hooks) if (h.state === 0 && h.back > 0) g.fillRect(mapX(h.x) - 2, mapY(h.z) - 2, 4, 4);
     g.fillStyle = "#3a2a1c";
     for (const go of sim.gorillas) g.fillRect(mapX(go.x) - 3, mapY(go.z) - 3, 6, 6);
     for (let i = sim.actors.length - 1; i >= 0; i--) {
@@ -973,8 +970,8 @@
         fx.burst(e.x, e.y + 1, e.z, 14, ORANGE_BITS, 2);
         if (me) { center("GRAPPLING HOOK!", 1100); notice(COARSE ? "Hook · pick it on the tool bar, tap Throw at a rock or a carrier" : "Hook · R fires at the crosshair: pull yourself up, or yank a block off a carrier", 3200); updateTools(); }
       } else if (e.type === "hooksteal") {
-        if (me) notice("You stole a grappling hook!", 2000);
-        else if (e.by === you) notice("Your grappling hook was stolen!", 2200);
+        if (me) notice("Your team's block took a grappling hook! It's yours", 2400);
+        else if (e.by === you) notice("They mined a block and took your grappling hook", 2400);
         updateTools();
       } else if (e.type === "hookwarn") {
         if (e.actor === you) { center("HOOKED!", 700); notice("They've hooked your block!", 1200); }
@@ -1007,7 +1004,12 @@
       } else if (e.type === "netmiss") fx.burst(e.x, e.y, e.z, 6, NET_BITS, 1.2);
       else if (e.type === "refill") { if (me) { notice("Refilled: grenades, rockets, nets and crates", 1600); updateTools(); } }
       else if (e.type === "throw") { if (e.actor === you) updateTools(); }
-      else if (e.type === "fire") { if (me && tool === "ak") updateTools(); }
+      else if (e.type === "gunfire") { if (me && tool === "ak") updateTools(); }
+      else if (e.type === "golddrop") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { notice("You dropped the Golden Dual AKs · they come back in " + C.DROP_BACK_S + " s if nobody takes them", 2600); if (tool === "gold") chooseTool("paint"); else updateTools(); } }
+      else if (e.type === "hookdrop") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { notice("You dropped your grappling hook · it comes back in " + C.DROP_BACK_S + " s if nobody takes it", 2600); if (tool === "hook") chooseTool("paint"); else updateTools(); } }
+      else if (e.type === "goldget") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { center("GOLDEN AKs!", 900); notice("You picked up the Golden Dual AKs (6)", 2200); chooseTool("gold"); } }
+      else if (e.type === "goldback") { if (me) { notice("Nobody took them · your Golden Dual AKs are back (6)", 2200); updateTools(); } }
+      else if (e.type === "hookback") { if (me) { notice("Nobody took it · your grappling hook is back (8)", 2200); updateTools(); } }
       else if (e.type === "rifle") {
         // On a tower the rifle is a choice, nothing more: the tool and the view stay as they are.
         if (me) {
@@ -1085,14 +1087,14 @@
         audio.cues.power();
         if (me) {
           center("GOLDEN DUAL AKs!", 1200);
-          notice(COARSE ? "One in each hand, full auto! Hold Paint · a wallet bomb stuck on you takes them" : "One in each hand, full auto! Hold click (6) · a wallet bomb stuck on you takes them", 4000);
+          notice(COARSE ? "One in each hand, full auto! Hold Paint · if they mine a block, they can take them" : "One in each hand, full auto! Hold click (6) · if they mine a block, they can take them", 4000);
           chooseTool("gold");
-        } else notice(mine ? "Teammate won the Golden Dual AKs!" : "They won the Golden Dual AKs · stick a wallet bomb on them to steal them", 2600);
+        } else notice(mine ? "Teammate won the Golden Dual AKs!" : "They won the Golden Dual AKs · mine a block to take them", 2600);
         updateTools();
       } else if (e.type === "goldsteal") {
         fx.burst(e.x, e.y, e.z, 18, ORANGE_BITS, 2.6);
-        if (me) { center("STOLEN!", 1000); notice("Your wallet bomb took the Golden Dual AKs! They're yours (6)", 3000); audio.cues.rescue(); chooseTool("gold"); }
-        else if (e.by === you) { center("AKs STOLEN!", 1000); notice("A wallet bomb went off on you · they took your Golden Dual AKs", 2600); if (tool === "gold") chooseTool("paint"); }
+        if (me) { center("STOLEN!", 1000); notice("Your team's block took the Golden Dual AKs! They're yours (6)", 3000); audio.cues.rescue(); chooseTool("gold"); }
+        else if (e.by === you) { center("AKs STOLEN!", 1000); notice("They mined a block and took your Golden Dual AKs", 2600); if (tool === "gold") chooseTool("paint"); }
         updateTools();
       } else if (e.type === "reload") {
         if (me) { notice("Reloading…", 1000); audio.cues.crate(0.6); updateTools(); }
@@ -1101,30 +1103,6 @@
       } else if (e.type === "slip") {
         fx.burst(e.x, 0.3, e.z, 8, ORANGE_BITS, 1.6);
         if (me) { center("SLIP!", 900); notice("Banana peel! Spinning…", 1500); }
-      } else if (e.type === "wallet") {
-        fx.burst(e.x, 2.2, e.z, 8, ORANGE_BITS, 1.4);
-        audio.cues.refill();
-        if (me) { center(`${SIM.WALLETS[e.y].toUpperCase()}!`, 900); notice(`A free ${SIM.WALLETS[e.y]}! Throw it at a rival (${COARSE ? "Paint!" : "click or Y"}): it sticks on their back and they won't know · it goes off ${C.WALLET_FUSE} s after you throw it`, 3600); updateTools(); }
-      } else if (e.type === "wthrow") { audio.cues.throw(me ? 1 : 0.4); if (me) updateTools(); }
-      else if (e.type === "wbounce") audio.cues.crate(0.25);
-      else if (e.type === "stuck") {
-        // Only the thrower hears of it; the one wearing it doesn't.
-        if (e.by === you) {
-          center("STUCK!", 900);
-          notice(sim.actors[e.actor].gold && !sim.actors[0].gold ? `Stuck it on ${nameOf(e.actor)}! When it goes off, the Golden Dual AKs are yours` : `Stuck it on ${nameOf(e.actor)}! ${C.WALLET_FUSE} s…`, 2400);
-          audio.cues.net(0.6);
-        }
-      }
-      else if (e.type === "blast") {
-        const n = e.by, k = Math.sqrt(Math.min(n, 8));
-        fx.burst(e.x, e.y + 0.4, e.z, 26 * k, BLAST_BITS, 4.5 * k);
-        fx.burst(e.x, e.y + 0.8, e.z, 14 * k, SMOKE_BITS, 2.2 * k);
-        const d = Math.hypot(e.x - sim.actors[0].x, e.z - sim.actors[0].z);
-        audio.cues.boom(clamp(1.2 - d / 30, 0.2, 1));
-        if (n > 1 && d < 25) notice(`Chain reaction! ${n} wallets went off`, 1800);
-      } else if (e.type === "rekt") {
-        if (me) { center("REKT!", 1100); notice("Wallet blast! Knocked back and sooted", 1600); }
-        say(e.actor, ["Rekt", "Not your keys!", "Trust me bro?"], 1.4);
       } else if (e.type === "hopon") {
         audio.cues.jump(); audio.cues.pass(0.4);
         if (me) { center("PIGGYBACK!", 800); notice(`On ${nameOf(e.by)}'s back · aim and shoot · Space (or H) hops off`, 2600); }
@@ -1190,13 +1168,13 @@
   };
 
   // Space and the act button start a round from the board or the results; in play they fall through to the jump.
-  // Space (or the touch act button) uses what stands beside the Ooga, as on the island: a wallet machine, a catapult or
+  // Space (or the touch act button) uses what stands beside the Ooga, as on the island: a catapult or
   // a tower's zipline; anywhere else it jumps. On the board and the results it starts a round.
   const act = () => {
     if (phase === "board" || phase === "results") return beginFromMenu();
-    if (phase !== "play" || paused || quiz.open || wmenu.open) return false;
+    if (phase !== "play" || paused || quiz.open) return false;
     const a = sim.actors[0];
-    if (!SIM.nearVend(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
+    if (!SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
     return zipNow();
   };
   // Paint along the camera's look, lobbed a little higher when the camera looks up.
@@ -1242,107 +1220,11 @@
     cam.face = Math.atan2(AIM.x - me.x, AIM.z - me.z);
     return AIM;
   };
-  // The wallet machine's picker, as DSB Land's Free Hardware Wallets has it: the same six devices as pictures and names
-  // (portraits from `wallets-menu.js`, names in `SIM.WALLETS` order), the store's red and white panel and the shared
-  // menu shell. Pick one and Take: it goes over your head like any device from the machine. While it is open the
-  // Ooga stands still and the keys stay in the panel (1 to 6 pick, Enter takes, Escape closes); stepping away from
-  // the machine, or the round ending, closes it. Built once a visit, removed on leave.
-  const wmenu = { open: false, look: 1, root: null, picks: null, take: null };
-  const PICK_ORDER = [1, 0, 2, 3, 4, 5];
-  const walletPortrait = (i) => {
-    const FACES = BL.walletsMenu && BL.walletsMenu.FACES, f = FACES && FACES[i];
-    if (!f) return null;
-    // Rektdger is framed round its screen, as the store frames it.
-    const PX = 4, left = i === 0 ? 5 : 0, top = i === 0 ? 3 : 0, c = document.createElement("canvas");
-    c.width = (i === 0 ? 40 : f.rows[0].length) * PX; c.height = (i === 0 ? 18 : f.rows.length) * PX; c.setAttribute("aria-hidden", "true");
-    const g = c.getContext("2d");
-    f.rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (f.ink[row[x]]) { g.fillStyle = f.ink[row[x]]; g.fillRect((x - left) * PX, (y - top) * PX, PX, PX); } });
-    return c;
-  };
-  const pickWallet = (i) => {
-    wmenu.look = i;
-    for (const b of wmenu.picks.children) b.setAttribute("aria-pressed", String(Number(b.dataset.wallet) === i));
-  };
-  const closeWalletMenu = () => {
-    if (!wmenu.open) return;
-    wmenu.open = false;
-    if (wmenu.root.open) wmenu.root.close();
-    if (BL.dsbMenuShell) BL.dsbMenuShell.present(wmenu.root, false);
-  };
-  const takePicked = () => {
-    closeWalletMenu();
-    if (!acts("takeWallet", 0, wmenu.look)) notice("Too late · step back up to the machine to take one", 1600);
-    return true;
-  };
-  const buildWalletMenu = () => {
-    const node = (tag, text, cls) => { const n = document.createElement(tag); if (text) n.textContent = text; if (cls) n.className = cls; return n; };
-    const root = node("dialog", null, "sheet-body wallets-menu block-wallets"), panel = node("section", null, "panel"), header = node("header", null, "panel-title");
-    const title = node("h2"), back = node("button", "Back", "foot-button");
-    root.setAttribute("aria-label", "Free wallets");
-    back.type = "button"; back.dataset.close = "";
-    title.setAttribute("aria-label", "Free wallets"); title.append(hudMod.signLettering("Free wallets"));
-    header.append(title, back);
-    const picks = node("div", null, "slab wallets-picks");
-    picks.setAttribute("role", "group"); picks.setAttribute("aria-label", "Pick your wallet bomb");
-    for (const i of PICK_ORDER) {
-      const b = node("button", null, "foot-button wallets-pick"), art = walletPortrait(i);
-      b.type = "button"; b.dataset.wallet = String(i);
-      if (art) b.append(art);
-      b.append(node("b", SIM.WALLETS[i].toUpperCase()));
-      picks.append(b);
-    }
-    const take = node("button", "Take", "chat-send wallets-take");
-    take.type = "button"; take.dataset.take = "";
-    const body = node("div", null, "wallets-content");
-    body.append(picks, take);
-    panel.append(header, node("p", "Free Hardware Wallets · from DSB Land's VAC 2 · pick your wallet bomb", "help"), body);
-    root.append(panel);
-    root.addEventListener("click", (e) => {
-      const b = e.target.closest("button");
-      if (!b) return;
-      if (b.dataset.wallet !== undefined) pickWallet(Number(b.dataset.wallet));
-      else if (b.dataset.take !== undefined) takePicked();
-      else if (b.dataset.close !== undefined) closeWalletMenu();
-    });
-    // Keys stay in the panel: none reaches the game while it is open.
-    const keys = (e) => {
-      e.stopPropagation();
-      if (e.type !== "keydown") return;
-      if (e.key === "Escape") { e.preventDefault(); closeWalletMenu(); }
-      else if (e.key >= "1" && e.key <= "6") { e.preventDefault(); pickWallet(PICK_ORDER[Number(e.key) - 1]); }
-      else if (e.key === "Enter" && !e.repeat && document.activeElement && document.activeElement.dataset.wallet !== undefined) { e.preventDefault(); takePicked(); }
-    };
-    root.addEventListener("keydown", keys); root.addEventListener("keyup", keys);
-    root.addEventListener("cancel", (e) => { e.preventDefault(); closeWalletMenu(); });
-    document.body.append(root);
-    wmenu.root = root; wmenu.picks = picks; wmenu.take = take;
-  };
-  const openWalletMenu = () => {
-    if (wmenu.open || !inRound() || !SIM.nearVend(sim, sim.actors[0])) return false;
-    if (!wmenu.root) buildWalletMenu();
-    if (locked()) document.exitPointerLock();
-    trigger = false;
-    pickWallet(wmenu.look);
-    wmenu.open = true;
-    wmenu.root.showModal();
-    if (BL.dsbMenuShell) BL.dsbMenuShell.present(wmenu.root, true);
-    const chosen = wmenu.picks.querySelector('[aria-pressed="true"]');
-    if (chosen) chosen.focus();
-    return true;
-  };
-  // Lob the device over your head toward the crosshair.
-  const throwWallet = () => {
-    if (!inRound() || sim.actors[0].wallet < 0) return false;
-    const a = sim.actors[0], q = aimPoint(), dx = q.x - a.x, dz = q.z - a.z;
-    const flat = Math.hypot(dx, dz) || 1;
-    return acts("throwWallet", 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - a.y - 1.9, flat) + 0.12, -0.3, 0.9));
-  };
   const paint = () => {
     if (!inRound()) return false;
     // In a gorilla's hands a click or tap is a struggle press, like Space.
     if (sim.actors[0].grabbed) { move.jump = 1; return true; }
     if (sim.actors[0].flight === 2) return acts("cutChute", 0);
-    if (sim.actors[0].wallet >= 0) return throwWallet();
     // Laser eyes ready: whatever is in hand, the click lets them loose.
     { const me = sim.actors[0]; if (me.laser > 0 && me.beam <= 0 && !me.holding) return acts("fire", 0, cam.face, 0, "paint"); }
     const a = sim.actors[0], q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y);
@@ -1363,7 +1245,7 @@
     // Say why a throw didn't go, so the tools never seem locked: paint on you, a quiz bubble, or an empty tool.
     if (!ok && a.splat > 0) notice(`Splatted · throwing again in ${Math.ceil(a.splat)} s`, 900);
     else if (!ok && a.trapped > 0) notice("Answer the question to get out first", 1100);
-    else if (!ok && tool === "gold" && !a.gold) notice("Mine a block to win the Golden Dual AKs, or stick a wallet bomb on whoever has them", 1800);
+    else if (!ok && tool === "gold" && !a.gold) notice("Mine a block to win the Golden Dual AKs, or take them from whoever has them", 1800);
     else if (!ok && tool === "sniper" && a.sniper <= 0) notice("The sniper rifle stays in the towers · climb one to use it", 1600);
     else if (!ok && tool !== "paint" && a[tool] <= 0) notice(`Out of ${tool}s · refill on your stand or an ammo cache`, 1400);
     return ok;
@@ -1372,7 +1254,7 @@
   const hookNow = () => {
     if (!inRound()) return false;
     const a = sim.actors[0];
-    if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return false; }
+    if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or mine a block to take one", 2000); return false; }
     const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
     const ok = acts("grapple", 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.45, 1.45));
     if (!ok && a.hCool > 0) notice(`Hook recharging · ${Math.ceil(a.hCool)} s`, 900);
@@ -1567,10 +1449,10 @@
   const keyTool = (k) => {
     const a = sim.actors[0];
     if (k === "hook") {
-      if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return; }
+      if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or mine a block to take one", 2000); return; }
       chooseTool(k); return;
     }
-    if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them, or stick a wallet bomb on whoever has them", 1800); return; }
+    if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them or take them", 1800); return; }
     if (k === "sniper" && !a.sniper) { notice("The sniper rifle stays up the towers · climb a ladder", 1600); return; }
     chooseTool(k);
   };
@@ -1583,20 +1465,18 @@
     notice(a.holding ? "No room to set it there (stacks go three high)" : a.carrying ? "Hands full with the block" : "No crate in reach · face one and press F", 1200);
     return false;
   };
-  // Throw whatever is in hand: a wallet bomb or a held crate toward the crosshair, or the carried block straight ahead
+  // Throw whatever is in hand: a held crate toward the crosshair, or the carried block straight ahead
   // for a teammate to catch.
   const passBlock = () => {
     if (!inRound()) return false;
-    if (sim.actors[0].wallet >= 0) return throwWallet();
     if (sim.actors[0].holding) return paint();
     if (acts("pass", 0, cam.face)) return true;
-    notice("Nothing to throw · pick up a block, a crate with F, or a wallet bomb", 1100);
+    notice("Nothing to throw · pick up a block or a crate with F", 1100);
     return false;
   };
   // Ride your tower's zipline down into the rival fort, from the platform by its gap.
   const zipNow = () => {
     if (!inRound()) return false;
-    if (openWalletMenu()) return true;
     // A guest's action is only a request, so it picks here what the host would have tried first.
     const a = sim.actors[0], guest = !!round && round.role === "guest";
     if ((!guest || SIM.nearCatapult(sim, a) || SIM.nearEnemyCatapult(sim, a)) && acts("launch", 0)) return true;
@@ -1623,8 +1503,6 @@
   const dropBlock = () => {
     if (!inRound()) return false;
     if ((!(round && round.role === "guest") || sim.actors[0].carrying) && acts("drop", 0)) return true;
-    // No block in hand: K sets a held wallet down, ticking.
-    if (acts("dropWallet", 0)) { notice(`Wallet set down · it goes off in ${C.WALLET_FUSE} s · get clear!`, 1800); return true; }
     notice("Nothing to drop", 900);
     return false;
   };
@@ -1861,10 +1739,6 @@
       if (s.carrying || s.holding) {
         // Both hands up holding the block (or a crate) overhead.
         p.armL.rotation.x = p.armR.rotation.x = -2.9;
-      } else if (s.wallet >= 0) {
-        // A wallet up in the left hand; the right keeps the gun.
-        p.armL.rotation.x = -2.5;
-        p.armR.rotation.x = armed ? -1.45 : -0.2 - swing * 0.35;
       } else if (armed) {
         // Gun up and forward, the other hand under it; a big launcher sits higher, on the shoulder.
         const kick = s.cooldown > (s.bot ? sim.bots.cool : SIM.TOOLS.paint.cool) - 0.12 ? 0.18 : 0;
@@ -2008,43 +1882,6 @@
         notice(`${COARSE ? "Zip" : "Space"} rides the zipline ${home ? "home to our fort" : "into their fort"}`, 2200);
       }
     }
-  };
-  // The wallets: over a head, in the air turning, or lying where they stopped; the fuse light blinks once a second,
-  // then three times, then all but steady, with a beep each blink near the visitor, louder and higher as it runs out.
-  let walletHeld = 0;
-  const poseWallets = (elapsed) => {
-    if (!walletNodes) return;
-    const me = sim.actors[0];
-    // Holding one a while: a reminder of how to be rid of it.
-    if (me.wallet >= 0 && phase === "play") {
-      if (!walletHeld) walletHeld = elapsed;
-      else if (elapsed - walletHeld > 12) { walletHeld = elapsed; notice(COARSE ? "Still holding a wallet · Paint! throws it · Drop sets it down" : "Still holding a wallet · click, Tab or Y throws it · K sets it down", 2600); }
-    } else walletHeld = 0;
-    for (let i = 0; i < walletNodes.length; i++) {
-      const w = sim.wallets[i], n = walletNodes[i];
-      // Stuck on the visitor's own back, it stays a secret: not shown, not heard.
-      const secret = w.live && w.state === 3 && w.stuck === 0;
-      n.node.visible = w.live && !secret;
-      if (!w.live || secret) { n.sec = -1; continue; }
-      n.node.geometry = BM.walletDevice(w.look);
-      setVec(n.node.position, w.x, w.y + (w.state === 2 ? 0.25 : 0), w.z);
-      n.node.rotation.y = w.state === 1 ? w.spin : w.state === 0 ? sim.actors[w.owner].heading : w.state === 3 ? sim.actors[w.stuck].heading + Math.PI : 0.6 * i;
-      n.node.rotation.x = w.state === 1 ? w.spin * 0.7 : 0;
-      // Held, it's not ticking yet: the light stays dark.
-      if (w.state === 0) { n.light.visible = false; n.sec = -1; continue; }
-      const rate = w.fuse > 3 ? 1 : w.fuse > 1.5 ? 3 : 8, on = (elapsed * rate) % 1 < 0.5;
-      n.light.visible = on;
-      const sec = Math.ceil(w.fuse * rate);
-      if (sec !== n.sec) {
-        n.sec = sec;
-        const d = Math.hypot(w.x - me.x, w.z - me.z);
-        if (d < 16) audio.cues.beep(clamp(1 - d / 16, 0.15, 1) * (w.fuse > 3 ? 0.5 : w.fuse > 1.5 ? 0.75 : 1), w.fuse > 3 ? 0 : w.fuse > 1.5 ? 1 : 2);
-        // One the visitor stuck on someone: the countdown in the notice line.
-        if (w.state === 3 && w.owner === 0 && rate === 1) notice(`${SIM.WALLETS[w.look]} on ${nameOf(w.stuck)} · ${Math.ceil(w.fuse)} s`, 1100);
-      }
-    }
-    // A sooted Ooga puffs smoke now and then.
-    for (const a of sim.actors) if (a.soot > 0 && Math.random() < 0.08) fx.burst(a.x, a.y + 1.4, a.z, 2, SMOKE_BITS, 0.8);
   };
   const poseShots = () => {
     for (let i = 0; i < sim.shots.length; i++) {
@@ -2234,11 +2071,8 @@
     else if (phase === "play") {
       if (panelLive()) { controls.read(); move.x = move.z = move.sprint = move.jump = move.jet = move.crouch = 0; }
       else readInput(dt);
-      // Choosing a wallet: the Ooga stands still; walking off (or being knocked away) from the machine closes the panel.
-      if (wmenu.open) {
-        move.x = move.z = move.sprint = move.jump = move.jet = move.crouch = 0;
-        if (!SIM.nearVend(sim, sim.actors[0])) closeWalletMenu();
-      }
+      // The rules ask what's in hand when an Ooga is splatted.
+      if (!round || round.role !== "guest") sim.actors[0].wield = tool;
       // Full auto: with the AK or the golden pair and the trigger held, a round goes each time the shot clock allows.
       if (trigger && (tool === "ak" || (tool === "gold" && sim.actors[0].gold)) && !quiz.open && !sim.actors[0].grabbed && sim.actors[0].cooldown <= 0) paint();
       // The live feed, folded in before the step: fees to weather, a new block to its reset.
@@ -2273,7 +2107,6 @@
     poseGhosts(elapsed);
     if (sim && actors) poseBeams(elapsed);
     poseShots();
-    poseWallets(elapsed);
     if (phase === "board") boardView(elapsed, dt);
     else if (onDeck()) deckView(dt);
     else updateCamera(dt);
@@ -2331,7 +2164,6 @@
     if (e.key === "u" || e.key === "U") toggleBar();
     if (e.key === "n" || e.key === "N") toggleMap();
     if (e.key === "/" || e.key === "?") el.helpBox.hidden = !el.helpBox.hidden;
-    if (e.key === "y" || e.key === "Y") throwWallet();
     if (e.key === "h" || e.key === "H") piggyback();
     if (e.key === "j" || e.key === "J") callRider();
     if (e.key === "g" || e.key === "G") cycleTool(1);
@@ -2487,8 +2319,6 @@
       return { body, armL, armR, k };
     });
     peelNodes = A.peels.map(([x, z], i) => add(createNode({ geometry: BM.peel(), position: { x, y: 0.01, z }, rotation: { x: 0, y: i * 1.7, z: 0 } })));
-    // The FREE WALLETS machines, facing the middle of the field.
-    vendNodes = A.vends.map(([x, z]) => add(createNode({ geometry: BM.vend(), position: { x, y: 0, z }, rotation: { x: 0, y: x < 0 ? Math.PI / 2 : -Math.PI / 2, z: 0 } })));
     // Gorilla Jungle: the cargo nets up to the tree forts, and the gorillas themselves.
     for (const n of A.nets || []) {
       const [x0, x1, z0, z1] = n.zone, w = n.dx ? z1 - z0 : x1 - x0;
@@ -2497,6 +2327,8 @@
     }
     // The two grappling hooks, wherever they're hidden this round.
     hookStill = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    goldDrops = [];
+    for (let i = 0; i < C.GOLD_GUNS; i++) goldDrops.push(add(createNode({ geometry: BM.gun(GUN_OF.gold * 2), visible: false, sightHidden: true, scale: { x: 1.3, y: 1.3, z: 1.3 } })));
     hookNodes = [];
     for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
     // Haunted Hollow's ghosts, one node each (the sim has the haunts both ways round).
@@ -2527,10 +2359,17 @@
       if (Math.random() < 0.6) fx.burst(s.x + dx * s.beamLen, ey, s.z + dz * s.beamLen, 2, LASER_BITS, 1.6);
     }
   };
-  let hookNodes = [], hookStill = false;
+  let hookNodes = [], goldDrops = [], hookStill = false;
   // A hidden hook sits where it lies, turning slowly (dead still for a visitor who asks for reduced motion), until someone picks it up.
   const poseHooks = (elapsed) => {
     if (!sim || !hookNodes.length) return;
+    for (let i = 0; i < goldDrops.length; i++) {
+      const d = sim.drops[i], n = goldDrops[i];
+      n.visible = d.live;
+      if (!d.live) continue;
+      setVec(n.position, d.x, d.y + 0.55 + (hookStill ? 0 : Math.sin(elapsed * 2 + i) * 0.08), d.z);
+      n.rotation.y = hookStill ? i : elapsed * 0.9 + i;
+    }
     for (let i = 0; i < hookNodes.length; i++) {
       const h = sim.hooks[i], n = hookNodes[i];
       n.visible = !!h && h.state === 0;
@@ -2780,13 +2619,6 @@
     fpGunL = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpFlash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }); fpFlashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
     addChild(fpGun, fpFlash); addChild(fpGunL, fpFlashL);
-    walletNodes = [];
-    for (let i = 0; i < C.WALLET_CAP; i++) {
-      const node = place(createNode({ geometry: BM.walletDevice(0), visible: false, scale: { x: 1.6, y: 1.6, z: 1.6 } }));
-      const light = createNode({ geometry: BM.walletLight(), position: { x: 0, y: 0.2, z: 0 } });
-      addChild(node, light);
-      walletNodes.push({ node, light, sec: -1 });
-    }
     shots = [];
     for (let i = 0; i < C.MAX_SHOTS; i++) shots.push(place(createNode({ geometry: BM.ball(0), visible: false })));
     crates = [];
@@ -2940,8 +2772,6 @@
     chairsGreeted = false;
     deck = null; you = 0; kept = null; liveCast = null; watchVisit = false; panelOpen = false;
     BL.net.setBody(null);
-    closeWalletMenu();
-    if (wmenu.root) { wmenu.root.remove(); wmenu.root = wmenu.picks = wmenu.take = null; }
     audio.dispose();
     audio = null;
     unfeed();
@@ -3004,8 +2834,8 @@
     phase = "board";
     skyClouds = []; skyPerch = null;
     sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = fpFlash = fpFlashL = trampNodes = powerNodes = result = null;
-    mapRoot = fireNode = dancers = peelNodes = catapults = walletNodes = vendNodes = boltNode = boltRing = null;
-    hookNodes = []; ghostNodes = [];
+    mapRoot = fireNode = dancers = peelNodes = catapults = boltNode = boltRing = null;
+    hookNodes = []; goldDrops = []; ghostNodes = [];
     catNear = false;
     for (const t of SIM.TEAMS) iceNodes[t] = null;
     zipNear = false;

@@ -773,92 +773,6 @@
   ));
   // The jetpack every Ooga wears, in its own frame on the Ooga's back (+z forward): two team-banded tanks with a
   // strap between and a nozzle under each, and the flames that burn under the nozzles while it thrusts.
-  // Free Hardware Wallets, after the store's six parodies (`SIM.WALLETS` order): Rektdger's narrow screen and metal
-  // sleeve, ClownCard's keypad in clown colours with a red nose, BrickBox02 in brickwork, Passpoor's tall screen with
-  // a taped corner, Jaded's landscape screen and wheel, SeedSnitcher's orange case with a joystick. Each 0.3 m or so.
-  const walletDevice = variants((look) => {
-    const parts = [];
-    if (look === 0) {
-      parts.push(bevelBox({ w: 0.12, h: 0.36, d: 0.08, color: "#1c1d22" }));
-      parts.push(box({ w: 0.135, h: 0.2, d: 0.085, color: "#b8bcc4", offset: { y: -0.06 } }));
-      parts.push(box({ w: 0.06, h: 0.13, d: 0.01, color: "#ff3b3b", emissive: 0.8, offset: { y: 0.08, z: 0.042 } }));
-    } else if (look === 1) {
-      parts.push(bevelBox({ w: 0.24, h: 0.32, d: 0.06, color: "#f2f2f2" }));
-      parts.push(box({ w: 0.18, h: 0.09, d: 0.01, color: "#9fe6ff", emissive: 0.7, offset: { y: 0.09, z: 0.032 } }));
-      const keys = ["#ff3b3b", "#ffd23a", "#3bd16f", "#3b8bff", "#c03bff", "#ff8a1f"];
-      for (let i = 0; i < 9; i++) parts.push(box({ w: 0.045, h: 0.035, d: 0.015, color: keys[i % keys.length], offset: { x: (i % 3 - 1) * 0.06, y: -0.02 - Math.floor(i / 3) * 0.045, z: 0.035 } }));
-      parts.push(box({ w: 0.04, h: 0.04, d: 0.03, color: "#ff2020", emissive: 0.6, offset: { y: 0.15, z: 0.035 } }));
-    } else if (look === 2) {
-      parts.push(bevelBox({ w: 0.32, h: 0.16, d: 0.1, color: "#a0442c" }));
-      for (let i = 0; i < 3; i++) parts.push(box({ w: 0.33, h: 0.01, d: 0.105, color: "#d8c8b0", offset: { y: -0.05 + i * 0.05 } }));
-      parts.push(box({ w: 0.14, h: 0.06, d: 0.01, color: "#ff3b3b", emissive: 0.7, offset: { x: 0.04, z: 0.052 } }));
-      parts.push(box({ w: 0.05, h: 0.03, d: 0.04, color: "#c0c4cc", offset: { x: -0.18 } }));
-    } else if (look === 3) {
-      parts.push(bevelBox({ w: 0.2, h: 0.36, d: 0.05, color: "#2a2f3a" }));
-      parts.push(box({ w: 0.16, h: 0.26, d: 0.01, color: "#7dffb0", emissive: 0.5, offset: { y: 0.02, z: 0.027 } }));
-      parts.push(box({ w: 0.08, h: 0.04, d: 0.055, color: "#e6dcc0", offset: { x: 0.07, y: 0.15 } }));
-    } else if (look === 4) {
-      parts.push(bevelBox({ w: 0.3, h: 0.18, d: 0.07, color: "#1d8a7a" }));
-      parts.push(box({ w: 0.16, h: 0.1, d: 0.01, color: "#c8fff4", emissive: 0.6, offset: { x: -0.03, z: 0.037 } }));
-      parts.push(box({ w: 0.04, h: 0.08, d: 0.04, color: "#0f4a42", offset: { x: 0.12, y: 0.06 } }));
-    } else {
-      parts.push(bevelBox({ w: 0.3, h: 0.2, d: 0.08, color: "#ff8a1f" }));
-      parts.push(box({ w: 0.11, h: 0.11, d: 0.01, color: "#1a1a1a", offset: { z: 0.042 } }));
-      parts.push(box({ w: 0.09, h: 0.09, d: 0.012, color: "#ffe0a0", emissive: 0.6, offset: { z: 0.044 } }));
-      parts.push(box({ w: 0.035, h: 0.035, d: 0.03, color: "#2a2a2a", offset: { x: -0.1, z: 0.045 } }));
-      for (const y of [0.05, 0, -0.05]) parts.push(box({ w: 0.025, h: 0.025, d: 0.02, color: "#2a2a2a", offset: { x: 0.11, y, z: 0.045 } }));
-    }
-    return merge(...parts);
-  });
-  // The laser-eyes beam: a white-hot core in a red glow, one metre long along +z from the origin (the scene stretches
-  // it to the beam's length), in two strands a hand apart, one from each eye.
-  const beam = cached(() => {
-    const parts = [];
-    for (const x of [-0.07, 0.07]) {
-      parts.push(box({ w: 0.035, h: 0.035, d: 1, color: "#fff4f0", emissive: 1, offset: { x, z: 0.5 } }));
-      parts.push(box({ w: 0.09, h: 0.09, d: 1, color: "#ff2a1a", emissive: 1, offset: { x, z: 0.5 } }));
-    }
-    const geo = merge(...parts);
-    geo.castShadow = false;
-    return geo;
-  });
-  // Laser eyes lit: two glowing red eyes, set over the Ooga's own.
-  const laserEyes = cached(() => merge(box({ w: 0.1, h: 0.07, d: 0.06, color: "#ff3a1a", emissive: 1, offset: { x: -0.07 } }), box({ w: 0.1, h: 0.07, d: 0.06, color: "#ff3a1a", emissive: 1, offset: { x: 0.07 } })));
-  // A ghost: a pale glowing sheet, round on top and flaring to a ragged hem, two dark eyes and an open mouth, its arms
-  // out. Faces +z, its middle at y 0.
-  const ghost = cached(() => {
-    const sheet = "#e8eefc", parts = [
-      lathe({ profile: [[0, 0.75], [0.3, 0.68], [0.45, 0.45], [0.5, 0.1], [0.56, -0.35], [0.66, -0.62], [0, -0.62]], segments: 10, color: sheet, emissive: 0.55 })
-    ];
-    // The ragged hem: tatters hanging below.
-    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; parts.push(box({ w: 0.2, h: 0.22, d: 0.2, color: sheet, emissive: 0.5, offset: { x: Math.sin(a) * 0.55, y: -0.72 - (k % 2) * 0.08, z: Math.cos(a) * 0.55 } })); }
-    parts.push(box({ w: 0.11, h: 0.17, d: 0.05, color: "#141018", offset: { x: -0.15, y: 0.35, z: 0.46 } }), box({ w: 0.11, h: 0.17, d: 0.05, color: "#141018", offset: { x: 0.15, y: 0.35, z: 0.46 } }));
-    parts.push(box({ w: 0.16, h: 0.2, d: 0.05, color: "#141018", offset: { y: 0.08, z: 0.5 } }));
-    for (const s of [-1, 1]) parts.push(box({ w: 0.36, h: 0.14, d: 0.16, color: sheet, emissive: 0.5, offset: { x: s * 0.6, y: 0.08, z: 0.12 } }));
-    return merge(...parts);
-  });
-  // The fuse light on top of every device; the scene blinks it faster as the fuse runs down.
-  const walletLight = cached(() => box({ w: 0.06, h: 0.05, d: 0.06, color: "#ff2a1a", emissive: 1 }));
-  // The FREE WALLETS machine: a red cabinet on a plinth, a glowing window with the six devices in it, a marquee, a
-  // coin slot and the tray. Faces +z.
-  const vend = cached(() => {
-    const parts = [
-      box({ w: 1.3, h: 0.15, d: 0.95, color: "#3a3a40", offset: { y: 0.075 } }),
-      bevelBox({ w: 1.2, h: 1.85, d: 0.85, color: "#c8242a", offset: { y: 1.075 } }),
-      box({ w: 1.28, h: 0.32, d: 0.9, color: "#ff3b3b", emissive: 0.6, offset: { y: 2.12 } }),
-      box({ w: 1.0, h: 0.06, d: 0.92, color: "#fff3d6", emissive: 0.9, offset: { y: 2.12 } }),
-      box({ w: 0.78, h: 1.0, d: 0.02, color: "#bfe8ff", emissive: 0.45, offset: { x: -0.12, y: 1.25, z: 0.43 } }),
-      box({ w: 0.18, h: 0.3, d: 0.03, color: "#2a2a30", offset: { x: 0.43, y: 1.35, z: 0.43 } }),
-      box({ w: 0.06, h: 0.02, d: 0.04, color: "#ffd23a", emissive: 0.8, offset: { x: 0.43, y: 1.42, z: 0.45 } }),
-      box({ w: 0.7, h: 0.18, d: 0.08, color: "#1a1a1e", offset: { x: -0.12, y: 0.5, z: 0.44 } })
-    ];
-    const looks = [0, 1, 2, 3, 4, 5];
-    for (let i = 0; i < looks.length; i++) {
-      const col = i % 2, row = Math.floor(i / 2);
-      parts.push(moved(walletDevice(looks[i]), -0.3 + col * 0.36, 1.58 - row * 0.32, 0.36));
-    }
-    return merge(...parts);
-  });
   const jetpack = variants((i) => {
     const c = TEAM[SIM.TEAMS[i]], parts = [];
     for (const x of [-0.13, 0.13]) {
@@ -930,5 +844,5 @@
     line.castShadow = false;
     return line;
   });
-  BL.blockModels = { hookHead, rope, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();
