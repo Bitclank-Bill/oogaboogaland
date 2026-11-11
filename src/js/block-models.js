@@ -940,6 +940,15 @@
     geo.castShadow = false;
     return geo;
   });
+  // The crown over the round's most valuable Ooga on the results' line-up: a gold band, five points and three stones.
+  const crown = cached(() => {
+    const parts = [box({ w: 0.44, h: 0.12, d: 0.44, color: "#edbd32", emissive: 0.5, offset: { y: 0.06 } }), box({ w: 0.46, h: 0.04, d: 0.46, color: "#a87c14", emissive: 0.3, offset: { y: 0.02 } })];
+    for (const [x, z] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18], [0, 0.2], [0, -0.2], [0.2, 0], [-0.2, 0]]) parts.push(box({ w: 0.08, h: 0.14, d: 0.08, color: "#ffe27a", emissive: 0.7, offset: { x, y: 0.19, z } }));
+    for (const [x, z, c] of [[0, 0.225, "#ff4a3a"], [0, -0.225, "#ff4a3a"], [0.225, 0, "#3a8dff"], [-0.225, 0, "#3a8dff"]]) parts.push(box({ w: 0.07, h: 0.06, d: 0.07, color: c, emissive: 0.9, offset: { x, y: 0.07, z } }));
+    const geo = merge(...parts);
+    geo.castShadow = false;
+    return geo;
+  });
   // A cargo net hung on a climb's face: rope squares from the ground to its top, `w` wide, in its own frame facing +z.
   const net2 = variants((key) => {
     const [w10, top10] = key.split(":").map(Number), w = w10 / 10, top = top10 / 10, parts = [];
@@ -999,5 +1008,5 @@
     for (const s of [-1, 1]) parts.push(box({ w: 0.36, h: 0.14, d: 0.16, color: sheet, emissive: 0.5, offset: { x: s * 0.6, y: 0.08, z: 0.12 } }));
     return merge(...parts);
   });
-  BL.blockModels = { hookHead, rope, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, crown, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

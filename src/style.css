@@ -11724,6 +11724,63 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   display: none;
 }
 
+/* The results' line-up: the winning side's Oogas by name, in the order they stand, the most valuable under a crown. */
+.block-lineup ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.block-lineup li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  background: rgba(30, 20, 12, 0.6);
+  font-size: 13px;
+}
+
+.block-lineup[data-team="blue"] li {
+  border-color: #3a8dff;
+}
+
+.block-lineup[data-team="red"] li {
+  border-color: #ff4a3a;
+}
+
+.block-lineup li[data-mvp="true"] {
+  background: rgba(120, 84, 10, 0.75);
+  color: #ffe27a;
+  font-weight: bold;
+}
+
+.block-crown {
+  width: 18px;
+  height: 14px;
+}
+
+.block-mvp {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #edbd32;
+  color: #2a1a08;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+/* With the line-up standing in the sky, the results sit on the left as the board does. */
+@media (min-width: 1000px) {
+  #block-results[data-lineup="true"] {
+    left: calc(20px + var(--safe-left, 0px));
+    transform: translateY(-50%);
+  }
+}
+
 /* The board's weapons preview: its card up by the weapon turning over the Ooga on show. */
 .block-weapon-card {
   position: absolute;

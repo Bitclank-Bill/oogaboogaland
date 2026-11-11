@@ -509,6 +509,7 @@
     if (boltRing) boltRing.visible = false;
     if (boltNode) boltNode.visible = false;
     el.board.hidden = el.results.hidden = el.toolBar.hidden = el.feed.hidden = true;
+    clearPodium();
     el.watch.hidden = false; el.strip.hidden = true; el.center.hidden = el.notice.hidden = true;
     strip.shown = false; updateStrip();
     if (document.pointerLockElement === el.canvas) document.exitPointerLock();
@@ -635,6 +636,7 @@
     if (el.againBtn) el.againBtn.textContent = "Again";
     el.board.hidden = false;
     el.results.hidden = el.strip.hidden = el.center.hidden = el.notice.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
+    clearPodium();
     hud.el.act.hidden = el.paintBtn.hidden = el.cross.hidden = true;
     if (document.pointerLockElement === el.canvas) document.exitPointerLock();
     for (const b of el.teams) b.setAttribute("aria-pressed", String(b.dataset.team === selection.team));
@@ -663,6 +665,7 @@
     result = null;
     closeQuiz();
     el.board.hidden = el.results.hidden = true;
+    clearPodium();
     try { mapHidden = localStorage.getItem(MAP_KEY) === "1"; } catch { mapHidden = false; }
     el.strip.hidden = el.toolBar.hidden = el.feed.hidden = false;
     // The bar's icons wear the visitor's team colours.
@@ -708,11 +711,11 @@
     const me = sim.actors[0];
     el.stats.innerHTML = "";
     // The round's highlights: its most valuable Ooga, the sharpest shot, the longest sniper hit.
-    let mvp = 0, shooter = 0, sniper = 0;
-    const worth = (a) => a.captures * 3 + a.rescues * 2 + a.hits;
+    // The most valuable is of the winning side, by the rules' word, so every page crowns the same Ooga.
+    const mvp = SIM.mvp(sim, seatOfActor);
+    let shooter = 0, sniper = 0;
     for (let i = 1; i < sim.actors.length; i++) {
       const a = sim.actors[i];
-      if (worth(a) > worth(sim.actors[mvp])) mvp = i;
       if (a.hits > sim.actors[shooter].hits) shooter = i;
       if (a.longShot > sim.actors[sniper].longShot) sniper = i;
     }
@@ -725,6 +728,31 @@
       b.textContent = String(value);
       li.append(span, b);
       el.stats.append(li);
+    }
+    // The winning side by name, in the order it stands, the most valuable marked; and, on a wide screen, in person.
+    clearPodium();
+    const winners = SIM.lineup(sim, seatOfActor);
+    el.lineupList.textContent = "";
+    if (winners.length) {
+      el.lineup.hidden = false;
+      el.lineup.dataset.team = sim.winner;
+      el.lineupHead.textContent = `${sim.winner === "blue" ? "Blue" : "Red"} mined ${sim.score[sim.winner]}`;
+      for (const i of winners) {
+        const li = document.createElement("li"), name = document.createElement("span");
+        name.textContent = nameOf(i);
+        if (i === mvp) {
+          li.dataset.mvp = "true";
+          const crown = el.crownIcon.cloneNode(true), tag = document.createElement("span");
+          crown.removeAttribute("id"); crown.removeAttribute("hidden");
+          tag.className = "block-mvp"; tag.textContent = "MVP"; tag.setAttribute("aria-label", "Most valuable Ooga");
+          li.append(crown, name, tag);
+        } else li.append(name);
+        el.lineupList.append(li);
+        podium.list.push(i);
+      }
+      podium.mvp = mvp;
+      podium.on = !onDeck() && window.innerWidth >= PODIUM_MIN_W;
+      if (podium.on) el.results.dataset.lineup = "true";
     }
     el.results.hidden = false;
     if (won) for (const a of actors.slice(0, 2)) if (a.cave) fx.burst(a.body.position.x, 1.5, a.body.position.z, 24, ORANGE_BITS, 3);
@@ -2010,6 +2038,41 @@
   // turning slowly all the way round (a drag turns it faster); on a narrow one the board fills the screen and the
   // view circles the fort.
   const preview = { spin: 0, wide: false };
+  // The results' line-up: the winning side's Oogas (`SIM.lineup`, in seat order so every page stands them the same
+  // way) side by side on the cloud the board's Ooga stands on, the round's most valuable (`SIM.mvp`) under a crown. On
+  // a screen at least `PODIUM_MIN_W` wide; the results card names them on any screen.
+  const PODIUM_MIN_W = 1000, PODIUM_GAP = 1.15;
+  const podium = { on: false, list: [], mvp: -1, crown: null };
+  const seatOfActor = (i) => round && round.map ? round.map.toSeat[i] : i;
+  const clearPodium = () => {
+    podium.on = false; podium.list.length = 0; podium.mvp = -1;
+    if (podium.crown) podium.crown.visible = false;
+    if (el.results) delete el.results.dataset.lineup;
+    if (el.lineup) el.lineup.hidden = true;
+  };
+  const posePodium = (elapsed) => {
+    const n = podium.list.length;
+    for (let k = 0; k < n; k++) {
+      const a = actors[podium.list[k]], x = ((n - 1) / 2 - k) * PODIUM_GAP;
+      setVec(a.body.position, x, CLOUD_Y, 0);
+      a.body.rotation.x = 0; a.body.rotation.y = Math.PI; a.body.scale.y = 1;
+      a.body.visible = true;
+      a.blob.visible = a.bubble.visible = a.netted.visible = a.held.visible = a.trolley.visible = a.chute.visible = a.jetFlame.visible = false;
+      if (podium.list[k] === podium.mvp) {
+        podium.crown.visible = true;
+        setVec(podium.crown.position, x, CLOUD_Y + (a.cave ? a.cave.headOffset : 1.6) + 0.42 + (CLOUD_CALM ? 0 : Math.sin(elapsed * 2.2) * 0.04), 0);
+        if (!CLOUD_CALM) podium.crown.rotation.y = elapsed * 0.8;
+      }
+    }
+  };
+  const podiumView = () => {
+    const n = podium.list.length;
+    camera.fov = 58 * Math.PI / 180;
+    if (fpGun) fpGun.visible = fpGunL.visible = false;
+    // Out in front of the row at chest height, looking a little to its left so it stands right of the results.
+    setVec(camera.position, 0, CLOUD_Y + 1.5, -(4.8 + 0.5 * n));
+    setVec(camera.target, 1.6 + 0.25 * n, CLOUD_Y + 1.05, 0);
+  };
   // The weapons preview beside it: each tool of the arsenal (`SIM.ARSENAL`) in turn, its held model turning over the
   // Ooga's head and its name and blurb on a card. It steps on by itself every `SHOW_S`; a press of the card's buttons
   // steps it and holds it there `SHOW_HOLD_S`. Reduced motion: no turning and no stepping by itself.
@@ -2084,17 +2147,18 @@
 
   const update = (dt, elapsed) => {
     sceneTime = elapsed;
-    if (skyPerch) skyPerch.visible = phase === "board";
+    const aloft = phase === "board" || (phase === "results" && podium.on);
+    if (skyPerch) skyPerch.visible = aloft;
     if (show.node && phase !== "board") show.node.visible = false;
     for (let i = 0; i < skyClouds.length; i++) {
       const n = skyClouds[i];
-      n.visible = phase === "board";
+      n.visible = aloft;
       if (n.visible && !CLOUD_CALM && (n.position.x += dt * CLOUD_DRIFT) > CLOUD_SPAN) n.position.x -= 2 * CLOUD_SPAN;
     }
     // Each map's own time of day; Haunted Hollow is night and keeps its stars.
     const mapHour = MAP_HOUR[SIM.ARENA.id];
     // The start menu is up in the clouds at noon, whatever the map's own hour.
-    daylight.sample(phase === "board" ? 12 : mapHour, RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
+    daylight.sample(aloft ? 12 : mapHour, RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
     RENDER_OPTS.time = elapsed;
     if (round === null && BL.net.state.blockLive) openRound();
     if (round) round.lobbyTick(dt);
@@ -2126,6 +2190,7 @@
     } else if (onDeck()) { controls.read(); if (round) round.after(dt, move); sim.eventCount = 0; updateStrip(); }
     else controls.read();
     poseActors(dt, elapsed);
+    if (phase === "results" && podium.on) posePodium(elapsed);
     poseBlocks(elapsed);
     poseCrates();
     if (!onDeck()) poseCompanions(dt, elapsed);
@@ -2139,6 +2204,7 @@
     if (sim && actors) poseBeams(elapsed);
     poseShots();
     if (phase === "board") boardView(elapsed, dt);
+    else if (phase === "results" && podium.on) podiumView();
     else if (onDeck()) deckView(dt);
     else updateCamera(dt);
     if (!onDeck()) poseWeather(dt);
@@ -2552,6 +2618,10 @@
     el.paintBtn = document.getElementById("block-paint");
     el.toolBar = document.getElementById("block-tools");
     el.toolName = document.getElementById("block-tool-name");
+    el.lineup = document.getElementById("block-lineup");
+    el.lineupHead = document.getElementById("block-lineup-head");
+    el.lineupList = document.getElementById("block-lineup-list");
+    el.crownIcon = document.getElementById("block-crown-icon");
     el.weaponCard = document.getElementById("block-weapon-card");
     el.weaponName = document.getElementById("block-weapon-name");
     el.weaponBlurb = document.getElementById("block-weapon-blurb");
@@ -2656,6 +2726,7 @@
     mapRoot = null;
     // The gun in view in first person.
     show.node = place(createNode({ geometry: BM.gun(0), visible: false, sightHidden: true, scale: { x: 0.85, y: 0.85, z: 0.85 } }));
+    podium.crown = place(createNode({ geometry: BM.crown(), visible: false, sightHidden: true }));
     fpGun = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpGunL = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpFlash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }); fpFlashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
@@ -2840,6 +2911,8 @@
     for (const b of el.weaponSteps) b.removeEventListener("click", onWeaponStep);
     el.weaponCard.hidden = true;
     show.node = null;
+    clearPodium();
+    podium.crown = null;
     el.barMin.removeEventListener("click", toggleBar);
     el.barGrip.removeEventListener("pointerdown", onBarDown);
     el.barGrip.removeEventListener("pointermove", onBarMove);

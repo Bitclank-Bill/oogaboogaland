@@ -79,6 +79,16 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
   Walking onto one refills grenades, rockets, nets and the crate stock as your stand does, then it goes dark for 15 s
   (`CACHE_S`). A real Bitcoin block found while you play makes every cache and quiz pad ready again.
 
+## The results' line-up
+
+The results name the winning side's Oogas in seat order (`SIM.lineup`), each by its own character's name, bots too, and
+mark its most valuable (`SIM.mvp`) with a crown and MVP: the most worth (`SIM.worth`: three a block mined, two a block
+brought home, one a splat landed), a tie going to more mined, then more brought home, then the lower seat. Both read
+only what every frame already carries (the winner and each Ooga's counts) and a page's seat map, so every page of a
+live round shows the same row and crown and the wire is unchanged; solo, a seat is an actor's index. On a screen at
+least 1000 px wide the row also stands in person on the board's cloud, facing the view, a crown turning over the most
+valuable (still under reduced motion), with the results card moved left as the board is.
+
 ## The board's weapons preview
 
 On a wide screen the board shows, with the visitor's Ooga turning on its cloud, each tool of the arsenal in turn

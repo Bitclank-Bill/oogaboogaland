@@ -1304,6 +1304,28 @@
   // The tools a player can have in hand, by index on the wire; `wield` takes a guest's choice (sent only when it changes)
   // on the host, refusing an unknown tool or one the Ooga doesn't own.
   const WIELD = ["paint", "grenade", "rocket", "net", "sniper", "gold", "ak", "hook", "grab"];
+  // The results' line-up: the winning side's Oogas in seat order (`seatOf` gives a local actor's seat in a live round,
+  // where every page numbers its actors its own way; left out, an actor's index is its seat), and its most valuable
+  // Ooga. `worth` is three a block mined, two a block brought home and one a splat landed; a tie goes to more mined,
+  // then more brought home, then the lower seat, so every page names the same Ooga. No winner, no line-up: the most
+  // valuable is then of everyone.
+  const worth = (a) => a.captures * 3 + a.rescues * 2 + a.hits;
+  const ownSeat = (i) => i;
+  const lineup = (sim, seatOf = ownSeat) => {
+    const list = [];
+    if (sim.winner === null || sim.winner === undefined) return list;
+    for (const a of sim.actors) if (a.team === sim.winner) list.push(a.id);
+    return list.sort((p, q) => seatOf(p) - seatOf(q));
+  };
+  const mvp = (sim, seatOf = ownSeat) => {
+    let best = -1;
+    for (const a of sim.actors) {
+      if (sim.winner && a.team !== sim.winner) continue;
+      const b = best < 0 ? null : sim.actors[best];
+      if (!b || worth(a) > worth(b) || (worth(a) === worth(b) && (a.captures > b.captures || (a.captures === b.captures && (a.rescues > b.rescues || (a.rescues === b.rescues && seatOf(a.id) < seatOf(best))))))) best = a.id;
+    }
+    return best;
+  };
   // The arsenal as the board shows it, in key order: each tool, its name and a line on what it does.
   const ARSENAL = [
     ["paint", "Paint marker", "Paint without end. A hit splats a rival for a moment."],
@@ -3008,7 +3030,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { WIELD, wield, ARSENAL, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { WIELD, wield, worth, lineup, mvp, ARSENAL, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

@@ -7395,6 +7395,27 @@ const gameRulesChecks = async () => {
     record("block sniper: the rifle is in every Ooga's arsenal at the start of a round and after a reset on every map, fires from open ground with no tower near, keeps its cooldown, splats a rival 18 m off and counts the long shot",
       rifle.length === S.MAPS.length && rifle.every((r) => r.armed && r.off && r.fired && r.shot && r.soon && r.hit && r.far > 17 && r.far < 19 && r.hits === 1 && r.again)
       && S.TOOLS.sniper.max === 0 && S.TOOLS.sniper.cool === 0.35 && S.TOOLS.sniper.speed === 60, JSON.stringify(rifle));
+    // The results' line-up and its most valuable Ooga are the rules' word, so every page agrees: the winning side in seat
+    // order, and of it the most worth (three a block mined, two a block brought home, one a splat landed), a tie to
+    // more mined, then more brought home, then the lower seat, whatever a page's own numbering.
+    {
+      const mk = (winner, stats) => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }); s.over = true; s.winner = winner; stats.forEach(([c, r, h], i) => Object.assign(s.actors[i], { captures: c, rescues: r, hits: h })); return s; };
+      const teams = mk("blue", []).actors.map((a) => a.team).join();
+      const plain = mk("blue", [[1, 0, 2], [2, 0, 0], [3, 3, 9], [0, 0, 0]]), red = mk("red", [[3, 0, 0], [0, 0, 0], [0, 1, 1], [1, 0, 1]]);
+      const tieWorth = mk("blue", [[0, 3, 0], [2, 0, 0], [0, 0, 0], [0, 0, 0]]), tieMined = mk("blue", [[1, 0, 3], [1, 1, 1], [0, 0, 0], [0, 0, 0]]), tieAll = mk("blue", [[1, 1, 1], [1, 1, 1], [0, 0, 0], [0, 0, 0]]);
+      const none = mk(null, [[0, 0, 1], [0, 0, 0], [2, 0, 0], [0, 0, 0]]);
+      // A guest's page numbers its own Ooga 0: the seat map turns its numbering back to seats.
+      const guestMap = L.seatMap(2, 1), guestSeat = (i) => guestMap.toSeat[i], hostMap = L.seatMap(2, 0), hostSeat = (i) => hostMap.toSeat[i];
+      const hostPick = hostMap.toSeat[S.mvp(tieAll, hostSeat)], guestPick = guestMap.toSeat[S.mvp(tieAll, guestSeat)];
+      const hostRow = S.lineup(tieAll, hostSeat).map(hostSeat).join(), guestRow = S.lineup(tieAll, guestSeat).map(guestSeat).join();
+      const out = { teams, worth: S.worth({ captures: 2, rescues: 1, hits: 4 }), plain: S.mvp(plain), plainRow: S.lineup(plain).join(), red: S.mvp(red), redRow: S.lineup(red).join(), tieWorth: S.mvp(tieWorth), tieMined: S.mvp(tieMined), tieAll: S.mvp(tieAll),
+        none: S.mvp(none), noneRow: S.lineup(none).length, hostPick, guestPick, hostRow, guestRow };
+      const page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), sc = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
+      record("block results line-up: the winning side stands in seat order and its most valuable Ooga is the most worth, a tie to more mined, then more brought home, then the lower seat, the same on a host's and a guest's page; no winner, no line-up; the card names them and marks the MVP with a crown and accessible words",
+        out.teams === "blue,blue,red,red" && out.worth === 12 && out.plain === 1 && out.plainRow === "0,1" && out.red === 3 && out.redRow === "2,3" && out.tieWorth === 1 && out.tieMined === 1 && out.tieAll === 0
+        && out.none === 2 && out.noneRow === 0 && out.hostPick === 0 && out.guestPick === 0 && out.hostRow === "0,1" && out.guestRow === "0,1"
+        && page.includes('id="block-lineup-list"') && page.includes('id="block-crown-icon"') && /tag\.setAttribute\("aria-label", "Most valuable Ooga"\)/.test(sc) && /SIM\.mvp\(sim, seatOfActor\)/.test(sc) && /SIM\.lineup\(sim, seatOfActor\)/.test(sc), JSON.stringify(out));
+    }
     // The weapons bar: what a slot shows is the rules' word (not yours yet, yours and out, ready, and the count beside
     // it), and the page's eight slots stand in key order, each named, the sniper rifle always among them.
     {
