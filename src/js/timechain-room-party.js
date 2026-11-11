@@ -157,7 +157,31 @@
     k.cyl(0.2, 0.17, 0.07, C.barTop, 0, 0.73, 0, { seg: 14 });
   };
 
+  // ---------- its door ----------
+  // A club's: black leather leaves buttoned in a diamond pattern with a neon strip down the seam and a glowing
+  // porthole, neon tubes round the frame, and a string of bulbs round it that chase the beat.
+  const door = {
+    casing: "#120d18", frame: "#2a1f36", header: "#0b0714", word: "#ff3ce0", strip: PURPLE, chain: false,
+    leaf: "#17121c", seam: "#050307", plate: "#0b0714", face: "#ff3ce0", mark: "#0b0714",
+    leafFace(side, H) {
+      for (let row = 0; row < 11; row++) for (let col = 0; col < 5; col++) {
+        const x = -0.6 + col * 0.3 + (row & 1 ? 0.15 : 0), y = 0.35 + row * 0.27;
+        if (x < 0.72 && Math.hypot(x, y - 2.35) > 0.28) H.diamond(x, y, 0.025, "#6e5a86", 0.15, 1);
+      }
+      H.rect(H.inner + side * 0.02, 0.1, H.inner + side * 0.05, 3.1, PURPLE, 1, 2);
+      H.disc(0, 2.35, 0.15, "#24123a", 0.5, 16, 1);
+      H.ring(0, 2.35, 0.18, 0.03, "#ff3ce0", 0.9, 16, 2);
+    }
+  };
+  const doorTrim = (K, L) => {
+    const d = RM.doorway(L), x = d.W + d.F + 0.03, z = d.Z - 0.14;
+    for (const sx of [-1, 1]) K.box(0.03, d.D + d.F, 0.03, "#ff3ce0", sx * x, (d.D + d.F) / 2, z, { emissive: 1, glow: true });
+    K.box(2 * x, 0.03, 0.03, "#ff3ce0", 0, d.D + d.F, z, { emissive: 1, glow: true });
+    RM.doorBulbs(K, L, "#ffd08a", 0.38);
+  };
+
   const plan = (K, L) => {
+    doorTrim(K, L);
     const r0 = L.r0, BZ = boothZ(L);
     K.wallColor("#140e1a");
     K.render({ sky: [0.3, 0.24, 0.42], ground: [0.12, 0.08, 0.16], direct: [0.4, 0.34, 0.5], directStrength: 0.12, ambientFloor: 0.3, bloomStrength: 0.95 });
@@ -331,7 +355,7 @@
     // The planned colours of the floor's and the ball's lights, which the beat and the drop scale.
     const floorRgb = built.lights[2].slice(4, 7), ballRgb = built.lights[3].slice(4, 7);
     let next = DROP_FIRST, dropT = -1, beat = 0, rate = 1 / BEAT, lastStep = 0, hit = 1;
-    const radio = BL.timechainPartyRadio.create(), heard = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 };
+    const radio = BL.timechainPartyRadio.create(), heard = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 }, bulbs = RM.bulbsOf(nodes);
     const setLight = (lights, i, r, g, b) => { const o = i * 8; lights[o + 4] = r; lights[o + 5] = g; lights[o + 6] = b; };
     return {
       update(dt, t) {
@@ -346,6 +370,8 @@
         const step = Math.floor(beat), kick = Math.exp(-(beat - step) * 6) * hit;
         if (t >= next && step !== lastStep && step % BAR === 0) { next = t + DROP_EVERY; dropT = 0; }
         lastStep = step;
+        // The door's bulbs chase round the frame a bulb a beat, every third lit.
+        for (let i = 0; i < bulbs.length; i++) bulbs[i].glow = (i + step) % 3 === 0 ? 0.55 + 0.45 * kick : 0.12;
         if (dropT >= 0 && (dropT += dt / DROP_TIME) >= 1) dropT = -1;
         const d = dropT, dropping = d >= 0, boom = dropping ? 1 - d : 0;
         // The floor: each ring a band colour, stepping outward a ring every beat and pulsing; in a drop, a wave of the
@@ -407,5 +433,5 @@
       dispose() { radio.dispose(); }
     };
   };
-  BL.timechainRoomKinds.party = { plan, animate };
+  BL.timechainRoomKinds.party = { plan, animate, door };
 })();

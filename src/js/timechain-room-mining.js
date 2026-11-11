@@ -259,7 +259,34 @@
     ctx.fillText(v ? CH.freshness(reader.status("hashrate"), reader.at("hashrate"), now) : `${BAKED.when} · ${reader.status("hashrate")}`, cx, 690 * u);
   };
 
+  // ---------- its door ----------
+  // A museum's gallery doors: dark green lacquer leaves with brass-lined panels and brass push and kick plates, between
+  // stone pilasters under a cornice.
+  const door = {
+    casing: "#d8d2c4", frame: "#3a2a1a", header: "#2a2420", word: "#d4a63a", strip: null, chain: false,
+    leaf: "#1f3a2e", seam: "#0e1c16", plate: "#2a2420", face: "#d4a63a", mark: "#2a2420",
+    leafFace(side, H) {
+      const brass = "#b08a3a", panel = (x0, y0, x1, y1) => {
+        H.rect(x0, y0, x1, y0 + 0.02, brass, 0.15, 1); H.rect(x0, y1 - 0.02, x1, y1, brass, 0.15, 1);
+        H.rect(x0, y0, x0 + 0.02, y1, brass, 0.15, 1); H.rect(x1 - 0.02, y0, x1, y1, brass, 0.15, 1);
+      };
+      panel(-0.55, 0.45, 0.55, 1.45); panel(-0.55, 1.7, 0.55, 2.95);
+      H.rect(H.inner + side * 0.06, 1.05, H.inner + side * 0.16, 1.45, "#d4a63a", 0.25, 2);
+      H.rect(-0.75, 0.04, 0.75, 0.28, brass, 0.15, 1);
+    }
+  };
+  const doorTrim = (K, L) => {
+    const d = RM.doorway(L), z = d.Z - 0.14, x = d.W + d.F + 0.14;
+    for (const sx of [-1, 1]) {
+      K.box(0.22, d.head - 0.3, 0.16, "#cfc8b8", sx * x, (d.head - 0.3) / 2 + 0.15, z);
+      K.box(0.3, 0.15, 0.2, "#bdb6a6", sx * x, 0.075, z);
+      K.box(0.3, 0.15, 0.2, "#bdb6a6", sx * x, d.head - 0.075, z);
+    }
+    K.box(2 * x + 0.5, 0.14, 0.3, "#cfc8b8", 0, d.head + 0.07, d.Z - 0.15);
+  };
+
   const plan = (K, L) => {
+    doorTrim(K, L);
     const e0 = ROOMS.edgeEl(L, 0) / P.DEG, lo = e0 + 6, hi = e0 + 42, elOf = (lg) => lo + (lg - 6) / 16 * (hi - lo);
     K.wallColor("#1c1d22");
     K.render({ sky: [0.52, 0.5, 0.48], ground: [0.22, 0.2, 0.18], ambientFloor: 0.42, bloomStrength: 0.55 });
@@ -374,5 +401,5 @@
       }
     };
   };
-  BL.timechainRoomKinds.mining = { plan, animate };
+  BL.timechainRoomKinds.mining = { plan, animate, door };
 })();

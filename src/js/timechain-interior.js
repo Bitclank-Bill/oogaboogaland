@@ -182,20 +182,73 @@
       for (let i = 1; i <= steps; i++) if (!ROOMS.clearAt(L, ax + (bx - ax) * i / steps, az + (bz - az) * i / steps, r, guided, y, solids)) return false;
       return true;
     };
-    // What a body stands on: the floor (a raked hall's terrace), or a solid's top once its feet are up there, as far out
-    // as the solid stands in its way below, so stepping off the edge lands it clear.
+    // What a body stands on: the floor (a raked hall's terrace), or a solid's top once its feet are within a step of
+    // it, as far out as the solid stands in its way below, so stepping off the edge lands it clear.
     const groundAt = (x, z, feet, _, actor) => {
       let y = ROOMS.floorAt(L, x, z);
       const r = actor ? actor.bodyRadius : 0.35;
       for (let i = 0; i < tops.length; i++) {
         const o = tops[i];
-        if (feet < o.top - 0.02 || o.top <= y) continue;
+        if (feet < o.top - ROOMS.STEP_UP || o.top <= y) continue;
         if (o.r !== undefined) { if (Math.hypot(x - o.x, z - o.z) < o.r + r) y = o.top; continue; }
         // A box in its own turned frame, as clearAt reads it (timechain-rooms.js).
         const c = o.ry ? Math.cos(o.ry) : 1, s = o.ry ? Math.sin(o.ry) : 0, dx = x - o.x, dz = z - o.z;
         if (Math.abs(dx * c - dz * s) < o.hx + r && Math.abs(dx * s + dz * c) < o.hz + r) y = o.top;
       }
       return y;
+    };
+    // The island's shoulder pass (crew.js `shoulderStep`): walking into something taller than a step, the Ooga turns
+    // a shoulder and slides round it rather than stopping dead. The nearest solid its body would meet along its line
+    // within `reach`, as the solid's extents in the walker's frame (along the line, and across it to the right).
+    const SHOULDER_SIDE = 0.315;
+    const blocks = (o, feet) => !(o.top !== undefined && feet >= o.top - ROOMS.STEP_UP) && !(o.below !== undefined && feet + 1.8 <= o.below);
+    const shoulderObstacle = (cave, fx, fz, reach, out) => {
+      const p = cave.root.position, feet = p.y - cave.baseY, r = cave.bodyRadius;
+      let best = reach;
+      out.node = null;
+      for (let i = 0; i < solids.length; i++) {
+        const o = solids[i];
+        if (!blocks(o, feet)) continue;
+        const dx = o.x - p.x, dz = o.z - p.z, along = dx * fx + dz * fz, across = dx * fz - dz * fx;
+        let a0, a1, c0, c1, hit;
+        if (o.r !== undefined) {
+          const reachR = o.r + r;
+          if (Math.abs(across) >= reachR) continue;
+          a0 = along - o.r; a1 = along + o.r; c0 = across - o.r; c1 = across + o.r;
+          hit = along - Math.sqrt(reachR * reachR - across * across);
+        } else {
+          // Its corners: clearAt's turned frame (u across its x, v across its z) back into the world, then the walker's.
+          const c = o.ry ? Math.cos(o.ry) : 1, s = o.ry ? Math.sin(o.ry) : 0;
+          a0 = c0 = Infinity; a1 = c1 = -Infinity;
+          for (let k = 0; k < 4; k++) {
+            const u = k & 1 ? o.hx : -o.hx, v = k & 2 ? o.hz : -o.hz, wx = dx + u * c + v * s, wz = dz - u * s + v * c;
+            const ka = wx * fx + wz * fz, kc = wx * fz - wz * fx;
+            if (ka < a0) a0 = ka; if (ka > a1) a1 = ka; if (kc < c0) c0 = kc; if (kc > c1) c1 = kc;
+          }
+          if (c0 >= r || c1 <= -r) continue;
+          hit = a0 - r;
+        }
+        if (hit < -r || hit > best) continue;
+        // The crew sidesteps to a hub walker's width past either edge (SHOULDER_SIDE); a wider Ooga needs its own.
+        const wide = Math.max(0, r - SHOULDER_SIDE);
+        best = hit; out.node = o;
+        out.minAlong = a0; out.maxAlong = a1; out.minAcross = out.minContactAcross = c0 - wide; out.maxAcross = out.maxContactAcross = c1 + wide;
+      }
+      if (!out.node) return false;
+      // Only a pass that can be made: the sidestep the crew will take (away from the solid's middle) and the way on past
+      // it must both be walkable, or the Ooga stops at the solid as it always has, rather than wedge itself beside the
+      // next one.
+      const mid = (out.minAcross + out.maxAcross) / 2, side = Math.abs(mid) < 0.02 ? 1 : Math.sign(mid);
+      const across = side > 0 ? out.minAcross - SHOULDER_SIDE : out.maxAcross + SHOULDER_SIDE, on = out.maxAlong + r + 0.2;
+      const sx = p.x + fz * across, sz = p.z - fx * across;
+      if (!walkable(p.x, p.z, sx, sz, feet, cave.bodyHeight, cave) || !walkable(sx, sz, sx + fx * on, sz + fz * on, feet, cave.bodyHeight, cave)) out.node = null;
+      return !!out.node;
+    };
+    // The room's solids never move, and a pass lets go once the line past one is walkable.
+    const shoulderObstacleActive = () => true;
+    const shoulderPropClear = (cave, x, z) => {
+      const p = cave.root.position;
+      return walkable(p.x, p.z, x, z, p.y - cave.baseY, cave.bodyHeight, cave);
     };
     // Under the dome: the ceiling `margin` lower than it stands over (x, z), read that far further out too, so a
     // point keeps clear of the curve above. The vestibule's flat ceiling is the doorway's.
@@ -321,7 +374,9 @@
       go: (i) => { feeds.holdingsIndex = i; holdingsVersion++; sweep = true; }
     };
     // A kind's own moving parts, driven every frame from its nodes (timechain-room-*.js `animate`), its taps, and
-    // what it lets go of on leaving (`dispose`, the Block Party's radio).
+    // what it lets go of on leaving (`dispose`, the Block Party's radio). `built.ear` is where the visitor hears from
+    // (their Ooga, else the view's target), kept current every frame for a kind's sounds.
+    const ear = built.ear = { x: 0, y: 0, z: 0 };
     const motion = kind.animate ? kind.animate(built.nodes, built) : null;
 
     const NO_ACTORS = [], actors = [];
@@ -478,15 +533,27 @@
     // Over the door leaves' broad pick spheres, which reach across the pad from where its view stands, and over the
     // Ooga's own (priority 1), as the island keypad's keys are (scene-hub.js).
     if (lockPad) for (const key of lockPad.keys) target(key.node, { kind: "lockkey", key: key.key, priority: 2 }, key.key.length === 1 ? 0.055 : 0.09);
+    // A kind's own Space action where the Ooga stands and looks (the Temple's bell, gong and bowl): `motion.near(x, z,
+    // fx, fz)` names one, `{ key, label, hint, tap, run(hud) }`, or null.
+    const kindNear = () => {
+      if (!motion || !motion.near || !avatar || avatar.camp.seat || avatar.hop > 0) return null;
+      const p = avatar.root.position, c = camera.position, t = camera.target;
+      return motion.near(p.x, p.z, t.x - c.x, t.z - c.z);
+    };
     const useNear = () => {
       if (guide.stage) return false;
       if (nearExit()) { walkOut(); return true; }
       if (nearLock()) return lockEngage();
       const chair = nearChair();
-      return !!chair && people.sitPlayer(chair);
+      if (chair) return people.sitPlayer(chair);
+      const action = kindNear();
+      if (!action) return false;
+      action.run(hud);
+      return true;
     };
     if (playerName) {
-      const sharedCtx = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt, walkable, useNear, jetpackAllowed: () => false };
+      const sharedCtx = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt, walkable, useNear, jetpackAllowed: () => false,
+        shoulderObstacle, shoulderObstacleActive, shoulderPropClear };
       people = sharedCtx.crew = BL.crew.create(sharedCtx);
       pilot.bind(sharedCtx);
       avatar = people.cavemen.get(playerName);
@@ -749,18 +816,22 @@
       footsteps.update(driven);
       lockUpdate(dt);
       if (avatar && !guide.stage) {
-        const near = lock.on ? null : avatar.camp.seat ? "stand" : nearExit() ? "exit" : nearLock() ? "lock" : nearChair() ? "sit" : null;
+        let action = null;
+        const near = lock.on ? null : avatar.camp.seat ? "stand" : nearExit() ? "exit" : nearLock() ? "lock" : nearChair() ? "sit" : (action = kindNear()) ? action.key : null;
         if (near !== guide.near) {
           guide.near = near;
           if (near === "exit") { hud.setAct("EXIT"); hud.hint(COARSE ? "Tap EXIT to walk out" : "Space · Exit"); }
           else if (near === "lock") { hud.setAct(isLocked() ? "UNLOCK" : "LOCK"); hud.hint(COARSE ? "Tap to use the room's lock" : isLocked() ? "Space · Unlock the room" : "Space · Lock the room"); }
           else if (near === "sit") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
           else if (near === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
+          else if (action) { hud.setAct(action.label); hud.hint(COARSE ? action.tap : action.hint); }
           else pilot.showAct();
         }
       }
       if ((modeWait -= dt) <= 0) { modeWait = 1; showMode(); }
       paintNext();
+      const heard = avatar ? avatar.root.position : camera.target;
+      ear.x = heard.x; ear.y = heard.y; ear.z = heard.z;
       if (motion) motion.update(dt, elapsed);
       stepTweens(dt);
       fx.update(dt, elapsed);
