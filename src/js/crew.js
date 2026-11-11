@@ -1013,7 +1013,7 @@
         (slungClub ? slingY : raisedPrimary ? -0.625 : -0.62) * h,
         (slungClub ? -0.3 : raisedPrimary ? 0.15 : 0.08) * h);
       setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : raisedPrimary ? 0 : cave.clubCarry.x,
-        0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
+        slungClub || raisedPrimary ? 0 : cave.clubCarry.y || 0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
     }
     if (parts.chukTrail && !twirling) {
       for (let i = 0; i < parts.chukTrail.length; i++) parts.chukTrail[i].visible = false;
@@ -1843,7 +1843,7 @@
       }
       parts.club.quaternion = null;
       setVec(parts.club.position, 0, -0.62 * cave.traits.height, 0.08 * cave.traits.height);
-      setVec(parts.club.rotation, cave.clubRest.x, 0, cave.clubRest.z);
+      setVec(parts.club.rotation, cave.clubRest.x, cave.clubRest.y || 0, cave.clubRest.z);
       rest.visible = false;
       if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
     };
