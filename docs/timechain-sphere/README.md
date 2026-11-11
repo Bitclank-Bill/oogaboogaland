@@ -45,7 +45,7 @@ Byte-level exception: the portable single file (`oogaboogaland.html`) and the so
 | 4 | Fireside Lounge: sofas round a fire pit under the Milky Way | 9 m |
 | 5 | Proof of Work-out: exercise bikes facing a mountain sunrise | 12 m |
 | 6 | The Observatory: a telescope under a slit to the night sky | 12 m |
-| 7 | The Mining Museum: miners from Satoshi's CPU to today's ASICs under the hashrate's history | 15 m |
+| 7 | The Mining Museum: miners from Satoshi's CPU (one high-end 2009 desktop, as Sergio Demian Lerner's Patoshi research reads it) to today's ASICs under the hashrate's history, each opening up close in 3D with all its stats and sources (`model-viewer.js`) | 15 m |
 | 8 | Lecture Hall: raked rows facing a stage, a slide on the dome | 15 m |
 | 9 | Movie Theater: recliners on a steep rake under a dome that is all picture | 20 m |
 

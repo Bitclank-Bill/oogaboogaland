@@ -3,8 +3,10 @@
 // scale wrapped round the room, from 2009 by the door on the left to today on the right, shaded by era (CPU, GPU,
 // FPGA, ASIC) right over that era's exhibits, the hash units labelled over the door where the chart starts and ends;
 // the crown spells today's rate out, live from mempool.space when it can read it. Eleven exhibits stand round a ring
-// in date order, each a model (1.6 times life size) on a plinth with its plaque; a tap opens the plaques as a board.
-// A big S21 turns slowly on a plinth in the middle.
+// in date order, each a model (1.6 times life size) on a plinth with its plaque; a tap, or Space in front of one,
+// opens it in the model viewer (`model-viewer.js`), up close in 3D beside all its stats and sources. Satoshi's
+// machine is the one Sergio Demian Lerner's Patoshi research points to: a single high-end 2009 desktop, its CPU
+// sweeping five nonce ranges at once. A big S21 turns slowly on a plinth in the middle.
 (() => {
   "use strict";
   const BL = window.BL;
@@ -17,22 +19,88 @@
     blade: "#41454c", hub: "#7a8089", led: "#3ce07a", cable: "#1d6fd6", label: "#e8e8ea"
   };
 
-  // ---------- what the museum says (checked against the Bitcoin Wiki's hardware tables, the makers' specifications
-  // and mempool.space's hashrate history) ----------
-  // Each exhibit: its year (placing it on the ring and the dome), the plaque's title, name, line and three stats, and
-  // its joules a terahash for the plaque's efficiency scale (none for the pool, which is an idea, not a machine).
+  // ---------- what the museum says (checked against Sergio Demian Lerner's research for Satoshi's machine, the Bitcoin
+  // Wiki's hardware tables, the makers' specifications and mempool.space's hashrate history) ----------
+  // Each exhibit: its year (placing it on the ring and the dome), the plaque's title, name, line and three stats, its
+  // joules a terahash for the plaque's efficiency scale (none for the pool, which is an idea, not a machine), and for
+  // the viewer a longer account (`about`), all its stats (`specs`), a note and its sources.
+  const SRC = {
+    lerner: { href: "https://bitslog.com/2020/08/22/the-patoshi-mining-machine/", label: "Lerner · The Patoshi Mining Machine (2020)" },
+    deniers: { href: "https://bitslog.com/2019/04/16/the-return-of-the-deniers-and-the-revenge-of-patoshi/", label: "Lerner · The Revenge of Patoshi (2019)" },
+    gpu: { href: "https://en.bitcoin.it/wiki/Non-specialized_hardware_comparison", label: "Bitcoin Wiki · non-specialized hardware" },
+    hw: { href: "https://en.bitcoin.it/wiki/Mining_hardware_comparison", label: "Bitcoin Wiki · mining hardware" },
+    avalon: { href: "https://en.bitcoin.it/wiki/Avalon1", label: "Bitcoin Wiki · Avalon1" },
+    s21: { href: "https://support.bitmain.com/hc/en-us/articles/23794895251609-S21-Specification", label: "Bitmain · S21 specification" },
+    xp: { href: "https://support.bitmain.com/hc/en-us/articles/34523540504857-S21-XP-Hyd-Specification", label: "Bitmain · S21 XP Hyd specification" },
+    hashrate: { href: "https://mempool.space/graphs/mining/hashrate-difficulty", label: "mempool.space · network hashrate" }
+  };
   const MINERS = [
-    { year: 2009.1, title: "CPU", name: "The first blocks", text: "Desktop processors, including Satoshi's, mined the first blocks. Through 2009 the whole network averaged about 5 MH/s.", stats: [["Hashrate", "a few MH/s"], ["Power", "~100 W"], ["J/TH", "~20,000,000"]], model: "cpu", jth: 2e7 },
-    { year: 2010.6, title: "GPU", name: "Graphics cards", text: "GPU miners arrived in 2010. A Radeon HD 5870 did about 350 MH/s.", stats: [["Hashrate", "~350 MH/s"], ["Power", "~190 W"], ["J/TH", "~550,000"]], model: "gpu", jth: 5.5e5 },
-    { year: 2010.95, title: "POOLS", name: "Mining pools", text: "Slush's pool found its first block in December 2010: miners share the work and split the reward for steadier pay.", stats: [["Idea", "share the work"], ["Pay", "small, steady"], ["Today", "most hashrate"]], model: "pool", jth: null },
-    { year: 2011.6, title: "FPGA", name: "FPGA boards", text: "Programmable chips: over half a GPU's hashrate on a twentieth of its power.", stats: [["Hashrate", "~215 MH/s"], ["Power", "~10 W"], ["J/TH", "~46,000"]], model: "fpga", jth: 4.6e4 },
-    { year: 2013.05, title: "ASIC", name: "Avalon and Block Erupter", text: "The first chips made only for SHA-256. Avalon's first batch shipped in January 2013.", stats: [["Avalon", "~66 GH/s"], ["USB stick", "333 MH/s"], ["J/TH", "~9,400"]], model: "avalon", jth: 9400 },
-    { year: 2016.4, title: "S9", name: "Antminer S9", text: "The workhorse of its era, still hashing in places years later.", stats: [["Hashrate", "14 TH/s"], ["Power", "1,375 W"], ["J/TH", "98"]], model: "s9", jth: 98 },
-    { year: 2019.3, title: "S17", name: "Antminer S17 Pro", text: "7 nm chips pass 50 TH/s in one box.", stats: [["Hashrate", "53 TH/s"], ["Power", "2,094 W"], ["J/TH", "39.5"]], model: "s17", jth: 39.5 },
-    { year: 2020.4, title: "S19", name: "Antminer S19 Pro", text: "Over 100 TH/s, shipping around the 2020 halving.", stats: [["Hashrate", "110 TH/s"], ["Power", "3,250 W"], ["J/TH", "29.5"]], model: "s19", jth: 29.5 },
-    { year: 2023.85, title: "S21", name: "Antminer S21", text: "200 TH/s in one box, below 20 joules a terahash.", stats: [["Hashrate", "200 TH/s"], ["Power", "3,500 W"], ["J/TH", "17.5"]], model: "s21", jth: 17.5 },
-    { year: 2024.7, title: "BITAXE", name: "Bitaxe Gamma", text: "An open-source home miner the size of a hand: one S21 Pro chip on the power of a desk lamp.", stats: [["Hashrate", "~1.2 TH/s"], ["Power", "~18 W"], ["J/TH", "~15"]], model: "bitaxe", jth: 15 },
-    { year: 2024.9, title: "HYDRO", name: "Antminer S21 XP Hydro", text: "Water-cooled for warehouses and heat reuse.", stats: [["Hashrate", "473 TH/s"], ["Power", "5,676 W"], ["J/TH", "12"]], model: "hydro", jth: 12 }
+    { year: 2009.1, title: "CPU", name: "Satoshi's computer", model: "cpu", jth: 2e7,
+      text: "One high-end 2009 CPU, five threads at once: the first blocks as Sergio Demian Lerner reads them.",
+      stats: [["Hashrate", "~7-20 MH/s"], ["Power", "~200 W"], ["J/TH", "~10-29 million"]],
+      about: "Sergio Demian Lerner found the Patoshi pattern in the earliest blocks, the miner most think was Satoshi. In 2020 he showed it swept five nonce ranges in parallel, each in order, rarely touching the timestamp: multi-threading on one machine, not some fifty PCs. A single high-end desktop or server of 2009 running a tuned miner could have mined every Patoshi block, and his own test CPU runs about as fast as the Intel Core i7-965 Extreme, 2009's fastest desktop chip. He links Patoshi to Satoshi by evidence, not proof.",
+      specs: [["Processor", "Intel Core i7-965 Extreme class (Nehalem, 45 nm)"], ["Cores", "4 cores, 8 threads, 3.2 GHz"], ["Mining", "5 threads, each sweeping its own fifth of the nonces"], ["Hashrate", "~7 MH/s plain, ~20 MH/s with 4-way SSE2"], ["Lerner's test", "a difficulty-1 block every 619 s, 219 s with SSE2"], ["CPU power", "130 W (TDP); the PC ~200 W"], ["Network, 2009", "about 5 MH/s in all"], ["Machines", "one, by Lerner's reading"]],
+      note: "Hashrates worked out from Lerner's benchmark times, at 2^32 hashes a difficulty-1 block. The model is a high-end 2009 desktop running Bitcoin 0.1.", sources: [SRC.lerner, SRC.deniers, SRC.hashrate] },
+    { year: 2010.6, title: "GPU", name: "Radeon HD 5870 rig", model: "gpu", jth: 4.7e5,
+      text: "Graphics cards took over in 2010. Tuned, one Radeon HD 5870 hashed about 400 MH/s.",
+      stats: [["Per card", "~400 MH/s"], ["Power", "188 W"], ["J/TH", "~470,000"]],
+      about: "OpenCL miners in 2010 put SHA-256 on a graphics card's 1,600 simple cores. Rigs of four or more cards on an open frame, fed by riser cables, outhashed the whole 2009 network hundreds of times over, and mining moved from the desktop to the spare room.",
+      specs: [["Card", "ATI Radeon HD 5870 (Cypress, 40 nm, 2009)"], ["Cores", "1,600 stream processors, 850 MHz"], ["Hashrate", "313-481 MH/s by miner and clocks"], ["Board power", "188 W"], ["This rig", "4 cards: ~1.6 GH/s on ~900 W"], ["Miners", "poclbm, Phoenix, DiabloMiner"]],
+      note: "Hashrates from the Bitcoin Wiki's table of measured results.", sources: [SRC.gpu] },
+    { year: 2010.95, title: "POOLS", name: "Mining pools", model: "pool", jth: null,
+      text: "Slush's pool found its first block in December 2010: miners share the work and split the reward for steadier pay.",
+      stats: [["Idea", "share the work"], ["Pay", "small, steady"], ["Today", "most hashrate"]],
+      about: "Alone, a small miner could wait months for a block. A pool hands everyone the same block to work on and counts easier near-misses, shares, as proof of each one's work; when anyone finds the block, the reward is split by shares. Slush's pool was the first, in late 2010.",
+      specs: [["First", "Slush's pool, first block December 2010"], ["Shares", "easier hashes that prove the work"], ["Pay", "each reward split by shares"], ["Today", "nearly all hashrate mines in pools"]],
+      note: "A pool is an idea, not a machine: here a rack of servers and its switch.", sources: [] },
+    { year: 2011.75, title: "FPGA", name: "X6500 FPGA miner", model: "fpga", jth: 4.3e4,
+      text: "Two programmable Spartan-6 chips: a graphics card's hashrate on a tenth of its power.",
+      stats: [["Hashrate", "400 MH/s"], ["Power", "17.2 W"], ["J/TH", "~43,000"]],
+      about: "FPGAs are chips whose logic is wired by a program. Wired for SHA-256 and nothing else, two of them matched a graphics card's hashrate on the power of a light bulb, the first step from general-purpose hardware toward chips made only to mine.",
+      specs: [["Chips", "2 × Xilinx Spartan-6 LX150 FPGA"], ["Hashrate", "400 MH/s"], ["Power", "17.2 W"], ["Efficiency", "23 MH/J"], ["Price", "$550 (2011)"]],
+      note: "Figures from the Bitcoin Wiki's mining hardware table.", sources: [SRC.hw] },
+    { year: 2013.05, title: "ASIC", name: "Avalon and Block Erupter", model: "avalon", jth: 9400,
+      text: "The first chips made only for SHA-256. Avalon's first batch shipped in January 2013.",
+      stats: [["Avalon", "66.3 GH/s"], ["USB stick", "~336 MH/s"], ["J/TH", "~9,400"]],
+      about: "An ASIC does one thing. Avalon's A3256, made at 110 nm, was the first Bitcoin ASIC on sale; its first batch of miners shipped in January 2013, and ASICMiner's Block Erupter put an ASIC on a USB stick the same year. From here on, only chips made to mine could keep up.",
+      specs: [["Avalon Batch 1", "66.3 GH/s on 620 W, $1,299"], ["Its chip", "A3256, 110 nm (TSMC)"], ["First shipped", "January 2013"], ["Block Erupter USB", "~336 MH/s on ~2.6 W"], ["Efficiency", "Avalon ~9.4 J/GH, the stick ~7.6 J/GH"]],
+      note: "Figures from the Bitcoin Wiki.", sources: [SRC.hw, SRC.avalon] },
+    { year: 2016.4, title: "S9", name: "Antminer S9", model: "s9", jth: 98,
+      text: "The workhorse of its era, still hashing in places years later.",
+      stats: [["Hashrate", "14 TH/s"], ["Power", "1,375 W"], ["J/TH", "98"]],
+      about: "Bitmain's S9 sold in vast numbers from 2016: three hash boards in an aluminium shell, a fan at each end and a power supply beside it. It carried the network through the 2017 run and kept hashing wherever power was cheap long after.",
+      specs: [["Hashrate", "13.5-14 TH/s"], ["Power", "~1,375 W"], ["Efficiency", "~98 J/TH"], ["Chips", "189 × BM1387 (16 nm)"], ["Size", "350 × 135 × 158 mm"], ["Weight", "4.2 kg"], ["Power supply", "separate (APW3)"], ["Released", "2016"]],
+      note: "Model 1.6 times life size, its power supply beside it.", sources: [SRC.hw] },
+    { year: 2019.3, title: "S17", name: "Antminer S17 Pro", model: "s17", jth: 39.5,
+      text: "7 nm chips pass 50 TH/s in one box.",
+      stats: [["Hashrate", "53 TH/s"], ["Power", "2,094 W"], ["J/TH", "39.5"]],
+      about: "The S17 moved Bitmain to 7 nm chips and nearly quadrupled the S9's hashrate in a box hardly bigger, at under half its joules a terahash.",
+      specs: [["Hashrate", "53 TH/s"], ["Power", "2,094 W"], ["Efficiency", "39.5 J/TH"], ["Chips", "BM1397 (7 nm)"], ["Size", "~298 × 178 × 296 mm"], ["Weight", "~9.5 kg"], ["Released", "2019"]],
+      note: "Size and weight as commonly listed; model 1.6 times life size.", sources: [SRC.hw] },
+    { year: 2020.4, title: "S19", name: "Antminer S19 Pro", model: "s19", jth: 29.5,
+      text: "Over 100 TH/s, shipping around the 2020 halving.",
+      stats: [["Hashrate", "110 TH/s"], ["Power", "3,250 W"], ["J/TH", "29.5"]],
+      about: "The S19 Pro set the shape miners still have: a long box with two fans at each end and the power supply on top, past 100 TH/s for the first time.",
+      specs: [["Hashrate", "110 TH/s"], ["Power", "3,250 W"], ["Efficiency", "29.5 J/TH"], ["Chips", "7 nm"], ["Size", "400 × 195.5 × 290 mm"], ["Weight", "13.2-14.4 kg"], ["Released", "2020"]],
+      note: "Weight varies by batch; model 1.6 times life size.", sources: [SRC.hw] },
+    { year: 2023.85, title: "S21", name: "Antminer S21", model: "s21", jth: 17.5,
+      text: "200 TH/s in one box, below 20 joules a terahash.",
+      stats: [["Hashrate", "200 TH/s"], ["Power", "3,500 W"], ["J/TH", "17.5"]],
+      about: "5 nm chips in the S19's shape: twice the hashrate, below 20 joules a terahash. One S21 outhashes the whole 2012 network about 13 times over.",
+      specs: [["Hashrate", "200 TH/s"], ["Power", "3,500 W"], ["Efficiency", "17.5 J/TH"], ["Chips", "BM1368 (5 nm)"], ["Size", "400 × 195 × 290 mm"], ["Weight", "15.4 kg"], ["Released", "late 2023"]],
+      note: "From Bitmain's specification; model 1.6 times life size.", sources: [SRC.s21] },
+    { year: 2024.7, title: "BITAXE", name: "Bitaxe Gamma", model: "bitaxe", jth: 15,
+      text: "An open-source home miner the size of a hand: one S21 Pro chip on the power of a desk lamp.",
+      stats: [["Hashrate", "~1.2 TH/s"], ["Power", "~17-20 W"], ["J/TH", "~15"]],
+      about: "Open hardware and open firmware: one of Bitmain's newest chips on a board the size of a hand, a little screen and Wi-Fi. Too small to earn much, it mines solo for the lottery of a whole block, and anyone can build one.",
+      specs: [["Hashrate", "~1.2 TH/s"], ["Power", "~17-20 W"], ["Efficiency", "~15 J/TH"], ["Chip", "one BM1370 (the S21 Pro's)"], ["Controller", "ESP32-S3, Wi-Fi"], ["Firmware", "open source (AxeOS)"], ["Use", "solo mining at home"]],
+      note: "Figures vary with tuning; model 1.6 times life size.", sources: [] },
+    { year: 2024.9, title: "HYDRO", name: "Antminer S21 XP Hydro", model: "hydro", jth: 12,
+      text: "Water-cooled for warehouses and heat reuse.",
+      stats: [["Hashrate", "473 TH/s"], ["Power", "5,676 W"], ["J/TH", "12"]],
+      about: "No fans: water through cold plates carries the heat away, quietly, to a dry cooler outside or to heat a building. Nearly half a petahash in a box, at 12 joules a terahash.",
+      specs: [["Hashrate", "473 TH/s"], ["Power", "5,676 W"], ["Efficiency", "12.0 J/TH"], ["Cooling", "water, no fans"], ["Input", "380-415 V AC"], ["Size", "~410 × 170 × 209 mm"], ["Weight", "~13.8 kg"], ["Released", "2024"]],
+      note: "Power and hashrate from Bitmain; size and weight as listed by sellers.", sources: [SRC.xp] }
   ];
   // Network hashrate, log10 of hashes a second: mempool.space's daily estimates (/api/v1/mining/hashrate/all)
   // averaged over five weeks round each point, every quarter from January 2009 to November 2026.
@@ -60,134 +128,235 @@
   // Plinths (their top at TOP), and the big S21's scale.
   const TOP = 0.9, BIG = 2.2;
 
-  // ---------- the models, 1.6 times life size, each on its plinth facing -z (the ring's middle) ----------
-  // A fan on a face looking along `side` (-1 for -z): its plate, the dark hole, five blades and the hub.
-  const fan = (k, s, w, x, y, z, side) => {
-    const t = 0.04 * w, at = (d) => z + side * (t / 2 + d * w);
-    k.box(w * s, w * s, t * s, C.fanPlate, x * s, y, z * s);
-    k.cyl(0.45 * w * s, 0.45 * w * s, 0.01 * w * s, C.fanHole, x * s, y, at(0.01) * s, { rx: Math.PI / 2, seg: 16 });
-    for (let b = 0; b < 5; b++) {
-      const a = b * P.TAU / 5;
-      k.box(0.34 * w * s, 0.11 * w * s, 0.01 * w * s, C.blade, (x + Math.cos(a) * 0.2 * w) * s, y + Math.sin(a) * 0.2 * w * s, at(0.03) * s, { rz: a + 0.35 });
-    }
-    k.cyl(0.1 * w * s, 0.1 * w * s, 0.02 * w * s, C.hub, x * s, y, at(0.045) * s, { rx: Math.PI / 2, seg: 10 });
+  // ---------- the models, 1.6 times life size, each on its plinth with its front to -z (the ring's middle) ----------
+  // Real sizes in millimetres, scaled to the museum's by `mm`. Every label and screen is drawn in the island's letters
+  // as geometry, so the viewer (which draws faces alone) shows them as the hall does.
+  const mm = (v) => v * 1.6e-3;
+  const ANTMINER = {
+    s9: { len: 350, wid: 135, hei: 158, psu: "side", fans: 1, color: "#b8bec6", frame: "#8d939b", text: "S9" },
+    s17: { len: 298, wid: 178, hei: 296, psu: "top", fans: 2, color: "#aab0b8", frame: "#7f858d", text: "S17 PRO" },
+    s19: { len: 400, wid: 195.5, hei: 290, psu: "top", fans: 2, color: "#b4b9bf", frame: "#868c94", text: "S19 PRO" },
+    s21: { len: 400, wid: 195, hei: 290, psu: "top", fans: 2, color: "#7d838c", frame: "#555a62", text: "S21" },
+    hydro: { len: 410, wid: 170, hei: 209, psu: "in", fans: 0, color: "#3a3e45", frame: "#25282d", text: "S21 XP HYD" }
   };
-  // An ASIC's size as [length, width, height, colour], 1.6 times its real box.
-  const ASIC = { s9: [0.56, 0.22, 0.25, C.alu], s17: [0.9, 0.31, 0.46, "#aab0b8"], s19: [0.64, 0.31, 0.46, C.alu], s21: [0.64, 0.31, 0.46, "#8a9099"], hydro: [0.66, 0.27, 0.33, "#3a3e45"] };
-  const LABEL = { s9: "S9", s17: "S17 PRO", s19: "S19 PRO", s21: "S21", hydro: "S21 XP HYD" };
-  // A miner in kit `k`, standing at height `y`, `s` times the museum's size. Returns where its own pictures go: an
-  // ASIC's top label, the desktop's screen.
+  // A miner in kit `k`, standing at height `y`, `s` times the museum's size.
   const model = (k, kind, s = 1, y = 0) => {
     const B = (w, h, d, color, x, yy, z, o) => k.box(w * s, h * s, d * s, color, x * s, y + yy * s, z * s, o);
     const Y = (rt, rb, h, color, x, yy, z, o) => k.cyl(rt * s, rb * s, h * s, color, x * s, y + yy * s, z * s, o);
-    const lit = (w, h, d, color, x, yy, z) => B(w, h, d, color, x, yy, z, { emissive: 0.95, glow: true });
+    const R = (rr, r, color, x, yy, z, o) => k.torus(rr * s, r * s, color, x * s, y + yy * s, z * s, o);
+    const lit = (w, h, d, color, x, yy, z, e = 0.95) => B(w, h, d, color, x, yy, z, { emissive: e, glow: true });
+    // Words in the island's letters, `px` a pixel, facing -z (turned by `ry`) about (x, yy, z).
+    const say = (text, px, color, x, yy, z, ry = 0, e = 0.25) => k.add(RM.helpers.litWord(text, px * s, color, e), x * s, y + yy * s, z * s, { ry });
+    // A fan on an end facing `dir` (-1 toward -z, 1 toward +z), `w` across, its middle at (x, yy) and that end at z: its
+    // square frame, the dark well, seven swept blades round the hub, and the wire guard's rings and spokes.
+    const fan = (w, x, yy, z, dir) => {
+      const at = (t) => z + dir * t, round = { rx: Math.PI / 2 };
+      B(w, w, 0.01, C.fanPlate, x, yy, at(0.005));
+      Y(0.46 * w, 0.46 * w, 0.004, C.fanHole, x, yy, at(0.011), { ...round, seg: 18 });
+      for (let b = 0; b < 7; b++) { const a = b / 7 * P.TAU; B(0.3 * w, 0.11 * w, 0.004, C.blade, x + Math.cos(a) * 0.24 * w, yy + Math.sin(a) * 0.24 * w, at(0.015), { rz: a + 0.6 }); }
+      Y(0.13 * w, 0.13 * w, 0.008, C.hub, x, yy, at(0.019), { ...round, seg: 12 });
+      for (const r of [0.2, 0.33, 0.45]) R(r * w, 0.004, "#60656c", x, yy, at(0.024), { ...round, seg: 24, sides: 3 });
+      for (let b = 0; b < 4; b++) B(0.9 * w, 0.006, 0.004, "#60656c", x, yy, at(0.024), { rz: b * Math.PI / 4 });
+    };
+    // A label: a white plate with ANTMINER over the model, on the face toward -z at (x, yy, z), turned by `ry`.
+    const label = (text, w, x, yy, z, ry = 0) => {
+      const c = Math.cos(ry), sn = Math.sin(ry), along = (d) => [x - sn * d, z - c * d];
+      const [px, pz] = along(0.004);
+      k.add(BL.models.box({ w: w * s, h: w * 0.42 * s, d: 0.004 * s, color: C.label }), px * s, y + yy * s, pz * s, { ry });
+      const [tx, tz] = along(0.007);
+      say("ANTMINER", w / 60, "#17110a", tx, yy + w * 0.08, tz, ry, 0.1);
+      say(text, w / Math.max(40, text.length * 6.5), "#17110a", tx, yy - w * 0.09, tz, ry, 0.1);
+    };
+
     if (kind === "cpu") {
-      B(0.22, 0.46, 0.46, C.beige, -0.28, 0.23, 0.05);
-      B(0.14, 0.02, 0.01, "#2a2620", -0.28, 0.36, -0.184);
-      lit(0.02, 0.02, 0.01, C.led, -0.21, 0.07, -0.184);
-      B(0.42, 0.36, 0.38, C.beige, 0.14, 0.18, 0.06);
-      B(0.3, 0.26, 0.2, C.beige, 0.14, 0.17, 0.32);
-      B(0.36, 0.02, 0.14, C.beige, 0.14, 0.01, -0.3);
-      for (let r = 0; r < 3; r++) B(0.32, 0.006, 0.03, "#a89f88", 0.14, 0.022, -0.34 + r * 0.04);
-      return { screen: { w: 0.3 * s, h: 0.24 * s, x: 0.14 * s, y: y + 0.2 * s, z: -0.136 * s } };
+      // A high-end 2009 desktop: a black tower, its side open on an X58 board with a tower cooler on the CPU, RAM, a
+      // graphics card and the power supply; a 20-inch screen running Bitcoin 0.1 with Generate Coins on; keyboard
+      // and mouse.
+      const tx = -0.42, tw = mm(205), th = mm(470), td = mm(470), side = tx - tw / 2;
+      B(tw, th, td, "#16171a", tx, th / 2, 0);
+      B(tw * 0.96, th * 0.98, 0.012, "#0e0f11", tx, th / 2, -td / 2 - 0.006);
+      for (let i = 0; i < 2; i++) { B(tw * 0.84, mm(42), 0.008, "#2a2c30", tx, th - mm(60) - i * mm(48), -td / 2 - 0.014); B(tw * 0.6, 0.004, 0.004, "#55585e", tx, th - mm(60) - i * mm(48), -td / 2 - 0.019); }
+      for (let i = 0; i < 6; i++) B(tw * 0.84, 0.006, 0.006, "#22242a", tx, mm(70) + i * mm(30), -td / 2 - 0.014);
+      R(0.022, 0.005, "#2b6fd8", tx, th - mm(170), -td / 2 - 0.016, { rx: Math.PI / 2, seg: 14, sides: 3, emissive: 0.9, glow: true });
+      lit(0.008, 0.008, 0.004, "#ff9a2a", tx + 0.05, th - mm(170), -td / 2 - 0.016);
+      // The open side: the board, the CPU's cooler (fins and fan), six blue sticks of RAM, the graphics card and the
+      // power supply at the foot, the case's frame round the opening.
+      const sx = side - 0.003;
+      B(0.004, th * 0.86, td * 0.86, "#0d0e10", sx + 0.006, th * 0.5, 0);
+      B(0.006, mm(305), mm(244), "#1c2b22", sx + 0.01, th * 0.58, mm(20));
+      B(0.012, mm(60), mm(60), "#9aa0a8", sx + 0.004, th * 0.7, -mm(10));
+      for (let f = 0; f < 9; f++) B(0.07, mm(120), 0.003, "#c9ccd2", sx - 0.03, th * 0.7, -mm(50) + f * mm(10));
+      Y(mm(55), mm(55), 0.01, "#202226", sx - 0.068, th * 0.7, -mm(10), { rz: Math.PI / 2, seg: 16 });
+      Y(mm(18), mm(18), 0.012, "#3a3d42", sx - 0.072, th * 0.7, -mm(10), { rz: Math.PI / 2, seg: 10 });
+      for (let r = 0; r < 6; r++) B(0.012, mm(130), 0.006, "#2f6fd6", sx - 0.004, th * 0.72, mm(70) + r * mm(9));
+      B(0.03, mm(110), mm(260), "#1a1a1c", sx - 0.012, th * 0.4, mm(10));
+      B(0.032, 0.006, mm(260), "#c8102e", sx - 0.013, th * 0.4 + mm(52), mm(10));
+      B(0.008, mm(86), mm(150), "#2a2c30", sx + 0.004, mm(60), mm(140));
+      for (const [h, d, yy, z] of [[th, 0.02, th / 2, -td / 2 + 0.01], [th, 0.02, th / 2, td / 2 - 0.01], [0.02, td, th - 0.01, 0], [0.02, td, 0.01, 0]]) B(0.012, h, d, "#26272b", sx, yy, z);
+      // The screen on its stand, Bitcoin 0.1 lit on it.
+      const mx = 0.2, mw = mm(470), mh = mm(320), my = mm(110) + mh / 2, mz = 0.06;
+      B(mm(240), 0.012, mm(190), "#141518", mx, 0.006, mz + 0.05);
+      B(mm(50), mm(110), mm(30), "#141518", mx, mm(60), mz + 0.07);
+      B(mw, mh, 0.03, "#121316", mx, my, mz);
+      // Its layers stand a clear step apart and the window shares the screen's middle, so a face-sorting renderer (the
+      // viewer, Canvas 2D) keeps them in order from any side.
+      B(mw - 0.04, mh - 0.05, 0.004, "#0b0e12", mx, my, mz - 0.019);
+      const sw = mw - 0.06, wh = mh - 0.09, top = my + wh / 2 - 0.015, left = mx + sw / 2;
+      lit(sw, wh, 0.002, "#d8d4c8", mx, my, mz - 0.028, 0.6);
+      lit(sw, 0.03, 0.002, "#2b5fae", mx, top, mz - 0.034, 0.8);
+      say("BITCOIN", 0.0045, "#ffffff", left - 0.12, top, mz - 0.037, 0, 0.9);
+      say("BALANCE  50.00", 0.0042, "#1a1a1a", mx, top - 0.06, mz - 0.037, 0, 0.5);
+      say("GENERATE COINS: ON", 0.0042, "#1a1a1a", mx, top - 0.1, mz - 0.037, 0, 0.5);
+      say("BLOCKS  1207", 0.0042, "#1a1a1a", mx, top - 0.14, mz - 0.037, 0, 0.5);
+      // The keyboard, its keys in rows, and the mouse.
+      const kx = 0.14, kz = -0.32;
+      B(mm(450), 0.02, mm(150), "#1a1b1e", kx, 0.01, kz);
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 15; c++) B(mm(23), 0.008, mm(22), "#2c2e33", kx - mm(200) + c * mm(28.5), 0.024, kz - mm(58) + r * mm(28));
+      B(mm(65), 0.022, mm(110), "#1a1b1e", kx + mm(330), 0.011, kz + 0.01);
+      return {};
     }
     if (kind === "gpu") {
-      for (const [x, z] of [[-0.36, -0.2], [0.36, -0.2], [-0.36, 0.25], [0.36, 0.25]]) B(0.03, 0.42, 0.03, C.alu, x, 0.21, z);
-      B(0.75, 0.03, 0.5, C.alu, 0, 0.42, 0.02);
-      B(0.75, 0.02, 0.5, C.pcb, 0, 0.01, 0.02);
-      B(0.16, 0.08, 0.14, C.dark, 0.26, 0.475, 0.12);
-      for (let i = 0; i < 4; i++) {
-        const z = -0.15 + i * 0.12;
-        B(0.6, 0.2, 0.04, C.dark, 0, 0.22, z);
-        B(0.02, 0.22, 0.05, C.alu, -0.31, 0.22, z);
-        for (const x of [-0.15, 0.15]) fan(k, s, 0.15, x, y + 0.22 * s, z - 0.02, -1);
-      }
+      // An open aluminium frame: the board on the floor of it, four Radeon HD 5870s standing on riser cables, the power
+      // supply at the side.
+      for (const [x, z] of [[-0.3, -0.27], [0.3, -0.27], [-0.3, 0.27], [0.3, 0.27]]) B(0.025, 0.46, 0.025, C.alu, x, 0.23, z);
+      for (const z of [-0.27, 0.27]) B(0.62, 0.02, 0.025, C.alu, 0, 0.45, z);
+      for (const x of [-0.3, 0.3]) B(0.025, 0.02, 0.56, C.alu, x, 0.45, 0);
+      B(0.6, 0.012, 0.56, "#9aa0a8", 0, 0.006, 0);
+      B(mm(244), 0.012, mm(305), "#1c2b22", -0.05, 0.02, 0.02);
+      for (let r = 0; r < 4; r++) B(0.012, mm(120), 0.008, "#2f6fd6", 0.06, 0.06, -0.12 + r * 0.012);
+      B(mm(150), mm(86), mm(160), "#2a2c30", 0.44, mm(43), 0.1);
+      fan(mm(80), 0.44, mm(43), 0.1 - mm(80), -1);
+      [-0.18, -0.06, 0.06, 0.18].forEach((x) => {
+        const cl = mm(281), ch = mm(111), cw = mm(38), cy = 0.24 + ch / 2;
+        B(cw, ch, cl, "#1a1a1c", x, cy, 0);
+        B(cw + 0.002, 0.008, cl, "#c8102e", x, cy + ch / 2 - 0.012, 0);
+        B(0.006, ch + 0.02, 0.012, "#b8bec6", x, cy, -cl / 2 - 0.006);
+        for (let p = 0; p < 2; p++) B(0.008, 0.016, 0.03, "#0c0c0e", x, cy - 0.04 + p * 0.03, -cl / 2 - 0.016);
+        Y(mm(36), mm(36), 0.006, "#0c0c0e", x - cw / 2 - 0.002, cy, cl / 2 - mm(60), { rz: Math.PI / 2, seg: 16 });
+        Y(mm(12), mm(12), 0.008, "#3a3d42", x - cw / 2 - 0.004, cy, cl / 2 - mm(60), { rz: Math.PI / 2, seg: 10 });
+        for (let p = 0; p < 2; p++) B(0.012, 0.012, 0.022, "#0c0c0e", x, cy + ch / 2 + 0.006, cl / 2 - mm(30) - p * 0.03);
+        B(0.012, 0.22, 0.004, "#b38b3a", x, 0.13, 0.05);
+      });
       return {};
     }
     if (kind === "pool") {
-      B(0.32, 0.08, 0.2, C.dark, 0, 0.04, 0);
-      lit(0.24, 0.02, 0.02, C.led, 0, 0.06, -0.101);
-      for (let i = 0; i < 6; i++) {
-        const a = i / 6 * P.TAU + 0.3, x = Math.sin(a) * 0.38, z = Math.cos(a) * 0.32;
-        B(0.12, 0.13, 0.12, C.beige, x, 0.065, z);
-        lit(0.03, 0.02, 0.01, C.led, x, 0.1, z - 0.061);
-        B(0.016, 0.016, Math.hypot(x, z) - 0.16, C.cable, x / 2, 0.02, z / 2, { ry: Math.atan2(x, z) });
+      // A small rack: two servers and the pool's switch, cables to four miners round its foot.
+      const rw = mm(330), rh = mm(370), rd = mm(300);
+      B(rw, rh, rd, "#1b1c20", 0, rh / 2, 0);
+      for (let u = 0; u < 3; u++) {
+        const yy = rh - 0.1 - u * mm(70);
+        B(rw * 0.92, mm(44), 0.01, u === 2 ? "#26292e" : "#2e3137", 0, yy, -rd / 2 - 0.005);
+        for (let l = 0; l < (u === 2 ? 12 : 3); l++) lit(0.008, 0.008, 0.004, l % 3 ? C.led : C.amber, -rw * 0.38 + l * (u === 2 ? 0.036 : 0.05), yy, -rd / 2 - 0.012);
+      }
+      for (let i = 0; i < 4; i++) {
+        const a = (i + 0.5) / 4 * P.TAU, x = Math.sin(a) * 0.42, z = Math.cos(a) * 0.36;
+        B(0.14, 0.12, 0.14, "#2a2c30", x, 0.06, z);
+        fan(0.09, x, 0.06, z - 0.07, -1);
+        lit(0.01, 0.01, 0.004, C.led, x + 0.05, 0.1, z - 0.072);
+        B(0.012, 0.012, Math.hypot(x, z) - 0.16, C.cable, x / 2, 0.012, z / 2, { ry: Math.atan2(x, z) });
       }
       return {};
     }
     if (kind === "fpga") {
-      for (let i = 0; i < 3; i++) {
-        const yy = 0.05 + i * 0.1;
-        B(0.42, 0.02, 0.3, C.pcb, 0, yy, 0);
-        B(0.1, 0.025, 0.1, C.chip, -0.08, yy + 0.02, 0);
-        B(0.06, 0.02, 0.06, C.chip, 0.12, yy + 0.02, 0.06);
-        lit(0.02, 0.012, 0.02, C.led, 0.17, yy + 0.016, -0.12);
-        for (const [x, z] of [[-0.19, -0.13], [0.19, -0.13], [-0.19, 0.13], [0.19, 0.13]]) Y(0.01, 0.01, 0.1, C.alu, x, yy - 0.05, z, { seg: 6 });
+      // Two X6500 boards on standoffs: each two Spartan-6 chips under finned heatsinks with fans, USB and power.
+      for (const z of [-0.12, 0.12]) {
+        const bw = mm(150), bd = mm(100), by = 0.05;
+        for (const [x, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) Y(0.006, 0.006, by, C.alu, x * bw * 0.44, by / 2, z + dz * bd * 0.42, { seg: 6 });
+        B(bw, 0.004, bd, "#18241c", 0, by, z);
+        for (const x of [-0.06, 0.06]) {
+          B(mm(40), 0.008, mm(40), "#c9ccd2", x, by + 0.008, z);
+          for (let f = 0; f < 5; f++) B(mm(40), 0.016, 0.003, "#c9ccd2", x, by + 0.02, z - mm(16) + f * mm(8));
+          fan(mm(40), x, by + 0.032, z, 1);
+        }
+        B(0.02, 0.012, 0.02, "#8a8f96", -bw / 2 + 0.012, by + 0.008, z - bd / 2 + 0.015);
+        B(0.016, 0.016, 0.022, "#0c0c0e", bw / 2 - 0.012, by + 0.01, z - bd / 2 + 0.015);
+        lit(0.006, 0.004, 0.006, C.led, 0, by + 0.004, z - bd / 2 + 0.01);
       }
       return {};
     }
     if (kind === "avalon") {
-      B(0.3, 0.44, 0.34, "#2b2b2e", -0.16, 0.22, 0);
-      lit(0.31, 0.04, 0.355, C.amber, -0.16, 0.33, 0);
-      for (let r = 0; r < 4; r++) B(0.22, 0.012, 0.01, "#121214", -0.16, 0.1 + r * 0.045, -0.172);
-      B(0.3, 0.03, 0.08, C.dark, 0.24, 0.015, 0);
+      // Avalon's first batch: a black steel box with a fan grille and the orange stripe; three Block Erupters in a hub.
+      const aw = mm(200), ah = mm(320), ad = mm(300), ax = -0.16;
+      B(aw, ah, ad, "#232327", ax, ah / 2, 0);
+      lit(aw + 0.004, 0.03, ad + 0.004, "#f28a1a", ax, ah - 0.06, 0, 0.9);
+      fan(aw * 0.82, ax, ah * 0.45, -ad / 2, -1);
+      for (let r = 0; r < 7; r++) B(0.004, 0.006, ad * 0.8, "#121214", ax + aw / 2 + 0.002, 0.08 + r * 0.05, 0);
+      say("AVALON", 0.006, "#f2f2f2", ax, ah - 0.11, -ad / 2 - 0.004, 0, 0.4);
+      B(0.012, 0.012, 0.012, "#0c0c0e", ax + 0.07, 0.05, -ad / 2 - 0.006);
+      // The USB hub and its sticks: blue boards, aluminium heatsinks, the plugs down in the hub.
+      B(mm(140), mm(22), mm(60), "#1a1b1e", 0.26, mm(11), 0);
       for (let i = 0; i < 3; i++) {
-        const x = 0.15 + i * 0.09;
-        B(0.045, 0.13, 0.02, "#2a5ab0", x, 0.095, 0);
-        B(0.05, 0.05, 0.03, "#c9a23a", x, 0.12, 0);
-        lit(0.01, 0.01, 0.005, C.led, x, 0.05, -0.012);
+        const x = 0.2 + i * 0.06, sy = mm(22) + mm(50);
+        B(mm(10), mm(100), mm(30), "#2556b4", x, sy, 0);
+        B(mm(14), mm(46), mm(26), "#c9a23a", x, sy + mm(10), 0);
+        for (let f = 0; f < 4; f++) B(mm(18), mm(40), 0.003, "#c9a23a", x, sy + mm(10), -mm(9) + f * mm(6));
+        lit(0.006, 0.006, 0.004, C.led, x, sy - mm(36), -mm(16));
       }
       return {};
     }
     if (kind === "bitaxe") {
-      for (const [x, z] of [[-0.09, -0.09], [0.09, -0.09], [-0.09, 0.09], [0.09, 0.09]]) Y(0.01, 0.01, 0.06, C.alu, x, 0.03, z, { seg: 6 });
-      B(0.2, 0.012, 0.2, "#1b3a6b", 0, 0.066, 0);
-      B(0.1, 0.03, 0.1, C.alu, 0, 0.087, 0);
-      for (let f = 0; f < 5; f++) B(0.1, 0.03, 0.006, C.alu, 0, 0.115, -0.04 + f * 0.02);
-      Y(0.045, 0.045, 0.02, C.dark, 0, 0.14, 0, { seg: 16 });
-      lit(0.06, 0.035, 0.008, C.led, 0.05, 0.09, -0.098);
-      B(0.03, 0.02, 0.03, "#2b2b2e", -0.07, 0.082, -0.08);
+      // The Bitaxe Gamma: its board on standoffs, the chip's heatsink and fan, the ESP32 module, the little screen
+      // (hashrate on it), the power jack and the USB port.
+      const bw = mm(100), bd = mm(76), by = 0.03;
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) Y(0.006, 0.006, by, C.alu, x * bw * 0.44, by / 2, z * bd * 0.42, { seg: 6 });
+      B(bw, 0.004, bd, "#16181c", 0, by, 0);
+      B(mm(40), 0.006, mm(40), "#c9ccd2", 0.012, by + 0.006, 0.01);
+      for (let f = 0; f < 7; f++) B(mm(40), mm(14), 0.0025, "#c9ccd2", 0.012, by + 0.02, 0.01 - mm(17) + f * mm(5.6));
+      fan(mm(40), 0.012, by + 0.042, 0.01, 1);
+      B(mm(18), 0.006, mm(25), "#9aa0a8", -0.055, by + 0.005, 0.02);
+      B(mm(38), mm(12), 0.004, "#0c0c0e", -0.03, by + mm(8), -bd / 2 + 0.006);
+      say("1.2 TH/S", 0.0012, "#bfe8ff", -0.03, by + mm(8), -bd / 2 + 0.003, 0, 0.9);
+      B(0.016, 0.014, 0.02, "#0c0c0e", bw / 2 - 0.012, by + 0.009, -bd / 2 + 0.012);
+      B(0.014, 0.006, 0.01, "#8a8f96", bw / 2 - 0.035, by + 0.005, -bd / 2 + 0.006);
+      lit(0.004, 0.003, 0.004, C.led, -bw / 2 + 0.01, by + 0.004, -bd / 2 + 0.01);
       return {};
     }
-    const [len, w, h, color] = ASIC[kind];
-    B(w, h, len, color, 0, h / 2, 0);
-    // Seams down its sides, the controller's panel at the back.
-    for (const side of [-1, 1]) B(0.004, h * 0.8, len * 0.9, "#6e737a", side * (w / 2 + 0.002), h / 2, 0);
-    if (kind === "hydro") {
-      // Water-cooled: no fans; a front panel with its status lights, and the water in and out at the back.
-      B(w * 0.9, h * 0.8, 0.012, "#24272c", 0, h / 2, -len / 2 - 0.006);
-      lit(0.02, 0.02, 0.006, C.led, -w * 0.3, h * 0.8, -len / 2 - 0.014);
-      lit(0.02, 0.02, 0.006, "#ff5a3d", -w * 0.2, h * 0.8, -len / 2 - 0.014);
-      for (const x of [-0.07, 0.07]) Y(0.03, 0.03, 0.3, C.cable, x, h * 0.6, len / 2 + 0.15, { rx: Math.PI / 2, seg: 10 });
+    // An Antminer: its shell, darker end frames, its fans, the hash boards' bolts down its sides, its power supply on
+    // top (or beside it, the S9's), the controller's port and lights at the front corner, and its label on the side.
+    const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(50) : 0, body = hei - top;
+    B(wid, body, len, A.color, 0, body / 2, 0);
+    for (const dz of [-1, 1]) B(wid + 0.006, body + 0.006, 0.02, A.frame, 0, body / 2, dz * (len / 2 - 0.01));
+    for (const sx of [-1, 1]) for (let i = 1; i <= 3; i++) for (let b = 0; b < 4; b++) B(0.004, 0.008, 0.008, A.frame, sx * (wid / 2 + 0.002), body * i / 4, -len * 0.36 + b * len * 0.24);
+    if (A.fans) {
+      const f = Math.min(wid * 0.92, body / A.fans * 0.92);
+      for (const dir of [-1, 1]) for (let n = 0; n < A.fans; n++) fan(f, 0, body * (n + 0.5) / A.fans, dir * len / 2, dir);
     } else {
-      const f = Math.min(w, h) * 0.92;
-      fan(k, s, f, 0, y + h / 2 * s, -len / 2, -1);
-      fan(k, s, f, 0, y + h / 2 * s, len / 2, 1);
+      // Water-cooled: a closed front with the water in and out (blue and red couplings) and no fans.
+      B(wid * 0.9, body * 0.85, 0.01, "#24272c", 0, body / 2, -len / 2 - 0.006);
+      for (const [x, color] of [[-wid * 0.22, "#2b6fd8"], [wid * 0.22, "#d8402b"]]) {
+        Y(0.022, 0.022, 0.05, "#b8bec6", x, body * 0.35, -len / 2 - 0.03, { rx: Math.PI / 2, seg: 12 });
+        Y(0.026, 0.026, 0.02, color, x, body * 0.35, -len / 2 - 0.06, { rx: Math.PI / 2, seg: 12 });
+      }
     }
-    return { label: { w: w * 0.9 * s, h: len * 0.5 * s, y: y + (h + 0.004) * s, text: LABEL[kind] } };
+    if (A.psu === "top") {
+      B(wid * 0.96, top, len * 0.94, "#2a2d32", 0, body + top / 2, 0);
+      fan(top * 0.86, wid * 0.25, body + top / 2, -len * 0.47, -1);
+      B(0.03, 0.02, 0.012, "#0c0c0e", -wid * 0.25, body + top / 2, len * 0.47 + 0.006);
+    }
+    if (A.psu === "side") {
+      const pl = mm(260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2;
+      B(pw, ph, pl, "#2a2d32", px, ph / 2, 0.02);
+      fan(ph * 0.86, px, ph / 2, 0.02 - pl / 2, -1);
+      for (let c = 0; c < 3; c++) B(0.06 + pw / 2, 0.01, 0.01, "#121214", wid / 2 + (0.06 + pw / 2) / 2, ph - 0.015, -0.08 + c * 0.06);
+    }
+    // The controller at the front's top corner: its network port and two lights.
+    const cx = wid / 2 - 0.035, cy = body - 0.03, cz = -len / 2 - 0.012;
+    B(0.05, 0.035, 0.006, "#1c1e22", cx, cy, cz);
+    B(0.016, 0.014, 0.006, "#0c0c0e", cx - 0.01, cy, cz - 0.004);
+    lit(0.006, 0.006, 0.004, C.led, cx + 0.012, cy + 0.008, cz - 0.004);
+    lit(0.006, 0.006, 0.004, "#ff4a3d", cx + 0.012, cy - 0.006, cz - 0.004);
+    label(A.text, Math.min(len * 0.42, 0.22), -wid / 2, body * 0.55, len * 0.05, Math.PI / 2);
+    return {};
   };
   // The plinth every exhibit stands on: pale stone with an amber band under its top.
   const plinth = own(() => merge(
     box({ w: 1.2, h: TOP, d: 1.2, color: C.stone, offset: { y: TOP / 2 } }),
     box({ w: 1.24, h: 0.04, d: 1.24, color: C.amber, emissive: 1, offset: { y: TOP - 0.04 } })
   ));
+  // Each exhibit's model alone, at the museum's size, for the viewer.
+  const viewModel = own(() => MINERS.map((ex) => RM.solo((k) => model(k, ex.model, 1, 0))));
 
   // ---------- pictures ----------
-  // An ASIC's top label, white with ANTMINER and the model in black.
-  const paintLabel = (text) => (ctx, w, h) => {
-    ctx.fillStyle = C.label; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#c9c9cc"; ctx.fillRect(0, h * 0.06, w, 3); ctx.fillRect(0, h * 0.94 - 3, w, 3);
-    P.pix(ctx, "ANTMINER", w / 2, h * 0.36, Math.min(w * 0.11, h * 0.14), "#17110a");
-    P.pix(ctx, text, w / 2, h * 0.62, Math.min(w * 0.75 / Math.max(3, text.length) * 7 / 6, h * 0.2), "#17110a");
-  };
-  // The desktop's screen: the first client with Generate Coins ticked.
-  const paintCrt = (ctx, w, h) => {
-    ctx.fillStyle = "#031006"; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#5dff95"; ctx.font = P.font(500, 17, P.MONO); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ["bitcoin v0.1", "Options:", " [x] Generate Coins", "blocks: 1,207"].forEach((line, i) => ctx.fillText(line, 14, 34 + i * 26));
-    ctx.fillStyle = "rgba(0,0,0,.25)";
-    for (let y = 0; y < h; y += 3) ctx.fillRect(0, y, w, 1);
-  };
   // A plaque, `k` times its 560 by 440 size: year and title, name, the line, and three stats.
   const PLAQUE = { w: 560, h: 440 };
   const paintPlaque = (ctx, ex, k = 1) => {
@@ -342,11 +511,9 @@
     const cards = plaques();
     MINERS.forEach((ex, i) => {
       const a = AZ[i] * P.DEG, x = rx * Math.sin(a), z = -rx * Math.cos(a), g = K.group(x, 0, z, headingTo(x, z, 0, 0));
-      const target = { kind: "exhibit", tip: `${Math.floor(ex.year)} · ${ex.name} · tap for its plaque`, radius: 0.95, index: i };
+      const target = { kind: "exhibit", tip: `${Math.floor(ex.year)} · ${ex.name} · tap to see it up close`, radius: 0.95, index: i };
       g.node(null, plinth(), 0, 0, 0, { target });
-      const parts = model(g, ex.model, 1, TOP + 0.005);
-      if (parts.screen) { const p = parts.screen; g.picture(p.w, p.h, 320, 240, paintCrt, p.x, p.y, p.z, { ry: Math.PI, depthBias: -0.05 }); }
-      if (parts.label) { const p = parts.label; g.picture(p.w, p.h, 256, Math.round(256 * p.h / p.w), paintLabel(p.text), 0, p.y, 0, { ry: Math.PI, rx: -Math.PI / 2, depthBias: -0.05 }); }
+      model(g, ex.model, 1, TOP + 0.005);
       g.box(0.08, 0.88, 0.08, C.post, -1.25, 0.44, -0.25);
       g.node(null, cards[i], -1.25, 0.98, -0.3, { ry: Math.PI, rx: -0.55, glow: true, target });
       g.solid({ x: -0.57, z: -0.05, hx: 1.2, hz: 0.66 });
@@ -355,9 +522,7 @@
     K.cyl(1.2, 1.3, TOP, C.stone, 0, TOP / 2, 0, { seg: 48 });
     K.torus(1.2, 0.03, C.amber, 0, TOP, 0, { emissive: 1, glow: true, seg: 64 });
     K.picture(1.6, 0.5, 1000, 310, paintSign, 0, 0.55, 1.29, { rx: -0.1, target: { kind: "sign", tip: "One S21 against the 2012 network", radius: 0.9, data: { say: "One S21 (200 TH/s) outhashes the whole 2012 network (~16 TH/s) about 13 times over" } } });
-    let big = null;
-    K.node("turntable", (k) => { big = model(k, "s21", BIG, 0); }, 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap for the plaques", radius: 1.2, index: 8 } });
-    K.picture(big.label.w, big.label.h, 384, Math.round(384 * big.label.h / big.label.w), paintLabel(big.label.text), 0, big.label.y, 0, { parent: "turntable", ry: Math.PI, rx: -Math.PI / 2, depthBias: -0.05 });
+    K.node("turntable", (k) => model(k, "s21", BIG, 0), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: 8 } });
     K.solid({ x: 0, z: 0, r: 1.38 });
     // Two benches either side of the middle, facing the turning S21, each seating two.
     for (const side of [-1, 1]) {
@@ -376,27 +541,38 @@
     K.light(0, 9, -5, 22, 0.5, 0.46, 0.42);
   };
 
-  // What moves: the big S21 turning; a tap on an exhibit opens the plaques as a board, paged in date order.
-  const animate = (nodes) => {
-    const turntable = nodes.turntable;
-    let index = 0, version = 0, canvas = null;
-    const board = {
-      title: "Mining Museum", help: "From Satoshi's CPU to today's ASICs, in date order. Arrow keys walk the exhibits.",
-      get canvas() { return canvas; }, get count() { return MINERS.length; }, get index() { return index; },
-      get caption() { return MINERS[index].name; }, get note() { return "Models 1.6 times life size; stats approximate."; }, get version() { return version; },
-      go: (i) => {
-        index = i;
-        canvas = canvas || CH.canvas(PLAQUE.w * 2, PLAQUE.h * 2);
-        paintPlaque(canvas.getContext("2d"), MINERS[index], 2);
-        version++;
+  // What moves: the big S21 turning. A tap on an exhibit, or Space in front of one, opens it in the model viewer: the
+  // machine up close in 3D beside all its stats, paged in date order.
+  const animate = (nodes, built) => {
+    const turntable = nodes.turntable, rx = built.layout.r0 - 3.4;
+    const spots = MINERS.map((ex, i) => ({ x: rx * Math.sin(AZ[i] * P.DEG), z: -rx * Math.cos(AZ[i] * P.DEG) }));
+    const look = (i) => BL.modelViewer.open({
+      title: "Mining Museum", count: MINERS.length, index: i,
+      help: matchMedia("(pointer: coarse)").matches ? "Drag to turn it · pinch to zoom · the arrows for the next machine" : "Drag to turn it · scroll to zoom · ← → for the next machine",
+      item: (n) => {
+        const ex = MINERS[n];
+        return { kicker: `${Math.floor(ex.year)} · ${ex.title}`, name: ex.name, text: ex.about, stats: ex.specs, note: ex.note, links: ex.sources, geometry: viewModel()[n] };
       }
+    });
+    // Space's action: the nearest exhibit within reach and in front of the Ooga, or the turning S21 in the middle.
+    const acts = MINERS.map((ex, i) => ({ key: `look${i}`, label: "LOOK", hint: `Space · Look at the ${ex.name} up close`, tap: "Tap LOOK to see it up close", run: () => look(i) }));
+    const middle = { key: "look-middle", label: "LOOK", hint: "Space · Look at the Antminer S21 up close", tap: "Tap LOOK to see it up close", run: () => look(8) };
+    let act = null, best = 0;
+    const consider = (a, ax, az, reach, x, z, fx, fz) => {
+      const dx = ax - x, dz = az - z, d = Math.hypot(dx, dz), f = Math.hypot(fx, fz) || 1;
+      if (d < reach && d < best && (dx * fx + dz * fz) / (d * f) > 0.2) { act = a; best = d; }
     };
     return {
       update(dt) { turntable.rotation.y += dt * 0.35; },
-      tap(owner, hud) {
+      near(x, z, fx, fz) {
+        act = null; best = Infinity;
+        for (let i = 0; i < spots.length; i++) consider(acts[i], spots[i].x, spots[i].z, 2.4, x, z, fx, fz);
+        consider(middle, 0, 0, 2.8, x, z, fx, fz);
+        return act;
+      },
+      tap(owner) {
         if (owner.kind !== "exhibit") return false;
-        board.go(owner.index);
-        hud.openBoard(board);
+        look(owner.index);
         return true;
       }
     };

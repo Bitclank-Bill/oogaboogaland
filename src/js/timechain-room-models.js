@@ -558,6 +558,12 @@
     for (let i = ys.length - 1; i >= 0; i--) K.node(`doorBulb${n++}`, geo, x, ys[i], z, { glow: true });
     return n;
   };
+  // A builder run on its own, outside any room's plan: its parts merged into one geometry, for a viewer to show.
+  const solo = (build) => {
+    const into = { L: null, room: null, body: [], glow: [], flat: [], nodes: [], solids: [], seats: [], lights: [], live: [], geometries: [], targets: [] };
+    build(kit(into));
+    return merge(...into.body, ...into.flat, ...into.glow);
+  };
   // A kind's bulbs, in order round the frame.
   const bulbsOf = (nodes) => { const list = []; for (let i = 0; nodes[`doorBulb${i}`]; i++) list.push(nodes[`doorBulb${i}`]); return list; };
   // The bay's low strip carried across a leaf as a chain of three hollow links, joined to its partner's across the
@@ -771,7 +777,7 @@
   };
   BL.timechainRoomModels = {
     build, plan, prepareSteps, geometries, picture, liveGeometry, flatPicture, sphere: sphereParts, domeMap, floorMap, paintKit, KINDS, COLORS: C, MARK_BIAS, EXIT_HEADER,
-    doorway, doorBulbs, bulbsOf,
+    doorway, doorBulbs, bulbsOf, solo,
     helpers: { face, quad, blank, clip, own, perRoom, cylinder, ballGeo, slabGeo, sectorGeo, litWord, UP, DOWN }
   };
 })();
