@@ -1304,6 +1304,10 @@
   // The tools a player can have in hand, by index on the wire; `wield` takes a guest's choice (sent only when it changes)
   // on the host, refusing an unknown tool or one the Ooga doesn't own.
   const WIELD = ["paint", "grenade", "rocket", "net", "sniper", "gold", "ak", "hook", "grab"];
+  // What the weapons bar shows for a tool: `slotState` is "locked" (the Ooga doesn't have it yet), "empty" (it does,
+  // with none left) or "ready"; `slotCount` is the number beside it, "" for a tool that never runs out.
+  const slotState = (a, kind) => kind === "gold" ? (a.gold ? "ready" : "locked") : kind === "hook" ? (a.hook ? "ready" : "locked") : TOOLS[kind] && TOOLS[kind].max && a[kind] <= 0 ? "empty" : "ready";
+  const slotCount = (a, kind) => kind === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : kind === "hook" ? (a.hook && (a.hk || a.hCool > 0) ? "…" : "") : kind === "crate" ? String(a.crates) : TOOLS[kind] && TOOLS[kind].max ? String(a[kind]) : "";
   const wield = (sim, id, t) => {
     const a = sim.actors[id], k = Math.round(t), kind = WIELD[k];
     if (!a || !Number.isInteger(k) || !kind || kind === "gold" && !a.gold || kind === "hook" && !a.hook) return false;
@@ -2993,7 +2997,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { WIELD, wield, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { WIELD, wield, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

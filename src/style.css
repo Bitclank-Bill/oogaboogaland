@@ -11372,15 +11372,26 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  /* Room over the row for the chosen slot to grow into. */
+  margin-top: 12px;
 }
 
 .block-slots button {
   position: relative;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   display: grid;
   place-items: center;
+  transform-origin: 50% 100%;
+  transition: transform 0.12s ease-out;
+}
+
+/* The weapon in hand stands larger than the rest: grown and lifted in place, so no other slot moves. */
+.block-slots button[aria-pressed="true"] {
+  z-index: 1;
+  transform: translateY(-4px) scale(1.22);
+  background: rgba(64, 42, 22, 0.96);
 }
 
 .block-slots kbd {
@@ -11389,21 +11400,110 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   left: 3px;
   font: inherit;
   font-size: 10px;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
+/* The count: a fixed corner plate, so a changing number moves nothing. */
 .block-slots b {
   position: absolute;
-  right: 3px;
-  bottom: 1px;
-  font-size: 10px;
-  font-weight: normal;
+  right: 2px;
+  bottom: 2px;
+  min-width: 14px;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 14px;
+  text-align: center;
   color: #ffd27a;
 }
 
+.block-slots b:empty {
+  display: none;
+}
+
 .block-slot-icon {
-  width: 24px;
-  height: 24px;
+  width: 40px;
+  height: 30px;
+}
+
+.block-icon-tp {
+  fill: var(--block-team, #3a8dff);
+}
+
+.block-icon-td {
+  fill: var(--block-team-deep, #1d4fa8);
+}
+
+.block-icon-tl {
+  fill: var(--block-team-light, #9cc8ff);
+}
+
+/* Yours and out: the slot stays lit with a red 0. Not yours yet: dim and grey, a dashed edge, no count. */
+.block-slots button[data-state="empty"]:disabled {
+  opacity: 1;
+}
+
+.block-slots button[data-state="empty"] b {
+  color: #ff6a5a;
+}
+
+.block-slots button[data-state="empty"] .block-slot-icon {
+  opacity: 0.5;
+}
+
+.block-slots button[data-state="locked"] {
+  border-style: dashed;
+}
+
+.block-slots button[data-state="locked"] .block-slot-icon {
+  filter: grayscale(1);
+}
+
+.block-slots button[data-state="locked"] b {
+  display: none;
+}
+
+/* The chosen weapon's name, over the bar for a moment after it changes. */
+.block-tool-name {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--wood-edge);
+  border-radius: 6px;
+  background: rgba(30, 20, 12, 0.9);
+  color: #ffd27a;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.block-tool-name[data-show="true"] {
+  opacity: 1;
+}
+
+@media (max-width: 480px) {
+  .block-slots button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .block-slot-icon {
+    width: 36px;
+    height: 27px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block-slots button,
+  .block-tool-name {
+    transition: none;
+  }
 }
 
 .block-actions {
@@ -11463,6 +11563,12 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
 
   .block-slots {
     justify-content: center;
+  }
+
+  .block-tool-name {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
   }
 }
 

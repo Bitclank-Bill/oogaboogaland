@@ -7395,6 +7395,26 @@ const gameRulesChecks = async () => {
     record("block sniper: the rifle is in every Ooga's arsenal at the start of a round and after a reset on every map, fires from open ground with no tower near, keeps its cooldown, splats a rival 18 m off and counts the long shot",
       rifle.length === S.MAPS.length && rifle.every((r) => r.armed && r.off && r.fired && r.shot && r.soon && r.hit && r.far > 17 && r.far < 19 && r.hits === 1 && r.again)
       && S.TOOLS.sniper.max === 0 && S.TOOLS.sniper.cool === 0.35 && S.TOOLS.sniper.speed === 60, JSON.stringify(rifle));
+    // The weapons bar: what a slot shows is the rules' word (not yours yet, yours and out, ready, and the count beside
+    // it), and the page's eight slots stand in key order, each named, the sniper rifle always among them.
+    {
+      const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), a = s.actors[0], st = (k) => S.slotState(a, k), n = (k) => S.slotCount(a, k);
+      const fresh = { paint: [st("paint"), n("paint")], sniper: [st("sniper"), n("sniper")], ak: [st("ak"), n("ak")], grenade: [st("grenade"), n("grenade")], gold: [st("gold"), n("gold")], hook: [st("hook"), n("hook")], crate: n("crate") };
+      a.grenade = a.rocket = a.net = 0; const out = ["grenade", "rocket", "net"].map((k) => st(k) + n(k));
+      a.gold = true; a.hook = 1; a.hCool = 1; a.akReload = 1; const owned = [st("gold"), n("gold"), st("hook"), n("hook"), n("ak")];
+      a.hCool = 0; a.akReload = 0; a.akMag = 7; const settled = [n("hook"), n("ak")];
+      const html = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), bar = html.slice(html.indexOf('<div class="block-slots">'), html.indexOf('<div class="block-actions">'));
+      const slots = [...bar.matchAll(/<button type="button" data-tool="(\w+)" aria-pressed="\w+" aria-label="([^"]+)" title="([^"]+)"[^>]*><kbd>(\d)<\/kbd><svg class="block-slot-icon" viewBox="0 0 16 12"[^>]*>(.*?)<\/svg><b><\/b><\/button>/g)];
+      const keys = JSON.parse(readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8").match(/const TOOL_KEYS = (\{[^}]+\});/)[1].replace(/(\d):/g, '"$1":'));
+      const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+      const named = slots.every((m, i) => Number(m[4]) === i + 1 && keys[i + 1] === m[1] && m[2].length > 4 && m[3] === `${m[2]} (${i + 1})` && (m[5].match(/<path/g) || []).length >= 5);
+      record("block weapons bar: a slot is locked until its tool is owned, empty with a 0 when it runs out and ready otherwise, counts show only where a tool runs out or reloads, and the eight named slots stand in key order with detailed icons, the selected one grown in place and still under reduced motion",
+        fresh.paint.join() === "ready," && fresh.sniper.join() === "ready," && fresh.ak.join() === "ready,30" && fresh.grenade.join() === "ready,3" && fresh.gold.join() === "locked," && fresh.hook.join() === "locked," && fresh.crate === "3"
+        && out.join() === "empty0,empty0,empty0" && owned.join() === "ready,,ready,…,…" && settled.join() === ",7"
+        && slots.length === 8 && named && slots[4][1] === "sniper" && !/data-tool="sniper"[^>]*disabled/.test(bar) && html.includes('id="block-tool-name"')
+        && /\.block-slots button\[aria-pressed="true"\] \{[^}]*transform: translateY\(-4px\) scale\(1\.22\)/.test(css) && /prefers-reduced-motion: reduce\) \{\s*\.block-slots button,\s*\.block-tool-name \{\s*transition: none/.test(css),
+        JSON.stringify({ fresh, out, owned, settled, slots: slots.map((m) => m[1]), named }));
+    }
     // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
     const session = (selfId) => {
       const subs = new Set(), frames_ = new Set(), sent = [], bins = [];

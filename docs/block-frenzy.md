@@ -81,6 +81,11 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
 
 ## Held weapons
 
+The weapons bar has a slot a weapon in key order (`1` to `8`), each named in its title and drawn side-on from its model in
+the visitor's team colours. The slot in hand stands larger, grown in place; its name shows over the bar for a moment
+when it changes. A slot's state is the rules' (`slotState`, `slotCount`): not yours yet is dim, grey and dashed with no
+count; yours and out stays lit with a red 0; counts show only where a tool runs out or reloads.
+
 Keys `1` to `7` pick paint, grenade, rocket, net, sniper rifle, Golden Dual AKs and Ooga AK; `G` cycles through the
 ones you can use.
 

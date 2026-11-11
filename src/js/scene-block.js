@@ -665,6 +665,8 @@
     el.board.hidden = el.results.hidden = true;
     try { mapHidden = localStorage.getItem(MAP_KEY) === "1"; } catch { mapHidden = false; }
     el.strip.hidden = el.toolBar.hidden = el.feed.hidden = false;
+    // The bar's icons wear the visitor's team colours.
+    { const c = BM.TEAM[sim.team]; el.toolBar.style.setProperty("--block-team", c.paint); el.toolBar.style.setProperty("--block-team-deep", c.deep); el.toolBar.style.setProperty("--block-team-light", c.light); }
     el.map.hidden = mapHidden;
     placeBar();
     for (const li of el.feedItems) { li.textContent = ""; delete li.dataset.team; }
@@ -1247,7 +1249,16 @@
     scope.zoom = clamp(scope.zoom + dir, 0, ZOOMS.length - 1);
     notice(`Scope ${scope.zoom + 1}×`, 600);
   };
-  const TOOL_NAMES = { paint: "1 · Paint", grenade: "2 · Grenade", rocket: "3 · Rocket", net: "4 · Net", sniper: "5 · Sniper", gold: "6 · Golden AKs", ak: "7 · AK", hook: "8 · Hook", grab: "Lift" };
+  const TOOL_NAMES = { paint: "1 · Paint marker", grenade: "2 · Grenade launcher", rocket: "3 · Rocket launcher", net: "4 · Net launcher", sniper: "5 · Sniper rifle", gold: "6 · Golden Dual AKs", ak: "7 · Ooga AK", hook: "8 · Grappling hook", grab: "Lift" };
+  // The chosen weapon's name over the bar for a moment (it shows with the bar's slots hidden too).
+  let nameTimer = 0;
+  const hideToolName = () => { el.toolName.dataset.show = "false"; };
+  const showToolName = (k) => {
+    el.toolName.textContent = TOOL_NAMES[k];
+    el.toolName.dataset.show = "true";
+    window.clearTimeout(nameTimer);
+    nameTimer = window.setTimeout(hideToolName, 1500);
+  };
   const chooseTool = (k) => {
     // The rifle out starts at the scope's widest step; put away, the view goes back if the scope changed it.
     if (k === "sniper" && tool !== "sniper") scope.zoom = 0;
@@ -1256,7 +1267,7 @@
       scope.on = false;
     }
     // Say the new weapon, whatever changed it, so it shows with the bar hidden too.
-    if (k !== tool && TOOL_NAMES[k]) notice(TOOL_NAMES[k], 900);
+    if (k !== tool && TOOL_NAMES[k]) showToolName(k);
     tool = k;
     // A guest tells the host what is in hand, only when it changes: it decides what a splat drops.
     if (round && round.role === "guest") acts("wield", 0, SIM.WIELD.indexOf(k));
@@ -1333,10 +1344,13 @@
       const k = b.dataset.tool;
       b.setAttribute("aria-pressed", String(k === tool));
       const n = b.querySelector("b");
-      if (n) n.textContent = k === "paint" || k === "sniper" || k === "gold" ? "" : k === "hook" ? (a.hook && (a.hk || a.hCool > 0) ? "…" : "") : k === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : k === "crate" ? String(a.crates) : String(a[k]);
-      if (k === "gold") b.disabled = !a.gold;
-      if (k === "hook") b.disabled = !a.hook;
-      if (k === "grenade" || k === "rocket" || k === "net") b.disabled = a[k] <= 0;
+      if (n) n.textContent = SIM.slotCount(a, k);
+      // A weapon's slot says which it is: not yet yours (dim, no count), yours and out (a red 0), or ready.
+      if (GUN_OF[k] >= 0 && k !== "crate") {
+        const state = SIM.slotState(a, k);
+        if (b.dataset.state !== state) b.dataset.state = state;
+        if (k !== "paint" && k !== "sniper" && k !== "ak") b.disabled = state !== "ready";
+      }
       if (k === "pass") b.disabled = !a.carrying && !a.holding;
       if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a);
       if (k === "grab") b.setAttribute("aria-pressed", String(a.holding || tool === "grab"));
@@ -2508,6 +2522,7 @@
     chooseTarget(selection.target);
     el.paintBtn = document.getElementById("block-paint");
     el.toolBar = document.getElementById("block-tools");
+    el.toolName = document.getElementById("block-tool-name");
     loadDetail();
     el.details = [...document.querySelectorAll("#block-board [data-detail]")];
     el.onDetail = (e) => chooseDetail(e.currentTarget.dataset.detail === "full");
@@ -2768,6 +2783,8 @@
     window.clearTimeout(hintTimer);
     window.clearTimeout(centerTimer);
     window.clearTimeout(noticeTimer);
+    window.clearTimeout(nameTimer);
+    hideToolName();
     for (const b of el.teams) b.removeEventListener("click", el.onTeam);
     for (const b of el.targets) b.removeEventListener("click", el.onTarget);
     for (const b of el.sizes) b.removeEventListener("click", el.onSize);
