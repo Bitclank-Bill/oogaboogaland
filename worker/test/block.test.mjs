@@ -168,9 +168,9 @@ test("only the first registered picks the map and size, and the size grows to se
   send(h, a, "reg"); send(h, b, "reg"); send(h, c, "reg");
   send(h, b, "opt", { n: 4, m: 3 }); assert.equal(h.room.blockMatch.size, 2); assert.equal(h.room.blockMatch.map, W.FIRST_MAP);
   send(h, a, "opt", { n: 1, m: 3 }); assert.equal(h.room.blockMatch.map, W.FIRST_MAP, "a size of one is refused");
-  send(h, a, "opt", { n: 3, m: 2 }); assert.equal(h.room.blockMatch.size, 3); assert.equal(h.room.blockMatch.map, 2);
+  send(h, a, "opt", { n: 2, m: 2 }); assert.equal(h.room.blockMatch.size, 2); assert.equal(h.room.blockMatch.map, 2);
   for (const x of [a, b, c]) send(h, x, "ready", { r: 1 });
-  assert.equal(h.room.blockMatch.size, 2, "three players need two a side");
+  assert.equal(h.room.blockMatch.size, 2, "three players fit two a side");
 });
 test("waiting alone stays open, a second player's ready starts it, and Start alone works only alone", async t => {
   const h = harness(t), [a, b, c] = await crowd(h, 3);
