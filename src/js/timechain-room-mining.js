@@ -299,8 +299,21 @@
   // Which way a frame's -z looks: its turn about y, then about x.
   const FACES = { "-z": [0, 0], "+z": [Math.PI, 0], "-x": [HALF, 0], "+x": [-HALF, 0], "+y": [0, HALF], "-y": [0, -HALF] };
 
-  // A miner in kit `root`, standing at height `y`, `s` times the museum's size.
-  const model = (root, kind, s = 1, y = 0) => {
+  // What each machine's mains plug into on the back of its plinth, wired as it would be in the US: household 120 V
+  // (NEMA 5-15) for the desktops, the early rigs and the small machines; 240 V for the ASICs that need it, NEMA 6-15
+  // for those on a C13 cord and 6-20 for the S19 family's C19 cords; a 240 V PDU's C19 sockets for the S21's P13 cord
+  // and the Proto Rig's three cords, which end in C20 plugs; and a red 400 V three-phase socket (IEC 60309) for the
+  // hydro-cooled S21 XP. The Bitaxe runs from a wall adapter.
+  const POWER = { cpu: "5-15", gpu: "5-15", pool: "5-15", fpga: "5-15", avalon: "5-15", erupter: "5-15", s3: "5-15", bitaxe: "wart",
+    s7: "6-15", s9: "6-15", m3: "6-15", s15: "6-15", s17: "6-15", s19: "6-20", m50s: "6-20", s19xp: "6-20", s21: "c20", proto: "c20", hydro: "3ph" };
+  // Each plug's body: across, up, its length out from the socket, and its colour; and each connector at a machine.
+  const PLUGS = { "5-15": [0.04, 0.046, 0.034, "#18181a"], "6-15": [0.046, 0.05, 0.04, "#1f2023"], "6-20": [0.046, 0.05, 0.04, "#1f2023"], c20: [0.05, 0.036, 0.05, "#141416"],
+    wart: [0.064, 0.078, 0.05, "#1a1a1c"], rj45: [0.022, 0.018, 0.03, "#d5d8de"] };
+  const CONNECT = { c13: [0.032, 0.024, 0.036, "#141416"], c19: [0.04, 0.03, 0.044, "#141416"], p13: [0.052, 0.036, 0.05, "#16171a"], rj45: [0.02, 0.016, 0.026, "#d5d8de"], dc: [0.011, 0.011, 0.03, "#141416"] };
+
+  // A miner in kit `root`, standing at height `y`, `s` times the museum's size; `wired` on its plinth in the hall, its
+  // cords plugged into the plinth's back, or not (the viewer, which shows the machine alone, its cords' plugs lying).
+  const model = (root, kind, s = 1, y = 0, wired = false) => {
     // The tools for a frame `k` whose origin stands `base` up: boxes; cylinders, upright unless turned; tori, flat unless
     // turned; lit boxes; words and pixel rows, facing -z; `at`, a frame of its own placed and turned in this one, and
     // `face`, one whose -z looks along a face; `cable`, a round cable `r` thick through corner points, bent smoothly at
@@ -333,6 +346,158 @@
     const lay = (n) => -0.003 - 0.004 * n, ink = (n) => lay(n) - 0.0025;
     // A screw head at (x, yy) on frame F's face.
     const screw = (F, x, yy, r = 0.0055, on = 0) => F.Y(r, r, 0.003, C.screw, x, yy, on - 0.0015, { rx: HALF, seg: 8 });
+    // ---------- its cords ----------
+    // Every cord: `lead(type, pts, r, color, at)`, its run from the machine to the plinth's top short of its back edge,
+    // "mains" or "lan", `at` the connector it ends in at the machine (CONNECT), or none where it leaves a box of its own.
+    // `wire` lays them as the model ends. On a plinth each runs on over the back edge and down to the plates on the
+    // plinth's back (the outlets POWER names and an Ethernet jack beside them) and is plugged in; for the viewer each
+    // ends in its plug lying behind the machine, so its kind shows.
+    const leads = [];
+    const lead = (type, pts, r, color, at = null) => leads.push({ type, pts, r, color, at });
+    // A box `size` ([across, up, along]) laid along an axis `d` from point `p`, its far end returned.
+    const along = (p, d, size, color) => {
+      const [w, h, l] = size, ax = Math.abs(d[0]) > 0.5, ay = Math.abs(d[1]) > 0.5;
+      B(ax ? l : w, ay ? l : h, ax || ay ? (ax ? w : h) : l, color, p[0] + d[0] * l / 2, p[1] + d[1] * l / 2, p[2] + d[2] * l / 2);
+      return [p[0] + d[0] * l, p[1] + d[1] * l, p[2] + d[2] * l];
+    };
+    // A plug's prongs on its face at `z`, standing out along +z: for a plug lying unplugged.
+    const prongs = (type, x, yy, z) => {
+      const blade = (bx, by, flat) => B(flat ? 0.012 : 0.003, flat ? 0.003 : 0.012, 0.018, "#c9ccd2", x + bx, yy + by, z + 0.009);
+      if (type === "5-15" || type === "wart") { blade(-0.0102, 0.006, false); blade(0.0102, 0.006, false); }
+      if (type === "6-15") { blade(-0.0102, 0.006, true); blade(0.0102, 0.006, true); }
+      if (type === "6-20") { blade(-0.0102, 0.006, true); blade(0.0102, 0.006, false); }
+      if (type === "5-15" || type === "6-15" || type === "6-20") Y(0.0028, 0.0028, 0.018, "#c9ccd2", x, yy - 0.012, z + 0.009, { rx: HALF, seg: 8 });
+      if (type === "c20") { B(0.036, 0.022, 0.012, "#0b0b0c", x, yy, z + 0.006); for (const bx of [-0.011, 0, 0.011]) B(0.007, 0.002, 0.012, "#c9ccd2", x + bx, yy + (bx ? -0.002 : 0.004), z + 0.012); }
+      if (type === "rj45") B(0.014, 0.003, 0.004, "#d6b14a", x, yy + 0.005, z - 0.004);
+    };
+    const wire = () => {
+      if (!leads.length || wired === "bare") return {};
+      const plugType = POWER[kind], mains = leads.filter((l) => l.type === "mains"), lan = leads.filter((l) => l.type === "lan");
+      // On the plinth's back: a plate under each cord where it comes over the back edge (a PDU or a three-phase socket
+      // under all of a machine's mains cords), in the cords' order across it and kept apart, so every cord comes
+      // straight down to its socket and none crosses another; a cord's socket is `place`'s.
+      const place = new Map(), yc = -0.33, Wf = T.face("+z", 0, 0, 0.6), GAP = 0.03, EDGE = 0.56;
+      const sockets = { push: (u, i, q) => { if (u.leads[i]) place.set(u.leads[i], q); } };
+      if (wired) {
+        const endX = (l) => l.pts[l.pts.length - 1][0], order = leads.slice().sort((a, b) => endX(a) - endX(b)), units = [];
+        const unitOf = (what, w, list) => ({ kind: what, w, leads: list, d: list.reduce((t, l) => t + endX(l), 0) / list.length });
+        if (plugType === "c20" || plugType === "3ph") {
+          const one = unitOf(plugType === "c20" ? "pdu" : "3ph", plugType === "c20" ? 0.46 : 0.15, order.filter((l) => l.type === "mains"));
+          // A PDU's cords take its sockets from the left end, so it stands where those sockets are under them.
+          if (one.kind === "pdu") one.d -= -one.w / 2 + 0.09 + (one.leads.length - 1) * 0.045;
+          if (lan.length) { const jack = unitOf("lan", 0.112, lan); units.push(...(jack.d < one.d ? [jack, one] : [one, jack])); } else units.push(one);
+        } else for (const l of order) units.push(unitOf(l.type === "lan" ? "lan" : plugType === "6-15" || plugType === "6-20" ? plugType : "duplex", 0.112, [l]));
+        // With no cable to it, the Ethernet jack on the side with more room.
+        if (!lan.length) {
+          const a = units[0], b = units[units.length - 1], jack = { kind: "lan", w: 0.112, leads: [] };
+          if (a.d + b.d > 0) units.unshift({ ...jack, d: a.d - (a.w + 0.112) / 2 - GAP }); else units.push({ ...jack, d: b.d + (b.w + 0.112) / 2 + GAP });
+        }
+        // Each centre as near its cords as it can be: a centre is its offset in the packed row plus a shift that never
+        // falls from one plate to the next, the shifts fitted by pooling neighbours that would overlap, then held
+        // inside the plinth's back.
+        let off = 0;
+        units.forEach((u, i) => { if (i) off += (units[i - 1].w + u.w) / 2 + GAP; u.off = off; });
+        const pools = [];
+        for (const u of units) {
+          pools.push({ sum: u.d - u.off, n: 1 });
+          while (pools.length > 1 && pools[pools.length - 2].sum / pools[pools.length - 2].n > pools[pools.length - 1].sum / pools[pools.length - 1].n) {
+            const top = pools.pop();
+            pools[pools.length - 1].sum += top.sum; pools[pools.length - 1].n += top.n;
+          }
+        }
+        const lo = -EDGE + units[0].w / 2, hi = EDGE - units[units.length - 1].w / 2 - units[units.length - 1].off;
+        let k = 0;
+        for (const pool of pools) for (let j = 0; j < pool.n; j++, k++) units[k].cx = units[k].off + Math.min(hi, Math.max(lo, pool.sum / pool.n));
+        for (const u of units) {
+          const cx = u.cx, lx = -cx;
+          if (u.kind === "pdu") {
+            Wf.B(u.w, 0.07, 0.045, "#1b1c1f", lx, yc, -0.0225);
+            for (const sx of [-1, 1]) Wf.B(0.03, 0.09, 0.006, "#2a2c30", lx + sx * (u.w / 2 + 0.015), yc, -0.003);
+            Wf.lit(0.006, 0.006, LIFT, C.led, lx + u.w / 2 - 0.025, yc + 0.02, -0.045 - LIFT / 2, 0.9);
+            Wf.say("240V PDU", 0.0018, "#cfd3d8", lx, yc - 0.027, -0.0475, 0.4);
+            for (let i = 0; i < 4; i++) {
+              const sxw = cx - u.w / 2 + 0.09 + i * 0.09;
+              Wf.B(0.044, 0.034, LIFT, "#0b0b0c", -sxw, yc, -0.045 - LIFT / 2);
+              for (const bx of [-0.012, 0, 0.012]) Wf.B(0.008, 0.003, LIFT, "#3a3d42", -sxw + bx, yc + (bx ? -0.003 : 0.006), -0.045 - LIFT - LIFT / 2);
+              sockets.push(u, i, { x: sxw, y: yc, z: 0.645 + 2 * LIFT + 0.0005 });
+            }
+          } else if (u.kind === "3ph") {
+            Wf.B(u.w, 0.17, 0.07, "#c9ccd2", lx, yc, -0.035);
+            Wf.Y(0.05, 0.05, 0.03, "#c8102e", lx, yc - 0.01, -0.085, { rx: HALF, seg: 18 });
+            Wf.B(0.11, 0.02, 0.06, "#c8102e", lx, yc + 0.06, -0.1, { rx: -0.6 });
+            Wf.say("400V 3~", 0.0022, "#1a1a1a", lx, yc + 0.07, -0.0725, 0.2);
+            sockets.push(u, 0, { x: cx, y: yc - 0.01, z: 0.7 });
+          } else {
+            // A wall plate: its sockets (two for 120 V, the cord in the top one; one for a 240 V circuit) or the Ethernet jack.
+            Wf.B(u.w, 0.184, 0.006, "#eeeae0", lx, yc, -0.003);
+            const at = u.kind === "duplex" ? [yc + 0.046, yc - 0.046] : [yc + 0.01];
+            for (const sy of u.kind === "duplex" ? [yc] : [yc + 0.075, yc - 0.065]) Wf.Y(0.004, 0.004, 0.003, "#c9ccd2", lx, sy, -0.0075, { rx: HALF, seg: 8 });
+            at.forEach((ys, i) => {
+              if (u.kind === "lan") {
+                Wf.B(0.034, 0.034, 0.004, "#f4f1e8", lx, ys, -0.008);
+                Wf.B(0.022, 0.018, LIFT, "#0b0b0c", lx, ys, -0.011);
+                Wf.say("LAN", 0.0022, "#6a6a6a", lx, ys - 0.032, -0.0085, 0.1);
+                sockets.push(u, i, { x: cx, y: ys, z: 0.612 });
+                return;
+              }
+              Wf.B(0.054, 0.058, 0.004, "#f4f1e8", lx, ys, -0.008);
+              const slot = (bx, by, flat) => Wf.B(flat ? 0.012 : 0.004, flat ? 0.004 : 0.012, LIFT, "#1a1a1a", lx + bx, ys + by, -0.011);
+              if (u.kind === "duplex") { slot(-0.0102, 0.006, false); slot(0.0102, 0.006, false); }
+              if (u.kind === "6-15") { slot(-0.0102, 0.006, true); slot(0.0102, 0.006, true); }
+              if (u.kind === "6-20") { slot(-0.0102, 0.006, true); slot(0.0102, 0.006, false); slot(0.0102, 0.006, true); }
+              Wf.Y(0.0035, 0.0035, LIFT, "#1a1a1a", lx, ys - 0.012, -0.011, { rx: HALF, seg: 8 });
+              Wf.say(u.kind === "duplex" ? "120V" : u.kind === "6-15" ? "240V 15A" : "240V 20A", 0.0016, "#8a8478", lx, ys - 0.034, -0.0085, 0.1);
+              sockets.push(u, i, { x: cx, y: ys, z: 0.612 });
+            });
+          }
+        }
+      }
+      // How far out the cords hang as they come down: clear of every plug.
+      const depth = (type) => type === "3ph" ? 0.12 : (PLUGS[type] || PLUGS["5-15"])[2] + 0.02;
+      const hang = Math.max(0.69, ...mains.filter((l) => place.has(l)).map((l) => place.get(l).z + depth(plugType) + 0.035));
+      // Every cord turns down onto its socket from one height, so their runs down the back stay in order.
+      const over = Math.max(...[...place.values()].map((q) => q.y)) + 0.09;
+      const lay2 = (list, type) => list.forEach((l) => {
+        let pts = l.pts.map((q) => q.slice());
+        if (l.at) {
+          const d = unit(v3.sub(pts[1], pts[0])), [w, h, len, color] = CONNECT[l.at];
+          pts[0] = along(pts[0], d, [w, h, len], color);
+          if (l.at === "rj45") pts[0] = along(pts[0], d, [0.016, 0.014, 0.014], l.color);
+        }
+        const end = pts[pts.length - 1], q = wired ? place.get(l) : null;
+        if (q) {
+          // Plugged in: the body out from the socket, a strain relief behind it, and the cord looping down to it.
+          let back;
+          if (type === "3ph") {
+            Y(0.042, 0.042, 0.1, "#c8102e", q.x, q.y, q.z + 0.05, { rx: HALF, seg: 18 });
+            Y(0.046, 0.046, 0.02, "#9aa0a8", q.x, q.y, q.z + 0.03, { rx: HALF, seg: 18 });
+            back = q.z + 0.1;
+          } else {
+            const [w, h, len, color] = PLUGS[type];
+            back = along([q.x, q.y, q.z], [0, 0, 1], [w, h, len], color)[2];
+            if (type !== "wart") back = along([q.x, q.y, back], [0, 0, 1], [l.r * 2 + 0.004, l.r * 2 + 0.004, 0.016], type === "rj45" ? l.color : color)[2];
+          }
+          const zd = Math.max(hang, back + 0.03);
+          pts.push([end[0], end[1], 0.57], [end[0], 0.022, 0.636], [end[0], -0.07, zd], [q.x, over, zd], [q.x, q.y, zd], [q.x, q.y, back]);
+        } else {
+          // Unplugged: the plug lying at the cord's end, its prongs out behind it.
+          if (type === "3ph") {
+            Y(0.042, 0.042, 0.1, "#c8102e", end[0], 0.042, end[2] + 0.05, { rx: HALF, seg: 18 });
+            for (let k = 0; k < 5; k++) { const a = k / 5 * P.TAU; Y(0.004, 0.004, 0.02, "#c9ccd2", end[0] + Math.cos(a) * 0.022, 0.042 + Math.sin(a) * 0.022, end[2] + 0.11, { rx: HALF, seg: 6 }); }
+            pts[pts.length - 1] = [end[0], 0.042, end[2]];
+          } else {
+            const [w, h, len, color] = PLUGS[type], yy = h / 2 + 0.002, face = end[2] + len;
+            B(w, h, len, color, end[0], yy, end[2] + len / 2);
+            prongs(type, end[0], yy, face);
+            pts[pts.length - 1] = [end[0], yy, end[2]];
+          }
+        }
+        T.cable(pts, l.r, l.color);
+      });
+      lay2(mains, plugType);
+      lay2(lan, "rj45");
+      return {};
+    };
     // A fan, `w` across and `d` deep, its back on frame F's origin and blowing out along its -z: the square housing
     // round its throat, the three struts that hold the motor, seven pitched blades round the hub, and its sticker.
     const fan = (F, w, d = 0.25 * w) => {
@@ -408,6 +573,7 @@
       F.B(0.017, 0.014, 0.006, "#0b0b0d", px, py, -0.007);
       F.lit(0.003, 0.003, LIFT, C.led, px + 0.006, py + 0.0055, -0.011);
       F.lit(0.003, 0.003, LIFT, C.amber, px - 0.006, py + 0.0055, -0.011);
+      ports.at = [px, py];
       const [lx, ly] = at(-w * 0.02, -h * 0.02);
       F.lit(0.005, 0.005, LIFT, C.led, lx + (tall ? -0.006 : 0), ly + (tall ? 0 : 0.005), -0.005);
       F.lit(0.005, 0.005, LIFT, "#ff4a3d", lx + (tall ? 0.006 : 0), ly - (tall ? 0 : 0.005), -0.005);
@@ -513,7 +679,11 @@
       // The screen on its stand, Windows XP's hill and sky on it, the taskbar, and Bitcoin 0.1's window: its title,
       // the menu and toolbar, the address, the balance, the transactions and the status bar, all as Satoshi's would
       // have read them while generating.
+      // Its mains cords, the PC's and the screen's, and its network cable from the board's port, all off the back.
       const mx = 0.2, mw = mm(470), mh = mm(320), my = mm(110) + mh / 2, mz = 0.08;
+      lead("mains", [[psx - 0.07, psy + 0.02, z1 + 0.006], [psx - 0.07, psy + 0.02, z1 + 0.06], [psx - 0.07, 0.009, z1 + 0.11], [psx - 0.07, 0.009, 0.5]], 0.012, "#151517", "c13");
+      lead("mains", [[mx + 0.08, my - 0.1, mz + 0.066], [mx + 0.08, my - 0.12, mz + 0.13], [mx + 0.08, 0.009, 0.34], [mx + 0.08, 0.009, 0.5]], 0.009, "#151517", "c13");
+      lead("lan", [[xb - 0.04, 0.68, z1 + 0.006], [xb - 0.04, 0.68, z1 + 0.06], [xb - 0.04, 0.006, z1 + 0.11], [xb - 0.04, 0.006, 0.5]], 0.007, "#2b6fd8", "rj45");
       B(mm(240), 0.014, mm(190), "#141518", mx, 0.007, mz + 0.06);
       B(mm(60), mm(180), mm(30), "#141518", mx, 0.014 + mm(90), mz + 0.075);
       B(mw, mh, 0.03, "#121316", mx, my, mz);
@@ -591,7 +761,7 @@
       B(0.002, LIFT, 0.05, "#0c0c0e", mox, 0.033 + LIFT / 2, moz - 0.02);
       Y(0.008, 0.008, 0.007, "#4a4d52", mox, 0.032, moz - 0.03, { rz: HALF, seg: 10 });
       T.cable([[mox, 0.007, moz + 0.055], [mox, 0.007, 0.0]], 0.006, "#121214");
-      return {};
+      return wire();
     }
     if (kind === "gpu") {
       // A 2010 open rig: an aluminium frame, the board on its floor, and four Radeon HD 5870s hung on the top bar,
@@ -641,7 +811,12 @@
       const Pl = T.face("-z", px, 0, pz - pd / 2);
       Pl.B(0.16, 0.07, LIFT, C.label, 0, ph / 2, -LIFT / 2);
       Pl.say("1200 W", 0.0045, C.ink, 0, ph / 2 + 0.008, -0.0035, 0.1);
-      return {};
+      // The supply's inlet and its mains cord off the back; the board's network port and its cable.
+      T.face("+z", 0.42, ph / 2, pz + pd / 2).B(0.04, 0.03, 0.006, "#0b0b0d", 0, 0, -0.003);
+      lead("mains", [[0.42, ph / 2, pz + pd / 2 + 0.006], [0.42, ph / 2, pz + pd / 2 + 0.06], [0.42, 0.009, pz + pd / 2 + 0.11], [0.42, 0.009, 0.5]], 0.012, "#151517", "c13");
+      B(0.024, 0.02, 0.03, "#b8bec6", bx + 0.12, by + 0.014, bz + mm(152.5) - 0.012);
+      lead("lan", [[bx + 0.12, by + 0.014, bz + mm(152.5) + 0.003], [bx + 0.12, by + 0.014, 0.33], [bx + 0.12, 0.006, 0.4], [bx + 0.12, 0.006, 0.5]], 0.007, "#2b6fd8", "rj45");
+      return wire();
     }
     if (kind === "pool") {
       // A pool is an idea, not a machine: here the rack that ran one, a 10-inch frame holding its switch, two
@@ -683,6 +858,11 @@
       ups.lit(0.06, 0.03, LIFT, "#2f7fd6", 0.06, 0.006, -0.005, 0.8);
       ups.say("230V", 0.0022, "#e8f4ff", 0.06, 0.006, -0.0085, 0.9);
       for (let b = 0; b < 3; b++) ups.Y(0.006, 0.006, 0.004, "#3a3d42", -0.06 - b * 0.03, 0, -0.006, { rx: HALF, seg: 10 });
+      // The UPS's inlet at its back and its mains cord; the switch's uplink, from its last port round the rack and back.
+      const upsBack = (rd - 0.05) / 2;
+      T.face("+z", 0.08, 0.06, upsBack).B(0.04, 0.03, 0.006, "#0b0b0d", 0, 0, -0.003);
+      lead("mains", [[0.08, 0.06, upsBack + 0.006], [0.08, 0.06, upsBack + 0.07], [0.08, 0.009, upsBack + 0.13], [0.08, 0.009, 0.5]], 0.012, "#151517", "c13");
+      lead("lan", [[0.14 - 7 * 0.032, rh - 0.06 + 0.011, front - 0.01], [-0.084, rh - 0.049, front - 0.06], [-0.26, rh - 0.06, front - 0.06], [-0.26, 0.035, front - 0.06], [-0.26, 0.035, -0.15], [-0.26, 0.006, -0.08], [-0.26, 0.006, 0.5]], 0.007, "#2b6fd8", "rj45");
       // Four rigs round its foot, each an open frame with two cards and its own light, cabled to the switch.
       [[-0.42, -0.36], [0.42, -0.36], [-0.42, 0.2], [0.42, 0.2]].forEach(([x, z], i) => {
         const m = 0.16;
@@ -695,11 +875,15 @@
           T.face("-x", x + dx - 0.011, 0.06, z).B(0.09, 0.006, LIFT, "#c8102e", 0, 0.025, -LIFT / 2);
         }
         T.face("-z", x - m / 2 + 0.006, m - 0.03, z - m / 2).lit(0.006, 0.006, LIFT, C.led, 0, 0, -LIFT / 2);
+        // Its slim power supply on the frame's floor at its outer side, and its mains cord round the outside to the back.
+        const sx = Math.sign(x), lane = z < 0 ? 0.56 : 0.53;
+        B(0.024, 0.04, 0.1, "#26282c", x + sx * 0.055, 0.026, z);
+        lead("mains", [[x + sx * 0.067, 0.026, z], [x + sx * 0.11, 0.026, z], [sx * lane, 0.009, z + 0.05], [sx * lane, 0.009, 0.5]], 0.008, "#151517", "c13");
         // Each its own run to the floor and across, the back pair over the front pair where they cross.
         const jx = 0.14 - (i % 8) * 0.032, jy = rh - 0.06 + 0.011, cz = front - 0.04 - i * 0.012, cx = x + (i < 2 ? 0.03 : -0.03), cy = i < 2 ? 0.006 : 0.0145;
         T.cable([[jx, jy, front - 0.012], [jx, jy, cz], [jx, cy, cz], [cx, cy, cz], [cx, cy, z]], 0.008, i % 2 ? "#2b6fd8" : "#e2c24a");
       });
-      return {};
+      return wire();
     }
     if (kind === "fpga") {
       // Two X6500 boards on brass standoffs: on each two Spartan-6 FPGAs under finned heatsinks with their fans, the
@@ -723,14 +907,15 @@
         B(0.03, 0.01, 0.012, "#0c0c0e", 0, top + 0.005, z + bd / 2 - 0.012);
         for (const dx of [-0.008, 0.008]) lit(0.005, 0.003, 0.004, dx < 0 ? C.led : C.amber, dx, top + 0.0015, z - bd / 2 + 0.01);
       }
-      return {};
+      // A 12 V brick behind the boards, a lead to each board's power plug, and the brick's mains cord.
+      B(0.12, 0.04, 0.07, "#1a1a1c", -0.02, 0.02, 0.33);
+      [-0.12, 0.12].forEach((z, i) => T.cable([[0.121, 0.06, z - 0.064], [0.16 + i * 0.016, 0.06, z - 0.064], [0.16 + i * 0.016, 0.009, z - 0.02], [0.16 + i * 0.016, 0.009, 0.31 + i * 0.02], [0.044, 0.012, 0.31 + i * 0.02]], 0.006, "#151517"));
+      lead("mains", [[-0.084, 0.02, 0.33], [-0.12, 0.009, 0.33], [-0.12, 0.009, 0.5]], 0.009, "#151517");
+      return wire();
     }
-    // A cord's plug lying where it ends, along the cord's last run in z.
-    const plug = (x, z, color = "#151517") => { B(0.032, 0.02, 0.046, color, x, 0.012, z); for (const sx of [-1, 1]) B(0.004, 0.012, 0.014, "#c9ccd2", x + sx * 0.008, 0.012, z + 0.03); };
     if (kind === "avalon") {
       // Avalon's first batch: a black steel box on rubber feet, the orange band, its big front fan behind the guard,
-      // vents down its side, the ports and inlet at the back; unplugged, as a museum shows it, its power cord and its
-      // network cable lying behind it.
+      // vents down its side, the ports and inlet at the back, and its power cord and network cable off the back.
       const aw = mm(200), ah = mm(320), ad = mm(300), ax = 0, af = 0.012;
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) Y(0.012, 0.014, af, "#0c0c0e", ax + sx * (aw / 2 - 0.03), af / 2, sz * (ad / 2 - 0.03), { seg: 10 });
       B(aw, ah, ad - 0.03, "#232327", ax, af + ah / 2, 0.015);
@@ -743,11 +928,9 @@
       Bk.B(0.04, 0.03, 0.006, "#0b0b0d", 0.05, af + 0.08, -0.003);
       Bk.B(0.017, 0.014, 0.006, "#0b0b0d", -0.04, af + 0.2, -0.003);
       Bk.lit(0.004, 0.004, LIFT, C.led, -0.04, af + 0.215, -0.007);
-      T.cable([[ax - 0.05, af + 0.08, ad / 2 + 0.006], [ax - 0.05, af + 0.08, ad / 2 + 0.07], [ax - 0.05, 0.008, ad / 2 + 0.13], [ax - 0.05, 0.008, 0.44]], 0.012, "#151517");
-      plug(ax - 0.05, 0.463);
-      T.cable([[ax + 0.04, af + 0.2, ad / 2 + 0.006], [ax + 0.04, af + 0.2, ad / 2 + 0.05], [ax + 0.04, 0.007, ad / 2 + 0.12], [ax + 0.04, 0.007, 0.36], [ax + 0.2, 0.007, 0.36]], 0.007, "#2b6fd8");
-      B(0.03, 0.012, 0.016, "#d5d8de", ax + 0.215, 0.007, 0.36);
-      return {};
+      lead("mains", [[ax - 0.05, af + 0.08, ad / 2 + 0.006], [ax - 0.05, af + 0.08, ad / 2 + 0.06], [ax - 0.05, 0.009, ad / 2 + 0.12], [ax - 0.05, 0.009, 0.5]], 0.012, "#151517", "c13");
+      lead("lan", [[ax + 0.04, af + 0.2, ad / 2 + 0.006], [ax + 0.04, af + 0.2, ad / 2 + 0.06], [ax + 0.04, 0.006, ad / 2 + 0.12], [ax + 0.04, 0.006, 0.5]], 0.007, "#2b6fd8", "rj45");
+      return wire();
     }
     if (kind === "erupter") {
       // ASICMiner's USB Block Erupters, seven of them standing in a powered USB hub: each a blue board on a gold
@@ -764,11 +947,10 @@
         for (let f = 0; f < 4; f++) B(mm(10), mm(46), 0.003, "#d6b14a", x + mm(13), sy + mm(6), -mm(10) + f * mm(6.5));
         T.face("-x", x - mm(1.5), sy + mm(38), mm(8)).lit(0.004, 0.004, LIFT, C.led, 0, 0, -LIFT / 2);
       }
-      // The power brick behind the hub, and its cord to the plug lying beside it.
+      // The power brick behind the hub, and its mains cord.
       B(mm(62), mm(30), mm(42), "#1a1a1c", hx, mm(15), 0.2);
       T.cable([[hx, hy * 0.5, mm(27.5) + 0.004], [hx, 0.008, 0.1], [hx, 0.008, 0.2 - mm(21) - 0.002]], 0.008, "#151517");
-      T.cable([[hx, mm(15), 0.2 + mm(21) + 0.004], [hx, 0.008, 0.33], [hx - 0.12, 0.008, 0.38], [hx - 0.12, 0.008, 0.45]], 0.009, "#151517");
-      plug(hx - 0.12, 0.473);
+      lead("mains", [[hx, mm(15), 0.2 + mm(21) + 0.004], [hx, 0.009, 0.3], [hx, 0.009, 0.5]], 0.009, "#151517");
       // The laptop, a silver 2013 one open toward the visitor: its base with the keyboard and trackpad, and the lid
       // with the miner's log on its screen.
       const lx = 0.3, lz = 0.06, W = mm(325), Hb = mm(17), D = mm(227), Hl = mm(212);
@@ -786,6 +968,10 @@
         Sc.say(line, 0.0034, i ? "#7cff8a" : "#ffd66b", 0, Hl * 0.83 - i * 0.042, ink(0), 0.6));
       // Its lead from the hub's end round to the laptop's side.
       T.cable([[hx + mm(75) + 0.004, hy * 0.5, 0], [-0.02, 0.008, 0.01], [-0.0, 0.008, 0.12], [lx - W / 2 - 0.004, Hb * 0.5, 0.12]], 0.007, "#151517");
+      // The laptop's charger cord off its right side, its network cable off its left, and the fan's cord.
+      lead("mains", [[lx + W / 2 - 0.004, Hb * 0.5, lz + 0.1], [lx + W / 2 + 0.02, Hb * 0.5, lz + 0.1], [0.585, 0.009, lz + 0.16], [0.585, 0.009, 0.5]], 0.007, "#e9e9e6");
+      lead("lan", [[lx - W / 2, Hb * 0.5, 0.2], [0.0, Hb * 0.5, 0.2], [-0.02, 0.006, 0.26], [-0.02, 0.006, 0.5]], 0.006, "#2b6fd8", "rj45");
+      lead("mains", [[-0.48, 0.007, -0.12], [-0.48, 0.007, -0.08], [-0.55, 0.008, 0.0], [-0.55, 0.008, 0.5]], 0.006, "#e9e9e6");
       // The desk fan: its base, stem, motor, four blades and the cage, blowing across the sticks.
       const fx = -0.48, fz = -0.18, fh = 0.2, Fn = T.at(fx, fh, fz, -2.06);
       Y(0.05, 0.056, 0.014, "#e9e9e6", fx, 0.007, fz, { seg: 16 });
@@ -796,7 +982,7 @@
       for (const r of [0.03, 0.06]) Fn.R(r, 0.0025, "#d6d6d2", 0, 0, -0.03, { rx: HALF, seg: 20, sides: 3 });
       Fn.R(0.064, 0.003, "#d6d6d2", 0, 0, -0.008, { rx: HALF, seg: 20, sides: 3 });
       for (let b = 0; b < 6; b++) Fn.B(0.128, 0.003, 0.003, "#d6d6d2", 0, 0, -0.03, { rz: b * Math.PI / 6 });
-      return {};
+      return wire();
     }
     if (kind === "bitaxe") {
       // The Bitaxe Gamma, open hardware: its black board on standoffs, the BM1370's heatsink and fan, the ESP32-S3
@@ -820,10 +1006,10 @@
       for (let i = 0; i < 4; i++) Y(0.003, 0.003, 0.008, "#d8c79a", 0.075, top + 0.004, -0.032 + i * 0.012, { seg: 8 });
       B(0.014, 0.006, 0.01, "#9aa0a8", -bw / 2 + 0.006, top + 0.003, -0.02);
       B(0.02, 0.014, 0.024, "#0c0c0e", 0.068, top + 0.007, 0.035);
-      T.cable([[0.078, top + 0.007, 0.035], [0.14, top + 0.007, 0.035], [0.14, 0.004, 0.035], [0.14, 0.004, 0.3]], 0.008, "#151517");
+      lead("mains", [[0.078, top + 0.007, 0.035], [0.14, top + 0.007, 0.035], [0.14, 0.006, 0.08], [0.14, 0.006, 0.5]], 0.006, "#151517");
       B(0.006, 0.004, 0.006, "#2a2c30", -0.074, top + 0.002, 0.052);
       lit(0.004, 0.0025, 0.004, C.led, -0.07, top + 0.00125, 0.036);
-      return {};
+      return wire();
     }
     if (kind === "proto") {
       // Block's Proto Rig, as its specifications lay it out: one chassis, the nine hashboards slid in side by side at
@@ -853,6 +1039,8 @@
       const cx = -inner + cw / 2;
       B(cw, 0.1, lip - 0.004, "#26282c", cx, py, zf + 0.004 + (lip - 0.004) / 2);
       ports(T.face("-z", cx, py, front), cw - 0.012, 0.09);
+      const [qx, qy] = ports.at, side = -(W / 2 + 0.07);
+      lead("lan", [[cx + qx, py + qy, front - 0.0125], [cx + qx, py + qy, front - 0.07], [side, py, front - 0.07], [side, 0.006, front + 0.03], [side, 0.006, 0.5]], 0.007, "#2b6fd8", "rj45");
       for (const sx of [-1, 1]) {
         const F = T.face(sx < 0 ? "-x" : "+x", sx * W / 2, 0, 0);
         for (const lx of [-0.12, 0.12]) F.B(0.03, 0.014, 0.03, "#9aa0a8", lx, Hh * 0.75, -0.015);
@@ -862,15 +1050,18 @@
       for (const x of [-0.17, 0, 0.17]) for (const yy of [0.1, 0.26]) grille(T.face("+z", x, yy, D / 2), 0.15);
       for (const x of [-0.17, 0, 0.17]) {
         T.face("+z", x, py, D / 2).B(0.05, 0.035, 0.006, "#0b0b0d", 0, 0, -0.003);
-        T.cable([[x, py, D / 2 + 0.013], [x, py, 0.59], [x, 0.008, 0.59]], 0.014, "#151517");
+        lead("mains", [[x, py, D / 2 + 0.006], [x, py, D / 2 + 0.07], [x, 0.012, D / 2 + 0.12]], 0.014, "#151517", "c19");
       }
-      return {};
+      return wire();
     }
     // An Antminer: its shell between end plates a little proud of it all round, its fans set back in them under their
     // guards, screws down its sides, its
     // power supply on top (or beside it, the S9's, with its cables), the control board's ports at the front and its
     // label on the side; the hydro-cooled one has a closed front with its couplings, hoses, handles and power terminal.
     const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(52) : 0, body = hei - top, et = 0.04;
+    // Its network port, where the control board puts it, and the mains cord's connector by the plug it needs.
+    let net = null;
+    const plugAt = POWER[kind] === "6-20" ? "c19" : POWER[kind] === "c20" ? "p13" : "c13";
     const f = A.fans ? Math.min(wid * 0.9, body / A.fans * 0.94, A.fan ? mm(A.fan) : Infinity) : 0, holes = [];
     for (let n = 0; n < A.fans; n++) holes.push(body * (n + 0.5) / A.fans);
     B(wid, body, len - 2 * et, A.color, 0, body / 2, 0);
@@ -888,8 +1079,10 @@
     label(T.face("-x", -wid / 2, body * 0.5, len * 0.04), lw, A.text, A.maker, A.brand);
     if (A.fans) {
       const room = (wid - f) / 2;
-      if (room >= 0.045) ports(T.face("-z", -(wid + f) / 4, body * 0.78, -len / 2), room - 0.016, 0.09);
-      else ports(T.face("-z", -wid / 2 + 0.07, (body / 2 + f / 2 + body) / 2, -len / 2), 0.11, Math.min(0.024, body / 2 - f / 2 - 0.004));
+      const at = room >= 0.045 ? [-(wid + f) / 4, body * 0.78] : [-wid / 2 + 0.07, (body / 2 + f / 2 + body) / 2];
+      if (room >= 0.045) ports(T.face("-z", at[0], at[1], -len / 2), room - 0.016, 0.09);
+      else ports(T.face("-z", at[0], at[1], -len / 2), 0.11, Math.min(0.024, body / 2 - f / 2 - 0.004));
+      net = [at[0] + ports.at[0], at[1] + ports.at[1], -len / 2 - 0.0125];
     } else {
       const F = T.face("-z", 0, 0, -len / 2);
       F.B(wid * 0.92, body * 0.9, 0.006, "#24272c", 0, body / 2, -0.003);
@@ -909,6 +1102,10 @@
       F.B(0.06, 0.04, 0.02, "#111113", 0, body * 0.7, -0.016);
       for (let i = 0; i < 3; i++) F.Y(0.0045, 0.0045, 0.003, "#c9ccd2", -0.02 + i * 0.02, body * 0.7, -0.0275, { rx: HALF, seg: 8 });
       ports(T.face("-z", -0.05, body * 0.85, -len / 2 - 0.006), 0.1, 0.03);
+      net = [-0.05 + ports.at[0], body * 0.85 + ports.at[1], -len / 2 - 0.0185];
+      // Its three-phase cable through a gland in the power terminal, round to the +x side and back.
+      Y(0.016, 0.016, 0.03, "#9aa0a8", 0, body * 0.7, -len / 2 - 0.0445, { rx: HALF, seg: 12 });
+      lead("mains", [[0, body * 0.7, -len / 2 - 0.058], [0, body * 0.7, -len / 2 - 0.12], [wid / 2 + 0.06, body * 0.7 - 0.02, -len / 2 - 0.12], [wid / 2 + 0.06, 0.013, -len / 2 + 0.02], [wid / 2 + 0.06, 0.013, 0.5]], 0.022, "#151517");
     }
     if (A.psu === "top") {
       const pl = len - 2 * et - 0.004, pw = wid - 0.012;
@@ -921,7 +1118,17 @@
       const In = T.face("-z", pw * 0.25, body + top / 2, -pl / 2);
       In.B(0.04, top * 0.6, 0.006, "#0b0b0d", 0, 0, -0.003);
       for (let i = 0; i < 3; i++) In.B(0.004, 0.008, LIFT, "#c9ccd2", -0.01 + i * 0.01, 0, -0.007);
+      const ix = pw * 0.25, iy = body + top / 2, iz = -pl / 2 - 0.0085;
+      lead("mains", [[ix, iy, iz], [ix, iy, iz - 0.08], [wid / 2 + 0.05, iy, iz - 0.08], [wid / 2 + 0.05, 0.009, -len / 2 + 0.04], [wid / 2 + 0.05, 0.009, 0.5]], 0.012, "#151517", plugAt);
       grille(T.face("+z", pw * 0.2, body + top / 2, pl / 2), top * 0.86);
+    }
+    if (A.psu === "none") {
+      T.face("+z", 0.04, body - 0.017, len / 2).B(0.04, 0.026, 0.006, "#0b0b0d", 0, 0, -0.003);
+      lead("mains", [[0.04, body - 0.017, len / 2 + 0.006], [0.04, body - 0.017, len / 2 + 0.07], [0.04, 0.009, len / 2 + 0.13], [0.04, 0.009, 0.5]], 0.012, "#151517", plugAt);
+    }
+    if (net) {
+      const sx = -(wid / 2 + 0.045);
+      lead("lan", [net, [net[0], net[1], net[2] - 0.06], [sx, net[1] - 0.02, net[2] - 0.06], [sx, 0.006, net[2] + 0.05], [sx, 0.006, 0.5]], 0.007, "#2b6fd8", "rj45");
     }
     if (A.psu === "side" || A.psu === "atx") {
       const atx = A.psu === "atx", pl = mm(atx ? 160 : 260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2, pz = 0.02;
@@ -932,13 +1139,14 @@
       Pt.B(0.1, 0.06, LIFT, C.label, 0, pl * 0.15, -LIFT / 2);
       Pt.say(atx ? "ATX" : "APW3", 0.004, C.ink, 0, pl * 0.15, -0.0035, 0.1);
       T.face("+z", px, ph / 2, pz + pl / 2).B(0.04, 0.03, 0.006, "#0b0b0d", 0, 0, -0.003);
+      lead("mains", [[px, ph / 2, pz + pl / 2 + 0.006], [px, ph / 2, pz + pl / 2 + 0.07], [px, 0.009, pz + pl / 2 + 0.13], [px, 0.009, 0.5]], 0.012, "#151517", plugAt);
       for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) {
         const yy = ph * (0.35 + r * 0.35), z = -0.02 + c * 0.06;
         T.cable([[px - pw / 2, yy, z], [wid / 2 + 0.012, yy, z]], 0.01, "#121214");
         B(0.012, 0.022, 0.03, "#0b0b0d", wid / 2 + 0.006, yy, z);
       }
     }
-    return {};
+    return wire();
   };
   // The plinth every exhibit stands on: dark concrete with an amber band under its top.
   const plinth = own(() => merge(
@@ -1163,7 +1371,7 @@
       const a = AZ[i] * P.DEG, x = rx * Math.sin(a), z = -rx * Math.cos(a), g = K.group(x, 0, z, headingTo(x, z, 0, 0));
       const target = { kind: "exhibit", tip: `${Math.floor(ex.year)} · ${ex.name} · tap to see it up close`, radius: 0.95, index: i };
       g.node(null, plinth(), 0, 0, 0, { target });
-      model(g, ex.model, 1, TOP + 0.005);
+      model(g, ex.model, 1, TOP + 0.005, true);
       g.node(null, cards[i], 0, 0.45, -0.604, { ry: Math.PI, glow: true, target });
       g.solid({ x: 0, z: 0, hx: 0.66, hz: 0.66 });
     });
@@ -1172,7 +1380,7 @@
     K.cyl(1.2, 1.3, TOP, CONCRETE, 0, TOP / 2, 0, { seg: 48 });
     K.torus(1.2, 0.03, C.amber, 0, TOP, 0, { emissive: 1, glow: true, seg: 64 });
     K.node(null, signBand(), 0, 0, SIGN.R, { ry: Math.PI, glow: true, target: { kind: "sign", tip: "One S21 against the 2012 network", radius: 0.9, data: { say: "One S21 (200 TH/s) outhashes the whole 2012 network (~16 TH/s) about 13 times over" } } });
-    K.node("turntable", (k) => model(k, "s21", BIG, 0), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: S21 } });
+    K.node("turntable", (k) => model(k, "s21", BIG, 0, "bare"), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: S21 } });
     K.solid({ x: 0, z: 0, r: 1.38 });
     // Point lights: the turntable's spot, the exhibits round the ring, the dome's wash.
     K.light(0, 5.5, 0, 14, 1, 0.94, 0.86);
