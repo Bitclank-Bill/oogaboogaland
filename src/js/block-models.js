@@ -620,13 +620,26 @@
   // A rider's trolley: a pulley block on the cable with a hand bar under it.
   const trolley = cached(() => merge(box({ w: 0.14, h: 0.18, d: 0.3, color: METAL, offset: { y: 0.1 } }), box({ w: 0.6, h: 0.05, d: 0.05, color: DARK, offset: { y: -0.15 } }), box({ w: 0.04, h: 0.3, d: 0.04, color: DARK, offset: { y: 0 } })));
   // An ammo cache: an olive box with an orange band and a glowing lid while it's ready; grey and dark while it rests.
+  // An ammo box: a green steel can with a stencil band, carry handles and latches, its lid propped open on a row of
+  // brass rounds while it's ready; shut, grey and empty while it refills.
   const cache = variants((i) => {
-    const ready = i === 0;
-    return merge(
-      bevelBox({ w: 0.8, h: 0.45, d: 0.55, color: ready ? "#56603a" : "#4a4844", offset: { y: 0.23 } }),
-      box({ w: 0.82, h: 0.08, d: 0.57, color: ready ? ORANGE : "#6a6660", emissive: ready ? 0.9 : 0, offset: { y: 0.3 } }),
-      box({ w: 0.5, h: 0.05, d: 0.3, color: ready ? "#fff3a0" : "#5a5852", emissive: ready ? 1 : 0, offset: { y: 0.48 } })
-    );
+    const ready = i === 0, can = ready ? "#4f5a34" : "#4a4844", edge = ready ? "#3a4326" : "#3a3936", metal = ready ? "#a9a48e" : "#6a6660", parts = [
+      bevelBox({ w: 0.86, h: 0.42, d: 0.5, color: can, offset: { y: 0.21 } }),
+      box({ w: 0.88, h: 0.1, d: 0.06, color: ready ? "#d9c56a" : "#5a5852", emissive: ready ? 0.3 : 0, offset: { y: 0.24, z: 0.25 } }),
+      box({ w: 0.88, h: 0.1, d: 0.06, color: ready ? "#d9c56a" : "#5a5852", emissive: ready ? 0.3 : 0, offset: { y: 0.24, z: -0.25 } })
+    ];
+    for (const x of [-0.46, 0.46]) parts.push(box({ w: 0.05, h: 0.05, d: 0.24, color: metal, offset: { x, y: 0.3 } }));
+    for (const x of [-0.28, 0.28]) parts.push(box({ w: 0.08, h: 0.12, d: 0.03, color: metal, offset: { x, y: 0.38, z: 0.26 } }));
+    if (ready) {
+      parts.push(box({ w: 0.78, h: 0.03, d: 0.42, color: "#232618", offset: { y: 0.425 } }));
+      for (let k = 0; k < 7; k++) {
+        const x = (k - 3) * 0.105;
+        parts.push(box({ w: 0.07, h: 0.13, d: 0.07, color: "#d8a838", emissive: 0.45, offset: { x, y: 0.5, z: 0.04 } }), box({ w: 0.05, h: 0.05, d: 0.05, color: "#b5763a", emissive: 0.3, offset: { x, y: 0.59, z: 0.04 } }));
+      }
+      parts.push(bevelBox({ w: 0.86, h: 0.34, d: 0.06, color: edge, offset: { y: 0.6, z: -0.26 } }));
+    } else parts.push(bevelBox({ w: 0.88, h: 0.07, d: 0.52, color: edge, offset: { y: 0.45 } }));
+    const geo = merge(...parts);
+    return geo;
   });
   // A trampoline flush with the ground: a dark frame ring on stubby legs, springs, and an orange-and-black mat.
   const tramp = cached(() => {
