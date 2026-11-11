@@ -1,6 +1,6 @@
 # Block Frenzy
 
-Capture the flag on Fort Chaos, Bitcoin themed, reached down Ooga Arcade's upper hall, by zipline (and directly at `/blockfrenzy`).
+Capture the flag, Bitcoin themed, reached down Ooga Arcade's upper hall, by zipline (and directly at `/blockfrenzy`).
 Each side guards its Bitcoin block, a glowing cube in its team's colour on a stand inside its fort. Steal the other
 side's block, carry it home and touch your own stand while your own block is home. Two Oogas a side: the visitor and
 a teammate against two rivals, the three bots run by the rules module. First to three captures wins. Nobody dies,
@@ -39,6 +39,7 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 - **Passing.** `Tab` (or `T`, or the Pass button) throws the carried block about 12 m ahead in an arc. Anyone who
   could pick it up can catch it in the air, so a teammate can take a pass and a rival can intercept. Uncaught, it
   lands and lies as a dropped block. Bots pass when a rival closes in and a free teammate stands nearer home.
+- **Flight.** Paint and the AKs fly nearly straight (`TOOLS`, `flatPitch` cancels what lob and fall remain), as the Ghost Hunter's rounds do. Carrying a block costs no speed.
 - **Tools.** Paint without end; three paint grenades (lobbed, burst on landing), one paint rocket (straight, bigger
   burst) and three nets (slow a rival and stop their jumps for 4 s). A paint hit or burst splats a rival for 2 s, then
   2.5 s of protection. Grenades, rockets and nets refill on your own stand.
@@ -120,6 +121,8 @@ Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create`
 | expert | 12 | 11 | 1.5 | 9.5 | 2.5 | 22 | 2.4 | 9 |
 
 ## Fort Chaos
+
+Retired from play: no longer offered on the board or accepted on the wire (`blockWire.FIRST_MAP`). Its map stays in the sim for the rules' tests.
 
 44 by 74 m, mirrored half round between the halves so neither side is favoured. Each fort has a back wall, side
 walls and a gated front wall, 2.4 m high, a stand inside and an alley behind with a crate to climb from. Between
