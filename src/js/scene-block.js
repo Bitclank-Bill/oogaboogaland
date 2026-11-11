@@ -2088,7 +2088,9 @@
         fpGun.geometry = BM.gun(g * 2 + TEAM_INDEX[me.team]);
         const fx2 = Math.sin(cam.yaw) * c, fz2 = Math.cos(cam.yaw) * c, fy2 = Math.sin(up), rx = -Math.cos(cam.yaw), rz = Math.sin(cam.yaw);
         // A round pulls the gun back and tips it up a touch, as the island rifle does at the eye.
-        const round = gunKick(actors[0].shot), reach = 0.55 - 0.04 * round;
+        // The AKs are the island's full-size rifle, its stock almost at the eye: held smaller and further out.
+        const rifle = g === GUN_OF.ak || g === GUN_OF.gold, size = rifle ? 0.6 : 1, round = gunKick(actors[0].shot), reach = (rifle ? 0.68 : 0.55) - 0.04 * round;
+        setVec(fpGun.scale, size, size, size); setVec(fpGunL.scale, size, size, size);
         setVec(fpGun.position, camera.position.x + fx2 * reach + rx * 0.24, eye + fy2 * reach - (g === 2 ? 0.12 : 0.22) - 0.02 * round, camera.position.z + fz2 * reach + rz * 0.24);
         fpGun.rotation.y = cam.yaw;
         fpGun.rotation.x = -up - 0.035 * round;
