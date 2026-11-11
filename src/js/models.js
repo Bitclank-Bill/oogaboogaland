@@ -1679,6 +1679,11 @@
     let template = cavemen.get(traits.name);
     if (!template) cavemen.set(traits.name, template = buildCaveman(traits));
     const copies = new Map(), root = cloneNode(template.root, copies), parts = {};
+    // A legged companion names its own limbs (`legs`, `tail`); the clone's must be its own nodes, not the template's.
+    for (const [node, copy] of copies) {
+      if (node.legs) copy.legs = node.legs.map((leg) => copies.get(leg));
+      if (node.tail) copy.tail = copies.get(node.tail);
+    }
     for (const key of Object.keys(template.parts)) {
       const part = template.parts[key];
       parts[key] = Array.isArray(part) ? part.map((node) => copies.get(node)) : copies.get(part);
