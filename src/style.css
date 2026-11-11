@@ -12184,3 +12184,8 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .block-board-mid { display: flex; flex-direction: column; align-items: center; gap: 2px; color: #f4f4f0; }
 .block-board-mid small { font-size: clamp(13px, 1.5vw, 16px); }
 .block-board-mid small:last-child { font-size: clamp(18px, 2.2vw, 24px); font-variant-numeric: tabular-nums; }
+
+/* Block Frenzy's multiplayer panel: the next step stands out, Leave doesn't; picks a match has set are muted. */
+.block-live-buttons button { padding: 8px 14px; border: 2px solid #c8791f; border-radius: 6px; background: #e8962e; color: #2b1b10; font: inherit; font-weight: 700; cursor: pointer; }
+.block-live-buttons button.is-leave, #block-live-wait, #block-live-watch { border-color: #6d5a44; background: transparent; color: #e9dfcf; font-weight: 400; }
+.block-side:disabled { opacity: 0.35; cursor: not-allowed; }

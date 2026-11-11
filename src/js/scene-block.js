@@ -535,6 +535,25 @@
     BL.blockViewer.white(RENDER_OPTS);
     if (fpGun) fpGun.visible = fpGunL.visible = false;
   };
+  // "2v2 on Ooga Town", as the board's own button names the map.
+  const matchLine = (m) => `${m.size}v${m.size} on ${(el.maps.find((b) => b.dataset.map === WIRE.MAPS[m.map]) || { textContent: WIRE.MAPS[m.map] }).textContent}`;
+  // In a match, the board's solo picks don't apply: they show what the match will play and are muted, all but the map
+  // for whoever chooses it (and Detail, which is this page's own). Leaving, they go back to the visitor's picks.
+  let boardInMatch = false;
+  const boardFollowsMatch = (m, inMatch, chooses) => {
+    if (!inMatch && !boardInMatch) return;
+    boardInMatch = inMatch;
+    for (const b of [...el.sizes, ...el.targets, ...el.skills, ...el.teams]) b.disabled = inMatch;
+    for (const b of el.maps) b.disabled = inMatch && !chooses;
+    const size = inMatch ? m.size : selection.size, target = inMatch ? C.CAPTURES : selection.target, skill = inMatch ? "normal" : selection.skill;
+    for (const b of el.sizes) b.setAttribute("aria-pressed", String(Number(b.dataset.size) === size));
+    for (const b of el.targets) b.setAttribute("aria-pressed", String(Number(b.dataset.target) === target));
+    for (const b of el.skills) b.setAttribute("aria-pressed", String(b.dataset.skill === skill));
+    for (const b of el.teams) b.setAttribute("aria-pressed", String(!inMatch && b.dataset.team === selection.team));
+    const start = document.querySelector('#block-board [data-action="block-start"]');
+    if (start) start.hidden = inMatch;
+    el.boardHelp.textContent = `${inMatch ? "Sides are dealt when the round starts." : "Pick a side."} Steal the rivals' Bitcoin block (their colour), carry it to your own stand${inMatch && m.reg.length === 2 ? ". With just the two of you, your own block needn't be home" : " while your block is home"}. First to ${target} capture${target === 1 ? "" : "s"} wins.`;
+  };
   const whoName = (id) => { const rec = BL.net.remotes.get(id); return rec ? (rec.display || rec.login || "an Ooga") : BL.net.state.selfId === id ? "You" : "an Ooga"; };
   const renderLive = (m) => {
     // A round's last frame lands just before the lobby message: hear its winning capture before anything resets.
@@ -545,20 +564,22 @@
     const self = BL.net.state.selfId, play = !!m && m.phase === "play", count = m ? m.reg.length : 0, me = !!m && m.reg.includes(self), mine = !!m && m.reg[0] === self;
     const seated = play && WIRE.seatOf(m, self) >= 0;
     if (!play) chairsFull = false;
-    el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Live match";
+    el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Multiplayer";
     const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
     el.liveStatus.textContent = chairsFull ? "The viewing chairs are full. You can register for the next round or go back."
-      : !m ? "Register to start a live round, alone with NPCs or with whoever arrives."
-      : waiting ? `Waiting for players · ${WIRE.MAPS[m.map]} · ${m.size} a side · you pick the map and size.`
-      : solo ? `Just you so far · ${WIRE.MAPS[m.map]} · ${m.size} a side · you pick the map and size.`
-      : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Register now to join the next round.`)
-      : m.phase === "countdown" ? `Round starts in a moment · ${WIRE.MAPS[m.map]} · ${m.size} a side.`
-      : `${count} registered · ${m.size} a side · ${WIRE.MAPS[m.map]}${mine ? " · you pick the map and size" : ` · ${whoName(m.reg[0])} picks`}.`;
+      : !m || !count && !play ? "Play with whoever's here. The first to join is the host and picks the map and size. NPCs fill any empty seats."
+      : waiting ? `You're the host · waiting for someone to join · ${matchLine(m)}. You can still change the size here and the map below.`
+      : solo ? `You're first in, so you're the host · ${matchLine(m)}. Pick the size here and the map below, then start now or wait for players.`
+      : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Join now for the next round.`)
+      : m.phase === "countdown" ? `Starting in a moment · ${matchLine(m)}.`
+      : !me ? `${count} waiting · ${matchLine(m)} · ${whoName(m.reg[0])} is the host. Join them.`
+      : `${count} of ${m.size * 2} seats filled, NPCs take the rest · ${matchLine(m)}. ${mine ? "You're the host: pick the size here and the map below." : `${whoName(m.reg[0])} is the host and picks the size and map.`} The round starts when everyone is Ready.`;
     el.liveList.textContent = "";
-    if (m) for (let i = 0; i < m.reg.length; i++) { const li = document.createElement("li"); li.textContent = `${m.ready[i] ? "✓ " : ""}${m.reg[i] === self ? "You" : whoName(m.reg[i])}`; el.liveList.append(li); }
+    if (m) for (let i = 0; i < m.reg.length; i++) { const li = document.createElement("li"); li.textContent = `${m.ready[i] ? "✓ " : ""}${m.reg[i] === self ? "You" : whoName(m.reg[i])}${i === 0 ? " · host" : ""}${m.ready[i] ? " · ready" : ""}`; el.liveList.append(li); }
     el.liveSizes.hidden = !(mine && m.phase === "lobby");
     if (m) for (const b of el.liveSizes.querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.liveSize) === m.size));
-    el.liveReg.textContent = me ? "Unregister" : play ? "Register for next round" : "Register";
+    el.liveReg.textContent = me ? "Leave match" : play ? "Join next round" : "Join match";
+    el.liveReg.classList.toggle("is-leave", me);
     el.liveReg.hidden = seated || !!m && m.reg.length >= WIRE.MAX_PLAYERS && !me;
     el.liveReady.hidden = !me || play || solo;
     el.liveAlone.hidden = !solo;
@@ -566,12 +587,13 @@
     el.liveReady.textContent = me && isReady() ? "Not ready" : "Ready!";
     el.liveWatch.hidden = !(play && !seated && phase === "board");
     if (el.watch) {
-      el.watchLine.textContent = !play ? (me ? "No round running. You're registered: open Main menu to ready up." : "No round running. Register here, or open the lobby from Main menu.") : me ? "You're registered for the next round. It opens when this one ends." : "Round under way · you're in the viewing chairs. You can't enter until it ends.";
-      el.watchReg.textContent = me ? "Unregister" : "Register for next round";
+      el.watchLine.textContent = !play ? (me ? "No round running. You've joined: open Main menu to ready up." : "No round running. Join here, or open the lobby from Main menu.") : me ? "You're registered for the next round. It opens when this one ends." : "Round under way · you're in the viewing chairs. You can't enter until it ends.";
+      el.watchReg.textContent = me ? "Leave match" : "Join next round";
     }
     // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
     if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); deckSteals.was.length = 0; deckSteals.count.length = 0; deckSteals.home.blue = deckSteals.home.red = false; }
     followMatchMap();
+    boardFollowsMatch(m, me && !play, mine && !!m && m.phase === "lobby");
     if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound() && !sim.over)) showBoard();
   };
   const openRound = () => {
