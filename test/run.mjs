@@ -7339,48 +7339,60 @@ const gameRulesChecks = async () => {
       rules.any.first === 1 && !rules.any.waited && rules.any.kept === true && rules.classic.first === 0 && rules.classic.waited && rules.classic.later === 1 && rules.classic.kept === false
       && rules.anyBot.first === 1 && rules.classicBot.first === 0 && rules.classicBot.later === 1 && rules.fresh === false && !rules.duel, JSON.stringify(rules));
     record("block scoring rule on the wire: opt may carry the rule, 0 or 1, and nothing else; left out, no pick; unpicked, two people play doesn't-need-to-be-home and any other count classic; a pick always stands; an older page's message is refused",
-      ruleWire.rules === "home,any" && ruleWire.none === "0100" && ruleWire.picked === "01" && ruleWire.plain === JSON.stringify({ t: "bf", k: "opt", n: 2, m: W.FIRST_MAP }) && ruleWire.home === 0 && ruleWire.any === 1 && ruleWire.bad && ruleWire.old === null && W.WIRE === 3, JSON.stringify(ruleWire));
+      ruleWire.rules === "home,any" && ruleWire.none === "0100" && ruleWire.picked === "01" && ruleWire.plain === JSON.stringify({ t: "bf", k: "opt", n: 2, m: W.FIRST_MAP }) && ruleWire.home === 0 && ruleWire.any === 1 && ruleWire.bad && ruleWire.old === null && W.WIRE >= 3, JSON.stringify(ruleWire));
 
-    // Mining a block takes one thing from the other side, by the sim's seeded pick; the wallets and their machines are gone.
-    const mine = (setup, seed = 3, left = 0) => { const s = S.create({ team: "blue", seed, size: 3, map: "town", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue; s.goldLeft = left; s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0; setup(s, a); S.tick(s, S.CONFIG.STEP, still()); return s; };
-    const give = (s, id, k = 0) => { s.actors[id].hook = k + 1; s.hooks[k].state = 1; s.hooks[k].holder = id; };
-    const gold = mine((s) => { s.actors[3].gold = true; }), hook = mine((s) => give(s, 4)), none = mine(() => {});
-    const mate = mine((s, a) => { a.gold = true; s.actors[3].gold = true; }), hookFirst = mine((s, a) => { a.gold = true; s.actors[3].gold = true; give(s, 4); }), pool = mine((s) => { s.actors[3].gold = true; }, 3, 1);
-    const whoLost = (seed) => { const s = mine((q) => { q.actors[3].gold = q.actors[4].gold = true; }, seed); return s.actors[3].gold ? 4 : 3; };
-    const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(whoLost), held = (s) => s.actors.filter((b) => b.gold).map((b) => b.id);
-    const steal = { gold: gold.actors[0].gold && !gold.actors[3].gold, hook: hook.actors[0].hook === 1 && hook.actors[4].hook === 0 && hook.hooks[0].holder === 0, none: !none.actors.some((b) => b.gold || b.hook),
-      mate: mate.actors[0].gold && !mate.actors[3].gold && (mate.actors[1].gold || mate.actors[2].gold), hookFirst: hookFirst.actors[0].hook === 1 && hookFirst.actors[3].gold, noDouble: pool.actors[0].gold && pool.actors[3].gold && pool.goldLeft === 0,
-      seeded: seeds.includes(3) && seeds.includes(4) && seeds.every((v, i) => v === whoLost(i + 1)), oneMoved: held(mate).length === 2 };
-    record("block mining steals: a capture that wins nothing from the pool takes a rival's gold, else a hook, for the miner or a teammate without one, by the seeded pick; nothing held, nothing taken; never two in one capture", Object.values(steal).every(Boolean), JSON.stringify({ ...steal, seeds }));
-    const stolen = mine((s) => { s.actors[3].gold = true; }), stolenMap = L.seatMap(3, 0), buf3 = new DataView(new ArrayBuffer(W.FRAME_MAX)), len3 = L.encode(stolen, stolenMap, 1, 1, 1, buf3), guest3 = S.create({ team: "blue", seed: 3, size: 3, map: "town", prep: 0 }), frame3 = new DataView(buf3.buffer.slice(0, len3));
+    // Each block mined wins one pair of Golden AKs, never more than `GOLD_GUNS` in the round: for the miner, else the
+    // nearest teammate without a pair; from the pool, else from a rival by the sim's seeded pick; a side holding every
+    // pair wins nothing more. The wallets and their machines are gone.
+    const mine = (setup, seed = 3, left = S.CONFIG.GOLD_GUNS) => { const s = S.create({ team: "blue", seed, size: 3, map: "town", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue; for (const q of s.actors) { q.bot = false; q.x = 200 + q.id * 3; q.z = 200; } s.gorillas.length = 0; s.goldLeft = left; setup(s, a); s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0; S.tick(s, S.CONFIG.STEP, still()); return s; };
+    const pairs = (s) => s.goldLeft + s.actors.filter((b) => b.gold).length, held = (s) => s.actors.filter((b) => b.gold).map((b) => b.id).join();
+    const evOf = (s, type) => { for (let i = 0; i < s.eventCount; i++) if (s.events[i].type === type) return s.events[i]; return null; };
+    const toMiner = mine(() => {}), toMate = mine((s, a) => { a.gold = true; s.goldLeft = 1; s.actors[1].x = 60; s.actors[2].x = 30; }), both = mine((s, a) => { a.gold = s.actors[1].gold = true; s.goldLeft = 0; });
+    const fromRival = mine((s) => { s.actors[3].gold = s.actors[4].gold = true; s.goldLeft = 0; }), mateFromRival = mine((s, a) => { a.gold = s.actors[4].gold = true; s.goldLeft = 0; s.actors[1].x = 30; s.actors[2].x = 60; });
+    const whoLost = (seed) => { const s = mine((q) => { q.actors[3].gold = q.actors[4].gold = true; q.goldLeft = 0; }, seed); return s.actors[3].gold ? 4 : 3; };
+    const seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(whoLost), mateEv = evOf(toMate, "gold");
+    const mining = { miner: held(toMiner) === "0" && toMiner.goldLeft === 1 && evOf(toMiner, "gold")?.actor === 0, mate: held(toMate) === "0,2" && toMate.goldLeft === 0 && mateEv?.actor === 2 && mateEv?.by === 0,
+      both: held(both) === "0,1" && !evOf(both, "gold") && !evOf(both, "goldsteal"), rival: fromRival.actors[0].gold && held(fromRival).split(",").length === 2 && evOf(fromRival, "goldsteal")?.actor === 0,
+      mateRival: held(mateFromRival) === "0,1" && evOf(mateFromRival, "goldsteal")?.actor === 1, seeded: seeds.includes(3) && seeds.includes(4) && seeds.every((v, i) => v === whoLost(i + 1)),
+      two: S.CONFIG.GOLD_GUNS === 2 && [toMiner, toMate, both, fromRival, mateFromRival].every((s) => pairs(s) === 2), noHook: [toMiner, fromRival].every((s) => s.actors.every((b) => !b.hook)), noDrops: !("drops" in toMiner) && !("DROP_BACK_S" in S.CONFIG) };
+    record("block mining wins Golden AKs: each block mined wins one pair, for the miner or else the nearest teammate without one; from the pool, else from a rival by the seeded pick; a side holding both wins nothing; two pairs in all, and mining takes no hook",
+      Object.values(mining).every(Boolean), JSON.stringify({ ...mining, seeds }));
+    const stolen = mine((s) => { s.actors[3].gold = s.actors[4].gold = true; s.goldLeft = 0; }), stolenMap = L.seatMap(3, 0), buf3 = new DataView(new ArrayBuffer(W.FRAME_MAX)), len3 = L.encode(stolen, stolenMap, 1, 1, 1, buf3), guest3 = S.create({ team: "blue", seed: 3, size: 3, map: "town", prep: 0 }), frame3 = new DataView(buf3.buffer.slice(0, len3));
+    guest3.gorillas.length = 0;
     const gone = { sim: !("wallets" in stolen) && !("vends" in stolen) && !S.nearVend && !S.takeWallet && !S.WALLETS && !S.ARENA.vends && !Object.keys(S.CONFIG).some((k) => /WALLET|VEND/.test(k)), actor: !("wallet" in stolen.actors[0]) && !("soot" in stolen.actors[0]) && !("vendGo" in stolen.actors[0]), wire: !W.ACTIONS.some((k) => /wallet/i.test(k)) && !L.EVENT_TYPES.some((k) => ["wallet", "wthrow", "wdrop", "wbounce", "stuck", "rekt", "blast"].includes(k)), frame: L.validFrame(frame3, guest3, stolenMap) && !L.validFrame(new DataView(buf3.buffer.slice(0, len3 + 1)), guest3, stolenMap) };
     L.decode(frame3, guest3, stolenMap, new Float32Array(32));
-    gone.guestAgrees = guest3.actors[0].gold && !guest3.actors[3].gold;
-    // Splatted with it in hand, an Ooga drops it: anyone may walk over it, and in time it goes home.
-    const sp = (setup, map = "town") => { const s = S.create({ team: "blue", seed: 4, size: 2, map, prep: 0 }), a = s.actors[0], b = s.actors[2]; for (const q of s.actors) { q.bot = false; q.guard = 0; } s.gorillas.length = 0; a.x = 24; a.z = 30; a.y = 0; a.edgeX = 24; a.edgeZ = 30; b.x = 200; b.z = 200; setup(s, a, b); S.splat(s, a); return { s, a, b }; };
-    const quiet = (s, t) => { for (let i = 0; i < Math.ceil(t / S.CONFIG.STEP); i++) { for (const q of s.actors) q.guard = q.guard > 0 ? 0 : q.guard; S.tick(s, S.CONFIG.STEP, still()); } };
+    gone.guestAgrees = guest3.actors.map((b) => +b.gold).join("") === stolen.actors.map((b) => +b.gold).join("") && guest3.actors[0].gold;
+    // The two special weapons take each other, and only each other, out of a rival's hands: a hook that reaches a rival
+    // with the Golden AKs out takes the pair; Golden AK fire that splats a rival with the hook out takes the hook. Put
+    // away, nothing is taken; no other shot, burst, beam or bonk takes either; a taker never holds two.
+    const duel = (setup) => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), a = s.actors[0], b = s.actors[2]; for (const q of s.actors) { q.bot = false; q.guard = 0; q.x = 300 + q.id * 5; q.z = 300; q.y = 0; } s.gorillas.length = 0; a.x = 8; a.z = 9; b.x = 8; b.z = 3; setup(s, a, b); s.goldLeft = S.CONFIG.GOLD_GUNS - s.actors.filter((q) => q.gold).length; return { s, a, b }; };
     const hold = (s, a, k = 0) => { a.hook = k + 1; s.hooks[k].state = 1; s.hooks[k].holder = a.id; };
-    const dropped = sp((s, a) => { a.gold = true; a.wield = "gold"; }), putAwayGold = sp((s, a) => { a.gold = true; a.wield = "paint"; }), putAwayHook = sp((s, a) => { hold(s, a); a.wield = "gold"; });
-    const hookOut = sp((s, a) => { hold(s, a); a.wield = "hook"; }), firedGold = sp((s, a) => { a.gold = true; a.wield = ""; a.lastKind = "gold"; });
-    const inUse = sp((s, a) => { hold(s, a); a.wield = "paint"; a.hk = 1; }), reeling = sp((s, a) => { hold(s, a); a.wield = "paint"; a.hk = 5; a.hookTarget = 1; s.flags.red.state = "hooked"; s.flags.red.hookedBy = 0; s.flags.red.x = 20; s.flags.red.z = 30; });
-    const byRival = sp((s, a) => { a.gold = true; a.wield = "gold"; }); byRival.b.x = byRival.s.drops[0].x; byRival.b.z = byRival.s.drops[0].z; byRival.b.y = 0; quiet(byRival.s, 0.05);
-    const byOwner = sp((s, a) => { a.gold = true; a.wield = "gold"; }); byOwner.a.splat = 0; quiet(byOwner.s, 0.05);
-    const already = sp((s, a, b) => { a.gold = true; a.wield = "gold"; b.gold = true; }); already.b.x = already.s.drops[0].x; already.b.z = already.s.drops[0].z; already.b.y = 0; quiet(already.s, 0.05);
-    const back = sp((s, a) => { a.gold = true; a.wield = "gold"; }); back.a.x = 200; back.a.z = 200; const hookHome = sp((s, a) => { hold(s, a); a.wield = "hook"; }); hookHome.a.x = 200; hookHome.a.z = 200;
-    quiet(back.s, S.CONFIG.DROP_BACK_S + 0.2); quiet(hookHome.s, S.CONFIG.DROP_BACK_S + 0.2);
-    const offEdge = sp((s, a) => { a.gold = true; a.wield = "gold"; a.x = 500; a.z = 500; a.y = -30; }), grave = S.create({ team: "blue", seed: 4, size: 2, map: "haunted", prep: 0 }), g0 = S.ARENA.graves[0], gr = grave.actors[0]; gr.gold = true; gr.wield = "gold"; gr.x = (g0[0] + g0[1]) / 2; gr.z = (g0[2] + g0[3]) / 2; gr.y = S.GRAVE_Y; S.splat(grave, gr); const gd = grave.drops[0];
-    const dropBuf = new DataView(new ArrayBuffer(W.FRAME_MAX)), dropMap = L.seatMap(2, 0), dropLen = L.encode(dropped.s, dropMap, 1, 1, 1, dropBuf), dropGuest = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), dropFrame = new DataView(dropBuf.buffer.slice(0, dropLen));
-    dropGuest.gorillas.length = 0;
-    const framed = L.validFrame(dropFrame, dropGuest, dropMap); L.decode(dropFrame, dropGuest, dropMap, new Float32Array(16));
-    const dropping = { gold: !dropped.a.gold && dropped.s.drops[0].live && dropped.s.drops[0].owner === 0, putAway: putAwayGold.a.gold && !putAwayGold.s.drops[0].live && putAwayHook.a.hook === 1 && putAwayHook.s.hooks[0].state === 1, hook: hookOut.a.hook === 0 && hookOut.s.hooks[0].state === 0 && hookOut.s.hooks[0].back > 0, fired: !firedGold.a.gold,
-      inUse: inUse.a.hook === 0 && inUse.a.hk === 0 && inUse.s.hooks[0].state === 0, reeled: reeling.a.hk === 0 && reeling.s.flags.red.hookedBy !== 0, rival: byRival.b.gold && !byRival.s.drops[0].live, owner: byOwner.a.gold && !byOwner.s.drops[0].live, noSecond: already.b.gold && already.s.drops[0].live,
-      back: back.a.gold && !back.s.drops[0].live, hookBack: hookHome.a.hook === 1 && hookHome.s.hooks[0].state === 1, edge: offEdge.s.drops[0].live && offEdge.s.drops[0].y === 0 && Math.hypot(offEdge.s.drops[0].x, offEdge.s.drops[0].z) < 200, grave: gd.live && gd.y === 0 && !(gd.x > g0[0] && gd.x < g0[1] && gd.z > g0[2] && gd.z < g0[3]), pool: dropped.s.drops.length === S.CONFIG.GOLD_GUNS && back.s.drops.length === S.CONFIG.GOLD_GUNS, guest: framed && dropGuest.drops[0].live && Math.abs(dropGuest.drops[0].x - dropped.s.drops[0].x) < 0.05 && !dropGuest.drops[1].live };
-    // A guest's tool is the host's word through `wield`: switched away without firing keeps the AKs, a hook held out drops.
-    const asGuest = (setup) => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), g = s.actors[1]; for (const q of s.actors) { q.bot = false; q.guard = 0; } s.gorillas.length = 0; g.x = 24; g.z = 30; g.y = 0; g.edgeX = 24; g.edgeZ = 30; const r = setup(s, g); S.splat(s, g); return { s, g, r }; };
-    const switched = asGuest((s, g) => { g.gold = true; g.lastKind = "gold"; return S.wield(s, 1, S.WIELD.indexOf("paint")); }), heldOut = asGuest((s, g) => { hold(s, g); g.lastKind = "paint"; return S.wield(s, 1, S.WIELD.indexOf("hook")); });
-    const refused = (() => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), g = s.actors[1]; g.wield = "paint"; return !S.wield(s, 1, S.WIELD.indexOf("gold")) && !S.wield(s, 1, S.WIELD.indexOf("hook")) && !S.wield(s, 1, 99) && !S.wield(s, 1, -1) && g.wield === "paint" && W.ACTIONS.includes("wield") && !!W.parse({ v: W.WIRE, k: "input", s: "0123456789abcdef", q: 1, x: 0, z: 0, f: 0, b: 0, a: [W.ACTIONS.indexOf("wield"), 7, 0, 0] }); })();
-    dropping.guestSwitched = switched.r && switched.g.gold && !switched.s.drops[0].live; dropping.guestHookOut = heldOut.r && heldOut.g.hook === 0 && heldOut.s.hooks[0].state === 0; dropping.wieldChecked = refused;
-    record("block drops: splatted with the Golden AKs or a hook in hand, an Ooga drops it (one put away stays), a hook in use settles, anyone without one takes it, owner included, it returns after the timer, it rests on reachable ground, the pool stays fixed, and a guest sees it", Object.values(dropping).every(Boolean), JSON.stringify(dropping));
+    const quiet = (s, t) => { for (let i = 0; i < Math.ceil(t / S.CONFIG.STEP); i++) { for (const q of s.actors) q.guard = 0; S.tick(s, S.CONFIG.STEP, still()); } };
+    const hookAt = (setup) => { const d = duel((s, a, b) => { hold(s, a); b.gold = true; setup(s, a, b); }); S.grapple(d.s, 0, Math.PI, Math.atan2(1 - S.CONFIG.SHOT_Y, 6)); quiet(d.s, 1); return d; };
+    const hookIn = hookAt((s, a, b) => { b.wield = "gold"; }), hookAway = hookAt((s, a, b) => { b.wield = "paint"; }), hookBotFired = hookAt((s, a, b) => { b.wield = ""; b.lastKind = "gold"; }), hookArmed = hookAt((s, a, b) => { a.gold = true; b.wield = "gold"; });
+    const shotAt = (kind, wield = "hook", setup = () => {}) => { const d = duel((s, a, b) => { a.gold = true; hold(s, b); b.wield = wield; setup(s, a, b); }); S.fire(d.s, 0, Math.PI, S.flatPitch(6, S.TOOLS[kind]), kind); quiet(d.s, 1); return d; };
+    const goldIn = shotAt("gold"), goldAway = shotAt("gold", "paint"), goldInUse = shotAt("gold", "paint", (s, a, b) => { b.hk = 4; }), goldOwn = shotAt("gold", "hook", (s, a) => hold(s, a, 1)), akIn = shotAt("ak");
+    const splatBy = (kind) => { const d = duel((s, a, b) => { a.gold = true; hold(s, b); b.wield = "hook"; }); S.splat(d.s, d.b, kind === "bonk", kind === "bonk" ? null : { kind, owner: 0, team: "blue", ox: d.a.x, oz: d.a.z }); return d.b.hook === 1 && d.a.hook === 0; };
+    const goldSplat = (() => { const d = duel((s, a, b) => { b.gold = true; b.wield = "gold"; hold(s, a); }); for (const k of ["paint", "ak", "sniper", "rocket", "grenade", "net", "crate", "homer", "laser"]) { d.b.splat = 0; S.splat(d.s, d.b, false, { kind: k, owner: 0, team: "blue", ox: 0, oz: 0 }); } S.splat(d.s, d.b, true); return d.b.gold && !d.a.gold; })();
+    const steals = { hookTakes: hookIn.a.gold && !hookIn.b.gold && hookIn.a.hook === 1, hookAway: !hookAway.a.gold && hookAway.b.gold, botFired: hookBotFired.a.gold && !hookBotFired.b.gold, hookArmed: hookArmed.a.gold && hookArmed.b.gold,
+      goldTakes: goldIn.a.hook === 1 && goldIn.b.hook === 0 && goldIn.s.hooks[0].holder === 0 && goldIn.b.splats === 1, goldAway: goldAway.b.hook === 1 && goldAway.a.hook === 0 && goldAway.b.splats === 1, inUse: goldInUse.a.hook === 1 && goldInUse.b.hook === 0,
+      ownHook: goldOwn.a.hook === 2 && goldOwn.b.hook === 1, akKeeps: akIn.b.hook === 1 && akIn.a.hook === 0 && akIn.b.splats === 1,
+      othersKeep: ["paint", "ak", "sniper", "rocket", "grenade", "net", "crate", "homer", "laser", "bonk"].every(splatBy), goldKept: goldSplat, pairs: [hookIn, goldIn].every((d) => d.s.goldLeft + d.s.actors.filter((q) => q.gold).length === 2) };
+    record("block special-weapon steals: a hook takes a rival's Golden AKs only while they're in hand (a bot's last fired counts), to a thrower with none; Golden AK fire takes a rival's hook only while it's in hand or out, to a shooter with none; the Ooga AK, paint, the sniper, rockets, grenades, nets, crates, monkeys, laser eyes and bonks take neither",
+      Object.values(steals).every(Boolean), JSON.stringify(steals));
+    // A guest's tool is the host's word through `wield`: a guest who puts the AKs away keeps them from a hook, one who
+    // holds the hook out loses it to Golden AK fire; a tool they don't own is refused. The frame carries the result.
+    const asGuest = (wieldKind, give, setup) => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), h = s.actors[0], g = s.actors[2]; for (const q of s.actors) { q.bot = false; q.guard = 0; q.x = 300 + q.id * 5; q.z = 300; q.y = 0; } s.gorillas.length = 0; h.x = 8; h.z = 9; g.x = 8; g.z = 3; give(s, h, g); g.lastKind = "paint"; const r = S.wield(s, 2, S.WIELD.indexOf(wieldKind)); setup(s, h, g); quiet(s, 1); return { s, h, g, r }; };
+    const guestAway = asGuest("paint", (s, h, g) => { hold(s, h); g.gold = true; g.lastKind = "gold"; }, (s) => S.grapple(s, 0, Math.PI, Math.atan2(1 - S.CONFIG.SHOT_Y, 6)));
+    const guestOut = asGuest("hook", (s, h, g) => { h.gold = true; hold(s, g); }, (s) => S.fire(s, 0, Math.PI, S.flatPitch(6, S.TOOLS.gold), "gold"));
+    const refused = (() => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), g = s.actors[1]; g.wield = "paint"; return !S.wield(s, 1, S.WIELD.indexOf("gold")) && !S.wield(s, 1, S.WIELD.indexOf("hook")) && !S.wield(s, 1, 99) && !S.wield(s, 1, -1) && g.wield === "paint" && W.ACTIONS.includes("wield"); })();
+    const outMap = L.seatMap(2, 1), outBuf = new DataView(new ArrayBuffer(W.FRAME_MAX)), outLen = L.encode(guestOut.s, L.seatMap(2, 0), 1, 1, 1, outBuf), outGuest = S.create({ team: "red", seed: 4, size: 2, map: "town", prep: 0 }), outFrame = new DataView(outBuf.buffer.slice(0, outLen));
+    outGuest.gorillas.length = 0;
+    const framedOut = L.validFrame(outFrame, outGuest, L.seatMap(2, 0)) && !L.validFrame(new DataView(outBuf.buffer.slice(0, outLen + 1)), outGuest, L.seatMap(2, 0)); L.decode(outFrame, outGuest, L.seatMap(2, 0), new Float32Array(16));
+    const guests = { away: guestAway.r && guestAway.g.gold && !guestAway.h.gold, out: guestOut.r && guestOut.h.hook === 1 && guestOut.g.hook === 0, refused, framed: framedOut, agrees: outGuest.actors[0].hook === 1 && outGuest.actors[2].hook === 0 && outGuest.hooks[0].holder === 0,
+      events: ["goldhook", "hooksteal", "goldsteal", "gold"].every((t) => L.EVENT_TYPES.includes(t)) && !["golddrop", "goldget", "goldback", "hookdrop", "hookback"].some((t) => L.EVENT_TYPES.includes(t)), wire: W.WIRE === 4 };
+    record("block steals live: a guest's wield on the host decides what a hook or Golden AK fire can take, an unowned tool is refused, the frame carries the result to a guest exactly, and the drop events are gone (WIRE 4)",
+      Object.values(guests).every(Boolean), JSON.stringify(guests));
     // Shots through the sim itself: bots meet a crouched, a higher and a lower target; no round passes a thin wall.
     const shootAt = (kind, setup) => { const s = S.create({ team: "blue", seed: 6, size: 2, map: "town", prep: 0 }), a = s.actors[0], t = s.actors[2]; for (const q of s.actors) { q.bot = false; q.guard = 0; } s.gorillas.length = 0; a.x = 6; a.z = -20; a.y = 0; t.x = 6; t.z = -8; t.y = 0; s.actors[1].x = s.actors[3].x = 200; setup(s, a, t);
       const ty = t.y, ay = a.y, tc = t.crouch, d = Math.hypot(t.x - a.x, t.z - a.z); S.fire(s, 0, Math.atan2(t.x - a.x, t.z - a.z), S.flatPitch(d, S.TOOLS[kind]) + S.aimRise(a, t, d), kind);
@@ -8070,7 +8082,7 @@ const gameRulesChecks = async () => {
       const holder = r.actors[2];
       holder.hook = 1; r.hooks[0].state = 1; r.hooks[0].holder = 2; o.x = -17; o.z = 0; holder.x = -17; holder.z = 2.5; o.guard = holder.guard = 9;
       r.goldLeft = 0; r.flags[holder.team].state = "carried"; r.flags[holder.team].carrier = 0; o.carrying = holder.team; o.x = S.ARENA.stands[o.team].x; o.z = S.ARENA.stands[o.team].z; o.y = 0;
-      rows.steal = !!run(r, 0.2).hooksteal && o.hook === 1 && holder.hook === 0 && r.hooks[0].holder === 0;
+      rows.steal = !run(r, 0.2).hooksteal && o.hook === 0 && holder.hook === 1 && r.hooks[0].holder === 2;
       r = fresh(); o = r.actors[0]; o.hook = 2; r.hooks[1].state = 1; r.hooks[1].holder = 0; o.y = S.CONFIG.FALL_FLOOR - 1; o.x = 40; o.grounded = false;
       const fell = run(r, S.CONFIG.STEP * 2);
       rows.rehide = !!fell.hookhide && o.hook === 0 && r.hooks[1].state === 0;
@@ -8288,7 +8300,7 @@ const gameRulesChecks = async () => {
         bv.bot = true; Object.assign(bv, { x: bx, z: bz, y: 0, grounded: true });
         rows.enemyCatBot = !S.nearEnemyCatapult(bot, bv);
       }
-      record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a mined block takes a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
+      record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a mined block takes no hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
         // edge, a throw off it, a jetpack back, breaking free by mashing, and the hook stunning a gorilla to free its

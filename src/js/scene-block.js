@@ -398,7 +398,7 @@
       center(COARSE ? "PAUSED · Main menu for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
     } else el.center.hidden = true;
   };
-  const TIPS = ["Hold Space in the air to jetpack back to the island.", "Mining a block takes a rival's hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
+  const TIPS = ["Hold Space in the air to jetpack back to the island.", "Every block you mine wins a pair of Golden AKs, for you or a teammate.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
   // The struggle meter, shown while a gorilla holds the visitor's Ooga. It repaints only when the bar moves a step or
   // the count of presses left changes.
@@ -998,18 +998,16 @@
     else if (t === "thrown") feed(`A gorilla threw ${e.actor === 0 ? "you" : who} off the island`, e.team);
     else if (t === "respawn") feed(`${who} fell off the island`, e.team);
     else if (t === "hookget") feed(`${who} found a grappling hook`, e.team);
-    else if (t === "hooksteal") feed(`${who} took ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} grappling hook with a mined block`, e.team);
+    else if (t === "hooksteal") feed(`${who} shot ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} grappling hook away with the Golden AKs`, e.team);
+    else if (t === "goldhook") feed(`${who} hooked ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} Golden Dual AKs away!`, e.team);
     else if (t === "yank") feed(`${nameOf(e.actor)} yanked the ${TEAM_NAME[e.team]} block away`, sim.actors[e.actor].team);
     else if (t === "gorillahooked") feed(`${nameOf(e.actor)} hooked a gorilla`, sim.actors[e.actor].team);
     else if (t === "edgedrop") feed(`The ${TEAM_NAME[e.team]} block dropped at the edge`, e.team);
     else if (t === "gorillahit" && e.actor >= 0) feed(`${nameOf(e.actor)} stunned a gorilla`, sim.actors[e.actor].team);
-    else if (t === "gold") feed(`${who} won the Golden Dual AKs!`, e.team);
-    else if (t === "golddrop") feed(`${who} dropped the Golden Dual AKs`, e.team);
-    else if (t === "hookdrop") feed(`${who} dropped a grappling hook`, e.team);
-    else if (t === "goldget") feed(`${who} picked up the Golden Dual AKs`, e.team);
+    else if (t === "gold") feed(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)} mined a block: ${who} gets the Golden Dual AKs!` : `${who} won the Golden Dual AKs!`, e.team);
     else if (t === "enemycat") feed(`${who} tried the enemy catapult and was flung off the island!`, sim.actors[e.actor].team);
     else if (t === "launch") feed(`${who} catapulted toward the ${TEAM_NAME[SIM.other(e.team)]} fort!`, e.team);
-    else if (t === "goldsteal") feed(`${who} took ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} Golden Dual AKs with a mined block!`, e.team);
+    else if (t === "goldsteal") feed(`A mined block: ${who} gets ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} Golden Dual AKs!`, e.team);
     else if (t === "mined") feed(e.x ? `Bitcoin block ${e.x} found!` : "A Bitcoin block was found!", null);
   };
   // The mini-map: the field turned so the rivals' fort is at the top, the forts and towers drawn once
@@ -1072,9 +1070,6 @@
       g.fillStyle = BM.TEAM[t].paint;
       g.fillRect(mapX(f.x) - 2, mapY(f.z) - 2, 4, 4);
     }
-    g.fillStyle = "#f2c230";
-    for (const d of sim.drops) if (d.live) g.fillRect(mapX(d.x) - 2, mapY(d.z) - 2, 4, 4);
-    for (const h of sim.hooks) if (h.state === 0 && h.back > 0) g.fillRect(mapX(h.x) - 2, mapY(h.z) - 2, 4, 4);
     g.fillStyle = "#3a2a1c";
     for (const go of sim.gorillas) g.fillRect(mapX(go.x) - 3, mapY(go.z) - 3, 6, 6);
     for (let i = sim.actors.length - 1; i >= 0; i--) {
@@ -1122,9 +1117,16 @@
       } else if (e.type === "hookget") {
         fx.burst(e.x, e.y + 1, e.z, 14, ORANGE_BITS, 2);
         if (me) { center("GRAPPLING HOOK!", 1100); notice(COARSE ? "Hook · pick it on the tool bar, tap Throw at a rock or a carrier" : "Hook · R fires at the crosshair: pull yourself up, or yank a block off a carrier", 3200); updateTools(); }
-      } else if (e.type === "hooksteal") {
-        if (me) notice("Your team's block took a grappling hook! It's yours", 2400);
-        else if (e.by === you) notice("They mined a block and took your grappling hook", 2400);
+      } else if (e.type === "hooksteal" || e.type === "goldhook") {
+        // The two special weapons take each other out of a rival's hands: Golden AK fire takes a hook, a hook the AKs.
+        const gold = e.type === "goldhook";
+        fx.burst(e.x, e.y, e.z, 18, ORANGE_BITS, 2.6);
+        if (me) { center(gold ? "HOOKED THE AKs!" : "SHOT THE HOOK AWAY!", 1000); notice(gold ? "Your hook took their Golden Dual AKs! They're yours (6)" : "Golden AK fire took their grappling hook! It's yours (8)", 3000); audio.cues.rescue(); if (gold) chooseTool("gold"); }
+        else if (e.by === you) {
+          center(gold ? "AKs HOOKED!" : "HOOK SHOT AWAY!", 1000);
+          notice(gold ? "A hook took your Golden Dual AKs" : "Golden AK fire took your grappling hook", 2600);
+          if (tool === (gold ? "gold" : "hook")) chooseTool("paint");
+        }
         updateTools();
       } else if (e.type === "hookwarn") {
         if (e.actor === you) { center("HOOKED!", 700); notice("They've hooked your block!", 1200); }
@@ -1158,11 +1160,6 @@
       else if (e.type === "refill") { if (me) { notice("Refilled: grenades, rockets, nets and crates", 1600); updateTools(); } }
       else if (e.type === "throw") { if (e.actor === you) updateTools(); }
       else if (e.type === "gunfire") { if (me && tool === "ak") updateTools(); }
-      else if (e.type === "golddrop") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { notice("You dropped the Golden Dual AKs · they come back in " + C.DROP_BACK_S + " s if nobody takes them", 2600); if (tool === "gold") chooseTool("paint"); else updateTools(); } }
-      else if (e.type === "hookdrop") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { notice("You dropped your grappling hook · it comes back in " + C.DROP_BACK_S + " s if nobody takes it", 2600); if (tool === "hook") chooseTool("paint"); else updateTools(); } }
-      else if (e.type === "goldget") { fx.burst(e.x, 0.6, e.z, 12, ORANGE_BITS, 1.6); if (me) { center("GOLDEN AKs!", 900); notice("You picked up the Golden Dual AKs (6)", 2200); chooseTool("gold"); } }
-      else if (e.type === "goldback") { if (me) { notice("Nobody took them · your Golden Dual AKs are back (6)", 2200); updateTools(); } }
-      else if (e.type === "hookback") { if (me) { notice("Nobody took it · your grappling hook is back (8)", 2200); updateTools(); } }
       else if (e.type === "boing") {
         fx.burst(e.x, 0.3, e.z, 6, ORANGE_BITS, 1.4);
         if (me && !trampSeen) { trampSeen = true; notice("BOING! Jump again at the top to go even higher", 2400); }
@@ -1223,14 +1220,15 @@
         audio.cues.power();
         if (me) {
           center("GOLDEN DUAL AKs!", 1200);
-          notice(COARSE ? "One in each hand, full auto! Hold Paint · if they mine a block, they can take them" : "One in each hand, full auto! Hold click (6) · if they mine a block, they can take them", 4000);
+          notice(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)} mined a block: the Golden Dual AKs are yours (6) · a hook can take them while they're out` : COARSE ? "One in each hand, full auto! Hold Paint · a hook can take them while they're out" : "One in each hand, full auto! Hold click (6) · a hook can take them while they're out", 4000);
           chooseTool("gold");
-        } else notice(mine ? "Teammate won the Golden Dual AKs!" : "They won the Golden Dual AKs · mine a block to take them", 2600);
+        } else notice(mine ? `${nameOf(e.actor)} has the Golden Dual AKs!` : "They won the Golden Dual AKs · hook them away, or mine a block", 2600);
         updateTools();
       } else if (e.type === "goldsteal") {
         fx.burst(e.x, e.y, e.z, 18, ORANGE_BITS, 2.6);
-        if (me) { center("STOLEN!", 1000); notice("Your team's block took the Golden Dual AKs! They're yours (6)", 3000); audio.cues.rescue(); chooseTool("gold"); }
+        if (me) { center("STOLEN!", 1000); notice("A mined block took their Golden Dual AKs! They're yours (6)", 3000); audio.cues.rescue(); chooseTool("gold"); }
         else if (e.by === you) { center("AKs STOLEN!", 1000); notice("They mined a block and took your Golden Dual AKs", 2600); if (tool === "gold") chooseTool("paint"); }
+        else if (mine) notice(`${nameOf(e.actor)} has the Golden Dual AKs!`, 2200);
         updateTools();
       } else if (e.type === "reload") {
         if (me) { notice("Reloading…", 1000); audio.cues.crate(0.6); updateTools(); }
@@ -1381,7 +1379,7 @@
     // Say why a throw didn't go, so the tools never seem locked: paint on you, a quiz bubble, or an empty tool.
     if (!ok && a.splat > 0) notice(`Splatted · throwing again in ${Math.ceil(a.splat)} s`, 900);
     else if (!ok && a.trapped > 0) notice("Answer the question to get out first", 1100);
-    else if (!ok && tool === "gold" && !a.gold) notice("Mine a block to win the Golden Dual AKs, or take them from whoever has them", 1800);
+    else if (!ok && tool === "gold" && !a.gold) notice("Mine a block to win the Golden Dual AKs, or hook them out of a rival's hands", 1800);
     else if (!ok && tool !== "paint" && a[tool] <= 0) notice(`Out of ${tool}s · refill on your stand or an ammo cache`, 1400);
     return ok;
   };
@@ -1389,7 +1387,7 @@
   const hookNow = () => {
     if (!inRound()) return false;
     const a = sim.actors[0];
-    if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or mine a block to take one", 2000); return false; }
+    if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or shoot one away with the Golden AKs", 2000); return false; }
     const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
     const ok = acts("grapple", 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.45, 1.45));
     return ok;
@@ -1419,7 +1417,7 @@
     // Say the new weapon, whatever changed it, so it shows with the bar hidden too.
     if (k !== tool && TOOL_NAMES[k]) showToolName(k);
     tool = k;
-    // A guest tells the host what is in hand, only when it changes: it decides what a splat drops.
+    // A guest tells the host what is in hand, only when it changes: it decides what a hook or Golden AK fire can take.
     if (round && round.role === "guest") acts("wield", 0, SIM.WIELD.indexOf(k));
     updateTools();
   };
@@ -1601,10 +1599,10 @@
   const keyTool = (k) => {
     const a = sim.actors[0];
     if (k === "hook") {
-      if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or mine a block to take one", 2000); return; }
+      if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or shoot one away with the Golden AKs", 2000); return; }
       chooseTool(k); return;
     }
-    if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them or take them", 1800); return; }
+    if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them, or hook them out of a rival's hands", 1800); return; }
     chooseTool(k);
   };
   const onCrouchKey = (e) => { if (!panelLive() && (e.key === "c" || e.key === "C")) move.crouch = e.type === "keydown" ? 1 : 0; };
@@ -2540,8 +2538,6 @@
     }
     // The two grappling hooks, wherever they're hidden this round.
     hookStill = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    goldDrops = [];
-    for (let i = 0; i < C.GOLD_GUNS; i++) goldDrops.push(add(createNode({ geometry: BM.gun(GUN_OF.gold * 2), visible: false, sightHidden: true, scale: { x: 1.3, y: 1.3, z: 1.3 } })));
     hookNodes = [];
     for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
     // Haunted Hollow's ghosts, one node each (the sim has the haunts both ways round).
@@ -2572,17 +2568,10 @@
       if (Math.random() < 0.6) fx.burst(s.x + dx * s.beamLen, ey, s.z + dz * s.beamLen, 2, LASER_BITS, 1.6);
     }
   };
-  let hookNodes = [], goldDrops = [], hookStill = false;
+  let hookNodes = [], hookStill = false;
   // A hidden hook sits where it lies, turning slowly (dead still for a visitor who asks for reduced motion), until someone picks it up.
   const poseHooks = (elapsed) => {
     if (!sim || !hookNodes.length) return;
-    for (let i = 0; i < goldDrops.length; i++) {
-      const d = sim.drops[i], n = goldDrops[i];
-      n.visible = d.live;
-      if (!d.live) continue;
-      setVec(n.position, d.x, d.y + 0.55 + (hookStill ? 0 : Math.sin(elapsed * 2 + i) * 0.08), d.z);
-      n.rotation.y = hookStill ? i : elapsed * 0.9 + i;
-    }
     for (let i = 0; i < hookNodes.length; i++) {
       const h = sim.hooks[i], n = hookNodes[i];
       n.visible = !!h && h.state === 0;
@@ -3054,7 +3043,7 @@
     skyClouds = []; skyPerch = null; trophy = trophyNodes = null;
     sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = fpFlash = fpFlashL = trampNodes = powerNodes = result = null;
     mapRoot = fireNode = dancers = peelNodes = catapults = boltNode = boltRing = null;
-    hookNodes = []; goldDrops = []; ghostNodes = [];
+    hookNodes = []; ghostNodes = [];
     catNear = false;
     for (const t of SIM.TEAMS) iceNodes[t] = null;
     zipNear = false;

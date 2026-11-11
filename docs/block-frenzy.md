@@ -128,8 +128,9 @@ ones you can use.
 
 - **Ooga AK** (`7`). The island's rifle: a tap fires one round, a held trigger fires on full auto every 0.09 s, from a
   30-round magazine that reloads itself in 1.4 s when it runs dry.
-- **Golden Dual AKs** (`6`). One in each hand, full auto, both firing every round, never empty. Two pairs a round:
-  scoring a capture wins a pair while any are left, and a capture that wins nothing from the pool takes one thing from the rivals (see Mining a block takes one).
+- **Golden Dual AKs** (`6`). One in each hand, full auto, both firing every round, never empty. Two pairs a round
+  (`GOLD_GUNS`), won by mining blocks and taken only by a hook (see Each block wins Golden AKs and The special weapons
+  take each other).
 - **Sniper rifle** (`5`). In every Ooga's arsenal from the start of a round, on every map, solo and live, and fired
   from anywhere (`sniper` on an actor is 1 throughout): fast, flat and long (160 m/s, about 50 m, semi-automatic: a shot
   a click, 0.35 s apart, no ammunition and no reload). With it out, right click brings up a first-person scope with four
@@ -149,17 +150,35 @@ Every map is an oval floating island in OBL's voxel style (`W`, `L` its half siz
 
 Each map has hub-style terrain in the island's own rock (`terrain`, half a map turned half round so the maps stay mirrored), the map's own pieces and, round every field, `ringTerrain`'s massifs: walk-through caves that join up (flanks and behind each fort, `massif`), cliffs (`cliff`), and more mounds and outcrops. The pieces: a two-tier grassy mound (`mound`: 1 m then 2 m, each a jump up, for high ground), a walk-through rock cave (`cave`: 3 m wide, walls and a roof to stand on, cover and a flanking way, never a dead end), and a tall outcrop breaking a long lane (`outcrop`), mossy boulders from the hub's kit at its foot. They stand on a half-metre grid so the voxel island meshes exactly what the sim collides with (`rocks`, joined to `BLOCKS`), clear of every fort, stand, catapult, ladder, zipline and spot the game uses; the bots steer round them as they do any building.
 
-## Mining a block takes one
+## Each block wins Golden AKs
 
-A capture that wins nothing from the Golden AK pool (`goldLeft` empty, or the miner already has a pair) takes one thing from the other side (`stealOnMine`, called from the capture in `touchFlags`), so one capture never gives two. In order: a pair of Golden AKs to the miner if the miner has none and a rival holds some; else a hook to the miner likewise; else the Golden AKs, then a hook, to a teammate without one. If no rival holds either, nothing is taken. Which rival loses it and which teammate gains it is the sim's seeded pick. The feed, and a notice for the one who gains it and the one who loses it, say so.
+There are two pairs of Golden AKs a round (`GOLD_GUNS`), never more: the pool (`goldLeft`) and the pairs held always
+add up to two. Each block mined wins one pair (`winGold`, called from the capture in `touchFlags`): for the miner, or
+if the miner has a pair, for the teammate nearest them without one (the lower number on a tie; the host's sim decides,
+so every page agrees); from the pool while any are left, else from a rival who holds one (the sim's seeded pick). A
+side that holds both pairs wins nothing more. The feed and a notice name who received it (`gold` with the miner as
+`by`, or `goldsteal` naming who lost it). Mining takes no hook.
 
-## Dropped on a splat
+## The special weapons take each other
 
-An Ooga splatted with the Golden AKs or a hook in its hands drops that one thing where it stood (`dropWielded`). In its hands means the tool selected (`wield`: the host's own each frame, a guest's sent as a `wield` action only when it changes, checked on the host against what the Ooga owns; for a bot, the last it fired), and a hook in use always counts; one put away stays put away, so at most one thing drops. It comes to rest on open ground as a block does. Anyone on either side, its owner too once up, takes it by walking over it unless they have one already. After `DROP_BACK_S` (10 s) it returns to its owner, or if the owner has one again, a pair goes back to the pool and a hook back into hiding. Bots fetch a dropped hook as they do a hidden one; they don't go out of their way for dropped AKs, but take them if they walk over them. The hooks' own slots carry a dropped hook; the Golden AKs have a fixed pool of `GOLD_GUNS`, one byte on the wire when none are lying.
+Only the two special weapons take each other, and only out of a rival's hands (`heldOf`: the tool selected, `wield`,
+the host's own each frame and a guest's sent as a `wield` action when it changes, checked on the host against what the
+Ooga owns; for a bot, the last it fired; a hook in use always counts):
+
+- A hook that reaches a rival with the Golden AKs in hand takes the pair straight into the thrower's arsenal, if they
+  have none, and comes back (`goldhook`). With the AKs put away, the hook passes them by.
+- Golden AK fire that splats a rival with the hook in hand, or out, takes the hook straight to the shooter, if they have
+  none (`hooksteal`).
+
+Nothing else takes either: paint, the Ooga AK, the sniper rifle, grenades, rockets, nets, thrown crates, the monkeys,
+laser eyes, gorillas and bonks all splat as before and the victim keeps what they hold. Nothing is dropped on a splat.
+Bots now and then hook a rival who has the Golden AKs out, in reach and in sight, and fire the Golden AKs whenever they
+hold them, so a hook holder in their sights can lose it. The frame no longer carries dropped pairs, and the drop
+events are gone: `WIRE` is 4.
 
 ## The grappling hook (BF2.1c)
 
-A special weapon, two a round, hidden at seeded spots from each map's hand-checked `hookSpots` (in the cave, on the mound's top, behind the outcrop, up a jungle tree): one in each half, the same spot turned half round. Walk over one to take it (it shows on the hip, and as its launcher in the hand while it is the chosen tool or out); `R` or tool `8` then fires it at the crosshair (range 24 m). Cloud Hopper's hook head, rope and flight (`BL.grapple.toward`, shared; the sim keeps its own state, `hk`): a bite on rock, a tree, a wall or the island's edge pulls the Ooga in on a rope that only shortens (`BL.grapple.pullSpeed` and `tether`), swinging it under the bite (hold C to stop the pull and swing), until it arrives or lets go (R again, or a jump), keeping its speed. A block, on its stand, loose or held by a rival (after a moment's warning, `hookwarn`), is pulled in along the rope into the thrower's hands (the hook must reach it before anything solid: within `HOOK_BLOCK_R` of a loose block, or anywhere on the stand of one at home, `HOOK_STAND_R`, so a low aim brings the block and never bites the stand under it; a wall between bites first): the rival block is carried, your own loose block goes home, as touching them would; hands already full, it lands on reachable ground beside them. Anything else the hook meets that is not an Ooga pulls the Ooga to it. A teammate is ignored and the hook can miss. There is no recharge: the hook fires again the moment it is back in the hand, after a miss, a let-go or a block pulled in, and only one is out at a time (a bot still waits between throws, `HOOK_BOT_WAIT`). A gorilla hooked is stunned and drops its captive, with a cooldown before the hook can do that again. It can be taken by mining a block, as the Golden AKs can (`hooksteal`), and bots fetch the ground-level ones, hook carriers and captors in reach, and bite the rim to pull themselves back after a fall.
+A special weapon, two a round, hidden at seeded spots from each map's hand-checked `hookSpots` (in the cave, on the mound's top, behind the outcrop, up a jungle tree): one in each half, the same spot turned half round. Walk over one to take it (it shows on the hip, and as its launcher in the hand while it is the chosen tool or out); `R` or tool `8` then fires it at the crosshair (range 24 m). Cloud Hopper's hook head, rope and flight (`BL.grapple.toward`, shared; the sim keeps its own state, `hk`): a bite on rock, a tree, a wall or the island's edge pulls the Ooga in on a rope that only shortens (`BL.grapple.pullSpeed` and `tether`), swinging it under the bite (hold C to stop the pull and swing), until it arrives or lets go (R again, or a jump), keeping its speed. A block, on its stand, loose or held by a rival (after a moment's warning, `hookwarn`), is pulled in along the rope into the thrower's hands (the hook must reach it before anything solid: within `HOOK_BLOCK_R` of a loose block, or anywhere on the stand of one at home, `HOOK_STAND_R`, so a low aim brings the block and never bites the stand under it; a wall between bites first): the rival block is carried, your own loose block goes home, as touching them would; hands already full, it lands on reachable ground beside them. Anything else the hook meets that is not an Ooga pulls the Ooga to it. A teammate is ignored and the hook can miss. There is no recharge: the hook fires again the moment it is back in the hand, after a miss, a let-go or a block pulled in, and only one is out at a time (a bot still waits between throws, `HOOK_BOT_WAIT`). A gorilla hooked is stunned and drops its captive, with a cooldown before the hook can do that again. Only Golden AK fire takes it from a rival (see The special weapons take each other), and bots fetch the ground-level ones, hook carriers and captors in reach, and bite the rim to pull themselves back after a fall.
 
 ## Gorillas (BF2.2, BF2.3)
 

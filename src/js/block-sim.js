@@ -54,7 +54,7 @@
     // A captive is dragged by the feet to the nearest edge at `GORILLA_DRAG`, swung over the wind-up (`GORILLA_THROW_S`)
     // and thrown off at `GORILLA_THROW`, up at `GORILLA_THROW_UP`, its steering knocked out for `THROWN_S`.
     GORILLA_DRAG: 7.5, GORILLA_DRAG_R: 0.5, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
-    DROP_BACK_S: 10, SHOT_STEP: 0.12, BOT_CARRY: 0.88, GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 9, HOMER_SEEK: 34, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, DROP_IN_H: 14, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
+    SHOT_STEP: 0.12, BOT_CARRY: 0.88, GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 9, HOMER_SEEK: 34, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, DROP_IN_H: 14, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
     POWER_R: 1.1, POWER_RESPAWN: 20, BOOTS_S: 6, BOOTS: 1.5, HALVING_S: 12, COLD_S: 12, LASER_S: 25, BEAM_S: 3, BEAM_LEN: 30, BEAM_R: 0.45,
     // Haunted Hollow's ghosts: they drift through walls round their haunt, chase an Ooga that comes within
     // `GHOST_SIGHT`, and a touch (`GHOST_R`) spooks it stiff for `SPOOK_S` (dropping a crate, not a block); then the ghost fades
@@ -94,8 +94,8 @@
     // The sniper rifle, in every Ooga's hands from the start and fired from anywhere: fast, flat and long.
     sniper: { speed: 160, lift: 0, gravity: 0.6, life: 0.32, r: 0.35, blast: 0, cool: 0.35, max: 0 },
     // The Golden Dual AKs: one in each hand, full auto, both firing every round (two balls `GOLD_SIDE` either side of
-    // the Ooga), never empty. There are `GOLD_GUNS` pairs a round: mining a block wins a pair while any are left, and
-    // once it wins nothing, takes one from a rival who holds it (`stealOnMine`).
+    // the Ooga), never empty. There are `GOLD_GUNS` pairs a round, no more: each block mined wins one (`winGold`), from
+    // the pool while any are left, else from the other side; a hook takes a pair out of a rival's hands (`stealGold`).
     gold: { speed: 46, lift: 0.3, gravity: 1.2, life: 0.85, r: 0.48, blast: 0, cool: 0.08, max: 0 },
     // The Ooga AK, the island's rifle: a tap fires one round, a held trigger fires on full auto every `cool` (the island
     // AK's 0.09 s), from a `AK_MAG`-round magazine that reloads itself in `AK_RELOAD` when it runs dry.
@@ -796,13 +796,11 @@
     const gorillas = A.gorillas.map(([x, z]) => ({ hx: x, hz: z, x, y: 0, z, vx: 0, vz: 0, heading: 0, state: 0, t: 0, holding: -1, held: 0, wx: x, wz: z, hookCool: 0, ex: 0, ez: 0, stall: 0, throwT: 0 }));
     // The ghosts: `state` 0 drifting, 1 chasing, 2 gone (faded or popped) till `t` runs out; each keeps to its haunt.
     const ghosts = (A.ghosts || []).map(([x, z, r]) => ({ hx: x, hz: z, leash: r, x, y: 1, z, heading: 0, state: 0, t: 0, wx: x, wz: z, phase: x * 0.7 + z }));
-    const hooks = Array.from({ length: CONFIG.HOOKS }, () => ({ state: 0, x: 0, y: 0, z: 0, holder: -1, owner: -1, back: 0 }));
-    // A pair of Golden AKs dropped on a splat, lying as a pickup; there are only ever `GOLD_GUNS` pairs.
-    const drops = Array.from({ length: CONFIG.GOLD_GUNS }, () => ({ live: false, x: 0, y: 0, z: 0, owner: -1, back: 0 }));
+    const hooks = Array.from({ length: CONFIG.HOOKS }, () => ({ state: 0, x: 0, y: 0, z: 0, holder: -1 }));
     const events = Array.from({ length: CONFIG.MAX_EVENTS }, () => ({ type: "", team: null, actor: -1, by: -1, x: 0, y: 0, z: 0 }));
     const weather = { kind: "clear", left: 0, strength: 0, boltT: 0, boltWarn: 0, boltX: 0, boltZ: 0 };
     const puddles = (A.puddles || []).map(([x, z]) => ({ x, z, dark: 0 }));
-    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, puddles, gorillas, ghosts, hooks, drops, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
+    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, puddles, gorillas, ghosts, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
     reset(sim);
     return sim;
   };
@@ -888,7 +886,6 @@
     if (sim.hooks.length && ARENA.hookSpots.length) {
       // One hook hidden in each half, at the same seeded spot turned half round, so neither side is favoured.
       const k = Math.floor(sim.rng() * ARENA.hookSpots.length);
-      for (const d of sim.drops) d.live = false;
       for (let i = 0; i < sim.hooks.length; i++) placeHook(sim.hooks[i], ARENA.hookSpots[k], i % 2 === 1);
     }
     for (const g of sim.gorillas) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.vx = g.vz = 0; g.state = G_ROAM; g.t = 0; g.holding = -1; g.held = 0; g.hookCool = 0; g.ex = g.ez = g.stall = g.throwT = 0; }
@@ -909,7 +906,7 @@
     return sim;
   };
   // A grappling hook lying hidden at a spot [x, y, z] (`turnedSpot` turns it half round, into red's half).
-  const placeHook = (h, spot, turnedSpot) => { h.state = 0; h.holder = -1; h.owner = -1; h.back = 0; h.x = turnedSpot ? -spot[0] : spot[0]; h.y = spot[1]; h.z = turnedSpot ? -spot[2] : spot[2]; };
+  const placeHook = (h, spot, turnedSpot) => { h.state = 0; h.holder = -1; h.x = turnedSpot ? -spot[0] : spot[0]; h.y = spot[1]; h.z = turnedSpot ? -spot[2] : spot[2]; };
   const homeFlag = (f) => {
     f.state = "home";
     f.x = ARENA.stands[f.team].x;
@@ -1295,14 +1292,11 @@
     return true;
   };
   // `s` is the shot that did it, if any: its thrower is credited with the hit, and a sniper's range is kept.
-  // Where something an Ooga let go of comes to rest: under or nearest it on open ground, as a block does (`dropFlag`).
-  const restOf = (a, o) => {
-    const at = onIsland(a.x, a.z) && (a.y >= -CONFIG.RIM || inGrave(a.x, a.z)) ? restSpot(a.x, a.z) : restSpot(a.edgeX, a.edgeZ);
-    o.x = at.x; o.y = 0; o.z = at.z;
-  };
-  // Splatted with the Golden AKs or a hook in its hands (`wield`, the tool selected, the host's own each frame and a
-  // guest's by its `wield` action; for a bot the last it fired; a hook in use always counts), the Ooga drops that one thing: anyone may walk over it, and `DROP_BACK_S` later
-  // it returns to its owner. One put away stays put away.
+  // The two special weapons are taken only by each other, and only out of a rival's hands: a hook that reaches a rival
+  // with the Golden AKs in hand takes the pair (`stealGold`), and Golden AK fire that splats a rival with the hook in
+  // hand takes the hook (`stealHook`), each straight to the taker, who must not have one already. Nothing else takes
+  // either; a block mined also wins a pair (`winGold`). In hand (`heldOf`) is the tool selected (`wield`: the host's own
+  // each frame, a guest's by its `wield` action), for a bot the last it fired, and a hook in use always counts.
   // The tools a player can have in hand, by index on the wire; `wield` takes a guest's choice (sent only when it changes)
   // on the host, refusing an unknown tool or one the Ooga doesn't own.
   const WIELD = ["paint", "grenade", "rocket", "net", "sniper", "gold", "ak", "hook", "grab"];
@@ -1337,9 +1331,9 @@
     ["rocket", "Rocket launcher", "Flies straight to a bigger burst. One a refill."],
     ["net", "Net launcher", "Slows a rival and stops their jumps. Three a refill."],
     ["sniper", "Sniper rifle", "Fast, flat and long. Right click brings up the scope."],
-    ["gold", "Golden Dual AKs", "One in each hand, full auto, never empty. Mine a block to win a pair."],
+    ["gold", "Golden Dual AKs", "One in each hand, full auto. Each block mined wins a pair; they take hooks."],
     ["ak", "Ooga AK", "Full auto from a 30-round magazine that reloads itself."],
-    ["hook", "Grappling hook", "Two hide on every map. It pulls you to what it bites, or a block to you."]
+    ["hook", "Grappling hook", "Two hide on every map. It pulls you or a block in, and takes the Golden AKs."]
   ];
   // What the weapons bar shows for a tool: `slotState` is "locked" (the Ooga doesn't have it yet), "empty" (it does,
   // with none left) or "ready"; `slotCount` is the number beside it, "" for a tool that never runs out.
@@ -1351,22 +1345,17 @@
     a.wield = kind;
     return true;
   };
-  const dropWielded = (sim, a) => {
-    const held = a.hk ? "hook" : a.wield || a.lastKind;
-    if (held === "gold" && a.gold) {
-      for (const d of sim.drops) {
-        if (d.live) continue;
-        a.gold = false; restOf(a, d); d.live = true; d.owner = a.id; d.back = CONFIG.DROP_BACK_S;
-        emit(sim, "golddrop", a.team, a.id, d.x, d.y, d.z);
-        return;
-      }
-    } else if (held === "hook" && a.hook) {
-      const h = sim.hooks[a.hook - 1];
-      if (a.hk) hookBack(sim, a, "hookrelease");
-      a.hk = 0; a.hook = 0;
-      restOf(a, h); h.state = 0; h.holder = -1; h.owner = a.id; h.back = CONFIG.DROP_BACK_S;
-      emit(sim, "hookdrop", a.team, a.id, h.x, h.y, h.z);
-    }
+  const heldOf = (a) => a.hk ? "hook" : a.wield || a.lastKind;
+  const stealGold = (sim, thief, victim, how) => {
+    victim.gold = false; thief.gold = true;
+    emit(sim, how, thief.team, thief.id, victim.x, victim.y + 1, victim.z, victim.id);
+  };
+  const stealHook = (sim, thief, victim) => {
+    if (victim.hk) hookBack(sim, victim, "hookrelease");
+    victim.hk = 0;
+    thief.hook = victim.hook; victim.hook = 0;
+    sim.hooks[thief.hook - 1].holder = thief.id;
+    emit(sim, "hooksteal", thief.team, thief.id, victim.x, victim.y + 1, victim.z, victim.id);
   };
   const splat = (sim, a, bonk = false, s = null) => {
     const by = s ? s.owner : -1;
@@ -1385,7 +1374,11 @@
     if (a.holding) { a.holding = false; emit(sim, "smash", a.team, a.id, a.x, a.y + 2, a.z); }
     if (a.riding) { a.riding = false; a.vy = 0; emit(sim, "unzip", a.team, a.id, a.x, a.y, a.z); }
     dropFlag(sim, a, "knock");
-    dropWielded(sim, a);
+    // Golden AK fire takes the hook out of a rival's hands, to the shooter if they have none.
+    if (s && s.kind === "gold" && by >= 0 && a.hook && heldOf(a) === "hook") {
+      const o = sim.actors[by];
+      if (o.team !== a.team && !o.hook) stealHook(sim, o, a);
+    }
   };
   const open = (a) => a.splat <= 0 && a.guard <= 0 && a.trapped <= 0;
   // A grenade or rocket bursts: every open rival within its radius is splatted.
@@ -1727,6 +1720,17 @@
           return;
         }
       }
+      // A rival with the Golden AKs in hand: the hook takes the pair into the thrower's hands, if they have none, and
+      // comes back.
+      if (!a.gold) for (const b of sim.actors) {
+        if (b.team === a.team || !b.gold || b.carrying || b.trapped > 0 || heldOf(b) !== "gold") continue;
+        const dy = tip.y - b.y;
+        if (dy > -0.2 && dy < heightOf(b) + 0.3 && (tip.x - b.x) ** 2 + (tip.z - b.z) ** 2 < CONFIG.HOOK_HIT_R * CONFIG.HOOK_HIT_R) {
+          stealGold(sim, a, b, "goldhook");
+          hookBack(sim, a, "hookrelease");
+          return;
+        }
+      }
       // A block on its stand or loose on the ground: only one that could be touched up (not your own at home, not one in
       // cold storage, not one this Ooga just let go of). One on its stand is taken from anywhere the stand itself would
       // be met (`HOOK_STAND_R`, a little past the stand's own bite), so a hook aimed low at it brings the block and
@@ -1800,7 +1804,7 @@
     for (let i = 0; i < sim.hooks.length; i++) {
       const h = sim.hooks[i];
       if (h.state !== 0 || Math.abs(a.y - h.y) > 0.8 || (a.x - h.x) ** 2 + (a.z - h.z) ** 2 > CONFIG.HOOK_R * CONFIG.HOOK_R) continue;
-      h.state = 1; h.holder = a.id; h.owner = -1; h.back = 0; a.hook = i + 1; a.hk = 0;
+      h.state = 1; h.holder = a.id; a.hook = i + 1; a.hk = 0;
       emit(sim, "hookget", a.team, a.id, h.x, h.y, h.z);
       return;
     }
@@ -2197,6 +2201,15 @@
   // A bot's hook: at a rival carrying a block, or a gorilla holding a teammate, in reach and in sight.
   const botHook = (sim, a) => {
     const range = CONFIG.HOOK_RANGE * 0.6;
+    // A rival with the Golden AKs out, in reach and in sight, now and then: hook the pair away.
+    if (!a.gold) for (const b of sim.actors) {
+      if (b.team === a.team || !b.gold || b.carrying || b.trapped > 0 || heldOf(b) !== "gold" || sim.rng() > 0.03) continue;
+      const dist = Math.hypot(b.x - a.x, b.z - a.z);
+      if (dist > range || !clearLine(a.x, a.z, b.x, b.z, 0.05, 1.8)) continue;
+      const lead = dist / CONFIG.HOOK_FLY;
+      grapple(sim, a.id, Math.atan2(b.x + b.vx * lead - a.x, b.z + b.vz * lead - a.z), Math.atan2(b.y + 1 - chestY(a), dist));
+      return;
+    }
     for (const b of sim.actors) {
       if (b.team === a.team || !b.carrying || b.trapped > 0 || sim.rng() > 0.02) continue;
       const dist = Math.hypot(b.x - a.x, b.z - a.z);
@@ -2399,69 +2412,33 @@
     }
   };
 
-  // Mining a block takes one thing from the other side when it won nothing from the pool (`goldLeft`), so a capture never
-  // gives two: a pair of Golden AKs if the miner has none and a rival holds some, else a hook likewise; if the miner has
-  // what a rival holds, it goes to a teammate without one. Nothing held, nothing taken. Who loses it, and which teammate
-  // gains it, is the sim's seeded pick; nothing is allocated.
-  const holds = (b, kind) => kind === "gold" ? b.gold : b.hook > 0;
-  const countOf = (sim, team, kind, has) => { let n = 0; for (const b of sim.actors) if (b.team === team && holds(b, kind) === has) n++; return n; };
-  const pickOf = (sim, team, kind, has) => {
-    let k = Math.floor(sim.rng() * countOf(sim, team, kind, has));
-    for (const b of sim.actors) if (b.team === team && holds(b, kind) === has && k-- === 0) return b;
-    return null;
-  };
-  const stealGold = (sim, thief, victim) => {
-    victim.gold = false; thief.gold = true;
-    emit(sim, "goldsteal", thief.team, thief.id, victim.x, victim.y + 1, victim.z, victim.id);
-  };
-  const stealHook = (sim, thief, victim) => {
-    if (victim.hk) hookBack(sim, victim, "hookrelease");
-    victim.hk = 0;
-    thief.hook = victim.hook; victim.hook = 0;
-    sim.hooks[thief.hook - 1].holder = thief.id;
-    emit(sim, "hooksteal", thief.team, thief.id, victim.x, victim.y + 1, victim.z, victim.id);
-  };
-  const stealOnMine = (sim, a) => {
-    const rival = other(a.team), goldOut = countOf(sim, rival, "gold", true) > 0, hookOut = countOf(sim, rival, "hook", true) > 0;
-    if (goldOut && !a.gold) stealGold(sim, a, pickOf(sim, rival, "gold", true));
-    else if (hookOut && !a.hook) stealHook(sim, a, pickOf(sim, rival, "hook", true));
-    else if (goldOut && countOf(sim, a.team, "gold", false) > 0) stealGold(sim, pickOf(sim, a.team, "gold", false), pickOf(sim, rival, "gold", true));
-    else if (hookOut && countOf(sim, a.team, "hook", false) > 0) stealHook(sim, pickOf(sim, a.team, "hook", false), pickOf(sim, rival, "hook", true));
-  };
-  // Flags: pickups, returns and captures for one actor, and its refill at home.
-  // A dropped pair of Golden AKs goes to the first who walks over it without a pair of its own.
-  const touchDrops = (sim, a) => {
-    if (a.gold || sim.prep > 0) return;
-    for (const d of sim.drops) {
-      if (!d.live || Math.abs(a.y - d.y) > 0.8 || (a.x - d.x) ** 2 + (a.z - d.z) ** 2 > CONFIG.HOOK_R * CONFIG.HOOK_R) continue;
-      d.live = false; a.gold = true;
-      emit(sim, "goldget", a.team, a.id, d.x, d.y, d.z);
+  // Each block mined wins a pair of Golden AKs (`GOLD_GUNS` in all, never more): for the miner, or if the miner has a
+  // pair, for the teammate nearest them without one (the lower number on a tie, the host's sim deciding for every
+  // page); from the pool while any are left, else from a rival who holds one (the sim's seeded pick). The side holding
+  // every pair wins nothing more.
+  const winGold = (sim, a) => {
+    let r = a.gold ? null : a, best = Infinity;
+    if (!r) for (const b of sim.actors) {
+      if (b.team !== a.team || b.gold) continue;
+      const d = (b.x - a.x) ** 2 + (b.z - a.z) ** 2;
+      if (d < best) { best = d; r = b; }
+    }
+    if (!r) return;
+    if (sim.goldLeft > 0) {
+      sim.goldLeft--;
+      r.gold = true;
+      emit(sim, "gold", r.team, r.id, r.x, r.y, r.z, a.id);
       return;
     }
+    let n = 0;
+    for (const b of sim.actors) if (b.team !== a.team && b.gold) n++;
+    let k = Math.floor(sim.rng() * n);
+    for (const b of sim.actors) if (b.team !== a.team && b.gold && k-- === 0) { stealGold(sim, r, b, "goldsteal"); return; }
   };
-  // What nobody took goes back to its owner, or if the owner has one again, back where such things come from.
-  const stepDrops = (sim, dt) => {
-    for (const d of sim.drops) {
-      if (!d.live || (d.back -= dt) > 0) continue;
-      d.live = false;
-      const o = sim.actors[d.owner];
-      if (o.gold) sim.goldLeft++;
-      else { o.gold = true; emit(sim, "goldback", o.team, o.id, o.x, o.y, o.z); }
-    }
-    for (let i = 0; i < sim.hooks.length; i++) {
-      const h = sim.hooks[i];
-      if (h.state !== 0 || h.back <= 0 || (h.back -= dt) > 0) continue;
-      const o = sim.actors[h.owner];
-      h.back = 0; h.owner = -1;
-      if (o.hook) { hideHook(sim, h); continue; }
-      h.state = 1; h.holder = o.id; o.hook = i + 1; o.hk = 0;
-      emit(sim, "hookback", o.team, o.id, o.x, o.y, o.z);
-    }
-  };
+  // Flags: pickups, returns and captures for one actor, and its refill at home.
   const touchFlags = (sim, a) => {
     if (a.splat > 0 || a.trapped > 0 || a.grabbed) return;
     touchHooks(sim, a);
-    touchDrops(sim, a);
     if (a.guard <= 0 && a.y < 0.3) {
       for (const t of sim.traps) {
         if (t.dark <= 0 && (a.x - t.x) ** 2 + (a.z - t.z) ** 2 < CONFIG.TRAP_R * CONFIG.TRAP_R) { spring(sim, a, t); return; }
@@ -2562,12 +2539,7 @@
       a.captures++;
       sim.score[a.team]++;
       emit(sim, "capture", a.team, a.id, a.x, 0, a.z);
-      // A Golden AK for the miner while any are left.
-      if (sim.goldLeft > 0 && !a.gold) {
-        sim.goldLeft--;
-        a.gold = true;
-        emit(sim, "gold", a.team, a.id, a.x, a.y, a.z);
-      } else stealOnMine(sim, a);
+      winGold(sim, a);
       if (sim.score[a.team] >= sim.target) {
         sim.over = true;
         sim.winner = a.team;
@@ -2932,7 +2904,6 @@
     if (sim.gorillas.length) stepGorillas(sim, dt);
     if (sim.ghosts.length) stepGhosts(sim, dt);
     for (const c of sim.caches) if (c.dark > 0) c.dark = Math.max(0, c.dark - dt);
-    stepDrops(sim, dt);
     for (const p of sim.powers) if (p.dark > 0) p.dark = Math.max(0, p.dark - dt);
     for (const p of sim.peels) if (p.dark > 0) p.dark = Math.max(0, p.dark - dt);
     for (const p of sim.puddles) if (p.dark > 0) p.dark -= dt;
