@@ -27559,6 +27559,98 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   runInNewContext(source,context);
   return {net:context.window.BL.net,document:context.document,voice,sockets,sent,events,location,navigations,timers,intervals,advance(ms){tick+=ms;},get calls(){return calls;},get savedViews(){return savedViews;}};
 };
+const connectionReportChecks = async () => {
+  const source = readFileSync(join(root, "src/js/connection-reports.js"), "utf8");
+  const fixture = () => {
+    let now = 1000, next = 0, response = { ok: true, status: 201 };
+    const timers = new Map(), observers = new Set(), updates = [], requests = [];
+    const input = { checked: false, addEventListener: (_kind, fn) => { input.change = fn; } };
+    const box = { hidden: true }, status = { textContent: "" };
+    const state = { backend: true, connectionReports: true, me: { id: 71 }, room: "live" };
+    const net = { state, subscribe: fn => updates.push(fn), subscribeConnection: fn => {
+      observers.add(fn); return () => observers.delete(fn);
+    } };
+    const context = { BL: { net }, document: {
+      currentScript: { src: "https://site.test/js/main-1234abcd.js" },
+      getElementById: id => ({ "players-diagnostics": box, "players-diagnostics-input": input,
+        "players-diagnostics-status": status })[id],
+    }, window: { setTimeout: (fn, ms) => { const id = ++next; timers.set(id, { fn, at: now + ms }); return id; },
+      clearTimeout: id => timers.delete(id) }, performance: { now: () => now }, AbortController,
+      fetch: async (url, options) => { requests.push({ url, ...options }); return typeof response === "function" ? response(options) : response; } };
+    runInNewContext(source, context);
+    return { state, input, box, status, requests, observers, timers,
+      response: value => { response = value; },
+      opt: on => { input.checked = on; input.change(); },
+      update: () => updates.forEach(fn => fn()),
+      emit: (kind, extra = {}) => [...observers].forEach(fn => fn({ kind, room: state.room,
+        hidden: false, remotes: 2, unanswered: 0, voiceEnabled: true, voiceMuted: false,
+        lastMessageAge: 10, lastPongAge: 50, ...extra })),
+      advance: ms => { now += ms; },
+      flush: async (ms = 2000) => {
+        now += ms;
+        for (const [id, timer] of [...timers]) if (timer.at <= now && timers.delete(id)) await timer.fn();
+      },
+      fire: () => { now += 2000; const entry = [...timers].find(([, t]) => t.at <= now); if (!entry) return;
+        timers.delete(entry[0]); return entry[1].fn(); },
+    };
+  };
+  const off = fixture();
+  off.emit("socket-close", { code: 1006, clean: false }); await off.flush();
+  record("dropout reports: default off, no observer, timer or network request", !off.input.checked &&
+    !off.box.hidden && off.observers.size === 0 && off.timers.size === 0 && off.requests.length === 0);
+  off.opt(true);
+  for (let id = 1; id <= 80; id++) { off.emit("peer-join", { id }); off.emit("peer-leave", { id, reason: "replaced" }); }
+  off.emit("peer-body", { id: 3, body: false }); off.emit("peer-zone", { to: "private-zone" });
+  off.emit("welcome"); await off.flush();
+  record("dropout reports: normal joins, replacements, body/zone changes and welcome do not upload", off.requests.length === 0);
+  off.emit("peer-leave", { id: 99, reason: "closed", login: "private-name" });
+  off.advance(350); off.emit("peer-join", { id: 99, login: "private-name", x: 123 });
+  await off.flush();
+  const report = JSON.parse(off.requests[0].body), wire = off.requests[0].body;
+  record("dropout reports: rapid peer return sends only allowlisted context after explicit opt-in",
+    report.kind === "peer-return" && report.gapMs === 350 && report.clientBuild === "1234abcd" &&
+    report.consent === true && report.events.at(-1).voiceEnabled && !report.events.at(-1).voiceMuted &&
+    !/private|login|position|\\"id\\"|\\"x\\"/.test(wire) && off.requests[0].credentials === "same-origin", wire);
+  off.emit("socket-close", { code: 1006, clean: false }); await off.flush();
+  record("dropout reports: one attempt per minute across incidents", off.requests.length === 1);
+  const reconnect = fixture(); reconnect.opt(true);
+  reconnect.emit("heartbeat-timeout", { unanswered: 3, lastPongAge: 45000 });
+  reconnect.state.room = "connecting"; reconnect.emit("clear"); await reconnect.flush();
+  const held = reconnect.requests.length === 0;
+  reconnect.advance(500); reconnect.state.room = "live"; reconnect.emit("welcome"); await reconnect.flush();
+  const recovered = JSON.parse(reconnect.requests[0].body);
+  record("dropout reports: reconnect uploads wait for welcome and include heartbeat/recovery context", held &&
+    recovered.kind === "heartbeat-timeout" && recovered.events.some(e => e.unanswered === 3) &&
+    recovered.events.at(-1).kind === "welcome");
+  const cancelled = fixture(); cancelled.opt(true); cancelled.emit("socket-close", { code: 1006, clean: false });
+  cancelled.opt(false); await cancelled.flush(); cancelled.opt(true); await cancelled.flush();
+  cancelled.emit("socket-close", { code: 1006, clean: false }); cancelled.state.me = { id: 72 }; cancelled.update(); await cancelled.flush();
+  record("dropout reports: opt-out and account changes discard queued data and disable observation",
+    cancelled.requests.length === 0 && cancelled.observers.size === 0 && !cancelled.input.checked);
+  const inflight = fixture(); inflight.opt(true);
+  inflight.response(options => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("aborted")))));
+  inflight.emit("socket-close", { code: 1006, clean: false });
+  const sending = inflight.fire(); inflight.opt(false); await sending;
+  record("dropout reports: opting out aborts an in-flight request and does not restore stale status",
+    inflight.requests[0].signal.aborted && inflight.status.textContent === "Off" && inflight.timers.size === 0);
+  const expired = fixture(); expired.opt(true);
+  expired.emit("socket-close", { code: 1006, clean: false }); expired.state.room = "connecting"; await expired.flush();
+  expired.advance(120001); expired.state.room = "live"; expired.emit("welcome"); await expired.flush();
+  expired.emit("peer-leave", { id: 80, reason: "closed" }); expired.advance(10001); expired.emit("peer-join", { id: 80 }); await expired.flush();
+  record("dropout reports: expired incidents and slow returns are discarded", expired.requests.length === 0);
+  const bounded = fixture(); bounded.opt(true); bounded.response({ ok: false, status: 503 });
+  for (let i = 0; i < 12; i++) {
+    for (let j = 0; j < 30; j++) bounded.emit("visibility");
+    bounded.emit("socket-close", { code: 1006, clean: false }); await bounded.flush(); bounded.advance(60000);
+  }
+  record("dropout reports: failures never retry, history stays bounded and attempts stop at ten per visit",
+    bounded.requests.length === 10 && bounded.requests.every(r => JSON.parse(r.body).events.length <= 16) && bounded.timers.size === 0);
+  const disposed = fixture(); disposed.opt(true); disposed.emit("socket-close", { code: 1006, clean: false });
+  disposed.emit("dispose"); await disposed.flush();
+  record("dropout reports: disposal stops observation and clears pending uploads",
+    disposed.requests.length === 0 && disposed.observers.size === 0 && !disposed.input.checked && disposed.box.hidden);
+};
+
 const roomSocketChecks = async BL => {
   const reply = () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "YellowBrokeIt", display: "Yellow" } }) });
   const f = netFixture(BL, reply);
@@ -27570,6 +27662,87 @@ const roomSocketChecks = async BL => {
   const heard = ws.readyState === 1 && f.sockets.length === 1;
   tick();
   record("room socket: pings that go unanswered end a half-open socket, and any answer resets the count", heard && ws.readyState === 3 && f.net.state.room === "connecting" && timers.length > 0, JSON.stringify({ ready: ws.readyState, room: f.net.state.room }));
+  // Regression #624: the old path discarded close/leave reasons, so a brief removal could not be classified.
+  const capture = netFixture(BL, reply, 0);
+  const D = capture.net, observed = [];
+  D.subscribeConnection(event => { observed.push(event); });
+  D.subscribeConnection(() => { throw new Error("observer must not affect recovery"); });
+  const empty = D.connectionDiagnostics();
+  await D.start();
+  let socket = capture.sockets[0];
+  socket.onopen();
+  const deliver = value => socket.onmessage({ data: JSON.stringify(value) });
+  const player = { id: 72, login: "private-login", display: "private-display", body: "YellowBrokeIt", zone: "outside", x: 1, y: 2, z: 3, voice: true, muted: false };
+  const welcome = () => deliver({ t: "welcome", you: { id: 71 }, players: [player], now: Date.now(), features: [], connectionToken: "private-token" });
+  welcome();
+  record("room observer: receives lifecycle events without enabling console capture",
+    observed.some(event => event.kind === "welcome") && !D.connectionDiagnostics().enabled);
+  const beforeCapture = [capture.sent.length, capture.calls, capture.timers.length, capture.intervals.length];
+  capture.voice.stats = { enabled: true, muted: false, publishing: true };
+  D.connectionDiagnostics(true);
+  const noWork = beforeCapture.join() === [capture.sent.length, capture.calls, capture.timers.length, capture.intervals.length].join();
+  capture.advance(20); socket.onmessage({ data: "pong" }); capture.advance(30);
+  const timing = D.connectionDiagnostics();
+  // A peer departure does not mean this observer lost the room.
+  deliver({ t: "leave", id: 72, reason: "closed" });
+  const left = D.connectionDiagnostics(), departure = left.events.at(-1);
+  const peerLeft = departure.kind === "peer-leave" && departure.id === 72 && departure.reason === "closed" && left.room === "live" && !D.remotes.has(72);
+  deliver({ t: "join", p: player });
+  deliver({ t: "body", id: 72, name: null });
+  deliver({ t: "zone", id: 72, name: "factory.hall" });
+  deliver({ t: "vstate", id: 72, voice: true, muted: true });
+  const presence = D.connectionDiagnostics();
+  const changes = ["peer-join", "peer-body", "peer-zone", "peer-voice"].every(kind => presence.events.some(e => e.kind === kind));
+  const beforeCopy = D.connectionDiagnostics();
+  beforeCopy.events[0].kind = "tampered"; beforeCopy.peers[0].zone = "tampered"; beforeCopy.voice.enabled = false;
+  const copied = D.connectionDiagnostics();
+  const detached = copied.events[0].kind === "capture" && copied.peers[0].zone === "factory.hall" && copied.voice.enabled;
+  // An abnormal local close clears all peers and schedules the ordinary retry, retaining speaker intent.
+  socket.onerror();
+  socket.onclose({ code: 1006, wasClean: false, reason: "private-close-text" });
+  const closed = D.connectionDiagnostics(), closeEvent = closed.events.find(e => e.kind === "socket-close");
+  record("room observer: close includes message/pong ages, and failing observers cannot break cleanup",
+    observed.some(event => event.kind === "socket-close" && event.code === 1006 && event.lastMessageAge !== null &&
+      event.lastPongAge !== null) && D.state.room === "connecting");
+  const localClosed = closed.room === "connecting" && closed.peers.length === 0 && closeEvent.code === 1006 && !closeEvent.clean
+    && closeEvent.remotes === 1 && closeEvent.voiceEnabled && !closeEvent.voiceMuted
+    && closed.events.some(e => e.kind === "socket-error") && closed.events.some(e => e.kind === "retry" && e.wait >= 375 && e.wait <= 625);
+  capture.timers.at(-1).fn(); socket = capture.sockets.at(-1); socket.onopen(); welcome();
+  const restored = D.connectionDiagnostics();
+  const rejoined = restored.room === "live" && restored.peers.length === 1 && restored.events.some(e => e.kind === "connect") && restored.events.at(-1).kind === "welcome";
+  const beat = capture.intervals.at(-1).fn;
+  beat(); beat(); beat(); beat();
+  const timeout = D.connectionDiagnostics().events.find(e => e.kind === "heartbeat-timeout");
+  const timedOut = timeout?.unanswered === 3 && D.state.room === "connecting";
+  capture.timers.at(-1).fn(); socket = capture.sockets.at(-1); socket.onopen(); welcome();
+  capture.document.hidden = true; capture.events.get("visibilitychange")();
+  const hiddenEvent = D.connectionDiagnostics().events.at(-1);
+  capture.document.hidden = false; capture.events.get("visibilitychange")();
+  deliver({ t: "leave", id: 72, reason: "private-leave-text" }); deliver({ t: "join", p: player });
+  deliver({ t: "kick", reason: "private-kick-text" });
+  const safe = JSON.stringify(D.connectionDiagnostics());
+  record("room diagnostics: opt-in capture adds no traffic/timers and snapshots are detached", !empty.enabled && !empty.events.length && noWork && detached);
+  record("room diagnostics: peer departure, body/zone/voice changes and local reconnect remain distinguishable",
+    peerLeft && changes && localClosed && rejoined && hiddenEvent.kind === "visibility" && hiddenEvent.hidden, JSON.stringify({peerLeft,changes,localClosed,rejoined}));
+  record("room diagnostics: last-message/pong ages and heartbeat timeout retain evidence without payloads",
+    timing.messages === 1 && timing.lastMessageAge === 30 && timing.lastPongAge === 30 && timedOut
+      && !["private-login", "private-display", "private-token", "private-close-text", "private-leave-text", "private-kick-text"].some(value => safe.includes(value)));
+  // Re-enabling an active capture preserves it; ring wrap preserves order and disabling clears it.
+  const ring = netFixture(BL, reply, 0); await ring.net.start(); ring.sockets[0].onopen();
+  ring.net.connectionDiagnostics(true);
+  // Local console capture must retain timing evidence even with no upload observer subscribed.
+  ring.sockets[0].onmessage({ data: "pong" }); ring.advance(30);
+  for (let i = 0; i < 90; i++) { ring.advance(1); ring.document.hidden = false; ring.events.get("visibilitychange")(); }
+  const bounded = ring.net.connectionDiagnostics(true);
+  record("room diagnostics: local-only lifecycle events retain message and pong ages without an upload observer",
+    bounded.events.at(-1).lastMessageAge === 120 && bounded.events.at(-1).lastPongAge === 120);
+  const ordered = bounded.events.every((e, i) => e.kind === "visibility" && (i === 0 || e.elapsed > bounded.events[i - 1].elapsed));
+  ring.net.connectionDiagnostics(false); ring.events.get("visibilitychange")();
+  const disabled = ring.net.connectionDiagnostics();
+  ring.net.connectionDiagnostics(true); const fresh = ring.net.connectionDiagnostics(); ring.net.dispose();
+  record("room diagnostics: history is bounded, ordered, reset on disable and released on disposal",
+    bounded.events.length === 64 && ordered && !disabled.enabled && !disabled.events.length && fresh.events.length === 1 && !ring.net.connectionDiagnostics().enabled);
+  capture.net.dispose();
   // Fires the timers a hidden tab has armed, in order, as the clock reaches each.
   const run = (f, marks) => { for (let i = 0; i < 12; i++) { const t = f.timers.find(t => !t.ran && marks.includes(t.ms)); if (!t) break; t.ran = true; t.fn(); } };
   const hidden = netFixture(BL, reply);
@@ -30718,6 +30891,7 @@ const npcActivityRefreshProof = (BL) => {
 };
 
 const unitChecks = async () => {
+  await connectionReportChecks();
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();

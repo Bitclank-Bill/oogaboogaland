@@ -476,6 +476,11 @@
               <output class="players-hearing-value" id="players-hearing-value" for="players-hearing-range">No limit</output>
               <span class="players-hearing-help" id="players-hearing-help">Voices at or beyond this range are automatically muted</span>
             </div>
+            <div id="players-diagnostics" hidden>
+              <label class="players-speak"><input type="checkbox" id="players-diagnostics-input" aria-describedby="players-diagnostics-help"> Send dropout diagnostics this visit</label>
+              <p class="help" id="players-diagnostics-help">Optional: send notable connection dropouts to our Cloudflare service, linked to your signed-in account, for later analysis. No voice, chat, names or positions. Kept for up to 8 days; account deletion removes reports. Turning this off stops new reports.</p>
+              <p class="help" id="players-diagnostics-status" role="status">Off</p>
+            </div>
             <label class="players-speak" id="players-speak" hidden><input type="checkbox" id="players-speak-input"> Read joins aloud</label>
           </div>
         </details>
@@ -2286,6 +2291,7 @@ Open the pull request as a draft and keep it draft while building or debugging. 
   <script src="js/chat.js"></script>
   <script src="js/one-time-pad.js"></script>
   <script src="js/private-chat.js"></script>
+  <script src="js/connection-reports.js"></script>
   <script src="js/players.js"></script>
   <script src="js/reactions.js"></script>
   <script src="js/fx.js"></script>
