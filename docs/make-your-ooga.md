@@ -146,8 +146,9 @@ puts their Ooga alone on a bare pad with a chair, a bed, a hammock and a fire, a
 the page every time the file is saved, back in the same place and view. Leave it running
 for the whole session. It serves the repository to this machine only (127.0.0.1), with
 every live feed off; `--no-open` prints the address instead of opening it, and Ctrl+C
-stops it. A handle with no file yet shows the default Ooga, and `<handle>:slim` its
-female build.
+stops it. The address it prints is the studio and nothing else (the island is not
+there); add `?character=<handle>` to it for another Ooga. A handle with no file yet
+shows the default Ooga, and `<handle>:slim` its female build.
 
 - The buttons down the left side put the Ooga in each place without the walk: **Stand**,
   **Chair**, **Bed**, **Hammock**, **Fire**. **Eyes** looks out of its own eyes, **Night**

@@ -71,7 +71,7 @@
 
   // One visit's state: made in enter(), dropped in leave().
   let renderer, game, root, camera, hud, hooks, input, pilot, fx, crew, footsteps, cave, entry, hammock, bed, fire, seats, blocks, buttons;
-  let night = false, nearKey = "", spoken = 0, watchTimer = 0, watchVersion = null, watchError = "", broken = "";
+  let night = false, nearKey = "", spoken = 0, watchTimer = 0, watchVersion = null, watchError = "", broken = "", homeLink = null, homeTitle = "", titled = false;
 
   // What stands in a walker's way: the chair, the fire, its logs and the hammock's posts, each a circle.
   const blocked = (x, z, r) => {
@@ -244,6 +244,13 @@
     } else if (reply.version !== watchVersion && !error) { remember(); location.reload(); }
   };
 
+  const stayHome = (e) => {
+    if (!e.target.closest || !e.target.closest(".home-link")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    homeLink.blur();
+    place("stand");
+  };
   const onDonation = (donation, counted = null) => {
     game.recordDonation(donation, counted && counted.exact);
     hud.toast(`+${BL.game.formatLarge(donation.sats)} sats`);
@@ -290,6 +297,13 @@
     addChild(root, createNode({ geometry: pad() }));
     hud = hudMod.create({ signal: ctx.signal, roster: [entry], catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: false });
     hud.setAreaLabel("Studio");
+    // The studio stands alone: the title's link, which goes back to the island from every other place, stays here and
+    // stands the Ooga at home, and the tab says where this is.
+    homeLink = document.querySelector(".home-link");
+    homeTitle = homeLink.title;
+    homeLink.title = "Character Studio";
+    document.addEventListener("click", stayHome, { capture: true, signal: ctx.signal });
+    titled = false;
     // One Ooga and nobody to feed: the Bananas and Oogas panels stay away.
     hud.setPanelsHidden(true);
     buttons = {};
@@ -401,6 +415,8 @@
   const tip = (hit) => hit.owner.kind === "caveman" ? `${hit.owner.cave.traits.display || hit.owner.cave.traits.name} · tap to poke` : "";
 
   const update = (dt, elapsed) => {
+    // The director names the tab as a visit arrives; the studio's name follows it, once.
+    if (!titled) { titled = true; document.title = `Character Studio · ${state.name}`; }
     pilot.readInput(dt);
     crew.update(dt, elapsed);
     hammock.update(dt, elapsed, false, 0);
@@ -429,6 +445,8 @@
   const leave = () => {
     window.clearInterval(watchTimer);
     watchTimer = 0;
+    homeLink.title = homeTitle;
+    homeLink = null;
     remember();
     getUp();
     hammock.dispose();
