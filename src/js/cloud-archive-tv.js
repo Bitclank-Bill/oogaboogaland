@@ -205,7 +205,14 @@
       if (holder) holder.replaceChildren();
       canvas.width = canvas.height = 0;
     };
-    return { canvas, list, selector, tv, board, update, openGuide, openBoard, get title() { return list[selector.index].title; }, get guideOpen() { return guideShown; }, dispose };
+    // A turn of the set's knobs: the next channel up (`dir` 1) or down (-1) that is not off, tuned by hand.
+    const turn = (dir) => {
+      for (let step = 1; step < list.length; step++) {
+        const i = ((selector.index + dir * step) % list.length + list.length) % list.length;
+        if (list[i].status(env) !== "off") return selector.select(i);
+      }
+    };
+    return { canvas, list, selector, tv, board, update, openGuide, openBoard, turn, get title() { return list[selector.index].title; }, get guideOpen() { return guideShown; }, dispose };
   };
   BL.cloudArchiveTv = { create, W, H };
 })();

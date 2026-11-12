@@ -338,6 +338,9 @@
     };
     target(built.tv, { kind: "tv" }, 0.6);
     target(built.screen, { kind: "tv" }, 0.4);
+    // The set's knobs work it: a tap turns the channel or opens the guide. They win over the set round them.
+    built.knobs.forEach((k) => target(k.node, { kind: "knob", act: k.act, priority: 1 }, k.big ? 0.09 : 0.04));
+    const workKnob = (act) => { if (act === "guide") openTv(); else tv.turn(act === "up" ? 1 : -1); };
 
     // The board: one page a day, painted when shown.
     const boardCanvas = document.createElement("canvas");
@@ -518,6 +521,7 @@
       const o = hit.owner;
       if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · ${COARSE ? "tap" : "click, or face it and press Space,"} to read the day`; }
       if (o.kind === "sign") return COARSE ? "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up, its sides to page it" : "Oogatron · OogaBoogaX on the big screen · click the screen for a close-up, its sides to page it";
+      if (o.kind === "knob") return o.act === "guide" ? "Island TV · the channel guide" : `Island TV · ${tv.title} · ${COARSE ? "tap" : "click"} for the channel ${o.act === "up" ? "up" : "down"}`;
       if (o.kind === "tv") return `Island TV · ${tv.title} · ${COARSE ? "tap" : "click, or press T,"} for the channel guide`;
       if (o.kind === "chair") return COARSE ? "Leather armchair · walk up and tap SIT" : "Leather armchair · Space beside it sits";
       if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it, or tap ISLAND at its foot, to go home" : "Beanstalk · climb down it (S), or Space at its foot, to go home";
@@ -540,6 +544,7 @@
           }
         }
         else if (o.kind === "tv") openTv();
+        else if (o.kind === "knob") workKnob(o.act);
         else if (o.kind === "chair") {
           const seat = seats[o.index], n = findNear();
           // From anywhere in the lounge the tapped chair is the one taken.

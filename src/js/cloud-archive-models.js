@@ -162,7 +162,6 @@
   const tvSet = own(() => {
     const T = TV, y = T.table, fz = T.d / 2, sx0 = T.screenX, sy = y + T.screenY, cy = y + 0.2;
     const BODY = "#3a3828", TOP = "#46432f", BRASS = "#b89a4e", BEZEL = "#16150f", STRIP = "#24231a";
-    const knob = (r) => BL.models.turnedX(BL.models.lathe({ profile: [[0, -0.02], [r, -0.02], [r * 0.92, 0.03], [r * 0.55, 0.045], [0, 0.045]], segments: 12, color: (t) => t > 0.5 ? "#d8bd6a" : "#8a7a4a" }), -Math.PI / 2);
     const ring = (r) => BL.models.turnedX(BL.models.lathe({ profile: [[r * 0.8, -0.01], [r, -0.01], [r, 0.015], [r * 0.8, 0.015]], segments: 12, color: BRASS }), -Math.PI / 2);
     const parts = [
       // The cabinet, a slightly paler lid, and a brass line round the front.
@@ -189,11 +188,7 @@
       box({ w: 0.38, h: 0.012, d: 0.032, color: BRASS, offset: { y: cy + 0.05, z: fz + 0.025 } }),
       box({ w: 0.38, h: 0.012, d: 0.032, color: BRASS, offset: { y: cy - 0.05, z: fz + 0.025 } })
     ];
-    for (const kx of [-1, 1]) {
-      parts.push(moved(ring(0.085), kx * (T.w / 2 - 0.16), cy, fz + 0.03));
-      parts.push(moved(knob(0.065), kx * (T.w / 2 - 0.16), cy, fz + 0.03));
-    }
-    for (const kx of [-0.1, 0, 0.1]) parts.push(moved(knob(0.022), kx, cy, fz + 0.04));
+    for (const kx of [-1, 1]) parts.push(moved(ring(0.085), kx * (T.w / 2 - 0.16), cy, fz + 0.03));
     // Four thin legs, tapering and leaning out, each with a brass foot.
     for (const lx of [-1, 1]) for (const lz of [-1, 1]) {
       const leg = BL.models.lathe({ profile: [[0, 0], [0.018, 0], [0.018, 0.04], [0.016, 0.05], [0.028, y - 0.01], [0, y - 0.01]], segments: 6,
@@ -202,6 +197,15 @@
     }
     return merge(...parts);
   });
+  // The set's knobs, each its own node so a tap on one works it: brass, facing +z round their middle.
+  const knob = (r) => BL.models.turnedX(BL.models.lathe({ profile: [[0, -0.02], [r, -0.02], [r * 0.92, 0.03], [r * 0.55, 0.045], [0, 0.045]], segments: 12, color: (t) => t > 0.5 ? "#d8bd6a" : "#8a7a4a" }), -Math.PI / 2);
+  const bigKnob = own(() => knob(0.065)), smallKnob = own(() => knob(0.022));
+  // Where each knob sits on the set and what it does: the big ones turn the channel down and up, the rocker's outer two
+  // step it, its middle one opens the guide.
+  const KNOBS = [
+    { x: -(TV.w / 2 - 0.16), z: 0.03, big: true, act: "down" }, { x: TV.w / 2 - 0.16, z: 0.03, big: true, act: "up" },
+    { x: -0.1, z: 0.04, big: false, act: "down" }, { x: 0, z: 0.04, big: false, act: "guide" }, { x: 0.1, z: 0.04, big: false, act: "up" }
+  ];
   // A dated plaque over a rack: a painted canvas the interior hangs.
   const plaque = (canvas, w, h) => {
     const geo = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
@@ -227,9 +231,14 @@
     // The screen's picture is the interior's (`plaque` over a canvas), just proud of the bezel.
     const screen = createNode({ position: { x: TV.x + TV.screenX, y: TV.table + TV.screenY, z: TV.z + TV.d / 2 + 0.06 } });
     addChild(root, tv); addChild(root, screen);
+    const knobs = KNOBS.map((k) => {
+      const node = createNode({ geometry: k.big ? bigKnob() : smallKnob(), position: { x: TV.x + k.x, y: TV.table + 0.2, z: TV.z + TV.d / 2 + k.z } });
+      addChild(root, node);
+      return { node, act: k.act, big: k.big };
+    });
     const ropes = createNode({ geometry: signRopes(), position: { x: SIGN.x, y: SIGN.y, z: SIGN.rest } });
     addChild(root, ropes);
-    return { root, stalk: stalkNode, racks: rackNodes, chairs, tv, screen, ropes };
+    return { root, stalk: stalkNode, racks: rackNodes, chairs, tv, screen, knobs, ropes };
   };
   // The sign's two ropes, from inside its cap plank up out of sight, in world units round the sign's middle; the
   // interior moves them with it.
@@ -237,6 +246,6 @@
     const G = SIGN, from = 0.7 * G.scale, h = G.ropeTop - G.y - from;
     return merge(...[-1, 1].map((side) => box({ w: 0.07, h, d: 0.07, color: "#6b5233", offset: { x: side * G.ropes * G.scale, y: from + h / 2, z: 0 } })));
   });
-  const geometries = () => [floor(), stalk(), ...racks(), chair(), tvSet(), signRopes()];
+  const geometries = () => [floor(), stalk(), ...racks(), chair(), tvSet(), bigKnob(), smallKnob(), signRopes()];
   BL.cloudArchiveModels = { LAYOUT, build, plaque, geometries, personColor };
 })();
