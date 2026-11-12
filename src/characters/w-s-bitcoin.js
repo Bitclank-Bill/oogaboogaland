@@ -80,7 +80,7 @@
     // stoneAxe also drives the axe stance in crew.js
     look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, stoneAxe: true, hairless: true, hatY: 8 },
     dress: {
-      // EXPLORATION (?oogastyle=R): the whole Ooga modelled from scratch after its reference art (hero-body.js), with
+      // The modelled look (?oogastyle=R): the whole Ooga modelled from scratch after its reference art (hero-body.js), with
       // the head's own features kept: the apple, one heavy brow across it, white eyes with their pupils low and in, a
       // big nose, and a beard over the whole jaw with a tusk either side.
       model(k) {
@@ -133,8 +133,8 @@
               [0.95, 0.43, 0.43, 0.17, 2.2 * side, z + 1.9], [1.65, 0.27, 0.27, 0.1, 2.38 * side, z + 2], [2.2, 0.05, 0.05, 0.02, 2.52 * side, z + 2.02]],
               ["#e6dabd", "#e6dabd", "#e6dabd", "#e6dabd", "#f3ebd6", "#fcf8ec"]);
           }
-          // The nose, a block out of the middle of the face.
-          H.slab(g, H.rect(-1.5, 1.5, 2, 4, z, 0.4), F, 1.9, 0.8, "#b33026", redDark);
+          // The nose, a block out of the middle of the face, its front bevelled in to a tip.
+          H.noseBlock(g, H.rect(-1.5, 1.5, 2, 4, z, 0.4), F, 1.9, "#b33026", redDark);
           return g;
         };
         // The stalk leans out of the dimple, and a folded leaf springs from it.

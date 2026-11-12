@@ -191,6 +191,14 @@
         for (const x of [0, 1, 5, 6]) v.set(x, 1, 7, green);
       },
       gear(k) {
+        // The modelled look: a bone band close round each wrist, worn on the forearm so it stays there as the arm bends.
+        if (BL.models.STYLE === "R") {
+          const H = BL.heroBody, band = BL.models.geometry();
+          H.loft(band, [[0.5, 1.7, 1.76, 0.52], [0.36, 1.78, 1.84, 0.55], [-0.36, 1.72, 1.78, 0.53], [-0.5, 1.6, 1.66, 0.5]], ["#d6d2c0", "#e8e5d5", "#d6d2c0"]);
+          const geometry = H.scaled(band, k.u);
+          for (const arm of [k.parts.armR, k.parts.armL]) { const worn = createNode({ geometry }); worn.forearm = 0.84; addChild(arm, worn); }
+          return;
+        }
         // Bone wrist bands follow each animated arm.
         const v = makeVox(), bone = k.color("#e8e5d5");
         v.fill(-2, 4, 2, 3, -2, 4, (x, y, z) =>

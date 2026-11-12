@@ -43,7 +43,7 @@
       idle: ["Mission log: stack sats, save the island.", "No villain outruns a Lightning payment.", "Diamond hands, diamond club.", "Call me when the mempool clears."]
     },
     dress: {
-      // EXPLORATION (?oogastyle=R): modelled from scratch (hero-body.js) in her own outfit, with a modelled face and
+      // The modelled look (?oogastyle=R): modelled from scratch (hero-body.js) in her own outfit, with a modelled face and
       // her hair in blocks: a crown and side locks, bangs swept over one brow, a black band and a high ponytail.
       model(k) {
         const H = BL.heroBody, { makeVox, voxelGeometry, geometry } = BL.models, u = k.u, F = H.FRONT;
@@ -59,7 +59,7 @@
           },
           boot: { color: "#17171a", sole: "#2f2f34", detail: (g, B) => {
             // A pink bow on each toe: two wings and a knot.
-            const z = B.foot[0][5] + B.foot[0][2] - 0.6, y = -6.05, n = [0, 0.8, 0.6];
+            const z = B.foot[0][5] + B.foot[0][2] - 0.6, y = B.foot[1][0] + 0.1, n = [0, 0.8, 0.6];
             for (const side of [-1, 1]) H.slab(g, [[0.12 * side, y - 0.2, z], [0.85 * side, y - 0.42, z], [0.85 * side, y + 0.42, z], [0.12 * side, y + 0.2, z]], n, 0.22, 0.85, bow, pink);
             H.slab(g, H.rect(-0.2, 0.2, y - 0.22, y + 0.22, z), n, 0.3, 0.8, pink);
           } }

@@ -4,12 +4,17 @@
   const { makeVox, voxelGeometry } = BL.models;
   const { createNode, addChild } = BL.scene;
   const { hexToRgb } = BL.math;
+  // Under the modelled look (?oogastyle=R) the staff is held and treated as MrHodlX's hockey stick is: stood beside him
+  // at rest, carried head first, slung flat on the back (look.stoneAxe).
+  const AXE = BL.models.STYLE === "R";
   const staffVoxels = (rand) => {
     const v = makeVox();
     const woodJ = () => rand() < 0.2 ? 1 : 0;
     v.fill(0, 0, -2, 15, 0, 0, woodJ);
     for (const y of [3, 8, 12]) v.set(rand() < 0.5 ? -1 : 1, y, 0, 1);
-    for (const [y, z] of [[16, 0], [17, 1], [17, 2], [16, 3], [15, 3]]) v.set(0, y, z, woodJ());
+    // The crook curls ahead of him. The modelled look holds the staff as an axe is held, turned a quarter about its
+    // length, so there the crook is drawn out to -x, which that turn brings ahead.
+    for (const [y, z] of [[16, 0], [17, 1], [17, 2], [16, 3], [15, 3]]) v.set(AXE ? -z : 0, y, AXE ? 0 : z, woodJ());
     return v;
   };
   const LION_PALETTE = [hexToRgb("#d4a04a"), hexToRgb("#bd8b38"), hexToRgb("#a5602a"), hexToRgb("#7d4520"), hexToRgb("#ecc98a"), hexToRgb("#141414")];
@@ -42,10 +47,10 @@
     handle: "timechainb",
     joined: 1788800921,
     lastCommit: 1788171200,
-    look: { portrait: { min: [-1, -2, 0], max: [7, 11, 8] }, hairless: true, hatY: 12, skin: "#b8703c", hair: "#33200f" },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 11, 8] }, stoneAxe: AXE, hairless: true, hatY: 12, skin: "#b8703c", hair: "#33200f" },
     dress: {
       // The staff stands upright in the grip.
-      club: (k) => ({ voxels: staffVoxels(k.rand), rest: { x: 0.2, z: 0 } }),
+      club: (k) => AXE ? { voxels: staffVoxels(k.rand), rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } } : { voxels: staffVoxels(k.rand), rest: { x: 0.2, z: 0 } },
       // The Anunnaki: a gold banded cap over the brow, hair curling down the back and sides, a full beard to the chest
       crown(k, v) {
         const P = k.P, gold = k.color("#d4a83a"), goldDk = k.color("#9c7a22");
