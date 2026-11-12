@@ -26,7 +26,7 @@
       if (!cave?.root.visible || !cave.parts.fingersR || !cave.parts.torso || !game?.mallet) return;
       let rec = poses[slot];
       if (!rec || rec.cave !== cave) {
-        rec = poses[slot] = { cave, applied: false, footX: NaN, footZ: NaN, step: 0,
+        rec = poses[slot] = { cave, leg: cave.baseY === undefined ? cave.root.position.y : cave.baseY, applied: false, footX: NaN, footZ: NaN, step: 0,
           parts: [cave.root, ...["torso", "head", "legL", "legR", "armL", "armR", "forearmR"].map(key => cave.parts[key]).filter(Boolean)].map(node => ({ node, values: new Float64Array(8), quaternion: null })),
           gear: ["gun", "club", "snack"].filter(key => cave.parts[key]).map(key => ({ node: cave.parts[key], visible: false })), aim: BL.math.quat.create() };
       }
@@ -40,7 +40,7 @@
       game.mallet(side, target);
       const center = W.TABLES[slot >> 1], sign = end ? -1 : 1;
       const halfW = BL.arcadeModels.HOCKEY.d * W.SCALE / 2, halfL = BL.arcadeModels.HOCKEY.w * W.SCALE / 2;
-      const arm = cave.parts.armR, leg = cave.traits.height * BL.models.BODY.hip, shoulder = leg + arm.position.y;
+      const arm = cave.parts.armR, leg = rec.leg, shoulder = leg + arm.position.y;
       const hand = cave.modelled ? (Math.hypot(cave.elbow.y, cave.elbow.z) + cave.elbow.length) * cave.armScale * 0.9994
         : -cave.parts.fingersR.position.y, across = arm.position.x, height = target.y;
       const shoulderRadius = Math.hypot(shoulder, arm.position.z);

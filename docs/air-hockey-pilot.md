@@ -8,7 +8,7 @@ Human Oogas move around the outside of their own half to keep their original rig
 
 The focused browser regression passes 7/7. Across 100 targets on both ends with small/tall rigs, maximum measured palm error is 0.00000153 m, with unchanged arm scale, feet outside the correct half and full pose restoration. A 24-frame rapid centre-crossing fixture moves the feet by at most 0.00648 m per frame and keeps palm error below 0.00000111 m. These are local geometry checks, not authenticated network-latency or physical-device measurements; the staging gates below remain open.
 
-The November 12 rock integration uses the modelled Ooga's shoulder, elbow and hand chain, with the shared crew reach solver and each body's authored arm scale. Presentation restores the forearm along with the shoulder before ordinary animation resumes. The regression now measures the actual hand's world position and includes forearms and hands in its restoration check. The earlier measurements above predate this rig update; this revision has build and syntax validation, with browser play-testing pending.
+The November 12 rock integration uses the modelled Ooga's shoulder, elbow and hand chain, with the shared crew reach solver, each body's authored arm scale, and its built hip height (including custom soles). Presentation restores the forearm along with the shoulder before ordinary animation resumes. The regression now measures the actual hand's world position and includes forearms and hands in its restoration check. The earlier measurements above predate this rig update; this revision has build and syntax validation, with browser play-testing pending.
 
 ## Player flow and authority
 

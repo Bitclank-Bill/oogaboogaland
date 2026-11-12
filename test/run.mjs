@@ -19465,6 +19465,8 @@ const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics 
     // The real character rigs reach toward the displayed mallet, including local prediction and
     // opposite ends. Releasing presentation must restore every joint before ordinary animation resumes.
     const savedTables=net.hockeyTables, poseRoot=B.scene.createNode(), rigs=["portlandhodl","YellowBrokeIt"].map((name,i)=>B.models.caveman({...B.contributors.traitsFor(name),height:i?1.16:.92}));
+    // A character can stand higher on authored soles (Midy's model hook does this).
+    rigs[0].root.position.y+=.03;
     const hips=rigs.map(r=>r.root.position.y);
     for(const rig of rigs)B.scene.addChild(poseRoot,rig.root);
     const poseNode=B.scene.createNode({position:{x:W.TABLES[0][0],y:0,z:W.TABLES[0][1]+.65+1.1*W.SCALE}});B.scene.addChild(poseRoot,poseNode);
