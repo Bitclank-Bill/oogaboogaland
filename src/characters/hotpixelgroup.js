@@ -190,6 +190,14 @@
         // Below the eyes and clear of the blink cells.
         for (const x of [0, 1, 5, 6]) v.set(x, 1, 7, green);
       },
+      // The modelled look: a bone band close round each wrist, worn on the forearm so it stays there as the arm bends.
+      gear(k) {
+        if (BL.models.STYLE !== "R") return;
+        const H = BL.heroBody, band = BL.models.geometry();
+        H.loft(band, [[0.5, 1.7, 1.76, 0.52], [0.36, 1.78, 1.84, 0.55], [-0.36, 1.72, 1.78, 0.53], [-0.5, 1.6, 1.66, 0.5]], ["#d6d2c0", "#e8e5d5", "#d6d2c0"]);
+        const geometry = H.scaled(band, k.u);
+        for (const arm of [k.parts.armR, k.parts.armL]) { const worn = createNode({ geometry }); worn.forearm = 0.84; addChild(arm, worn); }
+      },
       // Bone wrist bands, drawn on the arm's fine grid: a cuff standing a cell proud round the wrist and forearm's foot,
       // so it follows each animated arm.
       refine(k, part, v) {
