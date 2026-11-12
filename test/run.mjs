@@ -13661,7 +13661,7 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
       && landed(row.reference) && row.landing.frames <= 8 && landed(row.landing)),
     JSON.stringify({ ...r, respawns }));
 } };
-// The eraser on the real board, in its own session: the pixels are what the Node checks cannot see.
+// The eraser on the real board: the pixels are what the Node checks cannot see.
 const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser pass leaves writing illegible, touches nothing outside its footprint and repaints the same everywhere", run: async (b) => {
   const standAtBoard = () => b.evaluate(`(() => {
     const B = __ooga, a = B.cavemen.get("portlandhodl"), c = BL.scenes.hub.debug.chalkboardAt;
@@ -13676,6 +13676,10 @@ const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser p
   // A scrub over one digit of the message, in real pixels: the digit is gone, nothing outside the swept footprint
   // changed, and the smudge repaints the same. The digit is the first row's sixth, centred at (600, 320) on the canvas.
   await b.evaluate(`(() => { const c = document.getElementById("chalk-canvas"); window.__chalkPixels = () => c.getContext("2d").getImageData(0, 0, 1200, 750).data; window.__chalkBefore = __chalkPixels(); document.getElementById("chalk-eraser").click(); })()`);
+  await b.key("r");
+  const upright = await b.evaluate('document.getElementById("chalk-pointer").classList.contains("upright")');
+  await b.key("r");
+  const sideways = await b.evaluate('!document.getElementById("chalk-pointer").classList.contains("upright")');
   const onBoard = await b.evaluate(`(() => { const r = document.getElementById("chalk-canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
   const boardAt = (x, y) => ({ x: onBoard.left + x / 1200 * onBoard.width, y: onBoard.top + y / 750 * onBoard.height });
   await b.drag(boardAt(600, 287), boardAt(600, 353)); await b.sleep(50);
@@ -13687,8 +13691,8 @@ const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser p
   await b.evaluate(`document.getElementById("chalk-close").click()`);
   await tapAt(await standAtBoard());
   const repaint = await b.evaluate(`(() => { const now = __chalkPixels(); let h = 2166136261; for (let i = 0; i < now.length; i += 4) h = Math.imul(Math.imul(Math.imul(h ^ now[i], 16777619) ^ now[i + 1], 16777619) ^ now[i + 2], 16777619); return h >>> 0; })()`);
-  record("chalkboard eraser pixels: a scrub leaves a digit illegible, changes nothing outside the swept footprint, and repaints identically",
-    scrub.ink > 500 && scrub.left === 0 && scrub.outside === 0 && repaint === scrub.hash, JSON.stringify({ scrub, repaint }));
+  record("chalkboard eraser pixels: R turns the eraser both ways; a scrub leaves a digit illegible, changes nothing outside the swept footprint, and repaints identically",
+    upright && sideways && scrub.ink > 500 && scrub.left === 0 && scrub.outside === 0 && repaint === scrub.hash, JSON.stringify({ upright, sideways, scrub, repaint }));
   await b.evaluate(`document.getElementById("chalk-close").click()`);
 } };
 // The chalkboard writes only for an Ooga standing at it (#391): a tap from afar or with no Ooga is refused with a
@@ -21544,8 +21548,7 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
 } };
 // Sessions that need portlandhodl awake on the surface pin it (ooga=): by itself his state comes from the real activity snapshot, and once
 // it has aged he boots asleep in the headquarters, where jetpacks are refused and his gorilla is in bed.
-scene("hub", { label: "chalkboard eraser", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubChalkboardEraser] });
-scene("hub", { label: "player stacking", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubVoiceLevels] });
+scene("hub", { label: "player stacking", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubChalkboardEraser, hubVoiceLevels] });
 // A fresh page, as the phone run has: after the steps above, the peer tooltip this check measures can read as hidden.
 scene("hub", { label: "live nameplates", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubNameplates] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
