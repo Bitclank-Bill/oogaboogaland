@@ -181,8 +181,9 @@
     if (iceProbe) return iceProbe;
     const run = (async () => {
       if (typeof RTCPeerConnection !== "function") return { ok: false, candidates: 0, blocked: false };
-      const pc = new RTCPeerConnection(ICE);
+      let pc = null;
       try {
+        pc = new RTCPeerConnection(ICE);
         pc.addTransceiver("audio", { direction: "sendonly" });
         await pc.setLocalDescription(await pc.createOffer());
         await gathered(pc);
@@ -193,7 +194,7 @@
         return { ok: candidates > 0, candidates, blocked: pc.iceGatheringState === "complete" && candidates === 0 };
       } catch {
         return { ok: false, candidates: 0, blocked: false };
-      } finally { pc.close(); }
+      } finally { if (pc) pc.close(); }
     })();
     iceProbe = run;
     run.then((r) => { if (!r.ok && iceProbe === run) iceProbe = null; }, () => { if (iceProbe === run) iceProbe = null; });

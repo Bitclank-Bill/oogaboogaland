@@ -2452,7 +2452,8 @@
     writeAccount("account-room", "hidden", !me || !words);
     writeAccount("account-rejoin", "hidden", !me || !ROOM_WORDS[room]);
     const voice = BL.voice.stats;
-    const voiceFailure = voice.returning ? voice.micError : voice.enabled ? "" : voice.error || voice.micError;
+    const iceBlocked = voice.error === BL.voice.ICE_BLOCKED;
+    const voiceFailure = iceBlocked ? voice.error : voice.returning ? voice.micError : voice.enabled ? "" : voice.error || voice.micError;
     const reason = voiceReason();
     const voiceWords = reason ? reason : voice.joining ? "Joining voice" : voiceFailure ? `Voice: ${voiceFailure}` : !voice.enabled && !voice.returning ? "Join voice" : voice.muted ? "Unmute" : "Mute";
     writeAccount("account-voice", "hidden", !live);
@@ -2460,7 +2461,7 @@
     writeAccount("account-voice", "disabled", !!reason);
     // A blocked WebRTC explains itself in a tooltip, and only while it is the reason: a VPN's leak protection is what
     // usually does it, by turning off non-proxied UDP (Brave's "WebRTC IP handling policy").
-    const voiceTip = voice.error === BL.voice.ICE_BLOCKED
+    const voiceTip = iceBlocked
       ? "A VPN's leak protection can block WebRTC by setting the browser's IP handling policy to disable non-proxied UDP (Brave specific). Allow WebRTC for this site, or turn that protection off."
       : "";
     writeAccount("account-voice", "title", voiceTip);
