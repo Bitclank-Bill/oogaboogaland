@@ -109,7 +109,7 @@
   // touch or debug call reaches it, so nothing acts while paused. Resume, Board and Sound stay open while paused.
   const inRound = () => phase === "play" && !paused;
   let sim = null, phase = "board", sceneTime = 0, stateTimer = 0, hintTimer = 0, lineN = 0, result = null;
-  let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, fpFlash = null, fpFlashL = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
+  let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, fpFlash = null, fpFlashL = null, zipNear = false, zipLights = null, zipLit = [-1, -1], trampNodes = null, trampSeen = false, powerNodes = null;
   let mapRoot = null, fireNode = null, dancers = null, burnSeen = false, peelNodes = null, catapults = null, catNear = false;
   const iceNodes = {};
   let tool = "paint", flash = 0, flashT = 0, audio = null, unfeed = null;
@@ -1041,6 +1041,7 @@
     else if (t === "edgedrop") feed(`The ${TEAM_NAME[e.team]} block dropped at the edge`, e.team);
     else if (t === "gorillahit" && e.actor >= 0) feed(`${nameOf(e.actor)} stunned a gorilla`, sim.actors[e.actor].team);
     else if (t === "gold") feed(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)} mined a block: ${who} gets the Golden Dual AKs!` : `${who} won the Golden Dual AKs!`, e.team);
+    else if (t === "ziptrap") feed(`${who} grabbed the rivals' zipline with ${e.actor === 0 ? "your" : "their"} own block gone · trap door! Into the water!`, sim.actors[e.actor].team);
     else if (t === "enemycat") feed(`${who} tried the enemy catapult and was flung off the island!`, sim.actors[e.actor].team);
     else if (t === "launch") feed(`${who} catapulted toward the ${TEAM_NAME[SIM.other(e.team)]} fort!`, e.team);
     else if (t === "goldsteal") feed(`A mined block: ${who} gets ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} Golden Dual AKs!`, e.team);
@@ -1242,6 +1243,10 @@
         for (const c of catapults) if (c.team === e.team) c.at = sceneTime;
         audio.cues.boing(1);
         if (me) { center("WRONG CATAPULT!", 1100); notice("Jetpack back (Space), hook the rim, or fall and respawn at home", 2600); }
+      } else if (e.type === "ziptrap") {
+        fx.burst(e.x, e.y + 0.4, e.z, 14, WOOD_BITS, 2.4);
+        audio.cues.boing(1);
+        if (me) { center("TRAP DOOR!", 1100); notice("Their zipline only carries you while your own block is home · jetpack back (Space), hook the rim, or fall", 3200); }
       } else if (e.type === "launch") {
         for (const c of catapults) if (c.team === e.team) c.at = sceneTime;
         fx.burst(e.x, 1, e.z, 14, WOOD_BITS, 2.4);
@@ -2061,6 +2066,8 @@
     }
     // An ammo cache glows while it's ready and goes grey while it rests.
     for (let i = 0; i < caches.length; i++) caches[i].geometry = BM.cache(sim.caches[i].dark > 0 ? 1 : 0);
+    // The zipline lamps, repainted only when the visitor's own block comes or goes.
+    for (let i = 0; i < zipLights.length; i++) { const lit = SIM.zipSprings(sim, sim.actors[0], SIM.TEAMS[i]) ? 1 : 0; if (lit !== zipLit[i]) { zipLit[i] = lit; zipLights[i].geometry = BM.zipLight(lit); } }
     // A catapult's arm whips over when it throws, then winds back down.
     for (const c of catapults) {
       const t = elapsed - c.at, up = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 1.4);
@@ -2082,8 +2089,8 @@
       zipNear = near;
       updateTools();
       if (near) {
-        const home = SIM.nearZip(sim, sim.actors[0]) !== sim.team;
-        notice(`${COARSE ? "Zip" : "Space"} rides the zipline ${home ? "home to our fort" : "into their fort"}`, 2200);
+        const line = SIM.nearZip(sim, sim.actors[0]), home = line !== sim.team;
+        notice(SIM.zipSprings(sim, sim.actors[0], line) ? "Trap door! Our block isn't home · their zipline would throw you off the island" : `${COARSE ? "Zip" : "Space"} rides the zipline ${home ? "home to our fort" : "into their fort"}`, 2200);
       }
     }
   };
@@ -2563,6 +2570,9 @@
       add(createNode({ geometry: BM.rack(i), position: { x: l.dx < 0 ? x0 + 0.7 : x1 - 0.7, y: C.TOWER_TOP, z: (z0 + z1) / 2 }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
       add(createNode({ geometry: BM.zipline(mapIndex * 2 + i) }));
     }
+    // A lamp just over each zipline's handle: green when the visitor may take it, red when it would throw them off.
+    zipLights = SIM.TEAMS.map((t) => { const z = A.zips[t]; return add(createNode({ geometry: BM.zipLight(0), position: { x: z.ax, y: z.ay + 0.3, z: z.az } })); });
+    zipLit[0] = zipLit[1] = 0;
     pads = A.traps.map(([x, z]) => add(createNode({ geometry: BM.pad(), position: { x, y: 0, z } })));
     powerNodes = A.powers.map(([x, z]) => add(createNode({ geometry: BM.power(0), position: { x, y: 0, z } })));
     trampNodes = A.tramps.map(([x, z]) => add(createNode({ geometry: BM.tramp(), position: { x, y: 0, z } })));
@@ -3100,7 +3110,7 @@
     hud.dispose();
     phase = "board";
     skyClouds = []; skyPerch = null; trophy = trophyNodes = null;
-    sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = fpFlash = fpFlashL = trampNodes = powerNodes = result = null;
+    sim = blocks = shots = splats = ticks = pads = crates = rain = caches = zipLights = fpGun = fpGunL = fpFlash = fpFlashL = trampNodes = powerNodes = result = null;
     mapRoot = fireNode = dancers = peelNodes = catapults = boltNode = boltRing = null;
     hookNodes = []; ghostNodes = [];
     catNear = false;

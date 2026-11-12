@@ -7390,7 +7390,7 @@ const gameRulesChecks = async () => {
     outGuest.gorillas.length = 0;
     const framedOut = L.validFrame(outFrame, outGuest, L.seatMap(2, 0)) && !L.validFrame(new DataView(outBuf.buffer.slice(0, outLen + 1)), outGuest, L.seatMap(2, 0)); L.decode(outFrame, outGuest, L.seatMap(2, 0), new Float32Array(16));
     const guests = { away: guestAway.r && guestAway.g.gold && !guestAway.h.gold, out: guestOut.r && guestOut.h.hook === 1 && guestOut.g.hook === 0, refused, framed: framedOut, agrees: outGuest.actors[0].hook === 1 && outGuest.actors[2].hook === 0 && outGuest.hooks[0].holder === 0,
-      events: ["goldhook", "hooksteal", "goldsteal", "gold"].every((t) => L.EVENT_TYPES.includes(t)) && !["golddrop", "goldget", "goldback", "hookdrop", "hookback"].some((t) => L.EVENT_TYPES.includes(t)), wire: W.WIRE === 4 };
+      events: ["goldhook", "hooksteal", "goldsteal", "gold"].every((t) => L.EVENT_TYPES.includes(t)) && !["golddrop", "goldget", "goldback", "hookdrop", "hookback"].some((t) => L.EVENT_TYPES.includes(t)), wire: W.WIRE === 5 };
     record("block steals live: a guest's wield on the host decides what a hook or Golden AK fire can take, an unowned tool is refused, the frame carries the result to a guest exactly, and the drop events are gone (WIRE 4)",
       Object.values(guests).every(Boolean), JSON.stringify(guests));
     // Shots through the sim itself: bots meet a crouched, a higher and a lower target; no round passes a thin wall.
@@ -8372,6 +8372,56 @@ const gameRulesChecks = async () => {
         rows.enemyCatBot = !S.nearEnemyCatapult(bot, bv);
       }
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a mined block takes no hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
+      {
+        // The rivals' zipline only carries a rider whose own block is home; grabbed with it gone, a trap door throws them
+        // off the island as the enemy catapult does. Checked only at the grab, never on your own line, and bots know it.
+        const zr = {};
+        // (`flight` 2: still under a parachute when they reach the handle; the throw takes over from it.)
+        const atLine = (line, ownAway, carrying = null, flight = 0) => {
+          const q = fresh(), v = q.actors[0], Z = S.ARENA.zips[line];
+          Object.assign(v, { x: Z.ax, z: Z.az, y: S.CONFIG.TOWER_TOP, grounded: true, carrying, flight });
+          if (carrying) Object.assign(q.flags[carrying], { state: "carried", carrier: 0 });
+          if (ownAway) Object.assign(q.flags.blue, { state: "dropped", carrier: null, x: 4, y: 0, z: 0, homeT: 1e9 });
+          return [q, v, S.zip(q, 0), q.events.slice(0, q.eventCount).map((e) => e.type)];
+        };
+        let [q, v, took, ev] = atLine("red", false, "red");
+        zr.homeRides = took && v.riding && v.zipLine === "red" && ev.includes("zip") && !ev.includes("ziptrap") && !S.zipSprings(q, v, "red");
+        [q, v, took, ev] = atLine("red", true, "red", 2);
+        zr.awaySprings = took && !v.riding && v.flung && !v.flight && ev.includes("ziptrap") && !ev.includes("zip") && S.zipSprings(q, v, "red") && v.vy > 0;
+        const trapLog = run(q, 12, still, () => v.falls > 0);
+        zr.awayFalls = v.falls === 1 && !v.carrying && q.flags.red.state === "home" && !trapLog.edgedrop && !!trapLog.return;
+        [q, v, took, ev] = atLine("blue", true);
+        zr.ownNever = took && v.riding && v.zipLine === "blue" && !ev.includes("ziptrap") && !S.zipSprings(q, v, "blue");
+        // Already sliding when their own block is taken, the rider rides on to the end of the line.
+        [q, v, took] = atLine("red", false, "red");
+        Object.assign(q.flags.blue, { state: "carried", carrier: 2 }); q.actors[2].carrying = "blue";
+        const rideLog = run(q, 6, still, () => !v.riding);
+        zr.midRide = took && !rideLog.ziptrap && !!rideLog.unzip && !v.flung && v.zipT === 1;
+        // An expert carrying their block by the rivals' tower takes the zip home only with its own block home, and
+        // drops that route the moment its block goes.
+        const botAt = (ownAway) => {
+          const r = S.create({ seed: 5, prep: 0, map: "fort", skill: "expert" }); Object.assign(r.weather, { left: 1e9 }); for (const g of r.gorillas) { g.state = 3; g.t = 1e9; }
+          for (const o of r.actors) if (o.id !== 1) { o.bot = false; o.y = -100; }
+          const b = r.actors[1], L = S.ARENA.ladders.red; b.bot = true;
+          Object.assign(b, { x: (L.zone[0] + L.zone[1]) / 2 - L.dx * 3, z: (L.zone[2] + L.zone[3]) / 2, y: 0, grounded: true, carrying: "red", guard: 99 }); Object.assign(r.flags.red, { state: "carried", carrier: 1 });
+          if (ownAway) Object.assign(r.flags.blue, { state: "dropped", carrier: null, x: 4, y: 0, z: 0, homeT: 1e9 });
+          return [r, b];
+        };
+        let [br, bb] = botAt(false), botLog = run(br, 8, still, () => bb.riding);
+        zr.botRidesHome = bb.riding && bb.zipLine === "red" && !botLog.ziptrap;
+        [br, bb] = botAt(true); let routed = false;
+        botLog = run(br, 8, still, () => { routed ||= bb.route === "zipHome" || bb.riding; return false; });
+        zr.botStaysOff = !routed && !botLog.ziptrap;
+        [br, bb] = botAt(false); run(br, 8, still, () => bb.route === "zipHome");
+        const chose = bb.route === "zipHome";
+        Object.assign(br.flags.blue, { state: "dropped", carrier: null, x: 4, y: 0, z: 0, homeT: 1e9 });
+        botLog = run(br, 6, still, () => bb.riding);
+        zr.botDrops = chose && bb.route !== "zipHome" && !bb.riding && !botLog.ziptrap;
+        // The event crosses the wire, an Ooga's own.
+        zr.wire = BL.blockLive.EVENT_TYPES.at(-1) === "ziptrap" && BL.blockLive.ACTOR_EVENTS.includes("ziptrap") && BL.blockWire.WIRE === 5;
+        record("block frenzy zipline trap: the rivals' line carries a rider whose own block is home and throws one whose block isn't off the island, a carried block going home with a fall; a rider already sliding rides on, your own line never springs, and expert bots only take the zip home with their block home",
+          Object.values(zr).every(Boolean), JSON.stringify(zr));
+      }
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
         // edge, a throw off it, a jetpack back, breaking free by mashing, and the hook stunning a gorilla to free its
