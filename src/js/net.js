@@ -213,13 +213,27 @@
   const diagnosticReason = value => ["closed", "error", "stale", "replaced", "full", "revoked", "protocol"].includes(value) ? value : "other";
   const diagnosticRoom = value => ["off", "connecting", "live", "paused", "replaced", "full", "revoked", "protocol"].includes(value) ? value : "other";
   let diagnostic = null;
+  const connectionSubscribers = new Set();
+  let observedMessage = -1, observedPong = -1;
+  const subscribeConnection = fn => {
+    if (!connectionSubscribers.size) observedMessage = observedPong = -1;
+    connectionSubscribers.add(fn);
+    return () => connectionSubscribers.delete(fn);
+  };
   const traceConnection = (kind, detail = null) => {
-    if (!diagnostic) return;
-    const v = BL.voice.stats;
-    if (diagnostic.events.length === DIAGNOSTIC_KEEP) diagnostic.events.shift();
-    diagnostic.events.push({ at: Date.now(), elapsed: performance.now() - diagnostic.started, kind,
+    if (!diagnostic && !connectionSubscribers.size) return;
+    const v = BL.voice.stats, now = performance.now();
+    const event = { at: Date.now(), elapsed: diagnostic ? now - diagnostic.started : 0, kind,
       room: diagnosticRoom(state.room), hidden: document.hidden, remotes: remotes.size, unanswered,
-      voiceEnabled: !!v?.enabled, voiceMuted: !!v?.muted, ...detail });
+      lastMessageAge: observedMessage < 0 ? null : now - observedMessage,
+      lastPongAge: observedPong < 0 ? null : now - observedPong,
+      voiceEnabled: !!v?.enabled, voiceMuted: !!v?.muted, ...detail };
+    if (diagnostic) {
+      if (diagnostic.events.length === DIAGNOSTIC_KEEP) diagnostic.events.shift();
+      diagnostic.events.push(event);
+    }
+    // A diagnostics observer must never interrupt room cleanup or recovery.
+    for (const fn of connectionSubscribers) { try { fn({ ...event }); } catch {} }
   };
   const connectionDiagnostics = (on) => {
     if (on === false) diagnostic = null;
@@ -438,6 +452,10 @@
     ? { t: "transit", cycle: m.cycle, actor: m.actor, door: m.door, dir: m.dir, at: m.at, exp: m.exp } : null;
 
   const onMessage = (e) => {
+    if (connectionSubscribers.size) {
+      observedMessage = performance.now();
+      if (e.data === "pong") observedPong = observedMessage;
+    }
     if (diagnostic) {
       diagnostic.lastMessage = performance.now(); diagnostic.messages++;
       if (e.data === "pong") diagnostic.lastPong = diagnostic.lastMessage;
@@ -594,18 +612,18 @@
       upsert(msg.p);
       setRoom("live");
       const rec = fresh && remotes.get(msg.p.id);
-      if (rec && diagnostic) traceConnection("peer-join", { id: rec.id });
+      if (rec && (diagnostic || connectionSubscribers.size)) traceConnection("peer-join", { id: rec.id });
       if (rec) for (const fn of presenceSubscribers) fn(rec, true);
     } else if (msg.t === "leave") {
       const rec = remotes.get(msg.id);
-      if (rec && diagnostic) traceConnection("peer-leave", { id: rec.id, reason: diagnosticReason(msg.reason) });
+      if (rec && (diagnostic || connectionSubscribers.size)) traceConnection("peer-leave", { id: rec.id, reason: diagnosticReason(msg.reason) });
       remotes.delete(msg.id);
       setRoom("live");
       if (rec) for (const fn of presenceSubscribers) fn(rec, false);
     } else if (msg.t === "body") {
       const rec = remotes.get(msg.id);
       if (rec) {
-        if (diagnostic) traceConnection("peer-body", { id: rec.id, body: typeof msg.name === "string" });
+        if (diagnostic || connectionSubscribers.size) traceConnection("peer-body", { id: rec.id, body: typeof msg.name === "string" });
         rec.body = typeof msg.name === "string" ? msg.name : null;
         rec.bodyKind = bodyKind(rec.body);
         rec.bodyName = bodyName(rec.body);
@@ -620,7 +638,7 @@
     } else if (msg.t === "vstate") {
       const rec = remotes.get(msg.id);
       if (!rec) return;
-      if (diagnostic) traceConnection("peer-voice", { id: rec.id, voice: msg.voice === true, muted: msg.muted === true });
+      if (diagnostic || connectionSubscribers.size) traceConnection("peer-voice", { id: rec.id, voice: msg.voice === true, muted: msg.muted === true });
       rec.voice = msg.voice === true;
       rec.muted = msg.muted === true;
       rosterChanged();
@@ -632,7 +650,7 @@
     } else if (msg.t === "zone") {
       const rec = remotes.get(msg.id);
       if (rec && typeof msg.name === "string") {
-        if (diagnostic) traceConnection("peer-zone", { id: rec.id, from: rec.zone.slice(0, 64), to: msg.name.slice(0, 64) });
+        if (diagnostic || connectionSubscribers.size) traceConnection("peer-zone", { id: rec.id, from: rec.zone.slice(0, 64), to: msg.name.slice(0, 64) });
         // A position stays where it stood across zones of one scene's coordinates (the arcade's hallway halves, #422).
         if (rec.poseZone && BLEND.sameFrame(rec.poseZone, msg.name)) rec.poseZone = msg.name;
         // Into the place it was crossing into, its crossing turns round as the room turns it (the room's `blend` after
@@ -748,7 +766,7 @@
       state.released = { name: String(msg.name), reason: String(msg.reason) };
       emit();
     } else if (msg.t === "kick") {
-      if (diagnostic) traceConnection("kick", { reason: diagnosticReason(msg.reason) });
+      if (diagnostic || connectionSubscribers.size) traceConnection("kick", { reason: diagnosticReason(msg.reason) });
       // Revoked access stops reconnecting; the operator may later restore access.
       if (msg.reason === "revoked") { state.me = null; state.hand = false; }
       // replaced and full stop here; stale reconnects like any drop.
@@ -758,7 +776,7 @@
   };
 
   const close = (room) => {
-    if (diagnostic) traceConnection("clear", { next: diagnosticRoom(room) });
+    if (diagnostic || connectionSubscribers.size) traceConnection("clear", { next: diagnosticRoom(room) });
     window.clearInterval(pingTimer);
     pingTimer = 0;
     if (ws) {
@@ -791,7 +809,7 @@
   const schedule = () => {
     window.clearTimeout(retryTimer);
     const wait = Math.min(BACKOFF_MAX_MS, BACKOFF_MS * 1.7 ** retry++) * (0.75 + Math.random() * 0.5);
-    if (diagnostic) traceConnection("retry", { wait });
+    if (diagnostic || connectionSubscribers.size) traceConnection("retry", { wait });
     retryTimer = window.setTimeout(connect, wait);
   };
 
@@ -799,7 +817,9 @@
     retryTimer = 0;
     if (stopped || ws || !state.me) return;
     setRoom("connecting");
-    if (diagnostic) { diagnostic.lastMessage = diagnostic.lastPong = -1; traceConnection("connect"); }
+    observedMessage = observedPong = -1;
+    if (diagnostic) diagnostic.lastMessage = diagnostic.lastPong = -1;
+    traceConnection("connect");
     // A tab opened in the background has no visibility change to arm this.
     if (document.hidden && !hiddenTimer) armHidden();
     ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/room`);
@@ -817,7 +837,7 @@
     };
     ws.onerror = () => traceConnection("socket-error");
     ws.onclose = (event) => {
-      if (diagnostic) traceConnection("socket-close", { code: Number.isInteger(event?.code) ? event.code : 0, clean: event?.wasClean === true });
+      if (diagnostic || connectionSubscribers.size) traceConnection("socket-close", { code: Number.isInteger(event?.code) ? event.code : 0, clean: event?.wasClean === true });
       close("connecting");
     };
   };
@@ -839,6 +859,7 @@
       state.highscores = data.highscores === true;
       state.highscoreSnapshots = data.highscoreSnapshots === true;
       state.arcadePlays = data.arcadePlays === true;
+      state.connectionReports = data.connectionReports === true;
       // The games the Worker hosts itself (worker/src/games.js), each followed over its own socket (game-net.js).
       state.games = Array.isArray(data.games) ? data.games.filter((g) => typeof g === "string").slice(0, 8) : [];
       state.resolved = data.player === null || !!state.me;
@@ -1403,6 +1424,8 @@
   };
 
   const dispose = () => {
+    traceConnection("dispose");
+    connectionSubscribers.clear();
     document.removeEventListener("visibilitychange", onVisibility);
     stopped = true;
     window.clearTimeout(retryTimer);
@@ -1422,5 +1445,5 @@
     diagnostic = null;
   };
 
-  BL.net = { connectionDiagnostics, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
