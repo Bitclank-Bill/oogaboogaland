@@ -111,7 +111,8 @@ server.on("error", (e) => {
   server.listen(first + tries, HOST);
 });
 server.on("listening", () => {
-  const query = new URLSearchParams({ debug: "1", nosim: "1", net: "0", welcome: "0", scene: "studio", character: handle, watch: "1" });
+  // `pos=0` keeps the debug page's position readout off the pad.
+  const query = new URLSearchParams({ debug: "1", nosim: "1", net: "0", welcome: "0", pos: "0", scene: "studio", character: handle, watch: "1" });
   if (slim) query.set("build", "slim");
   const url = `http://${HOST}:${server.address().port}/?${query}`;
   console.log(`\nCharacter studio for ${handle}: ${url}`);
