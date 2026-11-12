@@ -54,7 +54,7 @@
   },
   // v2: one GameHost a hosted game's instance (worker/src/games.js names them), apart from the island's Room.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }, { "tag": "v2", "new_sqlite_classes": ["GameHost"] }],
-  // Namespaces are per account: production counts in 1001-1007, staging in 2001-2007.
+  // Namespaces are per account: production counts in 1001-1008, staging in 2001-2008.
   "ratelimits": [
     // Opt-in dropout reports per signed-in account, with additional D1 retention and volume caps.
     { "name": "CONNECTION_REPORT_LIMITER", "namespace_id": "1008", "simple": { "limit": 6, "period": 60 } },

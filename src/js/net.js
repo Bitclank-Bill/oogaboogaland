@@ -223,10 +223,12 @@
   const traceConnection = (kind, detail = null) => {
     if (!diagnostic && !connectionSubscribers.size) return;
     const v = BL.voice.stats, now = performance.now();
+    const lastMessage = diagnostic ? diagnostic.lastMessage : observedMessage;
+    const lastPong = diagnostic ? diagnostic.lastPong : observedPong;
     const event = { at: Date.now(), elapsed: diagnostic ? now - diagnostic.started : 0, kind,
       room: diagnosticRoom(state.room), hidden: document.hidden, remotes: remotes.size, unanswered,
-      lastMessageAge: observedMessage < 0 ? null : now - observedMessage,
-      lastPongAge: observedPong < 0 ? null : now - observedPong,
+      lastMessageAge: lastMessage < 0 ? null : now - lastMessage,
+      lastPongAge: lastPong < 0 ? null : now - lastPong,
       voiceEnabled: !!v?.enabled, voiceMuted: !!v?.muted, ...detail };
     if (diagnostic) {
       if (diagnostic.events.length === DIAGNOSTIC_KEEP) diagnostic.events.shift();

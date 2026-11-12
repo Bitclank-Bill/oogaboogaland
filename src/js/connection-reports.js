@@ -1,6 +1,7 @@
 // Opt-in, per-visit dropout reports. No polling, persistence, unload uploads or upload retries.
 // The room observer exists only while opted in; routine activity never triggers a request.
 (() => {
+  "use strict";
   const net = BL.net, box = document.getElementById("players-diagnostics");
   const input = document.getElementById("players-diagnostics-input");
   const status = document.getElementById("players-diagnostics-status");
