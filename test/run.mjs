@@ -13661,6 +13661,40 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
       && landed(row.reference) && row.landing.frames <= 8 && landed(row.landing)),
     JSON.stringify({ ...r, respawns }));
 } };
+// The eraser on the real board: the pixels are what the Node checks cannot see.
+const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser pass leaves writing illegible, touches nothing outside its footprint and repaints the same everywhere", run: async (b) => {
+  const standAtBoard = () => b.evaluate(`(() => {
+    const B = __ooga, a = B.cavemen.get("portlandhodl"), c = BL.scenes.hub.debug.chalkboardAt;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    const x = c.x + c.frontX * 1.3 - c.rightX * 0.6, z = c.z + c.frontZ * 1.3 - c.rightZ * 0.6;
+    B.pilot.navigate({ position: { x, y: B.island.surfaceAt(x, z), z }, yaw: Math.atan2(c.frontX, c.frontZ), pitch: 0.15, dist: 4 });
+    B.advance(0.5, 1 / 60);
+    return B.project(c.x + c.rightX * 0.45, c.y + 1.25, c.z + c.rightZ * 0.45, {});
+  })()`);
+  const tapAt = async (point) => { await b.click(point.x, point.y); await b.sleep(50); };
+  await tapAt(await standAtBoard());
+  // A scrub over one digit of the message, in real pixels: the digit is gone, nothing outside the swept footprint
+  // changed, and the smudge repaints the same. The digit is the first row's sixth, centred at (600, 320) on the canvas.
+  await b.evaluate(`(() => { const c = document.getElementById("chalk-canvas"); window.__chalkPixels = () => c.getContext("2d").getImageData(0, 0, 1200, 750).data; window.__chalkBefore = __chalkPixels(); document.getElementById("chalk-eraser").click(); })()`);
+  await b.key("r");
+  const upright = await b.evaluate('document.getElementById("chalk-pointer").classList.contains("upright")');
+  await b.key("r");
+  const sideways = await b.evaluate('!document.getElementById("chalk-pointer").classList.contains("upright")');
+  const onBoard = await b.evaluate(`(() => { const r = document.getElementById("chalk-canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
+  const boardAt = (x, y) => ({ x: onBoard.left + x / 1200 * onBoard.width, y: onBoard.top + y / 750 * onBoard.height });
+  await b.drag(boardAt(600, 287), boardAt(600, 353)); await b.sleep(50);
+  const scrub = await b.evaluate(`(() => { const now = __chalkPixels(), then = __chalkBefore, swept = (x, y) => x >= 570 && x < 630 && y >= 266 && y < 374; let outside = 0, ink = 0, left = 0, h = 2166136261;
+    for (let y = 0; y < 750; y++) for (let x = 0; x < 1200; x++) { const i = (y * 1200 + x) * 4; h = Math.imul(Math.imul(Math.imul(h ^ now[i], 16777619) ^ now[i + 1], 16777619) ^ now[i + 2], 16777619);
+      if (!swept(x, y) && (now[i] !== then[i] || now[i + 1] !== then[i + 1] || now[i + 2] !== then[i + 2])) outside++;
+      if (x >= 574 && x < 626 && y >= 276 && y < 364 && then[i] > 170) { ink++; if (now[i] > 130) left++; } }
+    return { outside, ink, left, hash: h >>> 0 }; })()`);
+  await b.evaluate(`document.getElementById("chalk-close").click()`);
+  await tapAt(await standAtBoard());
+  const repaint = await b.evaluate(`(() => { const now = __chalkPixels(); let h = 2166136261; for (let i = 0; i < now.length; i += 4) h = Math.imul(Math.imul(Math.imul(h ^ now[i], 16777619) ^ now[i + 1], 16777619) ^ now[i + 2], 16777619); return h >>> 0; })()`);
+  record("chalkboard eraser pixels: R turns the eraser both ways; a scrub leaves a digit illegible, changes nothing outside the swept footprint, and repaints identically",
+    upright && sideways && scrub.ink > 500 && scrub.left === 0 && scrub.outside === 0 && repaint === scrub.hash, JSON.stringify({ upright, sideways, scrub, repaint }));
+  await b.evaluate(`document.getElementById("chalk-close").click()`);
+} };
 // The chalkboard writes only for an Ooga standing at it (#391): a tap from afar or with no Ooga is refused with a
 // reason, Space and a tap work at the board, and moving the Ooga off closes it.
 const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga standing at the chalkboard may write on it; a tap from across the island opened it", run: async (b) => {
@@ -21514,7 +21548,7 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
 } };
 // Sessions that need portlandhodl awake on the surface pin it (ooga=): by itself his state comes from the real activity snapshot, and once
 // it has aged he boots asleep in the headquarters, where jetpacks are refused and his gorilla is in bed.
-scene("hub", { label: "player stacking", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubVoiceLevels] });
+scene("hub", { label: "player stacking", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubChalkboardEraser, hubVoiceLevels] });
 // A fresh page, as the phone run has: after the steps above, the peer tooltip this check measures can read as hidden.
 scene("hub", { label: "live nameplates", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubNameplates] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
@@ -28006,6 +28040,151 @@ const privatePadChecks = async () => {
   record("private pads: a record that can't be written, kept or read stops the pad, and so does a pad used up",
     unwritable.error === "storage" && dropped.error === "storage" && unreadable.error === "record" && usedUp === "exhausted", JSON.stringify({ unwritable, dropped, unreadable, usedUp }));
 };
+// Rule: what the eraser's cursor covers is what it erases, one footprint for a tap, the same ground whichever way it
+// travels, held to the smudge's floor and ceiling and the same on every repaint; and an eraser line stored before the
+// footprint draws as it always did.
+const chalkboardEraserChecks = async (BL) => {
+  const EW = 58, EH = 26, W = 1200, H = 750, nodes = new Map(), timers = [], C = BL.chalkBoard, tiles = new Map();
+  let stored = null, rect = { left: 0, top: 0, width: 800, height: 500 }, saved = null;
+  // A canvas that keeps what is filled and stroked, with the path each used.
+  const calls = [], state = { path: [] };
+  // Each smudge tile is its own pattern, known by the order it was made; the tiles draw on a canvas nobody records.
+  const inert = new Proxy({}, { get: (t, k) => k in t ? t[k] : () => {}, set: (t, k, v) => (t[k] = v, true) });
+  const ctx = new Proxy(state, { get: (t, k) => k in t ? t[k] : k === "createPattern" ? (tile) => { if (!tiles.has(tile)) tiles.set(tile, { tile: tiles.size }); return tiles.get(tile); } : k === "measureText" ? () => ({ width: 30 })
+    : k === "beginPath" ? () => { t.path = []; } : k === "moveTo" || k === "lineTo" ? (x, y) => { t.path.push([x, y]); }
+    : k === "fill" ? () => { calls.push({ op: "fill", style: t.fillStyle, blend: t.globalCompositeOperation, path: t.path }); }
+    : k === "stroke" ? () => { calls.push({ op: "stroke", style: t.strokeStyle, width: t.lineWidth, cap: t.lineCap, path: t.path }); } : () => {}, set: (t, k, v) => (t[k] = v, true) });
+  const element = () => { const classes = new Set(), attributes = {}; return { handlers: {}, style: {}, dataset: {}, hidden: false, disabled: false, value: "", textContent: "", attributes,
+    classList: { toggle(name, on) { if (on) classes.add(name); else classes.delete(name); }, add(name) { classes.add(name); }, remove(name) { classes.delete(name); }, contains: name => classes.has(name) },
+    setAttribute(name, value) { attributes[name] = value; }, focus() {}, blur() {}, addEventListener(type, fn) { this.handlers[type] = fn; } }; };
+  const document = { pointerLockElement: null, createElement: () => ({ getContext: () => inert }), getElementById(id) {
+    if (!nodes.has(id)) nodes.set(id, Object.assign(element(), id === "chalk-modal" ? { open: false, showModal() { this.open = true; }, close() { if (this.open) { this.open = false; this.handlers.close(); } } }
+      : id === "chalk-canvas" ? { getContext: () => ctx, getBoundingClientRect: () => rect, setPointerCapture() {}, hasPointerCapture: () => true, releasePointerCapture() {} } : {}));
+    return nodes.get(id);
+  } };
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "YellowBrokeIt", display: "Yellow" } }) }));
+  const window = { BL: { chalkBoard: C, net: f.net } };
+  // Boards kept from before the footprint: an eraser line at either stored width, over a line of chalk.
+  const old = [{ t: "c", s: 2, p: [0.1, 0.5, 0.9, 0.5] }, { t: "e", s: 4, p: [0.2, 0.4, 0.3, 0.6] }, { t: "e", p: [0.5, 0.4, 0.6, 0.6] }];
+  saved = JSON.stringify(old);
+  runInNewContext(await readFile(join(root, "src/js/chalkboard.js"), "utf8"), { window, document, AbortController, setTimeout: fn => timers.push(fn), clearTimeout() {},
+    requestAnimationFrame: () => 1, cancelAnimationFrame() {}, localStorage: { getItem: k => k === "ooga-chalkboard-v3" ? saved : null, setItem(k, v) { stored = JSON.parse(v); } } });
+  const board = window.BL.chalkboard.create({ renderer: {}, onOpen() {}, onClose() {}, onRefused() {} });
+  const dialog = document.getElementById("chalk-modal"), canvas = document.getElementById("chalk-canvas"), pointerNode = document.getElementById("chalk-pointer"), held = document.getElementById("chalk-held");
+  const pointer = (type, x, y) => canvas.handlers[type]({ isPrimary: true, button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, preventDefault() {} });
+  const stroke = (...points) => { pointer("pointerdown", ...points[0]); for (const p of points.slice(1)) pointer("pointermove", ...p); pointer("pointerup", ...points.at(-1)); };
+  const smudged = (c) => c.op === "fill" && c.style?.tile !== undefined;
+  // The pixels a set of fills covers, by pixel centre, on the smudge's fills only.
+  const covered = (from) => {
+    const cells = new Set();
+    for (const call of calls.slice(from)) {
+      if (!smudged(call)) continue;
+      const { path } = call;
+      const xs = path.map(p => p[0]), ys = path.map(p => p[1]);
+      for (let y = Math.min(...ys); y < Math.max(...ys); y++) for (let x = Math.min(...xs); x < Math.max(...xs); x++) {
+        let inside = false;
+        for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+          const [ax, ay] = path[i], [bx, by] = path[j];
+          if ((ay > y + 0.5) !== (by > y + 0.5) && x + 0.5 < (bx - ax) * (y + 0.5 - ay) / (by - ay) + ax) inside = !inside;
+        }
+        if (inside) cells.add(`${x},${y}`);
+      }
+    }
+    return cells;
+  };
+  const box = (l, t, w = EW, h = EH) => { const cells = new Set(); for (let y = t; y < t + h; y++) for (let x = l; x < l + w; x++) cells.add(`${x},${y}`); return cells; };
+  const same = (a, b) => a.size === b.size && [...a].every(c => b.has(c));
+  const holds = (a, b) => [...b].every(c => a.has(c));
+  const corner = (x, y) => [Math.round(Math.round(x / rect.width * 1000) / 1000 * W - EW / 2), Math.round(Math.round(y / rect.height * 1000) / 1000 * H - EH / 2)];
+  // Old marks: repainted at open, a 192 and a 48 wide band, butt-ended, with their smudges, and no bare-board fill.
+  board.open(null);
+  const bands = calls.filter(c => c.op === "stroke" && c.cap === "butt").map(c => [c.width, c.style]);
+  const oldDrawn = JSON.stringify(bands) === JSON.stringify([[192, "rgba(27,65,52,0.9)"], [128, "rgba(177,196,167,0.11)"], [48, "rgba(27,65,52,0.9)"], [32, "rgba(177,196,167,0.11)"]])
+    && !calls.some(smudged);
+  document.getElementById("chalk-eraser").handlers.click();
+  // The cursor is the footprint at this board's size on screen, centred where a press would erase, at any size.
+  const sizes = [];
+  for (const [width, height, x, y] of [[800, 500, 401, 251], [1200, 750, 333, 444], [360, 225, 100, 77]]) {
+    rect = { left: 10, top: 20, width, height };
+    pointer("pointermove", x + 10, y + 20);
+    const [l, t] = corner(x, y), near = (a, b) => Math.abs(parseFloat(a) - b) < 1e-6;
+    sizes.push(near(held.style.width, EW * width / W) && near(held.style.height, EH * height / H)
+      && near(pointerNode.style.left, (l + EW / 2) * width / W) && near(pointerNode.style.top, (t + EH / 2) * height / H));
+  }
+  rect = { left: 0, top: 0, width: 1200, height: 750 };
+  const cursor = sizes.every(Boolean);
+  // A tap erases exactly one footprint.
+  let from = calls.length; stroke([600, 300]);
+  const [tapL, tapT] = corner(600, 300), tap = same(covered(from), box(tapL, tapT));
+  // A drag covers the whole rectangle at both ends, and the same ground either way, whichever way it goes.
+  const directions = [];
+  for (const [ax, ay, bx, by] of [[300, 300, 500, 300], [300, 300, 300, 500], [300, 300, 500, 450], [500, 300, 300, 450], [300, 200, 301, 400]]) {
+    from = calls.length; stroke([ax, ay], [bx, by]); const forward = covered(from);
+    from = calls.length; stroke([bx, by], [ax, ay]); const backward = covered(from);
+    directions.push(same(forward, backward) && holds(forward, box(...corner(ax, ay))) && holds(forward, box(...corner(bx, by))));
+  }
+  const swept = directions.every(Boolean);
+  // A level drag covers its rectangle's height and nothing more: no band that widens with the line's direction.
+  from = calls.length; stroke([300, 300], [500, 300]);
+  const levelCells = covered(from), [levelL] = corner(300, 300), [levelR] = corner(500, 300), level = levelCells.size === (levelR - levelL + EW) * EH;
+  // A pointer that stops a little past the last point it laid still erases to where the cursor stands.
+  from = calls.length; stroke([700, 500], [800, 500], [802, 500]);
+  const [endL, endT] = corner(802, 500), reached = holds(covered(from), box(endL, endT));
+  // Clicking Eraser again turns the block upright, the cursor with it at once, and R turns it back; each line keeps
+  // the way it was held when drawn.
+  const eraserButton = document.getElementById("chalk-eraser"), hint = document.getElementById("chalk-hint"), heldIs = (w, h) => Math.abs(parseFloat(held.style.width) - w) < 1e-6 && Math.abs(parseFloat(held.style.height) - h) < 1e-6;
+  pointer("pointermove", 400, 600);
+  const sideways = heldIs(EW, EH) && eraserButton.attributes["aria-label"].includes("sideways") && hint.textContent.includes("press R");
+  eraserButton.handlers.click();
+  const clicked = heldIs(EH, EW) && pointerNode.classList.contains("upright") && eraserButton.attributes["aria-label"].includes("upright") && eraserButton.attributes["aria-pressed"] === "true";
+  from = calls.length; stroke([400, 600]);
+  const uprightTap = same(covered(from), box(387, 571, EH, EW));
+  let prevented = false;
+  dialog.handlers.keydown({ key: "R", preventDefault() { prevented = true; } });
+  const keyed = prevented && heldIs(EW, EH) && !pointerNode.classList.contains("upright");
+  dialog.handlers.keydown({ key: "r", ctrlKey: true, preventDefault() {} });
+  const chord = heldIs(EW, EH);
+  from = calls.length; stroke([800, 600]);
+  const sidewaysTap = same(covered(from), box(771, 587));
+  const turned = sideways && clicked && uprightTap && keyed && chord && sidewaysTap;
+  // Every step clamps down to the ceiling, then up to the floor, over the same path, and leaves normal drawing on.
+  const fills = calls.filter(smudged), erasers = fills.length;
+  const clamped = erasers > 0 && erasers % 2 === 0 && fills.every((c, i) => c.blend === (i % 2 ? "lighten" : "darken") && (i % 2 === 0 || (JSON.stringify(c.path) === JSON.stringify(fills[i - 1].path) && c.style !== fills[i - 1].style))) && state.globalCompositeOperation === "source-over";
+  dialog.close();
+  const kept = stored.slice(0, old.length), oldKept = JSON.stringify(kept) === JSON.stringify(old);
+  const newMarks = stored.slice(old.length), tagged = newMarks.length > 2 && newMarks.every((m, i) => m.t === "e" && m.s === 4 && m.f === (i === newMarks.length - 2 ? 2 : 1));
+  const tapMark = JSON.stringify(newMarks[0].p) === JSON.stringify([0.5, 0.4, 0.5, 0.4]);
+  record("chalkboard eraser: the cursor is the footprint at any board size, a tap erases one footprint, a drag sweeps the same ground either way and reaches where the pointer stopped, Eraser again or R turns the block and each line keeps how it was held; marks stored before it draw their old band and stay as stored",
+    oldDrawn && cursor && tap && swept && level && reached && turned && oldKept && tagged && tapMark && clamped, JSON.stringify({ oldDrawn, bands, sizes, tap, directions, level, reached, turn: { sideways, clicked, uprightTap, keyed, chord, sidewaysTap }, oldKept, tagged, tapMark, erasers, clamped }));
+  // A replay paints the same as the stroke did, draw for draw, and another's live edit paints the same footprint.
+  const drawn = (start) => JSON.stringify(calls.slice(start).filter(smudged).map(c => [c.style.tile, c.blend, c.path]));
+  from = calls.length; board.open(null); const replayed = covered(from), firstPaint = drawn(from); dialog.close();
+  from = calls.length; board.open(null); const repainted = drawn(from) === firstPaint && firstPaint.length > 2; dialog.close();
+  const seeded = !(await readFile(join(root, "src/js/chalkboard.js"), "utf8")).includes("Math.random");
+  await f.net.start(); const ws = f.sockets[0], room = v => ws.onmessage({ data: JSON.stringify(v) });
+  room({ t: "welcome", you: { id: 71 }, players: [{ id: 72, login: "peer", display: "Peer", body: "w-s-bitcoin", zone: "outside", x: 0, y: 0, z: 0, yaw: 0 }], now: Date.now(), features: [C.FEATURE] });
+  room({ t: "chalk-board", marks: [...old, { t: "e", s: 4, f: 1, p: [0.25, 0.25, 0.25, 0.25] }], editor: 72 });
+  const roomKept = f.net.state.chalk?.board.marks.at(-1).f === 1 && f.net.state.chalk.board.marks[1].f === undefined;
+  from = calls.length; room({ t: "chalk", id: 72, k: "line", m: "e", p: [500, 400, 500, 400] });
+  const live = same(covered(from), box(571, 287));
+  from = calls.length; room({ t: "chalk", id: 72, k: "more", p: [600, 400] });
+  const liveMore = same(covered(from), (() => { const cells = new Set(); for (let y = 287; y < 313; y++) for (let x = 571; x < 749; x++) cells.add(`${x},${y}`); return cells; })());
+  // The contract: a new line is told apart, the board reads back with it, nothing else may carry it.
+  const b = C.board([]), s = C.session(b); C.apply(b, { k: "line", m: "e", p: [10, 10, 20, 20] }, s); C.apply(b, { k: "line", m: "c", p: [10, 10, 20, 20] }, s);
+  C.apply(b, C.parse({ k: "line", m: "e", o: 2, p: [10, 10, 20, 20] }), s);
+  const applied = b.marks[0].f === 1 && b.marks[0].s === 4 && b.marks[1].f === undefined && b.marks[1].s === 2 && b.marks[2].f === 2 && b.marks[2].s === 4;
+  const edits = JSON.stringify(C.parse({ k: "line", m: "e", o: 2, p: [1, 1, 2, 2] })) === JSON.stringify({ k: "line", m: "e", o: 2, p: [1, 1, 2, 2] }) && C.parse({ k: "line", m: "e", o: 1, p: [1, 1, 2, 2] }).o === undefined
+    && [{ m: "e", o: 3 }, { m: "e", o: "2" }, { m: "c", o: 2 }].every(m => C.parse({ k: "line", p: [1, 1, 2, 2], ...m }) === null);
+  from = calls.length; room({ t: "chalk", id: 72, k: "line", m: "e", o: 2, p: [250, 400, 250, 400] });
+  const liveUpright = same(covered(from), box(287, 271, EH, EW)) && f.net.state.chalk.board.marks.at(-1).f === 2;
+  const line = (mark) => ({ p: [0, 0, 1, 1], ...mark });
+  const accepted = [{ t: "e", s: 4, f: 1 }, { t: "e", s: 4, f: 2 }, { t: "e", s: 4 }, { t: "e" }, { t: "c", s: 2 }].every(m => C.restore([line(m)]));
+  const refused = [{ t: "c", s: 2, f: 1 }, { t: "c", s: 2, f: 2 }, { t: "e", s: 4, f: 3 }, { t: "e", s: 4, f: "1" }].every(m => C.restore([line(m)]) === null);
+  const widened = C.widen([line({ t: "e", s: 4, f: 1 })])[0].f === 1;
+  record("chalkboard eraser marks: a replay paints the same smudge draw for draw from no random source, another's live edit paints the footprint; the contract tags new eraser lines sideways or upright, takes the edit's `o` and refuses a bad one, keeps their width for older readers, reads back old and new, and refuses a bad tag",
+    replayed.size > 0 && repainted && seeded && roomKept && live && liveMore && liveUpright && applied && edits && accepted && refused && widened, JSON.stringify({ replayed: replayed.size, repainted, seeded, roomKept, live, liveMore, liveUpright, applied, edits, accepted, refused, widened }));
+  board.dispose?.(); f.net.dispose();
+};
 // Rule (#391): the chalkboard on the page edits only through the shared contract. Alone it keeps the visitor's own
 // board; signed in to a room that shares it, it opens only once the room says this page holds it, sends what it
 // draws and types, follows another's writing, and shuts with a reason when the board is taken from it.
@@ -28015,7 +28194,7 @@ const chalkboardClientChecks = async (BL) => {
   const element = () => ({ handlers: {}, style: {}, dataset: {}, hidden: false, disabled: false, value: "", textContent: "",
     classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {}, focus() {}, blur() {}, addEventListener(type, fn) { this.handlers[type] = fn; } });
   const ctx = new Proxy({}, { get: (t, k) => k in t ? t[k] : k === "measureText" ? () => ({ width: 30 }) : () => {}, set: (t, k, v) => (t[k] = v, true) });
-  const document = { pointerLockElement: null, getElementById(id) {
+  const document = { pointerLockElement: null, createElement: () => ({ getContext: () => ctx }), getElementById(id) {
     if (!nodes.has(id)) nodes.set(id, Object.assign(element(), id === "chalk-modal" ? { open: false, showModal() { this.open = true; }, close() { if (this.open) { this.open = false; this.handlers.close(); } } }
       : id === "chalk-canvas" ? { getContext: () => ctx, getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 500 }), setPointerCapture() {}, hasPointerCapture: () => true, releasePointerCapture() {} } : {}));
     return nodes.get(id);
@@ -30751,6 +30930,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await reactionWireChecks(BL);
   await persistentSlotChecks(BL);
   await chalkboardClientChecks(BL);
+  await chalkboardEraserChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
   await playersTabChecks(BL);
