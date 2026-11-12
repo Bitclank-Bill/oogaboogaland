@@ -11643,6 +11643,24 @@ body[data-active-scene] .topbar > .presets button { flex: 0 0 auto; }
 .topbar .presets :is([data-action="mute"], [data-action$="-mute"]):not([data-action="hangar-mute"]) { display: none; }
 body[data-active-scene] #environment-sound { display: flex; align-items: center; justify-content: center; }
 
+/* The character studio (scene-studio.js): the banner holds the title, the game's own equipment buttons and the controls
+   button, and the studio's buttons run down the left side under it, one width, lit while switched on. The sound button
+   is left out, and the clock and block height are kept out of sight but in place, since hud.js fits the banner's row
+   up to the clock's edge. */
+.studio-side {
+  position: absolute;
+  top: calc(var(--banner-controls-bottom, calc(68px + var(--safe-top))) + 6px);
+  left: calc(12px + var(--safe-left));
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+.studio-side button { flex: 0 0 auto; padding: 0 10px; }
+.studio-side [aria-pressed="true"] { border-color: var(--accent); color: var(--accent-text); }
+body[data-active-scene="studio"] #environment-sound { display: none; }
+body[data-active-scene="studio"] .controls-help-button { right: var(--hub-banner-button-right, calc(var(--hub-banner-gutter) + var(--safe-right))); }
+body[data-active-scene="studio"] :is(.world-clock, .world-block) { visibility: hidden; }
+
 /* Cave stations cycle through the OBL land button instead of a second camera toolbar. */
 .topbar .presets:is([data-scene="lab"], [data-scene="factory"], [data-scene="hangar"], [data-scene="bifrost"], [data-scene="arcade"]) [data-preset] { display: none; }
 body[data-active-scene="arcade"] #destination-hud:not([hidden]) { display: flex; }

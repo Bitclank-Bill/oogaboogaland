@@ -4303,7 +4303,7 @@ const orbitFlow = async (b) => {
 // perf floor; `perf` runs the perf floor alone; `unit` (or nothing) runs only the global tier.
 // Two lanes limit concurrent WebGL boot pressure; four produced long startups
 // and a GPU context loss during the full suite.
-const SCENES = ["hub", "lab", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
+const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
 for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
@@ -23283,6 +23283,45 @@ scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&st
 } }] });
 scene("hub", { perf: true, query: "bananas=1000", opts: { w: 1920, h: 1080, perf: true, motion: true }, steps: [{ name: "wall movement performance", why: "regression: frame rate fell moving behind cave walls during a donation", run: wallPerformance }] });
 scene("lab", { steps: [donation("lab"), labWalking, labKeys, trip("lab")] });
+// The character studio (scene-studio.js): one Ooga on a bare pad, and every place it rests, through the game's own
+// seats, bed and hammock. The fixture is a slim Ooga with a legged pet and a blade to sling.
+const STUDIO_OOGA = "midy-machete";
+const studioPlaces = { name: "studio places", why: "playthrough: the studio is where a player looks at the Ooga they are making, so it must show that one Ooga walking, sitting, asleep and at rest in the hammock, with its rifle out and its jetpack on", run: async (b) => {
+  const walk = await walkKeys(b, STUDIO_OOGA, 0, 1.2, [0, 2.2], 0.5);
+  const alone = await b.evaluate(`(() => { const B = window.__ooga, shown = (el) => el.getClientRects().length > 0 && el.checkVisibility({ visibilityProperty: true }), r = (el) => el.getBoundingClientRect();
+    const side = r(document.querySelector(".studio-side")), brand = r(document.querySelector(".brand")), row = r([...document.querySelectorAll("#equipment-hud .weapon-equipment-row > *")].find(shown));
+    return { one: B.crew.list.length === 1 && B.studio.cave.traits.name === "${STUDIO_OOGA}", banner: document.getElementById("equipment-hud").dataset.banner !== "below" && row.left > brand.right && row.top < brand.bottom, side: side.left < 40 && side.top > brand.bottom && side.height > side.width * 2,
+      bare: !["sheet-bananas", "sheet-toggle", "environment-sound", "world-clock", "world-block"].some((id) => shown(document.getElementById(id))) }; })()`);
+  record("studio places: W A S D walk the one Ooga on the pad its way on screen from two camera angles, the game's equipment buttons in the banner beside the title and the studio's down the left side, with no Bananas panel, Oogas panel, sound button, clock or block height", allWalk(walk) && alone.one && alone.banner && alone.side && alone.bare, JSON.stringify({ walk, alone }));
+  const space = await b.evaluate(`(() => {
+    const B = window.__ooga, S = B.studio, P = B.pilot, C = S.cave, act = () => document.getElementById("act").textContent, out = {};
+    const at = (x, z) => { P.navigate({ position: { x, y: 0, z }, yaw: 0, pitch: 0.2, dist: 5 }); B.advance(0.3, 1 / 60); return act(); };
+    const chair = S.seats[0], bed = S.hammock.seats[0];
+    out.sit = at(chair.walkAt.x, chair.walkAt.z); P.action(); B.advance(0.5, 1 / 60);
+    out.sat = C.camp.seat === chair && act(); P.action(); B.advance(1, 1 / 60); out.stood = !C.camp.seat;
+    out.sleep = at(S.bed.walkAt.x, S.bed.walkAt.z); P.action(); B.advance(1.5, 1 / 60);
+    out.slept = B.crew.sleeping && C.bedTravel.mode === "rest" && act(); P.action(); B.advance(0.5, 1 / 60); out.woke = !B.crew.sleeping;
+    out.rest = at(bed.walkAt.x, bed.walkAt.z); P.action(); B.advance(2.5, 1 / 60);
+    out.rested = C.camp.seat === bed; out.pet = C.pet ? +C.pet.down.toFixed(2) : null; P.action(); B.advance(1.5, 1 / 60); out.up = !C.camp.seat;
+    return out;
+  })()`);
+  record("studio places: beside the chair, the mattress and the hammock the act button names each, Space takes it through the game's own seat, bed and hammock with the legged pet lying down by the hammock, and Space gives the Ooga back on its feet", space.sit === "SIT" && space.sat === "STAND UP!" && space.stood && space.sleep === "SLEEP" && space.slept === "WAKE UP!" && space.woke && space.rest === "REST" && space.rested && space.pet > 0.5 && space.up, JSON.stringify(space));
+  const places = await b.evaluate(`(() => {
+    const B = window.__ooga, C = B.studio.cave, press = (name) => document.querySelector('.studio-side [data-action="studio-' + name + '"]').click();
+    const lit = (name) => document.querySelector('[data-action="studio-' + name + '"]').getAttribute("aria-pressed") === "true";
+    const went = ["chair", "bed", "hammock", "fire", "stand"].map((id) => { press(id); B.advance(id === "stand" ? 0.3 : 1.5, 1 / 60); return id === "bed" ? B.crew.sleeping : id === "stand" ? !C.camp.seat && !B.crew.sleeping : !!C.camp.seat; });
+    press("night"); B.advance(0.1, 1 / 60);
+    const night = BL.scenes.studio.renderOpts.stars > 0.5 && lit("night");
+    press("night"); B.advance(0.1, 1 / 60);
+    return { went, night, day: BL.scenes.studio.renderOpts.stars < 0.5 && !lit("night") };
+  })()`);
+  await b.key("2");
+  const rifle = await b.evaluate(`(() => { const B = window.__ooga, C = B.studio.cave; B.advance(0.6, 1 / 60); return C.weapon.equipped && C.parts.gun.visible; })()`);
+  await b.key("j");
+  const jetpack = await b.evaluate(`(() => { const B = window.__ooga, C = B.studio.cave; B.advance(0.3, 1 / 60); const on = !!C.jet; B.studio.toggle("jetpack", false); B.studio.toggle("rifle", false); B.advance(0.3, 1 / 60); return on && !C.jet && !C.weapon.equipped; })()`);
+  record("studio places: the studio's buttons put the Ooga in every place without the walk and bring the night and the day, 2 takes the rifle out and J puts the jetpack on", places.went.every(Boolean) && places.night && places.day && rifle && jetpack, JSON.stringify({ places, rifle, jetpack }));
+} };
+scene("studio", { query: `character=${STUDIO_OOGA}`, steps: [studioPlaces, trip("studio")] });
 scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub"),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
   await b.evaluate(`(()=>{
     const gl=document.getElementById("scene").getContext("webgl2"),create=gl.createProgram,parameter=gl.getProgramParameter,pending=new Set();
@@ -24338,6 +24377,7 @@ scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required
   record("hub home screen: the installed name is OogaBoogaLand, with a same-origin icon; the manifest link is added only for the hosted site", meta.title === "OogaBoogaLand" && meta.capable === "yes" && meta.icon === "apple-touch-icon.png" && !meta.manifestLink && meta.manifestSrc && manifest.short_name === "OogaBoogaLand" && manifest.display === "standalone" && staged, JSON.stringify({ meta, short: manifest.short_name, staged }));
 } }] });
 scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
+scene("studio", { query: `pos=0&character=${STUDIO_OOGA}`, opts: PHONE_SIZE, steps: [phone("studio", { required: ["#joy-move", "#joy-look", "#act"] })] });
 scene("race", { query: "pos=0&rain=0&draw=0", opts: PHONE_SIZE, steps: [phone("race", { card: '[data-intro="race"]', play: "window.__ooga.race.startRace()", required: ["#joy-move", "#act", "#item-btn", "#race-garage-btn", "#leave-hud"] })] });
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", "#leave-hud"] })] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", "#leave-hud"] })] });

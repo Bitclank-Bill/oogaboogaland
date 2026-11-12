@@ -12,7 +12,8 @@ Do not write the file from one sentence. Ask, and wait for the answers:
 
 - **Build.** A male or a female Ooga? (`build: "normal"` or `build: "slim"`.) Show both:
   `npm run character:preview -- <login> <login>:slim` draws the Ooga that login gets with no
-  file at all, in each build.
+  file at all, in each build, and the studio (section 6) switches between them with its
+  Female button.
 - **Body.** Skin, hair and fur colours; taller or shorter; a beard, a smirk, a plain nose or
   no face feature; bald or not; eye colour, and whether the eyes glow.
 - **Outfit.** What they wear on the chest, hips, legs and feet.
@@ -135,16 +136,51 @@ If the wish is close to something an Ooga already does, say which one, and build
 
 ## 6. Show, check, repeat
 
-After every round of changes:
+**The studio.** Ask the player first: it opens a page in their browser.
+
+```bash
+npm run character:studio -- <handle>
+```
+
+puts their Ooga alone on a bare pad with a chair, a bed, a hammock and a fire, and reloads
+the page every time the file is saved, back in the same place and view. Leave it running
+for the whole session. It serves the repository to this machine only (127.0.0.1), with
+every live feed off; `--no-open` prints the address instead of opening it, and Ctrl+C
+stops it. A handle with no file yet shows the default Ooga, and `<handle>:slim` its
+female build.
+
+- The buttons down the left side put the Ooga in each place without the walk: **Stand**,
+  **Chair**, **Bed**, **Hammock**, **Fire**. **Eyes** looks out of its own eyes, **Night**
+  lights it by the fire, **Blocks** shows the block look, **Female** switches a file-less
+  Ooga's build, and **Speak** says its voice lines in turn.
+- In the top banner are the game's own buttons: its portrait as the game frames it, the
+  jetpack (or J) and what it holds (1 and 2: the rifle puts the held thing on its back).
+- The player can walk it too: W A S D, Space beside a place to sit, sleep or rest and again
+  to get up, the wheel to zoom in to its own eyes, a drag to look round it. Asleep, the
+  movement keys turn it over.
+- Each reload says what the intake's screen makes of the file (its lane, how full it is,
+  or what would be refused). A file that no longer parses is named with its line and the
+  page stays as it was; a hook that throws is named at the foot of the page, with the
+  default Ooga standing in until it is mended.
+
+Look at every round in each place, because each shows something else: standing from all
+round; the rifle out, for how the held thing lies on the back; the jetpack on, for the
+pack over hair and clothes and a pet's flight or ride; the chair and the fire's log, for
+hems, skirts and legs; the bed, on each side, for hair and hats on the pillow and the gear
+stood beside it; the hammock, for the pet lying down beside it; night, for anything that
+glows; its own eyes, for what the hand holds.
+
+**A picture.** For a still to send or to set beside a reference:
 
 ```bash
 npm run character:preview -- <handle>
 ```
 
 draws the Ooga from the front, three-quarter, side and back, with its head, trunk, legs,
-held thing and pet close up, to `untracked/character-preview/<handle>.png`. Show the
-player the picture, beside their reference if there is one, and take their notes one at a
-time. Expect many small rounds.
+held thing and pet close up, to `untracked/character-preview/<handle>.png`. Take the
+player's notes one at a time. Expect many small rounds.
+
+**The check.**
 
 ```bash
 npm run character:check -- <handle>
@@ -152,10 +188,6 @@ npm run character:check -- <handle>
 
 runs the intake's own screen on the file and says which lane it lands in, why, and how
 full the file is. It cannot check ownership: GitHub settles that from the PR.
-
-Then look at it moving. Open `src/index.html?debug=1&solo=1&character=<handle>` after a
-build and walk, run, take the rifle out (the held thing goes on the back), sit, and lie in
-the hammock. Add `&oogastyle=0` once to see that the block look still builds.
 
 ```bash
 npm run test:unit
