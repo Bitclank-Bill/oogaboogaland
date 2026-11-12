@@ -55,7 +55,7 @@
     cave.weapon.bashOffset = 0;
   };
   const AXE_STICK_DELAY = 1, AXE_STICK_BLEND = 0.3, AXE_STICK_ARM = -1.5;
-  // EXPLORATION (the style pass): a modelled body (models' `modelled`) holds its axe square to its forearm at every
+  // The modelled look (?oogastyle=R): a modelled body (models' `modelled`) holds its axe square to its forearm at every
   // moment, so the two move as one, and plants it as a resting stick once still: the upper arm a little forward of
   // the shoulder (STICK_RAISE) and the elbow bent until the forearm points straight ahead, the haft upright through
   // the fist with its butt on the ground. Its weapon's `stick` is how far through that move it is: planted in
@@ -945,7 +945,7 @@
     if (controlled) return cave.twirlUntil > elapsed && !cave.weapon.aiming && cave.weapon.meleeTime <= 0;
     return cave.meleeOut && cave.work.phase !== "station" && cave.work.phase !== "shoot" && !cave.build;
   };
-  // EXPLORATION (the style pass): a modelled arm reaches for a point. The rotation whose rows are given, as a quaternion.
+  // The modelled look (?oogastyle=R): a modelled arm reaches for a point. The rotation whose rows are given, as a quaternion.
   const basisQuat = (q, m00, m01, m02, m10, m11, m12, m20, m21, m22) => {
     const t = m00 + m11 + m22;
     if (t > 0) { const s = Math.sqrt(t + 1) * 2; q[3] = s / 4; q[0] = (m21 - m12) / s; q[1] = (m02 - m20) / s; q[2] = (m10 - m01) / s; }
@@ -985,6 +985,165 @@
     math.quat.rotateVec(MUZZLE, FINGER_INVERSE, ax, ay, az);
     return Math.atan2(-(MUZZLE[1] * sn + MUZZLE[2] * c), MUZZLE[0]);
   };
+  // A modelled nunchaku's free stick, hung from the chain at the top of the held one. Stowed, it folds against the
+  // handle as before. Flung (a cut, a wound-up hold or a spin), it flies out in line with the handle. Otherwise it is
+  // a weight on the chain: it keeps the way it was moving, falls under its own weight, loses a little of its swing
+  // each moment, and is held to the chain's length from the pivot, so it hangs when the hand is still and swings
+  // behind when the hand moves. It cannot come nearer the handle than CHUK_CLEAR, so it hangs beside the fist, not
+  // through it. The club's place in the world is last frame's, which is near enough. State is kept on the cave.
+  const CHUK_FALL = 9.8, CHUK_DRAG = 2.4, CHUK_CLEAR = 0.38, CHUK_STEP = 1 / 30;
+  const swingNunchaku = (cave, dt, held, flung) => {
+    const parts = cave.parts, chuk = parts.chuk, W = parts.club.world;
+    const at = cave.chukSwing || (cave.chukSwing = new Float64Array(7)), turn = cave.chukTurn || (cave.chukTurn = math.quat.create());
+    if (!held) {
+      cave.chukAngle = damp(cave.chukAngle, CHUK_FOLD, 12, dt);
+      chuk.quaternion = null;
+      chuk.rotation.x = cave.chukAngle;
+      at[6] = 0;
+      return;
+    }
+    // The club's own axes in the world, and the pivot at the top of the handle.
+    const sx = Math.hypot(W[0], W[1], W[2]) || 1, sy = Math.hypot(W[4], W[5], W[6]) || 1, sz = Math.hypot(W[8], W[9], W[10]) || 1;
+    const ax = W[4] / sy, ay = W[5] / sy, az = W[6] / sy, reach = chuk.position.y, length = chuk.swing * sy;
+    const px = W[12] + W[4] * reach, py = W[13] + W[5] * reach, pz = W[14] + W[6] * reach;
+    let dx, dy, dz;
+    if (flung) {
+      dx = ax; dy = ay; dz = az;
+      at[3] = at[0] = px + dx * length; at[4] = at[1] = py + dy * length; at[5] = at[2] = pz + dz * length;
+    } else {
+      // Begun, or left far behind by a jump in place: it starts hanging straight down, at rest.
+      if (!at[6] || Math.hypot(at[0] - px, at[1] - py, at[2] - pz) > length * 3) { at[3] = at[0] = px; at[4] = at[1] = py - length; at[5] = at[2] = pz; }
+      const step = Math.min(dt, CHUK_STEP), keep = Math.max(0, 1 - CHUK_DRAG * step);
+      const nx = at[0] + (at[0] - at[3]) * keep, ny = at[1] + (at[1] - at[4]) * keep - CHUK_FALL * step * step, nz = at[2] + (at[2] - at[5]) * keep;
+      dx = nx - px; dy = ny - py; dz = nz - pz;
+      const far = Math.hypot(dx, dy, dz) || 1;
+      dx /= far; dy /= far; dz /= far;
+      // Kept off the handle: no nearer its own line, down from the pivot, than CHUK_CLEAR.
+      const along = -(dx * ax + dy * ay + dz * az), most = Math.cos(CHUK_CLEAR);
+      if (along > most) {
+        let ox = dx + ax * along, oy = dy + ay * along, oz = dz + az * along, off = Math.hypot(ox, oy, oz);
+        if (off < 1e-4) { ox = W[8] / sz; oy = W[9] / sz; oz = W[10] / sz; off = 1; }
+        const side = Math.sin(CHUK_CLEAR) / off;
+        dx = -ax * most + ox * side; dy = -ay * most + oy * side; dz = -az * most + oz * side;
+      }
+      at[3] = at[0]; at[4] = at[1]; at[5] = at[2];
+      at[0] = px + dx * length; at[1] = py + dy * length; at[2] = pz + dz * length;
+    }
+    at[6] = 1;
+    // The way it hangs, in the club's own frame, and the turn that lays the stick's length along it.
+    const lx = (dx * W[0] + dy * W[1] + dz * W[2]) / sx, ly = dx * ax + dy * ay + dz * az, lz = (dx * W[8] + dy * W[9] + dz * W[10]) / sz, flat = Math.hypot(lx, lz);
+    if (flat < 1e-6) math.quat.fromAxisAngle(turn, 1, 0, 0, ly > 0 ? 0 : Math.PI);
+    else math.quat.fromAxisAngle(turn, lz / flat, 0, -lx / flat, Math.atan2(flat, ly));
+    chuk.quaternion = turn;
+  };
+  // A skater's board (`parts.board` with a `ride`, on a modelled body). Running, he rides it: the board comes off
+  // his back and under his feet, its wheels on the ground, and he stands on its deck, side on to the way he is
+  // going with his feet apart along it and his arms out, looking ahead. The deck's height goes onto `baseY`, the
+  // hip's height over the ground, so the ground and everything measured from it stay where they are while his
+  // body stands that much higher. He is turned by `poseYaw`, as a shoulder squeezing past a wall is, so his heading
+  // is still the way he goes. The wheels turn by the ground covered, and he carves a little from side to side.
+  // `riding` is whether he should be on it; it eases on and off, and `cave.skate` is how far on he is.
+  const SKATE_ON = 0.22, SKATE_OFF = 0.3, SKATE_YAW = -1.15, SKATE_HEAD = 0.3, SKATE_STANCE = 0.09, SKATE_APART = 0.035, SKATE_FOOT = 1.9 / 16, SKATE_CARVE = 0.07;
+  const rideBoard = (cave, dt, riding, moved) => {
+    const parts = cave.parts, board = parts.board, ride = board.ride, h = cave.traits.height, was = cave.skate || 0;
+    const on = cave.skate = riding ? Math.min(1, was + dt / SKATE_ON) : Math.max(0, was - dt / SKATE_OFF);
+    if (!on && !was) return;
+    const e = ease.inOutQuad(on), p = cave.root.position, rest = ride.rest;
+    // The feet stand a little apart on the deck, leaning out, so the inner edge of each sole is its lowest point.
+    const legs = cave.baseY - (cave.skateLift || 0), lift = e * (ride.deck + legs * (Math.cos(SKATE_STANCE) - 1) + SKATE_FOOT * h * Math.sin(SKATE_STANCE)), change = lift - (cave.skateLift || 0);
+    cave.skateLift = lift; cave.baseY += change; p.y += change;
+    cave.skateRoll = ((cave.skateRoll || 0) + moved * 0.9) % TAU;
+    const carve = Math.sin(cave.skateRoll) * SKATE_CARVE * e;
+    for (let i = 0; i < cave.root.children.length; i++) {
+      const part = cave.root.children[i];
+      if (part !== board) part.poseYaw = (part === parts.head ? 0 : cave.shoulder.yaw) + (SKATE_YAW + carve) * e * (part === parts.head ? SKATE_HEAD : 1);
+    }
+    // Under his feet it lies along the way he goes, its wheels on the ground; it swings out behind him on its way there.
+    board.poseYaw = 0;
+    setVec(board.position, lerp(rest.x, 0, e), lerp(rest.y, ride.under - cave.baseY, e), lerp(rest.z, 0, e) - Math.sin(Math.PI * e) * 0.3 * h);
+    setVec(board.rotation, -Math.PI / 2 * e, carve * 0.6, rest.turn * (1 - e));
+    if (parts.boardWheels) for (let i = 0; i < parts.boardWheels.length; i++) parts.boardWheels[i].rotation.x = (parts.boardWheels[i].rotation.x + moved / ride.wheel * (on > 0.5 ? 1 : 0)) % TAU;
+    for (const [leg, side] of [[parts.legL, 1], [parts.legR, -1]]) {
+      if (leg.skateX === undefined) leg.skateX = leg.position.x;
+      leg.rotation.x = lerp(leg.rotation.x, 0, e);
+      leg.rotation.z = side * SKATE_STANCE * e;
+      leg.position.x = leg.skateX + side * SKATE_APART * h * e;
+    }
+    // His arms are out for balance, the one that leads a little more.
+    for (const [arm, side] of [[parts.armL, 1], [parts.armR, -1]]) {
+      if (arm.quaternion) continue;
+      arm.rotation.x = lerp(arm.rotation.x, -0.12, e);
+      arm.rotation.z = side * (side > 0 ? 0.5 : 0.32) * e;
+    }
+  };
+  // A shield worn on the left forearm (`parts.shield`) goes onto the back while the weapon is slung there: over the
+  // weapon, flat to the back and facing behind, its middle on the middle of the back. With the weapon back in the
+  // hand it is on the forearm again, where it was hung.
+  const stowShield = (cave, stow, h) => {
+    const shield = cave.parts.shield, parent = stow ? cave.root : cave.parts.forearmL;
+    if (!shield.worn) shield.worn = { x: shield.position.x, y: shield.position.y, z: shield.position.z, turn: shield.rotation.y };
+    if (shield.parent !== parent) {
+      removeChild(shield.parent, shield);
+      addChild(parent, shield);
+    }
+    if (stow) {
+      // Clear of the thickest part of the weapon under it, as that lies on the back.
+      const profile = cave.clubSlingProfile, quarter = cave.parts.club.geometry.slingTurn !== undefined;
+      let thick = 0;
+      for (let k = 0; k < profile.length; k += 6) thick = Math.max(thick, quarter ? profile[k + 1] - profile[k] : profile[k + 5] - profile[k + 4]);
+      setVec(shield.position, 0, BACK_MIDDLE * h, -cave.back - thick - 0.012 * h);
+      shield.rotation.y = Math.PI;
+    } else {
+      setVec(shield.position, shield.worn.x, shield.worn.y, shield.worn.z);
+      shield.rotation.y = shield.worn.turn;
+    }
+  };
+  // A modelled arm's guard. The rig's ready stance turns the whole arm a quarter turn about its own length to turn
+  // the grip, which on an arm with an elbow bows the elbow out to the side. Here the hand stays exactly where that
+  // stance has it and the arm keeps the bend it has there, the one it hangs and carries with; only the elbow is
+  // brought round under the arm, as near the body as it is in the carry (TUCK_POLE: down, and out by as much as
+  // the stance holds the hand in across the body, so the elbow stays under the shoulder), and the weapon turns the
+  // least it must to stand square to the forearm in the fist. `t` blends from the rig's stance (0) to this (1), so
+  // a cut still winds up and lands as the rig has it.
+  const TUCK_POLE = [-0.45, -0.9, -0.15];
+  const TUCK_FROM = math.quat.create(), TUCK_CLUB = math.quat.create(), TUCK_TURN = math.quat.create(), TUCK_A = new Float64Array(3), TUCK_F = new Float64Array(3);
+  const tuckElbow = (cave, t) => {
+    const parts = cave.parts, arm = parts.armR, fore = parts.forearmR, club = parts.club, e = cave.elbow, k = cave.armScale, q = arm.quaternion;
+    if (t <= 0 || !q) return;
+    const flex0 = -fore.rotation.x;
+    // Where the stance has the hand, from the shoulder, and how the weapon lies, both in the frame the arm hangs in.
+    math.quat.rotateVec(TUCK_A, q, 0, (e.y - e.length * Math.cos(flex0)) * k, (e.z + e.length * Math.sin(flex0)) * k);
+    const hx = TUCK_A[0], hy = TUCK_A[1], hz = TUCK_A[2];
+    if (club.quaternion) TUCK_CLUB.set(club.quaternion);
+    else math.quat.fromEuler(TUCK_CLUB, club.rotation.x, club.rotation.y, club.rotation.z);
+    math.quat.multiply(TUCK_CLUB, q, TUCK_CLUB);
+    TUCK_FROM.set(q);
+    if (!reachArm(cave, arm, fore, cave.reachR, arm.position.x + hx, arm.position.y + hy, arm.position.z + hz, TUCK_POLE[0], TUCK_POLE[1], TUCK_POLE[2])) return;
+    const flex1 = -fore.rotation.x, reached = cave.reachR;
+    // The forearm's line from the elbow to the hand, and the weapon's own line turned square to it.
+    math.quat.rotateVec(TUCK_F, reached, 0, -Math.cos(flex1), Math.sin(flex1));
+    math.quat.rotateVec(TUCK_A, TUCK_CLUB, 0, 1, 0);
+    const along = TUCK_A[0] * TUCK_F[0] + TUCK_A[1] * TUCK_F[1] + TUCK_A[2] * TUCK_F[2];
+    let bx = TUCK_A[0] - along * TUCK_F[0], by = TUCK_A[1] - along * TUCK_F[1], bz = TUCK_A[2] - along * TUCK_F[2];
+    const bl = Math.hypot(bx, by, bz);
+    if (bl < 1e-4) { bx = TUCK_A[0]; by = TUCK_A[1]; bz = TUCK_A[2]; } else { bx /= bl; by /= bl; bz /= bl; }
+    const cx = TUCK_A[1] * bz - TUCK_A[2] * by, cy = TUCK_A[2] * bx - TUCK_A[0] * bz, cz = TUCK_A[0] * by - TUCK_A[1] * bx, cl = Math.hypot(cx, cy, cz);
+    if (cl > 1e-5) {
+      math.quat.fromAxisAngle(TUCK_TURN, cx / cl, cy / cl, cz / cl, Math.atan2(cl, TUCK_A[0] * bx + TUCK_A[1] * by + TUCK_A[2] * bz) * t);
+      math.quat.multiply(TUCK_CLUB, TUCK_TURN, TUCK_CLUB);
+    }
+    const turn = handTurn(arm, fore, bx, by, bz);
+    math.quat.slerpTo(TUCK_FROM, reached, t);
+    reached.set(TUCK_FROM);
+    const flex = lerp(flex0, flex1, t);
+    fore.rotation.x = -flex;
+    cave.handTurnR = turn * t;
+    // The weapon goes with the hand: at the hand point, and turned as worked out, in the arm's own frame.
+    FINGER_INVERSE[0] = -reached[0]; FINGER_INVERSE[1] = -reached[1]; FINGER_INVERSE[2] = -reached[2]; FINGER_INVERSE[3] = reached[3];
+    math.quat.multiply(cave.axeRotation, FINGER_INVERSE, TUCK_CLUB);
+    club.quaternion = cave.axeRotation;
+    setVec(club.position, 0, e.y - e.length * Math.cos(flex), e.z + e.length * Math.sin(flex));
+  };
   // How far a modelled body's slung weapon is turned about its own length: not at all, or a little at a time, the
   // side of it nearest the head swinging out behind, and only until none of it lies in the head. Worked out once a
   // body, from where the middle of the weapon's length sits and how far behind the body's middle the weapon lies.
@@ -995,6 +1154,8 @@
   const SLING_REACH = new Float64Array(SLING.length / 3);
   const slingRoll = (cave, middle, z) => {
     if (cave.slingRoll !== undefined) return cave.slingRoll;
+    // A weapon with a turn of its own (`slingTurn`) always lies at that turn about its length.
+    if (cave.parts.club.geometry.slingTurn !== undefined) return cave.slingRoll = cave.parts.club.geometry.slingTurn;
     const club = cave.parts.club.geometry.verts, head = cave.parts.head.position, skull = cave.parts.head.geometry.verts, h = cave.traits.height;
     const lean = Math.sin(CLUB_SLING_ANGLE), rise = Math.cos(CLUB_SLING_ANGLE), slack = SLING_SLACK * h;
     SLING_REACH.fill(-Infinity);
@@ -1348,9 +1509,13 @@
         slungClub || raisedPrimary ? 0 : cave.clubCarry.y || 0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
       if (cave.modelled && !slungClub && !raisedPrimary && clubParent === parts.armR) {
         // A modelled arm bends at the elbow until the forearm is square to what the hand carries, and the grip goes
-        // with the hand.
+        // with the hand. A forearm that leans further than that at rest stays there, and what it carries leans
+        // less to stay square to the fist.
         const elbow = cave.elbow, flex = clamp(Math.PI / 2 - cave.clubCarry.x, elbow.rest, 1.5);
         parts.forearmR.rotation.x = -flex;
+        parts.club.rotation.x = Math.min(cave.clubCarry.x, Math.PI / 2 - flex);
+        // An axe, or any stick held as one, keeps its head ahead in the hand, never across.
+        if (cave.traits.stoneAxe) setVec(parts.club.rotation, 0, Math.PI / 2, parts.club.rotation.x);
         setVec(parts.club.position, 0, elbow.y - elbow.length * Math.cos(flex), elbow.z + elbow.length * Math.sin(flex));
       }
     }
@@ -1358,6 +1523,7 @@
       for (let i = 0; i < parts.chukTrail.length; i++) parts.chukTrail[i].visible = false;
     }
     parts.club.poseYaw = slungClub ? parts.torso.poseYaw : 0;
+    if (parts.shield && cave.modelled) stowShield(cave, slungClub && !sideSling, h);
     if (slungClub) {
       // A modelled body's slung weapon lies on its back, whatever its head overhangs or its belt stands out: the
       // middle of its length crosses the middle of the back (BACK_MIDDLE of its height over the hip), and it is
@@ -1366,10 +1532,15 @@
       const flat = cave.modelled && !sideSling;
       if (flat) {
         const profile = cave.clubSlingProfile, middle = (profile[2] + profile[profile.length - 3]) / 2, k = (CLUB_SLICES >> 1) * 6;
-        const depth = (profile[k + 5] - profile[k + 4]) / 2, packed = backPack(cave) && cave.jet.side;
+        // Half its depth where it crosses the back: across it, for a weapon slung a quarter turned.
+        const quarter = parts.club.geometry.slingTurn !== undefined;
+        const depth = (quarter ? profile[k + 1] - profile[k] : profile[k + 5] - profile[k + 4]) / 2, packed = backPack(cave) && cave.jet.side;
         // With a pack on, it hangs beside the pack against the back, leaning out past the head.
         const besideX = packed ? cave.jet.side + GUN_BESIDE * h : 0, beside = packed ? besideLean(cave, besideX, -cave.back - depth, middle) : 0;
-        const roll = beside ? 0 : slingRoll(cave, middle, -cave.back - depth), angle = beside ? -beside : CLUB_SLING_ANGLE;
+        // A weapon slung hilt up (`slingHiltUp`) lies the other way up along the same slant, mirrored, so its grip
+        // comes up over the drawing hand's shoulder.
+        const roll = beside ? 0 : slingRoll(cave, middle, -cave.back - depth), lean = beside ? -beside : CLUB_SLING_ANGLE;
+        const angle = parts.club.geometry.slingHiltUp ? Math.PI - lean : lean;
         parts.club.rotation.x = 0;
         parts.club.rotation.z = angle;
         parts.club.position.x = besideX * (beside ? 1 : 0) + Math.sin(angle) * middle;
@@ -1378,7 +1549,7 @@
         parts.club.position.z = -cave.back - (packed && !beside ? cave.jet.depth : 0) - depth;
         if (roll) {
           // Turned about its own length first, then leaned across the back.
-          math.quat.fromEuler(GUN_ARM, 0, 0, CLUB_SLING_ANGLE);
+          math.quat.fromEuler(GUN_ARM, 0, 0, angle);
           math.quat.fromEuler(GUN_GRIP, 0, roll, 0);
           math.quat.multiply(cave.axeRotation, GUN_ARM, GUN_GRIP);
           parts.club.quaternion = cave.axeRotation;
@@ -1505,6 +1676,9 @@
         parts.armR.position.x += dx; parts.armR.position.y += dy; parts.armR.position.z += dz;
       }
       parts.armR.quaternion = cave.gunHandRotation;
+      // A modelled arm stands ready with its elbow in by the body, and takes the rig's stance again as a cut
+      // winds up or the weapon goes back to its carry.
+      if (cave.modelled) tuckElbow(cave, (1 - wind) * (returningPrimary ? ease.inOutQuad(clamp(w.meleeReadyTime / MELEE_CARRY_BLEND, 0, 1)) : 1));
     } else if (primaryCarry) {
       // The pose above preserves the anatomical right arm's walking sway.
     } else if (primaryHeld) parts.armR.rotation.y = 0;
@@ -3382,6 +3556,12 @@
     // Two states only, so nothing can wind up out of step: folded against the
     // handle while the weapon is stowed, out in line with it while it is in hand.
     const poseNunchaku = (cave, dt) => {
+      // A modelled nunchaku's free stick is a weight on its chain while the pair is in the hand (see swingNunchaku).
+      if (cave.modelled && cave.parts.chuk.swing) {
+        const w = cave.weapon, held = cave.parts.club.parent === cave.parts.armR;
+        swingNunchaku(cave, dt, held, held && (w.meleeTime > 0 || w.meleeHeld || meleeDrawn(cave)));
+        return;
+      }
       const out = cave.parts.club.parent === cave.parts.armR && (cave.weapon.primaryEquipped || meleeDrawn(cave));
       cave.chukAngle = damp(cave.chukAngle, out ? 0 : CHUK_FOLD, 12, dt);
       cave.parts.chuk.rotation.x = cave.chukAngle;
@@ -7637,6 +7817,10 @@
         if (cave.parts.chuk) poseNunchaku(cave, cave.animation.dt);
         if (cave === player) posePeek(cave, cave.animation.dt);
         poseWeapon(cave);
+        // A skater rides his board while he runs on the ground: the visitor's own sprint.
+        if (cave.modelled && cave.parts.board && cave.parts.board.ride) rideBoard(cave, cave.animation.dt, cave === player && steer.speed > 1.05
+          && Math.hypot(p.x - x, p.z - z) > 1e-5 && !cave.camp.seat && !cave.bedTravel.mode && !(cave.ladder && cave.ladder.plane) && !w.aiming && !(cave.jet && cave.jet.thrust)
+          && p.y - groundY(cave) < 0.8, Math.hypot(p.x - x, p.z - z));
       }
       if (cave.ladder && cave.ladder.plane) ladderPose(cave);
       if (weaponContactsEnabled() && bashBefore > GUN_BASH_IMPACT && w.bashTime <= GUN_BASH_IMPACT && cave === player && w.equipped && !w.reloading && !w.swapTime && !w.reloadHandoff && !cave.health.stunned && !cave.camp.seat && !cave.bedTravel.mode) {
