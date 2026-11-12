@@ -18,6 +18,15 @@ submission to a reused daily placeholder starts its UTC day.
 
 ## Intake and ownership
 
+Open human- and AI-authored source PRs as **drafts**, and keep them draft while
+implementation is in progress. Mark them ready only after the work and authorized
+local checks are finished and the description records validation and remaining
+acceptance work. Return to draft for substantial additional development; small
+review fixes can stay ready. Batch related fixes before pushing. This applies to
+source submissions, not the automation-managed bundle placeholders above, whose
+review and merge gates follow their lane policy. Draft status does not disable
+all CI; it keeps unfinished submissions out of character intake and review.
+
 PR creation, new commits, reopening and ready-for-review events trigger trusted
 code from `rock`. Draft PRs wait. A read-only push signal covers repository branch
 commits without a PR; fork commits become visible through PRs. Periodic sweeps
