@@ -164,7 +164,7 @@
         <p data-scene="dsb" data-zone-line hidden>DSB LAND</p>
         <p data-scene="poker" data-zone-line hidden>EMBER DEN</p>
         <p data-scene="lab" data-zone-line hidden>EntropyLab cave</p>
-        <p data-scene="studio" hidden>Character Studio</p>
+        <p data-scene="studio" hidden>Studio</p>
         <p data-scene="factory" data-zone-line hidden>Lightning Factory</p>
         <p data-scene="hangar" data-zone-line hidden>Lightning Jet Hangar</p>
         <p data-scene="bifrost" data-zone-line hidden>₿IFRÖST</p>
@@ -356,6 +356,8 @@
         <button type="button" data-action="mute" id="orbit-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
         <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
+      <!-- The character studio's quick pick (scene-studio.js): every Ooga by name, beside the controls button. -->
+      <select class="studio-pick" id="studio-pick" data-scene="studio" aria-label="Show another Ooga" title="Show another Ooga" hidden></select>
     </header>
 
     <!-- The character studio's buttons (scene-studio.js), down the left side under the banner. -->
@@ -365,9 +367,9 @@
       <button type="button" data-action="studio-bed">Bed</button>
       <button type="button" data-action="studio-hammock">Hammock</button>
       <button type="button" data-action="studio-fire">Fire</button>
-      <button type="button" data-action="studio-eyes" aria-pressed="false" title="Through the Ooga's own eyes">Eyes</button>
-      <button type="button" data-action="studio-night" aria-pressed="false" title="Night, by the fire's light">Night</button>
-      <button type="button" data-action="studio-blocks" aria-pressed="false" title="The block look (reloads)">Blocks</button>
+      <button type="button" data-action="studio-eyes" aria-pressed="false" title="Through the Ooga's own eyes">1st person</button>
+      <button type="button" data-action="studio-free" aria-pressed="false" title="A camera of your own, flown anywhere round the Ooga">Free cam</button>
+      <button type="button" data-action="studio-night">Day</button>
       <button type="button" data-action="studio-build" aria-pressed="false" title="A new Ooga's female build (reloads)">Female</button>
       <button type="button" data-action="studio-speak" title="Say its voice lines in turn">Speak</button>
     </nav>

@@ -142,20 +142,25 @@ If the wish is close to something an Ooga already does, say which one, and build
 npm run character:studio -- <handle>
 ```
 
-puts their Ooga alone on a bare pad with a chair, a bed, a hammock and a fire, and reloads
+puts their Ooga alone on a wide pad with a chair, a bed, a hammock and a fire, and reloads
 the page every time the file is saved, back in the same place and view. Leave it running
 for the whole session. It serves the repository to this machine only (127.0.0.1), with
 every live feed off; `--no-open` prints the address instead of opening it, and Ctrl+C
-stops it. The address it prints is the studio and nothing else (the island is not
-there); add `?character=<handle>` to it for another Ooga. A handle with no file yet
-shows the default Ooga, and `<handle>:slim` its female build.
+stops it. Its address is the studio and nothing else (the island is not there):
+`?scene=studio&character=<handle>`. A handle with no file yet shows the default Ooga,
+and `<handle>:slim` its female build.
 
 - The buttons down the left side put the Ooga in each place without the walk: **Stand**,
-  **Chair**, **Bed**, **Hammock**, **Fire**. **Eyes** looks out of its own eyes, **Night**
-  lights it by the fire, **Blocks** shows the block look, **Female** switches a file-less
+  **Chair**, **Bed**, **Hammock**, **Fire** (sitting on the ground beside it, as the
+  island's Oogas do). **1st person** looks out of its own eyes. **Free cam** gives the
+  player a camera of their own while the Ooga stays as it is: W A S D fly it, Space and
+  X lift and lower it, a drag turns it, the wheel moves it in and out, and Escape gives
+  the view back. **Day** turns to **Night** and back, **Female** switches a file-less
   Ooga's build, and **Speak** says its voice lines in turn.
 - In the top banner are the game's own buttons: its portrait as the game frames it, the
   jetpack (or J) and what it holds (1 and 2: the rifle puts the held thing on its back).
+  The list at the top right puts any other Ooga on the pad, A to Z, in the same place
+  and view and with no reload: useful for seeing how others solved the same problem.
 - The player can walk it too: W A S D, Space beside a place to sit, sleep or rest and again
   to get up, the wheel to zoom in to its own eyes, a drag to look round it. Asleep, the
   movement keys turn it over.
@@ -166,8 +171,8 @@ shows the default Ooga, and `<handle>:slim` its female build.
 
 Look at every round in each place, because each shows something else: standing from all
 round; the rifle out, for how the held thing lies on the back; the jetpack on, for the
-pack over hair and clothes and a pet's flight or ride; the chair and the fire's log, for
-hems, skirts and legs; the bed, on each side, for hair and hats on the pillow and the gear
+pack over hair and clothes and a pet's flight or ride; the chair and the ground by the
+fire, for hems, skirts and legs; the bed, on each side, for hair and hats on the pillow and the gear
 stood beside it; the hammock, for the pet lying down beside it; night, for anything that
 glows; its own eyes, for what the hand holds.
 

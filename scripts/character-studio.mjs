@@ -8,7 +8,8 @@
 //   PORT=4300 npm run character:studio -- <handle>  ask for a port (the next free one is taken otherwise)
 //
 // It serves the source tree from this machine alone (127.0.0.1) with every live feed off, and nothing leaves it.
-// The studio stands alone there: every page address the server answers opens it, never the island.
+// The studio stands alone there: every page address the server answers opens it, never the island, and the address
+// is no more than `?scene=studio&character=<handle>`.
 // On each save it joins src/characters into the page's bundle again and says, here and in the page, what the
 // intake's screen makes of the file (scripts/character-check.mjs). A file that no longer parses is reported and the
 // page is left as it was. The file is read as text here and run only by the browser. Stop it with Ctrl+C.
@@ -87,19 +88,30 @@ const send = (res, status, type, body) => {
   res.writeHead(status, { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff" });
   res.end(body);
 };
-// What the page needs to be the studio and nothing else. Every page address this server answers is given them, so the
-// bare address, one of the island's routes and the island's own query all open the studio: it stands alone here.
-// `pos=0` keeps the debug page's position readout off the pad. The Ooga is the one the address names, else the
-// command's.
+// What the page needs to be the studio and nothing else: the debug page the scene is kept to, with the island's
+// feeds, its donation simulator and the account lookup off, the debug page's position readout hidden, and the studio
+// asking this server whether to reload. The address stays short (`/?scene=studio&character=<handle>`): the page's
+// first script here, `/__studio/boot.js`, writes these into it before any of the game's modules read it, and the
+// scene takes them out of sight again once it stands. The Ooga is the one the address names, else the command's.
 const NEEDS = { debug: "1", nosim: "1", net: "0", welcome: "0", pos: "0", scene: "studio", watch: "1" };
-const studioQuery = (given) => {
-  const query = new URLSearchParams(given);
-  for (const key of Object.keys(NEEDS)) query.set(key, NEEDS[key]);
+const boot = `// The character studio's first script (scripts/character-studio.mjs): the flags the page needs, written into the
+// address before the game's modules read it.
+(() => {
+  "use strict";
+  const query = new URLSearchParams(location.search), needs = ${JSON.stringify(NEEDS)};
+  for (const key of Object.keys(needs)) query.set(key, needs[key]);
   if (!/^[A-Za-z0-9-]{1,39}$/.test(query.get("character") || "")) {
-    query.set("character", handle);
-    if (slim) query.set("build", "slim");
+    query.set("character", ${JSON.stringify(handle)});
+    ${slim ? 'query.set("build", "slim");' : 'query.delete("build");'}
   }
-  return query;
+  history.replaceState(null, "", "/?" + query);
+})();
+`;
+// The page itself, with that script ahead of every other.
+const page = () => {
+  const html = readFileSync(join(src, "index.html"), "utf8"), at = html.indexOf("<script");
+  if (at < 0) throw new Error("index.html: no script tag found");
+  return `${html.slice(0, at)}<script src="/__studio/boot.js"></script>\n    ${html.slice(at)}`;
 };
 const server = createServer((req, res) => {
   // Answer this machine's browser only: a page elsewhere that points a name at 127.0.0.1 is refused.
@@ -109,15 +121,13 @@ const server = createServer((req, res) => {
   let url, path;
   try { url = new URL(req.url, `http://${HOST}`); path = decodeURIComponent(url.pathname); } catch { return send(res, 400, "text/plain; charset=utf-8", "Bad request"); }
   if (path === "/__studio/version") return send(res, 200, TYPES[".json"], JSON.stringify({ version: `${started}-${edits}`, error, note, count }));
-  // A page address (the bare one, the page's file by name, or a path with no file type, as the island's routes are) is
-  // sent on to the studio's own, and only that one is answered with the page.
-  if (path === "/" || path === "/index.html" || !extname(path)) {
-    const query = studioQuery(url.searchParams);
-    if (path !== "/" || query.toString() !== url.searchParams.toString()) {
-      res.writeHead(302, { location: `/?${query}`, "cache-control": "no-store" });
-      return res.end();
-    }
-    return send(res, 200, TYPES[".html"], req.method === "HEAD" ? "" : readFileSync(join(src, "index.html")));
+  if (path === "/__studio/boot.js") return send(res, 200, TYPES[".js"], boot);
+  // Every page address is the studio: the bare one is answered with the page, whatever its query, and the page's
+  // file by name or a path with no file type (as the island's routes are) is sent on to it.
+  if (path === "/") return send(res, 200, TYPES[".html"], req.method === "HEAD" ? "" : page());
+  if (path === "/index.html" || !extname(path)) {
+    res.writeHead(302, { location: `/${url.search}`, "cache-control": "no-store" });
+    return res.end();
   }
   const file = normalize(join(src, path));
   if (!file.startsWith(src + sep) || !existsSync(file) || !statSync(file).isFile()) return send(res, 404, "text/plain; charset=utf-8", "Not found");
@@ -136,9 +146,9 @@ server.on("error", (e) => {
   server.listen(first + tries, HOST);
 });
 server.on("listening", () => {
-  const at = `http://${HOST}:${server.address().port}/`;
+  const at = `http://${HOST}:${server.address().port}/?scene=studio&character=${handle}${slim ? "&build=slim" : ""}`;
   console.log(`\nCharacter studio for ${handle}: ${at}`);
-  console.log(`Save src/characters/${handle}.js and the page reloads where it was. ${at}?character=<handle> shows another Ooga. Ctrl+C stops it.\n`);
-  if (!args.includes("--no-open")) open(`${at}?${studioQuery("")}`);
+  console.log(`Save src/characters/${handle}.js and the page reloads where it was. Ctrl+C stops it.\n`);
+  if (!args.includes("--no-open")) open(at);
 });
 server.listen(first, HOST);

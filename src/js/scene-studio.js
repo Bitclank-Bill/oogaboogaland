@@ -4,15 +4,18 @@
 // src/characters is drawn as the hashed Ooga a new contributor gets, `build=slim` its female build.
 //
 // The pad holds what an Ooga does with its body in the game, each through the game's own system, so what shows here
-// is what the island will show: a chair and two logs by the fire to sit on (crew.js `sitPlayer`), a mattress to sleep
-// on (`sleepPlayer`, the movement keys turning the sleeper over), a hammock between two posts (hub-hammock.js, a
-// legged pet lying down beside it) and the island's fire (blaze.js). The rifle comes out with 2 or its button in the
+// is what the island will show: a chair to sit on and places on the ground round the fire, as the island's Oogas sit
+// by theirs (crew.js `sitPlayer`, a `ground` seat propping the free arm), a mattress to sleep on (`sleepPlayer`, the
+// movement keys turning the sleeper over), a hammock between two posts (hub-hammock.js, a legged pet lying down
+// beside it) and the island's fire (blaze.js). The rifle comes out with 2 or its button in the
 // banner, which slings what the hand held onto the back, the jetpack goes on with J or its button, and the views are
 // the pilot's. The studio's own buttons run down the left side (`.studio-side`): they put the Ooga in each place
-// without the walk (`studio-<place>`) and switch its own eyes' view, the night, the block look and, for an Ooga with
-// no file, its build; Speak says its voice lines in turn. The Bananas and Oogas panels, the sound button, the clock
-// and the block height are left out: there is one Ooga here, nobody to feed and no island to tell the time on.
-// `__ooga.studio` does the same for a script (`place(id)`, `toggle(name)` with the rifle and the jetpack too, `state`).
+// without the walk (`studio-<place>`) and switch the first person, a free camera flown anywhere over the ground, the
+// night and, for an Ooga with no file, its build; Speak says its voice lines in turn. Beside the controls button a list of every Ooga by name (`#studio-pick`)
+// shows another in the same place, gear and view. The title reads OBL, and the Bananas and Oogas panels, the sound
+// button, the clock and the block height are left out: there is one Ooga here, nobody to feed and no island to tell
+// the time on. `__ooga.studio` does the same for a script (`place(id)`, `toggle(name)` with the rifle and the jetpack
+// too, `show(handle)`, `state`).
 //
 // Opened by the studio command (`watch=1`) the page asks its server once a second whether a character file changed,
 // and reloads when one has, coming back to the same place, gear and view (sessionStorage `ooga-studio`, checked on
@@ -26,15 +29,20 @@
   const params = new URLSearchParams(location.search);
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
   const WATCH = params.get("watch") === "1", STORE = "ooga-studio", STAND_IN = "studio-stand-in";
-  // The pad: a round lawn in metre rings, `WALL` how far out feet go.
-  const PAD = 9, WALL = 8.3;
+  // The pad: a round lawn in metre rings, `WALL` how far out feet go. Its furniture keeps to the middle; the outer
+  // half is open ground to walk and run on.
+  const PAD = 18, WALL = 17.3;
   const VIEW = { yaw: 0, pitch: 0.2, dist: 5.2 };
   const HOME = { x: 0, z: 1.2 };
-  const CHAIR = { x: 4.7, z: -1.4, top: 0.5 }, FIRE = { x: 3.3, z: 3.5, r: 0.85 }, LOG = { r: 0.18, half: 0.6, out: 1.6 };
+  // The fire's places to sit on the ground: the island's ring of six (scene-hub.js `FIRE_SEATS`, `FIRE_SEAT_RADIUS`).
+  const CHAIR = { x: 4.7, z: -1.4, top: 0.5 }, FIRE = { x: 3.3, z: 3.5, r: 0.85, seats: 6, out: 1.8 };
   const BED = { x: -4.9, z: 0.6 }, HAMMOCK = { z: -5, half: 2.7, post: 0.13, tall: 3.5, wide: 0.575, reach: 0.3 };
   const DAY = 13, NIGHT = 22.5, DAY_OF_YEAR = 80;
   const PLACES = ["stand", "chair", "bed", "hammock", "fire"];
-  const TOGGLES = ["rifle", "jetpack", "eyes", "night"];
+  const TOGGLES = ["rifle", "jetpack", "eyes", "free", "night"];
+  // The free camera: how fast its point flies (faster the further out it looks from), climbs and turns by the keys,
+  // how near and far it looks from, and the least height of its eye, which never goes under the ground.
+  const FREE = { speed: 3, perDist: 0.45, climb: 2.6, turn: 1.7, near: 0.5, far: 26, floor: 0.2, low: -1.45, high: 1.5, out: PAD + 6, top: 12 };
   const NO_ACTORS = [];
   const RENDER_OPTS = {
     clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), sun: new Float32Array(3), direct: new Float32Array(3),
@@ -44,13 +52,14 @@
   };
   RENDER_OPTS.starMatrix[0] = RENDER_OPTS.starMatrix[4] = RENDER_OPTS.starMatrix[8] = 1;
   const JETPACK = { owned: true, equipped: false, fuel: 1, blocked: false };
+  const MOON = { set: false, at: { x: 0, y: 1, z: 0 }, sun: { x: 0, y: -1, z: 0 } };
 
   // ---- the pad's furniture, each built once a page ----
   const TIMBER = "#8a5a32", TIMBER_DK = "#5c3a1e", TIMBER_LT = "#a8703e";
   const GRASS = [[104, 148, 66], [96, 140, 60]], EARTH = [[122, 92, 60], [98, 72, 46], [74, 54, 36]];
   // A lawn in metre rings over a keel of earth, so sizes read at a glance and the pad stands in the sky as the island does.
   const pad = models.cached(() => {
-    const profile = [[0, -5.6], [2.6, -4.4], [6.2, -2.2], [PAD, -0.55], [PAD, 0]], segments = 56;
+    const profile = [[0, -9], [5, -7], [12.5, -3.4], [PAD, -0.7], [PAD, 0]], segments = 72;
     for (let r = PAD - 1; r >= 0; r--) profile.push([r, 0]);
     const geo = models.lathe({ profile, segments, color: "#000000" });
     geo.faces.forEach((f, k) => { const band = Math.floor(k / segments); f.color = band < 3 ? EARTH[2 - band] : band === 3 ? EARTH[0] : GRASS[band % 2]; });
@@ -66,14 +75,15 @@
     for (const y of [0.78, 1]) parts.push(models.bevelBox({ w: 0.5, h: 0.11, d: 0.05, color: TIMBER, offset: { y, z: -0.22 } }));
     return models.merge(...parts);
   });
-  const log = models.cached(() => models.shaded([hubModels.log(-LOG.half, LOG.r, 0, LOG.half, LOG.r, 0, LOG.r)]));
   const posts = models.cached(() => models.shaded([-1, 1].map((s) => hubModels.log(s * HAMMOCK.half, 0, HAMMOCK.z, s * HAMMOCK.half, HAMMOCK.tall, HAMMOCK.z, HAMMOCK.post, TIMBER_DK))));
 
   // One visit's state: made in enter(), dropped in leave().
-  let renderer, game, root, camera, hud, hooks, input, pilot, fx, crew, footsteps, cave, entry, hammock, bed, fire, seats, blocks, buttons;
-  let night = false, nearKey = "", spoken = 0, watchTimer = 0, watchVersion = null, watchError = "", broken = "", homeLink = null, homeTitle = "", titled = false;
+  let renderer, game, go, root, camera, hud, hooks, input, pilot, fx, crew, footsteps, cave, entry, hammock, bed, fire, embers, seats, blocks, buttons;
+  // Who is wanted on the pad: the address's Ooga as the page loads, then whoever the list or a script asks for.
+  let asked = (params.get("character") || "").trim();
+  let night = false, nearKey = "", spoken = 0, watchTimer = 0, watchVersion = null, watchError = "", broken = "", homeLink = null, homeTitle = "", homeWords = "", pick = null, titled = false;
 
-  // What stands in a walker's way: the chair, the fire, its logs and the hammock's posts, each a circle.
+  // What stands in a walker's way: the chair, the fire and the hammock's posts, each a circle.
   const blocked = (x, z, r) => {
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i], dx = x - b.x, dz = z - b.z;
@@ -101,8 +111,17 @@
 
   // The sky and its light for the hour, sampled when it changes; the fire lights the pad at night.
   const light = () => {
+    // The moon keeps its place in the sky by day and by night: the night's, which lights the pad then.
+    if (!MOON.set) {
+      BL.daylight.sample(NIGHT, RENDER_OPTS, DAY_OF_YEAR);
+      Object.assign(MOON.at, RENDER_OPTS.moon); Object.assign(MOON.sun, RENDER_OPTS.moonSun);
+      MOON.set = true;
+    }
     BL.daylight.sample(night ? NIGHT : DAY, RENDER_OPTS, DAY_OF_YEAR);
-    press("night", night);
+    Object.assign(RENDER_OPTS.moon, MOON.at); Object.assign(RENDER_OPTS.moonSun, MOON.sun);
+    // Its button says which it is now, and a press brings the other.
+    buttons.night.textContent = night ? "Night" : "Day";
+    buttons.night.title = night ? "It is night: press for day" : "It is day: press for night";
   };
   // A switch's button, lit while on; written only when it changes.
   const press = (name, on) => {
@@ -115,7 +134,7 @@
   // ---- places ----
   const seatNear = (x, z, feet) => {
     if (feet > 0.3) return null;
-    let best = null, reach = 1.15;
+    let best = null, reach = 1.3;
     for (const seat of seats) {
       const d = Math.hypot(seat.x - x, seat.z - z);
       if (!seat.sitter && d < reach) { best = seat; reach = d; }
@@ -169,21 +188,82 @@
       stand(seat.walkAt.x, seat.walkAt.z, seat.ry, id === "chair" ? 0.6 : -0.75, 0.32, 5);
       ok = crew.sitPlayer(seat);
     }
+    if (free.on) aimFree();
     remember();
     return ok;
   };
 
+  // ---- the free camera ----
+  // A camera of the visitor's own, apart from the Ooga, which keeps whatever it is doing: it looks at a point from
+  // `dist` away, the movement keys fly that point over the pad (Space up, X down), a drag or the look keys turn it,
+  // and the wheel moves it in and out. The pilot keeps the Ooga and is held meanwhile (`setExternalControl`, as a
+  // tour holds it), and the eye is kept over the ground.
+  const free = { on: false, x: 0, y: 1, z: 0, yaw: 0, pitch: 0.2, dist: 5 };
+  // Its point on the Ooga where it is now, the view's angle and reach kept.
+  const aimFree = () => {
+    const p = cave.sleepHead && (crew.sleeping || cave.camp.seat && cave.camp.seat.lying) ? cave.sleepHead : cave.root.position;
+    free.x = p.x; free.z = p.z; free.y = p === cave.root.position ? p.y - cave.baseY + cave.traits.height * 0.55 : p.y;
+  };
+  const setFree = (on) => {
+    on = !!on;
+    if (on === free.on) return;
+    free.on = on;
+    if (on) {
+      const eyes = pilot.view === "first-person";
+      if (eyes) pilot.exitClose(false);
+      // From the view as it stands, or, out of the Ooga's own eyes, from in front of it.
+      const p = camera.position, t = camera.target, dx = p.x - t.x, dy = p.y - t.y, dz = p.z - t.z;
+      if (eyes) { aimFree(); free.yaw = cave.root.rotation.y; free.pitch = VIEW.pitch; free.dist = 4; }
+      else {
+        free.x = t.x; free.y = t.y; free.z = t.z;
+        free.yaw = Math.atan2(dx, dz); free.pitch = clamp(Math.atan2(dy, Math.hypot(dx, dz)), FREE.low, FREE.high);
+        free.dist = clamp(Math.hypot(dx, dy, dz), FREE.near, FREE.far);
+      }
+      pilot.setActive(false);
+      pilot.setExternalControl(true);
+      hud.setAct("UP");
+      say(COARSE ? "Free camera · the left stick flies it, the right stick turns it, UP lifts it" : "Free camera · W A S D fly it, Space up, X down, drag to turn, wheel in and out");
+    } else {
+      pilot.setExternalControl(false);
+      pilot.setActive(true);
+      pilot.showAct();
+      nearKey = "";
+    }
+    press("free", on);
+  };
+  const flyFree = (dt) => {
+    const a = pilot.controls.read(), sy = Math.sin(free.yaw), cy = Math.cos(free.yaw);
+    const speed = (FREE.speed + free.dist * FREE.perDist) * (a.sprint ? 2 : 1) * dt;
+    free.x += (-sy * a.y + cy * a.x) * speed;
+    free.z += (-cy * a.y - sy * a.x) * speed;
+    free.y = clamp(free.y + a.up * FREE.climb * dt, 0, FREE.top);
+    free.yaw += a.yaw * FREE.turn * dt;
+    free.pitch = clamp(free.pitch + a.pitch * FREE.turn * dt, FREE.low, FREE.high);
+    const r = Math.hypot(free.x, free.z);
+    if (r > FREE.out) { free.x *= FREE.out / r; free.z *= FREE.out / r; }
+    const cp = Math.cos(free.pitch), p = camera.position, t = camera.target;
+    t.x = free.x; t.y = free.y; t.z = free.z;
+    p.x = free.x + Math.sin(free.yaw) * cp * free.dist;
+    p.z = free.z + Math.cos(free.yaw) * cp * free.dist;
+    // Never under the ground: the eye stops a hand over it, still looking at its point.
+    p.y = Math.max(FREE.floor + groundAt(p.x, p.z), free.y + Math.sin(free.pitch) * free.dist);
+    camera.up = null;
+    // The head shows unless the eye is inside it.
+    pilot.syncHeadVisibility(cave);
+  };
+
   // ---- gear, view and look ----
-  const state = { name: "", place: "stand", x: HOME.x, z: HOME.z, heading: 0, rifle: false, jetpack: false, eyes: false, night: false, yaw: VIEW.yaw, pitch: VIEW.pitch, dist: VIEW.dist };
+  const state = { name: "", place: "stand", x: HOME.x, z: HOME.z, heading: 0, rifle: false, jetpack: false, eyes: false, night: false, yaw: VIEW.yaw, pitch: VIEW.pitch, dist: VIEW.dist, free: null };
   // Where the Ooga is as it stands now (walked there or put there), its gear and the view, kept for the next load.
-  const remember = () => {
+  const remember = (as = asked) => {
     if (!pilot) return;
     const seat = cave.camp.seat, p = cave.root.position;
     state.place = crew.sleeping ? "bed" : !seat ? "stand" : seat.kind === "hammock" ? "hammock" : seat === seats[0] ? "chair" : "fire";
     state.x = p.x; state.z = p.z; state.heading = cave.root.rotation.y;
     state.rifle = !!cave.weapon.equipped; state.jetpack = !!cave.jet; state.eyes = pilot.view === "first-person"; state.night = night;
     state.yaw = pilot.orbit.yaw; state.pitch = pilot.orbit.pitch; state.dist = pilot.orbit.dist;
-    try { sessionStorage.setItem(STORE, JSON.stringify(state)); } catch { /* A private window keeps nothing; the studio works without it. */ }
+    state.free = free.on ? [free.x, free.y, free.z, free.yaw, free.pitch, free.dist] : null;
+    try { sessionStorage.setItem(STORE, JSON.stringify(as === state.name ? state : { ...state, name: as })); } catch { /* A private window keeps nothing; the studio works without it. */ }
   };
   // The last visit's place, gear and view for this Ooga, each piece checked; null when there is none.
   const remembered = () => {
@@ -193,7 +273,8 @@
     const number = (value, low, high, fallback) => Number.isFinite(value) ? clamp(value, low, high) : fallback;
     return { place: saved.place, x: number(saved.x, -WALL, WALL, HOME.x), z: number(saved.z, -WALL, WALL, HOME.z), heading: number(saved.heading, -1e3, 1e3, 0),
       rifle: saved.rifle === true, jetpack: saved.jetpack === true, eyes: saved.eyes === true, night: saved.night === true,
-      yaw: number(saved.yaw, -1e3, 1e3, VIEW.yaw), pitch: number(saved.pitch, -1.2, 1.3, VIEW.pitch), dist: number(saved.dist, 1.5, 14, VIEW.dist) };
+      yaw: number(saved.yaw, -1e3, 1e3, VIEW.yaw), pitch: number(saved.pitch, -1.2, 1.3, VIEW.pitch), dist: number(saved.dist, 1.5, 14, VIEW.dist),
+      free: Array.isArray(saved.free) && saved.free.length === 6 && saved.free.every(Number.isFinite) ? saved.free : null };
   };
   const toggle = (name, on) => {
     if (!TOGGLES.includes(name)) throw new Error(`studio: no toggle ${name}`);
@@ -206,8 +287,13 @@
       if (want && !cave.jet && !crew.wearJetpack(cave, hubModels.jetpack(), hubModels.jetFlame())) hud.toast("Stand up to put the jetpack on");
       else if (!want && cave.jet) crew.removeJetpack(cave);
       pilot.showAct();
-    } else if (on === undefined ? pilot.view !== "first-person" : on) pilot.enterClose();
-    else pilot.exitClose(false);
+    } else if (name === "free") setFree(on === undefined ? !free.on : on);
+    else {
+      // The Ooga's own eyes are the pilot's view, so the free camera lets go first.
+      const want = on === undefined ? free.on || pilot.view !== "first-person" : !!on;
+      setFree(false);
+      if (want) pilot.enterClose(); else pilot.exitClose(false);
+    }
     remember();
   };
   // Its voice, a line a press: the poke line, then each idle line in turn.
@@ -215,13 +301,58 @@
     const voice = contributors.voiceFor(cave.traits.name), lines = voice ? [voice.poke, ...voice.idle] : ["Ooga?"];
     fx.say(cave, lines[spoken++ % lines.length], 3.5);
   };
-  // The block look and a file-less Ooga's build are read as the page loads, so each is a reload.
-  const reloadWith = (key, value) => {
+  // Another Ooga on the pad, with no reload: the studio is left and entered again for it (the director's own swap,
+  // which holds the last frame meanwhile), and the new one stands in this one's place, gear and view.
+  const show = (name) => {
+    if (!/^[A-Za-z0-9-]{1,39}$/.test(name)) throw new Error(`studio: no Ooga ${name}`);
+    if (name.toLowerCase() === state.name.toLowerCase()) return false;
+    asked = name;
+    if (go("studio", null, true)) return true;
+    // A swap already under way keeps the pad as it is.
+    asked = state.name;
+    return false;
+  };
+  // A file-less Ooga's build is read as its model is first made, so the other build is a reload.
+  const rebuild = () => {
     remember();
     const url = new URL(location.href);
-    if (value === null) url.searchParams.delete(key); else url.searchParams.set(key, value);
+    if (params.get("build") === "slim") url.searchParams.delete("build"); else url.searchParams.set("build", "slim");
     location.assign(url);
   };
+  // The address names the studio and the Ooga on the pad, so a reload (a saved file's, or the visitor's own) comes
+  // back to this one. The director has just named the place in the address its own way; this follows it.
+  // On the studio's own server that is the whole of it: its first script writes the rest in again as the page loads
+  // (scripts/character-studio.mjs), so the flags the page runs under stay out of sight.
+  const address = () => {
+    const url = new URL(location.href), had = url.search + url.hash, build = url.searchParams.get("build");
+    if (WATCH) url.search = "";
+    url.searchParams.set("scene", "studio");
+    url.searchParams.set("character", state.name);
+    if (build === "slim" && (BL.characters.get(state.name) || {}).studio) url.searchParams.set("build", "slim"); else url.searchParams.delete("build");
+    url.hash = "";
+    if (url.search + url.hash !== had) history.replaceState(history.state, "", url);
+  };
+  // The list beside the controls button: every Ooga with a file by the name the game shows, A to Z, and first the one
+  // on the pad when it has no file. Letting go of it gives the keys back to the Ooga.
+  const fillPick = () => {
+    const rows = BL.characters.all().filter((c) => !c.studio).map((c) => ({ handle: c.handle, label: c.display || c.handle }));
+    rows.sort((a, b) => a.label.localeCompare(b.label, "en", { sensitivity: "base" }));
+    if (!rows.some((row) => row.handle.toLowerCase() === state.name.toLowerCase())) rows.unshift({ handle: state.name, label: `${state.name} (no file)` });
+    pick.replaceChildren(...rows.map((row) => {
+      const option = document.createElement("option");
+      option.value = row.handle; option.textContent = row.label;
+      option.selected = row.handle.toLowerCase() === state.name.toLowerCase();
+      return option;
+    }));
+  };
+  const picked = () => {
+    const name = pick.value;
+    pick.blur();
+    if (!show(name)) fillPick();
+  };
+  const letGo = (e) => { if (e.target !== pick && document.activeElement === pick) pick.blur(); };
+  // A sign's words, lettered as the banner's are (hud.js).
+  const letter = (el, words) => { el.setAttribute("aria-label", words); el.replaceChildren(hudMod.signLettering(words)); };
 
   // ---- reload on save ----
   const watch = async (signal) => {
@@ -256,6 +387,8 @@
     hud.toast(`+${BL.game.formatLarge(donation.sats)} sats`);
   };
   const onKey = (e) => {
+    // The free camera has the movement keys; Escape gives the view back to the Ooga.
+    if (free.on) { if (BL.controls.matches(e, "escape")) toggle("free", false); return; }
     if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) { pilot.resetCamera(); return; }
     if (BL.controls.matches(e, "view") && !e.repeat && pilot.modeAction("mode-toggle")) return;
     if (BL.controls.matches(e, "weapon") && pilot.weaponMode(Number(e.key))) return;
@@ -268,12 +401,12 @@
   };
 
   const enter = (ctx) => {
-    ({ renderer, game } = ctx);
+    ({ renderer, game, go } = ctx);
     // Asked first, so a file that stops this visit from being built still reloads the page once it is mended.
     watchVersion = null; watchError = "";
     if (WATCH) watchTimer = window.setInterval(() => watch(ctx.signal), 1000);
     // Who is on the pad: the handle asked for, with a file or without, else the roster's first.
-    const asked = (params.get("character") || "").trim(), valid = /^[A-Za-z0-9-]{1,39}$/.test(asked);
+    const valid = /^[A-Za-z0-9-]{1,39}$/.test(asked);
     const find = (name) => contributors.roster.find((c) => c.name.toLowerCase() === name.toLowerCase());
     if (valid && !find(asked)) {
       // No file yet: the Ooga this login gets by default, in the build asked for.
@@ -281,7 +414,7 @@
       contributors.addLocal(asked);
     }
     entry = valid && find(asked) || contributors.roster[0];
-    state.name = entry.name;
+    state.name = asked = entry.name;
     // A file whose hooks throw as its Ooga is built cannot be shown: say what threw, and stand the default Ooga in
     // until the file is mended.
     broken = "";
@@ -301,7 +434,9 @@
     // stands the Ooga at home, and the tab says where this is.
     homeLink = document.querySelector(".home-link");
     homeTitle = homeLink.title;
-    homeLink.title = "Character Studio";
+    homeLink.title = "Studio";
+    homeWords = homeLink.querySelector("[data-sign]").getAttribute("aria-label");
+    letter(homeLink.querySelector("[data-sign]"), "OBL");
     document.addEventListener("click", stayHome, { capture: true, signal: ctx.signal });
     titled = false;
     // One Ooga and nobody to feed: the Bananas and Oogas panels stay away.
@@ -311,7 +446,10 @@
     // The build is a file's own to say: the switch is for an Ooga with no file.
     buttons.build.hidden = !(BL.characters.get(state.name) || {}).studio;
     press("build", params.get("build") === "slim");
-    press("blocks", models.STYLE !== "R");
+    pick = document.getElementById("studio-pick");
+    fillPick();
+    pick.addEventListener("change", picked, { signal: ctx.signal });
+    document.addEventListener("pointerdown", letGo, { capture: true, signal: ctx.signal });
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets: { studio: { ...VIEW, target: { x: HOME.x, y: 1, z: HOME.z } } }, landing: "studio", pitch: [-0.1, 1.3], dist: [1.5, 14],
@@ -322,23 +460,24 @@
     // The chair, and a log either side of the fire: seats the crew sits its player on.
     seats = [];
     blocks = [];
-    const seat = (x, z, y, ry, back) => {
-      const s = { kind: "bench", x, y, z, floor: 0, ry, sitter: null, walkAt: { x: x + Math.sin(ry) * back, z: z + Math.cos(ry) * back } };
+    const seat = (x, z, y, ry, back, ground) => {
+      const s = { kind: "bench", x, y, z, floor: 0, ry, ground, sitter: null, walkAt: { x: x + Math.sin(ry) * back, z: z + Math.cos(ry) * back } };
       seats.push(s);
       return s;
     };
     const chairRy = Math.atan2(-CHAIR.x, -CHAIR.z);
     addChild(root, createNode({ geometry: chair(), position: { x: CHAIR.x, y: 0, z: CHAIR.z }, rotation: { x: 0, y: chairRy, z: 0 } }));
-    seat(CHAIR.x + Math.sin(chairRy) * 0.04, CHAIR.z + Math.cos(chairRy) * 0.04, CHAIR.top, chairRy, 0.95);
-    blocks.push({ x: CHAIR.x, z: CHAIR.z, r: 0.4 });
+    // Its stand-up spot is clear of it for the roster's widest body.
+    seat(CHAIR.x + Math.sin(chairRy) * 0.04, CHAIR.z + Math.cos(chairRy) * 0.04, CHAIR.top, chairRy, 1.1, false);
+    blocks.push({ x: CHAIR.x, z: CHAIR.z, r: 0.3 });
     const pit = createNode({ geometry: hubModels.firepit(), position: { x: FIRE.x, y: 0, z: FIRE.z } });
     addChild(root, pit);
     blocks.push({ x: FIRE.x, z: FIRE.z, r: FIRE.r });
-    for (const a of [-2.2, 2.75]) {
-      const x = FIRE.x + Math.sin(a) * LOG.out, z = FIRE.z + Math.cos(a) * LOG.out, ry = Math.atan2(FIRE.x - x, FIRE.z - z);
-      addChild(root, createNode({ geometry: log(), position: { x, y: 0, z }, rotation: { x: 0, y: ry, z: 0 } }));
-      seat(x, z, LOG.r * 2, ry, -0.85);
-      blocks.push({ x, z, r: 0.3 });
+    // Round the fire, places on the ground facing it, as the island's Oogas sit: the first on the pad's side of it.
+    const toward = Math.atan2(-FIRE.x, -FIRE.z);
+    for (let i = 0; i < FIRE.seats; i++) {
+      const a = toward + i / FIRE.seats * Math.PI * 2, x = FIRE.x + Math.sin(a) * FIRE.out, z = FIRE.z + Math.cos(a) * FIRE.out;
+      seat(x, z, 0, a + Math.PI, -0.7, true);
     }
     // The headquarters' mattress, as `sleepPlayer` reads one: its pillow toward -z.
     const M = BL.headquartersModels.MATTRESS, mattress = BL.headquartersModels.mattress({ x: BED.x, floor: 0, z: BED.z, index: 40 });
@@ -349,8 +488,11 @@
       walkAt: { x: BED.x + M.width / 2 + 0.7, y: 0, z: BED.z } };
 
     fx = fxMod.create({ root, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 3.2, z: 0 }, hud });
-    fire = BL.blaze.createVoxelRig({ scale: 1, emitX: FIRE.x, emitY: 0, emitZ: FIRE.z, embers: { fx } });
+    // The island's fire: its block flame, and the few embers it breathes from the island's own batch (critters.js),
+    // whose butterflies and fireflies are never called for here.
+    fire = BL.blaze.createVoxelRig({ scale: 1 });
     addChild(pit, fire.root);
+    embers = BL.critters.create({ root, renderer, flowers: [FIRE], fire: { x: FIRE.x, y: 0, z: FIRE.z }, meadowRadius: PAD, heightAt: () => 0 });
 
     // The hammock between its posts, on the side of them that faces the pad.
     addChild(root, createNode({ geometry: posts() }));
@@ -375,13 +517,22 @@
       onHover: (hit, p) => { if (hit) hud.tooltip.show(tip(hit), p.x, p.y, hit.owner.cave); else hud.tooltip.hide(); },
       onHoverMove: (hit, p) => hud.tooltip.show(tip(hit), p.x, p.y, hit.owner.cave),
       onTap: (hit) => { if (hit && hit.owner.kind === "caveman") crew.pokeCave(hit.owner.cave); },
-      ...pilot.hooks
+      ...pilot.hooks,
+      // A drag and the wheel are the free camera's while it is out.
+      onOrbit: (dx, dy) => {
+        if (!free.on) { pilot.hooks.onOrbit(dx, dy); return; }
+        free.yaw -= dx * 0.004;
+        free.pitch = clamp(free.pitch + dy * 0.0035, FREE.low, FREE.high);
+      },
+      onZoom: (factor, gesture, px, py) => {
+        if (!free.on) { pilot.hooks.onZoom(factor, gesture, px, py); return; }
+        free.dist = clamp(free.dist * factor, FREE.near, FREE.far);
+      }
     });
     hud.onAction((action) => {
       if (action === "act") pilot.action();
       else if (action === "studio-speak") speak();
-      else if (action === "studio-blocks") reloadWith("oogastyle", models.STYLE === "R" ? "0" : null);
-      else if (action === "studio-build") reloadWith("build", params.get("build") === "slim" ? null : "slim");
+      else if (action === "studio-build") rebuild();
       else if (action.startsWith("studio-")) { const id = action.slice(7); if (PLACES.includes(id)) place(id); else toggle(id); }
       else if (action === "jetpack-toggle") toggle("jetpack");
       else if (action.startsWith("mode-")) pilot.modeAction(action);
@@ -391,8 +542,9 @@
     crew.refreshRosterRow(cave);
     pilot.possess(cave);
     BL.net.setBody(null);
-    // Back as the last load left it, when this page was reloaded for a saved file; else standing at home.
-    const saved = ctx.from === null ? remembered() : null;
+    // Back as the last load left it, when the page was reloaded for a saved file, or as the Ooga before this one
+    // stood, when the list swapped them; else standing at home.
+    const saved = ctx.from === null || ctx.from === "studio" ? remembered() : null;
     night = !!(saved && saved.night);
     light();
     // On its feet it stands where it stood, if that spot is still clear.
@@ -403,10 +555,11 @@
       if (saved.rifle) toggle("rifle", true);
       Object.assign(pilot.orbit, { yaw: saved.yaw, tYaw: saved.yaw, pitch: saved.pitch, tPitch: saved.pitch, dist: saved.dist, tDist: saved.dist });
       if (saved.eyes) toggle("eyes", true);
+      if (saved.free) { setFree(true); [free.x, free.y, free.z, free.yaw, free.pitch, free.dist] = saved.free; }
     }
     nearKey = ""; spoken = 0;
     if (broken) hud.hint(broken, 36e5);
-    Object.assign(studioScene, { root, camera, input, debug: { camera, crew, fx, pilot, hud, controls: pilot.controls, cavemen: crew.cavemen, studio: { place, toggle, speak, state, get hammock() { return hammock; }, get bed() { return bed; }, get seats() { return seats; }, get cave() { return cave; } } } });
+    Object.assign(studioScene, { root, camera, input, debug: { camera, crew, fx, pilot, hud, controls: pilot.controls, cavemen: crew.cavemen, studio: { place, toggle, speak, show, state, free, get hammock() { return hammock; }, get bed() { return bed; }, get seats() { return seats; }, get cave() { return cave; } } } });
     pilot.update(0);
   };
   const drawExtra = () => {};
@@ -415,19 +568,22 @@
   const tip = (hit) => hit.owner.kind === "caveman" ? `${hit.owner.cave.traits.display || hit.owner.cave.traits.name} · tap to poke` : "";
 
   const update = (dt, elapsed) => {
-    // The director names the tab as a visit arrives; the studio's name follows it, once.
-    if (!titled) { titled = true; document.title = `Character Studio · ${state.name}`; }
+    // The director names the tab and the address as a visit arrives; the studio's own follow it, once.
+    if (!titled) { titled = true; document.title = `Studio · ${state.name}`; address(); }
     pilot.readInput(dt);
     crew.update(dt, elapsed);
     hammock.update(dt, elapsed, false, 0);
     // The bed poses after the crew; a pet riding its Ooga stays on this frame's body.
     for (const seat of hammock.seats) if (seat.sitter && seat.sitter.pet && seat.sitter.pet.ride) crew.pets.update(seat.sitter, 0);
     footsteps.update(crew.player);
+    // Shadows are cast round the Ooga, wherever on the pad it stands.
+    RENDER_OPTS.shadowCenter.x = cave.root.position.x; RENDER_OPTS.shadowCenter.z = cave.root.position.z;
     fire.update(dt, elapsed);
+    embers.update(dt, elapsed, 0, 0, 1);
     const L = RENDER_OPTS.lights, glow = fire.light * (night ? 1.5 : 0.5);
     L[0] = FIRE.x; L[1] = 0.8; L[2] = FIRE.z; L[3] = 9; L[4] = glow; L[5] = glow * 0.55; L[6] = glow * 0.2;
     RENDER_OPTS.time = elapsed;
-    const near = nearby();
+    const near = free.on ? nearKey : nearby();
     if (near !== nearKey) {
       nearKey = near;
       if (near === "sit") { hud.setAct("SIT"); say(COARSE ? "Tap SIT to sit down" : "Space · Sit"); }
@@ -439,6 +595,7 @@
     fx.update(dt, elapsed);
     stepTweens(dt);
     pilot.update(dt);
+    if (free.on) flyFree(dt);
   };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
@@ -446,9 +603,13 @@
     window.clearInterval(watchTimer);
     watchTimer = 0;
     homeLink.title = homeTitle;
-    homeLink = null;
+    letter(homeLink.querySelector("[data-sign]"), homeWords);
+    pick.replaceChildren();
+    homeLink = pick = null;
     remember();
+    free.on = false;
     getUp();
+    embers.dispose();
     hammock.dispose();
     footsteps.dispose();
     crew.dispose();
@@ -458,7 +619,7 @@
     const count = input.targetCount;
     input.dispose();
     hud.dispose();
-    hud = hooks = input = pilot = fx = crew = footsteps = cave = entry = hammock = bed = fire = seats = blocks = buttons = null;
+    hud = hooks = input = pilot = fx = crew = footsteps = cave = entry = hammock = bed = fire = embers = seats = blocks = buttons = null;
     studioScene.input = studioScene.debug = null;
     return { targets: count };
   };
