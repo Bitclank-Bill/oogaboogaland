@@ -988,8 +988,9 @@
   };
 
   // HALLOWEEN: the ghost hunt in the arena (ghost-game.js), handed this adapter in place of the island's: the hunt works
-  // about the arena's middle (`origin`), with its herald floating there, ghosts coming in over the wall top (`ARENA_SPOTS`),
-  // the elixirs on the totems, no blight, at most four hunters, and those who wait walked out to the hallway. GAME
+  // about the arena's middle (`origin`), with its herald floating there, ghosts coming in over the wall top and the
+  // elixirs on the totems where the rules have them (ghost-sim.js `ARENA`, which the server's hunt runs too and the suite
+  // checks against this arena), no blight, at most four hunters, and those who wait walked out to the hallway. GAME
   // MODE turns combat on and raises the iron fence.
   const PARAMS = new URLSearchParams(location.search), DEBUG = PARAMS.get("debug") === "1";
   // The arena's zone, and its older names a page loaded before #422 may still report (`arcade-hunt`, `arcade.arena`).
@@ -1011,17 +1012,6 @@
   const ARENA_GROUND = {
     surfaceAt: () => 0, onLand: (x, z) => Math.hypot(x, z) < HAUNT.arena.r, isPath: () => false, mouths: []
   };
-  // Where ghosts come in: over the wall top all round but the hallway's mouth, as [x, y, z, bearing] about the middle
-  // (bearing from -z toward +x, rising).
-  const ARENA_SPOTS = (() => {
-    const out = [], mouth = 1.5 * Math.PI;
-    for (let i = 0; i < 90; i++) {
-      const a = i / 90 * Math.PI * 2;
-      if (Math.abs(((a - mouth + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.22) continue;
-      out.push(Math.sin(a) * (HAUNT.arena.r - 1), HAUNT.arena.wall + 1.2, -Math.cos(a) * (HAUNT.arena.r - 1), a);
-    }
-    return Float64Array.from(out);
-  })();
   const HERALD_AT = { x: 0, y: 0, z: 0 };
   const heraldAt = (now, x, y, z) => {
     HERALD_AT.x = x; HERALD_AT.y = y + HERALD_FLOAT + 0.12 * Math.sin(now / 1000 * 1.3); HERALD_AT.z = z;
@@ -1095,7 +1085,7 @@
     holdView: (on) => { pilot.setActive(!on); pilot.controls.reset(); input.reset(); pilot.setExternalControl(on); },
     heldAxes: () => pilot.controls.read(),
     ringRadius: HAUNT.arena.r - 2,
-    elixirSpots: totemsAt.map((t) => t.elixir),
+    elixirSpots: BL.ghostSim.ARENA.elixirs,
     pileRadius: () => GHOST_KEEP - 0.3,
     pileTop: () => HERALD_FLOAT + 0.9,
     // Nudges the driven Ooga along the floor (a ghost's knock, a wraith's pull) where it could walk.
@@ -1104,7 +1094,7 @@
       if (cave.health.stunned || !walkableFor(p.x, p.z, p.x + dx, p.z + dz, feet, cave.bodyHeight, cave)) return;
       p.x += dx; p.z += dz;
     },
-    origin: { x: HAUNT.arena.x, y: HAUNT.y, z: HAUNT.arena.z }, spots: ARENA_SPOTS, heraldAt: (now) => heraldAt(now, 0, 0, 0),
+    origin: { x: HAUNT.arena.x, y: HAUNT.y, z: HAUNT.arena.z }, spots: BL.ghostSim.ARENA.spots, heraldAt: (now) => heraldAt(now, 0, 0, 0),
     heraldHeight: HERALD_HEIGHT, inZone: (zone) => ARENA_ZONES.has(zone), arenaRadius: HAUNT.arena.r, maxPlayers: HUNTERS, gatherAt: "the ghost",
     hearing: () => huntHearing,
     tapWakes: true, blight: false, waitingToast: "A hunt is on · wait in the hallway until the arena opens"
@@ -1278,9 +1268,11 @@
     }
     return found;
   };
-  // `?debug=1&pos=x,y,z&body=0,yaw,0` starts the visitor there (feet on the deck when y is at its level).
+  // `?debug=1&pos=x,y,z&body=0,yaw,0` starts the visitor there (feet on the deck when y is at its level). Any other `pos`
+  // is no place (`pos=0` only hides the position readout, as on the island), and the arrival stands as it would.
   const debugSpawn = () => {
-    const [x, y, z] = PARAMS.get("pos").split(",").map(Number), yaw = Number((PARAMS.get("body") || "").split(",")[1]) || 0;
+    const parts = (PARAMS.get("pos") || "").split(","), [x, y, z] = parts.map(Number), yaw = Number((PARAMS.get("body") || "").split(",")[1]) || 0;
+    if (parts.length !== 3 || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
     return { x, z, facing: yaw, deck: y >= MEZZ.y - 0.5 };
   };
   const PROMPT_STALE = {}, PROMPT_ZIP = {}, BLOCK_SKY_CLEAR = [0.45, 0.68, 0.92], CAVE_CLEAR = RENDER_OPTS.clear, OPEN_SKY = [0.5, 0.55, 0.65], OPEN_GROUND = [0.3, 0.33, 0.4], CAVE_LIGHT = { sky: RENDER_OPTS.sky, ground: RENDER_OPTS.ground, direct: RENDER_OPTS.direct };
@@ -1969,6 +1961,8 @@
       carry: true,
       renderer, canvas: ctx.canvas, camera, hud, presets: views, landing: "entrance", pitch: PITCH, dist: DIST,
       follow: FOLLOW, clampTarget, clampCamera, ceilingAt: () => HALL.h - 1, coarse: COARSE, mayPossess, combatOnly: () => gameMode && armed,
+      // HALLOWEEN: a hunter in a hunt under way may take combat overhead, the one place that offers it.
+      birdsEye: () => gameMode && armed,
       // HALLOWEEN: in combat view a click on the herald under the dot wakes it, as a click does in carry; so does the
       // click that captures a free cursor on it.
       primaryAction: (down) => {
@@ -2079,7 +2073,8 @@
       avatar = people.cavemen.get(playerName);
       buildZipline(shared);
       // At a machine an Ooga plays, a step back from its spot, where that Ooga stands again.
-      const at = fromWatch ? AW.ARRIVAL : DEBUG && PARAMS.get("pos") ? debugSpawn() : fromBlockHall ? { x: BH.x, z: BH.z0 + 1, facing: 0 } : from >= 0 ? live.find((c) => c.game === from).play : retroFrom ? retroFrom.play : machineFrom ? (machineFrom.bot ? toHall({ x: machineFrom.play.x, z: machineFrom.play.z, turn: machineFrom.turn }, 0, 1.3, { facing: machineFrom.play.facing }) : machineFrom.play) : { x: 0, z: HALL.front - 1.5, facing: Math.PI };
+      const spawn = DEBUG ? debugSpawn() : null;
+      const at = fromWatch ? AW.ARRIVAL : spawn ? spawn : fromBlockHall ? { x: BH.x, z: BH.z0 + 1, facing: 0 } : from >= 0 ? live.find((c) => c.game === from).play : retroFrom ? retroFrom.play : machineFrom ? (machineFrom.bot ? toHall({ x: machineFrom.play.x, z: machineFrom.play.z, turn: machineFrom.turn }, 0, 1.3, { facing: machineFrom.play.facing }) : machineFrom.play) : { x: 0, z: HALL.front - 1.5, facing: Math.PI };
       Object.assign(avatar.root.position, { x: at.x, y: avatar.baseY + supportAt(at.x, at.z, fromBlockHall || at.deck || retroFrom || from >= 0 && live.find(c => c.game === from).y === MEZZ.y ? MEZZ.y : 1), z: at.z });
       avatar.root.rotation.y = at.facing;
       // Carry the view and record the outside loadout before parking its weapons for the visit.

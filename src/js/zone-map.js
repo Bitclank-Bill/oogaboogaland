@@ -8,7 +8,7 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const ROOT = "outside";
-  const LANDS = { outside: "The Island", sphere: "Timechain Exterior", rainforest: "Mempool Rainforest", "rainforest-under": "Mempool Cave", bifrost: "₿IFRÖST", lab: "EntropyLab", factory: "Lightning Factory", arcade: "Ooga Arcade", "block-frenzy": "Block Frenzy", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena", hq: "HQ", "hq-basement": "Basement", "ember-den": "Ember Den", between: "Between lands", none: "Between lands", "scene-transition": "Between lands" };
+  const LANDS = { outside: "The Island", repos: "Repo Island", sphere: "Timechain Exterior", rainforest: "Mempool Rainforest", "rainforest-under": "Mempool Cave", bifrost: "₿IFRÖST", lab: "EntropyLab", factory: "Lightning Factory", arcade: "Ooga Arcade", "block-frenzy": "Block Frenzy", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena", hq: "HQ", "hq-basement": "Basement", "ember-den": "Ember Den", between: "Between lands", none: "Between lands", "scene-transition": "Between lands" };
   const landOf = (zone) => {
     if (zone === "factory.hangar") return "Lightning Jet Hangar";
     if (zone === "bifrost.chamber") return "₿IFRÖST chamber";
@@ -44,13 +44,13 @@
   // ₿IFRÖST chamber's windows; the Sphere's rooms from its doorway; Ghost Hunter's Arena down the arcade's haunted
   // hallway, half by half. Nowhere, and anything unknown, has no way.
   const PARENTS = {
-    between: ROOT, lab: ROOT, bca: ROOT, mirror: ROOT, hq: ROOT, factory: ROOT, arcade: ROOT, sphere: ROOT, rainforest: ROOT, bifrost: ROOT,
+    between: ROOT, lab: ROOT, bca: ROOT, mirror: ROOT, hq: ROOT, factory: ROOT, arcade: ROOT, sphere: ROOT, rainforest: ROOT, bifrost: ROOT, repos: ROOT,
     "hq-basement": "hq", "rainforest-under": "rainforest", "lab.hall": "lab", "factory.hall": "factory", "factory.hangar": "factory.hall", "arcade.hall": "arcade",
     "arcade.haunt": "arcade.hall", "ghost-arena.haunt": "arcade.haunt", "ghost-arena": "ghost-arena.haunt", "arcade-hunt": "ghost-arena", "arcade.arena": "ghost-arena",
     "bifrost.chamber": "bifrost", "ember-den": "bifrost.chamber", "dsb-outside": "bifrost.chamber", "dsb-transit": "bifrost.chamber"
   };
   // A zone is whatever a page reports, so the tables are read by their own keys alone, never their prototype's.
-  const parentOf = (zone) => Object.hasOwn(PARENTS, zone) ? PARENTS[zone] : (zone.startsWith("cave-") ? ROOT : /^sphere-[1-9]$/.test(zone) ? "sphere"
+  const parentOf = (zone) => Object.hasOwn(PARENTS, zone) ? PARENTS[zone] : (zone.startsWith("cave-") ? ROOT : /^sphere-[0-9]$/.test(zone) ? "sphere"
     : zone.startsWith("dsb-") ? "dsb-outside" : zone.startsWith("scene-") && zone !== "scene-transition" ? "arcade.hall" : null);
   // Steps up to the island, or -1 for a zone with no way there.
   const depthOf = (zone) => {
