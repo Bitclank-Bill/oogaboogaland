@@ -10,9 +10,9 @@
 // beside it) and the island's fire (blaze.js). The rifle comes out with 2 or its button in the
 // banner, which slings what the hand held onto the back, the jetpack goes on with J or its button, and the views are
 // the pilot's. The studio's own buttons run down the left side (`.studio-side`): they put the Ooga in each place
-// without the walk (`studio-<place>`) and switch the first person, the third person from behind its shoulder, a free
-// camera flown anywhere over the ground, the night and, for an Ooga with no file, its build; Speak says its voice
-// lines in turn. Beside the controls button a list of every Ooga by name (`#studio-pick`)
+// without the walk (`studio-<place>`) and choose the view (the first person, the third person from behind and a
+// little above, or in combat over its shoulder, and a free camera flown anywhere over the ground), the night and,
+// for an Ooga with no file, its build; Speak says its voice lines in turn. Beside the controls button a list of every Ooga by name (`#studio-pick`)
 // shows another in the same place, gear and view. The title reads OBL, and the Bananas and Oogas panels, the sound
 // button, the clock and the block height are left out: there is one Ooga here, nobody to feed and no island to tell
 // the time on. `__ooga.studio` does the same for a script (`place(id)`, `toggle(name)` with the rifle and the jetpack
@@ -41,6 +41,8 @@
   const DAY = 13, NIGHT = 22.5, DAY_OF_YEAR = 80;
   const PLACES = ["stand", "chair", "bed", "hammock", "fire"];
   const TOGGLES = ["rifle", "jetpack", "eyes", "third", "free", "night"];
+  // The third person while carrying: combat's shoulder distance (pilot.js `SHOULDER_DISTANCE`), looking a little down.
+  const THIRD = { dist: 3.6, pitch: 0.4 };
   // The free camera: how fast its point flies (faster the further out it looks from), climbs and turns by the keys,
   // how near and far it looks from, and the least height of its eye, which never goes under the ground.
   const FREE = { speed: 3, perDist: 0.45, climb: 2.6, turn: 1.7, near: 0.5, far: 26, floor: 0.2, low: -1.45, high: 1.5, out: PAD + 6, top: 12 };
@@ -254,14 +256,14 @@
   };
 
   // ---- gear, view and look ----
-  const state = { name: "", place: "stand", x: HOME.x, z: HOME.z, heading: 0, rifle: false, jetpack: false, eyes: false, third: false, night: false, yaw: VIEW.yaw, pitch: VIEW.pitch, dist: VIEW.dist, free: null };
+  const state = { name: "", place: "stand", x: HOME.x, z: HOME.z, heading: 0, rifle: false, jetpack: false, eyes: false, night: false, yaw: VIEW.yaw, pitch: VIEW.pitch, dist: VIEW.dist, free: null };
   // Where the Ooga is as it stands now (walked there or put there), its gear and the view, kept for the next load.
   const remember = (as = asked) => {
     if (!pilot) return;
     const seat = cave.camp.seat, p = cave.root.position;
     state.place = crew.sleeping ? "bed" : !seat ? "stand" : seat.kind === "hammock" ? "hammock" : seat === seats[0] ? "chair" : "fire";
     state.x = p.x; state.z = p.z; state.heading = cave.root.rotation.y;
-    state.rifle = !!cave.weapon.equipped; state.jetpack = !!cave.jet; state.eyes = pilot.view === "first-person"; state.third = pilot.view === "shoulder"; state.night = night;
+    state.rifle = !!cave.weapon.equipped; state.jetpack = !!cave.jet; state.eyes = pilot.view === "first-person"; state.night = night;
     state.yaw = pilot.orbit.yaw; state.pitch = pilot.orbit.pitch; state.dist = pilot.orbit.dist;
     state.free = free.on ? [free.x, free.y, free.z, free.yaw, free.pitch, free.dist] : null;
     try { sessionStorage.setItem(STORE, JSON.stringify(as === state.name ? state : { ...state, name: as })); } catch { /* A private window keeps nothing; the studio works without it. */ }
@@ -273,7 +275,7 @@
     if (!saved || typeof saved !== "object" || saved.name !== state.name || !PLACES.includes(saved.place)) return null;
     const number = (value, low, high, fallback) => Number.isFinite(value) ? clamp(value, low, high) : fallback;
     return { place: saved.place, x: number(saved.x, -WALL, WALL, HOME.x), z: number(saved.z, -WALL, WALL, HOME.z), heading: number(saved.heading, -1e3, 1e3, 0),
-      rifle: saved.rifle === true, jetpack: saved.jetpack === true, eyes: saved.eyes === true, third: saved.third === true, night: saved.night === true,
+      rifle: saved.rifle === true, jetpack: saved.jetpack === true, eyes: saved.eyes === true, night: saved.night === true,
       yaw: number(saved.yaw, -1e3, 1e3, VIEW.yaw), pitch: number(saved.pitch, -1.2, 1.3, VIEW.pitch), dist: number(saved.dist, 1.5, 14, VIEW.dist),
       free: Array.isArray(saved.free) && saved.free.length === 6 && saved.free.every(Number.isFinite) ? saved.free : null };
   };
@@ -289,18 +291,17 @@
       else if (!want && cave.jet) crew.removeJetpack(cave);
       pilot.showAct();
     } else if (name === "free") setFree(on === undefined ? !free.on : on);
-    else if (name === "third") {
-      // The view from behind its shoulder, as the game follows an Ooga; pressed again, the view from round it.
-      const want = on === undefined ? free.on || pilot.view !== "shoulder" : !!on;
+    else if (name === "eyes" && (on === undefined ? free.on || pilot.view !== "first-person" : on)) {
+      // The Ooga's own eyes are the pilot's view, so the free camera lets go first.
       setFree(false);
-      const view = pilot.viewState();
-      if (pilot.view === "first-person") pilot.exitClose(want);
-      else if (view) pilot.adopt({ view: want ? "shoulder" : "orbit", combat: false, relYaw: want ? Math.PI : view.relYaw, pitch: view.pitch, distance: view.distance, height: view.height, side: view.side });
+      pilot.enterClose();
     } else {
-      // The Ooga's own eyes are the pilot's view too, so the free camera lets go first.
-      const want = on === undefined ? free.on || pilot.view !== "first-person" : !!on;
+      // The third person, which leaving the first person comes back to as well. In combat it is combat's own, over
+      // the shoulder. Carrying, it is the view from behind and a little above, as far off as that one, the Ooga in
+      // the middle of it.
       setFree(false);
-      if (want) pilot.enterClose(); else pilot.exitClose(false);
+      const view = pilot.viewState(), combat = !!cave.weapon.aiming;
+      if (view) pilot.adopt({ view: combat ? "shoulder" : "orbit", combat, relYaw: Math.PI, pitch: THIRD.pitch, distance: THIRD.dist, height: view.height, side: view.side });
     }
     remember();
   };
@@ -562,7 +563,6 @@
       if (saved.jetpack) toggle("jetpack", true);
       if (saved.rifle) toggle("rifle", true);
       Object.assign(pilot.orbit, { yaw: saved.yaw, tYaw: saved.yaw, pitch: saved.pitch, tPitch: saved.pitch, dist: saved.dist, tDist: saved.dist });
-      if (saved.third) toggle("third", true);
       if (saved.eyes) toggle("eyes", true);
       if (saved.free) { setFree(true); [free.x, free.y, free.z, free.yaw, free.pitch, free.dist] = saved.free; }
     }
@@ -600,8 +600,9 @@
       else if (near === "rest") { hud.setAct("REST"); say(COARSE ? "Tap REST to lie back in the hammock" : "Space · Rest in the hammock"); }
       else pilot.showAct();
     }
+    // One of the three views is lit: its own eyes, the third person, or the free camera.
     press("eyes", !free.on && pilot.view === "first-person");
-    press("third", !free.on && pilot.view === "shoulder");
+    press("third", !free.on && pilot.view !== "first-person");
     fx.update(dt, elapsed);
     stepTweens(dt);
     pilot.update(dt);
