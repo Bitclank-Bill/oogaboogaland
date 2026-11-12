@@ -23329,6 +23329,15 @@ const studioPlaces = { name: "studio places", why: "playthrough: the studio is w
   await b.key("j");
   const jetpack = await b.evaluate(`(() => { const B = window.__ooga, C = B.studio.cave; B.advance(0.3, 1 / 60); const on = !!C.jet; B.studio.toggle("jetpack", false); B.studio.toggle("rifle", false); B.advance(0.3, 1 / 60); return on && !C.jet && !C.weapon.equipped; })()`);
   record("studio places: the studio's buttons put the Ooga in every place without the walk, its day button brings the night and says which it is with the moon keeping its place in the sky, 2 takes the rifle out and J puts the jetpack on", places.went.every(Boolean) && places.day && places.night && places.moonStays && rifle && jetpack, JSON.stringify({ places, rifle, jetpack }));
+  // The views by their buttons: its own eyes, from behind its shoulder, and back to the view from round it.
+  const views = await b.evaluate(`(() => { const B = window.__ooga, C = B.studio.cave, c = B.camera, click = (name) => { document.querySelector('.studio-side [data-action="studio-' + name + '"]').click(); B.advance(1.2, 1 / 60); return B.pilot.view; };
+    const lit = (name) => document.querySelector('[data-action="studio-' + name + '"]').getAttribute("aria-pressed") === "true";
+    const out = { third: click("third") }, h = C.root.rotation.y;
+    out.behind = (c.position.x - C.root.position.x) * Math.sin(h) + (c.position.z - C.root.position.z) * Math.cos(h) < -1 && lit("third") && !lit("eyes");
+    out.eyes = click("eyes"); out.one = lit("eyes") && !lit("third");
+    out.back = click("third"); out.round = click("third"); out.none = !lit("third") && !lit("eyes");
+    return out; })()`);
+  record("studio places: the 1st person and 3rd person buttons give the view from the Ooga's own eyes and from behind its shoulder, one lit at a time, and pressing the lit one gives back the view from round it", views.third === "shoulder" && views.behind && views.eyes === "first-person" && views.one && views.back === "shoulder" && views.round === "orbit" && views.none, JSON.stringify(views));
   // The free camera: the visitor's own, flown by the movement keys while the Ooga keeps what it is doing.
   const freed = await b.evaluate(`(() => { const B = window.__ooga, S = B.studio, C = S.cave, F = S.free;
     S.place("chair"); B.advance(0.5, 1 / 60);

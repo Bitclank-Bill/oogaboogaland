@@ -152,7 +152,8 @@ and `<handle>:slim` its female build.
 
 - The buttons down the left side put the Ooga in each place without the walk: **Stand**,
   **Chair**, **Bed**, **Hammock**, **Fire** (sitting on the ground beside it, as the
-  island's Oogas do). **1st person** looks out of its own eyes. **Free cam** gives the
+  island's Oogas do). **1st person** looks out of its own eyes and **3rd person** from
+  behind its shoulder, as the game follows it. **Free cam** gives the
   player a camera of their own while the Ooga stays as it is: W A S D fly it, Space and
   X lift and lower it, a drag turns it, the wheel moves it in and out, and Escape gives
   the view back. **Day** turns to **Night** and back, **Female** switches a file-less
