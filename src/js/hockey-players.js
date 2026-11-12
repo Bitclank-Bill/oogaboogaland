@@ -27,7 +27,7 @@
       let rec = poses[slot];
       if (!rec || rec.cave !== cave) {
         rec = poses[slot] = { cave, applied: false, footX: NaN, footZ: NaN, step: 0,
-          parts: [cave.root, ...["torso", "head", "legL", "legR", "armL", "armR"].map(key => cave.parts[key])].map(node => ({ node, values: new Float64Array(8), quaternion: null })),
+          parts: [cave.root, ...["torso", "head", "legL", "legR", "armL", "armR", "forearmR"].map(key => cave.parts[key]).filter(Boolean)].map(node => ({ node, values: new Float64Array(8), quaternion: null })),
           gear: ["gun", "club", "snack"].filter(key => cave.parts[key]).map(key => ({ node: cave.parts[key], visible: false })), aim: BL.math.quat.create() };
       }
       for (const saved of rec.parts) {
@@ -41,10 +41,11 @@
       const center = W.TABLES[slot >> 1], sign = end ? -1 : 1;
       const halfW = BL.arcadeModels.HOCKEY.d * W.SCALE / 2, halfL = BL.arcadeModels.HOCKEY.w * W.SCALE / 2;
       const arm = cave.parts.armR, leg = cave.traits.height * BL.models.BODY.hip, shoulder = leg + arm.position.y;
-      const hand = -cave.parts.fingersR.position.y, across = arm.position.x, height = target.y;
+      const hand = cave.modelled ? (Math.hypot(cave.elbow.y, cave.elbow.z) + cave.elbow.length) * cave.armScale * 0.9994
+        : -cave.parts.fingersR.position.y, across = arm.position.x, height = target.y;
       const shoulderRadius = Math.hypot(shoulder, arm.position.z);
       // Move along the outside of this half. Offset the feet along a rail at short reach, so the
-      // authored straight arm can keep its palm on the handle without shrinking or stretching.
+      // authored arm can keep its palm on the handle without shrinking or stretching.
       const stand = Math.sqrt(across * across + Math.max(0, hand * hand - (height - shoulder) ** 2)) + 0.04;
       const tx = target.x - center[0], tz = sign * (target.z - center[1]), rimX = halfW + 0.14, rimZ = halfL + 0.14;
       const gap = rimZ - tz, offset = Math.sqrt(Math.max(0, stand * stand - gap * gap));
@@ -85,9 +86,14 @@
       const rx = target.x - p.x, ry = target.y - p.y, rz = target.z - p.z, z = sn * rx + c * rz;
       const ax = c * rx - sn * rz - arm.position.x, ay = cl * ry + sl * z - arm.position.y, az = -sl * ry + cl * z - arm.position.z;
       const length = Math.hypot(ax, ay, az) || 1, q = rec.aim;
-      q[0] = -az / length; q[1] = 0; q[2] = ax / length; q[3] = 1 - ay / length;
-      if (Math.hypot(q[0], q[2], q[3]) < 1e-6) { q[0] = 1; q[3] = 0; }
-      BL.math.quat.normalize(q); arm.quaternion = q;
+      if (cave.modelled) {
+        // The shared rig solver places the hand through its elbow, including authored arm scale.
+        BL.crew.reachArm(cave, arm, cave.parts.forearmR, q, ax + arm.position.x, ay + arm.position.y, az + arm.position.z, -1, -0.4, 0);
+      } else {
+        q[0] = -az / length; q[1] = 0; q[2] = ax / length; q[3] = 1 - ay / length;
+        if (Math.hypot(q[0], q[2], q[3]) < 1e-6) { q[0] = 1; q[3] = 0; }
+        BL.math.quat.normalize(q); arm.quaternion = q;
+      }
       cave.parts.torso.rotation.x = cave.parts.torso.rotation.y = cave.parts.torso.rotation.z = 0;
       cave.parts.head.rotation.x = -lean * 0.7;
       cave.parts.armL.rotation.x = -0.6; cave.parts.armL.rotation.y = cave.parts.armL.rotation.z = 0;

@@ -19473,7 +19473,7 @@ const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics 
     const table={s:"0123456789abcdef",ids:[101,102],phase:"play",e:0};net.hockeyTables=[table,null,null];
     const presentation=B.hockeyPlayers.create({root:poseRoot,games:[poseGame],body:id=>rigs[id-101]});
     const handles={x:0,y:0,z:0}, samples=[];
-    const pose=r=>JSON.stringify([r.root,...["torso","head","legL","legR","armL","armR"].map(k=>r.parts[k])].map(n=>[n.position,n.rotation,n.quaternion,n.scale,n.poseYaw,n.poseLean]));
+    const pose=r=>JSON.stringify([r.root,...["torso","head","legL","legR","armL","armR","forearmL","forearmR","fingersL","fingersR"].map(k=>r.parts[k]).filter(Boolean)].map(n=>[n.position,n.rotation,n.quaternion,n.scale,n.poseYaw,n.poseLean]));
     let poseRestored=true, lastPose=null;
     for(const end of [0,1])for(const px of [-1,-.5,0,.5,1])for(const depth of [0,.25,.5,.75,1]) {
       presentation.restore();
@@ -19483,10 +19483,10 @@ const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics 
       lastPose=rigs.map(pose);
       presentation.update(1/60);B.scene.updateWorld(poseRoot);
       for(let side=0;side<2;side++){
-        poseGame.mallet(side,handles);const r=rigs[side],m=r.parts.armR.world,grip=r.parts.fingersR.position.y;
-        const error=Math.hypot(m[12]+m[4]*grip-handles.x,m[13]+m[5]*grip-handles.y,m[14]+m[6]*grip-handles.z);
+        poseGame.mallet(side,handles);const r=rigs[side],m=r.parts.fingersR.world;
+        const error=Math.hypot(m[12]-handles.x,m[13]-handles.y,m[14]-handles.z);
         const foot=r.root.world,leg=hips[side],fx=foot[12]-foot[4]*leg-W.TABLES[0][0],fz=foot[14]-foot[6]*leg-W.TABLES[0][1];
-        samples.push({end,px,depth,side,error,half:(side^end)?-fz:fz,outside:Math.abs(fx)>=B.arcadeModels.HOCKEY.d*W.SCALE/2||Math.abs(fz)>=B.arcadeModels.HOCKEY.w*W.SCALE/2,scale:r.parts.armR.scale.y,x:r.root.position.x,z:r.root.position.z});
+        samples.push({end,px,depth,side,error,half:(side^end)?-fz:fz,outside:Math.abs(fx)>=B.arcadeModels.HOCKEY.d*W.SCALE/2||Math.abs(fz)>=B.arcadeModels.HOCKEY.w*W.SCALE/2,scale:r.parts.armR.scale.y,authoredScale:r.armScale,x:r.root.position.x,z:r.root.position.z});
       }
     }
     let reversalStep=0,reversalError=0,previousFeet=null;
@@ -19494,8 +19494,8 @@ const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics 
       presentation.restore();table.e=0;poseGame.orientation(0);pointer.x=frame%2?.005:-.005;pointer.depth=0;poseGame.peerInput(-pointer.x,0);poseGame.update(1/60);
       lastPose=rigs.map(pose);presentation.update(1/60);B.scene.updateWorld(poseRoot);
       const feet=rigs.map((r,side)=>{
-        poseGame.mallet(side,handles);const m=r.parts.armR.world,grip=r.parts.fingersR.position.y;
-        reversalError=Math.max(reversalError,Math.hypot(m[12]+m[4]*grip-handles.x,m[13]+m[5]*grip-handles.y,m[14]+m[6]*grip-handles.z));
+        poseGame.mallet(side,handles);const m=r.parts.fingersR.world;
+        reversalError=Math.max(reversalError,Math.hypot(m[12]-handles.x,m[13]-handles.y,m[14]-handles.z));
         const foot=r.root.world,leg=hips[side];return [foot[12]-foot[4]*leg,foot[14]-foot[6]*leg];
       });
       if(previousFeet)for(let side=0;side<2;side++)reversalStep=Math.max(reversalStep,Math.hypot(feet[side][0]-previousFeet[side][0],feet[side][1]-previousFeet[side][1]));
@@ -19509,7 +19509,7 @@ const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics 
   })()`);
   record("hockey pilot: real two-human physics produces bounded compact frames and both directions of the far mallet", result.invalid===0&&result.frames>10&&result.largest<=256&&result.positive&&result.negative,JSON.stringify(result));
   record("hockey pilot: faster pointer strokes transfer more speed to the puck without a smash",result.slowStrike>0&&result.fastStrike>result.slowStrike&&result.fastStrike<=7501,JSON.stringify({slow:result.slowStrike,fast:result.fastStrike}));
-  record("hockey pilot: small and tall humans keep palm contact across both halves without arm stretch, stand outside their half and restore every joint",result.poseRestored&&result.samples.every(s=>s.error<.003&&s.half>=.17&&s.outside&&s.scale===1),JSON.stringify({restored:result.poseRestored,samples:result.samples}));
+  record("hockey pilot: small and tall humans keep palm contact across both halves without arm stretch, stand outside their half and restore every joint",result.poseRestored&&result.samples.every(s=>s.error<.003&&s.half>=.17&&s.outside&&s.scale===s.authoredScale),JSON.stringify({restored:result.poseRestored,samples:result.samples}));
   record("hockey pilot: rapid small reversals keep a continuous stance and immediate rigid palm contact",result.reversalStep<.05&&result.reversalError<.003,JSON.stringify({step:result.reversalStep,error:result.reversalError}));
   record("hockey pilot: spectators interpolate two frames without extrapolation; sessions deliver one start and finish and release subscriptions",result.halfway===200&&result.final===400&&result.lifecycle&&result.feedback&&result.noReplay,JSON.stringify(result));
   record("hockey pilot: all three rendered table transforms match the enlarged hall contract, real seats straddle them, no roster audience and Arcade audio zone remains",result.mapped&&result.geometry.length===3&&result.seats[0].z>-4.75&&result.seats[1].z< -4.75&&result.watchers===0&&result.zone==="arcade.hall",JSON.stringify(result));
