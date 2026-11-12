@@ -204,8 +204,12 @@ must pass before the PR. It builds every Ooga and checks their stowed gear.
 
 ## 7. The PR, and what the bot does
 
-- Open the PR against `rock` with the one file. Commit as the player. Do not force-push
-  over commits the bot has read.
+- Open the PR against `rock` as a **draft** with the one file. Keep it draft while
+  building or debugging. Mark it **ready for review** only after the work and authorized
+  checks are complete, and record the validation and any remaining acceptance work in
+  its description. Return it to draft for substantial new work; small review fixes can
+  stay ready. Batch related fixes before pushing. Commit as the player. Do not
+  force-push over commits the bot has read.
 - The bot reads the file as text and never runs it. It copies an accepted file into one of
   two standing bundle PRs, says which and why, and **closes your PR on purpose**: the
   bundle carries the change from there.

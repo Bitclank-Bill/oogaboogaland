@@ -1986,7 +1986,9 @@ Do not write anything yet. Interview me, a few questions at a time: do I want a 
 
 Then sort my wishes into three lists and tell me before you build: plain data (it merges on its own the next day), custom code (a maintainer reviews it, which can take days), and what a character file cannot do (it needs a change to the game). Offer the nearest plain-data choice for anything that does not fit.
 
-Build it in one file, src/characters/&lt;my GitHub login&gt;.js, and change nothing else. Ask me whether you may open the character studio in my browser (npm run character:studio -- &lt;my GitHub login&gt;): it shows my Ooga standing, sitting, in bed and in a hammock, and reloads as you save. After each round take my notes one at a time. Before the pull request, run npm run character:check, npm run build and npm run test:unit.</pre>
+Build it in one file, src/characters/&lt;my GitHub login&gt;.js, and change nothing else. Ask me whether you may open the character studio in my browser (npm run character:studio -- &lt;my GitHub login&gt;): it shows my Ooga standing, sitting, in bed and in a hammock, and reloads as you save. After each round take my notes one at a time. Before the pull request, run npm run character:check, npm run build and npm run test:unit.
+
+Open the pull request as a draft and keep it draft while building or debugging. Mark it ready for review only when the work and authorized checks are complete and its description records validation and any remaining acceptance work. Return it to draft for substantial new work, and batch related fixes before pushing.</pre>
       <div class="actions recipe-actions">
         <button type="button" data-action="recipe-copy">Copy prompt</button>
       </div>
@@ -1998,7 +2000,7 @@ Build it in one file, src/characters/&lt;my GitHub login&gt;.js, and change noth
       </div>
       <div class="chalk-frame" id="chalk-frame">
         <canvas id="chalk-canvas" width="1200" height="750" aria-label="Chalkboard drawing surface"></canvas>
-        <div class="chalk-pointer" id="chalk-pointer" aria-hidden="true"><span class="chalk-held"></span></div>
+        <div class="chalk-pointer" id="chalk-pointer" aria-hidden="true"><span class="chalk-held" id="chalk-held"></span></div>
         <div class="chalk-caret" id="chalk-caret" aria-hidden="true" hidden></div>
         <textarea class="chalk-type-input" id="chalk-type-input" aria-label="Type on chalkboard" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1"></textarea>
       </div>
