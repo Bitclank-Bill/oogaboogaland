@@ -1048,6 +1048,17 @@
   // is still the way he goes. The wheels turn by the ground covered, and he carves a little from side to side.
   // `riding` is whether he should be on it; it eases on and off, and `cave.skate` is how far on he is.
   const SKATE_ON = 0.22, SKATE_OFF = 0.3, SKATE_YAW = -1.15, SKATE_HEAD = 0.3, SKATE_STANCE = 0.09, SKATE_APART = 0.035, SKATE_FOOT = 1.9 / 16, SKATE_CARVE = 0.07;
+  const skateLeg = (leg, side, e, h) => {
+    if (leg.skateX === undefined) leg.skateX = leg.position.x;
+    leg.rotation.x = lerp(leg.rotation.x, 0, e);
+    leg.rotation.z = side * SKATE_STANCE * e;
+    leg.position.x = leg.skateX + side * SKATE_APART * h * e;
+  };
+  const skateArm = (arm, out, e) => {
+    if (arm.quaternion) return;
+    arm.rotation.x = lerp(arm.rotation.x, -0.12, e);
+    arm.rotation.z = out;
+  };
   const rideBoard = (cave, dt, riding, moved) => {
     const parts = cave.parts, board = parts.board, ride = board.ride, h = cave.traits.height, was = cave.skate || 0;
     const on = cave.skate = riding ? Math.min(1, was + dt / SKATE_ON) : Math.max(0, was - dt / SKATE_OFF);
@@ -1067,18 +1078,9 @@
     setVec(board.position, lerp(rest.x, 0, e), lerp(rest.y, ride.under - cave.baseY, e), lerp(rest.z, 0, e) - Math.sin(Math.PI * e) * 0.3 * h);
     setVec(board.rotation, -Math.PI / 2 * e, carve * 0.6, rest.turn * (1 - e));
     if (parts.boardWheels) for (let i = 0; i < parts.boardWheels.length; i++) parts.boardWheels[i].rotation.x = (parts.boardWheels[i].rotation.x + moved / ride.wheel * (on > 0.5 ? 1 : 0)) % TAU;
-    for (const [leg, side] of [[parts.legL, 1], [parts.legR, -1]]) {
-      if (leg.skateX === undefined) leg.skateX = leg.position.x;
-      leg.rotation.x = lerp(leg.rotation.x, 0, e);
-      leg.rotation.z = side * SKATE_STANCE * e;
-      leg.position.x = leg.skateX + side * SKATE_APART * h * e;
-    }
+    skateLeg(parts.legL, 1, e, h); skateLeg(parts.legR, -1, e, h);
     // His arms are out for balance, the one that leads a little more.
-    for (const [arm, side] of [[parts.armL, 1], [parts.armR, -1]]) {
-      if (arm.quaternion) continue;
-      arm.rotation.x = lerp(arm.rotation.x, -0.12, e);
-      arm.rotation.z = side * (side > 0 ? 0.5 : 0.32) * e;
-    }
+    skateArm(parts.armL, 0.5 * e, e); skateArm(parts.armR, -0.32 * e, e);
   };
   // A shield worn on the left forearm (`parts.shield`) goes onto the back while the weapon is slung there: over the
   // weapon, flat to the back and facing behind, its middle on the middle of the back. With the weapon back in the
@@ -6504,7 +6506,7 @@
         && !w.reloading && !w.reloadHandoff && !w.swapTime && !w.burstRemaining && !w.recoil
         && !w.meleeTime && !w.bashTime && !cave.shoulder.attempted && Math.abs(cave.shoulder.yaw) < 1e-5
         // A modelled body planting its axe moves every frame until it rests on it.
-        && !(w.stick < 1 && w.axeIdle > 0);
+        && !(cave.modelled && w.stick < 1 && w.axeIdle > 0);
       const interval = quiet && ctx.animationInterval ? ctx.animationInterval(cave) : 0;
       const changed = a.state !== cave.state || a.kind !== cave.act.kind || a.bed !== bed.mode;
       a.pending += dt;
