@@ -20,11 +20,24 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
           package-manager-cache: false
+      - name: Refresh the deployment snapshot for a pinned account rename
+        if: github.event_name == 'pull_request'
+        run: node scripts/account-rename-snapshot.mjs
+        env:
+          CHARACTER_SNAPSHOT_BASE: ${{ github.event.pull_request.base.sha }}
       - name: Run the unit lane
         run: npm run test:unit
-      - name: Check shared Cloud Hopper replay publication and playback
-        run: node --test worker/test/cloud-hopper-replays.test.mjs worker/test/highscores.test.mjs
+      # The Worker's whole suite, as the Cloudflare deploys run it, so a break shows on the pull request rather than at
+      # deploy. Its checks import what build:site writes (the cast and Tess's fact sheet, worker/src/*.gen.json) and the
+      # Worker's own locked dependencies (the Anthropic SDK).
+      - name: Build and stage site
+        run: npm run build:site
+      - name: Install Worker dependencies
+        run: npm ci --prefix worker --omit=dev
+      - name: Worker checks
+        run: node --test "worker/test/*.test.mjs"

@@ -118,7 +118,7 @@
   // REEL holds where the sky hook reels the flight from (x0,y0,z0) and to (x1,y1,z1).
   const REEL = { x0: 0, y0: 0, z0: 0, x1: 0, y1: 0, z1: 0 };
   let orbited = false, spaceCalled = false, stagesDropped = 0, chuteCalled = false, warnAt = 0, flipAt = 0, leanHinted = false, result = null, failure = null, score = 0;
-  let stateTimer = 0, hintTimer = 0;
+  let stateTimer = 0;
   let scoreTicket = null, unwatchScores = null;
   const placed = [];
   const debris = [];
@@ -415,6 +415,7 @@
       rhud.notice(`Stage dropped with ${Math.round(left / full * 100)}% fuel still in it`, 2200);
     }
     audio.cues.stage();
+    BL.gamepad.rumble(0.7, 0.5, 220);
     const jx = bx + s.up[0] * d.height, jy = by + s.up[1] * d.height, jz = bz + s.up[2] * d.height;
     for (let i = 0; i < 10; i++) {
       const a = i / 10 * Math.PI * 2;
@@ -497,6 +498,7 @@
     }
     cam.shake = 1.4;
     audio.cues.boom();
+    BL.gamepad.rumble(1, 1, 400);
   };
   const splashAt = (x, y, z, size) => {
     for (let i = 0; i < 26 * size; i++) {
@@ -594,7 +596,6 @@
     hud.el.act.hidden = !COARSE;
     hud.setAct("Release!");
     hud.setSubtitle("Ooga Orbit · counting down");
-    window.clearTimeout(hintTimer);
     hud.hint("", 0);
     cam.warm = false;
     cam.offset = cam.tilt = 0;
@@ -635,6 +636,7 @@
       audio.cues.early();
     }
     audio.cues.clamp();
+    BL.gamepad.rumble(0.5, 0.6, 260);
     phase = "ascent";
     phaseT = 0;
     releasedAt = flightTime;
@@ -717,6 +719,7 @@
     rhud.center("HOME!", 1200);
     rhud.notice("Keep the shield down (hands off is fine) · Space pulls the chute at the CHUTE call", 4200);
     audio.cues.clamp();
+    BL.gamepad.rumble(0.5, 0.6, 260);
     fx.say(speaker, "Ooga go home!", 1.8);
     return true;
   };
@@ -790,10 +793,12 @@
     if (place === "sea") {
       splashAt(bx, by, bz, 1.4);
       audio.cues.splash();
+      BL.gamepad.rumble(0.4, 0.4, 180);
       rhud.center("SPLASHDOWN", 1800);
     } else {
       fx.burst(bx, by + 0.1, bz, 10, SPLASH_BITS, 1.4);
       audio.cues.thud();
+      BL.gamepad.rumble(0.8, 0.5, 200);
       rhud.center(place === "pad" ? "ON THE PAD!" : place === "land" ? "FAR LAND" : "LANDED", 1800);
       if (place === "pad") {
         // The 1500-point moment gets a party: confetti, the ticker, and the Agent's word.
@@ -1131,6 +1136,7 @@
       eva.drift = EVA.drift;
       eva.spin = Math.min(1.2, -into * 0.4);
       audio.cues.thud();
+      BL.gamepad.rumble(0.8, 0.5, 200);
       cam.shake = Math.max(cam.shake, 0.08);
       fx.sayAt(WALKER.x, WALKER.y + 0.9, WALKER.z, "bonk", 0.8);
     }
@@ -1167,6 +1173,7 @@
     cam.warm = false;
     hud.setAct("Home");
     audio.cues.clamp();
+    BL.gamepad.rumble(0.5, 0.6, 260);
     if (eva.measured) {
       eva.back = true;
       // The air left over is worth something: a quick walk pays more, and the flight log shows it.
@@ -1606,6 +1613,7 @@
         if (flight.ignite()) {
           rhud.notice("", 1);
           audio.cues.clamp();
+          BL.gamepad.rumble(0.5, 0.6, 260);
         }
       }
       simulate(dt);
@@ -1852,23 +1860,25 @@
     audio.unlock();
     quieted = false;
   };
+  const controlCopy = touch => touch ? "The button does each step · left stick steers"
+    : "Space does each step · G autopilot · V spacewalk\nW S push · A D steer";
   const onKey = (e) => {
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape")) {
       if (phase === "build") go(home);
       else toBuild();
     }
-    if (e.key === "Enter" && (phase === "build" || phase === "results")) launch();
-    if (e.key === "0") {
+    if (BL.controls.matches(e, "start") && (phase === "build" || phase === "results")) launch();
+    if (BL.controls.matches(e, "resetView")) {
       cam.offset = cam.tilt = 0;
       cam.buildYaw = -0.64;
       cam.buildPitch = 0.18;
       cam.buildZoom = 1;
     }
-    if ((e.key === "g" || e.key === "G") && !e.repeat) {
+    if (BL.controls.matches(e, "autopilot") && !e.repeat) {
       selection.assist = !selection.assist;
       hud.toast(selection.assist ? "Autopilot leans the climb (A D still steer)" : "Flying the climb by hand: follow the yellow line");
     }
-    if ((e.key === "v" || e.key === "V") && !e.repeat) startEva();
+    if (BL.controls.matches(e, "spacewalk") && !e.repeat) startEva();
     if (e.key === "b" || e.key === "B") {
       world.level = Math.min(pileMod.MAX_BANANAS, world.level + testBananas);
       hud.toast(`+${testBananas} test bananas`);
@@ -2015,9 +2025,7 @@
     for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
-    rhud.el.help.textContent = COARSE
-      ? "The button does each step · left stick steers"
-      : "Space does each step · G autopilot · V spacewalk\nW S push · A D steer";
+    rhud.el.help.textContent = controlCopy(COARSE);
     document.getElementById("orbit-help").textContent = COARSE ? "Tap a part to add it · hold and drag it onto the rocket" : "Tap or drag a part onto the rocket · drag a row off to remove it";
     if (COARSE) rhud.el.evaBtn.querySelector("small").textContent = "the button";
     cam.buildYaw = -0.64;
@@ -2028,7 +2036,6 @@
       for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
       fx.trimPool();
     }, 6e4);
-    hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Stack a rocket, then Launch!" : "Stack a rocket, then Launch! (Enter)"), 1200);
     Object.assign(orbitScene, {
       root, camera, input,
       debug: {
@@ -2103,7 +2110,6 @@
   const leave = () => {
     unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
-    window.clearTimeout(hintTimer);
     window.removeEventListener("pointerdown", onGesture);
     window.removeEventListener("keydown", onGesture);
     audio.dispose();
@@ -2141,12 +2147,31 @@
     return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), phase, smoke: smoke.count, debris: debris.length };
   };
   const orbitScene = BL.deferred.scene("orbit", {
-    id: "orbit", renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
+    id: "orbit", padContext: "orbit", renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
     enter, update, overlay, onDonation, onKey, onLootCleared, leave, stats, liveGeometry,
     get inMotion() {
       return (phase !== "build" && phase !== "results") || fx.inMotion || smoke.count > 0;
     }
   });
   BL.scenes = BL.scenes || {};
+  orbitScene.controlsHelp = touch => {
+    const H = BL.controlsHelp, rows = [];
+    if (phase === "build") rows.push(H.row([], "Add a part · drag it onto the rocket or drag a row off to remove it", "Tap / drag"));
+    else if (touch) rows.push(...H.fromCopy(phase === "eva" ? "Left stick flies where you look · right stick down and up · drag to look · action button at the rock" : controlCopy(true), true));
+    else {
+      rows.push(H.movement(phase === "eva" ? "Fly where you look" : "Forward/back pushes · left/right steers"));
+      if (phase === "eva") rows.push(H.row(BL.controls.keysFor(...(COARSE ? ["pitchDown", "pitchUp"] : ["yawLeft", "yawRight"])), "Down / up"));
+      else {
+        rows.push(H.row(BL.controls.keysFor("yawLeft", "yawRight"), "Turn"), H.row(BL.controls.shortcutKeys("autopilot"), "Toggle climb autopilot"));
+        if (phase === "orbit") rows.push(H.row(BL.controls.shortcutKeys("spacewalk"), "Start spacewalk"));
+      }
+      rows.push(H.row([" "], phase === "eva" ? "Use space rock / return to pod" : "Next flight step / stage"));
+    }
+    if (phase === "build" || phase === "results") rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("start"), "Launch", touch ? "Launch button" : ""));
+    if (!touch) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
+    if (touch) rows.push(H.row([], "Return to builder", "Build button"));
+    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), touch ? "Leave Ooga Orbit" : phase === "build" ? "Leave" : "Return to builder", touch ? "Back button" : ""));
+    return { title: "Ooga Orbit", rows };
+  };
   BL.scenes.orbit = orbitScene;
 })();

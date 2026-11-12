@@ -17,9 +17,9 @@ spots, then, once the forest is full, onto the chamber floor under the lake,
 taken in one fixed order (the Nth overflow sleeper takes the Nth spot) and
 searched once a page only as far as sleepers need them. The search uses the
 rainforest's original scenery transforms, so passing players and shaking trees
-cannot change the cached order. Each visit keeps its own bed reservations. A signed-in visitor
-arrives awake beside the pile regardless of activity, without changing their
-contribution timestamps.
+cannot change the cached order. Each visit keeps its own bed reservations. A visitor
+arrives awake where they last stood in this browser, or round the pile on a first
+visit, regardless of activity and without changing their contribution timestamps.
 
 Roster activity labels use yellow **clankin**, orange **chillin**, and gray **sleepin**.
 A separate dot before the name is green when `cave.humanControlled` is true and gray
@@ -111,7 +111,7 @@ Malformed, future, repeated, and older timestamps do not replace newer activity.
 allocation-free work-route query; pass the canonical lowercase repository key.
 `stateFor(contributor)` and `ageLabel(contributor)` use the newest timestamp across
 projects. The roster orders characters from newest to oldest activity and displays
-minute-level ages for the first hour. `subscribe(callback)` reports accepted activity
+minute-level ages for the first hour. Online presence never changes that order. `subscribe(callback)` reports accepted activity
 batches and returns an unsubscribe function. These updates supplement the existing
 minute status refresh, which advances every visible age and lets working status expire
 without receiving a new event.

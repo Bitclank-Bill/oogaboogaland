@@ -155,6 +155,10 @@
   // contributed to. Without that field, org-wide last_seen_at lands on the
   // lab's key as before; either way stateFor (max across repos) gives the
   // same org-wide wake/sleep state.
+  const snapshotOwner = (login) => {
+    const character = BL.characters.ownedBy(login);
+    return character && byName.get(character.handle.toLowerCase());
+  };
   const applySnapshot = (snapshots, at = Date.now()) => {
     const rows = [];
     let sourceChanged = false;
@@ -176,7 +180,7 @@
       // per-repository rows are used separately to route working characters.
       if (Array.isArray(snapshot.contributors)) for (const contributor of snapshot.contributors) {
         if (!contributor || typeof contributor.login !== "string" || typeof contributor.last_seen_at !== "string" || !ISO_TIME.test(contributor.last_seen_at)) continue;
-        const stamp = Date.parse(contributor.last_seen_at), entry = byName.get(contributor.login.toLowerCase());
+        const stamp = Date.parse(contributor.last_seen_at), entry = snapshotOwner(contributor.login);
         if (entry && Number.isFinite(stamp) && stamp > 0 && stamp <= at && recordContribution(entry, stamp)) sourceChanged = true;
       }
       const perRepo = version === 3 && Array.isArray(snapshot.repos)
@@ -196,8 +200,8 @@
       for (const contributor of list) {
         if (!contributor || typeof contributor.login !== "string" || typeof contributor.last_seen_at !== "string" || !ISO_TIME.test(contributor.last_seen_at)) continue;
         const lastCommitAt = Date.parse(contributor.last_seen_at);
-        const entry = byName.get(contributor.login.toLowerCase());
-        if (entry && Number.isFinite(lastCommitAt) && lastCommitAt > 0 && lastCommitAt <= at) accepted.push({ entry, name: contributor.login, lastCommitAt, repo });
+        const entry = snapshotOwner(contributor.login);
+        if (entry && Number.isFinite(lastCommitAt) && lastCommitAt > 0 && lastCommitAt <= at) accepted.push({ entry, name: entry.name, lastCommitAt, repo });
       }
       // The first authoritative snapshot replaces the bundled historical fallback,
       // even when the fallback happened to be later. Subsequent snapshots still
@@ -237,7 +241,6 @@
   const voiceFor = (name) => BL.characters.get(name)?.voice || null;
   const SKINS = ["#c98a5b", "#a9744c", "#8a5a3a", "#d9a06b", "#b58057"];
   const HAIRS = ["#2b1b10", "#4a2c14", "#151312", "#5c4425", "#7a2e12"];
-  const HAIRS_SLIM = ["#ece5d3", "#e0dac6", "#f2eee2", "#b9dcaa", "#a3d19a"];
   const FURS = ["#d98a2e", "#cc7f28", "#c98936", "#e09a40", "#c27a24", "#d4913a"];
   // A character's look overrides the hashed skin, hair and fur and carries its
   // flags into the traits; its dress hooks go to models.buildCaveman.
@@ -247,7 +250,8 @@
     const slim = look.build === "slim";
     const rand = mulberry32(fnv1a(name));
     const skin = SKINS[Math.floor(rand() * SKINS.length)];
-    const hashedHair = (slim ? HAIRS_SLIM : HAIRS)[Math.floor(rand() * HAIRS.length)];
+    // Either build's hashed hair is one of the same browns.
+    const hashedHair = HAIRS[Math.floor(rand() * HAIRS.length)];
     const traits = {
       ...look,
       name,
