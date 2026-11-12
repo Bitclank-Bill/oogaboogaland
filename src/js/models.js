@@ -958,9 +958,9 @@
   // Resting club angles: x tilts the head forward, z rolls it; carry is the working hang.
   const CLUB_REST = { x: 0.95, z: 0 };
   // ---- The refined body ----------------------------------------------------------------------------------------------
-  // The modelled look (hero-body.js), in review behind ?oogastyle=R: "R" with the query, "" without. Character files
-  // read it too, for what they change under it.
-  const STYLE = (() => { try { return new URLSearchParams(location.search).get("oogastyle") === "R" ? "R" : ""; } catch { return ""; } })();
+  // The modelled look (hero-body.js) is every Ooga's: "R". ?oogastyle=0 builds the voxel bodies it replaced instead
+  // (""), to compare the two. Character files read it too, for what they change under it.
+  const STYLE = (() => { try { return new URLSearchParams(location.search).get("oogastyle") === "0" ? "" : "R"; } catch { return "R"; } })();
   // Every Ooga is authored on the sixteenths grid of `buildCaveman` (a character file's `u`) and drawn at FINE times that
   // detail. Once every hook has run, each authored part is drawn again on the fine grid: the head is the same head with
   // every cell split FINE ways each way, rounded behind its face, whose cells all stay, so no face changes; the torso
@@ -1973,9 +1973,9 @@
       parts.armR.position.y += rise;
       parts.armL.position.y += rise;
       const previousHead = headOpen;
-      // The modelled look (?oogastyle=R): a body modelled from scratch (see hero-body.js) stands in for the refined one: a
+      // The modelled look: a body modelled from scratch (see hero-body.js) stands in for the refined one: a
       // character's own (`dress.model`), or the regular or slim build wearing what its authored blocks wore. Its head
-      // stays the refined blocks unless it models its own.
+      // stays its authored blocks unless it models its own.
       if (STYLE === "R" && !dress.model) rewear = (colours) => BL.heroBody.wear(k, { ...authored, palette: colours, P, loin: k.loin, strap: !traits.slim });
       if (STYLE === "R" && dress.model) wearing = () => BL.heroBody.wear(k, { ...authored, palette, P, loin: k.loin, strap: !traits.slim });
       const model = STYLE !== "R" ? null : dress.model ? dress.model(k, wearing) : worn = rewear(palette);
@@ -2030,11 +2030,12 @@
         // forearm that already leans further than that at rest stays there, and the club leans less to stay
         // square to it, so its butt does not come out of the side of the fist.
         {
-          const flex = Math.max(model.elbow.rest, Math.min(1.5, Math.PI / 2 - clubRest.x));
+          // A rest already turned a quarter about the haft (its `y`) carries its lean as z.
+          const lean = clubRest.y ? clubRest.z : clubRest.x, flex = Math.max(model.elbow.rest, Math.min(1.5, Math.PI / 2 - lean));
           parts.forearmR.rotation.x = -flex;
-          parts.club.rotation.x = Math.min(clubRest.x, Math.PI / 2 - flex);
+          parts.club.rotation.x = Math.min(lean, Math.PI / 2 - flex);
           // An axe, or any stick held as one, is turned a quarter about its haft: its head ahead, never across.
-          if (traits.stoneAxe) { parts.club.rotation.z = parts.club.rotation.x; parts.club.rotation.x = 0; parts.club.rotation.y = Math.PI / 2; }
+          if (traits.stoneAxe || clubRest.y) { parts.club.rotation.z = parts.club.rotation.x; parts.club.rotation.x = 0; parts.club.rotation.y = Math.PI / 2; }
           parts.club.position.x = 0;
           parts.club.position.y = model.elbow.y - model.elbow.length * Math.cos(flex);
           parts.club.position.z = model.elbow.z + model.elbow.length * Math.sin(flex);
@@ -2057,7 +2058,14 @@
           facePending = () => face;
         }
       }
-      if (!model || !model.headOpen) {
+      if (model && !model.headOpen) {
+        // A modelled body that keeps its character's block head keeps it as it was authored, in blocks a unit across
+        // (as w-s-bitcoin's apple is), not in the refined body's fine cells. Its face button is the authored one too,
+        // whose bake the second colourway's twin is made from.
+        const face = portraitHead, bake = bakeOf.get(face);
+        facePending = () => { if (bake) bakes.push(bake); return face; };
+      }
+      if (!model) {
       headOpen = head(headOpen, "head");
       headClosed = head(headClosed, "closed");
       const authoredPortrait = portraitHead;

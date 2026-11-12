@@ -55,7 +55,7 @@
     cave.weapon.bashOffset = 0;
   };
   const AXE_STICK_DELAY = 1, AXE_STICK_BLEND = 0.3, AXE_STICK_ARM = -1.5;
-  // The modelled look (?oogastyle=R): a modelled body (models' `modelled`) holds its axe square to its forearm at every
+  // The modelled look: a modelled body (models' `modelled`) holds its axe square to its forearm at every
   // moment, so the two move as one, and plants it as a resting stick once still: the upper arm a little forward of
   // the shoulder (STICK_RAISE) and the elbow bent until the forearm points straight ahead, the haft upright through
   // the fist with its butt on the ground. Its weapon's `stick` is how far through that move it is: planted in
@@ -129,6 +129,8 @@
     models.box({ w: 0.12, h: 0.035, d: 0.045, color: "#f2b83b", emissive: 0.6, offset: { x: 0.085, y: 0.035 } })
   );
   const BODY_PARTS = ["torso", "head", "legR", "legL", "armR", "armL"];
+  // A modelled arm is the upper arm alone: its forearm and hand are nodes of their own under it.
+  const MODELLED_ARMS = ["forearmR", "forearmL", "fingersR", "fingersL"], MODELLED_BODY_PARTS = [...BODY_PARTS, "forearmL", "fingersL"];
   const SWAG_ANCHORS = ["hat", "face"];
   const FAN_STANDOFF = 1.1;
   const FAN_ARC = 2.2;
@@ -828,7 +830,9 @@
   // reach for a held weapon. Its standing envelope is stable through a walk.
   const bodyRadiusOf = (cave) => {
     let radius2 = 0;
-    for (const key of BODY_PARTS) {
+    // A modelled body's empty left forearm and hand hang as the body's own does, and count; the right forearm is bent
+    // to what it holds, which is the weapon's reach.
+    for (const key of cave.modelled ? MODELLED_BODY_PARTS : BODY_PARTS) {
       const part = cave.parts[key], verts = part.geometry.verts, m = part.world;
       for (let i = 0; i < verts.length; i += 3) {
         const x = m[0] * verts[i] + m[4] * verts[i + 1] + m[8] * verts[i + 2] + m[12] - cave.root.position.x;
@@ -945,7 +949,7 @@
     if (controlled) return cave.twirlUntil > elapsed && !cave.weapon.aiming && cave.weapon.meleeTime <= 0;
     return cave.meleeOut && cave.work.phase !== "station" && cave.work.phase !== "shoot" && !cave.build;
   };
-  // The modelled look (?oogastyle=R): a modelled arm reaches for a point. The rotation whose rows are given, as a quaternion.
+  // The modelled look: a modelled arm reaches for a point. The rotation whose rows are given, as a quaternion.
   const basisQuat = (q, m00, m01, m02, m10, m11, m12, m20, m21, m22) => {
     const t = m00 + m11 + m22;
     if (t > 0) { const s = Math.sqrt(t + 1) * 2; q[3] = s / 4; q[0] = (m21 - m12) / s; q[1] = (m02 - m20) / s; q[2] = (m10 - m01) / s; }
@@ -1511,11 +1515,12 @@
         // A modelled arm bends at the elbow until the forearm is square to what the hand carries, and the grip goes
         // with the hand. A forearm that leans further than that at rest stays there, and what it carries leans
         // less to stay square to the fist.
-        const elbow = cave.elbow, flex = clamp(Math.PI / 2 - cave.clubCarry.x, elbow.rest, 1.5);
+        // A carry already turned a quarter about the haft (its `y`) holds its lean as z.
+        const elbow = cave.elbow, carry = cave.clubCarry, lean = carry.y ? carry.z : carry.x, flex = clamp(Math.PI / 2 - lean, elbow.rest, 1.5);
         parts.forearmR.rotation.x = -flex;
-        parts.club.rotation.x = Math.min(cave.clubCarry.x, Math.PI / 2 - flex);
+        parts.club.rotation.x = Math.min(lean, Math.PI / 2 - flex);
         // An axe, or any stick held as one, keeps its head ahead in the hand, never across.
-        if (cave.traits.stoneAxe) setVec(parts.club.rotation, 0, Math.PI / 2, parts.club.rotation.x);
+        if (cave.traits.stoneAxe || carry.y) setVec(parts.club.rotation, 0, Math.PI / 2, parts.club.rotation.x);
         setVec(parts.club.position, 0, elbow.y - elbow.length * Math.cos(flex), elbow.z + elbow.length * Math.sin(flex));
       }
     }
@@ -2296,6 +2301,10 @@
         // Register its actual surfaces, sharing the head's damage region.
         if (key === "head") registerHead(cave.parts.head, owner);
         else { cave.hitNodes.push(cave.parts[key]); input.add(cave.parts[key], owner); }
+      }
+      if (cave.modelled) {
+        const owner = { kind: "caveman", cave, priority: 1, hitRegion: "body" };
+        for (const key of MODELLED_ARMS) { cave.hitNodes.push(cave.parts[key]); input.add(cave.parts[key], owner); }
       }
       return cave;
     };
@@ -4401,6 +4410,7 @@
         }
         const fingers = part === cave.parts.armR ? cave.parts.fingersR : part === cave.parts.armL ? cave.parts.fingersL : null;
         if (fingers) { fingers.ember = part.ember; fingers.scorch = part.scorch; }
+        if (fingers && cave.modelled) { const fore = fingers.parent; fore.ember = part.ember; fore.scorch = part.scorch; }
         c.soot = Math.max(c.soot, c.scorch[i]);
       }
       c.smokeTime = Math.max(0, c.smokeTime - dt);
@@ -6519,6 +6529,7 @@
       }
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (let i = 0; i < BODY_PARTS.length; i++) parts[BODY_PARTS[i]].highlight = cave.highlight;
+      if (cave.modelled) for (let i = 0; i < MODELLED_ARMS.length; i++) parts[MODELLED_ARMS[i]].highlight = cave.highlight;
       // A carved head breathes its candlelight from dim to bright
       if (cave.animation.due && cave.traits.pumpkin) parts.head.glow = 0.62 + 0.38 * Math.sin(elapsed * 2.1 + cave.phase);
       if (cave.traits.nunchaku && (cave.meleeSwap -= dt) <= 0) {
@@ -8025,6 +8036,7 @@
           }
         }
         cave.parts.fingersR.ember = cave.parts.fingersR.scorch = cave.parts.fingersL.ember = cave.parts.fingersL.scorch = 0;
+        if (cave.modelled) cave.parts.forearmR.ember = cave.parts.forearmR.scorch = cave.parts.forearmL.ember = cave.parts.forearmL.scorch = 0;
         camp.panic.memory.fill(0); camp.panic.gorillaMemory.fill(0); camp.panic.remembered = false;
         if (camp.panic.active) finishPanic(cave);
         camp.panic.threat = null;
