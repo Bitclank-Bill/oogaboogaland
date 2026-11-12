@@ -124,11 +124,8 @@
       torso(k, v) {
         const dye = DYE.map((c) => k.color(c)), skin = k.skinJ, cord = k.color("#2a2018"), coin = k.color("#f7931a");
         v.fill(1, 7, 3, 7, 1, 4, (x, y) => dye[(Math.round(Math.hypot(x - 4, y - 5) * 1.3) + (k.rand() < 0.15 ? 1 : 0)) % dye.length]);
-        // Bare at the points of the shoulders. Under the modelled look the shirt goes on over them.
-        if (BL.models.STYLE !== "R") {
-          v.fill(1, 1, 7, 7, 1, 4, skin);
-          v.fill(7, 7, 7, 7, 1, 4, skin);
-        }
+        v.fill(1, 1, 7, 7, 1, 4, skin);
+        v.fill(7, 7, 7, 7, 1, 4, skin);
         v.fill(3, 5, 6, 7, 4, 4, skin);
         v.set(4, 5, 4, skin);
         v.set(3, 6, 4, cord); v.set(5, 6, 4, cord); v.set(4, 5, 4, cord);
