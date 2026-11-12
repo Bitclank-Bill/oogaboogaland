@@ -83,6 +83,19 @@ test("release priority yields before work and resumes only deferred checks for c
     assert.equal(await f.priority.resume(), 1);
     assert.deepEqual(f.writes, ["actions/jobs/100/rerun"]);
     assert.equal(await f.priority.resume(), 0);
+    // An imitated gate that fails on every attempt cannot consume runners on
+    // every scheduled recovery pass. Manual attempts count toward the cap too.
+    for (let attempt = 2; attempt <= 4; attempt++) {
+      f.runs[0].status = "completed";
+      assert.equal(f.runs[0].run_attempt, attempt);
+      assert.equal(await f.priority.resume(), attempt < 4 ? 1 : 0);
+    }
+    assert.equal(f.writes.length, 3);
+    assert.equal(await f.priority.resume(), 0, "later recovery passes preserve the exhausted limit");
+    for (const attempt of [undefined, 0, -1, 1.5]) {
+      f.runs[0].run_attempt = attempt;
+      assert.equal(await f.priority.resume(), 0, "invalid attempt metadata cannot reset the limit");
+    }
   });
   await t.test("stale heads, drafts, closed PRs and newer runs never resurrect old checks", async () => {
     for (const condition of ["head", "draft", "closed", "newer"]) {

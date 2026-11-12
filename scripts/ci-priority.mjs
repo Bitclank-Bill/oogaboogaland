@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 export const DEFER_STEP = "Yield to release work";
 const ACTIVE = ["in_progress", "queued", "pending", "waiting", "requested"];
 const WORKFLOWS = ["tests.yml", "character-bundles.yml"];
+const MAX_ATTEMPTS = 4; // Initial run plus at most three automatic retries.
 const pathOf = (name) => `.github/workflows/${name}`;
 
 export const isRelease = (run) => {
@@ -41,6 +42,9 @@ export const createPriority = (api, now = () => Date.now()) => {
       const runs = await list(`actions/workflows/${workflow}/runs?status=failure&created=${encodeURIComponent(">=" + since)}`, "workflow_runs");
       for (const run of runs) {
         if (run.path !== pathOf(workflow) || run.status !== "completed" || run.conclusion !== "failure") continue;
+        // Step names are not proof that a PR really yielded. Bound retries even
+        // when submitted workflow code imitates the gate and fails forever.
+        if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1 || run.run_attempt >= MAX_ATTEMPTS) continue;
         const prEvent = ["pull_request", "pull_request_target"].includes(run.event);
         const pr = prEvent && prs.find((row) => !row.draft && row.head.sha === run.head_sha && row.head.ref === run.head_branch);
         // Unit reruns must belong to a still-open PR at its current revision.

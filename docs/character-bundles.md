@@ -138,9 +138,13 @@ closed-source and merged-override recovery stays with the existing bundle sweep.
 Recovery reads GitHub metadata and one script from `rock`, never PR code, logs,
 artifacts or caches. Its only mutation is the Actions job-rerun endpoint. Scans
 are bounded at 1,000 rows per query and 30 days of failures (GitHub's rerun window),
-with at most 20 resumed jobs per pass; API failures and overflow require retry or
-manual investigation. A missed completion event or a job yielding just after it
-is recovered by the next scheduled pass. Deferred runs can appear red until then.
+with at most 20 resumed jobs per pass and four total attempts per run (the initial
+run plus at most three automatic retries; manual reruns count toward this cap).
+After that, inspect the run and rerun it manually once release work is finished.
+This bounds runner use even if a PR imitates the yield step and always fails it.
+API failures and overflow require retry or manual investigation. A missed
+completion event or a job yielding just after it is recovered by the next
+scheduled pass. Deferred runs can appear red until then.
 
 This is cooperative priority, not GitHub runner preemption: already-queued writer
 jobs can briefly start and yield before the artifact job gets its turn. GitHub's
