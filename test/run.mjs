@@ -27422,6 +27422,76 @@ const roomSocketChecks = async BL => {
   const heard = ws.readyState === 1 && f.sockets.length === 1;
   tick();
   record("room socket: pings that go unanswered end a half-open socket, and any answer resets the count", heard && ws.readyState === 3 && f.net.state.room === "connecting" && timers.length > 0, JSON.stringify({ ready: ws.readyState, room: f.net.state.room }));
+  // Regression #624: the old path discarded close/leave reasons, so a brief removal could not be classified.
+  const capture = netFixture(BL, reply, 0);
+  const D = capture.net;
+  const empty = D.connectionDiagnostics();
+  await D.start();
+  let socket = capture.sockets[0];
+  socket.onopen();
+  const deliver = value => socket.onmessage({ data: JSON.stringify(value) });
+  const player = { id: 72, login: "private-login", display: "private-display", body: "YellowBrokeIt", zone: "outside", x: 1, y: 2, z: 3, voice: true, muted: false };
+  const welcome = () => deliver({ t: "welcome", you: { id: 71 }, players: [player], now: Date.now(), features: [], connectionToken: "private-token" });
+  welcome();
+  const beforeCapture = [capture.sent.length, capture.calls, capture.timers.length, capture.intervals.length];
+  capture.voice.stats = { enabled: true, muted: false, publishing: true };
+  D.connectionDiagnostics(true);
+  const noWork = beforeCapture.join() === [capture.sent.length, capture.calls, capture.timers.length, capture.intervals.length].join();
+  capture.advance(20); socket.onmessage({ data: "pong" }); capture.advance(30);
+  const timing = D.connectionDiagnostics();
+  // A peer departure does not mean this observer lost the room.
+  deliver({ t: "leave", id: 72, reason: "closed" });
+  const left = D.connectionDiagnostics(), departure = left.events.at(-1);
+  const peerLeft = departure.kind === "peer-leave" && departure.id === 72 && departure.reason === "closed" && left.room === "live" && !D.remotes.has(72);
+  deliver({ t: "join", p: player });
+  deliver({ t: "body", id: 72, name: null });
+  deliver({ t: "zone", id: 72, name: "factory.hall" });
+  deliver({ t: "vstate", id: 72, voice: true, muted: true });
+  const presence = D.connectionDiagnostics();
+  const changes = ["peer-join", "peer-body", "peer-zone", "peer-voice"].every(kind => presence.events.some(e => e.kind === kind));
+  const beforeCopy = D.connectionDiagnostics();
+  beforeCopy.events[0].kind = "tampered"; beforeCopy.peers[0].zone = "tampered"; beforeCopy.voice.enabled = false;
+  const copied = D.connectionDiagnostics();
+  const detached = copied.events[0].kind === "capture" && copied.peers[0].zone === "factory.hall" && copied.voice.enabled;
+  // An abnormal local close clears all peers and schedules the ordinary retry, retaining speaker intent.
+  socket.onerror();
+  socket.onclose({ code: 1006, wasClean: false, reason: "private-close-text" });
+  const closed = D.connectionDiagnostics(), closeEvent = closed.events.find(e => e.kind === "socket-close");
+  const localClosed = closed.room === "connecting" && closed.peers.length === 0 && closeEvent.code === 1006 && !closeEvent.clean
+    && closeEvent.remotes === 1 && closeEvent.voiceEnabled && !closeEvent.voiceMuted
+    && closed.events.some(e => e.kind === "socket-error") && closed.events.some(e => e.kind === "retry" && e.wait >= 375 && e.wait <= 625);
+  capture.timers.at(-1).fn(); socket = capture.sockets.at(-1); socket.onopen(); welcome();
+  const restored = D.connectionDiagnostics();
+  const rejoined = restored.room === "live" && restored.peers.length === 1 && restored.events.some(e => e.kind === "connect") && restored.events.at(-1).kind === "welcome";
+  const beat = capture.intervals.at(-1).fn;
+  beat(); beat(); beat(); beat();
+  const timeout = D.connectionDiagnostics().events.find(e => e.kind === "heartbeat-timeout");
+  const timedOut = timeout?.unanswered === 3 && D.state.room === "connecting";
+  capture.timers.at(-1).fn(); socket = capture.sockets.at(-1); socket.onopen(); welcome();
+  capture.document.hidden = true; capture.events.get("visibilitychange")();
+  const hiddenEvent = D.connectionDiagnostics().events.at(-1);
+  capture.document.hidden = false; capture.events.get("visibilitychange")();
+  deliver({ t: "leave", id: 72, reason: "private-leave-text" }); deliver({ t: "join", p: player });
+  deliver({ t: "kick", reason: "private-kick-text" });
+  const safe = JSON.stringify(D.connectionDiagnostics());
+  record("room diagnostics: opt-in capture adds no traffic/timers and snapshots are detached", !empty.enabled && !empty.events.length && noWork && detached);
+  record("room diagnostics: peer departure, body/zone/voice changes and local reconnect remain distinguishable",
+    peerLeft && changes && localClosed && rejoined && hiddenEvent.kind === "visibility" && hiddenEvent.hidden, JSON.stringify({peerLeft,changes,localClosed,rejoined}));
+  record("room diagnostics: last-message/pong ages and heartbeat timeout retain evidence without payloads",
+    timing.messages === 1 && timing.lastMessageAge === 30 && timing.lastPongAge === 30 && timedOut
+      && !["private-login", "private-display", "private-token", "private-close-text", "private-leave-text", "private-kick-text"].some(value => safe.includes(value)));
+  // Re-enabling an active capture preserves it; ring wrap preserves order and disabling clears it.
+  const ring = netFixture(BL, reply, 0); await ring.net.start(); ring.sockets[0].onopen();
+  ring.net.connectionDiagnostics(true);
+  for (let i = 0; i < 90; i++) { ring.advance(1); ring.document.hidden = false; ring.events.get("visibilitychange")(); }
+  const bounded = ring.net.connectionDiagnostics(true);
+  const ordered = bounded.events.every((e, i) => e.kind === "visibility" && (i === 0 || e.elapsed > bounded.events[i - 1].elapsed));
+  ring.net.connectionDiagnostics(false); ring.events.get("visibilitychange")();
+  const disabled = ring.net.connectionDiagnostics();
+  ring.net.connectionDiagnostics(true); const fresh = ring.net.connectionDiagnostics(); ring.net.dispose();
+  record("room diagnostics: history is bounded, ordered, reset on disable and released on disposal",
+    bounded.events.length === 64 && ordered && !disabled.enabled && !disabled.events.length && fresh.events.length === 1 && !ring.net.connectionDiagnostics().enabled);
+  capture.net.dispose();
   // Fires the timers a hidden tab has armed, in order, as the clock reaches each.
   const run = (f, marks) => { for (let i = 0; i < 12; i++) { const t = f.timers.find(t => !t.ran && marks.includes(t.ms)); if (!t) break; t.ran = true; t.fn(); } };
   const hidden = netFixture(BL, reply);

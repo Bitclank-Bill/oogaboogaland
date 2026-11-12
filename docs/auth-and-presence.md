@@ -303,3 +303,25 @@ cd worker
 npx wrangler d1 execute oogaboogaland --remote --command \
   "UPDATE players SET banned_at = unixepoch(), ban_reason = 'reason' WHERE login = 'someone'; DELETE FROM sessions WHERE player_id IN (SELECT id FROM players WHERE login = 'someone');"
 ```
+
+## Capturing a brief player dropout
+
+A remote Ooga disappearing and returning with an open microphone can still be a room reconnect. The client clears its remote roster on socket loss, then retries; an already enabled speaker keeps their microphone intent and mute state through voice restart. A fresh page's muted return is a different path. Late movement snapshots alone do not remove a remote Ooga.
+
+For a future play-test on a build containing the diagnostics, start a capture in each participant's browser console:
+
+```js
+BL.net.connectionDiagnostics(true)
+```
+
+After a blink, read `BL.net.connectionDiagnostics()` and save the returned object before reloading. Repeat reads are detached snapshots; calling `true` again preserves the active history. Stop and erase the capture with `BL.net.connectionDiagnostics(false)`. It also disappears on page disposal/reload. No reload is needed to enable it on a build that already contains the function.
+
+The capture is off by default. It keeps only the latest 64 lifecycle/presence events in memory, with UTC epoch milliseconds (`at`) and monotonic milliseconds since capture (`elapsed`). It adds no requests, timers, console output or persistent storage. Movement messages update only message count/age, not the history. Snapshots include numeric player IDs, body presence, zones, poses and voice flags; they omit names, chat, credentials, connection tokens, SDP and raw close/error text. Share only the evidence needed for the report.
+
+- `socket-close` records the browser's code and clean-close flag; `clear` and `retry` show the local roster reset and retry delay. `welcome` marks recovery. Code 1006 is an abnormal close, not attribution to Cloudflare or a particular network.
+- `peer-leave` records the room's allowlisted reason while this client's room may remain live. `peer-join` marks the peer returning. Peer body, zone and voice changes are separate events.
+- `heartbeat-timeout` captures the unanswered-ping count before cleanup. `lastMessageAge` and `lastPongAge` describe the current connection since capture/connection start; null means none was observed. The existing watchdog accepts any incoming message as liveness, not just pong.
+- `visibility` distinguishes background/foreground changes. The existing five-minute hidden-tab pause and warnings are unchanged.
+- If presence remains stable, inspect scene visibility, frame time and console errors. If only audio cuts out, also inspect `BL.voice.inspect()`, hearing range and microphone/receive state. This room capture does not measure WebRTC packet loss, render culling or network RTT.
+
+Record both clients' exact event time, deployed build, browser/OS and whether the avatar, Online Oogas entry, audio or all three disappeared. Correlate with deployment history and operator logs. Ordinary [Durable Object hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/) preserves connections, whereas [Cloudflare network updates](https://developers.cloudflare.com/network/websockets/) can terminate WebSockets. A captured reconnect identifies a recovery path; its underlying cause still needs evidence. Do not deploy or reload an active player's session merely to collect this information.
