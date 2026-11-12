@@ -441,7 +441,7 @@
       if (!people.sitPlayer(seat)) return false;
       // Watching: through the sitter's own eyes, turned to the screen (from behind, the sitter's head hides it). The
       // pilot enters first person along the view on screen, so the eye is first aimed at the TV from the seat.
-      const eye = avatar.root.position.y + avatar.headOffset, tx = L.TV.x, ty = L.TV.table + L.TV.h / 2, tz = L.TV.z + L.TV.d / 2;
+      const eye = avatar.root.position.y + avatar.headOffset, tx = L.TV.x + L.TV.screenX, ty = L.TV.table + L.TV.screenY, tz = L.TV.z + L.TV.d / 2;
       const dx = tx - seat.x, dy = ty - eye, dz = tz - seat.z;
       if (pilot.mode !== "first-person") {
         camera.position.x = seat.x; camera.position.y = eye; camera.position.z = seat.z;

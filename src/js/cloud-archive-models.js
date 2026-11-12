@@ -24,10 +24,11 @@
   const shelve = (count) => count <= DATA.shelf.capacity ? { books: count, overflow: 0 } : { books: DATA.shelf.capacity - 1, overflow: count - (DATA.shelf.capacity - 1) };
   const rackAt = (i) => ({ x: (i % 2 ? 1 : -1) * RACK.aisle, z: RACK.first - Math.floor(i / 2) * RACK.pitch, ry: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
   const rows = Math.ceil(DATA.days.length / 2);
-  // At the aisle's far end, past the last day: a small TV on a low table facing back up the aisle, and two leather
-  // armchairs in front of it turned in toward it. Each chair's `ry` is the way a sitter faces.
+  // At the aisle's far end, past the last day: a big 1950s console TV on thin legs facing back up the aisle, and two
+  // leather wingbacks in front of it turned in toward it. Each chair's `ry` is the way a sitter faces. The screen is
+  // 4:3, its middle `screenX` across and `screenY` up from the cabinet's bottom (`table`).
   const LOUNGE_Z = RACK.first - rows * RACK.pitch - 4;
-  const TV = { x: 0, z: LOUNGE_Z - 2.4, table: 0.62, w: 0.62, h: 0.5, d: 0.5, screenW: 0.46, screenH: 0.345 };
+  const TV = { x: 0, z: LOUNGE_Z - 2.6, table: 0.42, w: 1.1, h: 1.15, d: 0.85, screenW: 0.8, screenH: 0.6, screenX: 0, screenY: 0.75 };
   const CHAIR_AT = [-1, 1].map((side) => {
     const x = side * 1.25, z = LOUNGE_Z;
     return { x, z, ry: Math.atan2(TV.x - x, TV.z - z) };
@@ -45,7 +46,7 @@
     // Walkers stay on the floor within these bounds.
     bounds: { x0: -9, x1: 9, z0: LOUNGE_Z - 6, z1: 11 },
     // What stands in the lounge, as circles walkers keep out of.
-    solids: [{ x: TV.x, z: TV.z, r: 0.5 }, ...CHAIR_AT.map((c) => ({ x: c.x, z: c.z, r: 0.5 }))],
+    solids: [{ x: TV.x, z: TV.z, r: 0.75 }, ...CHAIR_AT.map((c) => ({ x: c.x, z: c.z, r: 0.5 }))],
     inShaft: (x, z, margin = 0) => x > SHAFT.x0 + margin && x < SHAFT.x1 - margin && z > SHAFT.z0 + margin && z < SHAFT.z1 - margin
   };
   const own = (build) => { const read = cached(build); return () => BL.models.withScope("cloudarchive", read); };
@@ -109,39 +110,97 @@
     const geo = BL.cloudArchiveEntry.stalkGeometry(SHAFT.depth + 2.4, STALK.r, 5, SHAFT.depth / (SHAFT.depth + 2.4));
     return moved(geo, 0, -SHAFT.depth, 0);
   });
-  // A deep leather armchair, its front to +z: rolled arms, a tall back, a button-tufted seat, four short legs.
-  const LEATHER = "#7a2a1f", DARK = "#5c1d15", LEG = "#2a1a12";
+  // A red leather wingback, its front to +z: a tall diamond-tufted back with wings, rolled arms ending in dark carved
+  // wooden posts, a deep seat cushion (its top at the interior's SEAT_Y) and four turned dark legs.
+  const LEATHER = "#a12a1d", DARK = "#6e1a12", WOOD = "#2b1a10";
   const chair = own(() => {
     const parts = [
-      box({ w: 0.86, h: 0.18, d: 0.8, color: LEATHER, offset: { y: 0.24 } }),
-      box({ w: 0.62, h: 0.12, d: 0.62, color: LEATHER, offset: { y: 0.39, z: 0.05 } }),
-      box({ w: 0.86, h: 0.78, d: 0.2, color: LEATHER, offset: { y: 0.66, z: -0.32 } }),
-      box({ w: 0.9, h: 0.1, d: 0.26, color: DARK, offset: { y: 1.07, z: -0.31 } })
+      box({ w: 0.96, h: 0.18, d: 0.86, color: LEATHER, offset: { y: 0.29 } }),
+      box({ w: 0.7, h: 0.13, d: 0.7, color: LEATHER, offset: { y: 0.435, z: 0.06 } }),
+      box({ w: 0.72, h: 0.05, d: 0.06, color: DARK, offset: { y: 0.45, z: 0.42 } }),
+      box({ w: 0.86, h: 1.02, d: 0.18, color: LEATHER, offset: { y: 0.88, z: -0.34 } }),
+      box({ w: 0.78, h: 0.08, d: 0.2, color: LEATHER, offset: { y: 1.43, z: -0.34 } }),
+      box({ w: 0.56, h: 0.06, d: 0.2, color: LEATHER, offset: { y: 1.5, z: -0.34 } })
     ];
     for (const sx of [-1, 1]) {
-      parts.push(box({ w: 0.14, h: 0.32, d: 0.8, color: LEATHER, offset: { x: sx * 0.38, y: 0.48 } }));
-      parts.push(box({ w: 0.18, h: 0.08, d: 0.82, color: DARK, offset: { x: sx * 0.38, y: 0.66 } }));
-      for (const sz of [-1, 1]) parts.push(box({ w: 0.07, h: 0.15, d: 0.07, color: LEG, offset: { x: sx * 0.36, y: 0.075, z: sz * 0.33 } }));
+      // A wing on each side of the back, narrowing at its top.
+      parts.push(box({ w: 0.12, h: 0.5, d: 0.36, color: LEATHER, offset: { x: sx * 0.43, y: 1.05, z: -0.17 } }));
+      parts.push(box({ w: 0.12, h: 0.16, d: 0.24, color: LEATHER, offset: { x: sx * 0.43, y: 1.36, z: -0.22 } }));
+      // The rolled arm and its dark carved post: a pillar topped by a small carved head.
+      parts.push(box({ w: 0.15, h: 0.3, d: 0.8, color: LEATHER, offset: { x: sx * 0.42, y: 0.53 } }));
+      parts.push(box({ w: 0.19, h: 0.09, d: 0.8, color: DARK, offset: { x: sx * 0.42, y: 0.72 } }));
+      parts.push(box({ w: 0.13, h: 0.46, d: 0.07, color: WOOD, offset: { x: sx * 0.42, y: 0.45, z: 0.42 } }));
+      parts.push(box({ w: 0.15, h: 0.13, d: 0.1, color: WOOD, offset: { x: sx * 0.42, y: 0.72, z: 0.43 } }));
+      parts.push(box({ w: 0.09, h: 0.06, d: 0.05, color: "#3d2616", offset: { x: sx * 0.42, y: 0.7, z: 0.49 } }));
+      for (const sz of [-1, 1]) {
+        const leg = BL.models.lathe({ profile: [[0, 0], [0.03, 0], [0.04, 0.05], [0.025, 0.1], [0.045, 0.16], [0.045, 0.2], [0, 0.2]], segments: 6, color: WOOD });
+        parts.push(moved(leg, sx * 0.4, 0, sz * 0.36));
+      }
     }
-    // Buttons on the back and seat.
-    for (let i = 0; i < 6; i++) parts.push(box({ w: 0.035, h: 0.035, d: 0.02, color: DARK, offset: { x: -0.24 + (i % 3) * 0.24, y: 0.55 + Math.floor(i / 3) * 0.24, z: -0.215 } }));
-    const geo = merge(...parts);
-    return geo;
+    // Diamond tufting on the back: rows of buttons, every other row shifted half a step.
+    for (let row = 0; row < 5; row++) {
+      const n = row % 2 ? 3 : 4, step = 0.17;
+      for (let i = 0; i < n; i++) parts.push(box({ w: 0.035, h: 0.035, d: 0.02, color: DARK, offset: { x: (i - (n - 1) / 2) * step, y: 0.6 + row * 0.16, z: -0.245 } }));
+    }
+    return merge(...parts);
   });
-  // The TV: a small boxy set with a wood case, dials and rabbit ears, on a low black table. Its screen is the
-  // interior's own picture node, `TV.screen*` wide, at the case's front.
+  // Covers a rectangle's four corners (centred cx, cy, w × h, facing +z at z) in stepped quarter circles of radius r,
+  // so the shape in front of them reads as rounded.
+  const roundCorners = (cx, cy, w, h, r, z, color, steps = 4) => {
+    const parts = [], t = r / steps;
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (let j = 0; j < steps; j++) {
+      const up = (j + 0.5) * t, across = r - Math.sqrt(r * r - (r - up) * (r - up));
+      if (across < 0.003) continue;
+      parts.push(box({ w: across, h: t, d: 0.01, color, offset: { x: cx + sx * (w / 2 - across / 2), y: cy + sy * (h / 2 - up), z } }));
+    }
+    return parts;
+  };
+  // The TV: a tall square 1950s console on four thin splayed legs, in dark bronze with brass trim. The screen sits high
+  // in a deep round-cornered bezel (the picture is the interior's own node, `TV.screen*` wide, its middle `screenY`
+  // over the stand); below it a brass badge, then a control strip: a round knob at each end and a rocker plate of
+  // three small knobs between.
   const tvSet = own(() => {
-    const T = TV, y = T.table;
-    return merge(
-      box({ w: 0.8, h: 0.04, d: 0.6, color: "#1c1c1f", offset: { y: y - 0.02 } }),
-      ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => box({ w: 0.04, h: y - 0.04, d: 0.04, color: "#1c1c1f", offset: { x: sx * 0.36, y: (y - 0.04) / 2, z: sz * 0.26 } }))),
-      box({ w: T.w, h: T.h, d: T.d, color: "#6b4a2e", offset: { y: y + T.h / 2 } }),
-      box({ w: T.screenW + 0.06, h: T.screenH + 0.06, d: 0.02, color: "#1a1a1a", offset: { x: -0.05, y: y + T.h / 2, z: T.d / 2 + 0.005 } }),
-      box({ w: 0.035, h: 0.035, d: 0.03, color: "#c9c2b0", offset: { x: 0.25, y: y + T.h / 2 + 0.1, z: T.d / 2 + 0.01 } }),
-      box({ w: 0.035, h: 0.035, d: 0.03, color: "#c9c2b0", offset: { x: 0.25, y: y + T.h / 2 - 0.02, z: T.d / 2 + 0.01 } }),
-      moved(BL.models.turnedZ(box({ w: 0.015, h: 0.42, d: 0.015, color: "#b8b8b8", offset: { y: 0.21 } }), 0.45), -0.06, y + T.h, 0),
-      moved(BL.models.turnedZ(box({ w: 0.015, h: 0.42, d: 0.015, color: "#b8b8b8", offset: { y: 0.21 } }), -0.45), 0.06, y + T.h, 0)
-    );
+    const T = TV, y = T.table, fz = T.d / 2, sx0 = T.screenX, sy = y + T.screenY, cy = y + 0.2;
+    const BODY = "#3a3828", TOP = "#46432f", BRASS = "#b89a4e", BEZEL = "#16150f", STRIP = "#24231a";
+    const knob = (r) => BL.models.turnedX(BL.models.lathe({ profile: [[0, -0.02], [r, -0.02], [r * 0.92, 0.03], [r * 0.55, 0.045], [0, 0.045]], segments: 12, color: (t) => t > 0.5 ? "#d8bd6a" : "#8a7a4a" }), -Math.PI / 2);
+    const ring = (r) => BL.models.turnedX(BL.models.lathe({ profile: [[r * 0.8, -0.01], [r, -0.01], [r, 0.015], [r * 0.8, 0.015]], segments: 12, color: BRASS }), -Math.PI / 2);
+    const parts = [
+      // The cabinet, a slightly paler lid, and a brass line round the front.
+      box({ w: T.w, h: T.h, d: T.d, color: BODY, offset: { y: y + T.h / 2 } }),
+      box({ w: T.w + 0.02, h: 0.03, d: T.d + 0.02, color: TOP, offset: { y: y + T.h - 0.015 } }),
+      box({ w: T.w - 0.06, h: 0.015, d: 0.01, color: BRASS, emissive: 0.08, offset: { y: y + T.h - 0.05, z: fz + 0.005 } }),
+      box({ w: T.w - 0.06, h: 0.015, d: 0.01, color: BRASS, emissive: 0.08, offset: { y: y + 0.03, z: fz + 0.005 } }),
+      box({ w: 0.015, h: T.h - 0.08, d: 0.01, color: BRASS, emissive: 0.08, offset: { x: -T.w / 2 + 0.03, y: y + T.h / 2 - 0.01, z: fz + 0.005 } }),
+      box({ w: 0.015, h: T.h - 0.08, d: 0.01, color: BRASS, emissive: 0.08, offset: { x: T.w / 2 - 0.03, y: y + T.h / 2 - 0.01, z: fz + 0.005 } }),
+      // The screen surround: a raised bronze frame with a brass lip, and the deep black bezel, all round-cornered.
+      box({ w: T.screenW + 0.2, h: T.screenH + 0.18, d: 0.03, color: TOP, offset: { x: sx0, y: sy, z: fz + 0.015 } }),
+      ...roundCorners(sx0, sy, T.screenW + 0.2, T.screenH + 0.18, 0.12, fz + 0.032, BODY),
+      box({ w: T.screenW + 0.12, h: T.screenH + 0.1, d: 0.02, color: BRASS, emissive: 0.08, offset: { x: sx0, y: sy, z: fz + 0.03 } }),
+      ...roundCorners(sx0, sy, T.screenW + 0.12, T.screenH + 0.1, 0.11, fz + 0.042, TOP),
+      box({ w: T.screenW + 0.09, h: T.screenH + 0.07, d: 0.02, color: BEZEL, offset: { x: sx0, y: sy, z: fz + 0.04 } }),
+      ...roundCorners(sx0, sy, T.screenW, T.screenH, 0.1, fz + 0.075, BEZEL),
+      // The badge under the screen.
+      box({ w: 0.2, h: 0.03, d: 0.01, color: BRASS, emissive: 0.15, offset: { x: sx0 - T.screenW / 2 + 0.16, y: sy - T.screenH / 2 - 0.06, z: fz + 0.035 } }),
+      // The control strip, brass-edged, with its rocker plate.
+      box({ w: T.w - 0.1, h: 0.24, d: 0.02, color: STRIP, offset: { y: cy, z: fz + 0.01 } }),
+      box({ w: T.w - 0.1, h: 0.012, d: 0.025, color: BRASS, emissive: 0.08, offset: { y: cy + 0.12, z: fz + 0.012 } }),
+      box({ w: T.w - 0.1, h: 0.012, d: 0.025, color: BRASS, emissive: 0.08, offset: { y: cy - 0.12, z: fz + 0.012 } }),
+      box({ w: 0.36, h: 0.1, d: 0.03, color: "#2f2d22", offset: { y: cy, z: fz + 0.025 } }),
+      box({ w: 0.38, h: 0.012, d: 0.032, color: BRASS, offset: { y: cy + 0.05, z: fz + 0.025 } }),
+      box({ w: 0.38, h: 0.012, d: 0.032, color: BRASS, offset: { y: cy - 0.05, z: fz + 0.025 } })
+    ];
+    for (const kx of [-1, 1]) {
+      parts.push(moved(ring(0.085), kx * (T.w / 2 - 0.16), cy, fz + 0.03));
+      parts.push(moved(knob(0.065), kx * (T.w / 2 - 0.16), cy, fz + 0.03));
+    }
+    for (const kx of [-0.1, 0, 0.1]) parts.push(moved(knob(0.022), kx, cy, fz + 0.04));
+    // Four thin legs, tapering and leaning out, each with a brass foot.
+    for (const lx of [-1, 1]) for (const lz of [-1, 1]) {
+      const leg = BL.models.lathe({ profile: [[0, 0], [0.018, 0], [0.018, 0.04], [0.016, 0.05], [0.028, y - 0.01], [0, y - 0.01]], segments: 6,
+        color: (t) => t < 0.15 ? BRASS : BODY });
+      parts.push(moved(BL.models.turnedX(BL.models.turnedZ(leg, lx * 0.1), -lz * 0.1), lx * (T.w / 2 - 0.1), 0, lz * (T.d / 2 - 0.1)));
+    }
+    return merge(...parts);
   });
   // A dated plaque over a rack: a painted canvas the interior hangs.
   const plaque = (canvas, w, h) => {
@@ -166,7 +225,7 @@
     });
     const tv = createNode({ geometry: tvSet(), position: { x: TV.x, y: 0, z: TV.z } });
     // The screen's picture is the interior's (`plaque` over a canvas), just proud of the bezel.
-    const screen = createNode({ position: { x: TV.x - 0.05, y: TV.table + TV.h / 2, z: TV.z + TV.d / 2 + 0.02 } });
+    const screen = createNode({ position: { x: TV.x + TV.screenX, y: TV.table + TV.screenY, z: TV.z + TV.d / 2 + 0.06 } });
     addChild(root, tv); addChild(root, screen);
     const ropes = createNode({ geometry: signRopes(), position: { x: SIGN.x, y: SIGN.y, z: SIGN.rest } });
     addChild(root, ropes);
