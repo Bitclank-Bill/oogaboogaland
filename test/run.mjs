@@ -18662,10 +18662,11 @@ const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcad
   record("arcade hall: from the ghost arena a hall game under the pointer takes no tooltip and no tap through the rock, and a line said over the stage does not show",
     inArena.inArena && inArena.hidden === true && !!through && hovered === true && tapped.scene === "arcade" && !tapped.moving,
     JSON.stringify({ inArena, through, hovered, tapped }));
-  // Back in the hall facing the stage: a cabinet in sight shows its tooltip, and a line over the stage shows.
+  // Back in the hall facing the stage: a cabinet in sight shows its tooltip, and a line over the stage shows. The Ooga
+  // stands well off the front wall, so the view backs off it and the stage's cabinets stand clear of its body.
   const inHall = await b.evaluate(`(() => {
     const B = __ooga, S = BL.arcadeModels.STAGE;
-    B.pilot.navigate({ position: { x: 0, y: 0, z: 4 }, yaw: 0, pitch: 0.12, dist: 5 }); B.advance(0.5, 1 / 60);
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 1 }, yaw: 0, pitch: 0.12, dist: 5 }); B.advance(0.5, 1 / 60);
     return { inArena: BL.scenes.arcade.debug.arena.inArena, hidden: B.arcade.pointHidden(S.x, 2.2, S.z) };
   })()`);
   const cabinet = await b.evaluate(findPick('["cabinet"]', true));
@@ -25197,7 +25198,7 @@ scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{
 } }] });
 
 scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "factory lifecycle", why: "contract: repeated factory visits, each left with a tip's show in the air, release the hall's listeners, nodes and GPU resources while retaining one bounded shared node", run: async (b) => {
-  const { rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry } = await dsbSoak(b, { geometry: true, factory: true });
+  const { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry } = await dsbSoak(b, { geometry: true, factory: true });
   // Compare the same roster and work sites even when an activity expires during the soak.
   // Only classification uses this instant; scene animation and the Factory feed keep their clocks.
   await b.evaluate(`(() => {
@@ -25250,6 +25251,9 @@ scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps
   })()`);
   // Warm both scenes and the cooker's show, so the counts below start from a visit made after the instrumenting.
   await travel("factory"); await tip("soak-warm"); await travel("lab"); await travel("hub"); await settled(); await rendered(2);
+  // The Repo Island joins its chunks in idle time (repo-island.js). The baseline waits for the last of them: a hub that
+  // comes up sooner would otherwise count their nodes and uploads as the visits' own.
+  await until("(() => { const s = window.BL.scenes.hub.debug.repoIsland?.stats(); return !s || s.built >= s.chunks; })()", 60000);
   // Each visit's tip grows the shared pile, whose wider footprint culls scenery off the ring (a target fewer): the
   // closing count is taken at the opening pile, set back through the hub's own pile.
   const startLevel = await b.evaluate("__ooga.level");
