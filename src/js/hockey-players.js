@@ -88,7 +88,8 @@
       const length = Math.hypot(ax, ay, az) || 1, q = rec.aim;
       if (cave.modelled) {
         // The shared rig solver places the hand through its elbow, including authored arm scale.
-        BL.crew.reachArm(cave, arm, cave.parts.forearmR, q, ax + arm.position.x, ay + arm.position.y, az + arm.position.z, -1, -0.4, 0);
+        if (!BL.crew.reachArm(cave, arm, cave.parts.forearmR, q, ax + arm.position.x, ay + arm.position.y, az + arm.position.z, -1, -0.4, 0))
+          BL.crew.reachArm(cave, arm, cave.parts.forearmR, q, ax + arm.position.x, ay + arm.position.y, az + arm.position.z, 0, 0, 1);
       } else {
         q[0] = -az / length; q[1] = 0; q[2] = ax / length; q[3] = 1 - ay / length;
         if (Math.hypot(q[0], q[2], q[3]) < 1e-6) { q[0] = 1; q[3] = 0; }
@@ -107,7 +108,9 @@
     };
     let own = null, ownName = null, ownBase = 0;
     const dropOwn = () => { if (own) removeChild(root, own.root); own = ownName = null; };
-    const human = id => id === net.state.selfId && own ? own : body(id);
+    // Only the game scene owns a local hockey rig. A cached table can still name a visitor who has
+    // already returned to the hall; never pose their walking body while the leave reply is pending.
+    const human = id => id === net.state.selfId ? own : body(id);
     const update = dt => {
       const name = showSelf && net.state.me ? net.state.body : null;
       if (name !== ownName) {
