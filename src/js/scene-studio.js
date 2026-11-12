@@ -556,12 +556,13 @@
     const saved = ctx.from === null || ctx.from === "studio" ? remembered() : null;
     night = !!(saved && saved.night);
     light();
+    // Restore the held weapon while standing: the crew refuses weapon changes once in bed or a hammock.
+    if (saved && saved.rifle) toggle("rifle", true);
     // On its feet it stands where it stood, if that spot is still clear.
     if (saved && saved.place === "stand" && walkable(saved.x, saved.z, saved.x, saved.z, 0, cave.bodyHeight, cave)) stand(saved.x, saved.z, saved.heading);
     else place(saved ? saved.place : "stand");
     if (saved) {
       if (saved.jetpack) toggle("jetpack", true);
-      if (saved.rifle) toggle("rifle", true);
       Object.assign(pilot.orbit, { yaw: saved.yaw, tYaw: saved.yaw, pitch: saved.pitch, tPitch: saved.pitch, dist: saved.dist, tDist: saved.dist });
       if (saved.eyes) toggle("eyes", true);
       if (saved.free) { setFree(true); [free.x, free.y, free.z, free.yaw, free.pitch, free.dist] = saved.free; }
