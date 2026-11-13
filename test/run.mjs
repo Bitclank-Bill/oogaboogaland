@@ -25027,9 +25027,9 @@ scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps:
 // Rally is out of order for visitors; the tour still boots it on Canvas 2D through its retained maintenance opt-in
 // (`wip=race` alone would land the page in Rally, so it names the island).
 scene("hub", { label: "canvas2d", query: "canvas2d=1&scene=hub&wip=race", steps: [hubMatrix, canvasTour] });
-// On a phone the move stick stays on screen through Tess's tour, her panel clear of it, and a real touch on it ends the
-// tour and walks the same Ooga from its own view.
-const hubTourTouch = { name: "hub tour touch", why: "regression: the touch sticks hid through Tess's tour, so a phone had no movement to end it with", run: async (b) => {
+// On a phone the move stick stays on screen through Tess's tour, her panel clear of it and of the screen's middle, where
+// each stop's view puts its landmark, and a real touch on it ends the tour and walks the same Ooga from its own view.
+const hubTourTouch = { name: "hub tour touch", why: "regression: the touch sticks hid through Tess's tour, so a phone had no movement to end it with; then the panel, lifted over the sticks and an open drawer, stood on each stop's landmark", run: async (b) => {
   const rows = [];
   // With the bottom drawer closed, open, and open but resized taller while it still leaves the sticks room over it
   // (sheet.js writes that height on the stage, and the sticks ride up on it), through the real touch path.
@@ -25048,6 +25048,7 @@ const hubTourTouch = { name: "hub tour touch", why: "regression: the touch stick
         inStage: !!document.getElementById("stage").querySelector(".greeter-menu"),
         shown: getComputedStyle(j).visibility === "visible" && getComputedStyle(j).display !== "none" && r.width > 0,
         clear: m.bottom <= r.top || m.top >= r.bottom || m.right <= r.left || m.left >= r.right, onScreen: m.top >= 0 && r.bottom <= innerHeight,
+        middle: m.bottom <= innerHeight / 3 || m.top >= innerHeight * 2 / 3,
         x: r.x + r.width / 2 + r.width * 0.3, y: r.y + r.height / 2 }; })()`);
     await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: layout.x, y: layout.y }] });
     let byTouch;
@@ -25058,8 +25059,8 @@ const hubTourTouch = { name: "hub tour touch", why: "regression: the touch stick
   // A double-click on the drag bar resets the resized drawer (and its saved rectangle) before it closes.
   await b.evaluate(`(() => { const s = document.getElementById("sheet"); s.querySelector(".sheet-drag").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); if (s.dataset.open === "true") document.getElementById("sheet-toggle").click(); })()`);
   const resized = rows.find(r => r.drawer === "resized");
-  record("hub tour touch: with the drawer closed, open, or resized taller with the sticks still over it, the move stick stays on screen clear of Tess's tour panel, and a touch on it ends the tour at once and walks the same Ooga from its own view",
-    rows.length === 3 && rows.every(r => r.touring && r.layout.inStage && r.layout.shown && r.layout.clear && r.layout.onScreen && r.byTouch.ended && r.byTouch.walked > 0.3)
+  record("hub tour touch: with the drawer closed, open, or resized taller with the sticks still over it, the move stick stays on screen clear of Tess's tour panel, the panel stays out of the middle third of the screen where each stop's landmark stands, and a touch on it ends the tour at once and walks the same Ooga from its own view",
+    rows.length === 3 && rows.every(r => r.touring && r.layout.inStage && r.layout.shown && r.layout.clear && r.layout.middle && r.layout.onScreen && r.byTouch.ended && r.byTouch.walked > 0.3)
       && !!resized && resized.sized.sized === "true" && resized.sized.to > resized.sized.from && Math.abs(parseFloat(resized.sized.written) - (resized.layout.sheet.bottom - resized.layout.sheet.top)) <= 1
       && resized.layout.sticks === "true" && resized.layout.stick.bottom <= resized.layout.sheet.top && resized.layout.panel.bottom <= resized.layout.stick.top, JSON.stringify(rows));
 } };
@@ -31052,7 +31053,7 @@ const studioVideoSecurityProof = async () => {
     drawArraysInstanced:(...args)=>{calls.draws++;calls.arrays.push(args);},drawElementsInstanced:(...args)=>{calls.draws++;calls.elements.push(args);},
     texImage2D:()=>{calls.uploads++;if(failure)throw Object.assign(Error("synthetic upload failure"),{name:failure});},texSubImage2D:()=>{calls.uploads++;if(failure)throw Object.assign(Error("synthetic update failure"),{name:failure});}};
   const context={gl,programs:{image:{prog:"image",u:{uReady:"ready"}},mesh:{prog:"mesh"}},res:{matrixTexture:"fallback"},viewProj:[],mirrorViewProj:[],applyCutaway:noop,cutawayMaxY:1e6};
-  runInNewContext("let imageTextures=0,blendPass=false;"+source.slice(partStart,partEnd)+source.slice(start,end)+";globalThis.draw=(rec,count,cameraPass)=>drawImageSurface(rec,count,cameraPass,programs.mesh);globalThis.partDraw=drawPart;globalThis.textures=()=>imageTextures;globalThis.resetTextureCount=()=>{imageTextures=0;};",context);
+  runInNewContext("let imageTextures=0,blendPass=false;const countDraw=()=>{};"+source.slice(partStart,partEnd)+source.slice(start,end)+";globalThis.draw=(rec,count,cameraPass)=>drawImageSurface(rec,count,cameraPass,programs.mesh);globalThis.partDraw=drawPart;globalThis.textures=()=>imageTextures;globalThis.resetTextureCount=()=>{imageTextures=0;};",context);
   let image={readyState:2,seeking:false,videoWidth:320,videoHeight:180,currentTime:0,currentSrc:"file:///synthetic.mp4"};const surface={dynamic:true,asset:{load:()=>image},rect:[0,0,7,3.5]},rec={geometry:{imageSurface:surface},mesh:{vao:{},count:6}};
   context.draw(rec,1,true);const fallback=rec.imageTexture===null&&context.textures()===0&&calls.deletes===1&&calls.draws===1&&calls.ready.at(-1)===0&&surface.mediaErrorCode==="video-security";
   context.draw(rec,1,true);const suppressed=calls.uploads===1&&calls.draws===2;
@@ -31400,8 +31401,8 @@ const terrainParityChecks = (BL, island) => {
 };
 // Repo Island (repo-island-data.js, repo-island-models.js, repo-feed.js): the list the page and the Worker share, the
 // island laid out from it, and the feed's boundary. The meadow's four totems are carved by the same kit at its full
-// detail, so their golden is the one they had before the island's details existed.
-const MEADOW_TOTEMS_GOLDEN = "8bdd4fca5a005b4f";
+// detail. The golden includes the shared name-board lettering, updated for the readable N and R.
+const MEADOW_TOTEMS_GOLDEN = "f22e865e938044c5";
 const repoIslandChecks = (BL, island) => {
   const D = BL.repoIslandData, M = BL.repoIslandModels, TM = BL.totemModels, H = BL.hubModels;
   const sections = D.SECTIONS.map((s) => s.id), order = D.REPOS.map((r) => sections.indexOf(r.section));
