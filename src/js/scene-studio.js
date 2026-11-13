@@ -511,10 +511,11 @@
     panel.fill.style.width = `${clamp(r.bytes / limit * 100, 0, 100).toFixed(1)}%`;
     if (r.bytes > limit) panel.bar.dataset.state = "full"; else delete panel.bar.dataset.state;
     panel.size.textContent = `${bytes(r.bytes)} of ${limit.toLocaleString("en")} · ${Math.round(r.bytes / limit * 100)}%`;
-    // Why a file is custom code is only news when it has no hooks: a plain-data field it got wrong.
+    // A file with hooks says nothing more here; why one without is custom code is news: a plain-data field it got wrong.
     const why = typeof r.why === "string" ? r.why : "", at = r.finding && Number.isInteger(r.finding.line) ? ` (line ${r.finding.line}: "${r.finding.text}")` : "";
     panel.note.textContent = r.refused ? `The intake would refuse it: ${why}${at}` : r.lane === "daily" ? "Plain data: it merges on its own with the next daily bundle."
-      : `Custom code: a maintainer reviews it.${hooked ? "" : ` ${why}`}`;
+      : hooked ? "" : why;
+    panel.note.hidden = !panel.note.textContent;
     if (r.refused) panel.note.dataset.state = "bad"; else delete panel.note.dataset.state;
     if (hooked) panel.parts.replaceChildren(item("Appearance & equipment code", undefined, bytes(hooked)), item("Settings, dialog, & other code", undefined, bytes(Math.max(0, r.bytes - hooked))));
   };
@@ -524,6 +525,7 @@
     panel.fill.style.width = "0%";
     panel.size.textContent = "";
     panel.note.textContent = "";
+    panel.note.hidden = false;
     delete panel.note.dataset.state;
     panel.parts.replaceChildren();
     // Plain data: the look and the voice.
