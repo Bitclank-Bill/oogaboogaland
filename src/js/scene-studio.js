@@ -373,7 +373,7 @@
   const LIMIT = 32768; // the intake's (scripts/character-safety.mjs SOURCE_LIMIT), until the server names it
   const PANEL_STORE = "ooga-studio-panel";
   const HOOKS = {
-    torso: "Paints the chest, belt and hips", gear: "Paints the arms, legs and feet", club: "Its own, from its club hook",
+    torso: "Paints the chest, belt and hips", gear: "Paints the arms, legs and feet", club: "The weapon it holds first, drawn by its club hook",
     skull: "Its own head shape", crown: "Hair, or a crown", eyes: "Eyes of its own", mark: "Marks on the face",
     hatY: "Where its hat sits", headgear: "A hat or a helmet", extras: "Pieces of its own: a pet, a bag, a pack",
     tint: "A second colourway, changing with the day's price", model: "A modelled body of its own", refine: "Fine detail painted on the body"
@@ -451,14 +451,43 @@
     li.append(...more);
     return li;
   };
-  // The look's colours in one row, each a chip named for what it colours, its value on hover.
+  // A hook's row: its name, with what that hook does as the name's tooltip, its bytes, and anything under them.
+  const hookItem = (name, tip, aside, ...more) => {
+    const li = item(name, undefined, aside, ...more);
+    li.querySelector(".studio-key").title = tip;
+    return li;
+  };
+  // A colour chip copies its value, which is also its tooltip: through the clipboard, or, where a browser refuses that
+  // (an embedded one may deny the permission), the older copy command on a field kept out of sight.
+  const copyOld = (text) => {
+    const field = make("textarea", "studio-copy");
+    field.value = text;
+    field.readOnly = true;
+    document.body.append(field);
+    field.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    field.remove();
+    return ok;
+  };
+  const copyColour = (e) => {
+    const chip = e.currentTarget, value = chip.dataset.colour;
+    chip.blur();
+    const said = (ok) => hudMod.toast(ok ? `Copied ${value}` : `Could not copy ${value} here`);
+    if (navigator.clipboard) navigator.clipboard.writeText(value).then(() => said(true), () => said(copyOld(value)));
+    else said(copyOld(value));
+  };
+  // The look's colours in one row, each a chip named for what it colours.
   const swatches = (look) => {
     const value = make("span", "studio-value studio-colours");
     for (const key of Object.keys(COLOURS)) {
       if (look[key] === undefined) continue;
-      const one = make("span", "", COLOURS[key]), chip = make("i", "studio-swatch");
-      chip.style.background = String(look[key]);
+      const one = make("button", "studio-chip", COLOURS[key]), chip = make("i", "studio-swatch");
+      one.type = "button";
+      one.dataset.colour = String(look[key]);
       one.title = String(look[key]);
+      one.addEventListener("click", copyColour);
+      chip.style.background = String(look[key]);
       one.prepend(chip);
       value.append(one);
     }
@@ -518,12 +547,12 @@
     let hooked = 0;
     const hooks = Object.keys(dress).map((key) => {
       const hook = dress[key], same = counted.get(hook), name = HOOK_NAMES[key] || key;
-      if (typeof hook !== "function") return item(name, HOOKS[key] || "A value of its own");
-      if (same) return item(name, HOOKS[key] || "A hook of its own", `the same code as ${HOOK_NAMES[same] || same}`);
+      if (typeof hook !== "function") return hookItem(name, HOOKS[key] || "A value of its own");
+      if (same) return hookItem(name, HOOKS[key] || "A hook of its own", `the same code as ${HOOK_NAMES[same] || same}`);
       const size = encoder.encode(String(hook)).length;
       counted.set(hook, key);
       hooked += size;
-      return item(name, HOOKS[key] || "A hook of its own", bytes(size), sizeBar(size, LIMIT));
+      return hookItem(name, HOOKS[key] || "A hook of its own", bytes(size), sizeBar(size, LIMIT));
     });
     // What its build carries, as the game builds it.
     const builds = [];

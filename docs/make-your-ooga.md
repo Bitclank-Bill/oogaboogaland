@@ -280,8 +280,9 @@ and `<handle>:slim` its female build.
   to get up, the wheel to zoom in to its own eyes, a drag to look round it. Asleep, the
   movement keys turn it over.
 - **This Ooga**, the panel on the right, lists everything the file gives the Ooga on the
-  pad: its plain-data look and voice, each custom hook and what it does, and the parts it
-  builds (a pet, its own jetpack, a board, a shield). Under them it shows how much of the
+  pad: its plain-data look and voice (a click on a colour copies its value), each custom
+  hook (its name's tooltip says what such a hook does), and the parts it builds (a pet, its
+  own jetpack, a board, a shield). Under them it shows how much of the
   32,768 bytes the file takes, with each hook's share, and the lane the intake puts it in.
   It is read again on every save. It stands against the right edge: drag its left edge to
   make it wider or narrower, and its arrow folds it to a tab on the edge.
