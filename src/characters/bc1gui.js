@@ -34,7 +34,7 @@
     github: "ottoz0r",
     joined: 1788800918,
     lastCommit: 1788190400,
-    look: { portrait: { min: [-3, -2, -1], max: [7, 13, 8] }, skater: true, hairless: true, noBrow: true, face: "smirk", hatY: 13, skin: "#f2a33c", hair: "#e4561f", fur: "#8f4f17" },
+    look: { portrait: { min: [-3, -2, -1], max: [7, 13, 8] }, skater: true, hairless: true, noBrow: true, face: "smirk", skin: "#f2a33c", hair: "#e4561f", fur: "#8f4f17" },
     dress: {
       crown(k, v) {
         const P = k.P, knit = k.color("#8cc63f"), knitDk = k.color("#6faa2f"), pom = k.color("#a9d94c"), btc = k.color("#f7931a"), lens = k.color("#3f9c96");

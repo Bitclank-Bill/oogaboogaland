@@ -14,7 +14,6 @@
       face: "beard",
       build: "normal",
       height: 1.04,
-      hatY: 6,
       skin: "#d9a882",
       hair: "#6a6560",
       fur: "#5c534c",

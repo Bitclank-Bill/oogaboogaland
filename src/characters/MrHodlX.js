@@ -18,14 +18,14 @@
       .map(([hx, hy]) => box({ w: 0.03, h: 0.03, d: 0.008, color: "#0f1113", offset: { x: hx, y: 0.1 + hy, z: 0.463 } }));
     return merge(hood, snout, filter, ...holes, lens(-0.12), lens(0.12), tube(-0.21), tube(0.21), ring({ r: 0.315, thickness: 0.02, y: 0.4, segments: 14, color: trim }));
   });
-  const hockeyStickGeometry = (h, gold = false) => {
+  const hockeyStickGeometry = (h) => {
     const u = h / 16, shaft = geometry(), blade = geometry(), shaftRings = [], bladeSections = [];
     const bladeSegments = 28, bladeRise = 2.8;
-    const shaftColor = hexToRgb(gold ? "#a77b32" : "#292e31");
-    const shaftSide = hexToRgb(gold ? "#805a25" : "#1b2023");
-    const tape = (gold ? ["#e8cf8d", "#cba95d", "#dfc27c"] : ["#e1dfd7", "#b9b9b3", "#d1d0ca"]).map(hexToRgb);
-    const tapeEdge = hexToRgb(gold ? "#ad8848" : "#999b98");
-    const seam = gold ? "#765922" : "#777b7a";
+    const shaftColor = hexToRgb("#292e31");
+    const shaftSide = hexToRgb("#1b2023");
+    const tape = ["#e1dfd7", "#b9b9b3", "#d1d0ca"].map(hexToRgb);
+    const tapeEdge = hexToRgb("#999b98");
+    const seam = "#777b7a";
     for (let i = 0; i <= 20; i++) {
       const t = i / 20, y = (-3 + 18.2 * t) * u, w = 0.8 * u, d = 0.52 * u;
       shaftRings.push([pushVert(shaft, -w, y, -d), pushVert(shaft, w, y, -d),
@@ -93,8 +93,7 @@
     lastCommit: 1788200000,
     look: { gasMask: true, stoneAxe: true, hairless: true, noBrow: true, face: "none" },
     dress: {
-      hatY: (k) => 0.66 * k.h,
-      club: (k) => ({ default: hockeyStickGeometry(k.h), gold: hockeyStickGeometry(k.h, true), rest: { x: 0, y: Math.PI / 2, z: 0.24 }, carry: { x: 0, y: Math.PI / 2, z: 0.95 } }),
+      club: (k) => ({ default: hockeyStickGeometry(k.h), rest: { x: 0, y: Math.PI / 2, z: 0.24 }, carry: { x: 0, y: Math.PI / 2, z: 0.95 } }),
       headgear(k) {
         const h = k.h;
         addChild(k.parts.head, createNode({ scale: { x: h, y: h, z: h }, geometry: gasMaskGeometry() }));

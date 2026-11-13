@@ -58,7 +58,6 @@
   };
   const hexRgb = BL.math.hexToRgb;
   const BOUQUET = ["#4f9a3a", "#2f6e26", "#ff8a1f", "#e8600f", "#ffd34a", "#f59ab4", "#f7efdc"].map(hexRgb);
-  const GOLD_BOUQUET = ["#c99a2e", "#a87c22", "#f0c95a", "#e0b53a", "#fff1a8", "#f0c95a", "#f7e7b0"].map(hexRgb);
   const STEM = 0, LEAF = 1, PETAL = 2, PETAL_DK = 3, HEART = 4, RIBBON = 5, PAPER = 6;
   const BLOOMS = [[0, 9, 0], [-2, 8, -1], [3, 8, 1], [1, 8, 3], [0, 8, -2], [2, 10, -1], [-1, 10, 2]];
   let bouquet = null;
@@ -84,8 +83,8 @@
     }
     return v;
   };
-  const bouquetGeometry = (h, gold) => {
-    const H = BL.heroBody, geo = BL.models.geometry(), hex = (i) => { const c = (gold ? GOLD_BOUQUET : BOUQUET)[i]; return "#" + c.map((n) => Math.round(n).toString(16).padStart(2, "0")).join(""); };
+  const bouquetGeometry = (h) => {
+    const H = BL.heroBody, geo = BL.models.geometry(), hex = (i) => { const c = BOUQUET[i]; return "#" + c.map((n) => Math.round(n).toString(16).padStart(2, "0")).join(""); };
     const stem = hex(STEM), leaf = hex(LEAF), petal = hex(PETAL), petalDk = hex(PETAL_DK), heart = hex(HEART), ribbon = hex(RIBBON), paper = hex(PAPER), paperDk = H.shade(paper, 0.86), ribbonDk = H.shade(ribbon, 0.8);
     H.loft(geo, [[-0.74, 0.28, 0.28, 0.1], [-0.6, 0.42, 0.42, 0.15], [3.3, 0.52, 0.52, 0.18]], [H.shade(stem, 0.85), stem]);
     H.loft(geo, [[1.8, 0.62, 0.62, 0.2], [2.4, 0.62, 0.62, 0.2]], ribbon);
@@ -258,13 +257,12 @@
         v.set(3, 0, 6, C.lip);
         v.set(4, 0, 6, k.P.skin);
       },
-      club: (k) => modelled() ? { default: bouquetGeometry(k.h, false), gold: bouquetGeometry(k.h, true), rest: { x: 0.55, z: 0 }, carry: { x: 0.8, z: 0 } }
-        : { voxels: bouquetVox(), palette: BOUQUET, goldPalette: GOLD_BOUQUET, rest: { x: 0.55, z: 0 }, carry: { x: 0.8, z: 0 } },
+      club: (k) => modelled() ? { default: bouquetGeometry(k.h), rest: { x: 0.55, z: 0 }, carry: { x: 0.8, z: 0 } }
+        : { voxels: bouquetVox(), palette: BOUQUET, rest: { x: 0.55, z: 0 }, carry: { x: 0.8, z: 0 } },
       headgear(k) {
         const s = k.parts.head.scale;
         s.x = s.y = s.z = 1.18;
-      },
-      hatY: (k) => 10 * k.u
+      }
     }
   });
 })();

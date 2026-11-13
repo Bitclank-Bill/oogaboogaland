@@ -31,11 +31,11 @@
     }
     return geo;
   };
-  const stoneAxeGeometry = (h, gold = false, slim = false) => {
+  const stoneAxeGeometry = (h, slim = false) => {
     const u = h / 16, pieces = [], thin = slim ? 0.75 : 1, head = slim ? 0.9 : 1, seat = 12.7;
     const wood = "#4a2b16", woodShade = "#2f1a0d", woodLight = "#68401f";
-    const stone = gold ? "#b28b35" : "#68635a";
-    const stoneChip = gold ? "#d1ad56" : "#918a7c";
+    const stone = "#68635a";
+    const stoneChip = "#918a7c";
     const profile = (points) => points.map(([x, y]) => [x * 0.84 * head * u, (seat + (y - seat) * head) * u]);
     pieces.push(
       tube({
@@ -63,7 +63,7 @@
     handle: "w-s-bitcoin",
     joined: 1788800916,
     lastCommit: 1788178261,
-    look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, stoneAxe: true, hairless: true, hatY: 8 },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, stoneAxe: true, hairless: true },
     dress: {
       model(k) {
         const H = BL.heroBody, { makeVox, voxelGeometry } = BL.models, u = k.u;
@@ -136,7 +136,7 @@
         k.nose = [appleDk, apple];
         return true;
       },
-      club: (k) => ({ default: stoneAxeGeometry(k.h, false, BL.models.STYLE === "R"), gold: stoneAxeGeometry(k.h, true, BL.models.STYLE === "R"), rest: { x: 0, y: Math.PI / 2, z: 0.24 }, carry: { x: 0, y: Math.PI / 2, z: 0.95 } }),
+      club: (k) => ({ default: stoneAxeGeometry(k.h, BL.models.STYLE === "R"), rest: { x: 0, y: Math.PI / 2, z: 0.24 }, carry: { x: 0, y: Math.PI / 2, z: 0.95 } }),
       mark(k, v) {
         const P = k.P;
         for (let x = 0; x <= 6; x++) {

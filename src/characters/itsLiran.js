@@ -44,7 +44,6 @@
       eyeColor: "#6e4a26",
       noPupils: true,
       height: 1.04,
-      hatY: 11,
       portrait: { min: [-1, -2, -1], max: [7, 9, 11] }
     },
     voice: {
@@ -86,8 +85,7 @@
           return k.vg(v, { x: -1 * k.u, y: -1 * k.u, z: -1 * k.u }, { [energy]: 0.85, [energyHi]: 1 });
         };
         const standard = rod(k.color("#2b2e36"), k.color("#9aa1aa"), k.color("#141518"), k.color("#ff8c1a"), k.color("#ffd27a"));
-        const gold = rod(k.color("#8a6a2e"), k.color("#e3c06a"), k.color("#3b2a10"), k.color("#ffb52e"), k.color("#fff0c2"));
-        return { default: standard, gold, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } };
+        return { default: standard, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } };
       },
       gear(k) {
         const shirt = k.color("#141519"), shirtHi = k.color("#1b1d22");

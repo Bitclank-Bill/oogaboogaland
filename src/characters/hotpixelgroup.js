@@ -92,7 +92,6 @@
       height: 1.08,
       eyeColor: "#e8eaf0",
       face: "beard",
-      hatY: 19,
       portrait: { min: [-2, -2, -1], max: [8, 18, 8] }
     },
     voice: {
@@ -140,7 +139,7 @@
           unit: u, palette: CLUB_PALETTE, origin: { x: -u, y: -u, z: -u }
         });
         const geo = merge(handle, diamondFist(u));
-        return { voxels: v, default: geo, gold: geo,
+        return { voxels: v, default: geo,
           rest: { x: 0.2, z: -0.05 }, carry: { x: 0.35, z: 0 } };
       },
       crown(k, v) {

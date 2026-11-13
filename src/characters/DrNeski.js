@@ -45,33 +45,31 @@
     return geo;
   };
   const MEDKIT = { shell: "#f4f1ea", seam: "#2e2e30", cross: "#f7931a", grip: "#2e2e30", brass: "#f2b81c" };
-  const GOLD_MEDKIT = { shell: "#e0b53a", seam: "#6b5416", cross: "#f0c95a", grip: "#6b5416", brass: "#c99a2e" };
   const medkitCache = new Map();
-  const medkitGeometry = (h, pal) => {
-    const key = `${h}:${pal === MEDKIT ? "kit" : "gold"}`;
-    let geo = medkitCache.get(key);
+  const medkitGeometry = (h) => {
+    let geo = medkitCache.get(h);
     if (!geo) {
       const W = 0.42, H = 0.32, D = 0.17, R = 0.06, X = 0.03, Y = 0.235, TOP = Y + H / 2;
       const at = (x, y, z) => ({ x: x * h, y: y * h, z: z * h });
       const part = (w, hh, d, color, x, y, z) => box({ w: w * h, h: hh * h, d: d * h, color, offset: at(x, y, z) });
-      const cross = (side) => merge(part(0.2, 0.064, 0.014, pal.cross, X, Y, side * (D / 2 + 0.004)), part(0.064, 0.2, 0.014, pal.cross, X, Y, side * (D / 2 + 0.004)));
+      const cross = (side) => merge(part(0.2, 0.064, 0.014, MEDKIT.cross, X, Y, side * (D / 2 + 0.004)), part(0.064, 0.2, 0.014, MEDKIT.cross, X, Y, side * (D / 2 + 0.004)));
       const grip = tube({
         rings: 12,
         segments: 6,
         path: (t) => at(X - 0.1 * Math.cos(Math.PI * t), TOP + 0.012 + 0.07 * Math.sin(Math.PI * t), 0),
         radius: () => 0.019 * h,
-        colorFn: () => pal.grip
+        colorFn: () => MEDKIT.grip
       });
       geo = merge(
-        slab({ w: W * h, h: H * h, d: D * h, r: R * h, bevel: 0.018 * h, color: pal.shell, offset: at(X, Y, 0) }),
-        slab({ w: (W + 0.014) * h, h: (H + 0.014) * h, d: 0.028 * h, r: (R + 0.007) * h, color: pal.seam, offset: at(X, Y, 0) }),
+        slab({ w: W * h, h: H * h, d: D * h, r: R * h, bevel: 0.018 * h, color: MEDKIT.shell, offset: at(X, Y, 0) }),
+        slab({ w: (W + 0.014) * h, h: (H + 0.014) * h, d: 0.028 * h, r: (R + 0.007) * h, color: MEDKIT.seam, offset: at(X, Y, 0) }),
         cross(1), cross(-1), grip,
-        part(0.05, 0.03, 0.05, pal.brass, X - 0.1, TOP + 0.012, 0),
-        part(0.05, 0.03, 0.05, pal.brass, X + 0.1, TOP + 0.012, 0),
-        part(0.02, 0.07, 0.05, pal.brass, X - W / 2 - 0.009, Y, 0),
-        part(0.02, 0.07, 0.05, pal.brass, X + W / 2 + 0.009, Y, 0)
+        part(0.05, 0.03, 0.05, MEDKIT.brass, X - 0.1, TOP + 0.012, 0),
+        part(0.05, 0.03, 0.05, MEDKIT.brass, X + 0.1, TOP + 0.012, 0),
+        part(0.02, 0.07, 0.05, MEDKIT.brass, X - W / 2 - 0.009, Y, 0),
+        part(0.02, 0.07, 0.05, MEDKIT.brass, X + W / 2 + 0.009, Y, 0)
       );
-      medkitCache.set(key, geo);
+      medkitCache.set(h, geo);
     }
     return geo;
   };
@@ -151,7 +149,7 @@
       idle: ["You are fired!", "Where is Kortik??", "Go rebalance your Node!", "Get laid on the 1st date", "What's your question for DrNeski?", "I sold my neighbor ex's cat for sats"]
     },
     dress: {
-      club: (k) => ({ default: medkitGeometry(k.h, MEDKIT), gold: medkitGeometry(k.h, GOLD_MEDKIT), rest: { x: 0.2, z: 0.1 } }),
+      club: (k) => ({ default: medkitGeometry(k.h), rest: { x: 0.2, z: 0.1 } }),
       gear(k) {
         addChild(k.root, createNode({ geometry: stethoscopeGeometry(k.h) }));
       },

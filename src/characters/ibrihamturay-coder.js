@@ -120,7 +120,6 @@
     v.fill(2, 4, 4, 4, 6, 6, C.joint);
   };
   const CHUK_PALETTE = [hexToRgb("#17181b"), hexToRgb("#767c85"), hexToRgb("#3b3f45")];
-  const GOLD_CHUK_PALETTE = [hexToRgb("#c79a2f"), hexToRgb("#e8c669"), hexToRgb("#8a6a18")];
   const STICK = 0, COLLAR = 1, CHAIN = 2;
   const handleVox = () => {
     const v = makeVox();
@@ -166,7 +165,7 @@
     look: {
       footRockets: true, nunchaku: true,
       bald: true, hairless: true, cleanShaven: true, noBrow: true, noPupils: true,
-      face: "none", hatY: 12, height: 1.12,
+      face: "none", height: 1.12,
       skin: "#e8e8ec", hair: "#1a1a1a", fur: "#2a2a2e"
     },
     voice: {
@@ -187,8 +186,8 @@
         const fingers = k.vg(fingerVox(C), { x: -1.5 * u, y: -u, z: -1.5 * u });
         k.parts.fingersR.geometry = k.parts.fingersL.geometry = fingers;
       },
-      club: (k) => BL.models.STYLE === "R" ? { default: BL.heroBody.nunchaku(k.u).handle, gold: BL.heroBody.nunchaku(k.u, true).handle, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } }
-        : { voxels: handleVox(), palette: CHUK_PALETTE, goldPalette: GOLD_CHUK_PALETTE, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } },
+      club: (k) => BL.models.STYLE === "R" ? { default: BL.heroBody.nunchaku(k.u).handle, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } }
+        : { voxels: handleVox(), palette: CHUK_PALETTE, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } },
       skull(k, v) {
         skullVox(v, colors(k));
         return true;
@@ -206,10 +205,9 @@
       },
       tint: (k, palette) => palette.map((rgb, i) => twins.has(i) ? hexToRgb(twins.get(i)) : rgb),
       extras(k) {
-        const u = k.u, origin = { x: -u, y: 0, z: -u }, turned = BL.models.STYLE === "R" ? BL.heroBody.nunchaku(u) : null, turnedGold = turned && BL.heroBody.nunchaku(u, true);
+        const u = k.u, origin = { x: -u, y: 0, z: -u }, turned = BL.models.STYLE === "R" ? BL.heroBody.nunchaku(u) : null;
         const geometry = turned ? turned.free : voxelGeometry(freeVox(), { unit: u, palette: CHUK_PALETTE, origin });
-        const gold = turned ? turnedGold.free : voxelGeometry(freeVox(), { unit: u, palette: GOLD_CHUK_PALETTE, origin });
-        k.parts.chuk = createNode({ position: { x: 0, y: turned ? turned.pivot : CHAIN_Y * u, z: 0 }, geometry, skins: { default: geometry, gold } });
+        k.parts.chuk = createNode({ position: { x: 0, y: turned ? turned.pivot : CHAIN_Y * u, z: 0 }, geometry, skins: { default: geometry } });
         if (turned) { k.parts.chuk.swing = turned.swing; k.parts.chuk.rotation.x = Math.PI - 0.38; }
         addChild(k.parts.club, k.parts.chuk);
         const trail = turned ? turned.pair : voxelGeometry(pairVox(), { unit: u, palette: CHUK_PALETTE, origin: { x: -u, y: -u, z: -u } });

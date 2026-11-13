@@ -75,7 +75,7 @@
     handle: "timechainb",
     joined: 1788800921,
     lastCommit: 1788171200,
-    look: { portrait: { min: [-1, -2, 0], max: [7, 11, 8] }, stoneAxe: AXE, hairless: true, hatY: 12, skin: "#b8703c", hair: "#33200f" },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 11, 8] }, stoneAxe: AXE, hairless: true, skin: "#b8703c", hair: "#33200f" },
     dress: {
       club: (k) => AXE ? { voxels: staffVoxels(k.rand), rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } } : { voxels: staffVoxels(k.rand), rest: { x: 0.2, z: 0 } },
       crown(k, v) {

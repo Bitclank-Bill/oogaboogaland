@@ -115,12 +115,12 @@
     return BL.models.merge(voxelGeometry(v, { unit: u / 8, palette: ["#1b1210", "#ec6f86", DOG_INK[3]] }), H.scaled(g, u));
   };
 
-  const swordGeometry = (h, gold) => {
+  const swordGeometry = (h) => {
     const H = BL.heroBody, geo = BL.models.geometry();
-    const steel = gold ? "#ffe07a" : "#dcd9d2", steelDk = gold ? "#e0a92a" : "#a9a69f", flat = gold ? "#d9a12a" : "#1d171c";
-    const dark = gold ? "#b8862c" : "#262024", mark = gold ? "#fff2b0" : GOLD;
+    const steel = "#dcd9d2", steelDk = "#a9a69f", flat = "#1d171c";
+    const dark = "#262024", mark = GOLD;
     H.loft(geo, [[-2.1, 0.42, 0.52, 0.16], [-1.4, 0.42, 0.52, 0.16]], dark);
-    H.loft(geo, [[-1.4, 0.34, 0.4, 0.14], [1.2, 0.34, 0.4, 0.14]], gold ? "#8a602c" : "#17131a", [false, false]);
+    H.loft(geo, [[-1.4, 0.34, 0.4, 0.14], [1.2, 0.34, 0.4, 0.14]], "#17131a", [false, false]);
     H.loft(geo, [[1.2, 0.46, 2.15, 0.2], [1.72, 0.46, 2.15, 0.2]], dark);
     H.loft(geo, [[1.72, 0.17, 1.24, 0.12], [3, 0.17, 1.24, 0.12]], [steel, steelDk], [false, false]);
     H.loft(geo, [[2.95, 0.17, 1.8, 0.15], [9.6, 0.17, 1.8, 0.15], [12.3, 0.03, 0.05, 0.02]], [steel, steelDk]);
@@ -150,7 +150,7 @@
     joined: 1794434196,
     lastCommit: 1794435352,
     look: {
-      build: "slim", height: 1.04, hatY: 13, face: "none", hairless: true, noBrow: true, noPupils: true, noFlaps: true,
+      build: "slim", height: 1.04, face: "none", hairless: true, noBrow: true, noPupils: true, noFlaps: true,
       skin: SKIN, hair: "#1d1420", fur: "#c58b55",
       portrait: { min: [-3, -2, -3], max: [9, 9, 7] }
     },
@@ -195,8 +195,8 @@
         k.parts.armR.geometry = k.parts.armL.geometry = k.vg(arm, { x: -1.5 * u, y: -11 * u, z: -1.5 * u });
       },
       club: (k) => modelled()
-        ? { default: swordGeometry(k.h, false), gold: swordGeometry(k.h, true), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } }
-        : { default: blockSword(k, ["#1d171c", "#dcd9d2", "#262024"]), gold: blockSword(k, ["#d9a12a", "#ffe07a", "#b8862c"]), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } },
+        ? { default: swordGeometry(k.h), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } }
+        : { default: blockSword(k, ["#1d171c", "#dcd9d2", "#262024"]), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } },
       model(k, wear) {
         const H = BL.heroBody, M = BL.models, u = k.u, body = wear(), S = H.trunk(true);
         const tuck = (y) => y >= 2.6 ? 1 : (y < 1.2 ? 1.5 + (y + 0.4) / 1.6 * 0.25 : 1.75 - (y - 1.2) / 1.4 * 0.15) / S.ring(y)[1];

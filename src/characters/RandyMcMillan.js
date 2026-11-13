@@ -5,7 +5,7 @@
     handle: "RandyMcMillan",
     joined: 1788800919,
     lastCommit: 1788210011,
-    look: { portrait: { min: [-1, -2, -1], max: [7, 10, 8] }, hairless: true, noBrow: true, face: "smirk", hatY: 11, skin: "#f3b52a", hair: "#151515" },
+    look: { portrait: { min: [-1, -2, -1], max: [7, 10, 8] }, hairless: true, noBrow: true, face: "smirk", skin: "#f3b52a", hair: "#151515" },
     dress: {
       torso(k, v) {
         const P = k.P;

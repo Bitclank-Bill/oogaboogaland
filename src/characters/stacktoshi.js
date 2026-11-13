@@ -4,7 +4,6 @@
   const { makeVox } = BL.models;
   const { hexToRgb } = BL.math;
   const STACK_PALETTE = [hexToRgb("#9aa0a4"), hexToRgb("#7d8388"), hexToRgb("#f7931a"), hexToRgb("#cf6c14")];
-  const GOLD_STACK_PALETTE = [hexToRgb("#e6c25c"), hexToRgb("#c9a23e"), hexToRgb("#f7e6a8"), hexToRgb("#d8b56a")];
   const totemVoxels = (rand) => {
     const v = makeVox();
     const stone = () => rand() < 0.25 ? 1 : 0;
@@ -25,7 +24,7 @@
     lastCommit: 1792629820,
     look: {
       bald: true, hairless: true, cleanShaven: true, noBrow: true, noPupils: true,
-      noFlaps: true, face: "none", hatY: 11, height: 1.08, skin: "#d9a878", hair: "#8d939a", fur: "#a97f52",
+      noFlaps: true, face: "none", height: 1.08, skin: "#d9a878", hair: "#8d939a", fur: "#a97f52",
       portrait: { min: [-2, -2, -3], max: [8, 10, 8] }
     },
     voice: {
@@ -79,7 +78,7 @@
         k.parts.legR.geometry = k.vg(leg(-1), { x: -2 * k.u, y: -5 * k.u, z: -2.5 * k.u });
         k.parts.legL.geometry = k.vg(leg(1), { x: -2 * k.u, y: -5 * k.u, z: -2.5 * k.u });
       },
-      club: (k) => ({ voxels: totemVoxels(k.rand), palette: STACK_PALETTE, goldPalette: GOLD_STACK_PALETTE, rest: { x: 0.9, z: 0.05 } }),
+      club: (k) => ({ voxels: totemVoxels(k.rand), palette: STACK_PALETTE, rest: { x: 0.9, z: 0.05 } }),
       skull(k, v) {
         v.fill(0, 6, 0, 6, 0, 5, k.skinJ);
         v.fill(1, 5, 0, 1, 6, 6, k.skinJ);

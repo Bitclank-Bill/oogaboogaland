@@ -5,7 +5,6 @@
   const { createNode, addChild } = BL.scene;
   const { hexToRgb } = BL.math;
   const SHIELD_PALETTE = ["#513b2b", "#644a34", "#292c30", "#777b7d", "#a8aaab", "#d69b39"].map(hexToRgb);
-  const GOLD_SHIELD_PALETTE = ["#8a602c", "#a57532", "#6b491e", "#ce9d45", "#efc96b", "#f7931a"].map(hexToRgb);
   const shieldVox = () => {
     const v = makeVox();
     for (let x = -4; x <= 6; x++) for (let y = -1; y <= 9; y++) {
@@ -23,10 +22,10 @@
     v.set(-1, 3, 2, 5);
     return v;
   };
-  const swordGeometry = (h, gold) => {
+  const swordGeometry = (h) => {
     const H = BL.heroBody, geo = BL.models.geometry();
-    const steel = gold ? "#f0cf74" : "#c5c9ce", steelDk = gold ? "#c99c3e" : "#9a9fa6", groove = gold ? "#b0822c" : "#7b8189";
-    const bronze = gold ? "#f7931a" : "#b08a3e", leather = gold ? "#8a602c" : "#513b2b";
+    const steel = "#c5c9ce", steelDk = "#9a9fa6", groove = "#7b8189";
+    const bronze = "#b08a3e", leather = "#513b2b";
     H.loft(geo, [[-2.8, 0.3, 0.5, 0.2], [-2.55, 0.55, 1, 0.26], [-2.05, 0.55, 1, 0.26], [-1.8, 0.36, 0.52, 0.18]], bronze);
     H.loft(geo, [[-1.8, 0.48, 0.54, 0.2], [1.7, 0.48, 0.54, 0.2]], leather, [false, false]);
     H.loft(geo, [[1.7, 0.4, 2, 0.18], [2.15, 0.4, 2, 0.18]], bronze);
@@ -40,7 +39,7 @@
     joined: 1791577993,
     lastCommit: 1791577993,
     look: {
-      build: "normal", height: 1.16, face: "beard", hatY: 11,
+      build: "normal", height: 1.16, face: "beard",
       skin: "#dfb895", hair: "#d9b65f", fur: "#51483e",
       portrait: { min: [-1, -5, -2], max: [7, 10, 8] }
     },
@@ -72,8 +71,8 @@
         v.fill(4, 5, 2, 3, 6, 6, iron);
         v.set(4, 3, 7, k.color("#d69b39"));
       },
-      club: (k) => modelled() ? { default: swordGeometry(k.h, false), gold: swordGeometry(k.h, true), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } }
-        : { voxels: shieldVox(), palette: SHIELD_PALETTE, goldPalette: GOLD_SHIELD_PALETTE, rest: { x: 0, z: 0 }, carry: { x: 0.15, z: 0 } },
+      club: (k) => modelled() ? { default: swordGeometry(k.h), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } }
+        : { voxels: shieldVox(), palette: SHIELD_PALETTE, rest: { x: 0, z: 0 }, carry: { x: 0.15, z: 0 } },
       extras(k) {
         if (!modelled()) return;
         const u = k.u, shield = createNode({ position: { x: 1.5 * u, y: 0, z: 0 }, rotation: { x: 0, y: Math.PI / 2, z: 0 },

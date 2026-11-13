@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  const { box, lathe, merge, GOLD_CLUB_PALETTE } = BL.models;
+  const { box, lathe, merge } = BL.models;
   const { createNode, addChild } = BL.scene;
   const cigaretteGeometry = (h) => merge(
     box({ w: 0.035 * h, h: 0.035 * h, d: 0.26 * h, color: "#f3efe4", offset: { z: 0.13 * h } }),
@@ -9,8 +9,8 @@
     box({ w: 0.04 * h, h: 0.04 * h, d: 0.025 * h, color: "#e35b2d", emissive: 0.7, offset: { z: 0.34 * h } })
   );
   const energyCanCache = new Map();
-  const energyCanGeometry = (h, gold = false) => {
-    const key = `${h}/${gold}`;
+  const energyCanGeometry = (h) => {
+    const key = `${h}`;
     let geo = energyCanCache.get(key);
     if (!geo) {
       geo = merge(
@@ -22,18 +22,17 @@
         lathe({ profile: [[0.072 * h, 0.18 * h], [0.065 * h, 0.195 * h], [0, 0.195 * h]], segments: 10, color: "#c9ccd2" }),
         box({ w: 0.055 * h, h: 0.008 * h, d: 0.025 * h, color: "#5f6670", offset: { y: 0.202 * h } })
       );
-      if (gold) for (const face of geo.faces) face.color = GOLD_CLUB_PALETTE[0];
       energyCanCache.set(key, geo);
     }
     return geo;
   };
-  const wrappedCanGeometry = (h, gold = false) => {
-    const key = `wrapped/${h}/${gold}`;
+  const wrappedCanGeometry = (h) => {
+    const key = `wrapped/${h}`;
     let geo = energyCanCache.get(key);
     if (geo) return geo;
     const H = BL.heroBody, N = 12, TAU = Math.PI * 2;
-    const silver = gold ? "#e8c669" : "#c9ccd2", rim = gold ? "#c79a2f" : "#a9adb5", blue = gold ? "#b98a30" : "#2458a6", navy = gold ? "#8a6a18" : "#1b4585";
-    const red = gold ? "#f7931a" : "#d32f2f", yellow = gold ? "#fff1a8" : "#ffd23f";
+    const silver = "#c9ccd2", rim = "#a9adb5", blue = "#2458a6", navy = "#1b4585";
+    const red = "#d32f2f", yellow = "#ffd23f";
     const IN = 0.034;
     const at = (i, r, y) => { const a = (i - 0.5) / N * TAU; return [(Math.sin(a) * r + IN) * h, y * h, Math.cos(a) * r * h]; };
     const near = (i) => Math.min(i, N - i);
@@ -122,8 +121,8 @@
         body.torso = merge(body.torso, H.scaled(geo, k.u));
         return body;
       },
-      club: (k) => modelled() ? { default: wrappedCanGeometry(k.h), gold: wrappedCanGeometry(k.h, true), rest: { x: 0, z: 0 } }
-        : { default: energyCanGeometry(k.h), gold: energyCanGeometry(k.h, true), rest: { x: 0, z: 0 } },
+      club: (k) => modelled() ? { default: wrappedCanGeometry(k.h), rest: { x: 0, z: 0 } }
+        : { default: energyCanGeometry(k.h), rest: { x: 0, z: 0 } },
       gear(k) {
         const h = k.h, u = k.u;
         if (modelled()) {

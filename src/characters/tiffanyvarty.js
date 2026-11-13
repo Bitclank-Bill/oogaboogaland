@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  const { box, lathe, merge, variants } = BL.models;
+  const { box, lathe, merge, cached } = BL.models;
   const { createNode, addChild } = BL.scene;
   const height = 1.06;
   const gem = (h, x, y, z, s, color) => {
@@ -10,8 +10,8 @@
     for (let i = 0; i < v.length; i += 3) { v[i] += x; v[i + 1] += y; v[i + 2] += z; }
     return g;
   };
-  const club = (h, gold) => {
-    const u = h / 16, metal = gold ? "#f2c94c" : "#e9c6d8", shine = gold ? "#fff1b8" : "#fdf3fa", stone = gold ? "#fffbe8" : "#c9f6ff";
+  const club = (h) => {
+    const u = h / 16, metal = "#e9c6d8", shine = "#fdf3fa", stone = "#c9f6ff";
     const parts = [
       lathe({ profile: [[0.5 * u, -2 * u], [0.55 * u, -1.6 * u], [0.55 * u, 1.6 * u], [0.5 * u, 2 * u]], segments: 8, color: "#7a4a8c" }),
       lathe({ profile: [[0.42 * u, 2 * u], [0.6 * u, 6 * u], [0.9 * u, 8.5 * u]], segments: 10, color: metal }),
@@ -27,7 +27,7 @@
     for (const y of [3.5, 5.2, 6.9]) parts.push(gem(h, 0, y * u, 0.62 * u, 0.28 * u, stone));
     return merge(...parts);
   };
-  const clubGeometry = variants((gold) => club(height, gold));
+  const clubGeometry = cached(() => club(height));
   BL.characters.add({
     handle: "tiffanyvarty",
     joined: 1793927094,
@@ -160,7 +160,7 @@
         v.set(0, 1, 5, blush);
         v.set(6, 1, 5, blush);
       },
-      club: () => ({ default: clubGeometry(0), gold: clubGeometry(1) }),
+      club: () => ({ default: clubGeometry() }),
       extras(k) {
         if (BL.models.STYLE === "R") return;
         const u = k.u, boot = "#141416", sole = "#2a2a2e";

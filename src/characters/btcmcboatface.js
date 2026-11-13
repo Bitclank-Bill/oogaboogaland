@@ -30,15 +30,14 @@
       box({ w: 0.015, h: 0.06, d: 0.015, color: ink, offset: { y: 0.16, z: 0.352 } }),
       smirk, eye(-1), eye(1));
   });
-  const propellerClub = (h, gold = false) => {
+  const propellerClub = (h) => {
     const u = h / 16;
-    const shaftC = gold ? "#f0c75e" : white, brassC = gold ? "#ffd75e" : brass;
-    const hub = lathe({ profile: [[0.45 * u, 13.4 * u], [0.5 * u, 14 * u], [0.3 * u, 14.6 * u], [0, 14.7 * u]], segments: 10, color: brassC });
+    const hub = lathe({ profile: [[0.45 * u, 13.4 * u], [0.5 * u, 14 * u], [0.3 * u, 14.6 * u], [0, 14.7 * u]], segments: 10, color: brass });
     return merge(
       box({ w: 1.2 * u, h: 3.6 * u, d: 1.2 * u, color: black, offset: { y: -1.8 * u } }),
-      box({ w: 0.9 * u, h: 12 * u, d: 0.9 * u, color: shaftC, offset: { y: 6.2 * u } }),
+      box({ w: 0.9 * u, h: 12 * u, d: 0.9 * u, color: white, offset: { y: 6.2 * u } }),
       box({ w: 1.4 * u, h: 1.6 * u, d: 1.4 * u, color: black, offset: { y: 12.9 * u } }),
-      hub, ...propBlades(3.2 * u, 0.8 * u, 0.22 * u, 13.9 * u, brassC));
+      hub, ...propBlades(3.2 * u, 0.8 * u, 0.22 * u, 13.9 * u, brass));
   };
   BL.characters.add({
     handle: "btcmcboatface",
@@ -59,11 +58,10 @@
       ]
     },
     dress: {
-      hatY: (k) => 0.64 * k.h,
       headgear(k) {
         addChild(k.parts.head, createNode({ scale: { x: k.h, y: k.h, z: k.h }, geometry: cowlingGeometry() }));
       },
-      club: (k) => ({ default: propellerClub(k.h), gold: propellerClub(k.h, true), rest: { x: 0.3, z: 0 }, carry: { x: 0.95, z: 0 } }),
+      club: (k) => ({ default: propellerClub(k.h), rest: { x: 0.3, z: 0 }, carry: { x: 0.95, z: 0 } }),
       eyes(k, v) {
         v.fill(0, 1, 2, 3, 5, 5, k.P.white);
         v.fill(5, 6, 2, 3, 5, 5, k.P.white);

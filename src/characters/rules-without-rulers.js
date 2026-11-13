@@ -20,7 +20,7 @@
     display: "genXbtc",
     joined: 1789801750,
     lastCommit: 1789954043,
-    look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, pumpkin: true, bald: true, cleanShaven: true, noBrow: true, noPupils: true, face: "none", hatY: 15, skin: "#cfc8b4", hair: "#151515", fur: "#141414", height: 1.16 },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, pumpkin: true, bald: true, cleanShaven: true, noBrow: true, noPupils: true, face: "none", skin: "#cfc8b4", hair: "#151515", fur: "#141414", height: 1.16 },
     voice: {
       poke: "POWER OVERWHELMING",
       idle: ["Shut up you larp", "Rules Without Rulers"]

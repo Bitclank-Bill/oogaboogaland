@@ -102,7 +102,6 @@
   };
   const STICKERS = ["#d8322a", "#f2c230", "#2f9a48", "#f4df3a", "#7a3fa8", "#f4f1e6", "#17130f"];
   const GUITAR_PALETTE = ["#e3b872", "#cf9d55", "#5a2e1c", "#2e1a12", "#120b07", "#efe3c4", "#dcdcd2", "#c9c3b4", "#8a4f22", "#7a4a2a", "#6b3822", ...STICKERS];
-  const GOLD_GUITAR_PALETTE = ["#f0c95a", "#e0b53a", "#a8781e", "#6e4c12", "#3b2a0a", "#fff0c2", "#fff6d8", "#f5d77a", "#c99a2e", "#b8892a", "#9a6e1c", ...STICKERS];
   const [TOP, GRAIN, SIDE, DARK, HOLE, BONE, STEEL, TUNER, ROSETTE, NECK, BACK, S_RED, S_GOLD, S_GREEN, S_YELLOW, S_PURPLE, S_WHITE, S_BLACK] = GUITAR_PALETTE.map((_, i) => i);
   const BODY = [3, 4, 4, 4, 3, 3, 4, 5, 5, 5, 5, 4, 3], BODY_Y = 8, BRIDGE_Y = 17;
   let guitar = null;
@@ -148,7 +147,7 @@
     joined: 1792943472,
     lastCommit: 1792943472,
     look: {
-      face: "beard", noPupils: true, height: 1.04, hatY: 13, petRidesHat: true,
+      face: "beard", noPupils: true, height: 1.04, petRidesHat: true,
       skin: "#d99a74", hair: "#3b3430", fur: "#a97f52",
       portrait: { min: [-1, -2, 0], max: [7, 6, 8] }
     },
@@ -178,7 +177,6 @@
         const v = guitarVox(), unit = k.u / 2, origin = { x: -0.5 * unit, y: 0, z: 0 };
         return {
           default: voxelGeometry(v, { unit, palette: GUITAR_PALETTE, origin }),
-          gold: voxelGeometry(v, { unit, palette: GOLD_GUITAR_PALETTE, origin }),
           rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 }
         };
       },
