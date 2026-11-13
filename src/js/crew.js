@@ -1372,22 +1372,33 @@
   // into the palm, so the hand overlaps the wood and covers it there. `sink` is how far, of the palm's distance from
   // the middle of its fist: at 1 the wood reaches the middle of the fist, and past that only the back of the hand
   // stands out of the wood. The palm faces square to the wood and the forearm, so the arm is placed again from
-  // where the first placing left the forearm, twice. The wood stands out past the thumb, which lies across the
-  // fingers on the palm's side, so the thumb never shows through the far side of it. It returns the hand's turn
-  // about its forearm.
+  // where the first placing left the forearm, twice. The thumb lies across the fingers on the palm's side, so it
+  // is sunk in the wood: the wood stands out past it, and the fist sits back toward its wrist as far as keeps the
+  // thumb's end inside the wood's face where the fingers wrap round, so the thumb never shows through the wood. It
+  // returns the hand's turn about its forearm.
   const holdPart = (cave, arm, forearm, out, g, tx, ty, tz, ax, ay, az, halfX, halfY, sink, px, py, pz) => {
     reachArm(cave, arm, forearm, out, tx, ty, tz, px, py, pz);
     for (let pass = 0; pass < 2; pass++) {
       const flex = -forearm.rotation.x;
       math.quat.rotateVec(MUZZLE, out, 0, Math.cos(flex), -Math.sin(flex));
-      let zx = ay * MUZZLE[2] - az * MUZZLE[1], zy = az * MUZZLE[0] - ax * MUZZLE[2], zz = ax * MUZZLE[1] - ay * MUZZLE[0];
+      const fx = MUZZLE[0], fy = MUZZLE[1], fz = MUZZLE[2];
+      let zx = ay * fz - az * fy, zy = az * fx - ax * fz, zz = ax * fy - ay * fx;
       const zl = Math.hypot(zx, zy, zz) || 1;
       zx /= zl; zy /= zl; zz /= zl;
-      // How far the part reaches toward the palm: its half width and half height along that line.
+      // Toward the knuckles: down the forearm, square to the part.
+      const along = fx * ax + fy * ay + fz * az;
+      let kx = along * ax - fx, ky = along * ay - fy, kz = along * az - fz;
+      const kl = Math.hypot(kx, ky, kz) || 1;
+      kx /= kl; ky /= kl; kz /= kl;
+      // How far the part reaches toward the palm, and toward the knuckles: its half width and half height along
+      // each line.
       FINGER_INVERSE[0] = -g[0]; FINGER_INVERSE[1] = -g[1]; FINGER_INVERSE[2] = -g[2]; FINGER_INVERSE[3] = g[3];
       math.quat.rotateVec(MUZZLE, FINGER_INVERSE, zx, zy, zz);
-      const reach = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]), d = Math.max(reach + cave.fist.palm * (1 - sink), cave.fist.thumb + THUMB_COVER * cave.traits.height - reach);
-      reachArm(cave, arm, forearm, out, tx - zx * d, ty - zy * d, tz - zz * d, px, py, pz);
+      const reach = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]), cover = THUMB_COVER * cave.traits.height;
+      math.quat.rotateVec(MUZZLE, FINGER_INVERSE, kx, ky, kz);
+      const across = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]);
+      const d = Math.max(reach + cave.fist.palm * (1 - sink), cave.fist.thumb + cover - reach), back = Math.min(0, across - cave.fist.down - cover);
+      reachArm(cave, arm, forearm, out, tx - zx * d + kx * back, ty - zy * d + ky * back, tz - zz * d + kz * back, px, py, pz);
     }
     return handTurn(arm, forearm, ax, ay, az);
   };

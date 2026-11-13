@@ -514,13 +514,17 @@
     const pair = (make, sided = false) => { const right = scaled(make(0), u), left = paint || sided ? scaled(make(1), u) : right; return [right, !sided && alike(right, left) ? right : left]; };
     const [armR, armL] = pair(arm), [forearmR, forearmL] = pair(forearm), [legR, legL] = pair(leg, !o.boot), hands = o.hands || [skin, skin];
     const handR = scaled(hand(-1, hands[0], hs, wristOf), u);
-    let thumb = 0;
-    for (let i = 2; i < handR.verts.length; i += 3) thumb = Math.max(thumb, handR.verts[i]);
+    // The thumb is what lies past the fingers' tips (1.1) on the palm's side.
+    let thumb = 0, down = 0;
+    for (let i = 0; i < handR.verts.length; i += 3) {
+      thumb = Math.max(thumb, handR.verts[i + 2]);
+      if (handR.verts[i + 2] > 1.12 * hs * u) down = Math.max(down, -handR.verts[i + 1]);
+    }
     return { torso: scaled(torso, u), arm: armR, armL, forearm: forearmR, forearmL, leg: legR, legL,
       handR, handL: scaled(hand(1, hands[1], hs, wristOf), u), armX: B.armX * u, armDrop: (B.armDrop || 0) * u, armScale: armK,
-      // The fist's measures from its middle: to the face of its palm, to the end of its thumb's side, and to the far
-      // side of the thumb lying across the fingers on the palm's side.
-      fist: { palm: 1.1 * B.handScale * u, span: 2.17 * B.handScale * u, thumb },
+      // The fist's measures from its middle: to the face of its palm, to the end of its thumb's side, to the far
+      // side of the thumb lying across the fingers on the palm's side, and how far that thumb runs toward the knuckles.
+      fist: { palm: 1.1 * B.handScale * u, span: 2.17 * B.handScale * u, thumb, down },
       legX: B.legX ? B.legX * u : 0, elbow, back: spine * u, modelled: true };
   };
   // The default Ooga's strap, an object of its own: a band that comes out from behind the belt at the left hip, runs
