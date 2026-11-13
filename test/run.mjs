@@ -19803,6 +19803,44 @@ scene("hub", { label: "distant effects", query: "pos=0&birdseye=1", steps: [hubD
 // the crew is built, as on a real arrival.
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
 scene("hub", { label: "outdoor travel", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
+scene("hub", { label: "Merge Rock", query: "view=repos&hour=0&pos=0", steps: [{
+  name: "Merge Rock: all eyes burn, painted features and rings animate, lights follow the turning poles, and an expired merge goes dark",
+  why: "regression: repository totems only burned their top eyes and had no traveling rings or ground lights",
+  run: async (b) => {
+    const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks && s.tiers === s.wants && s.tiers.includes('2'); })()", 60000);
+    if (!ready) throw new Error("Merge Rock detail did not finish preparing");
+    const result = await b.evaluate(`(() => {
+      const h = BL.scenes.hub.debug, site = h.repoIsland, P = BL.repoIslandModels.plan(), now = Date.now();
+      BL.repoFeed.apply({ at: now, merges: Object.fromEntries(BL.repoIslandData.REPOS.map(r => [r.repo, [now - 60000, 1]])) }, now);
+      site.update(1 / 60, 1, h.camera);
+      const before = site.stats(), expected = P.chunks.reduce((n, list, k) => n + (Number(before.tiers[k]) ? list.reduce((v, at) => v + P.totems[at].L.eyes.length, 0) : 0), 0);
+      const batches = site.group.children.filter(n => n.instanceData), signature = () => batches.map(n => Array.from(n.instanceData.slice(0, n.instanceCount * 20)));
+      const first = JSON.stringify(signature());
+      site.update(1 / 60, 2, h.camera);
+      const animated = first !== JSON.stringify(signature()), after = site.stats();
+      const lamps = h.lamps.filter(l => l.id.startsWith('repo-totem:'));
+      const clock = BL.net.serverNow;
+      let followed = false, matrices = false;
+      try {
+        BL.net.serverNow = () => 120000;
+        site.turn(); site.update(1 / 60, 2, h.camera);
+        const angle = site.stats().angle, c = Math.cos(angle), sn = Math.sin(angle);
+        followed = lamps.every(l => {
+          const t = P.totems.find(t => 'repo-totem:' + t.index === l.id);
+          return Math.abs(l.x - site.spot.x - t.x * c - t.z * sn) < 1e-6 && Math.abs(l.z - site.spot.z + t.x * sn - t.z * c) < 1e-6 && l.kind.radius > 0 && l.kind.r > l.kind.g && l.kind.g > l.kind.b;
+        });
+        matrices = batches.every(n => n.instanceCount <= n.instanceData.length / 20 && Array.from(n.instanceData.slice(0, n.instanceCount * 20)).every(Number.isFinite));
+      } finally { BL.net.serverNow = clock; site.turn(); }
+      BL.repoFeed.apply({ at: now, merges: {} }, now);
+      site.update(1 / 60, 3, h.camera);
+      const dark = site.stats();
+      return { before, after, expected, animated, followed, matrices, lights: lamps.length, dark };
+    })()`);
+    record("Merge Rock lighting: all face fires, animated details, bounded ring batches and rotating warm lights; cleared feed extinguishes them",
+      result.before.flames === result.expected && result.expected > 340 && result.before.features > 0 && result.before.rings > 0 && result.before.ringDraws < 50 && result.animated && result.followed && result.matrices && result.lights === 170 && !result.dark.flames && !result.dark.features && !result.dark.rings && !result.dark.lights,
+      JSON.stringify(result));
+  }
+}] });
 scene("hub", { opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${hubSleepWire.toString()})()` } : {}, steps: [hubArrival, { name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hudVisit, hubKeptDelivery, hubMapNavigation, hubRainforestSteps, hubRoutes, hubFall, hubGrounding, hubCloudCamera, hubCloudFraming, hubKeypadRedirect, trip("hub"), factoryActivityRouting, hubLiveWake, hubSeparateBodies] });
 // The same ownership contract exercises complete destruction on memory-limited devices.
 // A released hub's return enters in slices (`enterSteps`), one at boot or with no slicing in one go (`enter`): the same
@@ -30840,6 +30878,22 @@ const repoIslandChecks = (BL, island) => {
   const bridged = spot.y === island.surfaceAt(0, spot.rim - 0.3) && island.surfaceAt(0, spot.rim + 0.1) < 0.5 && spot.z === spot.rim + M.BRIDGE.span + M.ISLE.R;
   record("repo island plan: every repository stands once, in its own carving (the meadow's four in theirs), as tall as its importance makes it, wholly inside the lip and off its paths, in chunks of up to four, past a bridge level with the south terrace",
     placed && seen.size === D.REPOS.length && own && tall && inside && chunked && bridged, JSON.stringify({ placed, count: seen.size, own, tall, inside, chunked, bridged, spot }));
+  let eyes = true, features = true, sockets = 0;
+  for (let k = 0; k < P.chunks.length; k++) {
+    const built = M.chunkSteps(k, "distant")();
+    P.chunks[k].forEach((at, slot) => {
+      const t = P.totems[at], found = built.eyes[slot];
+      eyes &&= found.length >= t.L.faces.length * 2 && found.every(e => e.every(Number.isFinite) && e[3] > 0);
+      sockets += found.length;
+      features &&= built.features[slot].faces.length > 0 && built.features[slot].surfaceOverlay && !built.features[slot].castShadow;
+    });
+  }
+  for (const tier of ["far", "near"]) {
+    const built = M.chunkSteps(0, tier)();
+    features &&= built.features.every(g => g.faces.length > 0 && g.surfaceOverlay && !g.castShadow);
+  }
+  record("Merge Rock: every carving supplies fire sockets for all faces and painted glow surfaces at every detail",
+    eyes && features, JSON.stringify({ eyes, features, sockets, totems: P.totems.length }));
   const h = createHash("sha256");
   for (let i = 0; i < 4; i++) for (const g of [TM.body(i), TM.glyphs(i), TM.featureHighlights(i)]) h.update(JSON.stringify([g.verts, g.faces.map((f) => [f.i, f.color, f.emissive || 0])]));
   const digest = h.digest("hex").slice(0, 16);

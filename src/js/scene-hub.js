@@ -2992,6 +2992,13 @@
     yield* pause(slice);
     const site = BL.repoIsland.create({ island, renderer, hooks: {
       addSolid: (node) => solids.add(node), addTarget, removeTarget,
+      addTotemLight: (index) => addLamp({ glow: 0, flare: 0, visible: true }, { r: 0, g: 0, b: 0, radius: 0, glow: 0, hide: false }, 0, 0, 0, true, Infinity, `repo-totem:${index}`),
+      updateTotemLight: (lamp, x, y, z, power, radius) => {
+        const light = lamp.kind, always = power > 0;
+        if (lamp.x !== x || lamp.y !== y || lamp.z !== z || lamp.always !== always || light.r !== power || light.radius !== radius) lampSelValid = false;
+        lamp.x = x; lamp.y = y; lamp.z = z; lamp.always = always;
+        light.r = power; light.g = 0.62 * power; light.b = 0.3 * power; light.radius = radius;
+      },
       visible: () => !document.hidden && !!repoIsland && !cloudPlaying() && renderer.kind === "webgl2",
       near: () => !!pilot?.player && (() => { const p = pilot.player.root.position, feet = p.y - pilot.player.baseY; return site.onIsland(p.x, feet, p.z) || site.onBridge(p.x, feet, p.z); })(),
       toast: (text) => hud.toast(text)
@@ -8048,6 +8055,11 @@
       rig.time = (rig.time || 0) + dt;
       rig.update(dt, rig.time);
     }
+    // Merge Rock's geometry, riders and warm lights all follow this frame's turn before lamp selection and solid sync.
+    if (repoIsland && !cloudPlaying()) {
+      if (repoIsland.turn()) carryRepoIsland();
+      repoIsland.update(dt, elapsed, camera);
+    }
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) {
       jumbotron.update(elapsed, renderer);
@@ -8060,8 +8072,6 @@
     if (!cloudPlaying()) critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
     if (!gameMode && !cloudPlaying()) updateClouds(dt);
     updateGameRing(dt, elapsed);
-    // Repo Island turns before the solids are synced, so its ground and its riders move in the same frame.
-    if (repoIsland && !cloudPlaying() && repoIsland.turn()) carryRepoIsland();
     solids.sync();
     if (gameMode) updateRageThrowMap();
     updateSleepingSolids();
@@ -8078,7 +8088,6 @@
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
     if (arcadeMouth && !cloudPlaying()) arcadeMouth.entrance.update(dt, elapsed, pilot.player);
     if (bifrostIsle && !cloudPlaying()) bifrostGate(dt, elapsed);
-    if (repoIsland && !cloudPlaying()) repoIsland.update(dt, elapsed, camera);
     if (bcaMouth) bcaVeil(dt, elapsed);
     if (factoryDeparting || bifrostDeparting) { npcGhosts.paint(dt); return; } // The Ooga through a shield and its camera hold through the director fade.
     if (gameMode) prepareClankerStrike();

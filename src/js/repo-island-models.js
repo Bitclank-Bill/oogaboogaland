@@ -1,4 +1,4 @@
-// Repo Island's geometry, off the main island's south rim: a small round floating island of voxel stone, a stone lip
+// Merge Rock's geometry, off the main island's south rim: a small round floating island of voxel stone, a stone lip
 // round its edge, a stone bridge to the lip from the top of the south stairs (where the Oogatron arches over the path),
 // and a carved totem for every repository `repo-island-data.js` lists, each from the meadow totems' own kit
 // (`totem-models.js`) and standing that repository's importance times Bitcoin Core's height.
@@ -22,14 +22,14 @@
 //
 // Geometry, each cached for the page and released with the hub's caches: `rockSteps` (the top a half-metre lattice
 // painted with the plaza's bed, the paths' grout and the ground, its `collisionGeometry` a closed turned shell whose top
-// is the island's top and the lip's, the lip's stonework (`lip`), the paths' cobbles, kerbs and the plaza's flags
+// is the island's top and the lip's, the lip's stonework (`lip`), the paths' cobbles, kerbs and the plaza's cobbles
 // (`pavement`), and the crystals hanging under every totem in place of a rock keel (`crystals`)), `bridge()` (stone in
 // island coordinates: a flagged deck whose end follows the lip's round edge, a stepped arch under it, parapets and pillars, and four lanterns
 // whose glass is `glass`, with their glow points in `lamps`), `signs()` (every section's sign laid flat in the lip, never
 // solid), and `chunkSteps(k, tier)`: a chunk's carvings merged at one of three details (`near`, `far`
 // for across the island, `distant` for across the water) as `mesh`, all three sharing one collision shell; the distant
-// build also gives each totem's runes with an ember in each crest eye (`glyphs`, for the lit bands) and those two eyes
-// (`eyes`); `crystals()` is the cluster under the island, each crystal with the totems over it, and `gem(k)` the
+// build also gives each totem's runes with an ember in every eye (`glyphs`, for the lit bands) and all eye sockets
+// (`eyes`); every detail carries its matching painted surfaces (`features`); `crystals()` is the cluster under the island, each crystal with the totems over it, and `gem(k)` the
 // glowing copy of one. Nothing here runs per frame.
 (() => {
   "use strict";
@@ -60,18 +60,17 @@
   // How far the island keeps from the other islets.
   const CLEAR = 8;
   // The ground's own look, moss and cobble: the ground's three tones, the grout the paths' cobbles are set in (two
-  // tones) and the cobbles' and kerbs' own, the plaza's flags over its bed and its ring, and the lip's flags, grout,
+  // tones) and the cobbles' and kerbs' own, and the lip's flags, grout,
   // coping, wall stones and plinth.
   const GROUND = {
     ground: ["#4e7c3a", "#5a8a44", "#41692f"], path: ["#6c675f", "#645f58"], grout: "#55524c",
     cobbles: ["#a7a195", "#948e83", "#b5afa3", "#837e74", "#9c968a"], kerbs: ["#7f7b73", "#8a867e", "#77736b"],
-    plaza: ["#cbbfa4", "#b9ad92"], flags: ["#d3c8ae", "#c2b69b", "#dbd1b9", "#b6aa8f"], ring: "#f7931a",
     lip: ["#9a9892", "#8b8983", "#a6a49e", "#7f7d77"], coping: ["#706d67", "#67645e", "#78756f"], wall: ["#7b776f", "#6e6a63", "#857f77", "#736f68"], plinth: "#5e5a54"
   };
   const P = BL.terrain.PALETTE.length;
   // The terrain's palette, then the island's own: its ground, paths, plaza and lip.
-  const PALETTE = [...BL.terrain.PALETTE, ...[...GROUND.ground, ...GROUND.path, GROUND.grout, ...GROUND.plaza, GROUND.ring, "#6a625b"].map(hexToRgb)];
-  const C = { stone: 5, stoneDark: 6, dirt: 8, ground: P, groundLight: P + 1, groundDark: P + 2, path: P + 3, path2: P + 4, edge: P + 5, flag: P + 6, flagLight: P + 7, orange: P + 8, kerb: P + 9 };
+  const PALETTE = [...BL.terrain.PALETTE, ...[...GROUND.ground, ...GROUND.path, GROUND.grout, "#6a625b"].map(hexToRgb)];
+  const C = { stone: 5, stoneDark: 6, dirt: 8, ground: P, groundLight: P + 1, groundDark: P + 2, path: P + 3, path2: P + 4, edge: P + 5, kerb: P + 6 };
 
   // ---- designs -------------------------------------------------------------------------------------------------
   // Each section's crests and paints; a carving's paint and second paint are drawn from these, never the same.
@@ -129,7 +128,7 @@
       };
       const key = signature(d);
       if (taken.has(key) && attempt < 64) continue;
-      if (taken.has(key)) throw new Error(`Repo Island: no design of its own for ${repo.repo}`);
+      if (taken.has(key)) throw new Error(`Merge Rock: no design of its own for ${repo.repo}`);
       taken.add(key);
       return d;
     }
@@ -203,7 +202,7 @@
     const ring = core.totems.filter((t) => t !== centre);
     // Spread evenly all the way round: the arc runs one gap past a full turn, so the gap across its ends is the others'.
     const ringNeed = ring.reduce((sum, t) => sum + 2 * t.L.reach + PLAN.gap, 0), ringGap = (TAU * PLAN.coreRing - ringNeed) / ring.length;
-    if (ringGap < 0) throw new Error("Repo Island: the Core ring is overfull");
+    if (ringGap < 0) throw new Error("Merge Rock: the Core ring is overfull");
     const ringRow = [];
     spread(ring, PLAN.coreRing, 0, TAU + ringGap / PLAN.coreRing, 0, ringRow);
     for (const t of ringRow) placed.push({ ...t, ry: outward(t.x, t.z) });
@@ -233,7 +232,7 @@
       need.forEach((n, k) => { need[k] = n * Math.max(0.5, packed[k].fill) ** 0.7; });
     }
     for (const { s, from, to, out, left } of best) {
-      if (left) throw new Error(`Repo Island: the ${s.name} wedge has no room for ${left} more`);
+      if (left) throw new Error(`Merge Rock: the ${s.name} wedge has no room for ${left} more`);
       wedges.push({ id: s.id, name: s.name, badge: s.badge, from, to, count: s.totems.length });
       spokes.push(from);
       const sp = polar((from + to) / 2, PLAN.sign);
@@ -261,9 +260,9 @@
       const t = placed[a];
       for (let b = a + 1; b < placed.length; b++) {
         const u = placed[b];
-        if (Math.hypot(t.x - u.x, t.z - u.z) < t.L.reach + u.L.reach + PLAN.gap * 0.5) throw new Error(`Repo Island: ${t.repo} and ${u.repo} stand too close`);
+        if (Math.hypot(t.x - u.x, t.z - u.z) < t.L.reach + u.L.reach + PLAN.gap * 0.5) throw new Error(`Merge Rock: ${t.repo} and ${u.repo} stand too close`);
       }
-      if (t.r && pathAt(t.x, t.z, spokes, t.L.reach * 0.5)) throw new Error(`Repo Island: ${t.repo} stands on a path`);
+      if (t.r && pathAt(t.x, t.z, spokes, t.L.reach * 0.5)) throw new Error(`Merge Rock: ${t.repo} stands on a path`);
     }
     return { totems: placed, chunks, bounds, signs, spokes, wedges, byIndex: D.REPOS.map((_, i) => placed.find((t) => t.index === i)) };
   });
@@ -291,20 +290,19 @@
     const pool = BL.poolModels.spot(island, {}), T = BL.timechainModels, out = Math.max(0, z * T.DIR.z);
     for (const [name, ox, oz, r] of [["Mempool island", pool.x, pool.z, BL.poolModels.SITE.reach], ["Timechain Sphere", T.DIR.x * out, T.DIR.z * out, T.SITE.radius]]) {
       const apart = Math.hypot(ox, z - oz) - r - ISLE.R;
-      if (apart < CLEAR) throw new Error(`Repo Island comes within ${apart.toFixed(1)} m of the ${name}`);
+      if (apart < CLEAR) throw new Error(`Merge Rock comes within ${apart.toFixed(1)} m of the ${name}`);
     }
     return { x: 0, y, z, rim };
   };
 
   // ---- the rock ------------------------------------------------------------------------------------------------
   const noise = (x, z) => Math.sin(x * 0.41 + 1.3) * Math.cos(z * 0.37 - 0.7) + 0.5 * Math.sin((x + z) * 0.23 + 2.1);
-  // The colour of the top at (x, z), the lattice cell (ix, iz): the plaza's bed inside its orange ring, the grout the
+  // The colour of the top at (x, z), the lattice cell (ix, iz): the plaza's cobble bed, the grout the
   // paths' cobbles are set in, and the ground.
   const topAt = (x, z, ix, iz, spokes) => {
     const r = Math.hypot(x, z);
     if (r > PLAN.edge) return C.kerb;
-    if (r < PLAN.plaza) return r > PLAN.plaza - 0.5 ? C.orange : (ix + iz) % 2 ? C.flag : C.flagLight;
-    if (pathAt(x, z, spokes)) return (ix + iz) % 2 ? C.path2 : C.path;
+    if (r < PLAN.plaza || pathAt(x, z, spokes)) return (ix + iz) % 2 ? C.path2 : C.path;
     const n = noise(x, z);
     return n > 0.75 ? C.groundLight : n < -0.75 ? C.groundDark : C.ground;
   };
@@ -375,10 +373,10 @@
   };
 
   // The paths' paving: cobbles in staggered rows set in the lattice's grout, kerbstones along both edges of every path
-  // (the ring path's outer kerb broken where a spoke leaves it), and the plaza's flags in rings round Bitcoin Core.
+  // (the ring path's outer kerb broken where a spoke leaves it), and the plaza's matching cobbles round Bitcoin Core.
   const COBBLE = 0.26, KERB = 0.07;
   const paveSteps = function* (slice, spokes) {
-    const g = { verts: [], faces: [], lines: [] }, rand = mulberry32(0xc0bb1e), cobble = shades(rand, GROUND.cobbles), kerb = shades(rand, GROUND.kerbs), flag = shades(rand, GROUND.flags);
+    const g = { verts: [], faces: [], lines: [] }, rand = mulberry32(0xc0bb1e), cobble = shades(rand, GROUND.cobbles), kerb = shades(rand, GROUND.kerbs);
     const lay = (x, z, dx, dz, size) => {
       const turn = (rand() - 0.5) * 0.18, c = Math.cos(turn), sn = Math.sin(turn), k = 0.92 + rand() * 0.08;
       stone(g, x, z, dx * c - dz * sn, dz * c + dx * sn, size / 2 * k, size / 2 * (0.92 + rand() * 0.08), -0.01, 0.024 + rand() * 0.014, 0.8, cobble());
@@ -418,13 +416,12 @@
       }
       yield* pause(slice);
     }
-    // The plaza: rings of flags, each ring's joints between the last's.
-    for (let r = 0.25, ring = 0; r < PLAN.plaza - 0.55; r += 0.42, ring++) {
-      const r2 = Math.min(r + 0.42, PLAN.plaza - 0.5), count = Math.max(5, Math.round(TAU * (r + r2) / 2 / 0.55));
-      for (let k = 0; k < count; k++) {
-        const a0 = (k + (ring % 2) * 0.5) / count * TAU, a1 = a0 + TAU / count, gap = 0.012 / r2;
-        block(g, r + 0.012, r2 - 0.012, a0 + gap, a1 - gap, -0.02, 0.018 + rand() * 0.006, flag());
+    // The same staggered cobbles as the paths, right out to the plaza's edge.
+    for (let row = 0, z = -PLAN.plaza + COBBLE / 2; z < PLAN.plaza; z += COBBLE, row++) {
+      for (let x = -PLAN.plaza + (row % 2 ? COBBLE : COBBLE / 2); x < PLAN.plaza; x += COBBLE) {
+        if (Math.hypot(x, z) < PLAN.plaza - COBBLE / 2) lay(x, z, 1, 0, COBBLE - 0.03);
       }
+      yield* pause(slice);
     }
     return g;
   };
@@ -670,25 +667,26 @@
     return geo;
   };
   // A chunk's carvings at one detail, a totem a step, placed in the island's frame and merged into one packed mesh. The
-  // distant build comes first and carries the collision every detail shares, each totem's runes and its crest eyes.
+  // distant build comes first and carries the collision every detail shares, each totem's runes and all its eyes.
   const chunks = new Map();
   const chunkSteps = (k, tier) => {
     const key = `${k}|${tier}`;
     if (!chunks.has(key)) chunks.set(key, cachedSteps(function* (slice) {
-      const TM = BL.totemModels, P = plan(), list = P.chunks[k], parts = [], collision = [], glyphs = [], eyes = [];
+      const TM = BL.totemModels, P = plan(), list = P.chunks[k], parts = [], collision = [], glyphs = [], eyes = [], features = [];
       for (const at of list) {
         const t = P.totems[at], L = t.L, c = Math.cos(t.ry), s = Math.sin(t.ry);
         const place = (g) => moved(turnedY(g, t.ry), t.x, 0, t.z);
-        const opts = tier === "near" ? { detail: TIERS.near, highlights: false, board: nameBoard(t.word), leanStones: true } : { detail: TIERS[tier], highlights: false, board: false };
+        const opts = tier === "near" ? { detail: TIERS.near, highlights: true, board: nameBoard(t.word), leanStones: true } : { detail: TIERS[tier], highlights: true, board: false };
         const geo = TM.carve(L, t.word, t.seed, opts);
+        features.push(place(geo.featureHighlights));
         parts.push(place(geo));
         if (tier === "distant") {
           collision.push(place(geo.collisionGeometry));
-          // The eyes nearest the crest, where the fires burn while it is lit; every detail puts them in the same place.
+          // Every face has eye fires; every detail puts them in the same sockets.
           // Its runes carry an ember in each, which is what a lit totem shows from across the water, where no fire is lit.
-          const top = L.eyes.slice().sort((a, b) => b[1] - a[1]).slice(0, 2);
-          eyes.push(top.map(([x, y, z, size]) => [t.x + x * c + z * s, y, t.z - x * s + z * c, size]));
-          glyphs.push(place(merge(TM.glyphsOf(L, t.word), ...top.map(([x, y, z, size]) => box({ w: size * 0.3, h: size * 0.22, d: 0.02, color: "#ff7a1e", emissive: 1, offset: { x, y, z } })))));
+          const sockets = L.eyes;
+          eyes.push(sockets.map(([x, y, z, size]) => [t.x + x * c + z * s, y, t.z - x * s + z * c, size]));
+          glyphs.push(place(merge(TM.glyphsOf(L, t.word), ...sockets.map(([x, y, z, size]) => box({ w: size * 0.3, h: size * 0.22, d: 0.02, color: "#ff7a1e", emissive: 1, offset: { x, y, z } })))));
         }
         yield* pause(slice);
       }
@@ -699,7 +697,7 @@
       // The distant mesh carries the collision; the hub's solids keep the mesh a chunk's node joined with.
       if (tier === "distant") mesh.collisionGeometry = merge(...collision);
       if (BL.compactGeometry?.enabled) BL.compactGeometry.pack(mesh, { immutable: true, renderOnly: true });
-      return tier === "distant" ? { mesh, glyphs, eyes } : { mesh };
+      return tier === "distant" ? { mesh, glyphs, eyes, features } : { mesh, features };
     }));
     return chunks.get(key);
   };
