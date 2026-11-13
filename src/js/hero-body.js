@@ -466,11 +466,10 @@
     const [ey, ez] = B.elbow, reach = Math.hypot(HAND_Y + ey, HAND_Z - ez), hs = B.handScale / armK, last = thick(B.forearm[B.forearm.length - 1]);
     const long = (y) => y < 0 ? y * (reach - WRIST * hs) / -last[0] : y, wristOf = [last[2] / hs, last[1] / hs, last[3] / hs];
     // `clear` is the bend that carries the fist clear of the front of the trunk, for an arm laid across it. `deltoid`
-    // is how far down the arm its shoulder is widest, the middle the top of the arm is rounded about, and `wrist` how
-    // far up the hand from the fist's middle its wrist is, which it bends about.
+    // is how far down the arm its shoulder is widest, the middle the top of the arm is rounded about.
     const elbow = { y: ey * u, z: ez * u, length: reach * u, rest: Math.atan2(HAND_Z - ez, HAND_Y + ey),
       clear: Math.asin(Math.min(1, (B.belt[3] + 1.45 * B.handScale - ez * armK) / (reach * armK))), relaxed: B.relaxed,
-      deltoid: -B.arm.reduce((a, ring) => ring[1] > a[1] ? ring : a)[0] * u, wrist: WRIST * hs * u };
+      deltoid: -B.arm.reduce((a, ring) => ring[1] > a[1] ? ring : a)[0] * u };
     const forearm = (side = 0) => {
       const rings = B.forearm.map(([y, ...ring]) => thick([long(y), ...ring]));
       const g = paint ? paintedLoft(geometry(), rings, paint.forearm[side].breaks, paint.forearm[side].pick, paint.tone, skin, paint.print) : loft(geometry(), rings, skin);
