@@ -11,7 +11,7 @@ import { sha256Hex } from "../src/crypto.js";
 import { getPlayer } from "../src/db.js";
 import { listed, listedIds } from "../src/allowlist.js";
 import { inspectorAllowed, inspectorOn, inspectReporter, INSPECT_FEATURE } from "../src/inspect-report.js";
-import { absorb, cleanReport, KEEP_MS, LOG_KEEP, nextAlarm, pruneCount, STALE_MS, sweep } from "../src/inspector-logic.js";
+import { absorb, cleanReport, KEEP_MS, LOG_KEEP, nextAlarm, expiredEvents, STALE_MS, sweep } from "../src/inspector-logic.js";
 import { routeFixture } from "./routes.mjs";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -19,7 +19,10 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 // An INSPECTOR binding that keeps every report it is sent and answers as the Inspector would.
 const binding = (watchUntil = 0) => {
   const reports = [];
-  return { reports, getByName: () => ({ report: async (r) => { reports.push(structuredClone(r)); return { watchUntil }; } }) };
+  return { reports, getByName: () => ({ report: async (r) => {
+    assert.equal(Object.getPrototypeOf(r.counters), Object.prototype, "RPC counters must have the ordinary object prototype");
+    assert.equal(Object.getPrototypeOf(r.peaks), Object.prototype, "RPC peaks must have the ordinary object prototype");
+    reports.push(structuredClone(r)); return { watchUntil }; } }) };
 };
 
 test("the allowlist names accounts by id, and one malformed value lets nobody in", () => {
@@ -103,8 +106,11 @@ test("busy rows go stale after five quiet minutes, the rest leave after a day, a
   assert.equal(nextAlarm([live], [], 10), STALE_MS);
   assert.equal(nextAlarm([], [], 10), null);
   const events = Array.from({ length: LOG_KEEP + 3 }, (_, i) => ({ at: i }));
-  assert.equal(pruneCount(events, 0), 3);
-  assert.equal(pruneCount([{ at: 0 }, { at: KEEP_MS }], KEEP_MS + 1), 1, "a day old goes");
+  assert.equal(expiredEvents(events, 0).length, 3);
+  assert.equal(expiredEvents([{ at: 0 }, { at: KEEP_MS }], KEEP_MS).length, 1, "a day old goes at its deadline");
+  const delayed = [{ id: 1, at: KEEP_MS }, { id: 2, at: 0 }, { id: 3, at: KEEP_MS + 1 }];
+  assert.deepEqual(expiredEvents(delayed, KEEP_MS).map(e => e.id), [2], "late reports expire without deleting newer ones");
+  assert.equal(nextAlarm([], delayed, 1), KEEP_MS, "the earliest event can be behind a newer one");
 });
 
 // The real room, as doorway.test.mjs runs it, with the inspector on.
@@ -237,7 +243,7 @@ const inspectorHost = (db = new DatabaseSync(":memory:"), env = {}) => {
   }
   const source = readFileSync(new URL("../src/inspector.js", import.meta.url), "utf8")
     .replace(/import\s+[\s\S]*?from\s+"[^"]+";/g, "").replace("export class Inspector", "class Inspector") + "\nglobalThis.Inspector = Inspector;";
-  const context = { inspectorAllowed, LIMITS: {}, RECENT_MS: 120000, WATCH_MS: 90000, absorb, cleanReport, nextAlarm, pruneCount, sweep,
+  const context = { inspectorAllowed, LIMITS: {}, RECENT_MS: 120000, WATCH_MS: 90000, absorb, cleanReport, nextAlarm, expiredEvents, sweep,
     DurableObject: class { constructor(c, e) { this.ctx = c; this.env = e; } }, WebSocketPair, WebSocketRequestResponsePair: class {}, Response, JSON, Date, Map, Set, Number, setTimeout, clearTimeout };
   runInNewContext(source, context);
   const envFull = { INSPECTOR: {}, INSPECTOR_IDS: "1", ...env };
@@ -253,6 +259,14 @@ test("the Inspector keeps rows and the log across a restart, and tells objects w
   const again = inspectorHost(first.db, { ROOM: { getByName: (name) => ({ inspectWatch: async (until) => { asked.push([name, until > Date.now()]); } }) } });
   assert.equal(again.object.rows.get("Room:island").status, "live");
   assert.deepEqual([...again.object.events.map((e) => e.kind)], ["join"]);
+
+  const now = Date.now();
+  await again.object.report({ ...room, events: [{ at: now, kind: "join", id: 1, login: "fresh" }, { at: now - KEEP_MS, kind: "leave", id: 2, login: "expired" }] });
+  assert.ok(!again.object.events.some(e => e.login === "expired"), "delayed old lines are removed even behind fresh lines");
+  assert.ok(!again.object.added.some(e => e.login === "expired"), "expired lines cannot escape in a pending update");
+  const restored = inspectorHost(first.db);
+  assert.ok(!restored.object.events.some(e => e.login === "expired"), "expired lines are removed from SQLite too");
+  assert.ok(restored.object.events.some(e => e.login === "fresh"), "newer lines survive");
 
   const viewer = (id) => again.object.fetch({ headers: new Headers({ upgrade: "websocket", "x-viewer-id": String(id), "x-viewer-login": "admin" }) });
   assert.equal((await viewer(9)).status, 404, "only an allowlisted account");

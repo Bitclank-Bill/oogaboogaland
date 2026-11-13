@@ -231,6 +231,7 @@ function markMass() {
 }
 
 function renderLog() {
+  S.events = S.events.filter(function (e) { return e.at > now() - 86400000; });
   var q = $("filter").value.trim().toLowerCase(), drops = $("drops").checked, html = "", shown = 0;
   for (var i = S.events.length - 1; i >= 0 && shown < 500; i--) {
     var e = S.events[i], d = describe(e);
@@ -288,7 +289,7 @@ function connect() {
 }
 $("filter").addEventListener("input", renderLog);
 $("drops").addEventListener("change", renderLog);
-setInterval(function () { if (!document.hidden) { renderTiles(); renderCards(); renderZones(); } }, 1000);
+setInterval(function () { if (!document.hidden) { renderTiles(); renderCards(); renderZones(); renderLog(); } }, 1000);
 render();
 connect();
 </script>
