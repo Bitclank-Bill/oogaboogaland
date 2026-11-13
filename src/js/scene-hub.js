@@ -6600,7 +6600,7 @@
   // the same precise ray, at the free cursor or the locked crosshair, with no aim assistance.
   const COMBAT_POINTER = { x: -1, y: -1 }, COMBAT_RAY = {}, COMBAT_HIT = {};
   const COMBAT_VIEW = math.mat4.create(), COMBAT_UP = { x: 0, y: 1, z: 0 };
-  let combatTotemHovered = false;
+  let combatTotemHovered = false, combatTotemLink = null;
   const onMergeRock = () => {
     const player = pilot?.player;
     if (!player || !repoIsland || clankerPlay?.active || cloudHopper?.active || factoryDeparting || bifrostDeparting || islandGuide?.holding) return false;
@@ -6619,9 +6619,9 @@
   };
   const combatTotemClick = (x, y) => {
     const hit = combatTotemAt(x, y);
-    if (!hit) return false;
-    onTap(hit, { x, y });
-    return true;
+    // Take the attack on press; open on release, like carry clicks, so native tab modifiers work.
+    combatTotemLink = hit ? repoIsland.open(hit.owner) : null;
+    return !!combatTotemLink;
   };
   const combatPointer = (x, y) => {
     const rect = glCanvas.getBoundingClientRect();
@@ -11291,10 +11291,15 @@
     hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks, preciseHover: true });
-    COMBAT_POINTER.x = COMBAT_POINTER.y = -1; combatTotemHovered = false;
+    COMBAT_POINTER.x = COMBAT_POINTER.y = -1; combatTotemHovered = false; combatTotemLink = null;
     ctx.canvas.addEventListener("pointerleave", () => { COMBAT_POINTER.x = COMBAT_POINTER.y = -1; }, { signal: ctx.signal });
     presets = { pile: PILE_VIEW, gate: GATE_VIEW };
     pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, coarse: COARSE, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly || !!cloudHopper?.playing, noOverhead: () => !!cloudHopper?.active, primaryAction: (down, event) => {
+        if (!down && combatTotemLink) {
+          const link = combatTotemLink; combatTotemLink = null;
+          if (event && onMergeRock()) window.open(link, "_blank", "noopener,noreferrer");
+          return true;
+        }
         if (cloudHopper?.hookAction(down)) return true;
         if (!down || !event) return false;
         if (pilot.aimFocused) return combatTotemClick(renderer.size.width / 2, renderer.size.height / 2);

@@ -19897,7 +19897,7 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
 }] });
 scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
   name: "Merge Rock combat: aimed totems show tooltips and take clicks before melee or rifle fire, only on the island",
-  why: "regression: the combat camera ray used an array where lookAt needs an xyz object, so neither hover nor click reached the totem",
+  why: "regression: the combat camera ray missed totems, and opening their links on press lost Command-click background-tab behavior",
   run: async (b) => {
     const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks; })()", 60000);
     if (!ready) throw new Error("Totem chunks did not finish building");
@@ -19913,9 +19913,9 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
         C.position.x = site.spot.x + t.x; C.position.y = site.spot.y + t.L.apex * 0.78; C.position.z = site.spot.z + t.z + 4;
         C.target.x = C.position.x + (miss ? 20 : 0); C.target.y = C.position.y; C.target.z = site.spot.z + t.z;
       };
-      const pointer = (type, x = B.renderer.size.width / 2, y = B.renderer.size.height / 2) => canvas.dispatchEvent(new PointerEvent(type, {
+      const pointer = (type, x = B.renderer.size.width / 2, y = B.renderer.size.height / 2, modifiers = {}) => canvas.dispatchEvent(new PointerEvent(type, {
         bubbles: true, cancelable: true, pointerType: 'mouse', pointerId: 91, isPrimary: true, button: type === 'pointermove' ? -1 : 0,
-        buttons: type === 'pointerdown' ? 1 : 0, clientX: x, clientY: y
+        buttons: type === 'pointerdown' ? 1 : 0, clientX: x, clientY: y, ...modifiers
       }));
       try {
         canvas.requestPointerLock = () => Promise.resolve();
@@ -19927,22 +19927,36 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
         if (!P.aiming) P.modeAction('mode-toggle');
         P.focusAim(false);
         P.update = dt => { saved.update(dt); pose(); };
-        for (const slot of [1, 2]) {
+        for (const slot of [1, 2]) for (const modifier of [{}, { metaKey: true }, { ctrlKey: true }]) {
           P.weaponMode(slot); pose();
           // Soft mouse-look uses the crosshair, even if the released native pointer was at an edge.
           pointer('pointermove', 2, 2); B.advance(0.1, 1 / 60);
           const before = { ammo: actor.weapon.ammo, shots: actor.weapon.shotsFired, calls: calls.length, swings, triggers };
           const hover = !tip.hidden && tip.textContent.includes('Bitcoin Core');
-          pointer('pointerdown'); pointer('pointerup'); B.advance(0.1, 1 / 60);
-          rows.push({ slot, hover, opened: calls.length === before.calls + 1,
+          pointer('pointerdown', undefined, undefined, modifier);
+          const held = calls.length === before.calls;
+          pointer('pointerup', undefined, undefined, modifier); B.advance(0.1, 1 / 60);
+          rows.push({ slot, modifier, hover, held, opened: calls.length === before.calls + 1,
             consumed: before.ammo === actor.weapon.ammo && before.shots === actor.weapon.shotsFired && before.swings === swings && before.triggers === triggers });
         }
+        const beforeCancel = calls.length;
+        pointer('pointerdown'); pointer('pointercancel'); pointer('pointerup');
+        pointer('pointerdown'); window.dispatchEvent(new Event('blur')); pointer('pointerup');
+        P.focusAim(false); pose(); pointer('pointerdown');
+        document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0 }));
+        pointer('pointerup');
+        const cancelled = calls.length === beforeCancel;
+        P.freeCursor(); pose();
+        pointer('pointerdown'); const captureHeld = calls.length === beforeCancel;
+        pointer('pointerup');
+        const captureOpened = calls.length === beforeCancel + 1;
+        P.focusAim(false);
         miss = true; B.advance(0.1, 1 / 60);
         const missed = tip.hidden;
         miss = false; P.navigate({ position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.1, dist: 4 }); P.focusAim(false); B.advance(0.1, 1 / 60);
         const outsideHover = tip.hidden, before = calls.length;
         pointer('pointerdown'); pointer('pointerup');
-        return { aiming: P.aiming, focused: P.aimFocused, rows, missed, outsideHover, outsideClick: calls.length === before,
+        return { aiming: P.aiming, focused: P.aimFocused, rows, cancelled, captureHeld, captureOpened, missed, outsideHover, outsideClick: calls.length === before,
           links: calls.every(args => args[0].startsWith('https://github.com/bitcoin/bitcoin') && args[1] === '_blank' && args[2] === 'noopener,noreferrer') };
       } finally {
         P.update = saved.update; window.open = saved.open; canvas.requestPointerLock = saved.lock;
@@ -19950,7 +19964,7 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
       }
     })()`);
     record("Merge Rock combat: exact crosshair hover and link clicks replace both attacks, and stop off the totem or off the island",
-      result.aiming && result.focused && result.rows.every(r => r.hover && r.opened && r.consumed) && result.missed && result.outsideHover && result.outsideClick && result.links,
+      result.aiming && result.focused && result.rows.every(r => r.hover && r.held && r.opened && r.consumed) && result.cancelled && result.captureHeld && result.captureOpened && result.missed && result.outsideHover && result.outsideClick && result.links,
       JSON.stringify(result));
   }
 }] });

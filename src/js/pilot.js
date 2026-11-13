@@ -537,8 +537,10 @@
       rightTravel = 0;
       rightExitHeld = false;
     };
+    let primaryTaken = false;
     const unlockAim = (preserveZoom = false) => {
       if (externalControl && !disposed) return;
+      if (primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
       lockCancelled = true;
       aimLocked = false;
       unlockedAt = -Infinity;
@@ -1492,7 +1494,7 @@
           lockAim();
           if (!alreadyFocused) {
             // The capturing click never attacks, but a scene may answer what the free cursor was on.
-            if (e.button === 0) ctx.captureClick?.(e.clientX, e.clientY);
+            if (e.button === 0 && ctx.captureClick?.(e.clientX, e.clientY) && ctx.primaryAction) primaryTaken = true;
             return;
           }
         }
@@ -1514,7 +1516,8 @@
           if (!attackReleaseBlocked && e.buttons & 1 && !player().weapon.primaryEquipped && crew.setWeaponTrigger(true, true)) aimLeftAccepted = true;
         }
       } else if (e.type === "pointerup" || e.type === "pointermove") {
-        if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
+        // Keep link opening inside the native release so the browser honors Command/Ctrl-click.
+        if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false, e); }
         else if (e.button === 0) {
           releaseAimAttack(e);
           releasePrimary(player(), ads);
@@ -1575,6 +1578,8 @@
     };
     const aimMouseUp = (e) => {
       if (externalControl) return;
+      // A scene-owned press released away from the canvas is cancelled, never fired.
+      if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false); return; }
       if (e.button === 2) {
         mouseAds = false;
         ads = padAds;
@@ -1594,6 +1599,7 @@
       if (aimLocked && !locked) unlockedAt = performance.now();
       aimLocked = locked;
       if (!locked) {
+        if (primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
         clearRightGesture();
         ads = false;
         aimLeftAccepted = aimLeftFocused = false;
@@ -2596,7 +2602,7 @@
     // Each press is acted on once; a trigger held when the pilot lets go of input is let go of with it, and LT also
     // when combat ends. Letting go of LT leaves a right-click aim held with the mouse.
     // `primaryTaken` and `padPrimary`: a scene's `primaryAction` took the mouse's left press or the pad's RT.
-    let padFrame = -1, padFire = false, padAds = false, padPrimary = false, primaryTaken = false;
+    let padFrame = -1, padFire = false, padAds = false, padPrimary = false;
     const resetPad = () => { padFrame = pad.frame; padFire = padAds = mouseAds = ads = false; };
     const readPad = () => {
       const live = active && !externalControl && !menuOpen;
