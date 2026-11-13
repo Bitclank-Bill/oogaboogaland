@@ -310,8 +310,8 @@
       entry.jetNode.visible = (jet & 1) === 1;
       flame.visible = entry.jetNode.visible && power > 0;
       if (flame.visible) flame.scale.y = (0.7 + Math.sin(jetClock * 40 + entry.id) * 0.3) * power / 2;
-      // Its sparks, as its own page sparks them (`crew.jetSparks`).
-      if (flame.visible && fx && (entry.puff -= dt) <= 0) {
+      // Its sparks, as its own page sparks them (`crew.jetSparks`), only while its body shows here.
+      if (flame.visible && cave.root.visible && fx && (entry.puff -= dt) <= 0) {
         entry.puff = BL.crew.JET_PUFF;
         BL.crew.jetSparks(fx, cave, power);
       }
