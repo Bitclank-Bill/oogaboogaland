@@ -3791,6 +3791,9 @@
         return true;
       }
       if (!weaponReady(player)) return false;
+      // Keep the press's aim even when the shot must wait for the previous cooldown.
+      w.burstPlayerAim = !target;
+      if (target) setVec(w.burstTarget, target.x, target.y, target.z);
       if (w.triggerHeld) return true;
       w.triggerSingle = single;
       w.triggerHeld = true;
@@ -3868,7 +3871,7 @@
       if (w.triggerQueued && !w.burstRemaining && w.cooldown <= 0) {
         if (!weaponReady(cave)) { stopBurst(cave); return; }
         w.triggerQueued--;
-        fireWeapon(cave, null, 1);
+        fireWeapon(cave, w.burstPlayerAim ? null : w.burstTarget, 1);
         return;
       }
       if (!w.burstRemaining && !w.triggerHeld) return;
@@ -3882,7 +3885,7 @@
         stopBurst(cave);
         return;
       }
-      if (w.triggerHeld && !w.burstTimer && w.triggerHeldTime < FOCUSED_AUTO_HOLD) { fireWeapon(cave); return; }
+      if (w.triggerHeld && !w.burstTimer && w.triggerHeldTime < FOCUSED_AUTO_HOLD) { fireWeapon(cave, w.burstPlayerAim ? null : w.burstTarget); return; }
       w.burstTimer -= dt;
       // Finish a tapped burst; holding continues on the same shot clock.
       // Keep the normal magazine-sized catch-up bound in unlimited debug mode.
