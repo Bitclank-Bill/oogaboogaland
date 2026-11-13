@@ -20,8 +20,8 @@
 // A totem lights for `repoFeed.RECENT` after its repository merges a pull request (`repo-feed.js`), as the meadow's do:
 // its runes glow in its section's rhythm and the crystals under it glow, waning to 60% by the day's end, and every face's
 // eyes burn, each flame a node on the arcade's one `blaze` geometry, at every carving detail and view distance. Each crystal cluster under the island
-// glows across its outer facets, bright while at least half the totems over it are lit and dim while fewer
-// are, with a softer interior glow from neighbours. Facets share one mesh per band, rebuilt only when they change. The lit runes of a chunk are merged into one mesh a brightness band
+// glows across its outer facets with distance-weighted light from nearby totems. Eight baked strength levels
+// share one mesh per source totem and follow that source's own pulse; meshes rebuild only when membership changes. The lit runes of a chunk are merged into one mesh a brightness band
 // (fresh within FRESH, older), rebuilt only when that chunk's lit set changes, so 170 totems light in a few dozen draws.
 // Painted features pulse on their matching detail mesh, and the mainland's traveling ring glow uses one instanced
 // sector batch per paint. Warm point lights follow the turning poles through the hub's existing light budget.
@@ -29,7 +29,7 @@
 // camera distance; the renderer handles frustum culling. ACTIVE only describes proximity in the debug stats.
 //
 // `create({ island, renderer, hooks })` returns the site; `hooks` are the hub's: `addTarget(node,
-// owner, opts)`, `removeTarget(node)`, `addTotemLight(index)`, `updateTotemLight(lamp, x, y, z, power, radius)`, `visible()` (the hub is showing, for idle work) and `near()` (the visitor is on
+// owner, opts)`, `removeTarget(node)`, `addTotemSolid(node)`, `addTotemLight(index)`, `updateTotemLight(lamp, x, y, z, power, radius)`, `visible()` (the hub is showing, for idle work) and `near()` (the visitor is on
 // the island or its bridge, for a merge's notice) and `toast(text)`. Pick owners are `repo-totem`, `repo-sign` and
 // `repo-bridge`, which the hub's tooltip and tap answer with `tip(owner)` and `open(owner)`.
 (() => {
@@ -134,6 +134,8 @@
       c.features[0] = built.features;
       c.ranges[0] = built.ranges;
       c.ready[0] = true;
+      // A separate, stable collider follows the island even when the first-person visual fades.
+      hooks.addTotemSolid(createNode({ parent: spin, geometry: built.mesh }));
       c.node = createNode({ geometry: built.mesh, sightHidden: true });
       addChild(spin, c.node);
       c.list.forEach((at) => {
@@ -220,7 +222,7 @@
 
     // ---- the lit runes and fires ----
     let litDirty = true, litVersion = -1, litChecked = 0, flare = null, flareOwner = null, flareLeft = 0, active = false, gemKey = "";
-    const cluster = M.crystals(), gemBands = [null, null, null];
+    const cluster = M.crystals(), gemBands = Array(P.totems.length).fill(null);
     const flames = [];
     const flameAt = (n) => {
       while (flames.length <= n) {
@@ -268,26 +270,31 @@
         });
       }
       for (let n = fire; n < flames.length; n++) { flames[n].node.visible = false; flames[n].chunk = null; }
-      // Broad luminous interiors, including the short base crystals. Neighbouring patches catch a dimmer
-      // colored wash, approximating light scattered through nearby facets without adding per-crystal lights.
-      const bands = [[], [], []];
+      // Smooth distance-weighted light from the totems above. A small ambient denominator lets
+      // isolated light taper to zero; nearby dark totems soften the transition between lit patches.
+      const bands = Array.from({ length: P.totems.length }, () => []);
       let key = "";
       cluster.forEach((c, k) => {
-        let lit = 0;
-        for (const at of c.totems) if (totems[at].live) lit++;
-        let nearby = false;
-        if (!lit) for (const at of c.neighbours) if (totems[at].live) { nearby = true; break; }
-        if (!lit && !nearby) return;
-        const band = lit ? lit * 2 >= c.totems.length ? 0 : 1 : 2;
-        bands[band].push(k);
-        key += `${k}:${band},`;
+        let lit = 0, weight = 0.5, strongest = 0, source = -1;
+        for (const at of c.neighbours) {
+          const o = totems[at], d = Math.hypot(o.t.x - c.x, o.t.z - c.z);
+          const t = Math.max(0, 1 - d / M.CRYSTAL.lightRange), w = t * t * (3 - 2 * t);
+          const contribution = o.live * w;
+          lit += contribution; weight += w;
+          if (contribution > strongest) { strongest = contribution; source = at; }
+        }
+        const strength = lit / weight;
+        if (strength < 0.025) return;
+        const band = Math.min(M.CRYSTAL.lightBands - 1, Math.floor(strength * M.CRYSTAL.lightBands));
+        bands[source].push(M.gem(k, band));
+        key += `${k}:${source}:${band},`;
       });
       if (key !== gemKey) {
         gemKey = key;
         bands.forEach((list, band) => {
           if (!list.length) { if (gemBands[band]) gemBands[band].visible = false; return; }
-          const geometry = BL.models.noShadow(BL.models.merge(...list.map((k) => M.gem(k, band < 2))));
-          geometry.depthOffset = band < 2;
+          const geometry = BL.models.noShadow(BL.models.merge(...list));
+          geometry.depthOffset = true;
           if (!gemBands[band]) { gemBands[band] = createNode({ geometry, glow: 0, sightHidden: true }); addChild(spin, gemBands[band]); }
           else gemBands[band].geometry = geometry;
           gemBands[band].visible = true;
@@ -415,10 +422,16 @@
         }
       }
       for (const b of ringBatches) { b.node.visible = b.node.instanceCount > 0; b.node.instanceVersion++; }
-      // The painted totem features' breathing cadence, with enough range to read through bloom.
-      // Emission clamps at one in the renderer: keep the pulse below that ceiling instead of flattening it.
-      const crystalPulse = 0.5 + 0.5 * Math.sin(t * 2.2), crystalGlow = 0.35 + 0.65 * crystalPulse * crystalPulse;
-      for (let band = 0; band < gemBands.length; band++) if (gemBands[band] && gemBands[band].visible) gemBands[band].glow = crystalGlow * (band === 0 ? 1 : band === 1 ? 0.85 : 0.1);
+      // Each patch follows its strongest nearby lit totem's own fire/light rhythm and phase.
+      // Per-face strength preserves the spatial taper while the node supplies that source's pulse.
+      for (let at = 0; at < gemBands.length; at++) {
+        const node = gemBands[at];
+        if (!node?.visible) continue;
+        const o = totems[at], index = o.t.index;
+        const breath = 0.5 + 0.5 * Math.sin(t * 1.8 + index * 1.7);
+        const fire = o.pattern(0.5, t + index * 3.1, index);
+        node.glow = 0.25 + 0.5 * (0.3 * breath + 0.7 * fire);
+      }
       for (let n = 0; n < flames.length; n++) {
         const f = flames[n];
         if (!f.node.visible) continue;

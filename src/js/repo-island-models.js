@@ -436,11 +436,11 @@
   // sunflower's spiral, the middle's longest and thickest; each grows mostly down and a little out along the rock, so
   // the ceiling's silhouette is one rounded mass, lowest under Bitcoin Core. Each cluster stands under the totems
   // nearer it than any other (`crystals()`'s `totems`, places in `plan().totems`); while they are lit the runtime lays
-  // luminous facets (`gem(k)`) over each lit shell; reflected spill alone stays inside neighbouring crystals.
+  // luminous facets (`gem(k, band)`) over each shell, tinted by smoothly tapering light from nearby lit totems.
   const CRYSTAL = {
     hues: [["#291738", "#49305f", "#79618f", "#a38cb5"], ["#321a3b", "#57305f", "#8e5f94", "#b58fb5"], ["#202137", "#383b61", "#646c98", "#949dbb"]],
     core: ["#ff5ad2", "#7a8cff", "#ffc2ee"], rock: ["#2b2430", "#342b3a", "#251f2a", "#3d3244"],
-    depth: 3, clusters: 150, satellites: [4, 8], carpet: 1800, glass: 0.86, carpetGlass: 0.93
+    depth: 3, clusters: 150, satellites: [4, 8], carpet: 1800, glass: 0.86, carpetGlass: 0.93, lightRange: 4.5, lightBands: 8
   };
   const BASE_R = PLAN.edge + 0.4, HUES = CRYSTAL.hues.map((h) => h.map(hexToRgb)), CORE = CRYSTAL.core.map(hexToRgb), ROCK = CRYSTAL.rock.map(hexToRgb);
   // The rock's underside at (x, z): deepest under the middle, lumpy, rising to the soil's underside at the rim.
@@ -501,7 +501,7 @@
       let best = sites[0], near = Infinity;
       for (const s of sites) { const d = (s.x - t.x) ** 2 + (s.z - t.z) ** 2; if (d < near) { near = d; best = s; } }
       best.totems.push(at);
-      for (const site of sites) if ((site.x - t.x) ** 2 + (site.z - t.z) ** 2 < 3.5 ** 2) site.neighbours.push(at);
+      for (const site of sites) if ((site.x - t.x) ** 2 + (site.z - t.z) ** 2 < CRYSTAL.lightRange ** 2) site.neighbours.push(at);
     });
     // The short crystals belong to the same lighting map as the large clusters. Each follows its nearest
     // totem directly and catches a weaker wash from other lit totems within the neighbouring patch.
@@ -516,24 +516,26 @@
       P.totems.forEach((t, at) => {
         const d = (t.x - x) ** 2 + (t.z - z) ** 2;
         if (d < distance) { nearest = at; distance = d; }
-        if (d < 3.5 ** 2) c.neighbours.push(at);
+        if (d < CRYSTAL.lightRange ** 2) c.neighbours.push(at);
       });
       c.totems.push(nearest);
       list.push(c);
     }
     return list;
   });
-  // A crystal's glowing core, inside it, for the runtime's lit bands.
+  // A crystal's luminous facets, with a baked tint and emission level for the runtime's source-totem groups.
   const gems = models.scopedMap();
-  const gem = (k, surface = true) => {
-    const key = k * 2 + (surface ? 1 : 0);
+  const gem = (k, band = CRYSTAL.lightBands - 1) => {
+    const key = k * CRYSTAL.lightBands + band;
     let g = gems.get(key);
     if (!g) {
       const c = crystals()[k];
       g = { verts: [], faces: [], lines: [] };
-      // Lit facets coincide with the shell so dense glass cannot hide their pulse. Reflected spill
-      // stays inside neighbouring crystals, keeping it distinct from a crystal's own lit totem.
-      quartz(g, c.x, c.y, c.z, c.ax, c.ay, c.az, c.r * (surface ? 1 : 0.86), c.len * (surface ? 1 : 0.97), [CORE[1], CORE[0], CORE[2], CORE[1]], mulberry32(c.seed), 6, 1, !c.short);
+      // The outer facets carry a tint proportional to local light, rather than switching to a
+      // bright shell as soon as any neighbour is lit. Keep the original crystal colors at the dim edge.
+      const level = (band + 1) / CRYSTAL.lightBands, light = [CORE[1], CORE[0], CORE[2], CORE[1]];
+      const colors = c.hue.map((color, i) => color.map((v, channel) => v + (light[i][channel] - v) * level * 0.65));
+      quartz(g, c.x, c.y, c.z, c.ax, c.ay, c.az, c.r, c.len, colors, mulberry32(c.seed), 6, level, !c.short);
       gems.set(key, g);
     }
     return g;
@@ -585,7 +587,7 @@
   // ---- the bridge ----------------------------------------------------------------------------------------------
   const STONES = ["#8b837b", "#7a716a", "#958d84", "#857c74"];
   const bridge = cached(() => {
-    const parts = [], solid = [], glass = [], frame = [], lamps = [];
+    const parts = [], glass = [], frame = [], lamps = [];
     // The deck ends a few centimetres off the lip's round edge, clear of its stones and under its coping: at its middle
     // (`to`) and, a flag at a time, on toward it where the edge curves away, so no gap shows beside the turning lip.
     const end = ISLE.R + 0.06, from = -(ISLE.R + BRIDGE.span) - 0.6, to = -end, W = BRIDGE.width, rand = mulberry32(0x6b1d);
@@ -611,23 +613,23 @@
     for (const side of [-1, 1]) {
       parts.push(box({ w: BRIDGE.wall, h: BRIDGE.parapet, d: p1 - p0, color: "#7a716a", offset: { x: side * x, y: BRIDGE.parapet / 2, z: (p0 + p1) / 2 } }));
       parts.push(box({ w: BRIDGE.wall + 0.1, h: 0.1, d: p1 - p0 + 0.1, color: "#958d84", offset: { x: side * x, y: BRIDGE.parapet + 0.05, z: (p0 + p1) / 2 } }));
-      solid.push(box({ w: BRIDGE.wall + 0.1, h: BRIDGE.parapet + 0.1, d: p1 - p0 + 0.1, color: "#000000", offset: { x: side * x, y: (BRIDGE.parapet + 0.1) / 2, z: (p0 + p1) / 2 } }));
       const pillars = Math.round((p1 - p0) / BRIDGE.pillarStep);
       for (let k = 0; k <= pillars; k++) {
         const z = p0 + (p1 - p0) * k / pillars, end = k === 0 || k === pillars, h = end ? BRIDGE.pillarH + 0.2 : BRIDGE.pillarH;
         parts.push(bevelBox({ w: BRIDGE.pillar, h, d: BRIDGE.pillar, color: "#857c74", offset: { x: side * x, y: h / 2, z } }));
         parts.push(box({ w: BRIDGE.pillar + 0.12, h: 0.12, d: BRIDGE.pillar + 0.12, color: "#958d84", offset: { x: side * x, y: h + 0.06, z } }));
-        solid.push(box({ w: BRIDGE.pillar + 0.12, h: h + 0.12, d: BRIDGE.pillar + 0.12, color: "#000000", offset: { x: side * x, y: (h + 0.12) / 2, z } }));
         if (end) {
           models.lanternParts(1.1, side * x, h + 0.12, z, frame, glass);
           lamps.push({ x: side * x, y: h + 0.5, z });
         }
       }
     }
-    solid.push(box({ w: W, h: BRIDGE.slab, d: length, color: "#000000", offset: { y: -BRIDGE.slab / 2, z: (from + to) / 2 } }));
+    // One uninterrupted walking slab across the full deck. Decorative rails and posts never snag a
+    // walker; the slab reaches beneath the curved lip even at the outermost flagstones.
+    const deckTo = edgeAt(W / 2) + 0.12;
     const stone = merge(...parts, ...frame);
-    stone.collisionGeometry = merge(...solid);
-    return { stone, glass: noShadow(merge(...glass)), lamps, from, to, width: W, walk: W / 2 - BRIDGE.wall - 0.05 };
+    stone.collisionGeometry = box({ w: W, h: BRIDGE.slab, d: deckTo - from, color: "#000000", offset: { y: -BRIDGE.slab / 2, z: (from + deckTo) / 2 } });
+    return { stone, glass: noShadow(merge(...glass)), lamps, from, to, width: W, walk: W / 2 };
   });
 
   // ---- the section plaques ----

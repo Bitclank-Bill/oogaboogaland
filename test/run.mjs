@@ -19838,6 +19838,63 @@ scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=
       JSON.stringify(result));
   }
 }] });
+scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
+  name: "Merge Rock footing: the full bridge deck crosses both ways and airborne totems remain solid through camera fading",
+  why: "regression: bridge posts snagged walkers and its collision slab stopped short of the curved landing; walk-through totems also lost their landing surfaces",
+  run: async (b) => {
+    const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks; })()", 60000);
+    if (!ready) throw new Error("Totem chunks did not finish building");
+    const r = await b.evaluate(`(() => {
+      const B = __ooga, H = BL.scenes.hub.debug, site = H.repoIsland, S = H.headquarters.solids, M = BL.repoIslandModels;
+      B.pilot.possess(B.cavemen.get('portlandhodl')); const actor = B.pilot.player;
+      B.pilot.navigate({ position: { x: 0, y: site.spot.y, z: site.spot.z + M.bridge().from }, yaw: Math.PI, pitch: 0.3, dist: 4 });
+      B.advance(0.1, 1 / 60);
+      const bridge = M.bridge(), failures = [], paths = [], start = site.spot.z + bridge.from - 0.2, end = site.spot.z - M.PLAN.edge + 0.3;
+      for (const across of [-bridge.width / 2 + 0.05, -1.8, 0, 1.8, bridge.width / 2 - 0.05]) for (const reverse of [false, true]) {
+        let x = site.spot.x + across, z = reverse ? end : start, y = site.spot.y + M.LIP.rise;
+        actor.hop = actor.hopV = 0;
+        actor.root.position.x = x; actor.root.position.y = y + actor.baseY; actor.root.position.z = z;
+        y = S.supportAt(x, z, y, y, actor);
+        const to = reverse ? start : end, count = Math.ceil(Math.abs(to - z) / 0.15), from = z;
+        for (let k = 1; k <= count; k++) {
+          const nz = from + (to - from) * k / count;
+          actor.root.position.x = x; actor.root.position.y = y + actor.baseY; actor.root.position.z = z;
+          const floor = S.supportAt(x, nz, y, y, actor);
+          if (floor < site.spot.y - 0.1 || Math.abs(floor - y) > BL.pilot.WALK.step || !S.walkable(x, z, x, nz, y, actor.bodyHeight, actor)) { failures.push({ across, reverse, z, nz, y, floor }); break; }
+          z = nz; y = floor;
+        }
+        paths.push({ across, reverse, reached: Math.abs(z - to) < 0.01 });
+      }
+      const t = M.plan().totems.find(t => t.repo === 'bitcoin/bitcoin'), x = site.spot.x + t.x, z = site.spot.z + t.z;
+      actor.root.position.x = x - t.L.reach - 1; actor.root.position.y = site.spot.y + actor.baseY; actor.root.position.z = z;
+      actor.hop = actor.hopV = 0;
+      const groundThrough = S.walkable(x - t.L.reach - 1, z, x + t.L.reach + 1, z, site.spot.y, actor.bodyHeight, actor);
+      const airY = site.spot.y + t.L.apex * 0.6;
+      actor.root.position.y = airY + actor.baseY; actor.hop = 1;
+      const airBlocked = !S.flyable(x - t.L.reach - 1, z, x + t.L.reach + 1, z, airY, actor.bodyHeight, actor);
+      const high = site.spot.y + t.L.apex + 2;
+      actor.root.position.x = x; actor.root.position.y = high + actor.baseY; actor.hopV = -1;
+      const landing = S.supportAt(x, z, high, high, actor);
+      site.afterCamera({ position: { x, y: site.spot.y + t.L.apex / 2, z } }, true);
+      const fadedLanding = S.supportAt(x, z, high, high, actor);
+      actor.hop = actor.hopV = 0; actor.root.position.y = landing + actor.baseY;
+      const standing = S.supportAt(x, z, landing, landing, actor);
+      let offX = x, canWalkOff = true;
+      for (let k = 1; k <= 24; k++) {
+        const nx = x + (t.L.reach + 1) * k / 24;
+        actor.root.position.x = offX;
+        canWalkOff &&= S.walkable(offX, z, nx, z, landing, actor.bodyHeight, actor);
+        offX = nx;
+      }
+      const offFloor = S.supportAt(offX, z, landing, landing, actor);
+      site.afterCamera(H.camera, false);
+      return { paths, failures, groundThrough, airBlocked, landing, fadedLanding, standing, canWalkOff, offFloor, floor: site.spot.y, apex: t.L.apex };
+    })()`);
+    record("Merge Rock footing: full-width bridge crossings stay supported, ground movement passes totems, and airborne collision/landing survives fading and standing",
+      r.paths.every(p => p.reached) && !r.failures.length && r.groundThrough && r.airBlocked && r.landing > r.floor + r.apex / 2 && r.fadedLanding === r.landing && r.standing === r.landing && r.canWalkOff && r.offFloor < r.landing - 1,
+      JSON.stringify(r));
+  }
+}] });
 scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
   name: "Merge Rock combat: aimed totems show tooltips and take clicks before melee or rifle fire, only on the island",
   why: "regression: the combat camera ray used an array where lookAt needs an xyz object, so neither hover nor click reached the totem",
@@ -19914,9 +19971,12 @@ scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
       site.update(1 / 60, 2, h.camera);
       const animated = first !== JSON.stringify(signature()), after = site.stats();
       site.update(1 / 60, Math.PI / 4.4, h.camera);
-      const crystalBright = site.stats().crystalGlow[0];
+      const crystalA = site.stats().crystalGlow;
       site.update(1 / 60, 3 * Math.PI / 4.4, h.camera);
-      const crystalDim = site.stats().crystalGlow[0];
+      const crystalB = site.stats().crystalGlow;
+      const crystalBright = Math.max(...crystalA, ...crystalB), crystalDim = Math.min(...crystalB.filter(v => v > 0));
+      const varied = crystalA.filter(v => v > 0).some((v, i, a) => Math.abs(v - a[0]) > 0.1);
+      const independent = crystalA.some((v, i) => v > crystalB[i] + 0.02) && crystalA.some((v, i) => v < crystalB[i] - 0.02);
       const lamps = h.lamps.filter(l => l.id.startsWith('repo-totem:'));
       const clock = BL.net.serverNow;
       let followed = false, matrices = false;
@@ -19933,10 +19993,10 @@ scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
       BL.repoFeed.apply({ at: now, merges: {} }, now);
       site.update(1 / 60, 3, h.camera);
       const dark = site.stats();
-      return { before, after, expected, animated, followed, matrices, crystalBright, crystalDim, lights: lamps.length, dark };
+      return { before, after, expected, animated, followed, matrices, crystalBright, crystalDim, varied, independent, lights: lamps.length, dark };
     })()`);
     record("Merge Rock lighting: all face fires, animated details, bounded ring batches and rotating warm lights; cleared feed extinguishes them",
-      result.before.flames === result.expected && result.expected > 340 && result.before.features > 0 && result.before.rings > 0 && result.before.ringDraws < 50 && result.animated && result.followed && result.matrices && result.crystalBright - result.crystalDim > 0.5 && result.crystalDim > 0 && result.crystalBright <= 1 && result.dark.crystalGlow.every(v => v === 0) && result.lights === 170 && !result.dark.flames && !result.dark.features && !result.dark.rings && !result.dark.lights,
+      result.before.flames === result.expected && result.expected > 340 && result.before.features > 0 && result.before.rings > 0 && result.before.ringDraws < 50 && result.animated && result.followed && result.matrices && result.varied && result.independent && result.crystalBright - result.crystalDim > 0.1 && result.crystalDim > 0 && result.crystalBright <= 0.75 && result.before.crystalGlow.filter(v => v > 0).length > 2 && result.dark.crystalGlow.every(v => v === 0) && result.lights === 170 && !result.dark.flames && !result.dark.features && !result.dark.rings && !result.dark.lights,
       JSON.stringify(result));
   }
 }] });
