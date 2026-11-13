@@ -375,21 +375,25 @@
       <button type="button" data-action="studio-speak" title="Say its voice lines in turn">Speak</button>
     </nav>
     <!-- The studio's This Ooga panel (scene-studio.js), down the right side: what the character's file gives its Ooga,
-         and how much of the intake's 32,768 bytes it takes. It folds to a tab on the edge. -->
+         and how much of the intake's 32,768 bytes it takes. It stands against the right edge, its left edge a grip
+         that drags it wider or narrower, and it folds to a tab on the edge. -->
     <section class="studio-features fold-panel fold-right" id="studio-features" aria-label="This Ooga" data-scene="studio" hidden>
+      <button type="button" class="studio-resize" id="studio-resize" aria-label="Resize this panel: drag it, or press to widen it" title="Drag to resize"></button>
       <div class="panel-head">
         <h3>This Ooga</h3>
         <button type="button" class="panel-fold" data-fold="studio-features" aria-label="Fold this panel away">&rsaquo;</button>
       </div>
-      <p class="studio-who" id="studio-who"></p>
-      <h3 class="section-head">File</h3>
-      <div class="studio-file">
-        <div class="studio-bar" id="studio-size-bar"><span id="studio-size-fill"></span></div>
-        <p class="studio-size" id="studio-size"></p>
-        <p class="studio-note" id="studio-size-note"></p>
-        <ul class="studio-list" id="studio-size-parts"></ul>
+      <div class="studio-scroll" id="studio-scroll">
+        <p class="studio-who" id="studio-who"></p>
+        <h3 class="section-head">File</h3>
+        <div class="studio-file">
+          <div class="studio-bar" id="studio-size-bar"><span id="studio-size-fill"></span></div>
+          <p class="studio-size" id="studio-size"></p>
+          <p class="studio-note" id="studio-size-note"></p>
+          <ul class="studio-list" id="studio-size-parts"></ul>
+        </div>
+        <div id="studio-groups"></div>
       </div>
-      <div id="studio-groups"></div>
     </section>
     <button type="button" class="panel-edge panel-edge-right studio-features-edge" data-fold="studio-features" data-scene="studio" hidden>This Ooga</button>
 

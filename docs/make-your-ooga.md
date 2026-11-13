@@ -283,7 +283,8 @@ and `<handle>:slim` its female build.
   pad: its plain-data look and voice, each custom hook and what it does, and the parts it
   builds (a pet, its own jetpack, a board, a shield). Under them it shows how much of the
   32,768 bytes the file takes, with each hook's share, and the lane the intake puts it in.
-  It is read again on every save. Its arrow folds it to a tab on the edge.
+  It is read again on every save. It stands against the right edge: drag its left edge to
+  make it wider or narrower, and its arrow folds it to a tab on the edge.
 - Each reload says what the intake's screen makes of the file (its lane, how full it is,
   or what would be refused). A file that no longer parses is named with its line and the
   page stays as it was; a hook that throws is named at the foot of the page, with the

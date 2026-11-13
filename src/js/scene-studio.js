@@ -373,11 +373,14 @@
   const LIMIT = 32768; // the intake's (scripts/character-safety.mjs SOURCE_LIMIT), until the server names it
   const PANEL_STORE = "ooga-studio-panel";
   const HOOKS = {
-    torso: "Paints the chest, belt and hips", gear: "Paints the arms, legs and feet", club: "Its own weapon in hand",
+    torso: "Paints the chest, belt and hips", gear: "Paints the arms, legs and feet", club: "Its own, from its club hook",
     skull: "Its own head shape", crown: "Hair, or a crown", eyes: "Eyes of its own", mark: "Marks on the face",
     hatY: "Where its hat sits", headgear: "A hat or a helmet", extras: "Pieces of its own: a pet, a bag, a pack",
     tint: "A second colourway, changing with the day's price", model: "A modelled body of its own", refine: "Fine detail painted on the body"
   };
+  // A hook whose name in the file would mislead a player is shown by what the game calls it: `club` draws whatever the
+  // Ooga holds as its first weapon (an axe, a staff, a bouquet), the slot the controls call the primary.
+  const HOOK_NAMES = { club: "Primary weapon" };
   const COLOURS = { skin: "Skin", hair: "Hair", fur: "Fur", eyeColor: "Eyes" };
   const FLAGS = {
     bald: "Bald", hairless: "Hairless", cleanShaven: "Clean-shaven", noBrow: "No brow", wideEyes: "Wide eyes", noPupils: "No pupils",
@@ -389,6 +392,37 @@
   const BUILDS = [["dog", "A pet"], ["jetpack", "A jetpack of its own, always on"], ["board", "A board to ride"], ["shield", "A shield"], ["chuk", "A nunchaku"]];
   let panel = null, panelFill = 0;
   const keepFold = () => { try { sessionStorage.setItem(PANEL_STORE, panel.root.dataset.folded); } catch { /* A private window keeps nothing. */ } };
+  // Its width, dragged by the grip on its left edge (or, from the keyboard, a press of the grip widening it a step and
+  // going back to the narrowest past the widest), kept for the tab. `gap` is the room left for the studio's buttons,
+  // as the stylesheet's max-width leaves it.
+  const WIDTH_STORE = "ooga-studio-panel-width", WIDTH = { min: 200, step: 70, gap: 140 };
+  let resizing = null;
+  const widest = () => Math.max(WIDTH.min, window.innerWidth - WIDTH.gap);
+  const setWidth = (width, keep) => {
+    const px = Math.round(clamp(width, WIDTH.min, widest()));
+    panel.root.style.width = `${px}px`;
+    if (keep) try { sessionStorage.setItem(WIDTH_STORE, String(px)); } catch { /* A private window keeps nothing. */ }
+  };
+  const gripDown = (e) => {
+    if (e.button !== 0 || resizing) return;
+    e.preventDefault();
+    panel.grip.setPointerCapture(e.pointerId);
+    resizing = { id: e.pointerId, x: e.clientX, width: panel.root.getBoundingClientRect().width };
+    panel.root.dataset.resizing = "true";
+  };
+  const gripMove = (e) => { if (resizing && e.pointerId === resizing.id) setWidth(resizing.width + resizing.x - e.clientX, false); };
+  const gripUp = (e) => {
+    if (!resizing || e.pointerId !== resizing.id) return;
+    setWidth(resizing.width + resizing.x - e.clientX, true);
+    resizing = null;
+    delete panel.root.dataset.resizing;
+  };
+  // A click from a pointer is the end of a drag; only the keyboard's press steps it.
+  const gripPress = (e) => {
+    if (e.detail !== 0) return;
+    const width = panel.root.getBoundingClientRect().width;
+    setWidth(width + 1 >= widest() ? WIDTH.min : width + WIDTH.step, true);
+  };
   const make = (tag, cls, text) => {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -469,7 +503,7 @@
     const colours = swatches(look);
     if (colours) looks.push(item("Colours", colours));
     if (look.eyeGlow !== undefined) looks.push(item("Eye glow", look.eyeGlow));
-    if (look.height !== undefined) looks.push(item("Height", look.height));
+    if (look.height !== undefined) looks.push(item("Height", `${look.height} m`));
     if (look.face !== undefined) looks.push(item("Face", look.face));
     if (look.hatY !== undefined) looks.push(item("Hat height", look.hatY));
     if (look.portrait) looks.push(item("Portrait", "Framed by hand"));
@@ -483,13 +517,13 @@
     const encoder = new TextEncoder(), counted = new Map();
     let hooked = 0;
     const hooks = Object.keys(dress).map((key) => {
-      const hook = dress[key], same = counted.get(hook);
-      if (typeof hook !== "function") return item(key, HOOKS[key] || "A value of its own");
-      if (same) return item(key, HOOKS[key] || "A hook of its own", `the same code as ${same}`);
+      const hook = dress[key], same = counted.get(hook), name = HOOK_NAMES[key] || key;
+      if (typeof hook !== "function") return item(name, HOOKS[key] || "A value of its own");
+      if (same) return item(name, HOOKS[key] || "A hook of its own", `the same code as ${HOOK_NAMES[same] || same}`);
       const size = encoder.encode(String(hook)).length;
       counted.set(hook, key);
       hooked += size;
-      return item(key, HOOKS[key] || "A hook of its own", bytes(size), sizeBar(size, LIMIT));
+      return item(name, HOOKS[key] || "A hook of its own", bytes(size), sizeBar(size, LIMIT));
     });
     // What its build carries, as the game builds it.
     const builds = [];
@@ -607,7 +641,16 @@
     pick.addEventListener("change", picked, { signal: ctx.signal });
     document.addEventListener("pointerdown", letGo, { capture: true, signal: ctx.signal });
     const $ = (id) => document.getElementById(id);
-    panel = { root: $("studio-features"), who: $("studio-who"), bar: $("studio-size-bar"), fill: $("studio-size-fill"), size: $("studio-size"), note: $("studio-size-note"), parts: $("studio-size-parts"), groups: $("studio-groups") };
+    panel = { root: $("studio-features"), grip: $("studio-resize"), who: $("studio-who"), bar: $("studio-size-bar"), fill: $("studio-size-fill"), size: $("studio-size"), note: $("studio-size-note"), parts: $("studio-size-parts"), groups: $("studio-groups") };
+    // As wide as the visitor last dragged it in this tab, else the stylesheet's width.
+    let width = NaN;
+    try { width = Number(sessionStorage.getItem(WIDTH_STORE) || NaN); } catch { /* A private window keeps nothing. */ }
+    if (Number.isFinite(width)) setWidth(width, false); else panel.root.style.width = "";
+    panel.grip.addEventListener("pointerdown", gripDown, { signal: ctx.signal });
+    panel.grip.addEventListener("pointermove", gripMove, { signal: ctx.signal });
+    panel.grip.addEventListener("pointerup", gripUp, { signal: ctx.signal });
+    panel.grip.addEventListener("pointercancel", gripUp, { signal: ctx.signal });
+    panel.grip.addEventListener("click", gripPress, { signal: ctx.signal });
     // The panel is folded or open as the visitor last left it in this tab; at first, open, but folded on a touch
     // screen, where the sticks need the room. The hud's own fold handler has run by the time this one keeps it.
     let folded = null;
@@ -775,6 +818,8 @@
     pick.replaceChildren();
     panel.groups.replaceChildren();
     panel.parts.replaceChildren();
+    delete panel.root.dataset.resizing;
+    resizing = null;
     panelFill++;
     homeLink = pick = panel = null;
     remember();
