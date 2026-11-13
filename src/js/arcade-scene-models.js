@@ -2157,6 +2157,7 @@
       if (rows) for (let row = 0; row < rows.length; row++) for (let k = 0; k < rows[row].length; k++) if (rows[row][k] === "1") at(g, x + k, y + row, c);
       x += rows ? rows[0].length + 1 : 4;
     }
+    return width;
   };
   // A triangle wave over `n` frames, 0 at f = 0 and 1 half way.
   const tri = (f, n = FRAMES) => { const k = (f % n) / n; return k < 0.5 ? k * 2 : 2 - k * 2; };
@@ -2324,14 +2325,14 @@
       }
     }
   };
-  // A retro game's loop, by its index in RETRO: its title between two bones, then the anim box.
+  // A retro game's loop, by its index in RETRO: its title, flanked by bones when there is room, then the anim box.
   const retroFrames = variants((r) => {
     const game = RETRO[r], palette = retroPalette(r), frames = [];
     for (let f = 0; f < FRAMES; f++) {
       const g = grid(GRID_W, GRID_H);
-      smallCentred(g, game.title, 2, 1);
+      const width = smallCentred(g, game.title, 2, 1);
       RETRO_DRAW[game.id](g, f);
-      titleBones(g, 2);
+      if (width <= GRID_W - 10) titleBones(g, 2);
       frames.push(bake(g, palette, PIXEL, 0.45));
     }
     return frames;
@@ -2341,8 +2342,8 @@
     const game = RETRO[r], palette = retroPalette(r);
     return [true, false].map((lit) => {
       const g = grid(GRID_W, GRID_H);
-      smallCentred(g, game.title, 2, 1);
-      titleBones(g, 2);
+      const width = smallCentred(g, game.title, 2, 1);
+      if (width <= GRID_W - 10) titleBones(g, 2);
       rect(g, 33, 21, 5, 5, 3); rect(g, 34, 20, 3, 7, 3); at(g, 35, 22, 4);
       if (lit) { centred(g, "PRESS", 10, 2); centred(g, "START", 18, 2); }
       return bake(g, palette, PIXEL, 0.45);
