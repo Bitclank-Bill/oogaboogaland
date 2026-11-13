@@ -4,7 +4,6 @@
   const { box, lathe, ring, merge, forward, cached, geometry, pushVert, face, tube } = BL.models;
   const { hexToRgb } = BL.math;
   const { createNode, addChild } = BL.scene;
-  // crew.js MASK_PORTS match the centre hole and six surrounding holes here.
   const gasMaskGeometry = cached(() => {
     const shell = "#3a3d35", trim = "#2a2d27", metal = "#5b6066";
     const hood = lathe({ profile: [[0.29, -0.06], [0.31, 0.1], [0.31, 0.3], [0.28, 0.46], [0.2, 0.58], [0.08, 0.66], [0, 0.68]], segments: 14, color: shell });
@@ -92,11 +91,9 @@
     handle: "MrHodlX",
     joined: 1788800920,
     lastCommit: 1788200000,
-    // gasMask also drives the mask's breath smoke in crew.js; nose, beard and mouth sit under the mask
     look: { gasMask: true, stoneAxe: true, hairless: true, noBrow: true, face: "none" },
     dress: {
       hatY: (k) => 0.66 * k.h,
-      // Turned a quarter about the shaft (y, then the tilt as z: the rotation's order is YXZ), so the blade faces forward.
       club: (k) => ({ default: hockeyStickGeometry(k.h), gold: hockeyStickGeometry(k.h, true), rest: { x: 0, y: Math.PI / 2, z: 0.24 }, carry: { x: 0, y: Math.PI / 2, z: 0.95 } }),
       headgear(k) {
         const h = k.h;
