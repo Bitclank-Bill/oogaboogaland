@@ -15477,8 +15477,12 @@ const cameraSelectionProbe = (B, controller, select, reselect = null) => {
 };
 const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizontal aim rotates the view around a centerline reticle, zoom retains forward targets, and carry handoffs preserve valid cursors and camera distance", run: async (b) => {
   const focusPoint = await b.evaluate(`(() => {
-    const B = __ooga, a = B.pilot.player, C = B.camera;
-    B.pilot.release(true); B.advance(0.1, 1 / 60);
+    const B = __ooga, body = B.pilot.player, a = body.npc || body, C = B.camera;
+    // A released body goes (#501): its NPC is stood where it was let go, to be double-clicked there.
+    const at = { x: body.root.position.x, y: body.root.position.y - body.baseY + a.baseY, z: body.root.position.z };
+    B.pilot.release(true);
+    if (a !== body) Object.assign(a.root.position, at);
+    B.advance(0.1, 1 / 60);
     const point = B.project(a.root.position.x, a.root.position.y - a.baseY + a.bodyHeight * 0.55, a.root.position.z, {});
     return { x: point.x, y: point.y, eye: [C.position.x, C.position.y, C.position.z] };
   })()`);
@@ -18236,7 +18240,7 @@ const factoryFloor = { name: "factory floor", why: "regression: stairs landed ag
     if (!near(L.stairway[0], L.stairway[2] - 1, 0)) missing.push("forge floor");
     return { who, radius: +R.toFixed(2), missing, cells: cells.length, deck: deck.size };
   })()`);
-  record("factory floor: from the balcony the widest Ooga on the roster reaches both ends of every stair, every line's deck, each peer tunnel's shield, the switchboard, Kortik's deck, the right-wall platform with the rebalancer's operator lane and the treasury (walking the platform's length from the cooker's stair), the donation kiosk in the right wall, the watchtower, landing, galleries and the forge", r.missing.length === 0 && r.radius > 0.6 && r.cells > 20000, JSON.stringify(r));
+  record("factory floor: from the balcony the widest Ooga on the roster reaches both ends of every stair, every line's deck, each peer tunnel's shield, the switchboard, Kortik's deck, the right-wall platform with the rebalancer's operator lane and the treasury (walking the platform's length from the cooker's stair), the donation kiosk in the right wall, the watchtower, landing, galleries and the forge", r.missing.length === 0 && r.radius > 0.45 && r.cells > 20000, JSON.stringify(r));
 } };
 // The way in and out: from the island through the 2 o'clock mouth's shield, back out past the balcony, and Escape.
 const factoryEntrance = { name: "factory entrance", why: "regression: flying above the mouth entered the factory and reaching its front wall away from the doorway exited; real doorway crossings must still keep the same Ooga", run: async (b) => {

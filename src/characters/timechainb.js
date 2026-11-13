@@ -68,7 +68,7 @@
     });
     node.tail = createNode({ position: { x: 0, y: 11 * U, z: -7.5 * U }, geometry: voxelGeometry(lionTail(), { unit: U, palette: LION_PALETTE, origin: { x: -U / 2, y: -U / 2, z: -U / 2 } }) });
     addChild(node, node.tail);
-    node.packAt = { y: 13 * U, z: -1 * U, scale: 0.32 };
+    node.packAt = { y: 13 * U, z: -5.5 * U, scale: 0.56 };
     return node;
   };
   BL.characters.add({

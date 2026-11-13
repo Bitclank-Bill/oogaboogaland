@@ -76,12 +76,17 @@
   // and the most it is turned about its own length to clear the head: twenty-one degrees, and no further.
   const SLING_SLACK = 0.02, SLING_TURN = 21 * Math.PI / 180;
   // Half the depth of a rifle lying flat on a back, and how far beside a pack it lies, in the body's heights; the
-  // most a rifle leans across the back to pass the head (forty-five degrees), and the most a primary leans out
-  // beside a pack.
-  const GUN_FLAT = 0.047, GUN_BESIDE = 0.07, GUN_LEAN_EASY = 0.8, GUN_LEAN_MOST = Math.PI / 4;
+  // most a rifle leans across the back to pass the head (forty-five degrees), the most a primary leans out beside a
+  // pack, and how far a rifle beside a pack leans out, the same for every body whatever its head or hair.
+  const GUN_FLAT = 0.047, GUN_BESIDE = 0.07, GUN_LEAN_EASY = 0.8, GUN_LEAN_MOST = Math.PI / 4, GUN_LEAN_PACKED = 0.05;
+  // How far a long primary (an axe, or a stick held as one) leans out beside a pack, the same for every body, and how
+  // far it is turned about its length there, so its head, which points in toward the body, angles back off the back.
+  const CLUB_LEAN_PACKED = 0.3, CLUB_TURN_PACKED = -0.5;
   // How far into a palm the rifle's wood is sunk where a hand holds it, of the palm's own distance from the middle
   // of its fist: the stock's neck a little, and the handguard to a little past the middle of the fist.
   const STOCK_SINK = 0.6, GUARD_SINK = 1.2;
+  // How far the wood stands out past a holding hand's thumb, in the body's heights.
+  const THUMB_COVER = 0.004;
   // Where a rifle's handguard ends and the barrel begins, and the furthest back a hand holds it, along the rifle
   // in the body's heights.
   const GUARD_END = 0.35, GUARD_MIDDLE = 0.19;
@@ -135,7 +140,7 @@
   );
   const BODY_PARTS = ["torso", "head", "legR", "legL", "armR", "armL"];
   // A modelled arm is the upper arm alone: its forearm and hand are nodes of their own under it.
-  const MODELLED_ARMS = ["forearmR", "forearmL", "fingersR", "fingersL"], MODELLED_BODY_PARTS = [...BODY_PARTS, "forearmL", "fingersL"];
+  const MODELLED_ARMS = ["forearmR", "forearmL", "fingersR", "fingersL"];
   const FAN_STANDOFF = 1.1;
   const FAN_ARC = 2.2;
   // FAN_SPREAD is the widest the fan opens, keeping the near side clear however many eat.
@@ -182,6 +187,14 @@
   // Fuel limits range and altitude; releasing thrust falls back to ordinary gravity.
   const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const COMPANION_FLIGHT = Object.freeze({ gain: 3, catchUp: 1.35, climbOver: 8 });
+  // How a companion follows its Ooga, shared by a character's pet and DSB's adopted dogs (`rescue-dogs.js`). On foot it
+  // makes for a spot `back` behind its Ooga and to its own side, at up to `run` m/s, wanting `ease` m/s for each metre
+  // still to go and easing toward that at `accel` a second, turning toward its spot at `turn` a second; stopped by a
+  // wall `stuck` seconds while further than `behind` from its Ooga, or its Ooga moved more than `moved` in one frame,
+  // it turns up beside it. In the air it flies `side` out and `up` over its Ooga's feet, aiming where its Ooga is going
+  // (`flyCompanion`'s gain), and turns up beside it once `far` behind or held up `held` seconds with no way on.
+  const COMPANION_FOLLOW = Object.freeze({ back: 0.95, run: 6.9, ease: 2.6, accel: 6, turn: 7, stuck: 0.4, behind: 2.5, moved: 3, side: 1.2, up: 0.4, far: 30, held: 1.5 });
+  const wrapAngle = (a) => a - Math.round(a / TAU) * TAU;
   // The four-legged gait DSB Land's dogs walk with (`rescue-dogs.js` reads it from here), shared with a companion built
   // with legs (a character's `parts.dog` whose node lists them as `legs`: fore left, fore right, hind left, hind right,
   // each hinged at its hip, and an optional `tail` at its root): the legs swing in diagonal pairs, `swing` radians at
@@ -359,13 +372,13 @@
   // Shared by the local crew and live remote rigs; each viewer simulates the pet against its own scene.
   const createPets = (ctx, root) => {
     const groundAt = ctx.groundAt || (() => 0), walkable = ctx.walkable || (() => true);
-    // A character's pet: the node its file builds as `parts.dog`, where it stands by its Ooga (a step behind and to one
-    // side, in the Ooga's frame), is lifted off the body into the crew's root. Each frame it trots for that spot at up
-    // to `PET_SPEED`, every step checked with the scene's `walkable` (stopped by a wall, it waits) and set on the floor
-    // under it at its own height plus a step. A jetpack owner brings it aloft through the shared DSB flight helper, or,
-    // with `petRidesHat` in the owner's look, up onto the hat (`rideHat`). Out of reach (`PET_SNAP`, a door, a
-    // relocation) it turns up at its spot. Hidden with its Ooga. Allocates nothing.
-    const PET_SPEED = 9.5, PET_SNAP = 7, PET_STEP = 0.45, PET_HEIGHT = 0.5, PET_ARRIVE = 0.15;
+    // A character's pet: the node its file builds as `parts.dog`, on the side of its Ooga it stands on there, is lifted
+    // off the body into the crew's root. It follows as DSB's adopted dogs do (`COMPANION_FOLLOW`): on foot a step behind
+    // its Ooga, every step checked with the scene's `walkable` and set on the floor under it at its own height plus a
+    // step; with a jetpack owner aloft, in the air beside it through the shared flight helper, leading its Ooga's move,
+    // and drifting with it as it falls; or, with `petRidesHat` in the owner's look, up onto the hat (`rideHat`). Out of
+    // reach (`PET_SNAP`, a door, a relocation) it turns up at its spot. Hidden with its Ooga. Allocates nothing.
+    const PET_SNAP = 7, PET_STEP = 0.45, PET_HEIGHT = 0.5, PET_ARRIVE = 0.15;
     const attachPet = (cave) => {
       const node = cave.parts.dog, p = node.position;
       removeChild(cave.root, node);
@@ -373,16 +386,18 @@
       node.visible = false;
       // The pack sits on top of the pet, or where the pet's file puts it (`packAt`: its height, how far along, its size).
       const at = node.packAt, size = at ? at.scale : 0.25;
-      const pack = createNode({ geometry: BL.hubModels.jetpack(), rotation: { x: Math.PI / 2 }, scale: { x: size, y: size, z: size }, visible: false });
+      const pack = createNode({ geometry: BL.hubModels.jetpack(), rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: size, y: size, z: size }, visible: false });
       const flame = createNode({ geometry: BL.hubModels.jetFlame(), visible: false });
       let top = 0;
       for (let i = 1; i < node.geometry.verts.length; i += 3) top = Math.max(top, node.geometry.verts[i]);
       pack.position.y = at ? at.y : top; pack.position.z = at ? at.z : 0; addChild(pack, flame); addChild(node, pack);
-      const pet = cave.pet = { node, pack, flame, side: p.x, back: -p.z, lift: p.y, x: 0, y: 0, z: 0, feet: 0, heading: 0, step: 0, wag: 0,
+      const pet = cave.pet = { node, pack, flame, side: p.x, lift: p.y, x: 0, y: 0, z: 0, feet: 0, heading: 0, step: 0, wag: 0,
         speed: 0, phase: 0, mode: 0, fall: 0, stuck: 0, warm: false, ride: cave.traits.petRidesHat ? hatRide(cave) : null,
         // How far it has lain down (0 standing, 1 down), how far its body comes down when it has, and how long a step
         // it could not take has kept it from its spot by the bed.
-        down: 0, drop: node.legs ? 0.75 * node.legs[0].position.y * node.scale.y : 0, wait: 0 };
+        down: 0, drop: node.legs ? 0.75 * node.legs[0].position.y * node.scale.y : 0, wait: 0,
+        // Where its Ooga stood last frame, for the lead in flight and the drift in a fall, and how long it has been held up.
+        ownX: NaN, ownY: NaN, ownZ: NaN, lag: 0 };
       pet.floorAt = (x, z, y) => groundAt(x, z, y, y, cave);
       pet.clear = (ax, az, bx, bz, y) => (ctx.flyable || walkable)(ax, az, bx, bz, y, PET_HEIGHT, cave);
     };
@@ -464,8 +479,11 @@
         if (pet.ride) { pet.ride.kind = 0; node.quaternion = null; node.cameraHidden = false; }
         return;
       }
-      const h = r.rotation.y, sh = Math.sin(h), ch = Math.cos(h);
-      let tx = r.position.x - sh * pet.back + ch * pet.side, tz = r.position.z - ch * pet.back - sh * pet.side;
+      const F = COMPANION_FOLLOW, h = r.rotation.y, sh = Math.sin(h), ch = Math.cos(h);
+      let tx = r.position.x - sh * F.back + ch * pet.side, tz = r.position.z - ch * F.back - sh * pet.side;
+      // Its Ooga's move since last frame; a jump further than a frame's walk is a relocation, which leads nothing.
+      const mx = r.position.x - pet.ownX, my = r.position.y - pet.ownY, mz = r.position.z - pet.ownZ, relocated = !(Math.abs(mx) + Math.abs(mz) <= F.moved);
+      pet.ownX = r.position.x; pet.ownY = r.position.y; pet.ownZ = r.position.z;
       // A legged companion keeps off the bed its Ooga is in: its spot is the ground beside the bed.
       const beside = node.legs && !pet.ride && ctx.petLanding && (resting || seat?.kind === "hammock") ? ctx.petLanding(r.position.x, r.position.z, true) : null;
       if (beside) { tx = beside.x; tz = beside.z; }
@@ -486,10 +504,18 @@
           pet.x = tx; pet.z = tz; pet.feet = feet + 0.4; pet.warm = true;
         }
         if (pet.mode === 1) {
+          const fx = r.position.x + ch * (pet.side < 0 ? -F.side : F.side), fz = r.position.z - sh * (pet.side < 0 ? -F.side : F.side);
+          const ahead = relocated ? 0 : Math.max(0, 1 / (COMPANION_FLIGHT.gain * dt) - 1), far = Math.hypot(fx - pet.x, fz - pet.z);
+          if ((relocated || far > F.far || (pet.lag += dt) > F.held) && pet.clear(r.position.x, r.position.z, fx, fz, feet)) {
+            pet.x = fx; pet.z = fz; pet.feet = feet; pet.speed = 0; pet.lag = 0;
+          }
           pet.y = pet.feet;
-          flyCompanion(pet, r.position.x + ch * (pet.side < 0 ? -1.2 : 1.2), feet + 0.4, r.position.z - sh * (pet.side < 0 ? -1.2 : 1.2), dt, pet.floorAt, pet.clear);
+          flyCompanion(pet, fx + mx * ahead, feet + F.up + my * ahead, fz + mz * ahead, dt, pet.floorAt, pet.clear);
+          if (far < 4 || Math.hypot(fx - pet.x, fz - pet.z) < far - dt) pet.lag = 0;
           pet.feet = pet.y;
         } else {
+          // Falling with its Ooga, it keeps up with its Ooga's drift across.
+          if (!relocated && feet > ownerFloor + 0.02 && (mx || mz) && pet.clear(pet.x, pet.z, pet.x + mx, pet.z + mz, pet.feet)) { pet.x += mx; pet.z += mz; }
           const floor = groundAt(pet.x, pet.z, pet.feet, pet.feet, cave);
           const next = Math.max(floor, pet.feet + pet.fall * dt - 0.5 * BL.pilot.WALK.gravity * dt * dt);
           pet.fall -= BL.pilot.WALK.gravity * dt;
@@ -515,21 +541,32 @@
       pet.flame.visible = false;
       const dx = tx - pet.x, dz = tz - pet.z, d = Math.hypot(dx, dz);
       let moving = false;
-      if (!pet.warm || d > PET_SNAP) {
+      pet.lag = 0;
+      if (!pet.warm || d > PET_SNAP || relocated) {
         if (!placePet(cave, tx, tz, feet, h)) { node.visible = false; return; }
-      } else if (d > PET_ARRIVE && dt > 0) {
-        const step = Math.min(d, PET_SPEED * dt * Math.min(1, d / 1.2 + 0.25));
-        const nx = pet.x + dx / d * step, nz = pet.z + dz / d * step;
-        const floor = groundAt(nx, nz, pet.feet + PET_STEP, pet.feet + PET_STEP, cave);
-        if (Number.isFinite(floor) && Math.abs(floor - pet.feet) <= PET_STEP
-          && walkable(pet.x, pet.z, nx, nz, pet.feet, PET_HEIGHT, cave)
-          && walkable(nx, nz, nx, nz, floor, PET_HEIGHT, cave)) {
-          pet.x = nx; pet.z = nz; pet.step += step * (node.legs ? QUAD_GAIT.stride : 9); moving = true;
-          pet.speed = step / dt;
-          pet.feet = floor;
+        pet.speed = pet.stuck = 0;
+      } else if (dt > 0) {
+        // Easing into a speed that falls as it nears its spot, and turning toward it as it goes.
+        const want = d < 0.12 ? 0 : Math.min(F.run, (d - 0.08) * F.ease);
+        pet.speed += (want - pet.speed) * Math.min(1, dt * F.accel);
+        if (d > 0.12) pet.heading += wrapAngle(Math.atan2(dx, dz) - pet.heading) * Math.min(1, dt * F.turn);
+        if (pet.speed > 0.01) {
+          const step = Math.min(pet.speed * dt, d), nx = pet.x + Math.sin(pet.heading) * step, nz = pet.z + Math.cos(pet.heading) * step;
+          const floor = groundAt(nx, nz, pet.feet + PET_STEP, pet.feet + PET_STEP, cave);
+          if (Number.isFinite(floor) && Math.abs(floor - pet.feet) <= PET_STEP
+            && walkable(pet.x, pet.z, nx, nz, pet.feet, PET_HEIGHT, cave)
+            && walkable(nx, nz, nx, nz, floor, PET_HEIGHT, cave)) {
+            pet.x = nx; pet.z = nz; pet.step += step * (node.legs ? QUAD_GAIT.stride : 9); moving = true;
+            pet.feet = floor; pet.stuck = 0;
+          } else {
+            // Stopped by a wall a while with its Ooga well away, it turns up beside it.
+            pet.speed = 0;
+            if ((pet.stuck += dt) > F.stuck && Math.hypot(r.position.x - pet.x, r.position.z - pet.z) > F.behind && placePet(cave, tx, tz, feet, h)) pet.stuck = 0;
+          }
         }
-        pet.heading = Math.atan2(dx, dz);
-      } else if (d <= PET_ARRIVE) pet.heading = h;
+        // At its spot and still, it turns the way its Ooga faces.
+        if (d < 0.25 && pet.speed < 0.2) pet.heading += wrapAngle(h - pet.heading) * Math.min(1, dt * 3);
+      }
       // Kept from its spot by the bed (up on the cloth, a step too high to come down), it turns up there.
       pet.wait = beside && !moving && d > PET_ARRIVE ? pet.wait + Math.max(0, dt) : 0;
       if (pet.wait > 0.6 && placePet(cave, tx, tz, feet, h)) pet.wait = 0;
@@ -847,19 +884,15 @@
     inspect(cave.headClosed, head.world);
     return pivotY + reach;
   };
-  // The interaction footprint follows the authored body, without extending
-  // reach for a held weapon. Its standing envelope is stable through a walk.
+  // The interaction footprint is the torso's alone: the arms, legs and head pass through things, so none of them holds
+  // the body off anything or catches on it, and they stay with the body. Its standing envelope is stable through a walk.
   const bodyRadiusOf = (cave) => {
     let radius2 = 0;
-    // A modelled body's empty left forearm and hand hang as the body's own does, and count; the right forearm is bent
-    // to what it holds, which is the weapon's reach.
-    for (const key of cave.modelled ? MODELLED_BODY_PARTS : BODY_PARTS) {
-      const part = cave.parts[key], verts = part.geometry.verts, m = part.world;
-      for (let i = 0; i < verts.length; i += 3) {
-        const x = m[0] * verts[i] + m[4] * verts[i + 1] + m[8] * verts[i + 2] + m[12] - cave.root.position.x;
-        const z = m[2] * verts[i] + m[6] * verts[i + 1] + m[10] * verts[i + 2] + m[14] - cave.root.position.z;
-        radius2 = Math.max(radius2, x * x + z * z);
-      }
+    const part = cave.parts.torso, verts = part.geometry.verts, m = part.world;
+    for (let i = 0; i < verts.length; i += 3) {
+      const x = m[0] * verts[i] + m[4] * verts[i + 1] + m[8] * verts[i + 2] + m[12] - cave.root.position.x;
+      const z = m[2] * verts[i] + m[6] * verts[i + 1] + m[10] * verts[i + 2] + m[14] - cave.root.position.z;
+      radius2 = Math.max(radius2, x * x + z * z);
     }
     return Math.sqrt(radius2);
   };
@@ -1339,7 +1372,9 @@
   // into the palm, so the hand overlaps the wood and covers it there. `sink` is how far, of the palm's distance from
   // the middle of its fist: at 1 the wood reaches the middle of the fist, and past that only the back of the hand
   // stands out of the wood. The palm faces square to the wood and the forearm, so the arm is placed again from
-  // where the first placing left the forearm, twice. It returns the hand's turn about its forearm.
+  // where the first placing left the forearm, twice. The wood stands out past the thumb, which lies across the
+  // fingers on the palm's side, so the thumb never shows through the far side of it. It returns the hand's turn
+  // about its forearm.
   const holdPart = (cave, arm, forearm, out, g, tx, ty, tz, ax, ay, az, halfX, halfY, sink, px, py, pz) => {
     reachArm(cave, arm, forearm, out, tx, ty, tz, px, py, pz);
     for (let pass = 0; pass < 2; pass++) {
@@ -1351,7 +1386,7 @@
       // How far the part reaches toward the palm: its half width and half height along that line.
       FINGER_INVERSE[0] = -g[0]; FINGER_INVERSE[1] = -g[1]; FINGER_INVERSE[2] = -g[2]; FINGER_INVERSE[3] = g[3];
       math.quat.rotateVec(MUZZLE, FINGER_INVERSE, zx, zy, zz);
-      const d = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]) + cave.fist.palm * (1 - sink);
+      const reach = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]), d = Math.max(reach + cave.fist.palm * (1 - sink), cave.fist.thumb + THUMB_COVER * cave.traits.height - reach);
       reachArm(cave, arm, forearm, out, tx - zx * d, ty - zy * d, tz - zz * d, px, py, pz);
     }
     return handTurn(arm, forearm, ax, ay, az);
@@ -1461,7 +1496,7 @@
     // before possession and when moving in the initial navigation view.
     const primaryCarry = !slungClub && carryingAxe(cave, controlled);
     // A pack takes the centre of the back, and the nunchaku rides the hip either way.
-    const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && backPack(cave));
+    const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && backPack(cave) && !cave.modelled);
     const twirling = !slungClub && !primaryReady && cave.traits.nunchaku && meleePresented(cave, controlled, elapsed);
     const clubParent = slungClub ? cave.root : twirling && cave.twirlHand ? parts.armL : parts.armR;
     if (parts.club.parent !== clubParent) {
@@ -1621,11 +1656,13 @@
         // Half its depth where it crosses the back: across it, for a weapon slung a quarter turned.
         const quarter = parts.club.geometry.slingTurn !== undefined;
         const depth = (quarter ? profile[k + 1] - profile[k] : profile[k + 5] - profile[k + 4]) / 2, packed = backPack(cave) && cave.jet.side;
-        // With a pack on, it hangs beside the pack against the back, leaning out past the head.
-        const besideX = packed ? cave.jet.side + GUN_BESIDE * h : 0, beside = packed ? besideLean(cave, besideX, -cave.back - depth, middle) : 0;
+        // With a pack on, it hangs beside the pack against the back, leaning out past the head; a long one (an axe,
+        // or a stick held as one) at the same lean and turn on every body, its head in toward the body and angled back.
+        const long = cave.traits.stoneAxe, besideX = packed ? cave.jet.side + GUN_BESIDE * h : 0;
+        const beside = packed ? long ? CLUB_LEAN_PACKED : besideLean(cave, besideX, -cave.back - depth, middle) : 0;
         // A weapon slung hilt up (`slingHiltUp`) lies the other way up along the same slant, mirrored, so its grip
         // comes up over the drawing hand's shoulder.
-        const roll = beside ? 0 : slingRoll(cave, middle, -cave.back - depth), lean = beside ? -beside : CLUB_SLING_ANGLE;
+        const roll = beside ? long ? CLUB_TURN_PACKED : 0 : slingRoll(cave, middle, -cave.back - depth), lean = beside ? -beside : CLUB_SLING_ANGLE;
         const angle = parts.club.geometry.slingHiltUp ? Math.PI - lean : lean;
         parts.club.rotation.x = 0;
         parts.club.rotation.z = angle;
@@ -1912,12 +1949,12 @@
       const rear = head.position.z + zx * (zx < 0 ? bounds.max[0] : bounds.min[0]) + zy * (zy < 0 ? bounds.max[1] : bounds.min[1]) + zz * (zz < 0 ? bounds.max[2] : bounds.min[2]);
       let gunX = (sideCarry ? 0.34 : 0.06) * h, gunZ = Math.min(-0.245 * h, rear - 0.055 * h), lean = sideCarry ? 0.05 : 0.45;
       if (cave.modelled) {
-        // A modelled body's slung rifle lies flat on its back, or beside its pack against the back, leaning as far
-        // as takes its barrel past the head, up to forty-five degrees.
+        // A modelled body's slung rifle lies flat on its back, leaning as far as takes its barrel past the head, up to
+        // forty-five degrees; beside its pack against the back it stands nearly upright, alike on every body.
         const packed = sideCarry && cave.jet && cave.jet.side;
         if (packed) gunX = cave.jet.side + GUN_BESIDE * h;
         gunZ = -cave.back - GUN_FLAT * h;
-        lean = slungLean(cave, gunX, gunZ, lean, packed ? "gunLeanPacked" : sideCarry ? "gunLeanSide" : "gunLean");
+        lean = packed ? GUN_LEAN_PACKED : slungLean(cave, gunX, gunZ, lean, sideCarry ? "gunLeanSide" : "gunLean");
       }
       setVec(gun.position, gunX, 0.24 * h + cave.viewLift, gunZ);
       math.quat.fromEuler(GUN_ARM, 0, 0, -lean);
@@ -7913,11 +7950,10 @@
         const interactive = input.weaponTargets && input.weaponTargets.strike(weaponHit, meleePreviousWorld, club.world, club.geometry, cave, combatEnabled ? null : ctx.weaponInteraction)
           && weaponContactClear(weaponStart, weaponHit, true);
         const blocked = combatEnabled && !interactive && meleeSceneryBlocked(cave, meleePreviousWorld, club.world);
-        let contactFraction = 1;
         if (interactive || blocked) {
           // Refine only a confirmed contact. Ordinary swings do one mesh
-          // query per frame; five bounded probes keep the impact pose close
-          // to the surface instead of finishing the stroke through it.
+          // query per frame; five bounded probes find where the blade met
+          // the surface, for the impact's place and direction.
           meleeCurrentWorld.set(club.world);
           if (interactive) Object.assign(meleeContact, weaponHit);
           let low = 0, high = 1;
@@ -7932,7 +7968,6 @@
               if (interactive) Object.assign(meleeContact, weaponHit);
             } else low = middle;
           }
-          contactFraction = high;
           w.meleeHit = true;
           if (!hitMeleeTarget(cave)) {
             const power = strikeMeleePower(cave);
@@ -7961,14 +7996,7 @@
         } else if (combatEnabled && !input.weaponTargets && ctx.onMeleeStrike) {
           w.meleeHit = ctx.onMeleeStrike(meleePreviousWorld, club.world, club.geometry, dt, strikeMeleePower(cave));
         }
-        if (w.meleeHit) {
-          const beforeLower = strikeEase(clamp((meleeRelease - meleeBefore) / w.meleeStrikeTime, 0, 1));
-          const afterLower = strikeEase(clamp((meleeRelease - w.meleeTime) / w.meleeStrikeTime, 0, 1));
-          w.meleeStop = lerp(beforeLower, afterLower, contactFraction);
-          w.meleeTime = MELEE_RECOVER;
-          poseWeapon(cave);
-          BL.scene.updateWorld(cave.root);
-        }
+        // A hit counts once and the cut goes on through it: the arm is never held on what it struck.
       }
       // A passive NPC stands on nobody, so it skips the character support scan.
       if (ctx.characterSupportAt) riding.support = cave.nonInteractive ? null : ctx.characterSupportAt(cave);
@@ -8173,5 +8201,5 @@
       }
     };
   };
-  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, reachArm, captureMeleePose, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, reachArm, captureMeleePose, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();
