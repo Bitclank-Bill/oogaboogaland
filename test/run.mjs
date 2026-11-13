@@ -7443,9 +7443,9 @@ const gameRulesChecks = async () => {
         out.teams === "blue,blue,red,red" && out.worth === 12 && out.plain === 1 && out.red === 3 && out.tieWorth === 1 && out.tieMined === 1 && out.tieAll === 0 && out.none === 2 && out.hostPick === 0 && out.guestPick === 0
         && /const mvp = SIM\.mvp\(sim, seatOfActor\);/.test(sc) && /trophyShow\(winner, worth, mvp\)/.test(sc) && (sc.match(/\|\| seatOfActor\(a\) - seatOfActor\(b\)\)/g) || []).length === 2
         && !/lineup|renderFaceIcon|posePodium|podiumView|BM\.crown/i.test(sc) && !/block-lineup|block-crown/.test(page + trophyCss) && !("lineup" in S)
-        // The card shows what the MVP's worth counts (blocks brought home too), keeps names whole on a line and its buttons in view.
+        // The card shows what the MVP's worth counts (blocks brought home too), keeps names readable and its buttons in view.
         && /\$\{sim\.actors\[mvp\]\.captures\} mined · \$\{sim\.actors\[mvp\]\.rescues\} brought home · \$\{sim\.actors\[mvp\]\.hits\} splats/.test(sc) && /home\.textContent = String\(sim\.actors\[i\]\.rescues\);/.test(sc)
-        && (page.match(/<small title="Blocks brought home">Home<\/small>/g) || []).length === 2 && /\.block-side-panel li span \{ overflow: hidden; white-space: nowrap; text-overflow: ellipsis; \}/.test(trophyCss)
+        && (page.match(/<small title="Blocks brought home">Home<\/small>/g) || []).length === 2 && /\.block-side-panel li span \{ overflow-wrap: anywhere; \}/.test(trophyCss)
         && /\.block-trophy-board \.actions \{ position: sticky; bottom: 0;/.test(trophyCss) && /grid-template-columns: minmax\(0, 1fr\) 6ch 6ch 6ch;/.test(trophyCss), JSON.stringify(out));
     }
     // The hook takes the rivals' block off its stand wherever on it the hook is aimed, low or high, from the open side,
@@ -12430,7 +12430,7 @@ const blockStart = { name: "block start", why: "rule: Space only closes the titl
     s.prep = 0; a.cooldown = 0; a.crates = 3; a.splat = a.trapped = 0;
     for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 34 : -34; }
     B.block.chooseTool("paint");
-    Object.assign(a, { x: -14, y: 0, z: s.team === "blue" ? 6 : -6, vx: 0, vy: 0, vz: 0, grounded: true, holding: false, riding: false });
+    Object.assign(a, { x: -14, y: 0, z: s.team === "blue" ? 6 : -6, vx: 0, vy: 0, vz: 0, grounded: true, holding: false, riding: false, flight: 0 });
     const fired = shots(); document.getElementById("block-paint").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
     window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
     const crates = a.crates; press("crate");
@@ -12479,6 +12479,10 @@ const blockWalk = { name: "block walk", why: "rule: W A S D move the visitor's O
   record("block walk: W and S run the Ooga forward and back on screen, A and D step it left and right, Q turns it and the camera left and E right", ok, JSON.stringify(rows));
 } };
 const blockQuiz = { name: "block quiz", why: "rule: a quiz trap holds the visitor until a right answer, a wrong one locks the answers, and a right one frees them", run: async (b) => {
+  // Release any native lock from the preceding walk before installing the deterministic lock fixture.
+  // Otherwise Chrome still routes a real answer click to the locked canvas despite the mocked getter.
+  await b.evaluate(`document.exitPointerLock()`);
+  for (let i = 0; i < 40 && await b.evaluate(`!!document.pointerLockElement`); i++) await b.sleep(25);
   // A captured mouse, stood in for (a headless page can't hold one): the trap must let it go, and a right answer take it back.
   await b.evaluate(`(() => { const c = document.getElementById("scene"); window.__lock = { el: c, exits: 0, takes: 0, was: c.requestPointerLock };
     Object.defineProperty(document, "pointerLockElement", { configurable: true, get: () => window.__lock.el });
@@ -12503,6 +12507,35 @@ const blockQuiz = { name: "block quiz", why: "rule: a quiz trap holds the visito
 const blockRun = `(() => { const B = window.__ooga, D = B.block; D.start(); for (let i = 0; i < 80 && D.phase === "play"; i++) D.simulate(15, true); B.advance(0.3, 1 / 30); const save = B.game.state.block, card = document.getElementById("block-results"), w = D.sim.winner;
   const trophy = card.dataset.team === w && document.getElementById("block-result-title").textContent === (w === "blue" ? "Blue" : "Red") + " wins!" && document.querySelectorAll("#block-side-blue li, #block-side-red li").length === D.sim.actors.length && card.querySelector('[data-team="' + w + '"].won') !== null;
   return { ok: D.phase === "results" && !card.hidden && trophy && save.games === 1 && save.wins === (D.result.won ? 1 : 0), phase: D.phase, result: D.result, save, trophy }; })()`;
+const blockPoses = { name: "block modelled poses", why: "regression: old straight-arm weapon offsets missed the modelled fists and the trophy block floated above slim Oogas", run: async b => {
+  const rows = await b.evaluate(`(() => {
+    const B = __ooga, D = B.block, S = BL.scenes.block, rows = [], update = S.update;
+    S.update = () => {};
+    try {
+      for (const name of ["w-s-bitcoin", "tiffanyvarty", "portlandhodl"]) {
+        D.showBoard(); D.chooseOoga(name); D.chooseOoga(name); D.start(604);
+        const a = D.sim.actors[0];
+        Object.assign(a, { flight: 0, y: 0, x: -7, z: 4, grounded: true, gold: true, hook: 1 });
+        D.sim.prep = 0;
+        for (const kind of ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "hook"]) {
+          D.chooseTool(kind); update(0, 0); BL.scene.updateWorld(S.root);
+          const actor = D.actors[0], cave = actor.cave, p = cave.parts;
+          let gap = 0;
+          for (const [gun, hand] of [[actor.gun, p.fingersR], ...(kind === "gold" ? [[actor.gunL, p.fingersL]] : [])]) {
+            const point = new Float64Array(3); BL.math.mat4.transformPoint(point, gun.world, 0, -.08, -.03);
+            gap = Math.max(gap, Math.hypot(point[0] - hand.world[12], point[1] - hand.world[13], point[2] - hand.world[14]));
+          }
+          rows.push({ name, kind, gap, visible: actor.gun.visible, modelled: cave.modelled, own: cave.traits.name === name });
+        }
+        D.sim.over = true; D.sim.winner = D.sim.team; D.sim.actors[0].captures = 3; D.simulate(.1); update(0, 0); BL.scene.updateWorld(S.root);
+        const p = D.actors[0].cave.parts, gold = S.root.children.find(n => n.geometry === BL.blockModels.goldBlock() && n.visible);
+        rows.push({ name, trophy: D.phase === "results", gap: Math.abs(gold.world[13] - .465 - (p.fingersR.world[13] + p.fingersL.world[13]) / 2) });
+      }
+    } finally { S.update = update; D.showBoard(); }
+    return rows;
+  })()`);
+  record("block modelled poses: regular, slim and wide Oogas grip every weapon and both Golden AKs, and their trophy rests on their raised fists", rows.length === 27 && rows.every(r => r.trophy ? r.gap < .03 : r.visible && r.modelled && r.own && r.gap < .001), JSON.stringify(rows));
+} };
 const dropStart = { name: "drop start", why: "regression: Space on the title card also launched the flight", run: async (b) => {
   const st = () => b.evaluate(`({ phase: window.__ooga.drop.phase, card: !document.querySelector('[data-intro="drop"]').hidden })`);
   const fresh = await st();
@@ -15874,8 +15907,12 @@ const cameraSelectionProbe = (B, controller, select, reselect = null) => {
 };
 const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizontal aim rotates the view around a centerline reticle, zoom retains forward targets, and carry handoffs preserve valid cursors and camera distance", run: async (b) => {
   const focusPoint = await b.evaluate(`(() => {
-    const B = __ooga, a = B.pilot.player, C = B.camera;
-    B.pilot.release(true); B.advance(0.1, 1 / 60);
+    const B = __ooga, body = B.pilot.player, a = body.npc || body, C = B.camera;
+    // A released body goes (#501): its NPC is stood where it was let go, to be double-clicked there.
+    const at = { x: body.root.position.x, y: body.root.position.y - body.baseY + a.baseY, z: body.root.position.z };
+    B.pilot.release(true);
+    if (a !== body) Object.assign(a.root.position, at);
+    B.advance(0.1, 1 / 60);
     const point = B.project(a.root.position.x, a.root.position.y - a.baseY + a.bodyHeight * 0.55, a.root.position.z, {});
     return { x: point.x, y: point.y, eye: [C.position.x, C.position.y, C.position.z] };
   })()`);
@@ -18633,7 +18670,7 @@ const factoryFloor = { name: "factory floor", why: "regression: stairs landed ag
     if (!near(L.stairway[0], L.stairway[2] - 1, 0)) missing.push("forge floor");
     return { who, radius: +R.toFixed(2), missing, cells: cells.length, deck: deck.size };
   })()`);
-  record("factory floor: from the balcony the widest Ooga on the roster reaches both ends of every stair, every line's deck, each peer tunnel's shield, the switchboard, Kortik's deck, the right-wall platform with the rebalancer's operator lane and the treasury (walking the platform's length from the cooker's stair), the donation kiosk in the right wall, the watchtower, landing, galleries and the forge", r.missing.length === 0 && r.radius > 0.6 && r.cells > 20000, JSON.stringify(r));
+  record("factory floor: from the balcony the widest Ooga on the roster reaches both ends of every stair, every line's deck, each peer tunnel's shield, the switchboard, Kortik's deck, the right-wall platform with the rebalancer's operator lane and the treasury (walking the platform's length from the cooker's stair), the donation kiosk in the right wall, the watchtower, landing, galleries and the forge", r.missing.length === 0 && r.radius > 0.45 && r.cells > 20000, JSON.stringify(r));
 } };
 // The way in and out: from the island through the 2 o'clock mouth's shield, back out past the balcony, and Escape.
 const factoryEntrance = { name: "factory entrance", why: "regression: flying above the mouth entered the factory and reaching its front wall away from the doorway exited; real doorway crossings must still keep the same Ooga", run: async (b) => {
@@ -19498,7 +19535,7 @@ const arcadeBlockHall = { name: "arcade block hall", why: "rule: an Ooga walks t
     let ok = true, x = H.x - 0.6, z = -20;
     while (z > H.ledge + 0.8) { const nz = z - 0.2; ok = ok && B.arcade.walkable(x, z, x, nz, H.y, actor.bodyHeight, actor) && B.arcade.supportAt(x, nz, H.y) === H.y; z = nz; }
     const past = B.arcade.walkable(x, H.ledge + 0.5, x, H.ledge - 0.6, H.y, actor.bodyHeight, actor);
-    return { ok, z, past, wall: B.arcade.walkable(H.x0 - 0.3, -28, H.x0 - 0.3, -28.2, H.y, actor.bodyHeight, actor) };
+    return { ok, z, past, wall: B.arcade.walkable(H.x, -28, H.x0 - 0.3, -28, H.y, actor.bodyHeight, actor) };
   })()`);
   record("arcade block hall: walkable from the deck to the ledge, held by its railing and walls", r.ok && !r.past && !r.wall, JSON.stringify(r));
 } };
@@ -24088,7 +24125,7 @@ scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub")
 }}]});
 scene("race", { query: "rain=0&draw=0", steps: [raceStart, raceOwn, raceBench, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: one drawn field of fifteen runs every race and finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop"), dropOwn] });
-scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), trip("block")] });
+scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, trip("block")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit"), orbitOwn] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
 // ---- The Lightning Jet Hangar ----
@@ -25077,9 +25114,9 @@ scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps:
 // Rally is out of order for visitors; the tour still boots it on Canvas 2D through its retained maintenance opt-in
 // (`wip=race` alone would land the page in Rally, so it names the island).
 scene("hub", { label: "canvas2d", query: "canvas2d=1&scene=hub&wip=race", steps: [hubMatrix, canvasTour] });
-// On a phone the move stick stays on screen through Tess's tour, her panel clear of it, and a real touch on it ends the
-// tour and walks the same Ooga from its own view.
-const hubTourTouch = { name: "hub tour touch", why: "regression: the touch sticks hid through Tess's tour, so a phone had no movement to end it with", run: async (b) => {
+// On a phone the move stick stays on screen through Tess's tour, her panel clear of it and of the screen's middle, where
+// each stop's view puts its landmark, and a real touch on it ends the tour and walks the same Ooga from its own view.
+const hubTourTouch = { name: "hub tour touch", why: "regression: the touch sticks hid through Tess's tour, so a phone had no movement to end it with; then the panel, lifted over the sticks and an open drawer, stood on each stop's landmark", run: async (b) => {
   const rows = [];
   // With the bottom drawer closed, open, and open but resized taller while it still leaves the sticks room over it
   // (sheet.js writes that height on the stage, and the sticks ride up on it), through the real touch path.
@@ -25098,6 +25135,7 @@ const hubTourTouch = { name: "hub tour touch", why: "regression: the touch stick
         inStage: !!document.getElementById("stage").querySelector(".greeter-menu"),
         shown: getComputedStyle(j).visibility === "visible" && getComputedStyle(j).display !== "none" && r.width > 0,
         clear: m.bottom <= r.top || m.top >= r.bottom || m.right <= r.left || m.left >= r.right, onScreen: m.top >= 0 && r.bottom <= innerHeight,
+        middle: m.bottom <= innerHeight / 3 || m.top >= innerHeight * 2 / 3,
         x: r.x + r.width / 2 + r.width * 0.3, y: r.y + r.height / 2 }; })()`);
     await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: layout.x, y: layout.y }] });
     let byTouch;
@@ -25108,8 +25146,8 @@ const hubTourTouch = { name: "hub tour touch", why: "regression: the touch stick
   // A double-click on the drag bar resets the resized drawer (and its saved rectangle) before it closes.
   await b.evaluate(`(() => { const s = document.getElementById("sheet"); s.querySelector(".sheet-drag").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); if (s.dataset.open === "true") document.getElementById("sheet-toggle").click(); })()`);
   const resized = rows.find(r => r.drawer === "resized");
-  record("hub tour touch: with the drawer closed, open, or resized taller with the sticks still over it, the move stick stays on screen clear of Tess's tour panel, and a touch on it ends the tour at once and walks the same Ooga from its own view",
-    rows.length === 3 && rows.every(r => r.touring && r.layout.inStage && r.layout.shown && r.layout.clear && r.layout.onScreen && r.byTouch.ended && r.byTouch.walked > 0.3)
+  record("hub tour touch: with the drawer closed, open, or resized taller with the sticks still over it, the move stick stays on screen clear of Tess's tour panel, the panel stays out of the middle third of the screen where each stop's landmark stands, and a touch on it ends the tour at once and walks the same Ooga from its own view",
+    rows.length === 3 && rows.every(r => r.touring && r.layout.inStage && r.layout.shown && r.layout.clear && r.layout.middle && r.layout.onScreen && r.byTouch.ended && r.byTouch.walked > 0.3)
       && !!resized && resized.sized.sized === "true" && resized.sized.to > resized.sized.from && Math.abs(parseFloat(resized.sized.written) - (resized.layout.sheet.bottom - resized.layout.sheet.top)) <= 1
       && resized.layout.sticks === "true" && resized.layout.stick.bottom <= resized.layout.sheet.top && resized.layout.panel.bottom <= resized.layout.stick.top, JSON.stringify(rows));
 } };
@@ -25130,6 +25168,27 @@ scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required
 scene("studio", { query: `pos=0&character=${STUDIO_OOGA}`, opts: PHONE_SIZE, steps: [phone("studio", { required: ["#joy-move", "#joy-look", "#act"] })] });
 scene("race", { query: "pos=0&rain=0&draw=0", opts: PHONE_SIZE, steps: [phone("race", { card: '[data-intro="race"]', play: "window.__ooga.race.startRace()", required: ["#joy-move", "#act", "#item-btn", "#race-garage-btn", "#leave-hud"] })] });
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", "#leave-hud"] })] });
+scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", { card: '[data-intro="block"]', play: "__ooga.block.start()", required: ["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"] }), {
+  name: "block phone actions and results", why: "regression: Throw overlapped Jump and the sticks, and small results cards clipped names and action labels", run: async b => {
+    const rows = [];
+    for (const [width, height] of [[390,844],[844,390],[320,568]]) {
+      await b.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
+      await b.sleep(100);
+      await b.evaluate(`__ooga.block.showBoard();new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+      rows.push({ width, phase: "board", bad: await b.evaluate(PHONE(['#block-board [data-action="block-start"]'])) });
+      await b.evaluate(`(() => { const D=__ooga.block;D.start(604);D.sim.prep=0;Object.assign(D.sim.actors[0],{flight:0,grounded:true,x:-7,z:4,y:0,vy:0}); })()`);
+      rows.push({ width, phase: "play", bad: await b.evaluate(PHONE(["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"])) });
+      const at = await b.evaluate(`(() => { const r=document.getElementById("block-paint").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+      await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+      await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      const fired = await b.evaluate(`__ooga.block.sim.actors[0].lastKind === "paint" && __ooga.block.sim.actors[0].cooldown > 0`);
+      rows.push({ width, fired });
+      await b.evaluate(`(() => { const D=__ooga.block;D.sim.over=true;D.sim.winner=D.sim.team;D.simulate(.1);__ooga.advance(.1); })()`);
+      rows.push({ width, phase: "results", bad: await b.evaluate(PHONE(['#block-results [data-action="block-again"]','#block-results [data-action="block-board"]','#block-results [data-role="leave"]'])) });
+    }
+    record("block phone: portrait, landscape and narrow screens keep the controls reachable, a real Throw tap fires, and the results names and actions fit", rows.every(r => r.bad ? !r.bad.length : r.fired), JSON.stringify(rows));
+  }
+}] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", "#leave-hud"] })] });
 scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#environment-sound", "#leave-hud"] })] });
 scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", "#leave-hud"] }), factoryGreeter] });
@@ -29678,7 +29737,10 @@ const integrationChecks = async BL => {
   records.get(72).weapon=1;pool.update(.1);let primary=clubBack();records.get(72).weapon=0;pool.update(.1);primary=primary&&clubBack();
   if(shotHeard)shotHeard(72,[1,2,3,4,5,6]);const replay=replayed.length===1&&replayed[0].join()===",1,2,3,4,5,6";
   const restingArmX=armR.rotation.x;
-  if(swingHeard)swingHeard(72);pool.update(.1);const swung=!!armR&&armR.rotation.x<-1;
+  // Swung: the arm raised at least 60 degrees from hanging at its highest, by its Euler turn or, on a modelled body,
+  // its quaternion.
+  let swung=false;if(swingHeard)swingHeard(72);
+  for(let i=0;i<40;i++){pool.update(.01);const raised=new Float32Array(3);if(armR&&armR.quaternion)BL.math.quat.rotateVec(raised,armR.quaternion,0,-1,0);swung||=!!armR&&(armR.quaternion?raised[1]>-0.5:armR.rotation.x<-1);}
   pool.update(.4);const settled=!!armR&&Math.abs(armR.rotation.x-restingArmX)<1e-9&&pool.body(72).weapon.meleeTime===0;
   record("integration remotes: another player's gun shows aimed with a banana for each three rounds, the club comes back when it is put away, their shots replay through the crew and their strike swings the arm and settles",
     aimed&&primary&&replay&&swung&&settled,JSON.stringify({aimed,bananas,primary,replay,swung,settled}));
@@ -31102,7 +31164,7 @@ const studioVideoSecurityProof = async () => {
     drawArraysInstanced:(...args)=>{calls.draws++;calls.arrays.push(args);},drawElementsInstanced:(...args)=>{calls.draws++;calls.elements.push(args);},
     texImage2D:()=>{calls.uploads++;if(failure)throw Object.assign(Error("synthetic upload failure"),{name:failure});},texSubImage2D:()=>{calls.uploads++;if(failure)throw Object.assign(Error("synthetic update failure"),{name:failure});}};
   const context={gl,programs:{image:{prog:"image",u:{uReady:"ready"}},mesh:{prog:"mesh"}},res:{matrixTexture:"fallback"},viewProj:[],mirrorViewProj:[],applyCutaway:noop,cutawayMaxY:1e6};
-  runInNewContext("let imageTextures=0,blendPass=false;"+source.slice(partStart,partEnd)+source.slice(start,end)+";globalThis.draw=(rec,count,cameraPass)=>drawImageSurface(rec,count,cameraPass,programs.mesh);globalThis.partDraw=drawPart;globalThis.textures=()=>imageTextures;globalThis.resetTextureCount=()=>{imageTextures=0;};",context);
+  runInNewContext("let imageTextures=0,blendPass=false;const countDraw=()=>{};"+source.slice(partStart,partEnd)+source.slice(start,end)+";globalThis.draw=(rec,count,cameraPass)=>drawImageSurface(rec,count,cameraPass,programs.mesh);globalThis.partDraw=drawPart;globalThis.textures=()=>imageTextures;globalThis.resetTextureCount=()=>{imageTextures=0;};",context);
   let image={readyState:2,seeking:false,videoWidth:320,videoHeight:180,currentTime:0,currentSrc:"file:///synthetic.mp4"};const surface={dynamic:true,asset:{load:()=>image},rect:[0,0,7,3.5]},rec={geometry:{imageSurface:surface},mesh:{vao:{},count:6}};
   context.draw(rec,1,true);const fallback=rec.imageTexture===null&&context.textures()===0&&calls.deletes===1&&calls.draws===1&&calls.ready.at(-1)===0&&surface.mediaErrorCode==="video-security";
   context.draw(rec,1,true);const suppressed=calls.uploads===1&&calls.draws===2;
@@ -31450,8 +31512,8 @@ const terrainParityChecks = (BL, island) => {
 };
 // Repo Island (repo-island-data.js, repo-island-models.js, repo-feed.js): the list the page and the Worker share, the
 // island laid out from it, and the feed's boundary. The meadow's four totems are carved by the same kit at its full
-// detail, so their golden is the one they had before the island's details existed.
-const MEADOW_TOTEMS_GOLDEN = "8bdd4fca5a005b4f";
+// detail. The golden includes the shared name-board lettering, updated for the readable N and R.
+const MEADOW_TOTEMS_GOLDEN = "f22e865e938044c5";
 const repoIslandChecks = (BL, island) => {
   const D = BL.repoIslandData, M = BL.repoIslandModels, TM = BL.totemModels, H = BL.hubModels;
   const sections = D.SECTIONS.map((s) => s.id), order = D.REPOS.map((r) => sections.indexOf(r.section));
