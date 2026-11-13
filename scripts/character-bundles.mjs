@@ -80,6 +80,15 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
       throw error;
     }
   };
+  // Establish the required pending statuses before a writer queues or yields,
+  // including bundle/override PRs whose quick inspection otherwise returns early.
+  const holdForWriter = async (event) => {
+    const prs = event.pull_request ? [await gh.api(`pulls/${event.pull_request.number}`)] : await openBundles();
+    for (const pr of prs) {
+      if (pr.state !== "open" || pr.base.ref !== "rock") continue;
+      for (const context of [STATUS, BUNDLE_STATUS]) await status(pr.head.sha, context, "pending", "Waiting for character reconciliation; release work has priority");
+    }
+  };
   const rejectSubmission = async (pr, submission, error) => {
     await status(submission.head, STATUS, "failure", error instanceof CharacterRejection ? error.message : "Scan unavailable or conflicted; retry or ask a maintainer");
     // A timeout, rate limit or base conflict is not evidence of malicious code.
@@ -478,7 +487,7 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
       throw new Error("Direct rock character changes cannot be quarantined after a push. Require PRs and the character checks in branch rules.");
     }
   };
-  return { ensure, intake, mergeDaily, refreshReviews, sweep, auditRock, deployMerged, accountRename, refreshAccountRenames, reconcileOverride, needsWriter };
+  return { ensure, intake, mergeDaily, refreshReviews, sweep, auditRock, deployMerged, accountRename, refreshAccountRenames, reconcileOverride, needsWriter, holdForWriter };
 };
 
 export const runAccountRenameChecks = async (coordinator, event) => {
@@ -497,6 +506,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.argv.includes("--inspect")) {
     const write = process.env.CHARACTER_ACCOUNT_RENAMES_ONLY === "true" || !event.pull_request
       || await coordinator.needsWriter(event.pull_request.number);
+    if (write && process.env.CHARACTER_ACCOUNT_RENAMES_ONLY !== "true") await coordinator.holdForWriter(event);
     appendFileSync(process.env.GITHUB_OUTPUT, `write=${write}\n`);
   } else if (process.env.CHARACTER_ACCOUNT_RENAMES_ONLY === "true") {
     // Maintenance mode has no bundle creation, intake, merge, close, sweep or
