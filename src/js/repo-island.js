@@ -20,8 +20,8 @@
 // A totem lights for `repoFeed.RECENT` after its repository merges a pull request (`repo-feed.js`), as the meadow's do:
 // its runes glow in its section's rhythm and the crystals under it glow, waning to 60% by the day's end, and every face's
 // eyes burn, each flame a node on the arcade's one `blaze` geometry, at every carving detail and view distance. Each crystal cluster under the island
-// glows from a core inside its crystals, bright while at least half the totems over it are lit and dim while fewer
-// are, the cores merged into one mesh a band, rebuilt only when they change. The lit runes of a chunk are merged into one mesh a brightness band
+// glows across its outer facets, bright while at least half the totems over it are lit and dim while fewer
+// are, with a softer interior glow from neighbours. Facets share one mesh per band, rebuilt only when they change. The lit runes of a chunk are merged into one mesh a brightness band
 // (fresh within FRESH, older), rebuilt only when that chunk's lit set changes, so 170 totems light in a few dozen draws.
 // Painted features pulse on their matching detail mesh, and the mainland's traveling ring glow uses one instanced
 // sector batch per paint. Warm point lights follow the turning poles through the hub's existing light budget.
@@ -286,7 +286,8 @@
         gemKey = key;
         bands.forEach((list, band) => {
           if (!list.length) { if (gemBands[band]) gemBands[band].visible = false; return; }
-          const geometry = BL.models.noShadow(BL.models.merge(...list.map((k) => M.gem(k))));
+          const geometry = BL.models.noShadow(BL.models.merge(...list.map((k) => M.gem(k, band < 2))));
+          geometry.depthOffset = band < 2;
           if (!gemBands[band]) { gemBands[band] = createNode({ geometry, glow: 0, sightHidden: true }); addChild(spin, gemBands[band]); }
           else gemBands[band].geometry = geometry;
           gemBands[band].visible = true;
@@ -414,8 +415,10 @@
         }
       }
       for (const b of ringBatches) { b.node.visible = b.node.instanceCount > 0; b.node.instanceVersion++; }
-      // Strong filled interiors and a softer neighbouring glow keep the quartz colors through the denser glass.
-      for (let band = 0; band < gemBands.length; band++) if (gemBands[band] && gemBands[band].visible) gemBands[band].glow = (1.05 + 0.2 * RHYTHMS.ripple(t)) * (band === 0 ? 1 : band === 1 ? 0.75 : 0.32);
+      // The painted totem features' breathing cadence, with enough range to read through bloom.
+      // Emission clamps at one in the renderer: keep the pulse below that ceiling instead of flattening it.
+      const crystalPulse = 0.5 + 0.5 * Math.sin(t * 2.2), crystalGlow = 0.35 + 0.65 * crystalPulse * crystalPulse;
+      for (let band = 0; band < gemBands.length; band++) if (gemBands[band] && gemBands[band].visible) gemBands[band].glow = crystalGlow * (band === 0 ? 1 : band === 1 ? 0.85 : 0.1);
       for (let n = 0; n < flames.length; n++) {
         const f = flames[n];
         if (!f.node.visible) continue;
@@ -530,6 +533,7 @@
     const stats = () => ({ chunks: chunks.length, built, tiers: chunks.map((c) => c.tier).join(""), wants: chunks.map((c) => c.want).join(""), preps: chunks.map((c) => c.prep).join(""),
       lit: totems.filter((o) => o.live).length, hidden: totems.filter((o) => o.hidden).length, flames: flames.filter((f) => f.node.visible).length, features: totems.filter((o) => o.features?.visible).length, rings: ringBatches.reduce((n, b) => n + b.node.instanceCount, 0),
       ringDraws: ringBatches.filter((b) => b.node.visible).length, lights: totems.filter((o) => o.lamp?.always).length,
+      crystalGlow: gemBands.map(n => n?.visible ? n.glow : 0),
       active, targets: targets.length, angle });
     return { spot, group, solids: [soil, stone], lamps, glass, claims, arrival, view, start, pause, turn, carry, update, afterCamera, liveGeometry, tip, open, onIsland, onBridge, dispose, stats,
       bridgeEnds: { from: world(0, 0, bridge.from + 0.6), to: world(0, 0, bridge.to - 0.9) } };

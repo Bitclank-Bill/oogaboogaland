@@ -436,9 +436,9 @@
   // sunflower's spiral, the middle's longest and thickest; each grows mostly down and a little out along the rock, so
   // the ceiling's silhouette is one rounded mass, lowest under Bitcoin Core. Each cluster stands under the totems
   // nearer it than any other (`crystals()`'s `totems`, places in `plan().totems`); while they are lit the runtime lays
-  // a glowing core (`gem(k)`) inside each of its crystals, which shows through the glass.
+  // luminous facets (`gem(k)`) over each lit shell; reflected spill alone stays inside neighbouring crystals.
   const CRYSTAL = {
-    hues: [["#3b1d5e", "#6e3fae", "#b48ae0", "#e4d0f7"], ["#47185a", "#8a3a9e", "#cf7fd6", "#f3d2f0"], ["#26245e", "#4d4fae", "#8f97e2", "#d6dcf8"]],
+    hues: [["#291738", "#49305f", "#79618f", "#a38cb5"], ["#321a3b", "#57305f", "#8e5f94", "#b58fb5"], ["#202137", "#383b61", "#646c98", "#949dbb"]],
     core: ["#ff5ad2", "#7a8cff", "#ffc2ee"], rock: ["#2b2430", "#342b3a", "#251f2a", "#3d3244"],
     depth: 3, clusters: 150, satellites: [4, 8], carpet: 1800, glass: 0.86, carpetGlass: 0.93
   };
@@ -525,13 +525,16 @@
   });
   // A crystal's glowing core, inside it, for the runtime's lit bands.
   const gems = models.scopedMap();
-  const gem = (k) => {
-    let g = gems.get(k);
+  const gem = (k, surface = true) => {
+    const key = k * 2 + (surface ? 1 : 0);
+    let g = gems.get(key);
     if (!g) {
       const c = crystals()[k];
       g = { verts: [], faces: [], lines: [] };
-      quartz(g, c.x, c.y, c.z, c.ax, c.ay, c.az, c.r * 0.86, c.len * 0.97, [CORE[0], CORE[0], CORE[2], CORE[1]], mulberry32(c.seed), 6, 1, !c.short);
-      gems.set(k, g);
+      // Lit facets coincide with the shell so dense glass cannot hide their pulse. Reflected spill
+      // stays inside neighbouring crystals, keeping it distinct from a crystal's own lit totem.
+      quartz(g, c.x, c.y, c.z, c.ax, c.ay, c.az, c.r * (surface ? 1 : 0.86), c.len * (surface ? 1 : 0.97), [CORE[1], CORE[0], CORE[2], CORE[1]], mulberry32(c.seed), 6, 1, !c.short);
+      gems.set(key, g);
     }
     return g;
   };

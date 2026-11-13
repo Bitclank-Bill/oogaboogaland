@@ -6586,7 +6586,7 @@
   // Only a player on Merge Rock can open its totems during combat. Both hover and clicks use
   // the same precise ray, at the free cursor or the locked crosshair, with no aim assistance.
   const COMBAT_POINTER = { x: -1, y: -1 }, COMBAT_RAY = {}, COMBAT_HIT = {};
-  const COMBAT_VIEW = math.mat4.create(), COMBAT_UP = [0, 1, 0];
+  const COMBAT_VIEW = math.mat4.create(), COMBAT_UP = { x: 0, y: 1, z: 0 };
   let combatTotemHovered = false;
   const onMergeRock = () => {
     const player = pilot?.player;
@@ -6617,8 +6617,8 @@
     return COMBAT_POINTER;
   };
   const updateCombatTotemHover = () => {
-    const locked = document.pointerLockElement === glCanvas;
-    const x = locked ? renderer.size.width / 2 : COMBAT_POINTER.x, y = locked ? renderer.size.height / 2 : COMBAT_POINTER.y;
+    const focused = pilot?.aimFocused;
+    const x = focused ? renderer.size.width / 2 : COMBAT_POINTER.x, y = focused ? renderer.size.height / 2 : COMBAT_POINTER.y;
     const hit = pilot?.aiming && onMergeRock() ? combatTotemAt(x, y) : null;
     if (hit) { COMBAT_POINTER.x = x; COMBAT_POINTER.y = y; showHoverTooltip(hit, COMBAT_POINTER); combatTotemHovered = true; }
     else if (combatTotemHovered) { hud.tooltip.hide(); combatTotemHovered = false; }
@@ -11282,7 +11282,7 @@
     pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, coarse: COARSE, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly || !!cloudHopper?.playing, noOverhead: () => !!cloudHopper?.active, primaryAction: (down, event) => {
         if (cloudHopper?.hookAction(down)) return true;
         if (!down || !event) return false;
-        if (document.pointerLockElement === ctx.canvas) return combatTotemClick(renderer.size.width / 2, renderer.size.height / 2);
+        if (pilot.aimFocused) return combatTotemClick(renderer.size.width / 2, renderer.size.height / 2);
         const p = combatPointer(event.clientX, event.clientY);
         return combatTotemClick(p.x, p.y);
       },

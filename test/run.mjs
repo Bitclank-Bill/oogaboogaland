@@ -19838,6 +19838,65 @@ scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=
       JSON.stringify(result));
   }
 }] });
+scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
+  name: "Merge Rock combat: aimed totems show tooltips and take clicks before melee or rifle fire, only on the island",
+  why: "regression: the combat camera ray used an array where lookAt needs an xyz object, so neither hover nor click reached the totem",
+  run: async (b) => {
+    const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks; })()", 60000);
+    if (!ready) throw new Error("Totem chunks did not finish building");
+    const result = await b.evaluate(`(() => {
+      const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug, site = H.repoIsland, C = H.camera;
+      const t = BL.repoIslandModels.plan().totems.find(t => t.repo === 'bitcoin/bitcoin');
+      const canvas = document.getElementById('scene'), tip = document.getElementById('tooltip');
+      const actor = B.cavemen.get('portlandhodl'); P.possess(actor);
+      const saved = { update: P.update, open: window.open, lock: canvas.requestPointerLock, swing: B.crew.swingWeapon, trigger: B.crew.setWeaponTrigger };
+      const calls = [], rows = []; let swings = 0, triggers = 0, miss = false;
+      const pose = () => {
+        C.up = null;
+        C.position.x = site.spot.x + t.x; C.position.y = site.spot.y + t.L.apex * 0.78; C.position.z = site.spot.z + t.z + 4;
+        C.target.x = C.position.x + (miss ? 20 : 0); C.target.y = C.position.y; C.target.z = site.spot.z + t.z;
+      };
+      const pointer = (type, x = B.renderer.size.width / 2, y = B.renderer.size.height / 2) => canvas.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerType: 'mouse', pointerId: 91, isPrimary: true, button: type === 'pointermove' ? -1 : 0,
+        buttons: type === 'pointerdown' ? 1 : 0, clientX: x, clientY: y
+      }));
+      try {
+        canvas.requestPointerLock = () => Promise.resolve();
+        window.open = (...args) => { calls.push(args); return null; };
+        B.crew.swingWeapon = (...args) => { swings++; return saved.swing(...args); };
+        B.crew.setWeaponTrigger = (...args) => { if (args[0]) triggers++; return saved.trigger(...args); };
+        P.navigate({ position: { x: site.spot.x, y: site.spot.y, z: site.spot.z + 12 }, yaw: 0, pitch: 0.1, dist: 4 });
+        B.crew.configureWeapon(actor, 2, 30); B.crew.configureWeapon(actor, 1);
+        if (!P.aiming) P.modeAction('mode-toggle');
+        P.focusAim(false);
+        P.update = dt => { saved.update(dt); pose(); };
+        for (const slot of [1, 2]) {
+          P.weaponMode(slot); pose();
+          // Soft mouse-look uses the crosshair, even if the released native pointer was at an edge.
+          pointer('pointermove', 2, 2); B.advance(0.1, 1 / 60);
+          const before = { ammo: actor.weapon.ammo, shots: actor.weapon.shotsFired, calls: calls.length, swings, triggers };
+          const hover = !tip.hidden && tip.textContent.includes('Bitcoin Core');
+          pointer('pointerdown'); pointer('pointerup'); B.advance(0.1, 1 / 60);
+          rows.push({ slot, hover, opened: calls.length === before.calls + 1,
+            consumed: before.ammo === actor.weapon.ammo && before.shots === actor.weapon.shotsFired && before.swings === swings && before.triggers === triggers });
+        }
+        miss = true; B.advance(0.1, 1 / 60);
+        const missed = tip.hidden;
+        miss = false; P.navigate({ position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.1, dist: 4 }); P.focusAim(false); B.advance(0.1, 1 / 60);
+        const outsideHover = tip.hidden, before = calls.length;
+        pointer('pointerdown'); pointer('pointerup');
+        return { aiming: P.aiming, focused: P.aimFocused, rows, missed, outsideHover, outsideClick: calls.length === before,
+          links: calls.every(args => args[0].startsWith('https://github.com/bitcoin/bitcoin') && args[1] === '_blank' && args[2] === 'noopener,noreferrer') };
+      } finally {
+        P.update = saved.update; window.open = saved.open; canvas.requestPointerLock = saved.lock;
+        B.crew.swingWeapon = saved.swing; B.crew.setWeaponTrigger = saved.trigger;
+      }
+    })()`);
+    record("Merge Rock combat: exact crosshair hover and link clicks replace both attacks, and stop off the totem or off the island",
+      result.aiming && result.focused && result.rows.every(r => r.hover && r.opened && r.consumed) && result.missed && result.outsideHover && result.outsideClick && result.links,
+      JSON.stringify(result));
+  }
+}] });
 scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
   name: "Merge Rock: all eyes burn, painted features and rings animate, lights follow the turning poles, and an expired merge goes dark",
   why: "regression: repository totems only burned their top eyes and had no traveling rings or ground lights",
@@ -19854,6 +19913,10 @@ scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
       const first = JSON.stringify(signature());
       site.update(1 / 60, 2, h.camera);
       const animated = first !== JSON.stringify(signature()), after = site.stats();
+      site.update(1 / 60, Math.PI / 4.4, h.camera);
+      const crystalBright = site.stats().crystalGlow[0];
+      site.update(1 / 60, 3 * Math.PI / 4.4, h.camera);
+      const crystalDim = site.stats().crystalGlow[0];
       const lamps = h.lamps.filter(l => l.id.startsWith('repo-totem:'));
       const clock = BL.net.serverNow;
       let followed = false, matrices = false;
@@ -19870,10 +19933,10 @@ scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
       BL.repoFeed.apply({ at: now, merges: {} }, now);
       site.update(1 / 60, 3, h.camera);
       const dark = site.stats();
-      return { before, after, expected, animated, followed, matrices, lights: lamps.length, dark };
+      return { before, after, expected, animated, followed, matrices, crystalBright, crystalDim, lights: lamps.length, dark };
     })()`);
     record("Merge Rock lighting: all face fires, animated details, bounded ring batches and rotating warm lights; cleared feed extinguishes them",
-      result.before.flames === result.expected && result.expected > 340 && result.before.features > 0 && result.before.rings > 0 && result.before.ringDraws < 50 && result.animated && result.followed && result.matrices && result.lights === 170 && !result.dark.flames && !result.dark.features && !result.dark.rings && !result.dark.lights,
+      result.before.flames === result.expected && result.expected > 340 && result.before.features > 0 && result.before.rings > 0 && result.before.ringDraws < 50 && result.animated && result.followed && result.matrices && result.crystalBright - result.crystalDim > 0.5 && result.crystalDim > 0 && result.crystalBright <= 1 && result.dark.crystalGlow.every(v => v === 0) && result.lights === 170 && !result.dark.flames && !result.dark.features && !result.dark.rings && !result.dark.lights,
       JSON.stringify(result));
   }
 }] });
