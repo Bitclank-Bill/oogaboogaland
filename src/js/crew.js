@@ -37,11 +37,11 @@
   const GUN_SIGHT_DOWN = Math.atan2(0.09 - 0.08, 0.59 + 0.18);
   const GUN_SIGHT_DROP = 0.08 * Math.cos(GUN_SIGHT_DOWN) + 0.18 * Math.sin(GUN_SIGHT_DOWN);
   const MELEE_RECHARGE_DELAY = 0.1, MELEE_RECHARGE_TIME = 0.1, MELEE_HIT_POWER = 1.25;
-  const MELEE_WIND = 0.08, MELEE_QUICK_WIND = 0.025, MELEE_STRIKE = 0.128, MELEE_QUICK_STRIKE = 0.09, MELEE_RECOVER = 0.112;
+  const MELEE_WIND = 0.08, MELEE_STRIKE = 0.1, MELEE_QUICK_STRIKE = 0.075, MELEE_RECOVER = 0.112;
   const MELEE_RELEASE = MELEE_STRIKE + MELEE_RECOVER, MELEE_TIME = MELEE_WIND + MELEE_RELEASE;
-  // A strike's length: a quick tap's, or a cut's, which a charge makes faster, not slower. A strike leaves at speed
-  // and slows into its follow-through (`strikeEase`), the pose and a hit's stop alike, so a contact stops it where
-  // it shows.
+  // A strike's length: a quick tap's, or a cut's, which a charge makes faster, not slower. Let go, a strike comes
+  // down at once from wherever the wind-up had got to; it leaves at speed and slows into its follow-through
+  // (`strikeEase`), the pose and a hit's stop alike, so a contact stops it where it shows.
   const strikeTime = (quick, charge) => quick ? MELEE_QUICK_STRIKE : MELEE_STRIKE * (1 - 0.15 * charge);
   const strikeEase = ease.outQuad;
   const MELEE_TAP_TIME = 0.12, MELEE_CHARGE_DELAY = 0.24, MELEE_CHARGE_TIME = 1;
@@ -1142,10 +1142,10 @@
   // A modelled arm's stance and cut with its primary weapon. Standing ready it hangs as the other arm does, its elbow at
   // that arm's bend. A cut bends the elbow to a right angle and swings the whole arm from the shoulder, up for the
   // wind-up and down through the cut, the elbow and the wrist held stiff: a light cut lifts it SWING_LOW from hanging,
-  // a charged one up to SWING_HIGH, and it comes down to SWING_END, a little behind hanging. The weapon stands square
+  // a charged one up to SWING_HIGH, and it comes back down to hanging, where it started, and no further. The weapon stands square
   // to the forearm, its length along the thumb's side of the fist and its head (-x in its frame: an axe's or a hockey
   // stick's blade) out along the hand, so it lies in the hand's own plane.
-  const SWING_LOW = 1.4, SWING_HIGH = 2.6, SWING_END = -0.35, SWING_ELBOW = Math.PI / 2;
+  const SWING_LOW = 1.4, SWING_HIGH = 2.6, SWING_ELBOW = Math.PI / 2;
   // The weapon in the fist, as the forearm's frame sees it: the hand's own turn on its forearm, then the weapon across it.
   const SWING_CLUB = math.quat.create(), SWING_TURN = math.quat.create(), SWING_REST = math.quat.create(), SWING_LIVE = math.quat.create();
   math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, Math.PI / 2);
@@ -1157,7 +1157,7 @@
   const swingArm = (cave, wind, stroke, stance) => {
     const parts = cave.parts, w = cave.weapon, arm = parts.armR, fore = parts.forearmR, club = parts.club, e = cave.elbow;
     const carryFlex = -fore.rotation.x, hang = e.relaxed !== undefined ? e.relaxed : e.rest, yaw = (w.aiming ? w.aimYaw : 0) - arm.poseYaw;
-    const lift = lerp(0, lerp(lerp(SWING_LOW, SWING_HIGH, w.meleeCharge), SWING_END, stroke), wind);
+    const lift = lerp(SWING_LOW, SWING_HIGH, w.meleeCharge) * (1 - stroke) * wind;
     // Ready, the arm as it hangs now, with its walk's sway; swinging, the hanging arm lifted from the shoulder.
     math.quat.fromEuler(SWING_LIVE, arm.rotation.x, arm.rotation.y + yaw, arm.rotation.z);
     math.quat.fromAxisAngle(SWING_TURN, 1, 0, 0, -lift);
@@ -1647,10 +1647,11 @@
       if (w.meleeHeld) {
         wind = ease.inOutQuad(clamp(w.meleeHeldTime / MELEE_WIND, 0, 1));
       } else if (w.meleeTime > release) {
-        wind = ease.inOutQuad(clamp(1 - (w.meleeTime - release) / (w.meleeQuick ? MELEE_QUICK_WIND : MELEE_WIND), 0, 1));
+        wind = ease.inOutQuad(clamp(1 - (w.meleeTime - release) / MELEE_WIND, 0, 1));
       } else if (w.meleeTime > MELEE_RECOVER) {
-        wind = 1;
+        // From the wind-up as it was let go (a held cut's), finishing it on the way down.
         stroke = strikeEase((release - w.meleeTime) / w.meleeStrikeTime);
+        wind = lerp(w.meleeHeldTime > 0 ? ease.inOutQuad(clamp(w.meleeHeldTime / MELEE_WIND, 0, 1)) : 1, 1, stroke);
       } else if (w.meleeTime > 0) {
         const recovery = 1 - ease.inOutQuad(1 - w.meleeTime / MELEE_RECOVER);
         wind = recovery;
@@ -3623,7 +3624,7 @@
       w.meleeHeld = false;
       w.meleeQuick = quick && !cancel;
       w.meleeStrikeTime = strikeTime(w.meleeQuick, w.meleeCharge);
-      w.meleeTime = cancel ? 0 : w.meleeStrikeTime + MELEE_RECOVER + (w.meleeQuick ? MELEE_QUICK_WIND : 0);
+      w.meleeTime = cancel ? 0 : w.meleeStrikeTime + MELEE_RECOVER;
       w.meleeComboTime = cancel ? 0 : MELEE_COMBO_WINDOW;
       if (cancel) {
         w.meleeReadyTime = 0;
@@ -7843,7 +7844,7 @@
       // repeatedly disturb a surface, and idle actors do no contact work.
       const meleeStep = dt * (cave.traits.nunchaku ? NUNCHAKU_RATE : 1);
       const striking = weaponContactsEnabled() && dt > 0 && (ctx.onMeleeStrike || input.weaponTargets || ctx.fireReachable) && cave === player && w.primaryEquipped && !w.meleeHeld && !w.meleeHit
-        && w.meleeTime > MELEE_RECOVER && w.meleeTime - meleeStep < meleeRelease && (!w.meleeQuick || w.meleeTime <= meleeRelease)
+        && w.meleeTime > MELEE_RECOVER && w.meleeTime - meleeStep < meleeRelease
         && !cave.camp.seat && !cave.bedTravel.mode;
       if (striking) {
         BL.scene.updateWorld(cave.root);
@@ -7853,7 +7854,7 @@
       updateWeapon(cave, dt);
       // Always display and check the end of the chop before recovering, even
       // when a frame would otherwise step across the horizontal limit.
-      const meleeFloor = w.meleeHeld ? MELEE_RELEASE : w.meleeQuick && w.meleeTime > meleeRelease ? meleeRelease : w.meleeTime > MELEE_RECOVER ? MELEE_RECOVER : 0;
+      const meleeFloor = w.meleeHeld ? MELEE_RELEASE : w.meleeTime > MELEE_RECOVER ? MELEE_RECOVER : 0;
       w.meleeTime = Math.max(meleeFloor, w.meleeTime - meleeStep);
       w.bashTime = Math.max(0, w.bashTime - dt);
       w.meleeReadyTime = meleeBefore > 0 && w.meleeTime === 0 ? MELEE_READY_HOLD + MELEE_CARRY_BLEND : Math.max(0, w.meleeReadyTime - dt);
