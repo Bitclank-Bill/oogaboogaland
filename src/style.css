@@ -5199,6 +5199,8 @@ body.tess-touring #joy-look {
 @media (pointer: coarse) {
   body.tess-touring .equipment-hud {
     visibility: hidden;
+    /* Equipped readouts set their own visibility; fade the whole group out too. */
+    opacity: 0;
   }
 
   body.tess-touring .greeter-menu.greeter-tour {
