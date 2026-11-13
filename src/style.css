@@ -11136,6 +11136,8 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   background: #5a3a22;
 }
 
+.block-target[data-map] { flex-basis: max-content; white-space: nowrap; }
+
 .block-side[data-team="blue"] {
   background: #1d4fa8;
 }
@@ -11532,6 +11534,12 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
     justify-content: center;
   }
 
+}
+
+/* Keep Throw above both sticks and Jump; the weapons bar starts above Throw. */
+@media (pointer: coarse) and (max-width: 720px) {
+  .block-paint { bottom: calc(max(48px, var(--stick-inset) - var(--home-chrome)) + var(--stick-size) + 8px + var(--safe-bottom)); }
+  .block-tools { bottom: calc(max(48px, var(--stick-inset) - var(--home-chrome)) + var(--stick-size) + 60px + var(--safe-bottom)); }
 }
 
 /* Block Frenzy's sprint gauge in the strip. */
@@ -12702,8 +12710,8 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .block-side-panel h3 small { color: var(--muted); font-size: 10px; text-align: right; text-transform: uppercase; }
 .block-side-panel ol { margin: 0; padding: 0; list-style: none; }
 .block-side-panel li { padding: 3px 4px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 13px; }
-/* A name keeps to one line and ends in an ellipsis; its whole is the title. */
-.block-side-panel li span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* A long player name stays readable, including on touch where there is no title hover. */
+.block-side-panel li span { overflow-wrap: anywhere; }
 .block-side-panel li b { text-align: right; font-variant-numeric: tabular-nums; }
 .block-side-panel li.you { background: rgba(245, 197, 66, 0.16); border-radius: 4px; }
 .block-side-panel li.mvp span::before { content: "♛ "; color: #f5c542; }
@@ -12763,6 +12771,11 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
   .block-badge b { font-size: 11px; }
   .block-trophy-board .actions { margin-top: 8px; gap: 6px; }
   .block-trophy-board .actions button { min-height: 38px; padding: 4px; font-size: 12px; }
+}
+@media (max-width: 560px) {
+  .block-trophy-sides { grid-template-columns: 1fr; }
+  .block-trophy-board .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .block-trophy-board .actions button[data-role="leave"] { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .block-trophy-head .game-intro-title, .block-trophy-banner, .block-trophy-board, .block-trophy-sparkles { animation: none; }

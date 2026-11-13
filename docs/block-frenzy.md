@@ -252,6 +252,10 @@ The board has no Ooga picker: a signed-in visitor plays their own Ooga, anyone e
 a character file hangs on its Ooga as `parts.dog` is let off the lead in this scene and trots along behind it
 (`poseCompanions`); everywhere else it stays where the character file put it.
 
+Held weapons attach to the modelled forearms at the fists, including the second Golden AK, with the slim arm's
+scale accounted for. The first-person camera uses the Ooga's own head height. The trophy block rests on the MVP's
+raised hands using that body's hip, shoulders and arm length.
+
 ## Checks
 
 The global tier plays the rules through the sim's own calls: pickup, a drop held until you step out, scoring only
@@ -261,14 +265,16 @@ and thrown to stun, and a seeded round on
 autopilot replaying exactly to three captures. The `block` scene runs the title card and Escape, W S and A D on screen,
 a quiz trap through a wrong and a right answer, an autopilot round to its saved results, and the round trip.
 
-The entry hall's Node checks cover the stage's four cabinets, the hall reaching the ledge, the zipline's survey and the Rally poster's move; the `arcade` step walks it. Browser scenes have not been run for this
-head: `npm test -- block arcade` needs real Chrome on real hardware before merge.
+The entry hall's Node checks cover the stage's four cabinets, the hall reaching the ledge, the zipline's survey and the Rally poster's move; the `arcade` step walks it. The Block Frenzy browser checks also measure each weapon's
+grip and the raised trophy against regular, slim and wide Oogas' actual fists. The phone session checks the board,
+play and results at portrait, landscape and narrow sizes, including a real touch event that fires Throw and the
+shared controls reference. Throw sits above the sticks and Jump, with the weapons bar above it.
 
 ## The trophy screen
 
 When a round ends (`finish` in `scene-block.js`) the results card is a trophy screen in Cloud Hopper's results style:
 "Ooga Arcade" over the gold pixel-block title, a banner naming the winning side, the final score big in team colours
-beside the round's time in gold, the two sides' tables (every Ooga and bot: blocks mined, blocks brought home and splats, a name on one line; the winners'
+beside the round's time in gold, the two sides' tables (every Ooga and bot: blocks mined, blocks brought home and splats, long names wrapping so touch users can read them; the winners'
 table lit, their MVP crowned, the visitor's row marked), medals for the round's MVP, most splats and longest sniper
 shot plus the visitor's round, fastest win and rounds won, and the same three buttons.
 

@@ -219,12 +219,19 @@
       let gun = null, gunL = null;
       const flash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }), flashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
       if (cave) {
-        const h = cave.traits.height, u = h / 16;
-        gun = createNode({ geometry: BM.gun(0), position: { x: 0, y: -10 * u, z: 0.03 }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: h / 1.5, y: h / 1.5, z: h / 1.5 }, visible: false });
-        addChild(cave.parts.armR, gun);
-        // The left hand's golden AK, shown only with the pair.
-        gunL = createNode({ geometry: BM.gun(0), position: { x: 0, y: -10 * u, z: 0.03 }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: h / 1.5, y: h / 1.5, z: h / 1.5 }, visible: false });
-        addChild(cave.parts.armL, gunL);
+        const h = cave.traits.height, size = h / 1.5 / cave.armScale;
+        // The modelled body's fist follows its elbow, not the old straight arm's ten-unit endpoint.
+        // Both weapons share the grip at the origin; offset its centre into the fist and undo the slim arm's scale.
+        const heldGun = (side) => {
+          const fore = cave.parts["forearm" + side], hand = cave.parts["fingers" + side];
+          const node = createNode({ geometry: BM.gun(0), position: { x: 0, y: hand.position.y - 0.03 * size, z: 0.08 * size },
+            rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: size, y: size, z: size }, visible: false });
+          addChild(fore, node);
+          fore.rotation.x = -cave.elbow.rest;
+          return node;
+        };
+        gun = heldGun("R");
+        gunL = heldGun("L");
         addChild(gun, flash); addChild(gunL, flashL);
         if (cave.parts.club) cave.parts.club.visible = false;
       }
@@ -426,6 +433,8 @@
       [["1", "–", "4"], "Answer a quiz"], [["?"], "Help"], [["P"], "Pause"], [["Esc"], "Step back"]]]
   ];
   const TOUCH_GROUPS = [["Controls", [[["Left stick"], "Move"], [["Right stick"], "Turn and aim"], [["Jump"], "Jump, jetpack"], [["Jump"], "Break a gorilla's grip (tap fast)"], [["Throw!"], "Fire"], [["Weapons bar"], "Pick a weapon"], [["Ride"], "Zipline, catapult"]]]];
+  blockScene.controlsHelp = (touch) => ({ title: "Block Frenzy", rows: (touch ? TOUCH_GROUPS : CONTROL_GROUPS)
+    .flatMap(([, rows]) => rows.map(([keys, what]) => BL.controlsHelp.row(touch ? [] : keys, what, touch ? keys.join(" / ") : ""))) });
   const SUMMARY = [[["W", "A", "S", "D"], "move"], [["Q", "E"], "turn"], [["Click"], "fires"], [["Space"], "jumps"], [["Tab"], "throws"], [["P"], "pauses"], [["Esc"], "steps back"]];
   // Key caps for `keys` ("–" between two is a range, drawn as plain text), then the words, into `row`.
   const keyCaps = (row, keys) => {
@@ -894,12 +903,17 @@
       if (dual) a.gun.geometry = a.gunL.geometry = BM.gun(GUN_OF.gold * 2 + ti);
       if (!a.cave) continue;
       const p = a.cave.parts, w = CLOUD_CALM ? 0 : Math.sin(elapsed * 6 + k * 2.3), kick = hop > 0.05 ? 0.55 : 0;
-      if (k === 0) p.armL.rotation.x = p.armR.rotation.x = -3.05;
+      p.armL.quaternion = null;
+      p.armL.rotation.z = p.armR.rotation.z = 0;
+      p.forearmL.rotation.x = p.forearmR.rotation.x = 0;
+      if (k === 0) p.armL.rotation.x = p.armR.rotation.x = -Math.PI;
       else { p.armR.rotation.x = -2.7 + w * 0.35; p.armL.rotation.x = -2.3 - w * 0.35; }
       p.legL.rotation.x = kick; p.legR.rotation.x = -kick;
     }
-    const top = PODIUM[0], mvp = actors[T.order[0]], head = mvp && mvp.cave && mvp.cave.headOffset || 1.3;
-    setVec(trophyNodes.gold.position, top[0], base + top[1] + head + 1.05 + (CLOUD_CALM ? 0 : Math.sin(elapsed * 3) * 0.06), top[2]);
+    const top = PODIUM[0], cave = actors[T.order[0]].cave;
+    // The block rests on the raised fists, using this Ooga's actual hip, shoulders and arm length.
+    const handY = cave.root.position.y + cave.parts.armR.position.y + (cave.elbow.length - cave.elbow.y) * cave.armScale;
+    setVec(trophyNodes.gold.position, top[0], base + top[1] + handY + 0.48, top[2] - cave.elbow.z * cave.armScale);
     trophyNodes.gold.rotation.y = CLOUD_CALM ? 0.6 : elapsed * 0.9;
     trophyNodes.rays.rotation.z = CLOUD_CALM ? 0 : elapsed * 0.12;
     // Confetti in the team's colours and gold, a burst every so often (once, for reduced motion).
@@ -1867,6 +1881,8 @@
       if (s.trapped > 0) a.bubble.rotation.y = elapsed * 0.8;
       if (!a.cave) continue;
       const p = a.cave.parts;
+      p.armL.quaternion = null;
+      p.forearmL.rotation.x = p.forearmR.rotation.x = -a.cave.elbow.rest;
       if (s.splat > 0) {
         // Splatted: arms up, wobbling, feet together.
         const w = Math.sin(elapsed * 9 + i) * 0.15;
@@ -1944,12 +1960,13 @@
         // Both hands up holding the block (or a crate) overhead.
         p.armL.rotation.x = p.armR.rotation.x = -2.9;
       } else if (armed) {
-        // Gun up and forward, the other hand under it; a big launcher sits higher, on the shoulder.
+        // The aimed gun follows the fist, as in crew.js; the free hand rests unless it holds the second AK.
         const kick = s.cooldown > (s.bot ? sim.bots.cool : SIM.TOOLS.paint.cool) - 0.12 ? 0.18 : 0;
         // One kick a round from an AK, gone before the next (crew.js's rifle).
         const round = a.kick;
-        p.armR.rotation.x = (g === 2 ? -1.75 : -1.45) - kick - 0.11 * round;
-        p.armL.rotation.x = (g === 2 ? -1.9 : -1.25) - (g === GUN_OF.gold ? 0.11 * round : 0);
+        p.armR.rotation.x = (g === 2 ? -1.75 : -1.45) + a.cave.elbow.rest - kick - 0.11 * round;
+        p.armL.rotation.x = g === GUN_OF.gold ? -1.45 + a.cave.elbow.rest - 0.11 * round : -0.2;
+        if (g !== GUN_OF.gold) p.forearmL.rotation.x = -(a.cave.elbow.relaxed ?? a.cave.elbow.rest);
       } else if (s.ride) {
         // Riding with nothing in hand: arms round the shoulders in front.
         p.armL.rotation.x = p.armR.rotation.x = -1.5;
@@ -2112,7 +2129,7 @@
     cam.yaw = cam.first || !cam.warm ? want : wrap(cam.yaw + wrap(want - cam.yaw) * Math.min(1, dt * (cam.island ? 9 : 7)));
     if (cam.first && me) {
       // The eye at the Ooga's eyes (lower when crouched), looking along the aim.
-      const eye = y + (me.crouch ? 0.9 : 1.55), up = lookUp(), c = Math.cos(up);
+      const eye = y + actors[0].cave.headOffset * 0.95 * (me.crouch ? 0.66 : 1), up = lookUp(), c = Math.cos(up);
       cam.close = false;
       if (me.grabbed) {
         // Dragged by a leg: on the back, looking up at the sky.
@@ -2999,6 +3016,7 @@
           get phase() { return phase; },
           get paused() { return paused; },
           get sim() { return sim; },
+          get actors() { return actors; },
           // Plays a live feed message as if it had arrived: { type: "fees", nextFee } or { type: "block", height }.
           feed: onFeed,
           get result() { return result; },
