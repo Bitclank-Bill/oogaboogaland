@@ -1,5 +1,5 @@
 // The cavemen from the roster: activity and presence, repository work trips, weapons and magazines, pile
-// reloading, sleep, grounded cheers, strolls, possession and jetpack flight, swag and pokes.
+// reloading, sleep, grounded cheers, strolls, possession, jetpack flight and pokes.
 //
 // A character with a `tint` pair wears its second colourway while the coin is up on the day
 // (`chain.snapshot.priceUsd` against `priceOpenUsd`) and its first while it is down, on the old timer when
@@ -131,7 +131,6 @@
   const BODY_PARTS = ["torso", "head", "legR", "legL", "armR", "armL"];
   // A modelled arm is the upper arm alone: its forearm and hand are nodes of their own under it.
   const MODELLED_ARMS = ["forearmR", "forearmL", "fingersR", "fingersL"], MODELLED_BODY_PARTS = [...BODY_PARTS, "forearmL", "fingersL"];
-  const SWAG_ANCHORS = ["hat", "face"];
   const FAN_STANDOFF = 1.1;
   const FAN_ARC = 2.2;
   // FAN_SPREAD is the widest the fan opens, keeping the near side clear however many eat.
@@ -1386,7 +1385,6 @@
     if (cave.restEquipment) { parts.gunFlash.visible = false; w.carry = "rest"; return; }
     if (cave.sleepWeapons.visible || gun.parent === cave.sleepWeapons) {
       cave.sleepWeapons.visible = cave.root.visible && !cave.bedroll?.outdoor;
-      if (cave.bedroll?.outdoor) for (const node of cave.swagNodes) node.visible = false;
       parts.gunFlash.visible = false;
       w.carry = "bed";
       return;
@@ -2282,8 +2280,7 @@
         grabbedBy: null,
         viewLift: 0,
         peek: 0,
-        act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN, sit: false } },
-        swagNodes: []
+        act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN, sit: false } }
       });
       // Non-enumerable policy stays out of saved state. The driven Ooga (control()
       // marks it humanControlled before it becomes the player) and any
@@ -2503,7 +2500,6 @@
       cave.parts.torso.scale.y = 1;
       cave.parts.club.visible = cave.weapon.primaryOwned;
       for (const node of cave.sleepParts.equipment) node.visible = true;
-      for (const node of cave.swagNodes) node.visible = true;
       if (builtInJetpack(cave)) cave.parts.jetpack.visible = !!cave.jet || cave.rocketJumpTime > 0;
       cave.parts.snack.visible = false;
       cave.parts.gun.visible = false;
@@ -3768,7 +3764,9 @@
       if (!w.unlimited && !w.ammo) w.triggerHeld = false;
       return true;
     };
-    const setWeaponTrigger = (held, single = false) => {
+    // `target`, when given, is the point the held trigger fires at (the carry view's facing) in place of the player's
+    // aim; `aimTrigger` moves it while the trigger stays held.
+    const setWeaponTrigger = (held, single = false, target = null) => {
       if (held && !weaponsEnabled) return false;
       if (!player) return false;
       const w = player.weapon;
@@ -3784,10 +3782,14 @@
         w.triggerSingle = single;
         w.reloadFire = w.reloadFireHeld = true;
         w.reloadFireRounds = single ? 1 : BURST_ROUNDS;
-        w.burstPlayerAim = true;
+        w.burstPlayerAim = !target;
+        if (target) setVec(w.burstTarget, target.x, target.y, target.z);
         return true;
       }
       if (!weaponReady(player)) return false;
+      // Keep the press's aim even when the shot must wait for the previous cooldown.
+      w.burstPlayerAim = !target;
+      if (target) setVec(w.burstTarget, target.x, target.y, target.z);
       if (w.triggerHeld) return true;
       w.triggerSingle = single;
       w.triggerHeld = true;
@@ -3796,7 +3798,7 @@
         // A fresh press may wait out the previous shot's cooldown. It never
         // resumes automatically after reload, stow or another cancellation.
         w.burstTimer = 0;
-        if (!fireWeapon(player, null, single ? 1 : BURST_ROUNDS) && single && w.cooldown > 0) {
+        if (!fireWeapon(player, target, single ? 1 : BURST_ROUNDS) && single && w.cooldown > 0) {
           // Preserve each distinct semi-automatic press until the mechanical
           // shot clock allows it. Pointer release must not erase a fast second
           // click; cancellation paths clear the queue through stopBurst.
@@ -3804,6 +3806,15 @@
         }
       }
       return true;
+    };
+    // Re-aim a held trigger: at `target` (the carry view's facing, followed as the Ooga turns), or with null at the
+    // player's own aim again. Nothing while no trigger is held.
+    const aimTrigger = (target) => {
+      if (!player) return;
+      const w = player.weapon;
+      if (!w.triggerHeld && !w.reloadFireHeld) return;
+      w.burstPlayerAim = !target;
+      if (target) setVec(w.burstTarget, target.x, target.y, target.z);
     };
     const updateWeapon = (cave, dt) => {
       const w = cave.weapon;
@@ -3856,7 +3867,7 @@
       if (w.triggerQueued && !w.burstRemaining && w.cooldown <= 0) {
         if (!weaponReady(cave)) { stopBurst(cave); return; }
         w.triggerQueued--;
-        fireWeapon(cave, null, 1);
+        fireWeapon(cave, w.burstPlayerAim ? null : w.burstTarget, 1);
         return;
       }
       if (!w.burstRemaining && !w.triggerHeld) return;
@@ -3870,7 +3881,7 @@
         stopBurst(cave);
         return;
       }
-      if (w.triggerHeld && !w.burstTimer && w.triggerHeldTime < FOCUSED_AUTO_HOLD) { fireWeapon(cave); return; }
+      if (w.triggerHeld && !w.burstTimer && w.triggerHeldTime < FOCUSED_AUTO_HOLD) { fireWeapon(cave, w.burstPlayerAim ? null : w.burstTarget); return; }
       w.burstTimer -= dt;
       // Finish a tapped burst; holding continues on the same shot clock.
       // Keep the normal magazine-sized catch-up bound in unlimited debug mode.
@@ -4445,9 +4456,10 @@
         // Each limb heats from when the fire front reaches it; older flames brighten, then cool into char in a roll.
         const temperature = 0.22 + 0.78 * c.burnTime[i] / EMBER_HEAT_SECONDS;
         part.ember = c.spread[i] * temperature * heat * (0.96 + Math.sin(elapsed * 11 + cave.phase + i * 1.7) * 0.025 + Math.sin(elapsed * 23 + i) * 0.015);
-        // Fixed head surfaces such as the gas mask share the head's heat and char; removable hat and face do not.
+        // Fixed head surfaces such as the gas mask share the head's heat and char; what is worn on the face anchor
+        // (Cloud Hopper's goggles) does not.
         if (part === cave.parts.head) for (const child of part.children) {
-          if (child === cave.parts.hat || child === cave.parts.face) continue;
+          if (child === cave.parts.face) continue;
           child.ember = part.ember;
           child.scorch = part.scorch;
         }
@@ -4650,10 +4662,7 @@
       resetPose(cave);
       cave.parts.club.visible = false;
       for (const node of cave.sleepParts.equipment) node.visible = false;
-      if (cave.bedroll.outdoor) {
-        for (const node of cave.swagNodes) node.visible = false;
-        for (const model of cave.magazineModels) if (model) model.node.visible = false;
-      }
+      if (cave.bedroll.outdoor) for (const model of cave.magazineModels) if (model) model.node.visible = false;
       stopBurst(cave);
       stopReload(cave, true);
       putBedWeapons(cave);
@@ -6625,11 +6634,6 @@
       if (cave.cheer > 0) cave.cheer -= dt;
       if (cave.yawn > 0) cave.yawn -= dt;
       if (cave.catchT > 0) cave.catchT = Math.max(0, cave.catchT - dt * 1.6);
-      if (cave.animation.due) for (let i = 0; i < cave.swagNodes.length; i++) {
-        const node = cave.swagNodes[i];
-        if (node.swag.float) node.position.y = (node.swag.offset ? node.swag.offset.y : 0) + Math.sin(elapsed * 2.5 + cave.phase) * 0.04;
-        for (let c = 0; c < node.children.length; c++) if (node.children[c].spin) node.children[c].rotation.y += cave.animation.dt * 9;
-      }
       if (cave.bedTravel.mode) { runBed(cave, dt); return; }
       if (cave.state !== "working" && cave.state !== "chilling") {
         if (cave.state === "sleeping" && cave.bedroll && !cave.bedroll.hidden) {
@@ -7477,48 +7481,6 @@
       // Let the held Space reach the rocket jump after the initial press.
       return !(jumped && player.traits.footRockets && !player.jet && jetpackRefills(player));
     };
-    const applySwag = (cave) => {
-      for (const anchorKey of SWAG_ANCHORS) {
-        const anchor = cave.parts[anchorKey];
-        for (const child of anchor.children.slice()) removeChild(anchor, child);
-        anchor.visible = false;
-      }
-      cave.swagNodes.length = 0;
-      cave.parts.club.geometry = cave.skins.club.default;
-      if (cave.parts.chuk) cave.parts.chuk.geometry = cave.parts.chuk.skins.default;
-      cave.parts.gunBody.geometry = cave.skins.gun.default;
-      const entryId = game.state.assignments[cave.traits.name];
-      const item = entryId ? game.itemOf(entryId) : null;
-      if (!item) return;
-      if (item.skin) {
-        const target = item.skin === "club" ? cave.parts.club : cave.parts.gunBody;
-        target.geometry = cave.skins[item.skin].gold;
-        // A weapon that carries a second stick takes the same skin.
-        if (item.skin === "club" && cave.parts.chuk) cave.parts.chuk.geometry = cave.parts.chuk.skins.gold;
-        return;
-      }
-      const anchor = item.slot === "face" ? cave.parts.face : cave.parts.hat;
-      const node = item.buildNode();
-      if (item.offset) Object.assign(node.position, item.offset);
-      if (item.rotation) Object.assign(node.rotation, item.rotation);
-      node.swag = item;
-      addChild(anchor, node);
-      anchor.visible = true;
-      cave.swagNodes.push(node);
-    };
-    const applyAllSwag = () => {
-      for (let i = 0; i < members.length; i++) {
-        const cave = members[i];
-        applySwag(cave);
-        if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
-      }
-      if (ctx.onModelChange) ctx.onModelChange();
-    };
-    const wornBy = (name) => {
-      const item = game.itemOf(game.state.assignments[name] || "");
-      return item ? item.name : null;
-    };
-    const renderLocker = () => hud.renderInventory(game.state.inventory, game.assignedTo, wornBy);
     // The first tap of a double-tap takes an Ooga, so the prompt waits out that
     // window: a modal opening under the second tap would swallow it.
     const openRecipeSoon = (cave) => {
@@ -8075,7 +8037,7 @@
           const part = cave.parts[key];
           part.ember = part.scorch = 0;
           if (part === cave.parts.head) for (const child of part.children) {
-            if (child !== cave.parts.hat && child !== cave.parts.face) child.ember = child.scorch = 0;
+            if (child !== cave.parts.face) child.ember = child.scorch = 0;
           }
         }
         cave.parts.fingersR.ember = cave.parts.fingersR.scorch = cave.parts.fingersL.ember = cave.parts.fingersL.scorch = 0;
@@ -8137,9 +8099,9 @@
       showShot, setTint, spotOccupied, setCombatEnabled,
       get combatEnabled() { return combatEnabled; },
       get weaponsEnabled() { return weaponsEnabled; },
-      cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, resumeFromHost, sleepDiagnostics, refreshRosterRow, updateFan, rush, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawDrops,
+      cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, resumeFromHost, sleepDiagnostics, refreshRosterRow, updateFan, rush, pokeCave, idleSay, drawDrops,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
-      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, aimTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       // The driven Ooga's steering as last set, the world direction in `x` and `z`; live, not a copy.
       get steering() { return steer; },

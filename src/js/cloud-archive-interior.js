@@ -19,7 +19,7 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  const { models, contributors, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod } = BL;
+  const { contributors, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod } = BL;
   const { clamp } = BL.math;
   const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const DATA = BL.cloudArchiveData, CM = BL.cloudArchiveModels, L = CM.LAYOUT, S = L.SHAFT, RACK = L.RACK;
@@ -151,7 +151,7 @@
     const { renderer, game, world, go, canvas } = ctx;
     const camera = createCamera({ fov: 60, near: 0.12, far: 260 });
     const root = createNode();
-    const hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
+    const hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster });
     const hooks = {};
     const input = interactMod.create({ canvas, renderer, camera, hooks });
     const built = CM.build();
