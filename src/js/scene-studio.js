@@ -375,7 +375,7 @@
   const HOOKS = {
     torso: "Paints the chest, belt and hips", gear: "Paints the arms, legs and feet", club: "The weapon it holds first, drawn by its club hook",
     skull: "Its own head shape", crown: "Hair, or a crown", eyes: "Eyes of its own", mark: "Marks on the face",
-    hatY: "Where its hat sits", headgear: "A hat or a helmet", extras: "Pieces of its own: a pet, a bag, a pack",
+    hatY: "Does nothing: it placed the loot crates' hats, which are gone", headgear: "A hat or a helmet", extras: "Pieces of its own: a pet, a bag, a pack",
     tint: "A second colourway, changing with the day's price", model: "A modelled body of its own", refine: "Fine detail painted on the body"
   };
   // A hook whose name in the file would mislead a player is shown by what the game calls it: `club` draws whatever the
@@ -388,6 +388,7 @@
     pumpkin: "A pumpkin head", nunchaku: "Swings a nunchaku", petRidesHat: "Its pet rides its hat", footRockets: "Rockets in its soles",
     noFlaps: "No loincloth flaps", snout: "A pig's snout", noTeeth: "A beard with no teeth", recipe: "Hands out the Add an Ooga prompt"
   };
+  // `hatY` placed the loot crates' hats, which are gone; a file that still sets it shows nothing for it.
   const LOOK_KEYS = new Set(["build", "height", "face", "eyeGlow", "hatY", "portrait", ...Object.keys(COLOURS), ...Object.keys(FLAGS)]);
   const BUILDS = [["dog", "A pet"], ["jetpack", "A jetpack of its own, always on"], ["board", "A board to ride"], ["shield", "A shield"], ["chuk", "A nunchaku"]];
   let panel = null, panelFill = 0;
@@ -534,7 +535,6 @@
     if (look.eyeGlow !== undefined) looks.push(item("Eye glow", look.eyeGlow));
     if (look.height !== undefined) looks.push(item("Height", `${look.height} m`));
     if (look.face !== undefined) looks.push(item("Face", look.face));
-    if (look.hatY !== undefined) looks.push(item("Hat height", look.hatY));
     if (look.portrait) looks.push(item("Portrait", "Framed by hand"));
     const flags = Object.keys(look).filter((key) => key in FLAGS && look[key]).map((key) => FLAGS[key]);
     if (flags.length) looks.push(item("Also", flags.join(" · ")));
