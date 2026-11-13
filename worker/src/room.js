@@ -133,8 +133,7 @@ export class Room extends DurableObject {
       // block past 30 s resets the island's only room, presence and voice with it.
       if (this.sfu && this.cleanupJobs.length) {
         this.cleanupAt = Date.now();
-        const set = await ctx.storage.getAlarm();
-        if (set === null || set > this.cleanupAt) await ctx.storage.setAlarm(this.cleanupAt);
+        await this.scheduleAlarm();
       }
     });
     // A woken room rebuilds its roster from the attachments its sockets carry. The runtime still lists a socket that is
@@ -1727,7 +1726,14 @@ export class Room extends DurableObject {
     const next = this.nextAlarm();
     if (next === null) return;
     const set = await this.ctx.storage.getAlarm();
-    if (set === null || set > next) await this.ctx.storage.setAlarm(next);
+    this.alarmRegisteredAt = set;
+    const now = Date.now();
+    // An old registered deadline is not proof that its callback will run: platform retries are finite. A wake or
+    // new cleanup job repairs an alarm overdue by a sweep interval instead of preserving that stale deadline forever.
+    if (set === null || set > next || set < now - SWEEP_MS) {
+      this.alarmRegisteredAt = Math.max(next, now);
+      await this.ctx.storage.setAlarm(this.alarmRegisteredAt);
+    }
   }
 
   expireDoors(now) {
@@ -1811,6 +1817,7 @@ export class Room extends DurableObject {
       cleanup: this.cleanupJobs.length, cleanupCap: 64, doors: this.doorQueue.length + (this.doorActive ? 1 : 0), tickHz: TICK_HZ,
       cleanupAttempt: this.cleanupAttempt || null, cleanupBusy: this.cleanupTasks ? this.cleanupTasks.size : 0,
       alarmStarted: this.alarmStarted || 0, alarmFinished: this.alarmFinished || 0,
+      alarmRegisteredAt: this.alarmRegisteredAt || 0,
       flushPending: !!this.flushTimer, alarmAt: this.nextAlarm(), attachMax: detail ? attachMax : undefined, rows };
   }
 

@@ -122,7 +122,8 @@ function roomCard(row) {
     ["reports lost", row.failed || 0], ["cleanup running", st.cleanupBusy || 0],
     ["cleanup attempt", st.cleanupAttempt ? st.cleanupAttempt.operation + " · " + dur(now() - st.cleanupAttempt.at) + " ago · " + (st.cleanupAttempt.finished ? "finished" : "pending") + " · status " + st.cleanupAttempt.status : "none"],
     ["alarm started", st.alarmStarted ? dur(now() - st.alarmStarted) + " ago" : "none"],
-    ["alarm finished", st.alarmFinished ? dur(now() - st.alarmFinished) + " ago" : "none"]]);
+    ["alarm finished", st.alarmFinished ? dur(now() - st.alarmFinished) + " ago" : "none"],
+    ["alarm registered", st.alarmRegisteredAt ? (st.alarmRegisteredAt < now() ? "overdue " + dur(now() - st.alarmRegisteredAt) : "in " + dur(st.alarmRegisteredAt - now())) : "none"]]);
   var bars = bar("players", st.players, st.maxPlayers, (st.players || 0) + " / " + st.maxPlayers)
     + bar("messages in", r.in || 0, L.requestsPerSecond, num(r.in, 1) + "/s of ~" + L.requestsPerSecond)
     + bar("snapshots", r.snapshots || 0, st.tickHz, num(r.snapshots, 1) + " of " + st.tickHz + " Hz · worst " + num(pk.late) + " ms late")

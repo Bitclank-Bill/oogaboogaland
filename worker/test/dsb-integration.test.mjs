@@ -717,6 +717,23 @@ test("the alarm wakes at the earliest of sweep, door expiry and cleanup retry, a
   assert.equal(alarms.at(-1), room.sweepAt);
 });
 
+test("a new cleanup repairs an overdue registered alarm without postponing a healthy earlier wake", async () => {
+  const { room } = studioRoom(), writes = [];
+  const now = Date.now();
+  let registered = now - protocol.SWEEP_MS - 1;
+  room.ctx.storage.getAlarm = async () => registered;
+  room.ctx.storage.setAlarm = async at => { registered = at; writes.push(at); };
+  room.sfu.getSession = async () => { throw new Error("upstream unavailable"); };
+  await room.queueClose("uncertain", [], true);
+  assert.ok(writes[0] >= now, "a stale platform deadline is explicitly rearmed");
+  assert.equal(room.cleanupJobs.length, 1, "repairing the alarm never discards unresolved resources");
+  registered = Date.now() + 1000;
+  room.cleanupAt = Date.now() + protocol.SWEEP_MS;
+  writes.length = 0;
+  await room.scheduleAlarm();
+  assert.equal(writes.length, 0, "an earlier pending wake is preserved");
+});
+
 // Regression (#193 review): stored cleanup made SFU calls inside the constructor's blockConcurrencyWhile, where two
 // stuck 10 s jobs pass the 30 s limit and reset the island's only room. The block loads the jobs; an alarm due now retries.
 test("a woken room defers stored cleanup outside its constructor's block, and without an SFU sets no alarm for it", async () => {
