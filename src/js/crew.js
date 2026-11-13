@@ -64,9 +64,8 @@
   // (STICK_STRAIGHT), and comes back as the elbow bends and sets the butt down.
   // Carrying it, the weight draws the elbow nearly straight (STICK_HANG).
   const STICK_RAISE = -0.3, STICK_LIFT = 0.7, STICK_CLEAR = 0.6 / 16, STICK_STRAIGHT = 0.05, STICK_HANG = 0.175, STICK_PLANT = 0.6, STICK_AWAY = 0.3;
-  // SIT_HAND is where the free fist rests on the ground when its body sits there: out from the shoulder, over the
-  // ground, and back from it, in the body's heights. It is far enough out that the arm is nearly straight.
-  const AXE_BUTT = 3 / 16, HIP = 7 / 16, LYING_ELBOW = 0.1, SIT_HAND = [0.34, 0.1, -0.25], BACK_MIDDLE = 0.28;
+  // SIT_FIST is how high the free fist's middle rests over the ground when its body sits there, in the body's heights.
+  const AXE_BUTT = 3 / 16, HIP = 7 / 16, LYING_ELBOW = 0.1, SIT_FIST = 0.1, BACK_MIDDLE = 0.28;
   // How far into the back of the head a slung weapon may reach before it counts as in it, in the body's heights,
   // and the most it is turned about its own length to clear the head: twenty-one degrees, and no further.
   const SLING_SLACK = 0.02, SLING_TURN = 21 * Math.PI / 180;
@@ -1120,51 +1119,101 @@
       shield.rotation.y = shield.worn.turn;
     }
   };
-  // A modelled arm's guard. The rig's ready stance turns the whole arm a quarter turn about its own length to turn
-  // the grip, which on an arm with an elbow bows the elbow out to the side. Here the hand stays exactly where that
-  // stance has it and the arm keeps the bend it has there, the one it hangs and carries with; only the elbow is
-  // brought round under the arm, as near the body as it is in the carry (TUCK_POLE: down, and out by as much as
-  // the stance holds the hand in across the body, so the elbow stays under the shoulder), and the weapon turns the
-  // least it must to stand square to the forearm in the fist. `t` blends from the rig's stance (0) to this (1), so
-  // a cut still winds up and lands as the rig has it.
-  const TUCK_POLE = [-0.45, -0.9, -0.15];
-  const TUCK_FROM = math.quat.create(), TUCK_CLUB = math.quat.create(), TUCK_TURN = math.quat.create(), TUCK_A = new Float64Array(3), TUCK_F = new Float64Array(3);
-  const tuckElbow = (cave, t) => {
-    const parts = cave.parts, arm = parts.armR, fore = parts.forearmR, club = parts.club, e = cave.elbow, k = cave.armScale, q = arm.quaternion;
-    if (t <= 0 || !q) return;
-    const flex0 = -fore.rotation.x;
-    // Where the stance has the hand, from the shoulder, and how the weapon lies, both in the frame the arm hangs in.
-    math.quat.rotateVec(TUCK_A, q, 0, (e.y - e.length * Math.cos(flex0)) * k, (e.z + e.length * Math.sin(flex0)) * k);
-    const hx = TUCK_A[0], hy = TUCK_A[1], hz = TUCK_A[2];
-    if (club.quaternion) TUCK_CLUB.set(club.quaternion);
-    else math.quat.fromEuler(TUCK_CLUB, club.rotation.x, club.rotation.y, club.rotation.z);
-    math.quat.multiply(TUCK_CLUB, q, TUCK_CLUB);
-    TUCK_FROM.set(q);
-    if (!reachArm(cave, arm, fore, cave.reachR, arm.position.x + hx, arm.position.y + hy, arm.position.z + hz, TUCK_POLE[0], TUCK_POLE[1], TUCK_POLE[2])) return;
-    const flex1 = -fore.rotation.x, reached = cave.reachR;
-    // The forearm's line from the elbow to the hand, and the weapon's own line turned square to it.
-    math.quat.rotateVec(TUCK_F, reached, 0, -Math.cos(flex1), Math.sin(flex1));
-    math.quat.rotateVec(TUCK_A, TUCK_CLUB, 0, 1, 0);
-    const along = TUCK_A[0] * TUCK_F[0] + TUCK_A[1] * TUCK_F[1] + TUCK_A[2] * TUCK_F[2];
-    let bx = TUCK_A[0] - along * TUCK_F[0], by = TUCK_A[1] - along * TUCK_F[1], bz = TUCK_A[2] - along * TUCK_F[2];
-    const bl = Math.hypot(bx, by, bz);
-    if (bl < 1e-4) { bx = TUCK_A[0]; by = TUCK_A[1]; bz = TUCK_A[2]; } else { bx /= bl; by /= bl; bz /= bl; }
-    const cx = TUCK_A[1] * bz - TUCK_A[2] * by, cy = TUCK_A[2] * bx - TUCK_A[0] * bz, cz = TUCK_A[0] * by - TUCK_A[1] * bx, cl = Math.hypot(cx, cy, cz);
-    if (cl > 1e-5) {
-      math.quat.fromAxisAngle(TUCK_TURN, cx / cl, cy / cl, cz / cl, Math.atan2(cl, TUCK_A[0] * bx + TUCK_A[1] * by + TUCK_A[2] * bz) * t);
-      math.quat.multiply(TUCK_CLUB, TUCK_TURN, TUCK_CLUB);
-    }
-    const turn = handTurn(arm, fore, bx, by, bz);
-    math.quat.slerpTo(TUCK_FROM, reached, t);
-    reached.set(TUCK_FROM);
-    const flex = lerp(flex0, flex1, t);
-    fore.rotation.x = -flex;
-    cave.handTurnR = turn * t;
-    // The weapon goes with the hand: at the hand point, and turned as worked out, in the arm's own frame.
-    FINGER_INVERSE[0] = -reached[0]; FINGER_INVERSE[1] = -reached[1]; FINGER_INVERSE[2] = -reached[2]; FINGER_INVERSE[3] = reached[3];
-    math.quat.multiply(cave.axeRotation, FINGER_INVERSE, TUCK_CLUB);
+  // A modelled arm's top is its deltoid, rounded about a point down the arm (`elbow.deltoid`), and the rig's shoulder
+  // pivot stands out past the trunk. Turned about the pivot, an arm raised for a cut swings its deltoid up and away from
+  // the shoulder; turned about that point, it stays on the shoulder. The arm keeps its turn and moves by `k` of how far
+  // turning about the pivot carried that point from where it hangs at rest, which is nothing at rest. The move rides
+  // the melee thrust, so the next pose takes it off again.
+  const DELTOID_REST = math.quat.create(), DELTOID = new Float64Array(3);
+  math.quat.fromEuler(DELTOID_REST, -0.2, 0, -0.12);
+  const keepDeltoid = (cave, k) => {
+    const arm = cave.parts.armR, w = cave.weapon, d = cave.elbow.deltoid * cave.armScale;
+    math.quat.rotateVec(DELTOID, DELTOID_REST, 0, -d, 0);
+    math.quat.rotateVec(MUZZLE, arm.quaternion, 0, -d, 0);
+    const dx = (DELTOID[0] - MUZZLE[0]) * k, dy = (DELTOID[1] - MUZZLE[1]) * k, dz = (DELTOID[2] - MUZZLE[2]) * k;
+    w.meleeOffsetX += dx; w.meleeOffsetY += dy; w.meleeOffsetZ += dz;
+    arm.position.x += dx; arm.position.y += dy; arm.position.z += dz;
+  };
+  // A modelled arm's ready stance and cut with its primary weapon, swung overhand as an arm swings a club: the hand
+  // goes round the shoulder from the ready stance in front of the waist, up over the head for the wind-up with the arm
+  // nearly straight and the weapon back behind the head, and over and down in front for the cut, and the arm reaches it with its elbow toward a pole (`reachArm`), never turned about
+  // its own length. The weapon stands square to the forearm in the elbow's plane, its length along the thumb's side of
+  // the fist and its head (-x in its frame: an axe's or a hockey stick's blade) out along the hand, so it lies in the
+  // hand's own plane; the wrist cocks it back for the wind-up and snaps it forward through the cut. SWING's places are
+  // from the shoulder in the body's heights, x toward the body's middle: `hand` the fist's middle, `pole` the way the
+  // elbow points, `wrist` how far the weapon leans forward of square on the forearm.
+  const SWING = {
+    ready: { hand: [0.03, -0.3, 0.27], pole: [-0.35, -1, -0.25], wrist: 0.35 },
+    wind: { hand: [0.04, 0.62, -0.18], pole: [-0.6, 0, 1], wrist: -0.6 },
+    end: { hand: [0.1, -0.36, 0.5], pole: [-0.6, -1, 0], wrist: 1.2 }
+  };
+  // The weapon in the fist, as the hand's frame sees it: the hand's own turn on its forearm, then the weapon across it.
+  const SWING_CLUB = math.quat.create(), SWING_TURN = math.quat.create();
+  math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, Math.PI / 2);
+  math.quat.fromAxisAngle(SWING_CLUB, 0, 0, 1, Math.PI / 2);
+  math.quat.multiply(SWING_CLUB, SWING_TURN, SWING_CLUB);
+  const SWING_A = new Float64Array(3), SWING_B = new Float64Array(3), SWING_FROM = new Float64Array(3), SWING_TO = new Float64Array(3);
+  const SWING_FROM_POLE = new Float64Array(3), SWING_TO_POLE = new Float64Array(3), SWING_HAND = new Float64Array(3), SWING_POLE = new Float64Array(3);
+  // A place from the shoulder in the body's heights, tipped by the aim's pitch and turned by its yaw, into `out`.
+  const swingPlace = (out, x, y, z, yaw, pitch) => {
+    const cp = Math.cos(pitch), sp = Math.sin(pitch), cy = Math.cos(yaw), sy = Math.sin(yaw), ty = y * cp - z * sp, tz = y * sp + z * cp;
+    out[0] = x * cy + tz * sy; out[1] = ty; out[2] = -x * sy + tz * cy;
+  };
+  // `out` a share t of the way from a to b round the shoulder: on the great circle between their directions, with the
+  // reach easing from one to the other.
+  const swingArc = (out, a, b, t) => {
+    const la = Math.hypot(a[0], a[1], a[2]) || 1, lb = Math.hypot(b[0], b[1], b[2]) || 1;
+    const angle = Math.acos(clamp((a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb), -1, 1)), s = Math.sin(angle), len = la + (lb - la) * t;
+    const ka = (s > 1e-4 ? Math.sin((1 - t) * angle) / s : 1 - t) / la, kb = (s > 1e-4 ? Math.sin(t * angle) / s : t) / lb;
+    const x = a[0] * ka + b[0] * kb, y = a[1] * ka + b[1] * kb, z = a[2] * ka + b[2] * kb, l = Math.hypot(x, y, z) || 1;
+    out[0] = x / l * len; out[1] = y / l * len; out[2] = z / l * len;
+  };
+  const swingLerp = (out, a, b, t) => { out[0] = lerp(a[0], b[0], t); out[1] = lerp(a[1], b[1], t); out[2] = lerp(a[2], b[2], t); };
+  // `wind` and `stroke` as the cut has them; `recovering` once it has landed; `stance`, 1 until the weapon goes back to
+  // its carry and 0 there; `toward`, how much of the reach toward a target the cut takes.
+  const swingArm = (cave, wind, stroke, recovering, stance, viewMix, toward) => {
+    const parts = cave.parts, w = cave.weapon, arm = parts.armR, fore = parts.forearmR, club = parts.club, h = cave.traits.height, e = cave.elbow;
+    const carryFlex = -fore.rotation.x, yaw = (w.aiming ? w.aimYaw : 0) - arm.poseYaw, pitch = w.aiming ? w.aimPitch * 0.5 : 0;
+    const R = SWING.ready, W = SWING.wind, E = SWING.end, charge = w.meleeCharge, close = w.aiming ? viewMix * (1 - wind) : 0;
+    // The cut, from the wind-up (higher and further back the more it is charged) over to the follow-through.
+    swingPlace(SWING_A, W.hand[0], W.hand[1] + 0.04 * charge, W.hand[2] - 0.04 * charge, yaw, pitch);
+    swingPlace(SWING_B, E.hand[0], E.hand[1], E.hand[2], yaw, pitch);
+    swingArc(SWING_TO, SWING_A, SWING_B, stroke);
+    swingPlace(SWING_A, W.pole[0], W.pole[1], W.pole[2], yaw, pitch);
+    swingPlace(SWING_B, E.pole[0], E.pole[1], E.pole[2], yaw, pitch);
+    swingLerp(SWING_TO_POLE, SWING_A, SWING_B, stroke);
+    // From the ready stance (drawn in toward the eye in the first person), or where the hand was as the cut began.
+    let fromWrist = 0;
+    if (recovering || w.aiming) {
+      swingPlace(SWING_FROM, R.hand[0] + 0.08 * close, R.hand[1] + 0.06 * close, R.hand[2], yaw, pitch);
+      swingPlace(SWING_FROM_POLE, R.pole[0], R.pole[1], R.pole[2], yaw, pitch);
+      fromWrist = R.wrist;
+    } else { SWING_FROM.set(w.meleeEntryHand); SWING_FROM_POLE.set(w.meleeEntryPole); }
+    swingArc(SWING_HAND, SWING_FROM, SWING_TO, wind);
+    swingLerp(SWING_POLE, SWING_FROM_POLE, SWING_TO_POLE, wind);
+    const wrist = lerp(fromWrist, lerp(W.wrist, E.wrist, stroke), wind);
+    reachArm(cave, arm, fore, cave.reachR, arm.position.x + SWING_HAND[0] * h + w.meleeAimX * toward, arm.position.y + SWING_HAND[1] * h + w.meleeAimY * toward,
+      arm.position.z + SWING_HAND[2] * h + w.meleeAimZ * toward, SWING_POLE[0], SWING_POLE[1], SWING_POLE[2]);
+    const flex = -fore.rotation.x, c = Math.cos(flex), s = Math.sin(flex);
+    cave.handTurnR = Math.PI / 2;
+    cave.wristR = wrist;
+    // The weapon goes with the fist, in the arm's frame: the forearm's bend, the wrist, then the hand's own hold, at
+    // the fist's middle, which the wrist swings about the wrist.
+    math.quat.fromAxisAngle(cave.axeRotation, 1, 0, 0, wrist - flex);
+    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_CLUB);
     club.quaternion = cave.axeRotation;
-    setVec(club.position, 0, e.y - e.length * Math.cos(flex), e.z + e.length * Math.sin(flex));
+    const fy = e.wrist * (1 - Math.cos(wrist)) - e.length, fz = -e.wrist * Math.sin(wrist);
+    setVec(club.position, 0, e.y + fy * c + fz * s, e.z - fy * s + fz * c);
+    // Back to the carry: the arm, the elbow's bend, the wrist and the weapon ease into it together.
+    if (stance < 1) {
+      const carry = 1 - stance;
+      math.quat.slerpTo(cave.reachR, MELEE_REST_ARM, carry);
+      fore.rotation.x = -lerp(flex, carryFlex, carry);
+      cave.wristR = wrist * stance;
+      math.quat.slerpTo(cave.axeRotation, MELEE_REST_CLUB, carry);
+      setVec(club.position, lerp(club.position.x, MELEE_REST_GRIP[0], carry), lerp(club.position.y, MELEE_REST_GRIP[1], carry), lerp(club.position.z, MELEE_REST_GRIP[2], carry));
+    }
+    keepDeltoid(cave, stance);
   };
   // How far a modelled body's slung weapon is turned about its own length: not at all, or a little at a time, the
   // side of it nearest the head swinging out behind, and only until none of it lies in the head. Worked out once a
@@ -1287,6 +1336,19 @@
     }
     return cave.clubLeanPacked = clear;
   };
+  // Turns a modelled arm by `turn` about its line from the shoulder to the hand, into `out`: the hand stays where it
+  // is and turns about the arm's length as it would about its forearm, which for a straight arm is the same line.
+  const SWIVEL = math.quat.create(), SWIVEL_AXIS = new Float64Array(3);
+  const swivelArm = (cave, arm, forearm, out, turn) => {
+    const e = cave.elbow, k = cave.armScale, flex = -forearm.rotation.x;
+    math.quat.rotateVec(SWIVEL_AXIS, arm.quaternion, 0, (e.y - e.length * Math.cos(flex)) * k, (e.z + e.length * Math.sin(flex)) * k);
+    const l = Math.hypot(SWIVEL_AXIS[0], SWIVEL_AXIS[1], SWIVEL_AXIS[2]);
+    if (l < 1e-6) return;
+    // Toward the shoulder, as the forearm's own length runs.
+    math.quat.fromAxisAngle(SWIVEL, -SWIVEL_AXIS[0] / l, -SWIVEL_AXIS[1] / l, -SWIVEL_AXIS[2] / l, turn);
+    math.quat.multiply(out, SWIVEL, arm.quaternion);
+    arm.quaternion = out;
+  };
   // Puts a modelled arm's hand on the rifle's wood: the wood's middle at (tx, ty, tz), running along (ax, ay, az),
   // halfX and halfY its half width and half height in the rifle's frame (whose turn is g), the elbow toward the pole.
   // The wood is about as thick as a fist, so a fist closed round it would have the wood showing through it. The
@@ -1336,14 +1398,32 @@
       return;
     }
     math.quat.rotateVec(MUZZLE, g, 0, -0.97, -0.26);
-    cave.handTurnR = handTurn(parts.armR, parts.forearmR, MUZZLE[0], MUZZLE[1], MUZZLE[2]);
+    const ax = MUZZLE[0], ay = MUZZLE[1], az = MUZZLE[2];
+    cave.handTurnR = handTurn(parts.armR, parts.forearmR, ax, ay, az);
+    // Held straight out, the whole arm turns from the shoulder, about its own line to the grip, as far as the hand
+    // would turn on its forearm, so the wrist stays in line with the hand. The hand stays where it is and turns
+    // only by what is left.
+    if (straight) {
+      swivelArm(cave, parts.armR, parts.forearmR, cave.reachR, cave.handTurnR);
+      cave.handTurnR = handTurn(parts.armR, parts.forearmR, ax, ay, az);
+    }
   };
-  const poseFingers = (arm, fingers, held, side, turn = null) => {
+  // A modelled hand bends at the wrist (`bend`, about the forearm's crosswise axis), so it swings about the wrist, which
+  // stands `elbow.wrist` up the hand from the fist's middle; unbent, it hangs from the forearm's end as built.
+  const FINGER_BEND = math.quat.create();
+  const poseFingers = (arm, fingers, held, side, turn = null, bend = 0, elbow = null) => {
     fingers.highlight = arm.highlight;
     // Select a square side with an exact quarter turn about the palm. The
     // pair keeps its spacing and follows every rotation of the hand.
     // Weapon grips already roll the whole wrist inward, using the front side.
     math.quat.fromEuler(fingers.quaternion, 0, turn !== null ? turn : held && arm.quaternion ? 0 : side * Math.PI / 2, 0);
+    if (!elbow) return;
+    if (bend) {
+      math.quat.fromAxisAngle(FINGER_BEND, 1, 0, 0, bend);
+      math.quat.multiply(fingers.quaternion, FINGER_BEND, fingers.quaternion);
+    }
+    fingers.position.y = elbow.wrist * (1 - Math.cos(bend)) - elbow.length;
+    fingers.position.z = -elbow.wrist * Math.sin(bend);
   };
   const poseHands = (cave, leftSupportsGun = false) => {
     const parts = cave.parts, drawn = cave.weapon.carry === "hands";
@@ -1357,8 +1437,8 @@
       if (!rightHeld && !parts.armR.quaternion && parts.forearmR.rotation.x === rest) parts.forearmR.rotation.x = -cave.elbow.relaxed;
       if (!leftHeld && !parts.armL.quaternion && parts.forearmL.rotation.x === rest) parts.forearmL.rotation.x = -cave.elbow.relaxed;
     }
-    poseFingers(parts.armR, parts.fingersR, rightHeld, 1, cave.handTurnR);
-    poseFingers(parts.armL, parts.fingersL, leftHeld, -1, cave.handTurnL);
+    poseFingers(parts.armR, parts.fingersR, rightHeld, 1, cave.handTurnR, cave.wristR, cave.modelled ? cave.elbow : null);
+    poseFingers(parts.armL, parts.fingersL, leftHeld, -1, cave.handTurnL, 0, cave.modelled ? cave.elbow : null);
   };
   const reloadHandoffBlend = (w) => ease.inOutQuad(1 - Math.abs(1 - 2 * Math.min(RELOAD_HANDOFF_TIME, w.reloadHandoffTime) / RELOAD_HANDOFF_TIME));
   const poseEquipment = (cave, controlled, elapsed, hooks = null, sightCamera = null, sightMix = 0, primaryViewMix = 0) => {
@@ -1374,6 +1454,7 @@
     let leftSupportsGun = false;
     parts.armL.quaternion = parts.armR.quaternion = null;
     cave.handTurnR = cave.handTurnL = null;
+    cave.wristR = 0;
     for (let i = 0; i < parts.gunBananas.length; i++) {
       const banana = parts.gunBananas[i], visible = !cave.gunSkin && w.ammo > (i + 1) * BURST_ROUNDS;
       if (visible && !banana.visible && (w.reloading || gun.ammoReloading)) banana.ammoPopAt = elapsed;
@@ -1434,15 +1515,16 @@
       const travel = cave.bedTravel, lying = travel.mode === "rest" || travel.mode === "lie";
       parts.forearmR.rotation.x = parts.forearmL.rotation.x = lying && (travel.pose === "left" || travel.pose === "right") ? -cave.elbow.clear
         : lying ? -LYING_ELBOW : -cave.elbow.rest;
-      // Sitting on the ground, the free arm props on it, out to the side and a little back: nearly straight, the
-      // fist resting on its own bottom edge with the thumb uppermost. An idle Ooga sits so by a fire, and a player in a
-      // seat that is the ground itself (`seat.ground`, the character studio's places by its fire).
+      // Sitting on the ground, the free arm hangs straight down from the shoulder, and the forearm angles forward
+      // toward the feet as far as brings the fist down to the ground there (straight down, where the ground is out of reach). An
+      // idle Ooga sits so by a fire, and a player in a seat that is the ground itself (`seat.ground`, the character
+      // studio's places by its fire).
       const seat = cave.camp ? cave.camp.seat : null;
       const lowered = !seat ? cave.restLower : seat.ground ? Math.max(0, cave.baseY - h * 0.08) : 0;
       if (lowered > 0 && !parts.snack.visible) {
-        const left = parts.armL;
-        if (reachArm(cave, left, parts.forearmL, cave.reachL, left.position.x + SIT_HAND[0] * h, lowered - HIP * h + SIT_HAND[1] * h, SIT_HAND[2] * h, 0.4, 0.3, -1))
-          cave.handTurnL = handTurn(left, parts.forearmL, 0, 1, 0);
+        const left = parts.armL, e = cave.elbow, fore = e.length * cave.armScale, elbowY = left.position.y - Math.hypot(e.y, e.z) * cave.armScale;
+        const drop = Math.min(fore, elbowY - (lowered - cave.baseY + SIT_FIST * h)), out = Math.sqrt(fore * fore - drop * drop);
+        reachArm(cave, left, parts.forearmL, cave.reachL, left.position.x, elbowY - drop, left.position.z + out, 0, -1, 0);
       }
       parts.forearmR.highlight = parts.armR.highlight;
       parts.forearmL.highlight = parts.armL.highlight;
@@ -1615,10 +1697,14 @@
         wind = recovery;
         stroke = w.meleeStop;
       }
+      const recovering = !w.meleeHeld && w.meleeTime <= MELEE_RECOVER;
+      // A modelled body swings its own way (`swingArm`); the rest is the rig's.
+      if (cave.modelled) swingArm(cave, wind, stroke, recovering, returningPrimary ? ease.inOutQuad(clamp(w.meleeReadyTime / MELEE_CARRY_BLEND, 0, 1)) : 1,
+        primaryViewMix, w.meleeTime > MELEE_RECOVER && w.meleeTime <= release ? stroke : 0);
+      else {
       const neutral = -0.95 + (w.aiming ? w.aimPitch : 0);
       const side = w.meleeSide, backCut = side < 0;
       const startX = -2.05 - 0.25 * w.meleeCharge, endX = -0.22;
-      const recovering = !w.meleeHeld && w.meleeTime <= MELEE_RECOVER;
       const closeHold = w.aiming ? primaryViewMix * (1 - wind) : 0;
       parts.armR.rotation.x = lerp(recovering ? neutral : w.meleeEntryX,
         backCut ? startX : lerp(startX, endX, stroke), wind);
@@ -1701,9 +1787,7 @@
         parts.armR.position.x += dx; parts.armR.position.y += dy; parts.armR.position.z += dz;
       }
       parts.armR.quaternion = cave.gunHandRotation;
-      // A modelled arm stands ready with its elbow in by the body, and takes the rig's stance again as a cut
-      // winds up or the weapon goes back to its carry.
-      if (cave.modelled) tuckElbow(cave, (1 - wind) * (returningPrimary ? ease.inOutQuad(clamp(w.meleeReadyTime / MELEE_CARRY_BLEND, 0, 1)) : 1));
+      }
     } else if (primaryCarry) {
       // The pose above preserves the anatomical right arm's walking sway.
     } else if (primaryHeld) parts.armR.rotation.y = 0;
@@ -1931,10 +2015,19 @@
 
   // Compact semantic presentation, sampled on the existing pose channel. Angles are centiradians and
   // durations milliseconds. Ownership is independent of the selected hand; these values never grant gear.
+  const SWING_TURN_ENTRY = math.quat.create();
   const captureMeleePose = (cave) => {
     const w = cave.weapon, arm = cave.parts.armR, club = cave.parts.club;
   w.meleeEntryX = arm.rotation.x; w.meleeEntryY = arm.rotation.y; w.meleeEntryZ = arm.rotation.z;
   w.meleeEntryClubZ = club.rotation.z;
+  if (cave.modelled) {
+    // Where the fist and the elbow are as the cut begins, from the shoulder in the body's heights.
+    const e = cave.elbow, k = cave.armScale, flex = -cave.parts.forearmR.rotation.x, h = cave.traits.height, q = arm.quaternion || math.quat.fromEuler(SWING_TURN_ENTRY, arm.rotation.x, arm.rotation.y, arm.rotation.z);
+    math.quat.rotateVec(MUZZLE, q, 0, (e.y - e.length * Math.cos(flex)) * k, (e.z + e.length * Math.sin(flex)) * k);
+    w.meleeEntryHand[0] = (MUZZLE[0] + w.meleeOffsetX) / h; w.meleeEntryHand[1] = (MUZZLE[1] + w.meleeOffsetY) / h; w.meleeEntryHand[2] = (MUZZLE[2] + w.meleeOffsetZ) / h;
+    math.quat.rotateVec(MUZZLE, q, 0, e.y, e.z);
+    w.meleeEntryPole.set(MUZZLE);
+  }
   w.meleeEntryBladeTurn = w.meleeBladeTurn;
   if (cave.traits.stoneAxe) {
     if (arm.quaternion) w.meleeAxeArm.set(arm.quaternion);
@@ -1990,6 +2083,7 @@
         meleeStrikeTime: MELEE_STRIKE, meleeStop: 1, meleeEntryX: -0.2, meleeEntryY: 0, meleeEntryZ: 0,
         meleeEntryClubZ: cave.clubCarry.z, meleeEntryBladeTurn: 0, meleeBladeTurn: 0,
         meleeAxeArm: math.quat.create(), meleeAxeClub: math.quat.create(), meleeAxeGrip: { x: 0, y: 0, z: 0 },
+        meleeEntryHand: new Float64Array(3), meleeEntryPole: new Float64Array([0, -1, 0]),
         meleeAxeArmX: 0, meleeOffsetX: 0, meleeOffsetY: 0, meleeOffsetZ: 0, meleeAimX: 0, meleeAimY: 0, meleeAimZ: 0,
         bashTime: 0, bashOffset: 0, axeIdle: 0, carry: "hidden" },
       health: { stunned: false }, camp: { seat: null, burning: false, rolling: false, panic: { active: false } },
@@ -1997,7 +2091,7 @@
       work: { phase: "" }, viewLift: 0, catchT: 0, pushT: 0, yawn: 0, cheer: 0, phase: 0,
       twirlUntil: 0, twirlHand: 0, meleeOut: false, chukAngle: CHUK_FOLD,
       axeRotation: math.quat.create(), gunHandRotation: math.quat.create(), gunSupportRotation: math.quat.create(),
-      reachR: math.quat.create(), reachL: math.quat.create(), handTurnR: null, handTurnL: null,
+      reachR: math.quat.create(), reachL: math.quat.create(), handTurnR: null, handTurnL: null, wristR: 0,
       gunSightArmOffset: { x: 0, y: 0, z: 0 }, clubSlingProfile: clubSlingProfile(cave.parts.club.geometry),
       clubTorsoBounds: BL.scene.boundsOf(cave.parts.torso.geometry), magazineModels: [null, null], jet: null, jetpackOwned: false
     });
@@ -2154,6 +2248,7 @@
       weapon.meleeReadyTime = 0;
       weapon.meleeAxeArm = math.quat.create(); weapon.meleeAxeClub = math.quat.create();
       weapon.meleeAxeGrip = { x: 0, y: 0, z: 0 }; weapon.meleeAxeArmX = 0;
+      weapon.meleeEntryHand = new Float64Array(3); weapon.meleeEntryPole = new Float64Array([0, -1, 0]);
       weapon.meleeTarget = { node: null, owner: null, x: 0, y: 0, z: 0, distance: 0, type: "none" };
       weapon.meleeOffsetX = weapon.meleeOffsetY = weapon.meleeOffsetZ = 0;
       weapon.meleeAimX = weapon.meleeAimY = weapon.meleeAimZ = 0;
@@ -2188,7 +2283,7 @@
         axeRotation: math.quat.create(),
         gunHandRotation: math.quat.create(),
         gunSupportRotation: math.quat.create(),
-        reachR: math.quat.create(), reachL: math.quat.create(), handTurnR: null, handTurnL: null,
+        reachR: math.quat.create(), reachL: math.quat.create(), handTurnR: null, handTurnL: null, wristR: 0,
         gunSightArmOffset: { x: 0, y: 0, z: 0 },
         gunSightCamera: null,
         gunSightMix: 0,

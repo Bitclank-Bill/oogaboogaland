@@ -29281,7 +29281,9 @@ const integrationChecks = async BL => {
   records.get(72).weapon=1;pool.update(.1);let primary=clubBack();records.get(72).weapon=0;pool.update(.1);primary=primary&&clubBack();
   if(shotHeard)shotHeard(72,[1,2,3,4,5,6]);const replay=replayed.length===1&&replayed[0].join()===",1,2,3,4,5,6";
   const restingArmX=armR.rotation.x;
-  if(swingHeard)swingHeard(72);pool.update(.1);const swung=!!armR&&armR.rotation.x<-1;
+  // Swung: the arm raised at least 60 degrees from hanging, by its Euler turn or, on a modelled body, its quaternion.
+  if(swingHeard)swingHeard(72);pool.update(.1);const raised=new Float32Array(3);if(armR&&armR.quaternion)BL.math.quat.rotateVec(raised,armR.quaternion,0,-1,0);
+  const swung=!!armR&&(armR.quaternion?raised[1]>-0.5:armR.rotation.x<-1);
   pool.update(.4);const settled=!!armR&&Math.abs(armR.rotation.x-restingArmX)<1e-9&&pool.body(72).weapon.meleeTime===0;
   record("integration remotes: another player's gun shows aimed with a banana for each three rounds, the club comes back when it is put away, their shots replay through the crew and their strike swings the arm and settles",
     aimed&&primary&&replay&&swung&&settled,JSON.stringify({aimed,bananas,primary,replay,swung,settled}));
