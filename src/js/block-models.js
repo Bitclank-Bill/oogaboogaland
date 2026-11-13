@@ -903,6 +903,10 @@
       box({ w: 0.16, h: z.by + 0.4, d: 0.16, color: "#5a3a22", offset: { x: z.bx, y: (z.by + 0.4) / 2, z: z.bz } }),
       box({ w: 0.3, h: 0.3, d: 0.3, color: c.paint, emissive: 0.6, offset: { x: z.ax, y: z.ay + 0.15, z: z.az } }));
   });
+  // The lamp on a zipline's handle, from the visitor's side: green (0) when they may ride it, red (1) when grabbing it
+  // would spring its trap door (`blockSim.zipSprings`).
+  // On a short dark stalk, so it reads apart from the handle's team colour.
+  const zipLight = variants((i) => merge(box({ w: 0.06, h: 0.3, d: 0.06, color: DARK, offset: { y: 0.15 } }), box({ w: 0.22, h: 0.22, d: 0.22, color: i ? "#ff3b30" : "#34e05a", emissive: 1, offset: { y: 0.41 } })));
   // A rider's trolley: a pulley block on the cable with a hand bar under it.
   const trolley = cached(() => merge(box({ w: 0.14, h: 0.18, d: 0.3, color: METAL, offset: { y: 0.1 } }), box({ w: 0.6, h: 0.05, d: 0.05, color: DARK, offset: { y: -0.15 } }), box({ w: 0.04, h: 0.3, d: 0.04, color: DARK, offset: { y: 0 } })));
   // A trampoline flush with the ground: a dark frame ring on stubby legs, springs, and an orange-and-black mat.
@@ -1233,5 +1237,5 @@
   const clankVisor = variants((k) => { const s = k / 100; return merge(box({ w: 7.4 * s, h: 1.6 * s, d: 0.7 * s, color: "#ff2a2a", emissive: 1, offset: { y: 4.3 * s, z: 5.35 * s } }), box({ w: 0.4 * s, h: 3.4 * s, d: 0.4 * s, color: "#c9ced6", offset: { x: 2.6 * s, y: 8.3 * s, z: 1 * s } }), box({ w: 0.9 * s, h: 0.9 * s, d: 0.9 * s, color: "#ff2a2a", emissive: 1, offset: { x: 2.6 * s, y: 10.4 * s, z: 1 * s } })); });
   // A free-standing stack of miners, as the server rooms' walls are built: the mirage's phantom landmarks.
   const minerStack = cached(() => { const parts = [], b = [-1.25, 1.25, -0.4, 0.4, SIM.MINER_H, 0]; clankBlock(parts, b, 2.5, 0.8, SIM.MINER_H, 0, SIM.MINER_H / 2, 0, 0); return merge(...parts); });
-  BL.blockModels = { hookHead, rope, minerStack, clankDress, minerFan, minerLeds, firewallBeams, vent, gpuPile, arc, smogMoon, clankArm, clankVisor, SLOGANS, goldBlock, trophyRays, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, minerStack, clankDress, minerFan, minerLeds, firewallBeams, vent, gpuPile, arc, smogMoon, clankArm, clankVisor, SLOGANS, goldBlock, trophyRays, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, zipLight, trolley, cache, SPLATS: 6 };
 })();
