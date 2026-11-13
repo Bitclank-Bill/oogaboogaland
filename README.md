@@ -2,6 +2,10 @@
 
 A WebGL2 floating island whose cliff caves hold projects and an arcade of games. Voxel cavemen stand in for the contributors of [OogaBoogaX](https://github.com/OogaBoogaX); donated bananas feed them, the live Bitcoin mempool makes the weather, and the rim Oogatron shows the org's live stats. Plain JavaScript, no dependencies, read-only network connections only. Payments are a simulator for now; visitor state stays in the visitor's browser.
 
+## Make your own Ooga
+
+Ask an AI coding agent: **"Make me a character in Ooga Booga Land."** [docs/make-your-ooga.md](docs/make-your-ooga.md) is its script. It signs you in with GitHub, asks what you want (send it a picture), shows your Ooga on your own computer in the character studio while it builds it, and sends it as a pull request from your account. Once it is merged, signing in on the island with GitHub hands you your Ooga to drive.
+
 ## Run it
 
 Open `src/index.html` in a browser, or serve `src/` with any static server.
