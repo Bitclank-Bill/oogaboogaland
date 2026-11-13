@@ -391,7 +391,8 @@
       let top = 0;
       for (let i = 1; i < node.geometry.verts.length; i += 3) top = Math.max(top, node.geometry.verts[i]);
       pack.position.y = at ? at.y : top; pack.position.z = at ? at.z : 0; addChild(pack, flame); addChild(node, pack);
-      const pet = cave.pet = { node, pack, flame, side: p.x, lift: p.y, x: 0, y: 0, z: 0, feet: 0, heading: 0, step: 0, wag: 0,
+      // Its spot: `back` behind its Ooga, as DSB's adopted dogs keep (`COMPANION_FOLLOW`), and `side` to its own side.
+      const pet = cave.pet = { node, pack, flame, side: p.x, back: COMPANION_FOLLOW.back, lift: p.y, x: 0, y: 0, z: 0, feet: 0, heading: 0, step: 0, wag: 0, puff: 0,
         speed: 0, phase: 0, mode: 0, fall: 0, stuck: 0, warm: false, ride: cave.traits.petRidesHat ? hatRide(cave) : null,
         // How far it has lain down (0 standing, 1 down), how far its body comes down when it has, and how long a step
         // it could not take has kept it from its spot by the bed.
@@ -480,7 +481,7 @@
         return;
       }
       const F = COMPANION_FOLLOW, h = r.rotation.y, sh = Math.sin(h), ch = Math.cos(h);
-      let tx = r.position.x - sh * F.back + ch * pet.side, tz = r.position.z - ch * F.back - sh * pet.side;
+      let tx = r.position.x - sh * pet.back + ch * pet.side, tz = r.position.z - ch * pet.back - sh * pet.side;
       // Its Ooga's move since last frame; a jump further than a frame's walk is a relocation, which leads nothing.
       const mx = r.position.x - pet.ownX, my = r.position.y - pet.ownY, mz = r.position.z - pet.ownZ, relocated = !(Math.abs(mx) + Math.abs(mz) <= F.moved);
       pet.ownX = r.position.x; pet.ownY = r.position.y; pet.ownZ = r.position.z;
@@ -531,6 +532,11 @@
         pet.flame.scale.y = 0.7 + Math.sin(pet.phase * 10) * 0.3;
         node.position.x = pet.x; node.position.z = pet.z; node.position.y = cave.baseY + pet.feet + pet.lift;
         node.rotation.y = pet.heading; node.rotation.z = 0;
+        if (pet.flame.visible && ctx.fx && (pet.puff -= dt) <= 0) {
+          pet.puff = PET_PUFF;
+          const k = node.scale.y, back = pet.pack.position.z * k - 0.12;
+          ctx.fx.burst(node.position.x + Math.sin(pet.heading) * back, node.position.y + pet.pack.position.y * k, node.position.z + Math.cos(pet.heading) * back, 1, JET_SPARKS, 0.8, cave);
+        }
         if (node.legs) {
           pet.wag += dt;
           if (pet.mode === 1) poseQuadruped(node, QUAD_GAIT.flyFront, QUAD_GAIT.flyHind, 0, Math.sin(pet.wag * 7) * 0.25, 0.35);
@@ -593,6 +599,23 @@
   };
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
+  // Sparks out of a jetpack, `power` (1 to 3) a puff every JET_PUFF: from the pack, or from both soles of a body whose
+  // rockets are in its feet (`soleSparks`, also its rocket jump's). Every page sparks every body it draws: its own
+  // crew's, and other players' copies (remote-players.js). The burst names the body it came from, so the room's NPC
+  // stream (npc-sync.js) passes on an NPC's sparks alone.
+  const soleSparks = (fx, cave, power) => {
+    const p = cave.root.position, side = cave.traits.height * 2.5 / 16, yaw = cave.root.rotation.y;
+    const dx = Math.cos(yaw) * side, dz = -Math.sin(yaw) * side;
+    fx.burst(p.x - dx, p.y - cave.baseY + 0.04, p.z - dz, power, JET_SPARKS, 1.1, cave);
+    fx.burst(p.x + dx, p.y - cave.baseY + 0.04, p.z + dz, power, JET_SPARKS, 1.1, cave);
+  };
+  const jetSparks = (fx, cave, power) => {
+    if (cave.traits.footRockets) { soleSparks(fx, cave, power / 2); return; }
+    const p = cave.root.position;
+    fx.burst(p.x, p.y + 0.12, p.z, power, JET_SPARKS, 1.1, cave);
+  };
+  // A pet's little jetpack sparks as DSB's adopted dogs' do: one spark every PET_PUFF, just behind its pack.
+  const PET_PUFF = 0.08;
   const MASK_SMOKE = { ...models.particleGeometry("#c9cbce", 0.09, 0.15) };
   const MASK_PORTS = [[0, 0], ...[0, 1, 2, 3, 4, 5].map((i) => [Math.cos(i / 6 * Math.PI * 2) * 0.065, Math.sin(i / 6 * Math.PI * 2) * 0.065])];
   const MASK_SMOKE_PER_PORT = 2, MASK_SMOKE_SMALL_PER_PORT = 4;
@@ -851,6 +874,14 @@
     addChild(node, createNode({ geometry: flameGeometry, visible: false }));
     addChild(root, node);
     return node;
+  };
+  // On a modelled body the pack sits on the back itself; `side` and `depth` on its `jet` are how far it reaches to
+  // either side and behind, for what is slung beside it and over it. Shared with other players' copies.
+  const seatJetpack = (cave, node, geometry, jet) => {
+    if (!cave.modelled) return;
+    const bounds = BL.scene.boundsOf(geometry), h = cave.traits.height;
+    node.position.z = -cave.back - bounds.max[2] * h;
+    jet.side = bounds.max[0] * h; jet.depth = (bounds.max[2] - bounds.min[2]) * h;
   };
   // What other pages need to draw a caveman's jetpack (`net.sendPose`'s `jet`): 1 while worn, plus its flame's power
   // (0 to 3) times 2.
@@ -1853,7 +1884,12 @@
       // The pose above preserves the anatomical right arm's walking sway.
     } else if (primaryHeld) parts.armR.rotation.y = 0;
     w.carry = primaryCarry ? "hands" : !ready ? "hidden" : drawn ? "hands" : "back";
-    if (!ready) { if (hooks && controlled) hooks.posePeek(cave, 0); poseHands(cave, leftSupportsGun); return; }
+    if (!ready) {
+      if (hooks && controlled) hooks.posePeek(cave, 0);
+      else if (cave.shownLean !== undefined) leanBody(cave, cave.shownLean);
+      poseHands(cave, leftSupportsGun);
+      return;
+    }
     if (drawn) {
       if (!w.reloading) parts.snack.visible = false;
       // Keep the loading hand free while workers carry their rifle for
@@ -2025,6 +2061,8 @@
     if (hooks && working && hooks.workBodyTarget && cave.work.phase === "shoot" && cave.work.aimReady && drawn && !celebrating
       && !w.reloading && !w.reloadHandoff && !w.swapTime) hooks.poseWorkAim(cave);
     if (hooks && controlled) { hooks.posePeek(cave, 0); hooks.aimPeek(cave); }
+    // Another page's Ooga leans as its own page leans it (remote-players.js).
+    else if (cave.shownLean !== undefined) { leanBody(cave, cave.shownLean); aimLean(cave); }
     if (sightCamera && sightMix > 0 && controlled && drawn && w.equipped && w.aiming
       && !w.reloading && !w.reloadHandoff && !w.swapTime && !cave.root.quaternion) {
       const eye = sightCamera.position, target = sightCamera.target, p = cave.root.position;
@@ -2096,7 +2134,92 @@
     w.meleeAxeArmX = arm.rotation.x;
   }
   };
-  const VISUAL_SIZE = 17;
+  // An Ooga's gait as the crew poses it, shared with other pages' copies of it (remote-players.js), so every page
+  // shows the same body: standing, walking at its step's `phase`, flying, falling from the island with its arms up,
+  // or climbing a ladder at its `phase`, `mix` of the way onto it. It poses the legs, arms and torso only, never where
+  // the body stands, and remembers the gait for the room (`visualState`). The arms start from the splay the model was
+  // built with (`armRZ`, `armLZ`), whatever the last frame left them at.
+  const GAIT = Object.freeze({ stand: 0, walk: 1, fly: 2, fall: 3, ladder: 4 });
+  const poseGait = (cave, gait, phase = 0, mix = 1) => {
+    const parts = cave.parts, stepped = gait === GAIT.walk || gait === GAIT.ladder;
+    cave.gait = gait; cave.gaitPhase = stepped ? phase : 0; cave.gaitMix = gait === GAIT.ladder ? mix : 0;
+    cave.closeSide = 0; cave.closeBack = false;
+    parts.legR.rotation.z = parts.legL.rotation.z = 0;
+    parts.torso.rotation.x = parts.torso.rotation.z = 0;
+    parts.armR.rotation.y = parts.armL.rotation.y = 0;
+    parts.armR.rotation.z = cave.armRZ; parts.armL.rotation.z = cave.armLZ;
+    if (gait === GAIT.walk) {
+      const swing = Math.sin(phase);
+      parts.legR.rotation.x = swing * 0.55;
+      parts.legL.rotation.x = -swing * 0.55;
+      parts.armR.rotation.x = -0.2 - swing * 0.3;
+      parts.armL.rotation.x = -0.2 + swing * 0.3;
+    } else if (gait === GAIT.stand) {
+      parts.legR.rotation.x = parts.legL.rotation.x = 0;
+      parts.armR.rotation.x = parts.armL.rotation.x = -0.2;
+    } else if (gait === GAIT.ladder) {
+      const wave = Math.sin(phase);
+      parts.torso.rotation.x = -0.12 * mix;
+      parts.armR.rotation.x = lerp(-0.2, -2.2 + wave * 0.2, mix);
+      parts.armL.rotation.x = lerp(-0.2, -2.2 - wave * 0.2, mix);
+      parts.legR.rotation.x = wave * 0.35 * mix;
+      parts.legL.rotation.x = -wave * 0.35 * mix;
+    } else {
+      parts.legR.rotation.x = -0.5;
+      parts.legL.rotation.x = -0.3;
+      parts.armR.rotation.x = parts.armL.rotation.x = gait === GAIT.fall ? -2.1 : -1.1;
+    }
+  };
+  // A walk seen close up keeps a step sideways (`side`, -1 to 1) or back readable in a mirror without turning the body.
+  const poseCloseWalk = (cave, side, back) => {
+    const parts = cave.parts;
+    cave.closeSide = side; cave.closeBack = back;
+    parts.torso.rotation.x = back ? 0.07 : 0;
+    parts.torso.rotation.z = -side * 0.08;
+    parts.legR.rotation.z = parts.legL.rotation.z = side * 0.1;
+  };
+  // The body leaning round a corner by `lean` (radians), from the hips: the root is already at the hips, so a pivot
+  // above the torso pushes the hips out while barely moving the head. Held children inherit the lean; root-level
+  // gear follows it explicitly.
+  const setPeekPart = (node, lean, pivot) => {
+    if (!node) return;
+    node.poseLean = lean;
+    node.poseLeanY = pivot;
+  };
+  const leanBody = (cave, lean) => {
+    const parts = cave.parts, pivot = 0;
+    setPeekPart(parts.torso, lean, pivot);
+    setPeekPart(parts.armR, lean, pivot);
+    setPeekPart(parts.armL, lean, pivot);
+    setPeekPart(parts.head, lean, pivot);
+    setPeekPart(parts.gun, parts.gun.parent === cave.root ? lean : 0, pivot);
+    setPeekPart(parts.club, parts.club.parent === cave.root ? lean : 0, pivot);
+    if (cave.jet) setPeekPart(cave.jet.node, cave.jet.node.parent === cave.root ? lean : 0, pivot);
+    for (let i = 0; i < cave.magazineModels.length; i++) {
+      const model = cave.magazineModels[i];
+      if (model) setPeekPart(model.node, model.node.parent === cave.root ? lean : 0, pivot);
+    }
+  };
+  // Leaning, the shoulder follows the body but the aimed rifle keeps pointing along the aim line, even aiming uphill
+  // or downhill: the inverse of the body's roll in the arm's frame before its twist.
+  const aimLean = (cave) => {
+    const w = cave.weapon, arm = cave.parts.armR, gun = cave.parts.gun, lean = arm.poseLean;
+    if (lean && w.equipped && w.aiming && !w.reloading && !w.reloadHandoff && !w.swapTime) {
+      math.quat.fromEuler(GUN_ARM, 0, -arm.poseYaw, 0);
+      math.quat.fromEuler(GUN_GRIP, 0, 0, -lean);
+      math.quat.multiply(GUN_ARM, GUN_ARM, GUN_GRIP);
+      math.quat.fromEuler(GUN_GRIP, 0, arm.poseYaw, 0);
+      math.quat.multiply(GUN_ARM, GUN_ARM, GUN_GRIP);
+      math.quat.multiply(arm.quaternion, GUN_ARM, arm.quaternion);
+      math.quat.multiply(gun.quaternion, GUN_ARM, gun.quaternion);
+      math.quat.rotateVec(MUZZLE, GUN_ARM, gun.position.x - arm.position.x, gun.position.y - arm.position.y, gun.position.z - arm.position.z);
+      setVec(gun.position, arm.position.x + MUZZLE[0], arm.position.y + MUZZLE[1], arm.position.z + MUZZLE[2]);
+    }
+  };
+  // The visual state: 17 numbers, then (from pages that send them) the body's own pose: its gait (0 standing, the
+  // walk's step phase in centiradians plus 1, 1000 flying, 1001 falling, 2000 plus a ladder's phase), the peek's
+  // lean, a close walk's step sideways and back, the shoulder's turn round an obstacle, and how far onto a ladder.
+  const VISUAL_SIZE = 23, VISUAL_BODY = 17;
   const visualMillis = (value, max) => Math.round(clamp(value || 0, 0, max) * 1000);
   const visualState = (cave) => {
     if (!cave || !cave.weapon) return null;
@@ -2123,6 +2246,14 @@
     v[14] = visualMillis(cave.twirlUntil - (cave.presentationTime || 0), TWIRL_MIN + TWIRL_SPREAD);
     v[15] = w.spareAmmo.length > 0 ? w.spareAmmo[0] + 1 : 0;
     v[16] = w.spareAmmo.length > 1 ? w.spareAmmo[1] + 1 : 0;
+    const gait = cave.gait;
+    const step = Math.min(628, Math.round((cave.gaitPhase % TAU + TAU) % TAU * 100));
+    v[17] = gait === GAIT.walk ? 1 + step : gait === GAIT.ladder ? 2000 + step : gait === GAIT.fly ? 1000 : gait === GAIT.fall ? 1001 : 0;
+    v[18] = Math.round(clamp((cave.peek || 0) * 0.5, -0.5, 0.5) * 100);
+    v[19] = Math.round(clamp(cave.closeSide || 0, -1, 1) * 100);
+    v[20] = cave.closeBack ? 1 : 0;
+    v[21] = Math.round(clamp(cave.shoulder ? cave.shoulder.yaw : 0, -1.57, 1.57) * 100);
+    v[22] = Math.round(clamp(cave.gaitMix || 0, 0, 1) * 100);
     return v;
   };
   // A remote owns only this small visual state, never the crew's inventory, health, AI or NPC stream.
@@ -2141,6 +2272,8 @@
       bedTravel: { mode: "" }, sleepWeapons: { visible: false }, state: "chilling", build: null,
       work: { phase: "" }, viewLift: 0, catchT: 0, pushT: 0, yawn: 0, cheer: 0, phase: 0,
       twirlUntil: 0, twirlHand: 0, meleeOut: false, chukAngle: CHUK_FOLD,
+      // Its body as its own page poses it (remote-players.js): the gait and the peek's lean.
+      gait: 0, gaitPhase: 0, gaitMix: 0, closeSide: 0, closeBack: false, shownLean: 0, armRZ: cave.parts.armR.rotation.z, armLZ: cave.parts.armL.rotation.z,
       axeRotation: math.quat.create(), gunHandRotation: math.quat.create(), gunSupportRotation: math.quat.create(),
       reachR: math.quat.create(), reachL: math.quat.create(), handTurnR: null, handTurnL: null,
       gunSightArmOffset: { x: 0, y: 0, z: 0 }, clubSlingProfile: clubSlingProfile(cave.parts.club.geometry),
@@ -2425,6 +2558,8 @@
         grabbedBy: null,
         viewLift: 0,
         peek: 0,
+        // The gait the crew last posed (`poseGait`) and a close walk's step sideways and back, for the room.
+        gait: 0, gaitPhase: 0, gaitMix: 0, closeSide: 0, closeBack: false, armRZ: cave.parts.armR.rotation.z, armLZ: cave.parts.armL.rotation.z,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN, sit: false } }
       });
       // Non-enumerable policy stays out of saved state. The driven Ooga (control()
@@ -4160,22 +4295,13 @@
       }
     };
     const walkPose = (cave, phase) => {
-      const parts = cave.parts;
-      const swing = Math.sin(phase);
-      parts.legR.rotation.x = swing * 0.55;
-      parts.legL.rotation.x = -swing * 0.55;
-      parts.armR.rotation.x = -0.2 - swing * 0.3;
-      parts.armL.rotation.x = -0.2 + swing * 0.3;
+      poseGait(cave, GAIT.walk, phase);
       cave.root.position.y = groundY(cave) + Math.abs(Math.sin(phase)) * 0.04;
     };
     const standPose = (cave) => {
       cave.root.position.y += cave.restLower; cave.restLower = 0;
-      const parts = cave.parts;
-      parts.armL.quaternion = null;
-      parts.legR.rotation.x = parts.legL.rotation.x = 0;
-      parts.legR.rotation.z = parts.legL.rotation.z = 0;
-      parts.armR.rotation.x = parts.armL.rotation.x = -0.2;
-      parts.torso.rotation.x = parts.torso.rotation.z = 0;
+      cave.parts.armL.quaternion = null;
+      poseGait(cave, GAIT.stand);
     };
     const prepareDragged = (cave) => {
       if (cave.nonInteractive) return false;
@@ -5838,61 +5964,15 @@
       }
     };
     // Keep backward and lateral steps readable in a mirror without turning the body.
-    const closeWalkPose = (cave) => {
-      const parts = cave.parts;
-      const side = steer.strafe, backward = steer.forward < -0.05;
-      parts.torso.rotation.x = backward ? 0.07 : 0;
-      parts.torso.rotation.z = -side * 0.08;
-      parts.legR.rotation.z = parts.legL.rotation.z = side * 0.1;
-    };
-    const setPeekPart = (node, lean, pivot) => {
-      if (!node) return;
-      node.poseLean = lean;
-      node.poseLeanY = pivot;
-    };
-    // The root is already at the hips. Lean the body from there: a pivot
-    // above the torso pushes the hips out while barely moving the head.
-    // Held children inherit the lean; root-level gear follows it explicitly.
+    const closeWalkPose = (cave) => poseCloseWalk(cave, steer.strafe, steer.forward < -0.05);
     const posePeek = (cave, dt) => {
       cave.peek = damp(cave.peek, steer.peek, 14, dt);
       if (Math.abs(cave.peek) < 1e-4 && !steer.peek) cave.peek = 0;
-      const parts = cave.parts, lean = cave.peek * 0.5, pivot = 0;
-      setPeekPart(parts.torso, lean, pivot);
-      setPeekPart(parts.armR, lean, pivot);
-      setPeekPart(parts.armL, lean, pivot);
-      setPeekPart(parts.head, lean, pivot);
-      setPeekPart(parts.gun, parts.gun.parent === cave.root ? lean : 0, pivot);
-      setPeekPart(parts.club, parts.club.parent === cave.root ? lean : 0, pivot);
-      if (cave.jet) setPeekPart(cave.jet.node, cave.jet.node.parent === cave.root ? lean : 0, pivot);
-      for (let i = 0; i < cave.magazineModels.length; i++) {
-        const model = cave.magazineModels[i];
-        if (model) setPeekPart(model.node, model.node.parent === cave.root ? lean : 0, pivot);
-      }
+      leanBody(cave, cave.peek * 0.5);
     };
-    const aimPeek = (cave) => {
-      const w = cave.weapon, arm = cave.parts.armR, gun = cave.parts.gun, lean = arm.poseLean;
-      if (lean && w.equipped && w.aiming && !w.reloading && !w.reloadHandoff && !w.swapTime) {
-        // The shoulder follows the body, but the held rifle keeps pointing
-        // along the aim line even when aiming uphill or downhill while leaning.
-        // Express the inverse body roll in the arm's pre-twist frame.
-        math.quat.fromEuler(GUN_ARM, 0, -arm.poseYaw, 0);
-        math.quat.fromEuler(GUN_GRIP, 0, 0, -lean);
-        math.quat.multiply(GUN_ARM, GUN_ARM, GUN_GRIP);
-        math.quat.fromEuler(GUN_GRIP, 0, arm.poseYaw, 0);
-        math.quat.multiply(GUN_ARM, GUN_ARM, GUN_GRIP);
-        math.quat.multiply(arm.quaternion, GUN_ARM, arm.quaternion);
-        math.quat.multiply(gun.quaternion, GUN_ARM, gun.quaternion);
-        math.quat.rotateVec(MUZZLE, GUN_ARM, gun.position.x - arm.position.x, gun.position.y - arm.position.y, gun.position.z - arm.position.z);
-        setVec(gun.position, arm.position.x + MUZZLE[0], arm.position.y + MUZZLE[1], arm.position.z + MUZZLE[2]);
-      }
-    };
+    const aimPeek = aimLean;
     // Flying pose, legs trailing and arms out
-    const flyPose = (cave) => {
-      const parts = cave.parts;
-      parts.legR.rotation.x = -0.5;
-      parts.legL.rotation.x = -0.3;
-      parts.armR.rotation.x = parts.armL.rotation.x = -1.1;
-    };
+    const flyPose = (cave) => poseGait(cave, GAIT.fly);
     // A passive route walk follows its predetermined waypoints in order: straight
     // steps on terrain, passing through bodies and objects. A `fixed` waypoint is
     // reached along the authored spokes and pile ring. Arrival rests at a chill
@@ -6318,12 +6398,7 @@
         startWander(cave);
       }
     };
-    const footSparks = (cave, power) => {
-      const p = cave.root.position, side = cave.traits.height * 2.5 / 16, yaw = cave.root.rotation.y;
-      const dx = Math.cos(yaw) * side, dz = -Math.sin(yaw) * side;
-      ctx.fx.burst(p.x - dx, p.y - cave.baseY + 0.04, p.z - dz, power, JET_SPARKS, 1.1);
-      ctx.fx.burst(p.x + dx, p.y - cave.baseY + 0.04, p.z + dz, power, JET_SPARKS, 1.1);
-    };
+    const footSparks = (cave, power) => soleSparks(ctx.fx, cave, power);
     const runRocketJump = (cave, dt) => {
       const burning = jetpackRefills(cave) && cave.rocketJumpTime > 0 && cave.rocketJumpHeld && cave.hopV > 0 && !cave.health.stunned;
       if (!burning) cave.rocketJumpTime = 0;
@@ -6360,11 +6435,7 @@
         jet.puff -= dt;
         if (jet.puff <= 0) {
           jet.puff = JET_PUFF;
-          if (cave.traits.footRockets) footSparks(cave, jet.power / 2);
-          else {
-            const p = cave.root.position;
-            ctx.fx.burst(p.x, p.y + 0.12, p.z, jet.power, JET_SPARKS, 1.1);
-          }
+          jetSparks(ctx.fx, cave, jet.power);
         }
       }
       jet.flame.visible = jet.power > 0;
@@ -6415,15 +6486,11 @@
     // A ladder owns a vertical body rectangle and a separate horizontal footprint. The top quarter of the
     // vertical rectangle clearing the landing starts the inward handoff; feet still rise at climbing speed.
     const ladderPose = (cave) => {
-      const l = cave.ladder, parts = cave.parts, wave = Math.sin(cave.act.phase), mix = l.mix;
+      const mix = cave.ladder.mix;
       standPose(cave);
-      parts.torso.rotation.x = -0.12 * mix;
-      parts.armR.rotation.x = lerp(-0.2, -2.2 + wave * 0.2, mix);
-      parts.armL.rotation.x = lerp(-0.2, -2.2 - wave * 0.2, mix);
-      parts.legR.rotation.x = wave * 0.35 * mix;
-      parts.legL.rotation.x = -wave * 0.35 * mix;
-      parts.head.rotation.x = -0.1 * mix;
-      parts.snack.visible = false;
+      poseGait(cave, GAIT.ladder, cave.act.phase, mix);
+      cave.parts.head.rotation.x = -0.1 * mix;
+      cave.parts.snack.visible = false;
     };
     const leaveLadder = (cave) => {
       const l = cave.ladder;
@@ -6552,10 +6619,7 @@
         flyPose(cave);
       }
       if (flying || liftOnly && cave.jet?.thrust) flyPose(cave);
-      else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave)) {
-        flyPose(cave);
-        cave.parts.armR.rotation.x = cave.parts.armL.rotation.x = -2.1;
-      }
+      else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave)) poseGait(cave, GAIT.fall);
       // Airborne he holds a world height, so ground steps never lift him.
       if (flying || cave.hop > 0) cave.hop = Math.max(0, cave.hop + wasGround - groundY(cave));
       else {
@@ -7116,13 +7180,7 @@
     const makeJetpack = (cave, geometry, flameGeometry) => {
       const node = jetpackNode(cave.root, cave.traits.height, cave.viewLift, geometry, flameGeometry);
       cave.jet = { node, flame: node.children[0], thrust: false, spending: false, power: 0, puff: 0 };
-      if (cave.modelled) {
-        // On a modelled body the pack sits on the back itself; `side` and `depth` are how far it reaches to either
-        // side and behind, for what is slung beside it and over it.
-        const bounds = BL.scene.boundsOf(geometry), h = cave.traits.height;
-        node.position.z = -cave.back - bounds.max[2] * h;
-        cave.jet.side = bounds.max[0] * h; cave.jet.depth = (bounds.max[2] - bounds.min[2]) * h;
-      }
+      seatJetpack(cave, node, geometry, cave.jet);
       return node;
     };
     const builtInJetpack = (cave) => !!cave.parts.jetpack;
@@ -8246,5 +8304,5 @@
       }
     };
   };
-  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, reachArm, captureMeleePose, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, captureMeleePose, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();

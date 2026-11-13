@@ -154,9 +154,11 @@
       }
       return fx.zzzAt(x, y, z, cave);
     };
-    recordingFx.burst = (x, y, z, count, geos, speed) => {
+    // A burst that names its body is passed on only when that body is an NPC: a player's own sparks are drawn by every
+    // page from their pose (remote-players.js), so they are never sent twice.
+    recordingFx.burst = (x, y, z, count, geos, speed, cave = null) => {
       const kind = geos === BL.crew.LAND_DUST ? "dust" : geos === BL.crew.JET_SPARKS ? "sparks" : "";
-      if (kind) {
+      if (kind && !(cave && npcIndex(cave) < 0)) {
         const e = record("b");
         if (e) { e.kind = kind; e.x = x; e.y = y; e.z = z; e.count = count; e.speed = speed; }
       }
