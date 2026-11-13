@@ -27,12 +27,12 @@ export const sfuClient = (env, measured = null) => {
     }
   };
   return {
-    // The SFU can wait five seconds for transport before answering. Cleanup must allow that answer to arrive,
-    // rather than aborting at the same deadline and losing the distinction between an expired session and an outage.
-    getSession: (sessionId) => call("GET", `/sessions/${sessionId}`, undefined, 8000),
+    // Background cleanup can wait for the SFU's five-second transport response. Request-path cleanup keeps its
+    // shorter deadline because it may follow another SFU call inside the browser's ten-second signalling budget.
+    getSession: (sessionId, background = false) => call("GET", `/sessions/${sessionId}`, undefined, background ? 8000 : 5000),
     newSession: () => call("POST", "/sessions/new"),
     newTracks: (sessionId, body) => call("POST", `/sessions/${sessionId}/tracks/new`, body),
     renegotiate: (sessionId, sdp) => call("PUT", `/sessions/${sessionId}/renegotiate`, { sessionDescription: { type: "answer", sdp } }),
-    closeTracks: (sessionId, mids) => call("PUT", `/sessions/${sessionId}/tracks/close`, { tracks: mids.map((mid) => ({ mid })), force: true }, 8000),
+    closeTracks: (sessionId, mids, background = false) => call("PUT", `/sessions/${sessionId}/tracks/close`, { tracks: mids.map((mid) => ({ mid })), force: true }, background ? 8000 : 5000),
   };
 };

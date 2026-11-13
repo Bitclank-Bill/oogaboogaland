@@ -239,8 +239,10 @@ test("SFU stays unavailable without secrets and uses bounded upstream calls with
     assert.ok(calls.every(c => c.url.startsWith("https://rtc.live.cloudflare.com/v1/apps/fixture-app/sessions/")));
     assert.equal(JSON.parse(calls[3].options.body).force, true);
     await client.getSession("fixture");
-    assert.ok(deadlines[3] > 5000 && deadlines[3] < 10000 && deadlines[4] > 5000 && deadlines[4] < 10000,
-      "cleanup leaves room for the SFU's five-second transport response within the client's signalling deadline");
+    assert.deepEqual(deadlines, [5000, 5000, 5000, 5000, 5000], "request-path SFU calls keep their existing deadlines");
+    await client.closeTracks("fixture", ["0"], true); await client.getSession("fixture", true);
+    assert.ok(deadlines[5] > 5000 && deadlines[5] < 10000 && deadlines[6] > 5000 && deadlines[6] < 10000,
+      "only background cleanup allows the longer transport response deadline");
     globalThis.fetch = async () => ({ ok: false, status: 410, json: async () => ({ errorCode: "session_error" }) });
     await assert.rejects(client.getSession("fixture"), err => err.status === 410 && err.code === "session_error",
       "a terminal upstream response reaches cleanup instead of being obscured as a local timeout");
@@ -669,7 +671,10 @@ test("a pull keeps still-eligible tracks, closes the rest through cleanup and re
   b.voice = { ...b.voice, pub: "pub-b", track: "mic", gen: 1 };
   c.voice = { ...c.voice, pub: "pub-c", track: "mic", gen: 1 };
   let answer; room.sfu.newTracks = () => new Promise(resolve => { answer = resolve; });
-  const closed = []; room.sfu.closeTracks = async (session, mids) => { closed.push([session, [...mids]]); return { tracks: mids.map(mid => ({ mid })) }; };
+  const closed = []; room.sfu.closeTracks = async (session, mids, background) => {
+    assert.equal(background, false, "a pull's inline close must not take the longer background deadline");
+    closed.push([session, [...mids]]); return { tracks: mids.map(mid => ({ mid })) };
+  };
   const request = call(listener, "pull", { ids: [1, 3, 4, 3] });
   await new Promise(resolve => setImmediate(resolve));
   b.pokerVoice = 2; // moved to another table while the SFU answered
@@ -769,7 +774,8 @@ test("a slow cleanup pass advances the sweep from completion instead of scheduli
   room.ctx.storage.setAlarm = async at => { registered = at; };
   room.sweepAt = now;
   room.cleanupJobs = [{ session: "slow", at: now, mids: ["0"], revision: 0, midVersions: { 0: 0 } }];
-  room.sfu.closeTracks = async (_session, mids) => {
+  room.sfu.closeTracks = async (_session, mids, background) => {
+    assert.equal(background, true, "the alarm's cleanup uses the longer background deadline");
     now += protocol.SWEEP_MS + 1000;
     return { tracks: mids.map(mid => ({ mid })) };
   };
@@ -914,7 +920,10 @@ test("leave persists cleanup and notifies peers before its own SFU close complet
   listener.voice = { sub: "listener", mids: {} };
   room.updateVoice();
   let release; const blocked = new Promise(resolve => { release = resolve; });
-  room.sfu.closeTracks = async (_session, mids) => { await blocked; return { tracks: mids.map(mid => ({ mid })) }; };
+  room.sfu.closeTracks = async (_session, mids, background) => {
+    assert.equal(background, true, "deferred departure cleanup uses the longer background deadline");
+    await blocked; return { tracks: mids.map(mid => ({ mid })) };
+  };
   try {
     assert.equal((await call(player, "leave", {})).status, 200);
     assert.equal(listener.ws.sent.filter(m => m.t === "voice").at(-1).peers.length, 0);

@@ -1617,11 +1617,11 @@ export class Room extends DurableObject {
     // Persist and arm the retry before upstream I/O. Retired sessions never hold up a new one.
     if (!this.cleanupAt) this.cleanupAt = Date.now() + SWEEP_MS;
     if (this.ctx && this.ctx.storage) await this.ensureSweep();
-    if (deferred) this.background(this.retryCleanup(session));
+    if (deferred) this.background(this.retryCleanup(session, true));
     else await this.retryCleanup(session);
   }
 
-  async retryCleanup(session = null) {
+  async retryCleanup(session = null, background = !session) {
     if (!this.sfu || !this.cleanupJobs || !this.cleanupJobs.length) return;
     if (!session && this.cleanupRunning) return this.cleanupRunning;
     const tasks = this.cleanupTasks ||= new Map();
@@ -1643,7 +1643,7 @@ export class Room extends DurableObject {
           if (job.inspect) {
             const priorVersions = { ...(job.midVersions || {}) };
             try {
-              const state = await this.sfu.getSession(job.session);
+              const state = await this.sfu.getSession(job.session, background);
               const inactive = new Set((state.tracks || []).filter(t => t.status === "inactive").map(t => t.mid));
               job.mids = job.mids.filter(mid => !inactive.has(mid) || (job.midVersions || {})[mid] !== priorVersions[mid]);
               // Only a session nobody holds any more is swept for what is left. On a live one that would close every voice
@@ -1661,7 +1661,7 @@ export class Room extends DurableObject {
           const mids = job.mids.slice();
           const versions = { ...(job.midVersions || {}) };
           if (mids.length) attempt.operation = "close";
-          const res = mids.length ? await this.sfu.closeTracks(job.session, mids) : { tracks: [] };
+          const res = mids.length ? await this.sfu.closeTracks(job.session, mids, background) : { tracks: [] };
           // Cloudflare's close_track_error confirms an absent/already-closed track. Other errors and missing rows retry.
           const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map(t => t.mid));
           job.mids = job.mids.filter(mid => !succeeded.has(mid) || (job.midVersions || {})[mid] !== versions[mid]);
