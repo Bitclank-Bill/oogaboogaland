@@ -1634,6 +1634,8 @@ export class Room extends DurableObject {
         if (Date.now() - (job.at ??= Date.now()) > CLEANUP_MS) { this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1); continue; }
         let finished;
         tasks.set(job.session, new Promise(resolve => { finished = resolve; }));
+        this.cleanupAttempt = { at: Date.now(), operation: job.inspect ? "inspect" : "close", finished: 0, status: 0 };
+        const attempt = this.cleanupAttempt;
         try {
           const revision = job.revision || 0;
           let inspected = !job.inspect;
@@ -1649,6 +1651,7 @@ export class Room extends DurableObject {
               if (!held) job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
               inspected = true;
             } catch (err) {
+              attempt.status = Number(err.status) || 0;
               if (err.status === 404) throw err;
               // An inspection timeout must not prevent closing MIDs we already own. Keep the inspection pending,
               // even if those closes succeed: the timed-out allocation may still have left other tracks behind.
@@ -1656,6 +1659,7 @@ export class Room extends DurableObject {
           }
           const mids = job.mids.slice();
           const versions = { ...(job.midVersions || {}) };
+          if (mids.length) attempt.operation = "close";
           const res = mids.length ? await this.sfu.closeTracks(job.session, mids) : { tracks: [] };
           // Cloudflare's close_track_error confirms an absent/already-closed track. Other errors and missing rows retry.
           const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map(t => t.mid));
@@ -1667,10 +1671,11 @@ export class Room extends DurableObject {
           if (!inspected || (job.revision || 0) !== revision || job.mids.length || (job.inspect && Date.now() < job.inspectUntil)) continue;
           this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
         } catch (err) {
+          attempt.status = Number(err.status) || 0;
           // A confirmed absent upstream session owns no tracks and needs no further retry.
           if (err.status === 404) this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
           // Other failures retain ownership for the existing room alarm.
-        } finally { tasks.delete(job.session); finished(); }
+        } finally { attempt.finished = Date.now(); tasks.delete(job.session); finished(); }
       }
       // Remaining jobs retry at the next wake: at most a sweep interval away, and sooner if another wake comes first.
       if (!this.cleanupJobs.length) this.cleanupAt = 0;
@@ -1740,6 +1745,7 @@ export class Room extends DurableObject {
 
   // Sockets silent past STALE_MS, auto-answered pings included, are evicted as stale.
   async alarm() {
+    this.alarmStarted = Date.now();
     hockey.sweep(this);
     block.sweep(this);
     const now = Date.now();
@@ -1770,6 +1776,7 @@ export class Room extends DurableObject {
     }
     const next = this.nextAlarm();
     if (next !== null) await this.ctx.storage.setAlarm(next);
+    this.alarmFinished = Date.now();
     this.inspect.tick();
   }
 
@@ -1802,6 +1809,8 @@ export class Room extends DurableObject {
     return { status: this.players.size ? "live" : "empty", players: this.players.size, maxPlayers: MAX_PLAYERS, sockets: this.ctx.getWebSockets().length,
       zones, hub, hidden, driving, host: host ? host.login : null, followers: this.followers, speaking, listening, pulled, maxPulled, pullCap: 64,
       cleanup: this.cleanupJobs.length, cleanupCap: 64, doors: this.doorQueue.length + (this.doorActive ? 1 : 0), tickHz: TICK_HZ,
+      cleanupAttempt: this.cleanupAttempt || null, cleanupBusy: this.cleanupTasks ? this.cleanupTasks.size : 0,
+      alarmStarted: this.alarmStarted || 0, alarmFinished: this.alarmFinished || 0,
       flushPending: !!this.flushTimer, alarmAt: this.nextAlarm(), attachMax: detail ? attachMax : undefined, rows };
   }
 
