@@ -393,8 +393,8 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .sheet {
-  --sheet-chat-top: 207px;
-  --sheet-chat-left: 216px;
+  --sheet-chat-top: 143px;
+  --sheet-chat-left: 144px;
   position: fixed;
   top: calc(52px + var(--safe-top));
   right: 0;
@@ -662,9 +662,7 @@ body[data-active-scene="block"] .mode-hud {
 }
 
 .sheet-panels { display: contents; }
-.sheet-toggle-loot { top: 143px; height: 56px; }
 .sheet-toggle-chat { top: var(--sheet-chat-top); height: 56px; }
-.sheet:has(.sheet-toggle-loot[hidden]) { --sheet-chat-top: 143px; --sheet-chat-left: 144px; }
 .sheet-toggle svg { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
 .sheet[data-open="true"] .sheet-toggle[aria-selected="true"] .sheet-tab-face { background: linear-gradient(90deg, #b8844a, var(--plank)); }
 .sheet-toggle:focus-visible .sheet-tab-face { outline: 2px solid var(--accent); outline-offset: -3px; }
@@ -768,7 +766,6 @@ body[data-active-scene="block"] .mode-hud {
 
 .sheet[data-dock="bottom"] .sheet-toggle-bananas { left: 0; }
 .sheet[data-dock="bottom"] .sheet-toggle-bananas .sheet-tab-face { padding: 4px 18px 0; }
-.sheet[data-dock="bottom"] .sheet-toggle-loot { left: 144px; }
 .sheet[data-dock="bottom"] .sheet-toggle-chat { left: var(--sheet-chat-left); }
 
 /* Every panel touches an edge; its tabs face inward and fit with its body. */
@@ -2829,7 +2826,6 @@ body[data-active-scene="block"] .mode-hud {
 }
 
 .field input,
-.loot-assign,
 .chat-form input {
   width: 100%;
   min-height: 38px;
@@ -2843,7 +2839,6 @@ body[data-active-scene="block"] .mode-hud {
 }
 
 .field input:focus-visible,
-.loot-assign:focus-visible,
 .chat-form input:focus-visible {
   border-color: var(--accent);
 }
@@ -2892,122 +2887,6 @@ body[data-active-scene="block"] .mode-hud {
 .link:hover,
 .link.virtual-hover {
   color: var(--paper);
-}
-
-.loot {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.loot-row {
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  align-items: center;
-  column-gap: 12px;
-  row-gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.loot-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--tier) 22%, transparent), rgba(0, 0, 0, 0.4) 75%);
-  border: 1px solid color-mix(in srgb, var(--tier) 35%, transparent);
-}
-
-.loot-main {
-  min-width: 0;
-}
-
-.loot-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.loot-name {
-  min-width: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.loot-tier {
-  flex: none;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: var(--tier);
-  border: 1px solid color-mix(in srgb, var(--tier) 45%, transparent);
-  background: color-mix(in srgb, var(--tier) 10%, transparent);
-}
-
-.loot-count {
-  flex: none;
-  min-width: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--fg);
-  color: #111;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-}
-
-.loot-worn {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.chip {
-  padding: 2px 8px 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--muted);
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.chip::after {
-  content: " ×";
-  color: var(--faint);
-}
-
-.chip:hover,
-.chip.virtual-hover {
-  color: var(--fg);
-  border-color: rgba(229, 83, 61, 0.6);
-}
-
-.chip:hover::after,
-.chip.virtual-hover::after {
-  color: var(--danger);
-}
-
-.loot-assign {
-  grid-column: 1 / -1;
-  min-height: 34px;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position: calc(100% - 16px) 14px, calc(100% - 11px) 14px;
-  background-size: 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 28px;
-}
-
-.loot-assign:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Account controls stay with their panel, including when detached. */
@@ -7999,8 +7878,7 @@ body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px +
 }
 
 @media (min-width: 620px) and (max-width: 720px) {
-  .sheet[data-dock="bottom"] .panel[data-panel="roster"] > .roster,
-  .sheet[data-dock="bottom"] .panel[data-panel="loot"] > .loot {
+  .sheet[data-dock="bottom"] .panel[data-panel="roster"] > .roster {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 16px;

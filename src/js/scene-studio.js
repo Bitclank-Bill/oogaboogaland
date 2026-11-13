@@ -437,7 +437,7 @@
     camera = createCamera({ fov: 42, near: 0.1, far: 120 });
     root = createNode();
     addChild(root, createNode({ geometry: pad() }));
-    hud = hudMod.create({ signal: ctx.signal, roster: [entry], catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: false });
+    hud = hudMod.create({ signal: ctx.signal, roster: [entry] });
     hud.setAreaLabel("Studio");
     // The studio stands alone: the title's link, which goes back to the island from every other place, stays here and
     // stands the Ooga at home, and the tab says where this is.

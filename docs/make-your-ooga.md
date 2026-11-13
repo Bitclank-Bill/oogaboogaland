@@ -70,8 +70,7 @@ comments you need kept (the bundle rewrites the file from its data).
   - `height` from 0.8 to 1.3 (a hashed Ooga is 0.92 to 1.16);
   - `eyeGlow` from 0 to 1, with `eyeColor`, for eyes that shine;
   - true or false: `bald`, `hairless`, `cleanShaven`, `noBrow`, `wideEyes`, `noPupils`;
-  - `hatY` (-4 to 20) and `portrait` (`min` and `max` corners), which only place a hat and
-    frame the face icon.
+  - `portrait` (`min` and `max` corners), which only frames the face icon.
 - `voice` is `poke` and 1 to 24 `idle` lines, plain text, 160 characters at most.
 
 `cigarette`, `gasMask`, `stoneAxe`, `skater` and `pumpkin` are also accepted as true or

@@ -1660,7 +1660,7 @@
       }
       for (const child of node.children) includeHeadPart(child);
     };
-    // Distance past which hiding work is provably idle: hats and floating swag
+    // Distance past which hiding work is provably idle: hats and headgear
     // keep the head subtree within ~3.5 m of the root even on the tallest Ooga
     // (height 1.16) under step lift, and the widest near-plane corner (near
     // 0.5 m at MAX_FOV on an ultrawide) reaches ~1.3 m beyond the eye, so
