@@ -203,7 +203,7 @@
       }
       const entry = { id: rec.id, body: rec.body, name, gorilla, cave, motion, baseY: gorilla ? 0 : cave.root.position.y, height, top: NaN, dTop: 0,
         // The walk's step from the last sample, when it came and how fast it turned since the one before.
-        gaitAt: NaN, gaitPhase: 0, gaitRate: 0, puff: 0, jetNode: null, jetFlame: null, swing: 0, shotAt: -Infinity, lastHeld: 0, lastMode: 0, lastMelee: 0, sampleAt: 0, sampleMelee: 0, sampleFlags: 0, sampleSwap: 0, sampleSwapIndex: 0, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, ghosted: null, label: "", labelW: 0,
+        gaitAt: NaN, gaitPhase: 0, gaitRate: 0, puff: 0, jetNode: null, jetFlame: null, swing: 0, shotAt: -Infinity, lastHeld: 0, lastMode: 0, lastMelee: 0, sampleAt: 0, sampleSwap: 0, sampleSwapIndex: 0, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, ghosted: null, label: "", labelW: 0,
         react: "", reactT: 0, screenX: NaN, plateLeft: NaN, plateTop: NaN, plateW: 0, plateH: 0, plateTextX: NaN, plateBaseline: NaN, plateBarLeft: NaN, plateBarTop: NaN, pickOwner: { kind: "player", id: rec.id, cave, weaponType: "none" } };
       bodies.set(rec.id, entry);
       hideLocal(entry);
@@ -356,15 +356,11 @@
       }
       entry.sampleSwap = v ? v[7] : 0; entry.sampleSwapIndex = w.swapMagazine;
       const melee = held === 1 && v ? Math.max(0, v[8] / 1000 - age * (cave.traits.nunchaku ? 1.9 : 1)) : 0;
-      if (held === 1 && v && rec.visualAt !== entry.sampleAt && (v[8] > entry.sampleMelee + 30 || (flags & 128) !== (entry.sampleFlags & 128) || flags & 32 && !w.meleeHeld)) {
-        BL.crew.captureMeleePose(cave);
-      }
       entry.lastMelee = melee;
-      entry.sampleAt = rec.visualAt; entry.sampleMelee = v ? v[8] : 0; entry.sampleFlags = flags;
+      entry.sampleAt = rec.visualAt;
       w.meleeTime = melee;
       w.meleeHeld = held === 1 && fresh && !!(flags & 32);
       if (w.meleeHeld) w.meleeTime = Math.max(0.24, w.meleeTime);
-      w.meleeQuick = !!(flags & 64); w.meleeSide = flags & 128 ? -1 : 1;
       w.meleeHeldTime = v ? Math.min(1.24, v[9] / 1000 + (w.meleeHeld ? age : 0)) : 0;
       w.meleeCharge = v ? v[10] / 100 : 0;
       w.meleeStrikeTime = BL.crew.strikeTime();

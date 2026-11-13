@@ -1409,11 +1409,9 @@
       orbit.yaw = orbit.tYaw -= e.movementX * sensitivity;
       orbit.pitch = orbit.tPitch = clamp(orbit.tPitch + e.movementY * sensitivity, TRAILING_PITCH[0], TRAILING_PITCH[1]);
     };
-    // Mouse and trackpad taps expose the same buttons. Classify the release
-    // by its held duration, shared with the displayed charge and HUD button.
+    // Mouse and trackpad taps expose the same buttons.
     const releasePrimary = (cave, focused = null) => {
-      const released = crew.releaseSwing(cave, false, focused,
-        !!cave && cave.weapon.meleeHeldTime < BL.crew.MELEE_TAP_TIME);
+      const released = crew.releaseSwing(cave, false, focused);
       if (released) syncWeaponHud();
       return released;
     };
@@ -3001,7 +2999,7 @@
       }
       // Keep the world hold for reflections; the renderer applies the sight
       // pose only while uploading the player's camera view.
-      crew.poseWeapon(cave, camera, 0, closeMix * aimMix);
+      crew.poseWeapon(cave, camera, 0);
       cave.gunSightMix = adsMix * closeMix * aimMix;
       if (reticle.dataset.sight !== String(cave.gunSightMix > 0.95)) reticle.dataset.sight = String(cave.gunSightMix > 0.95);
       if (armed()) updateFeedback(cave, dt);
