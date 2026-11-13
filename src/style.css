@@ -2691,6 +2691,7 @@ body[data-active-scene="block"] .mode-hud {
 .diagnostics-label .players-speak { flex: 0 1 auto; white-space: normal; }
 .diagnostics-label input { flex: none; }
 #players-diagnostics-info { flex: none; padding: 0; }
+#players-diagnostics-status { color: #fff; }
 #players-diagnostics-help {
   position: absolute;
   top: 100%;
