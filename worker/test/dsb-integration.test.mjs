@@ -450,6 +450,24 @@ test("an inspection timeout still closes known tracks and retains unknown alloca
   assert.equal(room.cleanupJobs.length, 0);
 });
 
+test("cleanup retires confirmed expired SFU sessions but keeps other failures", async () => {
+  const { room, storage } = studioRoom();
+  const fail = (status, code) => async () => { const error = new Error("fixture"); error.status = status; error.code = code; throw error; };
+  for (const inspect of [true, false]) {
+    room.sfu.getSession = fail(410, "session_error");
+    room.sfu.closeTracks = fail(410, "session_error");
+    await room.queueClose("expired", ["0"], inspect);
+    assert.equal(room.cleanupJobs.length, 0, "both inspection and close can confirm a retired session");
+    assert.deepEqual(storage.get("voiceCleanup"), []);
+  }
+  for (const [status, code] of [[410, "other"], [425, "session_error"], [503, "session_error"]]) {
+    room.sfu.getSession = fail(status, code); room.sfu.closeTracks = fail(status, code);
+    await room.queueClose("unresolved", ["0"], true);
+    assert.equal(room.cleanupJobs.length, 1, "an unrelated status/code must not release ownership");
+    assert.deepEqual([...room.cleanupJobs[0].mids], ["0"]);
+  }
+});
+
 test("receive-only Studio departure forcibly closes subscriptions and moderation survives reentry", async () => {
   const { room, add, pending } = studioRoom(), host = add(1), listener = add(2, { body: null });
   room.studio.hostId = 1; room.studio.mode = "discussion";
@@ -740,6 +758,25 @@ test("a new cleanup repairs an overdue registered alarm without postponing a hea
   writes.length = 0;
   await room.scheduleAlarm();
   assert.equal(writes.length, 0, "an earlier pending wake is preserved");
+});
+
+test("a slow cleanup pass advances the sweep from completion instead of scheduling another overdue alarm", async t => {
+  const { room, add } = studioRoom();
+  let now = Date.now(), registered;
+  t.mock.method(Date, "now", () => now);
+  add(1, { login: "YellowBrokeIt", body: "YellowBrokeIt" });
+  room.ctx.getWebSocketAutoResponseTimestamp = () => null;
+  room.ctx.storage.setAlarm = async at => { registered = at; };
+  room.sweepAt = now;
+  room.cleanupJobs = [{ session: "slow", at: now, mids: ["0"], revision: 0, midVersions: { 0: 0 } }];
+  room.sfu.closeTracks = async (_session, mids) => {
+    now += protocol.SWEEP_MS + 1000;
+    return { tracks: mids.map(mid => ({ mid })) };
+  };
+  await room.alarm();
+  assert.equal(room.cleanupJobs.length, 0);
+  assert.equal(room.sweepAt, now + protocol.SWEEP_MS);
+  assert.equal(registered, room.sweepAt, "the next alarm is in the future after a long pass");
 });
 
 // Regression (#193 review): stored cleanup made SFU calls inside the constructor's blockConcurrencyWhile, where two

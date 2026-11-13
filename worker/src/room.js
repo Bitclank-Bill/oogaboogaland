@@ -51,6 +51,8 @@ import { STUDIO_TRANSPORT, STUDIO_ZONE, studioState, studioHostAllowed, studioCa
 import CAST_ROWS from "./characters.gen.json";
 
 const CAST = castIndex(CAST_ROWS);
+// A retired SFU session cannot own usable tracks. Other 410 responses are not proof of session expiry.
+const sfuSessionGone = err => err.status === 404 || (err.status === 410 && err.code === "session_error");
 
 export class Room extends DurableObject {
   constructor(ctx, env) {
@@ -1651,7 +1653,7 @@ export class Room extends DurableObject {
               inspected = true;
             } catch (err) {
               attempt.status = Number(err.status) || 0;
-              if (err.status === 404) throw err;
+              if (sfuSessionGone(err)) throw err;
               // An inspection timeout must not prevent closing MIDs we already own. Keep the inspection pending,
               // even if those closes succeed: the timed-out allocation may still have left other tracks behind.
             }
@@ -1672,7 +1674,7 @@ export class Room extends DurableObject {
         } catch (err) {
           attempt.status = Number(err.status) || 0;
           // A confirmed absent upstream session owns no tracks and needs no further retry.
-          if (err.status === 404) this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
+          if (sfuSessionGone(err)) this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
           // Other failures retain ownership for the existing room alarm.
         } finally { attempt.finished = Date.now(); tasks.delete(job.session); finished(); }
       }
@@ -1754,9 +1756,10 @@ export class Room extends DurableObject {
     this.alarmStarted = Date.now();
     hockey.sweep(this);
     block.sweep(this);
-    const now = Date.now();
     // Cleanup retries run on every wake, not only at sweep time.
     await this.retryCleanup();
+    // A full retry pass can outlast a sweep interval. Advance from completion, not the old start time.
+    const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;
     this.expireDoors(now);
     // A cancelled lease can leave its earlier alarm in place. Before the recorded sweep deadline that wake only
@@ -1781,7 +1784,7 @@ export class Room extends DurableObject {
       await this.ctx.storage.put("sweepAt", this.sweepAt);
     }
     const next = this.nextAlarm();
-    if (next !== null) await this.ctx.storage.setAlarm(next);
+    if (next !== null) { await this.ctx.storage.setAlarm(next); this.alarmRegisteredAt = next; }
     this.alarmFinished = Date.now();
     this.inspect.tick();
   }
