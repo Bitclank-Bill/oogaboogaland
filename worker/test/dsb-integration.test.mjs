@@ -225,9 +225,11 @@ test("voice lists survive the room sleeping and follow a microphone published ag
   assert.deepEqual(last(1), { t: "voice", peers: [2], gens: [99] }, "the tunnel and the hall share voice");
 });
 
-test("SFU stays unavailable without secrets and uses bounded upstream calls with mocked transport", async () => {
+test("SFU stays unavailable without secrets and uses bounded upstream calls with mocked transport", async t => {
   assert.equal(sfuClient({}), null);
   const original = globalThis.fetch, calls = [];
+  const deadlines = [];
+  t.mock.method(AbortSignal, "timeout", ms => { deadlines.push(ms); return new AbortController().signal; });
   globalThis.fetch = async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => ({ sessionId: "fixture" }) }; };
   try {
     const client = sfuClient({ REALTIME_APP_ID: "fixture-app", REALTIME_SECRET: "fixture-only" });
@@ -236,6 +238,12 @@ test("SFU stays unavailable without secrets and uses bounded upstream calls with
     assert.deepEqual(calls.map(c => c.options.method), ["POST", "POST", "PUT", "PUT"]);
     assert.ok(calls.every(c => c.url.startsWith("https://rtc.live.cloudflare.com/v1/apps/fixture-app/sessions/")));
     assert.equal(JSON.parse(calls[3].options.body).force, true);
+    await client.getSession("fixture");
+    assert.ok(deadlines[3] > 5000 && deadlines[3] < 10000 && deadlines[4] > 5000 && deadlines[4] < 10000,
+      "cleanup leaves room for the SFU's five-second transport response within the client's signalling deadline");
+    globalThis.fetch = async () => ({ ok: false, status: 410, json: async () => ({ errorCode: "session_error" }) });
+    await assert.rejects(client.getSession("fixture"), err => err.status === 410 && err.code === "session_error",
+      "a terminal upstream response reaches cleanup instead of being obscured as a local timeout");
   } finally { globalThis.fetch = original; }
 });
 
