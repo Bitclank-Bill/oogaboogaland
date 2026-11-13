@@ -3429,7 +3429,7 @@ const { npcLaneSpacingProbe, npcLaneCornerProbe, npcLaneCurveProbe, npcLabLanePr
       { id: "spectator", player: true, x: 20, y: 0, z: 20, radius: 0.3, height: 2.2 }] : [];
     const crew = BL.crew.create({ root, world: { level: 0 }, npcPaths, outsideActors: remote ? () => outside : null,
       input: { add: (node) => targets.add(node), remove: (node) => targets.delete(node) }, hud: { setRosterRow: noop },
-      game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 },
+      game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 },
       viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable,
       bedrolls: BL.contributors.roster.map((entry, i) => ({ x: 30 + i * 2, y: 0, z: 30, hidden: true })),
       fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop }
@@ -4854,6 +4854,7 @@ const characterChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
+  // `hatY` placed the loot crates' swag hats; nothing calls it now, and a file that still defines it builds the same.
   const collect = node => {
     if (node.geometry) mirrorGeometries.add(node.geometry);
     if (node.skins) for (const skin of Object.values(node.skins)) mirrorGeometries.add(skin);
@@ -4886,7 +4887,6 @@ const characterChecks = async () => {
   const unique = new Set(all.map((c) => c.handle.toLowerCase())).size === all.length;
   const ordered = all.every((c, i) => !i || all[i - 1].joined <= c.joined);
   record("characters: every src/characters file registers one handle, builds a whole Ooga and uses only known hooks", rows.length === CAST && CAST === BL.contributors.roster.length && unique && ordered && rows.every((r) => r.joined && r.built && r.parts && r.hooks && r.tint && r.voice && r.display && r.palette), JSON.stringify(rows.filter((r) => !(r.joined && r.built && r.parts && r.hooks && r.tint && r.voice && r.display && r.palette))));
-  for (const item of BL.models.SWAG) collect(item.buildNode());
   Object.assign(BL, { pilot: { WALK: { speed: 2.8, gravity: 9.8 } }, crew: { JUMP_SPEED: 4 } });
   for (const name of ["convex", "agent"]) runInNewContext(await readFile(join(root, `src/js/${name}.js`), "utf8"), context);
   const mouth = { x: 0, z: 0, ry: 0, floorY: 0 }, coatClip = BL.agent.labCoatClip(mouth), suitClip = BL.agent.suitClip(mouth);
@@ -5260,7 +5260,7 @@ const cloudHopperFailureChecks = async engine => {
     [99, 40, 0, 1], [-1, -1, 0, 1], [1.5, 1.5, 0, 1], ["5", "5", 0, 1]
   ]) {
     savedCloud = { last, unlocked, players: [{ login: "record-holder", best: [60000, 61000, 62000, 63000, 64000] }] };
-    const loaded = saveContext.window.BL.game.create({ catalog: [] }).state.cloudHopper;
+    const loaded = saveContext.window.BL.game.create().state.cloudHopper;
     cloudSave.last = loaded.last; cloudSave.unlocked = loaded.unlocked;
     actor.root.position.x = dock.position.x + 2; tick(0);
     savedLevels.push({ last, loaded: loaded.last, unlocked: loaded.unlocked, song: audioSong,
@@ -7472,14 +7472,14 @@ const gameRulesChecks = async () => {
     }
   }
   {
-    const g = BL.game.create({ catalog: [] });
+    const g = BL.game.create();
     g.recordCloudHopper("bitcoin-bill", 1, 50000, 4);
     g.recordCloudHopper("bitcoin-bill", 2, 70000, 4);
     g.recordCloudHopper("bitclank-bill", 1, 40000, 4);
     g.recordCloudHopper("bitclank-bill", 2, 80000, 4);
     g.recordCloudHopper("other", 1, 60000, 4);
     const key = g.cloudHopperPlayer({ id: 185141343, login: "Bitclank-Bill" });
-    const reloaded = BL.game.create({ catalog: [] });
+    const reloaded = BL.game.create();
     const claimant = reloaded.cloudHopperPlayer({ id: 99, login: "Bitcoin-Bill" });
     record("Cloud Hopper rename: verified ID merges per-level minimums once, survives reload, preserves others and rejects old-login inheritance",
       key === "github:185141343" && reloaded.cloudHopperBest(key, 1) === 40000 && reloaded.cloudHopperBest(key, 2) === 70000
@@ -8219,7 +8219,7 @@ const gameRulesChecks = async () => {
     M.clear();
   }
   {
-    const make = () => BL.game.create({ catalog: [] }), g = make();
+    const make = () => BL.game.create(), g = make();
     const bests = {
       race: [g.recordRace("bay", 30000, 100000, "silver"), !g.recordRace("bay", 31000, 101000, "bronze")],
       cup: [g.recordCup(2, 20), !g.recordCup(3, 30)],
@@ -8280,7 +8280,7 @@ const gameRulesChecks = async () => {
   }
   {
     store.set("oogaboogaland.v1", JSON.stringify({ arcade: { darts: 540, tickets: 17, prizes: [] } }));
-    const make = () => BL.game.create({ catalog: [] }), game = make();
+    const make = () => BL.game.create(), game = make();
     const fresh = game.arcadeBest("darts-1") === 0 && game.arcadeBest("darts-2") === 0;
     const first = game.recordArcade("darts", 180, "darts-1"), second = game.recordArcade("darts", 120, "darts-2");
     const refused = !game.recordArcade("darts", 90, "darts-1") && !game.recordArcade("darts", NaN, "darts-1")
@@ -12320,7 +12320,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
       await b.evaluate('__ooga.hud.selectTab("bananas")');
       const metrics = await b.evaluate(`(() => { const costs = []; for (let i = 0; i < 24; i++) { const t = performance.now(); __ooga.advance(1 / 60, 1 / 60); costs.push(performance.now() - t); } costs.sort((a,b)=>a-b); return { median: costs[12], p95: costs[22], dom: document.getElementsByTagName("*").length }; })()`);
       rounds.push({ subscriptions: state.subscriptions, listeners: await listeners(), metrics });
-      record("shared panel: ordinary environments preserve the " + (pass ? "closed" : "open") + " choice and one content owner", rows.every(r => r.scene && r.painted && !r.hidden && r.open === String(!pass) && r.saved.tab === "bananas" && r.panels === 1 && r.content === 5), JSON.stringify(rows));
+      record("shared panel: ordinary environments preserve the " + (pass ? "closed" : "open") + " choice and one content owner", rows.every(r => r.scene && r.painted && !r.hidden && r.open === String(!pass) && r.saved.tab === "bananas" && r.panels === 1 && r.content === 4), JSON.stringify(rows));
     }
     record("shared panel: repeated travel keeps net subscriptions, DOM and event listeners bounded", rounds[0].subscriptions === rounds[1].subscriptions && rounds[0].metrics.dom === rounds[1].metrics.dom && JSON.stringify(rounds[0].listeners) === JSON.stringify(rounds[1].listeners), JSON.stringify(rounds));
     await b.evaluate('__ooga.hud.selectTab("bananas"); __ooga.hud.foldPanels()');
@@ -24219,9 +24219,9 @@ const bellState = `(() => {
     dx: drawn ? Math.abs(icon.left + icon.width / 2 - (r.left + bell.clientLeft + bell.clientWidth / 2)) : null,
     dy: drawn ? Math.abs(icon.top + icon.height / 2 - (r.top + bell.clientTop + bell.clientHeight / 2)) : null };
 })()`;
-const BELL_PANELS = "bananas,chat,loot,players,roster";
+const BELL_PANELS = "bananas,chat,players,roster";
 // Every panel's bell shows, closed, with the drawn bell within half a pixel of its circle's middle at the pointer's size.
-const bellsCentred = (s) => s.panels === BELL_PANELS && s.shown === 5 && s.expanded === 0 && s.size === (s.coarse ? "40x40" : "26x26") && s.dx <= 0.5 && s.dy <= 0.5;
+const bellsCentred = (s) => s.panels === BELL_PANELS && s.shown === 4 && s.expanded === 0 && s.size === (s.coarse ? "40x40" : "26x26") && s.dx <= 0.5 && s.dy <= 0.5;
 // #430: joins named and counted, chat lines counted, each count cleared only by looking at its tab, joins read aloud on request.
 const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes online is named on screen and counted on the Players tab, new chat lines are counted on the Ooga Chat tab, each count clears only when its tab is looked at, and joins are read aloud only when asked", run: async (b) => {
   // The Players panel is the saved selection, so it shows as soon as the visitor is signed in, without being looked at.
@@ -24364,8 +24364,8 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
       && spoken.said.join("|") === "Joins will be read aloud|Eve is online|Fay and Gus are online|Hal is online|Ivy is online|Joins will be read aloud|Lou is online"
       && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "" && out.stoppedWithoutNewBadge, JSON.stringify({ box, spoken, out }));
   const { pinned, out: bellsOut, back: bellsBack, again } = out.bells;
-  record("join alerts: signing out hides and closes every panel's bell, even one tapped open, and signing back in returns all five closed and centred",
-    pinned.expanded === 1 && pinned.shown === 5 && bellsOut.shown === 0 && bellsOut.expanded === 0 && out.bells.me && bellsCentred(bellsBack) && again.shown === 0, JSON.stringify(out.bells));
+  record("join alerts: signing out hides and closes every panel's bell, even one tapped open, and signing back in returns all four closed and centred",
+    pinned.expanded === 1 && pinned.shown === 4 && bellsOut.shown === 0 && bellsOut.expanded === 0 && out.bells.me && bellsCentred(bellsBack) && again.shown === 0, JSON.stringify(out.bells));
   await b.open(hubPage(src, "pos=0")); await untilReady(b);
   record("join alerts: the enabled reading choice survives reload", await b.evaluate('BL.players.stats.speakOn&&document.getElementById("players-speak-input").checked'));
 
@@ -27273,7 +27273,7 @@ const rescueChecks = BL => {
       keyBefore===keyAfter&&restored.dogs[keyAfter]?.name==="Bill Pup"&&restored.dogs[otherKey]?.name==="Other Pup"
       &&RD.accountKey({login:"Bitcoin-Bill"})===null&&RD.accountKey(null)===null
       &&RD.accountKey({id:3,login:"Someone"})==="someone"&&store.get(RD.KEY)===identityBefore&&restored.scooped===4);
-    const g=BL.game.create({catalog:[]}),apart=!("rescue" in g.state)&&!g.adoptDog&&!BL.game.RESCUE;store.set("oogaboogaland.v1","{}");g.resetAll();const reset=!store.has(RD.KEY)&&!store.has("oogaboogaland.v1");
+    const g=BL.game.create(),apart=!("rescue" in g.state)&&!g.adoptDog&&!BL.game.RESCUE;store.set("oogaboogaland.v1","{}");g.resetAll();const reset=!store.has(RD.KEY)&&!store.has("oogaboogaland.v1");
     const hungry=D.hungerAfter(0,D.HUNGRY*D.HUNGER_SECONDS-1)<D.HUNGRY&&D.hungerAfter(0,D.HUNGRY*D.HUNGER_SECONDS+1)>=D.HUNGRY&&D.hungerAfter(.99,1e6)===1;
     // Loading: every rescue module in DSB Land's deferred group, before dsb-interiors.js, which reads BL.rescueRoom.
     const tags=[...readFileSync(join(root,"src/index.html"),"utf8").matchAll(/<script src="js\/([^"]+)"( data-defer="dsb")?><\/script>/g)].map(m=>[m[1],!!m[2]]),at=n=>tags.findIndex(t=>t[0]===n);
@@ -28088,7 +28088,7 @@ const cabinetNetworkChecks = async BL => {
 const sheetRailChecks = async () => {
   const source = await readFile(join(root, "src/js/sheet.js"), "utf8");
   const refresh = source.slice(source.indexOf("    const refresh = () => {"), source.indexOf("    const close = (w) => {"));
-  const names = ["bananas", "roster", "players", "loot", "chat"];
+  const names = ["bananas", "roster", "players", "chat"];
   const make = tab => ({ tab, rect: {}, open: false, tabs: names.map(name => ({ dataset: { tab: name }, setAttribute() {}, style: { setProperty() {} } })),
     node: { dataset: { dock: "right" } }, body: { setAttribute() {} }, nav: { setAttribute() {} } });
   const main = make("roster"), detached = make("players"), windows = [main, detached];
@@ -28110,7 +28110,7 @@ const sheetRailChecks = async () => {
   context.signedIn = true; context.refresh(); const signedIn = read(), bellBack = rung();
   const unique = rows => rows.flat().length === new Set(rows.flat()).size;
   record("side panel rails: unowned tabs stay on main, detached Players keeps only its own tab, folding gathers tabs, and sign-out/in restores ownership without duplicates",
-    [closed, opened, folded, signedOut, signedIn].every(unique) && closed[0].join() === "bananas,roster,loot,chat" && closed[1].join() === "players"
+    [closed, opened, folded, signedOut, signedIn].every(unique) && closed[0].join() === "bananas,roster,chat" && closed[1].join() === "players"
       && opened[1].join() === "players" && folded.length === 1 && folded[0].length === names.length
       && signedOut.length === 1 && !signedOut[0].includes("players") && !signedOut[0].includes("chat") && signedIn[1].join() === "players",
     JSON.stringify({ closed, opened, folded, signedOut, signedIn }));
@@ -31173,7 +31173,7 @@ const npcActivityRefreshProof = (BL) => {
   try {
     C.roster.forEach(c => { c.lastCommitAt = c.lastContributionAt = now - ages.away; c.maintainer = false; });
     crew = BL.crew.create({ root: S.createNode(), world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
-      game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
+      game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
       buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: [],
       outdoorBedrolls: [{ x: 25, y: 0, z: 25, outdoor: true, node: { rotation: { y: 0 } } }],
       bedRoute: () => null, wanderSpot: out => { Object.assign(out, { x: -15, z: -15, ry: 0 }); return true; },
@@ -31789,7 +31789,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     const noop = () => {}, rows = [];
     let liftOnly = true, glides = 0, now = 0;
     const crew = BL.crew.create({ root: BL.scene.createNode(), world: { level: 0 }, playerName: "YellowBrokeIt",
-      input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: { assignments: {}, inventory: [] } },
+      input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: {} },
       viewYaw: 0, groundAt: () => 0, walkable: () => true, jetpackRefills: () => false,
       jetpackLiftOnly: () => liftOnly, glideJetCeiling: () => { glides++; return false; },
       fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
@@ -31841,7 +31841,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     let crew;
     try {
       crew = BL.crew.create({ root, world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
-        game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
+        game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
         buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: beds,
         bedRoute: (cave, bed) => [{ x: bed.x, y: bed.y, z: bed.z }],
         npcRecoverySpot: (cave, out) => {
@@ -31888,7 +31888,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     let escapeAllowed = false;
     const crew = BL.crew.create({ root, world: { level: 0 }, npcPaths,
       input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
-      game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 },
+      game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 },
       viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: (x, z, tx, tz) => escapeAllowed && Math.abs(tx - x) > 0.3 && Math.abs(tz - z) < 0.1,
       bedrolls: BL.contributors.roster.map((entry, i) => ({ x: 30 + i * 2, y: 0, z: 30, hidden: true })),
       fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop }
@@ -31929,7 +31929,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     const site = { repo: "oogaboogax/entropylab", route: [{ x: 0, z: 6 }], approachDistance: 2.5,
       position: (c, out, retry) => { if (retry) retries++; if (retry && searching && retries === 1) return false; if (retry && unchanged) return; Object.assign(out, { x: retry ? 2.2 : -2.2, y: 0, z: 5.504 }); if (retry && refuse) { out.x = NaN; c.work.place = 99; return false; } return true; } };
     const crew = BL.crew.create({ root, world: { level: 0 }, npcPaths, workSites: [site],
-      input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: { assignments: {}, inventory: [] } },
+      input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: {} },
       pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 },
       groundAt: () => 0, walkable: () => true, bedrolls: [],
       fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
@@ -32006,7 +32006,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
             while (detourIndex < detour.length - 1 && Math.hypot(p.x - detour[detourIndex].x, p.z - detour[detourIndex].z) < 1e-6) detourIndex++;
             Object.assign(c.avoidance.detour, detour[detourIndex]); return true;
           } : null,
-          game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 },
+          game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 },
           groundAt: () => 0, walkable: clear, bedrolls: [], fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
         try {
           const c = crew.list[0], blocker = crew.list[1];
@@ -32066,17 +32066,15 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     let crew;
     try {
       crew = BL.crew.create({ root, world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
-        game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
+        game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0,
         buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: [bed], outdoorBedrolls: outdoors,
         bedRoute: () => null, fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop }
       });
-      const oldest = crew.list[0], newest = crew.list.at(-1), next = crew.list.at(-2), item = S.createNode();
-      item.swag = {};
-      oldest.swagNodes.push(item); S.addChild(oldest.parts.hat, item);
+      const oldest = crew.list[0], newest = crew.list.at(-1), next = crew.list.at(-2);
       crew.refreshStates(true);
       const initial = bed.sleeper === newest && oldest.bedroll.outdoor;
       crew.poseWeapon(oldest);
-      const hiddenGear = !oldest.sleepWeapons.visible && !item.visible && oldest.parts.gun.parent === oldest.sleepWeapons;
+      const hiddenGear = !oldest.sleepWeapons.visible && oldest.parts.gun.parent === oldest.sleepWeapons;
       const roofSleep = crew.list.filter(c => c.bedroll?.outdoor).every(c => c.bedTravel.mode === "rest" && c.root.visible && c.root.position.y >= 8
         && c.root.quaternion && c.parts.head.geometry === c.headClosed);
       const savedNet = BL.net, savedSites = crew.workSites;
@@ -32088,9 +32086,9 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         BL.net.state.selfId = "follower";
         const savedJet = oldest.jet, jetNode = S.createNode();
         oldest.jet = { node: jetNode };
-        item.visible = oldest.sleepWeapons.visible = true;
+        oldest.sleepWeapons.visible = true;
         sync.update(0.3);
-        sharedGear = !item.visible && !oldest.sleepWeapons.visible && !jetNode.visible && oldest.remoteOutdoorSleep;
+        sharedGear = !oldest.sleepWeapons.visible && !jetNode.visible && oldest.remoteOutdoorSleep;
         oldest.jet = savedJet;
         sync.dispose();
         // Site indexes mean the same cave only when the ordered catalog matches.
@@ -32481,7 +32479,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
       const previous = oldest.bedroll;
       oldest.contributor.lastContributionAt = now;
       crew.refreshStates(); crew.poseWeapon(oldest);
-      const restored = oldest.state === "working" && !oldest.bedroll && !previous.sleeper && item.visible
+      const restored = oldest.state === "working" && !oldest.bedroll && !previous.sleeper
         && oldest.parts.gun.parent !== oldest.sleepWeapons && oldest.parts.club.parent !== oldest.sleepWeapons;
       record("sleep allocation: newest sleepers receive vacant beds, overflow lies on roofs with hidden gear, and waking restores items", initial && hiddenGear && roofSleep && sharedGear && priority && restored,
         JSON.stringify({ initial, hiddenGear, roofSleep, sharedGear, priority, restored }));
@@ -32493,7 +32491,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   {
     // Regression: all canonical physical bodies fit DSB's portal and landmark lanes.
     const S = BL.scene, root = S.createNode(), noop = () => {};
-    const crew = BL.crew.create({ root, world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: { assignments: {}, inventory: [] } }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: BL.contributors.roster.map((_, i) => ({ x: 30 + i * 2, y: 0, z: 30, hidden: true })), fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
+    const crew = BL.crew.create({ root, world: { level: 0 }, input: { add: noop, remove: noop }, hud: { setRosterRow: noop }, game: { state: {} }, pile: { footprintEdge: 1, pileEdge: () => 1 }, viewYaw: 0, buildSpots: [], walkIn: { x: 0, z: 3 }, groundAt: () => 0, walkable: () => true, bedrolls: BL.contributors.roster.map((_, i) => ({ x: 30 + i * 2, y: 0, z: 30, hidden: true })), fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
     const get = document.getElementById, listen = window.addEventListener, unlisten = window.removeEventListener;
     document.getElementById = () => { const node = el(); node.querySelector = () => el(); return node; };
     window.addEventListener = window.removeEventListener = () => {};
@@ -32540,7 +32538,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     // object and threw before completing the damage/recovery update.
     const root = BL.scene.createNode(), noop = () => {}, hits = [];
     const crew = BL.crew.create({ root, combatEnabled: true, world: { level: 0 }, playerName: "portlandhodl", viewYaw: 0, input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
-      game: { state: { assignments: {}, inventory: [] } }, groundAt: () => 0, walkable: () => true,
+      game: { state: {} }, groundAt: () => 0, walkable: () => true,
       fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: (x, y, z, amount) => hits.push({ x, y, z, amount }) } });
     try {
       const cave = crew.cavemen.values().next().value; cave.root.visible = true;

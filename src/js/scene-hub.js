@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { math, models, contributors, donations, terrain, hubModels, headquartersModels, poolModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, weather: weatherMod, chain, mempool, oogatronLive } = BL;
+  const { math, models, contributors, donations, terrain, hubModels, headquartersModels, poolModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, critters: crittersMod, weather: weatherMod, chain, mempool, oogatronLive } = BL;
   const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, updateWorld, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
@@ -260,7 +260,7 @@
   };
 
   // One visit's state: created in enter, dropped in leave.
-  let oogatronUnsub, renderer, game, world, go, lootEnabled, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, totemSolids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, npcSync, npcStatusBeams, npcGhosts;
+  let oogatronUnsub, renderer, game, world, go, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, totemSolids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, npcSync, npcStatusBeams, npcGhosts;
   // GAME MODE (`setGameMode`): an island event holds the island still for play while it runs.
   let gameMode = false, gameCombatOnly = false;
   let cloudHopper = null, cloudIsland = null, cloudPile = null, cloudPileSolids = null, cloudFinishFruit = null;
@@ -497,7 +497,6 @@
     if (!RENDER_OPTS.birdsEyeCutaway || RENDER_OPTS.cutawayMaxY >= 1e5 && !RENDER_OPTS.cutawayRegionCount && !cutawayPathsActive()) return;
     for (let i = 0; i < crew.list.length; i++) hideNodeIfCut(crew.list[i].root);
     for (let i = 0; i < props.length; i++) hideNodeIfCut(props[i].node);
-    for (let i = 0; i < crates.list.length; i++) hideNodeIfCut(crates.list[i].node);
     for (let i = 0; i < clankers.list.length; i++) hideNodeIfCut(clankers.list[i].root);
     for (let i = 0; i < clankerEquipment.length; i++) hideNodeIfCut(clankerEquipment[i].node);
     for (let i = 0; i < headquarters.mattresses.length; i++) hideNodeIfCut(headquarters.mattresses[i].node);
@@ -5684,10 +5683,8 @@
     const bananas = gameMod.bananasFor(donation.sats), shown = counted ? counted.rounded : bananas;
     pile.deliverBananas(bananas);
     celebrate(donation, shown);
-    const loot = lootEnabled ? game.lootFor(donation) : null;
     const who = donation.handle ? `@${donation.handle}` : "anon";
-    hud.toast(`+${gameMod.formatLarge(donation.sats)} sats · ${gameMod.formatLarge(shown)} banana${shown === 1 ? "" : "s"} · ${who}${loot ? ` · ${loot.tier} crate!` : ""}`);
-    if (loot) crates.spawnCrate(donation, loot, 0.9 + Math.min(1.5, bananas / pileMod.DROP_RATE));
+    hud.toast(`+${gameMod.formatLarge(donation.sats)} sats · ${gameMod.formatLarge(shown)} banana${shown === 1 ? "" : "s"} · ${who}`);
     hud.setStats(game.state);
   };
 
@@ -5700,8 +5697,6 @@
         return o.cave.traits.display;
       case "clanker":
         return `🦍 ${o.entry.owner.traits.display}`;
-      case "crate":
-        return `${o.crate.loot.tier} crate · tap to open`;
       case "cave":
         return o.slot.status === "open" ? o.slot.scene === "lab" ? `${o.slot.name} · island workshop` : o.slot.title ? `${o.slot.name} · ${o.slot.title}` : walkedInto(o.slot) ? `${o.slot.name} · walk in through the cave` : `${o.slot.name} · tap to enter` : o.slot.status === "headquarters" ? "Headquarters · walk down the ramp" : o.slot.status === "mirror" ? `${o.slot.name} · mirror` : o.slot.status === "sleeping" ? "A project sleeps here · zzz" : o.slot.soon ? `${o.slot.name} · coming soon` : "An empty cave";
       case "arcade-cabinet":
@@ -6542,9 +6537,6 @@
         break;
       case "clanker":
         hud.toast(tooltipFor(hit));
-        break;
-      case "crate":
-        crates.openCrate(o.crate);
         break;
       case "cave":
         if (o.slot.status === "open" && !walkedInto(o.slot)) enterCave(o.slot);
@@ -8306,7 +8298,6 @@
         fx.zzzAt(s.x, s.y, s.z);
       }
     }
-    crates.update(dt, elapsed);
     fx.update(dt);
     stepTweens(dt);
     if (hammock) hammock.syncRopes(RENDER_OPTS.windTime, renderer.kind === "webgl2");
@@ -10900,16 +10891,6 @@
     drawFirstPersonFire(crew.player);
   };
 
-  const onLootCleared = () => {
-    if (!lootEnabled) return;
-    crew.applyAllSwag();
-    crew.renderLocker();
-    hud.toast("Loot locker cleared");
-  };
-  const clearLoot = () => {
-    game.clearLoot();
-    onLootCleared();
-  };
   // A demo tip is the simulation's alone: in real mode it would count a tip nobody paid.
   const demoTip = (sats) => {
     if (!donations.real) onDonation({ id: `demo-${Date.now()}`, sats, handle: game.state.handle, message: game.state.message, at: Date.now() });
@@ -11073,7 +11054,7 @@
     return { targets: input.targetCount };
   };
   const resumeHub = (ctx) => {
-    ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
+    ({ renderer, game, world, go, testBananas } = ctx);
     glCanvas = ctx.canvas; overlayCanvas = ctx.overlay;
     heldHub = false;
     listenHammockShots();
@@ -11150,7 +11131,6 @@
     if (donate) hud.openFeed();
     clankers.sync(); clankerMeshes.sync();
     for (let i = 0; i < crew.list.length; i++) crew.refreshRosterRow(crew.list[i]);
-    if (lootEnabled) { crew.applyAllSwag(); crew.renderLocker(); }
     hud.setStats(game.state); pile.syncPile(true);
     stateTimer = window.setInterval(() => { crew.refreshStates(); fx.trimPool(); }, 6e4);
     lampSelValid = false; sampledDay = 0;
@@ -11240,7 +11220,7 @@
     prefetchAt = 0;
     reuseHub = ctx.hubPolicy === "keep";
     if (heldHub) { resumeHub(ctx); return; }
-    ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
+    ({ renderer, game, world, go, testBananas } = ctx);
     poolEffectsActive = false; poolEffectsTime = 0;
     glCanvas = ctx.canvas;
     factoryDeparting = bifrostDeparting = factoryHeld = false;
@@ -11293,7 +11273,7 @@
       CAMERA_OPENINGS.push({ id: m.id, caveIndex: i + 1, mouth: m, sr, cr, minX: PORTAL_MIN_X, maxX: PORTAL_MAX_X, minY: PORTAL_MIN_Y, maxY: PORTAL_MAX_Y, planeZ: PORTAL_Z, blocked, headquarters: slot.status === "headquarters", ramp: slot.status === "headquarters" ? island.headquarters.ramps.find((entry) => entry.id === m.id) : null, stopZ: blocked ? 0.53 + hubModels.sealedCaveFace(sealedCaveVariant(slot.id)).frontZ : PORTAL_Z, rim: hubModels.caveMouthRim().openingBounds });
     }
     mark("island");
-    hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
+    hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster });
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks, preciseHover: true });
     COMBAT_POINTER.x = COMBAT_POINTER.y = -1; combatTotemHovered = false; combatTotemLink = null;
@@ -11931,7 +11911,6 @@
     shared.addSolid = solids.add;
     shared.removeSolid = solids.remove;
     mark("cavemen");
-    crates = shared.crates = cratesMod.create(shared);
     pilot.bind(shared);
     // The doorway draws the island once from inside the passage for the way back out (`renderView`), sets the
     // sphere's heartbeat going while a room readies slowly (`show`), and hands a crossing the island's own meshes to
@@ -12073,24 +12052,6 @@
     clankers.clear = clankerClear;
     if (DEBUG) { clankers.supportAt = clankerSupportAt; clankers.restFootingClear = clankerRestFootingClear; }
 
-    hud.onAssign((entryId, name) => {
-      if (game.assign(entryId, name)) {
-        crew.applyAllSwag();
-        crew.renderLocker();
-        const cave = crew.cavemen.get(name);
-        const item = game.itemOf(entryId);
-        if (cave && item) {
-          fx.say(cave, `Ooga! ${item.name}!`);
-          hud.toast(`${item.name} → ${name}`);
-        }
-      }
-    });
-    hud.onUnassign((name) => {
-      game.unassign(name);
-      crew.applyAllSwag();
-      crew.renderLocker();
-    });
-
     Object.assign(hooks, {
       onHover: showHoverTooltip,
       onHoverMove: showHoverTooltip,
@@ -12136,8 +12097,7 @@
       }
       if (factoryDeparting || bifrostDeparting || islandGuide.holding) return false;
       if (clankerPlay.active && clankerPlay.action(action)) return;
-      if (action === "clear-loot") clearLoot();
-      else if (action === "reset") resetDemo();
+      if (action === "reset") resetDemo();
       else if (action === "act") pilot.action();
       else if (action === "mode-preset") {
         (clankerPlay.active ? clankerPlay : pilot).freeCursor();
@@ -12220,10 +12180,6 @@
       fx.trimPool();
     }, 6e4);
     for (let i = 0; i < crew.list.length; i++) crew.refreshRosterRow(crew.list[i]);
-    if (lootEnabled) {
-      crew.applyAllSwag();
-      crew.renderLocker();
-    }
     hud.setStats(game.state);
     pile.syncPile(true);
     pileGuides = headquarters.pileGuides = BL.pileGuides.create({
@@ -12262,7 +12218,7 @@
         get bifrost() { return bifrostIsle; },
         get footsteps() { return footsteps; },
         get chalkboardAt() { return chalkboardClearance; },
-        slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, crates: crates.list, lab: null, hud, applyAllSwag: crew.applyAllSwag, renderLocker: crew.renderLocker, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, trimPool: fx.trimPool,
+        slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, lab: null, hud, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, trimPool: fx.trimPool,
         get shown() {
           return pile.shown;
         },
@@ -12531,7 +12487,6 @@
     clankerPlay.dispose();
     remotes.dispose();
     muteHammockShots();
-    crates.dispose();
     pile.dispose();
     npcStatusBeams?.dispose(); npcStatusBeams = null;
     for (const entry of clankers.list) returnLabEquipment(entry);
@@ -12639,7 +12594,7 @@
     CLANKER_HIT.node = CLANKER_HIT.owner = null;
     viewPoseActor = grabSupportEntry = clankerSupportActor = clankerPassingEntry = preparingGuideActor = null;
     // Drop every per-visit ref but the cached island.
-    terrainRampRoof = pathNode = altar = lawn = life = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = totemSolids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = mirrorCave = matrixCave = matrixControl = fire = headquarters = positionDebug = overlayCanvas = null;
+    terrainRampRoof = pathNode = altar = lawn = life = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = totemSolids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = critters = clock = presets = mirrorCave = matrixCave = matrixControl = fire = headquarters = positionDebug = overlayCanvas = null;
     beasts.clear();
     magazine = magazineState = weather = footsteps = petReactions = mempoolIsland = timechainIsland = clankers = clankerPlay = null;
     hubScene.input = hubScene.debug = null;
@@ -12695,14 +12650,14 @@
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...mempoolIsland.water.stats(), ...weather.stats(), ...remotes.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...mempoolIsland.water.stats(), ...weather.stats(), ...remotes.stats() };
   };
   const hubScene = {
     // The island reports its own zone as soon as an Ooga is driven (see `zoneOf`); until then it is nowhere.
     voiceZone: "none",
     micKey: true,
     get cabinetMenu() { return cloudHopper && cloudHopper.phase === "intro"; },
-    id: "hub", enter, enterSteps, update, overlay, onDonation, previewDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, stay, leave, stats, liveGeometry, cachedGeometry, islandGeometry, libraryNook: LIBRARY,
+    id: "hub", enter, enterSteps, update, overlay, onDonation, previewDonation, onKey, renderOpts: RENDER_OPTS, stay, leave, stats, liveGeometry, cachedGeometry, islandGeometry, libraryNook: LIBRARY,
     get retained() { return heldHub; }, get elapsed() { return now; },
     get retainedRoot() { return heldHub ? root : null; },
     // Readying the hall takes a slice of frames that are otherwise the island's; the tier does not judge them.
