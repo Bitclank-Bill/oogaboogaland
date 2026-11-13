@@ -37,13 +37,13 @@
   const GUN_SIGHT_DOWN = Math.atan2(0.09 - 0.08, 0.59 + 0.18);
   const GUN_SIGHT_DROP = 0.08 * Math.cos(GUN_SIGHT_DOWN) + 0.18 * Math.sin(GUN_SIGHT_DOWN);
   const MELEE_RECHARGE_DELAY = 0.1, MELEE_RECHARGE_TIME = 0.1, MELEE_HIT_POWER = 1.25;
-  const MELEE_WIND = 0.08, MELEE_STRIKE = 0.1, MELEE_QUICK_STRIKE = 0.075, MELEE_RECOVER = 0.112;
+  const MELEE_WIND = 0.08, MELEE_STRIKE = 0.06, MELEE_QUICK_STRIKE = 0.05, MELEE_RECOVER = 0.112;
   const MELEE_RELEASE = MELEE_STRIKE + MELEE_RECOVER, MELEE_TIME = MELEE_WIND + MELEE_RELEASE;
   // A strike's length: a quick tap's, or a cut's, which a charge makes faster, not slower. Let go, a strike comes
-  // down at once from wherever the wind-up had got to; it leaves at speed and slows into its follow-through
-  // (`strikeEase`), the pose and a hit's stop alike, so a contact stops it where it shows.
+  // straight down at once from wherever the wind-up had got to, already moving, and gathers speed into the bottom, where it
+  // stops dead (`strikeEase`), as a blow lands; the pose and a hit's stop alike, so a contact stops it where it shows.
   const strikeTime = (quick, charge) => quick ? MELEE_QUICK_STRIKE : MELEE_STRIKE * (1 - 0.15 * charge);
-  const strikeEase = ease.outQuad;
+  const strikeEase = (t) => t * (0.6 + 0.4 * t);
   const MELEE_TAP_TIME = 0.12, MELEE_CHARGE_DELAY = 0.24, MELEE_CHARGE_TIME = 1;
   const MELEE_COMBO_WINDOW = 0.4;
   const MELEE_READY_HOLD = 0.5, MELEE_CARRY_BLEND = 0.25;
@@ -1649,9 +1649,9 @@
       } else if (w.meleeTime > release) {
         wind = ease.inOutQuad(clamp(1 - (w.meleeTime - release) / MELEE_WIND, 0, 1));
       } else if (w.meleeTime > MELEE_RECOVER) {
-        // From the wind-up as it was let go (a held cut's), finishing it on the way down.
+        // Straight down from the wind-up as it was let go (a held cut's), however far it had got.
         stroke = strikeEase((release - w.meleeTime) / w.meleeStrikeTime);
-        wind = lerp(w.meleeHeldTime > 0 ? ease.inOutQuad(clamp(w.meleeHeldTime / MELEE_WIND, 0, 1)) : 1, 1, stroke);
+        wind = w.meleeHeldTime > 0 ? ease.inOutQuad(clamp(w.meleeHeldTime / MELEE_WIND, 0, 1)) : 1;
       } else if (w.meleeTime > 0) {
         const recovery = 1 - ease.inOutQuad(1 - w.meleeTime / MELEE_RECOVER);
         wind = recovery;
