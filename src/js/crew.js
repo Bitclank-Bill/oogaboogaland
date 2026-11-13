@@ -1147,13 +1147,31 @@
   // to the forearm, its length along the thumb's side of the fist and its head (-x in its frame: an axe's or a hockey
   // stick's blade) out along the hand, so it lies in the hand's own plane.
   const SWING_LOW = 1.4, SWING_HIGH = 2.6, SWING_ELBOW = Math.PI / 2;
-  // The weapon in the fist, as the forearm's frame sees it: the hand's own turn on its forearm, then the weapon across it.
-  const SWING_CLUB = math.quat.create(), SWING_TURN = math.quat.create(), SWING_REST = math.quat.create(), SWING_LIVE = math.quat.create();
-  math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, Math.PI / 2);
-  math.quat.fromAxisAngle(SWING_CLUB, 0, 0, 1, Math.PI / 2);
-  math.quat.multiply(SWING_CLUB, SWING_TURN, SWING_CLUB);
+  // The weapon across the fist, as the hand's frame sees it: its length along the thumb's side.
+  const SWING_ACROSS = math.quat.create(), SWING_TURN = math.quat.create(), SWING_REST = math.quat.create(), SWING_LIVE = math.quat.create();
+  math.quat.fromAxisAngle(SWING_ACROSS, 0, 0, 1, Math.PI / 2);
   // The arm hanging at rest, as the other one hangs, the turn the swing lifts from.
   math.quat.fromEuler(SWING_REST, -0.2, 0, -0.1);
+  // The weapon in the right fist, at its middle, square to the forearm bent by `flex`, the hand turned `turn` on its
+  // forearm: as it hangs (a quarter turn), the weapon stands in the elbow's plane; unturned, it lies across it. In the
+  // arm's frame: the forearm's bend, the hand's turn, then the weapon across the fist.
+  const restInFist = (cave, flex, turn = Math.PI / 2) => {
+    const club = cave.parts.club, e = cave.elbow;
+    cave.handTurnR = turn;
+    math.quat.fromAxisAngle(cave.axeRotation, 1, 0, 0, -flex);
+    math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, turn);
+    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_TURN);
+    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_ACROSS);
+    club.quaternion = cave.axeRotation;
+    setVec(club.position, 0, e.y - e.length * Math.cos(flex), e.z + e.length * Math.sin(flex));
+  };
+  // An arm of a body sitting on the ground: straight down from the shoulder, the forearm forward to the fist on the
+  // ground (`ground`, the fist's middle's height in the body's frame).
+  const sitArm = (cave, arm, forearm, out, ground) => {
+    const e = cave.elbow, fore = e.length * cave.armScale, elbowY = arm.position.y - Math.hypot(e.y, e.z) * cave.armScale;
+    const drop = Math.min(fore, elbowY - ground), reach = Math.sqrt(fore * fore - drop * drop);
+    reachArm(cave, arm, forearm, out, arm.position.x, elbowY - drop, arm.position.z + reach, 0, -1, 0);
+  };
   // `wind` and `stroke` as the cut has them; `stance`, 1 until the weapon goes back to its carry and 0 there.
   const swingArm = (cave, wind, stroke, stance) => {
     const parts = cave.parts, w = cave.weapon, arm = parts.armR, fore = parts.forearmR, club = parts.club, e = cave.elbow;
@@ -1170,12 +1188,7 @@
     arm.quaternion = cave.reachR;
     const flex = lerp(hang, SWING_ELBOW, wind);
     fore.rotation.x = -flex;
-    cave.handTurnR = Math.PI / 2;
-    // The weapon goes with the fist, in the arm's frame: the forearm's bend, then the hand's own hold, at its middle.
-    math.quat.fromAxisAngle(cave.axeRotation, 1, 0, 0, -flex);
-    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_CLUB);
-    club.quaternion = cave.axeRotation;
-    setVec(club.position, 0, e.y - e.length * Math.cos(flex), e.z + e.length * Math.sin(flex));
+    restInFist(cave, flex);
     // Back to the carry: the arm, the elbow's bend and the weapon ease into it together.
     if (stance < 1) {
       const carry = 1 - stance;
@@ -1475,16 +1488,19 @@
       const travel = cave.bedTravel, lying = travel.mode === "rest" || travel.mode === "lie";
       parts.forearmR.rotation.x = parts.forearmL.rotation.x = lying && (travel.pose === "left" || travel.pose === "right") ? -cave.elbow.clear
         : lying ? -LYING_ELBOW : -cave.elbow.rest;
-      // Sitting on the ground, the free arm hangs straight down from the shoulder, and the forearm angles forward
-      // toward the feet as far as brings the fist down to the ground there (straight down, where the ground is out of reach). An
-      // idle Ooga sits so by a fire, and a player in a seat that is the ground itself (`seat.ground`, the character
-      // studio's places by its fire).
+      // Sitting on the ground, each arm hangs straight down from the shoulder, and its forearm angles forward toward
+      // the feet as far as brings the fist down to the ground there (straight down, where the ground is out of reach);
+      // the left only while it holds no snack. An idle Ooga
+      // sits so by a fire, and a player in a seat that is the ground itself (`seat.ground`, the character studio's
+      // places by its fire).
       const seat = cave.camp ? cave.camp.seat : null;
       const lowered = !seat ? cave.restLower : seat.ground ? Math.max(0, cave.baseY - h * 0.08) : 0;
-      if (lowered > 0 && !parts.snack.visible) {
-        const left = parts.armL, e = cave.elbow, fore = e.length * cave.armScale, elbowY = left.position.y - Math.hypot(e.y, e.z) * cave.armScale;
-        const drop = Math.min(fore, elbowY - (lowered - cave.baseY + SIT_FIST * h)), out = Math.sqrt(fore * fore - drop * drop);
-        reachArm(cave, left, parts.forearmL, cave.reachL, left.position.x, elbowY - drop, left.position.z + out, 0, -1, 0);
+      if (lowered > 0) {
+        const ground = lowered - cave.baseY + SIT_FIST * h;
+        if (!parts.snack.visible) sitArm(cave, parts.armL, parts.forearmL, cave.reachL, ground);
+        sitArm(cave, parts.armR, parts.forearmR, cave.reachR, ground);
+        // The weapon in the right hand lies on the ground beside it, out across the forearm.
+        if (parts.club.parent === parts.armR) restInFist(cave, -parts.forearmR.rotation.x, 0);
       }
       parts.forearmR.highlight = parts.armR.highlight;
       parts.forearmL.highlight = parts.armL.highlight;
