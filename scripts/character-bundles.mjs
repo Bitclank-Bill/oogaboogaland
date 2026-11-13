@@ -83,7 +83,16 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
   // Establish the required pending statuses before a writer queues or yields,
   // including bundle/override PRs whose quick inspection otherwise returns early.
   const holdForWriter = async (event) => {
-    const prs = event.pull_request ? [await gh.api(`pulls/${event.pull_request.number}`)] : await openBundles();
+    let prs = [];
+    if (event.pull_request) prs = [await gh.api(`pulls/${event.pull_request.number}`)];
+    else if (event.workflow_run) {
+      const run = event.workflow_run;
+      if (run.event === "pull_request_review") prs = await openBundles();
+      else if (run.event === "push" && run.head_repository?.full_name === gh.repo && run.head_branch !== "rock"
+        && !run.head_branch.startsWith("automation/characters-")) prs = await gh.list(`commits/${run.head_sha}/pulls`);
+    } else if (!event.inputs?.override_pr) prs = await openBundles();
+    // Match the writer's routing: rock audits and standalone pushes never
+    // re-report unrelated bundle statuses, nor does targeted override recovery.
     for (const pr of prs) {
       if (pr.state !== "open" || pr.base.ref !== "rock") continue;
       for (const context of [STATUS, BUNDLE_STATUS]) await status(pr.head.sha, context, "pending", "Waiting for character reconciliation; release work has priority");

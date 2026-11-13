@@ -1236,6 +1236,37 @@ test("regression: ordinary PR checks bypass the writer queue only with complete 
     assert.ok(held.every(row => row.state === "pending"));
     assert.equal(f.writes.length + f.updates.length, 0, "holding a writer never mutates code or PRs");
   });
+  await t.test("push signals hold only their open rock PRs and leave unrelated green bundles mergeable", async () => {
+    const f = fixture(), list = f.gh.list;
+    const contexts = ["Character intake", "Character bundle safety"];
+    for (const pr of f.prs.filter(pr => pr.head.ref.startsWith("automation/characters-"))) {
+      for (const context of contexts) f.statuses.push({ sha: pr.head.sha, context, state: "success" });
+    }
+    const green = structuredClone(f.statuses);
+    const run = { event: "push", head_branch: f.ordinary.head.ref, head_sha: f.ordinary.head.sha, head_repository: { full_name: f.repo } };
+    const closed = { ...f.ordinary, state: "closed", head: { sha: "closed" } };
+    const otherBase = { ...f.ordinary, base: { ref: "other" }, head: { sha: "other-base" } };
+    f.gh.list = async url => url === `commits/${run.head_sha}/pulls` ? [f.ordinary, closed, otherBase] : list(url);
+    await f.coordinator.holdForWriter({ workflow_run: run });
+    assert.deepEqual(f.statuses.slice(0, green.length), green);
+    assert.deepEqual(f.statuses.slice(green.length).map(row => [row.sha, row.context, row.state]),
+      contexts.map(context => [f.ordinary.head.sha, context, "pending"]));
+    const held = structuredClone(f.statuses);
+    for (const signal of [
+      { ...run, head_branch: "rock" },
+      { ...run, head_branch: "automation/characters-daily-round" },
+      { ...run, head_repository: { full_name: "someone/fork" } },
+      { ...run, event: "pull_request" }
+    ]) await f.coordinator.holdForWriter({ workflow_run: signal });
+    f.gh.list = async url => url === `commits/${run.head_sha}/pulls` ? [] : list(url);
+    await f.coordinator.holdForWriter({ workflow_run: run });
+    await f.coordinator.holdForWriter({ inputs: { override_pr: "600" } });
+    assert.deepEqual(f.statuses, held, "audits, ignored signals, standalone pushes and targeted recovery do not hold bundles");
+    await f.coordinator.holdForWriter({ workflow_run: { event: "pull_request_review" } });
+    assert.deepEqual(f.statuses.slice(held.length).map(row => [row.sha, row.context, row.state]),
+      green.map(row => [row.sha, row.context, "pending"]), "review refreshes still hold every bundle they revalidate");
+    assert.equal(f.writes.length + f.updates.length, 0);
+  });
   await t.test("drafts wait and ordinary closures do not enqueue writes; merged overrides retain cleanup", async () => {
     const f = fixture(); f.ordinary.draft = true;
     assert.equal(await f.inspect(), false);
