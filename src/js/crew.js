@@ -39,6 +39,11 @@
   const MELEE_RECHARGE_DELAY = 0.1, MELEE_RECHARGE_TIME = 0.1, MELEE_HIT_POWER = 1.25;
   const MELEE_WIND = 0.08, MELEE_QUICK_WIND = 0.025, MELEE_STRIKE = 0.128, MELEE_QUICK_STRIKE = 0.09, MELEE_RECOVER = 0.112;
   const MELEE_RELEASE = MELEE_STRIKE + MELEE_RECOVER, MELEE_TIME = MELEE_WIND + MELEE_RELEASE;
+  // A strike's length: a quick tap's, or a cut's, which a charge makes faster, not slower. A strike leaves at speed
+  // and slows into its follow-through (`strikeEase`), the pose and a hit's stop alike, so a contact stops it where
+  // it shows.
+  const strikeTime = (quick, charge) => quick ? MELEE_QUICK_STRIKE : MELEE_STRIKE * (1 - 0.15 * charge);
+  const strikeEase = ease.outQuad;
   const MELEE_TAP_TIME = 0.12, MELEE_CHARGE_DELAY = 0.24, MELEE_CHARGE_TIME = 1;
   const MELEE_COMBO_WINDOW = 0.4;
   const MELEE_READY_HOLD = 0.5, MELEE_CARRY_BLEND = 0.25;
@@ -1645,7 +1650,7 @@
         wind = ease.inOutQuad(clamp(1 - (w.meleeTime - release) / (w.meleeQuick ? MELEE_QUICK_WIND : MELEE_WIND), 0, 1));
       } else if (w.meleeTime > MELEE_RECOVER) {
         wind = 1;
-        stroke = ease.inOutQuad((release - w.meleeTime) / w.meleeStrikeTime);
+        stroke = strikeEase((release - w.meleeTime) / w.meleeStrikeTime);
       } else if (w.meleeTime > 0) {
         const recovery = 1 - ease.inOutQuad(1 - w.meleeTime / MELEE_RECOVER);
         wind = recovery;
@@ -3617,7 +3622,7 @@
       if (!cancel) findMeleeTarget(cave);
       w.meleeHeld = false;
       w.meleeQuick = quick && !cancel;
-      w.meleeStrikeTime = w.meleeQuick ? MELEE_QUICK_STRIKE : MELEE_STRIKE * (1 + w.meleeCharge * 0.5);
+      w.meleeStrikeTime = strikeTime(w.meleeQuick, w.meleeCharge);
       w.meleeTime = cancel ? 0 : w.meleeStrikeTime + MELEE_RECOVER + (w.meleeQuick ? MELEE_QUICK_WIND : 0);
       w.meleeComboTime = cancel ? 0 : MELEE_COMBO_WINDOW;
       if (cancel) {
@@ -7936,8 +7941,8 @@
           w.meleeHit = ctx.onMeleeStrike(meleePreviousWorld, club.world, club.geometry, dt, strikeMeleePower(cave));
         }
         if (w.meleeHit) {
-          const beforeLower = ease.inOutQuad(clamp((meleeRelease - meleeBefore) / w.meleeStrikeTime, 0, 1));
-          const afterLower = ease.inOutQuad(clamp((meleeRelease - w.meleeTime) / w.meleeStrikeTime, 0, 1));
+          const beforeLower = strikeEase(clamp((meleeRelease - meleeBefore) / w.meleeStrikeTime, 0, 1));
+          const afterLower = strikeEase(clamp((meleeRelease - w.meleeTime) / w.meleeStrikeTime, 0, 1));
           w.meleeStop = lerp(beforeLower, afterLower, contactFraction);
           w.meleeTime = MELEE_RECOVER;
           poseWeapon(cave);
@@ -8147,5 +8152,5 @@
       }
     };
   };
-  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, reachArm, captureMeleePose, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, reachArm, captureMeleePose, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();

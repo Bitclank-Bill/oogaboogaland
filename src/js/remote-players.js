@@ -337,7 +337,7 @@
       w.meleeQuick = !!(flags & 64); w.meleeSide = flags & 128 ? -1 : 1;
       w.meleeHeldTime = v ? Math.min(1.24, v[9] / 1000 + (w.meleeHeld ? age : 0)) : 0;
       w.meleeCharge = v ? v[10] / 100 : 0;
-      w.meleeStrikeTime = w.meleeQuick ? 0.09 : 0.128 * (1 + w.meleeCharge * 0.5);
+      w.meleeStrikeTime = BL.crew.strikeTime(w.meleeQuick, w.meleeCharge);
       w.meleeReadyTime = v ? Math.max(0, v[11] / 1000 - age) : 0;
       w.axeIdle = v ? v[12] / 1000 : 1.3;
       w.bashTime = held === 2 && v ? Math.max(0, v[13] / 1000 - age) : 0;
