@@ -1463,6 +1463,7 @@
       }
       // Carry leaves the buttons alone: the right one changes no view there, and both together walk.
       if (!armed()) return;
+      if (e.type === "pointermove") ctx.aimPointer?.(e.clientX, e.clientY);
       if (birdsEye() && rightPress) {
         e.preventDefault(); e.stopImmediatePropagation();
         shooterView(true, renderer.size.width / 2, renderer.size.height / 2);
@@ -1497,7 +1498,7 @@
         }
         resumePose();
         // A scene may take the left button first (`primaryAction`, Cloud Hopper's grappling hook), and then its release.
-        if (e.button === 0 && ctx.primaryAction?.(true)) primaryTaken = true;
+        if (e.button === 0 && ctx.primaryAction?.(true, e)) primaryTaken = true;
         else if (e.button === 0) {
           attackReleaseBlocked = !crew.weaponsEnabled;
           if (player().weapon.primaryEquipped) crew.swingWeapon(player(), true, ads);

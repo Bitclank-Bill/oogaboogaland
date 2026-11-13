@@ -546,6 +546,16 @@
     }
     return near <= far && far >= 0 ? near : Infinity;
   };
+  // Fade smoothly over the last metre of a first-person approach, fully gone before the near plane
+  // enters the carving. Distance is to the closest authored box, including wings, feet and crest.
+  const eyeOpacity = (L, x, y, z) => {
+    let distance = Infinity;
+    for (const [hx, y0, y1, hz] of L.boxes) {
+      distance = Math.min(distance, Math.hypot(Math.max(0, Math.abs(x) - hx), Math.max(0, y0 - y, y - y1), Math.max(0, Math.abs(z) - hz)));
+    }
+    const t = Math.max(0, Math.min(1, (distance - 0.25) / 0.95));
+    return t * t * (3 - 2 * t);
+  };
   const hitOf = (L, ox, oy, oz, dx, dy, dz) => {
     let t = Infinity;
     for (const [hx, y0, y1, hz] of L.boxes) t = Math.min(t, slab(ox, oy, oz, dx, dy, dz, hx, y0, y1, hz));
@@ -553,5 +563,5 @@
   };
   const hit = (i, ox, oy, oz, dx, dy, dz) => hitOf(layout(i), ox, oy, oz, dx, dy, dz);
 
-  BL.totemModels = { body, glyphs, ringSector, ringSectorOf, featureHighlights, layout, hit, layoutOf, carve, glyphsOf, hitOf, DESIGNS, KINDS: Object.keys(KINDS), CRESTS: Object.keys(CRESTS), CORE_HEIGHT, RING_SEGMENTS };
+  BL.totemModels = { body, glyphs, ringSector, ringSectorOf, featureHighlights, layout, hit, layoutOf, carve, glyphsOf, hitOf, eyeOpacity, DESIGNS, KINDS: Object.keys(KINDS), CRESTS: Object.keys(CRESTS), CORE_HEIGHT, RING_SEGMENTS };
 })();

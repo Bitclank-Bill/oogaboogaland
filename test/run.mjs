@@ -19803,17 +19803,53 @@ scene("hub", { label: "distant effects", query: "pos=0&birdseye=1", steps: [hubD
 // the crew is built, as on a real arrival.
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
 scene("hub", { label: "outdoor travel", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
-scene("hub", { label: "Merge Rock", query: "view=repos&hour=0&pos=0", steps: [{
+scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=0", steps: [{
+  name: "walk-through totems: first-person overlap hides one carving and its effects, restores it on exit, and distant views keep all eye fires",
+  why: "regression: solid totems blocked walkers, the eye could enter their carving, and distance extinguished their effects",
+  run: async (b) => {
+    const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks; })()", 60000);
+    if (!ready) throw new Error("Totem chunks did not finish building");
+    const result = await b.evaluate(`(() => {
+      const h = BL.scenes.hub.debug, site = h.repoIsland, M = BL.repoIslandModels, P = M.plan(), t = P.totems[P.chunks[0][0]];
+      const tier = ['distant','far','near'][Number(site.stats().tiers[0])], original = M.chunkSteps(0, tier)().mesh;
+      const node = site.group.children[0].children.find(n => n.geometry === original), solids = h.headquarters.solids.props;
+      const eye = { position: { x: site.spot.x + t.x, y: site.spot.y + (t.L.boxes[1][1] + t.L.boxes[1][2]) / 2, z: site.spot.z + t.z } };
+      const rayHit = {}, accept = o => o.kind === 'repo-totem' && o.index === t.index;
+      const exact = __ooga.input.weaponTargets.ray(rayHit, eye.position.x, site.spot.y + t.L.apex + 2, eye.position.z, 0, -1, 0, t.L.apex + 3, null, accept, true);
+      const beside = __ooga.input.weaponTargets.ray(rayHit, eye.position.x + t.L.reach + 0.3, site.spot.y + t.L.apex + 2, eye.position.z, 0, -1, 0, t.L.apex + 3, null, accept, true);
+      let fading = false;
+      for (let distance = t.L.reach + 1.2; distance > 0; distance -= 0.1) {
+        site.afterCamera({ position: { x: eye.position.x + distance, y: eye.position.y, z: eye.position.z } }, true);
+        if (site.group.children[0].children.some(n => n.visible && n.smokeOpacity > 0 && n.smokeOpacity < 1)) { fading = true; break; }
+      }
+      site.afterCamera(eye, true);
+      const hidden = site.stats(), partial = node.geometry;
+      site.afterCamera(eye, false);
+      const restored = site.stats().hidden === 0 && node.geometry === original;
+      const far = { position: { x: site.spot.x, y: site.spot.y + 20, z: site.spot.z + 90 } };
+      site.update(1 / 60, 4, far); site.afterCamera(far, true);
+      const distant = site.stats(), expected = P.totems.reduce((n, t) => n + t.L.eyes.length, 0);
+      return { exact, beside, fading, hidden: hidden.hidden, removed: partial.faces.length < original.faces.length, neighbours: partial.faces.length > 0,
+        restored, walkThrough: !solids.isActive(node) && h.totems.list.every(o => !solids.isActive(o.owner.node)),
+        groundSolid: site.solids.every(n => solids.isActive(n)), distant, expected };
+    })()`);
+    record("walk-through totems: only the overlapping carving disappears, terrain stays solid, and all distant eye flames and rings stay lit",
+      result.exact && !result.beside && result.fading && result.hidden === 1 && result.removed && result.neighbours && result.restored && result.walkThrough && result.groundSolid && result.distant.flames === result.expected && result.distant.rings > 0,
+      JSON.stringify(result));
+  }
+}] });
+scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
   name: "Merge Rock: all eyes burn, painted features and rings animate, lights follow the turning poles, and an expired merge goes dark",
   why: "regression: repository totems only burned their top eyes and had no traveling rings or ground lights",
   run: async (b) => {
+    await b.evaluate(`(() => { const p = BL.scenes.hub.debug.repoIsland.spot; __ooga.pilot.navigate({ position: { x: p.x, y: p.y, z: p.z }, yaw: 0, pitch: 0.6, dist: 9 }); })()`);
     const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks && s.tiers === s.wants && s.tiers.includes('2'); })()", 60000);
     if (!ready) throw new Error("Merge Rock detail did not finish preparing");
     const result = await b.evaluate(`(() => {
       const h = BL.scenes.hub.debug, site = h.repoIsland, P = BL.repoIslandModels.plan(), now = Date.now();
       BL.repoFeed.apply({ at: now, merges: Object.fromEntries(BL.repoIslandData.REPOS.map(r => [r.repo, [now - 60000, 1]])) }, now);
       site.update(1 / 60, 1, h.camera);
-      const before = site.stats(), expected = P.chunks.reduce((n, list, k) => n + (Number(before.tiers[k]) ? list.reduce((v, at) => v + P.totems[at].L.eyes.length, 0) : 0), 0);
+      const before = site.stats(), expected = P.totems.reduce((n, t) => n + t.L.eyes.length, 0);
       const batches = site.group.children.filter(n => n.instanceData), signature = () => batches.map(n => Array.from(n.instanceData.slice(0, n.instanceCount * 20)));
       const first = JSON.stringify(signature());
       site.update(1 / 60, 2, h.camera);
@@ -30894,6 +30930,19 @@ const repoIslandChecks = (BL, island) => {
   }
   record("Merge Rock: every carving supplies fire sockets for all faces and painted glow surfaces at every detail",
     eyes && features, JSON.stringify({ eyes, features, sockets, totems: P.totems.length }));
+  const sample = M.chunkSteps(0, "near")(), omitted = M.without(sample.mesh, sample.ranges, 1);
+  const removedFaces = sample.ranges[0][1] - sample.ranges[0][0];
+  const L = P.totems[P.chunks[0][0]].L, box = L.boxes[1], y = (box[1] + box[2]) / 2;
+  const eyeInside = TM.eyeOpacity(L, 0, y, 0) === 0, eyeOutside = TM.eyeOpacity(L, L.reach + 2, y, 0) === 1;
+  const approach = Array.from({ length: 40 }, (_, k) => TM.eyeOpacity(L, (L.reach + 2) * (1 - k / 39), y, 0));
+  const fades = approach.some(a => a > 0 && a < 1) && approach.every((a, k) => !k || a <= approach[k - 1]);
+  record("Merge Rock camera overlap: omit one carving without dropping its neighbours, share immutable vertices, and detect eyes inside the carving with an outside margin",
+    omitted.verts === sample.mesh.verts && omitted.faces.length === sample.mesh.faces.length - removedFaces && omitted.faces.length > 0 && eyeInside && eyeOutside && fades,
+    JSON.stringify({ faces: sample.mesh.faces.length, remaining: omitted.faces.length, removedFaces, eyeInside, eyeOutside, fades }));
+  const quartz = M.crystals(), short = quartz.filter(c => c.short);
+  record("Merge Rock crystal lighting: every short base crystal follows a totem and both sizes retain bounded neighbouring light sources",
+    short.length === M.CRYSTAL.carpet && short.every(c => c.totems.length === 1) && quartz.every(c => c.neighbours.every(at => at >= 0 && at < P.totems.length)) && quartz.some(c => !c.short && c.neighbours.length > c.totems.length),
+    JSON.stringify({ short: short.length, large: quartz.length - short.length }));
   const h = createHash("sha256");
   for (let i = 0; i < 4; i++) for (const g of [TM.body(i), TM.glyphs(i), TM.featureHighlights(i)]) h.update(JSON.stringify([g.verts, g.faces.map((f) => [f.i, f.color, f.emissive || 0])]));
   const digest = h.digest("hex").slice(0, 16);
