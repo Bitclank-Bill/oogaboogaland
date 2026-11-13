@@ -1471,6 +1471,21 @@
         shooterView(true, renderer.size.width / 2, renderer.size.height / 2);
         return;
       }
+      // A modified scene link is a native click, as in carry: do not capture the
+      // mouse or cancel its default. Still take the press away from weapons.
+      const leftPress = e.button === 0 && (e.type === "pointerdown" || e.type === "pointermove" && (e.buttons & 1));
+      if (leftPress && (e.metaKey || e.ctrlKey) && ctx.modifiedClick?.(e)) {
+        primaryTaken = true;
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (e.button === 0 && primaryTaken && (e.type === "pointerup" || e.type === "pointermove" && !(e.buttons & 1))) {
+        primaryTaken = false;
+        e.stopImmediatePropagation();
+        // Open within the uncancelled native release, preserving the browser's tab modifiers.
+        ctx.primaryAction(false, e);
+        return;
+      }
       e.preventDefault(); e.stopImmediatePropagation();
       if (e.type === "pointercancel") {
         ads = mouseAds = false;
@@ -1516,9 +1531,7 @@
           if (!attackReleaseBlocked && e.buttons & 1 && !player().weapon.primaryEquipped && crew.setWeaponTrigger(true, true)) aimLeftAccepted = true;
         }
       } else if (e.type === "pointerup" || e.type === "pointermove") {
-        // Keep link opening inside the native release so the browser honors Command/Ctrl-click.
-        if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false, e); }
-        else if (e.button === 0) {
+        if (e.button === 0) {
           releaseAimAttack(e);
           releasePrimary(player(), ads);
         }

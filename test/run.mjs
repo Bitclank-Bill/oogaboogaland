@@ -19907,7 +19907,7 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
       const canvas = document.getElementById('scene'), tip = document.getElementById('tooltip');
       const actor = B.cavemen.get('portlandhodl'); P.possess(actor);
       const saved = { update: P.update, open: window.open, lock: canvas.requestPointerLock, swing: B.crew.swingWeapon, trigger: B.crew.setWeaponTrigger };
-      const calls = [], rows = []; let swings = 0, triggers = 0, miss = false;
+      const calls = [], rows = []; let swings = 0, triggers = 0, locks = 0, miss = false;
       const pose = () => {
         C.up = null;
         C.position.x = site.spot.x + t.x; C.position.y = site.spot.y + t.L.apex * 0.78; C.position.z = site.spot.z + t.z + 4;
@@ -19918,7 +19918,8 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
         buttons: type === 'pointerdown' ? 1 : 0, clientX: x, clientY: y, ...modifiers
       }));
       try {
-        canvas.requestPointerLock = () => Promise.resolve();
+        // A denied capture settles inline so each click must independently choose whether to retry it.
+        canvas.requestPointerLock = () => { locks++; throw new Error('Capture unavailable'); };
         window.open = (...args) => { calls.push(args); return null; };
         B.crew.swingWeapon = (...args) => { swings++; return saved.swing(...args); };
         B.crew.setWeaponTrigger = (...args) => { if (args[0]) triggers++; return saved.trigger(...args); };
@@ -19931,12 +19932,13 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
           P.weaponMode(slot); pose();
           // Soft mouse-look uses the crosshair, even if the released native pointer was at an edge.
           pointer('pointermove', 2, 2); B.advance(0.1, 1 / 60);
-          const before = { ammo: actor.weapon.ammo, shots: actor.weapon.shotsFired, calls: calls.length, swings, triggers };
+          const before = { ammo: actor.weapon.ammo, shots: actor.weapon.shotsFired, calls: calls.length, swings, triggers, locks };
           const hover = !tip.hidden && tip.textContent.includes('Bitcoin Core');
-          pointer('pointerdown', undefined, undefined, modifier);
+          const nativeDown = pointer('pointerdown', undefined, undefined, modifier);
           const held = calls.length === before.calls;
-          pointer('pointerup', undefined, undefined, modifier); B.advance(0.1, 1 / 60);
-          rows.push({ slot, modifier, hover, held, opened: calls.length === before.calls + 1,
+          const nativeUp = pointer('pointerup', undefined, undefined, modifier); B.advance(0.1, 1 / 60);
+          rows.push({ slot, modifier, hover, held, nativeUp, nativeModified: !(modifier.metaKey || modifier.ctrlKey) || nativeDown && locks === before.locks,
+            opened: calls.length === before.calls + 1,
             consumed: before.ammo === actor.weapon.ammo && before.shots === actor.weapon.shotsFired && before.swings === swings && before.triggers === triggers });
         }
         const beforeCancel = calls.length;
@@ -19946,17 +19948,24 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
         document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', button: 0 }));
         pointer('pointerup');
         const cancelled = calls.length === beforeCancel;
-        P.freeCursor(); pose();
-        pointer('pointerdown'); const captureHeld = calls.length === beforeCancel;
-        pointer('pointerup');
-        const captureOpened = calls.length === beforeCancel + 1;
+        const freeClicks = [];
+        for (const modifier of [{ metaKey: true }, {}]) {
+          P.freeCursor(); pose();
+          const before = { calls: calls.length, locks, swings, triggers };
+          const nativeDown = pointer('pointerdown', undefined, undefined, modifier);
+          const held = calls.length === before.calls;
+          const nativeUp = pointer('pointerup', undefined, undefined, modifier);
+          freeClicks.push({ held, opened: calls.length === before.calls + 1, nativeUp,
+            nativeModified: !modifier.metaKey || nativeDown && locks === before.locks && !P.aimFocused,
+            consumed: swings === before.swings && triggers === before.triggers });
+        }
         P.focusAim(false);
         miss = true; B.advance(0.1, 1 / 60);
         const missed = tip.hidden;
         miss = false; P.navigate({ position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.1, dist: 4 }); P.focusAim(false); B.advance(0.1, 1 / 60);
         const outsideHover = tip.hidden, before = calls.length;
         pointer('pointerdown'); pointer('pointerup');
-        return { aiming: P.aiming, focused: P.aimFocused, rows, cancelled, captureHeld, captureOpened, missed, outsideHover, outsideClick: calls.length === before,
+        return { aiming: P.aiming, focused: P.aimFocused, rows, cancelled, freeClicks, missed, outsideHover, outsideClick: calls.length === before,
           links: calls.every(args => args[0].startsWith('https://github.com/bitcoin/bitcoin') && args[1] === '_blank' && args[2] === 'noopener,noreferrer') };
       } finally {
         P.update = saved.update; window.open = saved.open; canvas.requestPointerLock = saved.lock;
@@ -19964,7 +19973,9 @@ scene("hub", { label: "Merge Rock combat", query: "pos=0&repospin=0", steps: [{
       }
     })()`);
     record("Merge Rock combat: exact crosshair hover and link clicks replace both attacks, and stop off the totem or off the island",
-      result.aiming && result.focused && result.rows.every(r => r.hover && r.held && r.opened && r.consumed) && result.cancelled && result.captureHeld && result.captureOpened && result.missed && result.outsideHover && result.outsideClick && result.links,
+      result.aiming && result.focused && result.rows.every(r => r.hover && r.held && r.opened && r.consumed && r.nativeUp && r.nativeModified)
+        && result.cancelled && result.freeClicks.every(r => r.held && r.opened && r.consumed && r.nativeUp && r.nativeModified)
+        && result.missed && result.outsideHover && result.outsideClick && result.links,
       JSON.stringify(result));
   }
 }] });

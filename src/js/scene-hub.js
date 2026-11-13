@@ -6629,6 +6629,11 @@
     COMBAT_POINTER.y = (y - rect.top) * renderer.size.height / rect.height;
     return COMBAT_POINTER;
   };
+  const combatTotemPress = (event) => {
+    if (pilot.aimFocused) return combatTotemClick(renderer.size.width / 2, renderer.size.height / 2);
+    const p = combatPointer(event.clientX, event.clientY);
+    return combatTotemClick(p.x, p.y);
+  };
   const updateCombatTotemHover = () => {
     const focused = pilot?.aimFocused;
     const x = focused ? renderer.size.width / 2 : COMBAT_POINTER.x, y = focused ? renderer.size.height / 2 : COMBAT_POINTER.y;
@@ -11302,10 +11307,9 @@
         }
         if (cloudHopper?.hookAction(down)) return true;
         if (!down || !event) return false;
-        if (pilot.aimFocused) return combatTotemClick(renderer.size.width / 2, renderer.size.height / 2);
-        const p = combatPointer(event.clientX, event.clientY);
-        return combatTotemClick(p.x, p.y);
+        return combatTotemPress(event);
       },
+      modifiedClick: combatTotemPress,
       aimPointer: combatPointer, captureClick: (x, y) => { const p = combatPointer(x, y); return combatTotemClick(p.x, p.y); }, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
     chalkboard = BL.chalkboard.create({
       renderer,
