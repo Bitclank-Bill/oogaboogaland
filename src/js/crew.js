@@ -1147,21 +1147,20 @@
   // to the forearm, its length along the thumb's side of the fist and its head (-x in its frame: an axe's or a hockey
   // stick's blade) out along the hand, so it lies in the hand's own plane.
   const SWING_LOW = 1.4, SWING_HIGH = 2.6, SWING_ELBOW = Math.PI / 2;
-  // The weapon across the fist, as the hand's frame sees it: its length along the thumb's side.
-  const SWING_ACROSS = math.quat.create(), SWING_TURN = math.quat.create(), SWING_REST = math.quat.create(), SWING_LIVE = math.quat.create();
-  math.quat.fromAxisAngle(SWING_ACROSS, 0, 0, 1, Math.PI / 2);
+  // The weapon in the fist, as the forearm's frame sees it: the hand's own turn on its forearm, then the weapon across it.
+  const SWING_CLUB = math.quat.create(), SWING_TURN = math.quat.create(), SWING_REST = math.quat.create(), SWING_LIVE = math.quat.create();
+  math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, Math.PI / 2);
+  math.quat.fromAxisAngle(SWING_CLUB, 0, 0, 1, Math.PI / 2);
+  math.quat.multiply(SWING_CLUB, SWING_TURN, SWING_CLUB);
   // The arm hanging at rest, as the other one hangs, the turn the swing lifts from.
   math.quat.fromEuler(SWING_REST, -0.2, 0, -0.1);
-  // The weapon in the right fist, at its middle, square to the forearm bent by `flex`, the hand turned `turn` on its
-  // forearm: as it hangs (a quarter turn), the weapon stands in the elbow's plane; unturned, it lies across it. In the
-  // arm's frame: the forearm's bend, the hand's turn, then the weapon across the fist.
-  const restInFist = (cave, flex, turn = Math.PI / 2) => {
+  // The weapon in the right fist, at its middle, square to the forearm bent by `flex`, the hand turned on its forearm
+  // as it hangs, so the weapon stands in the elbow's plane: in the arm's frame, the forearm's bend, then the hand's hold.
+  const restInFist = (cave, flex) => {
     const club = cave.parts.club, e = cave.elbow;
-    cave.handTurnR = turn;
+    cave.handTurnR = Math.PI / 2;
     math.quat.fromAxisAngle(cave.axeRotation, 1, 0, 0, -flex);
-    math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, turn);
-    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_TURN);
-    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_ACROSS);
+    math.quat.multiply(cave.axeRotation, cave.axeRotation, SWING_CLUB);
     club.quaternion = cave.axeRotation;
     setVec(club.position, 0, e.y - e.length * Math.cos(flex), e.z + e.length * Math.sin(flex));
   };
@@ -1481,6 +1480,8 @@
       }
     }
     parts.club.quaternion = null;
+    // A weapon resting in the right fist on the ground (sitting there), left where the sitting arm put it.
+    let restingClub = false;
     if (cave.modelled) {
       // The elbows rest at their own bend. Lying down they are nearly straight, so the arms lie along the body; on its
       // side, where the arms come across it, they bend until the fists rest in front of it and not in it. The
@@ -1499,8 +1500,8 @@
         const ground = lowered - cave.baseY + SIT_FIST * h;
         if (!parts.snack.visible) sitArm(cave, parts.armL, parts.forearmL, cave.reachL, ground);
         sitArm(cave, parts.armR, parts.forearmR, cave.reachR, ground);
-        // The weapon in the right hand lies on the ground beside it, out across the forearm.
-        if (parts.club.parent === parts.armR) restInFist(cave, -parts.forearmR.rotation.x, 0);
+        // The right arm mirrors the left, its hand unturned, and the weapon in it stands where that hand holds it.
+        if (parts.club.parent === parts.armR) { restInFist(cave, -parts.forearmR.rotation.x); restingClub = true; }
       }
       parts.forearmR.highlight = parts.armR.highlight;
       parts.forearmL.highlight = parts.armL.highlight;
@@ -1562,6 +1563,8 @@
         setVec(parts.club.position, 0.36 * h, 0.04 * h + cave.viewLift, -0.255 * h);
         setVec(parts.club.rotation, -0.035, 0, 0.04);
       }
+    } else if (restingClub) {
+      // Resting in the fist on the ground, as the sitting arm left it.
     } else if (twirling) {
       // Held, it spins flat over a raised arm. With x at a quarter turn the
       // stick lies in the horizontal plane and y sweeps it round the hand.
