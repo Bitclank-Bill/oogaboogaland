@@ -1374,8 +1374,20 @@
   // stands out of the wood. The palm faces square to the wood and the forearm, so the arm is placed again from
   // where the first placing left the forearm, twice. The thumb lies across the fingers on the palm's side, so it
   // is sunk in the wood: the wood stands out past it, and the fist sits back toward its wrist as far as keeps the
-  // thumb's end inside the wood's face where the fingers wrap round, so the thumb never shows through the wood. It
-  // returns the hand's turn about its forearm.
+  // thumb's end (`fist.tip`) inside every face of the wood, so the thumb never shows through it. The arm reaches
+  // for wherever that puts the fist; the hand stays at its wrist. It returns the hand's turn about its forearm, and
+  // leaves the fist's middle in HOLD_AT.
+  // Narrows HOLD_FIT to where `x` may be for `a + b * x`, a point's place across one face of a part, to stay no
+  // further than `half` from its middle; `fitted` reads it: the low end, or with `high` the high end, or the middle
+  // where nothing fits.
+  const HOLD_FIT = new Float64Array(2), HOLD_AT = new Float64Array(3);
+  const narrow = (a, b, half) => {
+    if (Math.abs(b) < 1e-6) return;
+    const low = (-half - a) / b, high = (half - a) / b;
+    HOLD_FIT[0] = Math.max(HOLD_FIT[0], Math.min(low, high));
+    HOLD_FIT[1] = Math.min(HOLD_FIT[1], Math.max(low, high));
+  };
+  const fitted = (high) => HOLD_FIT[0] <= HOLD_FIT[1] ? HOLD_FIT[high ? 1 : 0] : (HOLD_FIT[0] + HOLD_FIT[1]) / 2;
   const holdPart = (cave, arm, forearm, out, g, tx, ty, tz, ax, ay, az, halfX, halfY, sink, px, py, pz) => {
     reachArm(cave, arm, forearm, out, tx, ty, tz, px, py, pz);
     for (let pass = 0; pass < 2; pass++) {
@@ -1390,22 +1402,40 @@
       let kx = along * ax - fx, ky = along * ay - fy, kz = along * az - fz;
       const kl = Math.hypot(kx, ky, kz) || 1;
       kx /= kl; ky /= kl; kz /= kl;
-      // How far the part reaches toward the palm, and toward the knuckles: its half width and half height along
-      // each line.
+      // Both lines in the part's own frame, across it. How far the part reaches toward the palm: its half width and
+      // half height along that line.
       FINGER_INVERSE[0] = -g[0]; FINGER_INVERSE[1] = -g[1]; FINGER_INVERSE[2] = -g[2]; FINGER_INVERSE[3] = g[3];
       math.quat.rotateVec(MUZZLE, FINGER_INVERSE, zx, zy, zz);
-      const reach = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]), cover = THUMB_COVER * cave.traits.height;
+      const palmX = MUZZLE[0], palmY = MUZZLE[1], reach = halfX * Math.abs(palmX) + halfY * Math.abs(palmY), cover = THUMB_COVER * cave.traits.height;
       math.quat.rotateVec(MUZZLE, FINGER_INVERSE, kx, ky, kz);
-      const across = halfX * Math.abs(MUZZLE[0]) + halfY * Math.abs(MUZZLE[1]);
-      const d = Math.max(reach + cave.fist.palm * (1 - sink), cave.fist.thumb + cover - reach), back = Math.min(0, across - cave.fist.down - cover);
-      reachArm(cave, arm, forearm, out, tx - zx * d + kx * back, ty - zy * d + ky * back, tz - zz * d + kz * back, px, py, pz);
+      const knuckleX = MUZZLE[0], knuckleY = MUZZLE[1];
+      // A point of the thumb's end, (z, y) in the hand, stands at `palm * (z - d) + knuckle * (back - y)` across the
+      // part, with the fist `d` out from the part's middle and `back` toward the knuckles. The face the palm looks
+      // through sets `d`, no nearer than the sink puts it; the face across the knuckles sets `back`, never toward the
+      // knuckles. Each is fitted to every point with the other where it stands, three times over.
+      const tip = cave.fist.tip, faceX = Math.abs(palmX) > Math.abs(palmY);
+      const palmA = faceX ? palmX : palmY, knuckleA = faceX ? knuckleX : knuckleY, halfA = (faceX ? halfX : halfY) - cover;
+      const palmB = faceX ? palmY : palmX, knuckleB = faceX ? knuckleY : knuckleX, halfB = (faceX ? halfY : halfX) - cover;
+      const sunk = reach + cave.fist.palm * (1 - sink);
+      let d = sunk, back = 0;
+      for (let fit = 0; fit < 3; fit++) {
+        HOLD_FIT[0] = -Infinity; HOLD_FIT[1] = Infinity;
+        for (let i = 0; i < tip.length; i += 2) narrow(palmA * tip[i] + knuckleA * (back - tip[i + 1]), -palmA, halfA);
+        d = Math.max(sunk, fitted(false));
+        HOLD_FIT[0] = -Infinity; HOLD_FIT[1] = Infinity;
+        for (let i = 0; i < tip.length; i += 2) narrow(palmB * (tip[i] - d) - knuckleB * tip[i + 1], knuckleB, halfB);
+        back = Math.min(0, fitted(true));
+      }
+      HOLD_AT[0] = tx - zx * d + kx * back; HOLD_AT[1] = ty - zy * d + ky * back; HOLD_AT[2] = tz - zz * d + kz * back;
+      reachArm(cave, arm, forearm, out, HOLD_AT[0], HOLD_AT[1], HOLD_AT[2], px, py, pz);
     }
     return handTurn(arm, forearm, ax, ay, az);
   };
   // A modelled body's hands on its rifle, wherever the rifle has been put. Aiming, the right is round the pistol
   // grip, and with `straight` that arm is held straight out, the rifle going out along it to the end of its reach.
   // Carrying (`both`), the right holds the neck of the stock just behind the grip and the left the handguard,
-  // elbows down and out, each fist's thumb toward the muzzle.
+  // elbows down and out, each fist's thumb toward the muzzle; the rifle then moves across the body until the two
+  // fists are as far either side of its middle, and the hands take it again there.
   const gripRifle = (cave, both, straight) => {
     const parts = cave.parts, gun = parts.gun, g = gun.quaternion, h = cave.traits.height, p = gun.position;
     math.quat.rotateVec(MUZZLE, g, 0, -0.14 * h, -0.184 * h);
@@ -1419,11 +1449,15 @@
     if (both) {
       math.quat.rotateVec(MUZZLE, g, 0, 0, 1);
       const bx = MUZZLE[0], by = MUZZLE[1], bz = MUZZLE[2];
-      math.quat.rotateVec(MUZZLE, g, 0, -0.02 * h, -0.29 * h);
-      cave.handTurnR = holdPart(cave, parts.armR, parts.forearmR, cave.reachR, g, p.x + MUZZLE[0], p.y + MUZZLE[1], p.z + MUZZLE[2], -bx, -by, -bz, 0.0385 * h, 0.047 * h, STOCK_SINK, -0.8, -1, -0.4);
-      // The top hand is on the handguard's wood, as far up it as keeps the thumb's side of the fist off the barrel.
-      math.quat.rotateVec(MUZZLE, g, 0, -0.012 * h, Math.max(GUARD_MIDDLE * h, GUARD_END * h - cave.fist.span));
-      cave.handTurnL = holdPart(cave, parts.armL, parts.forearmL, cave.reachL, g, p.x + MUZZLE[0], p.y + MUZZLE[1], p.z + MUZZLE[2], bx, by, bz, 0.045 * h, 0.061 * h, GUARD_SINK, 0.8, -1, -0.3);
+      for (let pass = 0; pass < 2; pass++) {
+        math.quat.rotateVec(MUZZLE, g, 0, -0.02 * h, -0.29 * h);
+        cave.handTurnR = holdPart(cave, parts.armR, parts.forearmR, cave.reachR, g, p.x + MUZZLE[0], p.y + MUZZLE[1], p.z + MUZZLE[2], -bx, -by, -bz, 0.0385 * h, 0.047 * h, STOCK_SINK, -0.8, -1, -0.4);
+        const right = HOLD_AT[0];
+        // The top hand is on the handguard's wood, as far up it as keeps the thumb's side of the fist off the barrel.
+        math.quat.rotateVec(MUZZLE, g, 0, -0.012 * h, Math.max(GUARD_MIDDLE * h, GUARD_END * h - cave.fist.span));
+        cave.handTurnL = holdPart(cave, parts.armL, parts.forearmL, cave.reachL, g, p.x + MUZZLE[0], p.y + MUZZLE[1], p.z + MUZZLE[2], bx, by, bz, 0.045 * h, 0.061 * h, GUARD_SINK, 0.8, -1, -0.3);
+        if (pass === 0) p.x -= (right + HOLD_AT[0]) / 2;
+      }
       return;
     }
     math.quat.rotateVec(MUZZLE, g, 0, -0.97, -0.26);

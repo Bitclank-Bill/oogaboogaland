@@ -252,6 +252,23 @@
   // The hand widens no faster than WIDEN (across for each unit down), so a fist much wider than its wrist, as a
   // slender arm's is, widens all the way down the heel of the palm and has no shelf under the wrist.
   const WRIST = 1.28, WIDEN = 0.58;
+  // The end of a hand's thumb seen from the hand's side: the outline, as (z, y) pairs, of the thumb's half toward the
+  // knuckles where it lies past the fingers' tips (`past`) on the palm's side, for a hold to keep inside what it holds.
+  const thumbEnd = (g, past) => {
+    const points = [];
+    for (let i = 0; i < g.verts.length; i += 3) if (g.verts[i + 2] > past && g.verts[i + 1] < 0) points.push([g.verts[i + 2], g.verts[i + 1]]);
+    points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const turn = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lower = [], upper = [];
+    for (const p of points) {
+      while (lower.length >= 2 && turn(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+      lower.push(p);
+    }
+    for (let i = points.length - 1; i >= 0; i--) {
+      while (upper.length >= 2 && turn(upper[upper.length - 2], upper[upper.length - 1], points[i]) <= 0) upper.pop();
+      upper.push(points[i]);
+    }
+    return Float64Array.from(lower.slice(0, -1).concat(upper.slice(0, -1)).flat());
+  };
   const hand = (side, skin, s = 1, wrist = [1.25, 1.05, 0.4]) => {
     const g = geometry(), inside = shade(skin, 0.5);
     // The hand: whole from the wrist down over the fingers' tips (the heel of the palm), and behind them below that
@@ -514,17 +531,11 @@
     const pair = (make, sided = false) => { const right = scaled(make(0), u), left = paint || sided ? scaled(make(1), u) : right; return [right, !sided && alike(right, left) ? right : left]; };
     const [armR, armL] = pair(arm), [forearmR, forearmL] = pair(forearm), [legR, legL] = pair(leg, !o.boot), hands = o.hands || [skin, skin];
     const handR = scaled(hand(-1, hands[0], hs, wristOf), u);
-    // The thumb is what lies past the fingers' tips (1.1) on the palm's side.
-    let thumb = 0, down = 0;
-    for (let i = 0; i < handR.verts.length; i += 3) {
-      thumb = Math.max(thumb, handR.verts[i + 2]);
-      if (handR.verts[i + 2] > 1.12 * hs * u) down = Math.max(down, -handR.verts[i + 1]);
-    }
     return { torso: scaled(torso, u), arm: armR, armL, forearm: forearmR, forearmL, leg: legR, legL,
       handR, handL: scaled(hand(1, hands[1], hs, wristOf), u), armX: B.armX * u, armDrop: (B.armDrop || 0) * u, armScale: armK,
-      // The fist's measures from its middle: to the face of its palm, to the end of its thumb's side, to the far
-      // side of the thumb lying across the fingers on the palm's side, and how far that thumb runs toward the knuckles.
-      fist: { palm: 1.1 * B.handScale * u, span: 2.17 * B.handScale * u, thumb, down },
+      // The fist's measures from its middle: to the face of its palm and to the end of its thumb's side, and the end
+      // of the thumb lying across the fingers on the palm's side, seen from the hand's side.
+      fist: { palm: 1.1 * B.handScale * u, span: 2.17 * B.handScale * u, tip: thumbEnd(handR, 1.12 * hs * u) },
       legX: B.legX ? B.legX * u : 0, elbow, back: spine * u, modelled: true };
   };
   // The default Ooga's strap, an object of its own: a band that comes out from behind the belt at the left hip, runs
