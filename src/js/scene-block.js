@@ -204,6 +204,11 @@
       const netted = createNode({ geometry: BM.draped(), visible: false });
       const held = createNode({ geometry: BM.crate(0), position: { x: 0, y: 1.95, z: 0.1 }, visible: false });
       const trolley = createNode({ geometry: BM.trolley(), position: { x: 0, y: C.ZIP_HANG + 0.15, z: 0 }, visible: false });
+      // Keep the shared ride physics, but fit the hanging body and bar to this Ooga's shoulders and reach.
+      const hip = cave ? cave.root.position.y : 0, armZ = cave ? cave.parts.armR.rotation.z : 0;
+      const hang = cave ? { angle: Math.atan2(-cave.elbow.z, cave.elbow.y - cave.elbow.length),
+        hip: C.ZIP_HANG - cave.parts.armR.position.y - Math.hypot(cave.elbow.y - cave.elbow.length, cave.elbow.z) * cave.armScale } : null;
+      if (cave) trolley.scale.x = Math.max(1, (Math.abs(cave.parts.armR.position.x - cave.parts.armL.position.x) + 0.16) / 0.6);
       const chute = createNode({ geometry: BM.chute(0), visible: false });
       // The jetpack on the back, its flames lit while it thrusts.
       const jet = createNode({ geometry: BM.jetpack(0), position: { x: 0, y: 0.78, z: -0.3 } });
@@ -252,7 +257,7 @@
       const hookHead = place(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true }));
       const hookHip = createNode({ geometry: BM.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
       addChild(body, hookHip);
-      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, flash, flashL, shot: SHOT_IDLE, kick: 0, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
+      return { body, cave, hip, armZ, hang, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, flash, flashL, shot: SHOT_IDLE, kick: 0, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
     });
   };
   const disposeActors = () => {
@@ -903,6 +908,7 @@
       if (dual) a.gun.geometry = a.gunL.geometry = BM.gun(GUN_OF.gold * 2 + ti);
       if (!a.cave) continue;
       const p = a.cave.parts, w = CLOUD_CALM ? 0 : Math.sin(elapsed * 6 + k * 2.3), kick = hop > 0.05 ? 0.55 : 0;
+      a.cave.root.position.y = a.hip;
       p.armL.quaternion = null;
       p.armL.rotation.z = p.armR.rotation.z = 0;
       p.forearmL.rotation.x = p.forearmR.rotation.x = 0;
@@ -1827,11 +1833,11 @@
       if (s.boots > 0 && s.moving > 1 && Math.random() < dt * 14) fx.burst(s.x, s.y + 0.2, s.z, 2, ORANGE_BITS, 0.8);
       // On the board only the Ooga on show stands in view.
       a.body.visible = !(i === 0 && (cam.first || cam.close) && phase === "play") && !(phase === "board" && preview.wide && i > 0);
-      a.body.scale.y = s.crouch ? 0.66 : 1;
+      a.body.scale.y = s.crouch && !s.riding ? 0.66 : 1;
       // Dragged by a gorilla: facing it, pitched over so the feet are in its hand and the head trails along the ground (as
       // wicked's hub capture holds an Ooga: `grabbedOogaPose`). Otherwise upright, turning to the heading.
       const dragged = s.grabbed ? sim.gorillas[s.grabbed - 1] : null;
-      a.body.rotation.x = damp(a.body.rotation.x, dragged ? -1.25 : 0, dragged ? 18 : 12, dt);
+      a.body.rotation.x = s.riding ? 0 : damp(a.body.rotation.x, dragged ? -1.25 : 0, dragged ? 18 : 12, dt);
       a.body.rotation.y = dragged ? dragged.heading : damp(a.body.rotation.y, a.body.rotation.y + wrap(s.heading - a.body.rotation.y), 14, dt);
       a.ring.visible = s.grounded;
       a.bubble.visible = s.trapped > 0;
@@ -1886,8 +1892,16 @@
       if (s.trapped > 0) a.bubble.rotation.y = elapsed * 0.8;
       if (!a.cave) continue;
       const p = a.cave.parts;
+      a.cave.root.position.y = s.riding ? a.hang.hip : a.hip;
       p.armL.quaternion = null;
+      p.armR.rotation.z = s.riding ? 0 : a.armZ; p.armL.rotation.z = -p.armR.rotation.z;
       p.forearmL.rotation.x = p.forearmR.rotation.x = -a.cave.elbow.rest;
+      if (s.riding) {
+        p.forearmL.rotation.x = p.forearmR.rotation.x = 0;
+        p.armL.rotation.x = p.armR.rotation.x = a.hang.angle;
+        p.legL.rotation.x = 0.3; p.legR.rotation.x = -0.2;
+        continue;
+      }
       if (s.splat > 0) {
         // Splatted: arms up, wobbling, feet together.
         const w = Math.sin(elapsed * 9 + i) * 0.15;
@@ -1937,8 +1951,8 @@
         p.legL.rotation.x = p.legR.rotation.x = -1.2;
         continue;
       }
-      if (s.riding || s.climbing || s.flight === 2) {
-        // Hanging from the trolley, or hand over hand up a ladder.
+      if (s.climbing || s.flight === 2) {
+        // Under a parachute, or hand over hand up a ladder.
         const k = s.climbing ? Math.sin(elapsed * 9) * 0.4 : 0;
         p.armL.rotation.x = -2.9 + k; p.armR.rotation.x = -2.9 - k;
         p.legL.rotation.x = s.climbing ? -k : 0.3; p.legR.rotation.x = s.climbing ? k : -0.2;
@@ -2136,7 +2150,7 @@
     cam.yaw = cam.first || !cam.warm ? want : wrap(cam.yaw + wrap(want - cam.yaw) * Math.min(1, dt * (cam.island ? 9 : 7)));
     if (cam.first && me) {
       // The eye at the Ooga's eyes (lower when crouched), looking along the aim.
-      const eye = y + actors[0].cave.headOffset * 0.95 * (me.crouch ? 0.66 : 1), up = lookUp(), c = Math.cos(up);
+      const a = actors[0], eye = y + (a.cave.headOffset * 0.95 + (me.riding ? a.hang.hip - a.hip : 0)) * (me.crouch && !me.riding ? 0.66 : 1), up = lookUp(), c = Math.cos(up);
       cam.close = false;
       if (me.grabbed) {
         // Dragged by a leg: on the back, looking up at the sky.

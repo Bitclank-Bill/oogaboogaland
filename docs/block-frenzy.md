@@ -80,7 +80,9 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
 - **Ziplines.** Each tower's cable leaves from the platform's ladder side and runs down into the other end. `Space` (or the
   Zip button) by the cable rides it at 15 m/s, hands on the cable; at its end, or on a jump, you let go and fall. From
   your own tower it is a raid into their fort; with their block in hand, their tower's line takes you home. Closed
-  while fortifying and while holding a crate. Reaching the cable says which way it rides.
+  while fortifying and while holding a crate. Reaching the cable says which way it rides. The bar fits the modelled
+  Ooga's shoulder width and its hanging pose uses its actual arm reach, restoring its hip when it lets go; the shared
+  ride path and speed are the same for every body. First person follows that hanging eye height.
 - **The rivals' zipline is a trap door unless your own block is home.** Grab the other side's line while your own
   block is anywhere but its stand (carried, dropped, flying) and it throws you off the island instead (`zipSprings`,
   event `ziptrap`): the enemy catapult's throw (`flingOff`), outward from that line's handle past the rim, no
@@ -274,7 +276,9 @@ autopilot replaying exactly to three captures. The `block` scene runs the title 
 a quiz trap through a wrong and a right answer, an autopilot round to its saved results, and the round trip.
 
 The entry hall's Node checks cover the stage's four cabinets, the hall reaching the ledge, the zipline's survey and the Rally poster's move; the `arcade` step walks it. The Block Frenzy browser checks also measure each weapon's
-grip and the raised trophy against regular, slim and wide Oogas' actual fists. The phone session checks the board,
+grip, zipline bar and raised trophy against regular, slim and wide Oogas' actual fists, including letting go of the
+bar. Both teams' Ride controls and warning lamps are checked with their own block home and away; the trap event
+also crosses the binary wire into an opposing client's actor numbering. The phone session checks the board,
 play and results at portrait, landscape and narrow sizes, including a real touch event that fires Throw and the
 shared controls reference. Throw sits above the sticks and Jump, with the weapons bar above it.
 
