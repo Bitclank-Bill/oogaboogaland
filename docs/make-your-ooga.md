@@ -104,6 +104,9 @@ The limits a maintainer cannot waive:
   copy of another character's file: a commit that holds someone else's handle closes the PR.
 - **Nothing else in the PR.** A character PR changes its one file.
 
+Leave comments out. They count toward the 32,768 bytes, the screen reads them, and they ship
+in every visitor's page. Say what each part is for in the PR's description instead.
+
 What tends to go wrong, from the Oogas already here:
 
 - **Clothes floating or cut by the body.** A garment is a piece of its own that follows the
