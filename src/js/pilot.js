@@ -405,7 +405,13 @@
     let aimCave = null, aimMix = 0, aimVelocity = 0, adsMix = 0, ads = false, mouseAds = false, disposed = false;
     let aimLeftAccepted = false, aimLeftFocused = false, aimReleaseEvent = null, attackReleaseBlocked = false;
     let rightDownAt = -Infinity, rightTapAt = -Infinity, rightTravel = 0, rightExitHeld = false;
-    let primaryButtonCave = null;
+    // The Ooga whose AK the HUD's button holds the trigger of (full auto until let go), or null.
+    let primaryButtonCave = null, triggerButtonCave = null;
+    // The AK button let go of, or a hold ended for it (the Ooga changed, the gun went away, the view was taken).
+    const releaseTriggerButton = () => {
+      if (triggerButtonCave && crew) crew.setWeaponTrigger(false);
+      triggerButtonCave = null;
+    };
     const buttonTarget = { x: 0, y: 0, z: 0 };
     let reticleRadius = -1;
     let zoomTilt = false, zoomPitchVelocity = 0, zoomAnchorPitch = 0, zoomAnchorDistance = DIST_MIN;
@@ -537,8 +543,10 @@
       rightTravel = 0;
       rightExitHeld = false;
     };
+    let primaryTaken = false;
     const unlockAim = (preserveZoom = false) => {
       if (externalControl && !disposed) return;
+      if (primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
       lockCancelled = true;
       aimLocked = false;
       unlockedAt = -Infinity;
@@ -546,6 +554,7 @@
       setSoftAimFocus(false);
       ads = false;
       primaryButtonCave = null;
+      releaseTriggerButton();
       aimLeftAccepted = aimLeftFocused = false;
       carryCursor.endAim();
       if (crew) {
@@ -579,6 +588,7 @@
       setSoftAimFocus(false);
       ads = false;
       primaryButtonCave = null;
+      releaseTriggerButton();
       aimLeftAccepted = aimLeftFocused = false;
       aimReleaseEvent = null;
       carryCursor.stop();
@@ -1463,9 +1473,25 @@
       }
       // Carry leaves the buttons alone: the right one changes no view there, and both together walk.
       if (!armed()) return;
+      if (e.type === "pointermove") ctx.aimPointer?.(e.clientX, e.clientY);
       if (birdsEye() && rightPress) {
         e.preventDefault(); e.stopImmediatePropagation();
         shooterView(true, renderer.size.width / 2, renderer.size.height / 2);
+        return;
+      }
+      // A modified scene link is a native click, as in carry: do not capture the
+      // mouse or cancel its default. Still take the press away from weapons.
+      const leftPress = e.button === 0 && (e.type === "pointerdown" || e.type === "pointermove" && (e.buttons & 1));
+      if (leftPress && (e.metaKey || e.ctrlKey) && ctx.modifiedClick?.(e)) {
+        primaryTaken = true;
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (e.button === 0 && primaryTaken && (e.type === "pointerup" || e.type === "pointermove" && !(e.buttons & 1))) {
+        primaryTaken = false;
+        e.stopImmediatePropagation();
+        // Open within the uncancelled native release, preserving the browser's tab modifiers.
+        ctx.primaryAction(false, e);
         return;
       }
       e.preventDefault(); e.stopImmediatePropagation();
@@ -1491,13 +1517,13 @@
           lockAim();
           if (!alreadyFocused) {
             // The capturing click never attacks, but a scene may answer what the free cursor was on.
-            if (e.button === 0) ctx.captureClick?.(e.clientX, e.clientY);
+            if (e.button === 0 && ctx.captureClick?.(e.clientX, e.clientY) && ctx.primaryAction) primaryTaken = true;
             return;
           }
         }
         resumePose();
         // A scene may take the left button first (`primaryAction`, Cloud Hopper's grappling hook), and then its release.
-        if (e.button === 0 && ctx.primaryAction?.(true)) primaryTaken = true;
+        if (e.button === 0 && ctx.primaryAction?.(true, e)) primaryTaken = true;
         else if (e.button === 0) {
           attackReleaseBlocked = !crew.weaponsEnabled;
           if (player().weapon.primaryEquipped) crew.swingWeapon(player(), true, ads);
@@ -1513,8 +1539,7 @@
           if (!attackReleaseBlocked && e.buttons & 1 && !player().weapon.primaryEquipped && crew.setWeaponTrigger(true, true)) aimLeftAccepted = true;
         }
       } else if (e.type === "pointerup" || e.type === "pointermove") {
-        if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
-        else if (e.button === 0) {
+        if (e.button === 0) {
           releaseAimAttack(e);
           releasePrimary(player(), ads);
         }
@@ -1574,6 +1599,8 @@
     };
     const aimMouseUp = (e) => {
       if (externalControl) return;
+      // A scene-owned press released away from the canvas is cancelled, never fired.
+      if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false); return; }
       if (e.button === 2) {
         mouseAds = false;
         ads = padAds;
@@ -1593,6 +1620,7 @@
       if (aimLocked && !locked) unlockedAt = performance.now();
       aimLocked = locked;
       if (!locked) {
+        if (primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
         clearRightGesture();
         ads = false;
         aimLeftAccepted = aimLeftFocused = false;
@@ -1660,7 +1688,7 @@
       }
       for (const child of node.children) includeHeadPart(child);
     };
-    // Distance past which hiding work is provably idle: hats and floating swag
+    // Distance past which hiding work is provably idle: hats and headgear
     // keep the head subtree within ~3.5 m of the root even on the tallest Ooga
     // (height 1.16) under step lift, and the widest near-plane corner (near
     // 0.5 m at MAX_FOV on an ultrawide) reaches ~1.3 m beyond the eye, so
@@ -1850,6 +1878,7 @@
         crew.releaseSwing(primaryButtonCave, true);
         primaryButtonCave = null;
       }
+      if (triggerButtonCave && (triggerButtonCave !== cave || !secondaryReady || !weapon.equipped)) releaseTriggerButton();
       const reload = secondaryReady && weapon.equipped && crew.canReload(cave);
       const meleeCharge = weapon && weapon.meleeHeld ? weapon.meleeCharge : 0;
       hud.setPrimary(primaryReady, !!weapon && !weapon.equipped, primaryReady ? cave.parts.club.geometry : null,
@@ -1873,6 +1902,21 @@
       syncModeHud();
       syncJetpackHud();
     };
+    // The point a HUD shot goes at while carrying: along the Ooga's facing, onto the target there if one stands in the
+    // way, written into `buttonTarget`.
+    const facingTarget = (cave) => {
+      const p = cave.root.position, yaw = cave.root.rotation.y;
+      const dx = Math.sin(yaw), dz = Math.cos(yaw), y = p.y + cave.traits.height * 0.45;
+      if (input && input.weaponTargets.verticalRay(targetHit, p.x, y, p.z, dx, dz, 60, cave, sightClear || cursorClear, autoTarget)) {
+        centerTarget(targetHit);
+        buttonTarget.x = targetHit.x; buttonTarget.y = targetHit.y; buttonTarget.z = targetHit.z;
+      } else {
+        buttonTarget.x = p.x + dx * 60;
+        buttonTarget.y = y;
+        buttonTarget.z = p.z + dz * 60;
+      }
+      return buttonTarget;
+    };
     const weaponAction = (action, held = false) => {
       if (action === "weapon-primary-up" || action === "weapon-primary-cancel") {
         if (primaryButtonCave) {
@@ -1880,6 +1924,11 @@
           else releasePrimary(primaryButtonCave);
         }
         primaryButtonCave = null;
+        if (crew) syncWeaponHud();
+        return true;
+      }
+      if (action === "weapon-secondary-up" || action === "weapon-secondary-cancel") {
+        releaseTriggerButton();
         if (crew) syncWeaponHud();
         return true;
       }
@@ -1899,28 +1948,19 @@
             else releasePrimary(cave);
           }
         }
-      } else if (action === "weapon-secondary") {
+      } else if (action === "weapon-secondary" || action === "weapon-secondary-down") {
         if (!cave.weapon.equipped) {
           crew.selectWeapon(2, cave);
           syncAim();
         } else {
           // Navigation looks back toward the character. A HUD shot follows
           // the character's facing instead of that unrelated orbit-camera ray.
-          let target = null;
-          if (!armed()) {
-            const p = cave.root.position, yaw = cave.root.rotation.y;
-            const dx = Math.sin(yaw), dz = Math.cos(yaw), y = p.y + cave.traits.height * 0.45;
-            if (input && input.weaponTargets.verticalRay(targetHit, p.x, y, p.z, dx, dz, 60, cave, sightClear || cursorClear, autoTarget)) {
-              centerTarget(targetHit);
-              buttonTarget.x = targetHit.x; buttonTarget.y = targetHit.y; buttonTarget.z = targetHit.z;
-            } else {
-              buttonTarget.x = p.x + dx * 60;
-              buttonTarget.y = y;
-              buttonTarget.z = p.z + dz * 60;
-            }
-            target = buttonTarget;
-          }
-          if (!crew.fireWeapon(cave, target, ads ? 1 : undefined) && !cave.weapon.unlimited && !cave.weapon.ammo) hud.hint("Empty magazine · press Space within reach of the pile to reload");
+          const target = armed() ? null : facingTarget(cave);
+          // Held, the AK button fires full auto on the trigger's own shot clock until it is let go; a press from the
+          // keyboard is one burst, as a click was.
+          const fired = action === "weapon-secondary-down" ? crew.setWeaponTrigger(true, ads, target) : crew.fireWeapon(cave, target, ads ? 1 : undefined);
+          if (fired && action === "weapon-secondary-down") triggerButtonCave = cave;
+          if (!fired && !cave.weapon.unlimited && !cave.weapon.ammo) hud.hint("Empty magazine · press Space within reach of the pile to reload");
         }
       } else if (action === "weapon-toggle") {
         crew.toggleWeapon(cave);
@@ -2595,7 +2635,7 @@
     // Each press is acted on once; a trigger held when the pilot lets go of input is let go of with it, and LT also
     // when combat ends. Letting go of LT leaves a right-click aim held with the mouse.
     // `primaryTaken` and `padPrimary`: a scene's `primaryAction` took the mouse's left press or the pad's RT.
-    let padFrame = -1, padFire = false, padAds = false, padPrimary = false, primaryTaken = false;
+    let padFrame = -1, padFire = false, padAds = false, padPrimary = false;
     const resetPad = () => { padFrame = pad.frame; padFire = padAds = mouseAds = ads = false; };
     const readPad = () => {
       const live = active && !externalControl && !menuOpen;
@@ -2629,12 +2669,17 @@
     };
     const readInput = (dt) => {
       readPad();
-      if (!active || externalControl || menuOpen) return;
+      if (!active || externalControl || menuOpen) { releaseTriggerButton(); return; }
       syncAim();
       const a = controls.read();
       // Arrival easing keeps its label; only manual camera input fades it.
       if ((a.x || a.y || a.up || a.yaw || a.pitch || a.orbitYaw) && hud.fadeDetachedName) hud.fadeDetachedName();
       const cave = player();
+      // A held AK button keeps firing where the Ooga faces as it turns (in combat, where it aims), before the crew moves.
+      if (triggerButtonCave) {
+        if (triggerButtonCave !== cave) releaseTriggerButton();
+        else crew.aimTrigger(armed() ? null : facingTarget(cave));
+      }
       const lying = syncLyingView(cave);
       const shoulderCombat = !!cave && armed() && shoulderView && !closeWanted;
       if (shoulderCombat && a.shiftTap) shoulderSideTarget = -shoulderSideTarget;
@@ -3810,6 +3855,7 @@
         const cave = player();
         if (cave) { crew.stopBurst(cave); crew.stopReload(cave, true); crew.releaseSwing(cave, true); }
         primaryButtonCave = null;
+        releaseTriggerButton();
         aimLeftAccepted = aimLeftFocused = false; aimReleaseEvent = null;
         attackReleaseBlocked = true;
       }
@@ -3939,6 +3985,7 @@
       // The first person's field of view at this canvas's shape (unaimed), for a view held from outside to match it.
       eyeFov: () => Math.min(MAX_FOV, Math.max(BASE_FOV, 2 * Math.atan(Math.tan(MIN_HFOV / 2) / (renderer.size.width / Math.max(1, renderer.size.height))))),
       get poseHeld() { return !!restoredPose; }, get aiming() { return armed(); },
+      get aimFocused() { return softAimFocused || document.pointerLockElement === canvas; },
       // Scenery follows the displayed blend, not the entry's local clock:
       // carry/shoulder exits and mid-transition reversals retain this value.
       get birdsEye() { return birdsEye(); }, get birdsEyeMix() { return camera.orthoMix || 0; }, get birdsEyeHeight() { return overheadHeight; }, get birdsEyeNorthUp() { return overheadNorthUp; },
