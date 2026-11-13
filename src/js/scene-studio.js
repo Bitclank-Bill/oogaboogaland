@@ -516,7 +516,7 @@
     panel.note.textContent = r.refused ? `The intake would refuse it: ${why}${at}` : r.lane === "daily" ? "Plain data: it merges on its own with the next daily bundle."
       : `Custom code: a maintainer reviews it.${hooked ? "" : ` ${why}`}`;
     if (r.refused) panel.note.dataset.state = "bad"; else delete panel.note.dataset.state;
-    if (hooked) panel.parts.replaceChildren(item("In its hooks", undefined, bytes(hooked)), item("Look, voice, shared code", undefined, bytes(Math.max(0, r.bytes - hooked))));
+    if (hooked) panel.parts.replaceChildren(item("Appearance & equipment code", undefined, bytes(hooked)), item("Settings, dialog, & other code", undefined, bytes(Math.max(0, r.bytes - hooked))));
   };
   const fillPanel = (name, built, signal) => {
     const fill = ++panelFill, row = BL.characters.get(name) || {}, look = row.look || {}, dress = row.dress || {};
