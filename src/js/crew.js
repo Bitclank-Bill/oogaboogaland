@@ -3768,7 +3768,9 @@
       if (!w.unlimited && !w.ammo) w.triggerHeld = false;
       return true;
     };
-    const setWeaponTrigger = (held, single = false) => {
+    // `target`, when given, is the point the held trigger fires at (the carry view's facing) in place of the player's
+    // aim; `aimTrigger` moves it while the trigger stays held.
+    const setWeaponTrigger = (held, single = false, target = null) => {
       if (held && !weaponsEnabled) return false;
       if (!player) return false;
       const w = player.weapon;
@@ -3784,7 +3786,8 @@
         w.triggerSingle = single;
         w.reloadFire = w.reloadFireHeld = true;
         w.reloadFireRounds = single ? 1 : BURST_ROUNDS;
-        w.burstPlayerAim = true;
+        w.burstPlayerAim = !target;
+        if (target) setVec(w.burstTarget, target.x, target.y, target.z);
         return true;
       }
       if (!weaponReady(player)) return false;
@@ -3796,7 +3799,7 @@
         // A fresh press may wait out the previous shot's cooldown. It never
         // resumes automatically after reload, stow or another cancellation.
         w.burstTimer = 0;
-        if (!fireWeapon(player, null, single ? 1 : BURST_ROUNDS) && single && w.cooldown > 0) {
+        if (!fireWeapon(player, target, single ? 1 : BURST_ROUNDS) && single && w.cooldown > 0) {
           // Preserve each distinct semi-automatic press until the mechanical
           // shot clock allows it. Pointer release must not erase a fast second
           // click; cancellation paths clear the queue through stopBurst.
@@ -3804,6 +3807,15 @@
         }
       }
       return true;
+    };
+    // Re-aim a held trigger: at `target` (the carry view's facing, followed as the Ooga turns), or with null at the
+    // player's own aim again. Nothing while no trigger is held.
+    const aimTrigger = (target) => {
+      if (!player) return;
+      const w = player.weapon;
+      if (!w.triggerHeld && !w.reloadFireHeld) return;
+      w.burstPlayerAim = !target;
+      if (target) setVec(w.burstTarget, target.x, target.y, target.z);
     };
     const updateWeapon = (cave, dt) => {
       const w = cave.weapon;
@@ -8139,7 +8151,7 @@
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, resumeFromHost, sleepDiagnostics, refreshRosterRow, updateFan, rush, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawDrops,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
-      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, aimTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       // The driven Ooga's steering as last set, the world direction in `x` and `z`; live, not a copy.
       get steering() { return steer; },
