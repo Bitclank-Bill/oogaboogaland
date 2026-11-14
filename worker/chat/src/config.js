@@ -16,6 +16,7 @@ export const PATHS = {
   logout: "/api/chat/logout",
   login: { github: "/auth/github", x: "/auth/x" },
   audience: "/api/chat/audience",
+  commons: "/api/chat/commons",
 };
 export const BOOTSTRAP_VERSION = 1;
 
@@ -58,7 +59,8 @@ export const bootstrap = async (env) => {
   const login = {};
   if (features.github) login.github = PATHS.login.github;
   if (features.x) login.x = PATHS.login.x;
-  const paths = { login, ...(env.DB ? { session: PATHS.session, logout: PATHS.logout } : {}), ...(features.listen ? { audience: PATHS.audience } : {}) };
+  const paths = { login, ...(env.DB ? { session: PATHS.session, logout: PATHS.logout } : {}), ...(features.listen ? { audience: PATHS.audience } : {}),
+    ...(features.commons ? { commons: PATHS.commons } : {}) };
   return {
     version: BOOTSTRAP_VERSION,
     build: await appBuild(env),

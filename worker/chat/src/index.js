@@ -6,10 +6,11 @@
 // hands the island Worker over its private bridge (`OBL`, worker/src/chat-bridge.js) it writes itself, from its own
 // session. Routes: the public configuration (config.js), sign-in and the account (#663, auth.js, avatar.js), the public
 // panels and donations (#664, public.js, donations.js), the audience socket (#665, audience.js) and its media (#666,
-// media.js); the Commons (#670) adds its own here.
+// media.js), and the Commons with Online Oogas (#670, commons.js).
 
 import { handleAudienceSocket } from "./audience.js";
 import { handleAuth } from "./auth.js";
+import { handleCommonsSocket } from "./commons.js";
 import { handleAvatar } from "./avatar.js";
 import { bootstrap, effective, health, version } from "./config.js";
 import { handleDonations } from "./donations.js";
@@ -42,6 +43,7 @@ export const route = async (request, env, deps = hostDeps(null)) => {
     return json(await read(env));
   }
   if (path === "/api/chat/audience") return handleAudienceSocket(request, env, deps);
+  if (path === "/api/chat/commons") return handleCommonsSocket(request, env, deps);
   if (path.startsWith("/api/chat/media/")) return handleMedia(request, env, url, deps);
   if (path.startsWith("/api/chat/avatar/")) return handleAvatar(request, env, url, deps);
   if (path.startsWith("/api/chat/public/")) return handlePublic(request, env, url, deps);

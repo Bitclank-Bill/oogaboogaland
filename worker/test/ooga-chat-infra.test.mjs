@@ -110,7 +110,8 @@ test("the bootstrap is the app's contract: version 1, its protocols, flags, same
   assert.equal(body.build, "e310d64685e87b14");
   assert.deepEqual(body.protocols, { identity: [1], audience: [1], media: [1] });
   assert.deepEqual(body.features, { github: true, x: true, voice: true, feed: true, speak: true, commons: true, cloud: true });
-  assert.deepEqual(body.paths, { login: { github: "/auth/github", x: "/auth/x" }, session: "/api/chat/me", logout: "/api/chat/logout", audience: "/api/chat/audience" });
+  assert.deepEqual(body.paths, { login: { github: "/auth/github", x: "/auth/x" }, session: "/api/chat/me", logout: "/api/chat/logout", audience: "/api/chat/audience",
+    commons: "/api/chat/commons" });
   const flat = (value) => typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value).flatMap(flat) : [];
   for (const path of flat(body.paths)) assert.match(path, /^\/(?!\/)[\w\-./]*$/, path);
   const text = JSON.stringify(body);
