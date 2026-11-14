@@ -164,6 +164,8 @@
     }
     return (sash = v);
   };
+  const HEAD_PALETTE = ["#d99a74", "#3b3430", "#322c29", "#8b8279", "#b3aba1", "#3f3732", "#857c72", "#c9c3b9", "#b9b2a7"];
+  const [SKIN, HAIR, HAIR_DARK, GREY, ASH, BEARD_DARK, BEARD_MID, BEARD, BEARD_SHADE] = HEAD_PALETTE.map((_, i) => i);
   BL.characters.add({
     handle: "Bitcoin-Bill",
     github: "Bitclank-Bill",
@@ -204,32 +206,37 @@
           rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 }
         };
       },
-      crown(k, v) {
-        const grey = k.color("#8b8279"), silver = k.color("#b3aba1");
-        for (let y = 2; y <= 8; y++) for (let z = -1; z <= 6; z++) for (const x of [-1, 7]) {
-          if (v.has(x, y, z) && k.rand() < 0.35) v.set(x, y, z, k.rand() < 0.5 ? grey : silver);
-        }
-        for (let x = 0; x <= 6; x++) for (let y = 2; y <= 8; y++) if (v.has(x, y, -1) && k.rand() < 0.25) v.set(x, y, -1, grey);
-      },
-      eyes(k, v) {
-        const o = k.color(ORANGE), oc = k.color(ORANGE_CORE);
-        for (const [x0, ring, core] of [[0, o, oc], [5, o, oc]]) {
-          for (let x = x0; x <= x0 + 1; x++) for (let y = 2; y <= 3; y++) {
-            v.set(x, y, 5, ring);
-            k.eyeCells.push([x, y]);
+      model(k, wear) {
+        const H = BL.heroBody, u = k.u, F = H.FRONT, v = makeVox(), z = 3.001;
+        const lock = (x, y, z, a, b) => v.set(x, y, z, speckle(x, y, z) < 16 ? b : a);
+        v.fill(0, 6, 0, 5, 0, 5, SKIN);
+        v.fill(1, 5, 0, 1, 6, 6, SKIN);
+        for (let x = -1; x <= 7; x++) for (let z = -1; z <= 6; z++) for (let y = 6; y <= 8; y++) if (y < 8 || x > -1 && x < 7 && z > -1 && z < 6) lock(x, y, z, HAIR, HAIR_DARK);
+        for (let x = -1; x <= 7; x++) for (let z = -2; z <= -1; z++) for (let y = -2; y <= 5; y++) if (z > -2 || x > -1 && x < 7) lock(x, y, z, HAIR, HAIR_DARK);
+        for (const x of [-1, 7]) for (let z = 0; z <= 4; z++) for (let y = 2; y <= 5; y++) v.set(x, y, z, z < 3 ? HAIR : y === 2 + (z & 1) ? ASH : GREY);
+        for (let x = 0; x <= 6; x++) for (let y = 0; y <= 1; y++) for (let z = 5; z <= 7; z++) if (y || z < 7 || x % 6) lock(x, y, z, y ? BEARD_DARK : x % 6 ? BEARD : BEARD_MID, y ? BEARD_DARK : BEARD_SHADE);
+        for (let x = 1; x <= 5; x++) for (let y = -2; y <= -1; y++) for (let z = 5; z <= 7; z++) if (y > -2 || z < 7 && x > 1 && x < 5) lock(x, y, z, BEARD, BEARD_SHADE);
+        const blocks = voxelGeometry(v, { unit: u, palette: HEAD_PALETTE, origin: { x: -3.5 * u, y: 0, z: -3 * u } });
+        const face = (shut) => {
+          const g = BL.models.geometry();
+          for (const side of [-1, 1]) {
+            const X = (a, b) => [Math.min(a * side, b * side), Math.max(a * side, b * side)];
+            const [bx0, bx1] = X(0, 3.55), [ex0, ex1] = X(1.5, 3.5), [cx0, cx1] = X(1.62, 2.5);
+            H.slab(g, H.rect(bx0, bx1, 4, 5.05, z, 0.18, 0.07 * side), F, 1, 0.9, HEAD_PALETTE[HAIR], HEAD_PALETTE[HAIR_DARK]);
+            if (shut) {
+              H.slab(g, H.rect(ex0, ex1, 2, 4, z), F, 0.1, 1, "#c38a68");
+              H.slab(g, H.rect(ex0, ex1, 2.55, 2.75, z + 0.1), F, 0.03, 1, "#62453a");
+            } else {
+              H.slab(g, H.rect(ex0, ex1, 2, 4, z, 0.12), F, 0.06, 1, ORANGE, ORANGE, 1);
+              H.slab(g, H.rect(cx0, cx1, 3, 3.88, z + 0.06, 0.1), F, 0.03, 1, ORANGE_CORE, ORANGE_CORE, 1.4);
+            }
+            H.slab(g, H.rect(2 * side - 0.36, 2 * side + 0.36, 0.12, 0.88, 5.001, 0.1), F, 0.14, 0.8, "#f2efe4", "#d6d0c0");
           }
-          v.set(x0 + (x0 ? 0 : 1), 3, 5, core);
-        }
-        k.headEmissive = { [o]: 1, [oc]: 1.4 };
-        return true;
-      },
-      mark(k, v) {
-        const dark = k.color("#3f3732"), mid = k.color("#857c72"), silver = k.color("#c9c3b9"), skip = new Set([k.P.nose, k.P.white, k.P.skin, k.P.skinDk]);
-        for (let x = 0; x <= 6; x++) for (let y = -2; y <= 1; y++) for (let z = 5; z <= 7; z++) {
-          if (!v.has(x, y, z) || skip.has(v.get(x, y, z))) continue;
-          const r = k.rand();
-          v.set(x, y, z, y <= -1 ? (r < 0.7 ? silver : mid) : y === 0 ? (r < 0.4 ? silver : r < 0.75 ? mid : dark) : (r < 0.6 ? dark : mid));
-        }
+          H.noseBlock(g, H.rect(-1.5, 1.5, 2, 4, z, 0.4), F, 1.9, "#f0ab80", "#cc9170");
+          return g;
+        };
+        const head = (shut) => BL.models.merge(blocks, H.scaled(face(shut), u));
+        return { ...wear(), headOpen: head(false), headClosed: head(true) };
       },
       headgear(k) {
         addChild(k.parts.head, createNode({ geometry: voxelGeometry(hatVox(), { unit: k.u / 2, palette: HAT_PALETTE, origin: { x: -3.5 * k.u, y: 0, z: -3 * k.u } }) }));
