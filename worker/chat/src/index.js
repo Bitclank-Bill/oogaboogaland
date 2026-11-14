@@ -4,12 +4,14 @@
 // that is not handled here answers a JSON 404 rather than falling through to the app's HTML.
 // Identity never passes through: identity headers a caller sent are dropped (`scrubbed`), and whatever this Worker
 // hands the island Worker over its private bridge (`OBL`, worker/src/chat-bridge.js) it writes itself, from its own
-// session. Routes: the public configuration (config.js), sign-in and the account (#663, auth.js, avatar.js); the public
-// panels and donations (#664), the audience (#665-#668) and the Commons (#670) add theirs here.
+// session. Routes: the public configuration (config.js), sign-in and the account (#663, auth.js, avatar.js), the public
+// panels and donations (#664, public.js, donations.js); the audience (#665-#668) and the Commons (#670) add theirs here.
 
 import { handleAuth } from "./auth.js";
 import { handleAvatar } from "./avatar.js";
-import { bootstrap, health, version } from "./config.js";
+import { bootstrap, effective, health, version } from "./config.js";
+import { handleDonations } from "./donations.js";
+import { handlePublic } from "./public.js";
 import { allowed, clientIp, json, refusal } from "./http.js";
 import { purgeExpired } from "./session.js";
 
@@ -37,8 +39,10 @@ export const route = async (request, env, deps = hostDeps(null)) => {
     return json(await read(env));
   }
   if (path.startsWith("/api/chat/avatar/")) return handleAvatar(request, env, url, deps);
+  if (path.startsWith("/api/chat/public/")) return handlePublic(request, env, url, deps);
+  if (path.startsWith("/donations/")) return handleDonations(request, env, url, { ...deps, feed: effective(env, null).feed });
   if (path.startsWith("/auth/") || path === "/api/chat/me" || path === "/api/chat/logout") return handleAuth(request, env, url, deps);
-  if (path.startsWith("/api/") || path.startsWith("/donations/")) return refusal("not_found", 404);
+  if (path.startsWith("/api/")) return refusal("not_found", 404);
   return env.ASSETS.fetch(request);
 };
 

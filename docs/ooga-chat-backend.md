@@ -75,6 +75,7 @@ anything is handed on, and the bridge never reads a browser header at all.
 |---|---|---|
 | `hello` | nothing | `{ version, environment, features, voice }`: what the bridge can do now, with no binding, secret or account id |
 | `capability` | `bridge`; a GitHub principal | `{ state, character, reason, policy, checkedAt }` from the island's contributor policy (`chat-capability.js`): `eligible` (a bundled owner, or an unbundled contributor Oogatron vouches for), `ineligible` (a verified snapshot said no, or the island banned the account) or `unknown` (the snapshot could not be read). An X principal is refused (`capability_required`) |
+| `cast` | nothing (public browsing stays up under the kill switch) | `{ rows, revision, count }`: the registered Oogas from the island's build (`chat-public.js`), each `{ handle, github, display, joinedAt, lastCommitAt }`, sorted by join then handle, `revision` the hash of exactly those rows |
 | `revoke` | `bridge` | ends whatever the principal holds live (leases, publications, a cloud); added by #665, and until then the edge treats `unknown_operation` as nothing to end |
 
 Later issues add their operations here.
@@ -117,6 +118,8 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | `DELETE /api/chat/me` | deletes the account (from the app's own page); 204 |
 | `POST /api/chat/logout`, `?all=1` | ends this session, or every one of the account's (from the app's own page); 204 once done |
 | `GET /api/chat/avatar/<principal>/<key>` | the principal's picture on this origin (below) |
+| `GET /api/chat/public/contributors` | the native Contributing Oogas panel's data for anyone (below); `public, max-age=30` with an ETag |
+| `POST /donations/invoice`, `/note`, `/onchain`; `GET /donations/socket` | the native Feed the Oogas popup, through to bananapayserver (below) |
 | any other `/api/*`, `/auth/*`, `/donations/*` | a JSON 404 (`{ error: { code: "not_found" } }`), never the app's HTML |
 
 Every other path is served from the staged app. Only `/api/*`, `/auth/*` and `/donations/*` run the Worker
@@ -192,6 +195,59 @@ $0.010 a resource; that is a planning figure, not a verified entitlement or pric
 changes and role changes never call X, since the principal keeps its profile from its last sign-in. Before turning `x`
 on: confirm `/2/users/me` access and its billed category in the developer console, set a spending cap, and treat a
 credit exhaustion (402) as X sign-in unavailable while GitHub keeps working.
+
+## Public panels and Feed the Oogas (#664)
+
+The app's Bananas, full Contributing Oogas and Feed the Oogas reuse the island's native code; the backend gives them the
+same data and payment service the island uses, for anyone, signed in or not, with no game socket and no player slot.
+Browsing them never changes a voice role, zone, microphone or hand.
+
+**Contributors.** `GET /api/chat/public/contributors` answers one envelope:
+
+```json
+{ "schema": 1, "revision": "3f2c9a1b0d4e5f67", "generatedAt": 1763121540000, "stale": false,
+  "sources": { "cast": { "state": "ok", "revision": "a1b2c3d4e5f60718", "count": 56 },
+               "stats": { "state": "ok", "generatedAt": 1763121540000, "source": "oogatron" } },
+  "cast": [ { "handle": "ooga-dev", "github": "ooga-dev", "display": null, "joinedAt": 1756684800000, "lastCommitAt": 1759276800000 } ],
+  "stats": { "meta": { "schema_version": 3, "org": "OogaBoogaX", "generated_at": "…" }, "contributors": [ … ] } }
+```
+
+- `cast` is the island's registered roster (the bridge's `cast`), whatever its size: today 56 Oogas, a different set
+  from Oogatron's 70 contributor rows, and neither is a limit or an authority for speaking.
+- `stats` is Oogatron's schema-3 snapshot passed through whole, checked at the boundary (schema, org, a generation time
+  not in the future, at most 4,096 rows, at most 2 MiB read), so the native panel applies it with its own categories
+  (commits, PRs, reviews, issues, comments), sorting, expansion and identity normalization (`contributors.js`).
+- Each source's `state` is `ok`, `stale` (the last look failed, or the snapshot is over 15 minutes old: the last good
+  copy is shown) or `unavailable` (none, or a snapshot over a day old: `null`, never zeros). `stale` at the top is true
+  when either is not `ok`. `revision` (and the ETag) change only when what the body says changes; a matching
+  If-None-Match answers 304.
+- The edge asks Oogatron at most once a minute and the island at most every five minutes per isolate, so no browser
+  fetches either itself.
+
+**Feed the Oogas.** The same routes and wire answers as the island's relay (`worker/src/donations.js`), to the same
+`bananapayserver-<env>` `PageApi` (protocol v0.2, pinned at bananapayserver `ede387d9`):
+
+| Browser route | `PageApi` call |
+|---|---|
+| `POST /donations/invoice` | `invoice(request, donor, visitor)` |
+| `POST /donations/note` | `note(request, visitor)` |
+| `POST /donations/onchain` | `onchain(request, visitor)` |
+| `GET /donations/socket?after=…` | `fetch(request)`, the WebSocket upgrade |
+
+- Calls must come from the app's own page; bodies are at most 1 KiB; only the body and its type go on (never the
+  browser's request or cookies), with the visitor's address (`CF-Connecting-IP`) beside each call and as the socket's
+  `X-Client`, replacing anything the browser sent. Only `after` goes on with the socket.
+- **The donor** is Ooga Chat's own session: a GitHub principal is `{ id, login }` with GitHub's numeric id (any GitHub
+  account, contributor or not; bananapayserver marks a donation `verified` only when the chosen handle also matches that
+  login). An X principal or a signed-out visitor is `null`, an anonymous donor whose handle is just what they typed: an
+  X account never fills the GitHub id or earns the check. A session that cannot be read closes the call rather than
+  quietly making a signed-in donor anonymous.
+- `feed` must be on (its flag and the binding), else every call answers `{ "error": "closed" }` with 503, as does a
+  bananapayserver that throws: never a simulated payment. A per-IP limiter answers `{ "error": "busy" }`, 429.
+- A donation is not a contribution and grants nothing. Invoices, notes, on-chain addresses, expiry, partial and seen
+  payments, settlement, prices, `network` labels (signet on staging), `minSats` and `messageMinSats` are
+  bananapayserver's, unchanged; its read socket's tally, recent list and leaderboard are the same public events the
+  island hears, with its own ids and `seq` for resuming and deduplicating. No second ledger, processor or relay.
 
 ## Secrets and variables
 

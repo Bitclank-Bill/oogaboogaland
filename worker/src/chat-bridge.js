@@ -9,8 +9,8 @@
 // What the bridge may do is turned on here by `OOGA_CHAT_FEATURES` (comma-separated: `bridge` for every operation but
 // `hello`; `outdoor`, `cloud` and `commons` for those paths), so deploying this Worker with the variable empty is the
 // kill switch for the whole outward path, whatever the edge believes. `hello` always answers, so the edge can say why.
-// Operations are added by the issues that need them: `capability` (#663, chat-capability.js); later public data (#664),
-// the audience and media (#665-#668) and the Commons (#670). This file holds the boundary and `hello`.
+// Operations are added by the issues that need them: `capability` (#663, chat-capability.js), `cast` (#664,
+// chat-public.js); later the audience and media (#665-#668) and the Commons (#670). This file holds the boundary and `hello`.
 
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { BRIDGE_ENVIRONMENTS, BRIDGE_VERSION, BridgeRefusal, ENVELOPE_MAX, ERROR_CODE, REQUEST_ID } from "./chat-bridge-protocol.js";
@@ -18,6 +18,8 @@ import { BRIDGE_ENVIRONMENTS, BRIDGE_VERSION, BridgeRefusal, ENVELOPE_MAX, ERROR
 export { BridgeRefusal };
 import { capabilityOps } from "./chat-capability.js";
 import { contributorFor } from "./contributor-access.js";
+import { publicOps } from "./chat-public.js";
+import CAST_ROWS from "./characters.gen.json" with { type: "json" };
 
 export const FEATURES = ["bridge", "outdoor", "cloud", "commons"];
 
@@ -57,7 +59,7 @@ export const handleEnvelope = async (env, envelope, ops = BASE_OPS, ctx = null) 
   }
 };
 
-export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorFor }) };
+export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorFor }), ...publicOps({ cast: CAST_ROWS }) };
 
 export class ChatBridge extends WorkerEntrypoint {
   async call(envelope) { return handleEnvelope(this.env, envelope, OPS, this.ctx); }

@@ -144,7 +144,7 @@ test("health says what is off without naming anyone; version names the deploymen
 
 test("server paths never fall through to the app: unknown ones are JSON 404s, wrong methods 405, a flood 429", async () => {
   const env = edge();
-  for (const path of ["/api/nope", "/api/chat/me/../../x", "/auth/anything", "/auth/github/elsewhere", "/donations/invoice"]) {
+  for (const path of ["/api/nope", "/api/chat/me/../../x", "/auth/anything", "/auth/github/elsewhere", "/api/chat/public/nope"]) {
     const res = await get(env, path);
     assert.equal(res.status, 404, path);
     assert.match(res.headers.get("content-type"), /^application\/json/);
