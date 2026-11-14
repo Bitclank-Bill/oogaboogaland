@@ -8164,6 +8164,38 @@ const gameRulesChecks = async () => {
       }
       record("block frenzy island: on every map an Ooga walks off the open edge and, fallen all the way, is back in its own block zone; a block carried over drops at the edge and goes home; the rock under the rim holds a body out; the jetpack brings the visitor and a bot back after a throw",
         Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
+      // The jetpack's power is the island's, on the timer it always had: held, it reaches its top speed, climbs (the old
+      // gate pinned it near 1.5 m/s, about 2.1 m in 1.5 s), a full tank from a jump empties about 4.7 s after the press
+      // as it did, it settles at the ceiling without a bounce, leaves a faster throw alone, and a roof stops it.
+      {
+        const C = S.CONFIG, idle = { x: 0, z: 0, jump: 0, jet: 0 }, held = { ...idle, jet: 1 };
+        const air = (y, vy = 0, map = "fort", x = 0, z = 12) => { const r = fresh(map), o = r.actors[0]; o.x = x; o.z = z; o.y = y; o.vy = vy; o.grounded = false; return [r, o]; };
+        const clear = S.ARENAS.fort.BLOCKS.every((b) => 0 < b[0] - 1 || 0 > b[1] + 1 || 12 < b[2] - 1 || 12 > b[3] + 1);
+        let [r, o] = air(3), peak = 0;
+        for (let t = 0; t < 1.5; t += C.STEP) { S.tick(r, C.STEP, held); peak = Math.max(peak, o.vy); }
+        const out = { clear, peak, climb: o.y - 3 };
+        r = fresh(); o = r.actors[0]; o.x = 0; o.z = 12;
+        const press = { ...held, jump: 1 };
+        r.inputs = [press];
+        out.tank = 0;
+        for (; out.tank < 8 && o.fuel > 0; out.tank += C.STEP) S.tick(r, C.STEP, idle);
+        [r, o] = air(9); o.fuel = 99;
+        let top = 0, settled = Infinity;
+        for (let t = 0; t < 6; t += C.STEP) { S.tick(r, C.STEP, held); top = Math.max(top, o.y); if (t > 4) settled = Math.min(settled, o.y); }
+        Object.assign(out, { top, settled });
+        [r, o] = air(3, 9); o.jetting = true;
+        S.tick(r, C.STEP, held);
+        out.thrown = o.vy;
+        const roofs = [["fort", 2, 0, 2.2], ["town", 0, 32.25, 2.7], ["haunted", 0, 36, 2.7]];
+        out.roofs = roofs.map(([map, x, z, roof]) => {
+          const [q, a] = air(Math.max(0, roof - C.HEIGHT - 0.5), C.JET_RISE, map, x, z);
+          let head = 0;
+          for (let t = 0; t < 1.5; t += C.STEP) { S.tick(q, C.STEP, held); head = Math.max(head, a.y + C.HEIGHT); }
+          return head <= roof + 1e-6 && head > roof - 0.05;
+        });
+        record("block frenzy jetpack: held it reaches the island's top speed and climbs, a full tank lasts its old held time, it settles at the ceiling with no bounce, a faster throw keeps its speed, and a roof stops it",
+          out.clear && out.peak >= C.JET_RISE * 0.9 && out.climb > 6 && Math.abs(out.tank - 4.7) < 0.15 && out.top <= C.JET_CEILING + 1e-6 && out.settled > C.JET_CEILING - 0.05 && out.thrown > C.JET_RISE && out.roofs.every(Boolean), JSON.stringify(out));
+      }
     }
     {
       // Hub-style terrain on every map: the boxes come in turned pairs, stand clear of the buildings and every spot the
@@ -12664,6 +12696,10 @@ const blockPoses = { name: "block modelled poses", why: "regression: old straigh
           rows.push({ name, kind, gap, visible: actor.gun.visible, modelled: cave.modelled, own: cave.traits.name === name });
         }
         const actor = D.actors[0], hip = actor.cave.root.position.y;
+        const pack = actor.jet, cave = actor.cave, bounds = BL.scene.boundsOf(pack.geometry), front = new Float64Array(3), back = new Float64Array(3);
+        BL.math.mat4.transformPoint(front, pack.world, 0, 0, bounds.max[2]);
+        BL.math.mat4.transformPoint(back, cave.root.world, 0, .06 * cave.traits.height, -cave.back);
+        rows.push({ name, jet: true, gap: Math.hypot(...front.map((v, i) => v - back[i])), attached: pack.parent === cave.root, scale: pack.scale.x / cave.traits.height });
         a.riding = true; a.crouch = true; update(0, 0); BL.scene.updateWorld(S.root);
         const ends = [-.3, .3].map(x => { const v = new Float64Array(3); BL.math.mat4.transformPoint(v, actor.trolley.world, x, -.15, 0); return v; });
         const dx = ends[1][0] - ends[0][0], dy = ends[1][1] - ends[0][1], dz = ends[1][2] - ends[0][2], len2 = dx * dx + dy * dy + dz * dz;
@@ -12683,8 +12719,9 @@ const blockPoses = { name: "block modelled poses", why: "regression: old straigh
     } finally { S.update = update; D.showBoard(); }
     return rows;
   })()`);
-  record("block modelled poses: regular, slim and wide Oogas grip every weapon and both Golden AKs, and their trophy rests on their raised fists", rows.filter(r => !r.zip).length === 27 && rows.filter(r => !r.zip).every(r => r.trophy ? r.gap < .03 : r.visible && r.modelled && r.own && r.gap < .001), JSON.stringify(rows));
+  record("block modelled poses: regular, slim and wide Oogas grip every weapon and both Golden AKs, and their trophy rests on their raised fists", rows.filter(r => !r.zip && !r.jet).length === 27 && rows.filter(r => !r.zip && !r.jet).every(r => r.trophy ? r.gap < .03 : r.visible && r.modelled && r.own && r.gap < .001), JSON.stringify(rows));
   record("block modelled poses: both fists meet the zipline bar even while crouch is held, weapons are stowed, and letting go restores each Ooga's hip", rows.filter(r => r.zip).length === 3 && rows.filter(r => r.zip).every(r => r.gap < .001 && r.restored && r.hiddenGuns), JSON.stringify(rows.filter(r => r.zip)));
+  record("block modelled jetpacks: regular, slim and wide Oogas carry a body-sized pack seated on their actual back", rows.filter(r => r.jet).length === 3 && rows.filter(r => r.jet).every(r => r.attached && r.gap < .001 && Math.abs(r.scale - 1) < .001), JSON.stringify(rows.filter(r => r.jet)));
 } };
 const blockZipline = { name: "block zipline controls", why: "rule: the ride control and warning lamps must agree about a rival zipline's trap for either team", run: async b => {
   const rows = await b.evaluate(`(() => {
@@ -13253,6 +13290,112 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: panels
   }) && ["left", "right", "bottom"].every(dock => [false, true].every(open => motions.some(m => m.dock === dock && m.open === open))), JSON.stringify(motions));
   } finally { await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }); }
 } };
+// Inspector protocol acceptance in Chrome; transport/media failures are deterministic, with no live SFU or microphone.
+const inspectorRecovery = { name: "inspector recovery", why: "rule: reconnect evidence is feature gated and sent once, and failed or disconnected voice restarts preserve mute and microphone intent", run: async (b) => {
+  const netSource = readFileSync(join(root, "src/js/net.js"), "utf8");
+  await b.evaluate(`(() => {
+    BL.net.dispose(); BL.voice.dispose();
+    const F = window.__inspectFixture = { realNet: BL.net, realVoice: BL.voice, sockets: [], timers: [], intervals: [], sent: [], realFetch: window.fetch,
+      realSocket: window.WebSocket, timeout: window.setTimeout, interval: window.setInterval, clearTimeout: window.clearTimeout, clearInterval: window.clearInterval };
+    window.fetch = async () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "fixture" } }) });
+    window.WebSocket = class { static OPEN = 1; constructor() { this.readyState = 1; F.sockets.push(this); } send(v) { F.sent.push(v === "ping" ? v : JSON.parse(v)); } close(code, reason) { this.readyState = 3; this.closed = { code, reason }; } };
+    window.setTimeout = (fn, ms) => { F.timers.push({ fn, ms }); return F.timers.length; };
+    window.setInterval = (fn, ms) => { F.intervals.push({ fn, ms }); return F.intervals.length; };
+    window.clearTimeout = window.clearInterval = () => {};
+    BL.voice = { ...F.realVoice, restart() {}, stop() {}, setPeers() {} };
+  })()`);
+  await b.evaluate(netSource);
+  const net = await b.evaluate(`(async () => {
+    const F = __inspectFixture, N = BL.net;
+    await N.start();
+    const welcome = (features) => { const ws = F.sockets.at(-1); ws.onopen(); ws.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, players: [], now: Date.now(), features }) }); return ws; };
+    const recover = features => { F.timers.at(-1).fn(); return welcome(features); };
+    let ws = welcome([]); ws.onclose({ code: 1006, wasClean: false }); ws = recover([]);
+    const older = F.sent.every(m => m.t !== "back");
+    ws.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, players: [], now: Date.now(), features: ["inspect-v1"] }) });
+    ws.onclose({ code: 1006, wasClean: false }); ws = recover(["inspect-v1"]);
+    const back = F.sent.filter(m => m.t === "back");
+    welcome(["inspect-v1"]);
+    const once = F.sent.filter(m => m.t === "back").length === 1;
+    const beat = F.intervals.at(-1).fn; beat(); beat(); beat(); beat();
+    const heartbeat = ws.closed?.reason === "heartbeat";
+    ws = recover(["inspect-v1"]);
+    const recovered = F.sent.filter(m => m.t === "back").at(-1);
+    ws.onclose({ code: 1001, wasClean: true }); recover([]);
+    const off = F.sent.filter(m => m.t === "back").length === 2;
+    N.dispose();
+    Object.assign(window, { fetch: F.realFetch, WebSocket: F.realSocket, setTimeout: F.timeout, setInterval: F.interval, clearTimeout: F.clearTimeout, clearInterval: F.clearInterval });
+    return { older, once, heartbeat, off, back, recovered };
+  })()`);
+  record("inspector reconnect: old rooms send no evidence; socket and heartbeat recovery send one bounded report after welcome", net.older && net.once && net.heartbeat && net.off && net.back[0]?.why === "socket" && net.back[0]?.code === 1006 && net.back[0]?.clean === false && net.back[0]?.down >= 0 && net.recovered?.why === "heartbeat", JSON.stringify(net));
+  await b.evaluate(`(() => {
+    const F = __inspectFixture; F.pcs = []; F.ops = []; F.timers = []; F.mics = 0;
+    F.realPc = window.RTCPeerConnection; F.gum = navigator.mediaDevices.getUserMedia;
+    window.RTCPeerConnection = class {
+      constructor() { this.connectionState = "connected"; this.iceGatheringState = "complete"; this.localDescription = { sdp: "v=0\\r\\na=candidate:1 1 udp 2122260223 127.0.0.1 9 typ host\\r\\n" }; this.handlers = {}; F.pcs.push(this); }
+      addEventListener(k, fn) { this.handlers[k] = fn; } removeEventListener(k) { delete this.handlers[k]; }
+      addTransceiver() { return { mid: "0" }; } getTransceivers() { return []; }
+      async createOffer() { return this.localDescription; } async createAnswer() { return {}; } async setLocalDescription() {} async setRemoteDescription() {}
+      close() { this.connectionState = "closed"; }
+    };
+    navigator.mediaDevices.getUserMedia = async () => { F.mics++; return new MediaStream(); };
+    window.fetch = async (url, options) => { F.ops.push({ op: String(url).split("/").pop(), body: JSON.parse(options.body) }); return { ok: true, json: async () => ({ tracks: [], sessionDescription: {} }) }; };
+    window.setTimeout = (fn, ms) => { const t = { fn, ms }; F.timers.push(t); return t; };
+    window.clearTimeout = t => { if (t) t.cancelled = true; };
+    BL.net = { ...F.realNet, state: { ...F.realNet.state, connectionToken: "synthetic", me: { id: 71, login: "fixture" } }, remotes: new Map(), voiceLink: () => "none", setMuted() {}, subscribe: () => () => {} };
+  })()`);
+  await b.evaluate(readFileSync(join(root, "src/js/voice.js"), "utf8"));
+  await b.click(720, 450); // Voice is entered through a real user gesture in the app.
+  const voice = await b.evaluate(`(async () => {
+    const F = __inspectFixture, V = BL.voice, drain = async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); };
+    await V.listen(); V.setMuted(true);
+    const fail = why => { const pc = F.pcs.filter(p => p.connectionState !== "closed").at(-1); pc.connectionState = why; pc.handlers.connectionstatechange(); };
+    fail("failed"); await drain();
+    const failed = V.stats.enabled && V.stats.muted && !V.stats.publishing && F.ops.some(o => o.op === "leave" && o.body.why === "failed");
+    fail("disconnected"); const timer = F.timers.filter(t => !t.cancelled).at(-1); timer.fn(); await drain();
+    const disconnected = V.stats.enabled && V.stats.muted && !V.stats.publishing && F.ops.some(o => o.op === "leave" && o.body.why === "disconnected");
+    const mics = F.mics;
+    V.dispose();
+    Object.assign(window, { fetch: F.realFetch, RTCPeerConnection: F.realPc, setTimeout: F.timeout, clearTimeout: F.clearTimeout }); navigator.mediaDevices.getUserMedia = F.gum;
+    BL.net = F.realNet; BL.voice = F.realVoice;
+    return { failed, disconnected, mics, ops: F.ops };
+  })()`);
+  record("inspector voice: failed and sustained disconnected receivers report why and return muted without opening a microphone", voice.failed && voice.disconnected && voice.mics === 0, JSON.stringify(voice));
+} };
+scene("hub", { label: "inspector recovery", query: "pos=0&net=0", httpMedia: true, steps: [inspectorRecovery] });
+
+// Optional acceptance against an isolated wrangler dev, with a synthetic session seeded in its local D1 only.
+if (process.env.INSPECTOR_RUNTIME === "1") scene("hub", { label: "inspector runtime", query: "pos=0&net=0", steps: [{
+  name: "inspector runtime", why: "contract: the real Cloudflare runtime reports the named island, and its gated page displays live join, zone, close and return evidence", run: async b => {
+    const url = new URL(process.env.INSPECTOR_TEST_ORIGIN || "http://127.0.0.1:8640");
+    if (url.protocol !== "http:" || url.hostname !== "127.0.0.1") throw Error("Inspector runtime check requires an isolated loopback Worker");
+    const anonymous = await fetch(url.origin + "/inspect");
+    record("inspector runtime: anonymous page access stays hidden", anonymous.status === 404);
+    await b.send("Network.setCookie", { name: "obl_session", value: "inspector-local-test", url: url.origin, httpOnly: true });
+    await b.open(url.origin + "/inspect");
+    const lines = await b.evaluate(`(async () => {
+      const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const join = () => new Promise((resolve, reject) => {
+        const ws = new WebSocket("ws://" + location.host + "/room"), timer = setTimeout(() => reject(Error("room welcome timed out")), 8000);
+        ws.onmessage = e => { const m = JSON.parse(e.data); if (m.t === "welcome") { clearTimeout(timer); resolve(ws); } };
+      });
+      const first = await join(); first.send(JSON.stringify({ t: "zone", name: "factory" }));
+      await pause(300); first.close(1000, "heartbeat");
+      await pause(300); const second = await join(); second.send(JSON.stringify({ t: "back", why: "heartbeat", code: 1006, clean: false, down: 4800 }));
+      let text = "";
+      for (let i = 0; i < 80; i++) { text = document.body.innerText; if (text.includes("page says heartbeat") && text.includes("island : Room") && document.querySelector(".sock.you")) break; await pause(100); }
+      const result = { text, live: document.getElementById("feed").textContent, own: !!document.querySelector(".sock.you"), overflow: document.documentElement.scrollWidth > innerWidth };
+      window.__runtimeRoom = second;
+      return result;
+    })()`);
+    record("inspector runtime: island card, own socket, zone, close code and reconnect appear on the live page", lines.live === "Live" && lines.own && lines.text.includes("island : Room") && lines.text.includes("outside → factory") && lines.text.includes("1000, clean") && lines.text.includes("page says heartbeat") && !lines.overflow, JSON.stringify(lines));
+    await b.evaluate('document.getElementById("filter").value="heartbeat";document.getElementById("filter").dispatchEvent(new Event("input"))');
+    record("inspector runtime: filtering keeps matching drop and return evidence", await b.evaluate('[...document.querySelectorAll("#log .text")].length===2 && [...document.querySelectorAll("#log .text")].every(e=>e.textContent.includes("heartbeat"))'));
+    await b.screenshot(join(root, "untracked/inspector-runtime.png"));
+    await b.evaluate('window.__runtimeRoom.close(1000,"paused")');
+  }
+}] });
+
 const hubMuteKey = { name: "voice mute key", why: "regression: M reserves voice mute across canvas, panel and dialog focus, preserves typing, and falls back to environment sound only when voice is off", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const V = BL.voice, sound = BL.sound, saved = { ...V.stats }, environment = sound.muted, focus = document.activeElement;
@@ -24286,6 +24429,97 @@ const studioPlaces = { name: "studio places", why: "playthrough: the studio is w
   record("studio places: reloading an Ooga in bed preserves its rifle selection and waking restores the held rifle", reloaded.asleep && reloaded.kept && reloaded.standing, JSON.stringify(reloaded));
 } };
 scene("studio", { query: `character=${STUDIO_OOGA}`, steps: [studioPlaces, trip("studio")] });
+const modelledCarryPoses = { name: "modelled Heimdall and axe poses", why: "regression: Heimdall's props followed the old straight arms and planting an axe lifted the whole arm before bending its elbow", run: async b => {
+  const result = await b.evaluate(`(() => {
+    const S = BL.scene, M = BL.models, C = BL.crew, stage = S.createNode(), rows = [], shots = [];
+    const point = (node, x = 0, y = 0, z = 0) => { const p = new Float64Array(3); BL.math.mat4.transformPoint(p, node.world, x, y, z); return p; };
+    const distance = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+    let figure; const original = M.caveman;
+    M.caveman = traits => (figure = original(traits));
+    let keeper;
+    try { keeper = BL.bifrostHeimdall.create({ parent: stage, x: 0, y: 0, z: 0, heading: 0, fx: { sayAt() {}, burst() {} } }); }
+    finally { M.caveman = original; }
+    const P = figure.parts;
+    let time = 0, maxGrip = 0, finite = true;
+    const sample = () => {
+      S.updateWorld(stage);
+      maxGrip = Math.max(maxGrip, distance(point(P.staff), point(P.fingersR)), distance(point(P.horn), point(P.fingersL)));
+      for (const n of [P.staff, P.horn, P.cape, P.forearmL, P.forearmR]) finite &&= Array.from(n.world).every(Number.isFinite);
+    };
+    const advance = (seconds, near) => { for (let i = 0; i < Math.round(seconds * 60); i++) { time += 1 / 60; keeper.update(1 / 60, time, 0, 0, near ? 4 : 30, near); sample(); } };
+    let renderer, host, camera, light;
+    const capture = (label, target, reach, side = 1) => {
+      if (!${!!process.env.POSE_SHOTS}) return;
+      if (!renderer) {
+        host = document.createElement("canvas"); host.style.cssText = "position:fixed;left:0;top:0;width:600px;height:650px;z-index:99999"; document.body.appendChild(host);
+        renderer = BL.glRenderer.createRenderer(host, { quality: "high" }); renderer.resize();
+        camera = S.createCamera({ fov: 30, near: .1, far: 60 });
+        light = { clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), sun: new Float32Array(3), direct: new Float32Array(3), light: { x: .55, y: .78, z: -.25 }, sunDirection: { x: 0, y: 1, z: 0 }, moon: { x: 0, y: 1, z: 0 }, moonSun: { x: 0, y: -1, z: 0 }, celestialPole: { x: 0, y: .34, z: -.94 }, starMatrix: new Float32Array(9), stars: 0, torch: 0, day: 1, twilight: 0, lampFactor: 0, directStrength: 1, directionalLightStrength: 1, sunStrength: 1, moonStrength: 0, moonIllumination: 1, moonPhase: .5, ambientFloor: .18, diffuseFloor: 0, shadowStrength: 1, shadowFloor: 0, shadowBias: .002, time: 0, bloomStrength: .5, shadowCenter: { x: 0, y: 1, z: 0 }, shadowExtent: 3 };
+        BL.daylight.sample(15, light, 80);
+      }
+      Object.assign(camera.target, { x: 0, y: target, z: 0 }); Object.assign(camera.position, { x: -reach * .7, y: target + reach * .3, z: reach * side });
+      S.updateWorld(stage); renderer.render(stage, camera, light); shots.push({ label, png: host.toDataURL("image/png") });
+    };
+    try {
+      advance(.2, false); capture("heimdall-rest", 1.6, 6); capture("heimdall-back", 1.6, 6, -1);
+      const rest = P.armR.rotation.x;
+      advance(.6, true); capture("heimdall-hail", 2.2, 8.5);
+      const hailed = P.armR.rotation.x < -2 && P.forearmR.rotation.x > -.5;
+      advance(3, false); const returned = Math.abs(P.armR.rotation.x - rest) < .01;
+      const poked = keeper.poke(), refused = !keeper.poke(); advance(.7, false); capture("heimdall-horn", 1.6, 6);
+      const hornUp = point(P.horn)[1] > point(P.head)[1] && P.forearmL.rotation.x < -1;
+      advance(3.2, false); const lowered = P.forearmL.rotation.x > -.8;
+      rows.push({ kind: "heimdall", maxGrip, finite, hailed, returned, poked, refused, hornUp, lowered });
+      keeper.root.visible = keeper.plinth.visible = false;
+      const axeDress = BL.contributors.traitsFor("w-s-bitcoin").dress;
+      for (const [name, owner] of [["regular", "w-s-bitcoin"], ["slim", "tiffanyvarty"], ["wide", "portlandhodl"]]) {
+        // Keep each character's actual body hook; setting slim on a regular custom model does not change its rig.
+        const base = BL.contributors.traitsFor(owner);
+        const traits = { ...base, name: "fixture/axe-" + name, stoneAxe: true, nunchaku: false, dress: { ...base.dress, club: axeDress.club } };
+        const cave = M.caveman(traits); C.preparePresentation(cave); S.addChild(stage, cave.root);
+        const p = cave.parts, club = p.club, h = cave.traits.height;
+        for (const remote of [false, true]) {
+          let minY = Infinity, gripGap = 0, maxArm = 0, endY = 0;
+          for (let frame = 0; frame <= 120; frame++) {
+            const move = frame <= 60 ? frame / 60 : (120 - frame) / 60;
+            if (remote) { delete cave.weapon.stick; cave.weapon.axeIdle = 1 + move * .3; } else cave.weapon.stick = move;
+            p.armR.rotation.x = .2 * Math.sin(frame * .2); C.poseEquipment(cave, true, frame / 60); S.updateWorld(stage);
+            const hand = point(p.fingersR), origin = point(club), axis = point(club, 0, 1, 0).map((v, i) => v - origin[i]);
+            const len = Math.hypot(...axis); for (let i = 0; i < 3; i++) axis[i] /= len;
+            const along = hand.reduce((sum, v, i) => sum + (v - origin[i]) * axis[i], 0);
+            gripGap = Math.max(gripGap, distance(hand, origin.map((v, i) => v + along * axis[i])));
+            const butt = point(club, 0, S.boundsOf(club.geometry).min[1], 0)[1]; minY = Math.min(minY, butt);
+            if (frame === 60) endY = butt;
+            maxArm = Math.max(maxArm, Math.abs(p.armR.rotation.x));
+            if (!remote && [0, 30, 60, 90, 120].includes(frame)) capture("axe-" + name + "-" + frame, .8 * h, 3.5 * h);
+          }
+          rows.push({ kind: "axe", name, remote, modelled: cave.modelled, armScale: cave.armScale, minY, endY, gripGap, maxArm });
+        }
+        S.removeChild(stage, cave.root);
+      }
+    } finally { keeper.dispose(); if (renderer) renderer.dispose(); if (host) host.remove(); }
+    return { rows, shots };
+  })()`);
+  const keeper = result.rows[0], axes = result.rows.slice(1);
+  record("modelled Heimdall: rest, hail, repeat tap, horn and return keep both props in the fists with finite clothes and arm transforms", keeper.maxGrip < .001 && keeper.finite && keeper.hailed && keeper.returned && keeper.poked && keeper.refused && keeper.hornUp && keeper.lowered, JSON.stringify(keeper));
+  record("modelled axe: regular, slim and wide bodies, local and remote transitions keep the haft in the fist, its butt above the floor until planted, and the upper arm below its old lifted pose", axes.length === 6 && axes.filter(r => r.name === "slim").every(r => r.armScale < 1) && axes.every(r => r.modelled && r.gripGap < .001 && r.minY > -.005 && Math.abs(r.endY) < .005 && r.maxArm < .4), JSON.stringify(axes));
+  if (process.env.POSE_SHOTS) {
+    mkdirSync(process.env.POSE_SHOTS, { recursive: true });
+    for (const shot of result.shots) writeFileSync(join(process.env.POSE_SHOTS, shot.label + ".png"), Buffer.from(shot.png.split(",")[1], "base64"));
+    writeFileSync(join(process.env.POSE_SHOTS, "measurements.json"), JSON.stringify(result.rows, null, 2));
+  }
+  await b.evaluate('__ooga.studio.place("stand"); __ooga.advance(.5, 1 / 60)');
+  await holdKey(b, "w", .5);
+  const walking = await b.evaluate('__ooga.studio.cave.weapon.stick');
+  await b.evaluate('__ooga.advance(1.8, 1 / 60)');
+  const planted = await b.evaluate('__ooga.studio.cave.weapon.stick');
+  if (process.env.POSE_SHOTS) await b.screenshot(join(process.env.POSE_SHOTS, "studio-axe-planted.png"));
+  await holdKey(b, "w", .5);
+  const away = await b.evaluate('__ooga.studio.cave.weapon.stick');
+  record("modelled axe controls: walking carries the axe, stopping plants it, and walking off releases it again", walking === 0 && planted === 1 && away === 0, JSON.stringify({ walking, planted, away }));
+} };
+scene("studio", { label: "modelled carry poses", query: "character=w-s-bitcoin", steps: [modelledCarryPoses] });
+
 scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub"),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
   await b.evaluate(`(()=>{
     const gl=document.getElementById("scene").getContext("webgl2"),create=gl.createProgram,parameter=gl.getProgramParameter,pending=new Set();
@@ -25351,7 +25585,7 @@ scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", 
     for (const [width, height] of [[390,844],[844,390],[320,568]]) {
       await b.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
       await b.sleep(100);
-      await b.evaluate(`__ooga.block.showBoard();new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+      await b.evaluate(`__ooga.block.showBoard();document.querySelector('#block-board [data-map="town"]').click();new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
       rows.push({ width, phase: "board", bad: await b.evaluate(PHONE(['#block-board [data-action="block-start"]'])) });
       await b.evaluate(`(() => { const D=__ooga.block;D.start(604);D.sim.prep=0;Object.assign(D.sim.actors[0],{flight:0,grounded:true,x:-7,z:4,y:0,vy:0}); })()`);
       rows.push({ width, phase: "play", bad: await b.evaluate(PHONE(["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"])) });
@@ -25360,10 +25594,23 @@ scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", 
       await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       const fired = await b.evaluate(`__ooga.block.sim.actors[0].lastKind === "paint" && __ooga.block.sim.actors[0].cooldown > 0`);
       rows.push({ width, fired });
+      // Hold the actual touch Jump control through the jump's apex, then release and cancel a fresh hold.
+      // Spawn protection keeps a gorilla or a bot from interrupting this input check.
+      await b.evaluate(`(() => { const D=__ooga.block;D.cam.first=D.cam.close=D.cam.island=false;if(!BL.blockSim.ARENA.BLOCKS.every(b=>0<b[0]-1||0>b[1]+1||6<b[2]-1||6>b[3]+1))throw Error("Jetpack flight column is obstructed");Object.assign(D.sim.actors[0],{x:0,z:6,y:0,vy:0,grounded:true,flight:0,grabbed:0,guard:30,fuel:BL.blockSim.CONFIG.JET_FUEL});__ooga.advance(.1,1/60); })()`);
+      const jump = await b.evaluate(`(() => { const r=document.getElementById("act").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+      await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [jump] });
+      const flight = await b.evaluate(`(() => { __ooga.advance(1.8,1/60);const D=__ooga.block,a=D.sim.actors[0];return {map:D.sim.map,y:a.y,vy:a.vy,fuel:a.fuel,jet:a.jetting,flame:D.actors[0].jetFlame.visible}; })()`);
+      if (process.env.BLOCK_JET_SHOTS) { mkdirSync(process.env.BLOCK_JET_SHOTS,{recursive:true});await b.screenshot(join(process.env.BLOCK_JET_SHOTS,"jet-phone-"+width+".png")); }
+      await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      const released = await b.evaluate(`(() => { __ooga.advance(.1,1/60);const D=__ooga.block;return !D.sim.actors[0].jetting&&!D.actors[0].jetFlame.visible; })()`);
+      await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [jump] });
+      await b.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+      const cancelled = await b.evaluate(`(() => { __ooga.advance(.1,1/60);return !__ooga.block.sim.actors[0].jetting; })()`);
+      rows.push({ width, flight, released, cancelled, fired: flight.map === "town" && flight.y > 6 && flight.vy > 6 && flight.fuel > 0 && flight.fuel < 4.4 && flight.jet && flight.flame && released && cancelled });
       await b.evaluate(`(() => { const D=__ooga.block;D.sim.over=true;D.sim.winner=D.sim.team;D.simulate(.1);__ooga.advance(.1); })()`);
       rows.push({ width, phase: "results", bad: await b.evaluate(PHONE(['#block-results [data-action="block-again"]','#block-results [data-action="block-board"]','#block-results [data-role="leave"]'])) });
     }
-    record("block phone: portrait, landscape and narrow screens keep the controls reachable, a real Throw tap fires, and the results names and actions fit", rows.every(r => r.bad ? !r.bad.length : r.fired), JSON.stringify(rows));
+    record("block phone: portrait, landscape and narrow screens keep the controls reachable, real Throw taps fire, held Jump climbs with flame and fuel use, release/cancel cuts thrust, and the results names and actions fit", rows.every(r => r.bad ? !r.bad.length : r.fired), JSON.stringify(rows));
   }
 }] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", "#leave-hud"] })] });
@@ -27035,15 +27282,15 @@ const voiceAloneChecks = async () => {
 const voiceFailureChecks = async () => {
   const source=readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const page=(joined=false,AudioContext=undefined)=>{
-    const timers=[],calls=[],failing=new Set(),holds=new Map();let holdLeave=null;
+    const timers=[],calls=[],bodies=[],pcs=[],failing=new Set(),holds=new Map();let holdLeave=null;
     const track={enabled:true,stopped:false,stop(){this.stopped=true;}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
-    class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0\r\na=candidate:1 1 udp 2122260223 127.0.0.1 9 typ host\r\n"};}addTransceiver(){return {mid:"0"};}getTransceivers(){return [];}addEventListener(){}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}close(){this.connectionState="closed";}}
+    class Pc {constructor(){this.handlers={};pcs.push(this);this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0\r\na=candidate:1 1 udp 2122260223 127.0.0.1 9 typ host\r\n"};}addTransceiver(){return {mid:"0"};}getTransceivers(){return [];}addEventListener(k,fn){this.handlers[k]=fn;}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}close(){this.connectionState="closed";}}
     class Audio {pause(){}play(){return Promise.resolve();}}
-    const fetch=async(url,o)=>{const op=url.split("/").pop();calls.push(op);if(op==="leave"&&holdLeave)await holdLeave;if(holds.has(op))await holds.get(op);return failing.has(op)?{ok:false,status:503,json:async()=>({error:"sfu"})}:{ok:true,status:200,json:async()=>({tracks:[],sessionDescription:{}})};};
+    const fetch=async(url,o)=>{const op=url.split("/").pop();calls.push(op);bodies.push({op,body:JSON.parse(o.body)});if(op==="leave"&&holdLeave)await holdLeave;if(holds.has(op))await holds.get(op);return failing.has(op)?{ok:false,status:503,json:async()=>({error:"sfu"})}:{ok:true,status:200,json:async()=>({tracks:[],sessionDescription:{}})};};
     const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"},zone:"outside",self:{x:0,y:0,z:0,zone:"outside"},blendTo:null,blendT:0},setMuted(){},remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{}},voiceBlend:{}},setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){},AudioContext},document:{createElement:()=>({volume:1})},navigator:{userActivation:{hasBeenActive:true},mediaDevices:{getUserMedia:async()=>stream}},localStorage:{getItem:k=>joined&&k.includes("voice-joined")?"1":null,setItem(){},removeItem(){}},fetch,RTCPeerConnection:Pc,MediaStream:class {},Audio,AudioContext,AbortController,console};
     context.window.navigator=context.navigator;context.window.document=context.document;context.window.localStorage=context.localStorage;
     runInNewContext(source,context);
-    return {V:context.window.BL.voice,timers,calls,failing,holds,track,hold:p=>{holdLeave=p;}};
+    return {V:context.window.BL.voice,timers,calls,bodies,pcs,failing,holds,track,hold:p=>{holdLeave=p;}};
   };
   const settle=async()=>{for(let i=0;i<30;i++)await new Promise(r=>setImmediate(r));};
   // The retry's new receive session is refused, so there is no receiver at all: the next change must open one, or say so.
@@ -27063,6 +27310,15 @@ const voiceFailureChecks = async () => {
   speaker.hold(null);release();await settle();
   const after={publishing:speaker.V.stats.publishing,muted:speaker.V.stats.muted,returning:speaker.V.stats.returning,mic:!speaker.track.stopped};
   record("voice recovery: a room welcome during a connection restart leaves a speaker publishing and unmuted",after.publishing&&!after.muted&&!after.returning,JSON.stringify(after));
+  for (const why of ["failed", "disconnected"]) {
+    const recovery=page(); await recovery.V.enable(); recovery.V.setMuted(true); await settle();
+    const pc=recovery.pcs.filter(p=>p.connectionState!=="closed").at(-1);
+    pc.connectionState=why;pc.handlers.connectionstatechange();
+    if(why==="disconnected")recovery.timers.at(-1).fn();
+    await settle();
+    record("voice inspector: "+why+" reports its cause and restores a muted publisher",recovery.bodies.some(r=>r.op==="leave"&&r.body.why===why)&&recovery.V.stats.publishing&&recovery.V.stats.muted,JSON.stringify({bodies:recovery.bodies,publishing:recovery.V.stats.publishing,muted:recovery.V.stats.muted}));
+    recovery.V.dispose();
+  }
   // Someone who leaves while a pull is on its way is no failed pull: every other voice this listener hears stays put.
   const racer=page();
   await racer.V.listen();await settle();
