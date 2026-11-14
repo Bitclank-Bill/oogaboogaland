@@ -113,9 +113,10 @@ export class Audience extends DurableObject {
       this.island = (await ctx.storage.get("world")) || this.island;
       this.watching = new Set((await ctx.storage.get("watch")) || []);
       // A woken object rebuilds its roster from its sockets' attachments and the island's last word, at the stored
-      // revision: what clients already hold is still true, so nothing is sent.
+      // revision: what clients already hold is still true, so nothing is sent. A socket already closing is restored too,
+      // so the close event that woke the object drops its row with a delta; skipped, its row would vanish here without
+      // one and every other client would keep a departed person at an unchanged revision.
       for (const ws of ctx.getWebSockets()) {
-        if (ws.readyState > 1) continue;
         const a = ws.deserializeAttachment();
         if (!a || !a.conn) continue;
         if (this.model.connect(a.conn, a.info, true).ok) this.sockets.set(a.conn.connId, ws);
@@ -124,7 +125,9 @@ export class Audience extends DurableObject {
       this.model.commit();
       for (const zone of ZONES) this.model.zones[zone].rev = meta.revs && Number.isSafeInteger(meta.revs[zone]) ? meta.revs[zone] : 0;
       await this.media.restore();
-      this.sourcesSig = JSON.stringify(this.media.chatSources());
+      // The list the Room was last told, kept: a wake sends only what changed meanwhile (a deployment that dropped every
+      // socket empties it), so the Room's own stored copy never stays stale.
+      this.sourcesSig = (await ctx.storage.get("sourcesSig")) ?? null;
       // The island's `outdoor` switch off (the kill switch, deployed): no island publication stays pullable.
       if (!bridgeFeatures(env).outdoor && this.island.speakers.length) {
         this.island = { ...this.island, speakers: [] };
@@ -135,6 +138,7 @@ export class Audience extends DurableObject {
         await this.media.prune();
       }
       this.pendingWas = this.media.pending();
+      this.sourcesChanged();
     });
   }
 
@@ -310,7 +314,10 @@ export class Audience extends DurableObject {
     const done = [...this.pendingWas].filter((id) => !now.has(id));
     this.pendingWas = now;
     if (!done.length || !this.env.ROOM) return;
-    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceConfirmed(done)).catch(() => {});
+    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceConfirmed(done)).catch(() => {
+      // Not delivered: kept as pending-then-done, so the next check reports them again (the Room also asks each sweep).
+      for (const id of done) if (!this.media.pending().has(id)) this.pendingWas.add(id);
+    });
     this.background(this.roomQueue);
   }
 
@@ -322,7 +329,15 @@ export class Audience extends DurableObject {
     const list = this.media.chatSources(), sig = JSON.stringify(list);
     if (sig === this.sourcesSig || !this.env.ROOM) return;
     this.sourcesSig = sig;
-    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceSources(list)).catch(() => {});
+    this.roomQueue = this.roomQueue.then(async () => {
+      try {
+        await this.env.ROOM.getByName("island").audienceSources(list);
+        await this.ctx.storage.put("sourcesSig", sig);
+      } catch {
+        // Not delivered: the next check sends it again rather than counting it as told.
+        if (this.sourcesSig === sig) this.sourcesSig = null;
+      }
+    });
     this.background(this.roomQueue);
   }
 
@@ -499,7 +514,8 @@ export class Audience extends DurableObject {
     // speakers whose subscriptions the SFU has not yet confirmed closed: the Room's `closed` for them waits (#667).
     await this.media.prune();
     const pending = this.media.pending();
-    this.pendingWas = pending;
+    // Report every retirement that finished meanwhile, by any path, before the pending list moves on.
+    this.confirmRetired();
     await this.scheduleAlarm();
     if (clean.length) this.refreshContributions();
     return { ok: true, pending: [...pending], listeners: { main: this.model.counts("main").listeners, dsb: this.model.counts("dsb").listeners } };
