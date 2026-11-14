@@ -7,12 +7,14 @@
 // Unavailable is never a dead end: Try again asks the service again, and so does coming back online or to the page.
 // A signed-in account hears its zone's audience: the adapter's feed, kept by ooga-chat-roster.js, which asks for a fresh
 // snapshot after a gap; the views draw `state.audience` (`status`, `zone`, `list` in the space's order, `version`).
-// It starts no island system: no renderer, scene, socket or game. A failure shows a recoverable error with Reload;
+// The device (ooga-chat-device.js) reports the network, install help and a waiting update, and registers the service
+// worker for the production entry of a staged build; M mutes or unmutes a speaker. It starts no island system: no
+// renderer, scene, socket or game. A failure shows a recoverable error with Reload;
 // pagehide disposes the shell, the footer, the account and the adapter.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { storageKey, sweep, parseReturn, withoutReturn, parseZone } = BL.oogaChatConfig, { chat, account, pending } = BL.oogaChatViews;
+  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, account, device: deviceBar, pending } = BL.oogaChatViews;
   const { gates } = BL.oogaChatAuth;
   const root = document.getElementById("ooga-chat");
   const fixture = root.dataset.adapter === "fixture";
@@ -31,7 +33,7 @@
   // acknowledges it in the new zone's audience.
   const media = { available: false, state: Object.freeze({ role: "listener", muted: true }), release() {}, join() {}, leave() {}, mute() {}, zone() {} };
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
-  let adapter = null, shell = null, footer = null, auth = null, feed = null, relisten = 0;
+  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0;
   const page = new AbortController();
   try {
     // A sign-in return is a result code only; it leaves the address before anything else runs.
@@ -50,11 +52,12 @@
     const roster = BL.oogaChatRoster.create();
     let listening = null, heard = 0, refused = 0;
     let state = { mode: "loading", boot: null, session: null, auth: "checking", notice: null, busy: false, zone, voice: media.state,
-      audience: { status: "off", zone, list: [], version: 0 } };
+      audience: { status: "off", zone, list: [], version: 0 }, device: { online: navigator.onLine !== false, install: null, update: false } };
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
       shell.update(state);
       footer.update(state);
+      bar.update(state);
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
     const hear = (status) => set({ audience: { status, zone: state.zone, list: roster.ready ? roster.list(state.session?.identity.participant) : [], version: ++heard } });
@@ -149,7 +152,7 @@
         if (media.available && gates(state, Date.now()).joinVoice) media.join(state);
       }
     };
-    const ctx = { actions, media };
+    const ctx = { actions, media, install: () => device.install(), reload: () => device.reload() };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [
@@ -165,10 +168,14 @@
     ] });
     footer = account(ctx);
     root.querySelector(".oc-frame").append(footer.node);
+    bar = deviceBar(ctx);
+    root.querySelector(".oc-frame").after(bar.node);
     auth = BL.oogaChatAuth.create({ adapter, media, onChange: (next) => {
       set(next);
       listen();
     } });
+    device = BL.oogaChatDevice.create({ register: !fixture && appBuild(document) !== "dev", onChange: (next) => set({ device: next }) });
+    state = { ...state, device: device.state };
     BL.signGlyphs.letter(root.querySelector(".oc-title [data-sign]"));
     root.dataset.mode = "loading";
     set({});
@@ -178,6 +185,12 @@
     document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && again("visible"), { signal: page.signal });
     addEventListener("online", () => again("online"), { signal: page.signal });
     addEventListener("pageshow", (event) => event.persisted && auth.resume(), { signal: page.signal });
+    // M is the speaker's own microphone, never while typing, composing, holding a modifier or repeating.
+    document.addEventListener("keydown", (event) => {
+      if (state.voice.role !== "speaker" || !BL.oogaChatDevice.isMuteKey(event)) return;
+      event.preventDefault();
+      actions.mute();
+    }, { signal: page.signal });
     start();
   } catch {
     showError("Ooga Chat couldn't start");
@@ -187,6 +200,8 @@
     page.abort();
     clearTimeout(relisten);
     feed?.dispose();
+    device?.dispose();
+    bar?.dispose();
     auth?.dispose();
     shell?.dispose();
     footer?.dispose();
