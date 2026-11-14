@@ -7344,6 +7344,12 @@ const gameRulesChecks = async () => {
     ph.powers.forEach((p, i) => { p.kind = i % S.POWERS.length; });
     L.decode(new DataView(buf.buffer.slice(0, L.encode(ph, pm, 7, 1, 1, buf))), pg, pm, new Float32Array(8));
     const wired = pg.powers.every((p, i) => p.kind === ph.powers[i].kind);
+    const powerFrame = new Uint8Array(buf.buffer.slice(0, L.encode(ph, pm, 7, 1, 1, buf, [], 0)));
+    const powerAt = powerFrame.length - 1 - ph.powers.length * 2;
+    const invalidPowers = [S.POWERS.length, 255].map(kind => { const c = powerFrame.slice(); c[powerAt + 1] = kind; return new DataView(c.buffer); });
+    record("block live: all four power kinds validate, while removed and unknown kinds and a truncated power list are refused",
+      L.validFrame(new DataView(powerFrame.buffer), pg, pm) && invalidPowers.every(v => !L.validFrame(v, pg, pm))
+        && !L.validFrame(new DataView(powerFrame.buffer.slice(0, powerAt + 1)), pg, pm));
     record("block frenzy power-ups: four kinds without laser eyes, each spot drawing one from the seed and giving its own, and the host's reach a guest",
       powersOk && drawn.size === 4 && given.size === 4 && [...drawn, ...given].every((k) => k) && wired && !L.EVENT_TYPES.some((t) => t.startsWith("laser")), JSON.stringify({ powersOk, drawn: [...drawn], given: [...given], wired }));
     // Paint and the AKs go where they are aimed.
@@ -7409,7 +7415,7 @@ const gameRulesChecks = async () => {
       goldTakes: goldIn.a.hook === 1 && goldIn.b.hook === 0 && goldIn.s.hooks[0].holder === 0 && goldIn.b.splats === 1, goldAway: goldAway.b.hook === 1 && goldAway.a.hook === 0 && goldAway.b.splats === 1, inUse: goldInUse.a.hook === 1 && goldInUse.b.hook === 0,
       ownHook: goldOwn.a.hook === 2 && goldOwn.b.hook === 1, akKeeps: akIn.b.hook === 1 && akIn.a.hook === 0 && akIn.b.splats === 1,
       othersKeep: ["paint", "ak", "sniper", "rocket", "grenade", "net", "crate", "homer", "bonk"].every(splatBy), goldKept: goldSplat, pairs: [hookIn, goldIn].every((d) => d.s.goldLeft + d.s.actors.filter((q) => q.gold).length === 2) };
-    record("block special-weapon steals: a hook takes a rival's Golden AKs only while they're in hand (a bot's last fired counts), to a thrower with none; Golden AK fire takes a rival's hook only while it's in hand or out, to a shooter with none; the Ooga AK, paint, the sniper, rockets, grenades, nets, crates, monkeys, laser eyes and bonks take neither",
+    record("block special-weapon steals: a hook takes a rival's Golden AKs only while they're in hand (a bot's last fired counts), to a thrower with none; Golden AK fire takes a rival's hook only while it's in hand or out, to a shooter with none; the Ooga AK, paint, the sniper, rockets, grenades, nets, crates, monkeys and bonks take neither",
       Object.values(steals).every(Boolean), JSON.stringify(steals));
     // A guest's tool is the host's word through `wield`: a guest who puts the AKs away keeps them from a hook, one who
     // holds the hook out loses it to Golden AK fire; a tool they don't own is refused. The frame carries the result.
@@ -7422,7 +7428,7 @@ const gameRulesChecks = async () => {
     const framedOut = L.validFrame(outFrame, outGuest, L.seatMap(2, 0)) && !L.validFrame(new DataView(outBuf.buffer.slice(0, outLen + 1)), outGuest, L.seatMap(2, 0)); L.decode(outFrame, outGuest, L.seatMap(2, 0), new Float32Array(16));
     const guests = { away: guestAway.r && guestAway.g.gold && !guestAway.h.gold, out: guestOut.r && guestOut.h.hook === 1 && guestOut.g.hook === 0, refused, framed: framedOut, agrees: outGuest.actors[0].hook === 1 && outGuest.actors[2].hook === 0 && outGuest.hooks[0].holder === 0,
       events: ["goldhook", "hooksteal", "goldsteal", "gold"].every((t) => L.EVENT_TYPES.includes(t)) && !["golddrop", "goldget", "goldback", "hookdrop", "hookback"].some((t) => L.EVENT_TYPES.includes(t)), wire: W.WIRE === 6 };
-    record("block steals live: a guest's wield on the host decides what a hook or Golden AK fire can take, an unowned tool is refused, the frame carries the result to a guest exactly, and the drop events are gone (WIRE 5)",
+    record("block steals live: a guest's wield on the host decides what a hook or Golden AK fire can take, an unowned tool is refused, the frame carries the result to a guest exactly, and the drop events are gone (WIRE 6)",
       Object.values(guests).every(Boolean), JSON.stringify(guests));
     // Shots through the sim itself: bots meet a crouched, a higher and a lower target; no round passes a thin wall.
     // The pair stand on the first open lane of Ooga Town with nothing built on or across it.

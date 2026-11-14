@@ -81,8 +81,9 @@
     for (let i = 0; i < sim.gorillas.length; i++) { if (!seatOk(v.getUint8(o + 9))) return false; o += 10; }
     o += sim.ghosts.length * 9;
     for (let i = 0; i < sim.hooks.length; i++) { if (!seatOk(v.getUint8(o + 7))) return false; o += 8; }
-    o += sim.traps.length + sim.caches.length + sim.peels.length + sim.puddles.length + sim.powers.length * 2;
-    if (o + 1 > len) return false;
+    o += sim.traps.length + sim.caches.length + sim.peels.length + sim.puddles.length;
+    if (o + sim.powers.length * 2 + 1 > len) return false;
+    for (let i = 0; i < sim.powers.length; i++) { if (v.getUint8(o + 1) >= SIM.POWERS.length) return false; o += 2; }
     n = v.getUint8(o++);
     if (n > MAX_EVENTS || o + n * 10 !== len) return false;
     for (let i = 0; i < n; i++) { if (v.getUint8(o) >= EVENT_TYPES.length || !teamOk(v.getUint8(o + 1)) || !seatOk(v.getUint8(o + 2)) || !seatOk(v.getUint8(o + 3)) || NEEDS_ACTOR[v.getUint8(o)] && v.getUint8(o + 2) === 255) return false; o += 10; }
