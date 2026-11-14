@@ -114,6 +114,12 @@ export class Room extends DurableObject {
       this.studio.hands = [...new Set((Array.isArray(this.studio.hands) ? this.studio.hands : []).filter(seated))].slice(0, MAX_PLAYERS);
       this.studio.invited = this.studio.mode === "qa" ? [...new Set((Array.isArray(this.studio.invited) ? this.studio.invited : []).filter(seated))].slice(0, MAX_PLAYERS) : [];
       this.cleanupJobs = (await ctx.storage.get("voiceCleanup")) || [];
+      // Ooga Chat's speakers the island's open outdoor grants hear (#666), as the Audience last sent them.
+      this.chatSources = audienceRoom.cleanSources(await ctx.storage.get("chatSources"));
+      // The clouds Ooga Chat speakers sit on (#668), as the Audience last sent them, at their revision.
+      const clouds = await ctx.storage.get("clouds");
+      this.clouds = audienceRoom.cleanClouds(this, clouds && clouds.list);
+      this.cloudsRev = clouds && Number.isSafeInteger(clouds.revision) ? clouds.revision : 0;
       this.links = restoreLinks(await ctx.storage.get("voiceLinks"));
       const chalk = await ctx.storage.get("chalk"), marks = chalk && CHALK.restore(chalk.marks);
       // A board stored before the board grew (no `v`) is widened as it loads; the next save stores it widened.
@@ -1175,12 +1181,12 @@ export class Room extends DurableObject {
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }
-  audienceSources(list) { audienceRoom.sources(this, list); }
+  audienceSources(list) { return audienceRoom.sources(this, list); }
   // The outdoor handshake's answers from the Audience (#667): confirmed retirements, and each zone's listeners.
   audienceConfirmed(ids) { audienceRoom.confirmed(this, ids); }
   // Ooga Chat's reactions and clouds (#668).
   audienceReaction(event) { audienceRoom.reaction(this, event); }
-  audienceClouds(list) { audienceRoom.clouds(this, list); }
+  audienceClouds(list) { return audienceRoom.clouds(this, list); }
   // An Ooga Chat account's access ended (#670): its community sockets close.
   communityRevoke(id, reason) { return commonsRoom.revoke(this, id, reason); }
   audienceListeners(counts) { audienceRoom.listeners(this, counts); }
@@ -1794,7 +1800,8 @@ export class Room extends DurableObject {
   nextAlarm(now = Date.now()) {
     const here = this.players.size > 0 || commonsRoom.size(this) > 0;
     const cleanup = this.sfu && this.cleanupJobs && this.cleanupJobs.length ? (this.cleanupAt || now + SWEEP_MS) : Infinity;
-    const next = Math.min(here ? this.sweepAt || now + SWEEP_MS : Infinity, here ? this.nextDoorExpiry() : Infinity, cleanup, tessQueue.deadline(this));
+    const next = Math.min(here ? this.sweepAt || now + SWEEP_MS : Infinity, here ? this.nextDoorExpiry() : Infinity, cleanup, tessQueue.deadline(this),
+      audienceRoom.retryDue(this));
     return Number.isFinite(next) ? next : null;
   }
 
@@ -1833,6 +1840,8 @@ export class Room extends DurableObject {
     tessQueue.sweep(this);
     // Cleanup retries run on every wake, not only at sweep time.
     await this.retryCleanup();
+    // Ooga Chat's audience told again what it missed, and grants still closing asked about again (#667).
+    await audienceRoom.retry(this);
     // A full retry pass can outlast a sweep interval. Advance from completion, not the old start time.
     const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;
