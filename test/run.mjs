@@ -25923,6 +25923,7 @@ scene("race", { query: "pos=0&rain=0&draw=0", opts: PHONE_SIZE, steps: [phone("r
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", "#leave-hud"] })] });
 scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", { card: '[data-intro="block"]', play: "__ooga.block.start()", required: ["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"] }), {
   name: "block phone actions and results", why: "regression: Throw overlapped Jump and the sticks, and small results cards clipped names and action labels", run: async b => {
+    if (await b.evaluate(`!document.querySelector('[data-intro="block"]').hidden`)) await b.key(" ");
     const rows = [];
     for (const [map, flightX, flightZ] of [["town", 0, 6], ["jungle", 18, 0], ["haunted", 20, 0]]) for (const [width, height] of [[390,844],[844,390],[320,568]]) {
       await b.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
