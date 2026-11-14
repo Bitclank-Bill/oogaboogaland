@@ -94,9 +94,10 @@ export class Audience extends DurableObject {
       this.island = (await ctx.storage.get("world")) || this.island;
       this.watching = new Set((await ctx.storage.get("watch")) || []);
       // A woken object rebuilds its roster from its sockets' attachments and the island's last word, at the stored
-      // revision: what clients already hold is still true, so nothing is sent.
+      // revision: what clients already hold is still true, so nothing is sent. A socket already closing is restored too,
+      // so the close event that woke the object drops its row with a delta; skipped, its row would vanish here without
+      // one and every other client would keep a departed person at an unchanged revision.
       for (const ws of ctx.getWebSockets()) {
-        if (ws.readyState > 1) continue;
         const a = ws.deserializeAttachment();
         if (!a || !a.conn) continue;
         if (this.model.connect(a.conn, a.info, true).ok) this.sockets.set(a.conn.connId, ws);

@@ -166,7 +166,8 @@ const host = (env = {}) => {
     setWebSocketAutoResponse() {}, waitUntil: (task) => tasks.push(task),
     blockConcurrencyWhile(fn) { this.ready = fn(); return this.ready; },
     acceptWebSocket: (ws, tags) => { ws.tags = tags; sockets.push(ws); },
-    getWebSockets: () => sockets.filter((ws) => ws.readyState <= 1),
+    // As the runtime does, a socket whose close is still to be delivered is listed (CLOSING, 2); a closed one is not.
+    getWebSockets: () => sockets.filter((ws) => ws.readyState <= 2),
   };
   const fullEnv = { ROOM: { getByName: () => ({ audienceDelta: async (delta) => { roomDeltas.push(delta); } }) }, ...env };
   const make = async () => {
@@ -288,6 +289,24 @@ test("the Audience: a hibernation wake restores the same roster at the same revi
   // Generations follow the clock, so a woken object's rows never look older than what clients have.
   const row = woken.model.zones.main.rows.get("gh:1");
   assert.ok(row.generation >= first.model.zones.main.rows.get("gh:1").generation);
+});
+
+test("the Audience: a socket that closed while the object slept leaves with a delta when its close wakes it", async () => {
+  const h = host();
+  const first = await h.make();
+  const { ws: amy } = await open(first, principal(1));
+  const { ws: bea } = await open(first, principal(2));
+  await say(first, amy, { type: "join", zone: "main" });
+  await say(first, bea, { type: "join", zone: "main" });
+  const rev = first.model.zones.main.rev;
+  amy.readyState = 2;
+  const woken = await h.make();
+  assert.deepEqual([...woken.model.zones.main.rows.keys()].sort(), ["gh:1", "gh:2"], "restored, so its close can drop it");
+  assert.equal(woken.model.zones.main.rev, rev);
+  await woken.webSocketClose(amy);
+  const delta = last(bea, "delta");
+  assert.deepEqual({ base: delta.base, revision: delta.revision, remove: delta.remove.map((r) => r.id) }, { base: rev, revision: rev + 1, remove: ["gh:1"] });
+  assert.deepEqual([...woken.model.zones.main.rows.keys()], ["gh:2"]);
 });
 
 test("the Audience: signing out closes every socket of that principal; losing eligibility keeps them listening; expiry closes too", async () => {
