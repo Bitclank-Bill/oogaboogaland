@@ -7966,15 +7966,20 @@ const gameRulesChecks = async () => {
       const goalOutside = noScore(r, r.flags.red);
       r = fresh("haunted"); lob(r, 1, "red", stand.x, stand.z, 3.2);
       const roof = noScore(r, r.flags.red);
-      // Struck a wall inside the zone: at 6 m/s it would have flown past the ring, but it falls where it hit.
-      r = fresh("haunted"); S.tick(r, C.STEP, still);
+      // Struck cover inside the zone: at 6 m/s it would have flown past the ring, but it falls where it hit.
+      // The rebuilt house leaves the ring clear, so place real buildable cover instead of relying on an old wall.
+      r = fresh("haunted");
+      Object.assign(r.actors[0], { x: goal.x, z: goal.z + 0.6, y: 0, grounded: true, flight: 0 });
+      const builtCover = S.build(r, 0, 0);
+      Object.assign(r.actors[0], { x: -3, z: 0 });
+      S.tick(r, C.STEP, still);
       let wall = null;
       for (let k = 0; k < 72 && !wall; k++) for (let d = 1; d < C.GOAL_R - 0.1 && !wall; d += 0.05) {
         const th = k / 72 * Math.PI * 2;
         if (S.solidAt(goal.x + Math.sin(th) * d, 0.65, goal.z + Math.cos(th) * d)) wall = { th, d };
       }
       seen = wall ? lob(r, 1, "red", goal.x + Math.sin(wall.th) * (wall.d - 0.6), goal.z + Math.cos(wall.th) * (wall.d - 0.6), 0.7, Math.sin(wall.th) * 6, Math.cos(wall.th) * 6) : [];
-      const hit = seen.find((k) => k.type === "capture"), offWall = !!wall && !!hit && r.score.blue === 1 && Math.abs(R2(hit, goal) - wall.d) < 0.15;
+      const hit = seen.find((k) => k.type === "capture"), offWall = builtCover && !!wall && !!hit && r.score.blue === 1 && Math.abs(R2(hit, goal) - wall.d) < 0.15;
       // A real arc through `pass` alone, from just the throw's range out, in by the gate.
       const arcFrom = (r) => { const a = r.actors[1], s = S.ARENAS.fort.stands.blue; a.x = s.x; a.z = s.z - 13.7; a.y = 0; a.vx = a.vz = 0; hold(r, 1, "red"); r.eventCount = 0; return S.pass(r, 1, 0); };
       r = fresh("fort");
@@ -8370,7 +8375,7 @@ const gameRulesChecks = async () => {
         [r, o] = air(3, 9); o.jetting = true;
         S.tick(r, C.STEP, held);
         out.thrown = o.vy;
-        const roofs = [["fort", 2, 0, 2.2], ["town", 0, 32.25, 2.7], ["haunted", 0, 36, 2.7]];
+        const roofs = [["fort", 2, 0, 2.2], ["town", 0, 32.25, 2.7], ["haunted", 0, 30.5, 2.7]];
         out.roofs = roofs.map(([map, x, z, roof]) => {
           const [q, a] = air(Math.max(0, roof - C.HEIGHT - 0.5), C.JET_RISE, map, x, z);
           let head = 0;
