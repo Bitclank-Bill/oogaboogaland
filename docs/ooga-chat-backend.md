@@ -101,7 +101,7 @@ flag counts only when what it needs is there too (`effective` in `worker/chat/sr
 
 **The island's `OOGA_CHAT_FEATURES`** (in `wrangler.<env>.jsonc`): `bridge` turns on every operation but `hello`;
 `outdoor` (island voices heard by Ooga Chat's audience), `cloud` (Ooga Chat speakers on clouds) and `commons` (The
-Commons from Ooga Chat) each need `bridge`. This end is the authority: whatever the edge's flags say, an island deployed
+Commons from Ooga Chat, read) each need `bridge`, and `commons-send` (members may also send lines) needs `commons`. This end is the authority: whatever the edge's flags say, an island deployed
 with `OOGA_CHAT_FEATURES` empty refuses every outward operation, so redeploying it empty is the kill switch for the
 whole path. A media feature switched off this way also runs its cleanup (#666, #667): it is not a hidden button.
 
@@ -124,6 +124,7 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | `POST /donations/invoice`, `/note`, `/onchain`; `GET /donations/socket` | the native Feed the Oogas popup, through to bananapayserver (below) |
 | `GET /api/chat/audience`, upgraded | the audience socket (#665, below), from the app's own page with a session |
 | `POST /api/chat/media/<op>` | media signalling (#666, below), from the app's own page with a session; `publish/*` needs `speak` and GitHub |
+| `GET /api/chat/commons`, upgraded | The Commons and Online Oogas (#670, below), from the app's own page, for an eligible GitHub contributor |
 | any other `/api/*`, `/auth/*`, `/donations/*` | a JSON 404 (`{ error: { code: "not_found" } }`), never the app's HTML |
 
 Every other path is served from the staged app. Only `/api/*`, `/auth/*` and `/donations/*` run the Worker
@@ -493,6 +494,69 @@ it: the island's own drivers (each player's `body`) and these clouds together ar
 leaving never un-ghosts a character still driven elsewhere. Clouds need the island's `cloud` switch; off, none is sent
 and the welcome omits `cloud-seats-v1`. Ending a lease ends its cloud. No cloud takes a game slot or names a private
 room.
+
+## The Commons and Online Oogas (#670)
+
+The Commons is the island's one Ooga Chat conversation, and Online Oogas its live players, shown in the app to a GitHub
+contributor who is eligible now. Nothing is copied: `GET /api/chat/commons` (upgraded, from the app's own page) goes
+through the private bridge (`ChatBridge.fetch /commons`) to the island's `Room` as a **community member**, a second kind
+of socket beside its players (`worker/src/room-commons.js`). The edge refuses with a closed socket: 4401 signed out,
+4403 an X account or a contributor answer that is not eligible and fresh, 4429 too many sockets lately (the shared
+`CHAT_SOCKET_LIMITER`), 4503 the Commons is off. The bridge checks the assertion again (this environment, this version,
+GitHub, eligible) and needs the island's `commons` switch; the Room checks the account against its own cast and
+contributor rule and its ban list before accepting, as it does a player.
+
+**One conversation.** A member's `{ t: "chat", text, clientId }` goes through the Room's own `say`: the same ring of the
+last 100 lines, ids, order and timestamps, the same Unicode policy (`chat-unicode-v1`), the same retry dedupe and the
+same rate bucket by account, so a contributor's island tabs and Ooga Chat tabs together keep to 3 lines and 1 a second.
+Every line reaches every player and member once, with the island's own `{ t: "chat", ... }` frame; the member gets its
+`chat-ack` or `chat-rejected` as a player does. Retention is the island's: in memory, gone on a wake. The display name is
+the island's for that account when it has one, so a line reads the same from either app.
+
+**Online Oogas, without positions.** The member's welcome is `{ t: "community", v: 1, op: "welcome", epoch, send, you:
+{ id, login, display }, players: [...], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
+display, body, zone, voice, muted, hand, handTone, handEmoji }`, and after that only the Room's `join`, `leave`, `body`,
+`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. No pose, snapshot, distance, NPC frame, SFU id,
+voice link, private-conversation frame, reaction over a body, game state or chalk ever reaches a member.
+
+**The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
+`commonsHistory` the `chat-history` after it, `onlineDelta` the relayed `join`, `leave`, `body`, `zone`, `vstate` and
+`hand` (and `clouds` for cloud speakers), `commonsMessage` the island's `chat` line `{ t: "chat", id, at, login, name,
+text }`, and the acknowledgement and refusal its `chat-ack { clientId }` and `chat-rejected { clientId, reason }`
+(`rate`, `conflict`, `read_only`; a line the Unicode policy refuses is dropped unanswered, as the island's is). **Reconnects:** history is the ring as it stands, merged by `id`, which
+follows the Room's clock; `epoch` is the life of the Room's memory, so a welcome with a new `epoch` says the Room woke or
+restarted and whatever was said meanwhile is gone (never stored anywhere, attachments included), not that it was quiet.
+A socket kept open across a hibernation misses nothing and gets no second welcome.
+
+**The capability matrix.**
+
+| | Signed out | X account | GitHub, not a contributor | GitHub contributor (eligible) | Island player |
+|---|---|---|---|---|---|
+| Public panels, Feed the Oogas (#664) | yes | yes | yes | yes | yes |
+| Listen in the audience (#665) | no | yes | yes | yes | in its own world |
+| Reactions, hand in the audience (#668) | no | reactions | reactions | reactions; a hand as a speaker | island reactions |
+| Speak from a cloud (#666, #668) | no | no | no | yes, with `speak` and `cloud` | its own voice |
+| The Commons: read and send lines | no | no | no | yes, with `commons` | yes |
+| Online Oogas: who is here, zone, voice, hand | no | no | no | yes, without positions | yes, with distances |
+| Private conversations, voice links | no | no | no | no (island only) | yes |
+| A body, poses, NPC host, games, chalk | no | no | no | no | yes |
+| Edit the display name | no | no | no | on the island (`PATCH /api/me`); shown in both | yes |
+
+**Access ends.** Signing out, deleting the account or losing eligibility (the edge's `revoke`, #663) closes every member
+socket of that account at once (`communityRevoke`); the Room's minute sweep closes one past its hourly re-authentication
+deadline (`authUntil`, never past the session's own), no longer a contributor, banned, or silent past `STALE_MS` with its
+auto-answered pings. A Room wake restores members from their attachments as members, never as players.
+
+**Bounds and cost.** At most 128 members a Room and 3 an account (`COMMUNITY_MAX`, `COMMUNITY_PER_ACCOUNT`); the next is
+closed 4429. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
+member is connected the Room keeps its once-a-minute sweep, as it does for a player, and nothing else: a member is
+relayed only what the Room already broadcasts. With the island's `commons` switch off nobody new connects; members
+already in leave at their next sweep or reconnect.
+
+**Rollout.** Reading first: `commons` alone lets members in with `send: false`, and a line gets `chat-rejected` with
+`read_only` (the app keeps the draft); `commons-send` then opens sending, staging before production. Private text stays
+the island's: the standalone app gets no private-conversation or voice-link capability until a reviewed origin-safe
+design exists (a pad must never be used independently from two origins).
 
 ## Secrets and variables
 
