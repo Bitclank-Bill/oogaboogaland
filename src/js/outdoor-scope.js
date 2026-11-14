@@ -2,8 +2,10 @@
 // or `dsb` (DSB Land's), else none. This is a privacy boundary, so it is physical and immediate, apart from the panels'
 // zone names (zone-map.js) and their ZONE_HOLD debounce, and apart from voice-blend.js `WORLD`, which folds HQ and the
 // caves into the surface. Each scene that can stand outdoors reports a reason every frame from its own geometry:
-// scene-hub.js (`hubReason`), scene-dsb.js (`dsbReason`); the director reports `scene` the moment a transition starts,
-// and every other scene leaves it there. `report` records a change only, and a change of scope moves the `epoch`.
+// scene-hub.js (`hubReason`), scene-dsb.js (`dsbReason`). The director holds it at `scene` for a whole transition
+// (`hold`), from the moment one starts until it settles, so the old scene's last frames during the fade cannot report
+// the body outdoors again; every other scene leaves it there. `report` records a change only, and a change of scope
+// moves the `epoch`.
 // A scope is public only once something acknowledges that exact epoch and scope (`acknowledge`): until the backend's
 // transition handshake exists (#665, #667) and a transport attaches (#661), nothing does, so `public` stays false and
 // `supported` says why. `reset` (a reconnect, a new account) moves the epoch, so no old acknowledgement, promise or
@@ -31,19 +33,26 @@
   const create = () => {
     const state = { version: VERSION, scope: null, reason: "scene", epoch: 0, acknowledged: -1, public: false, supported: false };
     const listeners = new Set();
+    let held = false;
     const emit = () => { for (const fn of listeners) fn(state); };
     // A scene's verdict. Returns whether anything changed; listeners hear changes only.
     const report = (scope, reason) => {
       if (!REASONS.includes(reason) || (scope !== null) !== (reason === "outdoor") || scope !== null && scope !== "main" && scope !== "dsb") {
         throw new Error(`outdoor scope: ${scope} for ${reason}`);
       }
-      if (scope === state.scope && reason === state.reason) return false;
+      if (held || scope === state.scope && reason === state.reason) return false;
       if (scope !== state.scope) state.epoch++;
       state.scope = scope;
       state.reason = reason;
       state.public = false;
       emit();
       return true;
+    };
+    // A scene change: out of every scope from its start (`hold(true)`) until it settles (`hold(false)`), whatever any
+    // scene reports meanwhile; the scene that is there afterwards reports again from its next frame.
+    const hold = (on) => {
+      if (on) report(null, "scene");
+      held = !!on;
     };
     // The backend's word that this epoch's scope is open. A stale epoch, another scope or an excluded one is refused.
     const acknowledge = (epoch, scope) => {
@@ -71,9 +80,9 @@
       listeners.add(fn);
       return () => listeners.delete(fn);
     };
-    return { state, report, acknowledge, reset, setSupported, subscribe };
+    return { state, report, hold, acknowledge, reset, setSupported, subscribe };
   };
   const page = create();
   BL.outdoorScope = { VERSION, REASONS, HUB_OUTDOOR, hubReason, dsbReason, create, state: page.state, report: page.report,
-    acknowledge: page.acknowledge, reset: page.reset, setSupported: page.setSupported, subscribe: page.subscribe };
+    hold: page.hold, acknowledge: page.acknowledge, reset: page.reset, setSupported: page.setSupported, subscribe: page.subscribe };
 })();

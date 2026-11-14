@@ -22381,6 +22381,25 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
   record("outdoor scope: part way down HQ's ramp or the rainforest's descent is already out of Main Island, however much surface the voice blend keeps, as are HQ, its basement and the chamber; the rainforest's top is in",
     [lv.entrance, lv.floor, lv.stair, lv.basement, lv.backUp, lv.descent, lv.chamber].every((p) => p.scope === null && (p.reason === "interior" || p.reason === "descending"))
       && lv.descent.reason === "descending" && lv.descent.t < 1 && lv.court.scope === "main", JSON.stringify(lv));
+  // A scene change takes the body out of Main Island from the moment it starts, through the old scene's last frames and
+  // the fade, and keeps it out in a scene that reports nothing (the lab), so nothing there is public.
+  const away = await b.evaluate(`(async () => {
+    const B = __ooga, S = BL.outdoorScope.state, D = BL.scenes.hub.debug, frame = () => new Promise((r) => setTimeout(r, 0));
+    const lab = D.island.mouths.find((m) => m.id === "c11"), x = lab.x + (lab.apron.x - lab.x) * 2.5, z = lab.z + (lab.apron.z - lab.z) * 2.5;
+    B.pilot.navigate({ position: { x, y: D.island.surfaceAt(x, z), z }, yaw: 0, pitch: 0.4, dist: 6 }); B.advance(0.5, 1 / 60);
+    const before = { scope: S.scope, reason: S.reason }, seen = new Set();
+    let frames = 0;
+    B.go("lab");
+    while ((B.transitioning || B.scene !== "lab") && frames++ < 900) { B.advance(1 / 60, 1 / 60); seen.add(S.scope + ":" + S.reason + ":" + S.public); await frame(); }
+    for (let i = 0; i < 60; i++) { B.advance(1 / 60, 1 / 60); seen.add(S.scope + ":" + S.reason + ":" + S.public); }
+    const after = { scene: B.scene, scope: S.scope, reason: S.reason };
+    B.go("hub"); frames = 0;
+    while ((B.transitioning || B.scene !== "hub") && frames++ < 900) { B.advance(1 / 60, 1 / 60); await frame(); }
+    return { before, seen: [...seen], after, home: B.scene };
+  })()`);
+  record("outdoor scope: leaving the hub from open ground for a scene that reports nothing stays out of Main Island through the old scene's last frames, the fade and the whole visit",
+    away.before.scope === "main" && away.seen.every((s) => s === "null:scene:false") && away.after.scene === "lab" && away.after.scope === null && away.home === "hub",
+    JSON.stringify(away));
 } };
 // Sessions that need portlandhodl awake on the surface pin it (ooga=): by itself his state comes from the real activity snapshot, and once
 // it has aged he boots asleep in the headquarters, where jetpacks are refused and his gorilla is in bed.
@@ -32410,6 +32429,11 @@ const outdoorScopeChecks = () => {
   let threw = 0;
   for (const [scope, reason] of [["main", "interior"], [null, "outdoor"], ["dsb-outside", "outdoor"], [null, "nowhere"]]) { try { T.report(scope, reason); } catch { threw++; } }
   seq.contract = threw === 4;
+  // A scene change holds the scope out whatever the old scene's last frames report, until it settles.
+  T.report("main", "outdoor"); T.hold(true);
+  const holding = S.scope === null && S.reason === "scene" && !T.report("main", "outdoor") && S.scope === null;
+  T.hold(false);
+  seq.held = holding && T.report("main", "outdoor") && S.scope === "main";
   seq.monotonic = heard.every((epoch, i) => i === 0 || epoch >= heard[i - 1]);
   record("outdoor scope epochs: nothing is public without a transport; an acknowledgement opens only the current epoch and scope, so leaving, backtracking, a reset or a lost transport closes it and no late answer reopens it; repeats are silent and verdicts must agree with their reason",
     Object.values(seq).every(Boolean), JSON.stringify(seq));
