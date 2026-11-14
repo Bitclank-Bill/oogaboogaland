@@ -170,7 +170,7 @@ const host = (env = {}) => {
     acceptWebSocket: (ws, tags) => { ws.tags = tags; sockets.push(ws); },
     getWebSockets: () => sockets.filter((ws) => ws.readyState <= 1),
   };
-  const fullEnv = { ROOM: { getByName: () => ({ audienceDelta: async (delta) => { roomDeltas.push(delta); } }) }, ...env };
+  const fullEnv = { OOGA_CHAT_FEATURES: "bridge,outdoor", ROOM: { getByName: () => ({ audienceDelta: async (delta) => { roomDeltas.push(delta); }, audienceListeners: async () => {}, audienceConfirmed: async () => {} }) }, ...env };
   const make = async () => {
     const audience = new Audience(ctx, fullEnv);
     await ctx.ready;
@@ -336,7 +336,7 @@ const fakeRoom = (players, enabled = true) => {
     snapshot: async (zone) => { calls.snapshot.push(zone); return { zone, epoch: 3, rev: 9, rows: Array.from({ length: 250 }, (_, i) => ({ id: `gh:${i + 1}`, generation: 1,
       provider: "github", login: `p${i + 1}`, display: `P${i + 1}`, avatar: null, contributions: null, role: "listener", source: "chat", mic: "off", hand: "", speaking: false, character: null })) }; } };
   const room = {
-    env: enabled ? { AUDIENCE: { getByName: () => audienceStub }, OOGA_CHAT_FEATURES: "bridge" } : {},
+    env: enabled ? { AUDIENCE: { getByName: () => audienceStub }, OOGA_CHAT_FEATURES: "bridge,outdoor" } : {},
     players: new Map(players.map((p) => [p.id, p])),
     sent: [], send(ws, msg) { ws.sent.push(msg); }, saveAttachment() {}, background(task) { return task; },
   };
@@ -350,7 +350,7 @@ test("the Room: audience-v1 only with the bridge on; a panel's view is chunked w
   for (const bad of [{ t: "audience-view", v: 2, zone: "main" }, { t: "audience-view", v: 1, zone: "hq" }, { t: "audience-resync", v: 1 }]) assert.equal(audienceRoom.parse(bad), null);
   const one = player(1), two = player(2);
   const { room, calls } = fakeRoom([one, two]);
-  assert.deepEqual(audienceRoom.features(room), ["audience-v1"]);
+  assert.deepEqual(audienceRoom.features(room), ["audience-v1", "outdoor-voice-v1"], "the outdoor handshake with the island's `outdoor` switch");
   await audienceRoom.view(room, one, "main");
   assert.deepEqual(calls.watch, [["main"]]);
   const parts = one.ws.sent;
