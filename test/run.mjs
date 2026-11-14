@@ -7940,6 +7940,11 @@ const gameRulesChecks = async () => {
         Object.assign(r.flags.blue, { state: "dropped", x: away.x, z: away.z, y: 0 });
         seen = lob(r, 1, "red", blue.x + 0.5, blue.z);
         row.ownAway = clear && r.flags.blue.state === "dropped" && noScore(r, r.flags.red) && seen.some((k) => k.type === "waiting" && k.actor === 1 && k.team === "blue" && k.y === 1) && seen.some((k) => k.type === "landed");
+        // The alternate rule permits exactly the same throw with the team's own block away.
+        r = fresh(map); r.anyTime = true;
+        Object.assign(r.flags.blue, { state: "dropped", x: away.x, z: away.z, y: 0 });
+        seen = lob(r, 1, "red", blue.x + 0.5, blue.z);
+        row.anyTime = scoredBy(r, seen, 1, "blue", blue, C.STAND_R) && !seen.some(k => k.type === "waiting");
         // A side's own block, into the rivals' zone or its own.
         r = fresh(map); lob(r, 0, "blue", red.x + 0.5, red.z);
         row.ownBlockThere = noScore(r, r.flags.blue);
@@ -7992,7 +7997,7 @@ const gameRulesChecks = async () => {
       for (let n = 1; n <= C.CAPTURES; n++) { seen = lob(r, 1, "red", bs.x, bs.z); ended = ended && r.score.blue === n && r.over === (n === C.CAPTURES) && seen.some((k) => k.type === "win") === (n === C.CAPTURES); }
       ended = ended && r.winner === "blue" && r.actors[1].captures === C.CAPTURES && r.actors[1].gold && r.goldLeft === C.GOLD_GUNS - r.actors.filter((k) => k.gold).length && !r.actors.some((k) => k.gold && k.team !== "blue");
       const out = { goalSpot, goalInside, goalOutside, roof, offWall, arc, caught, onRope, offRope, ended };
-      record("block frenzy throw home: a rival block landing in the thrower's zone scores and credits the thrower at every map's stand and a map's own spot, off a wall too; never with your own block away, for a side's own block, just outside, on a roof, caught or off a hook; and it ends the round",
+      record("block frenzy throw home: a rival block landing in the thrower's zone scores and credits the thrower at every map's stand and a map's own spot, off a wall too; with your own block away only under the alternate rule, never for a side's own block, just outside, on a roof, caught or off a hook; and it ends the round",
         Object.values(out).every(Boolean) && Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify({ out, rows }));
     }
     {
@@ -12828,6 +12833,39 @@ const blockPoses = { name: "block modelled poses", why: "regression: old straigh
   record("block modelled poses: regular, slim and wide Oogas grip every weapon and both Golden AKs, and their trophy rests on their raised fists", rows.filter(r => !r.zip && !r.jet).length === 27 && rows.filter(r => !r.zip && !r.jet).every(r => r.trophy ? r.gap < .03 : r.visible && r.modelled && r.own && r.gap < .001), JSON.stringify(rows));
   record("block modelled poses: both fists meet the zipline bar even while crouch is held, weapons are stowed, and letting go restores each Ooga's hip", rows.filter(r => r.zip).length === 3 && rows.filter(r => r.zip).every(r => r.gap < .001 && r.restored && r.hiddenGuns), JSON.stringify(rows.filter(r => r.zip)));
   record("block modelled jetpacks: regular, slim and wide Oogas carry a body-sized pack seated on their actual back", rows.filter(r => r.jet).length === 3 && rows.filter(r => r.jet).every(r => r.attached && r.gap < .001 && Math.abs(r.scale - 1) < .001), JSON.stringify(rows.filter(r => r.jet)));
+} };
+const blockThrowScore = { name: "block throw scoring controls", why: "rule: keyboard and touch throws must score under the selected rule and show the correct throw feedback on the new Oogas", run: async b => {
+  const rows = [], touch = await b.evaluate('matchMedia("(pointer: coarse)").matches');
+  await b.evaluate('window.__throwUpdate = BL.scenes.block.update; BL.scenes.block.update = () => {}');
+  try {
+    for (const name of ["w-s-bitcoin", "tiffanyvarty", "portlandhodl"]) for (const mode of ["home", "away", "any"]) {
+      const setup = await b.evaluate(`(() => {
+        const D = __ooga.block, S = BL.blockSim;
+        D.showBoard(); D.selection.map = "town"; D.selection.rule = "home"; D.chooseTeam(${JSON.stringify(name === "tiffanyvarty" ? "red" : "blue")}); D.chooseOoga(${JSON.stringify(name)}); D.chooseOoga(${JSON.stringify(name)}); D.start(583);
+        const sim = D.sim, a = sim.actors[0], stand = S.ARENA.stands[a.team], sign = a.team === "blue" ? 1 : -1, other = S.other(a.team);
+        sim.prep = 0; sim.anyTime = ${mode === "any"}; sim.weather.left = 1e9;
+        for (const p of sim.actors) Object.assign(p, { bot: false, flight: 0, x: 18, z: p.id * 3, y: 0, grounded: true, guard: 60 });
+        for (const g of sim.gorillas) { g.state = 3; g.t = 1e9; }
+        Object.assign(a, { x: stand.x, z: stand.z - sign * 13.7, vx: 0, vz: 0, y: 0, vy: 0, carrying: other });
+        Object.assign(sim.flags[other], { state: "carried", carrier: 0 });
+        if (${mode !== "home"}) Object.assign(sim.flags[a.team], { state: "dropped", x: -18, y: 0, z: 0 });
+        D.cam.face = sign === 1 ? 0 : Math.PI; __throwUpdate(0, 0);
+        const e = document.querySelector('#block-tools [data-tool="pass"]'), r = e.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, enabled: !e.disabled, hit: document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('[data-tool="pass"]') === e, modelled: D.actors[0].cave.modelled };
+      })()`);
+      if (touch) {
+        await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: setup.x, y: setup.y }] });
+        await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      } else await b.key("t");
+      const result = await b.evaluate(`(() => {
+        const D = __ooga.block, a = D.sim.actors[0], f = D.sim.flags[BL.blockSim.other(a.team)], threw = f.state === "flying";
+        D.simulate(2); __throwUpdate(0, 0);
+        return { threw, score: D.sim.score[a.team], captures: a.captures, gold: a.gold, state: f.state, feed: document.getElementById("block-feed").textContent, notice: document.getElementById("block-notice").textContent };
+      })()`);
+      rows.push({ name, mode, setup, result });
+    }
+  } finally { await b.evaluate('BL.scenes.block.update = __throwUpdate; delete window.__throwUpdate; __ooga.block.showBoard()'); }
+  record("block throw controls: regular/slim/wide Oogas throw from keyboard or touch; classic scores only with their block home, alternate scores while away, and the feed and waiting hint explain the result", rows.length === 9 && rows.every(({ mode, setup, result: r }) => setup.modelled && setup.enabled && (!touch || setup.hit) && r.threw && (mode === "away" ? r.score === 0 && r.captures === 0 && r.state === "dropped" && r.notice.includes("that throw can't score") : r.score === 1 && r.captures === 1 && r.gold && r.state === "home" && r.feed.includes("threw it home"))), JSON.stringify({ touch, rows }));
 } };
 const blockRoofs = { name: "block roof presentation", why: "regression: a loose block fell through a cave roof; the drawn block, modelled feet and retrieving bot must agree on its surface", run: async b => {
   const rows = await b.evaluate(`(() => {
@@ -24681,7 +24719,7 @@ scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub")
 }}]});
 scene("race", { query: "rain=0&draw=0", steps: [raceStart, raceOwn, raceBench, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: one drawn field of fifteen runs every race and finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop"), dropOwn] });
-scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, blockRoofs, blockZipline, trip("block")] });
+scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, blockRoofs, blockThrowScore, blockZipline, trip("block")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit"), orbitOwn] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
 // ---- The Lightning Jet Hangar ----
@@ -25757,7 +25795,7 @@ scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", 
     }
     record("block phone: portrait, landscape and narrow screens keep the controls reachable, real Throw taps fire, held Jump climbs with flame and fuel use, release/cancel cuts thrust, and the results names and actions fit", rows.every(r => r.bad ? !r.bad.length : r.fired), JSON.stringify(rows));
   }
-}] });
+}, blockThrowScore] });
 scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", "#leave-hud"] })] });
 scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#environment-sound", "#leave-hud"] })] });
 scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", "#leave-hud"] }), factoryGreeter] });
