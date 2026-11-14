@@ -66,6 +66,7 @@
     soundButton.setAttribute("aria-label", label); soundButton.title = voice.enabled || voice.joining || voice.returning ? label : `${label} · M`;
     soundButton.setAttribute("aria-pressed", String(sound.muted));
   };
+  BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition });
   let helpHeld = false;
   // Both panels pause the scene. A pad keeps working inside them: its Menus context reaches no scene while they show.
   const controlsHelp = BL.controlsHelp.create({ current: () => active, ready: () => !!active && !transition,
@@ -683,6 +684,7 @@
   // Shared by the display loop and the debug `advance`, so a stepped frame is exactly a displayed one.
   const step = (dt, now) => {
     gamepad.poll();
+    BL.destinationMap.update(now);
     elapsed += dt;
     if (transition) stepTransition(dt);
     // Hold the fully black frame while resumable pure builders run; the old visit keeps its graph and controls.
@@ -1013,7 +1015,7 @@
         const factory = first.id === "hub" && window.BL.caves.slots.find(slot => slot.status === "open" && slot.scene === "factory");
         const roofHole = factory ? { id: factory.id, ...window.BL.factoryModels.ROOF_TUBE } : null;
         const nook = first.id === "hub" ? first.libraryNook || null : null;
-        await window.BL.terrainCache.prepare({ seed: 1, roofHole, nook }, first.id, terrainController.signal);
+        await window.BL.terrainCache.prepare({ seed: 1, roofHole, nook, cliffLedges: first.id === "hub" }, first.id, terrainController.signal);
       } catch { /* A rejected opt-in build uses the ordinary path unless this page was destroyed. */ }
       if (destroyed) { models.release(first.id, []); return; }
     }
@@ -1158,6 +1160,7 @@
   }
   const destroy = () => {
     cabinetView.dispose();
+    BL.destinationMap.dispose();
     controlsHelp.dispose();
     destroyed = true;
     bootBuildController.abort();
