@@ -74,7 +74,7 @@ anything is handed on, and the bridge never reads a browser header at all.
 | Operation | Needs | Answers |
 |---|---|---|
 | `hello` | nothing | `{ version, environment, features, voice }`: what the bridge can do now, with no binding, secret or account id |
-| `capability` | `bridge`; a GitHub principal | `{ state, character, reason, policy, checkedAt }` from the island's contributor policy (`chat-capability.js`): `eligible` (a bundled owner, or an unbundled contributor Oogatron vouches for), `ineligible` (a verified snapshot said no, or the island banned the account) or `unknown` (the snapshot could not be read). An X principal is refused (`capability_required`) |
+| `capability` | `bridge`; a GitHub principal | `{ state, character, reason, policy, checkedAt }` from the island's contributor policy (`chat-capability.js`): `eligible` (a bundled owner, or an unbundled contributor Oogatron vouches for), `ineligible` (a verified snapshot said no, the island banned the account, or `identity-collision`: another GitHub id holds that login on the island, by its own `players_identity_insert` rule) or `unknown` (the island's D1 or the snapshot could not be read). An X principal is refused (`capability_required`) |
 | `revoke` | `bridge` | ends whatever the principal holds live (leases, publications, a cloud); added by #665, and until then the edge treats `unknown_operation` as nothing to end |
 
 Later issues add their operations here.
@@ -143,14 +143,17 @@ verifier. The callback spends the state first (`DELETE … RETURNING`), then req
 and an unexpired state, so a replayed, crossed (GitHub's at X's callback), stolen or stale state fails without a
 session. GitHub asks no scope and reads `/user`; X uses authorization code with PKCE `S256`, a confidential exchange
 (HTTP Basic with the client secret), the scopes `tweet.read users.read` (no `offline.access`), reads
-`GET /2/users/me?user.fields=profile_image_url`, and revokes the token at once. Every provider call refuses redirects and
-times out at 5 s. Results: `denied` (consent refused), `rate-limited` (429, or our own limiter), `unavailable` (402
+`GET /2/users/me?user.fields=profile_image_url`, and revokes the token at once. Every provider call is made with
+`redirect: "manual"` (Workers' fetch has no `"error"` mode), so a redirect comes back as a 3xx and fails as any refusal
+does, never followed, and times out at 5 s. Results: `denied` (consent refused), `rate-limited` (429, or our own limiter), `unavailable` (402
 credits, 5xx, a provider switched off), `failed` (anything else, a bad state or profile, a banned account); the reason
 code goes to the Worker's log only.
 
 **The session.** A random token in a host-only `__Host-ooga_chat_session` cookie (`HttpOnly; Secure; SameSite=Lax;
 Path=/`; plain names on http for local development), stored as its SHA-256, 30 days, its last use written at most every
-ten minutes. `GET /api/chat/me`:
+ten minutes. A GitHub login is the donor's name and the island's contributor key, so a GitHub sign-in with a login
+another GitHub principal still holds (renamed away on GitHub, then taken) first ends that principal's sessions and its
+capability answer, as the island's own sign-in does for its players. `GET /api/chat/me`:
 
 ```json
 { "schema": 1,
@@ -179,7 +182,9 @@ one commit in the bounded Oogatron snapshot, bots and AI aliases excluded.
 **Pictures.** A provider's picture address is kept only on its own image host over https (`avatars.githubusercontent.com`;
 `pbs.twimg.com`, `abs.twimg.com`), sized for a face, and served on this origin at
 `/api/chat/avatar/<principal>/<key>`, the key being the address's hash: a picture that changed, or an account deleted,
-answers 404 rather than an old face. Only the stored address is fetched, with no cookie or token, redirects refused, a
+answers 404 rather than an old face: the account's row is read before the edge cache, which is keyed by the path alone,
+so a cached copy never outlives its account or key. Only the stored address is fetched, with no cookie or token, a
+redirect never followed, a
 5 s limit, at most 512 KiB, and only PNG, JPEG, GIF or WebP (never SVG). It is public, as the face beside a name on
 GitHub or X is, and cached a day at the edge and in the browser. A failure is a 404, and the app shows the native Ooga
 face. GitHub's address is fixed per account, so a new GitHub picture shows within a day.
