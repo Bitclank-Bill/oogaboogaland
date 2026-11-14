@@ -30,7 +30,8 @@
   // `zone(next)` is where the client moves or ends its lease for another zone; no role shows there before the server
   // acknowledges it in the new zone's audience.
   const media = { available: false, state: Object.freeze({ role: "listener", muted: true }), release() {}, join() {}, leave() {}, mute() {}, zone() {} };
-  let adapter = null, shell = null, footer = null, auth = null, feed = null;
+  // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
+  let adapter = null, shell = null, footer = null, auth = null, feed = null, relisten = 0;
   const page = new AbortController();
   try {
     // A sign-in return is a result code only; it leaves the address before anything else runs.
@@ -47,7 +48,7 @@
       zone = parseZone(localStorage.getItem(zoneKey));
     } catch { zone = parseZone(null); /* Storage may be unavailable. */ }
     const roster = BL.oogaChatRoster.create();
-    let listening = null, heard = 0, refused = 0, relisten = 0;
+    let listening = null, heard = 0, refused = 0;
     let state = { mode: "loading", boot: null, session: null, auth: "checking", notice: null, busy: false, zone, voice: media.state,
       audience: { status: "off", zone, list: [], version: 0 } };
     const set = (patch) => {
