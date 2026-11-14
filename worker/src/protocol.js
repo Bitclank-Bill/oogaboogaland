@@ -163,8 +163,10 @@ export const HP_HZ = 4;
 // Voice across a crossing (#392, src/js/voice-blend.js): a page sends its step along one a few times a second at most.
 export const BLEND = globalThis.BL.voiceBlend;
 export const BLEND_HZ = 8;
-// Close codes: 4000 follows a `kick` (replaced, stale, full); 4400 is a message the room cannot read.
+// Close codes: 4000 follows a `kick` (replaced, stale, full); 4400 is a message the room cannot read; 1011 is a message
+// whose handling threw, which ends that socket alone and leaves the page free to reconnect.
 export const CLOSE_KICK = 4000;
+export const CLOSE_ERROR = 1011;
 // NPC frames: the host sends about 4 a second, only while a page follows; a frame of every Ooga's pose is a few kilobytes.
 // Up to 128 bundled Oogas (112 floats each), plus the bounded event tail.
 // The former 16 KiB cap could not carry the org-wide roster after reconciliation.
