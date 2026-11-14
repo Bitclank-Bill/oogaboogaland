@@ -24,7 +24,8 @@
   const NOTICE = {
     check: { kind: "check", text: "Ooga Chat can't check your sign-in right now.", action: "Try again" },
     expired: { kind: "expired", text: "Your sign-in expired. Sign in again to keep listening." },
-    signout: { kind: "signout", text: "Signed out here, but the server didn't confirm. Your session ends on its own when it expires.", action: "Try again" }
+    signout: { kind: "signout", text: "Signed out here, but the server didn't confirm. Your session ends on its own when it expires.", action: "Try again" },
+    held: { kind: "signout", text: "Signed out here, but the server still has you signed in.", action: "Sign out again" }
   };
   // Why Join Voice is off, said on the button itself rather than in another row.
   const WHY = {
@@ -92,7 +93,13 @@
       if (due === Infinity) return;
       timer = timers.set(() => { timer = null; check("timer"); }, Math.min(TIMER_MAX_MS, Math.max(TIMER_MIN_MS, due - at)));
     };
+    // While a sign-out the server didn't confirm stands, the page stays signed out: a session still found is never
+    // taken back (only said, with the sign-out to send again), and none found is the confirmation.
     const adopt = (next, why) => {
+      if (state.notice?.kind === "signout") {
+        set({ notice: next ? NOTICE.held : null });
+        return;
+      }
       const expired = !!state.session && !next;
       const notice = expired ? NOTICE.expired : state.notice?.kind === "check" ? null : state.notice;
       set({ session: next, auth: status(next, now()), notice }, expired ? "expired" : why);
@@ -146,19 +153,20 @@
         schedule();
       }
     };
+    // Bumps the ticket so no check already asking can bring a session back, and clears the session either way.
     const logout = async () => {
+      ticket++;
       try {
         await adapter.signOut(boot);
-        set({ auth: "signed-out", busy: false, notice: null });
+        set({ session: null, auth: "signed-out", busy: false, notice: null });
       } catch {
-        set({ auth: "signed-out", busy: false, notice: NOTICE.signout });
+        set({ session: null, auth: "signed-out", busy: false, notice: NOTICE.signout });
       }
     };
     // Capture stops and the account leaves this page first; only then is the server told. A failed request leaves
     // the page signed out with a retry, never a microphone running.
     const signOut = () => {
       if (disposed || !boot || state.busy || !state.session) return Promise.resolve();
-      ticket++;
       stop();
       set({ session: null, auth: "signing-out", busy: "signout", notice: null }, "signout");
       return logout();

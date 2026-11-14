@@ -32519,15 +32519,28 @@ const oogaChatChecks = async () => {
     ineligible: ineligible.auth.state.auth === "listener" && !ineligible.gates().joinVoice && ineligible.gates().why === A.WHY.listener,
     unknown: unknown.auth.state.auth === "unknown" && !unknown.gates().joinVoice && !unknown.gates().contributor && unknown.gates().why === A.WHY.unknown,
     revoked: !revoked.gates().joinVoice && !revoked.gates().contributor && revoked.gates().why === A.WHY.revoked };
-  // Sign leaving with the network down: capture goes first, the page is signed leaving, and the retry reaches the server.
+  // Sign out with the network down: capture goes first, the page is signed out, and the retry reaches the server.
   const leaving = await signedIn(account("github", "speaker", "eligible"), { failLogout: true });
   leaving.auth.signOut();
   const releasedFirst = leaving.log.indexOf("release:signout") >= 0 && leaving.log.indexOf("release:signout") < leaving.log.indexOf("logout") && leaving.auth.state.session === null;
   await new Promise((resolve) => setImmediate(resolve));
   const uncertain = leaving.auth.state.auth === "signed-out" && leaving.auth.state.notice?.kind === "signout" && !!leaving.auth.state.notice.action;
+  // The server still holds the session: the network's return finds it, and the page stays signed out and says so.
+  await leaving.advance(A.RECHECK_MIN_MS);
+  await leaving.auth.check("online");
+  const outKept = leaving.auth.state.session === null && leaving.auth.state.auth === "signed-out" && leaving.auth.state.notice === A.NOTICE.held
+    && !leaving.gates().joinVoice && !leaving.gates().contributor;
   leaving.failLogout = false;
   await leaving.auth.retry();
-  const retried = leaving.log.filter((entry) => entry === "logout").length === 2 && leaving.auth.state.notice === null;
+  const retried = leaving.log.filter((entry) => entry === "logout").length === 2 && leaving.auth.state.notice === null && leaving.auth.state.session === null
+    && leaving.auth.state.auth === "signed-out" && !leaving.gates().contributor;
+  // A check that finds the session gone after all is the server's confirmation: the notice goes.
+  const confirmed = await signedIn(account("github", "speaker", "eligible"), { failLogout: true });
+  await confirmed.auth.signOut();
+  confirmed.answer = null;
+  await confirmed.advance(A.RECHECK_MIN_MS);
+  await confirmed.auth.check("online");
+  const outConfirmed = confirmed.auth.state.notice === null && confirmed.auth.state.auth === "signed-out" && !confirmed.log.includes("release:expired");
   // Another principal, an expired session and a failed check each release; the check says which.
   const swap = await signedIn(account("github", "speaker", "eligible"));
   swap.answer = account("github", "someone-else", "eligible");
@@ -32544,12 +32557,12 @@ const oogaChatChecks = async () => {
   const denied = await signedIn(null, { back: { result: "denied", provider: "github" } });
   const deniedNotice = denied.auth.state.notice?.kind === "signin" && denied.auth.state.notice.provider === "github" && denied.auth.state.auth === "signed-out";
   await denied.auth.retry();
-  const flow = { opened, stale, ...gated, releasedFirst, uncertain, retried,
+  const flow = { opened, stale, ...gated, releasedFirst, uncertain, outKept, retried, outConfirmed,
     identity: swap.log.includes("release:identity") && swap.log.includes("release:expired") && expiredNotice,
     error: broken.auth.state.auth === "error" && broken.log.includes("release:error") && broken.auth.state.notice?.kind === "check" && !broken.gates().joinVoice,
     throttled: throttled.log.filter((entry) => entry === "session").length === 1,
     denied: deniedNotice && denied.log.includes("signIn:github") && denied.auth.state.auth === "eligible" && !denied.log.some((entry) => entry.startsWith("release")) };
-  record("Ooga Chat account: every sign-in lands as a listener with gates only the server's answer opens, a stale window or failed check closes them, sign-out releases capture before the request and offers a retry when unconfirmed, and another principal or an expired session releases and says so",
+  record("Ooga Chat account: every sign-in lands as a listener with gates only the server's answer opens, a stale window or failed check closes them, sign-out releases capture before the request and offers a retry when unconfirmed, a session the server still holds after it is never adopted again, and another principal or an expired session releases and says so",
     Object.values(flow).every(Boolean), JSON.stringify(flow));
 
   // The production adapter against a stand-in fetch: every failure is an explicit unavailable mode, and dispose aborts.

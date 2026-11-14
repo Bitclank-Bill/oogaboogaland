@@ -177,7 +177,8 @@ session, a capability lost or gone stale, a failed check. Join Voice asks `gates
 
 **Signing out** stops capture, clears the session from the page and returns to Ooga Chat's sign-in at once, then posts
 `paths.logout`. If the server does not confirm, the page stays signed out and says so with Try again; the server ends
-the session when it expires.
+the session when it expires. Until then no check takes a session back: one that still finds it keeps the page signed
+out and offers Sign out again, and one that finds none is the confirmation and clears the notice.
 
 **Storage.** Only `tab` and `zone` are kept (`ooga-chat.v1.<name>`). At start `sweep` removes any other key under the
 app's prefix and any older unversioned `ooga-chat.` key, so no saved screen, role or speaker flag survives.
