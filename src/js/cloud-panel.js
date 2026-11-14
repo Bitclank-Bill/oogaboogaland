@@ -5,10 +5,11 @@
 // panels it had. Two zone buttons ask the room for a view (`audience-view`); choosing the zone already asked for does
 // nothing. A choice never moves the visitor's Ooga or their microphone: what they publish stays the island's voice.
 // One roster: speakers, then listeners, each row a portrait (the Ooga's face for a world speaker with a character
-// the server names, else the account picture the server serves, else the native Ooga face), the name with Speaker or
-// Listener under it, a reaction column and the microphone. A speaker's portrait carries the ring of where they speak
-// from: green for the island, purple for Ooga Chat. The visitor's own microphone mutes them as M does; anyone else's
-// mutes that voice for this visitor alone (voice.js `muteLocal`, which #661 extends to Ooga Chat's speakers).
+// the server names, else the native Ooga face; audience.js leaves out the room's account pictures), the name with
+// Speaker or Listener under it, a reaction column and the microphone. A speaker's portrait carries the ring of where
+// they speak from: green for the island, purple for Ooga Chat. The visitor's own microphone mutes them as M does;
+// anyone else's mutes that voice for this visitor alone (voice.js `muteLocal`, which #661 extends to Ooga Chat's
+// speakers). Retry, offered while joining, catching up or unreachable, asks the room for a fresh snapshot.
 // Cost: rows are kept by the server's id and drawn a page (audience.js PAGE) at a time, only while the panel shows; a
 // change touches only the rows and fields it changed, and paging or a delta never rebuilds the list unless its order
 // moved. Portraits are drawn once a character a page. No timers, no frame work.
@@ -55,7 +56,7 @@
     return { t: "audience", v: A.VERSION, kind: "snapshot", epoch: 1, rev: 1, zone, you: { speak: "eligible" }, rows };
   };
 
-  // Portraits: an Ooga's face drawn once a character a page, the server's picture, or the native Ooga face.
+  // Portraits: an Ooga's face drawn once a character a page, or the native Ooga face.
   const faces = new Map();
   const faceUrl = (handle) => {
     if (!faces.has(handle)) {
@@ -65,7 +66,7 @@
     }
     return faces.get(handle);
   };
-  const portraitKey = (row) => row.character && BL.characters.get(row.character) ? `c:${row.character}` : row.avatar ? `a:${row.avatar}` : "d";
+  const portraitKey = (row) => row.character && BL.characters.get(row.character) ? `c:${row.character}` : "d";
   const showDefault = (entry) => {
     if (entry.img) { entry.img.onerror = null; entry.img.removeAttribute("src"); entry.img = null; }
     entry.portrait.replaceChildren(BL.nativeIcons.svg("roster"));
@@ -82,7 +83,7 @@
       entry.portrait.replaceChildren(entry.img);
     }
     entry.img.onerror = () => { entry.face = "d"; showDefault(entry); };
-    entry.img.src = key[0] === "c" ? faceUrl(row.character) : row.avatar;
+    entry.img.src = faceUrl(row.character);
   };
 
   // Rows by the server's id, built the first time a page shows them and dropped when the room drops them.
@@ -106,10 +107,12 @@
     cache.set(id, entry);
     return entry;
   };
+  // A dropped row leaves the list, so what was drawn is no longer there: the next showing attaches the page afresh.
   const drop = (id, entry) => {
     if (entry.img) { entry.img.onerror = null; entry.img.removeAttribute("src"); }
     entry.li.remove();
     cache.delete(id);
+    drawn = "";
   };
   const paintMic = (entry, row) => {
     const speaker = row.role === "speaker", look = row.mic === "muted" ? "muted" : row.speaking ? "speaking" : "on";
@@ -150,7 +153,7 @@
     const words = STATUS[s] ? STATUS[s]() : empty ? "Nobody is here yet." : "";
     set(statusText, "textContent", words);
     set(status, "hidden", !words);
-    set(retry, "hidden", s !== "stale" && s !== "unavailable");
+    set(retry, "hidden", s !== "connecting" && s !== "stale" && s !== "unavailable");
     for (const b of zoneButtons) attr(b, "aria-pressed", String(b.dataset.cloudZone === model.desired));
   };
   const render = () => {
@@ -253,7 +256,7 @@
     render(); paintFooter();
   };
   for (const b of zoneButtons) b.addEventListener("click", zoneClick);
-  retry.addEventListener("click", () => { model.ask(); render(); });
+  retry.addEventListener("click", () => { model.retry(); render(); });
   prev.addEventListener("click", () => { page = Math.max(0, page - 1); render(); });
   next.addEventListener("click", () => { page++; render(); });
   list.addEventListener("click", (e) => {

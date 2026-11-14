@@ -299,8 +299,9 @@ for a fresh snapshot after a gap.
   (`speaker` or `listener`), and for speakers `source` (`world`, an island player; `chat`, an Ooga Chat speaker),
   `mic` (`on`, `muted` by its owner, or `off`), `speaking` and `hand` (the pinned emoji, empty when down). `character`
   is the canonical roster handle of a world speaker's Ooga, whose face the page draws; `avatar` a same-origin picture
-  path; `contributions` a count for ordering only, never proof of anything; `self` marks the visitor. A row that breaks
-  any of this is dropped, not guessed at.
+  path (the island's panel leaves it out: the room names Ooga Chat's own paths, which only its edge serves);
+  `contributions` a count for ordering only, never proof of anything; `self` marks the visitor. A row that breaks any
+  of this is dropped, not guessed at.
 - **You.** `you.speak` is the room's word on the visitor: `eligible` (may Join Voice), `pending`, `denied`, `active`
   or `none`. Only `eligible` enables Join Voice; pending or denied never briefly enables publishing.
 - **Reactions.** `react` is a transient emoji for one row, shown in that row's column for its own lifetime over any

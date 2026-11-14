@@ -1,7 +1,8 @@
 // Ooga Chat's audience on the island (#660): who speaks and who listens in each outdoor zone, Main Island and DSB
 // Land, as the room's audience protocol reports it (docs/ooga-chat-app.md, The audience contract). Pure and loadable
-// in Node: cloud-panel.js draws it, the suite checks it. The server owns every identity, role, source, character,
-// picture and capability; this file only validates, orders and keeps them.
+// in Node: cloud-panel.js draws it, the suite checks it. The server owns every identity, role, source, character
+// and capability; this file only validates, orders and keeps them. A row's `avatar` is left out: the room names Ooga
+// Chat's own picture paths, which only Ooga Chat's edge serves, so the island would only ask for a 404.
 // One model a page (`create`): the view the visitor asked for (`desired`) is kept apart from the zone the room last
 // confirmed (`zone`, its rows and their revision). A snapshot replaces the rows once all its parts have come; a delta
 // applies only on the revision it was made from, and a gap asks the room for a fresh snapshot (`audience-resync`), shown
@@ -14,12 +15,10 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const VERSION = 1, FEATURE = "audience-v1", ZONES = ["main", "dsb"], ZONE_NAMES = { main: "Main Island", dsb: "DSB Land" };
-  const PAGE = 50, ID_MAX = 64, NAME_MAX = 39, PATH_MAX = 256, PARTS_MAX = 64;
+  const PAGE = 50, ID_MAX = 64, NAME_MAX = 39, PARTS_MAX = 64;
   const SPEAK = ["eligible", "pending", "denied", "active", "none"];
   const isZone = (z) => ZONES.includes(z);
   const text = (v, max) => typeof v === "string" && v.length > 0 && v.length <= max && !/[\u0000-\u001f\u007f]/.test(v) ? v : null;
-  // A picture must be a path on the page's own origin: the backend proxies profile pictures (img-src stays 'self').
-  const samePath = (v) => typeof v === "string" && v.length <= PATH_MAX && /^\/(?![/\\])[^\s\\]*$/.test(v) && !v.split(/[/?#]/).includes("..") ? v : null;
   const emoji = (v) => {
     if (typeof v !== "string" || !v || v.length > 16) return "";
     const P = BL.reactionPolicy;
@@ -40,7 +39,6 @@
       id, login, display, provider: raw.provider, role: raw.role,
       source: speaker ? raw.source : null,
       character: speaker && raw.source === "world" ? text(raw.character, NAME_MAX) : null,
-      avatar: samePath(raw.avatar),
       contributions,
       self: raw.self === true,
       mic: speaker && (raw.mic === "on" || raw.mic === "muted") ? raw.mic : "off",
@@ -145,12 +143,22 @@
       touch();
       return true;
     };
-    // The room is live again (a welcome) or the visitor pressed Retry: ask for the desired view afresh.
+    // The room is live again (a welcome): ask for the desired view afresh.
     const ask = () => {
       if (!desired) return false;
       asked = false; parts = null;
       status = zone === desired && rev >= 0 ? status : "connecting";
       send("audience-view", { zone: desired });
+      touch();
+      return true;
+    };
+    // The visitor pressed Retry: a fresh snapshot of the desired view, which the room sends even for the zone it already
+    // shows (`audience-view` for that zone changes nothing there).
+    const retry = () => {
+      if (!desired) return false;
+      asked = true; parts = null;
+      status = zone === desired && rev >= 0 ? "stale" : "connecting";
+      send("audience-resync", { zone: desired, epoch, rev });
       touch();
       return true;
     };
@@ -163,7 +171,7 @@
     };
     const self = () => { for (const r of rows.values()) if (r.self) return r; return null; };
     return {
-      apply, setDesired, ask, reset, self,
+      apply, setDesired, ask, retry, reset, self,
       // Only an active speaker raises or pins the hand.
       canHand: () => { const s = self(); return !!s && s.role === "speaker"; },
       page: (index, size = PAGE) => order.slice(index * size, index * size + size),
