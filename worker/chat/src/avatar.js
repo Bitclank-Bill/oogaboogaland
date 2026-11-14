@@ -34,13 +34,16 @@ export const handleAvatar = async (request, env, url, deps) => {
   if (request.method !== "GET" && request.method !== "HEAD") return refusal("method_not_allowed", 405);
   if (!env.DB) return refusal("unavailable", 503);
   if (!(await allowed(env.CHAT_AVATAR_LIMITER, clientIp(request)))) return refusal("rate_limited", 429, { retryable: true, retryAfter: 60 });
-  const cache = deps.cache;
-  const cached = cache ? await cache.match(url.toString()) : null;
-  if (cached) return cached;
+  // The account first, every time: a deleted principal or a replaced picture is a 404 even while a copy is cached.
   const row = await env.DB.prepare("SELECT avatar_url, avatar_key FROM principals WHERE id = ?1").bind(id).first();
   if (!row || !row.avatar_url || row.avatar_key !== key) return refusal("not_found", 404);
+  // Keyed by the path alone, so a query string never misses the cache.
+  const cache = deps.cache, cacheKey = `${url.origin}${url.pathname}`;
+  const cached = cache ? await cache.match(cacheKey) : null;
+  if (cached) return cached;
   let upstream;
-  try { upstream = await deps.fetch(row.avatar_url, { redirect: "error", headers: { accept: "image/*", "user-agent": "ooga-chat" }, signal: AbortSignal.timeout(5000) }); }
+  // "manual": a redirect is a 3xx, not `ok`, so it is no face (Workers' fetch has no "error" mode).
+  try { upstream = await deps.fetch(row.avatar_url, { redirect: "manual", headers: { accept: "image/*", "user-agent": "ooga-chat" }, signal: AbortSignal.timeout(5000) }); }
   catch { return refusal("unavailable", 502, { retryable: true }); }
   const type = (upstream.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
   if (!upstream.ok || !TYPES.has(type)) return refusal("not_found", 404);
@@ -50,6 +53,6 @@ export const handleAvatar = async (request, env, url, deps) => {
     "content-type": type, "cache-control": `public, max-age=${MAX_AGE}`, "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'", "cross-origin-resource-policy": "same-origin",
   } });
-  if (cache && deps.waitUntil) deps.waitUntil(cache.put(url.toString(), response.clone()));
+  if (cache && deps.waitUntil) deps.waitUntil(cache.put(cacheKey, response.clone()));
   return response;
 };
