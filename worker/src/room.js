@@ -1770,7 +1770,8 @@ export class Room extends DurableObject {
   nextAlarm(now = Date.now()) {
     const here = this.players.size > 0;
     const cleanup = this.sfu && this.cleanupJobs && this.cleanupJobs.length ? (this.cleanupAt || now + SWEEP_MS) : Infinity;
-    const next = Math.min(here ? this.sweepAt || now + SWEEP_MS : Infinity, here ? this.nextDoorExpiry() : Infinity, cleanup, tessQueue.deadline(this));
+    const next = Math.min(here ? this.sweepAt || now + SWEEP_MS : Infinity, here ? this.nextDoorExpiry() : Infinity, cleanup, tessQueue.deadline(this),
+      audienceRoom.retryDue(this));
     return Number.isFinite(next) ? next : null;
   }
 
@@ -1809,6 +1810,8 @@ export class Room extends DurableObject {
     tessQueue.sweep(this);
     // Cleanup retries run on every wake, not only at sweep time.
     await this.retryCleanup();
+    // Ooga Chat's audience told again what it missed, and grants still closing asked about again (#667).
+    await audienceRoom.retry(this);
     // A full retry pass can outlast a sweep interval. Advance from completion, not the old start time.
     const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;

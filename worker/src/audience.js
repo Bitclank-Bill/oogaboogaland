@@ -230,7 +230,10 @@ export class Audience extends DurableObject {
     const done = [...this.pendingWas].filter((id) => !now.has(id));
     this.pendingWas = now;
     if (!done.length || !this.env.ROOM) return;
-    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceConfirmed(done)).catch(() => {});
+    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceConfirmed(done)).catch(() => {
+      // Not delivered: kept as pending-then-done, so the next check reports them again (the Room also asks each sweep).
+      for (const id of done) if (!this.media.pending().has(id)) this.pendingWas.add(id);
+    });
     this.background(this.roomQueue);
   }
 
@@ -424,7 +427,8 @@ export class Audience extends DurableObject {
     // speakers whose subscriptions the SFU has not yet confirmed closed: the Room's `closed` for them waits (#667).
     await this.media.prune();
     const pending = this.media.pending();
-    this.pendingWas = pending;
+    // Report every retirement that finished meanwhile, by any path, before the pending list moves on.
+    this.confirmRetired();
     await this.scheduleAlarm();
     if (clean.length) this.refreshContributions();
     return { ok: true, pending: [...pending], listeners: { main: this.model.counts("main").listeners, dsb: this.model.counts("dsb").listeners } };

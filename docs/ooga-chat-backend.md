@@ -423,10 +423,13 @@ world zones and DSB Land's rooms from their own sources, so a new one is caught 
   publication from its catalog and refuses any new subscription. The Audience then closes, at the SFU, every Ooga Chat
   listener's pull of that publication (#666), and the Room closes every island player's pull of Ooga Chat speakers that
   the grant allowed. The Room sends `closed` only when the Audience answers that none of those closes for this
-  identity is still unconfirmed. If the SFU has not confirmed (a timeout, a 5xx, the Audience unreachable), nothing is
-  said: the grant stays `closing`, the page keeps its microphone track held, the close is retried from the Audience's
-  durable queue, and its confirmation (`audienceConfirmed`) sends `closed` when it comes. The page's own retries of
-  `leave` ask again.
+  identity is still unconfirmed. If the SFU has not confirmed (a timeout, a 5xx), nothing is said: the grant stays
+  `closing`, the page keeps its microphone track held, the close is retried from the Audience's durable queue, and its
+  confirmation (`audienceConfirmed`, sent by whichever cleanup run finishes it) sends `closed` when it comes. If the
+  Audience itself could not be told, the Room tells it again from its own alarm, backing off from 2 s to a minute, until
+  it lands, so a grant the Room took back unprompted never leaves its publication listed. Each sweep also asks again
+  for every grant still `closing`, so a lost confirmation costs a minute, not a microphone held for good. The page's own
+  retries of `leave` ask again too.
 - A socket closing takes its grants back. A new connection of the same account gets its `welcome` only after the old
   connection's word has reached the Audience (a bounded wait, 3 s).
 - An island player with an open grant hears its zone's Ooga Chat speakers (`sources`) and the zone's listener count

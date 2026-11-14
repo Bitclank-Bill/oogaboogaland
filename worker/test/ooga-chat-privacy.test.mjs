@@ -282,3 +282,57 @@ test("the Audience names the speakers still held outdoors until the SFU confirms
   assert.equal(off.model.zones.main.rows.has("gh:5"), false);
   assert.equal(off.media.authorizedFor(off.model.conns.get(connection)).size, 0);
 });
+
+test("a grant the Room takes back while the Audience is unreachable is told again from the Room's alarm until it lands", async () => {
+  const h = await harness();
+  const a = await h.join(1, "a");
+  await h.outdoor(a, { op: "enter", epoch: 1, scope: "main" });
+  h.audience.down = true;
+  await h.send(a, { t: "zone", name: "lab.hall" });
+  await h.settle();
+  const room = h.room;
+  assert.equal(room.players.get(1).outdoor.state, "closing", "held: the Audience was never told");
+  assert.ok(room.audienceRetry && Number.isFinite(room.audienceRetry.at), "a retry is scheduled");
+  assert.ok(room.nextAlarm() <= room.audienceRetry.at, "and the alarm wakes for it");
+  const calls = h.audience.calls.length;
+  h.audience.down = false;
+  room.audienceRetry.at = 0;
+  room.sweepAt = Date.now() + 3600000;
+  await room.alarm();
+  await h.settle();
+  assert.ok(h.audience.calls.length > calls, "told again by the Room itself, with no `leave` from the page");
+  assert.deepEqual(h.audience.calls.at(-1).speakers, []);
+  assert.deepEqual(h.frames(a).at(-1), { op: "closed", epoch: 1, reason: "scope" });
+  assert.equal(room.audienceRetry, null);
+});
+
+test("a retirement finished by a later close, not the alarm, is still confirmed to the Room", async () => {
+  const storage = new Map(), sockets = [], tasks = [], room = { confirmed: [] };
+  const ctx = { id: { name: "audience" }, setWebSocketAutoResponse() {}, waitUntil: (t) => tasks.push(t), blockConcurrencyWhile(fn) { this.ready = fn(); },
+    acceptWebSocket: (ws) => sockets.push(ws), getWebSockets: () => sockets.filter((ws) => ws.readyState <= 1),
+    storage: { get: async (k) => structuredClone(storage.get(k)), put: async (k, v) => { storage.set(k, structuredClone(v)); }, delete: async (k) => storage.delete(k),
+      list: async ({ prefix }) => new Map([...storage].filter(([k]) => k.startsWith(prefix))), getAlarm: async () => null, setAlarm: async () => {} } };
+  const env = { REALTIME_APP_ID: "app", REALTIME_SECRET: "s", OOGA_CHAT_FEATURES: "bridge,outdoor",
+    ROOM: { getByName: () => ({ audienceConfirmed: async (ids) => room.confirmed.push(...ids), audienceListeners: async () => {}, audienceDelta: async () => {}, audienceSources: async () => {} }) } };
+  const a = new Audience(ctx, env);
+  await ctx.ready;
+  const settle = async () => { while (tasks.length) await Promise.all(tasks.splice(0)); };
+  const who = { principal: `pr_${"b".repeat(22)}`, provider: "x", providerUserId: "8", login: "lis", display: "L", avatar: null, eligible: false, sessionExpiresAt: Date.now() + 3600000 };
+  await a.fetch(new Request("https://a/connect", { headers: { upgrade: "websocket", "x-audience-principal": JSON.stringify(who) } }));
+  const ws = [...a.sockets.values()][0];
+  await a.webSocketMessage(ws, JSON.stringify({ type: "join", zone: "main", protocol: 1 }));
+  const connection = ws.sent.find((m) => m.type === "snapshot").connection;
+  const call = (op) => a.fetch(new Request(`https://a/media/${op}`, { method: "POST", headers: { "x-audience-principal": JSON.stringify(who) }, body: JSON.stringify({ connection }) }));
+  const speaker = (n) => ({ id: `gh:${n}`, zone: "main", mic: "on", login: `isle${n}`, pub: { session: `island${n}`, track: "mic", gen: 1 } });
+  await a.world(100, [speaker(1), speaker(2)], []);
+  await call("receive/open");
+  await call("receive/sync");
+  sfu.failClose = true;
+  assert.deepEqual((await a.world(101, [speaker(2)], ["gh:1"])).pending, ["gh:1"], "gh:1's close failed: still held");
+  sfu.failClose = false;
+  // gh:2 leaves too: its close merges into the same subscriber's job, whose run now closes gh:1's pull as well.
+  const answer = await a.world(102, [], ["gh:1", "gh:2"]);
+  await settle();
+  assert.deepEqual(answer.pending, []);
+  assert.ok(room.confirmed.includes("gh:1"), "gh:1's retirement, finished by that run, is confirmed without waiting for an alarm");
+});

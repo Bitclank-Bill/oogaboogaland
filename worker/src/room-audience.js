@@ -34,6 +34,9 @@ const isOpen = (p) => !!p.outdoor && p.outdoor.state === "open";
 const cabinets = () => (globalThis.BL && globalThis.BL.arcadeCabinets) || null;
 const stub = (room) => room.env.AUDIENCE.getByName(NAME);
 
+// The backoff for telling an unreachable Audience the island's word again (`retryLater`).
+const RETRY_MIN = 2000, RETRY_MAX = 60000;
+
 export const audienceRoom = {
   enabled,
   features: (room) => (enabled(room) ? [AUDIENCE_FEATURE, ...(outdoorOn(room) ? [OUTDOOR_FEATURE] : [])] : []),
@@ -108,10 +111,35 @@ export const audienceRoom = {
     if (room.audienceWorld === sig && !force) return null;
     room.audienceWorld = sig;
     room.audienceSeq = Math.max(Date.now(), (room.audienceSeq || 0) + 1);
-    // Its answer says which identities still have subscriptions not yet confirmed closed at the SFU.
-    const told = stub(room).world(room.audienceSeq, speakers, active).catch(() => null);
+    // Its answer says which identities still have subscriptions not yet confirmed closed at the SFU. Not delivered, the
+    // island's word is sent again from the Room's alarm (`retry`), so a grant the Room took back never leaves the
+    // Audience listing its publication.
+    const told = stub(room).world(room.audienceSeq, speakers, active).then((answer) => { room.audienceRetry = null; return answer; },
+      () => { audienceRoom.retryLater(room); return null; });
     room.background(told);
     return told;
+  },
+
+  // The Audience could not be told: forget what it was last told and wake the Room to tell it again, backing off from
+  // RETRY_MIN to RETRY_MAX while it stays unreachable.
+  retryLater(room) {
+    room.audienceWorld = null;
+    const delay = room.audienceRetry ? Math.min(RETRY_MAX, room.audienceRetry.delay * 2) : RETRY_MIN;
+    room.audienceRetry = { at: Date.now() + delay, delay };
+    room.background(room.scheduleAlarm());
+  },
+  retryDue: (room) => (room.audienceRetry ? room.audienceRetry.at : Infinity),
+
+  // From the Room's alarm: a due retry tells the Audience again, and every grant still closing asks again whether its
+  // retirement is confirmed (a lost confirmation then costs one sweep, never a microphone held for good).
+  async retry(room, now = Date.now()) {
+    const due = !!room.audienceRetry && room.audienceRetry.at <= now;
+    const closing = [...room.players.values()].filter((p) => p.outdoor && p.outdoor.state === "closing");
+    if (!due && !closing.length) return;
+    if (!enabled(room)) { room.audienceRetry = null; return; }
+    if (due) room.audienceRetry = { ...room.audienceRetry, at: Infinity };
+    if (closing.length) for (const p of closing) await audienceRoom.retire(room, p, p.outdoor.reason || "left");
+    else await audienceRoom.world(room, true);
   },
 
   // A player gone: out of the island's word. Its answer is what a new connection of the same account waits for.

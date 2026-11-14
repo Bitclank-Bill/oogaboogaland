@@ -79,6 +79,8 @@ export const createMediaBroker = (aud) => {
     } else cleanup.push(job = { session, mids: [...new Set(mids)], all, at: Date.now(), tries: 0, participants: [...new Set(participants)] });
     await persistCleanup();
     await runCleanup(job);
+    // A retirement this run finished is confirmed to the Room now, not only at the next alarm.
+    if (typeof aud.confirmRetired === "function") aud.confirmRetired();
   };
   // Two runs can hold the same job at once (the alarm's, and `queueClose`'s after a merge: an SFU call opens the object's
   // input gate), so a job leaves the queue only if it is still there, never by a stale index.
