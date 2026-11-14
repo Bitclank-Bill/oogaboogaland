@@ -474,6 +474,7 @@
           const presetTop = banner === "below" ? top + equipmentHeight + (count ? 8 : 0) : (topEdge + bottomEdge - 28) / 2;
           const equipmentWidth = (compactWidth + (banner === "full" && expanded ? 140 : 0)) * scale;
           const presetLeft = banner === "below" ? belowLeft : leftEdge + equipmentWidth + (count ? 12 : 0);
+          bannerStyle(presets, "--banner-equipment-right", `${el.equipmentRow.getBoundingClientRect().left + equipmentWidth + 8}px`);
           bannerStyle(presets, "--banner-presets-top", `${presetTop}px`);
           bannerStyle(presets, "--banner-presets-left", `${presetLeft}px`);
           bannerStyle(presets, "--banner-presets-width", `${Math.max(0, window.innerWidth - presetLeft - paddingRight)}px`);
@@ -503,7 +504,7 @@
         bannerResize.disconnect();
         bannerEquipment.disconnect();
         window.cancelAnimationFrame(bannerFrame);
-        if (presets) for (const property of ["--banner-presets-top", "--banner-presets-left", "--banner-presets-width"]) presets.style.removeProperty(property);
+        if (presets) for (const property of ["--banner-presets-top", "--banner-presets-left", "--banner-presets-width", "--banner-equipment-right"]) presets.style.removeProperty(property);
         delete el.equipment.dataset.banner;
         for (const property of ["--hub-equipment-scale", "--hub-equipment-left", "--hub-equipment-top", "--hub-equipment-width"]) el.equipment.style.removeProperty(property);
         el.messageStack.style.removeProperty("--hub-equipment-bottom");

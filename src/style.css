@@ -12312,7 +12312,7 @@ body[data-active-scene] #controls-help-button { display: flex; align-items: cent
 /* Keep the avatar and exit on one mobile row, clear of both the score and the playfield. */
 @media (max-width: 720px) {
   body.arcade-game[data-cabinet-phase="playing"] #equipment-hud { top: calc(54px + var(--safe-top)); left: calc(8px + var(--safe-left)); }
-  body.arcade-game[data-cabinet-phase="playing"] .topbar > .presets { top: calc(54px + var(--safe-top)); left: calc(74px + var(--safe-left)); max-width: calc(100% - 82px - var(--safe-left) - var(--safe-right)); }
+  body.arcade-game[data-cabinet-phase="playing"] .topbar > .presets { top: calc(54px + var(--safe-top)); left: var(--banner-equipment-right, calc(74px + var(--safe-left))); max-width: calc(100% - var(--banner-equipment-right, calc(74px + var(--safe-left))) - 8px - var(--safe-right)); }
   body.arcade-game[data-cabinet-phase="playing"] .topbar > .presets button { min-height: 40px; }
   body[data-cabinet-phase="playing"] #drop-board { top: calc(104px + var(--safe-top)); bottom: calc(16px + var(--safe-bottom)); max-height: none; transform: translateX(-50%); }
   body[data-cabinet-phase="playing"] .mine-strip { top: calc(104px + var(--safe-top)); }

@@ -13428,7 +13428,6 @@ const dropStart = { name: "drop start", why: "regression: Space on the title car
   await b.key(" ");
   const closed = await st();
   await b.key("Enter");
-  await b.evaluate(`(() => { const a = window.__ooga.block.sim.actors[0]; a.flight = 0; a.y = 0; a.vy = 0; a.grounded = true; })()`);
   const climb = await st();
   const mark = await b.evaluate(`(() => { const B = window.__ooga; let t = 0; for (; t < 60 && !B.drop.jumpOpen; t += 0.25) B.advance(0.25, 1 / 60); return t; })()`);
   await b.key(" ");
@@ -15328,7 +15327,13 @@ const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser p
     const x = c.x + c.frontX * 1.3 - c.rightX * 0.6, z = c.z + c.frontZ * 1.3 - c.rightZ * 0.6;
     B.pilot.navigate({ position: { x, y: B.island.surfaceAt(x, z), z }, yaw: Math.atan2(c.frontX, c.frontZ), pitch: 0.15, dist: 4 });
     B.advance(0.5, 1 / 60);
-    return B.project(c.x + c.rightX * 0.45, c.y + 1.25, c.z + c.rightZ * 0.45, {});
+    // Find exposed board pixels: the modelled Ooga can cover the old fixed tap point.
+    for (const rise of [1.25, 1.7, 0.9]) for (const across of [0.45, 0.9, -0.45]) {
+      const point = B.project(c.x + c.rightX * across, c.y + rise, c.z + c.rightZ * across, {});
+      const hit = point && B.input.pick(point.x, point.y);
+      if (hit?.owner.kind === "piece" && hit.owner.piece === "chalkboard") return point;
+    }
+    throw new Error("Chalkboard fixture has no exposed tap point");
   })()`);
   const tapAt = async (point) => { await b.click(point.x, point.y); await b.sleep(50); };
   await tapAt(await standAtBoard());
@@ -15365,7 +15370,13 @@ const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga 
     const x = c.x + c.frontX * ${along} - c.rightX * 0.6, z = c.z + c.frontZ * ${along} - c.rightZ * 0.6;
     B.pilot.navigate({ position: { x, y: B.island.surfaceAt(x, z), z }, yaw: Math.atan2(c.frontX, c.frontZ), pitch: 0.15, dist: 4 });
     B.advance(0.5, 1 / 60);
-    return B.project(c.x + c.rightX * 0.45, c.y + 1.25, c.z + c.rightZ * 0.45, {});
+    // Find exposed board pixels: the modelled Ooga can cover the old fixed tap point.
+    for (const rise of [1.25, 1.7, 0.9]) for (const across of [0.45, 0.9, -0.45]) {
+      const point = B.project(c.x + c.rightX * across, c.y + rise, c.z + c.rightZ * across, {});
+      const hit = point && B.input.pick(point.x, point.y);
+      if (hit?.owner.kind === "piece" && hit.owner.piece === "chalkboard") return point;
+    }
+    throw new Error("Chalkboard fixture has no exposed tap point");
   })()`);
   // The room checks a writer's pose against chalk-board.js AT: it must be where the hub stands the board.
   const spot = await b.evaluate(`(() => { const c = BL.scenes.hub.debug.chalkboardAt, A = BL.chalkBoard.AT; return { at: [c.x, c.y, c.z, c.frontX, c.frontZ].map(v => +v.toFixed(3)), off: Math.hypot(c.x - A.x, c.z - A.z), rise: Math.abs(c.y - A.y), turn: Math.hypot(c.frontX - A.frontX, c.frontZ - A.frontZ) }; })()`);
@@ -17665,7 +17676,8 @@ const sharedCameraRendering = { name: "shared camera rendering", why: "rule: gam
 } };
 
 const hubShoulderReplay = { name: "shoulder replay", why: "contract: supported shoulder replay links preserve camera, actor and equipment state", run: async (b) => {
-  // User-supplied basement replay: the old cursor-entry path saved a zero sideways offset.
+  // User-supplied basement replay: repair the zero sideways offset, allowing the current
+  // modelled body's boom to shorten against rock while keeping its eye clear and beside the head.
   const collapsed = {
     version: 1, character: "w-s-bitcoin", mode: "shoulder", closeWanted: false, combat: true, birdsEyeNorthUp: true,
     position: [4.196401756845946, -10.703027121441215, 6.695479695588937], target: [0.32891306379743845, -11.382788314313563, 5.933603782632617],
@@ -17689,9 +17701,11 @@ const hubShoulderReplay = { name: "shoulder replay", why: "contract: supported s
     B.advance(0.5, 1 / 60);
     const held = P.poseHeld && view === JSON.stringify([C.position, C.target, C.up, C.fov]);
     P.restorePose(JSON.parse(JSON.stringify(pose)), true); B.advance(0.2, 1 / 60);
-    return { pose, side, headOffset: B.renderer.size.width / 2 - head.x, held, roundTrip: view === JSON.stringify([C.position, C.target, C.up, C.fov]) };
+    const clear = B.island.clearAt(C.position.x, C.position.y - 0.3, C.position.z, 0.3, 0.6)
+      && B.headquarters.solids.props.clearAt(C.position.x, C.position.y - 0.3, C.position.z, 0.3, 0.6);
+    return { pose, side, clear, headOffset: B.renderer.size.width / 2 - head.x, held, roundTrip: view === JSON.stringify([C.position, C.target, C.up, C.fov]) };
   })()`);
-  record("shoulder replay: the supplied zero-offset URL loads beside the head before any input and holds the repaired camera", repaired.pose.mode === "shoulder" && repaired.pose.combat && repaired.pose.shoulderSide === 0.9 && Math.abs(repaired.side - 0.9) < 1e-5 && repaired.headOffset > 0 && repaired.held
+  record("shoulder replay: the supplied zero-offset URL loads beside the head before any input and holds the repaired camera", repaired.pose.mode === "shoulder" && repaired.pose.combat && repaired.pose.shoulderSide === 0.9 && repaired.side > 0 && repaired.side <= repaired.pose.shoulderSide + 1e-5 && repaired.clear && repaired.headOffset > 0 && repaired.held
     && repaired.pose.actor.every((n, i) => Math.abs(n - collapsed.actor[i]) < 1e-6) && repaired.pose.selectedSlot === 2 && repaired.pose.ammo === 30 && repaired.roundTrip, JSON.stringify(repaired));
   // The same replay as saved before the shoulder moved out: settled at the earlier ±0.6 side, which is valid, not collapsed.
   const height = await b.evaluate("__ooga.pilot.player.traits.height"), yaw = collapsed.orbit[0], kept = [];
@@ -24608,7 +24622,7 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
   const expanded = cloudJourney ? cloudJourney.expanded : await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
   const full = cloudJourney ? cloudJourney.full : await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && !document.querySelector('.cabinet-leaderboard') && __ooga.fade === 0`);
   if (shape === "phone" && id !== "cloud-hopper") {
-    const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})}; })()`);
+    const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),buttons:buttons.map(b=>{const r=b.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {action:b.dataset.action,text:b.textContent,rect:[r.x,r.y,r.width,r.height],hit:hit?.tagName+"#"+hit?.id+"."+hit?.className};})}; })()`);
     record(`cabinet ${id}: phone header controls return above the game`, header.equipment < 180 && (!header.presets || header.presets < 180) && header.tappable, JSON.stringify(header));
   }
   if (id !== "cloud-hopper") {
@@ -25860,6 +25874,16 @@ const gpuGeometrySnapshot = (renderer, scenes, activeId, state) => {
     if (!node) return;
     if (scene === "dsb" && rooms.has(node)) path = `room[${rooms.get(node)}]`;
     observe(node.geometry, true);
+    const lods = node.geometry?.foliageLods;
+    if (lods?.owner === node.geometry) for (const level of ["medium", "far"]) {
+      const geometry = lods[level]; observe(geometry, true);
+      const row = resident.get(geometry);
+      if (row && geometry !== node.geometry) {
+        row.references++;
+        if (row.owners.length < 8) row.owners.push({ scene, path: `${path}/lod:${level}`.slice(0, 240), graphVisible: null });
+        else row.omittedOwners++;
+      }
+    }
     const visible = !!(enabled && node.visible), row = resident.get(node.geometry);
     if (row) {
       row.references++;
@@ -26185,18 +26209,27 @@ const gpuGeometryDiagnosticChecks = async () => {
   record("Factory residency guard: real current-visit collection excludes history; shared owners and hall upload phases pass while stale, accumulating, malformed and over-budget retention fails", Object.values(factoryCases).every(Boolean), JSON.stringify({ ...factoryCases, collectorError }));
 };
 const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
+  // Compare the same roster and work sites even when an activity expires during the soak.
+  // Only classification uses this instant; scene animation and the Factory feed keep their clocks.
+  await b.evaluate(`(() => {
+    const C = BL.contributors, at = Date.now(), stateFor = C.stateFor, hasRecentActivity = C.hasRecentActivity;
+    C.stateFor = contributor => stateFor(contributor, at);
+    C.hasRecentActivity = (contributor, repo) => hasRecentActivity(contributor, repo, at);
+  })()`);
   await b.send("HeapProfiler.enable");
   const until = (cond, ms) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const t0 = performance.now(); const tick = () => { const ok = !!(${cond}); if (ok || performance.now() - t0 > ${ms}) resolve(ok); else requestAnimationFrame(tick); }; tick(); })`);
   const rendered = (frames, ms = 6000) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const start = B.renderedFrames; const t0 = performance.now(); const tick = () => { if (B.renderedFrames >= start + ${frames} || performance.now() - t0 > ${ms}) resolve(B.renderedFrames - start); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const settled = (ms = 4000) => until("window.BL.scene.tweenCount() === 0", ms);
   // Later visits can expose a different attract frame or an Ooga that was behind scenery at baseline.
-  // Upload only the retained hub's existing character meshes, without building new models, changing visibility or
+  // Upload the retained hub's existing character meshes and finite foliage LODs, without building new models, changing visibility or
   // replacing any resource. Subsequent growth is still measured by the same bounds. Cloud Hopper's cabinet now stands in
   // Ooga Arcade (cloud-hopper.js \`arcade\`), so the hub holds none of its screen frames: \`frames\` reports that.
   const warmHubGeometry = () => b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub, characters = new Set(), frames = H.debug.cloudHopper?.cabinet.frames || [];
+    const B = __ooga, H = BL.scenes.hub, characters = new Set(), foliage = new Set(), frames = H.debug.cloudHopper?.cabinet.frames || [];
     const visit = node => {
       if (node.geometry?.characterPart) characters.add(node.geometry);
+      const lods = node.geometry?.foliageLods;
+      if (lods?.owner === node.geometry) foliage.add(node.geometry).add(lods.medium).add(lods.far);
       for (const child of node.children) visit(child);
     };
     visit(H.root);
@@ -26204,12 +26237,31 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
       if (cave.headOpen) characters.add(cave.headOpen);
       if (cave.headClosed) characters.add(cave.headClosed);
     }
-    const geometries = new Set([...frames, ...characters]);
+    const geometries = new Set([...frames, ...characters, ...foliage]);
     let prepared = true;
     for (const geometry of geometries) prepared = B.renderer.prepareGeometry(geometry) && prepared;
     const resident = new Set(B.renderer.geometryRecords());
-    return { frames: frames.length, characters: characters.size,
+    return { frames: frames.length, characters: characters.size, foliage: foliage.size,
       prepared: prepared && [...geometries].every(geometry => resident.has(geometry)) };
+  })()`);
+  // Each window lazily uploads its finite batch geometries as the feed lights a tank or sends a sat.
+  // Warm the same existing batches before both snapshots, so a different feed phase cannot look like a leak.
+  // Zero-count batches create their mesh record but draw no instances; restore visibility and redraw immediately.
+  const warmWindowBatches = () => b.evaluate(`(() => {
+    const B = window.__ooga, windows = [B.factory, B.factory.roof];
+    const batches = windows.flatMap(w => Object.values(w.batches));
+    const nodes = windows.map(w => w.batches.hall.parent).concat(batches), visible = nodes.map(n => n.visible);
+    const scene = BL.scenes.hub;
+    let warmed = false, restored = false;
+    try {
+      for (const n of nodes) n.visible = true;
+      warmed = B.renderer.render(scene.root, scene.camera, scene.renderOpts);
+    } finally {
+      nodes.forEach((n, i) => { n.visible = visible[i]; });
+      restored = B.renderer.render(scene.root, scene.camera, scene.renderOpts);
+    }
+    return { windows: windows.length, batches: batches.length, empty: batches.filter(n => n.instanceCount === 0).length,
+      warmed, restored: restored && nodes.every((n, i) => n.visible === visible[i]) };
   })()`);
   const heap = async () => {
     await b.send("HeapProfiler.collectGarbage");
@@ -26270,22 +26322,24 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   const travel = (id) => b.evaluate(`new Promise((resolve, reject) => { const B = window.__ooga; const T = window.BL.scene.tweenCount; const t0 = performance.now(); let last = t0, requested = false, swap = 0, swapFrame = 0, swapGap = 0, accepted = false; const startFrames = B.renderedFrames, trail = []; const tick = () => { const now = performance.now(); const state=B.scene+":"+B.transitioning; if (!trail.length || trail[trail.length-1].state!==state) { if(trail.length<20)trail.push({state,at:now-t0,frames:B.renderedFrames}); } if (!requested && !B.transitioning && T() === 0) { accepted = B.go(${JSON.stringify(id)}); requested = true; } if (requested && !swap && B.scene === ${JSON.stringify(id)}) { swap = now - t0; swapGap = now - last; swapFrame = B.renderedFrames; } last = now; if (swap && B.renderedFrames >= swapFrame + 3 && T() === 0 && !B.transitioning) resolve({ swap, swapGap, settled: now - t0 }); else if (now - t0 > 8000) reject(new Error("Scene travel did not settle: " + JSON.stringify({ wanted: ${JSON.stringify(id)}, scene: B.scene, accepted, trail, framesTotal: B.renderedFrames-startFrames, hidden: document.hidden, focus: document.hasFocus(), requested, tweens: T(), framesSinceSwap: swap ? B.renderedFrames - swapFrame : -1, swap: Math.round(swap) }))); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const heapDetail = (a, z) => `objects ${mb(a.objects)} -> ${mb(z.objects)} MB (used ${mb(a.used)} -> ${mb(z.used)} MB, code ${mb(a.code)} -> ${mb(z.code)} MB)`;
   const within = (a, z, share) => Math.abs(z.objects - a.objects) <= a.objects * share;
-  return { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry };
+  return { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry, warmWindowBatches };
 };
 
 scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "dsb lifecycle", why: "contract: repeated DSB visits release nodes, listeners and GPU resources", run: async (b) => {
-  const { rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry } = await dsbSoak(b, { geometry: true });
+  const { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry, warmWindowBatches } = await dsbSoak(b, { geometry: true });
   // The weather deck is sized by tier on each visit. Compare the same tier;
   // low is terminal, so the governor cannot change capacity during the soak.
   await b.evaluate('window.__ooga.renderer.setQuality("low")');
   // Warm the new cached model builders before comparing retained memory.
   await travel("dsb"); await travel("hub"); await settled(); await rendered(2);
-  const hubWarm = await warmHubGeometry(), before = await snapshot();
+  if (!await until("(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return !s || s.built >= s.chunks; })()", 60000)) throw new Error("Merge Rock construction did not finish");
+  const hubWarm = await warmHubGeometry(), beforeWindows = await warmWindowBatches(), before = await snapshot();
   for (let i = 0; i < 6; i++) { await travel("dsb"); await travel("hub"); }
-  const after = await snapshot();
+  const afterWindows = await warmWindowBatches(), after = await snapshot();
   const same = (key) => before.stats[key] === after.stats[key];
   record("soak: dsb cycles: six round trips retain node, target, tween and DOM counts", same("allNodes") && same("targets") && same("tweens") && same("dom") && after.stats.tweens === 0, JSON.stringify({ before: before.stats, after: after.stats }));
   const bounded = hubWarm.frames === 0 && hubWarm.characters > 0 && hubWarm.prepared
+    && [beforeWindows, afterWindows].every(w => w.windows === 2 && w.batches === 18 && w.warmed && w.restored)
     && Math.abs(after.stats.gl.records - before.stats.gl.records) <= 3 && before.nodes === after.nodes && before.listeners === after.listeners && within(before, after, 0.1);
   record("soak: dsb cycles: GPU records, listeners and heap remain bounded", bounded, heapDetail(before, after)
     + `, GPU ${before.stats.gl.records} -> ${after.stats.gl.records}, DOM ${before.nodes} -> ${after.nodes}, listeners ${before.listeners} -> ${after.listeners}`
@@ -26293,14 +26347,7 @@ scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{
 } }] });
 
 scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "factory lifecycle", why: "contract: repeated factory visits, each left with a tip's show in the air, release the hall's listeners, nodes and GPU resources while retaining one bounded shared node", run: async (b) => {
-  const { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry } = await dsbSoak(b, { geometry: true, factory: true });
-  // Compare the same roster and work sites even when an activity expires during the soak.
-  // Only classification uses this instant; scene animation and the Factory feed keep their clocks.
-  await b.evaluate(`(() => {
-    const C = BL.contributors, at = Date.now(), stateFor = C.stateFor, hasRecentActivity = C.hasRecentActivity;
-    C.stateFor = contributor => stateFor(contributor, at);
-    C.hasRecentActivity = (contributor, repo) => hasRecentActivity(contributor, repo, at);
-  })()`);
+  const { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry, warmWindowBatches } = await dsbSoak(b, { geometry: true, factory: true });
   // Keep resource comparisons at one tier, as in the other lifecycle soaks.
   await b.evaluate('__ooga.renderer.setQuality("low")');
   // Replay can become live after the first snapshot. These four static signal labels are intentionally
@@ -26325,25 +26372,6 @@ scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps
   })()`);
   // A legendary tip two seconds before each departure, so every visit leaves with cubes or bananas in the air.
   const tip = (id) => b.evaluate(`(() => { const B = window.__ooga; window.BL.scenes.factory.onDonation({ id: "${id}", sats: 120000, handle: "soak", message: "", at: Date.now() }); B.advance(2, 1 / 30); const c = B.stats().cooker; return c.cubes + c.bananas + c.queued; })()`);
-  // Each window lazily uploads its finite batch geometries as the feed lights a tank or sends a sat.
-  // Warm the same existing batches before both snapshots, so a different feed phase cannot look like a leak.
-  // Zero-count batches create their mesh record but draw no instances; restore visibility and redraw immediately.
-  const warmWindowBatches = () => b.evaluate(`(() => {
-    const B = window.__ooga, windows = [B.factory, B.factory.roof];
-    const batches = windows.flatMap(w => Object.values(w.batches));
-    const nodes = windows.map(w => w.batches.hall.parent).concat(batches), visible = nodes.map(n => n.visible);
-    const scene = BL.scenes.hub;
-    let warmed = false, restored = false;
-    try {
-      for (const n of nodes) n.visible = true;
-      warmed = B.renderer.render(scene.root, scene.camera, scene.renderOpts);
-    } finally {
-      nodes.forEach((n, i) => { n.visible = visible[i]; });
-      restored = B.renderer.render(scene.root, scene.camera, scene.renderOpts);
-    }
-    return { windows: windows.length, batches: batches.length, empty: batches.filter(n => n.instanceCount === 0).length,
-      warmed, restored: restored && nodes.every((n, i) => n.visible === visible[i]) };
-  })()`);
   // Warm both scenes and the cooker's show, so the counts below start from a visit made after the instrumenting.
   await travel("factory"); await tip("soak-warm"); await travel("lab"); await travel("hub"); await settled(); await rendered(2);
   // The Repo Island joins its chunks in idle time (repo-island.js). The baseline waits for the last of them: a hub that
