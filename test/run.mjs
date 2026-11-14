@@ -32697,6 +32697,32 @@ const outdoorVoiceChecks = () => {
     p.room({ op: "open", epoch: wrong, scope: "dsb" });
     rows.wrongScope = !p.S.public && p.held() && p.last("leave").epoch === wrong;
   }
+  // regression: a refusal while an older grant is still closing (the room's `pending`, or any reason, its scope check
+  // running first) keeps the hold until the room's cumulative `closed` covers the older grant, through a step back in.
+  {
+    const p = page();
+    p.scope.report("main", "outdoor"); const e = p.S.epoch;
+    p.room({ op: "open", epoch: e, scope: "main" });
+    p.scope.report(null, "interior");
+    p.scope.report("main", "outdoor"); const back = p.S.epoch;
+    p.room({ op: "refused", epoch: back, reason: "pending" });
+    rows.pendingHeld = p.held() && !p.S.public && p.B.stats.status === "closing" && p.last("leave").epoch === back;
+    p.scope.report(null, "interior");
+    rows.pendingStepIn = p.held() && !p.S.public;
+    p.room({ op: "closed", epoch: e });
+    rows.pendingOlderClosed = p.held();
+    p.room({ op: "closed", epoch: p.last("leave").epoch });
+    rows.pendingReleased = !p.held() && p.B.stats.status === "excluded" && p.timers.size === 0;
+  }
+  {
+    const p = page();
+    p.scope.report("main", "outdoor"); const e = p.S.epoch;
+    p.room({ op: "open", epoch: e, scope: "main" });
+    p.scope.report(null, "descending");
+    p.scope.report("main", "outdoor");
+    p.room({ op: "refused", epoch: p.S.epoch, reason: "no-body" });
+    rows.refusedClosingHeld = p.held() && !p.S.public;
+  }
   // Dispose: a last leave, no transport, nothing subscribed or pending, and later frames do nothing.
   {
     const p = page();
@@ -32706,7 +32732,7 @@ const outdoorVoiceChecks = () => {
     p.room({ op: "open", epoch: p.S.epoch, scope: "main" });
     rows.dispose = p.last("leave").epoch === e && !p.S.supported && !p.S.public && !p.held() && p.watchers.size === 0 && p.frames.size === 0 && p.timers.size === 0;
   }
-  record("outdoor voice bridge: public only on the room's capability and an open for the current request; leaving sends leave and holds the mic synchronously until the room confirms, through delayed and stale acks, rapid backtracking, dropped answers, reconnect, replacement, revocation, refusal and dispose; reactions deduplicated and cleared",
+  record("outdoor voice bridge: public only on the room's capability and an open for the current request; leaving sends leave and holds the mic synchronously until the room confirms, through delayed and stale acks, rapid backtracking, dropped answers, reconnect, replacement, revocation, refusal (an older grant still closing keeps the hold) and dispose; reactions deduplicated and cleared",
     Object.values(rows).every(Boolean), JSON.stringify(rows));
 };
 const unitChecks = async () => {

@@ -154,7 +154,10 @@
         } else return;
       } else if (msg.op === "refused") {
         if (!current) return;
-        left = closed = e;
+        // A refusal answers this epoch alone: an older grant may still be closing (the room's `pending`, or any reason,
+        // since its scope check runs first), and its hold stays until a `closed` covers it. The refused epoch is given
+        // up as any other then, so the room's cumulative `closed` answers both; with nothing held there is nothing to wait for.
+        if (left > closed) { left = e; sendLeave(e); } else left = closed = e;
         quiet = e;
         stats.refused = typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "refused";
       } else if (msg.op === "react") {
