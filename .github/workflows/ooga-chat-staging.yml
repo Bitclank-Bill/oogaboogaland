@@ -23,14 +23,10 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
-      # The standalone app (#651) into untracked/ooga-chat, the folder wrangler.ooga-chat.staging.jsonc serves.
+      # The standalone app (#651) into untracked/ooga-chat, the folder the edge serves; until its build is on the branch,
+      # a placeholder page, so the edge still deploys and answers its API (worker/chat/stage.mjs).
       - name: Build and stage the app
-        run: |
-          if ! node -e 'process.exit(require("./package.json").scripts["build:ooga-chat"] ? 0 : 1)'; then
-            echo "::error::npm run build:ooga-chat is not on this branch yet: the app arrives with #651. Nothing to deploy."
-            exit 1
-          fi
-          npm run build:ooga-chat
+        run: node worker/chat/stage.mjs
       # The Worker checks import the island's generated cast and Tess's fact sheet (gitignored), which build:site
       # writes, as the island's workflows and the unit lane do.
       - name: Build the island's generated files

@@ -176,7 +176,7 @@ test("clouds: an active speaker on a catalog seat with its canonical character g
 
 // The Room's relay, run as the other Room checks run it.
 const roomHarness = async (features = "bridge,outdoor,cloud") => {
-  const accepted = [];
+  const accepted = [], saved = new Map();
   let ready = null;
   const sock = () => ({ sent: [], closed: null, store: null, send(t) { if (typeof t === "string") this.sent.push(JSON.parse(t)); }, close(code) { this.closed = { code }; },
     serializeAttachment(v) { this.store = JSON.parse(JSON.stringify(v)); }, deserializeAttachment() { return this.store; } });
@@ -190,9 +190,12 @@ const roomHarness = async (features = "bridge,outdoor,cloud") => {
   const stub = { world: async (seq, speakers) => { audience.worlds.push(plain(speakers)); return { ok: true, pending: [] }; }, watch: async () => {},
     snapshot: async (zone) => ({ zone, epoch: 1, rev: 0, rows: [] }), islandReaction: async (e) => { audience.island.push(e); return { ok: true }; } };
   const ctx = { setWebSocketAutoResponse() {}, blockConcurrencyWhile: (fn) => { ready = fn(); }, acceptWebSocket: (ws) => accepted.push(ws), waitUntil() {},
-    getWebSockets: () => accepted.filter((ws) => !ws.closed), storage: { get: async (k) => (Array.isArray(k) ? new Map() : undefined), put: async () => {}, getAlarm: async () => null, setAlarm: async () => {} } };
-  const room = new context.Room(ctx, { OOGA_CHAT_FEATURES: features, AUDIENCE: { getByName: () => stub } });
+    getWebSockets: () => accepted.filter((ws) => !ws.closed), storage: { get: async (k) => (Array.isArray(k) ? new Map() : saved.get(k)), put: async (k, v) => { saved.set(k, v); }, getAlarm: async () => null, setAlarm: async () => {} } };
+  const env = { OOGA_CHAT_FEATURES: features, AUDIENCE: { getByName: () => stub } };
+  const room = new context.Room(ctx, env);
   await ready;
+  // The same Room woken from hibernation: a new object over the same storage.
+  const wake = async () => { const woken = new context.Room(ctx, env); await ready; return woken; };
   room.sfu = { closeTracks: async (s, mids) => ({ tracks: mids.map((mid) => ({ mid })) }), getSession: async () => ({ tracks: [] }), newTracks: async () => ({ tracks: [] }) };
   const send = (ws, msg) => room.webSocketMessage(ws, JSON.stringify(msg));
   const join = async (id, login) => {
@@ -205,7 +208,7 @@ const roomHarness = async (features = "bridge,outdoor,cloud") => {
     return ws;
   };
   const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((resolve) => setImmediate(resolve)); };
-  return { room, join, send, audience, settle };
+  return { room, join, send, audience, settle, wake, accepted };
 };
 
 test("the island: Ooga Chat reactions reach its panels and open grants once each; its speakers' reactions and hands reach Ooga Chat", async () => {
@@ -249,4 +252,31 @@ test("the island: clouds go to every page, with their seats and characters; the 
   off.room.audienceClouds([{ id: "gh:9", character: "nine", zone: "main", seat: "main-cloud-1" }]);
   assert.equal(b.sent.filter((m) => m.t === "clouds").length, 0);
   assert.ok(!b.sent.find((m) => m.t === "welcome").features.includes("cloud-seats-v1"));
+});
+
+test("clouds outlast a Room's hibernation, at their revision; the Audience resends them when a send fails", async () => {
+  const h = await roomHarness();
+  const cloud = { id: "gh:9", character: "nine", zone: "main", seat: "main-cloud-1", seatRevision: SEAT_REVISION, lease: 5, mic: "on", hand: "" };
+  await h.room.audienceClouds([cloud]);
+  const rev = h.room.cloudsRev;
+  const woken = await h.wake();
+  assert.deepEqual([plain(woken.clouds), woken.cloudsRev], [[cloud], rev], "a woken Room still has them");
+  await woken.fetch({ url: "https://island.invalid/room", headers: new Headers({ upgrade: "websocket", "x-player-id": "2", "x-player-login": "b", "x-player-contributor": "0" }) });
+  const ws = h.accepted.at(-1);
+  assert.equal(woken.players.get(2).ws, ws, "a page connected to the woken Room");
+  const welcomed = ws.sent.filter((m) => m.t === "clouds").at(-1);
+  assert.deepEqual([welcomed.revision, welcomed.clouds.map((c) => c.id)], [rev, ["gh:9"]], "and welcomes a page with them");
+  const a = host();
+  const aud = await a.make();
+  const live = aud.env.ROOM;
+  aud.env.ROOM = { getByName: () => ({ audienceClouds: async () => { throw new Error("room down"); } }) };
+  aud.clouds = () => [cloud];
+  aud.cloudsChanged();
+  await a.settle();
+  assert.equal(aud.cloudsSig, null, "a failed send is not counted as told");
+  aud.env.ROOM = live;
+  aud.cloudsChanged();
+  await a.settle();
+  assert.deepEqual(plain(a.room.clouds.at(-1)), [cloud]);
+  assert.equal(a.storage.get("cloudsSig"), JSON.stringify([cloud]));
 });
