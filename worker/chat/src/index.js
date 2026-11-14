@@ -17,6 +17,7 @@ import { handleDonations } from "./donations.js";
 import { handleMedia } from "./media.js";
 import { handlePublic } from "./public.js";
 import { allowed, clientIp, json, refusal } from "./http.js";
+import { metricLine } from "./metrics.js";
 import { purgeExpired } from "./session.js";
 
 const PUBLIC_GET = {
@@ -26,14 +27,22 @@ const PUBLIC_GET = {
   "/api/chat/version": version,
 };
 
-// What a route may reach beyond `env`: the network, background work and the edge cache, so the checks can supply their own.
+// What a route may reach beyond `env`: the network, background work, the edge cache and, for a real request, Workers
+// Logs (`log`, metrics.js), so the checks can supply their own.
 const hostDeps = (ctx) => ({
   fetch: (...args) => fetch(...args),
   waitUntil: ctx && ctx.waitUntil ? (task) => ctx.waitUntil(task) : null,
   cache: typeof caches !== "undefined" ? caches.default : null,
+  log: ctx ? (line) => console.log(line) : null,
 });
 
 export const route = async (request, env, deps = hostDeps(null)) => {
+  const res = await dispatch(request, env, deps);
+  if (deps.log) { const line = metricLine(env, new URL(request.url).pathname, res); if (line) deps.log(line); }
+  return res;
+};
+
+const dispatch = async (request, env, deps) => {
   const url = new URL(request.url);
   const path = url.pathname;
   const read = PUBLIC_GET[path];
