@@ -81,8 +81,8 @@
     v.set(0, 12, -6, ROSE); v.set(0, 12, -5, SUN);
     return (kobe = smooth(v));
   };
-  const HAT_PALETTE = ["#d8c08a", "#c4a768", "#e8d7a8", "#b39656", "#7a5a3a", "#5e432a"];
-  const [STRAW, STRAW_DARK, STRAW_LIGHT, STRAW_OLD, BAND, BAND_DARK] = HAT_PALETTE.map((_, i) => i);
+  const HAT_PALETTE = ["#d8c08a", "#c4a768", "#e8d7a8", "#b39656", "#7a5a3a", "#5e432a", "#c4783a", "#8a4f22", "#d99a55", "#f0e2c0"];
+  const [STRAW, STRAW_DARK, STRAW_LIGHT, STRAW_OLD, BAND, BAND_DARK, VANE, QUILL, VANE_LIGHT, TIP] = HAT_PALETTE.map((_, i) => i);
   let hat = null;
   const hatVox = () => {
     if (hat) return hat;
@@ -110,6 +110,10 @@
         if (speckle(x, 5, z) < 45) v.set(x, y - 2, z, straw(x, 2, z));
         if (speckle(x, 9, z) < 15) v.set(x, y - 3, z, STRAW_OLD);
       }
+    }
+    for (let i = 0; i <= 13; i++) {
+      const y = 20 + i, zc = 7 - Math.round(i * 0.6), w = i < 2 ? 0 : i < 4 || i > 10 ? 1 : 2, x = 16 + (i > 7 ? 1 : 0);
+      for (let d = -w; d <= w; d++) v.set(x, y, zc + d, i > 10 ? TIP : d === 0 ? QUILL : speckle(x, y, zc + d) < 35 ? VANE_LIGHT : VANE);
     }
     return (hat = v);
   };
