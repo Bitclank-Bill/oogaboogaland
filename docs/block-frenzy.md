@@ -32,9 +32,9 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   roof, a hut's floor, the centre deck, a wall, a tower's platform or a crate. It never passes through a roof or a
   floor into the cave or the space underneath, and one thrown up into a roof or a floor from underneath falls back
   where it was. Where it can't lie as it fell (against a parapet, in a hut's window) it lies at the nearest spot on
-  the same top where a body can stand. Only a top higher than a jump and a jetpack reach from the ground
-  (`LOOSE_TOP`, 7 m: the higher jungle canopies and the towers' rails) sends it to the nearest open ground beside
-  (`restSpot`), as does a carrier falling past the island's edge. A block on a crate falls when the crate goes.
+  the same top where a body can stand. Only a top above the loose-block placement limit
+  (`LOOSE_TOP`, still 7 m after the jetpack upgrade: the higher jungle canopies and the towers' rails) sends it
+  to the nearest open ground beside (`restSpot`), as does a carrier falling past the island's edge. A block on a crate falls when the crate goes.
   Bots fetch a block from a top (`fetchUp`): to the open ground beside it on their own side (`launchSpot`), a jump
   and the jetpack straight up from a full tank until their feet clear the top, then straight at the block.
   A carrier can't pick the same block up again until they have left its circle.

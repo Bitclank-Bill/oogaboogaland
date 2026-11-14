@@ -679,9 +679,9 @@
     return REST_BODY.x === x && REST_BODY.z === z;
   };
   // Where a loose block coming down at (x, z) from height `y` lies, into REST: on the top it came down onto (a cave's
-  // roof, a floor, a deck, a wall, a crate) where a body can stand and a jump and a jetpack reach from the ground
-  // (`LOOSE_TOP`); at the nearest such spot on that same top when it can't lie where it fell (against a parapet, in a
-  // window); and otherwise on the open ground beside (`restSpot`), never under what it came down on.
+  // roof, a floor, a deck, a wall, a crate) where a body can stand, within the loose-block placement limit
+  // (`LOOSE_TOP`, kept at 7 m after the jetpack upgrade); at the nearest such spot on that same top when it can't lie
+  // where it fell (against a parapet, in a window); and otherwise on the open ground beside (`restSpot`), never under what it came down on.
   const restOn = (x, z, y) => {
     const top = groundAt(x, z, y, 0.2);
     if (top > 0 && top <= CONFIG.LOOSE_TOP) {

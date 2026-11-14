@@ -7892,7 +7892,7 @@ const gameRulesChecks = async () => {
     {
       // A loose block lies on what it came down onto, never under it. On every map, over every floating slab (a cave's
       // roof, a hut's or the deck's floor, a tower's platform): a block coming down onto it, and one let go by a
-      // carrier standing on it, lies on that slab's top where a body can stand (or, on a top out of a jetpack's reach,
+      // carrier standing on it, lies on that slab's top where a body can stand (or, on a top above the loose-block placement limit,
       // on open ground beside it and not underneath); a block thrown up into it from underneath never gets over it and
       // falls back to where it was thrown from. On a cave's roof on every map: a body coming down stands on it, a real
       // throw from the air lands on it, a carrier splatted up there leaves the block up there, a bot fetches it from
@@ -12722,6 +12722,45 @@ const blockPoses = { name: "block modelled poses", why: "regression: old straigh
   record("block modelled poses: regular, slim and wide Oogas grip every weapon and both Golden AKs, and their trophy rests on their raised fists", rows.filter(r => !r.zip && !r.jet).length === 27 && rows.filter(r => !r.zip && !r.jet).every(r => r.trophy ? r.gap < .03 : r.visible && r.modelled && r.own && r.gap < .001), JSON.stringify(rows));
   record("block modelled poses: both fists meet the zipline bar even while crouch is held, weapons are stowed, and letting go restores each Ooga's hip", rows.filter(r => r.zip).length === 3 && rows.filter(r => r.zip).every(r => r.gap < .001 && r.restored && r.hiddenGuns), JSON.stringify(rows.filter(r => r.zip)));
   record("block modelled jetpacks: regular, slim and wide Oogas carry a body-sized pack seated on their actual back", rows.filter(r => r.jet).length === 3 && rows.filter(r => r.jet).every(r => r.attached && r.gap < .001 && Math.abs(r.scale - 1) < .001), JSON.stringify(rows.filter(r => r.jet)));
+} };
+const blockRoofs = { name: "block roof presentation", why: "regression: a loose block fell through a cave roof; the drawn block, modelled feet and retrieving bot must agree on its surface", run: async b => {
+  const rows = await b.evaluate(`(() => {
+    const D = __ooga.block, S = BL.blockSim, scene = BL.scenes.block, update = scene.update, rows = [];
+    scene.update = () => {};
+    try {
+      for (const name of ["w-s-bitcoin", "tiffanyvarty", "portlandhodl"]) {
+        D.showBoard(); D.selection.map = "town"; D.chooseOoga(name); D.chooseOoga(name); D.start(602); D.sim.prep = 0;
+        const sim = D.sim, body = sim.actors[0], f = sim.flags.red;
+        for (const a of sim.actors) Object.assign(a, { bot: false, flight: 0, x: 0.25 + a.id, z: S.ARENA.spawnZ, y: 0, grounded: true, guard: 60 });
+        sim.weather.left = 1e9;
+        for (const g of sim.gorillas) { g.state = 3; g.t = 1e9; }
+        const roof = S.ARENA.BLOCKS.find(b => S.ARENA.rockKind.get(b) === "cave" && b[5] > 0 && b[1] - b[0] >= 1 && b[3] - b[2] >= 1 && S.groundAt((b[0] + b[1]) / 2,(b[2] + b[3]) / 2, 99, 0.2) === b[4]);
+        const x = (roof[0] + roof[1]) / 2, z = (roof[2] + roof[3]) / 2, top = roof[4];
+        Object.assign(f, { state: "flying", x, z, y: top + 2, vx: 0, vz: 0, vy: 0, carrier: null, thrower: -1, hookedBy: -1 });
+        // A player below the roof cannot take the falling block through it.
+        Object.assign(body, { x, z, y: 0 }); D.simulate(1.5); update(0, 0); BL.scene.updateWorld(scene.root);
+        const block = scene.root.children.find(n => n.geometry === BL.blockModels.block(1));
+        const landed = f.state === "dropped" && f.y === top && !body.carrying;
+        const drawn = block.visible && Math.abs(block.world[13] - top - .5) < .07;
+        // Land the actual chosen model beside the block, then measure both soles in world space.
+        Object.assign(body, { x, z: z + 2, y: top + 2, grounded: false, vy: 0 }); D.simulate(1.5); update(0, 0); BL.scene.updateWorld(scene.root);
+        const cave = D.actors[0].cave, feet = [];
+        for (const leg of [cave.parts.legL, cave.parts.legR]) {
+          const box = BL.scene.boundsOf(leg.geometry), p = new Float64Array(3); let low = Infinity;
+          for (const x of [box.min[0], box.max[0]]) for (const y of [box.min[1], box.max[1]]) for (const z of [box.min[2], box.max[2]]) { BL.math.mat4.transformPoint(p, leg.world, x, y, z); low = Math.min(low, p[1]); }
+          feet.push(low - top);
+        }
+        const stood = body.grounded && body.y === top && cave.modelled;
+        Object.assign(body, { x: .25, z: S.ARENA.spawnZ, y: 0 });
+        const bot = sim.actors[1]; Object.assign(bot, { x: x - Math.sign(x) * 9, z, y: 0, bot: true, role: "attack", fuel: S.CONFIG.JET_FUEL });
+        let seconds = 0, flame = false;
+        while (seconds < 30 && f.state !== "carried") { D.simulate(.1); update(0, 0); flame ||= D.actors[bot.id].jetFlame.visible; seconds += .1; }
+        rows.push({ name, landed, drawn, stood, feet, flame, seconds, fetched: f.state === "carried" && f.carrier === bot.id });
+      }
+    } finally { scene.update = update; D.showBoard(); }
+    return rows;
+  })()`);
+  record("block roofs: blocks stay visible above the roof, cannot be picked up below it, regular/slim/wide Oogas land with their feet on it, and bots retrieve them using the upgraded jetpack", rows.length === 3 && rows.every(r => r.landed && r.drawn && r.stood && r.feet.every(y => Math.abs(y) < .1) && r.flame && r.fetched), JSON.stringify(rows));
 } };
 const blockZipline = { name: "block zipline controls", why: "rule: the ride control and warning lamps must agree about a rival zipline's trap for either team", run: async b => {
   const rows = await b.evaluate(`(() => {
@@ -24536,7 +24575,7 @@ scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub")
 }}]});
 scene("race", { query: "rain=0&draw=0", steps: [raceStart, raceOwn, raceBench, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: one drawn field of fifteen runs every race and finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop"), dropOwn] });
-scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, blockZipline, trip("block")] });
+scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, blockRoofs, blockZipline, trip("block")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit"), orbitOwn] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
 // ---- The Lightning Jet Hangar ----
