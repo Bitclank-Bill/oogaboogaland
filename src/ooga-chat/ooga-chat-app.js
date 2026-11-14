@@ -1,7 +1,8 @@
 // Ooga Chat's startup, loaded last. It picks the adapter (the production one; the fixture one only on fixture.html,
 // whose root says `data-adapter="fixture"` and which alone loads it), letters the title, builds the shell with the
 // public tabs (Ooga Chat, Bananas, Contributing Oogas) and the contributor tabs (Online Oogas, The Commons), and moves
-// through loading, then live, unavailable or stale. It starts no island system: no renderer, scene, socket or game.
+// through loading, then live, unavailable or stale. Unavailable is never a dead end: Try again asks again, and so does
+// coming back online or back to the page. It starts no island system: no renderer, scene, socket or game.
 // A failure shows a recoverable error with Reload; pagehide disposes the shell and the adapter.
 (() => {
   "use strict";
@@ -19,6 +20,7 @@
     box.hidden = false;
   };
   let adapter = null, shell = null;
+  const page = new AbortController();
   try {
     adapter = fixture ? BL.oogaChatFixtures.create({ state: new URLSearchParams(location.search).get("state") || undefined })
       : BL.oogaChatHttp.create();
@@ -32,7 +34,24 @@
     };
     const signedIn = () => state.mode === "live" && !!state.session;
     const contributor = () => signedIn() && state.session.capabilities.contributor;
+    // One bootstrap at a time: at start, and again from unavailable.
+    let starting = null;
+    const start = () => starting ||= (async () => {
+      root.dataset.mode = "loading";
+      set({ mode: "loading" });
+      const boot = await adapter.bootstrap();
+      if (!boot.ok) {
+        root.dataset.mode = boot.mode;
+        set({ mode: boot.mode });
+        return;
+      }
+      const session = await adapter.session(boot);
+      root.dataset.mode = "live";
+      set({ mode: "live", boot, session });
+    })().catch(() => showError("Ooga Chat couldn't start")).finally(() => { starting = null; });
+    const again = () => state.mode === "unavailable" && start();
     const actions = {
+      retry: again,
       signIn(provider) {
         if (state.mode !== "live" || state.busy) return;
         const session = adapter.signIn(state.boot, provider);
@@ -58,24 +77,16 @@
         view: pending("The Commons", "The Commons, the contributors' text chat, comes here next.") }
     ] });
     BL.signGlyphs.letter(root.querySelector(".oc-title [data-sign]"));
-    root.dataset.mode = "loading";
-    shell.update(state);
-    (async () => {
-      const boot = await adapter.bootstrap();
-      if (!boot.ok) {
-        root.dataset.mode = boot.mode;
-        set({ mode: boot.mode });
-        return;
-      }
-      const session = await adapter.session(boot);
-      root.dataset.mode = "live";
-      set({ mode: "live", boot, session });
-    })().catch(() => showError("Ooga Chat couldn't start"));
+    // Back online, or back to the page, while the service could not be reached: ask again without a click.
+    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && again(), { signal: page.signal });
+    addEventListener("online", again, { signal: page.signal });
+    start();
   } catch {
     showError("Ooga Chat couldn't start");
   }
   addEventListener("pagehide", (event) => {
     if (event.persisted) return;
+    page.abort();
     shell?.dispose();
     adapter?.dispose();
   });

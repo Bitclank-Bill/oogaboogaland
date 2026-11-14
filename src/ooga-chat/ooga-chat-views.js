@@ -1,5 +1,5 @@
 // Ooga Chat's views, each `view(ctx)` returning `{ node, update(state), dispose() }` for ooga-chat-shell.js. `ctx`
-// carries `actions` (`signIn(provider)`, `signOut()`); `state` is `{ mode, boot, session, busy }`, where `mode` is
+// carries `actions` (`signIn(provider)`, `signOut()`, `retry()`); `state` is `{ mode, boot, session, busy }`, where `mode` is
 // loading, live, unavailable or stale. `chat` is the Ooga Chat tab: sign-in, or the signed-in account and its
 // controls. `pending(title)` stands in for a panel the shared island panels (Bananas, Contributing Oogas, Online Oogas,
 // The Commons) will fill; it says so instead of showing invented data.
@@ -33,26 +33,28 @@
     art.height = 287;
     art.alt = "Cavemen on clouds above a floating island, round a pile of bananas";
     art.decoding = "async";
-    // Lazy, so a signed-in visit, which never shows it, never fetches it.
+    // Lazy and hidden while loading, so a signed-in visit, which never shows it, never fetches it.
     art.loading = "lazy";
     const status = make("p", "oc-status");
     status.setAttribute("role", "status");
     const reload = button("oc-reload link", "Reload");
     reload.addEventListener("click", () => location.reload(), { signal });
+    const retry = button("oc-retry link", "Try again");
+    retry.addEventListener("click", () => actions.retry(), { signal });
     const providers = Object.fromEntries(Object.entries(PROVIDER_LABELS).map(([provider, text]) => {
       const el = button("oc-provider", text);
       el.dataset.provider = provider;
       el.addEventListener("click", () => actions.signIn(provider), { signal });
       return [provider, el];
     }));
-    const signedOut = make("div", "oc-signin",
-      art,
+    // Everything but the status line waits until the session says signed out: loading shows only the title and status.
+    const invite = [art,
       make("p", "oc-lede", "Listen to the island.", make("br"), "Speak from the clouds."),
-      make("p", "oc-status-line", status, reload),
       make("div", "oc-providers", providers.github, providers.x),
       make("div", "oc-note", make("strong", "", "Everyone can listen."),
         make("span", "", "Team Ooga Booga contributors signed in with GitHub can also speak from a cloud.")),
-      make("p", "oc-foot", "X accounts join as listeners."));
+      make("p", "oc-foot", "X accounts join as listeners.")];
+    const signedOut = make("div", "oc-signin", invite[0], invite[1], make("p", "oc-status-line", status, reload, retry), ...invite.slice(2));
     const role = make("p", "oc-role");
     const signedIn = make("div", "oc-space", make("h2", "slab-head oc-space-head", "Outdoor audio"), role);
     const slab = make("div", "slab oc-slab", signedOut, signedIn);
@@ -71,7 +73,9 @@
       signedIn.hidden = account.hidden = !who;
       status.textContent = STATUS[mode] || "";
       status.parentElement.hidden = live;
+      for (const el of invite) el.hidden = mode === "loading";
       reload.hidden = mode !== "stale" && !(live && boot.newer);
+      retry.hidden = mode !== "unavailable";
       if (live && boot.newer) {
         status.textContent = "A newer Ooga Chat is out.";
         status.parentElement.hidden = false;

@@ -116,6 +116,8 @@
   // Letters a sign; called again when a sign's words change (a drop that was lost, not landed).
   const letter = (el, words = el.textContent) => {
     const text = signText(words);
+    // The name rides a role, so screen readers that skip aria-label on a plain span still read it.
+    el.setAttribute("role", "img");
     el.setAttribute("aria-label", text);
     el.replaceChildren(lettering(text));
   };

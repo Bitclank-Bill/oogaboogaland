@@ -86,15 +86,16 @@ export const build = (out, { fixtures = false } = {}) => {
   const art = new Map(pictures.map((file) => [file, named("art", basename(file, extname(file)), extname(file).slice(1), readFileSync(join(app, "art", file)))]));
   const bundle = (scripts) => {
     let js = scripts.map((src) => `// ---- ${src.replace(/^\.\.\//, "")} ----\n${read(src).trim().replace(/\r\n/g, "\n")}`).join("\n\n");
-    js = js.replace(/"art\/([\w.-]+)"/g, (_, file) => {
+    // Every picture a script names, a lone src or each size in a srcset, moves to its hashed address.
+    js = js.replace(/(?<![\w/])art\/([\w.@-]+\.(?:jpe?g|png|webp))\b/g, (_, file) => {
       if (!art.has(file)) throw new Error(`ooga-chat: a script names art/${file}, which src/ooga-chat/art/ does not hold`);
-      return JSON.stringify(art.get(file));
+      return art.get(file);
     });
     return `${js}\n`;
   };
   const used = new Set();
   const js = bundle(main.scripts);
-  for (const [file, path] of art) if (js.includes(JSON.stringify(path))) used.add(file);
+  for (const [file, path] of art) if (js.includes(path)) used.add(file);
   for (const file of pictures) if (!used.has(file)) throw new Error(`ooga-chat: art/${file} is staged but no script shows it`);
   const css = `${main.sheets.map((path) => read(path).trim().replace(/\r\n/g, "\n")).join("\n\n")}\n`;
   if (/url\(/.test(css)) throw new Error("ooga-chat: a stylesheet loads a url(); name pictures from the views instead");

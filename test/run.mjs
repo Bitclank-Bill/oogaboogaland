@@ -32382,9 +32382,13 @@ const oogaChatChecks = async () => {
   const waiting = hanging.bootstrap(), held = hanging.pending;
   hanging.dispose();
   const ended = await waiting;
-  const adapter = { modes: modes.join() === "unavailable,unavailable,unavailable,live", held, released: hanging.pending === 0 && ended.mode === "unavailable" && ended.reason === "disposed" };
-  record("Ooga Chat adapter: a 404, a non-JSON page or an unreachable service each leave the app unavailable rather than invented, and disposing aborts what is still asking",
-    adapter.modes && adapter.held === 1 && adapter.released, JSON.stringify(adapter));
+  // Sign-out ends only when the server confirms it; a refused one throws, so the app keeps the session and says so.
+  const outWith = async (status) => { try { await adapterWith(answer(status, "application/json", {})).signOut({ paths: { logout: "/api/logout" } }); return "ok"; } catch { return "threw"; } };
+  const signOut = [await outWith(204), await outWith(401), await outWith(500)].join();
+  const adapter = { modes: modes.join() === "unavailable,unavailable,unavailable,live", held, released: hanging.pending === 0 && ended.mode === "unavailable" && ended.reason === "disposed",
+    signOut: signOut === "ok,threw,threw" };
+  record("Ooga Chat adapter: a 404, a non-JSON page or an unreachable service each leave the app unavailable rather than invented, disposing aborts what is still asking, and a sign-out the server refuses throws instead of signing out",
+    adapter.modes && adapter.held === 1 && adapter.released && adapter.signOut, JSON.stringify({ ...adapter, signOut }));
 
   // The shell over a minimal DOM: views build on first visit, are kept across tab switches and updates, and dispose once.
   const node = (tag, doc) => {
