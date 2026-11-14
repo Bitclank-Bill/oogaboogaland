@@ -30,8 +30,8 @@
     "FEATURES": "",
     // OogaBoogaX's "Ooga Chat (staging)" OAuth App (callback <SITE_ORIGIN>/auth/github/callback). A client id is public.
     "GITHUB_CLIENT_ID": "Ov23limsSaK7tng3ziBP",
-    // The staging X app's OAuth 2.0 client id (callback <SITE_ORIGIN>/auth/x/callback); empty until registered.
-    "X_CLIENT_ID": ""
+    // @w_s_bitcoin's "Ooga Chat" X app, OAuth 2.0 confidential client (callbacks for both environments). Public.
+    "X_CLIENT_ID": "SkNWYXRycmFpLWt4Z1hHSUl6RzM6MTpjaQ"
     // Secrets, never here (worker/chat/dev.vars.example lists them): GITHUB_CLIENT_SECRET, X_CLIENT_SECRET.
   },
   "d1_databases": [

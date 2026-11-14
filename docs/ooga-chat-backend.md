@@ -151,8 +151,11 @@ To do, by the owner:
       `<SITE_ORIGIN>/auth/github/callback`, client ids in `vars`.
 - [ ] Generate each app's client secret and store it with `wrangler secret put GITHUB_CLIENT_SECRET --config
       ../wrangler.ooga-chat.<env>.jsonc` from `worker/`, once that environment's edge is deployed.
-- [ ] Configure X user authentication as a confidential web app with exact callbacks `<SITE_ORIGIN>/auth/x/callback`;
-      record app access, `/2/users/me` availability, the spending cap and any review before turning `x` on.
+- [x] X developer account "Ooga Chat" on @w_s_bitcoin (pay-per-use, 2026-11-14) and its "Ooga Chat" app: OAuth 2.0
+      confidential web app, read only, no email, callbacks `<SITE_ORIGIN>/auth/x/callback` for both environments, its
+      client id in both configs' `vars`.
+- [ ] Regenerate the X app's client secret and store it with `wrangler secret put X_CLIENT_SECRET` for each edge; buy
+      credits and set the console's spending limit, then confirm the price of `/2/users/me` there, before turning `x` on.
 - [ ] Deploy the island's Worker with the `ChatBridge` entrypoint before the edge's first deploy, or the edge's
       deploy fails on the binding.
 - [ ] Before changing any existing Worker's compatibility date, verify WebSocket close and hibernation on staging.

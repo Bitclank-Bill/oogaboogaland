@@ -25,7 +25,16 @@ jobs:
           package-manager-cache: false
       # The standalone app (#651) into untracked/ooga-chat, the folder wrangler.ooga-chat.staging.jsonc serves.
       - name: Build and stage the app
-        run: npm run build:ooga-chat
+        run: |
+          if ! node -e 'process.exit(require("./package.json").scripts["build:ooga-chat"] ? 0 : 1)'; then
+            echo "::error::npm run build:ooga-chat is not on this branch yet: the app arrives with #651. Nothing to deploy."
+            exit 1
+          fi
+          npm run build:ooga-chat
+      # The Worker checks import the island's generated cast and Tess's fact sheet (gitignored), which build:site
+      # writes, as the island's workflows and the unit lane do.
+      - name: Build the island's generated files
+        run: npm run build:site
       - name: Install Worker dependencies
         run: npm ci --prefix worker --omit=dev
       - name: Worker checks
