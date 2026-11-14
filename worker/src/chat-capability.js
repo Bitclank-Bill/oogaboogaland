@@ -21,20 +21,21 @@ export const githubAccount = (principal) => {
   return { id, login: principal.login };
 };
 
+/** The island's decision for a GitHub principal, as the bridge's `capability` answers it and the audience asks it again. */
+export const decideCapability = async (env, principal, contributorFor, now = Date.now) => {
+  const { id, login } = githubAccount(principal);
+  const answer = (state, character = null, reason = null) => ({ state, character, reason, policy: POLICY, checkedAt: now() });
+  if (env.DB) {
+    let row;
+    try { row = await env.DB.prepare("SELECT banned_at FROM players WHERE id = ?1").bind(id).first(); }
+    catch { return answer("unknown", null, "unavailable"); }
+    if (row && row.banned_at) return answer("ineligible", null, "banned");
+  }
+  const owned = await contributorFor(login, id);
+  if (owned) return answer("eligible", owned.handle);
+  return typeof contributorFor.fresh !== "function" || contributorFor.fresh() ? answer("ineligible", null, "not-contributor") : answer("unknown", null, "unavailable");
+};
+
 export const capabilityOps = ({ contributorFor, now = Date.now }) => ({
-  capability: {
-    run: async (env, envelope) => {
-      const { id, login } = githubAccount(envelope.principal);
-      const answer = (state, character = null, reason = null) => ({ state, character, reason, policy: POLICY, checkedAt: now() });
-      if (env.DB) {
-        let row;
-        try { row = await env.DB.prepare("SELECT banned_at FROM players WHERE id = ?1").bind(id).first(); }
-        catch { return answer("unknown", null, "unavailable"); }
-        if (row && row.banned_at) return answer("ineligible", null, "banned");
-      }
-      const owned = await contributorFor(login, id);
-      if (owned) return answer("eligible", owned.handle);
-      return typeof contributorFor.fresh !== "function" || contributorFor.fresh() ? answer("ineligible", null, "not-contributor") : answer("unknown", null, "unavailable");
-    },
-  },
+  capability: { run: (env, envelope) => decideCapability(env, envelope.principal, contributorFor, now) },
 });
