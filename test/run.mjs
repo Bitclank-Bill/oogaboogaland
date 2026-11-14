@@ -14421,6 +14421,59 @@ const TOUR_ENDED = `(() => {
   B.advance(0.5, 1 / 60);
   return { ended, walked: +Math.hypot(body.root.position.x - f.x, body.root.position.z - f.z).toFixed(3) };
 })()`;
+const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into Tess's queue, accept their turn, keep conversations private and retain their own camera while another visitor uses the guide", run: async b => {
+  const result = await b.evaluate(`(() => {
+    const N=BL.net,G=BL.scenes.hub.debug.tess,s=G.state,camera=__ooga.camera;
+    const saved={me:N.state.me,room:N.state.room,connectionToken:N.state.connectionToken,tessShared:N.state.tessShared,tessGuide:N.state.tessGuide},send=N.sendTess,calls=[];
+    const visitKey="ooga-tess-visits",savedVisits=localStorage.getItem(visitKey);
+    let elapsed=0;const step=(n=1)=>{for(let i=0;i<n;i++){elapsed+=1/30;G.update(1/30,elapsed);}};
+    const receive=(phase,position=0,token="")=>{N.state.tessGuide={phase,position,token,count:position?2:0,until:N.serverNow()+60000,busy:phase==="wait"||phase==="active",pose:null};step();};
+    const view=()=>JSON.stringify([camera.position,camera.target]);
+    try {
+      localStorage.setItem(visitKey,"{}");
+      N.sendTess=m=>{calls.push(JSON.parse(JSON.stringify(m)));return true;};
+      Object.assign(N.state,{me:{id:901,login:"queue-fixture"},room:"live",connectionToken:"queue-fixture",tessShared:true,tessGuide:null});
+      receive("none");G.tap();step();
+      const panel=document.querySelector(".greeter-menu"),go=panel.querySelector(".greeter-row button:first-child"),skip=panel.querySelector(".greeter-row button:last-child");
+      const optIn=!panel.hidden&&go.textContent==="Join queue"&&!calls.some(m=>m.op==="join");
+      const fits=()=>{const r=panel.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1;};
+      let contained=fits();
+      N.state.tessGuide={...N.state.tessGuide,count:32};step();
+      const full=go.disabled&&panel.textContent.includes("queue is full");
+      const announced=panel.querySelector(".greeter-menu-help").getAttribute("aria-live")==="polite";
+      receive("none");
+      go.click();const joined=calls.at(-1).op==="join";
+      receive("wait",2,"mine");const before=view();
+      N.state.tessGuide.pose=[3,2,4,1,0,0,0,0,0,0,0,0];step(60);
+      const observer=before===view()&&!s.holding&&go.hidden&&panel.textContent.includes("2 of 2")&&Math.hypot(G.root.position.x-3,G.root.position.y-2,G.root.position.z-4)<.01;
+      receive("ready",1,"mine");contained&&=fits();const ready=go.textContent==="Talk to Tess"&&!go.hidden&&!s.holding;
+      go.click();const accepted=calls.at(-1).op==="accept"&&calls.at(-1).token==="mine";
+      receive("active",1,"mine");for(let i=0;i<450&&s.phase!=="offer";i++)step();
+      contained&&=fits();const offered=s.phase==="offer"&&!panel.querySelector("form").hidden;
+      const unreadNews=s.kind==="news"&&s.newest.line===BL.hubGuide.NEWS[0].line&&s.legs.length>0&&!JSON.parse(localStorage.getItem(visitKey))["queue-fixture"];
+      const field=panel.querySelector("input");field.value="How do I donate?";panel.querySelector("form").requestSubmit();step();
+      const privateReply=String(JSON.stringify(G.speech?.beats)).includes("Feed the Oogas")&&calls.every(m=>!["question","say","answer"].some(k=>k in m));
+      const boundedWire=calls.filter(m=>m.op==="pose").length>0&&calls.every(m=>JSON.stringify({t:"tess-guide",...m}).length<=256);
+      go.click();step();const touring=s.holding;
+      const newsRecorded=JSON.parse(localStorage.getItem(visitKey))["queue-fixture"]?.line===BL.hubGuide.NEWS[0].line;
+      N.state.room="connecting";N.state.tessGuide=null;step();
+      const disconnected=!s.holding&&!G.speech&&go.disabled&&panel.textContent.includes("15 seconds");
+      N.state.room="live";N.state.connectionToken="reconnected";receive("wait",2,"mine");skip.click();
+      const cancelled=calls.at(-1).op==="cancel"&&panel.hidden;
+      // Leaving the shared feature during a tour must return the pilot, not leave a hidden guide holding it.
+      let availabilityReleased=true;
+      for(const reason of ["signout","feature"]){
+        N.state.me={id:901,login:"queue-fixture"};N.state.tessShared=true;
+        receive("active",1,reason);for(let i=0;i<450&&s.phase!=="offer";i++)step();
+        go.click();step();const held=s.holding;
+        if(reason==="signout")N.state.me=null;else N.state.tessShared=false;
+        step();availabilityReleased&&=held&&!s.holding&&!G.speech&&!document.body.classList.contains("tess-touring");
+      }
+      return {optIn,full,announced,contained,joined,observer,ready,accepted,offered,unreadNews,newsRecorded,privateReply,boundedWire,touring,disconnected,cancelled,availabilityReleased};
+    } finally {if(savedVisits===null)localStorage.removeItem(visitKey);else localStorage.setItem(visitKey,savedVisits);Object.assign(N.state,saved);N.sendTess=send;step();}
+  })()`);
+  record("hub shared guide: explicit join/accept, queue position, private answers, observer camera independence, disconnect release and cancellation",Object.values(result).every(Boolean),JSON.stringify(result));
+} };
 const hubGuide = { name: "hub guide", why: "regression: Tess's offer showed only its first speech bubble, she stopped shots aimed past her, an Ooga walking or flying as her tour began went on through it, and T before or during her tour let the gorilla and tour share control", run: async (b) => {
   const guide = await b.evaluate(`(() => {
     const B = __ooga, P = B.pilot, a = B.cavemen.get("portlandhodl"), G = BL.scenes.hub.debug.tess, s = G.state;
@@ -25542,7 +25595,8 @@ scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="
 scene("hub", { label: "gorilla population restoration", query: "status=clankin", exclusive: true, opts: { motion: true }, steps: [hubGorillaPopulation] });
 scene("hub", { label: "weapons", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&weapon=2&mag=1&ammo=6&jetpack=1&gorillarage=1", steps: [hubCombatGate, ...[hubAk, hubMelee, hubJetpack].map(gameCombat)] });
 // Her greeting comes once a page, to a fresh landing nothing has moved, so the guide has its own page.
-scene("hub", { label: "guide", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk, hubTourInput] });
+scene("hub", { label: "guide", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk, hubTourInput, hubSharedGuide] });
+scene("hub", { label: "shared guide phone", opts: { w: 390, h: 844, mobile: true }, query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1", steps: [hubSharedGuide] });
 // Native pointer-lock assertions need sole focus; another browser lane can
 // steal capture and spend this long scenario's deadline waiting for it back.
 scene("hub", { label: "birds-eye combat", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1&birdseye=1", exclusive: true, steps: [hubBirdsEye] });
@@ -27178,6 +27232,43 @@ const tessAnswerChecks = (BL) => {
   const lines = cases.flatMap(([q]) => (H.answer(q) || { lines: [] }).lines).every((id) => typeof H.LINES[id] === "string");
   record("tess answers: the page sends a typed question to a trip, an answer, the tour or nothing, follows \"take me there\" to the last place, leaves other follow-ups and Bitcoin questions that name a place's idea to the Worker, and answers every suggestion",
     !wrong.length && there === "trip:lab" && followUp === "none" && suggested && lines, JSON.stringify({ wrong, there, followUp, suggested, lines }));
+};
+// Shared Tess (#466) in Node: the real island guide under a stubbed room, its queue turns handed over as the Room
+// sends them. Under the shared guide her greeting offers Join queue, so news must come with the granted turn.
+const sharedTessNewsChecks = (BL) => {
+  const H = BL.hubGuide, N = BL.net, store = new Map(), visitKey = "ooga-tess-visits";
+  const savedStorage = globalThis.localStorage, savedState = { me: N.state.me, room: N.state.room, connectionToken: N.state.connectionToken, tessShared: N.state.tessShared, tessGuide: N.state.tessGuide }, savedSend = N.sendTess;
+  globalThis.localStorage = { getItem: (k) => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  const size = { innerWidth: globalThis.innerWidth, innerHeight: globalThis.innerHeight };
+  Object.assign(globalThis, { innerWidth: 1280, innerHeight: 800 });
+  const calls = [], seen = () => JSON.parse(store.get(visitKey) || "{}")["news-fixture"] || null;
+  N.sendTess = (m) => { calls.push({ ...m, a: m.a?.slice() }); return true; };
+  const v = (x, y, z) => ({ x, y, z });
+  const guide = H.create({ parent: BL.scene.createNode(), input: { add() {}, remove() {} }, fx: new Proxy({}, { get: () => () => {} }), camera: { position: v(0, 4, -12), target: v(0, 2, 0), fov: 1 },
+    pilot: { controls: { moving: () => false } }, visitor: () => null, world: {}, hud: {}, busy: () => false, coarse: false, quality: () => 1, landing: true });
+  const s = guide.state, turn = (token) => { N.state.tessGuide = { phase: "active", position: 0, token, count: 1, until: N.serverNow() + 60000, busy: true, pose: null }; guide.update(0.016, 1); };
+  try {
+    Object.assign(N.state, { me: { id: 902, login: "news-fixture", display: "News Fixture" }, room: "live", connectionToken: "news-fixture", tessShared: true, tessGuide: null });
+    // Before a turn her greeting only offers Join queue and reads no news as seen.
+    for (let i = 0; i < 400; i++) guide.update(0.016, i * 0.016);
+    const waitingUnread = s.kind !== "news" && seen() === null;
+    // A granted turn with unread news offers that news first, from the newest entry, and still leaves it unread.
+    turn("turn-1");
+    const offered = s.kind === "news" && s.newest?.line === H.NEWS[0].line && s.legs.length > 0 && s.login === "news-fixture" && /^Welcome back, News Fixture!/.test(s.welcome || "") && s.phase === "approach" && seen() === null;
+    // Not now on that offer records it as seen.
+    s.phase = "offer"; guide.escape();
+    const recorded = seen()?.line === H.NEWS[0].line && calls.some(m => m.op === "cancel");
+    // The next granted turn, nothing new: the island tour with no welcome.
+    turn("turn-2");
+    const toured = s.kind === "island" && s.welcome === null && s.login === null && s.phase === "approach";
+    record("shared Tess news (#466): a signed-in visitor's granted turn offers unread island news first and Not now records it as seen; waiting reads nothing, and with nothing new the turn offers the island tour",
+      waitingUnread && offered && recorded && toured, JSON.stringify({ waitingUnread, offered, recorded, toured, kind: s.kind, phase: s.phase }));
+    const poses = calls.filter(m => m.op === "pose");
+    record("shared Tess privacy: without a driven Ooga, the visual pose does not publish the private camera as a look target",
+      poses.length > 0 && poses.every(m => m.a[10] === 0 && m.a.slice(7, 10).some((n, i) => n !== [0, 4, -12][i])), JSON.stringify(poses));
+  } finally {
+    guide.dispose(); globalThis.localStorage = savedStorage; Object.assign(N.state, savedState); N.sendTess = savedSend; Object.assign(globalThis, size);
+  }
 };
 // The Lightning Factory in Node: the feed's two contracts, the demo node that stands in for a real one, and the
 // walkable floor of the hall, each through the module's own functions.
@@ -32225,10 +32316,10 @@ const studioCatalogueProof = async () => {
 // Exercise the shipped voice lifecycle with deferred permissions/signaling and no real devices/network.
 const studioVoiceLifecycleProof = async () => {
   const source=await readFile(join(root,"src/js/voice.js"),"utf8");
-  const fixture=(gathering="complete",candidate=true,failFirstPeer=false)=>{
+  const fixture=(gathering="complete",candidate=true,failFirstPeer=false,voiceTurn=false)=>{
     const calls=[],streams=[],peers=[],elements=[],timers=new Map();let timerId=0,gum=0,permission=null,publishResponse=null,deferred=null,peerAttempts=0;
     class Peer {
-      constructor(){if(++peerAttempts===1&&failFirstPeer)throw Error("probe construction failed");peers.push(this);this.connectionState="connected";this.iceGatheringState=gathering;this.localDescription=null;this.handlers=new Map();}
+      constructor(config){this.config=config;if(++peerAttempts===1&&failFirstPeer)throw Error("probe construction failed");peers.push(this);this.connectionState="connected";this.iceGatheringState=gathering;this.localDescription=null;this.handlers=new Map();}
       addEventListener(k,fn){this.handlers.set(k,fn);}
       removeEventListener(k){this.handlers.delete(k);}
       addTransceiver(track){this.track=track;return {mid:"0"};}
@@ -32236,11 +32327,12 @@ const studioVoiceLifecycleProof = async () => {
       setLocalDescription(d){this.localDescription=d;return Promise.resolve();}
       setRemoteDescription(){return Promise.resolve();}
       getTransceivers(){return [];}
+      setConfiguration(config){this.config=config;}
       close(){this.connectionState="closed";}
     }
     class Sound {constructor(){this.pending=[];elements.push(this);}play(){return new Promise((resolve,reject)=>this.pending.push({resolve,reject}));}pause(){this.pauses=(this.pauses||0)+1;}}
     const makeStream=()=>{const track={enabled:true,stops:0,stop(){this.stops++;}},stream={track,getTracks:()=>[track],getAudioTracks:()=>[track]};streams.push(stream);return stream;};
-    const win={BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"}},remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{},setMuted:on=>calls.push({op:"mute",on})}},setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)};
+    const win={BL:{net:{state:{voiceTurn,connectionToken:"synthetic",me:{id:900,login:"listener"}},remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{},setMuted:on=>calls.push({op:"mute",on})}},setTimeout:(fn,delay)=>{timers.set(++timerId,{fn,delay});return timerId;},clearTimeout:id=>timers.delete(id),setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)};
     const context={window:win,document:{createElement:()=>({})},localStorage:{getItem:()=>null,setItem(){}},AbortController,RTCPeerConnection:Peer,Audio:Sound,MediaStream:class {constructor(tracks){this.tracks=tracks;}getTracks(){return this.tracks;}},navigator:{mediaDevices:{enumerateDevices:async()=>[{kind:"audioinput",deviceId:"synthetic-mic",label:"Synthetic mic"},{kind:"videoinput",deviceId:"camera",label:"Camera"}],getUserMedia:constraints=>{gum++;calls.push({op:"capture",constraints});return permission||Promise.resolve(makeStream());}}},
       fetch:async(url,options)=>{const op=url.split("/").at(-1);calls.push({op,body:JSON.parse(options.body)});if(deferred?.op===op)return deferred.promise;if(op==="publish"&&publishResponse)return publishResponse;if(op==="pull")return {ok:true,json:async()=>({tracks:JSON.parse(options.body).ids.map(id=>({id,mid:String(id)}))})};return {ok:true,json:async()=>({sessionDescription:{type:"answer",sdp:"synthetic"}})};}};
     runInNewContext(source,context);
@@ -32249,7 +32341,7 @@ const studioVoiceLifecycleProof = async () => {
   const drain=async()=>{for(let i=0;i<40;i++)await Promise.resolve();};
   // A gather timeout is inconclusive; only a completed empty gather may refuse the listener.
   const slow=fixture("gathering",false),slowJoin=slow.voice.listen();await drain();
-  for(const fn of [...slow.timers.values()])fn();await slowJoin;await drain();
+  for(const task of [...slow.timers.values()])(typeof task === "function" ? task : task.fn)();await slowJoin;await drain();
   const slowGatherJoins=slow.voice.stats.enabled&&slow.calls.some(c=>c.op==="session")&&slow.peers[0].connectionState==="closed";
   slow.voice.dispose();await drain();
   const blocked=fixture("complete",false);await blocked.voice.listen();
@@ -32306,7 +32398,43 @@ const studioVoiceLifecycleProof = async () => {
   const latePlaybackStaysOff=!leaving.voice.stats.enabled&&!leaving.voice.stats.hearing;leaving.voice.dispose();await drain();
   const restarting=fixture();await restarting.voice.listen();const finishRestart=restarting.defer("leave");const restart=restarting.voice.restart();await drain();restarting.voice.stop();finishRestart({ok:true});await restart;await drain();
   const leaveCancelsRestart=!restarting.voice.stats.enabled&&restarting.calls.filter(c=>c.op==="session").length===1;restarting.voice.dispose();await drain();
-  return {slowGatherJoins,emptyGatherRefuses,unavailableProbeJoins,publicationReplaced,leaveStopsAudio,latePlaybackStaysOff,leaveCancelsRestart,receiveOnly,receiveOnlyAudience,audienceKeepsMute,lastListenerLeaves,listenerReturns,invalidAudience,audienceClearedOnStop,permissionCancelled,explicitUnmute,restartMute,publishCancelled,stopCancelled,localPreview,previewReleased,latePreviewReleased,previewCancelCannotStopPublication,receiveLevel,aggregateBlocked,retryClears,stalePlaybackIgnored,deniedPreviewKeepsReceiver,deniedPublishKeepsReceiver,timersReleased:[slow,blocked,unavailable,listener,audience,late,rejoin,stale,stopped,preview,autoplay,denied,replaced,leaving,restarting].every(f=>f.timers.size===0)};
+  const relay = fixture("complete",true,false,true), tls = "turns:turn.cloudflare.com:443?transport=tcp";
+  const ice = (username) => ({ ttl: 120, iceServers: [{ urls: tls, username, credential: "fixture" }] });
+  const finishIce = relay.defer("ice"), relayJoin = relay.voice.enable();
+  await drain(); finishIce(ice("initial")); await relayJoin; await drain();
+  const hasRelay = (peer, name) => peer.config.iceServers.some(s => s.urls === tls && s.username === name)
+    && peer.config.iceServers.some(s => s.urls === "stun:stun.cloudflare.com:3478");
+  const turnShared = relay.voice.stats.enabled && relay.peers.length === 2
+    && relay.calls.filter(c => c.op === "ice").length === 1 && relay.peers.every(pc => hasRelay(pc, "initial"));
+  const refreshIce = relay.defer("ice"), refreshTimer = [...relay.timers].find(([, task]) => task.delay === 60000);
+  let refreshing;
+  if (refreshTimer) { relay.timers.delete(refreshTimer[0]); refreshing = refreshTimer[1].fn(); }
+  // Keep the existing call while minting credentials; only the subsequent rebuild interrupts it.
+  await drain(); const turnPrefetched = relay.peers.length === 2 && relay.peers.every(pc => pc.connectionState === "connected");
+  refreshIce(ice("fresh")); await refreshing; await drain();
+  const turnRefreshed = !!refreshTimer && relay.peers.length === 4 && relay.peers.slice(0, 2).every(pc => pc.connectionState === "closed")
+    && relay.peers.slice(2).every(pc => hasRelay(pc, "fresh")) && relay.voice.stats.enabled;
+  relay.voice.setPeers([71],[1]); await drain();
+  relay.peers.findLast(pc => pc.connectionState === "connected" && pc.handlers.has("track")).handlers.get("track")({transceiver:{mid:"71"},track:{id:71,stop(){}}});
+  const renewal = relay.voice.inspect().relayRenewals.at(-1);
+  const turnMeasured = renewal.status === "rebuilt" && renewal.credentialsMs >= 0 && renewal.rebuildMs >= 0 && renewal.firstTrackMs >= 0
+    && !JSON.stringify(renewal).includes("fixture") && !JSON.stringify(renewal).includes("turn.cloudflare");
+  const failedIce = relay.defer("ice"), failedTimer = [...relay.timers].find(([, task]) => task.delay === 60000);
+  relay.timers.delete(failedTimer[0]); const failedRefresh = failedTimer[1].fn(); await drain(); failedIce({}); await failedRefresh;
+  const turnFailureKeepsCall = relay.peers.length === 4 && relay.peers.slice(2).every(pc => pc.connectionState === "connected")
+    && relay.voice.inspect().relayRenewals.at(-1).status === "credentials-unavailable";
+  // A stopped call must not return when a pending prefetch eventually resolves.
+  const stopIce = relay.defer("ice"), stopTimer = [...relay.timers].find(([, task]) => task.delay === 60000);
+  relay.timers.delete(stopTimer[0]); const stoppingRefresh = stopTimer[1].fn(); await drain();
+  relay.voice.stop(); stopIce(ice("too-late")); await stoppingRefresh; await drain();
+  const turnStopped = relay.timers.size === 0 && relay.peers.length === 4 && turnFailureKeepsCall && !relay.voice.stats.enabled;
+  const cancelled = fixture("complete",true,false,true), lateIce = cancelled.defer("ice"), cancelledJoin = cancelled.voice.enable();
+  await drain();
+  const iceWasPending = cancelled.calls.some(c => c.op === "ice");
+  cancelled.voice.dropMic();
+  lateIce(ice("stale")); await cancelledJoin; await drain();
+  const turnCancelled = iceWasPending && cancelled.timers.size === 0 && cancelled.peers.length === 0;
+  return {slowGatherJoins,emptyGatherRefuses,unavailableProbeJoins,turnShared,turnRefreshed,turnPrefetched,turnMeasured,turnStopped,turnCancelled,publicationReplaced,leaveStopsAudio,latePlaybackStaysOff,leaveCancelsRestart,receiveOnly,receiveOnlyAudience,audienceKeepsMute,lastListenerLeaves,listenerReturns,invalidAudience,audienceClearedOnStop,permissionCancelled,explicitUnmute,restartMute,publishCancelled,stopCancelled,localPreview,previewReleased,latePreviewReleased,previewCancelCannotStopPublication,receiveLevel,aggregateBlocked,retryClears,stalePlaybackIgnored,deniedPreviewKeepsReceiver,deniedPublishKeepsReceiver,timersReleased:[slow,blocked,unavailable,listener,audience,late,rejoin,stale,stopped,preview,autoplay,denied,replaced,leaving,restarting].every(f=>f.timers.size===0)};
 };
 
 // The real controller runs against a bounded DOM/media double: no permission prompts or SFU.
@@ -33136,6 +33264,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   }
   factoryChecks(BL);
   tessAnswerChecks(BL);
+  sharedTessNewsChecks(BL);
   const clearance = claimClearanceProof();
   record("hub footprint clearance: conservative rejection preserves circular boundaries, live reservations and exceptional numbers", clearance.failures === 0 && clearance.cases >= 4000, JSON.stringify(clearance));
   await cloudHopperFailureChecks(BL);
