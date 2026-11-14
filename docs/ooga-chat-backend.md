@@ -352,7 +352,9 @@ publication the same way. A listener changing zone loses the old zone's pulls at
 
 **Durable cleanup.** Every close goes through a queue kept in storage (`mediaCleanup`) and retried by the alarm until
 the SFU confirms (`close_track_error` counts as gone) or an hour has passed, after every client has left too. A
-session whose tracks are unknown (a failed call) is swept whole. With 64 jobs pending, publishing and receiving wait
+session whose tracks are unknown (a failed call) is swept whole, and any track that sweep finds and fails to close is
+kept for the next try. Two runs over one job (the alarm's and a new close merged into it) never remove another job. With
+64 jobs pending, publishing and receiving wait
 (`cleanup_pending`) while giving things up still works. A woken object restores each connection's media from
 `media:<connId>` and sweeps the sessions of a socket that went while it slept.
 
@@ -365,7 +367,9 @@ that moved on), `capability_required`, `permission_changed`, `receive_required`,
 `upstream_failed`.
 
 **The island hears Ooga Chat speakers.** The Audience sends the Room its speakers' publications
-(`audienceSources`: GitHub id, zone, reference, generation) whenever they change. An island player whose outdoor grant
+(`audienceSources`: GitHub id, zone, reference, generation) whenever they change. The Room keeps the list in its
+storage, so it survives the Room's hibernation; the Audience keeps the last list it delivered, so a wake sends only a
+change and a failed send is tried again. An island player whose outdoor grant
 is open in a zone (#667) gets that zone's Ooga Chat speakers as voice peers by GitHub id, pulls them through its usual
 `/api/voice/pull` by the Audience's reference alone (checked again after the SFU call), and loses them, closed at the
 SFU, when they stop. An island player without a grant never hears them. A chat speaker's id is never an island player's
@@ -505,7 +509,8 @@ cd worker && npm run migrate:chat:local && npm run dev:chat -- --env-file chat/.
 The edge listens on `http://localhost:8788` with `SITE_ORIGIN` overridden to match, so its cookies are plain local
 ones. `chat/.dev.vars` (copied from `dev.vars.example`, gitignored) holds a development OAuth app's secret, never
 production's. Both local Workers read `ENVIRONMENT` `staging` from the staging configs, so the bridge accepts the edge.
-Without a staged app (`npm run build:ooga-chat`, #651) the edge still answers its API and health says `down`.
+Without the app's build on the branch (`npm run build:ooga-chat`, #651), `worker/chat/stage.mjs` stages a placeholder page
+instead, so the edge still deploys and answers its API, and health says `down` for the app.
 
 ## Deployment order and rollback
 

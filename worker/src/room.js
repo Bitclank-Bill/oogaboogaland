@@ -114,6 +114,8 @@ export class Room extends DurableObject {
       this.studio.hands = [...new Set((Array.isArray(this.studio.hands) ? this.studio.hands : []).filter(seated))].slice(0, MAX_PLAYERS);
       this.studio.invited = this.studio.mode === "qa" ? [...new Set((Array.isArray(this.studio.invited) ? this.studio.invited : []).filter(seated))].slice(0, MAX_PLAYERS) : [];
       this.cleanupJobs = (await ctx.storage.get("voiceCleanup")) || [];
+      // Ooga Chat's speakers the island's open outdoor grants hear (#666), as the Audience last sent them.
+      this.chatSources = audienceRoom.cleanSources(await ctx.storage.get("chatSources"));
       this.links = restoreLinks(await ctx.storage.get("voiceLinks"));
       const chalk = await ctx.storage.get("chalk"), marks = chalk && CHALK.restore(chalk.marks);
       // A board stored before the board grew (no `v`) is widened as it loads; the next save stores it widened.
@@ -1154,7 +1156,7 @@ export class Room extends DurableObject {
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }
-  audienceSources(list) { audienceRoom.sources(this, list); }
+  audienceSources(list) { return audienceRoom.sources(this, list); }
   // The outdoor handshake's answers from the Audience (#667): confirmed retirements, and each zone's listeners.
   audienceConfirmed(ids) { audienceRoom.confirmed(this, ids); }
   audienceListeners(counts) { audienceRoom.listeners(this, counts); }

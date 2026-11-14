@@ -136,12 +136,15 @@ export const audienceRoom = {
   // The Audience's list of chat speakers' publications (`{ id, zone, session, track, gen }`, id a GitHub account id),
   // replaced whole. An island player with an open outdoor grant in a zone hears that zone's chat speakers as voice peers
   // by those ids (none of them is ever an island player too: the island's own voice ends a chat lease first).
+  cleanSources: (list) => (Array.isArray(list) ? list : []).filter((s) => s && Number.isSafeInteger(s.id) && s.id > 0 && isZone(s.zone)
+    && typeof s.session === "string" && typeof s.track === "string").slice(0, 64),
   sources(room, list) {
-    room.chatSources = (Array.isArray(list) ? list : []).filter((s) => s && Number.isSafeInteger(s.id) && s.id > 0 && isZone(s.zone)
-      && typeof s.session === "string" && typeof s.track === "string").slice(0, 64);
+    room.chatSources = audienceRoom.cleanSources(list);
     // Who hears whom changed: a source gone is closed for every island listener, one new is offered.
     room.enforceStudio();
     for (const p of room.players.values()) if (isOpen(p)) audienceRoom.tellAudience(room, p);
+    // Kept in the Room's storage, so a Room woken from hibernation still has it: the Audience sends only changes.
+    return room.ctx.storage.put("chatSources", room.chatSources);
   },
   sourceOf: (room, id) => (room.chatSources || []).find((s) => s.id === id) || null,
   addSources(room, plan) {
