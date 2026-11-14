@@ -1,5 +1,5 @@
 // Block Frenzy: capture the flag, Bitcoin themed. Each side guards its Bitcoin block, a glowing cube in
-// its team's colour on a stand in its fort; steal the other side's, carry it home and touch your own stand while your own block is
+// its team's colour on a stand in its fort; steal the other side's, carry it home and touch your own stand, or throw it into your zone, while your own block is
 // home. Paint splats a rival for a moment (a carrier drops what they carry) and nobody dies. Two a side: the visitor
 // and a teammate against two rivals, the three bots run by `block-sim.js`. First to three captures.
 //
@@ -214,16 +214,19 @@
         hip: C.ZIP_HANG - cave.parts.armR.position.y - Math.hypot(cave.elbow.y - cave.elbow.length, cave.elbow.z) * cave.armScale } : null;
       if (cave) trolley.scale.x = Math.max(1, (Math.abs(cave.parts.armR.position.x - cave.parts.armL.position.x) + 0.16) / 0.6);
       const chute = createNode({ geometry: BM.chute(0), visible: false });
-      // The jetpack on the back, its flames lit while it thrusts.
-      const jet = createNode({ geometry: BM.jetpack(0), position: { x: 0, y: 0.78, z: -0.3 } });
-      const jetFlame = createNode({ geometry: BM.jetFlames(), visible: false });
-      addChild(jet, jetFlame);
+      // Fit the team pack to the same body-relative back as the island's, including shorter/slim Oogas and ride poses.
+      const jetGeometry = BM.jetpack(0);
+      const jet = cave ? BL.crew.jetpackNode(cave.root, cave.traits.height, 0, jetGeometry, BM.jetFlames())
+        : createNode({ geometry: jetGeometry, position: { x: 0, y: 0.78, z: -0.3 } });
+      const jetFlame = cave ? jet.children[0] : createNode({ geometry: BM.jetFlames(), visible: false });
+      if (cave) BL.crew.seatJetpack(cave, jet, jetGeometry, {});
+      else { addChild(jet, jetFlame); addChild(body, jet); }
       // The monkeys at the hips, shown while the power-up lasts.
       const monkeys = [-1, 1].map((side) => createNode({ geometry: BM.monkey(), position: { x: side * 0.62, y: 0.82, z: 0.08 }, scale: { x: 0.9, y: 0.9, z: 0.9 }, visible: false }));
       // Laser eyes: the lit eyes on the face, and the beam, placed in the world each frame (`poseBeams`).
       const eyes = createNode({ geometry: BM.laserEyes(), position: { x: 0, y: 1.5, z: 0.24 }, visible: false });
       const beam = place(createNode({ geometry: BM.beam(), visible: false }));
-      addChild(body, ring, blob, bubble, netted, held, trolley, chute, jet, eyes, ...monkeys);
+      addChild(body, ring, blob, bubble, netted, held, trolley, chute, eyes, ...monkeys);
       // The gun sits in the right hand, its muzzle along the arm; the caveman's own club stays home.
       let gun = null, gunL = null;
       const flash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }), flashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
@@ -596,7 +599,7 @@
   const sizeOf = (m) => WIRE.plannedSize(m);
   const matchLine = (m) => `${sizeOf(m)}v${sizeOf(m)} on ${(el.maps.find((b) => b.dataset.map === WIRE.MAPS[m.map]) || { textContent: WIRE.MAPS[m.map] }).textContent} · ${RULE_WORDS[WIRE.RULES[m.rule] || "home"]}`;
   // The board's help line, for the rule and the captures in force.
-  const helpLine = (lead, rule, target) => `${lead} Steal the rivals' Bitcoin block (their colour), carry it to your own stand${rule === "any" ? " (your own block doesn't need to be home)" : " while your block is home"}. First to ${target} capture${target === 1 ? "" : "s"} wins.`;
+  const helpLine = (lead, rule, target) => `${lead} Steal the rivals' Bitcoin block (their colour), carry it to your own stand or throw it into your zone${rule === "any" ? " (your own block doesn't need to be home)" : " while your block is home"}. First to ${target} capture${target === 1 ? "" : "s"} wins.`;
   // In a match, the board's solo picks don't apply: they show what the match will play and are muted, all but the map
   // for whoever chooses it (and Detail, which is this page's own). Leaving, they go back to the visitor's picks.
   let boardInMatch = false;
@@ -1044,7 +1047,7 @@
     if ((t === "splat" || t === "bonk") && e.by >= 0) feed(`${nameOf(e.by)} ${t === "bonk" ? "bonked" : "splatted"} ${who}`, sim.actors[e.by].team);
     else if (t === "pickup") feed(`${who} grabbed the ${TEAM_NAME[e.team]} block`, sim.actors[e.actor].team);
     else if (t === "rescue") feed(`${who} sent the ${TEAM_NAME[e.team]} block home`, e.team);
-    else if (t === "capture") feed(`${who} mined a block! ${TEAM_NAME[e.team]} ${sim.score[e.team]}`, e.team);
+    else if (t === "capture") feed(`${who} ${e.y ? "threw it home" : "mined a block"}! ${TEAM_NAME[e.team]} ${sim.score[e.team]}`, e.team);
     else if (t === "power") feed(`${who} got ${({ boots: "lightning boots", halving: "the halving", cold: "cold storage", laser: "laser eyes", monkeys: "the monkeys" })[SIM.POWERS[e.y]]}`, e.team);
     else if (t === "zip") feed(`${who} took the zipline`, e.team);
     else if (t === "trap") feed(`${who} is stuck in a quiz`, e.team);
@@ -1223,7 +1226,7 @@
         if (me) { center("BACK HOME", 1000); notice(COARSE ? "You fell off the island · hold Jump in the air to jetpack back next time" : "You fell off the island · hold Space in the air to jetpack back next time", 2600); }
       } else if (e.type === "go") {
         center("GO!", 900);
-        notice(`First to ${sim.target} · steal the ${sim.rival} block · bring it home · ${COARSE ? "Pass" : "Tab"} throws it to a friend`, 4500);
+        notice(`First to ${sim.target} · steal the ${sim.rival} block · bring it home · ${COARSE ? "Pass" : "Tab"} throws it to a friend or into your zone`, 4500);
       } else if (e.type === "build") {
         fx.burst(e.x, 0.6, e.z, 8, WOOD_BITS, 1.6);
         if (me) updateTools();
@@ -1249,8 +1252,8 @@
       else if (e.type === "zip") { if (me) { center("ZIP!", 700); notice("Space lets go early", 1600); } }
       else if (e.type === "unzip") { if (me) updateTools(); }
       else if (e.type === "waiting") {
-        if (me) { center("NOT YET!", 1200); notice("Your own block isn't home, so you can't score. Hold on here while your team brings it back, or go get it", 4000); }
-        else if (mine) notice("Teammate is waiting at our stand · get our block home so they can score", 3000);
+        if (me) { center("NOT YET!", 1200); notice(e.y ? "Your own block isn't home, so that throw can't score. Theirs lies where it landed" : "Your own block isn't home, so you can't score. Hold on here while your team brings it back, or go get it", 4000); }
+        else if (mine) notice(e.y ? "Teammate's throw can't score · our block isn't home" : "Teammate is waiting at our stand · get our block home so they can score", 3000);
       } else if (e.type === "lift" || e.type === "set") {
         if (e.actor === you) updateTools();
         if (e.type === "set") fx.burst(e.x, e.y + 0.2, e.z, 6, WOOD_BITS, 1.2);
@@ -2583,6 +2586,8 @@
   const MAP_DECOR = { fort: ["rock", "bush", "tree"], town: ["tree", "bush", "bush"], jungle: ["tree", "tree", "bush"], haunted: ["rock", "rock", "bush"], clank: ["rock", "rock", "rock"] };
   const buildDecor = (A, add) => {
     const kinds = MAP_DECOR[A.id], H = BL.hubModels;
+    // Gorilla Jungle's ring of trees is one mesh of its own.
+    if (A.id === "jungle") { add(createNode({ geometry: BM.jungleRing(), sightHidden: true })); return; }
     for (let k = 0; k < 18; k++) {
       const ang = k / 18 * Math.PI + 0.13 * (k % 5), n = 0.68 + 0.24 * ((k * 37 % 11) / 11), x = Math.sin(ang) * A.W * n, z = Math.cos(ang) * A.L * n;
       if (SIM.solidAt(x, 1, z) || SIM.solidAt(x, 3.8, z) || Math.abs(x) < A.fieldW + 1 && Math.abs(z) < A.fieldL + 1) continue;
@@ -2615,7 +2620,9 @@
     add(createNode({ geometry: BM.isle(SIM.MAPS.indexOf(selection.map)) }));
     add(createNode({ geometry: BM.keel(SIM.MAPS.indexOf(selection.map)) }));
     if (detail.full) buildDecor(A, add);
-    for (const [x, z] of A.puddles || []) add(createNode({ geometry: BM.puddle(), position: { x, y: 0, z } }));
+    // Ooga Town's lettering and small dressing, one mesh, behind the same setting.
+    if (detail.full && A.id === "town") add(createNode({ geometry: BM.townDress(), sightHidden: true }));
+    if (!(A.drawn && A.drawn.puddles)) for (const [x, z] of A.puddles || []) add(createNode({ geometry: BM.puddle(), position: { x, y: 0, z } }));
     // A power surge's arcs on Clanktown, lightning elsewhere.
     boltNode = add(createNode({ geometry: A.id === "clank" ? BM.arc() : BM.bolt(), visible: false, sightHidden: true }));
     boltRing = add(createNode({ geometry: BM.ring(0), visible: false, sightHidden: true, scale: { x: 3.2, y: 1, z: 3.2 } }));
@@ -2671,7 +2678,7 @@
     });
     peelNodes = A.peels.map(([x, z], i) => add(createNode({ geometry: BM.peel(), position: { x, y: 0.01, z }, rotation: { x: 0, y: i * 1.7, z: 0 } })));
     // Gorilla Jungle: the cargo nets up to the tree forts, and the gorillas themselves.
-    for (const n of A.nets || []) {
+    for (const n of (A.drawn && A.drawn.nets ? [] : A.nets) || []) {
       const [x0, x1, z0, z1] = n.zone, w = n.dx ? z1 - z0 : x1 - x0;
       const key = `${Math.round(Math.max(w, 1.2) * 10)}:${Math.round(n.top * 10)}`;
       add(createNode({ geometry: BM.net2(key), position: { x: (x0 + x1) / 2, y: 0, z: (z0 + z1) / 2 }, rotation: { x: 0.08, y: n.dx ? Math.PI / 2 : 0, z: 0 } }));
