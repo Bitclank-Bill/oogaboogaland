@@ -23,7 +23,7 @@ globalThis.WebSocketPair = class { constructor() { this[0] = socket(); this[1] =
 globalThis.WebSocketRequestResponsePair = class {};
 
 // The SFU, faked behind fetch: sessions, their tracks by mid, every call, and failures on demand.
-const sfu = { sessions: new Map(), calls: [], failClose: false, failNew: false, onNewTracks: null };
+const sfu = { sessions: new Map(), calls: [], failClose: false, failNew: false, onNewTracks: null, failMids: new Set() };
 let nextId = 0;
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(typeof input === "string" ? input : input.url);
@@ -53,7 +53,11 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (what === "tracks" && verb === "close") {
     if (sfu.failClose) return reply({ errorCode: "busy" }, 500);
-    return reply({ tracks: body.tracks.map(({ mid }) => { if (tracks.has(mid)) tracks.get(mid).status = "inactive"; return { mid }; }) });
+    return reply({ tracks: body.tracks.map(({ mid }) => {
+      if (sfu.failMids.has(mid)) return { mid, errorCode: "busy" };
+      if (tracks.has(mid)) tracks.get(mid).status = "inactive";
+      return { mid };
+    }) });
   }
   if (what === "renegotiate") return reply({});
   if (!what) return reply({ tracks: [...tracks].map(([mid, t]) => ({ mid, status: t.status })) });
@@ -276,6 +280,8 @@ const roomHarness = async () => {
   const env = { OOGA_CHAT_FEATURES: "bridge", AUDIENCE: { getByName: () => ({ world: async () => ({ ok: true }), watch: async () => {}, snapshot: async () => null }) } };
   const room = new context.Room(ctx, env);
   await ready;
+  // The same Room woken from hibernation: a new object over the same storage.
+  const wake = async () => { const woken = new context.Room(ctx, env); await ready; return woken; };
   const pulls = [], closes = [];
   room.sfu = { newTracks: async (session, body) => { pulls.push(body.tracks); return { tracks: body.tracks.map((t, i) => ({ mid: `r${i}`, sessionId: t.sessionId, trackName: t.trackName })) }; },
     closeTracks: async (session, mids) => { closes.push(mids); return { tracks: mids.map((mid) => ({ mid })) }; }, getSession: async () => ({ tracks: [] }) };
@@ -287,7 +293,7 @@ const roomHarness = async () => {
     await room.webSocketMessage(ws, JSON.stringify({ t: "body", name: login }));
     return ws;
   };
-  return { room, join, pulls, closes };
+  return { room, join, pulls, closes, wake };
 };
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -312,4 +318,49 @@ test("the island: a player with an open outdoor grant hears Ooga Chat speakers o
   assert.deepEqual(plain(h.room.players.get(1).voice.mids), {});
   for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.ok(h.closes.some((mids) => mids.includes("r0")), "closed at the SFU, not just forgotten");
+});
+
+test("a woken Room keeps the Audience's Ooga Chat speakers; the Audience resends only what changed, and again when not delivered", async () => {
+  const h = await roomHarness();
+  const list = [{ id: 777, zone: "main", session: "chat-pub", track: "mic", gen: 9 }];
+  await h.room.audienceSources(list);
+  const woken = await h.wake();
+  assert.deepEqual(plain(woken.chatSources), list, "an island grant still hears the chat speaker after the Room slept");
+  const a = host();
+  await a.make();
+  await a.settle();
+  assert.deepEqual([a.room.sources.length, a.storage.get("sourcesSig")], [1, "[]"], "a first wake tells the Room once");
+  const again = await a.make();
+  await a.settle();
+  assert.equal(a.room.sources.length, 1, "nothing changed while it slept: nothing resent");
+  const live = again.env.ROOM;
+  again.env.ROOM = { getByName: () => ({ audienceSources: async () => { throw new Error("room down"); } }) };
+  again.media.chatSources = () => list;
+  again.sourcesChanged();
+  await a.settle();
+  assert.deepEqual([again.sourcesSig, a.storage.get("sourcesSig")], [null, "[]"], "a failed send is not counted as told");
+  again.env.ROOM = live;
+  again.sourcesChanged();
+  await a.settle();
+  assert.deepEqual(plain(a.room.sources.at(-1)), list);
+  assert.equal(a.storage.get("sourcesSig"), JSON.stringify(list));
+});
+
+test("cleanup: two runs over one job never remove another, and tracks found through getSession are retried until closed", async () => {
+  const a = await host().make();
+  for (const id of ["sA", "sB", "sC"]) sfu.sessions.set(id, new Map([["0", { status: "active" }], ["1", { status: "active" }]]));
+  const jobA = { session: "sA", mids: ["0"], all: false, at: Date.now(), tries: 0 };
+  const jobB = { session: "sB", mids: ["0"], all: false, at: Date.now(), tries: 0 };
+  a.media.cleanup.push(jobA, jobB);
+  await Promise.all([a.media.runCleanup(jobA), a.media.runCleanup(jobA)]);
+  assert.deepEqual(a.media.cleanup.map((j) => j.session), ["sB"], "the second run's removal finds its job gone and touches nothing else");
+  a.media.cleanup.splice(0);
+  const jobC = { session: "sC", mids: [], all: true, at: Date.now(), tries: 0 };
+  a.media.cleanup.push(jobC);
+  sfu.failMids.add("1");
+  await a.media.runCleanup(jobC);
+  assert.deepEqual([a.media.cleanup.includes(jobC), jobC.mids, jobC.all], [true, ["1"], false], "a track getSession found that failed to close is kept");
+  sfu.failMids.clear();
+  await a.media.runCleanup(jobC);
+  assert.deepEqual([a.media.cleanup.length, openMids("sC")], [0, []]);
 });

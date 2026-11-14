@@ -109,7 +109,10 @@ export class Audience extends DurableObject {
       this.model.commit();
       for (const zone of ZONES) this.model.zones[zone].rev = meta.revs && Number.isSafeInteger(meta.revs[zone]) ? meta.revs[zone] : 0;
       await this.media.restore();
-      this.sourcesSig = JSON.stringify(this.media.chatSources());
+      // The list the Room was last told, kept: a wake sends only what changed meanwhile (a deployment that dropped every
+      // socket empties it), so the Room's own stored copy never stays stale.
+      this.sourcesSig = (await ctx.storage.get("sourcesSig")) ?? null;
+      this.sourcesChanged();
     });
   }
 
@@ -203,7 +206,15 @@ export class Audience extends DurableObject {
     const list = this.media.chatSources(), sig = JSON.stringify(list);
     if (sig === this.sourcesSig || !this.env.ROOM) return;
     this.sourcesSig = sig;
-    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceSources(list)).catch(() => {});
+    this.roomQueue = this.roomQueue.then(async () => {
+      try {
+        await this.env.ROOM.getByName("island").audienceSources(list);
+        await this.ctx.storage.put("sourcesSig", sig);
+      } catch {
+        // Not delivered: the next check sends it again rather than counting it as told.
+        if (this.sourcesSig === sig) this.sourcesSig = null;
+      }
+    });
     this.background(this.roomQueue);
   }
 

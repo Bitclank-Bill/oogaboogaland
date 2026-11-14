@@ -68,16 +68,22 @@ export const createMediaBroker = (aud) => {
   const queueClose = async (session, mids, all = false) => {
     if (!sfu || !session || (!mids.length && !all)) return;
     let job = cleanup.find((j) => j.session === session);
-    if (job) { job.mids = [...new Set(job.mids.concat(mids))]; job.all = job.all || all; }
+    // A merge bumps the job's version, so a run already in flight for it leaves it for the run this one starts.
+    if (job) { job.mids = [...new Set(job.mids.concat(mids))]; job.all = job.all || all; job.v = (job.v || 0) + 1; }
     else cleanup.push(job = { session, mids: [...new Set(mids)], all, at: Date.now(), tries: 0 });
     await persistCleanup();
     await runCleanup(job);
   };
+  // Two runs can hold the same job at once (the alarm's, and `queueClose`'s after a merge: an SFU call opens the object's
+  // input gate), so a job leaves the queue only if it is still there, never by a stale index.
+  const removeJob = (job) => { const i = cleanup.indexOf(job); if (i >= 0) cleanup.splice(i, 1); };
   const runCleanup = async (only = null) => {
     for (const job of [...cleanup]) {
       if (only && job !== only) continue;
-      if (Date.now() - job.at > CLEANUP_MS) { cleanup.splice(cleanup.indexOf(job), 1); continue; }
+      if (!cleanup.includes(job)) continue;
+      if (Date.now() - job.at > CLEANUP_MS) { removeJob(job); continue; }
       job.tries++;
+      const v = job.v || 0;
       try {
         let mids = job.mids.slice();
         if (job.all) {
@@ -85,13 +91,14 @@ export const createMediaBroker = (aud) => {
           mids = [...new Set(mids.concat((state.tracks || []).filter((t) => t.status !== "inactive" && typeof t.mid === "string").map((t) => t.mid)))];
         }
         const res = mids.length ? await sfu.closeTracks(job.session, mids, true) : { tracks: [] };
-        // `close_track_error` confirms a track already gone; anything else unconfirmed is tried again.
+        // `close_track_error` confirms a track already gone; anything else unconfirmed is tried again, those `all` found
+        // included, and anything merged in meanwhile is kept.
         const done = new Set((res.tracks || []).filter((t) => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map((t) => t.mid));
-        job.mids = job.mids.filter((mid) => !done.has(mid));
-        if (!job.mids.length && (!job.all || mids.every((mid) => done.has(mid)))) cleanup.splice(cleanup.indexOf(job), 1);
-        else job.all = false;
+        job.mids = [...new Set(job.mids.concat(mids))].filter((mid) => !done.has(mid));
+        // Merged into meanwhile (its version moved): the run `queueClose` started finishes it, with `all` as asked.
+        if ((job.v || 0) === v) { if (!job.mids.length) removeJob(job); else job.all = false; }
       } catch (err) {
-        if (sfuSessionGone(err)) cleanup.splice(cleanup.indexOf(job), 1);
+        if (sfuSessionGone(err)) removeJob(job);
       }
     }
     await persistCleanup();
