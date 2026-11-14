@@ -11,6 +11,7 @@
 // reactions over a body and every world action stay the island's (docs/ooga-chat-backend.md, the capability matrix).
 // Re-exported by protocol.js, as the audience glue is, so the Room's checks load it with the protocol.
 
+import { bridgeFeatures } from "./chat-bridge-protocol.js";
 import { getPlayer } from "./db.js";
 import { audienceRoom } from "./room-audience.js";
 
@@ -24,6 +25,9 @@ const CLOSE = { stale: 4000, bad: 4400, auth: 4401, full: 4429 };
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 const members = (room) => room.community || (room.community = new Map());
+// The Room's chat memory's life: set on the first member touch after the Room was built (a wake or a restart builds a
+// new one with an empty ring), so a reconnecting app that sees a new epoch knows lines it missed are gone, not quiet.
+const epochOf = (room, now) => room.communityEpoch || (room.communityEpoch = now);
 const inVoice = (p) => !!p.voice && (!!p.voice.track || !!p.voice.sub && p.muted === true);
 /** An island player as Online Oogas shows it to a member: presence, never a position. */
 export const presenceOf = (p) => ({ id: p.id, login: p.login, display: p.display || p.login, body: p.body || null, zone: p.zone, voice: inVoice(p),
@@ -76,8 +80,9 @@ export const commonsRoom = {
     m.chatBucket = room.chatBucketFor(m.id, m.seenAt);
     all.set(m.connId, m);
     server.serializeAttachment(attachmentOf(m));
-    send(server, { t: "community", v: COMMONS_V, op: "welcome", you: { id: m.id, login: m.login, display: m.display },
-      players: [...room.players.values()].map(presenceOf), features: [globalThis.BL.chatPolicy.FEATURE, COMMONS_FEATURE] });
+    send(server, { t: "community", v: COMMONS_V, op: "welcome", epoch: epochOf(room, now), send: bridgeFeatures(room.env).commonsSend,
+      you: { id: m.id, login: m.login, display: m.display }, players: [...room.players.values()].map(presenceOf),
+      features: [globalThis.BL.chatPolicy.FEATURE, COMMONS_FEATURE] });
     send(server, { t: "chat-history", messages: room.chat.list() });
     audienceRoom.welcome(room, m);
     await room.ensureSweep();
@@ -87,6 +92,7 @@ export const commonsRoom = {
   /** A woken Room's member socket, from its attachment. */
   restore(room, ws, a, now = Date.now()) {
     const m = { community: true, connId: a.connId, ws, id: a.id, login: a.login, display: a.display, principal: a.principal, authUntil: a.authUntil, seenAt: now, chatBucket: null };
+    epochOf(room, now);
     members(room).set(m.connId, m);
   },
 
@@ -104,6 +110,8 @@ export const commonsRoom = {
     m.seenAt = now;
     if (m.authUntil <= m.seenAt) { commonsRoom.close(room, m, CLOSE.auth, "auth_required"); return; }
     if (!msg || msg.t !== "chat") return;
+    // Rolled out reading first (#670): until the island's `commons-send`, a line is refused and the app keeps its draft.
+    if (!bridgeFeatures(room.env).commonsSend) { send(ws, { t: "chat-rejected", clientId: msg.clientId, reason: "read_only" }); return; }
     if (!m.chatBucket) m.chatBucket = room.chatBucketFor(m.id, m.seenAt);
     await room.say(m, msg.text, msg.clientId);
   },

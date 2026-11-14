@@ -20,8 +20,8 @@ const { commonsFetch } = await import("../src/chat-bridge.js");
 const { BRIDGE_VERSION } = await import("../src/chat-bridge-protocol.js");
 const { CHAT_BURST, CHAT_HZ, MAX_PLAYERS } = protocol;
 
-const harness = async ({ features = "bridge,commons,cloud", accepted = [] } = {}) => {
-  let ready = null, now = 1_800_000_000_000;
+const harness = async ({ features = "bridge,commons,commons-send,cloud", accepted = [], start = 1_800_000_000_000 } = {}) => {
+  let ready = null, now = start;
   class Clock extends Date { constructor(...a) { super(...(a.length ? a : [now])); } static now() { return now; } }
   const source = readFileSync(new URL("../src/room.js", import.meta.url), "utf8").replace(/import\s+[\s\S]*?from\s+"[^"]+";/g, "").replace("export class Room", "class Room") + "\nglobalThis.Room = Room;";
   const context = { ...protocol, sha256Hex: async (t) => `h${t.length}:${t}`, getPlayer: async () => null, sfuClient: () => null, deliverHighscores: async () => {},
@@ -64,7 +64,8 @@ test("a member joins without a player slot, sees presence without positions, and
   assert.equal(res.status, 101);
   assert.equal(h.room.players.size, 1, "no player slot: Online Oogas counts the island's players, not Ooga Chat's sockets");
   const welcome = ws.sent[0];
-  assert.deepEqual({ t: welcome.t, op: welcome.op, you: welcome.you }, { t: "community", op: "welcome", you: { id: 2, login: "bea", display: "BEA" } });
+  assert.deepEqual({ t: welcome.t, op: welcome.op, epoch: welcome.epoch, send: welcome.send, you: welcome.you },
+    { t: "community", op: "welcome", epoch: 1_800_000_000_000, send: true, you: { id: 2, login: "bea", display: "BEA" } });
   assert.deepEqual(welcome.players, [{ id: 1, login: "amy", display: "amy", body: "amy", zone: "outside", voice: false, muted: false, hand: false, handTone: 0, handEmoji: "" }]);
   assert.ok(!JSON.stringify(welcome).includes("12.5"), "never a position");
   assert.deepEqual(ws.sent[1].messages.map((m) => m.text), ["first"], "the island's one conversation, as it stands");
@@ -152,12 +153,27 @@ test("a woken Room keeps its members as members, never as players", async () => 
   const accepted = [];
   const first = await harness({ accepted });
   const { ws } = await first.member(2, "bea");
-  const woken = await harness({ accepted });
+  const woken = await harness({ accepted, start: 1_800_000_600_000 });
   assert.equal(woken.room.players.size, 0);
   assert.equal(woken.room.community.size, 1);
+  // A new connection after the wake hears a new epoch: the lines it may have missed are gone, not quiet.
+  const { ws: fresh } = await woken.member(3, "cyd");
+  assert.deepEqual([ws.sent[0].epoch, fresh.sent[0].epoch], [1_800_000_000_000, 1_800_000_600_000]);
   const isle = await woken.player(1, "amy");
   await woken.send(ws, { t: "chat", text: "still here", clientId: "w1" });
   assert.deepEqual(lines(isle).map((l) => [l.login, l.text]), [["bea", "still here"]]);
+});
+
+test("rolled out reading first: without `commons-send` a member reads the conversation and its lines are refused, draft kept", async () => {
+  const h = await harness({ features: "bridge,commons,cloud" });
+  const isle = await h.player(1, "amy");
+  const { ws } = await h.member(2, "bea");
+  assert.equal(ws.sent[0].send, false);
+  await h.send(ws, { t: "chat", text: "hello", clientId: "r1" });
+  assert.deepEqual(ws.sent.at(-1), { t: "chat-rejected", clientId: "r1", reason: "read_only" });
+  assert.equal(lines(isle).length, 0);
+  await h.send(isle, { t: "chat", text: "from the island", clientId: "i1" });
+  assert.deepEqual(lines(ws).map((l) => l.text), ["from the island"]);
 });
 
 test("the bridge lets only an eligible GitHub principal through, with the island's `commons` switch, as a member", async () => {

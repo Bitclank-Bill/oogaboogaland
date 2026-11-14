@@ -101,7 +101,7 @@ flag counts only when what it needs is there too (`effective` in `worker/chat/sr
 
 **The island's `OOGA_CHAT_FEATURES`** (in `wrangler.<env>.jsonc`): `bridge` turns on every operation but `hello`;
 `outdoor` (island voices heard by Ooga Chat's audience), `cloud` (Ooga Chat speakers on clouds) and `commons` (The
-Commons from Ooga Chat) each need `bridge`. This end is the authority: whatever the edge's flags say, an island deployed
+Commons from Ooga Chat, read) each need `bridge`, and `commons-send` (members may also send lines) needs `commons`. This end is the authority: whatever the edge's flags say, an island deployed
 with `OOGA_CHAT_FEATURES` empty refuses every outward operation, so redeploying it empty is the kill switch for the
 whole path. A media feature switched off this way also runs its cleanup (#666, #667): it is not a hidden button.
 
@@ -500,11 +500,20 @@ Every line reaches every player and member once, with the island's own `{ t: "ch
 `chat-ack` or `chat-rejected` as a player does. Retention is the island's: in memory, gone on a wake. The display name is
 the island's for that account when it has one, so a line reads the same from either app.
 
-**Online Oogas, without positions.** The member's welcome is `{ t: "community", v: 1, op: "welcome", you: { id, login,
-display }, players: [...], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
+**Online Oogas, without positions.** The member's welcome is `{ t: "community", v: 1, op: "welcome", epoch, send, you:
+{ id, login, display }, players: [...], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
 display, body, zone, voice, muted, hand, handTone, handEmoji }`, and after that only the Room's `join`, `leave`, `body`,
 `zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. No pose, snapshot, distance, NPC frame, SFU id,
 voice link, private-conversation frame, reaction over a body, game state or chalk ever reaches a member.
+
+**The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
+`commonsHistory` the `chat-history` after it, `onlineDelta` the relayed `join`, `leave`, `body`, `zone`, `vstate` and
+`hand` (and `clouds` for cloud speakers), `commonsMessage` the island's `chat` line `{ t: "chat", id, at, login, name,
+text }`, and the acknowledgement and refusal its `chat-ack { clientId }` and `chat-rejected { clientId, reason }`
+(`rate`, `conflict`, `read_only`; a line the Unicode policy refuses is dropped unanswered, as the island's is). **Reconnects:** history is the ring as it stands, merged by `id`, which
+follows the Room's clock; `epoch` is the life of the Room's memory, so a welcome with a new `epoch` says the Room woke or
+restarted and whatever was said meanwhile is gone (never stored anywhere, attachments included), not that it was quiet.
+A socket kept open across a hibernation misses nothing and gets no second welcome.
 
 **The capability matrix.**
 
@@ -518,6 +527,7 @@ voice link, private-conversation frame, reaction over a body, game state or chal
 | Online Oogas: who is here, zone, voice, hand | no | no | no | yes, without positions | yes, with distances |
 | Private conversations, voice links | no | no | no | no (island only) | yes |
 | A body, poses, NPC host, games, chalk | no | no | no | no | yes |
+| Edit the display name | no | no | no | on the island (`PATCH /api/me`); shown in both | yes |
 
 **Access ends.** Signing out, deleting the account or losing eligibility (the edge's `revoke`, #663) closes every member
 socket of that account at once (`communityRevoke`); the Room's minute sweep closes one past its hourly re-authentication
@@ -529,6 +539,11 @@ closed 4429. A member holds no player slot (`MAX_PLAYERS` is the island's alone)
 member is connected the Room keeps its once-a-minute sweep, as it does for a player, and nothing else: a member is
 relayed only what the Room already broadcasts. With the island's `commons` switch off nobody new connects; members
 already in leave at their next sweep or reconnect.
+
+**Rollout.** Reading first: `commons` alone lets members in with `send: false`, and a line gets `chat-rejected` with
+`read_only` (the app keeps the draft); `commons-send` then opens sending, staging before production. Private text stays
+the island's: the standalone app gets no private-conversation or voice-link capability until a reviewed origin-safe
+design exists (a pad must never be used independently from two origins).
 
 ## Secrets and variables
 
