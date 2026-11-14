@@ -62,7 +62,9 @@ export const authorizeUrl = async (env, provider, state, verifier) => {
   return url.toString();
 };
 
-const call = (fetcher, url, init) => fetcher(url, { ...init, redirect: "error", signal: AbortSignal.timeout(TIMEOUT_MS) });
+// Workers' fetch takes "follow" or "manual" only ("error" throws): with "manual" a redirect comes back as its own 3xx
+// answer, which is not `ok`, so it fails as any other refusal does and is never followed.
+const call = (fetcher, url, init) => fetcher(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) });
 const failure = (status, reason) => status === 429 ? { result: "rate-limited", reason }
   : status === 402 ? { result: "unavailable", reason: "credits" }
   : status >= 500 ? { result: "unavailable", reason } : { result: "failed", reason };

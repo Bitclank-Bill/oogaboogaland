@@ -4,8 +4,9 @@
 // the answer with its time (worker/chat/src/capability.js). Only a GitHub principal is asked about: an X account is a
 // listener whatever its name, and a matching name is never a GitHub identity.
 // `state` is `eligible` (a bundled owner, or an unbundled contributor Oogatron vouches for), `ineligible` (the policy
-// held a verified snapshot and said no, or the island has banned the account), or `unknown` (the snapshot could not be
-// read, so nothing was decided). A display name, a leaderboard row or a donation is never consulted.
+// held a verified snapshot and said no, the island has banned the account, or another GitHub id holds that login on the
+// island, by the same rule as its `players_identity_insert` trigger), or `unknown` (the island's D1 or the snapshot could
+// not be read, so nothing was decided). A display name or a donation is never consulted.
 
 import { BridgeRefusal } from "./chat-bridge-protocol.js";
 
@@ -21,6 +22,14 @@ export const githubAccount = (principal) => {
   return { id, login: principal.login };
 };
 
+// The ban, and the island's identity-collision rule (migrations/0009_identity_collision_guard.sql): unless this id
+// already holds this login, another player row with it, or an Ooga leaderboard owning it under another id, is a collision.
+const COLLISION = `SELECT (SELECT banned_at FROM players WHERE id = ?1) AS banned_at,
+  (NOT EXISTS (SELECT 1 FROM players WHERE id = ?1 AND lower(login) = lower(?2))
+    AND (EXISTS (SELECT 1 FROM players WHERE id <> ?1 AND lower(login) = lower(?2))
+      OR EXISTS (SELECT 1 FROM game_highscores WHERE score_type = 'ooga'
+        AND json_extract(owners, '$.' || json_quote(lower(?2))) <> ?1))) AS collision`;
+
 export const capabilityOps = ({ contributorFor, now = Date.now }) => ({
   capability: {
     run: async (env, envelope) => {
@@ -28,9 +37,11 @@ export const capabilityOps = ({ contributorFor, now = Date.now }) => ({
       const answer = (state, character = null, reason = null) => ({ state, character, reason, policy: POLICY, checkedAt: now() });
       if (env.DB) {
         let row;
-        try { row = await env.DB.prepare("SELECT banned_at FROM players WHERE id = ?1").bind(id).first(); }
+        try { row = await env.DB.prepare(COLLISION).bind(id, login).first(); }
         catch { return answer("unknown", null, "unavailable"); }
         if (row && row.banned_at) return answer("ineligible", null, "banned");
+        // A login another id holds (renamed away on GitHub, then registered by someone else) is not this account's Ooga.
+        if (row && row.collision) return answer("ineligible", null, "identity-collision");
       }
       const owned = await contributorFor(login, id);
       if (owned) return answer("eligible", owned.handle);

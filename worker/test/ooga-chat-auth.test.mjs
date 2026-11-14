@@ -32,9 +32,11 @@ const islandOf = ({ contributors = { "ooga-dev": "ooga-dev" }, fresh = true, ban
 
 // GitHub and X as fakes: each answers the requests a sign-in makes and records them.
 const providers = ({ githubUser = { id: 583231, login: "ooga-dev", name: "Ooga Dev", type: "User", avatar_url: "https://avatars.githubusercontent.com/u/583231?v=4" },
-  xUser = { id: BIG_X_ID, username: "ooga_dev", name: "Ooga ‮Dev", profile_image_url: "https://pbs.twimg.com/profile_images/1/me_normal.jpg" }, status = {} } = {}) => {
+  xUser = { id: BIG_X_ID, username: "ooga_dev", name: "Ooga \u202eDev", profile_image_url: "https://pbs.twimg.com/profile_images/1/me_normal.jpg" }, status = {} } = {}) => {
   const seen = [];
   const fetch = async (input, init = {}) => {
+    // As workerd does: its fetch has no "error" redirect mode and throws on it.
+    if (init.redirect !== undefined && init.redirect !== "follow" && init.redirect !== "manual") throw new TypeError(`Invalid redirect value ${init.redirect}`);
     const url = new URL(typeof input === "string" ? input : input.url);
     seen.push({ url: url.toString(), init });
     const answer = (body, code = 200, type = "application/json") => new Response(typeof body === "string" || body instanceof Uint8Array ? body : JSON.stringify(body), { status: code, headers: { "content-type": type } });
@@ -120,7 +122,7 @@ test("GitHub: starts with a bound single-use state, ends home with the result al
   const text = JSON.stringify(view) + JSON.stringify(await s.env.DB.prepare("SELECT * FROM principals").all());
   for (const secret of ["gho_github_token", "the-code", "gh-secret"]) assert.ok(!text.includes(secret), secret);
   const exchange = s.fake.seen.find((r) => r.url.includes("access_token"));
-  assert.equal(exchange.init.redirect, "error");
+  assert.equal(exchange.init.redirect, "manual");
 });
 
 test("an ineligible GitHub account still signs in, as a listener; X is a listener whatever its name", async () => {
@@ -333,7 +335,7 @@ test("pictures: only the stored address on its provider's host, an image type, a
   assert.equal(res.headers.get("x-content-type-options"), "nosniff");
   assert.deepEqual([...new Uint8Array(await res.arrayBuffer())], [137, 80, 78, 71]);
   const fetched = s.fake.seen.find((r) => r.url.startsWith("https://avatars."));
-  assert.equal(fetched.init.redirect, "error");
+  assert.equal(fetched.init.redirect, "manual", "a redirect comes back as a 3xx, never followed");
   assert.equal(fetched.init.headers.cookie, undefined);
   assert.equal(fetched.init.headers.authorization, undefined);
   assert.equal((await s.go(path.replace(/[0-9a-f]{16}$/, "0000000000000000"))).status, 404, "an old key is no face");
@@ -349,7 +351,7 @@ test("pictures: only the stored address on its provider's host, an image type, a
 
 test("display names keep what a person chose and nothing that reorders or hides text", () => {
   assert.equal(cleanDisplay("  Ooga   Booga  ", "x"), "Ooga Booga");
-  assert.equal(cleanDisplay("a‮b⁦c​d\u0000e", "x"), "abcde");
+  assert.equal(cleanDisplay("a\u202eb\u2066c\u200bd\u0000e", "x"), "abcde");
   assert.equal(cleanDisplay("café 🍌", "x"), "café 🍌");
   assert.equal(cleanDisplay("", "login"), "login");
   assert.equal(cleanDisplay(null, "login"), "login");
@@ -386,4 +388,50 @@ test("expired sessions and abandoned sign-ins are purged daily", async () => {
   assert.equal(await s.env.DB.prepare("SELECT COUNT(*) AS n FROM sessions").first("n"), 0);
   assert.equal(await s.env.DB.prepare("SELECT COUNT(*) AS n FROM oauth_states").first("n"), 0);
   assert.equal(await s.env.DB.prepare("SELECT COUNT(*) AS n FROM principals").first("n"), 1, "the account stays");
+});
+
+test("the island refuses a login another GitHub id holds there, by its own identity-collision rule", async () => {
+  const DB = memoryD1(new URL("../migrations/", import.meta.url));
+  await DB.prepare("INSERT INTO players (id, login, created_at, last_login_at) VALUES (1, 'alice', 0, 0)").run();
+  await DB.prepare("UPDATE game_highscores SET owners = json_object('bob', 3) WHERE game_id = 'cloud-hopper'").run();
+  const contributorFor = Object.assign(async (login) => ({ handle: login.toLowerCase() }), { fresh: () => true });
+  const ops = { ...BASE_OPS, ...capabilityOps({ contributorFor, now: () => 42 }) };
+  const ask = async (id, login) => (await handleEnvelope({ ENVIRONMENT: "staging", OOGA_CHAT_FEATURES: "bridge", DB },
+    makeEnvelope("staging", "capability", {}, { id: "pr_x", provider: "github", providerUserId: String(id), login }), ops)).result;
+  assert.deepEqual([(await ask(1, "alice")).state, (await ask(1, "Alice")).state], ["eligible", "eligible"], "the id that holds the login");
+  assert.deepEqual(await ask(2, "ALICE"), { state: "ineligible", character: null, reason: "identity-collision", policy: POLICY, checkedAt: 42 },
+    "a login renamed away and taken by another account is not their Ooga");
+  assert.equal((await ask(3, "bob")).state, "eligible", "a leaderboard owner under its own id");
+  assert.equal((await ask(4, "bob")).reason, "identity-collision", "a leaderboard that owns the login under another id");
+  assert.equal((await ask(5, "carol")).state, "eligible", "a login nobody else holds");
+});
+
+test("a GitHub login taken by a new account ends the sessions of the principal that held it", async () => {
+  const s = setup();
+  await s.signIn("github");
+  const before = await s.env.DB.prepare("SELECT id FROM principals").first("id");
+  assert.equal(await s.env.DB.prepare("SELECT COUNT(*) AS n FROM capabilities").first("n"), 1);
+  const taker = setup({ island: s.island, fake: providers({ githubUser: { id: 999, login: "Ooga-Dev", name: "", type: "User", avatar_url: null } }) });
+  taker.env.DB = s.env.DB;
+  await taker.signIn("github");
+  const rows = (await s.env.DB.prepare("SELECT principal_id FROM sessions").all()).results.map((r) => r.principal_id);
+  assert.equal(rows.length, 1);
+  assert.notEqual(rows[0], before, "only the new holder of the login keeps a session");
+  assert.equal(await s.env.DB.prepare("SELECT COUNT(*) AS n FROM capabilities WHERE principal_id = ?1").bind(before).first("n"), 0);
+  assert.equal((await s.me()).status, 401, "the old holder's browser is signed out");
+});
+
+test("the picture's account decides before its cache: a deleted account or an old key is no face, whatever is cached", async () => {
+  const s = setup();
+  const store = new Map();
+  s.deps.cache = { match: async (key) => (store.has(key) ? store.get(key).clone() : undefined), put: async (key, res) => { store.set(key, res); } };
+  await s.signIn("github");
+  const path = (await (await s.me()).json()).identity.avatar;
+  assert.equal((await s.go(path)).status, 200);
+  assert.deepEqual([...store.keys()], [`${SITE}${path}`], "keyed by the path alone");
+  const fetches = s.fake.seen.length;
+  assert.equal((await s.go(`${path}?x=1`)).status, 200);
+  assert.equal(s.fake.seen.length, fetches, "a query string is the same cached face");
+  await s.go("/api/chat/me", { method: "DELETE", headers: site });
+  assert.equal((await s.go(path)).status, 404, "deleted, so no face, cached or not");
 });
