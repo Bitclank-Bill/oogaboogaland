@@ -381,7 +381,8 @@ cd worker && npm run migrate:chat:local && npm run dev:chat -- --env-file chat/.
 The edge listens on `http://localhost:8788` with `SITE_ORIGIN` overridden to match, so its cookies are plain local
 ones. `chat/.dev.vars` (copied from `dev.vars.example`, gitignored) holds a development OAuth app's secret, never
 production's. Both local Workers read `ENVIRONMENT` `staging` from the staging configs, so the bridge accepts the edge.
-Without a staged app (`npm run build:ooga-chat`, #651) the edge still answers its API and health says `down`.
+Without the app's build on the branch (`npm run build:ooga-chat`, #651), `worker/chat/stage.mjs` stages a placeholder page
+instead, so the edge still deploys and answers its API, and health says `down` for the app.
 
 ## Deployment order and rollback
 
