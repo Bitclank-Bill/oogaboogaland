@@ -113,7 +113,7 @@
     }
     for (let i = 0; i <= 13; i++) {
       const y = 20 + i, zc = 7 - Math.round(i * 0.6), w = i < 2 ? 0 : i < 4 || i > 10 ? 1 : 2, x = 16 + (i > 7 ? 1 : 0);
-      for (let d = -w; d <= w; d++) v.set(x, y, zc + d, i > 10 ? TIP : d === 0 ? QUILL : speckle(x, y, zc + d) < 35 ? VANE_LIGHT : VANE);
+      for (let d = -w; d <= w; d++) for (const side of [x, 13 - x]) v.set(side, y, zc + d, i > 10 ? TIP : d === 0 ? QUILL : speckle(x, y, zc + d) < 35 ? VANE_LIGHT : VANE);
     }
     return (hat = v);
   };
