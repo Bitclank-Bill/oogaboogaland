@@ -32441,6 +32441,10 @@ const oogaChatChecks = async () => {
     const art = manifest.files.find((file) => file.path.startsWith("art/"));
     const refuses = (dir) => { try { B.build(dir); return false; } catch (error) { return /refusing|did not stage/.test(error.message); } };
     mkdirSync(join(out, "foreign")); writeFileSync(join(out, "foreign", "keep.txt"), "x");
+    // stage.mjs's placeholder may be staged over, but not with anything else beside it or in place of its page.
+    const held = (files) => { const dir = mkdtempSync(join(out, "held-")); for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text); return dir; };
+    const overPlaceholder = (() => { const dir = held({ "index.html": B.PLACEHOLDER, "404.html": B.PLACEHOLDER }); B.build(dir); return readdirSync(dir).includes("build.json"); })();
+    const placeholderOnly = refuses(held({ "index.html": B.PLACEHOLDER, "404.html": B.PLACEHOLDER, "keep.txt": "x" })) && refuses(held({ "index.html": "<p>mine</p>", "404.html": B.PLACEHOLDER }));
     const withFixtures = B.build(staged, { fixtures: true });
     const fixtureJs = withFixtures.files.find((file) => file.path.startsWith("js/ooga-chat-fixture-"));
     const build = {
@@ -32452,7 +32456,8 @@ const oogaChatChecks = async () => {
       policy: B.headersFor(headers, "/")["Content-Security-Policy"] === `${B.POLICY}; frame-ancestors 'none'` && B.headersFor(headers, `/${script.path}`)["Cache-Control"].includes("immutable")
         && B.headersFor(headers, "/index.html")["Cache-Control"] === "no-cache",
       fixtures: !!fixtureJs && readFileSync(join(staged, fixtureJs.path), "utf8").includes("BL.oogaChatFixtures =") && readFileSync(join(staged, "fixture.html"), "utf8").includes('data-adapter="fixture"'),
-      guards: refuses(join(root, "_site")) && refuses(join(root, "src", "x")) && refuses(join(root, "untracked", "site")) && refuses(root) && refuses(join(out, "foreign"))
+      guards: refuses(join(root, "_site")) && refuses(join(root, "src", "x")) && refuses(join(root, "untracked", "site")) && refuses(root) && refuses(join(out, "foreign")),
+      placeholder: overPlaceholder && placeholderOnly
     };
     record("Ooga Chat build: one hashed same-origin script and stylesheet holding only the app's and the shared modules, no fixture code unless asked, its pictures renamed by hash, its policy in _headers, and never staged over the island's folders or a folder it did not make",
       Object.values(build).every(Boolean), JSON.stringify(build));

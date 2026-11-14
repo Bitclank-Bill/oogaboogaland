@@ -51,7 +51,16 @@ export const entries = () => {
   return { index, fixture, main, review };
 };
 
-// Refuse any folder the island stages, the repository or its sources, and a non-empty folder this script did not make.
+// The one-page placeholder worker/chat/stage.mjs (#662) staged before this build existed: exactly these two files, each
+// exactly this page. A checkout that deployed or ran dev:chat then still has it, and it may be staged over.
+export const PLACEHOLDER = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+  + "<title>Ooga Chat</title><p>Ooga Chat is on its way.</p></html>\n";
+const placeholder = (out) => {
+  const names = readdirSync(out).sort();
+  return names.join() === "404.html,index.html" && names.every((name) => readFileSync(join(out, name), "utf8") === PLACEHOLDER);
+};
+// Refuse any folder the island stages, the repository or its sources, and a non-empty folder this script did not make
+// (stage.mjs's placeholder aside).
 const guard = (out) => {
   const rel = relative(root, out).split(sep).join("/");
   const inside = rel !== "" && !rel.startsWith("..") && !/^[a-zA-Z]:|^\//.test(rel);
@@ -59,7 +68,7 @@ const guard = (out) => {
   if (out === root || inside && forbidden.some((dir) => rel === dir || rel.startsWith(`${dir}/`))) {
     throw new Error(`ooga-chat: refusing to stage into ${rel || "the repository root"}`);
   }
-  if (existsSync(out) && readdirSync(out).length) {
+  if (existsSync(out) && readdirSync(out).length && !placeholder(out)) {
     let mark = null;
     try { mark = JSON.parse(readFileSync(join(out, "build.json"), "utf8")); } catch { /* Not ours. */ }
     if (mark?.app !== "ooga-chat") throw new Error(`ooga-chat: ${out} holds files this script did not stage`);
