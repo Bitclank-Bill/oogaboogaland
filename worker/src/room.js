@@ -200,20 +200,24 @@ export class Room extends DurableObject {
     return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
   }
 
+  // Every message the room sends goes through here, players' and Ooga Chat members' alike, so the inspector's `out` and
+  // `outBytes` are the room's whole outbound traffic (text counted by its length, a binary frame by its bytes).
   send(ws, msg) {
+    const data = typeof msg === "string" || msg instanceof ArrayBuffer ? msg : JSON.stringify(msg);
     try {
-      ws.send(typeof msg === "string" || msg instanceof ArrayBuffer ? msg : JSON.stringify(msg));
+      ws.send(data);
     } catch {
       // A socket closing under us is dropped by its close event.
+      return false;
     }
+    this.inspect.count("out");
+    this.inspect.count("outBytes", typeof data === "string" ? data.length : data.byteLength);
+    return true;
   }
 
   broadcast(msg, except = null) {
     const text = JSON.stringify(msg);
-    let sent = 0;
-    for (const p of this.players.values()) if (p.ws !== except) { this.send(p.ws, text); sent++; }
-    this.inspect.count("out", sent);
-    this.inspect.count("outBytes", sent * text.length);
+    for (const p of this.players.values()) if (p.ws !== except) this.send(p.ws, text);
     // The Commons and Online Oogas for Ooga Chat's contributors, without positions (room-commons.js).
     commonsRoom.relay(this, msg);
   }
@@ -594,7 +598,7 @@ export class Room extends DurableObject {
       tessQueue.presence(this, p);
       this.electHost();
       // A page arriving on the island catches up with the NPCs at once rather than at the next frame.
-      if (p.inHub && p.id !== this.hostId && this.lastNpc) this.send(p.ws, this.lastNpc);
+      if (p.inHub && p.id !== this.hostId && this.lastNpc && this.send(p.ws, this.lastNpc)) { this.inspect.count("npcOut"); this.inspect.count("npcBytes", this.lastNpc.byteLength); }
     } else if (msg.t === "visible") {
       // A page hidden in a Block Frenzy match hands its hosting on; shown again, it comes back a guest (block.js).
       if (msg.on === p.visible) return;
@@ -1135,7 +1139,12 @@ export class Room extends DurableObject {
     if (!takeToken(p.npcBucket, NPC_HZ, Date.now())) return;
     p.seenAt = Date.now();
     this.lastNpc = data;
-    for (const q of this.players.values()) if (q !== p && q.inHub) this.send(q.ws, data);
+    // The largest outbound stream at a full room, so its frames and bytes are also counted on their own.
+    this.inspect.count("npc");
+    let relayed = 0;
+    for (const q of this.players.values()) if (q !== p && q.inHub && this.send(q.ws, data)) relayed++;
+    this.inspect.count("npcOut", relayed);
+    this.inspect.count("npcBytes", relayed * data.byteLength);
   }
 
   // Tells each player whom to hear, with each one's publication (`gens`: a microphone published again is
