@@ -47,7 +47,7 @@
       zone = parseZone(localStorage.getItem(zoneKey));
     } catch { zone = parseZone(null); /* Storage may be unavailable. */ }
     const roster = BL.oogaChatRoster.create();
-    let listening = null, heard = 0;
+    let listening = null, heard = 0, refused = 0, relisten = 0;
     let state = { mode: "loading", boot: null, session: null, auth: "checking", notice: null, busy: false, zone, voice: media.state,
       audience: { status: "off", zone, list: [], version: 0 } };
     const set = (patch) => {
@@ -57,25 +57,46 @@
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
     const hear = (status) => set({ audience: { status, zone: state.zone, list: roster.ready ? roster.list(state.session?.identity.principal) : [], version: ++heard } });
-    // One feed per signed-in principal, for the page's zone; none while signed out. Another principal starts again empty.
-    const listen = () => {
+    // One feed per signed-in principal, for the page's zone; none while signed out. Another principal starts again empty;
+    // a feed restarted for the same one (`kept`) keeps its list until the new snapshot replaces it.
+    const listen = (kept = null) => {
       const principal = state.mode === "live" && state.session ? state.session.identity.principal : null;
       if (principal === listening) return;
+      clearTimeout(relisten);
+      relisten = 0;
       feed?.dispose();
       feed = null;
       listening = principal;
-      roster.expect(state.zone);
+      if (principal !== kept) roster.expect(state.zone);
       if (!principal) return hear("off");
       feed = adapter.audience(state.boot, {
         message(msg) {
           const result = roster.apply(msg);
           if (result === "gap") feed.resync();
-          if (result === "applied") hear("live");
+          if (result === "applied") {
+            refused = 0;
+            hear("live");
+          }
         },
-        // A closed session is checked again; until then the list stays, marked as reconnecting rather than live.
+        // A closed session (4401) is checked again, the list kept meanwhile, marked as reconnecting rather than live.
+        // Then the feed starts afresh from what the check leaves: the same principal listens again, a signed-out one
+        // stops. A server that keeps refusing is asked less often, up to 16 s apart.
         status(next) {
-          if (next === "signed-out") auth.check("retry");
-          hear(next === "signed-out" ? "reconnecting" : next);
+          if (next !== "signed-out") return hear(next);
+          hear("reconnecting");
+          const own = feed;
+          refused = Math.min(refused + 1, 6);
+          clearTimeout(relisten);
+          relisten = setTimeout(() => {
+            relisten = 0;
+            if (feed !== own) return;
+            Promise.resolve(auth.check("retry")).finally(() => {
+              if (feed !== own) return;
+              const kept = listening;
+              listening = null;
+              listen(kept);
+            });
+          }, refused > 1 ? 1000 * 2 ** (refused - 2) : 0);
         }
       });
       feed.zone(state.zone);
@@ -163,6 +184,7 @@
   addEventListener("pagehide", (event) => {
     if (event.persisted) return;
     page.abort();
+    clearTimeout(relisten);
     feed?.dispose();
     auth?.dispose();
     shell?.dispose();

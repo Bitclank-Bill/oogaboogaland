@@ -3,7 +3,8 @@
 // participant is keyed by its opaque `id` (the server's principal, never a login) and its source `generation`; the
 // server owns membership, roles and contribution totals, and nothing here grants a role. A delta must follow the
 // revision before it in the same epoch: an older one is stale and dropped, a later one or one from a newer epoch is a
-// gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies.
+// gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies. A snapshot is the
+// server's whole list, so one at the revision already held applies too: after a reconnect it confirms the list.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -64,7 +65,7 @@
     const apply = (msg) => {
       if (!msg || msg.zone !== zone || !zone || !Number.isSafeInteger(msg.epoch) || !Number.isSafeInteger(msg.revision)) return "ignored";
       if (msg.type === "snapshot") {
-        if (msg.epoch < epoch || msg.epoch === epoch && msg.revision <= revision) return "stale";
+        if (msg.epoch < epoch || msg.epoch === epoch && msg.revision < revision) return "stale";
         const next = Array.isArray(msg.participants) && msg.participants.length <= 5000 ? keyed(msg.participants) : null;
         if (!next) return "gap";
         people = next;

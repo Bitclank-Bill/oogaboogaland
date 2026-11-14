@@ -7,8 +7,10 @@
 // sign-in off, `expiring` ends its session 20 s after load, and `signout-fails` never confirms a sign-out.
 // `?roster=` picks the audience a signed-in account hears (`ROSTERS`): `mixed` (the default: world and app speakers,
 // listeners, a duplicate and a missing total, then a join, a rename, a gap the page must resync over and a leave, one
-// every 4 s), `empty`, `crowd` (300 listeners), `reconnecting` (drops after 6 s and comes back in a new epoch), `full`
-// and `none` (no audience address). Accounts and participants are named samples with no picture, never real people.
+// every 4 s), `empty`, `crowd` (300 listeners), `reconnecting` (drops after 6 s and comes back 3 s later to the same
+// list, as a quiet zone does), `reauth` (closed as signed out, 4401, after 6 s: the app checks the session and opens a
+// new feed), `full` and `none` (no audience address). Accounts and participants are named samples with no picture,
+// never real people.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -31,7 +33,7 @@
   };
   // The account a state starts signed in as, and the one its GitHub button signs in as.
   const SIGNED_IN = { listener: "listener", contributor: "contributor", ineligible: "ineligible", unknown: "unknown", revoked: "revoked", expiring: "contributor", "signout-fails": "contributor" };
-  const ROSTERS = ["mixed", "empty", "crowd", "reconnecting", "full", "none"];
+  const ROSTERS = ["mixed", "empty", "crowd", "reconnecting", "reauth", "full", "none"];
   const person = (id, source, role, login, extra = {}) => ({ id: `fixture:${id}`, generation: 1, source, role, login, display: login, ...extra });
   const CAST = {
     main: [
@@ -69,6 +71,7 @@
     };
     // The audience: a snapshot a moment after each join, then the roster's script. The signed-in account listens.
     const feeds = new Set();
+    let opened = 0;
     const audience = (boot, { message, status }) => {
       let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false;
       const timers = new Set();
@@ -105,7 +108,9 @@
             : [...CAST[zone], ...self()];
           snapshot();
           if (roster === "mixed" && zone === "main") script();
-          if (roster === "reconnecting") after(6000, () => { status("reconnecting"); after(3000, join); });
+          // Back to an unchanged zone: the same epoch and revision, so the snapshot only confirms the list.
+          if (roster === "reconnecting") after(6000, () => { status("reconnecting"); after(3000, () => { status("connecting"); after(500, snapshot); }); });
+          if (roster === "reauth" && opened++ === 0) after(6000, () => status("signed-out"));
         });
       };
       const feed = {

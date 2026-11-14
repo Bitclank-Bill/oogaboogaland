@@ -32597,6 +32597,8 @@ const oogaChatChecks = async () => {
     stale: results[0] === "stale" && results[1] === "stale",
     gap: results[2] === "gap" && results[3] === "gap" && atomic,
     renamed, olderGen, newerGen,
+    // A reconnect to an unchanged zone answers with the revision already held: that snapshot confirms the list.
+    confirms: snap(3, roster.revision, cast) === "applied" && snap(3, roster.revision - 1, cast) === "stale",
     otherZone: snap(9, 1, cast, "dsb") === "ignored" && snap(2, 99, cast) === "stale",
     crowd: crowd.list(null).length === 600 && crowd.list(null)[599].id === "l-599",
     restarted: (roster.expect("dsb"), !roster.ready && roster.list("me").length === 0)
