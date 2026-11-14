@@ -22310,8 +22310,9 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
   const r = await b.evaluate(`(() => {
     const B = __ooga, D = BL.scenes.hub.debug, net = BL.net.state, T = D.timechainIsland, M = __ooga.poolIsland, F = D.bifrost;
     B.pilot.possess(B.cavemen.get("portlandhodl"));
-    // A point short of a bridge stands on the island's own ground.
-    const at = (p, wait) => { if (!Number.isFinite(p.y)) p.y = D.island.heightAt(p.x, p.z); B.pilot.navigate({ position: p, yaw: 0, pitch: 0.4, dist: 6 }); B.advance(wait, 1 / 60); return { to: net.blendTo, t: +net.blendT.toFixed(2), zone: net.zone, scope: BL.outdoorScope.state.scope, reason: BL.outdoorScope.state.reason }; };
+    // A point short of a bridge stands on the island's own ground: its surface, not the floor of a cliff ledge
+    // or cave under it, which heightAt answers where the column has one.
+    const at = (p, wait) => { if (!Number.isFinite(p.y)) p.y = D.island.surfaceAt(p.x, p.z); B.pilot.navigate({ position: p, yaw: 0, pitch: 0.4, dist: 6 }); B.advance(wait, 1 / 60); return { to: net.blendTo, t: +net.blendT.toFixed(2), zone: net.zone, scope: BL.outdoorScope.state.scope, reason: BL.outdoorScope.state.reason }; };
     // Each bridge as points from its island end (0) to where its land's zone begins (1), and a step onto the land.
     const sphereNear = T.place.bridgeZ + BL.timechainModels.SITE.span + 0.5, porch = BL.timechainModels.SPOTS.WAIT.z + 5;
     const pool = M.place, poolNear = pool.bridgeLocalZ + BL.poolModels.SITE.span, S = BL.poolModels.SITE;
