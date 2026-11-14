@@ -4264,7 +4264,14 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
       const from = i ? b.logs.length : 0;
       run.open = open || null;
       try {
+        const cpu = name === "wall movement performance" && process.env.COVERED_CPU === "1";
+        if (cpu) { await b.send("Profiler.enable"); await b.send("Profiler.start"); }
         await fn(b);
+        if (cpu) {
+          const { profile } = (await b.send("Profiler.stop")).result;
+          writeFileSync(join(root, "untracked", "covered-suite.cpuprofile"), JSON.stringify(profile));
+          writeFileSync(join(root, "untracked", "covered-suite-stats.json"), JSON.stringify(await b.evaluate("__ooga.headquarters.objectGuides.stats")));
+        }
         if (Date.now()-t0>=SESSION_MS) { overran=true; b.close(true); throw driverError("session deadline"); }
         const observed=b.logs.slice(from),notices=b.shorelineHealthy&&b.shorelineSoftware?observed.filter(readbackPerformanceNotice):[];
         if(notices.length)lines.push(`INFO software WebGL: ${notices.length} driver ReadPixels performance notices; healthy state/GL checks passed (no application readback required).`);
@@ -16628,7 +16635,7 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
         elapsed: C.stats().elapsed, climb: e.climb.active ? { descending: e.climb.descending, free: e.climb.free, hold: e.climb.holdPose,
           mount: e.climb.mountPending, wait: e.climb.waitRelease, handoff: e.climb.handoffDirection, claim: e.climb.claimPending, crest: e.climb.crestPending,
           search: e.climb.searchPending, progress: +(e.climb.progress || 0).toFixed(2), length: +(e.climb.length || 0).toFixed(2), opening: e.climb.openingExit } : null });
-      const track = list.map(e => ({ e, pile, pileAt: pile ? 0 : -1, leftAt: -1, loungeAt: -1, maxStep: 0, prev: null, stall: null, trace: [], approach: [],
+      const track = list.map(e => ({ e, pile, pileAt: pile ? 0 : -1, leftAt: -1, loungeAt: -1, maxStep: 0, prev: null, stall: null, trace: [], approach: [], transitions: [], state: "",
         last: { x: e.root.position.x, z: e.root.position.z }, recoveries: e.stuck.recoveries }));
       let f = 0;
       for (; f < frames && track.some(t => t.loungeAt < 0); f++) {
@@ -16641,6 +16648,13 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
           if (t.leftAt >= 0 && t.loungeAt < 0 && e.phase === "chill" && e.lounge && e.roam.arrived) t.loungeAt = f;
           if (!t.stall && e.stuck.recoveries !== t.recoveries) t.stall = { frame: f, ...t.prev };
           if (!t.stall) t.prev = snap(e);
+          if (t.leftAt >= 0 && !t.stall && t.loungeAt < 0) {
+            const state = [e.climb.active, e.climb.descending, e.climb.failure, e.jump.active, e.drive.airborne,
+              e.goalX.toFixed(2), e.goalY.toFixed(2), e.goalZ.toFixed(2)].join(":");
+            if (state !== t.state && t.transitions.length < 100) t.transitions.push({ frame: f, ...t.prev,
+              heading: e.heading, backout: e.backoutLeft, climbFailure: e.climb.failure, fromTop: e.climb.fromTop });
+            t.state = state;
+          }
           if (t.leftAt >= 0 && t.loungeAt < 0 && !t.stall && f % 30 === 0) {
             if (t.approach.length === 20) t.approach.shift();
             t.approach.push({ frame: f, ...t.prev });
@@ -16655,7 +16669,7 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
         return { name: e.owner.traits.name, ok: t.pileAt >= 0 && t.leftAt >= t.pileAt && t.loungeAt >= t.leftAt
           && t.maxStep < 0.5 && e.stuck.recoveries === t.recoveries && e.mode === "chilling" && e.nonInteractive,
           pileAt: t.pileAt, leftAt: t.leftAt, loungeAt: t.loungeAt, frames: f, maxStep: +t.maxStep.toFixed(3),
-          recoveries: e.stuck.recoveries - t.recoveries, reason: e.stuck.reason, stall: t.stall, trace: t.loungeAt < 0 ? t.trace : undefined, approach: t.loungeAt < 0 ? t.approach : undefined, pile: t.pile,
+          recoveries: e.stuck.recoveries - t.recoveries, reason: e.stuck.reason, stall: t.stall, trace: t.loungeAt < 0 ? t.trace : undefined, approach: t.loungeAt < 0 ? t.approach : undefined, transitions: t.loungeAt < 0 ? t.transitions : undefined, pile: t.pile,
           at: { x: +q.x.toFixed(2), y: +q.y.toFixed(2), z: +q.z.toFixed(2) }, fromPile: t.pile ? +Math.hypot(q.x - t.pile.x, q.z - t.pile.z).toFixed(2) : null,
           goal: { x: +e.goalX.toFixed(2), z: +e.goalZ.toFixed(2) }, phase: e.phase, route: e.route, lounge: e.lounge,
           rest: +e.rest.toFixed(2), failedChoices: e.roam.failedChoices, detour: e.roam.detour, roam: [e.roam.index, e.roam.count],
