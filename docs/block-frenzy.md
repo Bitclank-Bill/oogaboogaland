@@ -2,7 +2,7 @@
 
 Capture the flag, Bitcoin themed, reached down Ooga Arcade's upper hall, by zipline (and directly at `/blockfrenzy`).
 Each side guards its Bitcoin block, a glowing cube in its team's colour on a stand inside its fort. Steal the other
-side's block, carry it home and touch your own stand while your own block is home. Two Oogas a side: the visitor and
+side's block, carry it home and touch your own stand, or throw it down into your capture zone, while your own block is home. Two Oogas a side: the visitor and
 a teammate against two rivals, the three bots run by the rules module. First to three captures wins. Nobody dies,
 nobody loses health and nobody is removed: paint wears off.
 
@@ -12,9 +12,9 @@ Solo by default. Signed-in Oogas can also play together: see Live rounds below.
 
 | File | Job |
 |---|---|
-| `block-sim.js` | The rules as pure functions, no DOM or scene: the arena, actors, blocks, throws, crates, quiz traps, weather and bots, on a 1/120 s fixed step that allocates nothing. Seeded, so a seed replays a round. |
+| `block-sim.js` | The rules as pure functions, no DOM or scene: the arena, actors, blocks, throws, crates, quiz traps and bots, on a 1/120 s fixed step that allocates nothing. Seeded, so a seed replays a round. |
 | `block-trivia.js` | 35 multiple-choice Bitcoin questions, each with a one-line fact, for the quiz traps. |
-| `block-models.js` | Cached geometry: Fort Chaos, the stands, the two team blocks, crates, paint balls, grenades, rockets, nets, splats, quiz pads and bubbles, rain, and the arsenal: each tool's gun in a shared frame (`gun(index * 2 + team)` over `GUNS`, the grip at the origin and the muzzle along +z), the hook launcher among them, the hook's head and rope, the monkey and the ammo box. |
+| `block-models.js` | Cached geometry: Fort Chaos, the stands, the two team blocks, crates, paint balls, grenades, rockets, nets, splats, quiz pads and bubbles, and the arsenal: each tool's gun in a shared frame (`gun(index * 2 + team)` over `GUNS`, the grip at the origin and the muzzle along +z), the hook launcher among them, the hook's head and rope, the monkey and the ammo box. |
 | `scene-block.js` | The scene: the side picker, the round, the HUD, the cameras, the quiz card and the trophy screen. Registers `BL.scenes.block`. |
 
 Shared files touched, each by the smallest change: `arcade-models.js`, `arcade-scene-models.js` and `scene-arcade.js` (the entry hall: `BLOCK_HALL`, its walk, sight and light, and its zipline off the ledge; the stage stays rock's four cabinets, and the Rally poster moved just beside the mouth),
@@ -28,8 +28,15 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 - **Blocks.** Touch the rivals' block, on its stand or wherever it lies, to carry it. A carrier who is splatted,
   trapped or drops it (`K`) leaves it where they stood, and it stays there, as long as it takes: the carrier's
   teammates can grab it and run on, and its own side must pick it up and carry it all the way back to its stand.
-  A loose block always comes to rest on open ground the bots can reach (`restSpot`): dropped or landing on a roof or the
-  centre deck, it ends on the ground under it or nearest it.
+  A loose block lies on what it came down onto (`restOn`): the ground, or a top a body can stand on, such as a cave's
+  roof, a hut's floor, the centre deck, a wall, a tower's platform or a crate. It never passes through a roof or a
+  floor into the cave or the space underneath, and one thrown up into a roof or a floor from underneath falls back
+  where it was. Where it can't lie as it fell (against a parapet, in a hut's window) it lies at the nearest spot on
+  the same top where a body can stand. Only a top above the loose-block placement limit
+  (`LOOSE_TOP`, still 7 m after the jetpack upgrade: the higher jungle canopies and the towers' rails) sends it
+  to the nearest open ground beside (`restSpot`), as does a carrier falling past the island's edge. A block on a crate falls when the crate goes.
+  Bots fetch a block from a top (`fetchUp`): to the open ground beside it on their own side (`launchSpot`), a jump
+  and the jetpack straight up from a full tank until their feet clear the top, then straight at the block.
   A carrier can't pick the same block up again until they have left its circle.
 - **Scoring.** Their block onto your stand, by the round's rule, the board's Scoring setting. "Block must be home
   (classic)", the default: your own block must be home; reaching your stand while yours is away scores nothing yet (a
@@ -42,9 +49,15 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   block, plays "doesn't need to be home" and any other count plays classic (`blockWire.ruleFor`); the pick leaves with
   whoever made it, however they stop being first in (the Worker keeps who picked, `picker`, and `pickOf` counts it only
   while they are `reg[0]`). The first in waiting through a round can pick for the next. The lobby's status line, the start of the round, the status strip and the help card all name the rule.
+  A throw scores too, by the same rule: their block coming down in your capture zone (within `STAND_R` of your stand, or
+  `GOAL_R` of a map's own scoring spot, on the ground rather than a roof over it, including falling there off a wall) is
+  a capture for whoever threw it, and wins the Golden AKs as a carried one does. Under classic, if your own block isn't
+  home the same banner says so and the block lies where it landed. A side can't score by throwing its own block, and a
+  block off a hook's rope is not a throw.
 - **Passing.** `Tab` (or `T`, or the Pass button) throws the carried block about 12 m ahead in an arc. Anyone who
   could pick it up can catch it in the air, so a teammate can take a pass and a rival can intercept. Uncaught, it
-  lands and lies as a dropped block. Bots pass when a rival closes in and a free teammate stands nearer home.
+  lands and lies as a dropped block, unless it comes down in the thrower's capture zone (Scoring, above); caught, it is
+  carried as usual and scores nothing by the throw. Bots pass when a rival closes in and a free teammate stands nearer home.
 - **Flight.** Paint and the AKs fly nearly straight (`TOOLS`, `flatPitch` cancels what lob and fall remain), as the Ghost Hunter's rounds do. Carrying a block costs a player no speed; bots still carry at their old pace (`BOT_CARRY`). Rounds move in pieces no longer than `SHOT_STEP`, so a fast one can't pass through a thin wall.
 - **Tools.** Paint without end; three paint grenades (lobbed, burst on landing), one paint rocket (straight, bigger
   burst) and three nets (slow a rival and stop their jumps for 4 s). A paint hit or burst splats a rival for 2 s, then
@@ -63,14 +76,13 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   from below, and come down on top to stand there. The leaves themselves stay decor, so nobody hides inside them, and
   the chase camera comes in front of (or over) leaves as it does walls. The two trees before each tower stand
   low (3.5 m), so a scope up there sees over them.
-- **Weather.** A seeded run of clear and stormy spells. Storms darken the light and bring rain and lightning.
 - **Movement.** Jump, and jump again in the air: a double jump reaches 2.55 m and clears the forts' 2.4 m walls, the
   stilt huts' floors and the centre deck, carrying or not. Shift sprints for up to 4 s, refilling after a rest. C
   crouches: slower, shorter, under chest-height paint.
 
 ## Play-test additions
 
-Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort Chaos at sunset, Ooga Town at midday, Gorilla Jungle cloudy and always raining with puddles that slip you, Haunted Hollow at night on a brick field. Storms warn a spot and then strike whoever stays with lightning (`bolt`), once per `BOLT_COOL` each. A busy network (fees at the storm rate) brings a storm over a map's own weather; calmer fees change nothing. Haunted Hollow has lamps, neon on the cave walls, a few open graves to fall in and step out of with a skeleton and a ghost. The Detail setting on the menu turns off foliage, rain, lightning effects and that dressing; the rules stay. `N` hides the mini-map, `?` or Help opens the in-play help. Ooga Town's block stand is at the back of its building, under the upper floor. Haunted Hollow's scoring ring is out behind each house at the back of the map, its tall iron gate is solid with the way round either end, and its open graves are too deep for one jump: a double jump, the jetpack or the hook gets you out.
+Each map has its own fixed time of day and sky (`MAP_HOUR`, `MAP_CLOUDS` in the scene): Fort Chaos at sunset, Ooga Town at midday, Gorilla Jungle cloudy with puddles that slip you, Haunted Hollow at night. There is no weather on any map: no storms, rain, lightning or thunder, and mempool fees change nothing (a block found still readies the pads and caches). Power-up spots hand out lightning boots, the halving, cold storage or the monkeys, drawn from the seed; there are no laser eyes. Haunted Hollow has a few open graves to fall in and step out of, a skeleton in each, and ghosts. The Detail setting on the menu turns off foliage and that dressing; the rules stay. `N` hides the mini-map, `?` or Help opens the in-play help. Ooga Town's block stand is at the back of its building, under the upper floor. Haunted Hollow is described under its own heading below.
 
 ## Towers, ziplines and ammo caches
 
@@ -90,7 +102,8 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
   at the grab: a rider already sliding rides on, whatever happens to their block meanwhile. Your own line is never
   trapped. A lamp on each handle shows it from your side, green to ride, red when it would spring. Bots only choose
   the zip home with their own block home, and drop that route if it goes. The event appended to `EVENT_TYPES` made
-  `WIRE` 5.
+  `WIRE` 5. Taking the weather and laser events (`bolt`, `boltwarn`, `laseroff`, `laseron`, `weather`) out of `EVENT_TYPES` moved
+  every later index, so `WIRE` is 6.
 - **Ammo caches.** Five on Fort Chaos (each stilt hut's floor and the centre deck; the other maps place their own).
   Walking onto one refills grenades, rockets, nets and the crate stock as your stand does, then it goes dark for 15 s
   (`CACHE_S`). A real Bitcoin block found while you play makes every cache and quiz pad ready again.
@@ -156,7 +169,7 @@ Paint balls, the AKs and the rifle splat as paint does; nobody is removed and no
 
 ## Floating islands (BF2.1)
 
-Every map is an oval floating island in OBL's voxel style (`W`, `L` its half sizes, a good way past the playing field `fieldW`, `fieldL`; `onIsland`, `edgeDist`), with a grass-and-rock cliff around its open edge, the rock under it deepening toward the middle (`isleDepth`, the same function the mesh uses), the hub's clouds beneath it and the sea far below at the hub's height. Walking or being blown off an edge drops an Ooga past the rim: its feet below `RIM` the island no longer holds it, and the rock under the rim keeps it out. Every Ooga has its jetpack: hold Space in the air (or Jump on touch) and steer back over the edge. An Ooga that falls past `FALL_FLOOR` (40 m) comes back in its own block zone with a full tank and a moment's protection. A block carried over the edge drops at the edge the carrier left it (`EDGE_HOME_S` later it goes home by itself unless someone picks it up); a grappling hook lost over the edge goes back into hiding. Bots fly back the same way. A carrier flung by the other side's catapult keeps the block through the flight (`flung`): back on the island it is still theirs; fallen all the way, it falls with them and goes straight back to its stand rather than dropping at the edge.
+Every map is an oval floating island in OBL's voxel style (`W`, `L` its half sizes, a good way past the playing field `fieldW`, `fieldL`; `onIsland`, `edgeDist`), with a grass-and-rock cliff around its open edge, the rock under it deepening toward the middle (`isleDepth`, the same function the mesh uses), the hub's clouds beneath it and the sea far below at the hub's height. Walking or being blown off an edge drops an Ooga past the rim: its feet below `RIM` the island no longer holds it, and the rock under the rim keeps it out. Every Ooga has its jetpack: hold Space in the air (or Jump on touch) and steer back over the edge. The team pack scales with its Ooga and sits on the modelled body's own back, following it while crouching and hanging from a zipline; its flames stay attached to its nozzles. Its power is the island's: once the jump has lost its lift it thrusts up to `JET_RISE` (7 m/s) at a net +11 m/s² for `JET_FUEL` seconds, and eases to a hover at `JET_CEILING` (15 m). A throw or a bounce already rising faster than that keeps its speed. An Ooga that falls past `FALL_FLOOR` (40 m) comes back in its own block zone with a full tank and a moment's protection. A block carried over the edge drops at the edge the carrier left it (`EDGE_HOME_S` later it goes home by itself unless someone picks it up); a grappling hook lost over the edge goes back into hiding. Bots fly back the same way. A carrier flung by the other side's catapult keeps the block through the flight (`flung`): back on the island it is still theirs; fallen all the way, it falls with them and goes straight back to its stand rather than dropping at the edge.
 
 ## Terrain (BF2.1b)
 
@@ -185,7 +198,7 @@ and a page that takes over as host keeps it:
   none (`hooksteal`).
 
 Nothing else takes either: paint, the Ooga AK, the sniper rifle, grenades, rockets, nets, thrown crates, the monkeys,
-laser eyes, gorillas and bonks all splat as before and the victim keeps what they hold. Nothing is dropped on a splat.
+gorillas and bonks all splat as before and the victim keeps what they hold. Nothing is dropped on a splat.
 Bots now and then hook a rival who has the Golden AKs out, in reach and in sight, and fire the Golden AKs whenever they
 hold them, so a hook holder in their sights can lose it. The frame no longer carries dropped pairs but carries
 what each Ooga has in hand, and the drop events are gone: `WIRE` was 4 (5 since the zipline trap's event).
@@ -205,6 +218,25 @@ Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create`
 | hard | 10 | 9.5 | 1.35 | 8.5 | 4 | 15 | 2 | 6.5 |
 | expert | 12 | 11 | 1.5 | 9.5 | 2.5 | 22 | 2.4 | 9 |
 
+## Ooga Town
+
+High noon on Main Street, 44 by 74 m, red's half blue's turned half round. A bank at each end, cream stone banded in
+its team's colour under a stepped pediment with a clock stopped at noon (BANK OF OOGA, BOOGA RESERVE): the block's
+stand at the back of its hall under a mezzanine reached by stairs. Three ways in: the front doors, the back door
+behind the stand, and the hole in the side wall where the cash machine was. A saloon and a general store in each
+half, each walked straight through (a front and a back door at its street end, a side door onto the street; no
+building is a dead end, so the bots find their way by steering alone), their upper floors joined by a footbridge
+over the street, each front door under a solid sign board. Two market stalls before the bank, a counter under an
+awning a double jump reaches; a cart for cover in the square; and in the middle the fountain with a gold coin on a
+column, edge-on to the street, which also breaks the sight line from footbridge to footbridge. A trampoline behind
+each saloon reaches its upper floor and one in the square reaches the footbridge. No quiz pad lies on the straight
+line between the stands. A catapult drops its Ooga into the other bank's hall.
+
+`kinds` in the map's data names each box (`bank`, `pediment`, `saloon`, `store`, `saloonSign`, `storeSign`, `floor`,
+`rail`, `step`, `bridge`, `bridgeRail`, `post`, `stall`, `awning`, `cart`, `basin`, `column`, `coin`) and `townBlock`
+draws by name in plain boxes. The lettering, posters, swing doors and the store's awning are one merged mesh
+(`townDress`) behind the Detail setting: no lights, nothing animated.
+
 ## Fort Chaos
 
 Retired from play: no longer offered on the board or accepted on the wire (`blockWire.FIRST_MAP`). Its map stays in the sim for the rules' tests.
@@ -215,6 +247,55 @@ them: tall banded walls across the approach to break the long sight line, low co
 side of each half (a floor at 2 m, walls with a window band at eye height, open to the sky, an open side), and an open centre
 deck with gaps in its parapets. Blocks carry `[x0, x1, z0, z1, top, bottom]`, so floors, roofs and upper wall bands
 float and anything whose top an Ooga reaches is somewhere to stand.
+
+## Gorilla Jungle
+
+The same 44 by 74 m field, halves turned half round. The floor belongs to the gorillas and the trees to the Oogas: a
+treetop walkway runs down the middle 3.2 m up, from each half's tree house (four trunks under one crown, a cargo net up
+each side) along a rope bridge to the Great Tree's ring platform (a net up its east and west sides). A gorilla takes
+nobody above 1.4 m, so the walkway is safe from them and in plain view of both sniper towers; the ground lanes either
+side run past the gorillas' homes and the banana hoard at the Great Tree's foot. Each end is a ruined temple: Fort
+Chaos's 2.4 m walls, and over the gate a stone gorilla head on two pillars (a block from 3.4 to 5 m: walking in and
+a single jump pass under it, and its top is somewhere to stand), eyes in its team's colour. A fallen log crosses each
+ground lane and bushes stand before each gate. Hook spots: behind the log (the only one on the ground, in the open),
+on the mound, up a tree and on a tree house's crown.
+
+`kinds` in the map's data names each of its own boxes for the models (`jungleBlock`), and `drawn` says the models put
+its cargo nets and puddles into the map's one mesh (`jungleDress`, with the crowns, the hoard and the signs), so the
+scene places no node for them. The trees round the rim are one mesh too (`jungleRing`, Detail: Full) in place of the
+hub's trees. Nothing on the map is lit or animated beyond what every map has.
+
+## Haunted Hollow
+
+44 by 74 m, the other maps' size (it was 60 by 100 m), red's half blue's turned half round. Night, under a big moon that
+hangs low behind the rivals' house. One avenue runs down the middle: porch, the graveyard's gate, the mausoleum, the
+other gate, the other porch.
+
+- **The houses.** One at each end, 16 by 10 m, two floors and open to the sky. Its front is a face: two lit windows in
+  its team's colour for eyes, the front door for a mouth, a crooked gable over them and a leaning tower with a
+  witch-hat roof in the back corner (every course of the gable and the roof is a ledge to land on).
+- **The block** is in the cellar, one room at ground level, and shows on the mini-map as on every map. Ways in: up the
+  porch stairs, through the front door and down the stairs inside; the side door at ground level; the back door, a
+  2.4 m doorway in the back wall right behind the block (a timber frame, its plank door swung open and a lantern
+  beside it), straight in from the ground behind the house; or the jetpack or the catapult onto the upper floor. The
+  zipline comes down beside the porch. The cellar's front windows are barred, open at chest height only: the block's
+  glow shows through them and so does paint.
+- **Scoring.** A stolen block is mined in the ring out behind your own house, three steps from the back door.
+- **The graveyard.** A low iron fence across each half with the gate in it (two stone pillars, an arch reading REST IN
+  PROFIT, a lantern on each pillar, a gargoyle on top); the defenders plug the gate with crates, and the way round is
+  either end of the fence or a jump over it. A row of three headstones and a family tomb with an epitaph either side
+  of the avenue, two dead trees and two open graves a half (too deep for one jump: a double jump, the jetpack or the
+  hook gets you out). The mausoleum in the middle has steps at each end, an obelisk with a ghost-flame on its roof
+  and an ammo cache either side of it.
+- **Ghosts.** One in each cellar and one by each half's first grave. They drift through walls round their haunt, chase
+  an Ooga that comes close and spook it stiff for a moment; paint or a blast pops one.
+- **Bots** find their way with `nav`: nodes at each door (outside and in), the house's corners, the ring, the gate,
+  the fence's ends and round the mausoleum, and three for the way through the house, joined across the stairs by
+  `links`. Up on the upper floor a bot sees past only what stands on that floor, and on a flight of stairs it keeps
+  going until it is off them.
+- **Detail: Full** adds the epitaphs, the skeletons, the gargoyles, banks of mist over the graves (still for reduced
+  motion) and lantern light at the gates, the porches and the mausoleum. `kinds` in the map's data says what each of
+  its boxes is, so the models draw a wall, a tomb or a pillar by name.
 
 ## Controls
 
@@ -270,9 +351,11 @@ raised hands using that body's hip, shoulders and arm length.
 
 The global tier plays the rules through the sim's own calls: pickup, a drop held until you step out, scoring only
 with your own block home, a splat dropping the carrier's block, which stays until its own side carries it home, a
-quiz trap holding and shielding, a net slowing and grounding, a crate pushed, a pass caught, a crate lifted, stacked
-and thrown to stun, and a seeded round on
-autopilot replaying exactly to three captures. The `block` scene runs the title card and Escape, W S and A D on screen,
+quiz trap holding and shielding, a net slowing and grounding, a crate pushed, a pass caught, a throw home (scoring and crediting the thrower at a stand and a map's own spot, with no score with
+your own block away, for a side's own block, just outside the zone, when caught, or off a hook; ending the round at
+its target), a crate lifted, stacked and thrown to stun, a seeded round on
+autopilot replaying exactly to three captures, and two minutes of seeded play on every map raising no storm, rain or
+lightning. The `block` scene runs the title card and Escape, W S and A D on screen,
 a quiz trap through a wrong and a right answer, an autopilot round to its saved results, and the round trip.
 
 The entry hall's Node checks cover the stage's four cabinets, the hall reaching the ledge, the zipline's survey and the Rally poster's move; the `arcade` step walks it. The Block Frenzy browser checks also measure each weapon's
@@ -317,9 +400,11 @@ physical touch controls and browser performance still require verification.
 ## Live rounds
 Signed-in Oogas only, on a Worker that lists `block-v1` in welcome; anywhere else the game is solo as before.
 
+The weather and laser removal changes the frame layout and event indexes to `WIRE` 6. Deploy the site and Worker together. Pages left open on wire 5 must reload before joining or watching a live round; the Worker refuses their control messages and discards saved rounds from the older wire on wake.
+
 - **Registry** (`worker/src/block.js`, contract in `block-wire.js`): one match a room. `reg`/`unreg`/`ready`/`opt` in the lobby; the first in picks the map, size and scoring rule (2v2 to 4v4, `MIN_SIDE` to `MAX_SIDE`; NPCs fill any empty seat, so there is never a 1v1); `reg` carries the map already picked on their board, and registered players' boards follow the match's map, grown if more have registered than it seats. With two or more registered, everyone ready starts a 3 s countdown. One person alone chooses: Start with NPCs (`alone`, at once with NPCs) or Wait for players (marks them ready, which starts nothing until someone else registers and readies). If the others leave, the choice comes back.
 - **Teams:** random and as even as can be (`split`); empty seats are NPCs.
-- **Host:** one seated page runs `block-sim.js`, chosen by the room (longest in the room, a visible page first). If it leaves, the next seated page continues from its last snapshot; if no seated human is left, the round ends. A leaver's seat goes to an NPC.
+- **Host:** one seated page runs `block-sim.js`, chosen by the room (longest in the room, a visible page first). If it leaves, the next seated page continues from its last snapshot, and a block in the air at that handover lands without scoring, since frames don't say who threw it; if no seated human is left, the round ends. A leaver's seat goes to an NPC.
 - **No joining mid-round.** Late arrivals sit in the viewing chairs (`block-viewer.js`, `phase === "watch"`), a row of plain chairs in a blank white space above the game, as do visitors sent by `BL.blockLive.openWatchDeck(go)`. A viewer has no body, sends no input or position and is local to its page; it asks for the feed (`watch`) and receives every other frame, drawn smoothly between them, and only the match draws. The wheel, a pinch or the scope's +/- keys zoom the view (local only, stopping at the default view); a dark sports-style scoreboard in the corner, with a small table per player of blocks mined, stolen (counted on the viewer from who starts carrying the other side's block) and splats landed and the block-mined sound (once per capture, read from the score) come from the same match state. It has no voice in this version. It can register for the next round from there.
 - **Wire:** binary frames (`"BFZ1"`, round tag, host epoch, sequence, at most 2048 bytes, 12/s), JSON inputs (20/s, at most four actions a message). Nothing reaches storage: the match rides one socket attachment.
 - **Voice:** zone `block-frenzy`, its own voice group, blended in from the arcade down the zipline (`voice-blend.js`), isolated on arrival.
