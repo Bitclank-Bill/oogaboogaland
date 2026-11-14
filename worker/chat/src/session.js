@@ -24,7 +24,7 @@ export const clearSessionCookie = (env) => sessionCookie(env, "", 0);
 export const newPrincipalId = () => `pr_${randomToken().slice(0, 22)}`;
 
 // Text a person chose, for display only: no control, format or direction characters, collapsed spaces, bounded.
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f­؜​-‏‪-‮⁠-⁤⁦-⁯﻿]/g;
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
 export const cleanDisplay = (text, fallback) => {
   const clean = typeof text === "string" ? text.replace(UNSAFE, "").replace(/\s+/g, " ").trim().slice(0, DISPLAY_MAX).trim() : "";
   return clean || fallback;
@@ -34,9 +34,21 @@ export const cleanDisplay = (text, fallback) => {
 export const avatarKey = async (url) => url ? (await sha256Hex(url)).slice(0, 16) : null;
 export const avatarPath = (row) => row.avatar_url && row.avatar_key ? `/api/chat/avatar/${row.id}/${row.avatar_key}` : null;
 
-/** Create or refresh the principal for a provider identity at sign-in; returns its row. */
+/**
+ * Create or refresh the principal for a provider identity at sign-in; returns its row. A GitHub login is a verified donor
+ * name and the island's contributor key, so when another GitHub account signs in with a login an earlier principal still
+ * holds (renamed away, then taken), that principal's sessions and capability answer go first, as the island's own
+ * `highscores_player_login` trigger ends the sessions of any other id holding a login.
+ */
 export const upsertPrincipal = async (db, { provider, providerUserId, login, display, avatarUrl }, now = Date.now()) => {
   const key = await avatarKey(avatarUrl);
+  if (provider === "github") {
+    const others = "SELECT id FROM principals WHERE provider = 'github' AND provider_user_id <> ?1 AND lower(login) = lower(?2)";
+    await db.batch([
+      db.prepare(`DELETE FROM sessions WHERE principal_id IN (${others})`).bind(providerUserId, login),
+      db.prepare(`DELETE FROM capabilities WHERE principal_id IN (${others})`).bind(providerUserId, login),
+    ]);
+  }
   return db.prepare(
     `INSERT INTO principals (id, provider, provider_user_id, login, display, avatar_url, avatar_key, created_at, profile_at, last_login_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?8)
