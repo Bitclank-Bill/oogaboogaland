@@ -338,10 +338,13 @@ export const audienceRoom = {
   // The clouds Ooga Chat speakers sit on, replaced whole, to every page: each `{ id, character, zone, seat, seatRevision,
   // lease, mic, hand }`. A page draws a cloud speaker from its seat and ghosts that character's NPC while any source owns
   // it: the island's own drivers (every `body`) and these clouds together are the canonical owners.
+  cleanClouds: (room, list) => (cloudsOn(room) ? (Array.isArray(list) ? list : []).filter((c) => c && /^gh:[1-9][0-9]{0,15}$/.test(c.id) && isZone(c.zone) && typeof c.seat === "string").slice(0, 32) : []),
   clouds(room, list) {
-    room.clouds = cloudsOn(room) ? (Array.isArray(list) ? list : []).filter((c) => c && /^gh:[1-9][0-9]{0,15}$/.test(c.id) && isZone(c.zone) && typeof c.seat === "string").slice(0, 32) : [];
+    room.clouds = audienceRoom.cleanClouds(room, list);
     room.cloudsRev = (room.cloudsRev || 0) + 1;
     if (cloudsOn(room)) room.broadcast({ t: "clouds", v: CLOUDS_V, revision: room.cloudsRev, clouds: room.clouds });
+    // Kept in the Room's storage, as its chat sources are: a Room woken from hibernation still welcomes pages with them.
+    return room.ctx.storage.put("clouds", { list: room.clouds, revision: room.cloudsRev });
   },
 
   // A page's welcome is followed by the clouds standing now (as the chalkboard follows it).

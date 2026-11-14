@@ -104,7 +104,7 @@ export class Audience extends DurableObject {
     this.reactBuckets = new Map();
     this.zoneBuckets = new Map();
     this.reactSeq = 0;
-    this.cloudsSig = "[]";
+    this.cloudsSig = null;
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     ctx.blockConcurrencyWhile(async () => {
       let meta = await ctx.storage.get("meta");
@@ -139,6 +139,10 @@ export class Audience extends DurableObject {
       }
       this.pendingWas = this.media.pending();
       this.sourcesChanged();
+      // The clouds the Room was last told, kept as the sources are: a wake sends only a change. Never told, the Room has
+      // none, as an empty list.
+      this.cloudsSig = (await ctx.storage.get("cloudsSig")) ?? "[]";
+      this.cloudsChanged();
     });
   }
 
@@ -215,7 +219,15 @@ export class Audience extends DurableObject {
     const list = this.clouds(), sig = JSON.stringify(list);
     if (sig === this.cloudsSig || !this.env.ROOM) return;
     this.cloudsSig = sig;
-    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceClouds(list)).catch(() => {});
+    this.roomQueue = this.roomQueue.then(async () => {
+      try {
+        await this.env.ROOM.getByName("island").audienceClouds(list);
+        await this.ctx.storage.put("cloudsSig", sig);
+      } catch {
+        // Not delivered: the next check sends it again rather than counting it as told.
+        if (this.cloudsSig === sig) this.cloudsSig = null;
+      }
+    });
     this.background(this.roomQueue);
   }
 

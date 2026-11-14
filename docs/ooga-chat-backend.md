@@ -485,7 +485,8 @@ once; a new lease starts without one. An island outdoor speaker's raised hand is
 drawn only in its own zone), taken when its microphone goes live and kept for the life of the lease. A full catalog is
 no speaker, never a shared seat. The character is the island's canonical one for that GitHub account, from the
 contributor policy at the lease's grant, never one a client named. The Audience sends the Room its clouds
-(`audienceClouds`) whenever they change, and the Room sends every page `{ t: "clouds", v: 1, revision, clouds: [{ id,
+(`audienceClouds`) whenever they change (both keep the last list, so it outlasts either one's hibernation and a failed
+send is retried), and the Room sends every page `{ t: "clouds", v: 1, revision, clouds: [{ id,
 character, zone, seat, seatRevision, lease, mic, hand }] }` (and the list now after each `welcome`). The world (#659)
 draws a seated speaker from its seat, the scene and its clock, and ghosts that character's NPC while any source owns
 it: the island's own drivers (each player's `body`) and these clouds together are the canonical owner set, so one

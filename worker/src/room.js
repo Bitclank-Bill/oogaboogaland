@@ -116,6 +116,10 @@ export class Room extends DurableObject {
       this.cleanupJobs = (await ctx.storage.get("voiceCleanup")) || [];
       // Ooga Chat's speakers the island's open outdoor grants hear (#666), as the Audience last sent them.
       this.chatSources = audienceRoom.cleanSources(await ctx.storage.get("chatSources"));
+      // The clouds Ooga Chat speakers sit on (#668), as the Audience last sent them, at their revision.
+      const clouds = await ctx.storage.get("clouds");
+      this.clouds = audienceRoom.cleanClouds(this, clouds && clouds.list);
+      this.cloudsRev = clouds && Number.isSafeInteger(clouds.revision) ? clouds.revision : 0;
       this.links = restoreLinks(await ctx.storage.get("voiceLinks"));
       const chalk = await ctx.storage.get("chalk"), marks = chalk && CHALK.restore(chalk.marks);
       // A board stored before the board grew (no `v`) is widened as it loads; the next save stores it widened.
@@ -1166,7 +1170,7 @@ export class Room extends DurableObject {
   audienceConfirmed(ids) { audienceRoom.confirmed(this, ids); }
   // Ooga Chat's reactions and clouds (#668).
   audienceReaction(event) { audienceRoom.reaction(this, event); }
-  audienceClouds(list) { audienceRoom.clouds(this, list); }
+  audienceClouds(list) { return audienceRoom.clouds(this, list); }
   audienceListeners(counts) { audienceRoom.listeners(this, counts); }
 
   // /voice/<op> from the Worker, which checked the session and set x-player-id. Ops: session (a publish
