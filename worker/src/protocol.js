@@ -170,6 +170,9 @@ export const CLOSE_KICK = 4000;
 // The former 16 KiB cap could not carry the org-wide roster after reconciliation.
 export const NPC_FRAME_MAX = 128 * 112 * 4 + 131072;
 export const NPC_HZ = 20;
+// A pose's fields are saved to its socket's attachment at most this often (room.js): every pose re-serialized the whole
+// attachment, the room's largest cost per inbound message. A woken room may find a player up to this far behind.
+export const POSE_SAVE_MS = 1000;
 export const CLOSE_PROTOCOL = 4400;
 export const CHAT_MAX = globalThis.BL.chatPolicy.MAX;
 export const CHAT_FEATURE = globalThis.BL.chatPolicy.FEATURE;

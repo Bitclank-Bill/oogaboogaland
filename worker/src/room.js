@@ -33,7 +33,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   CABINETS, hockey, block, BLOCK, tessQueue, CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
-  NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
+  NPC_FRAME_MAX, NPC_HZ, POSE_SAVE_MS, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, ROOM_LOCK_FEATURE, PIN_PASS_MS, PIN_TRIES, PIN_WAIT_MS, CONTROL_FRAMES, CONTROL_HZ, CONTROL_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, REACT_FEATURE, HAND_EMOJI_FEATURE, REACT_HZ, REACT_BURST,
   GHOST_MAGIC, inGhostArena, watchesGhost,
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
@@ -60,6 +60,10 @@ export class Room extends DurableObject {
     this.inspect = inspectReporter(ctx, env, "Room", () => ctx.id.name, (detail) => this.inspectState(detail));
     this.flushDue = 0;
     this.players = new Map();
+    // Each player socket to its record, so a message finds its sender without reading the socket's attachment. Rebuilt
+    // from the sockets on every wake, as `players` is; a record leaves both together (`drop`).
+    this.sockets = new Map();
+    this.poseTimer = 0;
     this.highscoreRevisions = new Map();
     this.studio = studioState();
     this.cleanupJobs = [];
@@ -153,7 +157,7 @@ export class Room extends DurableObject {
       const a = ws.deserializeAttachment();
       // Ooga Chat's community members (room-commons.js) have no player record.
       if (a && a.community) { commonsRoom.restore(this, ws, a, Date.now()); continue; }
-      if (a) this.players.set(a.id, this.record(ws, a));
+      if (a) { const p = this.record(ws, a); this.players.set(a.id, p); this.sockets.set(ws, p); }
     }
     // Old guest sockets can survive a deployment in hibernated attachments.
     // Use the ordinary departure path so peers drop their presence and voice.
@@ -175,7 +179,7 @@ export class Room extends DurableObject {
   }
 
   record(ws, a) {
-    return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hand: false, handTone: 0, handEmoji: "", hp: 100, ko: false, g: null, j: 0, w: 0, v: null, va: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], roomLock: null, blendTo: null, blendK: 0, pm: { inv: [], open: 0, blocked: [] }, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: a.joinedAt || Date.now() };
+    return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hand: false, handTone: 0, handEmoji: "", hp: 100, ko: false, g: null, j: 0, w: 0, v: null, va: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], roomLock: null, blendTo: null, blendK: 0, pm: { inv: [], open: 0, blocked: [] }, savedAt: 0, posePending: false, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: a.joinedAt || Date.now() };
   }
 
   // Retain account debt across socket records, only while awake. Reclaim fully replenished
@@ -509,6 +513,7 @@ export class Room extends DurableObject {
     const own = ownedBody(CAST, p.login, p.contributor, p.id);
     if (own) for (const o of this.players.values()) if (o.body && bodyName(o.body).toLowerCase() === own) this.release(o, "owner-here");
     this.players.set(p.id, p);
+    this.sockets.set(server, p);
     if (this.inspect.on) this.inspect.event("join", p, { replaced: !!older });
 
     const others = [];
@@ -527,10 +532,16 @@ export class Room extends DurableObject {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  // The map first; a socket it does not hold (an Ooga Chat member's) is looked up by its attachment, as before the map,
+  // and a player found that way is kept in the map.
   byWs(ws) {
+    const known = this.sockets.get(ws);
+    if (known) return this.players.get(known.id) === known ? known : null;
     const a = ws.deserializeAttachment();
     const p = a && this.players.get(a.id);
-    return p && p.ws === ws ? p : null;
+    if (!p || p.ws !== ws) return null;
+    this.sockets.set(ws, p);
+    return p;
   }
 
   webSocketMessage(ws, message) {
@@ -584,10 +595,15 @@ export class Room extends DurableObject {
       p.w = ooga && msg.w ? msg.w : 0;
       p.v = ooga && msg.v ? msg.v : null; p.va = p.v ? p.seenAt : 0;
       p.r = ooga ? msg.r : undefined;
-      if (Number.isInteger(p.studioSeat) && !studioSeatAllowed(p, p.studioSeat, this.players.values())) { delete p.studioSeat; this.removeStudioSpeaker(p.id); this.studio.revision++; this.persistStudio(); this.enforceStudio(); }
+      const seatLost = Number.isInteger(p.studioSeat) && !studioSeatAllowed(p, p.studioSeat, this.players.values());
+      if (seatLost) { delete p.studioSeat; this.removeStudioSpeaker(p.id); this.studio.revision++; this.persistStudio(); this.enforceStudio(); }
       if (this.chalkEditor && this.chalkEditor.id === p.id && this.chalkRefusal(p)) this.chalkLetGo(p);
       this.dirty = true;
       this.scheduleFlush();
+      // The room's busiest message: its fields reach the attachment at most once a second, or with any other change, and
+      // never later than a second after the last pose (`savePoses`), so a woken room still knows where everyone stands.
+      // Nothing else a pose changes is in the attachment unless it took away a Studio seat, which is saved at once.
+      if (!seatLost && p.seenAt - p.savedAt < POSE_SAVE_MS) { this.saveLater(p); return; }
     } else if (msg.t === "hub") {
       if (msg.on === p.inHub) return;
       p.inHub = msg.on;
@@ -749,6 +765,27 @@ export class Room extends DurableObject {
     // A zone, body or crossing that no longer matches an open outdoor grant takes it back (#667).
     audienceRoom.check(this, p);
     ws.serializeAttachment(this.attachment(p));
+    p.savedAt = p.seenAt;
+    p.posePending = false;
+  }
+
+  // One timer for the room, armed by the first pose held back and gone once it fires: every player still holding one
+  // is saved then. The room cannot hibernate while it is pending, a second at most after the last pose.
+  saveLater(p) {
+    p.posePending = true;
+    if (this.poseTimer) return;
+    this.poseTimer = setTimeout(() => this.savePoses(), POSE_SAVE_MS);
+  }
+
+  savePoses() {
+    this.poseTimer = 0;
+    const now = Date.now();
+    for (const p of this.players.values()) {
+      if (!p.posePending) continue;
+      p.ws.serializeAttachment(this.attachment(p));
+      p.savedAt = now;
+      p.posePending = false;
+    }
   }
 
   // The prototype's note stands: on this compatibility date close handlers must not call ws.close().
@@ -817,6 +854,7 @@ export class Room extends DurableObject {
     this.background(this.clearVoice(p));
     this.privateLeave(p);
     this.players.delete(p.id);
+    this.sockets.delete(p.ws);
     audienceRoom.leave(this, p);
     tessQueue.presence(this, p, true, reason === "revoked");
     // A dropped socket can come straight back in; the last one out frees the room.
@@ -829,6 +867,10 @@ export class Room extends DurableObject {
     if (!this.players.size && this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = 0;
+    }
+    if (!this.players.size && this.poseTimer) {
+      clearTimeout(this.poseTimer);
+      this.poseTimer = 0;
     }
   }
 
