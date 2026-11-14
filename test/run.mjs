@@ -20284,6 +20284,16 @@ const arcadeBlockHall = { name: "arcade block hall", why: "rule: an Ooga walks t
     return { ok, z, past, wall: B.arcade.walkable(H.x, -28, H.x0 - 0.3, -28, H.y, actor.bodyHeight, actor) };
   })()`);
   record("arcade block hall: walkable from the deck to the ledge, held by its railing and walls", r.ok && !r.past && !r.wall, JSON.stringify(r));
+  const doorway = await b.evaluate(`(() => {
+    const B = __ooga, W = BL.arcadeBlockWatch, D = W.DOOR;
+    return ['w-s-bitcoin', 'tiffanyvarty', 'portlandhodl'].map(name => {
+      const a = BL.models.caveman(BL.contributors.traitsFor(name)); a.bodyHeight = BL.crew.bodyHeightOf(a); a.bodyRadius = BL.crew.bodyRadiusOf(a); let x = W.ARRIVAL.x, clear = true;
+      while (x < D.plane) { const nx = Math.min(D.plane, x + .025); clear = clear && B.arcade.walkable(x, D.z, nx, D.z, D.y, a.bodyHeight, a); x = nx; }
+      return { name, clear, floor: B.arcade.supportAt(x, D.z, D.y) === D.y, bounded: !B.arcade.walkable(x, D.z, D.reach + .5, D.z, D.y, a.bodyHeight, a), entered: W.atPortal(x, D.z, D.y), height: a.bodyHeight, aperture: D.h };
+    });
+  })()`);
+  record("arcade watch doorway: regular, slim and broad modelled Oogas reach the portal on its floor while the wall beyond remains solid",
+    doorway.every(r => r.clear && r.bounded && r.entered && r.floor && r.height < r.aperture), JSON.stringify(doorway));
 } };
 const arcadeStage = { name: "arcade stage approaches", why: "regression: oversized decorative root collision boxes blocked walking onto the central stage from its sides and back", run: async (b) => {
   const r = await b.evaluate(`(() => {
