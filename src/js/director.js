@@ -290,6 +290,9 @@
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
     if (transition) return false;
+    // Leaving a scene leaves the public outdoor scope at once, before the fade, and stays out of it until the transition
+    // settles, whatever the old scene's last frames report (outdoor-scope.js `hold`); the next scene reports after.
+    window.BL.outdoorScope.hold(true);
     controlsHelp.close();
     transition = { next, place, out: true, t: 0, held: 0, instant, ready: true, redirect: null, failed: null, controller: new AbortController() };
     if (next.prepare) {
@@ -559,6 +562,7 @@
     const failed = transition.failed;
     transition.controller.abort();
     transition = null;
+    window.BL.outdoorScope.hold(false);
     if (active) holdInput(false);
     if (failed) cabinetView.failed();
     if (failed && active && active.stay) active.stay();
@@ -888,6 +892,18 @@
   // The account needs the Worker: without one /api/me finds nothing and the sheet shows no sign-in.
   const net = window.BL.net;
   const unsubscribeAccount = net.subscribe(window.BL.hud.showAccount);
+  // A new room connection or account reopens no earlier outdoor grant (outdoor-scope.js `reset`).
+  let scopeRoom = net.state.room, scopeMe = net.state.me?.id ?? 0;
+  const unsubscribeScope = net.subscribe((state) => {
+    const me = state.me?.id ?? 0;
+    if (state.room === scopeRoom && me === scopeMe) return;
+    scopeRoom = state.room;
+    scopeMe = me;
+    window.BL.outdoorScope.reset();
+  });
+  // Ooga Chat's outdoor voice bridge (outdoor-voice.js): the scope's transport, after the reset above so a reconnect's
+  // new epoch is the one it asks for. Without the room's feature it keeps the page out of every public audience.
+  const outdoorBridge = window.BL.outdoorVoice.attach();
   const unsubscribeVoice = window.BL.voice.subscribe(() => window.BL.hud.showAccount(net.state));
   // The roster's host dot and voice marks follow the room and voice, on whichever scene's roster is up.
   const unsubscribeRosterMarks = net.subscribeRoster(window.BL.hud.showVoices);
@@ -1015,7 +1031,7 @@
         const factory = first.id === "hub" && window.BL.caves.slots.find(slot => slot.status === "open" && slot.scene === "factory");
         const roofHole = factory ? { id: factory.id, ...window.BL.factoryModels.ROOF_TUBE } : null;
         const nook = first.id === "hub" ? first.libraryNook || null : null;
-        await window.BL.terrainCache.prepare({ seed: 1, roofHole, nook, cliffLedges: first.id === "hub" }, first.id, terrainController.signal);
+        await window.BL.terrainCache.prepare({ seed: 1, roofHole, nook }, first.id, terrainController.signal);
       } catch { /* A rejected opt-in build uses the ordinary path unless this page was destroyed. */ }
       if (destroyed) { models.release(first.id, []); return; }
     }
@@ -1183,6 +1199,8 @@
     unsubscribeOogatron();
     window.BL.oogatronLive.dispose();
     unsubscribeAccount();
+    unsubscribeScope();
+    outdoorBridge.dispose();
     unsubscribeVoice();
     unsubscribeRosterMarks();
     unsubscribeVoiceMarks();
