@@ -74,6 +74,8 @@ anything is handed on, and the bridge never reads a browser header at all.
 | Operation | Needs | Answers |
 |---|---|---|
 | `hello` | nothing | `{ version, environment, features, voice }`: what the bridge can do now, with no binding, secret or account id |
+| `capability` | `bridge`; a GitHub principal | `{ state, character, reason, policy, checkedAt }` from the island's contributor policy (`chat-capability.js`): `eligible` (a bundled owner, or an unbundled contributor Oogatron vouches for), `ineligible` (a verified snapshot said no, or the island banned the account) or `unknown` (the snapshot could not be read). An X principal is refused (`capability_required`) |
+| `revoke` | `bridge` | ends whatever the principal holds live (leases, publications, a cloud); added by #665, and until then the edge treats `unknown_operation` as nothing to end |
 
 Later issues add their operations here.
 
@@ -109,12 +111,87 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | `GET /api/bootstrap` (also `/api/chat/config`) | `{ version: 1, build, environment, protocols: { identity: [1], audience: [1], media: [1] }, features: { github, x, voice, feed, speak, commons, cloud }, paths: { login: { github?, x? }, session?, logout?, audience? } }`. `build` is the staged app's (its `build.json`), so an open page hears of a newer one. `voice` is `listen`. A provider's login path appears only when it is on, the audience path only while listening is. `no-store`; rate-limited per IP |
 | `GET /api/chat/health` | `{ schema: 1, environment, status, checks: { assets, database, bridge, auth: { github, x }, voice, speak, feed, commons } }`. `status` is `ok` (assets, D1 and bridge), `degraded` (assets serve, something else is off) or `down` (no staged app). `bridge` is `ok`, `mismatch` (another environment or version), `unavailable` or `unbound` |
 | `GET /api/chat/version` | `{ schema: 1, environment, worker, build, protocols, bridge }`: the Worker version id, the app build and the bridge version, for correlating a report with a deployment |
+| `GET /auth/github`, `GET /auth/x` | starts a sign-in (below); 302 to the provider, or 303 home with the result when it cannot start |
+| `GET /auth/<provider>/callback` | finishes it: 303 to `/?signin=<ok\|denied\|failed\|unavailable\|rate-limited>&provider=<provider>`, nothing else in the address |
+| `GET /api/chat/me` | the session (identity protocol 1, below); 401 signed out, 503 when it could not tell |
+| `DELETE /api/chat/me` | deletes the account (from the app's own page); 204 |
+| `POST /api/chat/logout`, `?all=1` | ends this session, or every one of the account's (from the app's own page); 204 once done |
+| `GET /api/chat/avatar/<principal>/<key>` | the principal's picture on this origin (below) |
 | any other `/api/*`, `/auth/*`, `/donations/*` | a JSON 404 (`{ error: { code: "not_found" } }`), never the app's HTML |
 
 Every other path is served from the staged app. Only `/api/*`, `/auth/*` and `/donations/*` run the Worker
 (`run_worker_first`); the app's `_headers` (its content policy, `frame-ancestors 'none'`, the microphone for its own
 origin only) apply to everything else. No route adds `unsafe-inline`, `unsafe-eval`, a non-`self` script or style
 origin, or credentialed CORS.
+
+## Sign-in and accounts (#663)
+
+Anyone can sign in with GitHub or, where it is on, X, and every sign-in lands as a **listener**. Authentication never
+opens a microphone or makes a speaker: speaking is a lease the audience grants (#665), checked again at every
+privileged step. The island's own sign-in (`worker/src/auth.js`), which refuses a non-contributor, is untouched; Ooga
+Chat's is separate code, cookies, OAuth apps and database.
+
+**Accounts.** A principal is one provider identity, `(provider, provider_user_id)` unique, with an opaque public id
+(`pr_` and 22 base64url characters) that everything per person keys on. Provider ids are text at every boundary (an X
+id outgrows a safe integer). Login, display name and picture are display data refreshed at each fresh sign-in: a rename
+keeps the principal. GitHub and X are never linked, however their names, emails or pictures match, and an X account is
+always a listener. Email is never read.
+
+**A sign-in.** `/auth/<provider>` stores a single-use state (its SHA-256) in D1 with its provider, a ten-minute expiry,
+the SHA-256 of a nonce held in the browser's own short-lived cookie (`__Host-ooga_chat_oauth`), and for X a PKCE
+verifier. The callback spends the state first (`DELETE … RETURNING`), then requires the same provider, the same browser
+and an unexpired state, so a replayed, crossed (GitHub's at X's callback), stolen or stale state fails without a
+session. GitHub asks no scope and reads `/user`; X uses authorization code with PKCE `S256`, a confidential exchange
+(HTTP Basic with the client secret), the scopes `tweet.read users.read` (no `offline.access`), reads
+`GET /2/users/me?user.fields=profile_image_url`, and revokes the token at once. Every provider call refuses redirects and
+times out at 5 s. Results: `denied` (consent refused), `rate-limited` (429, or our own limiter), `unavailable` (402
+credits, 5xx, a provider switched off), `failed` (anything else, a bad state or profile, a banned account); the reason
+code goes to the Worker's log only.
+
+**The session.** A random token in a host-only `__Host-ooga_chat_session` cookie (`HttpOnly; Secure; SameSite=Lax;
+Path=/`; plain names on http for local development), stored as its SHA-256, 30 days, its last use written at most every
+ten minutes. `GET /api/chat/me`:
+
+```json
+{ "schema": 1,
+  "identity": { "principal": "pr_…", "provider": "github", "providerUserId": "583231", "login": "someone", "display": "Someone",
+                "avatar": "/api/chat/avatar/pr_…/9f86d081884c7d65" },
+  "capabilities": { "listen": true, "react": true, "speak": true, "contributor": true, "raiseHand": true },
+  "eligibility": { "state": "eligible", "checkedAt": 1763000000000, "staleAfter": 900, "policy": "obl-contributor-v1" },
+  "character": { "handle": "someone" },
+  "expiresAt": 1765592000000 }
+```
+
+`speak`, `contributor` and `raiseHand` (the right to raise a hand *while* a speaker) are true only for a GitHub
+principal whose answer is `eligible` and inside its window. They are the server's word for display; nothing a client
+sends back grants anything.
+
+**Capability.** The edge asks the island (`capability`) and keeps the answer with its time in `capabilities`. It asks
+again after five minutes. If the bridge cannot answer, the last answer stands until 15 minutes after it was checked
+(`staleAfter` 900 s), then reads `unknown`: a listener stays signed in, and nothing new is granted on an old answer. An
+account that was eligible and is now refused reads `revoked` until it is eligible again, and its live speaking is asked
+to end (`revoke`). Signing out, signing out everywhere and deleting the account also call `revoke`, and work whatever
+the account's eligibility. A new legitimate contribution qualifies as soon as Oogatron reports it (the island's
+unbundled-contributor fallback), with no character bundle deploy; a display name, a leaderboard number, a roster entry
+or a donation never does. "Made a contribution" is the island's existing rule, unchanged: a bundled owner, or at least
+one commit in the bounded Oogatron snapshot, bots and AI aliases excluded.
+
+**Pictures.** A provider's picture address is kept only on its own image host over https (`avatars.githubusercontent.com`;
+`pbs.twimg.com`, `abs.twimg.com`), sized for a face, and served on this origin at
+`/api/chat/avatar/<principal>/<key>`, the key being the address's hash: a picture that changed, or an account deleted,
+answers 404 rather than an old face. Only the stored address is fetched, with no cookie or token, redirects refused, a
+5 s limit, at most 512 KiB, and only PNG, JPEG, GIF or WebP (never SVG). It is public, as the face beside a name on
+GitHub or X is, and cached a day at the edge and in the browser. A failure is a 404, and the app shows the native Ooga
+face. GitHub's address is fixed per account, so a new GitHub picture shows within a day.
+
+**Housekeeping.** Daily at 04:15 UTC the edge purges expired sessions and abandoned sign-ins (`triggers`).
+
+**X: cost and policy, for the owner to confirm.** X documents pay-per-use credits, with user lookup listed at about
+$0.010 a resource; that is a planning figure, not a verified entitlement or price. Each fresh X sign-in reads
+`/2/users/me` once (it proves who authorized the sign-in, so no cache stands in for it); page loads, roster paints, zone
+changes and role changes never call X, since the principal keeps its profile from its last sign-in. Before turning `x`
+on: confirm `/2/users/me` access and its billed category in the developer console, set a spending cap, and treat a
+credit exhaustion (402) as X sign-in unavailable while GitHub keeps working.
 
 ## Secrets and variables
 

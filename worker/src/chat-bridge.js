@@ -9,11 +9,15 @@
 // What the bridge may do is turned on here by `OOGA_CHAT_FEATURES` (comma-separated: `bridge` for every operation but
 // `hello`; `outdoor`, `cloud` and `commons` for those paths), so deploying this Worker with the variable empty is the
 // kill switch for the whole outward path, whatever the edge believes. `hello` always answers, so the edge can say why.
-// Operations are added by the issues that need them (#663 capabilities, #664 public data, #665-#668 audience and
-// media, #670 the Commons); this file holds the boundary and `hello`.
+// Operations are added by the issues that need them: `capability` (#663, chat-capability.js); later public data (#664),
+// the audience and media (#665-#668) and the Commons (#670). This file holds the boundary and `hello`.
 
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { BRIDGE_ENVIRONMENTS, BRIDGE_VERSION, ENVELOPE_MAX, ERROR_CODE, REQUEST_ID } from "./chat-bridge-protocol.js";
+import { BRIDGE_ENVIRONMENTS, BRIDGE_VERSION, BridgeRefusal, ENVELOPE_MAX, ERROR_CODE, REQUEST_ID } from "./chat-bridge-protocol.js";
+
+export { BridgeRefusal };
+import { capabilityOps } from "./chat-capability.js";
+import { contributorFor } from "./contributor-access.js";
 
 export const FEATURES = ["bridge", "outdoor", "cloud", "commons"];
 
@@ -24,14 +28,6 @@ export const bridgeFeatures = (env) => {
 };
 
 const refuse = (code, retryable = false, extra = {}) => ({ ok: false, error: { code, retryable, ...extra } });
-
-/** An operation's own refusal: thrown inside `run`, passed on as `{ code, retryable, retryAfter }`. */
-export class BridgeRefusal extends Error {
-  constructor(code, retryable = false, retryAfter = 0) {
-    super(code);
-    this.code = code; this.retryable = retryable; this.retryAfter = retryAfter;
-  }
-}
 
 // What every version answers. `hello` reports what this side can do, without a binding id, secret or account
 // identifier, so the edge's health and bootstrap can say why something is off.
@@ -61,7 +57,7 @@ export const handleEnvelope = async (env, envelope, ops = BASE_OPS, ctx = null) 
   }
 };
 
-export const OPS = { ...BASE_OPS };
+export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorFor }) };
 
 export class ChatBridge extends WorkerEntrypoint {
   async call(envelope) { return handleEnvelope(this.env, envelope, OPS, this.ctx); }

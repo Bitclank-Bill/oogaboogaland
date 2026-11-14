@@ -44,6 +44,8 @@
     { "binding": "OBL", "service": "oogaboogaland-production", "entrypoint": "ChatBridge" },
     { "binding": "DONATIONS", "service": "bananapayserver-production", "entrypoint": "PageApi" }
   ],
+  // Daily: purge expired sessions and abandoned sign-ins.
+  "triggers": { "crons": ["15 4 * * *"] },
   // Namespaces are per account: the island's production counters use 1001-1009, Ooga Chat's production 1010-1014.
   "ratelimits": [
     { "name": "CHAT_PUBLIC_LIMITER", "namespace_id": "1010", "simple": { "limit": 120, "period": 60 } },

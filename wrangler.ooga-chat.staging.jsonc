@@ -49,6 +49,8 @@
     // bananapayserver's staging PageApi, on signet: /donations/* (#664).
     { "binding": "DONATIONS", "service": "bananapayserver-staging", "entrypoint": "PageApi" }
   ],
+  // Daily: purge expired sessions and abandoned sign-ins.
+  "triggers": { "crons": ["15 4 * * *"] },
   // Namespaces are per account: the island's staging counters use 2001-2009, Ooga Chat's staging 2010-2014.
   "ratelimits": [
     // Public reads (bootstrap, health, panels) per IP.

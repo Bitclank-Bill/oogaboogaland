@@ -11,6 +11,14 @@ export const ENVELOPE_MAX = 16 * 1024;
 export const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
 export const ERROR_CODE = /^[a-z_]{1,40}$/;
 
+/** An operation's own refusal: thrown inside an operation, passed on as `{ code, retryable, retryAfter }`. */
+export class BridgeRefusal extends Error {
+  constructor(code, retryable = false, retryAfter = 0) {
+    super(code);
+    this.code = code; this.retryable = retryable; this.retryAfter = retryAfter;
+  }
+}
+
 export const newRequestId = () => crypto.randomUUID().replaceAll("-", "");
 
 export const makeEnvelope = (environment, op, payload = {}, principal = null, requestId = newRequestId()) =>

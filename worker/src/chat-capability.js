@@ -1,0 +1,40 @@
+// Ooga Chat's speaking capability (#663), answered over the private bridge by the island Worker, which already decides
+// who owns an Ooga: the generated cast and Oogatron through contributor-policy.js, and the island's ban list in its own
+// D1. Ooga Chat's edge never reads either; it asks here with the principal it wrote from its own session, and keeps
+// the answer with its time (worker/chat/src/capability.js). Only a GitHub principal is asked about: an X account is a
+// listener whatever its name, and a matching name is never a GitHub identity.
+// `state` is `eligible` (a bundled owner, or an unbundled contributor Oogatron vouches for), `ineligible` (the policy
+// held a verified snapshot and said no, or the island has banned the account), or `unknown` (the snapshot could not be
+// read, so nothing was decided). A display name, a leaderboard row or a donation is never consulted.
+
+import { BridgeRefusal } from "./chat-bridge-protocol.js";
+
+export const POLICY = "obl-contributor-v1";
+const GITHUB_ID = /^[1-9][0-9]{0,15}$/;
+const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+
+/** The principal the edge wrote, as a GitHub account, or a refusal: `{ id, login }` with the id a safe integer. */
+export const githubAccount = (principal) => {
+  if (!principal || principal.provider !== "github") throw new BridgeRefusal("capability_required");
+  const id = typeof principal.providerUserId === "string" && GITHUB_ID.test(principal.providerUserId) ? Number(principal.providerUserId) : NaN;
+  if (!Number.isSafeInteger(id) || typeof principal.login !== "string" || !GITHUB_LOGIN.test(principal.login)) throw new BridgeRefusal("malformed");
+  return { id, login: principal.login };
+};
+
+export const capabilityOps = ({ contributorFor, now = Date.now }) => ({
+  capability: {
+    run: async (env, envelope) => {
+      const { id, login } = githubAccount(envelope.principal);
+      const answer = (state, character = null, reason = null) => ({ state, character, reason, policy: POLICY, checkedAt: now() });
+      if (env.DB) {
+        let row;
+        try { row = await env.DB.prepare("SELECT banned_at FROM players WHERE id = ?1").bind(id).first(); }
+        catch { return answer("unknown", null, "unavailable"); }
+        if (row && row.banned_at) return answer("ineligible", null, "banned");
+      }
+      const owned = await contributorFor(login, id);
+      if (owned) return answer("eligible", owned.handle);
+      return typeof contributorFor.fresh !== "function" || contributorFor.fresh() ? answer("ineligible", null, "not-contributor") : answer("unknown", null, "unavailable");
+    },
+  },
+});
