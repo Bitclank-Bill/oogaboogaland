@@ -28,8 +28,8 @@
     // Comma-separated: github, x, listen, speak, feed, commons, cloud. Empty: the app browses its public panels only.
     // A flag counts only when what it needs is configured too (worker/chat/src/config.js `effective`).
     "FEATURES": "",
-    // The staging GitHub OAuth App for Ooga Chat (callback <SITE_ORIGIN>/auth/github/callback); empty until registered.
-    "GITHUB_CLIENT_ID": "",
+    // OogaBoogaX's "Ooga Chat (staging)" OAuth App (callback <SITE_ORIGIN>/auth/github/callback). A client id is public.
+    "GITHUB_CLIENT_ID": "Ov23limsSaK7tng3ziBP",
     // The staging X app's OAuth 2.0 client id (callback <SITE_ORIGIN>/auth/x/callback); empty until registered.
     "X_CLIENT_ID": ""
     // Secrets, never here (worker/chat/dev.vars.example lists them): GITHUB_CLIENT_SECRET, X_CLIENT_SECRET.
