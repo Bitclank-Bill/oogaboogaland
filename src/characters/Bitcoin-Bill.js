@@ -140,6 +140,30 @@
     for (let x = 1; x <= 3; x++) v.set(x, 19, 0, x === 2 ? S_PURPLE : S_YELLOW);
     return (guitar = v);
   };
+  const SASH_PALETTE = ["#c2342c", "#a3271f", "#efe9da", "#d8d0bd", "#2c4f9e", "#22407f", "#6e4526", "#55331b", "#8a5a34", "#c9a878", "#c4c8cc", "#8e9499", "#eef1f3"];
+  const [RED, RED_DARK, WHITE, WHITE_DARK, BLUE, BLUE_DARK, LEATHER, LEATHER_DARK, LEATHER_LIGHT, STITCH, SILVER, SILVER_DARK, SILVER_LIGHT] = SASH_PALETTE.map((_, i) => i);
+  let sash = null;
+  const sashVox = () => {
+    if (sash) return sash;
+    const v = makeVox();
+    const inside = (x, z, grow) => Math.abs(x) <= 14 + grow && Math.abs(z + 0.5) <= 9.5 + grow && Math.abs(x) + Math.abs(z + 0.5) <= 20.5 + 2 * grow;
+    const cloth = (x, y, z) => { const dark = speckle(x, y, z) < 24 ? 1 : 0; return (y > 6 ? RED : y > 1 ? WHITE : BLUE) + dark; };
+    const hide = (x, y, z) => { const n = speckle(x, y, z); return y !== 4 ? LEATHER_DARK : (x + z + 40) % 3 === 0 ? STITCH : n < 20 ? LEATHER_LIGHT : LEATHER; };
+    for (let x = -15; x <= 15; x++) for (let z = -11; z <= 10; z++) {
+      if (inside(x, z, 0) && !inside(x, z, -1)) for (let y = 0; y <= 8; y++) if (y < 3 || y > 5) v.set(x, y, z, cloth(x, y, z));
+      if (inside(x, z, 1) && !inside(x, z, 0)) for (let y = 3; y <= 5; y++) v.set(x, y, z, hide(x, y, z));
+    }
+    for (let x = -3; x <= 3; x++) for (let y = 2; y <= 6; y++) {
+      const rim = Math.abs(x) === 3 || y === 2 || y === 6;
+      if (rim) v.set(x, y, 11, y === 6 ? SILVER_LIGHT : y === 2 || x === 3 ? SILVER_DARK : SILVER);
+      else if (y === 4 && x >= 0) v.set(x, y, 11, SILVER_DARK);
+    }
+    for (let x = 8; x <= 12; x++) for (let y = -1; y <= 8; y++) {
+      const star = y % 2 === 0 ? x % 4 === 0 : x === 10;
+      v.set(x, y, 11, star ? WHITE : speckle(x, y, 11) < 24 ? BLUE_DARK : BLUE);
+    }
+    return (sash = v);
+  };
   BL.characters.add({
     handle: "Bitcoin-Bill",
     github: "Bitclank-Bill",
@@ -229,6 +253,7 @@
           geometry: voxelGeometry(kobeVox(), { unit, palette: KOBE_PALETTE, origin: { x: -0.5 * unit, y: 0, z: -0.5 * unit }, emissive: KOBE_GLOW })
         });
         addChild(k.root, k.parts.dog);
+        addChild(k.parts.torso, createNode({ position: { x: 0, y: 1.3 * k.u, z: 0 }, geometry: voxelGeometry(sashVox(), { unit: unit / 2, palette: SASH_PALETTE, origin: { x: -0.25 * unit, y: 0, z: 0 } }) }));
       }
     }
   });
