@@ -10,6 +10,19 @@
     n = Math.imul(n ^ (n >>> 13), 1274126177);
     return ((n ^ (n >>> 16)) >>> 0) % 100;
   };
+  const DIRS = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const smooth = (src) => {
+    const out = makeVox();
+    src.each((x, y, z, c) => {
+      for (let o = 0; o < 8; o++) {
+        const s = [o & 1 ? 1 : -1, o & 2 ? 1 : -1, o & 4 ? 1 : -1];
+        let cut = 0;
+        DIRS.forEach(([a, b, d], i) => { if (!src.has(x + a * s[i], y + b * s[i], z + d * s[i]) && src.has(x - a * s[i], y - b * s[i], z - d * s[i])) cut++; });
+        if (cut < 2) out.set(2 * x + (o & 1), 2 * y + (o >> 1 & 1), 2 * z + (o >> 2), c);
+      }
+    });
+    return out;
+  };
   const KOBE_PALETTE = ["#4a35c8", "#3b28a6", "#ff7a2a", "#ff4f9a", "#2fd6c8", "#ffd23f", "#f6ecd9", "#15100c", "#3a2416", "#3f8fe8", "#8fd0ff"];
   const [VIOLET, INDIGO, TANGERINE, ROSE, TURQUOISE, SUN, CREAM, JET, EYE, BEAD, BEAD_LIGHT] = KOBE_PALETTE.map((_, i) => i);
   const KOBE_GLOW = { [BEAD]: 0.9, [BEAD_LIGHT]: 1.2 };
@@ -66,7 +79,7 @@
     }
     v.fill(0, 0, 8, 11, -7, -7, (x, y) => [ROSE, TANGERINE, SUN, TURQUOISE][y - 8]);
     v.set(0, 12, -6, ROSE); v.set(0, 12, -5, SUN);
-    return (kobe = v);
+    return (kobe = smooth(v));
   };
   const HAT_PALETTE = ["#d8c08a", "#c4a768", "#e8d7a8", "#b39656", "#7a5a3a", "#5e432a"];
   const [STRAW, STRAW_DARK, STRAW_LIGHT, STRAW_OLD, BAND, BAND_DARK] = HAT_PALETTE.map((_, i) => i);
@@ -257,7 +270,7 @@
         const s = 0.7, h = k.h, unit = k.u / 2;
         k.parts.dog = createNode({
           position: { x: 0.55 * h, y: -k.legH, z: -0.25 * h }, scale: { x: s, y: s, z: s },
-          geometry: voxelGeometry(kobeVox(), { unit, palette: KOBE_PALETTE, origin: { x: -0.5 * unit, y: 0, z: -0.5 * unit }, emissive: KOBE_GLOW })
+          geometry: voxelGeometry(kobeVox(), { unit: unit / 2, palette: KOBE_PALETTE, origin: { x: -0.5 * unit, y: 0, z: -0.5 * unit }, emissive: KOBE_GLOW })
         });
         addChild(k.root, k.parts.dog);
         addChild(k.parts.torso, createNode({ position: { x: 0, y: 1.3 * k.u, z: 0 }, geometry: voxelGeometry(sashVox(), { unit: unit / 2, palette: SASH_PALETTE, origin: { x: -0.25 * unit, y: 0, z: 0 } }) }));
