@@ -24305,8 +24305,11 @@ const modelledCarryPoses = { name: "modelled Heimdall and axe poses", why: "regr
       advance(3.2, false); const lowered = P.forearmL.rotation.x > -.8;
       rows.push({ kind: "heimdall", maxGrip, finite, hailed, returned, poked, refused, hornUp, lowered });
       keeper.root.visible = keeper.plinth.visible = false;
-      for (const [name, slim, height, belly] of [["regular", false, 1.1, 1.08], ["slim", true, .92, .8], ["wide", false, 1.3, 1.4]]) {
-        const traits = { ...BL.contributors.traitsFor("w-s-bitcoin"), name: "fixture/axe-" + name, slim, height, belly };
+      const axeDress = BL.contributors.traitsFor("w-s-bitcoin").dress;
+      for (const [name, owner] of [["regular", "w-s-bitcoin"], ["slim", "tiffanyvarty"], ["wide", "portlandhodl"]]) {
+        // Keep each character's actual body hook; setting slim on a regular custom model does not change its rig.
+        const base = BL.contributors.traitsFor(owner);
+        const traits = { ...base, name: "fixture/axe-" + name, stoneAxe: true, nunchaku: false, dress: { ...base.dress, club: axeDress.club } };
         const cave = M.caveman(traits); C.preparePresentation(cave); S.addChild(stage, cave.root);
         const p = cave.parts, club = p.club, h = cave.traits.height;
         for (const remote of [false, true]) {
@@ -24333,7 +24336,7 @@ const modelledCarryPoses = { name: "modelled Heimdall and axe poses", why: "regr
   })()`);
   const keeper = result.rows[0], axes = result.rows.slice(1);
   record("modelled Heimdall: rest, hail, repeat tap, horn and return keep both props in the fists with finite clothes and arm transforms", keeper.maxGrip < .001 && keeper.finite && keeper.hailed && keeper.returned && keeper.poked && keeper.refused && keeper.hornUp && keeper.lowered, JSON.stringify(keeper));
-  record("modelled axe: regular, slim and wide bodies, local and remote transitions keep the haft in the fist, its butt above the floor until planted, and the upper arm below its old lifted pose", axes.length === 6 && axes.every(r => r.modelled && r.gripGap < .001 && r.minY > -.005 && Math.abs(r.endY) < .005 && r.maxArm < .4), JSON.stringify(axes));
+  record("modelled axe: regular, slim and wide bodies, local and remote transitions keep the haft in the fist, its butt above the floor until planted, and the upper arm below its old lifted pose", axes.length === 6 && axes.filter(r => r.name === "slim").every(r => r.armScale < 1) && axes.every(r => r.modelled && r.gripGap < .001 && r.minY > -.005 && Math.abs(r.endY) < .005 && r.maxArm < .4), JSON.stringify(axes));
   if (process.env.POSE_SHOTS) {
     mkdirSync(process.env.POSE_SHOTS, { recursive: true });
     for (const shot of result.shots) writeFileSync(join(process.env.POSE_SHOTS, shot.label + ".png"), Buffer.from(shot.png.split(",")[1], "base64"));
