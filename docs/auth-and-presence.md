@@ -213,7 +213,7 @@ fallback: a page on an older room is never public.
 
 | Frame | When | Meaning |
 |---|---|---|
-| `{ op: "enter", epoch, scope }` | the scope becomes `main` or `dsb`, after any `reset` or `setSupported`, and on every new connection (the bridge moves the epoch there itself) | admit this connection's current voice publication, if any, to that scope's public audience for this epoch |
+| `{ op: "enter", epoch, scope }` | the scope becomes `main` or `dsb`, after any `reset` or `setSupported`, and on every new connection (the bridge moves the epoch there itself); after a `refused`, once more on a new epoch when a `body`, `zone` or `blend` frame has gone to the room since that `enter` (`net.state.placed`), or an older grant it was refused behind has closed, and with nothing held: the room checks its own record of those, which can trail the page's (a welcome goes live before the body is sent, the hub's zone waits out `ZONE_HOLD`, a crossing clears in steps) | admit this connection's current voice publication, if any, to that scope's public audience for this epoch |
 | `{ op: "leave", epoch, reason }` | the instant the scope leaves (before the zone, pose or anything private is sent), or before a new `enter`; repeated up to 3 times 3 s apart until answered | revoke every public grant of this connection at or below `epoch`; `reason` is the scope's (`interior`, `descending`, `scene`, ...) |
 
 **Frames, room to page:**

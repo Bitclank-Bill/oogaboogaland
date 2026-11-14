@@ -32583,8 +32583,9 @@ const outdoorVoiceChecks = () => {
   const { outdoorScope: O, outdoorVoice: V } = context.window.BL;
   const page = (features = true) => {
     const log = [], timers = new Map(), watchers = new Set(), frames = new Set(), reactions = [];
-    let live = true, timerId = 0;
+    let live = true, timerId = 0, placed = 0;
     const T = { live: () => live, available: () => live && features, send: (msg) => { if (!live || !features) return false; log.push(msg); return true; },
+      placed: () => placed,
       watch: (fn) => { watchers.add(fn); return () => watchers.delete(fn); }, subscribe: (fn) => { frames.add(fn); return () => frames.delete(fn); } };
     const voice = { told: [], setOutdoor(held, audience, sources) { this.told.push({ held, audience, sources: [...sources] }); log.push({ op: "voice", held, audience }); } };
     const scope = O.create();
@@ -32596,7 +32597,10 @@ const outdoorVoiceChecks = () => {
     const fire = () => { const all = [...timers]; timers.clear(); for (const [, t] of all) t.fn(); };
     const last = (op) => log.filter((m) => m.op === op).at(-1);
     const held = () => voice.told.at(-1)?.held === true;
-    return { B, S: scope.state, scope, log, room, setLive, fire, timers, last, held, voice, reactions, watchers, frames };
+    // The page sent the room a body, zone or crossing (net.js), which the room's own scope check reads.
+    const place = () => { placed++; for (const fn of [...frames]) fn({ op: "placed" }); };
+    const count = (op) => log.filter((m) => m.op === op).length;
+    return { B, S: scope.state, scope, log, room, setLive, fire, timers, last, held, voice, reactions, watchers, frames, place, count };
   };
   const rows = {};
   // No capability: nothing is sent and nothing is ever public.
@@ -32723,6 +32727,49 @@ const outdoorVoiceChecks = () => {
     p.room({ op: "refused", epoch: p.S.epoch, reason: "no-body" });
     rows.refusedClosingHeld = p.held() && !p.S.public;
   }
+  // regression: an `enter` reaching the room before the body, zone or crossing it checks is refused; once the page has
+  // sent one since that ask (net.js `placed`), the refused epoch is asked again on a new epoch, once a change, and
+  // nothing is public without the room's open.
+  {
+    const p = page();
+    p.scope.report("main", "outdoor"); const e = p.S.epoch;
+    p.place(); p.place();
+    p.room({ op: "refused", epoch: e, reason: "no-body" });
+    const again = p.last("enter");
+    rows.reaskWelcome = again.epoch > e && !p.S.public && !p.held() && p.B.stats.status === "requesting";
+    p.room({ op: "open", epoch: again.epoch, scope: "main" });
+    rows.reaskOpens = p.S.public && !p.held();
+  }
+  {
+    const p = page();
+    p.scope.report("main", "outdoor"); const e = p.S.epoch;
+    p.room({ op: "refused", epoch: e, reason: "interior" });
+    for (let k = 0; k < V.RETRY_MAX + 2; k++) p.fire();
+    rows.reaskQuiet = p.count("enter") === 1 && p.B.stats.status === "refused" && p.timers.size === 0;
+    p.place();
+    const again = p.last("enter");
+    rows.reaskZone = p.count("enter") === 2 && again.epoch > e && !p.S.public;
+    p.room({ op: "refused", epoch: again.epoch, reason: "interior" });
+    for (let k = 0; k < V.RETRY_MAX + 2; k++) p.fire();
+    rows.reaskBounded = p.count("enter") === 2 && !p.S.public && p.timers.size === 0;
+    p.scope.report(null, "interior"); p.place();
+    rows.reaskExcluded = p.count("enter") === 2 && !p.held();
+  }
+  {
+    const p = page();
+    p.scope.report("main", "outdoor"); const e = p.S.epoch;
+    p.room({ op: "open", epoch: e, scope: "main" });
+    p.scope.report(null, "interior");
+    p.scope.report("main", "outdoor"); const back = p.S.epoch;
+    p.room({ op: "refused", epoch: back, reason: "pending" });
+    p.place();
+    rows.reaskHeldWaits = p.count("enter") === 2 && p.held();
+    p.room({ op: "closed", epoch: back });
+    const again = p.last("enter");
+    rows.reaskAfterHold = !p.held() && again.epoch > back && p.count("enter") === 3 && !p.S.public;
+    p.room({ op: "open", epoch: again.epoch, scope: "main" });
+    rows.reaskAfterHoldOpens = p.S.public && !p.held();
+  }
   // Dispose: a last leave, no transport, nothing subscribed or pending, and later frames do nothing.
   {
     const p = page();
@@ -32732,7 +32779,7 @@ const outdoorVoiceChecks = () => {
     p.room({ op: "open", epoch: p.S.epoch, scope: "main" });
     rows.dispose = p.last("leave").epoch === e && !p.S.supported && !p.S.public && !p.held() && p.watchers.size === 0 && p.frames.size === 0 && p.timers.size === 0;
   }
-  record("outdoor voice bridge: public only on the room's capability and an open for the current request; leaving sends leave and holds the mic synchronously until the room confirms, through delayed and stale acks, rapid backtracking, dropped answers, reconnect, replacement, revocation, refusal (an older grant still closing keeps the hold) and dispose; reactions deduplicated and cleared",
+  record("outdoor voice bridge: public only on the room's capability and an open for the current request; leaving sends leave and holds the mic synchronously until the room confirms, through delayed and stale acks, rapid backtracking, dropped answers, reconnect, replacement, revocation, refusal (an older grant still closing keeps the hold; asked again on a new epoch once a body, zone or crossing has reached the room since, or that grant closed, never on a timer) and dispose; reactions deduplicated and cleared",
     Object.values(rows).every(Boolean), JSON.stringify(rows));
 };
 const unitChecks = async () => {

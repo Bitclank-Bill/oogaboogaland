@@ -98,7 +98,9 @@
 // never drop.
 // Ooga Chat's outdoor bridge (outdoor-voice.js, #661): a room whose `features` hold OUTDOOR_FEATURE (`state.outdoorVoice`)
 // takes `sendOutdoor(msg)`, one `outdoor` frame of the handshake in docs/auth-and-presence.md (Outdoor voice bridge), and
-// `subscribeOutdoor` hears the room's `outdoor` frames as they come, and `{ op: "lost" }` when the room stops being live.
+// `subscribeOutdoor` hears the room's `outdoor` frames as they come, `{ op: "lost" }` when the room stops being live and
+// `{ op: "placed" }` after each body, zone or crossing frame sent (counted in `state.placed`), which the room's own check
+// of an `enter` reads, so the bridge can ask again for an epoch refused before the room had them.
 // Without the feature both stay silent and the bridge keeps the page out of every public audience.
 // Exports voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
 // setMuted, setHealth, sendNpc, sendChat, sendPrivate, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
@@ -208,7 +210,7 @@
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
-    voiceLinks: false, linkWants: new Set(), linked: new Set(), outdoorVoice: false };
+    voiceLinks: false, linkWants: new Set(), linked: new Set(), outdoorVoice: false, placed: 0 };
   const REACT_FEATURE = "react-v1", LINK_FEATURE = "vlink-v1", LINK_MAX = 64, OUTDOOR_FEATURE = "outdoor-voice-v1";
   const linkIds = (list) => new Set(Array.isArray(list) ? list.filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, LINK_MAX) : []);
   // The room's last word on whom to hear, for what a move to another place keeps.
@@ -358,8 +360,10 @@
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(text);
   };
 
-  const sendBody = () => send(JSON.stringify({ t: "body", name: body }));
-  const sendZone = () => send(JSON.stringify({ t: "zone", name: zone }));
+  const PLACED = { op: "placed" };
+  const placed = () => { state.placed++; if (state.outdoorVoice) outdoorHeard(PLACED); };
+  const sendBody = () => { send(JSON.stringify({ t: "body", name: body })); placed(); };
+  const sendZone = () => { send(JSON.stringify({ t: "zone", name: zone })); placed(); };
   // The crossing last sent (`to`/`k`), "" for none; null after a zone forces the next report, including a clear.
   const BLEND = BL.voiceBlend, BLEND_MS = 250;
   let blendSent = "", blendAt = -Infinity;
@@ -370,6 +374,7 @@
     if (key === blendSent || now - blendAt < BLEND_MS) return;
     blendSent = key; blendAt = now;
     send(JSON.stringify({ t: "blend", to: k ? state.blendTo : null, k }));
+    placed();
   };
   // Under half a step is no crossing, so a body a hair past a level's height never has the room pull the next place.
   const setBlend = (to, t) => {

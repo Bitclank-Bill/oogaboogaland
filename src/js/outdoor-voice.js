@@ -9,6 +9,8 @@
 // room confirms with `closed` that no public listener holds the publication any more, so no private word is captured
 // into it. A dropped `closed` keeps it held (retried, then held until the next connection, whose welcome the room sends
 // only after the old connection's grants are gone). A stale, unasked or replayed `open` never acknowledges anything.
+// A refused epoch is asked again, on a new epoch, only once the body, zone or crossing the room checks it against has
+// been sent since (the transport's `placed` count and `{ op: "placed" }`), or an older grant it waited behind closed.
 // It never acquires a microphone, joins voice or unmutes: being outdoors makes an OBL player who already joined voice
 // a public source, as they were, and the mic controls (M, the account's button, the roster's own row) stay voice.js's.
 // Reactions from the public audience (`react`) are checked, deduplicated and handed to `subscribeReactions` for the
@@ -30,8 +32,10 @@
     const S = scope.state;
     // Epochs are outdoor-scope.js's, page-wide and only rising: `asked` is the last one an `enter` went out for,
     // `left` the last one given up (a `leave` sent, or due), `closed` the last the room confirmed revoked (cumulative).
-    // `quiet` is an epoch not to ask for: the room refused or revoked it, so only a new move asks again.
-    let asked = -1, left = -1, closed = -1, quiet = -1, wasLive = false, audience = 0;
+    // `quiet` is an epoch not to ask for: the room refused or revoked it, so only a new move asks again, or, for a
+    // refusal (`refusedAt`), a change in what the room checked it against: `askedPlace` is the transport's count of
+    // body, zone and crossing frames sent when it was asked, and `askedHeld` whether an older grant was still closing.
+    let asked = -1, left = -1, closed = -1, quiet = -1, refusedAt = -1, askedPlace = 0, askedHeld = false, wasLive = false, audience = 0;
     let syncing = false, again = false, disposed = false, retryTimer = 0, tries = 0, retryKey = "";
     // What voice.js was last told, so it hears changes only.
     let toldHeld = false, toldAudience = 0, toldSources = -1, sourcesVersion = 0;
@@ -80,8 +84,18 @@
         left = asked;
         if (live) sendLeave(left);
       }
+      // The room checks an `enter` against its own record of the body, zone and crossing, which can trail the page's
+      // (a reconnect's welcome goes live before the body is sent, the hub's zone waits out ZONE_HOLD, a crossing clears
+      // in steps), and against an older grant still closing. Once one of those has changed since the refused ask, and
+      // nothing is held, it is asked again on a new epoch: once a change, never on a timer, public only on its `open`.
+      if (ok && S.scope !== null && S.epoch === refusedAt && left <= closed && (askedHeld || transport.placed() !== askedPlace)) {
+        refusedAt = -1;
+        scope.reset();
+      }
       if (ok && S.scope !== null && S.epoch !== asked && S.epoch !== quiet) {
         asked = S.epoch;
+        askedPlace = transport.placed();
+        askedHeld = left > closed;
         sendEnter();
       }
     };
@@ -120,7 +134,8 @@
     // The room's frames. Anything not answering the current request, in this version, is ignored.
     const heard = (msg) => {
       if (disposed || !msg || typeof msg !== "object") return;
-      if (msg.op === "lost") { sync(); return; }
+      // The room lost, or a body, zone or crossing sent to it (net.js): either may change what can be asked.
+      if (msg.op === "lost" || msg.op === "placed") { sync(); return; }
       const e = msg.epoch;
       if (msg.v !== VERSION || !Number.isSafeInteger(e) || e < 0) return;
       // Only the live connection's answer to the latest request counts; nothing arrives for an old socket.
@@ -158,7 +173,7 @@
         // since its scope check runs first), and its hold stays until a `closed` covers it. The refused epoch is given
         // up as any other then, so the room's cumulative `closed` answers both; with nothing held there is nothing to wait for.
         if (left > closed) { left = e; sendLeave(e); } else left = closed = e;
-        quiet = e;
+        quiet = refusedAt = e;
         stats.refused = typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "refused";
       } else if (msg.op === "react") {
         if (!current || !S.public || !validId(msg.id) || typeof msg.rid !== "string" || !RID.test(msg.rid) || !validEmoji(msg.e) || seen.has(msg.rid)) return;
@@ -206,6 +221,7 @@
       transport: {
         live: () => net.state.room === "live",
         available: () => net.state.room === "live" && net.state.outdoorVoice,
+        placed: () => net.state.placed,
         send: net.sendOutdoor,
         watch: net.subscribe,
         subscribe: net.subscribeOutdoor
