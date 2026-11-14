@@ -25924,17 +25924,21 @@ scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: 
 scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", { card: '[data-intro="block"]', play: "__ooga.block.start()", required: ["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"] }), {
   name: "block phone actions and results", why: "regression: Throw overlapped Jump and the sticks, and small results cards clipped names and action labels", run: async b => {
     const rows = [];
-    for (const [map, flightX, flightZ] of [["town", 0, 6], ["jungle", 18, 0]]) for (const [width, height] of [[390,844],[844,390],[320,568]]) {
+    for (const [map, flightX, flightZ] of [["town", 0, 6], ["jungle", 18, 0], ["haunted", 20, 0]]) for (const [width, height] of [[390,844],[844,390],[320,568]]) {
       await b.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
       await b.sleep(100);
       await b.evaluate(`__ooga.block.showBoard();document.querySelector('#block-board [data-map="${map}"]').click();new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
       rows.push({ map, width, phase: "board", bad: await b.evaluate(PHONE(['#block-board [data-action="block-start"]'])) });
-      await b.evaluate(`(() => { const D=__ooga.block;D.start(604);D.sim.prep=0;Object.assign(D.sim.actors[0],{flight:0,grounded:true,x:-7,z:4,y:0,vy:0}); })()`);
+      await b.evaluate(`(() => { const D=__ooga.block;D.start(604);D.sim.prep=0;Object.assign(D.sim.actors[0],{flight:0,grounded:true,x:-7,z:4,y:0,vy:0,guard:30}); })()`);
       rows.push({ map, width, phase: "play", bad: await b.evaluate(PHONE(["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"])) });
-      const at = await b.evaluate(`(() => { const r=document.getElementById("block-paint").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
-      await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
-      await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-      const fired = await b.evaluate(`__ooga.block.sim.actors[0].lastKind === "paint" && __ooga.block.sim.actors[0].cooldown > 0`);
+      // Hold simulation time while the native touch crosses CDP: a short shot cooldown can expire between calls.
+      const at = await b.evaluate(`(() => { const scene=BL.scenes.block;window.__blockPhoneUpdate=scene.update;scene.update=()=>{};const r=document.getElementById("block-paint").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+      let fired;
+      try {
+        await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+        await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        fired = await b.evaluate(`(() => { const s=__ooga.block.sim;return s.actors[0].lastKind === "paint" && s.actors[0].cooldown > 0 && s.shots.some(p=>p.live&&p.owner===0&&p.kind==="paint"); })()`);
+      } finally { await b.evaluate(`BL.scenes.block.update=window.__blockPhoneUpdate;delete window.__blockPhoneUpdate`); }
       rows.push({ map, width, fired });
       // Hold the actual touch Jump control through the jump's apex, then release and cancel a fresh hold.
       // Spawn protection keeps a gorilla or a bot from interrupting this input check.
