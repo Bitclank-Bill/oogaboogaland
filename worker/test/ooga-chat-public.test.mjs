@@ -32,7 +32,11 @@ const island = ({ features = "", down = false } = {}) => {
 // Oogatron as a fake: what it answers next, and how often it was asked.
 const oogatron = (answer = () => new Response(JSON.stringify(snapshot()), { headers: { "content-type": "application/json" } })) => {
   const state = { calls: 0, answer };
-  state.fetch = async (url) => { assert.match(String(url), /^https:\/\/oogatron\./); state.calls++; return state.answer(); };
+  state.fetch = async (url, init = {}) => {
+    // As workerd does: its fetch has no "error" redirect mode and throws on it.
+    assert.equal(init.redirect, "manual");
+    assert.match(String(url), /^https:\/\/oogatron\./); state.calls++; return state.answer();
+  };
   return state;
 };
 

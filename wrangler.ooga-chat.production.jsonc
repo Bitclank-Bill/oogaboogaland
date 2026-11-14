@@ -26,10 +26,10 @@
     "SITE_ORIGIN": "https://ooga.chat",
     // Comma-separated: github, x, listen, speak, feed, commons, cloud. Turned on in stages by the release runbook.
     "FEATURES": "",
-    // The production GitHub OAuth App for Ooga Chat (callback https://ooga.chat/auth/github/callback).
-    "GITHUB_CLIENT_ID": "",
-    // The production X app's OAuth 2.0 client id (callback https://ooga.chat/auth/x/callback).
-    "X_CLIENT_ID": ""
+    // OogaBoogaX's "Ooga Chat" OAuth App (callback https://ooga.chat/auth/github/callback). A client id is public.
+    "GITHUB_CLIENT_ID": "Ov23lilwmHOnCXhvwsKJ",
+    // @w_s_bitcoin's "Ooga Chat" X app, OAuth 2.0 confidential client (callbacks for both environments). Public.
+    "X_CLIENT_ID": "SkNWYXRycmFpLWt4Z1hHSUl6RzM6MTpjaQ"
     // Secrets, never here: GITHUB_CLIENT_SECRET, X_CLIENT_SECRET.
   },
   "d1_databases": [

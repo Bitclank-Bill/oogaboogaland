@@ -32,7 +32,8 @@ export const validStats = (stats, now) => {
 };
 
 const readStats = async (fetcher, now) => {
-  const res = await fetcher(STATS_URL, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(4000) });
+  // "manual": a redirect is a 3xx, not `ok`, so it reads as no snapshot (Workers' fetch has no "error" mode).
+  const res = await fetcher(STATS_URL, { headers: { accept: "application/json" }, redirect: "manual", signal: AbortSignal.timeout(4000) });
   if (!res.ok || !res.body) return null;
   if (Number(res.headers.get("content-length") || 0) > STATS_MAX) return null;
   const reader = res.body.getReader(), chunks = [];
