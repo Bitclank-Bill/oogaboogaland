@@ -12947,12 +12947,14 @@ const blockPoses = { name: "block modelled poses", why: "regression: old straigh
 } };
 const blockThrowScore = { name: "block throw scoring controls", why: "rule: keyboard and touch throws must score under the selected rule and show the correct throw feedback on the new Oogas", run: async b => {
   const rows = [], touch = await b.evaluate('matchMedia("(pointer: coarse)").matches');
+  // A focused run may reach this check before blockStart dismisses the title card.
+  if (await b.evaluate(`!document.querySelector('[data-intro="block"]').hidden`)) await b.key(" ");
   await b.evaluate('window.__throwUpdate = BL.scenes.block.update; BL.scenes.block.update = () => {}');
   try {
     for (const name of ["w-s-bitcoin", "tiffanyvarty", "portlandhodl"]) for (const mode of ["home", "away", "any"]) {
       const setup = await b.evaluate(`(() => {
         const D = __ooga.block, S = BL.blockSim;
-        D.showBoard(); D.selection.map = "town"; D.selection.rule = "home"; D.chooseTeam(${JSON.stringify(name === "tiffanyvarty" ? "red" : "blue")}); D.chooseOoga(${JSON.stringify(name)}); D.chooseOoga(${JSON.stringify(name)}); D.start(583);
+        D.showBoard(); document.querySelector('#block-board [data-map="town"]').click(); D.selection.rule = "home"; D.chooseTeam(${JSON.stringify(name === "tiffanyvarty" ? "red" : "blue")}); D.chooseOoga(${JSON.stringify(name)}); D.chooseOoga(${JSON.stringify(name)}); D.start(583);
         const sim = D.sim, a = sim.actors[0], stand = S.ARENA.stands[a.team], sign = a.team === "blue" ? 1 : -1, other = S.other(a.team);
         sim.prep = 0; sim.anyTime = ${mode === "any"}; sim.weather.left = 1e9;
         for (const p of sim.actors) Object.assign(p, { bot: false, flight: 0, x: 18, z: p.id * 3, y: 0, grounded: true, guard: 60 });
@@ -12983,13 +12985,15 @@ const blockRoofs = { name: "block roof presentation", why: "regression: a loose 
     const D = __ooga.block, S = BL.blockSim, scene = BL.scenes.block, update = scene.update, rows = [];
     scene.update = () => {};
     try {
-      for (const name of ["w-s-bitcoin", "tiffanyvarty", "portlandhodl"]) {
-        D.showBoard(); D.selection.map = "town"; D.chooseOoga(name); D.chooseOoga(name); D.start(602); D.sim.prep = 0;
+      for (const name of ["w-s-bitcoin", "tiffanyvarty", "portlandhodl"]) for (const [map, surface] of [["town", "cave"], ["jungle", "cave"], ["jungle", "bridge"], ["jungle", "floor"], ["jungle", "head"]]) {
+        D.showBoard(); document.querySelector('#block-board [data-map="' + map + '"]').click(); D.chooseTeam("blue"); D.chooseOoga(name); D.chooseOoga(name); D.start(602); D.sim.prep = 0;
         const sim = D.sim, body = sim.actors[0], f = sim.flags.red;
         for (const a of sim.actors) Object.assign(a, { bot: false, flight: 0, x: 0.25 + a.id, z: S.ARENA.spawnZ, y: 0, grounded: true, guard: 60 });
         sim.weather.left = 1e9;
         for (const g of sim.gorillas) { g.state = 3; g.t = 1e9; }
-        const roof = S.ARENA.BLOCKS.find(b => S.ARENA.rockKind.get(b) === "cave" && b[5] > 0 && b[1] - b[0] >= 1 && b[3] - b[2] >= 1 && S.groundAt((b[0] + b[1]) / 2,(b[2] + b[3]) / 2, 99, 0.2) === b[4]);
+        const roof = S.ARENA.BLOCKS.find(b => surface === "cave"
+          ? S.ARENA.rockKind.get(b) === "cave" && b[5] > 0 && b[1] - b[0] >= 1 && b[3] - b[2] >= 1 && S.groundAt((b[0] + b[1]) / 2,(b[2] + b[3]) / 2, 99, 0.2) === b[4]
+          : S.ARENA.kinds.get(b) === surface && b[2] > 0);
         const x = (roof[0] + roof[1]) / 2, z = (roof[2] + roof[3]) / 2, top = roof[4];
         Object.assign(f, { state: "flying", x, z, y: top + 2, vx: 0, vz: 0, vy: 0, carrier: null, thrower: -1, hookedBy: -1 });
         // A player below the roof cannot take the falling block through it.
@@ -12998,7 +13002,7 @@ const blockRoofs = { name: "block roof presentation", why: "regression: a loose 
         const landed = f.state === "dropped" && f.y === top && !body.carrying;
         const drawn = block.visible && Math.abs(block.world[13] - top - .5) < .07;
         // Land the actual chosen model beside the block, then measure both soles in world space.
-        Object.assign(body, { x, z: z + 2, y: top + 2, grounded: false, vy: 0 }); D.simulate(1.5); update(0, 0); BL.scene.updateWorld(scene.root);
+        Object.assign(body, { x: x + (surface === "head" || surface === "floor" ? 2 : 0), z: z + (surface === "head" || surface === "floor" ? 0 : 2), y: top + 2, grounded: false, vy: 0 }); D.simulate(1.5); update(0, 0); BL.scene.updateWorld(scene.root);
         const cave = D.actors[0].cave, feet = [];
         for (const leg of [cave.parts.legL, cave.parts.legR]) {
           const box = BL.scene.boundsOf(leg.geometry), p = new Float64Array(3); let low = Infinity;
@@ -13007,15 +13011,15 @@ const blockRoofs = { name: "block roof presentation", why: "regression: a loose 
         }
         const stood = body.grounded && body.y === top && cave.modelled;
         Object.assign(body, { x: .25, z: S.ARENA.spawnZ, y: 0 });
-        const bot = sim.actors[1]; Object.assign(bot, { x: x - Math.sign(x) * 9, z, y: 0, bot: true, role: "attack", fuel: S.CONFIG.JET_FUEL });
+        const bot = sim.actors[1]; Object.assign(bot, { x: surface === "cave" ? x - Math.sign(x) * 9 : surface === "head" ? x : x + 6, z: z + (surface === "head" ? 3 : 0), y: 0, bot: true, role: "attack", fuel: S.CONFIG.JET_FUEL });
         let seconds = 0, flame = false;
         while (seconds < 30 && f.state !== "carried") { D.simulate(.1); update(0, 0); flame ||= D.actors[bot.id].jetFlame.visible; seconds += .1; }
-        rows.push({ name, landed, drawn, stood, feet, flame, seconds, fetched: f.state === "carried" && f.carrier === bot.id });
+        rows.push({ name, map, surface, landed, drawn, stood, feet, flame, seconds, fetched: f.state === "carried" && f.carrier === bot.id });
       }
     } finally { scene.update = update; D.showBoard(); }
     return rows;
   })()`);
-  record("block roofs: blocks stay visible above the roof, cannot be picked up below it, regular/slim/wide Oogas land with their feet on it, and bots retrieve them using the upgraded jetpack", rows.length === 3 && rows.every(r => r.landed && r.drawn && r.stood && r.feet.every(y => Math.abs(y) < .1) && r.flame && r.fetched), JSON.stringify(rows));
+  record("block roofs: blocks stay visible above the roof, cannot be picked up below it, regular/slim/wide Oogas land with their feet on it, and bots retrieve them using the upgraded jetpack", rows.length === 15 && rows.every(r => r.landed && r.drawn && r.stood && r.feet.every(y => Math.abs(y) < .1) && r.flame && r.fetched), JSON.stringify(rows));
 } };
 const blockZipline = { name: "block zipline controls", why: "rule: the ride control and warning lamps must agree about a rival zipline's trap for either team", run: async b => {
   const rows = await b.evaluate(`(() => {
@@ -25876,21 +25880,21 @@ scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: 
 scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", { card: '[data-intro="block"]', play: "__ooga.block.start()", required: ["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"] }), {
   name: "block phone actions and results", why: "regression: Throw overlapped Jump and the sticks, and small results cards clipped names and action labels", run: async b => {
     const rows = [];
-    for (const [width, height] of [[390,844],[844,390],[320,568]]) {
+    for (const [map, flightX, flightZ] of [["town", 0, 6], ["jungle", 18, 0]]) for (const [width, height] of [[390,844],[844,390],[320,568]]) {
       await b.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: true });
       await b.sleep(100);
-      await b.evaluate(`__ooga.block.showBoard();document.querySelector('#block-board [data-map="town"]').click();new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-      rows.push({ width, phase: "board", bad: await b.evaluate(PHONE(['#block-board [data-action="block-start"]'])) });
+      await b.evaluate(`__ooga.block.showBoard();document.querySelector('#block-board [data-map="${map}"]').click();new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+      rows.push({ map, width, phase: "board", bad: await b.evaluate(PHONE(['#block-board [data-action="block-start"]'])) });
       await b.evaluate(`(() => { const D=__ooga.block;D.start(604);D.sim.prep=0;Object.assign(D.sim.actors[0],{flight:0,grounded:true,x:-7,z:4,y:0,vy:0}); })()`);
-      rows.push({ width, phase: "play", bad: await b.evaluate(PHONE(["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"])) });
+      rows.push({ map, width, phase: "play", bad: await b.evaluate(PHONE(["#joy-move", "#joy-look", "#act", "#block-paint", "#block-tools [data-tool=paint]"])) });
       const at = await b.evaluate(`(() => { const r=document.getElementById("block-paint").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
       await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
       await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       const fired = await b.evaluate(`__ooga.block.sim.actors[0].lastKind === "paint" && __ooga.block.sim.actors[0].cooldown > 0`);
-      rows.push({ width, fired });
+      rows.push({ map, width, fired });
       // Hold the actual touch Jump control through the jump's apex, then release and cancel a fresh hold.
       // Spawn protection keeps a gorilla or a bot from interrupting this input check.
-      await b.evaluate(`(() => { const D=__ooga.block;D.cam.first=D.cam.close=D.cam.island=false;if(!BL.blockSim.ARENA.BLOCKS.every(b=>0<b[0]-1||0>b[1]+1||6<b[2]-1||6>b[3]+1))throw Error("Jetpack flight column is obstructed");Object.assign(D.sim.actors[0],{x:0,z:6,y:0,vy:0,grounded:true,flight:0,grabbed:0,guard:30,fuel:BL.blockSim.CONFIG.JET_FUEL});__ooga.advance(.1,1/60); })()`);
+      await b.evaluate(`(() => { const D=__ooga.block;D.cam.first=D.cam.close=D.cam.island=false;if(!BL.blockSim.ARENA.BLOCKS.every(b=>${flightX}<b[0]-1||${flightX}>b[1]+1||${flightZ}<b[2]-1||${flightZ}>b[3]+1))throw Error("Jetpack flight column is obstructed");Object.assign(D.sim.actors[0],{x:${flightX},z:${flightZ},y:0,vy:0,grounded:true,flight:0,grabbed:0,guard:30,fuel:BL.blockSim.CONFIG.JET_FUEL});__ooga.advance(.1,1/60); })()`);
       const jump = await b.evaluate(`(() => { const r=document.getElementById("act").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
       await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [jump] });
       const flight = await b.evaluate(`(() => { __ooga.advance(1.8,1/60);const D=__ooga.block,a=D.sim.actors[0];return {map:D.sim.map,y:a.y,vy:a.vy,fuel:a.fuel,jet:a.jetting,flame:D.actors[0].jetFlame.visible}; })()`);
@@ -25900,9 +25904,9 @@ scene("block", { label: "block phone", opts: PHONE_SIZE, steps: [phone("block", 
       await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [jump] });
       await b.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
       const cancelled = await b.evaluate(`(() => { __ooga.advance(.1,1/60);return !__ooga.block.sim.actors[0].jetting; })()`);
-      rows.push({ width, flight, released, cancelled, fired: flight.map === "town" && flight.y > 6 && flight.vy > 6 && flight.fuel > 0 && flight.fuel < 4.4 && flight.jet && flight.flame && released && cancelled });
+      rows.push({ map, width, flight, released, cancelled, fired: flight.map === map && flight.y > 6 && flight.vy > 6 && flight.fuel > 0 && flight.fuel < 4.4 && flight.jet && flight.flame && released && cancelled });
       await b.evaluate(`(() => { const D=__ooga.block;D.sim.over=true;D.sim.winner=D.sim.team;D.simulate(.1);__ooga.advance(.1); })()`);
-      rows.push({ width, phase: "results", bad: await b.evaluate(PHONE(['#block-results [data-action="block-again"]','#block-results [data-action="block-board"]','#block-results [data-role="leave"]'])) });
+      rows.push({ map, width, phase: "results", bad: await b.evaluate(PHONE(['#block-results [data-action="block-again"]','#block-results [data-action="block-board"]','#block-results [data-role="leave"]'])) });
     }
     record("block phone: portrait, landscape and narrow screens keep the controls reachable, real Throw taps fire, held Jump climbs with flame and fuel use, release/cancel cuts thrust, and the results names and actions fit", rows.every(r => r.bad ? !r.bad.length : r.fired), JSON.stringify(rows));
   }
