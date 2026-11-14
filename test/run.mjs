@@ -16621,10 +16621,14 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
         fromSite: e.fromSite, site: e.site, x: +e.root.position.x.toFixed(2), y: +e.root.position.y.toFixed(2), z: +e.root.position.z.toFixed(2),
         goalX: +e.goalX.toFixed(2), goalZ: +e.goalZ.toFixed(2), speed: +e.speed.toFixed(2), blocked: +e.blocked.toFixed(2),
         stuck: +e.stuck.time.toFixed(2), recover: +e.recover.toFixed(2), climbing: e.climb.active, jumping: e.jump.active, footprint: e.footprintMode,
-        goalY: +e.goalY.toFixed(2), roof: e.loungeRoof, climb: e.climb.active ? { descending: e.climb.descending, free: e.climb.free, hold: e.climb.holdPose,
+        goalY: +e.goalY.toFixed(2), roof: e.loungeRoof, rest: e.rest, exitFootprint: e.exitFootprint,
+        roam: { failedChoices: e.roam.failedChoices, nextChoice: e.roam.nextChoice, levelOnlyUntil: e.roam.levelOnlyUntil,
+          progressTime: e.roam.progressTime, count: e.roam.count, index: e.roam.index, target: [e.roam.targetX,e.roam.targetY,e.roam.targetZ],
+          failed: [e.roam.failedX,e.roam.failedZ,e.roam.failedUntil], wall: e.roam.wall, depart: e.roam.departPending, align: e.roam.alignTime },
+        elapsed: C.stats().elapsed, climb: e.climb.active ? { descending: e.climb.descending, free: e.climb.free, hold: e.climb.holdPose,
           mount: e.climb.mountPending, wait: e.climb.waitRelease, handoff: e.climb.handoffDirection, claim: e.climb.claimPending, crest: e.climb.crestPending,
           search: e.climb.searchPending, progress: +(e.climb.progress || 0).toFixed(2), length: +(e.climb.length || 0).toFixed(2), opening: e.climb.openingExit } : null });
-      const track = list.map(e => ({ e, pile, pileAt: pile ? 0 : -1, leftAt: -1, loungeAt: -1, maxStep: 0, prev: null, stall: null, trace: [],
+      const track = list.map(e => ({ e, pile, pileAt: pile ? 0 : -1, leftAt: -1, loungeAt: -1, maxStep: 0, prev: null, stall: null, trace: [], approach: [],
         last: { x: e.root.position.x, z: e.root.position.z }, recoveries: e.stuck.recoveries }));
       let f = 0;
       for (; f < frames && track.some(t => t.loungeAt < 0); f++) {
@@ -16637,6 +16641,10 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
           if (t.leftAt >= 0 && t.loungeAt < 0 && e.phase === "chill" && e.lounge && e.roam.arrived) t.loungeAt = f;
           if (!t.stall && e.stuck.recoveries !== t.recoveries) t.stall = { frame: f, ...t.prev };
           if (!t.stall) t.prev = snap(e);
+          if (t.leftAt >= 0 && t.loungeAt < 0 && !t.stall && f % 30 === 0) {
+            if (t.approach.length === 20) t.approach.shift();
+            t.approach.push({ frame: f, ...t.prev });
+          }
           // Until the pile, a sample every third of a second (at most 60): where a blocked walk dwells and why.
           if (t.pileAt < 0 && !t.stall && f % 10 === 0 && t.trace.length < 60) t.trace.push([f, +q.x.toFixed(2), +q.z.toFixed(2), +e.goalX.toFixed(2),
             +e.goalZ.toFixed(2), +e.speed.toFixed(2), +e.stuck.time.toFixed(2), e.stuck.escapeLeft > 0 ? 1 : 0, +e.blocked.toFixed(2), e.route]);
@@ -16647,7 +16655,7 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
         return { name: e.owner.traits.name, ok: t.pileAt >= 0 && t.leftAt >= t.pileAt && t.loungeAt >= t.leftAt
           && t.maxStep < 0.5 && e.stuck.recoveries === t.recoveries && e.mode === "chilling" && e.nonInteractive,
           pileAt: t.pileAt, leftAt: t.leftAt, loungeAt: t.loungeAt, frames: f, maxStep: +t.maxStep.toFixed(3),
-          recoveries: e.stuck.recoveries - t.recoveries, reason: e.stuck.reason, stall: t.stall, trace: t.loungeAt < 0 ? t.trace : undefined, pile: t.pile,
+          recoveries: e.stuck.recoveries - t.recoveries, reason: e.stuck.reason, stall: t.stall, trace: t.loungeAt < 0 ? t.trace : undefined, approach: t.loungeAt < 0 ? t.approach : undefined, pile: t.pile,
           at: { x: +q.x.toFixed(2), y: +q.y.toFixed(2), z: +q.z.toFixed(2) }, fromPile: t.pile ? +Math.hypot(q.x - t.pile.x, q.z - t.pile.z).toFixed(2) : null,
           goal: { x: +e.goalX.toFixed(2), z: +e.goalZ.toFixed(2) }, phase: e.phase, route: e.route, lounge: e.lounge,
           rest: +e.rest.toFixed(2), failedChoices: e.roam.failedChoices, detour: e.roam.detour, roam: [e.roam.index, e.roam.count],
@@ -26325,14 +26333,14 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   return { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry, warmWindowBatches };
 };
 
-scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "dsb lifecycle", why: "contract: repeated DSB visits release nodes, listeners and GPU resources", run: async (b) => {
+scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src, "repospin=0"), steps: [{ name: "dsb lifecycle", why: "contract: repeated DSB visits release nodes, listeners and GPU resources", run: async (b) => {
   const { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry, warmWindowBatches } = await dsbSoak(b, { geometry: true });
   // The weather deck is sized by tier on each visit. Compare the same tier;
   // low is terminal, so the governor cannot change capacity during the soak.
   await b.evaluate('window.__ooga.renderer.setQuality("low")');
   // Warm the new cached model builders before comparing retained memory.
   await travel("dsb"); await travel("hub"); await settled(); await rendered(2);
-  if (!await until("(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return !s || s.built >= s.chunks; })()", 60000)) throw new Error("Merge Rock construction did not finish");
+  if (!await until("(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return !s || s.built >= s.chunks && !s.pending; })()", 60000)) throw new Error("Merge Rock construction did not finish");
   const hubWarm = await warmHubGeometry(), beforeWindows = await warmWindowBatches(), before = await snapshot();
   for (let i = 0; i < 6; i++) { await travel("dsb"); await travel("hub"); }
   const afterWindows = await warmWindowBatches(), after = await snapshot();
@@ -26346,7 +26354,7 @@ scene("dsb", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{
     + (bounded ? "" : `, hub warmup ${JSON.stringify(hubWarm)}, geometry ${JSON.stringify(gpuGeometryDelta(before.geometry, after.geometry))}`));
 } }] });
 
-scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps: [{ name: "factory lifecycle", why: "contract: repeated factory visits, each left with a tip's show in the air, release the hall's listeners, nodes and GPU resources while retaining one bounded shared node", run: async (b) => {
+scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src, "repospin=0"), steps: [{ name: "factory lifecycle", why: "contract: repeated factory visits, each left with a tip's show in the air, release the hall's listeners, nodes and GPU resources while retaining one bounded shared node", run: async (b) => {
   const { until, rendered, settled, snapshot, travel, heapDetail, within, warmHubGeometry, warmWindowBatches } = await dsbSoak(b, { geometry: true, factory: true });
   // Keep resource comparisons at one tier, as in the other lifecycle soaks.
   await b.evaluate('__ooga.renderer.setQuality("low")');
@@ -26374,9 +26382,9 @@ scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps
   const tip = (id) => b.evaluate(`(() => { const B = window.__ooga; window.BL.scenes.factory.onDonation({ id: "${id}", sats: 120000, handle: "soak", message: "", at: Date.now() }); B.advance(2, 1 / 30); const c = B.stats().cooker; return c.cubes + c.bananas + c.queued; })()`);
   // Warm both scenes and the cooker's show, so the counts below start from a visit made after the instrumenting.
   await travel("factory"); await tip("soak-warm"); await travel("lab"); await travel("hub"); await settled(); await rendered(2);
-  // The Repo Island joins its chunks in idle time (repo-island.js). The baseline waits for the last of them: a hub that
-  // comes up sooner would otherwise count their nodes and uploads as the visits' own.
-  await until("(() => { const s = window.BL.scenes.hub.debug.repoIsland?.stats(); return !s || s.built >= s.chunks; })()", 60000);
+  // Hold Merge Rock rotation steady and finish its required detail preloads before accounting.
+  // Otherwise newly approached chunks are counted as resources retained by a departed scene.
+  if (!await until("(() => { const s = window.BL.scenes.hub.debug.repoIsland?.stats(); return !s || s.built >= s.chunks && !s.pending; })()", 60000)) throw new Error("Merge Rock construction did not finish");
   // Each visit's tip grows the shared pile, whose wider footprint culls scenery off the ring (a target fewer): the
   // closing count is taken at the opening pile, set back through the hub's own pile.
   const startLevel = await b.evaluate("__ooga.level");
