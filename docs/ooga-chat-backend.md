@@ -4,6 +4,8 @@ Ooga Chat (#650) is a standalone app at `ooga.chat`: authenticated listeners hea
 conversation, and verified GitHub contributors can speak from a cloud. The app itself, its build and its browser
 contracts are `docs/ooga-chat-app.md`. This document is the server side: the Cloudflare resources, the edge Worker that
 serves the app, the private bridge into the island's Worker, the feature flags, secrets, deployment order and rollback.
+Measuring, watching, releasing and rolling it back (caps, metrics, alerts, the load matrix, the cost model, the release
+runbook and the incident drill) are `docs/ooga-chat-operations.md` (#669).
 Its sections grow with the backend issues: infrastructure (#662), sign-in (#663), public data and donations (#664), the
 audience (#665), media (#666), private-room exclusion (#667), reactions and clouds (#668), the Commons (#670) and the
 release (#669).
@@ -112,7 +114,7 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | Route | Answer |
 |---|---|
 | `GET /api/bootstrap` (also `/api/chat/config`) | `{ version: 1, build, environment, protocols: { identity: [1], audience: [1], media: [1] }, features: { github, x, voice, feed, speak, commons, cloud }, paths: { login: { github?, x? }, session?, logout?, audience? } }`. `build` is the staged app's (its `build.json`), so an open page hears of a newer one. `voice` is `listen`. A provider's login path appears only when it is on, the audience path only while listening is. `no-store`; rate-limited per IP |
-| `GET /api/chat/health` | `{ schema: 1, environment, status, checks: { assets, database, bridge, auth: { github, x }, voice, speak, feed, commons } }`. `status` is `ok` (assets, D1 and bridge), `degraded` (assets serve, something else is off) or `down` (no staged app). `bridge` is `ok`, `mismatch` (another environment or version), `unavailable` or `unbound` |
+| `GET /api/chat/health` | `{ schema: 1, environment, status, checks: { assets, database, bridge, auth: { github, x }, voice, speak, feed, commons, media, publicData } }`. `status` is `ok` (assets, D1 and bridge, and whatever is on is well), `degraded` (assets serve, something else is off or unwell) or `down` (no staged app). `bridge` is `ok`, `mismatch` (another environment or version), `unavailable` or `unbound`; `media` is `off` or `{ sfu: ok\|degraded\|off, cleanup: ok\|backlog }`; `publicData` is `ok`, `stale`, `unavailable` or `unknown` (#669, `docs/ooga-chat-operations.md`) |
 | `GET /api/chat/version` | `{ schema: 1, environment, worker, build, protocols, bridge }`: the Worker version id, the app build and the bridge version, for correlating a report with a deployment |
 | `GET /auth/github`, `GET /auth/x` | starts a sign-in (below); 302 to the provider, or 303 home with the result when it cannot start |
 | `GET /auth/<provider>/callback` | finishes it: 303 to `/?signin=<ok\|denied\|failed\|unavailable\|rate-limited>&provider=<provider>`, nothing else in the address |
@@ -456,8 +458,9 @@ its own event, even the same emoji twice:
 
 Each lives 2,600 ms on its own (`REACTION_MS`, the island's own display time), so a new one never ends an earlier one or
 the hand beneath it. A retried `requestId` gets its first answer and no second event. Limits: 3 a second with a burst
-of 6 per identity across its tabs (the island's room's own), and 30 a second with a burst of 60 per zone, which bounds
-any zone's fanout. Nothing is kept: a snapshot or reconnect carries hands, never past reactions. The island's panels on
+of 6 per identity across its tabs (the island's room's own), and per zone 30 a second with a burst of 60 while the zone
+holds up to about 160 people, shrinking as it fills so its fan-out stays within `AUDIENCE_FANOUT` frames a second (5,000:
+10 a second at 500 people, never under one; #669, `zoneReactHz` in `audience-model.js`). Nothing is kept: a snapshot or reconnect carries hands, never past reactions. The island's panels on
 a zone get each as `{ t: "audience", kind: "react", id, e, rid }`; an island player with an open outdoor grant gets a
 GitHub account's as the bridge's `{ t: "outdoor", op: "react", rid, id, e, speaker }` (an X id does not fit the bridge's
 account id, so those show in the panel alone). Both carry the event's id, so a page that hears both shows it once.
@@ -559,6 +562,7 @@ Names only; values live in Workers secrets and the owner's password manager (`wo
 | `GITHUB_CLIENT_SECRET` | secret | edge | that app's secret |
 | `X_CLIENT_ID` | var | edge | the X app's OAuth 2.0 client id (confidential web app) |
 | `X_CLIENT_SECRET` | secret | edge | that app's secret |
+| `AUDIENCE_LISTENERS`, `AUDIENCE_SPEAKERS`, `AUDIENCE_FANOUT` | var | island | the audience's caps a zone and its reaction fan-out budget (`docs/ooga-chat-operations.md`) |
 | `REALTIME_APP_ID`, `REALTIME_SECRET` | var, secret | island only | the environment's one SFU app, shared with Ooga Chat through the bridge; never on the edge |
 
 CI deploys with the repository's account-owned `CLOUDFLARE_API_TOKEN` (Workers Scripts and D1 edit). Frontend
@@ -605,7 +609,7 @@ Without a staged app (`npm run build:ooga-chat`, #651) the edge still answers it
 
 Order: additive D1 migrations and the island's bridge entrypoint (with `OOGA_CHAT_FEATURES` off) first; then the edge
 with every `FEATURES` flag off; then the app's compatible build; then each capability, staging before production,
-public browsing before sign-in before listening before speaking (#669's runbook).
+public browsing before sign-in before listening before speaking (the release runbook in `docs/ooga-chat-operations.md`).
 
 Rollback: turn new admissions off (the edge's `FEATURES`, or the island's `OOGA_CHAT_FEATURES` for anything outward),
 let the media cleanup (#667) retire what is open, then redeploy the previous compatible Worker version

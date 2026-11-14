@@ -69,7 +69,13 @@ export const revokeOps = {
   },
 };
 
-export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorFor }), ...publicOps({ cast: CAST_ROWS }), ...revokeOps };
+// The public health view's media states (#669): the Audience's own word since it last woke, `sfu` ok, degraded or off
+// and `cleanup` ok or backlog, nothing more (no count, id or setting).
+export const readinessOps = {
+  readiness: { run: async (env) => env.AUDIENCE ? env.AUDIENCE.getByName(AUDIENCE_NAME).readiness() : { sfu: "off", cleanup: "ok" } },
+};
+
+export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorFor }), ...publicOps({ cast: CAST_ROWS }), ...revokeOps, ...readinessOps };
 
 const SOCKET_HEADERS = ["upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"];
 /**
