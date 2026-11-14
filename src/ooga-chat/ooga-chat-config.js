@@ -41,6 +41,8 @@
   // The signed-in account as the session address reports it (identity protocol 1, docs/ooga-chat-app.md); anything else
   // is signed out. `principal` is the server's opaque identity: equality, deduplication and every per-person state key
   // on it, never on the login, which can be renamed. `providerUserId` stays a string (an X id outgrows a safe integer).
+  // `participant` is how the audience lists the account (`gh:<id>`, `x:<id>`), kept only for its own provider: the
+  // visitor's own row is the one with that id, and with none the visitor is simply not marked.
   // Capabilities are the server's: `speak` and `contributor` count only for a GitHub account the server reports
   // `eligible`, and never come from the provider, the name or anything the page saved. `unknown` is not eligible.
   const ELIGIBILITY = ["eligible", "ineligible", "unknown", "revoked"];
@@ -59,12 +61,13 @@
     const avatar = pathOk(who.avatar) ? who.avatar : null;
     const providerUserId = typeof who.providerUserId === "string" && /^[\w-]{1,64}$/.test(who.providerUserId) ? who.providerUserId : null;
     const github = who.provider === "github";
+    const participant = typeof who.participant === "string" && new RegExp(`^${github ? "gh" : "x"}:[1-9][0-9]{0,19}$`).test(who.participant) ? who.participant : null;
     const state = !github ? "ineligible" : ELIGIBILITY.includes(raw.eligibility?.state) ? raw.eligibility.state : "unknown";
     const checkedAt = time(raw.eligibility?.checkedAt);
     const staleAfter = checkedAt !== null && Number.isInteger(raw.eligibility?.staleAfter) && raw.eligibility.staleAfter > 0
       ? Math.min(raw.eligibility.staleAfter, STALE_MAX_S) : null;
     const eligible = state === "eligible";
-    return { identity: { principal: who.principal, provider: who.provider, providerUserId, login: who.login, display, avatar },
+    return { identity: { principal: who.principal, participant, provider: who.provider, providerUserId, login: who.login, display, avatar },
       capabilities: { speak: eligible && raw.capabilities?.speak === true, contributor: eligible && raw.capabilities?.contributor === true },
       eligibility: { state, checkedAt, staleAfter }, expiresAt };
   };

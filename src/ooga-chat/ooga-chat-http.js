@@ -7,8 +7,9 @@
   const BL = window.BL = window.BL || {};
   const { BOOTSTRAP_PATH, PROTOCOLS, parseBootstrap, parseSession, appBuild } = BL.oogaChatConfig;
   const TIMEOUT_MS = 8000;
-  // The audience feed's limits: the largest frame read, reconnect backoff, and the wait after a full zone.
-  const FRAME_MAX = 1 << 20, BACKOFF_MS = [1000, 30000], FULL_WAIT_MS = 30000;
+  // The audience feed's limits: the largest frame read, reconnect backoff, the wait after a full zone, and the wait
+  // while listening is off.
+  const FRAME_MAX = 1 << 20, BACKOFF_MS = [1000, 30000], FULL_WAIT_MS = 30000, OFF_WAIT_MS = 180000;
   const create = ({ fetch = window.fetch.bind(window), location = window.location, doc = document, WebSocket = window.WebSocket } = {}) => {
     const pending = new Set();
     let disposed = false;
@@ -58,7 +59,9 @@
     // The audience feed (audience protocol 1): one same-origin WebSocket at `paths.audience`, joined to one zone at a
     // time (`join`), asked for a fresh snapshot after a gap (`resync`). Frames go to `message` as parsed JSON; the roster
     // checks them. `status` hears connecting, reconnecting, full, signed-out (close 4401: the app checks the session),
-    // stale (4426: another protocol revision) and unavailable (no address). Reconnects back off from 1 s to 30 s.
+    // stale (4426: another protocol revision), closed (4503: listening is off, asked again after about 3 min) and
+    // unavailable (no address). Reconnects back off from 1 s to 30 s. The edge refuses by accepting a socket and
+    // closing it at once, so `open` proves nothing: only a frame from the zone resets the backoff.
     const audience = (boot, { message, status }) => {
       let socket = null, zone = null, tries = 0, timer = null, closed = false;
       const idle = { zone() {}, resync() {}, dispose() {} };
@@ -72,14 +75,12 @@
         if (closed || !zone) return;
         status(tries ? "reconnecting" : "connecting");
         const own = socket = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}${boot.paths.audience}`);
-        own.addEventListener("open", () => {
-          tries = 0;
-          send({ type: "join", zone, protocol: PROTOCOLS.audience });
-        });
+        own.addEventListener("open", () => send({ type: "join", zone, protocol: PROTOCOLS.audience }));
         own.addEventListener("message", (event) => {
           if (own !== socket || typeof event.data !== "string" || event.data.length > FRAME_MAX) return;
           let data;
           try { data = JSON.parse(event.data); } catch { return; }
+          tries = 0;
           message(data);
         });
         own.addEventListener("close", (event) => {
@@ -91,6 +92,11 @@
             status("full");
             return later(FULL_WAIT_MS);
           }
+          if (event.code === 4503) {
+            status("closed");
+            return later(OFF_WAIT_MS * (0.75 + Math.random() * 0.5));
+          }
+          // Anything else, 1013 (the edge couldn't read the session or reach the island) included, backs off.
           tries++;
           status("reconnecting");
           later(Math.min(BACKOFF_MS[1], BACKOFF_MS[0] * 2 ** Math.min(tries - 1, 5)) * (0.75 + Math.random() * 0.5));

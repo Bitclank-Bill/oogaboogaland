@@ -164,6 +164,7 @@
     joining: (zone) => `Joining ${ZONE_BUTTONS[zone]}…`,
     reconnecting: () => "Reconnecting… this list may be out of date.",
     full: (zone) => `${ZONE_BUTTONS[zone]} is full right now. Ooga Chat will try again.`,
+    closed: () => "Listening is off right now. Ooga Chat will try again in a few minutes.",
     unavailable: () => "Live audio isn't open here yet.",
     stale: () => "This page is older than Ooga Chat's service. Reload to keep listening."
   };
@@ -264,7 +265,7 @@
     }, { signal });
     const update = (state) => {
       const { audience: heardState, zone } = state;
-      self = state.session.identity.principal;
+      self = state.session.identity.participant;
       for (const el of zoneButtons) el.setAttribute("aria-pressed", String(el.dataset.zone === zone));
       grid.setAttribute("aria-label", `People in ${ZONE_BUTTONS[zone]}`);
       const words = HEARD[heardState.status]?.(zone) || "";

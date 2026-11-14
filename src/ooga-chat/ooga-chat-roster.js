@@ -1,6 +1,6 @@
 // Ooga Chat's audience roster (#653, audience protocol 1 in docs/ooga-chat-app.md): one zone's participants as the
 // server reports them, kept from a snapshot and the deltas after it, and put in the order the space shows. A
-// participant is keyed by its opaque `id` (the server's principal, never a login) and its source `generation`; the
+// participant is keyed by its `id` (the provider id, `gh:<id>` or `x:<id>`, never a login) and its source `generation`; the
 // server owns membership, roles and contribution totals, and nothing here grants a role. A delta must follow the
 // revision before it in the same epoch: an older one is stale and dropped, a later one or one from a newer epoch is a
 // gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies. A snapshot is the

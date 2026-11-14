@@ -74,8 +74,8 @@ a view's own nodes and listeners (a sort, a draft, a voice control) survive both
 **State.** `{ mode, boot, session, auth, notice, busy, zone, voice, audience }`, `mode` being `loading`, `live`,
 `unavailable` or `stale`, and `auth`, `notice` and `busy` the account's (below). `zone` is the outdoor zone, `main` or
 `dsb`, saved. `voice` is the voice seam's `{ role, muted }`. `audience` is `{ status, zone, list, version }`: the feed's
-status (`off`, `connecting`, `joining`, `live`, `reconnecting`, `full`, `unavailable`, `stale`) and the list in the
-space's order.
+status (`off`, `connecting`, `joining`, `live`, `reconnecting`, `full`, `closed`, `unavailable`, `stale`) and the list
+in the space's order.
 Public tabs: Ooga Chat, Bananas, Contributing Oogas. Online Oogas and The Commons show only while `gates` says
 `contributor`. Choosing a tab never signs in, signs out, changes the zone or touches voice. The account footer sits
 under every tab while signed in, and not at all while signed out.
@@ -133,7 +133,7 @@ provider as none. A failed or cancelled return says so with Try again, which sig
 **Session** (`paths.session`, proposed `/api/chat/me`): 401 is signed out; otherwise
 
 ```json
-{ "identity": { "principal": "pr_7f3a…", "provider": "github", "providerUserId": "583231",
+{ "identity": { "principal": "pr_7f3a…", "participant": "gh:583231", "provider": "github", "providerUserId": "583231",
                 "login": "someone", "display": "Someone", "avatar": "/avatars/pr_7f3a.png" },
   "capabilities": { "speak": true, "contributor": true },
   "eligibility": { "state": "eligible", "checkedAt": 1763000000000, "staleAfter": 900 },
@@ -143,6 +143,8 @@ provider as none. A failed or cancelled return says so with Try again, which sig
 - `principal` is the server's opaque, stable identity (up to 128 of `[A-Za-z0-9_:.-]`), required. Equality,
   deduplication and anything kept per person key on it, never on `login`, which a rename changes. Signing out and in
   with the other provider is a different principal: there is no GitHub to X linking.
+- `participant` is how the audience lists the account, `gh:<github id>` or `x:<x id>` for its own provider; the
+  visitor's own row is the one with that id. Anything else is dropped, and the visitor is then not marked.
 - `providerUserId` is optional, a string (an X id does not fit a safe integer), never compared as a number.
 - `login` is the handle (`[\w.-]{1,39}`), `display` the shown name (cleaned of control and direction characters,
   50 at most, the login when empty), `avatar` a same-origin path or nothing (below).
@@ -213,8 +215,9 @@ after a gap. The server sends:
 { "type": "delta", "zone": "main", "epoch": 7, "revision": 121, "upsert": [ … ], "remove": [ { "id": "…", "generation": 3 } ] }
 ```
 
-A participant is `{ id, generation, source, role, login, display, face, contributions, muted }`: `id` the server's
-opaque identity (the principal; the visitor is the participant whose `id` is their session's `principal`),
+A participant is `{ id, generation, source, role, login, display, face, contributions, muted }`: `id` the provider
+id, `gh:<id>` or `x:<id>`, one row a person (the visitor is the participant whose `id` is their session's
+`participant`, never its `principal`),
 `generation` the source generation (an integer that rises when the same person comes back from a new source),
 `source` `world` (speaking from the island) or `app` (Ooga Chat), `role` `speaker` or `listener`, `face` a same-origin
 path (a world speaker's native Ooga portrait, an app participant's profile picture) or nothing, `contributions` a world
@@ -222,8 +225,10 @@ speaker's total or nothing (unknown, not zero), `muted` a speaker's source mute.
 delta must carry the next revision of the same epoch. An older epoch or revision is dropped; a later revision, a newer
 epoch or a delta that does not parse whole is a gap, applied not at all, and the page asks for a snapshot. A removal
 applies only to the generation it names or older. Close codes: 4401 the session ended (the page checks it again and
-marks the list reconnecting), 4426 another protocol revision (stale), 4429 the zone is full (the page waits 30 s).
-Otherwise it reconnects, backing off from 1 s to 30 s, and shows the list as reconnecting, never as live.
+marks the list reconnecting), 4426 another protocol revision (stale), 4429 the zone is full (the page waits 30 s),
+4503 listening is off (`closed`; the page waits about 3 minutes). Otherwise, 1013 (try again) included, it
+reconnects, backing off from 1 s to 30 s, and shows the list as reconnecting, never as live. The edge refuses by
+opening a socket and closing it at once, so only a frame from the zone resets the backoff, never the socket's opening.
 
 **Order.** One continuous four-column list, speakers first, with no headings or gap between roles: world speakers by
 contribution total, most first, a missing total after every known one (zero included), ties alphabetical by login,
@@ -320,7 +325,7 @@ Each item is a proposal for the owner (`w-s-bitcoin`, #662, #663) to confirm or 
   `Cache-Control: no-store`. The contributor policy decides `eligibility` and the capabilities; X is never eligible.
 - `POST paths.logout`: revokes the session and any media lease, answers 2xx only once done.
 - `paths.audience` and the audience feed (protocol 1, above, #665): authoritative membership by the zone policy,
-  roles from acknowledged leases, ids as principals, generations per source, world speakers' contribution totals and
+  roles from acknowledged leases, ids as `participant`s, generations per source, world speakers' contribution totals and
   same-origin native portraits, and the close codes. Listening never takes a world-player slot or makes a body.
 - Profile pictures on the app's origin (proxied or stored, `img-src 'self'`), at a path that changes when the picture
   does, so a face is never another principal's.

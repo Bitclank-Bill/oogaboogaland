@@ -21,10 +21,10 @@
   const answer = (feed, x) => ({ version: BOOTSTRAP_VERSION, protocols,
     features: { github: true, x, voice: false, feed },
     paths: { session: "/fixture/session", logout: "/fixture/logout", login: { github: "/fixture/login/github", x: "/fixture/login/x" } } });
-  const github = (n, login, state, capabilities = {}) => ({ identity: { principal: `fixture:github:${n}`, provider: "github", providerUserId: String(n), login, display: login },
+  const github = (n, login, state, capabilities = {}) => ({ identity: { principal: `fixture:github:${n}`, participant: `gh:${n}`, provider: "github", providerUserId: String(n), login, display: login },
     capabilities, eligibility: { state } });
   const ACCOUNTS = {
-    listener: { identity: { principal: "fixture:x:1", provider: "x", providerUserId: "1790000000000000001", login: "sample_contributor", display: "sample contributor" },
+    listener: { identity: { principal: "fixture:x:1", participant: "x:1790000000000000001", provider: "x", providerUserId: "1790000000000000001", login: "sample_contributor", display: "sample contributor" },
       capabilities: { speak: true, contributor: true }, eligibility: { state: "eligible" } },
     contributor: github(1, "sample-contributor", "eligible", { speak: true, contributor: true }),
     ineligible: github(2, "sample-visitor", "ineligible"),
@@ -84,9 +84,11 @@
         people = [...people.filter((p) => !gone.has(p.id)), ...upsert];
         message({ type: "delta", zone, epoch, revision: (revision += 1 + skip), upsert, remove });
       };
+      // The visitor's row is keyed as the edge keys it, by provider id, not by the session's principal.
       const self = () => {
         const who = account && parseSession(account, now());
-        return who ? [person("self", "app", "listener", who.identity.login, { id: who.identity.principal, display: who.identity.display })] : [];
+        const id = who && `${who.identity.provider === "github" ? "gh" : "x"}:${who.identity.providerUserId}`;
+        return who ? [person("self", "app", "listener", who.identity.login, { id, display: who.identity.display })] : [];
       };
       const script = () => after(4000, () => {
         const visitor = person("listener-visitor", "app", "listener", "sample-visitor");

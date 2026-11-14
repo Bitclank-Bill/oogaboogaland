@@ -57,7 +57,7 @@
       footer.update(state);
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
-    const hear = (status) => set({ audience: { status, zone: state.zone, list: roster.ready ? roster.list(state.session?.identity.principal) : [], version: ++heard } });
+    const hear = (status) => set({ audience: { status, zone: state.zone, list: roster.ready ? roster.list(state.session?.identity.participant) : [], version: ++heard } });
     // One feed per signed-in principal, for the page's zone; none while signed out. Another principal starts again empty;
     // a feed restarted for the same one (`kept`) keeps its list until the new snapshot replaces it.
     const listen = (kept = null) => {

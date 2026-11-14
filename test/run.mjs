@@ -32479,6 +32479,10 @@ const oogaChatChecks = async () => {
     expired: parse(account("github", "someone", "eligible", { expiresAt: NOW - 1 })) === null,
     idString: parse(account("x", "someone", "ineligible", { identity: { providerUserId: big } })).identity.providerUserId === big
       && parse(account("x", "someone", "ineligible", { identity: { providerUserId: 17 } })).identity.providerUserId === null,
+    // How the audience lists the account (gh:<id>, x:<id>), only for its own provider; anything else lists no one.
+    participant: parse(account("github", "someone", "eligible", { identity: { participant: "gh:583231" } })).identity.participant === "gh:583231"
+      && parse(account("x", "someone", "ineligible", { identity: { participant: `x:${big}` } })).identity.participant === `x:${big}`
+      && ["x:583231", "gh:0", "gh:1 ", "pr_7f3a", 583231].every((participant) => parse(account("github", "someone", "eligible", { identity: { participant } })).identity.participant === null),
     display: parse(account("github", "someone", "eligible", { identity: { display: "\u202eevil\u0007 name" } })).identity.display === "evil name",
     avatar: parse(account("github", "someone", "eligible", { identity: { avatar: "https://evil.example/a.png" } })).identity.avatar === null,
     staleBounded: parse(account("github", "someone", "eligible", { eligibility: { checkedAt: NOW, staleAfter: 999999 } })).eligibility.staleAfter === C.STALE_MAX_S,
@@ -32590,7 +32594,23 @@ const oogaChatChecks = async () => {
   crowd.expect("dsb");
   const many = Array.from({ length: 600 }, (_, i) => who(`l-${i}`, "app", "listener", `listener-${String(i).padStart(3, "0")}`));
   crowd.apply({ type: "snapshot", zone: "dsb", epoch: 1, revision: 1, participants: many });
+  // The fixture lists the visitor as the edge does, by provider id, and the visitor is found by the session's
+  // `participant`, never by its principal: first among the listeners, for GitHub and X alike.
+  const ticks = [];
+  const F = load(["src/ooga-chat/ooga-chat-config.js", "src/ooga-chat/ooga-chat-fixtures.js"], { window: {}, URLSearchParams, setTimeout: (fn) => ticks.push(fn), clearTimeout() {} }).oogaChatFixtures;
+  const visitorFirst = [];
+  for (const state of ["contributor", "listener"]) {
+    const fixture = F.create({ state }), fixtureBoot = await fixture.bootstrap(), me = await fixture.session(fixtureBoot), heard = R.create();
+    heard.expect("main");
+    ticks.length = 0;
+    fixture.audience(fixtureBoot, { message: (msg) => heard.apply(msg), status() {} }).zone("main");
+    ticks[0]();
+    const first = heard.list(me.identity.participant).find((p) => p.role === "listener");
+    visitorFirst.push(!!first && first.login === me.identity.login && first.id === `${me.identity.provider === "github" ? "gh" : "x"}:${me.identity.providerUserId}`);
+    fixture.dispose();
+  }
   const audience = {
+    visitorFirst: visitorFirst.join() === "true,true",
     order: ordered === "w-top,w-a,w-b,w-0,w-n,a-b,a-y,me,l-amy,l-zed",
     selfAmongApp: asSpeaker === "w-top,w-a,w-b,w-0,w-n,me,a-b,a-y,l-amy,l-zed",
     deduped,
@@ -32621,10 +32641,38 @@ const oogaChatChecks = async () => {
   // Sign-out ends only when the server confirms it; a refused one throws, so the app keeps the session and says so.
   const outWith = async (status) => { try { await adapterWith(answer(status, "application/json", {})).signOut({ paths: { logout: "/api/logout" } }); return "ok"; } catch { return "threw"; } };
   const signOut = [await outWith(204), await outWith(401), await outWith(500)].join();
+  // The audience feed against a stand-in socket and clock. The edge refuses by opening a socket and closing it at once,
+  // so only a frame resets the backoff: refusals back off to 30 s, 4503 (listening off) waits long with its own status.
+  const waits = [], feedHeard = [], sockets = [];
+  class Socket {
+    constructor() { this.readyState = 0; this.on = {}; sockets.push(this); }
+    addEventListener(type, fn) { this.on[type] = fn; }
+    send() {}
+    close() {}
+  }
+  const feedAdapter = load(["src/ooga-chat/ooga-chat-config.js", "src/ooga-chat/ooga-chat-http.js"], { window: {}, AbortController,
+    setTimeout: (fn, ms) => waits.push({ fn, ms }), clearTimeout() {} }).oogaChatHttp.create({ fetch: answer(500), location: { protocol: "https:", host: "chat.test" }, doc: {}, WebSocket: Socket });
+  const refused = (code, frame) => {
+    const socket = sockets.at(-1);
+    socket.readyState = 1;
+    socket.on.open();
+    if (frame) socket.on.message({ data: frame });
+    socket.readyState = 3;
+    socket.on.close({ code });
+    const wait = waits.at(-1);
+    wait.fn();
+    return wait.ms;
+  };
+  feedAdapter.audience({ paths: { audience: "/api/chat/audience" } }, { message() {}, status: (next) => feedHeard.push(next) }).zone("main");
+  const backoff = [1013, 1006, 1013, 1006, 1013, 1006].map((code) => refused(code));
+  const off = refused(4503), offHeard = feedHeard.at(-2);
+  const afterFrame = refused(1006, JSON.stringify({ type: "snapshot" }));
+  const feed = { backoff: backoff[0] <= 1250 && backoff[3] >= 6000 && backoff[5] >= 22500 && backoff[5] <= 37500, off: off >= 60000 && offHeard === "closed",
+    reset: afterFrame <= 1250 && feedHeard.at(-2) === "reconnecting" };
   const adapter = { modes: modes.join() === "unavailable,unavailable,unavailable,live", held, released: hanging.pending === 0 && ended.mode === "unavailable" && ended.reason === "disposed",
-    signOut: signOut === "ok,threw,threw" };
-  record("Ooga Chat adapter: a 404, a non-JSON page or an unreachable service each leave the app unavailable rather than invented, disposing aborts what is still asking, and a sign-out the server refuses throws instead of signing out",
-    adapter.modes && adapter.held === 1 && adapter.released && adapter.signOut, JSON.stringify({ ...adapter, signOut }));
+    signOut: signOut === "ok,threw,threw", ...feed };
+  record("Ooga Chat adapter: a 404, a non-JSON page or an unreachable service each leave the app unavailable rather than invented, disposing aborts what is still asking, a sign-out the server refuses throws instead of signing out, and an audience socket the edge refuses backs off until a frame arrives, longest while listening is off",
+    adapter.modes && adapter.held === 1 && adapter.released && adapter.signOut && adapter.backoff && adapter.off && adapter.reset, JSON.stringify({ ...adapter, signOut, waits: [...backoff, off, afterFrame].map(Math.round) }));
 
   // The shell over a minimal DOM: views build on first visit, are kept across tab switches and updates, and dispose once.
   const node = (tag, doc) => {
