@@ -506,6 +506,9 @@
           if (bodies.size >= MAX) continue;
           entry = build({ id: c.id, body: canonical(c.character), bodyKind: "ooga", x: 0, y: 0, z: 0, yaw: 0 });
           entry.cloud = true;
+          // A cloud speaker sits empty-handed: no primary weapon (club, axe, stick, nunchaku), as the gun already is.
+          const parts = entry.cave.parts;
+          for (const key of ["club", "chuk"]) if (parts[key]) parts[key].visible = false;
           changed = true;
         }
         if (entry.reactT > 0) entry.reactT = Math.max(0, entry.reactT - dt);
