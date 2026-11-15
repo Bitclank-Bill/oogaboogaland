@@ -7523,9 +7523,72 @@ const gameRulesChecks = async () => {
     outGuest.gorillas.length = 0;
     const framedOut = L.validFrame(outFrame, outGuest, L.seatMap(2, 0)) && !L.validFrame(new DataView(outBuf.buffer.slice(0, outLen + 1)), outGuest, L.seatMap(2, 0)); L.decode(outFrame, outGuest, L.seatMap(2, 0), new Float32Array(16));
     const guests = { away: guestAway.r && guestAway.g.gold && !guestAway.h.gold, out: guestOut.r && guestOut.h.hook === 1 && guestOut.g.hook === 0, refused, framed: framedOut, agrees: outGuest.actors[0].hook === 1 && outGuest.actors[2].hook === 0 && outGuest.hooks[0].holder === 0,
-      events: ["goldhook", "hooksteal", "goldsteal", "gold"].every((t) => L.EVENT_TYPES.includes(t)) && !["golddrop", "goldget", "goldback", "hookdrop", "hookback"].some((t) => L.EVENT_TYPES.includes(t)), wire: W.WIRE === 7 };
-    record("block steals live: a guest's wield on the host decides what a hook or Golden AK fire can take, an unowned tool is refused, the frame carries the result to a guest exactly, and the drop events are gone (WIRE 7)",
+      events: ["goldhook", "hooksteal", "goldsteal", "gold"].every((t) => L.EVENT_TYPES.includes(t)) && !["golddrop", "goldget", "goldback", "hookdrop", "hookback"].some((t) => L.EVENT_TYPES.includes(t)), wire: W.WIRE === 8 };
+    record("block steals live: a guest's wield on the host decides what a hook or Golden AK fire can take, an unowned tool is refused, the frame carries the result to a guest exactly, and the drop events are gone (WIRE 8)",
       Object.values(guests).every(Boolean), JSON.stringify(guests));
+    // The live tally. Grabbed is every time the rival block comes into an Ooga's hands (off its stand or the ground, a
+    // catch, a net steal, a hook's reel), credited to that Ooga; a block dropped and picked up again counts again, and
+    // touching your own block home is a rescue, never a grab.
+    {
+      const H = S.ARENAS.haunted, C = S.CONFIG;
+      const fresh = () => { const r = S.create({ team: "blue", seed: 7, prep: 0, map: "haunted", size: 4, target: 5 }); r.actors.forEach((a, i) => { a.bot = false; a.x = i * 2 - 7; a.z = 0; a.y = 0; a.guard = 0; }); return r; };
+      const run = (r, sec) => { for (let t = 0; t < sec && !r.over; t += C.STEP) S.tick(r, C.STEP, still()); };
+      const grabs = (r) => r.actors.map((a) => a.grabs).join("");
+      const g = {};
+      // Off the stand, dropped, walked away from and picked up again: two grabs. Then a teammate takes the dropped block: theirs.
+      { const r = fresh(), a = r.actors[1], f = r.flags.red; Object.assign(a, { x: H.stands.red.x, z: H.stands.red.z }); run(r, 0.1);
+        g.pickup = a.carrying === "red" && a.grabs === 1;
+        run(r, 1); g.held = a.grabs === 1;
+        const dropped = S.drop(r, 1), fx = f.x, fz = f.z; a.x = fx + 6; run(r, 0.1); const away = a.grabs === 1 && f.state === "dropped";
+        Object.assign(a, { x: fx, z: fz, y: f.y }); run(r, 0.1);
+        g.again = dropped && away && a.carrying === "red" && a.grabs === 2;
+        S.drop(r, 1); a.x = f.x + 6; Object.assign(r.actors[2], { x: f.x, z: f.z, y: f.y }); run(r, 0.1);
+        g.teammate = r.actors[2].carrying === "red" && r.actors[2].grabs === 1 && a.grabs === 2 && grabs(r) === "02100000"; }
+      // Your own dropped block touched home is a rescue, and so is taking it off a netted rival: neither is a grab.
+      { const r = fresh(), f = r.flags.red; Object.assign(f, { state: "dropped", x: 20, y: 0, z: 0 }); Object.assign(r.actors[5], { x: 20, z: 0 }); run(r, 0.1);
+        const r2 = fresh(); Object.assign(r2.flags.red, { state: "carried", carrier: 2 }); Object.assign(r2.actors[2], { x: 20, z: 0, netted: 2, carrying: "red" }); Object.assign(r2.actors[5], { x: 20.5, z: 0 }); S.tick(r2, C.STEP, still());
+        g.rescue = r.actors[5].rescues === 1 && r2.actors[5].rescues === 1 && grabs(r) === "00000000" && grabs(r2) === "00000000"; }
+      // A net steal that leaves the rival block in the taker's hands is the taker's grab.
+      { const r = fresh(); Object.assign(r.flags.red, { state: "carried", carrier: 5 }); Object.assign(r.actors[5], { x: 20, z: 0, netted: 2, carrying: "red" }); Object.assign(r.actors[1], { x: 20.5, z: 0 }); S.tick(r, C.STEP, still());
+        let stole = false; for (let i = 0; i < r.eventCount; i++) stole = stole || (r.events[i].type === "netsteal" && r.events[i].actor === 1);
+        g.net = stole && r.actors[1].carrying === "red" && r.actors[1].grabs === 1 && grabs(r) === "01000000"; }
+      // A hook's reel that ends with the rival block carried is the reeler's grab.
+      { const r = fresh(), a = r.actors[1]; Object.assign(a, { x: 10, z: -10, hook: 1 }); Object.assign(r.flags.red, { state: "dropped", x: 10, z: -5, y: 0 });
+        const thrown = S.grapple(r, 1, 0, -0.3); run(r, 1.5);
+        g.reel = thrown && a.carrying === "red" && a.grabs === 1 && grabs(r) === "01000000"; }
+      // A pass caught is the catcher's grab; the thrower keeps the one it had.
+      { const r = fresh(), f = r.flags.red; Object.assign(f, { state: "carried", carrier: 1 }); r.actors[1].carrying = "red"; r.actors[1].grabs = 1; S.pass(r, 1, 0);
+        Object.assign(f, { x: 20, z: 0, y: 1.2, vx: 0, vy: 0, vz: 0, t: 1 }); Object.assign(r.actors[3], { x: 20, z: 0 }); S.tick(r, C.STEP, still());
+        g.caught = r.actors[3].carrying === "red" && r.actors[3].grabs === 1 && r.actors[1].grabs === 1; }
+      // A new round starts the count again.
+      { const r = fresh(); r.actors[0].grabs = 4; S.reset(r, 9); g.reset = r.actors[0].grabs === 0; }
+      record("block tally: Grabbed counts a pickup off the stand, a net steal and a hook's reel for the Ooga that ends up carrying, a catch too; each pickup counts, so a dropped block picked up again is a second grab and holding it adds nothing; your own block touched home or taken off a netted rival is a rescue, not a grab",
+        Object.values(g).every(Boolean), JSON.stringify(g));
+      // The middle of the screen names who mined it.
+      const words = { self: S.minedWord({ team: "blue" }, { team: "blue", actor: 0 }, "You"), mate: S.minedWord({ team: "blue" }, { team: "blue", actor: 2 }, "shitnobi"), rival: S.minedWord({ team: "blue" }, { team: "red", actor: 5 }, "Boatface"),
+        redSelf: S.minedWord({ team: "red" }, { team: "red", actor: 0 }, "You"), redRival: S.minedWord({ team: "red" }, { team: "blue", actor: 4 }, "Boatface") };
+      record("block tally: a block mined says YOU MINED IT! on the scorer's own screen, the teammate's name on a teammate's and THEY MINED ONE on the rivals', for either side",
+        words.self === "YOU MINED IT!" && words.mate === "shitnobi MINED IT" && words.rival === "THEY MINED ONE" && words.redSelf === "YOU MINED IT!" && words.redRival === "THEY MINED ONE", JSON.stringify(words));
+      // The host's frame carries every seat's grabs with its other counts, and a guest's own row (actor 0) is its own seat's.
+      const host = fresh(), hm = L.seatMap(4, 0), fields = S.TALLY.map((t) => t[1]);
+      host.actors.forEach((a, i) => fields.forEach((f, k) => { a[f] = 10 * (k + 1) + hm.toSeat[i]; }));
+      const tb = new DataView(new ArrayBuffer(W.FRAME_MAX)), tn = L.encode(host, hm, 1, 1, 1, tb), tf = new DataView(tb.buffer.slice(0, tn));
+      const asGuest = (seat) => { const r = S.create({ team: seat < 4 ? "blue" : "red", seed: 7, prep: 0, map: "haunted", size: 4 }), m = L.seatMap(4, seat), ok = L.validFrame(tf, r, m); L.decode(tf, r, m, new Float32Array(64));
+        const view = S.tallyView(), first = S.tallyChanged(r, view), steady = S.tallyChanged(r, view);
+        return { ok, first, steady, view, r, own: fields.map((f) => r.actors[0][f]).join(), all: r.actors.every((a, i) => fields.every((f, k) => a[f] === 10 * (k + 1) + m.toSeat[i])) }; };
+      const blueGuest = asGuest(2), redGuest = asGuest(6);
+      const live = { fits: tn <= W.FRAME_MAX, blue: blueGuest.ok && blueGuest.all && blueGuest.own === "12,22,32,42,52", red: redGuest.ok && redGuest.all && redGuest.own === "16,26,36,46,56", labels: S.TALLY.map((t) => t[0]).join() === "Grabbed,Mined,Home,Splats,Splatted" && fields.join() === "grabs,captures,rescues,hits,splats" };
+      record("block tally live: the host's frame carries each seat's grabbed count beside its mined, home, splats and splatted, every seat lands on the right actor, and a blue and a red guest's own row reads its own seat",
+        Object.values(live).every(Boolean), JSON.stringify({ ...live, blueOwn: blueGuest.own, redOwn: redGuest.own, bytes: tn }));
+      // What the panel shows: the five counts of every actor, written only when one changed.
+      const v = blueGuest.view, r = blueGuest.r, n = S.TALLY.length;
+      const shown = Array.from(v.counts.subarray(0, n)).join() === blueGuest.own && Array.from(v.counts.subarray(3 * n, 4 * n)).join() === fields.map((f) => r.actors[3][f]).join();
+      r.actors[0].grabs++; const bumped = S.tallyChanged(r, v) && v.counts[0] === 13 && !S.tallyChanged(r, v);
+      r.actors[5].splats++; const other = S.tallyChanged(r, v) && !S.tallyChanged(r, v);
+      v.shown = false; const redrawn = S.tallyChanged(r, v);
+      record("block tally: the panel's view holds every Ooga's five counts as the sim has them, and says to redraw only on the first look, when a count changes for anyone, or when asked again",
+        blueGuest.first && !blueGuest.steady && shown && bumped && other && redrawn, JSON.stringify({ first: blueGuest.first, steady: blueGuest.steady, shown, bumped, other, redrawn }));
+    }
     // Shots through the sim itself: bots meet a crouched, a higher and a lower target; no round passes a thin wall.
     // The pair stand on the first open lane of Ooga Town with nothing built on or across it.
     const shootAt = (kind, setup) => { const s = S.create({ team: "blue", seed: 6, size: 2, map: "town", prep: 0 }), a = s.actors[0], t = s.actors[2]; for (const q of s.actors) { q.bot = false; q.guard = 0; } s.gorillas.length = 0; a.x = t.x = [6, 8, 2, 0].find((x) => S.clearLine(x, -20, x, -8, 0.4) && S.groundAt(x, -20, 3, 0.2) === 0); a.z = -20; a.y = 0; t.z = -8; t.y = 0; s.actors[1].x = s.actors[3].x = 200; setup(s, a, t);
@@ -7581,7 +7644,7 @@ const gameRulesChecks = async () => {
         // The card shows what the MVP's worth counts (blocks brought home too), keeps names readable and its buttons in view.
         && /\$\{sim\.actors\[mvp\]\.captures\} mined · \$\{sim\.actors\[mvp\]\.rescues\} brought home · \$\{sim\.actors\[mvp\]\.hits\} splats/.test(sc) && /home\.textContent = String\(sim\.actors\[i\]\.rescues\);/.test(sc)
         && (page.match(/<small title="Blocks brought home">Home<\/small>/g) || []).length === 2 && /\.block-side-panel li span \{ overflow-wrap: anywhere; \}/.test(trophyCss)
-        && /\.block-trophy-board \.actions \{ position: sticky; bottom: 0;/.test(trophyCss) && /grid-template-columns: minmax\(0, 1fr\) 6ch 6ch 6ch;/.test(trophyCss), JSON.stringify(out));
+        && /\.block-trophy-board \.actions \{ position: sticky; bottom: 0;/.test(trophyCss) && /grid-template-columns: minmax\(0, 1fr\) 6ch 6ch 6ch 6ch;/.test(trophyCss) && /grabs\.textContent = String\(sim\.actors\[i\]\.grabs\);/.test(sc), JSON.stringify(out));
     }
     // The hook takes the rivals' block off its stand wherever on it the hook is aimed, low or high, from the open side,
     // on every map: a hook aimed low once bit the stand under the block and pulled the Ooga in instead.
@@ -9163,7 +9226,7 @@ const gameRulesChecks = async () => {
         botLog = run(br, 6, still, () => bb.riding);
         zr.botDrops = chose && bb.route !== "zipHome" && !bb.riding && !botLog.ziptrap;
         // The event crosses the wire, an Ooga's own.
-        zr.wire = BL.blockLive.EVENT_TYPES.includes("ziptrap") && BL.blockLive.ACTOR_EVENTS.includes("ziptrap") && BL.blockWire.WIRE === 7;
+        zr.wire = BL.blockLive.EVENT_TYPES.includes("ziptrap") && BL.blockLive.ACTOR_EVENTS.includes("ziptrap") && BL.blockWire.WIRE === 8;
         record("block frenzy zipline trap: the rivals' line carries a rider whose own block is home and throws one whose block isn't off the island, a carried block going home with a fall; a rider already sliding rides on, your own line never springs, and expert bots only take the zip home with their block home",
           Object.values(zr).every(Boolean), JSON.stringify(zr));
       }
@@ -13687,6 +13750,56 @@ const blockPoses = { name: "block modelled poses", why: "regression: old straigh
   record("block modelled poses: regular, slim and wide Oogas grip every weapon and both Golden AKs, and their trophy rests on their raised fists", rows.filter(r => !r.zip && !r.jet).length === 27 && rows.filter(r => !r.zip && !r.jet).every(r => r.trophy ? r.gap < .03 : r.visible && r.modelled && r.own && r.gap < .001), JSON.stringify(rows));
   record("block modelled poses: both fists meet the zipline bar even while crouch is held, weapons are stowed, and letting go restores each Ooga's hip", rows.filter(r => r.zip).length === 3 && rows.filter(r => r.zip).every(r => r.gap < .001 && r.restored && r.hiddenGuns), JSON.stringify(rows.filter(r => r.zip)));
   record("block modelled jetpacks: regular, slim and wide Oogas carry a body-sized pack seated on their actual back", rows.filter(r => r.jet).length === 3 && rows.filter(r => r.jet).every(r => r.attached && r.gap < .001 && Math.abs(r.scale - 1) < .001), JSON.stringify(rows.filter(r => r.jet)));
+} };
+// The live tally in the page: a staged pickup and capture through the real sim, read back off the panel, the held
+// board and the middle of the screen.
+const blockTally = { name: "block live tally", why: "rule: the small panel shows the visitor's own five counts clear of the crosshair, Z held (or a tap on the panel) shows everyone's by side with the visitor's row marked, and a block mined names who mined it", run: async b => {
+  if (await b.evaluate(`!document.querySelector('[data-intro="block"]').hidden`)) await b.key(" ");
+  await b.evaluate('window.__tallyUpdate = BL.scenes.block.update; BL.scenes.block.update = () => {}');
+  try {
+    const staged = await b.evaluate(`(() => {
+      const D = __ooga.block, S = BL.blockSim;
+      D.showBoard(); document.querySelector('#block-board [data-map="town"]').click(); D.selection.rule = "home"; D.chooseTeam("blue"); D.start(583);
+      const sim = D.sim, me = sim.actors[0], mate = sim.actors[1], rival = sim.actors.find(a => a.team === "red"), text = id => document.getElementById(id).textContent;
+      sim.prep = 0;
+      for (const p of sim.actors) Object.assign(p, { bot: false, flight: 0, x: 18, z: p.id * 3, y: 0, grounded: true, guard: 60 });
+      for (const g of sim.gorillas) { g.state = 3; g.t = 1e9; }
+      const zero = text("block-tally"), panel = document.getElementById("block-tally").getBoundingClientRect(), cx = innerWidth / 2, cy = innerHeight / 2;
+      const clear = !document.getElementById("block-tally").hidden && panel.width > 0 && (panel.right < cx - 40 || panel.left > cx + 40 || panel.bottom < cy - 40 || panel.top > cy + 40);
+      // The visitor takes the rival block off its stand, then mines it at home.
+      Object.assign(me, { x: S.ARENA.stands.red.x, z: S.ARENA.stands.red.z }); D.simulate(0.05);
+      const grabbed = text("block-tally"), carrying = me.carrying;
+      Object.assign(me, { x: S.ARENA.stands.blue.x, z: S.ARENA.stands.blue.z }); D.simulate(0.05);
+      const own = text("block-tally"), selfWord = text("block-center");
+      // A teammate mines one, then a rival does.
+      const score = (a) => { const other = S.other(a.team); Object.assign(sim.flags[other], { state: "carried", carrier: a.id }); a.carrying = other; Object.assign(a, { x: S.ARENA.stands[a.team].x, z: S.ARENA.stands[a.team].z, y: 0 }); D.simulate(0.05); return text("block-center"); };
+      // The rivals' word, before a rival's capture can take the visitor's Golden AKs (which says so instead).
+      me.gold = false; mate.gold = false; sim.goldLeft = 0;
+      const mateWord = score(mate), rivalWord = score(rival);
+      me.hits = 4; me.splats = 2; mate.rescues = 3; rival.grabs = 5; rival.hits = 6; D.simulate(0.01);
+      const r = document.getElementById("block-tally").getBoundingClientRect();
+      return { zero, clear, grabbed, carrying, own, selfWord, mateWord, rivalWord, mateName: mate.name ? BL.contributors.traitsFor(mate.name).display || mate.name : "", after: text("block-tally"), boardHidden: document.getElementById("block-tally-board").hidden, x: r.x + r.width / 2, y: r.y + r.height / 2, size: sim.actors.length };
+    })()`);
+    const board = `(() => { const el = document.getElementById("block-tally-board"), row = li => [li.querySelector("span").textContent, ...[...li.querySelectorAll("i, b")].map(c => c.textContent)].join("|");
+      const cells = li => [li.querySelector("i:nth-of-type(1)"), li.querySelector("b"), ...li.querySelectorAll("i:nth-of-type(n+2)")].map(c => c.textContent).join();
+      const blue = [...document.querySelectorAll("#block-tally-blue li")], red = [...document.querySelectorAll("#block-tally-red li")], you = el.querySelectorAll("li[data-you]");
+      const face = blue[0] && blue[0].querySelector("canvas"), sim = __ooga.block.sim;
+      return { open: !el.hidden && el.getBoundingClientRect().height > 0, blue: blue.length, red: red.length, you: you.length === 1 && you[0] === blue[0] ? you[0].querySelector("span").textContent + ":" + cells(you[0]) : "",
+        mate: blue[1] ? cells(blue[1]) : "", rival: red[0] ? cells(red[0]) : "", lead: el.querySelectorAll("li[data-lead]").length, face: !!face && face.width > 0, ordered: blue[0] ? getComputedStyle(blue[0].querySelector("i")).gridColumnStart + getComputedStyle(blue[0].querySelector("b")).gridColumnStart : "" }; })()`;
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "z", text: "z" });
+    const held = await b.evaluate(board);
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "z" });
+    const let_go = await b.evaluate(`document.getElementById("block-tally-board").hidden`);
+    const tap = `(() => { const el = document.getElementById("block-tally"); el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); return !document.getElementById("block-tally-board").hidden; })()`;
+    const pinned = await b.evaluate(tap), tapped = await b.evaluate(board), unpinned = await b.evaluate(tap);
+    const half = staged.size / 2;
+    record("block tally: the visitor's own panel counts a grab and a block mined as they happen, clear of the crosshair, and the middle of the screen names who mined it",
+      staged.zero === "Grabbed0Mined0Home0Splats0Splatted0" && staged.clear && staged.carrying === "red" && staged.grabbed === "Grabbed1Mined0Home0Splats0Splatted0" && staged.own === "Grabbed1Mined1Home0Splats0Splatted0"
+        && staged.selfWord === "YOU MINED IT!" && staged.mateName !== "" && staged.mateWord === staged.mateName + " MINED IT" && staged.rivalWord === "THEY MINED ONE" && staged.after === "Grabbed1Mined1Home0Splats4Splatted2", JSON.stringify(staged));
+    record("block tally: Z held shows everyone by side with the right counts in Grabbed, Mined, Home, Splats, Splatted order, the visitor's row marked and one leader glowing; letting go hides it, and a tap on the panel pins and unpins it",
+      staged.boardHidden && held.open && held.blue === half && held.red === half && held.you === "You:1,1,0,4,2" && held.mate === "0,1,3,0,0" && held.rival === "5,1,0,6,0" && held.lead === 1 && held.face && held.ordered === "34"
+        && let_go && pinned && tapped.open && tapped.you === held.you && !unpinned, JSON.stringify({ held, let_go, pinned, unpinned }));
+  } finally { await b.evaluate('BL.scenes.block.update = window.__tallyUpdate; delete window.__tallyUpdate'); }
 } };
 const blockThrowScore = { name: "block throw scoring controls", why: "rule: keyboard and touch throws must score under the selected rule and show the correct throw feedback on the new Oogas", run: async b => {
   const rows = [], touch = await b.evaluate('matchMedia("(pointer: coarse)").matches');
@@ -21597,6 +21710,29 @@ const partyRadioChecks = async () => {
   record("party radio: kicks lock at their tempo and on their beat alike at 60 and 144 frames a second, and noise and silence never lock",
     at60.live === 1 && at144.live === 1 && Math.abs(at60.bpm - BPM) < 1 && Math.abs(at144.bpm - at60.bpm) < 0.3 && at60.err < 30 && at144.err < 30
       && noise.live === 0 && silence.live === 0, JSON.stringify({ at60, at144, noise, silence }));
+  // Regression: the player took Web Audio to be handing it silence (and gave the stream up for a plain element, the
+  // music stopping while it tuned in again and the lights losing the beat for the visit) after one late frame: the
+  // whole time since the frame before counted as heard silent. A stream that comes back plays on, read as before, and
+  // one that stays silent frame after frame is still given up.
+  const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, connect() {}, disconnect() {} });
+  const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createMediaElementSource: node, close: async () => {},
+    createAnalyser: () => ({ ...node(), getFloatTimeDomainData: (a) => a.fill(level.now), getByteFrequencyData() {} }) };
+  const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {} } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date,
+    document: { addEventListener() {}, removeEventListener() {} }, AudioContext: function () { return audio; },
+    Audio: function () { const e = { currentTime: 0, play: async () => {}, pause() {}, removeAttribute() {}, load() {} }; elements.push(e); return e; } };
+  runInNewContext(await readFile(new URL("../src/js/timechain-party-radio.js", import.meta.url), "utf8"), page);
+  const radio = page.window.BL.timechainPartyRadio.create(), reading = {};
+  const frames = (seconds, dt, sound) => { level.now = sound; for (let t = 0; t < seconds; t += dt) { audio.currentTime += dt; elements.at(-1).currentTime += dt; radio.sample(reading); } };
+  let late, silent;
+  try {
+    elements[0].onplaying();
+    frames(1, 1 / 60, 0.2); frames(5, 5, 0); frames(1, 1 / 60, 0.2);
+    late = { plain: radio.stats.plain, starts: radio.stats.starts, mode: radio.stats.mode };
+    frames(5, 1 / 60, 0);
+    silent = { plain: radio.stats.plain, starts: radio.stats.starts };
+  } finally { radio.dispose(); }
+  record("party radio: one late frame that finds the stream quiet neither restarts the music nor gives up its beat, and a stream silent frame after frame still falls back to the plain element",
+    !late.plain && late.starts === 1 && late.mode === "live" && silent.plain && silent.starts === 2, JSON.stringify({ late, silent }));
 };
 
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
@@ -22689,8 +22825,11 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
     out.apron = at({ x: outX, y: D.island.surfaceAt(outX, outZ), z: outZ }, 0.5);
     out.air = at({ x: 53.7, y: 8, z: -31 }, 0.5);
     // Inside the Sphere's shell, down its passage short of the curtain, and Merge Rock, which has no public scope yet.
-    const passage = BL.timechainModels.PASSAGE.curtain + 0.5;
-    out.passage = at({ x: T.worldX(0, passage), y: T.place.y + BL.timechainModels.SITE.bridgeFloor, z: T.worldZ(0, passage) }, 0.5);
+    // Only a crossing's Ooga stands behind the doors (timechain-gate.js puts one left there on the bridge), so the
+    // passage is read from the hub's own shell test and reason at that spot rather than by parking an Ooga in it.
+    const passage = BL.timechainModels.PASSAGE.curtain + 0.5, px = T.worldX(0, passage), pz = T.worldZ(0, passage);
+    const shelled = D.insideSphere(px, T.place.y + BL.timechainModels.SITE.bridgeFloor, pz), why = BL.outdoorScope.hubReason("sphere", shelled);
+    out.passage = { zone: "sphere", inside: shelled, scope: why === "outdoor" ? "main" : null, reason: why };
     const rock = D.repoIsland && D.repoIsland.arrival;
     out.repos = rock ? at({ x: rock.x, y: rock.y, z: rock.z }, 0.5) : null;
     return out;
@@ -24813,7 +24952,7 @@ scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub")
 scene("race", { query: "rain=0&draw=0", steps: [raceStart, raceOwn, raceBench, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: one drawn field of fifteen runs every race and finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop"), dropOwn] });
 
-scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, blockMirage, blockRoofs, blockThrowScore, blockZipline, trip("block")] });
+scene("block", { steps: [blockStart, blockWalk, blockQuiz, play("block", "a round on autopilot reaches three captures, shows its results and saves the round", blockRun), blockPoses, blockMirage, blockRoofs, blockThrowScore, blockTally, blockZipline, trip("block")] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit"), orbitOwn] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
 // ---- The Lightning Jet Hangar ----
@@ -27378,6 +27517,108 @@ const portalChecks=(BL,el)=>{
 };
 
 // Rule: one support mesh, bounded water effects and the real crew must agree about immersion.
+// Island shoreline regressions live in the existing global ledger, not a second test runner.
+function dryFingerprint(land) {
+  let count=0,hash=2166136261;
+  const coast=land.coast,inside=(x,z)=>{
+    let hit=false;
+    for(let i=0,j=coast.length-1;i<coast.length;j=i++){
+      const a=coast[i],b=coast[j];
+      if((a[1]>z)!==(b[1]>z)&&x<(b[0]-a[0])*(z-a[1])/(b[1]-a[1])+a[0])hit=!hit;
+    }
+    return hit;
+  };
+  for(let z=-99;z<=99;z+=1.5)for(let x=-99;x<=99;x+=1.5){
+    if(!inside(x,z))continue;
+    count++;
+    const value=x+","+z+":"+land.heightAt(x,z).toFixed(4)+"|";
+    for(let i=0;i<value.length;i++)hash=Math.imul(hash^value.charCodeAt(i),16777619)>>>0;
+  }
+  return {count,hash:hash.toString(16).padStart(8,"0")};
+}
+function dsbIslandWadingChecks(BL) {
+  // The unit tier is Node-only. Load the real shoreline modules into the suite's VM,
+  // rather than relying on scene/browser globals which are not present here.
+  const triangle=()=>({verts:[0,0,0,1,0,0,0,0,1],faces:[{i:[0,1,2],color:[255,255,255]}]});
+  const context={window:{BL:{
+    math:{hexToRgb:()=>[255,255,255]},
+    scene:{createNode:(options={})=>({...options}),addChild(){}},
+    models:{track:()=>({use(){}}),box:triangle,bevelBox:triangle,lathe:triangle,moved:triangle,shaded:triangle,merge:triangle}
+  }}};
+  for(const name of ["dsb-coast.js","dsb-geography.js","dsb-water.js"]){
+    const file=readFileSync(new URL("../src/js/"+name,import.meta.url),"utf8");
+    runInNewContext(file,context,{filename:name,timeout:30000});
+  }
+  BL=context.window.BL;
+  const C=BL.dsbCoast,L=BL.dsbGeography.build(),actor={bodyHeight:1.370,bodyRadius:.697};
+  const BLOCKED=new Set([0,1,2,3,4,5,22,23,24,25,26,27,28,31,32,33]);
+  const at=(i,t=.5)=>{
+    const a=L.coast[i],b=L.coast[(i+1)%L.coast.length],x=a[0]+(b[0]-a[0])*t,z=a[1]+(b[1]-a[1])*t,near={};
+    C.nearest(L.coast,x,z,near);
+    return {x,z,near,point:d=>[x+near.nx*d,z+near.nz*d]};
+  };
+  const path=(s,retreat=true)=>{
+    let a=s.point(-3),y=L.groundAt(...a);
+    for(let k=1;k<=55;k++){
+      const b=s.point(-3+k*.2);
+      if(!L.walkable(a[0],a[1],b[0],b[1],y,actor.bodyHeight,actor))return "out "+k;
+      a=b;y=L.groundAt(...b);
+    }
+    if(!retreat)return null;
+    const deep=s.point(23);
+    if(L.walkable(a[0],a[1],deep[0],deep[1],y,actor.bodyHeight,actor))return "deep gate";
+    for(let k=54;k>=0;k--){
+      const b=s.point(-3+k*.2);
+      if(!L.walkable(a[0],a[1],b[0],b[1],y,actor.bodyHeight,actor))return "return "+k;
+      a=b;y=L.groundAt(...b);
+    }
+    return null;
+  };
+  let accessible=0,excluded=0,depthStops=0;
+  const errors=[],transitions=[];
+  for(let i=0;i<L.coast.length;i++){
+    const s=at(i),access=C.wade(L.coast,s.x,s.z);
+    if(BLOCKED.has(i)){
+      excluded++;
+      if(access!==0)errors.push("excluded "+i+" access");
+      const edge=s.point(3),offshore=s.point(7),ground=L.groundAt(...edge);
+      if(Math.abs(L.heightAt(...offshore)+5)>.03||L.walkable(edge[0],edge[1],offshore[0],offshore[1],ground,actor.bodyHeight,actor))errors.push("excluded "+i+" shelf/edge");
+    }else{
+      accessible++;
+      if(access<.99)errors.push("accessible "+i+" mask");
+      if(!(L.heightAt(...s.point(3))>C.LEVEL&&L.heightAt(...s.point(7))<C.LEVEL&&L.heightAt(...s.point(9))<L.heightAt(...s.point(7))))errors.push("accessible "+i+" shelf");
+      const issue=path(s);
+      if(issue)errors.push("accessible "+i+" "+issue);
+      else depthStops++;
+    }
+  }
+  record("DSB coastline: exactly 18 of 34 authored sectors admit gradual body-width wading, with 16 harbor/Olympus exclusions and safe deep-water stops",
+    L.coast.length===34&&accessible===18&&excluded===16&&depthStops===18&&!errors.length,JSON.stringify({accessible,excluded,depthStops,errors:errors.slice(0,16)}));
+  const dense=[];
+  for(let i=7;i<=20;i++)for(const t of [.2,.5,.8]){
+    const issue=path(at(i,t),false);
+    if(issue)dense.push([i,t,issue]);
+  }
+  record("DSB wading: 42 distributed rocky-sector footpaths remain walkable instead of only their midpoints",dense.length===0,JSON.stringify(dense.slice(0,12)));
+  for(const [i,t] of [[6,.01],[21,.99],[29,.01],[30,.99]]){
+    const s=at(i,t);transitions.push({sector:i,t,eligibility:C.wade(L.coast,s.x,s.z)});
+  }
+  const piers=[[-43,49],[-34,49],[-39,41.5]].map(([x,z])=>L.groundAt(x,z));
+  record("DSB shoreline limits: exclusion transitions taper, Chora retains beach swash, and harbor decks stay at 1.35m",
+    transitions.every(s=>s.eligibility<.05)&&C.beach(20,80)>.99&&piers.every(y=>Math.abs(y-1.35)<1e-8)
+      &&Math.abs(C.maxDepth(actor)-actor.bodyHeight*.98)<1e-8&&C.speed(1)<C.speed(.5)&&C.speed(.5)<C.speed(0),
+    JSON.stringify({transitions,piers}));
+  const dry=dryFingerprint(L);
+  record("DSB inland invariance: all 8,957 authored dry-land samples retain the approved geometry fingerprint",dry.count===8957&&dry.hash==="bc6a1a4f",JSON.stringify(dry));
+  const water=BL.dsbWater.create(L),texel=(x,z)=>{
+    const B=256,ix=Math.round((x/650+.5)*B-.5),iz=Math.round((z/650+.5)*B-.5);
+    return water.depths[(iz*B+ix)*4+1];
+  };
+  record("DSB water optics: original Chora sand stays strongest, eligible rocks shoal subtly, blocked coasts remain clear, and Canvas subdivision is bounded",
+    texel(20,81)===255&&texel(72,25)>0&&texel(-39,50)===0&&texel(-54,-93)===0
+      &&water.geometry.faces.length>4000&&water.geometry.faces.length<30000&&water.depths.length===256*256*4,
+    JSON.stringify({chora:texel(20,81),rocks:texel(72,25),harbor:texel(-39,50),olympus:texel(-54,-93),faces:water.geometry.faces.length}));
+}
 const waterWorld = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();
   S.addChild(root,land.root);S.removeChild(land.root,land.sea);camera.position.x=20;camera.position.y=8;camera.position.z=83;
@@ -27395,10 +27636,11 @@ const waterWorld = BL => {
 };
 const waterGolden = W => {
   const hash=values=>{let h=2166136261;const text=JSON.stringify(values);for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return (h>>>0).toString(16);};
-  const ground=[];for(let x=-96;x<=96;x+=1.5)for(let z=-96;z<=96;z+=1.5)if(!(x>-5&&x<55&&z>58))ground.push(W.land.heightAt(x,z));
+  // Wading legitimately changes offshore elevations; preserve a byte-checked dry-land fingerprint.
+  const ground=dryFingerprint(W.land).hash;
   const nodes=[];const visit=n=>{if(n.geometry)nodes.push(n.geometry.verts,n.geometry.faces.map(f=>f.i),n.position,n.rotation,n.scale);for(const c of n.children)visit(c);};visit(W.olympus.group);
   W.water.update(0);
-  return {ground:hash(ground),olympus:hash(nodes),bridges:hash(W.olympus.bridges),buildings:hash(W.land.buildings),fft:hash(Array.from(W.water.pixels))};
+  return {ground,olympus:hash(nodes),bridges:hash(W.olympus.bridges),buildings:hash(W.land.buildings),fft:hash(Array.from(W.water.pixels))};
 };
 // Regression: cached dressing shapes used by explicit fields and ordinary Olympus nodes must not
 // alias a renderer record. Exercise the real collector/uploader against a byte-bounded GL sink;
@@ -27493,7 +27735,7 @@ const waterChecks = BL => {
   const expression=BL.dsbWater.shader.match(/float foam=([^;]+);/)[1],smoothstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
   const foam=new Function("bed","depth","shoreWave","uDSBEnvironment","smoothstep","return "+expression),sampleFoam=(sand,depth,crest)=>foam({g:sand},depth,crest,{w:3},smoothstep);
   const mask=(x,z)=>water.depths[(Math.floor((z/650+.5)*256)*256+Math.floor((x/650+.5)*256))*4+1];
-  record("DSB coast foam: non-beach coasts and zero depth have no universal rim; sand shoals retain moving crests",[0,.04,.2,.6,1.2].every(d=>[0,.5,1].every(c=>sampleFoam(0,d,c)===0))&&sampleFoam(1,0,1)===0&&sampleFoam(1,.4,1)>0&&sampleFoam(1,.4,0)===0&&!/foam\s*\+=/.test(BL.dsbWater.shader)&&mask(20,80)>250&&[[-39,54],[85,14],[-55,-91]].every(p=>mask(...p)===0));
+  record("DSB coast foam: non-beach coasts and zero depth have no universal rim; sand shoals retain moving crests",[0,.04,.2,.6,1.2].every(d=>[0,.5,1].every(c=>sampleFoam(0,d,c)===0))&&sampleFoam(1,0,1)===0&&sampleFoam(1,.4,1)>0&&sampleFoam(1,.4,0)===0&&!/foam\s*\+=/.test(BL.dsbWater.shader)&&mask(20,80)>250&&mask(85,14)>0&&[[-39,54],[-55,-91]].every(p=>mask(...p)===0));
   const apronFaces=L.root.children.flatMap(n=>n.geometry?n.geometry.faces.filter(f=>f.i.every(i=>n.geometry.verts[i*3+1]>=-.29&&n.geometry.verts[i*3+1]<=-.26)):[]);
   record("DSB coast foam: no waterline strip traces the coast, white or dark; terrain meets the sea directly",apronFaces.length===0,JSON.stringify({faces:apronFaces.length}));
   const depths=[-.35,0,.12,.3,.5,.7,.87],positions=depths.map(r=>point(r)),routes=[];
@@ -27513,7 +27755,7 @@ const waterChecks = BL => {
   record("DSB wading: depth curve has no speed steps and stays above one-third walking speed",smooth&&last>=.33);
   const deep=point(1.05);crew.relocatePlayer(deep,0);I.clear();step(10,0,-1);
   record("DSB wading: a relocated over-depth actor can always retreat to shallower ground",A.root.position.z<deep.z-3&&I.stats.depth<A.bodyHeight,JSON.stringify({from:deep,to:A.root.position,depth:I.stats.depth}));
-  record("DSB coast types: only Chora sand has a shelf; rear Olympus, rocky east and harbor retain deep water",L.heightAt(-55,-91)===-5&&L.heightAt(92,14)===-5&&L.heightAt(-39,54)===-5&&C.beach(-55,-80)===0&&C.beach(-39,54)===0&&C.beach(85,14)===0&&!W.walkable(-39,54,-39,54,-5,A.bodyHeight,A));
+  record("DSB coast types: Chora and eligible rocky coasts have shallow shelves while rear Olympus and harbor remain deep",L.heightAt(-55,-91)===-5&&L.heightAt(92,14)>-5&&L.heightAt(92,14)<C.LEVEL&&L.heightAt(-39,54)===-5&&C.beach(-55,-80)===0&&C.beach(-39,54)===0&&C.beach(85,14)===0&&!W.walkable(-39,54,-39,54,-5,A.bodyHeight,A));
   const first=I.stats.emitted;locate(.5);const entries=I.stats.splashes;step(6);const idle=I.stats.emitted-first;step(2,1,0);const moving=I.stats.emitted-first-idle,wakes=I.stats.wakes;
   record("DSB ripples: idle disturbances are sparse; moving creates stronger trailing wakes",idle<10&&moving>idle&&wakes>0&&I.stats.player>0,JSON.stringify({idle,moving,wakes,stats:I.stats}));
   const splashes=I.stats.splashes;crew.jumpPlayer();step(2);
@@ -27573,8 +27815,11 @@ const waterChecks = BL => {
 // Recorded from f578f9cda6e77468049b5e000e3002ce9711809b before applying the water extension.
 // Upstream 822addee keeps leaf vertices/normals/fronts and placement, but anchors each reversed
 // back-face fan at the front's first vertex. Approved/merged/A-B geometry comparison and
-// Olympus renders are documented in docs/dsb-upstream-validation.md; all other hashes stay frozen.
-const WATER_GOLDEN = {ground:"69d81f3b",olympus:"7490fca7",bridges:"9164c056",buildings:"634c3799",fft:"aa331f6b"};
+// Olympus renders are documented in docs/dsb-upstream-validation.md; the new
+// eligible west-flank underwater shelf changes the full Olympus group (including
+// the stream's sea-facing geometry). The original dry-land fingerprint stays
+// separately fixed at bc6a1a4f, while the updated Olympus group is pinned below.
+const WATER_GOLDEN = {ground:"bc6a1a4f",olympus:"932687d1",bridges:"9164c056",buildings:"634c3799",fft:"aa331f6b"};
 
 // Rule: exterior addresses must survive registry reordering and preserve every established route/venue.
 const vacancyChecks = async BL => {
@@ -33501,6 +33746,7 @@ const outdoorVoiceChecks = () => {
     Object.values(rows).every(Boolean), JSON.stringify(rows));
 };
 const unitChecks = async () => {
+  dsbIslandWadingChecks();
   const caves = caveDirectoryProof();
   record("cave directory: bounded immutable reviewed destinations reject duplicate identities, unknown schemas and credentials or payload-bearing URLs", Object.values(caves).every(Boolean), JSON.stringify(caves));
   await connectionReportChecks();
@@ -36072,6 +36318,36 @@ const dsbSharedSessionCheckpoint={name:"dsb shared session checkpoint",why:"cont
 for(const fallback of [false,true])scene("dsb",{label:"shared session "+(fallback?"canvas2d":"webgl2"),query:"&overview=1&weather=clear&time=1200"+(fallback?"&canvas2d=1":""),exclusive:true,httpMedia:true,steps:[dsbSharedSessionCheckpoint]});
 scene("dsb",{label:"shared session phone",query:"&overview=1&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},exclusive:true,httpMedia:true,steps:[dsbSharedSessionCheckpoint]});
 
+// Desktop and phone review uses the suite driver, watchdogs and failure ledger.
+function inspectDSBIslandPage() {
+  const B=window.__ooga,D=B?.dsb,C=window.BL?.dsbCoast,L=D?.land,canvas=document.getElementById("scene");
+  if(!D||!C||!L||!canvas||!D.water||!D.waterInteraction)return {ready:false};
+  const blocked=new Set([0,1,2,3,4,5,22,23,24,25,26,27,28,31,32,33]);
+  let accessible=0,excluded=0,stops=0;const errors=[];
+  for(let i=0;i<L.coast.length;i++){
+    const a=L.coast[i],b=L.coast[(i+1)%L.coast.length],x=(a[0]+b[0])/2,z=(a[1]+b[1])/2,near={};
+    const w=C.wade(L.coast,x,z,near);
+    if(blocked.has(i)){excluded++;if(w!==0)errors.push(i+" excluded");}
+    else{
+      accessible++;if(w<.99)errors.push(i+" access");
+      const sx=x+near.nx*7,sz=z+near.nz*7;
+      if(L.heightAt(sx,sz)>=C.LEVEL)errors.push(i+" dry shelf");
+      const px=x+near.nx*8,pz=z+near.nz*8,dx=x+near.nx*23,dz=z+near.nz*23;
+      if(!L.walkable(px,pz,dx,dz,L.heightAt(px,pz),D.avatar.bodyHeight,D.avatar))stops++;
+      else errors.push(i+" deep");
+    }
+  }
+  return {ready:true,accessible,excluded,stops,errors,frame:B.renderedFrames||0,kind:B.renderer?.kind,canvas:[canvas.width,canvas.height],rippleBudget:D.waterInteraction.stats.capacity};
+}
+
+async function dsbIslandShorelineBrowserCheck(b) {
+  const snapshot=await b.evaluate("("+inspectDSBIslandPage.toString()+")()");
+  record("DSB shoreline browser: built-page coast, depth gates, water interaction and renderer agree",
+    snapshot.ready&&snapshot.accessible===18&&snapshot.excluded===16&&snapshot.stops===18&&!snapshot.errors.length&&snapshot.canvas[0]>0&&snapshot.canvas[1]>0&&snapshot.rippleBudget===24,
+    JSON.stringify(snapshot));
+}
+const dsbIslandShorelineStep={name:"DSB shoreline accessible coasts and exclusions",why:"rule: the loaded DSB desktop and phone scene preserves shallow wading, harbor and rear Olympus",run:dsbIslandShorelineBrowserCheck};
+
 const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract: global account UI, venue zones and direct return survive desktop and mobile scene transitions",run:async b=>{
   const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
   const read=()=>b.evaluate('({zone:BL.net.state.zone,body:__ooga.dsb?.presence.body,backend:BL.net.state.backend,room:BL.net.state.room,hidden:document.getElementById("sheet").hidden,open:document.getElementById("sheet").dataset.open})');
@@ -36132,8 +36408,8 @@ const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract:
   await b.evaluate('__ooga.dsb.entrance.skip();__ooga.advance(.1,.1)');
   record("DSB integration: arrival restores exterior and rectangular membrane",await b.evaluate('BL.net.state.zone==="dsb-outside"&&__ooga.dsb.gate.horizon.geometry.portalRect&&BL.outdoorScope.state.scope==="dsb"'));
 }};
-scene("dsb",{label:"integration checkpoint",query:"&weather=clear&time=1200",steps:[dsbIntegrationCheckpoint]});
-scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbIntegrationCheckpoint]});
+scene("dsb",{label:"integration checkpoint",query:"&weather=clear&time=1200",steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
+scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));
