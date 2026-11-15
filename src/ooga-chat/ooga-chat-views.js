@@ -1,6 +1,6 @@
 // Ooga Chat's views, each `view(ctx)` returning `{ node, update(state), dispose() }` for ooga-chat-shell.js. `ctx`
-// carries `actions` (`signIn(provider)`, `signOut()`, `retry()`, `joinVoice()`, `leaveVoice()`, `mute()`, `zone(id)`)
-// and `media`, the voice seam; `state` is `{ mode, boot, session, auth, notice, busy, zone, voice, audience, commons }`
+// carries `actions` (`signIn(provider)`, `signOut()`, `retry()`, `joinVoice()`, `leaveVoice()`, `mute()`, `retryVoice()`,
+// `zone(id)`) and `media`, the voice controller (ooga-chat-media.js); `state` is `{ mode, boot, session, auth, notice, busy, zone, voice, audience, commons }`
 // (docs/ooga-chat-app.md), where `mode` is loading, live, unavailable or stale and `auth` is ooga-chat-auth.js's. Every
 // tab is the island's own panel (#656), in its markup and its rules: `chat` is the Ooga Chat tab, sign-in or the island's
 // Ooga Chat panel with its footer; `bananas`, `roster`, `commons` and `online` are Bananas, Contributing Oogas, The Commons
@@ -28,6 +28,13 @@
     stale: "This page is older than Ooga Chat's service."
   };
   const OFFLINE = "You're offline. Ooga Chat reconnects when you're back.";
+  // Join Voice while not speaking (ooga-chat-media.js's state): its words while joining or leaving, whether it can be
+  // pressed, and why not, or what the last attempt said (a blocked microphone, a full zone).
+  const joining = (state, allowed, media) => {
+    const voice = state.voice, why = !state.device.online ? OFFLINE : allowed.why || (media.available ? voice.notice : media.why || "Voice opens here soon.");
+    return { words: voice.phase === "leaving" ? "Leaving…" : voice.busy ? "Joining…" : "",
+      disabled: !allowed.joinVoice || !media.available || !!state.busy || voice.busy || !state.device.online, why };
+  };
   const PROVIDERS = { github: ["Continue with GitHub", "Opening GitHub…", "GitHub sign-in is unavailable"], x: ["Continue with X", "Opening X…", "X sign-in is unavailable"] };
   const { gates } = BL.oogaChatAuth;
   // A visually hidden explanation a control names with aria-describedby.
@@ -198,7 +205,11 @@
       zones.append(el);
       return el;
     });
-    const statusText = make("span", ""), heard = make("p", "help cloud-status", statusText);
+    // A receiver that gave up offers its own retry here, beside what the line says.
+    const retryVoice = button("link", "Try again");
+    retryVoice.hidden = true;
+    retryVoice.addEventListener("click", () => actions.retryVoice(), { signal });
+    const statusText = make("span", ""), heard = make("p", "help cloud-status", statusText, retryVoice);
     heard.setAttribute("role", "status");
     heard.setAttribute("aria-live", "polite");
     heard.hidden = true;
@@ -230,8 +241,13 @@
       if (!state.session) return;
       const { audience: now, zone } = state;
       for (const el of zoneButtons) attr(el, "aria-pressed", String(el.dataset.cloudZone === zone));
-      const words = HEARD[now.status]?.(zone) || (now.status === "live" && !now.list.length ? "Nobody is here yet." : "");
+      // The feed's state first; then voice's (playback the browser held back, a receiver that gave up, what the last try
+      // to speak said); then an empty zone.
+      const failed = now.status === "live" && state.voice.phase === "failed";
+      const words = HEARD[now.status]?.(zone) || (now.status !== "live" ? "" : state.voice.blocked ? "Tap anywhere to hear this zone."
+        : failed ? "Can't hear this zone right now. " : state.voice.notice || (!now.list.length ? "Nobody is here yet." : ""));
       set(statusText, "textContent", words);
+      set(retryVoice, "hidden", !failed);
       set(heard, "hidden", !words);
       const who = state.session.identity.participant, moved = who !== self, mics = moved || state.voice !== voice, role = voice && voice.role;
       self = who;
@@ -283,14 +299,15 @@
       const speaker = state.voice.role === "speaker", allowed = gates(state, Date.now());
       const source = speaker ? "chat" : "";
       if (name.dataset.source !== source) name.dataset.source = source;
-      set(mute, "disabled", !speaker || !!state.busy);
+      set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
       set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
       attr(mute, "aria-pressed", String(speaker && state.voice.muted));
       set(muteWhy, "textContent", speaker ? "" : "Join voice first to unmute.");
+      const going = joining(state, allowed, media);
       join.dataset.voice = speaker ? "speaker" : "listener";
-      set(join, "textContent", speaker ? "Leave Voice" : "Join Voice");
-      set(join, "disabled", speaker ? !!state.busy : !allowed.joinVoice || !media.available || !!state.busy || !state.device.online);
-      const why = speaker ? "" : !state.device.online ? OFFLINE : allowed.why || (media.available ? "" : "Voice opens here soon.");
+      set(join, "textContent", speaker ? "Leave Voice" : going.words || "Join Voice");
+      set(join, "disabled", speaker ? !!state.busy : going.disabled);
+      const why = speaker ? "" : going.why;
       set(joinWhy, "textContent", why);
       set(join, "title", why);
     };
@@ -342,12 +359,12 @@
         return;
       }
       set(name, "textContent", who.identity.display);
-      const speaker = state.voice.role === "speaker", allowed = gates(state, Date.now());
+      const speaker = state.voice.role === "speaker", allowed = gates(state, Date.now()), join = joining(state, allowed, media);
       set(voice, "hidden", false);
-      set(voice, "textContent", speaker ? state.voice.muted ? "Unmute" : "Mute" : "Join voice");
-      set(voice, "disabled", speaker ? !!state.busy : !allowed.joinVoice || !media.available || !!state.busy || !state.device.online);
+      set(voice, "textContent", speaker ? state.voice.muted ? "Unmute" : "Mute" : join.words || "Join voice");
+      set(voice, "disabled", speaker ? !!state.busy : join.disabled);
       attr(voice, "aria-pressed", String(speaker && !state.voice.muted));
-      const why = speaker ? "" : !state.device.online ? OFFLINE : allowed.why || (media.available ? "" : "Voice opens here soon.");
+      const why = speaker ? "" : join.why;
       set(voiceWhy, "textContent", why);
       set(voice, "title", why);
       set(leave, "hidden", !speaker);

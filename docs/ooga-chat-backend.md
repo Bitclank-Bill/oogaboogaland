@@ -303,7 +303,8 @@ Choosing the zone already chosen changes nothing. A listener's `setMic` is refus
 { "type": "result", "requestId": 3, "ok": false, "error": { "code": "source_in_use", "retryable": false }, "you": { … } }
 ```
 
-`you.speak` is `eligible`, `pending`, `active`, `denied` (eligible, but the island has this identity) or `none`. A
+`you.speak` is `eligible`, `pending`, `active`, `denied` (eligible, but the island has this identity) or `none`; while a
+lease is held, `you.lease` is its generation, which the page names in its media calls (#654). A
 delta's `revision` is always `base + 1` within an epoch; the epoch is fixed for the object's life (it changes only if its
 storage is reset), and each zone's revision is stored, so an object woken from hibernation carries on where it was and
 clients never resync for a nap. Generations follow the clock and only rise. A request repeated with the same
@@ -356,6 +357,11 @@ taking the identity, the socket going) leaves the catalog at once; its track is 
 listener's pull of it, server-side, without waiting for the listener, who is told to `sync`. An island speaker leaving
 the outdoors (a new `world` without them) or publishing again (a new generation) closes every pull of the old
 publication the same way. A listener changing zone loses the old zone's pulls at once.
+
+**Telling receivers.** Every connection with a receive session hears `{ type: "media", op: "sync", closed? }` over its
+audience socket when its pulls were closed (`closed` the mids, so the page drops them at once) and when its zone's
+publications change (a chat speaker going live, an island speaker's publication arriving or changing), so a page pulls a
+new voice without polling. A mute changes no publication and asks nobody to sync.
 
 **Durable cleanup.** Every close goes through a queue kept in storage (`mediaCleanup`) and retried by the alarm until
 the SFU confirms (`close_track_error` counts as gone) or an hour has passed, after every client has left too. A
