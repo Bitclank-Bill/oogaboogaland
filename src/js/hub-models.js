@@ -1600,12 +1600,33 @@
     [[-2, 3.4, 3], [2.5, 4.4, 2.6], [6, 3, 2.2]],
     [[-4, 3.6, 3.2], [0, 5, 3.6], [4, 4.4, 3], [7.5, 3, 2.4]]
   ];
-  const cloud = variants((i) => {
+  // A cloud the Ooga Chat speakers sit on (#659) has a bench: across its middle, from just outside where the outer two
+  // sit (scene-hub.js's seats, BENCH_SPREAD of a third either side of the middle) BENCH_PAST further, BENCH_DEPTH
+  // either side of its long axis, every column the cloud already has is filled up to its highest layer and nothing
+  // stands over it, one flat top to sit on in place of the puffs' ragged tops.
+  const BENCH_SPREAD = 0.7, BENCH_PAST = 0.6, BENCH_DEPTH = 1;
+  const buildCloud = (i, bench) => {
     const rand = mulberry32(307 + i);
     const v = vox();
     const puffs = CLOUD_PUFFS[i];
     const mid = (puffs[0][0] + puffs[puffs.length - 1][0]) / 2;
     for (const [cx, rx, rz] of puffs) blob(v, { cx: cx - mid + 0.5, cy: 1, cz: 0.5, rx, ry: 1.6, rz, chip: 0.3, rand, color: (x, y) => y > 0 ? 0 : 1 });
+    if (bench) {
+      // Cell x spans [x, x + 1) cells; the mesh's origin puts a cell's middle at x * VOX metres.
+      let x0 = Infinity, x1 = -Infinity, top = -Infinity;
+      const columns = new Map();
+      for (const [k] of v.map) {
+        voxCoords(k, CELL);
+        x0 = Math.min(x0, CELL[0]); x1 = Math.max(x1, CELL[0]); top = Math.max(top, CELL[1]);
+        const key = CELL[0] * 4096 + CELL[2], low = columns.get(key);
+        if (low === undefined || CELL[1] < low.min) columns.set(key, { x: CELL[0], z: CELL[2], min: CELL[1] });
+      }
+      const middle = (x0 + x1 + 1) / 2 - 0.5, half = ((x1 - x0 + 1) / 3 * BENCH_SPREAD) + BENCH_PAST / VOX, depth = BENCH_DEPTH / VOX;
+      for (const { x, z, min } of columns.values()) {
+        if (Math.abs(x - middle) > half || Math.abs(z) > depth) continue;
+        for (let y = min; y <= top; y++) v.set(x, y, z, y > 0 ? 0 : 1);
+      }
+    }
     // A flat base under the puffs, the way a cumulus sits on the air, grown straight down from the
     // cells already there: every cell added sits under another, so the cloud gains body without a
     // single new top face. The base rounds up toward
@@ -1630,7 +1651,9 @@
     geo.castShadow = false;
     geo.cutawayPreserve = true;
     return geo;
-  });
+  };
+  const cloud = variants((i) => buildCloud(i, false));
+  const benchCloud = variants((i) => buildCloud(i, true));
   const ladder = cached(() => merge(
     box({ w: 0.1, h: 4, d: 0.1, color: WOOD, offset: { x: -0.4, y: 2 } }),
     box({ w: 0.1, h: 4, d: 0.1, color: WOOD, offset: { x: 0.4, y: 2 } }),
@@ -1714,5 +1737,5 @@
     byGeo.set(key, out);
     return out;
   };
-  BL.hubModels = { cloudSeatGlow, SIGN_GLYPHS, CARVED_M, SIGN_ICONS, AMMO_BANANA, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixPrisonBars, sealedCaveFace, matrixLeverPlate, matrixLeverLights, matrixLeverHub, matrixLeverArm, matrixLeverGrip, matrixLeverLabels, matrixGlyph, caveSign, postSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, libraryNook, libraryLamp, LIBRARY_SHELF_Y, entropyLab, bedroll, tree, bush, rock, breakableRock, voxelRock, puff, clumped, leafy, pointedLeaf, flower, FLOWER_INKS, limb, padNormals, flatInto, canopySupport, withJungle, liana, sagPoints, sprig, garland, bamboo, lashing, log, thatch, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lawnTuft, firepit, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
+  BL.hubModels = { cloudSeatGlow, benchCloud, SIGN_GLYPHS, CARVED_M, SIGN_ICONS, AMMO_BANANA, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixPrisonBars, sealedCaveFace, matrixLeverPlate, matrixLeverLights, matrixLeverHub, matrixLeverArm, matrixLeverGrip, matrixLeverLabels, matrixGlyph, caveSign, postSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, libraryNook, libraryLamp, LIBRARY_SHELF_Y, entropyLab, bedroll, tree, bush, rock, breakableRock, voxelRock, puff, clumped, leafy, pointedLeaf, flower, FLOWER_INKS, limb, padNormals, flatInto, canopySupport, withJungle, liana, sagPoints, sprig, garland, bamboo, lashing, log, thatch, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lawnTuft, firepit, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
 })();

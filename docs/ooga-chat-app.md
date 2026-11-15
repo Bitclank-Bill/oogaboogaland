@@ -390,8 +390,9 @@ green (`#22c55e`) from the island or purple (`#b18aff`) from Ooga Chat; listener
 speaker's name has a purple dot before it. Listeners appear only in this panel, never as characters in the world. Bridging the outdoor voice and the
 app speakers' playback is #661. Cloud speakers in the world (#659): with the island's and the edge's `cloud` on, the
 room sends every page the `clouds` list (`{ id, character, zone, seat, lease, mic, hand, login, display }`, net.js
-`state.clouds`); the hub seats each speaker's own Ooga three to a cloud, one to a third, near the cloud's front, facing
-the banana pile, with a purple glow on the cloud round them, their NPC a ghost meanwhile, a nameplate with a purple dot,
+`state.clouds`); the hub seats each speaker's own Ooga three to a cloud, one to a third (the outer two drawn in), on a
+flat bench across the cloud's top, centred front to back, facing the banana pile, sitting as an Ooga sits by the fire
+with no weapon in hand, with a purple glow on the cloud round them, their NPC a ghost meanwhile, a nameplate with a purple dot,
 and their reactions and raised hand over them (remote-players.js); Online Oogas lists them with purple dots and a
 crosshair to their cloud (players.js). `?debug=1&clouds=a,b,c` seats sample speakers for review. `?debug=1&audience=fixture` shows a generated
 roster of named samples for review and sends nothing.

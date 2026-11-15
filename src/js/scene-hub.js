@@ -5318,7 +5318,9 @@
   };
   const buildClouds = () => {
     for (const track of CLOUD_TRACKS) for (let i = 0; i < CLOUDS_PER_TRACK; i++) {
-      const node = createNode({ geometry: hubModels.cloud(Math.min(2, clouds.length % 4)), matrixCloud: true, sightHidden: true });
+      // The Ooga Chat speakers' clouds (SPEAKER_CLOUDS) carry a bench across their seats (hubModels.benchCloud).
+      const shape = Math.min(2, clouds.length % 4), seats = SPEAKER_CLOUDS.includes(clouds.length);
+      const node = createNode({ geometry: seats ? hubModels.benchCloud(shape) : hubModels.cloud(shape), matrixCloud: true, sightHidden: true });
       const cloud = { node, speed: track.speed, angle: track.phase + i * Math.PI * 2 / CLOUDS_PER_TRACK,
         radius: track.radius, baseY: track.baseY, waveY: track.waveY };
       placeCloud(cloud);
@@ -5332,21 +5334,35 @@
   // outer two drawn SEAT_SPREAD of the way in toward the middle one, centred front to back on the cloud's top there (a
   // cloud's +z faces the island), facing the banana pile; none while the clouds are put away (game mode, Cloud Hopper),
   // and the purple glow under each one seated.
-  // A seat's place on a cloud's mesh is measured once a mesh: along the long axis as above, midway between the top's
-  // front and back edges there, on the highest face under it.
+  // A seat's place on a cloud's mesh is measured once a mesh, from its upward faces (a merged face's corners can lie
+  // far from a seat): along the long axis as above, midway between the top's front and back edges there, on the highest
+  // upward face over that point.
   const SPEAKER_CLOUDS = [10, 14, 3], SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
   const cloudThirds = new Map();
   const thirdsOf = (geometry) => {
     let thirds = cloudThirds.get(geometry);
     if (thirds) return thirds;
     const b = BL.scene.boundsOf(geometry), v = geometry.verts, span = (b.max[0] - b.min[0]) / 3, mid = (b.max[0] + b.min[0]) / 2;
+    // Each upward face as [x0, x1, z0, z1, y].
+    const tops = [];
+    for (const f of geometry.faces) {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const i of f.i) {
+        x0 = Math.min(x0, v[i * 3]); x1 = Math.max(x1, v[i * 3]); y0 = Math.min(y0, v[i * 3 + 1]); y1 = Math.max(y1, v[i * 3 + 1]);
+        z0 = Math.min(z0, v[i * 3 + 2]); z1 = Math.max(z1, v[i * 3 + 2]);
+      }
+      if (y1 - y0 > 1e-6) continue;
+      const a = f.i[0] * 3, c = f.i[1] * 3, d = f.i[2] * 3;
+      const ny = (v[c + 2] - v[a + 2]) * (v[d] - v[a]) - (v[c] - v[a]) * (v[d + 2] - v[a + 2]);
+      if (ny > 0) tops.push([x0, x1, z0, z1, y0]);
+    }
     thirds = [0, 1, 2].map((k) => {
       const x = mid + (k - 1) * span * SEAT_SPREAD;
       let peak = -Infinity, front = -Infinity, back = Infinity, top = -Infinity;
-      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] > peak) peak = v[i + 1];
-      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] >= peak - SEAT_TOP) { front = Math.max(front, v[i + 2]); back = Math.min(back, v[i + 2]); }
+      for (const t of tops) if (t[0] <= x + SEAT_REACH && t[1] >= x - SEAT_REACH && t[4] > peak) peak = t[4];
+      for (const t of tops) if (t[0] <= x + SEAT_REACH && t[1] >= x - SEAT_REACH && t[4] >= peak - SEAT_TOP) { front = Math.max(front, t[3]); back = Math.min(back, t[2]); }
       const z = (front + back) / 2;
-      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && Math.abs(v[i + 2] - z) <= SEAT_REACH && v[i + 1] > top) top = v[i + 1];
+      for (const t of tops) if (t[0] <= x && t[1] >= x && t[2] <= z && t[3] >= z && t[4] > top) top = t[4];
       return Object.freeze({ x, y: top === -Infinity ? peak : top, z });
     });
     cloudThirds.set(geometry, thirds);
