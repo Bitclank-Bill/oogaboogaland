@@ -13,7 +13,8 @@
 //                          far more often than the list, and only speakers have one)
 //   prune(keep)            drops every tile whose id `keep(id)` refuses, cancelling its picture (for a list that changed
 //                          while hidden, which is drawn again only once shown)
-//   pop(id, emoji)         a reaction over that tile's corner for its own lifetime, a few at a time
+//   pop(id, emoji)         a reaction over that tile's corner, as Online Oogas' rows show one (reaction-bar.js `pop`): the
+//                          newest replaces the one before
 //   clear()                every tile gone (a sign-out)
 //   count                  the tiles kept
 //   dispose()
@@ -22,7 +23,6 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const POPS = 4;
   const set = (el, key, value) => { if (el[key] !== value) el[key] = value; };
   const attr = (el, key, value) => { if (el.getAttribute(key) !== value) el.setAttribute(key, value); };
   const make = (tag, className) => {
@@ -37,18 +37,21 @@
     const build = (id) => {
       const li = make("li", "cloud-tile"), face = make("span", "cloud-face"), portrait = make("span", "cloud-portrait");
       const react = make("span", "cloud-react"), hand = make("span", "cloud-hand"), name = make("span", "cloud-name");
+      const popped = make("span", "cloud-pop");
       const dot = make("span", "cloud-dot"), text = make("span", "cloud-name-text"), role = make("span", "cloud-role");
       const voice = make("button", "roster-voice cloud-mic"), word = make("span", "");
       voice.type = "button";
       voice.append(BL.nativeIcons.voice());
-      react.append(hand);
+      popped.hidden = true;
+      popped.setAttribute("aria-hidden", "true");
+      react.append(hand, popped);
       face.append(portrait, react);
       name.append(dot, text);
       role.append(voice, word);
       li.dataset.id = id;
       li.tabIndex = -1;
       li.append(face, name, role);
-      return { li, portrait, react, hand, text, voice, word, item: null, img: null, url: null, pops: 0, mark: 0 };
+      return { li, portrait, react, hand, text, voice, word, item: null, img: null, url: null, popped, reacting: null, mark: 0 };
     };
     const ooga = (entry) => entry.portrait.replaceChildren(BL.nativeIcons.svg("roster"));
     const cancel = (entry) => {
@@ -99,6 +102,7 @@
     };
     const drop = (id, entry) => {
       cancel(entry);
+      if (entry.reacting) { entry.reacting.cancel(); entry.reacting = null; }
       entry.li.remove();
       tiles.delete(id);
     };
@@ -133,13 +137,14 @@
     };
     const pop = (id, emoji) => {
       const entry = tiles.get(id);
-      if (!entry || !entry.li.isConnected || entry.pops >= POPS) return;
-      const el = make("span", "cloud-pop");
-      el.textContent = emoji;
-      el.setAttribute("aria-hidden", "true");
-      entry.pops++;
-      el.addEventListener("animationend", () => { el.remove(); entry.pops--; }, { once: true });
-      entry.react.append(el);
+      if (!entry || !entry.li.isConnected) return;
+      if (entry.reacting) entry.reacting.cancel();
+      entry.popped.textContent = emoji; entry.popped.hidden = false;
+      const run = entry.reacting = BL.reactionBar.pop(entry.popped);
+      run.onfinish = () => {
+        if (entry.reacting !== run) return;
+        entry.reacting = null; entry.popped.hidden = true;
+      };
     };
     const clear = () => {
       for (const [id, entry] of tiles) drop(id, entry);
