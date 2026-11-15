@@ -139,7 +139,7 @@ const host = (clock = Date, env = {}) => {
     await upgrade(r, id, login, display, contributor);
     return accepted[before];
   };
-  return { room, join, upgrade, accepted };
+  return { room, join, upgrade, accepted, restored: () => restoring };
 };
 const said = (ws) => ws.sent.filter((m) => m.t === "chat");
 
@@ -549,7 +549,7 @@ test("room: score RPC reads D1, deduplicates, survives hibernation, and alarm re
     },
     async run() { if (revision <= args[1]) pending = false; return { meta: { changes: 1 } }; },
   }; } };
-  const { room, join } = host(Date, { DB }), r = room();
+  const { room, join, restored } = host(Date, { DB }), r = room();
   await r.refreshHighscores("darts"); assert.equal(reads, 0, "no subscribers means no recovery reads");
   const one = await join(r, 1, "YellowBrokeIt", "Yellow"), two = await join(r, 2, "ottoz0r", "Other");
   await r.webSocketMessage(one, JSON.stringify({ t: "highscore", game: "darts", revision: 999, highscores: { "darts-1": 999 } }));
@@ -562,6 +562,7 @@ test("room: score RPC reads D1, deduplicates, survives hibernation, and alarm re
   }
   revision = 2; pending = true;
   const woke = room(); // attachments rehydrate the two existing hibernatable sockets
+  await restored(); // Set the alarm deadline only after the host has restored its saved deadline.
   woke.ctx.getWebSocketAutoResponseTimestamp = () => new Date();
   woke.sweepAt = 0;
   await woke.alarm();

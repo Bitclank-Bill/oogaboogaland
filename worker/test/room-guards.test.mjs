@@ -197,3 +197,18 @@ test("an unexpected restore handler failure preserves readable data", async () =
   assert.deepEqual(h.deleted, []);
   assert.deepEqual(h.stored.get("example"), saved);
 });
+
+test("a read that fails once and then succeeds deletes nothing, and the next wake restores the value", async () => {
+  const links = [[5, [6]]];
+  const h = host({ stored: { voiceLinks: links }, failReads: { voiceLinks: 1 }, unwritable: ["sweepAt"] });
+  const r = h.room();
+  await h.restored();
+  assert.deepEqual(h.deleted, [], "neither the failed read nor the failed write deleted a key");
+  assert.deepEqual(h.stored.get("voiceLinks"), links, "the stored value is untouched");
+  assert.ok(!r.links.has(5), "this wake goes without it");
+  assert.ok(Number.isFinite(r.sweepAt), "a write that failed still leaves a default");
+  assert.equal(h.logged.length, 2);
+  const woken = h.room();
+  await h.restored();
+  assert.ok(woken.links.get(5).has(6), "the next wake reads it again");
+});
