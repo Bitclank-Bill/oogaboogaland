@@ -5327,6 +5327,54 @@
       clouds.push(cloud);
     }
   };
+  // Ooga Chat speakers on clouds (#659): the room's seats, three to a cloud on three of the largest clouds (main-cloud-1
+  // to 3 on the first, 4 to 6 on the second, 7 on), each sitting on its own third of it along the cloud's long axis, at
+  // the front of the cloud's top there (a cloud's +z faces the island), legs out over its edge, facing the banana pile;
+  // none while the clouds are put away (game mode, Cloud Hopper), and the purple glow under each one seated.
+  // A seat's place on a cloud's mesh is measured once a mesh: each third's middle, SEAT_BACK in from the top's front edge
+  // there, on the highest face under it.
+  const SPEAKER_CLOUDS = [10, 14, 3], SEAT_REACH = 0.5, SEAT_BACK = 0.45, SEAT_TOP = 0.6;
+  const cloudThirds = new Map();
+  const thirdsOf = (geometry) => {
+    let thirds = cloudThirds.get(geometry);
+    if (thirds) return thirds;
+    const b = BL.scene.boundsOf(geometry), v = geometry.verts, span = (b.max[0] - b.min[0]) / 3;
+    thirds = [0, 1, 2].map((k) => {
+      const x = b.min[0] + span * (k + 0.5);
+      let peak = -Infinity, front = -Infinity, top = -Infinity;
+      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] > peak) peak = v[i + 1];
+      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] >= peak - SEAT_TOP && v[i + 2] > front) front = v[i + 2];
+      const z = front - SEAT_BACK;
+      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && Math.abs(v[i + 2] - z) <= SEAT_REACH && v[i + 1] > top) top = v[i + 1];
+      return Object.freeze({ x, y: top === -Infinity ? peak : top, z });
+    });
+    cloudThirds.set(geometry, thirds);
+    return thirds;
+  };
+  const cloudSeat = (rec, out) => {
+    if (rec.zone !== "main") return false;
+    const n = Number(rec.seat.slice(rec.seat.lastIndexOf("-") + 1)) - 1, cloud = clouds[SPEAKER_CLOUDS[Math.floor(n / 3)]];
+    if (!cloud || !cloud.node.visible) return false;
+    const node = cloud.node, seat = thirdsOf(node.geometry)[n % 3], c = Math.cos(node.rotation.y), s = Math.sin(node.rotation.y);
+    let glow = seatGlows[n];
+    if (!glow || glow.parent !== node) {
+      if (glow) removeChild(glow.parent, glow);
+      glow = seatGlows[n] = createNode({ geometry: hubModels.cloudSeatGlow(node.geometry, seat.x, seat.y, seat.z), sightHidden: true });
+      addChild(node, glow);
+    }
+    glow.visible = true;
+    out.x = node.position.x + seat.x * c + seat.z * s;
+    out.z = node.position.z - seat.x * s + seat.z * c;
+    out.y = node.position.y + seat.y;
+    out.yaw = Math.atan2(-out.x, -out.z);
+    return true;
+  };
+  // The glow under each seat (hub-models.js `cloudSeatGlow`), hung on its cloud's node the first time the seat is
+  // taken, all hidden before the speakers are seated each frame and shown again under each one seated.
+  const seatGlows = [];
+  const hideSeatGlows = () => { for (let i = 0; i < seatGlows.length; i++) seatGlows[i].visible = false; };
+  // A cloud speaker's seat, for the live players tab's crosshair (players.js `setCloudSpot`).
+  const cloudSpotOf = (id, out) => !!remotes && remotes.cloudSpot(id, out);
   const updateClouds = (dt) => {
     for (let i = 0; i < clouds.length; i++) {
       const cloud = clouds[i];
@@ -8092,6 +8140,7 @@
     if (!cloudPlaying()) npcSync.update(dt);
     if (!cloudPlaying()) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
+    hideSeatGlows();
     remotes.update(dt);
     const petSeat = hammock?.seats[0];
     const petOwner = petSeat?.sitter === crew.player ? crew.player : petSeat?.remote ? remotes.body(petSeat.remote) : null;
@@ -10881,6 +10930,7 @@
     unsubscribeActivity(); unsubscribeActivity = null;
     unsubscribeAccount(); unsubscribeAccount = null;
     BL.players.setDoors(null);
+    BL.players.setCloudSpot(null);
     unsubscribeMempool(); unsubscribeMempool = null;
     unsubscribeChain(); unsubscribeChain = null;
     if (oogatronUnsub) oogatronUnsub(); oogatronUnsub = null;
@@ -10984,6 +11034,7 @@
     unsubscribeAccount = watchAccount();
     bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
+    BL.players.setCloudSpot(cloudSpotOf);
     const donate = ctx.place === "donate", routedPlace = donate || ctx.place === "cloud-hopper-return" ? null : ctx.place;
     const sphereExit = ctx.from === "timechain" ? world.sphereExit : null;
     world.sphereExit = null;
@@ -11715,6 +11766,7 @@
         if (entry && npcGhosts.set(entry, true)) ghostedGorillas.set(name, entry);
       },
       ghost: (cave, on) => { npcGhosts.set(cave, on); crew.refreshRosterRow(cave); },
+      cloudSeat,
       posed: (cave, feet, rec) => {
         const p = cave.root.position, height = cave.bodyHeight || 1.4;
         floatPose(cave, feet, height, 0, now);
@@ -12018,6 +12070,7 @@
     unsubscribeAccount = watchAccount();
     bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
+    BL.players.setCloudSpot(cloudSpotOf);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
     if (initialFirstPerson) pilot.enterClose(true);
     // The /donate route: the island's own view with the donation popup open. As a routed place it keeps Tess from
@@ -12310,6 +12363,7 @@
     if (unsubscribeAccount) unsubscribeAccount();
     unsubscribeAccount = null;
     BL.players.setDoors(null);
+    BL.players.setCloudSpot(null);
     if (unsubscribeMempool) unsubscribeMempool();
     unsubscribeMempool = null;
     if (unsubscribeChain) unsubscribeChain();

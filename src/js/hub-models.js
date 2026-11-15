@@ -1658,5 +1658,61 @@
       ...[-0.8, 0.8].map(brace)
     );
   });
-  BL.hubModels = { SIGN_GLYPHS, CARVED_M, SIGN_ICONS, AMMO_BANANA, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixPrisonBars, sealedCaveFace, matrixLeverPlate, matrixLeverLights, matrixLeverHub, matrixLeverArm, matrixLeverGrip, matrixLeverLabels, matrixGlyph, caveSign, postSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, libraryNook, libraryLamp, LIBRARY_SHELF_Y, entropyLab, bedroll, tree, bush, rock, breakableRock, voxelRock, puff, clumped, leafy, pointedLeaf, flower, FLOWER_INKS, limb, padNormals, flatInto, canopySupport, withJungle, liana, sagPoints, sprig, garland, bamboo, lashing, log, thatch, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lawnTuft, firepit, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
+  // An Ooga Chat speaker's purple glow on their cloud (#659): the cloud's own faces round a seat, cut to the patch under
+  // the seated body and lifted a hair off the cloud, glowing #b18aff. On top, a dimmer square under a brighter one (on
+  // every step of the top near the seat's height); down the sides near the seat, bands that fade as they go down. Never
+  // a ring. One mesh a cloud mesh and seat, cached; the scene hangs it on the cloud's node, so it rides with the cloud.
+  const SEAT_GLOW = { inner: 0.5, outer: 0.95, near: 0.6, drop: 1, band: 0.25, lift: 0.02, rgb: [177, 138, 255], dim: [150, 110, 240],
+    bands: [0.85, 0.55, 0.3, 0.15] };
+  const seatGlows = new Map();
+  const cloudSeatGlow = (cloudGeo, sx, sy, sz) => {
+    const key = `${sx.toFixed(3)},${sy.toFixed(3)},${sz.toFixed(3)}`;
+    let byGeo = seatGlows.get(cloudGeo);
+    if (!byGeo) seatGlows.set(cloudGeo, byGeo = new Map());
+    if (byGeo.has(key)) return byGeo.get(key);
+    const v = cloudGeo.verts, out = { verts: [], faces: [], lines: [], castShadow: false };
+    const G = SEAT_GLOW, lo = [0, 0, 0], hi = [0, 0, 0];
+    // A quad on the plane `axis` = `plane`, over [u0, u1] x [w0, w1] of the other two axes, facing `sign`.
+    const quad = (axis, sign, plane, u0, u1, w0, w1, color, emissive) => {
+      const u = axis === 0 ? 1 : 0, w = axis === 2 ? 1 : 2, at = out.verts.length / 3;
+      const put = (a, b) => { const p = [0, 0, 0]; p[axis] = plane + sign * G.lift; p[u] = a; p[w] = b; out.verts.push(p[0], p[1], p[2]); };
+      // Wound so its normal points `sign` along `axis` (u x w is +axis for the axis orders used here).
+      const flip = (axis === 1 ? -1 : 1) * sign < 0;
+      if (!flip) { put(u0, w0); put(u1, w0); put(u1, w1); put(u0, w1); } else { put(u0, w0); put(u0, w1); put(u1, w1); put(u1, w0); }
+      out.faces.push({ i: [at, at + 1, at + 2, at + 3], color, emissive });
+    };
+    for (const f of cloudGeo.faces) {
+      lo[0] = lo[1] = lo[2] = Infinity; hi[0] = hi[1] = hi[2] = -Infinity;
+      for (const i of f.i) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], v[i * 3 + a]); hi[a] = Math.max(hi[a], v[i * 3 + a]); }
+      const axis = hi[0] - lo[0] < 1e-6 ? 0 : hi[1] - lo[1] < 1e-6 ? 1 : hi[2] - lo[2] < 1e-6 ? 2 : -1;
+      if (axis < 0) continue;
+      const a0 = v[f.i[0] * 3], a1 = v[f.i[1] * 3], a2 = v[f.i[2] * 3];
+      const p0 = [a0, v[f.i[0] * 3 + 1], v[f.i[0] * 3 + 2]], p1 = [a1, v[f.i[1] * 3 + 1], v[f.i[1] * 3 + 2]], p2 = [a2, v[f.i[2] * 3 + 1], v[f.i[2] * 3 + 2]];
+      const e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], sign = n[axis] > 0 ? 1 : -1;
+      if (axis === 1) {
+        if (sign < 0 || lo[1] < sy - G.drop || lo[1] > sy + 0.01) continue;
+        for (const [r, color, emissive, raise] of [[G.outer, G.dim, 0.55, 0], [G.inner, G.rgb, 1, 0.015]]) {
+          const x0 = Math.max(lo[0], sx - r), x1 = Math.min(hi[0], sx + r), z0 = Math.max(lo[2], sz - r), z1 = Math.min(hi[2], sz + r);
+          if (x0 < x1 && z0 < z1) quad(1, 1, lo[1] + raise, x0, x1, z0, z1, color, emissive);
+        }
+        continue;
+      }
+      // A side: near the seat, and from the seat's height down DROP, in bands that fade.
+      const h = axis === 0 ? 2 : 0, plane = lo[axis], reach = G.outer + G.near;
+      if (axis === 0 ? Math.abs(plane - sx) > reach : Math.abs(plane - sz) > reach) continue;
+      const c = axis === 0 ? sz : sx, h0 = Math.max(lo[h], c - G.outer), h1 = Math.min(hi[h], c + G.outer);
+      if (h0 >= h1) continue;
+      for (let b = 0; b < G.bands.length; b++) {
+        const top = Math.min(hi[1], sy - b * G.band), bottom = Math.max(lo[1], sy - (b + 1) * G.band);
+        if (bottom >= top) continue;
+        const k = G.bands[b], color = [Math.round(255 + (G.rgb[0] - 255) * k), Math.round(255 + (G.rgb[1] - 255) * k), Math.round(255 + (G.rgb[2] - 255) * k)];
+        if (axis === 0) quad(0, sign, plane, bottom, top, h0, h1, color, k);
+        else quad(2, sign, plane, h0, h1, bottom, top, color, k);
+      }
+    }
+    byGeo.set(key, out);
+    return out;
+  };
+  BL.hubModels = { cloudSeatGlow, SIGN_GLYPHS, CARVED_M, SIGN_ICONS, AMMO_BANANA, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixPrisonBars, sealedCaveFace, matrixLeverPlate, matrixLeverLights, matrixLeverHub, matrixLeverArm, matrixLeverGrip, matrixLeverLabels, matrixGlyph, caveSign, postSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, libraryNook, libraryLamp, LIBRARY_SHELF_Y, entropyLab, bedroll, tree, bush, rock, breakableRock, voxelRock, puff, clumped, leafy, pointedLeaf, flower, FLOWER_INKS, limb, padNormals, flatInto, canopySupport, withJungle, liana, sagPoints, sprig, garland, bamboo, lashing, log, thatch, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lawnTuft, firepit, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
 })();
