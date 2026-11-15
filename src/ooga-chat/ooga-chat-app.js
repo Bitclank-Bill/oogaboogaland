@@ -14,7 +14,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, account, device: deviceBar, pending } = BL.oogaChatViews;
+  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, account, device: deviceBar, bananas, pending } = BL.oogaChatViews;
   const { gates } = BL.oogaChatAuth;
   const root = document.getElementById("ooga-chat");
   const fixture = root.dataset.adapter === "fixture";
@@ -33,9 +33,12 @@
   // acknowledges it in the new zone's audience.
   const media = { available: false, state: Object.freeze({ role: "listener", muted: true }), release() {}, join() {}, leave() {}, mute() {}, zone() {} };
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
-  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0;
+  // `donating` ends the donation socket, opened once the service says its feed is live.
+  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null;
   const page = new AbortController();
   try {
+    // Donations here are the service's or nothing: donations.js never plays its simulated tips in the app.
+    BL.donations.config.simulate = false;
     // A sign-in return is a result code only; it leaves the address before anything else runs.
     const back = parseReturn(location.search);
     if (back) history.replaceState(history.state, "", `${location.pathname}${withoutReturn(location.search)}${location.hash}`);
@@ -118,6 +121,11 @@
         return;
       }
       root.dataset.mode = "live";
+      // The Bananas panel's figures: the island's donation socket over this origin's /donations relay (#664).
+      if (boot.features.feed === "live" && !donating) {
+        BL.donations.useOrigin();
+        donating = BL.donations.subscribe(() => {});
+      }
       set({ mode: "live", boot });
       const once = returned;
       returned = null;
@@ -152,13 +160,13 @@
         if (media.available && gates(state, Date.now()).joinVoice) media.join(state);
       }
     };
-    const ctx = { actions, media, install: () => device.install(), reload: () => device.reload() };
+    const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
+      demo: fixture ? adapter.demo : null };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [
       { id: "chat", label: "Ooga Chat", icon: "cloud", visible: () => true, view: chat },
-      { id: "bananas", label: "Bananas", icon: "bananas", visible: () => true,
-        view: pending("Bananas donated", "The island's Bananas panel and Feed the Oogas come here next.") },
+      { id: "bananas", label: "Bananas", icon: "bananas", visible: () => true, view: bananas },
       { id: "roster", label: "Contributing Oogas", icon: "roster", visible: () => true,
         view: pending("Contributing Oogas", "The island's full Contributing Oogas list comes here next.") },
       { id: "players", label: "Online Oogas", icon: "players", visible: contributor,
@@ -200,6 +208,7 @@
     page.abort();
     clearTimeout(relisten);
     feed?.dispose();
+    donating?.();
     device?.dispose();
     bar?.dispose();
     auth?.dispose();

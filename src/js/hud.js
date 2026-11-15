@@ -24,10 +24,6 @@
     return online ? "online" : actor.state === "away" ? "chilling" : actor.state;
   };
   const $ = (id) => document.getElementById(id);
-  const BANANA_COUNT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-  const DONATED_COUNT = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const DONOR_BANANAS = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  let donorUnit = "bananas";
   let donationStats = null, liveDonors = null;
   const setDonationStats = (stats) => {
     donationStats = stats;
@@ -46,8 +42,7 @@
     const price = currentDonationRate()?.usdPerBtc;
     if (!donatedValueText || sats !== valuedSats || price !== valuedPrice) {
       valuedSats = sats; valuedPrice = price;
-      donatedValueText = sats === 0 ? DONATED_COUNT.format(0) : sats !== null && price
-        ? DONATED_COUNT.format(sats / 1e8 * price) : "—";
+      donatedValueText = BL.bananaPanel.valueText(sats, price);
     }
     return donatedValueText;
   };
@@ -120,43 +115,11 @@
   };
   // Sign headings and the panel tabs' icons: sign-glyphs.js and native-icons.js draw them, shared with the Ooga Chat
   // app. The tabs fill before sheet.js copies them for its windows.
-  const SIGN_NS = "http://www.w3.org/2000/svg";
   const { lettering: signLettering, letter: letterSign } = BL.signGlyphs;
   for (const el of document.querySelectorAll("[data-sign]")) letterSign(el);
   BL.nativeIcons.fill(document);
   // The roster's voice mark, a 9x9 pixel speaker shared with Ooga Chat; the stylesheet shows the parts each state needs.
   const voiceIcon = BL.nativeIcons.voice();
-  // The Bananas panel's banana (its glyph is in the panel's markup) before each amount its two lists show: every row
-  // clones it, and the stylesheet hides it while the lists count sats.
-  const amountBanana = document.createElementNS(SIGN_NS, "svg");
-  amountBanana.setAttribute("viewBox", "0 0 9 9");
-  amountBanana.setAttribute("shape-rendering", "crispEdges");
-  amountBanana.setAttribute("aria-hidden", "true");
-  amountBanana.setAttribute("class", "banana-amount-icon");
-  {
-    const use = document.createElementNS(SIGN_NS, "use");
-    use.setAttribute("href", "#banana-panel-glyph");
-    amountBanana.append(use);
-  }
-  // The recent list's orange check: a seal whose rim rises and falls in eight rounded ridges, a ridge at the top,
-  // with the tick over it. Every row clones it.
-  const verifiedSeal = document.createElementNS(SIGN_NS, "svg");
-  verifiedSeal.setAttribute("viewBox", "0 0 24 24");
-  verifiedSeal.setAttribute("aria-hidden", "true");
-  {
-    const RIDGES = 8, STEPS = RIDGES * 8;
-    let d = "";
-    for (let i = 0; i < STEPS; i++) {
-      const a = i / STEPS * Math.PI * 2, r = 11 + 0.9 * Math.cos(RIDGES * a);
-      d += `${i ? "L" : "M"}${(12 + r * Math.sin(a)).toFixed(2)} ${(12 - r * Math.cos(a)).toFixed(2)}`;
-    }
-    const seal = document.createElementNS(SIGN_NS, "path"), tick = document.createElementNS(SIGN_NS, "path");
-    seal.setAttribute("class", "banana-verified-seal");
-    seal.setAttribute("d", `${d}Z`);
-    tick.setAttribute("class", "banana-verified-tick");
-    tick.setAttribute("d", "M7.6 12.4L10.9 17.1L16.9 8.3");
-    verifiedSeal.append(seal, tick);
-  }
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -246,23 +209,17 @@
   };
   // The sheet belongs to the page. Reuse attached rows across visits; only current roster names stay in this map.
   const rosterNodes = new Map();
-  let rosterAway = null, donorRows = null, donationRows = null;
+  let rosterAway = null;
   const create = ({ roster, healthEnabled = false, signal = null, escapeHeld = null }) => {
     const lifetime = signal ? null : new AbortController();
     signal = signal || lifetime.signal;
+    // The Bananas panel's markup (banana-panel.js, shared with the Ooga Chat app): built and lettered on the first visit,
+    // then kept for the page life, before the panel's actions are gathered.
+    if (!$("bananas-panel").firstChild) for (const sign of BL.bananaPanel.build($("bananas-panel"), { ids: true }).querySelectorAll("[data-sign]")) letterSign(sign);
     const el = {
       roster: $("roster"), rosterCount: $("roster-count"), rosterSort: $("roster-sort"),
-      statDonations: $("stat-donations"),
-      statSats: $("stat-sats"),
-      bananaTotal: $("banana-total"), bananaSource: $("banana-source"),
-      bananaLeaders: $("banana-leaders"), bananaEmpty: $("banana-empty"),
-      bananaRecent: $("banana-recent-list"), bananaRecentEmpty: $("banana-recent-empty"),
-      bananaRecentBar: $("banana-recent-bar"), bananaRecentBarLabel: $("banana-recent-bar-label"),
       donationMessageLabel: $("donation-message-label"),
-      bananaBoardUnit: $("banana-board-unit"), bananaBoardNote: $("banana-board-note"),
-      bananaPanel: $("bananas-panel"), bananaBtcRate: $("banana-btc-rate"),
-      bananaBtcSats: $("banana-btc-sats"), bananaBtcPrice: $("banana-btc-price"), bananaExchange: $("banana-exchange"),
-      donorUnits: [...document.querySelectorAll("[data-donor-unit]")],
+      bananaPanel: $("bananas-panel"),
       subtitle: $("subtitle"),
       topbar: document.querySelector(".topbar"), brand: document.querySelector(".brand"),
       clock: $("world-clock"), block: $("world-block"),
@@ -655,49 +612,16 @@
     }));
     liveOnline = showOnline;
     showVoices();
-    // Value the donated sats at the current price; donor rankings retain their receipt prices. A bitcoin's price is
-    // in bananas, since a banana is a dollar; whether that price is live or stale is said on hover alone.
-    const showBananaRate = () => {
-      if (document.hidden || !BL.sheet.visible(el.bananaPanel)) return;
-      const rate = currentDonationRate(), total = donationValueText();
-      const tone = !rate ? "wait" : rate.stale ? "stale" : rate.live ? "live" : "idle";
-      const label = tone === "live" ? "Live BTCUSD price" : tone === "stale" ? "Stale BTCUSD price, the last one kept" : tone === "wait" ? "Waiting for the BTCUSD price" : "BTCUSD price";
-      const price = rate ? DONOR_BANANAS.format(rate.usdPerBtc) : "—";
-      const exchange = rate ? `≈ ${DONOR_BANANAS.format(1e8 / rate.usdPerBtc)} sats` : "— sats";
-      if (el.bananaBtcRate.dataset.tone !== tone) el.bananaBtcRate.dataset.tone = tone;
-      if (el.bananaBtcRate.title !== label) el.bananaBtcRate.title = label;
-      if (el.bananaBtcPrice.textContent !== price) el.bananaBtcPrice.textContent = price;
-      if (el.bananaExchange.textContent !== exchange) el.bananaExchange.textContent = exchange;
-      if (el.bananaTotal.textContent !== total) el.bananaTotal.textContent = total;
-      if (price.length !== fitPriceLength) fitBtcRate();
-    };
-    // The bitcoin line keeps to one line: "100,000,000 sats" while it fits, "100M sats" once a narrow panel or a long
-    // price would wrap it, and only past that does it wrap. Fitted again when the price's length or the line's width
-    // changes; digits are tabular, so the same length takes the same room.
-    let fitPriceLength = -1, fitWidth = 0;
-    const fitBtcRate = () => {
-      const line = el.bananaBtcRate;
-      fitPriceLength = el.bananaBtcPrice.textContent.length;
-      if (!fitWidth) return;
-      line.dataset.fit = "line";
-      el.bananaBtcSats.textContent = "100,000,000";
-      if (line.scrollWidth <= line.clientWidth) return;
-      el.bananaBtcSats.textContent = "100M";
-      if (line.scrollWidth > line.clientWidth) line.dataset.fit = "wrap";
-    };
-    const btcRateObserver = new ResizeObserver((entries) => {
-      const width = Math.round(entries[entries.length - 1].contentRect.width);
-      if (width === fitWidth) return;
-      fitWidth = width;
-      fitBtcRate();
-    });
-    btcRateObserver.observe(el.bananaBtcRate);
+    // The Bananas panel (banana-panel.js, shared with the Ooga Chat app) fills from donations.js; here its price is the
+    // 2140data socket's while it or the pile's value shows, and the demo's tally stands in while donations are simulated.
+    const bananas = BL.bananaPanel.create(el.bananaPanel, { demo: () => donationStats, rate: currentDonationRate,
+      visible: () => BL.sheet.visible(el.bananaPanel) });
     let stopBananaRate = null, pileValueVisible = false;
     const watchBananaRate = () => {
       const visible = !document.hidden && (pileValueVisible || BL.sheet.visible(el.bananaPanel));
-      if (visible && !stopBananaRate) stopBananaRate = BL.donationRate.watch(showBananaRate);
+      if (visible && !stopBananaRate) stopBananaRate = BL.donationRate.watch(bananas.showRate);
       else if (!visible && stopBananaRate) { stopBananaRate(); stopBananaRate = null; }
-      if (visible) showBananaRate();
+      if (visible) bananas.showRate();
     };
     const setPileValueVisible = (visible) => {
       if (pileValueVisible === visible) return;
@@ -711,134 +635,17 @@
     on(document, "sheetchange", watchBananaRate);
     listeners.push(() => {
       bananaRateObserver.disconnect();
-      btcRateObserver.disconnect();
       if (stopBananaRate) stopBananaRate();
+      bananas.dispose();
     });
     watchBananaRate();
-    // A fixed pool, so the DOM never grows with donations.
-    const recentRows = donationRows || (donationRows = Array.from({ length: BL.donations.RECENT_MAX }, () => {
-      const li = document.createElement("li"), name = document.createElement("span"), labelBox = document.createElement("span"), label = document.createTextNode("");
-      const badge = document.createElement("span"), amount = document.createElement("strong"), message = document.createElement("p");
-      // Every text node exists from the start, so filling a row later adds nothing to the DOM.
-      const amountText = document.createTextNode(""), messageText = document.createTextNode("");
-      name.className = "banana-recent-name";
-      labelBox.className = "banana-recent-label";
-      labelBox.append(label);
-      badge.className = "banana-verified";
-      badge.append(verifiedSeal.cloneNode(true));
-      badge.title = "Signed in with GitHub using this donor name";
-      badge.setAttribute("role", "img");
-      badge.setAttribute("aria-label", "GitHub name confirmed");
-      badge.hidden = true;
-      amount.className = "banana-amount";
-      message.className = "banana-recent-message";
-      message.hidden = true;
-      name.append(labelBox, badge);
-      amount.append(amountBanana.cloneNode(true), amountText);
-      message.append(messageText);
-      li.append(name, amount, message);
-      li.hidden = true;
-      el.bananaRecent.append(li);
-      return { li, name, labelBox, label, badge, amountText, message, messageText };
-    }));
-    // One row a ranked donor, made as the board first grows to it and kept for the page life: the board scrolls inside
-    // its five-row window, and both boards it shows hold at most 256 (the API's and the game's demo donors).
-    const leaderRows = donorRows || (donorRows = []);
-    const leaderRow = (i) => {
-      const li = document.createElement("li"), rank = document.createElement("span"), name = document.createElement("span"), amount = document.createElement("strong");
-      const nameText = document.createTextNode(""), amountText = document.createTextNode("");
-      rank.className = "banana-rank"; rank.textContent = String(i + 1).padStart(2, "0");
-      name.className = "banana-donor"; name.append(nameText);
-      amount.className = "banana-amount"; amount.append(amountBanana.cloneNode(true), amountText);
-      li.append(rank, name, amount); li.hidden = true; el.bananaLeaders.append(li);
-      return { li, name, nameText, amountText };
+    // The donation popup's message field names the API's bar.
+    const showMessageBar = () => {
+      el.donationMessageLabel.textContent = `Banana message (up to 280 characters, with a tip of ${BL.bananaPanel.BANANA_COUNT.format(BL.donations.messageMinSats)} sats or more)`;
     };
-    // The recent list's checkbox keeps it to tips at or above the message bar: on until the visitor turns it off,
-    // and their choice either way remembered in this browser.
-    const RECENT_BAR_KEY = "ooga-recent-bar";
-    let recentBarOnly = true;
-    try { recentBarOnly = localStorage.getItem(RECENT_BAR_KEY) !== "0"; } catch { /* no storage: on, as for a first visit */ }
-    el.bananaRecentBar.checked = recentBarOnly;
-    on(el.bananaRecentBar, "change", () => {
-      recentBarOnly = el.bananaRecentBar.checked;
-      try { localStorage.setItem(RECENT_BAR_KEY, recentBarOnly ? "1" : "0"); } catch { /* kept for this visit alone */ }
-      refreshDonors(true);
-      el.bananaRecentBar.blur();
-    });
-    let shownTally, shownBoard, shownRecent, shownReal, shownNetwork, shownOpen, shownBar;
-    const refreshDonors = (force = false) => {
-      const { real, state, testNetwork, messageMinSats: bar } = BL.donations;
-      showBananaRate();
-      if (!force && shownTally === state.tally && shownBoard === state.board && shownRecent === state.recent && shownReal === real && shownNetwork === testNetwork && shownOpen === state.open && shownBar === bar) return;
-      shownTally = state.tally; shownBoard = state.board; shownRecent = state.recent; shownReal = real; shownNetwork = testNetwork; shownOpen = state.open; shownBar = bar;
-      const tally = real ? state.tally : donationStats;
-      // The chip says whose figures these are: this browser's demo, a test network's, the feed still loading,
-      // donations closed, or the island's live feed.
-      const tone = !real ? "idle" : testNetwork ? "test" : !tally ? "wait" : state.open === false ? "closed" : "live";
-      el.bananaSource.dataset.tone = tone;
-      el.bananaSource.textContent = tone === "idle" ? "Demo" : tone === "test" ? `Test · ${testNetwork}` : tone === "wait" ? "Loading" : tone === "closed" ? "Closed" : "Live";
-      el.bananaSource.title = tone === "idle" ? "Demo donations saved in this browser" : tone === "test" ? `Test donations on ${testNetwork}, not real bitcoin`
-        : tone === "wait" ? "Waiting for the island’s donation feed" : tone === "closed" ? "Donations are closed for now" : "The island’s donation feed";
-      el.statDonations.textContent = tally ? BANANA_COUNT.format(real ? tally.count : tally.donations) : "—";
-      el.statSats.textContent = tally ? BANANA_COUNT.format(real ? tally.sats : tally.totalSats) : "—";
-      const entries = real ? donorUnit === "sats" ? state.boardSats : state.board : donationStats?.donors;
-      const missingSats = donorUnit === "sats" && (real && state.board !== null && entries === null || entries?.some((entry) => entry.sats === null));
-      // The API ranks before rounding bananas, with stable account-id ties. Keep that order.
-      const ranked = missingSats ? [] : real ? entries || [] : (entries || []).slice().sort((a, b) =>
-        b[donorUnit] - a[donorUnit] || b[donorUnit === "bananas" ? "sats" : "bananas"] - a[donorUnit === "bananas" ? "sats" : "bananas"]
-        || a.handle.localeCompare(b.handle));
-      while (leaderRows.length < ranked.length) leaderRows.push(leaderRow(leaderRows.length));
-      for (let i = 0; i < leaderRows.length; i++) {
-        const entry = ranked[i], row = leaderRows[i];
-        row.li.hidden = !entry;
-        if (!entry) continue;
-        const name = entry.handle ? `@${entry.handle}` : "Anonymous";
-        const amount = (donorUnit === "sats" ? BANANA_COUNT : DONOR_BANANAS).format(entry[donorUnit]);
-        if (row.nameText.data !== name) { row.nameText.data = name; row.name.title = name; }
-        if (row.amountText.data !== amount) row.amountText.data = amount;
-        row.name.dataset.anon = String(!entry.handle);
-      }
-      el.bananaEmpty.hidden = ranked.length > 0;
-      el.bananaEmpty.textContent = missingSats ? "Sat totals are not available from the donation feed yet."
-        : real && !entries ? "Loading the donor leaderboard…"
-        : real ? "No donations yet. Feed the first Ooga!" : "New demo donations will appear here.";
-      // The recent list: the newest first, its orange check only on the API's word that the donor's GitHub login
-      // matched the name, into the fixed rows (the first `RECENT_MAX` the checkbox leaves).
-      const all = real ? state.recent || [] : donationStats?.recentDonations || [];
-      const recent = recentBarOnly ? all.filter((entry) => entry.sats >= bar) : all;
-      el.bananaRecentBarLabel.textContent = `${BANANA_COUNT.format(bar)} sats and up only`;
-      el.donationMessageLabel.textContent = `Banana message (up to 280 characters, with a tip of ${BANANA_COUNT.format(bar)} sats or more)`;
-      for (let i = 0; i < recentRows.length; i++) {
-        const row = recentRows[i], entry = recent[i];
-        row.li.hidden = !entry;
-        if (!entry) continue;
-        row.label.data = entry.handle ? `@${entry.handle}` : "Anonymous";
-        if (row.labelBox.title !== row.label.data) row.labelBox.title = row.label.data;
-        row.name.dataset.anon = String(!entry.handle);
-        row.badge.hidden = !(real && entry.verified);
-        row.amountText.data = (donorUnit === "sats" ? BANANA_COUNT : DONOR_BANANAS).format(entry[donorUnit]);
-        const message = BL.donations.carried(entry.sats, entry.message);
-        row.message.hidden = !message;
-        row.messageText.data = message;
-      }
-      el.bananaRecentEmpty.hidden = recent.length > 0;
-      el.bananaRecentEmpty.textContent = recentBarOnly && all.length ? `None of the latest tips reached ${BANANA_COUNT.format(bar)} sats.`
-        : real ? "Recent donations will appear here as they arrive." : "New demo donations will appear here.";
-      el.bananaBoardNote.textContent = !real ? "Demo donations in this browser only. Earlier tips have no donor history."
-        : testNetwork ? `Test donations on ${testNetwork}. Leaderboard values are recorded when paid.`
-        : "Leaderboard totals use each donation's recorded value.";
-      el.bananaBoardUnit.textContent = donorUnit === "sats" ? "Sats" : "Bananas";
-      el.bananaPanel.dataset.unit = donorUnit;
-      el.bananaLeaders.setAttribute("aria-label", `Top donors by ${donorUnit}`);
-      for (const button of el.donorUnits) button.setAttribute("aria-pressed", String(button.dataset.donorUnit === donorUnit));
-    };
-    for (const button of el.donorUnits) on(button, "click", () => {
-      donorUnit = button.dataset.donorUnit;
-      refreshDonors(true);
-    });
-    listeners.push(BL.donations.subscribeState(refreshDonors));
-    liveDonors = refreshDonors;
-    refreshDonors(true);
+    listeners.push(BL.donations.subscribeState(showMessageBar));
+    showMessageBar();
+    liveDonors = bananas.refresh;
     const setStats = (stats) => {
       setDonationStats(stats);
     };
@@ -2246,7 +2053,7 @@
       listeners.length = 0;
       if (lifetime) lifetime.abort();
       if (liveRows === rosterRows) liveRows = liveOnline = null;
-      if (liveDonors === refreshDonors) liveDonors = null;
+      if (liveDonors === bananas.refresh) liveDonors = null;
       // Page-owned roster and donation rows remain attached; the next visit reconciles their contents.
       el.toast.classList.remove("show");
       el.toast.hidden = true;

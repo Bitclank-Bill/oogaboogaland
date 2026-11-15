@@ -488,54 +488,7 @@
         <p class="help players-status" id="players-status" hidden></p>
         <div data-account-copy="players"></div>
       </section>
-      <section class="panel" data-panel="bananas" id="bananas-panel" role="tabpanel" aria-labelledby="sheet-bananas" hidden>
-        <header class="panel-title">
-          <h2><span data-sign>Bananas donated</span></h2>
-          <span class="panel-chip" id="banana-source" data-tone="idle">Demo</span>
-        </header>
-        <div class="slab banana-slab">
-          <section class="banana-total" aria-label="Current banana value of all sats donated">
-            <div class="banana-hero">
-              <span class="banana-hero-label">Bananas current value</span>
-              <p class="banana-hero-value"><svg class="banana-hero-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
-                <g id="banana-panel-glyph">
-                  <path fill="#211b14" d="M0 0h1v5H0zM2 0h1v2H2zM3 2h1v2H3zM4 4h1v1H4zM1 5h1v2H1zM5 5h1v1H5zM6 6h1v1H6zM2 7h2v1H2zM7 7h1v1H7zM4 8h4v1H4z" />
-                  <path fill="#ffd84a" d="M1 2h2v2H1zM1 4h3v1H1zM2 5h3v1H2zM2 6h4v1H2zM4 7h3v1H4z" />
-                  <path fill="#789a3b" d="M1 0h1v2H1z" />
-                </g>
-              </svg><strong id="banana-total" title="All donated sats valued at the current BTCUSD price; 1 banana = $1">—</strong></p>
-            </div>
-            <dl class="banana-totals">
-              <div><dt>Donations</dt><dd id="stat-donations">0</dd></div>
-              <div><dt>Sats donated</dt><dd id="stat-sats">0</dd></div>
-            </dl>
-            <div class="banana-rates" role="group" aria-label="Current Bitcoin and banana exchange rates">
-              <p class="banana-rate"><svg class="banana-rate-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" role="img" aria-label="Banana"><use href="#banana-panel-glyph" /></svg>1 = $1 <span id="banana-exchange">— sats</span></p>
-              <p class="banana-rate" id="banana-btc-rate" data-tone="wait"><span id="banana-btc-sats">100,000,000</span> sats = <svg class="banana-rate-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" role="img" aria-label="bananas"><use href="#banana-panel-glyph" /></svg><span id="banana-btc-price">—</span></p>
-            </div>
-          </section>
-          <section class="banana-board" aria-labelledby="banana-board-title">
-            <div class="banana-board-head">
-              <h3 class="slab-head" id="banana-board-title"><span data-sign>Top donors</span></h3>
-              <div class="banana-units" role="group" aria-label="Rank donors by">
-                <button type="button" data-donor-unit="bananas" aria-pressed="true">Bananas</button>
-                <button type="button" data-donor-unit="sats" aria-pressed="false">Sats</button>
-              </div>
-            </div>
-            <div class="banana-board-labels" aria-hidden="true"><span>#</span><span>Donor</span><span id="banana-board-unit">Bananas</span></div>
-            <ol class="banana-leaders" id="banana-leaders" aria-label="Top donors by bananas"></ol>
-            <p class="banana-empty" id="banana-empty">No donations yet. Feed the first Ooga!</p>
-          </section>
-          <section class="banana-recent" aria-labelledby="banana-recent-title">
-            <h3 class="slab-head" id="banana-recent-title"><span data-sign>Most recent donations</span></h3>
-            <label class="banana-recent-filter"><input type="checkbox" id="banana-recent-bar"> <span id="banana-recent-bar-label">1,000 sats and up only</span></label>
-            <ol class="banana-recent-list" id="banana-recent-list" aria-label="Most recent donations"></ol>
-            <p class="banana-empty" id="banana-recent-empty">New donations will appear here.</p>
-          </section>
-          <p class="banana-board-note" id="banana-board-note">Demo donations saved in this browser.</p>
-        </div>
-        <button type="button" class="panel-primary feed-open" data-action="feed"><span data-sign>Feed the Oogas</span></button>
-      </section>
+      <section class="panel" data-panel="bananas" id="bananas-panel" role="tabpanel" aria-labelledby="sheet-bananas" hidden></section>
       <section class="panel" data-panel="chat" id="chat-panel" role="tabpanel" aria-labelledby="chat-tab" hidden>
         <header class="panel-title">
           <h2><span data-sign>The Commons</span></h2>
@@ -2372,6 +2325,7 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/game.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/zone-map.js"></script>
+  <script src="js/banana-panel.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/chat-policy.js"></script>
   <script src="js/emoji-data.js"></script>

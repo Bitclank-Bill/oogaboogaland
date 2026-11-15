@@ -51,6 +51,18 @@
       person("listener-gull", "app", "listener", "sample-gull")
     ]
   };
+  // The Bananas panel's demo for `demo-payment` (banana-panel.js `create` options): a simulated tally of named samples,
+  // never real donors, labelled Demo by the panel, at a fixed demo price, and nothing that reaches /donations.
+  const DEMO_DONORS = [["sample-oak", 2500, 2.5], ["sample-fern", 1200, 1.2], ["", 420, 0.42], ["sample-reed", 69, 0.07]];
+  const demoStats = Object.freeze({ donations: DEMO_DONORS.length, totalSats: DEMO_DONORS.reduce((sum, [, sats]) => sum + sats, 0),
+    donors: DEMO_DONORS.filter(([handle]) => handle).map(([handle, sats, bananas]) => ({ handle, sats, bananas })),
+    recentDonations: DEMO_DONORS.map(([handle, sats, bananas], i) => ({ id: `fixture-${i}`, handle, sats, bananas, at: 0, message: sats >= 1000 ? "Ooga!" : "" })) });
+  const demo = Object.freeze({
+    donations: { real: false, testNetwork: "", messageMinSats: 1000, RECENT_MAX: 20, state: { tally: null, board: null, boardSats: null, recent: null, open: null },
+      carried: (sats, message) => sats >= 1000 ? message : "", subscribeState: () => () => {} },
+    demo: () => demoStats,
+    rate: () => ({ usdPerBtc: 100000, satsPerBanana: 1000, at: 0, stale: false })
+  });
   const create = ({ state = "signed-out", roster = "mixed", now = () => Date.now() } = {}) => {
     if (!STATES.includes(state)) throw new Error(`Unknown fixture state "${state}" (${STATES.join(", ")})`);
     if (!ROSTERS.includes(roster)) throw new Error(`Unknown fixture roster "${roster}" (${ROSTERS.join(", ")})`);
@@ -143,7 +155,7 @@
       disposed = true;
       for (const feed of [...feeds]) feed.dispose();
     };
-    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, dispose, pending: 0 };
+    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, dispose, pending: 0, demo };
   };
   BL.oogaChatFixtures = { create, STATES, ROSTERS };
 })();

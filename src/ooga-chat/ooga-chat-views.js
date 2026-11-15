@@ -2,9 +2,9 @@
 // carries `actions` (`signIn(provider)`, `signOut()`, `retry()`, `joinVoice()`) and `media`, the voice seam; `state` is
 // `{ mode, boot, session, auth, notice, busy, zone }` (docs/ooga-chat-app.md), where `mode` is loading, live,
 // unavailable or stale and `auth` is ooga-chat-auth.js's. `chat` is the Ooga Chat tab: sign-in, or the space the
-// account listens in. `account` is the footer the app keeps under every tab while signed in. `pending(title)` stands in
-// for a panel the shared island panels (Bananas, Contributing Oogas, Online Oogas, The Commons) will fill; it says so
-// instead of showing invented data.
+// account listens in. `account` is the footer the app keeps under every tab while signed in. `bananas` is the island's
+// own Bananas panel. `pending(title)` stands in for a panel the shared island panels (Contributing Oogas, Online Oogas,
+// The Commons) will fill; it says so instead of showing invented data.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -364,6 +364,46 @@
     };
     return { node, update, dispose };
   };
+  // The Bananas tab (#656): the island's own panel (banana-panel.js, native.css), filled from donations.js over this
+  // origin's /donations relay while the service's feed is live (the app subscribes, ooga-chat-app.js), or on the
+  // fixture entry alone from its labelled demo (`ctx.demo`). With no feed (off, loading or unreachable) it says
+  // donations aren't open here, never zeros or a demo. Feed the Oogas stays hidden until the native popup comes to the
+  // app. The panel's price is the tally's, so it is shown afresh whenever the tab is opened.
+  const bananas = (ctx) => {
+    const node = make("section", "panel oc-panel oc-bananas");
+    node.dataset.panel = "bananas";
+    BL.bananaPanel.build(node);
+    for (const el of node.querySelectorAll("[data-sign]")) letter(el);
+    const chip = node.querySelector(".panel-title .panel-chip"), slab = node.querySelector(".banana-slab");
+    node.querySelector('[data-action="feed"]').hidden = true;
+    const closed = make("div", "slab oc-slab oc-pending", make("p", "", "Donations aren't open on Ooga Chat right now."));
+    node.append(closed);
+    const visible = () => !node.closest("[hidden]");
+    let panel = null, feed = null, watching = null;
+    const update = (state) => {
+      if (!watching && node.parentElement) {
+        watching = new MutationObserver(() => panel?.showRate());
+        watching.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
+      }
+      const next = state.mode !== "live" ? "off" : state.boot.features.feed === "demo" && ctx.demo ? "demo" : state.boot.features.feed;
+      if (next === feed) return;
+      feed = next;
+      panel?.dispose();
+      panel = null;
+      const open = feed === "live" || feed === "demo";
+      slab.hidden = chip.hidden = !open;
+      closed.hidden = open;
+      if (!open) return;
+      const storageKey = ctx.storageKey("recent-bar");
+      panel = BL.bananaPanel.create(node, feed === "demo" ? { ...ctx.demo, storageKey, visible } : { storageKey, visible });
+    };
+    const dispose = () => {
+      watching?.disconnect();
+      panel?.dispose();
+      node.remove();
+    };
+    return { node, update, dispose };
+  };
   const pending = (title, note) => () => {
     const heading = make("span", "", title);
     heading.dataset.sign = "";
@@ -373,5 +413,5 @@
       make("div", "slab oc-slab oc-pending", make("p", "", note)));
     return { node, update() {}, dispose() { node.remove(); } };
   };
-  BL.oogaChatViews = { chat, account, device, pending, face, make };
+  BL.oogaChatViews = { chat, account, device, bananas, pending, face, make };
 })();

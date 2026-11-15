@@ -10882,10 +10882,10 @@ const donationClientChecks = async () => {
   // Regression: the pile showed whole gameplay stock (79) beside a panel valued at 77.97.
   const valueBL = { game: {}, scene: {}, signGlyphs: { lettering() {}, letter() {} }, nativeIcons: { fill() {}, voice: () => ({ cloneNode: () => ({}) }) }, donationRate: { current: null }, donations: { real: true,
     state: { tally: { sats: 96458, rate: { usdPerBtc: 80832.63, at: 10 } } } } };
-  runInNewContext(await readFile(new URL("../src/js/hud.js", import.meta.url), "utf8"), {
-    window: { BL: valueBL, matchMedia: () => ({ matches: false }) },
-    document: { querySelectorAll: () => [], createElementNS: () => ({ setAttribute() {}, append() {} }) }
-  });
+  const valueContext = { window: { BL: valueBL, matchMedia: () => ({ matches: false }) },
+    document: { querySelectorAll: () => [], createElementNS: () => ({ setAttribute() {}, append() {} }) } };
+  runInNewContext(await readFile(new URL("../src/js/banana-panel.js", import.meta.url), "utf8"), valueContext);
+  runInNewContext(await readFile(new URL("../src/js/hud.js", import.meta.url), "utf8"), valueContext);
   const valueText = valueBL.hud.donationValueText, values = [valueText()];
   valueBL.donationRate.current = { usdPerBtc: 100000, at: 9 }; values.push(valueText());
   valueBL.donationRate.current.at = 11; values.push(valueText());
@@ -32888,7 +32888,8 @@ const oogaChatChecks = async () => {
     const fixtureJs = withFixtures.files.find((file) => file.path.startsWith("js/ooga-chat-fixture-"));
     const build = {
       modules: manifest.scripts.every((src) => B.SHARED.includes(`../${src}`) || /^ooga-chat-[a-z-]+\.js$/.test(src)) && !manifest.scripts.includes("ooga-chat-fixtures.js"),
-      island: !/glRenderer|BL\.scene\b|BL\.net\b|BL\.director|terrain/.test(js),
+      // donations.js only reads the island's account where one is loaded (`BL.net?.`), so that alone is no dependency.
+      island: !/glRenderer|BL\.scene\b|BL\.net\b(?!\?\.)|BL\.director|terrain/.test(js),
       noFixture: !js.includes("BL.oogaChatFixtures =") && !js.includes("sample-contributor") && !manifest.files.some((file) => file.path.includes("fixture")),
       page: (page.match(/<script /g) || []).length === 1 && (page.match(/<link rel="stylesheet"/g) || []).length === 1 && !/<style|<script>/.test(page) && page.includes(`content="${manifest.build}"`),
       art: !!art && js.includes(`"/${art.path}"`),
