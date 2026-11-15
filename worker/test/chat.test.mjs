@@ -116,12 +116,22 @@ const host = (clock = Date, env = {}) => {
     WebSocketPair, Response, WebSocketRequestResponsePair: class {}, URL, crypto, Date: clock, Map, Set, setTimeout, clearTimeout, console,
   };
   runInNewContext(source, context);
+  let restoring;
   const ctx = {
-    setWebSocketAutoResponse() {}, blockConcurrencyWhile: (fn) => fn(), acceptWebSocket: (ws) => accepted.push(ws),
+    setWebSocketAutoResponse() {}, blockConcurrencyWhile: (fn) => (restoring = fn()), acceptWebSocket: (ws) => accepted.push(ws),
     getWebSockets: () => accepted.filter((ws) => !ws.closed),
     storage: { get: async (key) => Array.isArray(key) ? new Map() : undefined, put: async () => {}, getAlarm: async () => 0, setAlarm: async () => {} },
   };
-  const room = () => new context.Room(ctx, env);
+  const room = () => {
+    const r = new context.Room(ctx, env), ready = restoring;
+    // Cloudflare does not deliver requests or alarms until blockConcurrencyWhile has completed.
+    // Waiting on that barrier avoids making sweep behavior depend on the number of restore awaits.
+    for (const name of ["fetch", "alarm"]) {
+      const handle = r[name];
+      r[name] = async function (...args) { await ready; return handle.apply(this, args); };
+    }
+    return r;
+  };
   const upgrade = (r, id, login, display, contributor = true) => r.fetch({ url: "https://island.invalid/room", headers: new Headers({ upgrade: "websocket", "x-player-id": String(id), "x-player-login": login, "x-player-display": display, "x-player-contributor": contributor ? "1" : "0" }) });
   // Ordinary chat fixtures represent contributors vouched for by the Worker.
   const join = async (r, id, login, display, contributor = true) => {
