@@ -21846,14 +21846,15 @@ const timechainRoomChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), gateContext);
   const GB = gateContext.window.BL, SPOTS = GB.timechainModels.SPOTS;
   GB.net = { state: { doorway: false, room: null, lockedRooms: {} }, subscribeDoor: () => () => {}, cancelDoor() {}, doneDoor() {}, serverNow: () => 0 };
-  const walkBack = (held, pose) => {
+  const walkBack = (held, pose, others = null) => {
     const at = { x: 0, y: 0, z: 0 }, cave = { root: { position: at, rotation: { y: 0 } }, baseY: 0, headOffset: 1.5, viewLift: 0, traits: { name: "tester", height: 1.6 }, parts: { head: {} } };
     let push = null;
     const site = { plug: { visible: true }, choose() {}, lock() {}, setDoors() {}, say() {}, tick() {}, directory: {}, keys: [] };
     const gate = GB.timechainGate.create({
       site, place: { x: 0, y: 0, z: 0, ry: 0 }, crew: { player: cave, steer(x, z, _, power) { push = power ? [x, z] : null; }, thrust() {} },
       pilot: { navigate(to) { at.x = to.position.x; at.y = to.position.y; at.z = to.position.z; }, setExternalControl() {}, showAct() {}, adopt() {}, eyeFov: () => 1 },
-      hud: { hint() {}, el: { act: {} } }, camera: { position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 1 }, fov: 1 }, renderer: {}, canvas: {}, world: {}, go: () => true, equipJetpack: () => false, keep: () => null
+      hud: { hint() {}, el: { act: {} } }, camera: { position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 1 }, fov: 1 }, renderer: {}, canvas: {}, world: {}, go: () => true, equipJetpack: () => false, keep: () => null,
+      others: () => others || []
     });
     gate.arrive({ room: 3, mode: "solo", character: "tester", jetpack: null, pose, view: null });
     const began = +Math.abs(at.x).toFixed(2);
@@ -21864,11 +21865,18 @@ const timechainRoomChecks = async () => {
       gate.view(1 / 30);
     }
     gate.update(1 / 30);
-    return { held, began, busy: gate.busy, t: +t.toFixed(1), past: +(at.z - SPOTS.THRESHOLD).toFixed(2), plug: site.plug.visible };
+    return { held, began, busy: gate.busy, t: +t.toFixed(1), past: +(at.z - SPOTS.THRESHOLD).toFixed(2), plug: site.plug.visible, x: +at.x.toFixed(2), z: +at.z.toFixed(2) };
   };
   const backs = [walkBack(false, null), walkBack(true, null), walkBack(true, { x: -3.35, dz: -1.5, heading: 0, pitch: 0 })];
   record("timechain walk out: the island never leaves the Ooga in the ball behind the doors: a walk back out that is held past its limit, or begun off the passage, ends with it on the bridge, the doorway its own and plugged again",
     backs.every(row => !row.busy && row.past > 1 && row.plug) && backs[0].t < 8 && backs[2].began > GB.timechainModels.PASSAGE.halfW, JSON.stringify(backs));
+  // Two coming out one after the other: the second stops clear of where the first stands, and of anyone else there.
+  const outs = [walkBack(false, null)];
+  outs.push(walkBack(false, null, [{ x: outs[0].x, z: outs[0].z, radius: 0.4 }]));
+  outs.push(walkBack(false, null, outs.map(o => ({ x: o.x, z: o.z, radius: 0.4 }))));
+  const apart = outs.every((a, i) => outs.every((b, j) => i === j || Math.hypot(a.x - b.x, a.z - b.z) > 1.5));
+  record("timechain walk out: players walking out one after another stop on different spots of the bridge, clear of whoever already stands there",
+    outs.every(row => !row.busy && row.past > 1) && apart, JSON.stringify(outs));
   // The shell's sphere, built for every room with its kind's own part set aside: the doorway's passage cut through wall
   // and screen alike, and the screen in quads (Canvas 2D maps a picture over four corners) none of which crosses the
   // dome canvas's seam over the door.
@@ -22304,6 +22312,61 @@ const sphereCrossing = { name: "timechain crossing", why: "playthrough: Enter wa
   else record("timechain crossing: with the island released, the way into the room is the Ooga's own eye at the swap and the way out fades over the rebuild instead of freezing",
     seams.frames > 30 && seams.far === 0 && seamless(seams.swapIn) && seams.fadeMax > 0, JSON.stringify(seams));
 } };
+// The keypad from the bridge: its buttons answer clicks from the bridge's half nearer the Sphere without taking the
+// Ooga or the view, an empty number does nothing, walking off lets the choice go, and Enter glides into the eyes where
+// the Ooga stands and walks it in; walked back out in first person the view never leaves its head, and it stops on
+// a spot of the bridge clear of the players already there.
+const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the keypad's buttons take clicks from the near half of the bridge, Enter walks the Ooga in from there, and a first-person walk out keeps the view in its head", run: async (b) => {
+  const clicks = [];
+  const clickKey = async (key) => {
+    // The camera settles first, so the point projected is where the button is drawn when the click lands.
+    const at = await b.evaluate(`(() => { const B = __ooga, T = BL.scenes.hub.debug.timechainIsland, n = T.site.keys.find(k => k.key === "${key}").node, out = {}, r = document.getElementById("scene").getBoundingClientRect();
+      B.advance(1, 1 / 60);
+      B.renderer.project(n.world[12], n.world[13], n.world[14], out);
+      const x = r.left + out.x * r.width / B.renderer.size.width, y = r.top + out.y * r.height / B.renderer.size.height, el = document.elementFromPoint(x, y);
+      return { x, y, el: el && (el.id || el.className || el.tagName) }; })()`);
+    clicks.push(key + ":" + JSON.stringify(at));
+    await b.click(at.x, at.y);
+    await b.evaluate(`__ooga.advance(0.2, 1 / 60)`);
+  };
+  const read = `(() => { const B = __ooga, ${sphereLocal}, G = T.gate, a = B.pilot.player, p = a.root.position;
+    return { state: G.debug.state, remote: G.remote, busy: G.busy, selection: G.debug.selection, lens: G.debug.lens, along: +local(p).toFixed(2), act: !document.getElementById("act").hidden,
+      eight: T.site.keys.find(k => k.key === "8").node.geometry.faces[0].color.join() }; })()`;
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "19")} })()`);
+  await clickKey("8");
+  const empty = await b.evaluate(read);
+  await clickKey("3");
+  const chosen = await b.evaluate(read);
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "24")} B.advance(0.2, 1 / 60); })()`);
+  const walkedOff = await b.evaluate(read);
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "19")} })()`);
+  await clickKey("3");
+  await clickKey("enter");
+  const entering = await b.evaluate(`(() => { __ooga.advance(0.6, 1 / 60); return ${read}; })()`);
+  const inside = await untilPage(b, 'B.scene === "timechain" && !B.transitioning && B.timechain.guide.stage === null', 20000);
+  const room = await b.evaluate(`(() => { const B = __ooga; if (!B.timechain) { const G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { scene: B.scene, state: G.state, stage: G.stage, selection: G.selection }; }
+    B.advance(1.2, 1 / 60); return { room: B.timechain.room.id, player: B.pilot.player.traits.name }; })()`);
+  if (room.room === undefined) throw new Error("not in the room: " + JSON.stringify({ empty, chosen, walkedOff, entering, room, clicks }));
+  // Out again in first person, the camera's distance from the head sampled every frame to a second past the end.
+  await b.evaluate(`(() => { const B = __ooga, L = B.timechain.layout; B.pilot.navigate({ position: { x: L.exitButton.x + 0.6, y: 0, z: L.doorZ - 1 }, yaw: Math.PI, pitch: 0.05, dist: 4 }); B.pilot.enterClose(); B.advance(0.6, 1 / 60);
+    window.__eyeGap = { worst: 0, frames: 0, idleAt: 0 };
+    const tick = () => { const g = window.__eyeGap, hub = B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug;
+      if (hub && (hub.state === "leaving" || hub.state === "idle")) { const h = B.pilot.player.parts.head.world, c = B.camera.position;
+        g.worst = Math.max(g.worst, Math.hypot(c.x - h[12], c.y - h[13], c.z - h[14])); g.frames++;
+        if (hub.state === "idle" && !g.idleAt) g.idleAt = g.frames; }
+      if (!g.idleAt || g.frames < g.idleAt + 60) requestAnimationFrame(tick); else g.done = true; };
+    tick(); })()`);
+  await b.key(" ");
+  await untilPage(b, 'window.__eyeGap.done', 25000);
+  const out = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, a = B.pilot.player, p = a.root.position; return { ...window.__eyeGap, view: B.pilot.mode, along: +local(p).toFixed(2), state: T.gate.debug.state }; })()`);
+  record("timechain bridge keypad: from the bridge's near half an empty number does nothing, a room's number is chosen with the Ooga and view still the player's, and walking off lets it go",
+    empty.state === "idle" && empty.eight === "34,30,27" && chosen.state === "keypad" && chosen.remote && !chosen.busy && chosen.selection === 3 && chosen.lens === null && chosen.act && Math.abs(chosen.along - 19) < 0.2
+      && walkedOff.state === "idle" && walkedOff.selection === -1, JSON.stringify({ empty, chosen, walkedOff }));
+  record("timechain bridge keypad: Enter clicked from the bridge glides into the Ooga's eyes where it stands and walks the same Ooga into the chosen room",
+    !entering.remote && entering.lens === "eyes" && entering.along > 16 && inside && room.room === 3 && room.player === "portlandhodl", JSON.stringify({ entering, room }));
+  record("timechain bridge keypad: walked back out in first person the view stays in the Ooga's head to the end and after",
+    out.done && out.frames > 60 && out.worst < 0.45 && out.view === "first-person" && out.state === "idle" && out.along > 17, JSON.stringify(out));
+} };
 const sphereAccount = { name: "timechain account", why: "regression: account Retry must keep the owned Ooga at the keypad; an unanswered account still offers a solo visit without guessing", run: async (b) => {
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; BL.net.state.resolved = false; ${sphereStand("0.7", "13.8")} })()`);
   await b.key(" ");
@@ -22368,7 +22431,7 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
       && retry.before.selected && retry.after.selected && retry.before.held && retry.after.held && retry.before.mode === retry.after.mode && retry.after.lens === "eyes"
       && released.state === "idle" && released.selected === "portlandhodl" && released.refusal === null && released.near < 2, JSON.stringify({ retry, released }));
 } };
-scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereAccount, trip("hub")] });
+scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereBridgeKeypad, sphereAccount, trip("hub")] });
 // The released hub (phones under 8 GB): the walk-out rebuilds the hub behind the room's held frame.
 scene("hub", { label: "timechain doorway release", query: "solo=1&character=portlandhodl&view=timechain&pos=0&hubcache=release", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
 scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", steps: [sphereApproach, sphereCrossing] });
