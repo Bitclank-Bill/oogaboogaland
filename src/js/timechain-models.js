@@ -459,7 +459,8 @@
   // white), a locked room's padlocked and an empty number's greyed out. One canvas, repainted only when the choice or a lock changes.
   // A tap on a row or a number key chooses that room as the keypad's number does, and on the room already chosen
   // clears the choice, through `onChoose`, which the doorway sets ("close" when the directory should go, as for a
-  // PIN); `canChoose` says whether it would take one now (wherever a click on the keypad would).
+  // PIN); `canChoose` says whether it would take one now (wherever a click on the keypad would, and never while the
+  // keypad asks for a PIN, which `asking` says).
   const DIRECTORY = { dot: 4, margin: 3, gap: 2, pitch: 7, title: "ROOM DIRECTORY" };
   const DIRECTORY_LOCK = ["010", "101", "111", "111", "111"];
   const directoryBoard = () => {
@@ -490,9 +491,12 @@
     const locked = new Uint8Array(rooms.length);
     const board = {
       title: "Room Directory", help: "Choose a room here or on the keypad, then press Enter on the keypad. Choose it again to clear it.", canvas, count: 1, index: 0, version: 0,
-      onChoose: null, canChoose: null,
+      onChoose: null, canChoose: null, asking: null,
       get pickable() { return !!(board.canChoose && board.canChoose()); },
-      get caption() { return chosen >= 0 ? `Room ${chosen} selected · press Enter on the keypad` : board.pickable ? "Tap a room or press its number" : "Walk onto the bridge up to the doors to choose"; },
+      get caption() {
+        if (board.asking && board.asking()) return `Room ${chosen} is locked · enter its PIN on the keypad`;
+        return chosen >= 0 ? `Room ${chosen} selected · press Enter on the keypad` : board.pickable ? "Tap a room or press its number" : "Walk onto the bridge up to the doors to choose";
+      },
       get note() { return chosen >= 0 ? rooms[chosen].tag : ""; },
       go() {},
       // A point on the canvas, in its pixels: the row under it, each row's band running to the next's.

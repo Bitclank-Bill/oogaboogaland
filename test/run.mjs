@@ -22424,6 +22424,12 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   // Regression: the empty rooms' 8 and 9 are a PIN's digits like any other, drawn plain while the keypad asks for one.
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; window.__lockedWas = BL.net.state.lockedRooms[0]; BL.net.state.lockedRooms[0] = 1; ${sphereStand("0.4", "19")} })()`);
   await clickKey("0");
+  // Regression: the directory reopened while the keypad asks for the PIN chooses nothing and types no digit.
+  await clickKey("directory");
+  await clickRow(5);
+  await b.key("5");
+  const pinDirectory = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
+  await b.key("Escape");
   await clickKey("8");
   const pin = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
   await clickKey("back");
@@ -22459,6 +22465,8 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
     JSON.stringify({ unchosen, listed, unlisted, emptyRow, typed, clicks }));
   record("timechain bridge keypad: while it asks for a locked room's PIN the empty rooms' 8 and 9 are digits like any other, drawn plain, and greyed out again after",
     pin.state === "pin" && pin.pin === "8" && pin.eight === "58,52,48" && unpinned.state !== "pin" && unpinned.eight === "34,30,27", JSON.stringify({ pin, unpinned }));
+  record("timechain bridge keypad: the directory reopened during a locked room's PIN chooses nothing, types no digit, and says to enter the PIN on the keypad",
+    pinDirectory.board && pinDirectory.state === "pin" && pinDirectory.pin === "" && pinDirectory.caption.includes("PIN"), JSON.stringify(pinDirectory));
   record("timechain bridge keypad: Enter clicked from the bridge glides into the Ooga's eyes where it stands and walks the same Ooga into the chosen room",
     !entering.remote && entering.lens === "eyes" && entering.along > 16 && inside && room.room === 3 && room.player === "portlandhodl", JSON.stringify({ entering, room }));
   record("timechain bridge keypad: walked back out in first person the view stays in the Ooga's head to the end and after",

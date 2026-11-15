@@ -767,14 +767,16 @@
     };
     window.addEventListener("keydown", onKey, true);
     // The directory's rows and number keys choose as the keypad's numbers do, wherever a click on them would: while the
-    // keypad is in use, or from the bridge's near half. A locked room's PIN closes the directory so the keypad takes it.
-    const canChoose = () => g.state === "keypad" || g.state === "account" || fromBridge();
+    // keypad is in use, or from the bridge's near half. A locked room's PIN closes the directory so the keypad takes it,
+    // and while the keypad asks for one the directory chooses nothing (`asking`, for its caption).
+    const canChoose = () => g.state !== "pin" && (g.state === "keypad" || g.state === "account" || fromBridge());
+    const asking = () => g.state === "pin";
     const pickRoom = (room) => {
       if (g.state === "idle") pressFromBridge(String(room));
       else press(String(room));
       return g.state === "pin" ? "close" : true;
     };
-    const hookDirectory = (on) => { site.directory.onChoose = on ? pickRoom : null; site.directory.canChoose = on ? canChoose : null; };
+    const hookDirectory = (on) => { site.directory.onChoose = on ? pickRoom : null; site.directory.canChoose = on ? canChoose : null; site.directory.asking = on ? asking : null; };
     hookDirectory(true);
     // A hidden tab can come back long after a grant ran out; a waiting request is then given up rather than kept.
     const onVisibility = () => {
