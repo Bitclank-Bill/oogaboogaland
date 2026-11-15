@@ -52,10 +52,11 @@ Shared with the island, one copy each:
 | Path | What it is |
 |---|---|
 | `src/native.css` | the tokens, cave-sign lettering, panel title, status chip, stone slab and amber primary button, and the Bananas panel's styles. The island links it before `style.css`; `scripts/build.mjs` joins both into its one style block |
-| `src/style.css` (in part) | the island's own rules for its Ooga Chat panel, Contributing Oogas, Online Oogas, The Commons, the account row, the footer buttons and the help and link lines, taken by selector when the app builds (`ISLAND_RULES` in `scripts/ooga-chat.mjs`) and joined after `native.css`, so the panels look the same from one source |
+| `src/style.css` (in part) | the island's own rules for its Ooga Chat panel and its circles, Contributing Oogas, Online Oogas, The Commons, the account row, the footer buttons and the help and link lines, taken by selector when the app builds (`ISLAND_RULES` in `scripts/ooga-chat.mjs`) and joined after `native.css`, so the panels look the same from one source |
 | `src/js/sign-glyphs.js` | `BL.signGlyphs`: the cave-sign alphabet (`SIGN_GLYPHS`, which `hub-models.js` re-exports) and its DOM lettering (`lettering`, `letter`), which `hud.js` uses |
 | `src/js/donations.js` | `BL.donations`: the donation event contract and real mode's socket and calls over the page's own `/donations/*`. The app turns its simulator off, calls `useOrigin` and subscribes once the bootstrap says `feed` is live (#656) |
 | `src/js/banana-panel.js` | `BL.bananaPanel`: the Bananas panel's markup (`build`, ids only on the island's copy) and controller (`create`, filled from `donations.js`), which `hud.js` and the app's Bananas tab both run |
+| `src/js/audience-tiles.js` | The Ooga Chat roster's circles (`BL.audienceTiles`), the island's Ooga Chat panel's and this tab's alike: everyone in the zone four to a row, scrolling in its slab, each tile kept by id and only its changed fields written |
 | `src/js/format-large.js`, `src/js/roster-panel.js`, `src/js/contributor-identities.js`, `src/js/activity-repos.js` | Contributing Oogas (#656): the island's own panel over `/api/chat/public/contributors` (#664), its contribution states and ages, Oogatron's reading normalized as the island normalizes it, and each Ooga's face from `art/ooga-faces.png`, loaded when a stats strip first opens and not counted in the first load (`LAZY_ART`). A contributor in The Commons sees whose Ooga is on the island now; a stale or unreadable reading says so under the list |
 | `src/js/chat-policy.js`, `src/js/reaction-policy.js`, `src/js/zone-map.js`, `src/js/commons-log.js` | The Commons and Online Oogas for an eligible contributor (#670): the island's chat rules, the raised hand in each tone (`reaction-policy.js` without its emoji data, which the app never reads), the zones as the island's Online Oogas groups them, and the conversation's log and composer, run over the app's own `/api/chat/commons` socket (`ooga-chat-http.js` `commons`). Their look is placed by `ooga-chat.css`; no distance, crosshair, voice link or volume, which are the island's alone |
 | `src/js/qr.js`, `src/js/banana-icon.js`, `src/js/jumbotron-font.js`, `src/js/factory-kiosk-core.js`, `src/js/factory-kiosk.js`, `src/js/donation-popup.js` | Feed the Oogas: the island's donation dialog and its kiosk screen, with the QR codes, the banana and the 5x7 letters they draw. The app opens it from its Bananas tab while the feed is live (the fixture entry's demo aside), real over its own `/donations` relay, with `ooga-chat-donor.js` as its `game`; its frame is placed by `ooga-chat.css` |
@@ -69,7 +70,7 @@ module reads nothing at load but `window.BL` and the document.
 
 `sign-glyphs.js`, `native-icons.js`, `donations.js`, `banana-panel.js`, `qr.js`, `banana-icon.js`, `jumbotron-font.js`, `factory-kiosk-core.js`,
 `factory-kiosk.js`, `donation-popup.js`, `chat-policy.js`, `reaction-policy.js`, `zone-map.js`, `commons-log.js`, `format-large.js`, `roster-panel.js`,
-`contributor-identities.js`, `activity-repos.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
+`contributor-identities.js`, `activity-repos.js`, `audience-tiles.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
 `ooga-chat-shell.js`, `ooga-chat-views.js`,
 `ooga-chat-http.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, `ooga-chat-faces.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
 `fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app.
@@ -94,9 +95,11 @@ status (`off`, `connecting`, `joining`, `live`, `reconnecting`, `full`, `closed`
 in the space's order.
 Public tabs: Ooga Chat, Bananas, Contributing Oogas. Online Oogas and The Commons show only while `gates` says
 `contributor`. Choosing a tab never signs in, signs out, changes the zone or touches voice. Every tab is the island's own
-panel, under its own carved title (the page's `h1` is for assistive technology only), and the account controls sit
-where the island keeps them: the Ooga Chat panel's footer while signed in, and the island's account row at the foot of
-Contributing Oogas, Online Oogas and The Commons (Contributor sign-in with GitHub while signed out). Bananas has none.
+panel, under its own carved title (the page's `h1` is for assistive technology only), and every tab is one height, as
+the island's drawer is: the frame takes the page's height (up to 900px), the panel the frame's, and the panel's slab
+whatever its fixed parts leave, scrolling its own overflow. The account controls sit where the island keeps them: the
+Ooga Chat panel's footer while signed in, and the island's account row at the foot of Contributing Oogas, Online Oogas
+and The Commons (Contributor sign-in with GitHub while signed out). Bananas has none.
 
 ## The bootstrap contract (v1)
 
@@ -248,20 +251,23 @@ marks the list reconnecting), 4426 another protocol revision (stale), 4429 the z
 reconnects, backing off from 1 s to 30 s, and shows the list as reconnecting, never as live. The edge refuses by
 opening a socket and closing it at once, so only a frame from the zone resets the backoff, never the socket's opening.
 
-**Order.** One list, the island's Ooga Chat panel's (`cloud-panel.js`), speakers first, with no headings or gap between
-roles: world speakers by contribution total, most first, a missing total after every known one (zero included), ties
-alphabetical by login, case-insensitive, then by id; then app speakers, the visitor first among them and the rest
+**Order.** One continuous four-column list of circles, the island's Ooga Chat panel's (`audience-tiles.js`, which
+`cloud-panel.js` draws with too), speakers first, with no headings, gap or pages between roles: the whole list scrolls
+in its slab. World speakers by contribution total, most first, a missing total after every known one (zero included),
+ties alphabetical by login, case-insensitive, then by id; then app speakers, the visitor first among them and the rest
 alphabetical; then listeners, the visitor first and the rest alphabetical. The visitor never moves ahead of a world
-speaker. Totals sort; they grant nothing. It shows 50 rows a page, with Previous, Next and which rows of how many
-under it once there is more than one; choosing another zone goes back to the first.
+speaker. Totals sort; they grant nothing.
 
-**Rows.** The island's: a 32px portrait (the server's same-origin picture, the island's Ooga face when there is none
-or it fails, asked for once), a speaker's 3px source ring outside a 3px dark gap (green `#22c55e` from the island,
-purple `#b18aff` from Ooga Chat; listeners none), the name without `@` on one line, cut short with its whole self in
-the title, with Speaker or Listener under it, the hand's column (#655), and a speaker's voice mark (crossed and red
-when source-muted): the visitor's own mutes or unmutes them while they speak; anyone else's will mute that voice for
-this visitor once Ooga Chat plays them (#661). Rows are kept by participant and drawn once a frame; an update changes
-and moves only what changed. A status line under the zones says when the list is not simply live, or is empty.
+**Tiles.** A circle portrait (the server's same-origin picture, the island's Ooga face when there is none or it fails,
+asked for once and only as it scrolls near), a speaker's 3px source ring outside a 3px dark gap (green `#22c55e` from
+the island, purple `#b18aff` from Ooga Chat; listeners neutral), the hand's corner (#655), the name without `@` on one
+line cut short with its whole self in the title and the accessible name, an app speaker's purple dot before it, and
+under it a speaker's voice mark (crossed and red when source-muted) with Speaker, or Listener. The visitor's own voice
+mark mutes or unmutes them while they speak; anyone else's will mute that voice for this visitor once Ooga Chat plays
+them (#661). Tiles are keyed by `id` and kept: an update changes and moves only what changed, once a frame, and focus
+stays on its tile. The list has one tab stop; arrow keys, Home and End move through every participant, up and down a
+row of the grid. Smaller circles in a panel under 400px wide (the island's drawer, a phone). A status line under the
+zones says when the list is not simply live, or is empty.
 
 **Footer.** The island's Ooga Chat panel's, under the roster and the reactions slot (#655): the name (a purple dot
 only while speaking from Ooga Chat), the microphone (always first, 84px wide whatever it says: a disabled Unmute for a
@@ -332,10 +338,10 @@ the visitor first; names alphabetical (lowercased display name) within each, the
 and hand changes never reorder.
 
 **The island's panel.** The cloud tab is last, after The Commons. Main Island and DSB Land buttons at the top, one
-roster of speakers then listeners, the emoji bar, and a footer of the visitor's name, a fixed-width Mute or Unmute,
+scrolling roster of circles, speakers then listeners (`audience-tiles.js`, the app's own), the emoji bar, and a footer of the visitor's name, a fixed-width Mute or Unmute,
 Join or Leave Voice and Sign out, all through the island's existing voice session. A speaker's portrait is ringed
-green (`#22c55e`) from the island or purple (`#b18aff`) from Ooga Chat; listeners have no ring, and rows carry no
-other dot. Listeners appear only in this panel, never as characters in the world. Bridging the outdoor voice and the
+green (`#22c55e`) from the island or purple (`#b18aff`) from Ooga Chat; listeners have no ring, and an Ooga Chat
+speaker's name has a purple dot before it. Listeners appear only in this panel, never as characters in the world. Bridging the outdoor voice and the
 app speakers' playback is #661; cloud speakers in the world are #659. `?debug=1&audience=fixture` shows a generated
 roster of named samples for review and sends nothing.
 

@@ -146,12 +146,10 @@
     return { node, update, dispose };
   };
   // The space a signed-in account listens in, as the island's panel draws it: the two zone buttons, a status line only
-  // when the list is not simply live (or is empty), one roster of everyone the server reports there, speakers first
-  // (ooga-chat-roster.js orders it), a page (PAGE) at a time, the reactions slot (#655 fills it) and the footer. A row is
-  // the island's: a portrait (the server's same-origin picture, else the island's Ooga face) ringed green from the
-  // island or purple from Ooga Chat for a speaker alone, the name with Speaker or Listener under it, the hand's column
-  // and a speaker's microphone, the visitor's own muting them. Rows are kept by participant and drawn once a frame,
-  // only what changed touched.
+  // when the list is not simply live (or is empty), one roster of circles of everyone the server reports there,
+  // speakers first (ooga-chat-roster.js orders it; audience-tiles.js draws it, as on the island), scrolling in its slab,
+  // the reactions slot (#655 fills it) and the footer. A tile's portrait is the server's same-origin picture, else the
+  // island's Ooga face; the visitor's own microphone mutes them while they speak.
   const ZONE_BUTTONS = { main: "Main Island", dsb: "DSB Land" };
   const HEARD = {
     connecting: () => "Connecting…",
@@ -162,7 +160,6 @@
     unavailable: () => "Live audio isn't open here yet.",
     stale: () => "This page is older than Ooga Chat's service. Reload to keep listening."
   };
-  const PAGE = 50;
   const VOICE_WORDS = { on: "In voice", muted: "Muted their microphone" };
   const audience = (ctx) => {
     const { actions } = ctx;
@@ -197,98 +194,24 @@
     heard.hidden = true;
     const list = make("ul", "cloud-roster slab");
     list.setAttribute("aria-label", "Speakers and listeners");
-    const prev = button("foot-button", "Previous"), next = button("foot-button", "Next"), pageLabel = make("span", "cloud-page");
-    const pages = make("nav", "cloud-pages", prev, pageLabel, next);
-    pages.setAttribute("aria-label", "Speaker and listener pages");
-    pages.hidden = true;
     const reactions = make("div", "reactions");
     reactions.hidden = true;
     const foot = cloudFoot(ctx);
-    const rows = new Map();
-    let people = [], listed = null, page = 0, drawn = "", version = -1, frame = 0, self = null, voice = null;
-    const entryFor = (p) => {
-      let entry = rows.get(p.id);
-      if (entry) return entry;
-      const li = make("li", "cloud-row"), portrait = make("span", "cloud-portrait"), name = make("span", "cloud-name"), role = make("span", "cloud-role");
-      const hand = make("span", "cloud-hand"), mic = make("button", "roster-voice cloud-mic", BL.nativeIcons.voice());
-      mic.type = "button";
-      li.dataset.id = p.id;
-      li.append(portrait, make("span", "cloud-who", name, role), make("span", "cloud-react", hand), mic);
-      entry = { li, portrait, name, role, mic, face: undefined, p: null };
-      rows.set(p.id, entry);
-      return entry;
+    let version = -1, frame = 0, self = null, voice = null, people = [];
+    const describe = (p, t) => {
+      const speaker = p.role === "speaker", you = p.id === self, look = speaker ? p.muted ? "muted" : "on" : "";
+      t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" ? "world" : "chat";
+      t.face = p.face || ""; t.look = look; t.hand = ""; t.self = you; t.micPressed = false;
+      t.micDisabled = !you || voice.role !== "speaker";
+      t.micWords = !speaker ? "" : `${p.display}: ${you ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute" : VOICE_WORDS[look]}`;
     };
-    // A portrait's picture, asked for once: a failed one leaves the Ooga face for good.
-    const showFace = (entry, p) => {
-      if (entry.face === p.face) return;
-      entry.face = p.face;
-      const ooga = () => entry.portrait.replaceChildren(BL.nativeIcons.svg("roster"));
-      if (!p.face) return ooga();
-      const img = make("img");
-      img.alt = "";
-      img.decoding = "async";
-      img.referrerPolicy = "no-referrer";
-      img.addEventListener("error", ooga, { once: true });
-      img.src = p.face;
-      entry.portrait.replaceChildren(img);
-    };
-    // The microphone: a speaker's alone. The visitor's own works their microphone while they speak; anyone else's is
-    // the voice mark, which mutes that voice for this visitor once Ooga Chat plays them (#661).
-    const paintMic = (entry) => {
-      const p = entry.p, speaker = p.role === "speaker", you = p.id === self;
-      set(entry.mic, "hidden", !speaker);
-      if (!speaker) return;
-      const look = p.muted ? "muted" : "on";
-      if (entry.mic.dataset.voice !== look) entry.mic.dataset.voice = look;
-      attr(entry.mic, "aria-pressed", "false");
-      set(entry.mic, "disabled", !you || voice.role !== "speaker");
-      const words = `${p.display}: ${you ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute" : VOICE_WORDS[look]}`;
-      attr(entry.mic, "aria-label", words);
-      set(entry.mic, "title", words);
-    };
-    const paint = (entry, p) => {
-      entry.p = p;
-      if (entry.li.dataset.role !== p.role) entry.li.dataset.role = p.role;
-      set(entry.name, "textContent", p.display);
-      // One line, ending in an ellipsis when long (AGENTS.md, Panel text); the whole name is its title.
-      set(entry.name, "title", p.display);
-      set(entry.role, "textContent", p.role === "speaker" ? "Speaker" : "Listener");
-      const source = p.role === "speaker" ? p.source === "world" ? "world" : "chat" : "";
-      if (entry.portrait.dataset.source !== source) entry.portrait.dataset.source = source;
-      showFace(entry, p);
-      paintMic(entry);
-    };
+    // A speaker's voice mark: the visitor's own works their microphone; anyone else's will mute that voice for this
+    // visitor once Ooga Chat plays them (#661).
+    const tiles = BL.audienceTiles.create(list, { mic: (id) => { if (id === self) actions.mute(); } });
     const render = () => {
       frame = 0;
-      const total = people.length, count = Math.max(1, Math.ceil(total / PAGE));
-      if (page >= count) page = count - 1;
-      const start = page * PAGE, shown = people.slice(start, start + PAGE), keep = new Set();
-      for (const p of shown) {
-        keep.add(p.id);
-        const entry = entryFor(p);
-        if (entry.p !== p) paint(entry, p);
-      }
-      for (const [id, entry] of rows) if (!keep.has(id)) {
-        entry.li.remove();
-        rows.delete(id);
-      }
-      const seq = shown.map((p) => p.id).join("\n");
-      if (seq !== drawn) {
-        list.replaceChildren(...shown.map((p) => rows.get(p.id).li));
-        drawn = seq;
-      }
-      set(pages, "hidden", count < 2);
-      set(pageLabel, "textContent", total ? `${start + 1}–${Math.min(total, start + PAGE)} of ${total}` : "");
-      set(prev, "disabled", page === 0);
-      set(next, "disabled", page >= count - 1);
+      tiles.draw(people, describe);
     };
-    const later = () => { if (!frame) frame = requestAnimationFrame(render); };
-    prev.addEventListener("click", () => { page = Math.max(0, page - 1); render(); }, { signal });
-    next.addEventListener("click", () => { page++; render(); }, { signal });
-    list.addEventListener("click", (event) => {
-      const mic = event.target.closest(".cloud-mic"), entry = mic && rows.get(mic.closest(".cloud-row").dataset.id);
-      if (entry && !mic.disabled && entry.p.id === self) actions.mute();
-    }, { signal });
     const update = (state) => {
       foot.update(state);
       if (!state.session) return;
@@ -297,27 +220,23 @@
       const words = HEARD[now.status]?.(zone) || (now.status === "live" && !now.list.length ? "Nobody is here yet." : "");
       set(statusText, "textContent", words);
       set(heard, "hidden", !words);
-      const who = state.session.identity.participant;
-      if (who !== self || state.voice !== voice) {
-        self = who;
-        voice = state.voice;
-        for (const entry of rows.values()) if (entry.p) paintMic(entry);
-      }
-      if (now.version === version) return;
-      if (now.zone !== listed) page = 0;
-      version = now.version;
-      people = now.list;
-      listed = now.zone;
-      later();
+      const who = state.session.identity.participant, mics = who !== self || state.voice !== voice;
+      self = who;
+      voice = state.voice;
+      if (now.version !== version) {
+        version = now.version;
+        people = now.list;
+        if (!frame) frame = requestAnimationFrame(render);
+      } else if (mics && !frame) tiles.repaint(describe);
     };
     const focus = () => (zoneButtons.find((el) => el.getAttribute("aria-pressed") === "true") || zoneButtons[0]).focus();
     const dispose = () => {
       listeners.abort();
       cancelAnimationFrame(frame);
-      rows.clear();
+      tiles.dispose();
       foot.dispose();
     };
-    return { nodes: [zones, heard, list, pages, reactions, foot.node], update, focus, dispose };
+    return { nodes: [zones, heard, list, reactions, foot.node], update, focus, dispose };
   };
   // The Ooga Chat panel's footer, the island's: the visitor's name (a purple dot only while speaking from Ooga Chat), the
   // fixed-width microphone, always first and off for a listener, Join Voice for a listener the server allows to speak

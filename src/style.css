@@ -1107,9 +1107,10 @@ body[data-active-scene="block"] .mode-hud {
 .panel[data-panel="chat"][data-view="private"] > .panel-title > .chat-about { display: none; }
 /* Without the island's About button, the title itself keeps the room's chip and the bell at the right. */
 .panel[data-panel="chat"][data-view="private"] > .panel-title h2 { margin-right: auto; }
-/* Ooga Chat (cloud-panel.js), the last tab: two zone buttons, one roster (speakers, then listeners), a page bar for a
-   long list, the emoji bar and the footer. A speaker's portrait carries the only source mark: a 3px ring past a 3px
-   dark gap, green for the island, purple for Ooga Chat. Names wrap rather than truncate. */
+/* Ooga Chat (cloud-panel.js), the last tab, and Ooga Chat's own (the app takes these rules): two zone buttons, one roster
+   of circles four to a row (speakers, then listeners) scrolling in its slab, the emoji bar and the footer. A speaker's
+   portrait carries a 3px ring past a 3px dark gap, green for the island, purple for Ooga Chat, whose speakers also have
+   a purple dot before their name. A name keeps to one line, cut short with its whole self in its title. */
 .sheet-toggle-cloud { height: 56px; }
 .cloud-zones { display: grid; flex: none; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cloud-zone {
@@ -1124,27 +1125,48 @@ body[data-active-scene="block"] .mode-hud {
 .cloud-zone-icon { display: block; flex: none; width: 24px; height: 18px; object-fit: contain; }
 .cloud-zone > img.cloud-zone-icon:not([src]) { visibility: hidden; }
 .cloud-status [hidden] { display: none; }
-.panel > .cloud-roster { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 6px 8px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
-.cloud-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 28px 20px; align-items: center; column-gap: 10px; min-height: 48px; }
-.cloud-portrait { display: block; width: 32px; height: 32px; margin: 6px; overflow: hidden; border-radius: 50%; background: #151312; }
-.cloud-portrait[data-source="world"] { box-shadow: 0 0 0 3px #151312, 0 0 0 6px #22c55e; }
-.cloud-portrait[data-source="chat"] { box-shadow: 0 0 0 3px #151312, 0 0 0 6px #b18aff; }
+.panel > .cloud-roster {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-content: start; gap: 14px 6px; margin: 0; padding: 14px 8px;
+  overflow-y: auto; overscroll-behavior: contain; list-style: none; container-type: inline-size;
+}
+/* A tile (audience-tiles.js): the portrait with its ring and the hand or a reaction over its corner, the name, and the
+   role under it after a speaker's microphone. A tile out of sight skips its layout and paint. */
+.cloud-tile {
+  --face: 56px;
+  display: flex; flex-direction: column; align-items: center; min-width: 0; padding: 6px 0 2px; border-radius: 6px;
+  content-visibility: auto; contain-intrinsic-block-size: auto 104px;
+}
+.cloud-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cloud-face { position: relative; flex: none; margin-bottom: 10px; }
+.cloud-portrait {
+  display: flex; align-items: center; justify-content: center; width: var(--face); height: var(--face); overflow: hidden;
+  border-radius: 50%; background: var(--stone-dk); box-shadow: 0 0 0 2px var(--stone-lt);
+}
+.cloud-tile[data-source="world"] .cloud-portrait { box-shadow: 0 0 0 3px var(--slab-dark), 0 0 0 6px #22c55e; }
+.cloud-tile[data-source="chat"] .cloud-portrait { box-shadow: 0 0 0 3px var(--slab-dark), 0 0 0 6px #b18aff; }
 .cloud-portrait > img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.cloud-portrait > svg { display: block; box-sizing: border-box; width: 100%; height: 100%; padding: 5px; shape-rendering: crispEdges; }
-.cloud-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cloud-name { min-width: 0; overflow: hidden; color: var(--paper); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.cloud-role { color: rgba(243, 239, 228, 0.6); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
-.cloud-react { position: relative; display: grid; width: 28px; height: 28px; place-items: center; font-size: 18px; line-height: 1; }
+.cloud-portrait > svg { display: block; width: 62%; height: auto; shape-rendering: crispEdges; }
+.cloud-react {
+  position: absolute; top: -8px; right: -12px; display: grid; width: 26px; height: 26px; place-items: center;
+  font-size: 18px; line-height: 1; pointer-events: none;
+}
 .cloud-hand { grid-area: 1 / 1; }
 .cloud-pop { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; animation: cloud-pop 2.4s ease-out forwards; }
 @keyframes cloud-pop { 0% { opacity: 0; transform: translateY(4px) scale(0.7); } 15% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
 @keyframes cloud-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .cloud-pop { animation-name: cloud-fade; } }
-.cloud-mic { justify-self: center; }
+.cloud-name { display: flex; align-items: center; justify-content: center; gap: 4px; max-width: 100%; color: var(--paper); font-size: 12px; font-weight: 700; }
+.cloud-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-dot { display: none; flex: none; width: 6px; height: 6px; border-radius: 50%; background: #b18aff; }
+.cloud-tile[data-source="chat"] .cloud-dot { display: block; }
+.cloud-role { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: rgba(243, 239, 228, 0.62); font-size: 11px; white-space: nowrap; }
+.cloud-role .roster-voice svg { width: 10px; height: 10px; }
 .cloud-mic[hidden] { display: none; }
-.cloud-pages { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; }
-.cloud-pages[hidden] { display: none; }
-.cloud-page { color: var(--paper); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+/* A drawer as narrow as the island's, or a phone: smaller circles, the same four to a row. */
+@container (max-width: 400px) {
+  .cloud-tile { --face: 44px; }
+  .cloud-name { font-size: 11px; }
+}
 .cloud-foot { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
 .cloud-foot-name { min-width: 0; color: var(--paper); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 .cloud-foot-name[data-source="chat"]::before {

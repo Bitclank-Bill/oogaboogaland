@@ -17,10 +17,18 @@ body {
 .oc [hidden] { display: none !important; }
 
 .oc {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   max-width: 620px;
+  height: 100vh;
+  height: min(100dvh, 900px);
+  min-height: 520px;
   margin: 0 auto;
   padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
 }
+
+.oc > * { flex: none; }
 
 .oc-tabs {
   position: relative;
@@ -65,9 +73,11 @@ body {
 .oc-tab:focus-visible { outline: none; }
 .oc-tab:focus-visible .oc-tab-face { outline: 2px solid var(--accent); outline-offset: -3px; }
 
-.oc-frame {
+.oc > .oc-frame {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  min-height: 0;
   border: 3px solid var(--wood-edge);
   border-radius: var(--radius);
   background: var(--planks);
@@ -187,20 +197,15 @@ body {
   white-space: nowrap;
 }
 
-.oc-panel { overflow: visible; }
+/* One height for every tab, as the island's drawer has: the frame takes the page's height, each tab's panel the frame's,
+   and inside it the slab takes what the panel's fixed parts leave and scrolls its own overflow (native.css .panel). */
+.oc-views,
+.oc-view { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 /* The Ooga Chat panel shows its space only while signed in, and only its footer while signing out. */
-.oc-chat[data-space="off"] > :is(.cloud-zones, .cloud-status, .cloud-roster, .cloud-pages, .cloud-foot),
-.oc-chat[data-space="foot"] > :is(.cloud-zones, .cloud-status, .cloud-roster, .cloud-pages) { display: none; }
+.oc-chat[data-space="off"] > :is(.cloud-zones, .cloud-status, .cloud-roster, .cloud-foot),
+.oc-chat[data-space="foot"] > :is(.cloud-zones, .cloud-status, .cloud-roster) { display: none; }
 .oc-pending p { margin: 0; color: rgba(243, 239, 228, 0.7); }
 
-/* The panels' place in the app, whose frame grows with its content rather than a drawer's height: each list and the log
-   scroll in a window of their own. */
-.oc-roster,
-.oc-online,
-.oc-commons { gap: 10px; }
-.oc .roster,
-.oc .cloud-roster { max-height: min(70vh, 640px); overflow-y: auto; }
-.oc .chat-log { max-height: min(60vh, 520px); overflow-y: auto; }
 .oc-players { padding: 12px 14px; }
 .oc-roster-note { margin: 0; }
 
