@@ -30057,7 +30057,7 @@ const persistentPanel = (BL, net, saved = new Map()) => {
     setTimeout: fn => { timers.set(nextTimer, fn); return nextTimer++; }, clearTimeout: id => timers.delete(id), matchMedia: () => ({ matches: true }) },
     document: { createElement: make, getElementById: id => ids.get(id), body, addEventListener() {}, removeEventListener() {} },
     localStorage: { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) }, Event: class {} };
-  runInNewContext(readFileSync(join(root, "src/js/reactions.js"), "utf8"), context);
+  runInNewContext(["src/js/reaction-bar.js", "src/js/reactions.js"].map(file => readFileSync(join(root, file), "utf8")).join("\n"), context);
   const bars = [...ids.values()].map(host => { const card = host.children[0]; return { card, buttons: [...card.children[0].children, card.children[2]] }; });
   const event = (slot, type, extra = {}, bar = 0) => {
     const e = { target: bars[bar].buttons[slot], button: 0, pointerId: 1, isPrimary: true, clientX: 0, clientY: 0, preventDefault() {}, ...extra };

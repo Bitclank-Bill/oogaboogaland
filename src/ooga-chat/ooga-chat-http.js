@@ -63,14 +63,15 @@
       return null;
     };
     // The audience feed (audience protocol 1): one same-origin WebSocket at `paths.audience`, joined to one zone at a
-    // time (`join`), asked for a fresh snapshot after a gap (`resync`). Frames go to `message` as parsed JSON; the roster
+    // time (`join`), asked for a fresh snapshot after a gap (`resync`), and asked things with an id (`request`: a
+    // reaction or the hand, #668). Frames go to `message` as parsed JSON; the roster
     // checks them. `status` hears connecting, reconnecting, full, signed-out (close 4401: the app checks the session),
     // stale (4426: another protocol revision), closed (4503: listening is off, asked again after about 3 min) and
     // unavailable (no address). Reconnects back off from 1 s to 30 s. The edge refuses by accepting a socket and
     // closing it at once, so `open` proves nothing: only a frame from the zone resets the backoff.
     const audience = (boot, { message, status }) => {
-      let socket = null, zone = null, tries = 0, timer = null, closed = false;
-      const idle = { zone() {}, resync() {}, dispose() {} };
+      let socket = null, zone = null, tries = 0, timer = null, closed = false, requests = 0;
+      const idle = { zone() {}, resync() {}, request: () => 0, dispose() {} };
       if (!boot.paths.audience) {
         status("unavailable");
         return idle;
@@ -116,6 +117,9 @@
           else if (!socket && timer === null) open();
         },
         resync: () => send({ type: "resync", zone }),
+        // A request the server answers with a `result` of the same id (#668: `reaction`, `hand`): its id, 0 when the
+        // socket is not open.
+        request: (type, fields) => socket?.readyState === 1 && send({ type, requestId: ++requests, ...fields }) !== false ? requests : 0,
         dispose() {
           closed = true;
           clearTimeout(timer);

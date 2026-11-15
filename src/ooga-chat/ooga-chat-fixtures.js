@@ -39,7 +39,7 @@
     main: [
       person("world-oak", "world", "speaker", "sample-oak", { contributions: 412 }),
       person("world-fern", "world", "speaker", "Sample-Fern", { contributions: 412 }),
-      person("world-reed", "world", "speaker", "sample-reed"),
+      person("world-reed", "world", "speaker", "sample-reed", { hand: "✋🏽" }),
       person("world-moss", "world", "speaker", "sample-moss", { contributions: 97, muted: true }),
       person("app-brook", "app", "speaker", "sample-brook"),
       person("app-ash", "app", "speaker", "sample-ash", { muted: true }),
@@ -111,7 +111,7 @@
     const feeds = new Set();
     let opened = 0;
     const audience = (boot, { message, status }) => {
-      let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false;
+      let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false, requests = 0;
       const timers = new Set();
       const after = (ms, fn) => { const id = setTimeout(() => { timers.delete(id); if (!closed) fn(); }, ms); timers.add(id); };
       const clear = () => { for (const id of timers) clearTimeout(id); timers.clear(); };
@@ -147,7 +147,11 @@
             ? [...self(), ...Array.from({ length: 300 }, (_, i) => person(`crowd-${i}`, "app", "listener", `sample-listener-${String(i + 1).padStart(3, "0")}`))]
             : [...CAST[zone], ...self()];
           snapshot();
-          if (roster === "mixed" && zone === "main") script();
+          if (roster === "mixed" && zone === "main") {
+            script();
+            // A reaction from the cast, as the server sends each one to the zone (#668).
+            after(2500, () => { const at = now(); message({ type: "reaction", eventId: "fixture-oak", participantId: "fixture:world-oak", zone, epoch, emoji: "🔥", at, expiresAt: at + 2600 }); });
+          }
           // Back to an unchanged zone: the same epoch and revision, so the snapshot only confirms the list.
           if (roster === "reconnecting") after(6000, () => { status("reconnecting"); after(3000, () => { status("connecting"); after(500, snapshot); }); });
           if (roster === "reauth" && opened++ === 0) after(6000, () => status("signed-out"));
@@ -164,6 +168,23 @@
           revision++;
           snapshot();
         }),
+        // A reaction comes back to the zone as the server's event; a hand is a speaker's alone, so the visitor's, a
+        // listener here, is refused as the server refuses it (#668).
+        request(type, fields) {
+          if (closed || !zone) return 0;
+          const requestId = ++requests, mine = self()[0], me = mine && people.find((p) => p.id === mine.id);
+          after(120, () => {
+            if (type === "reaction" && me) {
+              const at = now();
+              message({ type: "reaction", eventId: `fixture-${requestId}`, participantId: me.id, zone, epoch, emoji: fields.emoji, at, expiresAt: at + 2600 });
+              message({ type: "result", requestId, ok: true });
+            } else if (type === "hand" && me && me.role === "speaker") {
+              delta([{ ...me, hand: fields.on ? fields.emoji || "✋" : "" }]);
+              message({ type: "result", requestId, ok: true });
+            } else message({ type: "result", requestId, ok: false, error: { code: "not_speaker", retryable: false } });
+          });
+          return requestId;
+        },
         dispose() {
           closed = true;
           clear();
@@ -172,7 +193,7 @@
       };
       if (roster === "none") {
         status("unavailable");
-        return { zone() {}, resync() {}, dispose() {} };
+        return { zone() {}, resync() {}, request: () => 0, dispose() {} };
       }
       feeds.add(feed);
       return feed;

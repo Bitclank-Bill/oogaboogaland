@@ -111,14 +111,19 @@ body {
   border-radius: 6px;
 }
 
+/* The sign-in's words, as the design has them: a quiet sans line over the buttons, in the note and under it. */
 .oc-lede,
 .oc-role,
-.oc-foot {
+.oc-foot,
+.oc-note span {
   margin: 0;
-  color: rgba(243, 239, 228, 0.78);
+  color: #bbb4a6;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-.oc-foot { text-align: center; font-size: 12px; }
+.oc-foot { text-align: center; }
 
 .oc-status-line {
   display: flex;
@@ -141,38 +146,42 @@ body {
 
 .oc-providers {
   display: grid;
-  gap: 12px;
+  gap: 11px;
+  margin-top: 12px;
 }
 
+/* A sign-in button, the design's: the plank's wood, its edge and nail shadow, the label in the panels' own type. */
 .oc-provider {
-  min-height: 48px;
-  padding: 0 14px;
+  min-height: 51px;
+  padding: 9px 12px;
   border: 2px solid var(--wood-edge);
   border-radius: 6px;
-  background: linear-gradient(#ae844f, var(--wood));
+  background: linear-gradient(var(--plank), var(--wood));
   color: var(--paper);
-  font-weight: 700;
+  font: inherit;
+  font-weight: 600;
   box-shadow: 0 3px 0 var(--nail);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
   cursor: pointer;
 }
 
-.oc-provider:hover:not(:disabled),
-.oc-provider:focus-visible { background: linear-gradient(#bf935b, var(--plank)); outline: none; }
-.oc-provider:focus-visible { box-shadow: 0 3px 0 var(--nail), 0 0 0 2px var(--accent); }
-.oc-provider:disabled { opacity: 0.5; cursor: not-allowed; }
+.oc-provider:hover:not(:disabled) { filter: brightness(1.12); }
+.oc-provider:focus-visible { outline: 2px solid #ffd9a0; outline-offset: 2px; }
+.oc-provider:disabled { opacity: 0.4; cursor: default; }
 
 .oc-note {
   display: grid;
   gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(243, 239, 228, 0.7);
+  margin: 8px 0 1px;
+  padding: 13px;
+  border: 1px solid #51483b;
+  border-radius: 5px;
+  background: #24211d;
 }
 
-.oc-note strong { color: var(--accent-text); }
+.oc-note strong { color: #ffd9a0; font-size: 12px; }
+
+/* In the account row, the sign-in button spans the panel as it does on the sign-in screen. */
+.account > .oc-account-signin { flex: 1 1 100%; }
 
 /* A notice that needs the visitor: an expired sign-in, a failed check, an unconfirmed sign-out, with its retry. */
 .oc-notice {
@@ -202,8 +211,15 @@ body {
 .oc-views,
 .oc-view { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 /* The Ooga Chat panel shows its space only while signed in, and only its footer while signing out. */
-.oc-chat[data-space="off"] > :is(.cloud-zones, .cloud-status, .cloud-roster, .cloud-foot),
+.oc-chat[data-space="off"] > :is(.cloud-zones, .cloud-status, .cloud-roster, .oc-chat-foot),
 .oc-chat[data-space="foot"] > :is(.cloud-zones, .cloud-status, .cloud-roster) { display: none; }
+/* Its foot, as the design has it: the emoji panel left of the account controls where there is room and above them where
+   not, centred there, the name over the buttons. */
+.oc-chat-foot { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; }
+.oc-chat-foot > .reactions { flex: 1 1 240px; min-width: 0; max-width: 370px; margin-top: 0; }
+.oc-chat-foot > .cloud-foot { flex: 1 1 220px; justify-content: center; }
+.oc-chat-foot .cloud-foot-name { flex-basis: 100%; text-align: center; }
+.oc-chat-foot .cloud-foot-actions { justify-content: center; }
 .oc-pending p { margin: 0; color: rgba(243, 239, 228, 0.7); }
 
 .oc-players { padding: 12px 14px; }

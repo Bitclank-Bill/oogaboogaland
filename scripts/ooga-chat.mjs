@@ -22,18 +22,21 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = join(root, "src", "ooga-chat");
 // The island modules the app may share: each loads nothing at load but window.BL and the document.
 export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/donations.js", "../js/banana-panel.js", "../js/qr.js", "../js/banana-icon.js",
-  "../js/jumbotron-font.js", "../js/factory-kiosk-core.js", "../js/factory-kiosk.js", "../js/donation-popup.js", "../js/chat-policy.js", "../js/reaction-policy.js",
+  "../js/jumbotron-font.js", "../js/factory-kiosk-core.js", "../js/factory-kiosk.js", "../js/donation-popup.js", "../js/chat-policy.js", "../js/emoji-data.js", "../js/reaction-policy.js",
   "../js/zone-map.js", "../js/commons-log.js", "../js/format-large.js", "../js/roster-panel.js", "../js/contributor-identities.js", "../js/activity-repos.js",
-  "../js/audience-tiles.js"];
+  "../js/audience-tiles.js", "../js/reaction-bar.js"];
 // What a first visit may cost over the wire (index.html, the script, the stylesheet and the art it shows), gzipped. The
 // staged foundation measured about 91 KB, most of it the sign-in picture. The original picture at Retina size (about
 // 80 KB in place of the 430-pixel stand-in's 58), the island's Bananas panel with donations.js (#656, about 15 KB) and
 // its Feed the Oogas kiosk (donation-popup.js, factory-kiosk.js, qr.js and the jumbotron's font, about 28 KB) and
 // The Commons and Online Oogas (commons-log.js, the chat, reaction and zone helpers and their views, about 13 KB) and
 // Contributing Oogas (roster-panel.js, the oogatron normalizers, the face sheet's index and the island's own rules for
-// these panels, about 16 KB; the face sheet itself loads only when a stats strip opens) bring it to about 184 KB. The
-// build fails past this.
-export const FIRST_LOAD_BUDGET = 192 * 1024;
+// these panels, about 16 KB; the face sheet itself loads only when a stats strip opens), the Ooga Chat panel's circles
+// and account rows (about 3 KB) and the island's own emoji panel with its picker (#655: reaction-bar.js and the whole
+// emoji list it picks from, emoji-data.js, about 25 KB with their rules) bring it to about 213 KB. Loading the emoji list
+// only when the picker opens would take most of that back; that needs the build to stage a second script. The build
+// fails past this.
+export const FIRST_LOAD_BUDGET = 224 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
 // (a rule's other selectors, another panel's, left behind), in an @media, @supports or @container block too, and every
@@ -42,7 +45,7 @@ export const FIRST_LOAD_BUDGET = 192 * 1024;
 export const ISLAND_RULES = [".roster", ".players-", ".chat-", ".section-head", ".panel .chat-status", '.panel[data-panel="chat"] > .panel-title',
   ".help", ".link", ".account", ".foot-button", ".foot-primary", ".cloud-zone", ".cloud-status", ".panel > .cloud-roster", ".cloud-tile",
   ".cloud-face", ".cloud-portrait", ".cloud-react", ".cloud-hand", ".cloud-pop", ".cloud-fade", ".cloud-name", ".cloud-dot", ".cloud-role",
-  ".cloud-mic", ".cloud-foot", ".cloud-mute"];
+  ".cloud-mic", ".cloud-foot", ".cloud-mute", ".reaction"];
 // Pictures the app loads only when they are wanted, never on a first visit: the face sheet, when a stats strip opens.
 export const LAZY_ART = ["ooga-faces.png"];
 export const islandRules = (css, prefixes = ISLAND_RULES) => {

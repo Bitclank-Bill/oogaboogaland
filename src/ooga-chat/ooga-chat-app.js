@@ -59,10 +59,38 @@
     let listening = null, heard = 0, refused = 0;
     let state = { mode: "loading", boot: null, session: null, auth: "checking", notice: null, busy: false, zone, voice: media.state,
       audience: { status: "off", zone, list: [], version: 0 }, commons: { status: "off" }, device: { online: navigator.onLine !== false, install: null, update: false } };
+    // The emoji bar's connection (reaction-bar.js, #655): its state follows the session and the audience feed (shown
+    // signed in, working while the feed is live), its hand follows the visitor's own row as the server keeps it, and
+    // what it sends goes over the audience socket as a request (#668). A hand the server refuses goes back to the row's.
+    // Every reaction the server sends to the zone, the visitor's own included, pops over that participant's circle.
+    const linkSubs = new Set(), pops = new Set();
+    let handRequest = 0;
+    const link = { state: { me: null, reactions: false, room: "off", hand: false, handTone: 0, handEmoji: "", customHand: true },
+      sendReaction: (emoji) => !!feed && feed.request("reaction", { emoji }) > 0,
+      setHand(on, tone, emoji) {
+        handRequest = feed ? feed.request("hand", { on, tone, ...(emoji ? { emoji } : {}) }) : 0;
+        if (!handRequest) return false;
+        Object.assign(link.state, { hand: on, handTone: tone, handEmoji: on ? emoji || "" : "" });
+        for (const fn of linkSubs) fn(link.state);
+        return true;
+      },
+      subscribe(fn) { linkSubs.add(fn); return () => linkSubs.delete(fn); } };
+    const ownHand = () => {
+      const id = state.session?.identity.participant, me = id ? state.audience.list.find((p) => p.id === id) : null;
+      return me ? me.hand : "";
+    };
+    const syncLink = (force = false) => {
+      const s = link.state, who = state.mode === "live" && state.session ? state.session.identity : null, room = who ? state.audience.status : "off";
+      const hand = ownHand(), next = { me: who, reactions: !!who, room, hand: !!hand, handEmoji: hand };
+      if (!force && s.me === next.me && s.reactions === next.reactions && s.room === next.room && (handRequest || s.hand === next.hand && s.handEmoji === next.handEmoji)) return;
+      Object.assign(s, handRequest ? { me: next.me, reactions: next.reactions, room } : next);
+      for (const fn of linkSubs) fn(s);
+    };
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
       shell.update(state);
       bar.update(state);
+      syncLink();
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
     const hear = (status) => set({ audience: { status, zone: state.zone, list: roster.ready ? roster.list(state.session?.identity.participant) : [], version: ++heard } });
@@ -75,11 +103,22 @@
       relisten = 0;
       feed?.dispose();
       feed = null;
+      handRequest = 0;
       listening = principal;
       if (principal !== kept) roster.expect(state.zone);
       if (!principal) return hear("off");
       feed = adapter.audience(state.boot, {
         message(msg) {
+          if (msg && msg.type === "reaction") {
+            if (msg.zone === state.zone && typeof msg.participantId === "string" && typeof msg.emoji === "string" && BL.reactionPolicy.valid(msg.emoji))
+              for (const fn of pops) fn(msg.participantId, msg.emoji);
+            return;
+          }
+          if (msg && msg.type === "result") {
+            // The hand's own answer: the visitor's row decides from here, whatever was shown meanwhile.
+            if (msg.requestId === handRequest) { handRequest = 0; syncLink(true); }
+            return;
+          }
           const result = roster.apply(msg);
           if (result === "gap") feed.resync();
           if (result === "applied") {
@@ -198,7 +237,8 @@
     };
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
       demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data) },
-      contributors: () => adapter.contributors() };
+      contributors: () => adapter.contributors(),
+      reactions: { bars: BL.reactionBar.create(link), onPop(fn) { pops.add(fn); return () => pops.delete(fn); } } };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [

@@ -58,7 +58,8 @@ Shared with the island, one copy each:
 | `src/js/banana-panel.js` | `BL.bananaPanel`: the Bananas panel's markup (`build`, ids only on the island's copy) and controller (`create`, filled from `donations.js`), which `hud.js` and the app's Bananas tab both run |
 | `src/js/audience-tiles.js` | The Ooga Chat roster's circles (`BL.audienceTiles`), the island's Ooga Chat panel's and this tab's alike: everyone in the zone four to a row, scrolling in its slab, each tile kept by id and only its changed fields written |
 | `src/js/format-large.js`, `src/js/roster-panel.js`, `src/js/contributor-identities.js`, `src/js/activity-repos.js` | Contributing Oogas (#656): the island's own panel over `/api/chat/public/contributors` (#664), its contribution states and ages, Oogatron's reading normalized as the island normalizes it, and each Ooga's face from `art/ooga-faces.png`, loaded when a stats strip first opens and not counted in the first load (`LAZY_ART`). A contributor in The Commons sees whose Ooga is on the island now; a stale or unreadable reading says so under the list |
-| `src/js/chat-policy.js`, `src/js/reaction-policy.js`, `src/js/zone-map.js`, `src/js/commons-log.js` | The Commons and Online Oogas for an eligible contributor (#670): the island's chat rules, the raised hand in each tone (`reaction-policy.js` without its emoji data, which the app never reads), the zones as the island's Online Oogas groups them, and the conversation's log and composer, run over the app's own `/api/chat/commons` socket (`ooga-chat-http.js` `commons`). Their look is placed by `ooga-chat.css`; no distance, crosshair, voice link or volume, which are the island's alone |
+| `src/js/emoji-data.js`, `src/js/reaction-bar.js` | The island's own emoji panel (#655), in the Ooga Chat panel's footer: the ten reactions, the raised hand and the picker over every emoji, its skin tones and heart colours, from this browser's own choices (`ooga-reactions*`). `ooga-chat-app.js` hands it the audience socket as its connection: a tap is a `reaction` request, the hand a `hand` request an active speaker alone may make, and every reaction the server sends the zone pops over that participant's circle |
+| `src/js/chat-policy.js`, `src/js/reaction-policy.js`, `src/js/zone-map.js`, `src/js/commons-log.js` | The Commons and Online Oogas for an eligible contributor (#670): the island's chat rules, the raised hand in each tone, the zones as the island's Online Oogas groups them, and the conversation's log and composer, run over the app's own `/api/chat/commons` socket (`ooga-chat-http.js` `commons`). Their look is placed by `ooga-chat.css`; no distance, crosshair, voice link or volume, which are the island's alone |
 | `src/js/qr.js`, `src/js/banana-icon.js`, `src/js/jumbotron-font.js`, `src/js/factory-kiosk-core.js`, `src/js/factory-kiosk.js`, `src/js/donation-popup.js` | Feed the Oogas: the island's donation dialog and its kiosk screen, with the QR codes, the banana and the 5x7 letters they draw. The app opens it from its Bananas tab while the feed is live (the fixture entry's demo aside), real over its own `/donations` relay, with `ooga-chat-donor.js` as its `game`; its frame is placed by `ooga-chat.css` |
 | `src/js/native-icons.js` | `BL.nativeIcons`: the panel tabs' pixel icons (`bananas`, `roster`, `players`, `chat`), Ooga Chat's outlined `cloud`, DSB Land's destination mark `dsb` (the island's `dsb-island-icon` paths, held equal by the suite) and `voice()`, the roster's voice mark. `hud.js` fills the island's tab slots (`data-native-icon`) from it and draws its roster's voice mark with it |
 
@@ -69,8 +70,8 @@ module reads nothing at load but `window.BL` and the document.
 ## Load order and contracts
 
 `sign-glyphs.js`, `native-icons.js`, `donations.js`, `banana-panel.js`, `qr.js`, `banana-icon.js`, `jumbotron-font.js`, `factory-kiosk-core.js`,
-`factory-kiosk.js`, `donation-popup.js`, `chat-policy.js`, `reaction-policy.js`, `zone-map.js`, `commons-log.js`, `format-large.js`, `roster-panel.js`,
-`contributor-identities.js`, `activity-repos.js`, `audience-tiles.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
+`factory-kiosk.js`, `donation-popup.js`, `chat-policy.js`, `emoji-data.js`, `reaction-policy.js`, `zone-map.js`, `commons-log.js`, `format-large.js`, `roster-panel.js`,
+`contributor-identities.js`, `activity-repos.js`, `audience-tiles.js`, `reaction-bar.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
 `ooga-chat-shell.js`, `ooga-chat-views.js`,
 `ooga-chat-http.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, `ooga-chat-faces.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
 `fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app.
@@ -79,7 +80,7 @@ module reads nothing at load but `window.BL` and the document.
 resolves to a parsed bootstrap (below), never throws. `session` resolves to a parsed session or `null` for signed
 out, and throws for any other failure, which the app shows as a recoverable error. `signIn` navigates (production)
 or returns a session (fixtures). `signOut` resolves only when the server confirms and throws otherwise. `dispose`
-aborts what is still in flight. `audience` opens the audience feed (below) and returns `{ zone(id), resync(), dispose() }`. `contributors` resolves to the
+aborts what is still in flight. `audience` opens the audience feed (below) and returns `{ zone(id), resync(), request(type, fields), dispose() }`, `request` sending one with an id the server answers with a `result` (a `reaction` or the `hand`, #668), 0 while the socket is not open. `contributors` resolves to the
 edge's public `/api/chat/public/contributors` reply (the cast and Oogatron's reading, each with its state), or `null` when it
 cannot be read, which Contributing Oogas says under its list.
 
@@ -99,7 +100,7 @@ panel, under its own carved title (the page's `h1` is for assistive technology o
 the island's drawer is: the frame takes the page's height (up to 900px), the panel the frame's, and the panel's slab
 whatever its fixed parts leave, scrolling its own overflow. The account controls sit where the island keeps them: the
 Ooga Chat panel's footer while signed in, and the island's account row at the foot of Contributing Oogas, Online Oogas
-and The Commons (Contributor sign-in with GitHub while signed out). Bananas has none.
+and The Commons (while signed out, the sign-in screen's own Continue with GitHub). Bananas has none.
 
 ## The bootstrap contract (v1)
 
@@ -185,7 +186,7 @@ server checks the capability again at every privileged operation.
 | `auth` | When | Join Voice | Contributor tabs |
 |---|---|---|---|
 | `checking` | before the first answer | no | no |
-| `signed-out` | no session | (Contributor sign-in) | no |
+| `signed-out` | no session | (Continue with GitHub) | no |
 | `listener` | X, or GitHub `ineligible` or `revoked` | off, saying why | no |
 | `unknown` | GitHub, eligibility unknown or stale | off, saying why | no |
 | `eligible` | GitHub, server says eligible | on when voice is ready | when `contributor` |
@@ -269,14 +270,18 @@ stays on its tile. The list has one tab stop; arrow keys, Home and End move thro
 row of the grid. Smaller circles in a panel under 400px wide (the island's drawer, a phone). A status line under the
 zones says when the list is not simply live, or is empty.
 
-**Footer.** The island's Ooga Chat panel's, under the roster and the reactions slot (#655): the name (a purple dot
+**Footer.** The island's emoji panel (`reaction-bar.js`, #655) left of the account controls where there is room and
+above them where not, as the design has it: the ten reactions any signed-in account may send while the audience is
+live, the hand only an active speaker raises (disabled, never hidden, for a listener), the picker on a long press. Then
+the island's Ooga Chat panel's account controls, the name over the buttons: the name (a purple dot
 only while speaking from Ooga Chat), the microphone (always first, 84px wide whatever it says: a disabled Unmute for a
 listener, explaining voice must be joined first; Mute or Unmute for a speaker), Join Voice for a listener the server
 allows to speak (Leave Voice for a speaker), and Sign out. A disabled button says why on itself. The seam
 (`media.state`) says who is a speaker; until #654 nobody is.
 
 **Account row.** The island's (`hud.js` `showAccount`), at the foot of Contributing Oogas, Online Oogas and The
-Commons: Contributor sign-in with GitHub while signed out (and GitHub sign-in is on), else the name, with a green dot
+Commons: while signed out (and GitHub sign-in is on), the sign-in screen's own Continue with GitHub, the design's sign-in
+button in place of the island's amber Contributor sign-in; else the name, with a green dot
 and how many are on the island while The Commons is live, Join voice (Mute or Unmute for a speaker), Leave voice for
 a speaker, and Sign out.
 
@@ -402,7 +407,7 @@ stylesheet 16.9 KB, sign-in picture 57.9 KB, Main Island's mark 3 KB): about 157
 alone was 71 KB, with sign-in 78 KB, with the space 88 KB). The manifest and icons are fetched by the browser when it
 considers installing, and the worker then keeps the same files once more in its cache, off the first paint. For comparison, the island's portable page is about
 39.7 MB (23 MB gzipped). The app loads no 3D engine, terrain, cabinets, replays or live feeds. `FIRST_LOAD_BUDGET` in
-the build (192 KB gzipped) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
+the build (224 KB gzipped) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
 adds weight.
 
 ## Artwork

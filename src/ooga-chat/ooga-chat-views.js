@@ -194,14 +194,17 @@
     heard.hidden = true;
     const list = make("ul", "cloud-roster slab");
     list.setAttribute("aria-label", "Speakers and listeners");
+    // The emoji panel (reaction-bar.js, the island's own, #655) left of the account controls where there is room and above
+    // them where not, as the design has it; its hand is an active speaker's alone.
     const reactions = make("div", "reactions");
-    reactions.hidden = true;
-    const foot = cloudFoot(ctx);
+    const foot = cloudFoot(ctx), footRow = make("div", "oc-chat-foot", reactions, foot.node);
+    ctx.reactions.bars.mount(reactions, { handAllowed: () => !!voice && voice.role === "speaker" });
+    const offPop = ctx.reactions.onPop((id, emoji) => tiles.pop(id, emoji));
     let version = -1, frame = 0, self = null, voice = null, people = [];
     const describe = (p, t) => {
       const speaker = p.role === "speaker", you = p.id === self, look = speaker ? p.muted ? "muted" : "on" : "";
       t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" ? "world" : "chat";
-      t.face = p.face || ""; t.look = look; t.hand = ""; t.self = you; t.micPressed = false;
+      t.face = p.face || ""; t.look = look; t.hand = p.hand || ""; t.self = you; t.micPressed = false;
       t.micDisabled = !you || voice.role !== "speaker";
       t.micWords = !speaker ? "" : `${p.display}: ${you ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute" : VOICE_WORDS[look]}`;
     };
@@ -220,9 +223,10 @@
       const words = HEARD[now.status]?.(zone) || (now.status === "live" && !now.list.length ? "Nobody is here yet." : "");
       set(statusText, "textContent", words);
       set(heard, "hidden", !words);
-      const who = state.session.identity.participant, mics = who !== self || state.voice !== voice;
+      const who = state.session.identity.participant, mics = who !== self || state.voice !== voice, role = voice && voice.role;
       self = who;
       voice = state.voice;
+      if (voice.role !== role) ctx.reactions.bars.refresh();
       if (now.version !== version) {
         version = now.version;
         people = now.list;
@@ -233,10 +237,11 @@
     const dispose = () => {
       listeners.abort();
       cancelAnimationFrame(frame);
+      offPop();
       tiles.dispose();
       foot.dispose();
     };
-    return { nodes: [zones, heard, list, reactions, foot.node], update, focus, dispose };
+    return { nodes: [zones, heard, list, footRow], update, focus, dispose };
   };
   // The Ooga Chat panel's footer, the island's: the visitor's name (a purple dot only while speaking from Ooga Chat), the
   // fixed-width microphone, always first and off for a listener, Join Voice for a listener the server allows to speak
@@ -283,16 +288,13 @@
     return { node, update, dispose };
   };
   // The account row the island keeps at the foot of Contributing Oogas, Online Oogas and The Commons (hud.js
-  // `showAccount`): Contributor sign-in with GitHub while signed out, else the name (a green dot while The Commons is
-  // live, with how many are on the island), Join voice (Mute or Unmute once speaking), Leave voice and Sign out.
+  // `showAccount`): while signed out, the sign-in screen's own Continue with GitHub (the design's sign-in button, in
+  // place of the island's Contributor sign-in), else the name (a green dot while The Commons is live, with how many are
+  // on the island), Join voice (Mute or Unmute once speaking), Leave voice and Sign out.
   const accountRow = ({ actions, media, commons: { model } }) => {
     const listeners = new AbortController(), { signal } = listeners;
-    const sign = make("span", "");
-    sign.dataset.sign = "";
-    letter(sign, "Contributor sign-in");
-    const login = make("button", "panel-primary", sign);
-    login.type = "button";
-    login.setAttribute("aria-label", "Contributor sign-in with GitHub");
+    const login = button("oc-provider oc-account-signin", PROVIDERS.github[0]);
+    login.dataset.provider = "github";
     login.title = "Contributors can sign in with GitHub to speak from a cloud.";
     login.addEventListener("click", () => actions.signIn("github"), { signal });
     const name = make("span", "account-name"), room = make("span", "account-room");
@@ -313,6 +315,8 @@
       const live = state.mode === "live", who = live && state.session, signing = state.busy === "signout";
       set(login, "hidden", !!who || signing || !live || !state.boot.features.github);
       set(login, "disabled", !!state.busy || !state.device.online || state.auth === "checking");
+      set(login, "textContent", state.busy === "github" ? PROVIDERS.github[1] : PROVIDERS.github[0]);
+      attr(login, "aria-busy", String(state.busy === "github"));
       set(node, "hidden", !live || !who && !signing && login.hidden);
       set(name, "hidden", !who);
       set(out, "hidden", !who && !signing);
