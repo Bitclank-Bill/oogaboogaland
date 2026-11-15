@@ -71,19 +71,31 @@
       handle: donations.sanitize(handle, donations.HANDLE_MAX).replace(/^@+/, "").trim(),
       message: donations.sanitize(message, donations.MESSAGE_MAX)
     });
-    const defaults = () => cleanDetails(donations.real ? login() || "anon" : game.state.handle, game.state.message);
+    // Reopening keeps the name the donor last gave (#656); the signed-in login, then "anon", only until they have given one.
+    const defaults = () => cleanDetails(donations.real ? game.state.handle || login() || "anon" : game.state.handle, game.state.message);
     const details = () => {
       const value = cleanDetails(handle.value, message.value);
       if (!simulated && donations.real && !value.handle) value.handle = "anon";
       return value;
     };
+    // What the donor gave, kept for the next opening in real mode: the message once it may ride, and the name whenever they
+    // changed it from the one the fields opened with ("anon" for one cleared on purpose), so a default they never touched
+    // (the login, "anon") is never kept as theirs. Factory fields can outlive a simulated mainland popup, so the field's
+    // owner decides its mode.
+    let openedHandle = "";
+    const enteredHandle = () => {
+      const now = cleanDetails(handle.value, "").handle;
+      return now === openedHandle ? game.state.handle : now || "anon";
+    };
     const rememberMessage = (value) => {
-      // Factory fields can outlive a simulated mainland popup, so use the field's owner to decide its mode.
-      if (donations.real && (fieldFlow !== flow || !simulated) && game.state.message !== value)
-        game.setIdentity({ handle: game.state.handle, message: value });
+      if (!donations.real || fieldFlow === flow && simulated) return;
+      const name = enteredHandle();
+      if (game.state.message !== value || game.state.handle !== name) game.setIdentity({ handle: name, message: value });
     };
     const rememberFinishedMessage = (owner) => {
-      if (!owner || !owner.messageOk()) return;
+      if (!owner) return;
+      // Under the message bar only the name is the donor's to keep.
+      if (!owner.messageOk()) return rememberMessage(game.state.message);
       if (owner.invoice) {
         if (owner.savedDetails) rememberMessage(owner.savedDetails.message);
       } else rememberMessage(message.value);
@@ -122,13 +134,14 @@
       if (paid) { clearTimeout(saveTimer); saveTimer = 0; }
       status.textContent = owner.detailsSaving ? "Saving changes…" : owner.detailsError
         || (owner.detailsDirty ? "Changes save automatically…" : hasInvoice ? "Details saved" : "");
-      if (hasInvoice && owner.savedDetails && !owner.detailsSaving && !owner.detailsError && owner.messageOk())
-        rememberMessage(owner.savedDetails.message);
+      if (hasInvoice && owner.savedDetails && !owner.detailsSaving && !owner.detailsError)
+        rememberMessage(owner.messageOk() ? owner.savedDetails.message : game.state.message);
     };
     const attachDetails = (owner, value, factory = false) => {
       fieldFlow = owner;
       hideHistory();
       handle.value = value.handle; message.value = value.message;
+      openedHandle = cleanDetails(value.handle, "").handle;
       if (factory) dock.append(fields);
       else dialog.insertBefore(fields, dialog.querySelector(".help"));
       if (dock) dock.hidden = !factory;
@@ -169,7 +182,7 @@
     const restoreDetails = (value) => {
       clearTimeout(saveTimer); saveTimer = 0;
       handle.value = value.handle; message.value = value.message;
-      if (fieldFlow?.messageOk()) rememberMessage(value.message);
+      if (fieldFlow) rememberMessage(fieldFlow.messageOk() ? value.message : game.state.message);
       track();
       if (fieldFlow) fieldFlow.detailsChanged();
     };

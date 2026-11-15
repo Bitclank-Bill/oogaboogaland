@@ -11037,6 +11037,9 @@ const donationClientChecks = async () => {
   elements.get("donation-fields").listeners.get("change")({ target: messageInput });
   const clearedDefault = deferredWrite && popupGame.state.message === "" && identityWrites === writesBeforeInput + 1;
   popup.close();
+  // Reopening keeps the name the donor last gave (#656), not the login; the login comes back only for one never given.
+  const keptName = popup.defaults().handle === "another-name" && popupGame.state.handle === "another-name";
+  popupGame.state.handle = "";
   K.donations.real = false;
   popup.open(true);
   const demoAnonymous = popup.defaults().handle === "" && popup.details().handle === "";
@@ -11045,9 +11048,9 @@ const donationClientChecks = async () => {
   const demoOutside = !dialog.open && closedCount === beforeDemoClose + 1;
   K.donations.real = true;
   const realAfterDemo = popup.defaults().handle === "tester" && popup.defaults().message === "";
-  record("donation popup: real invoices ignore backdrop dismissal, message typing defers the local save until change, a cleared real message updates the saved default, demo anonymous stays empty, demo backdrop dismissal closes once, and the next real default uses the signed-in login",
-    realOutside && clearedDefault && demoAnonymous && demoOutside && realAfterDemo,
-    JSON.stringify({ realOutside, clearedDefault, demoAnonymous, demoOutside, realAfterDemo }));
+  record("donation popup: real invoices ignore backdrop dismissal, message typing defers the local save until change, a cleared real message updates the saved default, reopening keeps the name last given, demo anonymous stays empty, demo backdrop dismissal closes once, and with no name given the next real default uses the signed-in login",
+    realOutside && clearedDefault && keptName && demoAnonymous && demoOutside && realAfterDemo,
+    JSON.stringify({ realOutside, clearedDefault, keptName, demoAnonymous, demoOutside, realAfterDemo }));
   // A saved name completes after an explicit preview; a typed prefix survives plain Tab. A tip under the message
   // bar goes out without a message, and its details screen offers the name alone.
   const settle = () => new Promise((resolve) => setImmediate(resolve));
