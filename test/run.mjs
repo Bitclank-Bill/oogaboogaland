@@ -5004,7 +5004,7 @@ const characterChecks = async () => {
   for (const geo of worn) mirrorGeometries.add(geo);
   const spare = BL.models.spareMagazine();
   collect(spare.node);
-  for (const name of ["jumbotron", "factory-kiosk-core", "factory-kiosk", "factory-models", "kortik-models", "tess"])
+  for (const name of ["jumbotron-font", "jumbotron", "factory-kiosk-core", "factory-kiosk", "factory-models", "kortik-models", "tess"])
     runInNewContext(await readFile(join(root, `src/js/${name}.js`), "utf8"), context);
   const kortik = BL.kortikModels.rig(), kortikHeads = ["headOpen", "headClosed", "headTalk", "redOpen", "redClosed", "redTalk"];
   collect(kortik.root);
@@ -9398,7 +9398,7 @@ const gameRulesChecks = async () => {
     // The jackpot wheel, from arcade-models.js and its scene half on the builders they load with: the house wins slowly, and every
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
-    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "sign-glyphs", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "ooga-portal-models", "ooga-portal", "arcade-block-watch", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron-font", "jumbotron", "sign-glyphs", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "ooga-portal-models", "ooga-portal", "arcade-block-watch", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
     // The Block Frenzy watch door: signed-in only, it opens Block Frenzy's watch deck, the real portal is crossed from the
     // hall's side within the opening, and the door opens no new way out of the hall.
@@ -10700,7 +10700,7 @@ const donationClientChecks = async () => {
     JSON.stringify({ advertisedLimits, validatedLimits, empty, tally, boards, legacyBoard, replay, raisedBar, snapshot, quiet, raisedLater, keptBoth, subBarRequest, overBarRequest, owned, heard, unlit, received }));
 
   let now = Date.now(), detailsOpen = false;
-  const kioskContext = { window: { BL: { jumbotron: { text: { GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } }, qr: { encode: () => ({ size: 1, modules: [1] }) }, donations: D } },
+  const kioskContext = { window: { BL: { jumbotronFont: { GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 }, qr: { encode: () => ({ size: 1, modules: [1] }) }, donations: D } },
     document: { createElement: () => ({ getContext: () => ({}) }) }, Date: class extends Date { static now() { return now; } } };
   for (const name of ["factory-kiosk-core", "factory-kiosk"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), kioskContext);
   const F = kioskContext.window.BL.factoryKiosk.create({ real: true, link: () => "/lightning", bananasFor: () => 1,
@@ -10901,7 +10901,7 @@ const donationClientChecks = async () => {
     values.join("|") === "77.97|77.97|96.46|100.00|—|0.00|—|0.25|1,250.00", JSON.stringify(values));
 
   const drawn = [], blankGlyph = [0, 0, 0, 0, 0, 0, 0];
-  kioskContext.window.BL.jumbotron.text.glyphOf = ch => { drawn.push(ch); return blankGlyph; };
+  kioskContext.window.BL.jumbotronFont.glyphOf = ch => { drawn.push(ch); return blankGlyph; };
   const paintContext = new Proxy({}, { get: () => () => {} });
   kioskContext.document.createElement = () => ({ getContext: () => paintContext });
   let capCalls = 0;
@@ -10961,7 +10961,8 @@ const donationClientChecks = async () => {
   runInNewContext(await readFile(new URL("../src/js/donation-popup.js", import.meta.url), "utf8"), kioskContext);
   let identityWrites = 0;
   const popupGame = { state: { handle: "", message: "hello", recentHandles: ["Ooga-Dev"] }, rememberHandle() {}, setIdentity(value) { identityWrites++; Object.assign(this.state, value); } };
-  const popup = K.donationPopup.create(popupGame), dialog = elements.get("donation-popup");
+  const popup = K.donationPopup.create(popupGame, undefined, { login: () => K.net.state.me?.login, bananasFor: (sats) => K.game.bananasFor(sats),
+    price: () => K.chain.snapshot.priceUsd, link: () => `${kioskContext.location.origin}/donate` }), dialog = elements.get("donation-popup");
   let closedCount = 0;
   popup.onClose(() => closedCount++);
   const popupQuote = async () => { popup.open(); for (const key of ["1", "0", "0", "0", "Enter"]) popupFlow.key({ key }); await Promise.resolve(); };
@@ -21449,7 +21450,7 @@ const timechainRoomChecks = async () => {
   // The shell's sphere, built for every room with its kind's own part set aside: the doorway's passage cut through wall
   // and screen alike, and the screen in quads (Canvas 2D maps a picture over four corners) none of which crosses the
   // dome canvas's seam over the door.
-  for (const name of ["math", "scene", "models", "jumbotron", "timechain-room-models"])
+  for (const name of ["math", "scene", "models", "jumbotron-font", "jumbotron", "timechain-room-models"])
     runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), context);
   const M = context.window.BL.models, RM = context.window.BL.timechainRoomModels, S = context.window.BL.scene, math = context.window.BL.math;
   for (const { kind } of R.ROOMS) RM.KINDS[kind] = { plan() {} };

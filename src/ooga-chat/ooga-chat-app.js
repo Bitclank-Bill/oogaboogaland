@@ -33,8 +33,9 @@
   // acknowledges it in the new zone's audience.
   const media = { available: false, state: Object.freeze({ role: "listener", muted: true }), release() {}, join() {}, leave() {}, mute() {}, zone() {} };
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
-  // `donating` ends the donation socket, opened once the service says its feed is live.
-  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null;
+  // `donating` ends the donation socket, opened once the service says its feed is live; `feeding` is Feed the Oogas,
+  // the island's own donation popup, made the first time it opens.
+  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null, feeding = null;
   const page = new AbortController();
   try {
     // Donations here are the service's or nothing: donations.js never plays its simulated tips in the app.
@@ -53,6 +54,7 @@
       zone = parseZone(localStorage.getItem(zoneKey));
     } catch { zone = parseZone(null); /* Storage may be unavailable. */ }
     const roster = BL.oogaChatRoster.create();
+    const donor = BL.oogaChatDonor.create({ key: storageKey(adapter.kind, "donor") });
     let listening = null, heard = 0, refused = 0;
     let state = { mode: "loading", boot: null, session: null, auth: "checking", notice: null, busy: false, zone, voice: media.state,
       audience: { status: "off", zone, list: [], version: 0 }, device: { online: navigator.onLine !== false, install: null, update: false } };
@@ -122,9 +124,14 @@
       }
       root.dataset.mode = "live";
       // The Bananas panel's figures: the island's donation socket over this origin's /donations relay (#664).
+      // A paid tip this page asked for teaches the popup its name, and every donation and on-chain sighting goes to
+      // the popup, which takes only its own invoice's.
       if (boot.features.feed === "live" && !donating) {
         BL.donations.useOrigin();
-        donating = BL.donations.subscribe(() => {});
+        donating = BL.donations.subscribe((donation, bananas) => {
+          if (BL.donations.receivedOwnInvoice(donation.id)) donor.rememberHandle(donation.handle);
+          feeding?.receive(donation, bananas);
+        }, { onSeen: (id, sats, due, left, pricing) => feeding?.seen(id, sats, due, left, pricing) });
       }
       set({ mode: "live", boot });
       const once = returned;
@@ -160,8 +167,20 @@
         if (media.available && gates(state, Date.now()).joinVoice) media.join(state);
       }
     };
+    // Feed the Oogas: real over this origin's relay while the feed is live, the simulated kiosk only on the fixture
+    // entry's demo, nothing otherwise. A GitHub account's login is the real default name; an X account or a visitor
+    // gives as anon unless they type a name (the server alone names a verified donor).
+    const feedOogas = () => {
+      const mode = state.mode === "live" ? state.boot.features.feed : "off";
+      if (mode !== "live" && !(mode === "demo" && fixture)) return;
+      feeding ||= BL.donationPopup.create(donor, null, {
+        login: () => state.session?.identity.provider === "github" ? state.session.identity.login : undefined,
+        bananasFor: BL.oogaChatDonor.bananasFor, price: () => 0, link: () => `${location.origin}/`
+      });
+      feeding.open(mode === "demo");
+    };
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
-      demo: fixture ? adapter.demo : null };
+      demo: fixture ? adapter.demo : null, feed: feedOogas };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [
@@ -209,6 +228,7 @@
     clearTimeout(relisten);
     feed?.dispose();
     donating?.();
+    feeding?.dispose();
     device?.dispose();
     bar?.dispose();
     auth?.dispose();

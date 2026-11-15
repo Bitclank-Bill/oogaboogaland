@@ -1,10 +1,41 @@
 // The kiosk flow on the mainland, real or simulated, and the name and message fields shared with the Factory's glass. The fields are
-// hidden: they only take the typing (and a phone's keyboard), which both kiosks draw on their own screens.
+// hidden: they only take the typing (and a phone's keyboard), which both kiosks draw on their own screens. Ooga Chat
+// shares it too (#656, scripts/ooga-chat.mjs SHARED): `build` makes the dialog, one a page, beside the Factory's dock
+// where the page has one, and `create`'s `options` bring what only the island knows, so this file reads nothing of
+// the island's own: `login()` (the signed-in GitHub login, the real default name), `bananasFor(sats)` (the demo's
+// count), `price()` (dollars a bitcoin for the demo's quote) and `link()` (the page's own donation address).
 (() => {
   "use strict";
   const BL = window.BL;
-  const create = (game, onDemoPayment) => {
-    const dialog = document.getElementById("donation-popup"), canvas = document.getElementById("donation-screen");
+  const build = (doc) => {
+    const found = doc.getElementById("donation-popup");
+    if (found) return found;
+    const make = (tag, attrs = {}, ...children) => {
+      const el = doc.createElement(tag);
+      for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+      el.append(...children);
+      return el;
+    };
+    const title = make("span", { "data-sign": "" }, "Feed the Oogas");
+    const dialog = make("dialog", { class: "modal donation-popup", id: "donation-popup", "aria-labelledby": "donation-title" },
+      make("div", { class: "panel-head" }, make("h2", { id: "donation-title" }, title),
+        make("button", { type: "button", class: "modal-close", id: "donation-close", "aria-label": "Close donation" }, "\u00d7")),
+      make("canvas", { id: "donation-screen", width: "400", height: "400", tabindex: "0", "aria-label": "Donation screen. Type an amount, press Enter to continue, A for your name and message. In the name field, the arrow shows previous names; Down Arrow previews a suggestion, Tab or Enter accepts it, and Escape cancels it. O for on-chain, C to copy, and Escape to go back." }),
+      make("div", { id: "donation-fields" },
+        make("label", { class: "field" }, make("span", {}, "Donation handle"),
+          make("input", { id: "donation-handle", type: "text", maxlength: "39", tabindex: "-1", autocomplete: "off", spellcheck: "false", placeholder: "anon" })),
+        make("label", { class: "field" }, make("span", { id: "donation-message-label" }, "Banana message (up to 280 characters)"),
+          make("input", { id: "donation-message", type: "text", maxlength: "280", tabindex: "-1", autocomplete: "off", placeholder: "Optional message" })),
+        make("div", { class: "donation-details-actions" }, make("span", { id: "donation-details-status", role: "status" }))),
+      make("p", { class: "help" }, "Pay with Lightning or on-chain. Your bananas arrive from the Factory when the payment confirms."));
+    BL.signGlyphs.letter(title);
+    const dock = doc.getElementById("factory-donation-fields");
+    if (dock) dock.before(dialog);
+    else doc.body.append(dialog);
+    return dialog;
+  };
+  const create = (game, onDemoPayment, { login, bananasFor, price, link: donateLink }) => {
+    const dialog = build(document), canvas = document.getElementById("donation-screen");
     const fields = document.getElementById("donation-fields"), dock = document.getElementById("factory-donation-fields");
     const handle = document.getElementById("donation-handle"), message = document.getElementById("donation-message"), closeButton = document.getElementById("donation-close");
     const status = document.getElementById("donation-details-status");
@@ -40,7 +71,7 @@
       handle: donations.sanitize(handle, donations.HANDLE_MAX).replace(/^@+/, "").trim(),
       message: donations.sanitize(message, donations.MESSAGE_MAX)
     });
-    const defaults = () => cleanDetails(donations.real ? BL.net.state.me?.login || "anon" : game.state.handle, game.state.message);
+    const defaults = () => cleanDetails(donations.real ? login() || "anon" : game.state.handle, game.state.message);
     const details = () => {
       const value = cleanDetails(handle.value, message.value);
       if (!simulated && donations.real && !value.handle) value.handle = "anon";
@@ -100,7 +131,7 @@
       handle.value = value.handle; message.value = value.message;
       if (factory) dock.append(fields);
       else dialog.insertBefore(fields, dialog.querySelector(".help"));
-      dock.hidden = !factory;
+      if (dock) dock.hidden = !factory;
       track();
       detailsState(owner);
     };
@@ -110,7 +141,7 @@
       rememberFinishedMessage(owner);
       if (saveTimer) save();
       fieldFlow = null;
-      dock.hidden = true;
+      if (dock) dock.hidden = true;
       dialog.insertBefore(fields, dialog.querySelector(".help"));
     };
     // Puts the typing in the name, all of it selected to type over, or the message, the caret at its end; with null,
@@ -249,8 +280,7 @@
     const open = (demo = false) => {
       if (dialog.open) return;
       simulated = demo;
-      // The page's own /donate address: a path where the router serves paths, a hash from disk or a named file.
-      const link = BL.router && !BL.router.served ? `${location.href.split("#")[0]}#/donate` : `${location.origin}/donate`;
+      const link = donateLink();
       help.textContent = simulated ? "This is a local simulation. No Bitcoin is sent." : "Pay with Lightning or on-chain. Your bananas arrive from the Factory when the payment confirms.";
       flow = BL.factoryKiosk.create({
         real: !simulated, demo: simulated, outerClose: true, link: () => link,
@@ -266,8 +296,7 @@
         rate: () => BL.donationRate?.current || donations.state.tally?.rate,
         watchRate: () => BL.donationRate?.watch(),
         request: value => ({ id: donations.createRequest(value).id, url: link }),
-        bananasFor: BL.game.bananasFor,
-        price: () => BL.chain.snapshot.priceUsd,
+        bananasFor, price,
         copy: (text) => { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {}); },
         pay: (id, sats) => {
           if (donations.real) return close();
@@ -325,5 +354,5 @@
     return { open, close, closeOutside, onClose: callback => { onClose = callback; }, receive, seen, dispose, defaults, details, typing: () => typed, restoreDetails, focusDetails, attachDetails, detachDetails, detailsState,
       history: () => historyOpen ? historyMatches : null, historyCount: () => game.state.recentHandles.length, toggleHistory, chooseHistory, closeHistory: hideHistory };
   };
-  BL.donationPopup = { create };
+  BL.donationPopup = { build, create };
 })();

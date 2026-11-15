@@ -367,15 +367,16 @@
   // The Bananas tab (#656): the island's own panel (banana-panel.js, native.css), filled from donations.js over this
   // origin's /donations relay while the service's feed is live (the app subscribes, ooga-chat-app.js), or on the
   // fixture entry alone from its labelled demo (`ctx.demo`). With no feed (off, loading or unreachable) it says
-  // donations aren't open here, never zeros or a demo. Feed the Oogas stays hidden until the native popup comes to the
-  // app. The panel's price is the tally's, so it is shown afresh whenever the tab is opened.
+  // donations aren't open here, never zeros or a demo, and Feed the Oogas, the island's own popup (`ctx.feed`), shows
+  // only while they are. The panel's price is the tally's, so it is shown afresh whenever the tab is opened.
   const bananas = (ctx) => {
     const node = make("section", "panel oc-panel oc-bananas");
     node.dataset.panel = "bananas";
     BL.bananaPanel.build(node);
     for (const el of node.querySelectorAll("[data-sign]")) letter(el);
     const chip = node.querySelector(".panel-title .panel-chip"), slab = node.querySelector(".banana-slab");
-    node.querySelector('[data-action="feed"]').hidden = true;
+    const feedButton = node.querySelector('[data-action="feed"]');
+    feedButton.addEventListener("click", () => ctx.feed());
     const closed = make("div", "slab oc-slab oc-pending", make("p", "", "Donations aren't open on Ooga Chat right now."));
     node.append(closed);
     const visible = () => !node.closest("[hidden]");
@@ -391,7 +392,7 @@
       panel?.dispose();
       panel = null;
       const open = feed === "live" || feed === "demo";
-      slab.hidden = chip.hidden = !open;
+      slab.hidden = chip.hidden = feedButton.hidden = !open;
       closed.hidden = open;
       if (!open) return;
       const storageKey = ctx.storageKey("recent-bar");

@@ -318,6 +318,69 @@ img.oc-zone-icon { width: 24px; image-rendering: pixelated; }
 .oc-panel { padding: 0; overflow: visible; }
 .oc-pending p { margin: 0; color: rgba(243, 239, 228, 0.7); }
 
+/* Feed the Oogas: the island's donation dialog (donation-popup.js), framed as the island frames its dialogs (style.css
+   `.modal`, `.modal-close`, `.donation-popup`). The kiosk draws the name and message on its own screen; their fields
+   only take the typing, so they stay in the page, focusable, a phone's keyboard able to open on them, but out of
+   sight; 16px keeps iOS from zooming in. */
+.donation-popup {
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  margin: auto;
+  padding: 16px 18px 18px;
+  border: 3px solid var(--wood-edge);
+  border-radius: var(--radius);
+  background: var(--planks);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: var(--paper);
+  font: inherit;
+}
+.donation-popup::backdrop { background: rgba(0, 0, 0, 0.6); }
+.donation-popup .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.donation-popup h2 { margin: 0 0 12px; font-size: 14px; color: var(--paper); filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
+.donation-popup .modal-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+  padding: 0;
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--paper);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.donation-popup .modal-close:hover,
+.donation-popup .modal-close:focus-visible { background: rgba(0, 0, 0, 0.38); }
+#donation-fields {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+#donation-fields input { font-size: 16px; }
+#donation-screen { display: block; width: 100%; height: auto; image-rendering: pixelated; border-radius: 6px; }
+#donation-screen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.donation-popup .help {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  background: var(--tablet);
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  font-size: 11px;
+  line-height: 1.5;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
 .oc-device { display: grid; gap: 6px; margin: 12px 4px 0; color: rgba(243, 239, 228, 0.78); font-size: 12px; }
 .oc-device-line { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0; }
 
