@@ -1,5 +1,5 @@
 // Ooga Chat's roster as circles, the island's (cloud-panel.js) and Ooga Chat's alike (#656): everyone in an outdoor zone,
-// six to a row (four in the island's phone drawer), in the order the caller hands them (speakers first), the whole list scrolling in its slab. A tile is a
+// as many to a row as fit at 76 px or more a column, in the order the caller hands them (speakers first), the whole list scrolling in its slab. A tile is a
 // portrait (a picture, or the native Ooga face when there is none or it fails, asked for once) carrying a speaker's
 // source ring (green from the island, purple from Ooga Chat) and, over its corner, a raised hand or a reaction; then
 // the name on one line, cut short with its whole self in the title (an Ooga Chat speaker's purple dot before it); then

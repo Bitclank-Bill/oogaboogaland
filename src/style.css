@@ -1108,7 +1108,7 @@ body[data-active-scene="block"] .mode-hud {
 /* Without the island's About button, the title itself keeps the room's chip and the bell at the right. */
 .panel[data-panel="chat"][data-view="private"] > .panel-title h2 { margin-right: auto; }
 /* Ooga Chat (cloud-panel.js), the last tab, and Ooga Chat's own (the app takes these rules): two zone buttons, one roster
-   of circles six to a row (four in the island's phone drawer) (speakers, then listeners) scrolling in its slab, the emoji bar and the footer. A speaker's
+   of circles, as many to a row as fit at 76 px or more a column (six in a 600 px panel) (speakers, then listeners) scrolling in its slab, the emoji bar and the footer. A speaker's
    portrait carries a 3px ring past a 3px dark gap, green for the island, purple for Ooga Chat, whose speakers also have
    a purple dot before their name. A name keeps to one line, cut short with its whole self in its title. */
 .sheet-toggle-cloud { height: 56px; }
@@ -1126,7 +1126,7 @@ body[data-active-scene="block"] .mode-hud {
 .cloud-zone > img.cloud-zone-icon:not([src]) { visibility: hidden; }
 .cloud-status [hidden] { display: none; }
 .panel > .cloud-roster {
-  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-content: start; gap: 10px 4px; margin: 0; padding: 14px 8px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); align-content: start; gap: 10px 4px; margin: 0; padding: 14px 8px;
   overflow-y: auto; overscroll-behavior: contain; list-style: none; container-type: inline-size;
 }
 /* A tile (audience-tiles.js): the portrait with its ring and the hand or a reaction over its corner, the name, and the
@@ -1160,13 +1160,6 @@ body[data-active-scene="block"] .mode-hud {
 .cloud-role { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: rgba(243, 239, 228, 0.62); font-size: 9px; white-space: nowrap; }
 .cloud-role .roster-voice svg { width: 10px; height: 10px; }
 .cloud-mic[hidden] { display: none; }
-/* The island's phone drawer (sheet.js `phone`) keeps four to a row with larger circles: six there leave them touching. */
-@media (pointer: coarse) and (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
-  .sheet .panel > .cloud-roster { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 6px; }
-  .sheet .cloud-tile { --face: 44px; contain-intrinsic-block-size: auto 95px; }
-  .sheet .cloud-name { font-size: 11px; }
-  .sheet .cloud-role { font-size: 11px; }
-}
 .cloud-foot { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; }
 .cloud-foot-name { min-width: 0; color: var(--paper); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 .cloud-foot-name:empty { display: none; }
