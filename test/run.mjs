@@ -21849,7 +21849,7 @@ const timechainRoomChecks = async () => {
   const walkBack = (held, pose, others = null) => {
     const at = { x: 0, y: 0, z: 0 }, cave = { root: { position: at, rotation: { y: 0 } }, baseY: 0, headOffset: 1.5, viewLift: 0, traits: { name: "tester", height: 1.6 }, parts: { head: {} } };
     let push = null;
-    const site = { plug: { visible: true }, choose() {}, lock() {}, setDoors() {}, say() {}, tick() {}, directory: {}, keys: [] };
+    const site = { plug: { visible: true }, choose() {}, lock() {}, pinMode() {}, setDoors() {}, say() {}, tick() {}, directory: {}, keys: [] };
     const gate = GB.timechainGate.create({
       site, place: { x: 0, y: 0, z: 0, ry: 0 }, crew: { player: cave, steer(x, z, _, power) { push = power ? [x, z] : null; }, thrust() {} },
       pilot: { navigate(to) { at.x = to.position.x; at.y = to.position.y; at.z = to.position.z; }, setExternalControl() {}, showAct() {}, adopt() {}, eyeFov: () => 1 },
@@ -22339,7 +22339,14 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   const chosen = await b.evaluate(read);
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "24")} B.advance(0.2, 1 / 60); })()`);
   const walkedOff = await b.evaluate(read);
-  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "19")} })()`);
+  // Regression: the empty rooms' 8 and 9 are a PIN's digits like any other, drawn plain while the keypad asks for one.
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; window.__lockedWas = BL.net.state.lockedRooms[0]; BL.net.state.lockedRooms[0] = 1; ${sphereStand("0.4", "19")} })()`);
+  await clickKey("0");
+  await clickKey("8");
+  const pin = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
+  await clickKey("back");
+  await clickKey("back");
+  const unpinned = await b.evaluate(`(() => { BL.net.state.lockedRooms[0] = window.__lockedWas || 0; __ooga.advance(0.6, 1 / 60); return ${read}; })()`);
   await clickKey("3");
   await clickKey("enter");
   const entering = await b.evaluate(`(() => { __ooga.advance(0.6, 1 / 60); return ${read}; })()`);
@@ -22362,6 +22369,8 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   record("timechain bridge keypad: from the bridge's near half an empty number does nothing, a room's number is chosen with the Ooga and view still the player's, and walking off lets it go",
     empty.state === "idle" && empty.eight === "34,30,27" && chosen.state === "keypad" && chosen.remote && !chosen.busy && chosen.selection === 3 && chosen.lens === null && chosen.act && Math.abs(chosen.along - 19) < 0.2
       && walkedOff.state === "idle" && walkedOff.selection === -1, JSON.stringify({ empty, chosen, walkedOff }));
+  record("timechain bridge keypad: while it asks for a locked room's PIN the empty rooms' 8 and 9 are digits like any other, drawn plain, and greyed out again after",
+    pin.state === "pin" && pin.pin === "8" && pin.eight === "58,52,48" && unpinned.state !== "pin" && unpinned.eight === "34,30,27", JSON.stringify({ pin, unpinned }));
   record("timechain bridge keypad: Enter clicked from the bridge glides into the Ooga's eyes where it stands and walks the same Ooga into the chosen room",
     !entering.remote && entering.lens === "eyes" && entering.along > 16 && inside && room.room === 3 && room.player === "portlandhodl", JSON.stringify({ entering, room }));
   record("timechain bridge keypad: walked back out in first person the view stays in the Ooga's head to the end and after",

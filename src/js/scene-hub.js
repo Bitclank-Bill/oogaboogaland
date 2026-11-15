@@ -5707,7 +5707,7 @@
       case "room-sign":
         return "Room sign · tap to copy hash";
       case "sphere-key":
-        return o.key === "back" ? "Back · return to room choice" : o.key === "enter" ? "Enter · open selected room" : o.dim ? `Room ${o.key} · empty` : `Room ${o.key} · select`;
+        return o.key === "back" ? "Back · return to room choice" : o.key === "enter" ? "Enter · open selected room" : timechainIsland.gate.askingPin ? `${o.key} · PIN digit` : o.dim ? `Room ${o.key} · empty` : `Room ${o.key} · select`;
       case "sphere-directory":
         return "Directory · which room each number opens";
       case "lab-link":
@@ -6555,7 +6555,7 @@
         // taking the Ooga or the view, until Enter.
         const gate = timechainIsland.gate, player = pilot.player;
         if (!player) hud.toast("Only an Ooga can go in. Double-tap one, then walk it up to the keypad.");
-        else if (o.dim) hud.toast(`Room ${o.key} is empty.`);
+        else if (o.dim && !gate.askingPin) hud.toast(`Room ${o.key} is empty.`);
         else if (gate.busy) gate.press(o.key);
         else if (!gate.pressFromBridge(o.key)) hud.toast("Walk onto the bridge up to the doors to use the keypad.");
         break;

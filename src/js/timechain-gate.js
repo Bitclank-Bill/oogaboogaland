@@ -693,6 +693,8 @@
       g.open = g.open < want ? Math.min(want, g.open + step) : Math.max(want, g.open - step);
       site.setDoors(g.open * g.open * (3 - 2 * g.open));
       site.say(padWords());
+      // A PIN's digits are any of 0–9, the empty rooms' numbers too.
+      site.pinMode(g.state === "pin");
       site.tick(dt);
     };
     const view = (dt) => {
@@ -804,6 +806,7 @@
       // Chosen from the bridge, the Ooga is the player's and the doorway holds nothing.
       get busy() { return g.state !== "idle" && !g.remote; },
       get remote() { return g.remote; },
+      get askingPin() { return g.state === "pin"; },
       get crossing() { return g.state === "opening" || g.state === "crossing" || g.state === "gone" || g.state === "leaving" || g.state === "arriving"; },
       debug: g, choose, commit, disengage, press
     };

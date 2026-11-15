@@ -406,7 +406,8 @@
   };
   // A keypad as a set of nodes, unplaced: the doorway's outside and the lock inside the Conference Room. 1–9, Back, 0 and Enter
   // are each a node the scene can pick; `choose` lights a number, `lock` hangs a padlock over one, `say` writes the window.
-  // The numbers in `dim` (the doorway's empty rooms) are greyed out for good; a dim key's `dim` says so to the scene.
+  // The numbers in `dim` (the doorway's empty rooms) are greyed out, a dim key's `dim` saying so to the scene, except
+  // while the keypad takes a PIN (`pinMode`), whose digits are any of 0–9.
   const padRig = (dim = []) => {
     const pad = createNode({ geometry: keypad(), sightHidden: true });
     const keys = KEYS.map((key, i) => ({ key: String(i + 1), dim: dim.includes(i + 1), node: createNode({ geometry: dim.includes(i + 1) ? DIM_DIGIT_KEYS[i] : DIGIT_KEYS[i], position: { x: key.x, y: key.y, z: 0.033 }, sightHidden: true }) }));
@@ -420,9 +421,9 @@
     const say = (text, ink) => { display.say(text, ink); readout.visible = !!text; };
     const locked = new Uint8Array(10);
     // A key lit (0–9), or none (-1); the selected number and ready Enter label turn black against amber.
-    let selected = -1;
+    let selected = -1, pin = false;
     const keyOf = (digit) => digit === 0 ? zero : keys[digit - 1];
-    const cap = (digit) => keyOf(digit).dim ? (digit ? DIM_DIGIT_KEYS[digit - 1] : DIM_ZERO_KEY) : digit === selected ? (digit ? LIT_DIGIT_KEYS[digit - 1] : LIT_ZERO_KEY) : locked[digit] ? LOCKED_KEY : digit ? DIGIT_KEYS[digit - 1] : ZERO_KEY;
+    const cap = (digit) => keyOf(digit).dim && !pin ? (digit ? DIM_DIGIT_KEYS[digit - 1] : DIM_ZERO_KEY) : digit === selected ? (digit ? LIT_DIGIT_KEYS[digit - 1] : LIT_ZERO_KEY) : locked[digit] ? LOCKED_KEY : digit ? DIGIT_KEYS[digit - 1] : ZERO_KEY;
     const choose = (digit) => {
       const was = selected;
       selected = Number.isInteger(digit) && digit >= 0 && digit <= 9 && !keyOf(digit).dim ? digit : -1;
@@ -437,7 +438,12 @@
     };
     // What the Enter key reads on the room's lock, and whether it is ready to press.
     const actAs = (word, ready) => { enter.node.geometry = ACT_KEYS[word][ready ? 1 : 0]; };
-    return { pad, keys: [...keys, zero, back, enter], readout, say, tick: display.tick, choose, lock, actAs };
+    const pinMode = (on) => {
+      if (pin === !!on) return;
+      pin = !!on;
+      for (let digit = 0; digit <= 9; digit++) if (keyOf(digit).dim) keyOf(digit).node.geometry = cap(digit);
+    };
+    return { pad, keys: [...keys, zero, back, enter], readout, say, tick: display.tick, choose, lock, actAs, pinMode };
   };
   // Under the doorway's keypad, on a plate of its own, the DIRECTORY button, which opens the room directory.
   const DIRECTORY_KEY = keyFace(0.3, 0.07, "DIRECTORY", 0.0066, "#5a4022", "#f2d39a");
@@ -576,7 +582,7 @@
       for (const batch of logoBatches) batch.node.depthBias = inside ? -1.2 : 0;
     };
     return { node, shell: shellNode, outer, turn, setDoors, view, screen, logoBatches, entrance, bridge: bridgeNode, doors, plug: plugNode, keypad: pad, keys: rig.keys, readout: rig.readout, say: rig.say, tick: rig.tick,
-      choose: (room) => { rig.choose(room); directory.choose(room); }, lock: (room, on) => { rig.lock(room, on); directory.lock(room, on); }, directory, directoryKey, picture, place };
+      choose: (room) => { rig.choose(room); directory.choose(room); }, lock: (room, on) => { rig.lock(room, on); directory.lock(room, on); }, pinMode: rig.pinMode, directory, directoryKey, picture, place };
   };
   // Most of the time the screen holds its picture; every minute or so it runs a seven-second show on the lunes'
   // `glow` and `highlight`, never the same one twice running, then settles back exactly. Some shows take the logos
