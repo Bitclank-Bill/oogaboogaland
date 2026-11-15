@@ -619,8 +619,62 @@
     send.disabled = true;
     const form = make("form", "chat-form", make("span", "chat-field", input, left), send);
     form.autocomplete = "off";
+    // The name field at its top, as the island's Commons has it (index.html `chat-identity`, chat.js): the account's island
+    // display name, shown to members only, saved through the edge to the island (`ctx.commons.rename`).
+    const nameInput = make("input", "");
+    Object.assign(nameInput, { id: "oc-commons-name", type: "text", minLength: 3, maxLength: 24, autocomplete: "off", disabled: true });
+    nameInput.setAttribute("aria-describedby", "oc-commons-name-status");
+    const nameLabel = make("label", "", "Name");
+    nameLabel.htmlFor = nameInput.id;
+    const nameSave = make("button", "chat-display-save", "Save");
+    nameSave.type = "submit";
+    nameSave.disabled = true;
+    const nameForm = make("form", "chat-display-form", nameLabel, nameInput, nameSave);
+    nameForm.autocomplete = "off";
+    const nameStatus = make("p", "chat-display-status");
+    nameStatus.id = "oc-commons-name-status";
+    nameStatus.setAttribute("role", "status");
+    nameStatus.setAttribute("aria-live", "polite");
+    const identity = make("div", "chat-identity", nameForm, nameStatus);
+    identity.hidden = true;
+    let nameShown = "", nameSaving = false, nameComposing = false;
+    // While the Commons joins again (after a save) the last name stays shown, off until the welcome comes back.
+    const showName = () => {
+      const you = model.state.you;
+      if (you) {
+        const display = you.display || you.login;
+        if (display !== nameShown) { nameInput.value = display; if (!nameSaving) nameStatus.textContent = ""; }
+        nameShown = display;
+      }
+      identity.hidden = !you && !nameShown;
+      nameInput.disabled = nameSave.disabled = !you || nameSaving;
+    };
+    nameForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!model.state.you || nameSaving || nameComposing) return;
+      const login = model.state.you.login, clean = nameInput.value.replace(/\s+/g, " ").trim();
+      if (clean.length < 3 || clean.length > 24 || /[^\w .,!?'@#:-]/.test(clean)) {
+        nameStatus.textContent = "Use 3–24 letters A–Z, digits, spaces or _ . , ! ? ' @ # : -";
+        return;
+      }
+      nameSaving = true;
+      nameInput.disabled = nameSave.disabled = true;
+      nameStatus.textContent = "Saving display name…";
+      let result;
+      try { result = await ctx.commons.rename(clean); } catch { result = { ok: false }; }
+      nameSaving = false;
+      if (result.ok) nameInput.value = nameShown = result.display;
+      showName();
+      if (result.ok || model.state.you?.login === login) nameStatus.textContent = result.ok ? "Display name saved." : result.error || "Could not save display name. Try again.";
+    });
+    nameInput.addEventListener("compositionstart", () => { nameComposing = true; });
+    nameInput.addEventListener("compositionend", () => { nameComposing = false; });
+    nameInput.addEventListener("keydown", (event) => {
+      if (event.isComposing || event.keyCode === 229 || nameComposing) return;
+      if (event.key === "Escape") { event.preventDefault(); document.getElementById("oc-tab-commons")?.focus({ preventScroll: true }); }
+    });
     const account = accountRow(ctx);
-    const node = make("section", "panel oc-panel oc-commons", header, log, status, announcement, form, account.node);
+    const node = make("section", "panel oc-panel oc-commons", header, identity, log, status, announcement, form, account.node);
     node.dataset.panel = "chat";
     const conversation = BL.commonsLog.create({ log, form, input, left, send, status, statusText, announcement },
       { keep: BL.oogaChatCommons.KEEP, send: (text, clientId) => ctx.commons.send({ t: "chat", text, clientId }), unicode: () => model.state.unicode,
@@ -631,6 +685,7 @@
       if (kind === "lines") conversation.heard(a, b);
       else if (kind === "receipt") conversation.heard([], false, a);
       else if (kind === "welcome" && !model.state.you) conversation.clear();
+      if (kind === "welcome") showName();
       if ((kind === "welcome" || kind === "players") && last) update(last);
     });
     const watch = onShown(node, () => conversation.show(!node.closest("[hidden]")));
@@ -638,6 +693,7 @@
       last = state;
       watch();
       account.update(state);
+      showName();
       const socket = state.commons.status, live = socket === "live" && !!model.state.you;
       const words = live && !model.state.send ? COMMONS_WORDS["read-only"] : COMMONS_WORDS[socket] || "";
       const key = `${socket}|${live}|${model.state.send}|${model.state.you?.login}|${model.state.players.size}`;

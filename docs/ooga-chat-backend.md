@@ -82,6 +82,7 @@ anything is handed on, and the bridge never reads a browser header at all.
 | `revoke` | nothing (cleanup works while admissions are off) | `{ revoked }`: the Audience closes every socket of that principal with 4401 (`logout`, `logout-all`, `deleted`), or for `eligibility` ends its lease and its right to ask again while it keeps listening |
 | socket `/audience` (`ChatBridge.fetch`) | `bridge`, the `AUDIENCE` binding | the audience socket (#665, below), handed to the Audience object with the edge's assertion as `x-audience-principal`, and only the WebSocket headers |
 | `POST /media/<op>` (`ChatBridge.fetch`) | `bridge`, the `AUDIENCE` binding | a media call (#666, below), its body passed on to the Audience object with the same assertion |
+| `display` | `bridge` and `commons`; a GitHub principal | `{ display }`: the account's island display name (`players.display`) set as the island's `PATCH /api/me` sets it, by its rules (`sanitizeDisplay`: 3 to 24 letters, digits, spaces or simple punctuation, else `invalid_display`), after the island decides again that the account is an eligible contributor (`capability_required` otherwise, banned included). An account that never signed in on the island gets its player row (id and login) as a first island sign-in would make it (`chat-display.js`) |
 
 Later issues add their operations here.
 
@@ -128,6 +129,7 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | `GET /api/chat/audience`, upgraded | the audience socket (#665, below), from the app's own page with a session |
 | `POST /api/chat/media/<op>` | media signalling (#666, below), from the app's own page with a session; `publish/*` needs `speak` and GitHub |
 | `GET /api/chat/commons`, upgraded | The Commons and Online Oogas (#670, below), from the app's own page, for an eligible GitHub contributor |
+| `POST /api/chat/commons/name` | `{ display }` → `{ display }`: the member's name, saved as their island display name through the bridge's `display`, from the app's own page, for an eligible GitHub contributor while the Commons is on: 401 no session, 403 not eligible now, 429 too many saves (`CHAT_AUTH_LIMITER`), 400 a name the island refuses, 503 off or unanswered. The app then joins the Commons again, so the Room's welcome and every later line carry the new name |
 | any other `/api/*`, `/auth/*`, `/donations/*` | a JSON 404 (`{ error: { code: "not_found" } }`), never the app's HTML |
 
 Every other path is served from the staged app. Only `/api/*`, `/auth/*` and `/donations/*` run the Worker
@@ -551,7 +553,7 @@ A socket kept open across a hibernation misses nothing and gets no second welcom
 | Online Oogas: who is here, zone, voice, hand | no | no | no | yes, without positions | yes, with distances |
 | Private conversations, voice links | no | no | no | no (island only) | yes |
 | A body, poses, NPC host, games, chalk | no | no | no | no | yes |
-| Edit the display name | no | no | no | on the island (`PATCH /api/me`); shown in both | yes |
+| Edit the display name | no | no | no | yes, the name field at the top of The Commons (`POST /api/chat/commons/name`), saved as the island's own; shown in both | yes (`PATCH /api/me`) |
 
 **Access ends.** Signing out, deleting the account or losing eligibility (the edge's `revoke`, #663) closes every member
 socket of that account at once (`communityRevoke`); the Room's minute sweep closes one past its hourly re-authentication
