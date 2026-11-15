@@ -282,7 +282,7 @@
   const cloudFoot = ({ actions, media }) => {
     const listeners = new AbortController(), { signal } = listeners;
     const name = make("span", "cloud-foot-name");
-    const mute = button("foot-button cloud-mute", "Unmute"), join = button("foot-button", "Join Voice"), out = button("link", "Sign out");
+    const mute = button("foot-button cloud-mute", "Unmute"), join = button("foot-button cloud-voice", "Join Voice"), out = button("link", "Sign out");
     const muteWhy = explain(mute), joinWhy = explain(join);
     mute.setAttribute("aria-pressed", "false");
     mute.addEventListener("click", (event) => {
