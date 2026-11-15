@@ -5,6 +5,9 @@
 // GitHub again lands on the same kind of account, while X always lands on the X listener, whose handle looks like a
 // contributor's and whose answer claims to speak, so a review shows that neither counts. `provider-disabled` turns X
 // sign-in off, `expiring` ends its session 20 s after load, and `signout-fails` never confirms a sign-out.
+// `demo-payment` answers the feed in demo mode, and `real-payment` answers it live as the service does: donations.js
+// then speaks to this origin's /donations/* as it would to the edge's relay, which the fixture's own server answers
+// with its 404, so the real kiosk shows its error and nothing more (the suite's server answers it as each check needs).
 // `?roster=` picks the audience a signed-in account hears (`ROSTERS`): `mixed` (the default: world and app speakers,
 // listeners, a duplicate and a missing total, then a join, a rename, a gap the page must resync over and a leave, one
 // every 4 s), `empty`, `crowd` (300 listeners), `reconnecting` (drops after 6 s and comes back 3 s later to the same
@@ -16,7 +19,7 @@
   const BL = window.BL = window.BL || {};
   const { BOOTSTRAP_VERSION, PROTOCOLS, parseBootstrap, parseSession } = BL.oogaChatConfig;
   const STATES = ["signed-out", "listener", "contributor", "ineligible", "unknown", "revoked", "provider-disabled", "expiring", "signout-fails",
-    "demo-payment", "unavailable"];
+    "demo-payment", "real-payment", "unavailable"];
   const protocols = Object.fromEntries(Object.entries(PROTOCOLS).map(([name, version]) => [name, [version]]));
   const answer = (feed, x) => ({ version: BOOTSTRAP_VERSION, protocols,
     features: { github: true, x, voice: false, feed, commons: true },
@@ -113,7 +116,7 @@
     const asked = (name) => name && { ...ACCOUNTS[name], expiresAt };
     let account = asked(SIGNED_IN[state]), disposed = false;
     const bootstrap = async () => state === "unavailable" ? { ok: false, mode: "unavailable", reason: "fixture" }
-      : parseBootstrap(answer(state === "demo-payment" ? "demo" : false, state !== "provider-disabled"), null, { fixture: true });
+      : parseBootstrap(answer(state === "demo-payment" ? "demo" : state === "real-payment", state !== "provider-disabled"), null, { fixture: true });
     const session = async () => disposed || !account ? null : parseSession(account, now());
     const signIn = (boot, provider) => {
       account = asked(provider === "x" ? "listener" : ["ineligible", "unknown", "revoked"].includes(state) ? state : "contributor");

@@ -10146,7 +10146,9 @@ const ghostHuntChecks = async () => {
 // once and leave no duplicate id, timer or growing DOM behind, never making a WebGL context. Feed the Oogas on the
 // demo, signed out and by the visitor's keys, refuses a tip under the minimum, carries a message only at the message
 // bar, counts its receipt in the Bananas panel, keeps the donor's name for the next tip and hands the focus back; its
-// screens fit at each width. Each tab and screen at each width is saved to untracked/ooga-chat-app for review.
+// screens fit at each width. With the service's feed live it is the real kiosk over this server's stand-in relay, and
+// whatever the relay answers it never simulates or counts a payment; with the service unreachable there is no Feed.
+// Each tab and screen at each width is saved to untracked/ooga-chat-app for review.
 const oogaChatAppChecks = async () => {
   const B = await import(pathToFileURL(join(root, "scripts/ooga-chat.mjs")).href);
   const out = mkdtempSync(join(tmpdir(), "ooga-chat-app-")), staged = join(out, "app"), shots = join(root, "untracked", "ooga-chat-app");
@@ -10155,7 +10157,21 @@ const oogaChatAppChecks = async () => {
   const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png",
     ".webp": "image/webp", ".jpg": "image/jpeg", ".json": "application/json", ".webmanifest": "application/manifest+json" };
   const { createServer } = await import("node:http");
+  // The edge's /donations relay, for the real-mode checks: `down` drops the call as an unreachable service does,
+  // `closed` refuses it as bananapayserver does while closed, `invoice` answers with an invoice nothing here can pay.
+  // The donation socket's handshake gets the same answer and is never upgraded, so no donation event, and so no
+  // payment, ever arrives. Every call is kept.
+  let relay = "down";
+  const relayed = [];
   const server = createServer((request, response) => {
+    if (request.url.startsWith("/donations/")) {
+      relayed.push(`${request.method} ${request.url}`);
+      if (relay === "down") return request.socket.destroy();
+      const reply = relay === "closed" ? { error: "closed" }
+        : { request: "fixture-request", invoice: { id: "fixture-invoice", bolt11: "lntbs10u1fixture", expires: Math.floor(Date.now() / 1000) + 300 }, bananas: null, rate: null };
+      response.writeHead(relay === "closed" ? 503 : 200, { "content-type": "application/json" });
+      return response.end(JSON.stringify(reply));
+    }
     const path = decodeURIComponent(new URL(request.url, "http://localhost").pathname).slice(1) || "index.html", file = join(staged, path);
     let body = null;
     if (file.startsWith(staged + sep)) try { body = readFileSync(file); } catch { body = null; }
@@ -10234,11 +10250,16 @@ const oogaChatAppChecks = async () => {
       })()`);
     } finally { b.close(); }
     b = await page(1024, "state=unavailable");
-    let unread;
+    let unread, unserved;
     try {
       await open(b, "roster", 1200);
       unread = await b.evaluate(`({ rows: document.querySelectorAll(".oc-roster li[data-name]").length,
         note: (() => { const n = document.querySelector(".oc-roster-note"); return n && !n.hidden ? n.textContent : ""; })() })`);
+      // The service unreachable is no feed: no Feed the Oogas, no demo, and its closed note, never a simulated kiosk.
+      await open(b, "bananas", 450);
+      unserved = await b.evaluate(`({ feed: !document.querySelector('#oc-view-bananas [data-action="feed"]').hidden,
+        note: !document.querySelector('#oc-view-bananas .oc-pending').hidden, popup: !!document.querySelector('dialog.donation-popup'),
+        real: BL.donations.real, simulate: BL.donations.config.simulate })`);
     } finally { b.close(); }
     const reachable = roster.rows === 5 && roster.chip === "5 Oogas" && roster.before.split(",").length === 4 && roster.all.split(",").length === 5
       && roster.all.split(",").includes("sample-moss") && roster.most.startsWith("sample-fern,") && roster.before.startsWith("sample-oak,")
@@ -10351,6 +10372,47 @@ const oogaChatAppChecks = async () => {
     }
     record("Ooga Chat page: Feed the Oogas' amount, quote, details and invoice screens each fit inside the screen at 320, 390 and 1024 pixels",
       Object.values(screens).every(Boolean), JSON.stringify(screens));
+
+    // Real mode (`state=real-payment`, the feed live as the service answers it), this server standing in for the relay.
+    // Unreachable, refusing or answering with an invoice, the kiosk is the real one and asks the API each time, and it
+    // never falls back to a simulated payment: no wait, nothing paid from a key and nothing counted. Every screen it
+    // showed is kept, watched from before the dialog is made.
+    b = await page(1024, "state=real-payment");
+    let real;
+    try {
+      await open(b, "bananas", 600);
+      await b.evaluate(`window.__stages = []; new MutationObserver((list) => { for (const m of list) if (m.target.dataset.stage) __stages.push(m.target.dataset.stage); })
+        .observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-stage"] })`);
+      const before = await bananas(b), tries = {}, posts = {};
+      relayed.length = 0;
+      await openFeed(b);
+      const help = await b.evaluate("document.querySelector('dialog.donation-popup .help').textContent");
+      for (const mode of ["down", "closed", "invoice"]) {
+        relay = mode;
+        const from = relayed.length;
+        await press(b, "Backspace", "Backspace", "Backspace", "Backspace", "Backspace", "1", "0", "0", "0", "Enter");
+        tries[mode] = await until(b, mode === "invoice" ? "quote" : "problem");
+        posts[mode] = relayed.slice(from).filter((r) => r === "POST /donations/invoice").length;
+        if (mode !== "invoice") await press(b, "Enter");
+      }
+      tries.shown = await press(b, "Enter");
+      await press(b, "Enter", " ", "Enter");
+      await b.sleep(1500);
+      tries.held = await stage(b);
+      for (let i = 0; i < 4 && await b.evaluate("!!document.querySelector('dialog.donation-popup[open]')"); i++) await press(b, "Escape");
+      const back = await b.evaluate(`({ closed: !document.querySelector('dialog.donation-popup[open]'), focus: document.activeElement?.dataset?.action || "" })`);
+      real = { tries, posts, help, back, stages: [...new Set(await b.evaluate("__stages"))], relayed: relayed.slice(), before: before.donations,
+        after: (await bananas(b)).donations, real: await b.evaluate("BL.donations.real"), simulate: await b.evaluate("BL.donations.config.simulate") };
+    } finally { b.close(); }
+    // Each try asks the API (Chrome may itself retry a dropped call), and nothing but invoices and the socket is called.
+    const asked = Object.values(real.posts).length === 3 && Object.values(real.posts).every((n) => n >= 1)
+      && real.relayed.every((r) => r === "POST /donations/invoice" || r.startsWith("GET /donations/socket"));
+    const honestReal = real.real && real.simulate === false && !/simulation/i.test(real.help) && real.tries.down === "problem" && real.tries.closed === "problem"
+      && real.tries.invoice === "quote" && real.tries.shown === "invoice" && real.tries.held === "invoice" && !real.stages.some((s) => s === "waiting" || s === "paid")
+      && real.before === real.after && real.back.closed && real.back.focus === "feed" && asked;
+    const noFallback = !unserved.feed && unserved.note && !unserved.popup && !unserved.real && unserved.simulate === false;
+    record("Ooga Chat page: with the service's feed live, Feed the Oogas is the real kiosk, asks the API each time and shows its answer (unreachable, refused, or an invoice no key can mark paid), never simulates or counts a payment and hands the focus back; with the service unreachable there is no Feed at all",
+      honestReal && noFallback, JSON.stringify({ real, unserved }));
   } finally {
     server.close();
     rmSync(out, { recursive: true, force: true });
