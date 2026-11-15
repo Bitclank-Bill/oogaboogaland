@@ -238,7 +238,14 @@
       feeding.open(mode === "demo");
     };
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
-      demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data) },
+      demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data),
+        // The name field: saved as the island's display name, then the Commons is joined again so the Room's welcome,
+        // and every line after it, carries the new name (as an island page joins again after its own rename).
+        rename: async (display) => {
+          const result = await adapter.commonsName(display);
+          if (result.ok) { membership = null; joinCommons(); }
+          return result;
+        } },
       contributors: () => adapter.contributors(),
       reactions: { bars: BL.reactionBar.create(link), onPop(fn) { pops.add(fn); return () => pops.delete(fn); } } };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
