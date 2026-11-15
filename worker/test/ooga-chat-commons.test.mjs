@@ -247,6 +247,30 @@ test("the bridge's `display`: an eligible contributor's Commons name becomes the
   assert.equal((await getPlayer(db, 1)).display, "Amy", "a banned account's name stays as it was");
 });
 
+test("a player row a Commons name made goes with the Ooga Chat account, while it never signed in on the island", async () => {
+  const { displayOps } = await import("../src/chat-display.js");
+  const { revokeOps } = await import("../src/chat-bridge.js");
+  const { getPlayer, upsertPlayerFromGitHub } = await import("../src/db.js");
+  const db = memoryD1(new URL("../migrations/", import.meta.url));
+  const contributorFor = Object.assign(async (login) => ["amy", "bea"].includes(login) ? { handle: login } : null, { fresh: () => true });
+  const env = { OOGA_CHAT_FEATURES: "bridge,commons", DB: db };
+  const principal = (id, login) => ({ id: `pr_${login}`, provider: "github", providerUserId: String(id), login });
+  const name = (p, display) => displayOps({ contributorFor }).display.run(env, { payload: { display }, principal: p });
+  const revoke = (p, reason) => revokeOps.revoke.run(env, { payload: { reason }, principal: p });
+  await name(principal(1, "amy"), "Amy");
+  assert.equal((await getPlayer(db, 1)).last_login_at, 0, "marked as never signed in on the island");
+  await revoke(principal(1, "amy"), "logout");
+  assert.ok(await getPlayer(db, 1), "signing out keeps it");
+  await revoke(principal(1, "amy"), "deleted");
+  assert.equal(await getPlayer(db, 1), null, "deleting the Ooga Chat account removes it");
+  // Signed in on the island first, or after: the island's own account, which Ooga Chat deletion leaves alone.
+  await name(principal(2, "bea"), "Bea");
+  await upsertPlayerFromGitHub(db, { id: 2, login: "bea", avatar_url: null });
+  assert.equal((await getPlayer(db, 2)).display, "Bea");
+  await revoke(principal(2, "bea"), "deleted");
+  assert.equal((await getPlayer(db, 2)).display, "Bea", "an island account stays");
+});
+
 test("the edge's Commons name: only an eligible GitHub contributor's save from the app's own page reaches the island", async () => {
   const { route } = await import("../chat/src/index.js");
   const { forgetHello } = await import("../chat/src/bridge.js");

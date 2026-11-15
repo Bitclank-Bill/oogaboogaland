@@ -3,12 +3,13 @@
 // exactly as the island's `PATCH /api/me` sets it and under the island's own rules (db.js `sanitizeDisplay`). The edge
 // asks only for a principal it found eligible; the island decides again here (chat-capability.js `decideCapability`:
 // banned, a login another id holds, or no Ooga is refused), and only while the bridge's `commons` switch is on. An
-// account that never signed in on the island gets its player row here, as its first island sign-in would make it.
+// account that never signed in on the island gets a player row here marked as never signed in (db.js
+// `ensureChatPlayer`), which deleting the Ooga Chat account takes back (chat-bridge.js `revoke`, reason `deleted`).
 // Live sockets pick the name up when they join again, as an island page's own do after a rename.
 
 import { BridgeRefusal, bridgeFeatures } from "./chat-bridge-protocol.js";
 import { decideCapability, githubAccount } from "./chat-capability.js";
-import { getPlayer, sanitizeDisplay, updateDisplay, upsertPlayerFromGitHub } from "./db.js";
+import { ensureChatPlayer, sanitizeDisplay, updateDisplay } from "./db.js";
 
 export const displayOps = ({ contributorFor, now = Date.now }) => ({
   display: {
@@ -21,7 +22,7 @@ export const displayOps = ({ contributorFor, now = Date.now }) => ({
       const decision = await decideCapability(env, envelope.principal, contributorFor, now);
       if (decision.state === "unknown") throw new BridgeRefusal("unavailable", true);
       if (decision.state !== "eligible") throw new BridgeRefusal("capability_required");
-      if (!(await getPlayer(env.DB, id))) await upsertPlayerFromGitHub(env.DB, { id, login, avatar_url: null });
+      await ensureChatPlayer(env.DB, { id, login });
       await updateDisplay(env.DB, id, display);
       return { display };
     },
