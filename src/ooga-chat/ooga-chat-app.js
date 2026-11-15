@@ -14,7 +14,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, account, device: deviceBar, bananas, pending } = BL.oogaChatViews;
+  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, account, device: deviceBar, bananas, commons, online, pending } = BL.oogaChatViews;
   const { gates } = BL.oogaChatAuth;
   const root = document.getElementById("ooga-chat");
   const fixture = root.dataset.adapter === "fixture";
@@ -34,8 +34,8 @@
   const media = { available: false, state: Object.freeze({ role: "listener", muted: true }), release() {}, join() {}, leave() {}, mute() {}, zone() {} };
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
   // `donating` ends the donation socket, opened once the service says its feed is live; `feeding` is Feed the Oogas,
-  // the island's own donation popup, made the first time it opens.
-  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null, feeding = null;
+  // the island's own donation popup, made the first time it opens; `member` is the Commons socket.
+  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null, feeding = null, member = null;
   const page = new AbortController();
   try {
     // Donations here are the service's or nothing: donations.js never plays its simulated tips in the app.
@@ -55,9 +55,10 @@
     } catch { zone = parseZone(null); /* Storage may be unavailable. */ }
     const roster = BL.oogaChatRoster.create();
     const donor = BL.oogaChatDonor.create({ key: storageKey(adapter.kind, "donor") });
+    const town = BL.oogaChatCommons.create();
     let listening = null, heard = 0, refused = 0;
     let state = { mode: "loading", boot: null, session: null, auth: "checking", notice: null, busy: false, zone, voice: media.state,
-      audience: { status: "off", zone, list: [], version: 0 }, device: { online: navigator.onLine !== false, install: null, update: false } };
+      audience: { status: "off", zone, list: [], version: 0 }, commons: { status: "off" }, device: { online: navigator.onLine !== false, install: null, update: false } };
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
       shell.update(state);
@@ -111,6 +112,23 @@
       feed.zone(state.zone);
     };
     const contributor = () => state.mode === "live" && gates(state, Date.now()).contributor;
+    // The Commons and Online Oogas (#670): one member socket per eligible contributor while the server offers it. Another
+    // principal, or none, starts again empty. A closed session (4401) is checked again, and the socket ends or comes
+    // back with the check's answer; a refusal (4403) waits for the next check.
+    let membership = null;
+    const joinCommons = () => {
+      const principal = contributor() && state.boot.features.commons ? state.session.identity.principal : null;
+      if (principal === membership) return;
+      member?.dispose();
+      member = null;
+      membership = principal;
+      town.reset();
+      if (!principal) return set({ commons: { status: contributor() ? "closed" : "off" } });
+      member = adapter.commons(state.boot, { message: town.apply, status(next) {
+        set({ commons: { status: next } });
+        if (next === "signed-out") Promise.resolve(auth.check("retry")).finally(() => { membership = null; joinCommons(); });
+      } });
+    };
     // One bootstrap at a time: at start, and again from unavailable. The sign-in return is read on the first only.
     let starting = null, returned = back;
     const start = () => starting ||= (async () => {
@@ -180,7 +198,7 @@
       feeding.open(mode === "demo");
     };
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
-      demo: fixture ? adapter.demo : null, feed: feedOogas };
+      demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data) } };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [
@@ -188,10 +206,8 @@
       { id: "bananas", label: "Bananas", icon: "bananas", visible: () => true, view: bananas },
       { id: "roster", label: "Contributing Oogas", icon: "roster", visible: () => true,
         view: pending("Contributing Oogas", "The island's full Contributing Oogas list comes here next.") },
-      { id: "players", label: "Online Oogas", icon: "players", visible: contributor,
-        view: pending("Online Oogas", "Online Oogas for contributors comes here next.") },
-      { id: "commons", label: "The Commons", icon: "chat", visible: contributor,
-        view: pending("The Commons", "The Commons, the contributors' text chat, comes here next.") }
+      { id: "players", label: "Online Oogas", icon: "players", visible: contributor, view: online },
+      { id: "commons", label: "The Commons", icon: "chat", visible: contributor, view: commons }
     ] });
     footer = account(ctx);
     root.querySelector(".oc-frame").append(footer.node);
@@ -200,6 +216,7 @@
     auth = BL.oogaChatAuth.create({ adapter, media, onChange: (next) => {
       set(next);
       listen();
+      joinCommons();
     } });
     device = BL.oogaChatDevice.create({ register: !fixture && appBuild(document) !== "dev", onChange: (next) => set({ device: next }) });
     state = { ...state, device: device.state };
@@ -227,6 +244,7 @@
     page.abort();
     clearTimeout(relisten);
     feed?.dispose();
+    member?.dispose();
     donating?.();
     feeding?.dispose();
     device?.dispose();

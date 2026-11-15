@@ -19,7 +19,7 @@
     "demo-payment", "unavailable"];
   const protocols = Object.fromEntries(Object.entries(PROTOCOLS).map(([name, version]) => [name, [version]]));
   const answer = (feed, x) => ({ version: BOOTSTRAP_VERSION, protocols,
-    features: { github: true, x, voice: false, feed },
+    features: { github: true, x, voice: false, feed, commons: true },
     paths: { session: "/fixture/session", logout: "/fixture/logout", login: { github: "/fixture/login/github", x: "/fixture/login/x" } } });
   const github = (n, login, state, capabilities = {}) => ({ identity: { principal: `fixture:github:${n}`, participant: `gh:${n}`, provider: "github", providerUserId: String(n), login, display: login },
     capabilities, eligibility: { state } });
@@ -63,6 +63,18 @@
     demo: () => demoStats,
     rate: () => ({ usdPerBtc: 100000, satsPerBanana: 1000, at: 0, stale: false })
   });
+  // The Commons for review (#670): named samples on the island in a few places, one with a hand up and two in voice,
+  // and a short history; a line sent comes back as the Room would echo it, then its acknowledgement.
+  const TOWN = [
+    { id: 1, login: "sample-contributor", display: "sample-contributor", zone: "outside", voice: true, muted: false, hand: false },
+    { id: 11, login: "sample-oak", display: "Sample Oak", zone: "outside", voice: true, muted: true, hand: true, handTone: 3 },
+    { id: 12, login: "Sample-Fern", display: "Sample-Fern", zone: "arcade.hall", voice: false, muted: false, hand: false },
+    { id: 13, login: "sample-reed", display: "sample-reed", zone: "dsb-studio", voice: false, muted: false, hand: true, handEmoji: "🍌" }
+  ];
+  const HISTORY = [
+    { id: 1, at: 1_800_000_000_000, login: "sample-oak", name: "Sample Oak", text: "Ooga! Who's at the pile?" },
+    { id: 2, at: 1_800_000_060_000, login: "Sample-Fern", name: "Sample-Fern", text: "Playing Cloud Hopper in the arcade 🍌" }
+  ];
   const create = ({ state = "signed-out", roster = "mixed", now = () => Date.now() } = {}) => {
     if (!STATES.includes(state)) throw new Error(`Unknown fixture state "${state}" (${STATES.join(", ")})`);
     if (!ROSTERS.includes(roster)) throw new Error(`Unknown fixture roster "${roster}" (${ROSTERS.join(", ")})`);
@@ -155,7 +167,35 @@
       disposed = true;
       for (const feed of [...feeds]) feed.dispose();
     };
-    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, dispose, pending: 0, demo };
+    const commons = (boot, { message, status }) => {
+      let closed = false, next = HISTORY.length + 1;
+      const timers = new Set();
+      const later = (ms, fn) => { const timer = setTimeout(() => { timers.delete(timer); if (!closed) fn(); }, ms); timers.add(timer); };
+      const you = { id: 1, login: account?.identity.login || "sample-contributor", display: account?.identity.display || "sample-contributor" };
+      status("connecting");
+      later(300, () => {
+        status("live");
+        message({ t: "community", v: 1, op: "welcome", epoch: 1, send: true, you, players: TOWN, features: ["chat-unicode-v1", "commons-v1"] });
+        message({ t: "chat-history", messages: HISTORY });
+      });
+      return {
+        send(data) {
+          if (closed || data.t !== "chat") return false;
+          const id = next++;
+          later(250, () => {
+            message({ t: "chat", id, at: now(), login: you.login, name: you.display, text: data.text });
+            message({ t: "chat-ack", clientId: data.clientId });
+          });
+          return true;
+        },
+        dispose() {
+          closed = true;
+          for (const timer of timers) clearTimeout(timer);
+          timers.clear();
+        }
+      };
+    };
+    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, dispose, pending: 0, demo };
   };
   BL.oogaChatFixtures = { create, STATES, ROSTERS };
 })();

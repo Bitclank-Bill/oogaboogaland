@@ -3,8 +3,9 @@
 // `{ mode, boot, session, auth, notice, busy, zone }` (docs/ooga-chat-app.md), where `mode` is loading, live,
 // unavailable or stale and `auth` is ooga-chat-auth.js's. `chat` is the Ooga Chat tab: sign-in, or the space the
 // account listens in. `account` is the footer the app keeps under every tab while signed in. `bananas` is the island's
-// own Bananas panel. `pending(title)` stands in for a panel the shared island panels (Contributing Oogas, Online Oogas,
-// The Commons) will fill; it says so instead of showing invented data.
+// own Bananas panel; `commons` and `online` are The Commons and Online Oogas for an eligible contributor. `pending(title)`
+// stands in for a panel the shared island panels (Contributing Oogas) will fill; it says so instead of showing invented
+// data.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -405,6 +406,165 @@
     };
     return { node, update, dispose };
   };
+  // The contributor tabs (#656, #670) draw what the Room tells a community member (`ctx.commons`: ooga-chat-commons.js's
+  // `model` and `send`), and `state.commons.status` is the socket's (ooga-chat-http.js `commons`). What the status says
+  // while no line can go, and the chip's word for it.
+  const COMMONS_WORDS = {
+    off: "The Commons is for Team Ooga Booga contributors signed in with GitHub.",
+    closed: "The Commons isn't open from Ooga Chat yet.",
+    connecting: "Joining the island…",
+    reconnecting: "Reconnecting to the island…",
+    full: "Too many Commons connections right now. Trying again shortly.",
+    refused: "The Commons is for Team Ooga Booga contributors.",
+    "signed-out": "Checking your sign-in…",
+    "read-only": "Reading only: sending lines from Ooga Chat isn't open yet."
+  };
+  const commonsChip = (status, model) => status === "live" ? `${model.state.players.size} online` : status === "closed" ? "Closed" : "Offline";
+  const panelHead = (title) => {
+    const heading = make("span", "", title), chip = make("span", "panel-chip");
+    heading.dataset.sign = "";
+    letter(heading, title);
+    return { header: make("header", "panel-title", make("h2", "", heading), chip), chip };
+  };
+  // Shown again when its tab is opened, as a view hidden by the shell is not told.
+  const onShown = (node, fn) => {
+    let watching = null;
+    return () => {
+      if (watching || !node.parentElement) return;
+      watching = new MutationObserver(fn);
+      watching.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
+      fn();
+    };
+  };
+  // The Commons: the island's one conversation, its log and composer the island's own (commons-log.js), the lines this
+  // page has heard since it signed in shown when the tab first opens.
+  const commons = (ctx) => {
+    const { model } = ctx.commons;
+    const { header, chip } = panelHead("The Commons");
+    const log = make("ol", "chat-log slab");
+    log.setAttribute("role", "log");
+    log.setAttribute("aria-live", "off");
+    log.setAttribute("aria-label", "The Commons");
+    log.tabIndex = 0;
+    const statusText = make("span", ""), status = make("p", "help chat-status", statusText);
+    const announcement = make("span", "chat-announcement");
+    announcement.setAttribute("role", "status");
+    announcement.setAttribute("aria-live", "polite");
+    announcement.setAttribute("aria-atomic", "true");
+    const input = make("input", "");
+    Object.assign(input, { type: "text", maxLength: 320, enterKeyHint: "send", spellcheck: true, disabled: true, autocomplete: "off" });
+    input.setAttribute("aria-label", "Say something to everyone on the island");
+    const left = make("span", "chat-left", String(BL.chatPolicy.MAX));
+    left.title = "Characters left";
+    const send = make("button", "chat-send", "Send");
+    send.type = "submit";
+    send.disabled = true;
+    const form = make("form", "chat-form", make("span", "chat-field", input, left), send);
+    form.autocomplete = "off";
+    const node = make("section", "panel oc-panel oc-commons", header, log, status, announcement, form);
+    const conversation = BL.commonsLog.create({ log, form, input, left, send, status, statusText, announcement },
+      { keep: BL.oogaChatCommons.KEEP, send: (text, clientId) => ctx.commons.send({ t: "chat", text, clientId }), unicode: () => model.state.unicode,
+        escape: () => document.getElementById("oc-tab-commons")?.focus({ preventScroll: true }) });
+    conversation.heard(model.state.lines, true);
+    let shown = "", last = null;
+    const off = model.subscribe((kind, a, b) => {
+      if (kind === "lines") conversation.heard(a, b);
+      else if (kind === "receipt") conversation.heard([], false, a);
+      else if (kind === "welcome" && !model.state.you) conversation.clear();
+      if ((kind === "welcome" || kind === "players") && last) update(last);
+    });
+    const watch = onShown(node, () => conversation.show(!node.closest("[hidden]")));
+    const update = (state) => {
+      last = state;
+      watch();
+      const socket = state.commons.status, live = socket === "live" && !!model.state.you;
+      const words = live && !model.state.send ? COMMONS_WORDS["read-only"] : COMMONS_WORDS[socket] || "";
+      const key = `${socket}|${live}|${model.state.send}|${model.state.you?.login}|${model.state.players.size}`;
+      if (key === shown) return;
+      shown = key;
+      chip.textContent = commonsChip(socket, model);
+      chip.dataset.tone = live ? "live" : socket === "closed" ? "closed" : "idle";
+      conversation.setLive({ live: live && model.state.send, me: model.state.you?.login || "", words });
+    };
+    const dispose = () => {
+      off();
+      node.remove();
+    };
+    return { node, update, dispose };
+  };
+  // Online Oogas: everyone on the island now, grouped by where they are (zone-map.js, as the island's tab groups them),
+  // with their raised hand and whether they are in voice. Presence without positions: no distance, crosshair, voice
+  // link or volume, which are the island's alone (docs/ooga-chat-backend.md, the capability matrix).
+  const online = (ctx) => {
+    const { model } = ctx.commons;
+    const { header, chip } = panelHead("Online Oogas");
+    const list = make("div", "players slab oc-players"), note = make("p", "help players-status");
+    const node = make("section", "panel oc-panel oc-online", header, list, note);
+    const voiceMark = (p) => {
+      const mark = make("span", "roster-voice", BL.nativeIcons.voice());
+      mark.dataset.voice = p.voice ? p.muted ? "muted" : "on" : "";
+      mark.hidden = !p.voice;
+      const words = p.muted ? "In voice, muted" : "In voice";
+      mark.setAttribute("role", "img");
+      mark.setAttribute("aria-label", words);
+      mark.title = words;
+      return mark;
+    };
+    const row = (r) => {
+      const p = r.p, dot = make("span", "roster-presence"), label = make("span", "roster-label", p.display);
+      dot.dataset.online = "true";
+      dot.setAttribute("role", "img");
+      dot.setAttribute("aria-label", "Online");
+      label.title = `@${p.login}`;
+      const hand = p.hand ? p.handEmoji || BL.reactionPolicy.HANDS[p.handTone] : "";
+      const raised = make("span", "players-hand", hand);
+      raised.hidden = !hand;
+      raised.setAttribute("role", "img");
+      raised.setAttribute("aria-label", p.handEmoji ? `Pinned emoji ${hand}` : "Hand raised");
+      const li = make("li", "", make("span", "roster-dots", dot), make("span", "players-name", label), make("span", "players-mark", raised), voiceMark(p));
+      if (r.self) li.dataset.self = "true";
+      return li;
+    };
+    const draw = () => {
+      if (node.closest("[hidden]")) return;
+      const you = model.state.you, rows = [];
+      for (const p of model.state.players.values()) rows.push({ id: p.id, name: p.display, group: BL.zoneMap.groupOf(p.zone), self: !!you && p.id === you.id, p });
+      const mine = rows.find((r) => r.self)?.group || null;
+      BL.zoneMap.arrange(rows, mine);
+      const groups = [];
+      for (const r of rows) {
+        if (!groups.length || groups.at(-1).key !== r.group) {
+          const head = make("h3", "section-head", BL.zoneMap.heading(r.group)), ul = make("ul", "players-rows");
+          ul.setAttribute("aria-label", head.textContent);
+          groups.push({ key: r.group, section: make("section", "players-group", head, ul), ul });
+        }
+        groups.at(-1).ul.append(row(r));
+      }
+      list.replaceChildren(...groups.map((g) => g.section));
+    };
+    let status = "off";
+    const off = model.subscribe((kind) => { if (kind === "players" || kind === "welcome") { draw(); paint(); } });
+    const watch = onShown(node, draw);
+    const paint = () => {
+      const live = status === "live" && !!model.state.you;
+      chip.textContent = commonsChip(status, model);
+      chip.dataset.tone = live ? "live" : status === "closed" ? "closed" : "idle";
+      note.textContent = !live ? COMMONS_WORDS[status] || "" : model.state.players.size ? "" : "Nobody is on the island right now.";
+      note.hidden = !note.textContent;
+      list.hidden = !live || !model.state.players.size;
+    };
+    const update = (state) => {
+      watch();
+      if (state.commons.status === status) return;
+      status = state.commons.status;
+      paint();
+    };
+    const dispose = () => {
+      off();
+      node.remove();
+    };
+    return { node, update, dispose };
+  };
   const pending = (title, note) => () => {
     const heading = make("span", "", title);
     heading.dataset.sign = "";
@@ -414,5 +574,5 @@
       make("div", "slab oc-slab oc-pending", make("p", "", note)));
     return { node, update() {}, dispose() { node.remove(); } };
   };
-  BL.oogaChatViews = { chat, account, device, bananas, pending, face, make };
+  BL.oogaChatViews = { chat, account, device, bananas, commons, online, pending, face, make };
 })();

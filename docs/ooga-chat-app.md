@@ -39,6 +39,7 @@ is unchanged and never stages the app.
 | `src/ooga-chat/ooga-chat-shell.js` | `BL.oogaChatShell`: the tabs and the views they keep |
 | `src/ooga-chat/ooga-chat-views.js` | `BL.oogaChatViews`: the Ooga Chat view (sign-in, or the zones and the roster), the account footer, faces and the stand-ins for the shared panels |
 | `src/ooga-chat/ooga-chat-http.js` | `BL.oogaChatHttp`: the production adapter |
+| `src/ooga-chat/ooga-chat-commons.js` | `BL.oogaChatCommons`: what the island's Room tells a community member (#670), checked and kept for The Commons and Online Oogas: who you are, whether lines may be sent, everyone online without a position, and the last 100 lines |
 | `src/ooga-chat/ooga-chat-donor.js` | `BL.oogaChatDonor`: who Feed the Oogas says a tip is from (the name and message last given, and the names this browser's own paid tips used), the `game` the shared donation popup reads, in this app's own storage |
 | `src/ooga-chat/ooga-chat-fixtures.js` | `BL.oogaChatFixtures`: the offline adapter, review only |
 | `src/ooga-chat/ooga-chat-app.js` | startup, loaded last |
@@ -53,6 +54,7 @@ Shared with the island, one copy each:
 | `src/js/sign-glyphs.js` | `BL.signGlyphs`: the cave-sign alphabet (`SIGN_GLYPHS`, which `hub-models.js` re-exports) and its DOM lettering (`lettering`, `letter`), which `hud.js` uses |
 | `src/js/donations.js` | `BL.donations`: the donation event contract and real mode's socket and calls over the page's own `/donations/*`. The app turns its simulator off, calls `useOrigin` and subscribes once the bootstrap says `feed` is live (#656) |
 | `src/js/banana-panel.js` | `BL.bananaPanel`: the Bananas panel's markup (`build`, ids only on the island's copy) and controller (`create`, filled from `donations.js`), which `hud.js` and the app's Bananas tab both run |
+| `src/js/chat-policy.js`, `src/js/reaction-policy.js`, `src/js/zone-map.js`, `src/js/commons-log.js` | The Commons and Online Oogas for an eligible contributor (#670): the island's chat rules, the raised hand in each tone (`reaction-policy.js` without its emoji data, which the app never reads), the zones as the island's Online Oogas groups them, and the conversation's log and composer, run over the app's own `/api/chat/commons` socket (`ooga-chat-http.js` `commons`). Their look is placed by `ooga-chat.css`; no distance, crosshair, voice link or volume, which are the island's alone |
 | `src/js/qr.js`, `src/js/banana-icon.js`, `src/js/jumbotron-font.js`, `src/js/factory-kiosk-core.js`, `src/js/factory-kiosk.js`, `src/js/donation-popup.js` | Feed the Oogas: the island's donation dialog and its kiosk screen, with the QR codes, the banana and the 5x7 letters they draw. The app opens it from its Bananas tab while the feed is live (the fixture entry's demo aside), real over its own `/donations` relay, with `ooga-chat-donor.js` as its `game`; its frame is placed by `ooga-chat.css` |
 | `src/js/native-icons.js` | `BL.nativeIcons`: the panel tabs' pixel icons (`bananas`, `roster`, `players`, `chat`), Ooga Chat's outlined `cloud`, DSB Land's destination mark `dsb` (the island's `dsb-island-icon` paths, held equal by the suite) and `voice()`, the roster's voice mark. `hud.js` fills the island's tab slots (`data-native-icon`) from it and draws its roster's voice mark with it |
 
@@ -63,12 +65,12 @@ module reads nothing at load but `window.BL` and the document.
 ## Load order and contracts
 
 `sign-glyphs.js`, `native-icons.js`, `donations.js`, `banana-panel.js`, `qr.js`, `banana-icon.js`, `jumbotron-font.js`, `factory-kiosk-core.js`,
-`factory-kiosk.js`, `donation-popup.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
+`factory-kiosk.js`, `donation-popup.js`, `chat-policy.js`, `reaction-policy.js`, `zone-map.js`, `commons-log.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
 `ooga-chat-shell.js`, `ooga-chat-views.js`,
-`ooga-chat-http.js`, `ooga-chat-donor.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
+`ooga-chat-http.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
 `fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app.
 
-**Adapter.** `{ kind, bootstrap(), session(boot), signIn(boot, provider), signOut(boot), audience(boot, handlers), dispose() }`. `bootstrap`
+**Adapter.** `{ kind, bootstrap(), session(boot), signIn(boot, provider), signOut(boot), audience(boot, handlers), commons(boot, handlers), dispose() }`. `bootstrap`
 resolves to a parsed bootstrap (below), never throws. `session` resolves to a parsed session or `null` for signed
 out, and throws for any other failure, which the app shows as a recoverable error. `signIn` navigates (production)
 or returns a session (fixtures). `signOut` resolves only when the server confirms and throws otherwise. `dispose`
@@ -381,7 +383,7 @@ stylesheet 16.9 KB, sign-in picture 57.9 KB, Main Island's mark 3 KB): about 157
 alone was 71 KB, with sign-in 78 KB, with the space 88 KB). The manifest and icons are fetched by the browser when it
 considers installing, and the worker then keeps the same files once more in its cache, off the first paint. For comparison, the island's portable page is about
 39.7 MB (23 MB gzipped). The app loads no 3D engine, terrain, cabinets, replays or live feeds. `FIRST_LOAD_BUDGET` in
-the build (160 KB gzipped) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
+the build (176 KB gzipped) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
 adds weight.
 
 ## Artwork

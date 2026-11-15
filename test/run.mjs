@@ -29989,6 +29989,7 @@ const chatClientChecks = async () => {
     badges: {}, inPanel: false, viewed: null, setBadge(name, count) { this.badges[name] = count; }, watchViews(panel, fn) { this.viewed = fn; }, attending() { return sheetApi.inPanel; } };
   const sent = [], window = { BL: { sheet: sheetApi, net: { state: { chatUnicode: true }, CHAT_MAX: 160, CHAT_KEEP: 100, subscribe() {}, subscribeChat() {}, sendChat(text, clientId) { sent.push({ text, clientId }); return true; } }, donations: { sanitize: (text, max) => String(text || "").replace(/[^\w .,!?'@#:-]/g, "").trim().slice(0, max) } }, crypto: { randomUUID: () => "id-" + ++uuid }, matchMedia: () => ({ matches: true }), setTimeout(fn) { timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); } };
   runInNewContext(await readFile(join(root, "src/js/chat-policy.js"), "utf8"), { window });
+  runInNewContext(await readFile(join(root, "src/js/commons-log.js"), "utf8"), { window, document, Intl });
   runInNewContext(await readFile(join(root, "src/js/chat.js"), "utf8"), { window, document, MutationObserver: class { observe() {} }, Intl });
   const C = window.BL.chat, input = nodes.get("chat-input"), send = nodes.get("chat-send"), status = nodes.get("chat-status-text"), edit = text => { input.value = text; input.handlers.input(); }, submit = () => nodes.get("chat-form").handlers.submit({ preventDefault() {} }), receipt = id => C.heard([], false, { clientId: id, accepted: true });
   C.account({ backend: true, me: { id: 1, login: "Tester" }, room: "live" });
