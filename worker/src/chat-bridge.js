@@ -21,6 +21,7 @@ import { capabilityOps } from "./chat-capability.js";
 import { contributorFor } from "./contributor-access.js";
 import { publicOps } from "./chat-public.js";
 import { displayOps } from "./chat-display.js";
+import { deleteChatOnlyPlayer } from "./db.js";
 import { AUDIENCE_NAME } from "./audience.js";
 import CAST_ROWS from "./characters.gen.json" with { type: "json" };
 
@@ -66,6 +67,8 @@ export const revokeOps = {
       // The Commons is a GitHub contributor's alone: its sockets close too (#670).
       const github = p.provider === "github" && /^[1-9][0-9]{0,15}$/.test(String(p.providerUserId)) ? Number(p.providerUserId) : 0;
       const commons = github && env.ROOM ? await env.ROOM.getByName("island").communityRevoke(github, reason).catch(() => ({ revoked: 0 })) : { revoked: 0 };
+      // An Ooga Chat account deleted takes back the player row its Commons name made, while it never signed in here.
+      if (github && reason === "deleted" && env.DB) await deleteChatOnlyPlayer(env.DB, github);
       return { revoked: audience.revoked + commons.revoked };
     },
   },
