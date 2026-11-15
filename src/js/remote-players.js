@@ -96,7 +96,7 @@
   // A scene with `ghost(cave, on)` (the hub, npc-ghosts.js) keeps the crew's copy on its own track instead: never
   // sent away nor marked `remoteControlled`, only drawn as a ghost while the remote body stands beside it.
   // `unarmed` is a place with no weapons: however a body's last pose reads, it shows neither club nor gun there.
-  const create = ({ root, crew = null, fx = null, player = null, posed = null, visible = sameZone, hide = null, createGorilla = null, hideGorilla = null, ghost = null, unarmed = false, cloudSeat = null }) => {
+  const create = ({ root, crew = null, fx = null, player = null, posed = null, visible = sameZone, hide = null, createGorilla = null, hideGorilla = null, ghost = null, unarmed = false, cloudSeat = null, cloudsShown = null }) => {
     const net = BL.net;
     const bodies = new Map();
     const pets = crew?.pets || BL.crew.createPets({ fx }, root);
@@ -422,7 +422,7 @@
       for (const entry of bodies.values()) {
         if (entry.cloud) {
           const c = cloudOf(entry.id);
-          if (!c || !cloudSeat || canonical(c.character) !== entry.body) drop(entry);
+          if (!c || !cloudSeat || canonical(c.character) !== entry.body) { drop(entry); if (cloudsShown) cloudsShown(); }
           continue;
         }
         const rec = net.remotes.get(entry.id);
@@ -495,8 +495,10 @@
       if (cloudSeat) seatClouds(dt);
     };
     // The cloud speakers, seated where the scene says this frame, or hidden where it can't (its clouds are put away).
+    // `cloudsShown()` hears whenever a cloud body comes into view or goes out of it (a crosshair aimed at it can work).
     const seatClouds = (dt) => {
       const list = net.state.clouds;
+      let changed = false;
       for (let i = 0; i < list.length; i++) {
         const c = list[i];
         let entry = bodies.get(c.id);
@@ -504,12 +506,15 @@
           if (bodies.size >= MAX) continue;
           entry = build({ id: c.id, body: canonical(c.character), bodyKind: "ooga", x: 0, y: 0, z: 0, yaw: 0 });
           entry.cloud = true;
+          changed = true;
         }
         if (entry.reactT > 0) entry.reactT = Math.max(0, entry.reactT - dt);
         const seated = cloudSeat(c, CLOUD_AT) && !(crew && crew.player && crew.player.traits.name === entry.name);
+        if (entry.cave.root.visible !== seated) changed = true;
         entry.cave.root.visible = seated;
         if (seated) poseCloud(entry);
       }
+      if (changed && cloudsShown) cloudsShown();
     };
     // Sitting as the crew seats a sitter (crew.js `runCamp`): legs out before it, arms down to the knees, the head
     // straight, the root a little over the seat's surface (`sitPlayer`), facing where the scene turned the seat.

@@ -11767,6 +11767,7 @@
       },
       ghost: (cave, on) => { npcGhosts.set(cave, on); crew.refreshRosterRow(cave); },
       cloudSeat,
+      cloudsShown: () => BL.players.setCloudSpot(cloudSpotOf),
       posed: (cave, feet, rec) => {
         const p = cave.root.position, height = cave.bodyHeight || 1.4;
         floatPose(cave, feet, height, 0, now);
