@@ -519,14 +519,12 @@
       }
       if (changed && cloudsShown) cloudsShown();
     };
-    // Sitting as the crew seats a sitter (crew.js `runCamp`): legs out before it, arms down to the knees, the head
-    // straight, the root a little over the seat's surface (`sitPlayer`), facing where the scene turned the seat.
+    // Sitting on the cloud as an idle Ooga sits by a fire (crew.js `poseGroundSit`): legs out before it, arms hanging
+    // with the fists resting on the cloud, the head straight, the root a little over the seat's surface (`sitPlayer`),
+    // facing where the scene turned the seat.
     const poseCloud = (entry) => {
       const cave = entry.cave, parts = cave.parts, p = cave.root.position;
-      BL.crew.poseGait(cave, BL.crew.GAIT.stand);
-      parts.legR.rotation.x = parts.legL.rotation.x = -Math.PI / 2;
-      parts.armR.rotation.x = parts.armL.rotation.x = -0.75;
-      if (cave.modelled) parts.forearmR.rotation.x = parts.forearmL.rotation.x = -cave.elbow.rest;
+      BL.crew.poseGroundSit(cave);
       parts.head.quaternion = null;
       parts.head.rotation.x = parts.head.rotation.y = 0;
       cave.shownLean = 0;
