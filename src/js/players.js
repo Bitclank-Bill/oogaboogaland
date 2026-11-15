@@ -173,9 +173,13 @@
       if (row.value.textContent !== words) row.value.textContent = words;
       row.slider.setAttribute("aria-valuetext", words);
     }
+    // A cloud speaker's mark as a player's: green while this page hears them speak, faded and never green out of earshot.
     for (const row of cloudRows.values()) {
       const c = cloudOf(row.cloud);
-      if (c) paintMark(row, c.mic === "muted" ? "muted" : "on", "", false, false, c.hand);
+      if (!c) continue;
+      const key = row.cloud.startsWith("gh:") ? Number(row.cloud.slice(3)) : 0, out = !key || !V.inEarshot(key);
+      if (row.faded !== out) { row.faded = out; row.voice.dataset.far = String(out); }
+      paintMark(row, c.mic === "muted" ? "muted" : !out && V.speaking(key) ? "speaking" : "on", "", false, false, c.hand);
     }
   };
   // A row's link, offered where the room keeps them (`state` empty hides it), painted again only when it or the name moves.

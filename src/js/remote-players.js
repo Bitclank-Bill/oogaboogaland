@@ -106,6 +106,7 @@
     // Where the scene seats a cloud speaker this frame (`cloudSeat`'s out), and the entry for an id, by a walk of the
     // room's short list (32 at most) rather than a map kept beside it.
     const CLOUD_AT = { x: 0, y: 0, z: 0, yaw: 0 };
+    const cloudVoice = (id) => id.startsWith("gh:") ? Number(id.slice(3)) : 0;
     const cloudOf = (id) => {
       const list = net.state.clouds;
       for (let i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
@@ -716,7 +717,9 @@
         if (!entry.cloud && !rec.voice) continue;
         const muted = entry.cloud ? rec.mic === "muted" : rec.muted;
         const ix = Math.round(textX + entry.labelW + ICON_GAP), iy = Math.round(lineMid - 4.5);
-        ctx.fillStyle = muted ? ICON_MUTED : !entry.cloud && BL.voice.speaking(rec.id) ? ICON_SPEAKING : ICON_IDLE;
+        // Speaking as the page hears it, a cloud speaker's voice keyed by their account (the number in their `gh:` id).
+        const voiceId = entry.cloud ? cloudVoice(rec.id) : rec.id;
+        ctx.fillStyle = muted ? ICON_MUTED : voiceId && BL.voice.speaking(voiceId) ? ICON_SPEAKING : ICON_IDLE;
         runs(ctx, SPEAKER, ix, iy);
         runs(ctx, muted ? CROSS : WAVES, ix, iy);
       }

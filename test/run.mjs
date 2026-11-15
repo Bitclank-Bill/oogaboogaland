@@ -30614,7 +30614,7 @@ const cloudPanelChecks = async BL => {
   const observers = [];
   const window = { BL: { audience: BL.audience, reactionPolicy: BL.reactionPolicy,
     net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
-    voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {} },
+    voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
     hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
     nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible },

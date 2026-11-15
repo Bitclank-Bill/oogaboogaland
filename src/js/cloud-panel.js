@@ -69,8 +69,12 @@
   // A row as the tiles draw it: its picture, its microphone's look and words, and whether this visitor muted it.
   const describe = (id, t) => {
     const row = model.rows.get(id), speaker = row.role === "speaker";
-    // The visitor's own microphone is this page's to read (voice.js meters it even alone); the room never says speaking.
-    const muted = row.self ? voice.stats.muted : row.mic === "muted", speaking = row.self ? voice.stats.speaking : row.speaking;
+    // Speaking as Online Oogas shows it: the visitor's own from their microphone's meter (voice.js meters it even alone),
+    // anyone else's from this page's meter on their voice (keyed by account, the number in their `gh:` id), and never
+    // for one out of earshot. The room never says speaking.
+    const key = id.startsWith("gh:") ? Number(id.slice(3)) : 0;
+    const muted = row.self ? voice.stats.muted : row.mic === "muted";
+    const speaking = row.self ? voice.stats.speaking : !!key && voice.inEarshot(key) && voice.speaking(key);
     const look = !speaker ? "" : muted ? "muted" : speaking ? "speaking" : "on";
     const blocked = speaker && !row.self && voice.mutedLocally(row.login);
     t.id = id; t.display = row.display; t.role = row.role; t.source = row.source || ""; t.self = row.self;

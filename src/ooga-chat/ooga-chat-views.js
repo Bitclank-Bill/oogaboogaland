@@ -245,9 +245,11 @@
       return url;
     };
     const describe = (p, t) => {
-      // The visitor's own mark lights from this page's meter (ooga-chat-media.js `speaking`), alone or not.
+      // A speaker's mark lights while this page hears them speak, as Online Oogas does on the island: the visitor's own
+      // from their microphone's meter (ooga-chat-media.js `speaking`, alone or not), anyone else's from their voice's
+      // (`talking`).
       const speaker = p.role === "speaker", you = p.id === self;
-      const look = !speaker ? "" : p.muted ? "muted" : you && voice.speaking ? "speaking" : "on";
+      const look = !speaker ? "" : p.muted ? "muted" : (you ? voice.speaking : voice.talking.includes(p.id)) ? "speaking" : "on";
       t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" ? "world" : "chat";
       t.face = p.face || sheetFace(p.character); t.look = look; t.hand = p.hand || ""; t.self = you; t.micPressed = false;
       t.micDisabled = !you || voice.role !== "speaker";
