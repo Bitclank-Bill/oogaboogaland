@@ -52,16 +52,31 @@
     ]
   };
   // The Bananas panel's demo for `demo-payment` (banana-panel.js `create` options): a simulated tally of named samples,
-  // never real donors, labelled Demo by the panel, at a fixed demo price, and nothing that reaches /donations.
+  // never real donors, labelled Demo by the panel, at a fixed demo price, and nothing that reaches /donations. A tip
+  // paid on Feed the Oogas' simulated kiosk joins it (`receive`, the popup's demo payment), so its receipt shows, and
+  // `subscribe` hears each one.
   const DEMO_DONORS = [["sample-oak", 2500, 2.5], ["sample-fern", 1200, 1.2], ["", 420, 0.42], ["sample-reed", 69, 0.07]];
-  const demoStats = Object.freeze({ donations: DEMO_DONORS.length, totalSats: DEMO_DONORS.reduce((sum, [, sats]) => sum + sats, 0),
+  const demoStats = { donations: DEMO_DONORS.length, totalSats: DEMO_DONORS.reduce((sum, [, sats]) => sum + sats, 0),
     donors: DEMO_DONORS.filter(([handle]) => handle).map(([handle, sats, bananas]) => ({ handle, sats, bananas })),
-    recentDonations: DEMO_DONORS.map(([handle, sats, bananas], i) => ({ id: `fixture-${i}`, handle, sats, bananas, at: 0, message: sats >= 1000 ? "Ooga!" : "" })) });
+    recentDonations: DEMO_DONORS.map(([handle, sats, bananas], i) => ({ id: `fixture-${i}`, handle, sats, bananas, at: 0, message: sats >= 1000 ? "Ooga!" : "" })) };
+  const demoHeard = new Set();
   const demo = Object.freeze({
     donations: { real: false, testNetwork: "", messageMinSats: 1000, RECENT_MAX: 20, state: { tally: null, board: null, boardSats: null, recent: null, open: null },
       carried: (sats, message) => sats >= 1000 ? message : "", subscribeState: () => () => {} },
     demo: () => demoStats,
-    rate: () => ({ usdPerBtc: 100000, satsPerBanana: 1000, at: 0, stale: false })
+    rate: () => ({ usdPerBtc: 100000, satsPerBanana: 1000, at: 0, stale: false }),
+    // Counted as the kiosk quoted it (the demo's count, ooga-chat-donor.js `bananasFor`), so the receipt matches the quote.
+    receive({ id, sats, handle, message, at }) {
+      const bananas = BL.oogaChatDonor.bananasFor(sats), name = handle || "";
+      demoStats.donations++;
+      demoStats.totalSats += sats;
+      const donor = name && demoStats.donors.find((d) => d.handle.toLowerCase() === name.toLowerCase());
+      if (donor) { donor.sats += sats; donor.bananas += bananas; } else if (name) demoStats.donors.push({ handle: name, sats, bananas });
+      demoStats.donors.sort((a, b) => b.bananas - a.bananas);
+      demoStats.recentDonations.unshift({ id, handle: name, sats, bananas, at, message: sats >= 1000 ? message : "" });
+      for (const fn of demoHeard) fn();
+    },
+    subscribe(fn) { demoHeard.add(fn); return () => demoHeard.delete(fn); }
   });
   // The Commons for review (#670): named samples on the island in a few places, one with a hand up and two in voice,
   // and a short history; a line sent comes back as the Room would echo it, then its acknowledgement.

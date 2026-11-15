@@ -297,7 +297,9 @@
       help.textContent = simulated ? "This is a local simulation. No Bitcoin is sent." : "Pay with Lightning or on-chain. Your bananas arrive from the Factory when the payment confirms.";
       flow = BL.factoryKiosk.create({
         real: !simulated, demo: simulated, outerClose: true, link: () => link,
-        startDetails: () => attachDetails(flow, defaults()), details, editDetails: focusDetails, typing: () => typed, restoreDetails, onState: () => hideHistory(),
+        startDetails: () => attachDetails(flow, defaults()), details, editDetails: focusDetails, typing: () => typed, restoreDetails,
+        // The kiosk's screen on the dialog (`data-stage`), set as it changes, so the page and its checks can follow the flow.
+        onState: (state) => { dialog.dataset.stage = state; hideHistory(); },
         history: () => historyOpen ? historyMatches : null, historyCount: () => game.state.recentHandles.length, toggleHistory, chooseHistory,
         closeDetails: () => detachDetails(flow), detailsState,
         invoice: (sats, value) => donations.invoice({ sats, ...value }),

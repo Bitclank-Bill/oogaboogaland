@@ -394,6 +394,8 @@
     node.append(closed);
     const visible = () => !node.closest("[hidden]");
     let panel = null, feed = null, watching = null;
+    // The fixture's demo tells the panel of each simulated payment, so its receipt shows in the tally and lists.
+    const offDemo = ctx.demo?.subscribe ? ctx.demo.subscribe(() => { if (feed === "demo") panel?.refresh(true); }) : () => {};
     const update = (state) => {
       if (!watching && node.parentElement) {
         watching = new MutationObserver(() => panel?.showRate());
@@ -413,6 +415,7 @@
     };
     const dispose = () => {
       watching?.disconnect();
+      offDemo();
       panel?.dispose();
       node.remove();
     };

@@ -229,7 +229,8 @@
     const feedOogas = () => {
       const mode = state.mode === "live" ? state.boot.features.feed : "off";
       if (mode !== "live" && !(mode === "demo" && fixture)) return;
-      feeding ||= BL.donationPopup.create(donor, null, {
+      // The fixture's demo takes the simulated kiosk's payments, so a receipt shows; production never simulates one.
+      feeding ||= BL.donationPopup.create(donor, fixture ? (donation) => adapter.demo.receive(donation) : null, {
         login: () => state.session?.identity.provider === "github" ? state.session.identity.login : undefined,
         bananasFor: BL.oogaChatDonor.bananasFor, price: () => 0, link: () => `${location.origin}/`
       });

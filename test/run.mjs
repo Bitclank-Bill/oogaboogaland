@@ -10143,8 +10143,10 @@ const ghostHuntChecks = async () => {
 // page wider than the screen and one frame height for every tab. The tabs are a visitor's by who they are (three signed
 // out and for an X listener, five for a contributor). Every registered Ooga is reachable through Show away, with its
 // sort and its details, and a list that can't be read says so rather than showing none. Tab switches build each view
-// once and leave no duplicate id, timer or growing DOM behind, never making a WebGL context. Feed the Oogas, signed out,
-// opens and hands the focus back as it closes. Each tab at each width is saved to untracked/ooga-chat-app for review.
+// once and leave no duplicate id, timer or growing DOM behind, never making a WebGL context. Feed the Oogas on the
+// demo, signed out and by the visitor's keys, refuses a tip under the minimum, carries a message only at the message
+// bar, counts its receipt in the Bananas panel, keeps the donor's name for the next tip and hands the focus back; its
+// screens fit at each width. Each tab and screen at each width is saved to untracked/ooga-chat-app for review.
 const oogaChatAppChecks = async () => {
   const B = await import(pathToFileURL(join(root, "scripts/ooga-chat.mjs")).href);
   const out = mkdtempSync(join(tmpdir(), "ooga-chat-app-")), staged = join(out, "app"), shots = join(root, "untracked", "ooga-chat-app");
@@ -10267,22 +10269,88 @@ const oogaChatAppChecks = async () => {
     record("Ooga Chat page: thirty tab switches build each view once and keep it, leave the DOM as it was with no duplicate id or extra interval, keep one emoji bar, and never make a WebGL context",
       clean, JSON.stringify(hygiene));
 
-    // Feed the Oogas, signed out on the demo: it opens and hands the focus back as it closes.
+    // Feed the Oogas, signed out on the demo: the minimum, the message bar, the receipt, the name kept and the focus
+    // handed back, all by the visitor's own keys; the dialog follows the kiosk's screen (`data-stage`).
+    const stage = (b) => b.evaluate("document.querySelector('dialog.donation-popup')?.dataset.stage || ''");
+    const press = async (b, ...keys) => { for (const k of keys) { await b.key(k); await b.sleep(120); } return stage(b); };
+    const until = async (b, want, ms = 6000) => { for (let t = 0; t < ms && await stage(b) !== want; t += 100) await b.sleep(100); return stage(b); };
+    const openFeed = async (b) => {
+      await b.evaluate(`document.querySelector('.oc-bananas [data-action="feed"]').focus(); document.querySelector('.oc-bananas [data-action="feed"]').click()`);
+      await b.sleep(400);
+    };
+    const bananas = (b) => b.evaluate(`(() => { const q = (r) => document.querySelector('.oc-bananas [data-banana="' + r + '"]');
+      const top = [...q("recent").children].find((li) => !li.hidden);
+      return { donations: q("donations").textContent.trim(), leaders: q("leaders").innerText, top: top ? top.innerText.replace(/\\s+/g, " ").trim() : "" }; })()`);
     b = await page(1024, "state=demo-payment");
     let feed;
     try {
       await open(b, "bananas", 600);
-      await b.evaluate(`document.querySelector('.oc-bananas [data-action="feed"]').focus(); document.querySelector('.oc-bananas [data-action="feed"]').click()`);
-      await b.sleep(400);
-      const opened = await b.evaluate("!!document.querySelector('dialog.donation-popup[open]')");
-      // Escape steps the kiosk back a screen at a time and closes it from its first.
-      let escapes = 0;
-      while (escapes < 3 && await b.evaluate("!!document.querySelector('dialog.donation-popup[open]')")) { await b.key("Escape"); escapes++; await b.sleep(350); }
-      feed = await b.evaluate(`({ closed: !document.querySelector('dialog.donation-popup[open]'), focus: document.activeElement?.dataset?.action || document.activeElement?.tagName })`);
-      Object.assign(feed, { opened, escapes });
+      const before = await bananas(b);
+      await openFeed(b);
+      const opened = await stage(b);
+      const refused = await press(b, "6", "8", "Enter");
+      await press(b, "Backspace");
+      const taken = await press(b, "9", "Enter");
+      const details = await press(b, "a");
+      const named = await b.evaluate("document.activeElement?.id");
+      await b.send("Input.insertText", { text: "sample-tester" });
+      await b.sleep(150);
+      await press(b, "Enter");
+      const invoice = await press(b, "Enter");
+      await press(b, "Enter");
+      const paid = await until(b, "paid");
+      await press(b, "Enter");
+      await b.sleep(300);
+      const back = await b.evaluate(`({ closed: !document.querySelector('dialog.donation-popup[open]'), focus: document.activeElement?.dataset?.action || "" })`);
+      const small = await bananas(b);
+      await b.evaluate(`(() => { const bar = document.querySelector('.oc-bananas [data-banana="bar"]'); if (bar.checked) bar.click(); })()`);
+      await b.sleep(150);
+      const quiet = (await bananas(b)).top;
+      // Again, at the message bar, with a message; the name is the one given last time.
+      await openFeed(b);
+      const kept = await b.evaluate("document.getElementById('donation-handle').value");
+      await press(b, "1", "0", "0", "0", "Enter");
+      await press(b, "a");
+      await press(b, "Tab");
+      await b.send("Input.insertText", { text: "Ooga from the check" });
+      await b.sleep(150);
+      await press(b, "Enter");
+      await press(b, "Enter");
+      await press(b, "Enter");
+      await until(b, "paid");
+      await press(b, "Enter");
+      await b.sleep(300);
+      const big = await bananas(b);
+      feed = { before: before.donations, opened, refused, taken, details, named, invoice, paid, back, small: small.donations, leader: /@sample-tester/.test(small.leaders),
+        quiet, kept, after: big.donations, said: big.top };
     } finally { b.close(); }
-    record("Ooga Chat page: signed out on the demo, Feed the Oogas opens its dialog and, stepped back with Escape until it closes, hands the focus back to its button",
-      feed.opened && feed.closed && feed.focus === "feed", JSON.stringify(feed));
+    const walked = feed.before === "4" && feed.opened === "amount" && feed.refused === "amount" && feed.taken === "quote" && feed.details === "details"
+      && feed.named === "donation-handle" && feed.invoice === "invoice" && feed.paid === "paid" && feed.back.closed && feed.back.focus === "feed";
+    const counted = feed.small === "5" && feed.leader && /sample-tester/.test(feed.quiet) && !/Ooga from the check/.test(feed.quiet)
+      && feed.kept === "sample-tester" && feed.after === "6" && /sample-tester/.test(feed.said) && /Ooga from the check/.test(feed.said);
+    record("Ooga Chat page: on the demo, signed out, Feed the Oogas refuses 68 sats and takes 69, names the donor on its own details screen, pays, closes with the focus back on its button, counts the tip in the Bananas panel, keeps the name for the next tip, and carries a message only at 1,000 sats",
+      walked && counted, JSON.stringify(feed));
+
+    // The donation's screens at each width, for review, inside the screen.
+    const screens = {};
+    for (const w of [320, 390, 1024]) {
+      b = await page(w, "state=demo-payment");
+      try {
+        await open(b, "bananas", 600);
+        await openFeed(b);
+        const fit = () => b.evaluate(`(() => { const r = document.querySelector('dialog.donation-popup').getBoundingClientRect();
+          return r.left >= -1 && r.right <= innerWidth + 1 && r.width > 0 && document.documentElement.scrollWidth <= innerWidth + 1; })()`);
+        const seen = [];
+        for (const [name, keys] of [["amount", []], ["quote", ["6", "9", "Enter"]], ["details", ["a"]], ["invoice", ["Enter", "Enter"]]]) {
+          const at = await press(b, ...keys);
+          seen.push(at === name && await fit());
+          await b.screenshot(join(shots, `feed-${w}-${name}.png`));
+        }
+        screens[w] = seen.every(Boolean);
+      } finally { b.close(); }
+    }
+    record("Ooga Chat page: Feed the Oogas' amount, quote, details and invoice screens each fit inside the screen at 320, 390 and 1024 pixels",
+      Object.values(screens).every(Boolean), JSON.stringify(screens));
   } finally {
     server.close();
     rmSync(out, { recursive: true, force: true });
@@ -11090,7 +11158,7 @@ const donationClientChecks = async () => {
   let noteFails = 0;
   for (const id of ["donation-popup", "donation-screen", "donation-handle", "donation-message", "donation-close",
     "donation-fields", "factory-donation-fields", "donation-details-status"]) elements.set(id, {
-    listeners: new Map(), open: false, value: "", disabled: false,
+    listeners: new Map(), open: false, value: "", disabled: false, dataset: {},
     addEventListener(type, fn) { this.listeners.set(type, fn); }, removeEventListener(type) { this.listeners.delete(type); },
     showModal() { this.open = true; }, close() { this.open = false; }, focus() { this.focused = true; }, blur() { this.focused = false; },
     select() { this.selected = true; }, setSelectionRange() {}, scrollIntoView() {}, append() {}, insertBefore() {}, querySelector: () => ({}), getContext: () => ({})
