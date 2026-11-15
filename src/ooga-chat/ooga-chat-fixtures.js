@@ -78,7 +78,9 @@
   // The public panel data for review (#664's shape): named samples, never real people, with a schema-3 reading.
   const PUBLIC = (now) => {
     const ago = (minutes) => new Date(now - minutes * 60000).toISOString();
-    const people = [["sample-oak", 20, 412, 30], ["sample-fern", 300, 97, 12], ["sample-reed", 3000, 33, 4], ["sample-moss", 60000, 5, 1], ["sample-dune", 90, 140, 9]];
+    // The most contributions and the latest differ in order (sample-fern leads the one, sample-oak the other), so
+    // the sort shows.
+    const people = [["sample-oak", 20, 412, 30], ["sample-fern", 300, 520, 12], ["sample-reed", 3000, 33, 4], ["sample-moss", 60000, 5, 1], ["sample-dune", 90, 140, 9]];
     const board = (kind, share) => people.map(([login, , total]) => ({ login, count: Math.round(total * share) })).filter((e) => e.count);
     return { schema: 1, revision: "fixture", generatedAt: now, stale: false,
       sources: { cast: { state: "ok", revision: "fixture", count: people.length }, stats: { state: "ok", generatedAt: now, source: "oogatron" } },

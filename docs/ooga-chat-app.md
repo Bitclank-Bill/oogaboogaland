@@ -19,6 +19,7 @@ the domain, bindings and secrets belong to #662 and its owner.
 | `npm run build:ooga-chat -- <dir>` | stages it into `<dir>` |
 | `npm run build:ooga-chat -- --fixtures` | also stages `fixture.html` and its own script, for review |
 | `npm run build:ooga-chat -- --fixtures --serve` | stages, then serves the folder on `http://127.0.0.1:8090/` (`PORT` to change) with its `_headers` applied, unknown paths answered by `404.html` with a 404, and no backend |
+| `node test/run.mjs ooga-chat-app` | the page itself in the suite's Chrome (#656), outside the unit tier: its fixture entry built into a temporary folder and served from loopback; every tab inside its frame at 320, 390 and 1024 pixels with one frame height and no wider page, the tabs offered signed out, to an X listener and to a contributor, every registered Ooga reachable with its sort and details, an unreadable list saying so, thirty tab switches leaving no duplicate id, interval, growing DOM or WebGL context, and Feed the Oogas handing the focus back as it closes. Each tab at each width is saved to `untracked/ooga-chat-app` for review |
 
 From source, with no build: open `src/ooga-chat/index.html` from disk (no backend there, so it shows its unavailable
 mode) or `src/ooga-chat/fixture.html?state=contributor`. The island's own build (`npm run build`, `npm run build:site`)

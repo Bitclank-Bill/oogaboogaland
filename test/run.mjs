@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { createHash, webcrypto } from "node:crypto";
@@ -4400,7 +4400,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
@@ -4410,7 +4410,7 @@ const BROWSER_ONLY = ARGS.includes("--browser-only");
 if (BROWSER_ONLY && (!PICKED.length || FULL || ARGS.some(arg => arg !== "--browser-only" && !SCENES.includes(arg)))) {
   throw new Error("--browser-only requires named scenes and cannot be combined with full, unit, perf or dedicated checks");
 }
-const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade"].includes(ARGS[0]));
+const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -10136,6 +10136,156 @@ const ghostHuntChecks = async () => {
       defeat && outcome === G.OUTCOME.ABANDON && empty.state.state === ST.IDLE && paused && still && heldOutcome === G.OUTCOME.ABANDON && held.state.state === ST.IDLE
         && hatched === G.CONFIG.LING.count && leftAtDefeat === 0,
       JSON.stringify({ states: [...states], outcome, paused, still, heldOutcome, hatched, leftAtDefeat }));
+  }
+};
+// Rule (#656): Ooga Chat's own page in Chrome, its fixture entry built and served from loopback as the edge serves it.
+// Every tab is the island's own panel at 320, 390 and 1024 pixels wide: inside its frame, its carved title showing, no
+// page wider than the screen and one frame height for every tab. The tabs are a visitor's by who they are (three signed
+// out and for an X listener, five for a contributor). Every registered Ooga is reachable through Show away, with its
+// sort and its details, and a list that can't be read says so rather than showing none. Tab switches build each view
+// once and leave no duplicate id, timer or growing DOM behind, never making a WebGL context. Feed the Oogas, signed out,
+// opens and hands the focus back as it closes. Each tab at each width is saved to untracked/ooga-chat-app for review.
+const oogaChatAppChecks = async () => {
+  const B = await import(pathToFileURL(join(root, "scripts/ooga-chat.mjs")).href);
+  const out = mkdtempSync(join(tmpdir(), "ooga-chat-app-")), staged = join(out, "app"), shots = join(root, "untracked", "ooga-chat-app");
+  mkdirSync(shots, { recursive: true });
+  B.build(staged, { fixtures: true });
+  const TYPES = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png",
+    ".webp": "image/webp", ".jpg": "image/jpeg", ".json": "application/json", ".webmanifest": "application/manifest+json" };
+  const { createServer } = await import("node:http");
+  const server = createServer((request, response) => {
+    const path = decodeURIComponent(new URL(request.url, "http://localhost").pathname).slice(1) || "index.html", file = join(staged, path);
+    let body = null;
+    if (file.startsWith(staged + sep)) try { body = readFileSync(file); } catch { body = null; }
+    response.writeHead(body ? 200 : 404, { "content-type": TYPES[extname(path)] || "application/octet-stream" });
+    response.end(body || "");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}/fixture.html`;
+  // Counts live intervals and any WebGL context, from before the page's first script.
+  const WATCH = `window.__oc = { intervals: new Set(), gl: 0 };
+    { const si = window.setInterval, ci = window.clearInterval, gc = HTMLCanvasElement.prototype.getContext;
+      window.setInterval = function (...a) { const id = si.apply(this, a); __oc.intervals.add(id); return id; };
+      window.clearInterval = function (id) { __oc.intervals.delete(id); return ci.call(this, id); };
+      HTMLCanvasElement.prototype.getContext = function (type, ...rest) { if (/webgl/i.test(type)) __oc.gl++; return gc.call(this, type, ...rest); }; }`;
+  const page = async (w, query) => {
+    const b = await launch({ w, h: 860, mobile: w < 600 });
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: WATCH });
+    await b.open(`${base}?${query}`);
+    for (let i = 0; i < 80 && !await b.evaluate("document.querySelectorAll('.oc-tab:not([hidden])').length > 0 && document.querySelector('#ooga-chat').dataset.mode !== 'loading'").catch(() => false); i++) await b.sleep(50);
+    await b.sleep(600);
+    return b;
+  };
+  const tabs = (b) => b.evaluate("[...document.querySelectorAll('.oc-tab')].filter((t) => !t.hidden).map((t) => t.dataset.tab)");
+  const open = async (b, tab, settle = 450) => { await b.evaluate(`document.getElementById("oc-tab-${tab}").click()`); await b.sleep(settle); };
+  // One tab as it stands: inside the frame, titled, no wider page, and the frame's height.
+  const measure = (b, tab) => b.evaluate(`(() => {
+    const panel = document.getElementById("oc-view-${tab}").firstElementChild, f = document.querySelector(".oc-frame").getBoundingClientRect(), p = panel.getBoundingClientRect();
+    return { frame: Math.round(f.height), inside: p.left >= f.left - 1 && p.right <= f.right + 1 && p.top >= f.top - 1 && p.bottom <= f.bottom + 1,
+      titled: !!panel.querySelector(".panel-title"), wide: document.documentElement.scrollWidth > innerWidth + 1 };
+  })()`);
+  try {
+    // Every tab at three widths, for the three kinds of visitor.
+    const layout = {};
+    for (const [who, query] of [["signed-out", "state=signed-out"], ["listener", "state=listener"], ["contributor", "state=contributor&roster=mixed"]]) {
+      for (const w of [320, 390, 1024]) {
+        const b = await page(w, query);
+        try {
+          const seen = await tabs(b), each = {};
+          for (const tab of seen) {
+            await open(b, tab, tab === "roster" ? 1500 : 450);
+            each[tab] = await measure(b, tab);
+            await b.screenshot(join(shots, `${who}-${w}-${tab}.png`));
+          }
+          layout[`${who}@${w}`] = { tabs: seen.join(), ok: Object.values(each).every((m) => m.inside && m.titled && !m.wide),
+            heights: [...new Set(Object.values(each).map((m) => m.frame))], each };
+        } finally { b.close(); }
+      }
+    }
+    const tabsFor = (who) => [320, 390, 1024].map((w) => layout[`${who}@${w}`].tabs);
+    const gated = tabsFor("signed-out").every((t) => t === "chat,bananas,roster") && tabsFor("listener").every((t) => t === "chat,bananas,roster")
+      && tabsFor("contributor").every((t) => t === "chat,bananas,roster,players,commons");
+    const fits = Object.values(layout).every((l) => l.ok && l.heights.length === 1);
+    record("Ooga Chat page: every tab is the island's own titled panel inside its frame at 320, 390 and 1024 pixels, no page wider than the screen, one frame height for every tab, and the tabs offered by who the visitor is",
+      gated && fits, JSON.stringify(Object.fromEntries(Object.entries(layout).map(([k, l]) => [k, { tabs: l.tabs, ok: l.ok, heights: l.heights }]))));
+
+    // Contributing Oogas: every registered Ooga reachable, its sort and its details; an unreadable list says so.
+    let b = await page(1024, "state=signed-out");
+    let roster;
+    try {
+      await open(b, "roster", 1500);
+      roster = await b.evaluate(`(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms)), list = () => [...document.querySelectorAll(".oc-roster li[data-name]")];
+        const shown = () => list().filter((li) => !li.hidden).map((li) => li.dataset.name).join();
+        const before = shown(), away = document.querySelector(".oc-roster .roster-away button");
+        away.click(); await wait(100);
+        const all = shown(), sort = document.querySelector(".oc-roster select");
+        sort.value = "most"; sort.dispatchEvent(new Event("change")); await wait(100);
+        const most = shown();
+        sort.value = "recent"; sort.dispatchEvent(new Event("change")); await wait(100);
+        const first = list().find((li) => !li.hidden);
+        first.querySelector(".roster-name").click(); await wait(300);
+        const strip = first.querySelector(".roster-stats");
+        return { rows: list().length, before, all, most, chip: document.querySelector(".oc-roster .panel-chip").textContent,
+          strip: !!strip && !strip.hidden, face: !!strip && !!strip.querySelector("canvas"), kinds: strip ? strip.querySelector(".roster-stats-kinds").textContent : "",
+          repos: strip ? strip.querySelectorAll(".roster-stats-repos a").length : 0 };
+      })()`);
+    } finally { b.close(); }
+    b = await page(1024, "state=unavailable");
+    let unread;
+    try {
+      await open(b, "roster", 1200);
+      unread = await b.evaluate(`({ rows: document.querySelectorAll(".oc-roster li[data-name]").length,
+        note: (() => { const n = document.querySelector(".oc-roster-note"); return n && !n.hidden ? n.textContent : ""; })() })`);
+    } finally { b.close(); }
+    const reachable = roster.rows === 5 && roster.chip === "5 Oogas" && roster.before.split(",").length === 4 && roster.all.split(",").length === 5
+      && roster.all.split(",").includes("sample-moss") && roster.most.startsWith("sample-fern,") && roster.before.startsWith("sample-oak,")
+      && roster.strip && roster.face && /commit/i.test(roster.kinds) && roster.repos >= 1;
+    const honest = unread.rows === 0 && /can.t be reached/.test(unread.note);
+    record("Ooga Chat page: Contributing Oogas lists every registered Ooga (the away one behind Show away), sorts by latest and by most contributions, opens a contributor's details with their face, kinds and repositories, and says a list it can't read can't be reached rather than showing none",
+      reachable && honest, JSON.stringify({ roster, unread }));
+
+    // Tab switches: each view built once and kept, nothing left behind, no WebGL.
+    b = await page(1024, "state=contributor&roster=empty");
+    let hygiene;
+    try {
+      const seen = await tabs(b);
+      for (const tab of seen) await open(b, tab, tab === "roster" ? 1200 : 300);
+      const warm = await b.evaluate(`(() => { for (const v of document.querySelectorAll(".oc-view")) v.firstElementChild.__kept = true;
+        return { nodes: document.querySelectorAll("*").length, intervals: __oc.intervals.size }; })()`);
+      for (let round = 0; round < 6; round++) for (const tab of seen) await open(b, tab, 60);
+      await open(b, "chat", 300);
+      hygiene = await b.evaluate(`(() => { const ids = [...document.querySelectorAll("[id]")].map((e) => e.id);
+        return { views: document.querySelectorAll(".oc-view").length, kept: [...document.querySelectorAll(".oc-view")].every((v) => v.firstElementChild.__kept === true),
+          nodes: document.querySelectorAll("*").length, intervals: __oc.intervals.size, duplicates: ids.length - new Set(ids).size, gl: __oc.gl,
+          bars: document.querySelectorAll(".reaction-bar").length }; })()`);
+      hygiene.warm = warm;
+      hygiene.tabs = seen.length;
+    } finally { b.close(); }
+    const clean = hygiene.views === hygiene.tabs && hygiene.kept && hygiene.nodes === hygiene.warm.nodes && hygiene.intervals <= hygiene.warm.intervals
+      && hygiene.duplicates === 0 && hygiene.gl === 0 && hygiene.bars === 1;
+    record("Ooga Chat page: thirty tab switches build each view once and keep it, leave the DOM as it was with no duplicate id or extra interval, keep one emoji bar, and never make a WebGL context",
+      clean, JSON.stringify(hygiene));
+
+    // Feed the Oogas, signed out on the demo: it opens and hands the focus back as it closes.
+    b = await page(1024, "state=demo-payment");
+    let feed;
+    try {
+      await open(b, "bananas", 600);
+      await b.evaluate(`document.querySelector('.oc-bananas [data-action="feed"]').focus(); document.querySelector('.oc-bananas [data-action="feed"]').click()`);
+      await b.sleep(400);
+      const opened = await b.evaluate("!!document.querySelector('dialog.donation-popup[open]')");
+      // Escape steps the kiosk back a screen at a time and closes it from its first.
+      let escapes = 0;
+      while (escapes < 3 && await b.evaluate("!!document.querySelector('dialog.donation-popup[open]')")) { await b.key("Escape"); escapes++; await b.sleep(350); }
+      feed = await b.evaluate(`({ closed: !document.querySelector('dialog.donation-popup[open]'), focus: document.activeElement?.dataset?.action || document.activeElement?.tagName })`);
+      Object.assign(feed, { opened, escapes });
+    } finally { b.close(); }
+    record("Ooga Chat page: signed out on the demo, Feed the Oogas opens its dialog and, stepped back with Escape until it closes, hands the focus back to its button",
+      feed.opened && feed.closed && feed.focus === "feed", JSON.stringify(feed));
+  } finally {
+    server.close();
+    rmSync(out, { recursive: true, force: true });
   }
 };
 // The timer identifies the current level’s shared record without borrowing a local personal best.
@@ -35884,6 +36034,7 @@ if (ARGS.includes("cloud-hopper-arcade")) {
   await dispose();
 }
 if (ARGS.includes("cloud-hopper-record")) { await highscoreClientChecks(); await cloudHopperRecordChecks(); }
+if (ARGS.includes("ooga-chat-app")) { await oogaChatAppChecks(); await dispose(); }
 // The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (UNIT || ARGS.includes("cloud-hopper-controller")) await unitChecks();
 if (PROTOCOL) await pokerProtocolChecks();
