@@ -687,7 +687,8 @@
       chip.dataset.tone = live ? "live" : status === "closed" ? "closed" : "idle";
       note.textContent = !live ? COMMONS_WORDS[status] || "" : model.state.players.size ? "" : "Nobody is on the island right now.";
       note.hidden = !note.textContent;
-      list.hidden = !live || !model.state.players.size;
+      // The dark list stays while live, empty or not, so the panel keeps its shape with nobody on the island.
+      list.hidden = !live;
     };
     const update = (state) => {
       watch();
