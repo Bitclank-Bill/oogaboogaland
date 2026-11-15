@@ -226,7 +226,7 @@
       let closed = false, next = HISTORY.length + 1;
       const timers = new Set();
       const later = (ms, fn) => { const timer = setTimeout(() => { timers.delete(timer); if (!closed) fn(); }, ms); timers.add(timer); };
-      const you = { id: 1, login: account?.identity.login || "sample-contributor", display: account?.identity.display || "sample-contributor" };
+      const you = { id: 1, login: account?.identity.login || "sample-contributor", display: named || account?.identity.display || "sample-contributor" };
       status("connecting");
       later(300, () => {
         status("live");
@@ -250,8 +250,16 @@
         }
       };
     };
+    // The Commons' name field, answered as the island's rules would after a short wait; the next welcome carries it.
+    let named = null;
+    const commonsName = (display) => new Promise((resolve) => setTimeout(() => {
+      const clean = String(display).replace(/\s+/g, " ").trim();
+      if (clean.length < 3 || clean.length > 24 || /[^\w .,!?'@#:-]/.test(clean)) return resolve({ ok: false, error: "Use 3–24 letters A–Z, digits, spaces or _ . , ! ? ' @ # : -" });
+      named = clean;
+      resolve({ ok: true, display: clean });
+    }, 300));
     const contributors = async () => state === "unavailable" ? null : PUBLIC(now());
-    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, contributors, dispose, pending: 0, demo };
+    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, commonsName, contributors, dispose, pending: 0, demo };
   };
   BL.oogaChatFixtures = { create, STATES, ROSTERS };
 })();
