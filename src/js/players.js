@@ -149,8 +149,9 @@
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
+      // A player out of voice shows no mic at all.
       const look = rec.voice ? rec.muted ? "muted" : !row.faded && BL.voice.speaking(rec.id) ? "speaking" : "on" : "";
-      paintMark(row, look || "off", rec.login, false, rec.id === s.hostId, rec.hand ? (rec.handEmoji || BL.reactionPolicy.HANDS[rec.handTone]) : "");
+      paintMark(row, look, rec.login, false, rec.id === s.hostId, rec.hand ? (rec.handEmoji || BL.reactionPolicy.HANDS[rec.handTone]) : "");
       paintLink(row, s.voiceLinks ? net.voiceLink(rec.id) : "", rec.display);
       const level = V.volumeOf(row.id), words = `${Math.round(level * 100)}%`;
       if (row.slider.value !== String(level * 100)) row.slider.value = String(level * 100);

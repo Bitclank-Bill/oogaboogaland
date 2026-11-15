@@ -27,7 +27,9 @@
 // null, `rtc` the browser's WebRTC and media (the fixture passes its own), `request(type, fields)` sends a request over
 // the audience feed and returns its id (0 when it can't), `allowed()` whether the deployment lets anyone speak now.
 // Returns `{ heard(msg), status(feedStatus), zone(next), join(), leave(), mute(), release(reason), stop(), retry(),
-// dispose(), available, why, state, stats }`; `state` is `{ role, muted, phase, busy, notice, blocked, hearing }`.
+// dispose(), available, why, state, stats }`; `state` is `{ role, muted, phase, busy, notice, blocked, hearing, speaking }`.
+// Speaking is this page's own meter on the captured microphone (as the island's voice.js meters it, the same levels):
+// true while an unmuted speaker's voice is loud enough, whoever else is listening, so the visitor sees it work alone.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -40,6 +42,8 @@
   // negotiating (publishing it), muted and open (an acknowledged speaker), leaving.
   const PHASES = ["off", "connecting", "listening", "reconnecting", "failed", "permission", "requesting", "negotiating", "muted", "open", "leaving"];
   const BUSY = new Set(["permission", "requesting", "negotiating", "leaving"]);
+  // The own meter: RMS over SPEAK_ON starts speaking at once, SPEAK_HOLD quiet reads in a row end it (voice.js's values).
+  const SPEAK_MS = 150, SPEAK_ON = 0.02, SPEAK_HOLD = 4, SAMPLES = 1024;
   const NOTICE = {
     denied: "Microphone access is blocked. Allow it for this site to speak.",
     nodevice: "No microphone was found.",
@@ -71,7 +75,7 @@
       audio: () => new Audio()
     };
   };
-  const IDLE = Object.freeze({ role: "listener", muted: true, phase: "off", busy: false, notice: "", blocked: false, hearing: 0 });
+  const IDLE = Object.freeze({ role: "listener", muted: true, phase: "off", busy: false, notice: "", blocked: false, hearing: 0, speaking: false });
   const create = ({ broker, rtc = browser(), request = () => 0, allowed = () => true, onChange = () => {},
     timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }, target = window } = {}) => {
     const R = rtc;
@@ -85,6 +89,8 @@
     const voices = new Map();
     // Speaking: the join's ticket, the microphone, the publishing connection, the lease's generation and the mute.
     let joinTicket = 0, mic = null, pub = null, lease = 0, speaker = false, muted = true;
+    // The own meter while a microphone is held: `{ audio, source, analyser, samples, timer, quiet }`, and its reading.
+    let meter = null, speaking = false;
     // TURN credentials, kept until shortly before they expire; requests waiting on the feed's `result`.
     let ice = null;
     const waiters = new Map();
@@ -94,9 +100,11 @@
       if (disposed) return;
       let hearing = 0;
       for (const v of voices.values()) if (v.el) hearing++;
-      const next = { role: speaker ? "speaker" : "listener", muted: speaker ? muted : true, phase, busy: BUSY.has(phase), notice, blocked: blocked && hearing > 0, hearing };
+      const next = { role: speaker ? "speaker" : "listener", muted: speaker ? muted : true, phase, busy: BUSY.has(phase), notice, blocked: blocked && hearing > 0, hearing,
+        speaking: speaker && !muted && speaking };
       const s = state;
-      if (s.role === next.role && s.muted === next.muted && s.phase === next.phase && s.notice === next.notice && s.blocked === next.blocked && s.hearing === next.hearing) return;
+      if (s.role === next.role && s.muted === next.muted && s.phase === next.phase && s.notice === next.notice && s.blocked === next.blocked && s.hearing === next.hearing
+        && s.speaking === next.speaking) return;
       state = Object.freeze(next);
       onChange(state);
     };
@@ -303,9 +311,41 @@
     };
 
     // --- speaking ---
+    // The own meter, on the held microphone's stream, where the browser has Web Audio (none in the suite's fakes).
+    const readMeter = () => {
+      if (!meter) return;
+      meter.analyser.getFloatTimeDomainData(meter.samples);
+      let sum = 0;
+      for (let i = 0; i < SAMPLES; i++) sum += meter.samples[i] * meter.samples[i];
+      const loud = Math.sqrt(sum / SAMPLES) > SPEAK_ON;
+      meter.quiet = loud ? 0 : meter.quiet + 1;
+      const next = loud || speaking && meter.quiet < SPEAK_HOLD;
+      if (next !== speaking) { speaking = next; emit(); }
+      meter.timer = timers.set(readMeter, SPEAK_MS);
+    };
+    const startMeter = (stream) => {
+      const Ctx = target.AudioContext || target.webkitAudioContext;
+      if (!Ctx || meter) return;
+      try {
+        const audio = new Ctx(), source = audio.createMediaStreamSource(stream), analyser = audio.createAnalyser();
+        analyser.fftSize = SAMPLES;
+        source.connect(analyser);
+        if (audio.state === "suspended") audio.resume().catch(() => {});
+        meter = { audio, source, analyser, samples: new Float32Array(SAMPLES), timer: 0, quiet: 0 };
+        meter.timer = timers.set(readMeter, SPEAK_MS);
+      } catch { meter = null; }
+    };
+    const stopMeter = () => {
+      if (!meter) return;
+      timers.clear(meter.timer);
+      meter.source.disconnect();
+      meter.audio.close().catch(() => {});
+      meter = null; speaking = false;
+    };
     // Capture ends and the publishing connection closes here, at once and once; the server is told by the caller.
     const stopSpeaking = () => {
       joinTicket++;
+      stopMeter();
       const had = !!mic || !!pub || speaker;
       speaker = false;
       muted = true;
@@ -359,6 +399,7 @@
       }
       mic = { stream, track };
       stats.captured++;
+      startMeter(stream);
       track.addEventListener("ended", micEnded);
       phase = "requesting";
       emit();
