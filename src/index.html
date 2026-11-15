@@ -432,18 +432,7 @@
       <div class="sheet-body">
       <div class="sheet-content">
       <section class="panel" data-panel="roster" id="roster-panel" role="tabpanel" aria-labelledby="sheet-toggle">
-        <header class="panel-title">
-          <h2><span data-sign>Contributing Oogas</span></h2>
-          <span class="panel-chip" id="roster-count" data-tone="idle"></span>
-        </header>
-        <div class="roster-sort">
-          <label class="roster-sort-label" for="roster-sort">Sorted by</label>
-          <select id="roster-sort">
-            <option value="recent">Most recent contributions</option>
-            <option value="most">Most contributions</option>
-          </select>
-        </div>
-        <ul id="roster" class="roster slab" aria-label="Contributing Oogas"></ul>
+        <!-- The title, Sorted by and the list (#roster) are built here by roster-panel.js, shared with Ooga Chat. -->
         <div class="account" id="account" hidden>
           <button type="button" class="panel-primary" data-action="account-login" id="account-login" aria-label="Contributor sign-in with GitHub" title="Contributors can sign in with GitHub to control their own Ooga and gorilla."><span data-sign>Contributor sign-in</span></button>
           <span class="account-who">
@@ -2290,6 +2279,7 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/caves.js"></script>
   <script src="js/characters.js"></script>
   <script src="js/characters.gen.js"></script>
+  <script src="js/roster-panel.js"></script>
   <script src="js/contributors.js"></script>
   <script src="js/donations.js"></script>
   <script src="js/donation-rate.js"></script>
@@ -2309,6 +2299,7 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/mine-rigs.js"></script>
   <script src="js/highscore-rules.js"></script>
   <script src="js/cloud-hopper-replay-codec.js"></script>
+  <script src="js/format-large.js"></script>
   <script src="js/game.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/zone-map.js"></script>

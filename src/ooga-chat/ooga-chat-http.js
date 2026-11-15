@@ -2,7 +2,7 @@
 // Every answer passes oogaChatConfig's parsers; a failure becomes an explicit unavailable mode, never mock data.
 // The fixture adapter (ooga-chat-fixtures.js) keeps the same interface: `kind`, `bootstrap()`, `session(boot)`,
 // `signIn(boot, provider)`, `signOut(boot)`, `audience(boot, { message, status })`, `commons(boot, { message, status })`,
-// `dispose()`.
+// `contributors()`, `dispose()`.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -14,6 +14,8 @@
   // The Commons' fixed address (docs/ooga-chat-backend.md) and its heartbeat: the island's Room answers "ping" with
   // "pong" without waking, and closes a member silent past 90 s.
   const COMMONS_PATH = "/api/chat/commons", PING_MS = 30000;
+  // The public panels' data (#664): the island's cast and Oogatron's reading, for anyone, signed in or not.
+  const PUBLIC_PATH = "/api/chat/public/contributors";
   const create = ({ fetch = window.fetch.bind(window), location = window.location, doc = document, WebSocket = window.WebSocket } = {}) => {
     const pending = new Set();
     let disposed = false;
@@ -187,12 +189,21 @@
         }
       };
     };
+    // The public panel data as the server answers it, or null when it can't be read (the view says so, never zeros).
+    const contributors = async () => {
+      try {
+        const response = await ask(PUBLIC_PATH, { headers: { accept: "application/json" } });
+        return response.ok ? await json(response) : null;
+      } catch {
+        return null;
+      }
+    };
     const dispose = () => {
       disposed = true;
       for (const controller of pending) controller.abort();
       pending.clear();
     };
-    return { kind: "http", bootstrap, session, signIn, signOut, audience, commons, dispose, get pending() { return pending.size; } };
+    return { kind: "http", bootstrap, session, signIn, signOut, audience, commons, contributors, dispose, get pending() { return pending.size; } };
   };
   BL.oogaChatHttp = { create, TIMEOUT_MS };
 })();

@@ -4433,7 +4433,7 @@ const scene = (id, { query = "", steps, perf = false, opts = {}, label = "", url
   } });
 };
 // contributors.js reads the roster from the character files, which build on math, scene and models.
-const CONTRIBUTOR_SOURCES = ["math", "scene", "models", "hero-body", "caves", "contributor-identities", "activity-repos", "characters", "characters.gen", "contributors"];
+const CONTRIBUTOR_SOURCES = ["math", "scene", "models", "hero-body", "caves", "contributor-identities", "activity-repos", "characters", "characters.gen", "roster-panel", "contributors"];
 const contributorActivityChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
@@ -4884,7 +4884,7 @@ const deferredLoadingChecks = async () => {
   record("deferred loading: base and scene fetch together but execute in order, failed retries and timeouts release preloads, only an error moves the address on, a chunk a deploy removed is reported stale, a chunk run twice keeps its first definition and module state, and shells carry their wip", rows.every(r => r.ok), JSON.stringify(rows));
 };
 const hudNoticeChecks = async () => {
-  const source = await readFile(join(root, "src/js/hud.js"), "utf8");
+  const source = await readFile(join(root, "src/js/hud.js"), "utf8"), rosterSource = await readFile(join(root, "src/js/roster-panel.js"), "utf8");
   const fixture = () => {
     const timers = new Map(); let serial = 0, reloads = 0;
     const element = () => {
@@ -4907,12 +4907,14 @@ const hudNoticeChecks = async () => {
     const nodes = Object.fromEntries(["toast", "reload-notice", "message-stack"].map(id => [id, element()]));
     nodes["message-stack"].children = [nodes["reload-notice"], nodes.toast];
     const BL = { game: {}, scene: {}, signGlyphs: { lettering() {}, letter() {} }, nativeIcons: { fill() {}, voice: () => ({ cloneNode: () => ({}) }) } };
-    runInNewContext(source, {
+    const context = {
       window: { BL, matchMedia: () => ({ matches: false }), setTimeout: (fn, ms) => { timers.set(++serial, { fn, ms }); return serial; }, clearTimeout: id => timers.delete(id) },
       document: { getElementById: id => nodes[id], querySelectorAll: () => [], createElement: element,
         createElementNS: () => ({ setAttribute() {}, append() {} }) },
       location: { reload() { reloads++; } }
-    });
+    };
+    runInNewContext(rosterSource, context);
+    runInNewContext(source, context);
     const expire = () => { const [id, timer] = timers.entries().next().value; timers.delete(id); timer.fn(); return timer.ms; };
     return { hud: BL.hud, nodes, timers, expire, reloads: () => reloads };
   };
@@ -6824,7 +6826,7 @@ const hammockChecks = async () => {
   // club, rifle and jetpack), its own pack or the hub's put on as the crew puts it on, stowed by a resting peer's pose.
   for (const file of readdirSync(new URL("../src/characters/", import.meta.url)))
     if (!R.characters.get(file.replace(/\.js$/, ""))) runInNewContext(await readFile(new URL(`../src/characters/${file}`, import.meta.url), "utf8"), real);
-  for (const name of ["caves", "contributor-identities", "activity-repos", "contributors"])
+  for (const name of ["caves", "contributor-identities", "activity-repos", "roster-panel", "contributors"])
     runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), real);
   const roster = R.characters.all().map((definition) => {
     const handle = definition.handle, cave = R.models.caveman(R.contributors.traitsFor(handle));
@@ -7353,7 +7355,7 @@ const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
 
 // The games' rules and saves in Node, under the same localStorage the page uses: the mine's seeded sim,
 // every game's stored best, the tickets a machine spends and the jackpot wheel's odds.
-const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-wire", "block-sim", "block-live", "highscore-rules", "game", "cloud-hopper-levels"];
+const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-wire", "block-sim", "block-live", "highscore-rules", "format-large", "game", "cloud-hopper-levels"];
 const gameRulesChecks = async () => {
   const store = new Map();
   const context = { window: {}, URLSearchParams, location: { search: "" }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) } };
@@ -10885,6 +10887,7 @@ const donationClientChecks = async () => {
   const valueContext = { window: { BL: valueBL, matchMedia: () => ({ matches: false }) },
     document: { querySelectorAll: () => [], createElementNS: () => ({ setAttribute() {}, append() {} }) } };
   runInNewContext(await readFile(new URL("../src/js/banana-panel.js", import.meta.url), "utf8"), valueContext);
+  runInNewContext(await readFile(new URL("../src/js/roster-panel.js", import.meta.url), "utf8"), valueContext);
   runInNewContext(await readFile(new URL("../src/js/hud.js", import.meta.url), "utf8"), valueContext);
   const valueText = valueBL.hud.donationValueText, values = [valueText()];
   valueBL.donationRate.current = { usdPerBtc: 100000, at: 9 }; values.push(valueText());
@@ -30830,7 +30833,7 @@ const raceRigChecks = async () => {
   const context = { window: {}, location: { search: "?debug=1&rain=0" }, URLSearchParams, crypto: webcrypto };
   for (const name of ["math", "scene", "models", "hero-body", "caves", "contributor-identities", "activity-repos", "characters"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   for (const name of readdirSync(join(root, "src", "characters")).filter(name => name.endsWith(".js")).sort()) runInNewContext(readFileSync(join(root, "src", "characters", name), "utf8"), context);
-  for (const name of ["contributors", "sign-glyphs", "hub-models", "dressing", "daylight", "race-models", "race-track", "racers", "mirror-ripples", "mirror-body", "dsb-water", "gl-renderer"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  for (const name of ["roster-panel", "contributors", "sign-glyphs", "hub-models", "dressing", "daylight", "race-models", "race-track", "racers", "mirror-ripples", "mirror-body", "dsb-water", "gl-renderer"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL, scene = BL.scene.createNode(), released = [];
   const renderer = { createRig: BL.glRenderer.createRig, releaseGeometry: geometry => released.push(geometry) };
   const track = BL.raceTrack.build(BL.raceTrack.TRACKS[0], { renderer, slots: CAST, rain: false, hour: 12 });

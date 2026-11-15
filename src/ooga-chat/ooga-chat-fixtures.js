@@ -75,6 +75,20 @@
     { id: 1, at: 1_800_000_000_000, login: "sample-oak", name: "Sample Oak", text: "Ooga! Who's at the pile?" },
     { id: 2, at: 1_800_000_060_000, login: "Sample-Fern", name: "Sample-Fern", text: "Playing Cloud Hopper in the arcade 🍌" }
   ];
+  // The public panel data for review (#664's shape): named samples, never real people, with a schema-3 reading.
+  const PUBLIC = (now) => {
+    const ago = (minutes) => new Date(now - minutes * 60000).toISOString();
+    const people = [["sample-oak", 20, 412, 30], ["sample-fern", 300, 97, 12], ["sample-reed", 3000, 33, 4], ["sample-moss", 60000, 5, 1], ["sample-dune", 90, 140, 9]];
+    const board = (kind, share) => people.map(([login, , total]) => ({ login, count: Math.round(total * share) })).filter((e) => e.count);
+    return { schema: 1, revision: "fixture", generatedAt: now, stale: false,
+      sources: { cast: { state: "ok", revision: "fixture", count: people.length }, stats: { state: "ok", generatedAt: now, source: "oogatron" } },
+      cast: people.map(([handle], i) => ({ handle, github: handle, display: null, joinedAt: Date.UTC(2026, 3 + i, 1), lastCommitAt: now - 86400000 * (i + 2) })),
+      stats: { meta: { schema_version: 3, org: "OogaBoogaX", generated_at: new Date(now).toISOString() },
+        contributors: people.map(([login, minutes]) => ({ login, last_seen_at: ago(minutes) })),
+        leaderboards: { commits: board("commits", 0.6), prs: board("prs", 0.15), reviews: board("reviews", 0.1), issues: board("issues", 0.05), comments: board("comments", 0.1) },
+        repos: [{ name: "oogaboogaland", contributors: people.map(([login, minutes]) => ({ login, last_seen_at: ago(minutes) })), leaderboards: { commits: board("commits", 0.5) } },
+          { name: "entropylab", contributors: people.slice(0, 2).map(([login, minutes]) => ({ login, last_seen_at: ago(minutes + 5) })), leaderboards: { commits: board("commits", 0.1).slice(0, 2) } }] } };
+  };
   const create = ({ state = "signed-out", roster = "mixed", now = () => Date.now() } = {}) => {
     if (!STATES.includes(state)) throw new Error(`Unknown fixture state "${state}" (${STATES.join(", ")})`);
     if (!ROSTERS.includes(roster)) throw new Error(`Unknown fixture roster "${roster}" (${ROSTERS.join(", ")})`);
@@ -195,7 +209,8 @@
         }
       };
     };
-    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, dispose, pending: 0, demo };
+    const contributors = async () => state === "unavailable" ? null : PUBLIC(now());
+    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, contributors, dispose, pending: 0, demo };
   };
   BL.oogaChatFixtures = { create, STATES, ROSTERS };
 })();

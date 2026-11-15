@@ -1,7 +1,7 @@
 // Ooga Chat's startup, loaded last. It picks the adapter (the production one; the fixture one only on fixture.html,
 // whose root says `data-adapter="fixture"` and which alone loads it), letters the title, builds the shell with the
-// public tabs (Ooga Chat, Bananas, Contributing Oogas) and the contributor tabs (Online Oogas, The Commons), keeps the
-// account footer under them, and moves through loading, then live, unavailable or stale. The account is
+// public tabs (Ooga Chat, Bananas, Contributing Oogas) and the contributor tabs (Online Oogas, The Commons), each the
+// island's own panel with its account controls where the island keeps them, and moves through loading, then live, unavailable or stale. The account is
 // ooga-chat-auth.js's: a sign-in return (`?signin=`) is read once and dropped from the address, the session is checked
 // before any control shows, and again on the session's own deadlines, on a return to the page and on reconnecting.
 // Unavailable is never a dead end: Try again asks the service again, and so does coming back online or to the page.
@@ -10,11 +10,11 @@
 // The device (ooga-chat-device.js) reports the network, install help and a waiting update, and registers the service
 // worker for the production entry of a staged build; M mutes or unmutes a speaker. It starts no island system: no
 // renderer, scene, socket or game. A failure shows a recoverable error with Reload;
-// pagehide disposes the shell, the footer, the account and the adapter.
+// pagehide disposes the shell, the account and the adapter.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, account, device: deviceBar, bananas, commons, online, pending } = BL.oogaChatViews;
+  const { storageKey, sweep, parseReturn, withoutReturn, parseZone, appBuild } = BL.oogaChatConfig, { chat, device: deviceBar, bananas, roster: contributingOogas, commons, online } = BL.oogaChatViews;
   const { gates } = BL.oogaChatAuth;
   const root = document.getElementById("ooga-chat");
   const fixture = root.dataset.adapter === "fixture";
@@ -35,7 +35,7 @@
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
   // `donating` ends the donation socket, opened once the service says its feed is live; `feeding` is Feed the Oogas,
   // the island's own donation popup, made the first time it opens; `member` is the Commons socket.
-  let adapter = null, shell = null, footer = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null, feeding = null, member = null;
+  let adapter = null, shell = null, auth = null, feed = null, device = null, bar = null, relisten = 0, donating = null, feeding = null, member = null;
   const page = new AbortController();
   try {
     // Donations here are the service's or nothing: donations.js never plays its simulated tips in the app.
@@ -62,7 +62,6 @@
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
       shell.update(state);
-      footer.update(state);
       bar.update(state);
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
@@ -198,19 +197,17 @@
       feeding.open(mode === "demo");
     };
     const ctx = { actions, media, install: () => device.install(), reload: () => device.reload(), storageKey: (name) => storageKey(adapter.kind, name),
-      demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data) } };
+      demo: fixture ? adapter.demo : null, feed: feedOogas, commons: { model: town, send: (data) => !!member && member.send(data) },
+      contributors: () => adapter.contributors() };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [
       { id: "chat", label: "Ooga Chat", icon: "cloud", visible: () => true, view: chat },
       { id: "bananas", label: "Bananas", icon: "bananas", visible: () => true, view: bananas },
-      { id: "roster", label: "Contributing Oogas", icon: "roster", visible: () => true,
-        view: pending("Contributing Oogas", "The island's full Contributing Oogas list comes here next.") },
+      { id: "roster", label: "Contributing Oogas", icon: "roster", visible: () => true, view: contributingOogas },
       { id: "players", label: "Online Oogas", icon: "players", visible: contributor, view: online },
       { id: "commons", label: "The Commons", icon: "chat", visible: contributor, view: commons }
     ] });
-    footer = account(ctx);
-    root.querySelector(".oc-frame").append(footer.node);
     bar = deviceBar(ctx);
     root.querySelector(".oc-frame").after(bar.node);
     auth = BL.oogaChatAuth.create({ adapter, media, onChange: (next) => {
@@ -251,7 +248,6 @@
     bar?.dispose();
     auth?.dispose();
     shell?.dispose();
-    footer?.dispose();
     adapter?.dispose();
   });
 })();
