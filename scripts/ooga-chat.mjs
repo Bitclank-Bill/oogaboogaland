@@ -117,7 +117,8 @@ export const cloudMark = () => {
   runInNewContext(readFileSync(join(root, "src", "js", "native-icons.js"), "utf8"), context);
   const [, viewBox, , parts] = context.window.BL.nativeIcons.ICONS.cloud;
   const [, , w, h] = viewBox.split(" ").map(Number), grid = new Array(w * h).fill(null);
-  for (const [colour, d] of parts) {
+  for (const [colour, d, part] of parts) {
+    if (part === "cloud-near") continue;
     const rects = [...d.matchAll(/M(\d+) (\d+)h(\d+)v(\d+)H\d+z/g)];
     if (!rects.length) throw new Error("ooga-chat: the native cloud's paths are not pixel rectangles");
     for (const [, x, y, rw, rh] of rects) for (let j = +y; j < +y + +rh; j++) for (let i = +x; i < +x + +rw; i++) grid[j * w + i] = colour;
