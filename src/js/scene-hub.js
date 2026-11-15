@@ -5328,23 +5328,24 @@
     }
   };
   // Ooga Chat speakers on clouds (#659): the room's seats, three to a cloud on three of the largest clouds (main-cloud-1
-  // to 3 on the first, 4 to 6 on the second, 7 on), each sitting on its own third of it along the cloud's long axis, at
-  // the front of the cloud's top there (a cloud's +z faces the island), legs out over its edge, facing the banana pile;
-  // none while the clouds are put away (game mode, Cloud Hopper), and the purple glow under each one seated.
-  // A seat's place on a cloud's mesh is measured once a mesh: each third's middle, SEAT_BACK in from the top's front edge
-  // there, on the highest face under it.
-  const SPEAKER_CLOUDS = [10, 14, 3], SEAT_REACH = 0.5, SEAT_BACK = 0.45, SEAT_TOP = 0.6;
+  // to 3 on the first, 4 to 6 on the second, 7 on), each sitting on its own third of it along the cloud's long axis, the
+  // outer two drawn SEAT_SPREAD of the way in toward the middle one, centred front to back on the cloud's top there (a
+  // cloud's +z faces the island), facing the banana pile; none while the clouds are put away (game mode, Cloud Hopper),
+  // and the purple glow under each one seated.
+  // A seat's place on a cloud's mesh is measured once a mesh: along the long axis as above, midway between the top's
+  // front and back edges there, on the highest face under it.
+  const SPEAKER_CLOUDS = [10, 14, 3], SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
   const cloudThirds = new Map();
   const thirdsOf = (geometry) => {
     let thirds = cloudThirds.get(geometry);
     if (thirds) return thirds;
-    const b = BL.scene.boundsOf(geometry), v = geometry.verts, span = (b.max[0] - b.min[0]) / 3;
+    const b = BL.scene.boundsOf(geometry), v = geometry.verts, span = (b.max[0] - b.min[0]) / 3, mid = (b.max[0] + b.min[0]) / 2;
     thirds = [0, 1, 2].map((k) => {
-      const x = b.min[0] + span * (k + 0.5);
-      let peak = -Infinity, front = -Infinity, top = -Infinity;
+      const x = mid + (k - 1) * span * SEAT_SPREAD;
+      let peak = -Infinity, front = -Infinity, back = Infinity, top = -Infinity;
       for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] > peak) peak = v[i + 1];
-      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] >= peak - SEAT_TOP && v[i + 2] > front) front = v[i + 2];
-      const z = front - SEAT_BACK;
+      for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && v[i + 1] >= peak - SEAT_TOP) { front = Math.max(front, v[i + 2]); back = Math.min(back, v[i + 2]); }
+      const z = (front + back) / 2;
       for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) <= SEAT_REACH && Math.abs(v[i + 2] - z) <= SEAT_REACH && v[i + 1] > top) top = v[i + 1];
       return Object.freeze({ x, y: top === -Infinity ? peak : top, z });
     });
