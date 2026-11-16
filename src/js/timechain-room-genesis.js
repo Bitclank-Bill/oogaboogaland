@@ -1273,9 +1273,10 @@
           else if (d.t < 7.2) { const u = (d.t - 2.4) / 4.8, el = -1 * DEG + (capEl - 2 * DEG + 1 * DEG) * ease(u), q = ROOMS.onSphere(L, d.az, el, 0.985, q3); n.position.x = q.x; n.position.y = q.y; n.position.z = q.z; n.rotation.x = el * 0.9; n.rotation.y = -d.az; setScale(n, d.size * 3); }
           else if (d.t < 8.2) {
             // Off the dome and in to the mark: the dot is a transaction now, the next square to turn is its own (and
-            // gives it its size); with none left to turn this minute it flies to the middle and only glints.
+            // gives it its size); with none left to turn this minute it flies to the middle and only glints. It comes
+            // in behind the squares, never in front: its light over a square would colour one that has not turned.
             if (d.tgt === -2) { const mk = BL.timechainGenesis.mark; d.tgt = mk ? mk.claim() : -1; const sq = d.tgt >= 0 ? MARK.squares[d.tgt] : null; d.tx = sq ? sq.x : 0; d.tz = sq ? sq.z : 0; if (sq) d.size = 0.5 + 0.26 * sq.n; }
-            const u = ease((d.t - 7.2) / 1.0), q = ROOMS.onSphere(L, d.az, capEl - 1 * DEG, 0.985, q3); n.position.x = q.x + (d.tx - q.x) * u; n.position.z = q.z + (d.tz - q.z) * u; n.position.y = q.y + (capY - 0.1 - q.y) * u; n.rotation.x = HALF_PI; n.rotation.y = 0; setScale(n, d.size * 3 * (1 - 0.7 * u)); }
+            const u = ease((d.t - 7.2) / 1.0), q = ROOMS.onSphere(L, d.az, capEl - 1 * DEG, 0.985, q3); n.position.x = q.x + (d.tx - q.x) * u; n.position.z = q.z + (d.tz - q.z) * u; n.position.y = q.y + (capY + 0.1 - q.y) * u; n.rotation.x = HALF_PI; n.rotation.y = 0; setScale(n, d.size * 3 * (1 - 0.7 * u)); }
           else { d.on = false; setScale(n, 0.001); live.landed = now; const mk = BL.timechainGenesis.mark; if (mk && d.tgt >= 0) mk.light(d.tgt, now, true); }
         }
       };
@@ -1756,7 +1757,8 @@
             const since = now - q.at, flash = lock >= 0 && q.d / reach <= lock;
             const look = flash || since < 0.25 || (late && q.lit && Math.sin(now * 1.5 + q.seed * 0.7) > 0.72) ? "hot" : q.lit ? "orange" : "white";
             if (look !== q.look) { q.look = look; n.geometry = MARK_TILE[look](); }
-            let sc = (q.side - MARK_GAP) * (flash ? 1.05 : since < 0.4 ? 1 + 0.3 * (1 - since / 0.4) : 1);
+            // A landing's spark swells from inside the square to its full size, never past it over its neighbours.
+            let sc = (q.side - MARK_GAP) * (flash ? 1.05 : since < 0.4 ? 1 - 0.3 * (1 - since / 0.4) : 1);
             if (i === MARK.drop && gone) sc = reform >= 0 ? Math.max(0.001, sc * reform) : 0.001;
             if (sc !== q.sc) { q.sc = sc; n.scale.x = n.scale.z = sc; n.scale.y = MARK_THICK; }
           }

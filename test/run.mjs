@@ -22765,6 +22765,8 @@ const timechainPortal = { name: "timechain portal", why: "contract: Before the B
       && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
+// Into Before the Block, waiting across frames: its own code may still be on its way at a first arrival.
+const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
 const timechainPaper = { name: "timechain paper", why: "regression: the whitepaper's standing page was drawn from the decoded strip, which is let go once its pages are cut, so the face stayed blank", run: async (b) => {
   // Dark pixels on the face's own canvas, read once it has been painted over its blank fill.
   const face = async () => {
@@ -22774,8 +22776,7 @@ const timechainPaper = { name: "timechain paper", why: "regression: the whitepap
       return { painted: ${painted}, version: s.version, ink, pages: BL.whitepaperPages.pages.length }; })()`);
   };
   await untilPage(b, 'B.scene === "timechain" && B.timechain && !B.transitioning', 20000);
-  // The room's own code may still be on its way at a first arrival, so this walk in waits across frames.
-  const arrive = () => b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`);
+  const arrive = () => b.evaluate(genesisGo);
   const loaded = await b.evaluate(`BL.whitepaperPages ? BL.whitepaperPages.pages.length : -1`);
   await arrive();
   const first = await face();
@@ -22785,12 +22786,61 @@ const timechainPaper = { name: "timechain paper", why: "regression: the whitepap
   record("timechain paper: the whitepaper's standing page shows page 1 on the first visit, before any page had been cut, and again on coming back",
     loaded <= 0 && [first, again].every(f => f.painted && f.pages === 9 && f.ink > 5000), JSON.stringify({ loaded, first, again }));
 } };
+const timechainMark = { name: "timechain mark", why: "regression: the stream's dots ended their flight in front of the mark's squares and a landing's spark swelled over its neighbours, so squares no dot had reached flashed yellow", run: async (b) => {
+  await untilPage(b, 'B.scene === "timechain" && B.timechain && !B.transitioning', 20000);
+  await b.evaluate(genesisGo);
+  // A minute after a block, the room on its own wall clock: most squares white, some turned, dots arriving. Every drawn
+  // frame is read in the task that drew it: each white square's middle pixel, where the dots are, how big a square is.
+  const r = await b.evaluate(`(async () => {
+    const B = window.__ooga, G = BL.timechainGenesis, N = B.timechain.built.nodes, R = B.renderer, c = document.getElementById("scene"), was = R.quality;
+    const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000, pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    G.live.lastBlockAt = clock() - 60; R.setQuality("high");
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 3.4 }, yaw: 0, pitch: -1.28, dist: 4 }); B.pilot.enterClose(); B.advance(0.3, 1 / 30);
+    // The dots at the mark's own height and over it (others cross the floor and climb the dome under the same spot).
+    const dots = Object.keys(N).filter((key) => key.startsWith("pocStream")).map((key) => N[key]), plane = N.btile0.position.y, top = plane + 0.07;
+    const over = () => dots.filter((n) => n.scale.x > 0.01 && Math.abs(n.position.x) < 3.1 && Math.abs(n.position.z) < 3.6 && Math.abs(n.position.y - plane) < 1.2);
+    // Two seconds for the mark to settle into that minute, and on until dots are arriving.
+    for (const t0 = performance.now(); (performance.now() - t0 < 2000 || !over().length) && performance.now() - t0 < 15000;) { R.setQuality("high"); B.advance(1 / 30, 1 / 30); await pause(30); }
+    const t = document.createElement("canvas"); t.width = c.width; t.height = c.height;
+    const x = t.getContext("2d", { willReadFrequently: true }), k = c.width / c.clientWidth, o = {}, at = [], seen = [], rest = [];
+    for (let i = 0; i < G.mark.count; i++) { const n = N["btile" + i], p = R.project(n.position.x, n.position.y - 0.08, n.position.z, o); at.push(p ? [Math.round(p.x * k), Math.round(p.y * k)] : null); seen.push([]); rest.push(0); }
+    const xs = at.filter(Boolean).map((p) => p[0]), ys = at.filter(Boolean).map((p) => p[1]), x0 = Math.min(...xs) - 2, y0 = Math.min(...ys) - 2, w = Math.max(...xs) - x0 + 3, h = Math.max(...ys) - y0 + 3;
+    let frames = 0, dotsOver = 0, inFront = 0, swollen = 0; const lit0 = G.mark.lit;
+    for (const t0 = performance.now(); frames < 100 && performance.now() - t0 < 30000;) {
+      await pause(30); R.setQuality("high"); B.advance(1 / 30, 1 / 30);
+      // Not while a block drops: its wave, its fall and the square it takes are another matter.
+      const td = clock() - G.live.dropAt; if (td > -3 && td < 12) continue;
+      x.drawImage(c, 0, 0); frames++;
+      const d = x.getImageData(x0, y0, w, h).data, near = over(); dotsOver += near.length;
+      for (const n of near) if (n.position.y < top) inFront++;
+      for (let i = 0; i < at.length; i++) {
+        const n = N["btile" + i], g = n.geometry, white = g.faces[g.faces.length - 1].color[2] === 234;
+        if (white) rest[i] = n.scale.x; else if (rest[i] && n.scale.x > rest[i] * 1.001) swollen++;
+        if (!white || !at[i]) continue;
+        const q = ((at[i][1] - y0) * w + at[i][0] - x0) * 4; seen[i].push(d[q], d[q + 1], d[q + 2]);
+      }
+    }
+    R.setQuality(was);
+    // Each square against its own middle colour over the frames it stayed white.
+    let worst = 0, squares = 0;
+    for (const s of seen) {
+      const m = s.length / 3; if (m < 10) continue; squares++;
+      for (let ch = 0; ch < 3; ch++) { const v = []; for (let j = 0; j < m; j++) v.push(s[j * 3 + ch]); const mid = v.slice().sort((p, q) => p - q)[m >> 1]; for (const q of v) worst = Math.max(worst, Math.abs(q - mid)); }
+    }
+    return { kind: R.kind, frames, squares, turned: G.mark.lit - lit0, dotsOver, inFront, swollen, worst };
+  })()`);
+  record("timechain mark: between landings every white square of the mark keeps its colour, no dot of the stream comes in front of the squares and no landing's spark grows past its own square",
+    r.frames >= 60 && r.squares > 200 && r.dotsOver > 0 && r.turned > 0 && r.inFront === 0 && r.swollen === 0 && r.worst <= 16, JSON.stringify(r));
+} };
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
   record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 1 && r.view === "first-person", JSON.stringify(r));
 } };
-scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainPaper, timechainRooms, timechainWallJump, timechainTrip, timechainPortal] });
+scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
+// Before the Block's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
+// the mark is read on the room's wall clock.
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainPaper, timechainMark, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 scene("hub", { label: "chilling", query: "status=chillin&pos=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.
