@@ -942,7 +942,10 @@
   const BAND = { at: 15, reaches: [[1, 1.7], [-1, 1.7], [1, 3.6], [-1, 3.4], [1, 5.5]], chip: 1.0 };
   // Every ceiling label's box in the dome canvas's pixels, for the overlap check (`BL.timechainGenesis.ceilingBoxes`).
   const CEILING_BOXES = [];
-  const CAP = { el: 68, px: 1024, rIn: 4.9 };
+  // The cap is the mark's own ring (`rIn` metres out, `ring` wide) and what lies inside it, and ends at the ring's
+  // outer edge, so the dome's stars carry on round it; `el` is the height the mark hangs from and the stream's dots
+  // turn in at.
+  const CAP = { el: 68, px: 1024, rIn: 4.9, ring: 0.075 };
   // The ₿'s cell: a bevelled lit cube in Bitcoin orange (a cube with a brighter inset on every face).
   // The ₿'s block at nine heats, from a dark ember to white-hot: the mark fills from dim to bright through each block
   // interval by its blocks stepping up through them, each at its own moment (nine geometries, so nine records).
@@ -1032,12 +1035,11 @@
   const MARK = markOf(SYMBOL, 0.5, 2009), MARK_GAP = 0.024, MARK_THICK = 0.14, MARK_PERIOD = 600;
   // The square that falls on a block: one of the larger ones at the foot of the mark.
   MARK.drop = MARK.squares.reduce((best, q, i) => { const d = Math.hypot(q.x - 0.5, q.z + 3) + (q.n < 2 ? 5 : 0); return d < best.d ? { i, d } : best; }, { i: 0, d: 1e9 }).i;
-  const paintCap = (ctx, L) => {
-    const N = CAP.px, rr = L.R * 0.97 * Math.cos(CAP.el * DEG), s = N / (2 * rr), X = (x) => N / 2 + x * s, Z = (z) => N / 2 + z * s;
+  const paintCap = (ctx) => {
+    const N = CAP.px, rr = CAP.rIn + CAP.ring / 2, s = N / (2 * rr);
     ctx.fillStyle = C.ceiling; ctx.fillRect(0, 0, N, N);
     ctx.fillStyle = "rgba(247,147,26,.1)"; ctx.beginPath(); ctx.arc(N / 2, N / 2, CAP.rIn * s, 0, TAU); ctx.fill();
-    ctx.strokeStyle = C.btc; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(N / 2, N / 2, CAP.rIn * s, 0, TAU); ctx.stroke();
-    const px = 0.26 * s; void px;
+    ctx.strokeStyle = C.btc; ctx.lineWidth = CAP.ring * s; ctx.beginPath(); ctx.arc(N / 2, N / 2, CAP.rIn * s, 0, TAU); ctx.stroke();
     ctx.save(); ctx.translate(N / 2, N / 2);
     const halo = ctx.createRadialGradient(0, 0, 0.3 * s, 0, 0, 4.4 * s); halo.addColorStop(0, "rgba(247,147,26,.22)"); halo.addColorStop(1, "rgba(247,147,26,0)");
     ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, 4.4 * s, 0, TAU); ctx.fill();
@@ -1393,7 +1395,7 @@
     K.dome((ctx, D) => paintDome(ctx, D, L));
     // The cap stands well inside the dome, so Canvas 2D's face sort keeps it in front of the dome's own faces; its key
     // never changes, so it is painted once.
-    K.live({ cap: true, el0: CAP.el, inset: 0.97, w: CAP.px, h: CAP.px, tip: "Where the road led: the whitepaper and the genesis block", key: () => "genesis", paint: (ctx) => paintCap(ctx, L) });
+    K.live({ cap: true, el0: Math.acos((CAP.rIn + CAP.ring / 2) / (L.R * 0.97)) / DEG, inset: 0.97, w: CAP.px, h: CAP.px, tip: "Where the road led: the whitepaper and the genesis block", key: () => "genesis", paint: (ctx) => paintCap(ctx) });
     floorPoc.plan(K, L);
     // The ₿ over the crown, a mosaic of squares (`MARK`): one tile geometry shared by every square, each a node the
     // animator sizes, turns from white to orange as its transaction lands, flashes on a block and lets one fall.
