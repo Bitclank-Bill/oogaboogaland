@@ -127,6 +127,12 @@ A maintainer records the reason when closing. A closed proposal is a decision:
 do not reopen it or rebuild it, yours or anyone else's, unless a maintainer
 asks for it. The closed PR stays as a reference.
 
+## Security problems
+
+Found a way into someone's account, their data, a payment or a secret? Report
+it privately as [SECURITY.md](SECURITY.md) describes, not in a public issue or
+PR.
+
 ## If you are an AI agent
 
 Before building anything under **Ask first**, stop and tell the person you are
