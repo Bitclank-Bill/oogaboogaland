@@ -477,6 +477,9 @@ export class Audience extends DurableObject {
     try { body = JSON.parse(text || "{}"); } catch { return json("malformed", 400); }
     const conn = body && typeof body.connection === "string" ? this.model.conns.get(body.connection) : null;
     if (!conn || conn.principal !== who.principal) return json("stale_epoch", 409);
+    // The edge read the session again for this call, as strong a check as a reconnect: the connection's authorisation
+    // runs on from it, so the hourly re-authentication never closes a socket (and takes its lease) that keeps calling.
+    if (who.authUntil > conn.authUntil) { conn.authUntil = who.authUntil; this.save(conn.connId); }
     const res = await this.media.request(op, conn, body);
     this.inspect.count(res.status < 400 ? "media" : res.status === 429 || res.status === 503 ? "mediaBusy" : "mediaRefused");
     this.inspect.tick();

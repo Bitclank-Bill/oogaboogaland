@@ -336,6 +336,26 @@ test("the Audience: signing out closes every socket of that principal; losing el
   assert.equal(other.closed.code, 4401, "a session's deadline is checked again, even if no notification came");
 });
 
+test("regression: a media call carries a connection's authorisation on, so the hourly re-authentication never closes a socket that keeps calling (a speaker's lease)", async () => {
+  const h = host();
+  const audience = await h.make();
+  const who = principal(1, { sessionExpiresAt: Date.now() + 3 * 3600000 });
+  const { ws } = await open(audience, who);
+  await say(audience, ws, { type: "join", zone: "main" });
+  const c = [...audience.model.conns.values()][0];
+  c.authUntil = Date.now() + 1000;
+  const res = await audience.fetch(new Request("https://audience.invalid/media/ice", { method: "POST",
+    headers: { "x-audience-principal": JSON.stringify(who) }, body: JSON.stringify({ connection: c.connId }) }));
+  assert.ok(res.status < 400, `ice answered ${res.status}`);
+  assert.ok(c.authUntil > Date.now() + 30 * 60000, "carried on by the call");
+  await audience.alarm();
+  assert.equal(ws.closed, null, "still open");
+  const other = principal(2);
+  const stranger = await audience.fetch(new Request("https://audience.invalid/media/ice", { method: "POST",
+    headers: { "x-audience-principal": JSON.stringify(other) }, body: JSON.stringify({ connection: c.connId }) }));
+  assert.equal(stranger.status, 409, "another principal's call carries nothing on");
+});
+
 test("the Audience: deltas reach a watching Room in order, and only for the zones it watches", async () => {
   const h = host();
   const audience = await h.make();
