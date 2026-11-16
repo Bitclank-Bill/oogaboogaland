@@ -122,7 +122,9 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | `GET /auth/<provider>/callback` | finishes it: 303 to `/?signin=<ok\|denied\|failed\|unavailable\|rate-limited>&provider=<provider>`, nothing else in the address |
 | `GET /api/chat/me` | the session (identity protocol 1, below); 401 signed out, 503 when it could not tell |
 | `DELETE /api/chat/me` | deletes the account (from the app's own page); 204 |
-| `POST /api/chat/logout`, `?all=1` | ends this session, or every one of the account's (from the app's own page); 204 once done |
+| `POST /api/chat/logout`, `?all=1` | ends this session, or every one of the account's (from the app's own page, or a native app's bearer session); 204 once done |
+| `GET /auth/github?native=<challenge>&port=<port>` | a native app's sign-in (below): as `/auth/github`, its result sent on to `http://127.0.0.1:<port>/callback` |
+| `POST /api/chat/native/token` | `{ code, verifier }` → `{ token, expiresAt }`: a native app's one-time code for a session it sends as `Authorization: Bearer` |
 | `GET /api/chat/avatar/<principal>/<key>` | the principal's picture on this origin (below) |
 | `GET /api/chat/public/contributors` | the native Contributing Oogas panel's data for anyone (below); `public, max-age=30` with an ETag |
 | `POST /donations/invoice`, `/note`, `/onchain`; `GET /donations/socket` | the native Feed the Oogas popup, through to bananapayserver (below) |
@@ -181,6 +183,21 @@ capability answer, as the island's own sign-in does for its players. `GET /api/c
 `speak`, `contributor` and `raiseHand` (the right to raise a hand *while* a speaker) are true only for a GitHub
 principal whose answer is `eligible` and inside its window. They are the server's word for display; nothing a client
 sends back grants anything.
+
+**Native clients.** A desktop app (`roogachat`, a separate repository) signs in through the system browser and hears
+the result on loopback (RFC 8252), proved with PKCE (RFC 7636, S256). It makes a verifier, listens on
+`127.0.0.1:<port>` (1024-65535) and opens `/auth/<provider>?native=<S256 challenge>&port=<port>`. The sign-in is the
+web app's own: the same single-use state bound to that browser's cookie, the same provider calls and results. The
+state also keeps the challenge and port (`oauth_states.native_challenge`, `native_port`, migration
+`0002_native_signin.sql`), and the callback sends the browser to `http://127.0.0.1:<port>/callback?signin=<result>&provider=<p>`
+in place of this origin's page; signed in, it adds a one-time `code` and sets no session cookie. The code is kept by
+its SHA-256 in `native_codes` with the principal and the challenge, for two minutes. `POST /api/chat/native/token` with
+`{ code, verifier }` spends the code first, then refuses (`invalid_grant`, 400) an expired code, a verifier whose S256
+is not the challenge, or a banned account, and otherwise answers a new session's `{ token, expiresAt }` (the sessions
+table, 30 days, as a cookie's). The app sends it as `Authorization: Bearer <token>`, which `readSession` prefers over
+the cookie; a bearer session also passes the page check on `DELETE /api/chat/me` and `/api/chat/logout`, since no
+browser can send one here (this origin allows no CORS). The audience and Commons sockets, media and donations still
+take the page's own requests only. The daily purge drops expired codes too.
 
 **Capability.** The edge asks the island (`capability`) and keeps the answer with its time in `capabilities`. It asks
 again after five minutes. If the bridge cannot answer, the last answer stands until 15 minutes after it was checked

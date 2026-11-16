@@ -9,7 +9,7 @@ import { MEDIA_OPS } from "./media.js";
 export const METRIC_V = 1;
 const EXACT = {
   "/api/bootstrap": "bootstrap", "/api/chat/config": "bootstrap", "/api/chat/health": "health", "/api/chat/version": "version",
-  "/api/chat/audience": "audience", "/api/chat/commons": "commons", "/api/chat/me": "me", "/api/chat/logout": "logout",
+  "/api/chat/audience": "audience", "/api/chat/commons": "commons", "/api/chat/me": "me", "/api/chat/logout": "logout", "/api/chat/native/token": "native",
   "/api/chat/public/contributors": "public",
 };
 const QUIET = new Set(["bootstrap", "health", "version", "public", "avatar", "me"]);

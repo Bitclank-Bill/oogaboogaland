@@ -435,3 +435,85 @@ test("the picture's account decides before its cache: a deleted account or an ol
   await s.go("/api/chat/me", { method: "DELETE", headers: site });
   assert.equal((await s.go(path)).status, 404, "deleted, so no face, cached or not");
 });
+
+// A native app (RFC 8252): PKCE S256 over the system browser, the result back on loopback, a bearer session.
+const pkce = async () => {
+  const verifier = "v".repeat(20) + "-native_verifier.~0123456789";
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const challenge = btoa(String.fromCharCode(...digest)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return { verifier, challenge };
+};
+const nativeSignIn = async (s, challenge, port = 53682) => {
+  const start = await s.go(`/auth/github?native=${challenge}&port=${port}`);
+  assert.equal(start.status, 302);
+  const state = new URL(start.headers.get("location")).searchParams.get("state");
+  return s.go(`/auth/github/callback?code=the-code&state=${encodeURIComponent(state)}`);
+};
+const exchange = (s, body, headers = {}) =>
+  s.go("/api/chat/native/token", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+
+test("native: the browser goes back to loopback with a one-time code, never a cookie, and the code and verifier make a bearer session", async () => {
+  const s = setup();
+  const { verifier, challenge } = await pkce();
+  const done = await nativeSignIn(s, challenge);
+  assert.equal(done.status, 303);
+  const to = new URL(done.headers.get("location"));
+  assert.equal(`${to.origin}${to.pathname}`, "http://127.0.0.1:53682/callback");
+  assert.equal(to.searchParams.get("signin"), "ok");
+  assert.equal(to.searchParams.get("provider"), "github");
+  const code = to.searchParams.get("code");
+  assert.match(code, /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(!s.jar.has("__Host-ooga_chat_session"), "the browser gets no session");
+  assert.ok(!s.jar.has("__Host-ooga_chat_oauth"), "and loses its sign-in cookie");
+  assert.notEqual(await s.env.DB.prepare("SELECT code_hash FROM native_codes").first("code_hash"), code, "D1 keeps the code's hash");
+  assert.equal((await exchange(s, { code, verifier: verifier + "x" })).status, 400, "a wrong verifier is refused...");
+  assert.equal((await exchange(s, { code, verifier })).status, 400, "...and spends the code");
+
+  const again = new URL((await nativeSignIn(s, challenge)).headers.get("location")).searchParams.get("code");
+  const got = await exchange(s, { code: again, verifier });
+  assert.equal(got.status, 200);
+  const { token, expiresAt } = await got.json();
+  assert.match(token, /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(expiresAt > Date.now());
+  assert.equal((await exchange(s, { code: again, verifier })).status, 400, "a code makes one session");
+  s.jar.clear();
+  const bearer = { authorization: `Bearer ${token}` };
+  const view = await (await s.go("/api/chat/me", { headers: bearer })).json();
+  assert.equal(view.identity.login, "ooga-dev");
+  assert.equal(view.capabilities.speak, true);
+  assert.equal((await s.go("/api/chat/logout", { method: "POST" })).status, 403, "no page and no bearer: refused");
+  assert.equal((await s.go("/api/chat/logout", { method: "POST", headers: bearer })).status, 204);
+  assert.equal((await s.go("/api/chat/me", { headers: bearer })).status, 401, "signed out");
+});
+
+test("native: a bad start is refused, a failure goes back to loopback, and a stale code is no session", async () => {
+  const s = setup();
+  const { verifier, challenge } = await pkce();
+  for (const query of [`native=${challenge}`, `native=${challenge}&port=80`, `native=${challenge}&port=70000`, `native=short&port=5000`, "port=5000"]) {
+    assert.equal((await s.go(`/auth/github?${query}`)).status, 400, query);
+  }
+  const start = await s.go(`/auth/github?native=${challenge}&port=5000`);
+  const state = new URL(start.headers.get("location")).searchParams.get("state");
+  const denied = await s.go(`/auth/github/callback?error=access_denied&state=${encodeURIComponent(state)}`);
+  assert.equal(denied.headers.get("location"), "http://127.0.0.1:5000/callback?signin=denied&provider=github");
+  const off = setup({ vars: { FEATURES: "listen" } });
+  assert.equal((await off.go(`/auth/github?native=${challenge}&port=5000`)).headers.get("location"), "http://127.0.0.1:5000/callback?signin=unavailable&provider=github");
+
+  const code = new URL((await nativeSignIn(s, challenge)).headers.get("location")).searchParams.get("code");
+  await s.env.DB.prepare("UPDATE native_codes SET expires_at = 1").run();
+  assert.equal((await exchange(s, { code, verifier })).status, 400);
+  assert.equal((await exchange(s, { verifier })).status, 400);
+  assert.equal((await s.go("/api/chat/native/token")).status, 405);
+  await purgeExpired(s.env.DB);
+  assert.equal(await s.env.DB.prepare("SELECT COUNT(*) AS n FROM native_codes").first("n"), 0);
+});
+
+test("native: a web sign-in is unchanged, and a banned account's code makes no session", async () => {
+  const s = setup();
+  const web = await s.signIn("github");
+  assert.equal(web.headers.get("location"), "/?signin=ok&provider=github");
+  const { verifier, challenge } = await pkce();
+  const code = new URL((await nativeSignIn(s, challenge)).headers.get("location")).searchParams.get("code");
+  await s.env.DB.prepare("UPDATE principals SET banned_at = 1").run();
+  assert.equal((await exchange(s, { code, verifier })).status, 400);
+});
