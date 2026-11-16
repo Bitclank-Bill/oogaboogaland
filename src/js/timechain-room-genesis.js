@@ -638,10 +638,10 @@
   // Both loops keep a still strip of 3.2 m between their edge and the plinths' faces: far enough back that a visitor who
   // steps off toward a plinth has the whole display on screen (model, plaque or cut words) at the default view, on a
   // desktop and on a phone held sideways, and is not carried while reading.
-  const TRAV = { r: RING - 0.6 - 3.2 - 0.4, w: 0.8, speed: 0.4 };
-  // The outer loop, in the lane between the plinths' backs and the benches, the other way round (2008 to 1974) at the
-  // same stroll, in six runs with 1.4 m gaps between plinths so walkers cross from the benches to the plinths.
-  const TRAV2 = { r: RING + 0.6 + 3.2 + 0.4, w: 0.8, speed: 0.8, doorGap: 13 };
+  const TRAV = { r: RING - 0.6 - 3.2 - 0.4, w: 0.8, speed: 0.6 };
+  // The outer loop, in the lane between the plinths' backs and the benches, the other way round (2008 to 1974) at
+  // twice the pace, in six runs with 1.4 m gaps between plinths so walkers cross from the benches to the plinths.
+  const TRAV2 = { r: RING + 0.6 + 3.2 + 0.4, w: 0.8, speed: 1.2, doorGap: 13 };
   // A flat lit ring (0.55 to 0.8 m) and a lit unit bar along +x, shared by every node that needs one.
   const glowRing = own(() => { const g = RM.helpers.blank(), n = 28, r0 = 0.62, r1 = 0.76; for (let k = 0; k < n; k++) { const a = TAU * k / n, b = TAU * (k + 1) / n; RM.helpers.face(g, [[r0 * Math.sin(a), 0, -r0 * Math.cos(a)], [r1 * Math.sin(a), 0, -r1 * Math.cos(a)], [r1 * Math.sin(b), 0, -r1 * Math.cos(b)], [r0 * Math.sin(b), 0, -r0 * Math.cos(b)]], C.amber, 0.5, [0, 1, 0]); } return noShadow(g); });
   const glowBar = own(() => noShadow(box({ w: 1, h: 0.04, d: 0.04, color: C.amber, emissive: 0.9, offset: { x: 0.5 } })));
@@ -1801,7 +1801,7 @@
         if (dropnowAt && now >= dropnowAt) { dropnowAt = 0; dbg.genesis.dropBlock(); }
         if (poc) poc.update();
       },
-      // In a loop's lane a standing body is carried at a slow stroll, the inner loop the walk's way, the outer one back;
+      // In a loop's lane a standing body is carried at a stroll, the inner loop the walk's way, the outer one back;
       // the outer loop leaves the doorway clear (nobody is carried off as they arrive) and holds still in front of the
       // portal while its door shows, so a visitor can stand there.
       carry(x, z, dt) {
