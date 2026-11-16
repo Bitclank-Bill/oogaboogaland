@@ -17,17 +17,18 @@
   const eye = { x: 0, y: 0, z: 0 }, middle = { x: 0, y: 0, z: 0 }, reach = { x: 0, z: 0 }, UP = { x: 0, y: 1, z: 0 };
   const matrix = mat4.create(), V = new Float32Array(3);
   let els = null, set = null, index = 0, ctx = null, width = 0, height = 0, dpr = 1, pending = 0, radius = 1, floor = 0, tree = null;
-  // A page instead of a model (`item.image`, a data URL): drawn to fit, zoomed with the wheel and panned by dragging.
+  // A page instead of a model (`item.image`, a data URL): a still preview drawn to fit, with nothing to turn, move or
+  // zoom; a press on it runs the item's `onImage`.
   let page = null;
-  const pages = new Map(), pan = { x: 0, y: 0 };
+  const pages = new Map();
   const pageImage = (url) => { let img = pages.get(url); if (!img) { img = new Image(); img.onload = () => redraw(); img.src = url; pages.set(url, img); } return img; };
   const drawPage = () => {
     const img = pageImage(page);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#1a1612"; ctx.fillRect(0, 0, width, height);
     if (!img.complete || !img.naturalWidth) return;
-    const k = Math.min(width / img.naturalWidth, height / img.naturalHeight) * view.zoom, w = img.naturalWidth * k, h = img.naturalHeight * k;
-    ctx.drawImage(img, (width - w) / 2 + pan.x, (height - h) / 2 + pan.y, w, h);
+    const k = Math.min(width / img.naturalWidth, height / img.naturalHeight), w = img.naturalWidth * k, h = img.naturalHeight * k;
+    ctx.drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
   };
   const pointers = new Map();
   let pinch = 0;
@@ -217,14 +218,13 @@
     index = (i + set.count) % set.count;
     const item = set.item(index);
     page = item.image || null;
-    pan.x = pan.y = 0;
     if (page) { tree = null; } else { tree = treeOf(item.geometry); frame(item.geometry); }
     els.canvas.classList.toggle("model-page", !!page);
     Object.assign(view, START);
     els.kicker.textContent = item.kicker || "";
     els.name.textContent = item.name;
     els.text.textContent = item.text || "";
-    els.canvas.setAttribute("aria-label", page ? `${item.name}: the page, scroll to zoom, drag to move it` : `${item.name}, in 3D: drag to turn it`);
+    els.canvas.setAttribute("aria-label", page ? `${item.name}: a preview of the page` : `${item.name}, in 3D: drag to turn it`);
     const rows = [];
     for (const [label, value] of item.stats || []) {
       const dt = document.createElement("dt"), dd = document.createElement("dd");
@@ -249,11 +249,11 @@
     els.links.replaceChildren(...links);
     els.links.hidden = !links.length;
     els.count.textContent = `${index + 1} / ${set.count}`;
-    els.prev.disabled = els.next.disabled = set.count < 2;
+    els.prev.disabled = els.next.disabled = els.prev.parentNode.hidden = set.count < 2;
     redraw();
   };
-  const turn = (dx, dy) => { if (page) { pan.x += dx * 220; pan.y += dy * 220; redraw(); return; } view.yaw += dx; view.pitch = clamp(view.pitch + dy, PITCH[0], PITCH[1]); redraw(); };
-  const zoom = (k) => { view.zoom = clamp(view.zoom * k, ZOOM[0], ZOOM[1]); redraw(); };
+  const turn = (dx, dy) => { if (page) return; view.yaw += dx; view.pitch = clamp(view.pitch + dy, PITCH[0], PITCH[1]); redraw(); };
+  const zoom = (k) => { if (page) return; view.zoom = clamp(view.zoom * k, ZOOM[0], ZOOM[1]); redraw(); };
   let onImage = null, press = null;
   // The dialog's own wiring, made the first time it opens.
   const wire = () => {
@@ -281,7 +281,7 @@
     c.addEventListener("pointerup", (e) => { const p = press; press = null; if (p && onImage && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 5) onImage(); });
     c.addEventListener("pointerup", lift);
     c.addEventListener("pointercancel", lift);
-    c.addEventListener("wheel", (e) => { e.preventDefault(); zoom(Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+    c.addEventListener("wheel", (e) => { if (page) return; e.preventDefault(); zoom(Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
     els.prev.addEventListener("click", () => show(index - 1));
     els.next.addEventListener("click", () => show(index + 1));
     els.close.addEventListener("click", () => els.dialog.close());
@@ -294,6 +294,7 @@
       if (e.target.closest("a, button") && (e.key === "Enter" || e.key === " ")) return;
       const k = e.key.toLowerCase();
       if (k === "arrowleft" || k === "arrowright") show(index + (k === "arrowleft" ? -1 : 1));
+      else if (page) return;
       else if (k === "a" || k === "d") turn(k === "a" ? -0.26 : 0.26, 0);
       else if (k === "w" || k === "s" || k === "arrowup" || k === "arrowdown") turn(0, k === "w" || k === "arrowup" ? 0.15 : -0.15);
       else if (k === "+" || k === "=" || k === "-") zoom(k === "-" ? 1 / 1.2 : 1.2);

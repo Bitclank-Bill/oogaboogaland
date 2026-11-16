@@ -1605,16 +1605,16 @@
         return { kicker: `${ex.when} · ${ex.title} · ${ex.link === "cite" ? `${link.word} [${ex.ref}]` : link.word}`, name: ex.name, text: ex.about, stats: ex.specs, note: ex.note, links: ex.sources, geometry: viewModel()[n], image: ex.key === "whitepaper" && BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, ...(ex.key === "whitepaper" ? { onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] } : null) };
       }
     });
-    // The whitepaper itself, all nine pages, in the viewer's page mode, with the licence and the link to the PDF.
-    // The pop-up: page by page with the paper's account beside it, each page cut from the strip once it is loaded.
+    // The plaque's pop-up: the paper's first page as a still preview beside its account, with the licence and the link
+    // to bitcoin.org; the page or the button opens the reader. It waits for the pages to be cut.
     let left = false;
-    const readPaper = (n = 0) => { const D = BL.whitepaperPages; if (D && D.pages.length < D.count) { D.load().then(() => { if (!left) openPaper(n); }); return; } openPaper(n); };
-    const openPaper = (n = 0) => BL.modelViewer.open({
-      title: "The Bitcoin Whitepaper", theme: "genesis", count: BL.whitepaperPages ? BL.whitepaperPages.count : 1, index: n,
-      help: matchMedia("(pointer: coarse)").matches ? "Tap the page to read the paper · the arrows for the next page" : "Click the page to read the paper · scroll to zoom · ← → for the next page",
-      item: (i) => ({ kicker: (BL.timechainGenesis.readerPage = i, `PAGE ${i + 1} OF 9 · BITCOIN.ORG · MIT LICENCE`), name: i ? ["", "2. Transactions · 3. Timestamp server", "4. Proof-of-Work · 5. Network", "6. Incentive · 7. Reclaiming disk space", "8. Simplified payment verification · 9. Combining and splitting value", "10. Privacy · 11. Calculations", "11. Calculations (continued)", "11. Calculations · 12. Conclusion", "References"][i] : "Bitcoin: A Peer-to-Peer Electronic Cash System",
-        text: i ? "" : "Satoshi Nakamoto, satoshin@gmx.com, www.bitcoin.org. Posted to the cryptography mailing list on 31 October 2008. Reproduced unchanged from the PDF bitcoin.org serves, which the site publishes under the MIT licence.",
-        image: BL.whitepaperPages && BL.whitepaperPages.pages[i] || null, note: "Source: bitcoin.org · MIT licence", links: [SRC.site, SRC.announce], onImage: () => readLarge(i), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(i) }] })
+    const readPaper = () => { const D = BL.whitepaperPages; if (D && !D.pages[0]) { D.load().then(() => { if (!left) openPaper(); }); return; } openPaper(); };
+    const openPaper = () => BL.modelViewer.open({
+      title: "The Bitcoin Whitepaper", theme: "genesis", count: 1,
+      help: matchMedia("(pointer: coarse)").matches ? "Tap the page or the button to read the paper" : "Click the page or the button to read the paper",
+      item: () => ({ kicker: "PREVIEW · PAGE 1 OF 9 · BITCOIN.ORG · MIT LICENCE", name: "Bitcoin: A Peer-to-Peer Electronic Cash System",
+        text: "Satoshi Nakamoto, satoshin@gmx.com, www.bitcoin.org. Posted to the cryptography mailing list on 31 October 2008. Reproduced unchanged from the PDF bitcoin.org serves, which the site publishes under the MIT licence.",
+        image: BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, note: "Source: bitcoin.org · MIT licence", links: [SRC.site, SRC.announce], onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] })
     });
     BL.timechainGenesis.readPaper = readPaper;
     // The reader, as the whitepaper read on the island: the nine pages as one continuous strip in a large
@@ -1627,7 +1627,7 @@
     let readerEl = null;
     const readLarge = (n = 0) => {
       const D = BL.whitepaperPages;
-      if (!D || !D.strip) { readPaper(n); return; }
+      if (!D || !D.strip) { readPaper(); return; }
       if (!readerEl) {
         // The dialog and its parts are the HUD's (`hud.genesis`); the room slides the strip and listens for the visit.
         const G = hud.genesis, d = G.reader, view = G.view, img = G.strip, thumb = G.thumb, pageEl = G.page, about = G.about;
@@ -1680,7 +1680,7 @@
         };
         for (const ev of ["pointerup", "pointercancel"]) on(view, ev, release);
         on(view, "wheel", (e) => { e.preventDefault(); const k = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? viewH() : 1; if (e.ctrlKey) { setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); return; } x = clamp(x + e.deltaX * k, 0, maxX()); ease((glide >= 0 ? glide : clamp(y, 0, maxY())) + e.deltaY * k); }, { passive: false });
-        on(about, "click", () => { const at = pageOf() - 1; d.close(); readPaper(at); });
+        on(about, "click", () => { d.close(); readPaper(); });
         on(d, "keydown", (e) => {
           if (e.metaKey || e.ctrlKey || e.altKey) return;
           const h = viewH(), at = glide >= 0 ? glide : clamp(y, 0, maxY()), go = (to) => { ease(to); e.preventDefault(); };
@@ -1826,7 +1826,7 @@
         if (owner.kind === "genesis-portal") return portal.tapDoor();
         if (owner.kind !== "genesis") return false;
         if (owner.paper === "reader") { readLarge(0); return true; }
-        if (owner.paper) { readPaper(0); return true; }
+        if (owner.paper) { readPaper(); return true; }
         if (portal.hit(EXHIBITS[owner.index].plinthIndex)) return true;
         look(owner.index);
         return true;

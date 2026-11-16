@@ -5710,8 +5710,9 @@ body.tess-touring #joy-look {
 .model-modal.model-genesis .model-info > .model-kicker { padding-bottom: 2px; border-radius: 8px 8px 0 0; margin-bottom: 0; }
 .model-modal.model-genesis .model-info > .model-name { border-radius: 0 0 8px 8px; padding-top: 2px; }
 .model-modal.model-genesis .model-info > .board-links { display: grid; gap: 6px; }
+.model-modal.model-genesis .model-stats:empty { display: none; }
 .model-modal.model-genesis .model-info > .board-links .board-link { background: var(--gn-wash); border-radius: 6px; padding: 4px 8px; }
-.model-modal.model-genesis .model-canvas.model-page { background: var(--gn-paper); cursor: default; aspect-ratio: 17 / 22; max-height: min(58vh, 560px); width: auto; max-width: 100%; margin: 0 auto; display: block; }
+.model-modal.model-genesis .model-canvas.model-page { background: var(--gn-paper); cursor: default; touch-action: auto; aspect-ratio: 17 / 22; max-height: min(58vh, 560px); width: auto; max-width: 100%; margin: 0 auto; display: block; }
 
 @media (max-width: 720px) {
   .model-body { grid-template-columns: minmax(0, 1fr); gap: 10px; }
@@ -12752,10 +12753,10 @@ body[data-active-scene] #cave-directory-button { min-height: 44px; }
    a page indicator, zoom, the bitcoin.org link; adapted from stacktoshi's monolith reader (#354, removed in #539). At
    the phone's width the page fills the width. */
 .model-modal .model-actions { display: flex; gap: 8px; margin: 8px 0 2px; }
-.model-modal .model-actions[hidden] { display: none; }
+.model-modal .model-actions[hidden], .model-modal .board-nav[hidden] { display: none; }
 .model-modal .model-button { flex: 1; display: block; box-sizing: border-box; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-align: center; text-decoration: none; cursor: pointer; padding: 10px 12px; border: 1px solid var(--gn-line); border-radius: 8px; background: var(--gn-btc); color: var(--ink); }
 .model-modal .model-button:hover { filter: brightness(1.1); }
-.model-modal .model-canvas.model-page-link { cursor: zoom-in; }
+.model-modal .model-canvas.model-page.model-page-link { cursor: zoom-in; }
 .wp-reader { box-sizing: border-box; width: min(calc(100vw - 24px), 880px); height: calc(100dvh - 20px); max-width: none; max-height: none; margin: auto; padding: 0; border: 0; background: transparent; color: var(--gn-text); font-family: var(--mono); overflow: visible; }
 .wp-reader[open] { display: flex; flex-direction: column; gap: 8px; }
 .wp-reader::backdrop { background: color-mix(in srgb, var(--bg) 84%, transparent); }
