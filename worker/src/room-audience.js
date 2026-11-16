@@ -32,6 +32,10 @@ const enabled = (room) => !!room.env && !!room.env.AUDIENCE && bridgeFeatures(ro
 // The outdoor handshake and Ooga Chat speakers heard on the island: the island's `outdoor` switch, which is its kill switch.
 const outdoorOn = (room) => enabled(room) && bridgeFeatures(room.env).outdoor;
 const isOpen = (p) => !!p.outdoor && p.outdoor.state === "open";
+/** Overhearing: a receive session the page opened by itself (`session` with `passive`), with no microphone of its own.
+ *  It is in nobody's voice: it hears no place, only the public conversation `addSources` lists for it and a linked
+ *  partner. A publishing session ends it. */
+export const overhearing = (p) => !!(p.voice && p.voice.passive && p.voice.sub && !p.voice.pub && !p.voice.track);
 // In the island's voice at all: a microphone published, or listening with it muted.
 const inVoiceOf = (p) => !!(p.voice && (p.voice.track || p.voice.pub || (p.voice.sub && p.muted === true)));
 // Ooga Chat speakers drawn on clouds in the world (#668, rendered by #659): the island's `cloud` switch.
@@ -189,13 +193,18 @@ export const audienceRoom = {
     return room.ctx.storage.put("chatSources", room.chatSources);
   },
   sourceOf: (room, id) => (room.chatSources || []).find((s) => s.id === id) || null,
+  // A player overhearing (a receive session of the page's own, protocol.js `overhearing`) with an open grant on the main
+  // island hears that conversation's island speakers too, exactly those Ooga Chat's listeners hear: in the island's
+  // voice with a live microphone and an open grant there. Indoors, or anywhere its grant is not open, it hears nobody.
   addSources(room, plan) {
     const sources = room.chatSources || [];
-    if (!sources.length || !outdoorOn(room)) return plan;
+    if (!outdoorOn(room)) return plan;
     for (const p of room.players.values()) {
       const o = p.outdoor;
       if (!isOpen(p) || !isZone(o.scope)) continue;
       const peers = plan.get(p.id) || [];
+      if (o.scope === "main" && overhearing(p))
+        for (const q of room.players.values()) if (q !== p && q.voice && q.voice.track && isOpen(q) && q.outdoor.scope === o.scope && !peers.includes(q.id)) peers.push(q.id);
       for (const s of sources) if (s.zone === o.scope && s.id !== p.id && !peers.includes(s.id)) peers.push(s.id);
       plan.set(p.id, peers);
     }

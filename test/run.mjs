@@ -28218,7 +28218,8 @@ const voiceHearingChecks = async () => {
   const source=readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
   const remote=(login,zone,x,z,placed=true)=>({login,zone,poseZone:placed?zone:null,x,y:0,z});
   const rig=(ios,webAudio=true,saved=null,store=new Map())=>{
-    const ops=[],netMuted=[],timers=new Map(),els=[],pulled=[],gains=[],limiters=[],ctxs=[],handlers=new Map(),subscribers=new Set();let timerId=0,onTrack=null,captures=0;
+    const ops=[],bodies=[],netMuted=[],timers=new Map(),els=[],pulled=[],gains=[],limiters=[],ctxs=[],handlers=new Map(),subscribers=new Set();let timerId=0,onTrack=null,captures=0;
+    const sound={muted:false,heard:new Set(),subscribe(fn){this.heard.add(fn);return()=>this.heard.delete(fn);},set(on){this.muted=on;for(const fn of this.heard)fn(on);}},activation={hasBeenActive:false};
     if(saved!==null)store.set("oogaboogaland.voice-radius",saved);
     const remotes=new Map([[2,remote("near","factory",3,0)],[3,remote("mid","factory",0,15)],[4,remote("hall","factory.hall",1,0)],[5,remote("new","factory",2,0,false)]]);
     const state={connectionToken:"synthetic",me:{id:71,login:"listener"},zone:"factory",self:{x:0,y:0,z:0,zone:"factory"}};
@@ -28236,17 +28237,17 @@ const voiceHearingChecks = async () => {
       createAnalyser(){const n=new Node("analyser");n.getFloatTimeDomainData=a=>a.fill(0.1);return n;}
       createGain(){const n=new Node("gain");n.gain={value:1,instant:false,cancelled:false,setTargetAtTime(v){this.value=v;this.instant=false;},cancelScheduledValues(){this.cancelled=true;},setValueAtTime(v){this.value=v;this.instant=this.cancelled;this.cancelled=false;}};gains.push(n);return n;}
       createDynamicsCompressor(){const n=new Node("limiter");for(const key of ["threshold","knee","ratio","attack","release"])n[key]={value:0};limiters.push(n);return n;}}
-    const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op);if(op==="pull")pulled.push(...body.ids);return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map(id=>({id,mid:String(id)}))}:{sessionDescription:{}}};};
+    const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op);bodies.push({op,...body});if(op==="pull")pulled.push(...body.ids);return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map(id=>({id,mid:String(id)}))}:{sessionDescription:{}}};};
     const probe={level:1};volume(probe);
-    const win={BL:{net:{state,setMuted:on=>netMuted.push(on),remotes,voiceLink:()=>"none",subscribe:fn=>{subscribers.add(fn);return()=>subscribers.delete(fn);}}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn)};
-    const context={window:win,document:{createElement:()=>probe},localStorage:{getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))},navigator:{mediaDevices:{getUserMedia:async()=>{captures++;return stream;}}},RTCPeerConnection:Pc,Audio,MediaStream,fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math,Number,String};
+    const win={BL:{sound,net:{state,setMuted:on=>netMuted.push(on),remotes,voiceLink:()=>"none",subscribe:fn=>{subscribers.add(fn);return()=>subscribers.delete(fn);}}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn),removeEventListener(){}};
+    const context={window:win,document:{createElement:()=>probe},localStorage:{getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))},navigator:{userActivation:activation,mediaDevices:{getUserMedia:async()=>{captures++;return stream;}}},RTCPeerConnection:Pc,Audio,MediaStream,fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math,Number,String};
     if(webAudio)win.AudioContext=context.AudioContext=Ctx;
     runInNewContext(readFileSync(join(root,"src/js/voice-blend.js"),"utf8"),context);
     runInNewContext(source,context);
     const V=win.BL.voice,elOf=id=>els[pulled.lastIndexOf(id)],gainOf=id=>gains.filter(g=>g.id===id&&g.out.size).at(-1);
     // What a voice sounds at: the connected playback gain, or its element when Web Audio is unavailable.
     const audible=id=>webAudio?(gainOf(id)?gainOf(id).gain.value:0):(elOf(id).muted?0:elOf(id).volume);
-    return {V,ops,netMuted,timers,els,gains,limiters,ctxs,handlers,store,remotes,state,track,get captures(){return captures;},
+    return {V,ops,bodies,sound,activation,netMuted,timers,els,gains,limiters,ctxs,handlers,store,remotes,state,track,get captures(){return captures;},
       account:me=>{state.me=me;for(const fn of subscribers)fn(state);},
       land:ids=>{for(const id of ids)onTrack({transceiver:{mid:String(id)},track:{id,stop(){}}});},
       tick:(n=1)=>{for(let i=0;i<n;i++)for(const fn of timers.values())fn();},
@@ -28297,6 +28298,32 @@ const voiceHearingChecks = async () => {
   const bare=rig(true,false).V;io.noWebAudio=!bare.fades&&bare.inspect().playback==="element";
   record("voice hearing range on iOS and iPadOS: where an element's volume is ignored each voice plays through a gain that sounds as the desktop does at every step, its element stays muted, the gain goes straight to the output, a suspended context blocks the voices until a trusted tap wakes it, and a restart or stop lets go of every node",
     shared(io)&&io.playback==="gain"&&io.elementsMuted&&io.toOutput&&io.asleep&&io.untrusted&&io.woken&&io.restartReleased&&io.stopped&&io.noWebAudio,JSON.stringify(io));
+  // Overhearing: standing in the main island's public conversation, a page that has not joined voice opens a receive
+  // session by itself, marked passive for the room, after a first gesture; it captures nothing, reads as no voice state,
+  // follows the environment's mute, gives way to Join voice and comes back after Leave voice.
+  const o=rig(false),oh={};o.state.room="live";
+  o.V.setOutdoor(false,0,new Set(),"main");await settle();await settle();
+  oh.waits=o.ops.length===0&&!o.V.stats.passive;
+  o.activation.hasBeenActive=true;o.handlers.get("pointerup")({isTrusted:true});for(let i=0;i<6;i++)await settle();
+  const opened=o.bodies.find(b=>b.op==="session");
+  oh.opened=o.V.stats.passive&&!o.V.stats.enabled&&!o.V.stats.joining&&!o.V.stats.returning&&opened.kind==="sub"&&opened.passive===true&&o.captures===0&&o.netMuted.length===0;
+  o.V.setPeers([2],[1]);await settle();await settle();o.land([2]);o.tick(3);
+  oh.hears=o.levels([2])==="1";
+  o.sound.set(true);oh.muted=o.levels([2])==="0";o.sound.set(false);oh.unmuted=o.levels([2])==="1";
+  o.V.setOutdoor(false,0,new Set(),null);await settle();
+  oh.stays=o.V.stats.passive&&!o.ops.includes("leave");
+  o.V.setOutdoor(false,0,new Set(),"main");
+  await o.V.enable();for(let i=0;i<4;i++)await settle();
+  const published=o.bodies.filter(b=>b.op==="session").at(-1);
+  o.sound.set(true);
+  oh.joined=o.V.stats.enabled&&!o.V.stats.passive&&o.captures===1&&published.kind==="pub"&&o.bodies.filter(b=>b.op==="session"&&b.kind==="sub").length===1&&o.levels([2])==="1";
+  o.sound.set(false);
+  o.V.leave();for(let i=0;i<8;i++)await settle();
+  const reopened=o.bodies.filter(b=>b.op==="session").at(-1);
+  oh.back=o.V.stats.passive&&!o.V.stats.enabled&&reopened.kind==="sub"&&reopened.passive===true&&o.ops.includes("leave");
+  o.V.stop();
+  record("voice overhearing: in the main island's public conversation a page out of voice opens a passive receive session after a first gesture, captures no microphone, reads as no voice state, follows the environment's mute, stays up when the body steps out, gives way to Join voice (which plays regardless of that mute) and is back after Leave voice",
+    Object.values(oh).every(Boolean),JSON.stringify(oh));
   // #443: save a player's settings before there is any microphone, context or receive session. A new module instance
   // models a reload; its first track must use those settings, without one audible frame at the default gain.
   const preferences=async ios=>{

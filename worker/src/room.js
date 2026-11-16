@@ -1422,6 +1422,9 @@ export class Room extends DurableObject {
         if (!current() || (kind === "pub" && !mayPublish())) return json({ error: "connection or permission changed" }, 409);
         p.voice[kind] = sessionId;
         if (kind === "pub") p.voice.track = p.voice.pending = null;
+        // A receive session the page opened by itself to overhear the public conversation (voice.js `overhear`), until a
+        // session of the visitor's own replaces it or a microphone is published over it.
+        p.voice.passive = kind === "sub" ? body.passive === true && !p.voice.pub : false;
         // A restarted client cleared its local list, even if the room's list
         // and audience count have not changed since its previous receiver.
         if (kind === "sub") p.sent = null;
