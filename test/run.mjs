@@ -10509,12 +10509,6 @@ const oogaChatAppChecks = async () => {
       await b.evaluate(`document.querySelectorAll("#oc-view-chat .cloud-foot .foot-button")[1].click()`);
       await b.sleep(800);
       voice.left = await voiceNow(b);
-      await b.evaluate(`document.querySelectorAll("#oc-view-chat .cloud-foot .foot-button")[1].click()`);
-      await b.sleep(1200);
-      await b.evaluate(`document.querySelector('#oc-view-chat [data-cloud-zone="dsb"]').click()`);
-      await b.sleep(1500);
-      voice.moved = await voiceNow(b);
-      await b.screenshot(join(shots, "voice-contributor-1024-dsb.png"));
     } finally { b.close(); }
     b = await page(390, "state=contributor&roster=mixed&voice=denied");
     try {
@@ -10530,10 +10524,9 @@ const oogaChatAppChecks = async () => {
       joined: v.joined.captures === 1 && v.joined.live === 1 && v.joined.join === "Leave Voice" && v.joined.mute === "Unmute" && !v.joined.muteOff && v.joined.self === 3,
       key: v.unmuted.mute === "Mute" && v.muted.mute === "Unmute",
       left: v.left.live === 0 && v.left.join === "Join Voice" && v.left.playing === 6 && v.left.self === 2,
-      moved: v.moved.live === 0 && v.moved.join === "Join Voice" && v.moved.playing === 1 && v.moved.captures === 2,
       denied: v.denied.captures === 0 && v.denied.join === "Join Voice" && /Microphone access is blocked/.test(v.denied.said) && v.denied.self === 2
     };
-    record("Ooga Chat page voice: a listener hears every speaker of the zone and can't join; Join Voice captures once and lands muted, M and the footer agree, Leave Voice stops capture and keeps listening, another zone ends speaking and hears that zone, and a refused microphone stays a listener saying why where it can be seen",
+    record("Ooga Chat page voice: a listener hears every speaker of the zone and can't join; Join Voice captures once and lands muted, M and the footer agree, Leave Voice stops capture and keeps listening, and a refused microphone stays a listener saying why where it can be seen",
       Object.values(spoke).every(Boolean), JSON.stringify(voice));
   } finally {
     server.close();
@@ -30604,8 +30597,6 @@ const cloudPanelChecks = async BL => {
   const nodes = new Map(), $ = id => { if (!nodes.has(id)) nodes.set(id, el()); return nodes.get(id); };
   const panel = $("cloud-panel"); panel.parent = top;
   const list = $("cloud-roster"); panel.append(list);
-  const zones = ["main", "dsb"].map(z => { const b = el("button"); b.dataset.cloudZone = z; return b; });
-  panel.querySelectorAll = () => zones;
   const unsubs = [], sent = [], refreshes = [];
   const state = { me: { id: 1, login: "tester", display: "Tester" }, room: "live", audience: true, zone: "dsb-transit", logoutEpoch: 0 };
   const subs = { net: [], audience: [], voice: [], reactions: [] }, sub = (k) => fn => { subs[k].push(fn); return () => unsubs.push(k); };
@@ -30626,27 +30617,25 @@ const cloudPanelChecks = async BL => {
   const asked = sent.map(x => `${x.type}:${x.zone}`).join();
   const crowd = [row("w1", "speaker", { contributions: 9 }), row("c1", "speaker", { character: "ooga" }), row("tester", "listener", { self: true })];
   for (let i = 0; i < 300; i++) crowd.push(row(`l${String(i).padStart(3, "0")}`, "listener"));
-  hear({ t: "audience", v: 1, kind: "snapshot", epoch: 1, rev: 1, zone: "dsb", rows: crowd, you: { speak: "pending" } });
+  hear({ t: "audience", v: 1, kind: "snapshot", epoch: 1, rev: 1, zone: "main", rows: crowd, you: { speak: "pending" } });
   const part = (node, cls) => { for (const c of node.children) { if (c.className.split(" ").includes(cls)) return c; const found = part(c, cls); if (found) return found; } return null; };
   const drawn = { rows: list.children.length, cached: P.stats.cached, order: list.children.slice(0, 3).map(li => li.dataset.id).join() };
   const pending = $("cloud-voice").disabled && $("cloud-voice").textContent === "Join Voice" && $("cloud-mute").disabled && $("cloud-mute").textContent === "Unmute";
   const w1 = list.children[0], ring = w1.dataset.source, listenerMic = part(list.children[2], "cloud-mic").hidden;
   const madeBefore = made, replacedBefore = list.replaced;
-  hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 2, base: 1, zone: "dsb", upsert: [row("w1", "speaker", { contributions: 9, mic: "muted" })], you: { speak: "eligible" } });
+  hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 2, base: 1, zone: "main", upsert: [row("w1", "speaker", { contributions: 9, mic: "muted" })], you: { speak: "eligible" } });
   const delta = list.children[0] === w1 && made === madeBefore && list.replaced === replacedBefore && part(w1, "cloud-mic").dataset.voice === "muted";
   const eligible = !$("cloud-voice").disabled;
   list.handlers.click[0]({ target: part(w1, "cloud-mic") });
   const localMute = local.has("w1") && part(w1, "cloud-mic").getAttribute("aria-pressed") === "true";
   const c1img = part(list.children[1], "cloud-portrait").children[0];
   // The room names a chat speaker's picture by Ooga Chat's own path, which the island does not serve: no request for it.
-  hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 3, base: 2, zone: "dsb", remove: ["c1"], upsert: [row("tester", "speaker", { source: "chat", self: true, avatar: "/api/chat/avatar/tester" })] });
+  hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 3, base: 2, zone: "main", remove: ["c1"], upsert: [row("tester", "speaker", { source: "chat", self: true, avatar: "/api/chat/avatar/tester" })] });
   const removed = c1img.tag === "img" && c1img.cleared === 1 && !list.children.some(li => li.dataset.id === "c1") && refreshes.at(-1) === true && $("cloud-foot-name").dataset.source === "chat";
   const noPicture = part(list.children.find(li => li.dataset.id === "tester"), "cloud-portrait").children[0].tag === "svg";
-  const sentBefore = sent.length;
-  for (const fn of zones[1].handlers.click) fn({ currentTarget: zones[1], detail: 1 });
-  const noop = sent.length === sentBefore && zones[1].getAttribute("aria-pressed") === "true";
-  for (const fn of zones[0].handlers.click) fn({ currentTarget: zones[0], detail: 1 });
-  const switched = sent.at(-1).type === "audience-view" && sent.at(-1).zone === "main" && zones[0].getAttribute("aria-pressed") === "true" && /Joining Main Island/.test($("cloud-status-text").textContent);
+  // The room drops and is live again: the panel asks for Main Island afresh and says it is joining.
+  state.room = "connecting"; tick(); state.room = "live"; tick();
+  const again = sent.at(-1).type === "audience-view" && sent.at(-1).zone === "main" && /Joining Main Island/.test($("cloud-status-text").textContent);
   // Retry asks for a fresh snapshot, which the room answers even for the zone it already shows; joining offers it too.
   const pressRetry = () => { for (const fn of $("cloud-retry").handlers.click) fn({}); return `${sent.at(-1).type}:${sent.at(-1).zone}`; };
   const joinRetry = !$("cloud-retry").hidden && pressRetry() === "audience-resync:main";
@@ -30668,11 +30657,11 @@ const cloudPanelChecks = async BL => {
   state.logoutEpoch = 1; state.me = null; tick();
   const signedOut = list.children.length === 0 && P.stats.cached === 0 && P.stats.desired === null && !P.available();
   P.dispose();
-  record("Ooga Chat panel: asks for the visitor's own zone, draws the whole of a long roster as tiles, keeps each tile's nodes through a delta, drops removed tiles and their pictures, asks for no picture the island cannot serve, ignores the zone already chosen, gates Join Voice and the hand on the room's word, shows a gap with a Retry that asks afresh (joining too), draws the roster again after a hidden reconnect, and forgets everything on sign-out",
-    asked === "audience-view:dsb" && drawn.rows === 303 && drawn.cached === 303 && drawn.order === "w1,c1,tester"
-      && ring === "world" && listenerMic && pending && delta && eligible && localMute && removed && noPicture && noop && switched && joinRetry && stale && staleRetry
+  record("Ooga Chat panel: asks for Main Island wherever the visitor's Ooga stands, draws the whole of a long roster as tiles, keeps each tile's nodes through a delta, drops removed tiles and their pictures, asks for no picture the island cannot serve, asks again when the room comes back, gates Join Voice and the hand on the room's word, shows a gap with a Retry that asks afresh (joining too), draws the roster again after a hidden reconnect, and forgets everything on sign-out",
+    asked === "audience-view:main" && drawn.rows === 303 && drawn.cached === 303 && drawn.order === "w1,c1,tester"
+      && ring === "world" && listenerMic && pending && delta && eligible && localMute && removed && noPicture && again && joinRetry && stale && staleRetry
       && dropped && rejoined && signedOut && unsubs.length === 4,
-    JSON.stringify({ asked, drawn, ring, listenerMic, pending, delta, eligible, localMute, removed, noPicture, noop, switched, joinRetry, stale, staleRetry, dropped, rejoinAsk, rejoined, signedOut, unsubs }));
+    JSON.stringify({ asked, drawn, ring, listenerMic, pending, delta, eligible, localMute, removed, noPicture, again, joinRetry, stale, staleRetry, dropped, rejoinAsk, rejoined, signedOut, unsubs }));
 };
 const chatClientChecks = async () => {
   const nodes = new Map(), timers = new Map(); let timerId = 0, uuid = 0;
@@ -33693,23 +33682,13 @@ const oogaChatChecks = async () => {
   record("Ooga Chat M key: a plain M mutes, never while typing in a field or editable text, composing, holding a modifier or repeating",
     Object.values(keys).every(Boolean), JSON.stringify(keys));
 
-  // Ooga Chat's zone marks are the island's own: DSB Land's paths as the island draws them, Main Island's mark the
-  // island's 64px favicon keyed as hud.js keys it for its destination button.
+  // Ooga Chat's marks are the island's own: DSB Land's paths as the island draws them.
   const islandHtml = readFileSync(join(root, "src/index.html"), "utf8");
   const icons = load(["src/js/native-icons.js"], { window: {} }).nativeIcons;
   const inline = [...islandHtml.match(/<svg class="dsb-island-icon"[\s\S]*?<\/svg>/)[0].matchAll(/<path fill="([^"]+)" d="([^"]+)"\/>/g)].map((m) => `${m[1]} ${m[2]}`);
-  const { decode } = await import(pathToFileURL(join(root, "scripts/distribution-icons.mjs")).href);
-  const favicon = decode(Buffer.from(islandHtml.match(/<link rel="icon" type="image\/png" sizes="64x64" href="data:image\/png;base64,([^"]+)">/)[1], "base64"));
-  for (let i = 0; i < favicon.px.length; i += 4) {
-    const alpha = Math.max(0, Math.min(1, (Math.max(favicon.px[i], favicon.px[i + 1], favicon.px[i + 2]) - 24) / 56));
-    favicon.px[i + 3] = Math.round(alpha * 255);
-    if (alpha > 0 && alpha < 1) for (let c = 0; c < 3; c++) favicon.px[i + c] = Math.min(255, Math.round(favicon.px[i + c] / alpha));
-  }
-  const keyed = decode(readFileSync(join(root, "src/ooga-chat/art/main-island.png")));
   const marks = { dsb: inline.join("|") === icons.ICONS.dsb[3].map(([fill, d]) => `${fill} ${d}`).join("|") && inline.length === 8,
-    island: keyed.w === favicon.w && keyed.h === favicon.h && keyed.px.equals(favicon.px),
     voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/hud.js"), "utf8")) && icons.VOICE_PARTS.length === 5 };
-  record("Ooga Chat zone marks: DSB Land's is the island's own paths, Main Island's is the island's favicon keyed as its destination button keys it, and the voice mark is the one the island's roster draws",
+  record("Ooga Chat marks: DSB Land's is the island's own paths, and the voice mark is the one the island's roster draws",
     Object.values(marks).every(Boolean), JSON.stringify(marks));
 
   // The island's tabs draw from the same icons, and every icon slot names one that exists.

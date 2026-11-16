@@ -59,8 +59,9 @@
     try {
       sweep(localStorage, adapter.kind);
       remembered = localStorage.getItem(tabKey) || undefined;
-      zone = parseZone(localStorage.getItem(zoneKey));
-    } catch { zone = parseZone(null); /* Storage may be unavailable. */ }
+    } catch { /* Storage may be unavailable. */ }
+    // Main Island alone for now, whatever an earlier visit chose: the space has no zone buttons to change it back.
+    zone = parseZone(null);
     const roster = BL.oogaChatRoster.create();
     const donor = BL.oogaChatDonor.create({ key: storageKey(adapter.kind, "donor") });
     const town = BL.oogaChatCommons.create();
