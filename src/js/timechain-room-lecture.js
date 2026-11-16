@@ -274,15 +274,16 @@
       K.sector(F, dS + 0.85, dS + (i & 1 ? 0.93 : 0.99), a, a + 1.96 / 26, L.yMin, L.yMin + 2.2, i & 1 ? C.walnutDk : C.walnut, { steps: 1 });
     }
     K.sector(F, dS + 0.82, dS + 1.02, Math.PI - 0.98, Math.PI + 0.98, L.yMin + 2.2, L.yMin + 2.26, C.brass, { steps: 26 });
-    // The lectern: a walnut stand at an Ooga's chest height, the ₿ on its front and a tablet tipped toward the speaker.
+    // The lectern: a walnut stand at an Ooga's chest height, the ₿ on its front, and its reading top and tablet tipped
+    // toward the speaker: high at the hall's side, low at his.
     const T = K.group(S.lectern.x, top, S.lectern.z, S.lectern.ry);
     T.node("lectern", (k) => {
       k.box(0.86, 0.74, 0.5, C.walnut, 0, 0.37, 0);
-      k.box(0.94, 0.05, 0.6, C.walnutLt, 0, 0.78, -0.02, { rx: 0.2 });
+      k.box(0.94, 0.05, 0.6, C.walnutLt, 0, 0.78, -0.02, { rx: -0.2 });
       k.box(0.9, 0.06, 0.06, C.brass, 0, 0.06, 0.26);
     }, 0, 0, 0, { target: { kind: "lectern", tip: "Lectern", radius: 0.7, data: { say: "Lecture 4 · Proof of work · today's slide is on the dome" } } });
     T.picture(0.42, 0.42, 128, 128, paintPlate, 0, 0.42, 0.255, { emissive: 0.85, depthBias: RM.MARK_BIAS });
-    T.node("tablet", (k) => { k.box(0.56, 0.02, 0.38, "#0c0c0d", 0, 0, 0); k.box(0.5, 0.006, 0.32, "#7f93b0", 0, 0.013, 0, { emissive: 0.4 }); }, 0, 0.825, -0.04, { rx: 0.2 });
+    T.node("tablet", (k) => { k.box(0.56, 0.02, 0.38, "#0c0c0d", 0, 0, 0); k.box(0.5, 0.006, 0.32, "#7f93b0", 0, 0.013, 0, { emissive: 0.4 }); }, 0, 0.817, -0.028, { rx: -0.2 });
     K.solid({ x: S.lectern.x, z: S.lectern.z, hx: 0.5, hz: 0.34, ry: S.lectern.ry });
     // A side table with the book and a glass of water.
     const side = K.group(3.25, top, F + 0.55, -0.5);
