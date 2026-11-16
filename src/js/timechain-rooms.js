@@ -29,7 +29,7 @@
   // null for a number with no room behind it yet.
   const KINDS = [
     { kind: "conference", name: "Conference Room", tag: "Live block and mining charts round the dome", R: 10.5 },
-    { kind: "lecture", name: "Lecture Hall", tag: "A desk for every seat under a dome of screens", R: 15 },
+    { kind: "lecture", name: "Lecture Hall", tag: "Lounge chairs on broad terraces under a dome of screens", R: 15 },
     { kind: "mining", name: "The Mining Museum", tag: "From Satoshi's CPU to today's ASICs", R: 15 },
     { kind: "temple", name: "Satoshi's Temple", tag: "A meditation temple; the bell rings every block", R: 15 },
     { kind: "workout", name: "Proof of Work-out", tag: "Pedal to find a fake block", R: 12 },
@@ -60,13 +60,13 @@
   // The sphere and its screen for each kind. The raked halls step down from the doorway's landing toward a focus in
   // front (`rake`): rows `depth` deep round it, seats `pitch` apart along them as far round as `psiMax` degrees, either
   // side of an aisle `aisle` wide each way; with `halfSteps` the aisle has a half step in every riser (the theater's,
-  // and the Lecture Hall's, whose five rows of desks stand a riser too tall for a walker apart), and with `dais` a
+  // and the Lecture Hall's, whose four broad terraces stand a riser too tall for a walker apart), and with `dais` a
   // round stage stands at the focus.
   const shapeOf = (kind, R) => {
     if (kind === "planetarium") return { c: 1.6, yMin: 0, P: 0, edge: { flat: 1.6 } };
     if (kind === "lecture") {
       const P = 0.26 * R;
-      return { c: 0.1 * R, yMin: -P, P, edge: { A: [-R, -P + 2.3], B: [R, 3.7] }, rake: { focus: -0.45 * R, front: 0.04 * R, back: 10, depth: 2.35, pitch: 2.3, psiMax: 60, seatTop: 0.47, halfSteps: true, dais: true, aisle: 1.1 } };
+      return { c: 0.1 * R, yMin: -P, P, edge: { A: [-R, -P + 2.3], B: [R, 3.7] }, rake: { focus: -0.45 * R, front: 0.94, back: 10, depth: 3.02, pitch: 2.9, psiMax: 58, seatTop: 0.42, halfSteps: true, dais: true, aisle: 1.1 } };
     }
     if (kind === "theater") {
       const P = 0.38 * R;

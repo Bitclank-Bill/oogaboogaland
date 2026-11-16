@@ -1,12 +1,12 @@
-// Room 1, the Lecture Hall: five broad rows stepping down from the doorway's landing to a round stage, each row one
-// long curved walnut desk either side of the aisle with a swivel chair at every place, well apart, and room behind
-// the chairs to stand. On the stage a lectern with a tablet, a side table and a low walnut backdrop; there are no
+// Room 1, the Lecture Hall: four broad terraces stepping down from the doorway's landing to a round stage, each a
+// lounge: leather armchairs well apart either side of the aisle, a small side table with a lamp beside each, and
+// room all round them to walk. On the stage a lectern with a tablet, a side table and a low walnut backdrop; there are no
 // boards on the stage, since the dome is the board. The dome's screens wrap far round the hall: over the stage the
 // slide, why the chain can't be rewritten, drawn from the latest three blocks while mempool.space has them; a
 // whiteboard either side of it (a block header to its left, a Merkle tree to its right, in a marker hand); behind
 // those, out past the side walls, the subsidy's halvings on a third whiteboard and the difficulty chart; and along
 // the top of all of them the latest blocks as a strip of cards from end to end, all live (timechain-blocks.js). The
-// rest of the dome is dark and faintly panelled. A desk stands in a walker's way a place at a time; the stage, part
+// rest of the dome is dark and faintly panelled. An armchair and its table stand in a walker's way; the stage, part
 // of the floor (timechain-rooms.js `floorAt`), is a step up from the hall's foot. The door is dark walnut with brass
 // portholes, push plates and kick plates.
 (() => {
@@ -17,21 +17,24 @@
   const { own } = RM.helpers;
   const P = RM.paintKit, DEG = ROOMS.DEG;
   const C = {
-    leather: "#3a2a20", piping: "#c4700f", post: "#1d1b19", walnut: "#4a2f1b", walnutDk: "#33200f", walnutLt: "#5f3d22", stage: "#2b1c11", ring: "#c4700f",
+    leather: "#3a2a20", leatherLt: "#4a362a", piping: "#c4700f", post: "#1d1b19", walnut: "#4a2f1b", walnutDk: "#33200f", walnutLt: "#5f3d22", stage: "#2b1c11", ring: "#c4700f",
     brass: "#b08a3a", plate: "#14110e", amber: "#f7931a", glass: "#9fc4d0", book: "#d9621e", page: "#efe6d2",
     amberText: "#ffb04d", white: "#f4efe6", grey: "#a89c8b", green: "#4fd08a"
   };
-  // How far behind a chair its sitter stands up: in the row's own standing room, short of the next riser.
-  const BACK = 0.75;
-  // A swivel chair on its star base, its back toward +z, so the sitter faces -z.
+  // How far in front of an armchair its sitter stands up (clear of the chair for the widest Ooga), the circle the
+  // chair stands in a walker's way as, and its side table: how far to the chair's side, its top's height and radius.
+  const FRONT = 1.1, CHAIR_R = 0.45, TABLE = { side: 0.86, top: 0.52, r: 0.2 };
+  // A lounge armchair on a walnut plinth, its back toward +z, so the sitter faces -z: a deep leather seat between two
+  // padded arms, a back leaning away and a headrest.
   const chair = own(() => merge(
-    box({ w: 0.62, h: 0.04, d: 0.1, color: C.post, offset: { y: 0.03 } }), box({ w: 0.1, h: 0.04, d: 0.62, color: C.post, offset: { y: 0.03 } }),
-    box({ w: 0.09, h: 0.36, d: 0.09, color: C.post, offset: { y: 0.23 } }),
-    box({ w: 0.6, h: 0.1, d: 0.54, color: C.leather, offset: { y: 0.42 } }),
-    box({ w: 0.6, h: 0.02, d: 0.03, color: C.piping, offset: { y: 0.475, z: -0.262 } }),
-    moved(turnedX(box({ w: 0.56, h: 0.62, d: 0.08, color: C.leather }), 0.14), 0, 0.78, 0.27),
-    box({ w: 0.06, h: 0.05, d: 0.36, color: C.walnutDk, offset: { x: -0.31, y: 0.62, z: 0.04 } }), box({ w: 0.06, h: 0.05, d: 0.36, color: C.walnutDk, offset: { x: 0.31, y: 0.62, z: 0.04 } }),
-    box({ w: 0.05, h: 0.16, d: 0.05, color: C.post, offset: { x: -0.31, y: 0.53, z: 0.16 } }), box({ w: 0.05, h: 0.16, d: 0.05, color: C.post, offset: { x: 0.31, y: 0.53, z: 0.16 } })
+    box({ w: 0.8, h: 0.12, d: 0.74, color: C.walnutDk, offset: { y: 0.06, z: 0.04 } }),
+    box({ w: 0.64, h: 0.2, d: 0.64, color: C.leather, offset: { y: 0.22 } }),
+    box({ w: 0.6, h: 0.08, d: 0.6, color: C.leatherLt, offset: { y: 0.36, z: -0.01 } }),
+    box({ w: 0.6, h: 0.02, d: 0.03, color: C.piping, offset: { y: 0.39, z: -0.3 } }),
+    moved(turnedX(box({ w: 0.72, h: 0.66, d: 0.14, color: C.leather }), 0.2), 0, 0.68, 0.36),
+    moved(turnedX(box({ w: 0.44, h: 0.2, d: 0.07, color: C.leatherLt }), 0.2), 0, 0.9, 0.31),
+    box({ w: 0.15, h: 0.44, d: 0.72, color: C.leather, offset: { x: -0.395, y: 0.34, z: 0.03 } }), box({ w: 0.15, h: 0.44, d: 0.72, color: C.leather, offset: { x: 0.395, y: 0.34, z: 0.03 } }),
+    box({ w: 0.17, h: 0.03, d: 0.74, color: C.walnut, offset: { x: -0.395, y: 0.575, z: 0.03 } }), box({ w: 0.17, h: 0.03, d: 0.74, color: C.walnut, offset: { x: 0.395, y: 0.575, z: 0.03 } })
   ));
   // The ₿ the Conference Room's table carries, a pixel art of 11 by 12, here on the lectern's plate.
   const BITCOIN = ["00011011000", "00011011000", "01111111100", "00110000110", "00110000110", "00111111100", "00110000110", "00110000011", "00110000011", "01111111110", "00011011000", "00011011000"];
@@ -241,26 +244,19 @@
       for (let i = 0; i < 32; i++) ctx.fillRect(i * D.W / 32, 0, 3, D.H);
       for (let el = -10; el < 90; el += 10) ctx.fillRect(0, D.y(el), D.W, 2);
     });
-    // A chair at every place on every row, facing the stage; standing up leaves the sitter behind it.
+    // An armchair at every place on every terrace, facing the stage; standing up leaves the sitter in front of it.
+    // Beside each, on its side away from the aisle, a small round walnut table with a brass lamp.
     for (const s of R.seats) {
-      const place = K.seat(s.x, s.z, s.heading + Math.PI, R.seatTop, s.floor, BACK);
-      K.node(null, chair(), s.x, s.floor, s.z, { ry: s.heading, target: { kind: "chair", tip: "Lecture seat", radius: 0.55, index: place.index } });
-    }
-    // Each row's desk, either side of the aisle: a walnut top on a modesty panel with an amber line under its lip,
-    // closed at both ends, and in walkers' way a place at a time.
-    for (const row of rows) {
-      const r0 = row.rIn + 0.26, r1 = row.rIn + 0.9, a0 = (R.aisle + 0.14) / r0, a1 = row.psiS + R.pitch / (2 * row.d), y = row.y;
-      if (a1 <= a0) continue;
-      for (const side of [-1, 1]) {
-        const b0 = side * a0, b1 = side * a1, lo = Math.min(b0, b1), hi = Math.max(b0, b1), end = 0.05 / r0;
-        K.sector(F, r0, r1, lo, hi, y + 0.72, y + 0.77, C.walnut);
-        K.sector(F, r0, r0 + 0.05, lo, hi, y, y + 0.72, C.walnutDk);
-        K.sector(F, r0 - 0.012, r0, lo, hi, y + 0.66, y + 0.69, C.ring, { emissive: 0.9, glow: true });
-        K.sector(F, r0, r1, lo, lo + end, y, y + 0.72, C.walnutDk, { steps: 1 });
-        K.sector(F, r0, r1, hi - end, hi, y, y + 0.72, C.walnutDk, { steps: 1 });
-      }
-      const rm = (r0 + r1) / 2;
-      for (const s of R.seats) if (s.row === row.i) K.solid({ x: rm * Math.sin(s.heading), z: F + rm * Math.cos(s.heading), hx: R.pitch / 2 * rm / row.d - 0.1, hz: 0.3, ry: s.heading });
+      const place = K.seat(s.x, s.z, s.heading + Math.PI, R.seatTop, s.floor, -FRONT);
+      K.node(null, chair(), s.x, s.floor, s.z, { ry: s.heading, target: { kind: "chair", tip: "Lounge chair", radius: 0.6, index: place.index } });
+      K.solid({ x: s.x, z: s.z, r: CHAIR_R });
+      const d = rows[s.row].d, a = s.heading + Math.sign(s.heading) * TABLE.side / d, tx = d * Math.sin(a), tz = F + d * Math.cos(a), y = s.floor;
+      K.cyl(TABLE.r * 0.8, TABLE.r * 0.9, 0.03, C.post, tx, y + 0.015, tz, { seg: 12 });
+      K.cyl(0.03, 0.03, TABLE.top - 0.06, C.post, tx, y + TABLE.top / 2, tz, { seg: 8 });
+      K.cyl(TABLE.r, TABLE.r, 0.04, C.walnutLt, tx, y + TABLE.top - 0.02, tz, { seg: 16 });
+      K.cyl(0.02, 0.03, 0.14, C.brass, tx, y + TABLE.top + 0.07, tz, { seg: 8 });
+      K.ball(0.055, "#ffcf8a", tx, y + TABLE.top + 0.18, tz, { emissive: 1, glow: true, seg: 8 });
+      K.solid({ x: tx, z: tz, r: TABLE.r });
     }
     // The round stage at the focus, its rim lit amber, laid in rings so Canvas 2D sorts what stands on it over it.
     const S = stageOf(L), dS = S.r, top = S.top;
