@@ -946,6 +946,8 @@ export class Room extends DurableObject {
     p.x = at.x; p.y = at.y; p.z = at.z; p.yaw = at.yaw; p.g = null; p.j = p.w = 0; p.v = null; p.va = 0; p.r = undefined;
     p.blendTo = null; p.blendK = 0;
     audienceRoom.check(this, p);
+    // A seat drops the player's duel frames and poses (above), so a duel or challenge under way ends here.
+    duel.leave(this, p);
     p.ws.serializeAttachment(this.attachment(p));
     this.dirty = true;
     this.scheduleFlush();

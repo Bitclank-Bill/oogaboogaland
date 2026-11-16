@@ -122,6 +122,15 @@ test("yielding, fleeing the flag and leaving the island each lose", async () => 
   h.say(b, { t: "zone", name: "arcade.hall" });
   assert.deepEqual([last(a, "end").winner, last(a, "end").reason], [1, "left"]);
   assert.equal(h.r.duels.size, 0);
+  h.say(b, { t: "zone", name: "outside" });
+  for (const p of h.r.players.values()) p.duelControl = null;
+  fight();
+  // An outdoor cabinet keeps the zone `outside` but takes the player out of the fight.
+  const id = BL.arcadeCabinets.outdoorSeat(BL.arcadeCabinets.entries[0].id);
+  h.say(a, { t: "cabinet", op: "take", id, q: 1, slot: 0 });
+  assert.equal(a.sent.filter((m) => m.t === "cabinet").at(-1).ok, true);
+  assert.deepEqual([last(b, "end").winner, last(b, "end").reason], [2, "left"]);
+  assert.equal(h.r.duels.size, 0);
 });
 
 test("a challenge and a duel outlast the room hibernating", async () => {
