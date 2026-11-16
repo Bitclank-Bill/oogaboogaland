@@ -21,8 +21,10 @@
   // A streak of wind, one unit long along x, pale and glowing a little so it reads under the aurora.
   const streak = M.cached(() => M.noShadow(M.box({ w: 1, h: 0.045, d: 0.045, color: "#dff4ff", emissive: 0.75 })));
 
-  // `root` is the run's own node.
-  const create = ({ root, renderer }) => {
+  // `root` is the run's own node. Its streaks are a batch, whose matrices the renderer takes as the world's own
+  // whatever node it hangs from: `place(batch)`, when given, is handed it as it is written, for a run whose node is
+  // drawn turned to turn it with it.
+  const create = ({ root, renderer, place = null }) => {
     const lite = renderer?.kind === "canvas2d", tier = lite ? 0.3 : renderer?.quality === "low" ? 0.5 : renderer?.quality === "medium" ? 0.75 : 1;
     const count = Math.round(STREAKS * tier), data = new Float32Array(count * 20), seeds = new Float32Array(count * 4);
     for (let o = 16; o < data.length; o += 20) data[o] = 1;
@@ -61,6 +63,7 @@
         data[o + 12] = eye.x + dx; data[o + 13] = eye.y + dy; data[o + 14] = eye.z + dz; data[o + 15] = 1;
       }
       batch.instanceVersion++; batch.visible = shown > 0;
+      if (place) place(batch);
     };
     const hide = () => { batch.visible = false; strength = warning = 0; };
     // Each frame of a run: (x, z) the rider's feet, which brings the next gust on, and `eye` and `look` the camera's

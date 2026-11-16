@@ -94,8 +94,10 @@
   };
 
   // `root` is the run's own node; `onDrop(x, y, z)` hears each tornado begin to come down and `onStrike(distance)`
-  // each strike of its lightning, for their sound.
-  const create = ({ root, renderer, onDrop = null, onStrike = null, which = 0 }) => {
+  // each strike of its lightning, for their sound. Its slabs and spray are batches, whose matrices the renderer
+  // takes as the world's own whatever node they hang from: `place(batch)`, when given, is handed each one as it is
+  // written, for a run whose node is drawn turned to turn them with it.
+  const create = ({ root, renderer, onDrop = null, onStrike = null, which = 0, place = null }) => {
     const own = which * BANDS.length;
     const lite = renderer?.kind === "canvas2d", tier = lite ? 0.25 : renderer?.quality === "low" ? 0.5 : renderer?.quality === "medium" ? 0.75 : 1;
     // One batch a band of colour, holding that band's slabs, and which batch and slot each slab writes.
@@ -254,7 +256,7 @@
         d[o + 12] = CENTRE.x + Math.cos(a) * sway; d[o + 13] = top - u * LENGTH; d[o + 14] = CENTRE.z + Math.sin(a) * sway; d[o + 15] = 1;
         d[o + 16] = 1 + (state === FORMING ? BREW_GLOW * grow : DOWN_GLOW * rope) + (u < 0.16 ? flash * 2.5 : 0);
       }
-      for (let b = 0; b < batches.length; b++) { batches[b].instanceVersion++; batches[b].visible = seen > 0; batches[b].geometry.fogPierce = PIERCE * seen; }
+      for (let b = 0; b < batches.length; b++) { batches[b].instanceVersion++; batches[b].visible = seen > 0; batches[b].geometry.fogPierce = PIERCE * seen; if (place) place(batches[b]); }
       // Spray whipped round just off its side, only where it has come down.
       const sd = spray.instanceData;
       for (let i = 0, o = 0; i < STREAKS; i++, o += 20) {
@@ -270,6 +272,7 @@
         sd[o + 12] = CENTRE.x + ca * r; sd[o + 13] = top - u * LENGTH + Math.sin(clock * 1.7 + i) * 0.6; sd[o + 14] = CENTRE.z + sa * r; sd[o + 15] = 1;
       }
       spray.instanceVersion++; spray.visible = STREAKS > 0 && seen > 0;
+      if (place) place(spray);
     };
     // A run begins: `seed` its course's, from which its spots are laid on `course` toward `finish`; `clear` ends any
     // tornado at once and brews no more.

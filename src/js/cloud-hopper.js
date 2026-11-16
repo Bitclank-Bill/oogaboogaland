@@ -43,12 +43,15 @@
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
   const SWEPT_OUT = 12, SWEPT_BEHIND = 6, SWEPT_UNDER = 4;
   // Twice a run Storm's Eye's world turns over, unannounced, as the rider reaches a place seeded with its course
-  // (`course.due`), as a tornado comes or a gust blows: the rider is held while everything else (the sky, the sea, the
-  // island, the storm round it and the clouds) rolls half a turn round the course's axis over TURN_SECONDS (at once
-  // under reduced motion), and is lowered TURN_DROP metres under where it was, below the clouds. Then it is let go
-  // with a jetpack worn and at least CLIMB_FUEL of a tank to fly back up to them, and one that falls CLIMB_FALL metres
-  // before landing starts the climb again from where it was let go. It changes nothing of the course.
-  const TURN_SECONDS = 2.2, TURN_DROP = 12, CLIMB_FUEL = 0.7, CLIMB_FALL = 30;
+  // (`course.due`), as a tornado comes or a gust blows: everything but the rider (the sky, the sea, the island, the
+  // storm round it and the clouds) rolls half a turn round the course's axis over TURN_SECONDS (at once under reduced
+  // motion). The rider goes on as it was going, its speed and the controls held untouched, so it steers all through
+  // the roll; only its height is taken from it, for the roll's first TURN_HOLD seconds, while it is lowered TURN_DROP
+  // metres under where it was, below the clouds. Then, the world still rolling, it is let go with a jetpack worn and
+  // at least CLIMB_FUEL of a tank to fly back up to them. One that falls CLIMB_FALL metres before its first landing
+  // starts the climb again, once, at rest, from under where the roll began; from then on, as after that first
+  // landing, a fall is lost as any other is. It changes nothing of the course.
+  const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FUEL = 0.7, CLIMB_FALL = 30;
   // A portal cloud throws the rider that touches it on down the course: over WARP_SECONDS the Ooga, unseen, streaks
   // to a landing as SPARKS violet sparkles trailing WARP_TRAIL metres, the view gliding after it, and comes out WARP_EDGE inside the
   // landing's near side and WARP_OVER above it, with the speed it went in with (no more than carries it across the
@@ -122,14 +125,17 @@
     // middle, so one upside down shows its flat underside upward, level with the top it had, and that underside is
     // what the rider lands, stands and bounces on, its puffs hanging under it. Lit from under meanwhile, the clouds
     // take the night fill, and a boost cloud's arrows show on its underside (`underNodes`). `turns` is how many rolls
-    // are done, `turning` the seconds into one (-1 none) from `turnFrom`, the rider eased from `turnHeld` down to
-    // `checkpoint`; `climbing` is a rider let go under the clouds and not yet landed. The first roll turns the world
+    // are done, `turning` the seconds into one (-1 none) from `turnFrom`, `lowering` its start, while the rider's
+    // height is eased from `turnHeld` down to `checkpoint`'s; `climbing` is a rider let go under the clouds and not
+    // yet landed, `rescued` that its one fall has been put back. The first roll turns the world
     // round the rider (`turnPivot`); the second turns it back round an axis sliding from there to the rider, so it
     // ends upright with no far swing.
     const turnAxis = { x: 1, z: 0 }, turnPivot = { x: 0, y: 0, z: 0 }, turnAbout = { x: 0, y: 0, z: 0 }, checkpoint = { x: 0, y: 0, z: 0 };
     const ORIGIN = { x: 0, y: 0, z: 0 }, spun = { x: 0, y: 0, z: 0 }, turnedUp = { x: 0, y: 1, z: 0 }, turnHeld = { x: 0, y: 0, z: 0 };
     const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 };
-    let turn = 0, turns = 0, turning = -1, turnFrom = 0, climbing = false, riderParent = null, viewTurned = false, trueUp = null, nightSky = false;
+    // Where the roll stands (`rolled`), and where it will stand as this frame is drawn (`drawnTurn`).
+    const rolled = { turn: 0, x: 0, y: 0, z: 0 }, drawnTurn = { turn: 0, x: 0, y: 0, z: 0 };
+    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, riderParent = null, viewTurned = false, trueUp = null, nightSky = false;
     // A portal's warp: the seconds into it (-1 none) from `warpFrom` to the landing `warpTo`, where it comes out
     // (`warpAt`), the speed carried through, the seconds into its puff (-1 none), the portal that flashed and when,
     // and until when no tornado takes the rider.
@@ -147,6 +153,19 @@
       out.y = about.y + py * c + (az * px - ax * pz) * n;
       out.z = about.z + pz * c + ax * py * n + az * along;
       return out;
+    };
+    // A tornado's slabs and spray and a gust's streaks are batches, and a batch's matrices are the world's own to
+    // the renderer, whatever node it hangs from: the holder's turn back never reaches them. So while the world is
+    // turned each is turned back here as it is written, by the turn this frame will be drawn with, and a tornado
+    // shows where it takes a rider and the wind where it blows. Nothing is made.
+    const placeBatch = (node) => {
+      if (drawnTurn.turn === 0) return;
+      const d = node.instanceData, angle = -drawnTurn.turn;
+      for (let o = 0, end = node.instanceCount * 20; o < end; o += 20) {
+        if (d[o] === 0 && d[o + 1] === 0 && d[o + 2] === 0 && d[o + 5] === 0) continue;
+        for (let c = o; c < o + 12; c += 4) { spin(d[c], d[c + 1], d[c + 2], angle, ORIGIN, spun); d[c] = spun.x; d[c + 1] = spun.y; d[c + 2] = spun.z; }
+        spin(d[o + 12], d[o + 13], d[o + 14], angle, drawnTurn, spun); d[o + 12] = spun.x; d[o + 13] = spun.y; d[o + 14] = spun.z;
+      }
     };
     // The run's holder turned back by the world's roll, so the run shows where the view had it before the roll.
     const holdGame = () => {
@@ -202,7 +221,7 @@
       if (riderParent && actor) { removeChild(gameRoot, actor.root); addChild(riderParent, actor.root); }
       if (warping >= 0 && actor) actor.root.visible = true;
       if (turn !== 0 && cloudNodes.length) relight(false);
-      riderParent = null; turn = turns = 0; turning = -1; climbing = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
+      riderParent = null; turn = turns = 0; turning = -1; lowering = climbing = rescued = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
       readyPortal = readyFlip = -1; readyTo = null;
       holdGame(); audio.turned(false);
       for (const spark of sparks) spark.visible = false;
@@ -232,49 +251,74 @@
       for (const c of course.landings) { const d = (c.x - x) ** 2 + (c.z - z) ** 2; if (d < near) { near = d; top = c.top; } }
       return top;
     };
-    // The rider has reached where the world turns over, `level` the course's height there: it is held, to be lowered
-    // under the clouds as the world rolls (never further under the course than TURN_DROP, so the climb's fuel always
-    // reaches it, and never nearer the sea than a climb's fall).
+    // The rider has reached where the world turns over, `level` the course's height there: its height is taken, to be
+    // lowered under the clouds as the world starts to roll (never further under the course than TURN_DROP, so the
+    // climb's fuel always reaches it, and never nearer the sea than a climb's fall). Its speed over the course and
+    // the controls held are left as they are, and the view stays the player's own to look round with.
     const beginTurn = (level) => {
       const p = actor.root.position;
-      turning = 0; turnFrom = turn; climbing = false;
+      turning = 0; turnFrom = turn; lowering = true; climbing = rescued = false;
       Object.assign(turnHeld, p); Object.assign(checkpoint, p);
       checkpoint.y = Math.min(p.y, Math.max(p.y - TURN_DROP, level + actor.baseY - TURN_DROP, ctx.seaY + actor.baseY + CLIMB_FALL + 10));
       if (turn === 0) Object.assign(turnPivot, p);
       if (hookHeld && hookAt !== HAND) letGo();
-      hookDown = false;
-      // The view stays the player's own to look round with; the hold overwrites whatever the controls move.
-      pilot.controls.reset();
+      hookDown = false; packUp();
       if (!riderParent) { riderParent = actor.root.parent; removeChild(riderParent, actor.root); addChild(gameRoot, actor.root); }
       audio.turnOver(); audio.turned(turn === 0);
     };
-    // The rider at the checkpoint with a pack worn and fuel for the climb.
-    const startClimb = () => {
-      const p = actor.root.position;
-      Object.assign(p, checkpoint);
-      actor.hop = 1; actor.hopV = 0; actor.jumps = 1; actor.leap.vx = actor.leap.vz = 0; actor.leap.land = 0;
+    // The climb's jetpack on the rider with fuel for it. It goes on as the roll starts, not as the rider is let go:
+    // Space pressed with no pack worn is a jump's press, never thrust however long it is held, so a player pressing it
+    // during the roll would be let go with no lift until it pressed again.
+    const packUp = () => {
+      actor.jetFuel = Math.max(actor.jetFuel, CLIMB_FUEL);
       if (!actor.jetpackOwned) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       if (!actor.jet) crew.wearJetpack(actor, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
-      actor.jetFuel = Math.max(actor.jetFuel, CLIMB_FUEL); actor.jetRecovering = false;
-      pilot.showAct(); climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
+      actor.jetRecovering = false; pilot.showAct();
     };
-    // Each frame of a roll, after the crew moved (its moves are overwritten). At its end the rider is let go.
+    // The rider let go under the clouds with the pack's fuel made up for the climb: as the roll lowered it, going on
+    // over the course as it came (the pack only lifts here, so it runs and steers through the air as before); or,
+    // fallen from the climb (`again`), back under where the roll began, at rest.
+    const startClimb = (again) => {
+      const p = actor.root.position, leap = actor.leap;
+      if (again) { Object.assign(p, checkpoint); leap.vx = leap.vz = 0; }
+      else p.y = checkpoint.y;
+      actor.hop = 1; actor.hopV = 0; actor.jumps = 1; leap.land = 0;
+      packUp(); climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
+    };
+    // Where a roll stands `t` seconds in, into `out`: how far the world has turned and the point its axis goes
+    // through; whether it is over (upside down round where it began after the first, upright after the second).
+    const rollAt = (t, out) => {
+      const length = stillMotion ? TURN_HOLD : TURN_SECONDS, over = t >= length;
+      const u = over || stillMotion ? 0 : t / length, k = u * u * (3 - 2 * u), slide = turnFrom > 0 && !over ? k : 0;
+      out.turn = over ? (turnFrom === 0 ? Math.PI : 0) : turnFrom + Math.PI * k;
+      out.x = turnPivot.x + (turnHeld.x - turnPivot.x) * slide; out.y = turnPivot.y + (turnHeld.y - turnPivot.y) * slide;
+      out.z = turnPivot.z + (turnHeld.z - turnPivot.z) * slide;
+      return over;
+    };
+    // Each frame of a roll, after the crew moved: the world turns on, and while the rider is being lowered its height
+    // (and only that) is overwritten, until it is let go TURN_HOLD seconds in, the roll going on without it. Whether
+    // the rider's height was the roll's this frame, so the run's own work on it waits. Under reduced motion the
+    // world is over at once as the rider is let go.
     const turnStep = () => {
       turning += stepTime;
-      const u = stillMotion ? (turning >= TURN_SECONDS / 2 ? 1 : 0) : Math.min(1, turning / TURN_SECONDS), k = u * u * (3 - 2 * u), p = actor.root.position;
-      turn = turnFrom + Math.PI * k;
-      const slide = turnFrom > 0 ? k : 0;
-      turnAbout.x = turnPivot.x + (turnHeld.x - turnPivot.x) * slide; turnAbout.y = turnPivot.y + (turnHeld.y - turnPivot.y) * slide;
-      turnAbout.z = turnPivot.z + (turnHeld.z - turnPivot.z) * slide;
-      p.x = checkpoint.x; p.y = turnHeld.y + (checkpoint.y - turnHeld.y) * k; p.z = checkpoint.z;
-      actor.hop = 1; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0;
-      seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
-      if (turning < TURN_SECONDS) { holdGame(); return; }
+      const p = actor.root.position, held = lowering, over = rollAt(turning, rolled);
+      turn = rolled.turn; turnAbout.x = rolled.x; turnAbout.y = rolled.y; turnAbout.z = rolled.z;
+      if (held) {
+        const d = stillMotion ? 0 : Math.min(1, turning / TURN_HOLD);
+        p.y = turnHeld.y + (checkpoint.y - turnHeld.y) * d * d * (3 - 2 * d);
+        actor.hop = 1; actor.hopV = 0;
+        seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
+        if (turning >= TURN_HOLD - 1e-9) {
+          lowering = false; startClimb(false);
+          hud.toast("The world turned over · hold Space to jetpack up");
+        }
+      }
+      holdGame();
+      if (!over) return held;
       turning = -1; turns++;
-      if (turnFrom === 0) { turn = Math.PI; Object.assign(turnAbout, turnPivot); holdGame(); relight(true); }
-      else { turn = 0; holdGame(); removeChild(gameRoot, actor.root); addChild(riderParent, actor.root); riderParent = null; relight(false); }
-      startClimb();
-      hud.toast("The world turned over · hold Space to jetpack up");
+      if (turnFrom === 0) relight(true);
+      else { removeChild(gameRoot, actor.root); addChild(riderParent, actor.root); riderParent = null; relight(false); }
+      return held;
     };
     // Whether no tornado that is down stands near enough a landing to take a rider there.
     const safeLanding = (c) => {
@@ -521,12 +565,12 @@
     // Thunderhead's tornadoes, one a spot and any of them up at once, each writing its own whirl; `tornado` is the one
     // that matters now (the one that has the Ooga, else the nearest down, else the nearest brewing), whose whirl the
     // course takes. And whether one has the Ooga (and the height it took it at).
-    const tornadoes = BL.cloudHopperTornado.SPOTS.map((spot, which) => BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer, which,
+    const tornadoes = BL.cloudHopperTornado.SPOTS.map((spot, which) => BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer, which, place: placeBatch,
       onDrop: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); },
       onStrike: (distance) => audio.thunder(distance) }));
     const whirls = tornadoes.map(() => ({ x: 0, z: 0, strength: 0, reach: 1, core: 1, speed: 0, draw: 0, rise: 0 }));
     // Aurora Heights' gusts of wind.
-    const gust = BL.cloudHopperGust.create({ root: routeRoot, renderer: ctx.renderer });
+    const gust = BL.cloudHopperGust.create({ root: routeRoot, renderer: ctx.renderer, place: placeBatch });
     let slideX = 0, slideZ = 0;
     let tornado = tornadoes[0];
     // How long the Ooga has been wholly inside a tornado's funnel on end (s).
@@ -986,6 +1030,9 @@
       audio.rain(level.sky?.scenery === "storm" && (phase === "lifting" || phase === "briefing" || phase === "ready" || phase === "running"));
       if (!course || phase === "won") return;
       Object.assign(beforeStep, actor.root.position); stepTime = dt;
+      // The turn this frame is drawn with: the roll's next step, which comes after the crew has moved.
+      if (turning >= 0 && phase === "running" && swept < 0) rollAt(turning + dt, drawnTurn);
+      else { drawnTurn.turn = turn; drawnTurn.x = turnAbout.x; drawnTurn.y = turnAbout.y; drawnTurn.z = turnAbout.z; }
       // Carry planted feet with the drifting, dissolving surface before ordinary gravity runs.
       let riding = null, oldTop = 0;
       const p = actor.root.position, feet = p.y - actor.baseY;
@@ -1022,7 +1069,8 @@
           slideX += (gust.pushX * GUST_SLIDE * push - slideX) * k; slideZ += (gust.pushZ * GUST_SLIDE * push - slideZ) * k;
           p.x += slideX * dt; p.z += slideZ * dt;
         } else {
-          if (actor.hop > 0) {
+          // Not while the roll is lowering it: it cannot fly against the push yet.
+          if (actor.hop > 0 && !lowering) {
             actor.leap.vx += slideX + gust.pushX * GUST_PUSH * push * dt; actor.leap.vz += slideZ + gust.pushZ * GUST_PUSH * push * dt;
           }
           slideX = slideZ = 0;
@@ -1134,7 +1182,7 @@
     const postUpdate = () => {
       // Swept up by a tornado, the Ooga spins round over its top behind the DQ card too, until a replay or exit.
       if (swept >= 0) { sweepStep(); return; }
-      if (turning >= 0 && phase === "running") { turnStep(); return; }
+      if (turning >= 0 && phase === "running" && turnStep()) return;
       if (warping >= 0 && phase === "running") { warpStep(); return; }
       if (course && !warmedRun && (course.flips.length || course.portals.length)) warmedRun = warmRun();
       if (phase !== "ready" && phase !== "running") return;
@@ -1155,14 +1203,18 @@
         // The world turns over as the rider reaches the place, never during a climb or a warp, nor in the moment
         // after one that a tornado leaves it too. A rider that has fallen further under the course than a roll lowers
         // one is left to its fall; the world turns once it is back.
-        if (!climbing && seconds >= safeUntil && course.due(p.x, p.z, turns)) {
+        if (turning < 0 && !climbing && seconds >= safeUntil && course.due(p.x, p.z, turns)) {
           const level = courseTop(p.x, p.z);
           if (feet >= level - TURN_DROP) { beginTurn(level); return; }
         }
-        // The climb after it ends on a landing; a fall from it starts it again.
+        // The climb after it ends on a landing. A fall from it starts it again, the once; a second is a fall like
+        // any other, lost by the rules every fall is, as is every fall after that first landing.
         if (climbing) {
           if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) climbing = false;
-          else if (p.y < checkpoint.y - CLIMB_FALL) { startClimb(); hud.toast("Back under the clouds · hold Space to jetpack up"); }
+          else if (p.y < checkpoint.y - CLIMB_FALL) {
+            if (rescued) climbing = false;
+            else { rescued = true; startClimb(true); hud.toast("Back under the clouds · hold Space to jetpack up"); }
+          }
         }
         if (course.flips.length || course.portals.length) readyAhead();
         launchFromCloud();
@@ -1244,7 +1296,7 @@
         return true;
       }
       hookDown = true;
-      if (!hookHeld || hookAt !== HAND) return true;
+      if (!hookHeld || hookAt !== HAND || lowering) return true;
       const c = chest();
       Object.assign(hookTip, c);
       if (aim()) {
@@ -1317,7 +1369,7 @@
     const whirlOoga = () => {
       if (swept >= 0) return;
       // A rider just warped in or let go under the clouds gets WARP_SAFE seconds before a tornado can take it.
-      if (!tornado.down || hookAt === BIT || phase !== "running" || seconds < safeUntil) { whirled = false; engulfed = 0; return; }
+      if (!tornado.down || hookAt === BIT || phase !== "running" || lowering || seconds < safeUntil) { whirled = false; engulfed = 0; return; }
       const p = actor.root.position, feet = p.y - actor.baseY;
       tornado.axisAt(feet, whirlAxis);
       const dx = p.x - whirlAxis.x, dz = p.z - whirlAxis.z, r = Math.max(0.1, Math.hypot(dx, dz)), side = tornado.radiusAt(feet);
@@ -1643,7 +1695,7 @@
       // Aurora Heights' gust and how fast it slides a planted Ooga, for debugging.
       get gust() { return gust; }, get slide() { return Math.hypot(slideX, slideZ); },
       // Storm's Eye's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
-      get turn() { return turn; }, get turning() { return turning >= 0; }, get climbing() { return climbing; },
+      get turn() { return turn; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
       // What is readied ahead, for debugging: the run's meshes, the landing found for the portal about to be touched
       // (null none) and the flip readied for (-1 none).

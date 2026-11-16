@@ -796,18 +796,23 @@ with or without them, so no cloud is ever only for one way up and nothing has to
 
 **The world turns over twice a run**, unannounced, as a tornado comes or a gust blows. Each place is seeded with the
 course in its own stretch of the way down (`flips`: 26–40% and 60–74%), so it is clear of the start and the finish and
-the two are well apart. As the rider reaches it the rider is held and lowered 12 m, under the clouds, while the whole
-world rolls half a turn round the course's axis, the clouds with it, and it stays: upside down after the first,
-upright again after the second. The rider never turns: gravity stays down the screen and the controls stay as they
-are. Each cloud rolls over where it is, round the same axis through its own middle, so upside down its flat underside
+the two are well apart. As the rider reaches it the whole world rolls half a turn round the course's axis over
+2.2 s, the clouds with it, and it stays: upside down after the first, upright again after the second. The rider never
+turns: gravity stays down the screen and the controls stay as they are. It goes on over the course as it was going,
+its speed and whatever is held untouched, so it steers all through the roll; only its height is taken, for the
+roll's first 0.6 s, while it is lowered 8 m, down through the cloud it stood on, wearing the jetpack from the roll's
+start. Then it is let go, the world still rolling: the next landing is a short lift above it and the one after is
+below it, so the stretch runs downhill as it does upright. Each cloud rolls over where it is, round the same axis through its own middle, so upside down its flat underside
 is up, level with the top it had, its puffs hang under it, and that underside is what the rider lands, stands and
 bounces on (a boost cloud's arrows show there too). Every cloud's place, height and footprint are unchanged, so every
 jump, fade, hook throw, gust and tornado plays as it does upright. The sky's roll is the view's alone, so no node of
 the island's changes and the run's physics are untouched; the run is drawn turned back to match, and what reads the
 view (the hook's aim, the overlay) reads the run's own. The rider is
 let go with the jetpack worn and 70% of a tank to climb back onto the same course, and a fall of 30 m before landing
-puts it back where it was let go. It never strikes during a climb or a warp, nor for 1.5 s after one, nor on a rider
-already fallen more than 12 m under the course (it turns once the rider is back), so the rider is never let go
+puts it back once, at rest, under where the roll began; a second fall from that climb, and any fall after that
+landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down
+(their instanced batches are turned back with the run as they are written). It never strikes during a climb or a warp, nor for 1.5 s after one, nor on a rider
+already fallen more than 8 m under the course (it turns once the rider is back), so the rider is never let go
 further under the course than the fuel climbs.
 
 **Two portal clouds** are a shortcut worth catching: bright gold, about three times as fast as any other cloud and on
