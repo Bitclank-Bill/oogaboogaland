@@ -17,13 +17,13 @@
   const BL = window.BL = window.BL || {};
   const TIMEOUT_MS = 20000;
   // How each group shows it has arrived: the module that runs last in it.
-  const PRESENT = { "cloud-hopper": () => !!BL.cloudHopper, "terrain-cache": () => !!BL.terrainCache, "lab-wallpaper": () => !!BL.labWallpaper?.src, canvas: () => !!BL.canvasRenderer, timechain: () => !!BL.timechainInterior, dsb: () => !!BL.dsbCollision, arcade: () => !!BL.carnivalAudio, poker: () => !!BL.pokerHud, drop: () => !!BL.dropAudio,
+  const PRESENT = { "cloud-hopper": () => !!BL.cloudHopper, "terrain-cache": () => !!BL.terrainCache, "lab-wallpaper": () => !!BL.labWallpaper?.src, canvas: () => !!BL.canvasRenderer, timechain: () => !!BL.timechainInterior, "timechain-genesis": () => !!BL.timechainGenesis, dsb: () => !!BL.dsbCollision, arcade: () => !!BL.carnivalAudio, poker: () => !!BL.pokerHud, drop: () => !!BL.dropAudio,
     "block-viewer": () => !!BL.blockViewer, race: () => !!BL.raceAudio, mine: () => !!BL.mineCrew, orbit: () => !!BL.rocketAudio,
     // HALLOWEEN: the arcade's ghost hunt, and each track of its playlist.
     halloween: () => !!BL.halloween, ...Object.fromEntries(["boss", "colt", "martial", "nightmare", "synthed", "nr"].map((k) => [`halloween-track-${k}`, () => !!(BL.ghostMusic && BL.ghostMusic[k])])) };
   // Only scene implementation groups depend on a base group; no base group depends on a scene shell. The Lightning Jet
   // Hangar, walked into from the Factory and left back into it, builds on the Factory's scene group.
-  const SCENE_BASE = { "arcade-scene": "arcade", "drop-scene": "drop", "race-scene": "race", "mine-scene": "mine", "orbit-scene": "orbit", "hangar-scene": "factory-scene" };
+  const SCENE_BASE = { "arcade-scene": "arcade", "drop-scene": "drop", "race-scene": "race", "mine-scene": "mine", "orbit-scene": "orbit", "hangar-scene": "factory-scene", "timechain-genesis": "timechain" };
   const loading = new Map(), attempts = new Map();
   let stale = false, staleHandler = null;
   // A file that answers 404 is gone for good: the site was deployed since this page loaded.

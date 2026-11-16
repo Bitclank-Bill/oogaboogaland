@@ -21800,12 +21800,12 @@ const timechainRoomChecks = async () => {
   const context = { window: { BL: {} } };
   runInNewContext(await readFile(new URL("../src/js/timechain-rooms.js", import.meta.url), "utf8"), context);
   const R = context.window.BL.timechainRooms;
-  const good = [0, 1, 7, "0", "5", "7"].every(v => R.parse(v) === Number(v));
-  const bad = [8, 9, "8", "9", 10, 3.5, -1, "03", "3a", " 3", "", "sphere-3", null, undefined, NaN, {}, [3]].every(v => R.parse(v) === null);
+  const good = [0, 1, 7, 8, "0", "5", "7", "8"].every(v => R.parse(v) === Number(v));
+  const bad = [9, "9", 10, 3.5, -1, "03", "3a", " 3", "", "sphere-3", null, undefined, NaN, {}, [3]].every(v => R.parse(v) === null);
   const zones = R.ROOMS.map(r => r.zone), kinds = R.ROOMS.map(r => r.kind).join();
-  record("timechain rooms: only 0–7 resolve to rooms (8 and 9 are empty), each its own kind and undotted zone, and only the Conference Room locks",
+  record("timechain rooms: only 0–8 resolve to rooms (9 is empty), each its own kind and undotted zone, and only the Conference Room locks",
     good && bad && new Set(zones).size === 10 && zones.every((z, i) => z === `sphere-${i}` && !z.includes(".")) && R.get(0).name === "Conference Room" && R.get("7").kind === "planetarium"
-      && kinds === "conference,lecture,mining,temple,workout,theater,party,planetarium,," && R.OPEN.join() === "0,1,2,3,4,5,6,7" && R.LOCKABLE.join() === "0" && R.get(8) === null && R.get(12) === null
+      && kinds === "conference,lecture,mining,temple,workout,theater,party,planetarium,genesis," && R.OPEN.join() === "0,1,2,3,4,5,6,7,8" && R.LOCKABLE.join() === "0" && R.get(8).kind === "genesis" && R.get(9) === null && R.get(12) === null
       && R.ROOMS.every(r => r.empty || !!R.layout(r.id).lockPad === r.lockable), JSON.stringify({ good, bad, zones, kinds }));
   const rows = R.ROOMS.filter(r => !r.empty).map(({ id }) => {
     const L = R.layout(id), along = (a) => [+(L.doorZ - a.z).toFixed(9), a.x];
@@ -21858,6 +21858,29 @@ const timechainRoomChecks = async () => {
   }
   record("timechain recovery: a rejected guided departure returns inside facing the room before closing doors and releasing control, while ordinary departures keep their pose",
     recovery.every(row => row.restored && row.recovered), JSON.stringify(recovery));
+  // A kind's own way into another room (Before the Block's door into the Mining Museum), on the production methods:
+  // the hand-over the keypad makes, and one the director refuses.
+  const handing = `${methods}\n${interior.slice(interior.indexOf("    const handOffTo ="), interior.indexOf("    const stay ="))}`;
+  const mining = R.ROOMS.find(r => r.kind === "mining").id, handed = [];
+  for (const shared of [false, true]) for (const goes of [true, false]) {
+    const from = R.ROOMS.find(r => r.kind === "genesis"), zones = [], bodies = [], calls = [], guide = { stage: "out", portal: { x: 0, z: 0, room: mining } };
+    let went = null;
+    const fixture = {
+      L: R.layout(from.id), shared, guide, doors: { want: 0 }, room: from, ROOMS: R, world: { sphereExit: null, sphereVisit: null }, leaving: false, guided: true, COARSE: false,
+      avatar: { traits: { name: "tester" } }, visit: { mode: shared ? "shared" : "solo", login: shared ? "tester" : null, jetpack: null },
+      BL: { net: { setZone: zone => zones.push(zone), setBody: body => bodies.push(body) } }, hud: { hint() {} },
+      go: (scene, place) => { went = `${scene},${place}`; return goes; },
+      people: { steer() { calls.push("stop"); } },
+      pilot: { navigate() { calls.push("arrive"); }, setActive() { calls.push("active"); }, viewState: () => ({}) }
+    };
+    runInNewContext(`${handing}\nhandOffTo(${mining});`, fixture);
+    const next = fixture.world.sphereVisit;
+    handed.push({ shared, goes, went, zones: zones.join(), body: bodies.length === 1 && bodies[0] === null,
+      visit: goes ? !!next && next.room === mining && next.mode === fixture.visit.mode && next.guided === true : next === null,
+      stayed: goes || !calls.includes("arrive") && guide.stage === null && guide.portal === null && !fixture.leaving });
+  }
+  record("timechain portal: a room's own way into another hands over as the keypad does (no body and zone none, the next visit in this one's mode and guided, so the room beyond sets its own zone), and one that cannot go leaves the visitor where they stand with their zone back",
+    handed.every(h => h.went === `timechain,${mining}` && h.body && h.visit && h.stayed && h.zones === (h.goes ? "none" : h.shared ? "none,sphere-8" : "none")), JSON.stringify(handed));
   // Regression: under a dome that widens over the floor a jump carried a body out past where it could stand, and it
   // came down held by the wall. Space at the Exit button then walked nowhere, ran out both of the walk's limits and
   // handed the island an eye still inside the room, which stood the Ooga in the ball off the passage and left it there.
@@ -22398,9 +22421,9 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   };
   const read = `(() => { const B = __ooga, ${sphereLocal}, G = T.gate, a = B.pilot.player, p = a.root.position, cap = (k) => T.site.keys.find(x => x.key === k).node.geometry.faces[0].color.join();
     return { state: G.debug.state, remote: G.remote, busy: G.busy, selection: G.debug.selection, lens: G.debug.lens, along: +local(p).toFixed(2), act: !document.getElementById("act").hidden,
-      eight: cap("8"), three: cap("3"), five: cap("5"), board: document.getElementById("board-modal").open, caption: document.getElementById("board-caption").textContent }; })()`;
+      nine: cap("9"), three: cap("3"), five: cap("5"), board: document.getElementById("board-modal").open, caption: document.getElementById("board-caption").textContent }; })()`;
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "19")} })()`);
-  await clickKey("8");
+  await clickKey("9");
   const empty = await b.evaluate(read);
   await clickKey("3");
   const chosen = await b.evaluate(read);
@@ -22413,7 +22436,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   const listed = await b.evaluate(read);
   await clickRow(5);
   const unlisted = await b.evaluate(read);
-  await clickRow(8);
+  await clickRow(9);
   const emptyRow = await b.evaluate(read);
   await b.key("3");
   await b.evaluate(`__ooga.advance(0.2, 1 / 60)`);
@@ -22421,7 +22444,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   await b.key("Escape");
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "24")} B.advance(0.2, 1 / 60); })()`);
   const walkedOff = await b.evaluate(read);
-  // Regression: the empty rooms' 8 and 9 are a PIN's digits like any other, drawn plain while the keypad asks for one.
+  // Regression: the empty number 9 is a PIN's digit like any other, drawn plain while the keypad asks for one.
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; window.__lockedWas = BL.net.state.lockedRooms[0]; BL.net.state.lockedRooms[0] = 1; ${sphereStand("0.4", "19")} })()`);
   await clickKey("0");
   // Regression: the directory reopened while the keypad asks for the PIN chooses nothing and types no digit.
@@ -22430,7 +22453,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   await b.key("5");
   const pinDirectory = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
   await b.key("Escape");
-  await clickKey("8");
+  await clickKey("9");
   const pin = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
   await clickKey("back");
   await clickKey("back");
@@ -22455,7 +22478,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   await untilPage(b, 'window.__eyeGap.done', 25000);
   const out = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, a = B.pilot.player, p = a.root.position; return { ...window.__eyeGap, view: B.pilot.mode, along: +local(p).toFixed(2), state: T.gate.debug.state }; })()`);
   record("timechain bridge keypad: from the bridge's near half an empty number does nothing, a room's number is chosen with the Ooga and view still the player's, and walking off lets it go",
-    empty.state === "idle" && empty.eight === "34,30,27" && chosen.state === "keypad" && chosen.remote && !chosen.busy && chosen.selection === 3 && chosen.lens === null && chosen.act && Math.abs(chosen.along - 19) < 0.2
+    empty.state === "idle" && empty.nine === "34,30,27" && chosen.state === "keypad" && chosen.remote && !chosen.busy && chosen.selection === 3 && chosen.lens === null && chosen.act && Math.abs(chosen.along - 19) < 0.2
       && walkedOff.state === "idle" && walkedOff.selection === -1, JSON.stringify({ empty, chosen, walkedOff }));
   record("timechain bridge keypad: the chosen number clicked again clears it, and the directory's rows choose and clear the keypad's button the same way",
     unchosen.state === "keypad" && unchosen.remote && unchosen.selection === -1 && unchosen.three === "58,52,48"
@@ -22463,8 +22486,8 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
       && unlisted.board && unlisted.selection === -1 && unlisted.five === "58,52,48" && !unlisted.caption.startsWith("Room")
       && emptyRow.selection === -1 && typed.board && typed.selection === 3 && typed.three === "247,147,26",
     JSON.stringify({ unchosen, listed, unlisted, emptyRow, typed, clicks }));
-  record("timechain bridge keypad: while it asks for a locked room's PIN the empty rooms' 8 and 9 are digits like any other, drawn plain, and greyed out again after",
-    pin.state === "pin" && pin.pin === "8" && pin.eight === "58,52,48" && unpinned.state !== "pin" && unpinned.eight === "34,30,27", JSON.stringify({ pin, unpinned }));
+  record("timechain bridge keypad: while it asks for a locked room's PIN the empty number 9 is a digit like any other, drawn plain, and greyed out again after",
+    pin.state === "pin" && pin.pin === "9" && pin.nine === "58,52,48" && unpinned.state !== "pin" && unpinned.nine === "34,30,27", JSON.stringify({ pin, unpinned }));
   record("timechain bridge keypad: the directory reopened during a locked room's PIN chooses nothing, types no digit, and says to enter the PIN on the keypad",
     pinDirectory.board && pinDirectory.state === "pin" && pinDirectory.pin === "" && pinDirectory.caption.includes("PIN"), JSON.stringify(pinDirectory));
   record("timechain bridge keypad: Enter clicked from the bridge glides into the Ooga's eyes where it stands and walks the same Ooga into the chosen room",
@@ -22629,9 +22652,9 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
   })()`);
   record("timechain room: the controls reference omits intercepted R/F while retaining available movement controls", pitch.every(n => n === 0) && reference.open && reference.driven && !reference.keys.some(k => ["r", "f"].includes(k)) && reference.keys.includes("w") && !reference.text.includes("Tilt the view"), JSON.stringify({ pitch, reference }));
 } };
-const timechainRooms = { name: "timechain rooms", why: "rule: every room 0–7 builds its own kind around the same doorway, arrival and Exit button, only the Conference Room has a lock, the camera stays inside every sphere, and the raked halls walk down to the front", run: async (b) => {
+const timechainRooms = { name: "timechain rooms", why: "rule: every room 0–8 builds its own kind around the same doorway, arrival and Exit button, only the Conference Room has a lock, the camera stays inside every sphere, and the raked halls walk down to the front", run: async (b) => {
   const rows = [], bounds = [], walks = [];
-  for (const room of [7, 1, 2, 3, 4, 5, 6, 0]) {
+  for (const room of [7, 1, 2, 3, 4, 5, 6, 8, 0]) {
     await b.evaluate(roomGo(room));
     rows.push(await b.evaluate(`(() => { const B = __ooga, D = B.timechain, L = D.layout, a = B.pilot.player.root.position, w = B.pilot.player;
       return { room: D.room.id, kind: D.room.kind, radius: L.R, door: L.door.halfW, arrivalGap: +(L.doorZ - L.arrival.z).toFixed(6), at: +Math.hypot(a.x - L.arrival.x, a.z - L.arrival.z).toFixed(3),
@@ -22669,8 +22692,8 @@ const timechainRooms = { name: "timechain rooms", why: "rule: every room 0–7 b
     }
   }
   const same = (k) => rows.every(r => JSON.stringify(r[k]) === JSON.stringify(rows[0][k]));
-  record("timechain rooms: rooms 0–7 each build their own kind around the same doorway, arrival, Exit button and Ooga, solo and first person, each at its own address, with seats but in the Block Party and the Mining Museum, and only the Conference Room locks",
-    rows.map(r => r.kind).join() === "planetarium,lecture,mining,temple,workout,theater,party,conference" && rows.every(r => r.at < 0.4 && r.mode === "solo" && r.view === "first-person" && r.hash === "#/sphere-" + r.room && (r.seats > 0) === (r.kind !== "party" && r.kind !== "mining") && r.lock === (r.room === 0))
+  record("timechain rooms: rooms 0–8 each build their own kind around the same doorway, arrival, Exit button and Ooga, solo and first person, each at its own address, with seats but in the Block Party and the Mining Museum, and only the Conference Room locks",
+    rows.map(r => r.kind).join() === "planetarium,lecture,mining,temple,workout,theater,party,genesis,conference" && rows.every(r => r.at < 0.4 && r.mode === "solo" && r.view === "first-person" && r.hash === "#/sphere-" + r.room && (r.seats > 0) === (r.kind !== "party" && r.kind !== "mining") && r.lock === (r.room === 0))
       && ["door", "arrivalGap", "button", "height"].every(same), JSON.stringify(rows));
   record("timechain rooms: the final camera stays inside the sphere, the closed doors, the floor and the dome in every view and transition, in the smallest, the tallest raked and the conference room",
     bounds.every(r => r.frames >= 840 && r.outside === 0 && ["first-person", "shoulder", "orbit"].every(mode => r.modes.includes(mode))), JSON.stringify(bounds));
@@ -22713,12 +22736,41 @@ const timechainTrip = { name: "timechain round trip", why: "contract: a room lef
     laps.every(l => l.scene === "timechain" && l.room === 0 && l.timers === 0 && l.requests === 0) && grew.length === 0 && donated.scene === "timechain" && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25,
     JSON.stringify({ grew, donated, first: laps[0], second: laps[1] }));
 } };
+// Before the Block's door into the Mining Museum, walked by a solo visitor, and the room left with its reader open and
+// with a block half mined.
+const timechainPortal = { name: "timechain portal", why: "contract: Before the Block's door hands a solo visitor into the Mining Museum publishing nothing, and the room left with the reader open or a block half mined leaves nothing behind", run: async (b) => {
+  await b.evaluate(roomGo(8));
+  const through = await b.evaluate(`(() => { const B = window.__ooga, N = BL.net, G = BL.timechainGenesis, zones = [], bodies = [], zone = N.setZone, body = N.setBody, mining = BL.timechainRooms.ROOMS.find(r => r.kind === "mining").id;
+    N.setZone = (z) => { zones.push(z); return zone(z); }; N.setBody = (v) => { bodies.push(v); return body(v); };
+    G.portal.force("open"); G.portal.enter();
+    for (let i = 0; i < 1500 && !(B.scene === "timechain" && B.timechain.room.id === mining && !B.transitioning); i++) B.advance(1 / 30, 1 / 30);
+    B.advance(0.5, 1 / 30); N.setZone = zone; N.setBody = body;
+    return { room: B.timechain.room.id, mining, zones, bodies, panel: !document.getElementById("genesis-portal").hidden, rows: document.getElementById("genesis-portal-body").childElementCount, kept: ["portal", "live", "mark", "floorPoc", "readLarge"].filter(k => k in G) }; })()`);
+  const left = [], back = [];
+  for (const how of ["reader", "mine"]) {
+    await b.evaluate(roomGo(8));
+    await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis, P = G.portal;
+      if ("${how}" === "reader") G.readLarge(3);
+      else { P.force("riddles", 4); P.hit(G.PLINTHS.findIndex(p => p.id === P.state().riddles[4])); }
+      B.advance(0.2, 1 / 30); })()`);
+    await tourGo(b, "hub");
+    await new Promise(done => setTimeout(done, 1200));
+    left.push(await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis; B.advance(0.5, 1 / 30);
+      return { how: "${how}", scene: B.scene, reader: document.getElementById("wp-reader").open, strip: document.getElementById("wp-reader-strip").hasAttribute("src"), panel: !document.getElementById("genesis-portal").hidden, rows: document.getElementById("genesis-portal-body").childElementCount, kept: ["portal", "live", "mark", "floorPoc", "readLarge"].filter(k => k in G) }; })()`));
+    // Back in the room: the leave contract's counts, as the round trip reads them.
+    back.push(await b.evaluate(roomGo(8)));
+  }
+  record("timechain portal: the door walks a solo visitor into the Mining Museum with no zone or body published, and the room left with its reader open or a block half mined leaves no panel, reader, handle, timer or request behind",
+    through.room === through.mining && through.zones.length > 0 && through.zones.every(z => z === "none") && through.bodies.every(v => v === null) && !through.panel && through.rows === 0 && through.kept.length === 0
+      && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
+      && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
+} };
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
   record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 1 && r.view === "first-person", JSON.stringify(r));
 } };
-scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
+scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 scene("hub", { label: "chilling", query: "status=chillin&pos=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.
