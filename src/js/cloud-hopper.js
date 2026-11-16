@@ -55,6 +55,14 @@
   // landing in the WARP_SETTLE seconds it takes to touch down) and the controls as they were held, in a puff of
   // PUFF_SECONDS. For WARP_SAFE seconds after a warp, or after being let go under the clouds, no tornado takes the
   // rider and the world does not turn over.
+  // Nothing a warp or a flip shows is built, uploaded or looked up on the frame it starts. As a run's course is laid
+  // every mesh either will show (the sparkle, each cloud's day and night fill, the jetpack and its flame) is handed to
+  // the renderer to ready (`warmRun`). Then, each frame, a rider within WARM_SECONDS of touching a portal cloud (by how
+  // fast the two close) has its landing found already (`readyTo`, checked again at the touch, found afresh only if it
+  // no longer holds), and one within WARM_SECONDS of a flip's place (at its speed down the course, WARM_PACE at least)
+  // has those meshes readied once more (`readyFlip`). A rider that turns away drops the landing found; nothing else is
+  // held, and nothing of the course changes.
+  const WARM_SECONDS = 1.2, WARM_PACE = 6;
   const WARP_SECONDS = 0.5, WARP_EDGE = 1, WARP_OVER = 0.12, WARP_SETTLE = 0.18, WARP_SAFE = 1.5, SPARKS = 24, WARP_TRAIL = 3.5, PUFF_SECONDS = 0.3;
   let guideSeen = false, itemsSeen = null;
   const hasSeenGuide = () => {
@@ -123,6 +131,9 @@
     // and until when no tornado takes the rider.
     const warpFrom = { x: 0, y: 0, z: 0 }, warpAt = { x: 0, y: 0, z: 0 }, warpSpeed = { x: 0, z: 0 };
     let warping = -1, warpTo = null, puffing = -1, flashed = -1, flashAt = 0, safeUntil = 0;
+    // Readied ahead: whether the run's meshes are with the renderer, the portal a rider is about to touch (its index
+    // among the clouds, -1 none) with the landing found for it, and the flip readied for (-1 none).
+    let warmedRun = false, readyPortal = -1, readyTo = null, readyFlip = -1, warmOk = true;
     const stillMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Turns (x, y, z) by `angle` round the axis through `about`, into `out`.
     const spin = (x, y, z, angle, about, out) => {
@@ -161,6 +172,7 @@
       if (warping >= 0 && actor) actor.root.visible = true;
       if (turn !== 0 && cloudNodes.length) relight(false);
       riderParent = null; turn = turns = 0; turning = -1; climbing = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
+      readyPortal = readyFlip = -1; readyTo = null;
       holdGame(); audio.turned(false);
       for (const spark of sparks) spark.visible = false;
     };
@@ -246,7 +258,9 @@
     // and its controls as they are.
     const beginWarp = (portal) => {
       if (warping >= 0) return;
-      const to = course.warpTo(portal, safeLanding);
+      // The landing found as the rider came, if it still holds; found now otherwise.
+      const to = readyPortal === portal.index && course.warpHolds(readyTo, safeLanding) ? readyTo : course.warpTo(portal, safeLanding);
+      readyPortal = -1; readyTo = null;
       flashed = portal.index; flashAt = displayTime;
       if (!to) return;
       warping = 0; warpTo = to;
@@ -255,6 +269,36 @@
       if (hookHeld && hookAt !== HAND) letGo();
       hookDown = false; actor.root.visible = false;
       audio.warp();
+    };
+    // Hands the renderer every mesh a warp or a flip will show, so none is built or uploaded as it starts: true once
+    // it has taken them all (it takes none until its programs are ready). A renderer with nothing to ready has none.
+    const warmEach = (geometry) => { if (geometry && ctx.renderer.prepareGeometry && !ctx.renderer.prepareGeometry(geometry)) warmOk = false; };
+    const warmRun = () => {
+      warmOk = true;
+      warmEach(sparks[0].geometry); warmEach(BL.hubModels.jetpack()); warmEach(BL.hubModels.jetFlame());
+      warmEach(BL.cloudHopperModels.cloudMesh(0, "normal", false)); warmEach(BL.cloudHopperModels.cloudMesh(0, "normal", true));
+      for (const node of cloudNodes) BL.cloudHopperModels.alternates(node, warmEach);
+      return warmOk;
+    };
+    // Each frame of a run: readies what the rider is about to set off (see WARM_SECONDS).
+    const readyAhead = () => {
+      const p = actor.root.position, feet = p.y - actor.baseY, dt = stepTime > 0 ? stepTime : 1 / 60, R = BL.cloudHopperCourse.PORTAL.r;
+      const vx = (p.x - beforeStep.x) / dt, vy = (p.y - beforeStep.y) / dt, vz = (p.z - beforeStep.z) / dt;
+      let near = null;
+      for (let k = 0; k < course.portals.length; k++) {
+        const q = course.portals[k], rx = q.x - p.x, ry = q.top - feet, rz = q.z - p.z, d = Math.hypot(rx, ry, rz) || 1;
+        const closing = ((vx - (q.x - q.previousX) / dt) * rx + vy * ry + (vz - (q.z - q.previousZ) / dt) * rz) / d;
+        if (d - R <= Math.max(closing, 0) * WARM_SECONDS + 1) near = q;
+      }
+      if (!near) { readyPortal = -1; readyTo = null; }
+      else if (readyPortal !== near.index || !course.warpHolds(readyTo, safeLanding)) {
+        readyPortal = near.index; readyTo = course.warpTo(near, safeLanding);
+        warmEach(sparks[0].geometry);
+      }
+      const left = course.toFlip(p.x, p.z, turns);
+      if (readyFlip !== turns && left <= Math.max((course.toFlip(beforeStep.x, beforeStep.z, turns) - left) / dt, WARM_PACE) * WARM_SECONDS) {
+        readyFlip = turns; warmRun();
+      }
     };
     // The trail and the puff: a handful of violet sparkles, each with its own fixed scatter, written in place.
     const scatter = new Float32Array(SPARKS * 3);
@@ -738,6 +782,7 @@
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
       // The world turns round the course's own axis.
       { const across = Math.hypot(start.x - liftGoal.x, start.z - liftGoal.z) || 1; turnAxis.x = (start.x - liftGoal.x) / across; turnAxis.z = (start.z - liftGoal.z) / across; }
+      warmedRun = false; readyPortal = readyFlip = -1; readyTo = null;
       // A night sky's clouds, the launch cloud among them, take the night fill.
       const dark = nightSky = !!level.sky?.night;
       cloud.geometry = BL.cloudHopperModels.cloudMesh(0, "normal", dark);
@@ -1051,6 +1096,7 @@
       if (swept >= 0) { sweepStep(); return; }
       if (turning >= 0 && phase === "running") { turnStep(); return; }
       if (warping >= 0 && phase === "running") { warpStep(); return; }
+      if (course && !warmedRun && (course.flips.length || course.portals.length)) warmedRun = warmRun();
       if (phase !== "ready" && phase !== "running") return;
       const p = actor.root.position, feet = p.y - actor.baseY;
       if (phase === "ready" && (actor.hop > 0.02 || actor.hopV > 0.02 || Math.abs(feet - platform.position.y) > 0.08
@@ -1078,6 +1124,7 @@
           if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) climbing = false;
           else if (p.y < checkpoint.y - CLIMB_FALL) { startClimb(); hud.toast("Back under the clouds · hold Space to jetpack up"); }
         }
+        if (course.flips.length || course.portals.length) readyAhead();
         launchFromCloud();
         if (warping >= 0) return;
         ghost.record(seconds, actor); ghost.update(seconds);
@@ -1482,6 +1529,8 @@
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
       set.add(sparks[0].geometry);
+      // Both fills of every cloud of a course whose world turns over: the swap between them is readied ahead.
+      if (course && course.flips.length) for (const node of cloudNodes) BL.cloudHopperModels.alternates(node, (geometry) => { if (geometry) set.add(geometry); });
       for (const node of pickupNodes) for (const part of node.children) set.add(part.geometry);
     };
     const pickupLightsWanted = () => {
@@ -1555,6 +1604,9 @@
       // Storm's Eye's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
       get turn() { return turn; }, get turning() { return turning >= 0; }, get climbing() { return climbing; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
+      // What is readied ahead, for debugging: the run's meshes, the landing found for the portal about to be touched
+      // (null none) and the flip readied for (-1 none).
+      get warmed() { return warmedRun; }, get readied() { return readyPortal >= 0 ? readyTo : null; }, get readiedFlip() { return readyFlip; },
       // The holder that keeps the run where it is in the turned world, for debugging.
       get gameRoot() { return gameRoot; },
       get bound() { return Math.hypot(start.x, start.z) + 80; } };

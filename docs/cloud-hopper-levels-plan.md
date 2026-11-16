@@ -812,5 +812,10 @@ a plain landing that stands and that no tornado stands by, with the speed it wen
 with a white landing that never fades a warp on, so it always has somewhere to throw a rider. With both caught a run
 covers about 1,280 m, 32% over Thunderhead's route.
 
+**Neither hitches.** Every mesh a warp or a flip shows is handed to the renderer as the course is laid, a rider about
+a second from touching a portal has its landing found already, and one about a second from a flip's place has the
+roll's meshes readied again, so the frame either starts on only starts it. A rider that turns away drops the landing
+found; nothing of the course changes.
+
 Its board is `cloud-hopper-l5`, from migration `0012_cloud_hopper_level_5.sql`. Its score is "Sunbreak Rush", whose
 melody drops an octave while the world is upside down.

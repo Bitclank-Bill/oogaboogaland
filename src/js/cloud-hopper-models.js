@@ -214,6 +214,8 @@
   };
   // Gives a cloud its night fill or takes it away (the shapes are the same, so nothing else of it changes).
   const relight = (node, dark) => { node.geometry = cloudMesh(node.mesh[0], node.mesh[1], dark); };
+  // Both of a cloud's meshes, its day and its night fill, for readying the swap between them ahead of it.
+  const alternates = (node, each) => { each(cloudMesh(node.mesh[0], node.mesh[1], false)); each(cloudMesh(node.mesh[0], node.mesh[1], true)); };
   // A sparkle of a portal's warp: a small violet gem, glowing.
   const sparkle = M.cached(() => {
     const geometry = M.merge(M.box({ w: 0.5, h: 0.5, d: 0.5, color: "#a35cff", emissive: 1 }), M.box({ w: 0.24, h: 0.8, d: 0.24, color: "#e3ccff", emissive: 1 }));
@@ -498,6 +500,6 @@
     };
     return { picture, dispose };
   };
-  BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, relight, sparkle, pickup, jetpackPickup: () => pickup("jetpack"),
+  BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, relight, alternates, sparkle, pickup, jetpackPickup: () => pickup("jetpack"),
     updateJetpackPickup, hookHead, rope, leaf, wornGoggles, cabinet, updateCabinet, createGuidePictures };
 })();

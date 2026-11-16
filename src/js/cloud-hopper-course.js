@@ -572,6 +572,12 @@
     };
     // Whether a rider at (x, z) has reached the place where the world turns over next, `done` of them behind it.
     const due = (x, z, done) => done < flips.length && (x - finish.x) * nx + (z - finish.z) * nz <= flips[done].line;
+    // How far along the course (m) a rider at (x, z) is from the place where the world turns over next, `done` of them
+    // behind it: Infinity with none left, negative once past it.
+    const toFlip = (x, z, done) => done < flips.length ? (x - finish.x) * nx + (z - finish.z) * nz - flips[done].line : Infinity;
+    // Whether a landing a portal may throw to (`warpTo`) still will: a plain white one that stands now, will stand
+    // WARP_STEADY seconds more and that `safe` passes.
+    const warpHolds = (c, safe = null) => !!c && c.kind === "normal" && c.active && c.phase === SOLID && solidLeft(c) >= WARP_STEADY && (!safe || safe(c));
     // The landing a portal cloud throws a rider on to, read after update: the plain white main landing nearest WARP metres on down
     // the course from it that stands now, will stand WARP_STEADY seconds more and that `safe` passes, between
     // WARP_NEAR and WARP_FAR on, never the last two; null when none will do.
@@ -580,7 +586,7 @@
       let best = null, miss = Infinity;
       for (let i = 0; i < count - 2; i++) {
         const c = landings[i], on = from - ((c.x - finish.x) * nx + (c.z - finish.z) * nz);
-        if (on < WARP_NEAR || on > WARP_FAR || c.kind !== "normal" || !c.active || c.phase !== SOLID || solidLeft(c) < WARP_STEADY || safe && !safe(c)) continue;
+        if (on < WARP_NEAR || on > WARP_FAR || !warpHolds(c, safe)) continue;
         if (Math.abs(on - WARP) < miss) { best = c; miss = Math.abs(on - WARP); }
       }
       return best;
@@ -778,7 +784,7 @@
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, due, warpTo };
+      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, due, toFlip, warpTo, warpHolds };
   };
   BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
     PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING, PORTAL, WARP };
