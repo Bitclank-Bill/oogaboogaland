@@ -439,7 +439,9 @@ export class Audience extends DurableObject {
 
   close(connId, code, reason) {
     const ws = this.sockets.get(connId);
-    this.inspect.count(code === CLOSE.auth ? "closeAuth" : code === CLOSE.full ? "closeFull" : code === CLOSE.protocol ? "closeProtocol" : code === CLOSE.off ? "closeOff" : "closeBad");
+    this.inspect.count(code === CLOSE.auth ? "closeAuth" : code === CLOSE.full ? "closeFull" : code === CLOSE.protocol ? "closeProtocol" : code === CLOSE.off ? "closeOff"
+      // A connection its own page replaced is a socket that went, not a bad one.
+      : code === CLOSE.replaced ? "gone" : "closeBad");
     this.drop(connId);
     if (ws) { try { ws.serializeAttachment(null); ws.close(code, reason); } catch { /* already closed */ } }
   }
