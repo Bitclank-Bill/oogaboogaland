@@ -933,7 +933,9 @@
     else if (unmute) join();
   };
   const resume = () => {
-    if (armed || stats.enabled || stats.joining || BL.net.state.zone === STUDIO_ZONE || !joinedBefore()) return;
+    // While the account speaks from Ooga Chat on another device, coming back by itself would take that voice away: the
+    // visitor is asked instead (voice-handoff.js), and Join voice is their answer.
+    if (armed || stats.enabled || stats.joining || BL.net.state.zone === STUDIO_ZONE || BL.net.state.voiceElsewhere || !joinedBefore()) return;
     armed = stats.returning = stats.muted = true;
     window.addEventListener("pointerup", firstPress, true);
     window.addEventListener("keydown", firstPress, true);

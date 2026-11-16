@@ -10349,8 +10349,8 @@ const oogaChatAppChecks = async () => {
       hygiene.tabs = seen.length;
     } finally { b.close(); }
     const clean = hygiene.views === hygiene.tabs && hygiene.kept && hygiene.nodes === hygiene.warm.nodes && hygiene.intervals <= hygiene.warm.intervals
-      && hygiene.duplicates === 0 && hygiene.gl === 0 && hygiene.bars === 1;
-    record("Ooga Chat page: thirty tab switches build each view once and keep it, leave the DOM as it was with no duplicate id or extra interval, keep one emoji bar, and never make a WebGL context",
+      && hygiene.duplicates === 0 && hygiene.gl === 0 && hygiene.bars === 3;
+    record("Ooga Chat page: thirty tab switches build each view once and keep it, leave the DOM as it was with no duplicate id or extra interval, keep one emoji bar a panel that has one (Ooga Chat, Contributing Oogas, Online Oogas), and never make a WebGL context",
       clean, JSON.stringify(hygiene));
 
     // Feed the Oogas, signed out on the demo: the minimum, the message bar, the receipt, the name kept and the focus
@@ -28213,6 +28213,51 @@ const voiceReturnChecks = async () => {
 // #380: a visitor's hearing range only changes how loud this page plays the voices it receives. voice.js runs with remotes placed
 // round the visitor, a fake Worker, peer connection and AudioContext, and its own 150 ms meter read (captured from setInterval)
 // stepped by hand on desktop and iOS. Both use Web Audio gains so a saved boost can exceed an element's 0..1 volume.
+// The island's voice switch prompt (voice-handoff.js, voice-switch.js) against a fake room, voice and page.
+const voiceHandoffChecks = () => {
+  const el = () => ({ children: [], hidden: false, attrs: {}, handlers: {}, className: "", textContent: "", removed: false,
+    append(...xs) { this.children.push(...xs); }, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(t, fn) { this.handlers[t] = fn; }, remove() { this.removed = true; } });
+  const subs = { net: new Set(), voice: new Set() }, toasts = [], state = { room: "connecting", voiceElsewhere: false, voiceMoved: 0 }, stats = { enabled: false, joining: false };
+  const sub = (set) => (fn) => { set.add(fn); return () => set.delete(fn); };
+  let toggles = 0;
+  const window = { BL: { net: { state, subscribe: sub(subs.net) }, voice: { stats, subscribe: sub(subs.voice), toggle: () => { toggles++; } }, hud: { toast: (text) => toasts.push(text) } } };
+  runInNewContext(["src/js/voice-handoff.js", "src/js/voice-switch.js"].map((file) => readFileSync(join(root, file), "utf8")).join("\n"), { window, document: { createElement: el, body: el() } });
+  const H = window.BL.voiceSwitch, WORDS = window.BL.voiceHandoff.WORDS, tick = () => { for (const fn of subs.net) fn(state); };
+  let page = H.attach();
+  const buttons = (card) => card.node.children[2].children;
+  const out = { idle: page.card.node.hidden && page.card.node.attrs.role === "dialog" };
+  // The first welcome that finds the account speaking elsewhere asks, once; Not now changes nothing.
+  state.room = "live"; state.voiceElsewhere = true; tick();
+  out.asked = !page.card.node.hidden;
+  buttons(page.card)[0].handlers.click();
+  tick();
+  out.notNow = page.card.node.hidden && toggles === 0;
+  // The other device stops and speaks again later: this page was asked already.
+  state.voiceElsewhere = false; tick(); state.voiceElsewhere = true; tick();
+  out.once = page.card.node.hidden;
+  page.dispose();
+  out.disposed = page.card.node.removed && subs.net.size === 0 && subs.voice.size === 0 && H.page === null;
+  // Another page: Switch here joins the island's voice inside its click, and the card goes.
+  page = H.attach();
+  const shown = !page.card.node.hidden;
+  buttons(page.card)[1].handlers.click();
+  out.switched = shown && page.card.node.hidden && toggles === 1;
+  // A card still up goes when the voice is no longer elsewhere, or once this page is in voice.
+  page.dispose(); page = H.attach();
+  state.voiceElsewhere = false; tick();
+  out.gone = page.card.node.hidden;
+  // A page that arrived with its voice nowhere else is never asked, when that voice goes to another device later.
+  page.dispose(); page = H.attach();
+  state.voiceElsewhere = true; tick();
+  out.later = page.card.node.hidden;
+  state.voiceElsewhere = false;
+  // Ooga Chat took this page's voice on the visitor's word there: said once.
+  state.voiceMoved = 1; tick(); tick();
+  out.moved = toasts.length === 1 && toasts[0] === WORDS.moved;
+  page.dispose();
+  record("voice switch prompt on the island: asked once, on the first welcome that finds the account speaking from another device, never for a voice that goes elsewhere later; Not now changes nothing, Switch here joins voice inside its click, the card goes when that voice is no longer elsewhere, and a voice taken by Ooga Chat is said once",
+    Object.values(out).every(Boolean), JSON.stringify(out));
+};
 // iOS keeps every element at 1; both paths must sound the same at every step.
 const voiceHearingChecks = async () => {
   const source=readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
@@ -34331,6 +34376,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await voiceFailureChecks();
   await voiceReturnChecks();
   await voiceHearingChecks();
+  voiceHandoffChecks();
   await ghostAudioChecks();
   exteriorEnrichmentChecks(BL);
   if(ARGS.includes("exterior-unit"))return;

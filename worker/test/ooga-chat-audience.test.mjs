@@ -364,6 +364,26 @@ test("the Audience: an identity's other connection hears where its voice is, tak
   assert.equal([...audience.model.conns.values()].filter((c) => c.lease).length, 1, "one lease an identity, as ever");
 });
 
+test("the Audience: voice held on the island moves to Ooga Chat only on the visitor's word, once the island has given it up", async () => {
+  let audience = null, asked = 0, gives = true;
+  const h = host({ ROOM: { getByName: () => ({ audienceDelta: async () => {}, audienceListeners: async () => {}, audienceConfirmed: async () => {},
+    // The Room's page leaves voice and its word comes back without the account, before it answers.
+    audienceHandoff: async (id) => { asked = id; if (!gives) throw new Error("room down"); await audience.world(Date.now() + 5, [], []); return { ok: true }; } }) } });
+  audience = await h.make();
+  const { ws } = await open(audience, principal(1));
+  await say(audience, ws, { type: "join", zone: "main" });
+  await audience.world(Date.now(), [], ["gh:1"]);
+  assert.deepEqual(last(ws, "you").you, { id: "gh:1", speak: "denied", elsewhere: "island" });
+  await say(audience, ws, { type: "setRole", requestId: 1, role: "speaker" });
+  assert.deepEqual([last(ws, "result").error.code, asked], ["source_in_use", 0], "never taken without the visitor's word");
+  gives = false;
+  await say(audience, ws, { type: "setRole", requestId: 2, role: "speaker", takeover: true });
+  assert.equal(last(ws, "result").error.code, "source_in_use", "an island that can't be reached keeps its voice");
+  gives = true;
+  await say(audience, ws, { type: "setRole", requestId: 3, role: "speaker", takeover: true });
+  assert.deepEqual([last(ws, "result").ok, last(ws, "result").you.speak, asked], [true, "pending", 1]);
+});
+
 test("regression: a media call carries a connection's authorisation on, so the hourly re-authentication never closes a socket that keeps calling (a speaker's lease)", async () => {
   const h = host();
   const audience = await h.make();

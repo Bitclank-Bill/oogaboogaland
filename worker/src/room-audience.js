@@ -185,7 +185,15 @@ export const audienceRoom = {
   cleanSources: (list) => (Array.isArray(list) ? list : []).filter((s) => s && Number.isSafeInteger(s.id) && s.id > 0 && isZone(s.zone)
     && typeof s.session === "string" && typeof s.track === "string").slice(0, 64),
   sources(room, list) {
+    const was = new Set((room.chatSources || []).map((s) => s.id));
     room.chatSources = audienceRoom.cleanSources(list);
+    // An island page of an account that began or stopped speaking from Ooga Chat hears so (`voice-elsewhere`): its own
+    // voice then waits for the visitor's word instead of taking that voice away (voice-handoff.js).
+    const now = new Set(room.chatSources.map((s) => s.id));
+    for (const id of new Set([...was, ...now])) {
+      const p = was.has(id) !== now.has(id) && room.players.get(id);
+      if (p) room.send(p.ws, { t: "voice-elsewhere", on: now.has(id) });
+    }
     // Who hears whom changed: a source gone is closed for every island listener, one new is offered.
     room.enforceStudio();
     for (const p of room.players.values()) if (isOpen(p)) audienceRoom.tellAudience(room, p);
@@ -193,6 +201,27 @@ export const audienceRoom = {
     return room.ctx.storage.put("chatSources", room.chatSources);
   },
   sourceOf: (room, id) => (room.chatSources || []).find((s) => s.id === id) || null,
+  /** Whether account `id` speaks from Ooga Chat now, on some other device: its welcome says so. */
+  elsewhere: (room, id) => outdoorOn(room) && (room.chatSources || []).some((s) => s.id === id),
+  /**
+   * Ooga Chat took account `id`'s voice on the visitor's own word there (audience.js `requestSpeaker` with `takeover`):
+   * its island page leaves voice (`voice-moved`), and the Audience has heard the island's word without it before this
+   * answers, so the lease it then grants is not ended by an older word.
+   */
+  async handoff(room, id) {
+    if (!enabled(room)) return { ok: false };
+    const p = room.players.get(id);
+    if (p && inVoiceOf(p)) {
+      await room.clearVoice(p);
+      p.muted = false;
+      room.saveAttachment(p);
+      room.send(p.ws, { t: "voice-moved" });
+      room.broadcast({ t: "vstate", id: p.id, voice: false, muted: false }, p.ws);
+      room.updateVoice();
+    }
+    const told = await audienceRoom.world(room, true);
+    return { ok: !!told && told.ok === true };
+  },
   // A player overhearing (a receive session of the page's own, protocol.js `overhearing`) with an open grant on the main
   // island hears that conversation's island speakers too, exactly those Ooga Chat's listeners hear: in the island's
   // voice with a live microphone and an open grant there. Indoors, or anywhere its grant is not open, it hears nobody.

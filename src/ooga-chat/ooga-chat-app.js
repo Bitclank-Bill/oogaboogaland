@@ -95,11 +95,25 @@
       Object.assign(s, handRequest ? { me: next.me, reactions: next.reactions, room } : next);
       for (const fn of linkSubs) fn(s);
     };
+    // The voice switch prompt (voice-handoff.js): asked once a page, as it arrives, when its first audience connection
+    // finds the account's voice on another device (the island's, or another Ooga Chat page's), and again whenever Join
+    // Voice is pressed while it is. A voice that goes elsewhere later is the visitor's own doing and asks nothing.
+    // Switch here joins with `takeover`, inside its click; Not now changes nothing.
+    let handoffChecked = false;
+    const handoff = BL.voiceHandoff.build({ onSwitch: () => { if (media.available && gates(state, Date.now()).joinVoice) media.join({ takeover: true }); } });
+    document.body.append(handoff.node);
+    page.signal.addEventListener("abort", () => handoff.node.remove());
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
       shell.update(state);
       bar.update(state);
       syncLink();
+      const elsewhere = state.mode === "live" && !!state.session && !!state.voice.elsewhere && media.available && gates(state, Date.now()).joinVoice;
+      // The voice controller has the server's word on this connection once it is past `off`: read once.
+      const first = !handoffChecked && state.voice.phase !== "off";
+      if (first) handoffChecked = true;
+      if (!elsewhere) handoff.close();
+      else if (first) handoff.open();
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
     const hear = (status) => {
@@ -242,6 +256,8 @@
       retryVoice: () => media.retry(),
       // Asked again at the moment of the click: only the server's answer opens voice, and it decides again there.
       joinVoice: () => {
+        // Voice held on another device moves here only on the visitor's word: the prompt asks.
+        if (state.voice.elsewhere) { if (media.available && gates(state, Date.now()).joinVoice) handoff.open(); return; }
         if (media.available && gates(state, Date.now()).joinVoice) media.join();
       }
     };

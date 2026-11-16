@@ -35,7 +35,8 @@
 // the audience feed and returns its id (0 when it can't), `allowed()` whether the deployment lets anyone speak now.
 // Returns `{ heard(msg), status(feedStatus), zone(next), join(), leave(), mute(), release(reason), stop(), retry(),
 // dispose(), available, why, state, stats }`; `state` is `{ role, muted, phase, busy, notice, blocked, hearing, speaking,
-// talking }`. Speaking is this page's own meter on the captured microphone (as the island's voice.js meters it, the same
+// talking, elsewhere }`. `elsewhere` says the account's voice is on another device (the island's, or another Ooga Chat
+// page's): Join Voice then needs the visitor's word, `join({ takeover: true })`, which moves it here. Speaking is this page's own meter on the captured microphone (as the island's voice.js meters it, the same
 // levels): true while an unmuted speaker's voice is loud enough, whoever else is listening, so the visitor sees it work
 // alone. `talking` is the participants whose voices this page hears speaking now, from a meter on each voice it plays
 // (as the island's Online Oogas reads its own), a frozen list replaced only when someone starts or stops.
@@ -66,7 +67,7 @@
     inuse: "The microphone is in use by another app.",
     refused: "Speaking isn't open to this account right now.",
     unchecked: "Contributions can't be checked right now. Try again soon.",
-    island: "You're in voice on the island. Leave voice there to speak here.",
+    island: "Your voice is on another device. Join Voice to move it here.",
     full: "Every speaking spot here is taken. Try again soon.",
     busy: "Too many tries. Wait a moment, then try again.",
     failed: "Voice couldn't connect. Try again.",
@@ -94,7 +95,7 @@
       audio: () => new Audio()
     };
   };
-  const IDLE = Object.freeze({ role: "listener", muted: true, phase: "off", busy: false, notice: "", blocked: false, hearing: 0, speaking: false, talking: Object.freeze([]) });
+  const IDLE = Object.freeze({ role: "listener", muted: true, phase: "off", busy: false, notice: "", blocked: false, hearing: 0, speaking: false, talking: Object.freeze([]), elsewhere: "" });
   const create = ({ broker, rtc = browser(), request = () => 0, allowed = () => true, onChange = () => {},
     timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (id) => clearTimeout(id) }, target = window } = {}) => {
     const R = rtc;
@@ -133,10 +134,12 @@
       let hearing = 0;
       for (const v of voices.values()) if (v.el) hearing++;
       const next = { role: speaker ? "speaker" : "listener", muted: speaker ? muted : true, phase, busy: BUSY.has(phase), notice, blocked: blocked && hearing > 0, hearing,
-        speaking: speaker && !muted && speaking, talking };
+        speaking: speaker && !muted && speaking, talking,
+        // Where the account's voice is while it is not here ("island" or "app"): the page asks before taking it.
+        elsewhere: !speaker && !BUSY.has(phase) && you && (you.elsewhere === "island" || you.elsewhere === "app") ? you.elsewhere : "" };
       const s = state;
       if (s.role === next.role && s.muted === next.muted && s.phase === next.phase && s.notice === next.notice && s.blocked === next.blocked && s.hearing === next.hearing
-        && s.speaking === next.speaking && s.talking === next.talking) return;
+        && s.speaking === next.speaking && s.talking === next.talking && s.elsewhere === next.elsewhere) return;
       state = Object.freeze(next);
       onChange(state);
     };
@@ -630,7 +633,9 @@
     // the visitor took voice to another device). A connection that may speak again resumes a speaker who lost theirs.
     const learn = (next, why = "") => {
       if (!next || typeof next.speak !== "string") return;
+      const was = you && you.elsewhere;
       you = next;
+      if (was !== next.elsewhere) emit();
       if (lease && (speaker || BUSY.has(phase)) && next.speak !== "pending" && next.speak !== "active") endSpeaking(why === "moved" ? NOTICE.moved : NOTICE.ended, false);
       else if (again && !speaker && !BUSY.has(phase)) resume();
     };

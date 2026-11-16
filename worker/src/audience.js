@@ -599,6 +599,13 @@ export class Audience extends DurableObject {
     // move their voice here (`takeover`), or this page naming the connection it has just come back from (`replaces`: a
     // socket that dropped, whose lease the server has not yet seen end), which is closed.
     const takeover = msg.takeover === true, replaces = typeof msg.replaces === "string" ? msg.replaces : "";
+    // The island's voice gives way the same way: its page leaves voice, and the island's word comes back without the
+    // identity before the Room answers. Unreachable or refused, the model's own refusal stands.
+    const held = this.model.people.get(c.id);
+    if (takeover && (held.active || held.world) && this.env.ROOM) {
+      try { await this.env.ROOM.getByName("island").audienceHandoff(Number(c.providerUserId)); } catch { /* the refusal below says so */ }
+      if (this.model.conns.get(c.connId) !== c || c.zone !== zone) return { ok: false, code: "stale_epoch" };
+    }
     for (const o of [...this.model.people.get(c.id).conns.values()]) {
       if (o === c || !o.lease || !takeover && o.connId !== replaces) continue;
       if (!takeover) { this.close(o.connId, CLOSE.replaced, "replaced"); continue; }
@@ -647,7 +654,8 @@ export class Audience extends DurableObject {
     for (const p of this.model.people.values()) before.set(p.id, held(p));
     const ended = this.model.setWorld(this.island.speakers, this.island.active);
     const told = new Set();
-    for (const { connId, lease } of ended) { this.save(connId); this.leaseEnded(connId, lease, "source_in_use"); this.tellYou(connId); told.add(connId); }
+    // A chat lease the island's own voice ended: the visitor joined voice there, so it moved.
+    for (const { connId, lease } of ended) { this.save(connId); this.leaseEnded(connId, lease, "source_in_use"); this.tellYou(connId, "moved"); told.add(connId); }
     for (const p of this.model.people.values()) {
       if ((before.get(p.id) || false) === held(p)) continue;
       for (const connId of p.conns.keys()) if (!told.has(connId)) this.tellYou(connId);

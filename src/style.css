@@ -1171,6 +1171,18 @@ body[data-active-scene="block"] .mode-hud {
 .cloud-bottom > .cloud-foot { flex: 1 1 220px; }
 .cloud-bottom .cloud-foot-name { flex-basis: 100%; text-align: center; }
 .cloud-foot-actions [hidden] { display: none; }
+/* The voice switch prompt (voice-handoff.js), the island's and Ooga Chat's alike: a planked card floating under the
+   banner, over the panels, that takes no focus by itself; Not now beside the amber Switch here. */
+.voice-handoff {
+  position: fixed; top: calc(76px + env(safe-area-inset-top, 0px)); left: 50%; z-index: 990; transform: translateX(-50%);
+  box-sizing: border-box; width: 340px; max-width: calc(100vw - 32px); padding: 14px 16px 16px;
+  border: 3px solid var(--wood-edge); border-radius: var(--radius); background: var(--planks);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35); color: var(--paper);
+}
+.voice-handoff[hidden] { display: none; }
+.voice-handoff-title { margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5); }
+.voice-handoff-body { margin: 0 0 14px; font-size: 12px; line-height: 1.45; }
+.voice-handoff-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 @media (pointer: coarse) {
   .cloud-mic { padding: 6px; margin: -6px; }
 }

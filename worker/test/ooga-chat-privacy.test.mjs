@@ -247,6 +247,32 @@ test("overhearing: a player not in voice hears the main island's public speakers
   assert.deepEqual(plan(), [1]);
 });
 
+test("voice on another device: an island page hears when its account speaks from Ooga Chat, at its welcome too, and gives its own voice up when Ooga Chat takes it", async () => {
+  const h = await harness();
+  const a = await h.join(1, "a");
+  const b = await h.join(2, "b");
+  h.room.audienceSources([{ id: 2, zone: "main", session: "chat", track: "mic", gen: 2 }]);
+  assert.deepEqual(b.sent.filter((m) => m.t === "voice-elsewhere").map((m) => m.on), [true]);
+  assert.equal(a.sent.some((m) => m.t === "voice-elsewhere"), false, "only the account's own page");
+  // The account's next page is told in its welcome, before its voice could come back by itself.
+  const again = await h.join(2, "b");
+  assert.equal(again.sent.find((m) => m.t === "welcome").voiceElsewhere, true);
+  assert.equal(a.sent.find((m) => m.t === "welcome").voiceElsewhere, undefined);
+  h.room.audienceSources([]);
+  assert.deepEqual(again.sent.filter((m) => m.t === "voice-elsewhere").map((m) => m.on), [false]);
+  // Ooga Chat takes a's voice on the visitor's word: the island's page leaves voice, everyone sees the mark go, and the
+  // Audience has the island's word without the account before the answer.
+  const calls = h.audience.calls.length;
+  assert.deepEqual(plain(await h.room.audienceHandoff(1)), { ok: true });
+  const p = h.room.players.get(1);
+  assert.deepEqual([p.voice.pub, p.voice.sub, p.voice.track, h.context.inVoice(p)], [null, null, null, false]);
+  assert.equal(a.sent.filter((m) => m.t === "voice-moved").length, 1);
+  assert.deepEqual(plain(again.sent.filter((m) => m.t === "vstate" && m.id === 1).at(-1)), { t: "vstate", id: 1, voice: false, muted: false });
+  assert.ok(h.audience.calls.length > calls && !h.audience.calls.at(-1).active.includes("gh:1"));
+  // Nobody of that account on the island: still answered from the island's word.
+  assert.deepEqual(plain(await h.room.audienceHandoff(99)), { ok: true });
+});
+
 // The Audience's side: confirmation after the SFU closes, with a fake SFU that can refuse.
 const NodeResponse = globalThis.Response;
 globalThis.Response = class extends NodeResponse {
