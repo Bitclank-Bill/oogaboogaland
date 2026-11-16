@@ -113,7 +113,10 @@
       if (principal === listening) return;
       clearTimeout(relisten);
       relisten = 0;
-      media.stop();
+      // The same account's feed starting again is a reconnect to the voice, which keeps a speaker's place (its
+      // `reconnecting`); anyone else's, or none, ends it.
+      if (principal && principal === kept) media.status("reconnecting");
+      else media.stop();
       feed?.dispose();
       feed = null;
       handRequest = 0;
@@ -239,7 +242,7 @@
       retryVoice: () => media.retry(),
       // Asked again at the moment of the click: only the server's answer opens voice, and it decides again there.
       joinVoice: () => {
-        if (media.available && gates(state, Date.now()).joinVoice) media.join(state);
+        if (media.available && gates(state, Date.now()).joinVoice) media.join();
       }
     };
     // Feed the Oogas: real over this origin's relay while the feed is live, the simulated kiosk only on the fixture
@@ -290,7 +293,12 @@
     set({});
     // Back to the page, or back online: the service is asked again if it could not be reached, else the session and its
     // role are checked again before anything acts on them.
-    const again = (why) => state.mode === "unavailable" ? start() : auth.check(why);
+    // The audience feed is woken too: a socket that died while the page was away is found and opened again at once, so
+    // a speaker who went to another app comes back to their voice.
+    const again = (why) => {
+      feed?.wake?.();
+      return state.mode === "unavailable" ? start() : auth.check(why);
+    };
     document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && again("visible"), { signal: page.signal });
     addEventListener("online", () => again("online"), { signal: page.signal });
     addEventListener("pageshow", (event) => event.persisted && auth.resume(), { signal: page.signal });

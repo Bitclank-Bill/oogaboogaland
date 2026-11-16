@@ -33714,7 +33714,7 @@ const oogaChatChecks = async () => {
         removeEventListener(t, fn) { this.on.get(t)?.delete(fn); }
         fire(t, e = {}) { for (const fn of [...(this.on.get(t) || [])]) fn(e); }
         getTransceivers() { return this.tx; }
-        addTransceiver(track) { const tx = { mid: null, track, enabledWhenAdded: track.enabled, stopped: false, stop() { this.stopped = true; } }; this.tx.push(tx); return tx; }
+        addTransceiver(track) { const tx = { mid: null, track, enabledWhenAdded: track.enabled, stopped: false, stop() { this.stopped = true; }, sender: { replaceTrack: async (next) => { tx.track = next; } } }; this.tx.push(tx); return tx; }
         async createOffer() { return { type: "offer", sdp: "o" }; }
         async createAnswer() { return { type: "answer", sdp: "a" }; }
         async setLocalDescription(d) { this.localDescription = d; for (const t of this.tx) if (t.mid === null) t.mid = "0"; }
@@ -33726,7 +33726,7 @@ const oogaChatChecks = async () => {
       }
       let captures = 0;
       const rtc = { PeerConnection: PC, stream: (t) => ({ t }),
-        getUserMedia: async () => { captures++; if (deny) throw Object.assign(new Error("no"), { name: deny }); const track = { enabled: true, readyState: "live", stops: 0, stop() { this.stops++; this.readyState = "ended"; }, addEventListener() {}, removeEventListener() {} }; tracks.push(track); return { getAudioTracks: () => [track], getTracks: () => [track] }; },
+        getUserMedia: async () => { captures++; if (deny) throw Object.assign(new Error("no"), { name: deny }); const track = { enabled: true, readyState: "live", stops: 0, on: {}, stop() { this.stops++; this.readyState = "ended"; }, addEventListener(t, fn) { this.on[t] = fn; }, removeEventListener(t) { delete this.on[t]; } }; tracks.push(track); return { getAudioTracks: () => [track], getTracks: () => [track] }; },
         audio: () => ({ srcObject: null, played: 0, play() { this.played++; return playHeld ? Promise.reject(Object.assign(new Error("held"), { name: "NotAllowedError" })) : Promise.resolve(); }, pause() {} }) };
       const target = { addEventListener: (t, fn) => listeners.set(t, fn), removeEventListener: (t) => listeners.delete(t) };
       let requestId = 0;
@@ -33762,14 +33762,34 @@ const oogaChatChecks = async () => {
     const sent = r.log.length;
     r.c.heard({ type: "you", zone: "main", you: { id: "gh:1", speak: "eligible" } }); r.c.heard({ type: "you", zone: "main", you: { id: "gh:1", speak: "eligible" } });
     out.revoked = r.tracks[1].stops === 1 && r.c.state.role === "listener" && r.log.length === sent && r.c.state.notice === M.NOTICE.ended;
-    // A new audience connection: everything held under the old one ends, and listening starts again under the new one.
+    // A new audience connection (the socket dropped: a phone back from another app): what was held under the old one is
+    // gone at the server, so the speaker keeps their microphone, off, asks again by itself naming the connection it
+    // came back from, and is a speaker again, muted.
     const third = r.c.join(); await flush(); r.answer(true, { id: "gh:1", speak: "pending", lease: 43 }); await third; await flush();
+    r.c.mute();
     snap(r, "c2", "eligible"); await flush();
-    out.reconnected = r.tracks[2].stops === 1 && r.c.state.role === "listener" && r.c.state.notice === M.NOTICE.reconnected && r.log.includes("receive/open@c2") && r.pcs[0].closed;
+    const back = r.asked.at(-1), waiting = r.c.state, heldOff = r.tracks[2].enabled === false && r.tracks[2].stops === 0;
+    r.answer(true, { id: "gh:1", speak: "pending", lease: 44 }); await flush(20);
+    out.reconnected = heldOff && r.captures === 3 && back.type === "setRole" && back.role === "speaker" && back.replaces === "c1" && waiting.role === "listener" && waiting.busy
+      && r.c.state.role === "speaker" && r.c.state.muted && r.tracks[2].enabled === false && r.c.state.notice === M.NOTICE.resumed
+      && r.log.includes("receive/open@c2") && r.log.includes("publish/ready@c2#44") && r.pcs[0].closed && r.pcs[3].closed;
     // The server closing a voice names its mid: dropped at once, its transceiver stopped.
-    const before = r.c.state.hearing, rx = r.pcs.at(-1), mid = rx.tx[0].mid;
+    const before = r.c.state.hearing, rx = r.pcs[4], mid = rx.tx[0].mid;
     r.c.heard({ type: "media", op: "sync", closed: [mid] }); await flush();
     out.closed = before === 1 && rx.tx[0].stopped && r.log.at(-1) === "renegotiate@c2";
+    // A new connection that may not speak (the island took the voice meanwhile): the microphone goes, once, and it listens.
+    const asks = r.asked.length;
+    snap(r, "c3", "denied"); await flush();
+    out.gaveUp = r.tracks[2].stops === 1 && r.asked.length === asks && r.c.state.role === "listener" && r.c.state.notice === M.NOTICE.reconnected && !r.c.stats.capturing;
+    // The browser takes the microphone (another app, a call): still a speaker, muted, and Unmute captures it again onto
+    // the same publication.
+    r = rig(); r.c.zone("main"); snap(r, "c1", "eligible"); await flush();
+    const taken = r.c.join(); await flush(); r.answer(true, { id: "gh:1", speak: "pending", lease: 5 }); await taken; await flush();
+    r.c.mute();
+    r.tracks[0].on.ended();
+    const interrupted = r.c.state.role === "speaker" && r.c.state.muted && r.c.state.notice === M.NOTICE.interrupted && !r.c.stats.capturing && r.asked.at(-1).type === "setMic" && r.asked.at(-1).muted === true;
+    await r.c.mute(); await flush();
+    out.interrupted = interrupted && r.captures === 2 && r.tracks[1].enabled === true && !r.c.state.muted && r.pcs[1].tx[0].track === r.tracks[1] && !r.pcs[1].closed && r.c.state.notice === "";
     // Refusals: a denied microphone asks for no lease; a full zone gives the microphone back; neither leaves a role.
     r = rig({ deny: "NotAllowedError" }); r.c.zone("main"); snap(r, "c1", "eligible"); await flush(); await r.c.join(); await flush();
     out.denied = r.captures === 1 && !r.asked.length && !r.log.some((l) => l.startsWith("publish")) && r.c.state.notice === M.NOTICE.denied && r.c.state.role === "listener";
@@ -33794,7 +33814,7 @@ const oogaChatChecks = async () => {
     return out;
   };
   const voice = await voiceCheck();
-  record("Ooga Chat voice: a listener hears the zone and never captures; Join Voice captures muted before any connection carries it, publishes under the server's lease and speaks only once acknowledged; mute and Leave Voice act on the track at once and keep listening; a refusal, a revoked lease, a new connection or a zone change stop capture exactly once; a stale sync plays nothing; held playback starts on a gesture",
+  record("Ooga Chat voice: a listener hears the zone and never captures; Join Voice captures muted before any connection carries it, publishes under the server's lease and speaks only once acknowledged; mute and Leave Voice act on the track at once and keep listening; a refusal, a revoked lease or a zone change stop capture exactly once; a new connection speaks again by itself, muted, on the microphone it kept, and gives up where the server says no; a microphone the browser takes leaves a muted speaker whom Unmute captures again; a stale sync plays nothing; held playback starts on a gesture",
     Object.values(voice).every(Boolean), JSON.stringify(voice));
 };
 // The outdoor voice bridge (outdoor-voice.js, #661) against a fake room: the real scope record, a transport whose frames

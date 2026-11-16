@@ -41,7 +41,7 @@ export const REACT_HZ = 3, REACT_BURST = 6;
 export const FRAME_MAX = 4096;
 export const PENDING_MS = 30 * 1000;
 export const REAUTH_MS = 60 * 60 * 1000;
-export const CLOSE = { bad: 4400, auth: 4401, protocol: 4426, full: 4429, off: 4503 };
+export const CLOSE = { bad: 4400, auth: 4401, replaced: 4409, protocol: 4426, full: 4429, off: 4503 };
 const MSG_HZ = 10, MSG_BURST = 20;
 const REPLIES_KEPT = 16;
 const CONTRIBUTIONS_MS = 10 * 60 * 1000;
@@ -109,6 +109,8 @@ export class Audience extends DurableObject {
     // #667: retirements the Room waits on, and whether each zone had listeners when the Room was last told.
     this.pendingWas = new Set();
     this.listenersSig = "";
+    // Which connection holds each identity's lease, as its other connections were last told (`tellElsewhere`).
+    this.holders = new Map();
     // #668: reaction buckets by identity and by zone, the event counter, and the clouds the Room was last told.
     this.reactBuckets = new Map();
     this.zoneBuckets = new Map();
@@ -130,6 +132,7 @@ export class Audience extends DurableObject {
         if (!a || !a.conn) continue;
         if (this.model.connect(a.conn, a.info, true).ok) this.sockets.set(a.conn.connId, ws);
       }
+      for (const c of this.model.conns.values()) if (c.lease) this.holders.set(c.id, c.connId);
       this.model.setWorld(this.island.speakers, this.island.active);
       this.model.commit();
       for (const zone of ZONES) this.model.zones[zone].rev = meta.revs && Number.isSafeInteger(meta.revs[zone]) ? meta.revs[zone] : 0;
@@ -217,6 +220,7 @@ export class Audience extends DurableObject {
 
   /** Commit what changed, store the revisions, and send every zone's delta to its clients and to a watching Room. */
   async flush() {
+    this.tellElsewhere();
     const deltas = this.model.commit();
     if (!deltas.length) return deltas;
     await this.ctx.storage.put("meta", { epoch: this.model.epoch, revs: this.model.revs() });
@@ -350,9 +354,22 @@ export class Audience extends DurableObject {
       features: AUDIENCE_FEATURES };
   }
 
-  tellYou(connId) {
+  /** A connection's own standing; `reason` says why a lease it held ended ("moved": the visitor took voice elsewhere). */
+  tellYou(connId, reason = "") {
     const c = this.model.conns.get(connId), ws = this.sockets.get(connId);
-    if (c && ws && c.zone) this.send(ws, { type: "you", zone: c.zone, you: this.model.youOf(connId) });
+    if (c && ws && c.zone) this.send(ws, { type: "you", zone: c.zone, you: this.model.youOf(connId), ...(reason ? { reason } : {}) });
+  }
+
+  /** An identity's other connections hear when one of them takes or gives up the microphone (`you.elsewhere`). */
+  tellElsewhere() {
+    const now = new Map();
+    for (const c of this.model.conns.values()) if (c.lease) now.set(c.id, c.connId);
+    for (const id of new Set([...now.keys(), ...this.holders.keys()])) {
+      if (now.get(id) === this.holders.get(id)) continue;
+      const p = this.model.people.get(id);
+      if (p) for (const o of p.conns.values()) if (!o.lease) this.tellYou(o.connId);
+    }
+    this.holders = now;
   }
 
   async scheduleAlarm() {
@@ -555,7 +572,7 @@ export class Audience extends DurableObject {
     else if (msg.type === "reaction") outcome = typeof msg.emoji === "string" && msg.emoji.length <= 32 ? this.react(c, msg.emoji) : { ok: false, code: "malformed" };
     else if (msg.type === "hand") outcome = this.hand(c, msg);
     else if (msg.role === "listener") { const lease = this.model.endLease(c.connId); if (lease) this.leaseEnded(c.connId, lease, "listener"); outcome = { ok: true }; }
-    else if (msg.role === "speaker") { outcome = await this.requestSpeaker(c); this.inspect.count(outcome.ok ? "speakerGranted" : "speakerRefused"); }
+    else if (msg.role === "speaker") { outcome = await this.requestSpeaker(c, msg); this.inspect.count(outcome.ok ? "speakerGranted" : "speakerRefused"); }
     else outcome = { ok: false, code: "malformed" };
     if (this.model.conns.get(c.connId) !== c) return;
     this.save(c.connId);
@@ -565,7 +582,7 @@ export class Audience extends DurableObject {
   }
 
   /** The island decides afresh, now, whatever the edge's cached answer said; the connection must still be the same. */
-  async requestSpeaker(c) {
+  async requestSpeaker(c, msg = {}) {
     if (!c.eligible) return { ok: false, code: "capability_required" };
     if (!c.zone) return { ok: false, code: "zone_required" };
     const zone = c.zone;
@@ -577,6 +594,18 @@ export class Audience extends DurableObject {
     if (answer.state !== "eligible") {
       if (answer.state === "ineligible") c.eligible = false;
       return { ok: false, code: answer.state === "unknown" ? "capability_unavailable" : "capability_required", retryable: answer.state === "unknown" };
+    }
+    // A lease the same identity holds on another connection gives way in two cases only: the visitor's own word to
+    // move their voice here (`takeover`), or this page naming the connection it has just come back from (`replaces`: a
+    // socket that dropped, whose lease the server has not yet seen end), which is closed.
+    const takeover = msg.takeover === true, replaces = typeof msg.replaces === "string" ? msg.replaces : "";
+    for (const o of [...this.model.people.get(c.id).conns.values()]) {
+      if (o === c || !o.lease || !takeover && o.connId !== replaces) continue;
+      if (!takeover) { this.close(o.connId, CLOSE.replaced, "replaced"); continue; }
+      const lease = this.model.endLease(o.connId);
+      this.save(o.connId);
+      this.leaseEnded(o.connId, lease, "moved");
+      this.tellYou(o.connId, "moved");
     }
     return this.model.requestSpeaker(c.connId, { eligible: true, generation: this.nextGeneration(), until: Date.now() + PENDING_MS,
       character: typeof answer.character === "string" ? answer.character : null });

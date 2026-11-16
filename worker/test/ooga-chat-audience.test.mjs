@@ -336,6 +336,34 @@ test("the Audience: signing out closes every socket of that principal; losing el
   assert.equal(other.closed.code, 4401, "a session's deadline is checked again, even if no notification came");
 });
 
+test("the Audience: an identity's other connection hears where its voice is, takes it only on the visitor's word, and a page that comes back replaces only the connection it names", async () => {
+  const h = host();
+  const audience = await h.make();
+  const { ws: phone } = await open(audience, principal(1));
+  const { ws: laptop } = await open(audience, principal(1));
+  for (const ws of [phone, laptop]) await say(audience, ws, { type: "join", zone: "main" });
+  assert.equal(last(laptop, "snapshot").you.elsewhere, undefined);
+  await say(audience, phone, { type: "setRole", requestId: 1, role: "speaker" });
+  assert.deepEqual(last(laptop, "you").you, { id: "gh:1", speak: "eligible", elsewhere: "app" }, "the other tab hears the voice is held elsewhere");
+  await say(audience, laptop, { type: "setRole", requestId: 1, role: "speaker" });
+  assert.equal(last(laptop, "result").error.code, "source_in_use", "never taken without the visitor's word");
+  await say(audience, laptop, { type: "setRole", requestId: 2, role: "speaker", replaces: "someone-else" });
+  assert.equal(last(laptop, "result").error.code, "source_in_use", "naming a connection that does not hold the lease takes nothing");
+  await say(audience, laptop, { type: "setRole", requestId: 3, role: "speaker", takeover: true });
+  assert.equal(last(laptop, "result").ok, true);
+  assert.equal(last(laptop, "result").you.speak, "pending");
+  assert.equal(phone.sent.filter((m) => m.type === "you" && m.reason === "moved").length, 1, "the device that held it hears it moved");
+  assert.deepEqual([last(phone, "you").you.speak, last(phone, "you").you.elsewhere, phone.closed], ["eligible", "app", null], "and keeps listening");
+  // The laptop's socket drops unseen by the server; its page comes back on a new connection and names the old one.
+  const stale = [...audience.model.conns.values()].find((c) => c.lease).connId;
+  const { ws: back } = await open(audience, principal(1));
+  await say(audience, back, { type: "join", zone: "main" });
+  await say(audience, back, { type: "setRole", requestId: 1, role: "speaker", replaces: stale });
+  assert.equal(last(back, "result").ok, true, "its own stale lease does not refuse it");
+  assert.equal(laptop.closed.code, 4409, "and the connection it replaced is closed");
+  assert.equal([...audience.model.conns.values()].filter((c) => c.lease).length, 1, "one lease an identity, as ever");
+});
+
 test("regression: a media call carries a connection's authorisation on, so the hourly re-authentication never closes a socket that keeps calling (a speaker's lease)", async () => {
   const h = host();
   const audience = await h.make();

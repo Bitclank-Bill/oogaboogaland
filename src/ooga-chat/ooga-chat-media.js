@@ -19,8 +19,15 @@
 // (`notice`). `mute` flips the track and tells the server (`setMic`). Leave Voice (`leave`) stops and releases the
 // microphone before telling the server (`publish/close`), and keeps listening. The server ending the lease (a `you` that
 // no longer says pending or active: an expiry, a revocation, the island taking the identity) stops capture at once.
-// Another zone (`zone`) ends speaking there and drops every voice of the old zone before the new zone's snapshot; a new
-// audience connection ends everything held under the old one, and speaking is never put back by itself.
+// Another zone (`zone`) ends speaking there and drops every voice of the old zone before the new zone's snapshot.
+//
+// Staying a speaker. A loss that was not the visitor's choice never makes a speaker a listener by itself. A new audience
+// connection (the socket dropped: a phone that went to another app, a network change) ends what was held under the old
+// one at the server, so the page keeps its microphone, off, and once the new connection's snapshot says it may, asks
+// for a lease again by itself (`setRole` naming the connection it `replaces`, so its own stale lease does not refuse it)
+// and publishes, muted: "Voice reconnected. You're muted." A publishing connection that fails is published again the
+// same way. A microphone the browser takes away (another app, a call) leaves a muted speaker with nothing captured;
+// Unmute, a click, captures it again. Only RESUME_TRIES in a row are tried, and a refusal says why and listens.
 // `release(reason)` (the account's seam, ooga-chat-auth.js) ends speaking and keeps listening; `stop` ends both.
 //
 // `create({ broker, rtc, request, allowed, onChange, timers, target })`: `broker()` the adapter's `{ call(op, body) }` or
@@ -39,6 +46,9 @@
   const TURN_TLS = "turns:turn.cloudflare.com:443?transport=tcp";
   const GATHER_MS = 1500, RELAY_GATHER_MS = 3500, CONNECT_MS = 10000, DROP_GRACE_MS = 5000, ASK_MS = 10000;
   const BACKOFF_MS = [1000, 30000], RECEIVE_TRIES = 6, TRACKS_MAX = 64;
+  // Staying a speaker through a loss: a held microphone is released after MIC_HOLD_MS with nothing to publish it on, and
+  // RESUME_TRIES in a row is as often as the page asks again by itself (a speaker for STEADY_MS starts the count afresh).
+  const MIC_HOLD_MS = 2 * 60 * 1000, RESUME_TRIES = 3, STEADY_MS = 30000;
   // Phases: off (no feed), connecting (opening the receiver), listening, reconnecting (a receiver opening again after a
   // failure), failed (given up until `retry`), permission (asking for the microphone), requesting (asking for a lease),
   // negotiating (publishing it), muted and open (an acknowledged speaker), leaving.
@@ -63,6 +73,9 @@
     ended: "Your speaking ended. Join Voice to speak again.",
     reconnected: "Voice reconnected. Join Voice to speak again.",
     mic: "Your microphone stopped.",
+    resumed: "Voice reconnected. You're muted.",
+    interrupted: "Your microphone was interrupted. Unmute to speak again.",
+    moved: "Voice moved to your other device.",
     receive: "Can't hear the zone right now.",
     unsupported: "This browser can't do voice here."
   };
@@ -95,6 +108,9 @@
     const voices = new Map();
     // Speaking: the join's ticket, the microphone, the publishing connection, the lease's generation and the mute.
     let joinTicket = 0, mic = null, pub = null, lease = 0, speaker = false, muted = true, renewTimer = 0;
+    // Staying a speaker: `again` from the server's acknowledgement until the visitor leaves or the server refuses,
+    // `stale` the connection the last lease was held under, `resumes` the tries in a row, and the two timers.
+    let again = false, stale = null, resumes = 0, holdTimer = 0, steadyTimer = 0;
     const renew = () => {
       renewTimer = 0;
       if (!speaker || disposed) return;
@@ -399,23 +415,36 @@
       meter.audio.close().catch(() => {});
       meter = null; speaking = false;
     };
-    // Capture ends and the publishing connection closes here, at once and once; the server is told by the caller.
-    const stopSpeaking = () => {
-      joinTicket++;
+    const releaseMic = () => {
+      timers.clear(holdTimer);
+      holdTimer = 0;
       stopMeter();
+      if (!mic) return;
+      mic.track.enabled = false;
+      mic.track.removeEventListener("ended", micEnded);
+      for (const track of mic.stream.getTracks()) track.stop();
+      mic = null;
+      stats.released++;
+    };
+    // The publishing connection closes here, at once and once, and capture ends; the server is told by the caller.
+    // `keep` (a loss the page means to come back from) holds the microphone, off, for the next lease, and the wish to
+    // speak again with it; anything else ends both.
+    const stopSpeaking = (keep = false) => {
+      joinTicket++;
       timers.clear(renewTimer);
-      renewTimer = 0;
+      timers.clear(steadyTimer);
+      renewTimer = steadyTimer = 0;
       const had = !!mic || !!pub || speaker;
       speaker = false;
       muted = true;
       lease = 0;
-      if (mic) {
+      again = keep && again;
+      if (again && mic && mic.track.readyState !== "ended") {
         mic.track.enabled = false;
-        mic.track.removeEventListener("ended", micEnded);
-        for (const track of mic.stream.getTracks()) track.stop();
-        mic = null;
-        stats.released++;
-      }
+        speaking = false;
+        timers.clear(holdTimer);
+        holdTimer = timers.set(() => { holdTimer = 0; if (!speaker && !BUSY.has(phase)) releaseMic(); }, MIC_HOLD_MS);
+      } else releaseMic();
       if (pub) { const pc = pub.pc; pub = null; pc.close(); }
       return had;
     };
@@ -427,42 +456,87 @@
       notice = why || "";
       emit();
     };
+    // The browser took the microphone away (another app, a call): a speaker stays one, muted, with nothing captured,
+    // and Unmute captures it again. While still joining, the join ends.
     function micEnded() {
-      if (speaker || BUSY.has(phase)) endSpeaking(NOTICE.mic);
-    }
-    const watchPublish = (pc) => pc.addEventListener("connectionstatechange", () => {
-      if (pub && pub.pc === pc && pc.connectionState === "failed") endSpeaking(NOTICE.failed);
-    });
-    const join = async () => {
-      if (disposed || speaker || BUSY.has(phase) || !connection || !available() || !you || you.speak !== "eligible") return;
-      const ticket = ++joinTicket, live = () => ticket === joinTicket && !disposed;
-      phase = "permission";
-      notice = "";
-      // Inside the click: whatever playback the browser held back may start now too.
-      if (blocked) { blocked = false; for (const v of voices.values()) if (v.el) play(v); }
+      if (!speaker) { if (BUSY.has(phase)) endSpeaking(NOTICE.mic); return; }
+      releaseMic();
+      muted = true;
+      phase = "muted";
+      notice = NOTICE.interrupted;
+      request("setMic", { muted: true });
       emit();
-      let stream;
-      try {
-        stream = await R.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
-      } catch (err) {
-        if (live()) endSpeaking(micNotice(err), false);
-        return;
-      }
+    }
+    const capture = async () => {
+      const stream = await R.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
       const track = stream && stream.getAudioTracks()[0];
       // Off from its first frame: nothing is published, and nothing would be heard, until the speaker unmutes.
       if (track) track.enabled = false;
-      if (!live() || !track) {
-        if (stream) for (const t of stream.getTracks()) t.stop();
-        if (live()) endSpeaking(NOTICE.nodevice, false);
-        return;
-      }
+      return { stream, track };
+    };
+    const hold = ({ stream, track }) => {
       mic = { stream, track };
       stats.captured++;
       startMeter(stream);
       track.addEventListener("ended", micEnded);
-      phase = "requesting";
+    };
+    // A publishing connection that failed under a live feed: the lease is given back and asked for again, muted.
+    const watchPublish = (pc) => pc.addEventListener("connectionstatechange", () => {
+      if (!pub || pub.pc !== pc || pc.connectionState !== "failed") return;
+      if (!speaker || !again) return endSpeaking(NOTICE.failed);
+      stale = connection;
+      stopSpeaking(true);
+      phase = listening();
       emit();
-      const granted = await ask("setRole", { role: "speaker" });
+      call("publish/close").then(() => { stats.closed++; }, () => request("setRole", { role: "listener" })).then(resume);
+    });
+    // Speaking again by itself, once the server says this connection may: at most RESUME_TRIES in a row.
+    const resume = () => {
+      if (!again || disposed || speaker || BUSY.has(phase) || !connection || !you) return;
+      if (you.speak !== "eligible" || !available() || resumes >= RESUME_TRIES) {
+        // Waiting on the server's word (a lease just given back reads pending or active a moment longer) is not a no.
+        if (you.speak === "pending" || you.speak === "active") return;
+        again = false;
+        releaseMic();
+        notice = NOTICE.reconnected;
+        return emit();
+      }
+      resumes++;
+      join({ resumed: true });
+    };
+    const join = async ({ resumed = false, takeover = false } = {}) => {
+      if (disposed || speaker || BUSY.has(phase) || !connection || !available() || !you) return;
+      // Voice held on another device (`you.elsewhere`) is taken only on the visitor's word.
+      if (you.speak !== "eligible" && !(takeover && you.elsewhere)) return;
+      const ticket = ++joinTicket, live = () => ticket === joinTicket && !disposed;
+      if (!resumed) { resumes = 0; again = false; }
+      const held = !!mic && mic.track.readyState !== "ended";
+      phase = held ? "requesting" : "permission";
+      notice = "";
+      // Inside the click: whatever playback the browser held back may start now too.
+      if (blocked) { blocked = false; for (const v of voices.values()) if (v.el) play(v); }
+      emit();
+      if (held) { timers.clear(holdTimer); holdTimer = 0; }
+      else {
+        releaseMic();
+        let got;
+        try {
+          got = await capture();
+        } catch (err) {
+          if (live()) endSpeaking(resumed ? NOTICE.reconnected : micNotice(err), false);
+          return;
+        }
+        if (!live() || !got.track) {
+          if (got.stream) for (const t of got.stream.getTracks()) t.stop();
+          if (live()) endSpeaking(resumed ? NOTICE.reconnected : NOTICE.nodevice, false);
+          return;
+        }
+        hold(got);
+        phase = "requesting";
+        emit();
+      }
+      const { track } = mic;
+      const granted = await ask("setRole", { role: "speaker", ...(resumed && stale ? { replaces: stale } : {}), ...(takeover ? { takeover: true } : {}) });
       if (!live()) return;
       if (!granted.ok) return endSpeaking(NOTICE[REFUSED[granted.error && granted.error.code]] || NOTICE.failed, false);
       lease = granted.you && Number.isSafeInteger(granted.you.lease) ? granted.you.lease : you && Number.isSafeInteger(you.lease) ? you.lease : 0;
@@ -475,8 +549,8 @@
         await call("publish/open", { generation: lease });
         if (!live()) return;
         const pc = new R.PeerConnection(config);
-        pub = { pc };
         const tx = pc.addTransceiver(track, { direction: "sendonly" });
+        pub = { pc, tx };
         await pc.setLocalDescription(await pc.createOffer());
         if (!live()) return;
         await gathered(pc, config.iceServers.length > 1);
@@ -499,8 +573,13 @@
       speaker = true;
       muted = true;
       phase = "muted";
+      again = true;
+      stale = null;
+      if (resumed) notice = NOTICE.resumed;
       timers.clear(renewTimer);
       renewTimer = timers.set(renew, RENEW_MS);
+      timers.clear(steadyTimer);
+      steadyTimer = timers.set(() => { steadyTimer = 0; resumes = 0; }, STEADY_MS);
       emit();
     };
     const leave = async () => {
@@ -517,19 +596,43 @@
       }
       if (phase === "leaving") { phase = listening(); emit(); }
     };
-    const mute = () => {
-      if (!speaker || !mic) return;
+    let recapturing = false;
+    const mute = async () => {
+      if (!speaker || recapturing) return;
+      if (!mic) {
+        // The browser took the microphone (`micEnded`): Unmute, a click, captures it again onto the same publication.
+        const ticket = joinTicket;
+        recapturing = true;
+        let got = null;
+        try {
+          got = await capture();
+          if (!got.track) throw failure("nodevice");
+          if (ticket === joinTicket && speaker && pub) await pub.tx.sender.replaceTrack(got.track);
+        } catch (err) {
+          if (got && got.stream) for (const t of got.stream.getTracks()) t.stop();
+          recapturing = false;
+          if (ticket === joinTicket && speaker) { notice = err && err.code === "nodevice" ? NOTICE.nodevice : micNotice(err); emit(); }
+          return;
+        }
+        recapturing = false;
+        if (ticket !== joinTicket || !speaker || !pub) { for (const t of got.stream.getTracks()) t.stop(); return; }
+        hold(got);
+        notice = "";
+        muted = true;
+      }
       muted = !muted;
       mic.track.enabled = !muted;
       phase = muted ? "muted" : "open";
       request("setMic", { muted });
       emit();
     };
-    // The server's word on this connection: a lease it no longer holds ends speaking here at once.
-    const learn = (next) => {
+    // The server's word on this connection: a lease it no longer holds ends speaking here at once (`why`: "moved" when
+    // the visitor took voice to another device). A connection that may speak again resumes a speaker who lost theirs.
+    const learn = (next, why = "") => {
       if (!next || typeof next.speak !== "string") return;
       you = next;
-      if (lease && (speaker || BUSY.has(phase)) && next.speak !== "pending" && next.speak !== "active") endSpeaking(NOTICE.ended, false);
+      if (lease && (speaker || BUSY.has(phase)) && next.speak !== "pending" && next.speak !== "active") endSpeaking(why === "moved" ? NOTICE.moved : NOTICE.ended, false);
+      else if (again && !speaker && !BUSY.has(phase)) resume();
     };
 
     // --- the feed ---
@@ -542,7 +645,7 @@
         learn(msg.you);
         return done(msg);
       }
-      if (msg.type === "you") { if (msg.zone === zone) learn(msg.you); return; }
+      if (msg.type === "you") { if (msg.zone === zone) learn(msg.you, msg.reason); return; }
       if (msg.type === "media") {
         if (msg.op !== "sync") return;
         drop(msg.closed);
@@ -551,16 +654,18 @@
       }
       if (msg.type !== "snapshot" || msg.zone !== zone) return;
       if (typeof msg.connection === "string" && msg.connection !== connection) {
-        // A new audience connection: nothing held under the old one is ours at the server any more.
-        const was = stopSpeaking();
+        // A new audience connection: nothing held under the old one is ours at the server any more. A speaker keeps
+        // their microphone, off, and speaks again under this one once it may (`resume`).
+        if (speaker || lease) stale = connection;
+        const was = stopSpeaking(true);
         forgetWaiters();
         connection = msg.connection;
-        you = null;
-        learn(msg.you);
+        you = msg.you && typeof msg.you.speak === "string" ? msg.you : null;
         tries = 0;
-        if (was) notice = NOTICE.reconnected;
+        if (was && !again) notice = NOTICE.reconnected;
         phase = "connecting";
         openReceive();
+        resume();
         return;
       }
       learn(msg.you);
@@ -571,14 +676,16 @@
     const status = (next) => {
       // Connecting is a first socket or a fixture's zone change, never a lost one (that says reconnecting first).
       if (next === "live" || next === "joining" || next === "connecting") return;
-      const was = stopSpeaking();
+      // A socket that dropped comes back: a speaker keeps their microphone, off, for the connection after it.
+      if ((speaker || lease) && connection) stale = connection;
+      const was = stopSpeaking(next === "reconnecting");
       forgetWaiters();
       closeReceive();
       connection = null;
       you = null;
       tries = 0;
       phase = "off";
-      notice = was && next !== "off" ? NOTICE.reconnected : "";
+      notice = was && next !== "off" && !again ? NOTICE.reconnected : "";
       emit();
     };
     const zoneTo = (next) => {
