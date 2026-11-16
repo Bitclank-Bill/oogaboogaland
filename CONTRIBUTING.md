@@ -94,10 +94,32 @@ is licensed to allow that, and name the licence in the PR. That covers code,
 art, fonts, music, recordings and voices. Do not submit someone's voice, music
 or likeness without their permission.
 
+## How we work
+
+- **Start small.** Make your Ooga first, then fix something small. Bigger work
+  goes better once a few of your changes have merged.
+- **You answer for your PR.** Most code here is written with AI agents, and
+  that is welcome. Read your own diff, run the change, and answer review
+  yourself. "The agent did it" is not an explanation.
+- **Maintainers decide and merge.** A maintainer plays every change before it
+  merges, so custom work can take days and rounds of notes. Automated reviews
+  (they sign themselves Watchtower) point things out; they are not approval,
+  and neither is another contributor's.
+- **A no is about the idea, not about you.** Do not answer it by building the
+  thing anyway.
+- **Keep it reviewable.** A big feature lands in stages agreed in its issue,
+  not as one PR of thousands of lines.
+- **Allow edits by maintainers** on a PR from a fork, so a maintainer can bring
+  your branch up to date.
+- **Leave other people's work theirs.** Do not revive, take over or rewrite
+  another contributor's branch or commits unless a maintainer asks, and credit
+  what you build on.
+
 ## One change, one PR
 
 Update the PR you have instead of opening another for the same change. Keep it
 a draft until it is finished, as the [README](README.md#contributing) describes.
+The PR form and the **Proposal** issue form ask for what a maintainer needs.
 
 ## When a PR is closed
 
