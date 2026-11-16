@@ -245,7 +245,9 @@
     paint.drawImage(frames[0], 0, 0);
     return { frames, frame: 0, paint, surface: { canvas, version: 0, rect: [-6, -6, 12, 12], tessellated: true } };
   });
-  const boostSurface = (cloud, body) => {
+  // `under`, the axis a cloud turns over round ({ x, z }, level, through its middle), makes the arrows of its
+  // underside as they lie once it is upside down: its under faces, turned half round with it.
+  const boostSurface = (cloud, body, under = null) => {
     // Build once from the actual voxel tops, before the body's world position
     // is added. The texture frame faces the launch direction while the cloud
     // itself is free to rotate. All stepped heights and gaps stay intact.
@@ -254,12 +256,16 @@
     for (const face of source.faces) {
       const a = face.i[0] * 3, b = face.i[1] * 3, d = face.i[2] * 3;
       const ny = (v[b + 2] - v[a + 2]) * (v[d] - v[a]) - (v[b] - v[a]) * (v[d + 2] - v[a + 2]);
-      if (ny <= 0) continue;
+      if (under ? ny >= 0 : ny <= 0) continue;
       const indices = [];
       for (const index of face.i) {
         const at = index * 3, x = v[at] * body.scale.x, z = v[at + 2] * body.scale.z;
-        const wx = c * x + s * z + body.position.x, wz = c * z - s * x + body.position.z;
-        const height = v[at + 1] * body.scale.y + body.position.y;
+        let wx = c * x + s * z + body.position.x, wz = c * z - s * x + body.position.z;
+        let height = v[at + 1] * body.scale.y + body.position.y;
+        if (under) {
+          const along = 2 * (under.x * wx + under.z * wz);
+          wx = under.x * along - wx; wz = under.z * along - wz; height = -cloud.depth - height;
+        }
         indices.push(M.pushVert(geometry, wx * cloud.boostZ - wz * cloud.boostX,
           wx * cloud.boostX + wz * cloud.boostZ, -height));
       }

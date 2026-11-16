@@ -797,9 +797,14 @@ with or without them, so no cloud is ever only for one way up and nothing has to
 **The world turns over twice a run**, unannounced, as a tornado comes or a gust blows. Each place is seeded with the
 course in its own stretch of the way down (`flips`: 26–40% and 60–74%), so it is clear of the start and the finish and
 the two are well apart. As the rider reaches it the rider is held and lowered 12 m, under the clouds, while the whole
-world rolls half a turn round the course's axis, and it stays: upside down after the first, upright again after the
-second. The roll is the view's alone, so no node of the island's changes and the run's physics are untouched; the run
-is drawn turned back to match, and what reads the view (the hook's aim, the overlay) reads the run's own. The rider is
+world rolls half a turn round the course's axis, the clouds with it, and it stays: upside down after the first,
+upright again after the second. The rider never turns: gravity stays down the screen and the controls stay as they
+are. Each cloud rolls over where it is, round the same axis through its own middle, so upside down its flat underside
+is up, level with the top it had, its puffs hang under it, and that underside is what the rider lands, stands and
+bounces on (a boost cloud's arrows show there too). Every cloud's place, height and footprint are unchanged, so every
+jump, fade, hook throw, gust and tornado plays as it does upright. The sky's roll is the view's alone, so no node of
+the island's changes and the run's physics are untouched; the run is drawn turned back to match, and what reads the
+view (the hook's aim, the overlay) reads the run's own. The rider is
 let go with the jetpack worn and 70% of a tank to climb back onto the same course, and a fall of 30 m before landing
 puts it back where it was let go. It never strikes during a climb or a warp, nor for 1.5 s after one, nor on a rider
 already fallen more than 12 m under the course (it turns once the rider is back), so the rider is never let go

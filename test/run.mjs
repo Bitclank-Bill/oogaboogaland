@@ -5487,7 +5487,8 @@ const cloudHopperFailureChecks = async engine => {
     cloudHopperSky: { create: () => ({ build: () => 0, update: noop, clear: noop, dispose: noop, flash: 0 }) },
     cloudHopperTornado: { SPOTS: [0.5], create: () => ({ start: noop, update: noop, clear: noop, axisAt: noop, radiusAt: () => 0, dispose: noop, liveGeometry: noop, active: false, down: false, strength: 0, forming: 0, flash: 0 }) },
     cloudHopperGust: { WARN: 2.5, create: () => ({ start: noop, update: noop, clear: noop, dispose: noop, liveGeometry: noop, state: "calm", active: false, strength: 0, warning: 0, pushX: 0, pushZ: 0 }) },
-    cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
+    cloudHopperModels: { cloud(radius, _rz, _depth, _kind, yaw = 0) { platformRadius ||= radius; const node = S.createNode(); node.position.x = 0.3; node.position.z = -0.2; node.rotation.y = yaw; return node; },
+      cloudMesh: () => null, boostSurface: (cloud, _body, under) => Object.assign(S.createNode(), { arrowsOf: cloud, under: !!under, geometry: under ? {} : null }), updateBoostSurface: noop,
       relight: noop, alternates(node, each) { each(node.day ||= {}); each(node.night ||= {}); }, sparkle: () => null, wornGoggles: () => S.createNode(),
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
       rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
@@ -6167,7 +6168,8 @@ const cloudHopperFailureChecks = async engine => {
   // fuel to climb back to the same course; every landing that shows holds it, upright or turned over; a portal throws
   // it on with its speed and controls kept; and the run ends won with the world upright. One run also checks the
   // checkpoint, that nothing turns during a climb or a warp or on a rider fallen far under the course, that leaving
-  // part way restores the rider and the view,
+  // part way restores the rider, the view and the clouds, that every cloud rolls over with the world where it is
+  // (its underside up at the height its top had, so the rider lands and stands on that),
   // and that each mechanic shows and works turned over as it does upright.
   {
     runInNewContext(controllerSource, context);
@@ -6202,6 +6204,42 @@ const cloudHopperFailureChecks = async engine => {
     // centimetre: the nodes' matrices are single precision).
     const seen = (x, y, z) => { BL.math.mat4.transformPoint(point, flipper.gameRoot.world, x, y, z); return inView(drawn, point[0], point[1], point[2]); };
     const same = (points) => points.every(([x, y, z]) => { const a = seen(x, y, z), b = inView(truth, x, y, z); return a.every((v, i) => Math.abs(v - b[i]) < 0.01); });
+    // The clouds turned over with the world. `upright` notes, for each cloud of the course as it is built, its node,
+    // the way the node is turned, and where in the node's own mesh the middle of its top and of its underside are.
+    // A cloud's body shows at `y + lift` whatever its fade (a fading cloud's `top`, what holds a rider, sinks under it).
+    const turnOf = (m) => [m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]];
+    const turnBy = (r, v) => [r[0] * v[0] + r[3] * v[1] + r[6] * v[2], r[1] * v[0] + r[4] * v[1] + r[7] * v[2], r[2] * v[0] + r[5] * v[1] + r[8] * v[2]];
+    const turnBack = (r, v) => [r[0] * v[0] + r[1] * v[1] + r[2] * v[2], r[3] * v[0] + r[4] * v[1] + r[5] * v[2], r[6] * v[0] + r[7] * v[1] + r[8] * v[2]];
+    const routeNodes = () => flipper.gameRoot.children.find(n => n !== flipper.platform && n.children.some(k => k.rest)).children;
+    // A hidden node's matrix is not kept up, so a faded cloud's is worked out with it shown for the moment.
+    const matrices = () => { const nodes = routeNodes().filter(k => k.rest), hidden = nodes.filter(n => !n.visible);
+      for (const n of hidden) n.visible = true;
+      S.updateWorld(rootNode);
+      for (const n of hidden) n.visible = false;
+      return nodes; };
+    const upright = () => { const nodes = matrices();
+      return flipper.course.clouds.map((c, i) => { const n = nodes[i], r = turnOf(n.local), t = n.position;
+        return { c, n, r, top: turnBack(r, [c.x - t.x, c.y + c.lift - t.y, c.z - t.z]), under: turnBack(r, [c.x - t.x, c.y + c.lift - c.depth - t.y, c.z - t.z]) }; }); };
+    // Whether every cloud shows as the world has it, where the course has it. Always: it keeps the world's way up
+    // (its own turn and the holder's turn back cancel) and its middle stays put. `over` true: its underside's middle
+    // is at its top's height, facing up, and its top's a cloud's depth under. `over` false: as it was built.
+    // `over` null (part way through a roll) checks only the first two.
+    const cloudsShow = (clouds, over) => { matrices(); const holder = turnOf(flipper.gameRoot.local);
+      return clouds.length === flipper.course.clouds.length && clouds.every(({ c, n, r, top, under }) => {
+        const now = turnOf(n.local), t = n.position, at = (q) => { const v = turnBy(now, q); return [v[0] + t.x, v[1] + t.y, v[2] + t.z]; }, high = c.y + c.lift;
+        const near = (a, x, y, z) => Math.abs(a[0] - x) < 1e-3 && Math.abs(a[1] - y) < 1e-3 && Math.abs(a[2] - z) < 1e-3;
+        const world = [0, 1, 2].flatMap(i => turnBy(holder, now.slice(i * 3, i * 3 + 3)));
+        if (!world.every((v, i) => Math.abs(v - r[i]) < 1e-4) || !near(at(top.map((v, i) => (v + under[i]) / 2)), c.x, high - c.depth / 2, c.z)) return false;
+        if (over === null) return true;
+        return near(at(over ? under : top), c.x, high, c.z) && near(at(over ? top : under), c.x, high - c.depth, c.z)
+          && Math.abs(turnBy(now, [0, 1, 0])[1] - (over ? -1 : 1)) < 1e-5 && !!n.quaternion === over;
+      }); };
+    // A boost cloud's arrows: on its top upright, on its underside turned over, on neither while it rolls (`over` null).
+    const arrowsShow = (over) => { const arrows = routeNodes().filter(n => n.arrowsOf);
+      return arrows.length === 2 * flipper.course.clouds.filter(c => c.kind === "boost").length && arrows.length > 0
+        && arrows.every(n => n.visible === (over !== null && n.under === over && n.arrowsOf.active)); };
+    let built = null;
+    const launched = {};
     // Each mechanic, from landing `k` of the course: the same checks upright and with the world turned over.
     const mechanics = (tag, rows, from) => {
       const course = flipper.course, order = course.landings, C = BL.cloudHopperCourse;
@@ -6246,6 +6284,24 @@ const cloudHopperFailureChecks = async engine => {
       flipper.hookAction(false); actor.leap.vx = actor.leap.vz = actor.hopV = 0;
       for (let i = 0; i < 40 && flipper.powers.hook !== "hand"; i++) step(1 / 60);
       aimed = null;
+      // The clouds themselves: upright they show as built; turned over, each shows its underside upward at the height
+      // its top had, so that is what the rider lands and stands on, and a boost cloud's arrows are on the side that is up.
+      const over = tag !== "upright";
+      onto(landing); step(1 / 60);
+      out.underside = cloudsShow(built, over) && arrowsShow(over) && flipper.supportAt(landing.x, landing.z, landing.top, 0.1) === landing.top && landing.top === landing.y + landing.lift
+        && actor.root.position.y - actor.baseY === landing.top;
+      // Bounce and boost clouds: a touch launches the rider as hard and the same way whichever way up the world is.
+      for (const kind of ["bounce", "boost"]) {
+        const c = course.clouds.find(each => each.kind === kind && each.active && each.phase === C.SOLID && !course.due(each.x, each.z, flipper.turns));
+        if (!c) { out[kind] = false; continue; }
+        onto(c); step(1 / 60);
+        const speed = Math.hypot(actor.leap.vx, actor.leap.vz), now = { rise: actor.hopV, speed, along: kind === "boost" ? (actor.leap.vx * c.boostX + actor.leap.vz * c.boostZ) / (speed || 1) : 1 };
+        launched[kind] ||= now;
+        const was = launched[kind];
+        out[kind] = now.rise > 3 && (kind === "boost" ? now.speed > 5 && now.along > 0.999 : now.speed === 0) && !flipper.turning && flipper.phase === "running"
+          && Math.abs(now.rise - was.rise) < 1e-9 && Math.abs(now.speed - was.speed) < 1e-9;
+        onto(landing); step(1 / 60);
+      }
       for (const [name, ok] of Object.entries(out)) rows[`${name} ${tag}`] = ok;
       return k + 1;
     };
@@ -6259,7 +6315,10 @@ const cloudHopperFailureChecks = async engine => {
       const course = flipper.course, order = course.landings, rows = { began: flipper.level.id === 5 && flipper.phase === "running" }, C = BL.cloudHopperCourse;
       // Every mesh a warp or a flip shows is with the renderer before the run asks for one: both fills of every
       // cloud, the jetpack and its flame.
-      rows.warmed = flipper.warmed && prepared.size >= 2 * course.clouds.length + 2;
+      rows.warmed = flipper.warmed && prepared.size >= 2 * course.clouds.length + 2 && routeNodes().filter(n => n.under).every(n => prepared.has(n.geometry));
+      // The clouds as built, upright.
+      built = upright();
+      rows.built = cloudsShow(built, false) && routeNodes().filter(n => n.arrowsOf).every(n => n.visible === !n.under);
       const shape = () => JSON.stringify(course.clouds.map(c => [c.baseX, c.y, c.baseZ, c.kind, c.life, c.t0, c.slotSeconds]));
       let ready = true;
       const out = (c) => Math.hypot(c.baseX, c.baseZ), outAt = (p) => Math.hypot(p.x, p.z);
@@ -6312,11 +6371,15 @@ const cloudHopperFailureChecks = async engine => {
           rows[`flip ${flips + 1}`] = !flipper.climbing && actor.root.parent !== home;
           step(turnSeconds / 2);
           rows[`flip ${flips + 1}`] &&= flipper.turning && actor.root.position.x === before.x && actor.root.position.z === before.z && actor.root.position.y < before.y && actor.hopV === 0 && camera.up !== up;
+          // Part way through the roll every cloud is rolling over with the world where it is, its arrows put away.
+          rows[`flip ${flips + 1}`] &&= flipper.turn % Math.PI > 0.2 && cloudsShow(built, null) && arrowsShow(null);
           step(turnSeconds / 2 + 0.05);
           flips++;
           const let_go = { ...actor.root.position }, over = flips % 2 === 1;
           rows[`flip ${flips}`] &&= !flipper.turning && flipper.turns === flips && Math.abs(flipper.turn - (over ? Math.PI : 0)) < 1e-9 && flipper.climbing && !!actor.jet && actor.jetpackOwned
             && actor.jetFuel >= 0.7 && Math.abs(before.y - let_go.y - 12) < 1e-6 && (over ? camera.up.y < -0.999 && actor.root.parent !== home : actor.root.parent === home) && flipper.phase === "running";
+          // After it every cloud is over: its underside up at the height its top had the first time, as built the second.
+          rows[`flip ${flips}`] &&= cloudsShow(built, over);
           if (extras && flips === 1) {
             // The pilot and the run see the view as it was before the roll.
             const rolled = { ...camera.position }; flipper.preUpdate(0);
@@ -6373,13 +6436,15 @@ const cloudHopperFailureChecks = async engine => {
       step(turnSeconds + 0.05);
       all.reach = flipper.climbing && flipper.turns === 1 && Math.abs(p.y - (c.top + actor.baseY - 12)) < 1e-6 && actor.jetFuel >= 0.7;
     }
-    const turned = flipper.turn > 3 && actor.root.parent !== home && camera.up !== up;
+    const launchCloud = flipper.platform.children.find(k => k.rest);
+    const turned = flipper.turn > 3 && actor.root.parent !== home && camera.up !== up && !!launchCloud.quaternion && Math.abs(launchCloud.position.y + 2.5) < 1e-9;
     callbacks.onExit();
-    all.restored = turned && flipper.turn === 0 && flipper.turns === 0 && actor.root.parent === home && camera.up === up && flipper.phase === "idle";
+    all.restored = turned && flipper.turn === 0 && flipper.turns === 0 && actor.root.parent === home && camera.up === up && flipper.phase === "idle"
+      && !launchCloud.quaternion && Math.abs(launchCloud.position.x - 0.3) < 1e-9 && Math.abs(launchCloud.position.y) < 1e-9 && Math.abs(launchCloud.position.z + 0.2) < 1e-9;
     flipper.dispose();
     all.disposed = rootNode.children.length === 1;
     cloudSave.unlocked = 1;
-    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over twice by itself wherever its places fall, never during a climb or a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and fuel, a fall going back to that checkpoint, and the climb comes back onto the same course; every showing landing holds the rider upright or turned over; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading and the grappling hook all show and work turned over as they do upright; and leaving part way restores the rider and the view",
+    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over twice by itself wherever its places fall, never during a climb or a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and fuel, a fall going back to that checkpoint, and the climb comes back onto the same course; every showing landing holds the rider upright or turned over; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls, and upright again after the second roll; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; and leaving part way restores the rider and the view",
       Object.values(all).every(Boolean), JSON.stringify(all));
   }
   // Reload within the same session, then start a fresh session while the old

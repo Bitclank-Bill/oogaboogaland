@@ -112,12 +112,16 @@
     const routeRoot = createNode({ visible: false, sightHidden: true });
     addChild(gameRoot, routeRoot);
     // ---- the world turned over (Storm's Eye) ----------------------------------------------------------------------
-    // The run itself never turns: the rider, its physics and the course stay as they are, whichever way up the world
-    // is. What turns is the view, by `turn` radians round the course's axis (`turnAxis`, through `turnAbout`), which
-    // rolls the sky, the sea, the island and the scenery for nothing and changes no node of the island's. So that the
-    // run still shows where it is, the whole of it (`gameRoot`: the launch cloud, the course, its tornadoes and gusts,
-    // the ghost, and the Ooga, which it holds from the first roll until the world is upright again) is drawn turned
-    // back by the same roll, and its clouds, lit from under meanwhile, take the night fill. `turns` is how many rolls
+    // The rider and its physics never turn: gravity stays down the screen, the controls stay as they are, and every
+    // cloud stays where the course has it, with the same height to land on. What turns is the view, by `turn` radians
+    // round the course's axis (`turnAxis`, through `turnAbout`), which rolls the sky, the sea, the island and the
+    // scenery for nothing and changes no node of the island's. So that the run still shows where it is, the whole of
+    // it (`gameRoot`: the launch cloud, the course, its tornadoes and gusts, the ghost, and the Ooga, which it holds
+    // from the first roll until the world is upright again) is drawn turned back by the same roll. The clouds
+    // themselves turn over with the world, each where it is (`turnClouds`): round the same axis through its own
+    // middle, so one upside down shows its flat underside upward, level with the top it had, and that underside is
+    // what the rider lands, stands and bounces on, its puffs hanging under it. Lit from under meanwhile, the clouds
+    // take the night fill, and a boost cloud's arrows show on its underside (`underNodes`). `turns` is how many rolls
     // are done, `turning` the seconds into one (-1 none) from `turnFrom`, the rider eased from `turnHeld` down to
     // `checkpoint`; `climbing` is a rider let go under the clouds and not yet landed. The first roll turns the world
     // round the rider (`turnPivot`); the second turns it back round an axis sliding from there to the rider, so it
@@ -150,6 +154,33 @@
       q[0] = turnAxis.x * half; q[1] = 0; q[2] = turnAxis.z * half; q[3] = Math.cos(turn / 2);
       spin(0, 0, 0, -turn, turnAbout, spun);
       gameRoot.position.x = spun.x; gameRoot.position.y = spun.y; gameRoot.position.z = spun.z;
+      turnClouds();
+    };
+    // What a cloud's node keeps for turning over (`rest`): where its node sits from its own middle (half its depth
+    // under its top) while upright, its heading, a rotation to write in place and how far the turn has moved it.
+    const restOf = (node, depth) => ({ x: node.position.x, y: node.position.y + depth / 2, z: node.position.z, yaw: node.rotation.y,
+      q: [0, 0, 0, 1], dx: 0, dy: 0, dz: 0 });
+    cloud.rest = restOf(cloud, DEPTH);
+    // Every cloud turned over by the world's roll where it is: by `turn` round the course's axis through its own
+    // middle, against the holder's turn back, so it keeps the world's way up while its place in the run stays. Half
+    // a turn puts its underside where its top was. Nothing is made: each node's rotation is written in place.
+    const turnCloud = (node, ax, az, w) => {
+      const r = node.rest;
+      if (!r) return;
+      spin(r.x, r.y, r.z, turn, ORIGIN, spun);
+      const mx = spun.x - r.x, my = spun.y - r.y, mz = spun.z - r.z;
+      node.position.x += mx - r.dx; node.position.y += my - r.dy; node.position.z += mz - r.dz;
+      r.dx = mx; r.dy = my; r.dz = mz;
+      if (turn === 0) { node.quaternion = null; return; }
+      // The roll after the cloud's own heading.
+      const sy = Math.sin(r.yaw / 2), cy = Math.cos(r.yaw / 2), q = r.q;
+      q[0] = ax * cy - az * sy; q[1] = w * sy; q[2] = az * cy + ax * sy; q[3] = w * cy;
+      node.quaternion = q;
+    };
+    const turnClouds = () => {
+      const half = Math.sin(turn / 2), ax = turnAxis.x * half, az = turnAxis.z * half, w = Math.cos(turn / 2);
+      turnCloud(cloud, ax, az, w);
+      for (const node of cloudNodes) turnCloud(node, ax, az, w);
     };
     // Where a point of the run shows in the turned world, for the overlay and the lights.
     const shown = (x, y, z, out) => turn === 0 ? (out.x = x, out.y = y, out.z = z, out) : spin(x, y, z, -turn, turnAbout, out);
@@ -278,6 +309,7 @@
       warmEach(sparks[0].geometry); warmEach(BL.hubModels.jetpack()); warmEach(BL.hubModels.jetFlame());
       warmEach(BL.cloudHopperModels.cloudMesh(0, "normal", false)); warmEach(BL.cloudHopperModels.cloudMesh(0, "normal", true));
       for (const node of cloudNodes) BL.cloudHopperModels.alternates(node, warmEach);
+      for (const surface of underNodes) if (surface) warmEach(surface.geometry);
       return warmOk;
     };
     // Each frame of a run: readies what the rider is about to set off (see WARM_SECONDS).
@@ -458,7 +490,7 @@
       pilot.syncHeadVisibility(actor);
       return true;
     };
-    const cloudNodes = [], boostNodes = [], bounceNodes = [], pickupNodes = [];
+    const cloudNodes = [], boostNodes = [], underNodes = [], bounceNodes = [], pickupNodes = [];
     const cloudFading = new Uint8Array(BL.cloudHopperCourse.MAX_CLOUDS), cloudWarning = new Uint8Array(BL.cloudHopperCourse.MAX_CLOUDS);
     const action = { kind: "cloud-hopper" };
     const active = () => phase !== "idle", playing = () => active() && phase !== "intro";
@@ -583,10 +615,11 @@
       // Cloud meshes belong to the shared island kit and stay cached after a run.
       for (const node of cloudNodes) removeChild(node.parent, node);
       for (const node of boostNodes) if (node) removeChild(node.parent, node);
+      for (const node of underNodes) if (node) removeChild(node.parent, node);
       for (const node of bounceNodes) if (node) removeChild(node.parent, node);
       for (const node of pickupNodes) removeChild(node.parent, node);
       resetTurn();
-      cloudNodes.length = boostNodes.length = bounceNodes.length = pickupNodes.length = 0;
+      cloudNodes.length = boostNodes.length = underNodes.length = bounceNodes.length = pickupNodes.length = 0;
       launchContacts.fill(0); unrecoverableAt = -1;
       scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0);
       gust.clear(); slideX = slideZ = 0; overlay.setGust("calm", false); audio.gust(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
@@ -789,14 +822,18 @@
       for (const c of course.clouds) {
         const node = BL.cloudHopperModels.cloud(c.rx, c.rz, c.depth, c.kind, c.yaw, dark);
         const surface = c.kind === "boost" ? BL.cloudHopperModels.boostSurface(c, node) : null;
+        // A boost cloud of a course whose world turns over has its arrows on its underside too, shown while it is
+        // upside down; every cloud of one keeps what it turns over by.
+        const under = surface && course.flips.length ? BL.cloudHopperModels.boostSurface(c, node, turnAxis) : null;
+        if (course.flips.length) node.rest = restOf(node, c.depth);
         node.position.x += c.x; node.position.y += c.y; node.position.z += c.z;
         node.smokeOpacity = 1;
         cloudNodes.push(node); addChild(routeRoot, node);
-        boostNodes.push(surface);
-        if (surface) {
-          surface.position.x = c.x; surface.position.y = c.y + 0.025; surface.position.z = c.z;
-          surface.smokeOpacity = 1;
-          addChild(routeRoot, surface);
+        boostNodes.push(surface); underNodes.push(under);
+        for (const arrows of [surface, under]) if (arrows) {
+          arrows.position.x = c.x; arrows.position.y = c.y + 0.025; arrows.position.z = c.z;
+          arrows.smokeOpacity = 1; arrows.visible = arrows === surface;
+          addChild(routeRoot, arrows);
         }
         const marker = c.kind === "bounce" ? BL.cloudHopperModels.bounceMarker() : null;
         bounceNodes.push(marker);
@@ -1016,11 +1053,14 @@
         node.smokeOpacity = opacity; node.visible = c.opacity > 0;
         // A portal cloud's gold glows with a soft pulse, and flashes as a rider touches it.
         if (c.kind === "portal") node.glow = 1 + 0.25 * Math.sin(displayTime * 5 + i) + (flashed === i ? 2.5 * Math.max(0, 1 - (displayTime - flashAt) / 0.3) : 0);
-        const surface = boostNodes[i];
+        const surface = boostNodes[i], under = underNodes[i];
         if (surface) {
-          surface.position.x = c.x; surface.position.y = c.y + c.lift + 0.025; surface.position.z = c.z;
-          surface.smokeOpacity = opacity; surface.visible = c.active;
-          BL.cloudHopperModels.updateBoostSurface(surface, displayTime);
+          // Its arrows show on whichever side is up, and on neither while it rolls over.
+          const arrows = turn === 0 || !under ? surface : under;
+          arrows.position.x = c.x; arrows.position.y = c.y + c.lift + 0.025; arrows.position.z = c.z;
+          arrows.smokeOpacity = opacity; arrows.visible = c.active && turning < 0;
+          if (under) (arrows === surface ? under : surface).visible = false;
+          BL.cloudHopperModels.updateBoostSurface(arrows, displayTime);
         }
         if (bounceNodes[i]) BL.cloudHopperModels.updateBounceMarker(bounceNodes[i], c, displayTime);
       }
@@ -1527,6 +1567,7 @@
       set.add(rope.geometry); set.add(hookNode.geometry); for (const t of tornadoes) t.liveGeometry(set); gust.liveGeometry(set);
       set.add(leaves[0].geometry);
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
+      for (const surface of underNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
       set.add(sparks[0].geometry);
       // Both fills of every cloud of a course whose world turns over: the swap between them is readied ahead.
