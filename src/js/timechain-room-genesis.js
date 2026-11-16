@@ -1424,11 +1424,13 @@
       const shelf = (k, b0, b1, steps) => { k.sector(0, rIn, rOut, b0, b1, y0, y1, "#3a3f4a", { steps }); k.sector(0, rIn, rIn + 0.04, b0, b1, y0 - 0.05, y1, C.steelDark, { steps }); k.sector(0, rIn - 0.006, rIn + 0.03, b0, b1, y0 - 0.075, y0 - 0.05, C.amber, { emissive: 0.9, glow: true, steps }); };
       for (const [b0, b1] of runs) shelf(K, b0, b1, Math.max(8, Math.round((b1 - b0) * 60)));
       K.node("ledgePortal", (k) => shelf(k, pa - pHalf, pa + pHalf, 24), 0, 0, 0);
-      const rSeat = rIn + 0.22, step = 1.25 / rSeat;
+      // SIT is how near a seat a body can take it (the interior's reach), so how wide a seat's own prompt is.
+      const rSeat = rIn + 0.22, step = 1.25 / rSeat, SIT = 1.3, E = L.exitButton, wake = portalSpot(L);
       for (const [b0, b1] of runs) for (let bb = b0 + step / 2; bb < b1 - step / 3; bb += step) {
         const az = Math.PI - bb, x = rSeat * Math.sin(az), z = -rSeat * Math.cos(az);
-        // None within the Exit button's reach: Space there walks out, so a seat beside it could never be taken.
-        if (Math.hypot(x - L.exitButton.x, z - L.exitButton.z) < L.exitReach + 1.3) continue;
+        // None whose prompt comes within its own width of the Exit button's, the same on both sides of the doorway, or
+        // of the portal's: where Space walks out or wakes the door, no seat is in reach or a step away.
+        if (Math.hypot(Math.abs(x) - Math.abs(E.x), z - E.z) < L.exitReach + SIT * 2 || Math.hypot(x - wake.x, z - wake.z) < PORTAL.prompt + SIT * 2) continue;
         const g = K.group(x, 0, z, headingTo(x, z, 0, 0) + Math.PI);
         // The standing spot is in front of the bench (a negative `back`): behind it is the room's edge.
         const place = g.seat(0, 0, 0, 0.45, 0, -0.9, "bench");
