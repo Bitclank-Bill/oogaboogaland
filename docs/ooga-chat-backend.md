@@ -289,8 +289,23 @@ zone and `AUDIENCE_LISTENERS` (500) listeners, proposals for #669 to measure, ne
 speaker. Leaving speaking, a real zone change, an expiry, a revocation or a closed socket end the lease and the hand.
 Choosing the zone already chosen changes nothing. A listener's `setMic` is refused.
 
+**Moving a voice.** A lease the same identity holds elsewhere gives way in two cases only, both named in `setRole`:
+- `takeover: true`, the visitor's own word (the app's voice switch prompt): another connection's lease ends, and its
+  page hears `{ type: "you", …, reason: "moved" }` and keeps listening. Where the island holds the voice, the Audience
+  first asks the Room to give it up (`ROOM.audienceHandoff(GitHub id)`): the Room clears that player's voice sessions,
+  tells its page `{ t: "voice-moved" }` (which leaves voice there) and everyone else its `vstate`, sends the Audience
+  the island's word without the account and only then answers, so the lease granted next is not ended by an older
+  word. A Room that can't be reached leaves the refusal `source_in_use`.
+- `replaces: <connection>`, a page back from a dropped socket naming the connection it held its lease under: that
+  connection, if it still holds the identity's lease, is closed (4409) and the lease asked for afresh. Any other
+  connection's lease refuses as before, so a page that comes back never takes a voice the visitor has since moved.
+
+Without either, `source_in_use` stands. `you.elsewhere` tells an eligible connection without a lease where its
+identity's voice is: `island`, or `app` for another of its connections; the Audience sends `you` again to an identity's
+other connections whenever the connection holding its lease changes.
+
 **The app's protocol** (audience protocol 1). Page: `{ type: "join", zone, protocol: 1 }`, `{ type: "resync", zone }`,
-`{ type: "setRole", requestId, role }`, `{ type: "setMic", requestId, muted }`. Server:
+`{ type: "setRole", requestId, role, takeover?, replaces? }`, `{ type: "setMic", requestId, muted }`. Server:
 
 ```json
 { "type": "snapshot", "zone": "main", "epoch": 1763120000000, "revision": 41,
@@ -304,14 +319,16 @@ Choosing the zone already chosen changes nothing. A listener's `setMic` is refus
 ```
 
 `you.speak` is `eligible`, `pending`, `active`, `denied` (eligible, but the island has this identity) or `none`; while a
-lease is held, `you.lease` is its generation, which the page names in its media calls (#654). A
+lease is held, `you.lease` is its generation, which the page names in its media calls (#654); without one,
+`you.elsewhere` (`island` or `app`) says the identity's voice is on another device. A `you` frame's `reason` is `moved`
+when the lease it ended went to another device on the visitor's word, or to the island's own voice. A
 delta's `revision` is always `base + 1` within an epoch; the epoch is fixed for the object's life (it changes only if its
 storage is reset), and each zone's revision is stored, so an object woken from hibernation carries on where it was and
 clients never resync for a nap. Generations follow the clock and only rise. A request repeated with the same
 `requestId` gets its first answer again. Close codes: 4401 (signed out, deleted, or the hourly re-authentication: the
 app checks its session and reconnects; a media call re-reads the session and eligibility at the edge and, while the
 account is still eligible, carries the connection's authorisation on from it, and a speaker's page makes one every 20
-minutes, so a held lease is never closed this way while the hourly check stays the backstop for a missed revocation), 4426 (another protocol), 4429 (full, too many tabs, or too many sockets
+minutes, so a held lease is never closed this way while the hourly check stays the backstop for a missed revocation), 4409 (replaced: the same page came back on a new connection and named this one), 4426 (another protocol), 4429 (full, too many tabs, or too many sockets
 lately), 4400 (an unreadable frame), 4503 (listening is off).
 
 **The island's panel** (`audience-v1`, advertised in the Room's `welcome` only with the bridge on and the binding): the
@@ -394,6 +411,19 @@ is open in a zone (#667) gets that zone's Ooga Chat speakers as voice peers by G
 `/api/voice/pull` by the Audience's reference alone (checked again after the SFU call), and loses them, closed at the
 SFU, when they stop. An island player without a grant never hears them. A chat speaker's id is never an island player's
 too: the island's own voice ends a chat lease first.
+
+**Overhearing on the island.** A signed-in island player who has not joined voice hears the main island's public
+conversation while their body stands in it. Their page opens a receive session by itself (`/api/voice/session` with
+`{ kind: "sub", passive: true }`), and the Room treats that session apart (`overhearing`): it hears no place and is in
+nobody's voice (no roster mark, never `active` to the Audience, so a lease the account holds in Ooga Chat stands). While
+its own outdoor grant is open in `main`, the Room lists for it exactly what Ooga Chat's listeners hear there: island
+players in voice with a live microphone and an open grant in `main`, and that zone's Ooga Chat speakers. Indoors, or
+with its grant closed, it hears nobody. A publishing session, or a receive session without `passive`, ends it.
+
+**Voice elsewhere, told to the island's page.** An island page whose account speaks from Ooga Chat (its id among the
+Audience's sources) hears so in its welcome (`voiceElsewhere: true`) and as it changes (`{ t: "voice-elsewhere", on }`):
+its voice then stays out instead of coming back by itself and ending that lease, and the page asks the visitor first
+(`voice-switch.js`).
 
 **Capacity, for #669 to measure.** Many listeners mainly cost SFU egress; many speakers cost each listener's decoding
 and downlink. The worst case to test is every island outdoor publisher (up to 32) plus 8 Ooga Chat speakers, 40
