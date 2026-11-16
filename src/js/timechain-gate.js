@@ -355,7 +355,7 @@
     const prepare = () => {
       const stamp = ++g.prep;
       g.stage = "load";
-      // Before the Block's code is a group of its own on the rooms' group (deferred.js `SCENE_BASE`).
+      // The Genesis Museum's code is a group of its own on the rooms' group (deferred.js `SCENE_BASE`).
       Promise.resolve(BL.deferred.load(g.room.kind === "genesis" ? "timechain-genesis" : "timechain")).then(() => {
         if (stamp !== g.prep) return null;
         g.prepared = BL.models.withScope("timechain", () => BL.timechainInterior.prepare(g.room.id, renderer));

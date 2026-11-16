@@ -60,7 +60,7 @@
         ["Movie Theater", "Recliners on a steep rake facing a dome that is all picture, the biggest room in the Sphere."],
         ["Block Party", "Live dance radio in a club of light: an LED floor and wall that move to the music, lasers on a truss, and a DJ booth to change the channel behind. The bass drops on every block."],
         ["Planetarium", "Tonight's sky over London on the whole dome, from reclining seats round the star projector."],
-        ["Before the Block", "The road to Bitcoin, 1974 to 2009: the technologies and events before the genesis block on a ring of plinths, the whitepaper in the middle, Block 0 at the end of the walk, a glass floor over a living map of the network, and the timeline round the dome."]
+        ["Genesis Museum", "The road to Bitcoin, 1974 to 2009: the technologies and events before the genesis block on a ring of plinths, the whitepaper in the middle, Block 0 at the end of the walk, a glass floor over a living map of the network, and the timeline round the dome."]
       ].map(([name, what], i) => ({ path: `sphere-${i}`, scene: "timechain", place: String(i), title: `Timechain Sphere · ${name}`, description: `${name}, room ${i} of the Timechain Sphere. ${what}` }))
     ]
   };

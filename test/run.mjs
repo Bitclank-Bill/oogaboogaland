@@ -21851,7 +21851,7 @@ const timechainRoomChecks = async () => {
   }
   record("timechain recovery: a rejected guided departure returns inside facing the room before closing doors and releasing control, while ordinary departures keep their pose",
     recovery.every(row => row.restored && row.recovered), JSON.stringify(recovery));
-  // A kind's own way into another room (Before the Block's door into the Mining Museum), on the production methods:
+  // A kind's own way into another room (the Genesis Museum's door into the Mining Museum), on the production methods:
   // the hand-over the keypad makes, and one the director refuses.
   const handing = `${methods}\n${interior.slice(interior.indexOf("    const handOffTo ="), interior.indexOf("    const stay ="))}`;
   const mining = R.ROOMS.find(r => r.kind === "mining").id, handed = [];
@@ -22729,9 +22729,9 @@ const timechainTrip = { name: "timechain round trip", why: "contract: a room lef
     laps.every(l => l.scene === "timechain" && l.room === 0 && l.timers === 0 && l.requests === 0) && grew.length === 0 && donated.scene === "timechain" && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25,
     JSON.stringify({ grew, donated, first: laps[0], second: laps[1] }));
 } };
-// Before the Block's door into the Mining Museum, walked by a solo visitor, and the room left with its reader open and
+// The Genesis Museum's door into the Mining Museum, walked by a solo visitor, and the room left with its reader open and
 // with a block half mined.
-const timechainPortal = { name: "timechain portal", why: "contract: Before the Block's door hands a solo visitor into the Mining Museum publishing nothing, and the room left with the reader open or a block half mined leaves nothing behind", run: async (b) => {
+const timechainPortal = { name: "timechain portal", why: "contract: the Genesis Museum's door hands a solo visitor into the Mining Museum publishing nothing, and the room left with the reader open or a block half mined leaves nothing behind", run: async (b) => {
   await b.evaluate(roomGo(8));
   const through = await b.evaluate(`(() => { const B = window.__ooga, N = BL.net, G = BL.timechainGenesis, zones = [], bodies = [], zone = N.setZone, body = N.setBody, mining = BL.timechainRooms.ROOMS.find(r => r.kind === "mining").id;
     N.setZone = (z) => { zones.push(z); return zone(z); }; N.setBody = (v) => { bodies.push(v); return body(v); };
@@ -22758,7 +22758,7 @@ const timechainPortal = { name: "timechain portal", why: "contract: Before the B
       && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
-// Into Before the Block, waiting across frames: its own code may still be on its way at a first arrival.
+// Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
 const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
 const timechainPaper = { name: "timechain paper", why: "regression: the whitepaper's standing page was drawn from the decoded strip, which is let go once its pages are cut, so the face stayed blank", run: async (b) => {
   // Dark pixels on the face's own canvas, read once it has been painted over its blank fill.
@@ -22831,7 +22831,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
   record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 1 && r.view === "first-person", JSON.stringify(r));
 } };
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
-// Before the Block's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
+// The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
 scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainPaper, timechainMark, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });

@@ -1,4 +1,4 @@
-// "Before the Block", Room 8 of the Timechain Sphere: the technologies and events of the thirty-four years before
+// The Genesis Museum, Room 8 of the Timechain Sphere: the technologies and events of the thirty-four years before
 // the genesis block, from the first packet-switching protocol to the last centralised e-money, in date order round a
 // ring of plinths with its gap at the door, so the walk runs from 1974 at the door's left round the room to 2008 at
 // its right. Each stands on a plinth with its plaque in the Mining Museum's dress (concrete, an amber band, the plaque
@@ -1008,7 +1008,7 @@
       box(head, a, elC, P.pixWidth(head, 0.4) + 0.2, 0.7);
     });
     // The band ends at 2008; the show draws the eye up from there to the cap (no line).
-    // The room's name over the front, high on the dome.
+    // The exhibition's title over the front, high on the dome.
     D.text(ctx, "BEFORE THE BLOCK", 0, B + 30, 1.0, C.white, 700);
     D.text(ctx, "THE ROAD TO BITCOIN · 1974 – 2009", 0, B + 27.4, 0.55, C.grey, 500);
     box("BEFORE THE BLOCK", 0, B + 30, 9, 1.0); box("THE ROAD TO BITCOIN", 0, B + 27.4, 9, 0.55);
@@ -1601,7 +1601,7 @@
     let px = 0, pz = 14;
     const carried = { x: 0, z: 0 };
     const look = (i) => BL.modelViewer.open({
-      title: "Before the Block", theme: "genesis", count: EXHIBITS.length, index: i,
+      title: "Genesis Museum", theme: "genesis", count: EXHIBITS.length, index: i,
       help: matchMedia("(pointer: coarse)").matches ? "Drag to turn it · pinch to zoom · the arrows for the next piece" : "Drag to turn it · scroll to zoom · ← → for the next piece",
       item: (n) => {
         const ex = EXHIBITS[n], link = LINK[ex.link];

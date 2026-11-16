@@ -1,4 +1,4 @@
-// The models of "Before the Block", Room 8 of the Timechain Sphere (timechain-room-genesis.js): one for each
+// The models of the Genesis Museum, Room 8 of the Timechain Sphere (timechain-room-genesis.js): one for each
 // technology and event on the road to Bitcoin, built as the museum's miners are (timechain-room-mining.js): in real
 // millimetres scaled 1.6 times (`mm`), every label and screen drawn as geometry so the model viewer shows them as
 // the hall does, every part laid on another at least LIFT proud of it so no two faces looking the same way share a

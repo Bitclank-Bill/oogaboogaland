@@ -59,7 +59,7 @@
     "!": [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100],
     "?": [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0, 0b00100],
     $: [0b00100, 0b01111, 0b10100, 0b01110, 0b00101, 0b11110, 0b00100],
-    // The signs Before the Block's screens and papers need (timechain-genesis-models.js): equals, caret, angle
+    // The signs the Genesis Museum's screens and papers need (timechain-genesis-models.js): equals, caret, angle
     // brackets, at, ampersand, square brackets and the backslash of a DOS prompt.
     "=": [0, 0, 0b11111, 0, 0b11111, 0, 0],
     "^": [0b00100, 0b01010, 0b10001, 0, 0, 0, 0],

@@ -79,7 +79,7 @@ On the island a locked room's number wears a padlock. Pressing it scrolls `ENTER
 
 ## From one room into another
 
-Before the Block (room 8) has a way of its own into the Mining Museum (room 2), a portal a visitor opens by a puzzle that is per viewer and local to the page. It adds nothing to this contract: the island's shared doorway is not crossed, so nothing is asked, granted or reserved; the page leaves room 8's zone and, once room 2 stands, sends the ordinary `zone` message for `sphere-2`, which the room checks as it checks any other (a locked room refuses it; only room 0 locks). A solo visit sends nothing, as ever. The room entered plays its ordinary guided arrival, and announces it with the ordinary `pass`.
+The Genesis Museum (room 8) has a way of its own into the Mining Museum (room 2), a portal a visitor opens by a puzzle that is per viewer and local to the page. It adds nothing to this contract: the island's shared doorway is not crossed, so nothing is asked, granted or reserved; the page leaves room 8's zone and, once room 2 stands, sends the ordinary `zone` message for `sphere-2`, which the room checks as it checks any other (a locked room refuses it; only room 0 locks). A solo visit sends nothing, as ever. The room entered plays its ordinary guided arrival, and announces it with the ordinary `pass`.
 
 ## Zones, presence and voice
 

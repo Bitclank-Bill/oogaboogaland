@@ -1552,7 +1552,7 @@
     dismissOutside(el.recipe, closeRecipe);
     dismissOutside(el.board, () => mainBoard.close());
     dismissOutside($("donation-popup"), () => BL.donationPopup.closeOutside());
-    // Before the Block (timechain-room-genesis.js): its Proof of Knowledge panel, which the room fills and shows, and
+    // The Genesis Museum (timechain-room-genesis.js): its Proof of Knowledge panel, which the room fills and shows, and
     // the whitepaper's reader, whose strip the room slides. The panel's own button hides it; the reader's closes it,
     // as a press outside it does.
     const genesis = { portal: $("genesis-portal"), body: $("genesis-portal-body"), reader: $("wp-reader"), view: $("wp-reader-view"), strip: $("wp-reader-strip"), thumb: $("wp-reader-thumb"), page: $("wp-reader-page"), about: $("wp-reader-about") };

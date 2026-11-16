@@ -5714,7 +5714,7 @@ body.tess-touring #joy-look {
 
 .model-info .board-link { text-align: left; }
 
-/* Before the Block's own colours (Abyss Aurora), as the Ember Den keeps its own: cream words on near-black panels,
+/* The Genesis Museum's own colours (Abyss Aurora), as the Ember Den keeps its own: cream words on near-black panels,
    a soft teal-blue for what can be pressed, gold for where a visitor stands in a run, Bitcoin's orange for the block. */
 .genesis-portal, .wp-reader, .model-modal {
   --gn-text: #efe6d2; --gn-gold: #ffd66b; --gn-hint: #ffb04d; --gn-btc: #f7931a; --gn-teal: #3db8cc; --gn-teal-text: #9be4ef; --gn-paper: #15120f;
