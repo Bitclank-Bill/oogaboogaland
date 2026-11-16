@@ -172,8 +172,10 @@
         ctx.fillStyle = DECK.frame; ctx.fillRect(u * 7, u * 32.4, W - u * 14, u * 0.35);
         for (let i = 0; i < up; i++) s.rows[i].forEach((cell, j) => { ctx.fillStyle = j ? DECK.soft : DECK.ink; P.fit(ctx, String(cell), cw - u * 3, j ? 400 : 600, u * 4.4); ctx.fillText(String(cell), u * 7 + j * cw, u * 39.5 + i * step); });
       } else if (k === "figure") {
-        const sc = (W - u * 14) / GRID.w;
-        for (const op of s.ops) if ((op.at || 0) <= local) cleanOp(ctx, P, op, u * 7, u * 23, sc);
+        // The grid as wide as the slide allows and no taller than the room between the heading and the foot, so a
+        // screen wider than it is tall for the grid draws the figure a little smaller, in the middle.
+        const sc = Math.min((W - u * 14) / GRID.w, u * 65 / GRID.figure);
+        for (const op of s.ops) if ((op.at || 0) <= local) cleanOp(ctx, P, op, (W - GRID.w * sc) / 2, u * 23, sc);
         ctx.setLineDash([]);
       } else if (k === "live") livePanel(ctx, P, W, H, u, s, meta);
       note(ctx, P, W, H, u, s.note);
@@ -264,8 +266,30 @@
   };
   // The board at `t`. `mark` ({ epoch, settled }) is what the canvas already holds: the same board with that many
   // strokes finished is only added to; anything else is painted afresh. Returns whether a stroke is still being drawn.
+  // A panel's drawing kept clear of its title and of the board's foot: how much smaller it is drawn (about the board's
+  // middle) and how far down it is moved, worked out once a panel from what its strokes cover. Most need neither.
+  const TOP = 14, FOOT = 87;
+  const fitOf = (timeline, E) => {
+    if (E.fit) return E.fit;
+    let lo = Infinity, hi = -Infinity;
+    for (let k = E.first; k < E.first + E.count; k++) {
+      const op = timeline.strokes[k].op, kind = LK.shapeOf(op), v = op[kind];
+      if (kind === "text") { const z = op.size || 5; lo = Math.min(lo, op.y - z * 0.85); hi = Math.max(hi, op.y + z * 0.35); }
+      else if (kind === "box") { lo = Math.min(lo, v[1]); hi = Math.max(hi, v[1] + v[3]); }
+      else if (kind === "circle" || kind === "ellipse") { const r = kind === "circle" ? v[2] : v[3]; lo = Math.min(lo, v[1] - r); hi = Math.max(hi, v[1] + r); }
+      else for (let i = 1; i < v.length; i += 2) { lo = Math.min(lo, v[i] - (op.t ? 4 : 0)); hi = Math.max(hi, v[i]); }
+    }
+    const top = E.title ? TOP : 3, k = hi > lo ? Math.min(1, (FOOT - top) / (hi - lo)) : 1;
+    // Scaled about the middle of the board, then moved only as far as it must be.
+    let dy = GRID.board / 2 * (1 - k);
+    if (lo * k + dy < top) dy = top - lo * k;
+    if (hi * k + dy > FOOT) dy = FOOT - hi * k;
+    return E.fit = { k, dx: GRID.w / 2 * (1 - k), dy };
+  };
   const board = (ctx, W, H, P, timeline, epoch, t, mark) => {
-    const E = epoch >= 0 ? timeline.epochs[epoch] : null, s = Math.min(W / GRID.w, H / GRID.board), x0 = (W - GRID.w * s) / 2, y0 = (H - GRID.board * s) / 2;
+    const E = epoch >= 0 ? timeline.epochs[epoch] : null;
+    let s = Math.min(W / GRID.w, H / GRID.board), x0 = (W - GRID.w * s) / 2, y0 = (H - GRID.board * s) / 2;
+    if (E) { const f = fitOf(timeline, E); x0 += f.dx * s; y0 += f.dy * s; s *= f.k; }
     if (!E) { if (mark.epoch !== -1 || mark.settled !== -1) { boardIdle(ctx, W, H, P); mark.epoch = -1; mark.settled = -1; } return false; }
     const K = timeline.strokes, first = E.first, end = first + E.count;
     let settledAt = first;
