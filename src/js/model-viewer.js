@@ -17,6 +17,18 @@
   const eye = { x: 0, y: 0, z: 0 }, middle = { x: 0, y: 0, z: 0 }, reach = { x: 0, z: 0 }, UP = { x: 0, y: 1, z: 0 };
   const matrix = mat4.create(), V = new Float32Array(3);
   let els = null, set = null, index = 0, ctx = null, width = 0, height = 0, dpr = 1, pending = 0, radius = 1, floor = 0, tree = null;
+  // A page instead of a model (`item.image`, a data URL): drawn to fit, zoomed with the wheel and panned by dragging.
+  let page = null;
+  const pages = new Map(), pan = { x: 0, y: 0 };
+  const pageImage = (url) => { let img = pages.get(url); if (!img) { img = new Image(); img.onload = () => redraw(); img.src = url; pages.set(url, img); } return img; };
+  const drawPage = () => {
+    const img = pageImage(page);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#1a1612"; ctx.fillRect(0, 0, width, height);
+    if (!img.complete || !img.naturalWidth) return;
+    const k = Math.min(width / img.naturalWidth, height / img.naturalHeight) * view.zoom, w = img.naturalWidth * k, h = img.naturalHeight * k;
+    ctx.drawImage(img, (width - w) / 2 + pan.x, (height - h) / 2 + pan.y, w, h);
+  };
   const pointers = new Map();
   let pinch = 0;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -158,8 +170,10 @@
   };
   const paint = () => {
     pending = 0;
-    if (!els || !els.dialog.open || !tree) return;
+    if (!els || !els.dialog.open) return;
     fit();
+    if (page) { drawPage(); return; }
+    if (!tree) return;
     const d = radius / Math.sin(FOV / 2) * 0.94 / view.zoom, c = Math.cos(view.pitch), f = height / 2 / Math.tan(FOV / 2);
     eye.x = middle.x + Math.sin(view.yaw) * c * d;
     eye.y = middle.y + Math.sin(view.pitch) * d;
@@ -202,13 +216,15 @@
   const show = (i) => {
     index = (i + set.count) % set.count;
     const item = set.item(index);
-    tree = treeOf(item.geometry);
-    frame(item.geometry);
+    page = item.image || null;
+    pan.x = pan.y = 0;
+    if (page) { tree = null; } else { tree = treeOf(item.geometry); frame(item.geometry); }
+    els.canvas.classList.toggle("model-page", !!page);
     Object.assign(view, START);
     els.kicker.textContent = item.kicker || "";
     els.name.textContent = item.name;
     els.text.textContent = item.text || "";
-    els.canvas.setAttribute("aria-label", `${item.name}, in 3D: drag to turn it`);
+    els.canvas.setAttribute("aria-label", page ? `${item.name}: the page, scroll to zoom, drag to move it` : `${item.name}, in 3D: drag to turn it`);
     const rows = [];
     for (const [label, value] of item.stats || []) {
       const dt = document.createElement("dt"), dd = document.createElement("dd");
@@ -223,21 +239,32 @@
       a.className = "board-link"; a.href = l.href; a.textContent = l.label; a.target = "_blank"; a.rel = "noopener noreferrer";
       return a;
     });
+    // An item's own buttons (`buttons`: a label and `run`), in a row under its picture; `onImage`, what a press on its
+    // page does.
+    const buttons = (item.buttons || []).map((b) => { const el = document.createElement("button"); el.type = "button"; el.className = "model-button"; el.textContent = b.label; el.addEventListener("click", () => b.run()); return el; });
+    els.actions.replaceChildren(...buttons);
+    els.actions.hidden = !buttons.length;
+    onImage = page && item.onImage || null;
+    els.canvas.classList.toggle("model-page-link", !!onImage);
     els.links.replaceChildren(...links);
     els.links.hidden = !links.length;
     els.count.textContent = `${index + 1} / ${set.count}`;
     els.prev.disabled = els.next.disabled = set.count < 2;
     redraw();
   };
-  const turn = (dx, dy) => { view.yaw += dx; view.pitch = clamp(view.pitch + dy, PITCH[0], PITCH[1]); redraw(); };
+  const turn = (dx, dy) => { if (page) { pan.x += dx * 220; pan.y += dy * 220; redraw(); return; } view.yaw += dx; view.pitch = clamp(view.pitch + dy, PITCH[0], PITCH[1]); redraw(); };
   const zoom = (k) => { view.zoom = clamp(view.zoom * k, ZOOM[0], ZOOM[1]); redraw(); };
+  let onImage = null, press = null;
   // The dialog's own wiring, made the first time it opens.
   const wire = () => {
     const $ = (id) => document.getElementById(id);
     els = { dialog: $("model-modal"), title: $("model-title"), canvas: $("model-canvas"), kicker: $("model-kicker"), name: $("model-name"), text: $("model-text"),
       stats: $("model-stats"), note: $("model-note"), links: $("model-links"), count: $("model-count"), prev: $("model-prev"), next: $("model-next"), help: $("model-help"), close: $("model-close") };
+    els.actions = document.createElement("div");
+    els.actions.className = "model-actions"; els.actions.hidden = true;
+    els.help.parentNode.insertBefore(els.actions, els.help);
     const c = els.canvas;
-    c.addEventListener("pointerdown", (e) => { c.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; });
+    c.addEventListener("pointerdown", (e) => { c.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; press = pointers.size === 1 ? { x: e.clientX, y: e.clientY } : null; });
     c.addEventListener("pointermove", (e) => {
       const p = pointers.get(e.pointerId);
       if (!p) return;
@@ -250,6 +277,8 @@
       }
     });
     const lift = (e) => { pointers.delete(e.pointerId); pinch = 0; };
+    // A press that did not drag, on a page with something to open.
+    c.addEventListener("pointerup", (e) => { const p = press; press = null; if (p && onImage && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 5) onImage(); });
     c.addEventListener("pointerup", lift);
     c.addEventListener("pointercancel", lift);
     c.addEventListener("wheel", (e) => { e.preventDefault(); zoom(Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
@@ -272,12 +301,14 @@
       else return;
       e.preventDefault();
     });
-    els.dialog.addEventListener("close", () => { pointers.clear(); if (pending) cancelAnimationFrame(pending); pending = 0; set = null; tree = null; order.length = styles.length = 0; });
+    els.dialog.addEventListener("close", () => { pointers.clear(); pages.clear(); page = null; if (pending) cancelAnimationFrame(pending); pending = 0; set = null; tree = null; order.length = styles.length = 0; });
     window.addEventListener("resize", () => { if (els.dialog.open) redraw(); });
   };
   const open = (next) => {
     if (!els) wire();
     set = next;
+    // A room's own dress for the dialog (`theme`): the Genesis room puts every block of words on a dark panel.
+    els.dialog.classList.toggle("model-genesis", next.theme === "genesis");
     els.title.textContent = next.title;
     els.help.textContent = next.help || "Drag to turn it · scroll or pinch to zoom · ← → for the next one";
     if (document.pointerLockElement) document.exitPointerLock();
