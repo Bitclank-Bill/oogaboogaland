@@ -30738,7 +30738,7 @@ const persistentPanel = (BL, net, saved = new Map()) => {
     setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] ?? null; },
     querySelector: () => make(),
     closest(sel) { return this.className.split(" ").includes(sel.slice(1).split("[")[0]) && (!sel.includes("[data-slot]") || this.dataset.slot !== undefined) ? this : null; } });
-  const body = make(); for (const id of ["players-reactions", "chat-reactions"]) ids.set(id, make());
+  const body = make(); for (const id of ["players-reactions", "chat-reactions", "roster-reactions"]) ids.set(id, make());
   const context = { window: { BL: { reactionPolicy: BL.reactionPolicy, emojiData: BL.emojiData, net }, addEventListener() {},
     setTimeout: fn => { timers.set(nextTimer, fn); return nextTimer++; }, clearTimeout: id => timers.delete(id), matchMedia: () => ({ matches: true }) },
     document: { createElement: make, getElementById: id => ids.get(id), body, addEventListener() {}, removeEventListener() {} },

@@ -476,8 +476,13 @@
     const note = make("p", "help oc-roster-note");
     note.hidden = true;
     const account = accountRow(ctx);
-    node.append(note, account.node);
+    // The emoji panel under the list, as the island's Contributing Oogas has it.
+    const reactions = make("div", "reactions");
+    node.append(reactions, note, account.node);
+    ctx.reactions.bars.mount(reactions, { handAllowed: () => ctx.media.state.role === "speaker" });
     const { stateAt, ageAt } = BL.rosterPanel, faces = BL.oogaChatFaces, town = ctx.commons.model;
+    // Who speaks from Ooga Chat now, by login, from the audience's list: their dots are Ooga Chat's purple.
+    let speakers = new Set(), heard = -1;
     const people = new Map();
     let panel = null, names = "", reading = null, fetchedAt = 0, loading = false, timer = 0, sheet = null;
     const face = (contributor) => {
@@ -494,6 +499,7 @@
     };
     const stampOf = (c) => c.lastContributionAt || c.lastCommitAt;
     const online = (row) => {
+      if (speakers.has(row.contributor.login)) return "cloud";
       for (const p of town.state.players.values()) if (p.login.toLowerCase() === row.contributor.login) return true;
       return false;
     };
@@ -565,6 +571,12 @@
     const update = (state) => {
       watch();
       account.update(state);
+      if (state.audience.version === heard) return;
+      heard = state.audience.version;
+      const next = appSpeakers(state.audience.list).map((p) => p.login.toLowerCase());
+      if (next.length === speakers.size && next.every((login) => speakers.has(login))) return;
+      speakers = new Set(next);
+      if (panel) for (const row of panel.rows.values()) panel.showOnline(row);
     };
     const dispose = () => {
       clearInterval(timer);
@@ -592,6 +604,8 @@
   // Ooga is not on the island (the Room lists only the island's players, worker/src/room-commons.js).
   const onlineCount = (model) => model.state.players.size + (model.state.you && !model.state.players.has(model.state.you.id) ? 1 : 0);
   const commonsChip = (status, model) => status === "live" ? `${onlineCount(model)} online` : status === "closed" ? "Closed" : "Offline";
+  // Ooga Chat's own speakers in the audience's list: the ones on clouds, purple wherever a panel marks them.
+  const appSpeakers = (list) => list.filter((p) => p.role === "speaker" && p.source === "app");
   const panelHead = (title) => {
     const heading = make("span", "", title), chip = make("span", "panel-chip");
     heading.dataset.sign = "";
@@ -734,20 +748,24 @@
     const { header, chip } = panelHead("Online Oogas");
     const list = make("div", "players slab oc-players"), note = make("p", "help players-status");
     const account = accountRow(ctx);
-    const node = make("section", "panel oc-panel oc-online", header, list, note, account.node);
+    // The emoji panel under the list, as the island's Online Oogas has it.
+    const reactions = make("div", "reactions");
+    const node = make("section", "panel oc-panel oc-online", header, list, reactions, note, account.node);
     node.dataset.panel = "players";
+    ctx.reactions.bars.mount(reactions, { handAllowed: () => ctx.media.state.role === "speaker" });
     // A row as the island's players.js makes one (the dots, the name, the hand's column, the voice mark), less the link,
-    // the crosshair, the distance and the volume, which only the island offers.
+    // the crosshair, the distance and the volume, which only the island offers. An Ooga Chat speaker's dot is purple.
     const row = (r) => {
       const p = r.p, dots = make("span", "roster-dots"), presence = make("span", "roster-presence"), host = make("span", "roster-host");
-      presence.dataset.online = "true";
+      presence.dataset.online = r.cloud ? "cloud" : "true";
       presence.setAttribute("role", "img");
-      presence.setAttribute("aria-label", "Online");
+      presence.setAttribute("aria-label", r.cloud ? "Speaking from Ooga Chat" : "Online");
+      presence.title = presence.getAttribute("aria-label");
       host.hidden = true;
       dots.append(presence, host);
       const label = make("span", "roster-label", p.display);
       label.title = `@${p.login}`;
-      const hand = p.hand ? p.handEmoji || BL.reactionPolicy.HANDS[p.handTone] : "";
+      const hand = p.hand ? p.handEmoji || BL.reactionPolicy.HANDS[p.handTone || 0] : "";
       const raised = make("span", "players-hand", hand);
       raised.hidden = !hand;
       raised.setAttribute("role", "img");
@@ -767,7 +785,16 @@
       if (node.closest("[hidden]")) return;
       const you = model.state.you, rows = [];
       for (const p of model.state.players.values()) rows.push({ id: p.id, name: p.display, group: BL.zoneMap.groupOf(p.zone), self: !!you && p.id === you.id, p });
-      if (you && !model.state.players.has(you.id)) rows.push({ id: you.id, name: you.display, group: APP, self: true, p: { ...you, hand: false, voice: false, muted: false } });
+      // Ooga Chat's speakers sit on Main Island's clouds, so they are listed with the island's own, as the island lists
+      // them: a row of their own with a purple dot, the member's own included while they speak.
+      let speaking = false;
+      for (const a of cloud) {
+        const self = a.id === me;
+        speaking = speaking || self;
+        rows.push({ id: a.id, name: a.display, group: BL.zoneMap.groupOf("outside"), self, cloud: true,
+          p: { login: a.login, display: a.display, hand: !!a.hand, handEmoji: a.hand, voice: true, muted: a.muted } });
+      }
+      if (you && !speaking && !model.state.players.has(you.id)) rows.push({ id: you.id, name: you.display, group: APP, self: true, p: { ...you, hand: false, voice: false, muted: false } });
       const mine = rows.find((r) => r.self)?.group || null;
       BL.zoneMap.arrange(rows, mine);
       const groups = [];
@@ -781,7 +808,7 @@
       }
       list.replaceChildren(...groups.map((g) => g.section));
     };
-    let status = "off";
+    let status = "off", cloud = [], me = "", heard = -1;
     const off = model.subscribe((kind) => { if (kind === "players" || kind === "welcome") { draw(); paint(); } });
     const watch = onShown(node, draw);
     const paint = () => {
@@ -796,6 +823,12 @@
     const update = (state) => {
       watch();
       account.update(state);
+      if (state.audience.version !== heard) {
+        heard = state.audience.version;
+        cloud = appSpeakers(state.audience.list);
+        me = state.session ? state.session.identity.participant : "";
+        draw();
+      }
       if (state.commons.status === status) return;
       status = state.commons.status;
       paint();
