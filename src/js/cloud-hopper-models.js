@@ -186,9 +186,18 @@
     geometry.castShadow = false; geometry.cutawayPreserve = true;
     return geometry;
   });
+  // A portal cloud (Storm's Eye): bright gold, glowing a little by itself so it reads against the sunrise and the
+  // eyewall's own gold, with amber in its shade. No other cloud or pickup is gold.
+  const portalCloud = M.variants((index) => {
+    const geometry = M.merge(BL.hubModels.cloud(index));
+    const light = BL.math.hexToRgb("#ffc91a"), shade = BL.math.hexToRgb("#e08a00");
+    for (const face of geometry.faces) { const lit = face.color[0] > 235; face.color = lit ? light : shade; face.emissive = lit ? 0.55 : 0.4; }
+    geometry.castShadow = false; geometry.cutawayPreserve = true;
+    return geometry;
+  });
   const nightCloud = night(BL.hubModels.cloud), nightBounce = night(bounceCloud), nightBoost = night(boostCloud);
   const cloudMesh = (index, kind = "normal", dark = false) => kind === "bounce" ? (dark ? nightBounce : bounceCloud)(index)
-    : kind === "boost" ? (dark ? nightBoost : boostCloud)(index) : (dark ? nightCloud : BL.hubModels.cloud)(index);
+    : kind === "boost" ? (dark ? nightBoost : boostCloud)(index) : kind === "portal" ? portalCloud(index) : (dark ? nightCloud : BL.hubModels.cloud)(index);
   const cloud = (rx, rz, depth, kind = "normal", yaw = 0, dark = false) => {
     const across = rz > rx, aspect = Math.max(rx, rz) / Math.min(rx, rz);
     const index = aspect < 1.35 ? 0 : aspect < 1.85 ? 1 : 2;
@@ -199,9 +208,18 @@
     const px = across ? z : x, pz = across ? -x : z, c = Math.cos(yaw), s = Math.sin(yaw);
     // Scale the node so the shared mesh and its voxel-detail grid stay untouched.
     // Rotate the centring offset too, keeping each cloud over its support centre.
+    // `mesh` keeps which shape and kind it is, for `relight`.
     return createNode({ geometry, position: { x: c * px + s * pz, y: -b.max[1] * sy, z: c * pz - s * px },
-      rotation: { x: 0, y: yaw + (across ? Math.PI / 2 : 0), z: 0 }, scale: { x: sx, y: sy, z: sz }, matrixCloud: true, sightHidden: true });
+      rotation: { x: 0, y: yaw + (across ? Math.PI / 2 : 0), z: 0 }, scale: { x: sx, y: sy, z: sz }, matrixCloud: true, sightHidden: true, mesh: [index, kind] });
   };
+  // Gives a cloud its night fill or takes it away (the shapes are the same, so nothing else of it changes).
+  const relight = (node, dark) => { node.geometry = cloudMesh(node.mesh[0], node.mesh[1], dark); };
+  // A sparkle of a portal's warp: a small violet gem, glowing.
+  const sparkle = M.cached(() => {
+    const geometry = M.merge(M.box({ w: 0.5, h: 0.5, d: 0.5, color: "#a35cff", emissive: 1 }), M.box({ w: 0.24, h: 0.8, d: 0.24, color: "#e3ccff", emissive: 1 }));
+    geometry.castShadow = false; geometry.fogPierce = 0.6;
+    return geometry;
+  });
   const boostTexture = M.cached(() => {
     const frames = [], size = 192, period = 24;
     for (let frame = 0; frame < BOOST_FRAMES; frame++) {
@@ -394,9 +412,7 @@
       } else if (kind === "tornado") {
         addChild(root, BL.cloudHopperTornado.still());
       } else if (kind === "portal") {
-        const gate = portal();
-        updatePortal(gate, { x: 0, z: 0, top: 0, opacity: 1 }, 0.9);
-        addChild(root, cloud(2.7, 2.7, 1.6), gate);
+        addChild(root, cloud(2.7, 2.7, 1.6, "portal"));
       } else if (kind === "gust") {
         addChild(root, cloud(2.7, 1.9, 1.6), createNode({ geometry: gustStrokes() }));
       } else if (kind === "jetpack") {
@@ -482,31 +498,6 @@
     };
     return { picture, dispose };
   };
-  // A portal over its cloud (Storm's Eye): three rings turning through each other like a gyroscope, each its own
-  // colour and glowing, PORTAL_LIFT metres over the cloud's top.
-  const PORTAL_LIFT = 2.6, PORTAL_RINGS = [[2.1, "#5ff5ff"], [1.65, "#b98cff"], [1.2, "#fff3c4"]];
-  const portalRings = M.cached(() => PORTAL_RINGS.map(([r, color]) => {
-    const geometry = M.ring({ r, thickness: 0.11, segments: 20, color, emissive: 0.9 });
-    geometry.castShadow = false; geometry.cutawayPreserve = true; geometry.fogPierce = 0.6;
-    return geometry;
-  }));
-  const portal = () => {
-    const node = createNode({ sightHidden: true });
-    for (const geometry of portalRings()) addChild(node, createNode({ geometry, sightHidden: true }));
-    return node;
-  };
-  // Stands it over `cloud` and turns its rings: quicker and swollen as it tells (`quick` 0 to 1), slow and shrunk while
-  // it is tired (`tired` 0 to 1). `shown` is its opacity, with its cloud's.
-  const updatePortal = (node, cloud, time, quick = 0, tired = 0, shown = 1) => {
-    node.position.x = cloud.x; node.position.y = cloud.top + PORTAL_LIFT; node.position.z = cloud.z;
-    node.visible = cloud.opacity > 0 && shown > 0;
-    const size = 1 + 0.3 * quick - 0.35 * tired, turn = time * (1.1 + 5 * quick - 0.8 * tired);
-    node.scale.x = node.scale.y = node.scale.z = size;
-    for (let i = 0; i < node.children.length; i++) {
-      const ring = node.children[i];
-      ring.rotation.x = Math.PI / 2 + turn * (i === 1 ? -0.7 : 1) + i * 1.1; ring.rotation.y = turn * (0.6 + i * 0.35); ring.smokeOpacity = shown < 1 ? shown : undefined;
-    }
-  };
-  BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, portal, updatePortal, pickup, jetpackPickup: () => pickup("jetpack"),
+  BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, relight, sparkle, pickup, jetpackPickup: () => pickup("jetpack"),
     updateJetpackPickup, hookHead, rope, leaf, wornGoggles, cabinet, updateCabinet, createGuidePictures };
 })();

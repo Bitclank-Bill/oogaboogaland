@@ -373,6 +373,11 @@
       toneCue("sine", 70, 190, 2, 0.2); airCue(200, 2600, 2, 0.16, 0.8); toneCue("triangle", 520, 1040, 0.5, 0.06, 1.7);
     };
     const turned = (on) => { if (music) music.turned(on); };
+    // A portal's warp: a quick bright sweep up as the sparkles streak off and a soft one back down as the rider comes out.
+    const warp = () => {
+      if (!ready()) return;
+      toneCue("triangle", 440, 1760, 0.22, 0.09); airCue(1200, 5200, 0.25, 0.08, 2); toneCue("sine", 1320, 660, 0.3, 0.07, 0.24);
+    };
     const gustWarn = () => {
       if (!ready()) return;
       airCue(240, 1500, BL.cloudHopperGust.WARN, 0.16, 0.9); airCue(900, 3200, BL.cloudHopperGust.WARN, 0.05, 4, 0.4);
@@ -441,7 +446,7 @@
       rainGain = roarGain = roarHowl = gustGain = gustWhistle = null;
     };
     return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain,
-      tornado, tornadoForm, gust, gustWarn, turnOver, turned, stop, dispose };
+      tornado, tornadoForm, gust, gustWarn, turnOver, turned, warp, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();

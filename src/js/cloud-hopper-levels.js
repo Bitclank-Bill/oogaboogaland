@@ -9,8 +9,8 @@
 // with its `fog` [near, far] haze, its `scenery` (cloud-hopper-sky.js) and whether `tornado`es form in it
 // (cloud-hopper-tornado.js). A layout's `xray`, `updraft` and `hook`
 // are how many of each power-up its course carries (plan 3), its `gusts` how many gusts of wind blow across it
-// (cloud-hopper-gust.js), and its `flips` and `climb` where its portals stand and how far overhead each next section
-// starts (cloud-hopper-course.js).
+// (cloud-hopper-gust.js), and its `flips` and `portals` where its world turns over and how many portal clouds it
+// carries (cloud-hopper-course.js).
 // `courseVersion` changes whenever a level's challenge does, as does that board's registry version.
 (() => {
   "use strict";
@@ -41,13 +41,15 @@
       { permanent: 0.5, ordinary: [13.9, 33.2], warn: 1.5, fade: 0.625, hidden: [3, 4.5], spine: 4, pace: 3.4, reach: 0.8 }),
     // The storm's eye at sunrise, clear to the eyewall round it, a small step past Thunderhead on every count: the
     // longest route with fewer clouds further apart, smaller and swinging a little wider and faster, more of them
-    // fading on shorter lives and warnings, four gusts with Thunderhead's tornadoes. Two portals (`flips`) cut it into
-    // three sections: a touch turns the whole world over and the next section stands `climb` metres overhead, reached
-    // by jetpack; the first portal stands still and the second dodges. Its fairness counts on 90% of a running jump.
+    // fading on shorter lives and warnings, four gusts with Thunderhead's tornadoes. Twice a run the whole world turns
+    // over, unannounced, at a place seeded with the course in each of its `flips` stretches: the first leaves it
+    // upside down and the second upright again. It changes nothing of the course, which is one path from start to
+    // finish whichever way up the world is. Two gold portal clouds (`portals`), fast and short-lived, each throw a
+    // rider about 50 m on. Its fairness counts on 90% of a running jump.
     level(5, "Storm's Eye", { hour: 6.6, clouds: 0.6, storm: 0.35, scenery: "eye", tornado: true }, 0.34,
       { step: 13.2, main: [2.6, 0.85, 1.8, 0.65], side: [2.7, 0.65, 2, 0.45], turn: 52, sway: 8, lane: [5.3, 3.2], speed: [0.95, 0.65],
-        sides: 0.12, boost: 0.27, bounce: 0.22, twoPacks: 1, xray: 3, updraft: 2, hook: 2, gusts: 4, flips: [0.34, 0.67], climb: 18 },
-      { permanent: 0.48, ordinary: [12.8, 30.6], warn: 1.4, fade: 0.6, hidden: [3, 4.5], spine: 4, pace: 3.5, reach: 0.9 })
+        sides: 0.12, boost: 0.27, bounce: 0.22, twoPacks: 1, xray: 3, updraft: 2, hook: 2, gusts: 4, flips: [[0.26, 0.4], [0.6, 0.74]], portals: 2 },
+      { permanent: 0.48, ordinary: [12.8, 30.6], warn: 1.4, fade: 0.6, hidden: [3, 4.5], stagger: 2.5, spine: 4, pace: 3.5, reach: 0.9 })
   ]);
   BL.cloudHopperLevels = { LEVELS, BASE_ROUTE, GROWTH, get: id => LEVELS[id - 1] || null };
 })();

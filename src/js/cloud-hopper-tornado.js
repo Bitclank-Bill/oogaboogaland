@@ -126,8 +126,6 @@
     let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
     let girth = THIN, power = WEAK, seen = 1, seenNear = Infinity, seenFar = Infinity;
-    // The section of the course it stands in (Storm's Eye's world turns over between them).
-    let section = 0;
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
     // lightning: the next strike, the last and how bright that one's flash is where the eye stands.
     let homeX = 0, homeZ = 0, heading = 0, wander = 0, w1 = 0, w2 = 0, strikeNext = 0, strikeAt = -1, strikeLevel = 0;
@@ -180,7 +178,6 @@
       const fx = goalX - best.x, fz = goalZ - best.z, d = Math.hypot(fx, fz) || 1, sx = -fz / d * spot.side, sz = fx / d * spot.side;
       const drift = range(DRIFT), dx = -sx + sz * (rand() - 0.5) * 0.4, dz = -sz - sx * (rand() - 0.5) * 0.4, l = Math.hypot(dx, dz);
       begin(best.x + sx * spot.off, best.top, best.z + sz * spot.off, dx / l, dz / l, drift, best.x, best.z);
-      section = best.section || 0;
       return true;
     };
     // How much nearer the goal the rider is than the tornado (m).
@@ -291,7 +288,6 @@
         spots.push({ landing: best, side: rand() < 0.5 ? -1 : 1, off: range(SIDE) });
       }
       if (only >= 0) { spots[0] = spots[only]; spots.length = 1; rand = mulberry32(seed ^ 0x51ed270b ^ Math.imul(only + 1, 0x9e3779b9)); }
-      section = spots[0]?.landing?.section || 0;
     };
     const clear = (whirl = null) => { state = IDLE; made = spots.length; strength = 0; strikeAt = -1; kept = false; if (whirl) whirl.strength = 0; hide(); };
     const hold = (on) => { kept = on; };
@@ -302,7 +298,7 @@
     return { start, update, clear, hold, spawn, axisAt, radiusAt, dispose, liveGeometry,
       get active() { return state !== IDLE; }, get down() { return strength > 0; }, get strength() { return strength; },
       get forming() { return state === FORMING ? ease(age / FORM) : 0; }, get top() { return top; }, get bottom() { return top - LENGTH; },
-      get vx() { return vx; }, get vz() { return vz; }, get state() { return state; }, get section() { return section; },
+      get vx() { return vx; }, get vz() { return vz; }, get state() { return state; },
       // Its lightning's flash where the eye stands, 0 to 1, for the sky.
       get flash() { return strikeAt < 0 ? 0 : Math.max(0, 1 - (clock - strikeAt) / 0.3) * strikeLevel; } };
   };

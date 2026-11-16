@@ -5488,11 +5488,11 @@ const cloudHopperFailureChecks = async engine => {
     cloudHopperTornado: { SPOTS: [0.5], create: () => ({ start: noop, update: noop, clear: noop, axisAt: noop, radiusAt: () => 0, dispose: noop, liveGeometry: noop, active: false, down: false, strength: 0, forming: 0, flash: 0 }) },
     cloudHopperGust: { WARN: 2.5, create: () => ({ start: noop, update: noop, clear: noop, dispose: noop, liveGeometry: noop, state: "calm", active: false, strength: 0, warning: 0, pushX: 0, pushZ: 0 }) },
     cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
-      portal: () => S.createNode(), updatePortal: noop,
+      relight: noop, sparkle: () => null, wornGoggles: () => S.createNode(),
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
       rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
     cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song(index) { audioSong = index; }, jump: noop, fade: noop, warn: noop, jet: noop,
-      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop, turnOver: noop, turned: noop,
+      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop, turnOver: noop, turned: noop, warp: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
       stop() { audioStage = ""; audioLevel = 0; audioStops++; }, dispose() { audioDisposed = true; } }) },
@@ -6091,101 +6091,262 @@ const cloudHopperFailureChecks = async engine => {
     leavingMusic, leftMusic, reentryMusic, gradualAscent, audioDisposed };
   record("Cloud Hopper music: the dock fades a light bed, the full climb gradually raises it, results and replay retain it, and leaving the dock or scene stops it",
     Object.values(musicRows).every(Boolean), JSON.stringify(musicRows));
-  // Storm's Eye's course: two portals cut it into three sections, each starting higher than the portal before it;
-  // only the live section's clouds hold, catch or save a rider; the ground round a portal stands still and never
-  // fades; and Levels 1 to 4 have no portals at all.
+  // Storm's Eye's course is one path that never depends on a flip or a portal: its clouds are the very same with or
+  // without them, a flip is only a place along the way, and every cloud that shows can be landed on at any time. Its
+  // two flips sit at places seeded with the course, clear of its ends and apart. Its two portal clouds are gold, far
+  // faster than any other cloud and on a far shorter clock, no check counts on them, and each throws a rider to a
+  // landing about 50 m on that stands. Levels 1 to 4 have neither.
   {
     const C = BL.cloudHopperCourse, five = LEVELS[4], radius = 42 + five.route;
-    const make = (seed) => C.create({ start: { x: radius, y: 20 + five.slope * five.route, z: 0 }, finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed, layout: five.layout, timing: five.timing });
-    const rows = { noneBefore: LEVELS.slice(0, 4).every(l => !(l.layout.flips?.length)), sections: true, firm: true, climbs: true, gated: true, saved: true, evades: true, tired: true, calm: true };
-    for (const seed of [5, 11, 23]) {
-      const course = make(seed), order = course.clouds.filter(c => c.main).sort((a, b) => a.arrival - b.arrival);
-      rows.sections &&= course.flips.length === 2 && course.flips.every((f, k) => f.cloud.kind === "portal" && f.cloud.section === k && f.evasive === (k === 1) && f.perches.length === (k ? 2 : 0))
-        && [0, 1, 2].every(k => course.clouds.some(c => c.section === k)) && course.clouds.length <= C.MAX_CLOUDS;
-      for (const flip of course.flips) {
-        const at = order.indexOf(flip.cloud), ground = [order[at - 1], flip.cloud, order[at + 1], order[at + 2], ...flip.perches];
-        rows.firm &&= ground.every(c => c.life === PERMANENT && c.firm && c.moveRange < 0.01 && (c === flip.cloud || c.kind === "normal"))
-          && !course.pickups.some(p => ground.includes(p.cloud));
-        const rise = order[at + 1].y - flip.cloud.y, ahead = Math.hypot(order[at + 1].baseX - flip.cloud.baseX, order[at + 1].baseZ - flip.cloud.baseZ);
-        // A full tank lifts 56 m at the pack's rise; the climb is well inside the 70% a portal leaves.
-        rows.climbs &&= rise > 8 && rise < five.layout.climb && ahead < 20 && order[at + 1].section === flip.cloud.section + 1;
+    const make = (seed, layout = five.layout) => C.create({ start: { x: radius, y: 20 + five.slope * five.route, z: 0 }, finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed, layout, timing: five.timing });
+    const base = (course) => JSON.stringify([course.clouds.filter(c => c.kind !== "portal").map(c => [c.baseX, c.y, c.baseZ, c.rx, c.rz, c.kind, c.life, c.t0, c.slotSeconds, c.yaw, c.moveRange, c.moveSpeed]),
+      course.pickups.map(p => [p.kind, p.cloud.baseX, p.cloud.y])]);
+    const rows = { noneBefore: LEVELS.slice(0, 4).every(l => !(l.layout.flips?.length) && !l.layout.portals), onePath: true, placed: true, seeded: true, due: true, landable: true,
+      portals: true, fast: true, brief: true, uncounted: true, always: true, warps: true, safe: true, fair: true };
+    const places = new Set();
+    for (const seed of [5, 11, 23, 99, 1234]) {
+      const course = make(seed), plain = make(seed, { ...five.layout, flips: [], portals: 0 }), order = course.landings, out = (x, z) => radius - x;
+      // The same clouds, kinds, lives and pickups whether or not the world ever turns or a portal stands.
+      rows.onePath &&= base(course) === base(plain) && plain.flips.length === 0 && plain.portals.length === 0
+        && base(make(seed, { ...five.layout, flips: [[0.3, 0.3], [0.5, 0.5], [0.7, 0.7]] })) === base(plain) && course.clouds.length <= C.MAX_CLOUDS;
+      // Each flip in its own stretch of the way down: clear of the start and the finish and well apart.
+      const way = course.flips.map(f => (radius - 42 - f.line + 42) / five.route);
+      rows.placed &&= course.flips.length === 2 && way.every((share, k) => share >= five.layout.flips[k][0] - 1e-9 && share <= five.layout.flips[k][1] + 1e-9)
+        && five.layout.flips[0][0] >= 0.2 && five.layout.flips[1][1] <= 0.8 && five.layout.flips[1][0] - five.layout.flips[0][1] >= 0.15;
+      const again = make(seed);
+      rows.seeded &&= course.flips.every((f, k) => again.flips[k].line === f.line) && course.portals.every((q, k) => again.portals[k].baseX === q.baseX && again.portals[k].seed === q.seed);
+      places.add(way.map(share => share.toFixed(3)).join("/"));
+      // The world turns as a rider reaches the place and not before, the next only once the first is done.
+      const [first, second] = course.flips;
+      rows.due &&= !course.due(order[0].x, order[0].z, 0) && !course.due(first.line + 1, 0, 0) && course.due(first.line - 1, 0, 0) && !course.due(first.line - 1, 0, 1)
+        && course.due(second.line - 1, 0, 1) && !course.due(0, 0, 2);
+      // The portals: gold clouds over the jump between two landings, no main landing, special or pickup of the
+      // course's, far faster than every other cloud and on a clock far shorter than any fading cloud's.
+      const others = course.clouds.filter(c => c.kind !== "portal");
+      rows.portals &&= course.portals.length === 2 && course.portals.every(q => q.kind === "portal" && !q.main && q.life === ORDINARY && !course.pickups.some(p => p.cloud === q)
+        && order.some((c, i) => order[i + 1] && Math.abs(q.baseX - (c.baseX + order[i + 1].baseX) / 2) < 1e-9 && q.y > c.y && i >= 3 && i <= order.length - 9))
+        && course.portals[0].baseX > course.portals[1].baseX + C.WARP;
+      rows.fast &&= course.portals.every(q => q.moveSpeed > 2 * Math.max(...others.map(c => c.moveSpeed)));
+      rows.brief &&= course.portals.every(q => q.slotSeconds < Math.min(...others.filter(c => c.life === ORDINARY).map(c => c.slotSeconds)) && q.slotSeconds >= C.PORTAL.cycle[0]);
+      rows.uncounted &&= course.portals.every(q => course.clouds.every(c => !course.linked(c.index, q.index) && !course.linked(q.index, c.index)));
+      // At any time through a run every cloud that shows holds a rider on its top, and a portal's throw, when it has
+      // one, is to a main landing about 50 m on that stands now and for seconds yet, never one a tornado stands by.
+      course.update(1); course.start();
+      let thrown = 0;
+      for (let t = 0.5; t < 400; t += 2.3) {
+        course.update(2.3, t);
+        rows.landable &&= course.clouds.every(c => c.active === (c.opacity > 0) && (!c.active || course.supportAt(c.x, c.z, c.top, 0.1) >= c.top));
+        for (const q of course.portals) {
+          const to = course.warpTo(q), on = to ? (q.x - to.x) : 0;
+          rows.always &&= !!to;
+          if (!to) continue;
+          thrown++;
+          rows.warps &&= to.main && to.kind === "normal" && to.active && to.phase === C.SOLID && course.solidLeft(to) >= 4 && on >= 38 && on <= 66
+            && to !== order[order.length - 1] && to !== order[order.length - 2];
+          const other = course.warpTo(q, c => c !== to);
+          rows.safe &&= other !== to && course.warpTo(q, () => false) === null && (!other || other.main && other.active);
+        }
       }
-      course.update(1); course.start(); course.update(1 / 60, 0.1);
-      const next = course.clouds.find(c => c.section === 1 && c.life === PERMANENT && c.kind === "normal"), here = course.clouds.find(c => c.section === 0 && c.life === PERMANENT && c.kind === "normal");
-      const holds = c => Number.isFinite(course.supportAt(c.x, c.z, c.top, 0.1));
-      const savedBy = c => course.canRecover(c.x, c.top + 2, c.z, -1, 0, 0, -100);
-      rows.gated &&= course.live === 0 && holds(here) && !holds(next) && !next.active;
-      rows.saved &&= savedBy(here) && !savedBy(next);
-      // The second portal, rested and in the live section, tells, dashes to its lane's other end and is tired.
-      const portal = course.flips[1].cloud, near = course.flips[1].perches.slice().sort((a, b) => Math.hypot(a.x - portal.x, a.z - portal.z) - Math.hypot(b.x - portal.x, b.z - portal.z))[0];
-      const step = (seconds) => { for (let t = 0; t < seconds - 1e-9; t += 1 / 120) { course.evade(1 / 120, near.x, near.y, near.z); course.update(1 / 120); } };
-      step(1); rows.calm &&= portal.evade === C.REST && Math.abs(portal.slide) === C.EVADE.lane;
-      course.enter(1); course.update(1 / 60);
-      rows.gated &&= course.live === 1 && !holds(here) && holds(next);
-      rows.saved &&= !savedBy(here) && savedBy(next);
-      const from = portal.slide, x0 = portal.x, z0 = portal.z;
-      step(C.EVADE.tell * 0.9); rows.evades &&= portal.evade === C.TELL && portal.x === x0 && portal.z === z0;
-      step(C.EVADE.tell * 0.2 + C.EVADE.dash); rows.evades &&= portal.evade === C.TIRED && portal.slide === -from && Math.abs(Math.hypot(portal.x - x0, portal.z - z0) - 2 * C.EVADE.lane) < 1e-6;
-      // Tired, it does not dodge whoever stands by it; rested again, it does.
-      const far = course.flips[1].perches.find(c => c !== near);
-      for (let t = 0; t < C.EVADE.tired * 0.9; t += 1 / 120) { course.evade(1 / 120, far.x, far.y, far.z); course.update(1 / 120); }
-      rows.tired &&= portal.evade === C.TIRED && portal.slide === -from;
-      for (let t = 0; t < C.EVADE.tired * 0.2 + C.EVADE.tell + 0.05; t += 1 / 120) { course.evade(1 / 120, far.x, far.y, far.z); course.update(1 / 120); }
-      rows.tired &&= portal.evade === C.DASH || portal.evade === C.TELL;
+      rows.warps &&= thrown > 100;
+      // Both portals taken still leaves a run over 25% longer than Level 4's route, and none under 50%.
+      rows.fair &&= (five.route - 2 * 66) / LEVELS[3].route > 1.25 && five.route / LEVELS[3].route < 1.5;
     }
-    record("Cloud Hopper Storm's Eye course: two portals make three sections, each a jetpack climb above the last, on ground that stands still and never fades; only the live section holds or saves a rider; the second portal tells, dashes and tires in a fixed pattern; Levels 1 to 4 have none",
-      Object.values(rows).every(Boolean), JSON.stringify(rows));
+    rows.seeded &&= places.size > 3;
+    // Under many more seeds a portal always has a white landing that never fades to throw a rider to.
+    for (let seed = 300; seed < 340; seed++) {
+      const course = make(seed); course.update(1);
+      rows.always &&= course.portals.length === 2 && course.portals.every((q) => { const to = course.warpTo(q); return !!to && to.kind === "normal"; })
+        && course.portals.every(q => course.landings.some(c => c.life === C.PERMANENT && c.kind === "normal" && q.baseX - c.baseX >= 38 && q.baseX - c.baseX <= 66));
+    }
+    record("Cloud Hopper Storm's Eye course: one path whose clouds are the same with or without its flips and portals, every showing cloud landable at any time; two flips at places seeded with the course, clear of its ends and apart; two gold portal clouds, faster and briefer than any other cloud and counted on by no check, each always with a white landing that never fades about 50 m on to throw to, and throwing only to one that stands; Levels 1 to 4 have neither",
+      Object.values(rows).every(Boolean), JSON.stringify({ ...rows, places: [...places] }));
   }
-  // Storm's Eye's run: a portal's touch holds the rider and rolls the world half over by turning the view, lets the
-  // rider go under the next section with a jetpack worn and fuel, puts a fall back at that checkpoint, and the second
-  // portal turns the world upright; leaving the level part way restores the rider and the view.
+  // Storm's Eye's runs. A rider goes down the whole course landing by landing to the pile under several seeds, taking
+  // neither portal, the first, the second or both: the world turns over twice by itself, wherever its places fall,
+  // each time holding the rider, lowering it under the clouds as the view rolls and letting it go with a jetpack and
+  // fuel to climb back to the same course; every landing that shows holds it, upright or turned over; a portal throws
+  // it on with its speed and controls kept; and the run ends won with the world upright. One run also checks the
+  // checkpoint, that nothing turns during a climb or a warp or on a rider fallen far under the course, that leaving
+  // part way restores the rider and the view,
+  // and that each mechanic shows and works turned over as it does upright.
   {
     runInNewContext(controllerSource, context);
-    BL.math.randomInt = () => 5150; cloudSave.unlocked = 5;
-    const flipper = BL.cloudHopper.create(hopperOptions), turnSeconds = 2.2;
-    const step = (dt) => { now += dt * 1000; flipper.preUpdate(dt); flipper.postUpdate(); flipper.turnView(); };
-    flipper.launch(); callbacks.onSelect(5); callbacks.onStart(); flipper.preUpdate(BL.cloudHopper.LIFT_SECONDS); flipper.postUpdate();
-    if (flipper.phase === "briefing") callbacks.onGuideDone();
-    actor.hop = 0.1; actor.hopV = 1; actor.root.position.y += 0.1; step(1 / 60);
-    const course = flipper.course, home = actor.root.parent, up = camera.up = { x: 0, y: 1, z: 0 };
-    const order = course.clouds.filter(c => c.main).sort((a, b) => a.arrival - b.arrival);
+    cloudSave.unlocked = 5;
+    const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
+    const unit = (v) => { const l = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x / l, y: v.y / l, z: v.z / l }; };
+    const basis = () => { const f = unit({ x: camera.target.x - camera.position.x, y: camera.target.y - camera.position.y, z: camera.target.z - camera.position.z });
+      const r = unit(cross(f, camera.up || { x: 0, y: 1, z: 0 })); return { eye: { ...camera.position }, f, r, u: cross(r, f) }; };
+    const inView = (view, x, y, z) => { const d = { x: x - view.eye.x, y: y - view.eye.y, z: z - view.eye.z };
+      return [d.x * view.r.x + d.y * view.r.y + d.z * view.r.z, d.x * view.u.x + d.y * view.u.y + d.z * view.u.z, d.x * view.f.x + d.y * view.f.y + d.z * view.f.z]; };
+    let drawn = null, truth = null, aimed = null;
+    // The renderer casts the crosshair through the view it last drew, as the real one does.
+    const renderer = { size: { width: 800, height: 600 }, project: () => null,
+      ray(px, py, cam, out) { out.ox = cam.position.x; out.oy = cam.position.y; out.oz = cam.position.z; out.dx = drawn.f.x; out.dy = drawn.f.y; out.dz = drawn.f.z; return out; } };
+    const flipper = BL.cloudHopper.create({ ...hopperOptions, renderer }), turnSeconds = 2.2, up = { x: 0, y: 1, z: 0 };
+    // The view from behind the rider toward a point, as the pilot would set it.
+    const look = (at) => { const p = actor.root.position, d = unit({ x: at.x - p.x, y: 0, z: at.z - p.z });
+      Object.assign(camera.position, { x: p.x - d.x * 6, y: p.y + 3, z: p.z - d.z * 6 }); Object.assign(camera.target, { x: at.x, y: at.top ?? at.y, z: at.z }); };
+    // A frame: the run works in the true view, the pilot sets it, then the roll turns it and the frame is drawn.
+    const step = (dt) => { now += dt * 1000; flipper.preUpdate(dt); flipper.postUpdate(); if (aimed) look(aimed); truth = basis(); flipper.turnView(); drawn = basis(); S.updateWorld(rootNode); };
+    const begin = (seed) => { BL.math.randomInt = () => seed; flipper.launch(); callbacks.onSelect(5); callbacks.onStart(); flipper.preUpdate(BL.cloudHopper.LIFT_SECONDS); flipper.postUpdate();
+      if (flipper.phase === "briefing") callbacks.onGuideDone();
+      camera.up = up; actor.jet = null; actor.jetpackOwned = false; actor.jetFuel = 0;
+      actor.hop = 0.1; actor.hopV = 1; actor.root.position.y += 0.1; step(1 / 60); };
     const onto = (c) => { Object.assign(actor.root.position, { x: c.x, y: c.top + actor.baseY, z: c.z }); actor.hop = actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0; };
-    const rows = { level: flipper.level.id === 5 && flipper.phase === "running" && course.flips.length === 2 };
-    actor.jet = null; actor.jetpackOwned = false; actor.jetFuel = 0;
-    Object.assign(camera.position, { x: actor.root.position.x + 6, y: actor.root.position.y + 3, z: actor.root.position.z }); Object.assign(camera.target, actor.root.position);
-    onto(course.flips[0].cloud); step(1 / 60);
-    const held = { ...actor.root.position };
-    rows.touched = flipper.turning && flipper.climbing === false && actor.root.parent !== home && course.live === 0;
-    actor.root.position.x += 3; actor.hopV = 9; step(turnSeconds / 2);
-    rows.held = flipper.turning && flipper.turn > 0 && flipper.turn < Math.PI && ["x", "y", "z"].every(k => actor.root.position[k] === held[k]) && actor.hopV === 0 && camera.up !== up;
-    step(turnSeconds / 2 + 0.05);
-    rows.over = !flipper.turning && Math.abs(flipper.turn - Math.PI) < 1e-9 && course.live === 1 && flipper.climbing && !!actor.jet && actor.jetpackOwned && actor.jetFuel >= 0.7
-      && camera.up.y < -0.999 && flipper.phase === "running";
-    // The pilot and the run see the view as it was before the roll.
-    const rolled = { ...camera.position }; flipper.preUpdate(0);
-    rows.trueView = camera.up === up && camera.position.x !== rolled.x || camera.position.y !== rolled.y;
-    flipper.postUpdate(); flipper.turnView();
-    actor.jetFuel = 0.1; actor.root.position.y -= 31; actor.hop = 5; actor.hopV = -20; step(1 / 60);
-    rows.checkpoint = flipper.climbing && flipper.phase === "running" && Math.abs(actor.root.position.y - held.y) < 1 && actor.hopV <= 0 && actor.jetFuel >= 0.7;
-    const first = order[order.indexOf(course.flips[0].cloud) + 1];
-    onto(first); step(1 / 60);
-    rows.landed = !flipper.climbing && flipper.phase === "running" && first.section === 1;
-    onto(course.flips[1].cloud); step(1 / 60); step(turnSeconds + 0.05);
-    flipper.preUpdate(0); flipper.postUpdate(); flipper.turnView();
-    rows.upright = !flipper.turning && flipper.turn === 0 && course.live === 2 && flipper.climbing && actor.root.parent === home && camera.up === up;
-    // Out part way through the upside-down section: the rider and the view come back as they were.
-    callbacks.onExit(); callbacks.onSelect(5); flipper.launch(); callbacks.onSelect(5); callbacks.onStart(); flipper.preUpdate(BL.cloudHopper.LIFT_SECONDS); flipper.postUpdate();
-    if (flipper.phase === "briefing") callbacks.onGuideDone();
-    actor.hop = 0.1; actor.hopV = 1; actor.root.position.y += 0.1; step(1 / 60);
-    camera.up = up; onto(flipper.course.flips[0].cloud); step(1 / 60); step(turnSeconds + 0.05);
+    // The walk takes whatever the course carries, X-ray goggles among it, which sit on the Ooga's face.
+    actor.parts = { face: S.createNode() };
+    const home = actor.root.parent, point = new Float64Array(3);
+    // What the run's holder draws at a point of the run, and whether it shows where the true view has it (to a
+    // centimetre: the nodes' matrices are single precision).
+    const seen = (x, y, z) => { BL.math.mat4.transformPoint(point, flipper.gameRoot.world, x, y, z); return inView(drawn, point[0], point[1], point[2]); };
+    const same = (points) => points.every(([x, y, z]) => { const a = seen(x, y, z), b = inView(truth, x, y, z); return a.every((v, i) => Math.abs(v - b[i]) < 0.01); });
+    // Each mechanic, from landing `k` of the course: the same checks upright and with the world turned over.
+    const mechanics = (tag, rows, from) => {
+      const course = flipper.course, order = course.landings, C = BL.cloudHopperCourse;
+      // Two plain white landings in a row with nothing on them, so nothing launches the rider or is picked up.
+      const plain = (c) => c && c.kind === "normal" && !course.pickups.some(each => each.cloud === c);
+      const k = order.findIndex((c, i) => i >= from && plain(c) && plain(order[i + 1])), landing = order[k], target = order[k + 1];
+      // At the landing's near edge to the next one, so the crosshair's ray clears the cloud the rider stands on.
+      const edge = () => { onto(landing); const q = actor.root.position, d = unit({ x: target.x - q.x, y: 0, z: target.z - q.z }), r = Math.min(landing.rx, landing.rz) - 0.4; q.x += d.x * r; q.z += d.z * r; };
+      edge(); aimed = target; step(1 / 60); step(1 / 60);
+      const p = { ...actor.root.position }, feet = p.y - actor.baseY, out = {};
+      // Gravity, jumping and landing: the cloud under the rider holds it, and it, the rider and the top of a jump are
+      // drawn where they are, the cloud below the rider on the screen.
+      out.gravity = flipper.supportAt(p.x, p.z, feet, 0.1) === landing.top && same([[landing.x, landing.top, landing.z], [target.x, target.top, target.z], [p.x, p.y, p.z], [p.x, p.y + 3, p.z]])
+        && seen(p.x, p.y + 3, p.z)[1] > seen(landing.x, landing.top, landing.z)[1];
+      // Jetpack thrust: the way it lifts, straight up in the run, is up the screen.
+      out.jetpack = seen(p.x, p.y + 5, p.z)[1] - seen(p.x, p.y, p.z)[1] > 4;
+      // Movement and the view: the pilot is handed the true view, and the rider's right is the screen's right.
+      out.controls = truth.u.y > 0.8 && same([[p.x + truth.r.x * 3, p.y, p.z + truth.r.z * 3]]) && seen(p.x + truth.r.x * 3, p.y, p.z + truth.r.z * 3)[0] - seen(p.x, p.y, p.z)[0] > 2.9;
+      // Gusts and tornadoes: a push across shows across, and a funnel is drawn where its whirl is.
+      out.gust = same([[p.x, p.y, p.z], [p.x + 4, p.y, p.z - 3]]);
+      out.tornado = same([[target.x, target.top + 20, target.z], [target.x + 8, target.top - 40, target.z + 8]]);
+      // Fading and landing checks: every fading cloud's every warning still has a steady cloud in reach.
+      out.fading = course.clouds.filter(c => c.life === C.ORDINARY && c.kind === "normal").every((c) => {
+        for (let slot = 0; course.windowAt(c, slot) <= course.presence(c); slot++) {
+          const at = course.windowAt(c, slot);
+          if (at + course.timing.warn + course.timing.fade >= c.arrival * course.timing.presence[0] && !course.escapes(c.index, at)) return false;
+        }
+        return true;
+      });
+      // The grappling hook: thrown through the crosshair at the next landing it bites that cloud and pulls the rider to it.
+      course.pickups.push({ index: course.pickups.length, kind: "hook", cloud: landing, x: landing.x, y: landing.top + 0.7, z: landing.z, vy: 0, active: true, collected: false, falling: false });
+      onto(landing); step(1 / 60); step(1 / 60);
+      const held = flipper.powers.hook === "hand";
+      edge(); step(1 / 60);
+      flipper.hookAction(true);
+      const aimedAt = flipper.hooked;
+      for (let i = 0; i < 30 && flipper.powers.hook === "out"; i++) step(1 / 60);
+      const bit = flipper.powers.hook === "bit" && flipper.hooked === target;
+      step(1 / 60); step(1 / 60);
+      const q = actor.root.position, to = unit({ x: target.x - q.x, y: target.top - (q.y - actor.baseY), z: target.z - q.z }), pull = unit({ x: actor.leap.vx, y: actor.hopV, z: actor.leap.vz });
+      out.hook = held && aimedAt === target && bit && pull.x * to.x + pull.y * to.y + pull.z * to.z > 0.8;
+      flipper.hookAction(false); actor.leap.vx = actor.leap.vz = actor.hopV = 0;
+      for (let i = 0; i < 40 && flipper.powers.hook !== "hand"; i++) step(1 / 60);
+      aimed = null;
+      for (const [name, ok] of Object.entries(out)) rows[`${name} ${tag}`] = ok;
+      return k + 1;
+    };
+    // A whole run: `take` says which portals to touch, `extras` adds the one-off checks.
+    const run = (seed, take, extras = false) => {
+      begin(seed);
+      const course = flipper.course, order = course.landings, rows = { began: flipper.level.id === 5 && flipper.phase === "running" }, C = BL.cloudHopperCourse;
+      const out = (c) => Math.hypot(c.baseX, c.baseZ), outAt = (p) => Math.hypot(p.x, p.z);
+      let held = true, warps = 0, flips = 0, kept = true, checked = 0;
+      const mechanicsAt = extras ? [-1, -1] : null;
+      for (let i = 0; i < order.length; i++) {
+        const c = order[i];
+        // A portal over the jump from this landing, if it is one to take: wait on the landing until it shows and has
+        // somewhere to throw to, then go into it in the air with some speed and the controls held.
+        const gate = course.portals.findIndex(q => out(q) < out(c) && order[i + 1] && out(q) > out(order[i + 1]));
+        if (gate >= 0 && take.includes(gate)) {
+          const portal = course.portals[gate];
+          for (let wait = 0; wait < 200 && !(portal.active && course.warpTo(portal)); wait++) { onto(c); step(0.25); }
+          const d = unit({ x: order[i + 1].x - c.x, y: 0, z: order[i + 1].z - c.z }), speed = extras ? 30 : 6, resets = inputResets, at = flipper.time;
+          Object.assign(actor.root.position, { x: portal.x, y: portal.top - 0.5 + actor.baseY, z: portal.z }); actor.hop = 1; actor.hopV = 0;
+          actor.leap.vx = d.x * speed; actor.leap.vz = d.z * speed;
+          step(1 / 60);
+          const went = flipper.warping && !flipper.turning && actor.root.visible === false;
+          let glide = true, last = outAt(actor.root.position);
+          // The view never cuts: the unseen Ooga goes down the course a little each frame, and nothing turns meanwhile.
+          for (let f = 0; f < 40 && flipper.warping; f++) { step(1 / 60); const now = outAt(actor.root.position); glide &&= last - now > -0.5 && last - now < 4 && !flipper.turning; last = now; }
+          const p = actor.root.position, to = order.find(l => Math.hypot(l.x - p.x, l.z - p.z) < Math.max(l.rx, l.rz) + 0.5 && Math.abs(l.top + actor.baseY - p.y) < 0.5), v = Math.hypot(actor.leap.vx, actor.leap.vz);
+          const on = to ? out(portal) - out(to) : 0, lands = to && course.supportAt(p.x + actor.leap.vx * 0.18, p.z + actor.leap.vz * 0.18, p.y - actor.baseY, 0.3) === to.top;
+          kept &&= went && glide && !!to && on >= 36 && on <= 68 && actor.root.visible !== false && flipper.phase === "running" && flipper.time > at && inputResets === resets
+            && v > 0.1 && Math.abs(actor.leap.vx / v - d.x) < 1e-6 && Math.abs(actor.leap.vz / v - d.z) < 1e-6 && (extras ? v < speed && v > 5 : Math.abs(v - speed) < 1e-6) && lands && actor.hop > 0;
+          warps++;
+          i = order.indexOf(to) - 1;
+          continue;
+        }
+        onto(c); step(0.3);
+        // Whatever shows holds a rider, whichever way up the world is.
+        if (c.active) { checked++; held &&= flipper.supportAt(c.x, c.z, c.top, 0.1) === c.top; }
+        if (flipper.turning) {
+          const before = { ...actor.root.position };
+          rows[`flip ${flips + 1}`] = !flipper.climbing && actor.root.parent !== home;
+          step(turnSeconds / 2);
+          rows[`flip ${flips + 1}`] &&= flipper.turning && actor.root.position.x === before.x && actor.root.position.z === before.z && actor.root.position.y < before.y && actor.hopV === 0 && camera.up !== up;
+          step(turnSeconds / 2 + 0.05);
+          flips++;
+          const let_go = { ...actor.root.position }, over = flips % 2 === 1;
+          rows[`flip ${flips}`] &&= !flipper.turning && flipper.turns === flips && Math.abs(flipper.turn - (over ? Math.PI : 0)) < 1e-9 && flipper.climbing && !!actor.jet && actor.jetpackOwned
+            && actor.jetFuel >= 0.7 && Math.abs(before.y - let_go.y - 12) < 1e-6 && (over ? camera.up.y < -0.999 && actor.root.parent !== home : actor.root.parent === home) && flipper.phase === "running";
+          if (extras && flips === 1) {
+            // The pilot and the run see the view as it was before the roll.
+            const rolled = { ...camera.position }; flipper.preUpdate(0);
+            rows.trueView = camera.up === up && (camera.position.x !== rolled.x || camera.position.y !== rolled.y);
+            flipper.postUpdate(); flipper.turnView();
+            // Never during a climb: past the second place while still climbing, nothing turns.
+            Object.assign(actor.root.position, { x: course.flips[1].line - 5, y: let_go.y, z: 0 }); actor.hop = 5; step(1 / 60);
+            rows.notClimbing = !flipper.turning && flipper.climbing && flipper.turns === 1;
+            // A fall from the climb goes back to where the rider was let go, with the fuel again.
+            actor.jetFuel = 0.1; Object.assign(actor.root.position, let_go); actor.root.position.y -= 31; actor.hop = 5; actor.hopV = -20; step(1 / 60);
+            rows.checkpoint = flipper.climbing && flipper.phase === "running" && Math.abs(actor.root.position.y - let_go.y) < 1 && actor.hopV <= 0 && actor.jetFuel >= 0.7;
+          }
+          // The climb comes back onto the same course: the landing it was on, or the next one that shows.
+          while (!order[i].active && i < order.length - 1) i++;
+          onto(order[i]); step(1 / 60);
+          rows[`climb ${flips}`] = !flipper.climbing && flipper.phase === "running" && !flipper.turning;
+        }
+        if (mechanicsAt && mechanicsAt[0] < 0 && i >= 6 && flips === 0) { mechanicsAt[0] = i; i = mechanics("upright", rows, i + 1); }
+        else if (mechanicsAt && mechanicsAt[1] < 0 && flips === 1) { mechanicsAt[1] = i; i = mechanics("turned over", rows, i + 1); }
+      }
+      // Onto the pile.
+      Object.assign(actor.root.position, { x: 0, y: 2 + actor.baseY, z: 0 }); actor.hop = actor.hopV = 0; step(1 / 60);
+      rows.held = held && checked > 60; rows.flips = flips === 2 && flipper.turns === 2; rows.warps = warps === take.length && kept;
+      rows.won = flipper.phase === "won" && flipper.turn === 0 && actor.root.parent === home;
+      return rows;
+    };
+    const all = {};
+    let first = true;
+    for (const seed of [5150, 77, 4242]) for (const take of [[], [0], [1], [0, 1]]) {
+      const rows = run(seed, take, first);
+      first = false;
+      callbacks.onExit();
+      for (const [name, ok] of Object.entries(rows)) if (!ok) all[`${seed} ${take.join("+") || "none"} ${name}`] = false;
+      all[`${seed} ${take.join("+") || "none"}`] = Object.values(rows).every(Boolean);
+    }
+    // Out part way through the upside-down stretch: the rider and the view come back as they were.
+    // First, a rider that has fallen far under the course past the first place is left to its fall; nearer under
+    // it, the world turns and lets it go no further under the course than the climb's fuel reaches.
+    begin(9001);
+    {
+      const course = flipper.course, c = course.landings.find(l => course.due(l.x, l.z, 0)), p = actor.root.position;
+      Object.assign(p, { x: c.x, y: c.top + actor.baseY - 20, z: c.z }); actor.hop = 5; actor.hopV = 0; step(1 / 60);
+      all.fallen = !flipper.turning && flipper.turns === 0 && flipper.phase === "running";
+      Object.assign(p, { x: c.x, y: c.top + actor.baseY - 5, z: c.z }); step(1 / 60);
+      all.fallen &&= flipper.turning;
+      step(turnSeconds + 0.05);
+      all.reach = flipper.climbing && flipper.turns === 1 && Math.abs(p.y - (c.top + actor.baseY - 12)) < 1e-6 && actor.jetFuel >= 0.7;
+    }
     const turned = flipper.turn > 3 && actor.root.parent !== home && camera.up !== up;
     callbacks.onExit();
-    rows.restored = turned && flipper.turn === 0 && actor.root.parent === home && camera.up === up && flipper.phase === "idle";
+    all.restored = turned && flipper.turn === 0 && flipper.turns === 0 && actor.root.parent === home && camera.up === up && flipper.phase === "idle";
     flipper.dispose();
-    rows.disposed = rootNode.children.length === 1;
+    all.disposed = rootNode.children.length === 1;
     cloudSave.unlocked = 1;
-    record("Cloud Hopper Storm's Eye run: a portal holds the rider while the view rolls the world half over, lets it go under the next section with a jetpack and fuel, returns a fall to that checkpoint, the second portal turns the world upright, and leaving part way restores the rider and the view",
-      Object.values(rows).every(Boolean), JSON.stringify(rows));
+    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over twice by itself wherever its places fall, never during a climb or a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and fuel, a fall going back to that checkpoint, and the climb comes back onto the same course; every showing landing holds the rider upright or turned over; a portal throws it on in a glide with its speed and controls kept, safe on a landing; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading and the grappling hook all show and work turned over as they do upright; and leaving part way restores the rider and the view",
+      Object.values(all).every(Boolean), JSON.stringify(all));
   }
   // Reload within the same session, then start a fresh session while the old
   // localStorage marker still exists. Leaving the fresh guide is not completion.
