@@ -26,7 +26,7 @@ const readBinary = async request => {
 };
 const hashOf = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), n => n.toString(16).padStart(2, "0")).join("");
 export const createReplayHandler = (sessionFor = getSessionFromRequest) => async (request, env, ctx) => {
-  const url = new URL(request.url), match = /^\/api\/cloud-hopper-replays\/(cloud-hopper-l[1-4])\/(ticket|finish|[a-f0-9]{64}\.bin)$/.exec(url.pathname);
+  const url = new URL(request.url), match = /^\/api\/cloud-hopper-replays\/(cloud-hopper-l[1-5])\/(ticket|finish|[a-f0-9]{64}\.bin)$/.exec(url.pathname);
   if (!match || url.search) return json({ error: "not found" }, 404);
   const [, game, action] = match, binary = action.endsWith(".bin"), method = binary ? "GET" : "POST";
   if (request.method !== method) return json({ error: "method not allowed" }, 405, { allow: method });

@@ -1,6 +1,6 @@
 # Shared winning replays
 
-Each of `cloud-hopper-l1` through `cloud-hopper-l4` has one current winning replay. Guests can read it. Only an
+Each of `cloud-hopper-l1` through `cloud-hopper-l5` has one current winning replay. Guests can read it. Only an
 eligible signed-in character owner can submit a recording from a run begun in the same account/session. The timer
 shows the shared record holder, a small ghost button immediately left of the time, and the existing race clock.
 The ghost defaults off; the player turns it on or off (its button or G) before a run, never during one, and the choice
@@ -61,7 +61,8 @@ notification path; clients fetch coherent replay metadata after a score-only roo
 
 ## Bounded storage and deployment
 
-Migration `0006_cloud_hopper_replays.sql` adds four pointer slots, an object registry capped in SQL at 128 rows
+Migration `0006_cloud_hopper_replays.sql` adds a pointer slot a level (four; `0012_cloud_hopper_level_5.sql` rebuilds
+the registry and pointers with every row kept so Level 5's fits), an object registry capped in SQL at 128 rows
 (including current/staged/retired objects), and at most 256 active run tickets. At 12 MiB maximum this caps
 registered object storage at 1.5 GiB; normal recordings are smaller. Each winner stays while current. The existing
 daily scheduled handler retires older versions with a 24-hour grace starting when retirement is first observed,

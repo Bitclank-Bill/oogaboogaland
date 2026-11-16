@@ -12961,7 +12961,7 @@ body[data-active-scene="arcade"] #destination-hud:not([hidden]) { display: flex;
 .cloud-hopper-guide-art canvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45)); }
 .cloud-hopper-intro-art[hidden], .cloud-hopper-guide-art[hidden] { display: none; }
 /* The level cards: the number in the picture's corner, the name alone on one row, then route and best or lock. */
-.cloud-hopper-levels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
+.cloud-hopper-levels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 10px 0 12px; }
 .cloud-hopper-levels[hidden] { display: none; }
 .cloud-hopper-level { position: relative; display: flex; flex-direction: column; padding: 0 0 8px; overflow: hidden; border: 2px solid rgba(255, 246, 220, 0.18);
   border-radius: 8px; background: rgba(10, 16, 26, 0.55); color: var(--paper); font: inherit; text-align: left; cursor: pointer; }

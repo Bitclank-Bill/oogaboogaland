@@ -393,6 +393,10 @@
         }
       } else if (kind === "tornado") {
         addChild(root, BL.cloudHopperTornado.still());
+      } else if (kind === "portal") {
+        const gate = portal();
+        updatePortal(gate, { x: 0, z: 0, top: 0, opacity: 1 }, 0.9);
+        addChild(root, cloud(2.7, 2.7, 1.6), gate);
       } else if (kind === "gust") {
         addChild(root, cloud(2.7, 1.9, 1.6), createNode({ geometry: gustStrokes() }));
       } else if (kind === "jetpack") {
@@ -478,6 +482,31 @@
     };
     return { picture, dispose };
   };
-  BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, pickup, jetpackPickup: () => pickup("jetpack"),
+  // A portal over its cloud (Storm's Eye): three rings turning through each other like a gyroscope, each its own
+  // colour and glowing, PORTAL_LIFT metres over the cloud's top.
+  const PORTAL_LIFT = 2.6, PORTAL_RINGS = [[2.1, "#5ff5ff"], [1.65, "#b98cff"], [1.2, "#fff3c4"]];
+  const portalRings = M.cached(() => PORTAL_RINGS.map(([r, color]) => {
+    const geometry = M.ring({ r, thickness: 0.11, segments: 20, color, emissive: 0.9 });
+    geometry.castShadow = false; geometry.cutawayPreserve = true; geometry.fogPierce = 0.6;
+    return geometry;
+  }));
+  const portal = () => {
+    const node = createNode({ sightHidden: true });
+    for (const geometry of portalRings()) addChild(node, createNode({ geometry, sightHidden: true }));
+    return node;
+  };
+  // Stands it over `cloud` and turns its rings: quicker and swollen as it tells (`quick` 0 to 1), slow and shrunk while
+  // it is tired (`tired` 0 to 1). `shown` is its opacity, with its cloud's.
+  const updatePortal = (node, cloud, time, quick = 0, tired = 0, shown = 1) => {
+    node.position.x = cloud.x; node.position.y = cloud.top + PORTAL_LIFT; node.position.z = cloud.z;
+    node.visible = cloud.opacity > 0 && shown > 0;
+    const size = 1 + 0.3 * quick - 0.35 * tired, turn = time * (1.1 + 5 * quick - 0.8 * tired);
+    node.scale.x = node.scale.y = node.scale.z = size;
+    for (let i = 0; i < node.children.length; i++) {
+      const ring = node.children[i];
+      ring.rotation.x = Math.PI / 2 + turn * (i === 1 ? -0.7 : 1) + i * 1.1; ring.rotation.y = turn * (0.6 + i * 0.35); ring.smokeOpacity = shown < 1 ? shown : undefined;
+    }
+  };
+  BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, portal, updatePortal, pickup, jetpackPickup: () => pickup("jetpack"),
     updateJetpackPickup, hookHead, rope, leaf, wornGoggles, cabinet, updateCabinet, createGuidePictures };
 })();

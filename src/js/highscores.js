@@ -31,7 +31,7 @@
     }
     let runs;
     if (data.runs !== undefined) {
-      if ((!/^cloud-hopper-l[1-4]$/.test(id) && !rules.cabinets.includes(id)) || !Array.isArray(data.runs) || data.runs.length > 10) return null;
+      if ((!/^cloud-hopper-l[1-5]$/.test(id) && !rules.cabinets.includes(id)) || !Array.isArray(data.runs) || data.runs.length > 10) return null;
       runs = [];
       for (const run of data.runs) {
         if (!isObject(run) || typeof run.username !== "string" || !validLogin(run.username)
@@ -169,7 +169,7 @@
     if (!available() || !net.state.me) return;
     const data = accept(board?.game, board);
     if (!data) return;
-    if (/^cloud-hopper-l[1-4]$/.test(data.game)) {
+    if (/^cloud-hopper-l[1-5]$/.test(data.game)) {
       // Room notifications contain scores only. Read the matching replay pointer through the public route.
       if (entries.get(data.game).listeners.size) loadOne(data.game, true);
     } else publish(data.game, data);
@@ -236,7 +236,7 @@
     if (!available() || !net.state.resolved || !net.state.me) return null;
     const token = {};
     tickets.set(token, { game: id, playerId: net.state.me.id, generation, sent: new Set(),
-      runId: /^cloud-hopper-l[1-4]$/.test(id) || rules.cabinets.includes(id) ? crypto.randomUUID() : null,
+      runId: /^cloud-hopper-l[1-5]$/.test(id) || rules.cabinets.includes(id) ? crypto.randomUUID() : null,
       replay: BL.cloudHopperReplays?.startTicket(id) });
     return token;
   };

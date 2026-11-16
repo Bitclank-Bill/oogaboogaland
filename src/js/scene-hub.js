@@ -8568,6 +8568,8 @@
     else if (clankerPlay.active) clankerPlay.update(dt);
     else if (!cloudHopper?.fallView()) pilot.update(dt);
     bifrostWalk?.update(dt);
+    // Storm's Eye's world, turned over, turns the view the pilot or the fall has just set.
+    cloudHopper?.turnView();
     // The doorway's views (the keypad's, the swoop into the eyes and back out) take over from the pilot's.
     if (!cloudPlaying()) timechainIsland.gate.view(dt);
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);

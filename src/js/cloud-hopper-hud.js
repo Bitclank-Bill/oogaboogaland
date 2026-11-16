@@ -22,12 +22,13 @@
     ["jetpack", "Jetpacks", "Press J to wear a jetpack, then hold Space to fly up. Fuel never refills, so grab another pack for more."],
     ["finish", "Banana pile", "Land on the banana pile to stop the clock. Toggle the global record ghost in the timer to compare runs. Clouds change each run; the ghost shows its original route."]
   ];
-  // Bounce clouds (from Level 2), Aurora Heights' gusts, Thunderhead's tornadoes and the power-ups, each introduced the
-  // first time a session plays a level that carries it.
+  // Bounce clouds (from Level 2), Aurora Heights' gusts, Thunderhead's tornadoes, Storm's Eye's portals and the
+  // power-ups, each introduced the first time a session plays a level that carries it.
   const ITEMS = {
     bounce: ["bounce", "Bounce clouds", "Touch a purple cloud anywhere to bounce high. Steer to your next cloud on the way down."],
-    gust: ["gust", "Gusts of wind", "Twice a run the wind blows across the course. Arrows at the screen's edge warn where it comes from. It pushes you sideways, so lean into it."],
+    gust: ["gust", "Gusts of wind", "Now and then the wind blows across the course. Arrows at the screen's edge warn where it comes from. It pushes you sideways, so lean into it."],
     tornado: ["tornado", "Tornadoes", "A tornado comes down where a glowing cap gathers, and it grows stronger as it goes. Dash through it fast or it sweeps you away."],
+    portal: ["portal", "Portals", "Touch a portal and the whole world turns over. Hold Space to jetpack up to the clouds above. The second portal dodges you: catch it while it is tired."],
     xray: ["xray", "X-ray goggles", "For 30 seconds, see how long each cloud has before it fades. A gold ∞ never fades."],
     updraft: ["updraft", "Sky feather", "Out of jumps? Press Space and the feather throws you high into the air."],
     hook: ["hook", "Grappling hook", "Aim at a cloud and hold click (RT on a pad) to reel yourself in. Let go to fly on. Miss, and it's gone."]

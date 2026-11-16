@@ -11,6 +11,14 @@
   const CLOUD_GAP = 1.5;
   // The most eligible clouds a course's start, finish and jetpacks ever keep from being special.
   const SPECIAL_SPARE = 7;
+  // A portal cloud's half-size (m), the seconds a run is expected to spend turning the world over and climbing back
+  // up, and the last portal's evasion: it rests at one end of a lane `lane` metres either side of its landing; a rider
+  // within `range` of it (across the ground) sets it off, and it tells for `tell` seconds, dashes to the other end in
+  // `dash` and is then tired for `tired`, when it cannot dodge. Two perches stand `perch` [back, across] metres
+  // from the landing, one before each end, `lift` metres over it.
+  const PORTAL_R = 3, FLIP_SECONDS = 6;
+  const EVADE = Object.freeze({ lane: 8, range: 11, tell: 0.35, dash: 0.6, tired: 2.2, perch: Object.freeze([7, 8]), lift: 2.5 });
+  const REST = 0, TELL = 1, DASH = 2, TIRED = 3;
   const GRAVITY = 9.8, PICKUP_LIFT = 0.7, PICKUP_RADIUS = 0.75, RUN_SPEED = 11.625, JUMP_SPEED = 4.8, SETTLE = 1.5, WOBBLE = 0.12;
   // Lifetime classes: a permanent cloud never fades; an ordinary one disappears once in each of its own slots.
   const PERMANENT = 0, ORDINARY = 1;
@@ -35,11 +43,13 @@
   // clouds per main landing (`sides`, at most `sideMax`) and how far out they sit (`offset` [least, range]),
   // the `boost` and `bounce` shares of the clouds a course chooses among, the same number on every course of a level (at
   // most `bounceMax` bounces), the chance of a second
-  // jetpack (`twoPacks`), and how many X-ray, Updraft and grappling hook pickups it carries (plan 3). These defaults
-  // are the old course's.
+  // jetpack (`twoPacks`), and how many X-ray, Updraft and grappling hook pickups it carries (plan 3). `flips` are the
+  // shares of the main landings where a portal cloud stands and the world turns over (Storm's Eye), each starting a new
+  // section `climb` metres higher, the last of them evasive. These defaults are the old course's.
   const LAYOUT = Object.freeze({ step: 11.5, main: Object.freeze([2.7, 0.9, 1.9, 0.7]), side: Object.freeze([2.8, 0.7, 2.1, 0.5]),
     turn: 40, sway: 7, lane: Object.freeze([5, 3]), speed: Object.freeze([0.9, 0.6]), sides: Infinity, sideMax: 24,
-    offset: Object.freeze([22, 12]), boost: 0.22, bounce: 0.16, bounceMax: Infinity, twoPacks: 0.45, xray: 0, updraft: 0, hook: 0 });
+    offset: Object.freeze([22, 12]), boost: 0.22, bounce: 0.16, bounceMax: Infinity, twoPacks: 0.45, xray: 0, updraft: 0, hook: 0,
+    flips: Object.freeze([]), climb: 0 });
   // Where along the main landings each power-up kind is spread: [first, span] as shares of the course.
   const STRETCH = Object.freeze({ xray: Object.freeze([0.12, 0.6]), updraft: Object.freeze([0.35, 0.45]), hook: Object.freeze([0.1, 0.5]) });
   const cycleRandom = (seed, cycle, salt) => {
@@ -96,7 +106,11 @@
   // power-up: its `kind`) and returns its stable record; equipping belongs to the
   // caller. `hit` finds where a ray first meets a cloud, for the grappling hook. `whirl` is a tornado's hold on the
   // clouds near it (cloud-hopper-tornado.js), the one thing besides race time that moves them. runSpeed and jumpSpeed are the player's, for the fairness checks;
-  // `layout` and `timing` override LAYOUT's and TIMING's fields (a level's).
+  // `layout` and `timing` override LAYOUT's and TIMING's fields (a level's). A layout with `flips` (Storm's Eye) has a
+  // portal cloud (`kind` `portal`) at each, listed in `flips` with its perches, and its clouds each a `section`: only
+  // the `live` section's are there to stand on, touch, hook or be saved by, and `enter` makes the next one live once
+  // the world has turned over. `evade`, before `update`, steps the last portal's dodging from where the rider is, the
+  // other thing that moves a cloud.
   const create = ({ start, finish, mainlandRadius = 30, seed = 1, layout: shape = LAYOUT, timing: tune = TIMING,
     runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED }) => {
     const layout = { ...LAYOUT, ...shape }, timing = { ...TIMING, ...tune };
@@ -105,23 +119,31 @@
     const sideRand = mulberry32(seed ^ 0xbb67ae85);
     const startDistance = Math.hypot(outwardX, outwardZ), nx = outwardX / startDistance, nz = outwardZ / startDistance;
     const shoreDistance = mainlandRadius + 12, endY = finish.y + 18;
-    const distance = startDistance - shoreDistance, drop = start.y - endY, sideX = -nz, sideZ = nx;
+    // Each flip's section starts `climb` higher than its portal, so the landings drop that much more in all.
+    const distance = startDistance - shoreDistance, drop = start.y - endY + layout.flips.length * layout.climb, sideX = -nz, sideZ = nx;
     // Slightly wider main gaps still fit a running jump. Bound their jitter
     // by the widest rotated mesh so neighbouring drift lanes stay separate.
     const minimumStep = Math.hypot(layout.main[0] + layout.main[1], layout.main[2] + layout.main[3]) * 2 + CLOUD_GAP;
     const count = Math.min(MAX_CLOUDS - 24, Math.max(12, Math.ceil(Math.max(drop / 9, distance / layout.step))),
       Math.max(6, Math.floor(distance / minimumStep)));
     const clouds = [], landings = [], pickups = [], placements = [], step = 1 / count;
+    // The landings that are portals, and each cloud's section: how many portals come before it.
+    const flipAt = layout.flips.map(share => clamp(Math.round(share * count), 4, count - 6)), flips = [];
+    const sectionOf = (i) => { let k = 0; for (const f of flipAt) if (i > f) k++; return k; };
+    const byFlip = (i) => flipAt.some(f => i >= f - 1 && i <= f + 2);
+    let live = 0;
     const alongJitter = Math.min(0.08, Math.max(0, 1 - minimumStep / (distance * step)));
     let lateral = 0, movementTime = 0, beganAt = -1, nextTurn = 0, target = 0, courseTime = 0;
-    const addCloud = (x, y, z, rx, rz, side = 0) => {
+    // `still` clouds (a portal, its approach and perches) keep to their place; `lane` widens one's clearance.
+    const addCloud = (x, y, z, rx, rz, side = 0, section = 0, still = false, lane = 0) => {
       // Each cloud swings across the course on its own lane, speed and phase.
       // Independent lanes and clocks keep the field from swaying as one.
       const direction = moveRand() < 0.5 ? -1 : 1, moveX = sideX * direction, moveZ = sideZ * direction;
-      const moveRange = layout.lane[0] + moveRand() * layout.lane[1], moveSpeed = layout.speed[0] + moveRand() * layout.speed[1];
+      const swing = layout.lane[0] + moveRand() * layout.lane[1], moveSpeed = layout.speed[0] + moveRand() * layout.speed[1];
+      const moveRange = still ? 1e-3 : swing;
       const yaw = orientationRand() * Math.PI * 2, cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
       const alongHalf = Math.abs(nx * cosYaw - nz * sinYaw) * rx + Math.abs(nx * sinYaw + nz * cosYaw) * rz;
-      const acrossHalf = Math.abs(sideX * cosYaw - sideZ * sinYaw) * rx + Math.abs(sideX * sinYaw + sideZ * cosYaw) * rz + moveRange;
+      const acrossHalf = Math.abs(sideX * cosYaw - sideZ * sinYaw) * rx + Math.abs(sideX * sinYaw + sideZ * cosYaw) * rz + moveRange + lane;
       // Motion is purely lateral: a radial bound keeps every puff offshore
       // without pushing the last clouds back into their neighbours.
       const along = Math.max((x - finish.x) * nx + (z - finish.z) * nz, mainlandRadius + 1.25 + alongHalf);
@@ -142,7 +164,10 @@
         moveX, moveZ, moveRange, moveSpeed, swing: 0,
         // The second draw is each cloud's clock phase, which keeps a seed's landings where they always were.
         seed: (rand() * 4294967296) >>> 0, clock: rand(), life: PERMANENT, main: !side, arrival: 0, held: 0, drawn: 0, lift: 0, previousLift: 0,
-        slotSeconds: 0, t0: 0, firstGoneAt: 0, phase: SOLID, progress: 0, warning: -1, windowStart: 0, windowEnd: 0
+        slotSeconds: 0, t0: 0, firstGoneAt: 0, phase: SOLID, progress: 0, warning: -1, windowStart: 0, windowEnd: 0,
+        // Its section, whether it never fades or turns special (a portal's own ground), and a portal's evasion: the
+        // lane it slides (0 for none), where it is on it, and its state, the seconds in it and the side it rests at.
+        section, firm: still, lane, slide: 0, evade: REST, evadeFor: 0, rests: 1
       };
       cloud.swing = cycleRandom(cloud.seed, 0, 0x7f4a7c15) * Math.PI * 2;
       clouds.push(cloud);
@@ -155,16 +180,32 @@
       }
       const remaining = count - 1 - i;
       // Frequent random turns break up the line; taper back toward the coast.
-      const wanted = remaining < 5 ? 0 : target + (rand() - 0.5) * 12;
-      lateral += clamp(wanted - lateral, -layout.sway, layout.sway);
+      const wanted = remaining < 5 ? 0 : target + (rand() - 0.5) * 12, flip = flipAt.indexOf(i), section = sectionOf(i);
+      // A portal stands straight on from its approach, so its perches stand the same on every course.
+      const sway = flip >= 0 ? 0 : clamp(wanted - lateral, -layout.sway, layout.sway);
+      lateral += sway;
       lateral = clamp(lateral, -remaining * layout.sway, remaining * layout.sway);
       const last = remaining === 0, t = (i + 1) * step;
       const along = last ? 1 : t + (rand() - 0.5) * step * alongJitter;
       const down = last ? 1 : t + (rand() - 0.5) * step * 0.2;
       const radial = startDistance - distance * along;
       const x = finish.x + nx * radial + sideX * lateral, z = finish.z + nz * radial + sideZ * lateral;
-      const y = start.y - drop * down;
-      landings.push(addCloud(x, y, z, layout.main[0] + rand() * layout.main[1], layout.main[2] + rand() * layout.main[3]));
+      const y = start.y - drop * down + section * layout.climb;
+      const rx = layout.main[0] + rand() * layout.main[1], rz = layout.main[2] + rand() * layout.main[3];
+      if (flip < 0) { landings.push(addCloud(x, y, z, rx, rz, 0, section, byFlip(i))); continue; }
+      const evasive = flip === flipAt.length - 1, portal = addCloud(x, y, z, PORTAL_R, PORTAL_R, 0, section, true, evasive ? EVADE.lane : 0);
+      portal.kind = "portal";
+      landings.push(portal);
+      const perches = [];
+      if (evasive) {
+        for (const side of [-1, 1]) {
+          const perch = addCloud(x + nx * EVADE.perch[0] + sideX * side * EVADE.perch[1], y + EVADE.lift,
+            z + nz * EVADE.perch[0] + sideZ * side * EVADE.perch[1], layout.side[0], layout.side[2], 0, section, true);
+          perch.main = false; perches.push(perch);
+        }
+        portal.rests = rand() < 0.5 ? -1 : 1; portal.slide = portal.rests * EVADE.lane;
+      }
+      flips.push({ cloud: portal, evasive, perches });
     }
     // Fill stratified segments across the whole descent instead of exhausting
     // the extra-cloud budget near the top. Alternating sides balance each
@@ -173,10 +214,13 @@
     const alternatives = Math.min(layout.sideMax, segments, MAX_CLOUDS - count, Math.round(count * layout.sides));
     for (let i = 0; i < alternatives; i++) {
       const low = Math.floor(i * segments / alternatives), high = Math.floor((i + 1) * segments / alternatives);
-      const index = 2 + low + Math.floor(sideRand() * (high - low)), a = landings[index - 1], b = landings[index];
+      let index = 2 + low + Math.floor(sideRand() * (high - low));
+      // None beside a portal's own ground: it moves on to the next landing clear of it.
+      while (index < count - 3 && (byFlip(index) || byFlip(index - 1))) index++;
+      const a = landings[index - 1], b = landings[index];
       const t = 0.35 + sideRand() * 0.3, side = i % 2 ? -firstSide : firstSide, offset = side * (layout.offset[0] + sideRand() * layout.offset[1]);
       addCloud(a.x + (b.x - a.x) * t + sideX * offset, a.y + (b.y - a.y) * t,
-        a.z + (b.z - a.z) * t + sideZ * offset, layout.side[0] + sideRand() * layout.side[1], layout.side[2] + sideRand() * layout.side[3], side);
+        a.z + (b.z - a.z) * t + sideZ * offset, layout.side[0] + sideRand() * layout.side[1], layout.side[2] + sideRand() * layout.side[3], side, b.section);
     }
     clouds.sort((a, b) => b.y - a.y);
     for (let i = 0; i < clouds.length; i++) clouds[i].index = i;
@@ -198,7 +242,7 @@
     const specialRand = mulberry32(seed ^ 0x7b1d943f), eligible = [];
     // The second landing is never special, since a run's first two landings never fade.
     for (const cloud of clouds) {
-      if (cloud.y >= landings[0].y || cloud.y <= landings[count - 3].y || cloud === landings[1]
+      if (cloud.y >= landings[0].y || cloud.y <= landings[count - 3].y || cloud === landings[1] || cloud.firm
         || pickups.some(pickup => pickup.cloud === cloud)) continue;
       eligible.push(cloud);
     }
@@ -273,7 +317,8 @@
     for (const k of [0, 1, count - 2, count - 1]) fixed[landings[k].index] = 1;
     for (const cloud of clouds) {
       const along = (cloud.baseX - finish.x) * nx + (cloud.baseZ - finish.z) * nz;
-      cloud.arrival = clamp((startDistance - along) / distance, 0, 1) * expected;
+      if (cloud.firm) fixed[cloud.index] = 1;
+      cloud.arrival = clamp((startDistance - along) / distance, 0, 1) * expected + cloud.section * FLIP_SECONDS;
       schedule(cloud);
     }
 
@@ -308,7 +353,8 @@
     for (let i = 0; i < n; i++) {
       firstCandidate[i] = foundCandidates.length; firstLink[i] = foundLinks.length;
       for (let j = i + 1; j < n; j++) {
-        if (clouds[j].y > clouds[i].y) continue;
+        // A section's clouds are only there while it is the live one, so nothing links across a flip.
+        if (clouds[j].y > clouds[i].y || clouds[j].section !== clouds[i].section) continue;
         if (nominal(clouds[i], clouds[j], 1)) foundCandidates.push(j);
         if (nominal(clouds[i], clouds[j], 0)) foundLinks.push(j);
       }
@@ -427,7 +473,7 @@
       let cloud = null;
       for (let d = 0; d < count && !cloud; d++) for (let side = 0; side < 2 && !cloud; side++) {
         const i = side ? want - d : want + d, c = landings[i];
-        if (i < 3 || i > count - 4 || c.kind !== "normal" || pickups.some(p => p.cloud === c)) continue;
+        if (i < 3 || i > count - 4 || c.kind !== "normal" || c.firm || pickups.some(p => p.cloud === c)) continue;
         cloud = c;
       }
       if (cloud) pickups.push({ index: pickups.length, kind, cloud, x: cloud.x, y: cloud.top + PICKUP_LIFT, z: cloud.z,
@@ -461,7 +507,7 @@
         // Never a jump, so a rider is carried and a sweep holds over a frame of any length; direct evaluation
         // keeps long frames exact. The wobble held at departure eases out over the run's first SETTLE seconds.
         const settle = Math.min(1, time / SETTLE);
-        const offset = beganAt < 0 ? offsetAt(cloud, 0, wobbleAt(cloud, movementTime))
+        const offset = cloud.lane ? cloud.slide : beganAt < 0 ? offsetAt(cloud, 0, wobbleAt(cloud, movementTime))
           : offsetAt(cloud, time, cloud.held * (1 - settle * settle * (3 - 2 * settle)));
         cloud.x = cloud.baseX + cloud.moveX * offset;
         cloud.z = cloud.baseZ + cloud.moveZ * offset;
@@ -483,7 +529,7 @@
         const opacity = cloud.phase === FADING ? 1 - cloud.progress : cloud.phase === HIDDEN ? 0
           : cloud.phase === APPEARING ? cloud.progress : 1;
         cloud.opacity = opacity;
-        cloud.active = opacity > 0;
+        cloud.active = opacity > 0 && cloud.section === live;
         cloud.fading = cloud.phase === FADING;
         cloud.warning = cloud.phase === WARNING ? cloud.progress : -1;
         cloud.top = cloud.y + cloud.lift - cloud.depth * (1 - opacity);
@@ -512,6 +558,26 @@
         }
       }
     };
+    // The evasive portal's step, before `update`: a rider at (x, z) with feet at `feet` within its range, while it
+    // rests in the live section, sets it off; it tells, dashes to its lane's other end and is tired a while, in turn.
+    const evade = (dt, x, feet, z) => {
+      for (const flip of flips) {
+        const cloud = flip.cloud;
+        if (!flip.evasive) continue;
+        cloud.evadeFor += dt;
+        if (cloud.evade === REST) {
+          if (cloud.section === live && feet > cloud.y - 4 && feet < cloud.y + 16 && Math.hypot(x - cloud.x, z - cloud.z) <= EVADE.range) { cloud.evade = TELL; cloud.evadeFor = 0; }
+        } else if (cloud.evade === TELL) {
+          if (cloud.evadeFor >= EVADE.tell) { cloud.evade = DASH; cloud.evadeFor -= EVADE.tell; }
+        } else if (cloud.evade === DASH) {
+          const k = Math.min(1, cloud.evadeFor / EVADE.dash), eased = k * k * (3 - 2 * k);
+          cloud.slide = cloud.rests * EVADE.lane * (1 - 2 * eased);
+          if (k === 1) { cloud.rests = -cloud.rests; cloud.evade = TIRED; cloud.evadeFor = 0; }
+        } else if (cloud.evadeFor >= EVADE.tired) { cloud.evade = REST; cloud.evadeFor = 0; }
+      }
+    };
+    // The world has turned over: `section` is the live one now.
+    const enter = (section) => { live = section; };
     // Seconds of support this cloud has left by its schedule, read after update: Infinity when it never fades,
     // the time to the end of its fade otherwise, or minus the time until it is back while it is gone.
     const solidLeft = (cloud) => cloud.phase === HIDDEN || cloud.phase === APPEARING ? courseTime - cloud.windowEnd
@@ -571,7 +637,7 @@
     const pickupAt = (x, y, z, height, wants = null) => {
       for (let i = 0; i < pickups.length; i++) {
         const pickup = pickups[i];
-        if (!pickup.active || wants && !wants(pickup.kind) || pickup.y < y - PICKUP_RADIUS || pickup.y > y + height + PICKUP_RADIUS) continue;
+        if (!pickup.active || pickup.cloud.section !== live || wants && !wants(pickup.kind) || pickup.y < y - PICKUP_RADIUS || pickup.y > y + height + PICKUP_RADIUS) continue;
         const px = pickup.x - x, pz = pickup.z - z;
         if (px * px + pz * pz > PICKUP_RADIUS * PICKUP_RADIUS) continue;
         pickup.active = false;
@@ -689,24 +755,25 @@
       const launchTime = recoveryTime(feet, start.y, vy, jump, seaY, jetSeconds, jetAccel, jetRise);
       if (launchTime >= 0 && Math.hypot(x - start.x, z - start.z) <= 5 + speed * launchTime) return true;
       for (const cloud of clouds) {
+        if (cloud.section !== live) continue;
         const special = cloud.kind !== "normal";
         const time = recoveryTime(feet, cloud.y - cloud.depth - (special ? height : 0), vy, jump, seaY, jetSeconds, jetAccel, jetRise);
         if (time < 0) continue;
         // Allow the full remaining drift in either direction, not just the
         // current frame's footprint; this also covers clouds currently absent.
-        const drift = 2 * cloud.moveRange;
+        const drift = 2 * (cloud.moveRange + cloud.lane);
         const reach = (special ? Math.hypot(cloud.rx, cloud.rz) : Math.max(cloud.rx, cloud.rz)) + 0.3 + drift + speed * time;
         if (Math.hypot(x - cloud.x, z - cloud.z) <= reach) return true;
       }
       // A nearby pack or sky feather is only a rescue if the body can meet it vertically
       // before water. An unreachable one overhead must not hold DQ open.
-      for (const pickup of pickups) if (pickup.active && (pickup.kind === "jetpack" || pickup.kind === "updraft") && pickup.y >= seaY - PICKUP_RADIUS
+      for (const pickup of pickups) if (pickup.active && pickup.cloud.section === live && (pickup.kind === "jetpack" || pickup.kind === "updraft") && pickup.y >= seaY - PICKUP_RADIUS
         && canInterceptPickup(pickup, x, feet, z, vy, speed, jump, seaY, jetSeconds, jetAccel, height, seaTime)) return true;
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt };
+      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, flips, evade, enter, get live() { return live; } };
   };
   BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
-    PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING };
+    PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING, EVADE, REST, TELL, DASH, TIRED };
 })();

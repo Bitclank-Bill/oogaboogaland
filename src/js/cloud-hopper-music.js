@@ -4,6 +4,8 @@
 //   Level 2 "Golden Hour Groove": 118 BPM sunset disco-synthwave in D major, octave bass and offbeat hats under a saw hook.
 //   Level 3 "Cloudbreak Sprint": 128 BPM progressive trance in B minor, the restrained motif under the aurora.
 //   Level 4 "Thunderhead Run": 122 BPM dark deep house in D minor, a round kick, offbeat bass and hats, minor stabs.
+//   Level 5 "Sunbreak Rush": 126 BPM melodic breakbeat in E minor, a bright saw hook over rolling arps and a broken beat;
+//     while its world is turned over the hook plays an octave down and darker (`turned`).
 // One transport spans the dock, ascent, races, results and replays; only the drums follow the race state, entering
 // and leaving on bar boundaries. Switching songs fades the old one out from its next beat and starts the new one near
 // the end of that fade, bringing it in.
@@ -191,6 +193,44 @@
       hat: { steps: on(1, 3, 5, 7, 9, 11, 13, 15), level: 0.026, length: 0.02 },
       openHat: { steps: on(2, 6, 10, 14), level: 0.05, length: 0.11 },
       echo: 0.24
+    },
+    {
+      name: "Sunbreak Rush", bpm: 126,
+      // A bright saw hook climbing out of the minor, leaping up to the high E in the open bars.
+      melody: line([
+        "e5 . . g5 . . b5 . . . a5 - . . . .",
+        "g5 - - - . . . . . . e5 . f#5 . . .",
+        "g5 . . e5 . . c5 . . . e5 - . . . .",
+        "d5 - - - . . . . . . b4 . d5 . . .",
+        "e5 . . g5 . . b5 . . . d6 - . . . .",
+        "c6 - - - . . . . . . b5 . a5 . . .",
+        "a5 . . g5 . . e5 . . . a5 - . . . .",
+        "f#5 - - - g5 - - - a5 - - - . . . .",
+        "b5 . . e5 . . g5 . b5 . a5 . g5 - . .",
+        "e5 - - - . . g5 . a5 . b5 . c6 . . .",
+        "b5 . . g5 . . e5 . g5 . b5 . e6 - . .",
+        "d6 - - - . . b5 . a5 - - - . . . .",
+        "c6 . . a5 . . e5 . a5 . c6 . e6 - . .",
+        "d6 - - - . . c6 . b5 - - - . . . .",
+        "b5 . . d6 . . e6 . d6 . b5 . a5 - . .",
+        "f#5 - - - - - - - . . . . . . . ."
+      ]),
+      // Em9, Cmaj7, Gadd9, Dsus, D and Am7, open and bright.
+      chords: [[55, 59, 62, 66], [55, 59, 60, 64], [55, 57, 59, 62], [54, 57, 62, 64], [54, 57, 62, 66], [52, 55, 57, 60]],
+      harmony: [0, 1, 2, 3, 0, 1, 5, 4, 0, 1, 2, 3, 0, 1, 5, 4], roots: [40, 36, 43, 38, 40, 36, 33, 38, 40, 36, 43, 38, 40, 36, 33, 38],
+      walk: [1, 2, 3, 2],
+      lead: { type: "sawtooth", spread: 7, level: [0.07, 0.085], cutoff: [1500, 2200], attack: 0.006, held: false, gap: 0.03 },
+      pads: { types: ["sawtooth", "triangle", "sawtooth", "triangle"], spreads: [7, 4, 9, 4], level: 0.11, cutoff: [900, 1300], attack: 0.35 },
+      // Rolling sixteenths of the chord in threes against the beat.
+      arp: { type: "square", steps: on(0, 3, 6, 9, 12, 14), breakdown: on(0, 6, 12), level: 0.05, length: 1.2, cutoff: 1500, attack: 0.003 },
+      bass: { type: "sawtooth", steps: on(0, 3, 6, 10, 14), level: 0.25, length: 1.3, cutoff: 600 },
+      sub: { steps: on(0, 6, 10), level: 0.4, length: 1.8 },
+      // A broken beat: the kick on one, the and of two and the three's last sixteenth, the clap on two and four.
+      kick: { steps: on(0, 6, 10), breakdown: on(0), level: 0.74, soft: 0.34, pitch: [125, 48, 0.1], length: 0.24 },
+      clap: { steps: on(4, 12), level: 0.17 },
+      hat: { steps: on(0, 2, 4, 6, 8, 10, 12, 14), level: 0.032, length: 0.025 },
+      openHat: { steps: on(7, 15), level: 0.055, length: 0.1 },
+      echo: 0.2
     }
   ];
   for (const song of SONGS) {
@@ -198,6 +238,9 @@
     song.harmony = Uint8Array.from(song.harmony); song.roots = Uint8Array.from(song.roots); song.walk = Uint8Array.from(song.walk);
   }
   const MAX_STEPS = Math.ceil(MAX_AHEAD / Math.min(...SONGS.map(song => song.step))) + 1;
+  // Whether Storm's Eye's world is turned over, when the melody drops an octave under a filter at TURNED_CUTOFF of its own.
+  const TURNED_CUTOFF = 0.6;
+  let turnedOver = false;
 
   // One player: every voice and echo tap retained, its own fader for crossfades. Notes and frames only schedule
   // AudioParams; the caller owns the single context and shared noise source.
@@ -390,7 +433,8 @@
       }
       if (song.melody.note[i]) {
         const duration = Math.max(0.1, song.melody.length[i] * step - song.lead.gap);
-        note(lead, song.melody.note[i], duration, song.lead.level[open], at, song.lead.cutoff[open], song.lead.attack, song.lead.held);
+        // While Storm's Eye's world is turned over its melody plays an octave down and darker.
+        note(lead, song.melody.note[i] - (turnedOver ? 12 : 0), duration, song.lead.level[open], at, song.lead.cutoff[open] * (turnedOver ? TURNED_CUTOFF : 1), song.lead.attack, song.lead.held);
       }
       const root = song.roots[harmony];
       if (!breakdown && song.bass.steps & bit) note(bass, root + 12, step * song.bass.length, song.bass.level, at, song.bass.cutoff);
@@ -467,7 +511,9 @@
     };
     const quiet = () => { for (const p of players) p.quiet(); };
     const stop = () => { outgoing.length = 0; entering = -1; for (const p of players) p.stop(); };
-    return { stage, tick, quiet, stop, song, get chosen() { return chosen; }, get mode() { return mode; } };
+    // Storm's Eye's world turned over, or upright again: heard from the melody's next note.
+    const turned = (on) => { turnedOver = !!on; };
+    return { stage, tick, quiet, stop, song, turned, get chosen() { return chosen; }, get mode() { return mode; } };
   };
   BL.cloudHopperMusic = { create, SONGS };
 })();

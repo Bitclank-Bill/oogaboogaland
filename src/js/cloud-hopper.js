@@ -16,7 +16,7 @@
   // The grappling hook: how far it reaches from the Ooga's chest, how fast it flies out and reels back, how fast it
   // pulls, how near the bite it lets go by itself, and the longest pull.
   const HOOK_RANGE = 40, HOOK_FLY = 90, HOOK_REEL = 70, HOOK_PULL = 18, HOOK_ARRIVE = 1, HOOK_PULL_SECONDS = 4;
-  const INTRODUCED = ["bounce", "gust", "tornado", "xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
+  const INTRODUCED = ["bounce", "gust", "tornado", "portal", "xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
   // Each pickup's light under it, by kind, in the tint of its glow.
   const PICKUP_LIGHT = { jetpack: [0.55, 0.65, 0.75], xray: [0.35, 0.78, 0.88], updraft: [0.45, 0.8, 0.6], hook: [0.88, 0.72, 0.4] };
   const PICKUP_TOAST = { xray: "X-ray goggles · every nearby cloud's time", updraft: "Sky feather · Space once both jumps are spent",
@@ -42,6 +42,13 @@
   const SWEPT_DWELL = 0.15, SWEPT_DRAW = 0.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
   const SWEPT_OUT = 12, SWEPT_BEHIND = 6, SWEPT_UNDER = 4;
+  // Storm's Eye's portals turn the world over: a touch holds the rider where it is while everything else (the sky, the
+  // sea, the island, the storm round it and the clouds) rolls half a turn round the course's axis over TURN_SECONDS
+  // (at once under reduced motion), which leaves the next section's clouds overhead. Then the rider is let go with a
+  // jetpack worn and at least CLIMB_FUEL of a tank to fly up to them, and one that falls CLIMB_FALL metres before
+  // landing there starts the climb again from where it was let go. Clouds of the sections still to come are drawn at
+  // GHOSTLY of their opacity and those left behind not at all.
+  const TURN_SECONDS = 2.2, CLIMB_FUEL = 0.7, CLIMB_FALL = 30, GHOSTLY = 0.3;
   let guideSeen = false, itemsSeen = null;
   const hasSeenGuide = () => {
     if (!guideSeen) {
@@ -85,6 +92,104 @@
     platform.visible = !ctx.arcade;
     const routeRoot = createNode({ visible: false, sightHidden: true });
     addChild(root, routeRoot);
+    // ---- the world turned over (Storm's Eye) ----------------------------------------------------------------------
+    // The run itself never turns: the rider, its physics and its course stay as they are. What turns is the view, by
+    // `turn` radians round the course's axis (`turnAxis`, through `turnPivot`, the first portal), which rolls the sky,
+    // the sea, the island and the scenery for nothing and changes no node of the island's. So that the run still shows
+    // where it is, a section the world shows upside down is drawn turned half over (`sectionRoots`, the odd ones), as
+    // is what belongs to the live section (`liveRoot`: the gust, the hook and the feather's leaves) and each tornado
+    // (`tornadoRoots`), and the rider is drawn turned back by the roll itself (`riderRoot`, which holds the Ooga from
+    // its first portal until the world is upright again). `turning` is the seconds into a roll (-1 none) from
+    // `turnFrom`; `climbing` is a rider let go under the next section and not yet landed, from `checkpoint`.
+    const holder = () => { const node = createNode({ sightHidden: true }); node.quaternion = [0, 0, 0, 1]; return node; };
+    const sectionRoots = [holder(), holder(), holder()], liveRoot = holder(), riderRoot = holder();
+    const tornadoRoots = BL.cloudHopperTornado.SPOTS.map(holder);
+    addChild(routeRoot, ...sectionRoots, liveRoot, ...tornadoRoots); addChild(root, riderRoot);
+    const turnAxis = { x: 1, z: 0 }, turnPivot = { x: 0, y: 0, z: 0 }, turnAbout = { x: 0, y: 0, z: 0 }, checkpoint = { x: 0, y: 0, z: 0 };
+    const ORIGIN = { x: 0, y: 0, z: 0 }, spun = { x: 0, y: 0, z: 0 }, turnedUp = { x: 0, y: 1, z: 0 };
+    const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 }, shade = new Float32Array(3);
+    let turn = 0, turning = -1, turnFrom = 0, climbing = false, riderParent = null, viewTurned = false, trueUp = null;
+    const stillMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Turns (x, y, z) by `angle` round the axis through `about`, into `out`.
+    const spin = (x, y, z, angle, about, out) => {
+      const c = Math.cos(angle), n = Math.sin(angle), ax = turnAxis.x, az = turnAxis.z;
+      const px = x - about.x, py = y - about.y, pz = z - about.z, along = (ax * px + az * pz) * (1 - c);
+      out.x = about.x + px * c - az * py * n + ax * along;
+      out.y = about.y + py * c + (az * px - ax * pz) * n;
+      out.z = about.z + pz * c + ax * py * n + az * along;
+      return out;
+    };
+    const setTurn = (node, angle, about) => {
+      const half = Math.sin(angle / 2), q = node.quaternion;
+      q[0] = turnAxis.x * half; q[1] = 0; q[2] = turnAxis.z * half; q[3] = Math.cos(angle / 2);
+      spin(0, 0, 0, angle, about, spun);
+      node.position.x = spun.x; node.position.y = spun.y; node.position.z = spun.z;
+    };
+    // Where the live section's (x, y, z) shows in the turned world, for the overlay and the lights.
+    const shown = (x, y, z, out, section = course.live) => section % 2 ? spin(x, y, z, Math.PI, turnPivot, out) : (out.x = x, out.y = y, out.z = z, out);
+    // The rider goes back to where the crew keeps it and the view to the pilot's own.
+    const restoreView = () => {
+      if (!viewTurned) return;
+      Object.assign(camera.position, trueEye); Object.assign(camera.target, trueTarget); camera.up = trueUp;
+      viewTurned = false;
+    };
+    const resetTurn = () => {
+      restoreView();
+      if (riderParent && actor) { removeChild(riderRoot, actor.root); addChild(riderParent, actor.root); }
+      riderParent = null; turn = 0; turning = -1; climbing = false;
+      setTurn(riderRoot, 0, ORIGIN); setTurn(liveRoot, 0, ORIGIN); audio.turned(false);
+    };
+    // After the pilot has set the view: the world rolls by turning the view the other way round the same axis.
+    const turnView = () => {
+      if (turn === 0 || !active()) return;
+      Object.assign(trueEye, camera.position); Object.assign(trueTarget, camera.target); trueUp = camera.up; viewTurned = true;
+      spin(trueEye.x, trueEye.y, trueEye.z, -turn, turnAbout, camera.position);
+      spin(trueTarget.x, trueTarget.y, trueTarget.z, -turn, turnAbout, camera.target);
+      camera.up = spin(trueUp?.x || 0, trueUp ? trueUp.y : 1, trueUp?.z || 0, -turn, ORIGIN, turnedUp);
+    };
+    // A portal touched: the rider is held where it is and the world starts to roll.
+    const beginTurn = () => {
+      turning = 0; turnFrom = turn; climbing = false;
+      Object.assign(checkpoint, actor.root.position);
+      if (hookHeld && hookAt !== HAND) letGo();
+      hookDown = false;
+      // The view stays the player's own to look round with; the hold overwrites whatever the controls move.
+      pilot.controls.reset();
+      if (!riderParent) { riderParent = actor.root.parent; removeChild(riderParent, actor.root); addChild(riderRoot, actor.root); }
+      audio.turnOver(); audio.turned(course.live % 2 === 0);
+    };
+    // The rider at the checkpoint with a pack worn and fuel for the climb.
+    const startClimb = () => {
+      const p = actor.root.position;
+      Object.assign(p, checkpoint);
+      actor.hop = 1; actor.hopV = 0; actor.jumps = 1; actor.leap.vx = actor.leap.vz = 0; actor.leap.land = 0;
+      if (!actor.jetpackOwned) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
+      if (!actor.jet) crew.wearJetpack(actor, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
+      actor.jetFuel = Math.max(actor.jetFuel, CLIMB_FUEL); actor.jetRecovering = false;
+      pilot.showAct(); climbing = true; unrecoverableAt = -1;
+    };
+    // Each frame of a roll, after the crew moved (its moves are overwritten): the first portal's world turns over where
+    // it stands; the second's turns back round an axis that slides from there to the rider, so it ends upright with no
+    // far swing. At its end the next section is the live one and the rider is let go under it.
+    const turnStep = () => {
+      turning += stepTime;
+      const u = stillMotion ? (turning >= TURN_SECONDS / 2 ? 1 : 0) : Math.min(1, turning / TURN_SECONDS), k = u * u * (3 - 2 * u), p = actor.root.position;
+      turn = turnFrom + Math.PI * k;
+      const slide = turnFrom > 0 ? k : 0;
+      turnAbout.x = turnPivot.x + (checkpoint.x - turnPivot.x) * slide; turnAbout.y = turnPivot.y + (checkpoint.y - turnPivot.y) * slide;
+      turnAbout.z = turnPivot.z + (checkpoint.z - turnPivot.z) * slide;
+      Object.assign(p, checkpoint);
+      actor.hop = 1; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0;
+      seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
+      if (turning < TURN_SECONDS) { setTurn(riderRoot, -turn, turnAbout); return; }
+      turning = -1;
+      course.enter(course.live + 1);
+      setTurn(liveRoot, course.live % 2 ? Math.PI : 0, turnPivot);
+      if (course.live % 2) { turn = Math.PI; Object.assign(turnAbout, turnPivot); setTurn(riderRoot, -turn, turnAbout); }
+      else { turn = 0; removeChild(riderRoot, actor.root); addChild(riderParent, actor.root); riderParent = null; }
+      startClimb();
+      hud.toast("The world turned over · hold Space to jetpack up");
+    };
     const from = { x: 0, y: 0, z: 0 }, carry = { x: 0, y: 0, z: 0 };
     const liftGoal = { x: 0, y: 0, z: 0 }, ghostStart = { x: 0, y: 0, z: 0 };
     const targetScreen = { x: 0, y: 0, depth: 0 };
@@ -188,7 +293,7 @@
       pilot.syncHeadVisibility(actor);
       return true;
     };
-    const cloudNodes = [], boostNodes = [], bounceNodes = [], pickupNodes = [];
+    const cloudNodes = [], boostNodes = [], bounceNodes = [], portalNodes = [], pickupNodes = [];
     const cloudFading = new Uint8Array(BL.cloudHopperCourse.MAX_CLOUDS), cloudWarning = new Uint8Array(BL.cloudHopperCourse.MAX_CLOUDS);
     const action = { kind: "cloud-hopper" };
     const active = () => phase !== "idle", playing = () => active() && phase !== "intro";
@@ -219,12 +324,12 @@
     // Thunderhead's tornadoes, one a spot and any of them up at once, each writing its own whirl; `tornado` is the one
     // that matters now (the one that has the Ooga, else the nearest down, else the nearest brewing), whose whirl the
     // course takes. And whether one has the Ooga (and the height it took it at).
-    const tornadoes = BL.cloudHopperTornado.SPOTS.map((spot, which) => BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer, which,
+    const tornadoes = BL.cloudHopperTornado.SPOTS.map((spot, which) => BL.cloudHopperTornado.create({ root: tornadoRoots[which], renderer: ctx.renderer, which,
       onDrop: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); },
       onStrike: (distance) => audio.thunder(distance) }));
     const whirls = tornadoes.map(() => ({ x: 0, z: 0, strength: 0, reach: 1, core: 1, speed: 0, draw: 0, rise: 0 }));
     // Aurora Heights' gusts of wind.
-    const gust = BL.cloudHopperGust.create({ root: routeRoot, renderer: ctx.renderer });
+    const gust = BL.cloudHopperGust.create({ root: liveRoot, renderer: ctx.renderer });
     let slideX = 0, slideZ = 0;
     let tornado = tornadoes[0];
     // How long the Ooga has been wholly inside a tornado's funnel on end (s).
@@ -241,10 +346,10 @@
     // The hook's rope and head, and the feather's gust of leaves: built once, shown when used.
     const rope = createNode({ geometry: BL.cloudHopperModels.rope(), visible: false, sightHidden: true });
     const hookNode = createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true }), leaves = [];
-    addChild(routeRoot, rope, hookNode);
+    addChild(liveRoot, rope, hookNode);
     for (let i = 0; i < 12; i++) {
       const leaf = createNode({ geometry: BL.cloudHopperModels.leaf(), visible: false, sightHidden: true });
-      leaves.push(leaf); addChild(routeRoot, leaf);
+      leaves.push(leaf); addChild(liveRoot, leaf);
     }
     const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
     const nearIndex = new Int16Array(8), nearDistance = new Float32Array(8), drawnX = new Float32Array(8), drawnY = new Float32Array(8);
@@ -305,11 +410,13 @@
       if (!keepMusic) { audio.stop(); dockMusicOn = false; }
       cloudFading.fill(0); cloudWarning.fill(0);
       // Cloud meshes belong to the shared island kit and stay cached after a run.
-      for (const node of cloudNodes) removeChild(routeRoot, node);
-      for (const node of boostNodes) if (node) removeChild(routeRoot, node);
-      for (const node of bounceNodes) if (node) removeChild(routeRoot, node);
-      for (const node of pickupNodes) removeChild(routeRoot, node);
-      cloudNodes.length = boostNodes.length = bounceNodes.length = pickupNodes.length = 0;
+      for (const node of cloudNodes) removeChild(node.parent, node);
+      for (const node of boostNodes) if (node) removeChild(node.parent, node);
+      for (const node of bounceNodes) if (node) removeChild(node.parent, node);
+      for (const node of portalNodes) if (node) removeChild(node.parent, node);
+      for (const node of pickupNodes) removeChild(node.parent, node);
+      cloudNodes.length = boostNodes.length = bounceNodes.length = portalNodes.length = pickupNodes.length = 0;
+      resetTurn();
       launchContacts.fill(0); unrecoverableAt = -1;
       scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0);
       gust.clear(); slideX = slideZ = 0; overlay.setGust("calm", false); audio.gust(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
@@ -361,7 +468,8 @@
     // Whether this run carries each: bounce clouds by its course's own clouds, tornadoes by its level's sky, and gusts
     // and a power-up by its level's count.
     const carries = (kind) => kind === "bounce" ? course.clouds.some(c => c.kind === "bounce")
-      : kind === "tornado" ? !!level.sky?.tornado : kind === "gust" ? level.layout.gusts > 0 : level.layout[kind] > 0;
+      : kind === "tornado" ? !!level.sky?.tornado : kind === "gust" ? level.layout.gusts > 0
+        : kind === "portal" ? level.layout.flips?.length > 0 : level.layout[kind] > 0;
     // What this run carries that this browser session has not been shown yet.
     const newItems = () => INTRODUCED.filter((kind) => carries(kind) && !seenItems().has(kind));
     const finishGuide = () => {
@@ -474,7 +582,8 @@
       const refusal = ctx.refusal();
       if (refusal) { hud.toast(refusal); return false; }
       prepareEquipment(cave);
-      endFall(); endSweep();
+      // The view is the pilot's own again before the fall's or the sweep's is given back.
+      restoreView(); endFall(); endSweep();
       clearRoute(true);
       audio.unlock();
       if (climb) Object.assign(platform.position, home);
@@ -497,37 +606,51 @@
         layout: level.layout, timing: level.timing, runSpeed: BL.pilot.WALK.speed * BL.pilot.WALK.run, jumpSpeed: BL.crew.JUMP_SPEED });
       // Far starts keep the island in view, and the level's scenery too.
       const reach = scenery.build(level, course, start, liftGoal);
-      if (level.sky?.tornado) for (let i = 0; i < tornadoes.length; i++) tornadoes[i].start(courseSeed, course, liftGoal, i);
+      if (level.sky?.tornado) for (let i = 0; i < tornadoes.length; i++) tornadoes[i].start(courseSeed, course, liftGoal, i, level.sky.fog);
       gust.start(courseSeed, course, liftGoal, level.layout.gusts || 0);
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
+      // The world turns round the course's own axis, through its first portal; the sections it shows upside down are
+      // drawn turned half over there.
+      if (course.flips.length) {
+        const across = Math.hypot(start.x - liftGoal.x, start.z - liftGoal.z), first = course.flips[0].cloud;
+        turnAxis.x = (start.x - liftGoal.x) / across; turnAxis.z = (start.z - liftGoal.z) / across;
+        turnPivot.x = first.baseX; turnPivot.y = first.y; turnPivot.z = first.baseZ;
+      }
+      for (let k = 0; k < sectionRoots.length; k++) { setTurn(sectionRoots[k], course.flips.length && k % 2 ? Math.PI : 0, turnPivot); shade[k] = k ? GHOSTLY : 1; }
+      for (const holder of tornadoRoots) setTurn(holder, 0, turnPivot);
       // A night sky's clouds, the launch cloud among them, take the night fill.
       const dark = !!level.sky?.night;
       cloud.geometry = BL.cloudHopperModels.cloudMesh(0, "normal", dark);
       for (const c of course.clouds) {
-        const node = BL.cloudHopperModels.cloud(c.rx, c.rz, c.depth, c.kind, c.yaw, dark);
+        // A section the world shows upside down is lit from under, so its clouds take the night fill to read.
+        const group = sectionRoots[c.section], portal = c.kind === "portal";
+        const node = BL.cloudHopperModels.cloud(c.rx, c.rz, c.depth, portal ? "normal" : c.kind, c.yaw, dark || c.section % 2 === 1);
         const surface = c.kind === "boost" ? BL.cloudHopperModels.boostSurface(c, node) : null;
         node.position.x += c.x; node.position.y += c.y; node.position.z += c.z;
         node.smokeOpacity = 1;
-        cloudNodes.push(node); addChild(routeRoot, node);
+        cloudNodes.push(node); addChild(group, node);
         boostNodes.push(surface);
         if (surface) {
           surface.position.x = c.x; surface.position.y = c.y + 0.025; surface.position.z = c.z;
           surface.smokeOpacity = 1;
-          addChild(routeRoot, surface);
+          addChild(group, surface);
         }
         const marker = c.kind === "bounce" ? BL.cloudHopperModels.bounceMarker() : null;
         bounceNodes.push(marker);
         if (marker) {
           BL.cloudHopperModels.updateBounceMarker(marker, c, displayTime);
-          addChild(routeRoot, marker);
+          addChild(group, marker);
         }
+        const gate = portal ? BL.cloudHopperModels.portal() : null;
+        portalNodes.push(gate);
+        if (gate) addChild(group, gate);
       }
       for (const p of course.pickups) {
         const node = BL.cloudHopperModels.pickup(p.kind);
         node.position.x = p.x; node.position.y = p.y; node.position.z = p.z;
         BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + p.index * 2, level.sky?.fog);
-        pickupNodes.push(node); addChild(routeRoot, node);
+        pickupNodes.push(node); addChild(sectionRoots[p.cloud.section], node);
       }
       routeRoot.visible = true;
       if (!climb) Object.assign(platform.position, start);
@@ -618,7 +741,7 @@
         return;
       }
       const park = playing();
-      endFall(); endSweep();
+      restoreView(); endFall(); endSweep(); resetTurn();
       pilot.releaseFrame(true);
       cabinet.visible = !ctx.arcade;
       if (park) ctx.mode(false);
@@ -643,6 +766,8 @@
       return true;
     };
     const preUpdate = (dt) => {
+      // The pilot and the run work in the view as it was before the world's roll turned it.
+      restoreView();
       displayTime += dt;
       if (cabinet.visible) BL.cloudHopperModels.updateCabinet(cabinet, displayTime);
       if (!active()) { if (!ctx.arcade) updateDockMusic(); return; }
@@ -661,8 +786,8 @@
         if (fallTime === fallDuration) actor.root.visible = false;
         return;
       }
-      // A storm level's rain falls while the rider is up there.
-      audio.rain(!!level.sky?.storm && (phase === "lifting" || phase === "briefing" || phase === "ready" || phase === "running"));
+      // Thunderhead's rain falls while the rider is up there.
+      audio.rain(level.sky?.scenery === "storm" && (phase === "lifting" || phase === "briefing" || phase === "ready" || phase === "running"));
       if (!course || phase === "won") return;
       Object.assign(beforeStep, actor.root.position); stepTime = dt;
       // Carry planted feet with the drifting, dissolving surface before ordinary gravity runs.
@@ -710,6 +835,14 @@
         overlay.setGust(gust.state, gust.pushX * -fz + gust.pushZ * fx > 0);
         audio.gust(gust.strength);
       }
+      if (course.flips.length) {
+        if (phase === "running") course.evade(dt, p.x, feet, p.z);
+        for (let i = 0; i < tornadoes.length; i++) setTurn(tornadoRoots[i], tornadoes[i].section % 2 ? Math.PI : 0, turnPivot);
+        // The live section stands solid, the next one coming up solid as the world rolls to it; those still to come
+        // are ghostly and those left behind fade away.
+        const live = course.live, next = live + (turning >= 0 ? 1 : 0), ease = Math.min(1, dt * 3);
+        for (let k = 0; k < shade.length; k++) shade[k] += ((k === live || k === next ? 1 : k < live ? 0 : GHOSTLY) - shade[k]) * ease;
+      }
       course.update(dt, phase === "running" ? (raceNow() - startedAt) / 1000 : undefined);
       // Lanes swing smoothly, so a planted rider rides the cloud's whole move however long the frame.
       if (riding) {
@@ -726,16 +859,21 @@
         }
         cloudWarning[i] = c.warning >= 0 ? 1 : 0;
         cloudFading[i] = c.fading ? 1 : 0;
-        const opacity = c.warning >= 0 ? c.opacity * (1 - thinning(c.warning, course.timing.warn)) : c.opacity;
+        const opacity = (c.warning >= 0 ? c.opacity * (1 - thinning(c.warning, course.timing.warn)) : c.opacity) * shade[c.section];
         node.position.x += c.x - c.previousX; node.position.y += c.lift - c.previousLift; node.position.z += c.z - c.previousZ;
-        node.smokeOpacity = opacity; node.visible = c.opacity > 0;
+        node.smokeOpacity = opacity; node.visible = c.opacity > 0 && shade[c.section] > 0.02;
         const surface = boostNodes[i];
         if (surface) {
           surface.position.x = c.x; surface.position.y = c.y + c.lift + 0.025; surface.position.z = c.z;
-          surface.smokeOpacity = opacity; surface.visible = c.active;
+          surface.smokeOpacity = opacity; surface.visible = c.opacity > 0 && shade[c.section] > 0.02;
           BL.cloudHopperModels.updateBoostSurface(surface, displayTime);
         }
         if (bounceNodes[i]) BL.cloudHopperModels.updateBounceMarker(bounceNodes[i], c, displayTime);
+        // A portal's rings quicken as it tells and shrink while it is tired.
+        if (portalNodes[i]) {
+          const E = BL.cloudHopperCourse, tell = c.evade === E.TELL ? c.evadeFor / E.EVADE.tell : c.evade === E.DASH ? 1 : 0;
+          BL.cloudHopperModels.updatePortal(portalNodes[i], c, displayTime, tell, c.evade === E.TIRED ? 1 - c.evadeFor / E.EVADE.tired : 0, shade[c.section]);
+        }
       }
       for (let i = 0; i < pickupNodes.length; i++) {
         const pickup = course.pickups[i], node = pickupNodes[i];
@@ -793,6 +931,7 @@
         if (time < first) { cloud = candidate; first = time; }
       }
       if (!cloud) return;
+      if (cloud.kind === "portal") { beginTurn(); return; }
       const bounce = cloud.kind === "bounce";
       crew.elevate(0);
       p.y += LAUNCH_CLEARANCE; actor.hop += LAUNCH_CLEARANCE;
@@ -806,6 +945,7 @@
     const postUpdate = () => {
       // Swept up by a tornado, the Ooga spins round over its top behind the DQ card too, until a replay or exit.
       if (swept >= 0) { sweepStep(); return; }
+      if (turning >= 0 && phase === "running") { turnStep(); return; }
       if (phase !== "ready" && phase !== "running") return;
       const p = actor.root.position, feet = p.y - actor.baseY;
       if (phase === "ready" && (actor.hop > 0.02 || actor.hopV > 0.02 || Math.abs(feet - platform.position.y) > 0.08
@@ -821,7 +961,13 @@
           const top = ctx.pileSurface(p.x, p.z, feet + 1e-6, 0, 0.3);
           if (Number.isFinite(top) && Math.abs(feet - top) < 1e-6) { finish(true); return; }
         }
+        // The climb after a portal ends on the next section's first landing; a fall from it starts it again.
+        if (climbing) {
+          if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) climbing = false;
+          else if (p.y < checkpoint.y - CLIMB_FALL) { startClimb(); hud.toast("Back under the clouds · hold Space to jetpack up"); }
+        }
         launchFromCloud();
+        if (turning >= 0) return;
         ghost.record(seconds, actor); ghost.update(seconds);
       }
       // Refill before retiring an empty pack, preserving its equipped state
@@ -858,7 +1004,7 @@
         const jump = Math.hypot(actor.jumps < 2 ? BL.crew.JUMP_SPEED : 0, feather ? UPDRAFT_RISE : 0);
         const tank = actor.traits.jetTank > 0 ? actor.traits.jetTank : 1;
         const jetSeconds = actor.jetpackOwned ? actor.jetFuel * BL.crew.JET_FUEL_SECONDS * tank : 0;
-        if (whirled || hookReach() || course.canRecover(p.x, feet, p.z, actor.hopV, speed, jump, ctx.seaY,
+        if (whirled || climbing || hookReach() || course.canRecover(p.x, feet, p.z, actor.hopV, speed, jump, ctx.seaY,
           jetSeconds, BL.crew.JET_ACCEL, BL.crew.JET_RISE, actor.bodyHeight)) unrecoverableAt = -1;
         else {
           // Keep control briefly beyond the reach envelope. A recovered
@@ -1105,7 +1251,8 @@
       let drawn = 0;
       for (let k = 0; k <= 16; k++) {
         const a = k / 16 * TAU, lx = Math.cos(a) * (c.rx + 0.2), lz = Math.sin(a) * (c.rz + 0.2);
-        const q = ctx.renderer.project(c.x + lx * c.cosYaw + lz * c.sinYaw, c.top + 0.05, c.z - lx * c.sinYaw + lz * c.cosYaw, edge);
+        shown(c.x + lx * c.cosYaw + lz * c.sinYaw, c.top + 0.05, c.z - lx * c.sinYaw + lz * c.cosYaw, spun);
+        const q = ctx.renderer.project(spun.x, spun.y, spun.z, edge);
         if (!q) continue;
         if (drawn++) c2.lineTo(q.x, q.y); else c2.moveTo(q.x, q.y);
       }
@@ -1140,7 +1287,8 @@
         const warning = c.phase === BL.cloudHopperCourse.WARNING || c.phase === BL.cloudHopperCourse.FADING;
         const color = s === Infinity ? "#ffd54a" : s <= 0 ? "#8aa0b8" : warning ? "#ff5a45" : s < 8 ? "#ffb23e" : "#5fe08a";
         if (haze && nearDistance[n] > haze[0] + 20) { c2.strokeStyle = color; c2.lineWidth = 2; outline(c2, c, HAZE_DASH); }
-        const q = ctx.renderer.project(c.x, c.top + 1.2, c.z, screen);
+        shown(c.x, c.top + 1.2, c.z, spun);
+        const q = ctx.renderer.project(spun.x, spun.y, spun.z, screen);
         if (!q || q.x < 0 || q.x > size.width || q.y < 0 || q.y > size.height) continue;
         const x = Math.round(q.x), y = Math.round(q.y);
         let clear = true;
@@ -1171,7 +1319,8 @@
       }
       // A hook in hand rings the cloud in reach under the crosshair in gold where it would bite.
       if (hookHeld && hookAt === HAND && (phase === "ready" || phase === "running") && aim()) {
-        const q = ctx.renderer.project(aimHit.x, aimHit.y, aimHit.z, screen);
+        shown(aimHit.x, aimHit.y, aimHit.z, spun);
+        const q = ctx.renderer.project(spun.x, spun.y, spun.z, screen);
         if (q) {
           c2.save(); c2.lineWidth = 3;
           c2.strokeStyle = "rgba(20, 14, 8, 0.85)"; c2.beginPath(); c2.arc(q.x, q.y, 11, 0, TAU); c2.stroke();
@@ -1210,7 +1359,8 @@
       cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); for (const t of tornadoes) t.dispose(); gust.dispose();
       audio.dispose();
       document.removeEventListener("visibilitychange", onVisibility);
-      removeChild(root, routeRoot); removeChild(root, platform);
+      resetTurn();
+      removeChild(root, routeRoot); removeChild(root, platform); removeChild(root, riderRoot);
       phase = "idle"; actor = null;
     };
     const liveGeometry = (set) => {
@@ -1219,6 +1369,7 @@
       set.add(leaves[0].geometry);
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
+      for (const gate of portalNodes) if (gate) for (const part of gate.children) set.add(part.geometry);
       for (const node of pickupNodes) for (const part of node.children) set.add(part.geometry);
     };
     const pickupLightsWanted = () => {
@@ -1245,7 +1396,8 @@
         const p = course.pickups[litIndex[n]], at = (offset + n) * 8, pulse = 0.92 + Math.sin((displayTime + p.index * 2) * 2.4) * 0.08, tint = PICKUP_LIGHT[p.kind];
         // Soft uplight grounds the pickup on its cloud; the pack's material
         // fill keeps the upper tanks readable without a blue hotspot.
-        lights[at] = p.x; lights[at + 1] = p.y - 0.3; lights[at + 2] = p.z; lights[at + 3] = 2.4;
+        shown(p.x, p.y - 0.3, p.z, spun, p.cloud.section);
+        lights[at] = spun.x; lights[at + 1] = spun.y; lights[at + 2] = spun.z; lights[at + 3] = 2.4;
         lights[at + 4] = tint[0] * pulse; lights[at + 5] = tint[1] * pulse; lights[at + 6] = tint[2] * pulse; lights[at + 7] = 0;
       }
       return count;
@@ -1269,7 +1421,7 @@
       rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), "Exit Cloud Hopper", touch ? "Exit button" : ""));
       return { title: "Cloud Hopper", rows };
     };
-    return { controlsHelp, controlsHelpHold, platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, hookAction, toggleGhost, fallView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
+    return { controlsHelp, controlsHelpHold, platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, hookAction, toggleGhost, fallView, turnView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
       get active() { return active(); }, get playing() { return playing(); }, get held() { return held(); }, get intoCombat() { return intoCombat; },
       get actor() { return actor; }, get phase() { return phase; }, get time() { return seconds; },
       get course() { return course; }, get start() { return start; }, get level() { return level; },
@@ -1286,6 +1438,8 @@
       get tornado() { return tornado; }, get tornadoes() { return tornadoes; }, get whirled() { return whirled; }, get swept() { return swept; }, get hiddenByTornado() { return hiddenByTornado(); },
       // Aurora Heights' gust and how fast it slides a planted Ooga, for debugging.
       get gust() { return gust; }, get slide() { return Math.hypot(slideX, slideZ); },
+      // Storm's Eye's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
+      get turn() { return turn; }, get turning() { return turning >= 0; }, get climbing() { return climbing; },
       get bound() { return Math.hypot(start.x, start.z) + 80; } };
   };
   BL.cloudHopper = { create, LIFT_SECONDS };

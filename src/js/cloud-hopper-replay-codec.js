@@ -4,7 +4,7 @@
   "use strict";
   const BL = globalThis.BL = globalThis.BL || {};
   const STRIDE = 155, MAX_SAMPLES = 12001, MAX_BYTES = 12 * 1024 * 1024, MAX_META = 4 * 1024 * 1024;
-  const level = id => /^cloud-hopper-l[1-4]$/.test(id);
+  const level = id => /^cloud-hopper-l[1-5]$/.test(id);
   const finite = (n, max = 100000) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= max;
   const vector = (a, length, max) => Array.isArray(a) && a.length === length && a.every(n => finite(n, max));
   const validAppearance = a => {

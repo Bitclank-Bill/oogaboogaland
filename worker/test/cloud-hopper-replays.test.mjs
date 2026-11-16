@@ -71,7 +71,7 @@ test("binary roundtrip bounds duration, timestamps, finite poses, version, appea
   const r = recording(), bytes = codec.encode(r), decoded = codec.decode(bytes);
   assert.equal(decoded.name, "winner"); assert.deepEqual(decoded.appearance, r.appearance);
   for (const mutate of [r => r.duration = 3601, r => r.version = 2, r => r.samples[1] = NaN,
-    r => r.samples[codec.STRIDE] = 0, r => r.game = "cloud-hopper-l5", r => r.count = 12002,
+    r => r.samples[codec.STRIDE] = 0, r => r.game = "cloud-hopper-l6", r => r.count = 12002,
     r => r.appearance.nodes[0].parent = 0, r => r.appearance.geometries[0].faces[0].i[0] = 100]) {
     const bad = structuredClone(r); mutate(bad); assert.equal(codec.encode(bad), null);
   }

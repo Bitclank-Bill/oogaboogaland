@@ -12,10 +12,10 @@ import { deliverHighscores } from "../src/highscore-store.js";
 
 const SITE = "https://site.test", RULES = globalThis.BL.highscoreRules;
 const { createHighscoreHandler, createPlaysHandler, readPlays, countPlay } = routeFixture();
-const database = (runs = true, cabinets = true, guard = runs && cabinets) => {
+const database = (runs = true, cabinets = true, guard = runs && cabinets, level5 = guard) => {
   const sql = new DatabaseSync(":memory:");
   sql.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_init.sql", "0002_tess.sql", "0003_highscores.sql", "0004_highscore_notifications.sql", "0005_cloud_hopper_levels.sql", "0006_cloud_hopper_replays.sql", ...(runs ? ["0007_cloud_hopper_runs.sql"] : []), ...(cabinets ? ["0008_cabinet_runs.sql"] : []), ...(guard ? ["0009_identity_collision_guard.sql"] : []), "0010_cabinet_plays.sql"]) {
+  for (const name of ["0001_init.sql", "0002_tess.sql", "0003_highscores.sql", "0004_highscore_notifications.sql", "0005_cloud_hopper_levels.sql", "0006_cloud_hopper_replays.sql", ...(runs ? ["0007_cloud_hopper_runs.sql"] : []), ...(cabinets ? ["0008_cabinet_runs.sql"] : []), ...(guard ? ["0009_identity_collision_guard.sql"] : []), "0010_cabinet_plays.sql", ...(level5 ? ["0012_cloud_hopper_level_5.sql"] : [])]) {
     sql.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   const statement = (query, args = []) => {
@@ -697,4 +697,33 @@ test("cabinet plays count every opening atomically, read as the last 30 days and
     assert.equal((await handler(request, env)).status, status);
   }
   assert.equal((await handler(plays(), { SITE_ORIGIN: SITE })).status, 503);
+});
+
+test("Level 5's migration keeps every Level 1-4 run, replay and pointer, its triggers and indexes, and opens the Level 5 board", async t => {
+  const DB = database(true, true, true, false); t.after(() => DB.sql.close());
+  const handler = await authenticated(DB, await player(DB, 1, "record-holder"));
+  for (const [n, game] of ["cloud-hopper-l1", "cloud-hopper-l2", "cloud-hopper-l3", "cloud-hopper-l4"].entries()) {
+    assert.equal((await handler(write(game, game, 47000 + n, { runId: runId(n + 1) }), { DB, SITE_ORIGIN: SITE })).status, 200);
+    const hash = String(n + 1).repeat(64);
+    DB.sql.prepare("INSERT INTO cloud_hopper_replay_objects(hash,game,player_id,score,bytes,course_version,expires_at,state) VALUES (?,?,1,?,100,1,9999999999999,'ready')").run(hash, game, 47000 + n);
+    DB.sql.prepare("INSERT INTO cloud_hopper_replay_winners(game,player_id,score,achieved,hash) VALUES (?,1,?,10,?)").run(game, 47000 + n, hash);
+  }
+  const tables = ["game_highscores", "cloud_hopper_runs", "cloud_hopper_replay_objects", "cloud_hopper_replay_winners"];
+  const snapshot = () => tables.map(table => DB.sql.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all());
+  const schema = () => DB.sql.prepare("SELECT type, name, tbl_name FROM sqlite_schema WHERE type IN ('index','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
+  const before = snapshot(), shape = schema();
+  DB.sql.exec(readFileSync(new URL("../migrations/0012_cloud_hopper_level_5.sql", import.meta.url), "utf8"));
+  const after = snapshot();
+  assert.deepEqual(after.slice(1), before.slice(1));
+  assert.deepEqual(after[0].filter(row => row.game_id !== "cloud-hopper-l5"), before[0]);
+  assert.deepEqual(schema(), shape);
+  assert.deepEqual(DB.sql.prepare("PRAGMA foreign_key_check").all(), []);
+  const env = { DB, SITE_ORIGIN: SITE };
+  assert.equal((await handler(write("cloud-hopper-l5", "cloud-hopper-l5", 90000, { runId: runId(9) }), env)).status, 200);
+  assert.deepEqual((await scores(handler, env, "cloud-hopper-l5")).highscores, { "record-holder": 90000 });
+  for (const game of ["cloud-hopper-l1", "cloud-hopper-l2", "cloud-hopper-l3", "cloud-hopper-l4"])
+    assert.equal((await scores(handler, env, game)).highscores["record-holder"], 47000 + Number(game.at(-1)) - 1);
+  assert.throws(() => DB.sql.prepare("INSERT INTO cloud_hopper_replay_winners(game,player_id,score,achieved,hash) VALUES ('drop',1,1,1,?)").run("1".repeat(64)), /CHECK/);
+  await player(DB, 1, "renamed-holder");
+  assert.deepEqual((await scores(handler, env, "cloud-hopper-l5")).highscores, { "renamed-holder": 90000 });
 });

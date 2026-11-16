@@ -1,4 +1,4 @@
-// Cloud Hopper's tornadoes, on Thunderhead (its sky's `tornado`). Each run has its spots down the course, seeded with
+// Cloud Hopper's tornadoes, on Thunderhead and Storm's Eye (its sky's `tornado`). Each run has its spots down the course, seeded with
 // it (`SPOTS`, each somewhere in its own stretch of the course and well off to one side). Over the next spot the storm turns, a cap gathering (`FORM` seconds) and brewing there, so a rider
 // sees from afar where it will come down; once the rider comes within `TRIGGER` of it, or passes it, a funnel lowers
 // slowly from it through the course (`DROP`), a thin, weak rope as its tip reaches the course that grows wider and
@@ -42,10 +42,11 @@
   // How much of it the brewing cap shows, as a share of its length, and how brightly it glows while it brews (and,
   // a little, once down), so it stands out against the storm's grey.
   const BREW = 0.14, BREW_GLOW = 1.2, DOWN_GLOW = 0.4;
-  // It shows through the haze only near the eye: within `SEEN[0]` (m, across) it takes `PIERCE` of the haze off itself,
-  // easing to none by `SEEN[1]`, past which the haze hides it as it does a cloud and it is not drawn, so the tornadoes
-  // further down the course come out of the storm only as the rider nears them.
-  const PIERCE = 0.75, SEEN = [200, 260];
+  // It shows through a level's haze only near the eye: within `SEEN[0]` metres (across) past where the haze ends it
+  // takes `PIERCE` of the haze off itself, easing to none by `SEEN[1]` past it, beyond which the haze hides it as it
+  // does a cloud and it is not drawn, so the tornadoes further down the course come out of the storm only as the
+  // rider nears them (Thunderhead's haze ends at 160 m, so 200 and 260 m). Under a clear sky it always shows.
+  const PIERCE = 0.75, SEEN = [40, 100];
   // Its hold on the clouds (the course's `whirl`): how far it reaches past its own side, the speed at its side, and
   // how fast it draws a cloud in toward it and lifts it (m/s).
   const REACH = 22, SPEED = 10, DRAW = 3, RISE = 2.5;
@@ -124,7 +125,9 @@
     const away = (px, pz) => Math.hypot(goalX - px, goalZ - pz);
     let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
-    let girth = THIN, power = WEAK, seen = 1;
+    let girth = THIN, power = WEAK, seen = 1, seenNear = Infinity, seenFar = Infinity;
+    // The section of the course it stands in (Storm's Eye's world turns over between them).
+    let section = 0;
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
     // lightning: the next strike, the last and how bright that one's flash is where the eye stands.
     let homeX = 0, homeZ = 0, heading = 0, wander = 0, w1 = 0, w2 = 0, strikeNext = 0, strikeAt = -1, strikeLevel = 0;
@@ -177,6 +180,7 @@
       const fx = goalX - best.x, fz = goalZ - best.z, d = Math.hypot(fx, fz) || 1, sx = -fz / d * spot.side, sz = fx / d * spot.side;
       const drift = range(DRIFT), dx = -sx + sz * (rand() - 0.5) * 0.4, dz = -sz - sx * (rand() - 0.5) * 0.4, l = Math.hypot(dx, dz);
       begin(best.x + sx * spot.off, best.top, best.z + sz * spot.off, dx / l, dz / l, drift, best.x, best.z);
+      section = best.section || 0;
       return true;
     };
     // How much nearer the goal the rider is than the tornado (m).
@@ -230,7 +234,7 @@
     };
     const draw = (eye) => {
       // How much it shows through the haze from the eye.
-      seen = 1 - ease((Math.hypot(ax - eye.x, az - eye.z) - SEEN[0]) / (SEEN[1] - SEEN[0]));
+      seen = seenNear === Infinity ? 1 : 1 - ease((Math.hypot(ax - eye.x, az - eye.z) - seenNear) / (seenFar - seenNear));
       // Lightning flickers in the cap now and then while it gathers and while it is down.
       if (clock >= flashNext && state !== FADING) { flashAt = clock; flashNext = clock + 0.8 + rand() * 1.6; }
       const flash = flashAt < 0 ? 0 : Math.max(0, 1 - (clock - flashAt) / 0.18), thick = LENGTH / LAYERS;
@@ -273,8 +277,10 @@
     // A run begins: `seed` its course's, from which its spots are laid on `course` toward `finish`; `clear` ends any
     // tornado at once and brews no more.
     // `only`, for one of a run's several tornadoes, keeps that spot alone, the others laid the same way by every one.
-    const start = (seed, course, finish, only = -1) => {
+    // `haze` is the level's [near, far] haze, if it has one.
+    const start = (seed, course, finish, only = -1, haze = null) => {
       rand = mulberry32(seed ^ 0x51ed270b); spots.length = mains.length = made = 0; state = IDLE; age = 0; strength = 0; kept = false; hide();
+      seenNear = haze ? haze[1] + SEEN[0] : Infinity; seenFar = haze ? haze[1] + SEEN[1] : Infinity;
       goalX = finish.x; goalZ = finish.z; total = 1;
       let last = 0;
       for (const c of course.clouds) if (c.main) { mains.push(c); last = Math.max(last, c.arrival); total = Math.max(total, away(c.x, c.z)); }
@@ -285,6 +291,7 @@
         spots.push({ landing: best, side: rand() < 0.5 ? -1 : 1, off: range(SIDE) });
       }
       if (only >= 0) { spots[0] = spots[only]; spots.length = 1; rand = mulberry32(seed ^ 0x51ed270b ^ Math.imul(only + 1, 0x9e3779b9)); }
+      section = spots[0]?.landing?.section || 0;
     };
     const clear = (whirl = null) => { state = IDLE; made = spots.length; strength = 0; strikeAt = -1; kept = false; if (whirl) whirl.strength = 0; hide(); };
     const hold = (on) => { kept = on; };
@@ -295,7 +302,7 @@
     return { start, update, clear, hold, spawn, axisAt, radiusAt, dispose, liveGeometry,
       get active() { return state !== IDLE; }, get down() { return strength > 0; }, get strength() { return strength; },
       get forming() { return state === FORMING ? ease(age / FORM) : 0; }, get top() { return top; }, get bottom() { return top - LENGTH; },
-      get vx() { return vx; }, get vz() { return vz; }, get state() { return state; },
+      get vx() { return vx; }, get vz() { return vz; }, get state() { return state; }, get section() { return section; },
       // Its lightning's flash where the eye stands, 0 to 1, for the sky.
       get flash() { return strikeAt < 0 ? 0 : Math.max(0, 1 - (clock - strikeAt) / 0.3) * strikeLevel; } };
   };

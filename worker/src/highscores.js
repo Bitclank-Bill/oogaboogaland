@@ -13,7 +13,7 @@ const closed = () => json({ error: "closed" }, 503, { "retry-after": "60" });
 
 export const readScores = async (db, game, rule, replayEnabled = false) => {
   const board = await readHighscores(db, game);
-  if (!replayEnabled || !/^cloud-hopper-l[1-4]$/.test(game)) return board;
+  if (!replayEnabled || !/^cloud-hopper-l[1-5]$/.test(game)) return board;
   let replay = await winnerReplay(db, game);
   if (replay && (board.highscores[replay.username] !== replay.score || board.achieved[replay.username] !== replay.achieved
     || Object.keys(board.highscores).some(key => board.highscores[key] < replay.score
@@ -48,7 +48,7 @@ const arcadeSnapshot = async (url, db, cache, ctx) => {
 export const improve = async (db, game, rule, machine, score, found, after = [], ticket = null, runId = ticket?.token || null) => {
   const { player, session } = found;
   const attributed = rule.scoreType === "ooga", key = attributed ? player.login.toLowerCase() : machine;
-  const path = "$." + JSON.stringify(key), at = Date.now(), level = /^cloud-hopper-l[1-4]$/.test(game);
+  const path = "$." + JSON.stringify(key), at = Date.now(), level = /^cloud-hopper-l[1-5]$/.test(game);
   const cabinet = rules.cabinets.includes(game), runTable = cabinet ? "cabinet_runs" : "cloud_hopper_runs", distinct = (level || cabinet) && runId;
   const better = rule.direction === "asc" ? "<" : ">", worst = rule.direction === "asc" ? "MAX" : "MIN";
   const change = db.prepare(`UPDATE game_highscores SET
@@ -128,7 +128,7 @@ export const createHighscoreHandler = (sessionFor = getSessionFromRequest, cache
       if (raw === null) return json({ error: "too large" }, 413);
       let body;
       try { body = JSON.parse(raw); } catch { return json({ error: "bad json" }, 400); }
-      if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).some(key => !["machine", "score", "version", "playerId", ...(/^cloud-hopper-l[1-4]$/.test(game) || rules.cabinets.includes(game) ? ["runId"] : [])].includes(key))
+      if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).some(key => !["machine", "score", "version", "playerId", ...(/^cloud-hopper-l[1-5]$/.test(game) || rules.cabinets.includes(game) ? ["runId"] : [])].includes(key))
         || (body.runId !== undefined && (typeof body.runId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(body.runId)))
         || body.version !== rule.version || !rules.valid(game, body.machine, body.score)) return json({ error: "invalid score" }, 400);
       if (body.playerId !== found.player.id) return json({ error: "account changed" }, 409);

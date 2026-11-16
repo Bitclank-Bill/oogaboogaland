@@ -28,7 +28,7 @@ const publicBoard = async row => {
 };
 export const readHighscores = async (db, game) => {
   // Read the run list and revision in one SQLite snapshot; a delayed list cannot carry a newer revision.
-  const runs = /^cloud-hopper-l[1-4]$/.test(game) ? `, (SELECT json_group_array(json_object(
+  const runs = /^cloud-hopper-l[1-5]$/.test(game) ? `, (SELECT json_group_array(json_object(
     'username', username, 'score', score, 'achieved', achieved, 'runId', run_id, 'playerId', player_id)) FROM (
       SELECT r.run_id, lower(p.login) AS username, r.score, r.achieved, r.player_id FROM cloud_hopper_runs r
       JOIN players p ON p.id = r.player_id WHERE r.game = game_highscores.game_id

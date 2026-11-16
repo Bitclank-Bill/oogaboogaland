@@ -17,6 +17,8 @@
 // - `storm` (Thunderhead): rain round the eye, lightning striking the sea with the sky's flash and the strike's
 //   distance for its thunder, and storm-dark isles far out to either side whose lighthouses sweep their beams round,
 //   only their light glowing faintly through the haze from far off. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
+// - `eye` (Storm's Eye): the storm's eyewall at sunrise, a ring of Amber Spires' towers and banks in storm-slate inks,
+//   gold where they face the sun, turning slowly round the course, with lightning deep in the wall.
 // The moving parts are instanced batches written in place (one draw each) and a few node transforms; nothing
 // allocates a frame. The Canvas 2D renderer gets the still scenery and a thinner aurora, without the flocks,
 // lanterns or shooting stars.
@@ -305,11 +307,17 @@
     geo.cutawayPreserve = true;
     return { geo, height: y1 * unit };
   };
-  const DUSK = hexToRgb("#7a6a9a"), ROSE = hexToRgb("#f2a487"), CREAM = hexToRgb("#fff0cf"), GOLD = hexToRgb("#ffb347"), LILAC = hexToRgb("#9d8cd4");
-  // Colours a cloud's faces for a low sun from the horizontal `sunX`, `sunZ` (null on a cloud that turns): cream on
-  // the tops, gold where a face turns to the sun, lilac where it turns away, rose through the middle and dusk under
-  // the base, `warm` scaling the gold. The sunlit upper faces glow a little for the bloom.
-  const sunset = (geo, height, sunX, sunZ, warm = 1) => {
+  // A low sun's inks for a cloud: under its base, through its middle, on its tops, where a face turns to the sun and
+  // where it turns away. Amber Spires' are a sunset's; Storm's Eye's eyewall is storm cloud lit by the rising sun.
+  const SUNSET = { dusk: hexToRgb("#7a6a9a"), rose: hexToRgb("#f2a487"), cream: hexToRgb("#fff0cf"), gold: hexToRgb("#ffb347"), lilac: hexToRgb("#9d8cd4") };
+  // How much of the distance haze the eyewall takes off itself, standing a kilometre off.
+  const EYE_PIERCE = 0.7;
+  const EYEWALL = { dusk: hexToRgb("#1c2231"), rose: hexToRgb("#3f4862"), cream: hexToRgb("#98a2b8"), gold: hexToRgb("#ffa44e"), lilac: hexToRgb("#262b42") };
+  // Colours a cloud's faces for a low sun from the horizontal `sunX`, `sunZ` (null on a cloud that turns) in `inks`:
+  // cream on the tops, gold where a face turns to the sun, lilac where it turns away, rose through the middle and dusk
+  // under the base, `warm` scaling the gold. The sunlit upper faces glow a little for the bloom.
+  const sunset = (geo, height, sunX, sunZ, warm = 1, inks = SUNSET) => {
+    const { dusk: DUSK, rose: ROSE, cream: CREAM, gold: GOLD, lilac: LILAC } = inks;
     const v = geo.verts, normals = [];
     let flip = 1, highest = -Infinity;
     for (const f of geo.faces) {
@@ -365,11 +373,12 @@
     return lobes;
   };
   const spireCache = M.scopedMap(), pieceCache = M.scopedMap();
-  const spire = (v, sunX, sunZ) => {
-    const key = `${v}:${sunX.toFixed(3)}:${sunZ.toFixed(3)}`;
+  const spire = (v, sunX, sunZ, inks = SUNSET) => {
+    const key = `${v}:${sunX.toFixed(3)}:${sunZ.toFixed(3)}:${inks === SUNSET ? "" : "eye"}`;
     if (spireCache.has(key)) return spireCache.get(key);
     const { geo, height: h } = billow(spireLobes(v), SPIRE_CELL, 3);
-    sunset(geo, h, sunX, sunZ);
+    sunset(geo, h, sunX, sunZ, 1, inks);
+    if (inks === EYEWALL) geo.fogPierce = EYE_PIERCE;
     spireCache.set(key, geo);
     return geo;
   };
@@ -394,6 +403,7 @@
     return pieces;
   };
   // A long low bank for the horizon, six metres a cell, its long side down x; `warm` is how squarely it faces the sun.
+  // Variants 4 to 7 are the same banks in the eyewall's inks.
   const bank = M.variants((i) => {
     const v = i % 2, rand = mulberry32(611 + v * 23), L = 46 + v * 10, lobes = [];
     for (let k = 0; k < 14; k++) {
@@ -401,7 +411,8 @@
       lobes.push([(k / 13 - 0.5) * L, 1 + ry * 0.6, (rand() - 0.5) * 6, r * 1.3, ry, r]);
     }
     const { geo, height } = billow(lobes, 6, 2);
-    sunset(geo, height, null, null, i < 2 ? 1 : 0.35);
+    sunset(geo, height, null, null, i % 4 < 2 ? 1 : 0.35, i < 4 ? SUNSET : EYEWALL);
+    if (i >= 4) geo.fogPierce = EYE_PIERCE;
     return geo;
   });
   // A paper sky lantern a metre tall, lit from a flame at its open foot.
@@ -1165,6 +1176,54 @@
       });
     };
 
+    const eye = (level, course, rand) => {
+      // The eyewall: storm towers in a ring round the course's middle, `AROUND` metres past its ends, slate-dark but
+      // gold where they face the rising sun, with dark banks along their feet. As an eyewall does, the ring turns
+      // slowly round the eye (`SPIN`, rad/s), each tower keeping the way it faces so the sun stays on its gold faces.
+      // Lightning strikes deep in the wall every 1.5 to 4 s, the thunder late and soft from so far, its flash a
+      // third of Thunderhead's on the sky.
+      const sun = sunAt(level.sky.hour), sl = Math.hypot(sun.x, sun.z) || 1, sunX = sun.x / sl, sunZ = sun.z / sl;
+      const TOWERS = lite ? 10 : 22, BANKS = lite ? 8 : 18, AROUND = 380, SPIN = 0.006, FLASH = 0.35;
+      const mid = at(0.5, 0), cx = mid.x, cz = mid.z, R = route.length / 2 + AROUND, ring = [];
+      const stand = (geometry, a, r, y, s) => {
+        const n = node(geometry, cx + Math.cos(a) * r, y, cz + Math.sin(a) * r, s);
+        n.matrixCloud = true; ring.push({ n, a, r });
+        return n;
+      };
+      for (let k = 0; k < TOWERS; k++) {
+        const a = (k + 0.2 + rand() * 0.6) / TOWERS * TAU, r = R + rand() * 120, s = 2.3 + rand() * 0.7;
+        stand(spire(k % 3, sunX, sunZ, EYEWALL), a, r, seaY + 10 + rand() * 15, s);
+        reached(cx + Math.cos(a) * r, seaY + 560, cz + Math.sin(a) * r, 230 * s);
+      }
+      // A bank across the eye from the sun shows the rider its sunlit face.
+      for (let k = 0; k < BANKS; k++) {
+        const a = (k + rand()) / BANKS * TAU, r = R - 40 + rand() * 100, s = 2 + rand() * 0.6, warm = Math.cos(a) * sunX + Math.sin(a) * sunZ < -0.2;
+        stand(bank((warm ? 4 : 6) + (k % 2)), a, r, seaY + 4 + rand() * 20, s).rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
+      }
+      const bolts = [node(bolt(0), 0, 0, 0), node(bolt(1), 0, 0, 0)];
+      for (const b of bolts) b.visible = false;
+      let next = 2, struck = -1;
+      movers.push((time, dt, camera) => {
+        for (let i = 0; i < ring.length; i++) {
+          const stood = ring[i], turned = stood.a + time * SPIN;
+          stood.n.position.x = cx + Math.cos(turned) * stood.r; stood.n.position.z = cz + Math.sin(turned) * stood.r;
+        }
+        if (time >= next && dt > 0) {
+          next = time + 1.5 + Math.random() * 2.5; struck = time;
+          const a = Math.random() * TAU, p = camera.position;
+          for (let i = 0; i < bolts.length; i++) {
+            const b = bolts[i], r = R + (Math.random() - 0.3) * 80, h = 260 + Math.random() * 160;
+            b.visible = i === 0 || Math.random() < 0.45;
+            b.position.x = cx + Math.cos(a + i * 0.03) * r; b.position.y = seaY + 10; b.position.z = cz + Math.sin(a + i * 0.03) * r;
+            b.scale.x = b.scale.z = h * 0.45; b.scale.y = h; b.rotation.y = Math.random() * TAU;
+            if (i === 0) onStrike?.(Math.hypot(b.position.x - p.x, b.position.y + h / 2 - p.y, b.position.z - p.z));
+          }
+        }
+        flash = struck < 0 ? 0 : flashAt(time - struck) * FLASH;
+        if (struck >= 0 && time - struck > 0.25) for (let i = 0; i < bolts.length; i++) bolts[i].visible = false;
+      });
+    };
+
     // Lays `level`'s scenery round a course from `start` down to `finish` and returns how far it reaches from the
     // start, for the camera's far plane.
     const build = (level, course, start, finish) => {
@@ -1179,6 +1238,7 @@
       else if (kind === "spires") spires(level, course, rand);
       else if (kind === "aurora") aurora(level, course, rand);
       else if (kind === "storm") storm(level, course, rand);
+      else if (kind === "eye") eye(level, course, rand);
       for (const move of movers) move(0, 0, { position: start });
       scenery.visible = true;
       return reach;

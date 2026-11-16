@@ -766,3 +766,38 @@ Checked in Node, in the global tier:
   - the portable `oogaboogaland.html` still works.
 - **No deploy.** Nothing in this plan merges or deploys. Staging verification of migration
   0004 goes through the existing **Deploy Cloudflare staging** workflow when you choose.
+
+## 10. Level 5: Storm's Eye (added later)
+
+Storm's Eye is the storm's eye at sunrise (06:36, a light `storm` greying of 0.35, no haze of its own) under its
+eyewall: a slowly turning ring of Amber Spires' towers and banks in storm-slate inks, gold where they face the sun, with
+lightning deep in the wall. It keeps the rules of sections 2.4 to 2.8 and steps each count a little past Thunderhead's:
+
+| | Thunderhead | Storm's Eye |
+|---|---|---|
+| Route | 973.8 m | 1,382.8 m (the same 42% growth) |
+| Clouds (main, side) | 121 (78, 43) | 118 (104, 12, and 2 perches) |
+| Main landings apart | 12.5 m | 13.3 m |
+| Pink, purple | 25, 18 | 30, 24 |
+| Clouds that fade | 66% | 68% |
+| White clouds permanent | 50% | 48% |
+| Ordinary slots | 13.9-33.2 s | 12.8-30.6 s |
+| Warning, fade | 1.5, 0.625 s | 1.4, 0.6 s |
+| Main half-size | 2.7-3.6 m | 2.6-3.45 m |
+| Lane, speed | 5-8 m, 0.9-1.5 m/s | 5.3-8.5 m, 0.95-1.6 m/s |
+| `reach` | 0.8 | 0.9 |
+| Gusts, tornadoes | 0, 3 | 4, 3 |
+
+48% permanent is the fewest 2.5's checks allow at these gaps with so few side landings, even at `reach` 0.9.
+
+Two things are new. **Portals** (`flips`, at 34% and 67% of the main landings) cut the course into three sections, each
+starting `climb` (18 m) above the portal before it. A touch holds the rider and rolls the whole world half a turn round
+the course's axis, and it stays: upside down through the middle section, upright again for the last. The roll is the
+view's alone, so no node of the island's changes; the middle section and the rider are drawn turned to match. After a
+roll the rider is under the next section with the jetpack worn and 70% of a tank, and a fall of 30 m before landing
+puts it back where it was let go. **The second portal is evasive**: it rests at one end of a 16 m lane, tells for
+0.35 s when a rider comes within 11 m, dashes to the other end in 0.6 s and is then tired for 2.2 s, when it cannot
+dodge; two perches before the lane's ends and the approach behind them never move or fade.
+
+Its board is `cloud-hopper-l5`, from migration `0012_cloud_hopper_level_5.sql`. Its score is "Sunbreak Rush", whose
+melody drops an octave while the world is upside down.

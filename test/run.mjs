@@ -5488,10 +5488,11 @@ const cloudHopperFailureChecks = async engine => {
     cloudHopperTornado: { SPOTS: [0.5], create: () => ({ start: noop, update: noop, clear: noop, axisAt: noop, radiusAt: () => 0, dispose: noop, liveGeometry: noop, active: false, down: false, strength: 0, forming: 0, flash: 0 }) },
     cloudHopperGust: { WARN: 2.5, create: () => ({ start: noop, update: noop, clear: noop, dispose: noop, liveGeometry: noop, state: "calm", active: false, strength: 0, warning: 0, pushX: 0, pushZ: 0 }) },
     cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
+      portal: () => S.createNode(), updatePortal: noop,
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
       rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
     cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song(index) { audioSong = index; }, jump: noop, fade: noop, warn: noop, jet: noop,
-      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop,
+      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop, turnOver: noop, turned: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
       stop() { audioStage = ""; audioLevel = 0; audioStops++; }, dispose() { audioDisposed = true; } }) },
@@ -5543,7 +5544,7 @@ const cloudHopperFailureChecks = async engine => {
   const beforeDockOffTicks = audioTicks, beforeDockOffStops = audioStops;
   actor.root.position.x = dock.position.x; tick(0);
   const dockEdgeMusic = audioStage === "" && audioLevel === 0 && audioTicks === beforeDockOffTicks && audioStops === beforeDockOffStops + 1;
-  // Regression: saves accepted levels 5–8 although only four dock songs exist.
+  // Regression: saves accepted levels 5–8 although only four dock songs existed; now levels 6–8 have none.
   // Load real saves, then walk onto the dock through the controller's music path.
   let savedCloud = null;
   const saveContext = { window: {}, URLSearchParams, location: { search: "" },
@@ -5552,11 +5553,11 @@ const cloudHopperFailureChecks = async engine => {
     runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), saveContext);
   const savedLevels = [];
   for (const [last, unlocked, expectedLast, expectedUnlocked] of [
-    [0, 1, 0, 1], [1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4],
-    [5, 5, 4, 4], [6, 6, 4, 4], [7, 7, 4, 4], [8, 8, 4, 4],
+    [0, 1, 0, 1], [1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4], [5, 5, 5, 5],
+    [6, 6, 5, 5], [7, 7, 5, 5], [8, 8, 5, 5],
     [99, 40, 0, 1], [-1, -1, 0, 1], [1.5, 1.5, 0, 1], ["5", "5", 0, 1]
   ]) {
-    savedCloud = { last, unlocked, players: [{ login: "record-holder", best: [60000, 61000, 62000, 63000, 64000] }] };
+    savedCloud = { last, unlocked, players: [{ login: "record-holder", best: [0, 0, 0, 0, 0, 0, 0, 67000] }] };
     const loaded = saveContext.window.BL.game.create().state.cloudHopper;
     cloudSave.last = loaded.last; cloudSave.unlocked = loaded.unlocked;
     actor.root.position.x = dock.position.x + 2; tick(0);
@@ -5567,6 +5568,13 @@ const cloudHopperFailureChecks = async engine => {
     actor.root.position.x = dock.position.x; tick(0);
   }
   record("Cloud Hopper saves: unavailable levels clamp to the playable range before dock music, preserving personal bests", savedLevels.every(row => row.valid), JSON.stringify(savedLevels));
+  // A save from before Level 5 that finished Level 4, its last level then, opens Level 5; one that has not stays.
+  const opensNext = [[4, [1, 2, 3, 4000], 5], [4, [1, 2, 3, 0], 4], [3, [0, 0, 5000], 4], [5, [1, 2, 3, 4, 5], 5]].map(([unlocked, best, expected]) => {
+    savedCloud = { last: 1, unlocked, players: [{ login: "", best: [0] }, { login: "record-holder", best }] };
+    const loaded = saveContext.window.BL.game.create().state.cloudHopper;
+    return loaded.unlocked === expected && JSON.stringify(loaded.players) === JSON.stringify(savedCloud.players);
+  });
+  record("Cloud Hopper saves: a finished highest open level opens the next, bests untouched", opensNext.every(Boolean), JSON.stringify(opensNext));
   cloudSave.last = 1; cloudSave.unlocked = 2;
   Object.assign(actor.root.position, hopper.platform.position); actor.root.position.y += actor.baseY;
   tick(0);
@@ -5731,10 +5739,10 @@ const cloudHopperFailureChecks = async engine => {
       }
     }
   }
-  // Each level's route is the spec's: D, 21% under the old 430.5 m, then 1.42 D, 2.0164 D and 2.863288 D,
-  // measured from its start to its final cloud; each fits the cloud cap and keeps the same promises.
-  const { LEVELS } = BL.cloudHopperLevels, spec = [1, 1.42, 2.0164, 2.863288].map(k => 430.5 * 0.79 * k);
-  let levelRoutes = LEVELS.length === 4;
+  // Each level's route is the spec's: D, 21% under the old 430.5 m, then 1.42 D, 2.0164 D, 2.863288 D and
+  // 4.06586896 D, measured from its start to its final cloud; each fits the cloud cap and keeps the same promises.
+  const { LEVELS } = BL.cloudHopperLevels, spec = [1, 1.42, 2.0164, 2.863288, 4.06586896].map(k => 430.5 * 0.79 * k);
+  let levelRoutes = LEVELS.length === 5;
   for (const level of LEVELS) {
     const radius = 42 + level.route, options = { start: { x: radius, y: 20 + level.slope * level.route, z: 0 },
       finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed: level.id, layout: level.layout, timing: level.timing };
@@ -5745,8 +5753,9 @@ const cloudHopperFailureChecks = async engine => {
     levelRoutes &&= Math.abs(radius - Math.hypot(last.baseX, last.baseZ) - spec[level.id - 1]) < 0.5
       && course.clouds.length <= BL.cloudHopperCourse.MAX_CLOUDS;
     firmEnds &&= [0, 1, main.length - 2, main.length - 1].every(k => main[k].life === PERMANENT);
-    const ends = [0, 1, main.length - 2, main.length - 1].map(k => main[k]), white = course.clouds.filter(c => c.kind === "normal" && !ends.includes(c));
-    whiteOnly &&= course.clouds.every(c => c.kind === "normal" || c.life === ORDINARY);
+    // A portal and the ground round it (Storm's Eye) never fade and stand apart from the blend.
+    const ends = [0, 1, main.length - 2, main.length - 1].map(k => main[k]), white = course.clouds.filter(c => c.kind === "normal" && !ends.includes(c) && !c.firm);
+    whiteOnly &&= course.clouds.every(c => c.kind === "normal" || c.kind === "portal" || c.life === ORDINARY);
     bounceFromTwo &&= course.clouds.some(c => c.kind === "bounce") === level.id > 1;
     blended &&= Math.abs(white.filter(c => c.life === PERMANENT).length / white.length - course.timing.permanent) <= 0.05;
     for (const c of course.clouds) {
@@ -6082,6 +6091,102 @@ const cloudHopperFailureChecks = async engine => {
     leavingMusic, leftMusic, reentryMusic, gradualAscent, audioDisposed };
   record("Cloud Hopper music: the dock fades a light bed, the full climb gradually raises it, results and replay retain it, and leaving the dock or scene stops it",
     Object.values(musicRows).every(Boolean), JSON.stringify(musicRows));
+  // Storm's Eye's course: two portals cut it into three sections, each starting higher than the portal before it;
+  // only the live section's clouds hold, catch or save a rider; the ground round a portal stands still and never
+  // fades; and Levels 1 to 4 have no portals at all.
+  {
+    const C = BL.cloudHopperCourse, five = LEVELS[4], radius = 42 + five.route;
+    const make = (seed) => C.create({ start: { x: radius, y: 20 + five.slope * five.route, z: 0 }, finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed, layout: five.layout, timing: five.timing });
+    const rows = { noneBefore: LEVELS.slice(0, 4).every(l => !(l.layout.flips?.length)), sections: true, firm: true, climbs: true, gated: true, saved: true, evades: true, tired: true, calm: true };
+    for (const seed of [5, 11, 23]) {
+      const course = make(seed), order = course.clouds.filter(c => c.main).sort((a, b) => a.arrival - b.arrival);
+      rows.sections &&= course.flips.length === 2 && course.flips.every((f, k) => f.cloud.kind === "portal" && f.cloud.section === k && f.evasive === (k === 1) && f.perches.length === (k ? 2 : 0))
+        && [0, 1, 2].every(k => course.clouds.some(c => c.section === k)) && course.clouds.length <= C.MAX_CLOUDS;
+      for (const flip of course.flips) {
+        const at = order.indexOf(flip.cloud), ground = [order[at - 1], flip.cloud, order[at + 1], order[at + 2], ...flip.perches];
+        rows.firm &&= ground.every(c => c.life === PERMANENT && c.firm && c.moveRange < 0.01 && (c === flip.cloud || c.kind === "normal"))
+          && !course.pickups.some(p => ground.includes(p.cloud));
+        const rise = order[at + 1].y - flip.cloud.y, ahead = Math.hypot(order[at + 1].baseX - flip.cloud.baseX, order[at + 1].baseZ - flip.cloud.baseZ);
+        // A full tank lifts 56 m at the pack's rise; the climb is well inside the 70% a portal leaves.
+        rows.climbs &&= rise > 8 && rise < five.layout.climb && ahead < 20 && order[at + 1].section === flip.cloud.section + 1;
+      }
+      course.update(1); course.start(); course.update(1 / 60, 0.1);
+      const next = course.clouds.find(c => c.section === 1 && c.life === PERMANENT && c.kind === "normal"), here = course.clouds.find(c => c.section === 0 && c.life === PERMANENT && c.kind === "normal");
+      const holds = c => Number.isFinite(course.supportAt(c.x, c.z, c.top, 0.1));
+      const savedBy = c => course.canRecover(c.x, c.top + 2, c.z, -1, 0, 0, -100);
+      rows.gated &&= course.live === 0 && holds(here) && !holds(next) && !next.active;
+      rows.saved &&= savedBy(here) && !savedBy(next);
+      // The second portal, rested and in the live section, tells, dashes to its lane's other end and is tired.
+      const portal = course.flips[1].cloud, near = course.flips[1].perches.slice().sort((a, b) => Math.hypot(a.x - portal.x, a.z - portal.z) - Math.hypot(b.x - portal.x, b.z - portal.z))[0];
+      const step = (seconds) => { for (let t = 0; t < seconds - 1e-9; t += 1 / 120) { course.evade(1 / 120, near.x, near.y, near.z); course.update(1 / 120); } };
+      step(1); rows.calm &&= portal.evade === C.REST && Math.abs(portal.slide) === C.EVADE.lane;
+      course.enter(1); course.update(1 / 60);
+      rows.gated &&= course.live === 1 && !holds(here) && holds(next);
+      rows.saved &&= !savedBy(here) && savedBy(next);
+      const from = portal.slide, x0 = portal.x, z0 = portal.z;
+      step(C.EVADE.tell * 0.9); rows.evades &&= portal.evade === C.TELL && portal.x === x0 && portal.z === z0;
+      step(C.EVADE.tell * 0.2 + C.EVADE.dash); rows.evades &&= portal.evade === C.TIRED && portal.slide === -from && Math.abs(Math.hypot(portal.x - x0, portal.z - z0) - 2 * C.EVADE.lane) < 1e-6;
+      // Tired, it does not dodge whoever stands by it; rested again, it does.
+      const far = course.flips[1].perches.find(c => c !== near);
+      for (let t = 0; t < C.EVADE.tired * 0.9; t += 1 / 120) { course.evade(1 / 120, far.x, far.y, far.z); course.update(1 / 120); }
+      rows.tired &&= portal.evade === C.TIRED && portal.slide === -from;
+      for (let t = 0; t < C.EVADE.tired * 0.2 + C.EVADE.tell + 0.05; t += 1 / 120) { course.evade(1 / 120, far.x, far.y, far.z); course.update(1 / 120); }
+      rows.tired &&= portal.evade === C.DASH || portal.evade === C.TELL;
+    }
+    record("Cloud Hopper Storm's Eye course: two portals make three sections, each a jetpack climb above the last, on ground that stands still and never fades; only the live section holds or saves a rider; the second portal tells, dashes and tires in a fixed pattern; Levels 1 to 4 have none",
+      Object.values(rows).every(Boolean), JSON.stringify(rows));
+  }
+  // Storm's Eye's run: a portal's touch holds the rider and rolls the world half over by turning the view, lets the
+  // rider go under the next section with a jetpack worn and fuel, puts a fall back at that checkpoint, and the second
+  // portal turns the world upright; leaving the level part way restores the rider and the view.
+  {
+    runInNewContext(controllerSource, context);
+    BL.math.randomInt = () => 5150; cloudSave.unlocked = 5;
+    const flipper = BL.cloudHopper.create(hopperOptions), turnSeconds = 2.2;
+    const step = (dt) => { now += dt * 1000; flipper.preUpdate(dt); flipper.postUpdate(); flipper.turnView(); };
+    flipper.launch(); callbacks.onSelect(5); callbacks.onStart(); flipper.preUpdate(BL.cloudHopper.LIFT_SECONDS); flipper.postUpdate();
+    if (flipper.phase === "briefing") callbacks.onGuideDone();
+    actor.hop = 0.1; actor.hopV = 1; actor.root.position.y += 0.1; step(1 / 60);
+    const course = flipper.course, home = actor.root.parent, up = camera.up = { x: 0, y: 1, z: 0 };
+    const order = course.clouds.filter(c => c.main).sort((a, b) => a.arrival - b.arrival);
+    const onto = (c) => { Object.assign(actor.root.position, { x: c.x, y: c.top + actor.baseY, z: c.z }); actor.hop = actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0; };
+    const rows = { level: flipper.level.id === 5 && flipper.phase === "running" && course.flips.length === 2 };
+    actor.jet = null; actor.jetpackOwned = false; actor.jetFuel = 0;
+    Object.assign(camera.position, { x: actor.root.position.x + 6, y: actor.root.position.y + 3, z: actor.root.position.z }); Object.assign(camera.target, actor.root.position);
+    onto(course.flips[0].cloud); step(1 / 60);
+    const held = { ...actor.root.position };
+    rows.touched = flipper.turning && flipper.climbing === false && actor.root.parent !== home && course.live === 0;
+    actor.root.position.x += 3; actor.hopV = 9; step(turnSeconds / 2);
+    rows.held = flipper.turning && flipper.turn > 0 && flipper.turn < Math.PI && ["x", "y", "z"].every(k => actor.root.position[k] === held[k]) && actor.hopV === 0 && camera.up !== up;
+    step(turnSeconds / 2 + 0.05);
+    rows.over = !flipper.turning && Math.abs(flipper.turn - Math.PI) < 1e-9 && course.live === 1 && flipper.climbing && !!actor.jet && actor.jetpackOwned && actor.jetFuel >= 0.7
+      && camera.up.y < -0.999 && flipper.phase === "running";
+    // The pilot and the run see the view as it was before the roll.
+    const rolled = { ...camera.position }; flipper.preUpdate(0);
+    rows.trueView = camera.up === up && camera.position.x !== rolled.x || camera.position.y !== rolled.y;
+    flipper.postUpdate(); flipper.turnView();
+    actor.jetFuel = 0.1; actor.root.position.y -= 31; actor.hop = 5; actor.hopV = -20; step(1 / 60);
+    rows.checkpoint = flipper.climbing && flipper.phase === "running" && Math.abs(actor.root.position.y - held.y) < 1 && actor.hopV <= 0 && actor.jetFuel >= 0.7;
+    const first = order[order.indexOf(course.flips[0].cloud) + 1];
+    onto(first); step(1 / 60);
+    rows.landed = !flipper.climbing && flipper.phase === "running" && first.section === 1;
+    onto(course.flips[1].cloud); step(1 / 60); step(turnSeconds + 0.05);
+    flipper.preUpdate(0); flipper.postUpdate(); flipper.turnView();
+    rows.upright = !flipper.turning && flipper.turn === 0 && course.live === 2 && flipper.climbing && actor.root.parent === home && camera.up === up;
+    // Out part way through the upside-down section: the rider and the view come back as they were.
+    callbacks.onExit(); callbacks.onSelect(5); flipper.launch(); callbacks.onSelect(5); callbacks.onStart(); flipper.preUpdate(BL.cloudHopper.LIFT_SECONDS); flipper.postUpdate();
+    if (flipper.phase === "briefing") callbacks.onGuideDone();
+    actor.hop = 0.1; actor.hopV = 1; actor.root.position.y += 0.1; step(1 / 60);
+    camera.up = up; onto(flipper.course.flips[0].cloud); step(1 / 60); step(turnSeconds + 0.05);
+    const turned = flipper.turn > 3 && actor.root.parent !== home && camera.up !== up;
+    callbacks.onExit();
+    rows.restored = turned && flipper.turn === 0 && actor.root.parent === home && camera.up === up && flipper.phase === "idle";
+    flipper.dispose();
+    rows.disposed = rootNode.children.length === 1;
+    cloudSave.unlocked = 1;
+    record("Cloud Hopper Storm's Eye run: a portal holds the rider while the view rolls the world half over, lets it go under the next section with a jetpack and fuel, returns a fall to that checkpoint, the second portal turns the world upright, and leaving part way restores the rider and the view",
+      Object.values(rows).every(Boolean), JSON.stringify(rows));
+  }
   // Reload within the same session, then start a fresh session while the old
   // localStorage marker still exists. Leaving the fresh guide is not completion.
   BL.math.randomInt = () => 9381;
@@ -17811,7 +17916,7 @@ const cloudHopperRecordChecks = async () => {
     await b.open(pathToFileURL(page).href + "?debug=1&nosim=1&hour=12&day=80");
     for (let i = 0; i < 40 && !await b.evaluate("!!window.BL?.cloudHopperHud"); i++) await b.sleep(25);
     const state = await b.evaluate(`(() => {
-      BL.net = { state: { me: null } }; BL.cloudHopperArt = { levels: Array(4).fill("../../src/art/cloud-hopper-intro.webp") };
+      BL.net = { state: { me: null } }; BL.cloudHopperArt = { levels: Array(5).fill("../../src/art/cloud-hopper-intro.webp") };
       let toggles = 0;
       const H = window.recordHud = BL.cloudHopperHud.create({ onGhost: () => toggles++ });
       H.setLevels({ selected: 2, unlocked: 2, bests: [0, 9500, 0, 0] }); H.show("ready");
@@ -17826,8 +17931,8 @@ const cloudHopperRecordChecks = async () => {
       const running = line.getBoundingClientRect().height > 0 && !document.querySelector('dialog').open
         && !document.querySelector('.cloud-hopper-live-scores') && document.querySelector('.cloud-hopper-hud output').textContent === '00:03.00';
       let isolated = true;
-      for (let level = 1; level <= 4; level++) {
-        H.setLevels({ selected: level, unlocked: 4, bests: [9500, 9500, 9500, 9500] });
+      for (let level = 1; level <= 5; level++) {
+        H.setLevels({ selected: level, unlocked: 5, bests: [9500, 9500, 9500, 9500, 9500] });
         isolated &&= text().includes('Loading global best') && button.hidden;
         H.setHighscores({ highscores: { ['winner-' + level]: 21000 + level * 1000 }, achieved: {} });
         isolated &&= text().includes('winner-' + level) && button.disabled;
@@ -17865,7 +17970,7 @@ const cloudHopperRecordChecks = async () => {
       H.setHighscoreStatus('stale'); H.show('ready');
       return { loading, unavailable, leader, refreshing, stale, running, isolated, locked, empty, signed, repeated, optimistic, failedUpload, uploadIsolated, off, busy, on, retry, missing };
     })()`);
-    record("cloud hopper record: global leader/ties, four levels, guest/account reads, no local fallback, empty/error/stale states and disabled replay", Object.values(state).every(Boolean), JSON.stringify(state));
+    record("cloud hopper record: global leader/ties, five levels, guest/account reads, no local fallback, empty/error/stale states and disabled replay", Object.values(state).every(Boolean), JSON.stringify(state));
     for (const [w, h] of [[1440, 900], [390, 844], [844, 390], [320, 568]]) {
       await b.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 900 });
       for (const phase of ["ready", "running"]) {

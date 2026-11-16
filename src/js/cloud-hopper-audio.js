@@ -367,6 +367,12 @@
       gustWhistle.frequency.cancelScheduledValues(now); gustWhistle.frequency.setValueAtTime(gustWhistle.frequency.value, now);
       gustWhistle.frequency.setTargetAtTime(1100 + 900 * level, now, 0.3);
     };
+    // Storm's Eye's world turning over: a deep swell with air rushing up through it. `turned` tells the score.
+    const turnOver = () => {
+      if (!ready()) return;
+      toneCue("sine", 70, 190, 2, 0.2); airCue(200, 2600, 2, 0.16, 0.8); toneCue("triangle", 520, 1040, 0.5, 0.06, 1.7);
+    };
+    const turned = (on) => { if (music) music.turned(on); };
     const gustWarn = () => {
       if (!ready()) return;
       airCue(240, 1500, BL.cloudHopperGust.WARN, 0.16, 0.9); airCue(900, 3200, BL.cloudHopperGust.WARN, 0.05, 4, 0.4);
@@ -418,7 +424,7 @@
       armed = false; listSounds(false); musicStage = ""; clearBackground(); quiet();
       musicFrom = musicLevel = 0; musicAt = musicUntil = ctx ? ctx.currentTime : 0;
       applyLevel();
-      if (music) music.stop();
+      if (music) { music.stop(); music.turned(false); }
     };
     const dispose = () => {
       if (disposed) return;
@@ -435,7 +441,7 @@
       rainGain = roarGain = roarHowl = gustGain = gustWhistle = null;
     };
     return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain,
-      tornado, tornadoForm, gust, gustWarn, stop, dispose };
+      tornado, tornadoForm, gust, gustWarn, turnOver, turned, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();

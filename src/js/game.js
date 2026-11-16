@@ -154,6 +154,10 @@
           || state.cloudHopper.players.some((q) => q.login === p.login)) continue;
         state.cloudHopper.players.push({ login: p.login, best: p.best.map((ms) => (isTime(ms) ? Math.floor(ms) : 0)) });
       }
+      // A finish of the highest open level opens the next, so a save from before the next level was made, its last
+      // level finished, opens it now. A save whose `unlocked` was refused stays at Level 1.
+      const top = state.cloudHopper.unlocked;
+      if (c && c.unlocked === top && top < playableLevels && state.cloudHopper.players.some((p) => p.best[top - 1] > 0)) state.cloudHopper.unlocked = top + 1;
       const a = parsed.arcade;
       if (a && typeof a === "object") for (const kind in ARCADE_MAX) {
         if (kind !== "hockey" && Number.isFinite(a[kind]) && a[kind] >= 0 && a[kind] <= ARCADE_MAX[kind]) state.arcade[kind] = Math.floor(a[kind]);

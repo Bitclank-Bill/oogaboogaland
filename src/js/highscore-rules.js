@@ -12,6 +12,7 @@
     "cloud-hopper-l2": { scoreType: "ooga", direction: "asc", unit: "milliseconds", max: 3600000, machines: ["cloud-hopper-l2"] },
     "cloud-hopper-l3": { scoreType: "ooga", direction: "asc", unit: "milliseconds", max: 3600000, machines: ["cloud-hopper-l3"] },
     "cloud-hopper-l4": { scoreType: "ooga", direction: "asc", unit: "milliseconds", max: 3600000, machines: ["cloud-hopper-l4"] },
+    "cloud-hopper-l5": { scoreType: "ooga", direction: "asc", unit: "milliseconds", max: 3600000, machines: ["cloud-hopper-l5"] },
     race: { direction: "asc", unit: "milliseconds", max: 3599999, machines: [
       "race-1-bay-lap", "race-1-bay-race", "race-1-bay-m-lap", "race-1-bay-m-race",
       "race-1-gorge-lap", "race-1-gorge-race", "race-1-gorge-m-lap", "race-1-gorge-m-race",
