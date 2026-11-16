@@ -10,7 +10,9 @@
 // The device (ooga-chat-device.js) reports the network, install help and a waiting update, and registers the service
 // worker for the production entry of a staged build; M mutes or unmutes a speaker. Voice is ooga-chat-media.js's one
 // controller (#654): it hears the feed's snapshots, `you`, results and media notices, and the views read its state as
-// `state.voice`. It starts no island system: no
+// `state.voice`. A speaker whose page is hidden or leaves has the controller leave word in this tab's session storage
+// (`speaker`: the account, zone, connection and time, nothing else), taken back when the page is shown again, so a page
+// that comes straight back after a refresh speaks again, muted, as after a dropped socket. It starts no island system: no
 // renderer, scene, socket or game. A failure shows a recoverable error with Reload;
 // pagehide disposes the shell, the account and the adapter.
 (() => {
@@ -30,7 +32,7 @@
     box.hidden = false;
   };
   // The voice seam until the controller is made (and if it can't be): a muted listener that captures nothing.
-  let media = { available: false, why: "", state: BL.oogaChatMedia.IDLE, heard() {}, status() {}, release() {}, join() {}, leave() {}, mute() {}, zone() {}, stop() {}, retry() {}, dispose() {} };
+  let media = { available: false, why: "", state: BL.oogaChatMedia.IDLE, heard() {}, status() {}, release() {}, join() {}, leave() {}, mute() {}, zone() {}, stop() {}, retry() {}, remember() {}, dispose() {} };
   // `relisten` is the feed's 4401 restart timer; pagehide clears it, so it lives out here with what pagehide disposes.
   // `donating` ends the donation socket, opened once the service says its feed is live; `feeding` is Feed the Oogas,
   // the island's own donation popup, made the first time it opens; `member` is the Commons socket.
@@ -47,7 +49,25 @@
       : BL.oogaChatHttp.create();
     // Voice (ooga-chat-media.js): it calls the adapter's media broker under the feed's own connection, asks the feed for a
     // speaker lease, and speaks only where this deployment lets contributors speak. The fixture brings its own WebRTC.
+    // A speaker's word to the page after it in this tab (a refresh): session storage, read once and removed.
+    const speakerKey = storageKey(adapter.kind, "speaker");
+    const memory = {
+      take() {
+        try {
+          const raw = sessionStorage.getItem(speakerKey);
+          sessionStorage.removeItem(speakerKey);
+          return raw ? JSON.parse(raw) : null;
+        } catch { return null; }
+      },
+      keep(record) {
+        try {
+          if (record) sessionStorage.setItem(speakerKey, JSON.stringify(record));
+          else sessionStorage.removeItem(speakerKey);
+        } catch { /* Storage may be unavailable. */ }
+      }
+    };
     media = BL.oogaChatMedia.create({
+      memory,
       broker: () => state.mode === "live" && state.boot ? adapter.media(state.boot) : null,
       ...(adapter.rtc ? { rtc: adapter.rtc } : {}),
       request: (type, fields) => feed ? feed.request(type, fields) : 0,
@@ -59,8 +79,9 @@
     try {
       sweep(localStorage, adapter.kind);
       remembered = localStorage.getItem(tabKey) || undefined;
-      zone = parseZone(localStorage.getItem(zoneKey));
-    } catch { zone = parseZone(null); /* Storage may be unavailable. */ }
+    } catch { /* Storage may be unavailable. */ }
+    // Main Island alone for now, whatever an earlier visit chose: the space has no zone buttons to change it back.
+    zone = parseZone(null);
     const roster = BL.oogaChatRoster.create();
     const donor = BL.oogaChatDonor.create({ key: storageKey(adapter.kind, "donor") });
     const town = BL.oogaChatCommons.create();
@@ -94,11 +115,25 @@
       Object.assign(s, handRequest ? { me: next.me, reactions: next.reactions, room } : next);
       for (const fn of linkSubs) fn(s);
     };
+    // The voice switch prompt (voice-handoff.js): asked once a page, as it arrives, when its first audience connection
+    // finds the account's voice on another device (the island's, or another Ooga Chat page's), and again whenever Join
+    // Voice is pressed while it is. A voice that goes elsewhere later is the visitor's own doing and asks nothing.
+    // Switch here joins with `takeover`, inside its click; Not now changes nothing.
+    let handoffChecked = false;
+    const handoff = BL.voiceHandoff.build({ onSwitch: () => { if (media.available && gates(state, Date.now()).joinVoice) media.join({ takeover: true }); } });
+    document.body.append(handoff.node);
+    page.signal.addEventListener("abort", () => handoff.node.remove());
     const set = (patch) => {
       state = { ...state, ...patch, voice: media.state };
       shell.update(state);
       bar.update(state);
       syncLink();
+      const elsewhere = state.mode === "live" && !!state.session && !!state.voice.elsewhere && media.available && gates(state, Date.now()).joinVoice;
+      // The voice controller has the server's word on this connection once it is past `off`: read once.
+      const first = !handoffChecked && state.voice.phase !== "off";
+      if (first) handoffChecked = true;
+      if (!elsewhere) handoff.close();
+      else if (first) handoff.open();
     };
     // The audience as the views see it: the feed's status, and the list in order once a snapshot for the zone is in.
     const hear = (status) => {
@@ -112,7 +147,10 @@
       if (principal === listening) return;
       clearTimeout(relisten);
       relisten = 0;
-      media.stop();
+      // The same account's feed starting again is a reconnect to the voice, which keeps a speaker's place (its
+      // `reconnecting`); anyone else's, or none, ends it.
+      if (principal && principal === kept) media.status("reconnecting");
+      else media.stop();
       feed?.dispose();
       feed = null;
       handRequest = 0;
@@ -238,7 +276,9 @@
       retryVoice: () => media.retry(),
       // Asked again at the moment of the click: only the server's answer opens voice, and it decides again there.
       joinVoice: () => {
-        if (media.available && gates(state, Date.now()).joinVoice) media.join(state);
+        // Voice held on another device moves here only on the visitor's word: the prompt asks.
+        if (state.voice.elsewhere) { if (media.available && gates(state, Date.now()).joinVoice) handoff.open(); return; }
+        if (media.available && gates(state, Date.now()).joinVoice) media.join();
       }
     };
     // Feed the Oogas: real over this origin's relay while the feed is live, the simulated kiosk only on the fixture
@@ -289,10 +329,23 @@
     set({});
     // Back to the page, or back online: the service is asked again if it could not be reached, else the session and its
     // role are checked again before anything acts on them.
-    const again = (why) => state.mode === "unavailable" ? start() : auth.check(why);
-    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && again("visible"), { signal: page.signal });
+    // The audience feed is woken too: a socket that died while the page was away is found and opened again at once, so
+    // a speaker who went to another app comes back to their voice.
+    const again = (why) => {
+      feed?.wake?.();
+      return state.mode === "unavailable" ? start() : auth.check(why);
+    };
+    // Hidden, a speaker leaves word for a page that may replace this one; shown again, this page takes it back.
+    document.addEventListener("visibilitychange", () => {
+      media.remember(document.visibilityState !== "visible");
+      if (document.visibilityState === "visible") again("visible");
+    }, { signal: page.signal });
     addEventListener("online", () => again("online"), { signal: page.signal });
-    addEventListener("pageshow", (event) => event.persisted && auth.resume(), { signal: page.signal });
+    addEventListener("pageshow", (event) => {
+      if (!event.persisted) return;
+      media.remember(false);
+      auth.resume();
+    }, { signal: page.signal });
     // M is the speaker's own microphone, never while typing, composing, holding a modifier or repeating.
     document.addEventListener("keydown", (event) => {
       if (state.voice.role !== "speaker" || !BL.oogaChatDevice.isMuteKey(event)) return;
@@ -304,6 +357,7 @@
     showError("Ooga Chat couldn't start");
   }
   addEventListener("pagehide", (event) => {
+    media.remember();
     if (event.persisted) return;
     page.abort();
     clearTimeout(relisten);
