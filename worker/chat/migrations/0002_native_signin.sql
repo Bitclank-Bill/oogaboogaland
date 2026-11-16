@@ -15,3 +15,18 @@ CREATE TABLE native_codes (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX native_codes_expiry ON native_codes (expires_at);
+
+-- The browser's word between a native sign-in and its code: the callback, signed in, answers a page asking whether to
+-- go on to the app, and only its Continue (a same-site POST from the browser that signed in) makes the code. Kept by
+-- its SHA-256 with the hash of a fresh nonce in that browser's sign-in cookie, good for five minutes and for one answer,
+-- so a site that starts a native sign-in for someone who already approved the OAuth app never finishes it silently.
+CREATE TABLE native_consents (
+  consent_hash TEXT PRIMARY KEY,
+  principal_id TEXT NOT NULL REFERENCES principals(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL CHECK (provider IN ('github', 'x')),
+  browser_hash TEXT NOT NULL,
+  challenge TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX native_consents_expiry ON native_consents (expires_at);

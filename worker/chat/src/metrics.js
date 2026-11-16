@@ -26,7 +26,7 @@ export const routeOf = (path) => {
   if (path.startsWith("/donations/")) { const op = path.slice(11); return DONATION.has(op) ? `donations:${op}` : "donations:unknown"; }
   if (path.startsWith("/auth/")) {
     const [provider, step] = path.slice(6).split("/");
-    return PROVIDER.has(provider) ? `auth:${provider}:${step === "callback" ? "callback" : "start"}` : "auth:unknown";
+    return PROVIDER.has(provider) ? `auth:${provider}:${step === "callback" || step === "consent" ? step : "start"}` : "auth:unknown";
   }
   return path.startsWith("/api/") ? "api:unknown" : null;
 };

@@ -113,6 +113,7 @@ export const purgeExpired = (db, now = Date.now()) => db.batch([
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?1").bind(now),
   db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?1").bind(now),
   db.prepare("DELETE FROM native_codes WHERE expires_at <= ?1").bind(now),
+  db.prepare("DELETE FROM native_consents WHERE expires_at <= ?1").bind(now),
 ]);
 
 /** What crosses the bridge about a principal: the edge writes it from its own row, never from a request. */

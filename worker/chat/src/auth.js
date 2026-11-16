@@ -9,21 +9,26 @@
 //   DELETE /api/chat/me              deletes the account: its sessions, its capability answer, its principal
 //   POST /api/chat/logout[?all=1]    ends this session (or every one), 204 only once done
 //   GET  /api/chat/avatar/<id>/<key> the principal's picture, fetched from its provider's image host (avatar.js)
+//   POST /auth/<provider>/consent    a native sign-in's Continue or Cancel, from the page its callback answered
 //   POST /api/chat/native/token      a native app's one-time code and PKCE verifier for its session token
 // A native app (a desktop client, RFC 8252) starts with `/auth/<provider>?native=<S256 challenge>&port=<loopback port>`
-// in the system browser: the same single-use state, bound to that browser, and the callback sends the browser on to
-// `http://127.0.0.1:<port>/callback` with the result and, signed in, a one-time code in place of the cookie. The app
-// trades the code and its verifier for a session token it sends as `Authorization: Bearer` (session.js).
+// in the system browser: the same single-use state, bound to that browser. Its callback, signed in, sets no cookie: it
+// answers a page naming the account and asking to continue to the desktop app, since a site could start a native
+// sign-in for someone who already approved the OAuth app and the provider would come straight back. Only that page's
+// Continue (a same-site POST, bound to the browser by a fresh nonce in the sign-in cookie, single-use, five minutes)
+// makes a one-time code and sends the browser on to `http://127.0.0.1:<port>/callback` with it; Cancel, and any
+// failure, send the result alone. The app trades the code and its verifier for a session token it sends as
+// `Authorization: Bearer` (session.js).
 // State-changing calls must come from the app's own page (`fromSite`) or carry a bearer session (`fromApp`). Nothing
-// here stores, logs or returns a provider token, a code, a verifier or a session token, but the one code and token a
-// native sign-in hands its own app.
+// here stores, logs or returns a provider token, a code, a verifier or a session token, but the one consent a native
+// sign-in's page posts back and the code and token it hands its own app.
 
 import { parseCookies, serializeCookie, isSecureOrigin } from "../../src/cookies.js";
 import { randomToken, sameString, sha256Hex } from "../../src/crypto.js";
 import { capabilityFor, revokeLive, STALE_MS } from "./capability.js";
 import { effective } from "./config.js";
 import { bridgeHello } from "./bridge.js";
-import { allowed, clientIp, fromSite, json, readBody, redirect, refusal } from "./http.js";
+import { allowed, clientIp, fromSite, html, json, readBody, redirect, refusal } from "./http.js";
 import { authorizeUrl, PROVIDERS, profileFor } from "./providers.js";
 import {
   avatarPath, cleanDisplay, clearSessionCookie, cookieNames, createSession, deleteAllSessions, deletePrincipal, deleteSession,
@@ -32,11 +37,13 @@ import {
 
 export const OAUTH_MS = 10 * 60 * 1000;
 export const NATIVE_CODE_MS = 2 * 60 * 1000;
+export const NATIVE_CONSENT_MS = 5 * 60 * 1000;
 export const IDENTITY_SCHEMA = 1;
 // A PKCE S256 challenge is the base64url SHA-256 of the verifier: 43 characters. A verifier is 43 to 128 unreserved ones.
 const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
 const VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const NATIVE_BODY_MAX = 512;
+const PROVIDER_NAME = { github: "GitHub", x: "X" };
 
 const back = (provider, result, cookies = []) =>
   redirect(`/?signin=${result}${PROVIDERS.includes(provider) ? `&provider=${provider}` : ""}`, cookies);
@@ -56,6 +63,30 @@ const s256 = async (verifier) => {
 /** A state-changing call from the app's page, or from a native app holding a bearer session (no browser sends one). */
 const fromApp = (request, env) => fromSite(request, env.SITE_ORIGIN) || !!bearerToken(request);
 const oauthCookie = (env, value, ms) => serializeCookie(cookieNames(env.SITE_ORIGIN).oauth, value, { maxAge: Math.floor(ms / 1000), secure: isSecureOrigin(env.SITE_ORIGIN) });
+
+// The page a native sign-in stops at, signed in: who it is, and a form whose two buttons post its answer back here. It
+// carries no script or style, so its policy allows nothing but that form (and the loopback address its answer is sent
+// on to) and no frame round it, so no other page can dress it up or click it through.
+const escape = (text) => String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const consentPage = (provider, port, principal, consent, cookies) => {
+  const who = principal.display && principal.display !== principal.login ? `${escape(principal.display)} (${escape(principal.login)})` : escape(principal.login);
+  return html(`<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ooga Chat sign-in</title></head>
+<body>
+<h1>Ooga Chat</h1>
+<p>Signed in with ${PROVIDER_NAME[provider]} as <strong>${who}</strong>.</p>
+<p>Continue to the Ooga Chat desktop app?</p>
+<form method="post" action="/auth/${provider}/consent">
+<input type="hidden" name="consent" value="${consent}">
+<button type="submit" name="choice" value="continue">Continue</button>
+<button type="submit" name="choice" value="cancel">Cancel</button>
+</form>
+<p>If you did not just sign in from the Ooga Chat desktop app on this computer, choose Cancel.</p>
+</body>
+</html>
+`, `default-src 'none'; form-action 'self' http://127.0.0.1:${port}; frame-ancestors 'none'; base-uri 'none'`, 200, cookies);
+};
 
 const providerOn = async (env, provider) => effective(env, await bridgeHello(env))[provider];
 
@@ -104,14 +135,11 @@ const callback = async (request, env, url, provider, deps) => {
   const principal = await upsertPrincipal(env.DB, { ...p, display: cleanDisplay(p.display, p.login) });
   if (principal.banned_at) return fail("failed", "banned");
   if (port) {
-    const code = randomToken();
-    await env.DB.prepare("INSERT INTO native_codes (code_hash, principal_id, challenge, expires_at) VALUES (?1, ?2, ?3, ?4)")
-      .bind(await sha256Hex(code), principal.id, held.native_challenge, Date.now() + NATIVE_CODE_MS).run();
-    if (principal.provider === "github") {
-      const asking = capabilityFor(env, principal, { force: true, waitUntil: deps.waitUntil }).catch(() => null);
-      if (deps.waitUntil) deps.waitUntil(asking); else await asking;
-    }
-    return backNative(port, provider, "ok", [clear], code);
+    // No code yet: the browser that signed in says first whether this goes on to the app (consent, below).
+    const consent = randomToken(), fresh = randomToken();
+    await env.DB.prepare("INSERT INTO native_consents (consent_hash, principal_id, provider, browser_hash, challenge, port, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+      .bind(await sha256Hex(consent), principal.id, provider, await sha256Hex(fresh), held.native_challenge, port, Date.now() + NATIVE_CONSENT_MS).run();
+    return consentPage(provider, port, principal, consent, [oauthCookie(env, fresh, NATIVE_CONSENT_MS)]);
   }
   const token = await createSession(env.DB, principal.id, request.headers.get("user-agent"));
   // The island's answer now, so the app's first look already has it; a slow or absent bridge only leaves it unknown.
@@ -120,6 +148,44 @@ const callback = async (request, env, url, provider, deps) => {
     if (deps.waitUntil) deps.waitUntil(asking); else await asking;
   }
   return back(provider, "ok", [clear, sessionCookie(env, token)]);
+};
+
+/**
+ * A native sign-in's answer from its page: `consent=<token>&choice=<continue|cancel>`, posted by the browser that signed
+ * in. A post from any other page is refused before anything is read. The consent is spent first, whatever happens
+ * next; one that is missing, expired, another provider's or another browser's sends the browser back with `failed`
+ * (to its app's loopback port when the consent named one, else this origin's page). Cancel sends `denied`; Continue
+ * alone makes the one-time code (as the callback once did) and sends it on to the app.
+ */
+const consent = async (request, env, provider, deps) => {
+  if (!fromSite(request, env.SITE_ORIGIN)) return refusal("forbidden", 403);
+  const clear = oauthCookie(env, "", 0);
+  const form = new URLSearchParams((await readBody(request, NATIVE_BODY_MAX)) ?? "");
+  const token = form.get("consent") || "", choice = form.get("choice");
+  const nonce = parseCookies(request.headers.get("cookie")).get(cookieNames(env.SITE_ORIGIN).oauth) || "";
+  const held = token && token.length <= 64 ? await env.DB.prepare(
+    "DELETE FROM native_consents WHERE consent_hash = ?1 RETURNING principal_id, provider, browser_hash, challenge, port, expires_at",
+  ).bind(await sha256Hex(token)).first() : null;
+  const port = held ? nativePort(String(held.port)) : 0;
+  const fail = (result, reason) => {
+    console.warn("ooga chat sign-in", provider, result, reason);
+    return port ? backNative(port, provider, result, [clear]) : back(provider, result, [clear]);
+  };
+  const ours = !!held && held.provider === provider && held.expires_at > Date.now() && !!nonce && nonce.length <= 64 && sameString(held.browser_hash, await sha256Hex(nonce));
+  if (!ours || !port) return fail("failed", "consent");
+  if (choice === "cancel") return fail("denied", "cancel");
+  if (choice !== "continue") return fail("failed", "choice");
+  if (!(await allowed(env.CHAT_AUTH_LIMITER, clientIp(request)))) return fail("rate-limited", "limit");
+  const principal = await env.DB.prepare("SELECT * FROM principals WHERE id = ?1").bind(held.principal_id).first();
+  if (!principal || principal.banned_at) return fail("failed", "banned");
+  const code = randomToken();
+  await env.DB.prepare("INSERT INTO native_codes (code_hash, principal_id, challenge, expires_at) VALUES (?1, ?2, ?3, ?4)")
+    .bind(await sha256Hex(code), principal.id, held.challenge, Date.now() + NATIVE_CODE_MS).run();
+  if (principal.provider === "github") {
+    const asking = capabilityFor(env, principal, { force: true, waitUntil: deps.waitUntil }).catch(() => null);
+    if (deps.waitUntil) deps.waitUntil(asking); else await asking;
+  }
+  return backNative(port, provider, "ok", [clear], code);
 };
 
 /** The session as the app reads it (identity protocol 1), with what the island decided about speaking. */
@@ -197,9 +263,10 @@ const nativeToken = async (request, env) => {
 export const handleAuth = async (request, env, url, deps) => {
   const [, root, provider, step, extra] = url.pathname.split("/");
   if (root === "auth") {
-    if (!PROVIDERS.includes(provider) || extra !== undefined || (step !== undefined && step !== "callback")) return refusal("not_found", 404);
-    if (request.method !== "GET") return refusal("method_not_allowed", 405);
+    if (!PROVIDERS.includes(provider) || extra !== undefined || (step !== undefined && step !== "callback" && step !== "consent")) return refusal("not_found", 404);
+    if (request.method !== (step === "consent" ? "POST" : "GET")) return refusal("method_not_allowed", 405);
     if (!env.DB) return back(provider, "unavailable");
+    if (step === "consent") return consent(request, env, provider, deps);
     return step === "callback" ? callback(request, env, url, provider, deps) : start(request, env, url, provider);
   }
   if (url.pathname === "/api/chat/me") return env.DB ? me(request, env, deps) : refusal("unavailable", 503);
