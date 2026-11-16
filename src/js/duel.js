@@ -27,7 +27,7 @@
   };
   const REFUSED = {
     offline: "They are not on the island", busy: "One of you is already busy", body: "Both of you need to be driving an Ooga",
-    zone: "Duels are fought on the island's surface", far: "Get closer to challenge them", rate: "Slow down", withdrawn: "That challenge is gone",
+    zone: "Duels are fought on the island's surface", arriving: "Still arriving · try again in a moment", far: "Get closer to challenge them", rate: "Slow down", withdrawn: "That challenge is gone",
   };
 
   let flagGeometry = null;
@@ -117,8 +117,10 @@
     const begin = (msg) => {
       if (!Number.isSafeInteger(msg.id) || duels.has(msg.id) || !Number.isFinite(msg.x) || !Number.isFinite(msg.z) || !Number.isFinite(msg.at)) return;
       const hp = Array.isArray(msg.hp) && msg.hp.length === 2 && msg.hp.every(Number.isFinite) ? msg.hp.slice() : [R.HP, R.HP];
-      // The fight's start on this page's clock: the room's `at`, less how far its clock runs ahead of this one.
-      const d = { id: msg.id, a: msg.a, b: msg.b, x: msg.x, z: msg.z, hp, fightAt: msg.at - net.serverNow() + performance.now(), endT: 0, flag: null, outAt: 0 };
+      // The fight's start on this page's clock from the message's own two stamps, so a clock estimate that a slow
+      // boot threw off cannot move the countdown.
+      const ahead = Number.isFinite(msg.now) ? msg.at - msg.now : msg.at - net.serverNow();
+      const d = { id: msg.id, a: msg.a, b: msg.b, x: msg.x, z: msg.z, hp, fightAt: performance.now() + ahead, endT: 0, flag: null, outAt: 0 };
       duels.set(d.id, d);
       placeFlag(d);
       const me = selfId();

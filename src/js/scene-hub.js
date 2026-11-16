@@ -6576,10 +6576,11 @@
     if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
     if (gorillaBehindBillboard(hit, p)) return;
     if (debugMovementTap(hit, p)) return;
-    // Another player's Ooga nearer than whatever else was hit becomes the duel target.
+    // Another player's Ooga under the pointer, in sight (the pool's own exact mesh test and `liveClear`, not the taps'
+    // broad pick spheres, which a bush or prop near the line would win), becomes the duel target.
     if (p) {
       renderer.ray(p.x, p.y, camera, TAP_RAY);
-      if (duels.tap(TAP_RAY, hit && Number.isFinite(hit.t) ? hit.t : camera.far)) return;
+      if (duels.tap(TAP_RAY, camera.far)) return;
     }
     if (!hit) return;
     const o = hit.owner;

@@ -264,7 +264,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...duel.saved(p) };
   }
 
   view(p) {
@@ -680,7 +680,7 @@ export class Room extends DurableObject {
     if (p.cabinet && ["pose", "zone", "body", "blend", "hp", "shot", "swing", "hockey", "bf", "duel"].includes(msg.t)) return;
     if (msg.t === "tess-guide") { tessQueue.message(this, p, msg); return; }
     if (msg.t === "bf") { block.message(this, p, msg); return; }
-    // Duels keep nothing in the attachment: a room that sleeps forgets them (duel.js).
+    // Duels save their own attachments as they change (duel.js).
     if (msg.t === "duel") { duel.message(this, p, msg); return; }
     if (msg.t === "hockey") { hockey.message(this, p, msg); ws.serializeAttachment(this.attachment(p)); return; }
     if (CONTROL_FRAMES.has(msg.t)) {
@@ -699,7 +699,7 @@ export class Room extends DurableObject {
       p.w = ooga && msg.w ? msg.w : 0;
       p.v = ooga && msg.v ? msg.v : null; p.va = p.v ? p.seenAt : 0;
       p.r = ooga ? msg.r : undefined;
-      if (p.duelId) duel.pose(this, p);
+      if (p.duelRec) duel.pose(this, p);
       const seatLost = Number.isInteger(p.studioSeat) && !studioSeatAllowed(p, p.studioSeat, this.players.values());
       if (seatLost) { delete p.studioSeat; this.removeStudioSpeaker(p.id); this.studio.revision++; this.persistStudio(); this.enforceStudio(); }
       if (this.chalkEditor && this.chalkEditor.id === p.id && this.chalkRefusal(p)) this.chalkLetGo(p);

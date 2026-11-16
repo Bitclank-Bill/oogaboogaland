@@ -12714,16 +12714,16 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 
 body[data-active-scene] #cave-directory-button { min-height: 44px; }
 
-/* Duels (duel.js): the target, a challenge heard and the duel's bars, over the island's top centre. */
+/* Duels (duel.js): the target, a challenge heard and the duel's bars, at the top left under the banner (the top centre
+   is the movement coaching card's and the walking directions'). */
 .duel-target, .duel-invite, .duel-hud {
   position: fixed;
-  left: 50%;
+  left: calc(16px + var(--safe-left));
   z-index: 30;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - var(--safe-left));
   padding: 8px 10px;
   color: var(--paper);
   background: rgba(22, 20, 18, 0.88);
@@ -12732,8 +12732,9 @@ body[data-active-scene] #cave-directory-button { min-height: 44px; }
   font-size: 13px;
 }
 .duel-target { top: calc(76px + var(--safe-top)); }
-.duel-invite { top: calc(124px + var(--safe-top)); flex-wrap: wrap; justify-content: center; }
-.duel-hud { top: calc(76px + var(--safe-top)); flex-direction: column; gap: 6px; }
+.duel-invite { top: calc(128px + var(--safe-top)); width: min(320px, calc(100vw - 32px)); flex-wrap: wrap; justify-content: center; }
+.duel-hud { top: calc(76px + var(--safe-top)); flex-direction: column; align-items: stretch; gap: 6px; }
+.duel-yield { align-self: center; }
 .duel-target[hidden], .duel-invite[hidden], .duel-hud[hidden], .duel-note[hidden] { display: none; }
 .duel-target-name { font-weight: 700; overflow-wrap: anywhere; }
 .duel-invite-text { flex-basis: 100%; margin: 0; text-align: center; font-weight: 700; }
@@ -12771,3 +12772,9 @@ body[data-active-scene] #cave-directory-button { min-height: 44px; }
 .duel-note { margin: 0; color: var(--danger); font-weight: 700; }
 .players-duel { grid-column: 1 / -1; justify-self: start; margin-top: 6px; }
 .players-duel[hidden] { display: none; }
+/* On a narrow screen the movement coaching card spans the top: the duel's cards stand below it while it shows. */
+@media (max-width: 760px) {
+  body:has(#explore-coach:not([hidden])) .duel-target,
+  body:has(#explore-coach:not([hidden])) .duel-hud { top: calc(172px + var(--safe-top)); }
+  body:has(#explore-coach:not([hidden])) .duel-invite { top: calc(224px + var(--safe-top)); }
+}
