@@ -354,6 +354,20 @@ test("regression: a media call carries a connection's authorisation on, so the h
   const stranger = await audience.fetch(new Request("https://audience.invalid/media/ice", { method: "POST",
     headers: { "x-audience-principal": JSON.stringify(other) }, body: JSON.stringify({ connection: c.connId }) }));
   assert.equal(stranger.status, 409, "another principal's call carries nothing on");
+  // No longer eligible at the edge: a call carries nothing on, and the hourly check closes the socket as before.
+  const lapsed = principal(3, { eligible: false, sessionExpiresAt: Date.now() + 3 * 3600000 });
+  const { ws: gone } = await open(audience, lapsed);
+  await say(audience, gone, { type: "join", zone: "main" });
+  const g = [...audience.model.conns.values()].find((x) => x.principal === lapsed.principal);
+  g.authUntil = Date.now() + 1000;
+  const until = g.authUntil;
+  const ignored = await audience.fetch(new Request("https://audience.invalid/media/ice", { method: "POST",
+    headers: { "x-audience-principal": JSON.stringify(lapsed) }, body: JSON.stringify({ connection: g.connId }) }));
+  assert.ok(ignored.status < 400, `ice answered ${ignored.status}`);
+  assert.equal(g.authUntil, until, "an ineligible principal's call carries nothing on");
+  g.authUntil = Date.now() - 1;
+  await audience.alarm();
+  assert.equal(gone.closed.code, 4401, "and the hourly check still closes it");
 });
 
 test("the Audience: deltas reach a watching Room in order, and only for the zones it watches", async () => {
