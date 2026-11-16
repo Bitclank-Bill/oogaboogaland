@@ -65,19 +65,53 @@
     parts.push(box({ w: 2.5 * u, h: 0.34 * u, d: 0.55 * u, color: frame, offset: { y: 4.2 * u, z: z + 0.15 * u } }));
     return merge(...parts);
   };
-  // A lecturer's hands, in place of an island Ooga's fist (the same frame: the wrist at the top, the palm toward +z,
-  // the thumb on `side`): open, the palm flat with three fingers out and the thumb away from them; and pointing, the
-  // first finger out with the other two curled into the palm and the thumb across them.
-  const openHand = (side, u, skin, shade) => merge(
-    box({ w: 3.0 * u, h: 2.15 * u, d: 1.1 * u, color: skin, offset: { y: 0.78 * u, z: 0.2 * u } }),
-    ...[-1.04, 0, 1.04].map((x, i) => box({ w: 0.92 * u, h: (i === 1 ? 2.3 : 2.05) * u, d: 0.85 * u, color: i === 1 ? skin : shade, offset: { x: x * u, y: (i === 1 ? -1.45 : -1.32) * u, z: 0.2 * u } })),
-    moved(turnedZ(box({ w: 0.85 * u, h: 1.9 * u, d: 0.85 * u, color: shade }), side * 0.6), side * 2.05 * u, 0.25 * u, 0.25 * u)
-  );
-  const pointHand = (side, u, skin, shade) => merge(
-    box({ w: 3.0 * u, h: 2.15 * u, d: 1.1 * u, color: skin, offset: { y: 0.78 * u, z: 0.2 * u } }),
-    box({ w: 0.92 * u, h: 2.5 * u, d: 0.85 * u, color: skin, offset: { x: side * 1.04 * u, y: -1.55 * u, z: 0.2 * u } }),
-    box({ w: 1.98 * u, h: 1.05 * u, d: 1.5 * u, color: shade, offset: { x: -side * 0.5 * u, y: -0.82 * u, z: 0.55 * u } }),
-    box({ w: 1.7 * u, h: 0.7 * u, d: 0.6 * u, color: skin, offset: { x: -side * 0.1 * u, y: -0.7 * u, z: 1.55 * u } })
+  // A lecturer's open hand, in place of an island Ooga's fist (the same frame: the wrist at the top, the palm toward
+  // +z, the thumb on `side`): the palm flat with three fingers out and the thumb away from them. His pointing hand
+  // is the fist itself with its first finger out straight (hero-body.js `hand`).
+  // The ring a mesh ends in, at its top or its foot ([height, half width, half depth, corner cut, middle across,
+  // middle along]): a fist's wrist, up inside the forearm, and the forearm's own end.
+  const ringAt = (geo, top) => {
+    const v = geo.verts;
+    let y = top ? -Infinity : Infinity;
+    for (let i = 1; i < v.length; i += 3) y = top ? Math.max(y, v[i]) : Math.min(y, v[i]);
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, edge = -Infinity;
+    for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i + 1] - y) < 1e-5) { x0 = Math.min(x0, v[i]); x1 = Math.max(x1, v[i]); z0 = Math.min(z0, v[i + 2]); z1 = Math.max(z1, v[i + 2]); }
+    for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i + 1] - y) < 1e-5 && v[i] > x1 - 1e-5) edge = Math.max(edge, v[i + 2]);
+    return [y, (x1 - x0) / 2, (z1 - z0) / 2, z1 - edge, (x0 + x1) / 2, (z0 + z1) / 2];
+  };
+  // A hand's wrist goes up inside the sleeve, which narrows toward the elbow: its top ring is drawn in by this much,
+  // so nothing of it comes through the cloth above the sleeve's end.
+  const TUCK = 0.8;
+  // The open hand's measures, in the fist's own units, so it is the same hand opened: as wide as the fist, thick at
+  // the heel and thinner at the knuckles, where the fingers begin (`foot`); `z` is how far its middle stands toward
+  // the palm's side.
+  const PALM = { w: 1.6, heel: 0.72, foot: -0.7, thin: 0.5, cut: 0.18, z: 0.15, end: 1.18 };
+  // The palm's half width at a height: the wrist's at the forearm's end, the palm's own from where it has widened.
+  const palmWide = (wrist, u) => { const hx = wrist.ring[1] / u, full = PALM.end - Math.max((PALM.w - hx) / 0.58, 0.9); return (y) => y >= PALM.end ? hx : y <= full ? PALM.w : hx + (PALM.w - hx) * (PALM.end - y) / (PALM.end - full); };
+  // The heel and palm of the open hand: it begins in the fist's own wrist, up inside the forearm, and widens and
+  // flattens out of it into the palm, as the fist does, so the arm runs into it with no ledge.
+  const palm = (wrist, u, skin) => {
+    const [top, hx, hz, cut, cx, cz] = wrist.ring, end = PALM.end * u, full = end - Math.max((PALM.w * u - hx) / 0.58, 0.9 * u);
+    return BL.heroBody.loft(BL.models.geometry(), [[top, hx * TUCK, hz * TUCK, cut * TUCK, cx, cz], [end, hx, hz, cut, cx, cz], [full, PALM.w * u, PALM.heel * u, PALM.cut * u, 0, PALM.z * u], [PALM.foot * u, PALM.w * u, PALM.thin * u, PALM.cut * u, 0, PALM.z * u]], skin);
+  };
+  // A finger out straight from the palm's foot (`x` its middle across, `long` its length, in units): it begins in the
+  // palm's own foot, as deep as the palm is there and with the palm's corner cut, so the palm's faces and its sides
+  // run on into the fingers with no step; it keeps its width to the last joint and only thins toward its tip.
+  const FINGER = 0.51;
+  const finger = (x, long, u, skin) => {
+    const at = [x * u, PALM.z * u], foot = PALM.foot, tip = foot - long, mid = foot - long * 0.55;
+    return BL.heroBody.loft(BL.models.geometry(), [[foot * u, FINGER * u, PALM.thin * u, PALM.cut * u, ...at], [mid * u, FINGER * u, 0.47 * u, PALM.cut * u, ...at], [(tip + 0.28) * u, 0.5 * u, 0.41 * u, 0.17 * u, ...at], [tip * u, 0.4 * u, 0.3 * u, 0.13 * u, ...at]], skin);
+  };
+  // The open hand's thumb, as thick as the fist's (hero-body.js `hand`, whose thumb lies folded across the fingers):
+  // it begins inside the wrist, swells out of the palm's side as the ball of the thumb, and comes down close beside
+  // the palm's foot and the first finger, reaching a little over half way down that finger.
+  const thumb = (side, u, skin, wide) => BL.heroBody.loft(BL.models.geometry(), [[1.25, 0.36, 0.55, 0.22, wide(1.25) - 0.4, 0.3], [0.75, 0.58, 0.62, 0.26, wide(0.75) - 0.2, 0.33], [0.2, 0.6, 0.62, 0.26, PALM.w, 0.34],
+    [-0.3, 0.57, 0.58, 0.24, PALM.w + 0.36, 0.34], [-0.75, 0.52, 0.52, 0.22, PALM.w + 0.56, 0.34], [-1.2, 0.48, 0.47, 0.2, PALM.w + 0.6, 0.34], [-1.55, 0.44, 0.42, 0.18, PALM.w + 0.6, 0.34], [-1.8, 0.35, 0.33, 0.14, PALM.w + 0.6, 0.34]]
+    .map(([y, hx, hz, cut, cx, cz]) => [y * u, hx * u, hz * u, cut * u, side * cx * u, cz * u]), skin);
+  const openHand = (side, u, skin, wrist) => merge(
+    palm(wrist, u, skin),
+    finger(-(PALM.w - FINGER), 2.0, u, skin), finger(0, 2.25, u, skin), finger(PALM.w - FINGER, 2.0, u, skin),
+    thumb(side, u, skin, palmWide(wrist, u))
   );
   // A receding hairline with a widow's peak: hair over the crown set back from the forehead, coming forward to a
   // point in the middle, bare in a bay either side of it, forward again at each side to a point toward the brow's
@@ -230,15 +264,18 @@
   const PROFILES = {
     pumponopoulos: {
       name: "pumponopoulos/lecture", display: "Professor Pumponopoulos", skin: "#f1d2ba", hair: "#191614", hairDark: "#0e0c0b", hairline: "widowsPeak", height: 1.05, belly: 1.0,
-      shirt: "#24303f", shirtDark: "#1a2330", collar: "#3d5169", button: "#0b0b0c", trousers: "#23262d", shoes: "#15120f", glasses: true, looseShirt: true, noseShade: 1,
+      shirt: "#24303f", shirtDark: "#1a2330", collar: "#3d5169", button: "#0b0b0c", trousers: "#23262d", shoes: "#15120f", looseShirt: true, noseShade: 1,
+      // His eyes a little smaller than an island Ooga's, and a little closer together.
+      eyeSize: 0.82, eyeIn: 0.15,
       // A slighter frame than an island Ooga's: how wide and deep his trunk, arms and legs are drawn, and how far in
       // his shoulders and his hips sit (the legs stay inside the narrower trunk).
-      frame: { torso: [0.78, 0.82], arm: 0.64, shoulder: 0.83, leg: 0.74, hip: 0.72, hand: 0.86 },
+      // `thumbLift` folds his fist's thumb across the fingers that much higher than an island Ooga's.
+      frame: { torso: [0.78, 0.82], arm: 0.64, shoulder: 0.83, leg: 0.74, hip: 0.72, hand: 0.78, handLong: 0.9, thumbLift: 0.35 },
       // How he moves: his walking pace on the stage (m/s), how big his hands' beats are and how often he shifts his weight.
       pace: 1.25, energy: 0.9, sway: 0.9
     }
   };
-  const traitsOf = (p) => ({ ...BL.contributors.traitsFor(p.name), display: p.display, skin: p.skin, hair: p.hair, fur: p.shirt, height: p.height, belly: p.belly, bald: true, cleanShaven: true, flatMouth: true, noFlaps: true, noseShade: p.noseShade, dress: dressOf(p) });
+  const traitsOf = (p) => ({ ...BL.contributors.traitsFor(p.name), display: p.display, skin: p.skin, hair: p.hair, fur: p.shirt, height: p.height, belly: p.belly, bald: true, cleanShaven: true, flatMouth: true, noFlaps: true, noseShade: p.noseShade, eyeSize: p.eyeSize, eyeIn: p.eyeIn, dress: dressOf(p) });
 
   const create = ({ parent, profile, stage }) => {
     const p = PROFILES[profile];
@@ -254,6 +291,12 @@
         arm.geometry = thin(arm.geometry); fore.geometry = thin(fore.geometry);
         fore.position.z *= f.arm;
         arm.position.x *= f.shoulder;
+        // A shoulder in the shirt's cloth, on the body at the arm's own joint: the thin arm turns about a point
+        // outside the narrow trunk, so spread wide its top would stand off the shirt. This fills from the shirt's
+        // side out round the top of the arm, no higher than the arm's own top, and is hidden inside the arm at rest.
+        const side = Math.sign(arm.position.x), uu = figure.traits.height / 16;
+        addChild(arm.parent, createNode({ position: { x: arm.position.x, y: arm.position.y, z: arm.position.z }, geometry: BL.heroBody.loft(BL.models.geometry(),
+          [[-0.31, 0.55, 0.9, 0.3], [-0.58, 0.98, 1.2, 0.36], [-1.4, 1.02, 1.22, 0.36], [-1.95, 0.62, 0.9, 0.3]].map(([y, hx, hz, cut]) => [y * uu, hx * uu, hz * uu, cut * uu, -side * 0.27 * uu, -0.16 * uu]), p.shirt) }));
       }
       for (const leg of [parts.legR, parts.legL]) { leg.scale.x = leg.scale.z = f.leg; leg.position.x *= f.hip; }
     }
@@ -270,12 +313,24 @@
     // His hands: an open and a pointing hand beside the fist an Ooga is built with, one of the three shown at a time.
     const u = figure.traits.height / 16, hands = {}, shown = { r: "", l: "" };
     for (const [key, side, fist] of [["r", -1, parts.fingersR], ["l", 1, parts.fingersL]]) {
-      const at = fist.position, skinDk = "#" + [0, 1, 2].map((i) => Math.round(parseInt(p.skin.slice(1 + i * 2, 3 + i * 2), 16) * 0.9).toString(16).padStart(2, "0")).join("");
-      // A hand a little smaller than an island Ooga's, on the thinner arm.
-      const grow = p.frame ? p.frame.hand : 1, scale = () => ({ x: grow, y: 1, z: grow });
-      const open = createNode({ position: { x: at.x, y: at.y, z: at.z }, scale: scale(), geometry: openHand(side, u, p.skin, skinDk) }), point = createNode({ position: { x: at.x, y: at.y, z: at.z }, scale: scale(), geometry: pointHand(side, u, p.skin, skinDk), visible: false });
+      const at = fist.position;
+      // A hand smaller than an island Ooga's, on the thinner arm: narrower by `frame.hand` and shorter by
+      // `frame.handLong`. Its fist is made again with the thinned forearm's own end for a wrist (as the smaller hand
+      // sees it), so the arm runs into it with no step, and it hangs where its wrist meets that end.
+      const grow = p.frame ? p.frame.hand : 1, long = p.frame && p.frame.handLong || 1, scale = () => ({ x: grow, y: long, z: grow });
+      // The wrist every hand begins in, as the hand's own frame sees it: the thinned forearm's end, or the fist's own.
+      const end = p.frame ? ringAt(fist.parent.geometry, false) : null, ring = end ? [end[1] / grow, end[2] / grow, end[3] / grow] : ringAt(fist.geometry, true).slice(1, 4);
+      const fistOf = (pointing) => {
+        const made = BL.heroBody.scaled(BL.heroBody.hand(side, BL.math.hexToRgb(p.skin), 1, ring.map((x) => x / u), pointing, p.frame && p.frame.thumbLift || 0), u), v = made.verts;
+        // Whatever of it stands above the forearm's end (1.28 units up the fist) is drawn in, inside the sleeve.
+        for (let i = 0; i < v.length; i += 3) if (v[i + 1] > 1.3 * u) { v[i] *= TUCK; v[i + 2] *= TUCK; }
+        return made;
+      };
+      if (end) { fist.geometry = fistOf(false); at.y = end[0] - 1.28 * u * long; }
+      const wrist = { ring: [1.88 * u, ...ring, 0, 0], k: u };
+      const open = createNode({ position: { x: at.x, y: at.y, z: at.z }, scale: scale(), geometry: openHand(side, u, p.skin, wrist) }), point = createNode({ position: { x: at.x, y: at.y, z: at.z }, scale: scale(), geometry: fistOf(true), visible: false });
       addChild(fist.parent, open, point);
-      fist.scale.x = fist.scale.z = grow;
+      fist.scale.x = fist.scale.z = grow; fist.scale.y = long;
       hands[key] = { open, point, fist };
     }
     const hand = (key, shape) => {
