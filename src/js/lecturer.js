@@ -270,7 +270,7 @@
       // A slighter frame than an island Ooga's: how wide and deep his trunk, arms and legs are drawn, and how far in
       // his shoulders and his hips sit (the legs stay inside the narrower trunk).
       // `thumbLift` folds his fist's thumb across the fingers that much higher than an island Ooga's.
-      frame: { torso: [0.78, 0.82], arm: 0.64, shoulder: 0.83, leg: 0.74, hip: 0.72, hand: 0.78, handLong: 0.9, thumbLift: 0.35 },
+      frame: { torso: [0.78, 0.82], arm: 0.64, shoulder: 0.83, leg: 0.74, hip: 0.72, hand: 0.78, handLong: 0.9, thumbLift: 0.35, hinge: [0.4, 0.96] },
       // How he moves: his walking pace on the stage (m/s), how big his hands' beats are and how often he shifts his weight.
       pace: 1.25, energy: 0.9, sway: 0.9
     }
@@ -291,12 +291,16 @@
         arm.geometry = thin(arm.geometry); fore.geometry = thin(fore.geometry);
         fore.position.z *= f.arm;
         arm.position.x *= f.shoulder;
-        // A shoulder in the shirt's cloth, on the body at the arm's own joint: the thin arm turns about a point
-        // outside the narrow trunk, so spread wide its top would stand off the shirt. This fills from the shirt's
-        // side out round the top of the arm, no higher than the arm's own top, and is hidden inside the arm at rest.
-        const side = Math.sign(arm.position.x), uu = figure.traits.height / 16;
-        addChild(arm.parent, createNode({ position: { x: arm.position.x, y: arm.position.y, z: arm.position.z }, geometry: BL.heroBody.loft(BL.models.geometry(),
-          [[-0.31, 0.55, 0.9, 0.3], [-0.58, 0.98, 1.2, 0.36], [-1.4, 1.02, 1.22, 0.36], [-1.95, 0.62, 0.9, 0.3]].map(([y, hx, hz, cut]) => [y * uu, hx * uu, hz * uu, cut * uu, -side * 0.27 * uu, -0.16 * uu]), p.shirt) }));
+        // His shoulder is hinged inside the body, as a real one is: the joint an arm turns about sits `hinge` in from
+        // where an island Ooga's is and that far down inside the top of the arm ([in, down], in units), with the arm
+        // and all it carries raised by as much so it hangs where it did. The top of the arm then stays partly inside
+        // the shirt however the arm is turned, and never stands off it.
+        if (f.hinge) {
+          const uu = figure.traits.height / 16, inn = f.hinge[0] * uu, down = f.hinge[1] * uu;
+          arm.position.x -= Math.sign(arm.position.x) * inn; arm.position.y -= down;
+          arm.geometry = { ...arm.geometry, verts: arm.geometry.verts.map((v, i) => i % 3 === 1 ? v + down : v) };
+          for (const child of arm.children) child.position.y += down;
+        }
       }
       for (const leg of [parts.legR, parts.legL]) { leg.scale.x = leg.scale.z = f.leg; leg.position.x *= f.hip; }
     }
