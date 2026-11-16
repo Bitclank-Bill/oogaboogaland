@@ -1500,7 +1500,13 @@
       pctx.fillStyle = "#f4efe6"; pctx.fillRect(0, 0, 1360, 1760);
       const pageGeo = RM.flatPicture(canvas, PW, PH, 0.7);
       K.node("wpPage", pageGeo, 0, 0.03 + FOOT + PH / 2, SD / 2 + 0.004, { parent: "centreTurn" });
-      if (BL.whitepaperPages) BL.whitepaperPages.load().then((D) => { if (!D.image) return; pctx.drawImage(D.image, 0, 0, D.width, D.page, 0, 0, 1360, 1760); pageGeo.imageSurface.version++; });
+      // Page 1 is drawn from the cut pages: the strip they are cut from is let go as soon as the last one is cut.
+      if (BL.whitepaperPages) BL.whitepaperPages.load().then((D) => {
+        if (!D.pages[0]) return;
+        const first = new Image();
+        first.onload = () => { pctx.drawImage(first, 0, 0, 1360, 1760); pageGeo.imageSurface.version++; };
+        first.src = D.pages[0];
+      });
       // The posting card at the page's foot.
       K.picture(1.0, 0.22, 1000, 220, (ctx, w, h) => {
         ctx.fillStyle = C.ink; ctx.fillRect(0, 0, w, h);

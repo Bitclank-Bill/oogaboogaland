@@ -22765,12 +22765,32 @@ const timechainPortal = { name: "timechain portal", why: "contract: Before the B
       && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
+const timechainPaper = { name: "timechain paper", why: "regression: the whitepaper's standing page was drawn from the decoded strip, which is let go once its pages are cut, so the face stayed blank", run: async (b) => {
+  // Dark pixels on the face's own canvas, read once it has been painted over its blank fill.
+  const face = async () => {
+    const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.room.id === 8 && B.timechain.built.nodes.wpPage.geometry.imageSurface.version > 1', 20000);
+    return b.evaluate(`(() => { const s = __ooga.timechain.built.nodes.wpPage.geometry.imageSurface, c = s.canvas, d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let ink = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] < 110) ink++;
+      return { painted: ${painted}, version: s.version, ink, pages: BL.whitepaperPages.pages.length }; })()`);
+  };
+  await untilPage(b, 'B.scene === "timechain" && B.timechain && !B.transitioning', 20000);
+  // The room's own code may still be on its way at a first arrival, so this walk in waits across frames.
+  const arrive = () => b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`);
+  const loaded = await b.evaluate(`BL.whitepaperPages ? BL.whitepaperPages.pages.length : -1`);
+  await arrive();
+  const first = await face();
+  await tourGo(b, "hub");
+  await arrive();
+  const again = await face();
+  record("timechain paper: the whitepaper's standing page shows page 1 on the first visit, before any page had been cut, and again on coming back",
+    loaded <= 0 && [first, again].every(f => f.painted && f.pages === 9 && f.ink > 5000), JSON.stringify({ loaded, first, again }));
+} };
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
   record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 1 && r.view === "first-person", JSON.stringify(r));
 } };
-scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip, timechainPortal] });
+scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainPaper, timechainRooms, timechainWallJump, timechainTrip, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 scene("hub", { label: "chilling", query: "status=chillin&pos=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.
