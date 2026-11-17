@@ -23006,6 +23006,10 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
     out.mouth = at({ x: lab.x, y: 0, z: lab.z }, 0.5);
     const outX = labMouth.x + (labMouth.apron.x - labMouth.x) * 2.5, outZ = labMouth.z + (labMouth.apron.z - labMouth.z) * 2.5;
     out.apron = at({ x: outX, y: D.island.surfaceAt(outX, outZ), z: outZ }, 0.5);
+    out.canopies = ["c2", "c3"].map((id) => {
+      const m = D.island.mouths.find((mouth) => mouth.id === id), along = -2;
+      return at({ x: m.x + Math.sin(m.ry) * along, y: m.floorY, z: m.z + Math.cos(m.ry) * along }, 0.5);
+    });
     out.air = at({ x: 53.7, y: 8, z: -31 }, 0.5);
     // Inside the Sphere's shell, down its passage short of the curtain, and Merge Rock, which has no public scope yet.
     // Only a crossing's Ooga stands behind the doors (timechain-gate.js puts one left there on the bridge), so the
@@ -23027,11 +23031,13 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
     lands.every((land) => r[land].home.scope === "main" && r[land].bridge.scope === "main" && r[land].land.scope === "main")
       && r.apron.scope === "main" && r.air.scope === "main" && r.mouth.scope === null && r.mouth.reason === "interior"
       && r.passage.scope === null && r.passage.reason === "interior" && (!r.repos || r.repos.scope === null && r.repos.reason === "unscoped"), JSON.stringify(r));
+  record("outdoor scope: covered cave approaches before the Arcade doors and Factory shield stay in Main Island",
+    r.canopies.every((p) => p.zone === "outside" && p.scope === "main"), JSON.stringify(r.canopies));
   // Levels: by height off the island's edge, and down HQ's ramps, its basement's and the rainforest's descent.
   const lv = await b.evaluate(`(() => {
     const B = __ooga, D = BL.scenes.hub.debug, H = D.island.headquarters, M = __ooga.poolIsland, L = BL.poolLayout, net = BL.net.state;
     const at = (x, y, z) => { B.pilot.navigate({ position: { x, y, z }, yaw: 0, pitch: 0.4, dist: 6 }); B.advance(0.6, 1 / 60); return { to: net.blendTo, t: +net.blendT.toFixed(2), zone: net.zone, scope: BL.outdoorScope.state.scope, reason: BL.outdoorScope.state.reason }; };
-    const air = (feet) => { const o = { to: "", t: 0 }; return D.levelOf(53.7, feet, -31, "between", o) ? { to: o.to, t: +o.t.toFixed(2) } : null; };
+    const air = (feet) => { const o = { to: "", t: 0 }, descending = D.levelOf(53.7, feet, -31, "between", o); return descending ? { to: o.to, t: +o.t.toFixed(2), reason: BL.outdoorScope.hubReason("between", false, descending) } : null; };
     const near = (samples, y) => samples.reduce((best, p) => Math.abs(p.y - y) < Math.abs(best.y - y) ? p : best);
     const world = (lx, ly, lz) => [M.worldX(lx, lz), M.place.y + ly, M.worldZ(lx, lz)], down = L.rampPoint(50), room = H.basement.rooms[0];
     const entrance = near(H.ramps[0].samples, H.floor / 2), stair = near(H.basement.ramps[0].samples, (H.floor + H.basement.floor) / 2);
@@ -23046,6 +23052,8 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
   record("voice levels: off the island's edge height alone picks the level: the surface a metre under the plane, then HQ's, then the basement's, all the way down",
     a.over === null && a.dip === null && a.half.to === "hq" && Math.abs(a.half.t - 0.5) <= 0.01 && a.floor.to === "hq" && a.floor.t === 1 && a.under.to === "hq" && a.under.t === 1
       && a.down.to === "hq-basement" && Math.abs(a.down.t - 0.5) <= 0.01 && a.deep.to === "hq-basement" && a.deep.t === 1, JSON.stringify(a));
+  record("outdoor scope: air below the main island's surface level is excluded at every depth",
+    [a.half, a.floor, a.under, a.down, a.deep].every((p) => p.reason === "descending"), JSON.stringify(a));
   record("voice levels: down HQ's entrance ramps, its basement's and the rainforest's descent a player hears both levels by height, each level alone on it, its rooms HQ's whatever the height, never the lake over the chamber",
     lv.entrance.to === "hq" && Math.abs(lv.entrance.t - lv.rampShare) <= 0.05 && lv.floor.to === "hq" && lv.floor.t === 1 && lv.floor.zone === "hq" && lv.stair.to === "hq-basement" && Math.abs(lv.stair.t - 0.5) <= 0.05 && lv.stair.zone === "hq-basement"
       && lv.basement.to === "hq-basement" && lv.basement.t === 1 && lv.basement.zone === "hq-basement" && lv.backUp.to === "hq" && lv.backUp.t === 1 && lv.backUp.zone === "hq"
@@ -33411,7 +33419,7 @@ const outdoorScopeChecks = () => {
     outdoors: ["outside", "between", "sphere", "rainforest", "bifrost"].every((zone) => hub(zone) === "outdoor"),
     entrances: ["outside", "sphere", "rainforest", "bifrost"].every((zone) => hub(zone, true) === "interior"),
     under: ["rainforest-under", "hq", "hq-basement"].every((zone) => hub(zone) === "descending") && hub("outside", false, true) === "descending"
-      && hub("sphere", false, true) === "descending" && hub("outside", true, true) === "interior",
+      && hub("sphere", false, true) === "descending" && hub("between", false, true) === "descending" && hub("outside", true, true) === "interior",
     unscoped: hub("repos") === "unscoped",
     // Grouped with the island by the panels (zone-map.js), but never public by that.
     grouped: ["lab", "bca", "factory", "arcade", "mirror", "cave-3"].every((zone) => Z.zoneMap.groupOf(zone) === "outside" && hub(zone) === "unknown"),

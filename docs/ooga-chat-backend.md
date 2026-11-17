@@ -439,8 +439,14 @@ storage, so it survives the Room's hibernation; the Audience keeps the last list
 change and a failed send is tried again. An island player whose outdoor grant
 is open in a zone (#667) gets that zone's Ooga Chat speakers as voice peers by GitHub id, pulls them through its usual
 `/api/voice/pull` by the Audience's reference alone (checked again after the SFU call), and loses them, closed at the
-SFU, when they stop. An island player without a grant never hears them. A chat speaker's id is never an island player's
-too: the island's own voice ends a chat lease first.
+SFU, when they stop. An island player without a grant never hears them. An account may remain signed into both apps:
+its island body does not override its chat microphone. Only a live island publication takes precedence, and an old
+chat catalog entry cannot grant access to that island microphone from another place. Both receivers distinguish
+publication generations by source (chat counts are encoded as negative for subscription comparisons), so moving
+between apps replaces the track even if their clocks issued the same count. In-flight pulls recheck the publication.
+
+The receiver count sent to the island includes Ooga Chat speakers as well as listener-only accounts. Pressing Join
+Voice in OC must not make the island gate its microphone as alone; speakers keep receiving the same conversation.
 
 **Overhearing on the island.** A signed-in island player who has not joined voice hears the main island's public
 conversation while their body stands in it. Their page opens a receive session by itself (`/api/voice/session` with
@@ -480,6 +486,13 @@ body, a level crossing (`blendTo`) and a cabinet seat. The registry is default-d
 
 A new outdoor is added here with a check; a new interior needs nothing to stay excluded. The checks enumerate the island's
 world zones and DSB Land's rooms from their own sources, so a new one is caught as it lands.
+
+Main Island is one public conversation across the island's surface, the exterior of Bifrost and the Timechain Sphere,
+the rainforest's upper level, and the bridges and air between them at that level or above. The existing surface
+tolerance covers ground dips and bridge sag; descending into a lower voice level excludes even open air off the edge.
+Covered cave entrances remain public up to the interior boundary: the Arcade's doors and Factory's inner shield,
+or the doorway/veil for other caves. The lab and B.C.A. interiors, Sphere passage and rooms, Bifrost chamber and
+underground levels remain excluded. The page holds microphone transmission during the revocation handshake.
 
 **The handshake** (the Room's `outdoor-voice-v1`, offered only with the island's `outdoor` switch; frames in
 `docs/auth-and-presence.md`, "Outdoor voice bridge"). Each connection's grant is `none`, `open` or `closing`:
