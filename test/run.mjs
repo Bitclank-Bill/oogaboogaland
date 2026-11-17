@@ -22758,6 +22758,23 @@ const timechainPortal = { name: "timechain portal", why: "contract: the Genesis 
       && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
+// Either face of the whitepaper's tablet, the page and the hologram, turned to the visitor and held: a click on it and
+// Space in front of it each open the paper.
+const timechainTablet = { name: "timechain tablet", why: "contract: either face of the whitepaper's tablet, the page or the hologram, opens the paper by a click and by Space", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const opened = `(() => { const B = window.__ooga; B.advance(0.3, 1 / 30); const open = document.getElementById("wp-reader").open || document.getElementById("model-modal").open; BL.timechainGenesis.readerClose(); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
+  const faces = [];
+  for (const [face, node, turn] of [["page", "wpPage", 0], ["hologram", "holo", Math.PI]]) {
+    const at = await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis; G.holdTurn = ${turn}; B.pilot.navigate({ position: { x: 0, y: 0, z: 3 }, yaw: 0, pitch: -0.3, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30); const w = B.timechain.built.nodes.${node}.world, p = B.renderer.project(w[12], w[13], w[14]); return { x: p.x, y: p.y, toward: w[14] }; })()`);
+    await b.click(at.x, at.y);
+    const click = await b.evaluate(opened);
+    await b.key(" ");
+    faces.push({ face, toward: +at.toward.toFixed(2), click, space: await b.evaluate(opened) });
+  }
+  await b.evaluate("(() => { BL.timechainGenesis.holdTurn = null; })()");
+  record("timechain tablet: the page's face and the hologram's, each turned to the visitor, open the paper by a click on the face and by Space in front of it",
+    faces.every(f => f.toward > 0 && f.click && f.space), JSON.stringify(faces));
+} };
 // Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
 const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
 const timechainPaper = { name: "timechain paper", why: "regression: the whitepaper's standing page was drawn from the decoded strip, which is let go once its pages are cut, so the face stayed blank", run: async (b) => {
@@ -22833,7 +22850,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainPaper, timechainMark, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainPaper, timechainMark, timechainTablet, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 scene("hub", { label: "chilling", query: "status=chillin&pos=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.

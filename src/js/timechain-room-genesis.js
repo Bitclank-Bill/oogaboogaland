@@ -1142,6 +1142,63 @@
     cx.fillStyle = g; cx.fillRect(0, 0, N, N);
     return lightPicture(cv, size, size, bright);
   });
+  // ---------- the hologram on the tablet's other face ----------
+  // The Temple's statue (timechain-room-temple.js: its replica of Valentina Picozzi's statue of Satoshi in Lugano,
+  // made with her permission), drawn once exactly as the Temple builds it, from three quarters in front, into a picture
+  // the tablet shows as a projected image: every face a thin sheet of light added to the others, so the slats it is
+  // made of show through one another, crossed by scanlines, over the glow of an emitter at its foot. A display
+  // treatment alone: the model is read, never changed. `size` is the picture on the tablet, in metres.
+  const HOLO = { w: 520, h: 672, yaw: -58 * DEG, size: [1.3, 1.3 / 0.773], canvas: null };
+  const holoCanvas = () => {
+    if (HOLO.canvas) return HOLO.canvas;
+    const W = HOLO.w, H = HOLO.h, cv = CH.canvas(W, H), ctx = cv.getContext("2d"), temple = BL.timechainRoomKinds.temple;
+    HOLO.canvas = cv;
+    if (!temple || !temple.statue) return cv;
+    const g = temple.statue(), v = g.verts, rx = -Math.cos(HOLO.yaw), rz = Math.sin(HOLO.yaw);
+    let x0 = 1e9, x1 = -1e9, top = 0;
+    for (let i = 0; i < v.length; i += 3) { const sx = v[i] * rx + v[i + 2] * rz; if (sx < x0) x0 = sx; if (sx > x1) x1 = sx; if (v[i + 1] > top) top = v[i + 1]; }
+    const k = Math.min(W * 0.88 / (x1 - x0), H * 0.7 / top), ox = W / 2 - (x0 + x1) / 2 * k, foot = H * 0.85;
+    // The emitter at the foot and the light it throws up to the figure.
+    { const up = top * k * 0.3, beam = ctx.createLinearGradient(0, foot + 28, 0, foot - up); beam.addColorStop(0, "rgba(98,207,224,.16)"); beam.addColorStop(1, "rgba(98,207,224,0)");
+      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(W / 2 - 46, foot + 28); ctx.lineTo(W / 2 + 46, foot + 28); ctx.lineTo(ox + x1 * k, foot - up); ctx.lineTo(ox + x0 * k, foot - up); ctx.fill();
+      const lamp = ctx.createRadialGradient(W / 2, foot + 30, 0, W / 2, foot + 30, 120); lamp.addColorStop(0, "rgba(181,238,245,.95)"); lamp.addColorStop(0.25, "rgba(98,207,224,.4)"); lamp.addColorStop(1, "rgba(98,207,224,0)");
+      ctx.fillStyle = lamp; ctx.save(); ctx.translate(0, foot + 30); ctx.scale(1, 0.22); ctx.translate(0, -(foot + 30)); ctx.fillRect(W / 2 - 120, foot - 90, 240, 240); ctx.restore(); }
+    // The figure: each face added to what is under it, the ones turned to the eye brighter, and each as bright as the
+    // Temple's own light left it, so the form reads through the layers.
+    let lit = 1;
+    for (const f of g.faces) lit = Math.max(lit, f.color[0] + f.color[1] + f.color[2]);
+    ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = "rgb(98,207,224)";
+    for (const pass of [0, 1]) {
+      for (const f of g.faces) {
+        const I = f.i, a = I[0] * 3, b = I[1] * 3, c = I[2] * 3;
+        const ax = v[a] * rx + v[a + 2] * rz, bx = v[b] * rx + v[b + 2] * rz, cx = v[c] * rx + v[c + 2] * rz;
+        if (((bx - ax) * (v[c + 1] - v[a + 1]) - (cx - ax) * (v[b + 1] - v[a + 1]) > 0) !== !!pass) continue;
+        ctx.globalAlpha = (pass ? 0.02 : 0.006) * (0.35 + 1.65 * (f.color[0] + f.color[1] + f.color[2]) / lit);
+        ctx.beginPath();
+        for (let n = 0; n < I.length; n++) { const j = I[n] * 3, px = ox + (v[j] * rx + v[j + 2] * rz) * k, py = foot - v[j + 1] * k; if (n) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+        ctx.fill();
+      }
+    }
+    // A soft glow round it, then the scanlines cut across everything.
+    { const copy = CH.canvas(W, H), cc = copy.getContext("2d"); cc.filter = "blur(5px)"; cc.drawImage(cv, 0, 0); ctx.globalAlpha = 0.4; ctx.drawImage(copy, 0, 0); ctx.globalAlpha = 1; }
+    ctx.globalCompositeOperation = "destination-out"; ctx.fillStyle = "rgba(0,0,0,.42)";
+    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1.5);
+    ctx.globalCompositeOperation = "source-over";
+    return cv;
+  };
+  // The Temple's own steps build the statue at the doorway, a little each frame, and the last one draws the picture.
+  const steps = () => { const temple = BL.timechainRoomKinds.temple; return temple && temple.steps ? [...temple.steps(), () => { holoCanvas(); }] : []; };
+  const holoGeo = own(() => lightPicture(holoCanvas(), HOLO.size[0], HOLO.size[1], 1));
+  // The band of light that travels down the picture.
+  const holoScan = own(() => { const cv = CH.canvas(8, 48), cx = cv.getContext("2d"), g = cx.createLinearGradient(0, 0, 0, 48); g.addColorStop(0, "rgba(98,207,224,0)"); g.addColorStop(0.5, "rgba(140,225,240,.24)"); g.addColorStop(1, "rgba(98,207,224,0)"); cx.fillStyle = g; cx.fillRect(0, 0, 8, 48); return lightPicture(cv, HOLO.size[0], 0.14, 1); });
+
+  // ---------- the block's height, in stars ----------
+  // As a block drops, stars come out round the mark, drift together into BLOCK and the block's height in the island's
+  // pixel letters, a star to each lit pixel, twinkle there and scatter again. The line bends a little round the
+  // mark's ring (`bend` the radius it bends on), `gap` of the ring's radius clear of it, on the front's side, so it
+  // reads the right way up to a visitor facing the front as the mark does. Only a height the feed gave is written.
+  const HEIGHT = { stars: 260, pitch: 0.16, gap: 0.42, bend: 14, early: 1.2, gather: 2.2, hold: 4.8, scatter: 2.4 };
+
   const floorPoc = (() => {
     // The path of the history road: the walk ring under the plinths in order, then in to the middle.
     const path = PLINTHS.map((p, i) => spotOf(i, RING - DEPTH / 2 - 0.4)).map((s) => [s.x, s.z]);
@@ -1430,6 +1487,9 @@
     { const capY = L.c + L.R * 0.97 * Math.sin(CAP.el * DEG) - 0.6, cell = MARK.cell;
       MARK.squares.forEach((q, i) => K.node(`btile${i}`, MARK_TILE.white(), q.x, capY, q.z, { scale: 0.001 }));
       // Behind each of the pattern's cells a soft orange glow that grows as the squares over it turn.
+      // The stars the block's height is written in (`HEIGHT`): a pool of soft points, one geometry between them, a
+      // metre under the mark's own height, where the dome's facets, which cut inside its curve, are still behind them.
+      { const star = softDot("#ffc27a", 0.42, 0.22, 1, 1.3); for (let i = 0; i < HEIGHT.stars; i++) K.node(`hstar${i}`, star(), 0, capY - 1, 0, { rx: HALF_PI, glow: true, scale: 0.001 }); }
       { const bGlow = softDot(C.btc, 1.0, 0.15, 0.5, 0.6); SYMBOL.forEach((row, ri) => [...row].forEach((ch, ci) => { if (ch !== "#") return; K.node(`bglow:${ci}:${ri}`, bGlow(), (ci - (row.length - 1) / 2) * cell, capY + 0.2, -(ri - (SYMBOL.length - 1) / 2) * cell, { rx: HALF_PI, glow: true, scale: 0.001 }); })); }
     }
     // The ring's cards: each plinth's entries side by side on its front (walk order left to right), as bands.
@@ -1514,8 +1574,8 @@
       const tP = { kind: "genesis", tip: COARSE ? "The whitepaper · tap to read" : "The whitepaper · click to read", radius: 1.5, index: paper.index, paper: "reader" };
       const tI = { kind: "genesis", tip: "31 Oct 2008 · the whitepaper · about this paper", radius: 1.1, index: paper.index, paper: "about" };
       // The turntable: a disc a hair above the drum carrying one tall double-sided display and nothing else, so nothing
-      // stands in front of anything: the real first page on the side toward the door at rest, the paper's title cut
-      // into the other, each facing everyone in turn. Its size makes it the room's centrepiece.
+      // stands in front of anything: the real first page on the side toward the door at rest, a hologram of the
+      // Temple's statue on the other (`HOLO`), each facing everyone in turn. Its size makes it the room's centrepiece.
       const PW = 1.3, PH = PW / 0.773, FOOT = 0.5, SH = PH + FOOT + 0.3, SW = PW + 0.26, SD = 0.14;
       K.node("centreTurn", (k) => {
         k.cyl(MID_R - 0.1, MID_R - 0.1, 0.03, "#3a3c42", 0, 0.015, 0, { seg: 48 });
@@ -1524,10 +1584,10 @@
         k.box(SW + 0.3, 0.06, SD + 0.6, C.steelDark, 0, 0.06, 0);
         k.box(SW + 0.02, 0.03, SD + 0.02, C.btc, 0, 0.03 + SH - 0.015, 0, { emissive: 0.8, glow: true });
         for (const sz of [-1, 1]) k.box(SW, 0.02, 0.02, C.btc, 0, 0.03 + FOOT - 0.04, sz * (SD / 2 + 0.01), { emissive: 0.6, glow: true });
-        // The title side, cut into the stone and fitted with margins (the slab is 1.56 m across).
-        const Bk = k.group(0, 0.03 + FOOT + PH / 2, -SD / 2 - 0.004, 0);
-        [["BITCOIN:", 0.02, 0.6], ["A PEER-TO-PEER", 0.02, 0.4], ["ELECTRONIC", 0.02, 0.2], ["CASH SYSTEM", 0.02, 0], ["SATOSHI NAKAMOTO", 0.013, -0.26], ["31 OCT 2008", 0.013, -0.42], ["THE WHITEPAPER · CLICK TO READ", 0.008, -0.68]].forEach(([t, px, y]) => { const fit = Math.min(px, (SW - 0.2) / (widthOfText(t, 1) || 1)); Bk.add(RM.helpers.litWord(t, fit, "#cfc5b2", 0.14), 0, y, 0); fitRec("centre", `title side · ${t}`, SW, widthOfText(t, fit)); });
       }, 0, MID_TOP + 0.005, 0);
+      // The hologram on the slab's dark face, between its orange bands, and the band of light that runs down it.
+      K.node("holo", holoGeo(), 0, 0.03 + FOOT + PH / 2, -SD / 2 - 0.006, { parent: "centreTurn", ry: Math.PI });
+      K.node("holoScan", holoScan(), 0, 0.03 + FOOT + PH / 2, -SD / 2 - 0.009, { parent: "centreTurn", ry: Math.PI });
       // The page itself, a picture node riding the turntable on the slab's other side, painted when the pages load.
       const canvas = CH.canvas(1360, 1760), pctx = canvas.getContext("2d");
       pctx.fillStyle = "#f4efe6"; pctx.fillRect(0, 0, 1360, 1760);
@@ -1622,6 +1682,32 @@
     };
     BL.timechainGenesis.mark = mark;
     let screenState = -2;
+    // The hologram's two nodes, and the stars of the block's height: where each waits in the sky (`hx`, `hz`), where it
+    // scatters to (`gx`, `gz`), its pixel of the line (`tx`, `tz`), when it sets out and how it twinkles.
+    const holo = nodes.holo, holoBand = nodes.holoScan, holoY = holoBand ? holoBand.position.y : 0;
+    const FT = BL.jumbotron.text, NS = HEIGHT.stars;
+    const hs = { n: 0, c: 0, shown: 0, on: false, w: 0, zc: 0, node: Array.from({ length: NS }, (_, i) => nodes[`hstar${i}`]), tx: new Float32Array(NS), tz: new Float32Array(NS), hx: new Float32Array(NS), hz: new Float32Array(NS), gx: new Float32Array(NS), gz: new Float32Array(NS), lag: new Float32Array(NS), tw: new Float32Array(NS), ph: new Float32Array(NS), digits: new Uint8Array(12) };
+    { const rr = P.rng(2009), R0 = CAP.rIn + 1, spot = (X, Z, i) => { const a = (rr() * 2 - 1) * 110 * DEG, r = R0 + rr() * (9.4 - R0); X[i] = r * Math.sin(a); Z[i] = -r * Math.cos(a); };
+      for (let i = 0; i < NS; i++) { spot(hs.hx, hs.hz, i); spot(hs.gx, hs.gz, i); hs.lag[i] = rr() * 0.6; hs.tw[i] = 3 + rr() * 5; hs.ph[i] = rr() * TAU; } }
+    const WORD = ["B", "L", "O", "C", "K"].map((ch) => FT.FONT[ch]), DIGIT = "0123456789".split("").map((ch) => FT.FONT[ch]), COMMA = FT.FONT[","];
+    // One letter's lit pixels into the line, the next star to each, on the line's bend.
+    const put = (glyph) => {
+      if (glyph) for (let r = 0; r < 7; r++) for (let j = 0; j < 5; j++) if (glyph[r] & (16 >> j) && hs.n < NS) {
+        const th = ((hs.c * 6 + j + 0.5) * HEIGHT.pitch - hs.w / 2) / HEIGHT.bend, rho = HEIGHT.bend - (3 - r) * HEIGHT.pitch;
+        hs.tx[hs.n] = rho * Math.sin(th); hs.tz[hs.n] = hs.zc - rho * Math.cos(th); hs.n++;
+      }
+      hs.c++;
+    };
+    const writeHeight = (h) => {
+      let nd = 0;
+      for (let v = h; v > 0 && nd < 12; v = Math.floor(v / 10)) hs.digits[nd++] = v % 10;
+      hs.w = ((6 + nd + Math.floor((nd - 1) / 3)) * 6 - 1) * HEIGHT.pitch; hs.zc = -(CAP.rIn + CAP.ring / 2 + HEIGHT.gap * CAP.rIn) + HEIGHT.bend - 3.5 * HEIGHT.pitch;
+      for (let i = 0; i < hs.n; i++) if (hs.node[i]) hs.node[i].scale.x = hs.node[i].scale.y = hs.node[i].scale.z = 0.001;
+      hs.n = 0; hs.c = 0;
+      for (let i = 0; i < 5; i++) put(WORD[i]);
+      put(null);
+      for (let i = nd - 1; i >= 0; i--) { put(DIGIT[hs.digits[i]]); if (i && i % 3 === 0) put(COMMA); }
+    };
     const dialogOpen = () => { const d = document.getElementById("model-modal"), r = document.getElementById("wp-reader"); return !!(d && d.open || r && r.open); };
     const sectors = Array.from({ length: SECTORS }, (_, i) => ({ near: nodes[`gallerySector${i}`], far: nodes[`gallerySectorLow${i}`], spots: spots.filter((_, j) => Math.floor(j * SECTORS / PLINTHS.length) === i), isNear: true }));
     for (const s of sectors) if (s.far) s.far.visible = false;
@@ -1753,7 +1839,9 @@
     // Debug only (`?debug=1`, where the director hangs `window.__ooga`): `__ooga.genesis.dropBlock()` plays a block's
     // arrival now, and `&dropnow=1` does it once, five seconds after the room stands.
     const dbg = window.__ooga || null;
-    if (dbg) dbg.genesis = { dropBlock: () => { const F = BL.timechainGenesis.floorPoc; if (F) F.drop(0); } };
+    // A drop played this way carries the chain's own latest height where a feed has given one (or the one it is handed).
+    const tipHeight = () => (BL.chain && BL.chain.snapshot && BL.chain.snapshot.height) || (BL.mempool && BL.mempool.state && BL.mempool.state.height) || 0;
+    if (dbg) dbg.genesis = { dropBlock: (height) => { const F = BL.timechainGenesis.floorPoc; if (F) F.drop(height || tipHeight()); } };
     let dropnowAt = dbg && (new URLSearchParams(location.search)).get("dropnow") === "1" ? clock() + 5 : 0;
     acts.forEach((a, i) => { const run = a.run; a.run = (hud) => { if (!portal.hit(i)) run(hud); }; });
     const self = {
@@ -1791,6 +1879,24 @@
             if (sc !== q.sc) { q.sc = sc; n.scale.x = n.scale.z = sc; n.scale.y = MARK_THICK; }
           }
           for (let k = 0; k < glowOf.length; k++) { const g = glowOf[k]; if (!g) continue; const gl = lock >= 0 ? 1.5 : (0.02 + 1.2 * Math.min(1, litArea[k])) * breath * (late ? 1.12 : 1); g.scale.x = g.scale.y = g.scale.z = Math.max(0.001, gl); }
+        }
+        // The hologram: the band runs down it every five seconds, and now and then the picture jumps and blinks.
+        if (holo) { const tg = now % 6.3; holo.position.x = tg < 0.08 ? 0.012 : tg < 0.16 ? -0.008 : 0; holo.visible = tg < 0.16 || tg >= 0.21; holoBand.position.y = holoY + (HOLO.size[1] / 2 - 0.1) * (1 - 2 * (now % 5) / 5); }
+        // The block's height in stars: out in the sky as the mark locks, together as the block falls, held, scattered.
+        { const live = BL.timechainGenesis.live, td = live ? now - live.dropAt : 1e9, T1 = HEIGHT.gather, T2 = T1 + HEIGHT.hold, T3 = T2 + HEIGHT.scatter;
+          if (live && live.height > 0 && td >= -HEIGHT.early && td < T3) {
+            if (hs.shown !== live.height) { hs.shown = live.height; writeHeight(live.height); }
+            hs.on = true;
+            for (let i = 0; i < hs.n; i++) {
+              const n = hs.node[i];
+              if (!n) continue;
+              let x = hs.tx[i], z = hs.tz[i], sc = 1;
+              if (td < T1) { const u = smooth(unit((td - hs.lag[i]) / (T1 - 0.7))); x = hs.hx[i] + (x - hs.hx[i]) * u; z = hs.hz[i] + (z - hs.hz[i]) * u; sc = unit((td + HEIGHT.early - hs.lag[i]) / 0.8) * (0.55 + 0.45 * u); }
+              else if (td >= T2) { const u = smooth(unit((td - T2 - hs.lag[i]) / (HEIGHT.scatter - 1.1))); x += (hs.gx[i] - x) * u; z += (hs.gz[i] - z) * u; sc = (1 - unit((td - T3 + 0.9) / 0.9)) * (1 - 0.45 * u); }
+              sc *= 0.82 + 0.3 * Math.sin(now * hs.tw[i] + hs.ph[i]);
+              n.position.x = x; n.position.z = z; n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, sc);
+            }
+          } else if (hs.on) { hs.on = false; for (let i = 0; i < hs.n; i++) if (hs.node[i]) hs.node[i].scale.x = hs.node[i].scale.y = hs.node[i].scale.z = 0.001; }
         }
         // Proximity focus and the walk-lit years: each plinth's ring rises within 3 m of the visitor; its year tick
         // lights within 2.5 m and fades over six seconds behind them (this viewer's own, not synced).
@@ -1869,5 +1975,5 @@
     return self;
   };
   BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, LINK, RING, BIG, TOP, RISE, DEPTH, SCALE, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
-  BL.timechainRoomKinds.genesis = { plan, animate, door };
+  BL.timechainRoomKinds.genesis = { plan, steps, animate, door };
 })();
