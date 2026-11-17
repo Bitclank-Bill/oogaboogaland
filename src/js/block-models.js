@@ -5,6 +5,14 @@
   const BL = window.BL = window.BL || {};
   const { box, bevelBox, merge, moved, turnedX, turnedY, turnedZ, cached, variants, geometry, pushVert, face, tube, lathe } = BL.models;
   const { hexToRgb } = BL.math;
+  // A flat rectangle seen only from the side it faces, (nx, 0, nz) a unit axis: two triangles where a thin box takes twelve.
+  // Centred at (x, y, z), `w` across and `h` up as seen from that side.
+  const plate = ({ w, h, color, emissive = 0, x = 0, y = 0, z = 0, nx = 0, nz = 1 }) => {
+    const geo = geometry(), rx = nz * w / 2, rz = -nx * w / 2, uy = h / 2;
+    const i = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => pushVert(geo, x + a * rx, y + b * uy, z + a * rz));
+    face(geo, i, hexToRgb(color), { emissive });
+    return geo;
+  };
   // Each map's own ground and buildings are `arena(map index)`; its ziplines `zipline(map index * 2 + side)`.
   const SIM = BL.blockSim;
   const TEAM = {
@@ -1404,7 +1412,7 @@
   // The slogans, one a billboard in the map's order, lines split by "|".
   const SLOGANS = ["YOU'RE ABSOLUTELY|RIGHT!|(YOU'RE FIRED)", "YOUR JOB HAS|BEEN OPTIMIZED", "GREAT QUESTION!", "AS A LARGE|LANGUAGE OOGA, I|CANNOT LET YOU PASS", "PLEASE HOLD. YOUR|CALL IS IMPORTANT|TO OUR CLANKERS", "EMPLOYEE OF THE|MONTH: CLANKER|#4096"];
   const NEON = ["#ff4fd8", "#38f5e0", "#9dff5a"];
-  // Text in pixel boxes, each row's runs of lit pixels merged into one box, on a board's face: centred at (x, y, z),
+  // Text in lit pixels, each row's runs of lit pixels merged into one flat plate, on a board's face: centred at (x, y, z),
   // reading left to right as seen from the side it faces, `nz` (±1), a hair off the board.
   const writeText = (parts, text, x, y, z, w, h, nz, color) => {
     const lines = text.split("|"), cols = Math.max(...lines.map((l) => l.length)) * 4 - 1, rows = lines.length * 6 - 1;
@@ -1413,7 +1421,7 @@
       const line = lines[li], lw = line.length * 4 - 1;
       for (let r = 0; r < 5; r++) {
         let run = -1;
-        const flush = (c) => { if (run < 0) return; const c0 = run, c1 = c, gx = (c0 + c1) / 2 - lw / 2; parts.push(box({ w: (c1 - c0) * px, h: px, d: 0.03, color, emissive: 1, offset: { x: x + nz * gx * px, y: y + (rows / 2 - li * 6 - r - 0.5) * px, z: z + nz * 0.03 } })); run = -1; };
+        const flush = (c) => { if (run < 0) return; const c0 = run, c1 = c, gx = (c0 + c1) / 2 - lw / 2; parts.push(plate({ w: (c1 - c0) * px, h: px, color, emissive: 1, x: x + nz * gx * px, y: y + (rows / 2 - li * 6 - r - 0.5) * px, z: z + nz * 0.045, nz })); run = -1; };
         for (let c = 0; c <= lw; c++) {
           const ch = line[Math.floor(c / 4)], bit = c < lw && c % 4 !== 3 && FONT[ch] && FONT[ch][r * 3 + (c % 4)] === "1";
           if (bit && run < 0) run = c; else if (!bit) flush(c);
