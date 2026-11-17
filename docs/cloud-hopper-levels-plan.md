@@ -788,13 +788,13 @@ lightning deep in the wall. It keeps the rules of sections 2.4 to 2.8 and steps 
 | Lane, speed | 5-8 m, 0.9-1.5 m/s | 5.3-8.5 m, 0.95-1.6 m/s |
 | `reach` | 0.8 | 0.9 |
 | Gusts, tornadoes | 0, 3 | 2 (each 2 s and 60% of Aurora Heights' push), 3 |
-| Last jump to the island | about 9 m | 95% of the furthest a rider can jump there (35 m on the island) |
+| Last jump to the island | about 9 m | 90% of the furthest a rider can jump there (33 m on the island) |
 
 48% permanent is the fewest 2.5's checks allow at these gaps with so few side landings, even at `reach` 0.9.
 
 The wind is lighter than Aurora Heights' (two gusts, each blowing 2 s for 3 and pushing 60% as hard), since the flips,
 the fading and the tornadoes carry the level. The last jump takes a perfect one: the final landing is permanent, plain
-and still, its shoreward edge 95% of the furthest a rider can jump to the island's rim (running, off the edge, the air
+and still, its shoreward edge 90% of the furthest a rider can jump to the island's rim (running, off the edge, the air
 jump taken as it comes level with the rim). Landing on it gives both jumps back, whatever spent the air jump on the
 way, and puts a worn jetpack away (the rider may put it on again). A grappling hook bites the island's ground within its usual reach, which
 only the final landing and the air past it are in, so a hook kept for the end saves a jump that falls short.
