@@ -36,8 +36,10 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
 // emoji list it picks from, emoji-data.js, about 25 KB with their rules) bring it to about 213 KB. Loading the emoji list
 // only when the picker opens would take most of that back; that needs the build to stage a second script. Ooga Chat's
 // own voice client (#654: ooga-chat-media.js, about 14 KB) and the Commons' name field (about 1 KB) bring it to about
-// 229.5 KB. The build fails past this.
-export const FIRST_LOAD_BUDGET = 236 * 1024;
+// 229.5 KB. Each player's volume and mute in the Ooga Chat panel, the optional duel muting (duel-listening.js) and the
+// voice client's handoffs between the app and the island (#766, about 5.5 KB) bring it to about 237.5 KB. The build
+// fails past this.
+export const FIRST_LOAD_BUDGET = 244 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
 // (a rule's other selectors, another panel's, left behind), in an @media, @supports or @container block too, and every

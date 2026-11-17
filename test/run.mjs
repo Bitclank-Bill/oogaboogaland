@@ -30991,9 +30991,9 @@ const playersColumnChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
     Object.assign(window.BL, {
       net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, clouds: [] }, remotes,
-        voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {} },
+        voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
-      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, volumeOf: () => 1, setVolume() {}, setRadius() {} },
+      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
       sheet: { visible: () => true, setBadge() {}, watchViews() {}, attending: () => true }, sound: { muted: false, subscribe() {} }, pilot: { turnToward() {} } });
     runInNewContext(await readFile(join(root, "src/js/players.js"), "utf8"), context);
     handlers.sheetchange();

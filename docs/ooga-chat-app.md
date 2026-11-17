@@ -540,7 +540,7 @@ stylesheet 16.9 KB, sign-in picture 57.9 KB, Main Island's mark 3 KB): about 157
 alone was 71 KB, with sign-in 78 KB, with the space 88 KB). The manifest and icons are fetched by the browser when it
 considers installing, and the worker then keeps the same files once more in its cache, off the first paint. For comparison, the island's portable page is about
 39.7 MB (23 MB gzipped). The app loads no 3D engine, terrain, cabinets, replays or live feeds. `FIRST_LOAD_BUDGET` in
-the build (236 KB gzipped, raised from 224 KB for the voice client and the Commons' name field) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
+the build (244 KB gzipped, raised from 224 KB to 236 KB for the voice client and the Commons' name field, then for each player's volume and mute, the optional duel muting and the voice handoffs of #766) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
 adds weight.
 
 ## Artwork
