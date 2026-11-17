@@ -55,9 +55,11 @@
   // The mechanism charges as someone nears an open world's window: how fast it follows, the seconds between bursts, and
   // the sparkles a burst throws. Bands of light run up the beam: how many of its drums one band spans, how many bands
   // leave its foot a second at rest and fully charged, and the seconds a burst's surge takes to reach the sky and how
-  // many drums it lights at once.
+  // many drums it lights at once. Looking up into the dome spins the ₿ faster too, by up to `GAZE_SPIN` radians a second,
+  // following the view at `GAZE_EASE`: still slower than a full charge.
   const CHARGE_EASE = 2, BURST_GAP = [4.5, 1.6], BURST_FROM = 0.3;
   const BAND = 9, BAND_RATE = [0.3, 2.4], SURGE_TIME = 1.3, SURGE_WIDTH = 2.5;
+  const GAZE_SPIN = 2.4, GAZE_EASE = 2;
   const SPARKLES = ["#ffc83a", "#fff2b8", "#7fe0ff", "#ffffff"].map((c) => models.particleGeometry(c, 0.1, 1));
   // A burst charged toward an open world's window throws that world's sparkles instead: its colour, paler, warmed toward
   // gold, and white. Cached by colour.
@@ -441,7 +443,7 @@
     addChild(root, s.glyph, ...s.beam.map((b) => b.node), ...s.rings);
     // The mechanism's charge, the bands running up its beam and a burst's surge (1 when none is climbing), and its two
     // shockwaves: one round the ₿, one across the floor.
-    s.charge = 0; s.flare = 0; s.burstWait = BURST_GAP[0]; s.bob = 0; s.flow = 0; s.surge = 1; s.stepLead = null;
+    s.charge = 0; s.gaze = 0; s.flare = 0; s.burstWait = BURST_GAP[0]; s.bob = 0; s.flow = 0; s.surge = 1; s.stepLead = null;
     s.shocks = [[CORE.glyphY, 5], [0.03, 9]].map(([y, reach]) => {
       const node = createNode({ position: { x: 0, y, z: 0 }, geometry: BM.shockwave(), visible: false, sightHidden: true });
       addChild(root, node);
@@ -839,7 +841,8 @@
       s.stepLead = s.lead;
       for (let i = 0; i < s.beam.length; i++) s.beam[i].node.geometry = s.lead.charge.beam[step];
     }
-    s.glyph.rotation.y += dt * (0.6 + 5 * k);
+    s.gaze += (ROOM.gaze - s.gaze) * Math.min(1, dt * GAZE_EASE);
+    s.glyph.rotation.y += dt * (0.6 + 5 * k + GAZE_SPIN * s.gaze);
     s.bob += dt * (1.5 + 4 * k);
     s.glyph.position.y = CORE.glyphY + Math.sin(s.bob) * 0.06 * (0.4 + k);
     s.glyph.scale.x = s.glyph.scale.y = s.glyph.scale.z = 1 + (0.04 * k + 0.12 * s.flare) * (1 + Math.sin(elapsed * 9));
