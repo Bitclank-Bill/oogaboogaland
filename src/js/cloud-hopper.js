@@ -488,8 +488,6 @@
     let hookHeld = false, hookAt = HAND, hookDown = false, hookCloud = null, hookPull = 0;
     const hookTip = { x: 0, y: 0, z: 0 }, hookEnd = { x: 0, y: 0, z: 0 }, hookBite = { x: 0, y: 0, z: 0 }, hookChest = { x: 0, y: 0, z: 0 };
     const aimRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 }, aimHit = { x: 0, y: 0, z: 0, t: 0, cloud: null };
-    // The mainland's ground as a hook's bite (Storm's Eye, whose hook saves a last jump that falls short): a place on
-    // it standing in for a cloud, where the crosshair has it and where a thrown hook bit.
     // Rendering and player physics pause in a hidden tab. Keep the race's
     // wall clock on that same timeline while the soundtrack plays on.
     let helpHeld = false, hiddenAt = document.hidden ? performance.now() : -1, hiddenTime = 0;
