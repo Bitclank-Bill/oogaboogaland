@@ -6202,6 +6202,8 @@ const cloudHopperFailureChecks = async engine => {
     // The walk takes whatever the course carries, X-ray goggles among it, which sit on the Ooga's face.
     actor.parts = { face: S.createNode() };
     const home = actor.root.parent, point = new Float64Array(3);
+    // Its pet, which the crew keeps beside it in the same node as the rider, not on the rider.
+    actor.pet = { node: S.createNode() }; S.addChild(home, actor.pet.node);
     // What the run's holder draws at a point of the run, and whether it shows where the true view has it (to a
     // centimetre: the nodes' matrices are single precision).
     const seen = (x, y, z) => { BL.math.mat4.transformPoint(point, flipper.gameRoot.world, x, y, z); return inView(drawn, point[0], point[1], point[2]); };
@@ -6406,7 +6408,7 @@ const cloudHopperFailureChecks = async engine => {
           flips++;
           const over = flips % 2 === 1;
           rows[`flip ${flips}`] &&= !flipper.turning && flipper.turns === flips && Math.abs(flipper.turn - (over ? Math.PI : 0)) < 1e-9 && flipper.climbing && !!actor.jet && actor.jetpackOwned
-            && actor.jetFuel >= 0.7 && Math.abs(before.y - let_go.y - 8) < 1e-6 && (over ? camera.up.y < -0.999 && actor.root.parent !== home : actor.root.parent === home) && flipper.phase === "running";
+            && actor.jetFuel >= 0.7 && Math.abs(before.y - let_go.y - 8) < 1e-6 && (over ? camera.up.y < -0.999 && actor.root.parent !== home && actor.pet.node.parent === actor.root.parent : actor.root.parent === home && actor.pet.node.parent === home) && flipper.phase === "running";
           // After it every cloud is over: its underside up at the height its top had the first time, as built the second.
           rows[`flip ${flips}`] &&= cloudsShow(built, over);
           if (extras && flips === 1) {
@@ -6471,7 +6473,7 @@ const cloudHopperFailureChecks = async engine => {
     const launchCloud = flipper.platform.children.find(k => k.rest);
     const turned = flipper.turn > 3 && actor.root.parent !== home && camera.up !== up && !!launchCloud.quaternion && Math.abs(launchCloud.position.y + 2.5) < 1e-9;
     callbacks.onExit();
-    all.restored = turned && flipper.turn === 0 && flipper.turns === 0 && actor.root.parent === home && camera.up === up && flipper.phase === "idle"
+    all.restored = turned && flipper.turn === 0 && flipper.turns === 0 && actor.root.parent === home && actor.pet.node.parent === home && camera.up === up && flipper.phase === "idle"
       && !launchCloud.quaternion && Math.abs(launchCloud.position.x - 0.3) < 1e-9 && Math.abs(launchCloud.position.y) < 1e-9 && Math.abs(launchCloud.position.z + 0.2) < 1e-9;
     // Losing the run upside down, as upright. With no pack and no jump left, falling fast far under a landing, the
     // run is lost after the same grace whichever way up the world is; so is one that reaches the sea, pack or no.
@@ -6526,12 +6528,14 @@ const cloudHopperFailureChecks = async engine => {
         && row.sea && row.letGo && row.once && row.twice && row.after.lost && !row.after.up && Math.abs(row.after.t - row.upright.t) <= frame;
       if (!all[`${seed} lost`]) all[`${seed} lost: ${JSON.stringify(row)}`] = false;
     }
-    // A tornado and the wind are drawn where they act, upside down as upright. Their slabs, spray and streaks are
-    // batches, and the renderer takes a batch's matrices as the world's own, whatever node it hangs from; so what
-    // it draws is read here as it reads it, through the view drawn, against where the run has the tornado's side
-    // (the axis and radius its hold on the rider is worked from) and the wind's push through its own view. Under
-    // four seeds, upside down: the rider waits short of the tornado ahead while it comes down, then crosses the
-    // second place so the world rolls with tornadoes still down, each frame of the roll checked too.
+    // Every tornado, the wind and the lightning are drawn where they act, at every point of a run: upright, upside
+    // down, on every frame of both rolls and in the moments after each. A tornado's slabs and spray and the wind's
+    // streaks are batches, and the renderer takes a batch's matrices as the world's own, whatever node it hangs
+    // from; so what it draws is read here as it reads it, through the view drawn, against where the run has each
+    // tornado's side (the axis and radius its hold on a rider is worked from, all the way down the funnel) and the
+    // wind's push, through the run's own view. A bolt is a node, drawn by its own matrix. Under five seeds the rider
+    // waits short of each tornado ahead while it comes down, upright before the first place, upside down between
+    // the two and upright after the second, and crosses each place with tornadoes down.
     // The runs above have no tornado and no wind (stubs); these have the game's own, on a controller of their own.
     const stubbed = [BL.cloudHopperTornado, BL.cloudHopperGust, BL.models, BL.cloudHopperSky.bolt];
     { const memo = (build) => { const made = new Map(); return (key = 0) => { if (!made.has(key)) made.set(key, build(key)); return made.get(key); }; };
@@ -6540,66 +6544,83 @@ const cloudHopperFailureChecks = async engine => {
     for (const name of ["cloud-hopper-tornado", "cloud-hopper-gust"]) runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), context);
     flipper.dispose();
     flipper = BL.cloudHopper.create({ ...hopperOptions, renderer });
-    const shownAt = [];
-    for (const seed of [5150, 77, 4242, 9001]) {
+    const shownAt = [], STATES = ["upright", "roll 1", "after 1", "over", "roll 2", "after 2"], covered = [0, 1, 2].map(() => STATES.map(() => 0)), windAt = [0, 0], boltsAt = [0, 0];
+    let worstGap = 0;
+    for (const seed of [5150, 77, 4242, 9001, 31337]) {
       begin(seed);
       const course = flipper.course, order = course.landings, p = actor.root.position, R0 = 8;
       const plain = (c) => c.kind === "normal" && c.active && !course.pickups.some(e => e.cloud === c);
-      const first = order.findIndex(l => course.due(l.x, l.z, 0));
-      Object.assign(p, { x: order[first].x, y: order[first].top + actor.baseY + 1.5, z: order[first].z + 9 }); actor.hop = 1.5; actor.hopV = 0; step(1 / 60); step(2.3);
       const batches = []; (function find(node) { if (node.instanceData) batches.push(node); for (const k of node.children || []) find(k); })(flipper.gameRoot);
-      const wind = batches[21], slabs = batches.slice(0, 21), axis = { x: 0, z: 0 };
+      const wind = batches[21], kids = batches[0].parent.children, axis = { x: 0, z: 0 }, counts = STATES.map(() => 0);
       const part = (view, v) => [v[0] * view.r.x + v[1] * view.r.y + v[2] * view.r.z, v[0] * view.u.x + v[1] * view.u.y + v[2] * view.u.z, v[0] * view.f.x + v[1] * view.f.y + v[2] * view.f.z];
-      let tornado = 0, rolling = 0, gusts = 0, ok = batches.length === 22 && flipper.turn > 3, worst = 0;
-      // Every tornado that holds: at heights round the course by it, a slab is drawn where its axis stands in the
-      // run, as wide as its side there.
-      const check = (count) => { let n = 0;
-        for (const t of flipper.tornadoes) { if (!t.down) continue;
-          // (Where the funnel has come at least 8 m further down, so the slab there shows whole.)
-          for (let y = t.top - 95; y <= t.top - 55; y += 10) { const r = t.radiusAt(y); if (r <= 0 || t.radiusAt(y - 8) <= 0) continue;
+      let ok = batches.length === 22 && flipper.tornadoes.length === 3;
+      const why = new Set();
+      // The view from behind the rider down the course, never inside a funnel (which cuts its slabs away round the eye).
+      aimed = order[order.length - 1];
+      const check = (state, still = true) => { const over = flipper.turn !== 0 ? 1 : 0;
+        flipper.tornadoes.forEach((t, i) => {
+          const own = batches.slice(i * 7, i * 7 + 7), first = kids.indexOf(own[0]);
+          // Whatever of it there is shows: the level has no haze to hide one.
+          if (t.active && !own.every(b => b.visible)) { ok = false; why.add(`hidden ${i} ${state} state ${t.state}`); }
+          // All the way down it, wherever its funnel has come whole (8 m further down): a slab of its own is drawn
+          // where its axis stands in the run, as wide as its side there. A cap still gathering is left to gather.
+          if (t.active && !(t.state === 1 && t.forming < 1)) for (let y = t.top - 2; y > t.top - 120; y -= 8) { const r = t.radiusAt(y); if (r <= 0 || t.radiusAt(y - 8) <= 0) continue;
             t.axisAt(y, axis); const want = inView(truth, axis.x, y, axis.z); let near = Infinity, wide = 0;
-            for (const b of slabs) { if (!b.visible) continue; const d = b.instanceData;
+            for (const b of own.slice(0, 6)) { const d = b.instanceData;
               for (let o = 0; o < b.instanceCount * 20; o += 20) { if (Math.hypot(d[o + 4], d[o + 5], d[o + 6]) < 1.5) continue;
                 const at = inView(drawn, d[o + 12], d[o + 13], d[o + 14]), gap = Math.hypot(at[0] - want[0], at[1] - want[1], at[2] - want[2]);
                 if (gap < near) { near = gap; wide = Math.hypot(d[o], d[o + 1], d[o + 2]) * R0; } } }
-            n++; worst = Math.max(worst, near); ok &&= near < 2.7 && Math.abs(wide - r) < 0.15 * r + 0.4; } }
-        // The wind: its streaks lie along its push as the run has it, round the eye that is drawn from.
-        if (wind.visible && flipper.gust.strength > 0) { const d = wind.instanceData, push = part(truth, [flipper.gust.pushX, 0, flipper.gust.pushZ]);
+            counts[STATES.indexOf(state)]++; covered[i][STATES.indexOf(state)]++; worstGap = Math.max(worstGap, near); if (!(near < 2.7 && Math.abs(wide - r) < 0.15 * r + 0.4)) { ok = false; why.add(`slab ${i} ${state} gap ${near.toFixed(1)} wide ${wide.toFixed(1)} r ${r.toFixed(1)} y ${(t.top - y).toFixed(0)} state ${t.state}`); } }
+          // Its lightning: each bolt showing is drawn where the run has it, by its tornado.
+          for (const b of [kids[first + 7], kids[first + 8]]) { if (!b.visible) continue;
+            const at = inView(drawn, b.world[12], b.world[13], b.world[14]), want = inView(truth, b.position.x, b.position.y, b.position.z); t.axisAt(t.top, axis);
+            boltsAt[over]++; if (!(Math.hypot(at[0] - want[0], at[1] - want[1], at[2] - want[2]) < 0.05 && Math.hypot(b.position.x - axis.x, b.position.z - axis.z) < 27)) { ok = false; why.add(`bolt ${i} ${state} ${Math.hypot(at[0] - want[0], at[1] - want[1], at[2] - want[2]).toFixed(2)} ${Math.hypot(b.position.x - axis.x, b.position.z - axis.z).toFixed(1)}`); } }
+        });
+        // The wind: its streaks lie along its push as the run has it, round the eye that is drawn from (they are
+        // laid round the eye as the frame begins, so not on a frame this test has just moved the rider and its view).
+        if (still && wind.visible && flipper.gust.strength > 0) { const d = wind.instanceData, push = part(truth, [flipper.gust.pushX, 0, flipper.gust.pushZ]);
           for (let o = 0; o < wind.instanceCount * 20; o += 20) { const len = Math.hypot(d[o], d[o + 1], d[o + 2]); if (!len) continue;
             const along = part(drawn, [d[o] / len, d[o + 1] / len, d[o + 2] / len]), at = inView(drawn, d[o + 12], d[o + 13], d[o + 14]);
-            gusts++; ok &&= Math.hypot(along[0] - push[0], along[1] - push[1], along[2] - push[2]) < 1e-4 && Math.hypot(at[0], at[1], at[2]) < 60; } }
-        return n; };
-      for (let f = 0; f < 140 && flipper.phase === "running"; f++) {
-        // The furthest landing on that is short of the second place and 60 m short of every tornado ahead.
+            windAt[over]++; if (!(Math.hypot(along[0] - push[0], along[1] - push[1], along[2] - push[2]) < 1e-4 && Math.hypot(at[0], at[1], at[2]) < 60)) { ok = false; why.add(`wind ${state}`); } } } };
+      // Waits on the furthest landing that is short of the next place (or of the course's end) and 60 m short of
+      // every tornado ahead, so each ahead comes down with the rider out of its reach.
+      const wait = (state, done) => { let last = null; for (let f = 0; f < 150 && flipper.phase === "running"; f++) {
         let stand = null;
-        for (let j = first; j < order.length && !course.due(order[j].x, order[j].z, 1); j++) {
-          if (!plain(order[j])) continue;
+        for (let j = 1; j < order.length - 3 && !(done < 2 && course.due(order[j].x, order[j].z, done)); j++) {
+          if (!plain(order[j]) || done > 0 && !course.due(order[j].x, order[j].z, done - 1)) continue;
           let clear = true;
           for (const t of flipper.tornadoes) { if (!t.active) continue; t.axisAt(order[j].top, axis); if (axis.x > order[j].x - 60 && Math.hypot(axis.x - order[j].x, axis.z - order[j].z) < 260) clear = false; }
           if (clear) stand = order[j];
         }
         if (!stand) break;
-        onto(stand); step(0.25); tornado += check();
-      }
-      ok &&= flipper.phase === "running" && flipper.turn > 3 && flipper.turns === 1;
-      // On across the second place: the world rolls back with tornadoes down, drawn where they hold all the way.
-      const second = order.findIndex(l => course.due(l.x, l.z, 1));
-      Object.assign(p, { x: order[second].x, y: order[second].top + actor.baseY + 1.5, z: order[second].z + 9 }); actor.hop = 1.5; actor.hopV = 0; step(1 / 60);
-      ok &&= flipper.turning;
-      for (let f = 0; f < 150 && flipper.turning; f++) { step(1 / 60); rolling += check(); }
-      ok &&= flipper.turn === 0 && flipper.turns === 2;
-      for (let f = 0; f < 8; f++) { step(0.25); tornado += check(); }
-      callbacks.onExit();
-      shownAt.push([tornado, rolling, gusts, +worst.toFixed(2)]);
-      all[`${seed} tornado shown`] = ok && tornado > 20;
+        onto(stand); step(0.25); check(state, stand === last); last = stand;
+      } };
+      // Across a place, in the air beside the first landing past it: every frame of the roll, then the moments after.
+      const cross = (which) => { const c = order.find(l => course.due(l.x, l.z, which));
+        Object.assign(p, { x: c.x, y: c.top + actor.baseY + 1.5, z: c.z + 9 }); actor.hop = 1.5; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0; step(1 / 60);
+        if (!flipper.turning) { ok = false; why.add(`no roll ${which + 1}`); } check(`roll ${which + 1}`, false);
+        for (let f = 0; f < 150 && flipper.turning; f++) { step(1 / 60); check(`roll ${which + 1}`); }
+        if (!(!flipper.turning && flipper.turns === which + 1 && (which ? flipper.turn === 0 : flipper.turn > 3))) { ok = false; why.add(`roll ${which + 1} not over`); }
+        for (let f = 0; f < 12; f++) { step(1 / 60); check(`after ${which + 1}`); }
+        for (let f = 0; f < 8; f++) { step(0.25); check(`after ${which + 1}`); } };
+      wait("upright", 0); cross(0); wait("over", 1); cross(1); wait("upright", 2);
+      if (!(flipper.phase === "running" && flipper.turn === 0 && flipper.turns === 2)) { ok = false; why.add(`ended ${flipper.phase} ${flipper.turns}`); }
+      callbacks.onExit(); aimed = null;
+      shownAt.push(counts);
+      all[`${seed} tornadoes shown`] = ok && counts.every(n => n > 0);
+      if (why.size) all[`${seed} tornadoes ${[...why].slice(0, 6).join("; ")}`] = false;
     }
-    all.tornadoRolling = shownAt.reduce((n, row) => n + row[1], 0) > 50;
+    // Between the seeds each of the three tornadoes was checked upright, upside down and through a roll, and the
+    // wind and the lightning both ways up.
+    all.tornadoesCovered = covered.every(row => row[0] > 0 && row[3] > 0 && row[1] + row[4] > 0) && worstGap < 2.7;
+    all.windCovered = windAt[0] > 0 && windAt[1] > 0; all.boltsCovered = boltsAt[0] > 0 && boltsAt[1] > 0;
     flipper.dispose();
     [BL.cloudHopperTornado, BL.cloudHopperGust, BL.models, BL.cloudHopperSky.bolt] = stubbed;
+    S.removeChild(home, actor.pet.node); delete actor.pet;
     all.disposed = rootNode.children.length === 1;
     cloudSave.unlocked = 1;
-    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over twice by itself wherever its places fall, never during a climb or a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and fuel, and the climb comes back onto the same course; through both rolls the rider goes on over the course as it was going, its place, its flight's own speed and the controls held never touched, and comes out as fast as it went in; only its height is the roll's, for the 0.6 s the lowering takes and at most a frame more (the jetpack worn from the roll's start, so Space pressed meanwhile is thrust held), the controls answering again while the world is still turning; a fall from the climb before its first landing, however wide that speed threw it, goes back at rest under where the roll began with the fuel again, the once: a second fall from it, and any fall after that landing, is lost upside down by the rules it is upright (after the same grace with no way back, and at the sea), under four seeds, and never put back up; every showing landing holds the rider upright or turned over; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls, and upright again after the second roll; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; every tornado that holds upside down, and all through the second roll, is drawn (its batches' matrices read as the renderer reads them, as the world's own) where its axis and side stand in the run, and the wind's streaks along its push, under four seeds; and leaving part way restores the rider and the view",
-      Object.values(all).every(Boolean) && lostFor.length === 24, JSON.stringify(all) + " height held s " + JSON.stringify([Math.min(...lostFor), Math.max(...lostFor)]) + " lost after s (upright, over, second fall) " + JSON.stringify(lostAfter) + " tornado checks (upside down, rolling, wind streaks, worst gap m) " + JSON.stringify(shownAt));
+    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over twice by itself wherever its places fall, never during a climb or a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and fuel, and the climb comes back onto the same course; through both rolls the rider goes on over the course as it was going, its place, its flight's own speed and the controls held never touched, and comes out as fast as it went in; only its height is the roll's, for the 0.6 s the lowering takes and at most a frame more (the jetpack worn from the roll's start, so Space pressed meanwhile is thrust held), the controls answering again while the world is still turning; a fall from the climb before its first landing, however wide that speed threw it, goes back at rest under where the roll began with the fuel again, the once: a second fall from it, and any fall after that landing, is lost upside down by the rules it is upright (after the same grace with no way back, and at the sea), under four seeds, and never put back up; every showing landing holds the rider upright or turned over; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls, and upright again after the second roll; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; with the game's own tornadoes and wind, under five seeds, each of the three tornadoes shows whenever there is any of it and is drawn (its batches' matrices read as the renderer reads them, as the world's own) where its axis and side stand in the run all the way down its funnel, upright, upside down, on every frame of both rolls and in the moments after each, its lightning by it and the wind's streaks along its push; the rider's pet hangs with the rider while the world is turned; and leaving part way restores the rider, its pet and the view",
+      Object.values(all).every(Boolean) && lostFor.length === 24, JSON.stringify(all) + " height held s " + JSON.stringify([Math.min(...lostFor), Math.max(...lostFor)]) + " lost after s (upright, over, second fall) " + JSON.stringify(lostAfter) + " tornado checks a seed by state (" + STATES.join(", ") + ") " + JSON.stringify(shownAt) + " each tornado by state " + JSON.stringify(covered) + " wind streaks (upright, over) " + JSON.stringify(windAt) + " bolts " + JSON.stringify(boltsAt) + " worst gap m " + worstGap.toFixed(2));
   }
   // Reload within the same session, then start a fresh session while the old
   // localStorage marker still exists. Leaving the fresh guide is not completion.

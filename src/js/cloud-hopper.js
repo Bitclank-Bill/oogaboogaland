@@ -135,7 +135,7 @@
     const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 };
     // Where the roll stands (`rolled`), and where it will stand as this frame is drawn (`drawnTurn`).
     const rolled = { turn: 0, x: 0, y: 0, z: 0 }, drawnTurn = { turn: 0, x: 0, y: 0, z: 0 };
-    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, riderParent = null, viewTurned = false, trueUp = null, nightSky = false;
+    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, riderParent = null, petParent = null, viewTurned = false, trueUp = null, nightSky = false;
     // A portal's warp: the seconds into it (-1 none) from `warpFrom` to the landing `warpTo`, where it comes out
     // (`warpAt`), the speed carried through, the seconds into its puff (-1 none), the portal that flashed and when,
     // and until when no tornado takes the rider.
@@ -215,13 +215,20 @@
       Object.assign(camera.position, trueEye); Object.assign(camera.target, trueTarget); camera.up = trueUp;
       viewTurned = false;
     };
+    // The rider, and its pet, back where the crew keeps them.
+    const riderHome = () => {
+      if (riderParent) { removeChild(gameRoot, actor.root); addChild(riderParent, actor.root); }
+      const pet = actor.pet?.node;
+      if (petParent && pet && pet.parent === gameRoot) { removeChild(gameRoot, pet); addChild(petParent, pet); }
+      riderParent = petParent = null;
+    };
     // The world upright, the rider back where the crew keeps it and seen, the sparkles put away.
     const resetTurn = () => {
       restoreView();
-      if (riderParent && actor) { removeChild(gameRoot, actor.root); addChild(riderParent, actor.root); }
+      if (actor) riderHome();
       if (warping >= 0 && actor) actor.root.visible = true;
       if (turn !== 0 && cloudNodes.length) relight(false);
-      riderParent = null; turn = turns = 0; turning = -1; lowering = climbing = rescued = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
+      riderParent = petParent = null; turn = turns = 0; turning = -1; lowering = climbing = rescued = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
       readyPortal = readyFlip = -1; readyTo = null;
       holdGame(); audio.turned(false);
       for (const spark of sparks) spark.visible = false;
@@ -263,7 +270,12 @@
       if (turn === 0) Object.assign(turnPivot, p);
       if (hookHeld && hookAt !== HAND) letGo();
       hookDown = false; packUp();
-      if (!riderParent) { riderParent = actor.root.parent; removeChild(riderParent, actor.root); addChild(gameRoot, actor.root); }
+      if (!riderParent) {
+        riderParent = actor.root.parent; removeChild(riderParent, actor.root); addChild(gameRoot, actor.root);
+        // Its pet, which the crew keeps beside it in the crew's own node, comes with it.
+        const pet = actor.pet?.node;
+        if (pet && pet.parent === riderParent) { petParent = riderParent; removeChild(petParent, pet); addChild(gameRoot, pet); }
+      }
       audio.turnOver(); audio.turned(turn === 0);
     };
     // The climb's jetpack on the rider with fuel for it. It goes on as the roll starts, not as the rider is let go:
@@ -317,7 +329,7 @@
       if (!over) return held;
       turning = -1; turns++;
       if (turnFrom === 0) relight(true);
-      else { removeChild(gameRoot, actor.root); addChild(riderParent, actor.root); riderParent = null; relight(false); }
+      else { riderHome(); relight(false); }
       return held;
     };
     // Whether no tornado that is down stands near enough a landing to take a rider there.
