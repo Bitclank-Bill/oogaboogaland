@@ -531,7 +531,7 @@
     // what it lets go of on leaving (`dispose`, the Block Party's radio). `built.ear` is where the visitor hears from
     // (their Ooga, else the view's target), kept current every frame for a kind's sounds.
     const ear = built.ear = { x: 0, y: 0, z: 0 };
-    const motion = kind.animate ? kind.animate(built.nodes, built, hud) : null;
+    const motion = kind.animate ? kind.animate(built.nodes, built, hud, renderer.kind) : null;
 
     const NO_ACTORS = [], actors = [];
 

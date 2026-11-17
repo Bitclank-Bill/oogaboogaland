@@ -1142,13 +1142,18 @@
     cx.fillStyle = g; cx.fillRect(0, 0, N, N);
     return lightPicture(cv, size, size, bright);
   });
-  // ---------- the hologram on the tablet's other face ----------
+  // ---------- the hologram in front of the tablet ----------
   // The Temple's statue (timechain-room-temple.js: its replica of Valentina Picozzi's statue of Satoshi in Lugano,
-  // made with her permission), drawn once exactly as the Temple builds it, from three quarters in front, into a picture
-  // the tablet shows as a projected image: every face a thin sheet of light added to the others, so the slats it is
-  // made of show through one another, crossed by scanlines, over the glow of an emitter at its foot. A display
-  // treatment alone: the model is read, never changed. `size` is the picture on the tablet, in metres.
-  const HOLO = { w: 520, h: 672, yaw: -58 * DEG, size: [1.3, 1.3 / 0.773], canvas: null };
+  // made with her permission) stands in the air in front of the tablet's dark face as a hologram, thrown by a lens
+  // in that face: the Temple's own built model, its shape untouched, `tall` metres high, its foot `foot` over the
+  // turntable and its middle `out` from the tablet's, riding round with the tablet and turning once in `turn`
+  // seconds about its own middle. A display treatment alone: the Temple's surface is drawn as it is, each face given
+  // the hologram's light in place of steel, as bright as the Temple's own light left it, fainter toward the seat,
+  // every other row of its height a shade darker (its scanlines); drawn as glass, which lets the layers show through
+  // one another and brightens every edge turned away from the eye. The foot stands over the visitor's eye, so where
+  // the figure swings out past the drum it passes overhead. `w`, `h` and `yaw` are the flat picture of it that the
+  // Canvas 2D fallback shows instead (`holoCanvas`).
+  const HOLO = { tall: 2, foot: 0.6, out: 1.2, turn: 36, glass: 0.2, band: 0.009, shades: 7, w: 520, h: 672, yaw: -58 * DEG, canvas: null };
   const holoCanvas = () => {
     if (HOLO.canvas) return HOLO.canvas;
     const W = HOLO.w, H = HOLO.h, cv = CH.canvas(W, H), ctx = cv.getContext("2d"), temple = BL.timechainRoomKinds.temple;
@@ -1186,11 +1191,53 @@
     ctx.globalCompositeOperation = "source-over";
     return cv;
   };
-  // The Temple's own steps build the statue at the doorway, a little each frame, and the last one draws the picture.
-  const steps = () => { const temple = BL.timechainRoomKinds.temple; return temple && temple.steps ? [...temple.steps(), () => { holoCanvas(); }] : []; };
-  const holoGeo = own(() => lightPicture(holoCanvas(), HOLO.size[0], HOLO.size[1], 1));
-  // The band of light that travels down the picture.
-  const holoScan = own(() => { const cv = CH.canvas(8, 48), cx = cv.getContext("2d"), g = cx.createLinearGradient(0, 0, 0, 48); g.addColorStop(0, "rgba(98,207,224,0)"); g.addColorStop(0.5, "rgba(140,225,240,.24)"); g.addColorStop(1, "rgba(98,207,224,0)"); cx.fillStyle = g; cx.fillRect(0, 0, 8, 48); return lightPicture(cv, HOLO.size[0], 0.14, 1); });
+  const holoFigure = own(() => {
+    const g = BL.timechainRoomKinds.temple.statue(), v = g.verts, verts = [], faces = [], runs = new Map();
+    let lit = 1;
+    for (const f of g.faces) lit = Math.max(lit, f.color[0] + f.color[1] + f.color[2]);
+    const lightOf = (f, y) => (0.3 + 0.9 * (f.color[0] + f.color[1] + f.color[2]) / lit) * (0.3 + 0.7 * Math.min(1, y / 0.3)) * (Math.round(y / HOLO.band) % 2 ? 1 : 0.5);
+    const add = (pts, k) => { const n = verts.length / 3; for (const q of pts) verts.push(q[0], q[1], q[2]); faces.push({ i: [n, n + 1, n + 2, n + 3], color: [Math.min(255, Math.round(98 * k)), Math.min(255, Math.round(207 * k)), Math.min(255, Math.round(224 * k))], emissive: 1 }); };
+    // The model is thin plates stood side by side, each plate's two flat sides cut into thousands of small squares.
+    // Squares that lie side by side in one row of one side, and take the same shade of light, are drawn as one: the
+    // same surface exactly, in under half the faces. Every other face is drawn as the Temple made it.
+    for (const f of g.faces) {
+      const pts = f.i.map((j) => [v[j * 3], v[j * 3 + 1], v[j * 3 + 2]]), y0 = Math.min(pts[0][1], pts[1][1], pts[2][1], pts[3][1]), y1 = Math.max(pts[0][1], pts[1][1], pts[2][1], pts[3][1]);
+      if (pts.length !== 4 || !pts.every((q) => Math.abs(q[0] - pts[0][0]) < 1e-6)) { add(pts, lightOf(f, (y0 + y1) / 2)); continue; }
+      const z0 = Math.min(pts[0][2], pts[1][2], pts[2][2], pts[3][2]), z1 = Math.max(pts[0][2], pts[1][2], pts[2][2], pts[3][2]), facing = (pts[1][1] - pts[0][1]) * (pts[2][2] - pts[0][2]) - (pts[1][2] - pts[0][2]) * (pts[2][1] - pts[0][1]) > 0 ? 1 : 0;
+      const key = `${pts[0][0].toFixed(5)}|${y0.toFixed(5)}|${facing}`;
+      if (!runs.has(key)) runs.set(key, []);
+      runs.get(key).push({ z0, z1, pts, shade: Math.round(lightOf(f, (y0 + y1) / 2) * HOLO.shades) });
+    }
+    for (const row of runs.values()) {
+      row.sort((a, b) => a.z0 - b.z0);
+      for (let i = 0; i < row.length;) {
+        let j = i;
+        while (j + 1 < row.length && row[j + 1].shade === row[i].shade && row[j + 1].z0 - row[j].z1 < 1e-5) j++;
+        const first = row[i], zEnd = row[j].z1;
+        add(first.pts.map((q) => [q[0], q[1], Math.abs(q[2] - first.z0) < 1e-6 ? first.z0 : zEnd]), first.shade / HOLO.shades);
+        i = j + 1;
+      }
+    }
+    return { verts, faces, lines: [], castShadow: false, glass: HOLO.glass };
+  });
+  // The Temple's own steps build the statue at the doorway, a little each frame, and the last one makes the figure.
+  const steps = () => { const temple = BL.timechainRoomKinds.temple; return temple && temple.steps ? [...temple.steps(), () => { holoFigure(); }] : []; };
+  // The light the lens throws: a cone's skin from the lens out to the figure, fading on the way (the renderer's
+  // light beams fade along their own x, so the cone is built along x and turned to the figure).
+  const holoCone = own(() => {
+    const g = RM.helpers.blank(), N = 28, H = HOLO.out - 0.1, r0 = 0.07, r1 = HOLO.tall * 0.52;
+    for (let i = 0; i < N; i++) {
+      const a = TAU * i / N, b = TAU * (i + 1) / N, m = (a + b) / 2;
+      RM.helpers.face(g, [[0, r0 * Math.cos(a), r0 * Math.sin(a)], [0, r0 * Math.cos(b), r0 * Math.sin(b)], [H, r1 * Math.cos(b), r1 * Math.sin(b)], [H, r1 * Math.cos(a), r1 * Math.sin(a)]], C.glow, 0.9, [0, Math.cos(m), Math.sin(m)]);
+    }
+    g.glass = 0.12; g.lightBeam = H * 1.1; g.twoSided = true;
+    return noShadow(g);
+  });
+  // A sheet of light that climbs through the figure: a soft ring, seen from below as it passes.
+  const holoSheet = own(() => { const N = 96, cv = CH.canvas(N, N), cx = cv.getContext("2d"), g = cx.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2); g.addColorStop(0, "rgba(98,207,224,.06)"); g.addColorStop(0.62, "rgba(98,207,224,.1)"); g.addColorStop(0.8, "rgba(181,238,245,.36)"); g.addColorStop(1, "rgba(98,207,224,0)"); cx.fillStyle = g; cx.fillRect(0, 0, N, N); return lightPicture(cv, 1.2 * HOLO.tall, 1.2 * HOLO.tall, 1); });
+  // Where the Canvas 2D fallback draws the room, the figure's thousands of faces are more than it can turn: a flat
+  // picture of it (`holoCanvas`) stands there in its place, seen from either side, turning the same way.
+  const holoFlat = own(() => { const h = HOLO.tall / 0.62, g = lightPicture(holoCanvas(), h * HOLO.w / HOLO.h, h, 1); g.faces.push({ i: [3, 2, 1, 0], color: [0, 0, 0], emissive: 0 }); return g; });
 
   // ---------- the block's height, in stars ----------
   // As a block drops, stars come out round the mark, drift together into BLOCK and the block's height in the island's
@@ -1574,8 +1621,8 @@
       const tP = { kind: "genesis", tip: COARSE ? "The whitepaper · tap to read" : "The whitepaper · click to read", radius: 1.5, index: paper.index, paper: "reader" };
       const tI = { kind: "genesis", tip: "31 Oct 2008 · the whitepaper · about this paper", radius: 1.1, index: paper.index, paper: "about" };
       // The turntable: a disc a hair above the drum carrying one tall double-sided display and nothing else, so nothing
-      // stands in front of anything: the real first page on the side toward the door at rest, a hologram of the
-      // Temple's statue on the other (`HOLO`), each facing everyone in turn. Its size makes it the room's centrepiece.
+      // stands in front of anything: the real first page on the side toward the door at rest, the lens that throws the
+      // hologram (`HOLO`) in the other, each facing everyone in turn. Its size makes it the room's centrepiece.
       const PW = 1.3, PH = PW / 0.773, FOOT = 0.5, SH = PH + FOOT + 0.3, SW = PW + 0.26, SD = 0.14;
       K.node("centreTurn", (k) => {
         k.cyl(MID_R - 0.1, MID_R - 0.1, 0.03, "#3a3c42", 0, 0.015, 0, { seg: 48 });
@@ -1585,9 +1632,22 @@
         k.box(SW + 0.02, 0.03, SD + 0.02, C.btc, 0, 0.03 + SH - 0.015, 0, { emissive: 0.8, glow: true });
         for (const sz of [-1, 1]) k.box(SW, 0.02, 0.02, C.btc, 0, 0.03 + FOOT - 0.04, sz * (SD / 2 + 0.01), { emissive: 0.6, glow: true });
       }, 0, MID_TOP + 0.005, 0);
-      // The hologram on the slab's dark face, between its orange bands, and the band of light that runs down it.
-      K.node("holo", holoGeo(), 0, 0.03 + FOOT + PH / 2, -SD / 2 - 0.006, { parent: "centreTurn", ry: Math.PI });
-      K.node("holoScan", holoScan(), 0, 0.03 + FOOT + PH / 2, -SD / 2 - 0.009, { parent: "centreTurn", ry: Math.PI });
+      // The hologram (`HOLO`), all of it riding the turntable in front of the slab's dark face: the lens, a lit disc
+      // in a dark bezel with two fine rings round it; the cone of light from it; a frame at the figure's foot that
+      // turns, a ring of light under it; the figure in that frame, set so it turns about its own middle; two sheets
+      // of light that climb through it; and the node that carries its flat picture on the Canvas 2D fallback.
+      { const s = HOLO.tall / 0.909, lensY = HOLO.foot + HOLO.tall / 2, fz = -SD / 2 - 0.006;
+        K.node("holoLens", (k) => {
+          k.cyl(0.075, 0.075, 0.03, C.glowText, 0, 0, -0.012, { rx: HALF_PI, emissive: 1, glow: true, seg: 24 });
+          k.torus(0.115, 0.02, "#3a3f4a", 0, 0, -0.008, { rx: HALF_PI, seg: 32 });
+          k.torus(0.22, 0.005, C.amber, 0, 0, 0, { rx: HALF_PI, emissive: 0.7, glow: true, seg: 40 });
+          k.torus(0.34, 0.004, "#1d4f63", 0, 0, 0, { rx: HALF_PI, emissive: 0.5, seg: 48 });
+        }, 0, lensY, fz, { parent: "centreTurn" });
+        K.node("holoCone", holoCone(), 0, lensY, fz - 0.02, { parent: "centreTurn", ry: HALF_PI });
+        K.node("holoSpin", (k) => { k.torus(0.47 * s, 0.012, C.glow, 0, -0.08, 0, { emissive: 1, glow: true, seg: 48 }); }, 0, HOLO.foot, -HOLO.out, { parent: "centreTurn" });
+        K.node("holoFigure", holoFigure(), 0, 0, 0.24 * s, { parent: "holoSpin", scale: s });
+        K.node("holoFlat", holoSheet(), 0, 0.35 * HOLO.tall / 0.62, 0, { parent: "holoSpin", scale: 0.001 });
+        for (let i = 0; i < 2; i++) K.node(`holoSheet${i}`, holoSheet(), 0, 0, 0, { parent: "holoSpin", rx: HALF_PI, glow: true, scale: 0.001 }); }
       // The page itself, a picture node riding the turntable on the slab's other side, painted when the pages load.
       const canvas = CH.canvas(1360, 1760), pctx = canvas.getContext("2d");
       pctx.fillStyle = "#f4efe6"; pctx.fillRect(0, 0, 1360, 1760);
@@ -1650,7 +1710,7 @@
   // ---------- what moves, and the viewer ----------
   // `hud` is the visit's HUD (its Proof of Knowledge panel and whitepaper reader); `gone` ends every listener the visit
   // put on them. A tap on a piece, or Space in front of one, opens it in the model viewer, every entry in date order.
-  const animate = (nodes, built, hud) => {
+  const animate = (nodes, built, hud, drawnBy) => {
     const gone = new AbortController(), poc = floorPoc.animate(nodes, built);
     const spots = PLINTHS.map((p, i) => ({ ...spotOf(i), index: p.entries[0].index }));
     // The moving parts, by their names (timechain-genesis-models.js `tools`), and the two builds of each sector.
@@ -1682,9 +1742,11 @@
     };
     BL.timechainGenesis.mark = mark;
     let screenState = -2;
-    // The hologram's two nodes, and the stars of the block's height: where each waits in the sky (`hx`, `hz`), where it
+    // The hologram's figure, or on the Canvas 2D fallback the flat picture of it in its place.
+    const spin = nodes.holoSpin, figure = nodes.holoFigure, sheets = [nodes.holoSheet0, nodes.holoSheet1], flat = drawnBy === "canvas2d";
+    if (flat) { const n = nodes.holoFlat; figure.visible = false; n.geometry = holoFlat(); n.scale.x = n.scale.y = n.scale.z = 1; }
+    // The stars of the block's height: where each waits in the sky (`hx`, `hz`), where it
     // scatters to (`gx`, `gz`), its pixel of the line (`tx`, `tz`), when it sets out and how it twinkles.
-    const holo = nodes.holo, holoBand = nodes.holoScan, holoY = holoBand ? holoBand.position.y : 0;
     const FT = BL.jumbotron.text, NS = HEIGHT.stars;
     const hs = { n: 0, c: 0, shown: 0, on: false, w: 0, zc: 0, node: Array.from({ length: NS }, (_, i) => nodes[`hstar${i}`]), tx: new Float32Array(NS), tz: new Float32Array(NS), hx: new Float32Array(NS), hz: new Float32Array(NS), gx: new Float32Array(NS), gz: new Float32Array(NS), lag: new Float32Array(NS), tw: new Float32Array(NS), ph: new Float32Array(NS), digits: new Uint8Array(12) };
     { const rr = P.rng(2009), R0 = CAP.rIn + 1, spot = (X, Z, i) => { const a = (rr() * 2 - 1) * 110 * DEG, r = R0 + rr() * (9.4 - R0); X[i] = r * Math.sin(a); Z[i] = -r * Math.cos(a); };
@@ -1880,8 +1942,11 @@
           }
           for (let k = 0; k < glowOf.length; k++) { const g = glowOf[k]; if (!g) continue; const gl = lock >= 0 ? 1.5 : (0.02 + 1.2 * Math.min(1, litArea[k])) * breath * (late ? 1.12 : 1); g.scale.x = g.scale.y = g.scale.z = Math.max(0.001, gl); }
         }
-        // The hologram: the band runs down it every five seconds, and now and then the picture jumps and blinks.
-        if (holo) { const tg = now % 6.3; holo.position.x = tg < 0.08 ? 0.012 : tg < 0.16 ? -0.008 : 0; holo.visible = tg < 0.16 || tg >= 0.21; holoBand.position.y = holoY + (HOLO.size[1] / 2 - 0.1) * (1 - 2 * (now % 5) / 5); }
+        // The hologram: it turns about its own middle and rides a little up and down, its sheets of light climb
+        // through it one after the other, and every few seconds it jumps aside and blinks.
+        spin.rotation.y = now / HOLO.turn * TAU; spin.position.y = HOLO.foot + 0.035 * Math.sin(now * 0.7);
+        for (let i = 0; i < 2; i++) { const u = (now / 4.5 + i / 2) % 1, n = sheets[i]; n.position.y = -0.05 + u * (HOLO.tall + 0.1); n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, Math.sin(u * Math.PI) * (0.55 + 0.45 * Math.sin(u * Math.PI))); }
+        if (!flat) { const tg = now % 5.7; figure.position.x = tg < 0.07 ? 0.035 : tg < 0.14 ? -0.02 : 0; figure.visible = tg < 0.14 || tg >= 0.19; }
         // The block's height in stars: out in the sky as the mark locks, together as the block falls, held, scattered.
         { const live = BL.timechainGenesis.live, td = live ? now - live.dropAt : 1e9, T1 = HEIGHT.gather, T2 = T1 + HEIGHT.hold, T3 = T2 + HEIGHT.scatter;
           if (live && live.height > 0 && td >= -HEIGHT.early && td < T3) {

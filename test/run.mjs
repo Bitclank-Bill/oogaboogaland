@@ -22758,13 +22758,13 @@ const timechainPortal = { name: "timechain portal", why: "contract: the Genesis 
       && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
-// Either face of the whitepaper's tablet, the page and the hologram, turned to the visitor and held: a click on it and
+// Either face of the whitepaper's tablet, the page and the hologram's lens, turned to the visitor and held: a click on it and
 // Space in front of it each open the paper.
 const timechainTablet = { name: "timechain tablet", why: "contract: either face of the whitepaper's tablet, the page or the hologram, opens the paper by a click and by Space", run: async (b) => {
   await b.evaluate(genesisGo);
   const opened = `(() => { const B = window.__ooga; B.advance(0.3, 1 / 30); const open = document.getElementById("wp-reader").open || document.getElementById("model-modal").open; BL.timechainGenesis.readerClose(); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
   const faces = [];
-  for (const [face, node, turn] of [["page", "wpPage", 0], ["hologram", "holo", Math.PI]]) {
+  for (const [face, node, turn] of [["page", "wpPage", 0], ["hologram", "holoLens", Math.PI]]) {
     const at = await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis; G.holdTurn = ${turn}; B.pilot.navigate({ position: { x: 0, y: 0, z: 3 }, yaw: 0, pitch: -0.3, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30); const w = B.timechain.built.nodes.${node}.world, p = B.renderer.project(w[12], w[13], w[14]); return { x: p.x, y: p.y, toward: w[14] }; })()`);
     await b.click(at.x, at.y);
     const click = await b.evaluate(opened);
