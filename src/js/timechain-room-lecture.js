@@ -166,10 +166,21 @@
     // An armchair at every place on every terrace, facing the stage; standing up leaves the sitter in front of it.
     // Beside each, on its side away from the aisle, a small round walnut table with a brass lamp.
     for (const s of R.seats) {
-      const place = K.seat(s.x, s.z, s.heading + Math.PI, R.seatTop, s.floor, -FRONT);
-      K.node(null, chair(), s.x, s.floor, s.z, { ry: s.heading, target: { kind: "chair", tip: "Lounge chair", radius: 0.6, index: place.index } });
-      K.solid({ x: s.x, z: s.z, r: CHAIR_R });
-      const d = rows[s.row].d, a = s.heading + Math.sign(s.heading) * TABLE.side / d, tx = d * Math.sin(a), tz = F + d * Math.cos(a), y = s.floor;
+      const row = rows[s.row], rear = s.row + 1 < rows.length ? (row.d + rows[s.row + 1].d) / 2 : row.rOut;
+      // Leave the chair back clear of the riser; at the ends, the curved wall also bounds its table.
+      const wall = ROOMS.wallAt(L, s.floor);
+      let d = Math.min(row.d + 0.85, rear - 0.6), x, z, tx, tz;
+      for (;;) {
+        const a = s.heading + Math.sign(s.heading) * TABLE.side / d;
+        x = d * Math.sin(s.heading); z = F + d * Math.cos(s.heading);
+        tx = d * Math.sin(a); tz = F + d * Math.cos(a);
+        if (d <= row.d || Math.hypot(x, z) + 0.6 < wall && Math.hypot(tx, tz) + TABLE.r + 0.1 < wall) break;
+        d = Math.max(row.d, d - 0.05);
+      }
+      const place = K.seat(x, z, s.heading + Math.PI, R.seatTop, s.floor, -FRONT);
+      K.node(null, chair(), x, s.floor, z, { ry: s.heading, target: { kind: "chair", tip: "Lounge chair", radius: 0.6, index: place.index } });
+      K.solid({ x, z, r: CHAIR_R });
+      const y = s.floor;
       K.cyl(TABLE.r * 0.8, TABLE.r * 0.9, 0.03, C.post, tx, y + 0.015, tz, { seg: 12 });
       K.cyl(0.03, 0.03, TABLE.top - 0.06, C.post, tx, y + TABLE.top / 2, tz, { seg: 8 });
       K.cyl(TABLE.r, TABLE.r, 0.04, C.walnutLt, tx, y + TABLE.top - 0.02, tz, { seg: 16 });
@@ -206,13 +217,16 @@
     side.box(0.24, 0.05, 0.32, C.book, -0.06, 0.765, 0.02, { ry: 0.3 }); side.box(0.22, 0.036, 0.3, C.page, -0.055, 0.765, 0.025, { ry: 0.3 });
     side.cyl(0.035, 0.03, 0.11, C.glass, 0.14, 0.795, -0.08, { seg: 10, emissive: 0.2 });
     K.solid({ x: 3.25, z: F + 0.55, r: 0.3 });
-    // The programme on its stand at the landing, to the right as one comes in.
-    const stand = K.group(-2.6, 0, L.doorZ - 3.4, Math.PI - 0.5);
-    stand.box(0.06, 1.5, 0.06, C.brass, -0.36, 0.75, 0); stand.box(0.06, 1.5, 0.06, C.brass, 0.36, 0.75, 0); stand.box(0.8, 0.05, 0.3, C.brass, 0, 0.03, 0);
+    // The programme beside the entrance, backed up to the curved wall and parallel to its tangent.
+    const standX = -3.5, standR = Math.min(ROOMS.radiusAt(L, 0), ROOMS.radiusAt(L, 1.9));
+    const standZ = Math.sqrt(standR * standR - standX * standX) - 0.25;
+    const stand = K.group(standX, 0, standZ, Math.atan2(-standX, -standZ));
+    // Supports stay behind the panel, clear of its face and the interactive flashing highlight.
+    stand.box(0.06, 1.5, 0.06, C.brass, -0.36, 0.75, -0.08); stand.box(0.06, 1.5, 0.06, C.brass, 0.36, 0.75, -0.08); stand.box(0.8, 0.05, 0.3, C.brass, 0, 0.03, 0);
     stand.box(0.86, 1.16, 0.05, C.walnutDk, 0, 1.3, 0);
-    const sheet = stand.picture(0.78, 1.08, 520, 720, paintStand, 0, 1.3, 0.03, { emissive: 0.8, depthBias: RM.MARK_BIAS });
+    const sheet = stand.picture(0.78, 1.08, 520, 720, paintStand, 0, 1.3, 0.055, { emissive: 0.8, depthBias: RM.MARK_BIAS });
     K.target(sheet, "programme", "The programme · choose a lecture", 0.7);
-    K.solid({ x: -2.6, z: L.doorZ - 3.4, r: 0.36 });
+    K.solid({ x: standX, z: standZ, r: 0.46 });
 
     // The dome's screens: the lecture's own, which `animate` repaints, and the latest blocks, which the scene keeps.
     const D = screens(L);
@@ -235,7 +249,7 @@
   };
 
   // ---------- a visit ----------
-  const BAR = ["lecture-programme", "lecture-toggle", "lecture-back", "lecture-next"];
+  const BAR = ["lecture-programme", "lecture-toggle", "lecture-back", "lecture-next", "lecture-speed", "lecture-start", "lecture-stop"];
   const animate = (nodes, built, feeds) => {
     const L = built.layout, course = LK.courseOf(COURSE), S = stageOf(L);
     const query = new URLSearchParams(location.search);
@@ -248,7 +262,7 @@
     const bump = (id) => { live[id].node.geometry.imageSurface.version++; };
     // What each screen last printed, so a frame that changes nothing paints nothing.
     const seen = { slide: "", caption: "", outline: "", board: "", boardAt: 0, version: -1 };
-    let hud = null, nearAction = null, drawing = false;
+    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0;
     const ready = (l) => !!(LK.get(l.id) || BL.deferredScripts && BL.deferredScripts[l.group]);
     const metaOf = (T) => {
       const entry = player.entry, slide = T.slides[st.slide], sec = T.sections[slide ? slide.section : st.section];
@@ -275,7 +289,7 @@
       }
       const ck = `${T.id}|${st.sentence}|${player.playing}|${player.ended}`;
       if (ck !== seen.caption) { seen.caption = ck; const c = canvasOf("caption"); LS.caption(c.getContext("2d"), c.width, c.height, P, player.ended ? "" : T.sentences[st.sentence].text, !player.playing); bump("caption"); }
-      const ok = `${T.id}|${st.section}|${Math.floor(t / 5)}|${player.playing}|${player.ended}`;
+      const ok = `${T.id}|${st.section}|${Math.floor(t)}|${player.playing}|${player.ended}`;
       if (ok !== seen.outline) {
         seen.outline = ok;
         const c = canvasOf("outline"), entry = player.entry;
@@ -292,9 +306,56 @@
       }
     };
     // What on the slide each sentence is about, as a share of the slide across and down (-1 for none): the shapes of
-    // a figure that come up with it, the point, line or row it reveals, or the slide's middle when the lecture has him
-    // point. He turns and points there while he says it.
+    // a figure that come up with it, the point, line or row it reveals, or the slide's middle. Only an explicit
+    // point gesture uses that target: a reveal or standing beside the screen never raises his arm by itself.
     const D = screens(L), aimAt = { x: 0, y: 0, z: 0 };
+    // The board's curved rim, sampled once. The overlay adds a soft highlight only while the marker moves.
+    const boardCentre = ROOMS.onSphere(L, (D.board.az0 + D.board.az1) / 2 * DEG, (D.board.el0 + D.board.el1) / 2 * DEG, 0.994);
+    const boardRim = new Float32Array(64 * 3), rimPoint = { x: 0, y: 0, z: 0 };
+    for (let i = 0; i < 64; i++) {
+      const edge = Math.floor(i / 16), along = i % 16 / 16;
+      const x = edge === 0 ? along : edge === 1 ? 1 : edge === 2 ? 1 - along : 0;
+      const y = edge === 0 ? 0 : edge === 1 ? along : edge === 2 ? 1 : 1 - along;
+      ROOMS.onSphere(L, (D.board.az0 + x * (D.board.az1 - D.board.az0)) * DEG, (D.board.el0 + y * (D.board.el1 - D.board.el0)) * DEG, 0.994, rimPoint);
+      boardRim[i * 3] = rimPoint.x; boardRim[i * 3 + 1] = rimPoint.y; boardRim[i * 3 + 2] = rimPoint.z;
+    }
+    const draw = (ctx, project) => {
+      if (boardGlow < 0.01) return;
+      ctx.save();
+      ctx.globalAlpha = boardGlow * 0.75;
+      ctx.strokeStyle = "#62da94"; ctx.shadowColor = "#62da94"; ctx.shadowBlur = 12; ctx.lineWidth = 2;
+      ctx.beginPath();
+      let joined = false;
+      for (let i = 0; i <= 64; i++) {
+        const j = i % 64 * 3, at = project(boardRim[j], boardRim[j + 1], boardRim[j + 2]);
+        if (!at) { joined = false; continue; }
+        if (joined) ctx.lineTo(at.x, at.y); else ctx.moveTo(at.x, at.y);
+        joined = true;
+      }
+      ctx.stroke(); ctx.restore();
+      if (!player.playing || player.waiting >= 0 || !st.drawing) return;
+      const w = window.innerWidth, h = window.innerHeight, at = project(boardCentre.x, boardCentre.y, boardCentre.z);
+      if (at && at.x >= 0 && at.x <= w && at.y >= 0 && at.y <= h) return;
+      let dx, dy;
+      if (at) { dx = at.x - w / 2; dy = at.y - h / 2; }
+      else {
+        // Behind the eye: use the camera's right and up, never a mirrored perspective projection.
+        const cam = BL.scenes.timechain.camera, p = cam.position, q = cam.target;
+        let fx = q.x - p.x, fy = q.y - p.y, fz = q.z - p.z;
+        const len = Math.hypot(fx, fy, fz) || 1; fx /= len; fy /= len; fz /= len;
+        const flat = Math.hypot(fx, fz), rx = flat > 0.001 ? -fz / flat : 1, rz = flat > 0.001 ? fx / flat : 0;
+        const tx = boardCentre.x - p.x, ty = boardCentre.y - p.y, tz = boardCentre.z - p.z;
+        dx = tx * rx + tz * rz;
+        dy = -(tx * -fy * rz + ty * (fx * rz - fz * rx) + tz * fy * rx);
+        if (Math.hypot(dx, dy) < 0.001) dy = 1;
+      }
+      const angle = Math.atan2(dx, -dy), ring = Math.min(w, h) * 0.34;
+      ctx.save(); ctx.translate(w / 2 + Math.sin(angle) * ring, h / 2 - Math.cos(angle) * ring); ctx.rotate(angle); ctx.scale(0.7, 0.7);
+      // The duel hit-direction chevron, in the board's green instead of damage red.
+      ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(30, 12); ctx.lineTo(13, 12); ctx.lineTo(0, -4); ctx.lineTo(-13, 12); ctx.lineTo(-30, 12); ctx.closePath();
+      ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(5, 30, 16, 0.85)"; ctx.fillStyle = "#62da94";
+      ctx.stroke(); ctx.fill(); ctx.restore();
+    };
     let cues = null, cuesFor = null;
     const centreOf = (op) => {
       const kind = LK.shapeOf(op), v = op[kind];
@@ -312,7 +373,7 @@
         const B = T.beats[b++];
         beat.say.forEach((say, k) => {
           const i = B.first + k, S = T.sentences[i], held = T.slides[S.slide], slide = held && held.slide;
-          if (!slide || S.place === "tablet") return;
+          if (!slide || S.place === "tablet" || S.gesture !== "point") return;
           let x = -1, y = -1;
           if (slide.k === "figure" && held.beat === B.i && k > 0) {
             let n = 0, sx = 0, sy = 0;
@@ -325,17 +386,16 @@
             else if (slide.k === "code") { x = 0.3; y = 0.3 + row * Math.min(0.064, 0.54 / slide.lines.length); }
             else if (slide.k === "compare") { x = 0.5; y = 0.43 + row * 0.082; }
           }
-          if (x < 0 && (S.gesture === "point" || S.place === "screen")) { x = 0.5; y = 0.5; }
+          if (x < 0) { x = 0.5; y = 0.5; }
           out[i * 2] = x; out[i * 2 + 1] = y;
         });
       }
       return out;
     };
-    // The point he points at now, on the dome, or null: for as long as a sentence that has one is being said, so two
-    // such sentences on end keep his arm up.
+    // A brief point at the authored sentence's target, then back to the audience. The slide remains visible.
     const aimNow = () => {
       const T = player.timeline;
-      if (!T || !player.playing || !st.speaking) return null;
+      if (!T || !player.playing || !st.speaking || st.into >= 2.8) return null;
       if (cuesFor !== T) { cues = cuesOf(T); cuesFor = T; }
       const x = cues[st.sentence * 2], y = cues[st.sentence * 2 + 1];
       if (x < 0) return null;
@@ -370,10 +430,16 @@
       quizCard.querySelector("h3").textContent = slide.q;
       quizRows.forEach((row, k) => { row.hidden = k >= slide.options.length; if (k < slide.options.length) row.querySelector("span").textContent = slide.options[k]; });
     };
+    const nextLecture = () => Math.max(0, course.lectures.findIndex((l) => !(player.progress[l.id] && player.progress[l.id].done)));
     const label = () => {
       const on = !!player.timeline;
-      for (let i = 1; i < 4; i++) if (buttons[i]) buttons[i].hidden = !on;
+      for (let i = 1; i < buttons.length; i++) if (buttons[i]) buttons[i].hidden = i === 5 ? on : !on;
+      if (buttons[5]) buttons[5].textContent = `Start lecture ${course.lectures[nextLecture()].n}`;
       if (buttons[1]) buttons[1].textContent = player.playing ? "Pause" : player.ended ? "Replay" : "Resume";
+      if (buttons[4]) {
+        buttons[4].textContent = `${player.speed}×`;
+        buttons[4].setAttribute("aria-label", `Playback speed: ${player.speed}×. Change speed`);
+      }
       nodes.session.visible = player.playing;
       showQuiz();
     };
@@ -434,7 +500,10 @@
     const act = (action, h) => {
       hud = h || hud;
       if (action === "lecture-programme") return openProgramme(hud);
+      if (action === "lecture-start") return start(nextLecture());
       if (!player.timeline) return false;
+      if (action === "lecture-stop") { player.close(); label(); return true; }
+      if (action === "lecture-speed") { player.setSpeed(player.speed === 1 ? 1.25 : player.speed === 1.25 ? 1.5 : player.speed === 1.5 ? 2 : 1); label(); return true; }
       if (action === "lecture-toggle") { player.toggle(); label(); return true; }
       if (action.startsWith("lecture-answer-")) { const ok = player.answer(Number(action.slice(15)) - 1); if (ok) { label(); if (document.activeElement && quizCard.contains(document.activeElement)) document.activeElement.blur(); } return ok; }
       if (action === "lecture-back") { player.section(-1); return true; }
@@ -453,7 +522,10 @@
         if (seen.version !== player.version) { seen.version = player.version; label(); }
         paintScreens(elapsed);
         if (viewing && elapsed > 1) { viewing = false; viewLecturer(); }
-        if (lecturer) lecturer.update(dt, elapsed, player.timeline ? st : null, player.playing && player.waiting < 0, player.timeline && st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow(),
+        const movingTime = dt * (player.playing && player.waiting < 0 ? player.speed : 1);
+        motionTime += movingTime;
+        boardGlow += ((player.playing && player.waiting < 0 && st.drawing ? 1 : 0) - boardGlow) * (1 - Math.exp(-8 * dt));
+        if (lecturer) lecturer.update(movingTime, motionTime, player.timeline ? st : null, player.playing && player.waiting < 0, player.timeline && player.playing && player.waiting < 0 && st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow(),
           // A stretch of four sentences or more is one he may pace through (whether he does is his own, lecturer.js).
           !!player.timeline && st.quiz < 0 && player.timeline.beats[st.beat].count >= 4);
         hearFrom();
@@ -475,7 +547,7 @@
         if (Math.hypot(x - S.lectern.x, z - S.lectern.z) > 1.7) return null;
         return nearAction || (nearAction = { key: "programme", label: "LECTURES", hint: "Space · Choose a lecture", tap: "Tap LECTURES to choose a lecture", run: openProgramme });
       },
-      action: act,
+      action: act, draw,
       key(e, h) {
         if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || !player.timeline) return false;
         const k = e.key.toLowerCase();
@@ -486,6 +558,8 @@
       controlsHelp: (touch, H) => [
         H.row([], "Choose a lecture", touch ? "Lectures button, or tap the lectern" : "Lectures button, or Space at the lectern"),
         H.row(touch ? [] : ["p"], "Pause or resume the lecture", touch ? "Pause button" : ""),
+        H.row([], "End this lecture", "Stop button"),
+        H.row([], "Playback speed", "Speed button: 1×, 1.25×, 1.5× or 2×"),
         H.row(touch ? [] : ["[", "]"], "Back or on a section", touch ? "Section buttons" : ""),
         H.row(touch ? [] : ["1", "2", "3", "4"], "Answer the lecturer's question", touch ? "Tap an answer" : "")
       ],

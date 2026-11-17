@@ -1011,7 +1011,7 @@
       stepTweens(dt);
       fx.update(dt, elapsed);
     };
-    const drawExtra = (ctx2d, project) => { if (remotes) remotes.drawNames(ctx2d, project); };
+    const drawExtra = (ctx2d, project) => { if (motion && motion.draw) motion.draw(ctx2d, fx.projectRaw); if (remotes) remotes.drawNames(ctx2d, project); };
     const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
     const onKey = (e) => {
       if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) return pilot.resetCamera();

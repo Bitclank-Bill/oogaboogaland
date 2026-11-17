@@ -1,0 +1,93 @@
+// Focused playback regressions: node --test test/lecture-player.mjs
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { load } from '../scripts/lecture-check.mjs';
+
+const source = readFileSync(new URL('../src/js/lecture-player.js', import.meta.url), 'utf8');
+const fixture = async (recorded = true) => {
+  const { L } = load(['btc-01']);
+  const media = [];
+  class Audio {
+    constructor() { this.currentTime = 0; this.paused = true; this.ended = false; media.push(this); }
+    addEventListener() {}
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+    removeAttribute() {}
+    load() {}
+  }
+  const BL = { lectures: L, deferredScripts: recorded ? {} : null, deferred: { load: async () => {} }, sound: { muted: false, subscribe: () => () => {} } };
+  vm.runInNewContext(source, { window: { BL }, Audio, localStorage: { getItem: () => null, setItem() {} } });
+  const player = BL.lecturePlayer.create(), entry = { id: 'btc-01', group: 'lecture-btc-a', audio: 'btc-01.m4a' };
+  await player.open(entry);
+  return { player, media, entry, L };
+};
+
+for (const speed of [1, 1.25, 1.5, 2]) {
+  test(`${speed}x: audio is the cue clock, pitch is preserved, pause and reopen keep rate`, async () => {
+    const { player: p, media, entry, L } = await fixture();
+    assert.equal(p.setSpeed(speed), true);
+    assert.equal(media[0].playbackRate, speed);
+    assert.equal(media[0].preservesPitch, true);
+    p.play();
+    media[0].currentTime = 30 * speed;
+    p.update(0.016);
+    assert.equal(p.time, 30 * speed);
+    const expected = L.state(); L.at(p.timeline, p.time, expected);
+    assert.deepEqual(p.state, expected);
+    p.pause(); const held = p.time; p.update(1);
+    assert.equal(p.time, held); assert.equal(media[0].paused, true);
+    p.play(); assert.equal(media[0].currentTime, held);
+    await p.open(entry); assert.equal(media[1].playbackRate, speed);
+    assert.equal(p.setSpeed(0), false); assert.equal(p.setSpeed(3), false);
+    assert.equal(p.speed, speed); p.dispose();
+  });
+  test(`${speed}x: caption-only playback advances at the same rate`, async () => {
+    const { player: p } = await fixture(false);
+    p.setSpeed(speed); p.play(); p.update(1);
+    assert.equal(p.time, speed); p.dispose();
+  });
+  test(`${speed}x: normal quizzes wait, selected replies resume, forward sections remain unlocked`, async () => {
+    const { player: p, media } = await fixture();
+    p.setSpeed(speed); p.play();
+    for (const q of p.timeline.quizzes) {
+      p.seek(p.timeline.sentences[q.ask].start);
+      media[0].currentTime = q.hold; p.update(0.016);
+      assert.equal(p.waiting, q.i); assert.equal(media[0].paused, true);
+      assert.equal(p.answer(q.answer), true);
+      assert.equal(media[0].currentTime, q.branches[q.answer].start);
+      assert.equal(media[0].playbackRate, speed);
+      assert.equal(media[0].paused, false);
+      media[0].currentTime = q.branches[q.answer].end; p.update(0.016);
+      assert.equal(p.time, q.end);
+    }
+    p.seek(0);
+    for (let i = 1; i < p.timeline.sections.length; i++) {
+      p.section(1);
+      assert.equal(p.time, p.timeline.sections[i].start);
+      assert.equal(p.waiting, -1);
+      assert.equal(media[0].currentTime, p.time);
+    }
+    // An arbitrary seek into reply audio still goes to the question, never another answer's speech.
+    const q = p.timeline.quizzes[0];
+    p.seek(q.branches[0].start);
+    assert.equal(p.time, p.timeline.sentences[q.ask].start);
+    p.dispose();
+  });
+}
+
+
+test('stop silences and releases the recording while preserving unfinished or completed progress', async () => {
+  const { player: p, media, entry } = await fixture();
+  p.play(); media[0].currentTime = 70; p.update(0.016);
+  p.close();
+  assert.equal(media[0].paused, true);
+  assert.equal(p.playing, false); assert.equal(p.recorded, false); assert.equal(p.timeline, null);
+  assert.equal(p.progress[entry.id].t, 70); assert.equal(p.progress[entry.id].done, false);
+  await p.open(entry); assert.equal(p.time, 66);
+  p.play(); media[1].ended = true; p.update(0.016);
+  assert.equal(p.progress[entry.id].done, true);
+  p.close(); assert.equal(p.progress[entry.id].done, true);
+  p.dispose();
+});

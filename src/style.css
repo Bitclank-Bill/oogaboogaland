@@ -3382,6 +3382,11 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
 }
 
 /* The hangar's sound panel under its Sound button: on or off, the level and the pad's vibration, on the planks. */
+/* Stable playback controls: changing a label never shifts its neighbours. */
+.presets[data-scene="timechain"] { flex-wrap: wrap; }
+#lecture-toggle { width: 76px; min-width: 76px; flex: 0 0 76px; }
+#lecture-speed { width: 64px; min-width: 64px; flex: 0 0 64px; font-variant-numeric: tabular-nums; }
+
 /* The Lecture Hall's question: the lecture waits on one of its answers. */
 .lecture-quiz {
   position: absolute;
