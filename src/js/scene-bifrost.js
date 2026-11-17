@@ -147,6 +147,8 @@
   // answers, that window's side of the view and how far the view looks up.
   let audio = null;
   const ROOM = { charge: 0, world: null, side: 0, gaze: 0 };
+  // The visitor's Dimensional Echo, now and then (bifrost-echo.js).
+  let echo = null;
   // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the
   // room every frame, so signed-in players in the chamber hear each other (voice needs a driven Ooga).
   const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name);
@@ -748,6 +750,13 @@
     // The chamber's resonance, come up with the whoom of the field crossed to get here.
     audio = BL.bifrostAudio.create();
     if (ctx.from) audio.cue("arrive");
+    // Now and then, a while after the Ooga reaches the hall, its double separates and goes through to another world.
+    echo = avatar ? BL.bifrostEcho.create({
+      root, fx, camera, avatar, pilot, glyph: scene.glyph, windows: scene.windows.filter((w) => w.kind === "travel"),
+      hall: { r: HALL.r, inHall: (p) => Math.hypot(p.x, p.z) < HALL.r - 1 },
+      react: () => { scene.flare = Math.max(scene.flare, 0.7); scene.surge = 0; },
+      cue: (name) => audio.cue(name)
+    }) : null;
     lightUp(scene);
     leaving = false;
     directory = BL.caveDirectory.create({
@@ -767,7 +776,7 @@
     bifrostScene.input = input;
     bifrostScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      bifrost: { get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get pictured() { return !!(world.windowViews && world.windowViews.dsb); }, get outside() { return !!world.bifrostView; } }
+      bifrost: { get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, echo: () => !!echo && echo.trigger(), get echoState() { return echo ? echo.state : "none"; }, get pictured() { return !!(world.windowViews && world.windowViews.dsb); }, get outside() { return !!world.bifrostView; } }
     };
   };
 
@@ -1016,6 +1025,7 @@
       ROOM.side = d > 0.5 ? (dx * -vz + dz * vx) / (d * flat) : 0;
     }
     audio.update(dt, ROOM);
+    if (echo) echo.update(dt);
     // The way out's field hums and shows the outline of whoever walks through it.
     const g = s.gate;
     g.phase.update(dt, elapsed);
@@ -1092,6 +1102,8 @@
     remotes = null;
     footsteps.dispose();
     footsteps = null;
+    if (echo) echo.dispose();
+    echo = null;
     audio.dispose();
     audio = null;
     if (avatar) people.unparkWeapons(avatar);
