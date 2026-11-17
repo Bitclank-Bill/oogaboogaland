@@ -228,7 +228,7 @@
                 null,
                 ["Nice idea, but no. Nobody can make data impossible to copy.", "The keeper holds the one ledger, sees the second spend, and says no."],
                 ["Secrecy would not save you. A hidden coin copies just as easily.", "The keeper holds the one ledger, and refuses the second spend."],
-                ["A fee only makes cheating dearer. It does not make it impossible.", "What stops it is the single ledger. The keeper sees the second spend and refuses."]
+                ["A fee only makes cheating more expensive. It does not make it impossible.", "What stops it is the single ledger. The keeper sees the second spend and refuses."]
               ] } }
         ] },
 

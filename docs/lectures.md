@@ -20,6 +20,8 @@ The first course is Bitcoin from First Principles: fourteen lectures in four par
 
 The outline’s time bar has a draggable circle. Pressing the circle or another point on the bar immediately pauses playback; dragging previews whole seconds while the audio, slides, drawings and lecturer stay at their original position. Releasing seeks all four together, resuming only if the lecture was playing before the press. A cancelled drag stays paused at the original position. Scrubbing may reach unvisited sections and individual quiz replies without awarding an answer; ordinary playback still waits for quiz choices.
 
+The outline’s section rows highlight on hover and jump to that section’s beginning when clicked, including the current section. The Bitcoin from First Principles lecture-selection popup uses the larger window layout too. Clicking the rest of a screen opens a larger live close-up; its section rows, quiz answers and time bar share the projected screen’s controls. Playback, drawing strokes and time updates continue while the popup is open. Closing it during a scrub cancels the drag and leaves playback paused.
+
 Recorded audio keeps playing in a background tab. Its media events update the same cue state and quiz gates as foreground frames. The first frame after returning rebuilds the screens and places the lecturer at the current audio cue; an unanswered quiz still holds playback, including when a delayed background event crosses the whole question.
 
 ## A lecture file

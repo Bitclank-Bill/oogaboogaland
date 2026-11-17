@@ -260,5 +260,104 @@ try {
   })()`);
   for (const result of background) check(result.ok, result.message);
   check(b.logs.length === 0, 'background catch-up keeps the console clean: ' + JSON.stringify(b.logs));
+  // Section navigation and the live popup share the same lecture after the background checks.
+  {
+  await b.evaluate(`(async () => {
+    const B=__ooga, M=B.timechain.motion, P=M.player;
+    await P.open(BL.lectures.courseOf('first-principles').lectures[0]); P.pause(); P.seek(20);
+    B.pilot.navigate({position:{x:0,y:0,z:B.timechain.layout.arrival.z},yaw:Math.PI*.4,pitch:.04,dist:4}); B.pilot.freeCursor(); B.advance(.3,1/60);
+    window.outlineTest={
+      wall(x,y) {
+        const D=M.screens().outline, L=B.timechain.layout, deg=Math.PI/180;
+        const el=Math.asin(Math.sin(D.el1*deg)-y*(Math.sin(D.el1*deg)-Math.sin(D.el0*deg)));
+        const p=BL.timechainRooms.onSphere(L,(D.az0+x*(D.az1-D.az0))*deg,el,.994); return B.project(p.x,p.y,p.z);
+      },
+      row(i,popup=false) {
+        const r=M.sectionRows[i], D=M.screens().outline;
+        return popup ? this.popup(r.x+r.w*.5,r.y+r.h*.5) : this.wall((r.x+r.w*.5)/D.w,(r.y+r.h*.5)/D.h);
+      },
+      popup(x,y) {
+        const c=document.getElementById('board-screen'),r=c.getBoundingClientRect();
+        return {x:r.left+c.clientLeft+x/c.width*c.clientWidth,y:r.top+c.clientTop+y/c.height*c.clientHeight};
+      },
+      bar(f) { const D=M.screens().outline,bar=BL.lectureSlides.timebar(D.w,D.h); return this.popup(bar.x+bar.w*f,bar.y+bar.h/2); }
+    };
+  })()`);
+  for (const combat of [false,true]) {
+    await b.evaluate(`(() => {const B=__ooga; if(B.pilot.aiming!==${combat})B.pilot.modeAction('mode-toggle');B.pilot.navigate({position:{x:0,y:0,z:B.timechain.layout.arrival.z},yaw:Math.PI*.4,pitch:.04,dist:4});B.pilot.freeCursor();B.advance(.3,1/60);})()`);
+    const pt=await b.evaluate('outlineTest.row(2)');
+    await b.mouse('mouseMoved',pt.x,pt.y,{button:'none'}); await b.evaluate('__ooga.advance(.1,1/60)');
+    check(await b.evaluate('__ooga.timechain.motion.sectionHover===2'), 'outline row highlights in '+(combat?'combat':'carry'));
+    await b.click(pt.x,pt.y);
+    check(await b.evaluate('(() => {const P=__ooga.timechain.motion.player;return P.time===P.timeline.sections[2].start&&!P.playing&&!document.querySelector("dialog:modal");})()'), 'section click seeks to its start and keeps pause');
+    await b.evaluate('(() => {const P=__ooga.timechain.motion.player;P.seek(P.time+8);__ooga.advance(.1,1/60);__ooga.pilot.freeCursor();})()');
+    await b.click(pt.x,pt.y);
+    check(await b.evaluate('(() => {const P=__ooga.timechain.motion.player;return P.time===P.timeline.sections[2].start;})()'), 'clicking the current section restarts it');
+    await b.evaluate('__ooga.pilot.freeCursor()');
+  }
+  await b.evaluate('if(__ooga.pilot.aiming)__ooga.pilot.modeAction("mode-toggle");__ooga.pilot.navigate({position:{x:0,y:0,z:__ooga.timechain.layout.arrival.z},yaw:Math.PI*.4,pitch:.04,dist:4});__ooga.pilot.freeCursor();__ooga.advance(.3,1/60)');
+  const title=await b.evaluate('outlineTest.wall(.5,.94)'); await b.click(title.x,title.y);
+  check(await b.evaluate('document.getElementById("board-modal").open && document.getElementById("board-modal").classList.contains("board-expanded")'), 'outline background opens its expanded live popup: '+JSON.stringify({title,state:await b.evaluate('({modal:document.querySelector("dialog:modal")?.id,focus:__ooga.pilot.aimFocused,hover:__ooga.timechain.motion.sectionHover})')}));
+  check(await b.evaluate('(() => {const r=document.getElementById("board-modal").getBoundingClientRect();return r.width>960&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;})()'), 'expanded popup is larger and fits the viewport');
+  if (process.env.LECTURE_SCREENSHOT) await b.screenshot(resolve(process.env.LECTURE_SCREENSHOT));
+  const row=await b.evaluate('outlineTest.row(3,true)');
+  await b.mouse('mouseMoved',row.x,row.y,{button:'none'});await b.evaluate('__ooga.advance(.1,1/60)');
+  check(await b.evaluate('__ooga.timechain.motion.sectionHover===3'), 'popup shares section hover highlighting');
+  await b.click(row.x,row.y);
+  check(await b.evaluate('(() => {const P=__ooga.timechain.motion.player;return P.time===P.timeline.sections[3].start&&document.getElementById("board-modal").open;})()'), 'popup section pick jumps without closing');
+  await b.evaluate('(() => {const P=__ooga.timechain.motion.player;P.seek(P.time+8);__ooga.advance(.1,1/60);})()');await b.click(row.x,row.y);
+  check(await b.evaluate('(() => {const P=__ooga.timechain.motion.player;return P.time===P.timeline.sections[3].start;})()'), 'popup can restart its current section');
+  await b.evaluate('(() => {const P=__ooga.timechain.motion.player;P.seek(20);P.play();__ooga.advance(.01,1/60);})()');
+  const before=await b.evaluate('document.getElementById("board-screen").toDataURL()');
+  await b.evaluate('__ooga.advance(2,1/60)');
+  check(before!==await b.evaluate('document.getElementById("board-screen").toDataURL()'), 'open outline updates its clock and playhead during playback');
+  for (const playing of [false,true]) {
+    await b.evaluate(`(() => {const P=__ooga.timechain.motion.player;P.pause();P.seek(20);${playing?'P.play();':''}__ooga.advance(.01,1/60);})()`);
+    const start=await b.evaluate('outlineTest.bar(.4)'),end=await b.evaluate('outlineTest.bar(.55)');
+    await b.mouse('mousePressed',start.x,start.y,{button:'left',clickCount:1});
+    check(await b.evaluate('__ooga.timechain.motion.player.scrubbing&&!__ooga.timechain.motion.player.playing'), 'popup bar press pauses immediately');
+    const held=await b.evaluate('__ooga.timechain.motion.player.time');
+    await b.mouse('mouseMoved',end.x,end.y,{button:'left',buttons:1});await b.evaluate('__ooga.advance(.2,1/60)');
+    check(await b.evaluate(`(() => {const P=__ooga.timechain.motion.player;return P.time===${held}&&Math.abs(P.scrubTime-Math.round(P.timeline.duration*.55))<3;})()`), 'popup drag previews time with frozen lecture cues');
+    const target=await b.evaluate('__ooga.timechain.motion.player.scrubTime');
+    await b.mouse('mouseReleased',end.x,end.y,{button:'left',clickCount:1});
+    check(await b.evaluate(`(() => {const P=__ooga.timechain.motion.player;return !P.scrubbing&&P.playing===${playing}&&Math.abs(P.time-${target})<1;})()`), 'popup release seeks and restores the prior playing state');
+  }
+  const cancel=await b.evaluate('outlineTest.bar(.3)');
+  await b.mouse('mousePressed',cancel.x,cancel.y,{button:'left',clickCount:1});const held=await b.evaluate('__ooga.timechain.motion.player.time');
+  await b.key('Escape');await b.mouse('mouseReleased',cancel.x,cancel.y,{button:'left',clickCount:1});
+  check(await b.evaluate(`!document.getElementById("board-modal").open&&!__ooga.timechain.motion.player.scrubbing&&!__ooga.timechain.motion.player.playing&&__ooga.timechain.motion.player.time===${held}`), 'closing mid-scrub cancels and stays paused at the original time');
+  await b.click(title.x,title.y);
+  await b.evaluate('document.querySelectorAll("#board-dots button")[1].click()');
+  await b.evaluate('(() => {const P=__ooga.timechain.motion.player,s=P.timeline.strokes[1];P.seek(s.start);P.play();__ooga.advance(.01,1/60);})()');
+  const ink=await b.evaluate('document.getElementById("board-screen").toDataURL()');await b.evaluate('__ooga.advance(.3,1/60)');
+  check(ink!==await b.evaluate('document.getElementById("board-screen").toDataURL()'), 'drawing popup follows live strokes');
+  await b.evaluate('document.querySelectorAll("#board-dots button")[0].click();(()=>{const P=__ooga.timechain.motion.player,q=P.timeline.quizzes[0];P.seek(P.timeline.sentences[q.ask].start);P.play();P.update(q.hold-P.time+.01);__ooga.advance(.1,1/60);})()');
+  const answer=await b.evaluate('(()=>{const r=__ooga.timechain.motion.quizRows[1];return outlineTest.popup(r.x+r.w*.5,r.y+r.h*.5);})()');
+  await b.mouse('mouseMoved',answer.x,answer.y,{button:'none'});await b.evaluate('__ooga.advance(.1,1/60)');
+  check(await b.evaluate('__ooga.timechain.motion.quizHover===1'), 'quiz popup highlights its answers');
+  await b.click(answer.x,answer.y);
+  check(await b.evaluate('__ooga.timechain.motion.player.waiting===-1&&__ooga.timechain.motion.player.state.show===2&&document.getElementById("board-modal").open'), 'quiz popup answers remain interactive and live');
+  await b.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await b.evaluate('document.querySelectorAll("#board-dots button")[2].click();__ooga.timechain.motion.player.pause();__ooga.advance(.1,1/60)');
+  check(await b.evaluate('(()=>{const r=document.getElementById("board-modal").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})()'), 'popup fits a phone viewport');
+  if(process.env.LECTURE_SCREENSHOT)await b.screenshot(resolve(process.env.LECTURE_SCREENSHOT.replace('.png','-phone.png')));
+  const touchRow=await b.evaluate('outlineTest.row(1,true)');
+  await b.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[touchRow]});
+  await b.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  check(await b.evaluate('(()=>{const P=__ooga.timechain.motion.player;return P.time===P.timeline.sections[1].start;})()'), 'touch selects a popup section');
+  const touchStart=await b.evaluate('outlineTest.bar(.2)'),touchEnd=await b.evaluate('outlineTest.bar(.35)');
+  await b.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[touchStart]});
+  check(await b.evaluate('__ooga.timechain.motion.player.scrubbing'), 'touch captures the popup scrubber');
+  await b.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[touchEnd]});
+  await b.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  check(await b.evaluate('(()=>{const P=__ooga.timechain.motion.player;return !P.scrubbing&&!P.playing&&Math.abs(P.time-P.timeline.duration*.35)<5;})()'), 'touch drag seeks and leaves a paused lecture paused');
+  await b.send('Emulation.clearDeviceMetricsOverride',{});
+  await b.key('Escape');
+  await b.evaluate('document.getElementById("lecture-programme").click()');
+  check(await b.evaluate('(()=>{const d=document.getElementById("board-modal"),r=d.getBoundingClientRect();return d.open&&d.classList.contains("board-expanded")&&r.width>960&&r.right<=innerWidth&&r.bottom<=innerHeight;})()'), 'Bitcoin from First Principles lecture selection also uses the larger popup');
+  if(process.env.LECTURE_SCREENSHOT)await b.screenshot(resolve(process.env.LECTURE_SCREENSHOT.replace('.png','-course.png')));
+  check(b.logs.length===0,'console stays clean: '+JSON.stringify(b.logs));
+  }
   console.log(`${checks} lecture screen and pointing checks passed`);
 } finally { await b.close(); }

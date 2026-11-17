@@ -260,11 +260,12 @@
     const live = {};
     for (const l of built.live) if (l.spec.id) live[l.spec.id] = l;
     const canvasOf = (id) => { const g = live[id].node.geometry; return g ? g.imageSurface.canvas : null; };
-    const bump = (id) => { live[id].node.geometry.imageSurface.version++; };
+    let screensVersion = 0;
+    const bump = (id) => { live[id].node.geometry.imageSurface.version++; screensVersion++; };
     // What each screen last printed, so a frame that changes nothing paints nothing.
-    const seen = { slide: "", caption: "", outline: "", board: "", boardAt: 0, version: -1 };
-    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0, slideGlow = 0, hovered = -1;
-    const quizRows = [], inverse = BL.math.mat4.create(), screenPoint = { x: 0, y: 0 };
+    const seen = { slide: "", caption: "", outline: "", board: "", boardAt: 0, boardTime: -1, version: -1 };
+    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0, slideGlow = 0, hovered = -1, sectionHovered = -1, popupOpen = false;
+    const quizRows = [], sectionRows = [], inverse = BL.math.mat4.create(), screenPoint = { x: 0, y: 0 };
     let scrubOwner = null, scrubOffset = 0;
     const asking = () => player.playing && player.waiting >= 0;
     // Match the curved canvas shader at the exact face hit, including its vertical texture flip.
@@ -286,14 +287,18 @@
       screenPoint.y = (1 - (ly - curve[2] - rect[1]) / rect[3]) * surface.canvas.height;
       return true;
     };
-    const answerAt = (owner, ray) => {
-      if (!asking() || !owner || owner.kind !== "live" || owner.slot.spec.id !== "slide" || !pointOnScreen(owner, ray)) return -1;
-      const px = screenPoint.x, py = screenPoint.y;
-      for (let i = 0; i < quizRows.length; i++) {
-        const r = quizRows[i];
-        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i;
+    const rowAt = (rows, x, y) => {
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i;
       }
       return -1;
+    };
+    const answerAt = (owner, ray) => asking() && owner && owner.kind === "live" && owner.slot.spec.id === "slide" && pointOnScreen(owner, ray) ? rowAt(quizRows, screenPoint.x, screenPoint.y) : -1;
+    const sectionAt = (owner, ray) => player.timeline && owner && owner.kind === "live" && owner.slot.spec.id === "outline" && pointOnScreen(owner, ray) ? rowAt(sectionRows, screenPoint.x, screenPoint.y) : -1;
+    const jumpSection = (i) => {
+      if (!player.timeline || i < 0 || i >= player.timeline.sections.length || player.scrubbing) return false;
+      player.seek(player.timeline.sections[i].start); seekScene(); label(); return true;
     };
     const ready = (l) => !!(LK.get(l.id) || BL.deferredScripts && BL.deferredScripts[l.group]);
     const metaOf = (T) => {
@@ -322,17 +327,17 @@
       const ck = `${T.id}|${st.sentence}|${player.playing}|${player.ended}`;
       if (ck !== seen.caption) { seen.caption = ck; const c = canvasOf("caption"); LS.caption(c.getContext("2d"), c.width, c.height, P, player.ended ? "" : T.sentences[st.sentence].text, !player.playing); bump("caption"); }
       const progress = player.scrubTime;
-      const ok = `${T.id}|${st.section}|${Math.floor(progress)}|${player.playing}|${player.ended}|${player.scrubbing}`;
+      const ok = `${T.id}|${st.section}|${Math.floor(progress)}|${player.playing}|${player.ended}|${player.scrubbing}|${sectionHovered}`;
       if (ok !== seen.outline) {
         seen.outline = ok;
         const c = canvasOf("outline"), entry = player.entry;
-        LS.outline(c.getContext("2d"), c.width, c.height, P, T, st, progress, { kicker: `LECTURE ${entry.n} OF ${course.lectures.length}`, title: entry.title, state: player.ended ? "THE END" : player.playing ? "" : "PAUSED" });
+        LS.outline(c.getContext("2d"), c.width, c.height, P, T, st, progress, { kicker: `LECTURE ${entry.n} OF ${course.lectures.length}`, title: entry.title, state: player.ended ? "THE END" : player.playing ? "" : "PAUSED", sectionRows, hover: sectionHovered });
         bump("outline");
       }
       // The board: at once when its strokes change, a dozen times a second while one is being drawn.
       const bk = `${T.id}|${st.epoch}|${st.begun}`;
-      if (bk !== seen.board || drawing && elapsed - seen.boardAt > 0.08) {
-        seen.board = bk; seen.boardAt = elapsed;
+      if (bk !== seen.board || drawing && t !== seen.boardTime && elapsed - seen.boardAt > 0.08) {
+        seen.board = bk; seen.boardAt = elapsed; seen.boardTime = t;
         const c = canvasOf("board");
         drawing = LS.board(c.getContext("2d"), c.width, c.height, P, T, st.epoch, t, mark);
         bump("board");
@@ -489,7 +494,7 @@
     };
     const paintProgramme = () => { const c = programme.canvas; LS.programme(c.getContext("2d"), c.width, c.height, P, course, player.progress, chosen, rows, ready); programmeVersion++; };
     const programme = {
-      title: "Lecture Hall", help: "Choose a lecture: press one, or use the arrows and Enter. Each picks up where you left it.", wide: true, count: 1, index: 0, caption: course.title,
+      title: "Lecture Hall", help: "Choose a lecture: press one, or use the arrows and Enter. Each picks up where you left it.", expanded: true, count: 1, index: 0, caption: course.title,
       get note() { return course.by ? `${course.subtitle}, with ${course.by}.` : `${course.subtitle}.`; },
       get canvas() { return programmeCanvas || (programmeCanvas = CH.canvas(1400, 860)); },
       get version() { return programmeVersion; }, go() {},
@@ -513,24 +518,59 @@
       return true;
     };
     // The screens close up: the slide, the board and the outline, paged with the arrows.
-    let page = 0, pagesVersion = 0, closeSheet = null;
-    const PAGES = [["slide", "The slide"], ["board", "The board"], ["outline", "The outline"]];
+    let page = 0, pagesVersion = 0;
+    const PAGES = [["slide", "The slide"], ["board", "The board"], ["outline", "The sections"], ["caption", "The narration"]];
+    const startScrubAt = (x, y) => {
+      if (!player.timeline) return false;
+      const c = canvasOf("outline"), bar = LS.timebar(c.width, c.height), cy = bar.y + bar.h / 2;
+      if (x < bar.x - bar.r || x > bar.x + bar.w + bar.r || Math.abs(y - cy) > bar.r * 2) return false;
+      const thumb = bar.x + bar.w * player.time / player.timeline.duration;
+      scrubOffset = Math.hypot(x - thumb, y - cy) <= bar.r * 1.3 ? x - thumb : 0;
+      if (!player.beginScrub()) return false;
+      moveScrubAt(x); label(); return true;
+    };
+    const moveScrubAt = (x) => {
+      if (!player.scrubbing) return;
+      const c = canvasOf("outline"), bar = LS.timebar(c.width, c.height);
+      player.moveScrub((x - scrubOffset - bar.x) / bar.w * player.timeline.duration);
+    };
+    const endScrub = (cancelled) => {
+      const ended = player.endScrub(cancelled); scrubOwner = null;
+      if (ended && !cancelled) seekScene();
+      label();
+    };
     const closeUp = {
-      title: "Lecture Hall", help: "The lecture's screens, close up. Arrow keys flip between them.", wide: true, count: PAGES.length,
-      // Every page on one sheet of one size, each screen laid in as large as fits, so the dialog keeps its height
-      // from page to page.
-      get canvas() {
-        const from = canvasOf(PAGES[page][0]);
-        if (!from) return null;
-        if (!closeSheet) closeSheet = CH.canvas(1600, 800);
-        const c = closeSheet.getContext("2d"), k = Math.min(closeSheet.width / from.width, closeSheet.height / from.height);
-        c.fillStyle = "#0e0d0c"; c.fillRect(0, 0, closeSheet.width, closeSheet.height);
-        c.drawImage(from, (closeSheet.width - from.width * k) / 2, (closeSheet.height - from.height * k) / 2, from.width * k, from.height * k);
-        return closeSheet;
-      },
+      title: "Lecture Hall", help: "Click a section to jump to its beginning. Drag the time bar to seek. Arrow keys switch screens.", expanded: true, count: PAGES.length,
+      // Copy the current screen directly: popup pointer coordinates then match the dome painter exactly.
+      get canvas() { return canvasOf(PAGES[page][0]); },
       get index() { return page; }, get caption() { return PAGES[page][1]; },
-      get note() { const e = player.entry; const r = player.timeline && player.timeline.lecture.reading; return e ? `Lecture ${e.n} · ${e.title}.${r ? ` Before class: ${r.map((x) => x.by ? `${x.title}, ${x.by}` : x.title).join("; ")}.` : ""}` : HINT; },
-      get version() { return pagesVersion + seen.boardAt + player.version; }, go: (i) => { page = i; pagesVersion++; }
+      get version() { return pagesVersion + screensVersion; },
+      go(i) { endScrub(true); page = i; hovered = sectionHovered = -1; pagesVersion++; },
+      hover(x, y) {
+        const id = PAGES[page][0];
+        sectionHovered = id === "outline" && player.timeline ? rowAt(sectionRows, x, y) : -1;
+        hovered = id === "slide" && asking() ? rowAt(quizRows, x, y) : -1;
+      },
+      pick(x, y) {
+        const id = PAGES[page][0];
+        if (id === "outline") return jumpSection(rowAt(sectionRows, x, y));
+        if (id === "slide" && asking()) { const answer = rowAt(quizRows, x, y); if (answer >= 0) { player.answer(answer); label(); return true; } }
+        return false;
+      },
+      dragStart(x, y) { return PAGES[page][0] === "outline" && startScrubAt(x, y); },
+      dragMove(x) { moveScrubAt(x); }, dragEnd: endScrub,
+      key(key) {
+        if (!player.timeline || player.scrubbing) return false;
+        const k = key.toLowerCase();
+        if (player.waiting >= 0 && k >= "1" && k <= "4") return act(`lecture-answer-${k}`);
+        return k === "p" ? act("lecture-toggle") : k === "[" ? act("lecture-back") : k === "]" ? act("lecture-next") : false;
+      },
+      onClose() { endScrub(true); popupOpen = false; hovered = sectionHovered = -1; }
+    };
+    const openScreen = (id, h) => {
+      page = Math.max(0, PAGES.findIndex(p => p[0] === id)); pagesVersion++;
+      hovered = sectionHovered = -1;
+      h.openBoard(closeUp); popupOpen = true; return true;
     };
     const act = (action, h) => {
       hud = h || hud;
@@ -581,28 +621,18 @@
       },
       get scrubbing() { return player.scrubbing; },
       scrubStart(owner, ray) {
-        if (!player.timeline || owner.kind !== "live" || owner.slot.spec.id !== "outline" || !pointOnScreen(owner, ray)) return false;
-        const c = canvasOf("outline"), bar = LS.timebar(c.width, c.height), cy = bar.y + bar.h / 2;
-        if (screenPoint.x < bar.x - bar.r || screenPoint.x > bar.x + bar.w + bar.r || Math.abs(screenPoint.y - cy) > bar.r * 2) return false;
-        const thumb = bar.x + bar.w * player.time / player.timeline.duration;
-        scrubOffset = Math.hypot(screenPoint.x - thumb, screenPoint.y - cy) <= bar.r * 1.3 ? screenPoint.x - thumb : 0;
-        if (!player.beginScrub()) return false;
-        scrubOwner = owner;
-        player.moveScrub((screenPoint.x - scrubOffset - bar.x) / bar.w * player.timeline.duration);
-        label(); return true;
+        if (!owner || owner.kind !== "live" || owner.slot.spec.id !== "outline" || !pointOnScreen(owner, ray) || !startScrubAt(screenPoint.x, screenPoint.y)) return false;
+        scrubOwner = owner; return true;
       },
-      scrubMove(ray) {
-        if (!player.scrubbing || !pointOnScreen(scrubOwner, ray, true)) return;
-        const c = canvasOf("outline"), bar = LS.timebar(c.width, c.height);
-        player.moveScrub((screenPoint.x - scrubOffset - bar.x) / bar.w * player.timeline.duration);
-      },
-      scrubEnd(cancelled) {
-        const ended = player.endScrub(cancelled); scrubOwner = null;
-        if (ended && !cancelled) seekScene();
-        label();
-      },
+      scrubMove(ray) { if (player.scrubbing && pointOnScreen(scrubOwner, ray, true)) moveScrubAt(screenPoint.x); },
+      scrubEnd: endScrub,
       get question() { return asking(); },
-      hover(owner, ray) { hovered = answerAt(owner, ray); },
+      get interactive() { return !!player.timeline; },
+      get hoverVersion() { return player.version; },
+      hover(owner, ray) {
+        if (popupOpen) return;
+        hovered = answerAt(owner, ray); sectionHovered = sectionAt(owner, ray);
+      },
       tap(owner, h, ray) {
         hud = h;
         if (owner.kind === "lectern" || owner.kind === "programme") return openProgramme(h);
@@ -613,10 +643,9 @@
             if (answer >= 0) { player.answer(answer); label(); }
             return true;
           }
-          if (id === "outline" || !player.timeline) return openProgramme(h);
-          page = id === "board" ? 1 : 0; pagesVersion++;
-          h.openBoard(closeUp);
-          return true;
+          if (!player.timeline) return openProgramme(h);
+          if (id === "outline" && jumpSection(sectionAt(owner, ray))) return true;
+          return openScreen(id, h);
         }
         return false;
       },
@@ -649,7 +678,7 @@
         for (const b of buttons) if (b) b.hidden = true;
       },
       // For a debug page (`__ooga.timechain.motion`): the player, `start(i)`, the lecturer, the screens and the stage.
-      stats: { player, start, get focusScreen() { return focusScreen(); }, get quizHover() { return hovered; }, quizRows, view: viewLecturer, get lecturer() { return lecturer; }, screens: () => screens(L), stage: S, get aim() { return aimNow(); }, get cues() { return cues; } }
+      stats: { player, start, get focusScreen() { return focusScreen(); }, get quizHover() { return hovered; }, get sectionHover() { return sectionHovered; }, quizRows, sectionRows, view: viewLecturer, get lecturer() { return lecturer; }, screens: () => screens(L), stage: S, get aim() { return aimNow(); }, get cues() { return cues; } }
     };
   };
   BL.timechainRoomKinds.lecture = { plan, animate, door, stageOf };

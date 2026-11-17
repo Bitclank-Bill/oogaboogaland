@@ -443,7 +443,7 @@
       follow: { y: 0.9, min: 3, max: 6, pitch: [0.2, 0.7] },
       clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: (x, z) => roof(x, z, 0), coarse: COARSE, mayPossess: (cave) => BL.net.mayDrive(cave.traits.name),
       jetpackStatus: () => NO_JETPACK,
-      // Combat captures canvas clicks before interact; its free cursor and locked reticle use the same quiz hit.
+      // Combat captures canvas clicks before interact; its free cursor and locked reticle use the same screen hit.
       captureClick: (x, y) => quizTap(x, y),
       primaryAction: (pressed, e) => pressed && quizTap(e ? e.clientX : window.innerWidth / 2, e ? e.clientY : window.innerHeight / 2, !e || !quizPressFree),
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt }
@@ -870,12 +870,12 @@
     const quizCamera = math.mat4.create(), quizUp = { x: 0, y: 1, z: 0 };
     const quizRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
     const quizHit = (x, y, reticle = false) => {
-      if (!motion || !motion.question || guide.stage || lock.on || document.querySelector("dialog:modal")) return null;
+      if (!motion || !motion.interactive || guide.stage || lock.on || document.querySelector("dialog:modal")) return null;
       const rect = canvas.getBoundingClientRect();
       if (reticle && pilot.aimFocused && !pilot.cursor.active) { x = rect.left + rect.width / 2; y = rect.top + rect.height / 2; }
       x -= rect.left; y -= rect.top;
       const hit = input.pick(x, y, pilot.player, true);
-      if (!hit || hit.owner.kind !== "live" || hit.owner.slot.spec.id !== "slide") return null;
+      if (!hit || hit.owner.kind !== "live" || (hit.owner.slot.spec.id !== "slide" && hit.owner.slot.spec.id !== "outline" && hit.owner.slot.spec.id !== "board" && hit.owner.slot.spec.id !== "caption")) return null;
       math.mat4.lookAt(quizCamera, camera.position, camera.target, camera.up || quizUp);
       math.mat4.rayFromView(quizRay, quizCamera, renderer.size.width, renderer.size.height, camera.fov, camera.position, x, y, camera.orthoMix, camera.orthoHeight);
       return hit.owner;
@@ -958,14 +958,16 @@
       quizPointer.x = e.clientX; quizPointer.y = e.clientY; quizPointer.on = e.target === canvas;
     }, { capture: true, signal: ctx.signal });
     window.addEventListener("blur", () => { quizPointer.on = false; }, { signal: ctx.signal });
+    let screenHoverVersion = -1;
     const quizHover = () => {
       if (!motion || !motion.hover) return;
       const locked = pilot.aiming && pilot.aimFocused && !pilot.cursor.active;
-      if (!motion.question || !quizPointer.on && !locked || guide.stage || lock.on || document.querySelector("dialog:modal")) {
+      if (!motion.interactive || !quizPointer.on && !locked || guide.stage || lock.on || document.querySelector("dialog:modal")) {
         motion.hover(null, null); quizView.fill(NaN); return;
       }
       const x = locked ? window.innerWidth / 2 : quizPointer.x, y = locked ? window.innerHeight / 2 : quizPointer.y, p = camera.position, t = camera.target;
-      if (quizView[0] === x && quizView[1] === y && quizView[2] === p.x && quizView[3] === p.y && quizView[4] === p.z && quizView[5] === t.x && quizView[6] === t.y && quizView[7] === t.z && quizView[8] === camera.fov) return;
+      if (screenHoverVersion === motion.hoverVersion && quizView[0] === x && quizView[1] === y && quizView[2] === p.x && quizView[3] === p.y && quizView[4] === p.z && quizView[5] === t.x && quizView[6] === t.y && quizView[7] === t.z && quizView[8] === camera.fov) return;
+      screenHoverVersion = motion.hoverVersion;
       quizView[0] = x; quizView[1] = y; quizView[2] = p.x; quizView[3] = p.y; quizView[4] = p.z; quizView[5] = t.x; quizView[6] = t.y; quizView[7] = t.z; quizView[8] = camera.fov;
       const owner = quizHit(x, y, locked);
       motion.hover(owner, owner ? quizRay : null);
@@ -999,7 +1001,7 @@
       },
       ...pilot.hooks,
       // A key pressed twice quickly is pressed twice (a PIN may repeat a digit), never a double tap.
-      onDoubleTap: (hit, p) => { if (hit && (hit.owner.kind === "lockkey" || motion && motion.question)) hooks.onTap(hit, p); else pilot.hooks.onDoubleTap(hit, p); },
+      onDoubleTap: (hit, p) => { if (hit && (hit.owner.kind === "lockkey" || motion && motion.interactive)) hooks.onTap(hit, p); else pilot.hooks.onDoubleTap(hit, p); },
       onZoom: (factor, gesture, px, py) => { if (!guide.stage) pilot.hooks.onZoom(factor, gesture, px, py); }
     });
     hud.onAction((action) => {
@@ -1119,6 +1121,7 @@
       if (motion) motion.update(dt, elapsed);
       if (scrubPointer !== null && !motion.scrubbing) finishScrub(true);
       quizHover();
+      hud.updateBoard(elapsed);
       if (sharp) sharp.tick();
       stepTweens(dt);
       fx.update(dt, elapsed);

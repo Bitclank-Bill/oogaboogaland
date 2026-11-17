@@ -340,9 +340,19 @@
       P.pix(ctx, "BEFORE CLASS", u * 7, u * 73.5, u * 2.8, DECK.amberText, "left");
       reading.slice(0, 2).forEach((r, i) => { ctx.fillStyle = DECK.soft; ctx.textAlign = "left"; const line = r.by ? `${r.title} · ${r.by}` : r.title; P.fit(ctx, line, W - u * 14, 400, u * 3.5); ctx.fillText(line, u * 7, u * 78.6 + i * u * 4.4); });
     }
+    if (meta.sectionRows) meta.sectionRows.length = S.length;
     S.forEach((sec, i) => {
       const y = u * 32 + i * step, now = i === st.section, done = i < st.section;
-      if (now) { ctx.fillStyle = "rgba(247,147,26,.16)"; P.roundRect(ctx, u * 5, y - step * 0.62, W - u * 10, step * 0.92, u * 1.2); ctx.fill(); }
+      const x = u * 5, top = y - step * 0.62, w = W - u * 10, h = step * 0.92, hover = meta.hover === i;
+      if (meta.sectionRows) {
+        const row = meta.sectionRows[i] || (meta.sectionRows[i] = {});
+        row.x = x; row.y = top; row.w = w; row.h = h;
+      }
+      if (now || hover) {
+        ctx.fillStyle = hover ? "rgba(247,147,26,.26)" : "rgba(247,147,26,.16)";
+        P.roundRect(ctx, x, top, w, h, u * 1.2); ctx.fill();
+        if (hover) { ctx.strokeStyle = DECK.ink; ctx.lineWidth = u * 0.7; ctx.stroke(); }
+      }
       ctx.fillStyle = done ? DECK.green : now ? DECK.amber : DECK.grey;
       ctx.font = P.font(700, u * 4.4, P.MONO); ctx.textAlign = "left"; ctx.fillText(done ? "✓" : String(i + 1), u * 7.4, y);
       ctx.fillStyle = now ? DECK.ink : done ? DECK.grey : DECK.soft; P.fit(ctx, sec.title, W - u * 34, now ? 700 : 500, u * 4.6); ctx.fillText(sec.title, u * 13, y);

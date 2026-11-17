@@ -5796,6 +5796,27 @@ body.tess-touring #joy-look {
   }
 }
 
+/* Live lecture screens get the viewport, with their controls below instead of a narrow side column. */
+.board-modal.board-expanded[open] {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(1440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.board-expanded .board-screen {
+  align-self: center;
+  flex: none;
+  width: min(100%, calc(max(120px, 100dvh - 230px) * var(--board-ratio, 1)));
+  margin: 0;
+  image-rendering: auto;
+  touch-action: none;
+}
+.board-expanded .board-note,
+.board-expanded .help { margin: 0; }
+
 .recipe-actions {
   grid-template-columns: 1fr;
 }
