@@ -12,7 +12,7 @@
 //
 // The app's protocol (audience protocol 1, docs/ooga-chat-app.md and docs/ooga-chat-backend.md):
 //   page:   { type: "join", zone, protocol: 1 }   { type: "resync", zone }
-//           { type: "setRole", requestId, role: "speaker" | "listener" }   { type: "setMic", requestId, muted }
+//           { type: "setRole", requestId, role: "speaker" | "listener", takeover?, replaces? }   { type: "setMic", requestId, muted }
 //   server: { type: "snapshot", zone, epoch, revision, participants, you, limits, features }
 //           { type: "delta", zone, epoch, base, revision, upsert, remove: [{ id, generation }] }
 //           { type: "you", zone, you }   { type: "result", requestId, ok, error?, you? }
@@ -40,6 +40,8 @@ export const REACTION_MS = 2600;
 export const REACT_HZ = 3, REACT_BURST = 6;
 export const FRAME_MAX = 4096;
 export const PENDING_MS = 30 * 1000;
+// How many of its own earlier connections a page may name in `setRole`'s `replaces`.
+export const REPLACES_MAX = 4;
 export const REAUTH_MS = 60 * 60 * 1000;
 export const CLOSE = { bad: 4400, auth: 4401, replaced: 4409, protocol: 4426, full: 4429, off: 4503 };
 const MSG_HZ = 10, MSG_BURST = 20;
@@ -248,9 +250,16 @@ export class Audience extends DurableObject {
     return deltas;
   }
 
-  /** Each zone's listener count for the Room's open grants (#667), sent when a zone gains or loses its last listener. */
+  // Speakers receive too, including while their microphone is opening. The island must not gate its microphone
+  // as alone merely because everybody in Ooga Chat pressed Join Voice.
+  hearingCounts() {
+    const main = this.model.counts("main"), dsb = this.model.counts("dsb");
+    return { main: main.listeners + main.chatSpeakers, dsb: dsb.listeners + dsb.chatSpeakers };
+  }
+
+  /** Each zone's receivers for the Room's open grants (#667), sent when a zone gains or loses its last receiver. */
   listenersChanged() {
-    const counts = { main: this.model.counts("main").listeners, dsb: this.model.counts("dsb").listeners };
+    const counts = this.hearingCounts();
     const sig = `${counts.main > 0}|${counts.dsb > 0}`;
     if (sig === this.listenersSig || !this.env.ROOM) return;
     this.listenersSig = sig;
@@ -598,9 +607,11 @@ export class Audience extends DurableObject {
       return { ok: false, code: answer.state === "unknown" ? "capability_unavailable" : "capability_required", retryable: answer.state === "unknown" };
     }
     // A lease the same identity holds on another connection gives way in two cases only: the visitor's own word to
-    // move their voice here (`takeover`), or this page naming the connection it has just come back from (`replaces`: a
-    // socket that dropped, whose lease the server has not yet seen end), which is closed.
-    const takeover = msg.takeover === true, replaces = typeof msg.replaces === "string" ? msg.replaces : "";
+    // move their voice here (`takeover`), or this page naming the connections it has just come back from (`replaces`,
+    // one or up to REPLACES_MAX: a socket that dropped, whose lease the server has not yet seen end), which are closed.
+    const takeover = msg.takeover === true;
+    const replaces = typeof msg.replaces === "string" ? [msg.replaces]
+      : Array.isArray(msg.replaces) ? msg.replaces.filter((id) => typeof id === "string").slice(0, REPLACES_MAX) : [];
     // The island's voice gives way the same way: its page leaves voice, and the island's word comes back without the
     // identity before the Room answers. Unreachable or refused, the model's own refusal stands.
     const held = this.model.people.get(c.id);
@@ -609,7 +620,7 @@ export class Audience extends DurableObject {
       if (this.model.conns.get(c.connId) !== c || c.zone !== zone) return { ok: false, code: "stale_epoch" };
     }
     for (const o of [...this.model.people.get(c.id).conns.values()]) {
-      if (o === c || !o.lease || !takeover && o.connId !== replaces) continue;
+      if (o === c || !o.lease || !takeover && !replaces.includes(o.connId)) continue;
       if (!takeover) { this.close(o.connId, CLOSE.replaced, "replaced"); continue; }
       const lease = this.model.endLease(o.connId);
       this.save(o.connId);
@@ -672,7 +683,7 @@ export class Audience extends DurableObject {
     this.confirmRetired();
     await this.scheduleAlarm();
     if (clean.length) this.refreshContributions();
-    return { ok: true, pending: [...pending], listeners: { main: this.model.counts("main").listeners, dsb: this.model.counts("dsb").listeners } };
+    return { ok: true, pending: [...pending], listeners: this.hearingCounts() };
   }
 
   /** An island world speaker's reaction (the Room's `react`), to Ooga Chat's clients in its zone (#668). */

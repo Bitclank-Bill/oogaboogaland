@@ -2057,10 +2057,11 @@ body[data-active-scene="block"] .mode-hud {
 }
 
 .panel-foot > * { flex: 1 1 100%; min-width: 0; }
-.panel-foot > .account { width: auto; }
+.panel-foot > .account { flex: 1 1 100%; width: auto; }
 
 @container panel-foot (min-width: 960px) {
   .panel-foot > * { flex: 0 1 auto; margin-top: 8px; }
+  .panel-foot > .account { flex: 0 1 auto; }
   .panel-foot > .reactions { flex-basis: 560px; }
 }
 
@@ -4136,7 +4137,7 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   to { transform: scaleX(1); }
 }
 
-/* The way out, beside the Ooga's face: an arrow out of a bracket, no words. Where a place's banner has a Leave button,
+/* The way out, beside the Ooga's face: an orange arrow over EXIT, an exit sign. Where a place's banner has a Leave button,
    hud.js shows this one, named by it, and the banner's own is kept out of sight. */
 body[data-leave-hud] .presets [data-action="leave"] {
   display: none;
@@ -4150,8 +4151,8 @@ body[data-leave-hud] .presets [data-action="leave"] {
 }
 
 .leave-icon {
-  width: 40px;
-  height: 40px;
+  width: 68px;
+  height: 42px;
   flex: none;
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
 }
@@ -12449,8 +12450,6 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .explore-coach div { display: flex; flex-wrap: wrap; gap: 8px; }
 .explore-coach button { min-height: 44px; white-space: normal; flex: 1; }
 
-.destination-map-label { position: absolute; bottom: 1px; left: 0; right: 0; font-size: 10px; line-height: 12px; color: var(--accent-text); text-shadow: 0 1px 2px #000; }
-
 /* Block Frenzy's menu: dark backing behind every line of text on the wood, so it reads. */
 #block-board .garage-head,
 #block-board .garage-col {
@@ -12810,3 +12809,123 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .cave-directory .modal-close { width: 44px; height: 44px; }
 
 body[data-active-scene] #cave-directory-button { min-height: 44px; }
+
+/* Duels (duel.js): the target, a challenge heard and the duel's bars, at the top left under the banner (the top centre
+   is the movement coaching card's and the walking directions'). */
+.duel-target, .duel-invite, .duel-hud {
+  position: fixed;
+  left: calc(16px + var(--safe-left));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px - var(--safe-left));
+  padding: 8px 10px;
+  color: var(--paper);
+  background: rgba(22, 20, 18, 0.88);
+  border: 2px solid var(--wood-edge);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.duel-target { top: calc(76px + var(--safe-top)); }
+.duel-invite { top: calc(128px + var(--safe-top)); width: min(320px, calc(100vw - 32px)); flex-wrap: wrap; justify-content: center; }
+.duel-hud { top: calc(76px + var(--safe-top)); flex-direction: column; align-items: stretch; gap: 6px; }
+.duel-yield { align-self: center; }
+.duel-target[hidden], .duel-invite[hidden], .duel-hud[hidden], .duel-note[hidden] { display: none; }
+.duel-target-name { font-weight: 700; overflow-wrap: anywhere; }
+.duel-invite-text { flex-basis: 100%; margin: 0; text-align: center; font-weight: 700; }
+.duel-button, .duel-yield {
+  padding: 6px 12px;
+  color: var(--ink);
+  background: var(--accent);
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.duel-button:disabled { opacity: 0.6; cursor: default; }
+.duel-decline, .duel-yield { color: var(--paper); background: var(--stone-lt); }
+.duel-yield { padding: 3px 10px; font-size: 11px; }
+.duel-close {
+  width: 28px;
+  height: 28px;
+  color: var(--paper);
+  background: none;
+  border: 0;
+  font-size: 18px;
+  cursor: pointer;
+}
+/* The panel: its title and the time left, then a row a duelist (name, bar, health, metres from the flag), one over
+   the other in shared columns. */
+.duel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.duel-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
+.duel-rows { display: grid; grid-template-columns: minmax(0, auto) auto 3ch 5ch; gap: 6px 8px; align-items: center; }
+.duel-side { display: contents; }
+.duel-name { max-width: 14ch; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.duel-far { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; opacity: 0.85; }
+.duel-far[data-out="true"] { color: var(--danger); font-weight: 700; opacity: 1; }
+.duel-bar { position: relative; display: block; width: min(140px, 28vw); height: 8px; background: rgba(0, 0, 0, 0.5); border-radius: 4px; overflow: hidden; }
+/* Green, amber under half and orange under a quarter, as the bars over the duelists' heads; what a blow just took stays
+   red behind the bar a beat (the chip follows the same width late). */
+.duel-fill { position: relative; display: block; width: 100%; height: 100%; background: #4ade80; transition: width 0.15s; }
+.duel-fill[data-level="mid"] { background: #f2c94c; }
+.duel-fill[data-level="low"] { background: #ff9a3d; }
+.duel-chip { position: absolute; inset: 0 auto 0 0; width: 100%; background: #e0261b; transition: width 0.7s ease-out 0.35s; }
+.duel-hp { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.duel-clock { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.duel-clock[data-low="true"] { color: var(--danger); }
+.duel-note { margin: 0; color: var(--danger); font-weight: 700; }
+/* A blow taken: the view's edge flashes red (duel.js fades it). */
+.duel-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(200, 16, 16, 0) 42%, rgba(200, 16, 16, 0.5) 78%, rgba(170, 8, 8, 0.85) 100%);
+}
+/* The count before the first blow and how the duel ended, large over the middle of the view. */
+.duel-count, .duel-result {
+  position: fixed;
+  left: 50%;
+  top: 21%;
+  z-index: 31;
+  margin: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+}
+.duel-count, .duel-result-title {
+  font-weight: 900;
+  line-height: 1;
+  color: #ffe27a;
+  text-shadow: 0 5px 0 #24100e, -3px 0 0 #24100e, 3px 0 0 #24100e, 0 -3px 0 #24100e, 0 0 26px rgba(0, 0, 0, 0.75);
+}
+.duel-count { font-size: clamp(84px, 20vw, 200px); }
+.duel-count[data-go="true"] { font-size: clamp(56px, 13vw, 140px); color: #ff6a4d; }
+.duel-result { display: grid; justify-items: center; gap: 12px; }
+.duel-result-title { font-size: clamp(46px, 11vw, 128px); letter-spacing: 0.04em; }
+.duel-result[data-result="lost"] .duel-result-title { color: #ff5a4d; }
+.duel-result[data-result="draw"] .duel-result-title, .duel-result[data-result="over"] .duel-result-title { color: var(--paper); }
+.duel-result-line {
+  max-width: calc(100vw - 32px);
+  padding: 6px 14px;
+  color: var(--paper);
+  background: rgba(22, 20, 18, 0.88);
+  border: 2px solid var(--wood-edge);
+  border-radius: var(--radius);
+  font-size: clamp(13px, 2.4vw, 20px);
+  font-weight: 700;
+  white-space: normal;
+}
+.duel-flash[hidden], .duel-count[hidden], .duel-result[hidden] { display: none; }
+.players-duel { grid-column: 1 / -1; justify-self: start; margin-top: 6px; }
+.players-duel[hidden] { display: none; }
+/* On a narrow screen the movement coaching card spans the top: the duel's cards stand below it while it shows. */
+@media (max-width: 760px) {
+  body:has(#explore-coach:not([hidden])) .duel-target,
+  body:has(#explore-coach:not([hidden])) .duel-hud { top: calc(172px + var(--safe-top)); }
+  body:has(#explore-coach:not([hidden])) .duel-invite { top: calc(224px + var(--safe-top)); }
+}

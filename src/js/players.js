@@ -41,6 +41,9 @@
   const sheet = $("sheet"), panel = $("players-panel"), list = $("players-list"), status = $("players-status"), count = $("players-count");
   const hearing = $("players-hearing"), range = $("players-hearing-range"), rangeValue = $("players-hearing-value"), V = BL.voice;
   const speak = $("players-speak"), speakBox = $("players-speak-input"), synth = window.speechSynthesis || null, toastBox = $("toast");
+  const muteDuels = $("players-mute-duels");
+  muteDuels.addEventListener("change", () => V.setMuteDuels(muteDuels.checked));
+  net.subscribeDuel(V.duel);
   // The slider's stops run RADIUS_MIN..RADIUS_MAX metres, and one more stop past them is no limit.
   const RANGE_STEP = Number(range.step);
   range.min = String(V.RADIUS_MIN);
@@ -101,7 +104,10 @@
     slider.type = "range"; slider.className = "players-volume-range"; slider.id = `${id}-range`;
     slider.min = "0"; slider.max = String(V.VOLUME_MAX * 100); slider.step = "5"; slider.value = "100";
     value.className = "players-volume-value"; value.htmlFor = slider.id; value.textContent = "100%";
-    volume.append(volumeLabel, slider, value);
+    // A duel (duel.js), offered under another player's name while the island can hold one.
+    const duel = document.createElement("button");
+    duel.type = "button"; duel.className = "duel-button players-duel"; duel.textContent = "Challenge to a duel"; duel.hidden = true;
+    volume.append(volumeLabel, slider, value, duel);
     dots.className = "roster-dots";
     presence.className = "roster-presence"; presence.dataset.online = "true"; presence.setAttribute("role", "img");
     presence.setAttribute("aria-label", "Online"); presence.title = "Online";
@@ -124,7 +130,7 @@
     note.className = "players-note"; note.textContent = ", last known location"; note.hidden = true;
     distance.append(note);
     li.append(dots, name, mark, marks, look, distance, volume);
-    return { li, label, toggle, volume, slider, value, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
+    return { li, label, toggle, volume, slider, value, duel, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
       aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false, faded: false };
   };
   const selfRow = makeRow();
@@ -198,10 +204,11 @@
       const words = hand && BL.reactionPolicy.HANDS.includes(hand) ? "Hand raised" : `Pinned emoji ${hand}`;
       row.hand.title = words; row.hand.setAttribute("aria-label", words);
     }
-    const blocked = !!login && BL.voice.mutedLocally(row.id);
-    if (row.voiceLook !== look || row.voiceLogin !== login || row.voiceSelf !== self || row.blocked !== blocked) {
+    const blocked = !!login && BL.voice.mutedLocally(row.id), duelMuted = !self && V.mutedByDuel(row.id);
+    if (row.voiceLook !== look || row.voiceLogin !== login || row.voiceSelf !== self || row.blocked !== blocked || row.duelMuted !== duelMuted) {
+      row.duelMuted = duelMuted;
       row.voiceLook = look; row.voiceLogin = login; row.voiceSelf = self; row.blocked = blocked;
-      const button = row.voice, words = BL.hud.voiceWords(look, self, blocked, login);
+      const button = row.voice, words = BL.hud.voiceWords(look, self, blocked, login) + (duelMuted ? ". Automatically muted until their duel ends" : "");
       button.hidden = !look;
       button.dataset.voice = look; button.dataset.login = login; button.dataset.self = String(self);
       button.disabled = !login && !self;
@@ -299,6 +306,8 @@
   const paintHearing = () => {
     if (!showing || stale) return;
     const voice = V.stats;
+    muteDuels.checked = voice.muteDuels;
+    muteDuels.disabled = !net.state.me;
     hearing.hidden = false;
     const words = voice.radius ? `${voice.radius} m` : "No limit", value = String(voice.radius || V.RADIUS_MAX + RANGE_STEP);
     if (rangeValue.textContent !== words) { rangeValue.textContent = words; range.setAttribute("aria-valuetext", words); }
@@ -409,7 +418,14 @@
       if (row && !row.cloud) {
         const open = toggle.getAttribute("aria-expanded") !== "true";
         toggle.setAttribute("aria-expanded", String(open)); row.volume.hidden = !open;
+        row.duel.hidden = !(open && BL.duel && BL.duel.offered(row.id));
       }
+      return;
+    }
+    const duel = e.target.closest(".players-duel");
+    if (duel) {
+      if (e.detail) duel.blur();
+      BL.duel.challenge(Number(duel.closest("li").dataset.id));
       return;
     }
     const look = e.target.closest(".players-look");
