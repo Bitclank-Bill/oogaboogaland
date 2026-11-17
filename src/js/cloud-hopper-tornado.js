@@ -23,7 +23,7 @@
   // far ahead of them, none nearer the finish than `LAST` of the way (or it is skipped), so each is met coming. Once
   // its cap has gathered, a rider within `TRIGGER` of it across the course, or `PASS` nearer the finish than it,
   // brings it down, and it stays down until the rider is `GONE` nearer the finish than it.
-  const SPOTS = [0.22, 0.5, 0.78], SPREAD = 0.1, SIDE = [8, 36], DRIFT = [1.4, 2.4], AHEAD = 180, LAST = 0.1;
+  const SPOTS = [0.22, 0.5, 0.78], SPREAD = 0.1, SIDE = [8, 36], DRIFT = [1.4, 2.4], AHEAD = 180, LAST = 0.1, APART = 100;
   const TRIGGER = 220, PASS = 8, GONE = 50;
   // It comes down young: its funnel under the cap `THIN` of its full girth and its hold `WEAK` of its full as its tip
   // reaches the course, both growing to full as its tip goes on down to the bottom. Under the cap it blends from the
@@ -125,7 +125,7 @@
     const spots = [], mains = [];
     let total = 1, goalX = 0, goalZ = 0;
     const away = (px, pz) => Math.hypot(goalX - px, goalZ - pz);
-    let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0;
+    let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0, calm = null;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
     let girth = THIN, power = WEAK, seen = 1, seenNear = Infinity, seenFar = Infinity;
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
@@ -172,16 +172,27 @@
     const brew = (spot, x, z) => {
       const ahead = away(x, z) - AHEAD;
       let best = spot.landing;
+      if (!best) return false;
       if (away(best.x, best.z) > ahead) {
         best = null;
         for (const c of mains) if (away(c.x, c.z) <= ahead && (!best || away(c.x, c.z) > away(best.x, best.z))) best = c;
         if (!best || away(best.x, best.z) < LAST * total) return false;
+      }
+      // A course's calm stretches (a portal's throw, cloud-hopper-course.js), if it has any: one that would brew over
+      // a landing in one brews over the nearest landing outside them all instead, ahead of the rider as before.
+      if (calm && !outside(best)) {
+        const from = away(best.x, best.z);
+        best = null;
+        for (const c of mains) { const d = away(c.x, c.z); if (d <= ahead && d >= LAST * total && outside(c) && (!best || Math.abs(d - from) < Math.abs(away(best.x, best.z) - from))) best = c; }
+        if (!best) return false;
       }
       const fx = goalX - best.x, fz = goalZ - best.z, d = Math.hypot(fx, fz) || 1, sx = -fz / d * spot.side, sz = fx / d * spot.side;
       const drift = range(DRIFT), dx = -sx + sz * (rand() - 0.5) * 0.4, dz = -sz - sx * (rand() - 0.5) * 0.4, l = Math.hypot(dx, dz);
       begin(best.x + sx * spot.off, best.top, best.z + sz * spot.off, dx / l, dz / l, drift, best.x, best.z);
       return true;
     };
+    // Whether a landing stands outside every calm stretch of the course.
+    const outside = (c) => { const d = away(c.x, c.z); for (const stretch of calm) if (d >= stretch[0] && d <= stretch[1]) return false; return true; };
     // How much nearer the goal the rider is than the tornado (m).
     const passed = (x, z) => away(ax, az) - away(x, z);
     // Each frame of a run: (x, z) the rider's feet across the course, `finish` the final cloud, `whirl` the course's,
@@ -282,6 +293,7 @@
       rand = mulberry32(seed ^ 0x51ed270b); spots.length = mains.length = made = 0; state = IDLE; age = 0; strength = 0; kept = false; hide();
       seenNear = haze ? haze[1] + SEEN[0] : Infinity; seenFar = haze ? haze[1] + SEEN[1] : Infinity;
       goalX = finish.x; goalZ = finish.z; total = 1;
+      calm = course.calm && course.calm.length ? course.calm : null;
       let last = 0;
       for (const c of course.clouds) if (c.main) { mains.push(c); last = Math.max(last, c.arrival); total = Math.max(total, away(c.x, c.z)); }
       for (const centre of SPOTS) {
@@ -289,6 +301,17 @@
         let best = null;
         for (const c of mains) if (!best || Math.abs(c.arrival - share * last) < Math.abs(best.arrival - share * last)) best = c;
         spots.push({ landing: best, side: rand() < 0.5 ? -1 : 1, off: range(SIDE) });
+      }
+      // A course with calm stretches (a portal's throw): a spot over a landing in one moves to the nearest landing
+      // outside them all that is clear of the finish and APART from the other spots, or is left out.
+      if (calm) for (const spot of spots) {
+        if (outside(spot.landing)) continue;
+        const from = away(spot.landing.x, spot.landing.z);
+        let best = null;
+        for (const c of mains) { const d = away(c.x, c.z);
+          if (d < LAST * total || !outside(c) || spots.some(o => o !== spot && o.landing && Math.abs(away(o.landing.x, o.landing.z) - d) < APART)) continue;
+          if (!best || Math.abs(d - from) < Math.abs(away(best.x, best.z) - from)) best = c; }
+        spot.landing = best;
       }
       if (only >= 0) { spots[0] = spots[only]; spots.length = 1; rand = mulberry32(seed ^ 0x51ed270b ^ Math.imul(only + 1, 0x9e3779b9)); }
     };

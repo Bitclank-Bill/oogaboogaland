@@ -14,11 +14,13 @@
   // A portal cloud (Storm's Eye): its half-size (m); how far over the landing behind it its top stands; its lane and
   // speed [least, range], several times an ordinary cloud's; its slot (s), far shorter than a fading cloud's, and how
   // long it is gone in it. WARP is how far along the course it throws a rider (m), to a landing between WARP_NEAR and
-  // WARP_FAR on that will stand at least WARP_STEADY seconds more.
+  // WARP_FAR on that never fades, its own for the whole run.
   const PORTAL = Object.freeze({ r: 3, over: 2.2, lane: Object.freeze([8, 2]), speed: Object.freeze([3.4, 1.2]), cycle: Object.freeze([9, 11]), hidden: Object.freeze([1.5, 2.5]) });
-  const WARP = 50, WARP_NEAR = 38, WARP_FAR = 66, WARP_STEADY = 4;
-  // With no landing to throw to in that stretch (a tornado standing on it), a portal throws to one within WARP_WIDE.
-  const WARP_WIDE = Object.freeze([24, 110]);
+  const WARP = 50, WARP_NEAR = 38, WARP_FAR = 66;
+  // No tornado is brewed over a landing within CALM metres (along the course) of a portal, the landing it throws to
+  // or the way between them (`calm`): a tornado roams no more than about 40 m from the landing it is brewed over and
+  // reaches about 36 m from its axis, so none ever stands by a portal's throw.
+  const CALM = 90;
   const GRAVITY = 9.8, PICKUP_LIFT = 0.7, PICKUP_RADIUS = 0.75, RUN_SPEED = 11.625, JUMP_SPEED = 4.8, SETTLE = 1.5, WOBBLE = 0.12;
   // Lifetime classes: a permanent cloud never fades; an ordinary one disappears once in each of its own slots.
   const PERMANENT = 0, ORDINARY = 1;
@@ -470,7 +472,17 @@
         portal.gap = j; portal.baseX = (a.baseX + b.baseX) / 2; portal.baseZ = (a.baseZ + b.baseZ) / 2; portal.y = portal.top = a.y + PORTAL.over;
         portal.arrival = clamp((startDistance - outAlong(portal.baseX, portal.baseZ)) / distance, 0, 1) * expected;
       }
+      // Its one landing, for the whole run: the white main landing that never fades nearest WARP metres on from it.
+      const from = outAlong(portal.baseX, portal.baseZ);
+      let miss = Infinity;
+      for (let m = j + 2; m < count - 2; m++) {
+        const c = landings[m], on = from - outAlong(c.baseX, c.baseZ);
+        if (on >= WARP_NEAR && on <= WARP_FAR && c.kind === "normal" && c.life === PERMANENT && Math.abs(on - WARP) < miss) { portal.to = c; miss = Math.abs(on - WARP); }
+      }
     }
+    // The stretches of the course no tornado is brewed over, as distances from the finish [nearer, further]: each
+    // portal's, from CALM past its landing to CALM before the portal itself.
+    const calm = portals.filter(q => q.to).map(q => Object.freeze([Math.hypot(q.to.baseX - finish.x, q.to.baseZ - finish.z) - CALM, Math.hypot(q.baseX - finish.x, q.baseZ - finish.z) + CALM]));
     for (const cloud of clouds) {
       const offset = offsetAt(cloud, 0, wobbleAt(cloud, 0));
       cloud.x = cloud.previousX = cloud.baseX + cloud.moveX * offset;
@@ -577,24 +589,10 @@
     // How far along the course (m) a rider at (x, z) is from the place where the world turns over next, `done` of them
     // behind it: Infinity with none left, negative once past it.
     const toFlip = (x, z, done) => done < flips.length ? (x - finish.x) * nx + (z - finish.z) * nz - flips[done].line : Infinity;
-    // Whether a landing a portal may throw to (`warpTo`) still will: a plain white one that stands now, will stand
-    // WARP_STEADY seconds more and that `safe` passes.
-    const warpHolds = (c, safe = null) => !!c && c.kind === "normal" && c.active && c.phase === SOLID && solidLeft(c) >= WARP_STEADY && (!safe || safe(c));
-    // The landing a portal cloud throws a rider on to, read after update: the plain white main landing nearest WARP metres on down
-    // the course from it that stands now, will stand WARP_STEADY seconds more and that `safe` passes, between
-    // WARP_NEAR and WARP_FAR on, never the last two. With none there (a tornado standing by it), the nearest to WARP
-    // metres on within WARP_WIDE that will do; null only when none of those will either.
-    const warpTo = (portal, safe = null) => {
-      const from = (portal.x - finish.x) * nx + (portal.z - finish.z) * nz;
-      let best = null, miss = Infinity, wide = null, off = Infinity;
-      for (let i = 0; i < count - 2; i++) {
-        const c = landings[i], on = from - ((c.x - finish.x) * nx + (c.z - finish.z) * nz);
-        if (on < WARP_WIDE[0] || on > WARP_WIDE[1] || !warpHolds(c, safe)) continue;
-        if (on >= WARP_NEAR && on <= WARP_FAR) { if (Math.abs(on - WARP) < miss) { best = c; miss = Math.abs(on - WARP); } }
-        else if (Math.abs(on - WARP) < off) { wide = c; off = Math.abs(on - WARP); }
-      }
-      return best || wide;
-    };
+    // The landing a portal cloud throws a rider on to: its own, the same all through a run, a plain white main
+    // landing that never fades, WARP_NEAR to WARP_FAR on down the course and never one of the last two. No tornado
+    // stands by it, by the portal or between them (`calm`).
+    const warpTo = (portal) => portal.to || null;
     // Seconds of support this cloud has left by its schedule, read after update: Infinity when it never fades,
     // the time to the end of its fade otherwise, or minus the time until it is back while it is gone.
     const solidLeft = (cloud) => cloud.phase === HIDDEN || cloud.phase === APPEARING ? courseTime - cloud.windowEnd
@@ -788,8 +786,8 @@
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, due, toFlip, warpTo, warpHolds };
+      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, calm, due, toFlip, warpTo };
   };
   BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
-    PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING, PORTAL, WARP, WARP_WIDE };
+    PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING, PORTAL, WARP, CALM };
 })();

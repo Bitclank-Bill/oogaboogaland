@@ -65,8 +65,7 @@
   // Nothing a warp or a flip shows is built, uploaded or looked up on the frame it starts. As a run's course is laid
   // every mesh either will show (the sparkle, each cloud's day and night fill, the jetpack and its flame) is handed to
   // the renderer to ready (`warmRun`). Then, each frame, a rider within WARM_SECONDS of touching a portal cloud (by how
-  // fast the two close) has its landing found already (`readyTo`, checked again at the touch, found afresh only if it
-  // no longer holds), and one within WARM_SECONDS of a flip's place (at its speed down the course, WARM_PACE at least)
+  // fast the two close) has its landing noted (`readyTo`: the portal's own, the same all through a run), and one within WARM_SECONDS of a flip's place (at its speed down the course, WARM_PACE at least)
   // has those meshes readied once more (`readyFlip`). A rider that turns away drops the landing found; nothing else is
   // held, and nothing of the course changes.
   const WARM_SECONDS = 1.2, WARM_PACE = 6;
@@ -359,21 +358,11 @@
       else relight(false);
       return held;
     };
-    // Whether no tornado that is down stands near enough a landing to take a rider there.
-    const safeLanding = (c) => {
-      for (const t of tornadoes) {
-        if (!t.down) continue;
-        t.axisAt(c.top, whirlAxis);
-        if (Math.hypot(c.x - whirlAxis.x, c.z - whirlAxis.z) < t.radiusAt(c.top) + WHIRL_LET_GO + 6) return false;
-      }
-      return true;
-    };
     // A portal touched: it flashes and, if a landing stands safe to come out on, the rider goes in with its speed
     // and its controls as they are.
     const beginWarp = (portal, fresh = true) => {
       if (warping >= 0) return;
-      // The landing found as the rider came, if it still holds; found now otherwise.
-      const to = readyPortal === portal.index && course.warpHolds(readyTo, safeLanding) ? readyTo : course.warpTo(portal, safeLanding) || course.warpTo(portal);
+      const to = course.warpTo(portal);
       readyPortal = -1; readyTo = null;
       // It flashes as it is touched, once a touch (it is asked again each frame it is stood on with nowhere to throw).
       if (fresh) { flashed = portal.index; flashAt = displayTime; }
@@ -409,8 +398,8 @@
         if (d - R <= Math.max(closing, 0) * WARM_SECONDS + 1) near = q;
       }
       if (!near) { readyPortal = -1; readyTo = null; }
-      else if (readyPortal !== near.index || !course.warpHolds(readyTo, safeLanding)) {
-        readyPortal = near.index; readyTo = course.warpTo(near, safeLanding);
+      else if (readyPortal !== near.index) {
+        readyPortal = near.index; readyTo = course.warpTo(near);
         warmEach(sparks[0].geometry);
       }
       const left = course.toFlip(p.x, p.z, turns);

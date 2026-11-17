@@ -6160,30 +6160,30 @@ const cloudHopperFailureChecks = async engine => {
       rows.brief &&= course.portals.every(q => q.slotSeconds < Math.min(...others.filter(c => c.life === ORDINARY).map(c => c.slotSeconds)) && q.slotSeconds >= C.PORTAL.cycle[0]);
       rows.uncounted &&= course.portals.every(q => course.clouds.every(c => !course.linked(c.index, q.index) && !course.linked(q.index, c.index)));
       // At any time through a run every cloud that shows holds a rider on its top but a portal, which holds none
-      // (it is touched, never stood on), and a portal's throw is to a main landing about 50 m on that stands now and
-      // for seconds yet; with that stretch ruled out, to one within 24 to 110 m on.
+      // (it is touched, never stood on), and a portal's throw is always to its one landing: a white main landing that
+      // never fades, 38 to 66 m on, solid all through and never one of the last two. No tornado is brewed within 90 m
+      // along the course of the portal, that landing or the way between (`calm`).
       course.update(1); course.start();
+      const own = course.portals.map(q => course.warpTo(q));
       let thrown = 0;
       for (let t = 0.5; t < 400; t += 2.3) {
         course.update(2.3, t);
         rows.landable &&= course.clouds.every(c => c.active === (c.opacity > 0) && (!c.active || (c.kind === "portal"
           ? course.supportAt(c.x, c.z, c.top, 0.1) < c.top && course.contactAt(c.x, c.z, c.top) !== c : course.supportAt(c.x, c.z, c.top, 0.1) >= c.top)));
-        for (const q of course.portals) {
-          const to = course.warpTo(q), on = to ? (q.x - to.x) : 0;
-          rows.always &&= !!to;
-          if (!to) continue;
+        course.portals.forEach((q, k) => {
+          const to = course.warpTo(q), on = to ? q.baseX - to.baseX : 0;
+          rows.always &&= !!to && to === own[k] && to === q.to;
+          if (!to) return;
           thrown++;
-          rows.warps &&= to.main && to.kind === "normal" && to.active && to.phase === C.SOLID && course.solidLeft(to) >= 4 && on >= 38 && on <= 66
+          rows.warps &&= to.main && to.kind === "normal" && to.life === PERMANENT && to.active && to.phase === C.SOLID && on >= 38 && on <= 66
             && to !== order[order.length - 1] && to !== order[order.length - 2];
-          const other = course.warpTo(q, c => c !== to), wide = course.warpTo(q, c => q.x - c.x < 38 || q.x - c.x > 66);
-          rows.safe &&= other !== to && course.warpTo(q, () => false) === null && (!other || other.main && other.active)
-            && (!wide || wide.main && wide.kind === "normal" && wide.phase === C.SOLID && q.x - wide.x >= C.WARP_WIDE[0] && q.x - wide.x <= C.WARP_WIDE[1] && wide !== order[order.length - 1] && wide !== order[order.length - 2]);
-        }
+          rows.safe &&= course.calm[k][0] === Math.hypot(to.baseX, to.baseZ) - C.CALM && course.calm[k][1] === Math.hypot(q.baseX, q.baseZ) + C.CALM && C.CALM === 90;
+        });
       }
-      rows.warps &&= thrown > 100;
-      // Both portals taken still leaves a run over 25% longer than Level 4's route (15% with both at their widest
-      // throw), and none under 50%.
-      rows.fair &&= (five.route - 2 * 66) / LEVELS[3].route > 1.25 && (five.route - 2 * C.WARP_WIDE[1]) / LEVELS[3].route > 1.15 && five.route / LEVELS[3].route < 1.5;
+      rows.warps &&= thrown > 100 && course.calm.length === 2;
+      // Both portals taken still leaves a run over 25% longer than Level 4's route, and none under 50%.
+      rows.fair &&= (five.route - 2 * 66) / LEVELS[3].route > 1.25 && five.route / LEVELS[3].route < 1.5;
+      rows.noneBefore &&= LEVELS.slice(0, 4).every(l => C.create({ start: { x: 42 + l.route, y: 20 + l.slope * l.route, z: 0 }, finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed, layout: l.layout, timing: l.timing }).calm.length === 0);
     }
     rows.seeded &&= places.size > 3;
     // Under many more seeds a portal always has a white landing that never fades to throw a rider to.
@@ -6192,7 +6192,7 @@ const cloudHopperFailureChecks = async engine => {
       rows.always &&= course.portals.length === 2 && course.portals.every((q) => { const to = course.warpTo(q); return !!to && to.kind === "normal"; })
         && course.portals.every(q => course.landings.some(c => c.life === C.PERMANENT && c.kind === "normal" && q.baseX - c.baseX >= 38 && q.baseX - c.baseX <= 66));
     }
-    record("Cloud Hopper Storm's Eye course: one path whose clouds are the same with or without its flip and portals, every showing cloud but a portal landable at any time; one flip at a place seeded with the course, between 40% and 60% of the way down, which under 150 seeds is 150 different places spread over nearly the whole of that stretch, so none can be learned; its last jump is one plain jump as every level's is (the final landing permanent and plain, its edge a jump a rider makes at a walk with no air jump with 5 m and more to spare); two gold portal clouds, faster and briefer than any other cloud, counted on by no check and holding no rider, each always with a white landing that never fades about 50 m on to throw to, throwing only to one that stands, and to one within 24 to 110 m on when that stretch is ruled out; Levels 1 to 4 have neither",
+    record("Cloud Hopper Storm's Eye course: one path whose clouds are the same with or without its flip and portals, every showing cloud but a portal landable at any time; one flip at a place seeded with the course, between 40% and 60% of the way down, which under 150 seeds is 150 different places spread over nearly the whole of that stretch, so none can be learned; its last jump is one plain jump as every level's is (the final landing permanent and plain, its edge a jump a rider makes at a walk with no air jump with 5 m and more to spare); two gold portal clouds, faster and briefer than any other cloud, counted on by no check and holding no rider, each with its own white landing that never fades about 50 m on to throw to, the same all through a run, and a calm stretch 90 m either side of its throw that no tornado is brewed in; Levels 1 to 4 have neither, nor any calm stretch",
       Object.values(rows).every(Boolean), JSON.stringify({ ...rows, places: [...places] }));
   }
   // Storm's Eye's runs. A rider goes down the whole course landing by landing to the pile under several seeds, taking
@@ -6659,9 +6659,13 @@ const cloudHopperFailureChecks = async engine => {
     for (const name of ["cloud-hopper-tornado", "cloud-hopper-gust"]) runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), context);
     flipper.dispose();
     flipper = BL.cloudHopper.create({ ...hopperOptions, renderer });
-    const bands = { upright: [], over: [] }; let bandOk = true;
+    const bands = { upright: [], over: [] }; let bandOk = true, calmLeast = null;
     const shownAt = [], STATES = ["upright", "roll 1", "after 1", "over"], covered = [0, 1, 2].map(() => STATES.map(() => 0)), windAt = [0, 0], boltsAt = [0, 0];
     let worstGap = 0;
+    // How far a point is from a portal's throw: the portal, its landing and the way between, as they stand now.
+    const offThrow = (at, q) => { const bx = q.to.x - q.x, bz = q.to.z - q.z, k = Math.max(0, Math.min(1, ((at.x - q.x) * bx + (at.z - q.z) * bz) / (bx * bx + bz * bz)));
+      return Math.hypot(at.x - q.x - bx * k, at.z - q.z - bz * k); };
+    const standOff = [Infinity, Infinity];
     for (const seed of [5150, 77, 4242, 9001, 31337]) {
       begin(seed);
       const course = flipper.course, order = course.landings, p = actor.root.position, R0 = 8;
@@ -6674,6 +6678,8 @@ const cloudHopperFailureChecks = async engine => {
       // The view from behind the rider down the course, never inside a funnel (which cuts its slabs away round the eye).
       aimed = order[order.length - 1];
       const check = (state, still = true) => { const over = flipper.turn !== 0 ? 1 : 0;
+        // (The first tornado is also brought down by hand below, wherever the band's pass wants it; the other two are the run's own.)
+        flipper.tornadoes.forEach((t, i) => { if (i && t.active) for (const q of course.portals) { t.axisAt(q.top, axis); standOff[over] = Math.min(standOff[over], offThrow(axis, q) - t.radiusAt(q.top)); } });
         flipper.tornadoes.forEach((t, i) => {
           const own = batches.slice(i * 7, i * 7 + 7), first = kids.indexOf(own[0]);
           // Whatever of it there is shows: the level has no haze to hide one.
@@ -6761,7 +6767,13 @@ const cloudHopperFailureChecks = async engine => {
       // One more is brought down by the course on each side of the place, for a pass through its outer band both ways up.
       { const spot = order.filter(l => !course.due(l.x, l.z, 0)).at(-6); flipper.tornadoes[0].spawn(spot.x, spot.top, spot.z + 14, 0, 1); wait("upright", 0); band("upright"); }
       cross(0); wait("over", 1);
-      { const spot = order[Math.floor(order.length * 0.85)]; flipper.tornadoes[0].spawn(spot.x, spot.top, spot.z + 14, 0, 1); wait("over", 1); band("over"); }
+      // (Over the landing in the course's last fifth that stands furthest from the run's own two, so the pass meets this
+      // one alone; no further up the course, or the rider would wait past it and it would leave.)
+      { let spot = null, room = -1;
+        for (const l of order.slice(Math.floor(order.length * 0.8), Math.floor(order.length * 0.92))) { let least = Infinity;
+          for (const t of flipper.tornadoes.slice(1)) { if (!t.active) continue; t.axisAt(l.top, axis); least = Math.min(least, Math.hypot(axis.x - l.x, axis.z - l.z)); }
+          if (least > room) { room = least; spot = l; } }
+        flipper.tornadoes[0].spawn(spot.x, spot.top, spot.z + 14, 0, 1); wait("over", 1); band("over"); }
       if (!(flipper.phase === "running" && flipper.turn > 3 && flipper.turns === 1)) { ok = false; why.add(`ended ${flipper.phase} ${flipper.turns}`); }
       callbacks.onExit(); aimed = null;
       shownAt.push(counts);
@@ -6772,8 +6784,38 @@ const cloudHopperFailureChecks = async engine => {
     // least through the roll, and the wind and the lightning both ways up.
     all.tornadoesCovered = covered.every(row => row[0] + row[3] > 0) && [0, 1, 3].every(state => covered.some(row => row[state] > 0)) && worstGap < 2.7;
     all.windCovered = windAt[0] > 0 && windAt[1] > 0; all.boltsCovered = boltsAt[0] > 0 && boltsAt[1] > 0;
+    // No tornado ever stands by a portal's throw. In the runs above, upright and upside down, none of the run's own
+    // came within its reach (its side there and 28 m more) of a portal, its landing or the way between. And under
+    // 200 seeds, by the game's own tornado code on Storm's Eye's course, with a rider coming down it at 0.6, 1 and
+    // 1.7 times the expected pace: at every second of every run no tornado that is up stands within that reach
+    // of any portal's throw (the nearest ever is given), each portal's landing is its one white landing that never
+    // fades, and nearly every tornado still comes (one whose spot fell in a calm stretch brews at the nearest landing
+    // outside it).
+    { const C = BL.cloudHopperCourse, five = LEVELS[4], T = [0, 1, 2].map(which => BL.cloudHopperTornado.create({ root: S.createNode(), renderer, which }));
+      const at = { x: 0, z: 0 }, whirl = {}, eye = { x: 0, y: 0, z: 0 }, finish = { x: 0, y: 2, z: 0 }, radius = 42 + five.route, expected = 378;
+      let least = Infinity, came = 0, fixed = true;
+      for (let n = 1; n <= 200; n++) {
+        const seed = n * 2654435761 >>> 0, course = C.create({ start: { x: radius, y: 20 + five.slope * five.route, z: 0 }, finish, mainlandRadius: 30, seed, layout: five.layout, timing: five.timing });
+        fixed &&= course.portals.length === 2 && course.calm.length === 2 && course.portals.every(q => q.to && q.to === course.warpTo(q) && q.to.life === C.PERMANENT && q.to.kind === "normal" && q.to.main);
+        course.update(1); course.start();
+        T.forEach((t, which) => t.start(seed, course, finish, which));
+        const speed = five.route / expected * [0.6, 1, 1.7][n % 3], up = [false, false, false];
+        for (let t = 0, x = radius; x > 30; t += 1, x -= speed) {
+          course.update(1, t);
+          T.forEach((tornado, which) => { tornado.update(1, x, 0, finish, whirl, eye);
+            if (!tornado.active) return;
+            up[which] = true;
+            for (const q of course.portals) { tornado.axisAt(q.top, at); least = Math.min(least, offThrow(at, q) - tornado.radiusAt(q.top)); } });
+        }
+        came += up.filter(Boolean).length;
+        T.forEach(t => t.clear());
+      }
+      T.forEach(t => t.dispose());
+      all.portalsCalm = fixed && least > 28 && standOff[0] > 28 && standOff[1] > 28 && Number.isFinite(standOff[0]) && Number.isFinite(standOff[1]) && came >= 0.9 * 600;
+      if (!all.portalsCalm) all[`portals calm: nearest ${least.toFixed(1)}, in the runs ${standOff.map(d => d.toFixed(1))}, tornadoes that came ${came} of 600, ${fixed}`] = false;
+      calmLeast = [+least.toFixed(1), ...standOff.map(d => +d.toFixed(1)), came]; }
     // The band's push, nearer is harder, and upside down as upright (each distance's size and lift within about a seventh: the tornado wanders meanwhile).
-    all.tornadoBand = bandOk && bands.upright.length >= 2 && bands.over.length >= 2
+    all.tornadoBand = bandOk && bands.upright.length >= 4 && bands.over.length >= 4
       && bands.upright.concat(bands.over).every(row => row[0] > row[2] && row[2] > row[4] && row[4] > row[6] && row[6] > 0 && row[8] < 0.6)
       && bands.upright[0].every((size, k) => Math.abs(size - bands.over[0][k]) <= 0.15 * Math.abs(size) + 0.25);
     // The wind's own clock: two gusts a run, each blowing two seconds where the level asks, three otherwise.
@@ -6853,46 +6895,24 @@ const cloudHopperFailureChecks = async engine => {
         if (!all[`${seed} last jump`]) all[`${seed} last jump ${[ok, once.ok, once.over.toFixed(2), none.ok, none.over.toFixed(2)]}`] = false;
         callbacks.onExit();
       }
-      // A portal throws a rider however it is touched, at once, and holds none: nothing stands or walks on one.
-      // A tornado down on the landing a portal would throw to leaves nothing in its usual stretch (38 to 66 m on) that
-      // will do: a rider coming down onto the portal's top is thrown all the same, to the nearest landing within 24
-      // to 110 m on that no tornado stands by. With a tornado by every landing there is, it is still thrown at once,
-      // to the usual stretch (a rider just thrown is safe from a tornado a moment). Three seeds each.
+      // A portal throws a rider however it is touched, at once, to its own landing, and holds none: nothing stands
+      // or walks on one. Three seeds. (A frame that comes late moves the view no further than a thirtieth of a second
+      // of the warp does.)
       { const t = flipper.tornadoes[0], calm = [t.axisAt, t.radiusAt], SOLID = BL.cloudHopperCourse.SOLID;
         const shows = (course, q) => q.active && q.phase === SOLID && course.solidLeft(q) > 3 && course.warpTo(q);
         const lands = (course) => course.landings.find(l => Math.hypot(l.x - p.x, l.z - p.z) < Math.max(l.rx, l.rz) + 0.5 && Math.abs(l.top + actor.baseY - p.y) < 0.5);
-        let got = 0, sound = true;
-        for (let seed = 11; got < 3 && seed < 120; seed++) {
-          begin(seed); const course = flipper.course, order = course.landings, portal = course.portals[0], on = (c) => portal.x - c.x;
-          for (let wait = 0; wait < 200 && !shows(course, portal); wait++) { onto(order[1]); step(0.25); }
-          const usual = course.warpTo(portal), safe = (c) => Math.hypot(c.x - usual.x, c.z - usual.z) >= 28;
-          const wide = usual && course.warpTo(portal, safe);
-          if (!usual || course.toFlip(portal.x, portal.z, 0) < 30 || !wide || order.some(c => on(c) >= 38 && on(c) <= 66 && course.warpHolds(c, safe))) { callbacks.onExit(); continue; }
-          got++;
-          // It holds no rider: nothing to stand on at its top, and no contact with it there.
-          const hollow = course.supportAt(portal.x, portal.z, portal.top + 0.5, 0.6) < portal.top && course.contactAt(portal.x, portal.z, portal.top) !== portal
-            && flipper.supportAt(portal.x, portal.z, portal.top + 0.5, 0.6) < portal.top;
-          t.down = true; t.axisAt = (y, out) => { out.x = usual.x; out.y = y; out.z = usual.z; }; t.radiusAt = () => 0;
-          Object.assign(p, { x: portal.x, y: portal.top + actor.baseY + 0.4, z: portal.z }); actor.hop = 0.4; actor.hopV = -3; actor.leap.vx = actor.leap.vz = 0; step(1 / 60);
-          const before = !flipper.warping;
-          onto(portal); actor.hop = 0.01; step(1 / 60);
-          const thrown = flipper.warping && actor.root.visible === false;
-          for (let f = 0; f < 90 && flipper.warping; f++) step(1 / 60);
-          const to = lands(course);
-          const landing = hollow && before && thrown && !!to && safe(to) && on(to) >= 24 && on(to) <= 110 && !(on(to) >= 38 && on(to) <= 66) && to.kind === "normal" && to.main
-            && flipper.phase === "running" && actor.root.visible !== false;
-          [t.axisAt, t.radiusAt] = calm; t.down = false;
-          callbacks.onExit();
-          sound &&= landing;
-          if (!landing) all[`${seed} portal landed on ${[hollow, before, thrown, !!to, to ? on(to).toFixed(1) : "", landing]}`] = false;
-        }
+        let sound = true;
         let touches = 0, smooth = true;
         for (let seed = 211; touches < 3 && seed < 320; seed++) {
           begin(seed); const course = flipper.course, gate = course.portals[0];
           for (let wait = 0; wait < 200 && !shows(course, gate); wait++) { onto(course.landings[1]); step(0.25); }
           if (!course.warpTo(gate) || course.toFlip(gate.x, gate.z, 0) < 30) { callbacks.onExit(); continue; }
           touches++;
-          // A tornado by every landing under the portal: walked into at its side, the rider is thrown on that frame.
+          // It holds no rider: nothing to stand on at its top, and no contact with it there.
+          sound &&= course.supportAt(gate.x, gate.z, gate.top + 0.5, 0.6) < gate.top && course.contactAt(gate.x, gate.z, gate.top) !== gate
+            && flipper.supportAt(gate.x, gate.z, gate.top + 0.5, 0.6) < gate.top;
+          // Whatever stood by every landing under it (nothing does: see the tornadoes' own test), walked into at its
+          // side the rider is thrown on that frame, to the portal's own landing.
           t.down = true; t.axisAt = (y, out) => { out.x = gate.x - 50; out.y = y; out.z = gate.z; }; t.radiusAt = (y) => y < gate.top - 4 ? 1e4 : 0;
           Object.assign(p, { x: gate.x + gate.rx + 2, y: gate.top - 0.5 + actor.baseY, z: gate.z }); actor.hop = 1; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0; step(1 / 60);
           const clear = !flipper.warping;
@@ -6903,18 +6923,18 @@ const cloudHopperFailureChecks = async engine => {
           const at = { ...p }; step(0.1); const late = Math.hypot(p.x - at.x, p.z - at.z);
           smooth &&= flipper.warping && late < 2;
           for (let f = 0; f < 90 && flipper.warping; f++) step(1 / 60);
-          const out = lands(course), came = !!out && gate.x - out.x >= 30 && gate.x - out.x <= 70 && flipper.phase === "running";
+          const out = lands(course), came = out === gate.to && flipper.phase === "running";
           [t.axisAt, t.radiusAt] = calm; t.down = false;
           callbacks.onExit();
           sound &&= thrown && came;
           if (!(thrown && came)) all[`${seed} portal touched ${[clear, thrown, !!out, out ? (gate.x - out.x).toFixed(1) : "", came]}`] = false;
         }
-        all.portalTouched = got === 3 && touches === 3 && sound; all.warpSmooth = smooth; }
+        all.portalTouched = touches === 3 && sound; all.warpSmooth = smooth; }
       flipper.dispose(); }
     all.disposed = rootNode.children.length === 1;
     cloudSave.unlocked = 1;
-    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over once by itself wherever its place falls round the halfway mark and stays so to the pile (the scene's root drawn turned back with the run, so the island is the right way up to the rider and the run is won on it with the world still over), never during a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and just the climb's fuel (under four seeds: what the pack burns by the crew's own steps to rise back over the height it was lowered from with thrust 0.3 s late, enough still 0.4 s late, a fifth of it left then at most and two fifths with thrust at once, under a third of a tank, the nearest landing no higher and within reach meanwhile; a rider holding more keeps its own), and the climb comes back onto the same course; through the roll the rider goes on over the course as it was going, its place, its flight's own speed and the controls held never touched, and comes out as fast as it went in; only its height is the roll's, for the 0.6 s the lowering takes and at most a frame more (the jetpack worn from the roll's start, so Space pressed meanwhile is thrust held), the controls answering again while the world is still turning; a fall from the climb before its first landing, however wide that speed threw it, goes back at rest under where the roll began with the fuel again, the once: a second fall from it, and any fall after that landing, is lost upside down by the rules it is upright (after the same grace with no way back, and at the sea), under four seeds, and never put back up; every showing landing holds the rider upright or turned over; no two attempts turn at the same place (24 running give 24 different places, and a draw repeating the last attempt's seed is not taken), and the seed in a won run's recording lays that run's flip and portals again exactly; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; with the game's own tornadoes and wind, under five seeds, each of the three tornadoes shows whenever there is any of it and is drawn (its batches' matrices read as the renderer reads them, as the world's own) where its axis and side stand in the run all the way down its funnel, upright, upside down, on every frame of the roll and in the moments after it, its lightning by it and the wind's streaks along its push; through a tornado's outer band, upright and upside down, a rider at 4 to 16 m off its side is only pushed (never moved by the run), harder the nearer and the same size both ways up, and past its reach not at all; a rider flying on under the falling course after a roll is never put back for being far under where it was let go; the roll's jetpack goes back as it was at the first landing (off if the roll gave it, put away if held unworn, on if worn), so the jump and air jump are the rider's again; Storm's Eye's wind pushes six tenths as hard as Aurora Heights' and each of its two gusts blows two seconds for three; its last jump is one plain jump (from the final landing's edge a rider at a walk, jumping once with no air jump, pack or hook, comes in 5 m and more over the island's rim, and over it with no jump at all); its hook is for clouds alone (thrown at the island from past the final landing it bites nothing and the rider goes into the sea, as on Thunderhead, and the run never asks its host about the land); a portal holds no rider and throws whoever touches it at once, to a landing further on when a tornado stands by its usual stretch and to the usual stretch when one stands by every landing; the rider and its pet stay in the crew's own node throughout; and leaving part way puts the scene's root, the clouds and the view back as they were",
-      Object.values(all).every(Boolean) && lostFor.length === 12, JSON.stringify(all) + " height held s " + JSON.stringify([Math.min(...lostFor), Math.max(...lostFor)]) + " lost after s (upright, over, second fall) " + JSON.stringify(lostAfter) + " fuel (granted, burnt 0.3 s late, burnt at once) " + JSON.stringify(granted) + " tornado checks a seed by state (" + STATES.join(", ") + ") " + JSON.stringify(shownAt) + " each tornado by state " + JSON.stringify(covered) + " band push by distance (size, lift) upright " + JSON.stringify(bands.upright) + " over " + JSON.stringify(bands.over) + " wind streaks (upright, over) " + JSON.stringify(windAt) + " bolts " + JSON.stringify(boltsAt) + " worst gap m " + worstGap.toFixed(2));
+    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over once by itself wherever its place falls round the halfway mark and stays so to the pile (the scene's root drawn turned back with the run, so the island is the right way up to the rider and the run is won on it with the world still over), never during a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and just the climb's fuel (under four seeds: what the pack burns by the crew's own steps to rise back over the height it was lowered from with thrust 0.3 s late, enough still 0.4 s late, a fifth of it left then at most and two fifths with thrust at once, under a third of a tank, the nearest landing no higher and within reach meanwhile; a rider holding more keeps its own), and the climb comes back onto the same course; through the roll the rider goes on over the course as it was going, its place, its flight's own speed and the controls held never touched, and comes out as fast as it went in; only its height is the roll's, for the 0.6 s the lowering takes and at most a frame more (the jetpack worn from the roll's start, so Space pressed meanwhile is thrust held), the controls answering again while the world is still turning; a fall from the climb before its first landing, however wide that speed threw it, goes back at rest under where the roll began with the fuel again, the once: a second fall from it, and any fall after that landing, is lost upside down by the rules it is upright (after the same grace with no way back, and at the sea), under four seeds, and never put back up; every showing landing holds the rider upright or turned over; no two attempts turn at the same place (24 running give 24 different places, and a draw repeating the last attempt's seed is not taken), and the seed in a won run's recording lays that run's flip and portals again exactly; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; with the game's own tornadoes and wind, under five seeds, each of the three tornadoes shows whenever there is any of it and is drawn (its batches' matrices read as the renderer reads them, as the world's own) where its axis and side stand in the run all the way down its funnel, upright, upside down, on every frame of the roll and in the moments after it, its lightning by it and the wind's streaks along its push; through a tornado's outer band, upright and upside down, a rider at 4 to 16 m off its side is only pushed (never moved by the run), harder the nearer and the same size both ways up, and past its reach not at all; a rider flying on under the falling course after a roll is never put back for being far under where it was let go; the roll's jetpack goes back as it was at the first landing (off if the roll gave it, put away if held unworn, on if worn), so the jump and air jump are the rider's again; Storm's Eye's wind pushes six tenths as hard as Aurora Heights' and each of its two gusts blows two seconds for three; its last jump is one plain jump (from the final landing's edge a rider at a walk, jumping once with no air jump, pack or hook, comes in 5 m and more over the island's rim, and over it with no jump at all); its hook is for clouds alone (thrown at the island from past the final landing it bites nothing and the rider goes into the sea, as on Thunderhead, and the run never asks its host about the land); a portal holds no rider and throws whoever touches it at once, to its own landing; no tornado ever stands by a portal's throw (under 200 seeds with the game's own tornadoes and riders at three paces none's hold reaches a portal, its landing or the way between at any second, nor in the runs upright or upside down, and every tornado still comes); the rider and its pet stay in the crew's own node throughout; and leaving part way puts the scene's root, the clouds and the view back as they were",
+      Object.values(all).every(Boolean) && lostFor.length === 12, JSON.stringify(all) + " height held s " + JSON.stringify([Math.min(...lostFor), Math.max(...lostFor)]) + " lost after s (upright, over, second fall) " + JSON.stringify(lostAfter) + " fuel (granted, burnt 0.3 s late, burnt at once) " + JSON.stringify(granted) + " tornado checks a seed by state (" + STATES.join(", ") + ") " + JSON.stringify(shownAt) + " each tornado by state " + JSON.stringify(covered) + " band push by distance (size, lift) upright " + JSON.stringify(bands.upright) + " over " + JSON.stringify(bands.over) + " wind streaks (upright, over) " + JSON.stringify(windAt) + " bolts " + JSON.stringify(boltsAt) + " worst gap m " + worstGap.toFixed(2) + " nearest a tornado's reach came to a portal's throw m (200 seeds, the runs upright, over) and tornadoes that came of 600 " + JSON.stringify(calmLeast));
   }
   // Reload within the same session, then start a fresh session while the old
   // localStorage marker still exists. Leaving the fresh guide is not completion.

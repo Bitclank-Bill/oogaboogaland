@@ -834,11 +834,12 @@ further under the course than the fuel climbs.
 **Two portal clouds** are a shortcut worth catching: bright gold, about three times as fast as any other cloud and on
 a clock far shorter than a fading cloud's, sweeping across the jump between two landings. They never react to the
 rider. A touch throws the rider about 50 m on, in a half-second streak of violet sparkles the view glides after, onto
-a plain landing that stands and that no tornado stands by, with the speed it went in with. Each is placed over a jump
-with a white landing that never fades a warp on, so it always has somewhere to throw a rider; when a tornado stands by
-that stretch (38 to 66 m on) it throws to the nearest landing within 24 to 110 m on instead, and with a tornado by
-every one of those, to the usual one all the same (a rider just thrown is safe from a tornado for 1.5 s, and none
-takes one mid-warp). A portal holds no rider: it cannot be stood or walked on, and whatever touches it is thrown at
+its own landing, with the speed it went in with: a white landing that never fades, 38 to 66 m on, the same one
+all through a run. No tornado ever stands by a portal's throw. The course marks a calm stretch from 90 m past that
+landing to 90 m before the portal, and a tornado whose spot falls on a landing in one brews over the nearest landing
+outside it instead (a tornado roams about 40 m from the landing it brews over and reaches about 36 m from its axis;
+under 200 seeds the nearest any came to a portal's throw was 62 m past its side). No tornado takes a rider mid-warp
+or for 1.5 s after one. A portal holds no rider: it cannot be stood or walked on, and whatever touches it is thrown at
 once. With both caught a run
 covers about 1,280 m, 32% over Thunderhead's route.
 
