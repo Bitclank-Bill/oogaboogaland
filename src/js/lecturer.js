@@ -526,9 +526,13 @@
           let lx = (wx * ch - wz * sh) / len, ly = wy / len, lz = (wx * sh + wz * ch) / len;
           if (lz < 0) { lz *= 0.25; const k = Math.hypot(lx, ly, lz) || 1; lx /= k; ly /= k; lz /= k; }
           // The arm turns about z by the angle whose sine is the point's sideways share, then about x; the right arm's
-          // spread is kept with the other sign. Raised forward and on over the top, never swung back past the hip.
-          z = Math.asin(Math.max(-1, Math.min(1, lx))) * sign; x = Math.atan2(-lz, -ly); flex = 0.06; rate = 8;
-          if (x > 0.6) x -= 2 * Math.PI;
+          // spread is kept with the other sign.
+          const spread = Math.asin(Math.max(-1, Math.min(1, lx)));
+          // Lift out to the side for an overhead point. Taking the arm forward over the head instead
+          // inverted its thumb. This shoulder path keeps the thumb up without rolling either wrist.
+          if (ly > 0) { z = Math.PI - spread * sign; x = Math.atan2(lz, ly); }
+          else { z = spread * sign; x = Math.atan2(-lz, -ly); }
+          flex = 0.06; rate = 8;
         } else if (drawing && side === "r") {
           // His finger on the tablet where the marker is on the board: the board's right is his right, its top the
           // tablet's far edge.

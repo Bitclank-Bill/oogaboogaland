@@ -262,12 +262,31 @@
     const bump = (id) => { live[id].node.geometry.imageSurface.version++; };
     // What each screen last printed, so a frame that changes nothing paints nothing.
     const seen = { slide: "", caption: "", outline: "", board: "", boardAt: 0, version: -1 };
-    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0;
+    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0, quizGlow = 0, hovered = -1;
+    const quizRows = [], inverse = BL.math.mat4.create();
+    const asking = () => player.playing && player.waiting >= 0;
+    // Match the curved canvas shader at the exact face hit, including its vertical texture flip.
+    const answerAt = (owner, ray) => {
+      if (!asking() || !owner || owner.kind !== "live" || owner.slot.spec.id !== "slide" || !ray) return -1;
+      const t = owner.pickRay(ray);
+      if (!Number.isFinite(t)) return -1;
+      const node = owner.slot.node, surface = node.geometry.imageSurface, rect = surface.rect, curve = surface.curve;
+      BL.math.mat4.invert(inverse, node.world);
+      const x = ray.ox + ray.dx * t, y = ray.oy + ray.dy * t, z = ray.oz + ray.dz * t, m = inverse;
+      const lx = m[0] * x + m[4] * y + m[8] * z + m[12], ly = m[1] * x + m[5] * y + m[9] * z + m[13], lz = m[2] * x + m[6] * y + m[10] * z + m[14];
+      const px = (Math.atan2(lx, curve[0] - lz) * curve[0] - curve[1] - rect[0]) / rect[2] * surface.canvas.width;
+      const py = (1 - (ly - curve[2] - rect[1]) / rect[3]) * surface.canvas.height;
+      for (let i = 0; i < quizRows.length; i++) {
+        const r = quizRows[i];
+        if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i;
+      }
+      return -1;
+    };
     const ready = (l) => !!(LK.get(l.id) || BL.deferredScripts && BL.deferredScripts[l.group]);
     const metaOf = (T) => {
       const entry = player.entry, slide = T.slides[st.slide], sec = T.sections[slide ? slide.section : st.section];
       return { left: `LECTURE ${entry.n}`, mid: sec.title.toUpperCase().slice(0, 34), right: `${st.slide + 1} / ${T.slides.length}`, kicker: `${course.title} · Lecture ${entry.n} of ${course.lectures.length}`,
-        part: `PART ${sec.i + 1} OF ${T.sections.length}`, credit: course.by ? `with ${course.by}` : course.subtitle, reader: feeds ? feeds.reader : null, now: Date.now() };
+        part: `PART ${sec.i + 1} OF ${T.sections.length}`, credit: course.by ? `with ${course.by}` : course.subtitle, reader: feeds ? feeds.reader : null, now: Date.now(), quizRows, hover: asking() ? hovered : -1 };
     };
     const paintScreens = (elapsed) => {
       const T = player.timeline;
@@ -280,7 +299,7 @@
       }
       const t = player.time, slide = T.slides[st.slide], local = slide && slide.beat === st.beat ? st.sentence - T.beats[st.beat].first : 99;
       const liveKey = slide && slide.slide.k === "live" && feeds ? `${feeds.reader.version}|${Math.floor(Date.now() / 10000)}` : "";
-      const sk = `${T.id}|${st.slide}|${st.show}|${slide && slide.slide.k === "figure" ? local : 0}|${liveKey}`;
+      const sk = `${T.id}|${st.slide}|${st.show}|${slide && slide.slide.k === "figure" ? local : 0}|${liveKey}|${asking() ? hovered : -1}`;
       if (sk !== seen.slide && slide) {
         seen.slide = sk;
         const c = canvasOf("slide");
@@ -309,32 +328,37 @@
     // a figure that come up with it, the point, line or row it reveals, or the slide's middle. Only an explicit
     // point gesture uses that target: a reveal or standing beside the screen never raises his arm by itself.
     const D = screens(L), aimAt = { x: 0, y: 0, z: 0 };
-    // The board's curved rim, sampled once. The overlay adds a soft highlight only while the marker moves.
-    const boardCentre = ROOMS.onSphere(L, (D.board.az0 + D.board.az1) / 2 * DEG, (D.board.el0 + D.board.el1) / 2 * DEG, 0.994);
-    const boardRim = new Float32Array(64 * 3), rimPoint = { x: 0, y: 0, z: 0 };
-    for (let i = 0; i < 64; i++) {
-      const edge = Math.floor(i / 16), along = i % 16 / 16;
-      const x = edge === 0 ? along : edge === 1 ? 1 : edge === 2 ? 1 - along : 0;
-      const y = edge === 0 ? 0 : edge === 1 ? along : edge === 2 ? 1 : 1 - along;
-      ROOMS.onSphere(L, (D.board.az0 + x * (D.board.az1 - D.board.az0)) * DEG, (D.board.el0 + y * (D.board.el1 - D.board.el0)) * DEG, 0.994, rimPoint);
-      boardRim[i * 3] = rimPoint.x; boardRim[i * 3 + 1] = rimPoint.y; boardRim[i * 3 + 2] = rimPoint.z;
-    }
-    const draw = (ctx, project) => {
-      if (boardGlow < 0.01) return;
+    // Both attention cues follow their screen's curved rim, sampled once.
+    const cueOf = (screen) => {
+      const centre = ROOMS.onSphere(L, (screen.az0 + screen.az1) / 2 * DEG, (screen.el0 + screen.el1) / 2 * DEG, 0.994);
+      const rim = new Float32Array(64 * 3), point = { x: 0, y: 0, z: 0 };
+      for (let i = 0; i < 64; i++) {
+        const edge = Math.floor(i / 16), along = i % 16 / 16;
+        const x = edge === 0 ? along : edge === 1 ? 1 : edge === 2 ? 1 - along : 0;
+        const y = edge === 0 ? 0 : edge === 1 ? along : edge === 2 ? 1 : 1 - along;
+        ROOMS.onSphere(L, (screen.az0 + x * (screen.az1 - screen.az0)) * DEG, (screen.el0 + y * (screen.el1 - screen.el0)) * DEG, 0.994, point);
+        rim[i * 3] = point.x; rim[i * 3 + 1] = point.y; rim[i * 3 + 2] = point.z;
+      }
+      return { centre, rim };
+    };
+    const boardCue = cueOf(D.board), quizCue = cueOf(D.slide);
+    const drawCue = (ctx, project, cue, glow, active) => {
+      if (glow < 0.01) return;
+      const { centre, rim } = cue;
       ctx.save();
-      ctx.globalAlpha = boardGlow * 0.75;
+      ctx.globalAlpha = glow * 0.75;
       ctx.strokeStyle = "#62da94"; ctx.shadowColor = "#62da94"; ctx.shadowBlur = 12; ctx.lineWidth = 2;
       ctx.beginPath();
       let joined = false;
       for (let i = 0; i <= 64; i++) {
-        const j = i % 64 * 3, at = project(boardRim[j], boardRim[j + 1], boardRim[j + 2]);
+        const j = i % 64 * 3, at = project(rim[j], rim[j + 1], rim[j + 2]);
         if (!at) { joined = false; continue; }
         if (joined) ctx.lineTo(at.x, at.y); else ctx.moveTo(at.x, at.y);
         joined = true;
       }
       ctx.stroke(); ctx.restore();
-      if (!player.playing || player.waiting >= 0 || !st.drawing) return;
-      const w = window.innerWidth, h = window.innerHeight, at = project(boardCentre.x, boardCentre.y, boardCentre.z);
+      if (!active) return;
+      const w = window.innerWidth, h = window.innerHeight, at = project(centre.x, centre.y, centre.z);
       if (at && at.x >= 0 && at.x <= w && at.y >= 0 && at.y <= h) return;
       let dx, dy;
       if (at) { dx = at.x - w / 2; dy = at.y - h / 2; }
@@ -344,7 +368,7 @@
         let fx = q.x - p.x, fy = q.y - p.y, fz = q.z - p.z;
         const len = Math.hypot(fx, fy, fz) || 1; fx /= len; fy /= len; fz /= len;
         const flat = Math.hypot(fx, fz), rx = flat > 0.001 ? -fz / flat : 1, rz = flat > 0.001 ? fx / flat : 0;
-        const tx = boardCentre.x - p.x, ty = boardCentre.y - p.y, tz = boardCentre.z - p.z;
+        const tx = centre.x - p.x, ty = centre.y - p.y, tz = centre.z - p.z;
         dx = tx * rx + tz * rz;
         dy = -(tx * -fy * rz + ty * (fx * rz - fz * rx) + tz * fy * rx);
         if (Math.hypot(dx, dy) < 0.001) dy = 1;
@@ -355,6 +379,10 @@
       ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(30, 12); ctx.lineTo(13, 12); ctx.lineTo(0, -4); ctx.lineTo(-13, 12); ctx.lineTo(-30, 12); ctx.closePath();
       ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(5, 30, 16, 0.85)"; ctx.fillStyle = "#62da94";
       ctx.stroke(); ctx.fill(); ctx.restore();
+    };
+    const draw = (ctx, project) => {
+      drawCue(ctx, project, boardCue, boardGlow, player.playing && player.waiting < 0 && st.drawing);
+      drawCue(ctx, project, quizCue, quizGlow, asking());
     };
     let cues = null, cuesFor = null;
     const centreOf = (op) => {
@@ -416,20 +444,6 @@
     };
     // The banner's buttons, shown in this hall alone.
     const buttons = BAR.map((id) => document.getElementById(id));
-    // The question the lecture waits on, as a card over the hall: its answers are buttons, and the keys 1 to 4.
-    const quizCard = document.getElementById("lecture-quiz"), quizRows = quizCard ? [...quizCard.querySelectorAll("li")] : [];
-    let asked = -2;
-    const showQuiz = () => {
-      const Q = player.playing ? player.quiz : null, now = Q ? Q.i : -1;
-      if (!quizCard || now === asked) return;
-      asked = now;
-      quizCard.hidden = !Q;
-      if (!Q) return;
-      const slide = player.timeline.slides[Q.slide].slide;
-      quizCard.querySelector("#lecture-quiz-kicker").textContent = `Question ${slide.n} of ${player.timeline.quizzes.length}`;
-      quizCard.querySelector("h3").textContent = slide.q;
-      quizRows.forEach((row, k) => { row.hidden = k >= slide.options.length; if (k < slide.options.length) row.querySelector("span").textContent = slide.options[k]; });
-    };
     const nextLecture = () => Math.max(0, course.lectures.findIndex((l) => !(player.progress[l.id] && player.progress[l.id].done)));
     const label = () => {
       const on = !!player.timeline;
@@ -441,7 +455,7 @@
         buttons[4].setAttribute("aria-label", `Playback speed: ${player.speed}×. Change speed`);
       }
       nodes.session.visible = player.playing;
-      showQuiz();
+      if (!asking()) hovered = -1;
     };
     // The programme, a page of the board dialog: a press on a row, or the arrows and Enter, starts that lecture.
     const rows = [];
@@ -505,7 +519,7 @@
       if (action === "lecture-stop") { player.close(); label(); return true; }
       if (action === "lecture-speed") { player.setSpeed(player.speed === 1 ? 1.25 : player.speed === 1.25 ? 1.5 : player.speed === 1.5 ? 2 : 1); label(); return true; }
       if (action === "lecture-toggle") { player.toggle(); label(); return true; }
-      if (action.startsWith("lecture-answer-")) { const ok = player.answer(Number(action.slice(15)) - 1); if (ok) { label(); if (document.activeElement && quizCard.contains(document.activeElement)) document.activeElement.blur(); } return ok; }
+      if (action.startsWith("lecture-answer-")) { const ok = player.answer(Number(action.slice(15)) - 1); if (ok) label(); return ok; }
       if (action === "lecture-back") { player.section(-1); return true; }
       if (action === "lecture-next") { player.section(1); return true; }
       return false;
@@ -520,21 +534,30 @@
       update(dt, elapsed) {
         player.update(dt);
         if (seen.version !== player.version) { seen.version = player.version; label(); }
+        if (!asking()) hovered = -1;
         paintScreens(elapsed);
         if (viewing && elapsed > 1) { viewing = false; viewLecturer(); }
         const movingTime = dt * (player.playing && player.waiting < 0 ? player.speed : 1);
         motionTime += movingTime;
         boardGlow += ((player.playing && player.waiting < 0 && st.drawing ? 1 : 0) - boardGlow) * (1 - Math.exp(-8 * dt));
+        quizGlow += ((asking() ? 1 : 0) - quizGlow) * (1 - Math.exp(-8 * dt));
         if (lecturer) lecturer.update(movingTime, motionTime, player.timeline ? st : null, player.playing && player.waiting < 0, player.timeline && player.playing && player.waiting < 0 && st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow(),
           // A stretch of four sentences or more is one he may pace through (whether he does is his own, lecturer.js).
           !!player.timeline && st.quiz < 0 && player.timeline.beats[st.beat].count >= 4);
         hearFrom();
       },
-      tap(owner, h) {
+      get question() { return asking(); },
+      hover(owner, ray) { hovered = answerAt(owner, ray); },
+      tap(owner, h, ray) {
         hud = h;
         if (owner.kind === "lectern" || owner.kind === "programme") return openProgramme(h);
         if (owner.kind === "live" && owner.slot.spec.id) {
           const id = owner.slot.spec.id;
+          if (id === "slide" && asking()) {
+            const answer = answerAt(owner, ray);
+            if (answer >= 0) { player.answer(answer); label(); }
+            return true;
+          }
           if (id === "outline" || !player.timeline) return openProgramme(h);
           page = id === "board" ? 1 : 0; pagesVersion++;
           h.openBoard(closeUp);
@@ -561,16 +584,15 @@
         H.row([], "End this lecture", "Stop button"),
         H.row([], "Playback speed", "Speed button: 1×, 1.25×, 1.5× or 2×"),
         H.row(touch ? [] : ["[", "]"], "Back or on a section", touch ? "Section buttons" : ""),
-        H.row(touch ? [] : ["1", "2", "3", "4"], "Answer the lecturer's question", touch ? "Tap an answer" : "")
+        H.row(touch ? [] : ["1", "2", "3", "4"], "Answer the lecturer's question", "Click or tap an answer on the projected screen")
       ],
       dispose() {
         player.dispose();
         if (lecturer) lecturer.dispose();
         for (const b of buttons) if (b) b.hidden = true;
-        if (quizCard) quizCard.hidden = true;
       },
       // For a debug page (`__ooga.timechain.motion`): the player, `start(i)`, the lecturer, the screens and the stage.
-      stats: { player, start, view: viewLecturer, get lecturer() { return lecturer; }, screens: () => screens(L), stage: S, get aim() { return aimNow(); }, get cues() { return cues; } }
+      stats: { player, start, get quizHover() { return hovered; }, quizRows, view: viewLecturer, get lecturer() { return lecturer; }, screens: () => screens(L), stage: S, get aim() { return aimNow(); }, get cues() { return cues; } }
     };
   };
   BL.timechainRoomKinds.lecture = { plan, animate, door, stageOf };

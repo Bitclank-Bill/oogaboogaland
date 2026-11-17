@@ -443,6 +443,9 @@
       follow: { y: 0.9, min: 3, max: 6, pitch: [0.2, 0.7] },
       clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: (x, z) => roof(x, z, 0), coarse: COARSE, mayPossess: (cave) => BL.net.mayDrive(cave.traits.name),
       jetpackStatus: () => NO_JETPACK,
+      // Combat captures canvas clicks before interact; its free cursor and locked reticle use the same quiz hit.
+      captureClick: (x, y) => quizTap(x, y),
+      primaryAction: (pressed, e) => pressed && quizTap(e ? e.clientX : window.innerWidth / 2, e ? e.clientY : window.innerHeight / 2, !e || !quizPressFree),
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt }
     });
     const fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 4, z: 0 } });
@@ -850,6 +853,7 @@
     const WEAPON_KEYS = new Set(["1", "2", "r", "f", "g"]);
     const armsKeys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !WEAPON_KEYS.has(e.key.toLowerCase()) || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable], dialog")) return;
+      if (motion && motion.key && !guide.stage) motion.key(e, hud);
       e.preventDefault();
       e.stopImmediatePropagation();
     };
@@ -861,9 +865,51 @@
     };
     // The ray under a tap, handed to a kind's own tap so it can tell where on a thing the tap fell (the Temple's koi pond).
     const tapRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    let quizPressFree = false;
+    const quizPointer = { x: 0, y: 0, on: false }, quizView = new Float64Array(9).fill(NaN);
+    const quizCamera = math.mat4.create(), quizUp = { x: 0, y: 1, z: 0 };
+    const quizRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    const quizHit = (x, y, reticle = false) => {
+      if (!motion || !motion.question || guide.stage || lock.on || document.querySelector("dialog:modal")) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (reticle && pilot.aimFocused && !pilot.cursor.active) { x = rect.left + rect.width / 2; y = rect.top + rect.height / 2; }
+      x -= rect.left; y -= rect.top;
+      const hit = input.pick(x, y, pilot.player, true);
+      if (!hit || hit.owner.kind !== "live" || hit.owner.slot.spec.id !== "slide") return null;
+      math.mat4.lookAt(quizCamera, camera.position, camera.target, camera.up || quizUp);
+      math.mat4.rayFromView(quizRay, quizCamera, renderer.size.width, renderer.size.height, camera.fov, camera.position, x, y, camera.orthoMix, camera.orthoHeight);
+      return hit.owner;
+    };
+    const quizTap = (x, y, reticle) => {
+      const owner = quizHit(x, y, reticle);
+      return !!owner && motion.tap(owner, hud, quizRay);
+    };
+    // Keep the hover tied to the cursor, or combat's reticle, even as the camera moves under it.
+    window.addEventListener("pointerdown", (e) => {
+      quizPressFree = !pilot.aimFocused;
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("resize", () => quizView.fill(NaN), { signal: ctx.signal });
+    window.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse") return;
+      quizPointer.x = e.clientX; quizPointer.y = e.clientY; quizPointer.on = e.target === canvas;
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("blur", () => { quizPointer.on = false; }, { signal: ctx.signal });
+    const quizHover = () => {
+      if (!motion || !motion.hover) return;
+      const locked = pilot.aiming && pilot.aimFocused && !pilot.cursor.active;
+      if (!motion.question || !quizPointer.on && !locked || guide.stage || lock.on || document.querySelector("dialog:modal")) {
+        motion.hover(null, null); quizView.fill(NaN); return;
+      }
+      const x = locked ? window.innerWidth / 2 : quizPointer.x, y = locked ? window.innerHeight / 2 : quizPointer.y, p = camera.position, t = camera.target;
+      if (quizView[0] === x && quizView[1] === y && quizView[2] === p.x && quizView[3] === p.y && quizView[4] === p.z && quizView[5] === t.x && quizView[6] === t.y && quizView[7] === t.z && quizView[8] === camera.fov) return;
+      quizView[0] = x; quizView[1] = y; quizView[2] = p.x; quizView[3] = p.y; quizView[4] = p.z; quizView[5] = t.x; quizView[6] = t.y; quizView[7] = t.z; quizView[8] = camera.fov;
+      const owner = quizHit(x, y, locked);
+      motion.hover(owner, owner ? quizRay : null);
+      if (owner) hud.tooltip.hide();
+    };
     Object.assign(hooks, {
-      onHover: (hit, p) => { if (hit && !guide.stage && !lock.on) hud.tooltip.show(tipFor(hit), p.x, p.y); else hud.tooltip.hide(); },
-      onHoverMove: (hit, p) => { if (!guide.stage && !lock.on) hud.tooltip.show(tipFor(hit), p.x, p.y); },
+      onHover: (hit, p) => { if (hit && !guide.stage && !lock.on && !(motion && motion.question)) hud.tooltip.show(tipFor(hit), p.x, p.y); else hud.tooltip.hide(); },
+      onHoverMove: (hit, p) => { if (!guide.stage && !lock.on && !(motion && motion.question)) hud.tooltip.show(tipFor(hit), p.x, p.y); },
       onTap: (hit, p) => {
         if (!hit || guide.stage) return;
         const o = hit.owner;
@@ -889,7 +935,7 @@
       },
       ...pilot.hooks,
       // A key pressed twice quickly is pressed twice (a PIN may repeat a digit), never a double tap.
-      onDoubleTap: (hit, p) => { if (hit && hit.owner.kind === "lockkey") hooks.onTap(hit, p); else pilot.hooks.onDoubleTap(hit, p); },
+      onDoubleTap: (hit, p) => { if (hit && (hit.owner.kind === "lockkey" || motion && motion.question)) hooks.onTap(hit, p); else pilot.hooks.onDoubleTap(hit, p); },
       onZoom: (factor, gesture, px, py) => { if (!guide.stage) pilot.hooks.onZoom(factor, gesture, px, py); }
     });
     hud.onAction((action) => {
@@ -1007,6 +1053,7 @@
       const heard = avatar ? avatar.root.position : camera.target;
       ear.x = heard.x; ear.y = heard.y; ear.z = heard.z;
       if (motion) motion.update(dt, elapsed);
+      quizHover();
       if (sharp) sharp.tick();
       stepTweens(dt);
       fx.update(dt, elapsed);

@@ -96,6 +96,7 @@
   const slide = (ctx, W, H, P, s, show, local, meta) => {
     const u = H / 100, k = s.k;
     frame(ctx, W, H, u);
+    if (meta.quizRows) meta.quizRows.length = 0;
     if (k === "title") {
       ctx.textAlign = "center";
       if (s.kicker || meta.kicker) P.pix(ctx, (s.kicker || meta.kicker).toUpperCase(), W / 2, u * 24, u * 4, DECK.amberText);
@@ -126,10 +127,12 @@
       const top = u * 20.5 + lines.length * lh - u * 1.5, step = Math.min(u * 13.5, (H - u * 13 - top) / n), rh = step * 0.82;
       for (let i = 0; i < n; i++) {
         const y = top + i * step, right = chosen >= 0 && i === s.answer, wrong = chosen === i && i !== s.answer, dim = chosen >= 0 && !right && !wrong;
-        const col = right ? DECK.green : wrong ? DECK.red : DECK.amber;
+        if (meta.quizRows) meta.quizRows.push({ x: u * 7, y, w: W - u * 14, h: rh });
+        const hover = chosen < 0 && meta.hover === i;
+        const col = right ? DECK.green : wrong ? DECK.red : hover ? DECK.ink : DECK.amber;
         ctx.globalAlpha = dim ? 0.4 : 1;
-        ctx.fillStyle = right ? "rgba(79,208,138,.16)" : wrong ? "rgba(255,107,94,.16)" : DECK.panel; P.roundRect(ctx, u * 7, y, W - u * 14, rh, u * 1.6); ctx.fill();
-        ctx.strokeStyle = col; ctx.lineWidth = u * (right || wrong ? 0.7 : 0.35); ctx.stroke();
+        ctx.fillStyle = right ? "rgba(79,208,138,.16)" : wrong ? "rgba(255,107,94,.16)" : hover ? "rgba(247,147,26,.26)" : DECK.panel; P.roundRect(ctx, u * 7, y, W - u * 14, rh, u * 1.6); ctx.fill();
+        ctx.strokeStyle = col; ctx.lineWidth = u * (right || wrong || hover ? 0.7 : 0.35); ctx.stroke();
         ctx.fillStyle = col; P.roundRect(ctx, u * 8.6, y + rh * 0.16, rh * 0.68, rh * 0.68, u * 1.1); ctx.fill();
         ctx.fillStyle = DECK.bg; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = P.font(800, rh * 0.44, P.MONO); ctx.fillText(right ? "✓" : wrong ? "✗" : String(i + 1), u * 8.6 + rh * 0.34, y + rh * 0.52);
         ctx.fillStyle = right ? DECK.green : wrong ? DECK.red : DECK.ink; ctx.textAlign = "left";
