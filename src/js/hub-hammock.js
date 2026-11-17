@@ -272,6 +272,31 @@
     }
     return M.shaded(round);
   };
+  // The bed as it lies at rest, cloth, edge cords and spreaders, never drawn: the lowest the cloth lies while the bed is
+  // occupied (`clothStep` holds it there), so the gear stowed under an occupant (`clothAt`, from `clothY`) stays clear of it.
+  const restBedGeometry = (p) => {
+    const M = BL.models, J = BL.hubModels, NX = BED_NX, NZ = BED_NZ, cloth = M.geometry(), v = cloth.verts, ids = [];
+    for (let i = 0; i <= NX; i++) for (let j = 0; j <= NZ; j++) {
+      const x = (i / NX - 0.5) * BED_LEN, z = (j / NZ - 0.5) * BED_W;
+      v.push(x, clothY(p, x, z), z);
+      ids.push(v.length / 3 - 1);
+    }
+    for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
+      const a = ids[i * (NZ + 1) + j], b = ids[(i + 1) * (NZ + 1) + j], c = ids[(i + 1) * (NZ + 1) + j + 1], d = ids[i * (NZ + 1) + j + 1];
+      cloth.faces.push({ i: [a, d, c, b], color: WEAVE[(i + (j & 1)) % WEAVE.length], emissive: 0 });
+      cloth.faces.push({ i: [a, b, c, d], color: WEAVE_UNDER, emissive: 0 });
+    }
+    return J.withJungle(M.shaded([bedGeometry(p)], [cloth]), (g) => {
+      for (const z of [-BED_W / 2, BED_W / 2]) {
+        const edge = [];
+        for (let i = 0; i <= NX; i += 2) { const x = (i / NX - 0.5) * BED_LEN; edge.push([x, clothY(p, x, z) + 0.012, z]); }
+        J.liana(g, edge, EDGE_R, EDGE_R, CORD);
+      }
+    });
+  };
+  // A mesh that draws nothing, for the straight helper lines (`node`, `fan`) the drawn strings follow: kept in the
+  // scene so their world transforms stay current.
+  const NOTHING = { verts: [0, 0, 0], faces: [], lines: [] };
   // The fabric's mesh: the cloth grid twice over (its top weave and dark underside, each with its own vertices so its
   // smooth normals face its own way), the rows along each edge the dark hem of the edge cords, and two corners of a
   // box round anything it can reach, no face's, so its bounds stay fixed. `dynamic`: rewritten each frame.
@@ -414,6 +439,8 @@
               if (P[b + 1] < under) P[b + 1] += (under - P[b + 1]) * 0.5;
             }
           }
+          // Occupied, the cloth never lies lower than at rest, over the gear stowed under it.
+          if (held && P[b + 1] < CLOTH_REST[b + 1]) P[b + 1] = CLOTH_REST[b + 1];
           // A walker: out of its upright cylinder, across the ground.
           for (let w = 0; w < walkerCount; w++) {
             const o = 5 * w;
@@ -469,12 +496,12 @@
         addChild(root, wrap);
       }
       const fan = CORD_Z.map((z) => {
-        const cord = createNode({ geometry: fanGeometry, quaternion: quat.create(), sightHidden: true, visible: false,
+        const cord = createNode({ geometry: NOTHING, quaternion: quat.create(), sightHidden: true,
           position: { x: end * BED_LEN / 2, y: p.endY + 0.03, z } });
         addChild(bedNode, cord);
         return cord;
       });
-      // Each end cord drawn as a string of links in the bed's frame (`hang`); `fan` keeps the straight cords, not drawn.
+      // Each end cord drawn as a string of links in the bed's frame (`hang`); `fan` keeps the straight cords, drawing nothing.
       const strings = fan.map(() => {
         const links = [];
         for (let k = 0; k < FAN_LINKS; k++) {
@@ -484,8 +511,8 @@
         }
         return { links, pts: new Float64Array((FAN_LINKS + 1) * 3), old: new Float64Array((FAN_LINKS + 1) * 3), len: 0 };
       });
-      // The rope drawn as a string of links (`hang`); `node` keeps the straight line from tie to ring, not drawn.
-      node.visible = false;
+      // The rope drawn as links (`taut`); `node` keeps the straight line from tie to ring, drawing nothing.
+      node.geometry = NOTHING;
       const links = [];
       for (let k = 0; k < ROPE_LINKS; k++) {
         const link = createNode({ geometry: ropeGeometry, quaternion: quat.create(), sightHidden: true });
@@ -1347,7 +1374,8 @@
       for (const seat of seats) if (seat.sitter) return true;
       return false;
     };
-    return { plan: p, seats, ridgeNode, bedNode, ropes, update, syncRopes, kick, bump, hit, blocks, crosses, tip, enter, restingAt, settle, free, near, reachable, landing, poseRemote, stateFor, releaseEquipment, dispose, get angle() { return angle; }, get amp() { return amp; }, get spilling() { return spilling(); }, get fallSide() { return fallSide; } };
+    let restBed = null;
+    return { plan: p, seats, ridgeNode, bedNode, clothNode, get restBed() { return restBed || (restBed = restBedGeometry(p)); }, ropes, update, syncRopes, kick, bump, hit, blocks, crosses, tip, enter, restingAt, settle, free, near, reachable, landing, poseRemote, stateFor, releaseEquipment, dispose, get angle() { return angle; }, get amp() { return amp; }, get spilling() { return spilling(); }, get fallSide() { return fallSide; } };
   };
 
   BL.hubHammock = { SLOTS, TIE, SPAN_MIN, SPAN_MAX, SWAY_MAX, REST_HELD, STAND, GEAR_TOP, GEAR_CLEAR, plan, create, ridgeY };
