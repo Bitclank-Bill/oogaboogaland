@@ -627,31 +627,40 @@
   // The ring runs round the room from the door's left to its right, by azimuth (degrees from the front toward +x, the
   // door at 180), its gap at the door; the plinths on it `RING` out from the middle, free-standing, with at least 1.5 m
   // of floor between neighbours and 2 m behind them to the wall, so a visitor walks all the way round every one
-  // (the room is sized for it, R 19 in timechain-rooms.js, with the benches behind); TOP is a plinth's height.
-  const RING = 13.4, TOP = 0.9, AZ0 = -155, AZ1 = 155;
+  // (the room is sized for it, R 21 in timechain-rooms.js, with the benches behind). Every display on the ring stands
+  // `BIG` times the museum's size: its piece, its plaque and its plinth's footprint (DEPTH front to back, FACE how far
+  // its faces stand from its middle). The plinth's top, TOP, rises less, only as far as the larger plaque needs: a
+  // visitor's eye stays where it was, and a top any higher would show them the pieces edge on. The words cut into the
+  // faces grow with the faces' height, `WORDS`. The piece stands on a deck `RISE` above the top's front edge, where
+  // its label strip stands, so the strip hides nothing low on the piece from that eye. The middle's drum keeps the
+  // museum's size.
+  const BIG = 1.3, TOP = 1.05, RISE = 0.06, WORDS = 1.2, DEPTH = 1.2 * BIG, FACE = DEPTH / 2 + 0.004, MID_TOP = 0.9, AZ0 = -158, AZ1 = 158, GAP = 1.6;
+  // A plaque card: its size on a plinth's front, its centre's height, and the pitch of cards side by side where a
+  // plinth carries more than one entry (its front widened to hold them, so every card faces the walk).
+  const MID_CARD = { w: 0.94, h: 0.74, y: 0.45, pitch: 1.0 }, CARD = { w: MID_CARD.w * BIG, h: MID_CARD.h * BIG, y: TOP / 2 - 0.02, pitch: MID_CARD.pitch * BIG };
+  const widthOf = (p) => (1.2 + (p.entries.length - 1) * MID_CARD.pitch) * BIG;
+  // The ring's radius is what gives the plinths, from AZ0 round to AZ1, `GAP` metres of floor between neighbours.
+  const RING = (() => { let between = 0; for (let i = 1; i < PLINTHS.length; i++) between += (widthOf(PLINTHS[i - 1]) + widthOf(PLINTHS[i])) / 2; return (between + GAP * (PLINTHS.length - 1)) / ((AZ1 - AZ0) * DEG); })();
   // The ring's pieces are built at the builders' full detail (the lighter variants cost them their keyboards for
   // an eighth of the triangles), in `SECTORS` nodes round the ring, so the renderer culls the sectors behind the
   // visitor.
   const PLINTH_FINE = true, SECTORS = 6;
   // The one piece still drawn larger than it was modelled (the rest are laid out in the plinth's own metres).
   const SCALE = { byzantine: 1.15 };
-  // Both loops keep a still strip of 3.2 m between their edge and the plinths' faces: far enough back that a visitor who
-  // steps off toward a plinth has the whole display on screen (model, plaque or cut words) at the default view, on a
-  // desktop and on a phone held sideways, and is not carried while reading.
-  const TRAV = { r: RING - 0.6 - 3.2 - 0.4, w: 0.8, speed: 0.6 };
+  // The inner loop keeps a still strip (3.2 m at the museum's size) between its edge and the plinths' fronts: far
+  // enough back that a visitor who steps off toward a plinth has the whole display on screen (model, plaque or cut
+  // words) at the default view, on a desktop and on a phone held sideways, and is not carried while reading.
+  const TRAV = { r: RING - DEPTH / 2 - 3.2 * BIG - 0.4, w: 0.8, speed: 0.6 };
   // The outer loop, in the lane between the plinths' backs and the benches, the other way round (2008 to 1974) at
-  // twice the pace, in six runs with 1.4 m gaps between plinths so walkers cross from the benches to the plinths.
-  const TRAV2 = { r: RING + 0.6 + 3.2 + 0.4, w: 0.8, speed: 1.2, doorGap: 13 };
+  // twice the pace: 1.4 m of still floor behind the plinths, to read their backs from, and over a metre between the
+  // lane and the bench.
+  const TRAV2 = { r: RING + DEPTH / 2 + 1.4 + 0.4, w: 0.8, speed: 1.2, doorGap: 13 };
   // A flat lit ring (0.55 to 0.8 m) and a lit unit bar along +x, shared by every node that needs one.
   const glowRing = own(() => { const g = RM.helpers.blank(), n = 28, r0 = 0.62, r1 = 0.76; for (let k = 0; k < n; k++) { const a = TAU * k / n, b = TAU * (k + 1) / n; RM.helpers.face(g, [[r0 * Math.sin(a), 0, -r0 * Math.cos(a)], [r1 * Math.sin(a), 0, -r1 * Math.cos(a)], [r1 * Math.sin(b), 0, -r1 * Math.cos(b)], [r0 * Math.sin(b), 0, -r0 * Math.cos(b)]], C.amber, 0.5, [0, 1, 0]); } return noShadow(g); });
   const glowBar = own(() => noShadow(box({ w: 1, h: 0.04, d: 0.04, color: C.amber, emissive: 0.9, offset: { x: 0.5 } })));
   // Two builds of every sector: the near one at full detail with its moving parts, the far one lighter, swapped by
   // the visitor's distance to the sector's nearest plinth (`LOD_NEAR` metres, with a little hysteresis).
-  const LOD_NEAR = 6.5, LOD_FAR = 7.5, INSC_GROUPS = 9, INSC_NEAR = 6, INSC_FAR = 7;
-  // A plaque card: its size on a plinth's front, its centre's height, and the pitch of cards side by side where a
-  // plinth carries more than one entry (its front widened to hold them, so every card faces the walk).
-  const CARD = { w: 0.94, h: 0.74, y: 0.45, pitch: 1.0 };
-  const widthOf = (p) => 1.2 + (p.entries.length - 1) * CARD.pitch;
+  const LOD_NEAR = 6.5 * BIG, LOD_FAR = 7.5 * BIG, INSC_GROUPS = 9, INSC_NEAR = 6 * BIG, INSC_FAR = 7 * BIG;
   // The plinths' azimuths: the first at AZ0, the last at AZ1, neighbours half their widths apart plus one even gap.
   const AZ = (() => {
     const span = (AZ1 - AZ0) * DEG * RING;
@@ -670,8 +679,9 @@
   // The plinth an exhibit stands on, in the room's static mesh: the museum's, dark concrete with an amber band under
   // its top, `w` wide across the walk (1.2 m, or wider for a plinth with cards side by side).
   const plinthBody = (g, w) => {
-    g.box(w, TOP, 1.2, C.concrete, 0, TOP / 2, 0);
-    g.box(w + 0.04, 0.04, 1.24, "#1d4f63", 0, TOP - 0.04, 0, { emissive: 0.28 });
+    g.box(w, TOP, DEPTH, C.concrete, 0, TOP / 2, 0);
+    g.box(w + 0.04, 0.03, DEPTH + 0.04, "#1d4f63", 0, TOP - 0.03, 0, { emissive: 0.28 });
+    g.box(w, RISE, DEPTH - 0.09, C.concrete, 0, TOP + RISE / 2, 0.045);
   };
   // Every piece stands open on its plinth (no glass cases). The middle's drum is a straight cylinder this radius.
   const MID_R = 1.56;
@@ -735,8 +745,9 @@
   // the ring's 25 fronts take four bands and the middle's two cards one.
   // `cards`: [{ ex, az (degrees), r (radius of the card's centre), curved }]; `R` the mapping radius; `y` the card's
   // centre height in the node's frame. Returns the node's place (world) and its geometry.
-  const PPM = 400, MAX_SPAN = 20;
-  const band = (cards, R, y, outside = false, painter = paintPlaque) => {
+  // The ring's cards are drawn with as many pixels each as at the museum's size.
+  const PPM = 400, RING_PPM = PPM / BIG, MAX_SPAN = 20 * BIG;
+  const band = (cards, R, y, outside = false, painter = paintPlaque, size = CARD, ppm = RING_PPM) => {
     const azMid = (cards[0].az + cards[cards.length - 1].az) / 2, theta = -azMid * DEG, c = Math.cos(theta), sn = Math.sin(theta);
     const px = -R * Math.sin(theta), pz = -R * Math.cos(theta);
     const local = (w) => { const dx = w[0] - px, dz = w[2] - pz; return [c * dx - sn * dz, w[1], sn * dx + c * dz]; };
@@ -746,16 +757,16 @@
       // A flat card lies in its plinth's front plane (`face`, the plinth's azimuth): turned to its own radius instead,
       // a card off the plinth's middle dips into the plinth at one end, which hides that end of its text.
       const a = card.az * DEG, f = (card.face === undefined ? card.az : card.face) * DEG, t = [Math.cos(f), 0, Math.sin(f)], n = [-Math.sin(f), 0, Math.cos(f)];
-      const cx = card.r * Math.sin(a), cz = -card.r * Math.cos(a), y0 = y - CARD.h / 2, y1 = y + CARD.h / 2;
+      const cx = card.r * Math.sin(a), cz = -card.r * Math.cos(a), y0 = y - size.h / 2, y1 = y + size.h / 2;
       const normal = [c * n[0] - sn * n[2], 0, sn * n[0] + c * n[2]];
       if (!card.curved) {
-        const pts = [[cx - t[0] * CARD.w / 2, y0, cz - t[2] * CARD.w / 2], [cx + t[0] * CARD.w / 2, y0, cz + t[2] * CARD.w / 2], [cx + t[0] * CARD.w / 2, y1, cz + t[2] * CARD.w / 2], [cx - t[0] * CARD.w / 2, y1, cz - t[2] * CARD.w / 2]].map(local);
+        const pts = [[cx - t[0] * size.w / 2, y0, cz - t[2] * size.w / 2], [cx + t[0] * size.w / 2, y0, cz + t[2] * size.w / 2], [cx + t[0] * size.w / 2, y1, cz + t[2] * size.w / 2], [cx - t[0] * size.w / 2, y1, cz - t[2] * size.w / 2]].map(local);
         RM.helpers.face(geo, pts, [255, 255, 255], 0.9, normal);
         const ua = uOf(pts[0]), ub = uOf(pts[1]);
         spans.push({ ex: card.ex, u0: Math.min(ua, ub), u1: Math.max(ua, ub), flip: ua > ub });
       } else {
         // Round the plinth: strips of its arc, the card's width as arc length.
-        const half = CARD.w / 2 / card.r, N = 10;
+        const half = size.w / 2 / card.r, N = 10;
         const at = (b, yy) => local([card.r * Math.sin(b), yy, -card.r * Math.cos(b)]);
         for (let k = 0; k < N; k++) {
           const b0 = a - half + 2 * half * k / N, b1 = a - half + 2 * half * (k + 1) / N, bm = (b0 + b1) / 2, o = outside ? -1 : 1, nm = [-o * Math.sin(bm), 0, o * Math.cos(bm)];
@@ -766,21 +777,21 @@
         spans.push({ ex: card.ex, u0: Math.min(ua, ub), u1: Math.max(ua, ub), flip: ua > ub });
       }
     }
-    const u0 = spans[0].u0 - 0.01, u1 = spans[spans.length - 1].u1 + 0.01, w = Math.ceil((u1 - u0) * PPM), k = CARD.w * PPM / PLAQUE.w, h = Math.round(PLAQUE.h * k);
+    const u0 = spans[0].u0 - 0.01, u1 = spans[spans.length - 1].u1 + 0.01, w = Math.ceil((u1 - u0) * ppm), k = size.w * ppm / PLAQUE.w, h = Math.round(PLAQUE.h * k);
     const canvas = CH.canvas(w, h), ctx = canvas.getContext("2d");
     ctx.fillStyle = C.ink; ctx.fillRect(0, 0, w, h);
     // Seen from outside the curve, arc length runs to the viewer's left: each card is painted mirrored within its own
     // span (never the whole canvas, which would swap the cards' places).
     for (const sp of spans) {
-      const x0 = (sp.u0 - u0) * PPM, kk = (sp.u1 - sp.u0) * PPM / PLAQUE.w;
+      const x0 = (sp.u0 - u0) * ppm, kk = (sp.u1 - sp.u0) * ppm / PLAQUE.w;
       ctx.save();
       // A card whose geometry runs the other way along the band (its corners' arc lengths reversed), or one seen from
       // outside the curve, is painted mirrored within its own span, so its words read the right way round.
-      if (sp.flip !== outside) { ctx.translate(Math.round(x0 + (sp.u1 - sp.u0) * PPM), 0); ctx.scale(-kk / k, 1); } else { ctx.translate(Math.round(x0), 0); ctx.scale(kk / k, 1); }
+      if (sp.flip !== outside) { ctx.translate(Math.round(x0 + (sp.u1 - sp.u0) * ppm), 0); ctx.scale(-kk / k, 1); } else { ctx.translate(Math.round(x0), 0); ctx.scale(kk / k, 1); }
       painter(ctx, sp.ex, k); ctx.restore();
     }
     geo.castShadow = false;
-    geo.imageSurface = { canvas, version: 1, rect: [u0, y - CARD.h / 2, w / PPM, h / (PLAQUE.h * k) * CARD.h], curve: [R, 0, 0], tessellated: true };
+    geo.imageSurface = { canvas, version: 1, rect: [u0, y - size.h / 2, w / ppm, h / (PLAQUE.h * k) * size.h], curve: [R, 0, 0], tessellated: true };
     return { geo: noShadow(geo), x: px, z: pz, ry: theta };
   };
   // The ring's cards, in walk order, cut into bands of at most MAX_SPAN m of arc.
@@ -912,9 +923,9 @@
   const CUT = { panels: false };
   const cut = (g, lines, yTop, w = 0) => {
     let h = 0; for (const [, px, lead] of lines) h += lead + px * 10;
-    if (CUT.panels) { if (w) g.box(w + 0.1, h + 0.06, 0.002, "#0a0c10", 0, yTop - h / 2 + 0.03, 0.0025); return h; }
+    if (CUT.panels) { if (w) g.box((w + 0.1) * WORDS, (h + 0.06) * WORDS, 0.002, "#0a0c10", 0, (yTop - h / 2 + 0.03) * WORDS, 0.0025); return h; }
     let y = yTop;
-    for (const [t, px, lead, color, e] of lines) { y -= lead; g.add(RM.helpers.litWord(t, px, color || "#f1e9d6", e === undefined ? 0.42 : e), 0, y, -0.002, { glow: true }); y -= px * 10; }
+    for (const [t, px, lead, color, e] of lines) { y -= lead; g.add(RM.helpers.litWord(t, px * WORDS, color || "#f1e9d6", e === undefined ? 0.42 : e), 0, y * WORDS, -0.002, { glow: true }); y -= px * 10; }
     return yTop - y;
   };
   const engrave = (g, key, faceW, yTop, label = "") => {
@@ -1117,7 +1128,7 @@
   });
   const floorPoc = (() => {
     // The path of the history road: the walk ring under the plinths in order, then in to the middle.
-    const path = PLINTHS.map((p, i) => spotOf(i, RING - 1.0)).map((s) => [s.x, s.z]);
+    const path = PLINTHS.map((p, i) => spotOf(i, RING - DEPTH / 2 - 0.4)).map((s) => [s.x, s.z]);
     path.push([0, 0]);
     const cum = [0];
     for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
@@ -1406,7 +1417,7 @@
       { const bGlow = softDot(C.btc, 1.0, 0.15, 0.5, 0.6); SYMBOL.forEach((row, ri) => [...row].forEach((ch, ci) => { if (ch !== "#") return; K.node(`bglow:${ci}:${ri}`, bGlow(), (ci - (row.length - 1) / 2) * cell, capY + 0.2, -(ri - (SYMBOL.length - 1) / 2) * cell, { rx: HALF_PI, glow: true, scale: 0.001 }); })); }
     }
     // The ring's cards: each plinth's entries side by side on its front (walk order left to right), as bands.
-    const FRONT = RING - 0.604, ringCards = [];
+    const FRONT = RING - FACE, ringCards = [];
     PLINTHS.forEach((p, i) => p.entries.forEach((ex, j) => {
       const off = (j - (p.entries.length - 1) / 2) * CARD.pitch, a = azOf(i) * DEG;
       // The card's centre: along the flat front, `off` from its middle.
@@ -1449,36 +1460,37 @@
         PLINTHS.forEach((p, i) => {
           if (Math.floor(i * SECTORS / PLINTHS.length) !== sct) return;
           const { x, z } = spotOf(i);
-          GM.model(k.group(x, 0, z, headingTo(x, z, 0, 0)), p.model, SCALE[p.model] || 1, TOP + 0.005, far ? { fine: false, quiet: true } : { fine: PLINTH_FINE, moving: true });
+          GM.model(k.group(x, 0, z, headingTo(x, z, 0, 0)), p.model, SCALE[p.model] || 1, TOP + RISE + 0.005, far ? { fine: false, quiet: true, unit: BIG, lip: RISE } : { fine: PLINTH_FINE, moving: true, unit: BIG, lip: RISE });
         });
       }, 0, 0, 0);
     }
     // The words cut into the plinths, in INSC_GROUPS nodes round the ring (each shown only to a visitor near it).
-    const inscribe = (g, p, w) => { for (const sx of [-1, 1]) engrave(g.group(sx * (w / 2 + 0.004), 0, 0, -sx * HALF_PI), p.id, 1.2, 0.77, sx < 0 ? "left side" : "right side"); engraveFacts(g.group(0, 0, 0.604, Math.PI), p, w, 0.77); };
+    // The words are laid out as at the museum's size, on faces `WORDS` times smaller than these, and cut `WORDS` times as large.
+    const inscribe = (g, p, w) => { for (const sx of [-1, 1]) engrave(g.group(sx * (w / 2 + 0.004), 0, 0, -sx * HALF_PI), p.id, DEPTH / WORDS, 0.77, sx < 0 ? "left side" : "right side"); engraveFacts(g.group(0, 0, FACE, Math.PI), p, w / WORDS, 0.77); };
     for (let grp = 0; grp < INSC_GROUPS; grp++) K.node(`inscGroup${grp}`, (k) => { PLINTHS.forEach((p, i) => { if (Math.floor(i * INSC_GROUPS / PLINTHS.length) !== grp) return; const { x, z } = spotOf(i); inscribe(k.group(x, 0, z, headingTo(x, z, 0, 0)), p, widthOf(p)); }); }, 0, 0, 0);
     // The plinths, each turned to the middle, its plaque on its front, every piece open.
     PLINTHS.forEach((p, i) => {
       const { x, z } = spotOf(i), g = K.group(x, 0, z, headingTo(x, z, 0, 0)), w = widthOf(p);
-      const target = { kind: "genesis", tip: `${p.entries[0].when} · ${p.entries[0].name} · tap to see it up close`, radius: 0.95, index: p.entries[0].index };
+      const target = { kind: "genesis", tip: `${p.entries[0].when} · ${p.entries[0].name} · tap to see it up close`, radius: 0.95 * BIG, index: p.entries[0].index };
       plinthBody(g, w);
       // Satoshi's words on the two side faces and the year's facts on the back: here only their dark panels.
       CUT.panels = true; inscribe(g, p, w); CUT.panels = false;
       // A ring of light that rises under the plinth as a visitor comes near, and the year tick in the floor before it
       // that lights as they pass (one shared geometry each).
       K.node(`focusRing${i}`, glowRing(), x, 0.012, z, { glow: true, scale: 0.001 });
-      { const a = azOf(i) * DEG, rr = RING - 1.35; K.node(`yearTick${i}`, glowBar(), rr * Math.sin(a) - 0.3 * Math.cos(a), 0.01, -rr * Math.cos(a) - 0.3 * Math.sin(a), { ry: -a, glow: true, scale: 0.001 }); }
+      { const a = azOf(i) * DEG, rr = RING - 1.35 * BIG; K.node(`yearTick${i}`, glowBar(), rr * Math.sin(a) - 0.3 * Math.cos(a), 0.01, -rr * Math.cos(a) - 0.3 * Math.sin(a), { ry: -a, glow: true, scale: 0.001 }); }
       // A tap target at each card (an empty node: the card itself is drawn in its band), and one at the piece.
-      g.node(null, null, 0, TOP + 0.3, 0, { target });
-      for (const card of ringCards) if (card.plinth === i) g.node(null, null, -card.off, CARD.y, -0.604, { target: { ...target, index: card.ex.index, tip: `${card.ex.when} · ${card.ex.name} · tap to see it up close` } });
-      g.solid({ x: 0, z: 0, hx: w / 2 + 0.06, hz: 0.66 });
+      g.node(null, null, 0, TOP + 0.3 * BIG, 0, { target });
+      for (const card of ringCards) if (card.plinth === i) g.node(null, null, -card.off, CARD.y, -FACE, { target: { ...target, index: card.ex.index, tip: `${card.ex.when} · ${card.ex.name} · tap to see it up close` } });
+      g.solid({ x: 0, z: 0, hx: w / 2 + 0.06, hz: DEPTH / 2 + 0.06 });
     });
     // The middle, the room's showpiece: a round drum with an amber ring, and on it a turntable that turns once in
     // 75 s on the shared clock, carrying the whitepaper, grown to a tall lectern with the real first page on it and
     // the fanned pages beneath, and Block 0 at half again its size, so each faces everyone in turn; two flat cards,
     // one under each, on the still drum (no band round it); the taps on the pieces ride round.
     { const g = K.group(0, 0, 0, Math.PI);
-      g.cyl(MID_R, MID_R, TOP, C.concrete, 0, TOP / 2, 0, { seg: 48 });
-      g.torus(MID_R, 0.03, C.btc, 0, TOP, 0, { emissive: 1, glow: true, seg: 64 });
+      g.cyl(MID_R, MID_R, MID_TOP, C.concrete, 0, MID_TOP / 2, 0, { seg: 48 });
+      g.torus(MID_R, 0.03, C.btc, 0, MID_TOP, 0, { emissive: 1, glow: true, seg: 64 });
       const paper = EXHIBITS.find((ex) => ex.key === "whitepaper");
       // A press on the display, either face, opens the large reader (as the island's whitepaper tablet did); one on
       // the plaque opens the pop-up about the paper. Each leads to the other.
@@ -1499,7 +1511,7 @@
         // The title side, cut into the stone and fitted with margins (the slab is 1.56 m across).
         const Bk = k.group(0, 0.03 + FOOT + PH / 2, -SD / 2 - 0.004, 0);
         [["BITCOIN:", 0.02, 0.6], ["A PEER-TO-PEER", 0.02, 0.4], ["ELECTRONIC", 0.02, 0.2], ["CASH SYSTEM", 0.02, 0], ["SATOSHI NAKAMOTO", 0.013, -0.26], ["31 OCT 2008", 0.013, -0.42], ["THE WHITEPAPER · CLICK TO READ", 0.008, -0.68]].forEach(([t, px, y]) => { const fit = Math.min(px, (SW - 0.2) / (widthOfText(t, 1) || 1)); Bk.add(RM.helpers.litWord(t, fit, "#cfc5b2", 0.14), 0, y, 0); fitRec("centre", `title side · ${t}`, SW, widthOfText(t, fit)); });
-      }, 0, TOP + 0.005, 0);
+      }, 0, MID_TOP + 0.005, 0);
       // The page itself, a picture node riding the turntable on the slab's other side, painted when the pages load.
       const canvas = CH.canvas(1360, 1760), pctx = canvas.getContext("2d");
       pctx.fillStyle = "#f4efe6"; pctx.fillRect(0, 0, 1360, 1760);
@@ -1524,15 +1536,15 @@
       K.node(null, null, 0, 1.3, -SD / 2 - 0.3, { parent: "centreTurn", target: tP });
       // One flat card on the drum's side, under the page's resting place.
       const rc = MID_R + 0.008;
-      { const mb = band([{ ex: paper, az: 180, r: rc, curved: true }], rc, CARD.y, true); K.node(null, mb.geo, mb.x, 0, mb.z, { ry: mb.ry, glow: true }); g.node(null, null, 0, CARD.y, -rc, { target: tI }); }
+      { const mb = band([{ ex: paper, az: 180, r: rc, curved: true }], rc, MID_CARD.y, true, paintPlaque, MID_CARD, PPM); K.node(null, mb.geo, mb.x, 0, mb.z, { ry: mb.ry, glow: true }); g.node(null, null, 0, MID_CARD.y, -rc, { target: tI }); }
       g.solid({ x: 0, z: 0, r: 1.62 });
       // Block 0's face as a live screen on its plinth, over the cut header: the same figures, and at the show's
       // burst the nonce counting up to 2083236893, the hash printing digit by digit and the headline typing out.
-      const BS = 1.0, bw = (1.1 - 0.08) * BS, bh = (0.7 - 0.08) * BS, bcv = CH.canvas(1224, 744), bctx = bcv.getContext("2d");
+      const BS = BIG, bw = (1.1 - 0.08) * BS, bh = (0.7 - 0.08) * BS, bcv = CH.canvas(1224, 744), bctx = bcv.getContext("2d");
       const blockGeo2 = RM.flatPicture(bcv, bw, bh, 0.75);
       paintBlockScreen(bctx, 1224, 744, 1, 1, 1);
       { const gi = PLINTHS.findIndex((p) => p.id === "genesis"), sp = spotOf(gi), h = headingTo(sp.x, sp.z, 0, 0), lz = -0.1 * BS - 0.004;
-        K.node("blockScreen", blockGeo2, sp.x + lz * Math.sin(h), TOP + 0.005 + (0.12 + 0.35) * BS, sp.z + lz * Math.cos(h), { ry: h + Math.PI }); }
+        K.node("blockScreen", blockGeo2, sp.x + lz * Math.sin(h), TOP + RISE + 0.005 + (0.12 + 0.35) * BS, sp.z + lz * Math.cos(h), { ry: h + Math.PI }); }
       BL.timechainGenesis.blockScreen = { canvas: bcv, ctx: bctx, geo: blockGeo2 };
       // The slab's back, the coinbase, as a picture too: the address and The Times' headline in their own letters
       // (the room's pixel letters are capitals only, and an address is not).
@@ -1550,7 +1562,7 @@
           say("never spent: the software does not let anyone spend it", 506, P.font(500, 28), "#a89c8b");
           say("Next: block 1 · 9 Jan 2009", 600, P.font(600, 38), C.btcGlow);
           say("Every block since points back to this one", 660, P.font(500, 30), "#d4c8b6");
-        }, sp.x + lz * Math.sin(h), TOP + 0.005 + (0.12 + 0.35) * BS, sp.z + lz * Math.cos(h), { ry: h, emissive: 0.75 }); }
+        }, sp.x + lz * Math.sin(h), TOP + RISE + 0.005 + (0.12 + 0.35) * BS, sp.z + lz * Math.cos(h), { ry: h, emissive: 0.75 }); }
     }
     // Light: a wide warm spot over the middle that reaches the ring, and a dim wash over the dome's front (every light
     // is a per-pixel cost over the whole screen, about a tenth of a frame on an integrated GPU); the plaques, the
@@ -1767,11 +1779,11 @@
         // Proximity focus and the walk-lit years: each plinth's ring rises within 3 m of the visitor; its year tick
         // lights within 2.5 m and fades over six seconds behind them (this viewer's own, not synced).
         for (let i = 0; i < focus.length; i++) {
-          const f = focus[i], d = Math.hypot(f.x - px, f.z - pz), want = d < 3 || f.boost > 0 ? 1 : 0;
+          const f = focus[i], d = Math.hypot(f.x - px, f.z - pz), want = d < 3 * BIG || f.boost > 0 ? 1 : 0;
           if (f.boost > 0) f.boost -= dt;
           f.level += (want - f.level) * Math.min(1, dt * 3);
-          if (f.node) { const sc = Math.max(0.001, f.level * (1.15 + (f.boost > 0 ? 0.45 * (0.5 + 0.5 * Math.sin(now * 9)) : 0))); f.node.scale.x = sc; f.node.scale.y = 1; f.node.scale.z = sc; }
-          f.lit = Math.max(f.lit - dt / 6, d < 2.5 ? 1 : 0);
+          if (f.node) { const sc = Math.max(0.001, f.level * BIG * (1.15 + (f.boost > 0 ? 0.45 * (0.5 + 0.5 * Math.sin(now * 9)) : 0))); f.node.scale.x = sc; f.node.scale.y = 1; f.node.scale.z = sc; }
+          f.lit = Math.max(f.lit - dt / 6, d < 2.5 * BIG ? 1 : 0);
           if (f.tick) { f.tick.scale.x = 0.6; f.tick.scale.y = f.tick.scale.z = Math.max(0.001, f.lit * 1.2); }
         }
         // The burst lights Block 0's plinth at the walk's end too (the block the burst makes).
@@ -1819,7 +1831,7 @@
       near(x, z, fx, fz) {
         px = x; pz = z;
         act = null; best = Infinity;
-        for (let i = 0; i < spots.length; i++) consider(acts[i], spots[i].x, spots[i].z, 2.4, x, z, fx, fz);
+        for (let i = 0; i < spots.length; i++) consider(acts[i], spots[i].x, spots[i].z, 2.4 * BIG, x, z, fx, fz);
         // The middle: the paper on the door's side, the block on the front's.
         consider(middle, 0, 0, 3.2, x, z, fx, fz);
         const pact = portal.near(x, z, fx, fz);
@@ -1840,6 +1852,6 @@
     portal.bind(self);
     return self;
   };
-  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, LINK, RING, SCALE, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
+  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, LINK, RING, BIG, TOP, RISE, DEPTH, SCALE, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
   BL.timechainRoomKinds.genesis = { plan, animate, door };
 })();

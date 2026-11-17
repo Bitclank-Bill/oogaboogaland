@@ -30,20 +30,28 @@
   // (`blink:<id>:<period>:<phase>`, `spin:<id>:<rate>`); elsewhere (the viewer, the far build) the same parts are
   // still, in the mesh.
   let uid = 0;
+  // A room may show its displays larger than the museum's size: while one is built (`model`, `opts.unit`) every length
+  // here is `UNIT` times its own, the plinth's own metres included, and `s` stays what the display's own layout says.
+  // Such a room may also stand the piece on a deck raised `LIP` metres behind the plinth's front edge (`opts.lip`):
+  // the label strip stays down on the edge, in front of and below everything.
+  let UNIT = 1, LIP = 0;
+  const grown = (geo, o) => UNIT === 1 ? o : { ...o, scale: (o && o.scale || 1) * UNIT };
+  const cast = (geo) => { const g = BL.models.merge(geo); if (UNIT !== 1) for (let i = 0; i < g.verts.length; i++) g.verts[i] *= UNIT; return g; };
   // `quiet` (the far build): words under 6 mm a pixel are left out, since nobody reads them from across the room.
-  const tools = (k, base, s, moving = false, quiet = false) => {
+  const tools = (k, base, s0, moving = false, quiet = false) => {
+    const s = s0 * UNIT, part = (geo, o) => typeof geo === "function" ? o : grown(geo, o);
     const T = {
-      s, moving, quiet, k, base,
-      node: (name, geo, x, yy, z, o) => k.node(name, geo, x * s, base + yy * s, z * s, o),
+      s: s0, moving, quiet, k, base,
+      node: (name, geo, x, yy, z, o) => k.node(name, geo, x * s, base + yy * s, z * s, part(geo, o)),
       // A part that slides from where it stands by `d` ([x, y, z] here) and back every `period` seconds (nodes keep
       // their place in the room's frame, so the slide is turned to the room with this frame's heading).
       // Shown only from `t0` to `t1` of every `period` seconds.
-      pulse: (geo, x, yy, z, period, t0, t1, o) => moving ? k.node(`pulse:${uid++}:${period}:${t0}:${t1}`, geo, x * s, base + yy * s, z * s, o) : (t1 - t0 > period / 2 ? k.add(BL.models.merge(geo), x * s, base + yy * s, z * s, o || {}) : null),
+      pulse: (geo, x, yy, z, period, t0, t1, o) => moving ? k.node(`pulse:${uid++}:${period}:${t0}:${t1}`, geo, x * s, base + yy * s, z * s, part(geo, o)) : (t1 - t0 > period / 2 ? k.add(cast(geo), x * s, base + yy * s, z * s, o || {}) : null),
       // Moved from where it stands by `d` between `t0` and `t1` of the cycle, staying there till the cycle turns.
-      slide: (geo, x, yy, z, d, period, t0, t1, o) => { const a = k.yaw(), c = Math.cos(a), sn = Math.sin(a), wx = (c * d[0] + sn * d[2]) * s, wz = (-sn * d[0] + c * d[2]) * s; const show = o && o.show ? o.show : [0, period]; return moving ? k.node(`slide:${uid++}:${wx.toFixed(4)}:${(d[1] * s).toFixed(4)}:${wz.toFixed(4)}:${period}:${t0}:${t1}:${show[0]}:${show[1]}`, geo, x * s, base + yy * s, z * s, o) : k.add(BL.models.merge(geo), (x + d[0]) * s, base + (yy + d[1]) * s, (z + d[2]) * s, {}); },
+      slide: (geo, x, yy, z, d, period, t0, t1, o) => { const a = k.yaw(), c = Math.cos(a), sn = Math.sin(a), wx = (c * d[0] + sn * d[2]) * s, wz = (-sn * d[0] + c * d[2]) * s; const show = o && o.show ? o.show : [0, period]; return moving ? k.node(`slide:${uid++}:${wx.toFixed(4)}:${(d[1] * s).toFixed(4)}:${wz.toFixed(4)}:${period}:${t0}:${t1}:${show[0]}:${show[1]}`, geo, x * s, base + yy * s, z * s, part(geo, o)) : k.add(cast(geo), (x + d[0]) * s, base + (yy + d[1]) * s, (z + d[2]) * s, {}); },
       // A part turned about its own z from `r0` to `r1` between `t0` and `t1`, and back between `t2` and `t3`.
       tip: (builder, x, yy, z, r0, r1, period, t0, t1, t2, t3) => k.node(moving ? `tip:${uid++}:${r0}:${r1}:${period}:${t0}:${t1}:${t2}:${t3}` : null, builder, x * s, base + yy * s, z * s, { rz: moving ? 0 : r1 }),
-      shuttle: (geo, x, yy, z, d, period, phase = 0, o) => { const a = k.yaw(), c = Math.cos(a), sn = Math.sin(a), wx = (c * d[0] + sn * d[2]) * s, wz = (-sn * d[0] + c * d[2]) * s; return moving ? k.node(`shuttle:${uid++}:${wx.toFixed(4)}:${(d[1] * s).toFixed(4)}:${wz.toFixed(4)}:${period}:${phase}`, geo, x * s, base + yy * s, z * s, o) : k.add(BL.models.merge(geo), x * s, base + yy * s, z * s, o || {}); },
+      shuttle: (geo, x, yy, z, d, period, phase = 0, o) => { const a = k.yaw(), c = Math.cos(a), sn = Math.sin(a), wx = (c * d[0] + sn * d[2]) * s, wz = (-sn * d[0] + c * d[2]) * s; return moving ? k.node(`shuttle:${uid++}:${wx.toFixed(4)}:${(d[1] * s).toFixed(4)}:${wz.toFixed(4)}:${period}:${phase}`, geo, x * s, base + yy * s, z * s, part(geo, o)) : k.add(cast(geo), x * s, base + yy * s, z * s, o || {}); },
       B: (w, h, d, color, x, yy, z, o) => k.box(w * s, h * s, d * s, color, x * s, base + yy * s, z * s, o),
       Y: (rt, rb, h, color, x, yy, z, o) => k.cyl(rt * s, rb * s, h * s, color, x * s, base + yy * s, z * s, o),
       R: (rr, r, color, x, yy, z, o) => k.torus(rr * s, r * s, color, x * s, base + yy * s, z * s, o),
@@ -52,7 +60,7 @@
       prism: (pts, depth, color, x, yy, z, o) => k.prism(pts.map(([px, py]) => [px * s, py * s]), depth * s, color, x * s, base + yy * s, z * s, o),
       add: (geo, x, yy, z) => k.add(geo, x * s, base + yy * s, z * s),
       say: (text, px, color, x, yy, z, e = 0.25) => quiet && px * s < 0.006 ? null : T.add(RM.helpers.litWord(text, px * s, color, e), x, yy, z),
-      at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, s, moving, quiet),
+      at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, s0, moving, quiet),
       face: (face, x, yy, z, spin = 0) => T.at(x, yy, z, FACES[face][0], FACES[face][1], spin),
       layer: (n) => -LIFT - 2 * LIFT * n, ink: (n) => -LIFT - 2 * LIFT * n - 0.0025
     };
@@ -125,7 +133,7 @@
   // A rebuilt display is laid out in the plinth's own metres, whatever scale the room gives its piece.
   const plain = (T) => T.s === 1 ? T : tools(T.k, T.base, 1, T.moving, T.quiet);
   // The display's label: a strip standing along the plinth's front edge, in front of and below everything.
-  const label = (T, lines, w = 0.86, x = 0) => strip(T, lines, x, 0.048, -0.55, w, 0.004);
+  const label = (T, lines, w = 0.86, x = 0) => strip(T, lines, x, 0.048 - LIP / UNIT, -0.55, w, 0.004);
   // A lit rod between two points at one height (a link drawn in light).
   const beam = (T, a, b, y, color = C.glow, r = 0.006) => { const dx = b[0] - a[0], dz = b[1] - a[1]; T.B(r, r, Math.hypot(dx, dz), color, (a[0] + b[0]) / 2, y, (a[1] + b[1]) / 2, { ry: Math.atan2(dx, dz), emissive: 1, glow: true }); };
   // A keyboard: a wedge with rows of keys (left out when not fine, the wedge alone).
@@ -1140,10 +1148,11 @@
   M.timestamp = (T0, fine) => {
     const T = plain(T0), hashes = ["3B7E", "A1C9", "5D02", "E6F4", "9F2A"];
     const Cb = easel(T, 0.3, -0.12, 0.5, 0.52, 0.42);
+    // The certificates stand high on their board: the lowest one's last line clears the label strip in front of it.
     [2, 3, 4].forEach((i, k) => {
-      const y = (1 - k) * 0.168;
+      const y = 0.03 + (1 - k) * 0.158;
       card(Cb.at(0, y, -0.001), [[`CERTIFICATE ${i + 1}`, 0.0032, C.ink, 0.05], [`PREV ${hashes[i - 1]} · HASH ${hashes[i]}`, 0.0032, C.inkBlue, 0.1], ["TIME-STAMPED, PUBLISHED IN THE PAPER", 0.0021, "#5a5750", 0.05]], 0.47, 0.15, { bg: k % 2 ? C.paperOld : C.paper, t: 0.003, gap: 0.55, margin: 0.012 });
-      if (k) Cb.B(0.012, 0.03, 0.004, C.amber, 0.19, y + 0.084, -0.004, { emissive: 0.8, glow: true });
+      if (k) Cb.B(0.012, 0.03, 0.004, C.amber, 0.19, y + 0.079, -0.004, { emissive: 0.8, glow: true });
     });
     // The paper: its masthead, columns of print, and the boxed notice with the week's hash.
     const Pb = easel(T, -0.31, -0.12, 0.42, 0.52, 0.42);
@@ -1225,9 +1234,10 @@
 
   // A model in kit `root`, standing on `y`, `s` times the museum's size.
   const model = (root, key, s = 1, y = 0, opts = {}) => {
-    const T = tools(root, y, s, opts.moving === true && opts.fine !== false, opts.quiet === true), build = M[key];
+    const build = M[key];
     if (!build) throw new Error(`No model for ${key}`);
-    build(T, opts.fine !== false, key, opts.part || null);
+    UNIT = opts.unit || 1; LIP = opts.lip || 0;
+    try { build(tools(root, y, s, opts.moving === true && opts.fine !== false, opts.quiet === true), opts.fine !== false, key, opts.part || null); } finally { UNIT = 1; LIP = 0; }
   };
   BL.timechainGenesisModels = { model, has: (key) => !!M[key], tools, mm, C, fits: FITS };
 })();
