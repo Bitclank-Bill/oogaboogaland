@@ -73,6 +73,8 @@
     if (src.voxel) geo.voxel = src.voxel;
     geo.glass = GLASS;
     geo.castShadow = false;
+    // Kept, as the Ooga's own parts are, in the lower tiers' reflections whatever its size.
+    if (src.characterPart) geo.characterPart = true;
     if (packed) compact.pack(geo, { immutable: true, renderOnly: true, precision: 64 });
     copies.set(src, geo);
     return geo;
