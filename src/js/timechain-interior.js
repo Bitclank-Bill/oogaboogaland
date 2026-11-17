@@ -49,7 +49,7 @@
     opts.lightCount = count;
   };
   // The room's hum: a low drone and a soft fan hiss, pitched a little apart in each room, honouring the page-wide
-  // mute; a context only after a gesture, closed on leaving.
+  // mute; a context only after a gesture, closed on leaving. The lecture hall keeps only the soft hiss for clarity.
   const ambience = (room, signal) => {
     let context = null, bus = null, sources = [], nodes = [], connected = false, disposed = false, muted = false;
     muted = BL.sound.muted;
@@ -65,7 +65,7 @@
       bus = context.createGain();
       bus.gain.value = 0.5;
       const pitch = 1 + (room.id - 5) * 0.012;
-      for (const [hz, level] of [[49 * pitch, 0.03], [73.5 * pitch, 0.016]]) {
+      if (room.kind !== "lecture") for (const [hz, level] of [[49 * pitch, 0.03], [73.5 * pitch, 0.016]]) {
         const tone = context.createOscillator(), gain = context.createGain();
         tone.type = "sine"; tone.frequency.value = hz; gain.gain.value = level;
         tone.connect(gain); gain.connect(bus); tone.start();
