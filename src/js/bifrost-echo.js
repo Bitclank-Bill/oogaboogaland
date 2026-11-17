@@ -20,8 +20,8 @@
 // never within `COOLDOWN` of the last one seen, which counts from the moment a double appears, so one cut short by
 // leaving before it shows is not spent; never when the visitor asks for reduced motion. It waits for the Ooga to reach
 // the hall, then `DELAY` seconds and a few more, counted only while the visitor is not leaving or reading a dialog over
-// the chamber (`busy`). `trigger` plays one at once, and `?debug=1&echo=1` gives every visit one after `FORCED`
-// seconds, for review.
+// the chamber (`busy`). A test page (`nosim`) gets none. `trigger` plays one at once, and `?debug=1&echo=1` gives
+// every visit one after `FORCED` seconds, for review, `nosim` or not.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -30,7 +30,8 @@
   const { createNode, addChild, removeChild } = BL.scene;
   const FIRST = 0.5, CHANCE = 0.2, COOLDOWN = 15 * 60 * 1000, DELAY = [8, 6], FORCED = 3, KEY = "ooga-bifrost-echo";
   const QUIET = 0.1, TURNED = 0.35, DISSOLVE = 0.6;
-  const params = new URLSearchParams(location.search), FORCE = params.get("debug") === "1" && params.get("echo") === "1";
+  // A test page (`nosim`) gets none unless it asks for one.
+  const params = new URLSearchParams(location.search), FORCE = params.get("debug") === "1" && params.get("echo") === "1", TEST_PAGE = params.has("nosim");
   const PHASES = { emerge: 0.6, out: 2, look: 4, fly: 7, enter: 7.6, back: 9, gone: 10 };
   // How far out the double floats from the Ooga's head (`ahead` along the view, `side` to its right, `up`), and from the
   // eye in first person, where it must not stand in the way of the view.
@@ -118,7 +119,7 @@
   // `mode`, and the view's `orbit.yaw` for a view looking straight down); `prepare(geometry)` uploads a mesh ahead of
   // its first draw; `busy()` that the visitor is leaving or reading something over the chamber, which the wait holds for.
   const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, nearness, mine, cue, prepare, busy }) => {
-    let pending = windows.length > 0 && (FORCE || roll()), wait = FORCE ? FORCED : DELAY[0] + Math.random() * DELAY[1], t = -1, figure = null, to = null;
+    let pending = windows.length > 0 && (FORCE || !TEST_PAGE && roll()), wait = FORCE ? FORCED : DELAY[0] + Math.random() * DELAY[1], t = -1, figure = null, to = null;
     // A visit that will have one builds its double now, while the visit is entered behind the fade, and uploads its
     // meshes, so the moment it appears costs nothing; `liveGeometry` keeps them until then.
     const build = () => {
