@@ -12822,23 +12822,6 @@
       park: () => navigate("arcade", false, false), onExit: () => { if (cloudYard) { world.arcadeYard = cloudYard; cloudYard = null; go("hub", "cloud-hopper-return"); } else go("arcade", "cloud-hopper-return"); },
       crew, pilot, hud, renderer, camera, game, seaY: SEA_Y,
       move: cloudMove, mode: cloudMode, pileSurface: cloudPileSurface, mainlandRadius: island.radius,
-      // The island's rim where a course comes in from (ux, uz): the highest ground a rider landing there may meet.
-      coastY: (ux, uz) => {
-        let top = -Infinity;
-        for (let off = -6; off <= 6; off++) top = Math.max(top, island.supportAt(ux * (island.radius - 0.5) - uz * off, uz * (island.radius - 0.5) + ux * off, 400, 0, ABYSS_FLOOR, PLAYER_RADIUS));
-        return top;
-      },
-      // Where a ray first comes down onto the island's ground within `far`, into `out` (its `y` the ground's top there).
-      landHit: (ox, oy, oz, dx, dy, dz, far, out) => {
-        const reach = (island.radius + 1) * (island.radius + 1);
-        for (let t = 0; t <= far; t += 0.5) {
-          const x = ox + dx * t, y = oy + dy * t, z = oz + dz * t;
-          if (x * x + z * z > reach) continue;
-          const top = island.supportAt(x, z, 400, 0, ABYSS_FLOOR, 0);
-          if (top > ABYSS_FLOOR && y <= top) { out.x = x; out.y = top; out.z = z; out.t = t; return true; }
-        }
-        return false;
-      },
       finish: () => ({ x: 0, y: ALTAR_HEIGHT + 2, z: 0 }),
       pileTop: () => pile.shown > 0 ? pile.core.position.y + pile.core.scale.y * pileTopY : ALTAR_HEIGHT + 0.23,
       refusal: () => gameMode ? "Finish the island event before playing Cloud Hopper"

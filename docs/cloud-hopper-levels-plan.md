@@ -788,26 +788,25 @@ lightning deep in the wall. It keeps the rules of sections 2.4 to 2.8 and steps 
 | Lane, speed | 5-8 m, 0.9-1.5 m/s | 5.3-8.5 m, 0.95-1.6 m/s |
 | `reach` | 0.8 | 0.9 |
 | Gusts, tornadoes | 0, 3 | 2 (each 2 s and 60% of Aurora Heights' push), 3 |
-| Last jump to the island | about 9 m | 90% of the furthest a rider can jump there (33 m on the island) |
+| Last jump to the island | about 9 m | about 9 m |
 
 48% permanent is the fewest 2.5's checks allow at these gaps with so few side landings, even at `reach` 0.9.
 
-The wind is lighter than Aurora Heights' (two gusts, each blowing 2 s for 3 and pushing 60% as hard), since the flips,
-the fading and the tornadoes carry the level. The last jump takes a perfect one: the final landing is permanent, plain
-and still, its shoreward edge 90% of the furthest a rider can jump to the island's rim (running, off the edge, the air
-jump taken as it comes level with the rim). Landing on it gives both jumps back, whatever spent the air jump on the
-way, and puts a worn jetpack away (the rider may put it on again). A grappling hook bites the island's ground within its usual reach, which
-only the final landing and the air past it are in, so a hook kept for the end saves a jump that falls short.
+The wind is lighter than Aurora Heights' (two gusts, each blowing 2 s for 3 and pushing 60% as hard), since the flip,
+the fading and the tornadoes carry the level. The last jump is every level's: one plain jump from the final landing,
+12 m off the coast, with no air jump, jetpack or hook needed. The grappling hook is for clouds alone, as on every
+level; it does not bite the island.
 
 Two things are new, and neither is part of the course: it is one path from start to finish whose clouds are the same
 with or without them, so no cloud is ever only for one way up and nothing has to be touched to go on.
 
-**The world turns over twice a run**, unannounced, as a tornado comes or a gust blows. Each place is seeded with the
-course in its own stretch of the way down (`flips`: 25–45% and 60–80%, each 277 m long). Every attempt draws a fresh
-course seed, so the two places are somewhere else every time and cannot be learned, and a replay's recorded seed gives
-them back exactly. Each is clear of the start and the finish and
-the two are well apart. As the rider reaches it the whole world rolls half a turn round the course's axis over
-2.2 s, the clouds with it, and it stays: upside down after the first, upright again after the second. The rider never
+**The world turns over once a run**, unannounced, as a tornado comes or a gust blows, and stays so to the finish. The
+place is seeded with the course in a stretch round its halfway mark (`flips`: 40–60% of the way down, 277 m long).
+Every attempt draws a fresh course seed, so the place is somewhere else every time and cannot be learned, and a
+replay's recorded seed gives it back exactly. As the rider reaches it the sky and the sea roll half a turn round the
+course's axis over 2.2 s, the clouds turning over with them, and they stay: the sea overhead and the sky below, to
+the pile. The island does not: it and everything on it are drawn the right way up to the rider, where they are, so
+the run is finished on it as on every level, with the clouds and the sky under it. The rider never
 turns: gravity stays down the screen and the controls stay as they are. It goes on over the course as it was going,
 its speed and whatever is held untouched, so it steers all through the roll; only its height is taken, for the
 roll's first 0.6 s, while it is lowered 8 m, down through the cloud it stood on, wearing the jetpack from the roll's
@@ -815,9 +814,12 @@ start. Then it is let go, the world still rolling: the next landing is a short l
 below it, so the stretch runs downhill as it does upright. Each cloud rolls over where it is, round the same axis through its own middle, so upside down its flat underside
 is up, level with the top it had, its puffs hang under it, and that underside is what the rider lands, stands and
 bounces on (a boost cloud's arrows show there too). Every cloud's place, height and footprint are unchanged, so every
-jump, fade, hook throw, gust and tornado plays as it does upright. The sky's roll is the view's alone, so no node of
-the island's changes and the run's physics are untouched; the run is drawn turned back to match, and what reads the
-view (the hook's aim, the overlay) reads the run's own. The rider is
+jump, fade, hook throw, gust and tornado plays as it does upright. The sky's roll is the view's alone and the run's
+physics are untouched; everything that hangs from the scene's root (the island, the run, the rider) is drawn turned
+back to match, by the root's own place and rotation, which the run writes while the world is turned and puts back as
+it ends, and what reads the view (the hook's aim, the overlay) reads the run's own. The storm's scenery is held
+against that, so it rolls with the sky. What does not hang from a node stays with the sky: the shared effects layer's
+sparks and dust, and the island's lamp light. The rider is
 let go with the jetpack worn and just the fuel to climb back onto the same course (what the pack burns lifting it to
 0.5 m over the height it was lowered from with thrust 0.3 s late, plus 15%: about 29% of a tank for the 8 m; a rider
 holding more keeps its own), and a fall of 30 m before landing
@@ -825,7 +827,7 @@ puts it back once, at rest, under where the roll began (30 m further under the c
 lowers one: the course falls away, so a rider flying on under it is not falling). The pack goes back as it was at the
 first landing, so the jump and the air jump are the rider's again; a second fall from that climb, and any fall after that
 landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down
-(their instanced batches are turned back with the run as they are written). It never strikes during a climb or a warp, nor for 1.5 s after one, nor on a rider
+(their instanced batches are turned back with the run as they are written). It never strikes during a warp, nor for 1.5 s after one, nor on a rider
 already fallen more than 8 m under the course (it turns once the rider is back), so the rider is never let go
 further under the course than the fuel climbs.
 
@@ -833,7 +835,11 @@ further under the course than the fuel climbs.
 a clock far shorter than a fading cloud's, sweeping across the jump between two landings. They never react to the
 rider. A touch throws the rider about 50 m on, in a half-second streak of violet sparkles the view glides after, onto
 a plain landing that stands and that no tornado stands by, with the speed it went in with. Each is placed over a jump
-with a white landing that never fades a warp on, so it always has somewhere to throw a rider. With both caught a run
+with a white landing that never fades a warp on, so it always has somewhere to throw a rider; when a tornado stands by
+that stretch (38 to 66 m on) it throws to the nearest landing within 24 to 110 m on instead, and with a tornado by
+every one of those, to the usual one all the same (a rider just thrown is safe from a tornado for 1.5 s, and none
+takes one mid-warp). A portal holds no rider: it cannot be stood or walked on, and whatever touches it is thrown at
+once. With both caught a run
 covers about 1,280 m, 32% over Thunderhead's route.
 
 **Neither hitches.** Every mesh a warp or a flip shows is handed to the renderer as the course is laid, a rider about

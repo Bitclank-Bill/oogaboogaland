@@ -11,8 +11,7 @@
 // are how many of each power-up its course carries (plan 3), its `gusts` how many gusts of wind blow across it
 // (cloud-hopper-gust.js), each blowing `gustBlow` seconds and pushing `gustPush` of the full push where it gives
 // them, and its `flips` and `portals` where its world turns over and how many portal clouds it
-// carries (cloud-hopper-course.js), its `lastGap` the share of a rider's furthest jump its last one, to the coast,
-// takes, and its `landHook` whether a grappling hook bites the mainland's ground.
+// carries (cloud-hopper-course.js).
 // `courseVersion` changes whenever a level's challenge does, as does that board's registry version.
 (() => {
   "use strict";
@@ -45,15 +44,15 @@
     // longest route with fewer clouds further apart, smaller and swinging a little wider and faster, more of them
     // fading on shorter lives and warnings, with Thunderhead's tornadoes and a lighter wind than Aurora Heights' (as
     // many gusts, each blowing two seconds for its three and pushing six tenths as hard: `gustBlow`, `gustPush`), since
-    // the flips, the fading and the tornadoes carry it. Twice a run the whole world turns
-    // over, unannounced, at a place seeded with the course in each of its `flips` stretches (so, as the course's seed
-    // is drawn afresh for every attempt, somewhere else in each every time): the first leaves it
-    // upside down and the second upright again. It changes nothing of the course, which is one path from start to
-    // finish whichever way up the world is. Two gold portal clouds (`portals`), fast and short-lived, each throw a
-    // rider about 50 m on. Its fairness counts on 90% of a running jump.
+    // the flip, the fading and the tornadoes carry it. Once a run the whole world turns
+    // over, unannounced, at a place seeded with the course in its `flips` stretch round the halfway mark (so, as the
+    // course's seed is drawn afresh for every attempt, somewhere else every time), and stays upside down to the
+    // finish. It changes nothing of the course, which is one path from start to finish whichever way up the world
+    // is. Two gold portal clouds (`portals`), fast and short-lived, each throw a rider about 50 m on. Its fairness
+    // counts on 90% of a running jump.
     level(5, "Storm's Eye", { hour: 6.6, clouds: 0.6, storm: 0.35, scenery: "eye", tornado: true }, 0.34,
       { step: 13.2, main: [2.6, 0.85, 1.8, 0.65], side: [2.7, 0.65, 2, 0.45], turn: 52, sway: 8, lane: [5.3, 3.2], speed: [0.95, 0.65],
-        sides: 0.12, boost: 0.27, bounce: 0.22, twoPacks: 1, xray: 3, updraft: 2, hook: 2, gusts: 2, gustBlow: 2, gustPush: 0.6, lastGap: 0.9, landHook: true, flips: [[0.25, 0.45], [0.6, 0.8]], portals: 2 },
+        sides: 0.12, boost: 0.27, bounce: 0.22, twoPacks: 1, xray: 3, updraft: 2, hook: 2, gusts: 2, gustBlow: 2, gustPush: 0.6, flips: [[0.4, 0.6]], portals: 2 },
       { permanent: 0.48, ordinary: [12.8, 30.6], warn: 1.4, fade: 0.6, hidden: [3, 4.5], stagger: 2.5, spine: 4, pace: 3.5, reach: 0.9 })
   ]);
   BL.cloudHopperLevels = { LEVELS, BASE_ROUTE, GROWTH, get: id => LEVELS[id - 1] || null };
