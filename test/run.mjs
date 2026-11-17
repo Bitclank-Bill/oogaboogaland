@@ -31527,7 +31527,7 @@ const qualityFramebufferChecks = async () => {
     settings: { dpr: 1.5, msaa: 2, bloom: true, shafts: true }, maxSamples: 2, res: {}, size: {},
     createTexture: allocate, createRenderbuffer: allocate, DRAW_BOTH: [] };
   const r = runInNewContext(`(() => {
-    let width, height, dpr, pw, ph;
+    let width, height, dpr, pw, ph, scale = 1;
     ${extract("destroyFbo", "    const buildFbo =")}
     ${extract("buildFbo", "    const destroyShadow =")}
     ${extract("resize", "    const init =")}

@@ -2572,14 +2572,18 @@
   // Everything that belongs to the map, under one node so a new map replaces it whole: the ground and buildings, the
   // quiz pads, power-up spots, trampolines, ammo caches, and the campfire with its three dancing potato Oogas.
   // The extras (foliage and the map's dressing), all behind the Detail setting so they can be turned off or withdrawn.
+  // Low also draws three quarters of the tier's pixels each way (the renderer's floor), for GPUs that struggle on Full.
+  // Low only ever takes away what is drawn: what an Ooga stands on, bumps into or hides behind is the sim's and the same.
   const detail = { full: true };
-  const DETAIL_KEY = "ooga-block-detail";
-  const loadDetail = () => { try { detail.full = localStorage.getItem(DETAIL_KEY) !== "low"; } catch { /* the default stands */ } };
+  const DETAIL_KEY = "ooga-block-detail", LOW_SCALE = 0.75;
+  const detailScale = () => { if (renderer.setScale) renderer.setScale(detail.full ? 1 : LOW_SCALE); };
+  const loadDetail = () => { try { detail.full = localStorage.getItem(DETAIL_KEY) !== "low"; } catch { /* the default stands */ } detailScale(); };
   const chooseDetail = (full) => {
     if (full === detail.full) return;
     detail.full = full;
     try { localStorage.setItem(DETAIL_KEY, full ? "full" : "low"); } catch { /* this visit only */ }
     for (const b of el.details) b.setAttribute("aria-pressed", String((b.dataset.detail === "full") === full));
+    detailScale();
     if (sim) { buildMap(); mapBase = null; }
   };
   // A few themed plants and rocks round the island's outer ring: shared geometry, placed once a map, mirrored half
@@ -3290,6 +3294,8 @@
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
     undeckRender();
+    // The page's other scenes draw at their tier's own density.
+    if (renderer.setScale) renderer.setScale(1);
     chairsGreeted = false;
     deck = null; you = 0; kept = null; liveCast = null; watchVisit = false; panelOpen = false;
     BL.net.setBody(null);
