@@ -3,7 +3,9 @@
 // (or hit back) a flag goes up halfway between you and both rifles are filled; after a countdown shown large, each blow
 // you land with your own weapons is told to the room, which keeps both bars and names the winner. Both bars stand over
 // the duelists' heads on every page. A blow taken flashes the screen's edge red and points an arrow at where it came
-// from. The loser stands stunned STUN_MS under circling birds, and both read how it ended in large letters.
+// from. The loser stands stunned STUN_MS under circling birds (the crew's own stun for the visitor's Ooga; over another
+// page's, and across the visitor's own first-person view, birds drawn on the overlay), and both read how it ended in
+// large letters.
 // Stray more than RADIUS from the flag for OUT_MS and you forfeit; Yield gives up.
 // `create` once a hub visit: `update(dt)` each frame after the crew, `draw(ctx, project)` in the overlay after the
 // nameplates, `shot(cave, from, to)` and `swing(cave, charge)` from the crew's hooks, `tap(ray)` for a click in the
@@ -17,11 +19,16 @@
   // A blow landed outside a duel challenges at most once every PROVOKE_MS.
   const PROVOKE_MS = 2500;
   // The bar over a duelist's head, in CSS pixels: its size, how far over the nameplate (or the bare head) it stands,
-  // and how fast the bar shown follows the health it stands for (points a second).
-  const BAR_W = 84, BAR_H = 9, BAR_GAP = 7, BAR_EASE = 90, BAR_ROOM = BAR_H + BAR_GAP + 4;
-  const BAR_EDGE = "rgba(20, 14, 8, 0.9)", BAR_TRACK = "rgba(0, 0, 0, 0.6)", BAR_HIGH = "#4ade80", BAR_MID = "#f2c94c", BAR_LOW = "#ff4545", BAR_CHIP = "#fff4ef";
+  // and how fast the bar shown follows the health it stands for (points a second). A bar is green, amber under half
+  // and orange under a quarter (`level`, the HUD's bars too), with what a blow just took left red behind it: the chip
+  // holds CHIP_HOLD seconds, then follows over CHIP_EASE, the same times as the HUD's chip in style.css (.duel-chip).
+  const BAR_W = 84, BAR_H = 9, BAR_GAP = 7, BAR_EASE = 270, BAR_ROOM = BAR_H + BAR_GAP + 4, CHIP_HOLD = 0.35, CHIP_EASE = 0.7;
+  const BAR_EDGE = "rgba(20, 14, 8, 0.9)", BAR_TRACK = "rgba(0, 0, 0, 0.6)", BAR_HIGH = "#4ade80", BAR_MID = "#f2c94c", BAR_LOW = "#ff9a3d", BAR_CHIP = "#e0261b";
   // The arrow toward a blow's source: how many at once, how long each shows, and its ring's share of the view.
   const ARROW_MAX = 4, ARROW_LIFE = 1.4, ARROW_RING = 0.24;
+  const level = (hp) => hp > R.HP / 2 ? "high" : hp > R.HP / 4 ? "mid" : "low";
+  // The overlay's birds over a stunned loser's bar: how much room they take over it, in CSS pixels.
+  const BIRD_ROOM = 30;
   const STUN_MAX = 8, COUNT_TEXT = ["FIGHT!", "1", "2", "3"];
   const CALM = window.matchMedia("(prefers-reduced-motion: reduce)");
   const CENTRE = "translate(-50%, -50%)";
@@ -80,7 +87,7 @@
     const hudBox = $("duel-hud"), targetBox = $("duel-target"), inviteBox = $("duel-invite");
     const countBox = $("duel-count"), flashBox = $("duel-flash"), resultBox = $("duel-result");
     const resultTitle = resultBox.querySelector(".duel-result-title"), resultLine = resultBox.querySelector(".duel-result-line");
-    const names = hudBox.querySelectorAll(".duel-name"), fills = hudBox.querySelectorAll(".duel-fill"), hps = hudBox.querySelectorAll(".duel-hp");
+    const names = hudBox.querySelectorAll(".duel-name"), fills = hudBox.querySelectorAll(".duel-fill"), chips = hudBox.querySelectorAll(".duel-chip"), hps = hudBox.querySelectorAll(".duel-hp"), fars = hudBox.querySelectorAll(".duel-far");
     const clock = hudBox.querySelector(".duel-clock"), note = hudBox.querySelector(".duel-note");
     const targetName = targetBox.querySelector(".duel-target-name"), inviteText = inviteBox.querySelector(".duel-invite-text");
     const challengeButton = targetBox.querySelector('[data-duel="challenge"]');
@@ -96,16 +103,14 @@
     // A challenge made by a blow: when the next may go, and the player whose refusal of it is kept quiet.
     let provokeAt = 0, quiet = 0;
     let countAnim = null, flashAnim = null, resultAnim = null, rightSign = 0;
-    const hpShown = [-1, -1];
+    // What the panel last showed: each side's health and metres from the flag, and the seconds on its clock.
+    const hpShown = [-1, -1], farShown = [-2, -2];
+    let timeKey = Infinity;
     const HIT = { node: null, owner: null, type: "none", distance: Infinity, x: 0, y: 0, z: 0 };
     const AT = { x: 0, y: 0 };
-    // Arrows toward the blows the visitor took, and the birds over a stunned loser driven from another page.
+    // Arrows toward the blows the visitor took, and the losers driven from other pages who stand stunned.
     const arrows = Array.from({ length: ARROW_MAX }, () => ({ life: 0, x: 0, z: 0, weight: 1 }));
-    const stuns = Array.from({ length: STUN_MAX }, () => {
-      const node = createNode({ visible: false, sightHidden: true });
-      for (let i = 0; i < 3; i++) addChild(node, createNode({ geometry: BL.crew.STUN_BIRD, sightHidden: true }));
-      return { node, id: 0, left: 0, added: false };
-    });
+    const stuns = Array.from({ length: STUN_MAX }, () => ({ id: 0, left: 0 }));
 
     const selfId = () => net.state.selfId;
     const feet = (id) => {
@@ -159,7 +164,8 @@
       for (let i = 1; i < arrows.length; i++) if (arrows[i].life < slot.life) slot = arrows[i];
       slot.life = ARROW_LIFE; slot.x = from.x; slot.z = from.z; slot.weight = weight;
     };
-    // The loser stands stunned: the visitor's own Ooga by the crew's stun, another page's under birds of this page's.
+    // The loser stands stunned: the visitor's own Ooga by the crew's stun, another page's with a wobbling head under
+    // birds drawn on the overlay (`draw`), where a nameplate cannot hide them.
     const stun = (id) => {
       const seconds = R.STUN_MS / 1000;
       if (id === selfId()) { if (pilot.player) crew.stun(pilot.player, seconds); return; }
@@ -174,8 +180,7 @@
     const endStun = (s) => {
       const body = remotes.body(s.id);
       if (body && body.parts && body.parts.head) { const r = body.parts.head.rotation; r.x = r.y = r.z = 0; }
-      s.id = 0; s.left = 0; s.node.visible = false;
-      if (s.added) { removeChild(root, s.node); s.added = false; }
+      s.id = 0; s.left = 0;
     };
     const showResult = (kind, line) => {
       resultBox.dataset.result = kind;
@@ -210,7 +215,7 @@
       // The fight's start on this page's clock from the message's own two stamps, so a clock estimate that a slow
       // boot threw off cannot move the countdown.
       const ahead = Number.isFinite(msg.now) ? msg.at - msg.now : msg.at - net.serverNow();
-      const d = { id: msg.id, a: msg.a, b: msg.b, x: msg.x, z: msg.z, hp, shown: hp.slice(), chip: hp.slice(), fightAt: performance.now() + ahead, endT: 0, flag: null, outAt: 0 };
+      const d = { id: msg.id, a: msg.a, b: msg.b, x: msg.x, z: msg.z, hp, shown: hp.slice(), chip: hp.slice(), chipFrom: hp.slice(), chipT: [0, 0], fightAt: performance.now() + ahead, endT: 0, flag: null, outAt: 0 };
       duels.set(d.id, d);
       placeFlag(d);
       const me = selfId();
@@ -218,10 +223,10 @@
         mine = d; target = 0; challenging = 0; quiet = 0; closeInvite(); showTarget();
         // Both start with the rifle and its spares full (each page fills its own), unless this page joined one under way.
         if (ahead > 0 && pilot.player) crew.fillAmmo(pilot.player);
-        hpShown[0] = hpShown[1] = -1; clockKey = noteKey = -2; note.hidden = true;
+        hpShown[0] = hpShown[1] = -1; farShown[0] = farShown[1] = -2; timeKey = Infinity; clockKey = noteKey = -2; note.hidden = true;
         hudBox.hidden = false;
-        const [left, right] = d.a === me ? [d.a, d.b] : [d.b, d.a];
-        names[0].textContent = nameOf(left); names[1].textContent = nameOf(right);
+        const [first, second] = d.a === me ? [d.a, d.b] : [d.b, d.a];
+        names[0].textContent = names[0].title = nameOf(first); names[1].textContent = names[1].title = nameOf(second);
         BL.hud.toast(`Duel with ${nameOf(opponent())} · stay within ${R.RADIUS} m of the flag`);
       }
     };
@@ -275,6 +280,8 @@
           }
           if (dealt > 0 && (side ? d.b : d.a) === selfId()) struck(side ? d.a : d.b, WEIGHT[msg.kind] || 0.5);
         }
+        // A side whose health moved starts its chip again from where the chip stands.
+        for (let side = 0; side < 2; side++) if (d.hp[side] !== msg.hp[side]) { d.chipFrom[side] = d.chip[side]; d.chipT[side] = 0; }
         d.hp[0] = msg.hp[0]; d.hp[1] = msg.hp[1];
         return;
       }
@@ -424,10 +431,13 @@
         const d = flags[i].duel;
         if (!d) continue;
         flags[i].cloth.rotation.y = Math.sin(t * 2.3 + d.id) * 0.35;
-        // The bar shown follows the health; the pale chip behind it follows a beat later, so a blow reads.
+        // The bar shown follows the health; the red chip behind it holds a beat, then follows, so a blow reads.
         for (let side = 0; side < 2; side++) {
-          if (d.shown[side] !== d.hp[side]) d.shown[side] = d.shown[side] > d.hp[side] ? Math.max(d.hp[side], d.shown[side] - BAR_EASE * 3 * dt) : d.hp[side];
-          if (d.chip[side] !== d.shown[side]) d.chip[side] = d.chip[side] > d.shown[side] ? Math.max(d.shown[side], d.chip[side] - BAR_EASE * 0.4 * dt) : d.shown[side];
+          const hp = d.hp[side];
+          if (d.shown[side] !== hp) d.shown[side] = d.shown[side] > hp ? Math.max(hp, d.shown[side] - BAR_EASE * dt) : hp;
+          if (d.chip[side] === hp) continue;
+          const k = Math.min(1, Math.max(0, ((d.chipT[side] += dt) - CHIP_HOLD) / CHIP_EASE));
+          d.chip[side] = d.chipFrom[side] > hp ? hp + (d.chipFrom[side] - hp) * (1 - k) * (1 - k) : hp;
         }
         if (d.endT && (d.endT -= dt) <= 0) { freeFlag(d); duels.delete(d.id); }
       }
@@ -437,20 +447,8 @@
         if (!s.left) continue;
         const body = remotes.body(s.id);
         if ((s.left -= dt) <= 0 || !body) { s.left = 0; endStun(s); continue; }
-        const shown = body.root.visible && !!body.parts && !!body.parts.head;
-        s.node.visible = shown;
-        if (!shown) continue;
-        if (!s.added) { addChild(root, s.node); s.added = true; }
-        // As the crew's own stun: three birds circling over the head, which wobbles.
-        const h = body.traits && body.traits.height || 1, p = body.root.position, n = s.node;
-        n.position.x = p.x; n.position.z = p.z; n.position.y = p.y + (body.headOffset || 1.2 * h) + 0.42 * h;
-        n.rotation.y += dt * 5.5;
-        for (let b = 0; b < 3; b++) {
-          const bird = n.children[b], angle = b * Math.PI * 2 / 3;
-          bird.position.x = Math.sin(angle) * 0.34 * h; bird.position.z = Math.cos(angle) * 0.34 * h;
-          bird.position.y = Math.sin(t * 7 + b * 2.1) * 0.045 * h;
-          bird.scale.x = bird.scale.y = bird.scale.z = h;
-        }
+        if (!body.root.visible || !body.parts || !body.parts.head) continue;
+        // As the crew's own stun: the head wobbles.
         const r = body.parts.head.rotation;
         r.x = Math.sin(t * 3.1) * 0.08; r.y = Math.sin(t * 4.8) * 0.72; r.z = Math.sin(t * 2.4) * 0.1;
       }
@@ -460,21 +458,36 @@
         const hp = mine.hp[i ? 1 - me : me];
         if (hp !== hpShown[i]) {
           hpShown[i] = hp;
-          fills[i].style.width = `${Math.max(0, Math.min(100, hp / R.HP * 100))}%`;
+          // The red chip takes the same width; its own slower transition leaves the blow showing behind the bar.
+          fills[i].style.width = chips[i].style.width = `${Math.max(0, Math.min(100, hp / R.HP * 100))}%`;
+          fills[i].dataset.level = level(hp);
           hps[i].textContent = String(Math.round(hp));
+        }
+        // Each duelist's metres from the flag, in red past its radius.
+        const at = feet(i ? opponent() : selfId()), far = at && Number.isFinite(at.x + at.z) ? Math.round(Math.hypot(at.x - mine.x, at.z - mine.z)) : -1;
+        if (far !== farShown[i]) {
+          farShown[i] = far;
+          fars[i].textContent = far < 0 ? "" : `${far} m`;
+          fars[i].dataset.out = far > R.RADIUS ? "true" : "false";
         }
       }
       // Strings are made only when the whole second they show changes.
       const toGo = mine.fightAt - now, sec = toGo > 0 ? Math.ceil(toGo / 1000) : toGo > -900 ? 0 : -1;
       if (sec !== clockKey) {
         clockKey = sec;
-        setText(clock, sec > 0 ? String(sec) : sec === 0 ? "FIGHT!" : "");
-        // The same count, large in the middle of the view.
+        // The count, large in the middle of the view.
         if (sec >= 0 && sec < COUNT_TEXT.length) {
           setText(countBox, COUNT_TEXT[sec]);
           countBox.dataset.go = sec ? "false" : "true";
           countAnim = play(countBox, countAnim, CALM.matches ? FADE : POP, COUNT_MS);
         }
+      }
+      // The panel's clock: the seconds to the first blow, then the time left before a draw.
+      const remain = toGo > 0 ? -Math.ceil(toGo / 1000) : Math.max(0, Math.ceil((R.MAX_MS + toGo) / 1000));
+      if (remain !== timeKey) {
+        timeKey = remain;
+        setText(clock, remain < 0 ? `Starts in ${-remain}` : `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, "0")}`);
+        clock.dataset.low = remain >= 0 && remain <= 30 ? "true" : "false";
       }
       // Past the flag's radius the page counts down for its own player; the room decides.
       const s = net.state.self, out = Number.isFinite(s.x) && Math.hypot(s.x - mine.x, s.z - mine.z) > R.RADIUS;
@@ -495,8 +508,29 @@
       ctx.fillStyle = BAR_TRACK;
       ctx.fillRect(left, top, BAR_W, BAR_H);
       if (chip > hp) { ctx.fillStyle = BAR_CHIP; ctx.fillRect(left, top, Math.round(BAR_W * Math.min(1, chip / R.HP)), BAR_H); }
-      ctx.fillStyle = k > 0.5 ? BAR_HIGH : k > 0.25 ? BAR_MID : BAR_LOW;
+      const lv = level(hp);
+      ctx.fillStyle = lv === "high" ? BAR_HIGH : lv === "mid" ? BAR_MID : BAR_LOW;
       ctx.fillRect(left, top, Math.round(BAR_W * k), BAR_H);
+    };
+    // The crew's three stun birds in pixels, circling the ellipse (rx, ry) about (cx, cy), each `size` pixels a unit and
+    // larger and plainer as it comes round the near side.
+    const drawBirds = (ctx, cx, cy, rx, ry, size) => {
+      for (let i = 0; i < 3; i++) {
+        const turn = t * 5.5 + i * Math.PI * 2 / 3, near = Math.cos(turn) * 0.5 + 0.5, u = Math.round(size * (0.6 + 0.4 * near));
+        const x = Math.round(cx + Math.sin(turn) * rx), y = Math.round(cy + Math.cos(turn) * ry + Math.sin(t * 7 + i * 2.1) * size * 0.5);
+        ctx.globalAlpha = 0.6 + 0.4 * near;
+        // A body between two raised wings, each edged dark.
+        ctx.fillStyle = BAR_EDGE;
+        ctx.fillRect(x - 5 * u - 2, y - 2 * u - 2, 3 * u + 4, u + 4);
+        ctx.fillRect(x + 2 * u - 2, y - 2 * u - 2, 3 * u + 4, u + 4);
+        ctx.fillRect(x - 2 * u - 2, y - u - 2, 4 * u + 4, 2 * u + 4);
+        ctx.fillStyle = "#f2b83b";
+        ctx.fillRect(x - 5 * u, y - 2 * u, 3 * u, u);
+        ctx.fillRect(x + 2 * u, y - 2 * u, 3 * u, u);
+        ctx.fillStyle = "#ffd84a";
+        ctx.fillRect(x - 2 * u, y - u, 4 * u, 2 * u);
+      }
+      ctx.globalAlpha = 1;
     };
     // Which way the view's right lies across the ground for a forward (fx, fz): measured once through the projection
     // itself (two points ahead of the eye, one a step to the side), never worked out on paper.
@@ -545,6 +579,13 @@
         }
       }
       if (open) ctx.restore();
+      // Birds over each stunned loser driven from another page, clear of their nameplate and bar.
+      for (let i = 0; i < stuns.length; i++) {
+        const s = stuns[i], body = s.left ? remotes.body(s.id) : null;
+        if (!body || !remotes.plateTop(s.id, AT)) continue;
+        drawBirds(ctx, AT.x, AT.y - BAR_ROOM - BIRD_ROOM / 2, 48, 8, 4);
+        body.speechLift = (body.speechLift || 0) + BIRD_ROOM;
+      }
       const own = pilot.player;
       if (!own) return;
       const c = camera(), fwdX = c.target.x - c.position.x, fwdZ = c.target.z - c.position.z, flat = Math.hypot(fwdX, fwdZ);
@@ -571,6 +612,11 @@
         ctx.stroke(); ctx.fill();
         ctx.restore();
       }
+      // Stunned in its own eyes, the visitor's Ooga cannot see the birds over its head: they circle across the view.
+      if (own.health.daze > 0 && pilot.view === "first-person") {
+        const rx = Math.min(w * 0.2, 200);
+        drawBirds(ctx, w / 2, h * 0.46, rx, rx * 0.2, 9);
+      }
     };
 
     const dispose = () => {
@@ -579,14 +625,13 @@
       lostAll();
       target = 0; showTarget();
       hudBox.hidden = targetBox.hidden = inviteBox.hidden = true;
-      clockKey = noteKey = -2;
+      clockKey = noteKey = -2; timeKey = Infinity;
       if (active === api) active = null;
     };
     const destroy = () => {
       dispose();
       document.removeEventListener("click", onClick);
       for (const f of flags) if (f.added) { removeChild(root, f.node); f.added = false; }
-      for (const s of stuns) if (s.added) { removeChild(root, s.node); s.added = false; }
     };
     const api = { update, draw, tap, shot, swing, challenge, select, dispose, destroy,
       // For a check: a room's duel frame as if heard, and what shows.
