@@ -795,7 +795,8 @@ lightning deep in the wall. It keeps the rules of sections 2.4 to 2.8 and steps 
 The wind is lighter than Aurora Heights' (two gusts, each blowing 2 s for 3 and pushing 60% as hard), since the flips,
 the fading and the tornadoes carry the level. The last jump takes a perfect one: the final landing is permanent, plain
 and still, its shoreward edge 95% of the furthest a rider can jump to the island's rim (running, off the edge, the air
-jump taken as it comes level with the rim). A grappling hook bites the island's ground within its usual reach, which
+jump taken as it comes level with the rim). Landing on it gives both jumps back, whatever spent the air jump on the
+way, and puts a worn jetpack away (the rider may put it on again). A grappling hook bites the island's ground within its usual reach, which
 only the final landing and the air past it are in, so a hook kept for the end saves a jump that falls short.
 
 Two things are new, and neither is part of the course: it is one path from start to finish whose clouds are the same

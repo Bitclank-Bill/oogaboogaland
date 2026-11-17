@@ -486,7 +486,7 @@
     };
     let phase = "idle", actor = null, saved = null, course = null, age = 0, startedAt = 0, seconds = 0, displayTime = 0;
     let session = null, latest = null, run = 0, courseSeed = 0, courseDrift = 0, coastHigh = null;
-    let unrecoverableAt = -1;
+    let unrecoverableAt = -1, onLast = false;
     let runnerName = "", dockMusicOn = false, scoreTicket = null, unwatchScores = null;
     // The power-ups this attempt: when X-ray ends (race seconds, -1 off) and whether its end was cued, a feather held,
     // and when the feather's gust began (-1 none).
@@ -709,7 +709,7 @@
       for (const node of pickupNodes) removeChild(node.parent, node);
       resetTurn();
       cloudNodes.length = boostNodes.length = underNodes.length = bounceNodes.length = pickupNodes.length = 0;
-      launchContacts.fill(0); unrecoverableAt = -1;
+      launchContacts.fill(0); unrecoverableAt = -1; onLast = false;
       scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0);
       gust.clear(); slideX = slideZ = 0; overlay.setGust("calm", false); audio.gust(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
       xrayUntil = gustAt = -1; xrayWarned = feather = hookHeld = hookDown = false; hookAt = HAND; hookCloud = null;
@@ -1268,6 +1268,19 @@
             if (rescued) climbing = false;
             else { rescued = true; startClimb(true); hud.toast("Back under the clouds · hold Space to jetpack up"); }
           }
+        }
+        // A course with a set last jump: as the rider lands on its final landing it has both its jumps again, whatever
+        // spent the air jump on the way, and a jetpack it wears is put away (worn, a pack takes Space for its thrust
+        // and there is no air jump), since that jump is laid out for a running jump and the air jump. Once, as it
+        // lands: the pack is the rider's to put on again there.
+        if (course.lastGap) {
+          const last = course.landings[course.landings.length - 1];
+          const on = actor.hop < 0.001 && actor.hopV <= 0 && Math.abs(feet - last.top) < 0.1 && course.contactAt(p.x, p.z, feet) === last;
+          if (on && !onLast) {
+            actor.jumps = 0;
+            if (actor.jet) { crew.removeJetpack(actor); pilot.showAct(); hud.toast("Jetpack put away for the last jump · J to wear it"); }
+          }
+          onLast = on;
         }
         if (course.flips.length || course.portals.length) readyAhead();
         launchFromCloud();
