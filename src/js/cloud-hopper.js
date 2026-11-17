@@ -51,7 +51,7 @@
   // just the fuel to fly back up to them (`climbFuel`: what the pack burns lifting it to the height it was lowered
   // from, thrust coming CLIMB_LATE seconds late, to CLIMB_OVER over it, and holding it up for any way still to fly to
   // the nearest landing, and CLIMB_SPARE of that; a rider holding more keeps its own). One that falls CLIMB_FALL
-  // metres before its first landing
+  // metres further under the course, where it is, before its first landing
   // starts the climb again, once, at rest, from under where the roll began; from then on, as after that first
   // landing, a fall is lost as any other is. It changes nothing of the course.
   const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FALL = 30;
@@ -139,7 +139,7 @@
     const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 };
     // Where the roll stands (`rolled`), and where it will stand as this frame is drawn (`drawnTurn`).
     const rolled = { turn: 0, x: 0, y: 0, z: 0 }, drawnTurn = { turn: 0, x: 0, y: 0, z: 0 };
-    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, climbTo = 0, riderParent = null, petParent = null, viewTurned = false, trueUp = null, nightSky = false;
+    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, climbTo = 0, packWas = 2, riderParent = null, petParent = null, viewTurned = false, trueUp = null, nightSky = false;
     // A portal's warp: the seconds into it (-1 none) from `warpFrom` to the landing `warpTo`, where it comes out
     // (`warpAt`), the speed carried through, the seconds into its puff (-1 none), the portal that flashed and when,
     // and until when no tornado takes the rider.
@@ -269,7 +269,7 @@
     const beginTurn = (level) => {
       const p = actor.root.position;
       turning = 0; turnFrom = turn; lowering = true; climbing = rescued = false;
-      climbTo = Math.max(p.y - actor.baseY, level);
+      climbTo = Math.max(p.y - actor.baseY, level); packWas = actor.jet ? 2 : actor.jetpackOwned ? 1 : 0;
       Object.assign(turnHeld, p); Object.assign(checkpoint, p);
       checkpoint.y = Math.min(p.y, Math.max(p.y - TURN_DROP, level + actor.baseY - TURN_DROP, ctx.seaY + actor.baseY + CLIMB_FALL + 10));
       if (turn === 0) Object.assign(turnPivot, p);
@@ -308,6 +308,14 @@
       if (!actor.jetpackOwned) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       if (!actor.jet) crew.wearJetpack(actor, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       actor.jetRecovering = false; pilot.showAct();
+    };
+    // The climb done, the pack goes back as it was before the roll: off altogether if the roll gave it, put away if
+    // the rider held one unworn, left on if it wore one. A pack worn takes Space for its thrust, so one left on with
+    // a little fuel would cost the rider its jump's height and its air jump on every landing after.
+    const packDown = () => {
+      if (packWas === 0) { crew.setJetpackOwnership(actor, false); actor.jetFuel = 0; actor.jetRecovering = false; }
+      else if (packWas === 1) crew.removeJetpack(actor);
+      if (packWas < 2) pilot.showAct();
     };
     // The rider let go under the clouds with the pack's fuel made up for the climb: as the roll lowered it, going on
     // over the course as it came (the pack only lifts here, so it runs and steers through the air as before); or,
@@ -477,7 +485,7 @@
       try { pilot.modeAction("mode-toggle"); } finally { intoCombat = false; }
     };
     let phase = "idle", actor = null, saved = null, course = null, age = 0, startedAt = 0, seconds = 0, displayTime = 0;
-    let session = null, latest = null, run = 0, courseSeed = 0, courseDrift = 0;
+    let session = null, latest = null, run = 0, courseSeed = 0, courseDrift = 0, coastHigh = null;
     let unrecoverableAt = -1;
     let runnerName = "", dockMusicOn = false, scoreTicket = null, unwatchScores = null;
     // The power-ups this attempt: when X-ray ends (race seconds, -1 off) and whether its end was cued, a feather held,
@@ -489,6 +497,9 @@
     let hookHeld = false, hookAt = HAND, hookDown = false, hookCloud = null, hookPull = 0;
     const hookTip = { x: 0, y: 0, z: 0 }, hookEnd = { x: 0, y: 0, z: 0 }, hookBite = { x: 0, y: 0, z: 0 }, hookChest = { x: 0, y: 0, z: 0 };
     const aimRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 }, aimHit = { x: 0, y: 0, z: 0, t: 0, cloud: null };
+    // The mainland's ground as a hook's bite (Storm's Eye, whose hook saves a last jump that falls short): a place on
+    // it standing in for a cloud, where the crosshair has it and where a thrown hook bit.
+    const aimLand = { x: 0, z: 0, top: 0, active: true, kind: "land", rx: 0, rz: 0 }, hookLand = { ...aimLand };
     // Rendering and player physics pause in a hidden tab. Keep the race's
     // wall clock on that same timeline while the soundtrack plays on.
     let helpHeld = false, hiddenAt = document.hidden ? performance.now() : -1, hiddenTime = 0;
@@ -792,7 +803,10 @@
     // above that cloud, along the dock's heading.
     const placeStart = () => {
       Object.assign(liftGoal, ctx.finish());
-      const radius = ctx.mainlandRadius + 12 + level.route;
+      // (Its start a route's length out from its final landing, which a set last jump stands further off the coast.)
+      coastHigh = level.layout.lastGap && ctx.coastY ? ctx.coastY(nx, nz) : null;
+      const radius = ctx.mainlandRadius + BL.cloudHopperCourse.shoreOut(level.layout, 18 - ((coastHigh ?? liftGoal.y) - liftGoal.y),
+        BL.pilot.WALK.speed * BL.pilot.WALK.run, BL.crew.JUMP_SPEED) + level.route;
       start.x = liftGoal.x + nx * radius; start.y = liftGoal.y + 18 + level.slope * level.route; start.z = liftGoal.z + nz * radius;
     };
     // Levels open in this browser; the session record of the level being played; and the level a visit starts on:
@@ -884,11 +898,13 @@
       record.lastSeed = courseSeed;
       placeStart();
       course = BL.cloudHopperCourse.create({ start, finish: liftGoal, mainlandRadius: ctx.mainlandRadius, seed: courseSeed,
-        layout: level.layout, timing: level.timing, runSpeed: BL.pilot.WALK.speed * BL.pilot.WALK.run, jumpSpeed: BL.crew.JUMP_SPEED });
+        layout: level.layout, timing: level.timing, runSpeed: BL.pilot.WALK.speed * BL.pilot.WALK.run, jumpSpeed: BL.crew.JUMP_SPEED,
+        // (The coast a set last jump lands on: the island's rim where the course comes in, as the scene has it.)
+        coastY: coastHigh });
       // Far starts keep the island in view, and the level's scenery too.
       const reach = scenery.build(level, course, start, liftGoal);
       if (level.sky?.tornado) for (let i = 0; i < tornadoes.length; i++) tornadoes[i].start(courseSeed, course, liftGoal, i, level.sky.fog);
-      gust.start(courseSeed, course, liftGoal, level.layout.gusts || 0);
+      gust.start(courseSeed, course, liftGoal, level.layout.gusts || 0, level.layout.gustBlow);
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
       // The world turns round the course's own axis.
@@ -1097,7 +1113,8 @@
         const was = gust.state;
         gust.update(dt, p.x, p.z, camera.position, camera.target);
         if (was === "calm" && gust.state === "warning") audio.gustWarn();
-        const push = swept < 0 ? gust.strength : 0;
+        // (A level's own lighter wind pushes by its layout's `gustPush` of that.)
+        const push = swept < 0 ? gust.strength * (level.layout.gustPush ?? 1) : 0;
         if (riding) {
           const k = 1 - Math.exp(-GUST_GRIP * dt);
           slideX += (gust.pushX * GUST_SLIDE * push - slideX) * k; slideZ += (gust.pushZ * GUST_SLIDE * push - slideZ) * k;
@@ -1244,8 +1261,10 @@
         // The climb after it ends on a landing. A fall from it starts it again, the once; a second is a fall like
         // any other, lost by the rules every fall is, as is every fall after that first landing.
         if (climbing) {
-          if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) climbing = false;
-          else if (p.y < checkpoint.y - CLIMB_FALL) {
+          if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) { climbing = false; packDown(); }
+          // (Fallen, that is, CLIMB_FALL further under the course where it is than a roll lowers one: the course
+          // falls away as it goes, so a rider flying on under it is far under where it was let go and has not fallen.)
+          else if (feet < courseTop(p.x, p.z) - TURN_DROP - CLIMB_FALL) {
             if (rescued) climbing = false;
             else { rescued = true; startClimb(true); hud.toast("Back under the clouds · hold Space to jetpack up"); }
           }
@@ -1263,6 +1282,8 @@
           const refill = actor.jetpackOwned;
           if (!refill) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
           actor.jetFuel = 1; actor.jetRecovering = false;
+          // One taken during a roll's climb is the rider's own from then on, and stays on at the landing.
+          if (lowering || climbing) packWas = 2;
           pilot.showAct(); hud.toast(refill ? "Jetpack refilled" : "Jetpack collected · J to equip");
         } else {
           // Another X-ray goggles refresh it to full; a feather or a hook is taken only with none held.
@@ -1315,8 +1336,11 @@
       crosshair(aimRay);
       const along = Math.max(0, (c.x - aimRay.ox) * aimRay.dx + (c.y - aimRay.oy) * aimRay.dy + (c.z - aimRay.oz) * aimRay.dz);
       const ox = aimRay.ox + aimRay.dx * along, oy = aimRay.oy + aimRay.dy * along, oz = aimRay.oz + aimRay.dz * along;
-      return course.hit(ox, oy, oz, aimRay.dx, aimRay.dy, aimRay.dz, HOOK_RANGE + 10, aimHit)
-        && Math.hypot(aimHit.x - c.x, aimHit.y - c.y, aimHit.z - c.z) <= HOOK_RANGE;
+      if (course.hit(ox, oy, oz, aimRay.dx, aimRay.dy, aimRay.dz, HOOK_RANGE + 10, aimHit)) return Math.hypot(aimHit.x - c.x, aimHit.y - c.y, aimHit.z - c.z) <= HOOK_RANGE;
+      // No cloud under it: on a level whose hook bites the land, the mainland's ground there, in the same reach.
+      if (!level.layout.landHook || !ctx.landHit || !ctx.landHit(ox, oy, oz, aimRay.dx, aimRay.dy, aimRay.dz, HOOK_RANGE + 10, aimHit)) return false;
+      aimLand.x = aimHit.x; aimLand.top = aimHit.y; aimLand.z = aimHit.z; aimHit.cloud = aimLand;
+      return Math.hypot(aimHit.x - c.x, aimHit.y - c.y, aimHit.z - c.z) <= HOOK_RANGE;
     };
     // The hook's button (the mouse's left button in combat, a pad's RT, the touch chip): pressed, it throws the hook
     // at the cloud under the crosshair, or out to its full reach on a miss; let go, a biting hook lets go and reels in.
@@ -1334,7 +1358,8 @@
       const c = chest();
       Object.assign(hookTip, c);
       if (aim()) {
-        hookCloud = aimHit.cloud;
+        // (A bite on the land is kept as its own place: the aim goes on moving the one it reads into.)
+        hookCloud = aimHit.cloud === aimLand ? Object.assign(hookLand, aimLand) : aimHit.cloud;
         hookBite.x = aimHit.x - hookCloud.x; hookBite.y = hookCloud.top - aimHit.y; hookBite.z = aimHit.z - hookCloud.z;
       } else {
         hookCloud = null;
@@ -1508,7 +1533,9 @@
       for (const cloud of course.clouds) {
         if (cloud.active && Math.hypot(cloud.x - c.x, cloud.top - c.y, cloud.z - c.z) <= HOOK_RANGE + Math.min(cloud.rx, cloud.rz)) return true;
       }
-      return false;
+      // The mainland's coast, where the hook bites the land.
+      return !!level.layout.landHook && !!ctx.landHit
+        && Math.hypot(Math.max(0, Math.hypot(c.x - liftGoal.x, c.z - liftGoal.z) - course.coast.radius), c.y - course.coast.y) <= HOOK_RANGE;
     };
     // The sky feather, on a Space press with both jumps spent and no worn pack (the crew's `spentJump`): a gust
     // throws the Ooga up, keeping its speed across.

@@ -17,7 +17,7 @@
   // WARP_FAR on that will stand at least WARP_STEADY seconds more.
   const PORTAL = Object.freeze({ r: 3, over: 2.2, lane: Object.freeze([8, 2]), speed: Object.freeze([3.4, 1.2]), cycle: Object.freeze([9, 11]), hidden: Object.freeze([1.5, 2.5]) });
   const WARP = 50, WARP_NEAR = 38, WARP_FAR = 66, WARP_STEADY = 4;
-  const GRAVITY = 9.8, PICKUP_LIFT = 0.7, PICKUP_RADIUS = 0.75, RUN_SPEED = 11.625, JUMP_SPEED = 4.8, SETTLE = 1.5, WOBBLE = 0.12;
+  const GRAVITY = 9.8, PICKUP_LIFT = 0.7, PICKUP_RADIUS = 0.75, RUN_SPEED = 11.625, JUMP_SPEED = 4.8, SETTLE = 1.5, WOBBLE = 0.12, FOOT = 0.3;
   // Lifetime classes: a permanent cloud never fades; an ordinary one disappears once in each of its own slots.
   const PERMANENT = 0, ORDINARY = 1;
   // The phases a disappearance passes through. A warning keeps full support; the fade still holds a rider, sinking.
@@ -109,14 +109,28 @@
   // course's order. `flips` are the places the world turns over (Storm's Eye; `due` says a rider has reached the
   // next), `portals` its portal clouds (`kind` `portal`: touched as a boost cloud is) and `warpTo` the landing one
   // throws a rider on to.
+  // The furthest a rider jumps down `fall` metres: a running jump off the edge and the air jump as it comes level
+  // with where it lands, which adds a whole second hop to its flight.
+  const lastReachOf = (fall, runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED) =>
+    runSpeed * ((jumpSpeed + Math.sqrt(jumpSpeed * jumpSpeed + 2 * GRAVITY * Math.max(0, fall))) / GRAVITY + 2 * jumpSpeed / GRAVITY);
+  // How far out from the mainland's coast a course's final landing stands, for a host placing its start a route's
+  // length further: 12 m, or its layout's last jump (and room for the landing's own edge), `fall` being how far the
+  // final landing stands over the coast (18 m over the pile, less the coast's own height over it).
+  const shoreOut = (layout, fall = 18, runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED) =>
+    layout && layout.lastGap > 0 ? layout.lastGap * lastReachOf(fall, runSpeed, jumpSpeed) + 3 : 12;
+  // A layout's `lastGap` sets the last jump, from the final landing to the mainland's coast (its rim `coastY` high,
+  // the pile's height if not given): that share of the furthest a rider can jump there, running, with the air jump
+  // taken as late as it can be (`lastReach`). The final landing then stands still, its shoreward edge that far out.
   const create = ({ start, finish, mainlandRadius = 30, seed = 1, layout: shape = LAYOUT, timing: tune = TIMING,
-    runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED }) => {
+    runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED, coastY = null }) => {
     const layout = { ...LAYOUT, ...shape }, timing = { ...TIMING, ...tune };
     const rand = mulberry32(seed), outwardX = start.x - finish.x, outwardZ = start.z - finish.z;
     const moveRand = mulberry32(seed ^ 0x3c6ef372), orientationRand = mulberry32(seed ^ 0xa54ff53a);
     const sideRand = mulberry32(seed ^ 0xbb67ae85);
     const startDistance = Math.hypot(outwardX, outwardZ), nx = outwardX / startDistance, nz = outwardZ / startDistance;
-    const shoreDistance = mainlandRadius + 12, endY = finish.y + 18;
+    const endY = finish.y + 18, coast = coastY ?? finish.y;
+    const lastReach = lastReachOf(endY - coast, runSpeed, jumpSpeed), lastGap = layout.lastGap > 0 ? layout.lastGap * lastReach : 0;
+    const shoreDistance = mainlandRadius + shoreOut(layout, endY - coast, runSpeed, jumpSpeed);
     const distance = startDistance - shoreDistance, drop = start.y - endY, sideX = -nz, sideZ = nx;
     // Slightly wider main gaps still fit a running jump. Bound their jitter
     // by the widest rotated mesh so neighbouring drift lanes stay separate.
@@ -180,6 +194,15 @@
       const x = finish.x + nx * radial + sideX * lateral, z = finish.z + nz * radial + sideZ * lateral;
       const y = start.y - drop * down;
       landings.push(addCloud(x, y, z, layout.main[0] + rand() * layout.main[1], layout.main[2] + rand() * layout.main[3]));
+      // The final landing of a course with a set last jump: still, and as far out as puts a rider standing at its
+      // shoreward edge that jump from standing on the coast's (a rider stands a foot's width over either edge).
+      if (last && lastGap) {
+        const c = landings[i], a = nx * c.cosYaw - nz * c.sinYaw, b = nx * c.sinYaw + nz * c.cosYaw;
+        const edge = Math.hypot((c.rx + FOOT) * a, (c.rz + FOOT) * b), out = mainlandRadius + FOOT + lastGap + edge;
+        const across = (c.x - finish.x) * sideX + (c.z - finish.z) * sideZ;
+        c.x = c.baseX = c.previousX = finish.x + nx * out + sideX * across; c.z = c.baseZ = c.previousZ = finish.z + nz * out + sideZ * across;
+        c.moveRange = 1e-6; c.moveSpeed = 0; placements[placements.length - 1].along = out;
+      }
     }
     // Fill stratified segments across the whole descent instead of exhausting
     // the extra-cloud budget near the top. Alternating sides balance each
@@ -358,7 +381,7 @@
     const shoreAt = (cloud, t) => {
       const offset = offsetAt(cloud, t);
       return Math.hypot(cloud.baseX + cloud.moveX * offset - finish.x, cloud.baseZ + cloud.moveZ * offset - finish.z)
-        - mainlandRadius - near(cloud) <= reachFor(cloud.y - finish.y);
+        - mainlandRadius - near(cloud) <= reachFor(cloud.y - coast);
     };
 
     // ---- fairness -------------------------------------------------------------------------------------------------
@@ -784,8 +807,11 @@
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, due, toFlip, warpTo, warpHolds };
+      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, due, toFlip, warpTo, warpHolds,
+      // The last jump of a course that sets one: how far it is (0 if it sets none), the furthest a rider can jump
+      // there, and the coast it lands on (its radius round the finish and its height).
+      lastGap, lastReach, coast: Object.freeze({ radius: mainlandRadius, y: coast }) };
   };
-  BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
+  BL.cloudHopperCourse = { create, shoreOut, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
     PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING, PORTAL, WARP };
 })();

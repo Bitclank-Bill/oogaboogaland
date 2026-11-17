@@ -787,9 +787,16 @@ lightning deep in the wall. It keeps the rules of sections 2.4 to 2.8 and steps 
 | Main half-size | 2.7-3.6 m | 2.6-3.45 m |
 | Lane, speed | 5-8 m, 0.9-1.5 m/s | 5.3-8.5 m, 0.95-1.6 m/s |
 | `reach` | 0.8 | 0.9 |
-| Gusts, tornadoes | 0, 3 | 4, 3 |
+| Gusts, tornadoes | 0, 3 | 2 (each 2 s and 60% of Aurora Heights' push), 3 |
+| Last jump to the island | about 9 m | 95% of the furthest a rider can jump there (35 m on the island) |
 
 48% permanent is the fewest 2.5's checks allow at these gaps with so few side landings, even at `reach` 0.9.
+
+The wind is lighter than Aurora Heights' (two gusts, each blowing 2 s for 3 and pushing 60% as hard), since the flips,
+the fading and the tornadoes carry the level. The last jump takes a perfect one: the final landing is permanent, plain
+and still, its shoreward edge 95% of the furthest a rider can jump to the island's rim (running, off the edge, the air
+jump taken as it comes level with the rim). A grappling hook bites the island's ground within its usual reach, which
+only the final landing and the air past it are in, so a hook kept for the end saves a jump that falls short.
 
 Two things are new, and neither is part of the course: it is one path from start to finish whose clouds are the same
 with or without them, so no cloud is ever only for one way up and nothing has to be touched to go on.
@@ -813,7 +820,9 @@ view (the hook's aim, the overlay) reads the run's own. The rider is
 let go with the jetpack worn and just the fuel to climb back onto the same course (what the pack burns lifting it to
 0.5 m over the height it was lowered from with thrust 0.3 s late, plus 15%: about 29% of a tank for the 8 m; a rider
 holding more keeps its own), and a fall of 30 m before landing
-puts it back once, at rest, under where the roll began; a second fall from that climb, and any fall after that
+puts it back once, at rest, under where the roll began (30 m further under the course where the rider is than a roll
+lowers one: the course falls away, so a rider flying on under it is not falling). The pack goes back as it was at the
+first landing, so the jump and the air jump are the rider's again; a second fall from that climb, and any fall after that
 landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down
 (their instanced batches are turned back with the run as they are written). It never strikes during a climb or a warp, nor for 1.5 s after one, nor on a rider
 already fallen more than 8 m under the course (it turns once the rider is back), so the rider is never let go

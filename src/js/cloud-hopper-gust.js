@@ -38,7 +38,7 @@
     // have travelled.
     const gusts = [];
     let rand = mulberry32(1), made = 0, state = CALM, age = 0, total = 1, goalX = 0, goalZ = 0;
-    let pushX = 0, pushZ = 0, strength = 0, warning = 0, travel = 0;
+    let pushX = 0, pushZ = 0, strength = 0, warning = 0, travel = 0, blow = BLOW;
     const away = (x, z) => Math.hypot(goalX - x, goalZ - z);
     // A gust comes on as the rider reaches it, blowing across the way from there to the goal from its side.
     const begin = (gust, x, z) => {
@@ -74,17 +74,19 @@
         begin(gusts[made++], x, z);
       } else age += dt;
       if (state === WARNING && age >= WARN) { state = BLOWING; age -= WARN; }
-      if (state === BLOWING && age >= BLOW) { state = CALM; age = 0; hide(); return; }
+      if (state === BLOWING && age >= blow) { state = CALM; age = 0; hide(); return; }
       warning = state === WARNING ? age / WARN : 0;
       strength = state === WARNING ? LEAD * ease(warning)
-        : (LEAD + (1 - LEAD) * ease(age / IN)) * (1 - ease((age - (BLOW - OUT)) / OUT));
+        : (LEAD + (1 - LEAD) * ease(age / IN)) * (1 - ease((age - (blow - OUT)) / OUT));
       const intensity = state === WARNING ? 0.2 + 0.3 * ease(warning) : 0.5 + 0.5 * strength;
       travel += dt * SPEED * intensity;
       draw(eye, look, intensity, Math.round(count * (state === WARNING ? 0.15 + 0.25 * warning : 0.4 + 0.6 * strength)));
     };
-    // A run begins: `seed` its course's, `course` the clouds toward `finish`, and `gusts` how many it brings.
-    const start = (seed, course, finish, many) => {
+    // A run begins: `seed` its course's, `course` the clouds toward `finish`, `many` how many gusts it brings and
+    // `seconds` how long each blows (BLOW, or a level's own shorter blow, no shorter than it takes to rise and fall).
+    const start = (seed, course, finish, many, seconds = BLOW) => {
       rand = mulberry32(seed ^ 0x6a09e667); gusts.length = made = 0; state = CALM; age = 0; hide();
+      blow = Math.max(IN + OUT, seconds);
       goalX = finish.x; goalZ = finish.z; total = 1;
       for (const c of course.clouds) if (c.main) total = Math.max(total, away(c.x, c.z));
       for (let k = 0; k < many; k++) gusts.push({ share: 0.15 + 0.7 * (k + 0.1 + 0.8 * rand()) / many, side: rand() < 0.5 ? -1 : 1 });
