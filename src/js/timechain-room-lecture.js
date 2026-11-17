@@ -462,7 +462,10 @@
     const label = () => {
       const on = !!player.timeline;
       for (let i = 1; i < buttons.length; i++) if (buttons[i]) buttons[i].hidden = i === 5 ? on : !on;
-      if (buttons[5]) buttons[5].textContent = `Start lecture ${course.lectures[nextLecture()].n}`;
+      if (buttons[5]) {
+        const next = course.lectures[nextLecture()], saved = player.progress[next.id];
+        buttons[5].textContent = `${saved && !saved.done ? "Resume" : "Start"} lecture ${next.n}`;
+      }
       if (buttons[1]) buttons[1].textContent = player.playing ? "Pause" : player.ended ? "Replay" : "Resume";
       if (buttons[4]) {
         buttons[4].textContent = `${player.speed}×`;
