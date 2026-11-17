@@ -91,3 +91,39 @@ test('stop silences and releases the recording while preserving unfinished or co
   p.close(); assert.equal(p.progress[entry.id].done, true);
   p.dispose();
 });
+
+for (const playing of [false, true]) test(`scrub previews without seeking, then restores playing=${playing}`, async () => {
+  const { player: p, media, L } = await fixture();
+  p.seek(20); if (playing) p.play();
+  const state = JSON.stringify(p.state);
+  assert.equal(p.beginScrub(), true); assert.equal(media[0].paused, true);
+  p.moveScrub(70.4); p.play(); p.update(10);
+  assert.equal(p.time, 20); assert.equal(media[0].currentTime, 20);
+  assert.equal(JSON.stringify(p.state), state); assert.equal(p.scrubTime, 70);
+  p.moveScrub(Infinity); assert.equal(p.scrubTime, 70);
+  p.moveScrub(-10); assert.equal(p.scrubTime, 0);
+  p.moveScrub(1e9); assert.equal(p.scrubTime, Math.floor(p.timeline.duration));
+  p.moveScrub(70.6); p.endScrub();
+  assert.equal(p.time, 71); assert.equal(media[0].currentTime, 71);
+  assert.equal(p.playing, playing); assert.equal(media[0].paused, !playing);
+  const expected = L.state(); L.at(p.timeline, 71, expected); assert.deepEqual(p.state, expected);
+  p.dispose();
+});
+test('cancel and Stop during a drag never restart playback', async () => {
+  const { player: p, media } = await fixture();
+  p.seek(20); p.play(); p.beginScrub(); p.moveScrub(80); p.endScrub(true);
+  assert.equal(p.time, 20); assert.equal(p.playing, false); assert.equal(media[0].paused, true);
+  p.play(); p.beginScrub(); p.close(); assert.equal(p.endScrub(), false);
+  assert.equal(p.playing, false); assert.equal(p.timeline, null); p.dispose();
+});
+test('exact scrub into every quiz reply retains that reply without awarding an answer', async () => {
+  const { player: p, media } = await fixture();
+  for (const q of p.timeline.quizzes) for (const branch of q.branches) {
+    p.play(); p.beginScrub(); const target = Math.ceil(branch.start + 1);
+    p.moveScrub(target); p.endScrub(); p.update(.01);
+    assert.equal(p.time, target); assert.equal(p.waiting, -1);
+    assert.equal(p.progress['btc-01'].q, 0);
+    media[0].currentTime = branch.end; p.update(.01); assert.equal(p.time, q.end);
+  }
+  p.dispose();
+});

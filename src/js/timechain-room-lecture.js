@@ -264,19 +264,31 @@
     // What each screen last printed, so a frame that changes nothing paints nothing.
     const seen = { slide: "", caption: "", outline: "", board: "", boardAt: 0, version: -1 };
     let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0, quizGlow = 0, hovered = -1;
-    const quizRows = [], inverse = BL.math.mat4.create();
+    const quizRows = [], inverse = BL.math.mat4.create(), screenPoint = { x: 0, y: 0 };
+    let scrubOwner = null, scrubOffset = 0;
     const asking = () => player.playing && player.waiting >= 0;
     // Match the curved canvas shader at the exact face hit, including its vertical texture flip.
-    const answerAt = (owner, ray) => {
-      if (!asking() || !owner || owner.kind !== "live" || owner.slot.spec.id !== "slide" || !ray) return -1;
-      const t = owner.pickRay(ray);
-      if (!Number.isFinite(t)) return -1;
+    const pointOnScreen = (owner, ray, extend = false) => {
+      if (!owner || owner.kind !== "live" || !ray) return false;
+      let t = owner.pickRay(ray);
+      if (!Number.isFinite(t) && extend) {
+        // Continue a captured drag beyond the patch, clamping its longitude to the bar's ends.
+        const y = ray.oy - L.c, dot = ray.ox * ray.dx + y * ray.dy + ray.oz * ray.dz;
+        const disc = dot * dot - (ray.ox * ray.ox + y * y + ray.oz * ray.oz - (L.R * 0.994) ** 2);
+        if (disc >= 0) t = -dot + Math.sqrt(disc);
+      }
+      if (!Number.isFinite(t) || t < 0) return false;
       const node = owner.slot.node, surface = node.geometry.imageSurface, rect = surface.rect, curve = surface.curve;
       BL.math.mat4.invert(inverse, node.world);
       const x = ray.ox + ray.dx * t, y = ray.oy + ray.dy * t, z = ray.oz + ray.dz * t, m = inverse;
       const lx = m[0] * x + m[4] * y + m[8] * z + m[12], ly = m[1] * x + m[5] * y + m[9] * z + m[13], lz = m[2] * x + m[6] * y + m[10] * z + m[14];
-      const px = (Math.atan2(lx, curve[0] - lz) * curve[0] - curve[1] - rect[0]) / rect[2] * surface.canvas.width;
-      const py = (1 - (ly - curve[2] - rect[1]) / rect[3]) * surface.canvas.height;
+      screenPoint.x = (Math.atan2(lx, curve[0] - lz) * curve[0] - curve[1] - rect[0]) / rect[2] * surface.canvas.width;
+      screenPoint.y = (1 - (ly - curve[2] - rect[1]) / rect[3]) * surface.canvas.height;
+      return true;
+    };
+    const answerAt = (owner, ray) => {
+      if (!asking() || !owner || owner.kind !== "live" || owner.slot.spec.id !== "slide" || !pointOnScreen(owner, ray)) return -1;
+      const px = screenPoint.x, py = screenPoint.y;
       for (let i = 0; i < quizRows.length; i++) {
         const r = quizRows[i];
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i;
@@ -309,11 +321,12 @@
       }
       const ck = `${T.id}|${st.sentence}|${player.playing}|${player.ended}`;
       if (ck !== seen.caption) { seen.caption = ck; const c = canvasOf("caption"); LS.caption(c.getContext("2d"), c.width, c.height, P, player.ended ? "" : T.sentences[st.sentence].text, !player.playing); bump("caption"); }
-      const ok = `${T.id}|${st.section}|${Math.floor(t)}|${player.playing}|${player.ended}`;
+      const progress = player.scrubTime;
+      const ok = `${T.id}|${st.section}|${Math.floor(progress)}|${player.playing}|${player.ended}|${player.scrubbing}`;
       if (ok !== seen.outline) {
         seen.outline = ok;
         const c = canvasOf("outline"), entry = player.entry;
-        LS.outline(c.getContext("2d"), c.width, c.height, P, T, st, t, { kicker: `LECTURE ${entry.n} OF ${course.lectures.length}`, title: entry.title, state: player.ended ? "THE END" : player.playing ? "" : "PAUSED" });
+        LS.outline(c.getContext("2d"), c.width, c.height, P, T, st, progress, { kicker: `LECTURE ${entry.n} OF ${course.lectures.length}`, title: entry.title, state: player.ended ? "THE END" : player.playing ? "" : "PAUSED" });
         bump("outline");
       }
       // The board: at once when its strokes change, a dozen times a second while one is being drawn.
@@ -539,13 +552,39 @@
         paintScreens(elapsed);
         if (viewing && elapsed > 1) { viewing = false; viewLecturer(); }
         const movingTime = dt * (player.playing && player.waiting < 0 ? player.speed : 1);
-        motionTime += movingTime;
+        if (!player.scrubbing) motionTime += movingTime;
         boardGlow += ((player.playing && player.waiting < 0 && st.drawing ? 1 : 0) - boardGlow) * (1 - Math.exp(-8 * dt));
         quizGlow += ((asking() ? 1 : 0) - quizGlow) * (1 - Math.exp(-8 * dt));
-        if (lecturer) lecturer.update(movingTime, motionTime, player.timeline ? st : null, player.playing && player.waiting < 0, player.timeline && player.playing && player.waiting < 0 && st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow(),
+        if (lecturer && !player.scrubbing) lecturer.update(movingTime, motionTime, player.timeline ? st : null, player.playing && player.waiting < 0, player.timeline && player.playing && player.waiting < 0 && st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow(),
           // A stretch of four sentences or more is one he may pace through (whether he does is his own, lecturer.js).
           !!player.timeline && st.quiz < 0 && player.timeline.beats[st.beat].count >= 4);
         hearFrom();
+      },
+      get scrubbing() { return player.scrubbing; },
+      scrubStart(owner, ray) {
+        if (!player.timeline || owner.kind !== "live" || owner.slot.spec.id !== "outline" || !pointOnScreen(owner, ray)) return false;
+        const c = canvasOf("outline"), bar = LS.timebar(c.width, c.height), cy = bar.y + bar.h / 2;
+        if (screenPoint.x < bar.x - bar.r || screenPoint.x > bar.x + bar.w + bar.r || Math.abs(screenPoint.y - cy) > bar.r * 2) return false;
+        const thumb = bar.x + bar.w * player.time / player.timeline.duration;
+        scrubOffset = Math.hypot(screenPoint.x - thumb, screenPoint.y - cy) <= bar.r * 1.3 ? screenPoint.x - thumb : 0;
+        if (!player.beginScrub()) return false;
+        scrubOwner = owner;
+        player.moveScrub((screenPoint.x - scrubOffset - bar.x) / bar.w * player.timeline.duration);
+        label(); return true;
+      },
+      scrubMove(ray) {
+        if (!player.scrubbing || !pointOnScreen(scrubOwner, ray, true)) return;
+        const c = canvasOf("outline"), bar = LS.timebar(c.width, c.height);
+        player.moveScrub((screenPoint.x - scrubOffset - bar.x) / bar.w * player.timeline.duration);
+      },
+      scrubEnd(cancelled) {
+        const ended = player.endScrub(cancelled); scrubOwner = null;
+        if (ended && !cancelled) {
+          seen.slide = seen.caption = seen.outline = seen.board = ""; mark.epoch = -2;
+          motionTime = player.time;
+          if (lecturer) lecturer.seek(st, motionTime, player.playing, st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow());
+        }
+        label();
       },
       get question() { return asking(); },
       hover(owner, ray) { hovered = answerAt(owner, ray); },
@@ -583,6 +622,7 @@
         H.row([], "Choose a lecture", touch ? "Lectures button, or tap the lectern" : "Lectures button, or Space at the lectern"),
         H.row(touch ? [] : ["p"], "Pause or resume the lecture", touch ? "Pause button" : ""),
         H.row([], "End this lecture", "Stop button"),
+        H.row([], "Seek to any second", "Drag the circle or press anywhere on the outline’s time bar; release to jump"),
         H.row([], "Playback speed", "Speed button: 1×, 1.25×, 1.5× or 2×"),
         H.row(touch ? [] : ["[", "]"], "Back or on a section", touch ? "Section buttons" : ""),
         H.row(touch ? [] : ["1", "2", "3", "4"], "Answer the lecturer's question", "Click or tap an answer on the projected screen")

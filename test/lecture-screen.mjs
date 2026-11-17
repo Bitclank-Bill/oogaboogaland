@@ -131,5 +131,72 @@ try {
   })()`);
   check(poses.every(p => p.min >= 0 && p.roll === 0 && p.wrist === 0), 'both pointing arms keep the thumb above the hand without axial roll: ' + JSON.stringify(poses));
   check(b.logs.length === 0, 'browser console stays clean: ' + JSON.stringify(b.logs));
+  // Real pointer capture on the projected outline: previews hold the scene, releases seek once.
+  await b.evaluate(`window.quizTest.bar = (fraction) => {
+    const B = __ooga, D = B.timechain.motion.screens().outline, L = B.timechain.layout, deg = Math.PI / 180;
+    const bar = BL.lectureSlides.timebar(D.w, D.h), x = (bar.x + bar.w * fraction) / D.w, y = (bar.y + bar.h / 2) / D.h;
+    const el = Math.asin(Math.sin(D.el1 * deg) - y * (Math.sin(D.el1 * deg) - Math.sin(D.el0 * deg)));
+    const p = BL.timechainRooms.onSphere(L, (D.az0 + x * (D.az1 - D.az0)) * deg, el, .994);
+    return B.project(p.x, p.y, p.z);
+  }`);
+  for (const combat of [false, true]) for (const playing of [false, true]) {
+    await b.evaluate(`(() => {
+      const B = __ooga, P = B.timechain.motion.player;
+      if (B.pilot.aiming !== ${combat}) B.pilot.modeAction('mode-toggle');
+      B.pilot.navigate({ position: { x: 0, y: 0, z: B.timechain.layout.arrival.z }, yaw: Math.PI * .4, pitch: .04, dist: 4 });
+      B.pilot.freeCursor(); P.pause(); P.seek(20); ${playing ? 'P.play();' : ''} B.advance(.1,1/60);
+    })()`);
+    const start = await b.evaluate('quizTest.bar(.4)'), end = await b.evaluate('quizTest.bar(.55)');
+    await b.mouse('mousePressed', start.x, start.y, { button: 'left', clickCount: 1 });
+    check(await b.evaluate('__ooga.timechain.motion.player.scrubbing && !__ooga.timechain.motion.player.playing'), 'bar press captures and pauses in ' + (combat ? 'combat' : 'carry'));
+    const held = await b.evaluate('__ooga.timechain.motion.player.time');
+    await b.mouse('mouseMoved', end.x, end.y, { button: 'left', buttons: 1 });
+    await b.evaluate('__ooga.advance(.2,1/60)');
+    check(await b.evaluate(`(() => { const p=__ooga.timechain.motion.player; return p.time === ${held} && Math.abs(p.scrubTime - Math.round(p.timeline.duration*.55)) < 3; })()`), 'drag previews the selected second while the cue clock stays frozen');
+    const target = await b.evaluate('__ooga.timechain.motion.player.scrubTime');
+    await b.mouse('mouseReleased', end.x, end.y, { button: 'left', clickCount: 1 });
+    check(await b.evaluate(`(() => { const p=__ooga.timechain.motion.player; return !p.scrubbing && p.playing === ${playing} && Math.abs(p.time - ${target}) < 1; })()`), 'release seeks and restores the previous playback state');
+  }
+  // The thumb itself starts a hold without snapping to the pointer's offset.
+  await b.evaluate('(() => { const p=__ooga.timechain.motion.player; p.pause(); p.seek(500); __ooga.advance(.1,1/60); })()');
+  const thumbTime = await b.evaluate('__ooga.timechain.motion.player.time');
+  const thumb = await b.evaluate('quizTest.bar(__ooga.timechain.motion.player.time / __ooga.timechain.motion.player.timeline.duration)');
+  await b.mouse('mousePressed', thumb.x, thumb.y, { button: 'left', clickCount: 1 });
+  const thumbState = await b.evaluate('({active: __ooga.timechain.motion.player.scrubbing, time: __ooga.timechain.motion.player.scrubTime})');
+  check(thumbState.active && thumbState.time === Math.round(thumbTime), 'thumb press preserves the selected second: ' + JSON.stringify({thumbState, thumbTime, thumb}));
+  const frozenPose = await b.evaluate('JSON.stringify(__ooga.timechain.motion.lecturer.figure.parts.armR.rotation)');
+  await b.evaluate('__ooga.advance(2,1/60)');
+  check(await b.evaluate('JSON.stringify(__ooga.timechain.motion.lecturer.figure.parts.armR.rotation)') === frozenPose, 'professor stays frozen throughout a held scrub');
+  await b.mouse('mouseReleased', thumb.x, thumb.y, { button: 'left', clickCount: 1 });
+  const cancel = await b.evaluate('quizTest.bar(.3)');
+  await b.mouse('mousePressed', cancel.x, cancel.y, { button: 'left', clickCount: 1 });
+  await b.evaluate('window.dispatchEvent(new Event("blur"))');
+  check(await b.evaluate('!__ooga.timechain.motion.player.scrubbing && !__ooga.timechain.motion.player.playing'), 'blur cancels the captured drag and leaves playback paused');
+  await b.mouse('mouseReleased', cancel.x, cancel.y, { button: 'left', clickCount: 1 });
+  // Jump backwards within one unfinished stroke, where an incremental painter must erase later ink.
+  const drawingTarget = await b.evaluate(`(() => {
+    const B=__ooga, P=B.timechain.motion.player;
+    B.pilot.freeCursor(); if (B.pilot.aiming) B.pilot.modeAction('mode-toggle');
+    const stroke=P.timeline.strokes.find(s => s.length > 1.4 && s.start > P.timeline.duration * .3), target=Math.ceil(stroke.start + .05);
+    P.pause(); P.seek(stroke.start + stroke.length - .1);
+    B.pilot.navigate({position:{x:0,y:0,z:B.timechain.layout.arrival.z},yaw:Math.PI*.4,pitch:.04,dist:4});
+    B.pilot.freeCursor(); B.advance(.3,1/60); return {start:P.time/P.timeline.duration,end:target/P.timeline.duration};
+  })()`);
+  const ink = await b.evaluate(`quizTest.bar(${drawingTarget.start})`);
+  await b.mouse('mousePressed', ink.x, ink.y, {button:'left',clickCount:1});
+  check(await b.evaluate('__ooga.timechain.motion.player.scrubbing'), 'partial drawing can be scrubbed: ' + JSON.stringify({ink,drawingTarget,debug:await b.evaluate('({focus:__ooga.pilot.aimFocused, aiming:__ooga.pilot.aiming,dialog:!!document.querySelector("dialog:modal"),time:__ooga.timechain.motion.player.time})')}));
+  const earlier = await b.evaluate(`quizTest.bar(${drawingTarget.end})`);
+  await b.mouse('mouseMoved', earlier.x, earlier.y, {button:'left',buttons:1});
+  await b.mouse('mouseReleased', earlier.x, earlier.y, {button:'left',clickCount:1});
+  await b.evaluate('__ooga.advance(.01,1/60)');
+  check(await b.evaluate(`(() => {
+    const B=__ooga, P=B.timechain.motion.player, live=B.timechain.built.live.find(l=>l.spec.id==='board');
+    const actual=live.node.geometry.imageSurface.canvas, expected=document.createElement('canvas');
+    expected.width=actual.width; expected.height=actual.height;
+    BL.lectureSlides.board(expected.getContext('2d'),expected.width,expected.height,BL.timechainRoomModels.paintKit,P.timeline,P.state.epoch,P.time,BL.lectureSlides.mark());
+    return actual.toDataURL() === expected.toDataURL();
+  })()`), 'backward seek redraws the board exactly at the selected time');
+  check(await b.evaluate(`(() => { const M=__ooga.timechain.motion, p=M.lecturer.root.position, place=M.stage.places[M.player.state.place]; return Math.hypot(p.x-place.x,p.z-place.z)<.01; })()`), 'release places the professor at the selected cue');
+  check(b.logs.length === 0, 'scrubbing keeps the console clean: ' + JSON.stringify(b.logs));
   console.log(`${checks} lecture screen and pointing checks passed`);
 } finally { await b.close(); }

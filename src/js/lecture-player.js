@@ -29,6 +29,7 @@
     const progress = loadProgress(), state = LK.state();
     let entry = null, timeline = null, t = 0, playing = false, audio = null, ended = false, sinceSave = 0, opening = 0, version = 0;
     let spoken = -1, speaking = false, utterance = null, speed = 1;
+    let scrubbing = false, scrubTime = 0, scrubResume = false;
     // The answers given on this run through, by question; the question being waited on; and the questions this browser
     // has answered before (a bit each), which may be skipped past.
     let answers = [], waiting = -1, passed = 0;
@@ -96,7 +97,7 @@
       version++;
     };
     const play = () => {
-      if (!timeline || playing) return;
+      if (!timeline || playing || scrubbing) return;
       if (ended) { t = 0; ended = false; answers = []; waiting = -1; }
       playing = true;
       if (audio) {
@@ -115,13 +116,42 @@
       for (const q of Q) if (q.hold > target) answers[q.i] = undefined;
       return target;
     };
-    const seek = (to) => {
+    const seekTime = (to, exact = false) => {
       if (!timeline) return;
-      t = landing(to);
+      scrubbing = false;
+      t = exact ? Math.max(0, Math.min(timeline.duration - 0.05, to)) : landing(to);
+      if (exact) for (const q of timeline.quizzes) {
+        if (q.hold > t) answers[q.i] = undefined;
+        else if (t < q.end) {
+          // A scrub into a reply keeps that reply when playback resumes, without recording a quiz answer.
+          const branch = q.branches.findIndex((b) => t < b.end);
+          answers[q.i] = branch < 0 ? q.branches.length - 1 : branch;
+        }
+      }
       ended = false; waiting = -1;
       hush();
       if (audio) { audio.currentTime = t; if (playing && audio.paused) audio.play().catch(() => { audio = null; }); }
       sync();
+    };
+    const seek = (to) => seekTime(to);
+    // Only the playhead previews while held. Audio and authored cues seek once, on release.
+    const beginScrub = () => {
+      if (!timeline || scrubbing) return false;
+      scrubResume = playing; scrubTime = t;
+      pause(); scrubbing = true; version++;
+      return true;
+    };
+    const moveScrub = (to) => {
+      if (!scrubbing || !Number.isFinite(to)) return;
+      const next = Math.max(0, Math.min(Math.floor(timeline.duration), Math.round(to)));
+      if (next !== scrubTime) { scrubTime = next; version++; }
+    };
+    const endScrub = (cancelled = false) => {
+      if (!scrubbing) return false;
+      scrubbing = false;
+      if (!cancelled) { seekTime(scrubTime, true); if (scrubResume) play(); save(); }
+      scrubResume = false; version++;
+      return true;
     };
     // Questions, as the time passes: an unanswered one holds the lecture where its asking ends; an answered one plays
     // the reply to the answer chosen and goes on from the question's end.
@@ -155,6 +185,7 @@
       pause();
       if (source) { source.disconnect(); source = null; }
       if (audio) { audio.removeAttribute("src"); audio.load(); audio = null; }
+      scrubbing = false; scrubResume = false;
       entry = null; timeline = null; t = 0; ended = false; answers = []; waiting = -1; passed = 0;
       version++;
     };
@@ -211,7 +242,8 @@
       if (sinceSave > SAVE_EVERY) { sinceSave = 0; save(); }
     };
     return {
-      state, progress, open, close, play, pause, seek, update, answer, hear, setSpeed,
+      state, progress, open, close, play, pause, seek, update, answer, hear, setSpeed, beginScrub, moveScrub, endScrub,
+      get scrubbing() { return scrubbing; }, get scrubTime() { return scrubbing ? scrubTime : t; },
       get speed() { return speed; },
       // The question the lecture is waiting on (lecture-kit.js `quizzes`), or null; and the answer given to one, or -1.
       get waiting() { return waiting; },

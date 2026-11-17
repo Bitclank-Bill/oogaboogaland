@@ -18,6 +18,8 @@ The first course is Bitcoin from First Principles: fourteen lectures in four par
 | `scripts/lecture-check.mjs` | `npm run lecture:check -- <id> …` reads lecture files against the contract and prints their totals |
 | `scripts/lecture-script.mjs` | `npm run lecture:script -- <id> [file]` writes a lecture's script for a voice tool; `-- --import <folder>` takes its recording and timings back (Recording, below) |
 
+The outline’s time bar has a draggable circle. Pressing the circle or another point on the bar immediately pauses playback; dragging previews whole seconds while the audio, slides, drawings and lecturer stay at their original position. Releasing seeks all four together, resuming only if the lecture was playing before the press. A cancelled drag stays paused at the original position. Scrubbing may reach unvisited sections and individual quiz replies without awarding an answer; ordinary playback still waits for quiz choices.
+
 ## A lecture file
 
 ```js

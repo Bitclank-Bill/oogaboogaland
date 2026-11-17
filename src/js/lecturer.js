@@ -581,6 +581,15 @@
       parts.torso.rotation.y = 0;
       parts.torso.rotation.x = 0;
     };
+    // A discontinuous time-bar jump starts at the authored place, without walking through the skipped scene.
+    const seek = (st, elapsed, speaking, pen, aim) => {
+      const place = stage.places[st.place] || home;
+      root.position.x = place.x; root.position.z = place.z;
+      heading = place.ry; root.rotation.y = heading;
+      paceHold = 0; paceBeat = -1; walk = 0;
+      // Settle the joints immediately only at this edit; ordinary updates keep their movement limits.
+      update(10, elapsed, st, speaking, pen, aim, false);
+    };
     // The whole of him as one geometry in his own frame, for a viewer to turn: standing at rest and square, both
     // sides alike, whatever he was in the middle of (his next update poses him again).
     const portrait = () => {
@@ -613,7 +622,7 @@
       return merge(...pieces);
     };
     return {
-      update, root, figure, portrait,
+      update, seek, root, figure, portrait,
       dispose() { removeChild(parent, root); },
       name: p.display,
       get place() { return { x: root.position.x, z: root.position.z, heading }; }

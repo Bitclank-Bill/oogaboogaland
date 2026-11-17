@@ -853,7 +853,7 @@
     const WEAPON_KEYS = new Set(["1", "2", "r", "f", "g"]);
     const armsKeys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !WEAPON_KEYS.has(e.key.toLowerCase()) || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable], dialog")) return;
-      if (motion && motion.key && !guide.stage) motion.key(e, hud);
+      if (motion && motion.key && !motion.scrubbing && !guide.stage) motion.key(e, hud);
       e.preventDefault();
       e.stopImmediatePropagation();
     };
@@ -884,6 +884,70 @@
       const owner = quizHit(x, y, reticle);
       return !!owner && motion.tap(owner, hud, quizRay);
     };
+    // Own a time-bar press before combat focus or the room's orbit gesture can consume it.
+    let scrubPointer = null, scrubX = 0, scrubY = 0, scrubFocus = false, scrubCursor = false, scrubStyle = "";
+    const scrubRay = () => {
+      const rect = canvas.getBoundingClientRect();
+      math.mat4.lookAt(quizCamera, camera.position, camera.target, camera.up || quizUp);
+      math.mat4.rayFromView(quizRay, quizCamera, renderer.size.width, renderer.size.height, camera.fov, camera.position, scrubX - rect.left, scrubY - rect.top, camera.orthoMix, camera.orthoHeight);
+      return quizRay;
+    };
+    const consumeScrub = e => { e.preventDefault(); e.stopImmediatePropagation(); };
+    const finishScrub = (cancelled, restore = true) => {
+      if (scrubPointer === null) return;
+      const id = scrubPointer; scrubPointer = null;
+      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+      motion.scrubEnd(cancelled);
+      pilot.setExternalControl(false); pilot.controls.reset();
+      canvas.style.cursor = scrubStyle;
+      if (restore && scrubCursor) pilot.cursor.start(scrubX, scrubY);
+      else if (restore && scrubFocus) pilot.focusAim(false);
+      quizView.fill(NaN);
+    };
+    const moveScrub = e => {
+      if (document.pointerLockElement === canvas) { scrubX += e.movementX || 0; scrubY += e.movementY || 0; }
+      else { scrubX = e.clientX; scrubY = e.clientY; }
+      motion.scrubMove(scrubRay());
+    };
+    window.addEventListener("pointerdown", e => {
+      if (scrubPointer !== null) { finishScrub(true); consumeScrub(e); return; }
+      if (!motion || !motion.scrubStart || e.target !== canvas || e.button !== 0 || e.ctrlKey || e.metaKey || guide.stage || lock.on || document.querySelector("dialog:modal")) return;
+      const rect = canvas.getBoundingClientRect();
+      scrubFocus = pilot.aimFocused; scrubCursor = pilot.cursor.active;
+      scrubX = scrubFocus && !scrubCursor ? rect.left + rect.width / 2 : e.clientX;
+      scrubY = scrubFocus && !scrubCursor ? rect.top + rect.height / 2 : e.clientY;
+      const hit = input.pick(scrubX - rect.left, scrubY - rect.top, pilot.player, true);
+      if (!hit || !motion.scrubStart(hit.owner, scrubRay())) return;
+      scrubPointer = e.pointerId; scrubStyle = canvas.style.cursor;
+      input.reset(); pilot.setExternalControl(true); pilot.controls.reset();
+      people.steer(0, 0, 0, 0, 0); hud.tooltip.hide();
+      canvas.style.cursor = "ew-resize";
+      // The carry cursor redispatches synthetic events; only a live native pointer can be captured.
+      if (document.pointerLockElement !== canvas) {
+        try { canvas.setPointerCapture(e.pointerId); } catch (error) { if (error.name !== "NotFoundError") throw error; }
+      }
+      consumeScrub(e);
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("pointermove", e => {
+      if (e.pointerId !== scrubPointer) return;
+      moveScrub(e); consumeScrub(e);
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("pointerup", e => {
+      if (e.pointerId !== scrubPointer) return;
+      if (document.pointerLockElement !== canvas) moveScrub(e);
+      finishScrub(false); consumeScrub(e);
+    }, { capture: true, signal: ctx.signal });
+    for (const type of ["pointercancel", "lostpointercapture"]) window.addEventListener(type, e => {
+      if (e.pointerId === scrubPointer) finishScrub(true);
+    }, { capture: true, signal: ctx.signal });
+    for (const type of ["mousemove", "wheel", "keydown"]) window.addEventListener(type, e => {
+      if (scrubPointer === null) return;
+      if (type === "keydown" && (e.key === "Escape" || e.metaKey || e.ctrlKey)) finishScrub(true);
+      consumeScrub(e);
+    }, { capture: true, passive: false, signal: ctx.signal });
+    document.addEventListener("pointerlockchange", () => { if (!document.pointerLockElement) finishScrub(true, false); }, { signal: ctx.signal });
+    window.addEventListener("blur", () => finishScrub(true, false), { signal: ctx.signal });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) finishScrub(true, false); }, { signal: ctx.signal });
     // Keep the hover tied to the cursor, or combat's reticle, even as the camera moves under it.
     window.addEventListener("pointerdown", (e) => {
       quizPressFree = !pilot.aimFocused;
@@ -1053,6 +1117,7 @@
       const heard = avatar ? avatar.root.position : camera.target;
       ear.x = heard.x; ear.y = heard.y; ear.z = heard.z;
       if (motion) motion.update(dt, elapsed);
+      if (scrubPointer !== null && !motion.scrubbing) finishScrub(true);
       quizHover();
       if (sharp) sharp.tick();
       stepTweens(dt);
@@ -1116,6 +1181,7 @@
         world.sphereExit = exitNote(!BL.net.state.me);
       }
       world.sphereKeep = null;
+      finishScrub(true, false);
       reader.dispose();
       holdings.dispose();
       sound.dispose();

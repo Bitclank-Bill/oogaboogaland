@@ -329,6 +329,7 @@
   };
 
   // ---------- the outline, the caption and what shows between lectures ----------
+  const timebar = (W, H) => ({ x: H * 0.07, y: H * 0.87, w: W - H * 0.14, h: H * 0.014, r: H * 0.018 });
   const outline = (ctx, W, H, P, timeline, st, t, meta) => {
     const u = H / 100, S = timeline.sections;
     frame(ctx, W, H, u);
@@ -347,10 +348,12 @@
       ctx.fillStyle = now ? DECK.ink : done ? DECK.grey : DECK.soft; P.fit(ctx, sec.title, W - u * 34, now ? 700 : 500, u * 4.6); ctx.fillText(sec.title, u * 13, y);
       ctx.fillStyle = DECK.grey; ctx.textAlign = "right"; ctx.font = P.font(400, u * 3.6, P.MONO); ctx.fillText(clock(sec.start), W - u * 7, y); ctx.textAlign = "left";
     });
-    const bx = u * 7, bw = W - u * 14, by = u * 87, k = Math.max(0, Math.min(1, t / timeline.duration));
+    const bar = timebar(W, H), bx = bar.x, bw = bar.w, by = bar.y, k = Math.max(0, Math.min(1, t / timeline.duration));
     ctx.fillStyle = "#2a241c"; ctx.fillRect(bx, by, bw, u * 1.4);
     ctx.fillStyle = DECK.amber; ctx.fillRect(bx, by, bw * k, u * 1.4);
     for (const sec of S) { ctx.fillStyle = DECK.bg; ctx.fillRect(bx + bw * sec.start / timeline.duration - 1, by, 2, u * 1.4); }
+    ctx.beginPath(); ctx.arc(bx + bw * k, by + bar.h / 2, bar.r, 0, TAU);
+    ctx.fillStyle = DECK.ink; ctx.fill(); ctx.strokeStyle = DECK.amber; ctx.lineWidth = u * 0.45; ctx.stroke();
     footer(ctx, P, W, H, u, { left: `${clock(t)} / ${clock(timeline.duration)}`, right: meta.state || "" });
   };
   const caption = (ctx, W, H, P, text, paused) => {
@@ -415,5 +418,5 @@
     footer(ctx, P, W, H, u, { left: `${list.length} LECTURES · ${course.parts ? course.parts.length + " PARTS" : ""}`, right: "" });
   };
 
-  BL.lectureSlides = { DECK, slide, board, penAt, outline, caption, idleSlide, boardIdle, idleOutline, programme, clock, mark: () => ({ epoch: -2, settled: -1 }) };
+  BL.lectureSlides = { DECK, slide, board, penAt, outline, timebar, caption, idleSlide, boardIdle, idleOutline, programme, clock, mark: () => ({ epoch: -2, settled: -1 }) };
 })();
