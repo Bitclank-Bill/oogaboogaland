@@ -1796,10 +1796,11 @@
       }
     });
     // The paper's piece shows its first page, a still beside its account, and the page or the button opens the
-    // reader. The pages are cut from their strip the first time the pop-up is wanted: opened at the paper it waits
-    // for them, and opened elsewhere and paged to the paper before they are cut, it shows the paper again when
-    // they are.
+    // reader. The pages are cut from their strip as the room is entered (a second's work, so a first press is not
+    // kept waiting for it). Until they are cut, a pop-up opened at the paper waits for them, and one opened elsewhere
+    // and paged to the paper shows the paper again when they are.
     let left = false;
+    if (BL.whitepaperPages) BL.whitepaperPages.load();
     const look = (i) => {
       const D = BL.whitepaperPages, at = paper.index;
       if (!D || D.pages[0]) { show(i); return; }
