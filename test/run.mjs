@@ -22759,19 +22759,22 @@ const timechainPortal = { name: "timechain portal", why: "contract: the Genesis 
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
 // The hologram over the middle plinth is the way to the paper: a click on the figure and Space in front of it each
-// open the pop-up about the paper, and the pop-up's button opens the large reader.
-const timechainHologram = { name: "timechain hologram", why: "contract: the hologram on the middle plinth opens the whitepaper's pop-up by a click and by Space, and the pop-up leads to the reader", run: async (b) => {
+// open the pop-up at the paper with its first page in the window (not a model), the pop-up's button opens the large
+// reader, and the piece before the paper is Satoshi's, the statue to turn beside its sources.
+const timechainHologram = { name: "timechain hologram", why: "contract: the hologram on the middle plinth opens the whitepaper's pop-up, showing the paper's page, by a click and by Space; the pop-up leads to the reader and stands next to Satoshi's piece", run: async (b) => {
   await b.evaluate(genesisGo);
   const at = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.navigate({ position: { x: 0, y: 0, z: 3 }, yaw: 0, pitch: -0.3, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30); const w = B.timechain.built.nodes.holoSpin.world, p = B.renderer.project(w[12], w[13] + 1.1, w[14]); return { x: p.x, y: p.y }; })()`);
-  // Whether the pop-up alone stands open (the pages may still be on their way), closed again for the next press.
-  const popup = `(async () => { const B = window.__ooga, m = document.getElementById("model-modal"); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const open = m.open && !document.getElementById("wp-reader").open; BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
+  // Whether the pop-up alone stands open on the paper's page (the pages may still be on their way), closed again for
+  // the next press.
+  const popup = `(async () => { const B = window.__ooga, m = document.getElementById("model-modal"); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const open = m.open && !document.getElementById("wp-reader").open && document.getElementById("model-canvas").classList.contains("model-page") && /Peer-to-Peer/.test(document.getElementById("model-name").textContent); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
   await b.click(at.x, at.y);
   const click = await b.evaluate(popup);
   await b.key(" ");
   const space = await b.evaluate(popup);
   const reader = await b.evaluate(`(async () => { const B = window.__ooga, G = BL.timechainGenesis, m = document.getElementById("model-modal"); G.readPaper(); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const button = [...m.querySelectorAll("button")].find(e => /READ THE WHITEPAPER/.test(e.textContent)); if (button) button.click(); B.advance(0.3, 1 / 30); const open = document.getElementById("wp-reader").open; G.readerClose(); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return !!button && open; })()`);
-  record("timechain hologram: a click on the figure over the middle plinth and Space in front of it each open the pop-up about the whitepaper, and its button opens the reader",
-    click && space && reader, JSON.stringify({ click, space, reader }));
+  const satoshi = await b.evaluate(`(async () => { const B = window.__ooga, G = BL.timechainGenesis, m = document.getElementById("model-modal"); G.readPaper(); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } document.getElementById("model-prev").click(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const links = [...document.getElementById("model-links").querySelectorAll("a")].map(a => a.href); const ok = document.getElementById("model-name").textContent === "Satoshi Nakamoto" && !document.getElementById("model-canvas").classList.contains("model-page") && BL.modelViewer.stats.drawn > 1000 && links.length === 5 && links.every(h => /^https:[^?#]+$/.test(h)) && /Picozzi/.test(document.getElementById("model-stats").textContent); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return ok; })()`);
+  record("timechain hologram: a click on the figure over the middle plinth and Space in front of it each open the pop-up at the whitepaper showing its page, its button opens the reader, and the piece before it shows Satoshi's statue with its credit and five plain links",
+    click && space && reader && satoshi, JSON.stringify({ click, space, reader, satoshi }));
 } };
 // Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
 const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;

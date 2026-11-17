@@ -381,8 +381,8 @@
 
   // ---------- what the gallery says ----------
   // How a piece connects to Bitcoin: `cite` is in the whitepaper's reference list (its number), `named` is one Satoshi
-  // named in a published post or email, `context` is history round it with no documented link, and the plaque says so.
-  const LINK = { cite: { word: "WHITEPAPER REFERENCE", color: C.cite }, named: { word: "NAMED BY SATOSHI", color: C.named }, context: { word: "CONTEXT", color: C.context } };
+  // named in a published post or email, `context` is history round it with no documented link, and the plaque says so; `author` is Satoshi's own entry.
+  const LINK = { cite: { word: "WHITEPAPER REFERENCE", color: C.cite }, named: { word: "NAMED BY SATOSHI", color: C.named }, context: { word: "CONTEXT", color: C.context }, author: { word: "THE AUTHOR", color: C.named } };
   const SRC = {
     tcp: { href: "https://doi.org/10.1109/TCOM.1974.1092259", label: "Cerf & Kahn · A Protocol for Packet Network Intercommunication (1974)" },
     dh: { href: "https://doi.org/10.1109/TIT.1976.1055638", label: "Diffie & Hellman · New Directions in Cryptography (1976)" },
@@ -418,7 +418,11 @@
     announce: { href: "https://www.metzdowd.com/pipermail/cryptography/2008-October/014810.html", label: "Nakamoto · Bitcoin P2P e-cash paper, cryptography list (31 Oct 2008)" },
     block0: { href: "https://mempool.space/block/000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", label: "mempool.space · block 0" },
     lamport: { href: "https://doi.org/10.1145/357172.357176", label: "Lamport, Shostak & Pease · The Byzantine Generals Problem (TOPLAS, Jul 1982)" },
-    byzantine: { href: "https://satoshi.nakamotoinstitute.org/emails/cryptography/11/", label: "Nakamoto · cryptography list, 13 Nov 2008 (Byzantine Generals)" }
+    byzantine: { href: "https://satoshi.nakamotoinstitute.org/emails/cryptography/11/", label: "Nakamoto · cryptography list, 13 Nov 2008 (Byzantine Generals)" },
+    pdf: { href: "https://bitcoin.org/bitcoin.pdf", label: "bitcoin.org · the whitepaper (PDF)" },
+    thread: { href: "https://www.mail-archive.com/cryptography@metzdowd.com/msg09959.html", label: "Nakamoto · Bitcoin P2P e-cash paper, the cryptography list's thread (31 Oct 2008)" },
+    release: { href: "https://www.metzdowd.com/pipermail/cryptography/2009-January/014994.html", label: "Nakamoto · Bitcoin v0.1 released, cryptography list (8 Jan 2009)" },
+    complete: { href: "https://satoshi.nakamotoinstitute.org/", label: "Satoshi Nakamoto Institute · The Complete Satoshi (emails, posts, code)" }
   };
   // Each entry: the year it stands at, the plaque's date, title, name and line, its link, what it gave and what was
   // still missing (the plaque's two rows), and for the viewer a longer account, its facts, a note and sources;
@@ -598,6 +602,12 @@
       about: "Liberty Reserve opened in 2006 in Costa Rica, issuing LR dollars and euros moved between accounts with little or no identity checking. In May 2013 the United States shut it down and charged its founder with running a six-billion-dollar laundering operation; he was sentenced in 2016. It stands at the end of the ring as the last of the issuers, and the reason the one that came next had none.",
       specs: [["Founded", "2006, Costa Rica"], ["Units", "LR dollars, LR euros"], ["Ended", "seized May 2013; founder sentenced 2016"], ["Connection", "context: what Bitcoin is not"]],
       note: "An office PC of 2006 on the exchange's account page, and the seizure notice over it.", sources: [SRC.lr, { href: "https://krebsonsecurity.com/2013/05/u-s-government-seizes-libertyreserve-com/", label: "Krebs on Security · U.S. government seizes LibertyReserve.com (2013)" }] },
+    { key: "satoshi", year: 2008.6, when: "2008 TO 2011", title: "SATOSHI NAKAMOTO", name: "Satoshi Nakamoto", link: "author", plinth: "centre",
+      line: "The name on the whitepaper and on the first Bitcoin software. Who stood behind it is not known.",
+      gave: "The paper, the first software, the first block", missing: "A face: the name is all there is",
+      about: "Satoshi Nakamoto is the name signed to the whitepaper and to the first Bitcoin software. Whether it stands for one person or for several has never been established, and this room does not guess. What is known is what was published under the name. The domain bitcoin.org was registered on 18 August 2008. The paper went to the cryptography mailing list on 31 October 2008. The genesis block is dated 3 January 2009 and carries that day's headline from The Times. Bitcoin 0.1 was announced to the same list on 8 January 2009, and block 1 followed the next day. For two years Satoshi wrote the code and answered the list and the forum, then stepped back: the last forum post is dated 12 December 2010, the software passed to Gavin Andresen and the other developers, and emails their recipients have since published run on to April 2011.",
+      specs: [["Known as", "Satoshi Nakamoto, a pseudonym; identity unknown"], ["bitcoin.org", "registered 18 Aug 2008"], ["Whitepaper", "cryptography list, 31 Oct 2008"], ["Genesis block", "3 Jan 2009, 18:15:05 UTC"], ["Its headline", "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"], ["Bitcoin 0.1", "announced 8 Jan 2009; block 1 on 9 Jan"], ["Last forum post", "bitcointalk, 12 Dec 2010"], ["Handed on", "to Gavin Andresen and the developers; last known emails, April 2011"], ["The statue", "by Valentina Picozzi; the original stands in Lugano. Recreated for the Temple in Ooga Booga Land by wicked, with her permission"]],
+      note: "The figure is the Temple's statue, the one this room's hologram is thrown from, here to turn by hand.", sources: [SRC.pdf, SRC.thread, SRC.block0, SRC.release, SRC.complete] },
     { key: "whitepaper", year: 2008.8, when: "31 OCT 2008", title: "THE WHITEPAPER", name: "Bitcoin: A Peer-to-Peer Electronic Cash System", link: "named", plinth: "centre",
       line: "Nine pages posted to the cryptography mailing list. Eight references, most of them in this room.",
       gave: "The pieces joined: signatures, a timestamp chain of proof of work, the longest chain", missing: "The network, nine weeks away",
@@ -694,8 +704,8 @@
   };
   // Every piece stands open on its plinth (no glass cases). The middle's drum is a straight cylinder this radius.
   const MID_R = 1.56;
-  // Each entry's piece alone, at the museum's size, for the viewer.
-  const viewModel = own(() => EXHIBITS.map((ex) => RM.solo((k) => GM.model(k, ex.plinth && ex.plinth !== "centre" ? ex.plinth : ex.key, 1, 0, { part: ex.part || "main" }))));
+  // Each entry's piece alone, at the museum's size, for the viewer (Satoshi's is the statue, `soloFigure`).
+  const viewModel = own(() => EXHIBITS.map((ex) => ex.key === "satoshi" ? null : RM.solo((k) => GM.model(k, ex.plinth && ex.plinth !== "centre" ? ex.plinth : ex.key, 1, 0, { part: ex.part || "main" }))));
 
   // ---------- pictures ----------
   // A plaque, `k` times its 560 by 440 size: the date and title, the name, the line, how it connects, and two rows:
@@ -1188,25 +1198,22 @@
     ctx.globalCompositeOperation = "source-over";
     return cv;
   };
-  const holoFigure = own(() => {
-    const g = BL.timechainRoomKinds.temple.statue(), v = g.verts, verts = [], faces = [], runs = new Map();
-    let lit = 1;
-    for (const f of g.faces) lit = Math.max(lit, f.color[0] + f.color[1] + f.color[2]);
-    const lightOf = (f, y) => (0.3 + 0.9 * (f.color[0] + f.color[1] + f.color[2]) / lit) * (0.3 + 0.7 * Math.min(1, y / 0.3)) * (Math.round(y / HOLO.band) % 2 ? 1 : 0.5);
-    const add = (pts, k) => { const n = verts.length / 3; for (const q of pts) verts.push(q[0], q[1], q[2]); faces.push({ i: [n, n + 1, n + 2, n + 3], color: [Math.min(255, Math.round(98 * k)), Math.min(255, Math.round(207 * k)), Math.min(255, Math.round(224 * k))], emissive: 1 }); };
-    // The model is thin plates stood side by side, each plate's two flat sides cut into thousands of small squares.
-    // Squares that lie side by side in one row of one side, and take the same shade of light, are drawn as one: the
-    // same surface exactly, in under half the faces. Every other face is drawn as the Temple made it.
+  // The Temple's statue, face by face, in fewer faces: the model is thin plates stood side by side, each plate's two
+  // flat sides cut into thousands of small squares, and squares that lie side by side in one row of one side, with
+  // the same `shadeOf`, are handed on as one: the same surface exactly. `add(points, faces, shade)` takes each face
+  // to draw with the Temple's faces it stands for; every face that is not a plate's side comes as the Temple made
+  // it, alone and with no shade. `one` leaves out one of each plate's two sides.
+  const statueFaces = (one, shadeOf, add) => {
+    const g = BL.timechainRoomKinds.temple.statue(), v = g.verts, runs = new Map();
     for (const f of g.faces) {
-      const pts = f.i.map((j) => [v[j * 3], v[j * 3 + 1], v[j * 3 + 2]]), y0 = Math.min(pts[0][1], pts[1][1], pts[2][1], pts[3][1]), y1 = Math.max(pts[0][1], pts[1][1], pts[2][1], pts[3][1]);
-      if (pts.length !== 4 || !pts.every((q) => Math.abs(q[0] - pts[0][0]) < 1e-6)) { add(pts, lightOf(f, (y0 + y1) / 2)); continue; }
+      const pts = f.i.map((j) => [v[j * 3], v[j * 3 + 1], v[j * 3 + 2]]);
+      if (pts.length !== 4 || !pts.every((q) => Math.abs(q[0] - pts[0][0]) < 1e-6)) { add(pts, [f]); continue; }
+      const y0 = Math.min(pts[0][1], pts[1][1], pts[2][1], pts[3][1]), y1 = Math.max(pts[0][1], pts[1][1], pts[2][1], pts[3][1]);
       const z0 = Math.min(pts[0][2], pts[1][2], pts[2][2], pts[3][2]), z1 = Math.max(pts[0][2], pts[1][2], pts[2][2], pts[3][2]), facing = (pts[1][1] - pts[0][1]) * (pts[2][2] - pts[0][2]) - (pts[1][2] - pts[0][2]) * (pts[2][1] - pts[0][1]) > 0 ? 1 : 0;
-      // Of a plate's two flat sides, a few millimetres apart, one is enough for light: drawing both doubles what the
-      // eye looks through, and what the renderer fills, for nothing.
-      if (!facing) continue;
-      const key = `${pts[0][0].toFixed(5)}|${y0.toFixed(5)}`;
+      if (one && !facing) continue;
+      const key = `${pts[0][0].toFixed(5)}|${facing}|${y0.toFixed(5)}`;
       if (!runs.has(key)) runs.set(key, []);
-      runs.get(key).push({ z0, z1, pts, shade: Math.round(lightOf(f, (y0 + y1) / 2) * HOLO.shades) });
+      runs.get(key).push({ z0, z1, pts, f, shade: shadeOf(f, (y0 + y1) / 2) });
     }
     for (const row of runs.values()) {
       row.sort((a, b) => a.z0 - b.z0);
@@ -1214,11 +1221,41 @@
         let j = i;
         while (j + 1 < row.length && row[j + 1].shade === row[i].shade && row[j + 1].z0 - row[j].z1 < 1e-5) j++;
         const first = row[i], zEnd = row[j].z1;
-        add(first.pts.map((q) => [q[0], q[1], Math.abs(q[2] - first.z0) < 1e-6 ? first.z0 : zEnd]), first.shade / HOLO.shades);
+        add(first.pts.map((q) => [q[0], q[1], Math.abs(q[2] - first.z0) < 1e-6 ? first.z0 : zEnd]), row.slice(i, j + 1).map((r) => r.f), first.shade);
         i = j + 1;
       }
     }
+  };
+  const holoFigure = own(() => {
+    const g = BL.timechainRoomKinds.temple.statue(), v = g.verts, verts = [], faces = [];
+    let lit = 1;
+    for (const f of g.faces) lit = Math.max(lit, f.color[0] + f.color[1] + f.color[2]);
+    const lightOf = (f, y) => (0.3 + 0.9 * (f.color[0] + f.color[1] + f.color[2]) / lit) * (0.3 + 0.7 * Math.min(1, y / 0.3)) * (Math.round(y / HOLO.band) % 2 ? 1 : 0.5);
+    const midOf = (f) => { let y0 = Infinity, y1 = -Infinity; for (const j of f.i) { const y = v[j * 3 + 1]; if (y < y0) y0 = y; if (y > y1) y1 = y; } return (y0 + y1) / 2; };
+    // A plate's side takes one of `shades` shades of the light, so its squares join in runs, in under half the
+    // faces; and of a plate's two flat sides, a few millimetres apart, one is enough for light: drawing both
+    // doubles what the eye looks through, and what the renderer fills, for nothing.
+    statueFaces(true, (f, y) => Math.round(lightOf(f, y) * HOLO.shades), (pts, from, shade) => {
+      const n = verts.length / 3, k = shade === undefined ? lightOf(from[0], midOf(from[0])) : shade / HOLO.shades;
+      for (const q of pts) verts.push(q[0], q[1], q[2]);
+      faces.push({ i: pts.map((_, c) => n + c), color: [Math.min(255, Math.round(98 * k)), Math.min(255, Math.round(207 * k)), Math.min(255, Math.round(224 * k))], emissive: 1 });
+    });
     return { verts, faces, lines: [], castShadow: false, glass: HOLO.glass };
+  });
+  // The statue for the viewer's Canvas 2D, solid, in the Temple's own steel: every row of a plate's side one face in
+  // the row's mean colour, since the viewer draws each face by itself and fifty thousand are more than it can turn.
+  // It stands turned (`SOLO_TURN`) so the viewer, which opens every model from the same side, opens on its face.
+  const SOLO_TURN = 1.2;
+  const soloFigure = own(() => {
+    const verts = [], faces = [], c = Math.cos(SOLO_TURN), s = Math.sin(SOLO_TURN);
+    statueFaces(false, () => 0, (pts, from) => {
+      const n = verts.length / 3, color = [0, 0, 0];
+      let emissive = 0;
+      for (const f of from) { color[0] += f.color[0]; color[1] += f.color[1]; color[2] += f.color[2]; emissive += f.emissive || 0; }
+      for (const q of pts) verts.push(q[0] * c + q[2] * s, q[1], q[2] * c - q[0] * s);
+      faces.push({ i: pts.map((_, k) => n + k), color: color.map((k) => Math.round(k / from.length)), emissive: emissive / from.length });
+    });
+    return { verts, faces, lines: [] };
   });
   // The Temple's own steps build the statue at the doorway, a little each frame, and the last one makes the figure.
   const steps = () => { const temple = BL.timechainRoomKinds.temple; return temple && temple.steps ? [...temple.steps(), () => { holoFigure(); }] : []; };
@@ -1621,8 +1658,8 @@
       const paper = EXHIBITS.find((ex) => ex.key === "whitepaper");
       // A press on the figure, or on the plaque, opens the pop-up about the paper, which leads to the large reader.
       const COARSE = matchMedia("(pointer: coarse)").matches;
-      const tP = { kind: "genesis", tip: COARSE ? "The whitepaper · tap to read" : "The whitepaper · click to read", index: paper.index, paper: "about" };
-      const tI = { kind: "genesis", tip: "31 Oct 2008 · the whitepaper · about this paper", radius: 1.1, index: paper.index, paper: "about" };
+      const tP = { kind: "genesis", tip: COARSE ? "The whitepaper · tap to read" : "The whitepaper · click to read", index: paper.index };
+      const tI = { kind: "genesis", tip: "31 Oct 2008 · the whitepaper · about this paper", radius: 1.1, index: paper.index };
       // The emitter in the drum's top: a dark well, a lit lens in a bezel at its middle, two rings of light round it.
       // Over it the cone of light it throws; a frame at the figure's foot that turns, a ring of light under it; the
       // figure in that frame, set so it turns about its own middle; two sheets of light that climb through it; the
@@ -1750,25 +1787,26 @@
     const insc = Array.from({ length: INSC_GROUPS }, (_, i) => ({ node: nodes[`inscGroup${i}`], spots: spots.filter((_, j) => Math.floor(j * INSC_GROUPS / PLINTHS.length) === i), on: true })).filter((q) => q.node);
     let px = 0, pz = 14;
     const carried = { x: 0, z: 0 };
-    const look = (i) => BL.modelViewer.open({
+    const show = (i) => BL.modelViewer.open({
       title: "Genesis Museum", theme: "genesis", count: EXHIBITS.length, index: i,
       help: matchMedia("(pointer: coarse)").matches ? "Drag to turn it · pinch to zoom · the arrows for the next piece" : "Drag to turn it · scroll to zoom · ← → for the next piece",
       item: (n) => {
         const ex = EXHIBITS[n], link = LINK[ex.link];
-        return { kicker: `${ex.when} · ${ex.title} · ${ex.link === "cite" ? `${link.word} [${ex.ref}]` : link.word}`, name: ex.name, text: ex.about, stats: ex.specs, note: ex.note, links: ex.sources, geometry: viewModel()[n], image: ex.key === "whitepaper" && BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, ...(ex.key === "whitepaper" ? { onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] } : null) };
+        return { kicker: `${ex.when} · ${ex.title} · ${ex.link === "cite" ? `${link.word} [${ex.ref}]` : link.word}`, name: ex.name, text: ex.about, stats: ex.specs, note: ex.note, links: ex.sources, geometry: ex.key === "satoshi" ? soloFigure() : viewModel()[n], image: ex.key === "whitepaper" && BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, ...(ex.key === "whitepaper" ? { onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] } : null) };
       }
     });
-    // The plaque's pop-up: the paper's first page as a still preview beside its account, with the licence and the link
-    // to bitcoin.org; the page or the button opens the reader. It waits for the pages to be cut.
+    // The paper's piece shows its first page, a still beside its account, and the page or the button opens the
+    // reader. The pages are cut from their strip the first time the pop-up is wanted: opened at the paper it waits
+    // for them, and opened elsewhere and paged to the paper before they are cut, it shows the paper again when
+    // they are.
     let left = false;
-    const readPaper = () => { const D = BL.whitepaperPages; if (D && !D.pages[0]) { D.load().then(() => { if (!left) openPaper(); }); return; } openPaper(); };
-    const openPaper = () => BL.modelViewer.open({
-      title: "The Bitcoin Whitepaper", theme: "genesis", count: 1,
-      help: matchMedia("(pointer: coarse)").matches ? "Tap the page or the button to read the paper" : "Click the page or the button to read the paper",
-      item: () => ({ kicker: "PREVIEW · PAGE 1 OF 9 · BITCOIN.ORG · MIT LICENCE", name: "Bitcoin: A Peer-to-Peer Electronic Cash System",
-        text: "Satoshi Nakamoto, satoshin@gmx.com, www.bitcoin.org. Posted to the cryptography mailing list on 31 October 2008. Reproduced unchanged from the PDF bitcoin.org serves, which the site publishes under the MIT licence.",
-        image: BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, note: "Source: bitcoin.org · MIT licence", links: [SRC.site, SRC.announce], onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] })
-    });
+    const look = (i) => {
+      const D = BL.whitepaperPages, at = paper.index;
+      if (!D || D.pages[0]) { show(i); return; }
+      D.load().then(() => { if (left) return; const s = BL.modelViewer.stats; if (s.open ? i !== at && s.index === at && D.pages[0] : i === at) show(at); });
+      if (i !== at) show(i);
+    };
+    const readPaper = () => look(paper.index);
     BL.timechainGenesis.readPaper = readPaper;
     // The reader, as the whitepaper read on the island: the nine pages as one continuous strip in a large
     // panel, sliding under the hand as a phone's screen does: a drag or a swipe carries it and lets it run on, slowing
@@ -2008,8 +2046,7 @@
       tap(owner) {
         if (owner.kind === "genesis-portal") return portal.tapDoor();
         if (owner.kind !== "genesis") return false;
-        if (owner.paper) { readPaper(); return true; }
-        if (portal.hit(EXHIBITS[owner.index].plinthIndex)) return true;
+        if (EXHIBITS[owner.index].plinth !== "centre" && portal.hit(EXHIBITS[owner.index].plinthIndex)) return true;
         look(owner.index);
         return true;
       },
