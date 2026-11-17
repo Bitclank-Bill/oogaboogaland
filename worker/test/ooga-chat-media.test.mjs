@@ -104,8 +104,8 @@ const media = async (a, client, op, body = {}, principal = client.principal) => 
     body: JSON.stringify({ connection: client.connection, ...body }) }));
   return { status: res.status, body: await res.json() };
 };
-const speak = async (a, client) => {
-  await a.webSocketMessage(client.ws, JSON.stringify({ type: "setRole", requestId: 1, role: "speaker" }));
+const speak = async (a, client, requestId = 1) => {
+  await a.webSocketMessage(client.ws, JSON.stringify({ type: "setRole", requestId, role: "speaker" }));
   const c = a.model.conns.get(client.connection);
   const generation = c.lease.generation;
   assert.equal((await media(a, client, "publish/open", { generation })).status, 200);
@@ -166,7 +166,7 @@ test("OC receivers replace a speaker's track in both handoff directions even whe
   assert.ok(speaker.ws.sent.some((m) => m.type === "you" && m.reason === "moved"));
   await a.world(2, [], []);
   a.nextGeneration = () => gen;
-  await speak(a, speaker);
+  await speak(a, speaker, 2);
   await h.settle();
   assert.ok(!openMids(sub).includes(island.mid), "the island pull is retired when voice moves back");
   const back = (await media(a, listener, "receive/sync")).body.tracks[0];

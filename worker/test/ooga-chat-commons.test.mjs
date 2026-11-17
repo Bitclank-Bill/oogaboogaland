@@ -55,7 +55,7 @@ const lines = (ws) => ws.sent.filter((m) => m.t === "chat");
 
 test("duel listening receives active pairs on join and only sanitized start/end updates", async () => {
   const h = await harness(), { duel } = await import("../src/duel.js");
-  await h.player(1, "amy"); await h.player(2, "bea");
+  await h.player(1, "amy"); await h.player(2, "ottoz0r");
   const { ws: before } = await h.member(3, "cy");
   duel.start(h.room, h.room.players.get(1), h.room.players.get(2), Date.now());
   const d = [...h.room.duels.values()][0];
