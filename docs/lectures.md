@@ -26,6 +26,8 @@ The outline’s time bar has a draggable circle. Pressing the circle or another 
 
 The outline’s section rows highlight on hover and jump to that section’s beginning when clicked, including the current section. The Bitcoin from First Principles lecture-selection popup uses the larger window layout too. Clicking the rest of a screen opens a larger live close-up; its section rows, quiz answers and time bar share the projected screen’s controls. Playback, drawing strokes and time updates continue while the popup is open. Closing it during a scrub cancels the drag and leaves playback paused.
 
+The recording is a separate same-origin file, never embedded or preloaded on the island. Entering the hall or opening its catalogue does not request it. Selecting a lecture creates its audio element with `preload="none"` before assigning the URL; playback requests the audio. Leaving the hall releases the element and stops loading.
+
 Recorded audio keeps playing in a background tab. Its media events update the same cue state and quiz gates as foreground frames. The first frame after returning rebuilds the screens and places the lecturer at the current audio cue; an unanswered quiz still holds playback, including when a delayed background event crosses the whole question.
 
 ## A lecture file
@@ -96,3 +98,7 @@ The player then follows the recording's clock, and slides, strokes and gestures 
 ## Sources and reading
 
 A lecture is this project's own writing and is under the repository's licence. It credits what it was written from in its `sources`, quotes only short lines, exactly and with their author, and recommends reading in `reading`. Recommending a book is not adapting it: a lecture that follows a book's chapters, wording or worked examples is an adaptation and takes on that book's licence, so do not write one that way.
+
+## Regression checks
+
+Lecture playback regressions run in `test/run.mjs`’s normal unit tier (`npm run test:unit`, also CI). The projected controls, gestures, live popups and audio-loading regressions are `timechain` scene steps: `node test/run.mjs --browser-only timechain` runs that scoped coverage, and the full suite includes it.

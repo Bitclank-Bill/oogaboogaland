@@ -213,13 +213,15 @@
         // A recording is a file of the staged site's (scripts/site.mjs); the source tree and the portable page have
         // none to ask for, and play to the recording's times with captions.
         if (timeline.recorded && next.audio && BL.deferredScripts) {
-          audio = new Audio(next.audio); audio.playbackRate = speed; audio.preservesPitch = true; audio.preload = "auto"; audio.volume = LEVEL; audio.addEventListener("error", () => { audio = null; });
+          audio = new Audio(); audio.preload = "none"; audio.playbackRate = speed; audio.preservesPitch = true; audio.volume = LEVEL; audio.addEventListener("error", () => { audio = null; });
           // Hidden tabs run no scene frames. Media events must advance the same cue state, gates and completion
           // as a frame, including the final event when the recording has already paused at its end.
           const recording = audio;
           const mediaTick = () => { if (audio === recording) update(0); };
           recording.addEventListener("timeupdate", mediaTick);
           recording.addEventListener("ended", mediaTick);
+          // Selecting a lecture creates the element; only play() asks for the recording.
+          recording.src = next.audio;
         }
         sync();
         return true;
