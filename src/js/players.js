@@ -46,7 +46,7 @@
   range.min = String(V.RADIUS_MIN);
   range.max = String(V.RADIUS_MAX + RANGE_STEP);
   const ROOM_WORDS = { off: "Not connected.", connecting: "Joining the island…", paused: "Paused while the tab was hidden.", replaced: "Open in another tab.", full: "The island is full.", revoked: "Your account access was revoked." };
-  const LOOK = { player: "Look at player", known: "Look at last known position", door: "Look toward entrance", nowhere: "Location unavailable", route: "Route unavailable" };
+  const LOOK = { player: "Look at player", cloud: "Look at their cloud", known: "Look at last known position", door: "Look toward entrance", nowhere: "Location unavailable", route: "Route unavailable" };
   // A player is turned toward at about their middle; a door at the height the scene gives.
   const BODY_Y = 1;
   const SVG = "http://www.w3.org/2000/svg";
@@ -73,6 +73,19 @@
 
   const rows = new Map(), groups = new Map(), order = [], door = { x: 0, y: 0, z: 0 };
   let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "", shownRadius = -1;
+  // Ooga Chat speakers on clouds (#659, `net.state.clouds`), rows of their own keyed by their audience id: a purple dot
+  // where a player's is green, in the group of the land their cloud is over, their mic as the room says it (muted or
+  // not, nothing to press), their raised hand, and their reactions from the room's audience feed. The crosshair turns
+  // toward their Ooga on its cloud where the scene seats it (`setCloudSpot(fn)`, `fn(id, out)` true with `out` written,
+  // the hub's); elsewhere it says the route is unavailable. A row's numeric `id` is minus the account's, for sorting.
+  const cloudRows = new Map(), spot = { x: 0, y: 0, z: 0 };
+  let cloudSpot = null;
+  const cloudOf = (id) => {
+    const list = net.state.clouds;
+    for (let i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  };
+  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : rows.get(Number(li.dataset.id));
   const makeRow = () => {
     const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
@@ -88,7 +101,10 @@
     slider.type = "range"; slider.className = "players-volume-range"; slider.id = `${id}-range`;
     slider.min = "0"; slider.max = String(V.VOLUME_MAX * 100); slider.step = "5"; slider.value = "100";
     value.className = "players-volume-value"; value.htmlFor = slider.id; value.textContent = "100%";
-    volume.append(volumeLabel, slider, value);
+    // A duel (duel.js), offered under another player's name while the island can hold one.
+    const duel = document.createElement("button");
+    duel.type = "button"; duel.className = "duel-button players-duel"; duel.textContent = "Challenge to a duel"; duel.hidden = true;
+    volume.append(volumeLabel, slider, value, duel);
     dots.className = "roster-dots";
     presence.className = "roster-presence"; presence.dataset.online = "true"; presence.setAttribute("role", "img");
     presence.setAttribute("aria-label", "Online"); presence.title = "Online";
@@ -111,7 +127,7 @@
     note.className = "players-note"; note.textContent = ", last known location"; note.hidden = true;
     distance.append(note);
     li.append(dots, name, mark, marks, look, distance, volume);
-    return { li, label, toggle, volume, slider, value, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
+    return { li, label, toggle, volume, slider, value, duel, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
       aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false, faded: false };
   };
   const selfRow = makeRow();
@@ -136,6 +152,8 @@
   const clear = () => {
     for (const row of rows.values()) row.li.remove();
     rows.clear();
+    for (const row of cloudRows.values()) row.li.remove();
+    cloudRows.clear();
     selfRow.li.remove();
     for (const group of groups.values()) group.section.remove();
     groups.clear();
@@ -149,13 +167,22 @@
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
+      // A player out of voice shows no mic at all.
       const look = rec.voice ? rec.muted ? "muted" : !row.faded && BL.voice.speaking(rec.id) ? "speaking" : "on" : "";
-      paintMark(row, look || "off", rec.login, false, rec.id === s.hostId, rec.hand ? (rec.handEmoji || BL.reactionPolicy.HANDS[rec.handTone]) : "");
+      paintMark(row, look, rec.login, false, rec.id === s.hostId, rec.hand ? (rec.handEmoji || BL.reactionPolicy.HANDS[rec.handTone]) : "");
       paintLink(row, s.voiceLinks ? net.voiceLink(rec.id) : "", rec.display);
       const level = V.volumeOf(row.id), words = `${Math.round(level * 100)}%`;
       if (row.slider.value !== String(level * 100)) row.slider.value = String(level * 100);
       if (row.value.textContent !== words) row.value.textContent = words;
       row.slider.setAttribute("aria-valuetext", words);
+    }
+    // A cloud speaker's mark as a player's: green while this page hears them speak, faded and never green out of earshot.
+    for (const row of cloudRows.values()) {
+      const c = cloudOf(row.cloud);
+      if (!c) continue;
+      const key = row.cloud.startsWith("gh:") ? Number(row.cloud.slice(3)) : 0, out = !key || !V.inEarshot(key);
+      if (row.faded !== out) { row.faded = out; row.voice.dataset.far = String(out); }
+      paintMark(row, c.mic === "muted" ? "muted" : !out && V.speaking(key) ? "speaking" : "on", "", false, false, c.hand);
     }
   };
   // A row's link, offered where the room keeps them (`state` empty hides it), painted again only when it or the name moves.
@@ -187,24 +214,24 @@
     if (row.hostOn !== host) { row.hostOn = host; row.host.hidden = !host; }
   };
   // A reaction (`net.subscribeReactions`, 0 for the visitor's own) pops up on its sender's row where a raised hand stands,
-  // over the hand when one is up, rises a little and fades, as it does over their Ooga; the newest replaces the one
-  // before, and under Calm it only fades. Rows are not kept up while the panel is hidden, so then it shows nowhere.
-  const REACT_TIMING = { duration: 2600, easing: "linear" }, CALM = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const REACT_POP = [
-    { opacity: 1, transform: "translateY(0) scale(0.4)" },
-    { opacity: 1, transform: "translateY(-2px) scale(1.15)", offset: 0.07 },
-    { opacity: 1, transform: "translateY(-3px) scale(1)", offset: 0.12 },
-    { opacity: 1, transform: "translateY(-5px) scale(1)", offset: 0.73 },
-    { opacity: 0, transform: "translateY(-7px) scale(1)" },
-  ];
-  const REACT_CALM = [{ opacity: 1 }, { opacity: 1, offset: 0.73 }, { opacity: 0 }];
+  // over the hand when one is up, rises a little and fades, as it does over their Ooga (reaction-bar.js `pop`, which
+  // Ooga Chat's tiles play too); the newest replaces the one before. Rows are not kept up while the panel is hidden, so
+  // then it shows nowhere.
   const reacted = (id, emoji) => {
     if (!showing || stale) return;
-    const row = id === 0 ? selfRow : rows.get(id);
+    popRow(id === 0 ? selfRow : rows.get(id), emoji);
+  };
+  // A cloud speaker's reaction, from the room's audience feed (`kind: "react"`, for the zone they speak in).
+  const cloudReacted = (msg) => {
+    if (msg.kind !== "react" || !showing || stale || typeof msg.id !== "string") return;
+    const row = cloudRows.get(msg.id), c = row && cloudOf(msg.id);
+    if (c && c.zone === msg.zone && BL.reactionPolicy.valid(msg.e)) popRow(row, msg.e);
+  };
+  const popRow = (row, emoji) => {
     if (!row || !row.li.isConnected) return;
     if (row.reacting) row.reacting.cancel();
     row.react.textContent = emoji; row.react.hidden = false;
-    const run = row.reacting = row.react.animate(CALM.matches ? REACT_CALM : REACT_POP, REACT_TIMING);
+    const run = row.reacting = BL.reactionBar.pop(row.react);
     run.onfinish = () => {
       if (row.reacting !== run) return;
       row.reacting = null; row.react.hidden = true;
@@ -248,6 +275,24 @@
       if (row.far !== far) { row.far = far; row.distance.dataset.far = String(far); }
       const out = !V.inEarshot(row.id);
       if (row.faded !== out) { row.faded = out; row.voice.dataset.far = String(out); faded = true; }
+    }
+    for (const row of cloudRows.values()) {
+      let aim = "route", metres = -1;
+      if (cloudSpot && cloudSpot(row.cloud, spot)) {
+        aim = "cloud";
+        if (placed && BL.voiceBlend.sameFrame(row.zone, mine)) metres = Math.round(Math.hypot(spot.x - me.x, spot.y - me.y, spot.z - me.z));
+      }
+      if (row.aim !== aim) {
+        row.aim = aim;
+        const words = LOOK[aim];
+        row.button.title = words; row.button.setAttribute("aria-label", words);
+        row.button.setAttribute("aria-disabled", String(aim === "route"));
+      }
+      if (row.metres !== metres) {
+        row.metres = metres;
+        row.distance.firstChild.data = metres < 0 ? "" : `${metres} m`;
+        row.distance.dataset.known = "live";
+      }
     }
     // A voice that fades stops showing as speaking at once, and shows it again on coming back.
     if (faded) paintMarks();
@@ -294,6 +339,21 @@
       order.push(row);
     }
     for (const [id, row] of rows) if (row.seen !== pass) { row.li.remove(); rows.delete(id); }
+    for (const c of s.clouds) {
+      let row = cloudRows.get(c.id);
+      if (!row) {
+        row = makeRow();
+        row.cloud = c.id; row.id = -Number(c.id.slice(c.id.indexOf(":") + 1));
+        row.li.dataset.id = String(row.id); row.li.dataset.cloud = c.id;
+        const dot = row.li.querySelector(".roster-presence");
+        dot.dataset.online = "cloud"; dot.title = "Speaking from Ooga Chat"; dot.setAttribute("aria-label", "Speaking from Ooga Chat");
+        row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
+        cloudRows.set(c.id, row);
+      }
+      row.name = c.display; row.zone = c.zone === "main" ? "outside" : "dsb-outside"; row.group = Z.groupOf(row.zone); row.seen = pass;
+      order.push(row);
+    }
+    for (const [id, row] of cloudRows) if (row.seen !== pass) { row.li.remove(); cloudRows.delete(id); }
     Z.arrange(order, selfRow.group);
     let group = null, groupIndex = 0, rowIndex = 0;
     for (const row of order) {
@@ -317,6 +377,10 @@
   const lookAt = (row) => {
     const s = net.state;
     if (s.room !== "live" || !s.me || s.zone !== shownZone) return;
+    if (row.cloud) {
+      if (cloudSpot && cloudSpot(row.cloud, spot)) BL.pilot.turnToward(spot.x, spot.y + BODY_Y, spot.z);
+      return;
+    }
     const rec = net.remotes.get(row.id);
     if (!rec || rec.zone !== row.zone) return;
     if (BL.voiceBlend.sameFrame(rec.zone, s.zone)) {
@@ -344,17 +408,24 @@
     }
     const toggle = e.target.closest(".players-name-toggle");
     if (toggle && !toggle.disabled) {
-      const row = rows.get(Number(toggle.closest("li").dataset.id));
-      if (row) {
+      const row = rowOf(toggle.closest("li"));
+      if (row && !row.cloud) {
         const open = toggle.getAttribute("aria-expanded") !== "true";
         toggle.setAttribute("aria-expanded", String(open)); row.volume.hidden = !open;
+        row.duel.hidden = !(open && BL.duel && BL.duel.offered(row.id));
       }
+      return;
+    }
+    const duel = e.target.closest(".players-duel");
+    if (duel) {
+      if (e.detail) duel.blur();
+      BL.duel.challenge(Number(duel.closest("li").dataset.id));
       return;
     }
     const look = e.target.closest(".players-look");
     if (!look) return;
     look.blur();
-    const row = rows.get(Number(look.closest("li").dataset.id));
+    const row = rowOf(look.closest("li"));
     if (row && look.getAttribute("aria-disabled") !== "true") lookAt(row);
   });
 
@@ -452,6 +523,8 @@
   net.subscribeRoster(render);
   net.subscribeMoves(measure);
   net.subscribeReactions(reacted);
+  net.subscribeAudience(cloudReacted);
+  net.subscribeClouds(render);
   BL.voice.subscribe(paintMarks);
   BL.voice.subscribe(paintHearing);
   // The scene the visitor is in names its doors (`fn(from, step, out, nearX, nearZ)`, true with `out` written), or null.
@@ -459,5 +532,9 @@
     doors = fn;
     measure();
   };
-  BL.players = { setDoors, get stats() { return { showing, rows: rows.size, groups: groups.size, unread, speakOn }; } };
+  const setCloudSpot = (fn) => {
+    cloudSpot = fn;
+    measure();
+  };
+  BL.players = { setDoors, setCloudSpot, get stats() { return { showing, rows: rows.size, clouds: cloudRows.size, groups: groups.size, unread, speakOn }; } };
 })();

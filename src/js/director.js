@@ -66,6 +66,7 @@
     soundButton.setAttribute("aria-label", label); soundButton.title = voice.enabled || voice.joining || voice.returning ? label : `${label} · M`;
     soundButton.setAttribute("aria-pressed", String(sound.muted));
   };
+  BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition });
   let helpHeld = false;
   // Both panels pause the scene. A pad keeps working inside them: its Menus context reaches no scene while they show.
   const controlsHelp = BL.controlsHelp.create({ current: () => active, ready: () => !!active && !transition,
@@ -139,6 +140,12 @@
     if (donations.real) return;
     deliverDonation(donation);
     window.BL.hud.setDonationStats(game.state);
+  }, {
+    login: () => window.BL.net.state.me?.login,
+    bananasFor: gameMod.bananasFor,
+    price: () => window.BL.chain.snapshot.priceUsd,
+    // The page's own /donate address: a path where the router serves paths, a hash from disk or a named file.
+    link: () => routerMod.served ? `${location.origin}/donate` : `${location.href.split("#")[0]}#/donate`
   });
   window.BL.hud.setDonationStats(game.state);
   // world survives scene swaps: banana level, equipment ownership, and the Ooga handed from hub to scene.
@@ -289,6 +296,9 @@
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
     if (transition) return false;
+    // Leaving a scene leaves the public outdoor scope at once, before the fade, and stays out of it until the transition
+    // settles, whatever the old scene's last frames report (outdoor-scope.js `hold`); the next scene reports after.
+    window.BL.outdoorScope.hold(true);
     controlsHelp.close();
     transition = { next, place, out: true, t: 0, held: 0, instant, ready: true, redirect: null, failed: null, controller: new AbortController() };
     if (next.prepare) {
@@ -558,6 +568,7 @@
     const failed = transition.failed;
     transition.controller.abort();
     transition = null;
+    window.BL.outdoorScope.hold(false);
     if (active) holdInput(false);
     if (failed) cabinetView.failed();
     if (failed && active && active.stay) active.stay();
@@ -683,6 +694,7 @@
   // Shared by the display loop and the debug `advance`, so a stepped frame is exactly a displayed one.
   const step = (dt, now) => {
     gamepad.poll();
+    BL.destinationMap.update(now);
     elapsed += dt;
     if (transition) stepTransition(dt);
     // Hold the fully black frame while resumable pure builders run; the old visit keeps its graph and controls.
@@ -886,6 +898,20 @@
   // The account needs the Worker: without one /api/me finds nothing and the sheet shows no sign-in.
   const net = window.BL.net;
   const unsubscribeAccount = net.subscribe(window.BL.hud.showAccount);
+  // A new room connection or account reopens no earlier outdoor grant (outdoor-scope.js `reset`).
+  let scopeRoom = net.state.room, scopeMe = net.state.me?.id ?? 0;
+  const unsubscribeScope = net.subscribe((state) => {
+    const me = state.me?.id ?? 0;
+    if (state.room === scopeRoom && me === scopeMe) return;
+    scopeRoom = state.room;
+    scopeMe = me;
+    window.BL.outdoorScope.reset();
+  });
+  // Ooga Chat's outdoor voice bridge (outdoor-voice.js): the scope's transport, after the reset above so a reconnect's
+  // new epoch is the one it asks for. Without the room's feature it keeps the page out of every public audience.
+  const outdoorBridge = window.BL.outdoorVoice.attach();
+  // The voice switch prompt (voice-switch.js): asked once when the account already speaks from another device.
+  const voiceHandoff = window.BL.voiceSwitch.attach();
   const unsubscribeVoice = window.BL.voice.subscribe(() => window.BL.hud.showAccount(net.state));
   // The roster's host dot and voice marks follow the room and voice, on whichever scene's roster is up.
   const unsubscribeRosterMarks = net.subscribeRoster(window.BL.hud.showVoices);
@@ -1158,6 +1184,7 @@
   }
   const destroy = () => {
     cabinetView.dispose();
+    BL.destinationMap.dispose();
     controlsHelp.dispose();
     destroyed = true;
     bootBuildController.abort();
@@ -1180,6 +1207,9 @@
     unsubscribeOogatron();
     window.BL.oogatronLive.dispose();
     unsubscribeAccount();
+    unsubscribeScope();
+    outdoorBridge.dispose();
+    voiceHandoff.dispose();
     unsubscribeVoice();
     unsubscribeRosterMarks();
     unsubscribeVoiceMarks();

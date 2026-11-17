@@ -259,7 +259,7 @@
   };
 
   // One visit's state: created in enter, dropped in leave.
-  let oogatronUnsub, renderer, game, world, go, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, totemSolids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, npcSync, npcStatusBeams, npcGhosts;
+  let oogatronUnsub, renderer, game, world, go, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, totemSolids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, duels, npcSync, npcStatusBeams, npcGhosts;
   // GAME MODE (`setGameMode`): an island event holds the island still for play while it runs.
   let gameMode = false, gameCombatOnly = false;
   let cloudHopper = null, cloudIsland = null, cloudPile = null, cloudPileSolids = null, cloudFinishFruit = null;
@@ -2919,7 +2919,7 @@
       const x = node.position.x, z = node.position.z;
       addProp(kind, node, worldX(x, z), worldZ(x, z), radius);
     }
-    for (const key of site.keys) addTarget(key.node, { kind: "sphere-key", key: key.key, priority: 2 }, { radius: key.key.length === 1 ? 0.055 : 0.09 });
+    for (const key of site.keys) addTarget(key.node, { kind: "sphere-key", key: key.key, dim: !!key.dim, priority: 2 }, { radius: key.key.length === 1 ? 0.055 : 0.09 });
     addTarget(site.directoryKey, { kind: "sphere-directory", priority: 2 }, { radius: 0.16 });
     // From the bridge, square to the doors with the keypad in view.
     presets.timechain = { yaw: p.ry, pitch: 0.1, dist: 9, target: { x: worldX(0.6, 13.2), y: p.y + 2.2, z: worldZ(0.6, 13.2) } };
@@ -5318,7 +5318,9 @@
   };
   const buildClouds = () => {
     for (const track of CLOUD_TRACKS) for (let i = 0; i < CLOUDS_PER_TRACK; i++) {
-      const node = createNode({ geometry: hubModels.cloud(Math.min(2, clouds.length % 4)), matrixCloud: true, sightHidden: true });
+      // The Ooga Chat speakers' clouds (SPEAKER_CLOUDS) carry a bench across their seats (hubModels.benchCloud).
+      const shape = Math.min(2, clouds.length % 4), seats = SPEAKER_CLOUDS.includes(clouds.length);
+      const node = createNode({ geometry: seats ? hubModels.benchCloud(shape) : hubModels.cloud(shape), matrixCloud: true, sightHidden: true });
       const cloud = { node, speed: track.speed, angle: track.phase + i * Math.PI * 2 / CLOUDS_PER_TRACK,
         radius: track.radius, baseY: track.baseY, waveY: track.waveY };
       placeCloud(cloud);
@@ -5327,6 +5329,69 @@
       clouds.push(cloud);
     }
   };
+  // Ooga Chat speakers on clouds (#659): the room's seats, three to a cloud on three of the largest clouds (main-cloud-1
+  // to 3 on the first, 4 to 6 on the second, 7 on), each sitting on its own third of it along the cloud's long axis, the
+  // outer two drawn SEAT_SPREAD of the way in toward the middle one, centred front to back on the cloud's top there (a
+  // cloud's +z faces the island), facing the banana pile; none while the clouds are put away (game mode, Cloud Hopper),
+  // and the purple glow under each one seated.
+  // A seat's place on a cloud's mesh is measured once a mesh, from its upward faces (a merged face's corners can lie
+  // far from a seat): along the long axis as above, midway between the top's front and back edges there, on the highest
+  // upward face over that point.
+  const SPEAKER_CLOUDS = [10, 14, 3], SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
+  const cloudThirds = new Map();
+  const thirdsOf = (geometry) => {
+    let thirds = cloudThirds.get(geometry);
+    if (thirds) return thirds;
+    const b = BL.scene.boundsOf(geometry), v = geometry.verts, span = (b.max[0] - b.min[0]) / 3, mid = (b.max[0] + b.min[0]) / 2;
+    // Each upward face as [x0, x1, z0, z1, y].
+    const tops = [];
+    for (const f of geometry.faces) {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const i of f.i) {
+        x0 = Math.min(x0, v[i * 3]); x1 = Math.max(x1, v[i * 3]); y0 = Math.min(y0, v[i * 3 + 1]); y1 = Math.max(y1, v[i * 3 + 1]);
+        z0 = Math.min(z0, v[i * 3 + 2]); z1 = Math.max(z1, v[i * 3 + 2]);
+      }
+      if (y1 - y0 > 1e-6) continue;
+      const a = f.i[0] * 3, c = f.i[1] * 3, d = f.i[2] * 3;
+      const ny = (v[c + 2] - v[a + 2]) * (v[d] - v[a]) - (v[c] - v[a]) * (v[d + 2] - v[a + 2]);
+      if (ny > 0) tops.push([x0, x1, z0, z1, y0]);
+    }
+    thirds = [0, 1, 2].map((k) => {
+      const x = mid + (k - 1) * span * SEAT_SPREAD;
+      let peak = -Infinity, front = -Infinity, back = Infinity, top = -Infinity;
+      for (const t of tops) if (t[0] <= x + SEAT_REACH && t[1] >= x - SEAT_REACH && t[4] > peak) peak = t[4];
+      for (const t of tops) if (t[0] <= x + SEAT_REACH && t[1] >= x - SEAT_REACH && t[4] >= peak - SEAT_TOP) { front = Math.max(front, t[3]); back = Math.min(back, t[2]); }
+      const z = (front + back) / 2;
+      for (const t of tops) if (t[0] <= x && t[1] >= x && t[2] <= z && t[3] >= z && t[4] > top) top = t[4];
+      return Object.freeze({ x, y: top === -Infinity ? peak : top, z });
+    });
+    cloudThirds.set(geometry, thirds);
+    return thirds;
+  };
+  const cloudSeat = (rec, out) => {
+    if (rec.zone !== "main") return false;
+    const n = Number(rec.seat.slice(rec.seat.lastIndexOf("-") + 1)) - 1, cloud = clouds[SPEAKER_CLOUDS[Math.floor(n / 3)]];
+    if (!cloud || !cloud.node.visible) return false;
+    const node = cloud.node, seat = thirdsOf(node.geometry)[n % 3], c = Math.cos(node.rotation.y), s = Math.sin(node.rotation.y);
+    let glow = seatGlows[n];
+    if (!glow || glow.parent !== node) {
+      if (glow) removeChild(glow.parent, glow);
+      glow = seatGlows[n] = createNode({ geometry: hubModels.cloudSeatGlow(node.geometry, seat.x, seat.y, seat.z), sightHidden: true });
+      addChild(node, glow);
+    }
+    glow.visible = true;
+    out.x = node.position.x + seat.x * c + seat.z * s;
+    out.z = node.position.z - seat.x * s + seat.z * c;
+    out.y = node.position.y + seat.y;
+    out.yaw = Math.atan2(-out.x, -out.z);
+    return true;
+  };
+  // The glow under each seat (hub-models.js `cloudSeatGlow`), hung on its cloud's node the first time the seat is
+  // taken, all hidden before the speakers are seated each frame and shown again under each one seated.
+  const seatGlows = [];
+  const hideSeatGlows = () => { for (let i = 0; i < seatGlows.length; i++) seatGlows[i].visible = false; };
+  // A cloud speaker's seat, for the live players tab's crosshair (players.js `setCloudSpot`).
+  const cloudSpotOf = (id, out) => !!remotes && remotes.cloudSpot(id, out);
   const updateClouds = (dt) => {
     for (let i = 0; i < clouds.length; i++) {
       const cloud = clouds[i];
@@ -5707,7 +5772,7 @@
       case "room-sign":
         return "Room sign · tap to copy hash";
       case "sphere-key":
-        return o.key === "back" ? "Back · return to room choice" : o.key === "enter" ? "Enter · open selected room" : `Room ${o.key} · select`;
+        return o.key === "back" ? "Back · return to room choice" : o.key === "enter" ? "Enter · open selected room" : timechainIsland.gate.askingPin ? `${o.key} · PIN digit` : o.dim ? `Room ${o.key} · empty` : `Room ${o.key} · select`;
       case "sphere-directory":
         return "Directory · which room each number opens";
       case "lab-link":
@@ -5944,7 +6009,7 @@
         const gate = timechainIsland.gate, player = pilot.player, at = player && player.root.position;
         if (gate.busy) break;
         if (!player) hud.toast("Only an Ooga can go in. Double-tap one, then walk it up to the keypad.");
-        else if (!gate.nearKeypad(at.x, at.y - player.baseY + 1.1, at.z)) hud.toast("Walk up to the keypad beside the doors.");
+        else if (!gate.nearKeypad(at.x, at.y - player.baseY + 1.1, at.z)) hud.toast(gate.fromBridge() ? "Click a room number on the keypad, then Enter." : "Walk up to the keypad beside the doors.");
         else gate.engage();
         break;
       }
@@ -6511,6 +6576,12 @@
     if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
     if (gorillaBehindBillboard(hit, p)) return;
     if (debugMovementTap(hit, p)) return;
+    // Another player's Ooga under the pointer, in sight (the pool's own exact mesh test and `liveClear`, not the taps'
+    // broad pick spheres, which a bush or prop near the line would win), becomes the duel target.
+    if (p) {
+      renderer.ray(p.x, p.y, camera, TAP_RAY);
+      if (duels.tap(TAP_RAY, camera.far)) return;
+    }
     if (!hit) return;
     const o = hit.owner;
     switch (o.kind) {
@@ -6551,13 +6622,13 @@
         tapRoomSign(o.roomSign);
         break;
       case "sphere-key": {
-        const gate = timechainIsland.gate, player = pilot.player, at = player && player.root.position;
+        // Engaged at the keypad, the click is a press there; from the bridge's half nearer the sphere it chooses without
+        // taking the Ooga or the view, until Enter.
+        const gate = timechainIsland.gate, player = pilot.player;
         if (!player) hud.toast("Only an Ooga can go in. Double-tap one, then walk it up to the keypad.");
-        else if (!gate.busy && !gate.nearKeypad(at.x, at.y - player.baseY + 1.1, at.z)) hud.toast("Walk up to the keypad beside the doors.");
-        else {
-          if (!gate.busy) gate.engage();
-          gate.press(o.key);
-        }
+        else if (o.dim && !gate.askingPin) hud.toast(`Room ${o.key} is empty.`);
+        else if (gate.busy) gate.press(o.key);
+        else if (!gate.pressFromBridge(o.key)) hud.toast("Walk onto the bridge up to the doors to use the keypad.");
         break;
       }
       case "sphere-directory":
@@ -8092,7 +8163,9 @@
     if (!cloudPlaying()) npcSync.update(dt);
     if (!cloudPlaying()) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
+    hideSeatGlows();
     remotes.update(dt);
+    duels.update(dt);
     const petSeat = hammock?.seats[0];
     const petOwner = petSeat?.sitter === crew.player ? crew.player : petSeat?.remote ? remotes.body(petSeat.remote) : null;
     petReactions.update(petOwner, BL.net.state.me ? controlledGuideActor() : null, remotes, dt);
@@ -8622,6 +8695,32 @@
     if (repoIsland && repoIsland.onIsland(p.x, feet, p.z)) return "repos";
     return island.onLand(p.x, p.z) ? "outside" : "between";
   };
+  // Inside a cave (behind its doorway plane, as `zoneOf` binds one, HQ and every cave whose zone reads `outside`) or the
+  // Timechain Sphere's shell (its passage included): the outdoor scope's entrances (outdoor-scope.js), never a zone name.
+  const insideCave = (cave, gorilla) => {
+    if (!gorilla) return playerCaveIndex !== 0;
+    const p = cave.root.position;
+    if (!island.cavityAt(p.x, p.z, CAMERA_COLUMN, 0, p.y) || p.y < CAMERA_COLUMN.floor - 1e-6 || p.y >= CAMERA_COLUMN.ceiling) return false;
+    const index = CAMERA_COLUMN.caveIndex;
+    for (const opening of CAMERA_OPENINGS) {
+      if (opening.headquarters ? index === island.headquarters.caveIndex : opening.caveIndex === index
+        && !opening.blocked && (p.x - opening.mouth.x) * opening.sr + (p.z - opening.mouth.z) * opening.cr < opening.planeZ) return true;
+    }
+    return false;
+  };
+  const insideSphere = (x, feet, z) => {
+    if (!timechainIsland) return false;
+    const p = timechainIsland.place, r = BL.timechainModels.SITE.radius, dx = x - p.x, dy = feet - p.y - BL.timechainModels.SITE.shellY, dz = z - p.z;
+    return dx * dx + dy * dy + dz * dz < r * r;
+  };
+  // Started down a level by the voice levels' own heights (`levelOf`), except in the open air off the island's edge,
+  // which is public air however far below the plane it falls.
+  const shareScope = (driven, gorilla, zone) => {
+    const p = driven.root.position, feet = p.y - (gorilla ? 0 : driven.baseY);
+    const descending = zone !== "between" && levelOf(p.x, feet, p.z, zone, LEVEL_AT);
+    const reason = BL.outdoorScope.hubReason(zone, insideCave(driven, gorilla) || insideSphere(p.x, feet, p.z), descending);
+    BL.outdoorScope.report(reason === "outdoor" ? "main" : null, reason);
+  };
   // A new zone holds ZONE_HOLD seconds before it is reported, so a bridge's foot does not flicker in the panels.
   let zoneHeld = null, zoneHeldFor = 0;
   // Both body kinds share position, health and zone transport. Gorilla locomotion
@@ -8669,11 +8768,13 @@
     else BL.net.setBlend(null, 0);
   };
   const shareDrivenActor = (dt) => {
-    if (cloudHopper?.active) { BL.net.setBlend(null, 0); return; }
+    if (cloudHopper?.active) { BL.outdoorScope.report(null, "game"); BL.net.setBlend(null, 0); return; }
     const gorilla = clankerPlay && clankerPlay.player, driven = gorilla || crew.player;
     BL.net.setBody(gorilla ? gorilla.netBody : driven ? driven.traits.name : null);
-    if (!driven) { BL.net.setBlend(null, 0); return; }
+    if (!driven) { BL.outdoorScope.report(null, "no-body"); BL.net.setBlend(null, 0); return; }
     const zone = zoneOf(driven, !!gorilla);
+    // The outdoor scope follows this frame's zone, before any pose or voice state is published; the panels' zone waits.
+    shareScope(driven, !!gorilla, zone);
     if (zone === BL.net.state.zone) zoneHeld = null;
     else if (zone !== zoneHeld) {
       zoneHeld = zone;
@@ -10853,6 +10954,7 @@
     unsubscribeActivity(); unsubscribeActivity = null;
     unsubscribeAccount(); unsubscribeAccount = null;
     BL.players.setDoors(null);
+    BL.players.setCloudSpot(null);
     unsubscribeMempool(); unsubscribeMempool = null;
     unsubscribeChain(); unsubscribeChain = null;
     if (oogatronUnsub) oogatronUnsub(); oogatronUnsub = null;
@@ -10867,6 +10969,7 @@
     islandGuide.suspend();
     chalkboard.suspend();
     clankerPlay.dispose();
+    duels.dispose();
     remotes.dispose();
     muteHammockShots();
     npcSync.dispose(true);
@@ -10911,7 +11014,7 @@
     heldDebug = null;
     hud.renew(ctx.signal);
     hud.restoreBoards(jumbotronBoard);
-    hud.setDestinations(["pile", "lab", "mirror", "underground", "basement", "mempool", "factory", "arcade", "bca", "gate", "bifrost", "timechain"]);
+    hud.setDestinations(["pile", "lab", "mirror", "underground", "basement", "mempool", "factory", "arcade", "bca", "gate", "bifrost", "timechain", "repos"]);
     input.resume(); pilot.resume(); clankerPlay.resume(); chalkboard.resume();
     islandGuide.resume();
     if (timechainIsland.gate.resume()) hud.toast(`Room ${timechainIsland.gate.preselected} is chosen at the keypad · walk up to it and press Enter to go in`);
@@ -10956,6 +11059,7 @@
     unsubscribeAccount = watchAccount();
     bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
+    BL.players.setCloudSpot(cloudSpotOf);
     const donate = ctx.place === "donate", routedPlace = donate || ctx.place === "cloud-hopper-return" ? null : ctx.place;
     const sphereExit = ctx.from === "timechain" ? world.sphereExit : null;
     world.sphereExit = null;
@@ -11687,6 +11791,8 @@
         if (entry && npcGhosts.set(entry, true)) ghostedGorillas.set(name, entry);
       },
       ghost: (cave, on) => { npcGhosts.set(cave, on); crew.refreshRosterRow(cave); },
+      cloudSeat,
+      cloudsShown: () => BL.players.setCloudSpot(cloudSpotOf),
       posed: (cave, feet, rec) => {
         const p = cave.root.position, height = cave.bodyHeight || 1.4;
         floatPose(cave, feet, height, 0, now);
@@ -11718,7 +11824,13 @@
       npcSync.recordHit(cave);
       return workHit(cave);
     };
+    // Duels (duel.js): a challenge is refused while the visitor is busy with something else.
+    duels = BL.duel.create({ root, remotes, pilot, fx, clear: liveClear, refusal: () =>
+      cloudHopper?.active ? "Not during Cloud Hopper" : gameMode ? "Not while a game runs" : clankerPlay?.active ? "Duels are fought as an Ooga"
+        : !pilot.player ? "Drive your Ooga to duel" : pilot.player.camp.seat ? "Get up first" : "" });
+    shared.onSwing = (cave, charge) => duels.swing(cave, charge);
     shared.onShot = (cave, from, to) => {
+      duels.shot(cave, from, to);
       npcSync.recordShot(cave, from, to);
       // The visitor's own banana through the hammock rocks it; the crew's and work shots never do.
       if (hammock && !gameMode && cave === pilot.player && hammock.crosses(from.x, from.y, from.z, to.x, to.y, to.z)) hammock.hit(from.x, from.z, to.x, to.z);
@@ -11762,7 +11874,7 @@
         const rendered = renderer.render(root, view, RENDER_OPTS);
         timechainIsland.site.view(camera.position);
         return rendered;
-      }, keep: keepGeometry });
+      }, keep: keepGeometry, others: () => remotes ? remotes.actors() : [] });
     // A room's address opened signed in, with no visit of this tab's own to repeat, comes here with the room chosen.
     if (timechainIsland.gate.preselected >= 0) hud.toast(`Room ${timechainIsland.gate.preselected} is chosen at the keypad · walk up to it and press Enter to go in`);
     clankerMeshes = BL.solidProps.create();
@@ -11912,6 +12024,8 @@
         if (cloudHopper?.active) return;
         if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
         if (gorillaBehindBillboard(hit, p)) return;
+        // A keypad button takes every press, so the same number twice (a PIN's 11) is two presses.
+        if (hit && hit.owner.kind === "sphere-key") { onTap(hit, p); return; }
         if (hit && hit.owner.kind === "clanker") {
           if (selectGorilla(hit.owner.entry)) selectDebugGorilla(null);
           return;
@@ -11926,7 +12040,7 @@
     now = 0;
     hud.onPreset(name => { if (!cloudHopper?.active && !factoryDeparting && !bifrostDeparting && !islandGuide.holding) navigate(name, false, true, true); });
     hud.setDetachedView("pile");
-    hud.setDestinations(["pile", "lab", "mirror", "underground", "basement", "mempool", "factory", "arcade", "bca", "gate", "bifrost", "timechain"]);
+    hud.setDestinations(["pile", "lab", "mirror", "underground", "basement", "mempool", "factory", "arcade", "bca", "gate", "bifrost", "timechain", "repos"]);
     hud.onAction((action, value) => {
       if (cloudHopper?.active) {
         if (cloudHopper.held) return false;
@@ -11988,6 +12102,7 @@
     unsubscribeAccount = watchAccount();
     bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
+    BL.players.setCloudSpot(cloudSpotOf);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
     if (initialFirstPerson) pilot.enterClose(true);
     // The /donate route: the island's own view with the donation popup open. As a routed place it keeps Tess from
@@ -12054,6 +12169,7 @@
         get timechainIsland() { return timechainIsland; },
         get arcadeEntrance() { return arcadeMouth && arcadeMouth.entrance; },
         levelOf,
+        insideSphere,
         get factory() { return factoryMouth && factoryMouth.hall ? factoryMouth.hall.debug : null; },
         get bifrost() { return bifrostIsle; },
         get footsteps() { return footsteps; },
@@ -12146,7 +12262,7 @@
     islandGuide = BL.hubGuide.create({
       parent: root, input, fx, camera, pilot, visitor: () => crew.player, world, hud, coarse: COARSE,
       landing: !ctx.place && !preloadedView && !returningCharacter && ctx.from !== "bifrost",
-      quality: () => renderer.quality, busy: () => chalkboard.openNow || clankerPlay.active || factoryDeparting || bifrostDeparting,
+      quality: () => renderer.quality, busy: () => BL.destinationMap?.coaching || chalkboard.openNow || clankerPlay.active || factoryDeparting || bifrostDeparting,
     });
     yield* pause(slice);
     cloudRememberNodes(cloudNodeStart);
@@ -12279,6 +12395,7 @@
     if (unsubscribeAccount) unsubscribeAccount();
     unsubscribeAccount = null;
     BL.players.setDoors(null);
+    BL.players.setCloudSpot(null);
     if (unsubscribeMempool) unsubscribeMempool();
     unsubscribeMempool = null;
     if (unsubscribeChain) unsubscribeChain();
@@ -12322,6 +12439,7 @@
     for (let i = 0; i < clankerCaptures.length; i++) finishClankerRider(clankerCaptures[i].entry, false);
     clankerCaptures.length = 0;
     clankerPlay.dispose();
+    duels.destroy();
     remotes.dispose();
     muteHammockShots();
     pile.dispose();
@@ -12339,7 +12457,7 @@
     zoneHeld = null;
     BL.net.setHub(false);
     npcSync.dispose();
-    remotes = npcSync = null;
+    remotes = duels = npcSync = null;
     npcGhosts.dispose(); npcGhosts = null;
     crew.dispose();
     critters.dispose();
@@ -12532,6 +12650,79 @@
     }
     if (!gorilla) help.title = "Island · " + help.title; return help;
   };
+  // The map reads this visit's real terrain and door coordinates; it never builds another island.
+  hubScene.navigationMap = () => {
+    if (!island || !mempoolIsland) return null;
+    const M = mempoolIsland, T = timechainIsland, B = bifrostIsle, R = repoIsland, source = island.cutawaySource;
+    const bounds = { minX: source.origin.x, minZ: source.origin.z, maxX: source.origin.x + source.sx * source.unit, maxZ: source.origin.z + source.sz * source.unit };
+    const include = (x, z, r) => { bounds.minX = Math.min(bounds.minX, x - r); bounds.maxX = Math.max(bounds.maxX, x + r); bounds.minZ = Math.min(bounds.minZ, z - r); bounds.maxZ = Math.max(bounds.maxZ, z + r); };
+    include(M.place.x, M.place.z, poolModels.SITE.reach);
+    if (T) include(T.place.x, T.place.z, BL.timechainModels.SITE.radius);
+    if (B) include(B.site.cloud.x, B.site.cloud.z, B.site.cloud.r);
+    if (R) include(R.spot.x, R.spot.z, BL.repoIslandModels.ISLE.R);
+    const points = [{ name: "pile", x: 0, z: 0 }, { name: "gate", x: island.gate.x, z: island.gate.z },
+      { name: "underground", layer: "hq", x: 0, z: 6, level: "HQ · below ground" }, { name: "basement", layer: "basement", x: 0, z: 6, level: "Basement · lower floor" },
+      { name: "mempool", x: M.worldX(0, 7.4), z: M.worldZ(0, 7.4), level: "Chamber · beneath the lake" }];
+    for (const [id, name] of Object.entries(CAVE_ZONES)) {
+      const mouth = island.mouths.find(m => m.id === id);
+      if (mouth) points.push({ name, x: mouth.x, z: mouth.z, level: "Cave entrance" });
+    }
+    if (T) points.push({ name: "timechain", x: T.worldX(0.4, 12.7), z: T.worldZ(0.4, 12.7), level: "Doorway · choose a room at the keypad" });
+    if (B) points.push({ name: "bifrost", x: B.site.portal.x, z: B.site.portal.z });
+    if (R) points.push({ name: "repos", x: R.arrival.x, z: R.arrival.z, level: "Open-source Bitcoin projects" });
+    const repoBridge = (x, z) => !!R && Math.abs(x - R.spot.x) <= BL.repoIslandModels.BRIDGE.width / 2 && z >= R.bridgeEnds.from.z && z <= R.bridgeEnds.to.z;
+    const poolBridge = (x, z) => {
+      const across = M.localX(x, z), along = M.localZ(x, z) - M.place.bridgeLocalZ, S = poolModels.SITE;
+      return Math.abs(across) <= S.width / 2 && along >= S.deckStart && along <= S.span ? along : -Infinity;
+    };
+    return { title: "The Island of Caves", bounds, points, origin: { x: pilot.orbit.target.x, z: pilot.orbit.target.z },
+      surfaceAt: (x, z) => {
+        if (!island || !mempoolIsland) return NaN;
+        if (R && (Math.hypot(x - R.spot.x, z - R.spot.z) <= BL.repoIslandModels.ISLE.R || repoBridge(x, z))) return R.spot.y;
+        const land = rageLandAt(x, z);
+        if (land) return rageExteriorFloor(land, x, z);
+        const along = poolBridge(x, z);
+        if (Number.isFinite(along)) return M.place.y + poolModels.deckY(along / poolModels.SITE.span);
+        if (T && onSphere(x, z)) return T.place.y + BL.timechainModels.SITE.bridgeFloor;
+        return B ? B.site.groundAt(x, z) : NaN;
+      },
+      isPath: (x, z) => !!island && (island.onLand(x, z) && island.isPath(x, z) || repoBridge(x, z) || Number.isFinite(poolBridge(x, z)) || !!T && onSphere(x, z) && Math.hypot(x - T.place.x, z - T.place.z) >= BL.timechainModels.SITE.radius)
+    };
+  };
+  hubScene.navigationLooking = () => !clankerPlay?.active && !!pilot?.looking;
+  hubScene.navigationReturn = () => pilot?.endLook();
+  hubScene.navigationStatus = name => {
+    if (!hubScene.navigationReady) return "Finish the current interaction first.";
+    return clankerPlay?.active ? clankerPlay.travelRefusal() : "";
+  };
+  const MAP_ZONES = { pile: "outside", gate: "outside", lab: "lab", mirror: "mirror", factory: "factory.hall", arcade: "arcade.hall", bca: "bca", underground: "hq", basement: "hq", mempool: "rainforest", bifrost: "bifrost.chamber", timechain: "sphere", repos: "repos" };
+  // Bearings lead to authored doors and bridge ends. They are not a collision-free walking path or auto-walk.
+  hubScene.navigationWaypoint = (name, out) => {
+    const actor = clankerPlay?.active ? clankerPlay.player : pilot?.player;
+    if (!actor || !island || !Object.hasOwn(MAP_ZONES, name)) return false;
+    const p = actor.root.position, from = zoneOf(actor, !!clankerPlay?.active), to = MAP_ZONES[name], step = BL.zoneMap.next(from, to);
+    out.note = "Entrance reached · use the on-screen action";
+    if (step && doorToward(from, step, out, p.x, p.z)) return true;
+    if (to === "hq") {
+      if (BL.zoneMap.routeFrom(from) === "hq") { out.x = p.x; out.y = p.y; out.z = p.z; out.note = name === "basement" ? "Inside HQ · follow the stairs down to the basement" : "You are inside HQ"; return true; }
+      return mouthDoor("hq", out, p.x, p.z);
+    }
+    if (["lab", "mirror", "bca"].includes(name)) return mouthDoor(to, out, p.x, p.z);
+    if (name === "mempool" && mempoolIsland) {
+      const M = mempoolIsland, R = M.layout.RAMP, x = Math.sin(R.start) * R.r, z = Math.cos(R.start) * R.r;
+      out.x = M.worldX(x, z); out.y = M.place.y + DOOR_Y; out.z = M.worldZ(x, z); out.note = "Tunnel entrance · follow the descent beneath the lake"; return true;
+    }
+    if (name === "repos") return bridgeDoor("repos", true, out);
+    if (name === "timechain") return bridgeDoor("sphere", true, out);
+    if (name === "bifrost") return doorToward("bifrost", "bifrost.chamber", out, p.x, p.z);
+    if (name === "factory" || name === "arcade") return doorToward(name, to, out, p.x, p.z);
+    if (name === "gate") { out.x = island.gate.x; out.y = island.surfaceAt(out.x, island.gate.z) + DOOR_Y; out.z = island.gate.z; return true; }
+    if (name === "pile") { out.x = 0; out.y = ALTAR_HEIGHT + DOOR_Y; out.z = Math.max(5, altar.platformRadius + 1.3); out.note = "You reached the pile"; return true; }
+    return false;
+  };
+  hubScene.beginCoaching = () => islandGuide.escape();
+  Object.defineProperty(hubScene, "coachingReady", { get: () => islandGuide?.coachingReady && !gameMode });
+  Object.defineProperty(hubScene, "navigationReady", { get: () => !!islandGuide && !islandGuide.holding && !cloudHopper?.active && !factoryDeparting && !bifrostDeparting && !timechainIsland?.gate.busy });
   hubScene.controlsHelpHold = on => { clankerPlay?.cancelInput(); if (on) clankerPlay?.freeCursor(); cloudHopper?.controlsHelpHold(on); pilot.controls.reset(); pilot.setMenuOpen(on, false); };
   BL.scenes.hub = hubScene;
 })();

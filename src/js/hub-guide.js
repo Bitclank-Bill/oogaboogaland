@@ -25,9 +25,9 @@
     pile: "This is the pile. Donations become bananas for the crew.",
     crew: "Every Ooga stands for one of the crew's contributors.",
     jumbotron: "The jumbotron shows the crew's activity, live.",
-    timechain: "Out west, the Timechain Sphere: ten rooms behind one door, from a planetarium to a movie theater.",
-    timechainWalls: "Walk over the bridge and pick a room at the keypad, 0 to 9: each number opens a different room.",
-    timechainBoards: "Room 1, the Conference Room, has the live block and mining charts and the holdings desk.",
+    timechain: "Out west, the Timechain Sphere: eight rooms behind one door, from a planetarium to a movie theater.",
+    timechainWalls: "Walk over the bridge and pick a room at the keypad, 0 to 7: each number opens a different room.",
+    timechainBoards: "Room 0, the Conference Room, has the live block and mining charts and the holdings desk.",
     timechainShare: "Signed in, you share a room with whoever picks the same number. Only the Conference Room locks.",
     bca: "B.C.A., Banana Certified Accounting: the island's own accounting office.",
     bcaInside: "Gorillas walk in through its veil, put on suits and count the bananas at two walnut desks.",
@@ -87,7 +87,7 @@
     newsArcade: "Ooga Arcade opened: games, tickets and prizes.",
     newsFactory: "The Lightning Factory opened: a Lightning node at work.",
     newsTimechain: "The Timechain Sphere opened out west. Walk inside!",
-    repos: "Over the stone bridge past the Oogatron: Merge Rock, slowly turning, a carved totem for each of 170 open-source Bitcoin projects, sorted by kind.",
+    repos: "Over the stone bridge past the Oogatron: Merge Rock, slowly turning, a carved totem for each of 171 open-source Bitcoin projects, sorted by kind.",
     reposLit: "Each stands as tall as Bitcoin leans on its project, and lights up for a day after its repo merges a pull request.",
     newsRepos: "Merge Rock opened off the south rim: 170 totems, one for each open-source Bitcoin project. They light up when their repos merge."
   };
@@ -867,7 +867,7 @@
       window.addEventListener("keydown", captureKey, true);
     };
     const dispose = () => { suspend(); rig.dispose(); };
-    return { root: rig.root, state, update, yieldToMovement, escape, tap, suspend, resume, dispose, liveGeometry: rig.liveGeometry, light: rig.light, lend, get holding() { return state.holding; }, get lent() { return !!lender; }, get speech() { return rig.speech; } };
+    return { root: rig.root, state, update, yieldToMovement, escape, tap, suspend, resume, dispose, liveGeometry: rig.liveGeometry, light: rig.light, lend, get coachingReady() { return state.phase === "work" || state.phase === "queue" && !queueShown; }, get holding() { return state.holding; }, get lent() { return !!lender; }, get speech() { return rig.speech; } };
   };
   BL.hubGuide = { create, NAME, LINES, STOPS, NEWS, freshAfter, legsOf, answer, SUGGESTIONS, fold, has };
 })();

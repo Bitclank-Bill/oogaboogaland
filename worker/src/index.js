@@ -1,10 +1,11 @@
 // The Worker in front of Ooga Booga Land: the built page from static assets, GitHub sign-in under
 // /auth/*, the account API under /api/*, the totems' merge summaries under /api/totems/* and Repo Island's at /api/repo-totems, voice
-// signalling under /api/voice/*, Tess's answers at /api/tess, /room, the island's live socket, /game/*, the sockets
+// signalling under /api/voice/*, Tess's answers at /api/tess, GitHub pictures at /api/avatar/<id> (avatar.js), /room, the island's live socket, /game/*, the sockets
 // of the games the Worker hosts itself (game-host.js), /donations/*, passed on to bananapayserver over the
 // DONATIONS binding, and /inspect with its feed /api/inspect/ws, the Durable Object inspector (inspect.js). Only those paths run this code (`run_worker_first` in wrangler.<env>.jsonc); every other path is
 // served straight from _site.
 
+import { handleAvatar } from "./avatar.js";
 import { handleConnectionReports, pruneConnectionReports } from "./connection-reports.js";
 import { handleApi } from "./api.js";
 import { handleAuth } from "./auth.js";
@@ -26,6 +27,10 @@ import { inspectEdge } from "./inspect-report.js";
 export { Room } from "./room.js";
 export { GameHost } from "./game-host.js";
 export { Inspector } from "./inspector.js";
+// Ooga Chat's private door (docs/ooga-chat-backend.md): reachable only through a service binding that names it.
+export { ChatBridge } from "./chat-bridge.js";
+// Ooga Chat's audience (#665): both outdoor zones' listeners and speakers, apart from the Room's 32 players.
+export { Audience } from "./audience.js";
 
 const ROOM_NAME = "island";
 
@@ -109,6 +114,7 @@ export default {
     if (url.pathname === "/api/arcade-plays" || url.pathname.startsWith("/api/arcade-plays/")) return handleArcadePlays(request, env);
     if (url.pathname.startsWith("/api/cloud-hopper-replays/")) return handleCloudHopperReplays(request, env, ctx);
     if (url.pathname === "/api/connection-reports") return handleConnectionReports(request, env);
+    if (url.pathname.startsWith("/api/avatar/")) return handleAvatar(request, env, url, ctx);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
     if (url.pathname === "/room") return handleRoom(request, env, ctx);
     if (url.pathname.startsWith("/game/")) return handleGame(request, env, url, ctx);

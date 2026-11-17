@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { contributorRows, createContributorLookup, createOwnedCharacterLookup } from "../src/contributor-policy.js";
+import { STATS_URL, contributorRows, createContributorLookup, createOwnedCharacterLookup, oogatron } from "../src/contributor-policy.js";
 import { missingCharacters, characterSource, retiredCharacters, queuedDefaults } from "../../scripts/sync-characters.mjs";
 import { checkCharacterIdentities, identityAdvice } from "../../scripts/contributor-pr.mjs";
 import { declaredIdentity, mayAuthorIdentity } from "../../scripts/character-identity.mjs";
@@ -384,6 +384,26 @@ test("account lookup uses GitHub's ID and login endpoints without following supp
   });
   await gh.account(185141343); await gh.account("Bitclank-Bill");
   assert.deepEqual(calls, [{ url: "https://api.github.com/user/185141343", method: "GET" }, { url: "https://api.github.com/users/Bitclank-Bill", method: "GET" }]);
+});
+
+test("GitHub lists read a full last page to its end and refuse only rows past the limit", async () => {
+  const listOf = (total) => {
+    const pages = [];
+    const gh = createGitHub("example/land", "test-token", async (url) => {
+      const page = Number(new URL(url).searchParams.get("page"));
+      pages.push(page);
+      const rows = Array.from({ length: Math.max(0, Math.min(100, total - (page - 1) * 100)) }, (_, i) => ({ name: `b${(page - 1) * 100 + i}` }));
+      return { ok: true, status: 200, json: async () => rows };
+    });
+    return { gh, pages };
+  };
+  const exact = listOf(100);
+  assert.equal((await exact.gh.list("branches", 1)).length, 100);
+  assert.deepEqual(exact.pages, [1, 2]);
+  await assert.rejects(() => listOf(101).gh.list("branches", 1), /automation limit/);
+  const sweep = listOf(101);
+  assert.equal((await sweep.gh.list("branches", 5)).length, 101);
+  assert.deepEqual(sweep.pages, [1, 2]);
 });
 
 test("verified account rename refuses competing queued work and another character's login", async () => {
@@ -971,6 +991,17 @@ test("a refresh that never settles, its request cancelled, keeps nobody waiting 
   assert.equal(calls, 2);
 });
 
+test("the island reads Oogatron through its service binding, and its own fetcher only without one", async () => {
+  const seen = [];
+  const reader = (name) => async (url) => { seen.push([name, String(url)]); return Response.json(snapshot(person("new-ooga"))); };
+  const bound = createOwnedCharacterLookup([], createContributorLookup(reader("public"), () => NOW));
+  assert.equal((await bound("new-ooga", 990000001, oogatron({ OOGATRON: { fetch: reader("binding") } }))).handle, "new-ooga");
+  const unbound = createOwnedCharacterLookup([], createContributorLookup(reader("public"), () => NOW));
+  assert.equal(oogatron({}), undefined);
+  assert.equal((await unbound("new-ooga", 990000001, oogatron({}))).handle, "new-ooga");
+  assert.deepEqual(seen, [["binding", STATS_URL], ["public", STATS_URL]]);
+});
+
 test("sign-in belongs to the bundled GitHub owner, never an account named after their alias", async () => {
   let requests = 0;
   const lookup = createOwnedCharacterLookup([{ handle: "Cave-Name", github_login: "real-owner",
@@ -1008,7 +1039,7 @@ test("only verified commit contributors gain temporary access; outages retain on
 
 test("the browser accepts one matching temporary identity without reordering the bundled crew", () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
-  for (const name of ["math", "characters", "contributor-identities", "activity-repos"]) runInNewContext(readFileSync(new URL(`../../src/js/${name}.js`, import.meta.url), "utf8"), context);
+  for (const name of ["math", "characters", "contributor-identities", "activity-repos", "roster-panel"]) runInNewContext(readFileSync(new URL(`../../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL;
   BL.characters.add({ handle: "alias", github: "owner", joined: 1, lastCommit: 2 });
   runInNewContext(readFileSync(new URL("../../src/js/contributors.js", import.meta.url), "utf8"), context);
@@ -1048,7 +1079,7 @@ test("cutover preparation emits nothing until both GitHub lookups verify the ren
 
 test("activity and public labels use the current owner login, never a reused permanent art handle", () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
-  for (const name of ["math", "characters", "contributor-identities", "activity-repos"])
+  for (const name of ["math", "characters", "contributor-identities", "activity-repos", "roster-panel"])
     runInNewContext(readFileSync(new URL(`../../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL;
   BL.characters.add({ handle: "Bitcoin-Bill", github: "Bitclank-Bill", display: "Bill", joined: 1, lastCommit: 2 });

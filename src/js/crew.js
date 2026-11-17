@@ -1233,6 +1233,19 @@
     const drop = Math.min(fore, elbowY - ground), reach = Math.sqrt(fore * fore - drop * drop);
     reachArm(cave, arm, forearm, out, arm.position.x, elbowY - drop, arm.position.z + reach, 0, -1, 0);
   };
+  // Sitting on the ground as an idle Ooga sits by a fire, for a body the crew does not run (remote-players.js's Ooga Chat
+  // speakers on clouds): legs out before it, each arm hanging from the shoulder with its forearm reaching forward until
+  // the fist rests on the ground, the ground where `poseEquipment` puts it for a seat that is the ground (the root stands
+  // `traits.height` * 0.08 over it, as `sitPlayer` places a sitter).
+  const poseGroundSit = (cave) => {
+    const parts = cave.parts, h = cave.traits.height;
+    poseGait(cave, GAIT.stand);
+    parts.legR.rotation.x = parts.legL.rotation.x = -Math.PI / 2;
+    parts.armL.quaternion = parts.armR.quaternion = null;
+    const ground = -h * 0.08 + SIT_FIST * h;
+    sitArm(cave, parts.armL, parts.forearmL, cave.reachL, ground);
+    sitArm(cave, parts.armR, parts.forearmR, cave.reachR, ground);
+  };
   // `wind` and `stroke` as the cut has them; `stance`, 1 until the weapon goes back to its carry and 0 there.
   const swingArm = (cave, wind, stroke, stance) => {
     const parts = cave.parts, w = cave.weapon, arm = parts.armR, fore = parts.forearmR, club = parts.club, e = cave.elbow;
@@ -3678,6 +3691,8 @@
       }
       // A strike other players see; a held swing tells them when it is let go (releaseSwing).
       if (!held && cave === player && BL.net) BL.net.sendSwing();
+      // The scene hears the driven Ooga's own strikes (a duel's melee, duel.js): `fn(cave, charge)`, 0 to 1, or -1 a bash.
+      if (!held && cave === player && ctx.onSwing) ctx.onSwing(cave, 0);
       return true;
     };
     const bashWeapon = (cave = player) => {
@@ -3690,6 +3705,7 @@
       w.meleeTarget.node = w.meleeTarget.owner = null;
       findMeleeTarget(cave);
       w.bashTime = GUN_BASH_TIME;
+      if (ctx.onSwing) ctx.onSwing(cave, -1);
       return true;
     };
     const releaseSwing = (cave = player, cancel = false, focused = null) => {
@@ -3713,6 +3729,7 @@
         hitMeleeTarget(cave);
       }
       if (!cancel && cave === player && BL.net) BL.net.sendSwing();
+      if (!cancel && cave === player && ctx.onSwing) ctx.onSwing(cave, w.meleeCharge);
       return true;
     };
     // Thrusters built into a character sit wherever its own model puts them, so
@@ -4806,7 +4823,8 @@
     };
     const outsideNeighbor = (cave, body) => {
       const feet = cave.root.position.y - cave.baseY;
-      return feet < body.y + (body.height || ctx.outsideActorHeight) && feet + cave.bodyHeight > body.y;
+      // A rider on the top is touching, not overlapping; root/baseY arithmetic can differ by a few ulps.
+      return feet < body.y + (body.height || ctx.outsideActorHeight) - 1e-7 && feet + cave.bodyHeight > body.y + 1e-7;
     };
     const snapshotTraffic = (cave) => {
       const traffic = cave.traffic, travel = cave.bedTravel, work = cave.work, p = cave.root.position;
@@ -7461,7 +7479,7 @@
       parts.legR.scale.y = parts.legL.scale.y = (cave.baseY + lift) / cave.baseY;
     };
     const jumpPlayer = () => {
-      if (!player || player.grabbedBy || player.health.stunned || player.bedTravel.manual || player.camp.seat || player.camp.rolling || player.jet && !player.jetRecovering) return false;
+      if (!player || player.grabbedBy || player.health.stunned || player.bedTravel.manual || player.camp.seat || player.camp.rolling) return false;
       if (player.ladder && player.ladder.plane) {
         const plane = player.ladder.plane;
         leaveLadder(player);
@@ -7470,6 +7488,7 @@
         ctx.onJump?.(player);
         return true;
       }
+      if (player.jet && !player.jetRecovering) return false;
       if (player.traits.footRockets && !player.jet && jetpackRefills(player)) {
         if (!grounded(player)) return false;
         elevatePlayer(0);
@@ -7500,6 +7519,9 @@
       // A seat may take the act itself (`seat.act`, true when it did), as the forklift's starts it; else it stands up.
       if (player.camp.seat) return player.camp.seat.act && player.camp.seat.act() || standPlayer(player, true);
       if (player.bedTravel.manual) return wakePlayer();
+      // An attached ladder owns this press, even with an idle or built-in pack.
+      // Consume it so held Space cannot immediately turn the release into thrust.
+      if (player.ladder?.plane) return jumpPlayer();
       if (weaponsEnabled && !player.weapon.reloading && !player.weapon.swapTime && !player.weapon.reloadHandoff && player.weapon.equipped && reloadMissing(player) > 0 && nearReload(player)) {
         if (!startReload(player)) hud.hint("No bananas in the pile");
         return true;
@@ -8136,5 +8158,5 @@
       }
     };
   };
-  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, poseGroundSit, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();

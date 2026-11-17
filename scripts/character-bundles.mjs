@@ -14,7 +14,7 @@ const STATUS = "Character intake";
 const BUNDLE_STATUS = "Character bundle safety";
 const IDENTITY_STATUS = "Character identity ownership";
 const title = (lane) => lane === "daily" ? "Daily character updates · automatic at midnight UTC"
-  : lane === "rename" ? "Character display names · maintainer review required" : "Character updates · maintainer review required";
+  : lane === "rename" ? "Character display names · maintainer review required" : "[Batch] Character updates · maintainer review required";
 const body = (lane, state) => [
   lane === "daily" ? "Validated data-only character changes. Eligible nonempty bundles merge at the first successful run after midnight UTC."
     : `${lane === "rename" ? "Display names matching existing GitHub owners; all other character bytes are unchanged." : "Custom character code."} A maintainer must review the exact diff and merge this PR manually. The automation never merges this lane.`,
@@ -474,7 +474,8 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
     }
     // Push signals can be superseded by GitHub's concurrency queue. Recover
     // standalone branch heads as well; fork commits become visible through PRs.
-    for (const branch of await gh.list("branches", 1)) {
+    // One lookup a branch, three sweeps an hour: 500 branches stay well inside the app's rate limit.
+    for (const branch of await gh.list("branches", 5)) {
       // Override branches act only through their PRs, never as standalone submissions.
       if (branch.name === "rock" || branch.name.startsWith("automation/characters-") || branch.name.startsWith("automation/site-artifact-")
         || branch.name.startsWith(OVERRIDE_PREFIX)) continue;

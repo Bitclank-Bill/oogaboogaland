@@ -446,6 +446,8 @@
     const YARD = 3, UNDER = 2.7, H = YARD + 3.2;
     // The back door's opening [x0, x1] in the back wall, 2.4 m wide, beside the block's stand.
     const DOOR = [-5.7, -3.3];
+    // The gap [x0, x1] in the upper floor's front wall, in the corner by the stairs, that the rivals' zipline rides in through.
+    const ZIP_GAP = [5.95, 7.6];
     // The upper floor over the cellar, with the stairwell's hole in it.
     put("floor", [-8, 8, 23, 26, YARD, UNDER], [-8, 8, 29.8, 33, YARD, UNDER], [-8, 3, 26, 29.8, YARD, UNDER], [6, 8, 26, 29.8, YARD, UNDER]);
     // The cellar's front wall: piers at the corners and behind the porch, and between them a window, a low band and a
@@ -466,7 +468,10 @@
     for (let k = 1; k <= 6; k++) { const b = [3, 6, 26 + (k - 1) * 0.45, 26 + k * 0.45, YARD - k * YARD / 7, 0]; half.push(b); steps.push(b); }
     put("rail", [2.8, 3, 26, 30, YARD + 0.9, YARD], [6, 6.2, 26, 30, YARD + 0.9, YARD], [3, 6, 29.8, 30, YARD + 0.9, YARD]);
     // The house's walls: the front with its door, the sides with a window band, the back.
-    put("house", [-8, -1.4, 23, 23.4, H, YARD], [1.4, 8, 23, 23.4, H, YARD], [-1.4, 1.4, 23, 23.4, H, YARD + 2.4], [-8, 8, 32.6, 33, H, YARD]);
+    // Past the window on the stairs' side the front is open above a low sill (`ZIP_GAP`), under the gable's first course: the
+    // rivals' zipline comes in through it.
+    put("house", [-8, -1.4, 23, 23.4, H, YARD], [1.4, ZIP_GAP[0], 23, 23.4, H, YARD], [ZIP_GAP[0], ZIP_GAP[1], 23, 23.4, YARD + 0.6, YARD], [ZIP_GAP[1], 8, 23, 23.4, H, YARD],
+      [-1.4, 1.4, 23, 23.4, H, YARD + 2.4], [-8, 8, 32.6, 33, H, YARD]);
     for (const [x0, x1] of [[-8, -7.6], [7.6, 8]]) put("house", [x0, x1, 23.4, 32.6, YARD + 1, YARD], [x0, x1, 23.4, 32.6, H, YARD + 2.2]);
     // The crooked gable over the front: four courses, each narrower and further to one side.
     for (let k = 1; k <= 4; k++) put("gable", [0.4 * k - 8 + 1.6 * k, 0.4 * k + 8 - 1.6 * k, 23, 23.4, H + k * 0.75, H + (k - 1) * 0.75]);
@@ -527,8 +532,10 @@
       showcase: { blue: { x: 3.5, z: 17 }, red: { x: -3.5, z: -17 } },
       // A catapult drops its Ooga onto the other house's upper floor, at the top of its stairs down.
       drops: { blue: [-4.5, -24.6], red: [4.5, 24.6] },
-      // A zipline comes down beside the other house's porch.
-      zipEnd: [-4.5, 3.1, -20.6],
+      // A zipline rides in through the gap in the other house's front wall (`ZIP_GAP`), over its sill and under the
+      // gable, and ends on the upper floor inside, beside the top of the stairs down (its pole stands on that floor,
+      // `YARD` up).
+      zipEnd: [-6.33, YARD + 2.65, -25.3, YARD],
       // Each cellar's back door [x0, x1, z0, z1], the opening through its back wall: blue's, then red's turned.
       backDoors: [[DOOR[0], DOOR[1], 32.6, 33], [-DOOR[1], -DOOR[0], -33, -32.6]],
       nav: { blue: navHalf, red: navHalf.map(([x, z, y]) => y ? [-x, -z, y] : [-x, -z]), links: [...linkHalf, ...linkHalf.map(([i, j]) => [i + navHalf.length, j + navHalf.length])] },
@@ -643,11 +650,12 @@
     A.rocks = new Set(); A.rockKind = new Map();
     for (const [kind, b] of A.terrain || []) for (const r of [b, turned(b)]) { A.BLOCKS.push(r); A.rocks.add(r); A.rockKind.set(r, kind); }
     A.decor = A.decor || [];
-    // A team's zipline: from its tower's gap (where the hands hang, `ZIP_HANG` over the feet) down into the other end.
+    // A team's zipline: from its tower's gap (where the hands hang, `ZIP_HANG` over the feet) down into the other end,
+    // `zipEnd` [x, y, z] for blue's, with the height of the floor its low end stands on if that isn't the ground.
     const zb = A.zipEnd || [-3.5, 3.1, -28.5], za = [tw[1] - 0.6, (gp[0] + gp[1]) / 2];
     A.zips = {
-      blue: { ax: za[0], ay: TOP + CONFIG.ZIP_HANG, az: za[1], bx: zb[0], by: zb[1], bz: zb[2] },
-      red: { ax: -za[0], ay: TOP + CONFIG.ZIP_HANG, az: -za[1], bx: -zb[0], by: zb[1], bz: -zb[2] }
+      blue: { ax: za[0], ay: TOP + CONFIG.ZIP_HANG, az: za[1], bx: zb[0], by: zb[1], bz: zb[2], floor: zb[3] || 0 },
+      red: { ax: -za[0], ay: TOP + CONFIG.ZIP_HANG, az: -za[1], bx: -zb[0], by: zb[1], bz: -zb[2], floor: zb[3] || 0 }
     };
     for (const t of TEAMS) { const z = A.zips[t]; z.len = Math.hypot(z.bx - z.ax, z.by - z.ay, z.bz - z.az); }
   }
@@ -956,7 +964,7 @@
       waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 1, crates: 0, holding: false, bonked: false,
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", wield: "", grabbed: 0, grabFill: 0, flung: false, fuel: CONFIG.JET_FUEL, jetting: false, boots: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       knock: 0, spooked: 0, ride: 0, rider: 0, calling: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, lift: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
-      detourX: 0, detourZ: 0, fooled: -1, inMirage: false, mirageT: 0, mirageCool: 0, mirageX: 0, mirageZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
+      detourX: 0, detourZ: 0, fooled: -1, inMirage: false, mirageT: 0, mirageCool: 0, mirageX: 0, mirageZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, grabs: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
       hook: 0, hk: 0, hookT: 0, hookLen: 0, hookWait: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
     }));
     const flags = {};
@@ -1032,7 +1040,7 @@
       a.splat = a.guard = a.cooldown = a.stuck = a.detour = a.aim = a.trapped = a.think = a.painted = a.jump2At = a.tries = a.netted = a.progT = 0;
       a.lastD = Infinity;
       a.stamina = CONFIG.SPRINT_S; a.tired = a.sprinting = a.waiting = a.holding = a.bonked = false; a.rest = 0;
-      a.captures = a.splats = a.hits = a.longShot = a.rescues = 0;
+      a.captures = a.splats = a.hits = a.longShot = a.rescues = a.grabs = 0;
       a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabFill = 0; a.flung = false;
       a.sniper = 1; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
       a.knock = 0; a.wield = ""; a.ride = a.rider = a.calling = 0;
@@ -1836,7 +1844,7 @@
       emit(sim, "return", f.team, a.id, f.x, 0, f.z);
     } else if (can) {
       f.state = "carried"; f.carrier = a.id; f.homeT = 0; f.x = a.x; f.y = a.y; f.z = a.z;
-      a.carrying = f.team; a.blocked = null;
+      a.carrying = f.team; a.blocked = null; a.grabs++;
       emit(sim, "pickup", f.team, a.id, f.x, 0, f.z);
     } else {
       const at = restOn(reached ? a.x + Math.sin(a.heading) * 1.2 : f.x, reached ? a.z + Math.cos(a.heading) * 1.2 : f.z, (reached ? a.y : f.y) + 0.01);
@@ -2790,7 +2798,7 @@
       if (f.graceT > 0) continue;
       b.carrying = null;
       if (f.team === a.team) { a.rescues++; emit(sim, "rescue", f.team, a.id, b.x, 0, b.z); homeFlag(f); f.graceT = CONFIG.BLOCK_GRACE_S; emit(sim, "return", f.team, a.id, f.x, 0, f.z); }
-      else { f.state = "carried"; f.carrier = a.id; f.homeT = 0; a.carrying = f.team; emit(sim, "pickup", f.team, a.id, b.x, 0, b.z); }
+      else { f.state = "carried"; f.carrier = a.id; f.homeT = 0; a.carrying = f.team; a.grabs++; emit(sim, "pickup", f.team, a.id, b.x, 0, b.z); }
       emit(sim, "netsteal", a.team, a.id, b.x, b.y + 1, b.z, b.id);
       break;
     }
@@ -2843,6 +2851,7 @@
       f.carrier = a.id;
       f.homeT = 0;
       a.carrying = f.team;
+      a.grabs++;
       emit(sim, "pickup", f.team, a.id, f.x, 0, f.z);
     }
     // Your own flag carried back onto your stand is home again.
@@ -3272,7 +3281,27 @@
     v.second = second; v.boots = boots; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { WIELD, wield, heldOf, worth, mvp, tallyOf, ARSENAL, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, newBlock, launch, nearCatapult, nearEnemyCatapult, zipSprings, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, restOn, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y, MINER_H, firewallState, firewallIn, inFirewall, inMirage };
+  // The live tally: each Ooga's counts so far, in the order the scene's panel and scoreboard show them (`TALLY`, a
+  // label and the actor's field). `grabs` is every time the rival block came into an Ooga's hands: off its stand or
+  // the ground, a catch, a net steal or a hook's reel, so a block dropped and picked up again counts again; the other
+  // four are the results table's own. `tallyChanged` keeps every actor's five counts in `seen` (made once a visit,
+  // `tallyView`) and returns true only when one differs from the last call, or after `seen.shown` is cleared, so the
+  // scene writes its panel only then. Allocates nothing.
+  const TALLY = [["Grabbed", "grabs"], ["Mined", "captures"], ["Home", "rescues"], ["Splats", "hits"], ["Splatted", "splats"]];
+  const tallyView = () => ({ shown: false, counts: new Uint16Array(CONFIG.MAX_SIDE * 2 * TALLY.length) });
+  const tallyChanged = (sim, seen) => {
+    let changed = !seen.shown;
+    seen.shown = true;
+    for (let i = 0; i < sim.actors.length; i++) for (let k = 0; k < TALLY.length; k++) {
+      const v = sim.actors[i][TALLY[k][1]], at = i * TALLY.length + k;
+      if (seen.counts[at] !== v) { seen.counts[at] = v; changed = true; }
+    }
+    return changed;
+  };
+  // The middle of the screen's word for a block mined (the `capture` event `e`), as this page sees it: its own Ooga
+  // (actor 0), a teammate by `name`, or the rivals.
+  const minedWord = (sim, e, name) => e.team !== sim.team ? "THEY MINED ONE" : e.actor === 0 ? "YOU MINED IT!" : `${name} MINED IT`;
+  BL.blockSim = { WIELD, wield, heldOf, worth, mvp, tallyOf, TALLY, tallyView, tallyChanged, minedWord, ARSENAL, slotState, slotCount, splat, aimRise, flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, newBlock, launch, nearCatapult, nearEnemyCatapult, zipSprings, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, restOn, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y, MINER_H, firewallState, firewallIn, inFirewall, inMirage };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();
