@@ -149,6 +149,8 @@
   const ROOM = { charge: 0, world: null, side: 0, gaze: 0 };
   // The visitor's Dimensional Echo, now and then (bifrost-echo.js).
   let echo = null;
+  // The Ooga's own nearness to the nearest open window this frame, which the echo keeps out of the way of.
+  let userPull = 0;
   // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the
   // room every frame, so signed-in players in the chamber hear each other (voice needs a driven Ooga).
   const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name);
@@ -754,7 +756,7 @@
     echo = avatar ? BL.bifrostEcho.create({
       root, fx, camera, avatar, pilot, glyph: scene.glyph, windows: scene.windows.filter((w) => w.kind === "travel"),
       hall: { r: HALL.r, inHall: (p) => Math.hypot(p.x, p.z) < HALL.r - 1 },
-      nearness,
+      nearness, mine: () => userPull,
       cue: (name) => audio.cue(name)
     }) : null;
     lightUp(scene);
@@ -1048,10 +1050,12 @@
     // its field ripples. The mirrors keep their look. Every field hums in the same blue.
     // The Dimensional Echo's double pulls on its window as a traveller would.
     const who = avatar ? avatar.root.position : pilot.orbit.target, L = RENDER_OPTS.lights;
+    userPull = 0;
     for (let i = 0; i < s.windows.length; i++) {
       const w = s.windows[i];
       if (w.kind === "travel") {
         const mine = nearness(w, who), k = Math.max(mine, echo ? echo.pullOf(w) : 0), o = w.light * 8, power = 0.7 + 2.6 * w.near;
+        if (mine > userPull) userPull = mine;
         w.near += (k - w.near) * Math.min(1, dt * EASE);
         w.neon.glow = 1 + BRIGHTEN * w.near;
         const rim = w.rims[Math.min(BM.RIM_STEPS - 1, Math.floor(w.near * BM.RIM_STEPS))];
