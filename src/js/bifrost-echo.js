@@ -114,9 +114,18 @@
   // `hall` is { r, inHall(p) }; `windows` the open worlds' windows (`sn`, `c`, `near`, `phase.ripples`); `glyph` the ₿;
   // `nearness(w, p)` how near (0 to 1) a point stands to a window, as the scene measures it; `mine()` the Ooga's own
   // nearness to the nearest open window; `cue` plays the chamber's sound; `pilot` says how the visitor is viewing (its
-  // `mode`, and the view's `orbit.yaw` for a view looking straight down).
-  const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, nearness, mine, cue }) => {
+  // `mode`, and the view's `orbit.yaw` for a view looking straight down); `prepare(geometry)` uploads a mesh ahead of
+  // its first draw.
+  const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, nearness, mine, cue, prepare }) => {
     let pending = windows.length > 0 && (FORCE || roll()), wait = FORCE ? FORCED : DELAY[0] + Math.random() * DELAY[1], t = -1, figure = null, to = null;
+    // A visit that will have one builds its double now, while the visit is entered behind the fade, and uploads its
+    // meshes, so the moment it appears costs nothing; `liveGeometry` keeps them until then.
+    const build = () => {
+      const f = ghostOf(avatar.traits);
+      for (let i = 0; i < f.nodes.length; i++) if (f.nodes[i].geometry) prepare(f.nodes[i].geometry);
+      return f;
+    };
+    let built = pending ? build() : null;
     let flicker = 0, moteIn = 0, ripples = 0, pull = 0, presence = 0, dissolve = -1;
     const S = { x: 0, y: 0, z: 0 }, P = { x: 0, y: 0, z: 0 }, path = { a0: 0, da: 0, r0: 0, r1: 0, dip: 0, y0: 0, y1: 0 };
     const yawTo = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
@@ -144,7 +153,8 @@
       for (let i = 0; i < windows.length; i++) if (windows[i].near < 0.35 && Math.random() * ++count < 1) best = windows[i];
       if (!best) for (let i = 0; i < windows.length; i++) if (!best || windows[i].near < best.near) best = windows[i];
       to = best;
-      figure = ghostOf(avatar.traits);
+      figure = built || ghostOf(avatar.traits);
+      built = null;
       dress();
       const g = figure.root;
       g.position.x = q.x; g.position.y = q.y; g.position.z = q.z;
@@ -300,10 +310,16 @@
     const dispose = () => {
       if (figure) end();
       pending = false;
+      built = null;
     };
     // How hard the double pulls on window `w`, as a traveller's nearness would.
     const pullOf = (w) => w === to ? pull : 0;
-    return { update, trigger, dispose, pullOf, get state() { return t < 0 ? (pending ? "pending" : "idle") : t < PHASES.gone ? "playing" : "done"; }, get time() { return t; } };
+    // The double's meshes while it waits to appear or plays.
+    const liveGeometry = (set) => {
+      const f = figure || built;
+      if (f) for (let i = 0; i < f.nodes.length; i++) if (f.nodes[i].geometry) set.add(f.nodes[i].geometry);
+    };
+    return { update, trigger, dispose, pullOf, liveGeometry, get state() { return t < 0 ? (pending ? "pending" : "idle") : t < PHASES.gone ? "playing" : "done"; }, get time() { return t; } };
   };
 
   BL.bifrostEcho = { create, FIRST, CHANCE, COOLDOWN };

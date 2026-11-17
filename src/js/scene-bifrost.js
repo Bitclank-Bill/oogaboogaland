@@ -757,7 +757,8 @@
       root, fx, camera, avatar, pilot, glyph: scene.glyph, windows: scene.windows.filter((w) => w.kind === "travel"),
       hall: { r: HALL.r, inHall: (p) => Math.hypot(p.x, p.z) < HALL.r - 1 },
       nearness, mine: () => userPull,
-      cue: (name) => audio.cue(name)
+      cue: (name) => audio.cue(name),
+      prepare: (geometry) => ctx.renderer.prepareGeometry(geometry)
     }) : null;
     lightUp(scene);
     leaving = false;
@@ -1144,6 +1145,7 @@
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
     if (remotes) remotes.liveGeometry(set);
+    if (echo) echo.liveGeometry(set);
   };
   const stats = () => {
     let nodes = 0;
