@@ -37,7 +37,8 @@
   let UNIT = 1, LIP = 0;
   const grown = (geo, o) => UNIT === 1 ? o : { ...o, scale: (o && o.scale || 1) * UNIT };
   const cast = (geo) => { const g = BL.models.merge(geo); if (UNIT !== 1) for (let i = 0; i < g.verts.length; i++) g.verts[i] *= UNIT; return g; };
-  // `quiet` (the far build): words under 6 mm a pixel are left out, since nobody reads them from across the room.
+  // `quiet` (the far build): words under 6 mm a pixel at the museum's size are left out, since nobody reads them from
+  // across the room.
   const tools = (k, base, s0, moving = false, quiet = false) => {
     const s = s0 * UNIT, part = (geo, o) => typeof geo === "function" ? o : grown(geo, o);
     const T = {
@@ -59,7 +60,7 @@
       lathe: (profile, color, x, yy, z, o) => k.lathe(profile.map(([r, y]) => [r * s, y * s]), color, x * s, base + yy * s, z * s, o),
       prism: (pts, depth, color, x, yy, z, o) => k.prism(pts.map(([px, py]) => [px * s, py * s]), depth * s, color, x * s, base + yy * s, z * s, o),
       add: (geo, x, yy, z) => k.add(geo, x * s, base + yy * s, z * s),
-      say: (text, px, color, x, yy, z, e = 0.25) => quiet && px * s < 0.006 ? null : T.add(RM.helpers.litWord(text, px * s, color, e), x, yy, z),
+      say: (text, px, color, x, yy, z, e = 0.25) => quiet && px * s0 < 0.006 ? null : T.add(RM.helpers.litWord(text, px * s, color, e), x, yy, z),
       at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, s0, moving, quiet),
       face: (face, x, yy, z, spin = 0) => T.at(x, yy, z, FACES[face][0], FACES[face][1], spin),
       layer: (n) => -LIFT - 2 * LIFT * n, ink: (n) => -LIFT - 2 * LIFT * n - 0.0025
@@ -73,6 +74,8 @@
   const LED_R = RM.helpers.own(() => BL.models.noShadow(BL.models.box({ w: 0.008, h: 0.008, d: 0.004, color: C.ledRed, emissive: 0.9 })));
   const REEL = RM.helpers.own(() => BL.models.merge(BL.models.lathe({ profile: [[0, -0.006], [0.05, -0.006], [0.05, 0.006], [0, 0.006]], segments: 20, color: "#3a3e45" }), BL.models.box({ w: 0.09, h: 0.014, d: 0.008, color: "#8f949a" }), BL.models.box({ w: 0.008, h: 0.014, d: 0.09, color: "#8f949a" }), BL.models.box({ w: 0.016, h: 0.02, d: 0.016, color: C.steelLight })));
   const FAN = RM.helpers.own(() => { const parts = [BL.models.lathe({ profile: [[0, -0.004], [0.005, -0.004], [0.005, 0.004], [0, 0.004]], segments: 8, color: C.black })]; for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; parts.push(BL.models.turnedY(BL.models.box({ w: 0.004, h: 0.003, d: 0.013, color: "#2a2c31", offset: { z: -0.0085 } }), a)); } return BL.models.noShadow(BL.models.merge(...parts)); });
+  // A unit bar of dim phosphor, sized by its node: the band that rolls down a tube.
+  const ROLL = RM.helpers.own(() => BL.models.noShadow(BL.models.box({ w: 1, h: 0.03, d: 0.002, color: "#1d7a44", emissive: 0.5 })));
   // A lamp: blinking (`period` seconds, `phase` into it) where the build moves, lit still otherwise.
   const lamp2 = (F, red, x, y, z, period = 0, phase = 0, o = {}) => {
     if (F.moving && period) F.node(`blink:${uid++}:${period}:${phase}`, red ? LED_R() : LED_G(), x, y, z, o);
@@ -90,6 +93,8 @@
     if (fine) { F.B(0.02, 0.02, 0.004, C.led, (w + bezel) / 2, -(h + bezel) / 2, -0.014, { emissive: 1, glow: true }); F.B(0.06, 0.012, 0.004, "#8a8577", -(w + bezel) / 2 + 0.03, -(h + bezel) / 2, -0.014); }
     const S = T.face("front", x, y + bezel + h / 2 + 0.01, z - 0.018);
     paint(S, w, h);
+    // The tube's slow roll: a dim band that travels down the glass and back (the near build alone).
+    if (T.moving) S.shuttle(ROLL(), 0, h / 2 - 0.006, -0.0005, [0, -(h - 0.012), 0], 7, (uid % 5) * 1.3, { scale: w * S.s });
     return F;
   };
   // Lines of green phosphor text on a screen frame `S`, `px` a pixel, from the top left.
@@ -125,6 +130,13 @@
     P.B(0.03, top * 0.9, 0.03, color, 0, top * 0.45, back + 0.07, { rx: -0.12 });
     const F = P.at(0, 0.014 + top / 2, back / 2 + 0.012, 0, lean, 0);
     F.B(w + 0.02, h + 0.02, 0.014, color, 0, 0, 0.009);
+    // A picture light over the board, on a short arm: a hood with a lit strip under it. Two clips at the top corners.
+    F.B(w * 0.56, 0.004, 0.02, C.glowText, 0, h / 2 + 0.03, -0.03, { emissive: 0.95, glow: true });
+    if (!T.quiet) {
+      F.B(w * 0.6, 0.01, 0.03, C.steelDark, 0, h / 2 + 0.037, -0.03);
+      F.B(0.012, 0.034, 0.04, C.steelDark, 0, h / 2 + 0.025, -0.008);
+      for (const sx of [-1, 1]) F.B(0.03, 0.02, 0.006, C.brass, sx * (w / 2 - 0.035), h / 2 + 0.01, -0.001);
+    }
     return F;
   };
   // On a plinth several entries share, each entry's vignette stands over its own plaque: the plaques are PITCH apart
@@ -225,6 +237,8 @@
     P.B(w + 0.02, 0.012, d + 0.02, color === C.woodDark ? C.wood : C.steelDark, 0, 0.006, 0);
     // A small ledge along the front edge, so a sheet looks held.
     P.B(w, 0.014, 0.016, color === C.woodDark ? C.wood : C.steelDark, 0, lip + 0.007, -d / 2 - 0.006);
+    // A reading light along the ledge's front.
+    P.B(w - 0.02, 0.004, 0.004, C.glowText, 0, lip + 0.004, -d / 2 - 0.016, { emissive: 0.9, glow: true });
     const slope = Math.atan2(rise, d), len = Math.hypot(rise, d);
     const S = P.at(0, (lip + hB) / 2 + 0.002, 0, 0, -slope, 0);
     S.w = w - 0.02; S.d = len - 0.02;
@@ -241,6 +255,7 @@
     const F = T.at(x, y, z, o.ry || 0);
     F.B(w, h, 0.012, C.ink, 0, 0, 0.006);
     F.B(w - 0.006, h - 0.006, 0.004, "#1c1813", 0, 0, -0.002);
+    F.B(w, 0.003, 0.004, C.amber, 0, h / 2 + 0.0015, 0.002, { emissive: 0.8, glow: true });
     let yy = h / 2 - m;
     lines.forEach((t, i) => { yy -= sizes[i] * 3.5; F.say(t, sizes[i], i ? "#e8dcc8" : C.amberText || C.amber, 0, yy, -0.0055, i ? 0.2 : 0.4); yy -= sizes[i] * 3.5 + gap; });
     return h;

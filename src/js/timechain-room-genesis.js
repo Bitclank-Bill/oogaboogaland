@@ -659,8 +659,9 @@
   const glowRing = own(() => { const g = RM.helpers.blank(), n = 28, r0 = 0.62, r1 = 0.76; for (let k = 0; k < n; k++) { const a = TAU * k / n, b = TAU * (k + 1) / n; RM.helpers.face(g, [[r0 * Math.sin(a), 0, -r0 * Math.cos(a)], [r1 * Math.sin(a), 0, -r1 * Math.cos(a)], [r1 * Math.sin(b), 0, -r1 * Math.cos(b)], [r0 * Math.sin(b), 0, -r0 * Math.cos(b)]], C.amber, 0.5, [0, 1, 0]); } return noShadow(g); });
   const glowBar = own(() => noShadow(box({ w: 1, h: 0.04, d: 0.04, color: C.amber, emissive: 0.9, offset: { x: 0.5 } })));
   // Two builds of every sector: the near one at full detail with its moving parts, the far one lighter, swapped by
-  // the visitor's distance to the sector's nearest plinth (`LOD_NEAR` metres, with a little hysteresis).
-  const LOD_NEAR = 6.5 * BIG, LOD_FAR = 7.5 * BIG, INSC_GROUPS = 9, INSC_NEAR = 6 * BIG, INSC_FAR = 7 * BIG;
+  // the visitor's distance to the sector's nearest plinth (`LOD_NEAR` metres, with a little hysteresis): near from the
+  // standing strip and the inner loop, far from the doorway, where the ring's two ends stand 6.5 m off.
+  const LOD_NEAR = 5.8, LOD_FAR = 6.4, INSC_GROUPS = 9, INSC_NEAR = 5.8, INSC_FAR = 6.4;
   // The plinths' azimuths: the first at AZ0, the last at AZ1, neighbours half their widths apart plus one even gap.
   const AZ = (() => {
     const span = (AZ1 - AZ0) * DEG * RING;
@@ -680,8 +681,16 @@
   // its top, `w` wide across the walk (1.2 m, or wider for a plinth with cards side by side).
   const plinthBody = (g, w) => {
     g.box(w, TOP, DEPTH, C.concrete, 0, TOP / 2, 0);
-    g.box(w + 0.04, 0.03, DEPTH + 0.04, "#1d4f63", 0, TOP - 0.03, 0, { emissive: 0.28 });
+    // A line of light on the glass round its foot; a cap that overhangs the lit band under the top; a lit inlay down
+    // each front corner.
+    g.box(w + 0.11, 0.004, DEPTH + 0.11, C.amber, 0, 0.004, 0, { emissive: 0.55, glow: true });
+    g.box(w + 0.04, 0.03, DEPTH + 0.04, "#1d4f63", 0, TOP - 0.03, 0, { emissive: 0.4 });
+    g.box(w + 0.07, 0.014, DEPTH + 0.07, "#30343d", 0, TOP - 0.007, 0);
+    for (const sx of [-1, 1]) g.box(0.016, TOP - 0.08, 0.016, "#1d4f63", sx * w / 2, 0.02 + (TOP - 0.08) / 2, -DEPTH / 2, { emissive: 0.4 });
+    // The deck: a paler inlaid top, and a line of light along its front edge, behind the label strip.
     g.box(w, RISE, DEPTH - 0.09, C.concrete, 0, TOP + RISE / 2, 0.045);
+    g.box(w - 0.07, 0.003, DEPTH - 0.16, "#2a2e37", 0, TOP + RISE + 0.0015, 0.045);
+    g.box(w - 0.04, 0.01, 0.01, C.glow, 0, TOP + RISE - 0.009, 0.045 - (DEPTH - 0.09) / 2 - 0.004, { emissive: 0.9, glow: true });
   };
   // Every piece stands open on its plinth (no glass cases). The middle's drum is a straight cylinder this radius.
   const MID_R = 1.56;
@@ -713,8 +722,14 @@
   };
   const paintPlaque = (ctx, ex, k = 1) => {
     const W = PLAQUE.w * k, H = PLAQUE.h * k, link = LINK[ex.link];
-    ctx.fillStyle = C.ink; ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = C.amber; ctx.lineWidth = 6 * k; ctx.strokeRect(6 * k, 6 * k, W - 12 * k, H - 12 * k);
+    // A dark plate, a shade paler toward its top, in a lit frame with a hairline inside it and a bracket at each corner.
+    { const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#1b212a"); bg.addColorStop(0.45, C.ink); bg.addColorStop(1, C.ink); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); }
+    ctx.strokeStyle = C.amber; ctx.lineWidth = 4 * k; ctx.strokeRect(5 * k, 5 * k, W - 10 * k, H - 10 * k);
+    ctx.strokeStyle = "rgba(98,207,224,.28)"; ctx.lineWidth = k; ctx.strokeRect(12.5 * k, 12.5 * k, W - 25 * k, H - 25 * k);
+    ctx.fillStyle = C.glowText;
+    for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const x = cx ? W - 3 * k : 3 * k, y = cy ? H - 3 * k : 3 * k, sx = cx ? -1 : 1, sy = cy ? -1 : 1; ctx.fillRect(Math.min(x, x + sx * 26 * k), Math.min(y, y + sy * 5 * k), 26 * k, 5 * k); ctx.fillRect(Math.min(x, x + sx * 5 * k), Math.min(y, y + sy * 26 * k), 5 * k, 26 * k); }
+    // A rule under the date and title, and one over the two rows at the foot.
+    ctx.fillStyle = "rgba(98,207,224,.35)"; ctx.fillRect(28 * k, 66 * k, 504 * k, 1.5 * k); ctx.fillRect(28 * k, 296 * k, 504 * k, 1.5 * k);
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     // The date and title in the sign font, smaller where they would run off the plaque.
     const head = `${ex.when} · ${ex.title}`;
@@ -745,8 +760,9 @@
   // the ring's 25 fronts take four bands and the middle's two cards one.
   // `cards`: [{ ex, az (degrees), r (radius of the card's centre), curved }]; `R` the mapping radius; `y` the card's
   // centre height in the node's frame. Returns the node's place (world) and its geometry.
-  // The ring's cards are drawn with as many pixels each as at the museum's size.
-  const PPM = 400, RING_PPM = PPM / BIG, MAX_SPAN = 20 * BIG;
+  // The ring's cards are drawn at the size their plaque is designed in (560 pixels across), so nothing on them is
+  // scaled down.
+  const PPM = 400, RING_PPM = 460, MAX_SPAN = 17;
   const band = (cards, R, y, outside = false, painter = paintPlaque, size = CARD, ppm = RING_PPM) => {
     const azMid = (cards[0].az + cards[cards.length - 1].az) / 2, theta = -azMid * DEG, c = Math.cos(theta), sn = Math.sin(theta);
     const px = -R * Math.sin(theta), pz = -R * Math.cos(theta);
