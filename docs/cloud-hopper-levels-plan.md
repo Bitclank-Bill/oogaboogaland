@@ -795,7 +795,9 @@ Two things are new, and neither is part of the course: it is one path from start
 with or without them, so no cloud is ever only for one way up and nothing has to be touched to go on.
 
 **The world turns over twice a run**, unannounced, as a tornado comes or a gust blows. Each place is seeded with the
-course in its own stretch of the way down (`flips`: 26–40% and 60–74%), so it is clear of the start and the finish and
+course in its own stretch of the way down (`flips`: 25–45% and 60–80%, each 277 m long). Every attempt draws a fresh
+course seed, so the two places are somewhere else every time and cannot be learned, and a replay's recorded seed gives
+them back exactly. Each is clear of the start and the finish and
 the two are well apart. As the rider reaches it the whole world rolls half a turn round the course's axis over
 2.2 s, the clouds with it, and it stays: upside down after the first, upright again after the second. The rider never
 turns: gravity stays down the screen and the controls stay as they are. It goes on over the course as it was going,
