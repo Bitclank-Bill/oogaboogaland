@@ -2845,7 +2845,7 @@
     const inside = phase === "play" && !onDeck() && SIM.inMirage(me.x, me.z);
     if (inside !== MIRAGE.on) {
       MIRAGE.on = inside;
-      if (el.mirage) { el.mirage.hidden = !inside; el.mirage.dataset.calm = String(calm); }
+      if (el.mirage) el.mirage.hidden = !inside;
       if (inside) notice("You've walked into the Mainframe's mirage · not everything here is real", 2600);
     }
     MIRAGE.spin = inside && !calm ? MIRAGE.spin + dt * 0.22 : MIRAGE.spin * Math.max(0, 1 - dt * 2);
