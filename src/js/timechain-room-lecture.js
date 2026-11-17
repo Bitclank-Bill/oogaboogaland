@@ -263,7 +263,7 @@
     const bump = (id) => { live[id].node.geometry.imageSurface.version++; };
     // What each screen last printed, so a frame that changes nothing paints nothing.
     const seen = { slide: "", caption: "", outline: "", board: "", boardAt: 0, version: -1 };
-    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0, quizGlow = 0, hovered = -1;
+    let hud = null, nearAction = null, drawing = false, motionTime = 0, boardGlow = 0, slideGlow = 0, hovered = -1;
     const quizRows = [], inverse = BL.math.mat4.create(), screenPoint = { x: 0, y: 0 };
     let scrubOwner = null, scrubOffset = 0;
     const asking = () => player.playing && player.waiting >= 0;
@@ -355,7 +355,10 @@
       }
       return { centre, rim };
     };
-    const boardCue = cueOf(D.board), quizCue = cueOf(D.slide);
+    const boardCue = cueOf(D.board), slideCue = cueOf(D.slide);
+    // A board passage keeps its focus between strokes and while paused. Other passages present the main slide,
+    // including quiz prompts and replies; a previous drawing remaining on the board does not keep the focus.
+    const focusScreen = () => !player.timeline ? null : player.timeline.beats[st.beat].epoch >= 0 ? "board" : "slide";
     const drawCue = (ctx, project, cue, glow, active) => {
       if (glow < 0.01) return;
       const { centre, rim } = cue;
@@ -395,8 +398,9 @@
       ctx.stroke(); ctx.fill(); ctx.restore();
     };
     const draw = (ctx, project) => {
-      drawCue(ctx, project, boardCue, boardGlow, player.playing && player.waiting < 0 && st.drawing);
-      drawCue(ctx, project, quizCue, quizGlow, asking());
+      const focus = focusScreen();
+      drawCue(ctx, project, boardCue, boardGlow, focus === "board");
+      drawCue(ctx, project, slideCue, slideGlow, focus === "slide");
     };
     let cues = null, cuesFor = null;
     const centreOf = (op) => {
@@ -567,8 +571,9 @@
         if (viewing && elapsed > 1) { viewing = false; viewLecturer(); }
         const movingTime = dt * (player.playing && player.waiting < 0 ? player.speed : 1);
         if (!player.scrubbing) motionTime += movingTime;
-        boardGlow += ((player.playing && player.waiting < 0 && st.drawing ? 1 : 0) - boardGlow) * (1 - Math.exp(-8 * dt));
-        quizGlow += ((asking() ? 1 : 0) - quizGlow) * (1 - Math.exp(-8 * dt));
+        const focus = focusScreen(), fade = 1 - Math.exp(-8 * dt);
+        boardGlow += ((focus === "board" ? 1 : 0) - boardGlow) * fade;
+        slideGlow += ((focus === "slide" ? 1 : 0) - slideGlow) * fade;
         if (lecturer && !player.scrubbing) lecturer.update(movingTime, motionTime, player.timeline ? st : null, player.playing && player.waiting < 0, player.timeline && player.playing && player.waiting < 0 && st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow(),
           // A stretch of four sentences or more is one he may pace through (whether he does is his own, lecturer.js).
           !!player.timeline && st.quiz < 0 && player.timeline.beats[st.beat].count >= 4);
@@ -644,7 +649,7 @@
         for (const b of buttons) if (b) b.hidden = true;
       },
       // For a debug page (`__ooga.timechain.motion`): the player, `start(i)`, the lecturer, the screens and the stage.
-      stats: { player, start, get quizHover() { return hovered; }, quizRows, view: viewLecturer, get lecturer() { return lecturer; }, screens: () => screens(L), stage: S, get aim() { return aimNow(); }, get cues() { return cues; } }
+      stats: { player, start, get focusScreen() { return focusScreen(); }, get quizHover() { return hovered; }, quizRows, view: viewLecturer, get lecturer() { return lecturer; }, screens: () => screens(L), stage: S, get aim() { return aimNow(); }, get cues() { return cues; } }
     };
   };
   BL.timechainRoomKinds.lecture = { plan, animate, door, stageOf };

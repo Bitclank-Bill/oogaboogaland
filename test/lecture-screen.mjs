@@ -106,7 +106,27 @@ try {
   }
   check(glow[0].rim > 100 && glow[0].arrow === 0 && glow[1].arrow > 50 && glow[2].arrow > 50, 'quiz rim and arrow follow visible, side and behind-camera views: ' + JSON.stringify(glow));
   await b.evaluate('__ooga.timechain.motion.player.pause(); __ooga.advance(2, 1 / 60)');
-  check(await b.evaluate('quizTest.green().rim === 0 && __ooga.timechain.motion.quizHover === -1'), 'pause clears quiz hover and attention cues');
+  check(await b.evaluate('quizTest.green().arrow > 50 && __ooga.timechain.motion.quizHover === -1'), 'pause clears quiz hover but retains the current screen direction cue');
+  const slideGlow = [];
+  for (const yaw of [0, Math.PI / 2, Math.PI]) {
+    slideGlow.push(await b.evaluate(`(() => { const B=__ooga, P=B.timechain.motion.player; P.seek(20); P.play(); B.pilot.navigate({position:{x:0,y:0,z:B.timechain.layout.arrival.z},yaw:${yaw},pitch:.04,dist:4}); B.advance(1,1/60); return quizTest.green(); })()`));
+  }
+  check(slideGlow[0].rim > 100 && slideGlow[0].arrow === 0 && slideGlow[1].arrow > 50 && slideGlow[2].arrow > 50, 'ordinary slides have the same visible rim and offscreen/behind-camera arrow: ' + JSON.stringify(slideGlow));
+  check(await b.evaluate(`(() => {
+    const B=__ooga, M=B.timechain.motion, P=M.player;
+    const beat=P.timeline.beats.find(b=>b.epoch>=0), next=P.timeline.beats[beat.i+1];
+    const stroke=P.timeline.strokes.find(s=>s.epoch===beat.epoch && s.start+s.length+.05 < next.start && !P.timeline.strokes.some(other=>other.start<=s.start+s.length+.05 && other.start+other.length>s.start+s.length+.05));
+    P.pause(); P.seek(stroke.start+stroke.length+.05); B.advance(1,1/60);
+    return !P.state.drawing && M.focusScreen==='board' && quizTest.green().arrow>50;
+  })()`), 'drawing passage retains its board focus between strokes and while paused');
+  check(await b.evaluate(`(() => {
+    const B=__ooga, M=B.timechain.motion, P=M.player, beat=P.timeline.beats.find(b=>b.epoch>=0);
+    const next=P.timeline.beats.find(b=>b.i>beat.i && b.epoch<0 && P.timeline.sentences[b.first].quiz<0);
+    P.seek(next.start); B.advance(1,1/60); return P.state.epoch>=0 && M.focusScreen==='slide' && quizTest.green().arrow>50;
+  })()`), 'focus returns to the slide after a board passage even while old ink remains');
+  await b.evaluate('__ooga.timechain.motion.player.close(); __ooga.advance(2,1/60)');
+  check(await b.evaluate('quizTest.green().rim===0 && __ooga.timechain.motion.focusScreen===null'), 'Stop clears presentation focus');
+  await b.evaluate('__ooga.timechain.motion.player.open(BL.lectures.courseOf("first-principles").lectures[0])');
   // No hand or arm roll: thumb-side direction remains upward throughout both overhead raises.
   const poses = await b.evaluate(`(() => {
     const B = __ooga, M = B.timechain.motion, results = [];
