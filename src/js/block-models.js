@@ -138,10 +138,10 @@
       for (let k = 0; k < n; k++) for (let j = 0; j < Math.round(h / MINER_ROW); j++) {
         const c = (along ? b[0] : b[2]) + (k + 0.5) * step, my = (j + 0.5) * MINER_ROW;
         parts.push(bevelBox({ w: along ? step - 0.08 : thin + 0.04, h: MINER_ROW - 0.08, d: along ? thin + 0.04 : step - 0.08, color: (k + j) % 3 ? "#9aa3ad" : "#aeb6bf", offset: { x: along ? c : x, y: my, z: along ? z : c } }));
-        // The fan grilles, one at each face: a dark square with a lighter hub.
+        // The fan grilles, one at each face: a dark square, flat on the miner's face.
         for (const s of [-1, 1]) {
-          const fx = along ? c : x + s * (thin / 2 + 0.03), fz = along ? z + s * (thin / 2 + 0.03) : c;
-          parts.push(box({ w: along ? 0.42 : 0.02, h: 0.42, d: along ? 0.02 : 0.42, color: "#22262b", offset: { x: fx, y: my, z: fz } }));
+          const out = thin / 2 + 0.04;
+          parts.push(plate({ w: 0.42, h: 0.42, color: "#22262b", x: along ? c : x + s * out, y: my, z: along ? z + s * out : c, nx: along ? 0 : s, nz: along ? s : 0 }));
         }
       }
       return true;
