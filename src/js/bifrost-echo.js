@@ -14,9 +14,10 @@
 //
 // The double is the visitor's own Ooga, cloned from its model (`models.caveman`, sharing the shape of every part) in a
 // spectral copy of each part's geometry: its colours turned to a blue and violet glow by their brightness, drawn as
-// glass, which brightens at its rim, and casting no shadow. A copy is made once a page for each part and reused.
+// glass, which brightens at its rim, and casting no shadow. A copy is made once a page for each part and reused, and a
+// visit that will have one builds its double while it is entered, behind the fade.
 //
-// Whether a visit gets one is rolled when it starts (`roll`): `FIRST` on a browser's first visit and `CHANCE` after,
+// Whether a visit gets one is rolled when it starts (`roll`): `FIRST` until this browser has seen one and `CHANCE` after,
 // never within `COOLDOWN` of the last one seen, which counts from the moment a double appears, so one cut short by
 // leaving before it shows is not spent; never when the visitor asks for reduced motion. It waits for the Ooga to reach
 // the hall, then `DELAY` seconds and a few more, counted only while the visitor is not leaving or reading a dialog over
