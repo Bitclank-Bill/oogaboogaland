@@ -26415,7 +26415,7 @@ for (const ready of [false, true]) scene("dsb", { label: "entrance audio " + rea
         const original = AudioContext.prototype.createBufferSource, gainOriginal = AudioContext.prototype.createGain, audio = __ooga.audio, fade = audio.fade;
         window.__entranceLeave = { original, gainOriginal, gains: [], context: null, fade: 0 };
         AudioContext.prototype.createGain = function() { const gain = gainOriginal.call(this); __entranceLeave.gains.push(gain); return gain; };
-        AudioContext.prototype.createBufferSource = function() { window.__entranceLeave.context = this; return original.call(this); };
+        AudioContext.prototype.createBufferSource = function() { if (__ooga.scene === "dsb" && !__ooga.transitioning) window.__entranceLeave.context = this; return original.call(this); };
         audio.fade = seconds => { window.__entranceLeave.fade = seconds; fade(seconds); };
       })()`);
       const p = await b.evaluate(`(() => { const r = document.getElementById("dsb-start-audio").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
