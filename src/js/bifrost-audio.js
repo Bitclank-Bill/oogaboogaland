@@ -18,7 +18,8 @@
 // ₿IFRÖST signature struck over it), `burst` (the rings' sweeping resonance and a surge up the beam, in the world's
 // signature), `cross` (the dimensional jump into a world, in its signature), `mirror` (stepping through a linked
 // mirror), `leave` (back out through a field, the hum going with it), `stay` (a crossing that could not go, the
-// hum coming back) and the Dimensional Echo's five (`echo-stir`, `echo-rise`, `echo-look`, `echo-fly`, `echo-cross`).
+// hum coming back) and the Dimensional Echo's (`echo-stir`, `echo-rise`, `echo-look`, `echo-fly`, `echo-cross`, and
+// `echo-fade` for one dissolving early).
 // It honours the page-wide mute, and `dispose` closes it. `heard` counts every cue asked for, heard or not.
 (() => {
   "use strict";
@@ -292,6 +293,11 @@
         tone(0, "triangle", 180, 96, 1, 0.05, 0.02);
         tone(0.1, "sine", ROOT * 32, ROOT * 24, 2.6, 0.018, 0.05, 0.3, -0.3);
         fade(1, 1.2, 1);
+      },
+      // The double dissolving early, as the Ooga walks up to a window itself: a soft falling shimmer, the hum back.
+      "echo-fade": () => {
+        tone(0, "sine", ROOT * 24, ROOT * 16, 0.7, 0.025, 0.02, 0.2, -0.2);
+        fade(1, 0, 0.5);
       }
     };
     const heard = {};
