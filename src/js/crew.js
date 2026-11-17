@@ -131,6 +131,8 @@
     models.box({ w: 0.05, h: 0.05, d: 0.08, color: "#fff4c4", emissive: 1 })
   );
   const HEALTH_MAX = 100, HEALTH_REGEN_DELAY = 4, HEALTH_REGEN_RATE = 20, HEALTH_PICKUP_TIME = 0.35;
+  // A timed stun's Ooga caught in the air comes down at DAZE_FALL metres a second.
+  const DAZE_FALL = 9;
   const GEAR_PICKUP_RADIUS = 0.72;
   const STUN_BIRD = models.merge(
     models.box({ w: 0.09, h: 0.055, d: 0.055, color: "#ffd84a", emissive: 0.7 }),
@@ -6919,7 +6921,7 @@
     };
     const finishStun = (cave) => {
       const w = cave.weapon, health = cave.health;
-      health.stunned = health.recovering = false;
+      health.stunned = health.recovering = false; health.daze = 0;
       cave.stunBirds.visible = false;
       setVec(cave.parts.head.rotation, 0, 0, 0);
       const selected = cave.stunGear.selectedSlot;
@@ -6968,7 +6970,11 @@
     const updateHealth = (cave, dt) => {
       const health = cave.health, birds = cave.stunBirds;
       if (health.stunned && cave.grabbedBy && ctx.releaseGrabbed) ctx.releaseGrabbed(cave);
-      if (health.value < HEALTH_MAX) {
+      if (health.daze > 0) {
+        // A timed stun (`stun`): the same birds and wobble, over when its time is up, an Ooga in the air sinking down.
+        if ((health.daze -= dt) <= 0) { health.daze = 0; finishStun(cave); return false; }
+        if (cave.hop > 0) { cave.hop = Math.max(0, cave.hop - DAZE_FALL * dt); cave.root.position.y = groundY(cave) + cave.hop; }
+      } else if (health.value < HEALTH_MAX) {
         if (health.stunned) health.value = Math.min(HEALTH_MAX, health.value + HEALTH_REGEN_RATE * dt);
         else if (health.delay > 0) health.delay = Math.max(0, health.delay - dt);
         else health.value = Math.min(HEALTH_MAX, health.value + HEALTH_REGEN_RATE * dt);
@@ -7028,6 +7034,39 @@
         w.meleeTarget.node = w.meleeTarget.owner = null;
         dropStunGear(cave);
       }
+      return true;
+    };
+    // A stun outside combat, `seconds` long (a duel's loser, duel.js): the birds, the wobbling head and nothing in the
+    // hands, as an Ooga out of health, but with its gear kept, and over by itself. False when it cannot be.
+    const stun = (cave, seconds) => {
+      if (!cave || !cave.root.visible || cave.health.stunned || !(seconds > 0)) return false;
+      const health = cave.health, w = cave.weapon;
+      health.stunned = true; health.recovering = false; health.daze = seconds;
+      cave.walk = null;
+      cave.leap.vx = cave.leap.vz = cave.hopV = 0;
+      cave.rocketJumpTime = 0;
+      stopBurst(cave); stopReload(cave, true); releaseSwing(cave, true);
+      clearGunBashThrust(cave); clearMeleeThrust(cave);
+      w.meleeTime = w.meleeReadyTime = w.bashTime = 0;
+      w.meleeTarget.node = w.meleeTarget.owner = null;
+      cave.stunGear.selectedSlot = w.selectedSlot;
+      w.equipped = w.primaryEquipped = w.aiming = false;
+      cave.parts.club.visible = cave.parts.gun.visible = cave.parts.gunFlash.visible = false;
+      if (cave.parts.chukTrail) for (const trail of cave.parts.chukTrail) trail.visible = false;
+      return true;
+    };
+    // The rifle's magazine and both spares full (a duel's start, duel.js), for an Ooga that owns one.
+    const fillAmmo = (cave = player) => {
+      if (!cave || !cave.weapon.secondaryOwned || cave.weapon.parked) return false;
+      const w = cave.weapon;
+      stopBurst(cave); stopReload(cave, true);
+      w.ammo = AMMO_MAX;
+      for (let i = 0; i < 2; i++) {
+        if (!cave.magazineModels[i]) cave.magazineModels[i] = createMagazineModel();
+        w.spareAmmo[i] = AMMO_MAX;
+      }
+      syncMagazine(cave);
+      poseWeapon(cave);
       return true;
     };
     // ---------- the jetpack ----------
@@ -7835,7 +7874,7 @@
       const p = cave.root.position, x = p.x, y = p.y, z = p.z;
       cave.presentationTime = elapsed;
       prepareAnimation(cave, dt);
-      if (combatEnabled && updateHealth(cave, dt)) {
+      if ((combatEnabled || cave.health.daze > 0) && updateHealth(cave, dt)) {
         riding.continuous = false;
         riding.updated = true;
         return;
@@ -8111,7 +8150,7 @@
         }
         if (cave.health.stunned) {
           cave.health.value = HEALTH_MAX;
-          cave.health.stunned = cave.health.recovering = false;
+          cave.health.stunned = cave.health.recovering = false; cave.health.daze = 0;
         }
         for (const model of cave.magazineModels) if (model && model.node.parent) removeChild(model.node.parent, model.node);
         stopBurst(cave);
@@ -8148,7 +8187,7 @@
       get combatEnabled() { return combatEnabled; },
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, resumeFromHost, sleepDiagnostics, refreshRosterRow, updateFan, rush, pokeCave, idleSay, drawDrops,
-      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
+      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, stun, fillAmmo, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
       actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, aimTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       // The driven Ooga's steering as last set, the world direction in `x` and `z`; live, not a copy.
@@ -8158,5 +8197,5 @@
       }
     };
   };
-  BL.crew = { create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, poseGroundSit, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { STUN_BIRD, create, createPets, hatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, poseGroundSit, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();

@@ -12770,6 +12770,51 @@ body[data-active-scene] #cave-directory-button { min-height: 44px; }
 .duel-hp { font-size: 11px; font-variant-numeric: tabular-nums; }
 .duel-clock { min-width: 4ch; text-align: center; font-size: 20px; font-weight: 800; color: var(--accent-text); }
 .duel-note { margin: 0; color: var(--danger); font-weight: 700; }
+/* A blow taken: the view's edge flashes red (duel.js fades it). */
+.duel-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(200, 16, 16, 0) 42%, rgba(200, 16, 16, 0.5) 78%, rgba(170, 8, 8, 0.85) 100%);
+}
+/* The count before the first blow and how the duel ended, large over the middle of the view. */
+.duel-count, .duel-result {
+  position: fixed;
+  left: 50%;
+  top: 32%;
+  z-index: 31;
+  margin: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+}
+.duel-count, .duel-result-title {
+  font-weight: 900;
+  line-height: 1;
+  color: #ffe27a;
+  text-shadow: 0 5px 0 #24100e, -3px 0 0 #24100e, 3px 0 0 #24100e, 0 -3px 0 #24100e, 0 0 26px rgba(0, 0, 0, 0.75);
+}
+.duel-count { font-size: clamp(84px, 20vw, 200px); }
+.duel-count[data-go="true"] { font-size: clamp(56px, 13vw, 140px); color: #ff6a4d; }
+.duel-result { display: grid; justify-items: center; gap: 12px; }
+.duel-result-title { font-size: clamp(46px, 11vw, 128px); letter-spacing: 0.04em; }
+.duel-result[data-result="lost"] .duel-result-title { color: #ff5a4d; }
+.duel-result[data-result="draw"] .duel-result-title, .duel-result[data-result="over"] .duel-result-title { color: var(--paper); }
+.duel-result-line {
+  max-width: calc(100vw - 32px);
+  padding: 6px 14px;
+  color: var(--paper);
+  background: rgba(22, 20, 18, 0.88);
+  border: 2px solid var(--wood-edge);
+  border-radius: var(--radius);
+  font-size: clamp(13px, 2.4vw, 20px);
+  font-weight: 700;
+  white-space: normal;
+}
+.duel-flash[hidden], .duel-count[hidden], .duel-result[hidden] { display: none; }
 .players-duel { grid-column: 1 / -1; justify-self: start; margin-top: 6px; }
 .players-duel[hidden] { display: none; }
 /* On a narrow screen the movement coaching card spans the top: the duel's cards stand below it while it shows. */
