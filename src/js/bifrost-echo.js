@@ -5,8 +5,10 @@
 //
 // About ten seconds (`PHASES`, in seconds from its start): the stir, the ₿ flickering softly as motes rise from the
 // Ooga, and the double drawing out of it (0 to 2); the look, held about a second and a half (2 to 4); the flight,
-// accelerating round the mechanism, which flares as it passes (4 to 7); and the crossing, its window's field rippling,
-// the look back from the passage and the fade (7 to 10).
+// accelerating round the mechanism (4 to 7); and the crossing, its window's field rippling, the look back from the
+// passage and the fade (7 to 10). The machine answers the double as it answers a traveller: as it nears its window
+// it pulls on that window (`pullOf`, its nearness as the scene measures anyone's) so the ₿ charges in that world's
+// colour, the window's rim heats and the world's chord sounds, all ebbing as it fades.
 //
 // The double is the visitor's own Ooga, cloned from its model (`models.caveman`, sharing the shape of every part) in a
 // spectral copy of each part's geometry: its colours turned to a blue and violet glow by their brightness, drawn as
@@ -94,11 +96,12 @@
   };
 
   // `hall` is { r, inHall(p) }; `windows` the open worlds' windows (`sn`, `c`, `near`, `phase.ripples`); `glyph` the ₿;
-  // `react` flares the mechanism; `cue` plays the chamber's sound; `pilot` says how the visitor is viewing (its `mode`,
-  // and the view's `orbit.yaw` for a view looking straight down).
-  const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, react, cue }) => {
+  // `nearness(w, p)` how near (0 to 1) a point stands to a window, as the scene measures it; `cue` plays the chamber's
+  // sound; `pilot` says how the visitor is viewing (its `mode`, and the view's `orbit.yaw` for a view looking straight
+  // down).
+  const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, nearness, cue }) => {
     let pending = windows.length > 0 && (FORCE || roll()), wait = FORCE ? FORCED : DELAY[0] + Math.random() * DELAY[1], t = -1, figure = null, to = null;
-    let flicker = 0, moteIn = 0, ripples = 0, reacted = false;
+    let flicker = 0, moteIn = 0, ripples = 0, pull = 0;
     const S = { x: 0, y: 0, z: 0 }, P = { x: 0, y: 0, z: 0 }, path = { a0: 0, da: 0, r0: 0, r1: 0, dip: 0, y0: 0, y1: 0 };
     const yawTo = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
     const turnTo = (rot, want, k) => {
@@ -132,7 +135,7 @@
       g.scale.x = g.scale.y = g.scale.z = 0.92;
       setFade(0);
       addChild(root, g);
-      t = 0; flicker = 1; reacted = false; ripples = 0;
+      t = 0; flicker = 1; ripples = 0; pull = 0;
       markSeen();
       cue("echo-stir");
     };
@@ -156,7 +159,7 @@
     };
     const end = () => {
       if (figure) removeChild(root, figure.root);
-      figure = null; to = null; t = -1;
+      figure = null; to = null; t = -1; pull = 0;
       glyph.glow = 1;
     };
 
@@ -216,13 +219,14 @@
         P.x = Math.sin(a) * r; P.z = Math.cos(a) * r; P.y = path.y0 + (path.y1 - path.y0) * e + 1.4 * s;
         turnTo(g.rotation, yawTo(gp.x, gp.z, P.x, P.z), dt * 8);
         gp.x = P.x; gp.y = P.y; gp.z = P.z;
-        if (!reacted && e > 0.45) { reacted = true; react(); }
+        pull = nearness(to, gp);
         pose(0.15, -0.35, 0.6 * Math.min(1, k * 3));
       } else if (t < PHASES.back) {
         // The crossing: through the field into the passage, its field rippling, then turning to look back.
         const k = clamp((t - PHASES.fly) / (PHASES.enter - PHASES.fly), 0, 1), e = 1 - (1 - k) * (1 - k), r = hall.r - 1 + (1 + IN) * e;
         if (t - dt < PHASES.fly) cue("echo-cross");
         gp.x = to.sn * r; gp.z = to.c * r; gp.y += (avatar.baseY + HOVER - gp.y) * Math.min(1, dt * 3);
+        pull = nearness(to, gp);
         if (ripples < 3 && r > hall.r + 0.1) {
           ripples++;
           to.phase.ripples.pulse((Math.random() - 0.5) * 0.8, gp.y - avatar.baseY + 0.4 + ripples * 0.3, 0);
@@ -238,6 +242,7 @@
         // The fade, still looking back.
         const k = (t - PHASES.back) / (PHASES.gone - PHASES.back);
         setFade(1 - k, BACK_GLOW);
+        pull = nearness(to, gp) * (1 - k);
         gp.y += dt * 0.25;
         turnTo(g.rotation, yawTo(gp.x, gp.z, eye.x, eye.z), dt * 3);
       } else end();
@@ -254,7 +259,9 @@
       if (figure) end();
       pending = false;
     };
-    return { update, trigger, dispose, get state() { return t < 0 ? (pending ? "pending" : "idle") : t < PHASES.gone ? "playing" : "done"; }, get time() { return t; } };
+    // How hard the double pulls on window `w`, as a traveller's nearness would.
+    const pullOf = (w) => w === to ? pull : 0;
+    return { update, trigger, dispose, pullOf, get state() { return t < 0 ? (pending ? "pending" : "idle") : t < PHASES.gone ? "playing" : "done"; }, get time() { return t; } };
   };
 
   BL.bifrostEcho = { create, FIRST, CHANCE, COOLDOWN };

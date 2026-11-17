@@ -754,7 +754,7 @@
     echo = avatar ? BL.bifrostEcho.create({
       root, fx, camera, avatar, pilot, glyph: scene.glyph, windows: scene.windows.filter((w) => w.kind === "travel"),
       hall: { r: HALL.r, inHall: (p) => Math.hypot(p.x, p.z) < HALL.r - 1 },
-      react: () => { scene.flare = Math.max(scene.flare, 0.7); scene.surge = 0; },
+      nearness,
       cue: (name) => audio.cue(name)
     }) : null;
     lightUp(scene);
@@ -1046,11 +1046,12 @@
     // The open world's window alone answers whoever comes near (the Ooga, or with none, the view): its glow, its rim,
     // which breathes at rest and climbs to white-hot, its light and the light's reach, its passage's ribs and how often
     // its field ripples. The mirrors keep their look. Every field hums in the same blue.
+    // The Dimensional Echo's double pulls on its window as a traveller would.
     const who = avatar ? avatar.root.position : pilot.orbit.target, L = RENDER_OPTS.lights;
     for (let i = 0; i < s.windows.length; i++) {
       const w = s.windows[i];
       if (w.kind === "travel") {
-        const k = nearness(w, who), o = w.light * 8, power = 0.7 + 2.6 * w.near;
+        const mine = nearness(w, who), k = Math.max(mine, echo ? echo.pullOf(w) : 0), o = w.light * 8, power = 0.7 + 2.6 * w.near;
         w.near += (k - w.near) * Math.min(1, dt * EASE);
         w.neon.glow = 1 + BRIGHTEN * w.near;
         const rim = w.rims[Math.min(BM.RIM_STEPS - 1, Math.floor(w.near * BM.RIM_STEPS))];
