@@ -155,13 +155,15 @@
     };
     // Questions, as the time passes: an unanswered one holds the lecture where its asking ends; an answered one plays
     // the reply to the answer chosen and goes on from the question's end.
-    const gate = () => {
+    const gate = (from) => {
       for (const q of timeline.quizzes) {
-        if (t < q.hold - 0.03 || t >= q.end) continue;
+        // Background media events may arrive after an entire question. Hold at the first unanswered gate crossed;
+        // explicit seeks still skip earlier questions because their starting time is already beyond those gates.
+        if (t < q.hold - 0.03 || t >= q.end && (from >= q.hold || answers[q.i] !== undefined)) continue;
         const chosen = answers[q.i];
         if (chosen === undefined) {
           t = q.hold - 0.02; waiting = q.i;
-          if (audio && !audio.paused) audio.pause();
+          if (audio) { audio.pause(); audio.currentTime = t; }
           version++;
           return;
         }
@@ -205,8 +207,12 @@
         // none to ask for, and play to the recording's times with captions.
         if (timeline.recorded && next.audio && BL.deferredScripts) {
           audio = new Audio(next.audio); audio.playbackRate = speed; audio.preservesPitch = true; audio.preload = "auto"; audio.volume = LEVEL; audio.addEventListener("error", () => { audio = null; });
-          // A hidden tab runs no frames while the recording plays on: its own clock keeps the questions' gates.
-          audio.addEventListener("timeupdate", () => { if (audio && playing && waiting < 0 && !audio.paused) { t = audio.currentTime; gate(); } });
+          // Hidden tabs run no scene frames. Media events must advance the same cue state, gates and completion
+          // as a frame, including the final event when the recording has already paused at its end.
+          const recording = audio;
+          const mediaTick = () => { if (audio === recording) update(0); };
+          recording.addEventListener("timeupdate", mediaTick);
+          recording.addEventListener("ended", mediaTick);
         }
         sync();
         return true;
@@ -223,6 +229,7 @@
     };
     const update = (dt) => {
       if (!timeline || !playing || waiting >= 0) return;
+      const from = t;
       if (audio) { if (!audio.paused || audio.ended) t = audio.ended ? timeline.duration : audio.currentTime; }
       else {
         dt *= speed;
@@ -233,7 +240,7 @@
         else if (synth && spoken === i && !speaking && t > s.start + 0.4 && t < end - 0.25) t = end - 0.2;
         else t += dt;
       }
-      gate();
+      gate(from);
       if (t >= timeline.duration) { t = timeline.duration; ended = true; playing = false; hush(); save(); version++; }
       const before = state.sentence;
       LK.at(timeline, t, state);

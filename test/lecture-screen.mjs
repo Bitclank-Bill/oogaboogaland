@@ -198,5 +198,47 @@ try {
   })()`), 'backward seek redraws the board exactly at the selected time');
   check(await b.evaluate(`(() => { const M=__ooga.timechain.motion, p=M.lecturer.root.position, place=M.stage.places[M.player.state.place]; return Math.hypot(p.x-place.x,p.z-place.z)<.01; })()`), 'release places the professor at the selected cue');
   check(b.logs.length === 0, 'scrubbing keeps the console clean: ' + JSON.stringify(b.logs));
+  // Media events continue while the director has no frames. Drive that clock deterministically, then deliver
+  // the real visibility handler and check what the hall paints on its first frame back.
+  const background = await b.evaluate(`(async () => {
+    const B=__ooga, M=B.timechain.motion, P=M.player, LS=BL.lectureSlides;
+    const AudioClass=window.Audio, deferred=BL.deferredScripts, hidden=Object.getOwnPropertyDescriptor(document,'hidden');
+    const painters={slide:LS.slide,board:LS.board,caption:LS.caption}, painted={}, results=[];
+    let audio;
+    window.Audio=class extends EventTarget {
+      constructor() { super(); audio=this; this.currentTime=0; this.paused=true; this.ended=false; }
+      play() { this.paused=false; return Promise.resolve(); }
+      pause() { this.paused=true; }
+      removeAttribute() {}
+      load() {}
+    };
+    const show = (value) => { Object.defineProperty(document,'hidden',{configurable:true,value:!value}); document.dispatchEvent(new Event('visibilitychange')); };
+    LS.slide=(...args)=>{painted.slide=args[4];painted.show=args[5];return painters.slide(...args);};
+    LS.board=(...args)=>{painted.epoch=args[5];painted.time=args[6];return painters.board(...args);};
+    LS.caption=(...args)=>{painted.caption=args[4];return painters.caption(...args);};
+    try {
+      BL.deferredScripts={}; await P.open(BL.lectures.courseOf('first-principles').lectures[0]); P.seek(0); P.play(); B.advance(.01,1/60);
+      show(false);
+      audio.currentTime=100; audio.dispatchEvent(new Event('timeupdate'));
+      const expected=BL.lectures.state(); BL.lectures.at(P.timeline,100,expected);
+      results.push({ok:P.state.sentence===expected.sentence && P.time===100,message:'hidden media event updates lecture cues without a frame'});
+      show(true); B.advance(.01,1/60);
+      const current = () => painted.slide===P.timeline.slides[P.state.slide].slide && painted.show===P.state.show && painted.caption===P.timeline.sentences[P.state.sentence].text && painted.epoch===P.state.epoch && painted.time===P.time;
+      results.push({ok:current(),message:'first visible frame paints current slide, caption and board time'});
+      const place=M.stage.places[P.state.place], position=M.lecturer.root.position;
+      results.push({ok:Math.hypot(position.x-place.x,position.z-place.z)<.01,message:'first visible frame places professor at the current cue'});
+      show(false);
+      const q=P.timeline.quizzes[0]; audio.currentTime=q.end+10; audio.dispatchEvent(new Event('timeupdate'));
+      show(true); B.advance(.01,1/60);
+      results.push({ok:current() && P.waiting===q.i && P.state.quiz===q.i && audio.paused,message:'quiz reached in background returns to the correct question screen'});
+    } finally {
+      P.close(); window.Audio=AudioClass; BL.deferredScripts=deferred; Object.assign(LS,painters);
+      if (hidden) Object.defineProperty(document,'hidden',hidden); else delete document.hidden;
+      document.dispatchEvent(new Event('visibilitychange'));
+    }
+    return results;
+  })()`);
+  for (const result of background) check(result.ok, result.message);
+  check(b.logs.length === 0, 'background catch-up keeps the console clean: ' + JSON.stringify(b.logs));
   console.log(`${checks} lecture screen and pointing checks passed`);
 } finally { await b.close(); }

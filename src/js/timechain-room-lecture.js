@@ -544,9 +544,20 @@
     let viewing = query.has("debug") && query.get("lecturer") === "view" && !!lecturer;
     const viewLecturer = () => BL.modelViewer.open({ title: "Lecture Hall", help: "Drag to turn him, scroll or pinch to zoom.", count: 1, index: 0,
       item: () => ({ kicker: course.title, name: course.by || "The lecturer", text: `${course.subtitle}.`, stats: [], note: "", geometry: lecturer.portrait() }) });
+    // Frames stop in a hidden tab while media events keep the cue state current. On return, rebuild the screens
+    // and place him at the current cue instead of walking through the movement missed while away.
+    let resumeVisuals = false;
+    const visible = () => { if (!document.hidden) resumeVisuals = true; };
+    document.addEventListener("visibilitychange", visible);
+    const seekScene = () => {
+      seen.slide = seen.caption = seen.outline = seen.board = ""; mark.epoch = -2;
+      motionTime = player.time;
+      if (lecturer) lecturer.seek(st, motionTime, player.playing && player.waiting < 0, st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow());
+    };
     return {
       update(dt, elapsed) {
         player.update(dt);
+        if (resumeVisuals) { resumeVisuals = false; if (player.timeline && !player.scrubbing) seekScene(); }
         if (seen.version !== player.version) { seen.version = player.version; label(); }
         if (!asking()) hovered = -1;
         paintScreens(elapsed);
@@ -579,11 +590,7 @@
       },
       scrubEnd(cancelled) {
         const ended = player.endScrub(cancelled); scrubOwner = null;
-        if (ended && !cancelled) {
-          seen.slide = seen.caption = seen.outline = seen.board = ""; mark.epoch = -2;
-          motionTime = player.time;
-          if (lecturer) lecturer.seek(st, motionTime, player.playing, st.drawing ? LS.penAt(player.timeline, st.epoch, player.time, pen) : null, aimNow());
-        }
+        if (ended && !cancelled) seekScene();
         label();
       },
       get question() { return asking(); },
@@ -628,6 +635,7 @@
         H.row(touch ? [] : ["1", "2", "3", "4"], "Answer the lecturer's question", "Click or tap an answer on the projected screen")
       ],
       dispose() {
+        document.removeEventListener("visibilitychange", visible);
         player.dispose();
         if (lecturer) lecturer.dispose();
         for (const b of buttons) if (b) b.hidden = true;

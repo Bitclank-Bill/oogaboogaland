@@ -10,8 +10,9 @@ const fixture = async (recorded = true) => {
   const { L } = load(['btc-01']);
   const media = [];
   class Audio {
-    constructor() { this.currentTime = 0; this.paused = true; this.ended = false; media.push(this); }
-    addEventListener() {}
+    constructor() { this.currentTime = 0; this.paused = true; this.ended = false; this.listeners = new Map(); media.push(this); }
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
+    emit(type) { this.listeners.get(type)?.(); }
     play() { this.paused = false; return Promise.resolve(); }
     pause() { this.paused = true; }
     removeAttribute() {}
@@ -86,7 +87,7 @@ test('stop silences and releases the recording while preserving unfinished or co
   assert.equal(p.playing, false); assert.equal(p.recorded, false); assert.equal(p.timeline, null);
   assert.equal(p.progress[entry.id].t, 70); assert.equal(p.progress[entry.id].done, false);
   await p.open(entry); assert.equal(p.time, 66);
-  p.play(); media[1].ended = true; p.update(0.016);
+  p.seek(p.timeline.duration - 1); p.play(); media[1].ended = true; p.update(0.016);
   assert.equal(p.progress[entry.id].done, true);
   p.close(); assert.equal(p.progress[entry.id].done, true);
   p.dispose();
@@ -126,4 +127,36 @@ test('exact scrub into every quiz reply retains that reply without awarding an a
     media[0].currentTime = branch.end; p.update(.01); assert.equal(p.time, q.end);
   }
   p.dispose();
+});
+
+for (const speed of [1, 1.25, 1.5, 2]) test(`${speed}x: background media events synchronize cues and hold a crossed quiz without frames`, async () => {
+  const { player: p, media, L } = await fixture();
+  p.setSpeed(speed); p.play();
+  const audio = media[0], expected = L.state(), q = p.timeline.quizzes[0];
+  audio.currentTime = 100; audio.emit('timeupdate');
+  L.at(p.timeline, p.time, expected); assert.deepEqual(p.state, expected);
+  assert.equal(p.time, 100); assert.equal(p.state.section, expected.section);
+  // Simulate a throttled event arriving after all reply audio, with no animation frames in between.
+  audio.currentTime = q.end + 10; audio.emit('timeupdate');
+  assert.equal(p.time, q.hold - .02); assert.equal(p.waiting, q.i);
+  assert.equal(audio.paused, true); assert.equal(audio.currentTime, p.time);
+  L.at(p.timeline, p.time, expected); assert.deepEqual(p.state, expected);
+  assert.equal(p.state.quiz, q.i);
+  // The first foreground frame returns early at a held quiz: its cue state must already be correct.
+  p.update(.016); assert.deepEqual(p.state, expected);
+  p.answer(q.answer); audio.currentTime = q.branches[q.answer].end; audio.emit('timeupdate');
+  assert.equal(p.time, q.end); L.at(p.timeline, p.time, expected); assert.deepEqual(p.state, expected);
+  p.dispose();
+});
+test('background completion and stale recording events preserve the active lecture state', async () => {
+  const { player: p, media, entry, L } = await fixture();
+  p.seek(p.timeline.duration - 1); p.play();
+  media[0].ended = true; media[0].paused = true; media[0].emit('ended');
+  assert.equal(p.ended, true); assert.equal(p.playing, false); assert.equal(p.progress[entry.id].done, true);
+  const expected = L.state(); L.at(p.timeline, p.timeline.duration, expected); assert.deepEqual(p.state, expected);
+  await p.open(entry); p.play(); media[1].currentTime = 80;
+  media[0].emit('timeupdate'); assert.equal(p.time, 0);
+  media[1].emit('timeupdate'); assert.equal(p.time, 80);
+  p.pause(); media[1].currentTime = 120; media[1].emit('timeupdate'); assert.equal(p.time, 80);
+  p.dispose(); media[1].emit('ended'); assert.equal(p.timeline, null);
 });
