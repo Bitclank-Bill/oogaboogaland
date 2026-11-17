@@ -42,6 +42,8 @@
   const GLASS = 0.42, EMISSIVE = 0.8, BACK_GLOW = 1.3;
   const RAMP = [[0, [34, 20, 96]], [0.35, [64, 84, 232]], [0.7, [118, 150, 255]], [1, [182, 204, 255]]];
   const MOTES = ["#7aa8ff", "#b48cff", "#ffffff"].map((c) => models.particleGeometry(c, 0.07, 1));
+  // What an Ooga carries, which the double shows or puts away as the Ooga does now (a parked weapon stays away).
+  const GEAR = ["club", "gun", "gunFlash", "snack", "jetpack", "jetFlame", "shield", "chuk", "board"];
 
   // A spectral copy of a part: the same shape, its colours glowing blue and violet by their brightness, as glass.
   // Tones are kept by colour, so one palette's worth serves every Ooga.
@@ -143,6 +145,7 @@
       if (!best) for (let i = 0; i < windows.length; i++) if (!best || windows[i].near < best.near) best = windows[i];
       to = best;
       figure = ghostOf(avatar.traits);
+      dress();
       const g = figure.root;
       g.position.x = q.x; g.position.y = q.y; g.position.z = q.z;
       g.rotation.y = avatar.root.rotation.y;
@@ -152,6 +155,15 @@
       t = 0; flicker = 1; ripples = 0; pull = 0; dissolve = -1;
       markSeen();
       cue("echo-stir");
+    };
+    // Dressed as the Ooga is now; a pet, which walks beside the Ooga rather than on it, stays behind.
+    const dress = () => {
+      const own = avatar.parts, parts = figure.parts;
+      for (const key of GEAR) {
+        const part = parts[key], mine = own[key];
+        if (part && mine && typeof part.visible === "boolean" && typeof mine.visible === "boolean") part.visible = mine.visible;
+      }
+      if (parts.dog) parts.dog.visible = false;
     };
     // The double's whole figure at `k` of its full presence, glowing `glow`.
     const setFade = (k, glow = 1) => {
