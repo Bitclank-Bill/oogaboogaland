@@ -408,21 +408,21 @@
   };
   // The programme a visitor picks from, a page of the board dialog: two columns of lectures, each a row with its
   // number, title, what it covers and where the visitor left it. Fills `rows` with each row's rectangle.
-  const programme = (ctx, W, H, P, course, progress, selected, rows, ready) => {
+  const programme = (ctx, W, H, P, course, progress, selected, rows, ready, hovered = -1) => {
     const u = H / 100, list = course.lectures, per = Math.ceil(list.length / 2), cw = (W - u * 14) / 2, rh = u * 72 / per;
     frame(ctx, W, H, u);
     ctx.fillStyle = DECK.ink; ctx.textAlign = "left"; P.fit(ctx, course.title, W * 0.6, 800, u * 8); ctx.fillText(course.title, u * 7, u * 13);
     ctx.fillStyle = DECK.grey; ctx.font = P.font(400, u * 3.4); ctx.fillText(course.by ? `${course.subtitle} · with ${course.by}` : course.subtitle, u * 7, u * 18.5);
     rows.length = 0;
     list.forEach((l, i) => {
-      const col = i < per ? 0 : 1, x = u * 6 + col * (cw + u * 2), y = u * 22 + (i - col * per) * rh, p = progress && progress[l.id], sel = i === selected;
+      const col = i < per ? 0 : 1, x = u * 6 + col * (cw + u * 2), y = u * 22 + (i - col * per) * rh, p = progress && progress[l.id], sel = i === selected, available = !ready || ready(l), hover = i === hovered;
       rows.push({ x, y, w: cw, h: rh - u * 1.2, index: i });
-      ctx.fillStyle = sel ? "rgba(247,147,26,.2)" : DECK.panel; P.roundRect(ctx, x, y, cw, rh - u * 1.2, u * 1.4); ctx.fill();
-      if (sel) { ctx.strokeStyle = DECK.amber; ctx.lineWidth = u * 0.4; ctx.stroke(); }
-      ctx.fillStyle = p && p.done ? DECK.green : DECK.amberText; ctx.textAlign = "center"; ctx.font = P.font(700, rh * 0.36, P.MONO); ctx.fillText(p && p.done ? "✓" : String(l.n), x + u * 4.4, y + rh * 0.56);
-      ctx.textAlign = "left"; ctx.fillStyle = DECK.ink; P.fit(ctx, l.title, cw - u * 26, 700, rh * 0.3); ctx.fillText(l.title, x + u * 9, y + rh * 0.4);
+      ctx.fillStyle = hover ? available ? "rgba(247,147,26,.3)" : "rgba(160,160,160,.22)" : sel ? available ? "rgba(247,147,26,.2)" : "rgba(160,160,160,.12)" : DECK.panel; P.roundRect(ctx, x, y, cw, rh - u * 1.2, u * 1.4); ctx.fill();
+      if (sel || hover) { ctx.strokeStyle = available ? hover ? DECK.ink : DECK.amber : DECK.grey; ctx.lineWidth = u * 0.4; ctx.stroke(); }
+      ctx.fillStyle = !available ? DECK.grey : p && p.done ? DECK.green : DECK.amberText; ctx.textAlign = "center"; ctx.font = P.font(700, rh * 0.36, P.MONO); ctx.fillText(p && p.done ? "✓" : String(l.n), x + u * 4.4, y + rh * 0.56);
+      ctx.textAlign = "left"; ctx.fillStyle = available ? DECK.ink : DECK.grey; P.fit(ctx, l.title, cw - u * 26, 700, rh * 0.3); ctx.fillText(l.title, x + u * 9, y + rh * 0.4);
       ctx.fillStyle = DECK.grey; P.fit(ctx, l.blurb, cw - u * 12, 400, rh * 0.2); ctx.fillText(l.blurb, x + u * 9, y + rh * 0.7);
-      const tag = ready && !ready(l) ? "SOON" : p && !p.done && p.t > 5 ? `AT ${clock(p.t)}` : "";
+      const tag = !available ? "SOON" : p && !p.done && p.t > 5 ? `AT ${clock(p.t)}` : "";
       if (tag) P.pix(ctx, tag, x + cw - u * 2.4, y + rh * 0.34, rh * 0.17, tag === "SOON" ? DECK.grey : DECK.amberText, "right");
     });
     footer(ctx, P, W, H, u, { left: `${list.length} LECTURES · ${course.parts ? course.parts.length + " PARTS" : ""}`, right: "" });

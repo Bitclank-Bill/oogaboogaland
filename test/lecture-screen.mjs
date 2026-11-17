@@ -356,7 +356,32 @@ try {
   await b.key('Escape');
   await b.evaluate('document.getElementById("lecture-programme").click()');
   check(await b.evaluate('(()=>{const d=document.getElementById("board-modal"),r=d.getBoundingClientRect();return d.open&&d.classList.contains("board-expanded")&&r.width>960&&r.right<=innerWidth&&r.bottom<=innerHeight;})()'), 'Bitcoin from First Principles lecture selection also uses the larger popup');
+  await b.evaluate(`(() => {
+    const c=document.createElement('canvas'),rows=[];c.width=1400;c.height=860;
+    BL.lectureSlides.programme(c.getContext('2d'),c.width,c.height,BL.timechainRoomModels.paintKit,BL.lectures.courseOf('first-principles'),{},0,rows,l=>l.available);
+    const sample=document.createElement('canvas');sample.width=sample.height=1;const pixels=sample.getContext('2d',{willReadFrequently:true});
+    window.courseTest={rows,point(i){const r=rows[i];return outlineTest.popup(r.x+r.w*.5,r.y+r.h*.5);},color(i){const r=rows[i];pixels.drawImage(document.getElementById('board-screen'),Math.floor(r.x+15),Math.floor(r.y+r.h*.5),1,1,0,0,1,1);return Array.from(pixels.getImageData(0,0,1,1).data);}};
+  })()`);
+  const available=await b.evaluate('courseTest.point(0)');
+  const unhovered=await b.evaluate('document.getElementById("board-screen").toDataURL()');
+  await b.mouse('mouseMoved',available.x,available.y,{button:'none'});
+  check(await b.evaluate(`document.getElementById('board-screen').toDataURL()!==${JSON.stringify(unhovered)}&&(()=>{const c=courseTest.color(0);return c[0]>c[1]+20;})()`),'available lecture highlights amber on hover');
+  let disabled=true;
+  for(let i=1;i<14;i++){
+    const at=await b.evaluate(`courseTest.point(${i})`);
+    await b.mouse('mouseMoved',at.x,at.y,{button:'none'});
+    disabled=disabled&&await b.evaluate(`(()=>{const c=courseTest.color(${i});return Math.abs(c[0]-c[1])<5&&Math.abs(c[1]-c[2])<5;})()`);
+    await b.click(at.x,at.y);
+    disabled=disabled&&await b.evaluate('document.getElementById("board-modal").open&&__ooga.timechain.motion.player.entry.id==="btc-01"');
+  }
+  check(disabled,'all thirteen unfinished lectures highlight gray and refuse clicks');
+  await b.key('ArrowDown');await b.key('Enter');
+  check(await b.evaluate('document.getElementById("board-modal").open&&__ooga.timechain.motion.player.entry.id==="btc-01"'),'keyboard cannot start an unfinished lecture');
   if(process.env.LECTURE_SCREENSHOT)await b.screenshot(resolve(process.env.LECTURE_SCREENSHOT.replace('.png','-course.png')));
+  await b.click(available.x,available.y);await b.evaluate('__ooga.advance(.1,1/60)');
+  check(await b.evaluate('!document.getElementById("board-modal").open&&__ooga.timechain.motion.player.entry.id==="btc-01"'),'Lecture 1 remains selectable');
+  await b.evaluate('__ooga.timechain.motion.player.progress["btc-01"].done=true;document.getElementById("lecture-stop").click();__ooga.advance(.1,1/60)');
+  check(await b.evaluate('document.getElementById("lecture-start").textContent==="Start lecture 1"'),'completing Lecture 1 does not offer unfinished Lecture 2');
   check(b.logs.length===0,'console stays clean: '+JSON.stringify(b.logs));
   }
   console.log(`${checks} lecture screen and pointing checks passed`);

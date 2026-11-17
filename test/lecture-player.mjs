@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { load } from '../scripts/lecture-check.mjs';
 
 const source = readFileSync(new URL('../src/js/lecture-player.js', import.meta.url), 'utf8');
-const fixture = async (recorded = true) => {
+const fixture = async (recorded = true, storage = new Map()) => {
   const { L } = load(['btc-01']);
   const media = [];
   class Audio {
@@ -19,7 +19,7 @@ const fixture = async (recorded = true) => {
     load() {}
   }
   const BL = { lectures: L, deferredScripts: recorded ? {} : null, deferred: { load: async () => {} }, sound: { muted: false, subscribe: () => () => {} } };
-  vm.runInNewContext(source, { window: { BL }, Audio, localStorage: { getItem: () => null, setItem() {} } });
+  vm.runInNewContext(source, { window: { BL }, Audio, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } });
   const player = BL.lecturePlayer.create(), entry = { id: 'btc-01', group: 'lecture-btc-a', audio: 'btc-01.m4a' };
   await player.open(entry);
   return { player, media, entry, L };
@@ -159,4 +159,28 @@ test('background completion and stale recording events preserve the active lectu
   media[1].emit('timeupdate'); assert.equal(p.time, 80);
   p.pause(); media[1].currentTime = 120; media[1].emit('timeupdate'); assert.equal(p.time, 80);
   p.dispose(); media[1].emit('ended'); assert.equal(p.timeline, null);
+});
+
+
+test('all supported speeds survive a fresh player session and recording', async () => {
+  for (const speed of [1, 1.25, 1.5, 2]) {
+    const storage = new Map(), first = await fixture(true, storage);
+    first.player.setSpeed(speed); first.player.dispose();
+    const next = await fixture(true, storage);
+    assert.equal(next.player.speed, speed); assert.equal(next.media[0].playbackRate, speed);
+    assert.equal(next.media[0].preservesPitch, true); next.player.dispose();
+  }
+  for (const invalid of ['0', '3', 'NaN', 'garbage']) {
+    const f = await fixture(true, new Map([['ooga-lecture-speed', invalid]]));
+    assert.equal(f.player.speed, 1); f.player.dispose();
+  }
+});
+
+test('unfinished catalogue entries cannot replace the active lecture even when content exists', async () => {
+  const {player, entry, media, L} = await fixture();
+  assert.deepEqual(Array.from(L.courseOf('first-principles').lectures, l => l.available), [true, ...Array(13).fill(false)]);
+  player.play(); player.seek(30);
+  assert.equal(await player.open({...entry, available: false}), false);
+  assert.equal(player.entry, entry); assert.equal(player.time, 30); assert.equal(player.playing, true);
+  assert.equal(media.length, 1); player.dispose();
 });

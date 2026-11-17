@@ -300,7 +300,7 @@
       if (!player.timeline || i < 0 || i >= player.timeline.sections.length || player.scrubbing) return false;
       player.seek(player.timeline.sections[i].start); seekScene(); label(); return true;
     };
-    const ready = (l) => !!(LK.get(l.id) || BL.deferredScripts && BL.deferredScripts[l.group]);
+    const ready = (l) => !!l && l.available !== false && !!(LK.get(l.id) || BL.deferredScripts && BL.deferredScripts[l.group]);
     const metaOf = (T) => {
       const entry = player.entry, slide = T.slides[st.slide], sec = T.sections[slide ? slide.section : st.section];
       return { left: `LECTURE ${entry.n}`, mid: sec.title.toUpperCase().slice(0, 34), right: `${st.slide + 1} / ${T.slides.length}`, kicker: `${course.title} · Lecture ${entry.n} of ${course.lectures.length}`,
@@ -467,13 +467,17 @@
     };
     // The banner's buttons, shown in this hall alone.
     const buttons = BAR.map((id) => document.getElementById(id));
-    const nextLecture = () => Math.max(0, course.lectures.findIndex((l) => !(player.progress[l.id] && player.progress[l.id].done)));
+    const nextLecture = () => {
+      const next = course.lectures.findIndex(l => ready(l) && !(player.progress[l.id] && player.progress[l.id].done));
+      return next < 0 ? course.lectures.findIndex(ready) : next;
+    };
     const label = () => {
       const on = !!player.timeline;
       for (let i = 1; i < buttons.length; i++) if (buttons[i]) buttons[i].hidden = i === 5 ? on : !on;
       if (buttons[5]) {
-        const next = course.lectures[nextLecture()], saved = player.progress[next.id];
-        buttons[5].textContent = `${saved && !saved.done ? "Resume" : "Start"} lecture ${next.n}`;
+        const next = course.lectures[nextLecture()], saved = next && player.progress[next.id];
+        buttons[5].hidden = on || !next;
+        if (next) buttons[5].textContent = `${saved && !saved.done ? "Resume" : "Start"} lecture ${next.n}`;
       }
       if (buttons[1]) buttons[1].textContent = player.playing ? "Pause" : player.ended ? "Replay" : "Resume";
       if (buttons[4]) {
@@ -485,35 +489,38 @@
     };
     // The programme, a page of the board dialog: a press on a row, or the arrows and Enter, starts that lecture.
     const rows = [];
-    let chosen = 0, programmeVersion = 0, programmeCanvas = null;
+    let chosen = 0, programmeHovered = -1, programmeVersion = 0, programmeCanvas = null;
     const start = (i) => {
       const entry = course.lectures[i];
+      if (!entry) return false;
       if (!ready(entry)) { if (hud) hud.toast(`Lecture ${entry.n} is still being written`); return false; }
       player.open(entry).then((ok) => { if (ok) { player.play(); seen.slide = seen.caption = seen.outline = seen.board = ""; mark.epoch = -2; label(); } }, () => { if (hud) hud.toast("That lecture didn't load. Try again"); });
       return true;
     };
-    const paintProgramme = () => { const c = programme.canvas; LS.programme(c.getContext("2d"), c.width, c.height, P, course, player.progress, chosen, rows, ready); programmeVersion++; };
+    const paintProgramme = () => { const c = programme.canvas; LS.programme(c.getContext("2d"), c.width, c.height, P, course, player.progress, chosen, rows, ready, programmeHovered); programmeVersion++; };
     const programme = {
-      title: "Lecture Hall", help: "Choose a lecture: press one, or use the arrows and Enter. Each picks up where you left it.", expanded: true, count: 1, index: 0, caption: course.title,
+      title: "Lecture Hall", help: "Choose an available lecture, or use the arrows and Enter. Gray lectures marked SOON are not available yet.", expanded: true, count: 1, index: 0, caption: course.title,
       get note() { return course.by ? `${course.subtitle}, with ${course.by}.` : `${course.subtitle}.`; },
       get canvas() { return programmeCanvas || (programmeCanvas = CH.canvas(1400, 860)); },
       get version() { return programmeVersion; }, go() {},
-      pick(x, y) { for (const r of rows) if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) { chosen = r.index; return start(r.index) ? "close" : true; } return false; },
+      hover(x, y) { const i = rowAt(rows, x, y); if (i !== programmeHovered) { programmeHovered = i; paintProgramme(); } },
+      onClose() { programmeHovered = -1; },
+      pick(x, y) { const i = rowAt(rows, x, y); if (i < 0) return false; if (!ready(course.lectures[i])) return true; chosen = i; return start(i) ? "close" : true; },
       key(key) {
         const n = course.lectures.length, per = Math.ceil(n / 2);
         if (key === "ArrowDown") chosen = (chosen + 1) % n; else if (key === "ArrowUp") chosen = (chosen + n - 1) % n;
         else if (key === "ArrowRight" || key === "ArrowLeft") chosen = (chosen + per) % n;
-        else if (key === "Enter") return start(chosen) ? "close" : true;
+        else if (key === "Enter") return ready(course.lectures[chosen]) && start(chosen) ? "close" : true;
         else return false;
-        paintProgramme();
+        programmeHovered = -1; paintProgramme();
         return true;
       }
     };
     const openProgramme = (h) => {
       hud = h;
       if (player.entry) chosen = player.entry.n - 1;
-      else { const next = course.lectures.findIndex((l) => !(player.progress[l.id] && player.progress[l.id].done)); chosen = next < 0 ? 0 : next; }
-      paintProgramme();
+      else chosen = Math.max(0, nextLecture());
+      programmeHovered = -1; paintProgramme();
       h.openBoard(programme);
       return true;
     };

@@ -14,7 +14,12 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  const LK = BL.lectures, KEY = "ooga-lectures", SAVE_EVERY = 12;
+  const LK = BL.lectures, KEY = "ooga-lectures", SPEED_KEY = "ooga-lecture-speed", SAVE_EVERY = 12;
+  const validSpeed = rate => rate === 1 || rate === 1.25 || rate === 1.5 || rate === 2;
+  const loadSpeed = () => {
+    try { const rate = Number(localStorage.getItem(SPEED_KEY)); if (validSpeed(rate)) return rate; } catch {}
+    return 1;
+  };
   const loadProgress = () => {
     const out = {};
     try {
@@ -28,7 +33,7 @@
   const create = ({ speech = false } = {}) => {
     const progress = loadProgress(), state = LK.state();
     let entry = null, timeline = null, t = 0, playing = false, audio = null, ended = false, sinceSave = 0, opening = 0, version = 0;
-    let spoken = -1, speaking = false, utterance = null, speed = 1;
+    let spoken = -1, speaking = false, utterance = null, speed = loadSpeed();
     let scrubbing = false, scrubTime = 0, scrubResume = false;
     // The answers given on this run through, by question; the question being waited on; and the questions this browser
     // has answered before (a bit each), which may be skipped past.
@@ -81,8 +86,9 @@
     const sync = () => { if (timeline) LK.at(timeline, t, state); version++; };
     // One rate for the recording and the fallback clock; its times and all authored cues stay in lecture seconds.
     const setSpeed = (rate) => {
-      if (rate !== 1 && rate !== 1.25 && rate !== 1.5 && rate !== 2) return false;
+      if (!validSpeed(rate)) return false;
       speed = rate;
+      try { localStorage.setItem(SPEED_KEY, String(rate)); } catch {}
       if (audio) { audio.playbackRate = rate; audio.preservesPitch = true; }
       if (synth && speaking) hush();
       version++;
@@ -193,6 +199,7 @@
     };
     // The lecture's file, then its timeline; a newer `open` or a `close` meanwhile drops this one's answer.
     const open = (next) => {
+      if (!next || next.available === false) return Promise.resolve(false);
       close();
       const mine = ++opening;
       return Promise.resolve(BL.deferred.load(next.group)).then(() => {
