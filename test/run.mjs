@@ -405,11 +405,17 @@ const destinationMapCoachingHintProof = () => {
     matchMedia: () => ({ matches: false }), addEventListener() {}, removeEventListener() {} };
   const context = { window, document, localStorage: { getItem: () => null, setItem() {} } };
   runInNewContext(readFileSync(join(root, "src/js/destination-map.js"), "utf8"), context);
-  const scene = { id: "hub" }, map = window.BL.destinationMap.create({ current: () => scene, ready: () => true });
-  map.connect({ available: () => true, travels: () => true, selected: () => null, names: () => ["pile"], label: n => n, travel: () => true, controlled: () => false, position: () => null });
+  const scene = { id: "hub" }, provider = { available: () => true, travels: () => true, selected: () => null, names: () => ["pile"], label: n => n, travel: () => true, controlled: () => false, position: () => null };
   const coach = el("explore-coach");
+  // Until its redesign the card and its replay button show only where the page asks for them.
+  const plain = window.BL.destinationMap.create({ current: () => scene, ready: () => true });
+  plain.connect(provider); plain.update();
+  const offByDefault = coach.hidden && el("controls-learn").hidden;
+  plain.dispose();
+  const map = window.BL.destinationMap.create({ current: () => scene, ready: () => true, offerCoach: true });
+  map.connect(provider);
   map.update();
-  const offered = !coach.hidden;
+  const offered = !coach.hidden && !el("controls-learn").hidden;
   // A floating Oogatron board is a non-modal dialog: it must not hide the coaching hint.
   state.otherDialog = Object.assign(el("board"), { open: true, floating: true });
   map.update();
@@ -422,7 +428,7 @@ const destinationMapCoachingHintProof = () => {
   map.update();
   const restored = !coach.hidden;
   map.dispose();
-  return { offered, floatingShows, modalHides, restored };
+  return { offByDefault, offered, floatingShows, modalHides, restored };
 };
 // Rule: exercise the actual bounded rage state machine with a small physical
 // adapter. Collision and the rendered carry are covered by the hub regressions.
@@ -6322,7 +6328,7 @@ const hammockChecks = async () => {
       R.math.mat4.transformPoint(target, ham.bedNode.world, ...rope.ring);
       ropeError = Math.max(ropeError, Math.hypot(...at.map((v, k) => v - target[k])));
     }
-    const v = ham.bedNode.geometry.verts;
+    const v = ham.restBed.verts;
     for (let k = 0; k < v.length; k += 3) {
       R.math.mat4.transformPoint(at, ham.bedNode.world, v[k], v[k + 1], v[k + 2]);
       const dx = at[0] - fit.x, dz = at[2] - fit.z, along = dx * fit.ux + dz * fit.uz, side = dx * fit.nx + dz * fit.nz;
@@ -6554,14 +6560,14 @@ const hammockChecks = async () => {
   // through the real collision shell: its support, then its body above the step, as the hub's `walkable` asks.
   const STEP = Number(/WALK = \{[^}]*step: ([\d.]+)/.exec(await readFile(new URL("../src/js/pilot.js", import.meta.url), "utf8"))[1]);
   // The gap from a walker's footprint to the nearest drawn part of the resting bed (cloth, edge cords, spreaders), seen
-  // from above: every face edge of the bed's own mesh, in its frame (x along, z across).
+  // from above: every face edge of the bed at rest (`restBed`, the lowest its cloth lies occupied), in its frame (x along, z across).
   // Each face's corner indices, through the compact reader where a mesh is packed.
   const eachFace = (g, fn) => {
     const cursor = g.compactGeometry ? R.compactGeometry.createCursor(g) : null;
     for (let f = 0; f < g.faces.length; f++) fn(Array.from((cursor ? R.compactGeometry.readFace(g, f, cursor) : g.faces[f]).i));
   };
   const bedEdges = [];
-  { const g = ham.bedNode.geometry, v = g.verts;
+  { const g = ham.restBed, v = g.verts;
     eachFace(g, ids => { for (let k = 0; k < ids.length; k++) { const a = ids[k] * 3, b = ids[(k + 1) % ids.length] * 3; bedEdges.push(v[a], v[a + 2], v[b], v[b + 2]); } }); }
   const drawnGap = (along, across) => {
     let best = Infinity;
@@ -6616,10 +6622,10 @@ const hammockChecks = async () => {
   // This fixture runs the real equipment poser, without creating movement or NPC systems.
   R.pilot = { WALK: { speed: 0, gravity: 1, step: 0 } };
   runInNewContext(await readFile(new URL("../src/js/crew.js", import.meta.url), "utf8"), real);
-  // The drawn cloth's own footprint at rest, from the bed's mesh in its frame (x along, z across, the holder's too): as
+  // The drawn cloth's own footprint at rest, from the bed at rest (`restBed`) in its frame (x along, z across, the holder's too): as
   // long as the cloth and the spreaders' thickness, as wide as the cloth and its edge cords away from the spreaders.
   let clothLong = 0, clothWide = 0;
-  { const v = ham.bedNode.geometry.verts;
+  { const v = ham.restBed.verts;
     for (let k = 0; k < v.length; k += 3) if (Math.abs(v[k + 2]) < 0.3) clothLong = Math.max(clothLong, Math.abs(v[k]));
     for (let k = 0; k < v.length; k += 3) if (Math.abs(v[k]) < clothLong - 0.2) clothWide = Math.max(clothWide, Math.abs(v[k + 2])); }
   // Stowed gear as drawn, every visible triangle in the holder's frame: each part flat (no taller than it is wide),
@@ -6631,7 +6637,7 @@ const hammockChecks = async () => {
   const clothTriangles = (a) => {
     const turn = ham.bedNode.rotation.x;
     ham.bedNode.rotation.x = a; R.scene.updateWorld(root);
-    const g = ham.bedNode.geometry, v = g.verts, w = [], tris = [];
+    const g = ham.restBed, v = g.verts, w = [], tris = [];
     let lowest = Infinity;
     for (let k = 0; k < v.length; k += 3) {
       R.math.mat4.transformPoint(point, ham.bedNode.world, v[k], v[k + 1], v[k + 2]);
@@ -12696,7 +12702,7 @@ const hubHammockEntry = { name: "hub hammock entry", why: "regression: walking a
     // out to the spreader bars, the Ooga comes right up to the bed on foot (the hub may then lead it round), never into it.
     // The bed's drawn edges seen from above in its own frame (x along, z across the plan's n), for the gap from the
     // walker's 0.3 m footprint to the nearest drawn part while its feet are on the ground.
-    const g=H.bedNode.geometry,v=g.verts,C=BL.compactGeometry,cur=g.compactGeometry?C.createCursor(g):null,edges=[];
+    const g=H.restBed,v=g.verts,C=BL.compactGeometry,cur=g.compactGeometry?C.createCursor(g):null,edges=[];
     for(let f=0;f<g.faces.length;f++){const ids=(cur?C.readFace(g,f,cur):g.faces[f]).i;for(let k=0;k<ids.length;k++){const a0=ids[k]*3,b0=ids[(k+1)%ids.length]*3;edges.push(v[a0],v[a0+2],v[b0],v[b0+2]);}}
     const gapAt=(x,z)=>{const al=(x-p.x)*p.ux+(z-p.z)*p.uz,ac=(x-p.x)*p.nx+(z-p.z)*p.nz;let best=Infinity;
       for(let k=0;k<edges.length;k+=4){const dx=edges[k+2]-edges[k],dz=edges[k+3]-edges[k+1],l=dx*dx+dz*dz,t=l?Math.max(0,Math.min(1,((al-edges[k])*dx+(ac-edges[k+1])*dz)/l)):0;best=Math.min(best,Math.hypot(al-edges[k]-dx*t,ac-edges[k+1]-dz*t));}
@@ -25628,8 +25634,8 @@ scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="
 scene("hub", { label: "gorilla population restoration", query: "status=clankin", exclusive: true, opts: { motion: true }, steps: [hubGorillaPopulation] });
 scene("hub", { label: "weapons", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&weapon=2&mag=1&ammo=6&jetpack=1&gorillarage=1", steps: [hubCombatGate, ...[hubAk, hubMelee, hubJetpack].map(gameCombat)] });
 // Her greeting comes once a page, to a fresh landing nothing has moved, so the guide has its own page.
-scene("hub", { label: "guide", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk, hubTourInput, hubSharedGuide] });
-scene("hub", { label: "shared guide phone", opts: { w: 390, h: 844, mobile: true }, query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1", steps: [hubSharedGuide] });
+scene("hub", { label: "guide", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1&coach=1", steps: [hubGuide, hubAsk, hubTourInput, hubSharedGuide] });
+scene("hub", { label: "shared guide phone", opts: { w: 390, h: 844, mobile: true }, query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1&coach=1", steps: [hubSharedGuide] });
 // Native pointer-lock assertions need sole focus; another browser lane can
 // steal capture and spend this long scenario's deadline waiting for it back.
 scene("hub", { label: "camera modes", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", exclusive: true, steps: [hubCameraModes] });
@@ -26197,7 +26203,7 @@ scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
 scene("hub", { label: "private chat", query: "pos=0", steps: [hubPrivateChat] });
 scene("hub", { label: "player preferences", query: "pos=0", steps: [hubPlayerPreferences] });
 scene("hub", { label: "player preferences", query: "pos=0", opts: PHONE_SIZE, steps: [hubPlayerPreferences] });
-scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
+scene("hub", { label: "clock and block height", query: "pos=0&time=0900&coach=1", steps: [hubBlockHeight, hubDestinationNames] });
 // Rally is out of order for visitors; the tour still boots it on Canvas 2D through its retained maintenance opt-in
 // (`wip=race` alone would land the page in Rally, so it names the island).
 scene("hub", { label: "canvas2d", query: "canvas2d=1&scene=hub&wip=race", steps: [hubMatrix, canvasTour] });
@@ -31685,7 +31691,9 @@ const raceRigChecks = async () => {
     // Depth pre-pass "no image change" rendering core: the shared vertex and fragment
     // bytes the depth-only and plain variants derive from, plus the untouched shadow path.
     // Packed mesh vertices decode into aNormal and aColor at the top of main (was 6bed3532).
-    "4184e76c3501711766e5229bc42eb5d249eb88212b5a9cf3b9086ebe5767286d",
+    // The Mempool lake's swells, re-baselined on purpose: taller swells and a third chop wave, with overlapping
+    // impacts limited at 40 cm (pool-water.js WAVE_HEIGHT) instead of 18 (4184e76c to f52ddf00); only lake faces.
+    "f52ddf003b0ae84dd698facdd3fb70ba549d41f05e62314a213f369d0fe079a6",
     // The fragment shader, re-baselined on purpose: 487d99ac909f added uObjectSlab2 for the Factory roof bore
     // (b82d02f4 to f5f71f79), ab4ebcd sampled retained canvas surfaces (to c98cc70d) and e32e91e sampled the
     // foliage LOD atlas (to fb12fd53). Removing those additions would not restore b82d02f4 alone.
@@ -34339,7 +34347,7 @@ const unitChecks = async () => {
   const mapPadEscape = destinationMapPadEscapeProof();
   record("destination map pad regression: a pad's B or Menu over another dialog or card is that layer's Escape and never opens Map; on foot it opens Map and inside Map it closes it; a floating board does not block Map and a refused Map never swallows Menu's Escape", Object.values(mapPadEscape).every(Boolean), JSON.stringify(mapPadEscape));
   const mapCoachingHint = destinationMapCoachingHintProof();
-  record("destination map coaching hint: a floating board does not hide the island coaching hint, while a non-floating dialog still does", Object.values(mapCoachingHint).every(Boolean), JSON.stringify(mapCoachingHint));
+  record("destination map coaching hint: neither the hint nor its Controls replay button shows without the opt-in; with it a floating board does not hide the island coaching hint, while a non-floating dialog still does", Object.values(mapCoachingHint).every(Boolean), JSON.stringify(mapCoachingHint));
   const sleepBeamPool = sleepBeamPoolProof();
   record("gorilla sleep beam: fixed pool, slot isolation, live reduced motion and scene cleanup", Object.values(sleepBeamPool).every(Boolean), JSON.stringify(sleepBeamPool));
   const sleepStalls = gorillaSleepStallProof();
