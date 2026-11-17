@@ -44,27 +44,36 @@
   const MOTES = ["#7aa8ff", "#b48cff", "#ffffff"].map((c) => models.particleGeometry(c, 0.07, 1));
 
   // A spectral copy of a part: the same shape, its colours glowing blue and violet by their brightness, as glass.
+  // Tones are kept by colour, so one palette's worth serves every Ooga.
   const copies = new WeakMap(), tones = new Map();
   const toneOf = (c) => {
-    let out = tones.get(c);
+    const r = clamp(Math.round(c[0]), 0, 255), g = clamp(Math.round(c[1]), 0, 255), b = clamp(Math.round(c[2]), 0, 255), key = (r << 16) | (g << 8) | b;
+    let out = tones.get(key);
     if (out) return out;
-    const l = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    const l = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
     let k = 1;
     while (k < RAMP.length - 1 && RAMP[k][0] < l) k++;
-    const [t0, a] = RAMP[k - 1], [t1, b] = RAMP[k], f = clamp((l - t0) / (t1 - t0), 0, 1);
-    out = [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * f));
-    tones.set(c, out);
+    const [t0, lo] = RAMP[k - 1], [t1, hi] = RAMP[k], f = clamp((l - t0) / (t1 - t0), 0, 1);
+    out = [0, 1, 2].map((i) => Math.round(lo[i] + (hi[i] - lo[i]) * f));
+    tones.set(key, out);
     return out;
   };
+  // A packed character mesh (compact-geometry.js) gives its faces as fresh records, so copying it never fills its
+  // legacy face cache, and its copy is packed the same way.
   const spectral = (src) => {
     let geo = copies.get(src);
     if (geo) return geo;
+    const compact = BL.compactGeometry, packed = compact?.storageOf(src);
     geo = models.geometry();
+    for (let n = 0, count = packed ? packed.count : src.faces.length; n < count; n++) {
+      const f = packed ? compact.copyFace(src, n) : src.faces[n];
+      geo.faces.push({ i: f.i, color: toneOf(f.color), emissive: EMISSIVE });
+    }
     geo.verts = src.verts;
-    geo.faces = src.faces.map((f) => ({ i: f.i, color: toneOf(f.color), emissive: EMISSIVE }));
     if (src.voxel) geo.voxel = src.voxel;
     geo.glass = GLASS;
     geo.castShadow = false;
+    if (packed) compact.pack(geo, { immutable: true, renderOnly: true, precision: 64 });
     copies.set(src, geo);
     return geo;
   };
