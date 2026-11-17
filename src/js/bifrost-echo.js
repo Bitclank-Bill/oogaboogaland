@@ -97,17 +97,20 @@
     return figure;
   };
 
-  let reducedMotion = false;
-  try { reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch {}
+  // Asked when a visit starts, so a setting changed meanwhile counts.
+  const reducedMotion = () => {
+    try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
+  };
+  // A time in the future (the clock set back since) counts as none, or it would hold the echo off until then.
   const lastSeen = () => {
-    try { const v = Number(localStorage.getItem(KEY)); return Number.isFinite(v) && v > 0 ? v : 0; } catch { return 0; }
+    try { const v = Number(localStorage.getItem(KEY)); return Number.isFinite(v) && v > 0 && v <= Date.now() ? v : 0; } catch { return 0; }
   };
   const markSeen = () => {
     try { localStorage.setItem(KEY, String(Date.now())); } catch {}
   };
   // Whether this visit gets one.
   const roll = () => {
-    if (reducedMotion) return false;
+    if (reducedMotion()) return false;
     const last = lastSeen();
     if (last && Date.now() - last < COOLDOWN) return false;
     return Math.random() < (last ? CHANCE : FIRST);
@@ -322,7 +325,7 @@
       const f = figure || built;
       if (f) for (let i = 0; i < f.nodes.length; i++) if (f.nodes[i].geometry) set.add(f.nodes[i].geometry);
     };
-    return { update, trigger, dispose, pullOf, liveGeometry, get state() { return t < 0 ? (pending ? "pending" : "idle") : t < PHASES.gone ? "playing" : "done"; }, get time() { return t; } };
+    return { update, trigger, dispose, pullOf, liveGeometry, get state() { return t >= 0 ? "playing" : pending ? "pending" : "idle"; }, get time() { return t; } };
   };
 
   BL.bifrostEcho = { create, FIRST, CHANCE, COOLDOWN };
