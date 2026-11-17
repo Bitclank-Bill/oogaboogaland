@@ -1467,8 +1467,14 @@
         const charged = t >= tBurst && t < tFade;
         for (let i = 0; i < dots.length; i++) { const lit = charged && t >= tCharge + (i / dots.length) * T.net * 0.8; if (dots[i]) setScale(dots[i], lit ? 0.9 * after : 0.001); const frontAt = (t - tCharge) / (T.net * 0.8) * dots.length, linkLit = charged && i + 1 <= frontAt && i + 1 > frontAt - 8; if (linksD[i]) setBar(linksD[i], linkLit ? linkLen[i] : 0, linkLit ? 0.6 * after : 0); }
         // ---- the block: on a drop it falls from the ₿ to the glass (5 s), runs the spiral to the newest place (5 s), and a pulse runs back to genesis (5 s) ----
+        // Its fall comes in over the middle, drops straight down through the hologram into the emitter in the drum, and
+        // comes out under the glass at the chain's first place.
         if (block) {
-          if (td >= 0 && td < 5) { const d = ease(td / 5), g0 = chainAt(0), out = Math.min(1, d * 1.6), from = MARK.squares[MARK.drop]; block.position.x = from.x + (g0[0] - from.x) * out; block.position.z = from.z + (g0[1] - from.z) * out; block.position.y = blockTop - (blockTop - blockFloor) * d; block.rotation.y = now * 0.6; setScale(block, 1); }
+          if (td >= 0 && td < 5) {
+            const d = ease(td / 5), g0 = chainAt(0), from = MARK.squares[MARK.drop], y = blockTop - (blockTop - blockFloor) * d, over = MID_TOP + HOLO.foot + HOLO.tall + 0.6;
+            const off = y > over ? 1 - ease((blockTop - y) / (blockTop - over)) : 0, under = y < MID_TOP ? (MID_TOP - y) / (MID_TOP - blockFloor) : 0;
+            block.position.x = from.x * off + g0[0] * under; block.position.z = from.z * off + g0[1] * under; block.position.y = y; block.rotation.y = now * 0.6; setScale(block, 1);
+          }
           else if (td >= 5 && td < 10) { const u = ease((td - 5) / 5), i = u * live.newest, kk = Math.floor(i), f = i - kk, a0 = chainAt(kk), a1 = chainAt(Math.min(POC.chain - 1, kk + 1)); block.position.x = a0[0] + (a1[0] - a0[0]) * f; block.position.z = a0[1] + (a1[1] - a0[1]) * f; block.position.y = blockFloor + (M.chainY - blockFloor) * Math.min(1, u * 3); block.rotation.y = -a0[2]; setScale(block, 0.6); }
           else setScale(block, 0.001);
         }
@@ -1708,6 +1714,10 @@
     let screenState = -2;
     // The hologram's figure, or on the Canvas 2D fallback the flat picture of it in its place.
     const spin = nodes.holoSpin, figure = nodes.holoFigure, sheets = [nodes.holoSheet0, nodes.holoSheet1], flat = drawnBy === "canvas2d";
+    // A falling block's own node, whose height drives the ripple it sends down the figure, and how much of that
+    // ripple is still in the figure once the block has gone.
+    const falling = nodes.pocBlock, figureZ = figure.position.z;
+    let ripple = 0;
     if (flat) { const n = nodes.holoFlat; figure.visible = false; n.geometry = holoFlat(); n.scale.x = n.scale.y = n.scale.z = 1; }
     // The stars of the block's height: where each waits in the sky (`hx`, `hz`), where it
     // scatters to (`gx`, `gz`), its pixel of the line (`tx`, `tz`), when it sets out and how it twinkles.
@@ -1908,8 +1918,15 @@
         // The hologram: it turns about its own middle and rides a little up and down, its sheets of light climb
         // through it one after the other, and every few seconds it jumps aside and blinks.
         spin.rotation.y = now / HOLO.turn * TAU; spin.position.y = MID_TOP + HOLO.foot + 0.035 * Math.sin(now * 0.7);
-        for (let i = 0; i < 2; i++) { const u = (now / 4.5 + i / 2) % 1, n = sheets[i]; n.position.y = -0.05 + u * (HOLO.tall + 0.1); n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, Math.sin(u * Math.PI) * (0.55 + 0.45 * Math.sin(u * Math.PI))); }
-        if (!flat) { const tg = now % 5.7; figure.position.x = tg < 0.07 ? 0.035 : tg < 0.14 ? -0.02 : 0; figure.visible = tg < 0.14 || tg >= 0.19; }
+        // A falling block passes down through the figure, and a ripple runs down it with the block: the two sheets of
+        // light leave their climb and ride at the block's height, bright, and the figure shivers, then settles.
+        const at = falling && falling.scale.x > 0.5 ? falling.position.y - spin.position.y : -1, passing = at > -0.3 && at < HOLO.tall + 0.3;
+        ripple = passing ? 1 : Math.max(0, ripple - dt * 2.5);
+        for (let i = 0; i < 2; i++) {
+          const u = (now / 4.5 + i / 2) % 1, n = sheets[i], k = passing ? 1.25 - 0.35 * i : Math.sin(u * Math.PI) * (0.55 + 0.45 * Math.sin(u * Math.PI));
+          n.position.y = passing ? at + 0.3 * i : -0.05 + u * (HOLO.tall + 0.1); n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, k);
+        }
+        if (!flat) { const tg = now % 5.7; figure.position.x = (tg < 0.07 ? 0.035 : tg < 0.14 ? -0.02 : 0) + ripple * 0.022 * Math.sin(now * 85); figure.position.z = figureZ + ripple * 0.022 * Math.cos(now * 67); figure.visible = tg < 0.14 || tg >= 0.19; }
         // The block's height in stars: out in the sky as the mark locks, together as the block falls, held, scattered.
         { const live = BL.timechainGenesis.live, td = live ? now - live.dropAt : 1e9, T1 = HEIGHT.gather, T2 = T1 + HEIGHT.hold, T3 = T2 + HEIGHT.scatter;
           if (live && live.height > 0 && td >= -HEIGHT.early && td < T3) {
