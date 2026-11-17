@@ -31762,7 +31762,10 @@ const raceRigChecks = async () => {
     // other geometry.
     // The Lightning Jet Hangar's crane adds a second cone light for its safety spot: `uSpotLight` holds two and the
     // shader loops over them (to 4678b5f4); the second is zero in every other scene.
-    "4678b5f4813a79fe30f90883c3221caff2d31a914d4b9a4602fb459a5e065bb1",
+    // The Genesis Museum's hologram is some forty see-through layers of faces that are all their own light: such a
+    // face (emissive 1) now skips the scene's lighting, whose result was mixed away to nothing for it already (to
+    // 30c97593); every other face is shaded as before.
+    "30c975939d13e7556f262abbb723298819159f7df89ef94bd317f41a5c87a179",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
