@@ -103,8 +103,8 @@
     // A challenge made by a blow: when the next may go, and the player whose refusal of it is kept quiet.
     let provokeAt = 0, quiet = 0;
     let countAnim = null, flashAnim = null, resultAnim = null, rightSign = 0;
-    // The spare magazines the visitor's Ooga carried before the duel lent it full ones, and that Ooga.
-    let lentTo = null, sparesBefore = null;
+    // The rounds in the rifle and the spare magazines the visitor's Ooga carried before the duel filled them, and that Ooga.
+    let lentTo = null, loadedBefore = 0, sparesBefore = null;
     // What the panel last showed: each side's health and metres from the flag, and the seconds on its clock.
     const hpShown = [-1, -1], farShown = [-2, -2];
     let timeKey = Infinity;
@@ -166,9 +166,9 @@
       for (let i = 1; i < arrows.length; i++) if (arrows[i].life < slot.life) slot = arrows[i];
       slot.life = ARROW_LIFE; slot.x = from.x; slot.z = from.z; slot.weight = weight;
     };
-    // The duel over, the spare magazines it lent go: the Ooga carries what it came with (the rifle keeps its rounds).
+    // The duel over, its ammunition goes: the Ooga carries the rounds and spare magazines it came with.
     const takeBack = () => {
-      if (lentTo) crew.setSpares(lentTo, sparesBefore);
+      if (lentTo) crew.setAmmo(lentTo, loadedBefore, sparesBefore);
       lentTo = sparesBefore = null;
     };
     // The loser stands stunned: the visitor's own Ooga by the crew's stun, another page's with a wobbling head under
@@ -231,8 +231,8 @@
         // Both start with the rifle and two spare magazines full (each page fills its own), lent for the duel, unless
         // this page joined one under way.
         if (ahead > 0 && pilot.player) {
-          const before = pilot.player.weapon.spareAmmo.slice();
-          if (crew.fillAmmo(pilot.player)) { lentTo = pilot.player; sparesBefore = before; }
+          const loaded = pilot.player.weapon.ammo, before = pilot.player.weapon.spareAmmo.slice();
+          if (crew.fillAmmo(pilot.player)) { lentTo = pilot.player; loadedBefore = loaded; sparesBefore = before; }
         }
         hpShown[0] = hpShown[1] = -1; farShown[0] = farShown[1] = -2; timeKey = Infinity; clockKey = noteKey = -2; note.hidden = true;
         hudBox.hidden = false;

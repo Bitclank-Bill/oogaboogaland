@@ -7077,12 +7077,13 @@
       poseWeapon(cave);
       return true;
     };
-    // An Ooga's spare magazines set to `rounds` (one entry a magazine, two at most): what it carried before a duel
-    // lent it full ones (duel.js), given back as the duel ends.
-    const setSpares = (cave, rounds) => {
+    // An Ooga's rifle set to `loaded` rounds and its spare magazines to `rounds` (one entry a magazine, two at most):
+    // what it carried before a duel filled them (duel.js), given back as the duel ends.
+    const setAmmo = (cave, loaded, rounds) => {
       if (!cave || cave.weapon.parked) return false;
       const w = cave.weapon;
       stopBurst(cave); stopReload(cave, true);
+      w.ammo = Math.floor(clamp(loaded, 0, AMMO_MAX));
       w.spareAmmo.length = 0;
       for (let i = 0; i < rounds.length && i < 2; i++) {
         if (!cave.magazineModels[i]) cave.magazineModels[i] = createMagazineModel();
@@ -8210,7 +8211,7 @@
       get combatEnabled() { return combatEnabled; },
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, resumeFromHost, sleepDiagnostics, refreshRosterRow, updateFan, rush, pokeCave, idleSay, drawDrops,
-      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, stun, fillAmmo, setSpares, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
+      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, stun, fillAmmo, setAmmo, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
       actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, aimTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       // The driven Ooga's steering as last set, the world direction in `x` and `z`; live, not a copy.
