@@ -24,7 +24,7 @@ const app = join(root, "src", "ooga-chat");
 export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/donations.js", "../js/banana-panel.js", "../js/qr.js", "../js/banana-icon.js",
   "../js/jumbotron-font.js", "../js/factory-kiosk-core.js", "../js/factory-kiosk.js", "../js/donation-popup.js", "../js/chat-policy.js", "../js/emoji-data.js", "../js/reaction-policy.js",
   "../js/zone-map.js", "../js/commons-log.js", "../js/format-large.js", "../js/roster-panel.js", "../js/contributor-identities.js", "../js/activity-repos.js",
-  "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js"];
+  "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js"];
 // What a first visit may cost over the wire (index.html, the script, the stylesheet and the art it shows), gzipped. The
 // staged foundation measured about 91 KB, most of it the sign-in picture. The original picture at Retina size (about
 // 80 KB in place of the 430-pixel stand-in's 58), the island's Bananas panel with donations.js (#656, about 15 KB) and

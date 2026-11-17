@@ -595,10 +595,13 @@ Every line reaches every player and member once, with the island's own `{ t: "ch
 the island's for that account when it has one, so a line reads the same from either app.
 
 **Online Oogas, without positions.** The member's welcome is `{ t: "community", v: 1, op: "welcome", epoch, send, you:
-{ id, login, display }, players: [...], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
+{ id, login, display }, players: [...], duels: [{ id, a, b }], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
 display, body, zone, voice, muted, hand, handTone, handEmoji }`, and after that only the Room's `join`, `leave`, `body`,
-`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. No pose, snapshot, distance, NPC frame, SFU id,
-voice link, private-conversation frame, reaction over a body, game state or chalk ever reaches a member.
+`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. For optional local duel muting, the member also
+receives `{ t: "duel", op: "start", id, a, b }` and `{ t: "duel", op: "end", id }`: only active pair ids, stripped
+from the island's frames. The initial pairs are rebuilt from the room's restored duel records. Challenges, health,
+positions and results are never relayed, and the member cannot send duel actions. No pose, position snapshot, distance,
+NPC frame, SFU id, voice link, private-conversation frame, reaction over a body, other game state or chalk reaches a member.
 
 **The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
 `commonsHistory` the `chat-history` after it, `onlineDelta` the relayed `join`, `leave`, `body`, `zone`, `vstate` and
