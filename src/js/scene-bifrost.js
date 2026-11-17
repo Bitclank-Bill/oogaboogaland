@@ -758,7 +758,8 @@
       hall: { r: HALL.r, inHall: (p) => Math.hypot(p.x, p.z) < HALL.r - 1 },
       nearness, mine: () => userPull,
       cue: (name) => audio.cue(name),
-      prepare: (geometry) => ctx.renderer.prepareGeometry(geometry)
+      prepare: (geometry) => ctx.renderer.prepareGeometry(geometry),
+      busy: () => leaving || !!document.querySelector("dialog[open]")
     }) : null;
     lightUp(scene);
     leaving = false;

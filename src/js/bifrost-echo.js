@@ -19,8 +19,9 @@
 // Whether a visit gets one is rolled when it starts (`roll`): `FIRST` on a browser's first visit and `CHANCE` after,
 // never within `COOLDOWN` of the last one seen, which counts from the moment a double appears, so one cut short by
 // leaving before it shows is not spent; never when the visitor asks for reduced motion. It waits for the Ooga to reach
-// the hall, then `DELAY` seconds and a few more. `trigger` plays one at once, and `?debug=1&echo=1` gives every visit
-// one after `FORCED` seconds, for review.
+// the hall, then `DELAY` seconds and a few more, counted only while the visitor is not leaving or reading a dialog over
+// the chamber (`busy`). `trigger` plays one at once, and `?debug=1&echo=1` gives every visit one after `FORCED`
+// seconds, for review.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -115,8 +116,8 @@
   // `nearness(w, p)` how near (0 to 1) a point stands to a window, as the scene measures it; `mine()` the Ooga's own
   // nearness to the nearest open window; `cue` plays the chamber's sound; `pilot` says how the visitor is viewing (its
   // `mode`, and the view's `orbit.yaw` for a view looking straight down); `prepare(geometry)` uploads a mesh ahead of
-  // its first draw.
-  const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, nearness, mine, cue, prepare }) => {
+  // its first draw; `busy()` that the visitor is leaving or reading something over the chamber, which the wait holds for.
+  const create = ({ root, fx, camera, avatar, pilot, hall, windows, glyph, nearness, mine, cue, prepare, busy }) => {
     let pending = windows.length > 0 && (FORCE || roll()), wait = FORCE ? FORCED : DELAY[0] + Math.random() * DELAY[1], t = -1, figure = null, to = null;
     // A visit that will have one builds its double now, while the visit is entered behind the fade, and uploads its
     // meshes, so the moment it appears costs nothing; `liveGeometry` keeps them until then.
@@ -126,7 +127,7 @@
       return f;
     };
     let built = pending ? build() : null;
-    let flicker = 0, moteIn = 0, ripples = 0, pull = 0, presence = 0, dissolve = -1;
+    let flicker = 0, moteIn = 0, ripples = 0, pull = 0, presence = 0, dissolve = -1, seen = false;
     const S = { x: 0, y: 0, z: 0 }, P = { x: 0, y: 0, z: 0 }, path = { a0: 0, da: 0, r0: 0, r1: 0, dip: 0, y0: 0, y1: 0 };
     const yawTo = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
     const turnTo = (rot, want, k) => {
@@ -162,8 +163,7 @@
       g.scale.x = g.scale.y = g.scale.z = 0.92;
       setFade(0);
       addChild(root, g);
-      t = 0; flicker = 1; ripples = 0; pull = 0; dissolve = -1;
-      markSeen();
+      t = 0; flicker = 1; ripples = 0; pull = 0; dissolve = -1; seen = false;
       cue("echo-stir");
     };
     // Dressed as the Ooga is now; a pet, which walks beside the Ooga rather than on it, stays behind.
@@ -179,6 +179,8 @@
     const setFade = (k, glow = 1) => {
       const nodes = figure.nodes;
       presence = k;
+      // The cooldown counts from the first moment the double can be seen.
+      if (k > 0 && !seen) { seen = true; markSeen(); }
       for (let i = 0; i < nodes.length; i++) { nodes[i].smokeOpacity = k; nodes[i].glow = glow; }
     };
     const pose = (arms, legs, lean) => {
@@ -203,7 +205,7 @@
     const update = (dt) => {
       if (t < 0) {
         if (!pending) return;
-        if (!hall.inHall(avatar.root.position) || mine() > QUIET) return;
+        if (!hall.inHall(avatar.root.position) || mine() > QUIET || busy()) return;
         if ((wait -= dt) > 0) return;
         pending = false;
         start();
