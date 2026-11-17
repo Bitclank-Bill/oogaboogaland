@@ -796,6 +796,13 @@
     AT.across = p.x * w.c - p.z * w.sn;
     return AT;
   };
+  // How near (0 to 1) a point stands to an open window, as its glow, its rim and the mechanism answer: fully from `NEAR`
+  // metres of its opening, nothing from `FAR`, eased.
+  const nearness = (w, p) => {
+    const at = against(w, p), d = Math.hypot(Math.max(0, -at.along), Math.max(0, Math.abs(at.across) - WINDOW.halfW));
+    const want = clamp((FAR - d) / (FAR - NEAR), 0, 1);
+    return want * want * (3 - 2 * want);
+  };
   // Cross the glass itself, retaining the step's overshoot. The emerging
   // character is inside the destination plane, so holding forward cannot
   // immediately send them through it again.
@@ -1043,8 +1050,7 @@
     for (let i = 0; i < s.windows.length; i++) {
       const w = s.windows[i];
       if (w.kind === "travel") {
-        const at = against(w, who), d = Math.hypot(Math.max(0, -at.along), Math.max(0, Math.abs(at.across) - WINDOW.halfW));
-        const want = clamp((FAR - d) / (FAR - NEAR), 0, 1), k = want * want * (3 - 2 * want), o = w.light * 8, power = 0.7 + 2.6 * w.near;
+        const k = nearness(w, who), o = w.light * 8, power = 0.7 + 2.6 * w.near;
         w.near += (k - w.near) * Math.min(1, dt * EASE);
         w.neon.glow = 1 + BRIGHTEN * w.near;
         const rim = w.rims[Math.min(BM.RIM_STEPS - 1, Math.floor(w.near * BM.RIM_STEPS))];
