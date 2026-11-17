@@ -3,9 +3,10 @@
 // pre-started voices gated by gain, one noise loop, and nothing allocated per frame or per cue.
 //
 // Its bed is the mechanism's resonance: a deep, warm drone whose tone breathes slowly, and under it a heartbeat, a
-// subliminal swell (hummm ... hummm) that quickens and deepens as the mechanism charges. The charge sets the rhythm
-// and the strength, never the pitch, so a fast spin never whines. Now and then a metallic resonance sweeps round the
-// room as the rings turn, and distant crystal chimes ring out. Every open world has its own harmonic signature
+// subliminal swell (hummm ... hummm) that quickens and deepens as the mechanism charges, and a little as the view
+// looks up into the dome, where the ₿ spins faster. The charge sets the rhythm and the strength, never the pitch, so a
+// fast spin never whines. Now and then a metallic resonance sweeps round the room as the rings turn, and distant
+// crystal chimes ring out. Every open world has its own harmonic signature
 // (`SIGNATURES`, by its window's id): as an Ooga nears its window the machine tunes toward it, the world's chord
 // emerging under the drone from the window's side, pulsing faster as the charge builds; crystalline for DSB Land,
 // brighter and wavering for the poker room. Looking up at the dome makes it ethereal: a thinner drone under airy
@@ -295,9 +296,11 @@
       charge = room.charge;
       // The heartbeat runs a little ahead of the clock so no frame's lateness skips one.
       if (nextBeat < now) nextBeat = now + 0.05;
+      // Looking up quickens it a little too, as the ₿ spins faster under the dome.
+      const drive = Math.min(1, charge + 0.35 * gaze);
       while (nextBeat < now + 0.25) {
-        beat(nextBeat, charge);
-        nextBeat += BEAT[0] + (BEAT[1] - BEAT[0]) * charge;
+        beat(nextBeat, drive);
+        nextBeat += BEAT[0] + (BEAT[1] - BEAT[0]) * drive;
       }
       since += dt;
       if (since < 0.1) return;
