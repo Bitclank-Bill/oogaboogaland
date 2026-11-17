@@ -1458,10 +1458,30 @@
     return merge(...parts);
   });
   // A miner's fan, the scene spins it: a dark hub and four blades, facing +z.
-  const minerFan = cached(() => {
-    const parts = [box({ w: 0.1, h: 0.1, d: 0.03, color: "#5a5f66" })];
-    for (let k = 0; k < 4; k++) parts.push(BL.models.turnedZ(box({ w: 0.07, h: 0.17, d: 0.02, color: "#3a3f46", offset: { y: 0.11 } }), k * Math.PI / 2 + 0.3));
+  const minerFan = () => {
+    const parts = [plate({ w: 0.1, h: 0.1, color: "#5a5f66", z: 0.015 })];
+    for (let k = 0; k < 4; k++) parts.push(turnedZ(plate({ w: 0.07, h: 0.17, color: "#3a3f46", y: 0.11, z: 0.01 }), k * Math.PI / 2 + 0.3));
     return merge(...parts);
+  };
+  // Every miner wall's fans in one mesh, all turned `k` of `FAN_STEPS` steps through a quarter turn (four blades look
+  // the same a quarter turn on): the scene shows one at a time to spin them, as it swaps the LEDs. A fan on every other
+  // miner of two rows, on each face of each wall, flat on the face.
+  const FAN_STEPS = 3;
+  const minerFans = variants((k) => {
+    const M = SIM.ARENAS.clank, parts = [];
+    for (const b of M.BLOCKS) {
+      if ((b[5] || 0) !== 0 || Math.abs(b[4] - SIM.MINER_H) > 0.01 || Math.min(b[1] - b[0], b[3] - b[2]) > 0.85) continue;
+      const along = b[1] - b[0] >= b[3] - b[2], len = along ? b[1] - b[0] : b[3] - b[2], n = Math.max(1, Math.round(len / MINER_W)), step = len / n, thin = along ? b[3] - b[2] : b[1] - b[0];
+      for (let i = 0; i < n; i++) for (const j of [1, 4]) for (const s of [-1, 1]) {
+        const c = (along ? b[0] : b[2]) + (i + 0.5) * step, y = (j + 0.5) * MINER_ROW;
+        const x = along ? c : (b[0] + b[1]) / 2 + s * (thin / 2 + 0.05), z = along ? (b[2] + b[3]) / 2 + s * (thin / 2 + 0.05) : c;
+        const turn = along ? (s > 0 ? 0 : Math.PI) : (s > 0 ? Math.PI / 2 : -Math.PI / 2);
+        parts.push(moved(turnedY(turnedZ(minerFan(), (i + j) * 0.7 + k * Math.PI / 2 / FAN_STEPS), turn), x, y, z));
+      }
+    }
+    const geo = merge(...parts);
+    geo.castShadow = false;
+    return geo;
   });
   // A status LED strip for a miner wall, alternately lit (the scene swaps the two): `k` 0 or 1.
   const minerLeds = variants((k) => {
@@ -1523,5 +1543,5 @@
   const clankVisor = variants((k) => { const s = k / 100; return merge(box({ w: 7.4 * s, h: 1.6 * s, d: 0.7 * s, color: "#ff2a2a", emissive: 1, offset: { y: 4.3 * s, z: 5.35 * s } }), box({ w: 0.4 * s, h: 3.4 * s, d: 0.4 * s, color: "#c9ced6", offset: { x: 2.6 * s, y: 8.3 * s, z: 1 * s } }), box({ w: 0.9 * s, h: 0.9 * s, d: 0.9 * s, color: "#ff2a2a", emissive: 1, offset: { x: 2.6 * s, y: 10.4 * s, z: 1 * s } })); });
   // A free-standing stack of miners, as the server rooms' walls are built: the mirage's phantom landmarks.
   const minerStack = cached(() => { const parts = [], b = [-1.25, 1.25, -0.4, 0.4, SIM.MINER_H, 0]; clankBlock(parts, b, 2.5, 0.8, SIM.MINER_H, 0, SIM.MINER_H / 2, 0, 0); return merge(...parts); });
-  BL.blockModels = { hookHead, rope, minerStack, clankDress, minerFan, minerLeds, firewallBeams, vent, gpuPile, smogMoon, clankArm, clankVisor, SLOGANS, goldBlock, trophyRays, muzzleFlash, isle, keel, puddle, hauntDress, hauntMoon, mist, townDress, jungleRing, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, gun, ladder, rack, zipline, zipLight, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, minerStack, clankDress, FAN_STEPS, minerFans, minerLeds, firewallBeams, vent, gpuPile, smogMoon, clankArm, clankVisor, SLOGANS, goldBlock, trophyRays, muzzleFlash, isle, keel, puddle, hauntDress, hauntMoon, mist, townDress, jungleRing, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, gun, ladder, rack, zipline, zipLight, trolley, cache, SPLATS: 6 };
 })();
