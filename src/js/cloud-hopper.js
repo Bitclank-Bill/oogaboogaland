@@ -48,10 +48,14 @@
   // motion). The rider goes on as it was going, its speed and the controls held untouched, so it steers all through
   // the roll; only its height is taken from it, for the roll's first TURN_HOLD seconds, while it is lowered TURN_DROP
   // metres under where it was, below the clouds. Then, the world still rolling, it is let go with a jetpack worn and
-  // at least CLIMB_FUEL of a tank to fly back up to them. One that falls CLIMB_FALL metres before its first landing
+  // just the fuel to fly back up to them (`climbFuel`: what the pack burns lifting it to the height it was lowered
+  // from, thrust coming CLIMB_LATE seconds late, to CLIMB_OVER over it, and holding it up for any way still to fly to
+  // the nearest landing, and CLIMB_SPARE of that; a rider holding more keeps its own). One that falls CLIMB_FALL
+  // metres before its first landing
   // starts the climb again, once, at rest, from under where the roll began; from then on, as after that first
   // landing, a fall is lost as any other is. It changes nothing of the course.
-  const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FUEL = 0.7, CLIMB_FALL = 30;
+  const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FALL = 30;
+  const CLIMB_LATE = 0.3, CLIMB_OVER = 0.5, CLIMB_SPARE = 1.15;
   // A portal cloud throws the rider that touches it on down the course: over WARP_SECONDS the Ooga, unseen, streaks
   // to a landing as SPARKS violet sparkles trailing WARP_TRAIL metres, the view gliding after it, and comes out WARP_EDGE inside the
   // landing's near side and WARP_OVER above it, with the speed it went in with (no more than carries it across the
@@ -135,7 +139,7 @@
     const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 };
     // Where the roll stands (`rolled`), and where it will stand as this frame is drawn (`drawnTurn`).
     const rolled = { turn: 0, x: 0, y: 0, z: 0 }, drawnTurn = { turn: 0, x: 0, y: 0, z: 0 };
-    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, riderParent = null, petParent = null, viewTurned = false, trueUp = null, nightSky = false;
+    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, climbTo = 0, riderParent = null, petParent = null, viewTurned = false, trueUp = null, nightSky = false;
     // A portal's warp: the seconds into it (-1 none) from `warpFrom` to the landing `warpTo`, where it comes out
     // (`warpAt`), the speed carried through, the seconds into its puff (-1 none), the portal that flashed and when,
     // and until when no tornado takes the rider.
@@ -265,6 +269,7 @@
     const beginTurn = (level) => {
       const p = actor.root.position;
       turning = 0; turnFrom = turn; lowering = true; climbing = rescued = false;
+      climbTo = Math.max(p.y - actor.baseY, level);
       Object.assign(turnHeld, p); Object.assign(checkpoint, p);
       checkpoint.y = Math.min(p.y, Math.max(p.y - TURN_DROP, level + actor.baseY - TURN_DROP, ctx.seaY + actor.baseY + CLIMB_FALL + 10));
       if (turn === 0) Object.assign(turnPivot, p);
@@ -278,11 +283,28 @@
       }
       audio.turnOver(); audio.turned(turn === 0);
     };
-    // The climb's jetpack on the rider with fuel for it. It goes on as the roll starts, not as the rider is let go:
-    // Space pressed with no pack worn is a jump's press, never thrust however long it is held, so a player pressing it
-    // during the roll would be let go with no lift until it pressed again.
+    // The fuel for the climb, as a share of the rider's tank, by the pack's own figures: its thrust against gravity up
+    // to its rising speed, a tank burning for JET_FUEL_SECONDS of thrust. Thrust coming CLIMB_LATE seconds late (the
+    // rider fallen and still falling by then), what it burns to lift the rider from where it is to CLIMB_OVER over
+    // the height the roll lowered it from (`climbTo`); if the nearest landing showing is further off than it flies
+    // meanwhile at a walk (the speed of its flight's own carrying it on first), what holds it up the rest of the way;
+    // and CLIMB_SPARE of the sum, no more than a tank.
+    const climbFuel = () => {
+      const p = actor.root.position, feet = p.y - actor.baseY, g = BL.pilot.WALK.gravity, lift = BL.crew.JET_ACCEL - g, top = BL.crew.JET_RISE - g / 60;
+      const down = g * CLIMB_LATE, rise = Math.max(0, climbTo - feet) + CLIMB_OVER + 0.5 * g * CLIMB_LATE * CLIMB_LATE;
+      const spin = (top + down) / lift, gained = 0.5 * lift * spin * spin - down * spin;
+      const burn = rise <= gained ? (down + Math.sqrt(down * down + 2 * lift * rise)) / lift : spin + (rise - gained) / top;
+      let off = Infinity;
+      for (const c of course.landings) if (c.active) off = Math.min(off, Math.hypot(c.x - p.x, c.z - p.z) - Math.min(c.rx, c.rz));
+      const carried = actor.leap.thrown ? 0 : Math.hypot(actor.leap.vx, actor.leap.vz) / BL.pilot.WALK.ledgeDrag;
+      const hover = Math.max(0, (Math.max(0, off) + carried) / BL.pilot.WALK.speed - CLIMB_LATE - burn) * g / BL.crew.JET_ACCEL;
+      const tank = actor.traits.jetTank > 0 ? actor.traits.jetTank : 1;
+      return Math.min(1, (burn + hover) * CLIMB_SPARE / (BL.crew.JET_FUEL_SECONDS * tank));
+    };
+    // The climb's jetpack on the rider. It goes on as the roll starts, not as the rider is let go: Space pressed with
+    // no pack worn is a jump's press, never thrust however long it is held, so a player pressing it during the roll
+    // would be let go with no lift until it pressed again. Its fuel comes as the rider is let go.
     const packUp = () => {
-      actor.jetFuel = Math.max(actor.jetFuel, CLIMB_FUEL);
       if (!actor.jetpackOwned) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       if (!actor.jet) crew.wearJetpack(actor, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       actor.jetRecovering = false; pilot.showAct();
@@ -295,7 +317,7 @@
       if (again) { Object.assign(p, checkpoint); leap.vx = leap.vz = 0; }
       else p.y = checkpoint.y;
       actor.hop = 1; actor.hopV = 0; actor.jumps = 1; leap.land = 0;
-      packUp(); climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
+      packUp(); actor.jetFuel = Math.max(actor.jetFuel, climbFuel()); climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
     };
     // Where a roll stands `t` seconds in, into `out`: how far the world has turned and the point its axis goes
     // through; whether it is over (upside down round where it began after the first, upright after the second).

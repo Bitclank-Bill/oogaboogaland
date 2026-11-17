@@ -810,7 +810,9 @@ bounces on (a boost cloud's arrows show there too). Every cloud's place, height 
 jump, fade, hook throw, gust and tornado plays as it does upright. The sky's roll is the view's alone, so no node of
 the island's changes and the run's physics are untouched; the run is drawn turned back to match, and what reads the
 view (the hook's aim, the overlay) reads the run's own. The rider is
-let go with the jetpack worn and 70% of a tank to climb back onto the same course, and a fall of 30 m before landing
+let go with the jetpack worn and just the fuel to climb back onto the same course (what the pack burns lifting it to
+0.5 m over the height it was lowered from with thrust 0.3 s late, plus 15%: about 29% of a tank for the 8 m; a rider
+holding more keeps its own), and a fall of 30 m before landing
 puts it back once, at rest, under where the roll began; a second fall from that climb, and any fall after that
 landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down
 (their instanced batches are turned back with the run as they are written). It never strikes during a climb or a warp, nor for 1.5 s after one, nor on a rider
