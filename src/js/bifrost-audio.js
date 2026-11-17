@@ -17,9 +17,9 @@
 // Its cues are the chamber's moments: `arrive` (the whoom of crossing a field, the hum coming up under it and the
 // ₿IFRÖST signature struck over it), `burst` (the rings' sweeping resonance and a surge up the beam, in the world's
 // signature), `cross` (the dimensional jump into a world, in its signature), `mirror` (stepping through a linked
-// mirror), `leave` (back out through a field, the hum going with it) and `stay` (a crossing that could not go, the
-// hum coming back). It honours the page-wide mute, and `dispose` closes it. `heard` counts every cue asked for, heard
-// or not.
+// mirror), `leave` (back out through a field, the hum going with it), `stay` (a crossing that could not go, the
+// hum coming back) and the Dimensional Echo's five (`echo-stir`, `echo-rise`, `echo-look`, `echo-fly`, `echo-cross`).
+// It honours the page-wide mute, and `dispose` closes it. `heard` counts every cue asked for, heard or not.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -265,7 +265,34 @@
         fade(0, 0, 0.18);
       },
       // A crossing that could not go: the hum comes back.
-      stay: () => fade(1, 0, 0.6)
+      stay: () => fade(1, 0, 0.6),
+      // The Dimensional Echo (bifrost-echo.js): the stir, a crystal chime swelling in reverse as the hum dips; the double
+      // drawing out, a rising resonance; its look, a brief, strange harmony; its flight, a soft rush gathering speed; and
+      // its crossing, a deep pulse and a fading shimmer as the hum comes back.
+      "echo-stir": () => {
+        tone(0, "sine", ROOT * 24, ROOT * 24, 1, 0.045, 0.85, 0.2);
+        tone(0, "sine", ROOT * 36, ROOT * 36, 0.95, 0.015, 0.8, -0.2);
+        fade(0.55, 0, 0.5);
+      },
+      "echo-rise": () => {
+        tone(0, "sine", ROOT * 4, ROOT * 8, 1.7, 0.05, 0.9);
+        tone(0.1, "sine", ROOT * 6, ROOT * 12, 1.6, 0.03, 0.9, 0.3);
+      },
+      "echo-look": () => {
+        bell(0, ROOT * 8, 2.2, 0.035, -0.2);
+        bell(0.14, ROOT * 11.25, 2, 0.025, 0.2);
+        tone(0, "sine", ROOT * 2, ROOT * 2, 1.6, 0.05, 0.3);
+      },
+      "echo-fly": () => {
+        hiss(0, "bandpass", 250, 3200, 1.6, 3, 0.06, 2.4);
+        tone(0, "sine", ROOT * 2, ROOT * 6, 3, 0.03, 2.5);
+      },
+      "echo-cross": () => {
+        tone(0, "sine", 90, 48, 1.2, 0.22, 0.02);
+        tone(0, "triangle", 180, 96, 1, 0.05, 0.02);
+        tone(0.1, "sine", ROOT * 32, ROOT * 24, 2.6, 0.018, 0.05, 0.3, -0.3);
+        fade(1, 1.2, 1);
+      }
     };
     const heard = {};
     for (const name in CUES) heard[name] = 0;
