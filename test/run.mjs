@@ -22758,44 +22758,23 @@ const timechainPortal = { name: "timechain portal", why: "contract: the Genesis 
       && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
       && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
 } };
-// Either face of the whitepaper's tablet, the page and the hologram's lens, turned to the visitor and held: a click on it and
-// Space in front of it each open the paper.
-const timechainTablet = { name: "timechain tablet", why: "contract: either face of the whitepaper's tablet, the page or the hologram, opens the paper by a click and by Space", run: async (b) => {
+// The hologram over the middle plinth is the way to the paper: a click on the figure and Space in front of it each
+// open the pop-up about the paper, and the pop-up's button opens the large reader.
+const timechainHologram = { name: "timechain hologram", why: "contract: the hologram on the middle plinth opens the whitepaper's pop-up by a click and by Space, and the pop-up leads to the reader", run: async (b) => {
   await b.evaluate(genesisGo);
-  const opened = `(() => { const B = window.__ooga; B.advance(0.3, 1 / 30); const open = document.getElementById("wp-reader").open || document.getElementById("model-modal").open; BL.timechainGenesis.readerClose(); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
-  const faces = [];
-  for (const [face, node, turn] of [["page", "wpPage", 0], ["hologram", "holoLens", Math.PI]]) {
-    const at = await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis; G.holdTurn = ${turn}; B.pilot.navigate({ position: { x: 0, y: 0, z: 3 }, yaw: 0, pitch: -0.3, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30); const w = B.timechain.built.nodes.${node}.world, p = B.renderer.project(w[12], w[13], w[14]); return { x: p.x, y: p.y, toward: w[14] }; })()`);
-    await b.click(at.x, at.y);
-    const click = await b.evaluate(opened);
-    await b.key(" ");
-    faces.push({ face, toward: +at.toward.toFixed(2), click, space: await b.evaluate(opened) });
-  }
-  await b.evaluate("(() => { BL.timechainGenesis.holdTurn = null; })()");
-  record("timechain tablet: the page's face and the hologram's, each turned to the visitor, open the paper by a click on the face and by Space in front of it",
-    faces.every(f => f.toward > 0 && f.click && f.space), JSON.stringify(faces));
+  const at = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.navigate({ position: { x: 0, y: 0, z: 3 }, yaw: 0, pitch: -0.3, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30); const w = B.timechain.built.nodes.holoSpin.world, p = B.renderer.project(w[12], w[13] + 1.1, w[14]); return { x: p.x, y: p.y }; })()`);
+  // Whether the pop-up alone stands open (the pages may still be on their way), closed again for the next press.
+  const popup = `(async () => { const B = window.__ooga, m = document.getElementById("model-modal"); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const open = m.open && !document.getElementById("wp-reader").open; BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
+  await b.click(at.x, at.y);
+  const click = await b.evaluate(popup);
+  await b.key(" ");
+  const space = await b.evaluate(popup);
+  const reader = await b.evaluate(`(async () => { const B = window.__ooga, G = BL.timechainGenesis, m = document.getElementById("model-modal"); G.readPaper(); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const button = [...m.querySelectorAll("button")].find(e => /READ THE WHITEPAPER/.test(e.textContent)); if (button) button.click(); B.advance(0.3, 1 / 30); const open = document.getElementById("wp-reader").open; G.readerClose(); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return !!button && open; })()`);
+  record("timechain hologram: a click on the figure over the middle plinth and Space in front of it each open the pop-up about the whitepaper, and its button opens the reader",
+    click && space && reader, JSON.stringify({ click, space, reader }));
 } };
 // Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
 const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
-const timechainPaper = { name: "timechain paper", why: "regression: the whitepaper's standing page was drawn from the decoded strip, which is let go once its pages are cut, so the face stayed blank", run: async (b) => {
-  // Dark pixels on the face's own canvas, read once it has been painted over its blank fill.
-  const face = async () => {
-    const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.room.id === 8 && B.timechain.built.nodes.wpPage.geometry.imageSurface.version > 1', 20000);
-    return b.evaluate(`(() => { const s = __ooga.timechain.built.nodes.wpPage.geometry.imageSurface, c = s.canvas, d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let ink = 0;
-      for (let i = 0; i < d.length; i += 4) if (d[i] < 110) ink++;
-      return { painted: ${painted}, version: s.version, ink, pages: BL.whitepaperPages.pages.length }; })()`);
-  };
-  await untilPage(b, 'B.scene === "timechain" && B.timechain && !B.transitioning', 20000);
-  const arrive = () => b.evaluate(genesisGo);
-  const loaded = await b.evaluate(`BL.whitepaperPages ? BL.whitepaperPages.pages.length : -1`);
-  await arrive();
-  const first = await face();
-  await tourGo(b, "hub");
-  await arrive();
-  const again = await face();
-  record("timechain paper: the whitepaper's standing page shows page 1 on the first visit, before any page had been cut, and again on coming back",
-    loaded <= 0 && [first, again].every(f => f.painted && f.pages === 9 && f.ink > 5000), JSON.stringify({ loaded, first, again }));
-} };
 const timechainMark = { name: "timechain mark", why: "regression: the stream's dots ended their flight in front of the mark's squares and a landing's spark swelled over its neighbours, so squares no dot had reached flashed yellow", run: async (b) => {
   await untilPage(b, 'B.scene === "timechain" && B.timechain && !B.transitioning', 20000);
   await b.evaluate(genesisGo);
@@ -22850,7 +22829,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainPaper, timechainMark, timechainTablet, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainHologram, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 scene("hub", { label: "chilling", query: "status=chillin&pos=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.

@@ -603,7 +603,7 @@
       gave: "The pieces joined: signatures, a timestamp chain of proof of work, the longest chain", missing: "The network, nine weeks away",
       about: "Satoshi Nakamoto posted the paper to the cryptography mailing list on 31 October 2008: \"A purely peer-to-peer version of electronic cash\", in nine pages. Coins are chains of signatures; a network of nodes timestamps transactions into a chain of hash-based proof of work; the longest chain is the record, and honest nodes win while they hold most of the CPU power. Its references: b-money, Massias et al., Haber and Stornetta (three papers), Hashcash, Merkle, and Feller on probability.",
       specs: [["Author", "Satoshi Nakamoto"], ["Posted", "cryptography list, 31 Oct 2008, 18:10 UTC"], ["Length", "9 pages, 8 references"], ["Cited here", "b-money [1], Hashcash [6], Merkle [7]"], ["Also cited", "Massias et al. [2]; Haber & Stornetta [3][4][5]; Feller [8]"], ["Software", "Bitcoin 0.1, released 9 Jan 2009"]],
-      note: "The real paper: the first page on the lectern and in this pop-up, all nine pages in the reader (Space at the lectern), reproduced unchanged from the PDF bitcoin.org serves under the MIT licence.", sources: [SRC.paper, SRC.announce, SRC.byzantine] },
+      note: "The real paper: its first page in this pop-up, all nine pages in the reader, reproduced unchanged from the PDF bitcoin.org serves under the MIT licence.", sources: [SRC.paper, SRC.announce, SRC.byzantine] },
     { key: "genesis", year: 2009.01, when: "3 JAN 2009", title: "BLOCK 0", name: "The genesis block", link: "named", part: "genesis",
       line: "18:15:05 UTC. One transaction, fifty unspendable bitcoin, and a headline from the day's paper.",
       gave: "The first link of the chain", missing: "Nothing. Block 1 followed on 9 January",
@@ -910,12 +910,10 @@
   // only down to a legible floor (`PX_MIN`), and each block's box recorded (`INSCRIPTIONS`) for the overflow audit.
   const PX_MIN = 0.0046, PX_MAX = 0.0062, MARGIN = 0.11;
   const INSCRIPTIONS = [];
-  // Every other line of words with a width to keep (cards, screens, the title side, the door's inscription) is
+  // Every other line of words with a width to keep (cards, screens, the door's inscription) is
   // measured where it is made and added to the same table: `w` against `faceW`, both in that surface's own unit.
   const FIT_SEEN = new Set();
   const fitRec = (plinth, face, faceW, w, limit = 0.92) => { const key = `${plinth}|${face}`; if (FIT_SEEN.has(key)) return; FIT_SEEN.add(key); INSCRIPTIONS.push({ plinth, face, faceW, w, limit, fits: w <= faceW * limit + 1e-6 }); };
-  // A line of the pixel letters on a canvas, a size smaller at a time until it is no wider than `max`, and recorded.
-  const pixFit = (ctx, text, x, y, size, color, max, plinth, face, faceW) => { while (size > 12 && P.pixWidth(text, size) > max) size--; P.pix(ctx, text, x, y, size, color); fitRec(plinth, face, faceW, P.pixWidth(text, size)); };
   const widthOfText = (t, px) => BL.jumbotron.text.measureText(t, px);
   const wrapTo = (text, px, maxW) => { const lines = []; let line = ""; for (const w of text.split(" ")) { const t = line ? `${line} ${w}` : w; if (widthOfText(t, px) > maxW && line) { lines.push(line); line = w; } else line = t; } lines.push(line); return lines; };
   // Lines for `blocks` ([text, sizeFactor, lead]) at the largest size from PX_MAX down to PX_MIN that fits the face.
@@ -1142,18 +1140,17 @@
     cx.fillStyle = g; cx.fillRect(0, 0, N, N);
     return lightPicture(cv, size, size, bright);
   });
-  // ---------- the hologram in front of the tablet ----------
+  // ---------- the hologram over the middle ----------
   // The Temple's statue (timechain-room-temple.js: its replica of Valentina Picozzi's statue of Satoshi in Lugano,
-  // made with her permission) stands in the air in front of the tablet's dark face as a hologram, thrown by a lens
-  // in that face: the Temple's own built model, its shape untouched, `tall` metres high, its foot `foot` over the
-  // turntable and its middle `out` from the tablet's, riding round with the tablet and turning once in `turn`
-  // seconds about its own middle. A display treatment alone: the Temple's surface is drawn as it is, each face given
-  // the hologram's light in place of steel, as bright as the Temple's own light left it, fainter toward the seat,
-  // every other row of its height a shade darker (its scanlines); drawn as glass, which lets the layers show through
-  // one another and brightens every edge turned away from the eye. The foot stands over the visitor's eye, so where
-  // the figure swings out past the drum it passes overhead. `w`, `h` and `yaw` are the flat picture of it that the
+  // made with her permission) stands in the air over the middle plinth as a hologram, alone there, thrown up by an
+  // emitter set into the plinth's top: the Temple's own built model, its shape untouched, `tall` metres high, its
+  // foot `foot` over the plinth, turning once in `turn` seconds about its own middle so it faces everyone round the
+  // room in turn. A display treatment alone: the Temple's surface is drawn as it is, each face given the hologram's
+  // light in place of steel, as bright as the Temple's own light left it, fainter toward the seat, every other row
+  // of its height a shade darker (its scanlines); drawn as glass, which lets the layers show through one another
+  // and brightens every edge turned away from the eye. `w`, `h` and `yaw` are the flat picture of it that the
   // Canvas 2D fallback shows instead (`holoCanvas`).
-  const HOLO = { tall: 2, foot: 0.6, out: 1.2, turn: 36, glass: 0.2, band: 0.009, shades: 7, w: 520, h: 672, yaw: -58 * DEG, canvas: null };
+  const HOLO = { tall: 2.2, foot: 0.75, turn: 36, glass: 0.3, band: 0.009, shades: 7, w: 520, h: 672, yaw: -58 * DEG, canvas: null };
   const holoCanvas = () => {
     if (HOLO.canvas) return HOLO.canvas;
     const W = HOLO.w, H = HOLO.h, cv = CH.canvas(W, H), ctx = cv.getContext("2d"), temple = BL.timechainRoomKinds.temple;
@@ -1204,7 +1201,10 @@
       const pts = f.i.map((j) => [v[j * 3], v[j * 3 + 1], v[j * 3 + 2]]), y0 = Math.min(pts[0][1], pts[1][1], pts[2][1], pts[3][1]), y1 = Math.max(pts[0][1], pts[1][1], pts[2][1], pts[3][1]);
       if (pts.length !== 4 || !pts.every((q) => Math.abs(q[0] - pts[0][0]) < 1e-6)) { add(pts, lightOf(f, (y0 + y1) / 2)); continue; }
       const z0 = Math.min(pts[0][2], pts[1][2], pts[2][2], pts[3][2]), z1 = Math.max(pts[0][2], pts[1][2], pts[2][2], pts[3][2]), facing = (pts[1][1] - pts[0][1]) * (pts[2][2] - pts[0][2]) - (pts[1][2] - pts[0][2]) * (pts[2][1] - pts[0][1]) > 0 ? 1 : 0;
-      const key = `${pts[0][0].toFixed(5)}|${y0.toFixed(5)}|${facing}`;
+      // Of a plate's two flat sides, a few millimetres apart, one is enough for light: drawing both doubles what the
+      // eye looks through, and what the renderer fills, for nothing.
+      if (!facing) continue;
+      const key = `${pts[0][0].toFixed(5)}|${y0.toFixed(5)}`;
       if (!runs.has(key)) runs.set(key, []);
       runs.get(key).push({ z0, z1, pts, shade: Math.round(lightOf(f, (y0 + y1) / 2) * HOLO.shades) });
     }
@@ -1222,10 +1222,10 @@
   });
   // The Temple's own steps build the statue at the doorway, a little each frame, and the last one makes the figure.
   const steps = () => { const temple = BL.timechainRoomKinds.temple; return temple && temple.steps ? [...temple.steps(), () => { holoFigure(); }] : []; };
-  // The light the lens throws: a cone's skin from the lens out to the figure, fading on the way (the renderer's
-  // light beams fade along their own x, so the cone is built along x and turned to the figure).
+  // The light the emitter throws up: a cone's skin from its ring to the ring under the figure, fading on the way (the
+  // renderer's light beams fade along their own x, so the cone is built lying down and stood up).
   const holoCone = own(() => {
-    const g = RM.helpers.blank(), N = 28, H = HOLO.out - 0.1, r0 = 0.07, r1 = HOLO.tall * 0.52;
+    const g = RM.helpers.blank(), N = 28, H = HOLO.foot - 0.14, r0 = 0.9, r1 = 0.47 * HOLO.tall / 0.909;
     for (let i = 0; i < N; i++) {
       const a = TAU * i / N, b = TAU * (i + 1) / N, m = (a + b) / 2;
       RM.helpers.face(g, [[0, r0 * Math.cos(a), r0 * Math.sin(a)], [0, r0 * Math.cos(b), r0 * Math.sin(b)], [H, r1 * Math.cos(b), r1 * Math.sin(b)], [H, r1 * Math.cos(a), r1 * Math.sin(a)]], C.glow, 0.9, [0, Math.cos(m), Math.sin(m)]);
@@ -1607,70 +1607,35 @@
       for (const card of ringCards) if (card.plinth === i) g.node(null, null, -card.off, CARD.y, -FACE, { target: { ...target, index: card.ex.index, tip: `${card.ex.when} · ${card.ex.name} · tap to see it up close` } });
       g.solid({ x: 0, z: 0, hx: w / 2 + 0.06, hz: DEPTH / 2 + 0.06 });
     });
-    // The middle, the room's showpiece: a round drum with an amber ring, and on it a turntable that turns once in
-    // 75 s on the shared clock, carrying the whitepaper, grown to a tall lectern with the real first page on it and
-    // the fanned pages beneath, and Block 0 at half again its size, so each faces everyone in turn; two flat cards,
-    // one under each, on the still drum (no band round it); the taps on the pieces ride round.
+    // The middle, the room's showpiece: a round drum with an amber ring and, over it, the hologram alone (`HOLO`),
+    // thrown up from an emitter set into the drum's top; one flat card on the drum's side.
     { const g = K.group(0, 0, 0, Math.PI);
       g.cyl(MID_R, MID_R, MID_TOP, C.concrete, 0, MID_TOP / 2, 0, { seg: 48 });
       g.torus(MID_R, 0.03, C.btc, 0, MID_TOP, 0, { emissive: 1, glow: true, seg: 64 });
       const paper = EXHIBITS.find((ex) => ex.key === "whitepaper");
-      // A press on the display, either face, opens the large reader (as the island's whitepaper tablet did); one on
-      // the plaque opens the pop-up about the paper. Each leads to the other.
+      // A press on the figure, or on the plaque, opens the pop-up about the paper, which leads to the large reader.
       const COARSE = matchMedia("(pointer: coarse)").matches;
-      const tP = { kind: "genesis", tip: COARSE ? "The whitepaper · tap to read" : "The whitepaper · click to read", radius: 1.5, index: paper.index, paper: "reader" };
+      const tP = { kind: "genesis", tip: COARSE ? "The whitepaper · tap to read" : "The whitepaper · click to read", index: paper.index, paper: "about" };
       const tI = { kind: "genesis", tip: "31 Oct 2008 · the whitepaper · about this paper", radius: 1.1, index: paper.index, paper: "about" };
-      // The turntable: a disc a hair above the drum carrying one tall double-sided display and nothing else, so nothing
-      // stands in front of anything: the real first page on the side toward the door at rest, the lens that throws the
-      // hologram (`HOLO`) in the other, each facing everyone in turn. Its size makes it the room's centrepiece.
-      const PW = 1.3, PH = PW / 0.773, FOOT = 0.5, SH = PH + FOOT + 0.3, SW = PW + 0.26, SD = 0.14;
-      K.node("centreTurn", (k) => {
-        k.cyl(MID_R - 0.1, MID_R - 0.1, 0.03, "#3a3c42", 0, 0.015, 0, { seg: 48 });
-        k.torus(MID_R - 0.1, 0.012, C.btc, 0, 0.03, 0, { emissive: 0.8, glow: true, seg: 64 });
-        k.box(SW, SH, SD, "#2b2d33", 0, 0.03 + SH / 2, 0);
-        k.box(SW + 0.3, 0.06, SD + 0.6, C.steelDark, 0, 0.06, 0);
-        k.box(SW + 0.02, 0.03, SD + 0.02, C.btc, 0, 0.03 + SH - 0.015, 0, { emissive: 0.8, glow: true });
-        for (const sz of [-1, 1]) k.box(SW, 0.02, 0.02, C.btc, 0, 0.03 + FOOT - 0.04, sz * (SD / 2 + 0.01), { emissive: 0.6, glow: true });
-      }, 0, MID_TOP + 0.005, 0);
-      // The hologram (`HOLO`), all of it riding the turntable in front of the slab's dark face: the lens, a lit disc
-      // in a dark bezel with two fine rings round it; the cone of light from it; a frame at the figure's foot that
-      // turns, a ring of light under it; the figure in that frame, set so it turns about its own middle; two sheets
-      // of light that climb through it; and the node that carries its flat picture on the Canvas 2D fallback.
-      { const s = HOLO.tall / 0.909, lensY = HOLO.foot + HOLO.tall / 2, fz = -SD / 2 - 0.006;
-        K.node("holoLens", (k) => {
-          k.cyl(0.075, 0.075, 0.03, C.glowText, 0, 0, -0.012, { rx: HALF_PI, emissive: 1, glow: true, seg: 24 });
-          k.torus(0.115, 0.02, "#3a3f4a", 0, 0, -0.008, { rx: HALF_PI, seg: 32 });
-          k.torus(0.22, 0.005, C.amber, 0, 0, 0, { rx: HALF_PI, emissive: 0.7, glow: true, seg: 40 });
-          k.torus(0.34, 0.004, "#1d4f63", 0, 0, 0, { rx: HALF_PI, emissive: 0.5, seg: 48 });
-        }, 0, lensY, fz, { parent: "centreTurn" });
-        K.node("holoCone", holoCone(), 0, lensY, fz - 0.02, { parent: "centreTurn", ry: HALF_PI });
-        K.node("holoSpin", (k) => { k.torus(0.47 * s, 0.012, C.glow, 0, -0.08, 0, { emissive: 1, glow: true, seg: 48 }); }, 0, HOLO.foot, -HOLO.out, { parent: "centreTurn" });
-        K.node("holoFigure", holoFigure(), 0, 0, 0.24 * s, { parent: "holoSpin", scale: s });
-        K.node("holoFlat", holoSheet(), 0, 0.35 * HOLO.tall / 0.62, 0, { parent: "holoSpin", scale: 0.001 });
-        for (let i = 0; i < 2; i++) K.node(`holoSheet${i}`, holoSheet(), 0, 0, 0, { parent: "holoSpin", rx: HALF_PI, glow: true, scale: 0.001 }); }
-      // The page itself, a picture node riding the turntable on the slab's other side, painted when the pages load.
-      const canvas = CH.canvas(1360, 1760), pctx = canvas.getContext("2d");
-      pctx.fillStyle = "#f4efe6"; pctx.fillRect(0, 0, 1360, 1760);
-      const pageGeo = RM.flatPicture(canvas, PW, PH, 0.7);
-      K.node("wpPage", pageGeo, 0, 0.03 + FOOT + PH / 2, SD / 2 + 0.004, { parent: "centreTurn" });
-      // Page 1 is drawn from the cut pages: the strip they are cut from is let go as soon as the last one is cut.
-      if (BL.whitepaperPages) BL.whitepaperPages.load().then((D) => {
-        if (!D.pages[0]) return;
-        const first = new Image();
-        first.onload = () => { pctx.drawImage(first, 0, 0, 1360, 1760); pageGeo.imageSurface.version++; };
-        first.src = D.pages[0];
-      });
-      // The posting card at the page's foot.
-      K.picture(1.0, 0.22, 1000, 220, (ctx, w, h) => {
-        ctx.fillStyle = C.ink; ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = C.amber; ctx.lineWidth = 6; ctx.strokeRect(6, 6, w - 12, h - 12);
-        pixFit(ctx, "POSTED TO THE CRYPTOGRAPHY MAILING LIST", w / 2, 75, 34, C.amberText, w - 110, "centre", "posting card · posted to", w);
-        pixFit(ctx, "31 OCT 2008 · SATOSHI NAKAMOTO", w / 2, 150, 34, C.white, w - 110, "centre", "posting card · date and name", w);
-      }, 0, 0.03 + FOOT / 2 + 0.04, SD / 2 + 0.004, { parent: "centreTurn", target: tP });
-      // The taps: empty nodes either side of the slab, riding round.
-      K.node(null, null, 0, 1.3, SD / 2 + 0.3, { parent: "centreTurn", target: tP });
-      K.node(null, null, 0, 1.3, -SD / 2 - 0.3, { parent: "centreTurn", target: tP });
-      // One flat card on the drum's side, under the page's resting place.
+      // The emitter in the drum's top: a dark well, a lit lens in a bezel at its middle, two rings of light round it.
+      // Over it the cone of light it throws; a frame at the figure's foot that turns, a ring of light under it; the
+      // figure in that frame, set so it turns about its own middle; two sheets of light that climb through it; the
+      // node that carries its flat picture on the Canvas 2D fallback. The figure is its own tap target, a sphere
+      // generously round the whole of it (a target's radius is in its node's own measure), and the flat picture is
+      // where that stands in for it. The figure and the cone are light (`glow`): they stand in no one's sight.
+      { const s = HOLO.tall / 0.909, y0 = MID_TOP + HOLO.foot;
+        g.cyl(0.98, 0.98, 0.016, "#0c1418", 0, MID_TOP + 0.008, 0, { seg: 48 });
+        g.torus(0.9, 0.022, C.glow, 0, MID_TOP + 0.03, 0, { emissive: 1, glow: true, seg: 64 });
+        g.torus(0.62, 0.008, C.glowText, 0, MID_TOP + 0.024, 0, { emissive: 1, glow: true, seg: 64 });
+        g.cyl(0.16, 0.16, 0.03, C.glowText, 0, MID_TOP + 0.031, 0, { emissive: 1, glow: true, seg: 24 });
+        g.torus(0.22, 0.02, "#3a3f4a", 0, MID_TOP + 0.034, 0, { seg: 32 });
+        K.node("holoCone", holoCone(), 0, MID_TOP + 0.05, 0, { rz: HALF_PI, glow: true });
+        K.node("holoSpin", (k) => { k.torus(0.47 * s, 0.012, C.glow, 0, -0.08, 0, { emissive: 1, glow: true, seg: 48 }); }, 0, y0, 0);
+        K.node("holoFigure", holoFigure(), 0, 0, 0.24 * s, { parent: "holoSpin", scale: s, glow: true, target: { ...tP, radius: 0.65 * HOLO.tall / s } });
+        K.node("holoFlat", holoSheet(), 0, 0.35 * HOLO.tall / 0.62, 0, { parent: "holoSpin", scale: 0.001, target: { ...tP, radius: 0.65 * HOLO.tall } });
+        for (let i = 0; i < 2; i++) K.node(`holoSheet${i}`, holoSheet(), 0, 0, 0, { parent: "holoSpin", rx: HALF_PI, glow: true, scale: 0.001 });
+      }
+      // One flat card on the drum's side.
       const rc = MID_R + 0.008;
       { const mb = band([{ ex: paper, az: 180, r: rc, curved: true }], rc, MID_CARD.y, true, paintPlaque, MID_CARD, PPM); K.node(null, mb.geo, mb.x, 0, mb.z, { ry: mb.ry, glow: true }); g.node(null, null, 0, MID_CARD.y, -rc, { target: tI }); }
       g.solid({ x: 0, z: 0, r: 1.62 });
@@ -1727,7 +1692,6 @@
     }
     // The shared clock's seconds, so every player's moving parts stand at the same point of their cycles.
     const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000;
-    const TURN = 75, turntable = nodes.centreTurn;
     const focus = PLINTHS.map((p, i) => ({ node: nodes[`focusRing${i}`], tick: nodes[`yearTick${i}`], ...spotOf(i), level: 0, lit: 0, boost: 0 })), genesisAt = PLINTHS.findIndex((p) => p.id === "genesis");
     const screen = BL.timechainGenesis.blockScreen;
     // The mark's squares and the glow behind each of the pattern's cells. `mark` is what the stream's dots ask: the
@@ -1887,7 +1851,7 @@
     BL.timechainGenesis.readerTo = (n, part = 0, zoom = 1) => { if (readerEl) { readerEl.setZoom(zoom); readerEl.to(n, part); } };
     const acts = PLINTHS.map((p) => ({ key: `genesis${p.id}`, label: "LOOK", hint: `Space · Look at ${p.entries[0].name.split(":")[0]} up close`, tap: "Tap LOOK to see it up close", run: () => look(p.entries[0].index) }));
     const paper = EXHIBITS.find((ex) => ex.key === "whitepaper");
-    const middle = { key: "genesis-middle", label: "READ", hint: "Space · Read the whitepaper", tap: "Tap READ to read the whitepaper", run: () => readLarge(0) };
+    const middle = { key: "genesis-middle", label: "READ", hint: "Space · Read the whitepaper", tap: "Tap READ to read the whitepaper", run: () => readPaper() };
     let act = null, best = 0;
     const consider = (a, ax, az, reach, x, z, fx, fz) => {
       const dx = ax - x, dz = az - z, d = Math.hypot(dx, dz), f = Math.hypot(fx, fz) || 1;
@@ -1911,7 +1875,6 @@
       update(dt, elapsed) {
         for (let i = 0; i < spins.length; i++) spins[i].node.rotation.y += dt * spins[i].rate;
         const now = clock();
-        if (turntable) turntable.rotation.y = BL.timechainGenesis.holdTurn != null ? BL.timechainGenesis.holdTurn : Math.PI + (now % TURN) / TURN * TAU;
         // The show, where it runs (the glass floor option), and where its clock stands this cycle.
         const show = BL.timechainGenesis.floorPoc, tShow = show ? now % show.cycle : -1, inBurst = show && tShow >= show.phases.burst && tShow < show.phases.charge + 1;
         // The ₿ breathes (a 5 s swell, never a flash) with a faint hashing shimmer across its cells; at the show's
@@ -1944,7 +1907,7 @@
         }
         // The hologram: it turns about its own middle and rides a little up and down, its sheets of light climb
         // through it one after the other, and every few seconds it jumps aside and blinks.
-        spin.rotation.y = now / HOLO.turn * TAU; spin.position.y = HOLO.foot + 0.035 * Math.sin(now * 0.7);
+        spin.rotation.y = now / HOLO.turn * TAU; spin.position.y = MID_TOP + HOLO.foot + 0.035 * Math.sin(now * 0.7);
         for (let i = 0; i < 2; i++) { const u = (now / 4.5 + i / 2) % 1, n = sheets[i]; n.position.y = -0.05 + u * (HOLO.tall + 0.1); n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, Math.sin(u * Math.PI) * (0.55 + 0.45 * Math.sin(u * Math.PI))); }
         if (!flat) { const tg = now % 5.7; figure.position.x = tg < 0.07 ? 0.035 : tg < 0.14 ? -0.02 : 0; figure.visible = tg < 0.14 || tg >= 0.19; }
         // The block's height in stars: out in the sky as the mark locks, together as the block falls, held, scattered.
@@ -2019,7 +1982,7 @@
         px = x; pz = z;
         act = null; best = Infinity;
         for (let i = 0; i < spots.length; i++) consider(acts[i], spots[i].x, spots[i].z, 2.4 * BIG, x, z, fx, fz);
-        // The middle: the paper on the door's side, the block on the front's.
+        // The middle: the hologram, and through it the paper.
         consider(middle, 0, 0, 3.2, x, z, fx, fz);
         const pact = portal.near(x, z, fx, fz);
         if (pact) return pact;
@@ -2028,7 +1991,6 @@
       tap(owner) {
         if (owner.kind === "genesis-portal") return portal.tapDoor();
         if (owner.kind !== "genesis") return false;
-        if (owner.paper === "reader") { readLarge(0); return true; }
         if (owner.paper) { readPaper(); return true; }
         if (portal.hit(EXHIBITS[owner.index].plinthIndex)) return true;
         look(owner.index);
