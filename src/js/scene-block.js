@@ -2179,6 +2179,11 @@
       if (homer && Math.random() < 0.5) fx.burst(s.x, s.y, s.z, 1, SMOKE_BITS, 0.3);
     }
   };
+  // The shadow map's centre steps across a grid under the Ooga instead of following it exactly: between steps the light's
+  // view holds still, so the renderer keeps its baked shadows of the map rather than redrawing every caster each frame.
+  // A step is small beside the map's shadow reach (`shadowExtent`), so the Ooga never nears its edge.
+  const SHADOW_STEP = 4;
+  const shadowAt = (x, z) => setVec(RENDER_OPTS.shadowCenter, Math.round(x / SHADOW_STEP) * SHADOW_STEP, 0, Math.round(z / SHADOW_STEP) * SHADOW_STEP);
   const updateCamera = (dt) => {
     const me = sim ? sim.actors[0] : null, x = me ? me.x : 0, y = me ? me.y : 0, z = me ? me.z : 0;
     // First person looks exactly where the Ooga faces; the chase camera swings round behind it within a few frames.
@@ -2222,7 +2227,7 @@
         fpGunL.rotation.y = cam.yaw;
         fpGunL.rotation.x = fpGun.rotation.x;
       }
-      setVec(RENDER_OPTS.shadowCenter, x, 0, z);
+      shadowAt(x, z);
       return;
     }
     camera.fov = damp(camera.fov, (aiming && !cam.island ? AIM_FOV : 58) * Math.PI / 180, 10, dt);
@@ -2256,7 +2261,7 @@
     }
     if (cam.island) setVec(camera.target, x, y + 1.1, z);
     else setVec(camera.target, x + Math.sin(cam.yaw) * 2, y + 1.9, z + Math.cos(cam.yaw) * 2);
-    setVec(RENDER_OPTS.shadowCenter, x, 0, z);
+    shadowAt(x, z);
   };
   // How far back along `pitch` (and the camera's yaw) the eye can sit from (x, y, z) before a wall: the direction goes
   // in EYE.
