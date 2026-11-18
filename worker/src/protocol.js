@@ -158,6 +158,9 @@ export const MESSAGE_MAX = 256;
 // room, so it runs once a minute; three missed 10 s pings make a socket stale.
 export const STALE_MS = 90000;
 export const SWEEP_MS = 60000;
+// With only Ooga Chat's Commons members connected (no island players), whose sweep checks only a dead socket, a ban and
+// the hourly re-authentication, it runs every five minutes: one idle chat tab no longer wakes the room every minute.
+export const MEMBER_SWEEP_MS = 300000;
 // Voice cleanup the SFU keeps refusing is given up after an hour, so a room nobody is in stops waking for it.
 export const CLEANUP_MS = 3600000;
 // Generous bounds around the hub: jetpack flight reaches about 140 out and 72 up, falls end at -120.
