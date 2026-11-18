@@ -32,7 +32,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import {
-  CABINETS, hockey, block, BLOCK, duel, tessQueue, CLOSE_KICK, CLOSE_PROTOCOL, CLOSE_ERROR, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, MEMBER_SWEEP_MS, CLEANUP_MS, TICK_HZ,
+  CABINETS, hockey, block, BLOCK, duel, tessQueue, CLOSE_KICK, CLOSE_PROTOCOL, CLOSE_ERROR, CLOSE_RECONNECT, HOLD_MS, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, MEMBER_SWEEP_MS, CLEANUP_MS, TICK_HZ,
   NPC_FRAME_MAX, NPC_HZ, PROP_MAGIC, PROP_FEATURE, PROP_FRAME_MAX, PROP_HZ, POSE_SAVE_MS, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, ROOM_LOCK_FEATURE, PIN_PASS_MS, PIN_TRIES, PIN_WAIT_MS, CONTROL_FRAMES, CONTROL_HZ, CONTROL_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, REACT_FEATURE, HAND_EMOJI_FEATURE, REACT_HZ, REACT_BURST,
   GHOST_MAGIC, inGhostArena, watchesGhost,
@@ -41,7 +41,7 @@ import {
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
   LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
-  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, audienceRoom, commonsRoom,
+  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, audienceRoom, commonsRoom, sessionGone, cleanupPass,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
 import { getPlayer } from "./db.js";
@@ -51,10 +51,11 @@ import { STUDIO_TRANSPORT, STUDIO_ZONE, studioState, studioHostAllowed, studioCa
 import CAST_ROWS from "./characters.gen.json";
 
 const CAST = castIndex(CAST_ROWS);
-// A retired SFU session cannot own usable tracks. Other 410 responses are not proof of session expiry.
-const sfuSessionGone = err => err.status === 404 || (err.status === 410 && err.code === "session_error");
 // The voice cleanup queue's bound (`shedCleanup`).
 const CLEANUP_JOBS_MAX = 64;
+// A held player's socket while its page is away (`hold`): anything written to it goes nowhere, as to a socket closing,
+// so every path that sends to a player or saves its attachment needs no word about holds.
+const GONE = Object.freeze({ readyState: 3, send() { throw new Error("held"); }, serializeAttachment() {}, deserializeAttachment() { return null; }, close() {} });
 
 // Only explicit validation failures may discard a stored value; I/O and handler faults never do.
 class InvalidStoredValue extends TypeError {}
@@ -64,6 +65,10 @@ const cleanupJob = (job) => !!job && typeof job === "object" && typeof job.sessi
   && (job.midVersions === undefined || (!!job.midVersions && typeof job.midVersions === "object" && !Array.isArray(job.midVersions)))
   && (job.at == null || Number.isFinite(job.at)) && (job.revision === undefined || Number.isFinite(job.revision))
   && (job.inspectUntil === undefined || Number.isFinite(job.inspectUntil));
+
+// How long each of the World Map's two load windows runs (`countLoad`), and the name its counts give Ooga Chat's
+// community members, who report no zone.
+const LOAD_MS = 5000, LOAD_CHAT = "ooga-chat";
 
 export class Room extends DurableObject {
   constructor(ctx, env) {
@@ -266,7 +271,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...duel.saved(p) };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...duel.saved(p) };
   }
 
   view(p) {
@@ -287,7 +292,34 @@ export class Room extends DurableObject {
     }
     this.inspect.count("out");
     this.inspect.count("outBytes", typeof data === "string" ? data.length : data.byteLength);
+    const to = this.sockets.get(ws);
+    this.countLoad(to ? to.zone : LOAD_CHAT, false);
     return true;
+  }
+
+  // One message in from, or one send out to, a socket in `zone`, for the World Map's CPU estimate (world.js). Two
+  // windows of LOAD_MS turn over as they are counted or read, so nothing runs on a timer and an idle room sleeps.
+  countLoad(zone, inbound, now = Date.now()) {
+    const load = this.turnLoad(now);
+    let row = load.now.get(zone);
+    if (!row) { row = { in: 0, out: 0 }; load.now.set(zone, row); }
+    if (inbound) row.in++; else row.out++;
+  }
+
+  // The load's windows, the current one turned over once it has run LOAD_MS; the one before is kept with how long it
+  // ran, however long a quiet room left it open, so a rate is always the true average over the span it reports.
+  // The windows are made at their first count (`this.load`, memory only, gone with hibernation like the rest).
+  turnLoad(now) {
+    const load = this.load || (this.load = { at: now, now: new Map(), was: new Map(), wasMs: 0 });
+    if (now - load.at >= LOAD_MS) {
+      const was = load.was;
+      load.was = load.now;
+      load.wasMs = now - load.at;
+      was.clear();
+      load.now = was;
+      load.at = now;
+    }
+    return load;
   }
 
   broadcast(msg, except = null) {
@@ -568,10 +600,19 @@ export class Room extends DurableObject {
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [String(who.id)]);
 
-    const older = this.players.get(who.id);
-    if (older) this.evict(older, "replaced");
+    // The same page back with the key its last welcome gave (`hold`) takes its record again; any other connection of the
+    // account replaces it. The key is no credential: the session already lets this account replace its record.
+    const older = this.players.get(who.id), key = new URL(request.url).searchParams.get("resume");
+    const back = !!older && !!key && key === older.resumeKey;
+    if (back) this.reclaim(older);
+    else if (older) this.evict(older, "replaced");
     // The account's last connection's outdoor grants are taken back before this one's welcome (#667).
     await audienceRoom.settled(this, who.id);
+    if (back && this.players.get(who.id) === older) {
+      this.resume(older, server, who);
+      await this.ensureSweep();
+      return new Response(null, { status: 101, webSocket: client });
+    }
     if (this.players.size >= MAX_PLAYERS) {
       this.inspect.event("full", who);
       this.send(server, { t: "kick", reason: "full" });
@@ -580,7 +621,7 @@ export class Room extends DurableObject {
     }
 
     const spawn = spawnPoint(this.spawnSlot++);
-    const p = this.record(server, { ...who, connectionToken: crypto.randomUUID(), body: null, x: spawn.x, y: 0, z: spawn.z, yaw: spawn.yaw });
+    const p = this.record(server, { ...who, connectionToken: crypto.randomUUID(), resumeKey: crypto.randomUUID(), body: null, x: spawn.x, y: 0, z: spawn.z, yaw: spawn.yaw });
     const kept = this.pmAccounts.get(p.id);
     if (kept) p.pm.blocked = kept.blocked.slice();
     server.serializeAttachment(this.attachment(p));
@@ -590,10 +631,19 @@ export class Room extends DurableObject {
     this.players.set(p.id, p);
     this.sockets.set(server, p);
     if (this.inspect.on) this.inspect.event("join", p, { replaced: !!older });
+    this.welcome(p, false);
+    this.broadcast({ t: "join", p: this.view(p) }, server);
+    this.sendStudio(p);
+    this.updateVoice();
+    await this.ensureSweep();
+    return new Response(null, { status: 101, webSocket: client });
+  }
 
-    const others = [];
+  // Everything a page hears as its socket opens, a new record's or a resumed one's (`resumed`, its voice kept).
+  welcome(p, resumed) {
+    const server = p.ws, others = [];
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
       // The account speaks from Ooga Chat on another device: this page's own voice waits for the visitor's word.
       ...(audienceRoom.elsewhere(this, p.id) ? { voiceElsewhere: true } : {}) });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
@@ -603,11 +653,88 @@ export class Room extends DurableObject {
     this.send(server, { t: "chalk-board", marks: this.chalk.marks, editor: this.chalkEditor ? this.chalkEditor.id : 0 });
     audienceRoom.welcome(this, p);
     duel.welcome(this, p);
-    this.broadcast({ t: "join", p: this.view(p) }, server);
+  }
+
+  // A socket lost without a word, or closed by its page to come straight back (CLOSE_RECONNECT): the player stays HOLD_MS,
+  // standing where they were and heard as they were, so nobody else sees them leave and come back. Their page, coming
+  // back with its welcome's key, takes the record again (`resume`); anything else, or nobody by then, ends it (`expire`).
+  // What only this connection held goes now, as the page lets go of it at its own close: a cabinet, a match, a duel, the
+  // doorway, the chalk, the Studio, a private conversation, the Tess queue's turn and an outdoor grant (#667: no public
+  // grant outlives its connection). They host no NPCs while away. `detail` is the close's, for the inspector.
+  hold(p, detail) {
+    if (this.players.get(p.id) !== p || p.held) return;
+    const step = (t, fn) => { try { fn(); } catch (error) { this.failed("hold", p, error, { t }); } };
+    this.sockets.delete(p.ws);
+    // A wake never rebuilds the player from the socket it lost (the constructor reads attachments).
+    try { p.ws.serializeAttachment(null); } catch { /* already closed */ }
+    p.ws = GONE;
+    p.held = { at: Date.now(), detail, timer: setTimeout(() => this.expire(p), HOLD_MS) };
+    if (this.inspect.on) step("inspect", () => this.inspect.event("hold", p, { ...detail, zone: p.zone, on: Date.now() - p.joinedAt, voice: inVoice(p) }));
+    step("cabinet", () => this.releaseCabinet(p));
+    step("hockey", () => hockey.leave(this, p.id));
+    step("block", () => block.leave(this, p.id));
+    step("duel", () => duel.leave(this, p));
+    step("door", () => this.cancelDoor(p));
+    step("passes", () => this.clearPasses(p));
+    step("studio", () => this.leaveStudio(p));
+    step("chalk", () => this.chalkLetGo(p));
+    step("pm", () => this.privateLeave(p));
+    step("tess", () => tessQueue.presence(this, p, true));
+    step("audience", () => audienceRoom.hold(this, p));
+    step("host", () => this.electHost());
+  }
+
+  // Its page is back for the record: a hold goes on until `resume`; a socket still open (half-open, or the page's own
+  // close not here yet) is ended quietly, its close finding no record, and held as a lost one would be.
+  reclaim(p) {
+    if (p.held) return;
+    const was = p.ws;
+    this.hold(p, { code: 0, said: "resumed", clean: false });
+    try { was.close(CLOSE_KICK, "resumed"); } catch { /* already closed */ }
+  }
+
+  // The held record on its page's new socket: the same Ooga, place and voice sessions, a new connection token, and a new
+  // key for the next time. Nobody else hears anything; the page hears a welcome that says so.
+  resume(p, server, who) {
+    clearTimeout(p.held.timer);
+    const away = Date.now() - p.held.at;
+    p.held = null;
+    p.ws = server;
+    p.login = who.login; p.display = who.display; p.contributor = who.contributor;
+    p.connectionToken = crypto.randomUUID();
+    p.resumeKey = crypto.randomUUID();
+    p.seenAt = Date.now();
+    // Its voice list is sent again whatever it was; its outdoor grants went with the hold, and it asks again as a new
+    // connection does.
+    p.sent = null;
+    p.outdoor = null;
+    server.serializeAttachment(this.attachment(p));
+    this.sockets.set(server, p);
+    if (this.inspect.on) this.inspect.event("resume", p, { away });
+    this.welcome(p, true);
+    this.rearrive(p);
+    tessQueue.presence(this, p);
     this.sendStudio(p);
+    this.electHost();
     this.updateVoice();
-    await this.ensureSweep();
-    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // What arriving in its zone sends (the `zone` handler's), sent again to a resumed page: its own close forgot it all,
+  // and its `zone` repeats the zone the record already has, which the room takes as no change. The locked room's PIN
+  // while the room is still locked, the air hockey tables, a Block Frenzy match, and a doorway crossing under way.
+  rearrive(p) {
+    const lock = p.roomLock && this.roomOf(p.zone) === p.roomLock.room ? this.roomLocks.get(p.roomLock.room) : null;
+    if (lock) this.send(p.ws, { t: "door", op: "room-pin", room: p.roomLock.room, pin: lock.pin });
+    hockey.arrive(this, p);
+    block.arrive(this, p);
+    this.replayDoor(p);
+  }
+
+  // Not back in time: the leave everyone else would have heard at the close.
+  expire(p) {
+    if (this.players.get(p.id) !== p || !p.held) return;
+    const detail = p.held.detail;
+    this.drop(p, "closed", { ...detail, held: true });
   }
 
   // The map first; a socket it does not hold (an Ooga Chat member's) is looked up by its attachment, as before the map,
@@ -652,9 +779,10 @@ export class Room extends DurableObject {
     const p = this.byWs(ws);
     if (!p) {
       const a = ws.deserializeAttachment();
-      if (a && a.community) return commonsRoom.message(this, ws, parseClientMessage(typeof message === "string" ? message : ""), Date.now());
+      if (a && a.community) { this.countLoad(LOAD_CHAT, true); return commonsRoom.message(this, ws, parseClientMessage(typeof message === "string" ? message : ""), Date.now()); }
       return;
     }
+    this.countLoad(p.zone, true);
     this.inspect.count("in");
     this.inspect.count("inBytes", typeof message === "string" ? message.length : message.byteLength);
     if (!ownedBody(CAST, p.login, p.contributor, p.id)) { this.evict(p, "revoked"); return; }
@@ -914,16 +1042,19 @@ export class Room extends DurableObject {
   }
 
   // The prototype's note stands: on this compatibility date close handlers must not call ws.close().
+  // A clean close is a leave; one without a close frame, or the page's own CLOSE_RECONNECT, is held for its page (`hold`).
   webSocketClose(ws, code, reason, wasClean) {
     if (commonsRoom.closed(this, ws)) return;
     const p = this.byWs(ws);
-    if (p) this.drop(p, "closed", { code, said: reason, clean: wasClean });
+    if (!p) return;
+    if (code === CLOSE_RECONNECT || wasClean === false) this.hold(p, { code, said: reason, clean: wasClean });
+    else this.drop(p, "closed", { code, said: reason, clean: wasClean });
   }
 
   webSocketError(ws, error) {
     if (commonsRoom.closed(this, ws)) return;
     const p = this.byWs(ws);
-    if (p) this.drop(p, "error", { error: String((error && error.message) || error || "") });
+    if (p) this.hold(p, { error: String((error && error.message) || error || "") });
   }
 
   sendCabinets(ws = null) {
@@ -973,6 +1104,7 @@ export class Room extends DurableObject {
   // often in the same helper that failed it, and so do a close and a socket error.
   drop(p, reason, detail = null) {
     if (this.players.get(p.id) !== p) return;
+    if (p.held) { clearTimeout(p.held.timer); p.held = null; }
     const step = (t, fn) => { try { fn(); } catch (error) { this.failed("drop", p, error, { t }); } };
     if (this.inspect.on) step("inspect", () => this.inspect.event("leave", p, { reason, ...detail, zone: p.zone, on: Date.now() - p.joinedAt, heard: Date.now() - this.heardAt(p), voice: inVoice(p) }));
     step("cabinet", () => this.releaseCabinet(p));
@@ -1293,9 +1425,11 @@ export class Room extends DurableObject {
   }
 
   // Also after any page's `hub` flag changes: the host sends frames only while someone follows.
+  // A player held over a lost socket (`hold`) neither hosts nor follows until its page is back.
   electHost() {
-    const id = electHost(this.players.values(), this.hostId);
-    const followers = npcFollowers(this.players.values(), id);
+    const here = [...this.players.values()].filter((p) => !p.held);
+    const id = electHost(here, this.hostId);
+    const followers = npcFollowers(here, id);
     if (id === this.hostId && followers === this.followers) return;
     if (this.inspect.on && id !== this.hostId) this.inspect.event("host", null, { login: id ? this.players.get(id).login : "", followers });
     this.hostId = id;
@@ -1901,7 +2035,9 @@ export class Room extends DurableObject {
     if (!this.sfu || !session || (!mids.length && !inspect)) return;
     if (!this.cleanupJobs) this.cleanupJobs = [];
     const existing = this.cleanupJobs.find(job => job.session === session);
-    if (existing) { existing.at = Date.now(); existing.revision = (existing.revision || 0) + 1; existing.mids = [...new Set(existing.mids.concat(mids))]; existing.midVersions = existing.midVersions || {}; for (const mid of mids) existing.midVersions[mid] = existing.revision; existing.inspect = existing.inspect || inspect; if (inspect) existing.inspectUntil = Date.now() + 20000; }
+    // A merge keeps the job's `at`, when it was first queued: refreshed on every merge, a busy session's job that the SFU
+    // kept refusing never reached CLEANUP_MS.
+    if (existing) { existing.revision = (existing.revision || 0) + 1; existing.mids = [...new Set(existing.mids.concat(mids))]; existing.midVersions = existing.midVersions || {}; for (const mid of mids) existing.midVersions[mid] = existing.revision; existing.inspect = existing.inspect || inspect; if (inspect) existing.inspectUntil = Date.now() + 20000; }
     else this.cleanupJobs.push({ session, at: Date.now(), revision: 0, mids: [...new Set(mids)], midVersions: Object.fromEntries(mids.map(mid => [mid, 0])), inspect, inspectUntil: inspect ? Date.now() + 20000 : 0 });
     if (this.ctx && this.ctx.storage) await this.ctx.storage.put("voiceCleanup", this.cleanupJobs);
     for (const p of this.players.values()) if (p.zone === STUDIO_ZONE) this.sendStudio(p);
@@ -1931,63 +2067,72 @@ export class Room extends DurableObject {
     return true;
   }
 
+  // One job: inspect the session if asked, close its mids, and leave the queue once the SFU confirms. Never throws.
+  async cleanupOne(job, background) {
+    const tasks = this.cleanupTasks ||= new Map();
+    // Taken out only while still in the queue: a shed (`shedCleanup`) or another run may have taken it already.
+    const done = () => { const i = this.cleanupJobs.indexOf(job); if (i >= 0) this.cleanupJobs.splice(i, 1); };
+    if (!this.cleanupJobs.includes(job)) return;
+    // Only the same SFU session waits: another player's cleanup cannot stall this request.
+    while (tasks.has(job.session)) await tasks.get(job.session);
+    if (!this.cleanupJobs.includes(job)) return;
+    // A job the SFU has refused for CLEANUP_MS since it was first queued is given up, so a room nobody is in stops
+    // waking for it.
+    if (Date.now() - (job.at ??= Date.now()) > CLEANUP_MS) { done(); return; }
+    let finished;
+    tasks.set(job.session, new Promise(resolve => { finished = resolve; }));
+    this.cleanupAttempt = { at: Date.now(), operation: job.inspect ? "inspect" : "close", finished: 0, status: 0 };
+    const attempt = this.cleanupAttempt;
+    try {
+      const revision = job.revision || 0;
+      let inspected = !job.inspect;
+      if (job.inspect) {
+        const priorVersions = { ...(job.midVersions || {}) };
+        try {
+          const state = await this.sfu.getSession(job.session, background);
+          const inactive = new Set((state.tracks || []).filter(t => t.status === "inactive").map(t => t.mid));
+          job.mids = job.mids.filter(mid => !inactive.has(mid) || (job.midVersions || {})[mid] !== priorVersions[mid]);
+          // Only a session nobody holds any more is swept for what is left. On a live one that would close every voice
+          // it still receives, with no page any the wiser: one listener gone deaf to everybody.
+          const held = [...this.players.values()].some(p => p.voice.sub === job.session || p.voice.pub === job.session);
+          if (!held) job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
+          inspected = true;
+        } catch (err) {
+          attempt.status = Number(err.status) || 0;
+          if (sessionGone(err)) throw err;
+          // An inspection timeout must not prevent closing MIDs we already own. Keep the inspection pending,
+          // even if those closes succeed: the timed-out allocation may still have left other tracks behind.
+        }
+      }
+      const mids = job.mids.slice();
+      const versions = { ...(job.midVersions || {}) };
+      if (mids.length) attempt.operation = "close";
+      const res = mids.length ? await this.sfu.closeTracks(job.session, mids, background) : { tracks: [] };
+      // Cloudflare's close_track_error confirms an absent/already-closed track. Other errors and missing rows retry.
+      const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map(t => t.mid));
+      job.mids = job.mids.filter(mid => !succeeded.has(mid) || (job.midVersions || {})[mid] !== versions[mid]);
+      for (const mid of succeeded) if (!job.mids.includes(mid) && job.midVersions) delete job.midVersions[mid];
+      // A close this pass sent that the SFU did not confirm; a mid queued while it was on its way is simply next.
+      if (mids.some(mid => job.mids.includes(mid))) job.inspect = true;
+      // A concurrent queue may have appended/reallocated owned MIDs while upstream was pending.
+      if (!inspected || (job.revision || 0) !== revision || job.mids.length || (job.inspect && Date.now() < job.inspectUntil)) return;
+      done();
+    } catch (err) {
+      attempt.status = Number(err.status) || 0;
+      // A session the SFU says is gone owns no tracks and needs no further retry.
+      if (sessionGone(err)) done();
+      // Other failures retain ownership for the existing room alarm.
+    } finally { attempt.finished = Date.now(); tasks.delete(job.session); finished(); }
+  }
+
   async retryCleanup(session = null, background = !session) {
     if (!this.sfu || !this.cleanupJobs || !this.cleanupJobs.length) return;
     if (!session && this.cleanupRunning) return this.cleanupRunning;
-    const tasks = this.cleanupTasks ||= new Map();
     const running = (async () => {
-      for (const job of [...this.cleanupJobs]) {
-        if (!this.cleanupJobs.includes(job) || (session && job.session !== session)) continue;
-        // Only the same SFU session waits: another player's cleanup cannot stall this request.
-        while (tasks.has(job.session)) await tasks.get(job.session);
-        if (!this.cleanupJobs.includes(job)) continue;
-        // A job the SFU has refused for CLEANUP_MS is given up, so a room nobody is in stops waking for it.
-        if (Date.now() - (job.at ??= Date.now()) > CLEANUP_MS) { this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1); continue; }
-        let finished;
-        tasks.set(job.session, new Promise(resolve => { finished = resolve; }));
-        this.cleanupAttempt = { at: Date.now(), operation: job.inspect ? "inspect" : "close", finished: 0, status: 0 };
-        const attempt = this.cleanupAttempt;
-        try {
-          const revision = job.revision || 0;
-          let inspected = !job.inspect;
-          if (job.inspect) {
-            const priorVersions = { ...(job.midVersions || {}) };
-            try {
-              const state = await this.sfu.getSession(job.session, background);
-              const inactive = new Set((state.tracks || []).filter(t => t.status === "inactive").map(t => t.mid));
-              job.mids = job.mids.filter(mid => !inactive.has(mid) || (job.midVersions || {})[mid] !== priorVersions[mid]);
-              // Only a session nobody holds any more is swept for what is left. On a live one that would close every voice
-              // it still receives, with no page any the wiser: one listener gone deaf to everybody.
-              const held = [...this.players.values()].some(p => p.voice.sub === job.session || p.voice.pub === job.session);
-              if (!held) job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
-              inspected = true;
-            } catch (err) {
-              attempt.status = Number(err.status) || 0;
-              if (sfuSessionGone(err)) throw err;
-              // An inspection timeout must not prevent closing MIDs we already own. Keep the inspection pending,
-              // even if those closes succeed: the timed-out allocation may still have left other tracks behind.
-            }
-          }
-          const mids = job.mids.slice();
-          const versions = { ...(job.midVersions || {}) };
-          if (mids.length) attempt.operation = "close";
-          const res = mids.length ? await this.sfu.closeTracks(job.session, mids, background) : { tracks: [] };
-          // Cloudflare's close_track_error confirms an absent/already-closed track. Other errors and missing rows retry.
-          const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map(t => t.mid));
-          job.mids = job.mids.filter(mid => !succeeded.has(mid) || (job.midVersions || {})[mid] !== versions[mid]);
-          for (const mid of succeeded) if (!job.mids.includes(mid) && job.midVersions) delete job.midVersions[mid];
-          // A close this pass sent that the SFU did not confirm; a mid queued while it was on its way is simply next.
-          if (mids.some(mid => job.mids.includes(mid))) job.inspect = true;
-          // A concurrent queue may have appended/reallocated owned MIDs while upstream was pending.
-          if (!inspected || (job.revision || 0) !== revision || job.mids.length || (job.inspect && Date.now() < job.inspectUntil)) continue;
-          this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
-        } catch (err) {
-          attempt.status = Number(err.status) || 0;
-          // A confirmed absent upstream session owns no tracks and needs no further retry.
-          if (sfuSessionGone(err)) this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
-          // Other failures retain ownership for the existing room alarm.
-        } finally { attempt.finished = Date.now(); tasks.delete(job.session); finished(); }
-      }
+      // A request waits for its own session's job alone; a wake's pass is bounded in time and runs a few jobs at once
+      // (`cleanupPass`), what is left waiting for the next wake, which starts with the jobs this one never reached.
+      if (session) for (const job of this.cleanupJobs.filter(job => job.session === session)) await this.cleanupOne(job, background);
+      else await cleanupPass(this.cleanupJobs, job => this.cleanupOne(job, background));
       // Remaining jobs retry at the next wake: at most a sweep interval away, and sooner if another wake comes first.
       if (!this.cleanupJobs.length) this.cleanupAt = 0;
       else if (!this.cleanupAt || this.cleanupAt <= Date.now()) this.cleanupAt = Date.now() + SWEEP_MS;
@@ -2071,11 +2216,8 @@ export class Room extends DurableObject {
     block.sweep(this);
     duel.sweep(this);
     tessQueue.sweep(this);
-    // Cleanup retries run on every wake, not only at sweep time.
-    await this.retryCleanup();
     // Ooga Chat's audience told again what it missed, and grants still closing asked about again (#667).
     await audienceRoom.retry(this);
-    // A full retry pass can outlast a sweep interval. Advance from completion, not the old start time.
     const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;
     this.expireDoors(now);
@@ -2093,12 +2235,17 @@ export class Room extends DurableObject {
           if (this.players.get(p.id) !== p) continue;
           if (player !== undefined && (!player || player.banned_at)) { this.evict(p, "revoked"); continue; }
         }
-        const pinged = this.ctx.getWebSocketAutoResponseTimestamp(p.ws);
-        const last = Math.max(p.seenAt, pinged ? pinged.getTime() : 0);
-        if (now - last > STALE_MS) this.evict(p, "stale");
+        // A held player has no socket to go stale: its hold ends it.
+        if (!p.held && now - this.heardAt(p) > STALE_MS) this.evict(p, "stale");
       }
       await commonsRoom.sweep(this, now, (login, id) => this.memberOwns(login, id), STALE_MS);
-      this.sweepAt = now + (this.players.size || !commonsRoom.size(this) ? SWEEP_MS : MEMBER_SWEEP_MS);
+    }
+    // Cleanup retries run on every wake, not only at sweep time, and last: a pass is bounded (`cleanupPass`), and the
+    // sweep's account and stale checks never wait behind an SFU slow to answer.
+    await this.retryCleanup();
+    // The next sweep is counted from this wake's completion, so a pass that ran long never leaves it overdue.
+    if (sweepDue) {
+      this.sweepAt = Date.now() + (this.players.size || !commonsRoom.size(this) ? SWEEP_MS : MEMBER_SWEEP_MS);
       await this.ctx.storage.put("sweepAt", this.sweepAt);
     }
     const next = this.nextAlarm();
@@ -2109,7 +2256,7 @@ export class Room extends DurableObject {
 
   // When the room last heard from a player: a message, or a ping the runtime answered without waking it.
   heardAt(p) {
-    const pinged = this.ctx.getWebSocketAutoResponseTimestamp(p.ws);
+    const pinged = p.ws === GONE ? null : this.ctx.getWebSocketAutoResponseTimestamp(p.ws);
     return Math.max(p.seenAt, pinged ? pinged.getTime() : 0);
   }
 
@@ -2145,5 +2292,23 @@ export class Room extends DurableObject {
   // The Inspector, when a viewer connects: report now, with the rows.
   inspectWatch(until) {
     this.inspect.watch(until);
+  }
+
+  // The World Map's live layer (/api/world, world.js): who stands in which zone, by the names the players tab shows,
+  // the room's sockets, and each zone's messages in and sends out a second over the span `load.seconds` says (the
+  // current load window and the one before it). From memory alone: no storage, D1 or positions.
+  worldView() {
+    const zones = {}, now = Date.now();
+    for (const p of this.players.values()) (zones[p.zone] || (zones[p.zone] = [])).push({ display: p.display || p.login, login: p.login });
+    const L = this.turnLoad(now);
+    const ms = Math.max(1, now - L.at + L.wasMs), rate = (n) => Math.round(n * 100000 / ms) / 100, rates = {};
+    for (const [zone, counts] of [...L.was, ...L.now]) {
+      const sum = rates[zone] || (rates[zone] = { in: 0, out: 0 });
+      sum.in += counts.in;
+      sum.out += counts.out;
+    }
+    for (const sum of Object.values(rates)) { sum.in = rate(sum.in); sum.out = rate(sum.out); }
+    return { name: this.ctx.id.name || "", sockets: this.ctx.getWebSockets().length, players: this.players.size, maxPlayers: MAX_PLAYERS,
+      commons: commonsRoom.size(this), zones, load: { seconds: Math.round(ms) / 1000, zones: rates } };
   }
 }

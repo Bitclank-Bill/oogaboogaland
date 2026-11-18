@@ -30502,8 +30502,8 @@ const menuShellChecks = BL => {
 const netFixture=(BL,response,step=200,cookie="")=>{
   const source=readFileSync(join(root,"src/js/net.js"),"utf8");
   const sockets=[],sent=[],events=new Map(),navigations=[],timers=[],intervals=[];let calls=0,tick=1000,savedViews=0;
-  class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"&&v!=="ping"?JSON.parse(v):v);}close(){this.readyState=3;}}
-  const voice={setPeers:()=>{},restart:()=>{},stop:()=>{},warnings:[],hangUps:0,playing:0,warnLeaving(stage){this.warnings.push(stage);},hangUp(){this.hangUps++;return this.playing;}};
+  class Socket {static OPEN=1;constructor(url){this.url=url;this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"&&v!=="ping"?JSON.parse(v):v);}close(code){this.closeCode=code;this.readyState=3;}}
+  const voice={setPeers:()=>{},restarts:0,resumes:0,restart(){this.restarts++;},resumed(){this.resumes++;},stop:()=>{},warnings:[],hangUps:0,playing:0,warnLeaving(stage){this.warnings.push(stage);},hangUp(){this.hangUps++;return this.playing;}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
   const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,reactionPolicy:BL.reactionPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voiceBlend:BL.voiceBlend,audience:BL.audience,voice,pilot},setTimeout:(fn,ms)=>{timers.push({fn,ms});return 1;},clearTimeout(){},setInterval:(fn,ms)=>{intervals.push({fn,ms});return 1;},clearInterval(){},addEventListener(){},removeEventListener(){}},navigator:{},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
@@ -30660,6 +30660,26 @@ const roomSocketChecks = async BL => {
   const heard = ws.readyState === 1 && f.sockets.length === 1;
   tick();
   record("room socket: pings that go unanswered end a half-open socket, and any answer resets the count", heard && ws.readyState === 3 && f.net.state.room === "connecting" && timers.length > 0, JSON.stringify({ ready: ws.readyState, room: f.net.state.room }));
+  // Regression (2026-11-18): every socket cut for a moment was a leave and a rejoin for everyone, and voice rebuilt. The
+  // page now closes to come straight back with CLOSE_RECONNECT, asks for its held record with the last welcome's key, and
+  // keeps its voice on a welcome that says the room handed it back.
+  const h = netFixture(BL, reply);
+  await h.net.start();
+  const firstSocket = h.sockets[0];
+  firstSocket.onopen();
+  firstSocket.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, players: [], now: Date.now(), features: [], connectionToken: "t1", resume: "key-1" }) });
+  const ping = h.intervals.at(-1).fn;
+  for (let i = 0; i < 4; i++) ping();
+  const closedToReturn = firstSocket.closeCode === 4001;
+  h.timers.at(-1).fn();
+  const again = h.sockets[1];
+  const asked = !!again && again.url.endsWith("/room?resume=key-1");
+  again.onopen();
+  const restartsBefore = h.voice.restarts;
+  again.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, players: [], now: Date.now(), features: [], connectionToken: "t2", resume: "key-2", resumed: true }) });
+  const kept = h.voice.resumes === 1 && h.voice.restarts === restartsBefore && h.net.state.connectionToken === "t2";
+  record("room socket: a socket closed to come straight back asks for its held record, and a resumed welcome keeps voice",
+    closedToReturn && asked && kept, JSON.stringify({ code: firstSocket.closeCode, url: again && again.url, resumes: h.voice.resumes, restarts: h.voice.restarts - restartsBefore }));
   // Regression #624: the old path discarded close/leave reasons, so a brief removal could not be classified.
   const capture = netFixture(BL, reply, 0);
   const D = capture.net, observed = [];
@@ -32338,6 +32358,59 @@ const integrationChecks = async BL => {
 };
 
 // Staging must preserve exact recordings and hash the final script, including literal replacement tokens.
+// The World Map (/map, scripts/world-map.mjs): the tree is built from the game's own data and refuses to drift from it
+// (a zone the game names but the map neither places nor drops, a place under the wrong parent, an address missing),
+// and the staged page loads only its own two files, named by their content, under a policy with nothing unsafe in it.
+const worldMapChecks = async () => {
+  const W = await import(pathToFileURL(join(root, "scripts/world-map.mjs")).href);
+  const D = await import(pathToFileURL(join(root, "scripts/distribution-map.mjs")).href);
+  const game = W.load(), tree = W.buildTree(game), find = (n, id) => n.id === id ? n : n.children.reduce((hit, c) => hit || find(c, id), null);
+  const refused = (change, words) => {
+    const copy = structuredClone(tree);
+    change(copy);
+    try { W.check(copy, game); return false; } catch (error) { return error.message.includes(words); }
+  };
+  const routes = game.routes.list.filter((r) => r.path !== "donate").map((r) => `/${r.path}`), hrefs = [];
+  const walk = (n) => { if (n.href) hrefs.push(n.href); for (const i of n.items) if (i.href) hrefs.push(i.href); n.children.forEach(walk); };
+  walk(tree);
+  const drift = {
+    builds: (() => { try { return !!W.check(structuredClone(tree), game); } catch { return false; } })(),
+    unplaced: refused((t) => { find(t, "ghost-arena").zones = ["arcade-hunt", "arcade.arena"]; }, "ghost-arena is not on the map"),
+    misplaced: refused((t) => { find(t, "hq-basement").zones = []; find(t, "repos").zones.push("hq-basement"); }, "is not above it"),
+    unknown: refused((t) => { find(t, "library").zones = ["library-nook"]; }, "which the game never reports"),
+    unlinked: refused((t) => { find(t, "dsb").href = null; }, "/dsb is on the map 0 times"),
+    everyRoute: routes.every((path) => hrefs.filter((h) => h === path).length === 1),
+    dsbVenues: find(tree, "dsb").children.length === game.dsbInteriors.definitions.length && find(tree, "dsb").children.every((n) => n.zones.length === 1),
+    sphereRooms: find(tree, "sphere").children.map((n) => n.zones[0]).join() === game.timechainRooms.OPEN.map((id) => `sphere-${id}`).join()
+  };
+  record("World Map: every zone the game names is placed or dropped by name, each under its parent's place, every address once, DSB Land's venues and the Sphere's rooms from their own lists",
+    Object.values(drift).every(Boolean), JSON.stringify(drift));
+  const out = mkdtempSync(join(tmpdir(), "ooga-map-"));
+  try {
+    const { theme, css, js } = D.stageMap(root, out, '<meta name="test-head" content="1">');
+    const page = readFileSync(join(out, "map.html"), "utf8"), named = (path) => {
+      const text = readFileSync(join(out, path), "utf8"), [, base, digest, ext] = path.match(/^\/(?:js|css)\/(map|map-theme)-([0-9a-f]{16})\.(js|css)$/) || [];
+      return !!base && createHash("sha256").update(text, "utf8").digest("hex").slice(0, 16) === digest && ext === path.split(".").pop();
+    };
+    const policy = (page.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/) || [])[1] || "";
+    const staged = {
+      files: named(theme) && named(css) && named(js),
+      // The appearance is set by its own file before the stylesheet, so a dark choice never flashes light.
+      tags: (page.match(/<script /g) || []).length === 2 && page.includes(`<script src="${js}" defer></script>`) && page.includes(`<link rel="stylesheet" href="${css}">`)
+        && page.indexOf(`<script src="${theme}"></script>`) >= 0 && page.indexOf(`<script src="${theme}"></script>`) < page.indexOf(`href="${css}"`),
+      inline: !/<script>|<style|\sstyle=/.test(page),
+      policy: policy.includes("script-src 'self'") && policy.includes("style-src 'self'") && policy.includes("connect-src 'self'") && !policy.includes("unsafe"),
+      head: page.includes('<meta name="test-head" content="1">') && !/__MAP_|<!-- (head|tree) -->/.test(page),
+      list: routes.every((path) => page.includes(`href="${path}"`)),
+      data: readFileSync(join(out, js.slice(1)), "utf8").includes("window.BL.worldMap = {")
+    };
+    record("World Map page: map.html loads only its own hashed scripts and stylesheet (its appearance before the stylesheet), nothing inline, under a policy with nothing unsafe, with every address in its list for a reader without scripts",
+      Object.values(staged).every(Boolean), JSON.stringify(staged));
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+};
+
 const distributionAudioChecks = async () => {
   const out = mkdtempSync(join(tmpdir(), "ooga-audio-"));
   try {
@@ -33735,6 +33808,18 @@ const studioVoiceLifecycleProof = async () => {
   await flaky.fire(1000);for(let i=0;i<10;i++)await drain();
   const networkRetries=flakyKept&&flaky.gum===1&&flaky.voice.stats.publishing&&!flaky.voice.stats.muted&&!flaky.voice.stats.reconnecting&&flaky.streams[0].track.enabled;
   flaky.voice.dispose();await drain();
+  // The room held the record over a lost socket and handed it back (net.js `resume`): voice whose connections stayed up
+  // stays as it is, asking nothing; voice that went down with the socket comes back as after any welcome.
+  const held=fixture();await speakerOn(held);
+  const heldUp=held.peers.filter(pc=>pc.connectionState==="connected").length,heldCalls=held.calls.length;
+  held.voice.resumed();await drain();
+  const resumedKeeps=heldUp>0&&held.voice.stats.publishing&&held.calls.length===heldCalls&&held.peers.filter(pc=>pc.connectionState==="connected").length===heldUp;
+  held.voice.dispose();await drain();
+  const heldDown=fixture();await speakerOn(heldDown);
+  heldDown.peers.find(pc=>pc.connectionState==="connected"&&pc.handlers.has("connectionstatechange")).connectionState="disconnected";
+  const downCalls=heldDown.calls.length;heldDown.voice.resumed();await drain();
+  const resumedRebuilds=heldDown.voice.stats.publishing&&heldDown.calls.slice(downCalls).some(c=>c.op==="session");
+  heldDown.voice.dispose();await drain();
   // Back later than a minute, an open microphone lands muted; with the microphone let go after its hold, the visitor is a
   // returning listener whose Unmute opens it again.
   const slowBack=fixture();slowBack.clock.at=1000;await speakerOn(slowBack);
@@ -33818,7 +33903,7 @@ const studioVoiceLifecycleProof = async () => {
   const turnKept = again.voice.stats.enabled && again.peers.length === 4 && again.peers.slice(2).every(pc => hasRelay(pc, "second"))
     && again.calls.filter(c => c.op === "ice").length === 2;
   again.voice.dispose(); await drain();
-  return {networkReturnsOpen,networkRetries,lateLandsMuted,longGapListens,givesUp,leaveEndsRecovery,slowGatherJoins,emptyGatherRefuses,unavailableProbeJoins,turnShared,turnRefreshed,turnPrefetched,turnMeasured,turnStopped,turnCancelled,bareAfterUnreached,turnAskedAgain,turnKept,publicationReplaced,leaveStopsAudio,latePlaybackStaysOff,leaveCancelsRestart,receiveOnly,receiveOnlyAudience,audienceKeepsMute,lastListenerLeaves,listenerReturns,invalidAudience,audienceClearedOnStop,permissionCancelled,explicitUnmute,restartMute,publishCancelled,stopCancelled,localPreview,previewReleased,latePreviewReleased,previewCancelCannotStopPublication,receiveLevel,aggregateBlocked,retryClears,stalePlaybackIgnored,deniedPreviewKeepsReceiver,deniedPublishKeepsReceiver,timersReleased:[slow,blocked,unavailable,listener,audience,late,rejoin,stale,stopped,preview,autoplay,denied,replaced,leaving,restarting,change,flaky,slowBack,gone,dead,quit].every(f=>f.timers.size===0)};
+  return {networkReturnsOpen,networkRetries,resumedKeeps,resumedRebuilds,lateLandsMuted,longGapListens,givesUp,leaveEndsRecovery,slowGatherJoins,emptyGatherRefuses,unavailableProbeJoins,turnShared,turnRefreshed,turnPrefetched,turnMeasured,turnStopped,turnCancelled,bareAfterUnreached,turnAskedAgain,turnKept,publicationReplaced,leaveStopsAudio,latePlaybackStaysOff,leaveCancelsRestart,receiveOnly,receiveOnlyAudience,audienceKeepsMute,lastListenerLeaves,listenerReturns,invalidAudience,audienceClearedOnStop,permissionCancelled,explicitUnmute,restartMute,publishCancelled,stopCancelled,localPreview,previewReleased,latePreviewReleased,previewCancelCannotStopPublication,receiveLevel,aggregateBlocked,retryClears,stalePlaybackIgnored,deniedPreviewKeepsReceiver,deniedPublishKeepsReceiver,timersReleased:[slow,blocked,unavailable,listener,audience,late,rejoin,stale,stopped,preview,autoplay,denied,replaced,leaving,restarting,change,flaky,held,heldDown,slowBack,gone,dead,quit].every(f=>f.timers.size===0)};
 };
 
 // The real controller runs against a bounded DOM/media double: no permission prompts or SFU.
@@ -35515,6 +35600,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   record("visibility separate bodies (#501): a driven Ooga or gorilla body is a registry character from before the registry exists, reads in sight in the open and covered behind a blocker, keeps both head states through refreshes with its sightHidden effects left out, and is forgotten before it is detached with nothing left take after take",
     Object.values(separateBodies).every(Boolean), JSON.stringify(separateBodies));
   await distributionAudioChecks();
+  await worldMapChecks();
   const canvasStub = () => ({
     width: 0, height: 0,
     getContext: () => ({
