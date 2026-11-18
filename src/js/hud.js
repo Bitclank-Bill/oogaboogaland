@@ -322,6 +322,8 @@
       const fitBanner = () => {
         bannerFrame = 0;
         if (document.body.dataset.activeScene !== bannerScene) return;
+        // The Sign in button's room, set before the clock is measured: the clock stands clear of it.
+        bannerStyle(el.topbar, "--hub-banner-account", `${accountTop.offsetWidth ? accountTop.offsetWidth + 8 : 0}px`);
         const brand = el.brand.getBoundingClientRect(), clock = el.clock.getBoundingClientRect(), block = el.block.getBoundingClientRect();
         const topbar = getComputedStyle(el.topbar), row = getComputedStyle(el.equipmentRow);
         const fontSize = parseFloat(getComputedStyle(el.clock).fontSize) || 22;
@@ -390,7 +392,7 @@
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
       // Cabinet zooms resize the stage without changing the viewport or the title's own size.
-      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
+      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow, accountTop]) bannerResize.observe(node);
       if (presets) {
         bannerResize.observe(presets);
         bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
@@ -409,7 +411,7 @@
         el.messageStack.style.removeProperty("--hub-equipment-bottom");
         el.micNote.style.removeProperty("--hub-equipment-bottom");
         document.body.style.removeProperty("--banner-controls-bottom");
-        for (const property of ["--hub-banner-button", "--hub-banner-button-top", "--hub-banner-button-right", "--hub-banner-button-gap"]) el.topbar.style.removeProperty(property);
+        for (const property of ["--hub-banner-button", "--hub-banner-button-top", "--hub-banner-button-right", "--hub-banner-button-gap", "--hub-banner-account"]) el.topbar.style.removeProperty(property);
       });
       scheduleBanner();
     }
@@ -2019,8 +2021,29 @@
       if (el[key] !== value) el[key] = value;
     }
   };
+  // The banner's own Sign in, which turns into Sign out: the account row's two actions, in sight without a panel open.
+  const accountTop = $("account-top");
+  accountTop.addEventListener("click", () => {
+    accountTop.blur();
+    if (BL.net.state.me) BL.net.logout(); else BL.net.login();
+  });
+  // Add an Ooga, opened without a scene's HUD at hand: the director's, for a sign-in refused for want of an Ooga, which
+  // its note says for as long as that opening lasts.
+  const recipe = $("recipe"), recipeNote = $("recipe-note");
+  recipe.addEventListener("close", () => { recipeNote.hidden = true; });
+  const openRecipe = (refused) => {
+    recipeNote.hidden = !refused;
+    if (!recipe.open) recipe.showModal();
+  };
   const showAccount = ({ backend, me, room, online }) => {
     const live = !!me && room === "live", words = live ? `${online} online` : ROOM_WORDS[room] || "";
+    const topTip = me ? `Signed in as ${me.display} · Sign out` : "Sign in with GitHub · needs your own Ooga";
+    if (accountTop.hidden !== !backend) accountTop.hidden = !backend;
+    if (accountTop.title !== topTip) {
+      accountTop.title = topTip;
+      accountTop.setAttribute("aria-label", me ? "Sign out" : "Sign in with GitHub");
+      accountTop.dataset.signed = String(!!me);
+    }
     writeAccount("account", "hidden", !backend);
     writeAccount("account-name", "textContent", me ? me.display : "");
     writeAccount("account-name", "hidden", !me);
@@ -2234,5 +2257,5 @@
     const clear = () => { for (const r of pool) r.li.remove(); pool.length = 0; };
     return { set, clear };
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, openRecipe, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();
