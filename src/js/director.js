@@ -61,10 +61,10 @@
   const worldClock = $("world-clock"), soundButton = $("environment-sound");
   const sound = window.BL.sound;
   const showSound = () => {
-    const label = sound.muted ? "Unmute environment sounds" : "Mute environment sounds";
-    const voice = window.BL.voice.stats;
-    soundButton.setAttribute("aria-label", label); soundButton.title = `${voice.enabled || voice.joining || voice.returning ? label : `${label} · M`} · hold for levels`;
-    soundButton.setAttribute("aria-pressed", String(sound.muted));
+    const voice = window.BL.voice.stats, label = sound.muted ? "Sound levels (game sounds muted)" : "Sound levels";
+    soundButton.setAttribute("aria-label", label);
+    soundButton.title = voice.enabled || voice.joining || voice.returning ? label : `${label} · M mutes game sounds`;
+    soundButton.dataset.muted = String(sound.muted);
   };
   BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition, offerCoach: params.get("coach") === "1" });
   let helpHeld = false;
