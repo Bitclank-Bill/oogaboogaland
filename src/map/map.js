@@ -429,26 +429,35 @@
     say();
     layout();
   };
+  // Only a page with no Worker behind it (a 404 or 405, or an answer that is not JSON) stops for good. Anything else
+  // that fails, the limiter's 429 among them, is waited out (its Retry-After when it gives one) and asked again.
+  let asked = 0;
   const poll = async () => {
     timer = 0;
     if (document.hidden || stopped) return;
+    asked = Date.now();
     try {
       const res = await fetch("/api/world", { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
-      if (res.status === 404 || res.status === 405 || !(res.headers.get("content-type") || "").includes("json")) { stopped = true; live = null; paint(); return; }
-      if (!res.ok) throw new Error(`world: ${res.status}`);
+      if (res.status === 404 || res.status === 405 || (res.ok && !(res.headers.get("content-type") || "").includes("json"))) { stopped = true; live = null; paint(); return; }
+      if (!res.ok) {
+        const after = Number(res.headers.get("retry-after"));
+        throw Object.assign(new Error(`world: ${res.status}`), { after: Number.isFinite(after) && after > 0 ? after * 1000 : 0 });
+      }
       live = await res.json();
       failed = false;
       wait = Number.isFinite(live.refreshMs) && live.refreshMs >= 2000 ? live.refreshMs : 10000;
-    } catch {
+    } catch (error) {
       failed = true;
-      wait = Math.min(Math.max(wait * 2, 10000), 60000);
+      wait = Math.min(Math.max(error.after || wait * 2, 10000), 60000);
     }
     paint();
     schedule();
   };
-  const schedule = () => { if (!timer && !stopped && !document.hidden) timer = setTimeout(poll, wait); };
+  const schedule = (delay = wait) => { if (!timer && !stopped && !document.hidden) timer = setTimeout(poll, delay); };
+  // Back on the page it asks at once only when its wait has run out since it last asked, so flipping between tabs
+  // never asks more often than the page would have anyway.
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { clearTimeout(timer); timer = 0; } else if (!stopped && !timer) poll();
+    if (document.hidden) { clearTimeout(timer); timer = 0; } else if (!stopped && !timer) schedule(Math.max(0, asked + wait - Date.now()));
   });
 
   // The drawing takes the list's place; the list stays in the page for a reader without scripts.

@@ -18,7 +18,7 @@ import { inspectorAllowed, inspectorOn, INSPECTOR_NAME } from "./inspect-report.
 import { CPU_MODEL, cpuMs } from "./cpu-model.js";
 
 const ISLAND = "island";
-export const LIVE_MS = 10000, EMPTY_MS = 60000;
+export const LIVE_MS = 10000, EMPTY_MS = 60000, RETRY_S = 20;
 const NO_STORE = { "cache-control": "no-store" };
 
 const running = new Map();
@@ -48,7 +48,8 @@ const byName = (a, b) => a.display.localeCompare(b.display, undefined, { sensiti
 export const createWorldHandler = (sessionFor = getSessionFromRequest, cacheFor = () => globalThis.caches?.default) => async (request, env, ctx) => {
   if (request.method !== "GET") return text("Method not allowed", 405, { allow: "GET" });
   if (!env.ROOM) return text("Not found", 404);
-  if (!(await allowed(env.WORLD_LIMITER, clientIp(request)))) return text("Too many requests", 429, NO_STORE);
+  // Refused, a page waits this long before it asks again (map.js), rather than giving up on the live layer.
+  if (!(await allowed(env.WORLD_LIMITER, clientIp(request)))) return text("Too many requests", 429, { ...NO_STORE, "retry-after": String(RETRY_S) });
   const found = await sessionFor(request, env), inspector = !!found && inspectorAllowed(env, found.player.id);
   const origin = new URL(request.url).origin, cache = cacheFor();
   let room;

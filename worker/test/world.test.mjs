@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { routeFixture } from "./routes.mjs";
 
-const { createWorldHandler, worker, LIVE_MS, EMPTY_MS } = routeFixture();
+const { createWorldHandler, worker, LIVE_MS, EMPTY_MS, RETRY_S } = routeFixture();
 
 const VIEW = { name: "island", sockets: 4, players: 3, maxPlayers: 32, commons: 1,
   zones: { outside: [{ display: "Bea", login: "bea" }, { display: "al", login: "al" }], "dsb-maxis": [{ display: "Cy", login: "cy" }] },
@@ -92,8 +92,9 @@ test("one read of the room serves every viewer while it lasts, longer while nobo
 });
 
 test("the route refuses past its limit, to other methods, without a room, and says so when the room fails", async () => {
-  const limited = setup({ success: false });
-  assert.equal((await createWorldHandler(as(0), memoryCache)(get(), limited.env)).status, 429);
+  const limited = setup({ success: false }), refused = await createWorldHandler(as(0), memoryCache)(get(), limited.env);
+  assert.equal(refused.status, 429);
+  assert.equal(refused.headers.get("retry-after"), String(RETRY_S), "the page is told when to ask again, not that there is no backend");
   assert.equal(limited.calls.room, 0, "a refused request reads nothing");
   assert.equal((await createWorldHandler(as(0), memoryCache)(get("POST"), setup().env)).status, 405);
   assert.equal((await createWorldHandler(as(0), memoryCache)(get(), {})).status, 404, "no backend: the page shows the map alone");
