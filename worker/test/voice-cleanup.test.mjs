@@ -83,3 +83,23 @@ test("a merge keeps the job's first time, so a job the SFU keeps refusing is giv
   await r.queueClose("busy", ["1"], false, true);
   assert.ok(!r.cleanupJobs.some((j) => j.session === "busy"), "given up, not kept young by the merge");
 });
+
+// Regression (Watchtower on #790): every pass started at the queue's head and a failed job kept its place, so a dozen
+// slow failures there spent each wake's budget and the jobs behind them were never tried, for up to an hour.
+test("slow failures at the head of the queue cannot keep the jobs behind them from being tried", async () => {
+  let clock = 0;
+  const queue = Array.from({ length: 64 }, (_, i) => ({ i, slow: i < 16 }));
+  const tried = new Set();
+  // A slow job fails after 5 s and stays queued; any other closes at once and leaves the queue.
+  const run = async (job) => {
+    tried.add(job.i);
+    if (job.slow) { await Promise.resolve(); clock += 5000 / CLEANUP_PARALLEL; return; }
+    queue.splice(queue.indexOf(job), 1);
+  };
+  const first = await cleanupPass(queue, run, () => clock);
+  assert.ok(first < 64, "the first pass runs out of budget on the slow head");
+  assert.ok(queue[0].i >= 16 || !queue[0].slow, "the next pass starts with jobs this one never reached");
+  for (let wake = 0; wake < 4 && queue.some((job) => !job.slow); wake++) await cleanupPass(queue, run, () => clock);
+  assert.deepEqual(queue.map((job) => job.i).sort((a, b) => a - b), Array.from({ length: 16 }, (_, i) => i), "every other job got its turn and closed");
+  assert.equal(tried.size, 64);
+});

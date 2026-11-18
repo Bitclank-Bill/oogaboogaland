@@ -42,13 +42,19 @@ export const sessionGone = (err) => !!err && (err.status === 404 || err.status =
 // One pass over a cleanup queue from an alarm: at most CLEANUP_PARALLEL jobs at once, and none started CLEANUP_BUDGET_MS
 // after the pass began, so an SFU slow to answer never holds a wake for minutes (a serial pass of 64 jobs at 5 to 8 s a
 // call once ran seven). What is left waits for the next wake. `run` handles its own failures. Answers how many it started.
+// `queue` is the live queue: the jobs a pass tried that are still in it go to its back, in order, so the next pass starts
+// with those it never reached and slow failures at the head cannot keep the rest from ever being tried.
 export const CLEANUP_PARALLEL = 4;
 export const CLEANUP_BUDGET_MS = 20000;
-export const cleanupPass = async (jobs, run, now = Date.now) => {
-  const deadline = now() + CLEANUP_BUDGET_MS;
+export const cleanupPass = async (queue, run, now = Date.now) => {
+  const jobs = [...queue], deadline = now() + CLEANUP_BUDGET_MS;
   let next = 0;
   const lane = async () => { while (next < jobs.length && now() < deadline) await run(jobs[next++]); };
   await Promise.all(Array.from({ length: Math.min(CLEANUP_PARALLEL, jobs.length) }, lane));
+  // In place, and only now: jobs queued or removed meanwhile keep their places and stay removed.
+  const tried = new Set(jobs.slice(0, next));
+  const rest = queue.filter((job) => !tried.has(job)), again = queue.filter((job) => tried.has(job));
+  queue.splice(0, queue.length, ...rest, ...again);
   return next;
 };
 

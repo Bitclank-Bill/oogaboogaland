@@ -2097,11 +2097,10 @@ export class Room extends DurableObject {
     if (!this.sfu || !this.cleanupJobs || !this.cleanupJobs.length) return;
     if (!session && this.cleanupRunning) return this.cleanupRunning;
     const running = (async () => {
-      const jobs = this.cleanupJobs.filter(job => !session || job.session === session);
       // A request waits for its own session's job alone; a wake's pass is bounded in time and runs a few jobs at once
-      // (`cleanupPass`), what is left waiting for the next wake.
-      if (session) for (const job of jobs) await this.cleanupOne(job, background);
-      else await cleanupPass(jobs, job => this.cleanupOne(job, background));
+      // (`cleanupPass`), what is left waiting for the next wake, which starts with the jobs this one never reached.
+      if (session) for (const job of this.cleanupJobs.filter(job => job.session === session)) await this.cleanupOne(job, background);
+      else await cleanupPass(this.cleanupJobs, job => this.cleanupOne(job, background));
       // Remaining jobs retry at the next wake: at most a sweep interval away, and sooner if another wake comes first.
       if (!this.cleanupJobs.length) this.cleanupAt = 0;
       else if (!this.cleanupAt || this.cleanupAt <= Date.now()) this.cleanupAt = Date.now() + SWEEP_MS;

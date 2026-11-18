@@ -113,7 +113,7 @@ export const createMediaBroker = (aud) => {
   // One job (`queueClose`'s), or the alarm's pass over the queue, bounded in time and a few jobs at once (`cleanupPass`).
   const runCleanup = async (only = null) => {
     if (only) await cleanOne(only);
-    else await cleanupPass([...cleanup], cleanOne);
+    else await cleanupPass(cleanup, cleanOne);
     await persistCleanup();
   };
 
