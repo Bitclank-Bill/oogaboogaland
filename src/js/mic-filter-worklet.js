@@ -10,7 +10,7 @@
 // speech still pass; clicks between words do not; a long pitched ring (a struck desk) may. A heuristic. Nothing here allocates after construction.
 "use strict";
 const DELAY_S = 0.09, FRAME_S = 0.032, HOP_S = 0.01, HOLD_S = 0.34, ATTACK_S = 0.005, RELEASE_S = 0.06;
-const PITCH = 0.55, OPEN_FRAMES = 3, OVER_FLOOR = 6, SPAN = 0.2, QUIET = 1e-6, FLOOR_RISE = 1.0014;
+const PITCH = 0.55, OPEN_FRAMES = 3, OVER_FLOOR = 6, SPAN = 0.2, QUIET = 1e-6, FLOOR_RISE = 1.0014, SILENT = 1e-9, FLOOR_FRAMES = 8;
 
 class MicFilter extends AudioWorkletProcessor {
   constructor() {
@@ -31,6 +31,8 @@ class MicFilter extends AudioWorkletProcessor {
     this.l1 = this.l2 = this.hx = this.hy = 0;
     this.skip = 0;
     this.floor = 1;
+    this.low = 0;
+    this.lowRun = 0;
     this.run = 0;
     this.hold = 0;
     this.holdFor = Math.round(HOLD_S * rate);
@@ -47,8 +49,13 @@ class MicFilter extends AudioWorkletProcessor {
     let energy = 0;
     for (let i = 0; i < n; i++) energy += x[i] * x[i];
     energy /= n;
-    if (energy < this.floor) this.floor = Math.max(energy, 1e-10);
-    else this.floor *= FLOOR_RISE;
+    // The floor is a room's, never a closed microphone's: a muted or held track feeds zeros, which are no reading, and
+    // it comes down only to the loudest of FLOOR_FRAMES quiet frames on end, which the tail into those zeros never is.
+    if (energy < SILENT) { this.lowRun = 0; return false; }
+    if (energy < this.floor) {
+      if (!this.lowRun++ || energy > this.low) this.low = energy;
+      if (this.lowRun === FLOOR_FRAMES) { this.floor = this.low; this.lowRun = 0; }
+    } else { this.lowRun = 0; this.floor *= FLOOR_RISE; }
     if (energy < QUIET || energy < this.floor * OVER_FLOOR) return false;
     let first = 0, last = 0;
     for (let i = 0, h = this.hop; i < h; i++) { first += x[i] * x[i]; last += x[n - 1 - i] * x[n - 1 - i]; }

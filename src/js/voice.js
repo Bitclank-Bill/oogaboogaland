@@ -301,6 +301,8 @@
       const source = context.createMediaStreamSource(stream), out = context.createMediaStreamDestination();
       const node = new AudioWorkletNode(context, "mic-filter", { channelCount: 1, channelCountMode: "explicit", outputChannelCount: [1] });
       out.channelCount = 1;
+      // A processor that throws would send silence from a running context: back to the microphone as it is.
+      node.onprocessorerror = () => { if (filter && filter.node === node) { dropFilter(); resend(); } };
       source.connect(node); node.connect(out);
       filter = { stream, source, node, track: out.stream.getAudioTracks()[0] };
       gate();
