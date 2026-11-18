@@ -182,7 +182,8 @@ test("the Block Party's channel is everyone's in the room: arrivals hear it, it 
   assert.equal(messages(dj, "party").at(-1).channel, 3, "the DJ's own page hears it too");
   assert.equal(messages(outside, "party").length, 0, "nobody outside the room hears it");
   await h.send(r, dj, { t: "party", channel: 4 });
-  assert.equal(messages(friend, "party").at(-1).channel, 3, "a second change within the gap is dropped");
+  assert.equal(messages(friend, "party").at(-1).channel, 3, "a second change within the gap is not passed on");
+  assert.deepEqual(messages(dj, "party").at(-1), { t: "party", channel: 3, by: 0 }, "and its sender is tuned back to the room's channel");
   await h.send(r, outside, { t: "party", channel: 1 });
   assert.equal(r.party.channel, 3, "only someone in the room changes it");
   h.runtime.listed = h.accepted.filter((ws) => !ws.closed);

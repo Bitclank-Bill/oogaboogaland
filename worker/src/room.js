@@ -453,10 +453,12 @@ export class Room extends DurableObject {
     this.party = null;
   }
 
-  // The DJ changed the channel: everyone in the room is tuned to it, the DJ's own page included.
+  // The DJ changed the channel: everyone in the room is tuned to it, the DJ's own page included. A change inside the
+  // gap is refused with the room's channel, so a page that tuned itself ahead of the room is tuned back.
   partyMessage(p, msg) {
     const now = Date.now();
-    if (!p.body || p.zone !== PARTY_ZONE || now - (p.partyAt || 0) < PARTY_GAP_MS) return;
+    if (!p.body || p.zone !== PARTY_ZONE) return;
+    if (now - (p.partyAt || 0) < PARTY_GAP_MS) { this.send(p.ws, { t: "party", channel: this.party ? this.party.channel : -1, by: 0 }); return; }
     p.partyAt = now;
     this.party = { channel: msg.channel, at: now };
     for (const o of this.players.values()) if (o.zone === PARTY_ZONE) {

@@ -40,6 +40,8 @@
   // The beat with no music to follow, BAR beats a bar; following the radio, the room's beat eases to its tempo at
   // TEMPO_RATE and its phase at PHASE_RATE a second. A block's drop lasts DROP_TIME, the music's own MUSIC_DROP.
   const BEAT = 60 / 124, BAR = 4, TEMPO_RATE = 3, PHASE_RATE = 6, DROP_TIME = 1.6, MUSIC_DROP = 1.4;
+  // How long the DJ's page waits between channel changes in a shared room, ms: over the room's own gap (room.js).
+  const PARTY_GAP = 1000;
   // How hard the music is: its loudness and its kick band's, in dB, followed at FAST a second against the loudest of
   // each lately, which falls FALL dB a second; the kick band counts fully within BASS_SPAN dB of its loudest, fading
   // over BASS_WIDTH, the whole within LOUD_SPAN over LOUD_WIDTH, the kick band BASS_SHARE of it. The intensity rises at
@@ -974,10 +976,15 @@
     // channel, for everyone in a shared room.
     const behind = L.r0 - 2.4, stations = BL.timechainPartyRadio.STATIONS.length, djHalf = (180 - boothHalf(L) + 3) * DEG;
     let chose = false;
+    // In a shared room a change waits PARTY_GAP after the last, a little over the room's own gap, so this page never
+    // tunes itself to a channel the room refuses (which the room would answer with its own, tuning it back).
+    let sentAt = -Infinity;
     const CHANNEL = { key: "channel", label: "CHANNEL", hint: "Space · Change the channel", tap: "Tap CHANNEL to change the channel", run: (hud) => {
+      const now = performance.now(), net = BL.net.state, shared = net.room === "live" && net.partyRadio && net.zone === "sphere-6";
+      if (shared && now - sentAt < PARTY_GAP) return;
       radio.next(); chose = true;
       screen.channel(radio.station.short);
-      const shared = BL.net.sendParty(radio.channel);
+      if (shared && BL.net.sendParty(radio.channel)) sentAt = now;
       hud.toast(`Channel ${radio.channel + 1} of ${stations} · ${radio.station.name}${shared ? " · for everyone here" : ""}`);
     } };
     // The room's channel: a change by someone else tunes this page and says who; -1 (nobody has chosen one since the
