@@ -47,7 +47,7 @@
 // Where a voice's level goes: with Web Audio (`GAIN_PLAY`), each voice plays through a gain fed by its
 // speaking meter's own source, in the context the Join click made, while its element stays muted and only keeps the
 // stream flowing; the gain carries the receive level, the hearing range, local volume and mute alike. A limiter after
-// it protects boosted peaks; at ordinary volume its ratio is 1, leaving the voice unchanged. The output never joins
+// it protects boosted peaks: its ratio is 1, leaving the voice unchanged, unless the combined gain is above 1. The output never joins
 // the page-wide environment mute (sound.js), which voice has never joined. Its nodes are made when a voice's track lands and disconnected when the voice is dropped, a restart or a stop (`unplug`).
 // Safari suspends or interrupts that context (a call, another app), which silences every voice, so then the voices
 // count as blocked, as a refused element play does, and the next tap or key wakes it (`wake`). `fades` says whether a
@@ -352,13 +352,15 @@
   const localVolume = (id) => preferences.get(id)?.volume ?? 1;
   // Overheard voices are part of the place, so the environment's mute silences them; a joined voice plays regardless.
   const playVolume = (s) => stats.receiveLevel * stats.playersLevel * s.near * s.inRange * localVolume(s.id) * (passive && BL.sound.muted ? 0 : 1);
+  // The limiter compresses peaks only while the combined level is a boost over 100%.
+  const limitRatio = (value) => value > 1 ? 20 : 1;
   // A voice's level where it plays: its element's volume, or on GAIN_PLAY its gain (nothing until its track lands), which
   // also carries whether it is heard at all.
   const setLevel = (s, immediate = false) => {
     if (!GAIN_PLAY) s.el.volume = playVolume(s);
     else if (s.gain) {
       const value = s.on ? playVolume(s) : 0, param = s.gain.gain;
-      s.limiter.ratio.value = localVolume(s.id) > 1 ? 20 : 1;
+      s.limiter.ratio.value = limitRatio(value);
       if (immediate) { param.cancelScheduledValues(audio.currentTime); param.setValueAtTime(value, audio.currentTime); }
       else param.setTargetAtTime(value, audio.currentTime, GAIN_TAU);
     }
@@ -417,7 +419,7 @@
   const plug = (s) => {
     s.gain = audio.createGain(); s.limiter = audio.createDynamicsCompressor();
     s.gain.gain.value = s.on ? playVolume(s) : 0;
-    s.limiter.threshold.value = -1; s.limiter.knee.value = 0; s.limiter.ratio.value = localVolume(s.id) > 1 ? 20 : 1;
+    s.limiter.threshold.value = -1; s.limiter.knee.value = 0; s.limiter.ratio.value = limitRatio(s.gain.gain.value);
     s.limiter.attack.value = 0.003; s.limiter.release.value = 0.1;
     s.meter.source.connect(s.gain);
     s.gain.connect(s.limiter); s.limiter.connect(audio.destination);
