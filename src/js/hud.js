@@ -323,7 +323,7 @@
         bannerFrame = 0;
         if (document.body.dataset.activeScene !== bannerScene) return;
         // The Sign in button's room, set before the clock is measured: the clock stands clear of it.
-        bannerStyle(el.topbar, "--hub-banner-account", `${accountTop.offsetWidth ? accountTop.offsetWidth + 8 : 0}px`);
+        bannerStyle(el.topbar, "--hub-banner-account", `${accountTop().offsetWidth ? accountTop().offsetWidth + 8 : 0}px`);
         const brand = el.brand.getBoundingClientRect(), clock = el.clock.getBoundingClientRect(), block = el.block.getBoundingClientRect();
         const topbar = getComputedStyle(el.topbar), row = getComputedStyle(el.equipmentRow);
         const fontSize = parseFloat(getComputedStyle(el.clock).fontSize) || 22;
@@ -392,7 +392,7 @@
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
       // Cabinet zooms resize the stage without changing the viewport or the title's own size.
-      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow, accountTop]) bannerResize.observe(node);
+      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow, accountTop()]) bannerResize.observe(node);
       if (presets) {
         bannerResize.observe(presets);
         bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
@@ -1576,9 +1576,7 @@
       panelsHidden = on;
       for (const popup of floatingBoards) popup.setHidden(on);
     };
-    const openRecipe = () => {
-      if (!el.recipe.open) el.recipe.showModal();
-    };
+    const openRecipe = () => showRecipe(false);
     const closeRecipe = () => {
       if (el.recipe.open) el.recipe.close();
     };
@@ -2021,28 +2019,27 @@
       if (el[key] !== value) el[key] = value;
     }
   };
-  // The banner's own Sign in, which turns into Sign out: the account row's two actions, in sight without a panel open.
-  const accountTop = $("account-top");
-  accountTop.addEventListener("click", () => {
-    accountTop.blur();
-    if (BL.net.state.me) BL.net.logout(); else BL.net.login();
-  });
-  // Add an Ooga, opened without a scene's HUD at hand: the director's, for a sign-in refused for want of an Ooga, which
-  // its note says for as long as that opening lasts.
-  const recipe = $("recipe"), recipeNote = $("recipe-note");
-  recipe.addEventListener("close", () => { recipeNote.hidden = true; });
-  const openRecipe = (refused) => {
-    recipeNote.hidden = !refused;
+  // The banner's own Sign in, which turns into Sign out, in sight without a panel open: its `data-action` is whichever of
+  // the account row's two applies, so a scene's HUD presses it as it presses the row's. Found when first asked for, as
+  // nothing here reads the document at load.
+  let accountTopNode = null;
+  const accountTop = () => accountTopNode || (accountTopNode = $("account-top"));
+  // Add an Ooga, with its note when a sign-in was refused for want of an Ooga: a scene's HUD opens it, and the director
+  // with no HUD at hand.
+  const showRecipe = (refused) => {
+    const recipe = $("recipe");
+    $("recipe-note").hidden = !refused;
     if (!recipe.open) recipe.showModal();
   };
   const showAccount = ({ backend, me, room, online }) => {
     const live = !!me && room === "live", words = live ? `${online} online` : ROOM_WORDS[room] || "";
-    const topTip = me ? `Signed in as ${me.display} · Sign out` : "Sign in with GitHub · needs your own Ooga";
-    if (accountTop.hidden !== !backend) accountTop.hidden = !backend;
-    if (accountTop.title !== topTip) {
-      accountTop.title = topTip;
-      accountTop.setAttribute("aria-label", me ? "Sign out" : "Sign in with GitHub");
-      accountTop.dataset.signed = String(!!me);
+    const top = accountTop(), topTip = me ? `Signed in as ${me.display} · Sign out` : "Sign in with GitHub · needs your own Ooga";
+    if (top.hidden !== !backend) top.hidden = !backend;
+    if (top.title !== topTip) {
+      top.title = topTip;
+      top.setAttribute("aria-label", me ? "Sign out" : "Sign in with GitHub");
+      top.dataset.signed = String(!!me);
+      top.dataset.action = me ? "account-logout" : "account-login";
     }
     writeAccount("account", "hidden", !backend);
     writeAccount("account-name", "textContent", me ? me.display : "");
@@ -2257,5 +2254,5 @@
     const clear = () => { for (const r of pool) r.li.remove(); pool.length = 0; };
     return { set, clear };
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, openRecipe, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, openRecipe: showRecipe, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();
