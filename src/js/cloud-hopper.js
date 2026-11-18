@@ -88,7 +88,13 @@
     const from = { x: 0, y: 0, z: 0 }, carry = { x: 0, y: 0, z: 0 };
     const liftGoal = { x: 0, y: 0, z: 0 }, ghostStart = { x: 0, y: 0, z: 0 };
     const targetScreen = { x: 0, y: 0, depth: 0 };
-    let rideView = "shoulder";
+    let rideView = "shoulder", keepCarry = false, intoCombat = false;
+    // The run's own start in combat, which the hub's `combatOnly` lets through while the ride holds the controls.
+    const startCombat = () => {
+      if (keepCarry || actor.weapon.aiming) return;
+      intoCombat = true;
+      try { pilot.modeAction("mode-toggle"); } finally { intoCombat = false; }
+    };
     let phase = "idle", actor = null, saved = null, course = null, age = 0, startedAt = 0, seconds = 0, displayTime = 0;
     let session = null, latest = null, run = 0, courseSeed = 0, courseDrift = 0;
     let unrecoverableAt = -1;
@@ -188,14 +194,24 @@
     const held = () => phase === "intro" || phase === "lifting" || phase === "briefing" || phase === "won" || phase === "dq";
     const overlay = BL.cloudHopperHud.create({ onStart: () => beginRun(), onReplay: () => beginRun(), onExit: () => exit(),
       onGuideDone: () => finishGuide(), onSelect: (id) => selectLevel(id), onNext: () => nextLevel(), onHook: (down) => hookAction(down),
-      onGhost: () => replays?.toggle(),
+      onGhost: (key) => toggleGhost(key),
       letterSign: hud.letterSign });
     const ghost = BL.cloudHopperGhost.create({ root, renderer: ctx.renderer });
     let ghostRecording = null;
     const replays = BL.cloudHopperReplays?.create({ onBoard: board => overlay.setHighscores(board),
       onState: state => overlay.setReplayState?.(state),
       onHide: () => { ghostRecording = null; ghost.hide(); },
-      onPlay: recording => { ghostRecording = recording; stageGhost(); } });
+      // A recording loaded early waits for the start cloud; the results card shows none.
+      onPlay: recording => { ghostRecording = recording; if (phase === "ready" || phase === "running") stageGhost(); } });
+    // The ghost is chosen before a run (G or its button), never during one, and the choice carries to the next run.
+    // From a key (`say`), a toast says what it did, since the cards cover the ghost's button.
+    const toggleGhost = (say = false) => {
+      if (!replays || !active()) return false;
+      if (phase === "running") { if (say) hud.toast("Turn the ghost on or off before the run starts"); return true; }
+      const on = replays.toggle();
+      if (say) hud.toast(on === null ? "No record ghost for this level yet" : on ? "Record ghost on" : "Record ghost off");
+      return true;
+    };
     const audio = BL.cloudHopperAudio.create();
     const scenery = BL.cloudHopperSky.create({ root, renderer: ctx.renderer, seaY: ctx.seaY, onStrike: (distance) => audio.thunder(distance) });
     // Thunderhead's tornadoes, one a spot and any of them up at once, each writing its own whirl; `tornado` is the one
@@ -451,7 +467,7 @@
       const replay = phase === "won" || phase === "dq", climb = ctx.arcade || !replay || ride;
       if (phase !== "intro" && !replay || level.id > opened()) return false;
       const cave = actor;
-      rideView = pilot.view;
+      rideView = pilot.view; keepCarry = replay && !cave.weapon.aiming;
       if (!cave || pilot.player !== cave || crew.player !== cave) { cancel(); return false; }
       const refusal = ctx.refusal();
       if (refusal) { hud.toast(refusal); return false; }
@@ -517,9 +533,9 @@
       const items = climb ? null : newItems(), guide = !climb && !hasSeenGuide(), briefing = guide || !!items?.length;
       if (briefing) overlay.setGuide(guide, items);
       setPhase(climb ? "lifting" : briefing ? "briefing" : "ready");
-      // No carry here: the run is played in combat, at the shoulder or in first person. The hub's `combatOnly` holds
-      // it there from now on, and lets the pilot enter it while the ride holds the controls.
-      if (!cave.weapon.aiming) pilot.modeAction("mode-toggle");
+      // A first run starts in combat, at the shoulder or in first person; X switches to carry and back from there,
+      // and a run played again keeps the mode the last one ended in.
+      startCombat();
       if (!replay) ctx.mode(true);
       moveRider();
       if (climb && ctx.arcade) turnLiftView(0);
@@ -745,7 +761,7 @@
             pilot.releaseFrame(true);
             pilot.enterClose();
             if (rideView !== "first-person") pilot.exitClose();
-            if (!actor.weapon.aiming) pilot.modeAction("mode-toggle");
+            startCombat();
           }
           pilot.controls.reset();
           const items = newItems();
@@ -1244,11 +1260,13 @@
       if ((pilot.player?.jetpackOwned || pilot.player?.jet)) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("jetpack"), "Wear / remove collected jetpack; hold jump to climb", touch ? "Jetpack button" : ""));
       if (hookHeld) rows.push(H.row([], "Aim at a cloud and hold to reel in; release to fly on", touch ? "Hook button" : "Left mouse"));
       if (!touch && !held()) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
+      if (!touch) rows.push(H.row(BL.controls.shortcutKeys("view"), "Switch carry and combat"));
+      if (!touch && phase !== "running") rows.push(H.row(BL.controls.shortcutKeys("ghost"), "Record ghost on or off"));
       rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), "Exit Cloud Hopper", touch ? "Exit button" : ""));
       return { title: "Cloud Hopper", rows };
     };
-    return { controlsHelp, controlsHelpHold, platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, hookAction, fallView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
-      get active() { return active(); }, get playing() { return playing(); }, get held() { return held(); },
+    return { controlsHelp, controlsHelpHold, platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, hookAction, toggleGhost, fallView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
+      get active() { return active(); }, get playing() { return playing(); }, get held() { return held(); }, get intoCombat() { return intoCombat; },
       get actor() { return actor; }, get phase() { return phase; }, get time() { return seconds; },
       get course() { return course; }, get start() { return start; }, get level() { return level; },
       // The level's fixed sky, which the hub samples instead of its clock while a run plays, and its lightning now.
