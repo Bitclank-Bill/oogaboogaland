@@ -41,7 +41,7 @@ import {
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
   LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
-  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, audienceRoom, commonsRoom,
+  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, audienceRoom, commonsRoom, sessionGone, cleanupPass,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
 import { getPlayer } from "./db.js";
@@ -51,8 +51,6 @@ import { STUDIO_TRANSPORT, STUDIO_ZONE, studioState, studioHostAllowed, studioCa
 import CAST_ROWS from "./characters.gen.json";
 
 const CAST = castIndex(CAST_ROWS);
-// A retired SFU session cannot own usable tracks. Other 410 responses are not proof of session expiry.
-const sfuSessionGone = err => err.status === 404 || (err.status === 410 && err.code === "session_error");
 // The voice cleanup queue's bound (`shedCleanup`).
 const CLEANUP_JOBS_MAX = 64;
 // A held player's socket while its page is away (`hold`): anything written to it goes nowhere, as to a socket closing,
@@ -2037,7 +2035,9 @@ export class Room extends DurableObject {
     if (!this.sfu || !session || (!mids.length && !inspect)) return;
     if (!this.cleanupJobs) this.cleanupJobs = [];
     const existing = this.cleanupJobs.find(job => job.session === session);
-    if (existing) { existing.at = Date.now(); existing.revision = (existing.revision || 0) + 1; existing.mids = [...new Set(existing.mids.concat(mids))]; existing.midVersions = existing.midVersions || {}; for (const mid of mids) existing.midVersions[mid] = existing.revision; existing.inspect = existing.inspect || inspect; if (inspect) existing.inspectUntil = Date.now() + 20000; }
+    // A merge keeps the job's `at`, when it was first queued: refreshed on every merge, a busy session's job that the SFU
+    // kept refusing never reached CLEANUP_MS.
+    if (existing) { existing.revision = (existing.revision || 0) + 1; existing.mids = [...new Set(existing.mids.concat(mids))]; existing.midVersions = existing.midVersions || {}; for (const mid of mids) existing.midVersions[mid] = existing.revision; existing.inspect = existing.inspect || inspect; if (inspect) existing.inspectUntil = Date.now() + 20000; }
     else this.cleanupJobs.push({ session, at: Date.now(), revision: 0, mids: [...new Set(mids)], midVersions: Object.fromEntries(mids.map(mid => [mid, 0])), inspect, inspectUntil: inspect ? Date.now() + 20000 : 0 });
     if (this.ctx && this.ctx.storage) await this.ctx.storage.put("voiceCleanup", this.cleanupJobs);
     for (const p of this.players.values()) if (p.zone === STUDIO_ZONE) this.sendStudio(p);
@@ -2067,63 +2067,72 @@ export class Room extends DurableObject {
     return true;
   }
 
+  // One job: inspect the session if asked, close its mids, and leave the queue once the SFU confirms. Never throws.
+  async cleanupOne(job, background) {
+    const tasks = this.cleanupTasks ||= new Map();
+    // Taken out only while still in the queue: a shed (`shedCleanup`) or another run may have taken it already.
+    const done = () => { const i = this.cleanupJobs.indexOf(job); if (i >= 0) this.cleanupJobs.splice(i, 1); };
+    if (!this.cleanupJobs.includes(job)) return;
+    // Only the same SFU session waits: another player's cleanup cannot stall this request.
+    while (tasks.has(job.session)) await tasks.get(job.session);
+    if (!this.cleanupJobs.includes(job)) return;
+    // A job the SFU has refused for CLEANUP_MS since it was first queued is given up, so a room nobody is in stops
+    // waking for it.
+    if (Date.now() - (job.at ??= Date.now()) > CLEANUP_MS) { done(); return; }
+    let finished;
+    tasks.set(job.session, new Promise(resolve => { finished = resolve; }));
+    this.cleanupAttempt = { at: Date.now(), operation: job.inspect ? "inspect" : "close", finished: 0, status: 0 };
+    const attempt = this.cleanupAttempt;
+    try {
+      const revision = job.revision || 0;
+      let inspected = !job.inspect;
+      if (job.inspect) {
+        const priorVersions = { ...(job.midVersions || {}) };
+        try {
+          const state = await this.sfu.getSession(job.session, background);
+          const inactive = new Set((state.tracks || []).filter(t => t.status === "inactive").map(t => t.mid));
+          job.mids = job.mids.filter(mid => !inactive.has(mid) || (job.midVersions || {})[mid] !== priorVersions[mid]);
+          // Only a session nobody holds any more is swept for what is left. On a live one that would close every voice
+          // it still receives, with no page any the wiser: one listener gone deaf to everybody.
+          const held = [...this.players.values()].some(p => p.voice.sub === job.session || p.voice.pub === job.session);
+          if (!held) job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
+          inspected = true;
+        } catch (err) {
+          attempt.status = Number(err.status) || 0;
+          if (sessionGone(err)) throw err;
+          // An inspection timeout must not prevent closing MIDs we already own. Keep the inspection pending,
+          // even if those closes succeed: the timed-out allocation may still have left other tracks behind.
+        }
+      }
+      const mids = job.mids.slice();
+      const versions = { ...(job.midVersions || {}) };
+      if (mids.length) attempt.operation = "close";
+      const res = mids.length ? await this.sfu.closeTracks(job.session, mids, background) : { tracks: [] };
+      // Cloudflare's close_track_error confirms an absent/already-closed track. Other errors and missing rows retry.
+      const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map(t => t.mid));
+      job.mids = job.mids.filter(mid => !succeeded.has(mid) || (job.midVersions || {})[mid] !== versions[mid]);
+      for (const mid of succeeded) if (!job.mids.includes(mid) && job.midVersions) delete job.midVersions[mid];
+      // A close this pass sent that the SFU did not confirm; a mid queued while it was on its way is simply next.
+      if (mids.some(mid => job.mids.includes(mid))) job.inspect = true;
+      // A concurrent queue may have appended/reallocated owned MIDs while upstream was pending.
+      if (!inspected || (job.revision || 0) !== revision || job.mids.length || (job.inspect && Date.now() < job.inspectUntil)) return;
+      done();
+    } catch (err) {
+      attempt.status = Number(err.status) || 0;
+      // A session the SFU says is gone owns no tracks and needs no further retry.
+      if (sessionGone(err)) done();
+      // Other failures retain ownership for the existing room alarm.
+    } finally { attempt.finished = Date.now(); tasks.delete(job.session); finished(); }
+  }
+
   async retryCleanup(session = null, background = !session) {
     if (!this.sfu || !this.cleanupJobs || !this.cleanupJobs.length) return;
     if (!session && this.cleanupRunning) return this.cleanupRunning;
-    const tasks = this.cleanupTasks ||= new Map();
     const running = (async () => {
-      for (const job of [...this.cleanupJobs]) {
-        if (!this.cleanupJobs.includes(job) || (session && job.session !== session)) continue;
-        // Only the same SFU session waits: another player's cleanup cannot stall this request.
-        while (tasks.has(job.session)) await tasks.get(job.session);
-        if (!this.cleanupJobs.includes(job)) continue;
-        // A job the SFU has refused for CLEANUP_MS is given up, so a room nobody is in stops waking for it.
-        if (Date.now() - (job.at ??= Date.now()) > CLEANUP_MS) { this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1); continue; }
-        let finished;
-        tasks.set(job.session, new Promise(resolve => { finished = resolve; }));
-        this.cleanupAttempt = { at: Date.now(), operation: job.inspect ? "inspect" : "close", finished: 0, status: 0 };
-        const attempt = this.cleanupAttempt;
-        try {
-          const revision = job.revision || 0;
-          let inspected = !job.inspect;
-          if (job.inspect) {
-            const priorVersions = { ...(job.midVersions || {}) };
-            try {
-              const state = await this.sfu.getSession(job.session, background);
-              const inactive = new Set((state.tracks || []).filter(t => t.status === "inactive").map(t => t.mid));
-              job.mids = job.mids.filter(mid => !inactive.has(mid) || (job.midVersions || {})[mid] !== priorVersions[mid]);
-              // Only a session nobody holds any more is swept for what is left. On a live one that would close every voice
-              // it still receives, with no page any the wiser: one listener gone deaf to everybody.
-              const held = [...this.players.values()].some(p => p.voice.sub === job.session || p.voice.pub === job.session);
-              if (!held) job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
-              inspected = true;
-            } catch (err) {
-              attempt.status = Number(err.status) || 0;
-              if (sfuSessionGone(err)) throw err;
-              // An inspection timeout must not prevent closing MIDs we already own. Keep the inspection pending,
-              // even if those closes succeed: the timed-out allocation may still have left other tracks behind.
-            }
-          }
-          const mids = job.mids.slice();
-          const versions = { ...(job.midVersions || {}) };
-          if (mids.length) attempt.operation = "close";
-          const res = mids.length ? await this.sfu.closeTracks(job.session, mids, background) : { tracks: [] };
-          // Cloudflare's close_track_error confirms an absent/already-closed track. Other errors and missing rows retry.
-          const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && (!t.errorCode || t.errorCode === "close_track_error")).map(t => t.mid));
-          job.mids = job.mids.filter(mid => !succeeded.has(mid) || (job.midVersions || {})[mid] !== versions[mid]);
-          for (const mid of succeeded) if (!job.mids.includes(mid) && job.midVersions) delete job.midVersions[mid];
-          // A close this pass sent that the SFU did not confirm; a mid queued while it was on its way is simply next.
-          if (mids.some(mid => job.mids.includes(mid))) job.inspect = true;
-          // A concurrent queue may have appended/reallocated owned MIDs while upstream was pending.
-          if (!inspected || (job.revision || 0) !== revision || job.mids.length || (job.inspect && Date.now() < job.inspectUntil)) continue;
-          this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
-        } catch (err) {
-          attempt.status = Number(err.status) || 0;
-          // A confirmed absent upstream session owns no tracks and needs no further retry.
-          if (sfuSessionGone(err)) this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);
-          // Other failures retain ownership for the existing room alarm.
-        } finally { attempt.finished = Date.now(); tasks.delete(job.session); finished(); }
-      }
+      // A request waits for its own session's job alone; a wake's pass is bounded in time and runs a few jobs at once
+      // (`cleanupPass`), what is left waiting for the next wake, which starts with the jobs this one never reached.
+      if (session) for (const job of this.cleanupJobs.filter(job => job.session === session)) await this.cleanupOne(job, background);
+      else await cleanupPass(this.cleanupJobs, job => this.cleanupOne(job, background));
       // Remaining jobs retry at the next wake: at most a sweep interval away, and sooner if another wake comes first.
       if (!this.cleanupJobs.length) this.cleanupAt = 0;
       else if (!this.cleanupAt || this.cleanupAt <= Date.now()) this.cleanupAt = Date.now() + SWEEP_MS;
@@ -2207,11 +2216,8 @@ export class Room extends DurableObject {
     block.sweep(this);
     duel.sweep(this);
     tessQueue.sweep(this);
-    // Cleanup retries run on every wake, not only at sweep time.
-    await this.retryCleanup();
     // Ooga Chat's audience told again what it missed, and grants still closing asked about again (#667).
     await audienceRoom.retry(this);
-    // A full retry pass can outlast a sweep interval. Advance from completion, not the old start time.
     const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;
     this.expireDoors(now);
@@ -2233,7 +2239,13 @@ export class Room extends DurableObject {
         if (!p.held && now - this.heardAt(p) > STALE_MS) this.evict(p, "stale");
       }
       await commonsRoom.sweep(this, now, (login, id) => this.memberOwns(login, id), STALE_MS);
-      this.sweepAt = now + (this.players.size || !commonsRoom.size(this) ? SWEEP_MS : MEMBER_SWEEP_MS);
+    }
+    // Cleanup retries run on every wake, not only at sweep time, and last: a pass is bounded (`cleanupPass`), and the
+    // sweep's account and stale checks never wait behind an SFU slow to answer.
+    await this.retryCleanup();
+    // The next sweep is counted from this wake's completion, so a pass that ran long never leaves it overdue.
+    if (sweepDue) {
+      this.sweepAt = Date.now() + (this.players.size || !commonsRoom.size(this) ? SWEEP_MS : MEMBER_SWEEP_MS);
       await this.ctx.storage.put("sweepAt", this.sweepAt);
     }
     const next = this.nextAlarm();
