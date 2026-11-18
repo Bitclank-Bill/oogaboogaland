@@ -66,6 +66,10 @@ const cleanupJob = (job) => !!job && typeof job === "object" && typeof job.sessi
   && (job.at == null || Number.isFinite(job.at)) && (job.revision === undefined || Number.isFinite(job.revision))
   && (job.inspectUntil === undefined || Number.isFinite(job.inspectUntil));
 
+// How long each of the World Map's two load windows runs (`countLoad`), and the name its counts give Ooga Chat's
+// community members, who report no zone.
+const LOAD_MS = 5000, LOAD_CHAT = "ooga-chat";
+
 export class Room extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -288,7 +292,34 @@ export class Room extends DurableObject {
     }
     this.inspect.count("out");
     this.inspect.count("outBytes", typeof data === "string" ? data.length : data.byteLength);
+    const to = this.sockets.get(ws);
+    this.countLoad(to ? to.zone : LOAD_CHAT, false);
     return true;
+  }
+
+  // One message in from, or one send out to, a socket in `zone`, for the World Map's CPU estimate (world.js). Two
+  // windows of LOAD_MS turn over as they are counted or read, so nothing runs on a timer and an idle room sleeps.
+  countLoad(zone, inbound, now = Date.now()) {
+    const load = this.turnLoad(now);
+    let row = load.now.get(zone);
+    if (!row) { row = { in: 0, out: 0 }; load.now.set(zone, row); }
+    if (inbound) row.in++; else row.out++;
+  }
+
+  // The load's windows, the current one turned over once it has run LOAD_MS; the one before is kept with how long it
+  // ran, however long a quiet room left it open, so a rate is always the true average over the span it reports.
+  // The windows are made at their first count (`this.load`, memory only, gone with hibernation like the rest).
+  turnLoad(now) {
+    const load = this.load || (this.load = { at: now, now: new Map(), was: new Map(), wasMs: 0 });
+    if (now - load.at >= LOAD_MS) {
+      const was = load.was;
+      load.was = load.now;
+      load.wasMs = now - load.at;
+      was.clear();
+      load.now = was;
+      load.at = now;
+    }
+    return load;
   }
 
   broadcast(msg, except = null) {
@@ -748,9 +779,10 @@ export class Room extends DurableObject {
     const p = this.byWs(ws);
     if (!p) {
       const a = ws.deserializeAttachment();
-      if (a && a.community) return commonsRoom.message(this, ws, parseClientMessage(typeof message === "string" ? message : ""), Date.now());
+      if (a && a.community) { this.countLoad(LOAD_CHAT, true); return commonsRoom.message(this, ws, parseClientMessage(typeof message === "string" ? message : ""), Date.now()); }
       return;
     }
+    this.countLoad(p.zone, true);
     this.inspect.count("in");
     this.inspect.count("inBytes", typeof message === "string" ? message.length : message.byteLength);
     if (!ownedBody(CAST, p.login, p.contributor, p.id)) { this.evict(p, "revoked"); return; }
@@ -2260,5 +2292,23 @@ export class Room extends DurableObject {
   // The Inspector, when a viewer connects: report now, with the rows.
   inspectWatch(until) {
     this.inspect.watch(until);
+  }
+
+  // The World Map's live layer (/api/world, world.js): who stands in which zone, by the names the players tab shows,
+  // the room's sockets, and each zone's messages in and sends out a second over the span `load.seconds` says (the
+  // current load window and the one before it). From memory alone: no storage, D1 or positions.
+  worldView() {
+    const zones = {}, now = Date.now();
+    for (const p of this.players.values()) (zones[p.zone] || (zones[p.zone] = [])).push({ display: p.display || p.login, login: p.login });
+    const L = this.turnLoad(now);
+    const ms = Math.max(1, now - L.at + L.wasMs), rate = (n) => Math.round(n * 100000 / ms) / 100, rates = {};
+    for (const [zone, counts] of [...L.was, ...L.now]) {
+      const sum = rates[zone] || (rates[zone] = { in: 0, out: 0 });
+      sum.in += counts.in;
+      sum.out += counts.out;
+    }
+    for (const sum of Object.values(rates)) { sum.in = rate(sum.in); sum.out = rate(sum.out); }
+    return { name: this.ctx.id.name || "", sockets: this.ctx.getWebSockets().length, players: this.players.size, maxPlayers: MAX_PLAYERS,
+      commons: commonsRoom.size(this), zones, load: { seconds: Math.round(ms) / 1000, zones: rates } };
   }
 }
