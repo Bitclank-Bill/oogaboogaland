@@ -30,7 +30,8 @@ class MicFilter extends AudioWorkletProcessor {
     this.hp = Math.exp(-2 * Math.PI * 80 / low);
     this.l1 = this.l2 = this.hx = this.hy = 0;
     this.skip = 0;
-    this.floor = 1;
+    // From the quietest a voice may be, never from the first frame: a filter that starts mid-sentence must still open.
+    this.floor = QUIET;
     this.low = 0;
     this.lowRun = 0;
     this.run = 0;
