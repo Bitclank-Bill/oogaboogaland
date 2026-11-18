@@ -707,7 +707,7 @@
   // parts and its glass in one geometry, each face of the glass marked with how see-through it is.
   const viewModel = own(() => EXHIBITS.map((ex) => {
     if (ex.key === "satoshi") return null;
-    const pass = (glass) => RM.solo((k) => GM.model(k, ex.plinth && ex.plinth !== "centre" ? ex.plinth : ex.key, 0, { part: ex.part || "main", glass }));
+    const pass = (glass) => RM.solo((k) => GM.model(k, ex.plinth && ex.plinth !== "centre" ? ex.plinth : ex.key, 0, { part: ex.part || "main", glass, view: true }));
     const glass = pass(true);
     for (const f of glass.faces) f.glass = PIECE_GLASS.alpha;
     return BL.models.merge(pass(false), glass);
@@ -1626,7 +1626,7 @@
     }
     portalPlan(K, L);
     // The pieces on the ring's plinths, by sector of the walk: the near build and the far one (lighter), one of each
-    // shown at a time, and the pieces' glass, a mesh of its own a sector.
+    // shown at a time, and with each its glass, a mesh of its own.
     for (let sct = 0; sct < SECTORS; sct++) {
       const pieces = (opts) => (k) => {
         PLINTHS.forEach((p, i) => {
@@ -1635,10 +1635,11 @@
           GM.model(k.group(x, 0, z, headingTo(x, z, 0, 0)), p.model, TOP + RISE + 0.005, { unit: BIG, lip: RISE, ...opts });
         });
       };
-      K.node(`gallerySector${sct}`, pieces({}), 0, 0, 0);
-      K.node(`gallerySectorLow${sct}`, pieces({ quiet: true }), 0, 0, 0);
-      const glass = K.node(`galleryGlass${sct}`, pieces({ glass: true }), 0, 0, 0).geometry;
-      glass.glass = PIECE_GLASS.alpha; glass.castShadow = false;
+      for (const [low, quiet] of [["", false], ["Low", true]]) {
+        K.node(`gallerySector${low}${sct}`, pieces({ quiet }), 0, 0, 0);
+        const glass = K.node(`galleryGlass${low}${sct}`, pieces({ quiet, glass: true }), 0, 0, 0).geometry;
+        glass.glass = PIECE_GLASS.alpha; glass.castShadow = false;
+      }
     }
     // The words cut into the plinths, in INSC_GROUPS nodes round the ring (each shown only to a visitor near it).
     // The words are laid out as at the museum's size, on faces `WORDS` times smaller than these, and cut `WORDS` times as large.
@@ -1732,9 +1733,9 @@
     const gone = new AbortController(), poc = floorPoc.animate(nodes, built);
     const spots = PLINTHS.map((p, i) => ({ ...spotOf(i), index: p.entries[0].index }));
     const smooth = (k) => k * k * (3 - 2 * k), unit = (v) => Math.max(0, Math.min(1, v));
-    // The pieces' glass, a mesh a sector: it breathes, each sector a little after the last round the ring (held still
-    // for a visitor who asks for less motion).
-    const glass = Array.from({ length: SECTORS }, (_, i) => nodes[`galleryGlass${i}`].geometry), calm = matchMedia("(prefers-reduced-motion: reduce)");
+    // The pieces' glass, a sector's near and far meshes: it breathes, each sector a little after the last round the
+    // ring (held still for a visitor who asks for less motion).
+    const glass = Array.from({ length: SECTORS }, (_, i) => [nodes[`galleryGlass${i}`].geometry, nodes[`galleryGlassLow${i}`].geometry]), calm = matchMedia("(prefers-reduced-motion: reduce)");
     // The shared clock's seconds, so every player's show stands at the same point of its cycle.
     const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000;
     const focus = PLINTHS.map((p, i) => ({ node: nodes[`focusRing${i}`], tick: nodes[`yearTick${i}`], ...spotOf(i), level: 0, lit: 0, boost: 0 })), genesisAt = PLINTHS.findIndex((p) => p.id === "genesis");
@@ -1784,8 +1785,8 @@
       for (let i = nd - 1; i >= 0; i--) { put(DIGIT[hs.digits[i]]); if (i && i % 3 === 0) put(COMMA); }
     };
     const dialogOpen = () => { const d = document.getElementById("model-modal"), r = document.getElementById("wp-reader"); return !!(d && d.open || r && r.open); };
-    const sectors = Array.from({ length: SECTORS }, (_, i) => ({ near: nodes[`gallerySector${i}`], far: nodes[`gallerySectorLow${i}`], spots: spots.filter((_, j) => Math.floor(j * SECTORS / PLINTHS.length) === i), isNear: true }));
-    for (const s of sectors) if (s.far) s.far.visible = false;
+    const sectors = Array.from({ length: SECTORS }, (_, i) => ({ near: nodes[`gallerySector${i}`], far: nodes[`gallerySectorLow${i}`], nearGlass: nodes[`galleryGlass${i}`], farGlass: nodes[`galleryGlassLow${i}`], spots: spots.filter((_, j) => Math.floor(j * SECTORS / PLINTHS.length) === i), isNear: true }));
+    for (const s of sectors) if (s.far) s.far.visible = s.farGlass.visible = false;
     const insc = Array.from({ length: INSC_GROUPS }, (_, i) => ({ node: nodes[`inscGroup${i}`], spots: spots.filter((_, j) => Math.floor(j * INSC_GROUPS / PLINTHS.length) === i), on: true })).filter((q) => q.node);
     let px = 0, pz = 14;
     const carried = { x: 0, z: 0 };
@@ -2007,7 +2008,7 @@
             screen.geo.imageSurface.version++;
           }
         }
-        if (!calm.matches) for (let i = 0; i < SECTORS; i++) glass[i].glass = PIECE_GLASS.alpha + PIECE_GLASS.swell * Math.sin(TAU * (now / PIECE_GLASS.period - i / SECTORS));
+        if (!calm.matches) for (let i = 0; i < SECTORS; i++) glass[i][0].glass = glass[i][1].glass = PIECE_GLASS.alpha + PIECE_GLASS.swell * Math.sin(TAU * (now / PIECE_GLASS.period - i / SECTORS));
         for (let i = 0; i < insc.length; i++) { const q = insc[i]; let d = Infinity; for (let j = 0; j < q.spots.length; j++) d = Math.min(d, Math.hypot(q.spots[j].x - px, q.spots[j].z - pz)); const on = q.on ? d < INSC_FAR : d < INSC_NEAR; if (on !== q.on) { q.on = on; q.node.visible = on; } }
         for (let i = 0; i < sectors.length; i++) {
           const s = sectors[i];
@@ -2015,7 +2016,7 @@
           let d = Infinity;
           for (let j = 0; j < s.spots.length; j++) d = Math.min(d, Math.hypot(s.spots[j].x - px, s.spots[j].z - pz));
           const near = s.isNear ? d < LOD_FAR : d < LOD_NEAR;
-          if (near !== s.isNear) { s.isNear = near; s.near.visible = near; s.far.visible = !near; }
+          if (near !== s.isNear) { s.isNear = near; s.near.visible = s.nearGlass.visible = near; s.far.visible = s.farGlass.visible = !near; }
         }
         portal.update(dt, px, pz, now);
         if (dropnowAt && now >= dropnowAt) { dropnowAt = 0; dbg.genesis.dropBlock(); }

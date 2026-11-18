@@ -4,7 +4,8 @@
 // warm orange against cool blue. Every label is drawn as geometry, so the model viewer shows it as the hall does. Each
 // is an original design, carrying no maker's mark or logo. `model(root, key, y, opts)` builds one in kit `root` (its
 // front toward -z, standing on y): `opts.part` one piece of a shared plinth alone (for the viewer), `opts.quiet` a
-// lighter build for a piece seen from across the room (round parts in fewer faces, small words left out) and
+// lighter build for a piece seen from across the room (round parts in fewer faces, small words left out), `opts.view`
+// the build the model viewer turns, and
 // `opts.glass` the piece's glass in place of its solid parts, which a room draws as a mesh of its own.
 (() => {
   "use strict";
@@ -14,8 +15,8 @@
   // The label strips' and the paper's colours (a room lays its own accent over `amber` and `amberText`).
   const C = { amber: "#f7931a", amberText: "#ffb04d", ink: "#14110e", paper: "#efe9d8", paperOld: "#e3d9bf", inkBlue: "#1b2d6b", woodDark: "#4a331c" };
   // The pieces' colours: brushed steel and gun-metal, the dark of a deck, ceramic, the warm lights (orange to
-  // near-white), the cool ones (blue, teal, pale), the accents, and the dim tints of dark glass.
-  const HUE = { steel: "#aab3c2", gun: "#4d566b", dark: "#1b1f3d", deck: "#0f1126", cer: "#efe6d2", org: "#ff8a1e", amb: "#ffb347", hot: "#ffd9a3", blu: "#3fa8ff", teal: "#62cfe0", pale: "#b5eef5", green: "#8dffb6", vio: "#9b7cf0", gold: "#e8b93a", red: "#e04a3c", off: "#4a4f6e", dimBlu: "#1d3f66", dimOrg: "#6b3f08", dimRed: "#4a1210" };
+  // near-white), the cool ones (blue, teal, pale), the accents, the dim tints of dark glass, and the glow over a dish.
+  const HUE = { steel: "#aab3c2", gun: "#4d566b", dark: "#1b1f3d", deck: "#0f1126", cer: "#efe6d2", org: "#ff8a1e", amb: "#ffb347", hot: "#ffd9a3", blu: "#3fa8ff", teal: "#62cfe0", pale: "#b5eef5", green: "#8dffb6", vio: "#9b7cf0", gold: "#e8b93a", red: "#e04a3c", off: "#4a4f6e", dimBlu: "#1d3f66", glow: "#24558f", dimOrg: "#6b3f08", dimRed: "#4a1210" };
   // Which way a frame's -z looks (its turn about y, then about x), for a frame laid on a face of a part.
   const FACES = { front: [0, 0], back: [Math.PI, 0], left: [-HALF, 0], right: [HALF, 0], top: [0, HALF], bottom: [0, -HALF] };
   // A room may show its displays larger than the museum's size: while one is built (`model`, `opts.unit`) every length
@@ -27,10 +28,11 @@
   // unless turned; pixel words facing -z; `at`, a frame of its own placed and turned in this one, and `face`, one
   // whose -z looks out of a face; `layer`, the depth of the n-th layer laid on a face, and `ink`, of words written on
   // it. `quiet` (the far build): words under 6 mm a pixel are left out, since nobody reads them from across the room.
-  const tools = (k, base, quiet = false) => {
+  // `view`: the build is for the model viewer (`DETAIL`).
+  const tools = (k, base, quiet = false, view = false) => {
     const s = UNIT;
     const T = {
-      quiet,
+      quiet, view,
       B: (w, h, d, color, x, yy, z, o) => k.box(w * s, h * s, d * s, color, x * s, base + yy * s, z * s, o),
       Y: (rt, rb, h, color, x, yy, z, o) => k.cyl(rt * s, rb * s, h * s, color, x * s, base + yy * s, z * s, o),
       R: (rr, r, color, x, yy, z, o) => k.torus(rr * s, r * s, color, x * s, base + yy * s, z * s, o),
@@ -38,7 +40,7 @@
       lathe: (profile, color, x, yy, z, o) => k.lathe(profile.map(([r, y]) => [r * s, y * s]), color, x * s, base + yy * s, z * s, o),
       prism: (pts, depth, color, x, yy, z, o) => k.prism(pts.map(([px, py]) => [px * s, py * s]), depth * s, color, x * s, base + yy * s, z * s, o),
       say: (text, px, color, x, yy, z, e = 0.25) => quiet && px < 0.006 ? null : k.add(RM.helpers.litWord(text, px * s, color, e), x * s, base + yy * s, z * s),
-      at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, quiet),
+      at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, quiet, view),
       face: (face, x, yy, z, spin = 0) => T.at(x, yy, z, FACES[face][0], FACES[face][1], spin),
       layer: (n) => -LIFT - 2 * LIFT * n, ink: (n) => -LIFT - 2 * LIFT * n - 0.0025
     };
@@ -68,18 +70,19 @@
   // The piece's label: a strip standing along the plinth's front edge, in front of and below everything.
   const label = (T, lines, w = 0.86, x = 0) => { if (!GLASS) strip(T, lines, x, 0.048 - LIP / UNIT, -0.55, w, 0.004); };
   const lit = (e, o) => e ? { ...o, emissive: e, glow: true } : o || {};
-  // How round a round part is drawn. A builder asks for the faces round it (`seg`) that the part would want seen
-  // alone and close; the hall draws `DETAIL.near` of them, and no more than a part of its radius needs (`round`, so
-  // many a metre), a ring's tube four-sided where it is thin and six-sided where it is thick. The far build draws
-  // `DETAIL.far` of them, every tube three-sided and a thin rod's round four-sided, a ball under `DETAIL.cube` metres
-  // in radius as a cube, and leaves out any part under `DETAIL.least` metres across and any hair-thin ring under
-  // `DETAIL.hoop` metres in radius. A part of under ten faces round stays as it is (a crystal, a hexagon). These keep
-  // the ring's triangles near what they were before these pieces.
-  const DETAIL = { near: 0.7, far: 0.25, round: 260, farRound: 90, least: 0.03, cube: 0.05, hoop: 0.08 };
-  const round = (T, o, radius, tube = 0) => {
-    const want = Math.ceil(o.seg * (T.quiet ? DETAIL.far : DETAIL.near)), most = Math.ceil(radius * (T.quiet ? DETAIL.farRound : DETAIL.round));
-    return { ...o, seg: o.seg >= 10 ? Math.max(T.quiet ? (radius < 0.02 ? 4 : 6) : 10, Math.min(want, most)) : o.seg, sides: T.quiet ? 3 : tube < 0.012 ? 4 : 6 };
-  };
+  // How round a round part is drawn. On its plinth, near, a part has the faces round it its builder asks for (`seg`)
+  // and more where it is large, so no curve shows its corners from the walk: `DETAIL.round` faces a metre of radius,
+  // up to `DETAIL.most`, a ring's tube four-sided where it is a hair of light and rounder as it thickens. The viewer
+  // draws every face itself, in order, on each turn of the model, so its build has `DETAIL.view` of what the builder
+  // asks. The far build, for a piece seen from across the room, has `DETAIL.far` of it and no more than a part of its
+  // radius needs (`farRound`), every tube three-sided, a ball under `DETAIL.cube` metres in radius as a cube, and
+  // leaves out any part under `DETAIL.least` metres across and any hair-thin ring under `DETAIL.hoop` metres in
+  // radius. A part of under ten faces round stays as it is (a crystal, a hexagon).
+  const DETAIL = { round: 260, most: 64, view: 0.5, far: 0.25, farRound: 90, least: 0.03, cube: 0.05, hoop: 0.08 };
+  const round = (T, o, radius, tube) => o.seg < 10 ? o
+    : T.quiet ? { ...o, seg: Math.max(radius < 0.02 ? 4 : 6, Math.min(Math.ceil(o.seg * DETAIL.far), Math.ceil(radius * DETAIL.farRound))), sides: 3 }
+    : T.view ? { ...o, seg: Math.max(10, Math.ceil(o.seg * DETAIL.view)), ...(tube ? { sides: tube < 0.012 ? 4 : 6 } : null) }
+    : { ...o, seg: Math.max(o.seg, Math.min(DETAIL.most, Math.ceil(radius * DETAIL.round))), ...(tube && !o.sides ? { sides: tube < 0.008 ? 4 : tube < 0.02 ? 6 : 10 } : null) };
   const seen = (T, size) => !T.quiet || size >= DETAIL.least;
   // Chrome, as an airbrush paints it: every face coloured by how far it looks up, a cool sky above, a dark line at the
   // horizon and a warm ground below.
@@ -113,7 +116,7 @@
       // The same shapes in chrome.
       cbox: (T, w, h, d, x, y, z, o) => { if (on(T, Math.max(w, h, d))) chromed(T.B(w, h, d, "#ffffff", x, y, z, o || {})); },
       ccyl: (T, rt, rb, h, x, y, z, o) => { if (on(T, Math.max(2 * rt, 2 * rb, h))) chromed(T.Y(rt, rb, h, "#ffffff", x, y, z, round(T, { seg: 28, ...o }, Math.max(rt, rb)))); },
-      cring: (T, R, r, x, y, z, o) => { if (on(T, 2 * R)) chromed(T.R(R, r, "#ffffff", x, y, z, round(T, { seg: 40, ...o }, R, r))); },
+      cring: (T, R, r, x, y, z, o) => { if (on(T, 2 * R)) chromed(T.R(R, r, "#ffffff", x, y, z, round(T, { seg: 40, ...o }, R, Math.max(r, 0.02)))); },
       cball: (T, r, x, y, z, o) => { if (on(T, 2 * r)) chromed(T.quiet && r < DETAIL.cube ? T.B(1.6 * r, 1.6 * r, 1.6 * r, "#ffffff", x, y, z) : T.ball(r, "#ffffff", x, y, z, round(T, { seg: 16, ...o }, r))); },
       shell: (T, profile, x, y, z, o) => { if (on(T, 1)) chromed(T.lathe(profile, "#ffffff", x, y, z, round(T, { seg: 28, ...o }, widest(profile)))); },
       // A thin rod from one point to another: turned to the other's bearing, then tipped up to it.
@@ -126,13 +129,15 @@
     };
   };
   const So = draw(false), Gl = draw(true);
-  // The base a piece floats over: a chrome dish set in the deck, a warm ring of light at its rim, a cool one inside
-  // it, and the light it throws up.
+  // The base a piece floats over: a chrome dish set in the deck, a cool ring of light round its foot, a warm one at
+  // its rim and a cool one inside it, and the light it throws up: three skins of glass one inside another, each taller
+  // than the last, so the light is deepest at the dish and thins as it climbs.
   const base = (T, r = 0.4, c = HUE.org) => {
     So.shell(T, [[0, 0], [r + 0.04, 0], [r + 0.035, 0.022], [r - 0.01, 0.04], [r * 0.7, 0.03], [0, 0.026]], 0, 0, 0, { seg: 40 });
-    So.ring(T, r - 0.03, 0.007, c, 0, 0.042, 0, 1, { seg: 48 });
-    So.ring(T, r * 0.55, 0.004, HUE.blu, 0, 0.034, 0, 0.9, { seg: 40 });
-    Gl.cyl(T, r * 0.55, r - 0.06, 0.1, HUE.dimBlu, 0, 0.09, 0, 0.3, { seg: 32 });
+    So.ring(T, r + 0.05, 0.008, HUE.teal, 0, 0.008, 0, 1, { seg: 48 });
+    So.ring(T, r - 0.03, 0.008, c, 0, 0.042, 0, 1, { seg: 48 });
+    So.ring(T, r * 0.55, 0.005, HUE.blu, 0, 0.034, 0, 0.9, { seg: 40 });
+    for (let k = 0; k < 3; k++) { const rb = r - 0.05 - 0.035 * k, h = 0.04 + 0.03 * k; Gl.lathe(T, [[rb, 0.04], [rb * 0.86, 0.04 + h]], HUE.glow, 0, 0, 0, 0.45, { seg: 40 }); }
   };
   // A sheet of light with lines of writing on it, facing -z in frame `T`.
   const sheet = (T, w, h, rows = 4, c = HUE.pale) => {
@@ -989,7 +994,7 @@
     const build = M[key];
     if (!build) throw new Error(`No model for ${key}`);
     UNIT = opts.unit || 1; LIP = opts.lip || 0; GLASS = opts.glass === true;
-    try { build(tools(root, y, opts.quiet === true), opts.part || null); } finally { UNIT = 1; LIP = 0; GLASS = false; }
+    try { build(tools(root, y, opts.quiet === true, opts.view === true), opts.part || null); } finally { UNIT = 1; LIP = 0; GLASS = false; }
   };
   BL.timechainGenesisModels = { model, has: (key) => !!M[key], C, fits: FITS };
 })();
