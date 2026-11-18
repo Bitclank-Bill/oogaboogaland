@@ -154,3 +154,29 @@ test("a held player neither hosts the NPCs nor follows them until its page is ba
   assert.equal(welcomeOf(again).resumed, true);
   assert.equal(r.players.get(host0).held, null);
 });
+
+// Regression (Watchtower on #789): a resumed page's `zone` repeats the zone the record has, which the room takes as no
+// change, so what arriving there sends (the room's PIN, the hockey tables, a Block Frenzy match) never came again.
+test("a resumed page hears its zone's arrival again: the locked room's PIN, the hockey tables and the match", async () => {
+  const { room, join } = host(), r = room();
+  const a = await join(r, 4, "new-contributor");
+  const p = r.players.get(4);
+  p.zone = "sphere-0"; p.roomLock = { room: 0, pin: "4821" };
+  r.roomLocks.set(0, { pin: "4821", passes: new Map() });
+  const arrived = [];
+  const was = { hockey: protocol.hockey.arrive, block: protocol.block.arrive };
+  protocol.hockey.arrive = (_room, q) => arrived.push(["hockey", q.id]);
+  protocol.block.arrive = (_room, q) => arrived.push(["block", q.id]);
+  try {
+    lose(r, a);
+    const again = await join(r, 4, "new-contributor", welcomeOf(a).resume);
+    assert.equal(welcomeOf(again).resumed, true);
+    assert.deepEqual(again.sent.filter((m) => m.t === "door" && m.op === "room-pin").map((m) => [m.room, m.pin]), [[0, "4821"]]);
+    assert.deepEqual(arrived, [["hockey", 4], ["block", 4]]);
+    // A room unlocked while they were away sends no PIN.
+    r.roomLocks.delete(0);
+    lose(r, again);
+    const third = await join(r, 4, "new-contributor", welcomeOf(again).resume);
+    assert.equal(third.sent.filter((m) => m.t === "door" && m.op === "room-pin").length, 0);
+  } finally { protocol.hockey.arrive = was.hockey; protocol.block.arrive = was.block; }
+});

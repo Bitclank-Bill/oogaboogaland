@@ -683,10 +683,22 @@ export class Room extends DurableObject {
     this.sockets.set(server, p);
     if (this.inspect.on) this.inspect.event("resume", p, { away });
     this.welcome(p, true);
+    this.rearrive(p);
     tessQueue.presence(this, p);
     this.sendStudio(p);
     this.electHost();
     this.updateVoice();
+  }
+
+  // What arriving in its zone sends (the `zone` handler's), sent again to a resumed page: its own close forgot it all,
+  // and its `zone` repeats the zone the record already has, which the room takes as no change. The locked room's PIN
+  // while the room is still locked, the air hockey tables, a Block Frenzy match, and a doorway crossing under way.
+  rearrive(p) {
+    const lock = p.roomLock && this.roomOf(p.zone) === p.roomLock.room ? this.roomLocks.get(p.roomLock.room) : null;
+    if (lock) this.send(p.ws, { t: "door", op: "room-pin", room: p.roomLock.room, pin: lock.pin });
+    hockey.arrive(this, p);
+    block.arrive(this, p);
+    this.replayDoor(p);
   }
 
   // Not back in time: the leave everyone else would have heard at the close.
