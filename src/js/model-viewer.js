@@ -272,7 +272,11 @@
     els.actions.className = "model-actions"; els.actions.hidden = true;
     els.help.parentNode.insertBefore(els.actions, els.help);
     const c = els.canvas;
-    c.addEventListener("pointerdown", (e) => { c.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; press = pointers.size === 1 ? { x: e.clientX, y: e.clientY } : null; });
+    c.addEventListener("pointerdown", (e) => {
+      // The combat menu cursor captures its own synthetic drag under pointer lock.
+      if (e.isTrusted && !document.pointerLockElement) c.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinch = 0; press = pointers.size === 1 ? { x: e.clientX, y: e.clientY } : null;
+    });
     c.addEventListener("pointermove", (e) => {
       const p = pointers.get(e.pointerId);
       if (!p) return;

@@ -103,6 +103,7 @@
 // of an `enter` reads, so the bridge can ask again for an epoch refused before the room had them.
 // Without the feature both stay silent and the bridge keeps the page out of every public audience.
 // Exports sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// sendProps, sendPropInput, subscribeProps (the loose props' host frames and followers' inputs, prop-sync.js),
 // setMuted, setHealth, sendNpc, sendChat, sendPrivate, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
@@ -126,6 +127,8 @@
   // Health in steps of the smallest hit, a few reports a second at most; the room's own bounds for poses.
   const HP_MS = 250, HP_STEP = 4, BOUND_XZ = 160, BOUND_Y_MIN = -130, BOUND_Y_MAX = 100;
   const PING_MS = 10000, PING_MISSES = 3;
+  // A network change (below, `probe`): how long a pong may take, and how long a socket may sit opening on a dead network.
+  const PROBE_MS = 3000, OPENING_MS = 4000;
   const HIDDEN_PAUSE_MS = 5 * 60000;
   // How long before leaving a hidden tab still in voice hears each warning.
   const HIDDEN_WARN_BEFORE_MS = [30000, 15000];
@@ -201,6 +204,8 @@
   const chalkEmit = (kind, detail) => { for (const fn of chalkSubscribers) fn(kind, detail); };
   const walletSubscribers = new Set();
   const duelSubscribers = new Set();
+  // The island's loose props (prop-sync.js): the host's frames by their magic word, and followers' inputs.
+  const PROP_MAGIC = 0x31504f52, PROP_FEATURE = "props-v1", propSubscribers = new Set();
   const shotSubscribers = new Set(), swingSubscribers = new Set(), reactSubscribers = new Set(), audienceSubscribers = new Set();
   const presenceSubscribers = new Set();
   // Ooga Chat speakers on clouds (#659): the room's `clouds` list, replaced whole (worker/src/room-audience.js), each
@@ -242,7 +247,7 @@
   const offline = new URLSearchParams(location.search);
   const state = { roomLocks: false, lockedRooms: new Uint8Array(10), roomPin: "", roomPinRoom: -1, backend: false, games: [], me: null, donations: false, tess: false, voiceTurn: false, tessShared: false, tessGuide: null, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, hostEpoch: 0, props: false, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
     voiceLinks: false, linkWants: new Set(), linked: new Set(), outdoorVoice: false, duel: false, placed: 0, audience: false, clouds: NO_CLOUDS,
     // Voice on another device (voice-handoff.js): `voiceElsewhere` while the account speaks from Ooga Chat somewhere
@@ -255,6 +260,7 @@
   // The room's last word on whom to hear, for what a move to another place keeps.
   let peersHeard = [], gensHeard = null;
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, unanswered = 0, hiddenTimer = 0, stopped = false;
+  let probeTimer = 0, heardCount = 0, openingAt = 0;
   // The Durable Object inspector (worker/src/inspect-report.js), only while the room's welcome names its feature: why
   // this page's last socket ended (`ended`: why, the browser's close code, clean, when), said on the close frame and,
   // after the next welcome, in one `back` message, so a drop's cause reaches the inspector's log.
@@ -431,7 +437,7 @@
     const on = inHub && !document.hidden;
     if (on === hubSent || !ws || ws.readyState !== WebSocket.OPEN) return;
     hubSent = on;
-    send(on ? '{"t":"hub","on":true}' : '{"t":"hub","on":false}');
+    send(on ? '{"t":"hub","on":true,"props":true}' : '{"t":"hub","on":false}');
   };
   // Whether this tab is visible, so the room hands Block Frenzy's hosting only to a page that runs frames (block.js).
   const sendVisible = () => {
@@ -527,9 +533,11 @@
       diagnostic.lastMessage = performance.now(); diagnostic.messages++;
       if (e.data === "pong") diagnostic.lastPong = diagnostic.lastMessage;
     }
-    unanswered = 0;
+    unanswered = 0; heardCount++;
     if (e.data instanceof ArrayBuffer) {
-      if (e.data.byteLength >= 4 && new DataView(e.data).getUint32(0, true) === 0x315a4642) { for (const fn of bfFrameSubscribers) fn(e.data); return; }
+      const magic = e.data.byteLength >= 4 ? new DataView(e.data).getUint32(0, true) : 0;
+      if (magic === 0x315a4642) { for (const fn of bfFrameSubscribers) fn(e.data); return; }
+      if (magic === PROP_MAGIC) { for (const fn of propSubscribers) fn(e.data, null); return; }
       npcFrame = e.data;
       state.npcVersion++;
       return;
@@ -630,6 +638,8 @@
       state.loopEpoch = typeof msg.loopEpoch === "number" ? msg.loopEpoch : 0;
       state.hostId = Number.isSafeInteger(msg.host) ? msg.host : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
+      state.hostEpoch++;
+      state.props = Array.isArray(msg.features) && msg.features.includes(PROP_FEATURE);
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
       state.cabinets = Array.isArray(msg.features) && msg.features.includes(BL.arcadeCabinets.FEATURE);
@@ -753,7 +763,11 @@
     } else if (msg.t === "host") {
       state.hostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
+      state.hostEpoch++;
       emit();
+    } else if (msg.t === "prop") {
+      // A follower's own round, blow or poke at a loose prop, for this page as host (prop-sync.js).
+      if (typeof msg.k === "string" && Array.isArray(msg.a) && msg.a.length === 6 && msg.a.every(Number.isFinite)) for (const fn of propSubscribers) fn(null, msg);
     } else if (msg.t === "shot") {
       const a = msg.a;
       if (Number.isSafeInteger(msg.id) && Array.isArray(a) && a.length === 6 && a.every(Number.isFinite))
@@ -877,7 +891,8 @@
   const close = (room, why = "other", code = 0, clean = false) => {
     if (diagnostic || connectionSubscribers.size) traceConnection("clear", { next: diagnosticRoom(room) });
     window.clearInterval(pingTimer);
-    pingTimer = 0;
+    window.clearTimeout(probeTimer);
+    pingTimer = probeTimer = 0;
     if (ws) {
       if (inspectOn) ended = { why, code, clean, at: Date.now() };
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
@@ -892,6 +907,7 @@
     state.voiceElsewhere = false;
     state.hostId = 0;
     state.followers = 0;
+    state.props = false;
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
     state.roomLocks = false;
@@ -927,6 +943,7 @@
     traceConnection("connect");
     // A tab opened in the background has no visibility change to arm this.
     if (document.hidden && !hiddenTimer) armHidden();
+    openingAt = performance.now();
     ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/room`);
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
@@ -946,6 +963,48 @@
       close("connecting", "socket", Number.isInteger(event?.code) ? event.code : 0, event?.wasClean === true);
     };
   };
+
+  // A network change: another Wi-Fi, or a phone going from Wi-Fi to cellular. The socket then reads open and is dead,
+  // which the pings above notice only after PING_MISSES of them, while everything this page holds in the room, its voice
+  // first, waits. So anything that hints at a change asks for a pong now: the browser coming back online, the
+  // connection's type changing (where the browser says), the page shown again, and a voice connection that dropped
+  // (voice.js, the first to notice on a phone). With nothing heard in PROBE_MS the socket is closed here as lost to the
+  // network and opened again at once; one still opening on the old network after OPENING_MS is opened afresh, and a
+  // reconnect waiting out its backoff goes now. A hint costs one ping, and a live socket answers it and stays.
+  const reopen = () => {
+    retry = 0;
+    close("connecting", "network");
+  };
+  const probe = () => {
+    if (stopped || !state.me) return;
+    if (!ws) {
+      if (!retryTimer) return;
+      window.clearTimeout(retryTimer);
+      retry = 0;
+      connect();
+      return;
+    }
+    if (ws.readyState === WebSocket.CONNECTING) { if (performance.now() - openingAt > OPENING_MS) reopen(); return; }
+    if (ws.readyState !== WebSocket.OPEN || probeTimer) return;
+    const own = ws, heard = heardCount;
+    send("ping");
+    probeTimer = window.setTimeout(() => {
+      probeTimer = 0;
+      if (ws !== own || heardCount !== heard) return;
+      traceConnection("heartbeat-timeout");
+      reopen();
+    }, PROBE_MS);
+  };
+  const radio = navigator.connection && typeof navigator.connection.addEventListener === "function" ? navigator.connection : null;
+  let radioType = radio ? radio.type : undefined;
+  // Only a change of the connection's own type (Wi-Fi, cellular) counts: its speed estimates change all the time.
+  const onRadio = () => {
+    if (radio.type === undefined || radio.type === radioType) return;
+    radioType = radio.type;
+    if (radioType !== "none") probe();
+  };
+  window.addEventListener("online", probe);
+  if (radio) radio.addEventListener("change", onRadio);
 
   // One look at the account; true when it found a backend to join.
   const look = async () => {
@@ -1120,7 +1179,7 @@
       if (state.me && !stopped) armHidden();
     } else if (state.room === "paused") {
       rejoin();
-    }
+    } else probe();
   };
   // Someone in voice hears it coming: two warnings, then a hang-up that plays out before voice stops with the room.
   let hiddenStage = 0;
@@ -1155,6 +1214,20 @@
     if (ws && ws.readyState === WebSocket.OPEN && state.hostId === state.selfId) ws.send(view);
   };
 
+  // The host's frame of loose props, where the room relays them, and a follower's own round, blow or poke for the
+  // host (prop-sync.js): `k` its kind and six numbers.
+  const sendProps = (view) => {
+    if (ws && ws.readyState === WebSocket.OPEN && state.props && state.hostId === state.selfId) ws.send(view);
+  };
+  const sendPropInput = (k, a, b, c, d, e, f) => {
+    if (state.room !== "live" || !state.props || !Number.isFinite(a + b + c + d + e + f)) return false;
+    send(`{"t":"prop","k":"${k}","a":[${+a.toFixed(2)},${+b.toFixed(2)},${+c.toFixed(2)},${+d.toFixed(2)},${+e.toFixed(2)},${+f.toFixed(2)}]}`);
+    return true;
+  };
+  const subscribeProps = (fn) => {
+    propSubscribers.add(fn);
+    return () => propSubscribers.delete(fn);
+  };
   // A synchronous handoff between Arcade hall scenes keeps the same driven body and voice subscriptions.
   let holdingBody = false;
   const handoffBody = fn => {
@@ -1354,12 +1427,13 @@
     send(`{"t":"swing"}`);
     return true;
   };
-  // A duel frame (duel-rules.js): `challenge`, `accept` or `decline` player `to`, `cancel`, `forfeit`, or a `hit` of
-  // `kind`; only to a live room that holds duels, and whether it went.
+  // A duel frame (duel-rules.js): `challenge` (with `kind` "hit", one made by landing a blow), `accept` or `decline`
+  // player `to`, `cancel`, `forfeit`, or a `hit` of `kind`; only to a live room that holds duels, and whether it went.
   const sendDuel = (op, to = 0, kind = "") => {
     if (state.room !== "live" || !state.duel) return false;
     if (op === "hit") send(`{"t":"duel","op":"hit","kind":"${kind}"}`);
     else if (op === "cancel" || op === "forfeit") send(`{"t":"duel","op":"${op}"}`);
+    else if (op === "challenge" && kind === "hit") send(`{"t":"duel","op":"challenge","to":${to},"hit":true}`);
     else send(`{"t":"duel","op":"${op}","to":${to}}`);
     return true;
   };
@@ -1572,6 +1646,8 @@
     traceConnection("dispose");
     connectionSubscribers.clear();
     document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("online", probe);
+    if (radio) radio.removeEventListener("change", onRadio);
     stopped = true;
     window.clearTimeout(retryTimer);
     window.clearTimeout(hiddenTimer);
@@ -1591,5 +1667,5 @@
     diagnostic = null;
   };
 
-  BL.net = { sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { sendProps, sendPropInput, subscribeProps, sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

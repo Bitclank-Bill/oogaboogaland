@@ -39,7 +39,7 @@ Byte-level exception: the portable single file (`oogaboogaland.html`) and the so
 | Room | Kind | Sphere radius |
 |---|---|---|
 | 0 | Conference Room: the round table for eight under live block and mining charts; the one room that locks | 10.5 m |
-| 1 | Lecture Hall: four broad terraces of lounge chairs facing a stage, the slide, the whiteboards and the latest blocks on the dome | 15 m |
+| 1 | Lecture Hall: four broad terraces of lounge chairs facing a stage, lectures given on the dome (`docs/lectures.md`) | 15 m |
 | 2 | The Mining Museum: miners from Satoshi's CPU (one high-end 2009 desktop, as Sergio Demian Lerner's Patoshi research reads it) to today's ASICs under the hashrate's history, each opening up close in 3D with all its stats and sources (`model-viewer.js`) | 15 m |
 | 3 | Satoshi's Temple: a meditation temple round the Satoshi statue at half as large again as life; its bell, gong, singing bowl and wind bells are heard, its koi fed, its trees shaken, its lanterns put out or lit | 15 m |
 | 4 | Proof of Work-out: exercise bikes facing a mountain sunrise | 12 m |
@@ -69,7 +69,7 @@ Signed-out visitors get the same keypad, ten choices, rooms, camera rules and gu
 
 The banner names the room under its title and nothing more; the way out is the wordless exit button left of the Ooga's face, in every room. Do not register guest rooms, poses, transit events, occupancy, persistent identifiers, remote actors or voice; do not request a microphone. No `sphere-guest` network zone. Guest door cycles are local and do not contend with the shared doorway. Public charts and local ambience still work after entry.
 
-Wait for account resolution before choosing shared versus solo mode, then keep the choice for the visit. Pending authentication is not confirmed sign-out. Late authentication/reconnect cannot publish a solo room. Sign-in returns to the exterior keypad for deliberate shared entry. Logout or session revocation inside immediately removes shared presence/voice and returns safely outside.
+Wait for account resolution before choosing shared versus solo mode, then keep the choice for the visit. Pending authentication is not confirmed sign-out. Late authentication/reconnect cannot publish a solo room. Sign-in returns to the exterior keypad for deliberate shared entry. Logout or session revocation inside immediately removes shared presence/voice and leaves the visitor standing where they are: the room is their solo copy from then on, and a reload returns to the same room and spot (`visit-spot.js`).
 
 Account lookup failure must not lock the exterior controls or wait forever. After a bounded timeout, the physical selected number retries, Enter explicitly continues solo and Back returns to room choice. That choice keeps the visit local even if authentication later succeeds; it never silently enters a shared room.
 
