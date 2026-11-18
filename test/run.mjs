@@ -15445,18 +15445,18 @@ const TOUR_ENDED = `(() => {
   B.advance(0.5, 1 / 60);
   return { ended, walked: +Math.hypot(body.root.position.x - f.x, body.root.position.z - f.z).toFixed(3) };
 })()`;
-const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into Tess's queue, accept their turn, keep conversations private and retain their own camera while another visitor uses the guide", run: async b => {
+const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into Tess's queue, accept their turn, keep conversations private and retain their own camera while another visitor uses the guide; regression: Join queue stayed enabled off the island's ground, where the room ignores it without a word", run: async b => {
   const result = await b.evaluate(`(() => {
     const N=BL.net,G=BL.scenes.hub.debug.tess,s=G.state,camera=__ooga.camera;
-    const saved={me:N.state.me,room:N.state.room,connectionToken:N.state.connectionToken,tessShared:N.state.tessShared,tessGuide:N.state.tessGuide},send=N.sendTess,calls=[];
-    const visitKey="ooga-tess-visits",savedVisits=localStorage.getItem(visitKey);
+    const saved={me:N.state.me,room:N.state.room,connectionToken:N.state.connectionToken,tessShared:N.state.tessShared,tessGuide:N.state.tessGuide,zone:N.state.zone},send=N.sendTess,calls=[];
+    const visitKey="ooga-tess-visits",savedVisits=localStorage.getItem(visitKey),declinedKey="ooga-tess-queue:901";
     let elapsed=0;const step=(n=1)=>{for(let i=0;i<n;i++){elapsed+=1/30;G.update(1/30,elapsed);}};
     const receive=(phase,position=0,token="")=>{N.state.tessGuide={phase,position,token,count:position?2:0,until:N.serverNow()+60000,busy:phase==="wait"||phase==="active",pose:null};step();};
     const view=()=>JSON.stringify([camera.position,camera.target]);
     try {
       localStorage.setItem(visitKey,"{}");
       N.sendTess=m=>{calls.push(JSON.parse(JSON.stringify(m)));return true;};
-      Object.assign(N.state,{me:{id:901,login:"queue-fixture"},room:"live",connectionToken:"queue-fixture",tessShared:true,tessGuide:null});
+      Object.assign(N.state,{me:{id:901,login:"queue-fixture"},room:"live",connectionToken:"queue-fixture",tessShared:true,tessGuide:null,zone:"outside"});
       receive("none");
       // Shared Tess idles in queue even when her panel is hidden; coaching must still be usable.
       document.getElementById("controls-learn").click();step();BL.destinationMap.update();
@@ -15472,7 +15472,11 @@ const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into
       const full=go.disabled&&panel.textContent.includes("queue is full");
       const announced=panel.querySelector(".greeter-menu-help").getAttribute("aria-live")==="polite";
       receive("none");
-      go.click();const joined=calls.at(-1).op==="join";
+      // The room takes a join only from the island's own ground and answers nobody else: off it, the panel says so.
+      N.state.zone="between";step();go.click();
+      const offIsland=go.disabled&&panel.textContent.includes("main island")&&!calls.some(m=>m.op==="join");
+      N.state.zone="outside";step();
+      go.click();const joined=!go.disabled&&calls.at(-1).op==="join";
       receive("wait",2,"mine");const before=view();
       N.state.tessGuide.pose=[3,2,4,1,0,0,0,0,0,0,0,0];step(60);
       const observer=before===view()&&!s.holding&&go.hidden&&panel.textContent.includes("2 of 2")&&Math.hypot(G.root.position.x-3,G.root.position.y-2,G.root.position.z-4)<.01;
@@ -15490,6 +15494,10 @@ const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into
       const disconnected=!s.holding&&!G.speech&&go.disabled&&panel.textContent.includes("15 seconds");
       N.state.room="live";N.state.connectionToken="reconnected";receive("wait",2,"mine");skip.click();
       const cancelled=calls.at(-1).op==="cancel"&&panel.hidden;
+      // Leave queue only leaves; Not now on her offer of the queue is kept for the account in this browser.
+      const leftOnly=localStorage.getItem(declinedKey)===null;
+      receive("none");G.tap();step();const asked=!panel.hidden&&skip.textContent==="Not now";skip.click();
+      const declined=leftOnly&&asked&&panel.hidden&&localStorage.getItem(declinedKey)==="1";
       // Leaving the shared feature during a tour must return the pilot, not leave a hidden guide holding it.
       let availabilityReleased=true;
       for(const reason of ["signout","feature"]){
@@ -15499,10 +15507,10 @@ const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into
         if(reason==="signout")N.state.me=null;else N.state.tessShared=false;
         step();availabilityReleased&&=held&&!s.holding&&!G.speech&&!document.body.classList.contains("tess-touring");
       }
-      return {sharedCoaching,queueHidesCoaching,optIn,full,announced,contained,joined,observer,ready,accepted,offered,unreadNews,newsRecorded,privateReply,boundedWire,touring,disconnected,cancelled,availabilityReleased};
-    } finally {if(savedVisits===null)localStorage.removeItem(visitKey);else localStorage.setItem(visitKey,savedVisits);Object.assign(N.state,saved);N.sendTess=send;step();}
+      return {sharedCoaching,queueHidesCoaching,optIn,full,announced,contained,offIsland,joined,declined,observer,ready,accepted,offered,unreadNews,newsRecorded,privateReply,boundedWire,touring,disconnected,cancelled,availabilityReleased};
+    } finally {if(savedVisits===null)localStorage.removeItem(visitKey);else localStorage.setItem(visitKey,savedVisits);localStorage.removeItem(declinedKey);Object.assign(N.state,saved);N.sendTess=send;step();}
   })()`);
-  record("hub shared guide: explicit join/accept, queue position, private answers, observer camera independence, disconnect release and cancellation",Object.values(result).every(Boolean),JSON.stringify(result));
+  record("hub shared guide: explicit join/accept, a join refused off the island's ground, queue position, private answers, observer camera independence, disconnect release, cancellation and a remembered Not now",Object.values(result).every(Boolean),JSON.stringify(result));
 } };
 const hubGuide = { name: "hub guide", why: "regression: Tess's offer showed only its first speech bubble, she stopped shots aimed past her, an Ooga walking or flying as her tour began went on through it, and T before or during her tour let the gorilla and tour share control", run: async (b) => {
   const guide = await b.evaluate(`(() => {
@@ -27944,14 +27952,15 @@ const sharedTessNewsChecks = (BL) => {
   const calls = [], seen = () => JSON.parse(store.get(visitKey) || "{}")["news-fixture"] || null;
   N.sendTess = (m) => { calls.push({ ...m, a: m.a?.slice() }); return true; };
   const v = (x, y, z) => ({ x, y, z });
-  const guide = H.create({ parent: BL.scene.createNode(), input: { add() {}, remove() {} }, fx: new Proxy({}, { get: () => () => {} }), camera: { position: v(0, 4, -12), target: v(0, 2, 0), fov: 1 },
+  const make = () => H.create({ parent: BL.scene.createNode(), input: { add() {}, remove() {} }, fx: new Proxy({}, { get: () => () => {} }), camera: { position: v(0, 4, -12), target: v(0, 2, 0), fov: 1 },
     pilot: { controls: { moving: () => false } }, visitor: () => null, world: {}, hud: {}, busy: () => false, coarse: false, quality: () => 1, landing: true });
+  const guide = make();
   const s = guide.state, turn = (token) => { N.state.tessGuide = { phase: "active", position: 0, token, count: 1, until: N.serverNow() + 60000, busy: true, pose: null }; guide.update(0.016, 1); };
   try {
     Object.assign(N.state, { me: { id: 902, login: "news-fixture", display: "News Fixture" }, room: "live", connectionToken: "news-fixture", tessShared: true, tessGuide: null });
     // Before a turn her greeting only offers Join queue and reads no news as seen.
     for (let i = 0; i < 400; i++) guide.update(0.016, i * 0.016);
-    const waitingUnread = s.kind !== "news" && seen() === null;
+    const waitingUnread = s.kind !== "news" && seen() === null, greeted = !guide.coachingReady;
     // A granted turn with unread news offers that news first, from the newest entry, and still leaves it unread.
     turn("turn-1");
     const offered = s.kind === "news" && s.newest?.line === H.NEWS[0].line && s.legs.length > 0 && s.login === "news-fixture" && /^Welcome back, News Fixture!/.test(s.welcome || "") && s.phase === "approach" && seen() === null;
@@ -27963,6 +27972,16 @@ const sharedTessNewsChecks = (BL) => {
     const toured = s.kind === "island" && s.welcome === null && s.login === null && s.phase === "approach";
     record("shared Tess news (#466): a signed-in visitor's granted turn offers unread island news first and Not now records it as seen; waiting reads nothing, and with nothing new the turn offers the island tour",
       waitingUnread && offered && recorded && toured, JSON.stringify({ waitingUnread, offered, recorded, toured, kind: s.kind, phase: s.phase }));
+    // A visit after Not now on her greeting: she offers the queue only when tapped.
+    store.set("ooga-tess-queue:902", "1"); N.state.tessGuide = null;
+    const later = make();
+    for (let i = 0; i < 400; i++) later.update(0.016, i * 0.016);
+    const quiet = later.coachingReady;
+    later.tap(); later.update(0.016, 7);
+    const tapped = !later.coachingReady;
+    later.dispose(); store.delete("ooga-tess-queue:902");
+    record("shared Tess greeting: she offers her queue unasked until the account has answered Not now in this browser; after that only a tap on her opens it",
+      greeted && quiet && tapped, JSON.stringify({ greeted, quiet, tapped }));
     const poses = calls.filter(m => m.op === "pose");
     record("shared Tess privacy: without a driven Ooga, the visual pose does not publish the private camera as a look target",
       poses.length > 0 && poses.every(m => m.a[10] === 0 && m.a.slice(7, 10).some((n, i) => n !== [0, 4, -12][i])), JSON.stringify(poses));
