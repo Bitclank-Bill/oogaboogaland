@@ -27945,7 +27945,7 @@ const tessAnswerChecks = (BL) => {
 // sends them. Under the shared guide her greeting offers Join queue, so news must come with the granted turn.
 const sharedTessNewsChecks = (BL) => {
   const H = BL.hubGuide, N = BL.net, store = new Map(), visitKey = "ooga-tess-visits";
-  const savedStorage = globalThis.localStorage, savedState = { me: N.state.me, room: N.state.room, connectionToken: N.state.connectionToken, tessShared: N.state.tessShared, tessGuide: N.state.tessGuide }, savedSend = N.sendTess;
+  const savedStorage = globalThis.localStorage, savedState = { me: N.state.me, room: N.state.room, connectionToken: N.state.connectionToken, tessShared: N.state.tessShared, tessGuide: N.state.tessGuide, zone: N.state.zone }, savedSend = N.sendTess;
   globalThis.localStorage = { getItem: (k) => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
   const size = { innerWidth: globalThis.innerWidth, innerHeight: globalThis.innerHeight };
   Object.assign(globalThis, { innerWidth: 1280, innerHeight: 800 });
@@ -27957,7 +27957,7 @@ const sharedTessNewsChecks = (BL) => {
   const guide = make();
   const s = guide.state, turn = (token) => { N.state.tessGuide = { phase: "active", position: 0, token, count: 1, until: N.serverNow() + 60000, busy: true, pose: null }; guide.update(0.016, 1); };
   try {
-    Object.assign(N.state, { me: { id: 902, login: "news-fixture", display: "News Fixture" }, room: "live", connectionToken: "news-fixture", tessShared: true, tessGuide: null });
+    Object.assign(N.state, { me: { id: 902, login: "news-fixture", display: "News Fixture" }, room: "live", connectionToken: "news-fixture", tessShared: true, tessGuide: null, zone: "outside" });
     // Before a turn her greeting only offers Join queue and reads no news as seen.
     for (let i = 0; i < 400; i++) guide.update(0.016, i * 0.016);
     const waitingUnread = s.kind !== "news" && seen() === null, greeted = !guide.coachingReady;
@@ -27980,8 +27980,16 @@ const sharedTessNewsChecks = (BL) => {
     later.tap(); later.update(0.016, 7);
     const tapped = !later.coachingReady;
     later.dispose(); store.delete("ooga-tess-queue:902");
-    record("shared Tess greeting: she offers her queue unasked until the account has answered Not now in this browser; after that only a tap on her opens it",
-      greeted && quiet && tapped, JSON.stringify({ greeted, quiet, tapped }));
+    // A visitor who arrives off the island's ground, where the room takes no join, is not greeted either.
+    N.state.zone = "between";
+    const away = make();
+    for (let i = 0; i < 400; i++) away.update(0.016, i * 0.016);
+    const awayQuiet = away.coachingReady;
+    away.tap(); away.update(0.016, 7);
+    const awayTapped = !away.coachingReady;
+    away.dispose(); N.state.zone = "outside";
+    record("shared Tess greeting: she offers her queue unasked to a visitor who lands on the island's ground, until the account has answered Not now in this browser; after that, or off the island, only a tap on her opens it",
+      greeted && quiet && tapped && awayQuiet && awayTapped, JSON.stringify({ greeted, quiet, tapped, awayQuiet, awayTapped }));
     const poses = calls.filter(m => m.op === "pose");
     record("shared Tess privacy: without a driven Ooga, the visual pose does not publish the private camera as a look target",
       poses.length > 0 && poses.every(m => m.a[10] === 0 && m.a.slice(7, 10).some((n, i) => n !== [0, 4, -12][i])), JSON.stringify(poses));

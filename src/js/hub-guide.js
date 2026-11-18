@@ -321,7 +321,8 @@
     const active = () => shared() && net.state.room === "live" && queue()?.phase === "active" && queue().token !== sharedDone && queue().until > net.serverNow();
     const queueAction = op => net.sendTess({ op, token: queue()?.token || "" });
     // The room takes a join or an accepted turn only from the island's own ground (tess-queue.js `eligible`), and says
-    // nothing to anyone else, so the panel says so itself rather than offer a button that does nothing.
+    // nothing to anyone else, so a panel open off it (a tap on her, or a visitor who walked off) says so itself rather
+    // than offer a button that does nothing.
     const onIsland = () => net.state.zone === "outside";
     // Not now on her greeting, kept for the account in this browser: she does not offer the queue unasked again, and a
     // tap on her still opens it.
@@ -733,11 +734,13 @@
         rig.mode = 1; rig.aim.x = w.aim[0]; rig.aim.y = w.aim[1]; rig.aim.z = w.aim[2]; rig.watching = rig.steady = false;
       }
       rig.calm = !!q?.busy;
-      if (!queueShown && !world[G.greeted] && state.still && !busy()) {
+      // She greets only a visitor who lands on the island's own ground: one who arrives off it could not join anyway,
+      // and taps her once there.
+      const here = onIsland();
+      if (!queueShown && !world[G.greeted] && state.still && here && !busy()) {
         watchStill(dt); state.seen += dt;
         if (state.still && state.seen > NOTICE_AFTER) greet();
       }
-      const here = onIsland();
       if (q !== queueSeen || queueShown !== queueVisible || net.state.room !== queueRoom || here !== queueHere) {
         queueSeen = q; queueVisible = queueShown; queueRoom = net.state.room; queueHere = here; show("queue"); panel.hidden = !queueShown;
         heading.textContent = `${NAME} · island guide`;
