@@ -89,9 +89,10 @@
     const liftGoal = { x: 0, y: 0, z: 0 }, ghostStart = { x: 0, y: 0, z: 0 };
     const targetScreen = { x: 0, y: 0, depth: 0 };
     let rideView = "shoulder", keepCarry = false, intoCombat = false;
-    // The run's own start in combat, which the hub's `combatOnly` lets through while the ride holds the controls.
-    const startCombat = () => {
-      if (keepCarry || actor.weapon.aiming) return;
+    // The run's own start in combat, which the hub's `combatOnly` lets through while the ride holds the controls; a hook
+    // picked up (`force`) brings combat too, since the mouse throws it only there.
+    const startCombat = (force = false) => {
+      if (!force && keepCarry || actor.weapon.aiming) return;
       intoCombat = true;
       try { pilot.modeAction("mode-toggle"); } finally { intoCombat = false; }
     };
@@ -835,7 +836,7 @@
           // Another X-ray goggles refresh it to full; a feather or a hook is taken only with none held.
           if (pickup.kind === "xray") { xrayUntil = seconds + XRAY_SECONDS; xrayWarned = false; wearGoggles(true); }
           else if (pickup.kind === "updraft") feather = true;
-          else { hookHeld = true; hookAt = HAND; hookDown = false; }
+          else { hookHeld = true; hookAt = HAND; hookDown = false; startCombat(true); }
           audio.power(pickup.kind); hud.toast(PICKUP_TOAST[pickup.kind]);
         }
         for (let i = 0; i < pickupNodes.length; i++) if (!course.pickups[i].active) pickupNodes[i].visible = false;
@@ -1258,7 +1259,9 @@
       if (!touch) rows.push(H.row(["shiftleft"], "Run"));
       rows.push(H.row(touch ? [] : [" "], "Jump / use a sky feather", touch ? "Jump button" : ""));
       if ((pilot.player?.jetpackOwned || pilot.player?.jet)) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("jetpack"), "Wear / remove collected jetpack; hold jump to climb", touch ? "Jetpack button" : ""));
-      if (hookHeld) rows.push(H.row([], "Aim at a cloud and hold to reel in; release to fly on", touch ? "Hook button" : "Left mouse"));
+      // Carry leaves the mouse's buttons alone, so there the hook goes from its button, or X brings back the crosshair.
+      if (hookHeld) rows.push(H.row([], "Aim at a cloud and hold to reel in; release to fly on",
+        touch ? "Hook button" : actor?.weapon.aiming ? "Left mouse" : "Hook button, or X to aim with the mouse"));
       if (!touch && !held()) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
       if (!touch) rows.push(H.row(BL.controls.shortcutKeys("view"), "Switch carry and combat"));
       if (!touch && phase !== "running") rows.push(H.row(BL.controls.shortcutKeys("ghost"), "Record ghost on or off"));
