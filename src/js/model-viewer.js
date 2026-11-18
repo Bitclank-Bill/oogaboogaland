@@ -1,10 +1,12 @@
 // A dialog that shows a model up close, beside what there is to know about it: the model on a canvas the visitor
 // turns by dragging, zooms with the wheel or a pinch, or works with the keys; its kicker, name, account, stats, note
 // and sources; paged through a set with the arrows. `open({ title, help, count, index, item(i) })`, an item being
-// { kicker, name, text, stats: [[label, value]], note, links: [{ href, label }], geometry }. The model is drawn in
+// { kicker, name, text, stats: [[label, value]], note, links: [{ href, label }], geometry, photo }, `photo` a still
+// of it as it once was, shown with a title and a line of text ({ src, title, text, alt }). The model is drawn in
 // Canvas 2D, lit as the HUD's icons are, its faces in the order a BSP tree gives from the eye: built once a model, it
 // draws every face behind whatever stands in front of it from any side, where a sort by depth would let a small part
-// on a big face fall behind it at some angles. It draws only when something changes, never on a timer, and holds
+// on a big face fall behind it at some angles; a face marked `glass` (how see-through it is, 0 to 1) is drawn that
+// faint over what stands behind it. It draws only when something changes, never on a timer, and holds
 // nothing once closed but the trees of the models it showed, kept with their geometries.
 (() => {
   "use strict";
@@ -52,11 +54,12 @@
   // a key light, and lit faces brighter.
   const LIGHT = [0.45, 0.85, 0.3].map((c, i, a) => c / Math.hypot(...a));
   const SKY = 0.5 * 0.2126 + 0.52 * 0.7152 + 0.58 * 0.0722, GROUND = 0.22 * 0.2126 + 0.2 * 0.7152 + 0.19 * 0.0722;
-  const shade = (c, emissive, nx, ny, nz) => {
+  const shade = (c, emissive, nx, ny, nz, glass) => {
     const diffuse = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]);
     const lit = Math.min(1, Math.max(0.3, GROUND + (SKY - GROUND) * (ny * 0.5 + 0.5)) + diffuse * 0.7);
     const k = lit + (1.1 - lit) * Math.min(1, emissive);
-    return `rgb(${Math.min(255, Math.round(c[0] * k))},${Math.min(255, Math.round(c[1] * k))},${Math.min(255, Math.round(c[2] * k))})`;
+    const rgb = `${Math.min(255, Math.round(c[0] * k))},${Math.min(255, Math.round(c[1] * k))},${Math.min(255, Math.round(c[2] * k))}`;
+    return glass ? `rgba(${rgb},${glass})` : `rgb(${rgb})`;
   };
   // A face's plane is (n, d): a point p lies in front of it when n·p > d, and on it within EPS.
   const EPS = 1e-6;
@@ -77,7 +80,7 @@
       if (l < 1e-12) continue;
       nx /= l; ny /= l; nz /= l;
       const e = f.emissive || 0;
-      list.push({ p, nx, ny, nz, d: nx * p[0] + ny * p[1] + nz * p[2], style: shade(f.color, e, nx, ny, nz), back: two ? shade(f.color, e, -nx, -ny, -nz) : null });
+      list.push({ p, nx, ny, nz, d: nx * p[0] + ny * p[1] + nz * p[2], style: shade(f.color, e, nx, ny, nz, f.glass), back: two ? shade(f.color, e, -nx, -ny, -nz, f.glass) : null });
     }
     return list;
   };
@@ -209,7 +212,8 @@
       ctx.closePath();
       ctx.fillStyle = ctx.strokeStyle = styles[i];
       ctx.fill();
-      ctx.stroke();
+      // The stroke closes the hairlines between solid faces; over glass it would draw every edge twice as dark.
+      if (styles[i][3] !== "a") ctx.stroke();
     }
   };
   const redraw = () => { if (!pending) pending = requestAnimationFrame(paint); };
@@ -234,6 +238,10 @@
     els.stats.replaceChildren(...rows);
     els.note.textContent = item.note || "";
     els.note.hidden = !item.note;
+    const photo = item.photo || null;
+    els.photo.hidden = !photo;
+    if (photo) { els.photoImage.src = photo.src; els.photoImage.alt = photo.alt || ""; els.photoTitle.textContent = photo.title || ""; els.photoText.textContent = photo.text || ""; }
+    else els.photoImage.removeAttribute("src");
     const links = (item.links || []).map((l) => {
       const a = document.createElement("a");
       a.className = "board-link"; a.href = l.href; a.textContent = l.label; a.target = "_blank"; a.rel = "noopener noreferrer";
@@ -259,7 +267,7 @@
   const wire = () => {
     const $ = (id) => document.getElementById(id);
     els = { dialog: $("model-modal"), title: $("model-title"), canvas: $("model-canvas"), kicker: $("model-kicker"), name: $("model-name"), text: $("model-text"),
-      stats: $("model-stats"), note: $("model-note"), links: $("model-links"), count: $("model-count"), prev: $("model-prev"), next: $("model-next"), help: $("model-help"), close: $("model-close") };
+      stats: $("model-stats"), note: $("model-note"), photo: $("model-photo"), photoImage: $("model-photo-image"), photoTitle: $("model-photo-title"), photoText: $("model-photo-text"), links: $("model-links"), count: $("model-count"), prev: $("model-prev"), next: $("model-next"), help: $("model-help"), close: $("model-close") };
     els.actions = document.createElement("div");
     els.actions.className = "model-actions"; els.actions.hidden = true;
     els.help.parentNode.insertBefore(els.actions, els.help);

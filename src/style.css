@@ -5714,6 +5714,19 @@ body.tess-touring #joy-look {
 
 .model-info .board-link { text-align: left; }
 
+/* A still of the model as it once was (`item.photo`): the picture, then its title and what it shows. On a wide
+   screen it stands under the model, beside the account; on a narrow one, after the account. */
+.model-photo { margin: 0; }
+@media (min-width: 721px) {
+  .model-body { grid-template-rows: auto 1fr; row-gap: 0; }
+  .model-info { grid-column: 2; grid-row: 1 / span 2; }
+  .model-photo { grid-column: 1; grid-row: 2; margin-top: 12px; }
+}
+.model-photo[hidden] { display: none; }
+.model-photo img { display: block; width: 100%; height: auto; aspect-ratio: 5 / 4; object-fit: cover; border: 3px solid #1a1612; border-radius: 6px; background: #120f0c; }
+.model-photo figcaption { margin-top: 6px; font-size: 11.5px; line-height: 1.5; }
+.model-photo figcaption b { display: block; color: var(--accent-text); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; }
+
 /* The Genesis Museum's own colours (Abyss Aurora), as the Ember Den keeps its own: cream words on near-black panels,
    a soft teal-blue for what can be pressed, gold for where a visitor stands in a run, Bitcoin's orange for the block. */
 .genesis-portal, .wp-reader, .model-modal {
@@ -5737,6 +5750,7 @@ body.tess-touring #joy-look {
 .model-modal.model-genesis .model-info > .model-name { border-radius: 0 0 8px 8px; padding-top: 2px; }
 .model-modal.model-genesis .model-info > .board-links { display: grid; gap: 6px; }
 .model-modal.model-genesis .model-stats:empty { display: none; }
+.model-modal.model-genesis .model-photo figcaption { padding: 8px 12px; border-radius: 8px; background: var(--gn-panel); }
 .model-modal.model-genesis .model-info > .board-links .board-link { background: var(--gn-wash); border-radius: 6px; padding: 4px 8px; }
 .model-modal.model-genesis .model-canvas.model-page { background: var(--gn-paper); cursor: default; touch-action: auto; aspect-ratio: 17 / 22; max-height: min(58vh, 560px); width: auto; max-width: 100%; margin: 0 auto; display: block; }
 

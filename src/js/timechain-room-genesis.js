@@ -23,14 +23,15 @@
   };
   const DEG = P.DEG, TAU = P.TAU, HALF_PI = Math.PI / 2;
   // The room's own palette, Abyss Aurora: graphite and deep indigo stone, a soft teal-blue for every highlight,
-  // the aurora's green and violet under the glass and as accents on the portal and the marks of what Satoshi named
-  // (the terminals' screens keep a softened phosphor green, as such screens were), cream words, and Bitcoin orange (`C.btc`) kept for the
-  // centre, the ₿, the genesis burst, the falling block and the chain, so the room warms to orange only where the road
-  // arrives. Applied to the room's and the models' colour tables before anything is built.
+  // the aurora's green and violet under the glass and as accents on the portal and the marks of what Satoshi named,
+  // cream words, and in the room itself Bitcoin orange (`C.btc`) kept for the centre, the ₿, the genesis burst, the
+  // falling block and the chain. The pieces on the plinths carry their own colours (chrome, warm orange against cool
+  // blue) and take the room's teal for their label strips alone. Applied to the room's and the models' colour tables
+  // before anything is built.
   const PALETTE = { room: { amber: "#3db8cc", amberText: "#9be4ef", glow: "#62cfe0", glowText: "#b5eef5", white: "#efe6d2", grey: "#9aa3ad", concrete: "#22252c", steel: "#262a48", steelDark: "#171a33", floor: "#0b0c16", ceiling: "#06061a", glass: "#5f7f8c", cite: "#62cfe0", named: "#b7a2f5", context: "#8a94a0" },
-    models: { amberText: "#9be4ef", glowText: "#b5eef5", amber: "#3db8cc", glow: "#62cfe0", white: "#efe6d2", steel: "#262a48", steelDark: "#171a33", led: "#62cfe0", phosphor: "#74d3a4" }, pit: "#08091e", atom: "#8dffb6", chainDim: "#2a2f5a", glass: 0.03, accent2: "#9b7cf0" };
+    models: { amberText: "#9be4ef", amber: "#3db8cc" }, pit: "#08091e", atom: "#8dffb6", chainDim: "#2a2f5a", glass: 0.03, accent2: "#9b7cf0" };
   Object.assign(C, PALETTE.room);
-  if (GM && GM.C) Object.assign(GM.C, PALETTE.models, { btc: "#f7931a" });
+  if (GM && GM.C) Object.assign(GM.C, PALETTE.models);
 
   // ---------- the Proof-of-Knowledge portal ----------
   // A sealed stone door in the wall on the walk's 2008 side, unseen until a visitor comes near: then its carving comes
@@ -433,175 +434,175 @@
       gave: "A network any computer can join and talk over", missing: "Nothing you could own or pay with",
       about: "Vinton Cerf and Robert Kahn's paper, \"A Protocol for Packet Network Intercommunication\", appeared in the IEEE Transactions on Communications in May 1974. It described a Transmission Control Program that let packets cross from one network to another through gateways, with the end hosts, not the network, responsible for getting every byte through. Split into TCP and IP in 1978 and switched on across the ARPANET on 1 January 1983, it is the network Bitcoin's nodes still gossip over, on port 8333.",
       specs: [["Authors", "Vinton G. Cerf, Robert E. Kahn"], ["Published", "IEEE Trans. Communications, May 1974"], ["Became", "TCP and IP (1978); ARPANET cut over 1 Jan 1983"], ["In Bitcoin", "peer connections over TCP, port 8333"], ["Connection", "context: the network it runs on"]],
-      note: "The model is a packet switch after the ARPANET's Interface Message Processors: a ruggedised minicomputer cabinet with its lifting hooks, lamp-and-switch panel and a paper-tape reader, built at about half size. An original design.", sources: [SRC.tcp] },
+      note: "One message at the sender splits into four coloured packets. Each takes its own route through a mesh of chrome nodes, and they stack up again in order at the receiver. An original design.", first: "The model is a packet switch after the ARPANET's Interface Message Processors: a ruggedised minicomputer cabinet with its lifting hooks, lamp-and-switch panel and a paper-tape reader, built at about half size. An original design.", sources: [SRC.tcp] },
     { key: "dh", year: 1976, when: "NOV 1976", title: "PUBLIC KEYS", name: "Diffie–Hellman key exchange", link: "context",
       line: "Two strangers agree a secret over an open line. Cryptography stops needing a courier.",
       gave: "Keys you can publish, and secrets without a meeting", missing: "A way to sign, and anything worth owning",
       about: "Whitfield Diffie and Martin Hellman's \"New Directions in Cryptography\" (IEEE Transactions on Information Theory, November 1976) proposed public-key cryptography: a key you can publish paired with one you keep, and a way for two parties who have never met to settle on a shared secret while anyone listens. Ralph Merkle had reached the same idea independently. Bitcoin does not use the exchange itself, but every address and every signature rests on the public-key idea it opened.",
       specs: [["Authors", "Whitfield Diffie, Martin E. Hellman"], ["Published", "IEEE Trans. Information Theory, Nov 1976"], ["Idea", "a public key and a private key; a shared secret over an open channel"], ["In Bitcoin", "ownership is a key pair"], ["Connection", "context"]],
-      note: "A video terminal of 1976 works the exchange out with the textbook's small numbers (p = 23, g = 5). The beakers beside it are the paint-mixing picture: yellow and blue each mixed with the shared colour arrive at the same green.", sources: [SRC.dh] },
+      note: "Two chrome pods each keep a private crystal under dark glass and send a public orb across the open arch. Each then raises the same violet key at its masthead, a key nobody watching the arch can make.", first: "A video terminal of 1976 works the exchange out with the textbook's small numbers (p = 23, g = 5). The beakers beside it are the paint-mixing picture: yellow and blue each mixed with the shared colour arrive at the same green.", sources: [SRC.dh] },
     { key: "rsa", year: 1977.5, when: "1977-78", title: "SIGNATURES", name: "RSA: public-key cryptosystems and digital signatures", link: "context",
       line: "A lock anyone can shut and only one key opens, and the first practical digital signature.",
       gave: "Proof that the owner, and nobody else, agreed", missing: "Something to sign that is money",
       about: "Ron Rivest, Adi Shamir and Leonard Adleman found the first practical public-key cryptosystem at MIT in 1977; their memo, MIT/LCS/TM-82, is dated April 1977, Martin Gardner's Scientific American column carried it that August, and \"A Method for Obtaining Digital Signatures and Public-Key Cryptosystems\" appeared in Communications of the ACM in February 1978. It made digital signatures real: a message signed with a private key that anyone can check with the public one. Every Bitcoin spend is such a signature, though on an elliptic curve rather than RSA's large primes.",
       specs: [["Authors", "Ronald Rivest, Adi Shamir, Leonard Adleman"], ["Memo", "MIT/LCS/TM-82, April 1977"], ["Published", "Communications of the ACM, Feb 1978"], ["Gave", "digital signatures anyone can verify"], ["In Bitcoin", "every spend is a signature (ECDSA, not RSA)"], ["Connection", "context"]],
-      note: "The padlock stands open: anyone may snap it shut (encrypt to you), only the one key opens it. The clipboard carries the memo's title page.", sources: [SRC.rsa] },
+      note: "A chrome lock stands on two secret prime crystals. One floating key fits it, and the same key's bow presses a seal of light onto a sheet: the signature.", first: "The padlock stands open: anyone may snap it shut (encrypt to you), only the one key opens it. The clipboard carries the memo's title page.", sources: [SRC.rsa] },
     { key: "merkle", year: 1980, when: "APR 1980", title: "MERKLE TREES", name: "Merkle's tree authentication", link: "cite", ref: 7,
       line: "Hash the leaves in pairs up to one root, and one short value vouches for them all.",
       gave: "One hash that stands for a whole block of transactions", missing: "Who orders the leaves in time",
       about: "Ralph Merkle's \"Protocols for Public Key Cryptosystems\", given at the IEEE Symposium on Security and Privacy in April 1980, described tree authentication: hash the items in pairs, hash the pairs, and so on up to one root, so a short path of hashes proves any one item belongs. The whitepaper cites it as reference 7. Every Bitcoin block header carries the Merkle root of its transactions, and a light wallet checks a payment with a Merkle branch alone.",
       specs: [["Author", "Ralph C. Merkle"], ["Published", "IEEE Symposium on Security and Privacy, Apr 1980"], ["Patent", "US 4,309,569, filed 1979, granted Jan 1982"], ["Whitepaper", "reference [7]; §7 Reclaiming Disk Space, §8 SPV"], ["In Bitcoin", "the Merkle root in every block header"]],
-      note: "The sculpture is a true binary hash tree of eight leaves, labelled as the whitepaper's figure labels them. Not to be confused with Merkle's puzzles (1974), his key-exchange idea.", sources: [SRC.merkle] },
+      note: "The sculpture is a true binary hash tree of eight leaves: glass leaves joined in pairs by rising branches to four, two and one root crystal, the light warming from the cool leaves to the orange root. Not to be confused with Merkle's puzzles (1974), his key-exchange idea.", first: "The sculpture is a true binary hash tree of eight leaves, labelled as the whitepaper's figure labels them. Not to be confused with Merkle's puzzles (1974), his key-exchange idea.", sources: [SRC.merkle] },
     { key: "byzantine", year: 1982.5, when: "JUL 1982", title: "BYZANTINE GENERALS", name: "Lamport, Shostak & Pease: the Byzantine Generals Problem", link: "named",
       line: "Generals round a city must agree on one plan by messenger, though some of them lie.",
       gave: "The exact problem proof of work solves: agreement with traitors", missing: "A solution that needs no roll of known members",
       about: "Leslie Lamport, Robert Shostak and Marshall Pease published \"The Byzantine Generals Problem\" in ACM Transactions on Programming Languages and Systems in July 1982: how can generals camped round a city agree on a plan by messenger when some generals, or messengers, are traitors? On 13 November 2008 Satoshi wrote to the cryptography list that the proof-of-work chain is a solution to the Byzantine Generals' Problem, and told the story as generals brute-forcing a password together.",
       specs: [["Authors", "Leslie Lamport, Robert Shostak, Marshall Pease"], ["Published", "ACM TOPLAS 4(3), July 1982"], ["Problem", "agreement among parties when some are faulty or lying"], ["Satoshi", "cryptography list, 13 Nov 2008"], ["In Bitcoin", "the longest proof-of-work chain is the agreement"]],
-      note: "A sand-table of the siege: the city, the generals' tents, the messengers between them, and one tent flying the traitor's black flag.", sources: [SRC.lamport, SRC.byzantine] },
+      note: "Seven chrome generals ring a floating citadel and pass messengers round the ring. The five loyal ones (blue) agree and each aims one orange beam at the city. The two traitors (red) send lies.", first: "A sand-table of the siege: the city, the generals' tents, the messengers between them, and one tent flying the traitor's black flag.", sources: [SRC.lamport, SRC.byzantine] },
     { key: "chaum", year: 1982.6, when: "AUG 1982", title: "BLIND SIGNATURES", name: "Chaum: blind signatures for untraceable payments", link: "context",
       line: "A bank signs a note through a carbon-lined envelope and never sees the number inside.",
       gave: "Digital cash that keeps the payer private", missing: "The bank: a mint that can be shut",
       about: "David Chaum presented \"Blind Signatures for Untraceable Payments\" at CRYPTO '82 in Santa Barbara in August 1982; the proceedings came out in 1983. His picture is a carbon-lined envelope: the bank signs the outside, the signature goes through onto the note inside, and the bank never sees which note it signed. It is the root of private digital cash. Every such scheme still needed the bank, which is what Bitcoin set out to remove.",
       specs: [["Author", "David Chaum"], ["Presented", "CRYPTO '82, Aug 1982; proceedings 1983"], ["Idea", "a signature on a message the signer cannot read"], ["Led to", "ecash and DigiCash (about 1990)"], ["Connection", "context"]],
-      note: "Chaum's own analogy, built: the envelope with its carbon lining, the note sliding out signed, the signer's stamp and pad.", sources: [SRC.chaum] },
+      note: "The bank's floating chrome press signs a coin through a sealed cover of dark glass it cannot see into. Beside it the cover lies open, and the coin still wears the same ring of signature light.", first: "Chaum's own analogy, built: the envelope with its carbon lining, the note sliding out signed, the signer's stamp and pad.", sources: [SRC.chaum] },
     { key: "ecc", year: 1985, when: "1985", title: "ELLIPTIC CURVES", name: "Elliptic-curve cryptography", link: "context",
       line: "Koblitz and Miller, separately, put public keys on a curve: same strength, far shorter keys.",
       gave: "The small, fast keys Bitcoin signs with", missing: "A use that was money",
       about: "In 1985 Neal Koblitz and Victor Miller each, independently, proposed building public-key systems on the points of an elliptic curve, where adding points is easy and undoing it is hard. Keys a quarter the size of RSA's give the same strength. Bitcoin signs with ECDSA on the curve secp256k1, y² = x³ + 7 over a 256-bit prime field: a private key is a number, the public key that number of additions of the curve's base point.",
       specs: [["Authors", "Neal Koblitz; Victor S. Miller (independently)"], ["Published", "Miller, CRYPTO '85; Koblitz, Math. Comp. 1987"], ["Bitcoin's curve", "secp256k1: y² = x³ + 7 over F_p, p = 2²⁵⁶ − 2³² − 977"], ["In Bitcoin", "ECDSA signatures, Schnorr since Taproot (2021)"], ["Connection", "context"]],
-      note: "The sculpture is the curve over the real numbers, for its shape, with the group law drawn: the line through P and Q meets the curve at R, and P + Q is R mirrored. The real curve lives over a prime field and looks like noise.", sources: [SRC.miller, SRC.koblitz, SRC.secp] },
+      note: "The sculpture is the curve y² = x³ + 7 over the real numbers, for its shape, as a chrome rail with the group law drawn: a beam through P and Q strikes the curve at a third point and drops straight through to P + Q. The real curve lives over a prime field and looks like noise.", first: "The sculpture is the curve over the real numbers, for its shape, with the group law drawn: the line through P and Q meets the curve at R, and P + Q is R mirrored. The real curve lives over a prime field and looks like noise.", sources: [SRC.miller, SRC.koblitz, SRC.secp] },
     { key: "may88", year: 1988, when: "1988", title: "CRYPTO ANARCHY", name: "May: The Crypto Anarchist Manifesto", link: "context",
       line: "Tim May's leaflet: cryptography will let people trade and speak beyond any state's reach.",
       gave: "The idea that code, not law, could protect value", missing: "Any working money to trade in",
       about: "Timothy C. May wrote \"The Crypto Anarchist Manifesto\" in 1988 (his own FAQ dates it to August 1988) and photocopied it for the Crypto '88 crowd; it opened the cypherpunks mailing list in 1992. Deliberately echoing an older manifesto, it argued that public-key cryptography and anonymous networks would let people deal with one another without governments able to watch or stop them. It is the political soil the later money ideas grew in.",
       specs: [["Author", "Timothy C. May"], ["Written", "1988 (dated August 1988); handed out at Crypto '88"], ["Posted", "cypherpunks list, 1992"], ["Connection", "context: the culture"]],
-      note: "A dot-matrix printer of the late eighties with the leaflet still coming off its fanfold.", sources: [SRC.may88] },
+      note: "One short text copied from hand to hand: the copies spiral up from a chrome beacon and out over the red fence of the state's reach.", first: "A dot-matrix printer of the late eighties with the leaflet still coming off its fanfold.", sources: [SRC.may88] },
     { key: "digicash", year: 1989.7, when: "1989", title: "DIGICASH", name: "DigiCash and ecash", link: "context",
       line: "Chaum's company put blind signatures to work: ecash on a PC, trials from 1994, bankrupt in 1998.",
       gave: "Proof that private digital cash could run", missing: "It ran on one company's server",
       about: "David Chaum founded DigiCash in Amsterdam to sell ecash, the blind-signature money of his papers; most accounts date the company to 1989, Wired's 1994 profile to 1990. Its CyberBucks trial ran from 1994 and Mark Twain Bank in St. Louis issued real-dollar ecash from 1995. Few merchants joined, the company went bankrupt in November 1998, and the lesson stuck: cash that depends on one issuer dies with it.",
       specs: [["Founder", "David Chaum"], ["Founded", "1989 or 1990 (sources differ); Amsterdam"], ["Product", "ecash: blind-signed coins on a PC"], ["Trials", "CyberBucks 1994; Mark Twain Bank, from 23 Oct 1995"], ["Ended", "bankrupt, Nov 1998"], ["Connection", "context"]],
-      note: "A desktop PC of the early nineties running the ecash wallet as the window it was, with a card-accepting wallet after the smart-card trials of the CAFE project Chaum chaired (1995). No logos; original design.", sources: [SRC.digicash] },
+      note: "Coins leave the bank's vault inside dark envelopes (blinded), rest in the wallet in the middle and are spent bare at the shop. The bank's red tracing beam breaks off without finding them. No logos: an original design.", first: "A desktop PC of the early nineties running the ecash wallet as the window it was, with a card-accepting wallet after the smart-card trials of the CAFE project Chaum chaired (1995). No logos; original design.", sources: [SRC.digicash] },
     { key: "timestamp", year: 1990.6, when: "AUG 1990", title: "TIME-STAMPING", name: "Haber & Stornetta: how to time-stamp a digital document", link: "cite", ref: 3,
       line: "Each stamp holds the hash of the one before; the newest is printed in the newspaper for all.",
       gave: "The linked hash chain, with its root published where nobody can change it", missing: "Still one stamping service to trust",
       about: "Stuart Haber and W. Scott Stornetta presented \"How to Time-Stamp a Digital Document\" at CRYPTO '90 in August 1990; it appeared in the Journal of Cryptology in 1991. Each certificate carries the hash of the one before it, so no record can be altered or backdated without breaking every later link; with Dave Bayer in 1993 they batched records into Merkle trees. Their company, Surety, printed the chain's latest hash in the New York Times' classified ads every week from 1995. The whitepaper cites them three times, as references 3, 4 and 5.",
       specs: [["Authors", "Stuart Haber, W. Scott Stornetta"], ["Presented", "CRYPTO '90, Aug 1990; J. Cryptology 3(2), 1991"], ["Also cited", "Bayer, Haber & Stornetta 1993 [4]; Haber & Stornetta 1997 [5]"], ["Published root", "Surety's weekly hash in the New York Times, from 1995"], ["In Bitcoin", "every block header holds the previous block's hash"]],
-      note: "A newspaper rack with a paper of our own, the week's hash in its classifieds box, and a run of stamped certificates, each holding the last one's hash.", sources: [{ href: "https://doi.org/10.1007/BF00196791", label: "Haber & Stornetta · How to Time-Stamp a Digital Document (1991)" }, { href: "https://en.wikipedia.org/wiki/Stuart_Haber", label: "Surety and the New York Times hashes" }] },
+      note: "Four certificates climb a chrome rail of time. Each one's own seal, the bright crystal on its right, is copied into the next one's left side and chained to it, so none can be slipped in earlier.", first: "A newspaper rack with a paper of our own, the week's hash in its classifieds box, and a run of stamped certificates, each holding the last one's hash.", sources: [{ href: "https://doi.org/10.1007/BF00196791", label: "Haber & Stornetta · How to Time-Stamp a Digital Document (1991)" }, { href: "https://en.wikipedia.org/wiki/Stuart_Haber", label: "Surety and the New York Times hashes" }] },
     { key: "pgp", year: 1991.4, when: "JUN 1991", title: "PGP", name: "Pretty Good Privacy", link: "context",
       line: "Zimmermann gave strong encryption to anyone with a PC, free, and spread it on floppies and Usenet.",
       gave: "Strong crypto in ordinary hands, and the web of trust", missing: "Money",
       about: "Phil Zimmermann released PGP 1.0 in June 1991, free, so that ordinary people could encrypt and sign email with public keys. It spread by floppy and Usenet beyond US borders, which brought a three-year criminal export investigation, dropped in 1996. PGP made key pairs, fingerprints and signed messages everyday tools for the people who would later argue about digital money on the cypherpunks list.",
       specs: [["Author", "Philip R. Zimmermann"], ["Released", "PGP 1.0, 5 June 1991 (MS-DOS)"], ["Ciphers", "RSA keys with Bass-O-Matic (1.0); IDEA from 2.0 (1992)"], ["Investigation", "US export case 1993–96, dropped"], ["Connection", "context"]],
-      note: "A 386 tower and its monitor at the DOS prompt, a public-key block on the screen, and the floppies it travelled on.", sources: [SRC.pgp] },
+      note: "A message sealed in a locked chrome capsule, and round it a web of trust: six people's keys, each vouching for its neighbours along beams of light.", first: "A 386 tower and its monitor at the DOS prompt, a public-key block on the screen, and the floppies it travelled on.", sources: [SRC.pgp] },
     { key: "cypherpunks", year: 1992.7, when: "SEP 1992", title: "CYPHERPUNKS", name: "The cypherpunks mailing list", link: "context", plinth: "cypherpunks",
       line: "Hughes, May and Gilmore start the list where Hashcash and b-money were first posted.",
       gave: "The room where the pieces were argued out", missing: "The design that joined them",
       about: "Eric Hughes, Timothy C. May and John Gilmore held the first meeting in September 1992 in the Bay Area; Jude Milhon named them cypherpunks. The mailing list that followed is where anonymous remailers, digital cash schemes, Hashcash (1997) and b-money (1998) were announced and picked apart. Satoshi later said of b-money that it had appeared \"on Cypherpunks\".",
       specs: [["Founders", "Eric Hughes, Timothy C. May, John Gilmore"], ["Started", "September 1992, San Francisco Bay Area"], ["Posted there", "Hashcash (1997), b-money (1998)"], ["Connection", "context"]],
-      note: "A desk of 1992: the terminal in a text mail reader, the dial-up modem with its lamps, the printouts.", sources: [SRC.hughes, SRC.satoshi2010] },
+      note: "Six chrome voices speak inward to one list, a twisting stack of posts and replies. Out of the top of the argument rises a coin of digital money.", first: "A desk of 1992: the terminal in a text mail reader, the dial-up modem with its lamps, the printouts.", sources: [SRC.hughes, SRC.satoshi2010] },
     { key: "hughes93", year: 1993.2, when: "9 MAR 1993", title: "THE MANIFESTO", name: "Hughes: A Cypherpunk's Manifesto", link: "context", plinth: "cypherpunks", part: "manifesto",
       line: "\"Cypherpunks write code.\" Privacy is built, not asked for.",
       gave: "The rule that the tools must exist, in the open", missing: "A money the tools could carry",
       about: "Eric Hughes's \"A Cypherpunk's Manifesto\", dated 9 March 1993, set the list's rule: privacy in an open society needs anonymous transaction systems, and the people who want them have to write the software themselves and give it away. \"Cypherpunks write code.\" Fifteen years later the Bitcoin software was released the same way, free and open, with its author's name on nothing but the paper.",
       specs: [["Author", "Eric Hughes"], ["Dated", "9 March 1993"], ["Line", "\"Cypherpunks write code.\""], ["Connection", "context"]],
-      note: "The sheet on the desk.", sources: [SRC.hughes] },
+      note: "A chrome tablet of code with a keyhole of light, and round it a wall of glass bricks going up course by course, the next brick on its way down: privacy is built, not asked for.", first: "The sheet on the desk.", sources: [SRC.hughes] },
     { key: "cybercash", year: 1994.6, when: "AUG 1994", title: "CYBERCASH", name: "CyberCash and CyberCoin", link: "context",
       line: "Card payments over the new web, then CyberCoin micropayments. Bankrupt in 2001.",
       gave: "Proof people would pay online", missing: "It all went through one company's gateway",
       about: "CyberCash was founded in Reston, Virginia, in August 1994 (William Melton, Daniel Lynch, Steve Crocker and Bruce Wilson) to move card payments across the Internet safely, with a wallet on the buyer's PC and a gateway to the banks. CyberCoin, its 1996 micropayment system, let people pay cents for a page. It filed for bankruptcy in 2001. Each payment still passed through a middleman.",
       specs: [["Founded", "August 1994, Reston, Virginia"], ["Products", "Secure Internet Payment Service; CyberCoin (1996)"], ["Ended", "bankrupt 2001; assets to VeriSign"], ["Connection", "context"]],
-      note: "A laptop of 1994 on a web shop's pay page. Original design, no marks.", sources: [SRC.cybercash] },
+      note: "A card of light rides an armoured glass tube from the buyer's pod, through the chrome gateway that checks it, to the shop, which sends a parcel out and a green light back. An original design, no marks.", first: "A laptop of 1994 on a web shop's pay page. Original design, no marks.", sources: [SRC.cybercash] },
     { key: "cyphernomicon", year: 1994.7, when: "SEP 1994", title: "THE FAQ", name: "May: The Cyphernomicon", link: "context", plinth: "cypherpunks", part: "binder",
       line: "Tim May's book-length FAQ of the list: digital cash, reputations, remailers, all of it.",
       gave: "The questions written down, years before the answer", missing: "The answer",
       about: "In September 1994 Timothy C. May posted the Cyphernomicon, the cypherpunks' FAQ: hundreds of pages on anonymous remailers, digital cash, reputations and the politics round them, including the open problem of money without a bank. It is a record of what the list already knew it wanted when Bitcoin arrived.",
       specs: [["Author", "Timothy C. May"], ["Posted", "version 0.666, 10 September 1994"], ["Form", "a FAQ, book length"], ["Connection", "context"]],
-      note: "The ring binder, printed out.", sources: [SRC.cyphernomicon] },
+      note: "A book opened all the way round: twenty glass chapters fanned from a glowing spine between two chrome covers, their index tabs stepping down in a spiral.", first: "The ring binder, printed out.", sources: [SRC.cyphernomicon] },
     { key: "mint", year: 1996.4, when: "JUN 1996", title: "HOW TO MAKE A MINT", name: "The NSA's survey of anonymous electronic cash", link: "context",
       line: "Three NSA cryptographers write up Chaum-style ecash: how it works and how it could be abused.",
       gave: "A clear public account of ecash, double spending and all", missing: "Any way round the mint",
       about: "\"How to Make a Mint: The Cryptography of Anonymous Electronic Cash\", dated 18 June 1996, was written by Laurie Law, Susan Sabett and Jerry Solinas of the NSA's Cryptology Division and later printed in the American University Law Review. It explains blind signatures, withdrawal and payment, and the double-spending problem that makes every such scheme lean on its bank. A public, careful statement of exactly what Bitcoin would have to solve without one.",
       specs: [["Authors", "Laurie Law, Susan Sabett, Jerry Solinas (NSA)"], ["Dated", "18 June 1996"], ["Reprinted", "American University Law Review 46(4), 1997"], ["Subject", "Chaum-style ecash; double spending"], ["Connection", "context"]],
-      note: "The report on a lectern, with its folder.", sources: [SRC.mint] },
+      note: "Electronic cash in three steps down a cascade: a chrome press strikes a coin of light, the coin is hidden in a sphere of dark glass, and it is spent into a chrome till. The survey's page floats over it all.", first: "The report on a lectern, with its folder.", sources: [SRC.mint] },
     { key: "egold", year: 1996.9, when: "1996", title: "E-GOLD", name: "e-gold: digital gold currency", link: "context",
       line: "Grams of gold in a vault, moved between accounts online. Shut down by the US in 2008.",
       gave: "Millions of people moving value online", missing: "The vault and the company could be seized",
       about: "Douglas Jackson and Barry Downey launched e-gold in 1996: accounts denominated in grams of gold held in vaults, transferable to any other account on the web. By the mid-2000s it had millions of accounts. In 2007 the company and its founders were indicted for running an unlicensed money transmitter; they pleaded guilty in 2008 and the system was wound down. Value with a single operator ends when the operator does.",
       specs: [["Founders", "Douglas Jackson, Barry Downey"], ["Launched", "1996, Melbourne, Florida"], ["Backing", "gold bullion in vaults; accounts in grams"], ["Ended", "indicted 2007; guilty pleas 2008"], ["Connection", "context"]],
-      note: "A vault door standing ajar on the stacked bars behind it.", sources: [SRC.egold] },
+      note: "The gold never moves. A chrome vault floats shut round a stack of bars seen through its glass waist, while over it grams pass as light from one account's pod to another's.", first: "A vault door standing ajar on the stacked bars behind it.", sources: [SRC.egold] },
     { key: "hashcash", year: 1997.2, when: "28 MAR 1997", title: "HASHCASH", name: "Back: Hashcash proof of work", link: "cite", ref: 6,
       line: "Burn a little CPU to mint a stamp: a hash with leading zeros that anyone can check in an instant.",
       gave: "Proof of work: cost that can be verified", missing: "Stamps could not be passed on or counted",
       about: "Adam Back announced hash cash on the cypherpunks list on 28 March 1997 as postage against spam: the sender finds a header whose SHA-1 hash begins with twenty zero bits, which takes work, and the receiver checks it with one hash. His paper \"Hashcash – A Denial of Service Counter-Measure\" followed on 1 August 2002, and the whitepaper cites it as reference 6: Bitcoin's mining is a Hashcash-style proof of work on SHA-256, chained block to block.",
       specs: [["Author", "Adam Back"], ["Announced", "cypherpunks list, 28 Mar 1997"], ["Paper", "1 Aug 2002"], ["Stamp (v1, 2002)", "ver:bits:date:resource:ext:rand:counter; SHA-1 with 20 leading zero bits (1997's v0: ver:date:resource:counter)"], ["Whitepaper", "reference [6]; §4 Proof-of-Work"]],
-      note: "A sheet of minted stamps under glass, each carrying a header in the real format, and a mail terminal minting the next.", sources: [SRC.hashcash97, SRC.hashcash] },
+      note: "A finned chrome engine burns work, throwing off a spiral of dead tries, until one comes out a stamp whose hash starts with zeros. A small lens at its side checks it at once and shows green.", first: "A sheet of minted stamps under glass, each carrying a header in the real format, and a mail terminal minting the next.", sources: [SRC.hashcash97, SRC.hashcash] },
     { key: "szabo97", year: 1997.7, when: "SEP 1997", title: "SMART CONTRACTS", name: "Szabo: Formalizing and Securing Relationships on Public Networks", link: "context",
       line: "A vending machine is a contract in hardware. Szabo asks what contracts in software could do.",
       gave: "The idea of agreements enforced by code", missing: "A ledger to enforce them on",
       about: "Nick Szabo's essay appeared in First Monday in September 1997. His humble example is the vending machine: put in the coin, get the drink, no clerk and no court; a contract enforced by the mechanism itself. He asked how far protocols on public networks could take that. Bitcoin's scripts, small and deliberately limited, are a first answer.",
       specs: [["Author", "Nick Szabo"], ["Published", "First Monday 2(9), Sep 1997"], ["Example", "the vending machine"], ["In Bitcoin", "Script: conditions a spend must meet"], ["Connection", "context"]],
-      note: "The vending machine itself.", sources: [SRC.szabo97] },
+      note: "The vending machine, with no keeper: a coin goes into the chrome hopper, falls to the gate where the rule is tested, and the goods are let out of the bell below.", first: "The vending machine itself.", sources: [SRC.szabo97] },
     { key: "titles", year: 1998.5, when: "1998", title: "PROPERTY TITLES", name: "Szabo: Secure Property Titles with Owner Authority", link: "context",
       line: "A register of who owns what, replicated across a club of servers so no clerk can forge a transfer.",
       gave: "A replicated registry of signed transfers", missing: "A cost to joining the club",
       about: "Nick Szabo's 1998 essay proposed a title registry kept not by one office but by a group of servers, each title a chain of transfers signed by its previous owner, and the group able to split from any member who cheats. It is the registry half of bit gold, and an early sketch of an ownership ledger with no single keeper.",
       specs: [["Author", "Nick Szabo"], ["Published", "1998"], ["Idea", "a replicated title database; a chain of signed transfers"], ["Led to", "bit gold's registry"], ["Connection", "context"]],
-      note: "A registry drawer of deed cards, each stamped and signed on from the last.", sources: [SRC.titles] },
+      note: "One property held aloft by six keepers of the same register. Five copies agree and their beams carry the title. The sixth, a forgery, is red, cut off from the rest and carries nothing.", first: "A registry drawer of deed cards, each stamped and signed on from the last.", sources: [SRC.titles] },
     { key: "bmoney", year: 1998.8, when: "NOV 1998", title: "B-MONEY", name: "Dai: b-money", link: "cite", ref: 1,
       line: "Money created by solving computational problems, every participant keeping a copy of the accounts.",
       gave: "Proof of work as the mint; everyone holds the ledger", missing: "How everyone agrees which copy is right",
       about: "Wei Dai circulated b-money in November 1998: a scheme in which money is created by publishing solutions to computational problems, every participant keeps a database of how much everyone owns, and transfers are signed and broadcast. It is the whitepaper's first reference, and in 2010 Satoshi wrote that Bitcoin is an implementation of Dai's proposal and Szabo's Bitgold. Dai's design assumed an unjammable broadcast channel; Bitcoin's chain of work is what replaced that assumption.",
       specs: [["Author", "Wei Dai"], ["Circulated", "November 1998, cypherpunks"], ["Whitepaper", "reference [1]"], ["Satoshi", "\"an implementation of Wei Dai's b-money proposal\" (2010)"], ["Open problem", "agreement without a synchronous broadcast"]],
-      note: "Five small servers, each with the same ledger open on it.", sources: [SRC.bmoney, SRC.satoshi2010] },
+      note: "At the centre a puzzle of chrome dials turned into line, and the coin it makes. Round it five participants each carry the same five accounts, every one linked to every other.", first: "Five small servers, each with the same ledger open on it.", sources: [SRC.bmoney, SRC.satoshi2010] },
     { key: "keiser", year: 1999.7, when: "7 SEP 1999", title: "VIRTUAL SPECIALIST", name: "Keiser & Burns: a computer-implemented securities trading system", link: "context",
       line: "A patent for a market run by software, used by the Hollywood Stock Exchange. No link to Bitcoin.",
       gave: "A market made by a program rather than a floor", missing: "Any connection to Bitcoin's design that a source shows",
       about: "US patent 5,950,176, \"Computer-implemented securities trading system with a virtual specialist function\", was granted to Timothy M. (Max) Keiser and Michael R. Burns on 7 September 1999 and ran the Hollywood Stock Exchange, a game market in film futures. It appears on the prehistory chart this gallery grew from. We found no primary source tying it to Bitcoin's design, so it stands here as context, as the chart's own era of software markets.",
       specs: [["Inventors", "Timothy M. (Max) Keiser, Michael R. Burns"], ["Patent", "US 5,950,176, granted 7 Sep 1999"], ["Used by", "Hollywood Stock Exchange"], ["Connection", "context; no documented link"]],
-      note: "The patent's front page, framed.", sources: [SRC.keiser] },
+      note: "A program afloat in the gap of a price ladder: bids (blue) climb to it from below, offers (orange) step away above, and it always shows one price to buy at and one to sell at.", first: "The patent's front page, framed.", sources: [SRC.keiser] },
     { key: "dotcom", year: 2000, when: "1998-2001", title: "WEB POINTS", name: "Beenz and Flooz: dot-com web currencies", link: "context", plinth: "dotcom",
       line: "Points earned and spent across websites, issued by companies that folded in August 2001.",
       gave: "Demand: people wanted money native to the web", missing: "An issuer that could not disappear",
       about: "Beenz (London, 1998) and Flooz (New York, 1999) sold web-wide points and gift money that shoppers earned or bought and spent at partner stores. Both ran out of money in August 2001 and their balances went with them. They are on the chart as demand: the web wanted its own money, and a company's promise was not enough.",
       specs: [["Beenz", "founded 1998, launched 1999; London"], ["Flooz", "1999–2001, New York"], ["Ended", "both closed Aug 2001; balances lost"], ["Connection", "context: demand"]],
-      note: "A web shop of the day on its monitor, with a printed web gift certificate of the kind Flooz sold.", sources: [{ href: "https://en.wikipedia.org/wiki/Flooz.com", label: "Flooz.com (1999–2001)" }, { href: "https://en.wikipedia.org/wiki/Beenz.com", label: "Beenz.com (1998–2001)" }] },
+      note: "A chrome horn blowing a bubble full of points, and beside it the one that burst: its issuer folded, the horn dark and tipped over, its points fallen grey to the deck.", first: "A web shop of the day on its monitor, with a printed web gift certificate of the kind Flooz sold.", sources: [{ href: "https://en.wikipedia.org/wiki/Flooz.com", label: "Flooz.com (1999–2001)" }, { href: "https://en.wikipedia.org/wiki/Beenz.com", label: "Beenz.com (1998–2001)" }] },
     { key: "games", year: 2001.4, when: "2001", title: "GAME GOLD", name: "Virtual-world currencies and their markets", link: "context", plinth: "dotcom", part: "chest",
       line: "Players traded game gold for real dollars; in 2001 an economist measured a game world's GDP.",
       gave: "Proof that digital tokens take real value when people agree", missing: "The tokens belonged to the game's company",
       about: "By 2001 players of online worlds were selling game currency and items for dollars on auction sites, and Edward Castronova's December 2001 paper \"Virtual Worlds\" worked out one game's economy as if it were a country. The tokens had value because players agreed they did, and none because the publisher could print or confiscate them at will.",
       specs: [["Marker", "Castronova, \"Virtual Worlds\", Dec 2001"], ["Trade", "game gold and items for dollars, from the late 1990s"], ["Connection", "context: demand"]],
-      note: "A treasure chest of game gold beside a controller.", sources: [SRC.castronova] },
+      note: "A small world sealed in glass inside a chrome ring. Its gold pours out on one side into a dish, and real dollars climb in from the dish on the other.", first: "A treasure chest of game gold beside a controller.", sources: [SRC.castronova] },
     { key: "bittorrent", year: 2001.5, when: "2 JUL 2001", title: "BITTORRENT", name: "Cohen: BitTorrent", link: "context", plinth: "p2p", part: "swarm",
       line: "A file in pieces from a swarm of peers, each trading pieces tit for tat.",
       gave: "Incentives built into a protocol", missing: "Nothing to settle who owned what",
       about: "Bram Cohen released BitTorrent on 2 July 2001: a file is cut into pieces, every downloader uploads the pieces it has, and peers favour those who give back. It proved a peer-to-peer system could run on incentives written into the protocol itself, an idea the whitepaper leans on in its own section on incentive.",
       specs: [["Author", "Bram Cohen"], ["Released", "2 July 2001"], ["Idea", "swarming downloads; tit-for-tat choking"], ["Connection", "context"]],
-      note: "The file assembling itself from pieces coming in from every side.", sources: [SRC.bittorrent] },
+      note: "The file as a chrome sphere cut into slices, and round it a swarm of peers each building its own copy slice by slice, passing a piece on for every piece it is given.", first: "The file assembling itself from pieces coming in from every side.", sources: [SRC.bittorrent] },
     { key: "dht", year: 2001.6, when: "AUG 2001", title: "HASH TABLES", name: "Distributed hash tables: Chord and its kin", link: "context", plinth: "p2p",
       line: "Chord, CAN, Pastry and Tapestry: find any key among thousands of peers in a few hops, no server.",
       gave: "Peer-to-peer lookup at scale", missing: "Bitcoin chose gossip over lookup",
       about: "In 2001 four designs, Chord (SIGCOMM, August 2001), CAN, Pastry and Tapestry, showed how thousands of peers could share one lookup table with no server, each knowing only a few others. Kademlia followed in 2002. Bitcoin's network is simpler and older in spirit, flooding every transaction and block to every node, but the peer-to-peer engineering of these years is the water it swam in.",
       specs: [["Chord", "Stoica, Morris, Karger, Kaashoek, Balakrishnan; SIGCOMM 2001"], ["Also 2001", "CAN, Pastry, Tapestry"], ["Bitcoin", "gossip (flooding), not a DHT"], ["Connection", "context"]],
-      note: "The ring of nodes with its finger-table chords, as Chord's figure draws it.", sources: [SRC.chord] },
+      note: "A chrome ring of peers with nothing at its centre, and one lookup leaping round it in ever shorter hops to the peer that holds the key.", first: "The ring of nodes with its finger-table chords, as Chord's figure draws it.", sources: [SRC.chord] },
     { key: "rpow", year: 2004.6, when: "15 AUG 2004", title: "RPOW", name: "Finney: Reusable Proofs of Work", link: "context",
       line: "Hashcash tokens you can pass on, exchanged one for one by a server anyone can audit.",
       gave: "Proof of work as a transferable token", missing: "The one server, however honest",
       about: "Hal Finney announced RPOW on 15 August 2004. A Hashcash stamp is spent once; RPOW let its owner trade it in for a fresh token at a server, and that server ran inside an IBM 4758 secure coprocessor whose code anyone could verify by remote attestation. Transferable proof of work with a trusted machine instead of a trusted person. Finney went on to run the second Bitcoin node and received the first transaction, in block 170, on 12 January 2009.",
       specs: [["Author", "Hal Finney"], ["Announced", "15 Aug 2004"], ["Hardware", "IBM 4758 secure coprocessor, remote attestation"], ["Idea", "one-for-one exchange of proof-of-work tokens"], ["Connection", "context"]],
-      note: "A rack server with its secure coprocessor card drawn half out.", sources: [SRC.rpow] },
+      note: "A sealed chrome capsule with a glass waist that shows its chip to anyone, and three lenses watching it. A spent grey token goes in at one port and a fresh lit one comes out of the other.", first: "A rack server with its secure coprocessor card drawn half out.", sources: [SRC.rpow] },
     { key: "bitgold", year: 2005.99, when: "DEC 2005", title: "BIT GOLD", name: "Szabo: bit gold", link: "named",
       line: "Solve a puzzle, timestamp the solution, register the owner, start the next puzzle from it.",
       gave: "Chained proof of work as a scarce, unforgeable thing", missing: "The bits were not fungible, and the registry still needed trust",
       about: "Nick Szabo says he conceived bit gold in 1998; he posted it on his blog Unenumerated in December 2005 (the 27th or 29th, by source). A challenge string is hashed with work, the solution timestamped and entered in a distributed title registry as its finder's, and the next challenge grows from it: a chain of proofs of work that nobody can forge. Each bit was its own size, so he needed a second layer to make them into money. Satoshi named Bitgold beside b-money in 2010.",
       specs: [["Author", "Nick Szabo"], ["Conceived", "1998 (Szabo, 2011)"], ["Posted", "Unenumerated, Dec 2005"], ["Satoshi", "\"Nick Szabo's Bitgold proposal\" (2010)"], ["Left open", "fungibility; the registry's trust"]],
-      note: "A bar cast from chained blocks, each stamped with the last one's hash, on a balance.", sources: [SRC.bitgold, SRC.satoshi2010] },
+      note: "Nuggets climbing a chrome spire, each a solved puzzle ringed by its time-stamp and tied to the next. The topmost is still glass: the puzzle begun from the last solution.", first: "A bar cast from chained blocks, each stamped with the last one's hash, on a balance.", sources: [SRC.bitgold, SRC.satoshi2010] },
     { key: "lr", year: 2006, when: "2006", title: "LIBERTY RESERVE", name: "Liberty Reserve: the last centralised e-currency", link: "context",
       line: "A Costa Rican e-currency with no questions asked. Seized by the United States in May 2013.",
       gave: "The counter-example: a central issuer ends in a courtroom", missing: "Everything Bitcoin is",
       about: "Liberty Reserve opened in 2006 in Costa Rica, issuing LR dollars and euros moved between accounts with little or no identity checking. In May 2013 the United States shut it down and charged its founder with running a six-billion-dollar laundering operation; he was sentenced in 2016. It stands at the end of the ring as the last of the issuers, and the reason the one that came next had none.",
       specs: [["Founded", "2006, Costa Rica"], ["Units", "LR dollars, LR euros"], ["Ended", "seized May 2013; founder sentenced 2016"], ["Connection", "context: what Bitcoin is not"]],
-      note: "An office PC of 2006 on the exchange's account page, and the seizure notice over it.", sources: [SRC.lr, { href: "https://krebsonsecurity.com/2013/05/u-s-government-seizes-libertyreserve-com/", label: "Krebs on Security · U.S. government seizes LibertyReserve.com (2013)" }] },
+      note: "Every account hangs from one chrome hub. The hub is bound and crossed in red, its lights are out, and every coin under it has gone dark with it.", first: "An office PC of 2006 on the exchange's account page, and the seizure notice over it.", sources: [SRC.lr, { href: "https://krebsonsecurity.com/2013/05/u-s-government-seizes-libertyreserve-com/", label: "Krebs on Security · U.S. government seizes LibertyReserve.com (2013)" }] },
     { key: "satoshi", year: 2008.6, when: "2008 TO 2011", title: "SATOSHI NAKAMOTO", name: "Satoshi Nakamoto", link: "author", plinth: "centre",
       line: "The name on the whitepaper and on the first Bitcoin software. Who stood behind it is not known.",
       gave: "The paper, the first software, the first block", missing: "A face: the name is all there is",
@@ -619,7 +620,7 @@
       gave: "The first link of the chain", missing: "Nothing. Block 1 followed on 9 January",
       about: "The first block has height 0 and a header time of 3 January 2009, 18:15:05 UTC. Its one transaction pays fifty bitcoin to the address 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa, a reward the software never lets anyone spend, and its coinbase carries the text \"The Times 03/Jan/2009 Chancellor on brink of second bailout for banks\", a headline from that morning's paper that proves the block was not made earlier. The next block came six days later.",
       specs: [["Height", "0"], ["Time", "2009-01-03 18:15:05 UTC"], ["Hash", "000000000019d668…60a8ce26f"], ["Nonce / bits", "2083236893 / 0x1d00ffff"], ["Reward", "50 BTC, unspendable"], ["Size", "285 bytes, 1 transaction"], ["Block 1", "9 Jan 2009"]],
-      note: "A slab of lit amber with the header cut into it. Every value is the block's own.", sources: [SRC.block0] }
+      note: "A dark slab carrying the block's header and its coinbase, cradled between two chrome pylons banded in Bitcoin orange, a chain beginning along its crown. Every value is the block's own.", first: "A slab of lit amber with the header cut into it. Every value is the block's own.", sources: [SRC.block0] }
   ];
   // The ring: one plinth per entry, or per shared plinth, in the order the entries come (the viewer pages them so).
   const PLINTHS = [];
@@ -651,12 +652,10 @@
   const widthOf = (p) => (1.2 + (p.entries.length - 1) * MID_CARD.pitch) * BIG;
   // The ring's radius is what gives the plinths, from AZ0 round to AZ1, `GAP` metres of floor between neighbours.
   const RING = (() => { let between = 0; for (let i = 1; i < PLINTHS.length; i++) between += (widthOf(PLINTHS[i - 1]) + widthOf(PLINTHS[i])) / 2; return (between + GAP * (PLINTHS.length - 1)) / ((AZ1 - AZ0) * DEG); })();
-  // The ring's pieces are built at the builders' full detail (the lighter variants cost them their keyboards for
-  // an eighth of the triangles), in `SECTORS` nodes round the ring, so the renderer culls the sectors behind the
-  // visitor.
-  const PLINTH_FINE = true, SECTORS = 6;
-  // The one piece still drawn larger than it was modelled (the rest are laid out in the plinth's own metres).
-  const SCALE = { byzantine: 1.15 };
+  // The ring's pieces are built in `SECTORS` nodes round the ring, so the renderer culls the sectors behind the
+  // visitor. `PIECE_GLASS`: how see-through the pieces' glass is, how far it swells and fades about that, and the
+  // seconds one such breath takes.
+  const SECTORS = 6, PIECE_GLASS = { alpha: 0.34, swell: 0.07, period: 7 };
   // The inner loop keeps a still strip (3.2 m at the museum's size) between its edge and the plinths' fronts: far
   // enough back that a visitor who steps off toward a plinth has the whole display on screen (model, plaque or cut
   // words) at the default view, on a desktop and on a phone held sideways, and is not carried while reading.
@@ -668,7 +667,7 @@
   // A flat lit ring (0.55 to 0.8 m) and a lit unit bar along +x, shared by every node that needs one.
   const glowRing = own(() => { const g = RM.helpers.blank(), n = 28, r0 = 0.62, r1 = 0.76; for (let k = 0; k < n; k++) { const a = TAU * k / n, b = TAU * (k + 1) / n; RM.helpers.face(g, [[r0 * Math.sin(a), 0, -r0 * Math.cos(a)], [r1 * Math.sin(a), 0, -r1 * Math.cos(a)], [r1 * Math.sin(b), 0, -r1 * Math.cos(b)], [r0 * Math.sin(b), 0, -r0 * Math.cos(b)]], C.amber, 0.5, [0, 1, 0]); } return noShadow(g); });
   const glowBar = own(() => noShadow(box({ w: 1, h: 0.04, d: 0.04, color: C.amber, emissive: 0.9, offset: { x: 0.5 } })));
-  // Two builds of every sector: the near one at full detail with its moving parts, the far one lighter, swapped by
+  // Two builds of every sector: the near one at full detail, the far one lighter, swapped by
   // the visitor's distance to the sector's nearest plinth (`LOD_NEAR` metres, with a little hysteresis): near from the
   // standing strip and the inner loop, far from the doorway, where the ring's two ends stand 6.5 m off.
   const LOD_NEAR = 5.8, LOD_FAR = 6.4, INSC_GROUPS = 9, INSC_NEAR = 5.8, INSC_FAR = 6.4;
@@ -704,8 +703,15 @@
   };
   // Every piece stands open on its plinth (no glass cases). The middle's drum is a straight cylinder this radius.
   const MID_R = 1.56;
-  // Each entry's piece alone, at the museum's size, for the viewer (Satoshi's is the statue, `soloFigure`).
-  const viewModel = own(() => EXHIBITS.map((ex) => ex.key === "satoshi" ? null : RM.solo((k) => GM.model(k, ex.plinth && ex.plinth !== "centre" ? ex.plinth : ex.key, 1, 0, { part: ex.part || "main" }))));
+  // Each entry's piece alone, at the museum's size, for the viewer (Satoshi's is the statue, `soloFigure`): its solid
+  // parts and its glass in one geometry, each face of the glass marked with how see-through it is.
+  const viewModel = own(() => EXHIBITS.map((ex) => {
+    if (ex.key === "satoshi") return null;
+    const pass = (glass) => RM.solo((k) => GM.model(k, ex.plinth && ex.plinth !== "centre" ? ex.plinth : ex.key, 0, { part: ex.part || "main", glass }));
+    const glass = pass(true);
+    for (const f of glass.faces) f.glass = PIECE_GLASS.alpha;
+    return BL.models.merge(pass(false), glass);
+  }));
 
   // ---------- pictures ----------
   // A plaque, `k` times its 560 by 440 size: the date and title, the name, the line, how it connects, and two rows:
@@ -1619,16 +1625,20 @@
       BL.timechainGenesis.ledge = { rIn, rOut, y: y1, pitch: 1.25 };
     }
     portalPlan(K, L);
-    // The pieces on the ring's plinths, by sector of the walk: the near build (full detail, moving parts as nodes of
-    // their own) and the far one (lighter, still), one of each shown at a time.
+    // The pieces on the ring's plinths, by sector of the walk: the near build and the far one (lighter), one of each
+    // shown at a time, and the pieces' glass, a mesh of its own a sector.
     for (let sct = 0; sct < SECTORS; sct++) {
-      for (const far of [false, true]) K.node(`gallerySector${far ? "Low" : ""}${sct}`, (k) => {
+      const pieces = (opts) => (k) => {
         PLINTHS.forEach((p, i) => {
           if (Math.floor(i * SECTORS / PLINTHS.length) !== sct) return;
           const { x, z } = spotOf(i);
-          GM.model(k.group(x, 0, z, headingTo(x, z, 0, 0)), p.model, SCALE[p.model] || 1, TOP + RISE + 0.005, far ? { fine: false, quiet: true, unit: BIG, lip: RISE } : { fine: PLINTH_FINE, moving: true, unit: BIG, lip: RISE });
+          GM.model(k.group(x, 0, z, headingTo(x, z, 0, 0)), p.model, TOP + RISE + 0.005, { unit: BIG, lip: RISE, ...opts });
         });
-      }, 0, 0, 0);
+      };
+      K.node(`gallerySector${sct}`, pieces({}), 0, 0, 0);
+      K.node(`gallerySectorLow${sct}`, pieces({ quiet: true }), 0, 0, 0);
+      const glass = K.node(`galleryGlass${sct}`, pieces({ glass: true }), 0, 0, 0).geometry;
+      glass.glass = PIECE_GLASS.alpha; glass.castShadow = false;
     }
     // The words cut into the plinths, in INSC_GROUPS nodes round the ring (each shown only to a visitor near it).
     // The words are laid out as at the museum's size, on faces `WORDS` times smaller than these, and cut `WORDS` times as large.
@@ -1721,19 +1731,11 @@
   const animate = (nodes, built, hud, drawnBy) => {
     const gone = new AbortController(), poc = floorPoc.animate(nodes, built);
     const spots = PLINTHS.map((p, i) => ({ ...spotOf(i), index: p.entries[0].index }));
-    // The moving parts, by their names (timechain-genesis-models.js `tools`), and the two builds of each sector.
-    const spins = [], blinks = [], shuttles = [], pulses = [], slides = [], tips = [];
     const smooth = (k) => k * k * (3 - 2 * k), unit = (v) => Math.max(0, Math.min(1, v));
-    for (const name of Object.keys(nodes)) {
-      const f = name.split(":");
-      if (f[0] === "spin") spins.push({ node: nodes[name], rate: Number(f[2]) });
-      else if (f[0] === "blink") blinks.push({ node: nodes[name], period: Number(f[2]), phase: Number(f[3]) });
-      else if (f[0] === "shuttle") { const n = nodes[name]; shuttles.push({ node: n, x: n.position.x, y: n.position.y, z: n.position.z, dx: Number(f[2]), dy: Number(f[3]), dz: Number(f[4]), period: Number(f[5]), phase: Number(f[6]) }); }
-      else if (f[0] === "pulse") pulses.push({ node: nodes[name], period: Number(f[2]), t0: Number(f[3]), t1: Number(f[4]) });
-      else if (f[0] === "slide") { const n = nodes[name]; slides.push({ node: n, x: n.position.x, y: n.position.y, z: n.position.z, dx: Number(f[2]), dy: Number(f[3]), dz: Number(f[4]), period: Number(f[5]), t0: Number(f[6]), t1: Number(f[7]), v0: Number(f[8]), v1: Number(f[9]) }); }
-      else if (f[0] === "tip") tips.push({ node: nodes[name], r0: Number(f[2]), r1: Number(f[3]), period: Number(f[4]), t0: Number(f[5]), t1: Number(f[6]), t2: Number(f[7]), t3: Number(f[8]) });
-    }
-    // The shared clock's seconds, so every player's moving parts stand at the same point of their cycles.
+    // The pieces' glass, a mesh a sector: it breathes, each sector a little after the last round the ring (held still
+    // for a visitor who asks for less motion).
+    const glass = Array.from({ length: SECTORS }, (_, i) => nodes[`galleryGlass${i}`].geometry), calm = matchMedia("(prefers-reduced-motion: reduce)");
+    // The shared clock's seconds, so every player's show stands at the same point of its cycle.
     const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000;
     const focus = PLINTHS.map((p, i) => ({ node: nodes[`focusRing${i}`], tick: nodes[`yearTick${i}`], ...spotOf(i), level: 0, lit: 0, boost: 0 })), genesisAt = PLINTHS.findIndex((p) => p.id === "genesis");
     const screen = BL.timechainGenesis.blockScreen;
@@ -1787,12 +1789,14 @@
     const insc = Array.from({ length: INSC_GROUPS }, (_, i) => ({ node: nodes[`inscGroup${i}`], spots: spots.filter((_, j) => Math.floor(j * INSC_GROUPS / PLINTHS.length) === i), on: true })).filter((q) => q.node);
     let px = 0, pz = 14;
     const carried = { x: 0, z: 0 };
+    // A piece's pop-up carries a photograph of the model first built for it (`first`: what that model was).
+    const PHOTOS = BL.timechainGenesisPhotos || {};
     const show = (i) => BL.modelViewer.open({
       title: "Genesis Museum", theme: "genesis", count: EXHIBITS.length, index: i,
       help: matchMedia("(pointer: coarse)").matches ? "Drag to turn it · pinch to zoom · the arrows for the next piece" : "Drag to turn it · scroll to zoom · ← → for the next piece",
       item: (n) => {
         const ex = EXHIBITS[n], link = LINK[ex.link];
-        return { kicker: `${ex.when} · ${ex.title} · ${ex.link === "cite" ? `${link.word} [${ex.ref}]` : link.word}`, name: ex.name, text: ex.about, stats: ex.specs, note: ex.note, links: ex.sources, geometry: ex.key === "satoshi" ? soloFigure() : viewModel()[n], image: ex.key === "whitepaper" && BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, ...(ex.key === "whitepaper" ? { onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] } : null) };
+        return { kicker: `${ex.when} · ${ex.title} · ${ex.link === "cite" ? `${link.word} [${ex.ref}]` : link.word}`, name: ex.name, text: ex.about, stats: ex.specs, note: ex.note, links: ex.sources, geometry: ex.key === "satoshi" ? soloFigure() : viewModel()[n], photo: PHOTOS[ex.key] ? { src: PHOTOS[ex.key], title: "How we first built it", text: ex.first, alt: `The first model of ${ex.name}` } : null, image: ex.key === "whitepaper" && BL.whitepaperPages && BL.whitepaperPages.pages[0] || null, ...(ex.key === "whitepaper" ? { onImage: () => readLarge(0), buttons: [{ label: "READ THE WHITEPAPER", run: () => readLarge(0) }] } : null) };
       }
     });
     // The paper's piece shows its first page, a still beside its account, and the page or the button opens the
@@ -1922,7 +1926,6 @@
     const self = {
       portalGo: null,
       update(dt, elapsed) {
-        for (let i = 0; i < spins.length; i++) spins[i].node.rotation.y += dt * spins[i].rate;
         const now = clock();
         // The show, where it runs (the glass floor option), and where its clock stands this cycle.
         const show = BL.timechainGenesis.floorPoc, tShow = show ? now % show.cycle : -1, inBurst = show && tShow >= show.phases.burst && tShow < show.phases.charge + 1;
@@ -2004,14 +2007,7 @@
             screen.geo.imageSurface.version++;
           }
         }
-        for (let i = 0; i < blinks.length; i++) { const b = blinks[i]; b.node.visible = (now + b.phase) % b.period < b.period * 0.55; }
-        // The cycle-driven parts: shown in a window (`pulse`), moved once between two times (`slide`), turned there and
-        // back (`tip`).
-        for (let i = 0; i < pulses.length; i++) { const q = pulses[i], t = now % q.period; q.node.visible = t >= q.t0 && t < q.t1; }
-        for (let i = 0; i < slides.length; i++) { const q = slides[i], t = now % q.period, e = smooth(unit((t - q.t0) / (q.t1 - q.t0))); q.node.position.x = q.x + q.dx * e; q.node.position.y = q.y + q.dy * e; q.node.position.z = q.z + q.dz * e; q.node.visible = t >= q.v0 && t < q.v1; }
-        for (let i = 0; i < tips.length; i++) { const q = tips[i], t = now % q.period; const k = t < q.t0 ? 0 : t < q.t1 ? smooth(unit((t - q.t0) / (q.t1 - q.t0))) : t < q.t2 ? 1 : t < q.t3 ? 1 - smooth(unit((t - q.t2) / (q.t3 - q.t2))) : 0; q.node.rotation.z = q.r0 + (q.r1 - q.r0) * k; }
-        // A shuttle slides out and back with an ease at each end.
-        for (let i = 0; i < shuttles.length; i++) { const h = shuttles[i], t = (now + h.phase) % h.period / h.period, k = t < 0.5 ? t * 2 : 2 - t * 2, e = k * k * (3 - 2 * k); h.node.position.x = h.x + h.dx * e; h.node.position.y = h.y + h.dy * e; h.node.position.z = h.z + h.dz * e; }
+        if (!calm.matches) for (let i = 0; i < SECTORS; i++) glass[i].glass = PIECE_GLASS.alpha + PIECE_GLASS.swell * Math.sin(TAU * (now / PIECE_GLASS.period - i / SECTORS));
         for (let i = 0; i < insc.length; i++) { const q = insc[i]; let d = Infinity; for (let j = 0; j < q.spots.length; j++) d = Math.min(d, Math.hypot(q.spots[j].x - px, q.spots[j].z - pz)); const on = q.on ? d < INSC_FAR : d < INSC_NEAR; if (on !== q.on) { q.on = on; q.node.visible = on; } }
         for (let i = 0; i < sectors.length; i++) {
           const s = sectors[i];
@@ -2056,6 +2052,6 @@
     portal.bind(self);
     return self;
   };
-  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, LINK, RING, BIG, TOP, RISE, DEPTH, SCALE, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
+  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, LINK, RING, BIG, TOP, RISE, DEPTH, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
   BL.timechainRoomKinds.genesis = { plan, steps, animate, door };
 })();
