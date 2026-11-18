@@ -49,7 +49,7 @@
     opts.lightCount = count;
   };
   // The room's hum: a low drone and a soft fan hiss, pitched a little apart in each room, honouring the page-wide
-  // mute; a context only after a gesture, closed on leaving.
+  // mute; a context only after a gesture, closed on leaving. The lecture hall has no room ambience behind its voice.
   const ambience = (room, signal) => {
     let context = null, bus = null, sources = [], nodes = [], connected = false, disposed = false, muted = false;
     muted = BL.sound.muted;
@@ -60,7 +60,7 @@
       if (!on && connected) { bus.disconnect(); connected = false; }
     };
     const wake = () => {
-      if (context || disposed || muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+      if (room.kind === "lecture" || context || disposed || muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
       context = new AudioContext();
       bus = context.createGain();
       bus.gain.value = 0.5;
@@ -286,7 +286,9 @@
   // The visit. `shell` is the scene object the director knows (scene-timechain.js), `visit` what the shell resolved.
   const create = (shell, ctx, visit) => {
     const { renderer, game, world, go, canvas } = ctx;
-    const room = ROOMS.get(visit.room), L = ROOMS.layout(room.id), shared = visit.mode === "shared", kind = RM.KINDS[room.kind];
+    const room = ROOMS.get(visit.room), L = ROOMS.layout(room.id), kind = RM.KINDS[room.kind], SPOT_PLACE = String(room.id);
+    // Shared until the visitor signs out in here, when the room becomes their solo copy (`accountChanged`).
+    let shared = visit.mode === "shared";
     const camera = createCamera({ fov: 58, near: 0.12, far: L.R * 3 + 20 });
     const root = createNode();
     const hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster });
@@ -443,6 +445,9 @@
       follow: { y: 0.9, min: 3, max: 6, pitch: [0.2, 0.7] },
       clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: (x, z) => roof(x, z, 0), coarse: COARSE, mayPossess: (cave) => BL.net.mayDrive(cave.traits.name),
       jetpackStatus: () => NO_JETPACK,
+      // Combat captures canvas clicks before interact; route every picked target through carry's tap handler.
+      captureClick: (x, y) => roomTap(x, y),
+      primaryAction: (pressed, e) => pressed && roomTap(e ? e.clientX : window.innerWidth / 2, e ? e.clientY : window.innerHeight / 2, !e || !quizPressFree),
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt }
     });
     const fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 4, z: 0 } });
@@ -531,7 +536,7 @@
     // what it lets go of on leaving (`dispose`, the Block Party's radio). `built.ear` is where the visitor hears from
     // (their Ooga, else the view's target), kept current every frame for a kind's sounds.
     const ear = built.ear = { x: 0, y: 0, z: 0 };
-    const motion = kind.animate ? kind.animate(built.nodes, built, hud) : null;
+    const motion = kind.animate ? kind.animate(built.nodes, built, feeds, pilot.setMenuOpen, hud) : null;
 
     const NO_ACTORS = [], actors = [];
 
@@ -732,9 +737,10 @@
       pilot.possess(avatar);
       pilot.enterClose();
     }
-    // In the room, as the visit has it: a guided arrival from the vestibule, or (a reload, a link, a history step)
-    // standing at the arrival facing the screens.
-    const arrive = (at, yaw = 0, pitch = 0.04) => pilot.navigate({ position: { x: at.x, y: 0, z: at.z }, yaw, pitch, dist: 4 });
+    // In the room, as the visit has it: a guided arrival from the vestibule, or (a link, a history step) standing at the
+    // arrival facing the screens; a reload stands where the Ooga stood and faces as it faced (visit-spot.js), while the
+    // room's floor is still there to walk on from.
+    const arrive = (at, yaw = 0, pitch = 0.04, y = 0) => pilot.navigate({ position: { x: at.x, y, z: at.z }, yaw, pitch, dist: 4 });
     const guide = { stage: visit.guided && avatar ? "arrive" : null, t: 0, hold: 0, quick: false };
     const doors = { open: guide.stage ? 1 : 0, want: guide.stage ? 1 : 0, until: 0 };
     const eyeForward = (cave, pitch) => 0.16 * cave.traits.height * Math.cos(pitch);
@@ -746,7 +752,11 @@
       // room through the open doors (`entry`, offset as the island's eye stood from its handover point), so the
       // crossing has no cut. A reload or a link lands at the old spots.
       if (e) arrive({ x: e.x + Math.sin(e.heading) * eyeForward(avatar, e.pitch), z: L.entry.z + e.dz + Math.cos(e.heading) * eyeForward(avatar, e.pitch) }, e.heading, -e.pitch);
-      else arrive(guide.stage ? L.threshold : L.arrival);
+      else {
+        const back = !guide.stage && ctx.from === null ? BL.visitSpot.take("timechain", SPOT_PLACE) : null;
+        if (back && Math.abs(groundAt(back.x, back.z, back.y, back.y, avatar) - back.y) < 0.05 && BL.visitSpot.holds(back, walkable, avatar)) arrive(back, back.yaw - Math.PI, 0.04, back.y);
+        else arrive(guide.stage ? L.threshold : L.arrival);
+      }
     }
     keepCameraInside();
     // The island's view back out of its passage (taken there before this crossing), hung at the vestibule's far end so
@@ -778,7 +788,7 @@
     const footsteps = BL.footsteps.create();
     const sound = ambience(room, ctx.signal);
     // Another player crossing this room's own doorway opens its doors here too (net.js `subscribeDoor`).
-    const unsubscribeDoor = shared ? BL.net.subscribeDoor((event) => {
+    let unsubscribeDoor = shared ? BL.net.subscribeDoor((event) => {
       if (event.op === "denied" && event.reason === "locked") {
         hud.toast(`${room.name} is locked from inside`);
         handOff();
@@ -857,11 +867,21 @@
       hud.tooltip.hide();
       if (shared) BL.net.passDoor(room.zone, "out");
     };
+    // Signed out in a shared room: the visitor stays where they stand, and the room is their solo copy from here on
+    // (nobody else in it, nothing published), as a reload signed out would find it.
     const accountChanged = () => {
-      if (shared && !BL.net.state.me && !leaving) {
-        hud.toast("Signed out · back outside");
-        handOff(true);
-      }
+      if (!shared || BL.net.state.me || leaving) return;
+      shared = false;
+      visit.mode = "solo";
+      visit.login = null;
+      shell.keep();
+      unsubscribeDoor();
+      unsubscribeDoor = null;
+      remotes.dispose();
+      remotes = null;
+      BL.net.setBody(null);
+      BL.net.setZone("none");
+      hud.toast("Signed out · this room is now your solo copy");
     };
     const unsubscribeAccount = BL.net.subscribe(accountChanged);
     // Weapon shortcuts do nothing in here (a dialog, such as the model viewer, keeps its own keys); right-click and
@@ -869,6 +889,7 @@
     const WEAPON_KEYS = new Set(["1", "2", "r", "f", "g"]);
     const armsKeys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !WEAPON_KEYS.has(e.key.toLowerCase()) || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable], dialog")) return;
+      if (motion && motion.key && !motion.scrubbing && !guide.stage) motion.key(e, hud);
       e.preventDefault();
       e.stopImmediatePropagation();
     };
@@ -880,10 +901,137 @@
     };
     // The ray under a tap, handed to a kind's own tap so it can tell where on a thing the tap fell (the Temple's koi pond).
     const tapRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    let quizPressFree = false;
+    const quizPointer = { x: 0, y: 0, on: false }, quizView = new Float64Array(9).fill(NaN);
+    const quizCamera = math.mat4.create(), quizUp = { x: 0, y: 1, z: 0 };
+    const quizRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    const quizHit = (x, y, reticle = false) => {
+      if (!motion || !motion.interactive || guide.stage || lock.on || document.querySelector("dialog:modal")) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (reticle && pilot.aimFocused && !pilot.cursor.active) { x = rect.left + rect.width / 2; y = rect.top + rect.height / 2; }
+      x -= rect.left; y -= rect.top;
+      const hit = input.pick(x, y, pilot.player, true);
+      if (!hit || hit.owner.kind !== "live" || (hit.owner.slot.spec.id !== "slide" && hit.owner.slot.spec.id !== "outline" && hit.owner.slot.spec.id !== "board" && hit.owner.slot.spec.id !== "caption")) return null;
+      math.mat4.lookAt(quizCamera, camera.position, camera.target, camera.up || quizUp);
+      math.mat4.rayFromView(quizRay, quizCamera, renderer.size.width, renderer.size.height, camera.fov, camera.position, x, y, camera.orthoMix, camera.orthoHeight);
+      return hit.owner;
+    };
+    const tapPoint = { x: 0, y: 0 };
+    const releaseRoomPopup = () => {
+      const popup = document.querySelector("dialog:modal");
+      pilot.setMenuOpen(!!popup, true, popup);
+    };
+    const roomTap = (x, y, reticle = false) => {
+      if (guide.stage || document.querySelector("dialog:modal")) return false;
+      const rect = canvas.getBoundingClientRect();
+      tapPoint.x = reticle && pilot.aimFocused && !pilot.cursor.active ? rect.width / 2 : x - rect.left;
+      tapPoint.y = reticle && pilot.aimFocused && !pilot.cursor.active ? rect.height / 2 : y - rect.top;
+      const hit = input.pick(tapPoint.x, tapPoint.y, pilot.player, true);
+      if (!hit) return false;
+      math.mat4.lookAt(quizCamera, camera.position, camera.target, camera.up || quizUp);
+      math.mat4.rayFromView(tapRay, quizCamera, renderer.size.width, renderer.size.height, camera.fov, camera.position, tapPoint.x, tapPoint.y, camera.orthoMix, camera.orthoHeight);
+      hooks.onTap(hit, tapPoint, tapRay);
+      // Room-specific panels beyond lecture screens also need the menu pointer until they close.
+      const popup = document.querySelector("dialog:modal");
+      if (popup) {
+        pilot.setMenuOpen(true, true, popup);
+        popup.addEventListener("close", releaseRoomPopup, { once: true, signal: ctx.signal });
+      }
+      return true;
+    };
+    // Own a time-bar press before combat focus or the room's orbit gesture can consume it.
+    let scrubPointer = null, scrubX = 0, scrubY = 0, scrubFocus = false, scrubCursor = false, scrubStyle = "";
+    const scrubRay = () => {
+      const rect = canvas.getBoundingClientRect();
+      math.mat4.lookAt(quizCamera, camera.position, camera.target, camera.up || quizUp);
+      math.mat4.rayFromView(quizRay, quizCamera, renderer.size.width, renderer.size.height, camera.fov, camera.position, scrubX - rect.left, scrubY - rect.top, camera.orthoMix, camera.orthoHeight);
+      return quizRay;
+    };
+    const consumeScrub = e => { e.preventDefault(); e.stopImmediatePropagation(); };
+    const finishScrub = (cancelled, restore = true) => {
+      if (scrubPointer === null) return;
+      const id = scrubPointer; scrubPointer = null;
+      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+      motion.scrubEnd(cancelled);
+      pilot.setExternalControl(false); pilot.controls.reset();
+      canvas.style.cursor = scrubStyle;
+      if (restore && scrubCursor) pilot.cursor.start(scrubX, scrubY);
+      else if (restore && scrubFocus) pilot.focusAim(false);
+      quizView.fill(NaN);
+    };
+    const moveScrub = e => {
+      if (document.pointerLockElement === canvas) { scrubX += e.movementX || 0; scrubY += e.movementY || 0; }
+      else { scrubX = e.clientX; scrubY = e.clientY; }
+      motion.scrubMove(scrubRay());
+    };
+    window.addEventListener("pointerdown", e => {
+      if (scrubPointer !== null) { finishScrub(true); consumeScrub(e); return; }
+      if (!motion || !motion.scrubStart || e.target !== canvas || e.button !== 0 || e.ctrlKey || e.metaKey || guide.stage || lock.on || document.querySelector("dialog:modal")) return;
+      const rect = canvas.getBoundingClientRect();
+      scrubFocus = pilot.aimFocused; scrubCursor = pilot.cursor.active;
+      scrubX = scrubFocus && !scrubCursor ? rect.left + rect.width / 2 : e.clientX;
+      scrubY = scrubFocus && !scrubCursor ? rect.top + rect.height / 2 : e.clientY;
+      const hit = input.pick(scrubX - rect.left, scrubY - rect.top, pilot.player, true);
+      if (!hit || !motion.scrubStart(hit.owner, scrubRay())) return;
+      scrubPointer = e.pointerId; scrubStyle = canvas.style.cursor;
+      input.reset(); pilot.setExternalControl(true); pilot.controls.reset();
+      people.steer(0, 0, 0, 0, 0); hud.tooltip.hide();
+      canvas.style.cursor = "ew-resize";
+      // The carry cursor redispatches synthetic events; only a live native pointer can be captured.
+      if (document.pointerLockElement !== canvas) {
+        try { canvas.setPointerCapture(e.pointerId); } catch (error) { if (error.name !== "NotFoundError") throw error; }
+      }
+      consumeScrub(e);
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("pointermove", e => {
+      if (e.pointerId !== scrubPointer) return;
+      moveScrub(e); consumeScrub(e);
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("pointerup", e => {
+      if (e.pointerId !== scrubPointer) return;
+      if (document.pointerLockElement !== canvas) moveScrub(e);
+      finishScrub(false); consumeScrub(e);
+    }, { capture: true, signal: ctx.signal });
+    for (const type of ["pointercancel", "lostpointercapture"]) window.addEventListener(type, e => {
+      if (e.pointerId === scrubPointer) finishScrub(true);
+    }, { capture: true, signal: ctx.signal });
+    for (const type of ["mousemove", "wheel", "keydown"]) window.addEventListener(type, e => {
+      if (scrubPointer === null) return;
+      if (type === "keydown" && (e.key === "Escape" || e.metaKey || e.ctrlKey)) finishScrub(true);
+      consumeScrub(e);
+    }, { capture: true, passive: false, signal: ctx.signal });
+    document.addEventListener("pointerlockchange", () => { if (!document.pointerLockElement) finishScrub(true, false); }, { signal: ctx.signal });
+    window.addEventListener("blur", () => finishScrub(true, false), { signal: ctx.signal });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) finishScrub(true, false); }, { signal: ctx.signal });
+    // Keep the hover tied to the cursor, or combat's reticle, even as the camera moves under it.
+    window.addEventListener("pointerdown", (e) => {
+      quizPressFree = !pilot.aimFocused;
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("resize", () => quizView.fill(NaN), { signal: ctx.signal });
+    window.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse") return;
+      quizPointer.x = e.clientX; quizPointer.y = e.clientY; quizPointer.on = e.target === canvas;
+    }, { capture: true, signal: ctx.signal });
+    window.addEventListener("blur", () => { quizPointer.on = false; }, { signal: ctx.signal });
+    let screenHoverVersion = -1;
+    const quizHover = () => {
+      if (!motion || !motion.hover) return;
+      const locked = pilot.aiming && pilot.aimFocused && !pilot.cursor.active;
+      if (!motion.interactive || !quizPointer.on && !locked || guide.stage || lock.on || document.querySelector("dialog:modal")) {
+        motion.hover(null, null); quizView.fill(NaN); return;
+      }
+      const x = locked ? window.innerWidth / 2 : quizPointer.x, y = locked ? window.innerHeight / 2 : quizPointer.y, p = camera.position, t = camera.target;
+      if (screenHoverVersion === motion.hoverVersion && quizView[0] === x && quizView[1] === y && quizView[2] === p.x && quizView[3] === p.y && quizView[4] === p.z && quizView[5] === t.x && quizView[6] === t.y && quizView[7] === t.z && quizView[8] === camera.fov) return;
+      screenHoverVersion = motion.hoverVersion;
+      quizView[0] = x; quizView[1] = y; quizView[2] = p.x; quizView[3] = p.y; quizView[4] = p.z; quizView[5] = t.x; quizView[6] = t.y; quizView[7] = t.z; quizView[8] = camera.fov;
+      const owner = quizHit(x, y, locked);
+      motion.hover(owner, owner ? quizRay : null);
+      if (owner) hud.tooltip.hide();
+    };
     Object.assign(hooks, {
-      onHover: (hit, p) => { if (hit && !guide.stage && !lock.on) hud.tooltip.show(tipFor(hit), p.x, p.y); else hud.tooltip.hide(); },
-      onHoverMove: (hit, p) => { if (!guide.stage && !lock.on) hud.tooltip.show(tipFor(hit), p.x, p.y); },
-      onTap: (hit, p) => {
+      onHover: (hit, p) => { if (hit && !guide.stage && !lock.on && !(motion && motion.question)) hud.tooltip.show(tipFor(hit), p.x, p.y); else hud.tooltip.hide(); },
+      onHoverMove: (hit, p) => { if (!guide.stage && !lock.on && !(motion && motion.question)) hud.tooltip.show(tipFor(hit), p.x, p.y); },
+      onTap: (hit, p, ray = null) => {
         if (!hit || guide.stage) return;
         const o = hit.owner;
         if (o.kind === "exit") { if (nearExit()) walkOut(); else hud.toast("Walk up to the Exit button, then press it"); }
@@ -903,12 +1051,12 @@
           const s = seats[o.index], p = avatar && avatar.root.position;
           if (!p || !s || s.sitter || nearChair() !== s || !people.sitPlayer(s)) hud.toast(COARSE ? "Walk up to a free seat, then tap SIT" : "Walk up to a free seat and press Space to sit");
         } else if (o.kind === "table") hud.toast(`${room.name} · ${shared ? "shared with whoever chose it" : "a solo copy, just for you"}`);
-        else if (motion && motion.tap && motion.tap(o, hud, p ? (renderer.ray(p.x, p.y, camera, tapRay), tapRay) : null)) return;
+        else if (motion && motion.tap && motion.tap(o, hud, ray || (p ? (renderer.ray(p.x, p.y, camera, tapRay), tapRay) : null))) return;
         else if (o.data && o.data.say) hud.toast(o.data.say);
       },
       ...pilot.hooks,
       // A key pressed twice quickly is pressed twice (a PIN may repeat a digit), never a double tap.
-      onDoubleTap: (hit, p) => { if (hit && hit.owner.kind === "lockkey") hooks.onTap(hit, p); else pilot.hooks.onDoubleTap(hit, p); },
+      onDoubleTap: (hit, p) => { if (hit && (hit.owner.kind === "lockkey" || motion && motion.interactive)) hooks.onTap(hit, p); else pilot.hooks.onDoubleTap(hit, p); },
       onZoom: (factor, gesture, px, py) => { if (!guide.stage) pilot.hooks.onZoom(factor, gesture, px, py); }
     });
     hud.onAction((action) => {
@@ -916,6 +1064,8 @@
       else if (action === "reset-view" && !guide.stage) pilot.resetCamera();
       else if (action === "jetpack-toggle") hud.toast("No jetpacks in the Sphere");
       else if (action.startsWith("mode-") && !guide.stage) pilot.modeAction(action);
+      // A kind's own buttons in the banner (the Lecture Hall's).
+      else if (motion && motion.action && !guide.stage) motion.action(action, hud);
     });
     // The room's name under the banner's title; nothing beside its buttons.
     const subtitle = document.getElementById("sphere-subtitle");
@@ -1007,6 +1157,7 @@
       }
       if (remotes) remotes.update(dt);
       footsteps.update(driven);
+      if (driven && !guide.stage && !leaving) BL.visitSpot.note("timechain", SPOT_PLACE, driven);
       lockUpdate(dt);
       if (avatar && !guide.stage) {
         let action = null;
@@ -1036,11 +1187,14 @@
       // null): the played Ooga rides it hands-free and steps off by walking; others' positions come over the net as
       // their own pages move them, so a rider looks right everywhere with no new message.
       if (motion && motion.carry && avatar && !avatar.camp.seat && avatar.hop <= 0) { const p = avatar.root.position, v = motion.carry(p.x, p.z, dt); if (v) { p.x += v.x; p.z += v.z; } }
+      if (scrubPointer !== null && !motion.scrubbing) finishScrub(true);
+      quizHover();
+      hud.updateBoard(elapsed);
       if (sharp) sharp.tick();
       stepTweens(dt);
       fx.update(dt, elapsed);
     };
-    const drawExtra = (ctx2d, project) => { if (remotes) remotes.drawNames(ctx2d, project); };
+    const drawExtra = (ctx2d, project) => { if (motion && motion.draw) motion.draw(ctx2d, fx.projectRaw); if (remotes) remotes.drawNames(ctx2d, project); };
     const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
     const onKey = (e) => {
       if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) return pilot.resetCamera();
@@ -1052,7 +1206,8 @@
         if (!guide.stage && !pilot.escape()) walkOut();
         return true;
       }
-      return false;
+      // A kind's own keys (the Lecture Hall's pause and sections).
+      return !!(motion && motion.key && !guide.stage && motion.key(e, hud));
     };
     const onDonation = (donation, counted = null) => {
       game.recordDonation(donation, counted && counted.exact);
@@ -1070,6 +1225,8 @@
         const keys = row.keys.filter(key => !WEAPON_KEYS.has(key));
         return row.keys.length && !keys.length ? [] : [{ ...row, keys }];
       });
+      // A kind's own keys and buttons (the Lecture Hall's).
+      if (motion && motion.controlsHelp) help.rows.push(...motion.controlsHelp(touch, BL.controlsHelp));
       help.title = "Timechain Sphere · " + help.title;
       return help;
     };
@@ -1095,6 +1252,7 @@
         world.sphereExit = exitNote(!BL.net.state.me);
       }
       world.sphereKeep = null;
+      finishScrub(true, false);
       reader.dispose();
       holdings.dispose();
       sound.dispose();

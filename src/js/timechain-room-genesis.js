@@ -1562,7 +1562,7 @@
   // ---------- what moves, and the viewer ----------
   // `hud` is the visit's HUD (its Proof of Knowledge panel and whitepaper reader); `gone` ends every listener the visit
   // put on them. A tap on a piece, or Space in front of one, opens it in the model viewer, every entry in date order.
-  const animate = (nodes, built, hud) => {
+  const animate = (nodes, built, feeds, menuOpen, hud) => {
     const gone = new AbortController(), poc = floorPoc.animate(nodes, built);
     const spots = PLINTHS.map((p, i) => ({ ...spotOf(i), index: p.entries[0].index }));
     // The moving parts, by their names (timechain-genesis-models.js `tools`), and the two builds of each sector.

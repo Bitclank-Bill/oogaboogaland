@@ -32,7 +32,8 @@ import "../../src/js/reaction-policy.js";
 //                 { t: "zone", name }            where that body is (see Zones below)
 //                 { t: "poker-voice", table }   0-9 while watching a table, null for the Ember Den floor
 //                 { t: "blend", to, k }          crossing toward voice group `to`, k of BLEND.STEPS along (null, 0: none)
-//                 { t: "hub", on }               this page shows the island and is visible (host candidates)
+//                 { t: "hub", on, props? }       this page shows the island and is visible (host candidates); `props`: it reads prop frames
+//                 { t: "prop", k, a }            a follower's round, blow or poke at a loose prop, for the host
 //                 { t: "visible", on }           this page is visible (Block Frenzy's host candidates, block.js)
 //                 { t: "mute", on }              this page muted its own microphone, for everyone's roster
 //                 { t: "hp", v, ko }             the driven body's health (normalized 0-100) and knockout flag
@@ -43,8 +44,9 @@ import "../../src/js/reaction-policy.js";
 //                                                primary, 2 the gun), 4 while aiming, plus the gun's rounds (0-31) times 8
 //                 { t: "shot", a }               a banana the driven Ooga fired: [from x, y, z, to x, y, z]
 //                 { t: "swing" }                 the driven Ooga's melee strike
-//                 { t: "duel", op, to?, kind? }  a duel (duel-rules.js, duel.js): `challenge`, `accept` or `decline` player
-//                                                `to`, `cancel` this page's challenge, `forfeit`, or a `hit` of `kind`
+//                 { t: "duel", op, to?, kind?, hit? }  a duel (duel-rules.js, duel.js): `challenge` (`hit` true when made by
+//                                                landing a blow), `accept` or `decline` player `to`, `cancel` this page's
+//                                                challenge, `forfeit`, or a `hit` of `kind`
 //                 { t: "chat", text, clientId? }            a line for Ooga Chat (see Chat below)
 //                 { t: "pm", op, to, d?, n? }   a private conversation with player `to` (see Private below): `invite`,
 //                                               `accept`, `decline`, `block`, `end`, or `data` with a sealed frame `d`
@@ -72,7 +74,7 @@ import "../../src/js/reaction-policy.js";
 //                 shot { id, a }, swing { id }   another player's shot or strike, to the players in their zone
 //                 duel { op, ... }           duels (duel.js): to everyone start { id, a, b, x, z, at, hp, now }, hp { id, hp, by,
 //                                            kind } and end { id, winner, loser, reason }; list { duels } after welcome; to
-//                                            one page challenged { from, exp }, challenging { to, exp }, refused { to, reason },
+//                                            one page challenged { from, exp, hit? }, challenging { to, exp }, refused { to, reason },
 //                                            declined { from }, withdrawn { from }, and end { id: 0, reason: "lost" }
 //                 release { name, reason }   the Ooga this socket claimed is not, or no longer, its to drive
 //                 host { id, followers }     who runs the NPCs now (0 for nobody) and how many pages follow
@@ -181,6 +183,16 @@ export const CLOSE_ERROR = 1011;
 // The former 16 KiB cap could not carry the org-wide roster after reconciliation.
 export const NPC_FRAME_MAX = 128 * 112 * 4 + 131072;
 export const NPC_HZ = 20;
+// The island's loose props (src/js/prop-sync.js): the same host's frames of the props that move, by their magic word,
+// at most 64 bodies of 14 bytes after a 10-byte header and about 15 a second, relayed to the pages that asked for
+// them (`hub`'s `props`); and a follower's own round ("s"), blow ("b"), poke ("k") or reset ("r") at one, or its asking
+// for a frame of everything ("f"), six numbers, relayed to the host alone as { t: "prop", k, a }.
+export const PROP_MAGIC = 0x31504f52;
+export const PROP_FEATURE = "props-v1";
+export const PROP_FRAME_MAX = 10 + 64 * 14;
+export const PROP_HZ = 20;
+export const PROP_KINDS = new Set(["s", "b", "k", "r", "f"]);
+export const PROP_RANGE = 4096;
 // A pose's fields are saved to its socket's attachment at most this often (room.js): every pose re-serialized the whole
 // attachment, the room's largest cost per inbound message. A woken room may find a player up to this far behind.
 export const POSE_SAVE_MS = 1000;
@@ -387,7 +399,8 @@ export const parseClientMessage = (text) => {
     if (msg.name === null) return { t: "body", name: null };
     return typeof msg.name === "string" && BODY_NAME.test(msg.name) ? { t: "body", name: msg.name } : null;
   }
-  if (msg.t === "hub") return typeof msg.on === "boolean" ? { t: "hub", on: msg.on } : null;
+  if (msg.t === "hub") return typeof msg.on === "boolean" ? (msg.props === true ? { t: "hub", on: msg.on, props: true } : { t: "hub", on: msg.on }) : null;
+  if (msg.t === "prop") return PROP_KINDS.has(msg.k) && Array.isArray(msg.a) && msg.a.length === 6 && msg.a.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= PROP_RANGE) ? { t: "prop", k: msg.k, a: msg.a } : null;
   if (msg.t === "visible") return typeof msg.on === "boolean" ? { t: "visible", on: msg.on } : null;
   if (msg.t === "mute") return typeof msg.on === "boolean" ? { t: "mute", on: msg.on } : null;
   if (msg.t === "hp") return finite(msg.v) && typeof msg.ko === "boolean" ? { t: "hp", v: Math.max(0, Math.min(100, Math.round(msg.v))), ko: msg.ko } : null;
