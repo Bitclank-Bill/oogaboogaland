@@ -43,10 +43,12 @@
   // The island: its radius to the lip's outer edge and its top, a half-metre lattice `soil` deep. The lip: its width, how far its top stands over the island's (a kerb's step), how far
   // its wall goes down, and its flags round. The bridge: its span from the rim to the lip, its width, the deck slab's
   // depth, the parapets' height and thickness, pillars `pillar` square and `pillarH` high every `pillarStep` metres, and
-  // the threshold, the first `sill` metres of flags, which lie on the main island's terrace `proud` of it.
+  // the threshold, the first `sill` metres of flags, which lie on the main island's terrace `proud` of it. The
+  // parapets run from `head` metres in, their first pillars standing on the terrace's edge clear of the Oogatron's
+  // posts, to `clear` off the lip's round edge, so neither end leaves a way off the deck's side.
   const ISLE = { R: 15.75, unit: 0.5, soil: 1.5 };
   const LIP = { width: 1.4, rise: 0.08, drop: 1.5, flags: 72, trim: 0.22 };
-  const BRIDGE = { span: 16, width: 4.6, slab: 0.6, parapet: 0.82, wall: 0.4, pillar: 0.66, pillarH: 1.3, pillarStep: 4, sill: 1.6, proud: 0.025 };
+  const BRIDGE = { span: 16, width: 4.6, slab: 0.6, parapet: 0.82, wall: 0.4, pillar: 0.66, pillarH: 1.3, pillarStep: 4, sill: 1.6, proud: 0.025, head: 1.1, clear: 0.1 };
   // The plan's radii: the plaza, the Core ring the rest of Core's section stands on, the ring path, the spokes' half
   // width, the least gap between two totems' reaches, the edge of the top, where the lip begins, and the middle of the
   // lip's flags, where the section plaques lie.
@@ -612,12 +614,14 @@
       parts.push(box({ w: W, h: drop, d: depth, color: k % 2 ? "#6b625a" : "#746b62", offset: { y: -0.06 - drop / 2, z: z + depth / 2 } }));
       parts.push(box({ w: W - 0.6, h: 0.18, d: depth, color: "#5d5650", offset: { y: -0.06 - drop - 0.09, z: z + depth / 2 } }));
     }
-    // Parapets with copings, from the threshold to short of the island's edge, and pillars of one height along them,
-    // a lantern on each. Both are solid: closed boxes to walk against, land on and walk off. A wall's box runs from
-    // its coping's outer edge in to the pillars' inner faces, end pillar to end pillar, so a walker slides along one
+    // Parapets with copings, from the terrace's edge to the lip's, and pillars of one height along them, a lantern on
+    // each: the first pillars stand on the terrace and the last end where their inner corners come `clear` of the
+    // turning lip. Both are solid: closed boxes to walk against, land on and walk off. A wall's box runs from its
+    // coping's outer edge in to the pillars' inner faces, end pillar to end pillar, so a walker slides along one
     // straight face and never catches on a pillar.
-    const p0 = sill, p1 = to - 1.4, x = W / 2 - BRIDGE.wall / 2, h = BRIDGE.pillarH, walls = [];
+    const x = W / 2 - BRIDGE.wall / 2, h = BRIDGE.pillarH, walls = [];
     const cap = BRIDGE.pillar + 0.12, inner = x - cap / 2, outer = x + BRIDGE.wall / 2 + 0.05;
+    const p0 = from + BRIDGE.head, p1 = -Math.sqrt((ISLE.R + BRIDGE.clear) ** 2 - inner * inner) - cap / 2;
     const solid = (w, tall, d, at, z) => box({ w, h: tall, d, color: "#000000", offset: { x: at, y: tall / 2, z } });
     for (const side of [-1, 1]) {
       parts.push(box({ w: BRIDGE.wall, h: BRIDGE.parapet, d: p1 - p0, color: "#7a716a", offset: { x: side * x, y: BRIDGE.parapet / 2, z: (p0 + p1) / 2 } }));
