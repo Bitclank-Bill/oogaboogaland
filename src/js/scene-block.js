@@ -2576,7 +2576,7 @@
   // Low only ever takes away what is drawn: what an Ooga stands on, bumps into or hides behind is the sim's and the same.
   const detail = { full: true };
   const DETAIL_KEY = "ooga-block-detail", LOW_SCALE = 0.75;
-  const detailScale = () => { if (renderer.setScale) renderer.setScale(detail.full ? 1 : LOW_SCALE); };
+  const detailScale = () => { renderer.setScale(detail.full ? 1 : LOW_SCALE); };
   const loadDetail = () => { try { detail.full = localStorage.getItem(DETAIL_KEY) !== "low"; } catch { /* the default stands */ } detailScale(); };
   const chooseDetail = (full) => {
     if (full === detail.full) return;
@@ -3295,7 +3295,7 @@
     if (el.viewerBoard) el.viewerBoard.hidden = true;
     undeckRender();
     // The page's other scenes draw at their tier's own density.
-    if (renderer.setScale) renderer.setScale(1);
+    renderer.setScale(1);
     chairsGreeted = false;
     deck = null; you = 0; kept = null; liveCast = null; watchVisit = false; panelOpen = false;
     BL.net.setBody(null);
