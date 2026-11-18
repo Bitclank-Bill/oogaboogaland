@@ -440,7 +440,7 @@
       gave: "Keys you can publish, and secrets without a meeting", missing: "A way to sign, and anything worth owning",
       about: "Whitfield Diffie and Martin Hellman's \"New Directions in Cryptography\" (IEEE Transactions on Information Theory, November 1976) proposed public-key cryptography: a key you can publish paired with one you keep, and a way for two parties who have never met to settle on a shared secret while anyone listens. Ralph Merkle had reached the same idea independently. Bitcoin does not use the exchange itself, but every address and every signature rests on the public-key idea it opened.",
       specs: [["Authors", "Whitfield Diffie, Martin E. Hellman"], ["Published", "IEEE Trans. Information Theory, Nov 1976"], ["Idea", "a public key and a private key; a shared secret over an open channel"], ["In Bitcoin", "ownership is a key pair"], ["Connection", "context"]],
-      note: "Two chrome pods each keep a private crystal under dark glass and send a public orb across the open arch. Each then raises the same violet key at its masthead, a key nobody watching the arch can make.", first: "A video terminal of 1976 works the exchange out with the textbook's small numbers (p = 23, g = 5). The beakers beside it are the paint-mixing picture: yellow and blue each mixed with the shared colour arrive at the same green.", sources: [SRC.dh] },
+      note: "Two chrome pods each keep a private crystal under dark glass, steeped in liquid of its own colour, and send a public orb across the open arch. Each then raises the same violet key at its masthead, a key nobody watching the arch can make.", first: "A video terminal of 1976 works the exchange out with the textbook's small numbers (p = 23, g = 5). The beakers beside it are the paint-mixing picture: yellow and blue each mixed with the shared colour arrive at the same green.", sources: [SRC.dh] },
     { key: "rsa", year: 1977.5, when: "1977-78", title: "SIGNATURES", name: "RSA: public-key cryptosystems and digital signatures", link: "context",
       line: "A lock anyone can shut and only one key opens, and the first practical digital signature.",
       gave: "Proof that the owner, and nobody else, agreed", missing: "Something to sign that is money",
@@ -524,19 +524,19 @@
       gave: "A clear public account of ecash, double spending and all", missing: "Any way round the mint",
       about: "\"How to Make a Mint: The Cryptography of Anonymous Electronic Cash\", dated 18 June 1996, was written by Laurie Law, Susan Sabett and Jerry Solinas of the NSA's Cryptology Division and later printed in the American University Law Review. It explains blind signatures, withdrawal and payment, and the double-spending problem that makes every such scheme lean on its bank. A public, careful statement of exactly what Bitcoin would have to solve without one.",
       specs: [["Authors", "Laurie Law, Susan Sabett, Jerry Solinas (NSA)"], ["Dated", "18 June 1996"], ["Reprinted", "American University Law Review 46(4), 1997"], ["Subject", "Chaum-style ecash; double spending"], ["Connection", "context"]],
-      note: "Electronic cash in three steps down a cascade: a chrome press strikes a coin of light, the coin is hidden in a sphere of dark glass, and it is spent into a chrome till. The survey's page floats over it all.", first: "The report on a lectern, with its folder.", sources: [SRC.mint] },
+      note: "Electronic cash in three steps down a cascade: a chrome press, fed from a tank of molten metal, strikes a coin of light, the coin is hidden in a sphere of dark glass and liquid, and it is spent into a chrome till. The survey's page floats over it all.", first: "The report on a lectern, with its folder.", sources: [SRC.mint] },
     { key: "egold", year: 1996.9, when: "1996", title: "E-GOLD", name: "e-gold: digital gold currency", link: "context",
       line: "Grams of gold in a vault, moved between accounts online. Shut down by the US in 2008.",
       gave: "Millions of people moving value online", missing: "The vault and the company could be seized",
       about: "Douglas Jackson and Barry Downey launched e-gold in 1996: accounts denominated in grams of gold held in vaults, transferable to any other account on the web. By the mid-2000s it had millions of accounts. In 2007 the company and its founders were indicted for running an unlicensed money transmitter; they pleaded guilty in 2008 and the system was wound down. Value with a single operator ends when the operator does.",
       specs: [["Founders", "Douglas Jackson, Barry Downey"], ["Launched", "1996, Melbourne, Florida"], ["Backing", "gold bullion in vaults; accounts in grams"], ["Ended", "indicted 2007; guilty pleas 2008"], ["Connection", "context"]],
-      note: "The gold never moves. A chrome vault floats shut round a stack of bars seen through its glass waist, while over it grams pass as light from one account's pod to another's.", first: "A vault door standing ajar on the stacked bars behind it.", sources: [SRC.egold] },
+      note: "The gold never moves. A chrome vault floats shut round a stack of bars standing in molten gold, seen through its glass waist, while over it grams pass as light from one account's pod to another's.", first: "A vault door standing ajar on the stacked bars behind it.", sources: [SRC.egold] },
     { key: "hashcash", year: 1997.2, when: "28 MAR 1997", title: "HASHCASH", name: "Back: Hashcash proof of work", link: "cite", ref: 6,
       line: "Burn a little CPU to mint a stamp: a hash with leading zeros that anyone can check in an instant.",
       gave: "Proof of work: cost that can be verified", missing: "Stamps could not be passed on or counted",
       about: "Adam Back announced hash cash on the cypherpunks list on 28 March 1997 as postage against spam: the sender finds a header whose SHA-1 hash begins with twenty zero bits, which takes work, and the receiver checks it with one hash. His paper \"Hashcash – A Denial of Service Counter-Measure\" followed on 1 August 2002, and the whitepaper cites it as reference 6: Bitcoin's mining is a Hashcash-style proof of work on SHA-256, chained block to block.",
       specs: [["Author", "Adam Back"], ["Announced", "cypherpunks list, 28 Mar 1997"], ["Paper", "1 Aug 2002"], ["Stamp (v1, 2002)", "ver:bits:date:resource:ext:rand:counter; SHA-1 with 20 leading zero bits (1997's v0: ver:date:resource:counter)"], ["Whitepaper", "reference [6]; §4 Proof-of-Work"]],
-      note: "A finned chrome engine burns work, throwing off a spiral of dead tries, until one comes out a stamp whose hash starts with zeros. A small lens at its side checks it at once and shows green.", first: "A sheet of minted stamps under glass, each carrying a header in the real format, and a mail terminal minting the next.", sources: [SRC.hashcash97, SRC.hashcash] },
+      note: "A finned chrome engine burns work, its coolant boiling in the tanks behind it, throwing off a spiral of dead tries, until one comes out a stamp whose hash starts with zeros. A small lens at its side checks it at once and shows green.", first: "A sheet of minted stamps under glass, each carrying a header in the real format, and a mail terminal minting the next.", sources: [SRC.hashcash97, SRC.hashcash] },
     { key: "szabo97", year: 1997.7, when: "SEP 1997", title: "SMART CONTRACTS", name: "Szabo: Formalizing and Securing Relationships on Public Networks", link: "context",
       line: "A vending machine is a contract in hardware. Szabo asks what contracts in software could do.",
       gave: "The idea of agreements enforced by code", missing: "A ledger to enforce them on",
@@ -590,7 +590,7 @@
       gave: "Proof of work as a transferable token", missing: "The one server, however honest",
       about: "Hal Finney announced RPOW on 15 August 2004. A Hashcash stamp is spent once; RPOW let its owner trade it in for a fresh token at a server, and that server ran inside an IBM 4758 secure coprocessor whose code anyone could verify by remote attestation. Transferable proof of work with a trusted machine instead of a trusted person. Finney went on to run the second Bitcoin node and received the first transaction, in block 170, on 12 January 2009.",
       specs: [["Author", "Hal Finney"], ["Announced", "15 Aug 2004"], ["Hardware", "IBM 4758 secure coprocessor, remote attestation"], ["Idea", "one-for-one exchange of proof-of-work tokens"], ["Connection", "context"]],
-      note: "A sealed chrome capsule with a glass waist that shows its chip to anyone, and three lenses watching it. A spent grey token goes in at one port and a fresh lit one comes out of the other.", first: "A rack server with its secure coprocessor card drawn half out.", sources: [SRC.rpow] },
+      note: "A sealed chrome capsule with a glass waist that shows its chip, standing in its coolant, to anyone, and three lenses watching it. A spent grey token goes in at one port and a fresh lit one comes out of the other.", first: "A rack server with its secure coprocessor card drawn half out.", sources: [SRC.rpow] },
     { key: "bitgold", year: 2005.99, when: "DEC 2005", title: "BIT GOLD", name: "Szabo: bit gold", link: "named",
       line: "Solve a puzzle, timestamp the solution, register the owner, start the next puzzle from it.",
       gave: "Chained proof of work as a scarce, unforgeable thing", missing: "The bits were not fungible, and the registry still needed trust",
@@ -1626,7 +1626,8 @@
     }
     portalPlan(K, L);
     // The pieces on the ring's plinths, by sector of the walk: the near build and the far one (lighter), one of each
-    // shown at a time, and with each its glass, a mesh of its own.
+    // shown at a time, and with each its glass, a mesh of its own. The near build's bubbles, sparks and lamps are nodes
+    // of their own (timechain-genesis-models.js `flow`, `blink`), a kind sharing one geometry.
     for (let sct = 0; sct < SECTORS; sct++) {
       const pieces = (opts) => (k) => {
         PLINTHS.forEach((p, i) => {
@@ -1636,7 +1637,7 @@
         });
       };
       for (const [low, quiet] of [["", false], ["Low", true]]) {
-        K.node(`gallerySector${low}${sct}`, pieces({ quiet }), 0, 0, 0);
+        K.node(`gallerySector${low}${sct}`, pieces({ quiet, moving: !quiet }), 0, 0, 0);
         const glass = K.node(`galleryGlass${low}${sct}`, pieces({ quiet, glass: true }), 0, 0, 0).geometry;
         glass.glass = PIECE_GLASS.alpha; glass.castShadow = false;
       }
@@ -1787,6 +1788,26 @@
     const dialogOpen = () => { const d = document.getElementById("model-modal"), r = document.getElementById("wp-reader"); return !!(d && d.open || r && r.open); };
     const sectors = Array.from({ length: SECTORS }, (_, i) => ({ near: nodes[`gallerySector${i}`], far: nodes[`gallerySectorLow${i}`], nearGlass: nodes[`galleryGlass${i}`], farGlass: nodes[`galleryGlassLow${i}`], spots: spots.filter((_, j) => Math.floor(j * SECTORS / PLINTHS.length) === i), isNear: true }));
     for (const s of sectors) if (s.far) s.far.visible = s.farGlass.visible = false;
+    // What flows and blinks on the pieces, by the sector it stands in (the one with the nearest plinth): only a
+    // sector shown near has its own moved. `drift` puts a flow's part `u` of the way along: carried, swaying a
+    // little to either side, small as it sets out and as it arrives.
+    for (const s of sectors) { s.flows = []; s.blinks = []; }
+    for (const name of Object.keys(nodes)) {
+      const f = name.split(":");
+      if (f[0] !== "flow" && f[0] !== "blink") continue;
+      const n = nodes[name];
+      let home = sectors[0], least = Infinity;
+      for (const s of sectors) for (const q of s.spots) { const d = Math.hypot(q.x - n.position.x, q.z - n.position.z); if (d < least) { least = d; home = s; } }
+      if (f[0] === "blink") home.blinks.push({ node: n, period: Number(f[2]), phase: Number(f[3]) });
+      else home.flows.push({ node: n, x: n.position.x, y: n.position.y, z: n.position.z, dx: Number(f[2]), dy: Number(f[3]), dz: Number(f[4]), spread: Number(f[5]), period: Number(f[6]), phase: Number(f[7]), size: n.scale.x });
+    }
+    const drift = (q, u) => {
+      const n = q.node, k = Math.max(0.001, q.size * Math.min(1, u * 6, (1 - u) * 6));
+      n.position.x = q.x + q.dx * u + q.spread * Math.sin(TAU * (u * 2 + q.phase * 7)); n.position.y = q.y + q.dy * u; n.position.z = q.z + q.dz * u + q.spread * Math.cos(TAU * (u * 1.5 + q.phase * 5));
+      n.scale.x = n.scale.y = n.scale.z = k;
+    };
+    // Where each stands until it is first moved, and for a visitor who asks for less motion.
+    for (const s of sectors) for (const q of s.flows) drift(q, 0.15 + 0.7 * q.phase);
     const insc = Array.from({ length: INSC_GROUPS }, (_, i) => ({ node: nodes[`inscGroup${i}`], spots: spots.filter((_, j) => Math.floor(j * INSC_GROUPS / PLINTHS.length) === i), on: true })).filter((q) => q.node);
     let px = 0, pz = 14;
     const carried = { x: 0, z: 0 };
@@ -2016,7 +2037,8 @@
           let d = Infinity;
           for (let j = 0; j < s.spots.length; j++) d = Math.min(d, Math.hypot(s.spots[j].x - px, s.spots[j].z - pz));
           const near = s.isNear ? d < LOD_FAR : d < LOD_NEAR;
-          if (near !== s.isNear) { s.isNear = near; s.near.visible = s.nearGlass.visible = near; s.far.visible = s.farGlass.visible = !near; }
+          if (near !== s.isNear) { s.isNear = near; s.near.visible = s.nearGlass.visible = near; s.far.visible = s.farGlass.visible = !near; for (const q of s.flows) q.node.visible = near; for (const q of s.blinks) q.node.visible = near; }
+          if (near && !calm.matches) { for (const q of s.flows) drift(q, (now / q.period + q.phase) % 1); for (const q of s.blinks) q.node.visible = (now / q.period + q.phase) % 1 < 0.6; }
         }
         portal.update(dt, px, pz, now);
         if (dropnowAt && now >= dropnowAt) { dropnowAt = 0; dbg.genesis.dropBlock(); }

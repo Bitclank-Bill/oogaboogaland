@@ -5,7 +5,8 @@
 // is an original design, carrying no maker's mark or logo. `model(root, key, y, opts)` builds one in kit `root` (its
 // front toward -z, standing on y): `opts.part` one piece of a shared plinth alone (for the viewer), `opts.quiet` a
 // lighter build for a piece seen from across the room (round parts in fewer faces, small words left out), `opts.view`
-// the build the model viewer turns, and
+// the build the model viewer turns, `opts.moving` true the hall's near build, whose bubbles, sparks and lamps are
+// nodes of their own for the room to move, and
 // `opts.glass` the piece's glass in place of its solid parts, which a room draws as a mesh of its own.
 (() => {
   "use strict";
@@ -23,13 +24,21 @@
   // here is `UNIT` times its own, the plinth's own metres included. Such a room may also stand the piece on a deck
   // raised `LIP` metres behind the plinth's front edge (`opts.lip`): the label strip stays down on the edge, in front
   // of and below everything. `GLASS`: the pass being built, a piece's glass or its solid parts.
-  let UNIT = 1, LIP = 0, GLASS = false;
+  let UNIT = 1, LIP = 0, GLASS = false, uid = 0;
+  // A shared geometry as a part of a mesh: a copy, grown to the room's size.
+  const cast = (geo) => { const g = BL.models.merge(geo); if (UNIT !== 1) for (let i = 0; i < g.verts.length; i++) g.verts[i] *= UNIT; return g; };
   // The tools for a frame `k` whose origin stands `base` up: boxes; cylinders, upright unless turned; tori, flat
   // unless turned; pixel words facing -z; `at`, a frame of its own placed and turned in this one, and `face`, one
   // whose -z looks out of a face; `layer`, the depth of the n-th layer laid on a face, and `ink`, of words written on
   // it. `quiet` (the far build): words under 6 mm a pixel are left out, since nobody reads them from across the room.
-  // `view`: the build is for the model viewer (`DETAIL`).
-  const tools = (k, base, quiet = false, view = false) => {
+  // `view`: the build is for the model viewer (`DETAIL`). `moving` (the hall's near build alone): what flows or blinks
+  // is a node of its own, every one of a kind the one shared geometry (so all of a kind are one draw record), named
+  // for the room's animator: `flow:<id>:<dx>:<dy>:<dz>:<spread>:<period>:<phase>`, carried from where it stands by
+  // (dx, dy, dz) every `period` seconds, swaying `spread` to either side, and `blink:<id>:<period>:<phase>`. Nodes
+  // keep their place in the room's frame, so a flow's way is turned to the room with this frame's heading. Elsewhere
+  // the same parts are still, in the mesh: a lamp lit, a flow's part stopped `phase` of the way along (and left out of
+  // the far build).
+  const tools = (k, base, quiet = false, view = false, moving = false) => {
     const s = UNIT;
     const T = {
       quiet, view,
@@ -40,7 +49,13 @@
       lathe: (profile, color, x, yy, z, o) => k.lathe(profile.map(([r, y]) => [r * s, y * s]), color, x * s, base + yy * s, z * s, o),
       prism: (pts, depth, color, x, yy, z, o) => k.prism(pts.map(([px, py]) => [px * s, py * s]), depth * s, color, x * s, base + yy * s, z * s, o),
       say: (text, px, color, x, yy, z, e = 0.25) => quiet && px < 0.006 ? null : k.add(RM.helpers.litWord(text, px * s, color, e), x * s, base + yy * s, z * s),
-      at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, quiet, view),
+      at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0, quiet, view, moving),
+      flow: (geo, x, yy, z, d, spread, period, phase) => {
+        if (!moving) return quiet ? null : k.add(cast(geo), (x + d[0] * phase) * s, base + (yy + d[1] * phase) * s, (z + d[2] * phase) * s);
+        const a = k.yaw(), c = Math.cos(a), sn = Math.sin(a);
+        return k.node(`flow:${uid++}:${((c * d[0] + sn * d[2]) * s).toFixed(4)}:${(d[1] * s).toFixed(4)}:${((-sn * d[0] + c * d[2]) * s).toFixed(4)}:${(spread * s).toFixed(4)}:${period}:${phase}`, geo, x * s, base + yy * s, z * s, { scale: UNIT, glow: true });
+      },
+      blink: (geo, x, yy, z, period, phase) => moving ? k.node(`blink:${uid++}:${period}:${phase}`, geo, x * s, base + yy * s, z * s, { scale: UNIT, glow: true }) : quiet ? null : k.add(cast(geo), x * s, base + yy * s, z * s),
       face: (face, x, yy, z, spin = 0) => T.at(x, yy, z, FACES[face][0], FACES[face][1], spin),
       layer: (n) => -LIFT - 2 * LIFT * n, ink: (n) => -LIFT - 2 * LIFT * n - 0.0025
     };
@@ -78,7 +93,7 @@
   // radius needs (`farRound`), every tube three-sided, a ball under `DETAIL.cube` metres in radius as a cube, and
   // leaves out any part under `DETAIL.least` metres across and any hair-thin ring under `DETAIL.hoop` metres in
   // radius. A part of under ten faces round stays as it is (a crystal, a hexagon).
-  const DETAIL = { round: 260, most: 64, view: 0.5, far: 0.25, farRound: 90, least: 0.03, cube: 0.05, hoop: 0.08 };
+  const DETAIL = { round: 220, most: 48, view: 0.5, far: 0.25, farRound: 90, least: 0.03, cube: 0.05, hoop: 0.08 };
   const round = (T, o, radius, tube) => o.seg < 10 ? o
     : T.quiet ? { ...o, seg: Math.max(radius < 0.02 ? 4 : 6, Math.min(Math.ceil(o.seg * DETAIL.far), Math.ceil(radius * DETAIL.farRound))), sides: 3 }
     : T.view ? { ...o, seg: Math.max(10, Math.ceil(o.seg * DETAIL.view)), ...(tube ? { sides: tube < 0.012 ? 4 : 6 } : null) }
@@ -124,11 +139,30 @@
       say: (T, t, px, c, x, y, z, e = 0.9) => { if (on(T, 1)) T.say(t, px, c, x, y, z, e); },
       // A crystal: two pyramids base to base.
       gem: (T, r, h, c, x, y, z, e = 0, seg = 6) => { if (!on(T, h)) return; T.Y(0, r, h / 2, c, x, y + h / 4, z, lit(e, { seg })); T.Y(r, 0, h / 2, c, x, y - h / 4, z, lit(e, { seg })); },
+      // What flows or blinks (`tools`): never in the glass.
+      flow: (T, geo, x, y, z, d, spread, period, phase) => { if (!glass && !GLASS) T.flow(geo, x, y, z, d, spread, period, phase); },
+      blink: (T, geo, x, y, z, period = 1.6, phase = 0) => { if (!glass && !GLASS) T.blink(geo, x, y, z, period, phase); },
       // A glowing panel facing -z in a gun-metal bezel.
       panel: (T, w, h, c, x, y, z, e = 0.9) => { if (!on(T, Math.max(w, h))) return; T.B(w + 0.016, h + 0.016, 0.012, HUE.gun, x, y, z); T.B(w, h, 0.004, c, x, y, z - 0.007, lit(e)); }
     };
   };
   const So = draw(false), Gl = draw(true);
+  // What flows and blinks, each kind one geometry every piece shares: a bubble, a spark, a glint of green, a lamp.
+  const own = RM.helpers.own, bead = (c, r) => own(() => BL.models.noShadow(BL.models.lathe({ profile: [[0, -r], [r * 0.87, -r * 0.5], [r * 0.87, r * 0.5], [0, r]], segments: 8, color: c, emissive: 1 })));
+  const lamp = (c) => own(() => BL.models.noShadow(BL.models.box({ w: 0.016, h: 0.016, d: 0.016, color: c, emissive: 1 })));
+  const BUBBLE = { pale: bead(HUE.pale, 0.011), warm: bead(HUE.hot, 0.011) }, SPARK = bead(HUE.amb, 0.009), GLINT = bead(HUE.green, 0.009);
+  const LAMP = { org: lamp(HUE.org), teal: lamp(HUE.teal), green: lamp(HUE.green), red: lamp(HUE.red) };
+  // `n` of a kind rising `h` from (x, y, z), each a little after the last and at its own pace.
+  const rising = (T, geo, x, y, z, h, spread, n, period = 3.4) => { for (let i = 0; i < n; i++) So.flow(T, geo(), x, y, z, [0, h, 0], spread, +(period * (0.85 + 0.3 * (i * 0.618 % 1))).toFixed(2), +(i * 0.618 % 1).toFixed(3)); };
+  // A tank of glowing liquid standing at (x, y, z): a glass tube `r` in radius and `h` tall between chrome collars,
+  // the liquid `fill` of the way up it (glass too, so what rises in it shows, under a bright skin), and bubbles.
+  const tank = (T, x, y, z, r, h, c, fill = 0.78, n = 4, geo = BUBBLE.pale) => {
+    Gl.cyl(T, r, r, h, HUE.dimBlu, x, y + h / 2, z, 0.3, { seg: 20 });
+    Gl.cyl(T, r * 0.84, r * 0.84, h * fill, c, x, y + h * fill / 2, z, 0.9, { seg: 20 });
+    So.cyl(T, r * 0.84, r * 0.84, 0.004, c, x, y + h * fill, z, 1, { seg: 20 });
+    So.ccyl(T, r * 1.15, r * 1.15, 0.014, x, y, z); So.ccyl(T, r * 1.15, r * 1.15, 0.014, x, y + h, z);
+    rising(T, geo, x, y + 0.012, z, h * fill - 0.02, r * 0.45, n);
+  };
   // The base a piece floats over: a chrome dish set in the deck, a cool ring of light round its foot, a warm one at
   // its rim and a cool one inside it, and the light it throws up: three skins of glass one inside another, each taller
   // than the last, so the light is deepest at the dish and thins as it climbs.
@@ -189,6 +223,10 @@
       So.ring(T, 0.134, 0.005, c, x, 0.27, 0, 1, { seg: 40 });
       Gl.ball(T, 0.115, dim, x, 0.35, 0, 0.5, { seg: 14 });
       So.gem(T, 0.045, 0.13, c, x, 0.37, 0, 1);
+      // the secret steeps in its own colour: liquid half way up the glass, and what rises from it
+      Gl.lathe(T, [[0, 0.3], [0.092, 0.3], [0.103, 0.335], [0.104, 0.365], [0, 0.365]], c, x, 0, 0, 0.9, { seg: 24 });
+      So.cyl(T, 0.1, 0.1, 0.004, pub, x, 0.366, 0, 1, { seg: 24 });
+      rising(T, sx > 0 ? BUBBLE.warm : BUBBLE.pale, x, 0.31, 0, 0.13, 0.035, 4);
       So.shell(T, [[0, 0.45], [0.06, 0.455], [0.07, 0.48], [0.035, 0.51], [0.014, 0.56], [0.012, 0.68], [0, 0.68]], x, 0, 0);
       So.gem(T, 0.05, 0.15, HUE.vio, x, 0.78, 0, 1);
       So.cring(T, 0.095, 0.01, x, 0.78, 0, { rx: HALF });
@@ -267,7 +305,7 @@
       So.ccyl(T, 0.01, 0.02, 0.1, x, 0.09, z);
       So.shell(T, [[0, 0.13], [0.05, 0.135], [0.06, 0.16], [0.042, 0.22], [0.024, 0.275], [0, 0.28]], x, 0, z);
       So.ring(T, 0.06, 0.004, c, x, 0.16, z, 1, { seg: 20 });
-      So.ball(T, 0.034, c, x, 0.305, z, 0.8);
+      So.ball(T, 0.034, c, x, 0.305, z, 0.8); if (bad[k]) So.blink(T, LAMP.red(), x, 0.352, z, 0.9, +(k / 7).toFixed(2));
       if (!bad[k]) So.rod(T, [x, 0.31, z], [x * 0.46, 0.44, z * 0.46], 0.007, HUE.org, 0.8);
       const j = (k + 1) % 7, lie = bad[k] || bad[j], p = G(k, 0.3), q = G(j, 0.3);
       So.rod(T, p, q, 0.005, lie ? HUE.red : HUE.blu, 0.9);
@@ -348,7 +386,7 @@
     base(T, 0.42);
     // The beacon the text is sent from: a chrome needle afloat, a warm light at its tip.
     So.shell(T, [[0, 0.09], [0.05, 0.1], [0.085, 0.14], [0.09, 0.19], [0.07, 0.25], [0.04, 0.34], [0.024, 0.5], [0.014, 0.66], [0.006, 0.78], [0, 0.8]], 0, 0, 0);
-    So.ring(T, 0.094, 0.005, HUE.blu, 0, 0.19, 0, 1); So.ball(T, 0.026, HUE.org, 0, 0.83, 0, 1); So.cring(T, 0.045, 0.005, 0, 0.83, 0);
+    So.ring(T, 0.094, 0.005, HUE.blu, 0, 0.19, 0, 1); So.ball(T, 0.026, HUE.org, 0, 0.83, 0, 1); So.cring(T, 0.045, 0.005, 0, 0.83, 0); So.blink(T, LAMP.org(), 0, 0.866, 0, 1.8, 0);
     // The fence: chrome posts in a ring, a red beam strung between them.
     for (let k = 0; k < 8; k++) { const a = TAU * (k + 0.5) / 8, x = 0.3 * Math.sin(a), z = -0.3 * Math.cos(a); So.ccyl(T, 0.01, 0.016, 0.16, x, 0.12, z, { seg: 10 }); So.cball(T, 0.018, x, 0.21, z, { seg: 8 }); }
     So.ring(T, 0.3, 0.005, HUE.red, 0, 0.17, 0, 1, { seg: 48 }); So.ring(T, 0.3, 0.003, HUE.red, 0, 0.11, 0, 0.8, { seg: 48 });
@@ -532,6 +570,9 @@
     // The card on its way in, its wake behind it; past the gateway only a green "approved" goes on.
     So.box(T, 0.11, 0.07, 0.01, HUE.org, 0.16, y, 0, 1); So.box(T, 0.11, 0.013, 0.014, HUE.dark, 0.16, y + 0.014, 0); So.box(T, 0.03, 0.012, 0.014, HUE.hot, 0.185, y - 0.018, 0, 1);
     for (let k = 1; k < 4; k++) So.box(T, 0.01, 0.05 - k * 0.012, 0.006, HUE.amb, 0.215 + k * 0.022, y, 0, 1);
+    // What runs in the line: the card's sparks in to the gateway, glints of green on from it, and the shop's lamp.
+    for (let i = 0; i < 3; i++) { So.flow(T, SPARK(), 0.34, y, 0, [-0.2, 0, 0], 0.012, 1.8, +(i / 3).toFixed(2)); So.flow(T, GLINT(), -0.1, y, 0, [-0.2, 0, 0], 0.012, 2.2, +(i / 3).toFixed(2)); }
+    So.blink(T, LAMP.green(), -0.38, 0.45, -0.1, 1.4, 0);
     So.gem(T, 0.032, 0.075, HUE.green, -0.175, y, 0, 1); So.box(T, 0.03, 0.008, 0.008, HUE.green, -0.125, y, 0, 1);
     // The buyer (viewer's left): a chrome pod with a blue canopy and a light inside.
     So.shell(T, pod(0.1, 0.35, 0.57), 0.38, 0, 0); So.ccyl(T, 0.014, 0.03, 0.31, 0.38, 0.2, 0);
@@ -589,9 +630,15 @@
     So.cyl(T, 0.066, 0.066, 0.018, HUE.org, 0.3, 0.67, 0, 1, { seg: 20 }); So.ring(T, 0.09, 0.004, HUE.hot, 0.3, 0.67, 0, 1);
     for (let k = 0; k < 6; k++) So.rod(T, [0.3 + 0.1 * Math.cos(k * TAU / 6), 0.67, 0.1 * Math.sin(k * TAU / 6)], [0.3 + 0.135 * Math.cos(k * TAU / 6), 0.67 + (k % 2 ? 0.02 : -0.02), 0.135 * Math.sin(k * TAU / 6)], 0.005, HUE.hot, 1);
     coin(T, 0.085, 0.6, -0.04, 0.045, HUE.org); tag("MINT", HUE.org, 0.3, 0.44, -0.03);
+    // Sparks off the strike, and the molten metal the press is fed from, simmering in its tank.
+    for (let i = 0; i < 4; i++) So.flow(T, SPARK(), 0.3, 0.67, -0.03, [(i - 1.5) * 0.07, 0.05 + (i % 2) * 0.04, -0.08], 0.008, 1.1 + i * 0.2, i * 0.27);
+    tank(T, 0.43, 0.05, 0.1, 0.028, 0.3, HUE.amb, 0.78, 3, BUBBLE.warm); So.rod(T, [0.43, 0.36, 0.1], [0.36, 0.56, 0.03], 0.008, HUE.steel, 0.3);
     // 2. Blinded (centre): the coin inside a dark sphere in a chrome hoop, on a chrome cup.
     So.ccyl(T, 0.014, 0.03, 0.26, 0, 0.18, 0); So.shell(T, [[0, 0.3], [0.03, 0.302], [0.07, 0.325], [0.085, 0.36], [0.07, 0.366], [0, 0.345]], 0, 0, 0);
     Gl.ball(T, 0.105, HUE.dimBlu, 0, 0.46, 0, 0.5, { seg: 14 }); coin(T, 0, 0.46, 0, 0.042, HUE.off);
+    // The coin is steeped out of sight: the sphere half full of dark liquid, bubbling.
+    Gl.lathe(T, [[0, 0.365], [0.04, 0.37], [0.075, 0.395], [0.094, 0.43], [0.098, 0.455], [0, 0.455]], HUE.blu, 0, 0, 0, 0.9, { seg: 24 });
+    rising(T, BUBBLE.pale, 0, 0.38, 0, 0.14, 0.03, 3);
     So.cring(T, 0.125, 0.012, 0, 0.46, 0, { rx: 0.5, rz: 0.3 }); So.ring(T, 0.108, 0.005, HUE.blu, 0, 0.46, 0, 1, { rx: HALF });
     tag("BLIND", HUE.blu, 0, 0.25, -0.03);
     // 3. Spent (viewer's right, low): the coin dropping into the slot of a chrome till that lights green.
@@ -612,6 +659,9 @@
     So.shell(T, [[0, 0.5], [0.24, 0.5], [0.26, 0.515], [0.25, 0.56], [0.21, 0.63], [0.14, 0.69], [0.06, 0.72], [0, 0.725]], 0, 0, 0, { seg: 32 });
     Gl.cyl(T, 0.235, 0.235, 0.18, HUE.dimBlu, 0, 0.41, 0, 0.3, { seg: 32 });
     So.ring(T, 0.262, 0.006, HUE.org, 0, 0.31, 0, 1, { seg: 48 }); So.ring(T, 0.262, 0.006, HUE.org, 0, 0.51, 0, 1, { seg: 48 });
+    // the bars stand in a pool of molten gold, and it simmers
+    Gl.cyl(T, 0.225, 0.225, 0.05, HUE.amb, 0, 0.347, 0, 0.9, { seg: 32 });
+    for (let k = 0; k < 6; k++) rising(T, BUBBLE.warm, 0.19 * Math.sin(k * TAU / 6 + 0.5), 0.33, 0.19 * Math.cos(k * TAU / 6 + 0.5), 0.15, 0.012, 1, 2.6 + k * 0.3);
     for (let k = 0; k < 4; k++) So.box(T, 0.012, 0.19, 0.012, HUE.steel, 0.25 * Math.sin(k * HALF + 0.785), 0.41, 0.25 * Math.cos(k * HALF + 0.785));
     [3, 2, 1].forEach((n, r) => { for (let i = 0; i < n; i++) So.box(T, 0.1, 0.045, 0.2 - r * 0.03, HUE.gold, (i - (n - 1) / 2) * 0.112, 0.345 + r * 0.05, 0, 0.7); });
     So.ccyl(T, 0.02, 0.03, 0.04, 0, 0.74, 0); So.cring(T, 0.075, 0.012, 0, 0.765, 0); So.cball(T, 0.026, 0, 0.765, 0);
@@ -638,6 +688,9 @@
     for (let k = 0; k < 5; k++) { const y = 0.14 + k * 0.06, r = 0.2 - k * 0.016; So.shell(T, [[0, y], [r - 0.04, y + 0.003], [r, y + 0.016], [r, y + 0.022], [r - 0.04, y + 0.035], [0, y + 0.038]], 0, 0, 0); }
     So.shell(T, [[0, 0.44], [0.11, 0.442], [0.12, 0.46], [0.09, 0.49], [0.04, 0.505], [0, 0.51]], 0, 0, 0);
     So.cyl(T, 0.006, 0.03, 0.075, HUE.hot, 0, 0.545, 0, 1, { seg: 10 });
+    // Its coolant: a tank either side at the back, boiling, piped to the core; sparks off the nozzle.
+    for (const sx of [-1, 1]) { tank(T, sx * 0.21, 0.05, 0.19, 0.03, 0.3, HUE.teal); So.rod(T, [sx * 0.21, 0.36, 0.19], [sx * 0.06, 0.4, 0.04], 0.008, HUE.steel, 0.3); }
+    for (let i = 0; i < 5; i++) So.flow(T, SPARK(), 0, 0.56, -0.02, [(i - 2) * 0.05, 0.16, -0.07], 0.012, 1.3 + i * 0.17, i * 0.21);
     // The tries that failed: dead tiles spiralling up round it, warming as they near the one that worked.
     for (let i = 0; i < 12; i++) {
       const a = i * 0.62 + 0.6, y = 0.17 + i * 0.033, c = i > 9 ? HUE.org : i > 7 ? HUE.dimOrg : HUE.off;
@@ -672,6 +725,7 @@
     Gl.cyl(T, 0.1, 0.1, 0.215, HUE.dimBlu, 0, 0.5075, 0, 0.5, { seg: 24 });
     So.cring(T, 0.118, 0.02, 0, 0.5075, 0);
     So.ring(T, 0.085, 0.008, HUE.green, 0, 0.5075, 0, 1);
+    for (let i = 0; i < 3; i++) { const a = TAU * i / 3 + 1.55; So.blink(T, LAMP.green(), 0.14 * Math.sin(a), 0.5075, 0.14 * Math.cos(a), 1.5, +(i / 3).toFixed(2)); }
     So.gem(T, 0.038, 0.1, HUE.green, 0, 0.5075, 0, 1);
     So.rod(T, [0, 0.615, 0], [0, 0.565, 0], 0.006, HUE.org, 1);
     So.rod(T, [0, 0.45, 0], [0, 0.2, 0], 0.006, HUE.blu, 1);
@@ -702,7 +756,7 @@
     P.forEach(([x, z], i) => {
       const bad = i === 5, K = T.at(x, 0, z, Math.atan2(-x, -z));
       So.shell(K, [[0, 0.06], [0.045, 0.06], [0.054, 0.076], [0.04, 0.098], [0.021, 0.15], [0.014, 0.24], [0.03, 0.262], [0, 0.274]], 0, 0, 0, { seg: 16 });
-      if (bad) So.ball(K, 0.034, HUE.red, 0, 0.31, 0, 0.7); else So.cball(K, 0.034, 0, 0.31, 0);
+      if (bad) { So.ball(K, 0.034, HUE.red, 0, 0.31, 0, 0.7); So.blink(K, LAMP.red(), 0, 0.357, 0, 0.9, 0); } else So.cball(K, 0.034, 0, 0.31, 0);
       sheet(K.at(0, 0.44, 0), 0.11, 0.13, bad ? 5 : 3, bad ? HUE.red : HUE.pale);
       if (bad) {
         const m = [x * 0.84, 0.556, z * 0.84];
@@ -757,6 +811,7 @@
     So.gem(T, 0.04, 0.08, HUE.pale, 0, 0.5, 0, 1);
     So.ring(T, 0.07, 0.006, HUE.blu, 0, 0.48, 0, 1); So.ring(T, 0.07, 0.006, HUE.org, 0, 0.52, 0, 1);
     So.cball(T, 0.02, 0, 0.66, 0);
+    for (const z of [-0.1, 0.1]) { So.blink(T, LAMP.teal(), 0, 0.48, z, 1.2, 0); So.blink(T, LAMP.org(), 0, 0.52, z, 1.2, 0.5); }
     // Its two standing quotes, shown to the front and to the back.
     for (const s of [1, -1]) {
       const F = s > 0 ? T : T.at(0, 0, 0, Math.PI);
@@ -777,6 +832,8 @@
     // The issuer still trading: its bubble of points.
     horn(T.at(0.1, 0.09, 0.02), true);
     Gl.ball(T, 0.2, HUE.dimBlu, 0.1, 0.57, 0.02, 0.5, { seg: 16 });
+    // Froth off the horn, winding up round the bubble.
+    rising(T, BUBBLE.pale, 0.1, 0.4, 0.02, 0.5, 0.225, 6, 5);
     const cs = [HUE.org, HUE.amb, HUE.blu, HUE.hot, HUE.teal];
     for (let i = 0; i < 16; i++) { const a = i * 2.39996, t = (i + 0.5) / 16, r = 0.15 * Math.sqrt(1 - (2 * t - 1) ** 2); So.cyl(T, 0.023, 0.023, 0.007, cs[i % 5], 0.1 + r * Math.sin(a), 0.57 + 0.15 * (2 * t - 1), 0.02 + r * Math.cos(a), 0.85, { rx: HALF, ry: a, seg: 10 }); }
     Gl.ball(T, 0.045, HUE.pale, 0.31, 0.81, 0, 0.4, { seg: 10 }); Gl.ball(T, 0.03, HUE.pale, -0.04, 0.85, 0.05, 0.4, { seg: 10 });
@@ -806,6 +863,7 @@
     for (const s of [-1, 1]) { So.shell(T, dish, s * 0.28, 0.12, -0.2, { seg: 20 }); So.ring(T, 0.097, 0.004, s < 0 ? HUE.org : HUE.green, s * 0.28, 0.166, -0.2, 1, { seg: 24 }); }
     for (let i = 0; i < 6; i++) { const p = arc([-0.13, 0.6, -0.08], [-0.33, 0.66, -0.2], [-0.29, 0.22, -0.2], i / 5); So.cyl(T.at(p[0], p[1], p[2], i * 0.5, i * 0.3), 0.028, 0.028, 0.008, HUE.gold, 0, 0, 0, 0.7, { rx: HALF, seg: 12 }); }
     for (let i = 0; i < 4; i++) So.cyl(T, 0.03, 0.03, 0.009, HUE.gold, -0.28 + (i % 2) * 0.012, 0.158 + i * 0.011, -0.2, 0.6, { seg: 12 });
+    for (let i = 0; i < 4; i++) So.flow(T, SPARK(), -0.16, 0.6, -0.09, [-0.13, -0.4, -0.11], 0.015, 2.2, +(i / 4).toFixed(2));
     for (let i = 0; i < 5; i++) { const p = arc([0.29, 0.24, -0.2], [0.33, 0.66, -0.2], [0.14, 0.6, -0.08], i / 4), N = T.at(p[0], p[1], p[2], -0.25, 0, i * 0.2 - 0.4); So.box(N, 0.075, 0.042, 0.004, HUE.green, 0, 0, 0, 0.8); So.say(N, "$", 0.004, HUE.dark, 0, 0, -0.007, 0); }
     for (let i = 0; i < 4; i++) So.box(T, 0.1, 0.008, 0.055, HUE.green, 0.28, 0.158 + i * 0.011, -0.2, 0.7, { ry: i * 0.25 });
     label(T, ["GAME GOLD", "A WORLD'S COIN, SOLD FOR REAL DOLLARS · 2001"]);
@@ -849,6 +907,7 @@
       const pt = (t) => [a[0] + (b[0] - a[0]) * t, bow * Math.sin(Math.PI * t), a[2] + (b[2] - a[2]) * t];
       for (let k = 0; k < S; k++) So.rod(D, pt(k / S), pt((k + 1) / S), 0.009 - h * 0.001, HUE.org, 1);
       So.cball(D, 0.036, b[0], 0, b[2], { seg: 12 }); So.ring(D, 0.05, 0.005, HUE.org, b[0], 0, b[2], 1, { seg: 20 });
+      { const q = at(hops[h + 1], R - 0.06); So.blink(D, LAMP.org(), q[0], 0, q[2], 2.4, +(h / 4).toFixed(2)); }
     }
     const s = at(hops[0]), k = at(hops[4], R + 0.105);
     So.cball(D, 0.046, s[0], 0, s[2]); So.ring(D, 0.062, 0.006, HUE.blu, s[0], 0, s[2], 1, { seg: 24 });
@@ -863,6 +922,9 @@
     const cap = (y, s) => { const p = []; for (let k = 0; k <= 8; k++) { const a = HALF * k / 8; p.push([0.19 * Math.sin(a), y - s * 0.15 * Math.cos(a)]); } p.push([0, y]); return s > 0 ? p : p.reverse(); };
     So.shell(T, cap(0.42, 1), 0, 0, 0); So.shell(T, cap(0.58, -1), 0, 0, 0);
     Gl.cyl(T, 0.175, 0.175, 0.16, HUE.dimBlu, 0, 0.5, 0, 0.5, { seg: 28 });
+    // The chip stands in its coolant, which boils round it.
+    Gl.cyl(T, 0.165, 0.165, 0.07, HUE.teal, 0, 0.455, 0, 0.9, { seg: 28 });
+    for (let k = 0; k < 5; k++) rising(T, BUBBLE.pale, 0.12 * Math.sin(k * TAU / 5), 0.43, 0.12 * Math.cos(k * TAU / 5), 0.14, 0.01, 1, 2.4 + k * 0.35);
     for (const y of [0.42, 0.58]) { So.cring(T, 0.193, 0.013, 0, y, 0); So.ring(T, 0.165, 0.004, HUE.blu, 0, y + (0.5 - y) * 0.2, 0, 1, { seg: 40 }); }
     for (let i = 0; i < 6; i++) { const a = TAU * (i + 0.5) / 6; So.rod(T, [0.193 * Math.sin(a), 0.42, 0.193 * Math.cos(a)], [0.193 * Math.sin(a), 0.58, 0.193 * Math.cos(a)], 0.01, HUE.steel); }
     So.box(T, 0.085, 0.085, 0.085, HUE.gun, 0, 0.5, 0, 0, { ry: 0.78 });
@@ -880,7 +942,7 @@
     for (const a of [Math.PI - 0.8, Math.PI + 0.8, 0]) {
       const p = [0.31 * Math.sin(a), 0.21, 0.33 * Math.cos(a)], q = [0.17 * Math.sin(a), 0.47, 0.17 * Math.cos(a)];
       So.rod(T, [p[0] * 1.08, 0.04, p[2] * 1.08], p, 0.008, HUE.steel); So.cball(T, 0.032, p[0], p[1], p[2], { seg: 12 });
-      So.ball(T, 0.015, HUE.pale, p[0] * 0.92, p[1] + 0.022, p[2] * 0.92, 1, { seg: 8 }); So.rod(T, [p[0] * 0.92, p[1] + 0.022, p[2] * 0.92], q, 0.003, HUE.pale, 0.7);
+      So.ball(T, 0.015, HUE.pale, p[0] * 0.92, p[1] + 0.022, p[2] * 0.92, 1, { seg: 8 }); So.blink(T, LAMP.teal(), p[0] * 0.92, p[1] + 0.055, p[2] * 0.92, 2.1, +(a * 0.37 % 1).toFixed(2)); So.rod(T, [p[0] * 0.92, p[1] + 0.022, p[2] * 0.92], q, 0.003, HUE.pale, 0.7);
     }
     label(T, ["REUSABLE PROOFS OF WORK", "SPENT TOKEN IN, FRESH TOKEN OUT, AUDITED BY ANYONE"]);
   };
@@ -913,7 +975,7 @@
     So.cring(T, 0.405, 0.018, 0, 0.757, 0, { seg: 48 });
     for (const r of [0.2, 0.3]) So.ring(T, r, 0.005, HUE.off, 0, 0.69 + (r - 0.1) * 0.125, 0, 0, { seg: 40 });
     So.shell(T, [[0, 0.05], [0.13, 0.055], [0.1, 0.08], [0.06, 0.14], [0.052, 0.25], [0.048, 0.45], [0.044, 0.69], [0, 0.69]], 0, 0, 0);
-    So.ball(T, 0.022, HUE.red, 0, 0.885, 0, 1, { seg: 10 });
+    So.ball(T, 0.022, HUE.red, 0, 0.885, 0, 1, { seg: 10 }); So.blink(T, LAMP.red(), 0, 0.915, 0, 2.4, 0);
     for (let i = 0; i < 12; i++) {
       const a = TAU * (i + 0.5) / 12, front = Math.cos(a) < -0.5, x = 0.35 * Math.sin(a), z = 0.33 * Math.cos(a), y = front ? 0.6 - (i % 2) * 0.05 : 0.5 - (i * 0.618 % 1) * 0.3;
       So.rod(T, [x, 0.73, z], [x, y + 0.03, z], 0.003, HUE.gun);
@@ -945,6 +1007,8 @@
       const x = 0.12 - i * 0.068, o = i % 2 ? { rx: HALF, ry: HALF, seg: 20 } : { rx: HALF, seg: 20 }, yy = y + ey + 0.05;
       if (i < 2) So.cring(T, 0.036, 0.011, x, yy, 0, o); else if (i < 4) So.ring(T, 0.036, 0.009, i < 3 ? HUE.org : HUE.amb, x, yy, 0, 1, o); else Gl.ring(T, 0.036, 0.009, HUE.pale, x, yy, 0, 0.5, o);
     }
+    // Embers off the first block, climbing from its crown.
+    for (let i = 0; i < 8; i++) So.flow(T, SPARK(), (i - 3.5) * 0.14, y + ey + 0.03, i % 2 ? 0.05 : -0.05, [0, 0.34, 0], 0.025, +(5 + (i * 0.618 % 1) * 3).toFixed(1), +(i * 0.618 % 1).toFixed(3));
     label(T, ["THE GENESIS BLOCK", "3 JANUARY 2009, THE FIRST LINK OF THE CHAIN"]);
   };
 
@@ -994,7 +1058,7 @@
     const build = M[key];
     if (!build) throw new Error(`No model for ${key}`);
     UNIT = opts.unit || 1; LIP = opts.lip || 0; GLASS = opts.glass === true;
-    try { build(tools(root, y, opts.quiet === true, opts.view === true), opts.part || null); } finally { UNIT = 1; LIP = 0; GLASS = false; }
+    try { build(tools(root, y, opts.quiet === true, opts.view === true, opts.moving === true), opts.part || null); } finally { UNIT = 1; LIP = 0; GLASS = false; }
   };
   BL.timechainGenesisModels = { model, has: (key) => !!M[key], C, fits: FITS };
 })();
