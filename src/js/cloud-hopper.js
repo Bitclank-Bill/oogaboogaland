@@ -209,8 +209,9 @@
     const toggleGhost = (say = false) => {
       if (!replays || !active()) return false;
       if (phase === "running") { if (say) hud.toast("Turn the ghost on or off before the run starts"); return true; }
-      const on = replays.toggle();
-      if (say) hud.toast(on === null ? "No record ghost for this level yet" : on ? "Record ghost on" : "Record ghost off");
+      const was = replays.wanted;
+      replays.toggle();
+      if (say) hud.toast(replays.wanted === was ? "No record ghost for this level yet" : replays.wanted ? "Record ghost on" : "Record ghost off");
       return true;
     };
     const audio = BL.cloudHopperAudio.create();

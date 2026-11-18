@@ -65,7 +65,8 @@
     const pointer = () => shown?.replay?.courseVersion === version ? shown.replay : null;
     const stop = () => { epoch++; controller?.abort(); controller = null; enabled = false; onHide(); };
     const state = name => onState(name || (pointer() ? "off" : "unavailable"));
-    const show = board => { stop(); shown = board; onBoard(board); state(); if (wanted) enable(); };
+    // An attempt under way loads the shown winner by itself while the player has chosen the ghost.
+    const show = board => { stop(); shown = board; onBoard(board); state(); if (frozen && wanted) enable(); };
     const select = (id, courseVersion, board = null) => {
       game = id; version = courseVersion; frozen = false; latest = board; show(board);
     };
@@ -93,12 +94,11 @@
       // This attempt retains its winner even when a newer board arrives mid-run.
       onPlay({ ...recording, username: reference.username }); state("on");
     };
-    // The new choice, or null where there is no winning replay to show.
-    const toggle = () => {
-      if (enabled) { want(false); stop(); state(); return false; }
-      if (!pointer()) return null;
-      want(true); enable();
-      return true;
+    // `wanted` changes at once; the promise settles once a recording turned on has loaded (or failed to).
+    const toggle = async () => {
+      if (enabled) { want(false); stop(); state(); return; }
+      if (!pointer()) return;
+      want(true); await enable();
     };
     const clear = () => { stop(); latest = shown = null; frozen = false; state("unavailable"); };
     return { select, update, start, end, toggle, clear, get frozen() { return frozen; }, get enabled() { return enabled; }, get wanted() { return wanted; } };
