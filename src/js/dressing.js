@@ -11,7 +11,7 @@
 // baked set's nodes. A theme's `inside` list and `ceiling` lamp runs in scene-hub.js furnish the room behind
 // a mouth from the kit's pieces.
 //
-// Beyond sets: `palm(v)` three swaying cartoon palm meshes (not voxels) placed as their own nodes (`palmTrunk(v, y)` their trunk's middle and radius at a height), `islet(v)` the terraced sea stacks on the horizon (variant 1 has a sea arch), `motes(opts)` a
+// Beyond sets: `palm(v)` three swaying cartoon palm meshes (not voxels) placed as their own nodes (`palmTrunk(v, y)` their trunk's middle and radius at a height), `islet(v, clear)` the terraced sea stacks on the horizon (variant 1 has a sea arch; `clear` a twin that sheds most of the fog), `motes(opts)` a
 // fixed field of glowing dust that wraps round the view (`update(elapsed, x, z)`), `flock(opts)` one
 // instanced batch of wheeling gulls and `fleet(opts)` log rafts on the sea, each with `update(elapsed)`.
 //
@@ -898,9 +898,29 @@
     }
     return { verts: out, faces: src.faces, lines: src.lines };
   };
+  // A piece baked alone at the origin, unturned, once a kind and variant: what a loose piece (physics.js) draws, with
+  // its box in metres (`bounds`: min x, y, z then max x, y, z) over everything it draws.
+  const LOOSE = new Map();
+  const loosePiece = (kind, variant) => {
+    const key = `${kind}:${variant}`;
+    let baked = LOOSE.get(key);
+    if (baked) return baked;
+    baked = set().put(kind, 0, 0, 0, 0, variant).build();
+    const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+    for (const geo of [baked.solid, baked.hang, baked.glow, baked.swing, baked.swingGlow, baked.lampGlow, baked.swingLampGlow]) {
+      if (!geo) continue;
+      const v = geo.verts;
+      for (let i = 0; i < v.length; i += 3) for (let k = 0; k < 3; k++) { box[k] = Math.min(box[k], v[i + k]); box[k + 3] = Math.max(box[k + 3], v[i + k]); }
+    }
+    baked.bounds = box;
+    LOOSE.set(key, baked);
+    return baked;
+  };
   const set = () => {
     // Mesh pieces placed so far: kind, then the cell origin and quarter turns.
     const meshes = [], paintParts = [], glowParts = [];
+    // Pieces placed loose: drawn and moved on their own, never baked into the set (`build`'s `loose`).
+    const loose = [];
     // Layers 3 and 4 hold what hangs from a cable (lantern bodies and other glow); 5 and 6 hold lantern glass.
     // The hanging layers swing without moving the cable or the posts.
     const layers = [new Map(), new Map(), new Map(), new Map(), new Map(), new Map(), new Map()], lights = [];
@@ -923,7 +943,11 @@
       // decorative face never absorbs an adjacent structural face's tag.
       layers[layer].set(k, c | (layer === SOLID && ragePass ? RAGE_PASS : 0));
     };
-    const put = (kind, x, y, z, turns = 0, variant = 0) => {
+    const put = (kind, x, y, z, turns = 0, variant = 0, isLoose = false) => {
+      if (isLoose) {
+        loose.push({ kind, variant, x: Math.round(x / U) * U, y: Math.round(y / U) * U, z: Math.round(z / U) * U, turns: ((turns % 4) + 4) % 4, baked: loosePiece(kind, variant) });
+        return set;
+      }
       const piece = pieceOf(kind, variant), mesh = MESHES[kind];
       const ragePass = RAGE_PASS_PIECES.has(kind);
       const ox = Math.round(x / U), oy = Math.round(y / U), oz = Math.round(z / U), q = ((turns % 4) + 4) % 4;
@@ -1053,7 +1077,7 @@
         glow = noShadow(merge(...glowParts));
         glowParts.length = 0;
       }
-      const out = { solid, hang, glow, swing: bake(3), swingGlow: bake(4), lampGlow: bake(5), swingLampGlow: bake(6), lights: Float32Array.from(lights), picks: picks.splice(0) };
+      const out = { solid, hang, glow, swing: bake(3), swingGlow: bake(4), lampGlow: bake(5), swingLampGlow: bake(6), lights: Float32Array.from(lights), picks: picks.splice(0), loose: loose.splice(0) };
       for (const layer of layers) layer.clear();
       lights.length = steps.length = 0;
       return out;
@@ -1207,9 +1231,14 @@
   const palm = BL.models.variants((v) => BL.models.foliageLods(palmGeometry(v), palmGeometry(v, 1)));
   // The islands on the horizon: terraced sea stacks on the island's own grid mesher, two metres a cell, a sand
   // ring at the waterline, rock cliffs and grass tops; variant 1 has a sea arch through it. Built once a page.
-  const islets = [];
-  const islet = (v) => {
-    if (islets[v]) return islets[v];
+  // `clear` is a twin that takes ISLET_PIERCE of the fog off itself, for a scene whose haze would otherwise paint
+  // the stacks in the horizon's colour well before the sea under them hazes at all: the sea hazes later, and into
+  // the darker sky below the horizon, so fully hazed stacks stood pale on blue water at noon, orange at dusk and
+  // brighter than the sea at night.
+  const islets = [], ISLET_PIERCE = 0.8;
+  const islet = (v, clear = false) => {
+    const slot = clear ? v + 3 : v;
+    if (islets[slot]) return islets[slot];
     const u = 2, S = 40, H = 16 + v * 5, grid = BL.terrain.makeGrid(S, H, S), rand = mulberry32(1200 + v * 7);
     const bumps = Array.from({ length: 6 }, () => [rand() * S, rand() * S, 4 + rand() * 6]);
     const heightAt = (x, z) => {
@@ -1228,7 +1257,8 @@
     }
     const geo = BL.terrain.gridGeometry(grid, { unit: u, palette: [null, ...RGB], origin: { x: -S * u / 2, y: 0, z: -S * u / 2 } });
     geo.castShadow = false;
-    islets[v] = geo;
+    if (clear) geo.fogPierce = ISLET_PIERCE;
+    islets[slot] = geo;
     return geo;
   };
   // The nodes for a baked set: solid (for the caller's collision), hang, decorative glow, lantern glow and swinging layers. All
@@ -1434,5 +1464,5 @@
     }
     const geometry=merge(...bits);studioCache.set(kind,geometry);return geometry;
   };
-  BL.dressing = { U, PALETTE, KIT, LIGHT_RGB, COIL_LIGHT, studio, set, coilRig, motes, palm, palmTrunk, islet, nodes, flock, fleet };
+  BL.dressing = { U, PALETTE, KIT, loosePiece, LIGHT_RGB, COIL_LIGHT, studio, set, coilRig, motes, palm, palmTrunk, islet, nodes, flock, fleet };
 })();

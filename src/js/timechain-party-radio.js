@@ -4,7 +4,7 @@
 // analysed, and its redirect must send it too): EDM Sessions through radio.co (stream.edmsessions.com's redirect sends
 // no such header, so this is the address it redirects to), and four of SomaFM's listener-supported channels, whose
 // streams and their redirects send it. The room starts on the first; the DJ changes channel from behind the booth
-// (`tune`, `next`).
+// (`tune`, `next`), and in a shared room everyone there is tuned to the channel the DJ chose (net.js `sendParty`).
 //
 // The beat is found on the audio's own clock, never the frame rate's: each frame reads the newest stretch of the
 // stream through a low-pass (the kick), and `meter` cuts it into blocks of a RATE-th of a second by absolute sample
@@ -39,7 +39,7 @@
   // The analysis: the low-pass's corner, and how many samples the analyser holds (enough for a frame of 0.17 s); for the
   // screen, the whole signal's FFT size, its range in dB, the spectrum's lowest and highest frequencies, and the power a
   // band's level is raised to so loud, compressed music still moves the bars rather than holding them up.
-  const KICK_HZ = 150, WAVE = 8192, FFT = 2048, DB_MIN = -90, DB_MAX = -20, LOW_HZ = 35, HIGH_HZ = 16000, SPREAD = 2.2;
+  const KICK_HZ = 150, WAVE = 8192, LOUD_N = 2048, FFT = 2048, DB_MIN = -90, DB_MAX = -20, LOW_HZ = 35, HIGH_HZ = 16000, SPREAD = 2.2;
   // The player: its volume, how long a stall may last, the first retry's wait (doubling to RETRY_MAX), and how long
   // Web Audio may hand silence for a stream that plays before the plain element takes over.
   const VOLUME = 0.32, STALL_MS = 12000, RETRY_MS = 5000, RETRY_MAX = 60000, SILENT_S = 4;
@@ -147,9 +147,11 @@
     let whole = null, bins = null, signal = null, edges = null;
     let mode = enabled ? "waiting" : "off", plain = false, disposed = false, timer = 0, watchdog = 0, epoch = 0;
     let failures = 0, quiet = 0, lastTime = -1, starts = 0, channel = 0;
+    const soundChannel = BL.sound.channel("party");
+    if (!enabled) soundChannel.show(false);
     const applyVolume = () => {
       if (gain) gain.gain.setTargetAtTime(plain || BL.sound.muted ? 0 : VOLUME, context.currentTime, 0.4);
-      if (element && plain) { element.muted = BL.sound.muted; element.volume = VOLUME; }
+      if (element && plain) { element.muted = BL.sound.muted; element.volume = VOLUME * soundChannel.gain; }
     };
     const dropElement = () => {
       epoch++; clearTimeout(watchdog); watchdog = 0;
@@ -175,7 +177,7 @@
       if (navigator.userActivation && !navigator.userActivation.hasBeenActive) { mode = "waiting"; return; }
       if (!context) {
         context = new AudioContext();
-        gain = context.createGain(); gain.gain.value = 0; gain.connect(context.destination);
+        gain = context.createGain(); gain.gain.value = 0; gain.connect(soundChannel.node(context));
         filter = context.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = KICK_HZ;
         analyser = context.createAnalyser(); analyser.fftSize = WAVE;
         // The analyser reaches the speakers through a silent gain, so every browser keeps running it.
@@ -214,6 +216,7 @@
     };
     if (enabled) { document.addEventListener("pointerdown", gesture); document.addEventListener("keydown", gesture); }
     const offSound = BL.sound.subscribe(() => applyVolume());
+    soundChannel.subscribe(() => applyVolume());
     start();
     // Once a frame: the newest stretch of the stream into the tracker, and what the room should show now. Where Web
     // Audio hands only silence for a stream that is playing, the plain element takes over.
@@ -229,6 +232,20 @@
       } else if (heard) quiet = 0;
       lastTime = element.currentTime;
       return track.read(context.currentTime - (context.outputLatency || context.baseLatency || 0), out);
+    };
+    // How loud the music is now, in dB of its RMS: `out.loud` the whole signal over the analyser's last FFT samples,
+    // `out.bass` the low-passed kick band over its newest LOUD_N samples (as `sample` read them this frame, so call
+    // it after). False when there is nothing to read (the room then runs its own arrangement).
+    const energy = (out) => {
+      if (mode !== "live" || plain || !whole || !analyser) return false;
+      let s = 0;
+      for (let i = WAVE - LOUD_N; i < WAVE; i++) s += wave[i] * wave[i];
+      out.bass = 10 * Math.log10(s / LOUD_N + 1e-12);
+      whole.getFloatTimeDomainData(signal);
+      s = 0;
+      for (let i = 0; i < FFT; i++) s += signal[i] * signal[i];
+      out.loud = 10 * Math.log10(s / FFT + 1e-12);
+      return true;
     };
     // The screen's spectrum: `out`'s bands, low to high on a log scale, each the loudest bin in it (0 to 1, raised to
     // SPREAD). False when
@@ -264,7 +281,9 @@
     // beat found afresh and the plain element given up, so a channel that answers cross-origin is read again.
     const tune = (index) => {
       if (disposed || !enabled) return;
-      channel = ((index % STATIONS.length) + STATIONS.length) % STATIONS.length;
+      const wanted = ((index % STATIONS.length) + STATIONS.length) % STATIONS.length;
+      if (wanted === channel && mode !== "offline") return;
+      channel = wanted;
       clearTimeout(timer); timer = 0;
       dropElement();
       plain = false; failures = 0;
@@ -274,7 +293,7 @@
     const reading = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 };
     // A line for a tap on the booth, the decks or the speakers.
     const words = () => {
-      const muted = BL.sound.muted ? " · sound muted (the speaker button)" : "";
+      const muted = BL.sound.muted ? " · sound muted (M, or the speaker button's Sound on/off)" : "";
       const name = STATIONS[channel].name;
       if (mode === "off") return "The radio is off on this page";
       if (mode === "waiting") return `${name} · tap or press a key to tune in`;
@@ -285,7 +304,7 @@
       return reading.live ? `Live · ${name} · ${Math.round(reading.bpm)} BPM · the lights follow the beat${muted}` : `Live · ${name} · finding the beat${muted}`;
     };
     return {
-      sample, spectrum, scope, words, tune,
+      sample, energy, spectrum, scope, words, tune,
       next: () => tune(channel + 1),
       get channel() { return channel; }, get station() { return STATIONS[channel]; },
       get stats() { return { mode, plain, starts, failures, channel, contexts: context ? 1 : 0, elements: element ? 1 : 0, ...track.read(context ? context.currentTime : 0, reading) }; },
@@ -295,7 +314,7 @@
         clearTimeout(timer); timer = 0;
         document.removeEventListener("pointerdown", gesture);
         document.removeEventListener("keydown", gesture);
-        offSound();
+        offSound(); soundChannel.release();
         dropElement();
         for (const node of [filter, analyser, whole, sink, gain]) if (node) node.disconnect();
         if (context) context.close().catch(() => {});

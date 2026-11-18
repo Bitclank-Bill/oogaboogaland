@@ -53,6 +53,23 @@ const harness = async ({ features = "bridge,commons,commons-send,cloud", accepte
 };
 const lines = (ws) => ws.sent.filter((m) => m.t === "chat");
 
+test("duel listening receives active pairs on join and only sanitized start/end updates", async () => {
+  const h = await harness(), { duel } = await import("../src/duel.js");
+  await h.player(1, "amy"); await h.player(2, "ottoz0r");
+  const { ws: before } = await h.member(3, "cy");
+  duel.start(h.room, h.room.players.get(1), h.room.players.get(2), Date.now());
+  const d = [...h.room.duels.values()][0];
+  assert.deepEqual(before.sent.filter((m) => m.t === "duel"), [{ t: "duel", op: "start", id: d.id, a: 1, b: 2 }]);
+  const { ws: after } = await h.member(4, "dee");
+  assert.deepEqual(after.sent[0].duels, [{ id: d.id, a: 1, b: 2 }]);
+  for (const op of ["hp", "challenged", "challenging", "refused", "list"]) h.room.broadcast({ t: "duel", op, id: d.id, x: 12, hp: [50, 40] });
+  assert.equal(before.sent.filter((m) => m.t === "duel").length, 1);
+  assert.equal(after.sent.filter((m) => m.t === "duel").length, 0);
+  duel.finish(h.room, d, 1, "forfeit");
+  for (const ws of [before, after]) assert.deepEqual(ws.sent.filter((m) => m.t === "duel").at(-1), { t: "duel", op: "end", id: d.id });
+  assert.deepEqual((await h.member(5, "eve")).ws.sent[0].duels, []);
+});
+
 test("a member joins without a player slot, sees presence without positions, and The Commons' own history", async () => {
   const h = await harness();
   const isle = await h.player(1, "amy");
@@ -147,6 +164,21 @@ test("access ends: signing out or losing eligibility closes the account's member
   const a = await h.member(4, "dee"), b = await h.member(4, "dee"), c = await h.member(4, "dee"), d = await h.member(4, "dee");
   assert.equal([a, b, c].every((m) => m.ws.closed === null), true);
   assert.equal(d.ws.closed.code, 4429);
+});
+
+test("with only members here the sweep runs every four minutes, and a player arriving brings it back to one a minute", async () => {
+  const start = 1_800_000_000_000, h = await harness({ start });
+  await h.member(2, "bea");
+  h.room.sweepAt = 0;
+  await h.room.alarm();
+  assert.equal(h.room.sweepAt, start + protocol.MEMBER_SWEEP_MS, "an idle Ooga Chat tab wakes the room every four minutes, not every minute");
+  const { STALE_MS, RECENT_MS } = await import("../src/inspector-logic.js");
+  assert.ok(protocol.MEMBER_SWEEP_MS < Math.min(STALE_MS, RECENT_MS), "the room's report, riding its sweep, stays inside the Inspector's windows");
+  await h.player(1, "amy");
+  assert.equal(h.room.sweepAt, start + protocol.SWEEP_MS, "a player arriving pulls the next sweep in");
+  h.room.sweepAt = 0;
+  await h.room.alarm();
+  assert.equal(h.room.sweepAt, start + protocol.SWEEP_MS, "and keeps it at a minute while a player is here");
 });
 
 test("a woken Room keeps its members as members, never as players", async () => {

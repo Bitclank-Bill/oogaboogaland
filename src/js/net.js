@@ -102,7 +102,8 @@
 // `{ op: "placed" }` after each body, zone or crossing frame sent (counted in `state.placed`), which the room's own check
 // of an `enter` reads, so the bridge can ask again for an epoch refused before the room had them.
 // Without the feature both stay silent and the bridge keeps the page out of every public audience.
-// Exports sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// Exports sendParty, subscribeParty (the Block Party's shared channel), sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// sendProps, sendPropInput, subscribeProps (the loose props' host frames and followers' inputs, prop-sync.js),
 // setMuted, setHealth, sendNpc, sendChat, sendPrivate, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
@@ -176,6 +177,7 @@
   const subscribers = new Set();
   const highscoreSubscribers = new Set();
   const doorSubscribers = new Set();
+  const partySubscribers = new Set();
   const rosterSubscribers = new Set();
   const moveSubscribers = new Set();
   const studioSubscribers = new Set();
@@ -203,6 +205,8 @@
   const chalkEmit = (kind, detail) => { for (const fn of chalkSubscribers) fn(kind, detail); };
   const walletSubscribers = new Set();
   const duelSubscribers = new Set();
+  // The island's loose props (prop-sync.js): the host's frames by their magic word, and followers' inputs.
+  const PROP_MAGIC = 0x31504f52, PROP_FEATURE = "props-v1", propSubscribers = new Set();
   const shotSubscribers = new Set(), swingSubscribers = new Set(), reactSubscribers = new Set(), audienceSubscribers = new Set();
   const presenceSubscribers = new Set();
   // Ooga Chat speakers on clouds (#659): the room's `clouds` list, replaced whole (worker/src/room-audience.js), each
@@ -242,9 +246,9 @@
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
   const offline = new URLSearchParams(location.search);
-  const state = { roomLocks: false, lockedRooms: new Uint8Array(10), roomPin: "", roomPinRoom: -1, backend: false, games: [], me: null, donations: false, tess: false, voiceTurn: false, tessShared: false, tessGuide: null, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
+  const state = { roomLocks: false, partyRadio: false, lockedRooms: new Uint8Array(10), roomPin: "", roomPinRoom: -1, backend: false, games: [], me: null, donations: false, tess: false, voiceTurn: false, tessShared: false, tessGuide: null, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, hostEpoch: 0, props: false, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
     voiceLinks: false, linkWants: new Set(), linked: new Set(), outdoorVoice: false, duel: false, placed: 0, audience: false, clouds: NO_CLOUDS,
     // Voice on another device (voice-handoff.js): `voiceElsewhere` while the account speaks from Ooga Chat somewhere
@@ -262,6 +266,12 @@
   // this page's last socket ended (`ended`: why, the browser's close code, clean, when), said on the close frame and,
   // after the next welcome, in one `back` message, so a drop's cause reaches the inspector's log.
   let inspectOn = false, ended = null;
+  // A socket lost, or closed here to come straight back (CLOSE_RECONNECT), leaves this page's record held in the room for a
+  // few seconds (worker/src/protocol.js HOLD_MS). The next socket asks for it with the key the last welcome gave
+  // (`resume`), and the room hands it back with a welcome that says `resumed`: nobody else saw this page go, and its
+  // voice sessions are still the room's. The key proves only that it is the same page; a clean close forgets it.
+  const CLOSE_RECONNECT = 4001;
+  let resumeKey = "";
   // Opt-in local evidence for a brief disappearance; never retain payloads, names, tokens or raw close reasons.
   // No timers or network traffic. Only lifecycle events enter the bounded history, not pose snapshots.
   const DIAGNOSTIC_KEEP = 64;
@@ -434,7 +444,7 @@
     const on = inHub && !document.hidden;
     if (on === hubSent || !ws || ws.readyState !== WebSocket.OPEN) return;
     hubSent = on;
-    send(on ? '{"t":"hub","on":true}' : '{"t":"hub","on":false}');
+    send(on ? '{"t":"hub","on":true,"props":true}' : '{"t":"hub","on":false}');
   };
   // Whether this tab is visible, so the room hands Block Frenzy's hosting only to a page that runs frames (block.js).
   const sendVisible = () => {
@@ -532,7 +542,9 @@
     }
     unanswered = 0; heardCount++;
     if (e.data instanceof ArrayBuffer) {
-      if (e.data.byteLength >= 4 && new DataView(e.data).getUint32(0, true) === 0x315a4642) { for (const fn of bfFrameSubscribers) fn(e.data); return; }
+      const magic = e.data.byteLength >= 4 ? new DataView(e.data).getUint32(0, true) : 0;
+      if (magic === 0x315a4642) { for (const fn of bfFrameSubscribers) fn(e.data); return; }
+      if (magic === PROP_MAGIC) { for (const fn of propSubscribers) fn(e.data, null); return; }
       npcFrame = e.data;
       state.npcVersion++;
       return;
@@ -633,8 +645,12 @@
       state.loopEpoch = typeof msg.loopEpoch === "number" ? msg.loopEpoch : 0;
       state.hostId = Number.isSafeInteger(msg.host) ? msg.host : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
+      state.hostEpoch++;
+      state.props = Array.isArray(msg.features) && msg.features.includes(PROP_FEATURE);
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
+      resumeKey = typeof msg.resume === "string" && msg.resume.length <= 64 ? msg.resume : "";
+      const resumed = msg.resumed === true;
       state.cabinets = Array.isArray(msg.features) && msg.features.includes(BL.arcadeCabinets.FEATURE);
       state.cabinetsOutdoor = Array.isArray(msg.features) && msg.features.includes(BL.arcadeCabinets.OUTDOOR_FEATURE);
       state.tessShared = Array.isArray(msg.features) && msg.features.includes("tess-guide-v1");
@@ -645,6 +661,7 @@
       for (const fn of duelSubscribers) fn({ op: "lost" });
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.roomLocks = Array.isArray(msg.features) && msg.features.includes("room-lock-v1");
+      state.partyRadio = Array.isArray(msg.features) && msg.features.includes("party-radio-v1");
       setLockedRooms(msg.locks);
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
       state.privateChat = Array.isArray(msg.features) && msg.features.includes("pm-v1");
@@ -688,7 +705,8 @@
       hubSent = visibleSent = null;
       sendHub();
       sendVisible();
-      BL.voice.restart(true);
+      // A record the room held for this page still has its voice sessions: voice still up stays as it is.
+      if (resumed) BL.voice.resumed(); else BL.voice.restart(true);
       if (restoredPose) poseAt = performance.now();
       else { poseAt = 0; px = NaN; gKnown = poseHasG = false; }
     } else if (msg.t === "join") {
@@ -756,7 +774,11 @@
     } else if (msg.t === "host") {
       state.hostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
+      state.hostEpoch++;
       emit();
+    } else if (msg.t === "prop") {
+      // A follower's own round, blow or poke at a loose prop, for this page as host (prop-sync.js).
+      if (typeof msg.k === "string" && Array.isArray(msg.a) && msg.a.length === 6 && msg.a.every(Number.isFinite)) for (const fn of propSubscribers) fn(null, msg);
     } else if (msg.t === "shot") {
       const a = msg.a;
       if (Number.isSafeInteger(msg.id) && Array.isArray(a) && a.length === 6 && a.every(Number.isFinite))
@@ -827,6 +849,11 @@
         doorHeard({ t: "door", op: "room-pin", room: msg.room });
       }
       else if (msg.op === "lock-result" && (msg.action === "lock" || msg.action === "unlock" || msg.action === "try") && sphereRoom(msg.room)) doorHeard({ t: "door", op: "lock-result", action: msg.action, room: msg.room, ok: msg.ok === true, reason: typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "" });
+    } else if (msg.t === "party") {
+      // The Block Party's channel: -1 when nobody in the room has chosen one; `by` who chose it (0, the room's word).
+      if (Number.isInteger(msg.channel) && msg.channel >= -1 && msg.channel < 16 && Number.isSafeInteger(msg.by) && msg.by >= 0) {
+        for (const fn of partySubscribers) fn(msg.channel, msg.by);
+      }
     } else if (msg.t === "transit") {
       const transit = transitOf(msg);
       if (transit && transit.actor !== state.selfId) doorHeard(transit);
@@ -886,19 +913,25 @@
       if (inspectOn) ended = { why, code, clean, at: Date.now() };
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
       if (ws.readyState <= WebSocket.OPEN) {
-        if (inspectOn) ws.close(1000, why);
-        else ws.close(1000);
+        // Closed only to open again at once: the room holds this page's record for the next socket.
+        const code = room === "connecting" ? CLOSE_RECONNECT : 1000;
+        if (inspectOn) ws.close(code, why);
+        else ws.close(code);
       }
       ws = null;
     }
+    // Out of the room for good: nothing held to come back to.
+    if (room !== "connecting") resumeKey = "";
     remotes.clear();
     setClouds(NO_CLOUDS);
     state.voiceElsewhere = false;
     state.hostId = 0;
     state.followers = 0;
+    state.props = false;
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
     state.roomLocks = false;
+    state.partyRadio = false;
     forgetRoomPin();
     if (setLockedRooms(null)) doorHeard({ t: "door", op: "locks" });
     // So did the chalkboard: the board is kept to show until the room sends it again, but nobody here holds it.
@@ -932,7 +965,7 @@
     // A tab opened in the background has no visibility change to arm this.
     if (document.hidden && !hiddenTimer) armHidden();
     openingAt = performance.now();
-    ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/room`);
+    ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/room${resumeKey ? "?resume=" + encodeURIComponent(resumeKey) : ""}`);
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
     ws.onopen = () => {
@@ -1202,6 +1235,20 @@
     if (ws && ws.readyState === WebSocket.OPEN && state.hostId === state.selfId) ws.send(view);
   };
 
+  // The host's frame of loose props, where the room relays them, and a follower's own round, blow or poke for the
+  // host (prop-sync.js): `k` its kind and six numbers.
+  const sendProps = (view) => {
+    if (ws && ws.readyState === WebSocket.OPEN && state.props && state.hostId === state.selfId) ws.send(view);
+  };
+  const sendPropInput = (k, a, b, c, d, e, f) => {
+    if (state.room !== "live" || !state.props || !Number.isFinite(a + b + c + d + e + f)) return false;
+    send(`{"t":"prop","k":"${k}","a":[${+a.toFixed(2)},${+b.toFixed(2)},${+c.toFixed(2)},${+d.toFixed(2)},${+e.toFixed(2)},${+f.toFixed(2)}]}`);
+    return true;
+  };
+  const subscribeProps = (fn) => {
+    propSubscribers.add(fn);
+    return () => propSubscribers.delete(fn);
+  };
   // A synchronous handoff between Arcade hall scenes keeps the same driven body and voice subscriptions.
   let holdingBody = false;
   const handoffBody = fn => {
@@ -1433,6 +1480,13 @@
   const lockRoom = (room, pin) => roomPin("lock", room, pin);
   const unlockRoom = (room) => state.roomLocks && lockableRoom(room) && doorSend(JSON.stringify({ t: "door", op: "unlock", room }));
   const tryRoomPin = (room, pin) => roomPin("try", room, pin);
+  // The Block Party's radio (room.js `partyMessage`): this page's DJ changes the channel for everyone in the room.
+  const sendParty = (channel) => {
+    if (state.room !== "live" || !state.partyRadio || state.zone !== "sphere-6" || !Number.isInteger(channel) || channel < 0 || channel >= 16 || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify({ t: "party", channel }));
+    return true;
+  };
+  const subscribeParty = (fn) => { partySubscribers.add(fn); return () => partySubscribers.delete(fn); };
   const passDoor = (door, dir) => typeof door === "string" && DOOR_NAME.test(door) && (dir === "in" || dir === "out")
     && doorSend(JSON.stringify({ t: "door", op: "pass", door, dir }));
 
@@ -1637,9 +1691,10 @@
     shotSubscribers.clear(); swingSubscribers.clear(); reactSubscribers.clear(); audienceSubscribers.clear(); cloudSubscribers.clear();
     presenceSubscribers.clear();
     doorSubscribers.clear();
+    partySubscribers.clear();
     close("off");
     diagnostic = null;
   };
 
-  BL.net = { sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { sendParty, subscribeParty, sendProps, sendPropInput, subscribeProps, sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

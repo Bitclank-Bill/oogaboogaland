@@ -322,6 +322,8 @@
       const fitBanner = () => {
         bannerFrame = 0;
         if (document.body.dataset.activeScene !== bannerScene) return;
+        // The Sign in button's room, set before the clock is measured: the clock stands clear of it.
+        bannerStyle(el.topbar, "--hub-banner-account", `${accountTop().offsetWidth ? accountTop().offsetWidth + 8 : 0}px`);
         const brand = el.brand.getBoundingClientRect(), clock = el.clock.getBoundingClientRect(), block = el.block.getBoundingClientRect();
         const topbar = getComputedStyle(el.topbar), row = getComputedStyle(el.equipmentRow);
         const fontSize = parseFloat(getComputedStyle(el.clock).fontSize) || 22;
@@ -390,7 +392,7 @@
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
       // Cabinet zooms resize the stage without changing the viewport or the title's own size.
-      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
+      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow, accountTop()]) bannerResize.observe(node);
       if (presets) {
         bannerResize.observe(presets);
         bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
@@ -409,7 +411,7 @@
         el.messageStack.style.removeProperty("--hub-equipment-bottom");
         el.micNote.style.removeProperty("--hub-equipment-bottom");
         document.body.style.removeProperty("--banner-controls-bottom");
-        for (const property of ["--hub-banner-button", "--hub-banner-button-top", "--hub-banner-button-right", "--hub-banner-button-gap"]) el.topbar.style.removeProperty(property);
+        for (const property of ["--hub-banner-button", "--hub-banner-button-top", "--hub-banner-button-right", "--hub-banner-button-gap", "--hub-banner-account"]) el.topbar.style.removeProperty(property);
       });
       scheduleBanner();
     }
@@ -946,7 +948,9 @@
       // A board is any object with `title`, `help`, `canvas`, `count`, `index`, `caption`, `note`, `version` and
       // `go(index)`, plus optional `wide` and `captionAbove` layouts and a `link` out ({ href, label }, opened in a new tab). The dialog copies the canvas, captions the page, lays one dot per page and pages with the
       // chevrons, the dots and the arrow keys; it never learns what a board shows, so a board can change freely.
-      // `updateBoard` repaints whenever the open board's version moves.
+      // `updateBoard` repaints whenever the open board's version moves. `expanded` gives a screen more viewport space.
+      // Optional `hover(x,y)`, `dragStart(x,y)`, `dragMove(x,y)`, `dragEnd(cancelled)` and `onClose()` keep interactive
+      // canvases in their own pixel coordinates; a captured drag suppresses its following click.
       // A `floating` board also supplies `paused` and `setPaused`, and keeps island input available.
       let board = null, boardShown = -1, boardDots = -1;
       let controlsHidden = saved?.controlsHidden === true;
@@ -1038,11 +1042,57 @@
         paintBoardControls();
         scheduleBoardSave();
       };
+      let screenPointer = -1, suppressScreenPick = false;
+      const screenPoint = { x: 0, y: 0 };
+      const pointOnBoard = (e) => {
+        const r = el.boardScreen.getBoundingClientRect(), src = board.canvas;
+        screenPoint.x = (e.clientX - r.left - el.boardScreen.clientLeft) * src.width / el.boardScreen.clientWidth;
+        screenPoint.y = (e.clientY - r.top - el.boardScreen.clientTop) * src.height / el.boardScreen.clientHeight;
+      };
+      const finishScreenPointer = (cancelled) => {
+        if (screenPointer < 0) return;
+        const id = screenPointer; screenPointer = -1;
+        if (el.boardScreen.hasPointerCapture(id)) el.boardScreen.releasePointerCapture(id);
+        board?.dragEnd?.(cancelled);
+        suppressScreenPick = true;
+        updateBoard();
+      };
+      on(el.boardScreen, "pointerdown", e => {
+        if (screenPointer >= 0) { finishScreenPointer(true); e.preventDefault(); return; }
+        suppressScreenPick = false;
+        if (!board?.dragStart || e.button !== 0 || !e.isPrimary) return;
+        pointOnBoard(e);
+        if (!board.dragStart(screenPoint.x, screenPoint.y)) return;
+        screenPointer = e.pointerId;
+        // The virtual menu cursor owns capture for the synthetic events it routes.
+        if (e.isTrusted) el.boardScreen.setPointerCapture(e.pointerId);
+        e.preventDefault(); e.stopPropagation(); updateBoard();
+      });
+      on(el.boardScreen, "pointermove", e => {
+        if (!board) return;
+        if (e.pointerId === screenPointer) {
+          pointOnBoard(e); board.dragMove(screenPoint.x, screenPoint.y);
+          e.preventDefault(); e.stopPropagation(); updateBoard();
+        } else if (board.hover) {
+          pointOnBoard(e); board.hover(screenPoint.x, screenPoint.y); updateBoard();
+        }
+      });
+      on(el.boardScreen, "pointerleave", () => { if (screenPointer < 0 && board?.hover) { board.hover(-1, -1); updateBoard(); } });
+      on(el.boardScreen, "pointerup", e => {
+        if (e.pointerId !== screenPointer) return;
+        pointOnBoard(e); board.dragMove(screenPoint.x, screenPoint.y);
+        finishScreenPointer(false); e.preventDefault(); e.stopPropagation();
+      });
+      for (const type of ["pointercancel", "lostpointercapture"]) on(el.boardScreen, type, e => { if (e.pointerId === screenPointer) finishScreenPointer(true); });
+      on(window, "blur", () => finishScreenPointer(true));
+      on(document, "visibilitychange", () => { if (document.hidden) finishScreenPointer(true); });
       on(el.boardScreen, "click", (e) => {
+        if (suppressScreenPick) { suppressScreenPick = false; e.preventDefault(); return; }
         // A board that takes picks (the Sphere's room directory) hears where on its picture the press landed, and
         // answers "close" when that is done with it.
         if (board?.pick) {
-          if (board.pick(e.offsetX * board.canvas.width / el.boardScreen.clientWidth, e.offsetY * board.canvas.height / el.boardScreen.clientHeight) === "close") closeBoard();
+          pointOnBoard(e);
+          if (board.pick(screenPoint.x, screenPoint.y) === "close") closeBoard();
           else updateBoard();
           return;
         }
@@ -1273,12 +1323,14 @@
         if (floatingId) scheduleBoardSave();
       };
       const openBoard = (next) => {
-        finishBoardPointer();
+        finishScreenPointer(true); finishBoardPointer();
+        board?.onClose?.(); suppressScreenPick = false;
         if (el.board.open && !!board?.floating !== !!next.floating) el.board.close();
         board = next;
         boardDots = -1;
         letterSign(el.boardTitle, board.title);
         el.board.classList.toggle("board-wide", !!board.wide);
+        el.board.classList.toggle("board-expanded", !!board.expanded);
         el.board.classList.toggle("board-floating", !!board.floating);
         el.board.classList.toggle("board-caption-above", !!board.captionAbove);
         el.board.classList.toggle("board-carousel", !!board.carousel);
@@ -1326,9 +1378,10 @@
         if (board.floating) { layoutBoard(); placeBoard(); }
       };
       const closeBoard = () => {
-        finishBoardPointer();
+        finishScreenPointer(true); finishBoardPointer();
         const closing = board;
         board = null;
+        closing?.onClose?.();
         if (el.board.open) el.board.close();
         if (floatingId) {
           if (lastBoard === controller) { lastBoardWidth = boardWindow.width; lastBoard = null; }
@@ -1356,6 +1409,7 @@
       };
       const pageBoard = (step) => {
         if (!board) return;
+        finishScreenPointer(true);
         board.go((board.index + step + board.count) % board.count);
         updateBoard();
       };
@@ -1418,7 +1472,7 @@
       on(el.boardDots, "click", (e) => {
         const dot = e.target.closest(".board-dot");
         if (!dot || !board) return;
-        interactBoard();
+        interactBoard(); finishScreenPointer(true);
         dot.blur();
         board.go(+dot.dataset.page);
         updateBoard();
@@ -1443,7 +1497,7 @@
         open: openBoard, close: closeBoard, update: updateBoard,
         setHidden(on) {
           if (el.board.hidden === on) return;
-          finishBoardPointer();
+          finishScreenPointer(true); finishBoardPointer();
           if (on && el.board.contains(document.activeElement)) document.activeElement.blur();
           el.board.hidden = on;
           if (!on && board) {
@@ -1522,9 +1576,7 @@
       panelsHidden = on;
       for (const popup of floatingBoards) popup.setHidden(on);
     };
-    const openRecipe = () => {
-      if (!el.recipe.open) el.recipe.showModal();
-    };
+    const openRecipe = () => showRecipe(false);
     const closeRecipe = () => {
       if (el.recipe.open) el.recipe.close();
     };
@@ -1967,8 +2019,28 @@
       if (el[key] !== value) el[key] = value;
     }
   };
+  // The banner's own Sign in, which turns into Sign out, in sight without a panel open: its `data-action` is whichever of
+  // the account row's two applies, so a scene's HUD presses it as it presses the row's. Found when first asked for, as
+  // nothing here reads the document at load.
+  let accountTopNode = null;
+  const accountTop = () => accountTopNode || (accountTopNode = $("account-top"));
+  // Add an Ooga, with its note when a sign-in was refused for want of an Ooga: a scene's HUD opens it, and the director
+  // with no HUD at hand.
+  const showRecipe = (refused) => {
+    const recipe = $("recipe");
+    $("recipe-note").hidden = !refused;
+    if (!recipe.open) recipe.showModal();
+  };
   const showAccount = ({ backend, me, room, online }) => {
     const live = !!me && room === "live", words = live ? `${online} online` : ROOM_WORDS[room] || "";
+    const top = accountTop(), topTip = me ? `Signed in as ${me.display} · Sign out` : "Sign in with GitHub · needs your own Ooga";
+    if (top.hidden !== !backend) top.hidden = !backend;
+    if (top.title !== topTip) {
+      top.title = topTip;
+      top.setAttribute("aria-label", me ? "Sign out" : "Sign in with GitHub");
+      top.dataset.signed = String(!!me);
+      top.dataset.action = me ? "account-logout" : "account-login";
+    }
     writeAccount("account", "hidden", !backend);
     writeAccount("account-name", "textContent", me ? me.display : "");
     writeAccount("account-name", "hidden", !me);
@@ -2182,5 +2254,5 @@
     const clear = () => { for (const r of pool) r.li.remove(); pool.length = 0; };
     return { set, clear };
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, faceScores, signLettering, showAccount, openRecipe: showRecipe, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

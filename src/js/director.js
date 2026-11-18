@@ -61,12 +61,12 @@
   const worldClock = $("world-clock"), soundButton = $("environment-sound");
   const sound = window.BL.sound;
   const showSound = () => {
-    const label = sound.muted ? "Unmute environment sounds" : "Mute environment sounds";
-    const voice = window.BL.voice.stats;
-    soundButton.setAttribute("aria-label", label); soundButton.title = voice.enabled || voice.joining || voice.returning ? label : `${label} · M`;
-    soundButton.setAttribute("aria-pressed", String(sound.muted));
+    const voice = window.BL.voice.stats, label = sound.muted ? "Sound levels (game sounds muted)" : "Sound levels";
+    soundButton.setAttribute("aria-label", label);
+    soundButton.title = voice.enabled || voice.joining || voice.returning ? label : `${label} · M mutes game sounds`;
+    soundButton.dataset.muted = String(sound.muted);
   };
-  BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition });
+  BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition, offerCoach: params.get("coach") === "1" });
   let helpHeld = false;
   // Both panels pause the scene. A pad keeps working inside them: its Menus context reaches no scene while they show.
   const controlsHelp = BL.controlsHelp.create({ current: () => active, ready: () => !!active && !transition,
@@ -92,7 +92,8 @@
     }
   });
   const offSound = sound.subscribe(showSound);
-  soundButton.addEventListener("click", sound.toggle);
+  // The button's press opens each sound's level (sound-panel.js); M mutes.
+  const soundPanel = window.BL.soundPanel.create({ button: soundButton });
   showSound();
   // Reserve M before scene capture listeners and transition holds; editable fields keep it for typing.
   const onVoiceMuteKey = (e) => {
@@ -361,6 +362,7 @@
     for (const el of intros) el.hidden = el.dataset.intro !== next.id || place === "zipline" || place === BL.blockWire.WATCH_DECK_PLACE;
     // Arcade games share the hall's controls and start with folded social panels.
     document.body.dataset.activeScene = next.id;
+    soundPanel.close();
     document.body.classList.toggle("arcade-game", arcadeScenes.has(next.id) || next.id === "hub" && place === "cloud-hopper");
     window.BL.net.setBody(null);
     window.BL.net.setBlend(null, 0);
@@ -487,6 +489,8 @@
     let left;
     try { left = leaving.leave(); }
     finally { visitController.abort(); }
+    // Where the Ooga stood belongs to the scene just left (visit-spot.js); the next one notes its own.
+    window.BL.visitSpot.clear();
     if (DEBUG && leaving.root.children.length) throw new Error(`${leaving.id}.leave left ${leaving.root.children.length} nodes in its root`);
     if (DEBUG && left.targets) throw new Error(`${leaving.id}.leave left ${left.targets} input targets`);
     clearTweens();
@@ -734,7 +738,7 @@
         }, WELCOME_MS);
       }
       if (params.get("signin") === "contributor-required") {
-        window.BL.hud.toast("Sign-in is for contributors with their own Ooga. Keep exploring signed out.");
+        window.BL.hud.openRecipe(true);
         params.delete("signin");
         const back = new URL(location.href); back.searchParams.delete("signin");
         history.replaceState(history.state, "", back.pathname + back.search + back.hash);
@@ -1177,7 +1181,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "lab", "headquarters", "hud", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "repoIsland", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "block", "dsb", "clankers", "clankerPlay", "factory", "hangar", "bifrost", "arcade", "carnival", "npcSync", "footsteps", "timechain", "studio", "halloween" /* HALLOWEEN */]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "lab", "headquarters", "hud", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "repoIsland", "physics", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "block", "dsb", "clankers", "clankerPlay", "factory", "hangar", "bifrost", "arcade", "carnival", "npcSync", "footsteps", "timechain", "studio", "halloween" /* HALLOWEEN */]) {
       Object.defineProperty(ooga, key, { get: () => active && active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;
@@ -1217,7 +1221,7 @@
     window.BL.voice.dispose();
     window.BL.highscores.dispose();
     net.dispose();
-    offSound(); soundButton.removeEventListener("click", sound.toggle);
+    offSound(); soundPanel.dispose();
     window.removeEventListener("keydown", onVoiceMuteKey, true);
     offPad();
     padSettings.dispose();

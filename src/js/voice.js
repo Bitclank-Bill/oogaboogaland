@@ -47,7 +47,7 @@
 // Where a voice's level goes: with Web Audio (`GAIN_PLAY`), each voice plays through a gain fed by its
 // speaking meter's own source, in the context the Join click made, while its element stays muted and only keeps the
 // stream flowing; the gain carries the receive level, the hearing range, local volume and mute alike. A limiter after
-// it protects boosted peaks; at ordinary volume its ratio is 1, leaving the voice unchanged. The output never joins
+// it protects boosted peaks: its ratio is 1, leaving the voice unchanged, unless the combined gain is above 1. The output never joins
 // the page-wide environment mute (sound.js), which voice has never joined. Its nodes are made when a voice's track lands and disconnected when the voice is dropped, a restart or a stop (`unplug`).
 // Safari suspends or interrupts that context (a call, another app), which silences every voice, so then the voices
 // count as blocked, as a refused element play does, and the next tap or key wakes it (`wake`). `fades` says whether a
@@ -64,7 +64,7 @@
 // the voice comes back the moment the room confirms), `audience` counts the public listeners the room admitted, who keep
 // an outdoor speaker from being alone with no other player near, and `sources` names the bodyless public speakers the room
 // lists to be heard, who play at full whatever the hearing range or a crossing, as a voice link does.
-// Exports support, probe, ICE_BLOCKED, enable, listen, dropMic, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, setMuted, toggle, leave, restart, stop,
+// Exports support, probe, ICE_BLOCKED, enable, listen, dropMic, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, setPlayersLevel, setMuted, toggle, leave, restart, resumed, stop,
 // setPeers, setOutdoor, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, setKeyFilter, falloff, fades,
 // RADIUS_MIN, RADIUS_MAX and stats.
 (() => {
@@ -72,6 +72,30 @@
   const BL = window.BL = window.BL || {};
   const ICE = { iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }], bundlePolicy: "max-bundle" };
   const TURN_TLS = "turns:turn.cloudflare.com:443?transport=tcp";
+  // WebKit on an IPv6-only mobile network (NAT64) reaches only the first IPv4 address a connection's UDP socket sends
+  // to (bugs.webkit.org 330921): with a STUN server listed that is the STUN server, and the SFU never hears the page.
+  // The SFU needs no address from STUN, since it answers the page's own checks from wherever they come. So a connection
+  // that never came up is tried next without the STUN server (`bare`), one that never came up without it is tried with
+  // it again, and the way that last worked is kept for this browser. `unreached(was)` takes the way the connection that
+  // never came up was built, so two connections failing the same way change it once.
+  const BARE_KEY = "oogaboogaland.voice-bare";
+  let bare = false;
+  try {
+    bare = localStorage.getItem(BARE_KEY) === "1";
+  } catch {
+    // Storage off: found again each page.
+  }
+  const unreached = (was) => {
+    if (bare !== was) return;
+    bare = !was;
+    try {
+      if (bare) localStorage.setItem(BARE_KEY, "1");
+      else localStorage.removeItem(BARE_KEY);
+    } catch {
+      // Storage off: this page only.
+    }
+  };
+  const shaped = (config) => bare ? { ...config, iceServers: config.iceServers.filter((server) => server !== ICE.iceServers[0]) } : config;
   const ICE_GATHER_MS = 1500, RELAY_GATHER_MS = 3500, CONNECT_MS = 10000, RETRY_MS = 2000, SLOW_RETRY_MS = 15000;
   // A connection that drops after it was up gets this long to come back on its own before voice starts over.
   const DROP_GRACE_MS = 5000;
@@ -89,6 +113,8 @@
   const KEY_FILTER_KEY = "oogaboogaland.voice-key-filter";
   const KEY_FILTER_URL = BL.micFilter && /^\/js\/mic-filter-[0-9a-f]{16}\.js$/.test(BL.micFilter.url)
     && typeof window.AudioWorkletNode === "function" && typeof window.AudioContext === "function" ? BL.micFilter.url : "";
+  // Every other player's voice at once (the speaker button's panel, sound-panel.js), for this browser on every visit.
+  const PLAYERS_KEY = "oogaboogaland.voice-players-level";
   // Gains support a modest +6 dB boost on desktop as well as iOS, whose elements ignore their volume.
   // Without Web Audio, keep the element path and expose only the volume range it can actually play.
   const volumeProbe = document.createElement("audio");
@@ -99,9 +125,12 @@
   const subs = new Map();
   // Each wanted voice's publication count from the room: a new count is a microphone published again.
   const wantedGen = new Map();
-  const stats = { enabled: false, passive: false, muted: false, alone: false, micWanted: false, returning: false, speaking: false, joining: false, peers: 0, hearing: 0, error: "", micError: "", publishing: false, blocked: false, ready: false, preflight: false, preflightPending: false, permission: "unknown", deviceId: "", receiveLevel: 1, micLevel: 0, receiveState: "off", radius: 0, held: false, reconnecting: false, keyFilter: false, keyFilterOffered: !!KEY_FILTER_URL };
+  const stats = { enabled: false, passive: false, muted: false, alone: false, micWanted: false, returning: false, speaking: false, joining: false, peers: 0, hearing: 0, error: "", micError: "", publishing: false, blocked: false, ready: false, preflight: false, preflightPending: false, permission: "unknown", deviceId: "", receiveLevel: 1, playersLevel: 1, micLevel: 0, receiveState: "off", radius: 0, held: false, reconnecting: false, yielded: 0, keyFilter: false, keyFilterOffered: !!KEY_FILTER_URL };
   const samples = new Float32Array(SAMPLES);
   const preferences = new Map();
+  const duels = BL.duelListening.create();
+  // Independent of saved per-player mutes: the panel feeds room duel events even while its tab is closed.
+  stats.muteDuels = false;
   let preferenceOwner = 0;
   let mic = null, pubPc = null, subPc = null, desired = [], queue = Promise.resolve();
   let listenerCount = null;
@@ -137,8 +166,9 @@
   const syncPreferences = () => {
     const me = BL.net.state.me, owner = me && validId(me.id) ? me.id : 0;
     if (owner === preferenceOwner) return;
-    preferenceOwner = owner; preferences.clear();
+    preferenceOwner = owner; preferences.clear(); duels.clear(); stats.muteDuels = false;
     if (owner) try {
+      stats.muteDuels = localStorage.getItem(PREF_KEY + owner + ".duels") === "true";
       const raw = localStorage.getItem(PREF_KEY + owner);
       const saved = raw && raw.length <= 65536 ? JSON.parse(raw) : null;
       if (Array.isArray(saved)) for (const item of saved.slice(0, PREF_MAX)) {
@@ -167,6 +197,8 @@
   };
   try {
     stats.radius = radiusOf(localStorage.getItem(RADIUS_KEY));
+    const saved = localStorage.getItem(PLAYERS_KEY), level = Number(saved);
+    if (saved !== null && level >= 0 && level <= 1) stats.playersLevel = level;
   } catch {
     // Storage is off: no limit.
   }
@@ -365,14 +397,16 @@
   };
   const localVolume = (id) => preferences.get(id)?.volume ?? 1;
   // Overheard voices are part of the place, so the environment's mute silences them; a joined voice plays regardless.
-  const playVolume = (s) => stats.receiveLevel * s.near * s.inRange * localVolume(s.id) * (passive && BL.sound.muted ? 0 : 1);
+  const playVolume = (s) => stats.receiveLevel * stats.playersLevel * s.near * s.inRange * localVolume(s.id) * (passive && BL.sound.muted ? 0 : 1);
+  // The limiter compresses peaks only while the combined level is a boost over 100%.
+  const limitRatio = (value) => value > 1 ? 20 : 1;
   // A voice's level where it plays: its element's volume, or on GAIN_PLAY its gain (nothing until its track lands), which
   // also carries whether it is heard at all.
   const setLevel = (s, immediate = false) => {
     if (!GAIN_PLAY) s.el.volume = playVolume(s);
     else if (s.gain) {
       const value = s.on ? playVolume(s) : 0, param = s.gain.gain;
-      s.limiter.ratio.value = localVolume(s.id) > 1 ? 20 : 1;
+      s.limiter.ratio.value = limitRatio(value);
       if (immediate) { param.cancelScheduledValues(audio.currentTime); param.setValueAtTime(value, audio.currentTime); }
       else param.setTargetAtTime(value, audio.currentTime, GAIN_TAU);
     }
@@ -431,7 +465,7 @@
   const plug = (s) => {
     s.gain = audio.createGain(); s.limiter = audio.createDynamicsCompressor();
     s.gain.gain.value = s.on ? playVolume(s) : 0;
-    s.limiter.threshold.value = -1; s.limiter.knee.value = 0; s.limiter.ratio.value = localVolume(s.id) > 1 ? 20 : 1;
+    s.limiter.threshold.value = -1; s.limiter.knee.value = 0; s.limiter.ratio.value = limitRatio(s.gain.gain.value);
     s.limiter.attack.value = 0.003; s.limiter.release.value = 0.1;
     s.meter.source.connect(s.gain);
     s.gain.connect(s.limiter); s.limiter.connect(audio.destination);
@@ -456,7 +490,7 @@
   const heard = (id) => {
     if (!preferenceOwner || !desired.includes(id)) return false;
     const sub = subs.get(id);
-    return (!sub || sub.gen === wantedGen.get(id)) && !preferences.get(id)?.muted;
+    return (!sub || sub.gen === wantedGen.get(id)) && !preferences.get(id)?.muted && !mutedByDuel(id);
   };
 
   const api = async (op, body, token = lifecycle) => {
@@ -478,7 +512,9 @@
   };
 
   // Keep the direct candidates. A configured Worker can add a short-lived TLS relay to both peers.
-  let relayConfig = ICE, relayRequest = null, relayTimer = 0, relayProbe = null;
+  // `relayKept`: the credentials last minted and when they run out, which a restart uses again, so a recovery's tries
+  // never spend the Worker's limit on new ones and end with no relay.
+  let relayConfig = ICE, relayRequest = null, relayTimer = 0, relayProbe = null, relayKept = null;
   const relayRenewals = [];
   const scheduleRelay = (token, ttl) => {
     window.clearTimeout(relayTimer);
@@ -501,9 +537,12 @@
       if (!server || server.urls !== TURN_TLS || !server.username || !server.credential || !Number.isInteger(ttl) || ttl < 120 || ttl > 172800) {
         if (sample) sample.status = "credentials-unavailable";
         if (relayConfig !== ICE) relayTimer = window.setTimeout(() => renewRelay(token, true), 60000);
+        // No relay yet: the next connection asks again instead of going without one for as long as voice lasts.
+        else relayRequest = null;
         return relayConfig;
       }
       const config = { ...ICE, iceServers: [...ICE.iceServers, server] };
+      relayKept = { config, until: Date.now() + ttl * 1000 };
       // setConfiguration alone does not replace an established TURN allocation. Rebuild both
       // connections before expiry. Mint credentials while the old audio still runs, then use
       // the ordinary recovery path (one publication per account) with its preserved mute.
@@ -520,7 +559,11 @@
   };
   const iceFor = (token) => {
     if (!BL.net.state.voiceTurn) return ICE;
-    if (!relayRequest) renewRelay(token);
+    if (!relayRequest) {
+      const left = relayKept ? Math.floor((relayKept.until - Date.now()) / 1000) : 0;
+      if (left > 120) { relayConfig = relayKept.config; relayRequest = Promise.resolve(relayConfig); scheduleRelay(token, left); }
+      else renewRelay(token);
+    }
     return relayRequest;
   };
 
@@ -528,13 +571,15 @@
   // publishes the microphone again (a new count, so every listener pulls it anew) and pulls every voice again.
   // Why the restart: said with its `leave`, for the room's inspector (worker/src/inspect-report.js).
   let dropWhy = "";
-  const watch = (pc) => {
+  const watch = (pc, was = bare) => {
+    let cameUp = pc.connectionState === "connected";
     pc.addEventListener("connectionstatechange", () => {
       if (pc !== pubPc && pc !== subPc) return;
       if (pc === subPc) { stats.receiveState = pc.connectionState; emit(); }
       window.clearTimeout(dropTimers.get(pc));
       dropTimers.delete(pc);
-      if (pc.connectionState === "failed") { dropWhy = "failed"; restart(); }
+      if (pc.connectionState === "connected") cameUp = true;
+      if (pc.connectionState === "failed") { if (!cameUp) unreached(was); dropWhy = "failed"; restart(); }
       else if (pc.connectionState === "disconnected") {
         // A network change (another Wi-Fi, Wi-Fi to cellular) shows here first, seconds before the room's socket is
         // known dead: the socket is asked now, so a dead one is replaced at once and voice comes back with its welcome.
@@ -558,7 +603,8 @@
       let pc = null;
       try {
         await api("session", { kind: "pub" }, token); valid();
-        pc = new RTCPeerConnection(config);
+        const was = bare;
+        pc = new RTCPeerConnection(shaped(config));
         pubPc = pc;
         const tx = pc.addTransceiver(sendTrack(), { direction: "sendonly" });
         pubSender = tx.sender;
@@ -567,7 +613,8 @@
         await gathered(pc, config !== ICE); valid();
         const pub = await api("publish", { sdp: pc.localDescription.sdp, mid: tx.mid }, token); valid();
         await pc.setRemoteDescription(pub.sessionDescription); valid();
-        await connected(pc); valid();
+        const own = pc;
+        await connected(pc).catch((err) => { if (pubPc === own) unreached(was); throw err; }); valid();
         watch(pc);
         await api("live", null, token); valid();
         return;
@@ -666,9 +713,10 @@
     const s = support(), missing = s.secure ? s.webrtc ? "" : "this browser has no WebRTC" : "voice needs a secure page (https)";
     if (missing) { stats.error = missing; emit(); return; }
     activate();
+    // Already in voice, or joining it: ending the overheard session here would cancel that join and leave it joining.
+    if (stats.enabled || stats.joining) return;
     // A session the visitor asked for replaces the overheard one, which the room treats differently.
     if (passive || passiveOpening) endPassive();
-    if (stats.enabled || stats.joining) return;
     const token = lifecycle;
     stats.joining = true; stats.error = ""; emit();
     try {
@@ -739,6 +787,19 @@
     const level = Number(value);
     if (!Number.isFinite(level)) return;
     stats.receiveLevel = Math.max(0, Math.min(1, level));
+    for (const s of subs.values()) setLevel(s);
+    emit();
+  };
+  // Every other player's voice at once, from 0 to 1, on top of each one's own volume; kept in this browser.
+  const setPlayersLevel = (value) => {
+    const level = Math.max(0, Math.min(1, Number(value) || 0));
+    if (level === stats.playersLevel) return;
+    stats.playersLevel = level;
+    try {
+      localStorage.setItem(PLAYERS_KEY, String(level));
+    } catch {
+      // Storage off: the level lasts this page.
+    }
     for (const s of subs.values()) setLevel(s);
     emit();
   };
@@ -856,9 +917,9 @@
     const config = await iceFor(token); current(token);
     await api("session", overheard ? { kind: "sub", passive: true } : { kind: "sub" }, token);
     current(token);
-    const pc = new RTCPeerConnection(config);
+    const was = bare, pc = new RTCPeerConnection(shaped(config));
     subPc = pc; stats.receiveState = "idle";
-    watch(pc);
+    watch(pc, was);
     pc.addEventListener("track", (e) => {
       if (token !== lifecycle || pc !== subPc) return;
       syncPreferences();
@@ -1051,7 +1112,7 @@
   // Leaving voice for good (Leave voice, sign-out, another tab took over): the microphone is released too.
   const stop = () => {
     lifecycle++; micGeneration++; abortRequests(); microphoneWanted = stats.micWanted = false;
-    disarm(); rejoining = unmuteAsked = stats.returning = false;
+    disarm(); rejoining = unmuteAsked = stats.returning = false; relayKept = null;
     endRecovery();
     const was = up() || stats.joining || !!pubPc || !!subPc;
     disarmPassive();
@@ -1157,8 +1218,12 @@
     dropWhy = "";
     // The account began speaking from Ooga Chat while this page was away: that voice stands, and this page's waits for
     // the visitor's word (voice-handoff.js), as a page out of voice does.
-    if (welcomed && BL.net.state.voiceElsewhere && (stats.enabled || recover)) { stop(); elsewhere(); return; }
-    if (!stats.enabled && !recover) {
+    if (welcomed && BL.net.state.voiceElsewhere && (stats.enabled || recover)) { stop(); elsewhere(); stats.yielded++; emit(); return; }
+    // A join or a listen under way is in voice too, once it may have asked the room for anything (a join captures the
+    // microphone before its first call): its sessions may be the old connection's, which a new room record no longer
+    // holds, so it goes on through the recovery rather than finishing as a publication nobody can pull.
+    const underway = stats.joining && (!microphoneWanted || !!mic);
+    if (!stats.enabled && !recover && !underway) {
       // An overheard session that dropped, or belonged to the connection before this one, is opened afresh.
       if (passive || passiveOpening) { lifecycle++; abortRequests(); teardown(); passiveOpening = false; emit(); }
       if (welcomed) resume();
@@ -1187,6 +1252,15 @@
       if (token !== lifecycle || recover !== r) return;
     }
     await attempt(token);
+  };
+
+  // The room held this page's record over a lost socket and handed it back (net.js `resume`): its sessions are still the
+  // room's and every listener still pulls this microphone. Voice whose connections all stayed up stays as it is, the
+  // room's next list applied as any other; anything else comes back as after any welcome.
+  const resumed = () => {
+    const still = (pc) => !pc || pc.connectionState === "connected";
+    if (up() && !recover && !stats.joining && !passiveOpening && !BL.net.state.voiceElsewhere && subPc && still(subPc) && still(pubPc)) return;
+    restart(true);
   };
 
   // Whom the room wants heard, and each one's publication count (`gens`; none from an older room).
@@ -1329,6 +1403,19 @@
     if (Number.isFinite(volume)) setPreference(player, null, Math.max(0, Math.min(VOLUME_MAX, volume)));
   };
   const volumeOf = (player) => { syncPreferences(); return localVolume(playerId(player)); };
+  const mutedByDuel = (player) => stats.muteDuels && duels.muted(playerId(player), preferenceOwner);
+  const refreshDuels = () => {
+    for (const [id, s] of subs) hear(s, heard(id));
+    emit();
+  };
+  const duel = (msg) => { if (duels.apply(msg)) refreshDuels(); };
+  const setMuteDuels = (on) => {
+    syncPreferences();
+    if (!preferenceOwner || stats.muteDuels === !!on) return;
+    stats.muteDuels = !!on;
+    try { localStorage.setItem(PREF_KEY + preferenceOwner + ".duels", String(stats.muteDuels)); } catch { /* This visit only. */ }
+    refreshDuels();
+  };
 
   const subscribe = (fn) => {
     subscribers.add(fn);
@@ -1340,6 +1427,7 @@
 
   const dispose = () => {
     unsubscribeAccount();
+    duels.clear();
     stop();
     subscribers.clear();
   };
@@ -1347,8 +1435,8 @@
   // For the feed panel and debugging: whom the room wants heard, whom this page pulled, both connections, where voices play
   // and the context's state.
   const inspect = () => ({ desired: desired.slice(), pulled: [...subs.keys()], publish: pubPc ? pubPc.connectionState : "none", receive: subPc ? subPc.connectionState : "none",
-    playback: GAIN_PLAY ? "gain" : "element", context: audio ? audio.state : "none",
+    playback: GAIN_PLAY ? "gain" : "element", context: audio ? audio.state : "none", relay: relayConfig !== ICE, bare,
     relayRenewals: relayRenewals.map(sample => ({ ...sample })) });
 
-  BL.voice = { support, probe, ICE_BLOCKED, warnLeaving, hangUp, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, leave, restart, stop, setPeers, setOutdoor, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, setKeyFilter, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
+  BL.voice = { support, probe, ICE_BLOCKED, warnLeaving, hangUp, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, setPlayersLevel, enable, listen, dropMic, setMuted, toggle, leave, restart, resumed, stop, setPeers, setOutdoor, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, duel, setMuteDuels, mutedByDuel, setRadius, setKeyFilter, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
 })();

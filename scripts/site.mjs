@@ -3,7 +3,8 @@
 // route in src/js/routes.js gets a real page of its own: oogarally.html answers /oogarally with a 200, its own
 // title, description, canonical address and preview card, and the router opens the rally from the path.
 // Each is the whole built page with its own head. 404.html sends a miscased or slash-ended route
-// (/OogaRally/) to its address and anything else home; sitemap.xml and robots.txt list the routes, llms.txt
+// (/OogaRally/) to its address and anything else home; map.html is the World Map, a page of its own
+// (scripts/distribution-map.mjs); sitemap.xml and robots.txt list the routes and the map, llms.txt
 // points an AI asked to make someone a character to docs/make-your-ooga.md, and cards/ holds the card images from `npm run cards`; a route without an `image` uses home's. Modules tagged
 // `data-defer` move out of the pages into js/<group>-<hash>.js (scripts/distribution-modules.mjs), fetched when needed.
 // The keyboard noise filter's worklet goes out as js/mic-filter-<hash>.js (scripts/distribution-mic.mjs).
@@ -21,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { externalizeAudio } from "./distribution-audio.mjs";
 import { stageIcons } from "./distribution-icons.mjs";
+import { MAP_ENTRY, stageMap } from "./distribution-map.mjs";
 import { PICTURE_MODULES, externalizeModules, externalizePage, externalizePictures } from "./distribution-modules.mjs";
 import { writeTerrainWorker } from "./distribution-terrain.mjs";
 import { writeMicFilter } from "./distribution-mic.mjs";
@@ -48,6 +50,8 @@ for (const source of mediaContext.BL.studioMedia.sources) for (const path of [so
   mediaFiles.add(path.slice(7));
 }
 for (const file of mediaFiles) copyFileSync(join(root, "src/media", file), join(out, "media", file));
+// Lecture recordings are never staged: the Worker serves /media/lectures/* from R2 (worker/src/lecture-audio.js), and
+// `npm run serve` answers them itself (scripts/serve.mjs).
 
 let shell = readFileSync(join(root, "oogaboogaland.html"), "utf8");
 // Search crawlers and browsers need fetchable favicon URLs: the portable page's exact PNG bytes at stable paths, with
@@ -96,6 +100,8 @@ for (const entry of list) {
   if (!existsSync(image)) throw new Error(`cards/${entry.image}.jpg is missing; run npm run cards`);
   copyFileSync(image, join(out, "cards", `${entry.image}.jpg`));
 }
+// The World Map (scripts/distribution-map.mjs): a page of its own, not the game's, at /map.
+stageMap(root, out, head(MAP_ENTRY));
 writeFileSync(join(out, "404.html"), `<!doctype html>
 <html lang="en">
 <head>
@@ -109,7 +115,7 @@ writeFileSync(join(out, "404.html"), `<!doctype html>
 `);
 writeFileSync(join(out, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${list.map((entry) => `  <url><loc>${urlOf(entry)}</loc></url>`).join("\n")}
+${[...list, MAP_ENTRY].map((entry) => `  <url><loc>${urlOf(entry)}</loc></url>`).join("\n")}
 </urlset>
 `);
 writeFileSync(join(out, "robots.txt"), `User-agent: *\nAllow: /\nSitemap: ${site}/sitemap.xml\n`);
@@ -122,8 +128,13 @@ writeFileSync(join(out, "llms.txt"), `# ${name}
 
 Anyone can have an Ooga of their own. If someone asks you to make them a character in ${name}, follow this guide in order: ${repo}/blob/rock/docs/make-your-ooga.md (as plain text: https://raw.githubusercontent.com/OogaBoogaX/oogaboogaland/rock/docs/make-your-ooga.md). It covers signing in with GitHub, the questions to ask and the pictures to ask for, showing the Ooga on their own computer in the character studio, and sending it as a pull request from their own account.
 
+What it takes: a free GitHub account, and an agent that can run commands on their computer (git, GitHub's gh and Node 22 or newer; the guide installs what is missing with their OK). An assistant that cannot run commands can still interview them and write the file, which they can add from the GitHub website.
+
+What happens after: a plain Ooga is merged the day after it is sent and a custom one when a maintainer has read it, and it appears on ${site} with the site's next deploy. From then on the sign-in button at the top right of ${site} (an arrow going in at a door) signs them in with GitHub and hands them their own Ooga to drive. Signing in needs an Ooga first: an account without one is sent back signed out, and can still explore.
+
 ## More
 
+- [The World Map](${site}/map): every place in the world, how each is reached, and its address
 - [The repository](${repo})
 - [Rules for agents changing the game](${repo}/blob/rock/AGENTS.md)
 `);
@@ -136,4 +147,4 @@ if (headers > 0) {
   writeFileSync(join(out, "_headers"), `${rules}\n${files.map((path) => `\n${path}\n  Cache-Control: public, max-age=31536000, immutable`).join("")}\n`);
 }
 const kb = (n) => `${(n / 1024).toFixed(0)} KB`;
-console.log(`staged ${out}: ${list.length} pages of ${kb(shell.length)}, ${list.filter((entry) => entry.image).length} cards, sitemap.xml, robots.txt, llms.txt`);
+console.log(`staged ${out}: ${list.length} pages of ${kb(shell.length)}, ${list.filter((entry) => entry.image).length} cards, map.html, sitemap.xml, robots.txt, llms.txt`);
