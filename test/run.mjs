@@ -21140,8 +21140,8 @@ scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=
   }
 }] });
 scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
-  name: "Merge Rock footing: the full bridge deck crosses both ways and airborne totems remain solid through camera fading",
-  why: "regression: bridge posts snagged walkers and its collision slab stopped short of the curved landing; walk-through totems also lost their landing surfaces",
+  name: "Merge Rock footing: the bridge deck crosses both ways between solid parapets, and airborne totems remain solid through camera fading without holding a body that touches them",
+  why: "regression: bridge posts snagged walkers and its collision slab stopped short of the curved landing; its flags shared the terrace's plane and flickered; walk-through totems also lost their landing surfaces, and held a body perched or risen inside one",
   run: async (b) => {
     const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks; })()", 60000);
     if (!ready) throw new Error("Totem chunks did not finish building");
@@ -21150,13 +21150,15 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
       B.pilot.possess(B.cavemen.get('portlandhodl')); const actor = B.pilot.player;
       B.pilot.navigate({ position: { x: 0, y: site.spot.y, z: site.spot.z + M.bridge().from }, yaw: Math.PI, pitch: 0.3, dist: 4 });
       B.advance(0.1, 1 / 60);
-      const bridge = M.bridge(), failures = [], paths = [], start = site.spot.z + bridge.from - 0.2, end = site.spot.z - M.PLAN.edge + 0.3;
-      for (const across of [-bridge.width / 2 + 0.05, -1.8, 0, 1.8, bridge.width / 2 - 0.05]) for (const reverse of [false, true]) {
-        let x = site.spot.x + across, z = reverse ? end : start, y = site.spot.y + M.LIP.rise;
+      const bridge = M.bridge(), walls = bridge.walls, failures = [], paths = [], start = site.spot.z + bridge.from - 0.2, end = site.spot.z - M.PLAN.edge + 0.3;
+      // Between the parapets, a hair off either one, the whole way; and past their end, the deck's full width to the lip.
+      const hug = walls.inner - 0.31, open = site.spot.z + walls.to + 0.35;
+      for (const [across, begin] of [[-hug, start], [-0.7, start], [0, start], [0.7, start], [hug, start], [-bridge.width / 2 + 0.05, open], [bridge.width / 2 - 0.05, open]]) for (const reverse of [false, true]) {
+        let x = site.spot.x + across, z = reverse ? end : begin, y = site.spot.y + M.LIP.rise;
         actor.hop = actor.hopV = 0;
         actor.root.position.x = x; actor.root.position.y = y + actor.baseY; actor.root.position.z = z;
         y = S.supportAt(x, z, y, y, actor);
-        const to = reverse ? start : end, count = Math.ceil(Math.abs(to - z) / 0.15), from = z;
+        const to = reverse ? begin : end, count = Math.ceil(Math.abs(to - z) / 0.15), from = z;
         for (let k = 1; k <= count; k++) {
           const nz = from + (to - from) * k / count;
           actor.root.position.x = x; actor.root.position.y = y + actor.baseY; actor.root.position.z = z;
@@ -21166,6 +21168,30 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
         }
         paths.push({ across, reverse, reached: Math.abs(z - to) < 0.01 });
       }
+      // A parapet stops a walker, takes a body that comes down on it, and lets it walk off again.
+      const mid = site.spot.z + (walls.from + walls.to) / 2, deck = site.spot.y, wallX = site.spot.x + (walls.inner + bridge.width / 2) / 2;
+      let reach = 0;
+      actor.hop = actor.hopV = 0; actor.root.position.y = deck + actor.baseY; actor.root.position.z = mid;
+      for (let k = 1; k <= 40; k++) {
+        actor.root.position.x = site.spot.x + reach;
+        if (!S.walkable(site.spot.x + reach, mid, site.spot.x + k * 0.06, mid, deck, actor.bodyHeight, actor)) break;
+        reach = k * 0.06;
+      }
+      actor.root.position.x = wallX; actor.root.position.y = deck + 3 + actor.baseY; actor.hopV = -1;
+      const wallTop = S.supportAt(wallX, mid, deck + 3, deck + 3, actor) - deck;
+      actor.hop = actor.hopV = 0; actor.root.position.y = deck + wallTop + actor.baseY;
+      let offWall = wallX, wallOff = true;
+      for (let k = 1; k <= 20; k++) {
+        const nx = wallX - 1.2 * k / 20;
+        actor.root.position.x = offWall;
+        wallOff &&= S.walkable(offWall, mid, nx, mid, deck + wallTop, actor.bodyHeight, actor);
+        offWall = nx;
+      }
+      const wall = { reach, inner: walls.inner, top: walls.top, wallTop, wallOff, drop: wallTop - (S.supportAt(offWall, mid, deck + wallTop, deck + wallTop, actor) - deck),
+        lanterns: bridge.lamps.length, heights: new Set(bridge.lamps.map(l => l.y.toFixed(3))).size };
+      // No face of the bridge lies in the terrace's plane where the deck rests on the main island.
+      const stone = bridge.stone;
+      const coplanar = stone.faces.filter(f => f.i.every(i => Math.abs(stone.verts[i * 3 + 1]) < 1e-4) && f.i.some(i => stone.verts[i * 3 + 2] < bridge.from + 1.25)).length;
       const t = M.plan().totems.find(t => t.repo === 'bitcoin/bitcoin'), x = site.spot.x + t.x, z = site.spot.z + t.z;
       actor.root.position.x = x - t.L.reach - 1; actor.root.position.y = site.spot.y + actor.baseY; actor.root.position.z = z;
       actor.hop = actor.hopV = 0;
@@ -21173,6 +21199,9 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
       const airY = site.spot.y + t.L.apex * 0.6;
       actor.root.position.y = airY + actor.baseY; actor.hop = 1;
       const airBlocked = !S.flyable(x - t.L.reach - 1, z, x + t.L.reach + 1, z, airY, actor.bodyHeight, actor);
+      // A body found inside the carving in the air is not held there.
+      actor.root.position.x = x;
+      const insideFree = S.flyable(x, z, x + 0.2, z, airY, actor.bodyHeight, actor);
       const high = site.spot.y + t.L.apex + 2;
       actor.root.position.x = x; actor.root.position.y = high + actor.baseY; actor.hopV = -1;
       const landing = S.supportAt(x, z, high, high, actor);
@@ -21189,10 +21218,11 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
       }
       const offFloor = S.supportAt(offX, z, landing, landing, actor);
       site.afterCamera(H.camera, false);
-      return { paths, failures, groundThrough, airBlocked, landing, fadedLanding, standing, canWalkOff, offFloor, floor: site.spot.y, apex: t.L.apex };
+      return { paths, failures, wall, coplanar, groundThrough, airBlocked, insideFree, landing, fadedLanding, standing, canWalkOff, offFloor, floor: site.spot.y, apex: t.L.apex };
     })()`);
-    record("Merge Rock footing: full-width bridge crossings stay supported, ground movement passes totems, and airborne collision/landing survives fading and standing",
-      r.paths.every(p => p.reached) && !r.failures.length && r.groundThrough && r.airBlocked && r.landing > r.floor + r.apex / 2 && r.fadedLanding === r.landing && r.standing === r.landing && r.canWalkOff && r.offFloor < r.landing - 1,
+    record("Merge Rock footing: bridge crossings stay supported between parapets that stop walkers and carry them on top, ground movement passes totems, and airborne collision/landing survives fading and standing without trapping",
+      r.paths.every(p => p.reached) && !r.failures.length && r.wall.reach > r.wall.inner - 0.45 && r.wall.reach < r.wall.inner - 0.29 && Math.abs(r.wall.wallTop - r.wall.top) < 1e-6 && r.wall.wallOff && r.wall.drop > 0.5
+        && r.wall.lanterns === 8 && r.wall.heights === 1 && !r.coplanar && r.insideFree && r.groundThrough && r.airBlocked && r.landing > r.floor + r.apex / 2 && r.fadedLanding === r.landing && r.standing === r.landing && r.canWalkOff && r.offFloor < r.landing - 1,
       JSON.stringify(r));
   }
 }] });
