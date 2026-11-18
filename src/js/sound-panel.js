@@ -9,7 +9,7 @@
     const sound = BL.sound, voice = BL.voice, $ = (id) => document.getElementById(id);
     const panel = $("sound-mixer"), list = $("sound-mixer-list"), empty = $("sound-mixer-empty"), toggle = $("sound-mixer-toggle");
     const rows = new Map();
-    let shown = [], offWatch = null, offVoice = null;
+    let shown = [], offWatch = null, offVoice = null, offNet = null;
     // A row is kept once made: at most one a channel for the page life.
     const makeRow = (id, label, set) => {
       const el = document.createElement("div"), name = document.createElement("label"), range = document.createElement("input"), value = document.createElement("output");
@@ -64,7 +64,8 @@
       place();
       panel.hidden = false;
       button.setAttribute("aria-expanded", "true");
-      offWatch = sound.watch(render); offVoice = voice.subscribe(render);
+      // A sign-in or sign-out while open shows or hides the players' row at once.
+      offWatch = sound.watch(render); offVoice = voice.subscribe(render); offNet = BL.net ? BL.net.subscribe(render) : null;
       render();
       window.addEventListener("resize", place);
       document.addEventListener("pointerdown", onOutside, true);
@@ -75,7 +76,8 @@
       if (panel.contains(document.activeElement)) document.activeElement.blur();
       panel.hidden = true;
       button.setAttribute("aria-expanded", "false");
-      offWatch(); offVoice(); offWatch = offVoice = null;
+      offWatch(); offVoice(); if (offNet) offNet();
+      offWatch = offVoice = offNet = null;
       window.removeEventListener("resize", place);
       document.removeEventListener("pointerdown", onOutside, true);
     };

@@ -92,7 +92,7 @@
     }
   });
   const offSound = sound.subscribe(showSound);
-  // The button's press mutes and its long press opens each sound's level (sound-panel.js).
+  // The button's press opens each sound's level (sound-panel.js); M mutes.
   const soundPanel = window.BL.soundPanel.create({ button: soundButton });
   showSound();
   // Reserve M before scene capture listeners and transition holds; editable fields keep it for typing.
