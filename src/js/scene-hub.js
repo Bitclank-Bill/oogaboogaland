@@ -2108,8 +2108,9 @@
     const spots = [[25, 260], [95, 330], [160, 240], [215, 300], [290, 280], [340, 360]];
     spots.forEach(([deg, r], i) => {
       const p = polar(deg, r);
-      // Scenery on the horizon: no outlines, sight tests or cover ever need it.
-      const node = createNode({ geometry: BL.dressing.islet(i % 3), position: { x: p.x, y: SEA_Y - 2, z: p.z }, rotation: { x: 0, y: deg * 0.7, z: 0 }, sightHidden: true });
+      // Scenery on the horizon: no outlines, sight tests or cover ever need it. The clear twin, so the clear-air
+      // haze leaves them their own colours against the sea, dark at night as the water round them is.
+      const node = createNode({ geometry: BL.dressing.islet(i % 3, true), position: { x: p.x, y: SEA_Y - 2, z: p.z }, rotation: { x: 0, y: deg * 0.7, z: 0 }, sightHidden: true });
       addChild(root, node);
       placed.push(node);
     });
@@ -4420,6 +4421,22 @@
     const ground = Math.max(island.supportAt(p.x, p.z, feet, 0, ABYSS_FLOOR, PLAYER_RADIUS), solids.supportAt(p.x, p.z, feet, 0, PLAYER_RADIUS));
     return feet > ground + 0.08;
   };
+  // Carvings stop only a body that comes at them clear. One already touching a carving where the frame finds it
+  // (perched with its rim under a brow, risen into one from the ground, turned into one by the island) is never
+  // held by it, so whoever lands among them can always walk out; its landing surfaces and headroom stay.
+  const TOTEM_TOUCH = new WeakMap();
+  let totemFrame = 0;
+  const totemsBlock = actor => {
+    if (!airborneTotems(actor)) return false;
+    let touch = TOTEM_TOUCH.get(actor);
+    if (!touch) TOTEM_TOUCH.set(actor, touch = { frame: -1, x: 0, y: 0, z: 0, clear: true });
+    const p = actor.root.position;
+    if (touch.frame !== totemFrame || touch.x !== p.x || touch.y !== p.y || touch.z !== p.z) {
+      touch.frame = totemFrame; touch.x = p.x; touch.y = p.y; touch.z = p.z;
+      touch.clear = totemSolids.clearAt(p.x, p.y - (actor.baseY || 0), p.z, PLAYER_RADIUS, (actor.bodyHeight || 1.5) + Math.max(0, actor.viewLift || 0));
+    }
+    return touch.clear;
+  };
   const propSupportAt = (x, z, y, rise, actor, ignoreClanker = false, passTraffic = false) => {
     const npc = actor?.contributor && actor !== pilot?.player;
     let floor = solids ? solids.supportAt(x, z, y, rise, PLAYER_RADIUS, null, null, passTraffic, npc ? npcTreeSupportAllowed : null, passTraffic) : -Infinity;
@@ -4473,7 +4490,7 @@
     passTraffic = rageThrown(actor), passRageProps = passTraffic) => {
     if (solids && !(escaping ? solids.segmentClear(x, y, z, toX, toY, toZ, radius, height, null, radius, height, false, false, true, passRageProps)
       : solids.segmentClear(x, y, z, toX, toY, toZ, radius, height, null, toRadius, toHeight, passTraffic, false, false, passRageProps))) return false;
-    if (airborneTotems(actor) && !totemSolids.segmentClear(x, y, z, toX, toY, toZ, radius, height, null, toRadius, toHeight, false, false, escaping)) return false;
+    if (totemsBlock(actor) && !totemSolids.segmentClear(x, y, z, toX, toY, toZ, radius, height, null, toRadius, toHeight, false, false, escaping)) return false;
     radius = Math.max(radius, toRadius); height = Math.max(height, toHeight);
     if (altar && !cylinderSegmentClear(x, y, z, toX, toY, toZ, radius, height, 0, 0, 0, ALTAR_HEIGHT, altar.platformRadius)) return false;
     if (crew && !passTraffic) for (let otherIndex = 0; otherIndex < crew.list.length; otherIndex++) {
@@ -4678,7 +4695,7 @@
   };
   const physicalClearAt = (x, y, z, radius, height, actor = pilot?.player) => island.clearAt(x, y, z, radius, height) && y + height <= Math.min(entranceCeilingAt(x, z, y, radius), bedCeilingAt(x, z, y, radius), propCeilingAt(x, z, y, radius, actor)) + 1e-7
     && (!solids || solids.segmentClear(x, y, z, x, y, z, radius, height, null, radius, height, rageThrown(actor), false, false, rageThrown(actor)))
-    && (!airborneTotems(actor) || totemSolids.clearAt(x, y, z, radius, height));
+    && (!totemsBlock(actor) || totemSolids.clearAt(x, y, z, radius, height));
   const JETPACK_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
   const jetpackAllowed = (cave) => {
     if (cloudHopper?.active) return !cloudHopper.held && cave === cloudHopper.actor;
@@ -5310,6 +5327,11 @@
     p.x = x; p.z = z;
     return true;
   };
+  // The clouds go round by the room's clock (as Merge Rock turns), so every page in the room has each cloud, and the
+  // Ooga Chat speakers seated on it, in the same place. Seconds since CLOUD_EPOCH keep the angle precise to a hair.
+  const CLOUD_EPOCH = Date.UTC(2026, 10, 1);
+  const cloudNow = () => ((BL.net && BL.net.serverNow ? BL.net.serverNow() : Date.now()) - CLOUD_EPOCH) / 1000;
+  const cloudAngle = (cloud, t) => (cloud.phase + cloud.speed * t / cloud.radius) % (Math.PI * 2);
   // Every cloud keeps its track and full size for the visit. Its long X axis lies along the circle, level with
   // the horizon. Clouds on a lane share a speed and keep their spacing; nothing queries or plans movement.
   const placeCloud = (cloud) => {
@@ -5334,14 +5356,17 @@
       treetop = Math.max(treetop, node.position.y + BL.scene.boundsOf(node.geometry).max[1] * node.scale.y);
     }
     for (const track of CLOUD_TRACKS) for (let i = 0; i < CLOUDS_PER_TRACK; i++) {
-      // Speaker clouds keep their whole mesh above the rooftop trees, even at the bottom of their gentle rise.
-      // Measure the canopy and underside once, so a thicker cloud keeps the same two metres of clearance.
+      // Speaker clouds keep their whole mesh above the rooftop trees, even at the bottom of their gentle rise, and rise
+      // only SPEAKER_SWING as far as their lane over that floor. Measure the canopy and underside once, so a thicker
+      // cloud keeps the same two metres of clearance.
       const shape = Math.min(2, clouds.length % 4), seats = SPEAKER_CLOUDS.includes(clouds.length);
       const node = createNode({ geometry: seats ? hubModels.benchCloud(shape) : hubModels.cloud(shape), matrixCloud: true, sightHidden: true });
-      const cloud = { node, speed: track.speed, angle: track.phase + i * Math.PI * 2 / CLOUDS_PER_TRACK,
+      const waveY = seats ? track.waveY * SPEAKER_SWING : track.waveY;
+      const cloud = { node, speed: track.speed, phase: track.phase + i * Math.PI * 2 / CLOUDS_PER_TRACK, angle: 0,
         radius: track.radius,
-        baseY: seats ? treetop + 2 - BL.scene.boundsOf(node.geometry).min[1] - Math.min(0, track.waveY * 4) : track.baseY,
-        waveY: track.waveY };
+        baseY: seats ? treetop + 2 - BL.scene.boundsOf(node.geometry).min[1] - Math.min(0, waveY * 4) : track.baseY,
+        waveY };
+      cloud.angle = cloudAngle(cloud, cloudNow());
       placeCloud(cloud);
       addChild(root, node);
       placed.push(node);
@@ -5356,7 +5381,7 @@
   // A seat's place on a cloud's mesh is measured once a mesh, from its upward faces (a merged face's corners can lie
   // far from a seat): along the long axis as above, midway between the top's front and back edges there, on the highest
   // upward face over that point.
-  const SPEAKER_CLOUDS = [10, 14, 3], SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
+  const SPEAKER_CLOUDS = [10, 14, 3], SPEAKER_SWING = 0.5, SEAT_REACH = 0.5, SEAT_SPREAD = 0.7, SEAT_TOP = 0.6;
   const cloudThirds = new Map();
   const thirdsOf = (geometry) => {
     let thirds = cloudThirds.get(geometry);
@@ -5412,13 +5437,17 @@
   const hideSeatGlows = () => { for (let i = 0; i < seatGlows.length; i++) if (seatGlows[i]) seatGlows[i].visible = false; };
   // A cloud speaker's seat, for the live players tab's crosshair (players.js `setCloudSpot`).
   const cloudSpotOf = (id, out) => !!remotes && remotes.cloudSpot(id, out);
-  const updateClouds = (dt) => {
+  // `cloudClock` is the time last placed, which the debug hook moves on from without the wall clock.
+  let cloudClock = 0;
+  const setClouds = (t) => {
+    cloudClock = t;
     for (let i = 0; i < clouds.length; i++) {
       const cloud = clouds[i];
-      cloud.angle = (cloud.angle + cloud.speed * dt / cloud.radius) % (Math.PI * 2);
+      cloud.angle = cloudAngle(cloud, t);
       placeCloud(cloud);
     }
   };
+  const updateClouds = () => setClouds(cloudNow());
   // The dais and its flush, one block-wide perimeter grow continuously with the pile.
   const buildAltar = () => {
     const node = createNode();
@@ -8057,9 +8086,9 @@
     if (next !== phase) setPhase(next);
     if (DEBUG) syncDaylightDebug(hour);
     if (!cloudPlaying()) critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
-    if (!gameMode && !cloudPlaying()) updateClouds(dt);
+    if (!gameMode && !cloudPlaying()) updateClouds();
     updateGameRing(dt, elapsed);
-    solids.sync(); totemSolids.sync();
+    solids.sync(); totemSolids.sync(); totemFrame++;
     if (gameMode) updateRageThrowMap();
     updateSleepingSolids();
     if (!chalkboard.openNow) {
@@ -11485,6 +11514,8 @@
     shared.shoulderObstacle = (cave, fx, fz, reach, out) => {
       const p = cave.root.position;
       if (!solids.shoulderAt(p.x, p.y - cave.baseY + STEP_MAX, p.z, fx, fz, PLAYER_RADIUS, Math.max(0, cave.bodyHeight - STEP_MAX), reach, out, p.y - cave.baseY + 1e-7)) return false;
+      // A wall to stop at (Merge Rock's bridge parapets) is never passed round: its ends lead off the deck.
+      if (out.node.noPass) return false;
       if (!out.node.sightSolid && !mempoolIsland.walked.has(out.node)) return true;
       // A level probe can hit later stair treads, a bridge deck above the current feet, or the Mempool island's
       // own ground rising ahead: a terrace, the lake's bowl, a ramp. That ground is walked on, never passed round.
@@ -12210,7 +12241,8 @@
         cameraCave: CAMERA_CAVE_DEBUG,
         matrixCave: {
           get clouds() { return clouds; },
-          advanceClouds: updateClouds,
+          // Moves the clouds' clock on by `dt` seconds without the wall clock, so a check can run laps at once.
+          advanceClouds: (dt) => setClouds(cloudClock + dt),
           portal: matrixCave.portal,
           contains: inMatrixCave,
           overlayVisible: matrixOverlayVisible,

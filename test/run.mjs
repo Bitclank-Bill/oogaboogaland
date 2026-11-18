@@ -6462,9 +6462,9 @@ const environmentSoundChecks = async () => {
   const local={root:S.createNode({position:{x:1,y:0,z:0}})};reaction.update(owner,local,pool,.1);const closestLocal=reaction.target===local;
   local.root.visible=false;near.root.position.x=4;far.root.visible=false;reaction.update(owner,local,pool,.1);
   const boundary=reaction.target===near;near.root.position.x=4.001;reaction.update(owner,local,pool,.1);
-  const outOfRange=!reaction.target&&barkContext.gains.slice(1).every(n=>n.gain.value===0);
+  const outOfRange=!reaction.target&&barkContext.gains.slice(2).every(n=>n.gain.value===0);
   near.root.position.x=2;reaction.update(owner,null,pool,.1);sound.setMuted(true);
-  const quietBark=barkContext.gains.slice(1).every(n=>n.gain.value===0),heard=reaction.barks;
+  const quietBark=barkContext.gains.slice(2).every(n=>n.gain.value===0),heard=reaction.barks;
   for(let i=0;i<30;i++)reaction.update(owner,null,pool,.1);
   const heldMute=reaction.barks===heard;sound.setMuted(false);reaction.update(owner,null,pool,.1);
   const unmuted=reaction.barks===heard+1&&contexts.length===before+1;
@@ -15445,18 +15445,18 @@ const TOUR_ENDED = `(() => {
   B.advance(0.5, 1 / 60);
   return { ended, walked: +Math.hypot(body.root.position.x - f.x, body.root.position.z - f.z).toFixed(3) };
 })()`;
-const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into Tess's queue, accept their turn, keep conversations private and retain their own camera while another visitor uses the guide", run: async b => {
+const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into Tess's queue, accept their turn, keep conversations private and retain their own camera while another visitor uses the guide; regression: Join queue stayed enabled off the island's ground, where the room ignores it without a word", run: async b => {
   const result = await b.evaluate(`(() => {
     const N=BL.net,G=BL.scenes.hub.debug.tess,s=G.state,camera=__ooga.camera;
-    const saved={me:N.state.me,room:N.state.room,connectionToken:N.state.connectionToken,tessShared:N.state.tessShared,tessGuide:N.state.tessGuide},send=N.sendTess,calls=[];
-    const visitKey="ooga-tess-visits",savedVisits=localStorage.getItem(visitKey);
+    const saved={me:N.state.me,room:N.state.room,connectionToken:N.state.connectionToken,tessShared:N.state.tessShared,tessGuide:N.state.tessGuide,zone:N.state.zone},send=N.sendTess,calls=[];
+    const visitKey="ooga-tess-visits",savedVisits=localStorage.getItem(visitKey),declinedKey="ooga-tess-queue:901";
     let elapsed=0;const step=(n=1)=>{for(let i=0;i<n;i++){elapsed+=1/30;G.update(1/30,elapsed);}};
     const receive=(phase,position=0,token="")=>{N.state.tessGuide={phase,position,token,count:position?2:0,until:N.serverNow()+60000,busy:phase==="wait"||phase==="active",pose:null};step();};
     const view=()=>JSON.stringify([camera.position,camera.target]);
     try {
       localStorage.setItem(visitKey,"{}");
       N.sendTess=m=>{calls.push(JSON.parse(JSON.stringify(m)));return true;};
-      Object.assign(N.state,{me:{id:901,login:"queue-fixture"},room:"live",connectionToken:"queue-fixture",tessShared:true,tessGuide:null});
+      Object.assign(N.state,{me:{id:901,login:"queue-fixture"},room:"live",connectionToken:"queue-fixture",tessShared:true,tessGuide:null,zone:"outside"});
       receive("none");
       // Shared Tess idles in queue even when her panel is hidden; coaching must still be usable.
       document.getElementById("controls-learn").click();step();BL.destinationMap.update();
@@ -15472,7 +15472,11 @@ const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into
       const full=go.disabled&&panel.textContent.includes("queue is full");
       const announced=panel.querySelector(".greeter-menu-help").getAttribute("aria-live")==="polite";
       receive("none");
-      go.click();const joined=calls.at(-1).op==="join";
+      // The room takes a join only from the island's own ground and answers nobody else: off it, the panel says so.
+      N.state.zone="between";step();go.click();
+      const offIsland=go.disabled&&panel.textContent.includes("main island")&&!calls.some(m=>m.op==="join");
+      N.state.zone="outside";step();
+      go.click();const joined=!go.disabled&&calls.at(-1).op==="join";
       receive("wait",2,"mine");const before=view();
       N.state.tessGuide.pose=[3,2,4,1,0,0,0,0,0,0,0,0];step(60);
       const observer=before===view()&&!s.holding&&go.hidden&&panel.textContent.includes("2 of 2")&&Math.hypot(G.root.position.x-3,G.root.position.y-2,G.root.position.z-4)<.01;
@@ -15490,6 +15494,10 @@ const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into
       const disconnected=!s.holding&&!G.speech&&go.disabled&&panel.textContent.includes("15 seconds");
       N.state.room="live";N.state.connectionToken="reconnected";receive("wait",2,"mine");skip.click();
       const cancelled=calls.at(-1).op==="cancel"&&panel.hidden;
+      // Leave queue only leaves; Not now on her offer of the queue is kept for the account in this browser.
+      const leftOnly=localStorage.getItem(declinedKey)===null;
+      receive("none");G.tap();step();const asked=!panel.hidden&&skip.textContent==="Not now";skip.click();
+      const declined=leftOnly&&asked&&panel.hidden&&localStorage.getItem(declinedKey)==="1";
       // Leaving the shared feature during a tour must return the pilot, not leave a hidden guide holding it.
       let availabilityReleased=true;
       for(const reason of ["signout","feature"]){
@@ -15499,10 +15507,10 @@ const hubSharedGuide = { name: "hub shared guide", why: "rule: visitors opt into
         if(reason==="signout")N.state.me=null;else N.state.tessShared=false;
         step();availabilityReleased&&=held&&!s.holding&&!G.speech&&!document.body.classList.contains("tess-touring");
       }
-      return {sharedCoaching,queueHidesCoaching,optIn,full,announced,contained,joined,observer,ready,accepted,offered,unreadNews,newsRecorded,privateReply,boundedWire,touring,disconnected,cancelled,availabilityReleased};
-    } finally {if(savedVisits===null)localStorage.removeItem(visitKey);else localStorage.setItem(visitKey,savedVisits);Object.assign(N.state,saved);N.sendTess=send;step();}
+      return {sharedCoaching,queueHidesCoaching,optIn,full,announced,contained,offIsland,joined,declined,observer,ready,accepted,offered,unreadNews,newsRecorded,privateReply,boundedWire,touring,disconnected,cancelled,availabilityReleased};
+    } finally {if(savedVisits===null)localStorage.removeItem(visitKey);else localStorage.setItem(visitKey,savedVisits);localStorage.removeItem(declinedKey);Object.assign(N.state,saved);N.sendTess=send;step();}
   })()`);
-  record("hub shared guide: explicit join/accept, queue position, private answers, observer camera independence, disconnect release and cancellation",Object.values(result).every(Boolean),JSON.stringify(result));
+  record("hub shared guide: explicit join/accept, a join refused off the island's ground, queue position, private answers, observer camera independence, disconnect release, cancellation and a remembered Not now",Object.values(result).every(Boolean),JSON.stringify(result));
 } };
 const hubGuide = { name: "hub guide", why: "regression: Tess's offer showed only its first speech bubble, she stopped shots aimed past her, an Ooga walking or flying as her tour began went on through it, and T before or during her tour let the gorilla and tour share control", run: async (b) => {
   const guide = await b.evaluate(`(() => {
@@ -21024,13 +21032,13 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
     } finally { P.release(true); P.goPreset("pile"); B.advance(0.1, 1 / 60); }
     return out;
   })()`);
-  record("hub distant effects: all 18 decorative clouds keep size, orbit and spacing for two full laps, keep the three speaker clouds above the rooftop trees and the other clouds in their inner -4..2m and outer 2..11m height bands, stay horizontal and tangent, and never become collision surfaces", clouds.initialized && clouds.persistent && clouds.decorative && clouds.horizontal && clouds.tangent
+  record("hub distant effects: all 18 decorative clouds keep size, orbit and spacing for two full laps, keep the three speaker clouds above the rooftop trees, rising half their lane's swing, and the other clouds in their inner -4..2m and outer 2..11m height bands, stay horizontal and tangent, and never become collision surfaces", clouds.initialized && clouds.persistent && clouds.decorative && clouds.horizontal && clouds.tangent
     && clouds.seconds > 145 && clouds.laps >= 2 && clouds.radialDrift < 1e-8
     && clouds.rings.length === 2 && clouds.rings.every(ring => ring.eachCloudDips && ring.eachCloudRises
       && ring.minHeight >= (ring.radius === 36 ? -4 : 2) && ring.maxHeight <= (ring.radius === 36 ? 2 : 11)
       && ring.maxVerticalSpeed <= (ring.radius === 36 ? 0.2 : 0.25))
-    && clouds.speakers.length === 3 && clouds.speakers.every(c => c.minBottom >= clouds.treetop + 2 && c.maxBottom <= clouds.treetop + (c.track === 36 ? 8 : 11)
-      && c.rise > (c.track === 36 ? 5.9 : 8.9) && c.maxVerticalSpeed <= (c.track === 36 ? 0.2 : 0.25))
+    && clouds.speakers.length === 3 && clouds.speakers.every(c => c.minBottom >= clouds.treetop + 2 && c.maxBottom <= clouds.treetop + (c.track === 36 ? 5 : 6.5)
+      && c.rise > (c.track === 36 ? 2.9 : 4.4) && c.rise <= (c.track === 36 ? 3 : 4.5) + 1e-6 && c.maxVerticalSpeed <= (c.track === 36 ? 0.1 : 0.125))
     && clouds.maxTravelExcess < 1e-7 && clouds.minGap > 0 && clouds.spacingDrift < 1e-8
     && clouds.cutaway?.selected && clouds.cutaway.view === "shoulder" && clouds.cutaway.combat && !clouds.cutaway.active && clouds.cutaway.mix === 0 && clouds.cutaway.heights
     && state.horizon.every(row => row.clouds.length === 18 && row.clouds.every(c => c.visible && c.moving)), JSON.stringify(clouds));
@@ -21132,8 +21140,8 @@ scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=
   }
 }] });
 scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
-  name: "Merge Rock footing: the full bridge deck crosses both ways and airborne totems remain solid through camera fading",
-  why: "regression: bridge posts snagged walkers and its collision slab stopped short of the curved landing; walk-through totems also lost their landing surfaces",
+  name: "Merge Rock footing: the bridge deck crosses both ways between solid parapets, and airborne totems remain solid through camera fading without holding a body that touches them",
+  why: "regression: bridge posts snagged walkers and its collision slab stopped short of the curved landing; its flags shared the terrace's plane and flickered; walk-through totems also lost their landing surfaces, and held a body perched or risen inside one",
   run: async (b) => {
     const ready = await untilPage(b, "(() => { const s = BL.scenes.hub.debug.repoIsland?.stats(); return s && s.built === s.chunks; })()", 60000);
     if (!ready) throw new Error("Totem chunks did not finish building");
@@ -21142,13 +21150,15 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
       B.pilot.possess(B.cavemen.get('portlandhodl')); const actor = B.pilot.player;
       B.pilot.navigate({ position: { x: 0, y: site.spot.y, z: site.spot.z + M.bridge().from }, yaw: Math.PI, pitch: 0.3, dist: 4 });
       B.advance(0.1, 1 / 60);
-      const bridge = M.bridge(), failures = [], paths = [], start = site.spot.z + bridge.from - 0.2, end = site.spot.z - M.PLAN.edge + 0.3;
-      for (const across of [-bridge.width / 2 + 0.05, -1.8, 0, 1.8, bridge.width / 2 - 0.05]) for (const reverse of [false, true]) {
-        let x = site.spot.x + across, z = reverse ? end : start, y = site.spot.y + M.LIP.rise;
+      const bridge = M.bridge(), walls = bridge.walls, failures = [], paths = [], start = site.spot.z + bridge.from - 0.2, end = site.spot.z - M.PLAN.edge + 0.3;
+      // Between the parapets, a hair off either one, the whole way from the terrace onto the island.
+      const hug = walls.inner - 0.31, begin = start;
+      for (const across of [-hug, -0.7, 0, 0.7, hug]) for (const reverse of [false, true]) {
+        let x = site.spot.x + across, z = reverse ? end : begin, y = site.spot.y + M.LIP.rise;
         actor.hop = actor.hopV = 0;
         actor.root.position.x = x; actor.root.position.y = y + actor.baseY; actor.root.position.z = z;
         y = S.supportAt(x, z, y, y, actor);
-        const to = reverse ? start : end, count = Math.ceil(Math.abs(to - z) / 0.15), from = z;
+        const to = reverse ? begin : end, count = Math.ceil(Math.abs(to - z) / 0.15), from = z;
         for (let k = 1; k <= count; k++) {
           const nz = from + (to - from) * k / count;
           actor.root.position.x = x; actor.root.position.y = y + actor.baseY; actor.root.position.z = z;
@@ -21158,6 +21168,45 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
         }
         paths.push({ across, reverse, reached: Math.abs(z - to) < 0.01 });
       }
+      // A parapet stops a walker, takes a body that comes down on it, and lets it walk off again (between two pillars).
+      const mid = site.spot.z + walls.from + (walls.to - walls.from) * 0.375, deck = site.spot.y, wallX = site.spot.x + (walls.inner + bridge.width / 2) / 2;
+      let reach = 0;
+      actor.hop = actor.hopV = 0; actor.root.position.y = deck + actor.baseY; actor.root.position.z = mid;
+      for (let k = 1; k <= 40; k++) {
+        actor.root.position.x = site.spot.x + reach;
+        if (!S.walkable(site.spot.x + reach, mid, site.spot.x + k * 0.06, mid, deck, actor.bodyHeight, actor)) break;
+        reach = k * 0.06;
+      }
+      actor.root.position.x = wallX; actor.root.position.y = deck + 3 + actor.baseY; actor.hopV = -1;
+      const wallTop = S.supportAt(wallX, mid, deck + 3, deck + 3, actor) - deck;
+      actor.hop = actor.hopV = 0; actor.root.position.y = deck + wallTop + actor.baseY;
+      let offWall = wallX, wallOff = true;
+      for (let k = 1; k <= 20; k++) {
+        const nx = wallX - 1.2 * k / 20;
+        actor.root.position.x = offWall;
+        wallOff &&= S.walkable(offWall, mid, nx, mid, deck + wallTop, actor.bodyHeight, actor);
+        offWall = nx;
+      }
+      // Neither end of a parapet leaves a way off the deck's side: a step out past one stays on the terrace or the lip.
+      let gaps = 0;
+      for (const at of [site.spot.z + walls.from - 0.31, site.spot.z + walls.to + 0.31]) for (const side of [-1, 1]) {
+        let px = site.spot.x, y = deck + (at > mid ? M.LIP.rise : 0);
+        for (let k = 1; k <= 30; k++) {
+          const nx = site.spot.x + side * k * 0.1;
+          actor.root.position.x = px; actor.root.position.y = y + actor.baseY; actor.root.position.z = at;
+          if (!S.walkable(px, at, nx, at, y, actor.bodyHeight, actor)) break;
+          const floor = S.supportAt(nx, at, y, y, actor);
+          if (floor < deck - 0.2) { gaps++; break; }
+          px = nx; y = floor;
+        }
+      }
+      actor.root.position.z = mid;
+      const wall = { reach, gaps, inner: walls.inner, top: walls.top, wallTop, wallOff, drop: wallTop - (S.supportAt(offWall, mid, deck + wallTop, deck + wallTop, actor) - deck),
+        lanterns: bridge.lamps.length, heights: new Set(bridge.lamps.map(l => l.y.toFixed(3))).size };
+      // No upward face of the bridge lies in the terrace's plane where the deck rests on the main island.
+      const stone = bridge.stone, v = stone.verts;
+      const up = f => { const a = f.i[0] * 3, b = f.i[1] * 3, c = f.i[2] * 3; return (v[b + 2] - v[a + 2]) * (v[c] - v[a]) - (v[b] - v[a]) * (v[c + 2] - v[a + 2]) > 0; };
+      const coplanar = stone.faces.filter(f => f.i.every(i => Math.abs(v[i * 3 + 1]) < 1e-4) && f.i.some(i => v[i * 3 + 2] < bridge.from + 1.25) && up(f)).length;
       const t = M.plan().totems.find(t => t.repo === 'bitcoin/bitcoin'), x = site.spot.x + t.x, z = site.spot.z + t.z;
       actor.root.position.x = x - t.L.reach - 1; actor.root.position.y = site.spot.y + actor.baseY; actor.root.position.z = z;
       actor.hop = actor.hopV = 0;
@@ -21165,6 +21214,9 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
       const airY = site.spot.y + t.L.apex * 0.6;
       actor.root.position.y = airY + actor.baseY; actor.hop = 1;
       const airBlocked = !S.flyable(x - t.L.reach - 1, z, x + t.L.reach + 1, z, airY, actor.bodyHeight, actor);
+      // A body found inside the carving in the air is not held there.
+      actor.root.position.x = x;
+      const insideFree = S.flyable(x, z, x + 0.2, z, airY, actor.bodyHeight, actor);
       const high = site.spot.y + t.L.apex + 2;
       actor.root.position.x = x; actor.root.position.y = high + actor.baseY; actor.hopV = -1;
       const landing = S.supportAt(x, z, high, high, actor);
@@ -21181,10 +21233,11 @@ scene("hub", { label: "Merge Rock footing", query: "pos=0&repospin=0", steps: [{
       }
       const offFloor = S.supportAt(offX, z, landing, landing, actor);
       site.afterCamera(H.camera, false);
-      return { paths, failures, groundThrough, airBlocked, landing, fadedLanding, standing, canWalkOff, offFloor, floor: site.spot.y, apex: t.L.apex };
+      return { paths, failures, wall, coplanar, groundThrough, airBlocked, insideFree, landing, fadedLanding, standing, canWalkOff, offFloor, floor: site.spot.y, apex: t.L.apex };
     })()`);
-    record("Merge Rock footing: full-width bridge crossings stay supported, ground movement passes totems, and airborne collision/landing survives fading and standing",
-      r.paths.every(p => p.reached) && !r.failures.length && r.groundThrough && r.airBlocked && r.landing > r.floor + r.apex / 2 && r.fadedLanding === r.landing && r.standing === r.landing && r.canWalkOff && r.offFloor < r.landing - 1,
+    record("Merge Rock footing: bridge crossings stay supported between parapets that stop walkers, carry them on top and close both ends, ground movement passes totems, and airborne collision/landing survives fading and standing without trapping",
+      r.paths.every(p => p.reached) && !r.failures.length && r.wall.reach > r.wall.inner - 0.45 && r.wall.reach < r.wall.inner - 0.29 && Math.abs(r.wall.wallTop - r.wall.top) < 1e-6 && r.wall.wallOff && r.wall.drop > 0.5
+        && !r.wall.gaps && r.wall.lanterns === 10 && r.wall.heights === 1 && !r.coplanar && r.insideFree && r.groundThrough && r.airBlocked && r.landing > r.floor + r.apex / 2 && r.fadedLanding === r.landing && r.standing === r.landing && r.canWalkOff && r.offFloor < r.landing - 1,
       JSON.stringify(r));
   }
 }] });
@@ -21981,7 +22034,7 @@ const partyRadioChecks = async () => {
   const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, connect() {}, disconnect() {} });
   const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createMediaElementSource: node, close: async () => {},
     createAnalyser: () => ({ ...node(), getFloatTimeDomainData: (a) => a.fill(level.now), getByteFrequencyData() {} }) };
-  const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {} } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date,
+  const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date,
     document: { addEventListener() {}, removeEventListener() {} }, AudioContext: function () { return audio; },
     Audio: function () { const e = { currentTime: 0, play: async () => {}, pause() {}, removeAttribute() {}, load() {} }; elements.push(e); return e; } };
   runInNewContext(await readFile(new URL("../src/js/timechain-party-radio.js", import.meta.url), "utf8"), page);
@@ -26559,10 +26612,14 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     W.welcome = () => W.room({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["chat-unicode-v1"], players: [{ id: 2, login: "anna", display: "Anna", zone: "outside" }] });
     W.read = () => {
       const bell = document.querySelector(".panel:not([hidden]) .sheet-bell"), detail = bell?.nextElementSibling;
-      const [players, chat] = detail ? detail.textContent.match(/[0-9]+[+]?(?= new)/g) : ["0", "0"];
+      // The bell lists the events, newest first: a line a sign-in or sign-out and one a run of chat lines, each with
+      // its kind's mark. The counts are the tabs' own.
+      const rows = detail ? [...detail.children].filter((row) => !row.hidden) : [];
+      const list = rows.map((row) => row.textContent), kinds = rows.map((row) => row.dataset.kind).join("|");
+      const players = String(BL.players.stats.unread), chat = String(BL.chat.stats.unread);
       const total = bell?.querySelector(".tab-count"), toast = document.getElementById("toast");
       const tab = document.querySelector("#players-tab .tab-count");
-      return { players: players === "0" ? "" : players, chat: chat === "0" ? "" : chat, tabBadge: tab.hidden ? "" : tab.textContent,
+      return { list, kinds, players: players === "0" ? "" : players, chat: chat === "0" ? "" : chat, tabBadge: tab.hidden ? "" : tab.textContent,
         total: !total || total.hidden ? "" : total.textContent, breakdown: !!detail && !detail.hidden, bell: bell?.getAttribute("aria-label"),
         toast: toast.hidden ? "" : toast.textContent, toastTags: toast.children.length,
         shown: BL.sheet.visible(document.getElementById("players-panel")), said: W.said.slice() };
@@ -26576,12 +26633,13 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     signedOutBells.panels === BELL_PANELS && signedOutBells.shown === 0 && bellsCentred(signedInBells), JSON.stringify({ signedOutBells, signedInBells }));
   const joins = await b.evaluate(`(() => { const W = __joins, out = {};
     W.join(3, "<b>Bea</b>"); out.one = W.read();
-    W.join(3, "<b>Bea</b>"); W.room({ t: "leave", id: 3 }); W.join(3, "<b>Bea</b>"); out.again = W.read();
+    W.join(3, "<b>Bea</b>"); W.room({ t: "leave", id: 3 }); out.left = W.read(); W.join(3, "<b>Bea</b>"); out.again = W.read();
     W.join(4, "Cy"); out.two = W.read();
     return out; })()`);
-  record("join alerts: a join after arrival is named on screen as plain text and counted on the bell while the panel shows; those already there, a repeat and a quick rejoin are not, and close joins share one message",
-    arrived.players === "" && arrived.chat === "" && arrived.shown && arrived.bell === "Notifications" && arrived.total === "" && !arrived.toast.includes("online") && joins.one.toast === "<b>Bea</b> is online" && joins.one.toastTags === 0
-      && joins.one.players === "1" && joins.one.total === "1" && joins.one.tabBadge === "" && joins.again.players === "1" && joins.two.players === "2" && joins.two.toast === "<b>Bea</b> and Cy are online",
+  record("join alerts: a join after arrival is named on screen as plain text and counted and listed on the bell while the panel shows, as a leave is until a quick rejoin takes it back; those already there and a repeat are not, and close joins share one message",
+    arrived.players === "" && arrived.chat === "" && arrived.list.join("|") === "No new notifications" && arrived.shown && arrived.bell === "Notifications" && arrived.total === "" && !arrived.toast.includes("online") && joins.one.toast === "<b>Bea</b> is online" && joins.one.toastTags === 0
+      && joins.one.players === "1" && joins.one.total === "1" && joins.one.tabBadge === "" && joins.left.list.join("|") === "<b>Bea</b> signed out|<b>Bea</b> signed in" && joins.left.kinds === "out|in" && joins.left.total === "2"
+      && joins.again.list.join("|") === "<b>Bea</b> signed in" && joins.again.total === "1" && joins.two.players === "2" && joins.two.toast === "<b>Bea</b> and Cy are online",
     JSON.stringify({ arrived, joins }));
   const lines = await b.evaluate(`(() => { const W = __joins, out = {};
     W.line(11, "anna"); W.line(12, "Tester"); out.live = W.read();
@@ -26608,12 +26666,13 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     return { hovered, restored, tapped, closed, reopened };
   })()`);
   const { hovered, restored, tapped, closed, reopened } = notifications;
-  record("join alerts: hover and tap reveal both unread counts without acknowledgement, and closing restores the tab badge",
-    hovered.breakdown && hovered.players === "2" && hovered.chat === "2" && hovered.total === ""
+  record("join alerts: hover and tap list the unread events, newest first, without acknowledgement, and closing restores the tab badge",
+    hovered.breakdown && hovered.list.join("|") === "2 new messages|Cy signed in|<b>Bea</b> signed in" && hovered.total === ""
       && !restored.breakdown && restored.total === "4" && tapped.breakdown && tapped.total === ""
       && closed.tabBadge === "2" && reopened.players === "" && reopened.chat === "2" && reopened.total === "2",
     JSON.stringify(notifications));
-  await b.evaluate(`__joins.join(26, "Flo"); __joins.join(27, "Gus")`);
+  // A line heard between two joins is a run of its own, apart from the two heard before them.
+  const split = await b.evaluate(`(() => { const W = __joins; W.join(26, "Flo"); W.line(14, "anna"); W.join(27, "Gus"); return W.read(); })()`);
   const tab = (name) => b.evaluate(`(() => { const r = document.getElementById("${name}-tab").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
   await b.focus(true);
   let viewed;
@@ -26621,14 +26680,15 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     let at = await tab("chat");
     await b.click(at.x, at.y);
     const chatViewed = await b.evaluate(`__joins.read()`);
-    const typing = await b.evaluate(`(() => { const W = __joins; document.getElementById("chat-input").focus(); W.line(14, "anna"); const inPanel = W.read().chat;
-      document.activeElement.blur(); W.line(15, "anna"); return { inPanel, away: W.read().chat }; })()`);
+    const typing = await b.evaluate(`(() => { const W = __joins; document.getElementById("chat-input").focus(); W.line(15, "anna"); const inPanel = W.read().chat;
+      document.activeElement.blur(); W.line(16, "anna"); return { inPanel, away: W.read().chat }; })()`);
     at = await tab("players");
     await b.click(at.x, at.y);
-    viewed = { chatViewed, typing, playersViewed: await b.evaluate(`__joins.read()`) };
+    viewed = { split, chatViewed, typing, playersViewed: await b.evaluate(`__joins.read()`) };
   } finally { await b.focus(false); }
-  record("join alerts: looking at a tab clears its count alone, and a line heard while typing in the chat needs no count",
-    viewed.chatViewed.chat === "" && viewed.chatViewed.players === "2" && viewed.typing.inPanel === "" && viewed.typing.away === "1" && viewed.playersViewed.players === "" && viewed.playersViewed.chat === "1",
+  record("join alerts: chat lines heard one after another share a line under the bell and a notice between them starts another, each line with its kind's mark; looking at a tab clears its count alone, and a line heard while typing in the chat needs no count",
+    viewed.split.list.join("|") === "Gus signed in|1 new message|Flo signed in|2 new messages" && viewed.split.kinds === "in|chat|in|chat" && viewed.split.chat === "3" && viewed.chatViewed.list.join("|") === "Gus signed in|Flo signed in"
+      && viewed.chatViewed.chat === "" && viewed.chatViewed.players === "2" && viewed.typing.inPanel === "" && viewed.typing.away === "1" && viewed.playersViewed.players === "" && viewed.playersViewed.chat === "1",
     JSON.stringify(viewed));
   const settings = await b.evaluate(`(() => {
     const details = document.getElementById("players-settings"), summary = details.querySelector("summary"), r = summary.getBoundingClientRect(), range = document.getElementById("players-hearing-range");
@@ -28058,21 +28118,22 @@ const tessAnswerChecks = (BL) => {
 // sends them. Under the shared guide her greeting offers Join queue, so news must come with the granted turn.
 const sharedTessNewsChecks = (BL) => {
   const H = BL.hubGuide, N = BL.net, store = new Map(), visitKey = "ooga-tess-visits";
-  const savedStorage = globalThis.localStorage, savedState = { me: N.state.me, room: N.state.room, connectionToken: N.state.connectionToken, tessShared: N.state.tessShared, tessGuide: N.state.tessGuide }, savedSend = N.sendTess;
+  const savedStorage = globalThis.localStorage, savedState = { me: N.state.me, room: N.state.room, connectionToken: N.state.connectionToken, tessShared: N.state.tessShared, tessGuide: N.state.tessGuide, zone: N.state.zone }, savedSend = N.sendTess;
   globalThis.localStorage = { getItem: (k) => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
   const size = { innerWidth: globalThis.innerWidth, innerHeight: globalThis.innerHeight };
   Object.assign(globalThis, { innerWidth: 1280, innerHeight: 800 });
   const calls = [], seen = () => JSON.parse(store.get(visitKey) || "{}")["news-fixture"] || null;
   N.sendTess = (m) => { calls.push({ ...m, a: m.a?.slice() }); return true; };
   const v = (x, y, z) => ({ x, y, z });
-  const guide = H.create({ parent: BL.scene.createNode(), input: { add() {}, remove() {} }, fx: new Proxy({}, { get: () => () => {} }), camera: { position: v(0, 4, -12), target: v(0, 2, 0), fov: 1 },
+  const make = () => H.create({ parent: BL.scene.createNode(), input: { add() {}, remove() {} }, fx: new Proxy({}, { get: () => () => {} }), camera: { position: v(0, 4, -12), target: v(0, 2, 0), fov: 1 },
     pilot: { controls: { moving: () => false } }, visitor: () => null, world: {}, hud: {}, busy: () => false, coarse: false, quality: () => 1, landing: true });
+  const guide = make();
   const s = guide.state, turn = (token) => { N.state.tessGuide = { phase: "active", position: 0, token, count: 1, until: N.serverNow() + 60000, busy: true, pose: null }; guide.update(0.016, 1); };
   try {
-    Object.assign(N.state, { me: { id: 902, login: "news-fixture", display: "News Fixture" }, room: "live", connectionToken: "news-fixture", tessShared: true, tessGuide: null });
+    Object.assign(N.state, { me: { id: 902, login: "news-fixture", display: "News Fixture" }, room: "live", connectionToken: "news-fixture", tessShared: true, tessGuide: null, zone: "outside" });
     // Before a turn her greeting only offers Join queue and reads no news as seen.
     for (let i = 0; i < 400; i++) guide.update(0.016, i * 0.016);
-    const waitingUnread = s.kind !== "news" && seen() === null;
+    const waitingUnread = s.kind !== "news" && seen() === null, greeted = !guide.coachingReady;
     // A granted turn with unread news offers that news first, from the newest entry, and still leaves it unread.
     turn("turn-1");
     const offered = s.kind === "news" && s.newest?.line === H.NEWS[0].line && s.legs.length > 0 && s.login === "news-fixture" && /^Welcome back, News Fixture!/.test(s.welcome || "") && s.phase === "approach" && seen() === null;
@@ -28084,6 +28145,24 @@ const sharedTessNewsChecks = (BL) => {
     const toured = s.kind === "island" && s.welcome === null && s.login === null && s.phase === "approach";
     record("shared Tess news (#466): a signed-in visitor's granted turn offers unread island news first and Not now records it as seen; waiting reads nothing, and with nothing new the turn offers the island tour",
       waitingUnread && offered && recorded && toured, JSON.stringify({ waitingUnread, offered, recorded, toured, kind: s.kind, phase: s.phase }));
+    // A visit after Not now on her greeting: she offers the queue only when tapped.
+    store.set("ooga-tess-queue:902", "1"); N.state.tessGuide = null;
+    const later = make();
+    for (let i = 0; i < 400; i++) later.update(0.016, i * 0.016);
+    const quiet = later.coachingReady;
+    later.tap(); later.update(0.016, 7);
+    const tapped = !later.coachingReady;
+    later.dispose(); store.delete("ooga-tess-queue:902");
+    // A visitor who arrives off the island's ground, where the room takes no join, is not greeted either.
+    N.state.zone = "between";
+    const away = make();
+    for (let i = 0; i < 400; i++) away.update(0.016, i * 0.016);
+    const awayQuiet = away.coachingReady;
+    away.tap(); away.update(0.016, 7);
+    const awayTapped = !away.coachingReady;
+    away.dispose(); N.state.zone = "outside";
+    record("shared Tess greeting: she offers her queue unasked to a visitor who lands on the island's ground, until the account has answered Not now in this browser; after that, or off the island, only a tap on her opens it",
+      greeted && quiet && tapped && awayQuiet && awayTapped, JSON.stringify({ greeted, quiet, tapped, awayQuiet, awayTapped }));
     const poses = calls.filter(m => m.op === "pose");
     record("shared Tess privacy: without a driven Ooga, the visual pose does not publish the private camera as a look target",
       poses.length > 0 && poses.every(m => m.a[10] === 0 && m.a.slice(7, 10).some((n, i) => n !== [0, 4, -12][i])), JSON.stringify(poses));
@@ -28957,6 +29036,15 @@ const voiceFailureChecks = async () => {
   const waiting=blip.timers.filter(t=>t.ms===1000).at(-1);
   blip.failing.clear();if(waiting)waiting.fn();await settle();
   record("voice recovery: a restart whose first calls fail tries again and the speaker is back",!!waiting&&blip.V.stats.publishing&&!blip.V.stats.muted&&blip.V.stats.micError==="",JSON.stringify({waited:!!waiting,publishing:blip.V.stats.publishing,micError:blip.V.stats.micError}));
+  // regression: a reconnect's welcome landed while a join was still on its way: the join finished on the old connection,
+  // whose room record held its publication, and the page went on looking in voice, hearing everyone, heard by nobody.
+  const joiner=page();
+  let goLive;joiner.holds.set("live",new Promise(r=>{goLive=r;}));
+  const joining=joiner.V.enable();await settle();
+  const sent=joiner.calls.length,beforeWelcome=joiner.calls.slice();
+  joiner.V.restart(true);joiner.holds.delete("live");goLive();await joining;await settle();
+  const later=joiner.calls.slice(sent);
+  record("voice recovery: a welcome during a join publishes again on the new connection rather than finishing on the old one",beforeWelcome.includes("publish")&&later.includes("publish")&&joiner.V.stats.publishing&&!joiner.V.stats.joining,JSON.stringify({beforeWelcome,later,publishing:joiner.V.stats.publishing,joining:joiner.V.stats.joining}));
   // A microphone that goes away ends its track with no error anywhere: the speaker comes back on the device that is left.
   const unplugged=page();
   await unplugged.V.enable();await settle();
@@ -29306,7 +29394,7 @@ const ghostAudioChecks = async () => {
   for(const name of ["wave","kaboom","screech","freeze","apples","double","banana","ooga","landing","network","fiatRush","tessZap","tessScream","monkeyGet","choir","gameOver1","gameOver2","gameOver3","gameOver4","gameOverLast"])clips[name]="AA==";
   for(const key of ["boss","colt","martial","nightmare","synthed","nr"])music[key]="AA==";
   let soundFn=null;
-  const window={BL:{sound:{muted:false,subscribe:fn=>{soundFn=fn;return()=>{soundFn=null;};}},ghostAudioData:clips,ghostMusic:music,deferred:{load:g=>{loads.push(g);return null;}}},setTimeout:()=>0};
+  const window={BL:{sound:{muted:false,subscribe:fn=>{soundFn=fn;return()=>{soundFn=null;};},output:context=>context.destination,channel:() => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} })},ghostAudioData:clips,ghostMusic:music,deferred:{load:g=>{loads.push(g);return null;}}},setTimeout:()=>0};
   const context={window,document:{hidden:false,addEventListener(){},removeEventListener(){}},navigator:{userActivation:{hasBeenActive:true}},AudioContext:Ctx,localStorage:{getItem:()=>null,setItem(){}},atob,Math,Float32Array,Uint8Array,Promise};
   runInNewContext(readFileSync(join(root,"src/js/ghost-audio.js"),"utf8"),context);
   const A=window.BL.ghostAudio.create(),out={};
@@ -35145,7 +35233,7 @@ const lecturePlayerChecks = async () => {
       removeAttribute() {}
       load() {}
     }
-    const BL = { lectures: L, deferredScripts: recorded ? {} : null, deferred: { load: async () => {} }, sound: { muted: false, subscribe: () => () => {} } };
+    const BL = { lectures: L, deferredScripts: recorded ? {} : null, deferred: { load: async () => {} }, sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } };
     runInNewContext(source, { window: { BL }, Audio, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } });
     const player = BL.lecturePlayer.create(), entry = { id: 'btc-01', group: 'lecture-btc-a', audio: 'btc-01.m4a' };
     assert.equal(media.length, 0);
