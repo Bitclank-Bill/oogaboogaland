@@ -173,9 +173,11 @@
     let song = "", songNext = "", songAt = 0, metaTimer = 0, metaAsk = null;
     let mode = enabled ? "waiting" : "off", plain = false, disposed = false, timer = 0, watchdog = 0, epoch = 0;
     let failures = 0, quiet = 0, lastTime = -1, starts = 0, channel = 0, fader = null, line = null;
-    // The fade in and out: the gain after the volume, the start it last faded in for, and on the plain element (which
-    // has no gain of its own) when it began to fade in, and when the visitor began to leave (performance time, 0 none).
-    let entry = null, fadedEpoch = -1, fadeInAt = 0, leaving = 0;
+    // The fade in and out: the gain after the volume; the start whose music has reached (or is on its way to) the
+    // speakers and when it does (`arriveAt`, on the audio's clock, or in performance time on the plain element); on the
+    // plain element (which has no gain of its own) when it began to fade in; and when the visitor began to leave
+    // (performance time, 0 none).
+    let entry = null, arrivedEpoch = -1, arriveAt = 0, fadeInAt = 0, leaving = 0;
     // `channel` is the one dialled, `on` the one streaming; the speakers reach `on` at `onAt` (performance time), until
     // then playing `was`. Silence from Web Audio once (`hushed`) keeps later channels on the plain element.
     let on = 0, was = 0, onAt = 0, hushed = false, refused = -1;
@@ -195,13 +197,19 @@
       if (gain) gain.gain.setTargetAtTime(plain || BL.sound.muted ? 0 : VOLUME, context.currentTime, 0.4);
       if (element && plain) { element.muted = BL.sound.muted; element.volume = VOLUME * soundChannel.gain * plainK(); }
     };
-    // The music fades in as it first reaches the speakers after a start (LOOKAHEAD behind the stream through Web Audio,
-    // at once on the plain element), and only once for that start, so a stall's recovery plays on at its level.
+    // A start's music first playing: when it will reach the speakers (LOOKAHEAD behind the stream through Web Audio, at
+    // once on the plain element), noted only once a start, so a stall's recovery plays on at its level; it fades in
+    // from then unless the visitor is leaving (`fadeBack` brings it in if they stay).
     const arrive = (attempt) => {
-      if (attempt === fadedEpoch || leaving) return;
-      fadedEpoch = attempt;
-      if (plain) { fadeInAt = performance.now(); applyVolume(); return; }
-      const p = entry.gain, t = context.currentTime, at = t + LOOKAHEAD;
+      if (attempt === arrivedEpoch) return;
+      arrivedEpoch = attempt;
+      arriveAt = plain ? performance.now() : context.currentTime + LOOKAHEAD;
+      if (!leaving) fadeIn();
+    };
+    // The fade in from silence, from when the music reaches the speakers.
+    const fadeIn = () => {
+      if (plain) { fadeInAt = arriveAt; applyVolume(); return; }
+      const p = entry.gain, t = context.currentTime, at = Math.max(t, arriveAt);
       p.cancelScheduledValues(t); p.setValueAtTime(0, t); p.setValueAtTime(0, at); p.linearRampToValueAtTime(1, at + FADE_IN);
     };
     // The entry gain from where it stands to `to` over `seconds`.
@@ -463,6 +471,10 @@
       }
       element = next; source = nextSource; line = nextLine; fader = nextFader; plain = nextPlain;
       next = nextSource = nextLine = nextFader = null; nextEpoch++;
+      // The room hears the new channel through the crossfade at the level it was at: it counts as arrived, so its first
+      // buffering hiccup never fades it in again, and a plain element taking over plays at once.
+      arrivedEpoch = epoch; arriveAt = plain ? performance.now() : t;
+      if (plain && !fadeInAt) fadeInAt = performance.now() - FADE_IN * 1000;
       if (source) { source.connect(filter); source.connect(whole); fader.gain.setTargetAtTime(1, t + wait, FADE); }
       // What the speakers play until the new channel reaches them is what they play now (a change made inside the
       // last one's lookahead keeps naming the station still heard).
@@ -542,8 +554,12 @@
       fadeBack() {
         if (disposed || !leaving) return;
         leaving = 0;
+        // A stream not playing yet fades in when it arrives; one playing comes back, or fades in from its arrival if
+        // it started on the way out and has yet to reach the speakers.
+        if (arrivedEpoch !== epoch) return;
         if (plain) { fadeInAt = performance.now() - FADE_IN * 1000 * (1 - FADE_BACK / FADE_IN); applyVolume(); }
-        else if (fadedEpoch === epoch) rampEntry(1, FADE_BACK);
+        else if (context.currentTime >= arriveAt) rampEntry(1, FADE_BACK);
+        else fadeIn();
       },
       // How far ahead of the speakers the readings run (0 where they are not delayed), whether the speakers have yet to
       // reach the first reading, and the song playing now, as the station's feed named it ("" for none yet).

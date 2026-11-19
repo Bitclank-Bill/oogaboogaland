@@ -1917,8 +1917,9 @@
       beam.visible = hit.visible = false;
       beam.scale.x = beam.scale.y = beam.scale.z = 1; hit.scale.x = hit.scale.y = hit.scale.z = 1;
     }
-    // Each Ooga's groove: how long it has stood still, how far its groove has eased in, and whether it has one going.
-    const grooves = new Map(), STAND = BL.crew.GAIT.stand;
+    // Each Ooga's groove: how long it has stood still, how far its groove has eased in, and whether it has one going;
+    // kept weakly, so a body let go (a player gone) takes its groove with it.
+    const grooves = new WeakMap(), STAND = BL.crew.GAIT.stand;
     const projectors = rigs.map((_, p) => nodes[`projector${p}`]), look = { dir: new Float32Array(count * 3), on: new Uint8Array(count), color: new Uint8Array(count) };
     const dots = [];
     for (let g = 0; nodes[`dots${g}`]; g++) dots.push(nodes[`dots${g}`]);
@@ -2417,7 +2418,7 @@
       // The visitor walking out: the music fades out on the way to the doors, and back in if they stay after all.
       fadeOut() { radio.fadeOut(); },
       fadeBack() { radio.fadeBack(); },
-      dispose() { offParty(); radio.dispose(); playing.song = playing.station = ""; grooves.clear(); }
+      dispose() { offParty(); radio.dispose(); playing.song = playing.station = ""; }
     };
   };
   // `jetpack`: the visitor's jetpack comes in with them and flies under the dome.

@@ -22103,6 +22103,14 @@ const partyRadioChecks = async () => {
     elements.at(-1).onplaying();
     const e = entryOf(t0);
     fade.inAt = !!e && e.gain.log.some(([k, v, t]) => k === "set" && v === 0 && Math.abs(t - (t0 + 8)) < 1e-9);
+    // Regression: a channel change gave the new stream a start of its own never marked as heard, so its first
+    // buffering hiccup silenced the room for the lookahead and faded it in again, and walking back from the doors
+    // after a change left the room silent.
+    const before = e.gain.log.length;
+    a.tune(1); elements.at(-1).onplaying(); elements.at(-1).onplaying();
+    fade.swapped = a.stats.on === 1 && e.gain.log.length === before;
+    a.fadeOut(); a.fadeBack();
+    fade.back = e.gain.log.at(-1);
     a.fadeOut();
     fade.out = e && e.gain.log.at(-1);
     a.dispose();
@@ -22119,6 +22127,8 @@ const partyRadioChecks = async () => {
   record("party radio: the music fades in as it reaches the speakers, out on the walk to the doors, and over a moment when left any other way, never cold",
     fade.inAt && fade.out && fade.out[0] === "ramp" && fade.out[1] === 0 && Math.abs(fade.out[2] - (audio.currentTime + 2.5)) < 1e-9 && fade.closedAtOnce === 1
       && fade.tail && fade.tail[0] === "ramp" && fade.tail[1] === 0 && Math.abs(fade.tail[2] - (audio.currentTime + 0.8)) < 1e-9 && fade.closedLater === 0, JSON.stringify(fade));
+  record("party radio: a channel change never fades the music in again on the new stream's next playing, and walking back from the doors after one brings the music back",
+    fade.swapped && fade.back && fade.back[0] === "ramp" && fade.back[1] === 1 && Math.abs(fade.back[2] - (audio.currentTime + 1)) < 1e-9, JSON.stringify(fade));
 };
 
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
