@@ -2064,7 +2064,9 @@
     const iceBlocked = voice.error === BL.voice.ICE_BLOCKED;
     const voiceFailure = iceBlocked ? voice.error : voice.returning ? voice.micError : voice.enabled ? "" : voice.error || voice.micError;
     const reason = voiceReason();
-    const voiceWords = reason ? reason : voice.reconnecting ? "Reconnecting voice" : voice.joining ? "Joining voice" : voiceFailure ? `Voice: ${voiceFailure}` : !voice.enabled && !voice.returning ? "Join voice" : voice.muted ? "Unmute" : "Mute";
+    // Once it is a microphone (Mute or Unmute) it wears Ooga Chat's colours: green while live, red while muted.
+    const micShown = !reason && !voice.reconnecting && !voice.joining && !voiceFailure && (voice.enabled || voice.returning);
+    const voiceWords = reason ? reason : voice.reconnecting ? "Reconnecting voice" : voice.joining ? "Joining…" : voiceFailure ? `Voice: ${voiceFailure}` : !micShown ? "Join voice" : voice.muted ? "Unmute" : "Mute";
     writeAccount("account-voice", "hidden", !live);
     writeAccount("account-voice", "textContent", voiceWords);
     writeAccount("account-voice", "disabled", !!reason);
@@ -2077,7 +2079,11 @@
     writeAccount("account-voice-leave", "hidden", !live || !voice.enabled && !voice.returning && !voice.reconnecting);
     const pressed = String(voice.enabled && !voice.muted), onlineDot = String(live);
     for (const row of fieldsFor("account")) if (row.dataset.live !== onlineDot) row.dataset.live = onlineDot;
-    for (const button of fieldsFor("account-voice")) if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
+    const mic = micShown ? voice.muted ? "muted" : "live" : "";
+    for (const button of fieldsFor("account-voice")) {
+      if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
+      if (button.dataset.mic !== mic) button.dataset.mic = mic;
+    }
   };
   // The microphone's note (#181), page-level as the account line is: muted in voice, it stays until unmuted;
   // alone in voice (nobody here to hear, so the microphone is held off), it says so until someone comes; held (Ooga Chat's

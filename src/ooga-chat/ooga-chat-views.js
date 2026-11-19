@@ -452,7 +452,7 @@
     login.title = "Contributors can sign in with GitHub to speak from a cloud.";
     login.addEventListener("click", () => actions.signIn("github"), { signal });
     const name = make("span", "account-name"), room = make("span", "account-room");
-    const voice = button("foot-button", "Join voice"), leave = button("foot-button", "Leave voice"), out = button("link", "Sign out");
+    const voice = button("foot-button account-voice", "Join voice"), leave = button("foot-button account-leave", "Leave voice"), out = button("link", "Sign out");
     const voiceWhy = explain(voice);
     voice.setAttribute("aria-pressed", "false");
     voice.addEventListener("click", (event) => {
