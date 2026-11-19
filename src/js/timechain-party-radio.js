@@ -405,23 +405,36 @@
     };
     // The dialled channel streaming beside the old one: the old one stops feeding the readings now and goes on to the
     // speakers until the new one's sound reaches them (LOOKAHEAD seconds on through Web Audio, at once on the plain
-    // element), then fades out under it and is let go. The beat, the history and the readings carry on unbroken, so
-    // the room shows each station as it is heard.
+    // element), then fades out under it and is let go. A change made before the last one's sound reached the speakers
+    // lets that unheard station go at once and keeps the one still heard going until this one arrives. The beat, the
+    // history and the readings carry on unbroken, so the room shows each station as it is heard.
     const swap = () => {
       clearTimeout(nextDog); nextDog = 0;
-      const t = context.currentTime, wait = nextPlain ? 0 : LOOKAHEAD;
+      const t = context.currentTime, wait = nextPlain ? 0 : LOOKAHEAD, unheard = onAt > 0 && performance.now() < onAt;
       epoch++; clearTimeout(watchdog); watchdog = 0;
+      // A stream going out: faded from when the new one arrives, and let go once it has.
+      const retire = (g) => {
+        clearTimeout(g.timer);
+        if (g.fader) { const p = g.fader.gain; p.cancelScheduledValues(t); p.setValueAtTime(p.value, t); p.setTargetAtTime(0, t + wait, FADE); }
+        g.timer = setTimeout(() => { const k = going.indexOf(g); if (k >= 0) going.splice(k, 1); release(g.el, g.src, g.line, g.fader); },
+          wait * 1000 + (g.fader ? FADE_MS : 0));
+      };
+      if (unheard) for (const g of going) retire(g);
       if (element) {
         element.onplaying = element.onerror = element.onended = element.onwaiting = element.onstalled = null;
-        const g = { el: element, src: source, line, fader, timer: 0 };
-        if (source) { source.disconnect(filter); source.disconnect(whole); fader.gain.setTargetAtTime(0, t + wait, FADE); }
-        g.timer = setTimeout(() => { const k = going.indexOf(g); if (k >= 0) going.splice(k, 1); release(g.el, g.src, g.line, g.fader); },
-          wait * 1000 + (source ? FADE_MS : 0));
-        going.push(g);
+        if (unheard) release(element, source, line, fader);
+        else {
+          const g = { el: element, src: source, line, fader, timer: 0 };
+          if (source) { source.disconnect(filter); source.disconnect(whole); }
+          going.push(g); retire(g);
+        }
       }
       element = next; source = nextSource; line = nextLine; fader = nextFader; plain = nextPlain;
       next = nextSource = nextLine = nextFader = null; nextEpoch++;
       if (source) { source.connect(filter); source.connect(whole); fader.gain.setTargetAtTime(1, t + wait, FADE); }
+      // What the speakers play until the new channel reaches them is what they play now (a change made inside the
+      // last one's lookahead keeps naming the station still heard).
+      was = onAt && performance.now() < onAt ? was : on;
       on = channel; onAt = performance.now() + wait * 1000; failures = 0; quiet = 0; lastTime = -1; starts++;
       songNext = ""; songAt = onAt; if (metaAsk) metaAsk.abort(); metaAsk = null;
       mode = "live"; watch(epoch); applyVolume(); askSong();

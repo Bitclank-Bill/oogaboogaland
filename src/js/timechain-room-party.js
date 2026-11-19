@@ -1421,7 +1421,7 @@
       if (bv !== bpmShown) { bpmShown = bv; bpmText = (bv / 10).toFixed(1); }
       P.pix(ctx, bpmText, w * 0.855, h * 0.71, h * 0.052, S.live ? "#ffffff" : "#9aa6c6");
       // The overview, lit as far as the track has played.
-      const pw = ow * (((e / DECK.TRACK) % 1) + 1) % 1;
+      const pw = ow * ((((e / DECK.TRACK) % 1) + 1) % 1);
       if (pw >= 1) ctx.drawImage(played, ox, oy, pw, oh, ox, oy, pw, oh);
       ctx.fillStyle = "#ffffff"; ctx.fillRect(ox + pw - 1, oy - 3, 2, oh + 5);
       if (i === 0) {
