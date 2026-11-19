@@ -469,12 +469,15 @@
           going.push(g); retire(g);
         }
       }
+      const wasPlain = plain;
       element = next; source = nextSource; line = nextLine; fader = nextFader; plain = nextPlain;
       next = nextSource = nextLine = nextFader = null; nextEpoch++;
       // The room hears the new channel through the crossfade at the level it was at: it counts as arrived, so its first
-      // buffering hiccup never fades it in again, and a plain element taking over plays at once.
+      // buffering hiccup never fades it in again, and a plain element taking over plays at once. A Web Audio stream
+      // taking over from the plain element finds the entry gain never raised, so it fades in as it reaches the speakers.
       arrivedEpoch = epoch; arriveAt = plain ? performance.now() : t;
       if (plain && !fadeInAt) fadeInAt = performance.now() - FADE_IN * 1000;
+      if (wasPlain && !plain) { arriveAt = t + wait; if (!leaving) fadeIn(); }
       if (source) { source.connect(filter); source.connect(whole); fader.gain.setTargetAtTime(1, t + wait, FADE); }
       // What the speakers play until the new channel reaches them is what they play now (a change made inside the
       // last one's lookahead keeps naming the station still heard).

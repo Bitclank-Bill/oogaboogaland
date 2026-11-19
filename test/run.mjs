@@ -22129,6 +22129,28 @@ const partyRadioChecks = async () => {
       && fade.tail && fade.tail[0] === "ramp" && fade.tail[1] === 0 && Math.abs(fade.tail[2] - (audio.currentTime + 0.8)) < 1e-9 && fade.closedLater === 0, JSON.stringify(fade));
   record("party radio: a channel change never fades the music in again on the new stream's next playing, and walking back from the doors after one brings the music back",
     fade.swapped && fade.back && fade.back[0] === "ramp" && fade.back[1] === 1 && Math.abs(fade.back[2] - (audio.currentTime + 1)) < 1e-9, JSON.stringify(fade));
+  // Regression: a stream refused twice through Web Audio falls back to the plain element, which never raises the entry
+  // gain; the next channel, asked through Web Audio, was counted as already heard on its swap, so the room stayed
+  // silent for the rest of the visit. It fades in as it reaches the speakers.
+  const queued = [], realTimeout = page.setTimeout;
+  const handover = {};
+  made.length = 0;
+  audio.createGain = () => { const n = makeGain(); made.push(n); return n; };
+  page.setTimeout = (fn) => { queued.push(fn); return 0; };
+  try {
+    const c = page.window.BL.timechainPartyRadio.create();
+    elements.at(-1).onerror(); queued.pop()();
+    elements.at(-1).onerror();
+    handover.plain = c.stats.plain;
+    elements.at(-1).onplaying();
+    const t2 = audio.currentTime;
+    c.tune(1); elements.at(-1).onplaying();
+    handover.web = !c.stats.plain && c.stats.on === 1;
+    handover.fades = made.some((n) => n.gain.log.some(([k, v, t]) => k === "ramp" && v === 1 && Math.abs(t - (t2 + 12)) < 1e-9));
+    c.dispose();
+  } finally { page.setTimeout = realTimeout; audio.createGain = makeGain; }
+  record("party radio: a channel change from the plain element to Web Audio fades the music in as it reaches the speakers rather than leaving the room silent",
+    handover.plain && handover.web && handover.fades, JSON.stringify(handover));
 };
 
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
