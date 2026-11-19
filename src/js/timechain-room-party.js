@@ -8,9 +8,12 @@
 // spectrum and the floor's rings. A surface changes look only now and then, one surface at a time, and fades into it
 // slowly (the floor ring by ring from the middle out); all of them share one pair of colours (`PALETTES`) that changes
 // as rarely. The lasers on the walls stay dark until a hard part: a drop into one after a quiet part, or a long hard
-// stretch, gives a short show in one or two colours, its looks changing every phrase. Where the music can't be read
-// (a stream heard but not analysed, or the radio off) the room plays its own arrangement on the room's clock, so
-// everyone sees it alike. A new block on the chain drops the bass: a ring of light falls down the dome, a wave runs out
+// stretch, gives a short show in one or two colours, its looks changing every phrase. Everything that pulses (the
+// lasers' beat-locked looks, the floor's rings and sparks, the woofers, the bulbs) does so only while a strong kick
+// drives the music (the beat the radio finds and how hard it hits); a loud part without one gets the flowing looks,
+// the lasers a slow mesh of level beams crossing over everyone's heads from all round the room. Where the music can't
+// be read (a stream heard but not analysed, or the radio off) the room plays its own arrangement on the room's clock,
+// so everyone sees it alike. A new block on the chain drops the bass: a ring of light falls down the dome, a wave runs out
 // across the floor, the lasers strobe white and the sign over the booth says so. The DJ booth stands up on a stage
 // across the front with steps up each end; line arrays hang off the walls all the way round between the lasers and
 // thump, the mirror ball turns under the crown, and the latest block hangs on the dome.
@@ -26,8 +29,11 @@
   const BANDS = ["#5b3fd0", "#3a7bd5", "#2fbf71", "#e3c33a", "#f7931a", "#e0533d"], FLASH = "#ffd08a", PURPLE = "#9a5cff";
   const FLASH_RGB = rgbOf(FLASH), BAND_RGB = BANDS.map(rgbOf);
   // The pairs of colours the room is lit in, one pair at a time.
-  const PALETTES = [["#5b3fd0", "#3a7bd5"], ["#3a7bd5", "#2fbf71"], ["#7b3fe0", "#e0533d"], ["#f7931a", "#e0533d"],
-    ["#2b9fd5", "#9a5cff"], ["#5b3fd0", "#f7931a"], ["#2fbf71", "#3ac8d5"], ["#e0533d", "#9a5cff"]].map((p) => p.map(rgbOf));
+  const PALETTE_HEX = [["#5b3fd0", "#3a7bd5"], ["#3a7bd5", "#2fbf71"], ["#7b3fe0", "#e0533d"], ["#f7931a", "#e0533d"],
+    ["#2b9fd5", "#9a5cff"], ["#5b3fd0", "#f7931a"], ["#2fbf71", "#3ac8d5"], ["#e0533d", "#9a5cff"]];
+  const PALETTES = PALETTE_HEX.map((p) => p.map(rgbOf));
+  // A sine read from a table, for the dome's looks that need one or two a pixel.
+  const SIN = new Float32Array(1024).map((_, i) => Math.sin(i / 1024 * Math.PI * 2)), fsin = (x) => SIN[((x * 162.97466) | 0) & 1023];
   const C = {
     booth: "#1a1420", boothTop: "#2a2030", bezel: "#0a0810", metal: "#2a2a2e", vinyl: "#0b0b0b", cab: "#111114", grille: "#1b1b20",
     label: "#ffb04d", ink: "#0b0714", stage: "#16111d", stageTop: "#261d33", rig: "#3a3b42", plate: "#1c1c20", housing: "#16161b", trim: "#0c0c0f",
@@ -76,7 +82,13 @@
   const RGB = ["#2bff5a", "#ff2b3a", "#3b5bff", "#2bf2ff", "#ff2bea", "#ffe62b", "#f4f2ff"];
   const GREEN = 0, RED = 1, BLUE = 2, CYAN = 3, MAGENTA = 4, YELLOW = 5, WHITE = 6;
   const SHOW_COLORS = [[GREEN, GREEN], [CYAN, MAGENTA], [RED, RED], [BLUE, CYAN], [GREEN, CYAN], [MAGENTA, BLUE]];
-  const NB = 10, PHRASE = 16, BEAM_W = 0.007, BEAM_LEN = 8, LOOKS = 5;
+  const NB = 10, PHRASE = 16, BEAM_W = 0.007, BEAM_LEN = 8;
+  // The lasers' looks a show turns through: on the beat while a strong kick drives the music, and flowing (the level
+  // sheet, the liquid sky and the mesh) while nothing kicks, turning half as often.
+  const PULSE_LOOKS = [0, 1, 2, 4, 5, 7, 8], FLOW_LOOKS = [3, 6, 9];
+  // A strong kick: the beat the radio finds, as hard as it hits now (`hit`, 0 to 1), counts from ON and stops counting
+  // under OFF; a change holds HOLD bars before another.
+  const KICK = { ON: 0.55, OFF: 0.4, HOLD: 8 };
   // The projectors on the walls: a pair at each of BEARINGS (degrees from the doors, mirrored, nearest the booth first),
   // Y up, on a bracket OUT from the wall, tipped TILT down, built SCALE times a projector's BODY (its aperture at
   // APERTURE in its own frame). A show lights one pair at a time, two while the music is at its hardest, the pairs
@@ -94,10 +106,16 @@
   // The LED wall round the room: a canvas W by H wrapped just inside the wall below the dome (INSET), from Y0 to Y1, all
   // the way round but DOOR either side of the doors; its spectrum's segments SEG pixels, its blocks BLOCKS a side.
   const WALL = { W: 2048, H: 96, INSET: 0.995, Y0: 0.14, Y1: 3.62, DOOR: 2.8, SEG: 4, BLOCKS: 24 };
-  // The surfaces' looks, and which suit each section (calm, middle, hard).
-  const DOME = { WASH: 0, NIGHT: 1, SWEEP: 2, RINGS: 3, SPIRAL: 4, NAMES: ["wash", "night", "sweep", "rings", "spiral"], FOR: [[0, 1, 2], [0, 2, 3], [3, 4, 2]] };
-  const FLOOR = { GLOW: 0, RIPPLES: 1, SWEEP: 2, SPARKS: 3, RINGS: 4, NAMES: ["glow", "ripples", "sweep", "sparks", "rings"], FOR: [[0, 1], [1, 2, 3], [4, 3, 2]] };
-  const WALLS = { WAVE: 0, FLOW: 1, BLOCKS: 2, SPECTRUM: 3, NAMES: ["wave", "flow", "blocks", "spectrum"], FOR: [[0, 1], [1, 2, 3], [3, 2]] };
+  // The surfaces' looks, and which suit each section (calm, middle, hard), and the flowing ones a middle or hard section
+  // gets while nothing kicks (the fourth list).
+  const DOME = { WASH: 0, NIGHT: 1, SWEEP: 2, RINGS: 3, SPIRAL: 4, PLASMA: 5, KALEIDO: 6, BURST: 7,
+    NAMES: ["wash", "night", "sweep", "rings", "spiral", "plasma", "kaleido", "burst"], FOR: [[0, 1, 2, 5], [0, 2, 3, 5, 6], [3, 4, 6, 7], [0, 5, 6, 2]] };
+  const FLOOR = { GLOW: 0, RIPPLES: 1, SWEEP: 2, SPARKS: 3, RINGS: 4, NAMES: ["glow", "ripples", "sweep", "sparks", "rings"], FOR: [[0, 1], [1, 2, 3], [4, 3, 2], [0, 1, 2]] };
+  const WALLS = { WAVE: 0, FLOW: 1, BLOCKS: 2, SPECTRUM: 3, WATERFALL: 4, HASHES: 5,
+    NAMES: ["wave", "flow", "blocks", "spectrum", "waterfall", "hashes"], FOR: [[0, 1, 4], [1, 2, 3, 4, 5], [3, 2, 5], [1, 4, 0]] };
+  // The wall's hash rain: COLS columns of the latest block's hash falling a CELL-pixel row at a time, its trail fading
+  // at FADE a second.
+  const RAIN = { COLS: 128, CELL: 10, FADE: 3.5 };
   const polar = (r, b) => ({ x: r * Math.sin(b * DEG), z: r * Math.cos(b * DEG) });
   const boothZ = (L) => -(L.r0 - 2.7);
   const stageZ = (L) => -(L.r0 - STAGE.FRONT);
@@ -122,7 +140,7 @@
   const rgbStyle = (c, k = 1) => `rgb(${Math.round(Math.min(1, c[0] * k) * 255)},${Math.round(Math.min(1, c[1] * k) * 255)},${Math.round(Math.min(1, c[2] * k) * 255)})`;
   // What every surface reads of the music each frame, written in place: the time, the beat, its step and its kick, how
   // hard the music is (`I`), the two colours (`a`, `b`), and the looks' own moving phases.
-  const moment = () => ({ t: 0, beat: 0, step: 0, kick: 0, I: 0, a: [0, 0, 0], b: [0, 0, 0], spin: 0, rings: 0, sweep: 0, ripple: 0, flow: 0 });
+  const moment = () => ({ t: 0, beat: 0, step: 0, kick: 0, I: 0, a: [0, 0, 0], b: [0, 0, 0], spin: 0, rings: 0, sweep: 0, ripple: 0, flow: 0, hash: "" });
 
   // ---------- the floor ----------
   // The panels, each with its ring and its bearing and distance from the floor's middle: every one whose corners keep
@@ -246,7 +264,9 @@
     };
     // The looks: soft washes of the two colours drifting round, brightest toward the horizon; a deep night for the dots
     // to twinkle in; two searchlights opposite each other turning slowly round; rings stepping down from the crown on
-    // the beat; spirals turning across the rings.
+    // the beat; spirals turning across the rings; a slow plasma of the two colours folding through each other; a
+    // kaleidoscope of rings bent six ways round the crown, flowing down on the beat; and a starburst of rays turning
+    // from the crown with a ring of light running down it every other beat.
     const render = (look, buf, M) => {
       const a = M.a, b = M.b, I = M.I;
       if (look === DOME.WASH) {
@@ -270,6 +290,44 @@
         }
         for (let v = 0; v < h; v++) { mix(a, b, up[v], c); const g = (0.25 + 0.55 * (1 - up[v] * 0.7)) * (0.45 + 0.55 * I); rr[v] = c[0] * g; rg[v] = c[1] * g; rb[v] = c[2] * g; }
         fill(buf, true);
+        return;
+      }
+      if (look === DOME.PLASMA) {
+        for (let u = 0; u < w; u++) { cs[u] = fsin(az[u] * 3 + M.t * 0.23); sn[u] = az[u] * 2; }
+        for (let v = 0; v < h; v++) { se[v] = fsin(el[v] * 7 - M.t * 0.31); ce[v] = el[v] * 5 + M.t * 0.17; rr[v] = (0.1 + 0.28 * (1 - up[v])) * (0.6 + 0.4 * I); }
+        for (let v = 0, o = 0; v < h; v++) {
+          const s1 = se[v], c1 = ce[v], g = rr[v], R = br[v], G = bg[v], B = bb[v];
+          for (let u = 0; u < w; u++, o += 3) {
+            const f = 0.5 + 0.5 * fsin((cs[u] + s1 + fsin(sn[u] + c1)) * 1.4 + M.spin * 0.6), k = g * (0.3 + 0.7 * f * f);
+            buf[o] = R + (a[0] + (b[0] - a[0]) * f) * k; buf[o + 1] = G + (a[1] + (b[1] - a[1]) * f) * k; buf[o + 2] = B + (a[2] + (b[2] - a[2]) * f) * k;
+          }
+        }
+        return;
+      }
+      if (look === DOME.KALEIDO) {
+        for (let u = 0; u < w; u++) { cs[u] = 1.4 * fsin(az[u] * 6 + M.spin * 0.7); sn[u] = fsin(az[u] * 12 - M.spin * 1.1); }
+        for (let v = 0; v < h; v++) { ce[v] = el[v] * 18 + M.rings * 1.2; rr[v] = (0.2 + 0.45 * I + 0.25 * M.kick * I) * (1 - up[v] * 0.35); }
+        for (let v = 0, o = 0; v < h; v++) {
+          const c1 = ce[v], g = rr[v], R = br[v], G = bg[v], B = bb[v];
+          for (let u = 0; u < w; u++, o += 3) {
+            const q = 0.5 + 0.5 * fsin(c1 + cs[u]), q2 = q * q, k = q2 * q2 * g * (0.7 + 0.3 * sn[u]), f = 0.5 + 0.5 * sn[u];
+            buf[o] = R + (a[0] + (b[0] - a[0]) * f) * k; buf[o + 1] = G + (a[1] + (b[1] - a[1]) * f) * k; buf[o + 2] = B + (a[2] + (b[2] - a[2]) * f) * k;
+          }
+        }
+        return;
+      }
+      if (look === DOME.BURST) {
+        for (let u = 0; u < w; u++) { const p = 0.5 + 0.5 * Math.cos(az[u] * 16 + M.spin), p2 = p * p, p4 = p2 * p2; colK[u] = p4 * p4; }
+        const front = 1 - ((M.beat * 0.5) % 1);
+        for (let v = 0; v < h; v++) {
+          mix(a, b, up[v], c); rr[v] = c[0]; rg[v] = c[1]; rb[v] = c[2];
+          const d = (up[v] - front) * 7;
+          se[v] = (0.22 + 0.45 * I) * (0.3 + 0.7 * up[v]); ce[v] = 0.55 * I * Math.exp(-d * d);
+        }
+        for (let v = 0, o = 0; v < h; v++) {
+          const ray = se[v], ring = ce[v], R = br[v], G = bg[v], B = bb[v], CR = rr[v], CG = rg[v], CB = rb[v];
+          for (let u = 0; u < w; u++, o += 3) { const k = colK[u] * ray + ring; buf[o] = R + CR * k; buf[o + 1] = G + CG * k; buf[o + 2] = B + CB * k; }
+        }
         return;
       }
       if (look === DOME.RINGS) {
@@ -353,17 +411,25 @@
         out.push(g);
       }
     });
+    // Each projector's place going round the room, for the chase; and the mirror ball, which a look aims them all at.
+    out.slice().sort((p, q) => (p.bearing + 360) % 360 - (q.bearing + 360) % 360).forEach((g, i) => { g.round = i; });
+    out.ball = ballY(L);
     return out;
   };
   // Where every beam points this moment, into `out` (`dir`, three numbers a beam; `on`; `color`), in the look `look`
   // and the show's colours `ca` and `cb`: mirrored fans dipping on the kick; tunnels spinning onto the floor; a pair of
-  // beams scanning each fan; a level sheet over the crowd's heads; upright fans swaying side to side; and (-1) a block's
-  // drop, wide white fans spinning and strobing. Only the projectors whose pair's bit is set in `pairs` shine. `F` is
-  // scratch.
-  const aim = (rigs, beat, kick, look, ca, cb, pairs, out, F) => {
+  // beams scanning each fan; a level sheet over the crowd's heads; upright fans swaying side to side; every projector's
+  // cone grazing the mirror ball, so the beams meet there from all round; a liquid sky, level fans over the heads with
+  // a ripple running through them; a fan flashing from one projector after another round the room; crossfire, tight
+  // fans sweeping the floor against their partners; a block's drop (-1), wide white fans spinning and strobing; and
+  // while nothing kicks, a mesh of level fans from every projector drifting slowly over the heads so they cross into a
+  // net. The beat moves the pulsing looks, the time `t` the flowing ones. Only the projectors whose pair's bit is set in
+  // `pairs` shine in a pulsing look but the ball's and the chase's, every one in a flowing one (every other in the
+  // sheet). `F` is scratch.
+  const aim = (rigs, beat, t, kick, look, ca, cb, pairs, out, F) => {
     for (let p = 0; p < rigs.length; p++) {
       const g = rigs[p], s = g.side, base = p * NB, D = g.D;
-      let tx = g.ax + g.ix * D * 0.6, ty = 2.4, tz = g.az + g.iz * D * 0.6, cone = 0, spread = 0, roll = 0, spin = 0, color = p % 2 ? cb : ca, lit = -1, on = (pairs >> g.pair & 1) === 1;
+      let tx = g.ax + g.ix * D * 0.6, ty = 2.4, tz = g.az + g.iz * D * 0.6, cone = 0, spread = 0, roll = 0, spin = 0, color = p % 2 ? cb : ca, lit = -1, on = (pairs >> g.pair & 1) === 1, ripple = 0;
       if (look === 0) {
         tx = g.ax + g.ix * D * 0.55; tz = g.az + g.iz * D * 0.55; ty = 2.2 + 0.8 * Math.sin(beat * Math.PI / 4) - 0.4 * kick;
         spread = 0.55; roll = s * 0.5 * Math.sin(beat * Math.PI / 8);
@@ -373,9 +439,29 @@
       } else if (look === 2) {
         spread = 0.8; lit = Math.floor(((beat + p * 0.15) % 1) * NB);
       } else if (look === 3) {
-        on = on && p % 2 === 0;
-        tx = g.ax + g.ix * D * 1.6; tz = g.az + g.iz * D * 1.6; ty = 2.3 + 0.15 * Math.sin(beat * Math.PI / 4 + p * 0.7);
+        on = p % 2 === 0;
+        tx = g.ax + g.ix * D * 1.6; tz = g.az + g.iz * D * 1.6; ty = 2.6 + 0.15 * Math.sin(t * 0.5 + p * 0.7);
         spread = 1.0;
+      } else if (look === 9) {
+        on = true;
+        const sway = 5 * Math.sin(t * 0.21 + p * 0.8);
+        tx = g.ax + g.ix * D * 1.4 - g.iz * sway; tz = g.az + g.iz * D * 1.4 + g.ix * sway; ty = 2.7 + 0.25 * Math.sin(t * 0.37 + p);
+        spread = 0.9; roll = 0.15 * Math.sin(t * 0.29 + p * 1.7); ripple = 0.02;
+      } else if (look === 5) {
+        on = true;
+        tx = 0; ty = rigs.ball; tz = FZ;
+        cone = 0.02 + 0.012 * kick; spin = (p % 2 ? 1 : -1) * beat * Math.PI / 4;
+      } else if (look === 6) {
+        on = true;
+        tx = g.ax + g.ix * D * 1.5; tz = g.az + g.iz * D * 1.5; ty = 2.8;
+        spread = 1.1; ripple = 0.035;
+      } else if (look === 7) {
+        on = Math.floor(beat * 2) % rigs.length === g.round;
+        spread = 0.9; roll = s * 0.3;
+      } else if (look === 8) {
+        const sweep = 6 * s * Math.sin(beat * Math.PI / 4);
+        tx = g.ax + g.ix * D * 0.65 - g.iz * sweep; tz = g.az + g.iz * D * 0.65 + g.ix * sweep; ty = 0;
+        spread = 0.25;
       } else if (look === 4) {
         const sway = 4 * Math.sin(beat * Math.PI / 4 + p);
         tx = g.ax + g.ix * D * 0.6 - g.iz * sway; tz = g.az + g.iz * D * 0.6 + g.ix * sway; ty = 3;
@@ -394,7 +480,7 @@
           x = cc * dx + cx * ux + sx * vx; y = cc * dy + sx * vy; z = cc * dz + cx * uz + sx * vz;
         } else {
           const a = (j / (NB - 1) - 0.5) * spread, c = Math.cos(a), sn = Math.sin(a);
-          x = c * dx + sn * F[0]; y = c * dy + sn * F[1]; z = c * dz + sn * F[2];
+          x = c * dx + sn * F[0]; y = c * dy + sn * F[1] + ripple * Math.sin(j * 0.9 + t * 1.3 + p * 1.3); z = c * dz + sn * F[2];
         }
         const i = base + j, l = Math.hypot(x, y, z);
         out.dir[i * 3] = x / l; out.dir[i * 3 + 1] = y / l; out.dir[i * 3 + 2] = z / l;
@@ -448,17 +534,19 @@
 
   // ---------- the speakers ----------
   // A speaker's cone round its node's +y, which the node turns out of the box's face: the cone, its dust cap and a lit
-  // ring round it that glows on the kick.
-  const cone = (rr) => (k) => {
+  // ring round it in `ring` that glows on the kick. A box's lit strip along its foot, in `color`, on a node of its own.
+  const cone = (rr, ring) => (k) => {
     k.cyl(rr, rr * 0.6, 0.05, "#08080a", 0, -0.025, 0, { seg: 20 });
     k.ball(rr * 0.3, "#34343a", 0, 0, 0, { seg: 10 });
-    k.torus(rr * 0.72, 0.008, PURPLE, 0, 0.002, 0, { seg: 20, sides: 4, emissive: 1 });
+    k.torus(rr * 0.72, 0.008, ring, 0, 0.002, 0, { seg: 20, sides: 4, emissive: 1 });
   };
+  const speakerStrip = (color) => (k) => k.box(BOX.w - 0.08, 0.012, 0.012, color, 0, 0, 0, { emissive: 0.7, glow: true });
   // A line array hung off the wall, in a frame at the foot of the wall under it with +z into the room: a braced
   // bracket out from the wall, the bumper on chains under it, and `n` boxes hung below in a curve, each from the bottom
-  // back edge of the one above and tipped a little further down, two woofers either side of a horn on each, on nodes of
-  // their own (`name`, the box and the side). Returns the woofer's geometry, for the next to share.
-  const lineArray = (K, n, name, woofer, tip) => {
+  // back edge of the one above and tipped a little further down, two woofers either side of a horn on each and a lit
+  // strip along its foot, on nodes of their own (`name`, the box and the side), sharing `shared`'s woofer and strip,
+  // builders until the first is built and then their geometry.
+  const lineArray = (K, n, name, shared, tip) => {
     const top = HANG_Y, out = HANG_OUT;
     K.box(0.6, 0.5, 0.03, C.plate, 0, top + 0.45, 0.015);
     for (const sx of [-0.22, 0.22]) {
@@ -477,14 +565,13 @@
       g.box(BOX.w - 0.06, BOX.h - 0.05, 0.01, C.grille, 0, 0.005, front + 0.005);
       g.box(0.26, 0.2, 0.02, C.horn, 0, 0.01, front + 0.012);
       g.box(0.02, 0.17, 0.012, "#2a2a30", 0, 0.01, front + 0.024);
-      g.box(BOX.w - 0.08, 0.012, 0.012, PURPLE, 0, -BOX.h / 2 + 0.02, front + 0.012, { emissive: 0.7, glow: true });
+      shared.strip = g.node(`speakerStrip${name}_${k}`, shared.strip, 0, -BOX.h / 2 + 0.02, front + 0.012, { rx: tilt, glow: true }).geometry;
       for (const sx of [-1, 1]) g.box(0.012, BOX.h * 0.8, 0.012, "#2a2a30", sx * (BOX.w / 2 + 0.006), 0, -0.05);
       for (const sx of [-1, 1]) {
-        woofer = g.node(`${name}_${k}_${sx < 0 ? 0 : 1}`, woofer, sx * 0.34, 0.01, front + 0.012, { rx: Math.PI / 2 + tilt, target: k === 1 && sx < 0 ? tip : null }).geometry;
+        shared.woofer = g.node(`${name}_${k}_${sx < 0 ? 0 : 1}`, shared.woofer, sx * 0.34, 0.01, front + 0.012, { rx: Math.PI / 2 + tilt, target: k === 1 && sx < 0 ? tip : null }).geometry;
       }
       y -= BOX.h * c; z -= BOX.h * s;
     }
-    return woofer;
   };
 
   // ---------- the booth's screen ----------
@@ -613,8 +700,20 @@
     // The flow: the two colours in turn across a strip the wall's width, darker at its top and foot.
     const flow = CH.canvas(W, H), f = flow.getContext("2d");
     const level = new Float32Array(BARS), peak = new Float32Array(BARS), half = W / 2, pitch = half / BARS, bw = Math.max(2, pitch - 3), top = H - 4;
-    let barStyle = "#fff", waveStyle = "#fff", glowStyle = "#fff", shape = null;
+    let barStyle = "#fff", waveStyle = "#fff", glowStyle = "#fff", shape = null, step = 0;
+    // The waterfall: the spectrum's history, newest at the booth and flowing out round both sides, a column a frame.
+    const hist = CH.canvas(half, H), hc = hist.getContext("2d"), col = hc.createImageData(1, H), cpx = col.data, ca = [0, 0, 0], cb = [0, 0, 0];
+    hc.fillStyle = "#06030b"; hc.fillRect(0, 0, half, H);
+    // The rain: the hash's characters in the two colours (a column's head white over them), its trail a canvas of its own.
+    const HEX = "0123456789abcdef", { COLS, CELL } = RAIN, glyphs = CH.canvas(16 * CELL, 3 * CELL), gc = glyphs.getContext("2d");
+    const rain = CH.canvas(W, H), rc = rain.getContext("2d"), rowY = new Float32Array(COLS), rowV = new Float32Array(COLS), last = new Int16Array(COLS).fill(-1);
+    for (let i = 0; i < COLS; i++) { rowY[i] = -Math.random() * 12; rowV[i] = 6 + Math.random() * 10; }
     const colors = (a, bb) => {
+      ca[0] = a[0]; ca[1] = a[1]; ca[2] = a[2]; cb[0] = bb[0]; cb[1] = bb[1]; cb[2] = bb[2];
+      gc.clearRect(0, 0, 16 * CELL, 3 * CELL);
+      [rgbStyle(a, 1.3), rgbStyle(bb, 1.3), "#f4f2ff"].forEach((ink, r) => {
+        for (let i = 0; i < 16; i++) RM.paintKit.pix(gc, HEX[i], i * CELL + CELL / 2, r * CELL + CELL / 2, CELL * 0.75, ink);
+      });
       const grad = ctx.createLinearGradient(0, H, 0, 0);
       grad.addColorStop(0, rgbStyle(a)); grad.addColorStop(1, rgbStyle(bb, 1.25));
       barStyle = grad; waveStyle = rgbStyle(bb, 1.3); glowStyle = rgbStyle(a, 0.9);
@@ -636,7 +735,41 @@
     };
     const draw = (look, alpha, M) => {
       if (alpha <= 0.002) return;
-      if (look === WALLS.WAVE) {
+      if (look === WALLS.WATERFALL) {
+        hc.drawImage(hist, 1, 0);
+        for (let y = 0; y < H; y++) {
+          const v = level[Math.min(BARS - 1, Math.floor((H - 1 - y) * BARS / H))], g = 0.08 + 1.1 * v * v, o = y * 4;
+          cpx[o] = Math.min(255, (ca[0] + (cb[0] - ca[0]) * v) * g * 255); cpx[o + 1] = Math.min(255, (ca[1] + (cb[1] - ca[1]) * v) * g * 255);
+          cpx[o + 2] = Math.min(255, (ca[2] + (cb[2] - ca[2]) * v) * g * 255); cpx[o + 3] = 255;
+        }
+        hc.putImageData(col, 0, 0);
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(hist, half, 0);
+        ctx.save(); ctx.translate(half, 0); ctx.scale(-1, 1); ctx.drawImage(hist, 0, 0); ctx.restore();
+        ctx.drawImage(gaps, 0, 0);
+      } else if (look === WALLS.HASHES) {
+        // The trail fades; each column's head writes a character as it reaches a new row, faster the louder the bass.
+        rc.globalCompositeOperation = "destination-out"; rc.fillStyle = "#000"; rc.globalAlpha = Math.min(1, step * RAIN.FADE);
+        rc.fillRect(0, 0, W, H);
+        rc.globalCompositeOperation = "source-over"; rc.globalAlpha = 1;
+        const pitch = W / COLS, rows = Math.ceil(H / CELL), boost = 0.5 + M.I + 1.5 * level[2];
+        for (let i = 0; i < COLS; i++) {
+          rowY[i] += rowV[i] * boost * step;
+          const r = Math.floor(rowY[i]);
+          if (r > rows + 4) { rowY[i] = -Math.random() * 10; rowV[i] = 6 + Math.random() * 10; last[i] = -1; continue; }
+          if (r === last[i] || r < 0) continue;
+          if (last[i] >= 0 && last[i] < rows) {
+            const k = HEX.indexOf(M.hash[(i * 7 + last[i]) % 64] || "0"), g = i % 3 === 0 ? 1 : 0;
+            rc.drawImage(glyphs, k * CELL, g * CELL, CELL, CELL, i * pitch, last[i] * CELL, CELL, CELL);
+          }
+          last[i] = r;
+          if (r < rows) {
+            const k = HEX.indexOf(M.hash[(i * 7 + r) % 64] || "0");
+            rc.drawImage(glyphs, k * CELL, 2 * CELL, CELL, CELL, i * pitch, r * CELL, CELL, CELL);
+          }
+        }
+        ctx.globalAlpha = alpha; ctx.drawImage(rain, 0, 0);
+      } else if (look === WALLS.WAVE) {
         ctx.globalCompositeOperation = "lighter";
         drawWave(alpha * 0.25, 7, glowStyle); drawWave(alpha * (0.55 + 0.35 * M.I), 2, waveStyle);
         ctx.globalCompositeOperation = "source-over";
@@ -684,7 +817,7 @@
         level[i] = bands[i] > level[i] ? bands[i] : Math.max(bands[i], level[i] - dt * 2);
         peak[i] = level[i] > peak[i] ? level[i] : Math.max(0, peak[i] - dt * 0.4);
       }
-      shape = wave;
+      shape = wave; step = dt;
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
       ctx.drawImage(back, 0, 0);
       if (from !== to && fade < 1) draw(from, 1 - fade, M);
@@ -755,26 +888,43 @@
   };
 
   // ---------- its door ----------
-  // A club's: black leather leaves buttoned in a diamond pattern with a neon strip down the seam and a glowing
-  // porthole, neon tubes round the frame, and a string of bulbs round it that chase the beat.
+  // A club's: black leather leaves buttoned in a diamond pattern with a soft strip down the seam and a porthole, neon
+  // tubes round the frame, EXIT over it and a string of bulbs round it that chase the beat, the neon, EXIT and the bulbs
+  // in the room's two colours (`lightsIn`, swapped as the colours change), and no strip across the bay.
   const door = {
-    casing: "#120d18", frame: "#2a1f36", header: "#0b0714", word: "#ff3ce0", strip: PURPLE, chain: false,
-    leaf: "#17121c", seam: "#050307", plate: "#0b0714", face: "#ff3ce0", mark: "#0b0714",
+    casing: "#120d18", frame: "#2a1f36", header: "#0b0714", word: PALETTE_HEX[0][1], strip: false, chain: false,
+    leaf: "#17121c", seam: "#050307", plate: "#0b0714", face: "#d8d0ff", mark: "#0b0714",
     leafFace(side, H) {
       for (let row = 0; row < 11; row++) for (let col = 0; col < 5; col++) {
         const x = -0.6 + col * 0.3 + (row & 1 ? 0.15 : 0), y = 0.35 + row * 0.27;
         if (x < 0.72 && Math.hypot(x, y - 2.35) > 0.28) H.diamond(x, y, 0.025, "#6e5a86", 0.15, 1);
       }
-      H.rect(H.inner + side * 0.02, 0.1, H.inner + side * 0.05, 3.1, PURPLE, 1, 2);
+      H.rect(H.inner + side * 0.02, 0.1, H.inner + side * 0.05, 3.1, "#4a3d66", 0.6, 2);
       H.disc(0, 2.35, 0.15, "#24123a", 0.5, 16, 1);
-      H.ring(0, 2.35, 0.18, 0.03, "#ff3ce0", 0.9, 16, 2);
+      H.ring(0, 2.35, 0.18, 0.03, "#9a8ab8", 0.5, 16, 2);
     }
   };
+  // The neon round the frame in `color`, in the room's frame: up both sides and across the top.
+  const neon = (k, d, color) => {
+    const x = d.W + d.F + 0.03, z = d.Z - 0.14;
+    for (const sx of [-1, 1]) k.box(0.03, d.D + d.F, 0.03, color, sx * x, (d.D + d.F) / 2, z, { emissive: 1, glow: true });
+    k.box(2 * x, 0.03, 0.03, color, 0, d.D + d.F, z, { emissive: 1, glow: true });
+  };
   const doorTrim = (K, L) => {
-    const d = RM.doorway(L), x = d.W + d.F + 0.03, z = d.Z - 0.14;
-    for (const sx of [-1, 1]) K.box(0.03, d.D + d.F, 0.03, "#ff3ce0", sx * x, (d.D + d.F) / 2, z, { emissive: 1, glow: true });
-    K.box(2 * x, 0.03, 0.03, "#ff3ce0", 0, d.D + d.F, z, { emissive: 1, glow: true });
-    RM.doorBulbs(K, L, "#ffd08a", 0.38);
+    K.node("doorNeon", (k) => neon(k, RM.doorway(L), PALETTE_HEX[0][1]), 0, 0, 0, { glow: true });
+    RM.doorBulbs(K, L, PALETTE_HEX[0][0], 0.38);
+  };
+  // The door's and the speakers' lights in a palette's colours, made once a room and palette: the neon, EXIT and the
+  // woofers' rings in its second colour, the bulbs and the speakers' strips in its first.
+  const lightLooks = new Map();
+  const lightsIn = (L, i) => {
+    const key = `${L.id}|${i}`;
+    if (!lightLooks.has(key)) {
+      const [ha, hb] = PALETTE_HEX[i], d = RM.doorway(L), tube = RM.solo((k) => neon(k, d, hb)), bulb = RM.helpers.ballGeo(0.045, ha, 8, 1), strip = RM.solo(speakerStrip(ha));
+      tube.castShadow = bulb.castShadow = strip.castShadow = false;
+      lightLooks.set(key, { tube, exit: RM.helpers.litWord("EXIT", 0.036, hb, 0.9), bulb, ring: RM.solo(cone(0.13, hb)), strip });
+    }
+    return lightLooks.get(key);
   };
 
   const plan = (K, L) => {
@@ -866,11 +1016,11 @@
     });
 
     // The line arrays hung off the walls either side of the booth and further round, their woofers on nodes that thump.
-    let woofer = cone(0.13);
+    const shared = { woofer: cone(0.13, PALETTE_HEX[0][1]), strip: speakerStrip(PALETTE_HEX[0][0]) };
     const tip = { kind: "speaker", tip: "Line array", radius: 0.6, data: { say: "Hung off the wall, and a drop on every block" } }, rh = ROOMS.radiusAt(L, HANG_Y);
     for (const [i, a] of ARRAYS.entries()) for (const s of [1, -1]) {
       const b = s * a.b * DEG;
-      woofer = lineArray(K.group(rh * Math.sin(b), 0, rh * Math.cos(b), b + Math.PI), a.n, `woofer${i}${s < 0 ? "l" : "r"}`, woofer, tip);
+      lineArray(K.group(rh * Math.sin(b), 0, rh * Math.cos(b), b + Math.PI), a.n, `woofer${i}${s < 0 ? "l" : "r"}`, shared, tip);
     }
 
     // The mirror ball under the crown on its line; the ring of light a drop sends down the dome and the sign over the
@@ -919,12 +1069,16 @@
     const dots = [];
     for (let g = 0; nodes[`dots${g}`]; g++) dots.push(nodes[`dots${g}`]);
     // Each woofer's rest and the way it pushes out, toward the room's middle.
-    const cones = [];
+    const cones = [], strips = [];
+    for (const name of Object.keys(nodes)) if (/^speakerStrip/.test(name)) strips.push(nodes[name]);
     for (const name of Object.keys(nodes)) if (/^woofer/.test(name)) {
       const n = nodes[name], p = n.position, d = Math.hypot(p.x, p.z);
       cones.push({ node: n, x: p.x, z: p.z, dx: -p.x / d, dz: -p.z / d });
     }
     const records = [nodes.record0, nodes.record1], meters = [nodes.meter0, nodes.meter1], ball = nodes.ball, wave = nodes.wave, drop = nodes.drop, stageEdge = nodes.stageEdge;
+    // The door's neon, EXIT and bulbs, in the colours the room is in.
+    const doorNeon = nodes.doorNeon, exitSign = built.exitSign;
+    let doorColors = -1;
     const domeSurface = built.dome && built.dome.geometry.imageSurface, domeShow = domeSurface && shows.get(domeSurface.canvas);
     const screenSurface = nodes.screen.geometry.imageSurface, screen = screenOf(screenSurface.canvas);
     const wallSurface = nodes.wall.geometry.imageSurface, wall = wallOf(wallSurface.canvas), music = new Float32Array(MUSIC.BANDS), shape = new Float32Array(MUSIC.WAVE);
@@ -938,6 +1092,7 @@
     // The beat, the music's energy and the section.
     let beat = 0, rate = 1 / BEAT, lastStep = 0, hit = 1, I = 0.25, raw = 0.25, forced = null, analysed = false;
     let fastB = NaN, fastL = 0, refB = 0, refL = 0;
+    let kicking = false, kickBeat = 0, forcedKick = null, forcedLook = null, held = false;
     let section = 0, sectionBeat = 0, lastCalm = -99, nextChange = CHANGE.EVERY * BAR, nextColors = CHANGE.PALETTE * BAR, turn = 0;
     // Each surface's look now and the one it fades from, how far, and the step its next change is due on.
     const surface = (seconds, fors, first) => ({ look: first, from: first, fade: 1, seconds, fors, due: Infinity });
@@ -962,7 +1117,7 @@
     const newColors = () => { colorFrom = colorTo; colorTo = pick(PALETTE_IDS, colorTo); colorFade = 0; };
     const startShow = (beats, dropped) => {
       showFrom = beat; showUntil = beat + beats; showCount++;
-      showLook = dropped ? 0 : Math.floor(Math.random() * LOOKS);
+      showLook = dropped ? 0 : Math.floor(Math.random() * 64);
       showPair = dropped ? 0 : Math.floor(Math.random() * PROJ.BEARINGS.length);
       showColors = SHOW_COLORS[Math.floor(Math.random() * SHOW_COLORS.length)];
     };
@@ -1021,15 +1176,25 @@
         } else raw = arranged(clock());
         if (forced !== null) raw = forced;
         I += (raw - I) * Math.min(1, dt * (raw > I ? ENERGY.RISE : ENERGY.SINK));
-        hit += ((heard.live ? 0.35 + 0.65 * heard.level : 1) - hit) * Math.min(1, dt * TEMPO_RATE);
+        // How hard a kick drives the music now: the beat the radio finds, as hard as it hits (none when it finds none);
+        // or, where the music can't be read, the arrangement's, kicking through its hard part.
+        const groove = forcedKick !== null ? forcedKick : analysed ? (heard.live ? heard.level : 0) : I > 0.6 ? 1 : 0.3;
+        hit += (groove - hit) * Math.min(1, dt * TEMPO_RATE);
         const kick = Math.exp(-(beat - step) * 6) * hit * (0.35 + 0.65 * I);
         if (I < SECTION.CALM_DOWN) lastCalm = t;
         // A new block on the chain drops the bass.
         const blocks = feeds.reader.value("recent"), height = blocks && blocks[0] ? blocks[0].height : -1;
+        M.hash = blocks && blocks[0] ? blocks[0].id : "00000000000000000002a7c4c1e48d76c5a37902165a270156b7a8d72728a054";
         if (height > 0 && lastHeight > 0 && height > lastHeight) blockDrop();
         if (height > 0) lastHeight = height;
         // On each bar: the section, and now and then a new look for one surface or new colours.
         if (newStep && step % BAR === 0) {
+          // Whether a strong kick drives it: a change of mind repicks every surface's look, a bar apart.
+          const kickWant = kicking ? hit > KICK.OFF : hit > KICK.ON;
+          if (kickWant !== kicking && beat - kickBeat >= KICK.HOLD * BAR) {
+            kicking = kickWant; kickBeat = beat;
+            for (let i = 0; i < 3; i++) surfaces[i].due = Math.min(surfaces[i].due, step + i * BAR);
+          }
           const want = section === 2 ? (I < SECTION.CALM_DOWN ? 0 : I < SECTION.HARD_DOWN ? 1 : 2)
             : section === 0 ? (I > SECTION.HARD_UP ? 2 : I > SECTION.CALM_UP ? 1 : 0)
               : (I > SECTION.HARD_UP ? 2 : I < SECTION.CALM_DOWN ? 0 : 1);
@@ -1044,7 +1209,8 @@
             surfaces[turn].due = step; turn = (turn + 1) % 3; nextChange = step + CHANGE.EVERY * BAR;
           }
           if (step >= nextColors) { newColors(); nextColors = step + CHANGE.PALETTE * BAR; }
-          for (const s of surfaces) if (step >= s.due) { s.due = Infinity; change(s, pick(s.fors[section], s.look)); }
+          const mood = section > 0 && !kicking ? 3 : section;
+          if (!held) for (const s of surfaces) if (step >= s.due) { s.due = Infinity; change(s, pick(s.fors[mood], s.look)); }
           // A long hard stretch without lasers gets a short show.
           if (section === 2 && showUntil < 0 && t - lastShowEnd > LASER.LONG) startShow(LASER.SHOW_PEAK, false);
         }
@@ -1064,7 +1230,20 @@
         const d = blockT >= 0 ? blockT : musicT, dropping = d >= 0, boom = blockT >= 0 ? 1 - blockT : 0;
         // The stage's lip glows with how hard the music is and on the kick.
         stageEdge.glow = 0.3 + 0.35 * I + 0.35 * kick + boom;
-        // The door's bulbs chase round the frame a bulb a beat, every third lit.
+        // The door's and the speakers' lights take the room's colours halfway through their fade; the neon, EXIT and the
+        // speakers' strips glow with the music, and the door's bulbs chase round the frame a bulb a beat, every third lit.
+        const doorWants = cf >= 0.5 ? colorTo : colorFrom;
+        if (doorWants !== doorColors) {
+          doorColors = doorWants;
+          const look = lightsIn(L, doorColors);
+          doorNeon.geometry = look.tube; exitSign.geometry = look.exit;
+          for (let i = 0; i < bulbs.length; i++) bulbs[i].geometry = look.bulb;
+          for (let i = 0; i < cones.length; i++) cones[i].node.geometry = look.ring;
+          for (let i = 0; i < strips.length; i++) strips[i].geometry = look.strip;
+        }
+        for (let i = 0; i < strips.length; i++) strips[i].glow = 0.35 + 0.35 * I + 0.3 * kick;
+        doorNeon.glow = 0.45 + 0.3 * I + 0.25 * kick;
+        exitSign.glow = 0.7 + 0.3 * I;
         for (let i = 0; i < bulbs.length; i++) bulbs[i].glow = (i + step) % 3 === 0 ? 0.3 + 0.5 * kick : 0.1;
         // The floor: its look wiped outward ring by ring over the last, a drop's wave over it all; re-hashed on every
         // beat while the music is hard and every bar while it is not, the hashes held through a drop.
@@ -1095,9 +1274,10 @@
         const n = PROJ.BEARINGS.length, first = (showPair + Math.floor((beat - showFrom) / PHRASE)) % n;
         const pairs = blockT >= 0 ? (1 << n) - 1 : laser > 0.03 ? 1 << first | (laser > 0.75 ? 1 << (first + 2) % n : 0) : 0;
         if (pairs) {
-          const lk = blockT >= 0 ? -1 : (showLook + Math.floor((beat - showFrom) / PHRASE)) % LOOKS;
-          aim(rigs, beat, kick, lk, showColors[0], showColors[1], pairs, look, F);
-          const glow = (0.35 + 0.65 * laser) * (0.85 + 0.15 * kick);
+          const list = kicking ? PULSE_LOOKS : FLOW_LOOKS;
+          const lk = blockT >= 0 ? -1 : forcedLook !== null ? forcedLook : list[(showLook + Math.floor((beat - showFrom) / (kicking ? PHRASE : 2 * PHRASE))) % list.length];
+          aim(rigs, beat, t, kick, lk, showColors[0], showColors[1], pairs, look, F);
+          const glow = (0.35 + 0.65 * laser) * (0.85 + 0.15 * kick) * (kicking || blockT >= 0 ? 1 : 0.7);
           for (let i = 0; i < count; i++) {
             const beam = beams[i], dot = hits[i], on = look.on[i] === 1;
             beam.visible = dot.visible = on;
@@ -1110,7 +1290,11 @@
             beam.glow = dot.glow = glow;
           }
         } else for (let i = 0; i < count; i++) beams[i].visible = hits[i].visible = false;
-        for (let p = 0; p < projectors.length; p++) projectors[p].glow = pairs >> rigs[p].pair & 1 ? 0.4 + 0.6 * laser : 0.25;
+        for (let p = 0; p < projectors.length; p++) {
+          let lit = false;
+          for (let j = 0; pairs && j < NB && !lit; j++) lit = look.on[p * NB + j] === 1;
+          projectors[p].glow = lit ? 0.4 + 0.6 * laser : 0.25;
+        }
         // The dome: its look faded over the last, warm in a block's drop; the dots twinkling softly, brighter in the
         // night's look, a group lit on the kick.
         if (domeShow && (domeWait -= dt) <= 0) {
@@ -1177,12 +1361,12 @@
         return true;
       },
       // Under debug (`__ooga.timechain.motion`): the radio's state and the room's reading of the music, with handles to
-      // hold its intensity (null lets go), drop the bass as a block or the music would, set a surface's look by name
-      // at once and set the colours.
+      // hold its intensity, how hard its kick is and the lasers' look (null lets go of each) and its surfaces' looks, drop
+      // the bass as a block or the music would, set a surface's look by name at once and set the colours.
       get stats() {
-        return { ...radio.stats, intensity: +I.toFixed(3), analysed, section, laser: +laser.toFixed(3), showing: showUntil >= 0, shows: showCount,
+        return { ...radio.stats, intensity: +I.toFixed(3), analysed, section, kicking, hit: +hit.toFixed(3), laser: +laser.toFixed(3), showing: showUntil >= 0, shows: showCount,
           looks: { dome: DOME.NAMES[dome.look], floor: FLOOR.NAMES[ground.look], wall: WALLS.NAMES[strip.look] }, colors: colorTo,
-          force: (v) => { forced = v === null ? null : clamp01(v); }, blockDrop, musicDrop: () => musicDrop(1e9),
+          force: (v) => { forced = v === null ? null : clamp01(v); }, kick: (v) => { forcedKick = v === null ? null : clamp01(v); kickBeat = -1e9; }, laserLook: (i) => { forcedLook = i; }, blockDrop, musicDrop: () => { showUntil = -1; musicDrop(1e9); }, hold: (on) => { held = !!on; },
           look: (which, name) => {
             const s = { dome, floor: ground, wall: strip }[which], names = { dome: DOME.NAMES, floor: FLOOR.NAMES, wall: WALLS.NAMES }[which];
             change(s, names.indexOf(name)); s.fade = 1;
