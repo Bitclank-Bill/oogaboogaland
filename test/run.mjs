@@ -3947,9 +3947,11 @@ const mediaSourceServer = async () => {
   const server = createServer(async (req, res) => {
     try {
       const path = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
-      const relative = path.startsWith("/src/") ? path.slice(5) : path.startsWith("/media/") ? path.slice(1) : null;
+      // Lecture recordings live in R2, not the repository (worker/src/lecture-audio.js): the Studio's sample stands in.
+      const lecture = /^\/media\/lectures\/[a-z]+-\d\d-[0-9a-f]{16}\.m4a$/.test(path);
+      const relative = lecture ? "media/studio-sample.mp4" : path.startsWith("/src/") ? path.slice(5) : path.startsWith("/media/") ? path.slice(1) : null;
       if (!relative || relative.split("/").some(part => !part || part === "." || part === "..") || relative.includes("\\")) { res.writeHead(404); res.end(); return; }
-      const extension = extname(relative), body = await readFile(join(root, "src", relative));
+      const extension = extname(lecture ? path : relative), body = await readFile(join(root, "src", relative));
       const response = previewResponse(body, types[extension] || "application/octet-stream", req, extension === ".mp4" || extension === ".webm" || extension === ".m4a");
       res.writeHead(response.status, response.headers); res.end(response.body);
     } catch (_) { res.writeHead(404); res.end(); }
@@ -22031,8 +22033,8 @@ const partyRadioChecks = async () => {
   // music stopping while it tuned in again and the lights losing the beat for the visit) after one late frame: the
   // whole time since the frame before counted as heard silent. A stream that comes back plays on, read as before, and
   // one that stays silent frame after frame is still given up.
-  const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, connect() {}, disconnect() {} });
-  const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createMediaElementSource: node, close: async () => {},
+  const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, delayTime: {}, connect() {}, disconnect() {} });
+  const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createDelay: node, createMediaElementSource: node, close: async () => {},
     createAnalyser: () => ({ ...node(), getFloatTimeDomainData: (a) => a.fill(level.now), getByteFrequencyData() {} }) };
   const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date,
     document: { addEventListener() {}, removeEventListener() {} }, AudioContext: function () { return audio; },
@@ -22050,6 +22052,23 @@ const partyRadioChecks = async () => {
   } finally { radio.dispose(); }
   record("party radio: one late frame that finds the stream quiet neither restarts the music nor gives up its beat, and a stream silent frame after frame still falls back to the plain element",
     !late.plain && late.starts === 1 && late.mode === "live" && silent.plain && silent.starts === 2, JSON.stringify({ late, silent }));
+  // Regression: the lookahead's history was counted in frames (900), so at over 112 frames a second it held less than the
+  // eight seconds the speakers trail by: the room never found what is heard now, sat calm and never saw a drop. It is
+  // kept by time, so the music is read eight seconds in at any frame rate, and not before.
+  const rates = [60, 120, 144, 240].map((fps) => {
+    const r = page.window.BL.timechainPartyRadio.create(), E = {};
+    try {
+      elements.at(-1).onplaying();
+      let t = 0;
+      const run = (until) => { level.now = 0.2; for (; t < until; t += 1 / fps) { audio.currentTime += 1 / fps; elements.at(-1).currentTime += 1 / fps; r.sample(reading); } };
+      run(7.5);
+      const early = r.warming;
+      run(10);
+      return { fps, early, warming: r.warming, reads: r.energy(E), ahead: r.ahead(-1, E) };
+    } finally { r.dispose(); }
+  });
+  record("party radio: the music is read eight seconds behind the speakers at 60, 120, 144 and 240 frames a second alike, and not before",
+    rates.every((q) => q.early && !q.warming && q.reads && q.ahead), JSON.stringify(rates));
 };
 
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
@@ -23427,8 +23446,8 @@ const timechainLectureAudio = {
       const button = await b.evaluate('(()=>{const r=document.getElementById("lecture-toggle").getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');
       await b.click(button.x, button.y);
       const playing = await untilPage(b, '__selectedLectureAudio.readyState >= 2 && !__selectedLectureAudio.paused && B.timechain.motion.player.recorded', 15000);
-      const origin = await b.evaluate('location.origin');
-      record("lecture audio: starting playback requests and decodes only the chosen same-origin recording", playing && requests.length > 0 && requests.every(url => url === origin + "/media/lectures/btc-01.m4a"), JSON.stringify(requests));
+      const chosen = await b.evaluate('location.origin + BL.lectures.compile(BL.lectures.get("btc-01")).audio');
+      record("lecture audio: starting playback requests and decodes only the chosen same-origin recording", playing && requests.length > 0 && /\/media\/lectures\/btc-01-[0-9a-f]{16}\.m4a$/.test(chosen) && requests.every(url => url === chosen), JSON.stringify(requests));
       await tourGo(b, "hub");
       record("lecture audio: leaving the hall pauses and releases the recording URL", await b.evaluate('__ooga.scene==="hub"&&__selectedLectureAudio.paused&&__selectedLectureAudio.getAttribute("src")===null'), "");
     } finally { b.on("Network.requestWillBeSent", null); await b.send("Network.disable"); }
@@ -29162,8 +29181,12 @@ const voiceHearingChecks = async () => {
     r.remotes.get(3).z=20;r.land(ids);out.landedOutside=r.levels([3])==="0";
     r.remotes.get(3).z=15;r.tick();
     out.initial=r.levels(ids);out.receiveOnly=r.captures===0;
-    out.limited=r.gains.every(g=>g.out.size===1&&[...g.out].every(l=>l.kind==="limiter"&&l.out.has(r.ctxs[0].destination)&&l.threshold.value===-1&&l.knee.value===0&&l.ratio.value===(g.id===4?1:20)));
-    V.muteLocal(2,false);out.boost=r.levels(ids);
+    // The limiter follows the combined level a voice plays at: a muted boost (2) and a quiet one (4) pass through.
+    const ratios=()=>ids.map(id=>[...r.gains.filter(g=>g.id===id&&g.out.size).at(-1).out][0].ratio.value).join();
+    out.limited=r.gains.every(g=>g.out.size===1&&[...g.out].every(l=>l.kind==="limiter"&&l.out.has(r.ctxs[0].destination)&&l.threshold.value===-1&&l.knee.value===0))&&ratios()==="1,20,1";
+    V.muteLocal(2,false);out.boost=r.levels(ids)+"|"+ratios();
+    // Every other player's voice at half leaves 2 at a combined 100%, unlimited, and keeps each one's own volume.
+    V.setPlayersLevel(.5);out.players=r.levels(ids)+"|"+ratios()+"|"+V.volumeOf(2);V.setPlayersLevel(1);
     V.muteLocal(3,true);V.setVolume(3,.5);out.muteWins=r.levels(ids);out.volumeIndependent=V.volumeOf(3)===.5;
     V.setVolume(4,2);r.tick(10);out.boundary=r.levels([4]);
     // A remote changing environment remains adjustable while inaudible, and keeps its setting on returning.
@@ -29184,7 +29207,7 @@ const voiceHearingChecks = async () => {
   };
   const savedPlayers={desktop:await preferences(false),ios:await preferences(true)};
   record("voice player preferences: prejoin settings request no microphone or connection, reload applies mute and real boost before the first track, volume never unmutes or bypasses range and zones, stable identities survive renames and environments, and shared-browser accounts remain separate",
-    Object.values(savedPlayers).every(r=>r.prejoin&&r.reload&&r.landedOutside&&r.receiveOnly&&r.limited&&r.initial==="0,1.5,0"&&r.boost==="2,1.5,0"&&r.muteWins==="2,0,0"&&r.volumeIndependent&&r.boundary==="0"&&r.returned==="2"&&r.listenerAway==="0"&&r.listenerBack==="0.25"&&r.identity&&r.otherAccount&&r.restored&&r.signedOut&&r.localOnly&&r.legacyUntouched&&r.disposed),JSON.stringify(savedPlayers));
+    Object.values(savedPlayers).every(r=>r.prejoin&&r.reload&&r.landedOutside&&r.receiveOnly&&r.limited&&r.initial==="0,1.5,0"&&r.boost==="2,1.5,0|20,20,1"&&r.players==="1,0.75,0|1,1,1|2"&&r.muteWins==="2,0,0"&&r.volumeIndependent&&r.boundary==="0"&&r.returned==="2"&&r.listenerAway==="0"&&r.listenerBack==="0.25"&&r.identity&&r.otherAccount&&r.restored&&r.signedOut&&r.localOnly&&r.legacyUntouched&&r.disposed),JSON.stringify(savedPlayers));
   const duelListening = async (webAudio) => {
     const r = rig(false, webAudio), V = r.V;
     await V.enable(); await settle(); V.setPeers([2, 3, 4], [1, 1, 1]); await settle(); r.land([2, 3, 4]);
@@ -35196,10 +35219,10 @@ const lecturePlayerChecks = async () => {
     }
     const BL = { lectures: L, deferredScripts: recorded ? {} : null, deferred: { load: async () => {} }, sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } };
     runInNewContext(source, { window: { BL }, Audio, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } });
-    const player = BL.lecturePlayer.create(), entry = { id: 'btc-01', group: 'lecture-btc-a', audio: 'btc-01.m4a' };
+    const player = BL.lecturePlayer.create(), entry = { id: 'btc-01', group: 'lecture-btc-a' };
     assert.equal(media.length, 0);
     await player.open(entry);
-    if (recorded) { assert.equal(media[0].preload, "none"); assert.equal(media[0].src, entry.audio); }
+    if (recorded) { assert.equal(media[0].preload, "none"); assert.match(media[0].src, /^\/media\/lectures\/btc-01-[0-9a-f]{16}\.m4a$/); assert.equal(media[0].src, L.compile(L.get('btc-01')).audio); }
     return { player, media, entry, L };
   };
 
