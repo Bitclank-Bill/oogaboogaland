@@ -22033,8 +22033,8 @@ const partyRadioChecks = async () => {
   // music stopping while it tuned in again and the lights losing the beat for the visit) after one late frame: the
   // whole time since the frame before counted as heard silent. A stream that comes back plays on, read as before, and
   // one that stays silent frame after frame is still given up.
-  const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, connect() {}, disconnect() {} });
-  const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createMediaElementSource: node, close: async () => {},
+  const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, delayTime: {}, connect() {}, disconnect() {} });
+  const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createDelay: node, createMediaElementSource: node, close: async () => {},
     createAnalyser: () => ({ ...node(), getFloatTimeDomainData: (a) => a.fill(level.now), getByteFrequencyData() {} }) };
   const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date,
     document: { addEventListener() {}, removeEventListener() {} }, AudioContext: function () { return audio; },
