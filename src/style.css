@@ -1177,9 +1177,10 @@ body[data-active-scene="block"] .mode-hud {
 }
 .cloud-foot-actions { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
 .cloud-foot-actions .foot-button { white-space: nowrap; }
-/* Every panel's voice buttons, the island's and Ooga Chat's, at one width, the widest's, so no footer shifts: Mute,
-   Unmute, Join and Leave Voice (and Joining…, Leaving…), wider only for a longer reason (Reconnecting voice). */
-.cloud-mute, .cloud-voice, .account-voice, .account-leave { min-width: 100px; padding: 0 8px; }
+/* Every panel's voice buttons, the island's and Ooga Chat's, at one width, the widest's, so no footer shifts: Mute or
+   Unmute (shown and off until in voice) beside Join or Leave Voice (and Joining…, Leaving…), wider only for a longer
+   reason (Reconnecting voice). */
+.cloud-mute, .cloud-voice, .account-mute, .account-voice, .account-leave { min-width: 100px; padding: 0 8px; }
 .cloud-foot-actions [hidden] { display: none; }
 /* The voice switch prompt (voice-handoff.js), the island's and Ooga Chat's alike: a planked card floating under the
    banner, over the panels, that takes no focus by itself; Not now beside the amber Switch here. */
