@@ -78,6 +78,9 @@
   // the room's middle back to the wall, with STEPS steps up each end, each TREAD deep and STEP_W long, from DOWN
   // metres behind its front edge.
   const BOOTH_TOP = 1.03, BOOTH_W = 7;
+  // The DJ's platform behind the booth, DJ_UP over the stage (an Ooga steps up onto it, under the walkers' STEP_UP),
+  // so the decks stand at an Ooga's waist rather than its chest; DJ_IN degrees short of the booth's ends each side.
+  const DJ_UP = 0.4, DJ_IN = 1.5;
   const STAGE = { H: 0.8, W: 7, FRONT: 6, STEPS: 2, TREAD: 0.45, STEP_W: 2.4, DOWN: 0.4 };
   // The dome: its looks repainted DOME_FPS times a second on a canvas DOME_W by DOME_H drawn up smooth; its LED dots a
   // cell a fortieth of a radian round, about one in seven lit, in DOT_GROUPS nodes, sorted DOT_BIAS metres nearer for
@@ -940,6 +943,12 @@
     G.box(across ? 0.014 : 0.03, 0.016, across ? 0.026 : 0.014, GEAR.cap, cx, y + 0.008, cz);
     G.box(across ? 0.003 : 0.022, 0.002, across ? 0.02 : 0.003, GEAR.tick, cx, y + 0.0165, cz);
   };
+  // A tube from a to b, a cylinder `r` round: the kit turns a part about z, then x (its y axis then runs along
+  // (-sin rz, cos rx cos rz, sin rx cos rz)).
+  const rod = (G, a, b, r, color) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], l = Math.hypot(dx, dy, dz);
+    G.cyl(r, r, l, color, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, { seg: 6, rz: Math.asin(-dx / l), rx: Math.atan2(dz, dy) });
+  };
   // A media player's screen, as the image shows one: its tabs, the track, the waveform with its playhead, the time,
   // tempo and BPM, and the track's overview.
   const playerScreen = (i) => (ctx, w, h) => {
@@ -1062,42 +1071,110 @@
     for (let k = 0; k < 3; k++) knob(G, 0.205, top, z0 + 0.24 + k * 0.06, 0.013, GEAR.knob);
     G.node("fxOn", ringButton("fxOn", 0.022, "#3a8cff"), 0.205, top + 0.006, D / 2 - 0.05, { glow: true });
   };
-  // The laptop's screen: the radio's station and what it plays (a dash while its feed names nothing), over a deck's
-  // waveform and a track list. Repainted by the room as either changes.
-  const LAPTOP = { W: 512, H: 320 };
+  // The laptop's screen, a DJ library: the stations down the side with the one playing lit, the station and what it
+  // plays (a dash while its feed names nothing) over two decks' waveforms, the tempo, and a track list. Repainted by the
+  // room as either changes.
+  const LAPTOP = { W: 768, H: 480 };
   const paintLaptop = (ctx, station, song) => {
-    const P = RM.paintKit, w = LAPTOP.W, h = LAPTOP.H, rand = P.rng(57);
-    ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#161c2c"; ctx.fillRect(0, 0, w, h * 0.12);
-    P.pix(ctx, "OOGA RADIO", w * 0.04, h * 0.06, h * 0.06, "#9a5cff", "left");
-    P.pix(ctx, "ON AIR", w * 0.96, h * 0.06, h * 0.05, "#ff4d6e", "right");
+    const P = RM.paintKit, w = LAPTOP.W, h = LAPTOP.H, rand = P.rng(57), side = w * 0.24, x0 = side + w * 0.02, cw = w - x0 - w * 0.02;
+    const stations = BL.timechainPartyRadio ? BL.timechainPartyRadio.STATIONS : [];
+    ctx.fillStyle = "#0a0d16"; ctx.fillRect(0, 0, w, h);
+    // The title bar: the app, the clock and the master level.
+    ctx.fillStyle = "#151a28"; ctx.fillRect(0, 0, w, h * 0.07);
+    P.pix(ctx, "OOGA RADIO", w * 0.02, h * 0.035, h * 0.035, "#9a5cff", "left");
+    P.pix(ctx, "ON AIR", w * 0.6, h * 0.035, h * 0.03, "#ff4d6e");
+    for (let k = 0; k < 16; k++) { ctx.fillStyle = k < 11 ? "#3dffb0" : k < 14 ? "#ffb020" : "#3a2020"; ctx.fillRect(w * 0.76 + k * w * 0.013, h * 0.022, w * 0.009, h * 0.026); }
+    // The side: the library and the stations.
+    ctx.fillStyle = "#10141f"; ctx.fillRect(0, h * 0.07, side, h * 0.93);
+    P.pix(ctx, "COLLECTION", w * 0.02, h * 0.11, h * 0.026, "#7f8bb0", "left");
+    P.pix(ctx, "STATIONS", w * 0.02, h * 0.17, h * 0.026, "#7f8bb0", "left");
+    stations.forEach((s, k) => {
+      const y = h * (0.21 + k * 0.055), on = s.name === station;
+      if (on) { ctx.fillStyle = "#2a1f4a"; ctx.fillRect(0, y - h * 0.022, side, h * 0.044); ctx.fillStyle = "#9a5cff"; ctx.fillRect(0, y - h * 0.022, w * 0.005, h * 0.044); }
+      P.pix(ctx, s.short, w * 0.025, y, h * 0.024, on ? "#ffffff" : "#aab4d4", "left");
+    });
+    P.pix(ctx, "HISTORY", w * 0.02, h * 0.55, h * 0.026, "#7f8bb0", "left");
+    P.pix(ctx, "PLAYLISTS", w * 0.02, h * 0.61, h * 0.026, "#7f8bb0", "left");
+    for (let k = 0; k < 4; k++) { ctx.fillStyle = "#2a3248"; ctx.fillRect(w * 0.035, h * (0.65 + k * 0.045), side * (0.4 + 0.4 * rand()), h * 0.014); }
+    // Now playing: the station and the song.
     ctx.fillStyle = "#c9a6ff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    P.fit(ctx, station || "Tuning in", w * 0.92, 700, h * 0.09);
-    ctx.fillText(station || "Tuning in", w * 0.04, h * 0.22);
+    P.fit(ctx, station || "Tuning in", cw, 700, h * 0.06);
+    ctx.fillText(station || "Tuning in", x0, h * 0.12);
     ctx.fillStyle = "#f4ecff";
-    P.fit(ctx, song || "—", w * 0.92, 600, h * 0.075);
-    ctx.fillText(song || "—", w * 0.04, h * 0.34);
-    for (let x = 0; x < w * 0.92; x++) {
-      const a = (0.2 + 0.8 * rand()) * (0.45 + 0.55 * Math.abs(Math.sin(x * 0.04))), mid = h * 0.52;
-      ctx.fillStyle = a > 0.75 ? "#e6f6ff" : "#3fa2ff";
-      ctx.fillRect(w * 0.04 + x, mid - a * h * 0.08, 1, a * h * 0.16);
+    P.fit(ctx, song || "—", cw, 600, h * 0.05);
+    ctx.fillText(song || "—", x0, h * 0.19);
+    // The two decks: each a waveform with its playhead, its number and its tempo.
+    for (let d = 0; d < 2; d++) {
+      const y = h * (0.3 + d * 0.13), hi = d ? "#ffd0a0" : "#e6f6ff", mid = d ? "#ff8a3d" : "#3fa2ff";
+      ctx.fillStyle = "#121828"; ctx.fillRect(x0, y - h * 0.055, cw, h * 0.11);
+      for (let x = 0; x < cw - w * 0.08; x++) {
+        const a = (0.2 + 0.8 * rand()) * (0.45 + 0.55 * Math.abs(Math.sin(x * 0.035 + d * 2)));
+        ctx.fillStyle = a > 0.78 ? hi : mid;
+        ctx.fillRect(x0 + w * 0.07 + x, y - a * h * 0.045, 1, a * h * 0.09);
+      }
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(x0 + w * 0.07 + (cw - w * 0.08) / 2, y - h * 0.05, 2, h * 0.1);
+      P.pix(ctx, `${d + 1}`, x0 + w * 0.02, y - h * 0.02, h * 0.035, mid);
+      P.pix(ctx, "124.0", x0 + w * 0.035, y + h * 0.03, h * 0.022, "#c9d8ff");
     }
-    ctx.fillStyle = "#ff8a3d"; ctx.fillRect(w * 0.5 - 1, h * 0.43, 2, h * 0.18);
-    for (let r = 0; r < 4; r++) {
-      const y = h * (0.68 + r * 0.075);
-      ctx.fillStyle = r === 0 ? "#24406e" : r % 2 ? "#121828" : "#0f1422"; ctx.fillRect(w * 0.04, y, w * 0.92, h * 0.065);
-      ctx.fillStyle = "#3a4a6a";
-      for (let k = 0; k < 3; k++) ctx.fillRect(w * (0.07 + k * 0.3), y + h * 0.024, w * (0.12 + 0.12 * rand()), h * 0.018);
+    // The track list: a header and rows of artists, titles, tempos and keys.
+    const ty = h * 0.5;
+    ctx.fillStyle = "#1a2134"; ctx.fillRect(x0, ty, cw, h * 0.05);
+    ["#", "TITLE", "ARTIST", "BPM", "KEY"].forEach((t, k) => P.pix(ctx, t, x0 + cw * [0.02, 0.1, 0.5, 0.8, 0.92][k], ty + h * 0.025, h * 0.022, "#7f8bb0", "left"));
+    for (let r = 0; r < 8; r++) {
+      const y = ty + h * (0.055 + r * 0.055);
+      ctx.fillStyle = r === 2 ? "#24406e" : r % 2 ? "#0e1320" : "#111726"; ctx.fillRect(x0, y, cw, h * 0.05);
+      P.pix(ctx, `${r + 1}`, x0 + cw * 0.02, y + h * 0.025, h * 0.02, "#7f8bb0", "left");
+      ctx.fillStyle = r === 2 ? "#c9d8ff" : "#4a5a7a";
+      ctx.fillRect(x0 + cw * 0.1, y + h * 0.018, cw * (0.18 + 0.18 * rand()), h * 0.014);
+      ctx.fillRect(x0 + cw * 0.5, y + h * 0.018, cw * (0.12 + 0.14 * rand()), h * 0.014);
+      P.pix(ctx, `${120 + Math.floor(rand() * 10)}`, x0 + cw * 0.8, y + h * 0.025, h * 0.02, "#aab4d4", "left");
+      P.pix(ctx, `${1 + Math.floor(rand() * 12)}A`, x0 + cw * 0.92, y + h * 0.025, h * 0.02, PADS[r], "left");
     }
   };
-  const laptop = (G, x, z) => {
-    for (const sx of [-1, 1]) G.box(0.012, 0.11, 0.012, GEAR.silver, x + sx * 0.12, 0.055, z - 0.08, { rx: -0.35 });
-    G.box(0.27, 0.012, 0.03, GEAR.silver, x, 0.006, z + 0.06);
-    G.box(0.34, 0.014, 0.24, "#3a3a42", x, 0.09, z, { rx: 0.32 });
-    G.box(0.34, 0.23, 0.012, "#3a3a42", x, 0.24, z - 0.14, { rx: -0.22 });
+  // A laptop on its stand, its back toward the dancers, black like the decks: its body with a backlit keyboard, a trackpad and speaker
+  // grilles, ports down its side, the lid on its hinge with a black bezel, a camera and the screen, a glowing logo on
+  // its back, and a cable across the desk into the player beside it.
+  const laptop = (G, x, z, plug) => {
+    const slate = "#17171c", stand = GEAR.edge, tilt = 0.32, lean = -0.57;
+    // The stand: two side plates on the desk rising toward the back, a top plate under the laptop and a front lip.
+    for (const sx of [-1, 1]) {
+      rod(G, [x + sx * 0.13, 0.004, z + 0.1], [x + sx * 0.13, 0.11, z - 0.11], 0.006, stand);
+      rod(G, [x + sx * 0.13, 0.004, z + 0.1], [x + sx * 0.13, 0.004, z - 0.12], 0.005, stand);
+      rod(G, [x + sx * 0.13, 0.004, z - 0.12], [x + sx * 0.13, 0.11, z - 0.11], 0.005, stand);
+    }
+    const D = G.group(x, 0.072, z, 0, tilt);
+    D.box(0.3, 0.004, 0.22, stand, 0, -0.012, 0);
+    D.box(0.3, 0.018, 0.008, stand, 0, -0.002, 0.112);
+    // The body: its slate shell, rubber feet, the keyboard well with its backlight and keys, the trackpad, grilles
+    // either side of the keys and ports down the left side.
+    D.box(0.34, 0.016, 0.24, slate, 0, 0, 0);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) D.box(0.02, 0.003, 0.012, GEAR.rubber, sx * 0.14, -0.009, sz * 0.1);
+    D.box(0.29, 0.002, 0.118, "#0b0b0e", 0, 0.008, -0.04);
+    D.box(0.286, 0.0015, 0.114, "#7a4dff", 0, 0.0088, -0.04, { emissive: 0.5, glow: true });
+    for (let row = 0; row < 5; row++) for (let k = 0; k < 13; k++) {
+      const kx = -0.13 + k * 0.0217 + (row % 2) * 0.005, kz = -0.088 + row * 0.022;
+      if (row === 4 && k > 3 && k < 9) continue;
+      D.box(0.018, 0.004, 0.018, "#0e0e12", kx, 0.0105, kz);
+    }
+    D.box(0.1, 0.004, 0.018, "#0e0e12", 0, 0.0105, 0.0);
+    D.box(0.11, 0.002, 0.07, "#24242c", 0, 0.0085, 0.072);
+    for (const sx of [-1, 1]) for (let k = 0; k < 6; k++) D.box(0.008, 0.002, 0.004, "#24242c", sx * 0.158, 0.0085, -0.09 + k * 0.018);
+    for (let k = 0; k < 3; k++) D.box(0.002, 0.006, 0.012, k ? "#121218" : "#3a8cff", -0.171, 0, -0.06 + k * 0.03, { emissive: k ? 0 : 0.8 });
+    // The lid on its hinge, leaning back; its picture's node turns by the deck's tilt and the lid's lean together.
+    D.cyl(0.008, 0.008, 0.28, slate, 0, 0.006, -0.12, { rz: Math.PI / 2, seg: 10 });
+    const Lg = D.group(0, 0.008, -0.12, 0, lean);
+    Lg.box(0.34, 0.232, 0.008, slate, 0, 0.116, -0.004);
+    Lg.box(0.334, 0.226, 0.002, "#08080c", 0, 0.116, 0.001);
+    Lg.ball(0.003, "#3a3a44", 0, 0.222, 0.0025, { seg: 6 });
+    Lg.cyl(0.03, 0.03, 0.002, "#ff9b2e", 0, 0.125, -0.009, { rx: Math.PI / 2, emissive: 1, glow: true, seg: 20 });
+    Lg.torus(0.038, 0.003, "#ffd34d", 0, 0.125, -0.0085, { rx: Math.PI / 2, emissive: 0.8, glow: true, seg: 20, sides: 3 });
     const canvas = CH.canvas(LAPTOP.W, LAPTOP.H);
     paintLaptop(canvas.getContext("2d"), "", "");
-    G.node("laptopScreen", RM.flatPicture(canvas, 0.32, 0.2, 0.85), x, 0.24, z - 0.132, { rx: -0.22, glow: true });
+    Lg.node("laptopScreen", RM.flatPicture(canvas, 0.31, 0.194, 0.85), 0, 0.12, 0.0025, { rx: tilt + lean, glow: true });
+    // The cable from its right side down across the desk and into the player.
+    const a = [x + 0.171, 0.072 + 0.02 * Math.sin(tilt), z - 0.02 * Math.cos(tilt)];
+    const pts = [a, [a[0] + 0.03, 0.02, a[2]], [a[0] + 0.06, 0.004, a[2] - 0.04], [plug[0] - 0.05, 0.004, plug[2]], plug];
+    for (let k = 1; k < pts.length; k++) rod(G, pts[k - 1], pts[k], 0.0035, "#18181e");
   };
   const headphones = (G, x, z) => {
     for (const sx of [-1, 1]) {
@@ -1109,7 +1186,7 @@
   };
   const djGear = (G) => {
     const span = RIG.MW / 2 + RIG.GAP + RIG.PW, B = RIG.BASE;
-    laptop(G, -span - 0.32, 0.02);
+    laptop(G, -span - 0.32, 0.02, [-span, B + 0.06, -0.12]);
     headphones(G, span + 0.22, 0.12);
     G.box(2 * span + 0.04, B, RIG.D + 0.04, GEAR.black, 0, B / 2, 0);
     G.box(2 * span + 0.04, 0.008, 0.004, PURPLE, 0, B * 0.5, -RIG.D / 2 - 0.021, { emissive: 1, glow: true });
@@ -1215,6 +1292,17 @@
     // The desk stands in the way of feet below its top, so an Ooga walks round it on the stage to the DJ's place
     // behind, or jumps up onto it and over.
     arcSolids(K, (rb0 + rb1) / 2, 180 - ah, 180 + ah, 0.42, U);
+    // The DJ's platform behind it, from the desk back to the wall, its top a solid's in slices along it; amber nosing
+    // along its open ends, where an Ooga steps up.
+    const pr0 = rb1 + 0.01, pr1 = rw - 0.05, pb = ah - DJ_IN, P = H + DJ_UP, da0 = (180 - pb) * DEG, da1 = (180 + pb) * DEG;
+    K.sector(0, pr0, pr1, da0, da1, H, P, C.stage);
+    K.sector(0, pr0 + 0.01, pr1, da0 + 0.001, da1 - 0.001, P, P + 0.012, C.stageTop);
+    for (const a of [da0, da1 - 0.004]) K.sector(0, pr0, pr1, a, a + 0.004, P + 0.004, P + 0.016, "#ffb04d", { emissive: 0.8, glow: true });
+    const rows = 3, slices = Math.ceil(2 * pb * DEG * (pr0 + pr1) / 2 / 0.5), depth = (pr1 - pr0) / rows;
+    for (let i = 0; i < rows; i++) for (let j = 0; j < slices; j++) {
+      const rm = pr0 + depth * (i + 0.5), b = 180 - pb + 2 * pb * (j + 0.5) / slices, c = polar(rm, b);
+      K.solid({ x: c.x, z: c.z, hx: pb * DEG * rm / slices - 0.02, hz: depth / 2 - 0.02, top: P, stay: true });
+    }
     djGear(K.group(0, U, BZ + 0.05, Math.PI));
 
     // The lasers on the walls: each projector on its bracket, and every projector's beams and their dots, built shrunk
