@@ -2291,6 +2291,7 @@
       project,
       ray,
       setQuality: () => { },
+      setScale: () => { },
       releaseGeometry: () => { },
       prepareScene: () => { },
       prepareGeometry: () => true,
