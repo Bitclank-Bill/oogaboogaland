@@ -18,8 +18,6 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const TONES = 16, NOISES = 8, NOISE_SECONDS = 2, MASTER = 0.5, GAP = 0.025;
-  // STORAGE_KEY is shared with the rally, so one mute covers every cave.
-  const STORAGE_KEY = "oogaboogaland.audio";
   // A tone's shapes: the four built-in oscillator types, then the two pulses (12.5 and 25 per cent duty), each a
   // PeriodicWave of `HARMONICS` partials built once on unlock.
   const SINE = 0, TRI = 1, SQUARE = 2, SAW = 3, P12 = 4, P25 = 5;
@@ -255,11 +253,10 @@
   };
 
   const create = () => {
-    let ctx = null, master = null, ready = false, muted = false, toneNext = 0, noiseNext = 0;
-    try {
-      muted = localStorage.getItem(STORAGE_KEY) === "off";
-    } catch {
-    }
+    let ctx = null, master = null, ready = false, muted = BL.sound.muted, toneNext = 0, noiseNext = 0;
+    // The page's mute and levels (sound.js): the cues on the raid's own channel, the tune at the page's Music level too.
+    const soundChannel = BL.sound.channel("raid"), musicChannel = BL.sound.channel("music");
+    let musicLevel = MUSIC_LEVEL * musicChannel.level;
     const tones = [], noises = [], running = [], waves = [];
     const last = new Float64Array(C.COUNT).fill(-1);
     // The chip's channels and pulse waves, the music's level, and the tune chosen (`M.id`, its tune `M.tune`), its next
@@ -279,7 +276,7 @@
       squash.attack.value = 0.003;
       squash.release.value = 0.2;
       master.connect(squash);
-      squash.connect(ctx.destination);
+      squash.connect(soundChannel.node(ctx));
       // A started source, kept to stop on dispose.
       const run = (node) => { node.start(); running.push(node); return node; };
       for (const duty of DUTY) {
@@ -313,7 +310,7 @@
         noises.push({ filter, gain, type: "", until: 0 });
       }
       music = ctx.createGain();
-      music.gain.value = MUSIC_LEVEL;
+      music.gain.value = musicLevel;
       music.connect(master);
       chipWaves = BL.carnivalAudio.chipVoices(ctx, music, run, chips);
       ready = true;
@@ -397,13 +394,13 @@
     const duck = (seconds) => {
       const now = ctx.currentTime, g = music.gain;
       g.cancelScheduledValues(now);
-      g.setTargetAtTime(MUSIC_LEVEL * DUCK, now, 0.02);
-      g.setTargetAtTime(MUSIC_LEVEL, now + seconds, 0.2);
+      g.setTargetAtTime(musicLevel * DUCK, now, 0.02);
+      g.setTargetAtTime(musicLevel, now + seconds, 0.2);
       duckEnd = now + seconds;
     };
     const unduck = (now) => {
       music.gain.cancelScheduledValues(now);
-      music.gain.setTargetAtTime(MUSIC_LEVEL, now, 0.02);
+      music.gain.setTargetAtTime(musicLevel, now, 0.02);
       duckEnd = 0;
     };
     // Every step of the tune due before SONG_AHEAD from now: the lead on the first pulse at the tune's duty, the bass on
@@ -705,12 +702,19 @@
     const setMuted = (on) => {
       muted = !!on;
       if (master) master.gain.setTargetAtTime(muted ? 0 : MASTER, ctx.currentTime, 0.05);
-      try {
-        localStorage.setItem(STORAGE_KEY, muted ? "off" : "on");
-      } catch {
-      }
+      BL.sound.setMuted(muted);
     };
+    const offSound = BL.sound.subscribe(setMuted);
+    // A new Music level takes the tune at once, or where a duck running now returns it.
+    const offMusic = musicChannel.subscribe(() => {
+      musicLevel = MUSIC_LEVEL * musicChannel.level;
+      if (!ready) return;
+      const now = ctx.currentTime;
+      if (now < duckEnd) duck(duckEnd - now);
+      else unduck(now);
+    });
     const dispose = () => {
+      offSound(); offMusic(); soundChannel.release(); musicChannel.release();
       M.id = M.tune = null;
       if (!ctx) return;
       for (const node of running) node.stop();

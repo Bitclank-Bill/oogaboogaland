@@ -578,6 +578,11 @@
       return { title: "Ooga Raid", rows: [H.row(["a", "d"], "Run"), H.row(["w", "s"], "Aim up, lie prone or duck"), H.row([" "], "Jump (with S, drop off a ledge)"), H.row(["j"], "Fire (or click)"),
         H.row(["p"], "Pause"), H.row(["escape"], "Pause card / leave")] };
     },
+    // The controller screen (opened from this panel) hands the pad back to the page as it closes (`listen(null)`), so
+    // every panel closing takes it back again while the raid is up.
+    controlsHelpHold(on) {
+      if (!on && campaign) BL.gamepad.listen(NO_PAD);
+    },
     get inMotion() {
       if (campaign.state.paused) return fx.inMotion;
       const cp = campaign.state.phase;
