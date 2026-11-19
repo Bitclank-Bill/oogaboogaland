@@ -11,6 +11,13 @@
   // The audience feed's limits: the largest frame read, reconnect backoff, the wait after a full zone, and the wait
   // while listening is off.
   const FRAME_MAX = 1 << 20, BACKOFF_MS = [1000, 30000], FULL_WAIT_MS = 30000, OFF_WAIT_MS = 180000;
+  // A socket the page was away from (a phone in another app) can read open long after it died: one silent for
+  // SILENT_MS, or the one open as the page comes back (`wake`), is asked for a pong, and with no frame in PROBE_MS is
+  // closed here and opened again at once.
+  // A network change (`wake(true)`: the connection's type changed, or a voice connection dropped) is asked about
+  // sooner, QUICK_PROBE_MS, since the page is awake and a speaker is waiting; a socket still opening on the old network
+  // after OPENING_MS is opened afresh.
+  const SILENT_MS = 75000, PROBE_MS = 4000, QUICK_PROBE_MS = 2500, OPENING_MS = 4000;
   // The Commons' fixed address (docs/ooga-chat-backend.md) and its heartbeat: the island's Room answers "ping" with
   // "pong" without waking, and closes a member silent past 90 s.
   const COMMONS_PATH = "/api/chat/commons", PING_MS = 30000;
@@ -24,13 +31,18 @@
   const create = ({ fetch = window.fetch.bind(window), location = window.location, doc = document, WebSocket = window.WebSocket } = {}) => {
     const pending = new Set();
     let disposed = false;
-    // One bounded request; the controller leaves `pending` however it ends.
-    const ask = async (path, init = {}, timeout = TIMEOUT_MS) => {
+    // One bounded request; the controller leaves `pending` however it ends. With `read`, the body is read inside the
+    // same bound (a body that stalls after its headers would otherwise never end) and `{ response, data }` comes back,
+    // `data` null for a body that cannot be read as asked.
+    const ask = async (path, init = {}, timeout = TIMEOUT_MS, read = null) => {
       if (disposed) throw new Error("Ooga Chat adapter disposed");
       const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeout);
       pending.add(controller);
       try {
-        return await fetch(path, { credentials: "same-origin", cache: "no-store", redirect: "error", ...init, signal: controller.signal });
+        const response = await fetch(path, { credentials: "same-origin", cache: "no-store", redirect: "error", ...init, signal: controller.signal });
+        if (!read) return response;
+        const data = await read(response).catch((error) => { if (controller.signal.aborted) throw error; return null; });
+        return { response, data };
       } finally {
         clearTimeout(timer);
         pending.delete(controller);
@@ -77,25 +89,50 @@
     // The audience socket pings as the Commons' does (the Audience answers "pong" without waking): a quiet zone sends
     // nothing for minutes otherwise, and a connection a network or proxy drops on idle would take a speaker's lease.
     const audience = (boot, { message, status }) => {
-      let socket = null, zone = null, tries = 0, timer = null, closed = false, requests = 0, ping = null;
-      const idle = { zone() {}, resync() {}, request: () => 0, dispose() {} };
+      let socket = null, zone = null, tries = 0, timer = null, closed = false, requests = 0, ping = null, heardAt = 0, probe = null, backing = false, openingAt = 0;
+      const idle = { zone() {}, resync() {}, request: () => 0, wake() {}, dispose() {} };
       if (!boot.paths.audience) {
         status("unavailable");
         return idle;
       }
       const send = (data) => socket?.readyState === 1 && socket.send(JSON.stringify(data));
-      const later = (ms) => { timer = setTimeout(() => { timer = null; open(); }, ms); };
+      const later = (ms, backoff = false) => { backing = backoff; timer = setTimeout(() => { timer = null; backing = false; open(); }, ms); };
+      // A socket that stopped answering: closed here and opened again now, as a reconnect.
+      const dead = (own) => {
+        if (own !== socket || closed) return;
+        socket = null;
+        clearInterval(ping);
+        clearTimeout(probe);
+        ping = probe = null;
+        try { own.close(); } catch { /* already closed */ }
+        tries++;
+        open();
+      };
+      const check = (own, quick = false) => {
+        if (probe) return;
+        const at = heardAt;
+        own.send("ping");
+        probe = setTimeout(() => { probe = null; if (own === socket && heardAt === at) dead(own); }, quick ? QUICK_PROBE_MS : PROBE_MS);
+      };
       const open = () => {
         if (closed || !zone) return;
         status(tries ? "reconnecting" : "connecting");
+        openingAt = Date.now();
         const own = socket = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}${boot.paths.audience}`);
         own.addEventListener("open", () => {
           send({ type: "join", zone, protocol: PROTOCOLS.audience });
+          heardAt = Date.now();
           clearInterval(ping);
-          ping = setInterval(() => own.readyState === 1 && own.send("ping"), PING_MS);
+          ping = setInterval(() => {
+            if (own.readyState !== 1) return;
+            if (Date.now() - heardAt > SILENT_MS) check(own);
+            else own.send("ping");
+          }, PING_MS);
         });
         own.addEventListener("message", (event) => {
-          if (own !== socket || typeof event.data !== "string" || event.data === "pong" || event.data.length > FRAME_MAX) return;
+          if (own !== socket || typeof event.data !== "string") return;
+          heardAt = Date.now();
+          if (event.data === "pong" || event.data.length > FRAME_MAX) return;
           let data;
           try { data = JSON.parse(event.data); } catch { return; }
           tries = 0;
@@ -105,7 +142,8 @@
           if (own !== socket || closed) return;
           socket = null;
           clearInterval(ping);
-          ping = null;
+          clearTimeout(probe);
+          ping = probe = null;
           if (event.code === 4401) return status("signed-out");
           if (event.code === 4426) return status("stale");
           if (event.code === 4429) {
@@ -119,7 +157,7 @@
           // Anything else, 1013 (the edge couldn't read the session or reach the island) included, backs off.
           tries++;
           status("reconnecting");
-          later(Math.min(BACKOFF_MS[1], BACKOFF_MS[0] * 2 ** Math.min(tries - 1, 5)) * (0.75 + Math.random() * 0.5));
+          later(Math.min(BACKOFF_MS[1], BACKOFF_MS[0] * 2 ** Math.min(tries - 1, 5)) * (0.75 + Math.random() * 0.5), true);
         });
       };
       return {
@@ -133,11 +171,26 @@
         // A request the server answers with a `result` of the same id (#668: `reaction`, `hand`): its id, 0 when the
         // socket is not open.
         request: (type, fields) => socket?.readyState === 1 && send({ type, requestId: ++requests, ...fields }) !== false ? requests : 0,
+        // The page is back (shown again, or online again), or the network changed under it (`quick`): a reconnect
+        // waiting out its backoff goes now, an open socket is asked for a pong, which a dead one never sends, and one
+        // that has sat opening since before the change is opened afresh.
+        wake(quick = false) {
+          if (closed || !zone) return;
+          if (!socket) {
+            if (timer === null || !backing) return;
+            clearTimeout(timer);
+            timer = null; backing = false;
+            return open();
+          }
+          if (socket.readyState === 1) check(socket, quick);
+          else if (socket.readyState === 0 && Date.now() - openingAt > OPENING_MS) dead(socket);
+        },
         dispose() {
           closed = true;
           clearTimeout(timer);
+          clearTimeout(probe);
           clearInterval(ping);
-          ping = null;
+          ping = probe = null;
           socket?.close(1000);
           socket = null;
         }
@@ -212,13 +265,12 @@
     // whether trying again may help; the body never carries anything but the page's own connection and SDP.
     const media = () => ({
       async call(op, body) {
-        let response;
+        let response, data;
         try {
-          response = await ask(`${MEDIA_PATH}${op}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) }, MEDIA_TIMEOUT_MS);
+          ({ response, data } = await ask(`${MEDIA_PATH}${op}`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) }, MEDIA_TIMEOUT_MS, json));
         } catch (error) {
           throw Object.assign(new Error("media unreachable"), { code: disposed ? "disposed" : "unreachable", retryable: !disposed });
         }
-        const data = await json(response).catch(() => null);
         if (response.ok && data && typeof data === "object") return data;
         const error = data && data.error && typeof data.error.code === "string" ? data.error : { code: `http_${response.status}`, retryable: response.status >= 500 };
         throw Object.assign(new Error(error.code), { code: error.code, retryable: !!error.retryable, status: response.status });

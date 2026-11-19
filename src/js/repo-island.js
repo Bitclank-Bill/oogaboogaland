@@ -22,7 +22,7 @@
 // eyes burn, each flame a node on the arcade's one `blaze` geometry, at every carving detail and view distance. Each crystal cluster under the island
 // glows across its outer facets with distance-weighted light from nearby totems. Eight baked strength levels
 // share one mesh per source totem and follow that source's own pulse; meshes rebuild only when membership changes. The lit runes of a chunk are merged into one mesh a brightness band
-// (fresh within FRESH, older), rebuilt only when that chunk's lit set changes, so 170 totems light in a few dozen draws.
+// (fresh within FRESH, older), rebuilt only when that chunk's lit set changes, so 171 totems light in a few dozen draws.
 // Painted features pulse on their matching detail mesh, and the mainland's traveling ring glow uses one instanced
 // sector batch per paint. Warm point lights follow the turning poles through the hub's existing light budget.
 // A merge seen during the visit flares that totem's runes for FLARE seconds. Effects stay animated at every
@@ -64,7 +64,7 @@
     const soil = createNode({ geometry: rock.soil, sightHidden: true, sightSolid: true }), lip = createNode({ geometry: rock.lip, sightHidden: true });
     const pavement = createNode({ geometry: rock.pavement, sightHidden: true }), crystals = createNode({ geometry: rock.crystals, sightHidden: true });
     const crystalBase = createNode({ geometry: rock.crystalBase, sightHidden: true }), carpet = createNode({ geometry: rock.carpet, sightHidden: true });
-    const stone = createNode({ geometry: bridge.stone, sightHidden: true, sightSolid: true }), glass = createNode({ geometry: bridge.glass, glow: 0, sightHidden: true });
+    const stone = createNode({ geometry: bridge.stone, sightHidden: true, sightSolid: true, noPass: true }), glass = createNode({ geometry: bridge.glass, glow: 0, sightHidden: true });
     const boards = createNode({ geometry: signs.geometry, sightHidden: true });
     // Canvas 2D sorts every face it draws each frame: it gets the island and its bridge, without the signs or totems.
     const canvas = renderer.kind !== "webgl2";
@@ -91,7 +91,7 @@
     target(world(0, 0.6, (bridge.from + bridge.to) / 2), { kind: "repo-bridge" }, bridge.width / 2 + 0.3, false);
     // The ground the main island's scatter keeps off: the bridge head on the south terrace.
     const claims = [[0, spot.rim - 0.5, bridge.width / 2 + 0.9], [0, spot.rim - 2, bridge.width / 2 + 0.6]];
-    // The lanterns at either end of the bridge, for the hub's dusk lamps.
+    // The lanterns on the bridge's pillars, for the hub's dusk lamps.
     const lamps = bridge.lamps.map((l) => world(l.x, l.y, l.z));
     // Arriving: on the lip at the bridge's end, facing in toward Bitcoin Core.
     const arrival = world(0, M.LIP.rise, -M.ISLE.R + M.LIP.width / 2);

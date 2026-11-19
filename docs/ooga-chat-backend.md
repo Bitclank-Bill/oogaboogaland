@@ -122,7 +122,10 @@ The app's own contract (`docs/ooga-chat-app.md`) is the source of truth for shap
 | `GET /auth/<provider>/callback` | finishes it: 303 to `/?signin=<ok\|denied\|failed\|unavailable\|rate-limited>&provider=<provider>`, nothing else in the address |
 | `GET /api/chat/me` | the session (identity protocol 1, below); 401 signed out, 503 when it could not tell |
 | `DELETE /api/chat/me` | deletes the account (from the app's own page); 204 |
-| `POST /api/chat/logout`, `?all=1` | ends this session, or every one of the account's (from the app's own page); 204 once done |
+| `POST /api/chat/logout`, `?all=1` | ends this session, or every one of the account's (from the app's own page, or a native app's bearer session); 204 once done |
+| `GET /auth/github?native=<challenge>&port=<port>` | a native app's sign-in (below): as `/auth/github`, its callback, signed in, answering a page that asks to continue to the app, and its result sent on to `http://127.0.0.1:<port>/callback` |
+| `POST /auth/<provider>/consent` | that page's answer (`consent`, `choice=continue\|cancel`, from the app's own page): Continue 303s to loopback with `signin=ok` and a one-time `code`, Cancel with `signin=denied`, a spent, expired or other browser's consent with `signin=failed` |
+| `POST /api/chat/native/token` | `{ code, verifier }` → `{ token, expiresAt }`: a native app's one-time code for a session it sends as `Authorization: Bearer` |
 | `GET /api/chat/avatar/<principal>/<key>` | the principal's picture on this origin (below) |
 | `GET /api/chat/public/contributors` | the native Contributing Oogas panel's data for anyone (below); `public, max-age=30` with an ETag |
 | `POST /donations/invoice`, `/note`, `/onchain`; `GET /donations/socket` | the native Feed the Oogas popup, through to bananapayserver (below) |
@@ -181,6 +184,32 @@ capability answer, as the island's own sign-in does for its players. `GET /api/c
 `speak`, `contributor` and `raiseHand` (the right to raise a hand *while* a speaker) are true only for a GitHub
 principal whose answer is `eligible` and inside its window. They are the server's word for display; nothing a client
 sends back grants anything.
+
+**Native clients.** A desktop app (`roogachat`, a separate repository) signs in through the system browser and hears
+the result on loopback (RFC 8252), proved with PKCE (RFC 7636, S256). It makes a verifier, listens on
+`127.0.0.1:<port>` (1024-65535) and opens `/auth/<provider>?native=<S256 challenge>&port=<port>`. The sign-in is the
+web app's own: the same single-use state bound to that browser's cookie, the same provider calls and results. The
+state also keeps the challenge and port (`oauth_states.native_challenge`, `native_port`, migration
+`0002_native_signin.sql`), and the callback sends the browser to `http://127.0.0.1:<port>/callback?signin=<result>&provider=<p>`
+in place of this origin's page. Signed in, it sets no session cookie and makes no code yet: a site could start a native
+sign-in for someone who already approved the OAuth app, and the provider would come straight back. It answers a page
+of its own instead, naming the account and asking "Continue to the Ooga Chat desktop app?" with Continue and Cancel, a
+form posting to `/auth/<provider>/consent`. The page has no script or style; its policy is `default-src 'none';
+form-action 'self' http://127.0.0.1:<port>; frame-ancestors 'none'; base-uri 'none'`, with `X-Frame-Options: DENY`,
+so no other page can frame it or click it through, and `Referrer-Policy: same-origin` (under `no-referrer` its own
+form's POST would carry `Origin: null` and be refused). Its consent is a random token kept by its SHA-256 in
+`native_consents` with the principal, provider, challenge and port, bound to that browser by the hash of a fresh nonce
+in the sign-in cookie, for five minutes and one answer. A post from another page is refused (403) before anything is
+read; otherwise the consent is spent first, and a missing, expired, other provider's or other browser's one goes back
+`signin=failed` (to the consent's loopback port, or this origin's page when there is none to read). Cancel goes back
+`signin=denied`. Continue alone, for an account not banned meanwhile, adds a one-time `code`. The code is kept by its
+SHA-256 in `native_codes` with the principal and the challenge, for two minutes. `POST /api/chat/native/token` with
+`{ code, verifier }` spends the code first, then refuses (`invalid_grant`, 400) an expired code, a verifier whose S256
+is not the challenge, or a banned account, and otherwise answers a new session's `{ token, expiresAt }` (the sessions
+table, 30 days, as a cookie's). The app sends it as `Authorization: Bearer <token>`, which `readSession` prefers over
+the cookie; a bearer session also passes the page check on `DELETE /api/chat/me` and `/api/chat/logout`, since no
+browser can send one here (this origin allows no CORS). The audience and Commons sockets, media and donations still
+take the page's own requests only. The daily purge drops expired consents and codes too.
 
 **Capability.** The edge asks the island (`capability`) and keeps the answer with its time in `capabilities`. It asks
 again after five minutes. If the bridge cannot answer, the last answer stands until 15 minutes after it was checked
@@ -289,8 +318,24 @@ zone and `AUDIENCE_LISTENERS` (500) listeners, proposals for #669 to measure, ne
 speaker. Leaving speaking, a real zone change, an expiry, a revocation or a closed socket end the lease and the hand.
 Choosing the zone already chosen changes nothing. A listener's `setMic` is refused.
 
+**Moving a voice.** A lease the same identity holds elsewhere gives way in two cases only, both named in `setRole`:
+- `takeover: true`, the visitor's own word (the app's voice switch prompt): another connection's lease ends, and its
+  page hears `{ type: "you", …, reason: "moved" }` and keeps listening. Where the island holds the voice, the Audience
+  first asks the Room to give it up (`ROOM.audienceHandoff(GitHub id)`): the Room clears that player's voice sessions,
+  tells its page `{ t: "voice-moved" }` (which leaves voice there) and everyone else its `vstate`, sends the Audience
+  the island's word without the account and only then answers, so the lease granted next is not ended by an older
+  word. A Room that can't be reached leaves the refusal `source_in_use`.
+- `replaces: <connection>` (or a list of up to four), a page back from a dropped socket naming the connections it may
+  have held its lease under: one of them that still holds the identity's lease is closed (4409) and the lease asked
+  for afresh. Any other connection's lease refuses as before, so a page that comes back never takes a voice the
+  visitor has since moved.
+
+Without either, `source_in_use` stands. `you.elsewhere` tells an eligible connection without a lease where its
+identity's voice is: `island`, or `app` for another of its connections; the Audience sends `you` again to an identity's
+other connections whenever the connection holding its lease changes.
+
 **The app's protocol** (audience protocol 1). Page: `{ type: "join", zone, protocol: 1 }`, `{ type: "resync", zone }`,
-`{ type: "setRole", requestId, role }`, `{ type: "setMic", requestId, muted }`. Server:
+`{ type: "setRole", requestId, role, takeover?, replaces? }`, `{ type: "setMic", requestId, muted }`. Server:
 
 ```json
 { "type": "snapshot", "zone": "main", "epoch": 1763120000000, "revision": 41,
@@ -304,14 +349,16 @@ Choosing the zone already chosen changes nothing. A listener's `setMic` is refus
 ```
 
 `you.speak` is `eligible`, `pending`, `active`, `denied` (eligible, but the island has this identity) or `none`; while a
-lease is held, `you.lease` is its generation, which the page names in its media calls (#654). A
+lease is held, `you.lease` is its generation, which the page names in its media calls (#654); without one,
+`you.elsewhere` (`island` or `app`) says the identity's voice is on another device. A `you` frame's `reason` is `moved`
+when the lease it ended went to another device on the visitor's word, or to the island's own voice. A
 delta's `revision` is always `base + 1` within an epoch; the epoch is fixed for the object's life (it changes only if its
 storage is reset), and each zone's revision is stored, so an object woken from hibernation carries on where it was and
 clients never resync for a nap. Generations follow the clock and only rise. A request repeated with the same
 `requestId` gets its first answer again. Close codes: 4401 (signed out, deleted, or the hourly re-authentication: the
 app checks its session and reconnects; a media call re-reads the session and eligibility at the edge and, while the
 account is still eligible, carries the connection's authorisation on from it, and a speaker's page makes one every 20
-minutes, so a held lease is never closed this way while the hourly check stays the backstop for a missed revocation), 4426 (another protocol), 4429 (full, too many tabs, or too many sockets
+minutes, so a held lease is never closed this way while the hourly check stays the backstop for a missed revocation), 4409 (replaced: the same page came back on a new connection and named this one), 4426 (another protocol), 4429 (full, too many tabs, or too many sockets
 lately), 4400 (an unreadable frame), 4503 (listening is off).
 
 **The island's panel** (`audience-v1`, advertised in the Room's `welcome` only with the bridge on and the binding): the
@@ -371,15 +418,26 @@ publications change (a chat speaker going live, an island speaker's publication 
 new voice without polling. A mute changes no publication and asks nobody to sync.
 
 **Durable cleanup.** Every close goes through a queue kept in storage (`mediaCleanup`) and retried by the alarm until
-the SFU confirms (`close_track_error` counts as gone) or an hour has passed, after every client has left too. A
+the SFU confirms (`close_track_error` counts as gone, and so does a session the SFU answers 404 or 410 for, with or
+without an error code: Cloudflare documents 410 for `session_error` alone, a session gone for good) or an hour has passed
+since the job was first queued, after every client has left too. An alarm's pass runs at most four jobs at once and
+starts none 20 s after it began (`cleanupPass` in `sfu.js`), what is left waiting for the next wake, which starts with
+the jobs this one never reached (those it tried and that failed go to the back of the queue): a serial pass over
+slow 410s, five seconds each, once held a wake for seven minutes. A
 session whose tracks are unknown (a failed call) is swept whole, and any track that sweep finds and fails to close is
 kept for the next try. Two runs over one job (the alarm's and a new close merged into it) never remove another job. With
-64 jobs pending, publishing and receiving wait
-(`cleanup_pending`) while giving things up still works. A woken object restores each connection's media from
+64 jobs pending, the oldest jobs for sessions no live connection holds are let go to make room: their pages closed those
+connections (Ooga Chat closes its media with its socket, on a leave and before opening another), so nothing flows on
+them while the SFU stops answering. Only a queue full of sessions still held makes publishing and receiving wait
+(`cleanup_pending`), while giving things up still works. The island's Room keeps its own voice cleanup queue to the
+same bound and rule. Likewise an outdoor subscription counts as unconfirmed (the Room's `closed` waits on it) only while
+a live connection holds its session: a listener that leaves releases the speaker's grant at once, without waiting the
+hour a close the SFU keeps refusing would take. A woken object restores each connection's media from
 `media:<connId>` and sweeps the sessions of a socket that went while it slept.
 
 **Ops** (`POST /api/chat/media/<op>`, body `{ connection, generation?, sdp?, mid?, mids? }`, at most 256 KiB, one at a
-time per connection, `CHAT_MEDIA_LIMITER` per principal): `ice` (TURN credentials, as the island's voice has them),
+time per connection, `CHAT_MEDIA_LIMITER` per principal): `ice` (TURN credentials, as the island's voice has them, and
+answered outside that queue, so a slow SFU call ahead of it never holds up a join),
 `receive/open`, `receive/sync` (`{ tracks: [{ participant, mid }], closed, sessionDescription,
 requiresImmediateRenegotiation }`), `renegotiate`, `receive/close`, `publish/open`, `publish/offer`, `publish/ready`,
 `publish/close`, `leave`. Errors are `{ error: { code, retryable } }`: `stale_epoch` (another connection's, or a lease
@@ -392,8 +450,27 @@ storage, so it survives the Room's hibernation; the Audience keeps the last list
 change and a failed send is tried again. An island player whose outdoor grant
 is open in a zone (#667) gets that zone's Ooga Chat speakers as voice peers by GitHub id, pulls them through its usual
 `/api/voice/pull` by the Audience's reference alone (checked again after the SFU call), and loses them, closed at the
-SFU, when they stop. An island player without a grant never hears them. A chat speaker's id is never an island player's
-too: the island's own voice ends a chat lease first.
+SFU, when they stop. An island player without a grant never hears them. An account may remain signed into both apps:
+its island body does not override its chat microphone. Only a live island publication takes precedence, and an old
+chat catalog entry cannot grant access to that island microphone from another place. Both receivers distinguish
+publication generations by source (chat counts are encoded as negative for subscription comparisons), so moving
+between apps replaces the track even if their clocks issued the same count. In-flight pulls recheck the publication.
+
+The receiver count sent to the island includes Ooga Chat speakers as well as listener-only accounts. Pressing Join
+Voice in OC must not make the island gate its microphone as alone; speakers keep receiving the same conversation.
+
+**Overhearing on the island.** A signed-in island player who has not joined voice hears the main island's public
+conversation while their body stands in it. Their page opens a receive session by itself (`/api/voice/session` with
+`{ kind: "sub", passive: true }`), and the Room treats that session apart (`overhearing`): it hears no place and is in
+nobody's voice (no roster mark, never `active` to the Audience, so a lease the account holds in Ooga Chat stands). While
+its own outdoor grant is open in `main`, the Room lists for it exactly what Ooga Chat's listeners hear there: island
+players in voice with a live microphone and an open grant in `main`, and that zone's Ooga Chat speakers. Indoors, or
+with its grant closed, it hears nobody. A publishing session, or a receive session without `passive`, ends it.
+
+**Voice elsewhere, told to the island's page.** An island page whose account speaks from Ooga Chat (its id among the
+Audience's sources) hears so in its welcome (`voiceElsewhere: true`) and as it changes (`{ t: "voice-elsewhere", on }`):
+its voice then stays out instead of coming back by itself and ending that lease, and the page asks the visitor first
+(`voice-switch.js`).
 
 **Capacity, for #669 to measure.** Many listeners mainly cost SFU egress; many speakers cost each listener's decoding
 and downlink. The worst case to test is every island outdoor publisher (up to 32) plus 8 Ooga Chat speakers, 40
@@ -420,6 +497,13 @@ body, a level crossing (`blendTo`) and a cabinet seat. The registry is default-d
 
 A new outdoor is added here with a check; a new interior needs nothing to stay excluded. The checks enumerate the island's
 world zones and DSB Land's rooms from their own sources, so a new one is caught as it lands.
+
+Main Island is one public conversation across the island's surface, the exterior of Bifrost and the Timechain Sphere,
+the rainforest's upper level, and the bridges and air between them at that level or above. The existing surface
+tolerance covers ground dips and bridge sag; descending into a lower voice level excludes even open air off the edge.
+Covered cave entrances remain public up to the interior boundary: the Arcade's doors and Factory's inner shield,
+or the doorway/veil for other caves. The lab and B.C.A. interiors, Sphere passage and rooms, Bifrost chamber and
+underground levels remain excluded. The page holds microphone transmission during the revocation handshake.
 
 **The handshake** (the Room's `outdoor-voice-v1`, offered only with the island's `outdoor` switch; frames in
 `docs/auth-and-presence.md`, "Outdoor voice bridge"). Each connection's grant is `none`, `open` or `closing`:
@@ -535,10 +619,13 @@ Every line reaches every player and member once, with the island's own `{ t: "ch
 the island's for that account when it has one, so a line reads the same from either app.
 
 **Online Oogas, without positions.** The member's welcome is `{ t: "community", v: 1, op: "welcome", epoch, send, you:
-{ id, login, display }, players: [...], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
+{ id, login, display }, players: [...], duels: [{ id, a, b }], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
 display, body, zone, voice, muted, hand, handTone, handEmoji }`, and after that only the Room's `join`, `leave`, `body`,
-`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. No pose, snapshot, distance, NPC frame, SFU id,
-voice link, private-conversation frame, reaction over a body, game state or chalk ever reaches a member.
+`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. For optional local duel muting, the member also
+receives `{ t: "duel", op: "start", id, a, b }` and `{ t: "duel", op: "end", id }`: only active pair ids, stripped
+from the island's frames. The initial pairs are rebuilt from the room's restored duel records. Challenges, health,
+positions and results are never relayed, and the member cannot send duel actions. No pose, position snapshot, distance,
+NPC frame, SFU id, voice link, private-conversation frame, reaction over a body, other game state or chalk reaches a member.
 
 **The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
 `commonsHistory` the `chat-history` after it, `onlineDelta` the relayed `join`, `leave`, `body`, `zone`, `vstate` and

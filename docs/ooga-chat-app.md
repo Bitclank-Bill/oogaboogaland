@@ -46,7 +46,7 @@ is unchanged and never stages the app.
 | `src/ooga-chat/ooga-chat-donor.js` | `BL.oogaChatDonor`: who Feed the Oogas says a tip is from (the name and message last given, and the names this browser's own paid tips used), the `game` the shared donation popup reads, in this app's own storage. Reopening Feed starts from the name last given, never the login or "anon" over it; a GitHub account's login is the starting name only until one is given |
 | `src/ooga-chat/ooga-chat-fixtures.js` | `BL.oogaChatFixtures`: the offline adapter, review only. Its Bananas demo takes the simulated kiosk's payments (`demo.receive`, heard through `demo.subscribe`), counted as the kiosk quoted them, so a receipt shows |
 | `src/ooga-chat/ooga-chat-app.js` | startup, loaded last |
-| `src/ooga-chat/art/` | pictures the views show, staged under their hash. `main-island.png` is Main Island's destination mark: the island's 64px favicon keyed as `hud.js` keys it for its destination button (the suite holds the two equal) |
+| `src/ooga-chat/art/` | pictures the views show, staged under their hash |
 | `scripts/ooga-chat.mjs` | the build, the guards and `--serve` |
 
 Shared with the island, one copy each:
@@ -61,7 +61,8 @@ Shared with the island, one copy each:
 | `src/js/audience-tiles.js` | The Ooga Chat roster's circles (`BL.audienceTiles`), the island's Ooga Chat panel's and this tab's alike: everyone in the zone as many to a row as fit at 76 px or more a column (six in a 600 px panel), scrolling in its slab, each tile kept by id and only its changed fields written |
 | `src/js/format-large.js`, `src/js/roster-panel.js`, `src/js/contributor-identities.js`, `src/js/activity-repos.js` | Contributing Oogas (#656): the island's own panel over `/api/chat/public/contributors` (#664), its contribution states and ages, Oogatron's reading normalized as the island normalizes it, and each Ooga's face from `art/ooga-faces.png`, loaded when a stats strip first opens and not counted in the first load (`LAZY_ART`). A contributor in The Commons sees whose Ooga is on the island now; a stale or unreadable reading says so under the list |
 | `src/js/emoji-data.js`, `src/js/reaction-bar.js` | The island's own emoji panel (#655), in the Ooga Chat panel's footer: the ten reactions, the raised hand and the picker over every emoji, its skin tones and heart colours, from this browser's own choices (`ooga-reactions*`). `ooga-chat-app.js` hands it the audience socket as its connection: a tap is a `reaction` request, the hand a `hand` request an active speaker alone may make, and every reaction the server sends the zone pops over that participant's circle |
-| `src/js/chat-policy.js`, `src/js/reaction-policy.js`, `src/js/zone-map.js`, `src/js/commons-log.js` | The Commons and Online Oogas for an eligible contributor (#670): the island's chat rules, the raised hand in each tone, the zones as the island's Online Oogas groups them, and the conversation's log and composer, run over the app's own `/api/chat/commons` socket (`ooga-chat-http.js` `commons`), with the island's name field at the Commons' top, saved as the island's display name (`commonsName`, `POST /api/chat/commons/name`). Their look is placed by `ooga-chat.css`; no distance, crosshair, voice link or volume, which are the island's alone |
+| `src/js/voice-handoff.js` | The voice switch prompt's card, the island's and Ooga Chat's alike (Voice on another device, below): Switch here inside its click, Not now, and no focus taken by itself |
+| `src/js/chat-policy.js`, `src/js/reaction-policy.js`, `src/js/zone-map.js`, `src/js/commons-log.js` | The Commons and Online Oogas for an eligible contributor (#670): the island's chat rules, the raised hand in each tone, the zones as the island's Online Oogas groups them, and the conversation's log and composer, run over the app's own `/api/chat/commons` socket (`ooga-chat-http.js` `commons`), with the island's name field at the Commons' top, saved as the island's display name (`commonsName`, `POST /api/chat/commons/name`). Their look is placed by `ooga-chat.css`; no distance, crosshair or voice link, which are the island's alone |
 | `src/js/qr.js`, `src/js/banana-icon.js`, `src/js/jumbotron-font.js`, `src/js/factory-kiosk-core.js`, `src/js/factory-kiosk.js`, `src/js/donation-popup.js` | Feed the Oogas: the island's donation dialog and its kiosk screen, with the QR codes, the banana and the 5x7 letters they draw. The app opens it from its Bananas tab while the feed is live (the fixture entry's demo aside), real over its own `/donations` relay, with `ooga-chat-donor.js` as its `game`; its frame is placed by `ooga-chat.css` |
 | `src/js/native-icons.js` | `BL.nativeIcons`: the panel tabs' pixel icons (`bananas`, `roster`, `players`, `chat`), Ooga Chat's mark `cloud` (the tab icon on both, and the app's favicons and icons), DSB Land's destination mark `dsb` (the island's `dsb-island-icon` paths, held equal by the suite) and `voice()`, the roster's voice mark. `hud.js` fills the island's tab slots (`data-native-icon`) from it and draws its roster's voice mark with it |
 
@@ -73,7 +74,7 @@ module reads nothing at load but `window.BL` and the document.
 
 `sign-glyphs.js`, `native-icons.js`, `donations.js`, `banana-panel.js`, `qr.js`, `banana-icon.js`, `jumbotron-font.js`, `factory-kiosk-core.js`,
 `factory-kiosk.js`, `donation-popup.js`, `chat-policy.js`, `emoji-data.js`, `reaction-policy.js`, `zone-map.js`, `commons-log.js`, `format-large.js`, `roster-panel.js`,
-`contributor-identities.js`, `activity-repos.js`, `audience-tiles.js`, `reaction-bar.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
+`contributor-identities.js`, `activity-repos.js`, `audience-tiles.js`, `reaction-bar.js`, `voice-handoff.js`, `duel-listening.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
 `ooga-chat-shell.js`, `ooga-chat-views.js`,
 `ooga-chat-http.js`, `ooga-chat-media.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, `ooga-chat-faces.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
 `fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app.
@@ -214,7 +215,9 @@ the session when it expires. Until then no check takes a session back: one that 
 out and offers Sign out again, and one that finds none is the confirmation and clears the notice.
 
 **Storage.** Only `tab` and `zone` are kept (`ooga-chat.v1.<name>`). At start `sweep` removes any other key under the
-app's prefix and any older unversioned `ooga-chat.` key, so no saved screen, role or speaker flag survives.
+app's prefix and any older unversioned `ooga-chat.` key, so no saved screen, role or speaker flag survives. Session
+storage holds one thing, for the tab alone and at most a minute: a speaker's word to the page that replaces it (Voice,
+Staying a speaker).
 
 **Faces.** A face is the account's `avatar`, loaded once at a fixed 56px circle, or the island's own Ooga face
 (`nativeIcons` `roster`) when there is none or it fails: never a broken image, a generated pattern or another
@@ -223,12 +226,11 @@ accessible name when the line is cut short.
 
 ## The space (#653)
 
-**Zones.** Two buttons, Main Island and DSB Land, each with the island's own destination mark left of its name; the
-chosen one is the native dark slab with a gold label. The server's zone policy decides who is in a zone (the outdoor
-boundaries are #658's and the backend's); choosing one here never moves a character or opens an interior. The zone
-already chosen changes nothing, so the microphone, the hand and any pending media stay as they are. Another zone
-saves the choice, hands the voice lease to the seam (`media.zone`), empties the list and shows "Joining…" until that
-zone's snapshot arrives, so no stale person or role from the old zone shows in the new one.
+**Zones.** Main Island alone for now, named by a tag in the corner of the panel's title, as the island's other panels
+tag theirs; the space has no zone buttons, and every visit starts there whatever an earlier one chose. The server's
+zone policy decides who is in a zone (the outdoor boundaries are #658's and the backend's). The protocol, the
+controller and the server still carry both zones (`actions.zone`, `media.zone`): another zone hands the voice lease to
+the seam, empties the list and shows "Joining…" until that zone's snapshot arrives.
 
 **The audience feed (audience protocol 1).** `paths.audience` in the bootstrap (optional: without it the space says
 live audio isn't open yet and shows no one). One same-origin WebSocket; the page sends
@@ -265,13 +267,33 @@ speaker. Totals sort; they grant nothing.
 **Tiles.** A circle portrait (the server's same-origin picture, the island's Ooga face when there is none or it fails,
 asked for once and only as it scrolls near), a speaker's 3px source ring outside a 3px dark gap (green `#22c55e` from
 the island, purple `#b18aff` from Ooga Chat; listeners neutral), the hand over the portrait's centre (#655), the name without `@` on one
-line cut short with its whole self in the title and the accessible name, an app speaker's purple dot before it, and
-under it a speaker's voice mark (crossed and red when source-muted) with Speaker, or Listener. The visitor's own voice
-mark mutes or unmutes them while they speak; anyone else's will mute that voice for this visitor once Ooga Chat plays
-them (#661). Tiles are keyed by `id` and kept: an update changes and moves only what changed, once a frame, and focus
+line cut short with its whole self in the title and the accessible name (the ring alone says where a speaker speaks
+from), and under it a speaker's voice mark (crossed and red when source-muted) with Speaker, or Listener. The visitor's own voice
+mark mutes or unmutes them while they speak here; anyone else's mutes that voice for this visitor alone. The same
+buttons, tooltips, local mute marks and speaking indicators appear in Online Oogas and Contributing Oogas. A microphone
+held on another device stays under that device's control. Local mutes keep measuring the voice, as on the island, and
+apply before a replacement track plays. They survive reconnects and reloads in this browser, keyed by listener and
+speaker provider ids (at most 512 choices per listener), with separate fixture storage; signing out clears the active
+choices. Nothing is sent to the server. Tiles are keyed by `id` and kept: an update changes and moves only what changed, once a frame, and focus
 stays on its tile. The list has one tab stop; arrow keys, Home and End move through every participant, up and down a
 row of the grid. Smaller circles in a panel under 400px wide (the island's drawer, a phone). A status line under the
 zones says when the list is not simply live, or is empty.
+
+**Per-player volume.** Click another speaker's name in the Ooga Chat grid to open their Volume control below it,
+or another player's name in Online Oogas to expand the same slider under their row. The default is 100%, with 5%
+steps from 0% to 200% where Web Audio is available, otherwise 100% maximum, as on the island. Volume and mute are
+independent and saved together per listener and participant id; earlier mute-only saves remain valid. The receiver
+uses the island's gain smoothing and boosted-peak limiter, with only one playback path per voice. Meters run before
+the gain, so a quieted or muted speaker still shows as speaking. Replacement tracks start at the saved level;
+disconnecting releases their source, gain and limiter. The fixture's synthetic tracks use the element path.
+
+**Duel listening.** In both apps, Online Oogas → Advanced settings has **Automatically mute duelists**, unchecked
+by default and remembered for the signed-in account in that browser. It temporarily silences both players in every
+active duel except the listener's own pair; other duels still mute while the listener is dueling. Manual mute and
+volume remain independent, so ending a duel or disabling this choice restores those choices. `duel-listening.js`
+keeps the bounded active pairs for both voice controllers. OBL reads its existing duel feed; OC reads only the pair
+ids from the Commons welcome and sanitized start/end frames. Losing that feed clears temporary mutes; reconnecting
+replaces the list from the server. This setting never captures audio or sends a mute to anyone else.
 
 **Footer.** The island's emoji panel (`reaction-bar.js`, #655) left of the account controls where there is room and
 above them where not, as the design has it: the ten reactions any signed-in account may send while the audience is
@@ -316,15 +338,79 @@ Leave Voice stops and releases the microphone, then `publish/close`, and keeps l
 `pending` or `active` (an expiry, a revocation, the island's own voice taking the identity) stops capture at once.
 
 **Changes.** Another zone ends speaking (capture stops before the join, which ends the lease at the server) and drops
-the old zone's voices before the new zone's snapshot; a sync asked before the change plays nothing. A new audience
-connection (a reconnect) ends everything held under the old one, says "Voice reconnected. Join Voice to speak again.",
-and listens again; speaking is never put back by itself. The feed lost (`reconnecting`, `signed-out`, `closed`, `full`)
-stops capture and receiving until its next snapshot. `release` ends speaking and keeps listening; signing out or
-another principal stops both with the feed. Nothing is kept in storage.
+the old zone's voices before the new zone's snapshot; a sync asked before the change plays nothing. The feed lost for
+good (`signed-out` to another account or none, `closed`, `full`) stops capture and receiving until its next snapshot.
+`release` ends speaking and keeps listening; signing out or another principal stops both with the feed. Nothing is kept
+in storage but a speaker's word to the page that replaces it at once (A refresh, below) and how this browser connects
+(Connecting, below).
 
-**Not yet.** A peer's voice mark does not yet mute that voice for this visitor alone, and nothing here measures who is
-speaking; both are follow-ups. iOS routes playback differently while the microphone is open, and no browser promises
-audio or capture in the background.
+**Connecting.** Each connection lists the STUN server and, where the server hands credentials out (`ice`), the TLS
+relay. A credentials request that failed is asked again by the next connection (an answer with no relay stands a
+minute), and every voice call's body is read inside the call's 12 s bound. WebKit on an IPv6-only mobile network
+reaches only the first IPv4 address a connection sends to, the STUN server when one is listed
+([WebKit 330921](https://bugs.webkit.org/show_bug.cgi?id=330921)), so a connection that never comes up is tried next
+without the STUN server, as on the island (Voice in `docs/auth-and-presence.md`): Join Voice makes its publish once
+more that way on the same microphone and lease, a receive connection on its next try, and the way that last worked is
+kept in localStorage (`voice-bare` under the app's prefix). `media.stats` says which (`bare`) and whether a relay is in
+hand (`relay`).
+
+**Staying a speaker.** A loss that was not the visitor's choice never makes a speaker a listener by itself: a phone
+that goes to another app, a network change, a microphone another app takes.
+- *A dropped socket.* The feed's `reconnecting`, and the new audience connection after it, end what was held under the
+  old one at the server. The page keeps its microphone, off (released after two minutes with nothing to publish it on,
+  and captured again then), and once the new connection's snapshot says `eligible` it asks for a lease again by itself:
+  `setRole` with `replaces`, every connection it may still hold a lease under (the one it came back from, and any a
+  join was under way on when its socket dropped, three at most), so its own stale lease does not refuse it. It
+  publishes, and how it lands follows what it had: back within 60 s (`RETURN_MS`) of the loss with the microphone open
+  before it, the microphone is open again and the server told (`setMic`): "Voice reconnected. Your microphone is on."
+  Muted before, or back later than that, it lands muted: "Voice reconnected. You're muted." A try that fails for a
+  passing reason (no answer, a busy or unreachable server, a publishing connection that would not come up) is made
+  again after 2 s, then 4 s, three tries in a row at most; a refusal says why and listens. The same account's feed
+  restarting after a session check (4401) is such a reconnect too, and so is a socket turned away for a moment
+  (4429, the feed's `full`): the wish to speak is kept for the connection after it.
+- *A refresh.* A new page remembers nothing, so a speaker whose page is hidden or leaves (`visibilitychange`,
+  `pagehide`) has the controller leave word in the tab's session storage (`remember`: `ooga-chat.v1.speaker`, the
+  participant id, zone, audience connection and time, nothing else), taken back when the same page is shown again, so
+  it is there only for a page that replaces this one. That page's first audience connection reads it once and removes
+  it. The same account in the same zone, no more than 60 s (`RETURN_MS`) after it was left, speaks again as after a
+  dropped socket: it asks for the microphone, `setRole` with `replaces`, and lands as it left, the microphone open
+  again if the word says it was open (`open`), muted otherwise, with the same words. A microphone the browser no
+  longer allows, or a refusal, listens: "Voice reconnected. Join Voice to speak again."
+  Leave Voice, a lease the server ended, signing out, another tab and a later return leave no word and stay listeners.
+- *A dead socket.* A socket the page was away from can read open long after it died. When the page is shown again or
+  back online (`feed.wake`), or after 75 s of silence, the feed asks for a pong, and with no frame in 4 s closes the
+  socket itself and opens another at once.
+- *A network change* (another Wi-Fi, Wi-Fi to cellular). The same loss, found sooner. A voice connection that drops
+  (`disconnected`) is the first sign, long before the feed's socket is known dead, so the controller asks the feed to
+  check its socket at once (`stall`, the feed's `wake(true)`: a pong within 2.5 s or the socket is closed and opened
+  again; one still opening on the old network after 4 s is opened afresh). The connection's type changing
+  (`navigator.connection`, where the browser has it) asks the same. A dead socket's new connection then speaks again
+  by itself, as above. Under a feed that lives, a publishing connection still down after 5 s is published again
+  without waiting for the browser to call it failed. A lease asked for over a socket that never answers is that dead
+  socket too: the feed is checked, and the first such silence under a connection is not counted as a try. A wait
+  after a failed try ends with the connection it failed under.
+- *A failed publishing connection.* The lease is given back and asked for again the same way.
+- *An unsure answer.* A session check the server itself answers `unknown` (the island could not be asked for a while)
+  closes Join Voice and leaves a lease already held, as a stale window or a failed check does.
+- *A microphone the browser takes away* (another app, a call: the track's `ended`). The visitor stays a speaker, muted,
+  with nothing captured: "Your microphone was interrupted. Unmute to speak again." Unmute, a click, captures it again
+  onto the same publication (`replaceTrack`).
+
+Whether a microphone stays open while the page is in the background is the browser's and the system's to decide: where
+they keep the page running (a desktop browser, Chrome on Android, a Safari tab on a call) the speaker goes on talking,
+since nothing here stops on hiding. Where the system suspends the page (an iOS home screen app, a phone that sleeps)
+nothing a web page does keeps it capturing; the visitor comes back as a muted speaker instead of a listener.
+
+**Voice on another device.** An account speaks from one device at a time. `you.elsewhere` says where its voice is
+while it is not here: `island` (the island's voice) or `app` (another Ooga Chat page's lease). A page whose first
+audience connection finds it asks once (`voice-handoff.js`, the island's own card): "Voice is on another device", with
+Switch here and Not now. Switch here, inside its click, joins with `setRole`'s `takeover`: the other page's lease ends
+(its `you` carries `reason: "moved"`, and it says "Voice moved to your other device."), or the island's page leaves
+voice. Not now changes nothing, and the visitor goes on listening. Join Voice pressed while the voice is elsewhere asks
+the same question. A voice that goes elsewhere later, while this page is open, asks nothing.
+
+**Not yet.** A peer's voice mark does not yet mute that voice for this visitor alone; a follow-up. iOS routes playback
+differently while the microphone is open.
 
 ## The audience contract (v1)
 
@@ -383,18 +469,22 @@ for a fresh snapshot after a gap.
 the visitor first; names alphabetical (lowercased display name) within each, the `id` breaking ties. Mic, speaking
 and hand changes never reorder.
 
-**The island's panel.** The cloud tab is last, after The Commons. Main Island and DSB Land buttons at the top, one
+**The island's panel.** The cloud tab is last, after The Commons. A Main Island tag in the title's corner (the panel
+shows that zone alone for now, wherever the visitor's Ooga stands), one
 scrolling roster of circles, speakers then listeners (`audience-tiles.js`, the app's own), the emoji bar, and a footer of the visitor's name, a fixed-width Mute or Unmute,
 Join or Leave Voice and Sign out, all through the island's existing voice session. A speaker's portrait is ringed
-green (`#22c55e`) from the island or purple (`#b18aff`) from Ooga Chat; listeners have no ring, and an Ooga Chat
-speaker's name has a purple dot before it. Listeners appear only in this panel, never as characters in the world. Bridging the outdoor voice and the
+green (`#22c55e`) from the island or purple (`#b18aff`) from Ooga Chat; listeners have no ring. Listeners appear only in this panel, never as characters in the world. Bridging the outdoor voice and the
 app speakers' playback is #661. Cloud speakers in the world (#659): with the island's and the edge's `cloud` on, the
 room sends every page the `clouds` list (`{ id, character, zone, seat, lease, mic, hand, login, display }`, net.js
 `state.clouds`); the hub seats each speaker's own Ooga three to a cloud, one to a third (the outer two drawn in), on a
-flat bench across the cloud's top, centred front to back, facing the banana pile, sitting as an Ooga sits by the fire
+flat bench across the cloud's top (three cells deep, no deeper than a seat's glow reaches, so the purple runs to its
+front and back edges), centred front to back, facing the banana pile, sitting as an Ooga sits by the fire
 with no weapon in hand, with a purple glow on the cloud round them, their NPC a ghost meanwhile, a nameplate with a purple dot,
 and their reactions and raised hand over them (remote-players.js); Online Oogas lists them with purple dots and a
-crosshair to their cloud (players.js). `?debug=1&clouds=a,b,c` seats sample speakers for review. `?debug=1&audience=fixture` shows a generated
+crosshair to their cloud (players.js), and Contributing Oogas gives their rows the same purple dot (roster-panel.js,
+`online(row)` answering `"cloud"`). The app's two panels do the same from its own audience list: an Ooga Chat speaker
+is purple in Contributing Oogas and has a purple row with the main island's players in Online Oogas, the member's own
+included while they speak; the emoji bar sits under the list in both, on the island's Contributing Oogas too. `?debug=1&clouds=a,b,c` seats sample speakers for review. `?debug=1&audience=fixture` shows a generated
 roster of named samples for review and sends nothing.
 
 ## Fixtures
@@ -411,8 +501,9 @@ resync over and a leave, one every 4 s), `empty`, `crowd` (300 listeners), `reco
 back in a new epoch), `full` and `none` (no audience address).
 `&voice=` picks how voice answers, through a fake broker and fake WebRTC that never open a microphone or play
 anything: `ok` (the default: every speaker of the zone pulled, and Join Voice lands a muted speaker), `denied` (the
-microphone refused), `blocked` (playback held until a gesture), `refused` (the zone's speakers full) and `off` (a
-deployment that doesn't let anyone speak). `BL.oogaChatFixtures.rtc.stats` counts captures, live tracks and playing
+microphone refused), `blocked` (playback held until a gesture), `refused` (the zone's speakers full), `off` (a
+deployment that doesn't let anyone speak) and `elsewhere` (the account's voice is on the island, on another device,
+until the visitor takes it with the prompt's Switch here). `BL.oogaChatFixtures.rtc.stats` counts captures, live tracks and playing
 elements for the checks.
 The accounts are named samples with no picture, never real people. Fixtures are isolated three ways:
 
@@ -460,7 +551,7 @@ stylesheet 16.9 KB, sign-in picture 57.9 KB, Main Island's mark 3 KB): about 157
 alone was 71 KB, with sign-in 78 KB, with the space 88 KB). The manifest and icons are fetched by the browser when it
 considers installing, and the worker then keeps the same files once more in its cache, off the first paint. For comparison, the island's portable page is about
 39.7 MB (23 MB gzipped). The app loads no 3D engine, terrain, cabinets, replays or live feeds. `FIRST_LOAD_BUDGET` in
-the build (236 KB gzipped, raised from 224 KB for the voice client and the Commons' name field) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
+the build (244 KB gzipped, raised from 224 KB to 236 KB for the voice client and the Commons' name field, then for each player's volume and mute, the optional duel muting and the voice handoffs of #766) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
 adds weight.
 
 ## Artwork

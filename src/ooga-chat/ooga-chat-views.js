@@ -100,7 +100,9 @@
         make("span", "", "Team Ooga Booga contributors signed in with GitHub can also speak from a cloud.")),
       make("p", "oc-foot", "X accounts join as listeners."));
     const space = audience(ctx);
-    const node = make("section", "panel oc-panel oc-chat", panelHead("Ooga Chat").header, line, alert.el, signedOut, ...space.nodes);
+    // The tag in the title's corner names the one zone the space shows for now, as the island's panel does.
+    const head = panelHead("Ooga Chat");
+    const node = make("section", "panel oc-panel oc-chat", head.header, line, alert.el, signedOut, ...space.nodes);
     node.dataset.panel = "cloud";
     node.dataset.space = "off";
     let principal = null, refocus = false;
@@ -111,6 +113,7 @@
       // out keeps the space's footer, which says so, until the server confirms.
       signedOut.hidden = !!who || mode === "loading" || live && auth === "checking";
       node.dataset.space = who ? "on" : busy === "signout" ? "foot" : "off";
+      set(head.chip, "textContent", who ? ZONE_NAMES[state.zone] : "");
       let words = STATUS[mode] || "";
       if (live && auth === "checking") words = "Checking your sign-in…";
       if (live && boot.newer) words = "A newer Ooga Chat is out.";
@@ -152,22 +155,78 @@
     };
     return { node, update, dispose };
   };
-  // The space a signed-in account listens in, as the island's panel draws it: the two zone buttons, a status line only
+  // The space a signed-in account listens in, as the island's panel draws it: a status line only
   // when the list is not simply live (or is empty), one roster of circles of everyone the server reports there,
   // speakers first (ooga-chat-roster.js orders it; audience-tiles.js draws it, as on the island), scrolling in its slab,
   // the reactions slot (#655 fills it) and the footer. A tile's portrait is the server's same-origin picture, else the
   // island's Ooga face; the visitor's own microphone mutes them while they speak.
-  const ZONE_BUTTONS = { main: "Main Island", dsb: "DSB Land" };
+  const ZONE_NAMES = { main: "Main Island", dsb: "DSB Land" };
   const HEARD = {
     connecting: () => "Connecting…",
-    joining: (zone) => `Joining ${ZONE_BUTTONS[zone]}…`,
+    joining: (zone) => `Joining ${ZONE_NAMES[zone]}…`,
     reconnecting: () => "Reconnecting… this list may be out of date.",
-    full: (zone) => `${ZONE_BUTTONS[zone]} is full right now. Ooga Chat will try again.`,
+    full: (zone) => `${ZONE_NAMES[zone]} is full right now. Ooga Chat will try again.`,
     closed: () => "Listening is off right now. Ooga Chat will try again in a few minutes.",
     unavailable: () => "Live audio isn't open here yet.",
     stale: () => "This page is older than Ooga Chat's service. Reload to keep listening."
   };
   const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
+  // All three player panels share the island's mic semantics and words. A remote mark changes only what this
+  // listener hears; the own mark controls only a microphone held here, never one on another device.
+  const describeMic = (ctx, p, self, t) => {
+    const voice = ctx.media.state, speaker = p.role === "speaker", own = self && voice.role === "speaker";
+    const muted = own ? voice.muted : p.muted;
+    t.look = !speaker ? "" : muted ? "muted" : (own ? voice.speaking : voice.talking.includes(p.id)) ? "speaking" : "on";
+    t.micPressed = speaker && !self && ctx.media.mutedLocally(p.id);
+    t.micDisabled = self && !own;
+    const words = own ? muted ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute"
+      : self ? "Your microphone is on another device" : `${VOICE_WORDS[t.look]}${t.micPressed ? ". Muted for you: click to unmute" : ". Click to mute for you"}`;
+    t.micWords = speaker ? `${p.display}: ${words}${!self && ctx.media.mutedByDuel(p.id) ? ". Automatically muted until their duel ends" : ""}` : "";
+  };
+  const micState = {};
+  const paintMic = (ctx, el, p, self) => {
+    set(el, "hidden", !p || p.role !== "speaker");
+    if (!p || p.role !== "speaker") return;
+    describeMic(ctx, p, self, micState);
+    if (el.dataset.voice !== micState.look) el.dataset.voice = micState.look;
+    attr(el, "data-participant", p.id);
+    attr(el, "data-self", String(self));
+    set(el, "disabled", micState.micDisabled);
+    set(el, "title", micState.micWords);
+    attr(el, "aria-label", micState.micWords);
+    attr(el, "aria-pressed", String(micState.micPressed));
+  };
+  const pressMic = (ctx, id, self) => {
+    if (self) ctx.actions.mute();
+    else ctx.media.muteLocal(id, !ctx.media.mutedLocally(id));
+  };
+  const playerVoice = (p) => ({ id: `gh:${p.id}`, display: p.display, role: p.voice ? "speaker" : "listener", muted: p.muted });
+  // The island's per-player Volume row, with the same range, steps and accessible percentage. Mute stays separate.
+  const volumeControl = (ctx) => {
+    const id = `oc-volume-${++described}`, label = make("label", "players-hearing-label", "Volume");
+    const slider = make("input", "players-volume-range"), value = make("output", "players-volume-value");
+    Object.assign(slider, { id, type: "range", min: "0", max: String(ctx.media.VOLUME_MAX * 100), step: "5" });
+    label.htmlFor = value.htmlFor = id;
+    const node = make("div", "players-volume", label, slider, value);
+    node.id = `${id}-row`;
+    let participant = null;
+    const refresh = () => {
+      const level = participant ? ctx.media.volumeOf(participant.id) : 1, words = `${Math.round(level * 100)}%`;
+      set(slider, "value", String(level * 100));
+      set(value, "textContent", words);
+      attr(slider, "aria-valuetext", words);
+    };
+    slider.addEventListener("input", () => {
+      if (participant) ctx.media.setVolume(participant.id, Number(slider.value) / 100);
+      refresh();
+    });
+    const select = (p) => {
+      participant = p;
+      attr(slider, "aria-label", `Volume for ${p.display}`);
+      refresh();
+    };
+    return { node, slider, select, refresh };
+  };
   // The visitor stands in the zone they picked: their own circle, a listener, while the server's list doesn't hold them
   // (listening off, connecting, or no snapshot yet), first among the listeners as the roster orders them. The server's
   // own row for them, keyed by the same participant id, takes its place once it comes.
@@ -181,30 +240,6 @@
   const audience = (ctx) => {
     const { actions } = ctx;
     const listeners = new AbortController(), { signal } = listeners;
-    const zones = make("div", "cloud-zones");
-    zones.setAttribute("role", "group");
-    zones.setAttribute("aria-label", "Outdoor conversation");
-    const zoneButtons = Object.entries(ZONE_BUTTONS).map(([id, label]) => {
-      let icon;
-      if (id === "main") {
-        icon = make("img");
-        icon.src = "art/main-island.png";
-        icon.width = icon.height = 64;
-        icon.alt = "";
-        icon.setAttribute("aria-hidden", "true");
-      } else icon = BL.nativeIcons.svg("dsb");
-      icon.setAttribute("class", "cloud-zone-icon");
-      const el = make("button", "cloud-zone", icon, make("span", "", label));
-      el.type = "button";
-      el.dataset.cloudZone = id;
-      el.setAttribute("aria-pressed", "false");
-      el.addEventListener("click", (event) => {
-        if (event.detail) el.blur();
-        actions.zone(id);
-      }, { signal });
-      zones.append(el);
-      return el;
-    });
     // A receiver that gave up offers its own retry here, beside what the line says.
     const retryVoice = button("link", "Try again");
     retryVoice.hidden = true;
@@ -215,13 +250,49 @@
     heard.hidden = true;
     const list = make("ul", "cloud-roster slab");
     list.setAttribute("aria-label", "Speakers and listeners");
-    // The emoji panel (reaction-bar.js, the island's own, #655) left of the account controls where there is room and above
-    // them where not, as the design has it; its hand is an active speaker's alone.
+    // The emoji panel (reaction-bar.js, the island's own, #655) over the account controls, or beside them on a panel wide
+    // enough for both (style.css `.panel-foot`); its hand is an active speaker's alone.
     const reactions = make("div", "reactions");
-    const foot = cloudFoot(ctx), footRow = make("div", "oc-chat-foot", reactions, foot.node);
+    const foot = cloudFoot(ctx), footRow = make("div", "panel-foot oc-chat-foot", reactions, foot.node);
     ctx.reactions.bars.mount(reactions, { handAllowed: () => !!voice && voice.role === "speaker" });
     const offPop = ctx.reactions.onPop((id, emoji) => tiles.pop(id, emoji));
     let version = -1, frame = 0, self = null, voice = null, people = [];
+    // A speaker's name opens the same Volume control as Online Oogas. Keep it below the grid so the slider has
+    // room on a phone; listeners who cannot open the contributor tabs can use it here too.
+    const volume = volumeControl(ctx), volumeName = make("span", "oc-volume-name"), closeVolume = button("link", "Close");
+    const volumeBox = make("div", "oc-volume", make("div", "oc-volume-head", volumeName, closeVolume), volume.node);
+    volumeBox.id = `${volume.node.id}-box`;
+    volumeBox.hidden = true;
+    const volumeButtons = new Map();
+    let selected = null;
+    const chooseVolume = (p, focus = false) => {
+      if (selected) volumeButtons.get(selected)?.setAttribute("aria-expanded", "false");
+      selected = p ? p.id : null;
+      volumeBox.hidden = !p;
+      if (!p) return;
+      volumeButtons.get(selected)?.setAttribute("aria-expanded", "true");
+      set(volumeName, "textContent", p.display);
+      set(volumeName, "title", p.display);
+      volume.select(p);
+      if (focus) volume.slider.focus();
+    };
+    const dismissVolume = () => {
+      const toggle = volumeButtons.get(selected);
+      chooseVolume(null);
+      if (toggle && !toggle.disabled) toggle.focus();
+      else foot.focus();
+    };
+    closeVolume.addEventListener("click", dismissVolume, { signal });
+    volumeBox.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); event.stopPropagation(); dismissVolume();
+    }, { signal });
+    list.addEventListener("click", (event) => {
+      const toggle = event.target.closest(".oc-volume-toggle");
+      if (!toggle || toggle.disabled) return;
+      const p = people.find((p) => p.id === toggle.closest(".cloud-tile").dataset.id);
+      if (p && p.role === "speaker" && p.id !== self) chooseVolume(selected === p.id ? null : p, !event.detail);
+    }, { signal });
     // An Ooga's face from the face sheet (art/ooga-faces.png, ooga-chat-faces.js), cut once a handle and kept as a
     // data URL, for anyone the server names a character for and gives no picture: an island speaker's own Ooga. The
     // tiles draw again once the sheet has loaded.
@@ -249,24 +320,42 @@
       // from their microphone's meter (ooga-chat-media.js `speaking`, alone or not), anyone else's from their voice's
       // (`talking`).
       const speaker = p.role === "speaker", you = p.id === self;
-      const look = !speaker ? "" : p.muted ? "muted" : (you ? voice.speaking : voice.talking.includes(p.id)) ? "speaking" : "on";
       t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" ? "world" : "chat";
-      t.face = p.face || sheetFace(p.character); t.look = look; t.hand = p.hand || ""; t.self = you; t.micPressed = false;
-      t.micDisabled = !you || voice.role !== "speaker";
-      t.micWords = !speaker ? "" : `${p.display}: ${you ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute" : VOICE_WORDS[look]}`;
+      t.face = p.face || sheetFace(p.character); t.hand = p.hand || ""; t.self = you;
+      describeMic(ctx, p, you, t);
     };
-    // A speaker's voice mark: the visitor's own works their microphone; anyone else's will mute that voice for this
-    // visitor once Ooga Chat plays them (#661).
-    const tiles = BL.audienceTiles.create(list, { mic: (id) => { if (id === self) actions.mute(); } });
+    const tiles = BL.audienceTiles.create(list, { mic: (id) => pressMic(ctx, id, id === self) });
     const render = () => {
       frame = 0;
       tiles.draw(people, describe);
+      for (const [id, toggle] of volumeButtons) if (!list.contains(toggle)) volumeButtons.delete(id);
+      for (const li of list.children) {
+        const enabled = li.dataset.role === "speaker" && li.dataset.id !== self;
+        let toggle = volumeButtons.get(li.dataset.id);
+        if (!toggle && enabled) {
+          const text = li.querySelector(".cloud-name-text");
+          toggle = button("oc-volume-toggle", "");
+          text.replaceWith(toggle);
+          toggle.append(text);
+          attr(toggle, "aria-controls", volumeBox.id);
+          volumeButtons.set(li.dataset.id, toggle);
+        }
+        if (toggle) {
+          set(toggle, "disabled", !enabled);
+          attr(toggle, "aria-expanded", String(selected === li.dataset.id));
+          set(toggle, "title", enabled ? `Volume for ${toggle.textContent}` : toggle.textContent);
+        }
+      }
+      if (selected) {
+        const p = people.find((p) => p.id === selected && p.role === "speaker" && p.id !== self);
+        if (!p && volumeBox.contains(document.activeElement)) dismissVolume();
+        else chooseVolume(p || null);
+      }
     };
     const update = (state) => {
       foot.update(state);
-      if (!state.session) return;
+      if (!state.session) { chooseVolume(null); return; }
       const { audience: now, zone } = state;
-      for (const el of zoneButtons) attr(el, "aria-pressed", String(el.dataset.cloudZone === zone));
       // The feed's state first; then voice's (playback the browser held back, a receiver that gave up, what the last try
       // to speak said); then an empty zone.
       const failed = now.status === "live" && state.voice.phase === "failed";
@@ -278,6 +367,8 @@
       const who = state.session.identity.participant, moved = who !== self, mics = moved || state.voice !== voice, role = voice && voice.role;
       self = who;
       voice = state.voice;
+      if (moved) chooseVolume(null);
+      if (mics && selected) volume.refresh();
       if (voice.role !== role) ctx.reactions.bars.refresh();
       if (now.version !== version || moved) {
         version = now.version;
@@ -285,15 +376,16 @@
         if (!frame) frame = requestAnimationFrame(render);
       } else if (mics && !frame) tiles.repaint(describe);
     };
-    const focus = () => (zoneButtons.find((el) => el.getAttribute("aria-pressed") === "true") || zoneButtons[0]).focus();
+    const focus = () => foot.focus();
     const dispose = () => {
       listeners.abort();
       cancelAnimationFrame(frame);
       offPop();
       tiles.dispose();
+      volumeButtons.clear();
       foot.dispose();
     };
-    return { nodes: [zones, heard, list, footRow], update, focus, dispose };
+    return { nodes: [heard, list, volumeBox, footRow], update, focus, dispose };
   };
   // The Ooga Chat panel's footer, the island's: the visitor's name (a purple dot only while speaking from Ooga Chat), the
   // fixed-width microphone, always first and off for a listener, Join Voice for a listener the server allows to speak
@@ -345,7 +437,9 @@
       set(join, "title", why);
     };
     const dispose = () => listeners.abort();
-    return { node, update, dispose };
+    // Where focus lands on signing in: the first of the footer's buttons that can be pressed.
+    const focus = () => [mute, join, out].find((el) => !el.disabled).focus();
+    return { node, update, focus, dispose };
   };
   // The account row the island keeps at the foot of Contributing Oogas, Online Oogas and The Commons (hud.js
   // `showAccount`): while signed out, the sign-in screen's own Continue with GitHub (the design's sign-in button, in
@@ -496,10 +590,28 @@
     const note = make("p", "help oc-roster-note");
     note.hidden = true;
     const account = accountRow(ctx);
-    node.append(note, account.node);
+    // The emoji panel under the list, as the island's Contributing Oogas has it.
+    const reactions = make("div", "reactions");
+    node.append(note, make("div", "panel-foot", reactions, account.node));
+    ctx.reactions.bars.mount(reactions, { handAllowed: () => ctx.media.state.role === "speaker" });
     const { stateAt, ageAt } = BL.rosterPanel, faces = BL.oogaChatFaces, town = ctx.commons.model;
-    const people = new Map();
+    // Who speaks from Ooga Chat now, by login, from the audience's list: their dots are Ooga Chat's purple.
+    let speakers = new Set(), heard = -1, audience = [], me = "", voice = null;
+    const people = new Map(), voices = new Map();
     let panel = null, names = "", reading = null, fetchedAt = 0, loading = false, timer = 0, sheet = null;
+    const paintVoices = () => {
+      if (!panel) return;
+      for (const row of panel.rows.values()) {
+        const p = voices.get(row.contributor.login);
+        paintMic(ctx, row.voice, p, !!p && p.id === me);
+      }
+    };
+    const indexVoices = () => {
+      voices.clear();
+      for (const p of town.state.players.values()) if (p.voice) voices.set(p.login.toLowerCase(), playerVoice(p));
+      for (const p of audience) if (p.role === "speaker" && p.id.startsWith("gh:")) voices.set(p.login.toLowerCase(), p);
+      paintVoices();
+    };
     const face = (contributor) => {
       if (!sheet) {
         sheet = new Image();
@@ -514,13 +626,14 @@
     };
     const stampOf = (c) => c.lastContributionAt || c.lastCommitAt;
     const online = (row) => {
+      if (speakers.has(row.contributor.login)) return "cloud";
       for (const p of town.state.players.values()) if (p.login.toLowerCase() === row.contributor.login) return true;
       return false;
     };
     const hooks = { stamp: stampOf, login: (c) => c.login, joinedAt: (c) => c.joinedAt, stats: () => reading, face, online,
       stateFor: (c) => stateAt(c.lastContributionAt > 0 ? c.lastContributionAt : c.lastCommitAt, Date.now()),
       ageLabel: (c) => ageAt(c.lastContributionAt > 0 ? c.lastContributionAt : c.lastCommitAt, Date.now()),
-      voice() {}, sortKey: ctx.storageKey("roster-sort") };
+      voice: (el) => pressMic(ctx, el.dataset.participant, el.dataset.self === "true"), sortKey: ctx.storageKey("roster-sort") };
     const time = (value) => Number.isSafeInteger(value) && value > 0 ? value : 0;
     // The answer, checked: the cast's rows become contributors kept by handle (so a row holds the same one across
     // readings), each one's latest contribution from the reading's org-wide last-seen time for its GitHub login.
@@ -552,6 +665,7 @@
           for (const row of panel.rows.values()) panel.setRow(row.contributor.name);
           panel.statsChanged();
         }
+        paintVoices();
       }
       const stats = body?.sources?.stats?.state, castState = body?.sources?.cast?.state;
       const minutes = body?.sources?.stats?.generatedAt ? Math.max(1, Math.round((at - body.sources.stats.generatedAt) / 60000)) : 0;
@@ -580,11 +694,22 @@
     };
     const watch = onShown(node, shown);
     const off = town.subscribe((kind) => {
-      if (panel && (kind === "players" || kind === "welcome")) for (const row of panel.rows.values()) panel.showOnline(row);
+      if (kind !== "players" && kind !== "welcome") return;
+      if (panel) for (const row of panel.rows.values()) panel.showOnline(row);
+      indexVoices();
     });
     const update = (state) => {
       watch();
       account.update(state);
+      me = state.session?.identity.participant || "";
+      if (state.audience.version !== heard) {
+        heard = state.audience.version;
+        audience = state.audience.list;
+        speakers = new Set(appSpeakers(audience).map((p) => p.login.toLowerCase()));
+        if (panel) for (const row of panel.rows.values()) panel.showOnline(row);
+        indexVoices();
+      }
+      if (state.voice !== voice) { voice = state.voice; paintVoices(); }
     };
     const dispose = () => {
       clearInterval(timer);
@@ -612,6 +737,8 @@
   // Ooga is not on the island (the Room lists only the island's players, worker/src/room-commons.js).
   const onlineCount = (model) => model.state.players.size + (model.state.you && !model.state.players.has(model.state.you.id) ? 1 : 0);
   const commonsChip = (status, model) => status === "live" ? `${onlineCount(model)} online` : status === "closed" ? "Closed" : "Offline";
+  // Ooga Chat's own speakers in the audience's list: the ones on clouds, purple wherever a panel marks them.
+  const appSpeakers = (list) => list.filter((p) => p.role === "speaker" && p.source === "app");
   const panelHead = (title) => {
     const heading = make("span", "", title), chip = make("span", "panel-chip");
     heading.dataset.sign = "";
@@ -747,47 +874,94 @@
   // Online Oogas: everyone on the island now, grouped by where they are (zone-map.js, as the island's tab groups them),
   // with their raised hand and whether they are in voice, and the member's own row first: in their island group while
   // their Ooga is there, else under Ooga Chat. Presence without positions: no distance, crosshair, voice
-  // link or volume, which are the island's alone (docs/ooga-chat-backend.md, the capability matrix).
+  // link, which are the island's alone. Mic marks and Volume share the audience's local listening choices.
   const online = (ctx) => {
     const { model } = ctx.commons;
     const APP = "ooga-chat";
     const { header, chip } = panelHead("Online Oogas");
+    const muteDuels = make("input", "");
+    muteDuels.type = "checkbox";
+    muteDuels.id = "oc-mute-duels";
+    muteDuels.setAttribute("aria-describedby", "oc-mute-duels-help");
+    muteDuels.addEventListener("change", () => ctx.media.setMuteDuels(muteDuels.checked));
+    const duelHelp = make("p", "help", "Until their duel ends. Your own duel pair is exempt.", make("br", ""), "Manual mute and volume choices stay unchanged.");
+    duelHelp.id = "oc-mute-duels-help";
+    const settings = make("details", "players-settings", make("summary", "", "Advanced settings"),
+      make("div", "players-settings-content", make("label", "players-speak", muteDuels, " Automatically mute duelists"), duelHelp));
     const list = make("div", "players slab oc-players"), note = make("p", "help players-status");
+    const mics = [], expanded = new Set();
+    const micClick = (event) => {
+      const el = event.target.closest(".roster-voice");
+      if (!el || el.disabled) return;
+      if (event.detail) el.blur();
+      pressMic(ctx, el.dataset.participant, el.dataset.self === "true");
+    };
+    list.addEventListener("click", micClick);
     const account = accountRow(ctx);
-    const node = make("section", "panel oc-panel oc-online", header, list, note, account.node);
+    // The emoji panel under the list, as the island's Online Oogas has it.
+    const reactions = make("div", "reactions");
+    const node = make("section", "panel oc-panel oc-online", header, settings, list, note, make("div", "panel-foot", reactions, account.node));
     node.dataset.panel = "players";
+    ctx.reactions.bars.mount(reactions, { handAllowed: () => ctx.media.state.role === "speaker" });
     // A row as the island's players.js makes one (the dots, the name, the hand's column, the voice mark), less the link,
-    // the crosshair, the distance and the volume, which only the island offers.
+    // the crosshair and the distance, which only the island offers. An Ooga Chat speaker's dot is purple.
     const row = (r) => {
       const p = r.p, dots = make("span", "roster-dots"), presence = make("span", "roster-presence"), host = make("span", "roster-host");
-      presence.dataset.online = "true";
+      presence.dataset.online = r.cloud ? "cloud" : "true";
       presence.setAttribute("role", "img");
-      presence.setAttribute("aria-label", "Online");
+      presence.setAttribute("aria-label", r.cloud ? "Speaking from Ooga Chat" : "Online");
+      presence.title = presence.getAttribute("aria-label");
       host.hidden = true;
       dots.append(presence, host);
       const label = make("span", "roster-label", p.display);
       label.title = `@${p.login}`;
-      const hand = p.hand ? p.handEmoji || BL.reactionPolicy.HANDS[p.handTone] : "";
+      const hand = p.hand ? p.handEmoji || BL.reactionPolicy.HANDS[p.handTone || 0] : "";
       const raised = make("span", "players-hand", hand);
       raised.hidden = !hand;
       raised.setAttribute("role", "img");
       raised.setAttribute("aria-label", hand && BL.reactionPolicy.HANDS.includes(hand) ? "Hand raised" : `Pinned emoji ${hand}`);
-      const voice = make("span", "roster-voice", BL.nativeIcons.voice());
-      const look = p.voice ? p.muted ? "muted" : "on" : "";
-      voice.hidden = !look;
-      voice.dataset.voice = look;
-      voice.setAttribute("role", "img");
-      voice.setAttribute("aria-label", p.muted ? "Muted their microphone" : "In voice");
-      voice.title = voice.getAttribute("aria-label");
-      const li = make("li", "", dots, make("span", "players-name", label), make("span", "players-mark", raised), make("span", "roster-marks", voice));
+      const voice = make("button", "roster-voice", BL.nativeIcons.voice());
+      voice.type = "button";
+      const participant = r.cloud ? r.audience : playerVoice(p);
+      const control = r.self ? null : volumeControl(ctx), toggle = r.self ? null : button("roster-name players-name-toggle", "");
+      const key = `${r.cloud ? "app" : "world"}:${participant.id}`;
+      if (control) {
+        control.select(participant);
+        control.node.hidden = !expanded.has(key);
+        toggle.append(label);
+        attr(toggle, "aria-controls", control.node.id);
+        attr(toggle, "aria-expanded", String(!control.node.hidden));
+        toggle.addEventListener("click", () => {
+          const open = control.node.hidden;
+          control.node.hidden = !open;
+          attr(toggle, "aria-expanded", String(open));
+          if (open) expanded.add(key); else expanded.delete(key);
+        });
+      }
+      mics.push({ el: voice, p: participant, self: r.self, key, control, toggle });
+      paintMic(ctx, voice, participant, r.self);
+      const li = make("li", "", dots, make("span", "players-name", toggle || label), make("span", "players-mark", raised), make("span", "roster-marks", voice));
+      if (control) li.append(control.node);
       if (r.self) li.dataset.self = "true";
       return li;
     };
     const draw = () => {
       if (node.closest("[hidden]")) return;
+      const active = document.activeElement, held = mics.find((m) => m.control?.slider === active || m.toggle === active);
+      const heldSlider = !!held && held.control?.slider === active;
+      mics.length = 0;
       const you = model.state.you, rows = [];
       for (const p of model.state.players.values()) rows.push({ id: p.id, name: p.display, group: BL.zoneMap.groupOf(p.zone), self: !!you && p.id === you.id, p });
-      if (you && !model.state.players.has(you.id)) rows.push({ id: you.id, name: you.display, group: APP, self: true, p: { ...you, hand: false, voice: false, muted: false } });
+      // Ooga Chat's speakers sit on Main Island's clouds, so they are listed with the island's own, as the island lists
+      // them: a row of their own with a purple dot, the member's own included while they speak.
+      let speaking = false;
+      for (const a of cloud) {
+        const self = a.id === me;
+        speaking = speaking || self;
+        rows.push({ id: a.id, name: a.display, group: BL.zoneMap.groupOf("outside"), self, cloud: true, audience: a,
+          p: { login: a.login, display: a.display, hand: !!a.hand, handEmoji: a.hand, voice: true, muted: a.muted } });
+      }
+      if (you && !speaking && !model.state.players.has(you.id)) rows.push({ id: you.id, name: you.display, group: APP, self: true, p: { ...you, hand: false, voice: false, muted: false } });
       const mine = rows.find((r) => r.self)?.group || null;
       BL.zoneMap.arrange(rows, mine);
       const groups = [];
@@ -800,8 +974,13 @@
         groups.at(-1).ul.append(row(r));
       }
       list.replaceChildren(...groups.map((g) => g.section));
+      for (const key of expanded) if (!mics.some((m) => m.key === key)) expanded.delete(key);
+      if (held) {
+        const next = mics.find((m) => m.key === held.key);
+        (heldSlider ? next?.control?.slider : next?.toggle)?.focus({ preventScroll: true });
+      }
     };
-    let status = "off";
+    let status = "off", cloud = [], me = "", heard = -1, voice = null;
     const off = model.subscribe((kind) => { if (kind === "players" || kind === "welcome") { draw(); paint(); } });
     const watch = onShown(node, draw);
     const paint = () => {
@@ -816,6 +995,21 @@
     const update = (state) => {
       watch();
       account.update(state);
+      muteDuels.checked = state.voice.muteDuels;
+      muteDuels.disabled = !state.session;
+      if (state.audience.version !== heard) {
+        heard = state.audience.version;
+        cloud = appSpeakers(state.audience.list);
+        me = state.session ? state.session.identity.participant : "";
+        draw();
+      }
+      if (state.voice !== voice) {
+        voice = state.voice;
+        for (const mark of mics) {
+          paintMic(ctx, mark.el, mark.p, mark.self);
+          mark.control?.refresh();
+        }
+      }
       if (state.commons.status === status) return;
       status = state.commons.status;
       paint();
@@ -823,6 +1017,9 @@
     const dispose = () => {
       off();
       account.dispose();
+      list.removeEventListener("click", micClick);
+      mics.length = 0;
+      expanded.clear();
       node.remove();
     };
     return { node, update, dispose };

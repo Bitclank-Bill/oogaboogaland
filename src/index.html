@@ -316,14 +316,30 @@
         </svg>
       </button>
       <button type="button" class="mode-hud environment-sound" id="environment-sound"
-        aria-label="Mute environment sounds" title="Mute environment sounds · M" aria-pressed="false">
+        aria-label="Sound levels" title="Sound levels · M mutes game sounds" data-muted="false"
+        aria-haspopup="dialog" aria-controls="sound-mixer" aria-expanded="false">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path fill="currentColor" d="M3 9h4l5-4v14l-5-4H3z"/>
           <path class="sound-waves" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>
           <path class="sound-muted" d="m16 9 6 6m0-6-6 6"/>
         </svg>
       </button>
+      <!-- Sign in with GitHub, and out again, left of the controls button wherever the page has a backend (hud.js
+           showAccount, which sets its action): the same two actions as the Contributing Oogas panel's account row. -->
+      <button type="button" class="mode-hud account-top" id="account-top" data-action="account-login" data-signed="false" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+          <path class="account-in" d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M3 12h11m-4-4 4 4-4 4"/>
+          <path class="account-out" d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M9 12h12m-4-4 4 4-4 4"/>
+        </svg>
+      </button>
       <nav class="presets" aria-label="Timechain Sphere room" data-scene="timechain" hidden>
+        <button type="button" data-action="lecture-programme" id="lecture-programme" hidden>Lectures</button>
+        <button type="button" data-action="lecture-start" id="lecture-start" hidden>Start lecture 1</button>
+        <button type="button" data-action="lecture-back" id="lecture-back" aria-label="Back a section" title="Back a section" hidden>&#x23EE;</button>
+        <button type="button" data-action="lecture-toggle" id="lecture-toggle" hidden>Pause</button>
+        <button type="button" data-action="lecture-next" id="lecture-next" aria-label="On a section" title="On a section" hidden>&#x23ED;</button>
+        <button type="button" data-action="lecture-speed" id="lecture-speed" aria-label="Playback speed: 1×. Change speed" title="Playback speed · 1×, 1.25×, 1.5×, 2×" hidden>1×</button>
+        <button type="button" data-action="lecture-stop" id="lecture-stop" hidden>Stop</button>
         <button type="button" class="leave" data-action="leave">Leave<span> room</span></button>
       </nav>
       <nav class="presets" aria-label="₿IFRÖST" data-scene="bifrost" hidden>
@@ -332,6 +348,7 @@
         <button type="button" data-preset="dsb">DSB</button>
         <button type="button" data-preset="poker">Poker</button>
         <button type="button" data-preset="sky">Sky</button>
+        <button type="button" data-action="bifrost-mute">Sound</button>
         <button type="button" class="leave" data-action="leave">Leave<span> chamber</span></button>
       </nav>
       <nav class="presets" aria-label="Drop" data-scene="drop" hidden>
@@ -369,6 +386,9 @@
       <button type="button" data-action="studio-bed">Bed</button>
       <button type="button" data-action="studio-hammock">Hammock</button>
       <button type="button" data-action="studio-fire">Fire</button>
+      <button type="button" data-action="studio-physics" title="Loose crates, dice and barrels to knock about">Physics</button>
+      <button type="button" data-action="studio-pond" title="A pond to splash in: waves, floating props">Pond</button>
+      <button type="button" data-action="studio-props" title="Every loose prop back where it stood">Reset props</button>
       <button type="button" data-action="studio-eyes" aria-pressed="false" title="Through the Ooga's own eyes">1st person</button>
       <button type="button" data-action="studio-third" aria-pressed="false" title="From behind and a little above; in combat, over its shoulder">3rd person</button>
       <button type="button" data-action="studio-combat">Carry</button>
@@ -433,18 +453,21 @@
       <div class="sheet-content">
       <section class="panel" data-panel="roster" id="roster-panel" role="tabpanel" aria-labelledby="sheet-toggle">
         <!-- The title, Sorted by and the list (#roster) are built here by roster-panel.js, shared with Ooga Chat. -->
-        <div class="account" id="account" hidden>
-          <button type="button" class="panel-primary" data-action="account-login" id="account-login" aria-label="Contributor sign-in with GitHub" title="Contributors can sign in with GitHub to control their own Ooga and gorilla."><span data-sign>Contributor sign-in</span></button>
-          <span class="account-who">
-            <span class="account-name" id="account-name" hidden></span>
-            <span class="account-room" id="account-room" hidden></span>
-          </span>
-          <span class="account-actions">
-            <button type="button" class="foot-button foot-primary" data-action="account-rejoin" id="account-rejoin" hidden>Play here</button>
-            <button type="button" class="foot-button" data-action="account-voice" id="account-voice" aria-pressed="false" hidden>Join voice</button>
-            <button type="button" class="foot-button" data-action="account-voice-leave" id="account-voice-leave" hidden>Leave voice</button>
-            <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
-          </span>
+        <div class="panel-foot">
+          <div class="reactions" id="roster-reactions" hidden></div>
+          <div class="account" id="account" hidden>
+            <button type="button" class="panel-primary" data-action="account-login" id="account-login" aria-label="Contributor sign-in with GitHub" title="Contributors can sign in with GitHub to control their own Ooga and gorilla."><span data-sign>Contributor sign-in</span></button>
+            <span class="account-who">
+              <span class="account-name" id="account-name" hidden></span>
+              <span class="account-room" id="account-room" hidden></span>
+            </span>
+            <span class="account-actions">
+              <button type="button" class="foot-button foot-primary" data-action="account-rejoin" id="account-rejoin" hidden>Play here</button>
+              <button type="button" class="foot-button" data-action="account-voice" id="account-voice" aria-pressed="false" hidden>Join voice</button>
+              <button type="button" class="foot-button" data-action="account-voice-leave" id="account-voice-leave" hidden>Leave voice</button>
+              <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
+            </span>
+          </div>
         </div>
       </section>
       <section class="panel" data-panel="players" id="players-panel" role="tabpanel" aria-labelledby="players-tab" hidden>
@@ -470,12 +493,17 @@
               <p class="help" id="players-diagnostics-status">Off</p>
             </div>
             <label class="players-speak" id="players-speak" hidden><input type="checkbox" id="players-speak-input"> Read joins aloud</label>
+            <label class="players-speak" id="players-keys" title="Keeps your microphone shut on key and mouse clicks between your words. Adds a short delay to your voice." hidden><input type="checkbox" id="players-keys-input"> Keyboard noise filter</label>
+            <label class="players-speak"><input type="checkbox" id="players-mute-duels" aria-describedby="players-mute-duels-help"> Automatically mute duelists</label>
+            <p class="help" id="players-mute-duels-help">Until their duel ends. Your own duel pair is exempt.<br>Manual mute and volume choices stay unchanged.</p>
           </div>
         </details>
         <div class="players slab" id="players-list"></div>
-        <div class="reactions" id="players-reactions" hidden></div>
         <p class="help players-status" id="players-status" hidden></p>
-        <div data-account-copy="players"></div>
+        <div class="panel-foot">
+          <div class="reactions" id="players-reactions" hidden></div>
+          <div data-account-copy="players"></div>
+        </div>
       </section>
       <section class="panel" data-panel="bananas" id="bananas-panel" role="tabpanel" aria-labelledby="sheet-bananas" hidden></section>
       <section class="panel" data-panel="chat" id="chat-panel" role="tabpanel" aria-labelledby="chat-tab" hidden>
@@ -546,20 +574,19 @@
           </span>
           <button type="submit" class="chat-send" id="chat-send" disabled>Send</button>
         </form>
-        <div class="reactions" id="chat-reactions" hidden></div>
-        <div data-account-copy="chat"></div>
+        <div class="panel-foot">
+          <div class="reactions" id="chat-reactions" hidden></div>
+          <div data-account-copy="chat"></div>
+        </div>
       </section>
       <section class="panel" data-panel="cloud" id="cloud-panel" role="tabpanel" aria-labelledby="cloud-tab" hidden>
         <header class="panel-title">
           <h2><span data-sign>Ooga Chat</span></h2>
+          <span class="panel-chip" id="cloud-zone">Main Island</span>
         </header>
-        <div class="cloud-zones" role="group" aria-label="Outdoor conversation">
-          <button type="button" class="cloud-zone" data-cloud-zone="main" aria-pressed="false"><img class="cloud-zone-icon" data-island-icon alt="" aria-hidden="true"><span>Main Island</span></button>
-          <button type="button" class="cloud-zone" data-cloud-zone="dsb" aria-pressed="false"><span>DSB Land</span></button>
-        </div>
         <p class="help cloud-status" id="cloud-status" role="status" aria-live="polite" hidden><span id="cloud-status-text"></span> <button type="button" class="link" id="cloud-retry" hidden>Retry</button></p>
         <ul class="cloud-roster slab" id="cloud-roster" aria-label="Speakers and listeners"></ul>
-        <div class="cloud-bottom">
+        <div class="panel-foot">
           <div class="reactions" id="cloud-reactions" hidden></div>
           <div class="cloud-foot" id="cloud-foot">
             <span class="cloud-foot-name" id="cloud-foot-name"></span>
@@ -581,7 +608,7 @@
           <svg viewBox="0 0.25 16 16" aria-hidden="true" focusable="false"><path d="M3 11h10l-1.5-2V6a3.5 3.5 0 0 0-7 0v3L3 11Zm3.5 2a1.6 1.6 0 0 0 3 0" fill="none" stroke="currentColor" stroke-linejoin="round"/></svg>
           <span class="tab-count" aria-hidden="true" hidden></span>
         </button>
-        <div class="sheet-unread" hidden></div>
+        <ul class="sheet-unread" hidden></ul>
       </div>
     </template>
 
@@ -607,9 +634,9 @@
     <div class="equipment-hud" id="equipment-hud">
       <div class="weapon-equipment-row">
       <button type="button" class="leave-hud" id="leave-hud" data-action="leave" aria-label="Leave" title="Leave" hidden>
-        <svg class="leave-icon" viewBox="0 0 14 14" shape-rendering="crispEdges" aria-hidden="true">
-          <path fill="#e8891a" d="M1 1h7v2H1zM1 3h2v8H1zM1 11h7v2H1z" />
-          <path fill="#f2efe4" d="M4 6h6v2H4zM9 3h1v8H9zM10 4h1v6H10zM11 5h1v4H11zM12 6h1v2H12z" />
+        <svg class="leave-icon" viewBox="0 0 34 21" shape-rendering="crispEdges" aria-hidden="true">
+          <path fill="#e8891a" d="M17 3h1v1H17zM17 4h2v1H17zM13 5h7v1H13zM13 6h8v1H13zM13 7h7v1H13zM17 8h2v1H17zM17 9h1v1H17z" />
+          <path fill="#f2efe4" d="M8 12h4v1H8zM13 12h1v1H13zM16 12h1v1H16zM18 12h3v1H18zM22 12h5v1H22zM8 13h1v1H8zM13 13h1v1H13zM16 13h1v1H16zM19 13h1v1H19zM24 13h1v1H24zM8 14h3v1H8zM14 14h2v1H14zM19 14h1v1H19zM24 14h1v1H24zM8 15h1v1H8zM14 15h2v1H14zM19 15h1v1H19zM24 15h1v1H24zM8 16h1v1H8zM13 16h1v1H13zM16 16h1v1H16zM19 16h1v1H19zM24 16h1v1H24zM8 17h4v1H8zM13 17h1v1H13zM16 17h1v1H16zM18 17h3v1H18zM24 17h1v1H24z" />
         </svg>
       </button>
       <button type="button" class="mode-hud" id="destination-hud" data-action="mode-preset" data-selected="false"
@@ -641,7 +668,6 @@
         </svg>
         <span class="detached-destination-name" id="detached-destination-name" aria-live="polite"></span>
         <span id="destination-hud-label" hidden>Map. Choose a destination</span>
-        <span class="destination-map-label" aria-hidden="true">Map</span>
       </button>
       <button type="button" class="mode-hud" id="mode-hud" data-action="mode-toggle" data-selected="false" data-shooter="false"
         aria-label="Character controls" title="Character controls" hidden>
@@ -1906,8 +1932,10 @@
           <li><b>Walk and watch</b><small data-coarse="Move with the sticks; tap a table to watch.">WASD and drag to explore; click a table to watch.</small></li>
           <li><b>Local or live</b><small>Local practice with computer opponents. Live poker when connected to the poker service.</small></li>
         </ul>
-        <button type="button" class="game-intro-go" data-action="intro-go">Enter The Ember Den</button>
-        <button type="button" data-action="leave">Exit Game</button>
+        <div class="actions">
+          <button type="button" class="game-intro-go" data-action="intro-go">Enter The Ember Den</button>
+          <button type="button" data-action="leave">Exit Game</button>
+        </div>
       </section>
     </div>
     <!-- The donation dialog (#donation-popup) is built here by donation-popup.js, shared with Ooga Chat. -->
@@ -1918,8 +1946,10 @@
         <h2 id="controls-help-title">Controls</h2>
         <button type="button" class="modal-close" id="controls-help-close" aria-label="Close controls">&times;</button>
       </div>
-      <p id="controls-help-context"></p>
-      <p id="controls-help-note">Try the keys here. Your character stays still while this panel is open.</p>
+      <div class="slab controls-help-about">
+        <p id="controls-help-context"></p>
+        <p id="controls-help-note">Try the keys here. Your character stays still while this panel is open.</p>
+      </div>
       <button type="button" class="controls-help-pad" id="controls-help-pad">Controller settings</button>
       <div class="controls-list" id="controls-help-list"></div>
       <button type="button" id="controls-learn" hidden>Learn by exploring</button>
@@ -1938,8 +1968,10 @@
             <svg id="destination-atlas-overlay" viewBox="0 0 720 600" aria-hidden="true"></svg>
             <div id="destination-atlas-pins" role="group" aria-label="Preview a zone on the map"></div>
           </div>
-          <p class="destination-map-key"><span id="destination-map-origin">◉ Your position</span><span>◎ Selected zone</span><span>North up · Landmark numbers match the list</span></p>
-          <p class="destination-map-mapnote" id="destination-map-mapnote"></p>
+          <div class="slab destination-map-legend">
+            <p class="destination-map-key"><span id="destination-map-origin">◉ Your position</span><span>◎ Selected zone</span><span>North up · Landmark numbers match the list</span></p>
+            <p class="destination-map-mapnote" id="destination-map-mapnote"></p>
+          </div>
         </section>
         <div id="destination-map-list" aria-label="All destinations"></div>
       </div>
@@ -2017,7 +2049,8 @@
         <h2><span data-sign>Add an Ooga</span></h2>
         <button type="button" class="modal-close" data-action="recipe-close" aria-label="Close">&times;</button>
       </div>
-      <p class="help">2140data hands you the prompt. Paste it to an AI coding agent on your computer: it signs you in with GitHub, asks what you want, and shows you your Ooga as it builds it.</p>
+      <p class="help" id="recipe-note" hidden>Signing in needs an Ooga of your own, and the island has none for this GitHub account yet. A new Ooga arrives once it is merged and the island next deploys. Here is how to make one.</p>
+      <p class="help">2140data hands you the prompt. Paste it to an AI coding agent on your computer: it signs you in with GitHub, asks what you want, and shows you your Ooga as it builds it. Once your Ooga is on the island, the sign-in button at the top right hands it to you.</p>
       <pre class="recipe" id="recipe-text">Make me a character in Ooga Booga Land. Read docs/make-your-ooga.md in https://github.com/OogaBoogaX/oogaboogaland first, and follow it in order.
 
 Get me set up first: check I have a GitHub account, sign me in on this computer with gh (I will approve it in my browser), fork the repository, and make the clone's commits mine with my GitHub no-reply address. Ask me before installing anything or opening my browser.
@@ -2028,7 +2061,9 @@ Do not write the file yet. Ask me for a picture or two to work from, then interv
 
 Build it in one file, src/characters/&lt;my GitHub login&gt;.js, and change nothing else. After each round take my notes one at a time. Before the pull request, run npm run character:check, npm run build and npm run test:unit, and ask me before pushing.
 
-Open the pull request from my fork as a draft and keep it draft while building or debugging. Mark it ready for review only when the work and authorized checks are complete and its description records validation and any remaining acceptance work. Return it to draft for substantial new work, and batch related fixes before pushing.</pre>
+Open the pull request from my fork as a draft and keep it draft while building or debugging. Mark it ready for review only when the work and authorized checks are complete and its description records validation and any remaining acceptance work. Return it to draft for substantial new work, and batch related fixes before pushing.
+
+When it is sent, tell me what happens next and when I can sign in at oogabooga.land.</pre>
       <div class="actions recipe-actions">
         <button type="button" data-action="recipe-copy">Copy prompt</button>
       </div>
@@ -2129,6 +2164,32 @@ Open the pull request from my fork as a draft and keep it draft while building o
       </div>
     </div>
     <output class="mic-note" id="mic-note" data-muted="false" hidden></output>
+    <!-- Duels on the island (duel.js shows and hides these; the hub alone creates it). -->
+    <div class="duel-target" id="duel-target" role="group" aria-label="Target" hidden>
+      <span class="duel-target-name"></span>
+      <button type="button" class="duel-button" data-duel="challenge">Duel</button>
+      <button type="button" class="duel-close" data-duel="clear" aria-label="Clear target" title="Clear target">×</button>
+    </div>
+    <div class="duel-invite" id="duel-invite" role="alertdialog" aria-label="Duel challenge" hidden>
+      <p class="duel-invite-text"></p>
+      <button type="button" class="duel-button" data-duel="accept">Accept</button>
+      <button type="button" class="duel-button duel-decline" data-duel="decline">Decline</button>
+    </div>
+    <div class="duel-hud" id="duel-hud" role="group" aria-label="Duel" hidden>
+      <div class="duel-head"><span class="duel-title">Duel</span><span class="duel-clock"></span></div>
+      <div class="duel-rows">
+        <div class="duel-side"><span class="duel-name"></span><span class="duel-bar"><span class="duel-chip"></span><span class="duel-fill"></span></span><span class="duel-hp"></span><span class="duel-far"></span></div>
+        <div class="duel-side duel-them"><span class="duel-name"></span><span class="duel-bar"><span class="duel-chip"></span><span class="duel-fill"></span></span><span class="duel-hp"></span><span class="duel-far"></span></div>
+      </div>
+      <p class="duel-note" role="alert" hidden></p>
+      <button type="button" class="duel-yield" data-duel="yield">Yield</button>
+    </div>
+    <div class="duel-flash" id="duel-flash" aria-hidden="true" hidden></div>
+    <p class="duel-count" id="duel-count" role="status" hidden></p>
+    <div class="duel-result" id="duel-result" role="status" hidden>
+      <strong class="duel-result-title"></strong>
+      <span class="duel-result-line"></span>
+    </div>
     <!-- HALLOWEEN: the ghost hunt's HUD (ghost-hud.js shows and hides it; no data-scene, or every arrival would show it). -->
     <ol class="ghost-scores" id="ghost-scores" aria-label="Hunters' points" hidden></ol>
     <p class="ghost-halving" id="ghost-halving" role="status" hidden>Halving · rifles at half power</p>
@@ -2173,13 +2234,33 @@ Open the pull request from my fork as a draft and keep it draft while building o
         <button type="button" class="ghost-spectate-next" id="ghost-spectate-next" aria-label="Next player">Next ▶</button>
       </div>
     </div>
+    <!-- The speaker button's panel (sound-panel.js): a level for all game sounds, all players' voices and each sound this place holds. -->
+    <section class="sound-mixer" id="sound-mixer" role="dialog" aria-labelledby="sound-mixer-title" tabindex="-1" hidden>
+      <div class="sound-mixer-head">
+        <h2 id="sound-mixer-title">Sound</h2>
+        <button type="button" class="sound-mixer-toggle" id="sound-mixer-toggle" aria-pressed="true">Sound on</button>
+        <button type="button" class="sound-mixer-close" id="sound-mixer-close" aria-label="Close sound levels">&times;</button>
+      </div>
+      <div class="slab sound-mixer-slab">
+        <div id="sound-mixer-all"></div>
+        <h3 class="sound-mixer-here">Around you</h3>
+        <div id="sound-mixer-list"></div>
+        <p class="sound-mixer-empty" id="sound-mixer-empty" hidden>Nothing here has a level of its own.</p>
+      </div>
+      <div class="sound-mixer-foot">
+        <p>Saved in this browser</p>
+        <button type="button" class="sound-mixer-reset" id="sound-mixer-reset">Reset all</button>
+      </div>
+    </section>
     <section class="hangar-sound" id="hangar-sound" aria-label="Hangar sound" hidden>
       <div class="hangar-sound-head">
         <h3>Sound</h3>
         <button type="button" class="hangar-sound-toggle" id="hangar-sound-toggle" aria-pressed="true">Sound on</button>
       </div>
-      <label class="hangar-sound-row" for="hangar-volume"><span>Volume</span><input type="range" id="hangar-volume" min="0" max="100" step="5" value="100"></label>
-      <label class="hangar-sound-row" for="hangar-vibration"><span>Vibration</span><input type="range" id="hangar-vibration" min="0" max="100" step="5" value="100"></label>
+      <div class="slab hangar-sound-slab">
+        <label class="hangar-sound-row" for="hangar-volume"><span>Volume</span><input type="range" id="hangar-volume" min="0" max="100" step="5" value="100"></label>
+        <label class="hangar-sound-row" for="hangar-vibration"><span>Vibration</span><input type="range" id="hangar-vibration" min="0" max="100" step="5" value="100"></label>
+      </div>
       <p class="hangar-sound-note">Pad vibration: Chrome and Edge</p>
     </section>
     <dialog class="hangar-keypad" id="hangar-keypad" aria-label="Door keypad" data-state="idle" tabindex="-1">
@@ -2303,6 +2384,7 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/controls.js"></script>
   <script src="js/cursor.js"></script>
   <script src="js/pilot.js"></script>
+  <script src="js/visit-spot.js"></script>
   <script src="js/rocket-parts.js"></script>
   <script src="js/mine-rigs.js"></script>
   <script src="js/highscore-rules.js"></script>
@@ -2325,12 +2407,16 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/game-timeline.js"></script>
   <script src="js/arcade-cabinets.js"></script>
   <script src="js/arcade-popular.js"></script>
+  <script src="js/duel-rules.js"></script>
+  <script src="js/duel-listening.js"></script>
   <script src="js/net.js"></script>
   <script src="js/game-net.js"></script>
   <script src="js/highscores.js"></script>
   <script src="js/cloud-hopper-replays.js"></script>
   <script src="js/voice.js"></script>
   <script src="js/outdoor-voice.js"></script>
+  <script src="js/voice-handoff.js"></script>
+  <script src="js/voice-switch.js"></script>
   <script src="js/studio-catalogue.js"></script>
   <script src="js/studio-session.js"></script>
   <script src="js/commons-log.js"></script>
@@ -2371,10 +2457,13 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/timechain-models.js"></script>
   <script src="js/timechain-gate.js"></script>
   <script src="js/solid-props.js"></script>
+  <script src="js/physics.js"></script>
   <script src="js/breakables.js"></script>
   <script src="js/agent.js"></script>
   <script src="js/remote-players.js"></script>
+  <script src="js/duel.js"></script>
   <script src="js/npc-sync.js"></script>
+  <script src="js/prop-sync.js"></script>
   <script src="js/footsteps.js"></script>
   <script src="js/pet-reactions.js"></script>
   <script src="js/ooga-portal-models.js"></script>
@@ -2564,6 +2653,8 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/bifrost-heimdall.js"></script>
   <script src="js/bifrost-window.js"></script>
   <script src="js/cave-directory.js"></script>
+  <script src="js/bifrost-audio.js"></script>
+  <script src="js/bifrost-echo.js"></script>
   <script src="js/scene-bifrost.js"></script>
   <script src="js/scene-timechain.js"></script>
   <script src="js/timechain-data.js" data-defer="timechain"></script>
@@ -2578,9 +2669,29 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/timechain-room-party.js" data-defer="timechain"></script>
   <script src="js/timechain-room-workout.js" data-defer="timechain"></script>
   <script src="js/timechain-room-mining.js" data-defer="timechain"></script>
+  <script src="js/lecture-kit.js" data-defer="timechain"></script>
+  <script src="js/lecture-btc.js" data-defer="timechain"></script>
+  <script src="js/lecture-slides.js" data-defer="timechain"></script>
+  <script src="js/lecture-player.js" data-defer="timechain"></script>
+  <script src="js/lecturer.js" data-defer="timechain"></script>
   <script src="js/timechain-room-lecture.js" data-defer="timechain"></script>
   <script src="js/timechain-room-theater.js" data-defer="timechain"></script>
   <script src="js/timechain-interior.js" data-defer="timechain"></script>
+  <script src="js/lecture-btc-01.js" data-defer="lecture-btc-a"></script>
+  <script src="js/lecture-btc-01.timing.js" data-defer="lecture-btc-a"></script>
+  <script src="js/lecture-btc-02.js" data-defer="lecture-btc-b"></script>
+  <script src="js/lecture-btc-03.js" data-defer="lecture-btc-c"></script>
+  <script src="js/lecture-btc-04.js" data-defer="lecture-btc-d"></script>
+  <script src="js/lecture-btc-05.js" data-defer="lecture-btc-e"></script>
+  <script src="js/lecture-btc-06.js" data-defer="lecture-btc-f"></script>
+  <script src="js/lecture-btc-07.js" data-defer="lecture-btc-g"></script>
+  <script src="js/lecture-btc-08.js" data-defer="lecture-btc-h"></script>
+  <script src="js/lecture-btc-09.js" data-defer="lecture-btc-i"></script>
+  <script src="js/lecture-btc-10.js" data-defer="lecture-btc-j"></script>
+  <script src="js/lecture-btc-11.js" data-defer="lecture-btc-k"></script>
+  <script src="js/lecture-btc-12.js" data-defer="lecture-btc-l"></script>
+  <script src="js/lecture-btc-13.js" data-defer="lecture-btc-m"></script>
+  <script src="js/lecture-btc-14.js" data-defer="lecture-btc-n"></script>
   <script src="js/routes.js"></script>
   <script src="js/router.js"></script>
   <script src="js/poker-rules.js" data-defer="poker"></script>
@@ -2611,6 +2722,7 @@ Open the pull request from my fork as a draft and keep it draft while building o
   <script src="js/controls-help.js"></script>
   <script src="js/destination-atlas.js"></script>
   <script src="js/destination-map.js"></script>
+  <script src="js/sound-panel.js"></script>
   <script src="js/pad-focus.js"></script>
   <script src="js/pad-settings.js"></script>
   <script src="js/arcade-view.js"></script>

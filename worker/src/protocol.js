@@ -6,13 +6,20 @@ export { hockey } from "./hockey.js";
 import "../../src/js/hockey-wire.js";
 export const HOCKEY = globalThis.BL.hockeyWire;
 export { block } from "./block.js";
-import { audienceRoom } from "./room-audience.js";
-export { audienceRoom };
+export { duel } from "./duel.js";
+import "../../src/js/duel-rules.js";
+export const DUEL = globalThis.BL.duelRules;
+import { audienceRoom, overhearing } from "./room-audience.js";
+export { audienceRoom, overhearing };
 import { commonsRoom } from "./room-commons.js";
 export { commonsRoom };
 // The Durable Object inspector's reporter (inspect-report.js), here so the room and game host take it with the rest.
 export { inspectReporter, INSPECT_FEATURE } from "./inspect-report.js";
+// The World Map's reporter (world-report.js), likewise.
+export { worldReporter } from "./world-report.js";
 import { BACK_WHY } from "./inspect-report.js";
+// The voice cleanup queue's rules (sfu.js), here so the room takes them with the rest.
+export { sessionGone, cleanupPass } from "./sfu.js";
 import "../../src/js/block-wire.js";
 export const BLOCK = globalThis.BL.blockWire;
 import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy.js";
@@ -29,7 +36,8 @@ import "../../src/js/reaction-policy.js";
 //                 { t: "zone", name }            where that body is (see Zones below)
 //                 { t: "poker-voice", table }   0-9 while watching a table, null for the Ember Den floor
 //                 { t: "blend", to, k }          crossing toward voice group `to`, k of BLEND.STEPS along (null, 0: none)
-//                 { t: "hub", on }               this page shows the island and is visible (host candidates)
+//                 { t: "hub", on, props? }       this page shows the island and is visible (host candidates); `props`: it reads prop frames
+//                 { t: "prop", k, a }            a follower's round, blow or poke at a loose prop, for the host
 //                 { t: "visible", on }           this page is visible (Block Frenzy's host candidates, block.js)
 //                 { t: "mute", on }              this page muted its own microphone, for everyone's roster
 //                 { t: "hp", v, ko }             the driven body's health (normalized 0-100) and knockout flag
@@ -40,6 +48,9 @@ import "../../src/js/reaction-policy.js";
 //                                                primary, 2 the gun), 4 while aiming, plus the gun's rounds (0-31) times 8
 //                 { t: "shot", a }               a banana the driven Ooga fired: [from x, y, z, to x, y, z]
 //                 { t: "swing" }                 the driven Ooga's melee strike
+//                 { t: "duel", op, to?, kind?, hit? }  a duel (duel-rules.js, duel.js): `challenge` (`hit` true when made by
+//                                                landing a blow), `accept` or `decline` player `to`, `cancel` this page's
+//                                                challenge, `forfeit`, or a `hit` of `kind`
 //                 { t: "chat", text, clientId? }            a line for Ooga Chat (see Chat below)
 //                 { t: "pm", op, to, d?, n? }   a private conversation with player `to` (see Private below): `invite`,
 //                                               `accept`, `decline`, `block`, `end`, or `data` with a sealed frame `d`
@@ -65,6 +76,10 @@ import "../../src/js/reaction-policy.js";
 //                                                none; welcome/join carry j too
 //                 state.ws                       [id, w] pairs for every player holding a weapon, the same way
 //                 shot { id, a }, swing { id }   another player's shot or strike, to the players in their zone
+//                 duel { op, ... }           duels (duel.js): to everyone start { id, a, b, x, z, at, hp, now }, hp { id, hp, by,
+//                                            kind } and end { id, winner, loser, reason }; list { duels } after welcome; to
+//                                            one page challenged { from, exp, hit? }, challenging { to, exp }, refused { to, reason },
+//                                            declined { from }, withdrawn { from }, and end { id: 0, reason: "lost" }
 //                 release { name, reason }   the Ooga this socket claimed is not, or no longer, its to drive
 //                 host { id, followers }     who runs the NPCs now (0 for nobody) and how many pages follow
 //                                            them (a host with none sends nothing); binary NPC frames from them
@@ -147,6 +162,10 @@ export const MESSAGE_MAX = 256;
 // room, so it runs once a minute; three missed 10 s pings make a socket stale.
 export const STALE_MS = 90000;
 export const SWEEP_MS = 60000;
+// With only Ooga Chat's Commons members connected (no island players), whose sweep checks only a dead socket, a ban and
+// the hourly re-authentication, it runs every four minutes: one idle chat tab no longer wakes the room every minute.
+// Kept under the Inspector's STALE_MS and RECENT_MS (five minutes), since the room's report rides its sweep.
+export const MEMBER_SWEEP_MS = 240000;
 // Voice cleanup the SFU keeps refusing is given up after an hour, so a room nobody is in stops waking for it.
 export const CLEANUP_MS = 3600000;
 // Generous bounds around the hub: jetpack flight reaches about 140 out and 72 up, falls end at -120.
@@ -167,11 +186,27 @@ export const BLEND_HZ = 8;
 // whose handling threw, which ends that socket alone and leaves the page free to reconnect.
 export const CLOSE_KICK = 4000;
 export const CLOSE_ERROR = 1011;
+// A page that closes its own socket to come straight back (net.js: a heartbeat or a network change) says so with 4001.
+// That, or a socket lost without a close frame (1006: a network blip, an edge restart), holds the player's record
+// HOLD_MS, standing and heard as they were, for the same page to take back with the `resume` key its welcome gave, so
+// nobody else sees them leave and come back. A clean close (1000, 1001) is a leave, at once.
+export const CLOSE_RECONNECT = 4001;
+export const HOLD_MS = 10000;
 // NPC frames: the host sends about 4 a second, only while a page follows; a frame of every Ooga's pose is a few kilobytes.
 // Up to 128 bundled Oogas (112 floats each), plus the bounded event tail.
 // The former 16 KiB cap could not carry the org-wide roster after reconciliation.
 export const NPC_FRAME_MAX = 128 * 112 * 4 + 131072;
 export const NPC_HZ = 20;
+// The island's loose props (src/js/prop-sync.js): the same host's frames of the props that move, by their magic word,
+// at most 64 bodies of 14 bytes after a 10-byte header and about 15 a second, relayed to the pages that asked for
+// them (`hub`'s `props`); and a follower's own round ("s"), blow ("b"), poke ("k") or reset ("r") at one, or its asking
+// for a frame of everything ("f"), six numbers, relayed to the host alone as { t: "prop", k, a }.
+export const PROP_MAGIC = 0x31504f52;
+export const PROP_FEATURE = "props-v1";
+export const PROP_FRAME_MAX = 10 + 64 * 14;
+export const PROP_HZ = 20;
+export const PROP_KINDS = new Set(["s", "b", "k", "r", "f"]);
+export const PROP_RANGE = 4096;
 // A pose's fields are saved to its socket's attachment at most this often (room.js): every pose re-serialized the whole
 // attachment, the room's largest cost per inbound message. A woken room may find a player up to this far behind.
 export const POSE_SAVE_MS = 1000;
@@ -239,6 +274,14 @@ export const ROOM_PIN = /^[0-9]{4}$/;
 export const PIN_PASS_MS = 60000;
 export const PIN_TRIES = 5;
 export const PIN_WAIT_MS = 60000;
+// The Block Party's radio (sphere-6, timechain-party-radio.js): the DJ changes the channel for everyone in the room
+// (PARTY_FEATURE in welcome's `features`). The room keeps the channel while anyone is in, on every occupant's
+// attachment so a hibernated room wakes with it, and tells each arrival (-1 when nobody has changed it yet). A player
+// may change it once every PARTY_GAP_MS; the page bounds the channel by its own station list.
+export const PARTY_FEATURE = "party-radio-v1";
+export const PARTY_ZONE = "sphere-6";
+export const PARTY_CHANNELS = 16;
+export const PARTY_GAP_MS = 800;
 // A driven Ooga's own shots and strikes, relayed for drawing only (nothing is hit and nothing is kept): a burst is
 // three bananas 0.09 s apart, every 0.44 s at most, and a shot never flies past SHOT_RANGE.
 export const SHOT_HZ = 12;
@@ -341,6 +384,7 @@ export const parseClientMessage = (text) => {
   if (msg.t === "outdoor") return audienceRoom.parseOutdoor(msg);
   if (msg.t === "hockey") return HOCKEY.parse(msg);
   if (msg.t === "bf") return BLOCK.parse(msg);
+  if (msg.t === "duel") return DUEL.parse(msg);
   if (msg.t === "studio") return parseStudioCommand(msg);
   if (msg.t === "pose") {
     const { x, y, z, yaw } = msg;
@@ -377,7 +421,8 @@ export const parseClientMessage = (text) => {
     if (msg.name === null) return { t: "body", name: null };
     return typeof msg.name === "string" && BODY_NAME.test(msg.name) ? { t: "body", name: msg.name } : null;
   }
-  if (msg.t === "hub") return typeof msg.on === "boolean" ? { t: "hub", on: msg.on } : null;
+  if (msg.t === "hub") return typeof msg.on === "boolean" ? (msg.props === true ? { t: "hub", on: msg.on, props: true } : { t: "hub", on: msg.on }) : null;
+  if (msg.t === "prop") return PROP_KINDS.has(msg.k) && Array.isArray(msg.a) && msg.a.length === 6 && msg.a.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= PROP_RANGE) ? { t: "prop", k: msg.k, a: msg.a } : null;
   if (msg.t === "visible") return typeof msg.on === "boolean" ? { t: "visible", on: msg.on } : null;
   if (msg.t === "mute") return typeof msg.on === "boolean" ? { t: "mute", on: msg.on } : null;
   if (msg.t === "hp") return finite(msg.v) && typeof msg.ko === "boolean" ? { t: "hp", v: Math.max(0, Math.min(100, Math.round(msg.v))), ko: msg.ko } : null;
@@ -427,6 +472,7 @@ export const parseClientMessage = (text) => {
     if (![vx, vy, vz].every(v => finite(v) && Math.abs(v) <= 20)) return null;
     return { t: "wallet", k, u, f, x: round(x), y: round(y), z: round(z), vx: round(vx), vy: round(vy), vz: round(vz) };
   }
+  if (msg.t === "party") return Number.isInteger(msg.channel) && msg.channel >= 0 && msg.channel < PARTY_CHANNELS ? { t: "party", channel: msg.channel } : null;
   if (msg.t === "react") return globalThis.BL.reactionPolicy.valid(msg.e) ? { t: "react", e: msg.e } : null;
   if (msg.t === "hand") {
     const tone = msg.tone === undefined ? 0 : msg.tone;
@@ -606,13 +652,14 @@ export const linkView = (links, id) => {
   return { wants, linked: wants.filter((other) => voiceLinked(links, id, other)) };
 };
 
-/** Map of player id → sorted ids that player should hear. A voice link needs only a receive session and a live microphone. */
+/** Map of player id → sorted ids that player should hear. A voice link needs only a receive session and a live microphone.
+ *  A player overhearing (room-audience.js `overhearing`) hears no place: only what `addSources` lists, and a linked partner. */
 export const voicePeers = (players, studio = null, links = null) => {
   const out = new Map();
   for (const p of players) {
     const ids = [];
     if (p.voice && p.voice.sub) {
-      const listens = voiceListener(p, studio);
+      const listens = voiceListener(p, studio) && !overhearing(p);
       for (const q of players) {
         if (q === p || !q.voice || !q.voice.track) continue;
         if (voiceLinked(links, p.id, q.id) || listens && voiceAudible(q, studio) && voiceTogether(p, q)) ids.push(q.id);

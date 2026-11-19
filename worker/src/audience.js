@@ -12,7 +12,7 @@
 //
 // The app's protocol (audience protocol 1, docs/ooga-chat-app.md and docs/ooga-chat-backend.md):
 //   page:   { type: "join", zone, protocol: 1 }   { type: "resync", zone }
-//           { type: "setRole", requestId, role: "speaker" | "listener" }   { type: "setMic", requestId, muted }
+//           { type: "setRole", requestId, role: "speaker" | "listener", takeover?, replaces? }   { type: "setMic", requestId, muted }
 //   server: { type: "snapshot", zone, epoch, revision, participants, you, limits, features }
 //           { type: "delta", zone, epoch, base, revision, upsert, remove: [{ id, generation }] }
 //           { type: "you", zone, you }   { type: "result", requestId, ok, error?, you? }
@@ -40,8 +40,10 @@ export const REACTION_MS = 2600;
 export const REACT_HZ = 3, REACT_BURST = 6;
 export const FRAME_MAX = 4096;
 export const PENDING_MS = 30 * 1000;
+// How many of its own earlier connections a page may name in `setRole`'s `replaces`.
+export const REPLACES_MAX = 4;
 export const REAUTH_MS = 60 * 60 * 1000;
-export const CLOSE = { bad: 4400, auth: 4401, protocol: 4426, full: 4429, off: 4503 };
+export const CLOSE = { bad: 4400, auth: 4401, replaced: 4409, protocol: 4426, full: 4429, off: 4503 };
 const MSG_HZ = 10, MSG_BURST = 20;
 const REPLIES_KEPT = 16;
 const CONTRIBUTIONS_MS = 10 * 60 * 1000;
@@ -109,6 +111,8 @@ export class Audience extends DurableObject {
     // #667: retirements the Room waits on, and whether each zone had listeners when the Room was last told.
     this.pendingWas = new Set();
     this.listenersSig = "";
+    // Which connection holds each identity's lease, as its other connections were last told (`tellElsewhere`).
+    this.holders = new Map();
     // #668: reaction buckets by identity and by zone, the event counter, and the clouds the Room was last told.
     this.reactBuckets = new Map();
     this.zoneBuckets = new Map();
@@ -130,10 +134,13 @@ export class Audience extends DurableObject {
         if (!a || !a.conn) continue;
         if (this.model.connect(a.conn, a.info, true).ok) this.sockets.set(a.conn.connId, ws);
       }
+      for (const c of this.model.conns.values()) if (c.lease) this.holders.set(c.id, c.connId);
       this.model.setWorld(this.island.speakers, this.island.active);
       this.model.commit();
       for (const zone of ZONES) this.model.zones[zone].rev = meta.revs && Number.isSafeInteger(meta.revs[zone]) ? meta.revs[zone] : 0;
       await this.media.restore();
+      // What the listeners already heard: a word from the Room that changes nothing tells nobody to sync.
+      this.media.settle();
       // The list the Room was last told, kept: a wake sends only what changed meanwhile (a deployment that dropped every
       // socket empties it), so the Room's own stored copy never stays stale.
       this.sourcesSig = (await ctx.storage.get("sourcesSig")) ?? null;
@@ -217,6 +224,7 @@ export class Audience extends DurableObject {
 
   /** Commit what changed, store the revisions, and send every zone's delta to its clients and to a watching Room. */
   async flush() {
+    this.tellElsewhere();
     const deltas = this.model.commit();
     if (!deltas.length) return deltas;
     await this.ctx.storage.put("meta", { epoch: this.model.epoch, revs: this.model.revs() });
@@ -244,13 +252,24 @@ export class Audience extends DurableObject {
     return deltas;
   }
 
-  /** Each zone's listener count for the Room's open grants (#667), sent when a zone gains or loses its last listener. */
+  // Speakers receive too, including while their microphone is opening. The island must not gate its microphone
+  // as alone merely because everybody in Ooga Chat pressed Join Voice.
+  hearingCounts() {
+    const main = this.model.counts("main"), dsb = this.model.counts("dsb");
+    return { main: main.listeners + main.chatSpeakers, dsb: dsb.listeners + dsb.chatSpeakers };
+  }
+
+  /** Each zone's receivers for the Room's open grants (#667), sent when a zone gains or loses its last receiver. */
   listenersChanged() {
-    const counts = { main: this.model.counts("main").listeners, dsb: this.model.counts("dsb").listeners };
+    const counts = this.hearingCounts();
     const sig = `${counts.main > 0}|${counts.dsb > 0}`;
     if (sig === this.listenersSig || !this.env.ROOM) return;
     this.listenersSig = sig;
-    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceListeners(counts)).catch(() => {});
+    this.roomQueue = this.roomQueue.then(() => this.env.ROOM.getByName("island").audienceListeners(counts)).catch(() => {
+      // Not delivered: the next check sends it again rather than counting it as told. A Room left believing nobody
+      // listens tells its outdoor speakers so, and a speaker with no island peers then holds its microphone as alone.
+      if (this.listenersSig === sig) this.listenersSig = null;
+    });
     this.background(this.roomQueue);
   }
 
@@ -350,9 +369,22 @@ export class Audience extends DurableObject {
       features: AUDIENCE_FEATURES };
   }
 
-  tellYou(connId) {
+  /** A connection's own standing; `reason` says why a lease it held ended ("moved": the visitor took voice elsewhere). */
+  tellYou(connId, reason = "") {
     const c = this.model.conns.get(connId), ws = this.sockets.get(connId);
-    if (c && ws && c.zone) this.send(ws, { type: "you", zone: c.zone, you: this.model.youOf(connId) });
+    if (c && ws && c.zone) this.send(ws, { type: "you", zone: c.zone, you: this.model.youOf(connId), ...(reason ? { reason } : {}) });
+  }
+
+  /** An identity's other connections hear when one of them takes or gives up the microphone (`you.elsewhere`). */
+  tellElsewhere() {
+    const now = new Map();
+    for (const c of this.model.conns.values()) if (c.lease) now.set(c.id, c.connId);
+    for (const id of new Set([...now.keys(), ...this.holders.keys()])) {
+      if (now.get(id) === this.holders.get(id)) continue;
+      const p = this.model.people.get(id);
+      if (p) for (const o of p.conns.values()) if (!o.lease) this.tellYou(o.connId);
+    }
+    this.holders = now;
   }
 
   async scheduleAlarm() {
@@ -380,6 +412,10 @@ export class Audience extends DurableObject {
       }
     }
     await this.flush();
+    // A word the Room missed while it was unreachable goes again (each is sent only when it differs from what was told).
+    this.sourcesChanged();
+    this.listenersChanged();
+    this.cloudsChanged();
     if (this.media.cleanup.length) await this.media.runCleanup();
     this.confirmRetired();
     this.inspect.peak("cleanupJobs", this.media.cleanup.length);
@@ -422,7 +458,9 @@ export class Audience extends DurableObject {
 
   close(connId, code, reason) {
     const ws = this.sockets.get(connId);
-    this.inspect.count(code === CLOSE.auth ? "closeAuth" : code === CLOSE.full ? "closeFull" : code === CLOSE.protocol ? "closeProtocol" : code === CLOSE.off ? "closeOff" : "closeBad");
+    this.inspect.count(code === CLOSE.auth ? "closeAuth" : code === CLOSE.full ? "closeFull" : code === CLOSE.protocol ? "closeProtocol" : code === CLOSE.off ? "closeOff"
+      // A connection its own page replaced is a socket that went, not a bad one.
+      : code === CLOSE.replaced ? "gone" : "closeBad");
     this.drop(connId);
     if (ws) { try { ws.serializeAttachment(null); ws.close(code, reason); } catch { /* already closed */ } }
   }
@@ -555,7 +593,7 @@ export class Audience extends DurableObject {
     else if (msg.type === "reaction") outcome = typeof msg.emoji === "string" && msg.emoji.length <= 32 ? this.react(c, msg.emoji) : { ok: false, code: "malformed" };
     else if (msg.type === "hand") outcome = this.hand(c, msg);
     else if (msg.role === "listener") { const lease = this.model.endLease(c.connId); if (lease) this.leaseEnded(c.connId, lease, "listener"); outcome = { ok: true }; }
-    else if (msg.role === "speaker") { outcome = await this.requestSpeaker(c); this.inspect.count(outcome.ok ? "speakerGranted" : "speakerRefused"); }
+    else if (msg.role === "speaker") { outcome = await this.requestSpeaker(c, msg); this.inspect.count(outcome.ok ? "speakerGranted" : "speakerRefused"); }
     else outcome = { ok: false, code: "malformed" };
     if (this.model.conns.get(c.connId) !== c) return;
     this.save(c.connId);
@@ -565,7 +603,7 @@ export class Audience extends DurableObject {
   }
 
   /** The island decides afresh, now, whatever the edge's cached answer said; the connection must still be the same. */
-  async requestSpeaker(c) {
+  async requestSpeaker(c, msg = {}) {
     if (!c.eligible) return { ok: false, code: "capability_required" };
     if (!c.zone) return { ok: false, code: "zone_required" };
     const zone = c.zone;
@@ -577,6 +615,27 @@ export class Audience extends DurableObject {
     if (answer.state !== "eligible") {
       if (answer.state === "ineligible") c.eligible = false;
       return { ok: false, code: answer.state === "unknown" ? "capability_unavailable" : "capability_required", retryable: answer.state === "unknown" };
+    }
+    // A lease the same identity holds on another connection gives way in two cases only: the visitor's own word to
+    // move their voice here (`takeover`), or this page naming the connections it has just come back from (`replaces`,
+    // one or up to REPLACES_MAX: a socket that dropped, whose lease the server has not yet seen end), which are closed.
+    const takeover = msg.takeover === true;
+    const replaces = typeof msg.replaces === "string" ? [msg.replaces]
+      : Array.isArray(msg.replaces) ? msg.replaces.filter((id) => typeof id === "string").slice(0, REPLACES_MAX) : [];
+    // The island's voice gives way the same way: its page leaves voice, and the island's word comes back without the
+    // identity before the Room answers. Unreachable or refused, the model's own refusal stands.
+    const held = this.model.people.get(c.id);
+    if (takeover && (held.active || held.world) && this.env.ROOM) {
+      try { await this.env.ROOM.getByName("island").audienceHandoff(Number(c.providerUserId)); } catch { /* the refusal below says so */ }
+      if (this.model.conns.get(c.connId) !== c || c.zone !== zone) return { ok: false, code: "stale_epoch" };
+    }
+    for (const o of [...this.model.people.get(c.id).conns.values()]) {
+      if (o === c || !o.lease || !takeover && !replaces.includes(o.connId)) continue;
+      if (!takeover) { this.close(o.connId, CLOSE.replaced, "replaced"); continue; }
+      const lease = this.model.endLease(o.connId);
+      this.save(o.connId);
+      this.leaseEnded(o.connId, lease, "moved");
+      this.tellYou(o.connId, "moved");
     }
     return this.model.requestSpeaker(c.connId, { eligible: true, generation: this.nextGeneration(), until: Date.now() + PENDING_MS,
       character: typeof answer.character === "string" ? answer.character : null });
@@ -618,12 +677,16 @@ export class Audience extends DurableObject {
     for (const p of this.model.people.values()) before.set(p.id, held(p));
     const ended = this.model.setWorld(this.island.speakers, this.island.active);
     const told = new Set();
-    for (const { connId, lease } of ended) { this.save(connId); this.leaseEnded(connId, lease, "source_in_use"); this.tellYou(connId); told.add(connId); }
+    // A chat lease the island's own voice ended: the visitor joined voice there, so it moved.
+    for (const { connId, lease } of ended) { this.save(connId); this.leaseEnded(connId, lease, "source_in_use"); this.tellYou(connId, "moved"); told.add(connId); }
     for (const p of this.model.people.values()) {
       if ((before.get(p.id) || false) === held(p)) continue;
       for (const connId of p.conns.keys()) if (!told.has(connId)) this.tellYou(connId);
     }
     await this.flush();
+    // The Room's own word is when it can hear: anything it was not told before (a lost call) goes again now.
+    this.sourcesChanged();
+    this.listenersChanged();
     // A world publication gone or replaced: every subscription to the old one is closed at once. The answer names the
     // speakers whose subscriptions the SFU has not yet confirmed closed: the Room's `closed` for them waits (#667).
     await this.media.prune();
@@ -633,7 +696,7 @@ export class Audience extends DurableObject {
     this.confirmRetired();
     await this.scheduleAlarm();
     if (clean.length) this.refreshContributions();
-    return { ok: true, pending: [...pending], listeners: { main: this.model.counts("main").listeners, dsb: this.model.counts("dsb").listeners } };
+    return { ok: true, pending: [...pending], listeners: this.hearingCounts() };
   }
 
   /** An island world speaker's reaction (the Room's `react`), to Ooga Chat's clients in its zone (#668). */
@@ -687,6 +750,11 @@ export class Audience extends DurableObject {
     const zones = {};
     for (const zone of ZONES) zones[zone] = { ...this.model.counts(zone), rows: this.model.zones[zone].rows.size, rev: this.model.zones[zone].rev };
     return { epoch: this.model.epoch, connections: this.model.conns.size, zones, watching: [...this.watching] };
+  }
+
+  // The Inspector, when a viewer connects: report now, as the Room does.
+  inspectWatch(until) {
+    this.inspect.watch(until);
   }
 
   // A world speaker's contribution total, for ordering only: Oogatron's counts, read at most every ten minutes.

@@ -404,14 +404,25 @@
     // A switch the director refuses (another under way) leaves the Ooga in the hangar.
     if (!leaving) { world.hangarCrossing = null; w.through = w.grab = false; }
   };
-  // The network's life (`hangar-network.js`), a first draft on a debug page alone. With `network=a` or `b` it plays
-  // when the visitor's own Ooga walks up to the faint shape: on foot, within 4.5 m, having come 3 m nearer since it
-  // formed, while it shows or in its afterimage's first 8 s, once a showing (every time, for now); round the middle
-  // between the Ooga and the shape. The shape steadies a moment as it never otherwise does, then breaks up as the
-  // hall's power falters and goes (only clearing away, if it had already started to dissolve). While it plays and
+  // The network's life (`hangar-network.js`). It may play when the visitor's own Ooga walks up to the faint shape: on
+  // foot, within 4.5 m, having come 3 m nearer since it formed, while it shows or in its afterimage's first 8 s, one
+  // draw a showing; round the middle between the Ooga and the shape. Over a page life the draw comes up 60% of the
+  // time at the first walk up, 85% at the next and then always, until it has played; the showing after it has played
+  // never plays it, and later walks up only `NET_CHANCE.after` of the time. On a debug page `network=a` or `b` plays
+  // it at every walk up, in that density. The shape steadies a moment as it never otherwise does, then breaks up as
+  // the hall's power falters and goes (only clearing away, if it had already started to dissolve). While it plays and
   // `T.quiet` s after, the hall's other events wait, Kortik's Sis is hushed, and the next engine anomaly and meltdown
   // are put off `NET_DEFER` s more (drawn each time) past that, so none comes the moment it ends.
-  const NET_AUTO = DEBUG && (params.get("network") === "a" || params.get("network") === "b");
+  const NET_EVERY = DEBUG && (params.get("network") === "a" || params.get("network") === "b");
+  const NET_CHANCE = { first: [0.6, 0.85, 1], after: 0.3 };
+  const netOdds = { misses: 0, played: false, skip: false };
+  const netDraw = () => {
+    if (NET_EVERY) return true;
+    const p = netOdds.played ? NET_CHANCE.after : NET_CHANCE.first[Math.min(netOdds.misses, NET_CHANCE.first.length - 1)];
+    if (Math.random() >= p) { netOdds.misses++; return false; }
+    netOdds.played = netOdds.skip = true;
+    return true;
+  };
   const NT = BL.hangarNetwork.T, NET_DEFER = [10, 40];
   const playNetwork = (s, anywhere) => {
     const me = people && people.player, sh = s.shimmer;
@@ -425,10 +436,13 @@
   };
   const netLife = (s, dt, elapsed) => {
     const sh = s.shimmer, me = people && people.player, N = s.network;
-    if (NET_AUTO && !N.active && sh.state === "show" && me && !me.camp.seat) {
+    if (sh.state === "show" && sh.shows !== s.netShow) {
+      s.netShow = sh.shows; s.netFrom = -1; s.netUsed = netOdds.skip && !NET_EVERY; netOdds.skip = false;
+    }
+    if (!s.netUsed && !N.active && sh.state === "show" && me && !me.camp.seat) {
       const p = me.root.position, d = Math.hypot(p.x - sh.at.x, p.z - sh.at.z);
-      if (sh.shows !== s.netShow) { s.netShow = sh.shows; s.netFrom = d; s.netUsed = false; }
-      if (!s.netUsed && d < 4.5 && s.netFrom - d >= 3 && sh.t < sh.at.gone + 8) { s.netUsed = true; playNetwork(s, false); }
+      if (s.netFrom < 0) s.netFrom = d;
+      if (d < 4.5 && s.netFrom - d >= 3 && sh.t < sh.at.gone + 8) { s.netUsed = true; if (netDraw()) playNetwork(s, false); }
     }
     N.update(dt, elapsed);
     if (N.quiet) { s.anomaly.defer(s.netDefer); s.meltdown.defer(s.netDefer); }
@@ -1502,6 +1516,11 @@
     }
     return true;
   };
+  // A reload of this tab stands where the Ooga stood (visit-spot.js), while the floor is still there to walk on from.
+  const stoodAt = (ctx) => {
+    const spot = ctx.from === null && !ctx.place ? BL.visitSpot.take("hangar", "") : null;
+    return spot && Math.abs(groundFor(spot.x, spot.z, spot.y, spot.y, avatar) - spot.y) < 0.05 && BL.visitSpot.holds(spot, walkableFor, avatar) ? spot : null;
+  };
   // In the air, the same clearance without the floor within a step, as the Factory keeps it, so a jump carries an Ooga
   // over a deck's rail and it drops to whatever is below; on foot the edges still hold. A crate or a chest blocks the
   // whole body in the air (a step's foot's breadth is for walking), and the forklift holds in the air as on foot, a
@@ -1746,7 +1765,7 @@
       busy: () => leaving || scene.anomaly.playing || scene.fire.t >= 0 || scene.meltdown.active || scene.roomFire.burning || scene.sis.rampaging || scene.sis.brawling
         || scene.tessFor !== "shimmer" && (scene.guide.lent || scene.guide.holding || scene.guide.state.phase !== "work") || scene.terminals.showing || scene.keypad.open >= 0 || !!scene.network && scene.network.quiet && !scene.network.active,
       ooga: () => people && people.player, guide: () => scene.guide.root.position, clear: clearOf });
-    // The network, on a debug page: walked up to with `network=a` or `b` (its density), its haze pulled in with
+    // The network, walked up to (`netLife`); on a debug page in density `b` with `network=b`, its haze pulled in with
     // `netfog=1`, or played with Shift+N.
     scene.network = BL.hangarNetwork.create({ root, renderer, camera, onStop: (early) => { if (audio) { audio.strain(1, 0); if (early) audio.outage(null); } } });
     scene.netDefer = 0;
@@ -1796,7 +1815,10 @@
       people.parkWeapons(avatar);
       pilot.refreshCombat();
       if (crossing) walkIn(crossing);
-      else pilot.navigate(arrival());
+      else {
+        const stood = stoodAt(ctx), at = arrival();
+        pilot.navigate(stood ? { yaw: stood.yaw - Math.PI, pitch: at.pitch, dist: at.dist, position: stood } : at);
+      }
       const heads = Math.max(avatar.headOpen.verts.length, avatar.headClosed.verts.length);
       scene.gate.phase.body.track(avatar.root, avatar.traits.height * 2, heads);
       scene.launch.phase.body.track(avatar.root, avatar.traits.height * 2, heads);
@@ -1828,21 +1850,24 @@
     const panel = document.getElementById("hangar-sound"), onOff = document.getElementById("hangar-sound-toggle");
     const volume = document.getElementById("hangar-volume"), vibration = document.getElementById("hangar-vibration");
     let closedAt = -Infinity;
+    // How far along its track a slider's amber runs (the stylesheet's `--fill`).
+    const fill = (range) => range.style.setProperty("--fill", `${range.value}%`);
     const show = () => {
       onOff.textContent = audio.muted ? "Sound off" : "Sound on";
       onOff.setAttribute("aria-pressed", String(!audio.muted));
       volume.value = String(Math.round(audio.volume * 100));
       vibration.value = String(Math.round(BL.gamepad.strength * 100));
+      fill(volume); fill(vibration);
     };
     const onToggle = () => {
       audio.setMuted(!audio.muted);
       show();
       onOff.blur();
     };
-    const onVolume = () => audio.setVolume(Number(volume.value) / 100);
+    const onVolume = () => { audio.setVolume(Number(volume.value) / 100); fill(volume); };
     // A taste of the new strength, on a pad that has one.
     const onVibration = () => {
-      BL.gamepad.setStrength(Number(vibration.value) / 100);
+      BL.gamepad.setStrength(Number(vibration.value) / 100); fill(vibration);
       BL.gamepad.rumble(0.6, 0.6, 160);
     };
     const blur = (e) => e.target.blur();
@@ -1947,6 +1972,7 @@
       const p = drivenHere.root.position;
       BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y, null, 0, BL.crew.weaponFlags(drivenHere), BL.crew.visualState(drivenHere));
       BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
+      if (!walk.phase && !leaving) BL.visitSpot.note("hangar", "", drivenHere);
     }
     remotes.update(dt);
     footsteps.update(drivenHere);

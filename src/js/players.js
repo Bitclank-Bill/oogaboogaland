@@ -30,7 +30,9 @@
 // (`hud.toast`, read out by assistive technology) and counted on the tab until the visitor looks at it
 // (`sheet.watchViews`), unless they are in the panel as it happens. Those already there when the visitor (re)joins are
 // not named, nor is one who comes back within REJOIN_QUIET of leaving (a reconnect, a reload, a newer tab). Joins close
-// together share one message while it shows. With "Read joins aloud" ticked (this browser's choice, in localStorage) the names are
+// together share one message while it shows. Each counted join is a line under the panels' bell, "Bea signed in"
+// (`sheet.note`), and so is each leave, "Bea signed out", counted with the joins and never said in a message or aloud; a
+// return within REJOIN_QUIET takes that leave's line and count back (`sheet.unnote`). With "Read joins aloud" ticked (this browser's choice, in localStorage) the names are
 // spoken too, one utterance at a time: names that arrive while one plays wait and are said together after it, and the
 // Read joins aloud checkbox alone controls it, independently of environment sound. Speech starts from the box, a gesture.
 (() => {
@@ -41,6 +43,9 @@
   const sheet = $("sheet"), panel = $("players-panel"), list = $("players-list"), status = $("players-status"), count = $("players-count");
   const hearing = $("players-hearing"), range = $("players-hearing-range"), rangeValue = $("players-hearing-value"), V = BL.voice;
   const speak = $("players-speak"), speakBox = $("players-speak-input"), synth = window.speechSynthesis || null, toastBox = $("toast");
+  const muteDuels = $("players-mute-duels");
+  muteDuels.addEventListener("change", () => V.setMuteDuels(muteDuels.checked));
+  net.subscribeDuel(V.duel);
   // The slider's stops run RADIUS_MIN..RADIUS_MAX metres, and one more stop past them is no limit.
   const RANGE_STEP = Number(range.step);
   range.min = String(V.RADIUS_MIN);
@@ -101,7 +106,10 @@
     slider.type = "range"; slider.className = "players-volume-range"; slider.id = `${id}-range`;
     slider.min = "0"; slider.max = String(V.VOLUME_MAX * 100); slider.step = "5"; slider.value = "100";
     value.className = "players-volume-value"; value.htmlFor = slider.id; value.textContent = "100%";
-    volume.append(volumeLabel, slider, value);
+    // A duel (duel.js), offered under another player's name while the island can hold one.
+    const duel = document.createElement("button");
+    duel.type = "button"; duel.className = "duel-button players-duel"; duel.textContent = "Challenge to a duel"; duel.hidden = true;
+    volume.append(volumeLabel, slider, value, duel);
     dots.className = "roster-dots";
     presence.className = "roster-presence"; presence.dataset.online = "true"; presence.setAttribute("role", "img");
     presence.setAttribute("aria-label", "Online"); presence.title = "Online";
@@ -124,7 +132,7 @@
     note.className = "players-note"; note.textContent = ", last known location"; note.hidden = true;
     distance.append(note);
     li.append(dots, name, mark, marks, look, distance, volume);
-    return { li, label, toggle, volume, slider, value, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
+    return { li, label, toggle, volume, slider, value, duel, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
       aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false, faded: false };
   };
   const selfRow = makeRow();
@@ -198,10 +206,11 @@
       const words = hand && BL.reactionPolicy.HANDS.includes(hand) ? "Hand raised" : `Pinned emoji ${hand}`;
       row.hand.title = words; row.hand.setAttribute("aria-label", words);
     }
-    const blocked = !!login && BL.voice.mutedLocally(row.id);
-    if (row.voiceLook !== look || row.voiceLogin !== login || row.voiceSelf !== self || row.blocked !== blocked) {
+    const blocked = !!login && BL.voice.mutedLocally(row.id), duelMuted = !self && V.mutedByDuel(row.id);
+    if (row.voiceLook !== look || row.voiceLogin !== login || row.voiceSelf !== self || row.blocked !== blocked || row.duelMuted !== duelMuted) {
+      row.duelMuted = duelMuted;
       row.voiceLook = look; row.voiceLogin = login; row.voiceSelf = self; row.blocked = blocked;
-      const button = row.voice, words = BL.hud.voiceWords(look, self, blocked, login);
+      const button = row.voice, words = BL.hud.voiceWords(look, self, blocked, login) + (duelMuted ? ". Automatically muted until their duel ends" : "");
       button.hidden = !look;
       button.dataset.voice = look; button.dataset.login = login; button.dataset.self = String(self);
       button.disabled = !login && !self;
@@ -299,6 +308,8 @@
   const paintHearing = () => {
     if (!showing || stale) return;
     const voice = V.stats;
+    muteDuels.checked = voice.muteDuels;
+    muteDuels.disabled = !net.state.me;
     hearing.hidden = false;
     const words = voice.radius ? `${voice.radius} m` : "No limit", value = String(voice.radius || V.RADIUS_MAX + RANGE_STEP);
     if (rangeValue.textContent !== words) { rangeValue.textContent = words; range.setAttribute("aria-valuetext", words); }
@@ -409,7 +420,14 @@
       if (row && !row.cloud) {
         const open = toggle.getAttribute("aria-expanded") !== "true";
         toggle.setAttribute("aria-expanded", String(open)); row.volume.hidden = !open;
+        row.duel.hidden = !(open && BL.duel && BL.duel.offered(row.id));
       }
+      return;
+    }
+    const duel = e.target.closest(".players-duel");
+    if (duel) {
+      if (e.detail) duel.blur();
+      BL.duel.challenge(Number(duel.closest("li").dataset.id));
       return;
     }
     const look = e.target.closest(".players-look");
@@ -444,14 +462,17 @@
   range.addEventListener("pointerup", () => range.blur());
   // Joins: named, counted until looked at, and spoken when asked.
   const REJOIN_QUIET = 120000, TOAST_MS = 2800, SPEECH_STUCK_MS = 15000, NAMES_SHOWN = 3, SPEAK_KEY = "oogaboogaland.players.speak";
-  const leftAt = new Map(), shown = { names: [], extra: 0 }, said = { names: [], extra: 0 };
+  // `leftNoted`: who has a sign-out on the bell that a quick return would take back.
+  const leftAt = new Map(), leftNoted = new Set(), shown = { names: [], extra: 0 }, said = { names: [], extra: 0 };
   let unread = 0, shownAt = -Infinity, shownText = "", speaking = false, speakingAt = 0, speakOn = false, speechSerial = 0;
   const add = (list, name) => { if (list.names.length < NAMES_SHOWN) list.names.push(name); else list.extra++; };
   const words = (list) => {
     const all = list.extra ? [...list.names, `${list.extra} ${list.extra === 1 ? "other" : "others"}`] : list.names;
     return all.length === 1 ? `${all[0]} is online` : `${all.slice(0, -1).join(", ")} and ${all[all.length - 1]} are online`;
   };
-  const setUnread = (count) => { unread = count; BL.sheet.setBadge("players", count); };
+  const setUnread = (count) => { unread = count; leftNoted.clear(); BL.sheet.setBadge("players", count); };
+  // One sign-in or sign-out, counted on the tab and listed under the bell.
+  const note = (text, kind, key) => { unread++; BL.sheet.note("players", text, key, kind); };
   const utter = (text) => {
     const line = new SpeechSynthesisUtterance(text);
     const serial = ++speechSerial;
@@ -479,10 +500,18 @@
   };
   net.subscribePresence((rec, joined) => {
     const now = performance.now();
-    for (const [id, at] of leftAt) if (now - at > REJOIN_QUIET) leftAt.delete(id);
-    if (!joined) { leftAt.set(rec.id, now); return; }
-    if (leftAt.delete(rec.id)) return;
-    if (!BL.sheet.attending(panel)) setUnread(unread + 1);
+    for (const [id, at] of leftAt) if (now - at > REJOIN_QUIET) { leftAt.delete(id); leftNoted.delete(id); }
+    if (!joined) {
+      leftAt.set(rec.id, now);
+      if (!BL.sheet.attending(panel)) { leftNoted.add(rec.id); note(`${rec.display} signed out`, "out", rec.id); }
+      return;
+    }
+    if (leftAt.delete(rec.id)) {
+      // Back within REJOIN_QUIET they never really left, so their sign-out leaves the bell and the count.
+      if (leftNoted.delete(rec.id)) { unread--; BL.sheet.unnote("players", rec.id); }
+      return;
+    }
+    if (!BL.sheet.attending(panel)) note(`${rec.display} signed in`, "in");
     // A join adds to the message only while it is still the one on screen.
     if (now - shownAt > TOAST_MS || toastBox.hidden || toastBox.textContent !== shownText) { shown.names.length = 0; shown.extra = 0; }
     add(shown, rec.display);
@@ -496,6 +525,14 @@
     if (unread) setUnread(0);
     leftAt.clear(); hush();
   });
+  // The keyboard noise filter (voice.js `setKeyFilter`), offered only where the page has its worklet to load.
+  const keys = $("players-keys"), keysBox = $("players-keys-input");
+  if (V.stats.keyFilterOffered) {
+    keysBox.checked = V.stats.keyFilter;
+    keys.hidden = false;
+    keysBox.addEventListener("change", () => V.setKeyFilter(keysBox.checked));
+    keysBox.addEventListener("click", (e) => { if (e.detail) keysBox.blur(); });
+  }
   if (synth) {
     try { speakOn = localStorage.getItem(SPEAK_KEY) === "on"; } catch { /* Storage may be unavailable. */ }
     speakBox.checked = speakOn;

@@ -199,9 +199,10 @@
         return K.node(o.name || null, flatPicture(canvas, w, h, o.emissive === undefined ? 0.9 : o.emissive), x, y, z, { ...o, glow: true });
       },
       // What a body cannot walk through, in this frame: a circle, or a box `hx` by `hz` either side turned with the frame.
+      // With `stay` a walker meeting it is never shouldered round it (a stage it climbs by its own steps).
       solid: (o) => {
-        const p = at(o.x || 0, 0, o.z || 0);
-        into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: K.yaw(o.ry || 0), top: o.top, below: o.below });
+        const p = at(o.x || 0, 0, o.z || 0), stay = !!o.stay;
+        into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below, stay } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: K.yaw(o.ry || 0), top: o.top, below: o.below, stay });
       },
       // A seat for the visitor's Ooga: `y` its height over `floor`, what it stands on, facing `heading` in this frame;
       // standing up leaves it at `back` behind it.
@@ -452,21 +453,18 @@
       parts.push(slabGeo([[rB * Math.sin(t0), F + rB * Math.cos(t0)], [r0 * Math.sin(w0), r0 * Math.cos(w0)], [r0 * Math.sin(w1), r0 * Math.cos(w1)], [rB * Math.sin(t1), F + rB * Math.cos(t1)]], L.yMin, 0, into.landing || "#1f1c1a"));
     }
     glows.push(sectorGeo(F, rB - 0.02, rB + 0.04, -pL, pL, 0, 0.012, nosing, 0.9));
-    // The theater aisle's half steps, a box in the outer half of each row.
-    if (K.halfSteps) for (let i = 0; i < K.rows.length; i++) {
-      const row = K.rows[i], next = i + 1 < K.rows.length ? K.rows[i + 1].y : 0, hy = row.y + (next - row.y) / 2;
-      parts.push(box({ w: 2 * K.aisle, h: hy - row.y, d: K.rows[i].rOut - row.d, color: "#1d1a18", offset: { x: 0, y: (row.y + hy) / 2, z: F + (row.d + row.rOut) / 2 } }));
+    // The aisle's steps: each row's depth shared equally between its own level and its steps, a box a step.
+    const m = K.aisleSteps || 0, tread = K.depth / (m + 1);
+    for (let i = 0; i < K.rows.length; i++) for (let j = 1; j <= m; j++) {
+      const row = K.rows[i], top = ROOMS.aisleStep(K, i, j);
+      parts.push(box({ w: 2 * K.aisle, h: top - row.y, d: tread, color: "#1d1a18", offset: { x: 0, y: (row.y + top) / 2, z: F + row.rIn + (j + 0.5) * tread } }));
     }
-    // The aisle's chain: a link on every row (and half step), on down the landing to the door.
+    // The aisle's chain: a link on every row and on each of its steps, on down the landing to the door.
     const links = [];
-    for (let i = 0; i < K.rows.length; i++) {
-      const row = K.rows[i];
-      links.push([F + row.d - (K.halfSteps ? K.depth / 4 : 0), row.y]);
-      if (K.halfSteps) links.push([F + row.d + K.depth / 4, row.y + ((i + 1 < K.rows.length ? K.rows[i + 1].y : 0) - row.y) / 2]);
-    }
+    for (let i = 0; i < K.rows.length; i++) for (let j = 0; j <= m; j++) links.push([F + K.rows[i].rIn + (j + 0.5) * tread, ROOMS.aisleStep(K, i, j)]);
     for (let z = F + rB + 0.4; z < L.doorZ - 0.4; z += 0.8) links.push([z, 0]);
     for (const [z, y] of links) {
-      glows.push(box({ w: 0.7, h: 0.012, d: K.halfSteps ? 0.58 : 0.66, color: "#e8891a", emissive: 0.6, offset: { x: 0, y: y + 0.006, z } }));
+      glows.push(box({ w: 0.7, h: 0.012, d: m ? 0.58 : 0.66, color: "#e8891a", emissive: 0.6, offset: { x: 0, y: y + 0.006, z } }));
       parts.push(box({ w: 0.24, h: 0.016, d: 0.24, color: "#1a1410", offset: { x: 0, y: y + 0.008, z } }));
     }
     return { body: merge(...parts), glow: noShadow(merge(...glows)) };
@@ -661,7 +659,8 @@
     return into;
   });
   // A live picture's patch of the dome, a little inside it: from `az0` to `az1` and `el0` to `el1` (degrees), mapped
-  // round its curve like the dome's own canvas, or a cap over the crown (`cap`, flat seen from below).
+  // round its curve like the dome's own canvas, or a cap over the crown (`cap`, flat seen from below); as bright as
+  // its `emissive` says (a pale picture asks for less, so it does not bloom).
   const patchGeometry = (L, spec, canvas) => {
     const geo = blank(), inset = spec.inset || 0.994;
     if (spec.cap) {
@@ -685,7 +684,7 @@
       const b0 = a0 + (a1 - a0) * k / cols, b1 = a0 + (a1 - a0) * (k + 1) / cols, e0 = (spec.el0 + (spec.el1 - spec.el0) * i / rows) * DEG, e1 = (spec.el0 + (spec.el1 - spec.el0) * (i + 1) / rows) * DEG;
       const p = (az, el) => { const q = ROOMS.onSphere(L, az, el, inset); yLow = Math.min(yLow, q.y); yHigh = Math.max(yHigh, q.y); return [q.x, q.y, q.z + 1]; };
       const pts = [p(b0, e0), p(b1, e0), p(b1, e1), p(b0, e1)];
-      face(geo, pts, [255, 255, 255], 0.9, [-pts[0][0], -(pts[0][1] - L.c), -(pts[0][2] - 1)]);
+      face(geo, pts, [255, 255, 255], spec.emissive === undefined ? 0.9 : spec.emissive, [-pts[0][0], -(pts[0][1] - L.c), -(pts[0][2] - 1)]);
     }
     geo.imageSurface = { canvas, version: 0, rect: [a0, yLow, a1 - a0, yHigh - yLow], curve: [1, 0, 0], tessellated: true };
     geo.castShadow = false;
