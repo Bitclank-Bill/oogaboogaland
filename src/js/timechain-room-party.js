@@ -1027,6 +1027,11 @@
     // booth that a block's drop shows, both kept under the floor until then.
     const by = ballY(L);
     K.node("ball", (k) => mirrorBall(k, 1.1), 0, by, FZ, { target: { kind: "ball", tip: "Mirror ball", radius: 1.3, data: { say: "It turns faster when the music hits hard" } } });
+    // It is solid to an Ooga flying into it, and one that comes down on it stands on its crown: a wide circle up to its
+    // shoulder and a narrow one up to its top, both hung, so nobody under it meets them and a rise from below stops at
+    // its underside.
+    K.solid({ x: 0, z: FZ, r: 0.95, top: by + 0.55, below: by - 1.0 });
+    K.solid({ x: 0, z: FZ, r: 0.25, top: by + 1.1, below: by - 1.0 });
     K.box(0.03, L.crown - by - 1.25, 0.03, "#55555c", 0, (by + 1.15 + L.crown - 0.1) / 2, FZ);
     K.node("wave", (k) => k.torus(1, 0.025, FLASH, 0, 0, 0, { emissive: 1, glow: true, seg: 96, sides: 5 }), 0, AWAY, 0, { glow: true });
     K.picture(9, 1.1, 1636, 200, sign("BLOCK FOUND · DROP!", FLASH, FLASH), 0, AWAY, BZ + 1.6, { name: "drop", rx: 0.3 });
