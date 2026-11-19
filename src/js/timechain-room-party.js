@@ -2406,7 +2406,7 @@
     const wallSurface = nodes.wall.geometry.imageSurface, wall = wallOf(wallSurface.canvas), music = new Float32Array(MUSIC.BANDS), shape = new Float32Array(MUSIC.WAVE);
     const e0 = ROOMS.edgeEl(L, 0) / DEG;
     const floorRgb = built.lights[2].slice(4, 7), screenRgb = built.lights[8].slice(4, 7);
-    const radio = BL.timechainPartyRadio.create(), heard = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 }, E = { loud: 0, bass: 0 }, E2 = { loud: 0, bass: 0 }, bulbs = RM.bulbsOf(nodes);
+    const radio = BL.timechainPartyRadio.take(), heard = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 }, E = { loud: 0, bass: 0 }, E2 = { loud: 0, bass: 0 }, bulbs = RM.bulbsOf(nodes);
     const setLight = (lights, i, r, g, b) => { const o = i * 8; lights[o + 4] = r; lights[o + 5] = g; lights[o + 6] = b; };
     // The room's clock for its own arrangement: the island room's where there is one, so everyone sees it alike.
     const clock = () => (BL.net.state.room === "live" ? BL.net.serverNow() : Date.now()) / 1000 + shift;
