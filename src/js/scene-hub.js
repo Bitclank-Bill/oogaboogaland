@@ -12306,7 +12306,7 @@
     islandGuide = BL.hubGuide.create({
       parent: root, input, fx, camera, pilot, visitor: () => crew.player, world, hud, coarse: COARSE,
       landing: !ctx.place && !preloadedView && !returningCharacter && ctx.from !== "bifrost",
-      quality: () => renderer.quality, busy: () => BL.destinationMap?.coaching || chalkboard.openNow || clankerPlay.active || factoryDeparting || bifrostDeparting,
+      quality: () => renderer.quality, busy: () => chalkboard.openNow || clankerPlay.active || factoryDeparting || bifrostDeparting,
     });
     yield* pause(slice);
     cloudRememberNodes(cloudNodeStart);
