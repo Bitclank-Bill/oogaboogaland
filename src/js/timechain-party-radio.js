@@ -48,11 +48,12 @@
   // Web Audio may hand silence for a stream that plays before the plain element takes over.
   const VOLUME = 0.32, STALL_MS = 12000, RETRY_MS = 5000, RETRY_MAX = 60000, SILENT_S = 4;
   // The lookahead: the speakers play LOOKAHEAD seconds behind what the room reads, so the room sees a drop coming. The
-  // player keeps HISTORY frames of its readings, a frame each `sample` (the beat's, the loudness, the spectrum's BANDS
+  // player keeps HISTORY frames of its readings, one each `sample` at least GAP_S seconds after the last, so the ring
+  // holds the same span of time on a 60 Hz display as on a 240 Hz one (the beat's, the loudness, the spectrum's BANDS
   // and the wave's POINTS), and a reading more than STALE seconds from the time asked for counts as none (a hidden
   // tab's gap). What's playing: each station's own feed, asked every META_MS while the radio plays, a song at most
   // SONG_MAX characters.
-  const LOOKAHEAD = 8, HISTORY = 900, STALE = 0.5, BANDS = 96, POINTS = 512, META_MS = 20000, SONG_MAX = 90;
+  const LOOKAHEAD = 8, GAP_S = 0.015, STALE = 0.5, HISTORY = Math.ceil((LOOKAHEAD + 2 * STALE) / GAP_S), BANDS = 96, POINTS = 512, META_MS = 20000, SONG_MAX = 90;
   const TAU = Math.PI * 2;
 
   // `rate` is how many onsets come a second (a block's whole samples make it a hair off RATE at some sample rates).
@@ -261,6 +262,13 @@
       }
       return -1;
     };
+    // What the room shows for what is heard now: the frame LOOKAHEAD seconds back, and the tempo and phase then.
+    const heardNow = (at, lag, out) => {
+      heard = frameAt(at - LOOKAHEAD);
+      track.read(at - lag - LOOKAHEAD, out);
+      out.live = heard >= 0 && hLive[heard] === 1; out.level = heard >= 0 ? hLevel[heard] : 0;
+      return out;
+    };
     // Once a frame: the newest stretch of the stream into the tracker and into the history with its loudness, spectrum
     // and wave, and what the room should show for what is heard now, LOOKAHEAD seconds behind (the tempo and phase at
     // that time, and how hard the beat hit then). Where Web Audio hands only silence for a stream that is playing, the
@@ -278,6 +286,7 @@
       } else if (sounding) quiet = 0;
       lastTime = element.currentTime;
       const lag = context.outputLatency || context.baseLatency || 0, at = context.currentTime, i = hHead;
+      if (hCount && at - hAt[(hHead - 1 + HISTORY) % HISTORY] < GAP_S) return heardNow(at, lag, out);
       track.read(at - lag, now);
       hAt[i] = at; hLevel[i] = now.level; hLive[i] = now.live ? 1 : 0;
       let e = 0;
@@ -294,10 +303,7 @@
       for (let k = 1; k < FFT - span; k++) if (signal[k - 1] < 0 && signal[k] >= 0) { from = k; break; }
       for (let k = 0, o = i * POINTS; k < POINTS; k++) hWave[o + k] = signal[from + Math.floor(k * span / POINTS)];
       hHead = (hHead + 1) % HISTORY; hCount = Math.min(HISTORY, hCount + 1);
-      heard = frameAt(at - LOOKAHEAD);
-      track.read(at - lag - LOOKAHEAD, out);
-      out.live = heard >= 0 && hLive[heard] === 1; out.level = heard >= 0 ? hLevel[heard] : 0;
-      return out;
+      return heardNow(at, lag, out);
     };
     // How loud the music heard now is, in dB of its RMS: `out.loud` the whole signal over the analyser's FFT samples,
     // `out.bass` the low-passed kick band over its newest LOUD_N samples (as `sample` read them, so call it after).

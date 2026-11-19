@@ -22052,6 +22052,23 @@ const partyRadioChecks = async () => {
   } finally { radio.dispose(); }
   record("party radio: one late frame that finds the stream quiet neither restarts the music nor gives up its beat, and a stream silent frame after frame still falls back to the plain element",
     !late.plain && late.starts === 1 && late.mode === "live" && silent.plain && silent.starts === 2, JSON.stringify({ late, silent }));
+  // Regression: the lookahead's history was counted in frames (900), so at over 112 frames a second it held less than the
+  // eight seconds the speakers trail by: the room never found what is heard now, sat calm and never saw a drop. It is
+  // kept by time, so the music is read eight seconds in at any frame rate, and not before.
+  const rates = [60, 120, 144, 240].map((fps) => {
+    const r = page.window.BL.timechainPartyRadio.create(), E = {};
+    try {
+      elements.at(-1).onplaying();
+      let t = 0;
+      const run = (until) => { level.now = 0.2; for (; t < until; t += 1 / fps) { audio.currentTime += 1 / fps; elements.at(-1).currentTime += 1 / fps; r.sample(reading); } };
+      run(7.5);
+      const early = r.warming;
+      run(10);
+      return { fps, early, warming: r.warming, reads: r.energy(E), ahead: r.ahead(-1, E) };
+    } finally { r.dispose(); }
+  });
+  record("party radio: the music is read eight seconds behind the speakers at 60, 120, 144 and 240 frames a second alike, and not before",
+    rates.every((q) => q.early && !q.warming && q.reads && q.ahead), JSON.stringify(rates));
 };
 
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
