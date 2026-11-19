@@ -13,9 +13,9 @@ const view = (zones = { outside: [{ display: "Bea", login: "bea" }] }) => ({ nam
   maxPlayers: 32, commons: 0, closing: 2, zones, load: { seconds: 2, zones: { outside: { in: 6, out: 6 } } } });
 
 // WorldWatch with a ctx that keeps tagged sockets as the runtime does.
-const watchHost = ({ room = view(), ids = "7" } = {}) => {
+const watchHost = ({ room = view(), ids = "7", down = 0 } = {}) => {
   const accepted = [];
-  const socket = () => ({ sent: [], closed: false, tags: [], send(t) { this.sent.push(JSON.parse(t)); }, close() { this.closed = true; } });
+  const socket = () => ({ sent: [], closed: false, code: 0, tags: [], send(t) { this.sent.push(JSON.parse(t)); }, close(code) { this.closed = true; this.code = code; } });
   class WebSocketPair { constructor() { this[0] = socket(); this[1] = socket(); } }
   class Response { constructor(body, init = {}) { this.body = body; this.status = init.status ?? 200; this.webSocket = init.webSocket; } }
   const ctx = {
@@ -27,7 +27,7 @@ const watchHost = ({ room = view(), ids = "7" } = {}) => {
   const env = {
     INSPECTOR_IDS: ids,
     INSPECTOR: { getByName: (name) => { assert.equal(name, INSPECTOR_NAME); return { objects: async () => { asked.objects++; return [{ cls: "Room", name: "island", rates: { in: 6, out: 6 } }]; } }; } },
-    ROOM: { getByName: () => ({ worldWatch: async () => { asked.room++; return structuredClone(room); } }) },
+    ROOM: { getByName: () => ({ worldWatch: async () => { asked.room++; if (down-- > 0) throw new Error("room down"); return structuredClone(room); } }) },
   };
   const source = readFileSync(new URL("../src/world-watch.js", import.meta.url), "utf8")
     .replace(/import\s+[\s\S]*?from\s+"[^"]+";/g, "").replace(/export const /g, "const ").replace("export class WorldWatch", "class WorldWatch")
@@ -65,6 +65,19 @@ test("a report reaches every viewer at once, tier by tier, and tells the room wh
   assert.deepEqual(player.ws.sent.at(-1).names["dsb-maxis"], [{ display: "Bea", login: "bea" }]);
   pub.ws.close(); player.ws.close();
   assert.equal((await object.report(moved)).watching, false, "nobody left: the room goes quiet");
+});
+
+test("a room that cannot be asked closes the viewer's socket unsent, so the page polls, and the next viewer asks again", async () => {
+  const { object, connect, asked } = watchHost({ down: 1 });
+  await object.report(view({ outside: [{ display: "Old", login: "old" }] }));
+  const first = await connect("player", 3);
+  assert.equal(first.ws.closed, true, "not left open claiming to be live");
+  assert.equal(first.ws.code, 1011);
+  assert.equal(first.ws.sent.length, 0, "the view held from before is not sent");
+  const second = await connect("player", 3);
+  assert.equal(asked.room, 2, "asked again");
+  assert.equal(second.ws.closed, false);
+  assert.deepEqual(second.ws.sent[0].names.outside, [{ display: "Bea", login: "bea" }]);
 });
 
 test("WorldWatch refuses a tier the Worker did not name, an Inspector tier off the allowlist, and past its cap", async () => {

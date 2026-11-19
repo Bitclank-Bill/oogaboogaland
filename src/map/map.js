@@ -484,7 +484,6 @@
     try { ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/world/live`); } catch { return; }
     sock = ws;
     ws.addEventListener("open", () => {
-      sockWait = 2000;
       clearTimeout(timer);
       timer = 0;
       ponged = true;
@@ -499,6 +498,9 @@
       let next;
       try { next = JSON.parse(event.data); } catch { return; }
       if (!next || typeof next !== "object" || !next.zones) return;
+      // Only a socket that delivers counts as working: one WorldWatch closes at once (the room unreachable) keeps
+      // backing off.
+      sockWait = 2000;
       live = next;
       failed = false;
       paint();

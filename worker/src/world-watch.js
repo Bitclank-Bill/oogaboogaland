@@ -35,12 +35,15 @@ export class WorldWatch extends DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [tier]);
-    // The first viewer (or one after a wake) asks the room: it starts reporting, and the view is current.
-    if (!others || !this.view) await this.ask();
-    if (this.view) {
-      if (tier === "inspector") await this.inspected();
-      server.send(this.answer(tier));
+    // The first viewer (or one after a wake) asks the room: it starts reporting, and the view is current. A room that
+    // could not be asked may not be reporting at all, so the socket would claim to be live over a stale view: it is
+    // closed instead, and the page goes on polling and tries the socket again later.
+    if ((!others || !this.view) && !(await this.ask())) {
+      server.close(1011, "room unavailable");
+      return new Response(null, { status: 101, webSocket: client });
     }
+    if (tier === "inspector") await this.inspected();
+    server.send(this.answer(tier));
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -59,10 +62,11 @@ export class WorldWatch extends DurableObject {
     this.at = Date.now();
   }
 
-  async ask() {
+  // True once the room has answered, so it reports from now on; false when it could not be reached.
+  ask() {
     if (!this.asking) this.asking = this.env.ROOM.getByName(ISLAND).worldWatch()
-      .then((view) => this.take(view), () => {}).finally(() => { this.asking = null; });
-    await this.asking;
+      .then((view) => { this.take(view); return true; }, () => false).finally(() => { this.asking = null; });
+    return this.asking;
   }
 
   // The Inspector's object list, for an Inspector account, read again once it is OBJECTS_MS old.
