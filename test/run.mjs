@@ -22078,10 +22078,11 @@ const partyRadioChecks = async () => {
   // music stopping while it tuned in again and the lights losing the beat for the visit) after one late frame: the
   // whole time since the frame before counted as heard silent. A stream that comes back plays on, read as before, and
   // one that stays silent frame after frame is still given up.
-  const elements = [], level = { now: 0.2 }, node = () => ({ gain: { value: 0, setTargetAtTime() {} }, frequency: {}, delayTime: {}, connect() {}, disconnect() {} });
+  const param = () => ({ value: 0, log: [], setTargetAtTime() {}, cancelScheduledValues() {}, setValueAtTime(v, t) { this.log.push(["set", v, t]); }, linearRampToValueAtTime(v, t) { this.log.push(["ramp", v, t]); } });
+  const elements = [], level = { now: 0.2 }, node = () => ({ gain: param(), frequency: {}, delayTime: {}, connect() {}, disconnect() {} });
   const audio = { currentTime: 0, sampleRate: SR, state: "running", destination: {}, createGain: node, createBiquadFilter: node, createDelay: node, createMediaElementSource: node, close: async () => {},
     createAnalyser: () => ({ ...node(), getFloatTimeDomainData: (a) => a.fill(level.now), getByteFrequencyData() {} }) };
-  const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date,
+  const page = { window: { BL: { sound: { muted: false, subscribe: () => () => {}, channel: () => ({ gain: 1, level: 1, node: (context, to) => to || context.destination, subscribe: () => () => {}, show() {}, release() {} }) } } }, location: { search: "" }, navigator: {}, URLSearchParams, setTimeout, clearTimeout, Date, performance,
     document: { addEventListener() {}, removeEventListener() {} }, AudioContext: function () { return audio; },
     Audio: function () { const e = { currentTime: 0, play: async () => {}, pause() {}, removeAttribute() {}, load() {} }; elements.push(e); return e; } };
   runInNewContext(await readFile(new URL("../src/js/timechain-party-radio.js", import.meta.url), "utf8"), page);
@@ -22114,6 +22115,36 @@ const partyRadioChecks = async () => {
   });
   record("party radio: the music is read eight seconds behind the speakers at 60, 120, 144 and 240 frames a second alike, and not before",
     rates.every((q) => q.early && !q.warming && q.reads && q.ahead), JSON.stringify(rates));
+  // Rule: the music never starts or stops cold. It fades in over four seconds as it first reaches the speakers, eight
+  // seconds behind the stream; out over two and a half on the walk to the doors; and left any other way while it is
+  // heard, over a moment before the context closes.
+  const made = [], makeGain = audio.createGain, closeAudio = audio.close;
+  let closes = 0;
+  audio.createGain = () => { const n = makeGain(); made.push(n); return n; };
+  audio.close = async () => { closes++; };
+  const entryOf = (t0) => made.find((n) => n.gain.log.some(([k, v, t]) => k === "ramp" && v === 1 && Math.abs(t - (t0 + 12)) < 1e-9));
+  const fade = {};
+  try {
+    const a = page.window.BL.timechainPartyRadio.create(), t0 = audio.currentTime;
+    elements.at(-1).onplaying();
+    const e = entryOf(t0);
+    fade.inAt = !!e && e.gain.log.some(([k, v, t]) => k === "set" && v === 0 && Math.abs(t - (t0 + 8)) < 1e-9);
+    a.fadeOut();
+    fade.out = e && e.gain.log.at(-1);
+    a.dispose();
+    fade.closedAtOnce = closes;
+    made.length = 0;
+    const b = page.window.BL.timechainPartyRadio.create(), t1 = audio.currentTime;
+    elements.at(-1).onplaying();
+    const f = entryOf(t1);
+    f.gain.value = 1;
+    b.dispose();
+    fade.tail = f.gain.log.at(-1);
+    fade.closedLater = closes - fade.closedAtOnce;
+  } finally { audio.createGain = makeGain; audio.close = closeAudio; }
+  record("party radio: the music fades in as it reaches the speakers, out on the walk to the doors, and over a moment when left any other way, never cold",
+    fade.inAt && fade.out && fade.out[0] === "ramp" && fade.out[1] === 0 && Math.abs(fade.out[2] - (audio.currentTime + 2.5)) < 1e-9 && fade.closedAtOnce === 1
+      && fade.tail && fade.tail[0] === "ramp" && fade.tail[1] === 0 && Math.abs(fade.tail[2] - (audio.currentTime + 0.8)) < 1e-9 && fade.closedLater === 0, JSON.stringify(fade));
 };
 
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
