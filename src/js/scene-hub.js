@@ -8968,8 +8968,9 @@
     return guideSegmentClear(ax, ay, az, bx, by, bz) && objectGuides.cameraClear(ax, ay, az, bx, by, bz, player, player.root);
   };
   // A WebGL2 boot builds the cue after its first paint, in idle time a few milliseconds at a time (`createSteps`, driven
-  // from `update`), so its wall build (about 0.9 s on an M1 Pro) never holds the loading curtain; one sliced step is far
-  // under a frame, where the old single block after first paint stalled the curtain. Until it is done a view behind
+  // from `update`), so its wall build (about 0.9 s on an M1 Pro) never holds the loading curtain; a sliced step runs to
+  // the build's next checkpoint (11 to 17 ms at most on an M1 Pro), where the old single block after first paint stalled
+  // the curtain. Until it is done a view behind
   // rock shows no wall outlines. Any other arrival builds it in `enter`, its wall build having run behind the fade, and
   // so does Canvas 2D, whose few frames a second would stretch the slices out over a minute.
   // A read that cannot wait (`headquarters.rockGuides`: an inspector, the suite) finishes the build at once.
