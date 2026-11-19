@@ -8974,7 +8974,9 @@
   // rock shows no wall outlines. Any other arrival builds it in `enter`, its wall build having run behind the fade, and
   // so does Canvas 2D, whose few frames a second would stretch the slices out over a minute.
   // A read that cannot wait (`headquarters.rockGuides`: an inspector, the suite) finishes the build at once.
-  const ROCK_GUIDES_SLICE_MS = 4, ROCK_GUIDES_IDLE = { timeout: 100 };
+  // The deferred wall build's CPU as a share of the boot that ran without it (`bootDeferred`), so the boot tier judges the
+  // build it replaced: measured 2026-11-19 on an M-series Mac, 0.26 to 0.32 of the sliced boot, cold and warm.
+  const ROCK_GUIDES_SLICE_MS = 4, ROCK_GUIDES_IDLE = { timeout: 100 }, ROCK_GUIDES_BOOT_SHARE = 0.3;
   const rockGuidesSlice = { until: 0, budget: ROCK_GUIDES_SLICE_MS, work: 0 };
   let rockGuidesSteps = null, rockGuidesHandle = 0, rockGuidesIdle = false, rockGuidesIdled = false;
   const stepRockGuides = () => {
@@ -12729,6 +12731,8 @@
     get retainedRoot() { return heldHub ? root : null; },
     // Readying the hall takes a slice of frames that are otherwise the island's; the tier does not judge them.
     get warming() { return factoryWalk.warming || !!arcadeMouth?.entrance.warming; },
+    // The wall build a WebGL2 boot leaves for after its first paint, as a share of the boot CPU measured without it.
+    get bootDeferred() { return rockGuidesSteps ? ROCK_GUIDES_BOOT_SHARE : 0; },
     // The Lightning Factory's builders stay warm while the island runs, since its shield walks straight in.
     keeps: ["factory", "arcade"],
     root: null, camera: null, input: null, debug: null,

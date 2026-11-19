@@ -1113,8 +1113,10 @@
     }
     mark("core-ready");
     mark("ready");
-    // A restored island counts as the build it replaced, so the cache never starts a device a tier higher.
+    // A restored island counts as the build it replaced, and so does a build the scene left for after its first paint
+    // (`bootDeferred`), so neither starts a device a tier higher.
     bootCPU = window.BL.buildTasks.cpu - constructionCPU - uploadCPU + (window.BL.terrainCache?.stats.credit || 0);
+    bootCPU *= 1 + (active?.bootDeferred || 0);
     tierFromBoot(bootCPU);
     raf = window.requestAnimationFrame(frame);
     if (terrainController && window.BL.terrainCache?.stats.lastSource === "miss") fillTerrain();
