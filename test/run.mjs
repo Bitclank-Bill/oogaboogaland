@@ -4570,11 +4570,16 @@ const canvasSurfaceCacheChecks = async () => {
   const before = paints, size = cache.size, pixels = cache.pixels;
   cache.frame(); cache.get(huge, rec); cache.frame(); cache.get(huge, rec);
   if (paints !== before + 2 || cache.size !== size || cache.pixels !== pixels) failures++;
+  // Its faces, each lit a little differently, share the one image their first face shaded that frame.
+  const domeLit = { ...rec }, domeBefore = paints;
+  cache.frame();
+  for (let face = 0; face < 12; face++) { domeLit.canvasR = 0.5 + face * 0.02; cache.get(huge, domeLit); }
+  if (paints !== domeBefore + 1) failures++;
   cache.release(new Set());
   if (cache.size || cache.pixels) failures++;
   cache.get(a, rec); cache.dispose();
   if (cache.size || cache.pixels || canvases.some(c => c.width || c.height) || canvases.length > 9) failures++;
-  record("Canvas surface reuse: unchanged faces reuse exact shaded images, every content/lighting/dimension input invalidates, and eviction, scene release and disposal bound owned canvases", failures === 0, JSON.stringify({ failures, paints, canvases: canvases.length }));
+  record("Canvas surface reuse: unchanged faces reuse exact shaded images, every content/lighting/dimension input invalidates, an oversized surface shades once a frame, and eviction, scene release and disposal bound owned canvases", failures === 0, JSON.stringify({ failures, paints, canvases: canvases.length }));
   // The curved jumbotron: a 1200x540 board drawn as ten faces a frame, each lit a little differently, under a sun
   // that moves every frame. It shades at most once a frame, and a slot keeps its backing store across repaints.
   const board = create(canvas => { canvas.serial = ++paints; }), slide = geometry();
