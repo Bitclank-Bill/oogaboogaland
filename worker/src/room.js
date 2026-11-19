@@ -35,13 +35,13 @@ import {
   CABINETS, hockey, block, BLOCK, duel, tessQueue, CLOSE_KICK, CLOSE_PROTOCOL, CLOSE_ERROR, CLOSE_RECONNECT, HOLD_MS, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, MEMBER_SWEEP_MS, CLEANUP_MS, TICK_HZ,
   NPC_FRAME_MAX, NPC_HZ, PROP_MAGIC, PROP_FEATURE, PROP_FRAME_MAX, PROP_HZ, POSE_SAVE_MS, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, ROOM_LOCK_FEATURE, PIN_PASS_MS, PIN_TRIES, PIN_WAIT_MS, CONTROL_FRAMES, CONTROL_HZ, CONTROL_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, REACT_FEATURE, HAND_EMOJI_FEATURE, REACT_HZ, REACT_BURST,
-  GHOST_MAGIC, inGhostArena, watchesGhost,
+  GHOST_MAGIC, inGhostArena, watchesGhost, PARTY_FEATURE, PARTY_ZONE, PARTY_GAP_MS,
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
   LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
-  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, audienceRoom, commonsRoom, sessionGone, cleanupPass,
+  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, worldReporter, audienceRoom, commonsRoom, sessionGone, cleanupPass,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
 import { getPlayer } from "./db.js";
@@ -66,14 +66,16 @@ const cleanupJob = (job) => !!job && typeof job === "object" && typeof job.sessi
   && (job.at == null || Number.isFinite(job.at)) && (job.revision === undefined || Number.isFinite(job.revision))
   && (job.inspectUntil === undefined || Number.isFinite(job.inspectUntil));
 
-// How long each of the World Map's two load windows runs (`countLoad`), and the name its counts give Ooga Chat's
-// community members, who report no zone.
-const LOAD_MS = 5000, LOAD_CHAT = "ooga-chat";
+// How long each of the World Map's two load windows runs (`countLoad`), short enough that the map's CPU follows a
+// change within a refresh or two, and the name its counts give Ooga Chat's community members, who report no zone.
+const LOAD_MS = 2000, LOAD_CHAT = "ooga-chat";
 
 export class Room extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.inspect = inspectReporter(ctx, env, "Room", () => ctx.id.name, (detail) => this.inspectState(detail));
+    // The World Map's live layer (world-report.js): who stands where, told to WorldWatch as it changes.
+    this.world = worldReporter(ctx, env, () => this.worldView());
     this.flushDue = 0;
     this.players = new Map();
     // Each player socket to its record, so a message finds its sender without reading the socket's attachment. Rebuilt
@@ -115,6 +117,8 @@ export class Room extends DurableObject {
     // locked; only the players inside one hear its PIN. Every occupant's socket attachment carries its room's lock so
     // hibernation keeps it.
     this.roomLocks = new Map();
+    // The Block Party's channel while anyone is in it ({ channel, at }), or null.
+    this.party = null;
     this.pinTries = new Map();
     this.sweepAt = 0;
     this.cleanupAt = 0;
@@ -206,6 +210,7 @@ export class Room extends DurableObject {
     }
     for (const p of this.players.values()) if (p.pm.open && this.players.get(p.pm.open).pm.open !== p.id) p.pm.open = 0;
     this.restoreDoor();
+    this.restoreParty();
     this.hostId = electHost(this.players.values());
     this.followers = npcFollowers(this.players.values(), this.hostId);
     // Outdoor grants held over a wake or a redeploy are checked again, and taken back if the switch is now off.
@@ -271,7 +276,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...duel.saved(p) };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, party: p.party || null, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...duel.saved(p) };
   }
 
   view(p) {
@@ -418,6 +423,51 @@ export class Room extends DurableObject {
     for (const o of this.players.values()) if (this.roomOf(o.zone) === room) return;
     this.roomLocks.delete(room);
     this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
+  }
+
+  // The Block Party's channel (PARTY_FEATURE): whatever an occupant's attachment kept, the newest, after a wake.
+  restoreParty() {
+    this.party = null;
+    for (const p of this.players.values()) {
+      const kept = p.party;
+      if (p.zone !== PARTY_ZONE || !kept || !Number.isInteger(kept.channel) || !Number.isFinite(kept.at)) { p.party = null; continue; }
+      if (!this.party || kept.at > this.party.at) this.party = { channel: kept.channel, at: kept.at };
+    }
+  }
+
+  // An arrival in the Block Party hears its channel (-1, none chosen yet) and carries it.
+  partyArrive(p) {
+    if (p.zone !== PARTY_ZONE) return;
+    p.party = this.party;
+    this.send(p.ws, { t: "party", channel: this.party ? this.party.channel : -1, by: 0 });
+  }
+
+  partyZoneChanged(p, from) {
+    if (p.zone === PARTY_ZONE) { this.partyArrive(p); p.ws.serializeAttachment(this.attachment(p)); return; }
+    p.party = null;
+    if (from === PARTY_ZONE) this.partyEmpty();
+  }
+
+  // The last one out takes the channel with them; the next party starts on the first.
+  partyEmpty() {
+    if (!this.party) return;
+    for (const o of this.players.values()) if (o.zone === PARTY_ZONE) return;
+    this.party = null;
+  }
+
+  // The DJ changed the channel: everyone in the room is tuned to it, the DJ's own page included. A change inside the
+  // gap is refused with the room's channel, so a page that tuned itself ahead of the room is tuned back.
+  partyMessage(p, msg) {
+    const now = Date.now();
+    if (!p.body || p.zone !== PARTY_ZONE) return;
+    if (now - (p.partyAt || 0) < PARTY_GAP_MS) { this.send(p.ws, { t: "party", channel: this.party ? this.party.channel : -1, by: 0 }); return; }
+    p.partyAt = now;
+    this.party = { channel: msg.channel, at: now };
+    for (const o of this.players.values()) if (o.zone === PARTY_ZONE) {
+      o.party = this.party;
+      o.ws.serializeAttachment(this.attachment(o));
+    }
+    this.broadcastZone(PARTY_ZONE, { t: "party", channel: msg.channel, by: p.id });
   }
 
   // A pass is spent on walking in; the new occupant holds the lock with everyone else inside.
@@ -630,6 +680,7 @@ export class Room extends DurableObject {
     if (own) for (const o of this.players.values()) if (o.body && bodyName(o.body).toLowerCase() === own) this.release(o, "owner-here");
     this.players.set(p.id, p);
     this.sockets.set(server, p);
+    this.world.changed();
     if (this.inspect.on) this.inspect.event("join", p, { replaced: !!older });
     this.welcome(p, false);
     this.broadcast({ t: "join", p: this.view(p) }, server);
@@ -643,7 +694,7 @@ export class Room extends DurableObject {
   welcome(p, resumed) {
     const server = p.ws, others = [];
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, PARTY_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
       // The account speaks from Ooga Chat on another device: this page's own voice waits for the visitor's word.
       ...(audienceRoom.elsewhere(this, p.id) ? { voiceElsewhere: true } : {}) });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
@@ -682,6 +733,7 @@ export class Room extends DurableObject {
     step("tess", () => tessQueue.presence(this, p, true));
     step("audience", () => audienceRoom.hold(this, p));
     step("host", () => this.electHost());
+    step("world", () => this.world.changed());
   }
 
   // Its page is back for the record: a hold goes on until `resume`; a socket still open (half-open, or the page's own
@@ -717,6 +769,7 @@ export class Room extends DurableObject {
     this.sendStudio(p);
     this.electHost();
     this.updateVoice();
+    this.world.changed();
   }
 
   // What arriving in its zone sends (the `zone` handler's), sent again to a resumed page: its own close forgot it all,
@@ -727,6 +780,7 @@ export class Room extends DurableObject {
     if (lock) this.send(p.ws, { t: "door", op: "room-pin", room: p.roomLock.room, pin: lock.pin });
     hockey.arrive(this, p);
     block.arrive(this, p);
+    this.partyArrive(p);
     this.replayDoor(p);
   }
 
@@ -876,7 +930,9 @@ export class Room extends DurableObject {
       duel.check(this, p);
       tessQueue.presence(this, p);
       this.inspect.event("zone", p, { from, to: p.zone });
+      this.world.changed();
       this.roomZoneChanged(p, from);
+      this.partyZoneChanged(p, from);
       hockey.arrive(this, p);
       block.arrive(this, p);
       p.pokerVoice = null;
@@ -965,6 +1021,8 @@ export class Room extends DurableObject {
       return this.linkMessage(p, msg);
     } else if (msg.t === "link-all") {
       return this.linkAllMessage(p);
+    } else if (msg.t === "party") {
+      this.partyMessage(p, msg);
     } else if (msg.t === "door") {
       return this.doorMessage(p, msg);
     } else if (msg.t === "chalk") {
@@ -1119,6 +1177,7 @@ export class Room extends DurableObject {
     step("pm", () => this.privateLeave(p));
     this.players.delete(p.id);
     this.sockets.delete(p.ws);
+    step("world", () => this.world.changed());
     step("audience", () => audienceRoom.leave(this, p));
     step("tess", () => tessQueue.presence(this, p, true, reason === "revoked"));
     // A dropped socket can come straight back in; the last one out frees the room.
@@ -1127,6 +1186,7 @@ export class Room extends DurableObject {
       if (held) held.passes.set(p.id, Date.now() + PIN_PASS_MS);
       this.freeEmptyRoom(lockedIn);
     });
+    step("party", () => this.partyEmpty());
     step("leave", () => this.broadcast({ t: "leave", id: p.id, reason }));
     step("host", () => this.electHost());
     step("voices", () => this.updateVoice());
@@ -1182,6 +1242,7 @@ export class Room extends DurableObject {
       this.inspect.peak("late", Date.now() - this.flushDue);
       this.snapshot();
       this.inspect.tick();
+      this.world.tick();
     }, 1000 / TICK_HZ);
   }
 
@@ -2252,6 +2313,7 @@ export class Room extends DurableObject {
     if (next !== null) { await this.ctx.storage.setAlarm(next); this.alarmRegisteredAt = next; }
     this.alarmFinished = Date.now();
     this.inspect.tick();
+    this.world.tick();
   }
 
   // When the room last heard from a player: a message, or a ping the runtime answered without waking it.
@@ -2294,12 +2356,21 @@ export class Room extends DurableObject {
     this.inspect.watch(until);
   }
 
+  // WorldWatch asking as a map viewer connects (world-report.js `watch`): the view now, and reports from now on.
+  worldWatch() {
+    return this.world.watch();
+  }
+
   // The World Map's live layer (/api/world, world.js): who stands in which zone, by the names the players tab shows,
   // the room's sockets, and each zone's messages in and sends out a second over the span `load.seconds` says (the
   // current load window and the one before it). From memory alone: no storage, D1 or positions.
   worldView() {
     const zones = {}, now = Date.now();
-    for (const p of this.players.values()) (zones[p.zone] || (zones[p.zone] = [])).push({ display: p.display || p.login, login: p.login });
+    let held = 0;
+    for (const p of this.players.values()) {
+      (zones[p.zone] || (zones[p.zone] = [])).push({ display: p.display || p.login, login: p.login });
+      if (p.held) held++;
+    }
     const L = this.turnLoad(now);
     const ms = Math.max(1, now - L.at + L.wasMs), rate = (n) => Math.round(n * 100000 / ms) / 100, rates = {};
     for (const [zone, counts] of [...L.was, ...L.now]) {
@@ -2308,7 +2379,12 @@ export class Room extends DurableObject {
       sum.out += counts.out;
     }
     for (const sum of Object.values(rates)) { sum.in = rate(sum.in); sum.out = rate(sum.out); }
-    return { name: this.ctx.id.name || "", sockets: this.ctx.getWebSockets().length, players: this.players.size, maxPlayers: MAX_PLAYERS,
-      commons: commonsRoom.size(this), zones, load: { seconds: Math.round(ms) / 1000, zones: rates } };
+    // Every socket the runtime still holds is counted, and `closing` is what is neither a connected player nor a
+    // member: a connection the room has let go of (replaced by the account's newer one, kicked, refused, or reclaimed
+    // by its page coming back) whose close the page has not finished, usually because the page itself is gone. A
+    // player `held` over a lost socket (`hold`) is still a player, standing where they were, with no socket at all.
+    const sockets = this.ctx.getWebSockets().length, commons = commonsRoom.size(this);
+    return { name: this.ctx.id.name || "", sockets, players: this.players.size, held, maxPlayers: MAX_PLAYERS, commons,
+      closing: Math.max(0, sockets - (this.players.size - held) - commons), zones, load: { seconds: Math.round(ms) / 1000, zones: rates } };
   }
 }
