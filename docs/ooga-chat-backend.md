@@ -418,15 +418,26 @@ publications change (a chat speaker going live, an island speaker's publication 
 new voice without polling. A mute changes no publication and asks nobody to sync.
 
 **Durable cleanup.** Every close goes through a queue kept in storage (`mediaCleanup`) and retried by the alarm until
-the SFU confirms (`close_track_error` counts as gone) or an hour has passed, after every client has left too. A
+the SFU confirms (`close_track_error` counts as gone, and so does a session the SFU answers 404 or 410 for, with or
+without an error code: Cloudflare documents 410 for `session_error` alone, a session gone for good) or an hour has passed
+since the job was first queued, after every client has left too. An alarm's pass runs at most four jobs at once and
+starts none 20 s after it began (`cleanupPass` in `sfu.js`), what is left waiting for the next wake, which starts with
+the jobs this one never reached (those it tried and that failed go to the back of the queue): a serial pass over
+slow 410s, five seconds each, once held a wake for seven minutes. A
 session whose tracks are unknown (a failed call) is swept whole, and any track that sweep finds and fails to close is
 kept for the next try. Two runs over one job (the alarm's and a new close merged into it) never remove another job. With
-64 jobs pending, publishing and receiving wait
-(`cleanup_pending`) while giving things up still works. A woken object restores each connection's media from
+64 jobs pending, the oldest jobs for sessions no live connection holds are let go to make room: their pages closed those
+connections (Ooga Chat closes its media with its socket, on a leave and before opening another), so nothing flows on
+them while the SFU stops answering. Only a queue full of sessions still held makes publishing and receiving wait
+(`cleanup_pending`), while giving things up still works. The island's Room keeps its own voice cleanup queue to the
+same bound and rule. Likewise an outdoor subscription counts as unconfirmed (the Room's `closed` waits on it) only while
+a live connection holds its session: a listener that leaves releases the speaker's grant at once, without waiting the
+hour a close the SFU keeps refusing would take. A woken object restores each connection's media from
 `media:<connId>` and sweeps the sessions of a socket that went while it slept.
 
 **Ops** (`POST /api/chat/media/<op>`, body `{ connection, generation?, sdp?, mid?, mids? }`, at most 256 KiB, one at a
-time per connection, `CHAT_MEDIA_LIMITER` per principal): `ice` (TURN credentials, as the island's voice has them),
+time per connection, `CHAT_MEDIA_LIMITER` per principal): `ice` (TURN credentials, as the island's voice has them, and
+answered outside that queue, so a slow SFU call ahead of it never holds up a join),
 `receive/open`, `receive/sync` (`{ tracks: [{ participant, mid }], closed, sessionDescription,
 requiresImmediateRenegotiation }`), `renegotiate`, `receive/close`, `publish/open`, `publish/offer`, `publish/ready`,
 `publish/close`, `leave`. Errors are `{ error: { code, retryable } }`: `stale_epoch` (another connection's, or a lease
@@ -439,8 +450,14 @@ storage, so it survives the Room's hibernation; the Audience keeps the last list
 change and a failed send is tried again. An island player whose outdoor grant
 is open in a zone (#667) gets that zone's Ooga Chat speakers as voice peers by GitHub id, pulls them through its usual
 `/api/voice/pull` by the Audience's reference alone (checked again after the SFU call), and loses them, closed at the
-SFU, when they stop. An island player without a grant never hears them. A chat speaker's id is never an island player's
-too: the island's own voice ends a chat lease first.
+SFU, when they stop. An island player without a grant never hears them. An account may remain signed into both apps:
+its island body does not override its chat microphone. Only a live island publication takes precedence, and an old
+chat catalog entry cannot grant access to that island microphone from another place. Both receivers distinguish
+publication generations by source (chat counts are encoded as negative for subscription comparisons), so moving
+between apps replaces the track even if their clocks issued the same count. In-flight pulls recheck the publication.
+
+The receiver count sent to the island includes Ooga Chat speakers as well as listener-only accounts. Pressing Join
+Voice in OC must not make the island gate its microphone as alone; speakers keep receiving the same conversation.
 
 **Overhearing on the island.** A signed-in island player who has not joined voice hears the main island's public
 conversation while their body stands in it. Their page opens a receive session by itself (`/api/voice/session` with
@@ -480,6 +497,13 @@ body, a level crossing (`blendTo`) and a cabinet seat. The registry is default-d
 
 A new outdoor is added here with a check; a new interior needs nothing to stay excluded. The checks enumerate the island's
 world zones and DSB Land's rooms from their own sources, so a new one is caught as it lands.
+
+Main Island is one public conversation across the island's surface, the exterior of Bifrost and the Timechain Sphere,
+the rainforest's upper level, and the bridges and air between them at that level or above. The existing surface
+tolerance covers ground dips and bridge sag; descending into a lower voice level excludes even open air off the edge.
+Covered cave entrances remain public up to the interior boundary: the Arcade's doors and Factory's inner shield,
+or the doorway/veil for other caves. The lab and B.C.A. interiors, Sphere passage and rooms, Bifrost chamber and
+underground levels remain excluded. The page holds microphone transmission during the revocation handshake.
 
 **The handshake** (the Room's `outdoor-voice-v1`, offered only with the island's `outdoor` switch; frames in
 `docs/auth-and-presence.md`, "Outdoor voice bridge"). Each connection's grant is `none`, `open` or `closing`:
@@ -595,10 +619,13 @@ Every line reaches every player and member once, with the island's own `{ t: "ch
 the island's for that account when it has one, so a line reads the same from either app.
 
 **Online Oogas, without positions.** The member's welcome is `{ t: "community", v: 1, op: "welcome", epoch, send, you:
-{ id, login, display }, players: [...], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
+{ id, login, display }, players: [...], duels: [{ id, a, b }], features: ["chat-unicode-v1", "commons-v1"] }` then `chat-history`. A player is `{ id, login,
 display, body, zone, voice, muted, hand, handTone, handEmoji }`, and after that only the Room's `join`, `leave`, `body`,
-`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. No pose, snapshot, distance, NPC frame, SFU id,
-voice link, private-conversation frame, reaction over a body, game state or chalk ever reaches a member.
+`zone`, `vstate`, `hand`, `chat` and `clouds` broadcasts are relayed. For optional local duel muting, the member also
+receives `{ t: "duel", op: "start", id, a, b }` and `{ t: "duel", op: "end", id }`: only active pair ids, stripped
+from the island's frames. The initial pairs are rebuilt from the room's restored duel records. Challenges, health,
+positions and results are never relayed, and the member cannot send duel actions. No pose, position snapshot, distance,
+NPC frame, SFU id, voice link, private-conversation frame, reaction over a body, other game state or chalk reaches a member.
 
 **The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,
 `commonsHistory` the `chat-history` after it, `onlineDelta` the relayed `join`, `leave`, `body`, `zone`, `vstate` and

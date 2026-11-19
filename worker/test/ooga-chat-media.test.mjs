@@ -40,6 +40,8 @@ globalThis.fetch = async (input, init = {}) => {
     return reply({ sessionId });
   }
   const [, sessionId, what, verb] = rest.split("/");
+  // A session the SFU calls gone with a bare 410, no error code in its body (sfu.js `sessionGone`).
+  if (sfu.goneBare && sfu.goneBare.has(sessionId)) return new NodeResponse("gone", { status: 410 });
   const tracks = sfu.sessions.get(sessionId);
   if (!tracks) return reply({ errorCode: "session_error" }, 404);
   if (what === "tracks" && verb === "new") {
@@ -104,8 +106,8 @@ const media = async (a, client, op, body = {}, principal = client.principal) => 
     body: JSON.stringify({ connection: client.connection, ...body }) }));
   return { status: res.status, body: await res.json() };
 };
-const speak = async (a, client) => {
-  await a.webSocketMessage(client.ws, JSON.stringify({ type: "setRole", requestId: 1, role: "speaker" }));
+const speak = async (a, client, requestId = 1) => {
+  await a.webSocketMessage(client.ws, JSON.stringify({ type: "setRole", requestId, role: "speaker" }));
   const c = a.model.conns.get(client.connection);
   const generation = c.lease.generation;
   assert.equal((await media(a, client, "publish/open", { generation })).status, 200);
@@ -136,6 +138,43 @@ test("a listener pulls its zone's speakers by reference: island and Ooga Chat on
   assert.deepEqual(own.body.tracks.map((t) => t.participant), ["gh:40"], "a speaker never pulls itself");
   assert.equal((await media(a, listener, "receive/sync")).body.tracks.length, 0, "nothing twice");
   assert.deepEqual(h.room.sources.at(-1).map((s) => [s.id, s.zone]), [[1, "main"], [2, "dsb"]], "the Room hears Ooga Chat speakers by GitHub id and zone");
+});
+
+test("an OC speaker still counts as a receiver and hears island microphones without any listener-only accounts", async () => {
+  const h = host(), a = await h.make(), speaker = await connect(a, who(1));
+  await speak(a, speaker);
+  await h.settle();
+  assert.equal(a.model.counts("main").listeners, 0);
+  assert.equal(h.room.listeners.main, 1, "joining voice must not tell the island that nobody can hear it");
+  const world = await a.world(1, [{ id: "gh:40", zone: "main", mic: "on", login: "isle", pub: { session: "island-only", track: "mic", gen: 1 } }], ["gh:40"]);
+  assert.equal(world.listeners.main, 1);
+  await media(a, speaker, "receive/open");
+  assert.deepEqual((await media(a, speaker, "receive/sync")).body.tracks.map((t) => t.participant), ["gh:40"]);
+});
+
+test("OC receivers replace a speaker's track in both handoff directions even when source generations coincide", async () => {
+  const h = host(), a = await h.make(), speaker = await connect(a, who(1)), listener = await connect(a, who(2));
+  await speak(a, speaker);
+  const original = a.media.chatSources()[0], gen = original.gen;
+  await media(a, listener, "receive/open");
+  const first = (await media(a, listener, "receive/sync")).body.tracks[0];
+  const sub = h.storage.get(`media:${listener.connection}`).sub;
+  await a.world(1, [{ id: "gh:1", zone: "main", mic: "on", login: "dev1", pub: { session: "handoff-island", track: "mic", gen } }], ["gh:1"]);
+  await h.settle();
+  assert.ok(!openMids(sub).includes(first.mid), "the chat pull is retired when the island takes voice");
+  const island = (await media(a, listener, "receive/sync")).body.tracks[0];
+  assert.equal(island.participant, "gh:1");
+  assert.equal(sfu.sessions.get(sub).get(island.mid).sessionId, "handoff-island");
+  assert.ok(speaker.ws.sent.some((m) => m.type === "you" && m.reason === "moved"));
+  await a.world(2, [], []);
+  a.nextGeneration = () => gen;
+  await speak(a, speaker, 2);
+  await h.settle();
+  assert.ok(!openMids(sub).includes(island.mid), "the island pull is retired when voice moves back");
+  const back = (await media(a, listener, "receive/sync")).body.tracks[0];
+  assert.equal(back.participant, "gh:1");
+  assert.equal(sfu.sessions.get(sub).get(back.mid).sessionId, a.media.chatSources()[0].session);
+  assert.equal((await media(a, listener, "receive/sync")).body.tracks.length, 0, "one playback per speaker");
 });
 
 test("publishing needs the caller's own lease of that generation; nothing is published or pulled for anyone else", async () => {
@@ -242,7 +281,7 @@ test("anything that changes while the SFU call is in flight keeps nothing it sho
   assert.deepEqual(openMids(sub), [], "and the one the SFU made is closed");
 });
 
-test("cleanup is durable: a failed close is kept, retried by the alarm after everyone left, and blocks new publishing past its bound", async () => {
+test("cleanup is durable: a failed close is kept, retried by the alarm after everyone left, and past its bound blocks new publishing only for sessions still held", async () => {
   const h = host(), a = await h.make();
   const amy = await connect(a, who(1));
   await speak(a, amy);
@@ -260,14 +299,42 @@ test("cleanup is durable: a failed close is kept, retried by the alarm after eve
   await woken.alarm();
   assert.deepEqual(openMids(pub), []);
   assert.deepEqual(h.storage.get("mediaCleanup"), []);
-  // Past the bound, publishing waits for cleanup while giving things up still works.
+  // Past the bound, with every session still held by a live connection, publishing waits for cleanup while giving
+  // things up still works.
   const bea = await connect(woken, who(2));
-  for (let i = 0; i < 64; i++) woken.media.cleanup.push({ session: `stuck${i}`, mids: ["0"], all: false, at: Date.now(), tries: 0 });
+  for (let i = 0; i < 64; i++) {
+    woken.media.cleanup.push({ session: `stuck${i}`, mids: ["0"], all: false, at: Date.now() - 64 + i, tries: 0 });
+    woken.media.states.set(`holder${i}`, { sub: `stuck${i}`, mids: {}, pub: null, pubMid: null, pending: false, track: null, gen: 0, lease: 0 });
+  }
   await woken.webSocketMessage(bea.ws, JSON.stringify({ type: "setRole", requestId: 1, role: "speaker" }));
   const generation = woken.model.conns.get(bea.connection).lease.generation;
   assert.equal((await media(woken, bea, "publish/open", { generation })).body.error.code, "cleanup_pending");
+  // regression: a queue full of jobs for sessions nobody holds (their pages closed them, and the SFU stopped answering)
+  // refused every speaker and listener for an hour. It lets go of the oldest such job instead, keeping its bound.
+  for (let i = 0; i < 64; i += 2) woken.media.states.delete(`holder${i}`);
+  assert.equal((await media(woken, bea, "publish/open", { generation })).status, 200);
+  assert.equal(woken.media.cleanup.length, 63);
+  assert.ok(!woken.media.cleanup.some((job) => job.session === "stuck0"), "the oldest job nobody holds is the one let go");
+  assert.ok(woken.media.cleanup.some((job) => job.session === "stuck1"), "a held session's job is kept");
   assert.equal((await media(woken, bea, "leave")).status, 200);
+  for (let i = 0; i < 64; i++) woken.media.states.delete(`holder${i}`);
   woken.media.cleanup.splice(0);
+});
+
+test("regression: a woken Audience asks no listener to sync for the Room's unchanged word, so an idle tab costs no wake a minute", async () => {
+  const h = host(), a = await h.make();
+  const bea = await connect(a, who(2));
+  await media(a, bea, "receive/open");
+  await media(a, bea, "receive/sync");
+  const speakers = [{ id: "gh:40", zone: "main", mic: "on", login: "isle", pub: { session: "island-pub", track: "mic", gen: 1 } }];
+  await a.world(20, speakers, []);
+  const told = () => bea.ws.sent.filter((m) => m.type === "media").length;
+  const before = told();
+  const woken = await h.make();
+  await woken.world(21, speakers, []);
+  assert.equal(told(), before, "nothing changed while it slept, so nobody is asked to sync again");
+  await woken.world(22, [{ ...speakers[0], pub: { ...speakers[0].pub, gen: 2 } }], []);
+  assert.equal(told(), before + 1, "a new publication after the wake is still announced");
 });
 
 test("a wake restores each connection's media, and sweeps the sessions of a socket that went while it slept", async () => {
@@ -329,7 +396,7 @@ test("the island: a player with an open outdoor grant hears Ooga Chat speakers o
   h.room.audienceSources([{ id: 777, zone: "main", session: "chat-pub", track: "mic", gen: 9 }, { id: 888, zone: "dsb", session: "dsb-pub", track: "mic", gen: 2 }]);
   const voice = (ws) => ws.sent.filter((m) => m.t === "voice").at(-1);
   assert.ok(voice(a).peers.includes(777), "the open grant's zone's chat speaker");
-  assert.equal(voice(a).gens[voice(a).peers.indexOf(777)], 9);
+  assert.equal(voice(a).gens[voice(a).peers.indexOf(777)], -10, "chat publications have a separate generation range");
   assert.ok(!voice(a).peers.includes(888), "never the other zone's");
   assert.ok(!(voice(b) && voice(b).peers.includes(777)), "no grant, no Ooga Chat voices");
   const token = h.room.players.get(1).connectionToken;
@@ -342,6 +409,54 @@ test("the island: a player with an open outdoor grant hears Ooga Chat speakers o
   assert.deepEqual(plain(h.room.players.get(1).voice.mids), {});
   for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.ok(h.closes.some((mids) => mids.includes("r0")), "closed at the SFU, not just forgotten");
+});
+
+test("the island follows the active microphone across both handoffs while the speaker remains signed in to OBL", async () => {
+  const h = await roomHarness(), a = await h.join(1, "a"), b = await h.join(2, "b");
+  const listener = h.room.players.get(1), speaker = h.room.players.get(2);
+  listener.outdoor = speaker.outdoor = { state: "open", scope: "main" };
+  const request = () => h.room.voiceRequest("pull", { headers: new Headers({ "x-player-id": "1", "x-room-token": listener.connectionToken }), json: async () => ({ ids: [2] }) });
+  const generation = () => { const v = a.sent.filter((m) => m.t === "voice").at(-1); return v.gens[v.peers.indexOf(2)]; };
+  h.room.updateVoice();
+  const islandGen = generation();
+  assert.equal((await (await request()).json()).tracks[0].id, 2);
+  assert.equal(h.pulls.at(-1)[0].sessionId, "p2");
+  await h.room.audienceHandoff(2);
+  assert.equal(b.sent.filter((m) => m.t === "voice-moved").length, 1);
+  // The island record and its old generation survive; its microphone does not.
+  await h.room.audienceSources([{ id: 2, zone: "main", session: "chat-pub", track: "mic", gen: islandGen }]);
+  assert.notEqual(generation(), islandGen, "equal clock counts still replace the source");
+  assert.equal((await (await request()).json()).tracks[0].id, 2);
+  assert.equal(h.pulls.at(-1)[0].sessionId, "chat-pub", "island presence cannot hide the chat microphone");
+  // Rejoining OBL first opens a publication with no live track: OC remains the audible source until live.
+  speaker.voice.pub = "back-on-island";
+  assert.equal((await (await request()).json()).tracks[0].id, 2);
+  assert.equal(h.pulls.at(-1)[0].sessionId, "chat-pub");
+  speaker.voice.track = "mic";
+  h.room.updateVoice();
+  assert.equal(generation(), islandGen);
+  assert.equal((await (await request()).json()).tracks[0].id, 2);
+  assert.equal(h.pulls.at(-1)[0].sessionId, "back-on-island");
+  // A delayed OC catalog entry must not authorize an island microphone that has since moved indoors.
+  speaker.zone = "sphere-0"; speaker.outdoor = null;
+  assert.deepEqual((await (await request()).json()).tracks, []);
+});
+
+test("the island discards an in-flight OC pull when that identity switches microphone before the SFU answers", async () => {
+  const h = await roomHarness();
+  await h.join(1, "a"); await h.join(2, "b");
+  const listener = h.room.players.get(1), speaker = h.room.players.get(2);
+  listener.outdoor = { state: "open", scope: "main" };
+  speaker.voice.pub = speaker.voice.track = null;
+  await h.room.audienceSources([{ id: 2, zone: "main", session: "old-chat", track: "mic", gen: 1 }]);
+  h.room.sfu.newTracks = async () => {
+    speaker.voice.pub = "new-island"; speaker.voice.track = "mic";
+    return { tracks: [{ mid: "stale", sessionId: "old-chat", trackName: "mic" }] };
+  };
+  const res = await h.room.voiceRequest("pull", { headers: new Headers({ "x-player-id": "1", "x-room-token": listener.connectionToken }), json: async () => ({ ids: [2] }) });
+  assert.deepEqual((await res.json()).tracks, []);
+  assert.ok(h.closes.some((mids) => mids.includes("stale")), "the obsolete pull is closed at the SFU");
+  assert.deepEqual(plain(listener.voice.mids), {});
 });
 
 test("a woken Room keeps the Audience's Ooga Chat speakers; the Audience resends only what changed, and again when not delivered", async () => {
@@ -389,6 +504,16 @@ test("cleanup: two runs over one job never remove another, and tracks found thro
   assert.deepEqual([a.media.cleanup.length, openMids("sC")], [0, []]);
 });
 
+test("regression: the alarm's cleanup pass ends a job whose session the SFU calls gone with a bare 410", async () => {
+  const a = await host().make();
+  sfu.goneBare = new Set(["gone-1", "gone-2"]);
+  try {
+    a.media.cleanup.push({ session: "gone-1", mids: ["0"], all: false, at: Date.now(), tries: 0 }, { session: "gone-2", mids: [], all: true, at: Date.now(), tries: 0 });
+    await a.media.runCleanup();
+    assert.deepEqual(a.media.cleanup, [], "not retried every alarm for an hour");
+  } finally { sfu.goneBare = null; }
+});
+
 test("regression: a retired publication leaves the island's sources before it is closed, so no island listener pulls a closed session", async () => {
   const h = host(), a = await h.make();
   const amy = await connect(a, who(1));
@@ -416,4 +541,21 @@ test("regression: an Ooga Chat tab hears at once when the island's voice takes o
   const sent = amy.ws.sent.length;
   await a.world(32, [], []);
   assert.equal(amy.ws.sent.length, sent, "no change, no word");
+});
+
+test("regression (#767): relay credentials are answered while the connection's other calls are still at the SFU", async () => {
+  const h = host(), a = await h.make();
+  const amy = await connect(a, who(1)), bea = await connect(a, who(2));
+  await speak(a, amy);
+  await media(a, bea, "receive/open");
+  let release = null;
+  sfu.onNewTracks = () => new Promise((resolve) => { sfu.onNewTracks = null; release = resolve; });
+  const syncing = media(a, bea, "receive/sync");
+  const first = await Promise.race([media(a, bea, "ice"), syncing.then(() => "sync"), new Promise((resolve) => setTimeout(() => resolve("stuck"), 500))]);
+  assert.equal(first.status, 200, "the credentials call does not wait for the sync");
+  assert.deepEqual(first.body, {}, "no relay is set up here: an empty answer, and the page keeps its direct candidates");
+  while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
+  release();
+  assert.equal((await syncing).status, 200);
+  await h.settle();
 });

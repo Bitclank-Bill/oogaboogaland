@@ -171,6 +171,30 @@ test("anyone inside may unlock, wrong tries run out, and a lock survives hiberna
   assert.equal(woken.players.get(1).roomLock, null);
 });
 
+test("the Block Party's channel is everyone's in the room: arrivals hear it, it survives hibernation, and the last one out takes it", async () => {
+  const h = host(), r = h.room(), dj = await h.join(r, 1, "a"), friend = await h.join(r, 2, "b"), outside = await h.join(r, 3, "c");
+  await h.enter(r, dj, "a", "sphere-6");
+  assert.deepEqual(messages(dj, "party").at(-1), { t: "party", channel: -1, by: 0 }, "an arrival hears that nobody has chosen one yet");
+  await h.enter(r, friend, "b", "sphere-6");
+  await h.enter(r, outside, "c", "sphere");
+  await h.send(r, dj, { t: "party", channel: 3 });
+  assert.deepEqual(messages(friend, "party").at(-1), { t: "party", channel: 3, by: 1 });
+  assert.equal(messages(dj, "party").at(-1).channel, 3, "the DJ's own page hears it too");
+  assert.equal(messages(outside, "party").length, 0, "nobody outside the room hears it");
+  await h.send(r, dj, { t: "party", channel: 4 });
+  assert.equal(messages(friend, "party").at(-1).channel, 3, "a second change within the gap is not passed on");
+  assert.deepEqual(messages(dj, "party").at(-1), { t: "party", channel: 3, by: 0 }, "and its sender is tuned back to the room's channel");
+  await h.send(r, outside, { t: "party", channel: 1 });
+  assert.equal(r.party.channel, 3, "only someone in the room changes it");
+  h.runtime.listed = h.accepted.filter((ws) => !ws.closed);
+  const woken = h.room();
+  assert.equal(woken.party.channel, 3, "the channel comes back from the occupants' attachments");
+  await h.send(woken, outside, { t: "zone", name: "sphere-6" });
+  assert.equal(messages(outside, "party").at(-1).channel, 3, "a later arrival is tuned to it");
+  for (const ws of [dj, friend, outside]) await h.send(woken, ws, { t: "zone", name: "sphere" });
+  assert.equal(woken.party, null, "the last one out takes it with them");
+});
+
 test("wrong PIN tries are the player's: a reconnect or a hibernation does not start them again", async () => {
   const h = host(), r = h.room(), inside = await h.join(r, 1, "a");
   let outside = await h.join(r, 2, "b");
@@ -355,4 +379,31 @@ test("the frames every page hears are held to a rate, well over any page's", asy
   h.advance(10000);
   await h.send(r, a, { t: "zone", name: "sphere-7" });
   assert.equal(b.sent.filter((m) => m.t === "zone").at(-1).name, "sphere-7", "and it comes back");
+});
+
+test("regression: a full voice cleanup queue lets go of sessions nobody holds rather than refuse everyone's voice", async () => {
+  const h = host(), r = h.room();
+  const a = await h.join(r, 1, "a"), b = await h.join(r, 2, "b");
+  await h.enter(r, a, "a", "sphere-1"); await h.enter(r, b, "b", "sphere-1");
+  const pa = r.players.get(1), pb = r.players.get(2);
+  pa.voice = { pub: "pub-a", sub: "sub-a", track: "mic", gen: 1, mids: {} };
+  pb.voice = { pub: "pub-b", sub: "sub-b", track: "mic", gen: 1, mids: {} };
+  r.sfu = {
+    newTracks: async (session, body) => ({ tracks: body.tracks.map((t, i) => ({ sessionId: t.sessionId, mid: String(i) })), sessionDescription: { type: "offer", sdp: "x" } }),
+    closeTracks: async () => { throw Object.assign(new Error("SFU no answer"), { status: 0 }); },
+    getSession: async () => { throw Object.assign(new Error("SFU no answer"), { status: 0 }); },
+  };
+  const job = (session, at) => ({ session, at, revision: 0, mids: ["0"], midVersions: { 0: 0 }, inspect: false, inspectUntil: 0 });
+  const pull = () => r.voiceRequest("pull", { headers: new Headers({ "x-player-id": "1", "x-room-token": pa.connectionToken }), json: async () => ({ ids: [2] }) });
+  // Every session in the queue is still held: the bound holds, and the pull is refused as before.
+  r.cleanupJobs = [];
+  for (let i = 0; i < 64; i++) r.cleanupJobs.push(job(i % 2 ? "sub-b" : "sub-a", 1000 + i));
+  assert.equal((await pull()).status, 503);
+  // Held by nobody (pages that restarted or left, while the SFU stopped answering): the oldest goes, and voice goes on.
+  r.cleanupJobs = [];
+  for (let i = 0; i < 64; i++) r.cleanupJobs.push(job(i === 0 ? "sub-a" : `gone-${i}`, 1000 + i));
+  assert.notEqual((await pull()).status, 503);
+  assert.ok(r.cleanupJobs.some((j) => j.session === "sub-a"), "a held session's job is kept, however old");
+  assert.ok(!r.cleanupJobs.some((j) => j.session === "gone-1"), "the oldest job nobody holds is let go");
+  assert.ok(r.cleanupJobs.length < 64);
 });
