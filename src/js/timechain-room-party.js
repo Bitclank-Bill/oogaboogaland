@@ -917,10 +917,10 @@
   // One club rig across the booth's top, built in a frame whose +z runs toward the DJ behind it (their right +x): a
   // four-channel mixer between two big media players, butted together on one plinth lit along its front. Each player
   // has its touch screen standing up at the back, its hot cue pads, a big jog wheel with a screen in its middle, the
-  // cue and play buttons in their lit rings and its tempo fader; the mixer its channels' knobs, meters, colour knobs,
+  // play button in its lit ring and its tempo fader; the mixer its channels' knobs, meters, colour knobs,
   // cue buttons and faders, the crossfader, its FX screen and beat lamps, and an antenna. Beside it a laptop showing
   // the radio's station and song, and headphones. What moves is its own node: the jog wheels and their screens turn,
-  // the meters, beat lamps and the players' cue and play rings light with the music.
+  // the meters, beat lamps and the players' play rings light with the music.
   const GEAR = { black: "#111115", panel: "#1b1b21", edge: "#2c2c34", silver: "#b4b4bc", rubber: "#08080a", knob: "#24242a",
     cap: "#c8c8d0", tick: "#ececf4", screen: "#06080f", button: "#2e2e36" };
   const RIG = { H: 0.11, D: 0.56, PW: 0.46, MW: 0.54, GAP: 0.006, BASE: 0.03 };
@@ -1026,8 +1026,7 @@
       k.torus(0.04, 0.003, "#9a5cff", 0, 0.002, 0, { emissive: 1, glow: true, seg: 20, sides: 4 });
       k.box(0.008, 0.003, 0.03, "#ffffff", 0, 0.003, 0.043, { emissive: 1, glow: true });
     }, jx, top + 0.026, jz);
-    // The cue and play buttons in their rings, bottom left.
-    G.node(`cue${i}`, ringButton("cue", 0.028, "#ffb020"), x - W / 2 + 0.05, top + 0.006, D / 2 - 0.12, { glow: true });
+    // The play button in its ring, bottom left.
     G.node(`play${i}`, ringButton("play", 0.028, "#3dff7a"), x - W / 2 + 0.05, top + 0.006, D / 2 - 0.05, { glow: true });
     // The tempo fader and its buttons down the right, the sync buttons and jog knob over it.
     fader(G, x + W / 2 - 0.04, top, 0.135, 0.2, false, -0.1);
@@ -1390,7 +1389,7 @@
       const n = nodes[name], p = n.position, d = Math.hypot(p.x, p.z);
       cones.push({ node: n, x: p.x, z: p.z, dx: -p.x / d, dz: -p.z / d });
     }
-    const records = [nodes.record0, nodes.record1], jogs = [nodes.jog0, nodes.jog1], cues = [nodes.cue0, nodes.cue1], plays = [nodes.play0, nodes.play1];
+    const records = [nodes.record0, nodes.record1], jogs = [nodes.jog0, nodes.jog1], plays = [nodes.play0, nodes.play1];
     const fxOn = nodes.fxOn, ball = nodes.ball, wave = nodes.wave, drop = nodes.drop, stageEdge = nodes.stageEdge, wallNode = nodes.wall;
     // The mixer's meters, a channel's segments bottom up, and how many of each are lit; its beat lamps.
     const meterSegs = [], meterLit = new Int8Array(4).fill(-1), beatLamps = [0, 1, 2, 3].map((i) => nodes[`beat${i}`]);
@@ -1728,11 +1727,11 @@
           n.scale.x = n.scale.z = 1 + push * 2.5;
           n.glow = 0.2 + 0.6 * kick;
         }
-        // The DJ's rig: the jog wheels and their screens turn at 33 rpm, the cue rings blink on the beat, the beat lamps
+        // The DJ's rig: the jog wheels and their screens turn at 33 rpm, the play rings blink on the beat, the beat lamps
         // count the bar and the FX button pulses on the kick.
         for (let i = 0; i < 2; i++) {
           records[i].rotation.y -= dt * 3.49; jogs[i].rotation.y -= dt * 3.49;
-          cues[i].glow = (beat % 1 < 0.5 ? 1 : 0.25) * dim; plays[i].glow = 0.85 * dim;
+          plays[i].glow = (beat % 1 < 0.5 ? 1 : 0.4) * dim;
         }
         for (let i = 0; i < 4; i++) beatLamps[i].glow = (i === step % 4 ? 0.5 + 0.5 * kick : 0.08) * dim;
         fxOn.glow = (0.45 + 0.55 * kick) * dim;
