@@ -18,8 +18,10 @@ of adding tabs to it, the game will let each visitor shape their own:
 - **Visitors can hide panels they don't use**, add the character tabs they like and put
   their tabs in the order they want, in a tab customization dialog. The choice is theirs,
   kept in their browser.
-- **Bananas is always there and always first.** It can't be hidden, moved or put behind a
-  custom tab.
+- **The locked tabs always stay, in front.** On the island that is Bananas, first. In
+  Ooga Chat it is the Ooga Chat tab, first, then Bananas: the app is for chatting, so its
+  own tab stays. Locked tabs can't be hidden, moved or put behind another tab. The island's
+  Ooga Chat tab is not locked: a player there who doesn't want to chat can hide it.
 
 ## How tabs work today
 
@@ -42,9 +44,10 @@ plan makes them one list.
 A new shared module, `src/js/panel-tabs.js` (`BL.panelTabs`), reading nothing at load but
 `window.BL`, so Ooga Chat can load it as it does `roster-panel.js`. It holds:
 
-- **The stock tabs**, each `{ id, label, icon, surfaces, required, removable, available(ctx) }`:
-  Bananas (`required`, first on every surface), Contributing Oogas, Online Oogas, The
-  Commons, and Ooga Chat (on the island; the app's home tab in the app, see open questions).
+- **The stock tabs**, each `{ id, label, icon, surfaces, locked, available(ctx) }`, where
+  `locked` names the surfaces a tab is locked on, in the order it is locked in: Bananas
+  (locked on both), Ooga Chat (locked first in the app, a normal tab on the island),
+  Contributing Oogas, Online Oogas and The Commons.
   `available` keeps today's gates, so a hidden or added tab never changes who may see what.
 - **The character tabs**, read from `BL.characters.all()`: every character with a valid
   `tab`, under the id `char:<handle>`, in roster order, each `available` by its `audience`
@@ -52,19 +55,20 @@ A new shared module, `src/js/panel-tabs.js` (`BL.panelTabs`), reading nothing at
 - **`REFUSED`**, the maintainers' kill switch: a list of character tab ids the registry
   will not offer, so a bad tab can be pulled in one line without editing the character's
   file. A refused tab leaves every row and the dialog as a removed one does (below).
-- **`list(surface, prefs, ctx)`**: the tabs to show, in order. Bananas first, always; then
-  every other tab the visitor shows (stock tabs not hidden, character tabs added and
-  `available`), in the visitor's `order`. A tab missing from `order` comes after the
+- **`list(surface, prefs, ctx)`**: the tabs to show, in order. The surface's locked tabs
+  first, always (the island: Bananas; the app: Ooga Chat, Bananas); then every other tab
+  the visitor shows (stock tabs not hidden, character tabs added and `available`), in the
+  visitor's `order`. A tab missing from `order` comes after the
   ordered ones, in the default order (the stock order, then character tabs in the order
   they were added). Unknown, removed or refused ids in `prefs` are skipped, never an error.
 - **`prefs` load and save**, `{ hidden, added, order }`, checked at the boundary as
   `game.load` is: a bad piece falls back to its default (nothing hidden, nothing added, the
-  default order). `bananas` in `hidden` or `order` is ignored.
+  default order). A locked tab's id in `hidden` or `order` is ignored.
 
 `sheet.js` builds its buttons and panels from `list("island", …)` instead of `NAMES` and the
 fixed markup, and Ooga Chat passes `list("chat", …)` to its shell. Saved layouts naming a
-tab no longer offered (a hidden tab, a removed character) fall back to Bananas, as a saved
-tab that is not `available` does today.
+tab no longer offered (a hidden tab, a removed character) fall back to the surface's first
+locked tab, as a saved tab that is not `available` does today.
 
 ## A character's tab
 
@@ -159,8 +163,8 @@ the app's shell alike), modal and keyboard-reachable, with the controller's Menu
 through `pad-focus.js` on the island:
 
 - **Your tabs**: every tab on the row, in its order, stock and character tabs together.
-  Bananas is shown locked on and first, with a line saying it always stays there. Each other
-  row has a switch to hide it (or remove it, for a character tab) and **Move up** and
+  The locked tabs are shown first, locked on, with a line saying they always stay there.
+  Each other row has a switch to hide it (or remove it, for a character tab) and **Move up** and
   **Move down** buttons. Stock tabs the visitor can't see yet (signed out, not a
   contributor) are listed with why, and stay off the row until they can.
 - **Character tabs**: every character that offers one, by display name, with its icon,
@@ -171,7 +175,7 @@ through `pad-focus.js` on the island:
 
 Reordering never needs a drag. Each row's buttons move it one place, and with a row
 focused, Alt+Up and Alt+Down do the same; focus follows the row it moved. Nothing can move
-above Bananas: the first movable row's Move up is disabled. On the island a controller
+above a locked tab: the first movable row's Move up is disabled. On the island a controller
 drives the dialog through the Menus context (`pad-focus.js`): the d-pad moves between rows
 and buttons, A presses one. A drag may be added later as a shortcut, never as the only
 way.
@@ -215,7 +219,7 @@ in a later stage is merged before the one before it.
 1. **One registry, no visible change.** `panel-tabs.js` holds the stock tabs; `sheet.js` and
    the Ooga Chat shell read their list from it. The tab rows look and behave as today.
 2. **Hide, show and reorder stock tabs.** The customization dialog with the stock tabs only,
-   Bananas locked first, reordering by buttons, keys and the controller, the per-browser
+   the locked tabs first, reordering by buttons, keys and the controller, the per-browser
    choice, badges dropped for hidden tabs, the suite's checks for both surfaces at phone and
    desktop sizes.
 3. **Character tabs.** The `tab` field, `audience` required, in `character-safety.mjs`, the
@@ -237,20 +241,20 @@ in a later stage is merged before the one before it.
 
 ## Open questions for the maintainers
 
-1. **Bananas first in Ooga Chat.** The app's first tab today is Ooga Chat itself, with
-   Bananas second. Does Bananas move ahead of it, or is Ooga Chat the one required tab there
-   with Bananas pinned right after it?
-2. **Which stock tabs can be hidden?** This plan lets every one but Bananas go. Should
-   Contributing Oogas, or the island's Ooga Chat tab, stay?
-3. **Links.** None at first. Later: the builder's own GitHub profile only, repositories on
+Decided: in Ooga Chat, the Ooga Chat tab stays first and locked, with Bananas locked after
+it. On the island, Bananas alone is locked, and the Ooga Chat tab can be hidden.
+
+1. **Which other stock tabs can be hidden?** Everything but the locked tabs can go. Should
+   Contributing Oogas stay?
+2. **Links.** None at first. Later: the builder's own GitHub profile only, repositories on
    Merge Rock, or a maintainer-reviewed list?
-4. **Review.** Is a schema-valid tab enough for the automatic lane, or does every tab's text
+3. **Review.** Is a schema-valid tab enough for the automatic lane, or does every tab's text
    get a maintainer's read, as custom dress code does?
-5. **The cap.** Two added character tabs, or a scrolling tab row so more can be added?
-6. **Signed out.** A signed-out visitor can add `everyone` tabs; `signed-in` and
+4. **The cap.** Two added character tabs, or a scrolling tab row so more can be added?
+5. **Signed out.** A signed-out visitor can add `everyone` tabs; `signed-in` and
    `contributors` tabs show in the dialog as "Sign in to see" and can't be added. Is that
    right, or should signed-out visitors see no character tabs at all?
-7. **Discovery.** Should a character's tab also be reachable from their Ooga (its tooltip
+6. **Discovery.** Should a character's tab also be reachable from their Ooga (its tooltip
    or roster row) as well as from the dialog?
-8. **Announcing new tabs.** Is a new character tab announced anywhere (a line in the
+7. **Announcing new tabs.** Is a new character tab announced anywhere (a line in the
    dialog, Tess's news, a toast)? The plan's default: nowhere, since tabs are opt-in.
