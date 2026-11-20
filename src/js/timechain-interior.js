@@ -538,8 +538,10 @@
       camera.target.x += p.x - x; camera.target.y += p.y - y; camera.target.z += p.z - z;
     };
     const view = { yaw: 0, pitch: 0.05, dist: 4, target: { x: L.arrival.x, y: 1.6, z: L.arrival.z } };
+    // The Block Party's orbit goes as far as the room is across, so only its walls (`clampCamera`) stop it: from one
+    // side of the floor the view backs out to the other.
     const pilot = pilotMod.create({
-      renderer, canvas, camera, hud, presets: { entrance: view }, landing: "entrance", pitch: [-0.2, 1.2], dist: [3, 8],
+      renderer, canvas, camera, hud, presets: { entrance: view }, landing: "entrance", pitch: [-0.2, 1.2], dist: [3, L.kind === "party" ? 2 * L.R : 8],
       follow: { y: 0.9, min: 3, max: 6, pitch: [0.2, 0.7] },
       clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: (x, z) => deckRange(x, z, -Infinity, roof(x, z, 0), 0).hi, coarse: COARSE, mayPossess: (cave) => BL.net.mayDrive(cave.traits.name),
       jetpackStatus: (who) => {
@@ -1317,12 +1319,30 @@
         return pilot.modeAction("mode-toggle");
       }
       if (BL.controls.matches(e, "escape")) {
-        if (!guide.stage && !pilot.escape()) walkOut();
+        if (!guide.stage && !leaving && !pilot.escape()) askExit();
         return true;
       }
       // A kind's own keys (the Lecture Hall's pause and sections).
       return !!(motion && motion.key && !guide.stage && motion.key(e, hud));
     };
+    // Escape asks before it walks the Ooga out (the Leave button and the Exit button do not): Leave walks out, Stay,
+    // Escape again or a press outside closes it. The Ooga is held while it is open, as the controls panel holds it.
+    const exitAsk = document.getElementById("sphere-exit");
+    const closeExit = () => { if (exitAsk.open) exitAsk.close(); pilot.setMenuOpen(false, false); };
+    const askExit = () => {
+      if (exitAsk.open) return;
+      pilot.controls.reset();
+      pilot.setMenuOpen(true, false);
+      exitAsk.showModal();
+    };
+    exitAsk.addEventListener("close", () => pilot.setMenuOpen(false, false), { signal: ctx.signal });
+    exitAsk.addEventListener("click", (e) => {
+      const choice = e.target.closest("[data-sphere-exit]");
+      if (!choice) return;
+      closeExit();
+      if (choice.dataset.sphereExit === "leave") walkOut();
+    }, { signal: ctx.signal });
+    hud.dismissOutside(exitAsk, closeExit);
     const onDonation = (donation, counted = null) => {
       game.recordDonation(donation, counted && counted.exact);
       world.level = Math.min(BL.pile.MAX_BANANAS, world.level + (counted ? counted.exact : BL.game.bananasFor(donation.sats)));
@@ -1368,6 +1388,7 @@
       }
       world.sphereKeep = null;
       finishScrub(true, false);
+      closeExit();
       reader.dispose();
       holdings.dispose();
       sound.dispose();
