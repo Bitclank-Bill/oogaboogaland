@@ -146,7 +146,8 @@ export const renderCatalog = async ({ baselineDir, catalogFile, output }) => {
         .catch(() => { networkError = new Error("Portrait renderer network isolation failed"); });
     });
     await browser.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
-    await browser.open(`${origin}/?debug=1&nosim=1&net=0&pos=0&welcome=0&hour=12&day=80&scene=lab`);
+    // Faces always use the game's Canvas2D icon renderer; the unused lab scene needs no WebGL context.
+    await browser.open(`${origin}/?debug=1&nosim=1&net=0&pos=0&welcome=0&hour=12&day=80&scene=lab&canvas2d=1`);
     const deadline = Date.now() + 60000;
     while (!(await browser.evaluate("!!(window.__ooga && window.__ooga.scene)").catch(() => false))) {
       if (networkError) throw networkError;
