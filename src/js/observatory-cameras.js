@@ -26,7 +26,7 @@
       channel(id, label, { x: m.x + sr * 13 + cr * 4, y: m.floorY + 6, z: m.z + cr * 13 - sr * 4 },
         { x: m.x, y: m.floorY + 1.5, z: m.z }, 32);
     }
-    channel("sphere", "TIMECHAIN SPHERE", at(places.sphere, 9, 7, 16), at(places.sphere, 0, 4, 0), 45, 55);
+    channel("sphere", "TIMECHAIN SPHERE", at(places.sphere, 20, 17, 30), at(places.sphere, 0, 3, 0), 65, 55);
     if (places.bifrost) channel("bifrost", "BIFROST ISLET", at(places.bifrost, 8, 7, 14), at(places.bifrost, 0, 3, 0), 40, 55);
     const quad = (width, height, surface) => ({ verts: [-width / 2, -height / 2, 0, width / 2, -height / 2, 0, width / 2, height / 2, 0, -width / 2, height / 2, 0],
       faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false, architectRoom: true, imageSurface: surface });

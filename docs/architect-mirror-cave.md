@@ -37,9 +37,13 @@ recreates targets and quality changes select the current target size.
 
 ## Live camera screens
 
-Four perspectives are repeated across the wall: the banana pile, B.C.A., the
-Arcade entrance and the mirror entrance. They render current island state into
-GPU textures, without CPU pixel reads, image encoding or another WebGL context.
+Four texture slots are repeated across the wall. Every eight seconds one visible
+slot switches to the next channel, with a name below its picture. The catalog in
+`observatory-cameras.js` currently covers eleven views: the banana pile, Mempool
+lake, Merge Rock, Bifrost chamber, the B.C.A./Arcade/Factory/EntropyLab/mirror
+entrances, Timechain Sphere exterior and Bifrost islet. These are live rendered
+views, without CPU pixel reads, image encoding or another WebGL context. The
+previous picture is hidden until the newly named channel has a fresh capture.
 
 - High/medium: 256 x 144 pixels, each feed no more often than every 90 ms.
 - Low: 192 x 108 pixels, each feed no more often than every 200 ms.
@@ -58,6 +62,31 @@ Four high-tier color targets use 576 KiB before depth attachments. Source world
 geometry and simulation dominate the memory budget; screen count does not
 multiply the number of cameras or textures.
 
+### Separate areas and eventual coverage
+
+`observatory-bifrost.js` is the first separate-area observer. It reuses the
+entrance window's reduced chamber model in a camera-only graph, with independent
+geometry identities, lighting and no shadows. Source identity excludes that
+graph from the hub, every other feed and the main view. It never enters Bifrost's
+interactive scene or opens a second simulation, audio graph or network session.
+
+A fixed pool of 32 simple Ooga silhouettes reads the public chamber poses already
+received by `net.remotes`, at 10 Hz. Bodies with missing or mismatched `poseZone`
+are hidden. There are no invented visitors. Chamber motion is a lightweight
+approximation: rings and glyph move locally, and travel-window charge follows
+visitor proximity. Exact machine phase, gaze, costumes and recursive world
+windows are omitted. Multiplayer observation still needs acceptance testing.
+
+Observer models are built only while selected inside the Observatory, and their
+GPU resources are released on rotation or exit. The shared catalog and bounded
+slots let future adapters add areas without retaining every interactive scene.
+The planned progression is other public interiors (lab, B.C.A., Factory, Arcade,
+Mempool chamber), DSB and its public rooms, then public Timechain rooms and game
+areas. Each needs its own camera representation and a check of which current
+state is available. Locked/private rooms must respect their access rules; an
+unavailable state must not be presented as a live feed. Those adapters are not
+implemented in this PR yet. The goal is eventual coverage of every eligible area.
+
 ### Geometry observations
 
 Initial local browser captures, at noon with the simulator and network disabled,
@@ -72,6 +101,12 @@ wider pile view, one character mesh alone contributed 110,080 triangles. This
 explains why resolution alone is not enough, and why tight entrance framing is
 cheaper than a broad crowd view. The implementation does not repartition the
 shared terrain or simplify other contributors' character geometry.
+
+The expanded catalog's Bifrost observer submitted **7 draw calls / 11,098
+triangles** without visitors in the local browser. Merge Rock was about 294k
+triangles. Hub entrance feeds still include the large terrain batches above;
+the adapter approach is substantially cheaper for separate interiors. These
+figures are individual captures, not a sustained performance benchmark.
 
 With `debug=1&pos=1`, the existing position display's `data-cameras` contains
 current per-camera capture, draw-call and triangle counts, plus the five largest
@@ -108,6 +143,10 @@ The existing mirror regression checks retain shot/melee, unbreakable-surface and
 scene-round-trip assertions, update the gate expectation, and add real-key
 entry/return checks with idle capture assertions. The automated suite has not
 been run: AGENTS.md defaults to waiting unless fast/full tests are requested.
+Additional regression assertions cover cycling through the catalog with four
+stable texture slots, pending pictures, isolated observer geometry, stale-zone
+pose rejection and source disposal. Manual browser review covered the rotating
+wall and framing; these new automated assertions have not been run either.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

@@ -16982,6 +16982,35 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     return { active: room.active, feet: B.pilot.player.root.position.y - B.pilot.player.baseY,
       name: B.pilot.player.traits.name, feeds: room.feeds.length, captures: room.feeds.reduce((n, f) => n + f.captures, 0) };
   })()`);
+  const channels = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect, cameras = room.cameras;
+    const slots = room.feeds.map(f => f.geometry), seen = new Set(room.feeds.map(f => f.channel.id));
+    const source = room.feeds.find(f => f.channel.id === "bifrost.chamber").source;
+    const isolated = source.root.cameraHidden && !source.root.parent
+      && Array.from(source.meshes).every(g => g.cameraFeedSource === source && g.castShadow === false);
+    const id = "observatory-regression", rec = { id, body: "test", zone: "bifrost.chamber", poseZone: "bifrost.chamber", x: 1.234, y: 0, z: 2.345, yaw: 0.6 };
+    let livePose = false, staleHidden = false;
+    BL.net.remotes.set(id, rec);
+    try {
+      source.update(0.11);
+      const actor = source.root.children.find(n => n.visible && n.position.x === rec.x && n.position.z === rec.z);
+      livePose = !!actor && actor.rotation.y === rec.yaw;
+      rec.poseZone = "main"; source.update(0.11); staleHidden = !!actor && !actor.visible;
+    } finally { BL.net.remotes.delete(id); }
+    let bounded = true, pending = true;
+    for (let i = 0; i < cameras.channels.length + 4; i++) {
+      cameras.update(BL.observatoryCameras.SWITCH_SECONDS + 0.1);
+      pending &&= room.feeds.filter(f => f.pending).length === 1;
+      bounded &&= room.feeds.length === 4 && room.feeds.every((f, j) => f.geometry === slots[j])
+        && new Set(room.feeds.map(f => f.channel.id)).size === 4;
+      for (const f of room.feeds) seen.add(f.channel.id);
+      B.advance(0.25, 1 / 60);
+    }
+    return { isolated, livePose, staleHidden, bounded, pending, all: cameras.channels.every(c => seen.has(c.id)),
+      released: source.meshes.size === 0 && source.root.children.length === 0 };
+  })()`);
+  record("hub observatory: channels cycle through four texture slots, isolated Bifrost poses reject stale zones and release on rotation",
+    Object.values(channels).every(Boolean), JSON.stringify(channels));
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", code: "KeyS" });
   await b.evaluate(`__ooga.advance(1, 1 / 60)`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "s", code: "KeyS" });
