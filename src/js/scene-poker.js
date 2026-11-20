@@ -76,6 +76,7 @@
     // A theme's fittings may stand where a standing Ooga is: it steps to the nearest spot clear of them.
     BL.pokerModels.setFloor(theme.id);
     if (crowd) crowd.refloor(BL.pokerModels.spots(theme.id));
+    audio.setTheme(theme.id);
     // A theme's own lights (Banana Club's bar and cage) follow the room's thirteen, in slots no tier keeps first.
     extraLights = BL.pokerModels.lights(theme.id); renderOpts.lightCount = 13 + extraLights.length / 8;
     const p = avatar && (seatTable < 0 || pendingStand) ? avatar.root.position : null;
