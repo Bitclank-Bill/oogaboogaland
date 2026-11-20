@@ -49,9 +49,12 @@ A new shared module, `src/js/panel-tabs.js` (`BL.panelTabs`), reading nothing at
   (locked on both), Ooga Chat (locked first in the app, a normal tab on the island),
   Contributing Oogas, Online Oogas and The Commons.
   `available` keeps today's gates, so a hidden or added tab never changes who may see what.
-- **The character tabs**, read from `BL.characters.all()`: every character with a valid
-  `tab`, under the id `char:<handle>`, in roster order, each `available` by its `audience`
-  through the same gates as the stock tabs.
+- **The character tabs**: every character with a valid `tab`, under the id
+  `char:<handle>`, in roster order, each `available` by its `audience` through the same
+  gates as the stock tabs. The island reads them from `BL.characters.all()`. Ooga Chat has
+  no character files (its build loads only `SHARED` in `scripts/ooga-chat.mjs`, which
+  leaves out `characters.js` and `characters.gen.js`), so it is handed the same data (see
+  Ooga Chat's character tabs, below).
 - **`REFUSED`**, the maintainers' kill switch: a list of character tab ids the registry
   will not offer, so a bad tab can be pulled in one line without editing the character's
   file. A refused tab leaves every row and the dialog as a removed one does (below).
@@ -107,6 +110,9 @@ The exact shape is decided in stage 3; this is the direction:
   **Required, with no default**: a builder has to choose. The registry applies it as the
   stock tabs' gates apply (`signed-in` as Online Oogas is, `contributors` as Ooga Chat's
   contributor tabs are), so a character tab never shows anyone more than a stock tab would.
+  **Audience is not privacy.** Every character file is built into the page every visitor
+  downloads, so a `signed-in` or `contributors` tab's text can be read in the page's source
+  by anyone. `audience` only decides where the tab shows. Put nothing private in a tab.
 - **`blocks`**: up to 24 blocks of plain text, each a `heading` (60 characters) or `text`
   (500 characters). Rendered with `textContent` by one shared renderer, never as HTML.
 
@@ -142,6 +148,32 @@ manual review, as an unknown field does today. The tab counts toward the charact
 code. `npm run character:check` reports the tab's size, its audience and the lane, and the
 character studio shows the tab beside the Ooga.
 
+### Who counts as a contributor
+
+`contributors` has to mean the same thing on both surfaces. Ooga Chat already decides it
+on the server: the bridge's `capability` op (`worker/src/chat-capability.js`) answers
+`eligible` for a GitHub account that owns a bundled Ooga or one Oogatron vouches for. The
+island has no such gate on its panels today: Online Oogas and The Commons ask only for a
+signed-in account. For `contributors` the island uses its own version of that same rule:
+the signed-in account has an Ooga of its own (`BL.net.ownCharacter()`, a bundled character
+or the temporary one Oogatron vouches for, `contributors.addTemporary`). Stage 3 checks that
+the two agree for the same account.
+
+### Ooga Chat's character tabs
+
+The app gets character tabs as data, never as character code. Two ways:
+
+- **The bridge (recommended).** `build:site` already writes the cast to
+  `worker/src/characters.gen.json`, and the island Worker's bridge op `cast`
+  (`worker/src/chat-public.js`) serves it to Ooga Chat's edge for Contributing Oogas. Each
+  row gains the character's validated `tab`, and the app's registry reads the tabs from that
+  reply. One source, it follows every island deploy, and no character code ever reaches the
+  app. The cast's revision hash already covers what is sent, so a changed tab is a changed
+  cast.
+- **Baked into the app's build.** `scripts/ooga-chat.mjs` writes the tabs into the app as a
+  data file. Simpler, but the app's tabs then lag the island's until Ooga Chat is deployed
+  again.
+
 ### When it changes or goes
 
 - **The owner edits it.** Visitors who added the tab see the new text on the next deploy.
@@ -158,8 +190,10 @@ character studio shows the tab beside the Ooga.
 
 ### The tab customization dialog
 
-One dialog, opened from a small control at the end of the tab row (the island's sheet and
-the app's shell alike), modal and keyboard-reachable, with the controller's Menus context
+One dialog, opened from a **Choose tabs** button in the panel header, never from the tab
+row: on the island beside the notification bell in each panel's carved title, and in the
+same place on the app's panels. The tab row has no room for another button on a phone
+(below). The dialog is modal and keyboard-reachable, with the controller's Menus context
 through `pad-focus.js` on the island:
 
 - **Your tabs**: every tab on the row, in its order, stock and character tabs together.
@@ -199,7 +233,9 @@ and a join or a line still shows its toast where it does today.
 ## Phone layout and accessibility
 
 - The tab row must keep each tab at least 44 px wide. A phone's row is the drawer's width
-  less 80 px (`PHONE_TAB_INSET`), so a 390 px phone fits seven. The registry enforces a cap:
+  less 80 px (`PHONE_TAB_INSET`, which leaves room for the 44 px chevron at its end), so a
+  390 px phone has 310 px: seven tabs at 44.3 px each, and not one button more. That is why
+  **Choose tabs** lives in the panel header, not on the row. The registry enforces a cap:
   **at most two character tabs added**, so the row never exceeds seven with every stock tab
   showing. The dialog says so when the cap is reached.
 - The dialog's reorder buttons are real buttons with names ("Move The Commons up"), and a
@@ -223,9 +259,11 @@ in a later stage is merged before the one before it.
    choice, badges dropped for hidden tabs, the suite's checks for both surfaces at phone and
    desktop sizes.
 3. **Character tabs.** The `tab` field, `audience` required, in `character-safety.mjs`, the
-   bundle docs and the registry; `REFUSED`; the shared renderer with its credit line; the
-   character tabs section of the dialog, off by default; the "updated" mark;
-   `character:check` and the studio's preview. A sample tab on a maintainer's character.
+   bundle docs and the registry; `REFUSED`; the island's `contributors` check, matched
+   against the bridge's `capability`; the tabs carried to Ooga Chat in the bridge's `cast`
+   reply; the shared renderer with its credit line; the character tabs section of the
+   dialog, off by default; the "updated" mark; `character:check` and the studio's preview.
+   A sample tab on a maintainer's character.
 4. **Later, if wanted.** Links under rules the maintainers set, account sync, more block
    kinds. Each needs its own issue.
 
@@ -234,8 +272,10 @@ in a later stage is merged before the one before it.
 - **Don't add a `tab` field to a character file yet.** Nothing reads it, and the automatic
   intake will send the file to manual review.
 - **Write the tab down.** A title, who should see it (everyone, signed-in players or
-  contributors), the text, and a sketch of the icon, in an issue. When
-  stage 3 lands it is a few lines to add.
+  contributors), the text, and a sketch of the icon, in an issue. When stage 3 lands it is
+  a few lines to add.
+- **Keep it public.** Anyone can read a tab's text in the page's source, whatever its
+  audience. Nothing private, no contact details, nothing you would not post on the island.
 - **Think in text.** If the tab needs to do something (play, vote, sing, fetch live data),
   it isn't a character tab: it is a feature or a place, and it goes through **Ask first**.
 
@@ -258,3 +298,5 @@ it. On the island, Bananas alone is locked, and the Ooga Chat tab can be hidden.
    or roster row) as well as from the dialog?
 7. **Announcing new tabs.** Is a new character tab announced anywhere (a line in the
    dialog, Tess's news, a toast)? The plan's default: nowhere, since tabs are opt-in.
+8. **How Ooga Chat gets character tabs.** The plan recommends the bridge's `cast` reply
+   carrying each character's validated `tab`. Or should the app's build bake them in?
