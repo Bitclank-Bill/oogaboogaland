@@ -2042,6 +2042,7 @@ void main() {
     let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7, cameraFeedLastPriority = false;
     let cameraFeedLevel = 1, cameraFeedGoodMs = 0, cameraFeedBadMs = 0, cameraFeedHoldUntil = 0, cameraFeedDetail = 0;
     const cameraFeedCandidates = [];
+    let cameraFeedFocusedSource = null;
     const cameraFeedRank = (a, b) => (b.enhanced ? 2 : b.prewarm ? 1 : 0) - (a.enhanced ? 2 : a.prewarm ? 1 : 0) || b.mosaicSize - a.mosaicSize || b.screenSize - a.screenSize;
     const cameraFeedWidth = feed => {
       const width = feed.detail === 3 ? 1024 : feed.detail === 2 ? 512 : feed.detail === 1 ? 256 : qualityName === "low" || !feed.roomBackground ? 192 : 256;
@@ -2278,7 +2279,8 @@ void main() {
     // Reflectors use the tier's square mirror size; camera screens use a fixed rectangular target.
     const ensureReflectorTarget = (t) => {
       const size = t.fixedWidth || settings.mirror, targetHeight = t.fixedHeight || size;
-      if (t.fb && t.size === size) return;
+      if (t.fb && t.size === size && !t.refreshContent) return;
+      t.refreshContent = false;
       if (t.fb) {
         releaseFeedPrevious(t);
         if (t.blendResize && t.valid) {
@@ -3919,7 +3921,7 @@ void main() {
         if (g.mirrorRippleOnly) continue;
         // Observatory TVs reuse their captured textures; keep their images and per-instance flashes in cheap mirrors too.
         if (reducedCapture && (g.projective || (cameraFeedCapture
-          ? g.imageSurface && !g.imageSurface.atlas && !(cameraFeedRoom && g.architectRoom && g.imageSurface.feed)
+          ? g.imageSurface && !g.imageSurface.atlas && !g.cameraFeedPicture && !(cameraFeedRoom && g.architectRoom && g.imageSurface.feed)
           : g.sway || g.foliageVisibility === false || g.imageSurface && !(g.architectRoom && g.imageSurface.feed)))) continue;
         if (captureProfile) captureGeometry = g;
         const part = rec[kind], n = cameraFeedCapture ? rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.batch.drawInstanceCount : rec.count
@@ -4768,7 +4770,17 @@ void main() {
         // Within each group favor the largest projected picture. A furnished
         // feed costs one step; close-detail costs two, under the same cadence.
         cameraFeedCandidates.sort(cameraFeedRank);
-        let detailBudget = cameraFeedLevel === 2 ? 24 : cameraFeedLevel === 1 ? 8 : cameraFeedCandidates[0]?.enhanced ? 1 : 0;
+        const focused = cameraFeedCandidates[0]?.enhanced ? cameraFeedCandidates[0] : null;
+        const selected = cameraFeeds.find(feed => feed.enhanced && feed.source?.focus);
+        // Looking away pauses work without rebuilding the same room on return.
+        const focusedSource = selected && cameraFeedLevel > 0 ? selected.source : null;
+        if (cameraFeedFocusedSource !== focusedSource) {
+          cameraFeedFocusedSource?.focus.clear(); cameraFeedFocusedSource = focusedSource;
+        }
+        // A selected room spends the extra budget on its authored objects. Keep
+        // the rest moving, but cap their detail and update them at most once a second.
+        if (focused) for (const feed of cameraFeeds) if (!feed.enhanced && !feed.priority) feed.refreshMs = Math.max(1000, feed.refreshMs);
+        let detailBudget = cameraFeedLevel === 2 ? (focused ? 12 : 24) : cameraFeedLevel === 1 ? (focused ? 5 : 8) : focused ? 1 : 0;
         for (let i = 0; i < cameraFeedCandidates.length && detailBudget; i++) {
           const feed = cameraFeedCandidates[i];
           if (feed.enhanced || feed.prewarm && cameraFeedLevel > 0 && cameraFeedFrameMs < 22 && detailBudget >= (cameraFeedLevel === 2 ? 8 : 4)) {
@@ -4777,7 +4789,7 @@ void main() {
             feed.detailTarget = cameraFeedLevel + 1;
             detailBudget = Math.max(0, detailBudget - (feed.detailTarget === 3 ? 8 : feed.detailTarget === 2 ? 4 : 1));
           } else {
-            feed.detailTarget = Math.min(cameraFeedLevel, feed.screenSize > 0.28 ? 2 : 1, detailBudget);
+            feed.detailTarget = Math.min(cameraFeedLevel, focused ? 1 : 2, feed.screenSize > 0.28 ? 2 : 1, detailBudget);
             detailBudget -= feed.detailTarget;
           }
         }
@@ -4824,8 +4836,10 @@ void main() {
         }
         const source = captureFeed?.source;
         if (source) {
+          source.focus?.restore();
           source.setDetail?.(captureFeed.detail || 0);
           source.update(source.captureAt === undefined ? 0.1 : Math.min(1, (stamp - source.captureAt) / 1000));
+          source.focus?.apply(source === cameraFeedFocusedSource && !!captureFeed.enhanced, stamp, cameraFeedFrameMs < 24);
           source.captureAt = stamp;
           const first = activeCount;
           collectingCapture = true;
@@ -4841,7 +4855,10 @@ void main() {
           try { updateWorld(root, null); traverseVisible(root, collectForRender); }
           finally { collectingCapture = false; }
         }
-      } else { cameraFeedFrameAt = 0; cameraFeedFrameMs = 16.7; cameraFeedLevel = 1; cameraFeedGoodMs = cameraFeedBadMs = 0; }
+      } else {
+        cameraFeedFocusedSource?.focus.clear(); cameraFeedFocusedSource = null;
+        cameraFeedFrameAt = 0; cameraFeedFrameMs = 16.7; cameraFeedLevel = 1; cameraFeedGoodMs = cameraFeedBadMs = 0;
+      }
       activeRecords.length = activeCount;
       viewInstances = captureOnlyInstances = 0;
       for (let i = 0; i < activeRecords.length; i++) {
@@ -4988,6 +5005,9 @@ void main() {
         const seed = !!feed.backGeometry && feed.pending;
         const target = reflectorTarget(seed ? feed.backGeometry : feed.geometry), cam = feed.camera;
         target.blendResize = !feed.pending && !!(feed.enhanced || feed.prewarm);
+        const contentRevision = feed.enhanced && feed.source === cameraFeedFocusedSource ? feed.source?.focus?.revision || 0 : 0;
+        target.refreshContent = target.blendResize && target.feedRevision !== undefined && target.feedRevision !== contentRevision;
+        target.feedRevision = contentRevision;
         // The one nested background image stays small even when the live face is enlarged.
         target.fixedWidth = seed ? (qualityName === "low" ? 192 : 256) : cameraFeedWidth(feed);
         target.fixedHeight = target.fixedWidth * 9 / 16;

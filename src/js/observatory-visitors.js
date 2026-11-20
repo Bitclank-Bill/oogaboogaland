@@ -23,6 +23,7 @@
           box({ w: 0.22, h: 0.18, d: 0.23, color: "#be9873", offset: { x: side * 0.39, y: 0.48, z: 0.02 } }),
           box({ w: 0.24, h: 0.1, d: 0.34, color: "#765d48", offset: { x: side * 0.18, y: 0.05, z: 0.04 } })]));
     }
+    body.cameraFeedVisitor = detailedBody.cameraFeedVisitor = true;
     const detail = add(detailedBody); detail.visible = false;
     const actors = [];
     for (let i = 0; i < 32; i++) { const node = add(body); node.visible = false; actors.push({ node, id: null }); }

@@ -90,6 +90,7 @@
         let source = sources.get(feed.channel.sourceId);
         if (!source) {
           source = feed.channel.build(); sources.set(feed.channel.sourceId, source);
+          BL.observatoryDetail.attach(source, feed.channel.sourceId, renderer);
           renderer.prepareScene(source.meshes);
           for (const geometry of source.meshes) renderer.prepareGeometry(geometry);
         }

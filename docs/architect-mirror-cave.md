@@ -270,6 +270,33 @@ actor releases the enhancement surfaces. No extra camera targets or network
 subscriptions are created. Edge repairs reuse the existing small-panel cache,
 which remains bounded to 28 variants per camera slot.
 
+Selected public Sphere interiors (rooms 1–7), the Factory, Arcade and Hangar
+now load authored scenery through `observatory-detail.js`. This replaces the
+camera stand-ins with the actual furniture, exhibits, aircraft and architecture.
+Only the selected source owns these extra GPU meshes. Other angles of that same
+room still capture its reduced adapter. Models build in scheduled capture slices;
+resumable builders and uploads target 2 ms, with at most four geometry uploads per
+capture. Some existing model-building steps are synchronous and can exceed that
+target; measured slow frames pause construction and the lowest adaptive tier
+releases the richer source. Looking away pauses it; changing selection, hiding
+the page, standing or leaving releases it, including its exclusively owned model
+caches. A cancelled deferred load cannot attach scenery later.
+
+The current image stays visible during construction. Ready scenery batches fade
+into the selected picture over 450 ms, at least 550 ms apart, using the existing
+one-previous-texture limit and capture cadence. Sphere rooms publish their complete
+authored shell and furniture together; workshops add further equipment in batches.
+With a visible enlargement, other area feeds refresh at most once per second and
+receive at most detail level 1; the total detail budget falls from 24 to 12 on the
+highest adaptive tier (8 points reserved for the selected feed), or 8 to 5 on the
+middle tier. Forced replacement captures can still run early to avoid blank tiles.
+The selected feed retains its adaptive resolution and roughly 15 Hz ceiling.
+
+These are authored visual models plus the already available public visitor poses,
+not additional live scene instances. No extra player subscriptions, private rooms,
+film/lecture playback, audio, machine simulation or source-scene entry is started.
+The Bifrost and island-based views retain their existing adapters for now.
+
 Hovering a TV from the chair warms just that feed after the cursor and camera
 have moved slowly for 450 ms. Precise screen picking runs at most ten times a
 second after settling; a different speculative target is admitted at most once

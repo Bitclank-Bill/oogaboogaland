@@ -17682,8 +17682,10 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       }
       if (!f) return { warmed: false };
       const channel = f.channel; room.cameras.update(16);
-      D.step(10); const middle = D.R.cameraFeedBlend(f);
-      D.step(30); const end = D.R.cameraFeedBlend(f);
+      // Measure the renderer fade without letting an unrelated random patch
+      // legitimately cancel this hover request halfway through the assertion.
+      D.step(10, 0); const middle = D.R.cameraFeedBlend(f);
+      D.step(30, 0); const end = D.R.cameraFeedBlend(f);
       return { warmed: f.captureWidth === 1200, exclusive: room.feeds.filter(f => f.prewarm).length === 1,
         pinned: channel === f.channel, normalCadence: f.refreshMs >= 160,
         blend: start > 0.9 && middle > 0 && middle < start && end === 0, bounded: !D.overBudget };
@@ -17892,6 +17894,83 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       return faceCleared && !D.room.enhancement && D.room.feeds.every(f => !f.enhanced) && D.room.panels.every((p, i) => D.same(p, D.baseline[i])); })()`);
     record("Observatory focus: standing restores the ordinary layout and releases enhancement priority", stood);
   } finally { await b.evaluate('Object.defineProperty(performance, "now", {configurable:true,value:__focusCheck.now})'); }
+} };
+const hubObservatoryAuthored = { name: "hub observatory authored detail", why: "rule: focused scenery builds incrementally, blends in and releases without entering its source scene", run: async b => {
+  await b.evaluate(`(() => { __ooga.advance(0.4, 1 / 60); window.requestAnimationFrame = () => 0; })()`);
+  await b.sleep(50);
+  for (const id of ["sphere-1", "sphere-2", "sphere-3", "sphere-4", "sphere-5", "sphere-6", "sphere-7", "factory.hall", "factory.hangar", "arcade.hall"]) {
+    const r = await b.evaluate(`(async () => {
+      const id = ${JSON.stringify(id)}, R = __ooga.renderer;
+      await BL.deferred.load(id.startsWith("sphere-") ? "timechain" : id === "factory.hall" ? "factory-scene" : id === "factory.hangar" ? "hangar-scene" : "arcade-scene");
+      const source = id.startsWith("sphere-") ? BL.observatoryTimechain.create(R, Number(id.slice(7))) : BL.observatoryWorkshops.create(R, id);
+      BL.observatoryDetail.attach(source, id, R);
+      const baseline = source.meshes.size, f = source.focus; let stamp = 0, steps = 0;
+      while (f.state !== "ready" && f.state !== "unavailable" && steps < 2400) {
+        f.restore(); source.setDetail(2); f.apply(true, stamp += 80, true); steps++;
+        if (steps % 8 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      const grown = source.meshes.size > baseline, batches = f.batches, state = f.state, error = f.error;
+      f.restore(); source.setDetail(0);
+      const coarse = source.root.children.slice(0, -1).some(n => n.visible && !n.geometry?.cameraFeedVisitor)
+        && !source.root.children.at(-1).visible;
+      f.clear(); const released = source.meshes.size === baseline && !source.root.children.at(-1).children.length;
+      // Cancelling while the deferred Promise is pending cannot attach late geometry.
+      const load = BL.deferred.load; let resolve;
+      BL.deferred.load = () => new Promise(r => { resolve = r; });
+      try { f.apply(true, stamp + 80, true); f.clear(); resolve(); await Promise.resolve(); }
+      finally { BL.deferred.load = load; }
+      const cancelled = f.state === "idle" && source.meshes.size === baseline;
+      source.dispose();
+      return { state, error, grown, batches, steps, coarse, released, cancelled, scene: __ooga.scene };
+    })()`);
+    record(`Observatory authored detail: ${id} builds actual scenery, retains the coarse view and releases cancelled work`, r.state === "ready" && r.grown && r.batches > 0 && r.coarse && r.released && r.cancelled && r.scene === "hub", JSON.stringify(r));
+  }
+  await b.evaluate(`(() => {
+    const B = __ooga, R = B.renderer, hub = BL.scenes.hub, room = hub.architect;
+    B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
+    B.advance(0.3, 1 / 60); if (!room.sit()) throw new Error("Could not sit for scenery check");
+    B.advance(0.2, 1 / 60); R.setQuality("high"); R.setScale(0.5);
+    const now = performance.now.bind(performance); let stamp = now() + 1001;
+    Object.defineProperty(performance, "now", { configurable: true, value: () => stamp });
+    const D = window.__authoredCheck = { B, R, hub, room, now, overBudget: false, blended: false,
+      step(n, dt = 1 / 60) { for (let i = 0; i < n; i++) {
+        stamp += 16.7; room.update(dt);
+        const before = room.renderFeeds.reduce((n, f) => n + f.captures, 0);
+        R.render(hub.root, B.camera, B.renderOpts);
+        if (room.renderFeeds.reduce((n, f) => n + f.captures, 0) - before > 1) this.overBudget = true;
+        if (this.feed?.source.focus.batches && R.cameraFeedBlend(this.feed) > 0) this.blended = true;
+      } }
+    };
+    D.step(1800, 0);
+    const feed = D.feed = room.feeds.find(f => f.channel.id === "sphere-7");
+    const p = room.panels.find(p => p.normal.imageSurface.feed === feed);
+    BL.scene.updateWorld(room.group, room.group.parent.world);
+    Object.assign(B.camera.position, { x: 0, y: BL.architectCave.FLOOR + 2.8, z: 0 });
+    Object.assign(B.camera.target, { x: p.node.world[12], y: p.node.world[13], z: p.node.world[14] });
+    D.step(1, 0); room.enhanceAt();
+  })()`);
+  try {
+    await b.evaluate(`(() => { const D = __authoredCheck; for (let i = 0; i < 180 && !D.feed.source.focus.batches; i++) D.step(1); })()`);
+    if (process.env.OBSERVATORY_SHOTS) {
+      mkdirSync(process.env.OBSERVATORY_SHOTS, { recursive: true });
+      await b.screenshot(join(process.env.OBSERVATORY_SHOTS, "authored-building.png"));
+    }
+    const r = await b.evaluate(`(() => {
+      const D = __authoredCheck, f = D.feed;
+      for (let i = 0; i < 2400 && (f.source.focus.state !== "ready" || D.room.layoutPending); i++) D.step(1);
+      D.step(90);
+      return { state: f.source.focus.state, error: f.source.focus.error, enhanced: D.room.enhancement?.feed === f,
+        batches: f.source.focus.batches, width: f.captureWidth, triangles: f.triangles, blended: D.blended,
+        balanced: D.room.feeds.every(other => other === f || other.detail <= 1 && other.refreshMs >= 1000), bounded: !D.overBudget };
+    })()`);
+    record("Observatory authored detail: the selected 7x7 fades in real scenery while other feeds relinquish detail and refresh time", r.state === "ready" && r.enhanced && r.width === 1200 && r.triangles > 1000 && r.blended && r.balanced && r.bounded, JSON.stringify(r));
+    if (process.env.OBSERVATORY_SHOTS) await b.screenshot(join(process.env.OBSERVATORY_SHOTS, "authored-planetarium-7x7.png"));
+    const cancelled = await b.evaluate(`(() => { const D = __authoredCheck, source = D.feed.source;
+      D.B.crew.standPlayer(D.B.pilot.player); D.step(360);
+      return source.focus.state === "idle" && source.focus.batches === 0;
+    })()`);
+    record("Observatory authored detail: standing releases the focused room scenery", cancelled);
+  } finally { await b.evaluate('Object.defineProperty(performance, "now", {configurable:true,value:__authoredCheck.now})'); }
 } };
 // Distant mirrors keep refreshing at reduced resolution; low also bounds refreshes and retained GPU targets.
 const hubMirrorMedium = { name: "hub mirror medium size", why: "regression: lower tiers replaced distant mirror reflections with a grey face instead of keeping a cheaper live reflection", run: async (b) => {
@@ -27658,6 +27737,7 @@ for (const character of ["portlandhodl", "w-s-bitcoin"]) for (const opts of [{ w
 }
 scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror, hubObservatoryIsolation, hubObservatoryFloor] });
 scene("hub", { label: "observatory focus", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryFocus] });
+scene("hub", { label: "observatory authored detail", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryAuthored] });
 scene("hub", { label: "matrix", steps: [hubMatrix] });
 scene("hub", { label: "oogatron popups", url: hubPage(dist, "pos=0"), steps: [oogatronPopups] });
 scene("hub", { label: "oogatron popups phone", url: hubPage(dist, "pos=0"), opts: PHONE_SIZE, steps: [oogatronPopups] });
