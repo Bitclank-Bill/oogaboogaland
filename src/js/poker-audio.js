@@ -105,6 +105,7 @@
     const EAR = { x: 0, z: 0, fx: 0, fz: 1 }, AT = { level: 0, pan: 0 };
     const tables = BL.pokerModels.TABLES, wings = BL.pokerModels.FURNITURE.filter(f => f.kind === "bar");
     const between = (lo, hi) => lo + Math.random() * (hi - lo);
+    let hasBar = true;
     let bedWait = 0, chipWait = between(CHIP_MIN, CHIP_MAX), glassWait = between(GLASS_MIN, GLASS_MAX);
 
     const gain = (value, to) => {
@@ -407,10 +408,15 @@
       }
     };
 
-    // The bed's level from the visitor's distance to the nearer bar wing (to its edge) or the nearest table.
+    const setTheme = (id) => {
+      hasBar = id === "gatsby";
+      bedWait = 0;
+    };
+
+    // The bed follows the nearest table or, in Banana Club, the nearer edge of the bar.
     const bedLevel = () => {
       let d2 = Infinity;
-      for (let i = 0; i < wings.length; i++) {
+      if (hasBar) for (let i = 0; i < wings.length; i++) {
         const w = wings[i], dx = Math.max(0, Math.abs(EAR.x - w.x) - w.hx), dz = Math.max(0, Math.abs(EAR.z - w.z) - w.hz);
         d2 = Math.min(d2, dx * dx + dz * dz);
       }
@@ -435,7 +441,7 @@
         const t = tables[Math.random() * tables.length | 0];
         cue("chip", t.x, t.z);
       }
-      if ((glassWait -= dt) <= 0) {
+      if (hasBar && (glassWait -= dt) <= 0) {
         glassWait = between(GLASS_MIN, GLASS_MAX);
         const w = wings[Math.random() * wings.length | 0];
         cue("glass", w.x + (Math.random() * 2 - 1) * w.hx, w.z);
@@ -491,7 +497,7 @@
 
     // `pools`, the voice pools by name, live, for tests and debugging to inspect.
     const pools = Object.freeze({ triangles, sines, noises, brushes, roomSines, roomTriangles });
-    return { update, cue, setSeated, win, dispose, stats, pools };
+    return { update, cue, setTheme, setSeated, win, dispose, stats, pools };
   };
 
   BL.pokerAudio = { create, SONGS, CHORDS, TONES, BASS_TONES, ROOM_TONES, NOISES, BRUSHES };

@@ -30005,12 +30005,19 @@ const pokerAudioChecks = (BL) => {
   const stats = { ...placed.I.stats };
   const recipes = ["chip", "glass", "cane", "walker"].map(name => heard(name, 0, 3).voices);
   placed.I.dispose();
-  // The bed's level, read from its own gain stage under the room bus: at the bar and at the mirror end.
+  // The bed's level at the bar and the mirror end, then on the same visit after switching to a cave and back.
   const bedRun = fresh(), roomBus = bedRun.ctx.gains.find(g => g.to === channelNodes.room), bedStage = bedRun.ctx.gains.find(g => g.to === roomBus);
-  bedRun.I.update(0.2, { x: 0, z: -33, fx: 0, fz: -1 });
+  const barEar = { x: 10, z: -33, fx: 0, fz: -1 };
+  bedRun.I.update(0.2, barEar);
   const bedAtBar = bedStage.gain.last;
   bedRun.I.update(0.2, { x: 0, z: 34, fx: 0, fz: 1 });
   const bedAtMirror = bedStage.gain.last;
+  bedRun.I.setTheme("crystal");
+  frames(bedRun, 15, barEar);
+  const caveBed = bedStage.gain.last, caveGlass = bedRun.I.pools.roomSines.some(v => v.until > 0);
+  bedRun.I.setTheme("gatsby");
+  frames(bedRun, 15, barEar);
+  const clubBed = bedStage.gain.last, clubGlass = bedRun.I.pools.roomSines.some(v => v.until > 0);
   bedRun.I.dispose();
   // A minute of play near the bar with the room's own chips and glasses sounding: no voice stolen, the music's
   // scheduled notes all kept, no node built and no oscillator retyped.
@@ -30115,7 +30122,9 @@ const pokerAudioChecks = (BL) => {
   record("poker room sound: a cue is louder near and to its own side, and silent past thirty metres",
     near.level > far.level && left.pan < 0 && right.pan > 0 && beyond.voices === 0 && stats.cues === 5 && recipes.every(v => v === 1),
     JSON.stringify({ near, far, left, right, beyond, cues: stats.cues, recipes }));
-  record("poker room sound: the bed is fuller at the bar than at the mirror end", bedAtBar > bedAtMirror, JSON.stringify({ bedAtBar, bedAtMirror }));
+  record("poker room sound: the bar swells the bed and plays glass cues only while Banana Club is active",
+    bedAtBar > bedAtMirror && caveBed < bedAtBar && !caveGlass && clubBed === bedAtBar && clubGlass,
+    JSON.stringify({ bedAtBar, bedAtMirror, caveBed, caveGlass, clubBed, clubGlass }));
   record("poker room sound: a minute of play with the room's own chips and glasses steals no voice from the music, cuts no scheduled note, builds no node and retypes no oscillator",
     minute.steals === 0 && minute.lost === 0 && minute.nodes === 0 && minute.retyped === 0 && minute.cues > minute.dropped && minute.busy === 0 && minute.scheduled > 0, JSON.stringify(minute));
 };
