@@ -11980,7 +11980,8 @@
     pile.core.geometry.cameraFeedKeep = true;
     models.bananaTileGeometry().cameraFeedKeep = models.bananaTileGeometry(true).cameraFeedKeep = true;
     architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave, weather, mouths: island.mouths,
-      places: { pool: mempoolIsland.place, repos: repoIsland.spot, sphere: timechainIsland.place, bifrost: bifrostIsle?.site.node.position } });
+      places: { pool: mempoolIsland.place, repos: repoIsland.spot, sphere: timechainIsland.place, bifrost: bifrostIsle?.site.node.position,
+        hq: island.headquarters, library: LIBRARY, gate: island.gate } });
     yield* pause(slice);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
