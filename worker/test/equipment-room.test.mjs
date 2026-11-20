@@ -8,14 +8,14 @@ import * as studio from "../src/studio-policy.js";
 import { deletePlayer, getPlayer } from "../src/db.js";
 import { equipmentHats } from "../src/equipment-hats.js";
 import { equipmentRoom } from "../src/equipment-room.js";
-import { readEquipment, writeEquipment } from "../src/equipment-store.js";
-import { equipmentAccount, equipmentDatabase } from "./equipment-fixture.mjs";
+import { equipmentAccount, equipmentDatabase, readEquipment, writeEquipment } from "./equipment-fixture.mjs";
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const NONE = { item: "none", version: null };
 const hat = () => ({ item: equipmentHats.items[0].id, version: equipmentHats.items[0].current });
+const helmet = () => ({ item: "johnstackton21m-helmet", version: equipmentHats.current("johnstackton21m-helmet") });
 const frames = ws => ws.sent.filter(m => m.t === "equipment");
-const host = async (t, enabled = true) => {
+const host = async (t, enabled = true, cast = null) => {
   const db = equipmentDatabase(); t.after(() => db.sql.close());
   const accounts = await Promise.all([equipmentAccount(db, 1), equipmentAccount(db, 2), equipmentAccount(db, 3)]);
   const env = { DB: db, EQUIPMENT_ENABLED: enabled ? "1" : "0" }, stored = new Map(), sockets = [], timers = new Map(), errors = [];
@@ -25,7 +25,7 @@ const host = async (t, enabled = true) => {
     close(code, reason) { this.closed = { code, reason }; this.readyState = 3; },
     serializeAttachment(value) { this.attachment = structuredClone(value); }, deserializeAttachment() { return this.attachment; } });
   class Response { constructor(body, options = {}) { this.body = body; this.status = options.status || 200; this.webSocket = options.webSocket; } }
-  const context = { ...protocol, ...studio, getPlayer, CAST_ROWS: accounts.map(a => ({ handle: a.player.login, github_login: a.player.login })),
+  const context = { ...protocol, ...studio, getPlayer, CAST_ROWS: cast || accounts.map(a => ({ handle: a.player.login, github_login: a.player.login })),
     Map, Set, ArrayBuffer, DataView, URL, Headers, Response, crypto, Date,
     console: { error: (...args) => errors.push(args) }, DurableObject: class { constructor(ctx, e) { this.ctx = ctx; this.env = e; } },
     WebSocketRequestResponsePair: class {}, WebSocketPair: class { constructor() { this[0] = socket(); this[1] = socket(); } },
@@ -144,8 +144,8 @@ test("equipment Room: concurrent Studio saves use CAS and disabled deployments k
 });
 
 test("equipment Room: a creator update offers acceptance and a declined version survives reload and deploy", async t => {
-  const h = await host(t), { ws } = await h.join(), chosen = hat();
-  await h.save(1, { revision: 0, selection: chosen, size: 90 });
+  const h = await host(t, true, [{ handle: "w-s-bitcoin", github_login: "owner1" }]), { ws } = await h.join(), chosen = helmet();
+  await h.save(1, { revision: 0, selection: chosen, size: 110 });
   const v2 = "2".repeat(64), v3 = "3".repeat(64), original = equipmentHats.current;
   let offered = v2;
   equipmentHats.current = id => id === chosen.item ? offered : original(id);
@@ -155,13 +155,13 @@ test("equipment Room: a creator update offers acceptance and a declined version 
   assert.equal(h.room.players.get(1).equipment.selection.version, chosen.version, "new metadata cannot change what is worn");
   const kept = await h.save(1, { revision: 1, decline: v2 });
   assert.equal(kept.equipment.declined, v2); assert.equal(kept.equipment.update, null);
-  assert.equal(kept.equipment.size, 90);
+  assert.equal(kept.equipment.size, 110);
   assert.equal(h.db.sql.prepare("SELECT declined FROM player_equipment WHERE player_id = 1").get().declined, v2);
   const unchanged = await h.save(1, { revision: 2, selection: chosen });
   assert.equal(unchanged.equipment.revision, 3);
   assert.equal(unchanged.equipment.declined, v2, "saving the same pinned selection does not undo Keep my version");
   assert.equal(unchanged.equipment.update, null);
-  assert.equal(unchanged.equipment.size, 90);
+  assert.equal(unchanged.equipment.size, 110);
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.update, null);
   assert.equal(h.room.players.get(1).equipment.selection.version, chosen.version);
@@ -174,11 +174,64 @@ test("equipment Room: a creator update offers acceptance and a declined version 
   equipmentHats.accept(chosen.item, v3); // A future reviewed Worker retains v1 and adds the new immutable version.
   const accepted = await h.save(1, { revision: 3, selection: { item: chosen.item, version: v3 } });
   assert.equal(accepted.equipment.revision, 4); assert.equal(accepted.equipment.declined, null);
-  assert.equal(accepted.equipment.size, 90);
+  assert.equal(accepted.equipment.size, 110);
   assert.equal(frames(ws).at(-1).selection.version, v3);
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.selection.version, v3);
-  assert.equal(h.room.players.get(1).equipment.size, 90);
+  assert.equal(h.room.players.get(1).equipment.size, 110);
+});
+
+test("equipment Room: canonical ownership governs minimums and corrected legacy fits reach admission, peers and wake", async t => {
+  const h = await host(t, true, [{ handle: "W-S-Bitcoin", github_login: "owner1" }, { handle: "owner2" }, { handle: "Bitcoin-Bill" }]);
+  const resolver = (login, id) => h.room.equipmentCharacter(login, id);
+  assert.equal(resolver("OWNER1", 1), "w-s-bitcoin", "the account login is not the rendered character handle");
+  assert.equal(resolver("a-renamed-account", 185141343), "bitcoin-bill", "verified numeric ownership survives a renamed login");
+  const renamed = await equipmentAccount(h.db, 185141343);
+  const renamedSaved = await writeEquipment(h.db, 185141343, renamed.session.token_hash,
+    { revision: 0, selection: helmet(), size: 80 }, resolver);
+  assert.equal(renamedSaved.equipment.size, 80);
+  await writeEquipment(h.db, 1, h.accounts[0].session.token_hash, { revision: 0, selection: helmet(), size: 80 });
+  const peer = (await h.join(2)).ws, own = (await h.join()).ws;
+  assert.equal(h.room.players.get(1).equipment.revision, 2);
+  assert.equal(frames(own).find(m => m.equipment).size, 100);
+  assert.equal(frames(peer).find(m => m.id === 1).size, 100);
+  const legacy = { ...own.attachment.equipment, size: 80, revision: 3 };
+  h.db.sql.prepare("UPDATE player_equipment SET size = 80, revision = 3 WHERE player_id = 1").run();
+  own.attachment.equipment = legacy; own.sent.length = peer.sent.length = 0;
+  await h.wake();
+  assert.equal(h.room.players.get(1).equipment.size, 100); assert.equal(h.room.players.get(1).equipment.revision, 4);
+  assert.equal(frames(peer).find(m => m.id === 1).size, 100);
+  assert.equal(frames(own).some(m => m.id === 1 && m.size < 100), false);
+  const stale = await h.save(1, { revision: 3, size: 80 });
+  assert.equal(stale.status, 409); assert.equal(stale.equipment.size, 100);
+  const clamped = await h.save(1, { revision: 4, size: 80 });
+  assert.equal(clamped.status, 200); assert.equal(clamped.equipment.size, 100);
+  assert.equal(frames(peer).at(-1).size, 100);
+  assert.deepEqual(h.errors, []);
+});
+
+test("equipment Room: an RPC refreshes catalog authority and an outage retains safe attachments without accepting unsafe fits", async t => {
+  const h = await host(t, true, [{ handle: "w-s-bitcoin", github_login: "owner1" }]);
+  await h.save(1, { revision: 0, selection: helmet(), size: 110 });
+  const own = (await h.join()).ws, record = { ...h.room.players.get(1).equipment }, index = h.room.catalog.current();
+  let current = null, refreshes = 0, notified = 0, recover = true;
+  h.room.catalog = { enabled: true, current: () => current, refresh: async storage => {
+    assert.equal(storage, h.ctx.storage); refreshes++; if (recover) current = index; return !!current;
+  } };
+  h.room.catalogChanged = () => { notified++; };
+  assert.equal(equipmentRoom.saved(h.room, record, "owner1", 1).size, 110, "an already-safe helmet survives early restore without authority");
+  assert.equal(equipmentRoom.saved(h.room, { ...record, selection: hat(), size: 80 }, "owner1", 1).size, 80);
+  assert.equal(equipmentRoom.saved(h.room, { ...record, size: 80 }, "owner1", 1), null, "an ambiguous legacy helmet waits for D1 correction");
+  await equipmentRoom.refreshAll(h.room, true);
+  assert.equal(own.closed, null); assert.equal(h.room.players.get(1).equipment.size, 110);
+  const saved = await h.save(1, { revision: 1, size: 80 });
+  assert.equal(refreshes, 1); assert.equal(notified, 1); assert.equal(saved.equipment.size, 100);
+  current = null; recover = false;
+  await assert.rejects(h.save(1, { revision: 2, size: 80 }), error => error.code === "catalog_unavailable");
+  assert.equal(h.db.sql.prepare("SELECT revision FROM player_equipment WHERE player_id = 1").get().revision, 2);
+  await equipmentRoom.refreshAll(h.room, true);
+  assert.equal(own.closed, null); assert.equal(h.room.players.get(1).equipment.size, 100);
+  assert.deepEqual(h.errors, []);
 });
 
 test("equipment Room: size-only updates reach visible peers and old attachments normalize to 100", async t => {
@@ -191,9 +244,9 @@ test("equipment Room: size-only updates reach visible peers and old attachments 
   assert.equal(frames(b).at(-1).size, 115); assert.equal(frames(a).at(-1).equipment.size, 115);
   assert.equal(a.attachment.equipment.size, 115);
   const legacy = { ...a.attachment.equipment }; delete legacy.size;
-  assert.equal(equipmentRoom.saved(h.room, legacy).size, 100);
-  assert.equal(equipmentRoom.saved(h.room, { ...legacy, size: 121 }), null);
-  assert.equal(equipmentRoom.saved(h.room, { selection: null, revision: 0, declined: null, size: 80 }), null);
+  assert.equal(equipmentRoom.saved(h.room, legacy, "owner1", 1).size, 100);
+  assert.equal(equipmentRoom.saved(h.room, { ...legacy, size: 121 }, "owner1", 1), null);
+  assert.equal(equipmentRoom.saved(h.room, { selection: null, revision: 0, declined: null, size: 80 }, "owner1", 1), null);
   delete a.attachment.equipment.size;
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.size, 115, "D1 catches an old attachment up before it becomes authoritative");

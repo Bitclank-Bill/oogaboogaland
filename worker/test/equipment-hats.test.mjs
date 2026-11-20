@@ -271,7 +271,8 @@ test("hat sizing preserves its fitting point and proportions without replacing n
         M.invert(inverse, node.world); M.transformPoint(local, inverse, ...anchor);
       }
       for (const percent of [80, 100, 120]) {
-        assert.equal(render.apply(cave, selected, percent), true); assert.equal(render.size(cave), percent);
+        const expected = name === "w-s-bitcoin" && row.id === "johnstackton21m-helmet" ? Math.max(100, percent) : percent;
+        assert.equal(render.apply(cave, selected, percent), true); assert.equal(render.size(cave), expected);
         assert.equal(cave.equipmentHatNode, node); assert.equal(render.selection(cave), selection);
         assert.equal(cave.root, rootNode); assert.equal(cave.parts.head, head);
         assert.equal(rootNode.position.x, 4); assert.equal(rootNode.rotation.y, 1); assert.equal(head.rotation.x, 0.2);
@@ -282,15 +283,61 @@ test("hat sizing preserves its fitting point and proportions without replacing n
         M.transformPoint(actual, anchorNode.world, ...local);
         for (let axis = 0; axis < 3; axis++) {
           assert.ok(Math.abs(actual[axis] - anchor[axis]) < unit * 1e-5, `${name}/${row.id}: fitting point moves at ${percent}%`);
-          assert.ok(Math.abs(resized.size[axis] / originalBounds.size[axis] - percent / 100) < 1e-5,
+          assert.ok(Math.abs(resized.size[axis] / originalBounds.size[axis] - expected / 100) < 1e-5,
             `${name}/${row.id}: shape proportions change at ${percent}%`);
         }
-        if (percent === 100) assert.equal(state(), original, "100 restores the exact reviewed fit");
+        if (expected === 100) assert.equal(state(), original, "100 restores the exact reviewed fit");
       }
       for (let i = 0; i < 30; i++) for (const percent of [80, 120, 100]) assert.equal(render.apply(cave, selected, percent), true);
       assert.equal(state(), original); assert.equal(cave.equipmentHatNode, node); assert.equal(render.size(cave), 100);
     }
   }
+});
+
+test("the apple space helmet keeps its reviewed minimum for legacy sizes without changing other fittings", () => {
+  const f = fixture(), render = f.BL.characterEquipment, hats = f.BL.equipmentHats;
+  const row = catalog.items.find((item) => item.id === "johnstackton21m-helmet"), selected = { item: row.id, version: row.current };
+  for (const name of ["w-s-bitcoin", "W-S-BITCOIN", "W-s-Bitcoin"]) {
+    for (const item of catalog.items) assert.equal(hats.minimumSize(name, item.id), item === row ? 100 : 80);
+    assert.equal(hats.minimumSize(name, "none"), 80);
+  }
+  for (const name of ["Normal", "Slim", "Bitcoin-Bill", "midy-machete", "johnstackton21m", "w-s-bitcoin-other"])
+    assert.equal(hats.minimumSize(name, row.id), 80, name + " keeps the full personal-size range");
+  const cave = f.cave("w-s-bitcoin"), open = cave.headOpen;
+  assert.equal(render.minimumSize(cave, selected), 100); assert.equal(render.minimumSize(cave, null), 80);
+  assert.equal(render.apply(cave, selected, 100), true);
+  const node = cave.equipmentHatNode, children = [...node.children], original = JSON.stringify(fittedPoints(f, cave));
+  const vertices = fittedPoints(f, cave)[0], shell = bounds(vertices), radius = shell.size[0] / 2;
+  const center = [(shell.min[0] + shell.max[0]) / 2, shell.max[1] - radius, (shell.min[2] + shell.max[2]) / 2];
+  // Measure the actual faceted lining, not the outer dome's larger radius. Its vertices are at 6.08 cells,
+  // but the polygon planes are closer to the center; the whole apple crown must clear those planes too.
+  const lining = node.children[0].geometry.faces.filter((face) => face.color.join() === "110,96,71");
+  assert.ok(lining.length > 100, "the archived helmet has its complete inner lining");
+  const crown = points(cave.headOpen, cave.traits.height / 16).filter((point) => point[1] >= 6);
+  let clearance = Infinity;
+  for (const face of lining) {
+    const facePoints = face.i.map((i) => vertices[i]), normal = [0, 0, 0];
+    for (let i = 0; i < facePoints.length; i++) {
+      const a = facePoints[i], b = facePoints[(i + 1) % facePoints.length];
+      normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+      normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+      normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const length = Math.hypot(...normal);
+    assert.ok(length > 1e-8, "lining faces have a measurable plane");
+    const distance = (point) => normal.reduce((sum, n, i) => sum + n * (point[i] - facePoints[0][i]), 0) / length;
+    const inward = Math.sign(distance(center));
+    for (const point of crown) clearance = Math.min(clearance, inward * distance(point));
+  }
+  assert.ok(clearance > 0.2, "apple crown clears the actual inner lining by " + clearance + " cells");
+  for (let size = 80; size < 100; size++) {
+    assert.equal(render.apply(cave, selected, 120), true);
+    assert.equal(render.apply(cave, selected, size), true);
+    assert.equal(render.size(cave), 100); assert.equal(cave.equipmentHatNode, node);
+    assert.equal(JSON.stringify(fittedPoints(f, cave)), original, "legacy size " + size + " returns to the exact reviewed fit");
+    for (let i = 0; i < children.length; i++) assert.equal(node.children[i], children[i]);
+  }
+  assert.equal(render.apply(cave, null), true); assert.equal(cave.headOpen, open); assert.equal(cave.equipmentHatNode, null);
 });
 
 test("invalid sizes cannot change worn equipment and removing a resized hat restores authored geometry", () => {

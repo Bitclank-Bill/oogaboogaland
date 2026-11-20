@@ -55,6 +55,9 @@
   const current = (id) => records.get(id)?.current || null;
   const get = (id, version = current(id)) => id === "none" && version === null ? none : versions.get(id + ":" + version) || null;
   const has = (id, version) => (id === "none" ? version === null : typeof version === "string" && HASH.test(version)) && !!get(id, version);
+  // A helmet enclosing the apple shell cannot shrink below its reviewed fit. Shared by preview, rendering and saves.
+  const minimumSize = (character, item) => item === "johnstackton21m-helmet"
+    && typeof character === "string" && character.toLowerCase() === "w-s-bitcoin" ? 100 : 80;
   // A verified newer archive may arrive in an older tab. It extends that tab's immutable versions, not its current pointer.
   const accept = (id, version) => {
     const row = records.get(id);
@@ -62,5 +65,5 @@
     if (!has(id, version)) versions.set(id + ":" + version, Object.freeze({ id, version, label: row.label, creator: row.creator, fit: "ooga-head-v1" }));
     return get(id, version);
   };
-  BL.equipmentHats = { register, current, get, has, accept, validate, encode, MAX_BYTES, MAX_VERSIONS, get items() { return items; } };
+  BL.equipmentHats = { register, current, get, has, accept, minimumSize, validate, encode, MAX_BYTES, MAX_VERSIONS, get items() { return items; } };
 })();

@@ -6,13 +6,13 @@ import { DatabaseSync } from "node:sqlite";
 import { deletePlayer } from "../src/db.js";
 import { equipmentHats, equipmentHatArchive } from "../src/equipment-hats.js";
 import { equipmentCommand, equipmentRecord, nextEquipment } from "../src/equipment-model.js";
-import { readEquipment, writeEquipment } from "../src/equipment-store.js";
 import { equipmentRoom } from "../src/equipment-room.js";
-import { equipmentAccount, equipmentDatabase } from "./equipment-fixture.mjs";
+import { equipmentAccount, equipmentDatabase, readEquipment, writeEquipment } from "./equipment-fixture.mjs";
 import { routeFixture } from "./routes.mjs";
 
 const SITE = "https://equipment.test", NONE = { item: "none", version: null };
 const hat = () => ({ item: equipmentHats.items[0].id, version: equipmentHats.items[0].current });
+const helmet = () => ({ item: "johnstackton21m-helmet", version: equipmentHats.current("johnstackton21m-helmet") });
 const setup = async t => { const db = equipmentDatabase(); t.after(() => db.sql.close()); return { db, account: await equipmentAccount(db) }; };
 
 test("equipment: SQL CAS admits one concurrent save and deletion cascades", async t => {
@@ -82,6 +82,49 @@ test("equipment: resize shares selection CAS and old clients preserve the rememb
   assert.equal(db.sql.prepare("SELECT size FROM player_equipment WHERE player_id = 1").get().size, 100);
 });
 
+test("equipment: the apple helmet minimum corrects legacy saves once and clamps old-client changes durably", async t => {
+  const { db, account } = await setup(t), token = account.session.token_hash, character = () => "W-S-Bitcoin";
+  await writeEquipment(db, 1, token, { revision: 0, selection: helmet(), size: 80 }); // Before this fitting rule.
+  const declined = "d".repeat(64);
+  db.sql.prepare("UPDATE player_equipment SET declined = ? WHERE player_id = 1").run(declined);
+  const [a, b] = await Promise.all([readEquipment(db, 1, token, character), readEquipment(db, 1, token, character)]);
+  assert.equal(a.revision, 2); assert.deepEqual(a, b); assert.equal(a.size, 100);
+  assert.deepEqual(a.selection, helmet()); assert.equal(a.declined, declined);
+  assert.equal((await readEquipment(db, 1, token, character)).revision, 2, "ordinary reads do not repeat correction");
+  const stale = await writeEquipment(db, 1, token, { revision: 1, size: 80 }, character);
+  assert.equal(stale.status, 409); assert.deepEqual(stale.equipment, a);
+  const resized = await writeEquipment(db, 1, token, { revision: 2, size: 80 }, character);
+  assert.equal(resized.equipment.size, 100); assert.equal(resized.equipment.declined, declined);
+  const other = await writeEquipment(db, 1, token, { revision: 3, selection: hat(), size: 80 }, character);
+  assert.equal(other.equipment.size, 80, "other hats keep their 80 percent minimum");
+  const omitted = await writeEquipment(db, 1, token, { revision: 4, selection: helmet() }, character);
+  assert.equal(omitted.equipment.size, 100, "an old client cannot reuse a smaller previous hat's size");
+  assert.equal(db.sql.prepare("SELECT size FROM player_equipment WHERE player_id = 1").get().size, 100);
+  const ordinary = await writeEquipment(db, 1, token, { revision: 5, selection: helmet(), size: 80 }, () => "another-ooga");
+  assert.equal(ordinary.equipment.size, 80, "the same helmet remains adjustable on another character");
+});
+
+test("equipment: legacy fit correction cannot overwrite a concurrent selection or a removed session", async t => {
+  const { db, account } = await setup(t), token = account.session.token_hash, character = () => "w-s-bitcoin", original = db.prepare;
+  await writeEquipment(db, 1, token, { revision: 0, selection: helmet(), size: 80 });
+  db.prepare = query => {
+    if (query.startsWith("UPDATE player_equipment SET size")) {
+      db.prepare = original;
+      db.sql.prepare("UPDATE player_equipment SET item = 'none', version = NULL, revision = revision + 1 WHERE player_id = 1").run();
+    }
+    return original(query);
+  };
+  const winner = await readEquipment(db, 1, token, character);
+  assert.deepEqual(winner.selection, NONE); assert.equal(winner.size, 80); assert.equal(winner.revision, 2);
+  await writeEquipment(db, 1, token, { revision: 2, selection: helmet(), size: 80 });
+  db.prepare = query => {
+    if (query.startsWith("UPDATE player_equipment SET size")) db.sql.prepare("DELETE FROM sessions WHERE token_hash = ?").run(token);
+    return original(query);
+  };
+  assert.equal(await readEquipment(db, 1, token, character), null);
+  assert.equal(db.sql.prepare("SELECT size FROM player_equipment WHERE player_id = 1").get().size, 80);
+});
+
 test("equipment: pinned version and declined update survive newer metadata", () => {
   const v1 = "1".repeat(64), v2 = "2".repeat(64), v3 = "3".repeat(64);
   let current = v2;
@@ -104,6 +147,9 @@ test("equipment: pinned version and declined update survive newer metadata", () 
   assert.equal(accepted.size, 85, "Accept changes the creator version without resetting fit");
   assert.throws(() => nextEquipment(record, { revision: 2, decline: v2 }), /no longer offered/);
   assert.equal(nextEquipment(record, { revision: 1, selection: null }), null);
+  const apple = { ...record, selection: helmet(), size: 80, update: { ...helmet(), version: v3 } };
+  assert.equal(nextEquipment(apple, { revision: 2, decline: v3 }, "w-s-bitcoin").size, 100);
+  assert.equal(nextEquipment(apple, { revision: 2, selection: apple.update }, "w-s-bitcoin").size, 100);
 });
 
 test("equipment: immutable selections reject unknown versions and unbounded/extra input", () => {
@@ -126,7 +172,7 @@ test("equipment: immutable selections reject unknown versions and unbounded/extr
 
 test("equipment: HTTP authentication, bounds, flag and server-owned identity", async t => {
   const { db, account } = await setup(t), routes = routeFixture({ cast: [{ handle: "owner1" }] });
-  const room = { env: { DB: db, EQUIPMENT_ENABLED: "1" }, players: new Map() };
+  const room = { env: { DB: db, EQUIPMENT_ENABLED: "1" }, players: new Map(), equipmentCharacter: login => login };
   const env = { SITE_ORIGIN: SITE, DB: db, EQUIPMENT_ENABLED: "1", ROOM: { getByName: name => {
     assert.equal(name, "island"); return { equipmentFor: (...args) => equipmentRoom.request(room, ...args) };
   } } };
@@ -150,6 +196,10 @@ test("equipment: HTTP authentication, bounds, flag and server-owned identity", a
   assert.equal(resized.status, 200); assert.equal((await resized.json()).equipment.size, 120);
   const reset = await send({ revision: 2, size: 100 });
   assert.equal(reset.status, 200); assert.equal((await reset.json()).equipment.size, 100);
+  room.equipmentCharacter = () => "w-s-bitcoin";
+  const fitted = await send({ revision: 3, selection: helmet(), size: 80 });
+  assert.equal(fitted.status, 200); assert.equal((await fitted.json()).equipment.size, 100);
+  assert.equal(db.sql.prepare("SELECT size FROM player_equipment WHERE player_id = 1").get().size, 100);
 });
 
 test("equipment: only known immutable hat archives are public, digest checked and cacheable", async () => {

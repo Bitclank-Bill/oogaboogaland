@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { createSession, upsertPlayerFromGitHub } from "../src/db.js";
 import { sha256Hex } from "../src/crypto.js";
+import { readEquipment as readStoredEquipment, writeEquipment as writeStoredEquipment } from "../src/equipment-store.js";
+
+// These fixture accounts own their matching handles. Real Room tests supply its catalog-based resolver.
+const matchingCharacter = login => login;
+export const readEquipment = (db, id, tokenHash = null, characterFor = matchingCharacter) => readStoredEquipment(db, id, tokenHash, characterFor);
+export const writeEquipment = (db, id, tokenHash, command, characterFor = matchingCharacter) => writeStoredEquipment(db, id, tokenHash, command, characterFor);
 
 export const equipmentDatabase = () => {
   const sql = new DatabaseSync(":memory:");

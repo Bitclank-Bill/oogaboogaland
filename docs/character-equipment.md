@@ -76,7 +76,7 @@ current state, and stale updates cannot replace newer equipment. Pose handling
 performs no equipment storage reads.
 
 Open the hosted studio at `/?scene=studio`, sign in, select a hat and press
-**Save hat for my Ooga**. **Hat size** previews 80–120% of the reviewed fitting;
+**Save hat for my Ooga**. **Hat size** normally previews 80–120% of the reviewed fitting;
 **Reset fitted size** returns to 100%. Both remain previews until Save. The
 percentage scales the hat uniformly around its fitting point (the center for
 the space helmet), reusing the attachment and geometry. A different hat starts
@@ -86,6 +86,14 @@ account; the studio does not join the Room. Local preview links to the staging
 studio for account saving. A new creator version offers **Accept update** or
 **Keep my version**; a later distinct version can offer again.
 
+The gold space helmet on `w-s-bitcoin` has a 100% minimum, its reviewed fit
+around the apple shell. The slider offers 100–120% and explains the minimum;
+other hat/head combinations retain 80–120%. The shared `minimumSize` fitting
+rule also applies to saved choices and live rendering, including old messages
+or catalog versions. Older undersized saves are corrected to 100% with a new
+equipment revision, preserving the selected version and declined-update choice.
+The UI and API report the corrected size; the limit is not a hidden enlargement.
+
 Every equipped hat uses the renderer's `geometry.depthOffset` surface priority,
 including future catalog versions and every personal size. WebGL applies the
 same small depth bias in the depth prepass, normal view and reflections, so a
@@ -93,8 +101,7 @@ hat wins coincident head/hair surfaces without changing its geometry or shadow.
 Ordinary nearer surfaces still occlude it. Canvas and HUD portraits use a small
 face-sort tie bias as their painter fallback. This prevents depth fighting; it
 does not turn a hat that is too small into a correct fit or hide hair protruding
-through it. In particular, the space helmet at 80% intersects the apple shell;
-100% remains its reviewed fit.
+through it. The helmet minimum prevents the known apple-shell intersection.
 
 `GET /api/equipment` returns the account's current record. `PUT /api/equipment`
 takes its expected `revision` and either `selection` (with optional `size`),
@@ -155,7 +162,7 @@ equipment revision. It never appears in equipment messages or public metadata.
 
 The maintainer chose local multiplayer coverage plus a single-account live
 staging check. The local browser run, `node test/run.mjs equipment-app`, passed
-19/19 checks using the real hosted studio and renderer with explicit account,
+25/25 checks using the real hosted studio and renderer with explicit account,
 HTTP and socket fixtures. It covered all nine hat previews without reallocating
 the wearer, saving and reloading a pinned version, fixture creator revisions
 with **Accept update** and **Keep my version**, a later offer after declining,
@@ -163,7 +170,10 @@ concurrent-save conflicts, authored/no-hat restoration, the apple-head fitting,
 and desktop and phone controls. Sizing checks cover preview-only slider/Reset,
 saved percentages across reloads, Accept/Keep preserving size, size-only live
 updates reusing attachments, legacy messages defaulting to 100, invalid/stale
-updates and a delayed Accept losing to a later Keep choice. Normal flows had clean consoles; the intentional
+updates and a delayed Accept losing to a later Keep choice. Minimum-size checks
+cover the apple helmet's 100% slider limit, legacy undersized reads and live
+messages, save/reload at the displayed size, and other hats/characters retaining
+their 80% minimum. Normal flows had clean consoles; the intentional
 409 response was checked separately for its expected browser resource error.
 
 The browser also applied fixture messages to local and remote avatar models:
@@ -180,11 +190,14 @@ checks, and retained Accept/Keep choices across reloads and newer metadata.
 Model tests separately checked all nine attachments, shared geometry, preserved
 authored heads and the reviewed apple fitting. Immutable archive validation and
 deployment retention checks cover keeping previously published versions.
-The 13 hat-model checks include physical apple clearances, reversible leaf/stalk
+The 14 hat-model checks include physical apple clearances, reversible leaf/stalk
 tucking, six recipient types at 80/100/120%, fixed fitting anchors and repeated
-resizing without transform drift. Local Worker validation passed 831 of 833
-checks inside the sandbox; the two local-server checks blocked by `EPERM` passed
-in the seven-check poker-file rerun with local server access.
+resizing without transform drift. Every legacy 80–99% apple-helmet request returns
+to the exact 100% fit without replacing nodes; its crown clears the actual inner
+lining faces by at least 0.2 voxel. Full local Worker validation passed 838/838
+checks, including local-server integration checks. The focused equipment API and
+Room run passed 23/23, including durable fit correction, revision conflicts,
+canonical ownership, peer/wake recovery and catalog expiry/outage handling.
 
 At revision `39dc21ed82465bdbe22b25aee2e857aa3aadf649`,
 [Linux CI run 44800255713](https://github.com/OogaBoogaX/oogaboogaland/actions/runs/44800255713)

@@ -8,6 +8,7 @@ const exact = (value, keys) => plain(value) && Object.keys(value).length === key
 export const equipmentEnabled = env => env?.EQUIPMENT_ENABLED === "1";
 export const equipmentRevision = value => Number.isSafeInteger(value) && value >= 0 && value < Number.MAX_SAFE_INTEGER;
 export const equipmentSize = value => Number.isInteger(value) && value >= 80 && value <= 120;
+export const equipmentFitSize = (character, selection, size) => Math.max(size, equipmentHats.minimumSize(character, selection?.item));
 
 export const equipmentSelection = (value, hats = equipmentHats) => {
   if (value === null) return null;
@@ -39,14 +40,14 @@ export const equipmentCommand = (value, hats = equipmentHats) => {
   throw new TypeError("Invalid equipment change");
 };
 
-export const nextEquipment = (current, command) => {
+export const nextEquipment = (current, command, character = null) => {
   if (current.revision !== command.revision) return null;
   if (Object.hasOwn(command, "decline")) {
     if (!current.update || command.decline !== current.update.version) throw Object.assign(new TypeError("That update is no longer offered"), { code: "invalid_update" });
-    return { selection: current.selection, size: current.size, declined: command.decline };
+    return { selection: current.selection, size: equipmentFitSize(character, current.selection, current.size), declined: command.decline };
   }
   const selection = Object.hasOwn(command, "selection") ? command.selection : current.selection;
   const unchanged = current.selection?.item === selection?.item && current.selection?.version === selection?.version;
   // Missing size is an old client or a creator-version choice, never an implicit reset.
-  return { selection, size: command.size === undefined ? current.size : command.size, declined: unchanged ? current.declined : null };
+  return { selection, size: equipmentFitSize(character, selection, command.size === undefined ? current.size : command.size), declined: unchanged ? current.declined : null };
 };

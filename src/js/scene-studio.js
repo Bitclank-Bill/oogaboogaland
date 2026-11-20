@@ -573,8 +573,11 @@
         const value = key(view.selection);
         if (![...view.select.options].some((option) => option.value === value)) add(value, "My saved hat version");
         view.select.value = value;
-        draw();
       }
+      const minimum = BL.characterEquipment.minimumSize(cave, view.selection);
+      view.range.min = String(minimum);
+      view.size = Math.max(minimum, view.size);
+      if (!view.dirty) draw();
       view.range.value = String(view.size);
       view.range.setAttribute("aria-valuetext", `${view.size}%`);
       view.sizeOutput.value = `${view.size}%`;
@@ -586,6 +589,7 @@
       view.status.textContent = s.error || (s.busy ? "Saving…" : !supported ? "This character needs a hat fitting before it can wear shared hats."
         : !s.supported ? "Preview only here. Use the staging studio while signed in to save your hat."
         : !BL.net.state.me ? "Sign in to save a hat for your Ooga." : !own ? "Preview any Ooga. Switch to your own to save a hat." : view.dirty ? "Previewing. Save to wear this in the world." : "Your saved hat follows you into the world.");
+      if (!view.range.disabled && minimum > 80) view.status.textContent += ` Minimum size for this Ooga: ${minimum}%.`;
       view.link.hidden = s.supported || document.documentElement.dataset.workerPage === "1";
       view.link.href = `https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev/?scene=studio&character=${encodeURIComponent(state.name)}`;
     };
@@ -596,7 +600,7 @@
       view.dirty = true; changed(); draw(); view.select.blur();
     }, { signal });
     const resize = (size) => {
-      if (view.range.disabled || !Number.isInteger(size) || size < 80 || size > 120 || size === view.size) return;
+      if (view.range.disabled || !Number.isInteger(size) || size < BL.characterEquipment.minimumSize(cave, view.selection) || size > 120 || size === view.size) return;
       view.size = size; view.dirty = true; changed(); draw();
     };
     view.range.addEventListener("input", () => resize(Number(view.range.value)), { signal });

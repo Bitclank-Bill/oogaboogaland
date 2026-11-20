@@ -91,6 +91,7 @@
   };
   const selection = (cave) => worn.get(cave)?.selection || null;
   const size = (cave) => worn.get(cave)?.size || 100;
+  const minimumSize = (cave, selected) => hats.minimumSize(cave?.traits?.name, selected?.item);
   const resize = (node, fit, percent) => {
     const q = percent / 100, p = fit.position, s = fit.scale, a = fit.anchor;
     // Always start from the reviewed fit. Returning to 100 is exact, even after many slider changes.
@@ -105,6 +106,7 @@
     if (selected !== null && (!selected || !hats.has(selected.item, selected.version)
       || selected.item !== "none" && recipes.get(selected.version)?.item !== selected.item)) return false;
     if (!selected || selected.item === "none") percent = 100;
+    else percent = Math.max(percent, minimumSize(cave, selected));
     const old = worn.get(cave);
     if (old && old.selection?.item === selected?.item && old.selection?.version === selected?.version) {
       if (old.size !== percent) { if (old.node) resize(old.node, old.fit, percent); old.size = percent; }
@@ -170,6 +172,6 @@
     worn.set(cave, own);
     return true;
   };
-  BL.characterEquipment = { apply, clear: (cave) => apply(cave, null), supports: supported, selection, size, seed,
+  BL.characterEquipment = { apply, clear: (cave) => apply(cave, null), supports: supported, selection, size, minimumSize, seed,
     get loaded() { return recipes.size; } };
 })();

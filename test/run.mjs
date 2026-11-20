@@ -39797,7 +39797,8 @@ const equipmentAppChecks = async () => {
     cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: "", CHARACTER_CATALOG_ENGINE: "", CHARACTER_CATALOG_ENVIRONMENT: "" }
   });
   if (build.status !== 0) { rmSync(temporary, { recursive: true, force: true }); throw new Error("Equipment acceptance build failed: " + build.stderr); }
-  const item = equipmentHats.items[0], archives = new Map(), archiveReads = [], writes = [];
+  const item = equipmentHats.items[0], helmetItem = equipmentHats.items.find(row => row.id === "johnstackton21m-helmet");
+  const helmet = { item: helmetItem.id, version: helmetItem.current }, archives = new Map(), archiveReads = [], writes = [];
   const shots = join(root, "untracked", "equipment"), network = { accounts: 0, equipment: 0, saves: 0, archives: 0 };
   for (const entry of equipmentHats.items) for (const version of entry.versions)
     archives.set(version, readFileSync(join(root, "src/equipment/hats", version + ".json"), "utf8"));
@@ -40009,6 +40010,21 @@ const equipmentAppChecks = async () => {
       && await b.evaluate("__ooga.studio.state.name==='w-s-bitcoin' && __ooga.studio.cave.headOpen===__appleHead && !__ooga.studio.cave.equipmentHatNode"));
     await choose(`${item.id}@${item.current}`); await wait(wearing(first), "The apple straw preview did not return");
     await b.screenshot(join(shots, "apple-hat.png"));
+    const beforeMinimum = writes.length;
+    await choose(`${helmet.item}@${helmet.version}`); await wait(wearing(helmet), "The apple space helmet did not preview");
+    await b.evaluate("window.__minimumHat=__ooga.studio.cave.equipmentHatNode");
+    await resize(120);
+    await b.evaluate("(() => { const input=document.getElementById('studio-hat-size');input.value='80';input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await wait("BL.characterEquipment.size(__ooga.studio.cave)===100", "The apple helmet minimum did not apply");
+    record("equipment studio: the apple space helmet has an honest minimum and clamps previews without saving or replacing its attachment", writes.length === beforeMinimum
+      && await b.evaluate("document.getElementById('studio-hat-size').min==='100' && document.getElementById('studio-hat-size').max==='120' && document.getElementById('studio-hat-size').value==='100' && document.getElementById('studio-hat-size-value').textContent.includes('100') && document.getElementById('studio-hat-status').textContent.includes('Minimum size for this Ooga: 100%') && __ooga.studio.cave.equipmentHatNode===__minimumHat"));
+    await choose(`${item.id}@${item.current}`); await resize(80);
+    const otherHatMinimum = await b.evaluate("document.getElementById('studio-hat-size').min==='80'");
+    // Change recipient with a fresh document, preserving the existing Studio teardown failure in its own check.
+    await b.open(address); await untilReady(b, 30000);
+    await choose(`${helmet.item}@${helmet.version}`); await resize(80);
+    record("equipment studio: changing the hat or recipient restores the full size range without saving", otherHatMinimum && writes.length === beforeMinimum
+      && await b.evaluate("__ooga.studio.state.name==='equipment-preview' && document.getElementById('studio-hat-size').min==='80' && BL.characterEquipment.size(__ooga.studio.cave)===80"));
     record("equipment studio: desktop acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
     b.close(); b = null;
     await open({ w: 390, h: 844, mobile: true });
@@ -40020,7 +40036,44 @@ const equipmentAppChecks = async () => {
     await resize(80); await save(first);
     await b.open(address); await untilReady(b, 30000); await wait("BL.characterEquipment.size(__ooga.studio.cave)===80", "Phone reload lost the personal hat size");
     record("equipment studio: phone controls save size through the same account API and retain it after reload with a clean console", saved.selection.version === item.current && saved.size === 80 && b.logs.length === 0, b.logs.join("\n"));
-    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png"] }, null, 2) + "\n");
+    // An old server/record may still supply an unsafe percentage. Exercise the real response adoption and
+    // controls without silently fixing the fixture's saved value before the wearer presses Save.
+    account.login = "w-s-bitcoin"; account.display = "Apple preview";
+    saved = { selection: helmet, size: 80, revision: saved.revision + 1, declined: null, update: null };
+    const appleAddress = new URL(address); appleAddress.searchParams.set("character", account.login);
+    const beforeLegacy = writes.length;
+    await b.open(appleAddress.href); await untilReady(b, 30000);
+    await wait(wearing(helmet) + " && BL.characterEquipment.size(__ooga.studio.cave)===100", "Legacy apple helmet did not load at its safe size");
+    record("equipment studio: a legacy undersized apple helmet displays and renders the safe size without an automatic write", saved.size === 80 && writes.length === beforeLegacy
+      && await b.evaluate("BL.net.ownCharacter().handle==='w-s-bitcoin' && !document.getElementById('studio-hat-save').disabled && document.getElementById('studio-hat-size').min==='100' && document.getElementById('studio-hat-size').value==='100' && document.getElementById('studio-hat-size-value').textContent.includes('100')"));
+    await save(helmet);
+    await b.open(appleAddress.href); await untilReady(b, 30000);
+    await wait(wearing(helmet) + " && BL.characterEquipment.size(__ooga.studio.cave)===100", "Safe apple helmet size did not survive reload");
+    record("equipment studio: Save persists the displayed safe minimum and reload keeps it", saved.size === 100 && writes.at(-1).size === 100
+      && writes.at(-1).selection.item === helmet.item && await b.evaluate("document.getElementById('studio-hat-size').value==='100'"));
+    await b.screenshot(join(shots, "apple-helmet-minimum.png"));
+    const minimumLive = await b.evaluate(`(() => {
+      const own=BL.models.caveman(BL.contributors.traitsFor('w-s-bitcoin')),peer=BL.models.caveman(BL.contributors.traitsFor('w-s-bitcoin'));
+      const selection=${JSON.stringify(helmet)},render=BL.characterEquipment,roots=[own.root,peer.root],heads=[own.parts.head,peer.parts.head];
+      own.root.position.x=3;peer.root.position.z=7;
+      BL.equipment.applyLocal(own);
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:1,selection,size:80}]});BL.equipment.applyRemote(peer,72);
+      const nodes=[own.equipmentHatNode,peer.equipmentHatNode],snapshot=render.size(peer)===100;
+      BL.equipment.receive({t:'equipment',id:71,revision:BL.equipment.state.record.revision+1,selection,size:80});BL.equipment.applyLocal(own);
+      BL.equipment.receive({t:'equipment',id:72,revision:2,selection,size:99});BL.equipment.applyRemote(peer,72);
+      const guarded=render.size(own)===100&&render.size(peer)===100&&own.equipmentHatNode===nodes[0]&&peer.equipmentHatNode===nodes[1];
+      BL.equipment.receive({t:'equipment',id:72,revision:3,selection,size:120});BL.equipment.applyRemote(peer,72);
+      const larger=render.size(peer)===120&&peer.equipmentHatNode===nodes[1];
+      BL.equipment.receive({t:'equipment',id:72,revision:4,selection,size:80});BL.equipment.applyRemote(peer,72);
+      const smaller=render.size(peer)===100&&peer.equipmentHatNode===nodes[1];
+      const retained=own.root===roots[0]&&peer.root===roots[1]&&own.parts.head===heads[0]&&peer.parts.head===heads[1]&&own.root.position.x===3&&peer.root.position.z===7;
+      BL.equipment.clear(own);BL.equipment.clear(peer);
+      return {snapshot,guarded,larger,smaller,retained,clean:!own.equipmentHatNode&&!peer.equipmentHatNode};
+    })()`);
+    record("equipment live messages: legacy own and peer sizes cannot shrink the apple helmet below its safe fit, while larger updates reuse the body and attachment",
+      Object.values(minimumLive).every(Boolean), JSON.stringify(minimumLive));
+    record("equipment studio: safe-minimum acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
+    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png"] }, null, 2) + "\n");
   } finally {
     releaseArchive?.();
     if (b) b.close(); await dispose(); await new Promise(done=>server.close(done)); rmSync(temporary, { recursive: true, force: true });

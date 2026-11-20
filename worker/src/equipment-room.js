@@ -1,6 +1,6 @@
 // Only explicit saves and admission/wake/sweep read D1. Pose traffic never does. The promise
 // queue orders HTTP saves; revision checks also guard reads finishing after a newer write.
-import { equipmentCommand, equipmentEnabled, equipmentRecord } from "./equipment-model.js";
+import { equipmentCommand, equipmentEnabled, equipmentFitSize, equipmentRecord } from "./equipment-model.js";
 import { readEquipment, writeEquipment } from "./equipment-store.js";
 
 const queue = (room, step) => {
@@ -31,12 +31,17 @@ const apply = (room, p, record, tell = true) => {
 
 export const equipmentRoom = {
   enabled: equipmentEnabled,
-  saved(room, value) {
+  saved(room, value, login, id) {
     if (!equipmentEnabled(room.env) || !value) return null;
     try {
       if (value.revision === 0 && value.selection === null && value.declined === null && (value.size === undefined || value.size === 100)) return equipmentRecord(null);
-      return equipmentRecord({ item: value.selection?.item ?? null, version: value.selection?.version ?? null,
+      const record = equipmentRecord({ item: value.selection?.item ?? null, version: value.selection?.version ?? null,
         size: value.size, revision: value.revision, declined: value.declined });
+      // The apple helmet is the only restricted fit. Pins safe even for that wearer do not
+      // need catalog authority while a hibernated Room is still restoring its index.
+      if (equipmentFitSize("w-s-bitcoin", record.selection, record.size) === record.size) return record;
+      // Never expose an unsafe legacy attachment if its authoritative D1 refresh fails.
+      return equipmentFitSize(room.equipmentCharacter(login, id), record.selection, record.size) === record.size ? record : null;
     } catch { return null; }
   },
   async request(room, id, tokenHash, change) {
@@ -48,8 +53,10 @@ export const equipmentRoom = {
     return queue(room, async () => {
       let answer;
       try {
-        if (command) answer = await writeEquipment(room.env.DB, id, tokenHash, command);
-        else { const equipment = await readEquipment(room.env.DB, id, tokenHash); answer = equipment ? { status: 200, equipment } : { status: 401, error: "unauthenticated" }; }
+        if (room.catalog?.enabled) { await room.catalog.refresh(room.ctx.storage); room.catalogChanged(); }
+        const characterFor = (login, id) => room.equipmentCharacter(login, id);
+        if (command) answer = await writeEquipment(room.env.DB, id, tokenHash, command, characterFor);
+        else { const equipment = await readEquipment(room.env.DB, id, tokenHash, characterFor); answer = equipment ? { status: 200, equipment } : { status: 401, error: "unauthenticated" }; }
       } catch (error) {
         if (error.code === "invalid_update") return { status: 400, error: "invalid update" };
         throw error;
@@ -70,7 +77,8 @@ export const equipmentRoom = {
   async refresh(room, p, tell = true) {
     if (!equipmentEnabled(room.env)) return;
     const session = p.equipmentSession;
-    const record = typeof session === "string" && /^[a-f0-9]{64}$/.test(session) ? await readEquipment(room.env.DB, p.id, session) : null;
+    const record = typeof session === "string" && /^[a-f0-9]{64}$/.test(session)
+      ? await readEquipment(room.env.DB, p.id, session, (login, id) => room.equipmentCharacter(login, id)) : null;
     if (!record) {
       if (room.players.get(p.id) === p) room.evict(p, "revoked");
       return false;
@@ -80,8 +88,10 @@ export const equipmentRoom = {
   },
   async refreshAll(room, notify = false) {
     if (!equipmentEnabled(room.env)) return;
+    if (room.catalog?.current() === null) return;
     for (const p of [...room.players.values()]) {
-      await equipmentRoom.refresh(room, p);
+      try { await equipmentRoom.refresh(room, p); }
+      catch (error) { if (error.code === "catalog_unavailable") return; throw error; }
       if (notify && room.players.get(p.id) === p && p.equipmentReady) own(room, p);
     }
   },

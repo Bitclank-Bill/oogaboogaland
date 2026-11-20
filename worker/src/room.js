@@ -229,7 +229,7 @@ export class Room extends DurableObject {
   }
 
   record(ws, a) {
-    if (this.env?.EQUIPMENT_ENABLED === "1") a = { ...a, equipment: equipmentRoom.saved(this, a.equipment), equipmentReady: !!a.equipment };
+    if (this.env?.EQUIPMENT_ENABLED === "1") a = { ...a, equipment: equipmentRoom.saved(this, a.equipment, a.login, a.id), equipmentReady: !!a.equipment };
     return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hand: false, handTone: 0, handEmoji: "", hp: 100, ko: false, g: null, j: 0, w: 0, v: null, va: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], roomLock: null, blendTo: null, blendK: 0, pm: { inv: [], open: 0, blocked: [] }, savedAt: 0, posePending: false, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: a.joinedAt || Date.now() };
   }
 
@@ -610,6 +610,11 @@ export class Room extends DurableObject {
 
   // Binding-only account API. Saving in the hosted Studio never opens or replaces a room socket.
   equipmentFor(id, tokenHash, command = null) { return equipmentRoom.request(this, id, tokenHash, command); }
+  equipmentCharacter(login, id) {
+    const cast = this.catalog.current();
+    if (!cast) throw Object.assign(new Error("Equipment character authority unavailable"), { code: "catalog_unavailable" });
+    return ownedBody(cast, login, true, id);
+  }
   equipmentVisible(a, b) { return seenTogether(a, b); }
   async forgetEquipment(id) {
     // Deletion committed first. Even if the account was immediately recreated, its old socket
