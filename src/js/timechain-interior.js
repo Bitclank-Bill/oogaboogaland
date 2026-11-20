@@ -514,6 +514,17 @@
     // the theater at a shallow angle, its sphere's middle under the landing), so the eye is pulled in from the wall at
     // its height, then put between the floor and the dome over where it stands, and where they leave it no room it is
     // pulled further in, until it is inside all three.
+    // The ground under the eye: the room's floor, or the top of a solid marked `floor` it stands over (the Block Party's
+    // stage and its steps), within a little of its edge so the eye never grazes its side.
+    const floors = solids.filter((o) => o.floor);
+    const groundUnder = (x, z) => {
+      let g = ROOMS.floorAt(L, x, z);
+      for (let i = 0; i < floors.length; i++) {
+        const o = floors[i];
+        if (o.top > g && ROOMS.inBox(o, x, z, 0.2)) g = o.top;
+      }
+      return g;
+    };
     const clampCamera = (p) => {
       const x = p.x, y = p.y, z = p.z;
       if (!guided || Math.abs(p.x) > DOOR.halfW - 0.2) p.z = Math.min(p.z, L.doorZ - 0.2);
@@ -524,7 +535,7 @@
           const dy = clamp(p.y - L.c, -R + 0.1, R - 0.1), max = Math.sqrt(R * R - dy * dy), r = Math.hypot(p.x, p.z);
           if (r > max) { p.x *= max / r; p.z *= max / r; }
         }
-        const range = deckRange(p.x, p.z, ROOMS.floorAt(L, p.x, p.z) + 0.3, roof(p.x, p.z, 0.3), 0.3), lo = range.lo, hi = range.hi;
+        const range = deckRange(p.x, p.z, groundUnder(p.x, p.z) + 0.3, roof(p.x, p.z, 0.3), 0.3), lo = range.lo, hi = range.hi;
         if (lo <= hi) { p.y = clamp(p.y, lo, hi); if (!walled || Math.hypot(p.x, p.y - L.c, p.z) <= R + 1e-9) break; continue; }
         const r = Math.hypot(p.x, p.z), k = r > 0.25 ? (r - 0.25) / r : 0;
         p.x *= k; p.z *= k; p.y = lo;
@@ -1237,9 +1248,19 @@
         }
       } else if (guide.stage === "out") people.steer(0, 0, 0, 0, 0);
     };
+    // The view turned `a` (rad) about the visitor's Ooga's hips, as a dance spin turns the body (node rotation.y).
+    let viewSpun = 0;
+    const spinPoint = (p, o, c, s) => { const x = p.x - o.x, z = p.z - o.z; p.x = o.x + x * c + z * s; p.z = o.z - x * s + z * c; };
+    const spinView = (a) => {
+      const o = avatar.root.position, c = Math.cos(a), s = Math.sin(a);
+      spinPoint(camera.position, o, c, s); spinPoint(camera.target, o, c, s);
+    };
     const update = (dt, elapsed) => {
-      // Last frame's dancing comes off the bodies before anything reads or moves them (the Block Party's).
+      // Last frame's dancing comes off the bodies before anything reads or moves them (the Block Party's), and its spin
+      // off a first-person view.
       if (motion && motion.undance) motion.undance();
+      if (viewSpun && avatar) spinView(-viewSpun);
+      viewSpun = 0;
       pilot.readInput(dt);
       if (guide.stage && avatar) runGuide(dt);
       if (people) people.update(dt, elapsed);
@@ -1289,7 +1310,11 @@
       // A kind that moves the Oogas to its music (the Block Party's groove) poses each one, after the crew and the other
       // players are posed: the visitor's own (standing still, from its own eyes too, held under them) and every other shown.
       if (motion && motion.dance) {
-        if (avatar && !guide.stage) motion.dance(avatar, dt, pilot.mode === "first-person", danceLevel());
+        // Seen from its own eyes, the view spins with the body: turned about the hips as the body is, this frame only.
+        if (avatar && !guide.stage) {
+          const eyes = pilot.mode === "first-person", spun = motion.dance(avatar, dt, eyes, danceLevel()) || 0;
+          if (eyes && spun) spinView(viewSpun = spun);
+        }
         if (remotes) {
           const list = remotes.actors();
           for (let i = 0; i < list.length; i++) {
