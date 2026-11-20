@@ -168,8 +168,10 @@ including when that TV shows the Ooga’s face. An enlarged face is one continuo
 image across 49 TVs, with the room background and bounded nested screens intact.
 Clicking that enlargement restores the saved smaller grids; clicking another
 picture restores the old region and enlarges the new one. Only one enlargement
-is visible at a time. The area and face views remember their own selections
-while right-click switches between them. Clicking a different face moves its
+is visible at a time. Right-click switches views and clears the enlargement, so
+returning shows the original smaller area grids or independent face screens.
+The outgoing enlarged picture stays intact until its last tile switches, then
+its temporary geometry and detail priority are released. Clicking a different face moves its
 patch; clicking the enlarged face restores the independent face screens. Both
 use the existing ready-image tile wave and bounded temporary geometry.
 Standing removes the pen, restores both layouts and
@@ -259,12 +261,12 @@ stay unchanged. The enlargement and these edge repairs save their original
 assignments, restoring them together when closed or moved. Each affected tile switches and flashes on
 its own deadline, retaining its outgoing image until the destination is ready.
 Selection waits while a tile wave or global view transition is active. The selected
-camera's channel stays pinned while the remaining slots rotate. Face broadcasts
-retain the enlargement and reveal it again on return to the area views.
+camera's channel stays pinned while the remaining slots rotate. Switching the
+broadcast clears the enlargement and restores its saved layout for the next visit.
 
 An enlargement adds 49 temporary image surfaces, sharing the existing camera
-target. Remembered area and face selections can each retain 49 surfaces, with
-only the current view displayed. A move can briefly retain another 49 outgoing
+target. Switching views releases that selection once the outgoing tiles are gone.
+A move can briefly retain another 49 outgoing
 surfaces until the wave finishes; then those geometries are released. Restoring, leaving or changing
 actor releases the enhancement surfaces. No extra camera targets or network
 subscriptions are created. Edge repairs reuse the existing small-panel cache,

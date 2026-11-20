@@ -822,7 +822,24 @@
       faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
       if (cameras.portrait) cameras.portrait.forceCapture = false;
     };
+    const clearHiddenEnhancement = faceView => {
+      if (faceView) {
+        faceEnhancement = null;
+        cameras.portrait.enhanced = cameras.portrait.focusPending = false;
+        for (const p of panels) p.portrait = p.portraitSingle;
+      } else {
+        enhancement = null;
+        for (const feed of feeds) feed.enhanced = feed.focusPending = false;
+        for (const p of panels) if (p.saved) {
+          p.normal = p.saved.normal; p.group = p.saved.group; p.size = p.saved.size; p.saved = null;
+        }
+      }
+      trimFocus();
+    };
     const beginSweep = phase => {
+      // Reset the incoming view before its first tile. The outgoing enlargement
+      // stays intact until the last tile has left it, so the cascade never pops.
+      clearHiddenEnhancement(phase === "to-face");
       broadcast = phase; broadcastTime = 0;
       // A click queued during this sweep must not move its origin mid-animation.
       sweepOrigin = manual ? requestedSweepOrigin : null;
@@ -907,6 +924,7 @@
           else remaining = true;
         }
         if (!remaining && broadcastTime >= FACE_SWEEP) {
+          clearHiddenEnhancement(!toFace);
           broadcast = toFace ? "face" : "feeds"; broadcastTime = 0;
           if (!toFace) { finishLayout(); portraitActor = null; faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); }
           else faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);

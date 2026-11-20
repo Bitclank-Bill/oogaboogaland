@@ -17833,10 +17833,10 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       const changed = room.panels.filter(p => p.node.geometry === p.normal);
       return { unchanged, face, returnOrigin: changed.length === 1 && changed[0].col === 24 && changed[0].row === 4 };
     })()`);
-    await b.evaluate('__focusCheck.step(360)');
-    const returned = await b.evaluate('__focusCheck.room.broadcast === "feeds" && __focusCheck.room.panels.every(p => p.node.geometry === p.normal) && __focusCheck.room.enhancement?.feed === __focusCheck.selected && __focusCheck.B.pilot.aiming === __focusCheck.aiming');
-    record("Observatory right click: a queued return keeps the active wave origin, then spreads from the second click and restores the selected enlargement without changing combat intent", Object.values(queued).every(Boolean) && returned, JSON.stringify({ ...queued, returned }));
-    // The face layout has its own selection; the area layout survives behind it.
+    await b.evaluate('for (let i = 0; i < 360 && __focusCheck.room.broadcast !== "feeds"; i++) __focusCheck.step(1)');
+    const returned = await b.evaluate('__focusCheck.room.broadcast === "feeds" && __focusCheck.room.panels.every(p => p.node.geometry === p.normal && !p.saved) && !__focusCheck.room.enhancement && __focusCheck.room.feeds.every(f => !f.enhanced && f.surfaces.length === f.tiles.size) && __focusCheck.B.pilot.aiming === __focusCheck.aiming');
+    record("Observatory right click: a queued return keeps both wave origins, restores the smaller area grids and releases their enhancement without changing combat intent", Object.values(queued).every(Boolean) && returned, JSON.stringify({ ...queued, returned }));
+    // Face enhancement starts from singles after the area selection was cleared.
     await right(await b.evaluate('__focusCheck.aim(50, 6)'));
     await b.evaluate('__focusCheck.step(360); __focusCheck.areaBeforeFace = __focusCheck.snapshot()');
     await click(50, 6);
@@ -17883,11 +17883,12 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     })()`);
     record("Observatory face enhancement: another face moves the sole enlarged patch and clicking it again restores all singles and releases temporary geometry", faceMoved && faceRestored, JSON.stringify({ faceMoved, faceRestored }));
     await click(24, 5); await b.evaluate('__focusCheck.step(100)');
-    await right(await b.evaluate('__focusCheck.aim(24, 5)')); await b.evaluate('__focusCheck.step(360)');
+    await right(await b.evaluate('__focusCheck.aim(24, 5)'));
+    await b.evaluate('__focusCheck.step(1); for (let i = 0; i < 360 && __focusCheck.room.broadcast !== "feeds"; i++) __focusCheck.step(1)');
     const areaBack = await b.evaluate('__focusCheck.room.panels.every((p, i) => p.node.geometry === p.normal && __focusCheck.same(p, __focusCheck.areaBeforeFace[i]))');
     await right(await b.evaluate('__focusCheck.aim(24, 5)')); await b.evaluate('__focusCheck.step(360)');
-    const faceBack = await b.evaluate('__focusCheck.room.panels.filter(p => p.portrait !== p.portraitSingle).length === 49 && __focusCheck.room.panels.every(p => p.node.geometry === p.portrait)');
-    record("Observatory face enhancement: right-click broadcasts preserve both saved layouts", areaBack && faceBack, JSON.stringify({ areaBack, faceBack }));
+    const faceBack = await b.evaluate('!__focusCheck.room.faceEnhancement && !__focusCheck.room.cameras.portrait.enhanced && __focusCheck.room.panels.every(p => p.portrait === p.portraitSingle && p.node.geometry === p.portraitSingle) && __focusCheck.room.cameras.portrait.surfaces.length === __focusCheck.room.cameras.portrait.tiles.size');
+    record("Observatory face enhancement: right-click clears the enlargement and returning shows singles with temporary surfaces released", areaBack && faceBack, JSON.stringify({ areaBack, faceBack }));
     const stood = await b.evaluate(`(() => { const D = __focusCheck; D.B.crew.standPlayer(D.B.pilot.player); D.step(100);
       const faceCleared = !D.room.faceEnhancement && !D.room.cameras.portrait.enhanced && D.room.panels.every(p => p.portrait === p.portraitSingle);
       for (let i = 0; i < 1500 && (D.room.enhancement || D.room.layoutPending || D.room.broadcast !== "feeds"); i++) D.step(1);
