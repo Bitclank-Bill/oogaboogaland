@@ -153,24 +153,119 @@ without publication credentials. Portrait objects live under
 `portraits/<catalog-revision>/<image-sha256>.png`; every object must be verified
 before the catalog's active pointer advances.
 
-## Planned publication
+## Publication and manual releases
 
-Immutable JSON and portrait objects will live in separate staging and production
-R2 buckets. Upload and verify every object before conditionally advancing the
-active pointer. Pointer writes must compare the expected previous generation;
-GitHub workflow serialization alone does not prevent an operator or delayed
-writer from replacing newer state.
+Immutable JSON and portrait objects live in separate staging and production R2
+buckets. `scripts/character-catalog-store.mjs` signs bounded GET and conditional
+PUT requests to one configured bucket. The publisher uploads and reads back
+every object before advancing the active pointer with its exact previous ETag.
+An ambiguous acknowledgment is reconciled against stored bytes, never retried
+as an unconditional write. This uses R2's [atomic conditional writes](https://developers.cloudflare.com/r2/api/s3/conditional-operations/).
 
-The trusted publisher will run from approved tooling, not arbitrary newly merged
-code. Its storage credentials will not permit Worker deployment. The publication
-workflow will not deploy the Worker, apply database migrations, or refresh other
-site assets. Duplicate events, missed events and interrupted acknowledgments
-must be recoverable without losing a newer activation or undoing a rollback.
+The publisher workflow uses an explicitly approved immutable tooling commit.
+Planning has read-only GitHub and storage access. Rendering runs in a separate
+job without publication credentials, using the approved deployed baseline.
+The writer re-verifies the source evidence and current storage state. Its
+bucket-scoped credentials do not permit Worker deployment. The character
+workflow never deploys a Worker, applies database migrations or refreshes other
+site assets.
 
-Manual releases must reconcile already-published plain-data revisions with their
-new baseline and reviewed custom code. Prepare, deploy, verify and activate under
-the same environment release lock; refuse a release that regresses published
-characters or exposes a catalog unsupported by a running reader.
+`scripts/character-catalog-release.mjs` recovers missed bundles in first-parent
+merge order. It starts after the latest consumed event, including events
+retained across rollback, or the baseline for a fresh catalog. It publishes one
+outstanding daily bundle per run. Unrelated merges are inspected for ordering,
+never exported as a new cast. History longer than 512 commits refuses and needs
+an explicit baseline handoff. A duplicate cannot resurrect a rolled-back event.
+
+Manual releases share the `cloudflare-staging` or `cloudflare-production` workflow
+lock with publication. `scripts/character-catalog-handoff.mjs` requires the new
+approved baseline to preserve published plain-data source hashes and every
+existing identity. Reviewed custom code may change through that baseline.
+`release.json` records the active baseline and a pending transition. Beginning
+a transition also advances the old activation generation without changing its
+content, fencing out a publisher holding an earlier ETag. The new namespace is
+prepared before deployment; the release context changes only after the new
+runtime reports the expected baseline, engine, revision and generation.
+Failures retain the barrier. There is no timeout that silently steals it.
+
+The catalog-aware manual deployment builds a temporary Wrangler configuration
+with the selected baseline and bucket binding. Checked-in configurations stay
+disabled. An interrupted deployment resumes the same target and transition;
+it must not select a newer `rock` commit as an implicit replacement.
+Historical accepted snapshots also reserve rolled-back additions: a new
+baseline cannot silently restore a character that the active catalog removed.
+Reconcile the target source with the deliberate rollback before preparing that
+release, or explicitly restore an accepted catalog while accounting for any
+later characters it would replace.
+
+For a failed deployment after fencing, rerun the manual deployment with
+`catalog_resume_sha` set to the pending transition's exact target SHA. It reuses
+already published portraits and catalogs, verifies the live runtime, and then
+completes the transition. Inspect a held transition using:
+
+```sh
+node scripts/character-catalog-deploy.mjs status --environment staging
+```
+
+If a publisher won the race before the fence, the transition remains
+**unfenced**, so no catalog-aware deployment could have passed its admission
+check. Explicitly cancel that unfenced transition with the token and quoted
+ETag returned by `status`:
+
+```sh
+node scripts/character-catalog-deploy.mjs cancel-unfenced --environment staging --token TOKEN --expected-etag '"ETAG"'
+```
+
+Cancellation first fences the latest accepted source, then clears only the
+matching unfenced transition. It refuses an already committed original fence
+or a fenced transition; those must resume. Never clear `release.json` by hand.
+
+## Operator setup and rollout
+
+Create protected GitHub environments `character-catalog-staging` and
+`character-catalog-production`, each with its own private R2 bucket. Keep the
+storage credentials scoped to that bucket, with separate read-only and writer
+keys. The renderer job does not enter either environment.
+
+| Setting | Location and purpose |
+|---|---|
+| `CHARACTER_CATALOG_TOOLING_SHA` | Environment variable: reviewed 40-character tooling commit containing this implementation |
+| `CHARACTER_CATALOG_BASELINE` | Environment variable: explicitly approved deployed baseline for initial bootstrap |
+| `CHARACTER_CATALOG_ENGINE` | Environment variable: `island-character-data-v1` |
+| `CHARACTER_CATALOG_R2_ACCOUNT_ID`, `CHARACTER_CATALOG_R2_BUCKET` | Environment variables: this environment's account and bucket |
+| `CHARACTER_CATALOG_R2_READ_ACCESS_KEY_ID`, `CHARACTER_CATALOG_R2_READ_SECRET_ACCESS_KEY` | Environment secrets: read-only planner access |
+| `CHARACTER_CATALOG_R2_WRITE_ACCESS_KEY_ID`, `CHARACTER_CATALOG_R2_WRITE_SECRET_ACCESS_KEY` | Environment secrets: conditional publication and handoff access |
+| `CHARACTER_BOT_LOGIN` | Trusted daily-bundle bot login, matching existing intake configuration |
+| `CHARACTER_CATALOG_STAGING_RUNTIME_ENABLED`, `CHARACTER_CATALOG_PRODUCTION_RUNTIME_ENABLED` | Repository variables: opt each manual deployment into catalog-aware preparation and runtime configuration |
+| `CHARACTER_CATALOG_PUBLISH_ENABLED` | Repository variable: enables automatic production publication after acceptance; initially absent or `false` |
+
+The existing character App can provide read-only inspection tokens; otherwise
+the workflow uses its read-only Actions token. Existing Cloudflare deployment
+credentials belong only to the manual deployment workflow.
+
+1. Review and merge the staged implementation. Manually deploy the disabled
+   island foundation and the updated Ooga Chat app/edge Worker, including its
+   portrait proxy. Record the exact deployed island baseline; a later merge into
+   `rock` is not evidence of deployment.
+2. Configure staging storage and approved tooling/baseline. Dispatch **Publish
+   character catalog** with `environment=staging`, `operation=bootstrap` while
+   automatic publication remains off.
+3. Enable the staging runtime variable and run the manual staging deployment.
+   Verify initial character models, sign-in, Room hibernation, matching and
+   mismatched tabs, and Chat's revised portrait sheet.
+4. Manually publish a daily-bundle revision in staging, then roll back to an
+   accepted digest. Repeat delivery and recovery; prove the Worker version and
+   unrelated static assets remain unchanged. Test a manual code release after
+   publication and an interrupted handoff resumed at its original target.
+5. Bootstrap production from its own approved deployed baseline, enable its
+   runtime through the manual deployment, and verify the same read paths.
+   Only then set `CHARACTER_CATALOG_PUBLISH_ENABLED=true` for automatic updates.
+
+Disabling automatic publication does not roll content back. Use the explicit
+rollback operation with an accepted revision. To disable runtime loading, use
+the ordinary manual deployment with that environment's runtime variable off;
+the page then uses the compiled cast. Keep the accepted catalogs and release
+state for deliberate recovery, never overwrite their history by hand.
 
 ## Implementation sequence
 
@@ -196,3 +291,28 @@ Runtime acceptance additionally covers first model creation, old/new tabs,
 multiplayer host compatibility, Room hibernation, auth and Chat caches, portraits,
 offline fallback, strict CSP and bounded resource use. Record checks actually
 run separately from this acceptance plan. Follow AGENTS.md's testing policy.
+
+## Implementation validation (2026-11-20)
+
+- Full Worker suite: **784/784 passed**, including storage preconditions,
+  timeout/lost-acknowledgment recovery, rollback exclusions, direct publication
+  ordering, handoff fencing/cancellation and manual deployment configuration.
+- Dedicated staged catalog/Chat browser acceptance: **7/7 passed**. It proves
+  catalog loading precedes model construction, appearance stays pinned in an
+  open page, refresh adopts cosmetics without changing roster compatibility,
+  and an already open Chat strip changes to the matching portrait revision.
+- Standalone Ooga Chat browser suite: **7/7 passed**. Actual portrait renderer
+  smoke: 59 fixture characters, including a new synthetic data-only character,
+  with a clean console. These are local fixtures, not production publication.
+- Site build, Chat build, syntax for 57 changed/new JavaScript files, and all
+  four affected workflow YAML parses passed. Chat first load is 239.2 KiB gzip
+  against its 244 KiB budget.
+- Root unit suite: **830/831 passed**. The poker marble geometry golden hash
+  failure reproduces with identical hashes on untouched baseline `fa2a62e`.
+  Targeted Studio teardown (31 input targets remaining) and combined hub
+  live-wake/separate-bodies geometry (849 to 852) failures also reproduce on
+  that baseline. Their assertions remain intact; they were not rerun again.
+
+Live Cloudflare staging publication, production provisioning, and the decisive
+unrelated-merge acceptance experiment remain rollout steps. No deployment or
+automatic-publication switch was changed while implementing these checks.

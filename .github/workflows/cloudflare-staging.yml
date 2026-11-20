@@ -2,6 +2,11 @@ name: Deploy Cloudflare staging
 
 on:
   workflow_dispatch:
+    inputs:
+      catalog_resume_sha:
+        description: Exact held release SHA to resume after a failed catalog-aware deployment (otherwise leave empty)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -11,7 +16,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  catalog:
+    if: vars.CHARACTER_CATALOG_STAGING_RUNTIME_ENABLED == 'true'
+    uses: ./.github/workflows/cloudflare-catalog-release.yml
+    with:
+      environment: staging
+      target_sha: ${{ inputs.catalog_resume_sha || github.sha }}
+      resume: ${{ inputs.catalog_resume_sha != '' }}
+    secrets: inherit
   deploy:
+    if: vars.CHARACTER_CATALOG_STAGING_RUNTIME_ENABLED != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
