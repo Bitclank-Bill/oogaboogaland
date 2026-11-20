@@ -90,17 +90,14 @@
   let lite = false;
   const CARPET = ["#1f3b30", "#284a3c"], WOOD = "#3b2519", OXBLOOD = "#5c1a22", ROPE = "#7a1622", BOTTLES = ["#d9892c", "#4f9a4a", "#dfe8de"];
   const flat = (w, h, d, color, x = 0, y = 0, z = 0, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
-  // A cord slung along z between two posts, as short square links turned in the y-z plane.
+  // A cord slung along z between two posts, with overlapping links so bends stay closed.
   const cord = (x, za, zb, y, sag, r, color) => {
     const links = [];
     for (let k = 0, n = lite ? 4 : 10; k < n; k++) {
       const z0 = za + (zb - za) * k / n, z1 = za + (zb - za) * (k + 1) / n, y0 = y - Math.sin(k / n * Math.PI) * sag, y1 = y - Math.sin((k + 1) / n * Math.PI) * sag;
-      const length = Math.hypot(z1 - z0, y1 - y0), cs = (z1 - z0) / length, sn = (y1 - y0) / length, g = flat(r * 2, r * 2, length + r, color);
-      for (let i = 0; i < g.verts.length; i += 3) {
-        const yy = g.verts[i + 1], zz = g.verts[i + 2];
-        g.verts[i] += x; g.verts[i + 1] = yy * cs + zz * sn + (y0 + y1) / 2; g.verts[i + 2] = zz * cs - yy * sn + (z0 + z1) / 2;
-      }
-      links.push(g);
+      const dy = y1 - y0, dz = z1 - z0, overlap = r / (2 * Math.hypot(dy, dz));
+      const ey = dy * overlap, ez = dz * overlap;
+      links.push(M.beam(x, y0 - ey, z0 - ez, x, y1 + ey, z1 + ez, r * 2, color));
     }
     return links;
   };
@@ -173,29 +170,17 @@
     for (let i = 0; i < geo.verts.length; i += 3) if (geo.verts[i + 1] > 0.6) { geo.verts[i] *= k; geo.verts[i + 2] *= k; }
     return geo;
   };
-  // A square bar from point a to point b: a box stood along y, then laid along the line between them.
-  const bar = (ax, ay, az, bx, by, bz, w, color, emissive = 0) => {
-    const dx = bx - ax, dy = by - ay, dz = bz - az, length = Math.hypot(dx, dy, dz), d = [dx / length, dy / length, dz / length];
-    const side = Math.hypot(d[0], d[2]) < 1e-6 ? [1, 0, 0] : [d[2] / Math.hypot(d[0], d[2]), 0, -d[0] / Math.hypot(d[0], d[2])];
-    const up = [side[1] * d[2] - side[2] * d[1], side[2] * d[0] - side[0] * d[2], side[0] * d[1] - side[1] * d[0]], mid = [(ax + bx) / 2, (ay + by) / 2, (az + bz) / 2];
-    const g = flat(w, length, w, color, 0, 0, 0, emissive);
-    for (let i = 0; i < g.verts.length; i += 3) {
-      const x = g.verts[i], y = g.verts[i + 1], z = g.verts[i + 2];
-      for (let j = 0; j < 3; j++) g.verts[i + j] = x * side[j] + y * d[j] + z * up[j] + mid[j];
-    }
-    return g;
-  };
   // A tiered brass frame for each of the three chandeliers: three rings joined by four slanted arms each to the one
   // above, the top ring's arms meeting a central stem at y 7.6, the stem from the bottom ring's cross to a ceiling plate.
   const CRYSTAL_RINGS = [[2.1, 6.55, 24, 0.17], [1.45, 5.85, 16, 0.15], [0.8, 5.15, 10, 0.13]];
   const chandelierFrame = theme => {
     const ring = (r, y, h) => M.lathe({ segments: lite ? 16 : 48, profile: [[r + 0.08, y], [r + 0.08, y + h], [r - 0.08, y + h], [r - 0.08, y], [r + 0.08, y]], color: theme.accent });
     const parts = CRYSTAL_RINGS.map(([r, y, , h]) => ring(r, y, h));
-    parts.push(flat(1.76, 0.04, 0.04, theme.accent, 0, 5.13), flat(0.04, 0.04, 1.76, theme.accent, 0, 5.13), bar(0, 5.11, 0, 0, 9.04, 0, 0.07, theme.accent), disk(0.5, 9.04, 9.1, theme.accent, lite ? 12 : 48));
+    parts.push(flat(1.76, 0.04, 0.04, theme.accent, 0, 5.13), flat(0.04, 0.04, 1.76, theme.accent, 0, 5.13), M.beam(0, 5.11, 0, 0, 9.04, 0, 0.07, theme.accent), disk(0.5, 9.04, 9.1, theme.accent, lite ? 12 : 48));
     for (let k = 0; k < 4; k++) {
       const a = Math.PI / 4 + k * Math.PI / 2, c = Math.cos(a), s = Math.sin(a), [r0, y0, , h0] = CRYSTAL_RINGS[0];
-      for (let t = 1; t < 3; t++) { const [r, y, , h] = CRYSTAL_RINGS[t], [ru, yu] = CRYSTAL_RINGS[t - 1]; parts.push(bar(c * r, y + h, s * r, c * ru, yu, s * ru, 0.05, theme.accent)); }
-      parts.push(bar(c * r0, y0 + h0, s * r0, c * 0.035, 7.6, s * 0.035, 0.05, theme.accent));
+      for (let t = 1; t < 3; t++) { const [r, y, , h] = CRYSTAL_RINGS[t], [ru, yu] = CRYSTAL_RINGS[t - 1]; parts.push(M.beam(c * r, y + h, s * r, c * ru, yu, s * ru, 0.05, theme.accent)); }
+      parts.push(M.beam(c * r0, y0 + h0, s * r0, c * 0.035, 7.6, s * 0.035, 0.05, theme.accent));
     }
     return M.merge(...parts);
   };
@@ -215,7 +200,7 @@
       else for (let k = 0; k < count; k++) {
         const a = k * Math.PI * 2 / count, b = (k + 0.5) * Math.PI * 2 / count, ri = r - 0.12;
         parts.push(gem(Math.cos(a) * r, y, Math.sin(a) * r, 0.26, 0.6, TINTS[k & 1]), gem(Math.cos(b) * ri, y - 0.45, Math.sin(b) * ri, 0.26, 0.6, TINTS[(k + 1) & 1]),
-          bar(Math.cos(b) * (r - 0.07), y, Math.sin(b) * (r - 0.07), Math.cos(b) * ri, y - 0.45, Math.sin(b) * ri, 0.02, TINTS[1], 0.6));
+          M.beam(Math.cos(b) * (r - 0.07), y, Math.sin(b) * (r - 0.07), Math.cos(b) * ri, y - 0.45, Math.sin(b) * ri, 0.02, TINTS[1], 0.6));
       }
       return M.merge(...parts);
     });
