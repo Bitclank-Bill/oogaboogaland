@@ -16980,6 +16980,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const B = __ooga, room = BL.scenes.hub.architect;
     B.advance(1.2, 1 / 60);
     return { active: room.active, feet: B.pilot.player.root.position.y - B.pilot.player.baseY,
+      returnMirror: !!room.returnMirror?.geometry.reflector && room.returnMirror.geometry !== B.mirrorCave.node.geometry,
       name: B.pilot.player.traits.name, feeds: room.feeds.length, captures: room.feeds.reduce((n, f) => n + f.captures, 0) };
   })()`);
   const channels = await b.evaluate(`(() => {
@@ -17036,7 +17037,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub mirror: nearby preparation stays idle, real walking enters 24 live feeds and returns the same Ooga with captures stopped",
     approach.prepared && !approach.active && approach.captures === 0 && entered.active && entered.feet < -40
-      && entered.feeds === 24 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
+      && entered.returnMirror && entered.feeds === 24 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
       && entered.name === approach.name && returned.name === approach.name, JSON.stringify({ approach, entered, returned }));
   await trip("hub").run(b);
   const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);

@@ -6,8 +6,11 @@ from upstream `rock` at `45e02fd428cc0734b3c9a3f8f173bf741d68a094`.
 ## Walking through
 
 The driven Ooga crosses the existing mirror at one o'clock into an enclosed,
-circular white chamber: a central chair and 51 framed monitors in three rows.
-The doorway behind the arrival returns the same Ooga outside the mirror.
+circular chamber with black walls behind 51 framed monitors, a pale floor and a
+central chair. A reflecting mirror behind the arrival matches the island cave's
+five-metre-wide, three-metre-high visible opening. Walking through its glass
+returns the same Ooga outside the island mirror. The screen banks leave a wider
+gap around it, and the return threshold follows the glass plane across its width.
 A brief pale veil softens the crossing. The old glyph room remains retired;
 shots and melee still ripple the unbreakable mirror. NPCs respect its barrier.
 
