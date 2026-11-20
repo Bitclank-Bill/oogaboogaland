@@ -409,13 +409,13 @@
       <div class="studio-scroll" id="studio-scroll">
         <p class="studio-who" id="studio-who"></p>
         <div class="studio-wardrobe">
-          <label for="studio-hat">Try a hat</label>
-          <select id="studio-hat" aria-label="Hat"></select>
-          <button type="button" id="studio-hat-save">Save hat for my Ooga</button>
-          <button type="button" id="studio-hat-own" hidden>Show my Ooga</button>
+          <label class="roster-sort-label" for="studio-hat">Try a hat</label>
+          <select class="slab" id="studio-hat" aria-label="Hat" aria-describedby="studio-hat-status"></select>
+          <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save hat for my Ooga</button>
+          <button type="button" class="foot-button" id="studio-hat-own" hidden>Show my Ooga</button>
           <p class="studio-note" id="studio-hat-status" role="status"></p>
-          <a href="/auth/login?next=%2F%3Fscene%3Dstudio" id="studio-hat-signin" hidden>Sign in with GitHub to save</a>
-          <a href="/?scene=studio" id="studio-hat-link" hidden>Open the hosted studio to save</a>
+          <a class="link" href="/auth/login?next=%2F%3Fscene%3Dstudio" id="studio-hat-signin" hidden>Sign in with GitHub to save</a>
+          <a class="link" href="/?scene=studio" id="studio-hat-link" hidden>Open the hosted studio to save</a>
         </div>
         <h3 class="section-head">File</h3>
         <div class="studio-file">
@@ -431,8 +431,8 @@
 
     <section id="equipment-update" class="equipment-update" aria-label="Hat update" hidden>
       <p id="equipment-update-text"></p>
-      <div><button type="button" id="equipment-accept">Accept update</button>
-      <button type="button" id="equipment-decline">Keep my version</button></div>
+      <div><button type="button" class="foot-button foot-primary" id="equipment-accept">Accept update</button>
+      <button type="button" class="foot-button" id="equipment-decline">Keep my version</button></div>
       <p id="equipment-update-status" role="status"></p>
     </section>
 
