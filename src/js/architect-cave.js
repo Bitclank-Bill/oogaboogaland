@@ -75,8 +75,27 @@
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
+    let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
+    let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
-      walkAt: { x: 0, z: 1.7 }, sitter: null };
+      walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
+    const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
+    const removePen = () => { if (pen?.parent) removeChild(pen.parent, pen); };
+    const parkEquipment = actor => {
+      if (actor === parkedActor) return;
+      removePen();
+      if (parkedActor) {
+        crew.unparkWeapons(parkedActor);
+        crew.setJetpackOwnership(parkedActor, jetOwned);
+        if (jetOwned && jetWorn) crew.wearJetpack(parkedActor, parkedActor.jetpackGeometry, parkedActor.jetpackFlameGeometry);
+      }
+      parkedActor = actor;
+      if (actor) {
+        jetOwned = !!actor.jetpackOwned; jetWorn = !!actor.jet;
+        crew.parkWeapons(actor); crew.setJetpackOwnership(actor, false);
+      }
+      pilot.refreshCombat();
+    };
     const chairClear = (x, y, z, toX, toY, toZ, radius, height) => {
       if (!segmentClear(x, y, z, toX, toY, toZ, radius, height)) return false;
       const sr = Math.sin(seat.ry), cr = Math.cos(seat.ry);
@@ -100,6 +119,11 @@
       if (!active || !crew.sitPlayer(seat)) return false;
       seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
       seat.sitter.root.rotation.y = seat.ry;
+      const hand = seat.sitter.parts.fingersR, center = BL.scene.boundsOf(hand.geometry).center;
+      pen.position.x = center[0]; pen.position.y = center[1]; pen.position.z = center[2];
+      pen.scale.x = pen.scale.y = pen.scale.z = seat.sitter.traits.height;
+      addChild(hand, pen);
+      updateBroadcast(0, seat.sitter);
       return true;
     };
     const add = (g, parent = group, position = null, yaw = 0) => {
@@ -201,11 +225,19 @@
         padded.push(bevelBox({ w: 0.15, h: 0.1, d: 1.04, bevel: 0.04, color: dark, emissive: 0.25, offset: { x, y: 1.13 } }));
       }
       chairTop = add(merge(...padded));
+      const penGeometry = merge(lathe({ profile: [[0.012, -0.13], [0.016, -0.1], [0.016, 0.15], [0.012, 0.17]],
+        segments: 8, color: "#202932", emissive: 0.2 }),
+        lathe({ profile: [[0.002, -0.18], [0.012, -0.13]], segments: 8, color: "#c9d0d4", emissive: 0.35 }),
+        box({ w: 0.012, h: 0.09, d: 0.012, color: "#c9d0d4", emissive: 0.35, offset: { x: 0.02, y: 0.11 } }));
+      penGeometry.characterPart = true;
+      pen = add(penGeometry, group); pen.rotation.z = -0.35; removePen();
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
     const resetBroadcast = () => {
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
+      manual = manualFace = false;
+      faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
       for (const p of panels) p.node.geometry = p.normal;
       if (cameras.portrait) cameras.portrait.forceCapture = false;
     };
@@ -218,8 +250,15 @@
       if (document.hidden) return;
       const face = cameras.portrait;
       if (broadcastActor !== actor) { resetBroadcast(); broadcastActor = actor; }
+      const holding = seated();
+      if (holding !== manual) {
+        manual = holding; manualFace = broadcast === "face" || broadcast === "to-face";
+        broadcastTime = 0;
+        faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
+        if (broadcast === "feeds") { portraitActor = null; face.forceCapture = false; }
+      }
       broadcastTime += dt;
-      if (broadcast === "feeds" && broadcastTime >= FACE_WAIT - 0.75 && portraitActor !== actor) {
+      if (broadcast === "feeds" && (manual ? manualFace : broadcastTime >= faceWait - 0.75) && portraitActor !== actor) {
         portraitActor = actor; face.pending = true; face.last = -Infinity; face.forceCapture = true;
         face.geometry.imageSurface.version++;
       }
@@ -240,16 +279,24 @@
         cam.up.x = m[4] / up; cam.up.y = m[5] / up; cam.up.z = m[6] / up;
         cam.far = distance + RADIUS * 2 + 1;
       }
-      if (broadcast === "feeds" && broadcastTime >= FACE_WAIT && (!face.pending || renderer.kind !== "webgl2")) beginSweep("to-face");
-      if (broadcast === "face" && broadcastTime >= FACE_HOLD) beginSweep("to-feeds");
+      if (broadcast === "feeds" && (manual ? manualFace : broadcastTime >= faceWait) && (!face.pending || renderer.kind !== "webgl2")) beginSweep("to-face");
+      if (broadcast === "face" && (manual ? !manualFace : broadcastTime >= faceHold)) beginSweep("to-feeds");
       if (broadcast === "to-face" || broadcast === "to-feeds") {
         const toFace = broadcast === "to-face";
         for (const p of panels) p.node.geometry = (broadcastTime >= p.delay) === toFace ? p.portrait : p.normal;
         if (broadcastTime >= FACE_SWEEP) {
           broadcast = toFace ? "face" : "feeds"; broadcastTime = 0;
-          if (!toFace) portraitActor = null;
+          if (!toFace) { portraitActor = null; faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); }
+          else faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
         }
       }
+    };
+    const toggleView = () => {
+      if (!seated()) return false;
+      if (!manual) updateBroadcast(0, pilot.player);
+      manualFace = !manualFace;
+      if (!manualFace && broadcast === "feeds") { portraitActor = null; cameras.portrait.forceCapture = false; }
+      return true;
     };
     const travel = (inside) => {
       if (seat.sitter) crew.standPlayer(seat.sitter);
@@ -261,6 +308,7 @@
       destination.yaw = inside ? 0 : m.ry + Math.PI;
       destination.pitch = inside ? 0.08 : pilot.orbit.pitch; destination.dist = Math.min(5, pilot.orbit.dist);
       pilot.controls.reset(); pilot.navigate(destination);
+      parkEquipment(inside ? pilot.player : null);
       if (inside && !audio) audio = BL.architectAudio.create();
       audio?.setActive(inside); cameras.setActive(inside); weather.setExterior(!inside);
       previousAlong = NaN;
@@ -277,6 +325,8 @@
         audio.setActive(true); cameras.setActive(true); weather.setExterior(false);
       }
       if (active && !contains(p.x, feet, p.z)) { resetBroadcast(); active = false; group.visible = false; audio?.setActive(false); cameras.setActive(false); weather.setExterior(true); }
+      parkEquipment(active ? actor : null);
+      if (!seated()) removePen();
       if (active) {
         if (seat.sitter && seat.sitter === actor && actor.camp.seat === seat) {
           seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
@@ -301,12 +351,14 @@
       if (r > limit) { p.x *= limit / r; p.z *= limit / r; }
       p.y = Math.max(FLOOR + 0.25, Math.min(FLOOR + HEIGHT - 0.3, p.y));
     };
-    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, panels, group, cameras, seat, sit, supportAt, segmentClear: chairClear,
+    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, panels, group, cameras, seat, sit, toggleView, supportAt, segmentClear: chairClear,
       nearbySeat(x, y, z, reach) {
         return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
       },
       get returnMirror() { return returnMirror; },
+      get seated() { return seated(); }, get pen() { return pen; },
+      get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,
       get active() { return active; }, get crossing() { return veil > 0; }, get prepared() { return prepared; },
@@ -317,7 +369,7 @@
       },
       suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; }
+      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };

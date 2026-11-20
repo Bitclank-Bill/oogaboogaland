@@ -6632,6 +6632,7 @@
   const onTap = (hit, p) => {
     if (cloudHopper?.active) return;
     if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
+    if (architectCave?.toggleView()) return;
     if (gorillaBehindBillboard(hit, p)) return;
     if (debugMovementTap(hit, p)) return;
     // Another player's Ooga under the pointer, in sight (the pool's own exact mesh test and `liveClear`, not the taps'
@@ -6892,7 +6893,7 @@
         hud.setAct("DROP & ROLL!");
       } else if (action === STAND_ACTION) {
         hud.hint(player?.camp.seat === architectCave?.seat
-          ? COARSE ? "Look around to swivel · Move or tap STAND UP! to get up" : "Look or Q/E to swivel · Move or Space to stand up"
+          ? COARSE ? "Tap the view to change screens · Look to swivel · Move or STAND UP! to get up" : "Click to change screens · Look or Q/E to swivel · Move or Space to stand up"
           : COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
         hud.setAct("STAND UP!");
       } else if (action.kind === "architect-chair") {
@@ -11364,6 +11365,7 @@
       crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
       crew.wearJetpack(cave, hubModels.jetpack(), hubModels.jetFlame());
     }, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly || !!cloudHopper?.intoCombat, noOverhead: () => !!cloudHopper?.active, primaryAction: (down, event) => {
+        if (architectCave?.seated) { if (down) architectCave.toggleView(); return true; }
         if (!down && combatTotemLink) {
           const link = combatTotemLink; combatTotemLink = null;
           if (event && onMergeRock()) window.open(link, "_blank", "noopener,noreferrer");
@@ -11374,7 +11376,7 @@
         return combatTotemPress(event);
       },
       modifiedClick: combatTotemPress,
-      aimPointer: combatPointer, captureClick: (x, y) => { const p = combatPointer(x, y); return combatTotemClick(p.x, p.y); }, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
+      aimPointer: combatPointer, captureClick: (x, y) => { if (architectCave?.toggleView()) return true; const p = combatPointer(x, y); return combatTotemClick(p.x, p.y); }, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
     chalkboard = BL.chalkboard.create({
       renderer,
       onOpen: () => { pilot.setActive(false); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
@@ -12178,6 +12180,7 @@
       onDoubleTap: (hit, p) => {
         if (cloudHopper?.active) return;
         if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
+        if (architectCave?.toggleView()) return;
         if (gorillaBehindBillboard(hit, p)) return;
         // A keypad button takes every press, so the same number twice (a PIN's 11) is two presses.
         if (hit && hit.owner.kind === "sphere-key") { onTap(hit, p); return; }
@@ -12621,6 +12624,7 @@
     propSync.dispose();
     remotes = duels = npcSync = propSync = null;
     npcGhosts.dispose(); npcGhosts = null;
+    architectCave?.dispose(); architectCave = null; RENDER_OPTS.cameraFeeds = null;
     crew.dispose();
     critters.dispose();
     fx.dispose();
@@ -12655,7 +12659,6 @@
       bifrostIsle.heimdall.dispose();
     }
     bifrostIsle = null;
-    architectCave?.dispose(); architectCave = null; RENDER_OPTS.cameraFeeds = null;
     mirrorCave.body.dispose();
     pilot.dispose();
     if (oogatronUnsub) {
@@ -12809,16 +12812,17 @@
     const H = BL.controlsHelp;
     if (cloudHopper?.active) return cloudHopper.controlsHelp(touch);
     const gorilla = clankerPlay?.active, help = gorilla ? clankerPlay.controlsHelp(touch) : pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon", "jetpack"]);
+    if (architectCave?.seated) help.rows.push(H.row([], "Switch area feeds / your face", touch ? "Tap the view" : "Left mouse click"));
     if (!touch) {
       const own = BL.net.ownCharacter(), cave = own && crew.cavemen.get(own.handle);
       if (cave && (!drivesOoga(cave) || clankers.list.some(entry => entry.owner === cave && entry.active && entry.root.visible))) help.rows.push(H.row(BL.controls.shortcutKeys("actor"), "Switch between your Ooga and gorilla"));
       const player = pilot.player;
       if (!gorilla && player) {
-        if (!pilot.birdsEye && player.traits.nunchaku && player.state !== "sleeping" && !player.camp.burning && !player.camp.rolling) help.rows.push(H.row(BL.controls.shortcutKeys("twirl"), "Twirl nunchaku"));
+        if (!architectCave?.active && !pilot.birdsEye && player.traits.nunchaku && player.state !== "sleeping" && !player.camp.burning && !player.camp.rolling) help.rows.push(H.row(BL.controls.shortcutKeys("twirl"), "Twirl nunchaku"));
         if (player.tint) help.rows.push(H.row(BL.controls.shortcutKeys("tint"), "Change colourway"));
       }
     }
-    if (!gorilla) help.title = "Island · " + help.title; return help;
+    if (!gorilla) help.title = (architectCave?.active ? "Observatory · " : "Island · ") + help.title; return help;
   };
   // The map reads this visit's real terrain and door coordinates; it never builds another island.
   hubScene.navigationMap = () => {

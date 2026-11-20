@@ -16981,6 +16981,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     B.advance(1.2, 1 / 60);
     return { active: room.active, feet: B.pilot.player.root.position.y - B.pilot.player.baseY,
       returnMirror: !!room.returnMirror?.geometry.reflector && room.returnMirror.geometry !== B.mirrorCave.node.geometry,
+      parked: !!B.pilot.player.weapon.parked && !B.pilot.player.weapon.primaryOwned && !B.pilot.player.weapon.secondaryOwned && !B.pilot.player.jetpackOwned && !B.pilot.player.jet,
       name: B.pilot.player.traits.name, feeds: room.feeds.length, captures: room.feeds.reduce((n, f) => n + f.captures, 0) };
   })()`);
   const channels = await b.evaluate(`(() => {
@@ -17049,8 +17050,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     B.pilot.navigate({ position: { x: 0, y: top, z: 0 }, yaw: 0, pitch: 0.1, dist: 4 });
     B.advance(0.4, 1 / 60);
     const onCushion = Math.abs(a.root.position.y - a.baseY - top) < 1e-6 && room.sit();
+    const parked = a.weapon.parked;
     room.travel(false);
-    const released = !seat.sitter && !a.camp.seat;
+    const released = !seat.sitter && !a.camp.seat && !room.pen.parent && !a.weapon.parked
+      && a.weapon.primaryOwned === parked.primaryOwned && a.weapon.secondaryOwned === parked.secondaryOwned
+      && a.weapon.ammo === parked.ammo && a.weapon.selectedSlot === parked.selectedSlot;
     room.travel(true); B.pilot.navigate({ position: start, yaw: 0, pitch: 0.1, dist: 4 }); B.advance(1.1, 1 / 60);
     return { sit, swivel, stand, clear, cushion, onCushion, released };
   })()`);
@@ -17069,7 +17073,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       return p.group === q.group || Math.abs(p.row - q.row) > 1 || Math.min(dx, 52 - dx) > 1
         || p.normal.imageSurface.feed !== q.normal.imageSurface.feed;
     }));
-    room.update(BL.architectCave.FACE_WAIT - room.broadcastTime - 0.5);
+    room.update(room.faceWait - room.broadcastTime - 0.5);
     const warm = face.forceCapture && face.pending && room.broadcast === "feeds";
     // Allow the global capture interval to elapse, then render the real head before the wave.
     await new Promise(resolve => setTimeout(resolve, 510));
@@ -17088,7 +17092,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     const background = face.roomTriangles > 0 && face.captures > beforeBackground && face.camera.far > 22 && !face.seedOnly;
-    room.update(BL.architectCave.FACE_HOLD); room.update(1.5);
+    room.update(room.faceHold); room.update(1.5);
     const restoring = room.broadcast === "to-feeds" && count() > 0 && count() < panels.length;
     room.update(BL.architectCave.FACE_SWEEP);
     const restored = room.broadcast === "feeds" && panels.every(p => p.node.geometry === p.normal);
@@ -17097,6 +17101,29 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: 608 panels share mosaic textures and a live head sweep leads from the far wall before restoring them",
     Object.values(broadcast).every(Boolean), JSON.stringify(broadcast));
+  const manualScreens = await b.evaluate(`(async () => {
+    const B = __ooga, room = BL.scenes.hub.architect, actor = B.pilot.player;
+    B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
+    B.advance(0.3, 1 / 60);
+    const sitting = room.sit(), pen = room.pen.parent === actor.parts.fingersR;
+    room.update(120);
+    const heldFeeds = room.broadcast === "feeds";
+    const clicked = room.toggleView(); room.update(0);
+    await new Promise(resolve => setTimeout(resolve, 510));
+    B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
+    const heldFace = room.broadcast === "face";
+    room.toggleView(); room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
+    const restored = room.broadcast === "feeds";
+    const stand = B.crew.standPlayer(actor); room.update(0);
+    const released = !room.pen.parent && !room.toggleView();
+    room.update(room.faceWait - 0.5);
+    const automatic = room.cameras.portrait.forceCapture;
+    room.travel(true); B.advance(1.1, 1 / 60);
+    return { sitting, pen, heldFeeds, clicked, heldFace, restored, stand, released, automatic };
+  })()`);
+  record("hub observatory: seated pen toggles persistent views, standing removes it and resumes automatic transitions",
+    Object.values(manualScreens).every(Boolean), JSON.stringify(manualScreens));
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", code: "KeyS" });
   await b.evaluate(`__ooga.advance(1, 1 / 60)`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "s", code: "KeyS" });
@@ -17107,7 +17134,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub mirror: nearby preparation stays idle, real walking enters 32 live feeds and returns the same Ooga with captures stopped",
     approach.prepared && !approach.active && approach.captures === 0 && entered.active && entered.feet < -40
-      && entered.returnMirror && entered.feeds === 32 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
+      && entered.returnMirror && entered.parked && entered.feeds === 32 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
       && entered.name === approach.name && returned.name === approach.name, JSON.stringify({ approach, entered, returned }));
   await trip("hub").run(b);
   const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);

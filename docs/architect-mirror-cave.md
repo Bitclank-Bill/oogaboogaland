@@ -32,7 +32,16 @@ ceiling. The chair has a solid cushion, back and armrests that rotate together
 over a fixed five-spoke caster base. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
-It uses the existing crew sitting/standing lifecycle and creates no new controls.
+Sitting places a small pen in the Ooga’s right hand. Left-click (or tap the view)
+toggles area feeds and the face broadcast using the same outward sweep. The
+chosen view stays until the next click; standing removes the pen and resumes
+automatic transitions. A click during a sweep queues the chosen view until the
+current sweep completes. The existing crew sitting/standing lifecycle owns cleanup.
+
+Primary and secondary weapons, ammunition and jetpack ownership are parked for
+the visit. Their HUD buttons disappear and equipment keys cannot bring them out.
+Leaving restores the saved loadout using the same weapon parking path as Bifrost
+and the Factory; changing the controlled actor and scene cleanup also release it.
 The camera stays inside the chamber. Leaving the controlled Ooga returns the free camera outside. Restoring a pose within the
 chamber activates its room presentation.
 
@@ -103,13 +112,15 @@ multiply the number of cameras or textures.
 
 ### Face broadcast
 
-After 45 seconds of regular feeds, an approximately 4.2-second wave replaces
+While nobody is controlling the chair, a randomized 34–56 seconds of regular
+feeds is followed by an approximately 4.2-second wave that replaces
 individual screens with the same live close-up of the controlled Ooga. It begins
 opposite the return mirror and spreads around both sides toward it. Upper rows
 lead lower rows; fresh row and panel jitter makes the edge irregular. Every
-screen holds the complete face for eight seconds, then the same outward pattern
+screen holds the complete face for a randomized 6–10 seconds, then the same outward pattern
 restores the original mosaics. The timer pauses in hidden tabs and resets on
-travel or changing the controlled character.
+travel or changing the controlled character. Automatic transitions are disabled
+while the player sits in the chair; clicking owns the choice until they stand.
 
 One camera follows the actual authored head transform and proportions, including
 looking and swiveling. It includes the actual room behind the Ooga: walls, floor,
@@ -251,7 +262,9 @@ now initialized explicitly. The browser connection became unavailable before the
 corrected face cycle or final proportions could be checked; these still need
 visual acceptance and a fresh screenshot. Added, unrun regressions cover mosaic
 coverage and adjacency, shared textures, face prewarming, room geometry in the face background and both
-sweep directions. The background update also needs browser acceptance.
+sweep directions. The background update, seated pen/click controls and equipment parking also need
+browser acceptance. Added, unrun checks cover ownership hiding, pen cleanup,
+persistent seated views and automatic transitions resuming after standing.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 
