@@ -40,6 +40,50 @@ The browser's chosen revision is never an ownership credential. Numeric account
 identity overrides, reserved handles, bans and session authorization remain
 server policy.
 
+## Foundation commands
+
+`scripts/character-catalog.mjs` is the pure planner. Its seed input explicitly
+names `environment` (`staging` or `production`), `engine`, the 40-character
+production `baseline` commit, and `sources`. Each source has its repository
+`path`, exact `source` text, Git `blob` SHA and `kind` (`data` or `custom`). The
+caller must obtain that input from the approved production release; a supplied
+baseline label alone is not evidence that files came from that release.
+
+The planner checks both source hashes and identity reservations. Custom entries
+carry their identity and source hashes, with `row: null`; their compiled code
+stays in the manually deployed baseline. Stored catalogs use canonical JSON and
+a SHA-256 digest, with at most 128 characters and 2 MiB of encoded data.
+
+The read-only CLI writes proposals to stdout:
+
+```sh
+node scripts/character-catalog-plan.mjs seed baseline-input.json > catalog.json
+node scripts/character-catalog-plan.mjs verify catalog.json
+node scripts/character-catalog-plan.mjs activate catalog.json --expected-generation 0 > activation.json
+node scripts/character-catalog-plan.mjs plan catalog.json activation.json --pr BUNDLE_NUMBER --merge MERGE_SHA --bot TRUSTED_BOT_LOGIN > next-catalog.json
+node scripts/character-catalog-plan.mjs activate next-catalog.json activation.json --expected-generation 1 > next-activation.json
+```
+
+Only `plan` reads the network. It requires `GH_TOKEN` or `GITHUB_TOKEN` with
+read access to the repository and the provenance/permission information used
+by character intake. Its verifier pins the merged bundle and source history,
+compares complete Git trees, checks regular-file modes and hashes, and refuses
+unrelated changes or incomplete evidence. Later source-PR edits do not change
+the bytes being verified. The trusted bot login must come from operator
+configuration, never the submission. No command uploads or activates anything.
+
+To propose rollback, pass a previously accepted catalog to `activate` with the
+current activation file, its expected generation and `--rollback`. The manifest
+retains consumed events even when content rolls back. Re-delivery cannot apply
+the reverted bundle again. Event history is bounded at 512 entries; reaching
+that bound requires an explicit new-baseline handoff, not silently discarding
+replay protection. An update based on reverted bytes still needs reconciliation.
+
+The publisher integration must verify the seed against its approved release,
+replay events in merge order, validate the runtime's supported engine, upload
+immutable bytes, and conditionally compare-and-swap the stored activation.
+The pure planner's generation check alone provides no distributed write lock.
+
 ## Planned runtime
 
 One environment-scoped Worker loader will validate complete immutable snapshots
