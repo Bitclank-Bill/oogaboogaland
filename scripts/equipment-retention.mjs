@@ -49,7 +49,7 @@ const retain = (root, context, rows) => {
     const key = row.item + ":" + row.version;
     if (seen.has(key)) fail("version pairs are not distinct");
     seen.add(key);
-    if (!context.BL.equipmentHats.has(row.item, row.version)) fail("target omits a retained hat version; retain it or disable equipment explicitly");
+    if (!context.BL.equipmentHats.has(row.item, row.version)) fail("target omits a retained hat version");
     const text = read(root, `src/equipment/hats/${row.version}.json`, context.BL.equipmentHats.MAX_BYTES);
     if (createHash("sha256").update(text).digest("hex") !== row.version) fail("saved hat archive digest differs");
     context.archive = text; context.item = row.item;
@@ -79,8 +79,7 @@ export const preflightEquipmentRetention = async ({ releaseDir, environment, fet
   try { config = parseWranglerConfig(read(root, `wrangler.${environment}.jsonc`, MAX_RESULT_BYTES)); } catch { fail("invalid target environment config"); }
   if (config.name !== `oogaboogaland-${environment}` || config.vars?.ENVIRONMENT !== environment || config.vars.SITE_ORIGIN !== ORIGINS[environment])
     fail("target environment differs");
-  if (!enabledFor(config)) return { enabled: false, retained: 0 };
-  const context = targetRegistry(root), controller = new AbortController();
+  const enabled = enabledFor(config), context = enabled ? targetRegistry(root) : null, controller = new AbortController();
   let timer, reader = null;
   const deadline = new Promise((_, reject) => { timer = setTimeout(() => {
     controller.abort(); reader?.cancel().catch(() => {}); reject(new Error("Equipment retention: public catalog deadline exceeded"));
@@ -90,7 +89,7 @@ export const preflightEquipmentRetention = async ({ releaseDir, environment, fet
       credentials: "omit", cache: "no-store", redirect: "error", headers: { accept: "application/json" }, signal: controller.signal
     }), deadline]);
     // The first equipment deployment follows an older Worker that has no registry endpoint.
-    if (response.status === 404) { await response.body?.cancel(); return { enabled: true, retained: 0, bootstrap: true }; }
+    if (response.status === 404) { await response.body?.cancel(); return { enabled, retained: 0, bootstrap: true }; }
     if (!response.ok || !(response.headers.get("content-type") || "").startsWith("application/json")
       || Number(response.headers.get("content-length")) > MAX_RESULT_BYTES || !response.body) fail("published catalog unavailable");
     reader = response.body.getReader();
@@ -110,7 +109,9 @@ export const preflightEquipmentRetention = async ({ releaseDir, environment, fet
       ids.add(item.id);
       for (const version of item.versions) rows.push({ item: item.id, version });
     }
-    return { enabled: true, retained: retain(root, context, rows) };
+    // Disabling wearers does not retire immutable archives. The public registry stays available while off,
+    // so losing its history here would make a subsequent re-enable unable to recover unpublished selections.
+    return { enabled, retained: retain(root, context || targetRegistry(root), rows) };
   } finally { clearTimeout(timer); if (reader) { await reader.cancel().catch(() => {}); reader.releaseLock(); } }
 };
 

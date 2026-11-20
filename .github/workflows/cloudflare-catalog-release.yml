@@ -12,6 +12,9 @@ on:
       resume:
         type: boolean
         default: false
+      replace_held_target:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -25,11 +28,13 @@ jobs:
     environment: character-catalog-${{ inputs.environment }}
     steps:
       - name: Validate approved immutable preflight inputs
-        run: node -e 'if (!["staging","production"].includes(process.env.CATALOG_ENVIRONMENT)) throw new Error("Invalid environment"); for (const key of ["TOOLING_SHA","TARGET_SHA"]) if (!/^[a-f0-9]{40}$/.test(process.env[key] || "")) throw new Error("Approved immutable SHA required")'
+        run: node -e 'if (!["staging","production"].includes(process.env.CATALOG_ENVIRONMENT)) throw new Error("Invalid environment"); for (const key of ["TOOLING_SHA","TARGET_SHA"]) if (!/^[a-f0-9]{40}$/.test(process.env[key] || "")) throw new Error("Approved immutable SHA required"); if (process.env.REPLACE_HELD_TARGET && (!/^[a-f0-9]{40}$/.test(process.env.REPLACE_HELD_TARGET) || process.env.RESUME === "true")) throw new Error("Replacement requires the exact failed SHA and cannot also resume")'
         env:
           CATALOG_ENVIRONMENT: ${{ inputs.environment }}
           TOOLING_SHA: ${{ vars.CHARACTER_CATALOG_TOOLING_SHA }}
           TARGET_SHA: ${{ inputs.target_sha }}
+          REPLACE_HELD_TARGET: ${{ inputs.replace_held_target }}
+          RESUME: ${{ inputs.resume }}
       - uses: actions/checkout@v6
         with:
           ref: ${{ vars.CHARACTER_CATALOG_TOOLING_SHA }}
@@ -78,11 +83,15 @@ jobs:
           package-manager-cache: false
       - name: Preserve live characters and fence the old publication context
         id: plan
-        run: node tooling/scripts/character-catalog-deploy.mjs prepare --environment "$CATALOG_ENVIRONMENT" --target "$TARGET_SHA" --resume "$RESUME" --output plan
+        run: |
+          args=(prepare --environment "$CATALOG_ENVIRONMENT" --target "$TARGET_SHA" --resume "$RESUME" --output plan)
+          if [ -n "$REPLACE_HELD_TARGET" ]; then args+=(--replace-held-target "$REPLACE_HELD_TARGET"); fi
+          node tooling/scripts/character-catalog-deploy.mjs "${args[@]}"
         env:
           CATALOG_ENVIRONMENT: ${{ inputs.environment }}
           TARGET_SHA: ${{ inputs.target_sha }}
           RESUME: ${{ inputs.resume }}
+          REPLACE_HELD_TARGET: ${{ inputs.replace_held_target }}
           GH_TOKEN: ${{ github.token }}
           CHARACTER_CATALOG_ENGINE: ${{ vars.CHARACTER_CATALOG_ENGINE }}
           CHARACTER_CATALOG_R2_ACCOUNT_ID: ${{ vars.CHARACTER_CATALOG_R2_ACCOUNT_ID }}

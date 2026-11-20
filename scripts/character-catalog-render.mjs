@@ -102,6 +102,10 @@ export const portraitResult = (prepared, result) => {
   return { png, manifest };
 };
 
+// Keep the strict console gate actionable on CI without dumping an unbounded page-controlled log.
+export const portraitConsoleError = (logs, stage) => new Error(`Portrait page reported console output ${stage} (${logs.length} entries):\n`
+  + logs.slice(0, 8).map((line) => String(line).slice(0, 500).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, " ")).join("\n"));
+
 const draw = `(expected, fallback) => {
   const BL = window.BL, names = BL.characters.all().map(c => c.handle).sort((a,b) => a.toLowerCase() < b.toLowerCase() ? -1 : 1);
   if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error("Rendered cast differs from the approved catalog");
@@ -146,13 +150,13 @@ export const renderCatalog = async ({ baselineDir, catalogFile, output }) => {
     const deadline = Date.now() + 60000;
     while (!(await browser.evaluate("!!(window.__ooga && window.__ooga.scene)").catch(() => false))) {
       if (networkError) throw networkError;
-      if (browser.logs.length) throw new Error("Portrait page reported a console error before startup");
+      if (browser.logs.length) throw portraitConsoleError(browser.logs, "before startup");
       if (Date.now() > deadline) throw new Error("Approved portrait page did not start");
       await browser.sleep(100);
     }
     const result = portraitResult(prepared, await browser.evaluate(`(${draw})(${JSON.stringify(prepared.names)}, ${JSON.stringify(FALLBACK)})`));
     if (networkError) throw networkError;
-    if (browser.logs.length) throw new Error("Portrait page reported console output");
+    if (browser.logs.length) throw portraitConsoleError(browser.logs, "after drawing");
     mkdirSync(output, { recursive: true });
     writeFileSync(join(output, "portraits.png"), result.png, { flag: "wx" });
     writeFileSync(join(output, "portraits.json"), JSON.stringify(result.manifest) + "\n", { flag: "wx" });

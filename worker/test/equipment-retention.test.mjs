@@ -70,6 +70,23 @@ test("preflight permits the first registry but fails closed on an unavailable or
   } finally { f.close(); }
 });
 
+test("feature-off releases preserve public history before any later re-enable", async () => {
+  const f = fixture(), published = { format: 1, items: [{ id: item.id, versions: [item.current, version] }] };
+  const check = fetcher => preflightEquipmentRetention({ releaseDir: f.directory, environment: "staging", fetcher });
+  try {
+    f.write("wrangler.staging.jsonc", { name: "oogaboogaland-staging", vars: { EQUIPMENT_ENABLED: "0", ENVIRONMENT: "staging",
+      SITE_ORIGIN: "https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev" } });
+    assert.deepEqual(await check(async () => Response.json(published)), { enabled: false, retained: 2 });
+    f.catalog.items[0].versions = [item.current]; f.catalog.items[0].current = item.current;
+    f.write("src/equipment/hats/catalog.json", f.catalog);
+    await assert.rejects(check(async () => Response.json(published)), /omits a retained hat version/);
+    rmSync(join(f.directory, "scripts/equipment-retention.mjs"));
+    await assert.rejects(check(async () => Response.json(published)), /required target file/);
+    await assert.rejects(check(async () => new Response(null, { status: 503 })), /published catalog unavailable/);
+    assert.deepEqual(await check(async () => new Response(null, { status: 404 })), { enabled: false, retained: 0, bootstrap: true });
+  } finally { f.close(); }
+});
+
 test("selected archives must exist with their immutable digest and canonical validated bytes", () => {
   for (const damage of ["missing", "digest", "noncanonical"]) {
     const f = fixture();
@@ -96,7 +113,7 @@ test("malformed, failed and truncated query results refuse without printing play
   } finally { f.close(); }
 });
 
-test("an explicit feature-off release skips retention while unsupported enabled targets fail closed", () => {
+test("an explicit feature-off release skips the D1 census while unsupported enabled targets fail closed", () => {
   const f = fixture();
   try {
     rmSync(join(f.directory, "scripts/equipment-retention.mjs"));

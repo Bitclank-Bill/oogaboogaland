@@ -29,24 +29,34 @@ const fixture = (options = {}) => {
 };
 const headTree = (node) => ({ position: node.position, rotation: node.rotation, scale: node.scale,
   geometry: node.geometry ? { verts: Array.from(node.geometry.verts), faces: node.geometry.faces, lines: node.geometry.lines } : null, children: node.children.map(headTree) });
-// Captured from the untouched fa2a62e sources before the nine headwear hooks were separated.
+const headGolden = (node) => {
+  // Curved hats use sin/cos: their last floating-point bits vary by CPU/libm.
+  // Nine decimal places retain geometry far below a voxel; topology and colors stay exact.
+  const coordinate = (value) => { assert.ok(Number.isFinite(value)); return Number(value.toFixed(9)); };
+  const vector = (value) => ({ x: coordinate(value.x), y: coordinate(value.y), z: coordinate(value.z) });
+  const stable = (row) => ({ position: vector(row.position), rotation: vector(row.rotation), scale: vector(row.scale),
+    geometry: row.geometry ? { verts: Array.from(row.geometry.verts, coordinate), faces: row.geometry.faces, lines: row.geometry.lines } : null,
+    children: row.children.map(stable) });
+  return hatHash(JSON.stringify(stable(node)));
+};
+// Captured with headGolden from untouched fa2a62e sources, before separating the nine headwear hooks.
 const ORIGINAL_HEADS = {
-  "Bitcoin-Bill": "99e60ccb7e9159d0de5c89002de79d3af67ddc0a1a5f3828969b1760c3c9f8b2",
-  "Global-DSB": "211211ded9470408943558187ee01ca91d74269a44208b4acf300c9a30cd9bf8",
-  bc1gui: "dfd26b38fda1741f61c28d17ec8c27248cb4f066a50805beac391d554840038d",
-  hotpixelgroup: "bb9dcb4b1d30011ffee205f45574e46f9196e5a5389ca709516154ee9ae09593",
-  itsLiran: "7e57c37f9de1b5be1aefc4370ca5bf90fab6084cdf4f07daac04aa3496d41a54",
-  johnstackton21m: "fc173f7ab58e43d3d1e81f913fd4e12732e8cf6578d37e232cc81c4f7c55ef69",
-  "midy-machete": "dd8483a599ce651185dac81c187a3be7df58a9fe23535cd353d349acffa43242",
-  "rules-without-rulers": "6bb0e2dd84a11f44770bd0bb646157303aaec879249460c4747dd6ede355241b",
-  timechainb: "9a96fd3e8c1e1e63e1520cb321b2d861efefe88c462e9312652118b6132b916f"
+  "Bitcoin-Bill": "51a59b324335063da9b6a71bc3897cc0029b4a1fe547904270b8d87757b4fa62",
+  "Global-DSB": "eebf7d9e2cf1c44cd191f3660a76af854196ee9525b71739228db786df66343b",
+  bc1gui: "769e9d43dc5e41b45136eb73305ad2a2cacf3a3a3c71db603e71880a0b9194fb",
+  hotpixelgroup: "859fb2a20e0eb0225817849bdf8f71a8c3c59026765517e2804177bfdc16ab9d",
+  itsLiran: "53c831a5c9e8c2b32e5e66d27c9bc1c440ae747b9fe916225b817482019a3a8b",
+  johnstackton21m: "7704dddb2bca9aba561ba3632bee5b3f917ca5d1701bd6a7f8a373431d0128ef",
+  "midy-machete": "5a113dc6b5ed8d8bc66712e273ba5c234a23c07044e7ed3b3ce71ee24c2a4610",
+  "rules-without-rulers": "a5464a70476af841be342d59153f3d167303cb2aa7bbb286eabe3ae5579e0974",
+  timechainb: "2faf14d8d872751cbecd89ac829b13eac64605d93886f5412d27700bea5baa17"
 };
 
 test("the nine authored heads retain their original geometry and clones own their hat nodes", () => {
   const f = fixture();
   for (const [, , handle] of HAT_SOURCES) {
     const a = f.cave(handle), b = f.cave(handle);
-    assert.equal(hatHash(JSON.stringify(headTree(a.parts.head))), ORIGINAL_HEADS[handle], handle);
+    assert.equal(headGolden(a.parts.head), ORIGINAL_HEADS[handle], handle);
     assert.notEqual(a.parts.nativeHat, b.parts.nativeHat);
     for (let i = 0; i < a.parts.nativeHat.length; i++) {
       assert.notEqual(a.parts.nativeHat[i], b.parts.nativeHat[i]);
@@ -54,6 +64,19 @@ test("the nine authored heads retain their original geometry and clones own thei
       assert.equal(a.parts.nativeHat[i].parent, a.parts.head);
     }
   }
+});
+
+test("authored geometry goldens ignore only floating-point noise and retain shape, color and topology checks", () => {
+  const tree = headTree(fixture().cave("johnstackton21m").parts.head), expected = headGolden(tree);
+  const copy = () => JSON.parse(JSON.stringify(tree)), helmet = (row) => row.children.find((child) => child.geometry?.verts.length > 300);
+  const noise = copy(); helmet(noise).geometry.verts[0] += 1e-15;
+  assert.notEqual(JSON.stringify(noise), JSON.stringify(tree)); assert.equal(headGolden(noise), expected);
+  const shape = copy(); helmet(shape).geometry.verts[0] += 1e-8; assert.notEqual(headGolden(shape), expected);
+  const pose = copy(); pose.rotation.x += 1e-8; assert.notEqual(headGolden(pose), expected);
+  const color = copy(); helmet(color).geometry.faces[0].color[0]++; assert.notEqual(headGolden(color), expected);
+  const topology = copy(), indices = helmet(topology).geometry.faces[0].i;
+  [indices[0], indices[1]] = [indices[1], indices[0]]; assert.notEqual(headGolden(topology), expected);
+  const missing = copy(); missing.children.pop(); assert.notEqual(headGolden(missing), expected);
 });
 
 test("normal and slim recipients share immutable hats, while live roots, poses and anatomy remain their own", () => {

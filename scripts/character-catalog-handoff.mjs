@@ -177,6 +177,42 @@ export const abortUnfencedHandoff = async ({ store, environment, expectedETag, t
   return write(store, { ...release.state, generation: release.state.generation + 1, pending: null }, expectedETag);
 };
 
+// Explicit recovery of a failed renderer/build, under the same deployment lock after the prior run
+// has ended. A target with an active pointer must be resumed instead. Keep the original source fence
+// and the publication barrier; replacing the token/ETag invalidates every old prepared artifact.
+export const replaceUnstagedHandoff = async ({ store, environment, expectedETag, token, expectedTarget,
+  prepared, newToken, verified, now = Date.now() }) => {
+  const release = await readReleaseState(store, environment), p = release?.state.pending;
+  if (!release || release.etag !== expectedETag || !p || !p.fenced || p.token !== token || p.to.baseline !== expectedTarget)
+    throw new CatalogConflict("Only the exact fenced unpublished target can be replaced");
+  if (!/^[a-f0-9]{32}$/.test(newToken || "") || newToken === token) fail("a distinct replacement token is required");
+  const to = prepared?.context;
+  if (!contextOK(to) || to.environment !== environment || to.baseline === p.from.baseline || to.baseline === p.to.baseline)
+    fail("replacement requires a distinct approved target in the same environment");
+  const encoded = encodeCatalog(prepared.catalog, { now });
+  if (encoded.digest !== prepared.digest || !equalContext(encoded.catalog, to)) fail("replacement target bytes changed");
+  const sourceState = async () => {
+    const source = await loadCatalogState(store, p.from, { now });
+    if (!source.catalog || source.etag !== p.sourceETag || source.revision !== p.sourceRevision
+      || source.activation.generation !== p.sourceGeneration || hash(canonicalJSON(source.activation)) !== p.fenceHash)
+      throw new CatalogConflict("Source fence changed; keep the handoff held");
+    return source;
+  };
+  const absentTargets = async () => {
+    for (const context of [p.to, to]) if (await store.get(`catalogs/${context.baseline}/active.json`))
+      throw new CatalogConflict("A target was already activated; resume its exact handoff instead");
+  };
+  await absentTargets();
+  const source = await sourceState();
+  if (!verified || !equalContext(verified, p.from) || verified.revision !== p.sourceRevision || verified.generation !== p.sourceGeneration)
+    fail("live runtime did not confirm the fenced source");
+  await checkHandoffPreservation(store, source, encoded.catalog, { now });
+  // History reads may take time. Confirm unchanged storage again immediately before the release CAS.
+  await sourceState(); await absentTargets();
+  return write(store, { ...release.state, generation: release.state.generation + 1,
+    pending: { ...p, to, token: newToken } }, expectedETag);
+};
+
 export const completeHandoff = async ({ store, environment, expectedETag, token, verified, now = Date.now() }) => {
   const release = await readReleaseState(store, environment), p = release?.state.pending;
   if (!release || release.etag !== expectedETag || !p || p.token !== token || !p.fenced) throw new CatalogConflict("No matching confirmed handoff fence");

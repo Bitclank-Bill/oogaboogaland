@@ -91,7 +91,9 @@ choices. Re-enable only with the immutable versions those choices reference.
 Before fencing a catalog release, the deployment workflow compares the live
 public `/api/equipment/catalog` history with the target's hash-checked archives.
 Keeping every published version also covers a player who equips during the
-deployment. After migrations, a second check reads only distinct saved item and
+deployment. This history check also runs for a feature-off release, so disabling
+equipment cannot discard versions needed when it is enabled again. After
+migrations, a second check reads only distinct saved item and
 version pairs from D1 and refuses missing archives. A pre-equipment Worker can
 return 404 at the first bootstrap; other reading failures stop the release.
 Pin `CHARACTER_CATALOG_TOOLING_SHA` to tooling containing
@@ -101,7 +103,8 @@ Use this guarded workflow for releases. A direct `wrangler versions rollback`
 does not run the retention checks. To roll back rendering changes while keeping
 equipment enabled, make a forward release that retains the entire hat history.
 An explicit feature-off release can stop equipment temporarily without deleting
-account choices. Historical archives must remain available when re-enabling.
+account choices. Historical archives remain in every release, including while
+the feature is disabled.
 
 The Room's private admission session digest prevents an account deleted and
 recreated under the same numeric ID from inheriting a stale connection's
