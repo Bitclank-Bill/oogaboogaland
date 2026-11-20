@@ -16928,7 +16928,7 @@ const hubMatrix = { name: "hub matrix", why: "regression: the OBL cave blanked f
     Object.assign(B.camera.position, eye); Object.assign(B.camera.target, target); H.overlay(0);
     return { free, freeAbove, outside, driven, drivenAbove, returned, batches, noDamage, gateLocked: M.gate.locked, wave: !!B.renderOpts.matrix };
   })()`);
-  record("hub matrix: free and following cameras keep their view inside, above and outside the cave, without glyph batches or mirror HP", [r.free, r.freeAbove, r.outside, r.driven, r.drivenAbove, r.returned].every(view => view.black < 64) && !r.batches && !r.wave && r.noDamage && r.gateLocked, JSON.stringify(r));
+  record("hub matrix: free and following cameras keep their view inside, above and outside the cave, without glyph batches or mirror HP", [r.free, r.freeAbove, r.outside, r.driven, r.drivenAbove, r.returned].every(view => view.black < 64) && !r.batches && !r.wave && r.noDamage && !r.gateLocked, JSON.stringify(r));
   const sealed = await b.evaluate(`__ooga.matrixGate.sealed.map(entry => ({ id: entry.mouth.id, visible: entry.node.visible, stop: entry.stopZ }))`);
   record("hub caves: the sealed cave retains its visible seal and collision boundary", sealed.length === 1 && sealed[0].id === "c9"
     && sealed.every(entry => entry.visible && Number.isFinite(entry.stop)), JSON.stringify(sealed));
@@ -16962,13 +16962,41 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const meleeBefore = M.ripples.hits, swung = B.crew.swingWeapon(d);
     B.advance(0.7, 1 / 60);
     return { fired, ripples, swung, meleeRipples: M.ripples.hits - meleeBefore, shots: playerShots, decorative,
-      intact: M.node.geometry === geometry && M.node.visible && !M.node.mirrorReveal && M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node),
+      intact: M.node.geometry === geometry && M.node.visible && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node),
       harmless: !B.crew.combatEnabled && !BL.scenes.hub.debug.gameMode && health === d.health.value };
   })()`);
   record("hub mirror: real player and NPC shots and a melee swing ripple intact glass without HP or character damage", physical.fired && physical.ripples > 0 && physical.shots === 1 && physical.harmless && physical.decorative && physical.swung && physical.meleeRipples > 0 && physical.intact, JSON.stringify(physical));
+  const approach = await b.evaluate(`(() => {
+    const B = __ooga, m = B.mirrorCave.mouth;
+    B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * 4, y: m.floorY, z: m.z + Math.cos(m.ry) * 4 }, yaw: m.ry, pitch: 0.15, dist: 4 });
+    B.advance(0.3, 1 / 60);
+    const room = BL.scenes.hub.architect;
+    return { prepared: room.prepared, active: room.active, captures: room.feeds.reduce((n, f) => n + f.captures, 0), name: B.pilot.player.traits.name };
+  })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", code: "KeyW" });
+  await b.evaluate(`__ooga.advance(1, 1 / 60)`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  const entered = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect;
+    B.advance(1.2, 1 / 60);
+    return { active: room.active, feet: B.pilot.player.root.position.y - B.pilot.player.baseY,
+      name: B.pilot.player.traits.name, feeds: room.feeds.length, captures: room.feeds.reduce((n, f) => n + f.captures, 0) };
+  })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", code: "KeyS" });
+  await b.evaluate(`__ooga.advance(1, 1 / 60)`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "s", code: "KeyS" });
+  const returned = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect, count = () => room.feeds.reduce((n, f) => n + f.captures, 0);
+    const before = count(); B.advance(0.8, 1 / 60);
+    return { active: room.active, frozen: count() === before, feet: B.pilot.player.root.position.y - B.pilot.player.baseY, name: B.pilot.player.traits.name };
+  })()`);
+  record("hub mirror: nearby preparation stays idle, real walking enters four live feeds and returns the same Ooga with captures stopped",
+    approach.prepared && !approach.active && approach.captures === 0 && entered.active && entered.feet < -40
+      && entered.feeds === 4 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
+      && entered.name === approach.name && returned.name === approach.name, JSON.stringify({ approach, entered, returned }));
   await trip("hub").run(b);
-  const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);
-  record("hub mirror: the unbreakable pane and locked gate remain intact after leaving and returning", back);
+  const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);
+  record("hub mirror: the unbreakable pane and open gate remain intact after leaving and returning", back);
 } };
 // Distant mirrors keep refreshing at reduced resolution; low also bounds refreshes and retained GPU targets.
 const hubMirrorMedium = { name: "hub mirror medium size", why: "regression: lower tiers replaced distant mirror reflections with a grey face instead of keeping a cheaper live reflection", run: async (b) => {

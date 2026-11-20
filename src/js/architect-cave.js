@@ -13,16 +13,16 @@
     const g = geometry(), rgb = BL.math.hexToRgb(color);
     pushVert(g, 0, y, 0);
     for (let i = 0; i <= 48; i++) pushVert(g, Math.sin(i * TAU / 48) * radius, y, Math.cos(i * TAU / 48) * radius);
-    for (let i = 1; i <= 48; i++) face(g, down ? [0, i + 1, i] : [0, i, i + 1], rgb, { emissive: 0.62 });
+    for (let i = 1; i <= 48; i++) face(g, down ? [0, i + 1, i] : [0, i, i + 1], rgb, { emissive: 0.32 });
     g.castShadow = false;
     return g;
   };
-  const create = ({ root, renderer, camera, pilot, mirror }) => {
+  const create = ({ root, renderer, camera, pilot, mirror, weather, mouths }) => {
     const group = createNode({ position: { x: 0, y: FLOOR, z: 0 }, visible: false });
     const feeds = [], meshes = [], destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
     const params = new URLSearchParams(location.search);
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
-    let active = false, prepared = false, previousAlong = NaN, cooldown = 0, audio = null;
+    let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null;
     const add = (g, parent = group, position = null, yaw = 0) => {
       g.architectRoom = true;
       meshes.push(g);
@@ -52,12 +52,16 @@
         ctx.fillText(renderer.kind === "webgl2" ? "CONNECTING" : "CAMERA OFFLINE", 128, 70);
         ctx.font = "11px monospace"; ctx.fillText("OOGA BOOGA LAND / 0" + (i + 1), 128, 94);
         const g = { verts: [-1.54, -0.86, 0, 1.54, -0.86, 0, 1.54, 0.86, 0, -1.54, 0.86, 0],
-          faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.7 }], lines: [], castShadow: false };
-        const view = createCamera({ fov: 46, near: 0.5, far: 75 });
-        const shots = [[10, 10, 16, 0, 5, 0], [-14, 9, 8, 0, 4, 0], [6, 5, -18, 0, 5, 0], [18, 12, -5, 0, 5, 0]];
+          faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false };
+        const view = createCamera({ fov: i ? 46 : 38, near: 0.5, far: i ? 32 : 22 });
+        const shots = [[5, 4, 7, 0, 0.8, 0]];
+        for (const id of ["c10", "c3", "c1"]) {
+          const m = mouths.find(mouth => mouth.id === id), sr = Math.sin(m.ry), cr = Math.cos(m.ry);
+          shots.push([m.x + sr * 13 + cr * 4, m.floorY + 6, m.z + cr * 13 - sr * 4, m.x, m.floorY + 1.5, m.z]);
+        }
         const s = shots[i]; Object.assign(view.position, { x: s[0], y: s[1], z: s[2] });
         Object.assign(view.target, { x: s[3], y: s[4], z: s[5] });
-        const feed = { geometry: g, camera: view, captures: 0, last: 0, draws: 0, triangles: 0 };
+        const feed = { geometry: g, camera: view, captures: 0, last: 0, draws: 0, triangles: 0, profile: params.get("debug") === "1" };
         g.imageSurface = { canvas, version: 0, rect: [-1.54, -0.86, 3.08, 1.72], smooth: true, feed };
         feeds.push(feed); meshes.push(g);
       }
@@ -98,7 +102,7 @@
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
     const travel = (inside) => {
-      prepare(); active = inside; group.visible = inside; cooldown = 1;
+      prepare(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
       const m = mirror.mouth;
       destination.position.x = inside ? 0 : m.x + Math.sin(m.ry) * 2.4;
       destination.position.y = inside ? FLOOR : m.floorY;
@@ -106,17 +110,22 @@
       destination.yaw = inside ? 0 : m.ry + Math.PI;
       destination.pitch = inside ? 0.08 : pilot.orbit.pitch; destination.dist = Math.min(5, pilot.orbit.dist);
       pilot.controls.reset(); pilot.navigate(destination);
-      if (inside && BL.architectAudio) audio = BL.architectAudio.create();
-      else if (audio) { audio.dispose(); audio = null; }
+      if (inside && !audio) audio = BL.architectAudio.create();
+      audio?.setActive(inside); weather.setExterior(!inside);
       previousAlong = NaN;
     };
     const update = (dt) => {
-      cooldown = Math.max(0, cooldown - dt);
+      cooldown = Math.max(0, cooldown - dt); veil = Math.max(0, veil - dt);
       const actor = pilot.player;
-      if (!actor) { if (active) { active = false; group.visible = false; audio?.dispose(); audio = null; } return; }
+      if (!actor) { if (active) travel(false); return; }
       if (preview) { preview = false; travel(true); }
       const p = actor.root.position, feet = p.y - actor.baseY;
-      if (active && !contains(p.x, feet, p.z)) { active = false; group.visible = false; audio?.dispose(); audio = null; }
+      if (!active && contains(p.x, feet, p.z)) {
+        prepare(); active = true; group.visible = true;
+        if (!audio) audio = BL.architectAudio.create();
+        audio.setActive(true); weather.setExterior(false);
+      }
+      if (active && !contains(p.x, feet, p.z)) { active = false; group.visible = false; audio?.setActive(false); weather.setExterior(true); }
       if (active) {
         if (audio) audio.update(dt, camera);
         if (!cooldown && p.z > 9.65 && Math.abs(p.x) < 1.5) travel(false);
@@ -126,7 +135,7 @@
       const along = dx * sr + dz * cr, across = dx * cr - dz * sr;
       if (dx * dx + dz * dz < 18 * 18 && Math.abs(feet - m.floorY) < 6) prepare();
       if (!cooldown && Number.isFinite(previousAlong) && previousAlong > 0.5 && along <= 0.5
-        && Math.abs(across) < 1.6 && feet >= m.floorY - 0.2 && feet < m.floorY + 2.5) travel(true);
+        && Math.abs(across) < 2.1 && feet >= m.floorY - 0.2 && feet < m.floorY + 2.5) travel(true);
       previousAlong = along;
     };
     const clampCamera = (p) => {
@@ -135,8 +144,13 @@
       p.y = Math.max(FLOOR + 0.25, Math.min(FLOOR + HEIGHT - 0.3, p.y));
     };
     return { prepare, update, travel, clampCamera, feeds, group,
-      get active() { return active; }, get prepared() { return prepared; },
-      suspend() { if (active) travel(false); audio?.dispose(); audio = null; },
+      get active() { return active; }, get crossing() { return veil > 0; }, get prepared() { return prepared; },
+      drawVeil(context) {
+        if (!veil) return;
+        context.save(); context.globalAlpha = veil / 0.45 * 0.55; context.fillStyle = "#bed8d0";
+        context.fillRect(0, 0, context.canvas.clientWidth, context.canvas.clientHeight); context.restore();
+      },
+      suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); },
       dispose() { audio?.dispose(); audio = null; removeChild(root, group); feeds.length = meshes.length = 0; }
     };

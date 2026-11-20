@@ -1,166 +1,115 @@
-# Architect mirror cave proposal
+# Architect mirror cave
 
-Status: implementation in progress in draft PR #827. The maintainer authorized
-building this in the working conversation.
-Starting point: upstream `rock` at
-`45e02fd428cc0734b3c9a3f8f173bf741d68a094` (November 20, 2026).
-The first checkpoint builds the chamber, nearby geometry preparation, walking
-portal and four shared GPU camera feeds. Sound and acceptance work follow.
+Draft PR #827 implements the maintainer-authorized mirror observatory, starting
+from upstream `rock` at `45e02fd428cc0734b3c9a3f8f173bf741d68a094`.
 
-## Visitor experience
+## Walking through
 
-Walking through the hub's mirror takes the same Ooga into a separate chamber,
-with a crossing like the field into Bifrost. Walking back through its doorway
-returns the Ooga to the mirror entrance. The interior takes its visual direction
-from the Architect's room in The Matrix: a bright circular room, a central chair
-and banks of framed screens wrapping around the walls, built in the game's own
-voxel style. An Architect character is not part of this initial scope.
+The driven Ooga crosses the existing mirror at one o'clock into an enclosed,
+circular white chamber: a central chair and 51 framed monitors in three rows.
+The doorway behind the arrival returns the same Ooga outside the mirror.
+A brief pale veil softens the crossing. The old glyph room remains retired;
+shots and melee still ripple the unbreakable mirror. NPCs respect its barrier.
 
-The screens show current views of Ooga Booga Land from fixed camera positions.
-They render the browser's current world state locally; they are not video streams
-or recordings. Small details such as fireflies can be omitted. The number of
-physical screens can exceed the number of distinct cameras by reusing feeds.
+`architect-cave.js` owns the chamber. Its volume is below the island at y=-48,
+in the existing hub graph and `mirror` zone. This is a separate physical room,
+not a second simulation: donations, NPC ownership, remote interpolation and
+live feeds continue through their existing owners. It creates no new backend,
+subscription, scene retention override or independently simulated crew. The
+main hub's existing release/retention policy still applies when leaving it.
 
-## Feasibility and existing code
+Walking and airborne collision keep the Ooga within the walls and below the
+ceiling. The chair is solid; the camera stays inside the chamber. Leaving the
+controlled Ooga returns the free camera outside. Restoring a pose within the
+chamber activates its room presentation.
 
-The room and crossing fit existing scene patterns. The substantial work is
-keeping the island current and rendering several views within the frame budget.
+## Preparing on approach
 
-- `scene-hub.js` builds the current walk-through mirror surface, but keeps its
-  room empty and retains an actor barrier and locked gate. Its portal handling
-  needs an intentional transition and return path for this new destination.
-- The Bifrost crossing calls `go("bifrost")`; its view back onto the island is
-  a single arrival photograph (`snapBifrostView`), not a continuously live view.
-- `gl-renderer.js` already owns offscreen textures and reflection captures,
-  reduced capture filtering and capture cadence. These are useful foundations,
-  but do not expose a general camera-screen service. The new pass must own its
-  camera, visibility and target state rather than impersonating a mirror.
-- `director.js` updates the active scene. `scene-hub.js`'s `suspendHub` pauses
-  crew, disposes remotes and NPC synchronization, and removes feed subscriptions.
-  Retaining the hub's geometry alone would produce frozen or stale pictures.
-- Hub retention can be disabled on lower-memory devices. Keeping a full island
-  alongside the chamber cannot silently override that memory policy.
+Within 18 world units of the mirror, and six vertically, the hub prepares the
+room geometry and uploads its meshes. Repeated approaches reuse that work.
+No network asset is required: this is prebuilding and GPU warming, rather than
+a network fetch. Captures and audio begin only on entry. A direct debug arrival
+uses the same preparation path if nothing has been warmed yet.
 
-A bounded observer mode for the island is the first architecture question:
-retain the visual state required by selected cameras and update it once, then
-render that state from each scheduled view. Preserve shared NPC authority,
-remote interpolation and donation ownership; do not create another independent
-crew or advance simulation once per camera. Review the existing multiplayer
-state delivery before promising live remote players from another scene. Feed
-cameras must not change the visitor's actual zone, voice scope or presence.
+The room remains prepared for the hub visit, with four bounded camera targets;
+leaving the hub releases them with their owning geometries. Context restoration
+recreates targets and quality changes select the current target size.
 
-## Camera placement is part of the optimization
+## Live camera screens
 
-Choose camera positions from measurements, not just resolution. A close view
-with sky or a simple backdrop can exclude most of the island, whereas a wide
-panorama can submit terrain, foliage, bridges and distant props together.
-Candidate shots include a close pile view, an exterior cave entrance and a
-bridge viewed along a short section. These are candidates, not proven cheap
-views or a committed camera roster.
+Four perspectives are repeated across the wall: the banana pile, B.C.A., the
+Arcade entrance and the mirror entrance. They render current island state into
+GPU textures, without CPU pixel reads, image encoding or another WebGL context.
 
-For each candidate, record its position, direction, field of view and far plane,
-then compare submitted triangles, draw calls, capture CPU/GPU time and visible
-motion. Attribute the cost to terrain, vegetation, actors, props and effects.
-Measure an ordinary view and the proposed reduced capture of the same view.
-Existing `scripts/profile-rendering.mjs` and the renderer's `glstats` provide
-starting instrumentation; no profiling has been run for this proposal.
+- High/medium: 256 x 144 pixels, each feed no more often than every 90 ms.
+- Low: 192 x 108 pixels, each feed no more often than every 200 ms.
+- At most one visible feed per displayed frame, rotating between due cameras.
+  Actual refresh rate falls with display frame rate; this is not 60 Hz video.
+- Captures stop outside the chamber, when no screen using the feed is visible,
+  and while the document is hidden.
+- Each feed has its own view, frustum and short far plane. The current world is
+  updated once. Captures reuse its instance buffers and omit new shadow maps,
+  postprocessing, recursive screens, mirrors, portal pictures and light beams.
+- Small details are omitted, preserving character parts and the pile explicitly.
+  Existing foliage silhouettes remain; the pile uses its distant banana shell.
+- Canvas 2D draws the room with honestly labelled offline screens.
 
-Narrow framing only saves geometry work when the renderer can reject meshes or
-instances. The current reduced capture path tests instance bounding spheres.
-A large terrain mesh intersecting the view can still submit all its triangles;
-a wall hiding scenery does not itself prevent those submissions. Historical
-[reflection measurements](performance-rendering.md#22-reflection-capture)
-already identify large terrain/prop meshes surviving reduced captures. Those
-numbers are not measurements of this revision. If carefully chosen views still
-cost too much, evaluate coarse capture meshes or spatial partitioning as a
-separate, measured step, preserving silhouettes and occlusion.
+Four high-tier color targets use 576 KiB before depth attachments. Source world
+geometry and simulation dominate the memory budget; screen count does not
+multiply the number of cameras or textures.
 
-## Initial capture budget to evaluate
+### Geometry observations
 
-Start with four distinct feeds at 256 x 144 pixels, reused across the screen
-wall. Render at most one due feed per displayed frame. At 60 displayed frames
-per second, four equally scheduled feeds could each refresh at 15 Hz; this is
-an upper scheduling rate, not a measured performance promise. Keep movement in
-the room at its normal display cadence. Tune resolution, refresh rate and the
-number of distinct visible feeds from profiling on desktop and mobile.
+Initial local browser captures, at noon with the simulator and network disabled,
+showed the entrance cameras at roughly 403k (B.C.A.), 494k (Arcade) and 467k
+(mirror) submitted triangles. The wider pile view varied with passing Oogas and
+reached roughly 837k; it was subsequently narrowed and moved closer to the pile.
+These are renderer submission counts, **not GPU timing or device benchmarks**.
 
-Keep captures on the GPU and sample their textures on the screens. Avoid pixel
-readback, image encoding, canvas copies and a second WebGL context. Four RGBA8
-color images at this size total 576 KiB before depth attachments and other GPU
-resources; retained island geometry and simulation can cost much more.
+One island terrain draw contributes 223,115 triangles to each of these views.
+Additional cave/terrain sections also survive their shared broad bounds. In the
+wider pile view, one character mesh alone contributed 110,080 triangles. This
+explains why resolution alone is not enough, and why tight entrance framing is
+cheaper than a broad crowd view. The implementation does not repartition the
+shared terrain or simplify other contributors' character geometry.
 
-- Update feeds only while their screens are visible; stop capture work outside
-  the chamber and while the page is hidden. Refresh stale feeds when visible.
-- Exclude fireflies, tiny particles and unnecessary decorative animation.
-  Preserve terrain occlusion, major silhouettes, the pile and visible actors.
-- Use simple lighting without per-camera shadow-map rebuilds or postprocessing.
-  Exclude recursive camera screens, mirror and portal captures.
-- Give each capture its own culling and detail decisions. The room camera's
-  hidden nodes, cutaways and proximity gates must not remove island scenery.
-- Reuse targets and scratch storage. Account for them in geometry ownership,
-  context restoration, quality downgrades and disposal.
-- Define a legible Canvas 2D and low-memory fallback before implementation.
-  A static fallback must be presented as static, not described as live.
+With `debug=1&pos=1`, the existing position display's `data-cameras` contains
+current per-camera capture, draw-call and triangle counts, plus the five largest
+mesh contributors from its first capture. The normal page does not allocate
+that profiling map. Full-frame/GPU timing and representative mobile acceptance
+remain to be measured before merging.
 
-## Immersive soundscape
+## Sound
 
-Use the care and responsiveness of drneski's Bifrost soundscape as the design
-reference, with a distinct identity for this chamber. The current
-`bifrost-audio.js` supplies a useful implementation pattern: pooled synthesized
-voices, a continuous bed shaped by scene state, directional stereo cues,
-smoothed parameter changes, gesture-based activation, the shared sound channel
-and explicit disposal. `scene-bifrost.js` passes charge, nearby window identity,
-its side relative to the camera and upward gaze into that system. It responds
-to where the visitor stands and looks instead of playing one unchanged loop.
+`architect-audio.js` follows Bifrost's lifecycle discipline, with an original
+palette: a low electrical resonance, filtered ventilation, gently beating
+monitor tones, sparse soft relay ticks and a descending crossing tone. It does
+not reuse Bifrost's motif, heartbeat, world chords or recordings.
 
-Give the mirror room a restrained electronic character: ventilation and a low
-electrical resonance under soft monitor-bank textures, occasional relay clicks
-or cooling ticks, and a short, original crossing sound. Let proximity and view
-direction bring the nearest screen bank forward in the stereo field, with
-smooth changes as the visitor turns. Keep a quieter center around the chair so
-the room has contrast. Consider a small bounded reflection/delay treatment for
-hard surfaces only if listening tests show that it helps the sense of space.
-Do not reuse Bifrost's rising motif, crystal chords, heartbeat, timing or exact
-synthesis constants; compose and tune this room's palette independently.
+Six oscillators and one looping noise source are built once after browser audio
+activation. Slow controls update at 10 Hz, with no per-frame or per-cue node
+allocation. The monitor texture grows toward the walls and pans with the view;
+the center is quieter. Weather audio is disabled inside. The pictures have no
+soundtrack or duplicated outdoor voice.
 
-The doorway should carry the transition: ease the outdoor ambience away as the
-mirror is crossed, introduce the enclosed room bed, and reverse it on return.
-Coordinate that envelope with scene teardown so it does not click, cut off
-abruptly or leave an old context sounding after departure. Restore the bed if
-a crossing fails. Screen sounds belong to their physical banks and should not
-pulse with the renderer's refresh schedule. Camera feeds are silent pictures;
-they do not relay outdoor voice or mix several copies of island ambience.
+The existing **Room hum** channel and master mute control the sound. Leaving
+fades it out and suspends its context; hidden tabs do likewise. Returning reuses
+the graph, and hub disposal closes it and removes listeners. Headphone/laptop
+listening and long-session balance are still maintainer acceptance work.
 
-Keep the bed below conversation and avoid sustained piercing CRT whine or
-frequent cues from every screen. Use the existing master mute and sound-panel
-controls. Pool voices and noise buffers, update slow controls at a bounded
-cadence, and allocate nothing per frame or cue. Check mute/unmute, late audio
-activation, hidden-tab behavior and repeated visits. Listening acceptance should
-cover headphones, laptop speakers, long stays, turning in place and both doorway
-directions; the intended result is immersion without fatigue. No listening test
-or audio prototype has been performed for this proposal.
+## Validation and preview
 
-## Proposed implementation stages and acceptance
+The authorized checks are `npm run build`, syntax checks on every changed JS/MJS
+file, and the requested in-game browser screenshots. Browser interaction covered
+live screens, walking into and out of the mirror, returning to the same room,
+wall collision and a jump, with a clean console on the updated page.
 
-1. Agree the cave proposal in an issue, including live-state scope and fallback.
-2. Prototype one live camera and establish its geometry and simulation costs.
-   Choose additional angles from comparative measurements before building the
-   full screen wall.
-3. Build the chamber and mirror crossing, preserving character, movement,
-   camera orientation, controls, zone transitions and the return landing.
-4. Add bounded scheduling and shared screen textures; tune on representative
-   hardware, including the low-memory retention policy.
-5. Compose and tune the original soundscape against the room and its crossing,
-   including directional cues, speech balance and audio lifecycle checks.
-6. Verify motion and donation changes remain current in feeds, repeated
-   crossings preserve one player, and entry/exit, failed loads, quality changes
-   and context restoration release or reconstruct resources correctly.
+The existing mirror regression checks retain shot/melee, unbreakable-surface and
+scene-round-trip assertions, update the gate expectation, and add real-key
+entry/return checks with idle capture assertions. The automated suite has not
+been run: AGENTS.md defaults to waiting unless fast/full tests are requested.
+Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
+listening acceptance remain before review readiness. Keep the PR draft.
 
-Follow AGENTS.md's authorized test scope. Future renderer changes require the
-appropriate shared-renderer checks when tests are requested; extend existing
-mirror and scene round-trip checks rather than duplicating them. Measure capture
-cost and whole-frame time, as well as retained CPU/GPU resources over repeated
-visits. Historical reflection benchmarks do not establish spare GPU capacity.
-The initial chamber and live screens have been viewed in the in-app browser.
-The design below records the planned budgets; it is not a performance result.
-Full renderer and multiplayer acceptance remain outstanding.
+Local source preview after building:
+`src/index.html?debug=1&view=architect&character=w-s-bitcoin&nosim=1&net=0&welcome=0&pos=0&hour=12&firstperson=1`

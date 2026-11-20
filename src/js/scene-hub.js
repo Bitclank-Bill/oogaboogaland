@@ -656,6 +656,7 @@
   let phase = null;
   const updatePositionDebug = (force = false) => {
     if (!positionDebug || !camera || !pilot) return;
+    if (architectCave) positionDebug.dataset.cameras = JSON.stringify(architectCave.feeds.map(f => ({ captures: f.captures, calls: f.draws, triangles: f.triangles, heaviest: f.heaviest })));
     pilot.capturePose(POSITION_POSE);
     const p = camera.position, t = camera.target, up = camera.up;
     const dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
@@ -5087,7 +5088,9 @@
     return feet + height <= ceilingAt(toX, toZ, feet, actor) + 1e-7 && physicalClearAt(toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX), actor) && propSegmentClear(fromX, feet + STEP_MAX, fromZ, toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX), actor) && matrixGateSegmentClear(fromX, y, fromZ, toX, feet, toZ, PLAYER_RADIUS, height) && mirrorActorSegmentClear(fromX, y, fromZ, toX, feet, toZ, height, actor)
       || feet === y && playerEscapeClear(fromX, fromZ, toX, toZ, y, height, actor, STEP_MAX);
   };
-  const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5, actor = pilot?.player) => (Math.hypot(toX, toZ) <= worldBound() || actor?.leap?.thrown) && !crossesSealedCave(fromX, fromZ, toX, toZ, y)
+  const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5, actor = pilot?.player) => BL.architectCave.contains(fromX, y, fromZ)
+    ? BL.architectCave.clear(toX, toZ) && y + height <= BL.architectCave.FLOOR + BL.architectCave.HEIGHT
+    : (Math.hypot(toX, toZ) <= worldBound() || actor?.leap?.thrown) && !crossesSealedCave(fromX, fromZ, toX, toZ, y)
     && (y + height <= ceilingAt(toX, toZ, y, actor) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height, actor) && propSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height, actor) && bedSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height) && matrixGateSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height) && mirrorActorSegmentClear(fromX, y, fromZ, toX, y, toZ, height, actor)
       || playerEscapeClear(fromX, fromZ, toX, toZ, y, height, actor, 0));
   const characterCarryClear = (cave, x, y, z, toX, toY, toZ) => {
@@ -8273,7 +8276,7 @@
     if (!cloudPlaying()) timechainIsland.gate.view(dt);
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
-    if (!cloudHopper?.active) islandGuide.update(dt, elapsed);
+    if (!cloudHopper?.active && !architectCave?.active) islandGuide.update(dt, elapsed);
     if (architectCave) { architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.feeds : null; }
     shareDrivenPose();
     timechainIsland.site.view(camera.position);
@@ -10838,9 +10841,9 @@
   // frames of lag only show as an outline catching up. Behind cave rock at 1920x1080 and DPR 2, 15 Hz is a 25 ms
   // frame becoming 19 ms; 30 Hz spent about 19 ms on every other frame.
   const SIGHT_RECOMPUTE_HZ = 15;
-  const drawArchitectExtra = () => {};
+  const drawArchitectExtra = (context, project) => { drawExtra(context, project); architectCave.drawVeil(context); };
   const overlay = (dt) => {
-    if (architectCave?.active) { fx.drawOverlay(dt, drawArchitectExtra); return; }
+    if (architectCave?.active || architectCave?.crossing) { fx.drawOverlay(dt, drawArchitectExtra); return; }
     if (cloudPlaying()) {
       fx.drawOverlay(dt, cloudHopper.drawOverlay);
       // An Ooga inside a tornado, or behind it, shows its outline through the funnel, keyed dark so it reads on the
@@ -11366,6 +11369,7 @@
     yield* pause(slice);
     terrainRampRoof = BL.terrainCutaway.createRampRoof(island.cutawaySource, island.geometry, renderer.releaseGeometry);
     yield* pause(slice);
+    terrainRampRoof.baseGeometry.cameraFeedLabel = "island terrain";
     debugMovementTerrain = place(terrainRampRoof.baseGeometry, 0, 0, 0, 0);
     addChild(root, terrainRampRoof.node);
     placed.push(terrainRampRoof.node);
@@ -11971,7 +11975,9 @@
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
-    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave });
+    pile.core.geometry.cameraFeedKeep = true;
+    models.bananaTileGeometry().cameraFeedKeep = models.bananaTileGeometry(true).cameraFeedKeep = true;
+    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave, weather, mouths: island.mouths });
     yield* pause(slice);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));

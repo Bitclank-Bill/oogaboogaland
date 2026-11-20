@@ -1929,12 +1929,13 @@ void main() {
     // where each draw is issued, published whole at the next frame's start and read through `stats.info`.
     // `?debug=1&glstats=1` adds GL call counts and a GPU frame timer; both wrap the context, so they stay opt-in.
     const infoLive = new Float64Array(INFO_PASSES.length * 3);
-    let infoPass = 0;
+    let infoPass = 0, captureProfile = null, captureGeometry = null;
     const infoPassOf = () => ({ calls: 0, triangles: 0, instances: 0 });
     const info = { calls: 0, triangles: 0, instances: 0, passes: {}, gl: null, gpuMs: null, gpuMsMean: null };
     for (const name of INFO_PASSES) info.passes[name] = infoPassOf();
     const countDraw = (corners, instances) => {
       const o = infoPass * 3;
+      if (captureProfile && captureGeometry) captureProfile.set(captureGeometry, (captureProfile.get(captureGeometry) || 0) + corners / 3 * instances);
       infoLive[o]++;
       infoLive[o + 1] += corners / 3 * instances;
       infoLive[o + 2] += instances;
@@ -2230,7 +2231,7 @@ void main() {
       if (!t) reflectorTargets.set(geometry, t = { fb: null, tex: null, depth: null, size: 0, renderWidth: 0, renderHeight: 0, viewProj: new Float32Array(16), valid: false, area: 0, record: null, at: 0 });
       return t;
     };
-    // One square allocation per reflector at the tier's mirror size, as the mirror keeps.
+    // Reflectors use the tier's square mirror size; camera screens use a fixed rectangular target.
     const ensureReflectorTarget = (t) => {
       const size = t.fixedWidth || settings.mirror, targetHeight = t.fixedHeight || size;
       if (t.fb && t.size === size) return;
@@ -3740,7 +3741,7 @@ void main() {
       if (!rec.batch) {
         const s = rec.spheres, o = index * 4;
         const radius = s[o + 3] - CULL_MARGIN - (rec.geometry.lakeWaves ? 0.18 : 0);
-        return (radius >= 1.25 || rec.geometry.characterPart === true) && slotInFrustum(s, o, MIRROR_FRUSTUM);
+        return (radius >= 1.25 || rec.geometry.characterPart === true || cameraFeedCapture && rec.geometry.cameraFeedKeep) && slotInFrustum(s, o, MIRROR_FRUSTUM);
       }
       const b = boundsOf(rec.geometry), d = rec.batch.instanceData, o = index * INSTANCE_FLOATS;
       const x = d[o] * b.center[0] + d[o + 4] * b.center[1] + d[o + 8] * b.center[2] + d[o + 12];
@@ -3750,7 +3751,7 @@ void main() {
         d[o + 4] * d[o + 4] + d[o + 5] * d[o + 5] + d[o + 6] * d[o + 6],
         d[o + 8] * d[o + 8] + d[o + 9] * d[o + 9] + d[o + 10] * d[o + 10]);
       const radius = b.radius * Math.sqrt(scale);
-      return (radius >= 1.25 || rec.geometry.characterPart === true) && sphereInFrustum(x, y, z, radius + CULL_MARGIN, MIRROR_FRUSTUM);
+      return (radius >= 1.25 || rec.geometry.characterPart === true || cameraFeedCapture && rec.geometry.cameraFeedKeep) && sphereInFrustum(x, y, z, radius + CULL_MARGIN, MIRROR_FRUSTUM);
     };
     const drawCaptureRuns = (part, rec, first, count, instances) => {
       try {
@@ -3778,7 +3779,10 @@ void main() {
         const rec = activeRecords[i], g = rec.geometry, program = programs[useProgram];
         if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;
-        if (reducedCapture && (g.sway || g.foliageVisibility === false || g.imageSurface || g.projective)) continue;
+        if (reducedCapture && (g.projective || (cameraFeedCapture
+          ? g.imageSurface && !g.imageSurface.atlas
+          : g.sway || g.foliageVisibility === false || g.imageSurface))) continue;
+        if (captureProfile) captureGeometry = g;
         const part = rec[kind], n = rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : rec.count;
         if (!part || !n) continue;
         let first = 0, count = part.count;
@@ -4020,6 +4024,7 @@ void main() {
       mat4.invert(out, out);
     };
     const drawSky = (inv, eyeHeight) => {
+      captureGeometry = null;
       const p = programs.sky;
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uInvViewProj, false, inv);
@@ -4702,11 +4707,21 @@ void main() {
           mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
           skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
           const offset = infoPass * 3, calls = infoLive[offset], triangles = infoLive[offset + 1];
+          // A previous main pass may still have this target bound as a screen sampler.
+          gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture); gl.activeTexture(gl.TEXTURE0);
           cameraFeedCapture = true;
+          if (feed.profile && !feed.heaviest) captureProfile = new Map();
           try {
             renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, 0, 1, shadowBias,
               lx, ly, lz, sh, lights, 0, skyOn, fogColor, fogA, fogB, null, NO_SPOT_LIGHT, null, -1, target);
-          } finally { cameraFeedCapture = false; }
+          } finally {
+            cameraFeedCapture = false;
+            if (captureProfile) {
+              feed.heaviest = Array.from(captureProfile, ([g, triangles]) => ({ mesh: g.cameraFeedLabel || (g.characterPart ? "character" : g.imageSurface?.atlas ? "foliage card" : "mesh"), vertices: (g.verts?.length || 0) / 3, triangles }))
+                .sort((a, b) => b.triangles - a.triangles).slice(0, 5);
+              captureProfile = captureGeometry = null;
+            }
+          }
           feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
           feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
           cameraFeedTurn = (index + 1) % feeds.length;
