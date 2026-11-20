@@ -6640,7 +6640,7 @@
     if (cloudHopper?.active) return;
     if (factoryDeparting || bifrostDeparting || islandGuide.holding || architectCave?.arriving) return;
     if (architectCave?.seated) {
-      if (COARSE) architectCave.toggleView();
+      if (COARSE) architectCave.toggleView(p?.x, p?.y);
       else architectCave.enhanceAt(p?.x, p?.y);
       return;
     }
@@ -6904,7 +6904,7 @@
         hud.setAct("DROP & ROLL!");
       } else if (action === STAND_ACTION) {
         hud.hint(player?.camp.seat === architectCave?.seat
-          ? COARSE ? "Tap the view to change screens · Look to swivel · Move or STAND UP! to get up" : "Left click · Enhance/restore feed · Right click · Face view · Space · Stand"
+          ? COARSE ? "Tap a TV to change screens · Look to swivel · Move or STAND UP! to get up" : "Left click · Enhance/restore feed · Right click TV · Face view · Space · Stand"
           : COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
         hud.setAct("STAND UP!");
       } else if (action.kind === "architect-chair") {
@@ -11388,7 +11388,10 @@
       if (event.pointerType !== "mouse" || event.button !== 2 && !(event.buttons & 2) && event.type !== "pointercancel") return;
       if (!architectCave?.seated && !architectRightHeld) return;
       const down = event.type === "pointerdown" || event.type === "pointermove" && !!(event.buttons & 2);
-      if (down && (!architectRightHeld || event.type === "pointerdown") && architectCave?.seated) architectCave.toggleView();
+      if (event.type === "pointerdown" && !architectRightHeld && architectCave?.seated) {
+        const point = document.pointerLockElement !== ctx.canvas ? combatPointer(event.clientX, event.clientY) : null;
+        architectCave.toggleView(point?.x, point?.y);
+      }
       architectRightHeld = down;
       event.preventDefault(); event.stopImmediatePropagation();
     };
@@ -12222,7 +12225,7 @@
         if (cloudHopper?.active) return;
         if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
         if (architectCave?.seated) {
-          if (COARSE) architectCave.toggleView();
+          if (COARSE) architectCave.toggleView(p?.x, p?.y);
           else architectCave.enhanceAt(p?.x, p?.y);
           return;
         }
@@ -12860,7 +12863,7 @@
     if (cloudHopper?.active) return cloudHopper.controlsHelp(touch);
     const gorilla = clankerPlay?.active, help = gorilla ? clankerPlay.controlsHelp(touch) : pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon", "jetpack"]);
     if (architectCave?.seated) {
-      help.rows.push(H.row([], "Switch area feeds / your face", touch ? "Tap the view" : "Right mouse click"));
+      help.rows.push(H.row([], "Switch area feeds / your face", touch ? "Tap a TV" : "Right click a TV"));
       if (!touch) help.rows.push(H.row([], "Enhance feed to 7×7 / restore", "Left mouse click"));
     }
     if (!touch) {

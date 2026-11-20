@@ -155,9 +155,13 @@ these revised assertions have not been run.
 The character’s default fist, including its thumb, stays unchanged; the pen
 sticks out of that fist. Clicking depresses the pen button and springs it back
 over 170 ms. The same hand appears in the room, reflections and face feed.
-Right-click (or tap the view on touch devices) toggles area feeds and the face
-broadcast using the same outward sweep. The chosen view stays until the next
-right-click; a click during a sweep queues that view until the sweep completes.
+Right-click over a TV (or tap it on touch devices) toggles area feeds and the
+face broadcast. The clicked tile changes first, then a wave grows above, below
+and around both sides of the curved wall, with randomized row speeds and tile
+timing. The center crosshair picks the TV while pointer-locked. Clicks on the
+mirror, floor, chair and bezels do nothing. The chosen view stays until the next
+right-click; a click during a sweep queues that view and its clicked origin
+until the sweep completes, without redirecting the wave already in progress.
 Desktop left-click selects the TV under the cursor (the center crosshair while
 pointer-locked) and expands its camera picture across a nearby 7×7 region.
 Clicking that enlargement restores the saved smaller grids; clicking another
@@ -283,9 +287,10 @@ of the camera's capture cadence. Each changing feed retains at most one previous
 color texture, released when the fade expires, the feed is disposed or context
 resources are reset. No additional scene capture or depth target is required.
 
-The focused chair browser check passes fourteen checks covering mouse selection,
+The focused chair browser check passes sixteen checks covering mouse selection,
 progressive replacement, holding unready images, exact layout restoration,
-retargeting over the mirror columns, right-click face toggling, adaptive detail,
+retargeting over the mirror columns, screen-only right-click face toggling,
+radial growth and queued origins, adaptive detail,
 capture/geometry bounds, enhanced refresh priority under healthy/slow frame
 timing, hover settling/cancellation, resolution fading, complete smaller shots
 along partially covered 2×2/3×3 mosaics, standing cleanup, and clearing the
@@ -298,7 +303,7 @@ view is `untracked/architect-focus/enhanced-7x7.png`. The warm-up and shader
 changes also passed all 805 global unit checks, with only the intentional
 fragment shader snapshot updated for `uCanvasBlend`/`uCanvasPrevious` (the blend
 is zero on every other surface). The 7×7 sizing and edge repairs passed
-build/syntax and the fourteen focused checks above, including 1200×675
+build/syntax and the sixteen focused checks above, including 1200×675
 admission preserving the old 6×6 pixel density. Three additional startup
 checks verify that ordinary loading remains black, failure of both renderers
 reveals a focused and clickable retry, and retry reloads a playable island

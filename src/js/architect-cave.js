@@ -189,6 +189,7 @@
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
+    let requestedSweepOrigin = null, sweepOrigin = null;
     let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 3 + Math.random() * 3;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     let penButton = null, penHand = null, penArm = null, penArmPitch = NaN, clickTime = 1;
@@ -414,7 +415,7 @@
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const node = add(normal, rack, { x: 0, y: 0, z: TV_FACE });
         // Spread from the mirror around both sides, with a small randomized middle-row lead.
-        panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
+        panels.push({ node, normal, portrait, row, col, angle, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
           distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0, flashTime: 0 });
         tiles[row * layout.cols + col] = panels[panels.length - 1];
       };
@@ -754,8 +755,15 @@
         const edge = Math.abs(row * 2 / (ROWS - 1) - 1);
         rowJitter[row] = 2.12 + edge * 0.18 + Math.random() * 0.14;
       }
-      // Similar row speeds favor the middle without a fixed ranking. Tile jitter stays below one column's travel time.
-      for (const p of panels) p.delay = p.distance * rowJitter[p.row] + Math.random() * 0.038;
+      // Manual sweeps grow from the clicked tile across the unwrapped curved wall,
+      // including vertical distance. Wrap the angle so both routes around the room meet.
+      // Automatic sweeps retain their mirror origin; both keep row and tile variation.
+      for (const p of panels) {
+        const angle = sweepOrigin ? p.angle - sweepOrigin.angle : 0;
+        const distance = sweepOrigin ? Math.hypot(Math.atan2(Math.sin(angle), Math.cos(angle)) * SCREEN_RADIUS,
+          (p.row - sweepOrigin.row) * PITCH) / (Math.PI * SCREEN_RADIUS) : p.distance;
+        p.delay = p === sweepOrigin ? 0 : distance * rowJitter[p.row] + Math.random() * 0.038;
+      }
     };
     const showTile = (p, geometry) => {
       if (p.node.geometry === geometry) return;
@@ -801,11 +809,14 @@
       finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
       manual = manualFace = false;
+      requestedSweepOrigin = sweepOrigin = null;
       faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
       if (cameras.portrait) cameras.portrait.forceCapture = false;
     };
     const beginSweep = phase => {
       broadcast = phase; broadcastTime = 0;
+      // A click queued during this sweep must not move its origin mid-animation.
+      sweepOrigin = manual ? requestedSweepOrigin : null;
       layoutStarted = false;
       sweepDelays();
     };
@@ -884,9 +895,14 @@
         }
       }
     };
-    const toggleView = () => {
+    const toggleView = (x = renderer.size.width / 2, y = renderer.size.height / 2) => {
       if (!seated()) return false;
+      renderer.ray(x, y, camera, screenRay);
+      if (!screenPicker.ray(screenHit, screenRay.ox, screenRay.oy, screenRay.oz, screenRay.dx, screenRay.dy, screenRay.dz, camera.far, null, null, true)
+        || !screenHit.owner.panel) return false;
+      const selected = screenHit.owner.panel;
       if (!manual) updateBroadcast(0, pilot.player);
+      requestedSweepOrigin = selected;
       manualFace = !manualFace;
       clickTime = 0; audio?.click();
       if (!manualFace && broadcast === "feeds") { portraitActor = null; cameras.portrait.forceCapture = false; }
