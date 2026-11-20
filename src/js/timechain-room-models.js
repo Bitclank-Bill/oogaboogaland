@@ -47,13 +47,14 @@
     try { return BL.models.withScope(scope, build); }
     finally { ownerScope = previous; }
   };
+  const owned = (build, arg) => BL.models.withScope(ownerScope, build, arg);
   const own = (build) => {
     const read = BL.models.cached(build);
-    return () => BL.models.withScope(ownerScope, read);
+    return () => owned(read);
   };
   const perRoom = (build) => {
     const read = BL.models.variants(build);
-    return (id) => BL.models.withScope(ownerScope, read, id);
+    return (id) => owned(read, id);
   };
   const UP = [0, 1, 0], DOWN = [0, -1, 0];
   // What of a convex polygon of [x, z] corners keeps nx·x + nz·z ≤ d (Sutherland–Hodgman against one half-plane).
@@ -803,6 +804,6 @@
   BL.timechainRoomModels = {
     build, plan, prepareSteps, geometries, picture, liveGeometry, flatPicture, sphere: sphereParts, domeMap, floorMap, paintKit, KINDS, COLORS: C, MARK_BIAS, EXIT_HEADER, withScope,
     doorway, doorBulbs, bulbsOf, solo,
-    helpers: { face, quad, blank, clip, own, perRoom, cylinder, ballGeo, slabGeo, sectorGeo, litWord, UP, DOWN }
+    helpers: { face, quad, blank, clip, own, perRoom, owned, cylinder, ballGeo, slabGeo, sectorGeo, litWord, UP, DOWN }
   };
 })();

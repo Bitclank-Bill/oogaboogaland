@@ -24664,6 +24664,7 @@ const hubObservatoryAuthored = { name: "hub observatory authored detail", why: "
         && !source.root.children.at(-1).visible;
       const scope = "observatory-detail-" + id, M = BL.timechainRoomModels, roomId = Number(id.slice(7));
       const snapshot = () => ({ shell: M.sphere(roomId), plan: M.plan(roomId),
+        statue: roomId === 3 ? M.KINDS.temple.statue() : null,
         canvases: M.geometries(roomId).map(g => g.imageSurface?.canvas).filter(Boolean) });
       const before = id.startsWith("sphere-") ? M.withScope(scope, snapshot) : null;
       f.clear(); let released = source.meshes.size === baseline && !source.root.children.at(-1).children.length;
@@ -24672,6 +24673,7 @@ const hubObservatoryAuthored = { name: "hub observatory authored detail", why: "
         // Re-reading under a disposable owner must rebuild CPU payloads too, not just GPU wrappers.
         const probe = scope + "-probe", after = M.withScope(probe, snapshot);
         released &&= before.shell !== after.shell && before.plan !== after.plan
+          && (!before.statue || before.statue !== after.statue)
           && before.canvases.length > 0 && after.canvases.every(c => !before.canvases.includes(c));
         BL.models.release(probe, ["hub", "timechain"]); BL.models.assertReleased(probe);
       }
@@ -24689,9 +24691,10 @@ const hubObservatoryAuthored = { name: "hub observatory authored detail", why: "
   const retained = await b.evaluate(`(() => {
     const M = BL.timechainRoomModels, scope = "observatory-detail-owner-check";
     try { M.withScope(scope, () => { throw new Error("cancelled build"); }); } catch {}
-    const scene = M.sphere(7), shared = M.withScope(scope, () => M.sphere(7));
+    const scene = M.sphere(7), statue = M.KINDS.temple.statue();
+    const shared = M.withScope(scope, () => M.sphere(7)), sharedStatue = M.withScope(scope, () => M.KINDS.temple.statue());
     BL.models.release(scope, ["timechain"]);
-    return scene === shared && M.sphere(7) === scene;
+    return scene === shared && M.sphere(7) === scene && statue === sharedStatue && M.KINDS.temple.statue() === statue;
   })()`);
   record("Observatory authored detail: observer cleanup preserves a Timechain-owned mesh and scope restores after cancellation", retained);
   await b.evaluate(`(() => {
