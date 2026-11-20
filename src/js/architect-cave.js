@@ -4,19 +4,43 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { createNode, addChild, removeChild } = BL.scene;
-  const { box, merge, geometry, pushVert, face } = BL.models;
-  const FLOOR = -48, RADIUS = 10.8, HEIGHT = 8.8, TAU = Math.PI * 2;
+  const { box, bevelBox, beam, lathe, merge, geometry, pushVert, face } = BL.models;
+  const FLOOR = -48, RADIUS = 10.8, HEIGHT = 9.1, TAU = Math.PI * 2;
   // Match the island cave's five-metre opening, with its glass reaching the floor.
-  const RETURN_HALF_W = 2.5, RETURN_HEIGHT = 3, RETURN_Z = RADIUS - 0.65;
+  const RETURN_HALF_W = 2.5, RETURN_HEIGHT = 3, RETURN_Z = Math.sqrt(RADIUS * RADIUS - RETURN_HALF_W * RETURN_HALF_W);
+  const BANKS = 24, ROWS = 6, PITCH = RETURN_HEIGHT / 2, GAP = 0.1, WALL = "#080a0b";
+  const PORTAL_ANGLE = Math.asin(RETURN_HALF_W / RADIUS), BANK_ANGLE = (TAU - 2 * PORTAL_ANGLE) / BANKS;
+  const BANK_RADIUS = RADIUS * Math.cos(BANK_ANGLE / 2);
+  const SEAT_TOP = 0.72;
+  // Local chair solids rotate with the upholstery; the low caster base stays underneath it.
+  const CHAIR_SOLIDS = [[-0.68, 0, -0.58, 0.68, SEAT_TOP, 0.58],
+    [-0.68, SEAT_TOP, -0.7, 0.68, 2.05, -0.44],
+    [-0.85, SEAT_TOP, -0.5, -0.7, 1.18, 0.54], [0.7, SEAT_TOP, -0.5, 0.85, 1.18, 0.54]];
   const contains = (x, y, z) => y < -32 && y > -55 && x * x + z * z < 225;
-  const clear = (x, z, radius = 0.4) => (Math.hypot(x, z) < RADIUS - radius - 0.55
-    || z > RADIUS - 2 && z < RETURN_Z + 0.6 && Math.abs(x) < RETURN_HALF_W - radius - 0.08)
-    && !(Math.abs(x) < 1.15 + radius && z > -1.5 - radius && z < 0.8 + radius);
+  const clear = (x, z, radius = 0.4) => Math.hypot(x, z) < BANK_RADIUS - radius - 0.25
+    || z > RADIUS - 2 && z < RETURN_Z + 0.6 && Math.abs(x) < RETURN_HALF_W - radius - 0.08;
   const segmentClear = (x, y, z, toX, toY, toZ, radius, height) =>
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
-    && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5)
-    && BL.terrain.segmentBoxClear(x, y, z, toX - x, toY - y, toZ - z, radius, height,
-      -1.15, FLOOR, -1.5, 1.15, FLOOR + 2.4, 0.8);
+    && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
+  // A balanced shuffle of shared slots, with no touching repeats (including diagonals and the wrap).
+  // Slots always hold distinct channels, so periodic channel replacement preserves that guarantee.
+  const panelSlots = (count) => {
+    const cols = BANKS + 2, slots = new Int16Array(cols * ROWS).fill(-1), uses = new Uint16Array(count);
+    for (let row = 0; row < ROWS; row++) for (let col = 0; col < cols; col++) {
+      if (row < 2 && col >= BANKS) continue;
+      let best = Infinity, choice = -1, ties = 0;
+      for (let slot = 0; slot < count; slot++) {
+        if (col && slots[row * cols + col - 1] === slot || col === cols - 1 && slots[row * cols] === slot) continue;
+        let touches = false;
+        if (row) for (let dx = -1; dx <= 1; dx++) if (slots[(row - 1) * cols + (col + dx + cols) % cols] === slot) touches = true;
+        if (touches || uses[slot] > best) continue;
+        if (uses[slot] < best) { best = uses[slot]; ties = 0; }
+        if (Math.random() * ++ties < 1) choice = slot;
+      }
+      slots[row * cols + col] = choice; uses[choice]++;
+    }
+    return slots;
+  };
   const disc = (radius, y, color, down = false) => {
     const g = geometry(), rgb = BL.math.hexToRgb(color);
     pushVert(g, 0, y, 0);
@@ -25,13 +49,40 @@
     g.castShadow = false;
     return g;
   };
-  const create = ({ root, renderer, camera, pilot, mirror, weather, mouths, places }) => {
+  const create = ({ root, renderer, camera, pilot, crew, mirror, weather, mouths, places }) => {
     const group = createNode({ position: { x: 0, y: FLOOR, z: 0 }, visible: false });
     const cameras = BL.observatoryCameras.create({ renderer, mouths, places }), feeds = cameras.feeds;
     const meshes = [], destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
     const params = new URLSearchParams(location.search);
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
-    let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null;
+    let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
+    const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
+      walkAt: { x: 0, z: 1.7 }, sitter: null };
+    const chairClear = (x, y, z, toX, toY, toZ, radius, height) => {
+      if (!segmentClear(x, y, z, toX, toY, toZ, radius, height)) return false;
+      const sr = Math.sin(seat.ry), cr = Math.cos(seat.ry);
+      const lx = x * cr - z * sr, lz = x * sr + z * cr;
+      const dx = (toX - x) * cr - (toZ - z) * sr, dz = (toX - x) * sr + (toZ - z) * cr;
+      for (const b of CHAIR_SOLIDS) if (!BL.terrain.segmentBoxClear(lx, y - FLOOR, lz, dx, toY - y, dz, radius, height, ...b)) return false;
+      return true;
+    };
+    const supportAt = (x, z, from, rise = 0, radius = 0.3) => {
+      const sr = Math.sin(seat.ry), cr = Math.cos(seat.ry), lx = x * cr - z * sr, lz = x * sr + z * cr;
+      let floor = FLOOR;
+      for (const b of CHAIR_SOLIDS) if (FLOOR + b[4] <= from + rise + 1e-7
+        && lx > b[0] - radius && lx < b[3] + radius && lz > b[2] - radius && lz < b[5] + radius) floor = Math.max(floor, FLOOR + b[4]);
+      return floor;
+    };
+    const turnChair = () => {
+      chairTop.rotation.y = seat.ry;
+      seat.walkAt.x = Math.sin(seat.ry) * 1.7; seat.walkAt.z = Math.cos(seat.ry) * 1.7;
+    };
+    const sit = () => {
+      if (!active || !crew.sitPlayer(seat)) return false;
+      seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
+      seat.sitter.root.rotation.y = seat.ry;
+      return true;
+    };
     const add = (g, parent = group, position = null, yaw = 0) => {
       g.architectRoom = true;
       meshes.push(g);
@@ -44,7 +95,7 @@
       prepared = true;
       addChild(root, group);
       add(disc(RADIUS + 0.3, 0, "#dce1df"));
-      add(disc(RADIUS + 0.3, HEIGHT, "#e9ede5", true));
+      add(disc(RADIUS + 0.3, HEIGHT, WALL, true));
       // Tile seams remain geometry, so both renderers show the floor's scale.
       const seams = [];
       for (let i = -9; i <= 9; i++) {
@@ -57,45 +108,76 @@
       const housing = merge(box({ w: 3.36, h: 1.96, d: 0.32, color: "#283335", emissive: 0.15 }),
         box({ w: 3.13, h: 1.77, d: 0.02, color: "#899a96", emissive: 0.4, offset: { z: 0.17 } }),
         box({ w: 0.06, h: 0.035, d: 0.025, color: "#8addbe", emissive: 1, offset: { x: 1.45, y: -0.92, z: 0.18 } }));
-      // Reserve a wider span for the cave-sized return mirror; the 17 screen banks share the rest.
-      const mirrorSpan = 2 * Math.asin((RETURN_HALF_W + 0.6) / RADIUS);
-      for (let i = 0; i < 18; i++) {
-        const angle = i ? mirrorSpan / 2 + (i - 0.5) * (TAU - mirrorSpan) / 17 : 0;
-        const x = Math.sin(angle) * RADIUS, z = Math.cos(angle) * RADIUS;
-        const bank = createNode({ position: { x, y: 0, z }, rotation: { x: 0, y: angle + Math.PI, z: 0 } });
+      // One closed wall mesh: shared arc endpoints meet a flat portal wall exactly.
+      // The glass occupies the opening, with its frame recessed into the same plane.
+      const walls = geometry(), rgb = BL.math.hexToRgb(WALL);
+      const wall = (ax, az, bx, bz, low = 0, high = HEIGHT) => {
+        const ids = [pushVert(walls, ax, low, az), pushVert(walls, ax, high, az),
+          pushVert(walls, bx, high, bz), pushVert(walls, bx, low, bz)];
+        face(walls, ids, rgb, { emissive: 0.05 });
+      };
+      let ax = RETURN_HALF_W, az = RETURN_Z;
+      for (let i = 0; i < BANKS; i++) {
+        const a = PORTAL_ANGLE + (i + 1) * BANK_ANGLE;
+        const bx = i === BANKS - 1 ? -RETURN_HALF_W : Math.sin(a) * RADIUS;
+        const bz = i === BANKS - 1 ? RETURN_Z : Math.cos(a) * RADIUS;
+        wall(ax, az, bx, bz); ax = bx; az = bz;
+      }
+      wall(-RETURN_HALF_W, RETURN_Z, RETURN_HALF_W, RETURN_Z, RETURN_HEIGHT);
+      add(walls);
+      const slots = panelSlots(feeds.length), cols = BANKS + 2;
+      const rackAt = (bank, col, x, row) => {
+        const rack = createNode({ position: { x, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 }, scale: { x: ((col < BANKS ? 2 * RADIUS * Math.sin(BANK_ANGLE / 2) : RETURN_HALF_W) - GAP) / 3.36,
+          y: (PITCH - GAP) / 1.96, z: 0.71 } });
+        addChild(bank, rack); add(housing, rack);
+        const feed = feeds[slots[row * cols + col]];
+        add(feed.geometry, rack, { x: 0, y: 0, z: 0.19 });
+        add(feed.label, rack, { x: 0, y: -0.735, z: 0.195 });
+      };
+      for (let i = 0; i < BANKS; i++) {
+        const angle = PORTAL_ANGLE + (i + 0.5) * BANK_ANGLE;
+        const bank = createNode({ position: { x: Math.sin(angle) * BANK_RADIUS, y: 0, z: Math.cos(angle) * BANK_RADIUS },
+          rotation: { x: 0, y: angle + Math.PI, z: 0 } });
         addChild(group, bank);
-        if (i !== 0) {
-          add(box({ w: 3.9, h: HEIGHT, d: 0.4, color: "#080a0b", emissive: 0.05, offset: { y: HEIGHT / 2, z: -0.3 } }), bank);
-          for (let row = 0; row < 3; row++) {
-            const rack = createNode({ position: { x: 0, y: 1.7 + row * 2.12, z: 0.05 } }); addChild(bank, rack);
-            add(housing, rack);
-            const feed = feeds[((i - 1) * 3 + row) % feeds.length];
-            add(feed.geometry, rack, { x: 0, y: 0, z: 0.19 });
-            add(feed.label, rack, { x: 0, y: -0.735, z: 0.195 });
-          }
-        } else {
-          const z = RADIUS - RETURN_Z;
-          add(box({ w: 6.3, h: HEIGHT, d: 0.4, color: "#080a0b", emissive: 0.05, offset: { y: HEIGHT / 2, z: -0.3 } }), bank);
-          add(box({ w: 5.3, h: 3.16, d: 0.16, color: "#65717a", emissive: 0.15, offset: { y: 1.5, z: z - 0.1 } }), bank);
-          // A geometry-owned reflector keeps this separate from the island's main mirror resource.
-          returnMirror = add({ ...mirror.node.geometry, reflector: true }, bank, { x: 0, y: 1.5, z });
-        }
-        if (i) add(box({ w: 0.045, h: 7.9, d: 0.06, color: "#171b1c", emissive: 0.1, offset: { x: 1.87, y: 4.1, z: 0.04 } }), bank);
-        add(box({ w: 3.9, h: 0.13, d: 0.12, color: "#effff5", emissive: 0.85, offset: { y: 8.15, z: 0.2 } }), bank);
-        add(box({ w: 3.9, h: 0.08, d: 0.1, color: "#a5c5b9", emissive: 0.65, offset: { y: 0.18, z: 0.2 } }), bank);
+        for (let row = 0; row < ROWS; row++) rackAt(bank, i, 0, row);
       }
-      const chair = [];
-      chair.push(box({ w: 1.8, h: 0.35, d: 1.7, color: "#eeeae0", emissive: 0.45, offset: { y: 0.68, z: -0.35 } }));
-      chair.push(box({ w: 1.8, h: 1.8, d: 0.4, color: "#f2eee4", emissive: 0.45, offset: { y: 1.4, z: -1.1 } }));
+      const portal = createNode({ position: { x: 0, y: 0, z: RETURN_Z }, rotation: { x: 0, y: Math.PI, z: 0 } });
+      addChild(group, portal);
+      for (let row = 2; row < ROWS; row++) {
+        rackAt(portal, BANKS, 1.25, row); rackAt(portal, BANKS + 1, -1.25, row);
+      }
+      const frame = [];
+      for (const x of [-RETURN_HALF_W, RETURN_HALF_W]) frame.push(box({ w: 0.06, h: RETURN_HEIGHT, d: 0.06,
+        color: "#65717a", emissive: 0.15, offset: { x, y: RETURN_HEIGHT / 2, z: -0.02 } }));
+      frame.push(box({ w: RETURN_HALF_W * 2, h: 0.06, d: 0.06, color: "#65717a", emissive: 0.15,
+        offset: { y: RETURN_HEIGHT, z: -0.02 } }));
+      add(merge(...frame), portal);
+      returnMirror = add({ ...mirror.node.geometry, reflector: true }, portal, { x: 0, y: 1.5, z: 0 });
+      // A five-spoke caster base beneath a separately rotating padded office chair.
+      const metal = "#657178", dark = "#30383c", base = [lathe({ profile: [[0.16, 0.16], [0.16, 0.3], [0.085, 0.3], [0.085, 0.59]],
+        segments: 12, color: metal, emissive: 0.25 })];
+      for (let i = 0; i < 5; i++) {
+        const a = i * TAU / 5, x = Math.sin(a) * 0.73, z = Math.cos(a) * 0.73;
+        base.push(beam(0, 0.27, 0, x, 0.16, z, 0.09, metal, 0.25));
+        base.push(bevelBox({ w: 0.16, h: 0.16, d: 0.22, color: dark, emissive: 0.2, offset: { x, y: 0.09, z } }));
+      }
+      add(merge(...base));
+      const padded = [bevelBox({ w: 1.36, h: 0.2, d: 1.16, bevel: 0.08, color: "#e3dfd3", emissive: 0.4, offset: { y: SEAT_TOP - 0.1 } }),
+        bevelBox({ w: 1.36, h: 1.4, d: 0.26, bevel: 0.1, color: "#cecfc5", emissive: 0.4, offset: { y: 1.35, z: -0.57 } })];
+      for (let i = 0; i < 3; i++) padded.push(bevelBox({ w: 1.19, h: 0.38, d: 0.13, bevel: 0.045, color: "#e9e5da",
+        emissive: 0.4, offset: { y: 0.91 + i * 0.4, z: -0.4 } }));
       for (const side of [-1, 1]) {
-        chair.push(box({ w: 0.28, h: 0.7, d: 1.85, color: "#d5d5ce", emissive: 0.4, offset: { x: side * 0.94, y: 0.95, z: -0.35 } }));
-        for (const z of [-1, 0.3]) chair.push(box({ w: 0.12, h: 0.5, d: 0.12, color: "#73847f", emissive: 0.3, offset: { x: side * 0.76, y: 0.25, z } }));
+        const x = side * 0.77;
+        padded.push(beam(x, 0.66, -0.41, x, 1.08, -0.45, 0.065, metal, 0.25));
+        padded.push(beam(x, 0.66, 0.38, x, 1.08, 0.45, 0.065, metal, 0.25));
+        padded.push(bevelBox({ w: 0.15, h: 0.1, d: 1.04, bevel: 0.04, color: dark, emissive: 0.25, offset: { x, y: 1.13 } }));
       }
-      add(merge(...chair));
+      chairTop = add(merge(...padded));
       const live = new Set(meshes); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
     const travel = (inside) => {
+      if (seat.sitter) crew.standPlayer(seat.sitter);
       prepare(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
       const m = mirror.mouth;
       destination.position.x = inside ? 0 : m.x + Math.sin(m.ry) * 2.4;
@@ -121,6 +203,10 @@
       }
       if (active && !contains(p.x, feet, p.z)) { active = false; group.visible = false; audio?.setActive(false); cameras.setActive(false); weather.setExterior(true); }
       if (active) {
+        if (seat.sitter && seat.sitter === actor && actor.camp.seat === seat) {
+          seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
+          actor.root.rotation.y = seat.ry; actor.parts.head.rotation.y = 0;
+        }
         cameras.update(dt);
         if (audio) audio.update(dt, camera);
         if (!cooldown && p.z >= RETURN_Z && Math.abs(p.x) < RETURN_HALF_W - 0.4
@@ -139,7 +225,11 @@
       if (r > limit) { p.x *= limit / r; p.z *= limit / r; }
       p.y = Math.max(FLOOR + 0.25, Math.min(FLOOR + HEIGHT - 0.3, p.y));
     };
-    return { prepare, update, travel, clampCamera, feeds, group, cameras,
+    return { prepare, update, travel, clampCamera, feeds, group, cameras, seat, sit, supportAt, segmentClear: chairClear,
+      nearbySeat(x, y, z, reach) {
+        return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
+          && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
+      },
       get returnMirror() { return returnMirror; },
       observes: cameras.observes, nearFeed: cameras.near,
       get active() { return active; }, get crossing() { return veil > 0; }, get prepared() { return prepared; },
@@ -150,7 +240,7 @@
       },
       suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = 0; }
+      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = 0; }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT };

@@ -6,11 +6,16 @@ from upstream `rock` at `45e02fd428cc0734b3c9a3f8f173bf741d68a094`.
 ## Walking through
 
 The driven Ooga crosses the existing mirror at one o'clock into an enclosed,
-circular chamber with black walls behind 51 framed monitors, a pale floor and a
-central chair. A reflecting mirror behind the arrival matches the island cave's
+circular chamber with black walls and ceiling, 152 small framed monitors, a pale
+floor and a padded swivel chair. A reflecting mirror behind the arrival matches
+the island cave's
 five-metre-wide, three-metre-high visible opening. Walking through its glass
-returns the same Ooga outside the island mirror. The screen banks leave a wider
-gap around it, and the return threshold follows the glass plane across its width.
+returns the same Ooga outside the island mirror. The mirror fills a flush opening
+in the continuous wall mesh; its sides meet
+the adjoining wall facets exactly, and the return threshold follows its glass.
+The same 0.1-metre margin separates the TV rows, floor and ceiling. Two rows
+fit the mirror's three-metre height; four more continue above it. Light strips
+at the ceiling and floor are removed.
 A brief pale veil softens the crossing. The old glyph room remains retired;
 shots and melee still ripple the unbreakable mirror. NPCs respect its barrier.
 
@@ -22,8 +27,12 @@ subscription, scene retention override or independently simulated crew. The
 main hub's existing release/retention policy still applies when leaving it.
 
 Walking and airborne collision keep the Ooga within the walls and below the
-ceiling. The chair is solid; the camera stays inside the chamber. Leaving the
-controlled Ooga returns the free camera outside. Restoring a pose within the
+ceiling. The chair has a solid cushion, back and armrests that rotate together
+over a fixed five-spoke caster base. Move and jump onto the cushion, then press
+Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
+the occupied chair; movement or Space stands up into clear floor ahead of it.
+It uses the existing crew sitting/standing lifecycle and creates no new controls.
+The camera stays inside the chamber. Leaving the controlled Ooga returns the free camera outside. Restoring a pose within the
 chamber activates its room presentation.
 
 ## Preparing on approach
@@ -40,7 +49,7 @@ recreates targets and quality changes select the current target size.
 
 ## Live camera screens
 
-The 51 screens share **24 simultaneous camera slots**. Every 15 seconds inside
+The 152 screens share **24 simultaneous camera slots**. Every 15 seconds inside
 the room, one slot takes the next view that is not already on the wall. All slots
 take their turn, including those behind the viewer; rendering still skips feeds
 with no visible screens. Rotation pauses outside the room and in hidden tabs,
@@ -52,8 +61,10 @@ original eleven (pile, lake, Merge Rock, Bifrost chamber, five cave entrances,
 Sphere exterior and Bifrost islet), seven public Timechain rooms, B.C.A. office,
 EntropyLab floor, HQ, HQ basement, Mempool chamber, Library nook, HQ window gallery
 and north pass. These are camera views rather than 26 distinct protocol zones.
-Repeated screens share a slot's texture; adding catalog entries does not allocate
-additional screen targets. There are no pixel reads, image encoding or additional
+Repeated screens share a slot's texture; their balanced random placement forbids
+matching neighbors, including diagonals and the wrap around the room. Since
+every slot holds a different channel, rotation preserves this separation.
+Adding catalog entries does not allocate additional screen targets. There are no pixel reads, image encoding or additional
 WebGL contexts.
 
 - High/medium: 256 x 144 pixels, each feed no more often than every 90 ms.

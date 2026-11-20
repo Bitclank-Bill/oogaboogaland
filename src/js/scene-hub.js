@@ -3580,10 +3580,10 @@
   const waterSupportAt = (x, z, y, rise, player) => mempoolIsland ? mempoolIsland.floatAt(x, z, y, rise, player ? player.bodyHeight * OOGA_DRAUGHT : CLOSE_VIEW.eyeHeight * OOGA_DRAUGHT) : -Infinity;
   const rageThrown = actor => !!(actor?.leap?.thrown && actor.leap.rageThrown);
   const playerSupportAt = (x, z, y = 0, previousY = y, player = pilot?.player, ignoreClanker = false, passTraffic = false) => {
-    if (BL.architectCave.contains(x, y, z)) return BL.architectCave.FLOOR;
     passTraffic = passTraffic || rageThrown(player);
     const step = !player || player.hop === 0 && player.hopV <= 0;
     const from = Math.max(y, previousY), rise = step ? STEP_MAX : 0;
+    if (BL.architectCave.contains(x, y, z)) return architectCave?.supportAt(x, z, from, rise, PLAYER_RADIUS) ?? BL.architectCave.FLOOR;
     if (cloudPlaying()) return Math.max(island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS),
       solids.supportAt(x, z, from, rise, PLAYER_RADIUS),
       ALTAR_HEIGHT <= from + rise && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS ? ALTAR_HEIGHT : -Infinity,
@@ -3592,7 +3592,7 @@
   };
   const abyssAt = (x, z, y, actor = pilot?.player) => playerSupportAt(x, z, y, y, actor) === ABYSS_FLOOR;
   const visualSupportAt = (x, z, y) => {
-    if (BL.architectCave.contains(x, y, z)) return BL.architectCave.FLOOR;
+    if (BL.architectCave.contains(x, y, z)) return architectCave?.supportAt(x, z, y, STEP_MAX, PLAYER_RADIUS) ?? BL.architectCave.FLOOR;
     if (cloudPlaying()) return playerSupportAt(x, z, y, y);
     const floor = Math.max(cloudHopper ? cloudHopper.supportAt(x, z, y, STEP_MAX) : -Infinity, bedSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS), propSupportAt(x, z, y, STEP_MAX, pilot.player), waterSupportAt(x, z, y, STEP_MAX, pilot.player));
     return floor > -Infinity && floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? floor : island.smoothSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS);
@@ -5078,7 +5078,7 @@
       && mirrorActorSegmentClear(fromX, y, fromZ, toX, y, toZ, height, actor);
   };
   const walkable = (fromX, fromZ, toX, toZ, y, height = 1.5, actor = pilot?.player) => {
-    if (BL.architectCave.contains(fromX, y, fromZ)) return BL.architectCave.segmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height);
+    if (BL.architectCave.contains(fromX, y, fromZ)) return (architectCave || BL.architectCave).segmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height);
     // An occupied hammock is a wall to walk into, not a cloth to cross (an empty one is stepped onto): whoever is inside it already may leave.
     if (hammock && hammock.blocks(toX, y, toZ, PLAYER_RADIUS) && !hammock.blocks(fromX, y, fromZ, PLAYER_RADIUS)) return false;
     if (Math.hypot(toX, toZ) > worldBound() || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
@@ -5090,13 +5090,13 @@
       || feet === y && playerEscapeClear(fromX, fromZ, toX, toZ, y, height, actor, STEP_MAX);
   };
   const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5, actor = pilot?.player) => BL.architectCave.contains(fromX, y, fromZ)
-    ? BL.architectCave.segmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height)
+    ? (architectCave || BL.architectCave).segmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height)
     : (Math.hypot(toX, toZ) <= worldBound() || actor?.leap?.thrown) && !crossesSealedCave(fromX, fromZ, toX, toZ, y)
     && (y + height <= ceilingAt(toX, toZ, y, actor) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height, actor) && propSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height, actor) && bedSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height) && matrixGateSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height) && mirrorActorSegmentClear(fromX, y, fromZ, toX, y, toZ, height, actor)
       || playerEscapeClear(fromX, fromZ, toX, toZ, y, height, actor, 0));
   const characterCarryClear = (cave, x, y, z, toX, toY, toZ) => {
     const height = cave.bodyHeight + Math.max(0, cave.viewLift), feet = y + 1e-7, toFeet = toY + 1e-7;
-    if (BL.architectCave.contains(x, y, z)) return BL.architectCave.segmentClear(x, y, z, toX, toY, toZ, PLAYER_RADIUS, height);
+    if (BL.architectCave.contains(x, y, z)) return (architectCave || BL.architectCave).segmentClear(x, y, z, toX, toY, toZ, PLAYER_RADIUS, height);
     return Math.hypot(toX, toZ) <= worldBound() && !crossesSealedCave(x, z, toX, toZ, Math.min(y, toY))
       && toY + height <= ceilingAt(toX, toZ, toY, cave) + 1e-7
       && physicalClearAt(toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7, cave)
@@ -6134,6 +6134,8 @@
     if (player && player.camp.seat) return STAND_ACTION;
     if (player && crew.sleeping) return WAKE_ACTION;
     if (player && pilot.moving) return null;
+    if (player && architectCave?.active && player.hop < 0.03 && player.hopV <= 0)
+      return architectCave.nearbySeat(x, player.root.position.y - player.baseY, z, reach);
     if (player && player.hop < 0.03 && player.hopV <= 0 && headquarters) {
       const feet = player.root.position.y - player.baseY;
       const floor = bedSupportAt(x, z, feet + 0.04, 0, PLAYER_RADIUS);
@@ -6166,6 +6168,7 @@
     else if (action === WAKE_ACTION) crew.wakePlayer();
     else if (action === ROLL_ACTION) crew.dropRoll();
     else if (action === STAND_ACTION) crew.standPlayer(pilot.player, true);
+    else if (action.kind === "architect-chair") architectCave.sit();
     else if (action.kind === "bench") crew.sitPlayer(action);
     else if (action === HAMMOCK_FULL) hud.toast("The hammock is occupied: one Ooga at a time");
     else if (action.kind === "hammock") restInHammock(action);
@@ -6883,8 +6886,13 @@
         hud.hint(COARSE ? "Tap DROP & ROLL! to put the fire out" : "Press Space to drop and roll until the fire goes out");
         hud.setAct("DROP & ROLL!");
       } else if (action === STAND_ACTION) {
-        hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
+        hud.hint(player?.camp.seat === architectCave?.seat
+          ? COARSE ? "Look around to swivel · Move or tap STAND UP! to get up" : "Look or Q/E to swivel · Move or Space to stand up"
+          : COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
         hud.setAct("STAND UP!");
+      } else if (action.kind === "architect-chair") {
+        hud.hint(COARSE ? "Tap SIT to use the swivel chair" : "Space · Sit in the swivel chair · Move + Space to jump onto it");
+        hud.setAct("SIT");
       } else if (action.kind === "bench") {
         hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
         hud.setAct("SIT");
@@ -11979,7 +11987,7 @@
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
     pile.core.geometry.cameraFeedKeep = true;
     models.bananaTileGeometry().cameraFeedKeep = models.bananaTileGeometry(true).cameraFeedKeep = true;
-    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave, weather, mouths: island.mouths,
+    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, crew, mirror: mirrorCave, weather, mouths: island.mouths,
       places: { pool: mempoolIsland.place, repos: repoIsland.spot, sphere: timechainIsland.place, bifrost: bifrostIsle?.site.node.position,
         hq: island.headquarters, library: LIBRARY, gate: island.gate } });
     yield* pause(slice);
