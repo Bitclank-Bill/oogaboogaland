@@ -123,3 +123,77 @@ equipment revision. It never appears in equipment messages or public metadata.
   on another. Both choices survive reconnects, with the older geometry retained.
 - Record Worker and browser checks and real staging evidence separately. Keep
   the PR draft while implementation or staging acceptance remains.
+
+### Local validation (2026-11-20)
+
+The maintainer chose local multiplayer coverage plus a single-account live
+staging check. The local browser run, `node test/run.mjs equipment-app`, passed
+16/16 checks using the real hosted studio and renderer with explicit account,
+HTTP and socket fixtures. It covered all nine hat previews without reallocating
+the wearer, saving and reloading a pinned version, fixture creator revisions
+with **Accept update** and **Keep my version**, a later offer after declining,
+concurrent-save conflicts, authored/no-hat restoration, the apple-head fitting,
+and desktop and phone controls. Normal flows had clean consoles; the intentional
+409 response was checked separately for its expected browser resource error.
+
+The browser also applied fixture messages to local and remote avatar models:
+changes preserved pose and gameplay nodes, reused immutable geometry, rejected
+older revisions, cleared equipment on leaving visibility and restored it from
+an arrival snapshot. These were modeled peers in the browser, not two actual
+signed-in Chrome accounts connected to staging.
+
+Worker integration tests exercised the Room implementation with simulated
+sockets and SQLite-backed account choices. They verified delivery to visible
+peers while excluding distant scenes, catch-up on zone entry, reconnect and
+hibernation recovery, interrupted-publication recovery, concurrent-save revision
+checks, and retained Accept/Keep choices across reloads and newer metadata.
+Model tests separately checked all nine attachments, shared geometry, preserved
+authored heads and the reviewed apple fitting. Immutable archive validation and
+deployment retention checks cover keeping previously published versions.
+
+At revision `39dc21ed82465bdbe22b25aee2e857aa3aadf649`,
+[Linux CI run 44800255713](https://github.com/OogaBoogaX/oogaboogaland/actions/runs/44800255713)
+passed 831 root unit checks and 827 Worker checks. This CI record and the local
+browser results are separate from live staging acceptance.
+
+### Live staging validation (2026-11-20)
+
+[Staging release 44801155812](https://github.com/OogaBoogaX/oogaboogaland/actions/runs/44801155812)
+deployed application baseline `39dc21ed82465bdbe22b25aee2e857aa3aadf649` using
+tooling `61faffb7df2168855cb4db833a2d690f93929982`. Worker version:
+`387084f9-48b2-44cc-afae-2bda165eed3e`. Migration
+`0012_player_equipment.sql`, all 827 Worker checks, both retention gates and live
+catalog verification passed. The release finished at generation 8 with no
+pending transition. The 58-character catalog is revision
+`7767c79cc99775c3dc819cb8306f0db972b81018bc5e8c04f88352216e4d5e2d`,
+activation generation 1.
+
+Using the maintainer's existing signed-in account, the hosted studio displayed
+all nine hats and saved the straw hat. The already-open island tab visibly
+changed from the original apple head to the straw hat without navigating or
+refreshing. The studio retained the selection after a full reload. Leaving the
+island for the studio and returning created a fresh Room connection, still
+wearing the saved hat with one account online. Restoring the original character
+look updated the existing island tab live and survived another studio reload.
+The account was left with its original appearance.
+
+The public registry returned nine items and nine versions. The straw archive
+returned HTTP 200, the expected SHA-256 bytes and ETag, and a one-year immutable
+cache policy. A post-deployment retention preflight confirmed all nine published
+versions remain in the next target. Screenshots are local acceptance artifacts
+under `untracked/equipment/staging/`: `studio-straw.png`,
+`live-island-straw.png`, `reconnected-island-straw.png` and
+`restored-island.png`.
+
+The first render attempts exposed an unused background WebGL context's Linux
+GPU readback warnings and one Chrome startup failure. The offline portrait
+tool now opens that background through the existing Canvas mode; the actual
+portrait renderer is unchanged. Local before/after PNG and manifest bytes were
+identical, strict console checks remained enabled, and the Linux render passed.
+The unpublished failed target was replaced under the guarded release lock;
+the final successful run resumed its exact prepared application baseline.
+
+No second real staging account participated, and no synthetic creator revision
+was published to staging. Nearby/far-player propagation, Room hibernation and
+Accept/Keep across creator revisions are covered by the local checks above.
+Production and automatic publishing flags were not changed.
