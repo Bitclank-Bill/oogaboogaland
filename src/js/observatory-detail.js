@@ -131,7 +131,8 @@
         if (headroom && detail.state === "building") {
           if (!pending) {
             slice.until = performance.now() + slice.budget;
-            const next = BL.models.withScope(scope, () => iterator.next());
+            const owner = group === "timechain" ? BL.timechainRoomModels : BL.models;
+            const next = owner.withScope(scope, () => iterator.next());
             if (next.done) { iterator = null; detail.state = "ready"; }
             else if (next.value) {
               pending = next.value; pending.meshes = []; upload = 0;

@@ -38,14 +38,22 @@
   };
   const quad = (geo, a, b, c, d, color, emissive, normal) => face(geo, [a, b, c, d], color, emissive, normal);
   const blank = () => ({ verts: [], faces: [], lines: [] });
-  // Preview construction, liveGeometry and cancellation all run from the hub; these meshes belong to the room.
+  // Doorway previews belong to Timechain. A short-lived observer can own its synchronous
+  // build batches instead, including nested kind helpers, without pinning a scene it never enters.
+  let ownerScope = "timechain";
+  const withScope = (scope, build) => {
+    const previous = ownerScope;
+    ownerScope = scope;
+    try { return BL.models.withScope(scope, build); }
+    finally { ownerScope = previous; }
+  };
   const own = (build) => {
     const read = BL.models.cached(build);
-    return () => BL.models.withScope("timechain", read);
+    return () => BL.models.withScope(ownerScope, read);
   };
   const perRoom = (build) => {
     const read = BL.models.variants(build);
-    return (id) => BL.models.withScope("timechain", read, id);
+    return (id) => BL.models.withScope(ownerScope, read, id);
   };
   const UP = [0, 1, 0], DOWN = [0, -1, 0];
   // What of a convex polygon of [x, z] corners keeps nx·x + nz·z ≤ d (Sutherland–Hodgman against one half-plane).
@@ -793,7 +801,7 @@
     return geo;
   };
   BL.timechainRoomModels = {
-    build, plan, prepareSteps, geometries, picture, liveGeometry, flatPicture, sphere: sphereParts, domeMap, floorMap, paintKit, KINDS, COLORS: C, MARK_BIAS, EXIT_HEADER,
+    build, plan, prepareSteps, geometries, picture, liveGeometry, flatPicture, sphere: sphereParts, domeMap, floorMap, paintKit, KINDS, COLORS: C, MARK_BIAS, EXIT_HEADER, withScope,
     doorway, doorBulbs, bulbsOf, solo,
     helpers: { face, quad, blank, clip, own, perRoom, cylinder, ballGeo, slabGeo, sectorGeo, litWord, UP, DOWN }
   };
