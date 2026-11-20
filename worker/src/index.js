@@ -7,6 +7,7 @@
 // served straight from _site.
 
 import { handleAvatar } from "./avatar.js";
+import { handleCharacterCatalog } from "./character-catalog-http.js";
 import { handleConnectionReports, pruneConnectionReports } from "./connection-reports.js";
 import { handleApi } from "./api.js";
 import { handleAuth } from "./auth.js";
@@ -38,6 +39,15 @@ export { Audience } from "./audience.js";
 
 const ROOM_NAME = "island";
 
+// A temporary catalog outage must not tell a reconnecting client that its account was signed out.
+const serviceSession = async (request, env) => {
+  try { return await getSessionFromRequest(request, env, true); }
+  catch (error) {
+    return error.code === "character_unavailable"
+      ? text("Characters temporarily unavailable", 503, { "retry-after": "15" }) : null;
+  }
+};
+
 // The request passed on to a socket's object, with the player as the session says and nothing a client sent of its own.
 const asPlayer = (request, found, extra = null) => {
   const headers = new Headers(request.headers);
@@ -54,7 +64,8 @@ const asPlayer = (request, found, extra = null) => {
 const handleRoom = async (request, env, ctx) => {
   if (request.headers.get("upgrade") !== "websocket") return text("Expected WebSocket", 426);
   if (!fromSite(request, env.SITE_ORIGIN)) return text("Forbidden", 403);
-  const found = await getSessionFromRequest(request, env);
+  const found = await serviceSession(request, env);
+  if (found instanceof Response) return found;
   if (!found) return text("Sign in first", 401);
   if (!(await allowed(env.ROOM_LIMITER, String(found.player.id)))) {
     inspectEdge(env, ctx, "limited", found.player, { which: "room" });
@@ -72,7 +83,8 @@ const handleGame = async (request, env, url, ctx) => {
   const [, , kind = "", venue = "", rest] = url.pathname.split("/");
   const name = rest === undefined ? gameName(kind, venue) : "";
   if (!name || !env.GAMES) return text("No such game", 404);
-  const found = await getSessionFromRequest(request, env);
+  const found = await serviceSession(request, env);
+  if (found instanceof Response) return found;
   if (!found) return text("Sign in first", 401);
   if (!(await allowed(env.GAME_LIMITER, String(found.player.id)))) {
     inspectEdge(env, ctx, "limited", found.player, { which: "game" });
@@ -88,7 +100,8 @@ const VOICE_BODY_MAX = 256 * 1024;
 const handleVoice = async (request, env, url, ctx) => {
   if (request.method !== "POST") return text("Method not allowed", 405);
   if (!fromSite(request, env.SITE_ORIGIN)) return text("Forbidden", 403);
-  const found = await getSessionFromRequest(request, env);
+  const found = await serviceSession(request, env);
+  if (found instanceof Response) return found;
   if (!found) return text("Sign in first", 401);
   const op = url.pathname.slice("/api/voice/".length);
   const ice = op === "ice";
@@ -119,6 +132,7 @@ export default {
     if (url.pathname.startsWith("/api/cloud-hopper-replays/")) return handleCloudHopperReplays(request, env, ctx);
     if (url.pathname === "/api/connection-reports") return handleConnectionReports(request, env);
     if (url.pathname.startsWith("/api/avatar/")) return handleAvatar(request, env, url, ctx);
+    if (url.pathname === "/api/characters/catalog") return handleCharacterCatalog(request, env);
     if (url.pathname === "/api/world") return handleWorld(request, env, ctx);
     if (url.pathname === "/api/world/live") return handleWorldLive(request, env);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);

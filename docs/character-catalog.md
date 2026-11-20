@@ -107,11 +107,23 @@ code or account sessions.
 
 ## Runtime integration
 
-One environment-scoped Worker loader will validate complete immutable snapshots
-and construct ownership maps and cast indexes. It will deduplicate bounded
-refreshes, avoid storage requests in per-frame/message work, and restore the
-Room's accepted snapshot before checking hibernated connections. ChatBridge's
-public cast and capability consumers will use revision-aware caches.
+The environment-scoped Worker loader validates canonical bytes, content hashes,
+schema, environment, baseline and activation history before accepting a complete
+snapshot. It checks at most once a minute, shares in-flight reads, bounds a read
+to four seconds and 2 MiB per object, and retains a last good authority for at
+most fifteen minutes. A failed read cannot replace a newer successful one.
+Compiled owners remain reserved; compiled custom looks cannot become data-only
+entries through a catalog update.
+
+The Room persists its accepted snapshot before using it and restores that
+snapshot before checking hibernated connections. Storage reads happen at
+restore, admission and existing sweep boundaries, never in pose processing.
+Unavailable authority refuses new ownership grants without interpreting the
+outage as a revocation of every existing player. Cleanup, bans, expiry and
+account removal remain active. Sign-in and `/api/me` report unavailable authority
+as a retryable service failure. ChatBridge's cast cache follows catalog revision
+and activation generation; capability decisions and Audience checks use the
+same environment-scoped ownership policy.
 
 The island must finish catalog loading before the contributor roster and models
 are initialized. A page initially pins its appearance catalog for its lifetime;
