@@ -269,15 +269,15 @@
         base.push(bevelBox({ w: 0.16, h: 0.16, d: 0.22, color: dark, emissive: 0.2, offset: { x, y: 0.09, z } }));
       }
       add(merge(...base));
-      const padded = [bevelBox({ w: 1.36, h: 0.2, d: 1.16, bevel: 0.08, color: "#e3dfd3", emissive: 0.4, offset: { y: SEAT_TOP - 0.1 } }),
-        bevelBox({ w: 1.36, h: 1.4, d: 0.26, bevel: 0.1, color: "#cecfc5", emissive: 0.4, offset: { y: 1.35, z: -0.57 } })];
-      for (let i = 0; i < 3; i++) padded.push(bevelBox({ w: 1.19, h: 0.38, d: 0.13, bevel: 0.045, color: "#e9e5da",
-        emissive: 0.4, offset: { y: 0.91 + i * 0.4, z: -0.4 } }));
+      const padded = [bevelBox({ w: 1.36, h: 0.2, d: 1.16, bevel: 0.08, color: "#17191b", emissive: 0.12, offset: { y: SEAT_TOP - 0.1 } }),
+        bevelBox({ w: 1.36, h: 1.4, d: 0.26, bevel: 0.1, color: "#111315", emissive: 0.12, offset: { y: 1.35, z: -0.57 } })];
+      for (let i = 0; i < 3; i++) padded.push(bevelBox({ w: 1.19, h: 0.38, d: 0.13, bevel: 0.045, color: "#1d2023",
+        emissive: 0.12, offset: { y: 0.91 + i * 0.4, z: -0.4 } }));
       for (const side of [-1, 1]) {
         const x = side * 0.77;
         padded.push(beam(x, 0.66, -0.41, x, 1.08, -0.45, 0.065, metal, 0.25));
         padded.push(beam(x, 0.66, 0.38, x, 1.08, 0.45, 0.065, metal, 0.25));
-        padded.push(bevelBox({ w: 0.15, h: 0.1, d: 1.04, bevel: 0.04, color: dark, emissive: 0.25, offset: { x, y: 1.13 } }));
+        padded.push(bevelBox({ w: 0.15, h: 0.1, d: 1.04, bevel: 0.04, color: "#151719", emissive: 0.12, offset: { x, y: 1.13 } }));
       }
       chairTop = add(merge(...padded));
       const penGeometry = merge(lathe({ profile: [[0.012, -0.13], [0.016, -0.1], [0.016, 0.15], [0.012, 0.17]],
