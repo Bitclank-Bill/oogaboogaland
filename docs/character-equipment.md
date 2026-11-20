@@ -30,6 +30,13 @@ Normal and slim heads, the nine source characters and `w-s-bitcoin`'s apple head
 have fittings. Other replacement skulls, masks and custom heads show an explicit
 fitting limitation and retain their own appearance. Gorillas keep their own look.
 
+Apple fittings use each hat's authored crown size: the five voxel caps need only
+small side clearance, while the straw hat, ruby crown and top hat retain their
+width and depth. The space helmet sits upright around the head; its donor-only
+muzzle lining is hidden. Closed hats tuck the apple's stalk and leaf away using
+a cached head variant. Open flame/ruby crowns, no hat and the original look
+restore them. The original head, face, tusks and blink geometry remain intact.
+
 ## Updating an authored hat
 
 The nine existing custom character files expose `dress.hat` and, where needed,

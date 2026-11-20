@@ -39,6 +39,38 @@ const headGolden = (node) => {
     children: row.children.map(stable) });
   return hatHash(JSON.stringify(stable(node)));
 };
+const geometryGolden = (geometry) => headGolden({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 }, geometry, children: [] });
+const points = (geometry, unit) => {
+  const out = [];
+  for (let i = 0; i < geometry.verts.length; i += 3) out.push(Array.from(geometry.verts.slice(i, i + 3), (n) => n / unit));
+  return out;
+};
+const bounds = (vertices) => {
+  assert.ok(vertices.length, "measured geometry is not empty");
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (const vertex of vertices) for (let i = 0; i < 3; i++) {
+    assert.ok(Number.isFinite(vertex[i])); min[i] = Math.min(min[i], vertex[i]); max[i] = Math.max(max[i], vertex[i]);
+  }
+  return { min, max, size: max.map((n, i) => n - min[i]) };
+};
+const fittedPoints = (f, cave) => {
+  const root = cave.equipmentHatNode, unit = cave.traits.height / 16;
+  f.BL.scene.updateWorld(root, null);
+  return root.children.map((node) => node.visible ? points(node.geometry, 1).map((point) => {
+    const out = []; f.BL.math.mat4.transformPoint(out, node.world, ...point);
+    return out.map((n) => n / unit);
+  }) : []);
+};
+const between = (value, min, max, label) => assert.ok(value >= min && value <= max, `${label}: ${value} outside [${min}, ${max}]`);
+const lowerFace = (geometry, unit) => {
+  // Stalk and leaf start above this region. Compare the actual face, tusks, beard and apple shell below it,
+  // independent of merge order or vertex indices in the authored and bare variants.
+  const vertices = points(geometry, unit), faces = geometry.faces.filter((face) => face.i.every((i) => vertices[i][1] < 6.5));
+  assert.ok(faces.length > 100);
+  return JSON.stringify(faces.map((face) => ({ color: face.color, emissive: face.emissive,
+    vertices: face.i.map((i) => vertices[i].map((n) => Number(n.toFixed(9)))) })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+};
 // Captured with headGolden from untouched fa2a62e sources, before separating the nine headwear hooks.
 const ORIGINAL_HEADS = {
   "Bitcoin-Bill": "51a59b324335063da9b6a71bc3897cc0029b4a1fe547904270b8d87757b4fa62",
@@ -130,22 +162,89 @@ test("unreviewed custom heads and unknown versions leave the existing appearance
   assert.equal(f.BL.equipmentHats.has("none", undefined), false); assert.equal(normal.equipmentHatNode, undefined);
 });
 
-test("the maintainer's apple shell uses its measured fit and keeps face, stalk, leaf and blink geometry", () => {
+test("closed apple hats cover the stalk and leaf while open crowns and removal restore the exact authored head", () => {
   const f = fixture(), a = f.cave("w-s-bitcoin"), render = f.BL.characterEquipment;
-  const head = a.parts.head, open = a.headOpen, closed = a.headClosed, before = JSON.stringify(open), h = a.traits.height;
+  const head = a.parts.head, open = a.headOpen, closed = a.headClosed, portrait = a.portraitHead, unit = a.traits.height / 16;
+  // Captured before the equipmentBare branch was added to the apple's approved builder.
+  assert.equal(headGolden(head), "46cea00c8da2f0e3002fd5c3cf0b0290a79171af8929a1a9e788d6e0a1452964");
+  assert.equal(geometryGolden(open), "68675887b7f8f5b9da2da39a3c496856a3eee5827c01f1804297842549f34e89");
+  assert.equal(geometryGolden(closed), "37cd989d1d2d85471ce72bf1389d37d62177b0bac308c0d2347dddd9e18e1855");
+  assert.equal(geometryGolden(portrait), geometryGolden(open));
+  const originals = [lowerFace(open, unit), lowerFace(closed, unit)], rootNode = a.root, face = a.parts.face, torso = a.parts.torso;
+  const openCrowns = new Set(["hotpixelgroup-flame-crown", "midy-machete-crown"]);
+  a.root.position.x = 9; a.root.rotation.y = 1.2; head.rotation.x = 0.2;
+  const before = headGolden(head); let bareOpen, bareClosed;
   assert.equal(render.supports(a), true);
-  for (const row of catalog.items) {
-    assert.equal(render.apply(a, { item: row.id, version: row.current }), true);
-    assert.equal(a.parts.head, head); assert.equal(a.headOpen, open); assert.equal(a.headClosed, closed);
-    assert.ok(Math.abs(a.equipmentHatNode.scale.x / h - (row.id === "bitcoin-bill-straw" ? 1 : 9 / 7)) < 1e-12);
-    assert.ok(Math.abs(a.equipmentHatNode.scale.z / h - (row.id === "bitcoin-bill-straw" ? 1 : 8 / 6)) < 1e-12);
-    const at = { "bitcoin-bill-straw": -1, "midy-machete-crown": 0, "rules-without-rulers-top-hat": 0.5 };
-    assert.ok(Math.abs(a.equipmentHatNode.position.y / h * 16 - (at[row.id] ?? 1)) < 1e-12);
-    assert.equal(a.equipmentHatNode.position.z, -0.5 * h / 16);
-    assert.equal(JSON.stringify(open), before);
+  for (const blinking of [false, true]) {
+    head.geometry = blinking ? a.headClosed : a.headOpen;
+    // Interleave a closed hat and an open crown so both transitions run, not only transitions from authored.
+    for (const id of ["bitcoin-bill-straw", "hotpixelgroup-flame-crown", ...catalog.items.map((row) => row.id)]) {
+      const row = catalog.items.find((item) => item.id === id), selected = { item: row.id, version: row.current };
+      assert.equal(render.apply(a, selected), true);
+      assert.equal(a.root, rootNode); assert.equal(a.parts.head, head); assert.equal(a.parts.face, face); assert.equal(a.parts.torso, torso);
+      assert.equal(a.root.position.x, 9); assert.equal(a.root.rotation.y, 1.2); assert.equal(head.rotation.x, 0.2);
+      assert.equal(head.geometry, blinking ? a.headClosed : a.headOpen, "selection preserves the blink phase");
+      assert.equal(lowerFace(a.headOpen, unit), originals[0]); assert.equal(lowerFace(a.headClosed, unit), originals[1]);
+      if (openCrowns.has(id)) {
+        assert.equal(a.headOpen, open); assert.equal(a.headClosed, closed); assert.equal(a.portraitHead, portrait);
+        between(bounds(points(a.headOpen, unit)).max[1], 11, 11.2, "open crown retains stalk and leaf");
+      } else {
+        assert.notEqual(a.headOpen, open); assert.notEqual(a.headClosed, closed);
+        between(bounds(points(a.headOpen, unit)).max[1], 7.9, 8.1, "covered apple has no protruding stalk or leaf");
+        if (bareOpen) { assert.equal(a.headOpen, bareOpen); assert.equal(a.headClosed, bareClosed); }
+        bareOpen = a.headOpen; bareClosed = a.headClosed;
+      }
+      const node = a.equipmentHatNode;
+      assert.equal(render.apply(a, selected), true); assert.equal(a.equipmentHatNode, node);
+      assert.equal(head.children.length, 2, "one face and one worn group without leaked hats");
+    }
+    for (const selection of [{ item: "none", version: null }, null]) {
+      assert.equal(render.apply(a, selection), true); assert.equal(a.equipmentHatNode, null);
+      assert.equal(a.headOpen, open); assert.equal(a.headClosed, closed); assert.equal(a.portraitHead, portrait);
+      assert.equal(head.geometry, blinking ? closed : open); assert.equal(head.children.length, 1);
+    }
   }
-  assert.equal(render.apply(a, { item: "none", version: null }), true); assert.equal(a.headOpen, open);
-  assert.equal(render.apply(a, null), true); assert.equal(head.children.length, 1);
+  head.geometry = open;
+  assert.equal(headGolden(head), before, "removal restores the complete original head tree and pose");
+});
+
+test("apple fittings keep practical crown clearance and authored hat proportions", () => {
+  const f = fixture(), a = f.cave("w-s-bitcoin"), normal = f.cave("Normal"), render = f.BL.characterEquipment;
+  const caps = new Set(["global-dsb-spiked-helmet", "bc1gui-green-beanie", "hotpixelgroup-flame-crown", "itsliran-taproot-cap", "timechainb-gold-crown"]);
+  for (const row of catalog.items) {
+    const selected = { item: row.id, version: row.current };
+    assert.equal(render.apply(a, selected), true); assert.equal(render.apply(normal, selected), true);
+    const nodes = fittedPoints(f, a), full = bounds(nodes.flat()), shell = bounds(nodes[0]);
+    for (let i = 0; i < nodes.length; i++) assert.equal(a.equipmentHatNode.children[i].geometry, normal.equipmentHatNode.children[i].geometry,
+      row.id + " keeps the original immutable mesh shared with ordinary recipients");
+    if (caps.has(row.id)) {
+      // The apple is nine cells wide and eight deep, centered at z=-0.5. Measure the shell near the crown;
+      // the cap's projecting bill and the beanie's hanging tip are deliberately outside this region.
+      const rim = bounds(nodes[0].filter((p) => p[1] >= 7 && p[1] <= 8.5 && p[2] < 4.5));
+      between(-4.5 - rim.min[0], 0.15, 0.3, row.id + " left clearance");
+      between(rim.max[0] - 4.5, 0.15, 0.3, row.id + " right clearance");
+      between(-4.5 - rim.min[2], 0.1, 0.3, row.id + " back clearance");
+      between(rim.max[2] - 3.5, 0.1, 0.3, row.id + " front clearance");
+      between(rim.min[1], 6.95, 8.05, row.id + " overlaps the crown instead of floating above it");
+    } else if (row.id === "bitcoin-bill-straw") {
+      between(full.size[0], 16, 17, "straw brim width"); between(full.size[2], 16, 17, "straw brim depth");
+    } else if (row.id === "midy-machete-crown") {
+      between(shell.size[0], 8.8, 9.2, "ruby ring width"); between(shell.size[2], 7.3, 7.7, "ruby ring depth");
+      between(shell.min[1], 7.3, 7.8, "ruby ring overlaps the narrowed apple crown");
+      between((shell.min[2] + shell.max[2]) / 2, -0.6, -0.4, "ruby ring is centered on the shell");
+    } else if (row.id === "rules-without-rulers-top-hat") {
+      between(full.size[0], 10, 10.8, "top-hat brim width"); between(full.size[2], 9.8, 10.5, "top-hat brim depth");
+      between(full.min[1], 7.5, 8, "tilted top-hat brim touches the crown");
+    } else if (row.id === "johnstackton21m-helmet") {
+      assert.equal(a.equipmentHatNode.children[2].visible, false, "the donor's face pad does not cover the apple's own face");
+      assert.equal(normal.equipmentHatNode.children[2].visible, true, "ordinary recipients retain the donor pad");
+      between(shell.size[0], 12.5, 13.1, "space dome width"); between(shell.size[2], 12.5, 13.1, "space dome depth");
+      const radius = shell.size[0] / 2, center = [(shell.min[0] + shell.max[0]) / 2, shell.max[1] - radius, (shell.min[2] + shell.max[2]) / 2];
+      between(center[1], 3.75, 4.25, "space dome vertical center"); between(center[2], -0.75, -0.25, "space dome depth center");
+      for (const p of points(a.headOpen, a.traits.height / 16).filter((p) => p[1] >= 6))
+        assert.ok(Math.hypot(...p.map((n, i) => n - center[i])) < radius - 0.2, "apple crown clears the dome lining");
+    } else assert.fail("Every reviewed apple hat requires a physical fitting check");
+  }
 });
 
 test("the straw hat seats on the recipient crown while its original taller-haired owner keeps its authored height", () => {

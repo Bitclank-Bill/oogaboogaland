@@ -8,6 +8,8 @@
   // These three authored pieces sit on taller donor hair or a pumpkin. Seat their archived geometry on the
   // regular seven-cell crown; recipient fittings below then account for the actual head underneath them.
   const SEAT = Object.freeze({ "bitcoin-bill-straw": -2, "midy-machete-crown": -1, "rules-without-rulers-top-hat": -0.5 });
+  const APPLE_CAPS = new Set(["global-dsb-spiked-helmet", "bc1gui-green-beanie", "hotpixelgroup-flame-crown", "itsliran-taproot-cap", "timechainb-gold-crown"]);
+  const OPEN_CROWNS = new Set(["hotpixelgroup-flame-crown", "midy-machete-crown"]);
   const freeze = (value) => {
     if (value && typeof value === "object" && !Object.isFrozen(value)) {
       for (const child of Object.values(value)) freeze(child);
@@ -96,7 +98,9 @@
     const own = old || { open: cave.headOpen, closed: cave.headClosed, portrait: cave.portraitHead, visible: native.map((node) => node.visible), selection: null, node: null };
     const closed = head.geometry === cave.headClosed;
     // Prepare the complete replacement before changing any live node.
-    const bare = selected && cave.traits.dress?.hat ? cave.bareHead() : own;
+    const apple = cave.traits.name.toLowerCase() === "w-s-bitcoin" && BL.models.STYLE === "R";
+    const covered = apple && selected && selected.item !== "none" && !OPEN_CROWNS.has(selected.item);
+    const bare = selected && (cave.traits.dress?.hat || covered) ? cave.bareHead() : own;
     let node = null;
     if (selected && selected.item !== "none") {
       const archive = recipes.get(selected.version), shared = meshes(selected.version), h = cave.traits.height;
@@ -105,18 +109,24 @@
       if (cave.traits.name.toLowerCase() === "midy-machete" && BL.models.STYLE === "R") {
         node.scale.x *= 0.85; node.scale.y *= 0.85; node.scale.z *= 0.85; node.position.y = -(0.85 - 0.7) * h / 16;
       }
-      if (cave.traits.name.toLowerCase() === "w-s-bitcoin" && BL.models.STYLE === "R") {
-        // Its authored apple shell is 9 x 8 x 8 cells, centered half a cell behind the regular 7 x 7 x 6 head.
-        // Fit to the shell, not the tusks or the stalk/leaf at y=11.1; those remain unchanged in its head geometry.
-        // Bill's straw crown already spans 9 x 8 cells. Enlarging it again also overgrows its wide brim.
-        if (selected.item !== "bitcoin-bill-straw") { node.scale.x *= 9 / 7; node.scale.z *= 8 / 6; }
+      if (apple) {
+        // These caps already span the apple's 9 x 8 shell; leave only a little clearance around its sides.
+        // The straw crown, hollow ruby crown and top-hat brim fit at their authored width and depth.
+        if (APPLE_CAPS.has(selected.item)) { node.scale.x *= 1.05; node.scale.z *= 1.05; }
         node.position.y = h / 16; node.position.z = -0.5 * h / 16;
+        if (selected.item === "midy-machete-crown") { node.position.y = 0.5 * h / 16; node.position.z = -0.25 * h / 16; }
+        if (selected.item === "johnstackton21m-helmet") {
+          // Undo the donor's backward tilt and center the dome around the apple, rather than behind it.
+          node.rotation.x = 0.55; node.position.y = -0.7 * h / 16; node.position.z = 0.45 * h / 16;
+        }
       }
       if (cave.traits.name.toLowerCase() === "bitcoin-bill" && BL.models.STYLE === "R") node.position.y = 2 * h / 16;
       node.position.y += (SEAT[selected.item] || 0) * node.scale.y / 16;
       for (let i = 0; i < archive.nodes.length; i++) {
         const source = archive.nodes[i], vector = (v) => ({ x: v[0], y: v[1], z: v[2] });
-        addChild(node, createNode({ position: vector(source.position), rotation: vector(source.rotation), scale: vector(source.scale), geometry: shared[i] }));
+        // The space helmet's third piece closes its donor's muzzle gap; on the upright apple it crosses the face.
+        const visible = !(apple && selected.item === "johnstackton21m-helmet" && i === 2);
+        addChild(node, createNode({ position: vector(source.position), rotation: vector(source.rotation), scale: vector(source.scale), geometry: shared[i], visible }));
       }
     }
     if (own.node) removeChild(head, own.node);

@@ -39896,10 +39896,18 @@ const equipmentAppChecks = async () => {
     record("equipment studio: no hat hides only the authored attachment and Original restores it without replacing the body", hidden
       && await b.evaluate("__nativeHat.every(v=>v.node.visible===v.visible) && __ooga.studio.cave.root===__nativeBody && document.getElementById('studio-hat-save').disabled"));
     await b.open(address.replace(`character=${account.login}`, "character=w-s-bitcoin")); await untilReady(b, 30000);
-    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "The reviewed apple fitting did not accept the hat");
+    let applePreviews = 0;
+    await b.evaluate("window.__appleCave=__ooga.studio.cave;window.__appleHead=__ooga.studio.cave.headOpen");
+    for (const hat of equipmentHats.items) {
+      const selection = { item: hat.id, version: hat.current };
+      await choose(`${hat.id}@${hat.current}`); await wait(wearing(selection), "The apple fitting did not accept " + hat.id);
+      if (await b.evaluate("__ooga.studio.cave===__appleCave && !!__ooga.studio.cave.equipmentHatNode && document.getElementById('studio-hat-save').disabled")) applePreviews++;
+    }
+    await choose("authored"); await wait(wearing(null), "The apple's original appearance did not return");
+    record("equipment studio: every hat previews on the apple without saving, and Original restores its head", applePreviews === equipmentHats.items.length && saved.selection === null
+      && await b.evaluate("__ooga.studio.state.name==='w-s-bitcoin' && __ooga.studio.cave.headOpen===__appleHead && !__ooga.studio.cave.equipmentHatNode"));
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "The apple straw preview did not return");
     await b.screenshot(join(shots, "apple-hat.png"));
-    record("equipment studio: the reviewed apple character can preview a shared hat without changing the account selection", saved.selection === null
-      && await b.evaluate("__ooga.studio.state.name==='w-s-bitcoin' && document.getElementById('studio-hat-save').disabled"));
     record("equipment studio: desktop acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
     b.close(); b = null;
     await open({ w: 390, h: 844, mobile: true });
