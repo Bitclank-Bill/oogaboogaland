@@ -1216,6 +1216,10 @@
   math.quat.fromAxisAngle(SWING_TURN, 0, 1, 0, Math.PI / 2);
   math.quat.fromAxisAngle(SWING_CLUB, 0, 0, 1, Math.PI / 2);
   math.quat.multiply(SWING_CLUB, SWING_TURN, SWING_CLUB);
+  // A blade resting in the fist of a body sitting on the ground turns a quarter about its length, so its flat faces
+  // sideways and its edge forward, as it does in the hand standing or in a chair.
+  const SIT_BLADE = math.quat.create();
+  math.quat.fromAxisAngle(SIT_BLADE, 0, 1, 0, Math.PI / 2);
   // The arm hanging at rest, as the other one hangs, the turn the swing lifts from.
   math.quat.fromEuler(SWING_REST, -0.2, 0, -0.1);
   // The weapon in the right fist, at its middle, square to the forearm bent by `flex`, the hand turned on its forearm
@@ -1625,7 +1629,11 @@
         if (!parts.snack.visible) sitArm(cave, parts.armL, parts.forearmL, cave.reachL, ground);
         sitArm(cave, parts.armR, parts.forearmR, cave.reachR, ground);
         // The right arm mirrors the left, its hand unturned, and the weapon in it stands where that hand holds it.
-        if (parts.club.parent === parts.armR) { restInFist(cave, -parts.forearmR.rotation.x); restingClub = true; }
+        if (parts.club.parent === parts.armR) {
+          restInFist(cave, -parts.forearmR.rotation.x);
+          if (parts.club.geometry.slingTurn !== undefined) math.quat.multiply(cave.axeRotation, cave.axeRotation, SIT_BLADE);
+          restingClub = true;
+        }
       }
       parts.forearmR.highlight = parts.armR.highlight;
       parts.forearmL.highlight = parts.armL.highlight;
@@ -6312,6 +6320,7 @@
         ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
         : walkable(fromX, fromZ, toX, toZ, y, height, cave);
     };
+    const SLIDE = { x: 0, z: 0 };
     const movePlayer = (cave, flying, dx, dz) => {
       const p = cave.root.position, steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / PLAYER_STEP));
       dx /= steps;
@@ -6323,6 +6332,11 @@
         if (canStep(cave, flying, p.x, p.z, p.x + sx, p.z + sz)) {
           p.x += sx;
           p.z += sz;
+        } else if (ctx.slideStep && ctx.slideStep(cave, flying, p.x, p.z, p.x + sx, p.z + sz, SLIDE)
+          && canStep(cave, flying, p.x, p.z, SLIDE.x, SLIDE.z)) {
+          // A scene that knows its walls' faces turns a step into one along the face it ran into.
+          p.x = SLIDE.x;
+          p.z = SLIDE.z;
         } else {
           if (sx && canStep(cave, flying, p.x, p.z, p.x + sx, p.z)) p.x += sx;
           if (sz && canStep(cave, flying, p.x, p.z, p.x, p.z + sz)) p.z += sz;

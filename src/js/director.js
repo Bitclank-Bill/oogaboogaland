@@ -61,12 +61,12 @@
   const worldClock = $("world-clock"), soundButton = $("environment-sound");
   const sound = window.BL.sound;
   const showSound = () => {
-    const label = sound.muted ? "Unmute environment sounds" : "Mute environment sounds";
-    const voice = window.BL.voice.stats;
-    soundButton.setAttribute("aria-label", label); soundButton.title = `${voice.enabled || voice.joining || voice.returning ? label : `${label} · M`} · hold for levels`;
-    soundButton.setAttribute("aria-pressed", String(sound.muted));
+    const voice = window.BL.voice.stats, label = sound.muted ? "Sound levels (game sounds muted)" : "Sound levels";
+    soundButton.setAttribute("aria-label", label);
+    soundButton.title = voice.enabled || voice.joining || voice.returning ? label : `${label} · M mutes game sounds`;
+    soundButton.dataset.muted = String(sound.muted);
   };
-  BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition, offerCoach: params.get("coach") === "1" });
+  BL.destinationMap = BL.destinationMap.create({ current: () => active, ready: () => !!active && !transition });
   let helpHeld = false;
   // Both panels pause the scene. A pad keeps working inside them: its Menus context reaches no scene while they show.
   const controlsHelp = BL.controlsHelp.create({ current: () => active, ready: () => !!active && !transition,
@@ -92,7 +92,7 @@
     }
   });
   const offSound = sound.subscribe(showSound);
-  // The button's press mutes and its long press opens each sound's level (sound-panel.js).
+  // The button's press opens each sound's level (sound-panel.js); M mutes.
   const soundPanel = window.BL.soundPanel.create({ button: soundButton });
   showSound();
   // Reserve M before scene capture listeners and transition holds; editable fields keep it for typing.
@@ -349,7 +349,7 @@
   };
   // An arrival in three parts: `arriving` before the scene's own enter, the enter, then `arrived`. A scene with
   // `enterSteps` may run its enter in slices between them (see `swap`).
-  const arcadeScenes = new Set([...window.BL.arcadeCabinets.entries.map(c => c.id), "race", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride"]);
+  const arcadeScenes = new Set([...window.BL.arcadeCabinets.entries.map(c => c.id), "race", "raid", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride"]);
   const arriving = (next, place) => {
     const retainedTime = next.retained ? next.elapsed : 0;
     ctx.from = active ? active.id : null;
@@ -663,6 +663,7 @@
   // delays. Recalibrated 2026-09-24 against the hub as it now is: an M4 Max builds it in about 2.35 s, so the old 2200 started every machine at medium. The same ratio to
   // that fast build is kept, and the frame-interval auto-tier still steps a slow device down while it plays.
   const BOOT_MEDIUM = 3600, BOOT_LOW = 5400;
+  let bootCPU = null;
   const tierFromBoot = (ms) => {
     if (renderer.kind !== "webgl2") return;
     const wanted = ms > BOOT_LOW ? "low" : ms > BOOT_MEDIUM || MEMORY_LIMITED ? "medium" : null;
@@ -1014,7 +1015,15 @@
   const housekeepTimer = window.setInterval(housekeep, 6e4);
   // EntropyLab currently lives in its island cave; retain the isolated scene for debug checks only.
   // The character studio (scene-studio.js) is a debug page too.
-  const routed = router.current();
+  // The bare address goes back to the place the visitor last stood in this browser (visit-spot.js), as its own route
+  // would: a Timechain room by its number, any other scene as a whole. The island stands its Ooga at its own spot.
+  const resumeRoute = () => {
+    const was = DEBUG || params.has("scene") || WIP ? null : window.BL.visitSpot.resume();
+    if (!was || was.scene === "hub" || !Object.hasOwn(scenes, was.scene)) return null;
+    const list = window.BL.routes.list;
+    return list.find((e) => e.scene === was.scene && (e.place || "") === was.place) || list.find((e) => e.scene === was.scene && !e.place) || { scene: was.scene, place: null };
+  };
+  const routed = router.current() || resumeRoute();
   const requestedScene = (routed && routed.scene) || params.get("scene") || (WIP !== "1" ? WIP : null);
   const sceneId = requestedScene === "race" && !RALLY_TEST ? "arcade" : (requestedScene === "lab" || requestedScene === "studio") && !DEBUG ? null : requestedScene;
   // Building the first scene holds the main thread with nothing painted yet.
@@ -1112,8 +1121,11 @@
     }
     mark("core-ready");
     mark("ready");
-    // A restored island counts as the build it replaced, so the cache never starts a device a tier higher.
-    tierFromBoot(window.BL.buildTasks.cpu - constructionCPU - uploadCPU + (window.BL.terrainCache?.stats.credit || 0));
+    // A restored island counts as the build it replaced, and so does a build the scene left for after its first paint
+    // (`bootDeferred`), so neither starts a device a tier higher.
+    bootCPU = window.BL.buildTasks.cpu - constructionCPU - uploadCPU + (window.BL.terrainCache?.stats.credit || 0);
+    bootCPU *= 1 + (active?.bootDeferred || 0);
+    tierFromBoot(bootCPU);
     raf = window.requestAnimationFrame(frame);
     if (terrainController && window.BL.terrainCache?.stats.lastSource === "miss") fillTerrain();
   };
@@ -1136,6 +1148,7 @@
       cabinet: cabinetView,
       renderer,
       startLevel: START_BANANAS,
+      get bootCPU() { return bootCPU; },
       hubPolicy: ctx.hubPolicy,
       testBananas: TEST_BANANAS,
       project: renderer.project,
@@ -1181,7 +1194,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "lab", "headquarters", "hud", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "repoIsland", "physics", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "block", "dsb", "clankers", "clankerPlay", "factory", "hangar", "bifrost", "arcade", "carnival", "npcSync", "footsteps", "timechain", "studio", "halloween" /* HALLOWEEN */]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "lab", "headquarters", "hud", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "drop", "diver", "plane", "course", "jumbotron", "repoIsland", "physics", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland", "mine", "block", "dsb", "clankers", "clankerPlay", "factory", "hangar", "bifrost", "arcade", "carnival", "npcSync", "footsteps", "timechain", "studio", "raid", "halloween" /* HALLOWEEN */]) {
       Object.defineProperty(ooga, key, { get: () => active && active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;

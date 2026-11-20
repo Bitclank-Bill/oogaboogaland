@@ -564,6 +564,8 @@ uniform vec4 uObjectSlab2;
 ${CUTAWAY_GLSL}
 uniform float uMatrixGlyphOpacity;
 uniform float uGlassOpacity;
+// How strongly reflective glass pales toward a glancing view (a geometry's \`glassGrazing\`, 1 unless it says).
+uniform float uGlassGrazing;
 flat in vec4 vVoxel;
 uniform float uWindTime;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
@@ -1155,7 +1157,7 @@ void main() {
   }
   if (uGlassOpacity > 0.0) {
     vec3 view = normalize(viewTowardEye(vWorld));
-    float grazing = pow(1.0 - abs(dot(n, view)), 3.0);
+    float grazing = pow(1.0 - abs(dot(n, view)), 3.0) * uGlassGrazing;
     float glint = pow(max(dot(reflect(-uLightDir, n), view), 0.0), 36.0);
     normalColor = mix(normalColor, vec3(0.88, 1.0, 0.98), grazing * 0.7 + glint * 0.35);
     glassAlpha = mix(uGlassOpacity, 0.72, grazing) + glint * 0.12;
@@ -1216,7 +1218,7 @@ void main() {
   const ORDINARY_MESH_FS = derive(MESH_FS, ["flat in vec4 vVoxel;", "uniform vec4 uVoxel;"], [/\bvVoxel\b/g, "uVoxel"]);
   // The camera's depth pre-pass: the mesh shader's cuts and nothing else, the rest compiled away.
   const DEPTH_MESH_FS = ORDINARY_MESH_FS.slice(0, ORDINARY_MESH_FS.indexOf("void main() {")) + "void main() {\n  if (clipped()) discard;\n}";
-  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
+  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uGlassGrazing", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
   const ORDINARY_SHADOW_VS = derive(SHADOW_VS, [RIG_GLSL, ""], ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
     ["layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n"]);
   const LINE_VS = `#version 300 es
@@ -1900,7 +1902,8 @@ void main() {
       const info = gl.getExtension("WEBGL_debug_renderer_info");
       return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : null;
     });
-    let width = 0, height = 0, dpr = 1, pw = 0, ph = 0;
+    // `scale` is a scene's own share of the tier's pixel density (`setScale`), never under the 0.75 floor.
+    let width = 0, height = 0, dpr = 1, pw = 0, ph = 0, scale = 1;
     const LOST_FRAMES = 900;
     let lost = false, lostFrames = 0;
     const size = { width: 0, height: 0 };
@@ -3480,7 +3483,7 @@ void main() {
       width = canvas.clientWidth;
       height = canvas.clientHeight;
       const budget = Math.sqrt(MAX_PIXELS / Math.max(1, width * height));
-      dpr = Math.min(budget, Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr)));
+      dpr = Math.min(budget, Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr) * scale));
       size.width = width;
       size.height = height;
       pw = Math.max(1, Math.floor(width * dpr));
@@ -3868,6 +3871,11 @@ void main() {
           if (glassOpacity !== mesh.glassOpacity) {
             gl.uniform1f(mesh.u.uGlassOpacity, glassOpacity);
             mesh.glassOpacity = glassOpacity;
+          }
+          const glassGrazing = g.glassGrazing ?? 1;
+          if (glassGrazing !== mesh.glassGrazing) {
+            gl.uniform1f(mesh.u.uGlassGrazing, glassGrazing);
+            mesh.glassGrazing = glassGrazing;
           }
           if (cave !== mesh.matrixCave) {
             gl.uniform1f(mesh.u.uMatrixCave, cave);
@@ -4912,6 +4920,13 @@ void main() {
       buildShadow();
       resize();
     };
+    // A scene may draw fewer pixels than its tier (Block Frenzy's Low detail): 1 is the tier's own density. The scene
+    // that sets it puts it back to 1 when it leaves.
+    const setScale = (s) => {
+      if (s === scale) return;
+      scale = s;
+      resize();
+    };
     const dispose = () => {
       if(dsbGPU){dsbGPU.dispose();dsbGPU=null;}
       canvas.removeEventListener("webglcontextlost", onLost);
@@ -4981,6 +4996,7 @@ void main() {
       project,
       ray,
       setQuality,
+      setScale,
       releaseGeometry,
       prepareScene,
       // Owners of bounded, alternating meshes may prepare every variant before their first visible swap.

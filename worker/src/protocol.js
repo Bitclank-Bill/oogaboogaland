@@ -15,6 +15,8 @@ import { commonsRoom } from "./room-commons.js";
 export { commonsRoom };
 // The Durable Object inspector's reporter (inspect-report.js), here so the room and game host take it with the rest.
 export { inspectReporter, INSPECT_FEATURE } from "./inspect-report.js";
+// The World Map's reporter (world-report.js), likewise.
+export { worldReporter } from "./world-report.js";
 import { BACK_WHY } from "./inspect-report.js";
 // The voice cleanup queue's rules (sfu.js), here so the room takes them with the rest.
 export { sessionGone, cleanupPass } from "./sfu.js";
@@ -272,6 +274,11 @@ export const ROOM_PIN = /^[0-9]{4}$/;
 export const PIN_PASS_MS = 60000;
 export const PIN_TRIES = 5;
 export const PIN_WAIT_MS = 60000;
+// An Ooga's dance number (the Block Party's, src/js/timechain-party-dance.js: 0 standing still, 1 to 9 a move each),
+// 0 to DANCE_MAX, on its pose as `d` from pages the welcome's DANCE_FEATURE tells to send it; relayed as `ds`, drawing
+// only.
+export const DANCE_FEATURE = "dance-v1";
+export const DANCE_MAX = 9;
 // A driven Ooga's own shots and strikes, relayed for drawing only (nothing is hit and nothing is kept): a burst is
 // three bananas 0.09 s apart, every 0.44 s at most, and a shot never flies past SHOT_RANGE.
 export const SHOT_HZ = 12;
@@ -404,6 +411,10 @@ export const parseClientMessage = (text) => {
     if (msg.r !== undefined) {
       if (!validRest(msg.r)) return null;
       pose.r = msg.r;
+    }
+    if (msg.d !== undefined) {
+      if (!Number.isInteger(msg.d) || msg.d < 0 || msg.d > DANCE_MAX) return null;
+      pose.d = msg.d;
     }
     return pose;
   }

@@ -199,9 +199,13 @@
         return K.node(o.name || null, flatPicture(canvas, w, h, o.emissive === undefined ? 0.9 : o.emissive), x, y, z, { ...o, glow: true });
       },
       // What a body cannot walk through, in this frame: a circle, or a box `hx` by `hz` either side turned with the frame.
+      // With `stay` a walker meeting it is never shouldered round it (a stage it climbs by its own steps).
+      // A `deck` (a box with both a `top` and a `below`) is a floor overhead: the room keeps the camera on the Ooga's
+      // side of it. A `floor` (the Block Party's stage) is ground to the camera too: its eye stays over its top, as over the
+      // room's floor.
       solid: (o) => {
-        const p = at(o.x || 0, 0, o.z || 0);
-        into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: K.yaw(o.ry || 0), top: o.top, below: o.below });
+        const p = at(o.x || 0, 0, o.z || 0), stay = !!o.stay;
+        into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below, stay } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: K.yaw(o.ry || 0), top: o.top, below: o.below, stay, deck: !!o.deck, floor: !!o.floor });
       },
       // A seat for the visitor's Ooga: `y` its height over `floor`, what it stands on, facing `heading` in this frame;
       // standing up leaves it at `back` behind it.
@@ -502,9 +506,12 @@
   // The vestibule past the doorway, dim, ending in a hanging curtain of dark strips; the same depth in every room.
   const vestibule = perRoom((id) => {
     const L = ROOMS.layout(id), geo = blank(), Z = L.doorZ, W = DOOR.halfW, D = DOOR.height, end = Z + DOOR.vestibule;
-    quad(geo, [-W, 0, Z], [W, 0, Z], [W, 0, end], [-W, 0, end], C.vestibule, 0, UP);
-    quad(geo, [-W, D, Z], [W, D, Z], [W, D, end], [-W, D, end], C.vestibule, 0, DOWN);
-    for (const side of [-1, 1]) quad(geo, [side * W, 0, Z], [side * W, 0, end], [side * W, D, end], [side * W, D, Z], C.vestibule, 0, [-side, 0, 0]);
+    // Its floor a little under the room's, whose disc reaches past the doors over it (two faces 2 mm apart flicker).
+    quad(geo, [-W, -0.004, Z], [W, -0.004, Z], [W, -0.004, end], [-W, -0.004, end], C.vestibule, 0, UP);
+    // Its walls and ceiling start just past the doorway's frame, which reaches a little into it in the same planes.
+    const Zw = Z + 0.025;
+    quad(geo, [-W, D, Zw], [W, D, Zw], [W, D, end], [-W, D, end], C.vestibule, 0, DOWN);
+    for (const side of [-1, 1]) quad(geo, [side * W, 0, Zw], [side * W, 0, end], [side * W, D, end], [side * W, D, Zw], C.vestibule, 0, [-side, 0, 0]);
     const strips = 10;
     for (let i = 0; i < strips; i++) {
       const x0 = -W + 2 * W * i / strips, x1 = x0 + 2 * W / strips;
@@ -608,7 +615,7 @@
   const button = perRoom((id) => {
     const st = doorStyle(id), geo = merge(box({ w: 0.38, h: 0.38, d: 0.06, color: st.plate }), box({ w: 0.28, h: 0.28, d: 0.02, color: st.face, emissive: 0.85, offset: { z: -0.035 } }));
     const base = geo.verts.length / 3;
-    geo.verts.push(0.06, 0.08, -0.047, 0.06, -0.08, -0.047, -0.08, 0, -0.047);
+    geo.verts.push(0.06, 0.08, -0.049, 0.06, -0.08, -0.049, -0.08, 0, -0.049);
     geo.faces.push({ i: [base, base + 1, base + 2], color: hexToRgb(st.mark), emissive: 0 });
     return geo;
   });

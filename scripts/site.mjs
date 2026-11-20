@@ -7,8 +7,9 @@
 // (scripts/distribution-map.mjs); sitemap.xml and robots.txt list the routes and the map, llms.txt
 // points an AI asked to make someone a character to docs/make-your-ooga.md, and cards/ holds the card images from `npm run cards`; a route without an `image` uses home's. Modules tagged
 // `data-defer` move out of the pages into js/<group>-<hash>.js (scripts/distribution-modules.mjs), fetched when needed.
+// The keyboard noise filter's worklet goes out as js/mic-filter-<hash>.js (scripts/distribution-mic.mjs).
 // `--audio-assets` and `--image-assets` write the DSB entrance recordings and the pictures in PICTURE_MODULES (the DSB
-// rooms', Cloud Hopper's art) as same-origin files under audio/ and art/; `npm run build:site` and `npm run serve` pass both, and the portable page stays whole.
+// rooms', Cloud Hopper's art, the herald's views) as same-origin files under audio/ and art/; `npm run build:site` and `npm run serve` pass both, and the portable page stays whole.
 // `--page-assets`, last, moves the page's own script and stylesheet out of every route page into js/main-<hash>.js and
 // css/style-<hash>.css, with the jumbotron's snapshot, which every deploy rebakes, in its own
 // js/jumbotron-data-<hash>.js before the code (`externalizePage`), so the 24 pages share one cached copy. The favicons go out as files too (favicon-32.png,
@@ -24,6 +25,7 @@ import { stageIcons } from "./distribution-icons.mjs";
 import { MAP_ENTRY, stageMap } from "./distribution-map.mjs";
 import { PICTURE_MODULES, externalizeModules, externalizePage, externalizePictures } from "./distribution-modules.mjs";
 import { writeTerrainWorker } from "./distribution-terrain.mjs";
+import { writeMicFilter } from "./distribution-mic.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, process.argv[2] || "untracked/site");
@@ -48,14 +50,8 @@ for (const source of mediaContext.BL.studioMedia.sources) for (const path of [so
   mediaFiles.add(path.slice(7));
 }
 for (const file of mediaFiles) copyFileSync(join(root, "src/media", file), join(out, "media", file));
-// A lecture's recording, staged once the lecture has its timing file (scripts/lecture-script.mjs --import writes both).
-const lectureAudio = join(root, "src/media/lectures");
-if (existsSync(lectureAudio)) for (const file of readdirSync(lectureAudio)) {
-  const id = /^([a-z]+-\d\d)\.m4a$/.exec(file);
-  if (!id || !existsSync(join(root, "src/js", `lecture-${id[1]}.timing.js`))) continue;
-  mkdirSync(join(out, "media/lectures"), { recursive: true });
-  copyFileSync(join(lectureAudio, file), join(out, "media/lectures", file));
-}
+// Lecture recordings are never staged: the Worker serves /media/lectures/* from R2 (worker/src/lecture-audio.js), and
+// `npm run serve` answers them itself (scripts/serve.mjs).
 
 let shell = readFileSync(join(root, "oogaboogaland.html"), "utf8");
 // Search crawlers and browsers need fetchable favicon URLs: the portable page's exact PNG bytes at stable paths, with
@@ -70,7 +66,7 @@ if (process.argv.includes("--audio-assets")) shell = externalizeAudio(shell, roo
 const pictures = process.argv.includes("--image-assets");
 // A picture module outside every data-defer group stays in the page's own script and is rewritten there.
 const inlinePictures = pictures ? PICTURE_MODULES.filter((src) => ![...deferred.values()].some((sources) => sources.includes(src))) : [];
-shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), pictures ? (src, text) => PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text : undefined, inlinePictures);
+shell = externalizeModules(shell, out, deferred, block, writeTerrainWorker(root, out), pictures ? (src, text) => PICTURE_MODULES.includes(src) ? externalizePictures(src, text, out) : text : undefined, inlinePictures, writeMicFilter(root, out));
 if (process.argv.includes("--page-assets")) shell = externalizePage(shell, out, block, ["js/jumbotron-data.js"]);
 if (shell.split("</title>").length !== 2 || shell.split("</head>").length !== 2) throw new Error("oogaboogaland.html: expected one <title> and one </head>");
 
