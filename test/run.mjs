@@ -17579,6 +17579,37 @@ const hubObservatoryFloor = { name: "hub observatory floor reflection", why: "re
   record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
     floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
 } };
+const hubObservatoryLake = { name: "hub observatory lake", why: "rule: a visible lake camera follows mined blocks without waking outdoor effects", run: async b => {
+  await b.evaluate(`(() => { window.requestAnimationFrame = () => 0; })()`);
+  await b.sleep(50);
+  const result = await b.evaluate(`(() => {
+    const B = __ooga, hub = BL.scenes.hub, room = hub.architect, pool = B.poolIsland;
+    // Hold renderer visibility fixed to exercise the observer's demand gate independently of the wall layout.
+    let time = hub.elapsed;
+    const step = seconds => { for (let i = 0; i < Math.round(seconds * 60); i++) hub.update(1 / 60, time += 1 / 60); };
+    const feed = room.feeds.find(f => f.channel.id === "rainforest-under");
+    const started = pool.water.state.started;
+    for (const f of room.feeds) f.visible = false;
+    step(0.1);
+    BL.mempool.emit({ type: "block", height: 999991 });
+    const hidden = pool.water.state.started === started && pool.water.state.queued === 0;
+    feed.visible = true; step(0.1);
+    BL.mempool.emit({ type: "block", height: 999992 });
+    step(3);
+    const live = pool.water.state.cubes === 1 && pool.water.state.started === started + 1;
+    const isolated = !pool.effectsActive;
+    step(20);
+    const finished = pool.water.state.cubes === 0 && pool.water.state.queued === 0;
+    for (const f of room.feeds) f.visible = false;
+    step(0.1);
+    BL.mempool.emit({ type: "block", height: 999993 });
+    const stopped = pool.water.state.started === started + 1 && pool.water.state.queued === 0;
+    return { hidden, live, isolated, finished, stopped, looksUp: feed.camera.target.y > feed.camera.position.y };
+  })()`);
+  record("Observatory lake: visible feed animates mined blocks to completion with weather asleep and unseen feeds idle",
+    Object.values(result).every(Boolean), JSON.stringify(result));
+} };
+
 const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated mouse buttons select one enhanced 7x7 feed or the face view without blank tiles or losing the saved layout", run: async b => {
   await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect;
@@ -27738,6 +27769,7 @@ for (const character of ["portlandhodl", "w-s-bitcoin"]) for (const opts of [{ w
 }
 scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror, hubObservatoryIsolation, hubObservatoryFloor] });
 scene("hub", { label: "observatory focus", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryFocus] });
+scene("hub", { label: "observatory lake", query: "view=architect&character=w-s-bitcoin&pos=0", steps: [hubObservatoryLake] });
 scene("hub", { label: "observatory authored detail", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryAuthored] });
 scene("hub", { label: "matrix", steps: [hubMatrix] });
 scene("hub", { label: "oogatron popups", url: hubPage(dist, "pos=0"), steps: [oogatronPopups] });

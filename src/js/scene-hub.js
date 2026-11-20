@@ -568,7 +568,7 @@
   let poolShade = 0, poolUnder = 0;
   // Wake before the bridge; a wider sleep radius keeps its effects steady near the boundary.
   const POOL_EFFECTS_NEAR = 44, POOL_EFFECTS_FAR = 52;
-  let poolEffectsActive = false, poolEffectsTime = 0;
+  let poolEffectsActive = false, poolCameraActive = false, poolEffectsTime = 0;
   // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).
   let footsteps = null, petReactions = null;
   let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null, timechainIsland = null, bifrostIsle = null, repoIsland = null;
@@ -2948,16 +2948,19 @@
     return distance2 <= 20 * 20 ? 0 : distance2 <= 40 * 40 ? 0.1 : 0.2;
   };
   const updatePoolEffectsActivity = () => {
+    const waterWasActive = poolEffectsActive || poolCameraActive;
+    // A visible Observatory lake feed needs the water/block poses, never the outdoor weather or wildlife.
+    poolCameraActive = !!architectCave?.active && (architectCave.cameras.observes("rainforest") || architectCave.cameras.observes("rainforest-under"));
     const radius = poolEffectsActive ? POOL_EFFECTS_FAR : POOL_EFFECTS_NEAR;
     const player = clankerPlay?.player || pilot?.player;
     const active = !gameMode && !cloudPlaying() && !architectCave?.active && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
       || !!player && nearPoolEffects(player.root.position, radius));
+    if (!waterWasActive && (active || poolCameraActive)) mempoolIsland.water.resume();
     if (active === poolEffectsActive) return;
     poolEffectsActive = active;
     weather.pause(!active);
     if (active) {
       // The feed stays live while the geometry rests; paint only its latest reading on return.
-      mempoolIsland.water.resume();
       mempoolIsland.paintings.refresh(chain.snapshot);
       refreshChainSign();
     }
@@ -5548,9 +5551,9 @@
       // Distant blocks still update the chain and its notice, without queuing a show for the next visit.
       if (poolEffectsActive) {
         weather.strike({ x: mempoolIsland.place.x, y: mempoolIsland.place.y + mempoolIsland.water.state.shown, z: mempoolIsland.place.z });
-        // A cube takes nothing with it: the backlog says what is left.
-        mempoolIsland.water.block(event.height);
       }
+      // A cube takes nothing with it: the backlog says what is left. Camera viewers see the same live event.
+      if (poolEffectsActive || poolCameraActive) mempoolIsland.water.block(event.height);
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
     }
   };
@@ -8077,7 +8080,7 @@
     }
     RENDER_OPTS.time = elapsed;
     updatePoolEffectsActivity();
-    if (poolEffectsActive) poolEffectsTime += dt;
+    if (poolEffectsActive || poolCameraActive) poolEffectsTime += dt;
     // Under the Mempool island's ground the storm is muffled and the daylight shut out: no shadow reaches that
     // island, so its tunnels would otherwise stand in full sun. The fires and the water light them instead.
     // By where the eye is, not what it looks at: a view from outside aimed into the rock is still outdoors.
@@ -8100,10 +8103,8 @@
       RENDER_OPTS.directStrength *= 1 - 0.92 * poolShade;
       for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] *= keep; RENDER_OPTS.ground[i] *= keep; }
     }
-    if (poolEffectsActive) {
-      mempoolIsland.water.update(dt, poolEffectsTime, Date.now());
-      mempoolIsland.paintings.update(dt);
-    }
+    if (poolEffectsActive || poolCameraActive) mempoolIsland.water.update(dt, poolEffectsTime, Date.now());
+    if (poolEffectsActive) mempoolIsland.paintings.update(dt);
     if (coilCharge) updateCoilCharge(elapsed);
     // A fire rig pauses with the view: its own clock advances only while its pit is near, so a distant pit
     // freezes its flame and resumes without a catch-up jump.
@@ -11178,7 +11179,7 @@
     weather.apply(chain.snapshot); mempoolIsland.water.apply(chain.snapshot);
     mempoolIsland.paintings.refresh(chain.snapshot); refreshChainSign();
     // As enter does: the distant island rests until the first proximity check below wakes it.
-    poolEffectsActive = false; poolEffectsTime = 0;
+    poolEffectsActive = poolCameraActive = false; poolEffectsTime = 0;
     if (factoryMouth) factoryMouth.roofEffectsActive = false;
     weather.update(0, null);
     weather.pause(true);
@@ -11319,7 +11320,7 @@
     reuseHub = ctx.hubPolicy === "keep";
     if (heldHub) { resumeHub(ctx); return; }
     ({ renderer, game, world, go, testBananas } = ctx);
-    poolEffectsActive = false; poolEffectsTime = 0;
+    poolEffectsActive = poolCameraActive = false; poolEffectsTime = 0;
     glCanvas = ctx.canvas;
     factoryDeparting = bifrostDeparting = factoryHeld = false;
     Object.assign(factoryWalk, { phase: 0, cave: null, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false });
@@ -12637,7 +12638,7 @@
     cutawayX = cutawayZ = cutawayHeadY = 0;
     cutawayHill = false;
     cutawayPool = 0; poolShade = poolUnder = 0;
-    poolEffectsActive = false; poolEffectsTime = 0;
+    poolEffectsActive = poolCameraActive = false; poolEffectsTime = 0;
     cutawayPlayer = cutawayHandoffPlayer = null;
     cutawayPathBounds = null;
     cutawayTravelRamp = null; cutawayTravelChannel = -1; cutawayTravelStation = 0;

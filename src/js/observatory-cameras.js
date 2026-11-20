@@ -25,7 +25,8 @@
       channels.push({ id, label, camera, build, sourceId });
     };
     const at = (p, x, y, z) => ({ x: p.x + x, y: p.y + y, z: p.z + z });
-    channel("pile", "BANANA PILE", { x: 5, y: 4, z: 7 }, { x: 0, y: 0.8, z: 0 }, 22, 38);
+    // Keep the cave wall behind the pile inside the capture, not just the foreground props.
+    channel("pile", "BANANA PILE", { x: 5, y: 4, z: 7 }, { x: 0, y: 0.8, z: 0 }, 60, 38);
     channel("rainforest", "MEMPOOL LAKE", at(places.pool, 0, 11, 4), at(places.pool, 0, -1.5, 0), 28, 60);
     channel("repos", "MERGE ROCK", at(places.repos, 8, 9, -13), at(places.repos, 0, 2, 0), 35, 56);
     channel("bifrost.chamber", "BIFROST CHAMBER", { x: 0, y: 4.2, z: 11.5 }, { x: 0, y: 3.2, z: -2 }, 40, 62,
@@ -58,7 +59,9 @@
     channel("hq", "HEADQUARTERS", { x: 4, y: places.hq.floor + 2.5, z: 8 }, { x: 0, y: places.hq.floor + 1, z: 0 }, 32, 68);
     channel("hq-basement", "HQ BASEMENT", { x: 4, y: places.hq.basement.floor + 2.5, z: 8 }, { x: 0, y: places.hq.basement.floor + 1, z: 0 }, 30, 68);
     const poolFloor = BL.poolLayout.FLOOR;
-    channel("rainforest-under", "MEMPOOL CHAMBER", local(places.pool, 0, poolFloor + 2.5, 5), local(places.pool, 0, poolFloor + 1.5, 11), 22, 68);
+    // From the chamber rim, look up beneath the bowl and across the mined cube's drop through the shaft.
+    channel("rainforest-under", "MEMPOOL CHAMBER", local(places.pool, 0, poolFloor + 2, 9.5),
+      local(places.pool, 0, BL.poolLayout.membraneY(0) - 1, 0), 28, 68);
     channel("library", "LIBRARY NOOK", local(places.library, 0, 2.5, 5), local(places.library, 0, 1.3, 0), 16, 58);
     channel("hq-gallery", "HQ WINDOW GALLERY", { x: -6, y: places.hq.floor + 2, z: -17 }, { x: 5, y: places.hq.floor + 1, z: -22 }, 25, 65);
     channel("north-pass", "NORTH PASS", { x: places.gate.x + 3, y: 7, z: places.gate.z + 10 }, { x: places.gate.x, y: 3, z: places.gate.z }, 32, 60);

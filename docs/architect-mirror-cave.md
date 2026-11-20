@@ -527,6 +527,19 @@ Debug feeds expose `adaptiveLevel`, `detail`, `captureWidth`, `captureHeight`,
 
 ### Geometry observations
 
+The pile camera now reaches 60 metres so the cave wall behind the bananas is
+inside its far plane. The Mempool chamber camera sits on the chamber rim and
+looks upward at the lake's underside, with the mined cube's emergence and drop
+in frame. A visible lake or chamber feed advances the existing water animation
+and receives the existing mined-block event; weather, wildlife and chamber
+painting updates stay asleep for the Observatory. Hidden lake feeds do not queue
+new block shows. There is no additional connection or simulation.
+Focused browser validation passed 2/2 checks (including clean console), covering
+hidden/visible demand, block completion and outdoor-effects isolation. Actual
+1200×675 captures on the enhanced 7×7 wall verified both angles; a synthetic
+block event verified the cube on screen. Screenshots are in
+`untracked/architect-lake-camera/`, and the two gallery images were refreshed.
+
 Initial local browser captures, at noon with the simulator and network disabled,
 showed the entrance cameras at roughly 403k (B.C.A.), 494k (Arcade) and 467k
 (mirror) submitted triangles. The wider pile view varied with passing Oogas and
