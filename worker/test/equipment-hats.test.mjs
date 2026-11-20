@@ -137,8 +137,8 @@ test("the maintainer's apple shell uses its measured fit and keeps face, stalk, 
   for (const row of catalog.items) {
     assert.equal(render.apply(a, { item: row.id, version: row.current }), true);
     assert.equal(a.parts.head, head); assert.equal(a.headOpen, open); assert.equal(a.headClosed, closed);
-    assert.ok(Math.abs(a.equipmentHatNode.scale.x / h - 9 / 7) < 1e-12);
-    assert.ok(Math.abs(a.equipmentHatNode.scale.z / h - 8 / 6) < 1e-12);
+    assert.ok(Math.abs(a.equipmentHatNode.scale.x / h - (row.id === "bitcoin-bill-straw" ? 1 : 9 / 7)) < 1e-12);
+    assert.ok(Math.abs(a.equipmentHatNode.scale.z / h - (row.id === "bitcoin-bill-straw" ? 1 : 8 / 6)) < 1e-12);
     const at = { "bitcoin-bill-straw": -1, "midy-machete-crown": 0, "rules-without-rulers-top-hat": 0.5 };
     assert.ok(Math.abs(a.equipmentHatNode.position.y / h * 16 - (at[row.id] ?? 1)) < 1e-12);
     assert.equal(a.equipmentHatNode.position.z, -0.5 * h / 16);
@@ -150,11 +150,22 @@ test("the maintainer's apple shell uses its measured fit and keeps face, stalk, 
 
 test("the straw hat seats on the recipient crown while its original taller-haired owner keeps its authored height", () => {
   const f = fixture(), render = f.BL.characterEquipment, row = catalog.items[0], selected = { item: row.id, version: row.current };
+  const donor = f.cave("Bitcoin-Bill"), native = donor.parts.nativeHat[0];
   for (const [name, height] of [["Normal", 7], ["Slim", 7], ["w-s-bitcoin", 8], ["Bitcoin-Bill", 9]]) {
     const cave = f.cave(name); assert.equal(render.apply(cave, selected), true);
     // The archived hat's shell begins nine cells above the donor's head pivot. Its seat must touch this crown.
     const node = cave.equipmentHatNode, shell = node.position.y + 9 / 16 * node.scale.y;
     assert.ok(Math.abs(shell / cave.traits.height * 16 - height) < 1e-12, name);
+    // The already-roomy crown fits the apple without stretching the authored brim or feather spacing.
+    // Compare the actual attachment vertices with the donor's native hat, normalized only for body height.
+    const borrowed = node.children[0];
+    assert.equal(borrowed.geometry.verts.length, native.geometry.verts.length);
+    for (let i = 0; i < borrowed.geometry.verts.length; i++) if (i % 3 !== 1) {
+      const axis = i % 3 === 0 ? "x" : "z";
+      const original = native.geometry.verts[i] * native.scale[axis] / donor.traits.height;
+      const fitted = borrowed.geometry.verts[i] * borrowed.scale[axis] * node.scale[axis] / cave.traits.height;
+      assert.ok(Math.abs(fitted - original) < 1e-9, name + " retains the authored hat proportions");
+    }
   }
 });
 

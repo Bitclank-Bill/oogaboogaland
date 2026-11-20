@@ -108,7 +108,8 @@
       if (cave.traits.name.toLowerCase() === "w-s-bitcoin" && BL.models.STYLE === "R") {
         // Its authored apple shell is 9 x 8 x 8 cells, centered half a cell behind the regular 7 x 7 x 6 head.
         // Fit to the shell, not the tusks or the stalk/leaf at y=11.1; those remain unchanged in its head geometry.
-        node.scale.x *= 9 / 7; node.scale.z *= 8 / 6;
+        // Bill's straw crown already spans 9 x 8 cells. Enlarging it again also overgrows its wide brim.
+        if (selected.item !== "bitcoin-bill-straw") { node.scale.x *= 9 / 7; node.scale.z *= 8 / 6; }
         node.position.y = h / 16; node.position.z = -0.5 * h / 16;
       }
       if (cave.traits.name.toLowerCase() === "bitcoin-bill" && BL.models.STYLE === "R") node.position.y = 2 * h / 16;
