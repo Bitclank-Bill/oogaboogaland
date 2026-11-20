@@ -2,9 +2,9 @@
 // (factory-audio.js): one AudioContext opened from a gesture the browser has already activated, pre-started voices
 // gated by gain, one noise loop for the bed, and nothing allocated per frame or per cue.
 //
-// Two channels, both held from `create` to `dispose` so both rows show in the speaker panel: `lounge` carries the
-// music (the tone voices and the brush kit's own noise voices, through the music bus) and `room` the bed and every
-// one-shot (the noise voices and the room's own few tone voices, through the room bus). The bed is the room's
+// Two channels, both held from `create` to `dispose`: the shared `music` (the page-wide Music row) carries the
+// music (the tone voices and the brush kit's own noise voices, through the music bus) and `room`, the place's own
+// row, the bed and every one-shot (the noise voices and the room's own few tone voices, through the room bus). The bed is the room's
 // murmur: one looped noise through a low bandpass whose gain breathes slowly, under a level stage set by how near
 // the visitor is to the bar or a table. The one-shots are placed where they happen, quieter with distance and panned
 // from the visitor's facing, and the room makes its own: a chip at a table now and then, a glass at the bar. A cue
@@ -88,7 +88,7 @@
 
   const create = () => {
     let ctx = null, buffer = null, music = null, room = null, ready = false, muted = BL.sound.muted, disposed = false;
-    const lounge = BL.sound.channel("lounge"), roomChannel = BL.sound.channel("room");
+    const musicChannel = BL.sound.channel("music"), roomChannel = BL.sound.channel("room");
     const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], roomTriangles = [], bed = {};
     let roomSineNext = 0, roomTriangleNext = 0;
     // Whether the visitor is in a table's panel, and the context time a win's dip ends.
@@ -255,7 +255,7 @@
     const init = () => {
       ctx = new AudioContext();
       stats.contexts++;
-      music = gain(musicLevel(0), lounge.node(ctx));
+      music = gain(musicLevel(0), musicChannel.node(ctx));
       room = gain(muted ? 0 : ROOM, roomChannel.node(ctx));
       buffer = ctx.createBuffer(1, ctx.sampleRate * NOISE_SECONDS, ctx.sampleRate);
       const data = buffer.getChannelData(0);
@@ -475,7 +475,7 @@
     const offSound = BL.sound.subscribe(setMuted);
 
     const dispose = () => {
-      offSound(); lounge.release(); roomChannel.release();
+      offSound(); musicChannel.release(); roomChannel.release();
       disposed = true;
       window.removeEventListener("pointerdown", activate, true);
       window.removeEventListener("keydown", activate, true);

@@ -29848,9 +29848,14 @@ const pokerAudioChecks = (BL) => {
     resume() { return Promise.resolve(); }
     close() { this.state = "closed"; closed++; return Promise.resolve(); }
   }
-  const channelNodes = {};
+  // Every channel taken is also taken from the real sound.js (which throws on a name it does not have), so the
+  // speaker panel's list for the place is read from the app itself.
+  const real = { window: { addEventListener() {} } };
+  runInNewContext(readFileSync(join(root, "src/js/sound.js"), "utf8"), real);
+  const realSound = real.window.BL.sound, channelNodes = {};
   const sound = { muted: false, subscribe: fn => { soundFn = fn; return () => { soundFn = null; }; },
-    channel: id => { held.push(id); return { id, gain: 1, level: 1, node: () => channelNodes[id] || (channelNodes[id] = { channel: id }), subscribe: () => () => {}, show() {}, release() { released++; } }; } };
+    channel: id => { held.push(id); const own = realSound.channel(id);
+      return { id, gain: 1, level: 1, node: () => channelNodes[id] || (channelNodes[id] = { channel: id }), subscribe: () => () => {}, show() {}, release() { own.release(); released++; } }; } };
   const mute = on => { sound.muted = on; soundFn(on); };
   const activation = { hasBeenActive: false };
   const capture = o => o === true || !!(o && o.capture);
@@ -29881,22 +29886,23 @@ const pokerAudioChecks = (BL) => {
   fire("window", "pointerdown"); A.update(1 / 60, ear);
   const mutedFirst = snap();
   mute(false); A.update(1 / 60, ear);
-  const after = snap(), nodesAfterInit = nodes, ctx = ctxs[0];
+  const after = snap(), nodesAfterInit = nodes, ctx = ctxs[0], panel = realSound.channels().map(c => c.id).join();
   for (let i = 0; i < 3600; i++) { if (ctx) ctx.currentTime += 1 / 60; A.update(1 / 60, ear); }
   const nodesAfterMinute = nodes;
   A.dispose();
-  const leftListening = entries.length;
+  const leftListening = entries.length, panelAfter = realSound.channels().length;
   // Created while the page is already muted: a gesture and a frame open nothing.
   sound.muted = true;
   const M = window.BL.pokerAudio.create();
   fire("window", "pointerdown"); M.update(1 / 60, ear);
   const mutedAtCreate = ctxs.length - 1;
   M.dispose(); sound.muted = false;
-  record("poker audio: no context before a gesture or while muted, one after, none after dispose",
+  record("poker audio: no context before a gesture or while muted, one after, none after dispose; the music on the shared Music channel, so the place lists only Room hum",
     before.contexts === 0 && mutedFirst.contexts === 0 && after.contexts === 1 && after.open &&
-    after.tones === 10 && after.noises === 5 && closed === 1 && held.join() === "lounge,room,lounge,room" && released === 4 &&
+    after.tones === 10 && after.noises === 5 && closed === 1 && held.join() === "music,room,music,room" && released === 4 &&
+    panel === "room" && panelAfter === 0 &&
     leftListening === 0 && mutedAtCreate === 0 && entries.length === 0 && toDestination === 0,
-    JSON.stringify({ before, mutedFirst, after, closed, held, released, leftListening, mutedAtCreate, toDestination, open: A.stats.open, tones: window.BL.pokerAudio.TONES, noises: window.BL.pokerAudio.NOISES }));
+    JSON.stringify({ before, mutedFirst, after, closed, held, released, panel, panelAfter, leftListening, mutedAtCreate, toDestination, open: A.stats.open, tones: window.BL.pokerAudio.TONES, noises: window.BL.pokerAudio.NOISES }));
   record("poker audio: a minute of playing builds no node after init", nodesAfterInit > 0 && nodesAfterInit === nodesAfterMinute, JSON.stringify({ nodesAfterInit, nodesAfterMinute }));
 
   // The lounge's tunes. A fresh instance plays from the first tune's top; `frames(I, seconds)` plays it at 60 frames
@@ -30013,7 +30019,7 @@ const pokerAudioChecks = (BL) => {
   const minute = { steals: busy.I.stats.steals, cues: busy.I.stats.cues, dropped: busy.I.stats.dropped, busy: busy.I.stats.busy, scheduled: busy.I.stats.scheduled, lost: lost - lostAtStart, nodes: nodes - nodesBefore, retyped: typeSets - typesAtStart };
   busy.I.dispose();
   // Every one-shot on the room bus: what a glass, a cane and a walker schedule (gains, pans, pitches) leads through the
-  // connect graph to the room channel, never the lounge, and the music's tone pools are left as they were.
+  // connect graph to the room channel, never the music's, and the music's tone pools are left as they were.
   const busOf = n => { while (n && n.to && !n.to.channel) n = n.to; return n && n.to ? n.to.channel : null; };
   const routed = fresh();
   routed.I.update(0, ear);
@@ -30053,7 +30059,7 @@ const pokerAudioChecks = (BL) => {
   // The ducks, read from the music bus's own gain: the target in force at a moment, replayed from every call on it,
   // cancels included. Sitting dips it, a win dips it further for a moment and comes back to the seated level, a mute
   // and unmute while seated comes back seated too, and standing returns it to the free level.
-  const duckRun = fresh(), bus = duckRun.ctx.gains.find(g => g.to === channelNodes.lounge), busCalls = [];
+  const duckRun = fresh(), bus = duckRun.ctx.gains.find(g => g.to === channelNodes.music), busCalls = [];
   duckRun.I.update(0, away);
   watch = busCalls;
   const levelAt = t => {

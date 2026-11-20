@@ -230,10 +230,10 @@ the room, louder near the bar and the tables, with chips clicking at the tables
 and glasses at the bar. The crowd's heels, canes and walking frame are heard
 where they step, quieter further away and to the side they are on.
 
-The speaker panel shows two rows for it while you are in the room: **Lounge
-music** for the music and **Room hum** for the murmur and every placed sound.
-The table's own deal, turn and win sounds keep their **Poker table** row. The
-page mute silences all of them.
+The music plays on the speaker panel's **Music** row, the one every place's
+music shares, and while you are in the room the panel shows **Room hum** for
+the murmur and every placed sound. The table's own deal, turn and win sounds
+keep their **Poker table** row. The page mute silences all of them.
 
 The music dips while a table's playing view is open, and dips further for a
 moment when a hand ends at the table you sit at or watch, then comes back. It
