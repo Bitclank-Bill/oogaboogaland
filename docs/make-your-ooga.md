@@ -253,8 +253,9 @@ a change to the game, reviewed as ordinary code, so ask a maintainer before prom
 - a change to the shared bodies (how shoulders, hands or hips are built for everyone);
 - a new plain-data option;
 - a panel tab of their own. That is planned: [custom-tabs.md](custom-tabs.md) describes it
-  (text and a pixel icon, off by default until a visitor adds it). Until it is built, don't
-  add a `tab` field; help the player write the tab's title and text in an issue instead.
+  (text and a pixel icon, for everyone, signed-in players or contributors as the builder
+  chooses, off by default until a visitor adds it). Until it is built, don't
+  add a `tab` field; help the player write the tab's title, who should see it and its text in an issue instead.
 
 If the wish is close to something an Ooga already does, say which one, and build on that.
 

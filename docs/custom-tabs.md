@@ -12,10 +12,12 @@ The panels' tabs are something every visitor shares, so the stock set stays smal
 of adding tabs to it, the game will let each visitor shape their own:
 
 - **Builders can offer a tab with their character.** It is declared in their own
-  `src/characters/<handle>.js`, as data. It is **off by default**: nobody sees it until a
+  `src/characters/<handle>.js`, as data, and says who may see it: any visitor, signed-in
+  players only, or contributors only. It is **off by default**: nobody sees it until a
   visitor chooses to add it.
-- **Visitors can hide panels they don't use** and add the character tabs they like, in a tab
-  customization dialog. The choice is theirs, kept in their browser.
+- **Visitors can hide panels they don't use**, add the character tabs they like and put
+  their tabs in the order they want, in a tab customization dialog. The choice is theirs,
+  kept in their browser.
 - **Bananas is always there and always first.** It can't be hidden, moved or put behind a
   custom tab.
 
@@ -45,12 +47,19 @@ A new shared module, `src/js/panel-tabs.js` (`BL.panelTabs`), reading nothing at
   Commons, and Ooga Chat (on the island; the app's home tab in the app, see open questions).
   `available` keeps today's gates, so a hidden or added tab never changes who may see what.
 - **The character tabs**, read from `BL.characters.all()`: every character with a valid
-  `tab`, under the id `char:<handle>`, in roster order.
-- **`list(surface, prefs, ctx)`**: the tabs to show, in order. Bananas first, then the stock
-  tabs the visitor has not hidden, then the character tabs they added, in the order they
-  added them. Unknown or removed ids in `prefs` are skipped, never an error.
-- **`prefs` load and save**, checked at the boundary as `game.load` is: a bad piece falls
-  back to the default (nothing hidden, nothing added).
+  `tab`, under the id `char:<handle>`, in roster order, each `available` by its `audience`
+  through the same gates as the stock tabs.
+- **`REFUSED`**, the maintainers' kill switch: a list of character tab ids the registry
+  will not offer, so a bad tab can be pulled in one line without editing the character's
+  file. A refused tab leaves every row and the dialog as a removed one does (below).
+- **`list(surface, prefs, ctx)`**: the tabs to show, in order. Bananas first, always; then
+  every other tab the visitor shows (stock tabs not hidden, character tabs added and
+  `available`), in the visitor's `order`. A tab missing from `order` comes after the
+  ordered ones, in the default order (the stock order, then character tabs in the order
+  they were added). Unknown, removed or refused ids in `prefs` are skipped, never an error.
+- **`prefs` load and save**, `{ hidden, added, order }`, checked at the boundary as
+  `game.load` is: a bad piece falls back to its default (nothing hidden, nothing added, the
+  default order). `bananas` in `hidden` or `order` is ignored.
 
 `sheet.js` builds its buttons and panels from `list("island", …)` instead of `NAMES` and the
 fixed markup, and Ooga Chat passes `list("chat", …)` to its shell. Saved layouts naming a
@@ -66,6 +75,7 @@ Data, never code. A builder adds one field to their character:
 ```js
 tab: {
   title: "KARAOKE",
+  audience: "everyone",
   icon: [
     "..aa..",
     ".abba.",
@@ -89,8 +99,16 @@ The exact shape is decided in stage 3; this is the direction:
 - **`icon`**: a small pixel grid (at most 16 by 16), `.` for empty and a letter for each
   colour in `palette` (at most four, six-digit hex), drawn as `native-icons.js` draws the
   stock ones. No pictures, no URLs.
+- **`audience`**: who may see the tab, `"everyone"`, `"signed-in"` or `"contributors"`.
+  **Required, with no default**: a builder has to choose. The registry applies it as the
+  stock tabs' gates apply (`signed-in` as Online Oogas is, `contributors` as Ooga Chat's
+  contributor tabs are), so a character tab never shows anyone more than a stock tab would.
 - **`blocks`**: up to 24 blocks of plain text, each a `heading` (60 characters) or `text`
   (500 characters). Rendered with `textContent` by one shared renderer, never as HTML.
+
+The shared renderer adds a credit line under the title, "by <display>'s Ooga", from the
+character's display name. A builder can't edit or remove it, so a visitor always knows whose
+tab they are reading.
 
 ### What it can't do
 
@@ -113,14 +131,24 @@ version on purpose (see open questions).
 `scripts/character-safety.mjs` gains a validator for `tab`, as it has for `look` and
 `voice`: known keys only, every string through the same `text` check (bounded, no control
 or direction characters, no instruction text), the grid and palette checked for size and
-format. A valid tab keeps the file in the automatic lane; anything else sends the whole file
-to manual review, as an unknown field does today. The 32 KiB cap on a character file holds,
-tab included. `npm run character:check` reports the tab's size and lane, and the character
-studio shows the tab beside the Ooga.
+format, and `audience` one of its three values: a missing or unknown `audience` is refused.
+A valid tab keeps the file in the automatic lane; anything else sends the whole file to
+manual review, as an unknown field does today. The tab counts toward the character file's
+32 KiB cap like everything else in it: a long tab leaves less room for the Ooga's own
+code. `npm run character:check` reports the tab's size, its audience and the lane, and the
+character studio shows the tab beside the Ooga.
 
-A maintainer can still take a tab out: a `hidden` list in the registry, or removing the
-field, takes it out of every chooser on the next deploy, and visitors who added it simply
-stop seeing it.
+### When it changes or goes
+
+- **The owner edits it.** Visitors who added the tab see the new text on the next deploy.
+  Its tab button carries an "updated" mark (a dot, with "updated" in its accessible name)
+  until they open it. The registry knows by a hash of the tab's data, kept with the added
+  id in `prefs`; nothing is sent anywhere.
+- **The owner removes it, or the character leaves the cast.** The tab drops off every row
+  silently, with no toast or notice. Its id stays in `prefs` and is skipped, so the tab comes
+  back where it was if it returns.
+- **A maintainer refuses it** (`REFUSED`). The same as a removal, without touching the
+  character's file.
 
 ## Choosing tabs
 
@@ -130,18 +158,30 @@ One dialog, opened from a small control at the end of the tab row (the island's 
 the app's shell alike), modal and keyboard-reachable, with the controller's Menus context
 through `pad-focus.js` on the island:
 
-- **Your tabs**: every stock tab with a switch. Bananas is shown locked on and first, with a
-  line saying it always stays. Tabs the visitor can't see yet (signed out, not a
+- **Your tabs**: every tab on the row, in its order, stock and character tabs together.
+  Bananas is shown locked on and first, with a line saying it always stays there. Each other
+  row has a switch to hide it (or remove it, for a character tab) and **Move up** and
+  **Move down** buttons. Stock tabs the visitor can't see yet (signed out, not a
   contributor) are listed with why, and stay off the row until they can.
-- **Character tabs**: every character that offers one, by display name, with its icon and
-  title and a preview of its text before it is added. Added ones can be removed and
-  reordered among themselves.
-- **Reset** puts everything back to the stock set.
+- **Character tabs**: every character that offers one, by display name, with its icon,
+  title, audience and a preview of its text before it is added. A tab the visitor can't see
+  is listed with "Sign in to see" (or "For contributors"), and its Add button stays off.
+- **Reset** puts everything back: nothing hidden, no character tabs added, the default
+  order.
+
+Reordering never needs a drag. Each row's buttons move it one place, and with a row
+focused, Alt+Up and Alt+Down do the same; focus follows the row it moved. Nothing can move
+above Bananas: the first movable row's Move up is disabled. On the island a controller
+drives the dialog through the Menus context (`pad-focus.js`): the d-pad moves between rows
+and buttons, A presses one. A drag may be added later as a shortcut, never as the only
+way.
 
 ### Where the choice lives
 
 Per browser, in localStorage: `ooga-tabs-v1` on the island, `ooga-chat.v1.tabs` in the app
-(a different origin, so a separate choice). `{ hidden: [ids], added: [ids] }`, nothing else.
+(a different origin, so a separate choice). `{ hidden: [ids], added: [{ id, seen }],
+order: [ids] }`, nothing else (`seen` the hash of the tab's data when last opened, for the
+"updated" mark).
 Nothing is sent to the server, and nothing is kept for visitors who don't change anything.
 Syncing the choice to a signed-in account is a later question, not part of this plan.
 
@@ -158,6 +198,8 @@ and a join or a line still shows its toast where it does today.
   less 80 px (`PHONE_TAB_INSET`), so a 390 px phone fits seven. The registry enforces a cap:
   **at most two character tabs added**, so the row never exceeds seven with every stock tab
   showing. The dialog says so when the cap is reached.
+- The dialog's reorder buttons are real buttons with names ("Move The Commons up"), and a
+  move is announced through a polite live region ("The Commons moved to place 3 of 6").
 - Character tabs use the same `role="tab"` and `role="tabpanel"` wiring, roving focus and
   arrow keys as the stock ones. The accessible name is the title, spelled out (not carved).
 - Text blocks are real text: selectable, readable by screen readers, scaled with the page.
@@ -172,11 +214,13 @@ in a later stage is merged before the one before it.
 
 1. **One registry, no visible change.** `panel-tabs.js` holds the stock tabs; `sheet.js` and
    the Ooga Chat shell read their list from it. The tab rows look and behave as today.
-2. **Hide and show stock tabs.** The customization dialog with the stock tabs only, Bananas
-   locked first, the per-browser choice, badges dropped for hidden tabs, the suite's checks
-   for both surfaces at phone and desktop sizes.
-3. **Character tabs.** The `tab` field in `character-safety.mjs`, the bundle docs and the
-   registry; the shared renderer; the character tabs section of the dialog, off by default;
+2. **Hide, show and reorder stock tabs.** The customization dialog with the stock tabs only,
+   Bananas locked first, reordering by buttons, keys and the controller, the per-browser
+   choice, badges dropped for hidden tabs, the suite's checks for both surfaces at phone and
+   desktop sizes.
+3. **Character tabs.** The `tab` field, `audience` required, in `character-safety.mjs`, the
+   bundle docs and the registry; `REFUSED`; the shared renderer with its credit line; the
+   character tabs section of the dialog, off by default; the "updated" mark;
    `character:check` and the studio's preview. A sample tab on a maintainer's character.
 4. **Later, if wanted.** Links under rules the maintainers set, account sync, more block
    kinds. Each needs its own issue.
@@ -185,7 +229,8 @@ in a later stage is merged before the one before it.
 
 - **Don't add a `tab` field to a character file yet.** Nothing reads it, and the automatic
   intake will send the file to manual review.
-- **Write the tab down.** A title, the text, and a sketch of the icon, in an issue. When
+- **Write the tab down.** A title, who should see it (everyone, signed-in players or
+  contributors), the text, and a sketch of the icon, in an issue. When
   stage 3 lands it is a few lines to add.
 - **Think in text.** If the tab needs to do something (play, vote, sing, fetch live data),
   it isn't a character tab: it is a feature or a place, and it goes through **Ask first**.
@@ -202,7 +247,10 @@ in a later stage is merged before the one before it.
 4. **Review.** Is a schema-valid tab enough for the automatic lane, or does every tab's text
    get a maintainer's read, as custom dress code does?
 5. **The cap.** Two added character tabs, or a scrolling tab row so more can be added?
-6. **Signed out.** Can a visitor who isn't signed in add character tabs? (The plan says
-   yes: it is local text.)
+6. **Signed out.** A signed-out visitor can add `everyone` tabs; `signed-in` and
+   `contributors` tabs show in the dialog as "Sign in to see" and can't be added. Is that
+   right, or should signed-out visitors see no character tabs at all?
 7. **Discovery.** Should a character's tab also be reachable from their Ooga (its tooltip
    or roster row) as well as from the dialog?
+8. **Announcing new tabs.** Is a new character tab announced anywhere (a line in the
+   dialog, Tess's news, a toast)? The plan's default: nowhere, since tabs are opt-in.
