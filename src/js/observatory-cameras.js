@@ -152,7 +152,10 @@
           // The old captured picture stays on screen until the selected channel's first capture replaces it.
           let choice;
           do { choice = channels[next++ % channels.length]; } while (selected(choice.id));
-          select(feeds[turn++ % feeds.length], choice); syncSources();
+          // A chair-selected feed keeps its zone until the player restores it.
+          let feed = feeds[turn++ % feeds.length];
+          while (feed.enhanced) feed = feeds[turn++ % feeds.length];
+          select(feed, choice); syncSources();
         }
       }
       // Observer poses update only when the renderer actually captures that source.

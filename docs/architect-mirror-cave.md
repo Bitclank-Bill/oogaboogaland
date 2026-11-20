@@ -155,11 +155,16 @@ these revised assertions have not been run.
 The character’s default fist, including its thumb, stays unchanged; the pen
 sticks out of that fist. Clicking depresses the pen button and springs it back
 over 170 ms. The same hand appears in the room, reflections and face feed.
-Left-click (or tap the view), without moving the cursor,
-toggles area feeds and the face broadcast using the same outward sweep. The
-chosen view stays until the next click; standing removes the pen and resumes
-automatic transitions. A click during a sweep queues the chosen view until the
-current sweep completes. The existing crew sitting/standing lifecycle owns cleanup.
+Right-click (or tap the view on touch devices) toggles area feeds and the face
+broadcast using the same outward sweep. The chosen view stays until the next
+right-click; a click during a sweep queues that view until the sweep completes.
+Desktop left-click selects the TV under the cursor (the center crosshair while
+pointer-locked) and expands its camera picture across a nearby 6×6 region.
+Clicking that enlargement restores the saved smaller grids; clicking another
+picture restores the old region and enlarges the new one. Only one enlargement
+exists at a time. Standing removes the pen, restores the ordinary layout and
+resumes automatic transitions. The existing crew sitting/standing lifecycle
+owns cleanup.
 
 Primary and secondary weapons, ammunition and jetpack ownership are parked for
 the visit. Their HUD buttons disappear and equipment keys cannot bring them out.
@@ -206,7 +211,7 @@ old and new layouts, preserving this separation during the wave too. A proposed
 3×3 that exhausts the available choices splits into singles rather than repeating
 a neighboring channel.
 
-While area feeds are selected, one local patch is chosen every 3–6 seconds after
+While area feeds are selected without an enlargement, one local patch is chosen every 3–6 seconds after
 the previous patch finishes. At most nine screens change: a 3×3 may split into
 nine singles or a mix including a 2×2, and a region containing complete smaller
 groups may combine into a new mosaic. A patch never cuts an existing neighboring
@@ -232,6 +237,29 @@ Only the face-view switch sweeps the whole room; returning restores the existing
 mosaic arrangement. Travel or changing actor cancels an unfinished patch back to
 its last complete assignment.
 
+The chair-selected enlargement uses the nearest complete 6×6 region containing
+the selected mosaic, wrapping around the circular wall when needed. It avoids
+the return mirror and accounts for the narrower columns above it in its image
+coordinates. It may temporarily cover parts of neighboring mosaics; their exact
+assignments are saved and restored. Each affected tile switches and flashes on
+its own deadline, retaining its outgoing image until the destination is ready.
+Selection waits while a tile wave or face broadcast is active. The selected
+camera's channel stays pinned while the remaining slots rotate. Face broadcasts
+retain the enlargement and reveal it again on return to the area views.
+
+An enlargement adds 36 temporary image surfaces, sharing the existing camera
+target. A move can briefly retain another 36 outgoing surfaces until the wave
+finishes; then those geometries are released. Restoring, leaving or changing
+actor releases the enhancement surfaces. No extra camera targets or network
+subscriptions are created.
+
+The focused chair browser check passes seven checks covering mouse selection,
+progressive replacement, holding unready images, exact layout restoration,
+retargeting over the mirror columns, right-click face toggling, adaptive detail,
+capture/geometry bounds and standing cleanup, plus a clean console. Its saved
+view is `untracked/architect-focus/enhanced-6x6.png`. This is scoped coverage;
+the global tier and full scene suite were not rerun for this change.
+
 Warmups include off-screen destinations, alternating with the face camera when
 needed so neither starves on a slow frame budget. They use the existing 32 targets
 and the same global capture limit. UV meshes are cached in a bounded set of at most
@@ -249,7 +277,15 @@ WebGL contexts.
   above 40 ms/frame), then waits six seconds before accumulating upgrade time.
   Each upward step needs eight continuous seconds below 18.5 ms/frame. This
   measures frame cadence, not GPU time or available VRAM.
-- Visible 3×3 mosaics receive detail first, then 2×2s, then singles. Within each
+- A chair-selected 6×6 receives detail first: up to 1024×576 on the highest
+  adaptive level, 512×288 on the middle and 256×144 on the lowest. It spends
+  eight, four or one detail steps respectively, leaving less detail for other
+  visible feeds. The lowest level grants that single step only to the selected
+  view. Its highest tier includes island objects down to a 0.08-metre radius
+  and the observer models' existing finest detail; excluded effects and objects
+  absent from those models remain excluded. The same cooldown and stable
+  admission rules apply, so selection does not promise an immediate upgrade.
+- After that selected view, visible 3×3 mosaics receive detail first, then 2×2s, then singles. Within each
   group the largest projected picture leads; mosaic span counts toward picture
   size, rather than treating its tiles as independent small images. Distant
   pictures remain lightweight. The adaptive budget admits eight detail steps at
@@ -285,7 +321,10 @@ WebGL contexts.
 - Canvas 2D draws the room with honestly labelled offline screens.
 
 Thirty-two area color targets use 2.53 MiB at lightweight, 4.5 MiB at furnished,
-and at most 18 MiB in retained close-detail targets, before depth attachments.
+and 18 MiB if all retain close-detail targets, before depth attachments.
+An enhanced target uses 2.25 MiB. Repeatedly enhancing different slots can leave
+their larger images retained until a later scheduled capture resizes them; the
+absolute bound for all 32 area color targets is therefore 72 MiB before depth.
 The active detail budget admits at most twelve close-detail feeds at once; old
 off-screen targets keep their images until their next scheduled capture resizes
 them. The shared face camera adds two

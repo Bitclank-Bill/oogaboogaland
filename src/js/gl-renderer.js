@@ -2039,7 +2039,7 @@ void main() {
     let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7, cameraFeedLastPriority = false;
     let cameraFeedLevel = 1, cameraFeedGoodMs = 0, cameraFeedBadMs = 0, cameraFeedHoldUntil = 0, cameraFeedDetail = 0;
     const cameraFeedCandidates = [];
-    const cameraFeedRank = (a, b) => b.mosaicSize - a.mosaicSize || b.screenSize - a.screenSize;
+    const cameraFeedRank = (a, b) => (b.enhanced ? 1 : 0) - (a.enhanced ? 1 : 0) || b.mosaicSize - a.mosaicSize || b.screenSize - a.screenSize;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
     // draws; every other pass leaves glass out.
@@ -3834,7 +3834,7 @@ void main() {
     // A lower-tier reflection keeps the large physical world and every character. Camera and shadow order stay untouched: selected
     // instance runs read the existing buffer through a temporary base offset, restored before another pass.
     const captureInstanceVisible = (rec, index) => {
-      const minimum = cameraFeedCapture && !cameraFeedRoom ? cameraFeedDetail === 2 ? 0.25 : cameraFeedDetail === 1 ? 0.65 : 1.25 : 1.25;
+      const minimum = cameraFeedCapture && !cameraFeedRoom ? cameraFeedDetail === 3 ? 0.08 : cameraFeedDetail === 2 ? 0.25 : cameraFeedDetail === 1 ? 0.65 : 1.25 : 1.25;
       if (!rec.batch) {
         const s = rec.spheres, o = index * 4;
         const radius = s[o + 3] - CULL_MARGIN - (rec.geometry.lakeWaves ? 0.18 : 0);
@@ -4721,17 +4721,24 @@ void main() {
           feed.refreshMs = (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
           feed.mosaicSize = grid; feed.screenSize = size; feed.detailTarget = 0;
           feed.adaptiveLevel = cameraFeedLevel;
-          if (!feed.roomBackground && feed.visible && size > 0.12) cameraFeedCandidates.push(feed);
+          if (!feed.roomBackground && feed.visible && (feed.enhanced || size > 0.12)) cameraFeedCandidates.push(feed);
         }
         // Admit detail per feed: 3x3 pictures first, then 2x2s, then singles.
         // Within each group favor the largest projected picture. A furnished
         // feed costs one step; close-detail costs two, under the same cadence.
         cameraFeedCandidates.sort(cameraFeedRank);
-        let detailBudget = cameraFeedLevel === 2 ? 24 : cameraFeedLevel === 1 ? 8 : 0;
+        let detailBudget = cameraFeedLevel === 2 ? 24 : cameraFeedLevel === 1 ? 8 : cameraFeedCandidates[0]?.enhanced ? 1 : 0;
         for (let i = 0; i < cameraFeedCandidates.length && detailBudget; i++) {
           const feed = cameraFeedCandidates[i];
-          feed.detailTarget = Math.min(cameraFeedLevel, feed.screenSize > 0.28 ? 2 : 1, detailBudget);
-          detailBudget -= feed.detailTarget;
+          if (feed.enhanced) {
+            // One selected 6x6 can spend more of the same budget: 1024/512/256
+            // across adaptive levels, while ordinary feeds relinquish detail.
+            feed.detailTarget = cameraFeedLevel + 1;
+            detailBudget = Math.max(0, detailBudget - (feed.detailTarget === 3 ? 8 : feed.detailTarget === 2 ? 4 : 1));
+          } else {
+            feed.detailTarget = Math.min(cameraFeedLevel, feed.screenSize > 0.28 ? 2 : 1, detailBudget);
+            detailBudget -= feed.detailTarget;
+          }
         }
         cameraFeedCandidates.length = 0;
         for (let i = 0; i < cameraFeeds.length; i++) {
@@ -4926,7 +4933,7 @@ void main() {
         const feed = captureFeed;
         const seed = !!feed.backGeometry && feed.pending;
         const target = reflectorTarget(seed ? feed.backGeometry : feed.geometry), cam = feed.camera;
-        target.fixedWidth = qualityName === "low" || !feed.roomBackground && feed.detail === 0 ? 192 : feed.detail === 2 ? 512 : 256;
+        target.fixedWidth = feed.detail === 3 ? 1024 : feed.detail === 2 ? 512 : feed.detail === 1 ? 256 : qualityName === "low" || !feed.roomBackground ? 192 : 256;
         target.fixedHeight = target.fixedWidth * 9 / 16;
         feed.captureWidth = target.fixedWidth; feed.captureHeight = target.fixedHeight;
         target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;

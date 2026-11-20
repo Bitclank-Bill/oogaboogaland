@@ -17579,6 +17579,120 @@ const hubObservatoryFloor = { name: "hub observatory floor reflection", why: "re
   record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
     floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
 } };
+const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated mouse buttons select one enhanced 6x6 feed or the face view without blank tiles or losing the saved layout", run: async b => {
+  await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect;
+    B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
+    B.pilot.player.weapon.aiming = false; B.pilot.refreshCombat(); B.pilot.exitClose(false);
+    B.advance(0.4, 1 / 60);
+    if (!room.sit()) throw new Error("Could not sit in the Observatory chair");
+    B.advance(0.2, 1 / 60); window.requestAnimationFrame = () => 0;
+  })()`);
+  await b.sleep(50);
+  await b.evaluate(`(() => {
+    const B = __ooga, R = B.renderer, hub = BL.scenes.hub, room = hub.architect;
+    const now = performance.now.bind(performance); let stamp = now() + 1001;
+    Object.defineProperty(performance, "now", { configurable: true, value: () => stamp });
+    R.setQuality("high"); R.setScale(0.5);
+    const D = window.__focusCheck = { B, R, hub, room, now, overBudget: false,
+      step(n, dt = 1 / 60) { for (let i = 0; i < n; i++) {
+        stamp += 16.7; room.update(dt);
+        const before = room.renderFeeds.reduce((sum, f) => sum + f.captures, 0);
+        R.render(hub.root, B.camera, B.renderOpts);
+        if (room.renderFeeds.reduce((sum, f) => sum + f.captures, 0) - before > 1) this.overBudget = true;
+      } },
+      aim(col, row) {
+        const p = room.panels.find(p => p.col === col && p.row === row);
+        BL.scene.updateWorld(room.group, room.group.parent.world);
+        Object.assign(B.camera.position, { x: 0, y: BL.architectCave.FLOOR + 2.8, z: 0 });
+        Object.assign(B.camera.target, { x: p.node.world[12], y: p.node.world[13], z: p.node.world[14] });
+        this.step(1, 0);
+        const rect = document.getElementById("scene").getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      },
+      same(p, saved) { return p.normal === saved.normal && p.group === saved.group && p.size === saved.size; },
+      snapshot() { return room.panels.map(p => ({ normal: p.normal, group: p.group, size: p.size })); }
+    };
+    // Finish any ordinary patch already in flight before taking the baseline.
+    for (let i = 0; i < 200 && room.layoutPending; i++) D.step(1);
+    D.baseline = D.snapshot(); D.surfaceCount = room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0);
+  })()`);
+  const click = async (col, row) => {
+    const p = await b.evaluate(`__focusCheck.aim(${col}, ${row})`);
+    await b.click(p.x, p.y);
+  };
+  try {
+    await click(24, 5);
+    const wave = await b.evaluate(`(() => {
+      const D = __focusCheck, room = D.room, focus = room.enhancement;
+      if (!focus) return { selected: false };
+      const pending = room.panels.filter(p => p.next), originals = new Map(room.panels.map(p => [p, p.node.geometry]));
+      const ready = room.cameras.ready;
+      room.cameras.ready = f => f === focus.feed ? false : ready(f);
+      D.step(10, 0.1);
+      const held = room.panels.every(p => p.node.geometry === originals.get(p));
+      room.cameras.ready = ready;
+      // All replacements use one already captured feed, but reveal on separate tile deadlines.
+      for (let i = 0; i < 60 && !ready(focus.feed); i++) D.step(1);
+      D.step(1, 0); D.step(1, 0.5);
+      const replaced = pending.filter(p => p.node.geometry !== originals.get(p)).length;
+      const outside = room.panels.filter(p => !pending.includes(p)).every(p => p.node.geometry === originals.get(p));
+      const noBlank = pending.every(p => p.node.geometry === originals.get(p) || ready(p.node.geometry.imageSurface.feed));
+      D.step(100);
+      return { selected: true, count: pending.length, held, partial: replaced > 0 && replaced < 36, outside, noBlank,
+        complete: !room.layoutPending && room.panels.filter(p => p.size === 6).length === 36,
+        areaMode: room.broadcast === "feeds" };
+    })()`);
+    record("Observatory focus: left click expands exactly 36 tiles progressively, preserving outside tiles and holding unready replacements", Object.values(wave).every(v => v === true || v === 36), JSON.stringify(wave));
+    // A slow real startup may have reached level zero before the controlled
+    // clock starts: allow its six-second cooldown, two eight-second upgrades
+    // and two-second admission, plus one scheduled capture. Keep the same target.
+    await b.evaluate(`(() => { const D = __focusCheck, f = D.room.enhancement?.feed;
+      for (let i = 0; f && i < 1800 && (f.detail !== 3 || f.captureWidth !== 1024); i++) D.step(1);
+    })()`);
+    const quality = await b.evaluate(`(() => {
+      const D = __focusCheck, f = D.room.enhancement?.feed;
+      if (!f) return { enhanced: false };
+      const channel = f.channel; D.room.cameras.update(16);
+      return { enhanced: true, detail: f.detail, width: f.captureWidth, level: f.adaptiveLevel, frameMs: f.frameMs, pinned: f.channel === channel,
+        exclusive: D.room.feeds.filter(f => f.enhanced).length === 1, bounded: !D.overBudget,
+        surfaces: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 36 };
+    })()`);
+    record("Observatory focus: one pinned feed gains 1024px detail without adding captures or unbounded screen geometry", quality.enhanced && quality.detail === 3 && quality.width === 1024 && quality.pinned && quality.exclusive && quality.bounded && quality.surfaces, JSON.stringify(quality));
+    if (process.env.OBSERVATORY_SHOTS) {
+      mkdirSync(process.env.OBSERVATORY_SHOTS, { recursive: true });
+      await b.screenshot(join(process.env.OBSERVATORY_SHOTS, 'enhanced-6x6.png'));
+    }
+    await click(24, 5);
+    const restored = await b.evaluate(`(() => { const D = __focusCheck; D.step(100); return !D.room.enhancement && !D.room.layoutPending
+      && D.room.panels.every((p, i) => D.same(p, D.baseline[i]))
+      && D.room.feeds.every(f => !f.enhanced) && D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount; })()`);
+    record("Observatory focus: clicking the enlargement restores its exact saved small-grid layout and releases its surfaces", restored);
+    await click(24, 5); await b.evaluate('__focusCheck.step(100)');
+    await click(50, 4);
+    const moved = await b.evaluate(`(() => {
+      const D = __focusCheck; D.step(100); const focus = D.room.enhancement;
+      const large = D.room.panels.filter(p => p.size === 6);
+      return { one: !!focus && D.room.feeds.filter(f => f.enhanced).length === 1 && large.length === 36,
+        includesClick: large.some(p => p.col === 50 && p.row === 4), mirrorClear: large.every(p => p.col < 48 || p.row >= 4),
+        continuous: large.some(p => p.col < 48) && large.some(p => p.col >= 48),
+        outside: D.room.panels.every((p, i) => p.size === 6 || D.same(p, D.baseline[i])),
+        released: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 36 };
+    })()`);
+    record("Observatory focus: another feed replaces the old enlargement across the mirror columns without covering the exit or retaining old geometry", Object.values(moved).every(Boolean), JSON.stringify(moved));
+    const p = await b.evaluate('__focusCheck.aim(50, 4)');
+    const right = async () => { await b.mouse('mousePressed', p.x, p.y, { button: 'right', buttons: 2 }); await b.mouse('mouseReleased', p.x, p.y, { button: 'right', buttons: 0 }); };
+    await b.evaluate('__focusCheck.aiming = __focusCheck.B.pilot.aiming; __focusCheck.selected = __focusCheck.room.enhancement.feed');
+    await right(); await b.evaluate('__focusCheck.step(360)');
+    const face = await b.evaluate('__focusCheck.room.broadcast === "face" && __focusCheck.room.panels.every(p => p.node.geometry === p.portrait) && __focusCheck.B.pilot.aiming === __focusCheck.aiming');
+    await right(); await b.evaluate('__focusCheck.step(360)');
+    const returned = await b.evaluate('__focusCheck.room.broadcast === "feeds" && __focusCheck.room.panels.every(p => p.node.geometry === p.normal) && __focusCheck.room.enhancement?.feed === __focusCheck.selected');
+    record("Observatory focus: right click toggles the face broadcast and returns to the selected enlargement without switching combat intent", face && returned, JSON.stringify({ face, returned }));
+    const stood = await b.evaluate(`(() => { const D = __focusCheck; D.B.crew.standPlayer(D.B.pilot.player); D.step(100);
+      return !D.room.enhancement && D.room.feeds.every(f => !f.enhanced) && D.room.panels.every((p, i) => D.same(p, D.baseline[i])); })()`);
+    record("Observatory focus: standing restores the ordinary layout and releases enhancement priority", stood);
+  } finally { await b.evaluate('Object.defineProperty(performance, "now", {configurable:true,value:__focusCheck.now})'); }
+} };
 // Distant mirrors keep refreshing at reduced resolution; low also bounds refreshes and retained GPU targets.
 const hubMirrorMedium = { name: "hub mirror medium size", why: "regression: lower tiers replaced distant mirror reflections with a grey face instead of keeping a cheaper live reflection", run: async (b) => {
   const r = await b.evaluate(`(() => {
@@ -27309,6 +27423,7 @@ for (const character of ["portlandhodl", "w-s-bitcoin"]) for (const opts of [{ w
   scene("hub", { label: "players camera targeting " + character, query: "solo=1&character=" + character + "&weapon=1&mode=shoulder&combat=1", opts, steps: [hubPlayersAim] });
 }
 scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror, hubObservatoryIsolation, hubObservatoryFloor] });
+scene("hub", { label: "observatory focus", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryFocus] });
 scene("hub", { label: "matrix", steps: [hubMatrix] });
 scene("hub", { label: "oogatron popups", url: hubPage(dist, "pos=0"), steps: [oogatronPopups] });
 scene("hub", { label: "oogatron popups phone", url: hubPage(dist, "pos=0"), opts: PHONE_SIZE, steps: [oogatronPopups] });

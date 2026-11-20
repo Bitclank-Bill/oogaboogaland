@@ -172,6 +172,9 @@
     const cameras = BL.observatoryCameras.create({ renderer, mouths, places }), feeds = cameras.feeds;
     const meshes = [], panels = [], rowJitter = new Float64Array(ROWS), destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
     const tiles = new Array((BANKS + PORTAL_COLS) * ROWS).fill(null);
+    const focusMeshes = new Set(), screenTargets = [], screenPicker = BL.weaponTargets.create(screenTargets);
+    const screenRay = {}, screenHit = { node: null, owner: null, distance: Infinity };
+    let enhancement = null;
     const params = new URLSearchParams(location.search);
     const crossingMatrix = BL.math.mat4.create();
     BL.math.mat4.identity(crossingMatrix);
@@ -549,11 +552,88 @@
       penButton = add(buttonGeometry, pen, { x: 0, y: 0.19, z: 0 });
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
+      const byNode = new Map(panels.map(p => [p.node, p]));
+      const register = node => {
+        if (node.geometry && !node.geometry.glassOpacity && !node.geometry.architectFeedOnly) {
+          screenTargets.push({ node, owner: { panel: byNode.get(node) || null } });
+          screenPicker.register(node);
+        }
+        for (const child of node.children) register(child);
+      };
+      register(group);
+    };
+    const trimFocus = () => {
+      for (const g of focusMeshes) {
+        if (panels.some(p => p.normal === g || p.previous?.normal === g || p.next?.normal === g)) continue;
+        const surfaces = g.imageSurface.feed.surfaces, index = surfaces.indexOf(g);
+        if (index >= 0) surfaces.splice(index, 1);
+        renderer.releaseGeometry(g); focusMeshes.delete(g);
+      }
     };
     const finishLayout = () => {
       layoutPending = layoutStarted = false; layoutTime = 0; layoutWait = 3 + Math.random() * 3;
-      for (const p of panels) p.next = p.previous = null;
+      for (const p of panels) {
+        p.next = p.previous = null;
+        if (p.saved && p.normal === p.saved.normal) p.saved = null;
+      }
       for (const feed of feeds) feed.forceCapture = false;
+      trimFocus();
+    };
+    const stageEnhancement = selected => {
+      const cols = BANKS + PORTAL_COLS, size = 6;
+      let patch = null, feed = null;
+      if (selected) {
+        feed = selected.normal.imageSurface.feed;
+        const fromRow = Math.floor(selected.group / cols), fromCol = selected.group % cols;
+        let best = Infinity;
+        // Find the closest complete 6x6 on the circular wall, including across
+        // its wrap. The four missing mirror rows must never become screens.
+        for (let row = 0; row <= ROWS - size; row++) for (let col = 0; col < cols; col++) {
+          const offset = (fromCol - col + cols) % cols;
+          if (offset + selected.size > size || fromRow < row || fromRow + selected.size > row + size) continue;
+          let valid = true;
+          for (let y = row; valid && y < row + size; y++) for (let x = 0; x < size; x++)
+            if (!tiles[y * cols + (col + x) % cols]) { valid = false; break; }
+          if (!valid) continue;
+          const distance = (offset + selected.size / 2 - size / 2) ** 2 + (fromRow + selected.size / 2 - row - size / 2) ** 2;
+          if (distance < best) { best = distance; patch = { row, col }; }
+        }
+        if (!patch) return false;
+      }
+      for (const f of feeds) f.enhanced = f === feed;
+      enhancement = patch && { ...patch, feed };
+      const pitch = col => col % cols < BANKS ? RADIUS * BANK_ANGLE : PORTAL_PITCH;
+      let span = 0;
+      if (patch) for (let x = 0; x < size; x++) span += pitch(patch.col + x);
+      const firstInset = patch ? (pitch(patch.col) - (pitch(patch.col) - GAP) * 3.08 / 3.36) / 2 : 0;
+      const lastInset = patch ? (pitch(patch.col + size - 1) - (pitch(patch.col + size - 1) - GAP) * 3.08 / 3.36) / 2 : 0;
+      const height = (size - 1) * PITCH + (PITCH - GAP) * 1.72 / 1.96;
+      const width = Math.max(span - firstInset - lastInset, height * 16 / 9), imageHeight = width * 9 / 16;
+      for (let row = 0; row < ROWS; row++) rowJitter[row] = Math.random() * 0.05;
+      for (const p of panels) {
+        const x = patch ? (p.col - patch.col + cols) % cols : -1, y = patch ? p.row - patch.row : -1;
+        const inside = patch && x < size && y >= 0 && y < size;
+        if (!inside && !p.saved) continue;
+        p.previous = { normal: p.normal, group: p.group, size: p.size };
+        if (inside) {
+          if (!p.saved) p.saved = p.previous;
+          let center = p.pitchX / 2;
+          for (let i = 0; i < x; i++) center += pitch(patch.col + i);
+          // UVs use physical arc widths, including the narrower columns above
+          // the mirror. Dedicated temporary surfaces leave the small-grid cache bounded.
+          const normal = { ...p.normal, cameraFeedGrid: size, imageSurface: { ...feed.geometry.imageSurface,
+            rect: [(-width / 2 + center - (span + firstInset - lastInset) / 2) / p.scaleX,
+              (-imageHeight / 2 - (y - (size - 1) / 2) * PITCH) / p.scaleY, width / p.scaleX, imageHeight / p.scaleY] } };
+          focusMeshes.add(normal); feed.surfaces.push(normal); renderer.prepareGeometry(normal);
+          p.next = { normal, group: patch.row * cols + patch.col, size };
+          p.delay = Math.abs(x - (size - 1) / 2) * 0.10 + y * 0.12 + rowJitter[p.row];
+        } else {
+          p.next = p.saved;
+          p.delay = p.distance * 0.35 + p.row / ROWS * 0.55 + rowJitter[p.row];
+        }
+      }
+      layoutPending = true; layoutStarted = false; layoutTime = 0;
+      return true;
     };
     const stageLayout = () => {
       const cols = BANKS + PORTAL_COLS, selected = panels[Math.floor(Math.random() * panels.length)];
@@ -629,10 +709,13 @@
       let changed = false;
       for (const p of panels) {
         if (p.previous) { p.normal = p.previous.normal; p.group = p.previous.group; p.size = p.previous.size; }
+        if (p.saved) { p.normal = p.saved.normal; p.group = p.saved.group; p.size = p.saved.size; p.saved = null; }
         changed ||= p.node.geometry !== p.normal || p.flashTime > 0;
         p.node.geometry = p.normal; p.flashTime = 0; p.node.highlight = 0;
       }
       if (changed) returnMirror.reflectionRevision++;
+      enhancement = null;
+      for (const feed of feeds) feed.enhanced = false;
       finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
       manual = manualFace = false;
@@ -667,7 +750,8 @@
       broadcastTime += dt;
       if (broadcast === "feeds") {
         if (layoutPending) updateLayout(dt);
-        else if (!portraitActor && !(manual ? manualFace : broadcastTime >= faceWait - 0.75)) {
+        else if (!manual && enhancement) stageEnhancement(null);
+        else if (!enhancement && !portraitActor && !(manual ? manualFace : broadcastTime >= faceWait - 0.75)) {
           layoutWait -= dt;
           if (layoutWait <= 0) stageLayout();
         }
@@ -724,6 +808,17 @@
       manualFace = !manualFace;
       clickTime = 0; audio?.click();
       if (!manualFace && broadcast === "feeds") { portraitActor = null; cameras.portrait.forceCapture = false; }
+      return true;
+    };
+    const enhanceAt = (x = renderer.size.width / 2, y = renderer.size.height / 2) => {
+      if (!seated()) return false;
+      if (!manual) updateBroadcast(0, pilot.player);
+      if (layoutPending || broadcast !== "feeds" || manualFace || portraitActor) return true;
+      renderer.ray(x, y, camera, screenRay);
+      if (!screenPicker.ray(screenHit, screenRay.ox, screenRay.oy, screenRay.oz, screenRay.dx, screenRay.dy, screenRay.dz, camera.far, null, null, true)) return true;
+      const selected = screenHit.owner.panel;
+      if (!selected) return true;
+      if (stageEnhancement(selected.size === 6 ? null : selected)) { clickTime = 0; audio?.click(); }
       return true;
     };
     const endArrival = () => {
@@ -875,7 +970,7 @@
       arrival.cameraX = p.x - x; arrival.cameraY = p.y - y; arrival.cameraZ = p.z - z;
       camera.target.x += arrival.cameraX; camera.target.y += arrival.cameraY; camera.target.z += arrival.cameraZ;
     };
-    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, viewRoots, panels, group, cameras, seat, sit, toggleView, supportAt, segmentClear: chairClear,
+    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, viewRoots, panels, group, cameras, seat, sit, toggleView, enhanceAt, supportAt, segmentClear: chairClear,
       nearbySeat(x, y, z, reach) {
         return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
@@ -883,6 +978,7 @@
       get returnMirror() { return returnMirror; },
       get seated() { return seated(); }, get pen() { return pen; }, get penButton() { return penButton; },
       get layoutPending() { return layoutPending; }, get layoutWait() { return layoutWait; },
+      get enhancement() { return enhancement; },
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,
@@ -893,8 +989,8 @@
         context.fillRect(0, 0, context.canvas.clientWidth, context.canvas.clientHeight); context.restore();
       },
       suspend() { endArrival(); if (active) travel(false); audio?.setActive(false); },
-      liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { endArrival(); if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = viewRoots.length = 0; tiles.fill(null); }
+      liveGeometry(set) { for (const mesh of meshes) set.add(mesh); for (const mesh of focusMeshes) set.add(mesh); cameras.liveGeometry(set); },
+      dispose() { endArrival(); if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; for (const mesh of focusMeshes) renderer.releaseGeometry(mesh); focusMeshes.clear(); screenTargets.length = 0; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = viewRoots.length = 0; tiles.fill(null); }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, RADIUS, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };
