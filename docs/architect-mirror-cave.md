@@ -133,6 +133,11 @@ that patch, tiles change in outward row order with lower rows leading and small
 row/tile jitter. The rest of the wall keeps its current layout and live feeds.
 Each replaced tile briefly flashes over its ready image, using the existing
 per-instance highlight with a 160 ms fade; untouched tiles do not flash.
+The return mirror marks flash onset, fade and completion as changed, taking the
+existing first reflection slot while visible even between low-tier cadence frames.
+Medium/low reflections retain Observatory feed images and their instance highlights.
+This adds no capture targets and keeps the two-pass reflection ceiling; ordinary
+cadence resumes once the settled image has been captured. Hidden mirrors do not refresh.
 
 Splitting a 3×3 preserves its remaining old image tiles until their individual
 turns; assembling one replaces the nine old tiles individually. Each tile checks
@@ -189,7 +194,7 @@ individual screens with the same live close-up of the controlled Ooga. It begins
 at the return mirror and spreads away around both sides. Middle rows tend to
 lead, with a small speed difference toward the ceiling and floor and fresh
 random row speeds and tile jitter. A brief warm flash fades over each new image;
-it uses the existing instance highlight, adding no captures, textures or draws.
+it uses the existing instance highlight, adding no flash geometry or textures.
 The old image remains until its destination is ready. Every
 screen holds the complete face for a randomized 6–10 seconds, then the same outward pattern
 restores the current mosaic arrangement. The timer pauses in hidden tabs and resets on
@@ -386,6 +391,9 @@ checks; updated regression assertions remain unrun and visual acceptance is pend
 Curved mirror geometry, its matching frame and curved crossing threshold pass
 build/syntax checks. Added geometry and center/side crossing checks remain unrun;
 reflection appearance and sealed joins need visual acceptance.
+Reflected TV flashes pass build/syntax checks. Added, unrun pixel checks cover TV
+retention and consecutive flash/release frames at all three quality tiers;
+in-game reflection review remains pending.
 The white ceiling, attached armrest brackets and direction-preserving mirror
 crossings also need in-game review. New, unrun assertions cover backing through
 both mirrors in first and third person, continued held movement after arrival,

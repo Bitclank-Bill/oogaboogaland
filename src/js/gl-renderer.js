@@ -2229,7 +2229,7 @@ void main() {
     };
     const reflectorTarget = (geometry) => {
       let t = reflectorTargets.get(geometry);
-      if (!t) reflectorTargets.set(geometry, t = { fb: null, tex: null, depth: null, size: 0, renderWidth: 0, renderHeight: 0, viewProj: new Float32Array(16), valid: false, area: 0, record: null, at: 0 });
+      if (!t) reflectorTargets.set(geometry, t = { fb: null, tex: null, depth: null, size: 0, renderWidth: 0, renderHeight: 0, viewProj: new Float32Array(16), valid: false, area: 0, record: null, at: 0, revision: -1 });
       return t;
     };
     // Reflectors use the tier's square mirror size; camera screens use a fixed rectangular target.
@@ -3793,9 +3793,10 @@ void main() {
         if ((g.cameraFeedSource || null) !== cameraFeedSource) continue;
         if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom && !cameraFeedRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;
+        // Observatory TVs reuse their captured textures; keep their images and per-instance flashes in cheap mirrors too.
         if (reducedCapture && (g.projective || (cameraFeedCapture
           ? g.imageSurface && !g.imageSurface.atlas && !(cameraFeedRoom && g.architectRoom && g.imageSurface.feed)
-          : g.sway || g.foliageVisibility === false || g.imageSurface))) continue;
+          : g.sway || g.foliageVisibility === false || g.imageSurface && !(g.architectRoom && g.imageSurface.feed)))) continue;
         if (captureProfile) captureGeometry = g;
         const part = rec[kind], n = rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : rec.count;
         if (!part || !n) continue;
@@ -4726,21 +4727,27 @@ void main() {
         // High preserves best plus one every frame. Medium follows its cadence for small panes; Low follows its
         // four-frame cadence even nearby. All tiers keep a visible pane's reflection at its capped texture size.
         const n = reflectorNodes.length;
-        let best = -1, bestArea = 0;
+        let best = -1, bestArea = 0, changed = -1, changedArea = 0;
         for (let i = 0; i < n; i++) {
-          const t = reflectorTarget(reflectorNodes[i].geometry);
-          t.area = reflectorArea(reflectorNodes[i], camera);
+          const node = reflectorNodes[i], t = reflectorTarget(node.geometry);
+          t.area = reflectorArea(node, camera);
           if (t.area > bestArea) { bestArea = t.area; best = i; }
+          if (node.reflectionRevision !== undefined && node.reflectionRevision !== t.revision && t.area > changedArea) {
+            changed = i; changedArea = t.area;
+          }
         }
+        // Short authored changes (the Observatory's TV flashes) take the existing first slot,
+        // even between low-tier cadence frames. Offscreen mirrors still cost nothing.
+        if (changed >= 0) { best = changed; bestArea = changedArea; }
         const due = qualityName === "high" || reflectorFrame++ % settings.mirrorCadence === 0;
-        if (!due && best >= 0 && reflectorTargets.get(reflectorNodes[best].geometry).valid
+        if (!due && changed < 0 && best >= 0 && reflectorTargets.get(reflectorNodes[best].geometry).valid
           && (qualityName === "low" || bestArea * 25 < width * height)) best = -1;
         // A glossy one, once it has a reflection, waits its tier's `GLOSS_CAPTURE.every` frames from its last capture
         // (`at`), nor takes the other pass's turn meanwhile (`resting`). A tier whose cadence is already that long refreshes
         // it on its cadence: the wait is counted in frames, not in the tier's due frames.
         glossClock++;
         let resting = -1;
-        if (best >= 0 && reflectorNodes[best].geometry.gloss && reflectorTargets.get(reflectorNodes[best].geometry).valid
+        if (changed < 0 && best >= 0 && reflectorNodes[best].geometry.gloss && reflectorTargets.get(reflectorNodes[best].geometry).valid
           && glossClock - reflectorTargets.get(reflectorNodes[best].geometry).at < GLOSS_CAPTURE.every[qualityName]) { resting = best; best = -1; }
         // One just come into view with nothing captured yet goes first.
         let turn = -1;
@@ -4760,6 +4767,7 @@ void main() {
           if (!prepareMirrorCamera(camera, node, t)) continue;
           renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight, -1, t);
           t.at = glossClock;
+          t.revision = node.reflectionRevision;
         }
       }
       // One visible camera feed per frame, sharing the current world instances. No nested render, shadow

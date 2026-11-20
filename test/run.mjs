@@ -17136,11 +17136,13 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       || Math.abs(p.delay - q.delay) < 0.36));
     const flashed = panels.some(p => p.node.highlight > 0)
       && panels.every(p => p.node.geometry === p.portrait || p.node.highlight === 0);
+    const flashRevision = room.returnMirror.reflectionRevision;
     room.update(BL.architectCave.FACE_SWEEP);
     const full = room.broadcast === "face" && count() === 608 && room.renderFeeds.length === 33
       && panels.every(p => p.node.geometry.imageSurface.feed === face);
     room.update(0.2);
-    const flashEnded = panels.every(p => p.node.highlight === 0 && p.flashTime === 0);
+    const flashEnded = panels.every(p => p.node.highlight === 0 && p.flashTime === 0)
+      && room.returnMirror.reflectionRevision > flashRevision;
     const beforeBackground = face.captures;
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
@@ -17371,6 +17373,43 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: curved return glass triggers at its center and sides, with no early flat-plane exit",
     curvedExit.every(r => r.beforeGlass && r.walkable && r.crossed), JSON.stringify(curvedExit));
+  const reflectedFlashes = await b.evaluate(`(() => {
+    const B = __ooga, R = B.renderer, quality = R.quality, root = BL.scene.createNode(), camera = BL.scene.createCamera();
+    const canvas = document.createElement("canvas"); canvas.width = canvas.height = 2;
+    const paint = canvas.getContext("2d"); paint.fillStyle = "#283c50"; paint.fillRect(0, 0, 2, 2);
+    const quad = () => ({ verts: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0],
+      faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false });
+    const screen = quad(), glass = quad(); glass.reflector = true;
+    screen.architectRoom = true; screen.imageSurface = { canvas, rect: [-1, -1, 2, 2], version: 0, feed: { geometry: screen } };
+    const tv = BL.scene.createNode({ geometry: screen, position: { x: 0, y: 1, z: -1 } });
+    const mirror = BL.scene.createNode({ geometry: glass, position: { x: 0, y: 1, z: 3 }, rotation: { x: 0, y: Math.PI, z: 0 }, reflectionRevision: 0 });
+    BL.scene.addChild(root, tv, mirror);
+    Object.assign(camera.position, { x: 0, y: 1, z: 0 }); Object.assign(camera.target, { x: 0, y: 1, z: 3 });
+    const display = document.getElementById("scene"), sample = document.createElement("canvas"); sample.width = sample.height = 1;
+    const pixels = sample.getContext("2d", { willReadFrequently: true }), rows = [];
+    const draw = () => {
+      R.render(root, camera, { clear: [0, 0, 0] });
+      pixels.drawImage(display, display.width / 2, display.height / 2, 1, 1, 0, 0, 1, 1);
+      const p = pixels.getImageData(0, 0, 1, 1).data; return p[0] + p[1] + p[2];
+    };
+    try {
+      for (const tier of ["low", "medium", "high"]) {
+        R.setQuality(tier); tv.visible = false; mirror.reflectionRevision++;
+        for (let i = 0; i < 8; i++) draw();
+        const empty = draw(); tv.visible = true; mirror.reflectionRevision++; const base = draw();
+        let tracks = true;
+        // Alternate on consecutive frames: a cadence-only capture misses at least one low-tier flash or release.
+        for (let i = 0; i < 6; i++) {
+          tv.highlight = i % 2 ? 0 : 0.9; mirror.reflectionRevision++;
+          const value = draw(); tracks &&= i % 2 ? Math.abs(value - base) < 5 : value > base + 15;
+        }
+        rows.push({ tier, screenRetained: base > empty + 15, tracks });
+      }
+      return rows;
+    } finally { R.releaseGeometry(screen); R.releaseGeometry(glass); R.setQuality(quality); R.render(BL.scenes.hub.root, B.camera, B.renderOpts); }
+  })()`);
+  record("hub observatory: mirror captures TV images and each flash/release on consecutive frames at every quality tier",
+    reflectedFlashes.every(r => r.screenRetained && r.tracks), JSON.stringify(reflectedFlashes));
   const heldMovement = await b.evaluate(`(() => {
     const key = (type, key, code, repeat = false) => window.dispatchEvent(new KeyboardEvent(type, { key, code, repeat, bubbles: true }));
     key("keydown", "w", "KeyW"); key("keydown", "d", "KeyD"); key("keydown", "Shift", "ShiftLeft");

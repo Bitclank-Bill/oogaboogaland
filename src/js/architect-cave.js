@@ -367,6 +367,7 @@
       add(merge(...frame), portal);
       // One shared tangent-plane capture keeps the curved surface within the existing reflection budget.
       returnMirror = add(glass, portal, { x: 0, y: RETURN_HEIGHT / 2, z: 0 });
+      returnMirror.reflectionRevision = 0;
       // Sculpted black leather over a reclining shell, on a real five-spoke swivel pedestal.
       const metal = "#869095", dark = "#171c20";
       const base = [lathe({ profile: [[0, 0.15], [0.18, 0.15], [0.18, 0.25], [0.12, 0.31], [0.075, 0.31], [0.075, 0.56], [0, 0.56]],
@@ -479,8 +480,9 @@
     const showTile = (p, geometry) => {
       if (p.node.geometry === geometry) return;
       p.node.geometry = geometry;
-      // Use the existing per-instance highlight: the picture stays underneath, with no extra draw or capture.
+      // Use the existing per-instance highlight: no separate flash geometry or camera target.
       p.flashTime = TILE_FLASH; p.node.highlight = 0.9;
+      returnMirror.reflectionRevision++;
     };
     const replaceTile = p => {
       if (!p.next || !cameras.ready(p.next.normal.imageSurface.feed)) return false;
@@ -505,10 +507,13 @@
     };
     const resetBroadcast = () => {
       // Travel or an actor change cancels an unfinished layout back to its last complete assignment.
+      let changed = false;
       for (const p of panels) {
         if (p.previous) { p.normal = p.previous.normal; p.group = p.previous.group; p.size = p.previous.size; }
+        changed ||= p.node.geometry !== p.normal || p.flashTime > 0;
         p.node.geometry = p.normal; p.flashTime = 0; p.node.highlight = 0;
       }
+      if (changed) returnMirror.reflectionRevision++;
       finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
       manual = manualFace = false;
@@ -522,11 +527,15 @@
     };
     const updateBroadcast = (dt, actor) => {
       if (document.hidden) return;
-      for (const p of panels) if (p.flashTime > 0) {
+      let fading = false;
+      for (const p of panels) if (p.flashTime > 0 && dt > 0) {
         p.flashTime = Math.max(0, p.flashTime - dt);
         const fade = p.flashTime / TILE_FLASH;
         p.node.highlight = 0.9 * fade * fade;
+        fading = true;
       }
+      // Include the final unlit frame so a reused reflection cannot retain a stale flash.
+      if (fading) returnMirror.reflectionRevision++;
       const face = cameras.portrait;
       if (broadcastActor !== actor) { resetBroadcast(); broadcastActor = actor; }
       const holding = seated();
