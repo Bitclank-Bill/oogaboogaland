@@ -2017,6 +2017,7 @@ void main() {
     const reflectorNodes = [], reflectorTargets = new Map();
     let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossClock = 0;
     let reducedCapture = false, cameraFeedCapture = false, cameraFeedSource = null, cameraFeedTurn = 0;
+    let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
     // draws; every other pass leaves glass out.
@@ -2959,8 +2960,9 @@ void main() {
       return changed || baked !== shadowBakedCount;
     };
     const markMirrorVisible = () => {
-      for (let i = 0; i < activeRecords.length; i++) {
-        const rec = activeRecords[i];
+      const captureRecords = cameraFeedSource?.captureRecords || activeRecords;
+      for (let i = 0; i < captureRecords.length; i++) {
+        const rec = captureRecords[i];
         const sphere = rec.batch && rec.batch.cullSphere;
         let visible = rec.batch ? !sphere || sphereInFrustum(sphere[0], sphere[1], sphere[2], sphere[3] + CULL_MARGIN, MIRROR_FRUSTUM) : false;
         for (let k = 0; !rec.batch && !visible && k < rec.count; k++) visible = slotInFrustum(rec.spheres, k * 4, MIRROR_FRUSTUM);
@@ -3775,8 +3777,9 @@ void main() {
     const drawParts = (kind, useProgram, excludeMirror = false, cull = false, matrixStage = 0) => {
       // The depth pre-pass's and the plain variant's programs take every per-draw setting the mesh program does.
       const meshPass = useProgram === "mesh" || useProgram === "depth" || useProgram === "plain";
-      for (let i = 0; i < activeRecords.length; i++) {
-        const rec = activeRecords[i], g = rec.geometry, program = programs[useProgram];
+      const drawRecords = cameraFeedSource?.captureRecords || activeRecords;
+      for (let i = 0; i < drawRecords.length; i++) {
+        const rec = drawRecords[i], g = rec.geometry, program = programs[useProgram];
         if ((g.cameraFeedSource || null) !== cameraFeedSource) continue;
         if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;
@@ -4563,17 +4566,45 @@ void main() {
       shadowFrame++;
       updateWorld(root, null);
       traverseVisible(root, collectForRender);
-      // Observer graphs have their own geometry identities and camera-hidden roots. They never enter
-      // the world graph or its shadows; source identity also excludes them from every other capture.
-      const cameraFeeds = opts.cameraFeeds;
-      if (cameraFeeds && !document.hidden) for (let i = 0; i < cameraFeeds.length; i++) {
-        const feed = cameraFeeds[i], rec = records.get(feed.geometry);
-        feed.visible = !!rec?.active && !rec.offscreen && rec.drawCount > 0;
-        if (!feed.visible || !feed.source) continue;
-        let seen = false;
-        for (let j = 0; j < i; j++) if (cameraFeeds[j].visible && cameraFeeds[j].source === feed.source) seen = true;
-        if (!seen) { updateWorld(feed.source.root, null); traverseVisible(feed.source.root, collectForRender); }
-      }
+      // Decide the one capture before collecting observer graphs. Every other camera keeps its texture
+      // without walking, transforming or uploading its source world this frame.
+      const cameraFeeds = opts.cameraFeeds, stamp = performance.now();
+      let captureFeed = null;
+      if (cameraFeeds?.length && !document.hidden) {
+        const frameMs = stamp - cameraFeedFrameAt;
+        cameraFeedFrameMs = cameraFeedFrameAt && frameMs < 1000 ? cameraFeedFrameMs * 0.9 + frameMs * 0.1 : 16.7;
+        cameraFeedFrameAt = stamp;
+        // Bound total capture work as well as each feed. Slow main frames trade feed cadence for movement.
+        const captureGap = cameraFeedFrameMs > 40 ? Math.min(500, Math.max(125, cameraFeedFrameMs * 2)) : cameraFeedFrameMs > 24 ? 66.7 : 33.3;
+        for (let i = 0; i < cameraFeeds.length; i++) {
+          const feed = cameraFeeds[i], rec = records.get(feed.geometry);
+          feed.visible = !!rec?.active && !rec.offscreen && rec.drawCount > 0;
+          feed.frameMs = cameraFeedFrameMs; feed.captureGap = captureGap;
+          if (!feed.visible) continue;
+          let size = 0;
+          for (let j = 0; j < rec.drawCount; j++) {
+            const o = j * 4, s = rec.spheres;
+            const distance = Math.hypot(s[o] - camera.position.x, s[o + 1] - camera.position.y, s[o + 2] - camera.position.z);
+            size = Math.max(size, (s[o + 3] - CULL_MARGIN) / Math.max(0.1, distance));
+          }
+          feed.refreshMs = (size > 0.28 ? 160 : size > 0.12 ? 350 : 700) * (qualityName === "low" ? 1.5 : 1);
+        }
+        if (stamp - cameraFeedLast >= captureGap) for (let attempt = 0; attempt < cameraFeeds.length; attempt++) {
+          const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
+          if (!feed.visible || stamp - feed.last < feed.refreshMs) continue;
+          captureFeed = feed; cameraFeedTurn = (index + 1) % cameraFeeds.length; break;
+        }
+        const source = captureFeed?.source;
+        if (source) {
+          source.update(source.captureAt === undefined ? 0.1 : Math.min(1, (stamp - source.captureAt) / 1000));
+          source.captureAt = stamp;
+          const first = activeCount;
+          updateWorld(source.root, null); traverseVisible(source.root, collectForRender);
+          const captureRecords = source.captureRecords || (source.captureRecords = []);
+          captureRecords.length = 0;
+          for (let i = first; i < activeCount; i++) captureRecords.push(activeRecords[i]);
+        }
+      } else { cameraFeedFrameAt = 0; cameraFeedFrameMs = 16.7; }
       activeRecords.length = activeCount;
       for (let i = 0; i < activeRecords.length; i++) {
         const rec = activeRecords[i];
@@ -4704,44 +4735,38 @@ void main() {
       }
       // One visible camera feed per frame, sharing the current world instances. No nested render, shadow
       // rebuild, CPU readback or recursive portal capture. Its geometry owns the target through releaseGeometry.
-      const feeds = opts.cameraFeeds;
-      if (feeds?.length && !document.hidden) {
-        for (let attempt = 0; attempt < feeds.length; attempt++) {
-          const index = (cameraFeedTurn + attempt) % feeds.length, feed = feeds[index];
-          const rec = records.get(feed.geometry), stamp = performance.now();
-          if (!rec?.active || rec.offscreen || !rec.drawCount || stamp - feed.last < (qualityName === "low" ? 200 : 90)) continue;
-          const target = reflectorTarget(feed.geometry), cam = feed.camera;
-          target.fixedWidth = qualityName === "low" ? 192 : 256; target.fixedHeight = target.fixedWidth * 9 / 16;
-          target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;
-          Object.assign(mirrorEye, cam.position);
-          mat4.lookAt(mirrorView, cam.position, cam.target, cam.up || UP);
-          BL.scene.cameraProjection(mirrorProj, cam, 16 / 9);
-          mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
-          skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
-          const offset = infoPass * 3, calls = infoLive[offset], triangles = infoLive[offset + 1];
-          // A previous main pass may still have this target bound as a screen sampler.
-          gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture); gl.activeTexture(gl.TEXTURE0);
-          cameraFeedCapture = true; cameraFeedSource = feed.source || null;
-          if (feed.profile && !feed.heaviest) captureProfile = new Map();
-          try {
-            const light = feed.source?.light;
-            renderMirrorCapture(light?.clear || clear, light?.sky || sky, light?.ground || ground, light?.direct || direct,
-              light ? light.directStrength : directStrength, light ? light.ambientFloor : ambientFloor,
-              light ? light.diffuseFloor : diffuseFloor, 0, 1, shadowBias, lx, ly, lz, sh, lights, 0,
-              !light && skyOn, light?.clear || fogColor, light ? FOG_OFF : fogA, light ? FOG_OFF + 1 : fogB, null, NO_SPOT_LIGHT, null, -1, target);
-          } finally {
-            cameraFeedCapture = false; cameraFeedSource = null;
-            if (captureProfile) {
-              feed.heaviest = Array.from(captureProfile, ([g, triangles]) => ({ mesh: g.cameraFeedLabel || (g.characterPart ? "character" : g.imageSurface?.atlas ? "foliage card" : "mesh"), vertices: (g.verts?.length || 0) / 3, triangles }))
-                .sort((a, b) => b.triangles - a.triangles).slice(0, 5);
-              captureProfile = captureGeometry = null;
-            }
+      if (captureFeed) {
+        const feed = captureFeed;
+        const target = reflectorTarget(feed.geometry), cam = feed.camera;
+        target.fixedWidth = qualityName === "low" ? 192 : 256; target.fixedHeight = target.fixedWidth * 9 / 16;
+        target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;
+        Object.assign(mirrorEye, cam.position);
+        mat4.lookAt(mirrorView, cam.position, cam.target, cam.up || UP);
+        BL.scene.cameraProjection(mirrorProj, cam, 16 / 9);
+        mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
+        skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
+        const offset = infoPass * 3, calls = infoLive[offset], triangles = infoLive[offset + 1];
+        // A previous main pass may still have this target bound as a screen sampler.
+        gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture); gl.activeTexture(gl.TEXTURE0);
+        cameraFeedCapture = true; cameraFeedSource = feed.source || null;
+        if (feed.profile && !feed.heaviest) captureProfile = new Map();
+        try {
+          const light = feed.source?.light;
+          renderMirrorCapture(light?.clear || clear, light?.sky || sky, light?.ground || ground, light?.direct || direct,
+            light ? light.directStrength : directStrength, light ? light.ambientFloor : ambientFloor,
+            light ? light.diffuseFloor : diffuseFloor, 0, 1, shadowBias, lx, ly, lz, sh, lights, 0,
+            !light && skyOn, light?.clear || fogColor, light ? FOG_OFF : fogA, light ? FOG_OFF + 1 : fogB, null, NO_SPOT_LIGHT, null, -1, target);
+        } finally {
+          cameraFeedCapture = false; cameraFeedSource = null;
+          if (captureProfile) {
+            feed.heaviest = Array.from(captureProfile, ([g, triangles]) => ({ mesh: g.cameraFeedLabel || (g.characterPart ? "character" : g.imageSurface?.atlas ? "foliage card" : "mesh"), vertices: (g.verts?.length || 0) / 3, triangles }))
+              .sort((a, b) => b.triangles - a.triangles).slice(0, 5);
+            captureProfile = captureGeometry = null;
           }
-          feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
-          feed.pending = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
-          cameraFeedTurn = (index + 1) % feeds.length;
-          break;
         }
+        feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
+        feed.pending = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
+        cameraFeedLast = stamp;
       }
       const viewActor = opts.beforeView?.();
       if (viewActor) {

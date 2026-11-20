@@ -1,17 +1,17 @@
-// Twenty-four shared texture slots; one slot changes area periodically. Capture work stays capped
+// Thirty-two shared texture slots; one slot changes area periodically. Capture work stays capped
 // at one visible feed per frame. Source factories make camera representations, never interactive scenes.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const SLOTS = 24, SWITCH_SECONDS = 15;
+  const SLOTS = 32, SWITCH_SECONDS = 15;
   const create = ({ renderer, mouths, places }) => {
     const channels = [], feeds = [], sources = new Map(), meshes = new Set();
     const debug = new URLSearchParams(location.search).get("debug") === "1";
     let prepared = false, active = false, switchIn = SWITCH_SECONDS, turn = 0, next = SLOTS;
-    const channel = (id, label, eye, target, far, fov = 46, build = null) => {
+    const channel = (id, label, eye, target, far, fov = 46, build = null, sourceId = id) => {
       const camera = BL.scene.createCamera({ fov, near: 0.5, far });
       Object.assign(camera.position, eye); Object.assign(camera.target, target);
-      channels.push({ id, label, camera, build });
+      channels.push({ id, label, camera, build, sourceId });
     };
     const at = (p, x, y, z) => ({ x: p.x + x, y: p.y + y, z: p.z + z });
     channel("pile", "BANANA PILE", { x: 5, y: 4, z: 7 }, { x: 0, y: 0.8, z: 0 }, 22, 38);
@@ -51,6 +51,17 @@
     channel("library", "LIBRARY NOOK", local(places.library, 0, 2.5, 5), local(places.library, 0, 1.3, 0), 16, 58);
     channel("hq-gallery", "HQ WINDOW GALLERY", { x: -6, y: places.hq.floor + 2, z: -17 }, { x: 5, y: places.hq.floor + 1, z: -22 }, 25, 65);
     channel("north-pass", "NORTH PASS", { x: places.gate.x + 3, y: 7, z: places.gate.z + 10 }, { x: places.gate.x, y: 3, z: places.gate.z }, 32, 60);
+    const workshop = (id, label, zone, eye, target, far) => channel(id, label,
+      { x: eye[0], y: eye[1], z: eye[2] }, { x: target[0], y: target[1], z: target[2] }, far, 62,
+      () => BL.observatoryWorkshops.create(renderer, zone), zone);
+    workshop("factory-core", "FACTORY / CORE", "factory.hall", [5, 12, 20], [0, 8, -4], 48);
+    workshop("factory-lines", "FACTORY / LINES", "factory.hall", [4, 14, -1], [-11, 12, -13], 34);
+    workshop("arcade-floor", "ARCADE / FLOOR", "arcade.hall", [6, 6, 3], [0, 1, -8], 34);
+    workshop("arcade-mezzanine", "ARCADE / MEZZANINE", "arcade.hall", [7, 6, -15], [0, 4, -23], 24);
+    workshop("hangar-jet", "HANGAR / JET BAY", "factory.hangar", [-3, 10, 14], [15, 3, -10], 64);
+    workshop("hangar-workshop", "HANGAR / WORKSHOP", "factory.hangar", [0, 8, 18], [-13, 1, 2], 45);
+    workshop("factory-treasury", "FACTORY / TREASURY", "factory.hall", [4, 7, 21], [14, 4, 13], 30);
+    workshop("arcade-carnival", "ARCADE / CARNIVAL", "arcade.hall", [-1, 5, -9], [12, 1, -3], 30);
     const quad = (width, height, surface) => ({ verts: [-width / 2, -height / 2, 0, width / 2, -height / 2, 0, width / 2, height / 2, 0, -width / 2, height / 2, 0],
       faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false, architectRoom: true, imageSurface: surface });
     const paint = (feed) => {
@@ -67,14 +78,14 @@
     };
     const syncSources = () => {
       for (const [id, source] of sources) {
-        if (!active || !selected(id)) { source.dispose(); sources.delete(id); }
+        if (!active || !feeds.some(f => f.channel.sourceId === id)) { source.dispose(); sources.delete(id); }
       }
       for (const feed of feeds) {
         feed.source = null;
         if (!active || !feed.channel.build || renderer.kind !== "webgl2") continue;
-        let source = sources.get(feed.channel.id);
+        let source = sources.get(feed.channel.sourceId);
         if (!source) {
-          source = feed.channel.build(); sources.set(feed.channel.id, source);
+          source = feed.channel.build(); sources.set(feed.channel.sourceId, source);
           renderer.prepareScene(source.meshes);
           for (const geometry of source.meshes) renderer.prepareGeometry(geometry);
         }
@@ -115,7 +126,7 @@
           select(feeds[turn++ % feeds.length], choice); syncSources();
         }
       }
-      for (const feed of feeds) if (feed.source && feed.visible) feed.source.update(dt);
+      // Observer poses update only when the renderer actually captures that source.
     };
     return { feeds, channels, prepare, setActive, update,
       observes(id) {

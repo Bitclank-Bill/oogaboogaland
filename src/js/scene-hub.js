@@ -570,7 +570,6 @@
   const effectsActiveAt = (x, y, z, active, near, far) => {
     const radius = active ? far : near, radius2 = radius * radius;
     if (effectPointNear(camera.position, x, y, z, radius2) || effectPointNear(camera.target, x, y, z, radius2)) return true;
-    if (architectCave?.nearFeed(x, y, z, radius2)) return true;
     const player = clankerPlay?.player || pilot?.player;
     return !!player && effectPointNear(player.root.position, x, y, z, radius2);
   };
@@ -657,7 +656,7 @@
   let phase = null;
   const updatePositionDebug = (force = false) => {
     if (!positionDebug || !camera || !pilot) return;
-    if (architectCave) positionDebug.dataset.cameras = JSON.stringify(architectCave.feeds.map(f => ({ captures: f.captures, channel: f.channel?.id, pending: f.pending, calls: f.draws, triangles: f.triangles, heaviest: f.heaviest })));
+    if (architectCave) positionDebug.dataset.cameras = JSON.stringify(architectCave.feeds.map(f => ({ captures: f.captures, channel: f.channel?.id, pending: f.pending, calls: f.draws, triangles: f.triangles, frameMs: f.frameMs, captureGap: f.captureGap, refreshMs: f.refreshMs, heaviest: f.heaviest })));
     pilot.capturePose(POSITION_POSE);
     const p = camera.position, t = camera.target, up = camera.up;
     const dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
@@ -2939,7 +2938,7 @@
     const radius = poolEffectsActive ? POOL_EFFECTS_FAR : POOL_EFFECTS_NEAR;
     const player = clankerPlay?.player || pilot?.player;
     const active = !gameMode && !cloudPlaying() && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
-      || !!player && nearPoolEffects(player.root.position, radius) || architectCave?.observes("rainforest"));
+      || !!player && nearPoolEffects(player.root.position, radius));
     if (active === poolEffectsActive) return;
     poolEffectsActive = active;
     weather.pause(!active);

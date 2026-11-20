@@ -16991,6 +16991,12 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const source = room.feeds.find(f => f.channel.id === "bifrost.chamber").source;
     const isolated = source.root.cameraHidden && !source.root.parent
       && Array.from(source.meshes).every(g => g.cameraFeedSource === source && g.castShadow === false);
+    const sharedFactory = room.feeds.find(f => f.channel.id === "factory-core").source
+      === room.feeds.find(f => f.channel.id === "factory-lines").source;
+    const sharedArcade = room.feeds.find(f => f.channel.id === "arcade-floor").source
+      === room.feeds.find(f => f.channel.id === "arcade-mezzanine").source;
+    const sharedHangar = room.feeds.find(f => f.channel.id === "hangar-jet").source
+      === room.feeds.find(f => f.channel.id === "hangar-workshop").source;
     const id = "observatory-regression", rec = { id, body: "test", zone: "bifrost.chamber", poseZone: "bifrost.chamber", x: 1.234, y: 0, z: 2.345, yaw: 0.6 };
     let livePose = false, staleHidden = false;
     BL.net.remotes.set(id, rec);
@@ -17013,20 +17019,43 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       cameras.update(BL.observatoryCameras.SWITCH_SECONDS + 0.1);
       const changed = room.feeds.filter((f, j) => f.channel.id !== before[j]);
       gradual &&= changed.length === 1; pending &&= changed.length === 1 && changed[0].pending;
-      stable &&= room.feeds.length === 24 && room.feeds.every((f, j) => f.geometry === slots[j])
-        && new Set(room.feeds.map(f => f.channel.id)).size === 24;
+      stable &&= room.feeds.length === 32 && room.feeds.every((f, j) => f.geometry === slots[j])
+        && new Set(room.feeds.map(f => f.channel.id)).size === 32;
       for (const feed of room.feeds) seen.add(feed.channel.id);
     }
     let privateRefused = false;
     try { BL.observatoryTimechain.create(B.renderer, 0); } catch { privateRefused = true; }
     B.advance(0.25, 1 / 60);
-    return { isolated, livePose, staleHidden, stable, gradual, pending, paused, released, privateRefused,
+    return { isolated, sharedFactory, sharedArcade, sharedHangar, livePose, staleHidden, stable, gradual, pending, paused, released, privateRefused,
       rotatedSourceReleased: rotatingSource.meshes.size === 0,
       publicOnly: !cameras.channels.some(c => c.id === "sphere-0"),
       all: cameras.channels.every(c => seen.has(c.id)), mounted: slots.every(g => assigned.has(g)) };
   })()`);
-  record("hub observatory: 24 stable slots rotate public views individually, pause outside and release isolated observers",
+  record("hub observatory: 32 stable slots rotate public views individually, pause outside and release isolated observers",
     Object.values(channels).every(Boolean), JSON.stringify(channels));
+  const chair = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect, floor = BL.architectCave.FLOOR, a = B.pilot.player;
+    const start = { x: a.root.position.x, y: a.root.position.y - a.baseY, z: a.root.position.z };
+    B.pilot.navigate({ position: { x: 0, y: floor, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
+    B.advance(0.4, 1 / 60);
+    const sit = room.sit(), seat = room.seat, oldYaw = seat.ry;
+    B.pilot.orbit.yaw += 0.8; B.pilot.orbit.tYaw = B.pilot.orbit.yaw;
+    room.update(1 / 60);
+    const swivel = Math.abs(seat.ry - oldYaw - 0.8) < 1e-6 && a.root.rotation.y === seat.ry;
+    const stand = B.crew.standPlayer(a), clear = !a.camp.seat && !seat.sitter
+      && room.segmentClear(a.root.position.x, floor, a.root.position.z, a.root.position.x, floor, a.root.position.z, 0.3, a.bodyHeight);
+    const top = room.supportAt(0, 0, floor + 1.1, 0);
+    const cushion = top > floor + 0.6 && top < floor + 1 && room.supportAt(0, 0, floor, 0.6) === floor;
+    B.pilot.navigate({ position: { x: 0, y: top, z: 0 }, yaw: 0, pitch: 0.1, dist: 4 });
+    B.advance(0.4, 1 / 60);
+    const onCushion = Math.abs(a.root.position.y - a.baseY - top) < 1e-6 && room.sit();
+    room.travel(false);
+    const released = !seat.sitter && !a.camp.seat;
+    room.travel(true); B.pilot.navigate({ position: start, yaw: 0, pitch: 0.1, dist: 4 }); B.advance(1.1, 1 / 60);
+    return { sit, swivel, stand, clear, cushion, onCushion, released };
+  })()`);
+  record("hub observatory: solid cushion supports sitting, swivel follows view, standing and travel release the seat",
+    Object.values(chair).every(Boolean), JSON.stringify(chair));
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", code: "KeyS" });
   await b.evaluate(`__ooga.advance(1, 1 / 60)`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "s", code: "KeyS" });
@@ -17035,9 +17064,9 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const before = count(); B.advance(0.8, 1 / 60);
     return { active: room.active, frozen: count() === before, feet: B.pilot.player.root.position.y - B.pilot.player.baseY, name: B.pilot.player.traits.name };
   })()`);
-  record("hub mirror: nearby preparation stays idle, real walking enters 24 live feeds and returns the same Ooga with captures stopped",
+  record("hub mirror: nearby preparation stays idle, real walking enters 32 live feeds and returns the same Ooga with captures stopped",
     approach.prepared && !approach.active && approach.captures === 0 && entered.active && entered.feet < -40
-      && entered.returnMirror && entered.feeds === 24 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
+      && entered.returnMirror && entered.feeds === 32 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
       && entered.name === approach.name && returned.name === approach.name, JSON.stringify({ approach, entered, returned }));
   await trip("hub").run(b);
   const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);
