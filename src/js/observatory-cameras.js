@@ -101,6 +101,9 @@
       for (let i = 0; i < Math.min(SLOTS, channels.length); i++) feeds.push(makeFeed(channels[i]));
       portrait = makeFeed({ id: "portrait", label: "OOGA CLOSE-UP", camera: BL.scene.createCamera({ fov: 36, near: 0.03, far: 4 }) });
       portrait.camera.up = { x: 0, y: 1, z: 0 };
+      // Alternate targets so TVs behind the Ooga can sample the previous face image safely.
+      portrait.roomBackground = true; portrait.backGeometry = { ...portrait.geometry };
+      meshes.add(portrait.backGeometry);
       portrait.priority = true; portrait.interval = 100;
       portrait.light = { clear: [0.015, 0.015, 0.018], sky: [0.6, 0.58, 0.55], ground: [0.3, 0.27, 0.24],
         direct: [0, 0, 0], directStrength: 0, ambientFloor: 0.75, diffuseFloor: 0 };

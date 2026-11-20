@@ -2016,7 +2016,7 @@ void main() {
     const instanceStream = { buffer: null, data: null, capacity: 0, slot: 0, trimFrame: -1, trimSince: -1 };
     const reflectorNodes = [], reflectorTargets = new Map();
     let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossClock = 0;
-    let reducedCapture = false, cameraFeedCapture = false, cameraFeedSource = null, cameraFeedTurn = 0;
+    let reducedCapture = false, cameraFeedCapture = false, cameraFeedRoom = false, cameraFeedSource = null, cameraFeedTurn = 0;
     let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
@@ -3746,7 +3746,8 @@ void main() {
       if (!rec.batch) {
         const s = rec.spheres, o = index * 4;
         const radius = s[o + 3] - CULL_MARGIN - (rec.geometry.lakeWaves ? 0.18 : 0);
-        return (radius >= 1.25 || rec.geometry.characterPart === true || cameraFeedCapture && rec.geometry.cameraFeedKeep) && slotInFrustum(s, o, MIRROR_FRUSTUM);
+        return (radius >= 1.25 || rec.geometry.characterPart === true || cameraFeedCapture && rec.geometry.cameraFeedKeep
+          || cameraFeedRoom && rec.geometry.architectRoom) && slotInFrustum(s, o, MIRROR_FRUSTUM);
       }
       const b = boundsOf(rec.geometry), d = rec.batch.instanceData, o = index * INSTANCE_FLOATS;
       const x = d[o] * b.center[0] + d[o + 4] * b.center[1] + d[o + 8] * b.center[2] + d[o + 12];
@@ -3756,7 +3757,8 @@ void main() {
         d[o + 4] * d[o + 4] + d[o + 5] * d[o + 5] + d[o + 6] * d[o + 6],
         d[o + 8] * d[o + 8] + d[o + 9] * d[o + 9] + d[o + 10] * d[o + 10]);
       const radius = b.radius * Math.sqrt(scale);
-      return (radius >= 1.25 || rec.geometry.characterPart === true || cameraFeedCapture && rec.geometry.cameraFeedKeep) && sphereInFrustum(x, y, z, radius + CULL_MARGIN, MIRROR_FRUSTUM);
+      return (radius >= 1.25 || rec.geometry.characterPart === true || cameraFeedCapture && rec.geometry.cameraFeedKeep
+        || cameraFeedRoom && rec.geometry.architectRoom) && sphereInFrustum(x, y, z, radius + CULL_MARGIN, MIRROR_FRUSTUM);
     };
     const drawCaptureRuns = (part, rec, first, count, instances) => {
       try {
@@ -3784,10 +3786,10 @@ void main() {
       for (let i = 0; i < drawRecords.length; i++) {
         const rec = drawRecords[i], g = rec.geometry, program = programs[useProgram];
         if ((g.cameraFeedSource || null) !== cameraFeedSource) continue;
-        if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom || g.lightBeam)) continue;
+        if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom && !cameraFeedRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;
         if (reducedCapture && (g.projective || (cameraFeedCapture
-          ? g.imageSurface && !g.imageSurface.atlas
+          ? g.imageSurface && !g.imageSurface.atlas && !(cameraFeedRoom && g.architectRoom && g.imageSurface.feed)
           : g.sway || g.foliageVisibility === false || g.imageSurface))) continue;
         if (captureProfile) captureGeometry = g;
         const part = rec[kind], n = rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : rec.count;
@@ -4751,7 +4753,8 @@ void main() {
       // rebuild, CPU readback or recursive portal capture. Its geometry owns the target through releaseGeometry.
       if (captureFeed) {
         const feed = captureFeed;
-        const target = reflectorTarget(feed.geometry), cam = feed.camera;
+        const previous = reflectorTarget(feed.geometry);
+        const target = feed.backGeometry ? reflectorTarget(feed.backGeometry) : previous, cam = feed.camera;
         target.fixedWidth = qualityName === "low" ? 192 : 256; target.fixedHeight = target.fixedWidth * 9 / 16;
         target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;
         Object.assign(mirrorEye, cam.position);
@@ -4762,7 +4765,7 @@ void main() {
         const offset = infoPass * 3, calls = infoLive[offset], triangles = infoLive[offset + 1];
         // A previous main pass may still have this target bound as a screen sampler.
         gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture); gl.activeTexture(gl.TEXTURE0);
-        cameraFeedCapture = true; cameraFeedSource = feed.source || null;
+        cameraFeedCapture = true; cameraFeedRoom = !!feed.roomBackground && !!feed.backGeometry; cameraFeedSource = feed.source || null;
         if (feed.profile && !feed.heaviest) captureProfile = new Map();
         try {
           const light = feed.light || feed.source?.light;
@@ -4771,13 +4774,17 @@ void main() {
             light ? light.diffuseFloor : diffuseFloor, 0, 1, shadowBias, lx, ly, lz, sh, lights, 0,
             !light && skyOn, light?.clear || fogColor, light ? FOG_OFF : fogA, light ? FOG_OFF + 1 : fogB, null, NO_SPOT_LIGHT, null, -1, target);
         } finally {
-          cameraFeedCapture = false; cameraFeedSource = null;
+          cameraFeedCapture = cameraFeedRoom = false; cameraFeedSource = null;
           if (captureProfile) {
+            feed.roomTriangles = 0;
+            for (const [g, triangles] of captureProfile) if (g.architectRoom) feed.roomTriangles += triangles;
             feed.heaviest = Array.from(captureProfile, ([g, triangles]) => ({ mesh: g.cameraFeedLabel || (g.characterPart ? "character" : g.imageSurface?.atlas ? "foliage card" : "mesh"), vertices: (g.verts?.length || 0) / 3, triangles }))
               .sort((a, b) => b.triangles - a.triangles).slice(0, 5);
             captureProfile = captureGeometry = null;
           }
         }
+        // Publish only after the capture finishes; no screen samples the framebuffer being written.
+        if (feed.backGeometry) { reflectorTargets.set(feed.geometry, target); reflectorTargets.set(feed.backGeometry, previous); }
         feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
         feed.pending = feed.forceCapture = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
         cameraFeedLast = stamp;

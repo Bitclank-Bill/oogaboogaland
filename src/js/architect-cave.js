@@ -236,8 +236,9 @@
         cam.position.x = cam.target.x + m[8] / forward * distance;
         cam.position.y = cam.target.y + m[9] / forward * distance;
         cam.position.z = cam.target.z + m[10] / forward * distance;
+        clampCamera(cam.position);
         cam.up.x = m[4] / up; cam.up.y = m[5] / up; cam.up.z = m[6] / up;
-        cam.far = distance + Math.max(1, b.radius * scale * 2);
+        cam.far = distance + RADIUS * 2 + 1;
       }
       if (broadcast === "feeds" && broadcastTime >= FACE_WAIT && (!face.pending || renderer.kind !== "webgl2")) beginSweep("to-face");
       if (broadcast === "face" && broadcastTime >= FACE_HOLD) beginSweep("to-feeds");

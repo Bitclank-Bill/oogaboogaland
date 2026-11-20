@@ -17084,12 +17084,16 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.update(BL.architectCave.FACE_SWEEP);
     const full = room.broadcast === "face" && count() === 608 && room.renderFeeds.length === 33
       && panels.every(p => p.node.geometry.imageSurface.feed === face);
+    const beforeBackground = face.captures;
+    await new Promise(resolve => setTimeout(resolve, 510));
+    B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    const background = face.roomTriangles > 0 && face.captures > beforeBackground && face.camera.far > 22;
     room.update(BL.architectCave.FACE_HOLD); room.update(1.5);
     const restoring = room.broadcast === "to-feeds" && count() > 0 && count() < panels.length;
     room.update(BL.architectCave.FACE_SWEEP);
     const restored = room.broadcast === "feeds" && panels.every(p => p.node.geometry === p.normal);
     room.travel(true);
-    return { mosaics, neighborRule, warm, captured, partial, leads, full, restoring, restored };
+    return { mosaics, neighborRule, warm, captured, partial, leads, full, background, restoring, restored };
   })()`);
   record("hub observatory: 608 panels share mosaic textures and a live head sweep leads from the far wall before restoring them",
     Object.values(broadcast).every(Boolean), JSON.stringify(broadcast));
