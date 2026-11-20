@@ -32,13 +32,14 @@ ceiling. The chair has a solid cushion, back and armrests that rotate together
 over a fixed five-spoke caster base. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
-Sitting places a small pen in the Ooga’s right hand. In first person, a matching
-skin-colored hand and pen stay at the lower right of the view, with the thumb
-over the clicker. Clicking depresses the thumb and button, then springs them
-back over 170 ms. The world pen’s button follows the same animation. This
-view model is excluded from reflections, camera feeds and shadows; the real
-arm remains there for captures and returns to the main view on standing or
-leaving first person. Left-click (or tap the view)
+Sitting places a pen in the Ooga’s existing right hand. Both first and third
+person keep the default seated arm and wrist pose, anchored to the body. Looking
+down moves the camera, so the pen naturally moves through the frame with the arm.
+The grip uses the character’s existing fist builder, preserving its palm, finger
+layout, size and hand color; only its original thumb folds over the clicker.
+Clicking depresses the thumb and button, then springs them back over 170 ms.
+The same hand appears in the room, reflections and face feed. Standing restores
+the original fist geometry. Left-click (or tap the view), without moving the cursor,
 toggles area feeds and the face broadcast using the same outward sweep. The
 chosen view stays until the next click; standing removes the pen and resumes
 automatic transitions. A click during a sweep queues the chosen view until the
@@ -277,8 +278,9 @@ coverage and adjacency, shared textures, face prewarming, room geometry in the f
 sweep directions. The background update, seated pen/click controls and equipment parking also need
 browser acceptance. Added, unrun checks cover ownership hiding, pen cleanup,
 persistent seated views and automatic transitions resuming after standing.
-Additional unrun assertions cover the first-person pen and button travel, arm
-visibility restoration, bottom-leading wave and feed-only mirror infill. The
+Additional unrun assertions cover the original fist layout, body-anchored arm in
+both views, stationary third-person clicking, thumb/button travel, hand restoration,
+bottom-leading wave and feed-only mirror infill. The
 pen framing, thumb contact and click sound still need visual/listening acceptance.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.

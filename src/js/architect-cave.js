@@ -77,42 +77,24 @@
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
-    let penButton = null, penView = null, viewButton = null, viewHand = null, viewThumb = null, viewSkin = "", clickTime = 1;
-    let viewArm = null, viewArmHidden = false;
+    let penButton = null, penThumb = null, penHand = null, originalHand = null, clickTime = 1;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
     const removePen = () => {
       if (pen?.parent) removeChild(pen.parent, pen);
-      if (penView) penView.visible = false;
-      if (viewArm) { viewArm.cameraHidden = viewArmHidden; viewArm = null; }
+      if (penThumb?.parent) removeChild(penThumb.parent, penThumb);
+      if (penHand) penHand.geometry = originalHand;
+      penHand = originalHand = null;
       clickTime = 1;
     };
     const updatePen = dt => {
-      if (!penView) return;
+      if (!penHand) return;
       clickTime = Math.min(1, clickTime + dt);
       const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.08 ? 1 : Math.max(0, 1 - (clickTime - 0.08) / 0.09);
-      penButton.position.y = viewButton.position.y = 0.19 - press * 0.018;
-      viewThumb.rotation.z = press * 0.11;
-      penView.visible = seated() && pilot.closeMix > 0.8 && !pilot.looking;
-      if (!penView.visible) {
-        if (viewArm) { viewArm.cameraHidden = viewArmHidden; viewArm = null; }
-        return;
-      }
-      if (!viewArm) { viewArm = pilot.player.parts.armR; viewArmHidden = viewArm.cameraHidden; viewArm.cameraHidden = true; }
-      const eye = camera.position, target = camera.target;
-      let dx = target.x - eye.x, dy = target.y - eye.y, dz = target.z - eye.z;
-      const length = Math.hypot(dx, dy, dz) || 1; dx /= length; dy /= length; dz /= length;
-      const flat = Math.hypot(dx, dz) || 1, rx = -dz / flat, rz = dx / flat;
-      const ux = -rz * dy, uy = rz * dx - rx * dz, uz = rx * dy;
-      const distance = 0.5, halfH = Math.tan(camera.fov / 2) * distance;
-      const halfW = halfH * renderer.size.width / Math.max(1, renderer.size.height), scale = halfH * 1.65;
-      const x = Math.max(0, Math.min(halfW * 0.55, halfW - scale * 0.2)), y = -halfH * 0.45;
-      penView.position.x = eye.x + dx * distance + rx * x + ux * y;
-      penView.position.y = eye.y + dy * distance + uy * y;
-      penView.position.z = eye.z + dz * distance + rz * x + uz * y;
-      penView.rotation.x = Math.asin(dy); penView.rotation.y = Math.atan2(-dx, -dz);
-      penView.scale.x = penView.scale.y = penView.scale.z = scale;
+      penButton.position.y = 0.19 - press * 0.018;
+      penThumb.rotation.z = press * 0.15;
+      // The crew owns the normal seated arm pose in every view. Only the thumb and clicker move.
     };
     const parkEquipment = actor => {
       if (actor === parkedActor) return;
@@ -152,20 +134,27 @@
       if (!active || !crew.sitPlayer(seat)) return false;
       seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
       seat.sitter.root.rotation.y = seat.ry;
-      const hand = seat.sitter.parts.fingersR, center = BL.scene.boundsOf(hand.geometry).center;
-      pen.position.x = center[0]; pen.position.y = center[1]; pen.position.z = center[2];
-      pen.scale.x = pen.scale.y = pen.scale.z = seat.sitter.traits.height;
-      addChild(hand, pen);
-      const skin = seat.sitter.traits.skin;
-      if (viewSkin !== skin) {
-        viewSkin = skin;
-        const rgb = BL.math.hexToRgb(skin);
-        for (const node of [viewHand, viewThumb]) {
-          renderer.releaseGeometry(node.geometry);
-          for (const f of node.geometry.faces) f.color = rgb.slice();
-          renderer.prepareGeometry(node.geometry);
+      penHand = seat.sitter.parts.fingersR; originalHand = penHand.geometry;
+      const grip = originalHand.penGrip?.();
+      if (grip) {
+        penHand.geometry = grip.fist; penThumb.geometry = grip.thumb;
+        penThumb.position.x = grip.pivot[0]; penThumb.position.y = grip.pivot[1]; penThumb.position.z = grip.pivot[2];
+        penThumb.rotation.z = 0;
+        addChild(penHand, penThumb);
+        pen.position.x = 0.74 * grip.unit; pen.position.y = -0.35 * grip.unit; pen.position.z = 1.15 * grip.unit;
+        pen.scale.x = pen.scale.y = pen.scale.z = 14 * grip.unit;
+        for (const g of [grip.fist, grip.thumb]) {
+          if (!meshes.includes(g)) meshes.push(g);
+          renderer.prepareGeometry(g);
         }
+      } else {
+        // Older voxel hands keep their authored fingers and arm as well.
+        const b = BL.scene.boundsOf(originalHand), h = seat.sitter.traits.height;
+        pen.position.x = b.center[0]; pen.position.y = b.center[1]; pen.position.z = b.center[2];
+        pen.scale.x = pen.scale.y = pen.scale.z = h;
       }
+      penButton.position.y = 0.19;
+      addChild(penHand, pen);
       clickTime = 1;
       updateBroadcast(0, seat.sitter);
       return true;
@@ -285,22 +274,11 @@
         lathe({ profile: [[0.002, -0.18], [0.012, -0.13]], segments: 8, color: "#c9d0d4", emissive: 0.35 }),
         box({ w: 0.012, h: 0.09, d: 0.012, color: "#c9d0d4", emissive: 0.35, offset: { x: 0.02, y: 0.11 } }));
       penGeometry.characterPart = true;
-      pen = add(penGeometry, group); pen.rotation.z = -0.35; removePen();
+      pen = add(penGeometry, group); pen.rotation.z = Math.PI / 2; removePen();
       const buttonGeometry = lathe({ profile: [[0.011, -0.02], [0.011, 0.02]], segments: 8, color: "#c9d0d4", emissive: 0.35 });
       buttonGeometry.characterPart = true;
       penButton = add(buttonGeometry, pen, { x: 0, y: 0.19, z: 0 });
-      penView = createNode({ visible: false }); addChild(root, penView);
-      const viewPart = (g, parent = penView, position = null) => add({ ...g, castShadow: false, architectHandView: true }, parent, position);
-      const fingers = [bevelBox({ w: 0.15, h: 0.2, d: 0.09, color: "#ffffff", offset: { x: 0.045, y: -0.04, z: -0.035 } }),
-        bevelBox({ w: 0.1, h: 0.42, d: 0.1, color: "#ffffff", offset: { x: 0.08, y: -0.29, z: -0.035 } })];
-      for (let i = 0; i < 4; i++) fingers.push(bevelBox({ w: 0.13 - i * 0.006, h: 0.043, d: 0.065, bevel: 0.012,
-        color: "#ffffff", offset: { x: -0.01, y: 0.025 - i * 0.047, z: 0.04 } }));
-      viewHand = viewPart(merge(...fingers));
-      viewThumb = viewPart(merge(beam(0, 0, 0, -0.03, 0.16, 0, 0.06, "#ffffff"),
-        bevelBox({ w: 0.18, h: 0.05, d: 0.06, bevel: 0.015, color: "#ffffff", offset: { x: -0.105, y: 0.195 } })),
-        penView, { x: 0.1, y: 0.07, z: 0.025 });
-      const viewPen = viewPart(penGeometry, penView, { x: -0.065, y: 0.04, z: 0.04 });
-      viewButton = viewPart(buttonGeometry, viewPen, { x: 0, y: 0.19, z: 0 });
+      penThumb = createNode();
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
@@ -429,7 +407,7 @@
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
       },
       get returnMirror() { return returnMirror; },
-      get seated() { return seated(); }, get pen() { return pen; }, get penView() { return penView; }, get penButton() { return penButton; },
+      get seated() { return seated(); }, get pen() { return pen; }, get penThumb() { return penThumb; }, get penButton() { return penButton; },
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,
@@ -441,7 +419,7 @@
       },
       suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); if (penView) removeChild(root, penView); meshes.length = panels.length = 0; }
+      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };

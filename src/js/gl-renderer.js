@@ -3789,7 +3789,7 @@ void main() {
       const drawRecords = cameraFeedSource?.captureRecords || activeRecords;
       for (let i = 0; i < drawRecords.length; i++) {
         const rec = drawRecords[i], g = rec.geometry, program = programs[useProgram];
-        if (g.architectHandView && !cull || g.architectFeedOnly && !cameraFeedRoom) continue;
+        if (g.architectFeedOnly && !cameraFeedRoom) continue;
         if ((g.cameraFeedSource || null) !== cameraFeedSource) continue;
         if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom && !cameraFeedRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;

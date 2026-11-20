@@ -17111,17 +17111,32 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const B = __ooga, room = BL.scenes.hub.architect, actor = B.pilot.player;
     B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
     B.advance(0.3, 1 / 60);
+    const originalHand = actor.parts.fingersR.geometry, originalArm = actor.parts.armR.geometry;
     const sitting = room.sit(), pen = room.pen.parent === actor.parts.fingersR;
+    const sameFist = actor.parts.fingersR.geometry.verts.every((v, i) => v === originalHand.verts[i]);
+    B.advance(0.3, 1 / 60);
     room.update(120);
     const heldFeeds = room.broadcast === "feeds";
     const armHidden = actor.parts.armR.cameraHidden;
-    B.pilot.enterClose(); B.advance(0.8, 1 / 60);
-    const firstPersonPen = room.penView.visible && actor.parts.armR.cameraHidden
-      && Math.hypot(room.penView.position.x - B.camera.position.x, room.penView.position.y - B.camera.position.y, room.penView.position.z - B.camera.position.z) < 1;
-    const clicked = room.toggleView(); room.update(0.05);
-    const pressed = room.penButton.position.y < 0.18;
+    // A stationary third-person click, with no hover or pointermove first, reaches the scene's tap hook.
+    const canvas = document.getElementById("scene"), rect = canvas.getBoundingClientRect();
+    const pointer = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0,
+      clientX: rect.left + rect.width * 0.7, clientY: rect.top + rect.height * 0.6 };
+    canvas.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, buttons: 1 }));
+    canvas.dispatchEvent(new PointerEvent("pointerup", { ...pointer, buttons: 0 }));
+    room.update(0.05);
+    const clicked = room.penButton.position.y < 0.18;
+    const pressed = room.penThumb.rotation.z > 0;
     room.update(0.2);
-    const springBack = room.penButton.position.y === 0.19;
+    const springBack = room.penButton.position.y === 0.19 && room.penThumb.rotation.z === 0;
+    const pose = () => JSON.stringify([actor.parts.armR.position, actor.parts.armR.rotation, actor.parts.armR.quaternion,
+      actor.parts.forearmR.position, actor.parts.forearmR.rotation, actor.parts.fingersR.position, actor.parts.fingersR.quaternion, room.pen.position]);
+    const seatedPose = pose();
+    B.pilot.enterClose(); B.advance(0.8, 1 / 60);
+    const firstPersonPen = room.pen.parent === actor.parts.fingersR && room.penThumb.parent === actor.parts.fingersR
+      && actor.parts.armR.geometry === originalArm && actor.parts.armR.cameraHidden === armHidden;
+    B.pilot.hooks.onOrbit(0, 180); B.advance(0.3, 1 / 60);
+    const bodyAnchored = pose() === seatedPose;
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
@@ -17129,11 +17144,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.toggleView(); room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
     const restored = room.broadcast === "feeds";
     const stand = B.crew.standPlayer(actor); room.update(0);
-    const released = !room.pen.parent && !room.toggleView() && !room.penView.visible && actor.parts.armR.cameraHidden === armHidden;
+    const released = !room.pen.parent && !room.toggleView() && !room.penThumb.parent && actor.parts.fingersR.geometry === originalHand && actor.parts.armR.cameraHidden === armHidden;
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
-    return { sitting, pen, heldFeeds, firstPersonPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
+    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, bodyAnchored, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
   })()`);
   record("hub observatory: seated pen toggles persistent views, standing removes it and resumes automatic transitions",
     Object.values(manualScreens).every(Boolean), JSON.stringify(manualScreens));
