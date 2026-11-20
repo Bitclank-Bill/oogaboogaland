@@ -24,6 +24,7 @@
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
     && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
   const FACE_WAIT = 45, FACE_SWEEP = 4.2, FACE_HOLD = 8, PATCH_SWEEP = 1.1;
+  const PEN_ARM_REST = -0.75; // The crew's default chair pose; only the shoulder may lift from it.
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
   // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
   const panelLayout = (count, initial = false, previous = null, patch = null) => {
@@ -136,13 +137,15 @@
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
     let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 3 + Math.random() * 3;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
-    let penButton = null, penHand = null, clickTime = 1;
+    let penButton = null, penHand = null, penArm = null, penArmPitch = NaN, clickTime = 1;
+    const penHandPoint = new Float64Array(3);
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
     const removePen = () => {
       if (pen?.parent) removeChild(pen.parent, pen);
-      penHand = null;
+      if (penArm && penArm.rotation.x === penArmPitch) penArm.rotation.x = PEN_ARM_REST;
+      penHand = penArm = null; penArmPitch = NaN;
       clickTime = 1;
     };
     const updatePen = dt => {
@@ -150,7 +153,22 @@
       clickTime = Math.min(1, clickTime + dt);
       const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.1 ? 1 : Math.max(0, 1 - (clickTime - 0.1) / 0.07);
       penButton.position.y = 0.19 - press * 0.018;
-      // The crew owns the default arm and fist in every view. Only the pen clicker moves.
+      // Keep the complete bent arm rigid. Find the fist in the shoulder's frame,
+      // then lift only at that shoulder, no higher than a horizontal shoulder-to-fist line.
+      const center = BL.scene.boundsOf(penHand.geometry).center;
+      penHandPoint.set(center);
+      for (let part = penHand; part !== penArm; part = part.parent) {
+        BL.scene.updateLocal(part);
+        BL.math.mat4.transformPoint(penHandPoint, part.local, penHandPoint[0], penHandPoint[1], penHandPoint[2]);
+      }
+      const roll = penArm.rotation.z;
+      const y = penHandPoint[0] * penArm.scale.x * Math.sin(roll) + penHandPoint[1] * penArm.scale.y * Math.cos(roll);
+      const restElevation = Math.atan2(y, penHandPoint[2] * penArm.scale.z) - PEN_ARM_REST;
+      const eye = camera.position, target = camera.target;
+      const elevation = Math.atan2(target.y - eye.y, Math.hypot(target.x - eye.x, target.z - eye.z));
+      const lift = Math.max(0, Math.min(-restElevation, elevation - 0.35 - restElevation));
+      penArmPitch = PEN_ARM_REST - lift * pilot.closeMix;
+      penArm.rotation.x = penArmPitch;
     };
     const parkEquipment = actor => {
       if (actor === parkedActor) return;
@@ -192,13 +210,14 @@
       seat.sitter.root.rotation.y = seat.ry;
       penHand = seat.sitter.parts.fingersR;
       const actor = seat.sitter;
+      penArm = actor.parts.armR;
       if (actor.modelled && actor.fist) {
         const unit = actor.fist.palm / (1.1 * actor.armScale);
-        pen.position.x = 0.74 * unit; pen.position.y = -0.35 * unit; pen.position.z = 1.15 * unit;
+        pen.position.x = -0.16 * unit; pen.position.y = -0.35 * unit; pen.position.z = 1.15 * unit;
         pen.scale.x = pen.scale.y = pen.scale.z = 14 * unit;
       } else {
         const b = BL.scene.boundsOf(penHand.geometry), h = actor.traits.height;
-        pen.position.x = b.center[0]; pen.position.y = b.center[1]; pen.position.z = b.center[2];
+        pen.position.x = b.center[0] - h * 0.065; pen.position.y = b.center[1]; pen.position.z = b.center[2];
         pen.scale.x = pen.scale.y = pen.scale.z = h;
       }
       penButton.position.y = 0.19;

@@ -56,9 +56,14 @@ together over the fixed base; the seat height stays 0.72 m and the back collisio
 extends to the new shell. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
-Sitting places a pen in the Ooga’s existing right hand. Both first and third
-person keep the default seated arm and wrist pose, anchored to the body. Looking
-down moves the camera, so the pen naturally moves through the frame with the arm.
+Sitting places a pen slightly higher in the Ooga’s existing right fist, exposing
+more of its barrel. Third person keeps the default seated arm pose. In first
+person, looking up rotates the existing stiff arm from its shoulder, keeping the
+elbow bend, wrist, fist and shoulder position unchanged. The lift stops when the
+shoulder-to-fist line is horizontal; looking farther up lets the fist leave the
+view. Looking down returns it to the original seated rest and never lowers it
+further. The cap is derived from the character’s own hand/arm geometry, and the
+lift blends with the first-person camera transition. Nothing is screen-anchored.
 The character’s default fist, including its thumb, stays unchanged; the pen
 sticks out of that fist. Clicking depresses the pen button and springs it back
 over 170 ms. The same hand appears in the room, reflections and face feed.
@@ -360,6 +365,9 @@ and last-frame retention remains pending because the Chrome connection is unavai
 The sculpted chair, curved wall/TVs, screen-glass highlights and live floor reflection
 have build/syntax validation only; screenshots and reflection-performance acceptance
 remain pending on the same unavailable Chrome connection.
+New, unrun assertions cover the higher pen, unchanged elbow/wrist grip, fixed
+shoulder pivot and bounded lift/rest across first-person pitch. In-game framing
+acceptance remains pending.
 The white ceiling, attached armrest brackets and direction-preserving mirror
 crossings also need in-game review. New, unrun assertions cover backing through
 both mirrors in first and third person, continued held movement after arrival,

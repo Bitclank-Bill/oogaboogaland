@@ -17251,6 +17251,24 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       && actor.parts.armR.geometry === originalArm && actor.parts.armR.cameraHidden === armHidden;
     B.pilot.hooks.onOrbit(0, 180); B.advance(0.3, 1 / 60);
     const bodyAnchored = pose() === seatedPose;
+    const arm = actor.parts.armR, target = { ...B.camera.target }, pivot = JSON.stringify(arm.position);
+    const rigid = () => JSON.stringify([actor.parts.forearmR?.rotation, actor.parts.forearmR?.quaternion,
+      actor.parts.fingersR.rotation, actor.parts.fingersR.quaternion, room.pen.position]);
+    const grip = rigid();
+    const aimPen = elevation => {
+      const eye = B.camera.position;
+      B.camera.target.x = eye.x; B.camera.target.y = eye.y + Math.sin(elevation); B.camera.target.z = eye.z - Math.cos(elevation);
+      room.update(0); return arm.rotation.x;
+    };
+    const low = aimPen(-1.4), level = aimPen(0), raised = aimPen(0.6), ceiling = aimPen(1.4);
+    BL.scene.updateWorld(actor.root, actor.root.parent?.world);
+    const hand = actor.parts.fingersR, center = BL.scene.boundsOf(hand.geometry).center, m = hand.world;
+    const handY = m[1] * center[0] + m[5] * center[1] + m[9] * center[2] + m[13];
+    const cappedLift = level < low && raised <= level && Math.abs(raised - ceiling) < 1e-6
+      && handY <= arm.world[13] + 0.002 && aimPen(-1.4) === low;
+    const rigidShoulder = rigid() === grip && JSON.stringify(arm.position) === pivot;
+    const higherPen = !actor.modelled || room.pen.position.x < 0;
+    Object.assign(B.camera.target, target); room.update(0);
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
@@ -17262,7 +17280,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
-    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, bodyAnchored, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
+    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, bodyAnchored, cappedLift, rigidShoulder, higherPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
   })()`);
   record("hub observatory: seated pen toggles persistent views, standing removes it and resumes automatic transitions",
     Object.values(manualScreens).every(Boolean), JSON.stringify(manualScreens));
