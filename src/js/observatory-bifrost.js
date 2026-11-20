@@ -31,6 +31,7 @@
       Object.assign(node.scale, { x: row.r, y: row.h, z: row.r }); beam.push(node);
     }
     const visitors = BL.observatoryVisitors.create(add, "bifrost.chamber");
+    source.setDetail = visitors.setDetail;
     let since = 0, charge = 0, spin = 0, phase = 0;
     let want = 0;
     const approach = (rec) => {

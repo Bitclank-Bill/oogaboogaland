@@ -5,14 +5,19 @@
   const BL = window.BL = window.BL || {};
   const { createNode, addChild, removeChild } = BL.scene;
   const { box, bevelBox, beam, lathe, merge, geometry, pushVert, face } = BL.models;
-  const FLOOR = -48, RADIUS = 10.8, HEIGHT = 9.05, TAU = Math.PI * 2;
+  const FLOOR = -48, RADIUS = 10.8, TAU = Math.PI * 2;
   // Match the island cave's five-metre opening, with its glass reaching the floor.
   const RETURN_HALF_W = 2.5, RETURN_HEIGHT = 3, RETURN_Z = Math.sqrt(RADIUS * RADIUS - RETURN_HALF_W * RETURN_HALF_W);
-  const BANKS = 48, ROWS = 12, MIRROR_ROWS = 4, PITCH = RETURN_HEIGHT / MIRROR_ROWS, GAP = 0.05, PORTAL_COLS = 4, WALL = "#080a0b";
+  const BANKS = 48, ROWS = 12, MIRROR_ROWS = 4, PITCH = RETURN_HEIGHT / MIRROR_ROWS, GAP = 0.025, PORTAL_COLS = 4, WALL = "#080a0b", BEZEL = "#030405";
+  // Between images: two facing bezels plus GAP. The outer rows have only
+  // one bezel, so add the missing bezel's height at the floor and ceiling.
+  const TV_BORDER_Y = (PITCH - GAP) * (1.96 - 1.72) / (2 * 1.96);
+  const ROW_OFFSET = GAP / 2 + TV_BORDER_Y, HEIGHT = ROWS * PITCH + 2 * ROW_OFFSET;
   const PORTAL_ANGLE = Math.asin(RETURN_HALF_W / RADIUS), BANK_ANGLE = (TAU - 2 * PORTAL_ANGLE) / BANKS;
   const BANK_RADIUS = RADIUS * Math.cos(BANK_ANGLE / 2);
   const PORTAL_PITCH = RADIUS * (2 * PORTAL_ANGLE / PORTAL_COLS);
-  const SEAT_TOP = 0.72, ARC_STEPS = 8, SCREEN_RADIUS = RADIUS - 0.1 - 0.19 * 0.71;
+  const TV_MOUNT = 0.025, TV_DEPTH = 0.10, TV_FACE = 0.068, TV_GLASS = TV_FACE + 0.004;
+  const SEAT_TOP = 0.72, ARC_STEPS = 8, SCREEN_RADIUS = RADIUS - TV_MOUNT - TV_FACE * 0.71;
   // Local chair solids rotate with the upholstery; the low caster base stays underneath it.
   const CHAIR_SOLIDS = [[-0.68, 0, -0.58, 0.68, SEAT_TOP, 0.58],
     [-0.68, SEAT_TOP, -0.8, 0.68, 2.08, -0.35],
@@ -25,7 +30,7 @@
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
     && (toZ <= returnDepth(toX) - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
   const FACE_WAIT = 45, FACE_SWEEP = 2.8, FACE_HOLD = 8, PATCH_SWEEP = 1.1, TILE_FLASH = 0.16;
-  const PEN_ARM_REST = -0.75; // The crew's default chair pose; only the shoulder may lift from it.
+  const PEN_ARM_REST = -0.75; // The crew's default chair pose; never lower the arm past it.
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
   // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
   const panelLayout = (count, initial = false, previous = null, patch = null) => {
@@ -112,7 +117,7 @@
     for (let i = 0; i <= ARC_STEPS; i++) {
       const x = w * (i / ARC_STEPS - 0.5);
       for (const [y, depth] of [[-h / 2, z - d / 2], [-h / 2, z + d / 2], [h / 2, z + d / 2], [h / 2, z - d / 2]]) {
-        const r = RADIUS - 0.1 - depth * 0.71;
+        const r = RADIUS - TV_MOUNT - depth * 0.71;
         pushVert(g, x, y, depth + (r - Math.sqrt(r * r - (x * scaleX) ** 2)) / 0.71);
       }
       if (i) for (let k = 0; k < 4; k++) {
@@ -124,14 +129,54 @@
     face(g, [end + 3, end + 2, end + 1, end], rgb);
     return g;
   };
+  // Shared rings through rounded bends: no independently capped beam ends to
+  // separate at an elbow. A transported frame also keeps vertical/level runs round.
+  const chairTube = (points, width, endWidth = width) => {
+    const path = [points[0]], segments = 12, g = geometry(), rgb = BL.math.hexToRgb("#dce3e8");
+    for (let i = 1; i < points.length - 1; i++) {
+      const a = points[i - 1], b = points[i], c = points[i + 1];
+      const ab = Math.hypot(...b.map((v, k) => v - a[k])), bc = Math.hypot(...c.map((v, k) => v - b[k]));
+      const bend = Math.min(0.075, ab * 0.3, bc * 0.3);
+      const from = b.map((v, k) => v + (a[k] - v) * bend / ab), to = b.map((v, k) => v + (c[k] - v) * bend / bc);
+      for (let j = 0; j <= 4; j++) {
+        const t = j / 4;
+        path.push(b.map((v, k) => from[k] * (1 - t) ** 2 + 2 * v * t * (1 - t) + to[k] * t * t));
+      }
+    }
+    path.push(points[points.length - 1]);
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < path.length; i++) {
+      const p = path[i], a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)];
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      const tx = (b[0] - a[0]) / length, ty = (b[1] - a[1]) / length, tz = (b[2] - a[2]) / length;
+      if (!i) { nx = Math.abs(ty) > 0.9 ? 1 : 0; ny = Math.abs(ty) > 0.9 ? 0 : 1; }
+      const dot = nx * tx + ny * ty + nz * tz;
+      nx -= dot * tx; ny -= dot * ty; nz -= dot * tz;
+      const normalLength = Math.hypot(nx, ny, nz); nx /= normalLength; ny /= normalLength; nz /= normalLength;
+      const bx = ty * nz - tz * ny, by = tz * nx - tx * nz, bz = tx * ny - ty * nx;
+      const radius = (width + (endWidth - width) * i / (path.length - 1)) / 2;
+      for (let j = 0; j < segments; j++) {
+        const angle = j * TAU / segments, c = Math.cos(angle), s = Math.sin(angle);
+        pushVert(g, p[0] + radius * (nx * c + bx * s), p[1] + radius * (ny * c + by * s), p[2] + radius * (nz * c + bz * s));
+        if (i) { const k = i * segments + j, next = i * segments + (j + 1) % segments; face(g, [k - segments, next - segments, next, k], rgb); }
+      }
+    }
+    face(g, Array.from({ length: segments }, (_, i) => segments - 1 - i), rgb);
+    face(g, Array.from({ length: segments }, (_, i) => (path.length - 1) * segments + i), rgb);
+    return g;
+  };
+  const chrome = g => { g.chrome = 1; g.smooth = true; return g; };
   const create = ({ root, renderer, camera, pilot, crew, mirror, weather, mouths, places }) => {
     const group = createNode({ position: { x: 0, y: FLOOR, z: 0 }, visible: false });
+    const viewRoots = [];
     const cameras = BL.observatoryCameras.create({ renderer, mouths, places }), feeds = cameras.feeds;
     const meshes = [], panels = [], rowJitter = new Float64Array(ROWS), destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
     const tiles = new Array((BANKS + PORTAL_COLS) * ROWS).fill(null);
     const params = new URLSearchParams(location.search);
     const crossingMatrix = BL.math.mat4.create();
     BL.math.mat4.identity(crossingMatrix);
+    const arrival = { actor: null, time: 0, duration: 0, x: 0, y: 0, z: 0, dx: 0, dz: 0, lastX: 0, lastZ: 0,
+      cameraX: 0, cameraY: 0, cameraZ: 0, heading: 0, back: false };
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
@@ -139,14 +184,26 @@
     let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 3 + Math.random() * 3;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     let penButton = null, penHand = null, penArm = null, penArmPitch = NaN, clickTime = 1;
+    const penPose = { x: 0, yaw: 0, roll: 0, appliedX: NaN, appliedYaw: NaN, appliedRoll: NaN };
     const penHandPoint = new Float64Array(3);
-    const penViewInverse = BL.math.mat4.create();
+    const penViewInverse = BL.math.mat4.create(), penCameraView = BL.math.mat4.create();
+    const penCameraUp = { x: 0, y: 1, z: 0 };
     const seat = { kind: "architect-chair", combatView: true, x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
+    const restorePenArm = () => {
+      if (!penArm) return;
+      // Undo only our last applied pose; standing/another animation may already
+      // have supplied a new one. Repeated room updates cannot accumulate offsets.
+      if (penArm.position.x === penPose.appliedX) penArm.position.x = penPose.x;
+      if (penArm.rotation.y === penPose.appliedYaw) penArm.rotation.y = penPose.yaw;
+      if (penArm.rotation.z === penPose.appliedRoll) penArm.rotation.z = penPose.roll;
+      if (penArm.rotation.x === penArmPitch) penArm.rotation.x = PEN_ARM_REST;
+      penPose.appliedX = penPose.appliedYaw = penPose.appliedRoll = penArmPitch = NaN;
+    };
     const removePen = () => {
       if (pen?.parent) removeChild(pen.parent, pen);
-      if (penArm && penArm.rotation.x === penArmPitch) penArm.rotation.x = PEN_ARM_REST;
+      restorePenArm();
       penHand = penArm = null; penArmPitch = NaN;
       clickTime = 1;
     };
@@ -155,7 +212,14 @@
       clickTime = Math.min(1, clickTime + dt);
       const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.1 ? 1 : Math.max(0, 1 - (clickTime - 0.1) / 0.07);
       penButton.position.y = 0.19 - press * 0.018;
-      if (!pilot.closeMix) { penArm.rotation.x = penArmPitch = PEN_ARM_REST; return; }
+      restorePenArm();
+      const mix = Math.max(0, Math.min(1, pilot.closeMix));
+      if (!mix) return;
+      penPose.x = penArm.position.x; penPose.yaw = penArm.rotation.y; penPose.roll = penArm.rotation.z;
+      // Level the shoulder in first person. Pitch lifts it; yaw/roll never chase
+      // the gaze or turn the fist sideways. The authored wrist and elbow stay rigid.
+      penArm.rotation.y = penPose.appliedYaw = penPose.yaw * (1 - mix);
+      penArm.rotation.z = penPose.appliedRoll = penPose.roll * (1 - mix);
       // Keep the complete bent arm rigid. Solve its shoulder arc against the eye's
       // lower view, rather than aiming from the much lower shoulder toward the horizon.
       const center = BL.scene.boundsOf(penHand.geometry).center;
@@ -164,6 +228,7 @@
         BL.scene.updateLocal(part);
         BL.math.mat4.transformPoint(penHandPoint, part.local, penHandPoint[0], penHandPoint[1], penHandPoint[2]);
       }
+      const handX = penHandPoint[0], handY = penHandPoint[1], handZ = penHandPoint[2];
       const roll = penArm.rotation.z;
       const y = penHandPoint[0] * penArm.scale.x * Math.sin(roll) + penHandPoint[1] * penArm.scale.y * Math.cos(roll);
       const z = penHandPoint[2] * penArm.scale.z, reach = Math.max(1e-6, Math.hypot(y, z)), angle = Math.atan2(y, z);
@@ -184,8 +249,29 @@
       const aim = angle - elevation - Math.asin(Math.max(-1, Math.min(1, offset)));
       // The upper arm may reach forward, but never overhead or below the seated rest.
       const pitch = Math.max(-Math.PI / 2, Math.min(PEN_ARM_REST, aim));
-      penArmPitch = PEN_ARM_REST + (pitch - PEN_ARM_REST) * pilot.closeMix;
+      penArmPitch = PEN_ARM_REST + (pitch - PEN_ARM_REST) * mix;
       penArm.rotation.x = penArmPitch;
+      // Move the whole rigid arm toward the body center instead of yawing it.
+      // Project the fist in the actual viewport so wide screens/FOV changes do
+      // not crop the pen. Reserve a quarter of the half-view beyond its center.
+      BL.scene.updateLocal(penArm);
+      math.transformPoint(penHandPoint, penArm.local, handX, handY, handZ);
+      math.transformPoint(penHandPoint, parent.world, penHandPoint[0], penHandPoint[1], penHandPoint[2]);
+      math.lookAt(penCameraView, eye, target, camera.up || penCameraUp);
+      math.transformPoint(penHandPoint, penCameraView, penHandPoint[0], penHandPoint[1], penHandPoint[2]);
+      const size = renderer.size, tangent = Math.tan(camera.fov / 2) * size.width / Math.max(1, size.height);
+      const edge = (penHandPoint[0] < 0 ? -0.74 : 0.74) * tangent;
+      const yaw = penArm.poseYaw || 0, lean = penArm.poseLean || 0;
+      const ax = Math.cos(yaw) * Math.cos(lean), ay = Math.cos(yaw) * Math.sin(lean), az = -Math.sin(yaw), w = parent.world;
+      const wx = w[0] * ax + w[4] * ay + w[8] * az, wy = w[1] * ax + w[5] * ay + w[9] * az, wz = w[2] * ax + w[6] * ay + w[10] * az;
+      const axisX = penCameraView[0] * wx + penCameraView[4] * wy + penCameraView[8] * wz;
+      const axisZ = penCameraView[2] * wx + penCameraView[6] * wy + penCameraView[10] * wz;
+      const denominator = axisX + edge * axisZ, direction = penPose.x < 0 ? 1 : -1;
+      const fit = penHandPoint[2] < -camera.near && Math.abs(denominator) > 1e-5
+        ? direction * (-edge * penHandPoint[2] - penHandPoint[0]) / denominator : 0;
+      const lift = (PEN_ARM_REST - pitch) / (PEN_ARM_REST + Math.PI / 2), ease = lift * lift * (3 - 2 * lift);
+      const width = Math.abs(penPose.x), shift = Math.min(width * 0.75, Math.max(width * 0.25, fit)) * ease * mix;
+      penArm.position.x = penPose.appliedX = penPose.x + direction * shift;
     };
     const parkEquipment = actor => {
       if (actor === parkedActor) return;
@@ -222,7 +308,7 @@
       seat.walkAt.x = Math.sin(seat.ry) * 1.7; seat.walkAt.z = Math.cos(seat.ry) * 1.7;
     };
     const sit = () => {
-      if (!active || !crew.sitPlayer(seat)) return false;
+      if (!active || arrival.actor || !crew.sitPlayer(seat)) return false;
       seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
       seat.sitter.root.rotation.y = seat.ry;
       penHand = seat.sitter.parts.fingersR;
@@ -301,23 +387,23 @@
       const rackAt = (bank, col, x, row, angle) => {
         const pitchX = col < BANKS ? RADIUS * BANK_ANGLE : PORTAL_PITCH;
         const scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
-        const rack = createNode({ position: { x, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 },
+        const rack = createNode({ position: { x, y: PITCH * (row + 0.5) + ROW_OFFSET, z: TV_MOUNT },
           scale: { x: scaleX, y: scaleY, z: 0.71 } });
         addChild(bank, rack);
         let housing = housings.get(pitchX), glass = glasses.get(pitchX);
         if (!housing) {
-          housing = merge(curvedCase(3.36, 1.96, 0.32, 0, scaleX, "#151b1e"),
-            curvedCase(3.18, 1.81, 0.018, 0.172, scaleX, "#485356"));
+          housing = merge(curvedCase(3.36, 1.96, TV_DEPTH, 0, scaleX, "#08090b"),
+            curvedCase(3.18, 1.81, 0.012, 0.056, scaleX, BEZEL));
           glass = BL.observatoryCameras.curvedSurface(3.08, 1.72, scaleX, 0.71, SCREEN_RADIUS - 0.004 * 0.71);
           for (const f of glass.faces) { f.color = [105, 132, 141]; f.emissive = 0.12; }
           glass.glassOpacity = 0.035; glass.glassGrazing = 0.26;
           housings.set(pitchX, housing); glasses.set(pitchX, glass);
         }
-        add(housing, rack); add(glass, rack, { x: 0, y: 0, z: 0.194 });
+        add(housing, rack); add(glass, rack, { x: 0, y: 0, z: TV_GLASS });
         const group = layout.groups[layout.cells[row * layout.cols + col]], feed = feeds[group.slot];
         const normal = cameras.panel(feed, group.size, col - group.col, row - group.row, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
-        const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
+        const node = add(normal, rack, { x: 0, y: 0, z: TV_FACE });
         // Spread from the mirror around both sides, with a small randomized middle-row lead.
         panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
           distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0, flashTime: 0 });
@@ -345,11 +431,47 @@
         const infillScreen = { ...faceTile, architectFeedOnly: true, imageSurface: { ...faceTile.imageSurface, seedFeed: feeds[0] } };
         const infillFrame = { ...housings.get(pitchX), castShadow: false, architectFeedOnly: true };
         for (let row = 0; row < MIRROR_ROWS; row++) {
-          const rack = createNode({ position: { x: 0, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 }, scale: { x: scaleX, y: scaleY, z: 0.71 } });
-          addChild(infill, rack); add(infillFrame, rack); add(infillScreen, rack, { x: 0, y: 0, z: 0.19 });
+          const rack = createNode({ position: { x: 0, y: PITCH * (row + 0.5) + ROW_OFFSET, z: TV_MOUNT }, scale: { x: scaleX, y: scaleY, z: 0.71 } });
+          addChild(infill, rack); add(infillFrame, rack); add(infillScreen, rack, { x: 0, y: 0, z: TV_FACE });
         }
       }
-      const frame = [], glass = geometry(), silver = BL.math.hexToRgb("#81919c"), segments = PORTAL_COLS * ARC_STEPS;
+      const frame = geometry(), glass = geometry(), silver = BL.math.hexToRgb("#81919c"), segments = PORTAL_COLS * ARC_STEPS;
+      // Match the outer casing edges of the four columns above the opening and
+      // rows 0–3 beside it, at the casing's front radius, not a flat chord.
+      const frameRadius = RADIUS - TV_MOUNT - TV_DEPTH * 0.5 * 0.71;
+      const frameAngle = PORTAL_ANGLE - PORTAL_PITCH / (2 * RADIUS) + Math.asin((PORTAL_PITCH - GAP) / (2 * frameRadius));
+      const borderX = (PORTAL_PITCH - GAP) * (3.36 - 3.08) / (2 * 3.36);
+      const innerAngle = frameAngle - borderX / frameRadius, low = GAP + TV_BORDER_Y, high = MIRROR_ROWS * PITCH + TV_BORDER_Y;
+      const innerLow = low + TV_BORDER_Y, innerHigh = high - TV_BORDER_Y;
+      const angles = [-frameAngle];
+      for (let i = 0; i <= segments; i++) angles.push(-innerAngle + i * 2 * innerAngle / segments);
+      angles.push(frameAngle);
+      const trim = BL.math.hexToRgb(BEZEL), surround = BL.math.hexToRgb(WALL);
+      const band = (arc, bottom, top, front, back, color) => {
+        const start = frame.verts.length / 3;
+        for (let i = 0; i < arc.length; i++) {
+          const a = arc[i];
+          for (const [r, y] of [[front, bottom], [front, top], [back, bottom], [back, top]])
+            pushVert(frame, Math.sin(a) * r, y, RADIUS - Math.cos(a) * r);
+          if (i) {
+            const a = start + (i - 1) * 4, b = a + 4;
+            for (const ids of [[a, b, b + 1, a + 1], [a + 2, a + 3, b + 3, b + 2],
+              [a, a + 2, b + 2, b], [a + 1, b + 1, b + 3, a + 3]]) face(frame, ids, color, { emissive: 0.12 });
+          }
+        }
+        const end = frame.verts.length / 3 - 4;
+        face(frame, [start, start + 1, start + 3, start + 2], color);
+        face(frame, [end, end + 2, end + 3, end + 1], color);
+      };
+      band(angles, low, innerLow, frameRadius, RADIUS, trim);
+      band(angles, innerHigh, high, frameRadius, RADIUS, trim);
+      band([-frameAngle, -innerAngle], innerLow, innerHigh, frameRadius, RADIUS, trim);
+      band([innerAngle, frameAngle], innerLow, innerHigh, frameRadius, RADIUS, trim);
+      // Seal the recess up to the original wall opening. The glass stays full
+      // sized behind this surround; no exposed reflective sliver or outdoor seam.
+      band([-PORTAL_ANGLE, ...angles, PORTAL_ANGLE], 0, low, RADIUS - 0.002, RADIUS, surround);
+      band([-PORTAL_ANGLE, -frameAngle], low, high, RADIUS - 0.002, RADIUS, surround);
+      band([frameAngle, PORTAL_ANGLE], low, high, RADIUS - 0.002, RADIUS, surround);
       glass.normals = [];
       for (let i = 0; i <= segments; i++) {
         const a = -PORTAL_ANGLE + i * 2 * PORTAL_ANGLE / segments;
@@ -357,30 +479,27 @@
         pushVert(glass, x, -RETURN_HEIGHT / 2, z); pushVert(glass, x, RETURN_HEIGHT / 2, z);
         glass.normals.push(-Math.sin(a), 0, Math.cos(a), -Math.sin(a), 0, Math.cos(a));
         if (i) {
-          const j = (i - 1) * 2, v = glass.verts;
+          const j = (i - 1) * 2;
           face(glass, [j, j + 2, j + 3, j + 1], silver);
-          frame.push(beam(v[j * 3], RETURN_HEIGHT, v[j * 3 + 2], x, RETURN_HEIGHT, z, 0.06, "#65717a", 0.15));
         }
-        if (!i || i === segments) frame.push(beam(x, 0, z, x, RETURN_HEIGHT, z, 0.06, "#65717a", 0.15));
       }
-      glass.reflector = true; glass.castShadow = false;
-      add(merge(...frame), portal);
+      glass.reflector = true; glass.reflectorCurved = true; glass.castShadow = false;
+      add(frame, portal);
       // One shared tangent-plane capture keeps the curved surface within the existing reflection budget.
       returnMirror = add(glass, portal, { x: 0, y: RETURN_HEIGHT / 2, z: 0 });
       returnMirror.reflectionRevision = 0;
       // Sculpted black leather over a reclining shell, on a real five-spoke swivel pedestal.
-      const metal = "#869095", dark = "#171c20";
+      const metal = "#dce3e8", dark = "#171c20";
       const base = [lathe({ profile: [[0, 0.15], [0.18, 0.15], [0.18, 0.25], [0.12, 0.31], [0.075, 0.31], [0.075, 0.56], [0, 0.56]],
-        segments: 20, color: metal, emissive: 0.12 })];
+        segments: 20, color: metal })];
       const wheel = lathe({ profile: [[0, -0.035], [0.08, -0.035], [0.11, -0.02], [0.11, 0.02], [0.08, 0.035], [0, 0.035]],
         segments: 16, color: "#111518" });
       wheel.smooth = true;
-      const hub = lathe({ profile: [[0, -0.005], [0.035, -0.005], [0.035, 0.005], [0, 0.005]], segments: 12, color: metal, emissive: 0.15 });
-      const fork = bevelBox({ w: 0.18, h: 0.11, d: 0.11, bevel: 0.025, color: "#414b50" });
+      const hub = chrome(lathe({ profile: [[0, -0.005], [0.035, -0.005], [0.035, 0.005], [0, 0.005]], segments: 12, color: metal }));
+      const fork = chrome(bevelBox({ w: 0.18, h: 0.11, d: 0.11, bevel: 0.025, color: metal }));
       for (let i = 0; i < 5; i++) {
         const a = i * TAU / 5, sx = Math.sin(a), cz = Math.cos(a);
-        base.push(beam(sx * 0.12, 0.27, cz * 0.12, sx * 0.43, 0.2, cz * 0.43, 0.1, metal, 0.1));
-        base.push(beam(sx * 0.43, 0.2, cz * 0.43, sx * 0.73, 0.14, cz * 0.73, 0.075, metal, 0.1));
+        base.push(chairTube([[sx * 0.12, 0.27, cz * 0.12], [sx * 0.43, 0.2, cz * 0.43], [sx * 0.73, 0.16, cz * 0.73]], 0.1, 0.075));
         const caster = createNode({ position: { x: sx * 0.73, y: 0.115, z: cz * 0.73 }, rotation: { x: 0, y: a + 0.3, z: 0 } });
         addChild(group, caster);
         add(fork, caster, { x: 0, y: 0.07, z: 0 });
@@ -389,7 +508,7 @@
           add(hub, caster, { x: side * 0.127, y: 0, z: 0 }).rotation.z = Math.PI / 2;
         }
       }
-      add(merge(...base));
+      add(chrome(merge(...base)));
       chairTop = createNode(); addChild(group, chairTop);
       const pad = (w, h, d, r, color, x, y, z, recline = 0) => {
         const node = add(cushion(w, h, d, r, color), chairTop, { x, y, z }); node.rotation.x = recline; return node;
@@ -406,18 +525,17 @@
       const chairFrame = [];
       for (const side of [-1, 1]) {
         const x = side * 0.77;
-        // Brackets start inside the seat shell; each upright overlaps the rail under its pad.
-        chairFrame.push(beam(side * 0.52, 0.53, -0.39, x, 0.56, -0.39, 0.065, metal, 0.12));
-        chairFrame.push(beam(side * 0.52, 0.53, 0.35, x, 0.56, 0.35, 0.065, metal, 0.12));
-        chairFrame.push(beam(x, 0.56, -0.39, x, 0.95, -0.48, 0.055, metal, 0.12));
-        chairFrame.push(beam(x, 0.95, -0.48, x, 1.10, -0.37, 0.055, metal, 0.12));
-        chairFrame.push(beam(x, 0.56, 0.35, x, 1.10, 0.42, 0.055, metal, 0.12));
-        chairFrame.push(beam(x, 1.085, -0.4, x, 1.085, 0.44, 0.065, metal, 0.12));
-        chairFrame.push(beam(side * 0.59, 0.6, -0.57, side * 0.59, 1.9, -0.7, 0.04, metal, 0.1));
+        // One continuous arm loop enters the seat at both ends; its top run
+        // embeds into the pad. Back stays also begin inside the seat shell.
+        chairFrame.push(chairTube([[side * 0.52, 0.53, -0.39], [x, 0.56, -0.39],
+          [x, 0.95, -0.48], [x, 1.085, -0.37], [x, 1.085, 0.40],
+          [x, 0.56, 0.35], [side * 0.52, 0.53, 0.35]], 0.06));
+        chairFrame.push(chairTube([[side * 0.59, 0.53, -0.40], [side * 0.59, 0.70, -0.68],
+          [side * 0.59, 1.92, -0.76]], 0.048));
         pad(0.155, 0.11, 1.02, 0.05, "#111518", x, 1.125, 0.015);
       }
-      chairFrame.push(beam(0.18, 0.51, 0.05, 0.58, 0.48, 0.13, 0.028, metal, 0.1));
-      add(merge(...chairFrame), chairTop);
+      chairFrame.push(chairTube([[0.18, 0.51, 0.05], [0.58, 0.48, 0.13]], 0.028));
+      add(chrome(merge(...chairFrame)), chairTop);
       pad(0.19, 0.055, 0.085, 0.025, dark, 0.57, 0.48, 0.13);
       const penGeometry = merge(lathe({ profile: [[0.012, -0.13], [0.016, -0.1], [0.016, 0.15], [0.012, 0.17]],
         segments: 8, color: "#202932", emissive: 0.2 }),
@@ -425,7 +543,8 @@
         box({ w: 0.012, h: 0.09, d: 0.012, color: "#c9d0d4", emissive: 0.35, offset: { x: 0.02, y: 0.11 } }));
       penGeometry.characterPart = true;
       pen = add(penGeometry, group); pen.rotation.z = Math.PI / 2; removePen();
-      const buttonGeometry = lathe({ profile: [[0.011, -0.02], [0.011, 0.02]], segments: 8, color: "#c9d0d4", emissive: 0.35 });
+      // Close the clicker's top so looking down at the pen never exposes a hollow tube.
+      const buttonGeometry = lathe({ profile: [[0.011, -0.02], [0.011, 0.02], [0, 0.02]], segments: 8, color: "#c9d0d4", emissive: 0.35 });
       buttonGeometry.characterPart = true;
       penButton = add(buttonGeometry, pen, { x: 0, y: 0.19, z: 0 });
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
@@ -607,7 +726,48 @@
       if (!manualFace && broadcast === "feeds") { portraitActor = null; cameras.portrait.forceCapture = false; }
       return true;
     };
-    const travel = (inside, preserveView = true) => {
+    const endArrival = () => {
+      if (!arrival.actor) return;
+      if (pilot.player === arrival.actor) {
+        crew.steer(0, 0);
+        BL.crew.poseGait(arrival.actor, BL.crew.GAIT.stand);
+      }
+      arrival.actor = null;
+      pilot.setExternalControl(false);
+      cooldown = 0.35;
+    };
+    const updateArrival = (dt) => {
+      const actor = arrival.actor;
+      if (!actor) return;
+      if (actor !== pilot.player) { endArrival(); return; }
+      const p = actor.root.position;
+      // A respawn or another interaction moving the actor cancels this walk.
+      if (Math.hypot(p.x - arrival.lastX, p.z - arrival.lastZ) > 0.5 || Math.abs(p.y - arrival.y) > 1) { endArrival(); return; }
+      // Undo only last frame's display clamp before translating the retained
+      // view, so approaching the landing does not accumulate a camera offset.
+      camera.position.x -= arrival.cameraX; camera.position.y -= arrival.cameraY; camera.position.z -= arrival.cameraZ;
+      camera.target.x -= arrival.cameraX; camera.target.y -= arrival.cameraY; camera.target.z -= arrival.cameraZ;
+      arrival.time = Math.min(arrival.duration, arrival.time + dt);
+      const t = arrival.time / arrival.duration, k = t * t * (3 - 2 * t);
+      const x = arrival.x + arrival.dx * k, z = arrival.z + arrival.dz * k;
+      // Translate all retained camera anchors with the body: no yaw, pitch,
+      // zoom or first/third-person change during the walk or its handoff.
+      BL.math.mat4.identity(crossingMatrix);
+      crossingMatrix[12] = x - p.x; crossingMatrix[13] = arrival.y - p.y; crossingMatrix[14] = z - p.z;
+      p.x = x; p.y = arrival.y; p.z = z;
+      arrival.lastX = x; arrival.lastZ = z;
+      actor.root.rotation.y = arrival.heading;
+      pilot.transformView(crossingMatrix, 0);
+      const phase = Math.hypot(arrival.dx, arrival.dz) * k * 4 * (arrival.back ? -1 : 1);
+      BL.crew.poseGait(actor, BL.crew.GAIT.walk, phase);
+      BL.crew.poseCloseWalk(actor, 0, arrival.back);
+      if (active) clampArrivalCamera();
+      if (t === 1) endArrival();
+    };
+    // Explicit relocations/previews stay immediate; physical crossings walk
+    // from the glass to the same safe landing used by those relocations.
+    const travel = (inside, preserveView = true, walkOut = false) => {
+      endArrival();
       const actor = pilot.player, crossing = preserveView && actor && inside !== active;
       if (seat.sitter) crew.standPlayer(seat.sitter);
       prepare(); resetBroadcast(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
@@ -615,6 +775,13 @@
       destination.position.x = inside ? 0 : m.x + Math.sin(m.ry) * 2.4;
       destination.position.y = inside ? FLOOR : m.floorY;
       destination.position.z = inside ? 7.8 : m.z + Math.cos(m.ry) * 2.4;
+      if (crossing && walkOut) {
+        arrival.dx = destination.position.x; arrival.dz = destination.position.z;
+        const outside = mirror.node.position.z + 0.08;
+        destination.position.x = inside ? 0 : m.x + Math.sin(m.ry) * outside;
+        destination.position.z = inside ? RADIUS - 0.08 : m.z + Math.cos(m.ry) * outside;
+        arrival.dx -= destination.position.x; arrival.dz -= destination.position.z;
+      }
       destination.yaw = inside ? 0 : m.ry + Math.PI;
       destination.pitch = inside ? 0.08 : pilot.orbit.pitch; destination.dist = Math.min(5, pilot.orbit.dist);
       if (crossing) {
@@ -631,6 +798,18 @@
         crew.elevate(lift);
         pilot.transformView(crossingMatrix, yaw);
       } else pilot.navigate(destination);
+      if (crossing && walkOut) {
+        arrival.actor = actor; arrival.time = 0;
+        arrival.cameraX = arrival.cameraY = arrival.cameraZ = 0;
+        arrival.x = actor.root.position.x; arrival.y = actor.root.position.y; arrival.z = actor.root.position.z;
+        arrival.lastX = arrival.x; arrival.lastZ = arrival.z;
+        arrival.heading = actor.root.rotation.y;
+        arrival.back = Math.sin(arrival.heading) * arrival.dx + Math.cos(arrival.heading) * arrival.dz < 0;
+        arrival.duration = Math.hypot(arrival.dx, arrival.dz) / 2.4;
+        crew.steer(0, 0);
+        pilot.setExternalControl(true);
+        if (inside) clampArrivalCamera();
+      }
       parkEquipment(inside ? pilot.player : null);
       if (inside && !audio) audio = BL.architectAudio.create();
       audio?.setActive(inside); cameras.setActive(inside); weather.setExterior(!inside);
@@ -638,6 +817,7 @@
     };
     const update = (dt) => {
       cooldown = Math.max(0, cooldown - dt); veil = Math.max(0, veil - dt);
+      updateArrival(dt);
       const actor = pilot.player;
       if (!actor) { if (active) travel(false); return; }
       if (preview) { preview = false; travel(true, false); }
@@ -651,6 +831,13 @@
       parkEquipment(active ? actor : null);
       if (!seated()) removePen();
       if (active) {
+        // Room fixtures and the local/remote bodies live directly under the hub.
+        // Keep their graph ownership, but collect only roots inside this chamber.
+        viewRoots.length = 0;
+        for (const node of root.children) {
+          const p = node.position;
+          if (node.visible && (node === group || contains(p.x, p.y, p.z))) viewRoots.push(node);
+        }
         if (seat.sitter && seat.sitter === actor && actor.camp.seat === seat) {
           // Carry's third-person camera orbits independently, including while
           // first person fades out. Combat keeps the camera behind the chair.
@@ -663,16 +850,16 @@
         updateBroadcast(dt, actor);
         updatePen(dt);
         if (rotating && broadcast === "feeds" && !layoutPending && !portraitActor) cameras.update(dt);
-        if (audio) audio.update(dt, camera, broadcast === "face" || broadcast === "to-face", seated());
-        if (!cooldown && Math.abs(p.x) < RETURN_HALF_W - 0.4 && p.z >= returnDepth(p.x)
-          && feet >= FLOOR - 0.2 && feet < FLOOR + RETURN_HEIGHT - 0.5) travel(false);
+        if (audio) audio.update(dt, camera, seated());
+        if (!arrival.actor && !cooldown && Math.abs(p.x) < RETURN_HALF_W - 0.4 && p.z >= returnDepth(p.x)
+          && feet >= FLOOR - 0.2 && feet < FLOOR + RETURN_HEIGHT - 0.5) travel(false, true, true);
         return;
       }
       const m = mirror.mouth, dx = p.x - m.x, dz = p.z - m.z, sr = Math.sin(m.ry), cr = Math.cos(m.ry);
       const along = dx * sr + dz * cr, across = dx * cr - dz * sr;
       if (dx * dx + dz * dz < 18 * 18 && Math.abs(feet - m.floorY) < 6) prepare();
-      if (!cooldown && Number.isFinite(previousAlong) && previousAlong > 0.5 && along <= 0.5
-        && Math.abs(across) < 2.1 && feet >= m.floorY - 0.2 && feet < m.floorY + 2.5) travel(true);
+      if (!arrival.actor && !cooldown && Number.isFinite(previousAlong) && previousAlong > 0.5 && along <= 0.5
+        && Math.abs(across) < 2.1 && feet >= m.floorY - 0.2 && feet < m.floorY + 2.5) travel(true, true, true);
       previousAlong = along;
     };
     const clampCamera = (p) => {
@@ -680,7 +867,15 @@
       if (r > limit) { p.x *= limit / r; p.z *= limit / r; }
       p.y = Math.max(FLOOR + 0.25, Math.min(FLOOR + HEIGHT - 0.3, p.y));
     };
-    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, panels, group, cameras, seat, sit, toggleView, supportAt, segmentClear: chairClear,
+    const clampArrivalCamera = () => {
+      const p = camera.position, x = p.x, y = p.y, z = p.z;
+      clampCamera(p);
+      // A third-person camera cannot stand behind the room's wall as the
+      // body emerges. Move its target equally to preserve the view direction.
+      arrival.cameraX = p.x - x; arrival.cameraY = p.y - y; arrival.cameraZ = p.z - z;
+      camera.target.x += arrival.cameraX; camera.target.y += arrival.cameraY; camera.target.z += arrival.cameraZ;
+    };
+    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, viewRoots, panels, group, cameras, seat, sit, toggleView, supportAt, segmentClear: chairClear,
       nearbySeat(x, y, z, reach) {
         return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
@@ -691,16 +886,16 @@
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,
-      get active() { return active; }, get crossing() { return veil > 0; }, get prepared() { return prepared; },
+      get active() { return active; }, get arriving() { return !!arrival.actor; }, get crossing() { return veil > 0 || !!arrival.actor; }, get prepared() { return prepared; },
       drawVeil(context) {
         if (!veil) return;
         context.save(); context.globalAlpha = veil / 0.45; context.fillStyle = "#000000";
         context.fillRect(0, 0, context.canvas.clientWidth, context.canvas.clientHeight); context.restore();
       },
-      suspend() { if (active) travel(false); audio?.setActive(false); },
+      suspend() { endArrival(); if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; tiles.fill(null); }
+      dispose() { endArrival(); if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = viewRoots.length = 0; tiles.fill(null); }
     };
   };
-  BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };
+  BL.architectCave = { create, contains, clear, segmentClear, FLOOR, RADIUS, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };
 })();

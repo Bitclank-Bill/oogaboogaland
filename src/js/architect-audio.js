@@ -1,13 +1,14 @@
-// The observatory: quiet air, slow harmonic motion and distant glass settling.
+// The observatory: quiet air, a ceiling harmony and glass answering a held gaze.
 // One pooled graph, independent of screen refreshes; no recordings or per-frame/cue nodes.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
+  const WALL_NOTES = [294, 392, 490, 367.5, 441, 588, 392, 330.75];
   const create = () => {
     const channel = BL.sound.channel("room"), voices = [];
     channel.show(false);
-    let ctx = null, master = null, ambience = null, foundation = null, airLevel = null, airFilter = null, bank = null, pan = null, relay = null, crossing = null, penNoise = null, penBody = null, penTone = null, penFilter = null, acoustics = null;
-    let enabled = false, disposed = false, timer = 0, since = 0, elapsed = 0, nextTick = 18;
+    let ctx = null, master = null, ambience = null, foundation = null, airLevel = null, airFilter = null, bank = null, pan = null, ceiling = null, relayPan = null, relay = null, relayPartial = null, crossing = null, penNoise = null, penBody = null, penTone = null, penFilter = null, acoustics = null;
+    let enabled = false, disposed = false, timer = 0, since = 0, elapsed = 0, nextTick = 8, gaze = 0, focus = -1, heardFocus = -1, dwell = 0, ringWait = 0;
     const gain = (value, to) => {
       const node = ctx.createGain(); node.gain.value = value; node.connect(to); return node;
     };
@@ -39,6 +40,8 @@
       tone(49, 0.026, foundation); tone(98, 0.008, foundation);
       pan = ctx.createStereoPanner(); pan.connect(ambience); bank = gain(0, pan);
       tone(147, 0.009, bank); tone(196, 0.004, bank);
+      ceiling = gain(0, ambience);
+      tone(73.5, 0.026, ceiling); tone(245, 0.009, ceiling);
       airFilter = ctx.createBiquadFilter(); airFilter.type = "lowpass"; airFilter.frequency.value = 720; airFilter.Q.value = 0.4;
       const airHigh = ctx.createBiquadFilter(); airHigh.type = "highpass"; airHigh.frequency.value = 150; airHigh.Q.value = 0.4;
       airHigh.connect(airFilter); airLevel = gain(0.021, ambience); airFilter.connect(airLevel);
@@ -51,7 +54,9 @@
       const bodyFilter = ctx.createBiquadFilter(); bodyFilter.type = "bandpass"; bodyFilter.frequency.value = 850; bodyFilter.Q.value = 1.1;
       penBody = gain(0, master); noise.connect(bodyFilter); bodyFilter.connect(penBody);
       penTone = tone(2300, 0, master);
-      relay = tone(392, 0, pan); crossing = tone(196, 0, master);
+      relayPan = ctx.createStereoPanner(); relayPan.connect(ambience);
+      relay = tone(392, 0, relayPan); relayPartial = tone(1030, 0, relayPan);
+      crossing = tone(196, 0, master);
       master.gain.setTargetAtTime(0.55, ctx.currentTime, 0.6); arrive();
     };
     const clickPulse = (volume, at, level, tail) => {
@@ -84,6 +89,19 @@
       spring.setValueAtTime(3100 * strength, now + 0.169);
       spring.exponentialRampToValueAtTime(2200 * strength, now + 0.18);
     };
+    const ring = (frequency, level, side, now) => {
+      relayPan.pan.setTargetAtTime(side, now, 0.08);
+      relay.source.frequency.setValueAtTime(frequency, now);
+      relayPartial.source.frequency.setValueAtTime(frequency * 2.63, now);
+      for (let i = 0; i < 2; i++) {
+        const volume = (i ? relayPartial : relay).volume.gain;
+        volume.cancelScheduledValues(now); volume.setValueAtTime(0, now);
+        volume.linearRampToValueAtTime(level * (i ? 0.27 : 1), now + 0.035);
+        volume.exponentialRampToValueAtTime(0.0001, now + (i ? 1.2 : 2.4));
+        volume.setValueAtTime(0, now + 2.5);
+      }
+      ringWait = 4; nextTick = 8 + Math.random() * 8;
+    };
     const quiet = () => {
       clearTimeout(timer); timer = 0;
       if (!ctx) return;
@@ -99,32 +117,47 @@
     const setActive = (on) => {
       on = !!on; if (enabled === on) return;
       const ready = !!ctx;
+      since = gaze = dwell = ringWait = 0; focus = heardFocus = -1; nextTick = 8;
+      if (ceiling) { ceiling.gain.cancelScheduledValues(ctx.currentTime); ceiling.gain.setValueAtTime(0, ctx.currentTime); }
       enabled = on; channel.show(on); BL.roomAcoustics.setActive(on); refresh(); if (on && ready) arrive();
     };
-    const update = (dt, camera, face = false, seated = false) => {
+    const update = (dt, camera, seated = false) => {
       if (!enabled || disposed || document.hidden) return;
       if (!ctx) activate();
       since += dt; elapsed += dt;
       if (!ctx || ctx.state !== "running" || since < 0.1 || BL.sound.muted) return;
-      const step = since; since = 0;
-      const eye = camera.position, dx = camera.target.x - eye.x, dz = camera.target.z - eye.z;
+      const step = Math.min(0.25, since); since = 0;
+      const eye = camera.position, dx = camera.target.x - eye.x, dy = camera.target.y - eye.y, dz = camera.target.z - eye.z;
       const length = Math.max(0.001, Math.hypot(dx, dz)), radius = Math.hypot(eye.x, eye.z);
+      const up = dy / Math.max(0.001, Math.hypot(dx, dy, dz));
+      gaze += (Math.max(0, Math.min(1, (up - 0.18) / 0.62)) - gaze) * Math.min(1, step * 2);
       // The north-east rack is a quiet spatial anchor, rather than a constant buzzing foreground.
       const sx = 7.5 - eye.x, sz = -7.5 - eye.z, distance = Math.max(1, Math.hypot(sx, sz));
       pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, (-dz * sx + dx * sz) / (length * distance))), ctx.currentTime, 0.25);
       const now = ctx.currentTime, talking = BL.voice.stats.speaking || BL.voice.stats.hearing > 0;
       ambience.gain.setTargetAtTime(talking ? 0.55 : 1, now, 0.6);
-      foundation.gain.setTargetAtTime((face ? 0.68 : 1) * (0.92 + Math.sin(elapsed * 0.17) * 0.08), now, 1.2);
+      // Looking up trades some foundation for an audible ceiling harmony. Screen
+      // content never controls these levels or filters, including during a switch.
+      foundation.gain.setTargetAtTime((1 - 0.35 * gaze) * (0.92 + Math.sin(elapsed * 0.17) * 0.08), now, 1.2);
+      ceiling.gain.setTargetAtTime(gaze * (0.9 + Math.sin(elapsed * 0.19) * 0.1), now, 0.65);
       bank.gain.setTargetAtTime((0.12 + Math.min(1, radius / 9) * 0.35) * (seated ? 0.65 : 1), now, 0.7);
-      airFilter.frequency.setTargetAtTime((face ? 1050 : 720) + Math.sin(elapsed * 0.11) * 110, now, 1.2);
-      airLevel.gain.setTargetAtTime((face ? 0.026 : 0.021) * (0.9 + Math.sin(elapsed * 0.23) * 0.1), now, 1);
-      if ((nextTick -= step) <= 0) {
-        nextTick = 18 + Math.random() * 18;
-        const volume = relay.volume.gain;
-        relay.source.frequency.setValueAtTime(392 * (Math.random() < 0.5 ? 1 : 1.5), now);
-        volume.cancelScheduledValues(now); volume.setValueAtTime(0, now);
-        volume.linearRampToValueAtTime(0.006, now + 0.025); volume.exponentialRampToValueAtTime(0.0001, now + 2.4);
-      }
+      airFilter.frequency.setTargetAtTime(720 + Math.sin(elapsed * 0.11) * 110, now, 1.2);
+      airLevel.gain.setTargetAtTime(0.021 * (0.9 + Math.sin(elapsed * 0.23) * 0.1), now, 1);
+      // Intersect the gaze with the circular wall. A held glance answers once;
+      // sweeping past banks or jittering at their boundary cannot rattle the room.
+      const room = BL.architectCave, ux = dx / length, uz = dz / length, along = eye.x * ux + eye.z * uz;
+      const reach = -along + Math.sqrt(Math.max(0, along * along + room.RADIUS * room.RADIUS - radius * radius));
+      const wallY = eye.y + dy / length * reach;
+      const sector = Math.abs(up) < 0.85 && wallY > room.FLOOR + 0.2 && wallY < room.FLOOR + room.HEIGHT - 0.2
+        ? (Math.round(Math.atan2(eye.x + ux * reach, eye.z + uz * reach) * 4 / Math.PI) + 8) % 8 : -1;
+      if (sector !== focus) { focus = sector; dwell = 0; }
+      else dwell += step;
+      ringWait = Math.max(0, ringWait - step); nextTick -= step;
+      if (focus >= 0 && focus !== heardFocus && dwell >= 0.7 && !ringWait) {
+        const angle = focus * Math.PI / 4, rx = Math.sin(angle) * room.RADIUS - eye.x, rz = Math.cos(angle) * room.RADIUS - eye.z;
+        const side = Math.max(-1, Math.min(1, (-dz * rx + dx * rz) / (length * Math.max(1, Math.hypot(rx, rz)))));
+        ring(WALL_NOTES[focus], 0.024, side, now); heardFocus = focus;
+      } else if (nextTick <= 0 && !ringWait) ring(WALL_NOTES[Math.floor(Math.random() * WALL_NOTES.length)], 0.012, Math.random() * 1.4 - 0.7, now);
     };
     const off = BL.sound.subscribe(refresh);
     window.addEventListener("pointerdown", activate, true); window.addEventListener("keydown", activate, true);
@@ -135,7 +168,7 @@
         window.removeEventListener("pointerdown", activate, true); window.removeEventListener("keydown", activate, true);
         document.removeEventListener("visibilitychange", refresh);
         if (ctx) ctx.close().catch(() => {});
-        ctx = master = ambience = foundation = airLevel = airFilter = bank = pan = relay = crossing = penNoise = penBody = penTone = penFilter = null; voices.length = 0;
+        ctx = master = ambience = foundation = airLevel = airFilter = bank = pan = ceiling = relayPan = relay = relayPartial = crossing = penNoise = penBody = penTone = penFilter = null; voices.length = 0;
       }
     };
   };

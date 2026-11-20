@@ -85,6 +85,13 @@
     time: 0, bloomStrength: 0.5, lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 34, sea: -70, cutawayMaxY: 1e6, birdsEyeCutaway: false, cutawayFade: 0, cutawayRockMix: 0, cutawayRegions: [], cutawayRegionCount: 0, cutawayCloudY: 0, cutawayCloudMix: 0
   };
   let architectCave = null;
+  // Interior light is independent of outdoor sun/shadows. Security cameras keep
+  // the live outdoor light through their explicit capture-only source.
+  const ARCHITECT_OPTS = Object.assign(Object.create(RENDER_OPTS), {
+    sky: new Float32Array([0.6, 0.58, 0.55]), ground: new Float32Array([0.3, 0.27, 0.24]),
+    directStrength: 0, ambientFloor: 0.75, shadowStrength: 0, lightCount: 0,
+    viewRoots: null, cameraFeedWorldLight: RENDER_OPTS
+  });
   let viewPoseActor = null;
   RENDER_OPTS.beforeView = () => {
     const cave = pilot?.player;
@@ -2943,7 +2950,7 @@
   const updatePoolEffectsActivity = () => {
     const radius = poolEffectsActive ? POOL_EFFECTS_FAR : POOL_EFFECTS_NEAR;
     const player = clankerPlay?.player || pilot?.player;
-    const active = !gameMode && !cloudPlaying() && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
+    const active = !gameMode && !cloudPlaying() && !architectCave?.active && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
       || !!player && nearPoolEffects(player.root.position, radius));
     if (active === poolEffectsActive) return;
     poolEffectsActive = active;
@@ -6631,7 +6638,7 @@
   };
   const onTap = (hit, p) => {
     if (cloudHopper?.active) return;
-    if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
+    if (factoryDeparting || bifrostDeparting || islandGuide.holding || architectCave?.arriving) return;
     if (architectCave?.toggleView()) return;
     if (gorillaBehindBillboard(hit, p)) return;
     if (debugMovementTap(hit, p)) return;
@@ -8032,7 +8039,7 @@
       }
     }
     if (lawn && lawn.version !== island.path.version) layLawn();
-    if (life) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
+    if (life && !architectCave?.active) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
     now = elapsed;
     hour = clock.read();
     // A Cloud Hopper run flies under its level's own fixed sky, sampled once as it begins; the clock's hour still
@@ -8118,8 +8125,8 @@
     const next = daylight.phaseAt(hour);
     if (next !== phase) setPhase(next);
     if (DEBUG) syncDaylightDebug(hour);
-    if (!cloudPlaying()) critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
-    if (!gameMode && !cloudPlaying()) updateClouds();
+    if (!cloudPlaying() && !architectCave?.active) critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
+    if (!gameMode && !cloudPlaying() && !architectCave?.active) updateClouds();
     updateGameRing(dt, elapsed);
     solids.sync(); totemSolids.sync(); totemFrame++;
     if (gameMode) updateRageThrowMap();
@@ -8292,12 +8299,15 @@
     if (!cloudPlaying()) timechainIsland.gate.view(dt);
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
-    if (!cloudHopper?.active && !architectCave?.active) islandGuide.update(dt, elapsed);
-    if (architectCave) { architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.renderFeeds : null; }
+    if (!cloudHopper?.active && !architectCave?.active && !architectCave?.arriving) islandGuide.update(dt, elapsed);
+    if (architectCave) {
+      architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.renderFeeds : null;
+      ARCHITECT_OPTS.viewRoots = architectCave.viewRoots;
+    }
     shareDrivenPose();
-    timechainIsland.site.view(camera.position);
+    if (!architectCave?.active) timechainIsland.site.view(camera.position);
     const firstPerson = clankerPlay.active ? clankerPlay.firstPerson : pilot.closeMix > 0.8 || pilot.mode === "eye-level";
-    if (repoIsland && !cloudPlaying()) repoIsland.afterCamera(camera, firstPerson);
+    if (repoIsland && !cloudPlaying() && !architectCave?.active) repoIsland.afterCamera(camera, firstPerson);
     updateCombatTotemHover();
     for (let i = 0; i < signDetails.length; i++) {
       const sign = signDetails[i], dx = camera.position.x - sign.x, dy = camera.position.y - sign.y, dz = camera.position.z - sign.z;
@@ -11002,7 +11012,7 @@
     }
     if (BL.controls.matches(e, "escape") && islandGuide.escape()) { e.preventDefault(); return; }
     // While Tess's tour holds the view, Enter advances it and movement ends it; other island keys, including T, wait.
-    if (islandGuide.holding) return;
+    if (islandGuide.holding || architectCave?.arriving) return;
     if (BL.controls.matches(e, "escape") && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
     if (BL.controls.matches(e, "escape")) {
       if (!e.repeat) { if (clankerPlay.active) clankerPlay.escape(); else pilot.escape(); }
@@ -12370,7 +12380,7 @@
           viewInside: viewInsideMatrix
         },
         pilot,
-        renderOpts: RENDER_OPTS,
+        get renderOpts() { return architectCave?.active ? ARCHITECT_OPTS : RENDER_OPTS; },
         lamps,
         lighting: LIGHTING_DEBUG,
         fireSeats,
@@ -12776,7 +12786,9 @@
     voiceZone: "none",
     micKey: true,
     get cabinetMenu() { return cloudHopper && cloudHopper.phase === "intro"; },
-    id: "hub", enter, enterSteps, update, overlay, onDonation, previewDonation, onKey, renderOpts: RENDER_OPTS, stay, leave, stats, liveGeometry, cachedGeometry, islandGeometry, libraryNook: LIBRARY,
+    id: "hub", enter, enterSteps, update, overlay, onDonation, previewDonation, onKey,
+    get renderOpts() { return architectCave?.active ? ARCHITECT_OPTS : RENDER_OPTS; },
+    stay, leave, stats, liveGeometry, cachedGeometry, islandGeometry, libraryNook: LIBRARY,
     get architect() { return architectCave; },
     get retained() { return heldHub; }, get elapsed() { return now; },
     get retainedRoot() { return heldHub ? root : null; },

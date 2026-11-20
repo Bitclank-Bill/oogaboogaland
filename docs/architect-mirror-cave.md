@@ -10,25 +10,57 @@ circular chamber with black walls and a stark white ceiling, 608 small framed mo
 polished floor and a sculpted black swivel chair. A reflecting mirror behind the arrival matches
 the island cave's
 five-metre-wide, three-metre-high visible opening. Walking through its glass
-returns the same Ooga outside the island mirror. The mirror and its top frame
-follow the circular wall in 32 strips, meeting the jambs and wall above without
-the former flat lintel or soffit. The return threshold follows the curved glass
+returns the same Ooga outside the island mirror. The mirror and its complete black frame
+follow the circular wall, meeting the jambs and wall above without the former
+flat lintel or soffit. The glass retains its 32 strips behind the recessed frame. The return threshold follows the curved glass
 at the center and sides. One tangent-plane reflection capture projects onto the
 curved mesh; this is a bounded approximation, not a separate capture per strip
 or a full simulation of curved-mirror optics.
+For the curved pane, the capture faces through the tangent plane, and its crop
+comes from the portion of glass clipped to the player's view. Reflected rays
+may extend beyond the player's original frustum at close oblique angles, so
+their bounds must not be cut back to that frustum. Sampling retains the actual
+glass positions; flipping those positions exposed a dark reflection of the
+nearby surround. The physical glass, frame and traversal stay curved, with no
+additional reflection captures or textures and the same tier resolution caps.
+Focused Chrome rendering checks covered both reported oblique camera angles at
+Low, Medium and High, plus the opposite side at High. Comparing frozen views
+against the original crop reproduced the edge streaks and confirmed their
+removal without the dark surround strip. The console was clean; screenshots
+and the report are in `untracked/architect-mirror-edge-v2/`. This is scoped visual
+coverage, not a full-suite result. Build and edited-JavaScript syntax checks pass.
 Crossing rotates the body and the complete camera pose between the doorway frames,
 preserving look direction, pitch, zoom and view mode in both directions. Backing
-through arrives facing the mirror and continues backward away from it. Held
-movement is not reset. The shared pilot also restores still-held WASD/arrow keys
+through arrives facing the mirror and continues backward away from it. Physical
+crossings start at the destination glass and animate the original walking gait
+to the existing landing point over roughly a second, easing into and out of the
+walk. Movement and interactions wait until that walk finishes; held movement is
+not reset and resumes on the next controllable frame. View direction and mode
+stay intact; the room keeps the third-person camera inside its wall while the
+body emerges. Losing the actor, a relocation or scene teardown cancels the walk
+and releases its input ownership. Explicit debug relocations remain immediate.
+This arrival animation has build/syntax validation; in-room acceptance is pending.
+The shared pilot also restores still-held WASD/arrow keys
 and sprint on its first controllable frame after a carried land arrival; keys
 released during loading, blur or Tab cancellation are not replayed.
-The same 0.05-metre margin separates the TV rows, floor and ceiling. Four rows
-fit the mirror's three-metre height; eight more continue above it. Both monitor
+The nominal casing gaps are 0.025 metres. Visible image-to-image spacing also
+includes two facing bezels. The floor and ceiling each get one extra bezel's
+height so their image-to-boundary margins match that combined spacing (about
+0.114 metres). Ceiling height follows the grid (about 9.114 metres). Four rows
+span the mirror opening; eight more continue above it. Both monitor
 width and height are halved, preserving the earlier widescreen proportions. Light strips
 at the ceiling and floor are removed. The circular shell has eight subdivisions
 per monitor column (416 around the room), and each screen, casing and glass face
 curves across eight strips. The four columns above the mirror follow the circle
 too; the face-camera-only infill uses the same curved mounts.
+The black mirror border shares the TV bezel color. Its bottom and top outer edges
+match the first and fourth TV rows (about 0.069 and 3.044 metres above the floor); its left
+and right outer edges match the four columns above it at the TV casing's front
+radius. Frame thickness follows the TVs' bezel dimensions. A bottom rail and
+closed curved side/top sections join into a dark surround, sealing the original
+opening behind the frame without reflective slivers. The five-by-three-metre
+glass and walk-through threshold remain intact. These spacing/frame updates have
+build/syntax validation; final visual alignment still needs in-room acceptance.
 
 The pale floor has finer, darker grout and one softened planar reflection using
 the hangar's existing glossy-reflector path, with lower strength (0.3). It reflects
@@ -40,6 +72,10 @@ sheet: the doorway tolerance could admit the backing floor only 14 mm below it
 and obscure parts of the reflection. Reflection strength and floor color are unchanged.
 TV glass uses the existing view-dependent grazing highlights and light glints,
 not per-screen scene captures. Two shared glass/casing shapes serve all monitors.
+The housings are 0.10 local units deep instead of 0.32, with near-black casings
+and black bezels. Mounts and glass move closer to the wall together (about 7 cm
+of total projection instead of 24 cm), preserving cylindrical alignment, screen
+sizes, grid margins and feed-only mirror infill.
 The Canvas 2D fallback retains the pale floor without the reflection overlay.
 A brief black fade softens the crossing. Startup and scene-loading holds are plain
 black, and unready TV feeds have a black placeholder without loading labels. The old glyph room remains retired;
@@ -52,13 +88,40 @@ live feeds continue through their existing owners. It creates no new backend,
 subscription, scene retention override or independently simulated crew. The
 main hub's existing release/retention policy still applies when leaving it.
 
+The room supplies explicit render roots for its fixtures and occupants without
+reparenting them. Main views and room reflections exclude outdoor geometry, sky
+and sea; its fixed indoor lighting disables outdoor sun, point lights and shadow
+passes. The apparent rectangular floor-reflection clipping was reproduced even
+with the reflection hidden: outdoor shadow-map lighting caused those patches.
+The isolated lighting removes them while retaining the glossy floor reflection.
+
+Only a scheduled island security-camera capture collects and uploads the outdoor
+graph. Capture-only instances stay outside the room's draw range even when they
+share geometry with an occupant. Separate observer graphs retain their existing
+capture budgets. Between captures, outdoor transforms are not traversed by the
+renderer. Outdoor wildlife, clouds, lake/weather effects and distant view-detail
+tracking pause inside; shared gameplay, presence and feed data continue. Geometry
+needed for camera views and returning outside remains retained; this does not
+claim that all outdoor memory is unloaded. Normal outdoor rendering resumes on
+exit. [Issue #838](https://github.com/OogaBoogaX/oogaboogaland/issues/838) proposes
+making this isolation standard and auditing other self-contained interiors.
+
 Walking and airborne collision keep the Ooga within the walls and below the
 ceiling. The chair has rounded black leather cushions, three padded back panels
 with recessed seams, a gently reclined shell, metal back and arm supports, rounded
-armrests and an under-seat adjustment lever. Front and rear brackets join each
-armrest support to the seat shell, with a continuous rail attached beneath each
-pad. Its pedestal has five tapered spokes
-and paired rubber caster wheels with metal hubs. The seat, back and armrests rotate
+armrests and an under-seat adjustment lever. Each arm support is one capped,
+rounded tube entering the seat shell at both ends, with its top run embedded in
+the pad. Shared cross-section rings continue through bends rather than joining
+separate square-ended beams. The back stays and five tapered pedestal spokes use
+the same construction; spoke tips overlap the caster forks. Rubber wheels retain
+their dark finish.
+
+The frame, pedestal, forks and wheel hubs use chrome shading with moving bright
+ceiling bands, dark wall reflections and sharp glints. This is an inexpensive
+analytic approximation of the room's light/dark surfaces, not a live capture of
+objects or TV content. It adds no reflection targets or passes. Canvas 2D uses
+the bright silver base color. The latest chair/TV pass has build/syntax checks;
+visual acceptance of the joints and chrome finish remains pending. The seat, back and armrests rotate
 together over the fixed base; the seat height stays 0.72 m and the back collision
 extends to the new shell. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). First person and combat looking
@@ -71,12 +134,24 @@ Sitting places a pen slightly higher through the center of the Ooga’s existing
 right fist, clear of the thumb and exposing more of its barrel. Third person
 keeps the default seated arm pose. First person solves the rigid arm's shoulder
 arc against the actual camera eye and field of view, aiming the fist into the
-lower view (75% down from its center). The elbow bend, wrist, fist and shoulder
-position stay unchanged. Shoulder rotation stops at 90 degrees forward;
-looking farther up lets the fist leave the view. Looking down returns it to
-the original seated rest and never lowers it further. The solve uses the
-character's own hand/arm geometry and blends with the first-person camera
-transition. Nothing is screen-anchored.
+lower view (75% down from its center). The shoulder levels its yaw/roll during
+first-person entry, then lifts only in pitch, keeping the original elbow bend,
+wrist and fist orientation within that rigid arm. As it lifts, the whole arm
+slides toward the body center without swiveling, using the actual viewport aspect
+and field of view to aim the fist toward 74% of the half-screen width. The shift
+is bounded to 75% of that character's shoulder offset and eases in with the lift;
+the shoulder's height and forward position stay unchanged. No offsets accumulate
+across frames or repeated updates. Third-person zoom-out, standing and removal
+restore the normal arm placement.
+
+Shoulder rotation still stops at 90 degrees forward; looking farther up can let
+the fist leave the vertical view. Looking down returns it to the original seated
+rest and never lowers it further. The solve uses the character's own geometry
+and blends with the first-person camera transition. Nothing is screen-anchored.
+The revised pose has build/syntax validation; widescreen framing and appearance
+still need visual acceptance. Existing pen regressions now cover inward movement,
+level yaw/roll, rigid grip, no accumulating offsets and third-person restoration;
+these revised assertions have not been run.
 The character’s default fist, including its thumb, stays unchanged; the pen
 sticks out of that fist. Clicking depresses the pen button and springs it back
 over 170 ms. The same hand appears in the room, reflections and face feed.
@@ -165,7 +240,24 @@ not add cameras, textures, readbacks or per-frame geometry allocations.
 Adding catalog entries does not allocate additional screen targets. There are no pixel reads, image encoding or additional
 WebGL contexts.
 
-- High/medium: 256 x 144 pixels. Low: 192 x 108 pixels.
+- Adaptive area-feed levels: lightweight 192 x 108, furnished 256 x 144, and
+  close-detail 512 x 288. Low caps at lightweight, Medium at furnished, High
+  permits close-detail. The portrait stays at its original 256 x 144 (192 x 108
+  on Low), including its clean recursion seed.
+- Detail follows measured frame intervals, not a hardware-name guess. It starts
+  furnished, sheds one level after 500 ms above a smoothed 24 ms/frame (200 ms
+  above 40 ms/frame), then waits six seconds before accumulating upgrade time.
+  Each upward step needs eight continuous seconds below 18.5 ms/frame. This
+  measures frame cadence, not GPU time or available VRAM.
+- Visible 3×3 mosaics receive detail first, then 2×2s, then singles. Within each
+  group the largest projected picture leads; mosaic span counts toward picture
+  size, rather than treating its tiles as independent small images. Distant
+  pictures remain lightweight. The adaptive budget admits eight detail steps at
+  the middle level and 24 at the highest: furnished costs one, close-detail two.
+  This promotes selected feeds instead of upgrading the whole wall together.
+  Upgrades also require two seconds of stable admission;
+  downgrades are immediate. Targets resize only as their next capture renders,
+  preserving the existing image until replacement. At most one resizes a frame.
 - At most one visible or explicitly prewarming feed per displayed frame, rotating fairly between due cameras.
   Total capture work is also limited to about 30 captures/second, dropping to 15
   when average frame time exceeds 24 ms, then 8 or less above 40 ms. This is based
@@ -185,12 +277,19 @@ WebGL contexts.
 - Each feed has its own view, frustum and short far plane. The current world is
   updated once. Captures reuse its instance buffers and omit new shadow maps,
   postprocessing, recursive screens, mirrors, portal pictures and light beams.
-- Small details are omitted, preserving character parts and the pile explicitly.
+- Island capture size filtering admits successively smaller objects at the
+  furnished/close levels (radius cutoffs 1.25, 0.65 and 0.25 metres), preserving
+  character parts and the pile explicitly. Shadows, recursive views and heavy
+  effects remain excluded at every level.
   Existing foliage silhouettes remain; the pile uses its distant banana shell.
 - Canvas 2D draws the room with honestly labelled offline screens.
 
-Thirty-two high-tier area targets use 4.5 MiB before depth attachments; the shared
-face camera adds two buffers totaling 0.28 MiB as it starts capturing. Source world
+Thirty-two area color targets use 2.53 MiB at lightweight, 4.5 MiB at furnished,
+and at most 18 MiB in retained close-detail targets, before depth attachments.
+The active detail budget admits at most twelve close-detail feeds at once; old
+off-screen targets keep their images until their next scheduled capture resizes
+them. The shared face camera adds two
+buffers totaling 0.28 MiB as it starts capturing. Source world
 geometry and simulation dominate the memory budget; screen count does not
 multiply the number of cameras or textures.
 
@@ -271,6 +370,19 @@ need geometry budgets. DSB Land, its buildings, Ember Den and game interiors rem
 future work; each needs a camera representation and an available-state check.
 The goal is eventual coverage of every eligible area, respecting room access.
 
+The adaptive furnishing layers add arcade control decks, coin slots, mezzanine
+rails and pool-table surrounds; Hangar gangways, stairs, trestles, engine intake
+faces and workbench fittings; and Sphere-room seat frames, treadmill rows, bike
+consoles/pedals, museum exhibit grilles, temple steps/beams, speaker faces and
+projector fittings. These are static camera representations, not synchronized
+game or machine activity. Layers share the source's ownership and are hidden
+before collection when their tier is not selected. Bifrost, Factory, and the
+other public observers share richer generic visitor faces/hands/feet above the
+lightweight level; these do not claim full character likenesses. No new network
+subscriptions, player limits, private-room access or media sessions are added.
+Debug feeds expose `adaptiveLevel`, `detail`, `captureWidth`, `captureHeight`,
+`frameMs`, `draws` and `triangles` for device acceptance work.
+
 ### Geometry observations
 
 Initial local browser captures, at noon with the simulator and network disabled,
@@ -312,14 +424,26 @@ remains before merging.
 `architect-audio.js` follows Bifrost's layered, spatial, room-responsive approach
 and pooled lifecycle, with an original palette. The close-pitched electrical
 beats are replaced by a quieter 49/98 Hz foundation and soft 147/196 Hz rack
-harmonics, filtered ventilation and a sparse, decaying glass resonance every
-18–36 seconds. Slow level and filter motion gives the bed some movement without
-a rhythmic heartbeat. The rack remains a quiet spatial anchor; sitting reduces
-it. Face view thins the foundation and opens the air slightly. Received voices or
-local speaking lower the ambient layers to 55%, leaving the pen and crossing cues
-clear. This reuses no Bifrost motif, world chord, heartbeat or recording.
+harmonics and filtered ventilation. Area/face screen changes no longer alter the
+foundation, air level or filter brightness, removing the face-view swell.
+Slow level and filter motion gives the bed some movement without a rhythmic
+heartbeat. The rack remains a quiet spatial anchor; sitting reduces it.
 
-Seven oscillators and one looping noise source are built once after browser audio
+Looking up smoothly introduces a 73.5/245 Hz ceiling harmony while reducing the
+foundation by up to 35%. Looking down fades that layer away. Holding a gaze on a
+new wall sector for 0.7 seconds answers with a short glass resonance, spatially
+panned from that sector, with eight pitches around the room. The gaze intersects
+the actual cylindrical wall and ignores floor/ceiling views. A four-second
+cooldown and the held-gaze requirement prevent rapid head turns or boundary
+jitter from retriggering continuously. A more audible background resonance plays
+every 8–16 seconds; interactive tones reset that timer so cues do not pile up.
+Each resonance has a quieter inharmonic partial and a finite decay.
+
+Received voices or local speaking lower all ambient and interactive layers to
+55%, leaving the pen and crossing cues clear. This follows Bifrost's gaze-responsive
+layering without reusing its motif, world chord, heartbeat or recordings.
+
+Ten oscillators and one looping noise source are built once after browser audio
 activation. Slow controls update at 10 Hz, with no per-frame or per-cue node
 allocation. The pen’s two-part click retains its separate pooled noise bands for
 the plastic body and crisp mechanism, with a short spring resonance. The down-click
@@ -344,79 +468,64 @@ clicks; footsteps retain their own channel. Weather is disabled inside, and the
 camera pictures have no soundtrack or duplicated outdoor voice. Ambient sound
 fades out and its context suspends on leaving or hiding the tab; returning reuses
 it, and hub disposal closes it and removes listeners. Headphone/laptop listening,
-voice intelligibility and long-session balance remain maintainer acceptance work.
+voice intelligibility and long-session balance remain maintainer acceptance work. The revised gaze-responsive
+palette has build/syntax validation; its audible balance still needs in-room
+listening acceptance.
 
 ## Validation and preview
 
-The authorized checks are `npm run build`, syntax checks on every changed JS/MJS
-file, and the requested in-game browser screenshots. Browser interaction covered
-live screens, walking into and out of the mirror, returning to the same room,
-wall collision and a jump, with a clean console on the earlier 152-panel page.
+The adaptive camera-detail pass has build/syntax validation and a separately
+authorized focused browser check: **11/11 checks passed**, with a clean console.
+The renderer was exercised with controlled frame intervals to verify promotion,
+load-driven reduction, cooldown/recovery, the Low quality ceiling and off-screen
+capture suspension, 3×3-before-2×2-before-single detail admission, and redistribution
+to smaller pictures when the large mosaics leave view. Eleven source models restored their baseline visibility and
+released their owned meshes; nine gained optional furnishing geometry. The Arcade
+capture ranged from 1,056 triangles at 192×108 to 2,448 at 512×288. This checks the
+controller and rendering paths, not actual device FPS or multiplayer capacity.
+Evidence is in `untracked/architect-feed-detail/` (`report.json` and the detailed
+and lightweight Arcade screenshots).
 
-The existing mirror regression checks retain shot/melee, unbreakable-surface and
-scene-round-trip assertions, update the gate expectation, and add real-key
-entry/return checks with idle capture assertions. The automated suite has not
-been run: AGENTS.md defaults to waiting unless fast/full tests are requested.
-Additional regression assertions cover shared Factory/Arcade/Hangar source ownership, 32 stable texture slots, one-at-a-time
-replacement across the catalog, paused rotation outside, pending replacements,
-isolated observer geometry, stale-zone pose rejection, observer disposal and
-exclusion of the Conference Room. Manual browser review covered the expanded
-wall, rotation and framing; these new automated assertions have not been run either.
-The chair was manually jumped onto, sat in, swiveled and stood from, followed
-by a successful return through the mirror. Build and syntax checks cover the
-new wall/ceiling, equal margins and seating; the updated chair lifecycle and
-32-slot automated regressions have not been run.
-The initial 304-panel mosaic layout was viewed and captured. Review caught its
-incorrectly retained height; the final 608-panel layout halves both dimensions
-and fills twelve rows. The first face prewarm exposed a missing camera up vector,
-now initialized explicitly. The browser connection became unavailable before the
-corrected face cycle or final proportions could be checked; these still need
-visual acceptance and a fresh screenshot. Added, unrun regressions cover mosaic
-coverage and adjacency, shared textures, face prewarming, room geometry in the face background and both
-sweep directions. The background update, seated pen/click controls and equipment parking also need
-browser acceptance. Added, unrun checks cover ownership hiding, pen cleanup,
-persistent seated views and automatic transitions resuming after standing.
-Additional unrun assertions cover the original fist layout, body-anchored arm in
-both views, stationary third-person clicking, button travel, unchanged fist geometry,
-middle-favored global wave and feed-only mirror infill. The
-pen framing and revised down/up click sound still need visual/listening acceptance.
-Added, unrun regression assertions cover 3×3-to-single and single-to-3×3 waves,
-ordered tile arrivals, keeping screens outside the selected patch unchanged,
-retaining old tiles while a destination is pending, shared
-feed retention and adjacency during and after waves. Fresh visual review of regrouping
-and last-frame retention remains pending because the Chrome connection is unavailable.
-The sculpted chair, curved wall/TVs, screen-glass highlights and live floor reflection
-have build/syntax validation only; screenshots and reflection-performance acceptance
-remain pending on the same unavailable Chrome connection.
-New, unrun assertions cover the higher pen, unchanged elbow/wrist grip, fixed
-shoulder pivot and bounded lift/rest across first-person pitch. In-game framing
-acceptance remains pending.
-The revised shoulder solve uses eye-to-hand projection rather than the
-shoulder-to-hand elevation; the updated, unrun regression checks the fist's
-position in the first-person frame as well as the movement limits.
-The faster global wave, tighter row timing and per-tile flashes pass build/syntax
-checks; updated regression assertions remain unrun and visual acceptance is pending.
-Curved mirror geometry, its matching frame and curved crossing threshold pass
-build/syntax checks. Added geometry and center/side crossing checks remain unrun;
-reflection appearance and sealed joins need visual acceptance.
-Reflected TV flashes pass build/syntax checks. Added, unrun pixel checks cover TV
-retention and consecutive flash/release frames at all three quality tiers;
-in-game reflection review remains pending.
-The floor-clipping correction passes build/syntax checks. New, unrun pixel
-checks compare an exposed reflection with its backing floor present and with
-a different triangle fan, from normal and near-floor views at high/low quality.
-The reported diagonal patches still need visual confirmation in the original view.
-The white ceiling, attached armrest brackets and direction-preserving mirror
-crossings also need in-game review. New, unrun assertions cover backing through
-both mirrors in first and third person, continued held movement after arrival,
-and recovery of diagonal movement/sprint without replaying released or Tab-cancelled keys.
-New, unrun audio regressions cover lazy echo creation, bounded filtered taps,
-no feedback, exit gating, reuse and disposal without disconnecting dry playback.
-The revised ambience and live conversation echo still need listening acceptance.
-Black startup/loading holds and patch-local regrouping have build/syntax checks;
-the updated black-hold and patch-isolation regressions remain unrun.
-Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
-listening acceptance remain before review readiness. Keep the PR draft.
+The browser-free unit lane passed **805/805 checks** after initializing the
+extracted mirror/collection fixtures with the renderer's ordinary capture/scope
+flags and intentionally re-baselining the fragment shader for `uCanvasFeed` and
+`uChrome` (`edd7c63c…`). Vertex and shadow shader hashes remain unchanged.
+
+The maintainer authorized focused (`fast`) browser checks. The latest room-isolation
+and mirror-quality run passed **5/5 checks**, and the focused floor reflection run
+passed **2/2 checks**, both with a clean console. Build and syntax checks passed. It checks
+that room-only frames leave outdoor transforms untouched, skip outdoor instances
+and shadow passes, and use indoor lighting; a scheduled live island feed alone
+collects outside; shared indoor/outdoor geometry stays separated; leaving restores
+normal daylight rendering. The existing mirror quality checks also pass.
+
+The reported view was reproduced in isolated Chrome. Disabling the glossy layer
+left the rectangular patches visible, identifying outdoor shadows as their cause.
+After isolation, a fresh screenshot shows a continuous floor reflection without
+those patches. An isolated room frame had about **340 active render records versus
+1,180 before**, with zero shadow passes. These are workload counts from one desktop
+view, not FPS, GPU timings or a mobile benchmark.
+
+An earlier broader mirror run passed **16/19 checks**. The mosaic assembly and
+seated pen body-anchored assertions failed. The mosaic failure remains unresolved;
+the pen assertion has since been updated for the requested inward movement and
+third-person restoration, but has not been rerun. The third failure, the
+synthetic floor pixel fixture, is now corrected and passing after explicit
+maintainer approval to continue beyond its STOP. Its 0.3 reflection strength on
+black produced a maximum red value of 37 at the elevated view, below the fixture's
+40 signal cutoff. The fixture now uses full reflection strength to expose clipping
+clearly and a reflection-disabled control to exclude directly visible ceiling
+pixels. Production reflection strength, pixel cutoff, coverage minimum and
+backing/seam tolerances are unchanged. The full mirror suite is not claimed green.
+
+Earlier manual review covered entry/return, wall collision, live camera slots,
+chair jumping, sitting, swiveling and standing. Final mosaic split/assembly and
+no-blank switching, pen framing and stationary clicking, seated combat/carry zoom,
+backward crossings and held movement, face-background recursion, and reflected
+flashes still need complete acceptance against the final layout. Build and syntax
+checks do not replace that acceptance. The standalone audio checks and the full
+suite have not been run. Listening, multiplayer, context-loss recovery and
+lower-tier/mobile performance remain pending. Keep the PR draft; nothing deployed.
 
 Local source preview after building:
 `src/index.html?debug=1&view=architect&character=w-s-bitcoin&nosim=1&net=0&welcome=0&pos=0&hour=12&firstperson=1`

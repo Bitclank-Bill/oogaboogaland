@@ -4,7 +4,7 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { createNode, addChild } = BL.scene;
-  const { box, merge, moved, turnedY, beam, lathe } = BL.models;
+  const { box, merge, moved, turnedX, turnedY, beam, lathe } = BL.models;
   const create = (renderer, zone) => {
     if (!["factory.hall", "arcade.hall", "factory.hangar"].includes(zone)) throw new Error("Unknown public workshop observer");
     const root = createNode({ cameraHidden: true }), meshes = new Set(), wrappers = new Map();
@@ -21,6 +21,9 @@
     };
     const parts = [], put = (w, h, d, x, y, z, color, emissive = 0.25) =>
       parts.push(box({ w, h, d, color, emissive, offset: { x, y, z } }));
+    const details = [], fine = [];
+    const extra = (list, w, h, d, x, y, z, color, emissive = 0.25) =>
+      list.push(box({ w, h, d, color, emissive, offset: { x, y, z } }));
     const shell = (x0, x1, z0, z1, height) => {
       put(x1 - x0, 0.2, z1 - z0, (x0 + x1) / 2, -0.1, (z0 + z1) / 2, "#65574b");
       for (const x of [x0, x1]) put(0.3, height, z1 - z0, x, height / 2, (z0 + z1) / 2, "#403b38");
@@ -49,9 +52,25 @@
           box({ w: 0.9, h: 0.65, d: 0.03, color: "#101b22", offset: { y: 1.2, z: A.CAB.d / 2 + 0.02 } }),
           box({ w: 1.15, h: 0.14, d: 0.1, color: c.trim, emissive: 0.65, offset: { y: 1.7, z: A.CAB.d / 2 } }));
         parts.push(moved(turnedY(cabinet, c.turn), c.x, c.y, c.z));
+        const controls = merge(box({ w: 1.12, h: 0.1, d: 0.3, color: "#29303b", offset: { y: 0.88, z: A.CAB.d / 2 + 0.1 } }),
+          box({ w: 0.06, h: 0.15, d: 0.06, color: "#242830", offset: { x: -0.3, y: 0.98, z: A.CAB.d / 2 + 0.1 } }),
+          box({ w: 0.13, h: 0.035, d: 0.13, color: c.trim, offset: { x: 0.3, y: 0.96, z: A.CAB.d / 2 + 0.1 } }));
+        details.push(moved(turnedY(controls, c.turn), c.x, c.y, c.z));
+        fine.push(moved(turnedY(box({ w: 0.22, h: 0.28, d: 0.035, color: "#11151b", offset: { y: 0.45, z: A.CAB.d / 2 + 0.02 } }), c.turn), c.x, c.y, c.z));
+      }
+      // Mezzanine safety rail, leaving both authored staircase mouths open.
+      for (let x = -H.halfW + 0.6; x < H.halfW; x += 1.4) {
+        if (Math.abs(Math.abs(x) - 16.2) < M.stairW / 2 + 0.1) continue;
+        extra(details, 0.065, 0.9, 0.065, x, M.y + 0.45, M.z1, "#534535");
+        extra(details, 1.4, 0.09, 0.09, x, M.y + 0.92, M.z1, "#8a6946");
       }
       for (const p of L.pools) {
         put(3, 0.8, 1.7, p.x, 0.4, p.z, "#69472e"); put(2.8, 0.03, 1.5, p.x, 0.815, p.z, "#285943");
+        for (const s of [-1, 1]) {
+          extra(details, 3, 0.12, 0.12, p.x, 0.88, p.z + s * 0.79, "#473326");
+          extra(details, 0.12, 0.12, 1.5, p.x + s * 1.44, 0.88, p.z, "#473326");
+        }
+        for (const x of [-1.3, 0, 1.3]) for (const z of [-0.7, 0.7]) extra(fine, 0.14, 0.03, 0.14, p.x + x, 0.95, p.z + z, "#111617");
       }
       for (const p of L.hockeys) {
         put(2.6, 0.8, 1.4, p.x, 0.4, p.z, "#8b6845"); put(2.4, 0.03, 1.2, p.x, 0.815, p.z, "#9aaeb3");
@@ -83,10 +102,35 @@
       for (const z of [-10, -3, 4, 11]) {
         put(4, 0.9, 1.5, -13, 0.45, z, "#59616b");
         put(1.3, 0.8, 0.1, -13, 1.4, z - 0.4, "#31678b");
+        extra(details, 4.2, 0.09, 1.65, -13, 0.96, z, "#89919a");
+        for (let drawer = 0; drawer < 3; drawer++) {
+          extra(fine, 1.1, 0.2, 0.03, -14.2 + drawer * 1.2, 0.65, z + 0.77, "#394554");
+          extra(fine, 0.36, 0.035, 0.045, -14.2 + drawer * 1.2, 0.68, z + 0.8, "#aab4be");
+        }
+      }
+      // Authored gangway alongside the Jet; no private rooms or engine state.
+      extra(details, 3.05, 0.18, 16.4, 10.875, 4.91, -12.8, "#626d79");
+      for (const z of [-21, -18, -15, -12, -9, -6, -4.6]) {
+        extra(details, 0.07, 1.05, 0.07, 9.35, 5.525, z, "#a0a9b0");
+        extra(fine, 0.15, 4.8, 0.15, 9.5, 2.4, z, "#495462");
+      }
+      extra(details, 0.09, 0.09, 16.4, 9.35, 6.05, -12.8, "#a0a9b0");
+      for (let step = 0; step < 14; step++) extra(details, 2, 0.11, 8 / 14, 10.4, 5 * (step + 1) / 14, 3.4 - 8 * (step + 0.5) / 14, "#626d79");
+      for (const x of [12.6, 17.4]) details.push(moved(turnedX(lathe({ profile: [[0, 0], [0.7, 0], [0.7, 0.04], [0, 0.04]],
+        segments: 16, color: "#1c2530" }), Math.PI / 2), x, 3, -7.52));
+      for (const x of [8, 22]) {
+        details.push(beam(x - 0.8, 0.1, -8.9, x, 2.9, -8.9, 0.18, "#ba9244"), beam(x + 0.8, 0.1, -8.9, x, 2.9, -8.9, 0.18, "#ba9244"));
       }
     }
     if (parts.length) add(merge(...parts));
     const visitors = BL.observatoryVisitors.create(add, zone);
+    const detailNode = details.length ? add(merge(...details)) : null, fineNode = fine.length ? add(merge(...fine)) : null;
+    source.setDetail = level => {
+      if (detailNode) detailNode.visible = level > 0;
+      if (fineNode) fineNode.visible = level > 1;
+      visitors.setDetail(level);
+    };
+    source.setDetail(0);
     source.update = dt => visitors.update(dt);
     source.dispose = () => {
       visitors.dispose(); for (const g of meshes) renderer.releaseGeometry(g);

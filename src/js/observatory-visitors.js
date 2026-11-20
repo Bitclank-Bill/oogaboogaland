@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  let body = null;
+  let body = null, detailedBody = null;
   const create = (add, zone) => {
     if (!body) {
       const { box, merge } = BL.models;
@@ -14,10 +14,27 @@
           box({ w: 0.18, h: 0.46, d: 0.2, color: "#be9873", offset: { x: side * 0.39, y: 0.72 } }),
           box({ w: 0.2, h: 0.3, d: 0.27, color: "#be9873", offset: { x: side * 0.18, y: 0.15 } })])
       );
+      // A readable face, hands and feet without constructing full character rigs.
+      // These remain generic observers, not invented costumes or player actions.
+      detailedBody = merge(body,
+        box({ w: 0.12, h: 0.1, d: 0.12, color: "#c8a17e", offset: { y: 1.17, z: 0.28 } }),
+        ...[-1, 1].flatMap(side => [
+          box({ w: 0.075, h: 0.07, d: 0.025, color: "#251e19", offset: { x: side * 0.13, y: 1.3, z: 0.26 } }),
+          box({ w: 0.22, h: 0.18, d: 0.23, color: "#be9873", offset: { x: side * 0.39, y: 0.48, z: 0.02 } }),
+          box({ w: 0.24, h: 0.1, d: 0.34, color: "#765d48", offset: { x: side * 0.18, y: 0.05, z: 0.04 } })]));
     }
+    const detail = add(detailedBody); detail.visible = false;
     const actors = [];
     for (let i = 0; i < 32; i++) { const node = add(body); node.visible = false; actors.push({ node, id: null }); }
+    const plain = actors[0].node.geometry;
+    let detailed = false;
     return {
+      setDetail(level) {
+        const on = level > 0;
+        if (on === detailed) return;
+        detailed = on;
+        for (const actor of actors) actor.node.geometry = on ? detail.geometry : plain;
+      },
       update(step, visit = null) {
         let count = 0;
         for (const rec of BL.net.remotes.values()) {

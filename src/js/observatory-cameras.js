@@ -130,7 +130,7 @@
       const height = width * 9 / 16;
       let shape = panelShapes.get(shapeKey);
       if (!shape) { shape = bendRadius ? curvedSurface(3.08, 1.72, scaleX, 0.71, bendRadius) : feed.geometry; panelShapes.set(shapeKey, shape); }
-      g = { ...shape, imageSurface: { ...feed.geometry.imageSurface,
+      g = { ...shape, cameraFeedGrid: size, imageSurface: { ...feed.geometry.imageSurface,
         rect: [(-width / 2 - ((size - 1) / 2 - x) * pitchX) / scaleX,
           (-height / 2 - (y - (size - 1) / 2) * pitchY) / scaleY, width / scaleX, height / scaleY] } };
       feed.tiles.set(key, g); feed.surfaces.push(g); meshes.add(g); return g;

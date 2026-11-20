@@ -5221,6 +5221,7 @@ const characterChecks = async () => {
   let inView = true;
   const capture = new Function("boundsOf", "slotInFrustum", "sphereInFrustum", `${source.match(/const CULL_MARGIN = [^;]+;/)[0]}
     ${source.match(/const INSTANCE_FLOATS = [^;]+;/)[0]} const MIRROR_FRUSTUM = [];
+    let cameraFeedCapture = false, cameraFeedRoom = false;
     ${source.slice(start, end)} return { visible: captureInstanceVisible, margin: CULL_MARGIN, stride: INSTANCE_FLOATS };`)(BL.scene.boundsOf, () => inView, () => inView);
   let small = 0, failures = 0;
   const check = (geometry, expected) => {
@@ -17295,13 +17296,12 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const springBack = room.penButton.position.y === 0.19 && actor.parts.fingersR.geometry === originalHand;
     const pose = () => JSON.stringify([actor.parts.armR.position, actor.parts.armR.rotation, actor.parts.armR.quaternion,
       actor.parts.forearmR.position, actor.parts.forearmR.rotation, actor.parts.fingersR.position, actor.parts.fingersR.quaternion, room.pen.position]);
-    const seatedPose = pose();
+    const seatedPose = pose(), seatedArmX = actor.parts.armR.position.x;
     B.pilot.enterClose(); B.advance(0.8, 1 / 60);
     const firstPersonPen = room.pen.parent === actor.parts.fingersR && actor.parts.fingersR.geometry === originalHand
       && actor.parts.armR.geometry === originalArm && actor.parts.armR.cameraHidden === armHidden;
     B.pilot.hooks.onOrbit(0, 180); B.advance(0.3, 1 / 60);
-    const bodyAnchored = pose() === seatedPose;
-    const arm = actor.parts.armR, target = { ...B.camera.target }, pivot = JSON.stringify(arm.position);
+    const arm = actor.parts.armR, target = { ...B.camera.target }, pivotY = arm.position.y, pivotZ = arm.position.z;
     const rigid = () => JSON.stringify([actor.parts.forearmR?.rotation, actor.parts.forearmR?.quaternion,
       actor.parts.fingersR.rotation, actor.parts.fingersR.quaternion, room.pen.position]);
     const grip = rigid();
@@ -17312,7 +17312,12 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       B.camera.target.z = eye.z + Math.cos(yaw) * Math.cos(elevation);
       room.update(0); return arm.rotation.x;
     };
-    const low = aimPen(-1.4), level = aimPen(0), raised = aimPen(0.6), ceiling = aimPen(1.4);
+    const low = aimPen(-1.4), lowX = arm.position.x, level = aimPen(0), levelX = arm.position.x;
+    const raised = aimPen(0.6), raisedX = arm.position.x, ceiling = aimPen(1.4);
+    const lateral = lowX === seatedArmX && Math.abs(raisedX) < Math.abs(lowX)
+      && Math.abs(levelX) <= Math.abs(lowX) && Math.sign(raisedX) === Math.sign(lowX);
+    const steady = pose(); room.update(0); room.update(0);
+    const noDrift = pose() === steady;
     const cappedLift = level < low && raised <= level && Math.abs(raised - ceiling) < 1e-6
       && Math.abs(ceiling + Math.PI / 2) < 1e-6 && aimPen(-1.4) === low;
     const trackingPitch = aimPen(-0.6);
@@ -17325,9 +17330,12 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const screenY = (dy * Math.cos(-0.6) - forward * Math.sin(-0.6))
       / (forward * Math.cos(-0.6) + dy * Math.sin(-0.6)) / Math.tan(B.camera.fov / 2);
     const followsEye = trackingPitch < low && trackingPitch > ceiling && Math.abs(screenY + 0.75) < 0.03;
-    const rigidShoulder = rigid() === grip && JSON.stringify(arm.position) === pivot;
+    const rigidShoulder = rigid() === grip && arm.position.y === pivotY && arm.position.z === pivotZ
+      && arm.rotation.y === 0 && arm.rotation.z === 0;
     const higherPen = (!actor.modelled || room.pen.position.x < 0) && room.pen.position.z === 0;
     Object.assign(B.camera.target, target); room.update(0);
+    B.pilot.exitClose(); B.advance(0.8, 1 / 60);
+    const carryRestored = pose() === seatedPose;
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
@@ -17339,7 +17347,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
-    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, bodyAnchored, cappedLift, followsEye, rigidShoulder, higherPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
+    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, lateral, noDrift, carryRestored, cappedLift, followsEye, rigidShoulder, higherPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
   })()`);
   record("hub observatory: seated pen toggles persistent views, standing removes it and resumes automatic transitions",
     Object.values(manualScreens).every(Boolean), JSON.stringify(manualScreens));
@@ -17442,50 +17450,6 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: mirror captures TV images and each flash/release on consecutive frames at every quality tier",
     reflectedFlashes.every(r => r.screenRetained && r.tracks), JSON.stringify(reflectedFlashes));
-  const floorReflection = await b.evaluate(`(() => {
-    const B = __ooga, R = B.renderer, quality = R.quality, root = BL.scene.createNode(), floor = BL.architectCave.FLOOR;
-    const disc = center => {
-      const g = { verts: [center, 0, 0], faces: [], lines: [], castShadow: false };
-      for (let i = 0; i <= 48; i++) { const a = i * Math.PI / 24; g.verts.push(Math.sin(a) * 11, Math.cos(a) * 11, 0); }
-      for (let i = 1; i <= 48; i++) g.faces.push({ i: [0, i + 1, i], color: [0, 0, 0], emissive: 1 });
-      return g;
-    };
-    const backing = disc(0), fan = disc(0), shifted = disc(2);
-    for (const g of [fan, shifted]) { g.reflector = true; g.gloss = 0.3; }
-    const ceiling = { verts: [-30, -30, 0, 30, -30, 0, 30, 30, 0, -30, 30, 0],
-      faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false };
-    const ground = BL.scene.createNode({ geometry: backing, position: { x: 0, y: floor, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } });
-    const polish = BL.scene.createNode({ geometry: fan, position: { x: 0, y: floor + 0.014, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, reflectionRevision: 0 });
-    BL.scene.addChild(root, ground, polish, BL.scene.createNode({ geometry: ceiling, position: { x: 0, y: floor + 9, z: 0 }, rotation: { x: Math.PI / 2, y: 0, z: 0 } }));
-    const camera = BL.scene.createCamera({ far: 90 }), display = document.getElementById("scene"), sample = document.createElement("canvas");
-    sample.width = 48; sample.height = 32;
-    const pixels = sample.getContext("2d", { willReadFrequently: true }), rows = [];
-    const draw = (visible, geometry) => {
-      ground.visible = visible; polish.geometry = geometry; polish.reflectionRevision++;
-      R.render(root, camera, { clear: [0, 0, 0], bloomStrength: 0 });
-      pixels.drawImage(display, 0, 0, 48, 32); return pixels.getImageData(0, 0, 48, 32).data.slice();
-    };
-    try {
-      for (const tier of ["high", "low"]) for (const height of [4.5, 0.3]) {
-        R.setQuality(tier);
-        Object.assign(camera.position, { x: -0.7, y: floor + height, z: 5.5 });
-        Object.assign(camera.target, { x: 1.7, y: floor, z: 2 });
-        const reference = draw(false, fan), backed = draw(true, fan), retiled = draw(true, shifted);
-        let lit = 0, backingLeaks = 0, seams = 0;
-        for (let i = 0; i < reference.length; i += 4) if (reference[i] > 40) {
-          lit++; if (Math.abs(reference[i] - backed[i]) > 4) backingLeaks++;
-          if (Math.abs(backed[i] - retiled[i]) > 4) seams++;
-        }
-        rows.push({ tier, height, lit, backingLeaks, seams });
-      }
-      return rows;
-    } finally {
-      for (const g of [backing, fan, shifted, ceiling]) R.releaseGeometry(g);
-      R.setQuality(quality); R.render(BL.scenes.hub.root, B.camera, B.renderOpts);
-    }
-  })()`);
-  record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
-    floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
   const heldMovement = await b.evaluate(`(() => {
     const key = (type, key, code, repeat = false) => window.dispatchEvent(new KeyboardEvent(type, { key, code, repeat, bubbles: true }));
     key("keydown", "w", "KeyW"); key("keydown", "d", "KeyD"); key("keydown", "Shift", "ShiftLeft");
@@ -17502,6 +17466,118 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("land arrival input: new controls recover held diagonal movement and sprint, but not released or Tab-cancelled keys",
     Object.values(heldMovement).every(Boolean), JSON.stringify(heldMovement));
+} };
+const hubObservatoryIsolation = { name: "hub observatory isolation", why: "regression: outdoor shadows made the enclosed floor look clipped and outdoor graphs were collected every room frame", run: async (b) => {
+  const isolation = await b.evaluate(`(async () => {
+    const B = __ooga, R = B.renderer, hub = BL.scenes.hub, room = hub.architect;
+    if (!B.pilot.player) B.pilot.possess(B.cavemen.get("portlandhodl"));
+    room.travel(true); B.advance(0.5, 1 / 60);
+    const geometry = BL.models.box({ w: 0.2, h: 0.2, d: 0.2, color: "#ff00ff" });
+    const inside = BL.scene.createNode({ geometry, position: { x: 2, y: -47, z: 4 } });
+    const outside = BL.scene.createNode({ geometry, position: { x: 25, y: 3, z: 0 } });
+    BL.scene.addChild(hub.root, inside, outside); room.update(0);
+    BL.scene.updateWorld(outside, hub.root.world);
+    const opts = { ...B.renderOpts, cameraFeeds: null }, oldWorld = outside.world[12];
+    outside.position.x++;
+    const passes = R.stats.shadowPassCount;
+    R.render(hub.root, B.camera, opts);
+    const base = R.stats, notTracked = outside.world[12] === oldWorld;
+    const localRoots = opts.viewRoots.includes(room.group) && opts.viewRoots.includes(B.pilot.player.root)
+      && opts.viewRoots.includes(inside) && !opts.viewRoots.includes(outside);
+    const noOutside = base.captureOnlyInstances === 0, noShadows = base.shadowPassCount === passes && base.shadowDraws === 0;
+    const indoorLight = opts.directStrength === 0 && opts.shadowStrength === 0 && opts.ambientFloor === 0.75 && opts.lightCount === 0;
+    const feed = room.feeds.find(f => !f.channel.build), before = feed.captures;
+    const captureOpts = { ...opts, cameraFeeds: [feed] }; feed.forceCapture = true;
+    let captured = false, separate = false, capturedCount = 0;
+    // Automatic frames must use this same feed selection; otherwise they can
+    // consume the shared capture interval just before every manual sample.
+    const render = R.render;
+    R.render = (root, camera, options, rigs) => {
+      const result = render(root, camera, root === hub.root ? captureOpts : options, rigs);
+      const now = R.stats;
+      if (now.captureOnlyInstances > 0) {
+        captured = feed.captures > before && outside.world[12] === outside.position.x;
+        separate = now.viewInstances === base.viewInstances;
+        capturedCount = now.captureOnlyInstances;
+      }
+      return result;
+    };
+    try {
+      for (let i = 0; i < 40 && !captured; i++) {
+        await new Promise(resolve => setTimeout(resolve, 30));
+        R.render(hub.root, B.camera, captureOpts);
+      }
+      R.render = render;
+      R.render(hub.root, B.camera, opts);
+      const idleAgain = R.stats.captureOnlyInstances === 0 && R.stats.viewInstances === base.viewInstances;
+      room.travel(false); B.advance(0.2, 1 / 60);
+      const restored = !B.renderOpts.viewRoots && B.renderOpts.shadowStrength > 0 && R.stats.shadowPassCount > passes;
+      return { localRoots, notTracked, noOutside, noShadows, indoorLight, captured, separate, idleAgain, restored,
+        viewInstances: base.viewInstances, capturedCount };
+    } finally {
+      R.render = render;
+      BL.scene.removeChild(hub.root, inside); BL.scene.removeChild(hub.root, outside); R.releaseGeometry(geometry);
+      room.travel(true); B.advance(0.2, 1 / 60);
+    }
+  })()`);
+  record("hub observatory: room-only frames skip outdoor transforms, draws and shadows; a live feed alone collects outside; exit restores daylight",
+    ["localRoots", "notTracked", "noOutside", "noShadows", "indoorLight", "captured", "separate", "idleAgain", "restored"].every(k => isolation[k]), JSON.stringify(isolation));
+} };
+const hubObservatoryFloor = { name: "hub observatory floor reflection", why: "regression: glossy floor clipping must exclude its backing and preserve coverage", run: async (b) => {
+  const floorReflection = await b.evaluate(`(async () => {
+    const B = __ooga, R = B.renderer, quality = R.quality, root = BL.scene.createNode(), floor = BL.architectCave.FLOOR;
+    const disc = center => {
+      const g = { verts: [center, 0, 0], faces: [], lines: [], castShadow: false };
+      for (let i = 0; i <= 48; i++) { const a = i * Math.PI / 24; g.verts.push(Math.sin(a) * 11, Math.cos(a) * 11, 0); }
+      for (let i = 1; i <= 48; i++) g.faces.push({ i: [0, i + 1, i], color: [0, 0, 0], emissive: 1 });
+      return g;
+    };
+    const backing = disc(0), fan = disc(0), shifted = disc(2);
+    // Isolate coverage from the room's artistic reflection strength. On black,
+    // its 0.3 strength stays below the pixel signal cutoff at an elevated view.
+    // Full strength makes backing leaks and fan seams more visible, not less.
+    for (const g of [fan, shifted]) { g.reflector = true; g.gloss = 1; }
+    const ceiling = { verts: [-30, -30, 0, 30, -30, 0, 30, 30, 0, -30, 30, 0],
+      faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false };
+    const ground = BL.scene.createNode({ geometry: backing, position: { x: 0, y: floor, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } });
+    const polish = BL.scene.createNode({ geometry: fan, position: { x: 0, y: floor + 0.014, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, reflectionRevision: 0 });
+    BL.scene.addChild(root, ground, polish, BL.scene.createNode({ geometry: ceiling, position: { x: 0, y: floor + 9, z: 0 }, rotation: { x: Math.PI / 2, y: 0, z: 0 } }));
+    const camera = BL.scene.createCamera({ far: 90 }), display = document.getElementById("scene"), sample = document.createElement("canvas");
+    sample.width = 48; sample.height = 32;
+    const pixels = sample.getContext("2d", { willReadFrequently: true }), rows = [];
+    const draw = async (visible, geometry, reflective = true) => {
+      ground.visible = visible; polish.geometry = geometry; polish.visible = reflective; polish.reflectionRevision++;
+      for (let i = 0; i < 4; i++) {
+        R.render(root, camera, { clear: [0, 0, 0], bloomStrength: 0 });
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      R.render(root, camera, { clear: [0, 0, 0], bloomStrength: 0 });
+      pixels.drawImage(display, 0, 0, 48, 32); return pixels.getImageData(0, 0, 48, 32).data.slice();
+    };
+    try {
+      for (const tier of ["high", "low"]) for (const height of [4.5, 0.3]) {
+        R.setQuality(tier);
+        Object.assign(camera.position, { x: -0.7, y: floor + height, z: 5.5 });
+        Object.assign(camera.target, { x: 1.7, y: floor, z: 2 });
+        const unreflected = await draw(false, fan, false);
+        const reference = await draw(false, fan), backed = await draw(true, fan), retiled = await draw(true, shifted);
+        let lit = 0, backingLeaks = 0, seams = 0;
+        // The near-floor view can see the ceiling directly. Count only pixels
+        // made bright by the reflection, never the source itself or post effects.
+        for (let i = 0; i < reference.length; i += 4) if (reference[i] > 40 && unreflected[i] < 10) {
+          lit++; if (Math.abs(reference[i] - backed[i]) > 4) backingLeaks++;
+          if (Math.abs(backed[i] - retiled[i]) > 4) seams++;
+        }
+        rows.push({ tier, height, lit, backingLeaks, seams });
+      }
+      return rows;
+    } finally {
+      for (const g of [backing, fan, shifted, ceiling]) R.releaseGeometry(g);
+      R.setQuality(quality); R.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+  })()`);
+  record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
+    floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
 } };
 // Distant mirrors keep refreshing at reduced resolution; low also bounds refreshes and retained GPU targets.
 const hubMirrorMedium = { name: "hub mirror medium size", why: "regression: lower tiers replaced distant mirror reflections with a grey face instead of keeping a cheaper live reflection", run: async (b) => {
@@ -27232,7 +27308,7 @@ scene("hub", { label: "shoulder replay", query: "solo=1&character=portlandhodl&w
 for (const character of ["portlandhodl", "w-s-bitcoin"]) for (const opts of [{ w: 1920, h: 1080 }, PHONE_SIZE]) {
   scene("hub", { label: "players camera targeting " + character, query: "solo=1&character=" + character + "&weapon=1&mode=shoulder&combat=1", opts, steps: [hubPlayersAim] });
 }
-scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror] });
+scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror, hubObservatoryIsolation, hubObservatoryFloor] });
 scene("hub", { label: "matrix", steps: [hubMatrix] });
 scene("hub", { label: "oogatron popups", url: hubPage(dist, "pos=0"), steps: [oogatronPopups] });
 scene("hub", { label: "oogatron popups phone", url: hubPage(dist, "pos=0"), opts: PHONE_SIZE, steps: [oogatronPopups] });
@@ -34049,7 +34125,9 @@ const raceRigChecks = async () => {
     // shader loops over them (to 4678b5f4); the second is zero in every other scene.
     // The Block Party's glass floors add uGlassGrazing, a geometry's scale on how much reflective glass pales toward a
     // glancing view (to 94dab4cf); it is 1 for every other geometry, so DSB Land's water is as it was.
-    "94dab4cf8dafb0f84ca86f7ccb0af7f7e0e92724e9fe06616829c802dbac0f90",
+    // The Observatory adds uCanvasFeed for camera texture orientation and uChrome for polished chair metal
+    // (to edd7c63c); both uniforms are 0 for every other geometry.
+    "edd7c63c92b3b0d68ded9ce2747a84ad3973158485cde32194e3809503842c09",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
@@ -34729,7 +34807,7 @@ const reviewCrowdAndFallbackProof = async () => {
   near.nonInteractive=false;const driven=c.occupied(body,0,0,0);
   const renderer=await readFile(join(root,"src/js/gl-renderer.js"),"utf8");
   const collect=renderer.slice(renderer.indexOf("    const collect ="),renderer.indexOf("    const updateRig ="));
-  const seen=[],r={rigMode:false,hiddenFromCutaway:()=>false,cutawayFade:0,foliageGeometry:n=>n.geometry,screenVisible:()=>true,recordFor:g=>{seen.push(g);return {active:true};},suppressed:0,CULL_MARGIN:0,sphereInFrustum:()=>true};
+  const seen=[],r={rigMode:false,collectingCapture:false,scopedView:false,hiddenFromCutaway:()=>false,cutawayFade:0,foliageGeometry:n=>n.geometry,screenVisible:()=>true,recordFor:g=>{seen.push(g);return {active:true};},suppressed:0,CULL_MARGIN:0,sphereInFrustum:()=>true};
   runInNewContext(collect+"this.collect=collect;this.collectRig=collectRig;",r);
   const geo={meshRig:{}},original={faces:[{}]},aggregate={geometry:geo,instanceData:[],instanceCount:1},part={geometry:original,meshRigSource:geo.meshRig,instanceData:[],instanceCount:1};
   r.collect(aggregate);r.collect(part);const cpu=seen.length===1&&seen[0]===original;
