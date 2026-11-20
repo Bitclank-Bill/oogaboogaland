@@ -17834,8 +17834,62 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     await b.evaluate('__focusCheck.step(360)');
     const returned = await b.evaluate('__focusCheck.room.broadcast === "feeds" && __focusCheck.room.panels.every(p => p.node.geometry === p.normal) && __focusCheck.room.enhancement?.feed === __focusCheck.selected && __focusCheck.B.pilot.aiming === __focusCheck.aiming');
     record("Observatory right click: a queued return keeps the active wave origin, then spreads from the second click and restores the selected enlargement without changing combat intent", Object.values(queued).every(Boolean) && returned, JSON.stringify({ ...queued, returned }));
+    // The face layout has its own selection; the area layout survives behind it.
+    await right(await b.evaluate('__focusCheck.aim(50, 6)'));
+    await b.evaluate('__focusCheck.step(360); __focusCheck.areaBeforeFace = __focusCheck.snapshot()');
+    await click(50, 6);
+    const faceFocus = await b.evaluate(`(() => {
+      const D = __focusCheck, room = D.room, focus = room.faceEnhancement;
+      if (!focus) return { selected: false };
+      const pending = room.panels.filter(p => p.next), originals = new Map(room.panels.map(p => [p, p.node.geometry]));
+      const ready = room.cameras.ready; room.cameras.ready = f => f === focus.feed ? false : ready(f);
+      D.step(10, 0.1);
+      const held = room.panels.every(p => p.node.geometry === originals.get(p)); room.cameras.ready = ready;
+      for (let i = 0; i < 60 && !ready(focus.feed); i++) D.step(1);
+      D.step(1, 0); D.step(1, 0.5);
+      const replaced = pending.filter(p => p.node.geometry !== originals.get(p)).length;
+      const noBlank = pending.every(p => p.node.geometry === originals.get(p) || ready(p.node.geometry.imageSurface.feed));
+      D.step(100);
+      const large = room.panels.filter(p => p.portrait !== p.portraitSingle);
+      return { selected: true, held, partial: replaced > 0 && replaced < 49, noBlank, count: large.length,
+        clicked: large.some(p => p.col === 50 && p.row === 6), mirrorClear: large.every(p => p.col < 48 || p.row >= 4),
+        outside: room.panels.filter(p => !pending.includes(p)).every(p => p.node.geometry === originals.get(p)),
+        source: large.every(p => p.node.geometry.imageSurface.feed === room.cameras.portrait),
+        cropped: new Set(large.map(p => p.node.geometry.imageSurface.rect.join())).size === 49,
+        area: room.panels.every((p, i) => D.same(p, D.areaBeforeFace[i])),
+        complete: room.broadcast === "face" && !room.layoutPending };
+    })()`);
+    record("Observatory face enhancement: the clicked face becomes one continuous 49-tile picture with progressive ready images, a clear mirror and an unchanged area layout", faceFocus.count === 49 && Object.entries(faceFocus).every(([k, v]) => k === "count" || v === true), JSON.stringify(faceFocus));
+    const faceDetail = await b.evaluate(`(() => { const D = __focusCheck, f = D.room.cameras.portrait;
+      for (let i = 0; i < 1800 && f.captureWidth !== 1200; i++) D.step(1);
+      D.step(40);
+      return { width: f.captureWidth, detail: f.detail, room: f.roomBackground, live: !f.seedOnly,
+        bounded: !D.overBudget, surfaces: f.surfaces.length - f.tiles.size === 49,
+        noNewFeeds: D.room.renderFeeds.length === 33 };
+    })()`);
+    record("Observatory face enhancement: the shared live portrait reaches 1200px within the existing capture and geometry budgets", faceDetail.width === 1200 && faceDetail.detail === 3 && faceDetail.room && faceDetail.live && faceDetail.bounded && faceDetail.surfaces && faceDetail.noNewFeeds, JSON.stringify(faceDetail));
+    if (process.env.OBSERVATORY_SHOTS) await b.screenshot(join(process.env.OBSERVATORY_SHOTS, 'enhanced-face-7x7.png'));
+    await click(24, 5); await b.evaluate('__focusCheck.step(100)');
+    const faceMoved = await b.evaluate(`(() => { const D = __focusCheck, room = D.room, large = room.panels.filter(p => p.portrait !== p.portraitSingle);
+      return large.length === 49 && large.some(p => p.col === 24 && p.row === 5) && !large.some(p => p.col === 50)
+        && room.cameras.portrait.surfaces.length - room.cameras.portrait.tiles.size === 49;
+    })()`);
+    await click(24, 5); await b.evaluate('__focusCheck.step(100)');
+    const faceRestored = await b.evaluate(`(() => { const room = __focusCheck.room;
+      return !room.faceEnhancement && !room.cameras.portrait.enhanced && room.panels.every(p => p.node.geometry === p.portraitSingle)
+        && room.cameras.portrait.surfaces.length === room.cameras.portrait.tiles.size;
+    })()`);
+    record("Observatory face enhancement: another face moves the sole enlarged patch and clicking it again restores all singles and releases temporary geometry", faceMoved && faceRestored, JSON.stringify({ faceMoved, faceRestored }));
+    await click(24, 5); await b.evaluate('__focusCheck.step(100)');
+    await right(await b.evaluate('__focusCheck.aim(24, 5)')); await b.evaluate('__focusCheck.step(360)');
+    const areaBack = await b.evaluate('__focusCheck.room.panels.every((p, i) => p.node.geometry === p.normal && __focusCheck.same(p, __focusCheck.areaBeforeFace[i]))');
+    await right(await b.evaluate('__focusCheck.aim(24, 5)')); await b.evaluate('__focusCheck.step(360)');
+    const faceBack = await b.evaluate('__focusCheck.room.panels.filter(p => p.portrait !== p.portraitSingle).length === 49 && __focusCheck.room.panels.every(p => p.node.geometry === p.portrait)');
+    record("Observatory face enhancement: right-click broadcasts preserve both saved layouts", areaBack && faceBack, JSON.stringify({ areaBack, faceBack }));
     const stood = await b.evaluate(`(() => { const D = __focusCheck; D.B.crew.standPlayer(D.B.pilot.player); D.step(100);
-      return !D.room.enhancement && D.room.feeds.every(f => !f.enhanced) && D.room.panels.every((p, i) => D.same(p, D.baseline[i])); })()`);
+      const faceCleared = !D.room.faceEnhancement && !D.room.cameras.portrait.enhanced && D.room.panels.every(p => p.portrait === p.portraitSingle);
+      for (let i = 0; i < 1500 && (D.room.enhancement || D.room.layoutPending || D.room.broadcast !== "feeds"); i++) D.step(1);
+      return faceCleared && !D.room.enhancement && D.room.feeds.every(f => !f.enhanced) && D.room.panels.every((p, i) => D.same(p, D.baseline[i])); })()`);
     record("Observatory focus: standing restores the ordinary layout and releases enhancement priority", stood);
   } finally { await b.evaluate('Object.defineProperty(performance, "now", {configurable:true,value:__focusCheck.now})'); }
 } };

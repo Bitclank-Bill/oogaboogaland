@@ -175,7 +175,7 @@
     const tiles = new Array((BANKS + PORTAL_COLS) * ROWS).fill(null);
     const focusMeshes = new Set(), screenTargets = [], screenPicker = BL.weaponTargets.create(screenTargets);
     const screenRay = {}, screenHit = { node: null, owner: null, distance: Infinity };
-    let enhancement = null;
+    let enhancement = null, faceEnhancement = null;
     const hover = { x: -1, y: -1, stable: 0, poll: 0, cooldown: 0, sampled: false, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
     let hoverFeed = null;
     const clearHover = () => { if (hoverFeed) hoverFeed.prewarm = false; hoverFeed = null; hover.stable = hover.poll = 0; hover.sampled = false; };
@@ -190,7 +190,7 @@
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
     let requestedSweepOrigin = null, sweepOrigin = null;
-    let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 3 + Math.random() * 3;
+    let layoutPending = false, layoutStarted = false, layoutFace = false, layoutTime = 0, layoutWait = 3 + Math.random() * 3;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     let penButton = null, penHand = null, penArm = null, penArmPitch = NaN, clickTime = 1;
     const penPose = { x: 0, yaw: 0, roll: 0, appliedX: NaN, appliedYaw: NaN, appliedRoll: NaN };
@@ -371,6 +371,7 @@
       add(merge(...seams));
       cameras.prepare();
       for (const feed of feeds) feed.focusSize = ENHANCEMENT_SIZE;
+      cameras.portrait.focusSize = ENHANCEMENT_SIZE;
       const housings = new Map(), glasses = new Map();
       // Wall and return glass share the same cylinder and exact boundary vertices.
       const walls = geometry(), rgb = BL.math.hexToRgb(WALL);
@@ -415,7 +416,7 @@
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const node = add(normal, rack, { x: 0, y: 0, z: TV_FACE });
         // Spread from the mirror around both sides, with a small randomized middle-row lead.
-        panels.push({ node, normal, portrait, row, col, angle, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
+        panels.push({ node, normal, portrait, portraitSingle: portrait, row, col, angle, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
           distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0, flashTime: 0 });
         tiles[row * layout.cols + col] = panels[panels.length - 1];
       };
@@ -571,14 +572,14 @@
     };
     const trimFocus = () => {
       for (const g of focusMeshes) {
-        if (panels.some(p => p.normal === g || p.previous?.normal === g || p.next?.normal === g)) continue;
+        if (panels.some(p => p.normal === g || p.portrait === g || p.previous?.normal === g || p.next?.normal === g)) continue;
         const surfaces = g.imageSurface.feed.surfaces, index = surfaces.indexOf(g);
         if (index >= 0) surfaces.splice(index, 1);
         renderer.releaseGeometry(g); focusMeshes.delete(g);
       }
     };
     const finishLayout = () => {
-      layoutPending = layoutStarted = false; layoutTime = 0; layoutWait = 3 + Math.random() * 3;
+      layoutPending = layoutStarted = layoutFace = false; layoutTime = 0; layoutWait = 3 + Math.random() * 3;
       for (const p of panels) {
         p.next = p.previous = null;
         if (p.saved && p.normal === p.saved.normal) p.saved = null;
@@ -652,33 +653,36 @@
       }
       return repairs;
     };
-    const stageEnhancement = selected => {
+    const stageEnhancement = (selected, faceView = false) => {
       const cols = BANKS + PORTAL_COLS, size = ENHANCEMENT_SIZE;
       let patch = null, feed = null;
       if (selected) {
-        feed = selected.normal.imageSurface.feed;
-        const fromRow = Math.floor(selected.group / cols), fromCol = selected.group % cols;
+        feed = faceView ? cameras.portrait : selected.normal.imageSurface.feed;
+        const fromRow = faceView ? selected.row : Math.floor(selected.group / cols), fromCol = faceView ? selected.col : selected.group % cols;
+        const fromSize = faceView ? 1 : selected.size;
         let best = Infinity;
         // Find the closest complete 7x7 on the circular wall, including across
         // its wrap. The four missing mirror rows must never become screens.
         for (let row = 0; row <= ROWS - size; row++) for (let col = 0; col < cols; col++) {
           const offset = (fromCol - col + cols) % cols;
-          if (offset + selected.size > size || fromRow < row || fromRow + selected.size > row + size) continue;
+          if (offset + fromSize > size || fromRow < row || fromRow + fromSize > row + size) continue;
           let valid = true;
           for (let y = row; valid && y < row + size; y++) for (let x = 0; x < size; x++)
             if (!tiles[y * cols + (col + x) % cols]) { valid = false; break; }
           if (!valid) continue;
-          const distance = (offset + selected.size / 2 - size / 2) ** 2 + (fromRow + selected.size / 2 - row - size / 2) ** 2;
+          const distance = (offset + fromSize / 2 - size / 2) ** 2 + (fromRow + fromSize / 2 - row - size / 2) ** 2;
           if (distance < best) { best = distance; patch = { row, col }; }
         }
         if (!patch) return false;
       }
       const insidePatch = p => patch && (p.col - patch.col + cols) % cols < size && p.row >= patch.row && p.row < patch.row + size;
-      const repairs = patch ? retileFocusEdges(insidePatch, feed) : null;
-      for (const f of feeds) f.enhanced = f === feed;
+      const repairs = patch && !faceView ? retileFocusEdges(insidePatch, feed) : null;
+      if (faceView) cameras.portrait.enhanced = !!patch;
+      else for (const f of feeds) f.enhanced = f === feed;
       clearHover();
       if (feed) feed.focusPending = true;
-      enhancement = patch && { ...patch, feed };
+      if (faceView) faceEnhancement = patch && { ...patch, feed };
+      else enhancement = patch && { ...patch, feed };
       const pitch = col => col % cols < BANKS ? RADIUS * BANK_ANGLE : PORTAL_PITCH;
       let span = 0;
       if (patch) for (let x = 0; x < size; x++) span += pitch(patch.col + x);
@@ -691,9 +695,9 @@
         const x = patch ? (p.col - patch.col + cols) % cols : -1, y = patch ? p.row - patch.row : -1;
         const inside = patch && x < size && y >= 0 && y < size;
         const repair = repairs?.get(p);
-        if (!inside && !repair && !p.saved) continue;
-        p.previous = { normal: p.normal, group: p.group, size: p.size };
-        if ((inside || repair) && !p.saved) p.saved = p.previous;
+        if (!inside && !repair && !(faceView ? p.portrait !== p.portraitSingle : p.saved)) continue;
+        p.previous = { normal: faceView ? p.portrait : p.normal, group: p.group, size: p.size };
+        if (!faceView && (inside || repair) && !p.saved) p.saved = p.previous;
         if (inside) {
           let center = p.pitchX / 2;
           for (let i = 0; i < x; i++) center += pitch(patch.col + i);
@@ -710,11 +714,11 @@
           const localX = x > cols / 2 ? x - cols : x;
           p.delay = Math.abs(localX - (size - 1) / 2) * 0.10 + Math.max(0, y) * 0.12 + rowJitter[p.row];
         } else {
-          p.next = p.saved;
+          p.next = faceView ? { normal: p.portraitSingle } : p.saved;
           p.delay = p.distance * 0.35 + p.row / ROWS * 0.55 + rowJitter[p.row];
         }
       }
-      layoutPending = true; layoutStarted = false; layoutTime = 0;
+      layoutPending = true; layoutStarted = false; layoutFace = faceView; layoutTime = 0;
       return true;
     };
     const stageLayout = () => {
@@ -774,8 +778,11 @@
     };
     const replaceTile = p => {
       if (!p.next || !cameras.ready(p.next.normal.imageSurface.feed)) return false;
-      p.normal = p.next.normal; p.group = p.next.group; p.size = p.next.size; p.next = null;
-      showTile(p, p.normal);
+      const geometry = p.next.normal;
+      if (layoutFace) p.portrait = geometry;
+      else { p.normal = geometry; p.group = p.next.group; p.size = p.next.size; }
+      p.next = null;
+      showTile(p, geometry);
       return true;
     };
     const updateLayout = dt => {
@@ -797,15 +804,17 @@
       // Travel or an actor change cancels an unfinished layout back to its last complete assignment.
       let changed = false;
       for (const p of panels) {
-        if (p.previous) { p.normal = p.previous.normal; p.group = p.previous.group; p.size = p.previous.size; }
+        if (p.previous && !layoutFace) { p.normal = p.previous.normal; p.group = p.previous.group; p.size = p.previous.size; }
         if (p.saved) { p.normal = p.saved.normal; p.group = p.saved.group; p.size = p.saved.size; p.saved = null; }
         changed ||= p.node.geometry !== p.normal || p.flashTime > 0;
+        p.portrait = p.portraitSingle;
         p.node.geometry = p.normal; p.flashTime = 0; p.node.highlight = 0;
       }
       if (changed) returnMirror.reflectionRevision++;
-      enhancement = null;
+      enhancement = faceEnhancement = null;
       clearHover();
       for (const feed of feeds) feed.enhanced = feed.focusPending = false;
+      cameras.portrait.enhanced = cameras.portrait.focusPending = false;
       finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
       manual = manualFace = false;
@@ -842,12 +851,21 @@
       }
       broadcastTime += dt;
       if (broadcast === "feeds") {
+        if (!manual && faceEnhancement && !layoutPending) {
+          faceEnhancement = null; face.enhanced = face.focusPending = false;
+          for (const p of panels) p.portrait = p.portraitSingle;
+          trimFocus();
+        }
         if (layoutPending) updateLayout(dt);
         else if (!manual && enhancement) stageEnhancement(null);
         else if (!enhancement && !portraitActor && !(manual ? manualFace : broadcastTime >= faceWait - 0.75)) {
           layoutWait -= dt;
           if (layoutWait <= 0) stageLayout();
         }
+      }
+      if (broadcast === "face") {
+        if (layoutPending) updateLayout(dt);
+        else if (!manual && faceEnhancement) stageEnhancement(null, true);
       }
       if (broadcast === "feeds" && !layoutPending && (manual ? manualFace : broadcastTime >= faceWait - 0.75) && portraitActor !== actor) {
         portraitActor = actor; face.pending = true; face.last = -Infinity; face.forceCapture = true;
@@ -871,7 +889,7 @@
         cam.far = distance + RADIUS * 2 + 1;
       }
       if (broadcast === "feeds" && !layoutPending && (manual ? manualFace : broadcastTime >= faceWait) && cameras.ready(face)) beginSweep("to-face");
-      if (broadcast === "face" && (manual ? !manualFace : broadcastTime >= faceHold)) beginSweep("to-feeds");
+      if (broadcast === "face" && !layoutPending && (manual ? !manualFace : broadcastTime >= faceHold)) beginSweep("to-feeds");
       if (broadcast === "to-face" || broadcast === "to-feeds") {
         const toFace = broadcast === "to-face";
         const ready = toFace || cameras.warm();
@@ -911,12 +929,14 @@
     const enhanceAt = (x = renderer.size.width / 2, y = renderer.size.height / 2) => {
       if (!seated()) return false;
       if (!manual) updateBroadcast(0, pilot.player);
-      if (layoutPending || broadcast !== "feeds" || manualFace || portraitActor) return true;
+      const faceView = broadcast === "face";
+      if (layoutPending || !faceView && (broadcast !== "feeds" || manualFace || portraitActor) || faceView && !manualFace) return true;
       renderer.ray(x, y, camera, screenRay);
       if (!screenPicker.ray(screenHit, screenRay.ox, screenRay.oy, screenRay.oz, screenRay.dx, screenRay.dy, screenRay.dz, camera.far, null, null, true)) return true;
       const selected = screenHit.owner.panel;
       if (!selected) return true;
-      if (stageEnhancement(selected.size === ENHANCEMENT_SIZE ? null : selected)) { clickTime = 0; audio?.click(); }
+      const enlarged = faceView ? selected.portrait !== selected.portraitSingle : selected.size === ENHANCEMENT_SIZE;
+      if (stageEnhancement(enlarged ? null : selected, faceView)) { clickTime = 0; audio?.click(); }
       return true;
     };
     const updateHover = dt => {
@@ -1104,6 +1124,7 @@
       get seated() { return seated(); }, get pen() { return pen; }, get penButton() { return penButton; },
       get layoutPending() { return layoutPending; }, get layoutWait() { return layoutWait; },
       get enhancement() { return enhancement; },
+      get faceEnhancement() { return faceEnhancement; },
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,

@@ -4762,7 +4762,7 @@ void main() {
             : (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
           feed.mosaicSize = grid; feed.screenSize = size; feed.detailTarget = 0;
           feed.adaptiveLevel = cameraFeedLevel;
-          if (!feed.roomBackground && feed.visible && (feed.enhanced || feed.prewarm || size > 0.12)) cameraFeedCandidates.push(feed);
+          if ((!feed.roomBackground || feed.enhanced) && feed.visible && (feed.enhanced || feed.prewarm || size > 0.12)) cameraFeedCandidates.push(feed);
         }
         // Admit detail per feed: 3x3 pictures first, then 2x2s, then singles.
         // Within each group favor the largest projected picture. A furnished
@@ -4987,8 +4987,9 @@ void main() {
         const feed = captureFeed;
         const seed = !!feed.backGeometry && feed.pending;
         const target = reflectorTarget(seed ? feed.backGeometry : feed.geometry), cam = feed.camera;
-        target.blendResize = !feed.roomBackground && !feed.pending && !!(feed.enhanced || feed.prewarm);
-        target.fixedWidth = cameraFeedWidth(feed);
+        target.blendResize = !feed.pending && !!(feed.enhanced || feed.prewarm);
+        // The one nested background image stays small even when the live face is enlarged.
+        target.fixedWidth = seed ? (qualityName === "low" ? 192 : 256) : cameraFeedWidth(feed);
         target.fixedHeight = target.fixedWidth * 9 / 16;
         feed.captureWidth = target.fixedWidth; feed.captureHeight = target.fixedHeight;
         target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;

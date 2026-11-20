@@ -163,10 +163,16 @@ mirror, floor, chair and bezels do nothing. The chosen view stays until the next
 right-click; a click during a sweep queues that view and its clicked origin
 until the sweep completes, without redirecting the wave already in progress.
 Desktop left-click selects the TV under the cursor (the center crosshair while
-pointer-locked) and expands its camera picture across a nearby 7×7 region.
+pointer-locked) and expands its camera picture across a nearby 7×7 region,
+including when that TV shows the Ooga’s face. An enlarged face is one continuous
+image across 49 TVs, with the room background and bounded nested screens intact.
 Clicking that enlargement restores the saved smaller grids; clicking another
 picture restores the old region and enlarges the new one. Only one enlargement
-exists at a time. Standing removes the pen, restores the ordinary layout and
+is visible at a time. The area and face views remember their own selections
+while right-click switches between them. Clicking a different face moves its
+patch; clicking the enlarged face restores the independent face screens. Both
+use the existing ready-image tile wave and bounded temporary geometry.
+Standing removes the pen, restores both layouts and
 resumes automatic transitions. The existing crew sitting/standing lifecycle
 owns cleanup.
 
@@ -252,13 +258,14 @@ neighboring incoming/outgoing feeds and the enhanced feed. Unaffected mosaics
 stay unchanged. The enlargement and these edge repairs save their original
 assignments, restoring them together when closed or moved. Each affected tile switches and flashes on
 its own deadline, retaining its outgoing image until the destination is ready.
-Selection waits while a tile wave or face broadcast is active. The selected
+Selection waits while a tile wave or global view transition is active. The selected
 camera's channel stays pinned while the remaining slots rotate. Face broadcasts
 retain the enlargement and reveal it again on return to the area views.
 
 An enlargement adds 49 temporary image surfaces, sharing the existing camera
-target. A move can briefly retain another 49 outgoing surfaces until the wave
-finishes; then those geometries are released. Restoring, leaving or changing
+target. Remembered area and face selections can each retain 49 surfaces, with
+only the current view displayed. A move can briefly retain another 49 outgoing
+surfaces until the wave finishes; then those geometries are released. Restoring, leaving or changing
 actor releases the enhancement surfaces. No extra camera targets or network
 subscriptions are created. Edge repairs reuse the existing small-panel cache,
 which remains bounded to 28 variants per camera slot.
@@ -287,10 +294,12 @@ of the camera's capture cadence. Each changing feed retains at most one previous
 color texture, released when the fade expires, the feed is disposed or context
 resources are reset. No additional scene capture or depth target is required.
 
-The focused chair browser check passes sixteen checks covering mouse selection,
+The focused chair browser check passes twenty checks covering mouse selection,
 progressive replacement, holding unready images, exact layout restoration,
 retargeting over the mirror columns, screen-only right-click face toggling,
-radial growth and queued origins, adaptive detail,
+radial growth and queued origins, 49-tile face expansion/restore/retargeting,
+independent saved area/face layouts, shared high-resolution portrait capture,
+adaptive detail,
 capture/geometry bounds, enhanced refresh priority under healthy/slow frame
 timing, hover settling/cancellation, resolution fading, complete smaller shots
 along partially covered 2×2/3×3 mosaics, standing cleanup, and clearing the
@@ -299,11 +308,14 @@ island basement voice blend inside the room, plus a clean console. In six second
 others shared 90. At controlled 50 ms intervals, each received 20 captures over
 six seconds, with the enhanced view reduced to 304×171. These verify scheduling
 and adaptation, not actual device FPS. Its saved
-view is `untracked/architect-focus/enhanced-7x7.png`. The warm-up and shader
+views are `untracked/architect-focus/enhanced-7x7.png` and
+`untracked/architect-focus/enhanced-face-7x7.png`. The expanded focused session
+passed in 26.7 seconds and emitted the runner’s advisory 25-second slow-session
+notice; it is not a real-device frame-rate benchmark. The warm-up and shader
 changes also passed all 805 global unit checks, with only the intentional
 fragment shader snapshot updated for `uCanvasBlend`/`uCanvasPrevious` (the blend
 is zero on every other surface). The 7×7 sizing and edge repairs passed
-build/syntax and the sixteen focused checks above, including 1200×675
+build/syntax and the twenty focused checks above, including 1200×675
 admission preserving the old 6×6 pixel density. Three additional startup
 checks verify that ordinary loading remains black, failure of both renderers
 reveals a focused and clickable retry, and retry reloads a playable island
@@ -319,8 +331,10 @@ WebGL contexts.
 
 - Adaptive area-feed levels: lightweight 192 x 108, furnished 256 x 144, and
   close-detail 512 x 288. Low caps at lightweight, Medium at furnished, High
-  permits close-detail. The portrait stays at its original 256 x 144 (192 x 108
-  on Low), including its clean recursion seed.
+  permits close-detail. The ordinary portrait stays at 256 x 144 (192 x 108
+  on Low). Selecting a face for enlargement admits the shared live portrait
+  to the same enhanced detail budget and refresh priority as an area feed. Its
+  clean recursion seed stays at the original small size.
 - Detail follows measured frame intervals, not a hardware-name guess. It starts
   furnished, sheds one level after 500 ms above a smoothed 24 ms/frame (200 ms
   above 40 ms/frame), then waits six seconds before accumulating upgrade time.
@@ -387,7 +401,8 @@ absolute bound for all 32 area color targets is therefore about 98.9 MiB before 
 The active detail budget admits at most twelve close-detail feeds at once; old
 off-screen targets keep their images until their next scheduled capture resizes
 them. The shared face camera adds two
-buffers totaling 0.28 MiB as it starts capturing. Source world
+buffers totaling 0.28 MiB as it starts capturing, rising to about 3.23 MiB
+when its live image is enhanced to 1200×675; its seed remains 256×144. Source world
 geometry and simulation dominate the memory budget; screen count does not
 multiply the number of cameras or textures.
 
