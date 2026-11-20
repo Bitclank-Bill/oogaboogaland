@@ -19,7 +19,7 @@ the way.
 | `src/js/island-layout.js` | page and Worker, baked | The hub's routine tables: the meadow's paths, fire seats, stroll spots, each work cave's fan of places that every Ooga may shoot from, and the sealed caves' fronts. `scripts/island-layout.mjs` bakes it from the real hub in the suite's Chrome, because those tables depend on props and geometry only the page builds. The hub's "island layout" check fails when the hub and the file disagree. |
 | `src/js/island-sim.js` | page and Worker | The passive routine (below) over those tables, with no terrain, props or collision. It runs fixed 50 ms steps, is seeded and allocates nothing per step. Its output is one `game-wire.js` row per Ooga. |
 | `worker/src/games/island.js` | Worker | Kind `island`, venue `main`, on `game-host.js`. It takes the cast from `characters.gen.json`, and states and caves from Oogatron's stats through the `OOGATRON` binding, read every minute while it runs, as a page polls them. It sends motion at 10 Hz, skips frames while nothing moves (at most 2 s apart), and sends the cast's names as its state. It runs only while a page follows it, and keeps no record: a restart starts the routine afresh. |
-| the page | page | **Not built yet** (next section). |
+| `src/js/island-world.js` | page | Follows the world on the island, behind `?islandworld=1` for now (next section). |
 
 ### The routine
 
@@ -58,26 +58,44 @@ three. A frame for 60 Oogas is about 750 bytes.
 - **Night.** At night the page crew leans towards the fire (`RENDER_OPTS.stars`). The server keeps no visitor's
   hour, so it does not.
 
-## Next: the page
+## The page
 
-The plan was that pages animate the bodies, and the server only places them. Working and chilling Oogas become
-puppets (`cave.puppet`, which `crew.update` skips), placed from the rows 150 ms behind the newest, as the ghost hunt
-draws. Sleeping and away Oogas take the row's state as `cave.override`, so the page's own crew puts them to bed.
-Signed-out pages run `island-sim.js` themselves and feed the same follower. While the world is followed, `npc-sync`
-stops carrying Oogas; it can stay the props' host until the props move too.
+`island-world.js` runs in the hub while `?islandworld=1` is set:
 
-Posing those puppets is the open choice:
+- **Signed in, with the Worker offering `island`.** It follows the server's world over `game-net.js`.
+- **Otherwise.** It runs `island-sim.js` itself, from the page's own contributors (`stateFor`) and the crew's own
+  cave rule (`siteActive`).
 
-- **A. A puppet poser.** A new module poses each puppet from its row with the crew's exported helpers: `poseGait`
-  for walking and standing, `poseGroundSit`, `poseReload`, and `poseEquipment` with the weapon's aim set. It also
-  needs a small crew change, so that a puppet's visual shots show (`showShot` drops a passive NPC's today). This is
-  the ghost hunt's model: smooth and simple to follow, but each gear pose has to be matched by hand.
-- **B. A directed crew.** The crew keeps running and posing its passive routine, but takes its decisions (site,
-  spot, timings) from the world, and its positions are nudged towards the rows. Today's look stays exactly as it
-  is, but this goes deeper into `crew.js`, and the nudging can show.
+Either way the rows go into one `game-timeline.js` and are drawn 150 ms behind the newest (two steps behind for the
+local world), eased between frames, as the ghost hunt draws.
 
-Either way, the follower turns on behind `?islandworld=1` first, and replaces the browser host only once
-play-testing says so.
+Each Ooga is then handled according to its row:
+
+- **Working or chilling, and shown.** The Ooga is followed. `island-world.js` writes its `follow` (where it stands,
+  its heading, what it does, the cave it works) before the crew's update. The crew's `runFollow` then poses it with
+  the crew's own code: `walkPose` for walking, the idle pose for standing and sitting (with its lines and the
+  donation cheer), and for working, aiming into the cave, `fireWeapon`'s bursts there, and `startReload` at the
+  pile. Its tint, nunchaku, pumpkin glow and weapon pose come from the crew's per-frame update as they always have.
+  There is one way of posing an Ooga, the crew's, so nothing has to be kept in step by hand.
+- **Sleeping or away.** The Ooga takes the row's state as `worldState`, which `stateOf` reads first. The page's own
+  crew beds a sleeper and hides the away, as it always has. An Ooga leaving bed is beamed to its routine
+  (`refreshStates`) before it is followed.
+- **Gorillas.** Each working Ooga's gorilla is told the cave it goes ahead to, whenever that changes.
+
+While the world runs, the hub stops updating `npc-sync.js`. The props still sync through the room's host
+(`prop-sync.js`).
+
+### Left to do
+
+- **Check the server path.** Follow a real Worker signed in (`wrangler dev` with a session). It is unit-checked
+  (`game-host.test.mjs`), but no page has followed it yet.
+- **Mixed rooms.** A page with the flag sends no `npc-sync` frames, so if the room elects it host, flagless pages
+  following it hold their crew still. Turning the world on for everyone fixes this; until then, test with every
+  page flagged.
+- **The pile.** Ease rows near the pile out to the page's own ring, or have the Worker read the pile.
+- **First arrival.** On a signed-out page the first frame beams every Ooga from where the crew put it to where the
+  world does. The local world could start from the crew's own positions.
+- **Turning it on.** Make it the default, and retire `npc-sync.js` for the Oogas, once play-testing says so.
 
 ## Cost
 

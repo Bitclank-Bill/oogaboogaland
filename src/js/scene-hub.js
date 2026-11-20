@@ -258,7 +258,7 @@
   };
 
   // One visit's state: created in enter, dropped in leave.
-  let oogatronUnsub, renderer, game, world, go, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, totemSolids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, duels, npcSync, propSync, npcStatusBeams, npcGhosts, physics;
+  let oogatronUnsub, renderer, game, world, go, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, totemSolids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, duels, npcSync, propSync, npcStatusBeams, npcGhosts, physics, islandWorld;
   // GAME MODE (`setGameMode`): an island event holds the island still for play while it runs.
   let gameMode = false, gameCombatOnly = false;
   let cloudHopper = null, cloudIsland = null, cloudPile = null, cloudPileSolids = null, cloudFinishFruit = null;
@@ -3502,6 +3502,12 @@
   // to bake into src/js/island-layout.js: everything static the passive crew's choices depend on, each spot with
   // whether it passes the checks that never change (`ok`); what moves with the pile, the workers and the bodies about
   // is left to the sim. Debug only.
+  // The island's world (island-world.js), where the page asks for it.
+  const startIslandWorld = () => {
+    if (!BL.islandWorld.enabled()) return;
+    islandWorld = BL.islandWorld.create({ crew, clankers: { plan: (cave, site) => clankers && clankers.plan(cave, site) },
+      platform: () => altar.platformRadius });
+  };
   const routineLayout = () => {
     const r = (v) => Math.round(v * 100) / 100, height = Math.max(...crew.list.map((cave) => cave.traits.height));
     const still = (s) => {
@@ -8221,6 +8227,8 @@
       // The doorway's walks steer the Ooga before the crew moves it.
       if (!cloudPlaying()) timechainIsland.gate.update(dt);
     }
+    // The island's world (island-world.js, behind `islandworld=1` for now) places the Oogas it follows before they move.
+    if (islandWorld && !cloudPlaying()) islandWorld.update(dt);
     if (!cloudHopper?.held) crew.update(dt, elapsed);
     cloudHopper?.postUpdate();
     if (hammock) {
@@ -8240,7 +8248,7 @@
     const ownBody = crew.player?.npc ? crew.player : null;
     if (ownBody && ownBody.root.visible) floatPose(ownBody, ownBody.root.position.y - ownBody.baseY, ownBody.bodyHeight, ownBody.phase, elapsed);
     footsteps.update(crew.player);
-    if (!cloudPlaying()) npcSync.update(dt);
+    if (!cloudPlaying() && !islandWorld) npcSync.update(dt);
     if (!cloudPlaying()) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
     hideSeatGlows();
@@ -11107,6 +11115,7 @@
     duels.dispose();
     remotes.dispose();
     muteHammockShots();
+    if (islandWorld) { islandWorld.dispose(); islandWorld = null; }
     npcSync.dispose(true);
     propSync.suspend();
     npcStatusBeams?.clear();
@@ -11154,6 +11163,7 @@
     hud.setDestinations(["pile", "lab", "mirror", "underground", "basement", "mempool", "factory", "arcade", "bca", "gate", "bifrost", "timechain", "repos"]);
     input.resume(); pilot.resume(); clankerPlay.resume(); chalkboard.resume();
     islandGuide.resume();
+    startIslandWorld();
     if (timechainIsland.gate.resume()) hud.toast(`Room ${timechainIsland.gate.preselected} is chosen at the keypad · walk up to it and press Enter to go in`);
     if (factoryMouth?.hall) factoryMouth.hall.resume();
     if (factoryMouth?.roofWindow) factoryMouth.roofWindow.resume();
@@ -11962,6 +11972,7 @@
     // a following page replays them into the same effects and gorillas.
     // And the loose props with them: the same host simulates them, the others play them back.
     propSync = BL.propSync.create({ physics: () => physics, onHome: physicsHome });
+    startIslandWorld();
     npcSync = BL.npcSync.create({
       crew, fx, animationInterval,
       // The room's crew host runs another version: the crew holds still here rather than run a second copy.
@@ -12337,7 +12348,7 @@
         get bifrost() { return bifrostIsle; },
         get footsteps() { return footsteps; },
         get chalkboardAt() { return chalkboardClearance; },
-        slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, lab: null, hud, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, routineLayout, trimPool: fx.trimPool,
+        slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, lab: null, hud, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, routineLayout, get islandWorld() { return islandWorld; }, trimPool: fx.trimPool,
         get shown() {
           return pile.shown;
         },
@@ -12620,6 +12631,7 @@
     BL.net.setBlend(null, 0);
     zoneHeld = null;
     BL.net.setHub(false);
+    if (islandWorld) { islandWorld.dispose(); islandWorld = null; }
     npcSync.dispose();
     propSync.dispose();
     remotes = duels = npcSync = propSync = null;
