@@ -6,13 +6,19 @@ from upstream `rock` at `45e02fd428cc0734b3c9a3f8f173bf741d68a094`.
 ## Walking through
 
 The driven Ooga crosses the existing mirror at one o'clock into an enclosed,
-circular chamber with black walls and ceiling, 608 small framed monitors, a pale
+circular chamber with black walls and a stark white ceiling, 608 small framed monitors, a pale
 polished floor and a sculpted black swivel chair. A reflecting mirror behind the arrival matches
 the island cave's
 five-metre-wide, three-metre-high visible opening. Walking through its glass
 returns the same Ooga outside the island mirror. The mirror stays flat in the continuous circular wall; its jambs meet the wall
 exactly, and a sealed soffit joins its lintel to the curved wall above. The return
 threshold follows its glass.
+Crossing rotates the body and the complete camera pose between the doorway frames,
+preserving look direction, pitch, zoom and view mode in both directions. Backing
+through arrives facing the mirror and continues backward away from it. Held
+movement is not reset. The shared pilot also restores still-held WASD/arrow keys
+and sprint on its first controllable frame after a carried land arrival; keys
+released during loading, blur or Tab cancellation are not replayed.
 The same 0.05-metre margin separates the TV rows, floor and ceiling. Four rows
 fit the mirror's three-metre height; eight more continue above it. Both monitor
 width and height are halved, preserving the earlier widescreen proportions. Light strips
@@ -41,7 +47,9 @@ main hub's existing release/retention policy still applies when leaving it.
 Walking and airborne collision keep the Ooga within the walls and below the
 ceiling. The chair has rounded black leather cushions, three padded back panels
 with recessed seams, a gently reclined shell, metal back and arm supports, rounded
-armrests and an under-seat adjustment lever. Its pedestal has five tapered spokes
+armrests and an under-seat adjustment lever. Front and rear brackets join each
+armrest support to the seat shell, with a continuous rail attached beneath each
+pad. Its pedestal has five tapered spokes
 and paired rubber caster wheels with metal hubs. The seat, back and armrests rotate
 together over the fixed base; the seat height stays 0.72 m and the back collision
 extends to the new shell. Move and jump onto the cushion, then press
@@ -328,6 +336,10 @@ and last-frame retention remains pending because the Chrome connection is unavai
 The sculpted chair, curved wall/TVs, screen-glass highlights and live floor reflection
 have build/syntax validation only; screenshots and reflection-performance acceptance
 remain pending on the same unavailable Chrome connection.
+The white ceiling, attached armrest brackets and direction-preserving mirror
+crossings also need in-game review. New, unrun assertions cover backing through
+both mirrors in first and third person, continued held movement after arrival,
+and recovery of diagonal movement/sprint without replaying released or Tab-cancelled keys.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

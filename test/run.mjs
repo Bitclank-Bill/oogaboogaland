@@ -17247,6 +17247,52 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   await trip("hub").run(b);
   const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);
   record("hub mirror: the unbreakable pane and open gate remain intact after leaving and returning", back);
+  const backward = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect, m = B.mirrorCave.mouth, results = [];
+    const key = type => window.dispatchEvent(new KeyboardEvent(type, { key: "s", code: "KeyS", bubbles: true }));
+    const angle = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b))) < 0.02;
+    for (const close of [false, true]) {
+      if (close) B.pilot.enterClose(); else B.pilot.exitClose();
+      B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z + Math.cos(m.ry) * 1.2 },
+        yaw: m.ry + Math.PI + 0.2, pitch: 0.24, dist: 4, framed: true });
+      B.advance(1.1, 1 / 60);
+      const view = B.pilot.view, pitch = B.pilot.orbit.pitch, distance = B.pilot.orbit.dist;
+      key("keydown");
+      for (let i = 0; i < 60 && !room.active; i++) B.advance(1 / 60, 1 / 60);
+      const facing = room.active && angle(B.pilot.orbit.yaw, Math.PI + 0.2)
+        && Math.abs(B.pilot.orbit.pitch - pitch) < 0.02 && Math.abs(B.pilot.orbit.dist - distance) < 0.02 && B.pilot.view === view;
+      const z = B.pilot.player.root.position.z;
+      B.advance(0.12, 1 / 60); key("keyup");
+      const departingMirror = room.active && B.pilot.player.root.position.z < z - 0.2;
+      // Back through the room's mirror too, continuing on the island without another keydown.
+      B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 9.8 }, yaw: 0.2, pitch: 0.24, dist: 4, framed: true });
+      B.advance(1.1, 1 / 60); key("keydown");
+      for (let i = 0; i < 60 && room.active; i++) B.advance(1 / 60, 1 / 60);
+      const returned = !room.active && angle(B.pilot.orbit.yaw, m.ry + 0.2) && B.pilot.view === view;
+      const p = B.pilot.player.root.position, along = () => (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry), before = along();
+      B.advance(0.12, 1 / 60); key("keyup");
+      results.push({ close, facing, departingMirror, returned, departingIslandMirror: along() > before + 0.2 });
+    }
+    return results;
+  })()`);
+  record("hub mirror: backward crossings preserve first/third-person view and keep held S walking away in both directions",
+    backward.every(r => r.facing && r.departingMirror && r.returned && r.departingIslandMirror), JSON.stringify(backward));
+  const heldMovement = await b.evaluate(`(() => {
+    const key = (type, key, code, repeat = false) => window.dispatchEvent(new KeyboardEvent(type, { key, code, repeat, bubbles: true }));
+    key("keydown", "w", "KeyW"); key("keydown", "d", "KeyD"); key("keydown", "Shift", "ShiftLeft");
+    const input = BL.controls.create({ tabNavigation: true });
+    input.takeMovement();
+    const a = input.read(), held = a.y > 0 && a.x > 0 && a.sprint;
+    input.reset(); key("keyup", "w", "KeyW"); key("keyup", "d", "KeyD"); key("keyup", "Shift", "ShiftLeft");
+    input.takeMovement(); const released = !input.read().y && !input.read().x && !input.read().sprint;
+    key("keydown", "s", "KeyS"); input.reset(); input.takeMovement(); const backward = input.read().y < 0;
+    key("keydown", "Tab", "Tab"); key("keyup", "Tab", "Tab"); key("keydown", "s", "KeyS", true);
+    input.reset(); input.takeMovement(); const cancelled = input.read().y === 0;
+    key("keyup", "s", "KeyS"); input.dispose(); __ooga.pilot.controls.reset();
+    return { held: !!held, released, backward, cancelled };
+  })()`);
+  record("land arrival input: new controls recover held diagonal movement and sprint, but not released or Tab-cancelled keys",
+    Object.values(heldMovement).every(Boolean), JSON.stringify(heldMovement));
 } };
 // Distant mirrors keep refreshing at reduced resolution; low also bounds refreshes and retained GPU targets.
 const hubMirrorMedium = { name: "hub mirror medium size", why: "regression: lower tiers replaced distant mirror reflections with a grey face instead of keeping a cheaper live reflection", run: async (b) => {

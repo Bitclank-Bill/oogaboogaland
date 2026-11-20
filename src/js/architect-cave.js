@@ -125,6 +125,8 @@
     const cameras = BL.observatoryCameras.create({ renderer, mouths, places }), feeds = cameras.feeds;
     const meshes = [], panels = [], rowJitter = new Float64Array(ROWS), destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
     const params = new URLSearchParams(location.search);
+    const crossingMatrix = BL.math.mat4.create();
+    BL.math.mat4.identity(crossingMatrix);
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
@@ -221,7 +223,9 @@
         polish.reflector = true; polish.gloss = 0.3;
         add(polish, group, { x: 0, y: 0.014, z: 0 }).rotation.x = -Math.PI / 2;
       }
-      add(disc(RADIUS + 0.3, HEIGHT, WALL, true));
+      const ceiling = disc(RADIUS + 0.3, HEIGHT, "#ffffff", true);
+      for (const f of ceiling.faces) f.emissive = 1;
+      add(ceiling);
       // Tile seams remain geometry, so both renderers show the floor's scale.
       const seams = [];
       for (let i = -9; i <= 9; i++) {
@@ -351,9 +355,13 @@
       const chairFrame = [];
       for (const side of [-1, 1]) {
         const x = side * 0.77;
+        // Brackets start inside the seat shell; each upright overlaps the rail under its pad.
+        chairFrame.push(beam(side * 0.52, 0.53, -0.39, x, 0.56, -0.39, 0.065, metal, 0.12));
+        chairFrame.push(beam(side * 0.52, 0.53, 0.35, x, 0.56, 0.35, 0.065, metal, 0.12));
         chairFrame.push(beam(x, 0.56, -0.39, x, 0.95, -0.48, 0.055, metal, 0.12));
-        chairFrame.push(beam(x, 0.95, -0.48, x, 1.09, -0.37, 0.055, metal, 0.12));
-        chairFrame.push(beam(x, 0.56, 0.35, x, 1.06, 0.42, 0.055, metal, 0.12));
+        chairFrame.push(beam(x, 0.95, -0.48, x, 1.10, -0.37, 0.055, metal, 0.12));
+        chairFrame.push(beam(x, 0.56, 0.35, x, 1.10, 0.42, 0.055, metal, 0.12));
+        chairFrame.push(beam(x, 1.085, -0.4, x, 1.085, 0.44, 0.065, metal, 0.12));
         chairFrame.push(beam(side * 0.59, 0.6, -0.57, side * 0.59, 1.9, -0.7, 0.04, metal, 0.1));
         pad(0.155, 0.11, 1.02, 0.05, "#111518", x, 1.125, 0.015);
       }
@@ -502,7 +510,8 @@
       if (!manualFace && broadcast === "feeds") { portraitActor = null; cameras.portrait.forceCapture = false; }
       return true;
     };
-    const travel = (inside) => {
+    const travel = (inside, preserveView = true) => {
+      const actor = pilot.player, crossing = preserveView && actor && inside !== active;
       if (seat.sitter) crew.standPlayer(seat.sitter);
       prepare(); resetBroadcast(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
       const m = mirror.mouth;
@@ -511,7 +520,20 @@
       destination.position.z = inside ? 7.8 : m.z + Math.cos(m.ry) * 2.4;
       destination.yaw = inside ? 0 : m.ry + Math.PI;
       destination.pitch = inside ? 0.08 : pilot.orbit.pitch; destination.dist = Math.min(5, pilot.orbit.dist);
-      pilot.controls.reset(); pilot.navigate(destination);
+      if (crossing) {
+        // Rotate the entire view and body between the two doorway frames. Backing through
+        // keeps the mirror in front of the Ooga, with the held movement still pointing away.
+        const yaw = inside ? -m.ry : m.ry, c = Math.cos(yaw), s = Math.sin(yaw), p = actor.root.position;
+        const lift = actor.viewLift;
+        crossingMatrix[0] = crossingMatrix[10] = c;
+        crossingMatrix[2] = -s; crossingMatrix[8] = s;
+        crossingMatrix[12] = destination.position.x - c * p.x - s * p.z;
+        crossingMatrix[13] = destination.position.y + actor.baseY - p.y;
+        crossingMatrix[14] = destination.position.z + s * p.x - c * p.z;
+        crew.relocatePlayer(destination.position, actor.root.rotation.y + yaw);
+        crew.elevate(lift);
+        pilot.transformView(crossingMatrix, yaw);
+      } else pilot.navigate(destination);
       parkEquipment(inside ? pilot.player : null);
       if (inside && !audio) audio = BL.architectAudio.create();
       audio?.setActive(inside); cameras.setActive(inside); weather.setExterior(!inside);
@@ -521,7 +543,7 @@
       cooldown = Math.max(0, cooldown - dt); veil = Math.max(0, veil - dt);
       const actor = pilot.player;
       if (!actor) { if (active) travel(false); return; }
-      if (preview) { preview = false; travel(true); }
+      if (preview) { preview = false; travel(true, false); }
       const p = actor.root.position, feet = p.y - actor.baseY;
       if (!active && contains(p.x, feet, p.z)) {
         prepare(); active = true; group.visible = true;

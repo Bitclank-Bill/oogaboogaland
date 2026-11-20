@@ -2348,7 +2348,7 @@
       if (ctx.jetpackStatus && cave.jetpackOwned) chosen.jet = !!cave.jet;
     };
     // The next `navigate`, in this same tick, keeps this look, pitch and zoom from the Ooga's new heading.
-    let arriving = null;
+    let arriving = null, arrivalMovement = false;
     // A scene's arrival with the visitor's own Ooga: possessed with the view and combat it last had where they carry, its
     // weapon back in hand where this scene allows (the primary when the rifle is not), and the next `navigate` keeping the
     // look, pitch and zoom. Nothing blends in from the old scene's camera, whose coordinates mean nothing here. Before
@@ -2379,12 +2379,14 @@
       // The jetpack this browser last wore, on the page's first arrival.
       if (c === saved && c.jet && !cave.jet && ctx.wearJetpack) ctx.wearJetpack(cave);
       arriving = arrivalKeep;
+      arrivalMovement = true;
       return true;
     };
     // Lifecycle only (a scene's teardown, a switch to another Ooga or a gorilla, an account that may no longer drive it):
     // the camera stays where it is, on a target of its own, until the next possession.
     const release = () => {
       if (firstOnly && player() && !disposed) return;
+      arrivalMovement = false;
       handoff.cancel();
       restoredPose = null;
       endCenteredCarry();
@@ -2706,6 +2708,7 @@
     const readInput = (dt) => {
       readPad();
       if (!active || externalControl || menuOpen) { if (!buttonsHeld) releaseTriggerButton(); return; }
+      if (arrivalMovement) { arrivalMovement = false; controls.takeMovement(); }
       syncAim();
       const a = controls.read();
       // Arrival easing keeps its label; only manual camera input fades it.
