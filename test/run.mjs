@@ -17123,11 +17123,18 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const count = () => panels.filter(p => p.node.geometry === p.portrait).length;
     const partial = room.broadcast === "to-face" && count() > 0 && count() < panels.length;
     const mean = list => list.reduce((n, p) => n + p.delay, 0) / list.length;
-    const leads = mean(panels.filter(p => p.row === 0)) < mean(panels.filter(p => p.row === 11 && p.col < 48))
+    const leads = mean(panels.filter(p => (p.row === 5 || p.row === 6) && p.col < 48))
+      < mean(panels.filter(p => (p.row === 0 || p.row === 11) && p.col < 48))
       && mean(panels.filter(p => p.distance < 0.2)) < mean(panels.filter(p => p.distance > 0.8));
+    const tighter = BL.architectCave.FACE_SWEEP === 2.8 && panels.every(p => panels.every(q => p.col !== q.col
+      || Math.abs(p.delay - q.delay) < 0.36));
+    const flashed = panels.some(p => p.node.highlight > 0)
+      && panels.every(p => p.node.geometry === p.portrait || p.node.highlight === 0);
     room.update(BL.architectCave.FACE_SWEEP);
     const full = room.broadcast === "face" && count() === 608 && room.renderFeeds.length === 33
       && panels.every(p => p.node.geometry.imageSurface.feed === face);
+    room.update(0.2);
+    const flashEnded = panels.every(p => p.node.highlight === 0 && p.flashTime === 0);
     const beforeBackground = face.captures;
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
@@ -17143,7 +17150,8 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     });
     const mirrorFilled = infill === 16 && room.returnMirror.visible && room.returnMirror.geometry.reflector;
     room.travel(true);
-    return { mosaics, neighborRule, warm, captured, partial, leads, full, background, restoring, restored, mirrorFilled };
+    const flashReset = panels.every(p => p.node.highlight === 0 && p.flashTime === 0);
+    return { mosaics, neighborRule, warm, captured, partial, leads, tighter, flashed, full, flashEnded, background, restoring, restored, mirrorFilled, flashReset };
   })()`);
   record("hub observatory: 608 panels share mosaic textures, the sweep leads from the mirror and its face-only infill preserves the exit",
     Object.values(broadcast).every(Boolean), JSON.stringify(broadcast));
@@ -17157,7 +17165,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     }
     const before = panels.map(p => p.node.geometry), old = panels.find(p => p.size === 3);
     const nine = panels.filter(p => p.group === old.group), slot = old.normal.imageSurface.feed;
-    let blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, partialNeighbors, isolated;
+    let blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, partialNeighbors, isolated, flashIsolated;
     const neighborsValid = () => panels.every(p => panels.every(q => {
       const sameLayout = !!p.next === !!q.next;
       const sameGroup = sameLayout && p.group === q.group;
@@ -17184,6 +17192,8 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       room.update((times[0] + times[1]) / 2);
       splitOne = nine.filter(p => p.next === null).length === 1
         && nine.filter(p => p.next !== null).every(p => p.node.geometry === before[panels.indexOf(p)]);
+      flashIsolated = panels.filter(p => p.node.highlight > 0).length === 1
+        && nine.some(p => p.next === null && p.node.highlight > 0);
       partialNeighbors = neighborsValid();
       retained = room.renderFeeds.includes(slot) && slot.holdFrame && room.cameras.ready(slot);
       noBlank = panels.every(p => room.cameras.ready(p.node.geometry.imageSurface.feed));
@@ -17210,7 +17220,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
         || Math.min(Math.abs(p.col - q.col), 52 - Math.abs(p.col - q.col)) > 1
         || p.normal.imageSurface.feed !== q.normal.imageSurface.feed));
       isolated &&= panels.every((p, i) => nine.includes(p) || p.node.geometry === before[i]);
-      return { blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, neighbors, partialNeighbors, isolated };
+      return { blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, neighbors, partialNeighbors, isolated, flashIsolated };
     } finally { Math.random = random; room.travel(true); }
   })()`);
   record("hub observatory: one patch splits and assembles tile by tile, preserving every outside screen and holding outgoing images until ready",

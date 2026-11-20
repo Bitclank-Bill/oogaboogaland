@@ -23,7 +23,7 @@
   const segmentClear = (x, y, z, toX, toY, toZ, radius, height) =>
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
     && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
-  const FACE_WAIT = 45, FACE_SWEEP = 4.2, FACE_HOLD = 8, PATCH_SWEEP = 1.1;
+  const FACE_WAIT = 45, FACE_SWEEP = 2.8, FACE_HOLD = 8, PATCH_SWEEP = 1.1, TILE_FLASH = 0.16;
   const PEN_ARM_REST = -0.75; // The crew's default chair pose; only the shoulder may lift from it.
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
   // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
@@ -302,9 +302,9 @@
         const normal = cameras.panel(feed, group.size, col - group.col, row - group.row, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
-        // Spread from the mirror around both sides. Lower rows lead, with row and tile jitter.
+        // Spread from the mirror around both sides, with a small randomized middle-row lead.
         panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
-          distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0 });
+          distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0, flashTime: 0 });
         tiles[row * layout.cols + col] = panels[panels.length - 1];
       };
       for (let i = 0; i < BANKS; i++) {
@@ -442,14 +442,23 @@
       layoutPending = true; layoutStarted = false; layoutTime = 0;
     };
     const sweepDelays = () => {
-      for (let row = 0; row < ROWS; row++) rowJitter[row] = Math.random() * 0.12;
-      // Small tile jitter keeps each side of a row moving outwards in order; rows retain their uneven edge.
-      for (const p of panels) p.delay = p.distance * 2.9 + p.row / (ROWS - 1) * 0.7 + rowJitter[p.row] + Math.random() * 0.035;
+      for (let row = 0; row < ROWS; row++) {
+        const edge = Math.abs(row * 2 / (ROWS - 1) - 1);
+        rowJitter[row] = 2.12 + edge * 0.18 + Math.random() * 0.14;
+      }
+      // Similar row speeds favor the middle without a fixed ranking. Tile jitter stays below one column's travel time.
+      for (const p of panels) p.delay = p.distance * rowJitter[p.row] + Math.random() * 0.038;
+    };
+    const showTile = (p, geometry) => {
+      if (p.node.geometry === geometry) return;
+      p.node.geometry = geometry;
+      // Use the existing per-instance highlight: the picture stays underneath, with no extra draw or capture.
+      p.flashTime = TILE_FLASH; p.node.highlight = 0.9;
     };
     const replaceTile = p => {
       if (!p.next || !cameras.ready(p.next.normal.imageSurface.feed)) return false;
       p.normal = p.next.normal; p.group = p.next.group; p.size = p.next.size; p.next = null;
-      p.node.geometry = p.normal;
+      showTile(p, p.normal);
       return true;
     };
     const updateLayout = dt => {
@@ -471,7 +480,7 @@
       // Travel or an actor change cancels an unfinished layout back to its last complete assignment.
       for (const p of panels) {
         if (p.previous) { p.normal = p.previous.normal; p.group = p.previous.group; p.size = p.previous.size; }
-        p.node.geometry = p.normal;
+        p.node.geometry = p.normal; p.flashTime = 0; p.node.highlight = 0;
       }
       finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
@@ -486,6 +495,11 @@
     };
     const updateBroadcast = (dt, actor) => {
       if (document.hidden) return;
+      for (const p of panels) if (p.flashTime > 0) {
+        p.flashTime = Math.max(0, p.flashTime - dt);
+        const fade = p.flashTime / TILE_FLASH;
+        p.node.highlight = 0.9 * fade * fade;
+      }
       const face = cameras.portrait;
       if (broadcastActor !== actor) { resetBroadcast(); broadcastActor = actor; }
       const holding = seated();
@@ -537,9 +551,9 @@
         for (const p of panels) {
           if (broadcastTime < p.delay) { remaining = true; continue; }
           if (toFace) {
-            if (cameras.ready(face)) p.node.geometry = p.portrait;
+            if (cameras.ready(face)) showTile(p, p.portrait);
             else remaining = true;
-          } else if (cameras.ready(p.normal.imageSurface.feed)) p.node.geometry = p.normal;
+          } else if (cameras.ready(p.normal.imageSurface.feed)) showTile(p, p.normal);
           else remaining = true;
         }
         if (!remaining && broadcastTime >= FACE_SWEEP) {

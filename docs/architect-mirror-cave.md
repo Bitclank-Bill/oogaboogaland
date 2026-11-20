@@ -126,6 +126,8 @@ group, crosses the mirror gap or replaces screens elsewhere on the wall.
 Destination pictures warm before the patch's roughly 1.1-second wave. Within
 that patch, tiles change in outward row order with lower rows leading and small
 row/tile jitter. The rest of the wall keeps its current layout and live feeds.
+Each replaced tile briefly flashes over its ready image, using the existing
+per-instance highlight with a 160 ms fade; untouched tiles do not flash.
 
 Splitting a 3×3 preserves its remaining old image tiles until their individual
 turns; assembling one replaces the nine old tiles individually. Each tile checks
@@ -177,10 +179,13 @@ multiply the number of cameras or textures.
 ### Face broadcast
 
 While nobody is controlling the chair, a randomized 34–56 seconds of regular
-feeds is followed by an approximately 4.2-second wave that replaces
+feeds is followed by an approximately 2.8-second wave (1.5× the previous speed) that replaces
 individual screens with the same live close-up of the controlled Ooga. It begins
-at the return mirror and spreads away around both sides. Bottom rows
-lead upper rows; fresh row and panel jitter makes the edge irregular. Every
+at the return mirror and spreads away around both sides. Middle rows tend to
+lead, with a small speed difference toward the ceiling and floor and fresh
+random row speeds and tile jitter. A brief warm flash fades over each new image;
+it uses the existing instance highlight, adding no captures, textures or draws.
+The old image remains until its destination is ready. Every
 screen holds the complete face for a randomized 6–10 seconds, then the same outward pattern
 restores the current mosaic arrangement. The timer pauses in hidden tabs and resets on
 travel or changing the controlled character. Automatic transitions are disabled
@@ -355,7 +360,7 @@ browser acceptance. Added, unrun checks cover ownership hiding, pen cleanup,
 persistent seated views and automatic transitions resuming after standing.
 Additional unrun assertions cover the original fist layout, body-anchored arm in
 both views, stationary third-person clicking, button travel, unchanged fist geometry,
-bottom-leading wave and feed-only mirror infill. The
+middle-favored global wave and feed-only mirror infill. The
 pen framing and revised down/up click sound still need visual/listening acceptance.
 Added, unrun regression assertions cover 3×3-to-single and single-to-3×3 waves,
 ordered tile arrivals, keeping screens outside the selected patch unchanged,
@@ -368,6 +373,8 @@ remain pending on the same unavailable Chrome connection.
 New, unrun assertions cover the higher pen, unchanged elbow/wrist grip, fixed
 shoulder pivot and bounded lift/rest across first-person pitch. In-game framing
 acceptance remains pending.
+The faster global wave, tighter row timing and per-tile flashes pass build/syntax
+checks; updated regression assertions remain unrun and visual acceptance is pending.
 The white ceiling, attached armrest brackets and direction-preserving mirror
 crossings also need in-game review. New, unrun assertions cover backing through
 both mirrors in first and third person, continued held movement after arrival,
