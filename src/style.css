@@ -11911,6 +11911,16 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
   gap: 5px;
 }
 .studio-side button { flex: 0 0 auto; padding: 0 10px; }
+.studio-wardrobe { display: grid; gap: 7px; margin: 12px 0; }
+.studio-wardrobe select { width: 100%; min-width: 0; padding: 7px; font: inherit; color: var(--paper); background: var(--slab-dark); border: 1px solid var(--wood-edge); border-radius: 5px; }
+.studio-wardrobe button { white-space: normal; min-height: 36px; }
+.studio-wardrobe p { margin: 0; }
+.studio-wardrobe a { color: var(--accent-text); }
+.equipment-update { position: absolute; z-index: 50; top: calc(var(--banner-controls-bottom, 68px) + 12px); left: 50%; transform: translateX(-50%); width: min(360px, calc(100vw - 24px)); box-sizing: border-box; padding: 12px; border: 2px solid var(--wood-edge); border-radius: var(--radius); color: var(--paper); background: var(--planks); box-shadow: 0 4px 12px #0008; }
+.equipment-update p { margin: 0 0 8px; }
+.equipment-update div { display: flex; gap: 8px; flex-wrap: wrap; }
+.equipment-update button { min-height: 36px; }
+.equipment-update [role="status"]:empty { display: none; }
 /* Its quick pick of every Ooga, in the banner where the controls button stands elsewhere, in the equipment buttons' look. */
 .studio-pick {
   position: absolute;

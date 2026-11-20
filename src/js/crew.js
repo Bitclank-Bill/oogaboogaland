@@ -7360,6 +7360,7 @@
       if (player) clearHeadLook(player);
       if (!player) return;
       const cave = player;
+      BL.equipment?.clear(cave);
       if (passiveNpcs && !ctx.playerName) clearCombatEffects(cave);
       clearGunBashThrust(cave);
       cave.humanControlled = false;

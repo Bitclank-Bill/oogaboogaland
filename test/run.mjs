@@ -4418,7 +4418,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "equipment-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
@@ -4428,7 +4428,7 @@ const BROWSER_ONLY = ARGS.includes("--browser-only");
 if (BROWSER_ONLY && (!PICKED.length || FULL || ARGS.some(arg => arg !== "--browser-only" && !SCENES.includes(arg)))) {
   throw new Error("--browser-only requires named scenes and cannot be combined with full, unit, perf or dedicated checks");
 }
-const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app", "character-catalog-app"].includes(ARGS[0]));
+const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app", "character-catalog-app", "equipment-app"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -5146,7 +5146,7 @@ const hudNoticeChecks = async () => {
 const characterChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
-  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
+  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "hat", "hatNodes", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
   // `hatY` placed the loot crates' swag hats; nothing calls it now, and a file that still defines it builds the same.
   const collect = node => {
     if (node.geometry) mirrorGeometries.add(node.geometry);
@@ -39714,6 +39714,207 @@ const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract:
 scene("dsb",{label:"integration checkpoint",query:"&weather=clear&time=1200",steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 
+// Explicit account/API fixtures exercise the real hosted wardrobe and model consumers. They are not live
+// staging authentication or a substitute for two different signed-in people observing the actual Room.
+const equipmentAppChecks = async () => {
+  const { equipmentHats } = await import("../worker/src/equipment-hats.js");
+  const temporary = mkdtempSync(join(tmpdir(), "equipment-app-")), staged = join(temporary, "site");
+  const build = spawnSync(process.execPath, [join(root, "scripts/site.mjs"), staged, "--audio-assets", "--image-assets", "--worker-page", "--page-assets"], {
+    cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: "", CHARACTER_CATALOG_ENGINE: "", CHARACTER_CATALOG_ENVIRONMENT: "" }
+  });
+  if (build.status !== 0) { rmSync(temporary, { recursive: true, force: true }); throw new Error("Equipment acceptance build failed: " + build.stderr); }
+  const item = equipmentHats.items[0], archives = new Map(), archiveReads = [], writes = [];
+  const shots = join(root, "untracked", "equipment"), network = { accounts: 0, equipment: 0, saves: 0, archives: 0 };
+  for (const entry of equipmentHats.items) for (const version of entry.versions)
+    archives.set(version, readFileSync(join(root, "src/equipment/hats", version + ".json"), "utf8"));
+  const variant = (color) => {
+    const archive = JSON.parse(archives.get(item.current));
+    for (const node of archive.nodes) for (const face of node.geometry.faces) face.color = color;
+    equipmentHats.validate(archive, item.id);
+    const json = equipmentHats.encode(archive), version = createHash("sha256").update(json).digest("hex");
+    archives.set(version, json); return version;
+  };
+  const second = variant([35, 190, 90]), third = variant([190, 45, 170]);
+  let current = item.current, saved = { selection: null, revision: 0, declined: null, update: null };
+  const account = { id: 71, login: "equipment-preview", display: "Equipment preview" }, at = Math.floor(Date.now() / 1000) - 3600;
+  const answer = () => ({ ...saved, update: saved.selection?.item === item.id && saved.selection.version !== current && saved.declined !== current
+    ? { item: item.id, version: current } : null });
+  const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
+  const server = createServer(async (req, res) => {
+    const path = new URL(req.url, "http://localhost").pathname;
+    const json = (status, value) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(value)); };
+    if (path === "/api/me") { network.accounts++; return json(200, { player: account, equipment: true, donations: false, tess: false,
+      character: { handle: account.login, joined: at, lastCommit: at } }); }
+    if (path === "/api/equipment") {
+      if (req.method === "GET") { network.equipment++; return json(200, { equipment: answer() }); }
+      network.saves++;
+      let body = ""; for await (const chunk of req) body += chunk;
+      const command = JSON.parse(body); writes.push(command);
+      if (command.revision !== saved.revision) return json(409, { error: "conflict", equipment: answer() });
+      saved = { selection: Object.hasOwn(command, "selection") ? command.selection : saved.selection,
+        revision: saved.revision + 1, declined: command.decline || null, update: null };
+      return json(200, { equipment: answer() });
+    }
+    const version = /^\/api\/equipment\/hats\/([a-f0-9]{64})\.json$/.exec(path)?.[1];
+    if (version) {
+      network.archives++;
+      archiveReads.push(version);
+      if (!archives.has(version)) return json(404, { error: "not found" });
+      res.writeHead(200, { "content-type": "application/json" }); res.end(archives.get(version)); return;
+    }
+    const file = resolve(staged, `.${path === "/" ? "/index.html" : path}`);
+    let body = null;
+    if (file.startsWith(staged + sep)) try { body = readFileSync(file); } catch { /* fixture 404 */ }
+    res.writeHead(body ? 200 : 404, { "content-type": types[extname(file)] || "application/octet-stream" }); res.end(body || "");
+  });
+  await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const address = `${origin}/?debug=1&scene=studio&character=${account.login}&hour=12&day=80&welcome=0&pos=0`;
+  let b;
+  const wait = async (expression, reason, ms = 15000) => {
+    const deadline = Date.now() + ms;
+    while (!await b.evaluate(expression).catch(() => false)) {
+      if (Date.now() > deadline) throw new Error(reason + ": " + b.logs.join(" | "));
+      await b.sleep(30);
+    }
+  };
+  const open = async (options = {}) => {
+    b = await launch(options);
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const actual = window.fetch.bind(window); window.__equipmentFixture = { sockets: [], sent: [] };
+      window.fetch = (input, options) => {
+        const url = new URL(typeof input === "string" ? input : input.url, location.href);
+        if (url.origin === location.origin && (!url.pathname.startsWith("/api/") || url.pathname === "/api/me" || url.pathname.startsWith("/api/equipment"))) return actual(input, options);
+        return Promise.resolve(Response.json({}));
+      };
+      window.WebSocket = class extends EventTarget {
+        static CONNECTING=0;static OPEN=1;static CLOSING=2;static CLOSED=3;
+        constructor(url) { super(); this.url=String(url);this.readyState=1;__equipmentFixture.sockets.push(this);
+          queueMicrotask(()=>{this.onopen?.();if(this.url.includes('/room'))this.onmessage?.({data:JSON.stringify({t:'welcome',you:{id:71},players:[],now:Date.now(),features:['equipment-v1']})});}); }
+        send(data) { __equipmentFixture.sent.push(data); }
+        close() { this.readyState=3; }
+      };
+    })();` });
+    await b.open(address); await untilReady(b, 30000);
+    await wait("BL.equipment?.state.supported && BL.net.ownCharacter()?.handle==='equipment-preview' && !!document.getElementById('studio-hat')", "Hosted wardrobe did not initialize");
+  };
+  const choose = async (value) => b.evaluate(`(() => { const select=document.getElementById('studio-hat');select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  const wearing = (selection) => `JSON.stringify(BL.characterEquipment.selection(__ooga.studio.cave))===${JSON.stringify(JSON.stringify(selection))}`;
+  const save = async (selection) => {
+    const previous = saved.revision;
+    await b.evaluate("document.getElementById('studio-hat-save').click()");
+    await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${previous + 1}`, "Wardrobe save did not complete");
+    await wait(wearing(selection), "Saved appearance was not applied");
+  };
+  try {
+    await open({ w: 1000, h: 760 });
+    await b.evaluate("window.__equipmentCave=__ooga.studio.cave;window.__equipmentRoot=__ooga.studio.cave.root");
+    let previews = 0;
+    for (const entry of equipmentHats.items) {
+      const selection = { item: entry.id, version: entry.current };
+      await choose(`${entry.id}@${entry.current}`); await wait(wearing(selection), "Hat preview did not appear"); previews++;
+    }
+    record("equipment studio: every registered hat previews on the same wearer without saving or opening a Room socket", previews === equipmentHats.items.length && writes.length === 0
+      && await b.evaluate("__ooga.studio.cave===__equipmentCave && __ooga.studio.cave.root===__equipmentRoot && !__equipmentFixture.sockets.some(s=>s.url.includes('/room'))"));
+    const first = { item: item.id, version: item.current };
+    await choose(`${item.id}@${item.current}`); await save(first);
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(first), "Reload lost the saved hat");
+    record("equipment studio: the real save control persists its immutable version across a new page", saved.revision === 1 && saved.selection.version === item.current
+      && await b.evaluate("!document.getElementById('studio-hat-save').disabled && BL.equipment.state.record.revision===1"));
+    current = second;
+    await b.evaluate("BL.equipment.refresh()");
+    await wait("!document.getElementById('equipment-update').hidden", "Creator update was not offered");
+    record("equipment creator update: a newer immutable version offers a choice without replacing the worn geometry", await b.evaluate(wearing(first)) && saved.selection.version === item.current);
+    await b.evaluate("document.getElementById('equipment-decline').click()");
+    await wait("!BL.equipment.state.busy && document.getElementById('equipment-update').hidden", "Keep my version did not complete");
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(first), "Declined version did not survive reload");
+    record("equipment creator update: Keep retains the previous version and suppresses that offer after reload", saved.selection.version === item.current && saved.declined === second
+      && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    current = third;
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "A later update was incorrectly suppressed");
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    const accepted = { item: item.id, version: third };
+    await wait(`!BL.equipment.state.busy && BL.equipment.state.record.selection?.version===${JSON.stringify(third)}`, "Accept did not save the offered version");
+    await wait(wearing(accepted), "Accepted version did not reach the existing wearer");
+    record("equipment creator update: a later offer loads verified changed geometry and Accept saves exactly that version", saved.selection.version === third && saved.declined === null
+      && archiveReads.includes(third) && writes.at(-1).selection.version === third && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    mkdirSync(shots, { recursive: true }); await b.screenshot(join(shots, "studio.png"));
+    const live = await b.evaluate(`(() => {
+      const own=BL.models.caveman(BL.contributors.traitsFor('equipment-preview'));
+      const peer=BL.models.caveman(BL.contributors.traitsFor('equipment-peer'));
+      const originals=[own,peer].map(c=>({root:c.root,parts:c.parts,arm:c.parts.armR,head:c.parts.head,body:c.parts.torso.geometry}));
+      own.root.position.x=3;peer.root.position.z=7;peer.parts.armR.rotation.x=.6;
+      const oldSelection=${JSON.stringify(first)},newSelection=${JSON.stringify(accepted)};
+      BL.equipment.applyLocal(own);
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:1,selection:oldSelection}]});
+      BL.equipment.applyRemote(peer,72);
+      const oldGeometry=peer.equipmentHatNode.children[0].geometry;
+      BL.equipment.receive({t:'equipment',id:72,revision:2,selection:newSelection});BL.equipment.applyRemote(peer,72);
+      const node=peer.equipmentHatNode,geometry=node.children[0].geometry,childCount=peer.parts.head.children.length;
+      const changed=geometry!==oldGeometry&&JSON.stringify(geometry.faces[0].color)!==JSON.stringify(oldGeometry.faces[0].color);
+      for(let i=0;i<20;i++)BL.equipment.applyRemote(peer,72);
+      const reused=peer.equipmentHatNode===node&&peer.parts.head.children.length===childCount&&own.equipmentHatNode.children[0].geometry===geometry;
+      BL.equipment.receive({t:'equipment',id:72,revision:1,selection:{item:'none',version:null}});BL.equipment.applyRemote(peer,72);
+      const stale=BL.characterEquipment.selection(peer).version===newSelection.version;
+      BL.equipment.receive({t:'equipment',kind:'remove',ids:[72]});BL.equipment.applyRemote(peer,72);
+      const removed=BL.characterEquipment.selection(peer)===null;
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:2,selection:newSelection}]});BL.equipment.applyRemote(peer,72);
+      const arrived=BL.characterEquipment.selection(peer).version===newSelection.version;
+      const retained=[own,peer].every((c,i)=>c.root===originals[i].root&&c.parts===originals[i].parts&&c.parts.armR===originals[i].arm
+        &&c.parts.head===originals[i].head&&c.parts.torso.geometry===originals[i].body)&&own.root.position.x===3&&peer.root.position.z===7&&peer.parts.armR.rotation.x===.6;
+      BL.equipment.clear(own);BL.equipment.clear(peer);
+      return {changed,reused,stale,removed,arrived,retained,clean:!own.equipmentHatNode&&!peer.equipmentHatNode};
+    })()`);
+    record("equipment live messages: own and remote bodies retain pose and gameplay nodes, share immutable geometry and reject stale appearances", live.changed&&live.reused&&live.stale&&live.retained, JSON.stringify(live));
+    record("equipment live messages: leaving visibility clears borrowed geometry and a fresh arrival snapshot restores the saved version", live.removed&&live.arrived&&live.clean, JSON.stringify(live));
+    record("equipment studio: ordinary save, reload and creator-update flows have a clean console", b.logs.length === 0, b.logs.join("\n"));
+    const conflictLog = b.logs.length;
+    // Another tab wins the revision before this page saves. The response is authoritative; the fixture never
+    // rewrites the client record or bypasses the actual HTTP/CAS-error path.
+    saved = { selection: { item: "none", version: null }, revision: saved.revision + 1, declined: null, update: null };
+    await choose(`${item.id}@${item.current}`); await b.evaluate("document.getElementById('studio-hat-save').click()");
+    await wait("!BL.equipment.state.busy && !!BL.equipment.state.error", "Conflicting save did not report the concurrent change");
+    record("equipment studio: a stale save adopts the authoritative choice and reports the conflict without overwriting it", saved.selection.item === "none"
+      && await b.evaluate(`BL.equipment.state.record.revision===${saved.revision} && BL.equipment.state.record.selection.item==='none' && /another tab/.test(document.getElementById('studio-hat-status').textContent)`));
+    const conflictLogs = b.logs.slice(conflictLog);
+    record("equipment studio: an intentional HTTP conflict produces only its expected browser resource error", conflictLogs.length <= 1
+      && conflictLogs.every(line=>line === "[log.error] Failed to load resource: the server responded with a status of 409 (Conflict)"), conflictLogs.join("\n"));
+    // The intentional HTTP rejection is checked above. Every later normal flow starts a fresh log window.
+    b.logs.length = 0;
+    await choose("none"); await save({ item: "none", version: null });
+    await choose("authored"); await save(null);
+    record("equipment studio: no hat and original appearance are distinct saved choices", writes.at(-2).selection.item === "none" && writes.at(-1).selection === null && saved.selection === null);
+    // A fresh document avoids the independently recorded Studio leave/input-target defect. This check concerns
+    // the authored attachment's reversible appearance, not that existing scene-transition contract.
+    await b.open(address.replace(`character=${account.login}`, `character=${encodeURIComponent(item.creator)}`));
+    await untilReady(b, 30000);
+    await wait("__ooga.studio.cave.parts.nativeHat?.length>0", "Authored hat fixture has no native attachment");
+    await b.evaluate("window.__nativeHat=__ooga.studio.cave.parts.nativeHat.map(n=>({node:n,visible:n.visible}));window.__nativeBody=__ooga.studio.cave.root");
+    await choose("none"); await wait(wearing({ item: "none", version: null }), "No hat did not apply to the authored hat");
+    const hidden = await b.evaluate("__nativeHat.every(v=>v.node.visible===false) && __ooga.studio.cave.root===__nativeBody");
+    await choose("authored"); await wait(wearing(null), "Original hat did not return");
+    record("equipment studio: no hat hides only the authored attachment and Original restores it without replacing the body", hidden
+      && await b.evaluate("__nativeHat.every(v=>v.node.visible===v.visible) && __ooga.studio.cave.root===__nativeBody && document.getElementById('studio-hat-save').disabled"));
+    await b.open(address.replace(`character=${account.login}`, "character=w-s-bitcoin")); await untilReady(b, 30000);
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "The reviewed apple fitting did not accept the hat");
+    await b.screenshot(join(shots, "apple-hat.png"));
+    record("equipment studio: the reviewed apple character can preview a shared hat without changing the account selection", saved.selection === null
+      && await b.evaluate("__ooga.studio.state.name==='w-s-bitcoin' && document.getElementById('studio-hat-save').disabled"));
+    record("equipment studio: desktop acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
+    b.close(); b = null;
+    await open({ w: 390, h: 844, mobile: true });
+    await b.evaluate("if(document.getElementById('studio-features').dataset.folded==='true')document.querySelector('.studio-features-edge').click()");
+    await wait("document.getElementById('studio-features').dataset.folded!=='true' && document.getElementById('studio-hat').getBoundingClientRect().right<=innerWidth", "Phone wardrobe did not unfold into view");
+    const fit = await b.evaluate("['studio-hat','studio-hat-save'].map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {id,visible:r.width>0&&r.height>0,left:r.left,right:r.right,top:r.top,bottom:r.bottom};})");
+    record("equipment studio: phone selection and save controls fit the viewport", fit.every(r=>r.visible&&r.left>=0&&r.right<=390&&r.top>=0&&r.bottom<=844), JSON.stringify(fit));
+    await choose(`${item.id}@${item.current}`); await save(first);
+    record("equipment studio: phone controls save through the same account API with a clean console", saved.selection.version === item.current && b.logs.length === 0, b.logs.join("\n"));
+    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png"] }, null, 2) + "\n");
+  } finally {
+    if (b) b.close(); await dispose(); await new Promise(done=>server.close(done)); rmSync(temporary, { recursive: true, force: true });
+  }
+};
+
 // A real hosted build fetches an independent catalog before any contributor/model consumer initializes. This
 // dedicated check keeps that network boundary active; only unrelated feeds are fixtures, never nosim or net=0.
 const characterCatalogAppChecks = async () => {
@@ -39890,6 +40091,7 @@ if (ARGS.includes("cloud-hopper-arcade")) {
 if (ARGS.includes("cloud-hopper-record")) { await highscoreClientChecks(); await cloudHopperRecordChecks(); }
 if (ARGS.includes("ooga-chat-app")) { await oogaChatAppChecks(); await dispose(); }
 if (ARGS.includes("character-catalog-app")) { await characterCatalogAppChecks(); await dispose(); }
+if (ARGS.includes("equipment-app")) { await equipmentAppChecks(); await dispose(); }
 // The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (UNIT || ARGS.includes("cloud-hopper-controller")) await unitChecks();
 if (PROTOCOL) await pokerProtocolChecks();
