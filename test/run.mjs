@@ -16984,7 +16984,9 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   const channels = await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect, cameras = room.cameras;
-    const slots = room.feeds.map(f => f.geometry), seen = new Set(room.feeds.map(f => f.channel.id));
+    const slots = room.feeds.map(f => f.geometry), ids = room.feeds.map(f => f.channel.id);
+    const assigned = new Set();
+    BL.scene.traverseVisible(room.group, node => { if (node.geometry?.imageSurface?.feed) assigned.add(node.geometry.imageSurface.feed.channel.id); });
     const source = room.feeds.find(f => f.channel.id === "bifrost.chamber").source;
     const isolated = source.root.cameraHidden && !source.root.parent
       && Array.from(source.meshes).every(g => g.cameraFeedSource === source && g.castShadow === false);
@@ -16997,19 +16999,15 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       livePose = !!actor && actor.rotation.y === rec.yaw;
       rec.poseZone = "main"; source.update(0.11); staleHidden = !!actor && !actor.visible;
     } finally { BL.net.remotes.delete(id); }
-    let bounded = true, pending = true;
-    for (let i = 0; i < cameras.channels.length + 4; i++) {
-      cameras.update(BL.observatoryCameras.SWITCH_SECONDS + 0.1);
-      pending &&= room.feeds.filter(f => f.pending).length === 1;
-      bounded &&= room.feeds.length === 4 && room.feeds.every((f, j) => f.geometry === slots[j])
-        && new Set(room.feeds.map(f => f.channel.id)).size === 4;
-      for (const f of room.feeds) seen.add(f.channel.id);
-      B.advance(0.25, 1 / 60);
-    }
-    return { isolated, livePose, staleHidden, bounded, pending, all: cameras.channels.every(c => seen.has(c.id)),
-      released: source.meshes.size === 0 && source.root.children.length === 0 };
+    cameras.update(90);
+    const stable = room.feeds.length === cameras.channels.length
+      && room.feeds.every((f, j) => f.geometry === slots[j] && f.channel.id === ids[j]);
+    cameras.setActive(false);
+    const released = source.meshes.size === 0 && source.root.children.length === 0 && room.feeds.every(f => !f.source);
+    cameras.setActive(true); B.advance(0.25, 1 / 60);
+    return { isolated, livePose, staleHidden, stable, all: cameras.channels.every(c => assigned.has(c.id)), released };
   })()`);
-  record("hub observatory: channels cycle through four texture slots, isolated Bifrost poses reject stale zones and release on rotation",
+  record("hub observatory: every channel has permanent screens, isolated Bifrost poses reject stale zones and release on deactivation",
     Object.values(channels).every(Boolean), JSON.stringify(channels));
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", code: "KeyS" });
   await b.evaluate(`__ooga.advance(1, 1 / 60)`);
@@ -17019,9 +17017,9 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const before = count(); B.advance(0.8, 1 / 60);
     return { active: room.active, frozen: count() === before, feet: B.pilot.player.root.position.y - B.pilot.player.baseY, name: B.pilot.player.traits.name };
   })()`);
-  record("hub mirror: nearby preparation stays idle, real walking enters four live feeds and returns the same Ooga with captures stopped",
+  record("hub mirror: nearby preparation stays idle, real walking enters eleven live feeds and returns the same Ooga with captures stopped",
     approach.prepared && !approach.active && approach.captures === 0 && entered.active && entered.feet < -40
-      && entered.feeds === 4 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
+      && entered.feeds === 11 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
       && entered.name === approach.name && returned.name === approach.name, JSON.stringify({ approach, entered, returned }));
   await trip("hub").run(b);
   const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);

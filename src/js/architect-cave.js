@@ -63,7 +63,7 @@
           for (let row = 0; row < 3; row++) {
             const rack = createNode({ position: { x: 0, y: 1.7 + row * 2.12, z: 0.05 } }); addChild(bank, rack);
             add(housing, rack);
-            const feed = feeds[(i + row) % feeds.length];
+            const feed = feeds[((i - 1) * 3 + row) % feeds.length];
             add(feed.geometry, rack, { x: 0, y: 0, z: 0.19 });
             add(feed.label, rack, { x: 0, y: -0.735, z: 0.195 });
           }

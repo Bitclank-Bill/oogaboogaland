@@ -31,24 +31,27 @@ No network asset is required: this is prebuilding and GPU warming, rather than
 a network fetch. Captures and audio begin only on entry. A direct debug arrival
 uses the same preparation path if nothing has been warmed yet.
 
-The room remains prepared for the hub visit, with four bounded camera targets;
+The room remains prepared for the hub visit, with one small target per channel;
 leaving the hub releases them with their owning geometries. Context restoration
 recreates targets and quality changes select the current target size.
 
 ## Live camera screens
 
-Four texture slots are repeated across the wall. Every eight seconds one visible
-slot switches to the next channel, with a name below its picture. The catalog in
+Every channel has permanent screens across the wall, with a name below its
+picture. Channels do not cycle; repeated screens share one texture. The catalog in
 `observatory-cameras.js` currently covers eleven views: the banana pile, Mempool
 lake, Merge Rock, Bifrost chamber, the B.C.A./Arcade/Factory/EntropyLab/mirror
 entrances, Timechain Sphere exterior and Bifrost islet. These are live rendered
-views, without CPU pixel reads, image encoding or another WebGL context. The
-previous picture is hidden until the newly named channel has a fresh capture.
+views, without CPU pixel reads, image encoding or another WebGL context. A screen
+shows CONNECTING until its first capture is ready.
 
 - High/medium: 256 x 144 pixels, each feed no more often than every 90 ms.
 - Low: 192 x 108 pixels, each feed no more often than every 200 ms.
 - At most one visible feed per displayed frame, rotating between due cameras.
   Actual refresh rate falls with display frame rate; this is not 60 Hz video.
+  With all eleven feeds visible at 60 displayed frames per second, each gets
+  roughly 5.5 updates per second; at 30 displayed frames, roughly 2.7. These are
+  scheduler limits, not measured device performance. Off-screen feeds are idle.
 - Captures stop outside the chamber, when no screen using the feed is visible,
   and while the document is hidden.
 - Each feed has its own view, frustum and short far plane. The current world is
@@ -58,7 +61,7 @@ previous picture is hidden until the newly named channel has a fresh capture.
   Existing foliage silhouettes remain; the pile uses its distant banana shell.
 - Canvas 2D draws the room with honestly labelled offline screens.
 
-Four high-tier color targets use 576 KiB before depth attachments. Source world
+Eleven high-tier color targets use about 1.55 MiB before depth attachments. Source world
 geometry and simulation dominate the memory budget; screen count does not
 multiply the number of cameras or textures.
 
@@ -77,9 +80,11 @@ approximation: rings and glyph move locally, and travel-window charge follows
 visitor proximity. Exact machine phase, gaze, costumes and recursive world
 windows are omitted. Multiplayer observation still needs acceptance testing.
 
-Observer models are built only while selected inside the Observatory, and their
-GPU resources are released on rotation or exit. The shared catalog and bounded
-slots let future adapters add areas without retaining every interactive scene.
+Observer models are built only inside the Observatory, updated while their screens
+are visible, and their GPU resources are released on exit. The shared catalog and
+fixed capture budget let future adapters add areas without retaining every
+interactive scene. More channels cost additional small textures and reduce each
+visible feed's refresh rate; additional observer models need their own memory budgets.
 The planned progression is other public interiors (lab, B.C.A., Factory, Arcade,
 Mempool chamber), DSB and its public rooms, then public Timechain rooms and game
 areas. Each needs its own camera representation and a check of which current
@@ -143,10 +148,10 @@ The existing mirror regression checks retain shot/melee, unbreakable-surface and
 scene-round-trip assertions, update the gate expectation, and add real-key
 entry/return checks with idle capture assertions. The automated suite has not
 been run: AGENTS.md defaults to waiting unless fast/full tests are requested.
-Additional regression assertions cover cycling through the catalog with four
-stable texture slots, pending pictures, isolated observer geometry, stale-zone
-pose rejection and source disposal. Manual browser review covered the rotating
-wall and framing; these new automated assertions have not been run either.
+Additional regression assertions cover permanent screen assignments for every
+channel, stable textures, isolated observer geometry, stale-zone pose rejection
+and source disposal. Manual browser review covered the simultaneous wall and
+framing; these new automated assertions have not been run either.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

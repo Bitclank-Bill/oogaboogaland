@@ -1,13 +1,12 @@
-// A catalog can grow without growing the wall's four texture slots. A source factory makes only a
-// camera representation, with update/dispose/live meshes, never the destination's interactive scene.
+// Each channel owns one texture shared by its permanent screens. Capture work stays capped at one
+// visible feed per frame. Source factories make camera representations, never interactive scenes.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const SLOTS = 4, SWITCH_SECONDS = 8;
   const create = ({ renderer, mouths, places }) => {
     const channels = [], feeds = [], sources = new Map(), meshes = new Set();
     const debug = new URLSearchParams(location.search).get("debug") === "1";
-    let prepared = false, active = false, switchIn = SWITCH_SECONDS, slot = 0, next = SLOTS;
+    let prepared = false, active = false;
     const channel = (id, label, eye, target, far, fov = 46, build = null) => {
       const camera = BL.scene.createCamera({ fov, near: 0.5, far });
       Object.assign(camera.position, eye); Object.assign(camera.target, target);
@@ -37,14 +36,9 @@
       ctx.fillText(String(channels.indexOf(feed.channel) + 1).padStart(2, "0") + " / " + feed.channel.label, 8, 23);
       surface.version++;
     };
-    const select = (feed, choice) => {
-      feed.channel = choice; feed.camera = choice.camera; feed.source = null; feed.last = -Infinity; feed.heaviest = null;
-      // The old texture must not masquerade as the newly named area before its first capture.
-      feed.pending = true; feed.geometry.imageSurface.version++; paint(feed);
-    };
     const syncSources = () => {
       for (const [id, source] of sources) {
-        if (!active || !feeds.some(f => f.channel.id === id)) { source.dispose(); sources.delete(id); }
+        if (!active) { source.dispose(); sources.delete(id); }
       }
       for (const feed of feeds) {
         feed.source = null;
@@ -60,7 +54,7 @@
     };
     const prepare = () => {
       if (prepared) return; prepared = true;
-      for (let i = 0; i < SLOTS; i++) {
+      for (let i = 0; i < channels.length; i++) {
         const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 144;
         const ctx = canvas.getContext("2d"); ctx.fillStyle = "#122326"; ctx.fillRect(0, 0, 256, 144);
         ctx.fillStyle = "#aac8bd"; ctx.font = "16px monospace"; ctx.textAlign = "center";
@@ -68,9 +62,9 @@
         const geometry = quad(3.08, 1.72, { canvas, version: 0, rect: [-1.54, -0.86, 3.08, 1.72], smooth: true });
         const labelCanvas = document.createElement("canvas"); labelCanvas.width = 384; labelCanvas.height = 32;
         const label = quad(3.08, 0.25, { canvas: labelCanvas, version: 0, rect: [-1.54, -0.125, 3.08, 0.25], smooth: true });
-        const feed = { geometry, label, camera: null, channel: null, source: null, pending: true, visible: true,
+        const feed = { geometry, label, camera: channels[i].camera, channel: channels[i], source: null, pending: true, visible: true,
           captures: 0, last: -Infinity, draws: 0, triangles: 0, profile: debug };
-        geometry.imageSurface.feed = feed; meshes.add(geometry); meshes.add(label); feeds.push(feed); select(feed, channels[i]);
+        geometry.imageSurface.feed = feed; meshes.add(geometry); meshes.add(label); feeds.push(feed); paint(feed);
       }
     };
     const setActive = (on) => {
@@ -81,18 +75,6 @@
     };
     const update = (dt) => {
       if (!active || document.hidden) return;
-      switchIn -= dt;
-      if (switchIn <= 0) {
-        switchIn = SWITCH_SECONDS;
-        // A slot with no visible screens waits; no unseen model is loaded merely to advance the schedule.
-        for (let i = 0; i < feeds.length; i++) {
-          const index = (slot + i) % feeds.length, feed = feeds[index];
-          if (!feed.visible) continue;
-          let choice;
-          do { choice = channels[next++ % channels.length]; } while (feeds.some(f => f.channel === choice));
-          select(feed, choice); slot = (index + 1) % feeds.length; syncSources(); break;
-        }
-      }
       for (const feed of feeds) if (feed.source && feed.visible) feed.source.update(dt);
     };
     return { feeds, channels, prepare, setActive, update,
@@ -112,5 +94,5 @@
       dispose() { setActive(false); for (const g of meshes) renderer.releaseGeometry(g); feeds.length = 0; meshes.clear(); }
     };
   };
-  BL.observatoryCameras = { create, SLOTS, SWITCH_SECONDS };
+  BL.observatoryCameras = { create };
 })();
