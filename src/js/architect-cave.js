@@ -18,11 +18,12 @@
     [-0.68, SEAT_TOP, -0.8, 0.68, 2.08, -0.35],
     [-0.85, SEAT_TOP, -0.5, -0.7, 1.18, 0.54], [0.7, SEAT_TOP, -0.5, 0.85, 1.18, 0.54]];
   const contains = (x, y, z) => y < -32 && y > -55 && x * x + z * z < 225;
+  const returnDepth = x => Math.sqrt(Math.max(0, RADIUS * RADIUS - x * x));
   const clear = (x, z, radius = 0.4) => Math.hypot(x, z) < BANK_RADIUS - radius - 0.25
-    || z > RADIUS - 2 && z < RETURN_Z + 0.6 && Math.abs(x) < RETURN_HALF_W - radius - 0.08;
+    || z > RADIUS - 2 && Math.abs(x) < RETURN_HALF_W - radius - 0.08 && z < returnDepth(x) + 0.6;
   const segmentClear = (x, y, z, toX, toY, toZ, radius, height) =>
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
-    && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
+    && (toZ <= returnDepth(toX) - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
   const FACE_WAIT = 45, FACE_SWEEP = 2.8, FACE_HOLD = 8, PATCH_SWEEP = 1.1, TILE_FLASH = 0.16;
   const PEN_ARM_REST = -0.75; // The crew's default chair pose; only the shoulder may lift from it.
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
@@ -275,7 +276,7 @@
       add(merge(...seams));
       cameras.prepare();
       const housings = new Map(), glasses = new Map();
-      // A continuous cylinder with a flat return mirror below a sealed curved lintel.
+      // Wall and return glass share the same cylinder and exact boundary vertices.
       const walls = geometry(), rgb = BL.math.hexToRgb(WALL);
       const wall = (ax, az, bx, bz, low = 0, high = HEIGHT) => {
         const ids = [pushVert(walls, ax, low, az), pushVert(walls, ax, high, az),
@@ -289,13 +290,11 @@
         const bz = i === BANKS * ARC_STEPS - 1 ? RETURN_Z : Math.cos(a) * RADIUS;
         wall(ax, az, bx, bz); ax = bx; az = bz;
       }
-      const soffit = pushVert(walls, 0, RETURN_HEIGHT, RETURN_Z);
       for (let i = 0; i < PORTAL_COLS * ARC_STEPS; i++) {
         const a = -PORTAL_ANGLE + i * 2 * PORTAL_ANGLE / (PORTAL_COLS * ARC_STEPS);
         const b = -PORTAL_ANGLE + (i + 1) * 2 * PORTAL_ANGLE / (PORTAL_COLS * ARC_STEPS);
         const ax = Math.sin(a) * RADIUS, az = Math.cos(a) * RADIUS, bx = Math.sin(b) * RADIUS, bz = Math.cos(b) * RADIUS;
         wall(ax, az, bx, bz, RETURN_HEIGHT);
-        face(walls, [soffit, pushVert(walls, bx, RETURN_HEIGHT, bz), pushVert(walls, ax, RETURN_HEIGHT, az)], rgb);
       }
       add(walls);
       const layout = panelLayout(feeds.length, true);
@@ -331,9 +330,9 @@
         addChild(group, bank);
         for (let row = 0; row < ROWS; row++) rackAt(bank, i, 0, row, angle);
       }
-      const portal = createNode({ position: { x: 0, y: 0, z: RETURN_Z }, rotation: { x: 0, y: Math.PI, z: 0 } });
+      const portal = createNode({ position: { x: 0, y: 0, z: RADIUS }, rotation: { x: 0, y: Math.PI, z: 0 } });
       addChild(group, portal);
-      // The monitors above the mirror follow the same circular wall; only the usable glass stays flat.
+      // The monitors and feed-only infill follow the same arc as the usable glass.
       for (let col = 0; col < PORTAL_COLS; col++) {
         const angle = TAU - PORTAL_ANGLE + (col + 0.5) * 2 * PORTAL_ANGLE / PORTAL_COLS;
         const bank = createNode({ position: { x: Math.sin(angle) * RADIUS, y: 0, z: Math.cos(angle) * RADIUS },
@@ -350,13 +349,24 @@
           addChild(infill, rack); add(infillFrame, rack); add(infillScreen, rack, { x: 0, y: 0, z: 0.19 });
         }
       }
-      const frame = [];
-      for (const x of [-RETURN_HALF_W, RETURN_HALF_W]) frame.push(box({ w: 0.06, h: RETURN_HEIGHT, d: 0.06,
-        color: "#65717a", emissive: 0.15, offset: { x, y: RETURN_HEIGHT / 2, z: -0.02 } }));
-      frame.push(box({ w: RETURN_HALF_W * 2, h: 0.06, d: 0.06, color: "#65717a", emissive: 0.15,
-        offset: { y: RETURN_HEIGHT, z: -0.02 } }));
+      const frame = [], glass = geometry(), silver = BL.math.hexToRgb("#81919c"), segments = PORTAL_COLS * ARC_STEPS;
+      glass.normals = [];
+      for (let i = 0; i <= segments; i++) {
+        const a = -PORTAL_ANGLE + i * 2 * PORTAL_ANGLE / segments;
+        const x = Math.sin(a) * RADIUS, z = RADIUS - Math.cos(a) * RADIUS;
+        pushVert(glass, x, -RETURN_HEIGHT / 2, z); pushVert(glass, x, RETURN_HEIGHT / 2, z);
+        glass.normals.push(-Math.sin(a), 0, Math.cos(a), -Math.sin(a), 0, Math.cos(a));
+        if (i) {
+          const j = (i - 1) * 2, v = glass.verts;
+          face(glass, [j, j + 2, j + 3, j + 1], silver);
+          frame.push(beam(v[j * 3], RETURN_HEIGHT, v[j * 3 + 2], x, RETURN_HEIGHT, z, 0.06, "#65717a", 0.15));
+        }
+        if (!i || i === segments) frame.push(beam(x, 0, z, x, RETURN_HEIGHT, z, 0.06, "#65717a", 0.15));
+      }
+      glass.reflector = true; glass.castShadow = false;
       add(merge(...frame), portal);
-      returnMirror = add({ ...mirror.node.geometry, reflector: true }, portal, { x: 0, y: 1.5, z: 0 });
+      // One shared tangent-plane capture keeps the curved surface within the existing reflection budget.
+      returnMirror = add(glass, portal, { x: 0, y: RETURN_HEIGHT / 2, z: 0 });
       // Sculpted black leather over a reclining shell, on a real five-spoke swivel pedestal.
       const metal = "#869095", dark = "#171c20";
       const base = [lathe({ profile: [[0, 0.15], [0.18, 0.15], [0.18, 0.25], [0.12, 0.31], [0.075, 0.31], [0.075, 0.56], [0, 0.56]],
@@ -641,7 +651,7 @@
         updatePen(dt);
         if (rotating && broadcast === "feeds" && !layoutPending && !portraitActor) cameras.update(dt);
         if (audio) audio.update(dt, camera, broadcast === "face" || broadcast === "to-face", seated());
-        if (!cooldown && p.z >= RETURN_Z && Math.abs(p.x) < RETURN_HALF_W - 0.4
+        if (!cooldown && Math.abs(p.x) < RETURN_HALF_W - 0.4 && p.z >= returnDepth(p.x)
           && feet >= FLOOR - 0.2 && feet < FLOOR + RETURN_HEIGHT - 0.5) travel(false);
         return;
       }

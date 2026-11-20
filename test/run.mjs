@@ -17010,8 +17010,14 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   const entered = await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect;
     B.advance(1.2, 1 / 60);
+    const glass = room.returnMirror.geometry, v = glass.verts, radius = room.returnMirror.parent.position.z;
+    let cylindrical = glass.faces.length === 32;
+    for (let i = 0; i < v.length; i += 3) cylindrical &&= Math.abs(Math.hypot(v[i], radius - v[i + 2]) - radius) < 1e-6;
+    const bounds = BL.scene.boundsOf(glass);
     return { active: room.active, feet: B.pilot.player.root.position.y - B.pilot.player.baseY,
       returnMirror: !!room.returnMirror?.geometry.reflector && room.returnMirror.geometry !== B.mirrorCave.node.geometry,
+      curvedMirror: cylindrical && bounds.max[2] - bounds.min[2] > 0.25
+        && Math.abs(bounds.max[0] - bounds.min[0] - 5) < 1e-6 && bounds.max[1] - bounds.min[1] === 3,
       parked: !!B.pilot.player.weapon.parked && !B.pilot.player.weapon.primaryOwned && !B.pilot.player.weapon.secondaryOwned && !B.pilot.player.jetpackOwned && !B.pilot.player.jet,
       name: B.pilot.player.traits.name, feeds: room.feeds.length, captures: room.feeds.reduce((n, f) => n + f.captures, 0) };
   })()`);
@@ -17313,7 +17319,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub mirror: nearby preparation stays idle, real walking enters 32 live feeds and returns the same Ooga with captures stopped",
     approach.prepared && !approach.active && approach.captures === 0 && entered.active && entered.feet < -40
-      && entered.returnMirror && entered.parked && entered.feeds === 32 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
+      && entered.returnMirror && entered.curvedMirror && entered.parked && entered.feeds === 32 && entered.captures > 0 && !returned.active && returned.frozen && returned.feet > -10
       && entered.name === approach.name && returned.name === approach.name, JSON.stringify({ approach, entered, returned }));
   await trip("hub").run(b);
   const back = await b.evaluate(`(() => { const M = __ooga.mirrorCave; return M.node.visible && M.node.geometry.faces.length > 0 && !M.node.mirrorReveal && !M.gate.locked && !("damage" in M) && !("mirrorDamage" in M.node); })()`);
@@ -17348,6 +17354,23 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub mirror: backward crossings preserve first/third-person view and keep held S walking away in both directions",
     backward.every(r => r.facing && r.departingMirror && r.returned && r.departingIslandMirror), JSON.stringify(backward));
+  const curvedExit = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect, results = [];
+    for (const x of [0, 1.8, -1.8]) {
+      room.travel(true);
+      const radius = room.returnMirror.parent.position.z, depth = Math.sqrt(radius * radius - x * x);
+      B.pilot.navigate({ position: { x, y: BL.architectCave.FLOOR, z: depth - 0.05 }, yaw: 0, pitch: 0, dist: 4 });
+      room.update(1.1);
+      const beforeGlass = room.active;
+      B.crew.player.root.position.z = depth + 0.02;
+      const walkable = BL.architectCave.clear(x, depth + 0.02, 0.4);
+      room.update(0);
+      results.push({ x, beforeGlass, walkable, crossed: !room.active });
+    }
+    return results;
+  })()`);
+  record("hub observatory: curved return glass triggers at its center and sides, with no early flat-plane exit",
+    curvedExit.every(r => r.beforeGlass && r.walkable && r.crossed), JSON.stringify(curvedExit));
   const heldMovement = await b.evaluate(`(() => {
     const key = (type, key, code, repeat = false) => window.dispatchEvent(new KeyboardEvent(type, { key, code, repeat, bubbles: true }));
     key("keydown", "w", "KeyW"); key("keydown", "d", "KeyD"); key("keydown", "Shift", "ShiftLeft");

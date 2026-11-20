@@ -10,9 +10,12 @@ circular chamber with black walls and a stark white ceiling, 608 small framed mo
 polished floor and a sculpted black swivel chair. A reflecting mirror behind the arrival matches
 the island cave's
 five-metre-wide, three-metre-high visible opening. Walking through its glass
-returns the same Ooga outside the island mirror. The mirror stays flat in the continuous circular wall; its jambs meet the wall
-exactly, and a sealed soffit joins its lintel to the curved wall above. The return
-threshold follows its glass.
+returns the same Ooga outside the island mirror. The mirror and its top frame
+follow the circular wall in 32 strips, meeting the jambs and wall above without
+the former flat lintel or soffit. The return threshold follows the curved glass
+at the center and sides. One tangent-plane reflection capture projects onto the
+curved mesh; this is a bounded approximation, not a separate capture per strip
+or a full simulation of curved-mirror optics.
 Crossing rotates the body and the complete camera pose between the doorway frames,
 preserving look direction, pitch, zoom and view mode in both directions. Backing
 through arrives facing the mirror and continues backward away from it. Held
@@ -380,6 +383,9 @@ shoulder-to-hand elevation; the updated, unrun regression checks the fist's
 position in the first-person frame as well as the movement limits.
 The faster global wave, tighter row timing and per-tile flashes pass build/syntax
 checks; updated regression assertions remain unrun and visual acceptance is pending.
+Curved mirror geometry, its matching frame and curved crossing threshold pass
+build/syntax checks. Added geometry and center/side crossing checks remain unrun;
+reflection appearance and sealed joins need visual acceptance.
 The white ceiling, attached armrest brackets and direction-preserving mirror
 crossings also need in-game review. New, unrun assertions cover backing through
 both mirrors in first and third person, continued held movement after arrival,
