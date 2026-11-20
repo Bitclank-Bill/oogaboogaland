@@ -11,10 +11,11 @@
   const BANKS = 48, ROWS = 12, MIRROR_ROWS = 4, PITCH = RETURN_HEIGHT / MIRROR_ROWS, GAP = 0.05, PORTAL_COLS = 4, WALL = "#080a0b";
   const PORTAL_ANGLE = Math.asin(RETURN_HALF_W / RADIUS), BANK_ANGLE = (TAU - 2 * PORTAL_ANGLE) / BANKS;
   const BANK_RADIUS = RADIUS * Math.cos(BANK_ANGLE / 2);
-  const SEAT_TOP = 0.72;
+  const PORTAL_PITCH = RADIUS * (2 * PORTAL_ANGLE / PORTAL_COLS);
+  const SEAT_TOP = 0.72, ARC_STEPS = 8, SCREEN_RADIUS = RADIUS - 0.1 - 0.19 * 0.71;
   // Local chair solids rotate with the upholstery; the low caster base stays underneath it.
   const CHAIR_SOLIDS = [[-0.68, 0, -0.58, 0.68, SEAT_TOP, 0.58],
-    [-0.68, SEAT_TOP, -0.7, 0.68, 2.05, -0.44],
+    [-0.68, SEAT_TOP, -0.8, 0.68, 2.08, -0.35],
     [-0.85, SEAT_TOP, -0.5, -0.7, 1.18, 0.54], [0.7, SEAT_TOP, -0.5, 0.85, 1.18, 0.54]];
   const contains = (x, y, z) => y < -32 && y > -55 && x * x + z * z < 225;
   const clear = (x, z, radius = 0.4) => Math.hypot(x, z) < BANK_RADIUS - radius - 0.25
@@ -79,6 +80,44 @@
     for (let i = 0; i <= 48; i++) pushVert(g, Math.sin(i * TAU / 48) * radius, y, Math.cos(i * TAU / 48) * radius);
     for (let i = 1; i <= 48; i++) face(g, down ? [0, i + 1, i] : [0, i, i + 1], rgb, { emissive: 0.32 });
     g.castShadow = false;
+    return g;
+  };
+  // Rounded upholstery with explicit normals keeps broad leather faces and soft rolled edges.
+  const cushion = (w, h, d, radius, color) => {
+    const g = geometry(), half = [w / 2, h / 2, d / 2], rgb = BL.math.hexToRgb(color), steps = 8;
+    g.normals = [];
+    for (let axis = 0; axis < 3; axis++) for (const sign of [-1, 1]) {
+      const b = (axis + 1) % 3, c = (axis + 2) % 3, start = g.verts.length / 3;
+      for (let y = 0; y <= steps; y++) for (let x = 0; x <= steps; x++) {
+        const p = [0, 0, 0]; p[axis] = sign * half[axis]; p[b] = (x / steps * 2 - 1) * half[b]; p[c] = (y / steps * 2 - 1) * half[c];
+        const core = p.map((v, i) => Math.max(-half[i] + radius, Math.min(half[i] - radius, v)));
+        const n = p.map((v, i) => v - core[i]), length = Math.hypot(...n);
+        pushVert(g, ...core.map((v, i) => v + n[i] / length * radius));
+        g.normals.push(...n.map(v => v / length));
+      }
+      for (let y = 0; y < steps; y++) for (let x = 0; x < steps; x++) {
+        const i = start + y * (steps + 1) + x, ids = [i, i + 1, i + steps + 2, i + steps + 1];
+        face(g, sign > 0 ? ids : ids.reverse(), rgb, { emissive: 0.06 });
+      }
+    }
+    return g;
+  };
+  // A casing follows the same cylinder as its glass, including its top and bottom rails.
+  const curvedCase = (w, h, d, z, scaleX, color) => {
+    const g = geometry(), rgb = BL.math.hexToRgb(color);
+    for (let i = 0; i <= ARC_STEPS; i++) {
+      const x = w * (i / ARC_STEPS - 0.5);
+      for (const [y, depth] of [[-h / 2, z - d / 2], [-h / 2, z + d / 2], [h / 2, z + d / 2], [h / 2, z - d / 2]]) {
+        const r = RADIUS - 0.1 - depth * 0.71;
+        pushVert(g, x, y, depth + (r - Math.sqrt(r * r - (x * scaleX) ** 2)) / 0.71);
+      }
+      if (i) for (let k = 0; k < 4; k++) {
+        const a = (i - 1) * 4 + k, b = (i - 1) * 4 + (k + 1) % 4;
+        face(g, [a, a + 4, b + 4, b], rgb, { emissive: 0.12 });
+      }
+    }
+    face(g, [0, 1, 2, 3], rgb); const end = ARC_STEPS * 4;
+    face(g, [end + 3, end + 2, end + 1, end], rgb);
     return g;
   };
   const create = ({ root, renderer, camera, pilot, crew, mirror, weather, mouths, places }) => {
@@ -174,22 +213,26 @@
       if (prepared) return;
       prepared = true;
       addChild(root, group);
-      add(disc(RADIUS + 0.3, 0, "#dce1df"));
+      add(disc(RADIUS + 0.3, 0, "#bdc8c7"));
+      // The hangar's softened planar reflection, shared by the whole polished floor.
+      if (renderer.kind === "webgl2") {
+        const polish = disc(RADIUS + 0.2, 0, "#000000");
+        for (let i = 0; i < polish.verts.length; i += 3) { polish.verts[i + 1] = -polish.verts[i + 2]; polish.verts[i + 2] = 0; }
+        polish.reflector = true; polish.gloss = 0.3;
+        add(polish, group, { x: 0, y: 0.014, z: 0 }).rotation.x = -Math.PI / 2;
+      }
       add(disc(RADIUS + 0.3, HEIGHT, WALL, true));
       // Tile seams remain geometry, so both renderers show the floor's scale.
       const seams = [];
       for (let i = -9; i <= 9; i++) {
         const length = Math.sqrt(RADIUS * RADIUS - i * i) * 2;
-        seams.push(box({ w: 0.018, h: 0.008, d: length, color: "#a6b6b2", emissive: 0.45, offset: { x: i, y: 0.008 } }));
-        seams.push(box({ w: length, h: 0.008, d: 0.018, color: "#a6b6b2", emissive: 0.45, offset: { y: 0.008, z: i } }));
+        seams.push(box({ w: 0.008, h: 0.004, d: length, color: "#8e9d9c", emissive: 0.2, offset: { x: i, y: 0.003 } }));
+        seams.push(box({ w: length, h: 0.004, d: 0.008, color: "#8e9d9c", emissive: 0.2, offset: { y: 0.003, z: i } }));
       }
       add(merge(...seams));
       cameras.prepare();
-      const housing = merge(box({ w: 3.36, h: 1.96, d: 0.32, color: "#283335", emissive: 0.15 }),
-        box({ w: 3.13, h: 1.77, d: 0.02, color: "#899a96", emissive: 0.4, offset: { z: 0.17 } }),
-        box({ w: 0.06, h: 0.035, d: 0.025, color: "#8addbe", emissive: 1, offset: { x: 1.45, y: -0.92, z: 0.18 } }));
-      // One closed wall mesh: shared arc endpoints meet a flat portal wall exactly.
-      // The glass occupies the opening, with its frame recessed into the same plane.
+      const housings = new Map(), glasses = new Map();
+      // A continuous cylinder with a flat return mirror below a sealed curved lintel.
       const walls = geometry(), rgb = BL.math.hexToRgb(WALL);
       const wall = (ax, az, bx, bz, low = 0, high = HEIGHT) => {
         const ids = [pushVert(walls, ax, low, az), pushVert(walls, ax, high, az),
@@ -197,24 +240,41 @@
         face(walls, ids, rgb, { emissive: 0.05 });
       };
       let ax = RETURN_HALF_W, az = RETURN_Z;
-      for (let i = 0; i < BANKS; i++) {
-        const a = PORTAL_ANGLE + (i + 1) * BANK_ANGLE;
-        const bx = i === BANKS - 1 ? -RETURN_HALF_W : Math.sin(a) * RADIUS;
-        const bz = i === BANKS - 1 ? RETURN_Z : Math.cos(a) * RADIUS;
+      for (let i = 0; i < BANKS * ARC_STEPS; i++) {
+        const a = PORTAL_ANGLE + (i + 1) * BANK_ANGLE / ARC_STEPS;
+        const bx = i === BANKS * ARC_STEPS - 1 ? -RETURN_HALF_W : Math.sin(a) * RADIUS;
+        const bz = i === BANKS * ARC_STEPS - 1 ? RETURN_Z : Math.cos(a) * RADIUS;
         wall(ax, az, bx, bz); ax = bx; az = bz;
       }
-      wall(-RETURN_HALF_W, RETURN_Z, RETURN_HALF_W, RETURN_Z, RETURN_HEIGHT);
+      const soffit = pushVert(walls, 0, RETURN_HEIGHT, RETURN_Z);
+      for (let i = 0; i < PORTAL_COLS * ARC_STEPS; i++) {
+        const a = -PORTAL_ANGLE + i * 2 * PORTAL_ANGLE / (PORTAL_COLS * ARC_STEPS);
+        const b = -PORTAL_ANGLE + (i + 1) * 2 * PORTAL_ANGLE / (PORTAL_COLS * ARC_STEPS);
+        const ax = Math.sin(a) * RADIUS, az = Math.cos(a) * RADIUS, bx = Math.sin(b) * RADIUS, bz = Math.cos(b) * RADIUS;
+        wall(ax, az, bx, bz, RETURN_HEIGHT);
+        face(walls, [soffit, pushVert(walls, bx, RETURN_HEIGHT, bz), pushVert(walls, ax, RETURN_HEIGHT, az)], rgb);
+      }
       add(walls);
       const layout = panelLayout(feeds.length, true);
       const rackAt = (bank, col, x, row, angle) => {
-        const pitchX = col < BANKS ? 2 * RADIUS * Math.sin(BANK_ANGLE / 2) : RETURN_HALF_W * 2 / PORTAL_COLS;
+        const pitchX = col < BANKS ? RADIUS * BANK_ANGLE : PORTAL_PITCH;
         const scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
         const rack = createNode({ position: { x, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 },
           scale: { x: scaleX, y: scaleY, z: 0.71 } });
-        addChild(bank, rack); add(housing, rack);
+        addChild(bank, rack);
+        let housing = housings.get(pitchX), glass = glasses.get(pitchX);
+        if (!housing) {
+          housing = merge(curvedCase(3.36, 1.96, 0.32, 0, scaleX, "#151b1e"),
+            curvedCase(3.18, 1.81, 0.018, 0.172, scaleX, "#485356"));
+          glass = BL.observatoryCameras.curvedSurface(3.08, 1.72, scaleX, 0.71, SCREEN_RADIUS - 0.004 * 0.71);
+          for (const f of glass.faces) { f.color = [105, 132, 141]; f.emissive = 0.12; }
+          glass.glassOpacity = 0.035; glass.glassGrazing = 0.26;
+          housings.set(pitchX, housing); glasses.set(pitchX, glass);
+        }
+        add(housing, rack); add(glass, rack, { x: 0, y: 0, z: 0.194 });
         const group = layout.groups[layout.cells[row * layout.cols + col]], feed = feeds[group.slot];
-        const normal = cameras.panel(feed, group.size, col - group.col, row - group.row, pitchX, PITCH, scaleX, scaleY);
-        const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY);
+        const normal = cameras.panel(feed, group.size, col - group.col, row - group.row, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
+        const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
         // Spread from the mirror around both sides. Lower rows lead, with row and tile jitter.
         panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: layout.cells[row * layout.cols + col], size: group.size,
@@ -222,29 +282,29 @@
       };
       for (let i = 0; i < BANKS; i++) {
         const angle = PORTAL_ANGLE + (i + 0.5) * BANK_ANGLE;
-        const bank = createNode({ position: { x: Math.sin(angle) * BANK_RADIUS, y: 0, z: Math.cos(angle) * BANK_RADIUS },
+        const bank = createNode({ position: { x: Math.sin(angle) * RADIUS, y: 0, z: Math.cos(angle) * RADIUS },
           rotation: { x: 0, y: angle + Math.PI, z: 0 } });
         addChild(group, bank);
         for (let row = 0; row < ROWS; row++) rackAt(bank, i, 0, row, angle);
       }
       const portal = createNode({ position: { x: 0, y: 0, z: RETURN_Z }, rotation: { x: 0, y: Math.PI, z: 0 } });
       addChild(group, portal);
-      for (let row = MIRROR_ROWS; row < ROWS; row++) {
-        for (let col = 0; col < PORTAL_COLS; col++) {
-          const x = RETURN_HALF_W - (col + 0.5) * RETURN_HALF_W * 2 / PORTAL_COLS;
-          rackAt(portal, BANKS + col, x, row, Math.atan2(-x, RETURN_Z));
+      // The monitors above the mirror follow the same circular wall; only the usable glass stays flat.
+      for (let col = 0; col < PORTAL_COLS; col++) {
+        const angle = TAU - PORTAL_ANGLE + (col + 0.5) * 2 * PORTAL_ANGLE / PORTAL_COLS;
+        const bank = createNode({ position: { x: Math.sin(angle) * RADIUS, y: 0, z: Math.cos(angle) * RADIUS },
+          rotation: { x: 0, y: angle + Math.PI, z: 0 } });
+        addChild(group, bank);
+        for (let row = MIRROR_ROWS; row < ROWS; row++) rackAt(bank, BANKS + col, 0, row, angle);
+        const infill = createNode({ cameraHidden: true }); addChild(bank, infill);
+        const pitchX = PORTAL_PITCH, scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
+        const faceTile = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
+        const infillScreen = { ...faceTile, architectFeedOnly: true, imageSurface: { ...faceTile.imageSurface, seedFeed: feeds[0] } };
+        const infillFrame = { ...housings.get(pitchX), castShadow: false, architectFeedOnly: true };
+        for (let row = 0; row < MIRROR_ROWS; row++) {
+          const rack = createNode({ position: { x: 0, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 }, scale: { x: scaleX, y: scaleY, z: 0.71 } });
+          addChild(infill, rack); add(infillFrame, rack); add(infillScreen, rack, { x: 0, y: 0, z: 0.19 });
         }
-      }
-      // This infill exists only inside the face camera. The physical return mirror stays untouched.
-      const infill = createNode({ cameraHidden: true }); addChild(portal, infill);
-      const pitchX = RETURN_HALF_W * 2 / PORTAL_COLS, scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
-      const faceTile = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY);
-      const infillScreen = { ...faceTile, architectFeedOnly: true, imageSurface: { ...faceTile.imageSurface, seedFeed: feeds[0] } };
-      const infillFrame = { ...housing, castShadow: false, architectFeedOnly: true };
-      for (let row = 0; row < MIRROR_ROWS; row++) for (let col = 0; col < PORTAL_COLS; col++) {
-        const rack = createNode({ position: { x: RETURN_HALF_W - (col + 0.5) * pitchX, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 },
-          scale: { x: scaleX, y: scaleY, z: 0.71 } });
-        addChild(infill, rack); add(infillFrame, rack); add(infillScreen, rack, { x: 0, y: 0, z: 0.19 });
       }
       const frame = [];
       for (const x of [-RETURN_HALF_W, RETURN_HALF_W]) frame.push(box({ w: 0.06, h: RETURN_HEIGHT, d: 0.06,
@@ -253,26 +313,53 @@
         offset: { y: RETURN_HEIGHT, z: -0.02 } }));
       add(merge(...frame), portal);
       returnMirror = add({ ...mirror.node.geometry, reflector: true }, portal, { x: 0, y: 1.5, z: 0 });
-      // A five-spoke caster base beneath a separately rotating padded office chair.
-      const metal = "#657178", dark = "#30383c", base = [lathe({ profile: [[0.16, 0.16], [0.16, 0.3], [0.085, 0.3], [0.085, 0.59]],
-        segments: 12, color: metal, emissive: 0.25 })];
+      // Sculpted black leather over a reclining shell, on a real five-spoke swivel pedestal.
+      const metal = "#869095", dark = "#171c20";
+      const base = [lathe({ profile: [[0, 0.15], [0.18, 0.15], [0.18, 0.25], [0.12, 0.31], [0.075, 0.31], [0.075, 0.56], [0, 0.56]],
+        segments: 20, color: metal, emissive: 0.12 })];
+      const wheel = lathe({ profile: [[0, -0.035], [0.08, -0.035], [0.11, -0.02], [0.11, 0.02], [0.08, 0.035], [0, 0.035]],
+        segments: 16, color: "#111518" });
+      wheel.smooth = true;
+      const hub = lathe({ profile: [[0, -0.005], [0.035, -0.005], [0.035, 0.005], [0, 0.005]], segments: 12, color: metal, emissive: 0.15 });
+      const fork = bevelBox({ w: 0.18, h: 0.11, d: 0.11, bevel: 0.025, color: "#414b50" });
       for (let i = 0; i < 5; i++) {
-        const a = i * TAU / 5, x = Math.sin(a) * 0.73, z = Math.cos(a) * 0.73;
-        base.push(beam(0, 0.27, 0, x, 0.16, z, 0.09, metal, 0.25));
-        base.push(bevelBox({ w: 0.16, h: 0.16, d: 0.22, color: dark, emissive: 0.2, offset: { x, y: 0.09, z } }));
+        const a = i * TAU / 5, sx = Math.sin(a), cz = Math.cos(a);
+        base.push(beam(sx * 0.12, 0.27, cz * 0.12, sx * 0.43, 0.2, cz * 0.43, 0.1, metal, 0.1));
+        base.push(beam(sx * 0.43, 0.2, cz * 0.43, sx * 0.73, 0.14, cz * 0.73, 0.075, metal, 0.1));
+        const caster = createNode({ position: { x: sx * 0.73, y: 0.115, z: cz * 0.73 }, rotation: { x: 0, y: a + 0.3, z: 0 } });
+        addChild(group, caster);
+        add(fork, caster, { x: 0, y: 0.07, z: 0 });
+        for (const side of [-1, 1]) {
+          add(wheel, caster, { x: side * 0.09, y: 0, z: 0 }).rotation.z = Math.PI / 2;
+          add(hub, caster, { x: side * 0.127, y: 0, z: 0 }).rotation.z = Math.PI / 2;
+        }
       }
       add(merge(...base));
-      const padded = [bevelBox({ w: 1.36, h: 0.2, d: 1.16, bevel: 0.08, color: "#17191b", emissive: 0.12, offset: { y: SEAT_TOP - 0.1 } }),
-        bevelBox({ w: 1.36, h: 1.4, d: 0.26, bevel: 0.1, color: "#111315", emissive: 0.12, offset: { y: 1.35, z: -0.57 } })];
-      for (let i = 0; i < 3; i++) padded.push(bevelBox({ w: 1.19, h: 0.38, d: 0.13, bevel: 0.045, color: "#1d2023",
-        emissive: 0.12, offset: { y: 0.91 + i * 0.4, z: -0.4 } }));
+      chairTop = createNode(); addChild(group, chairTop);
+      const pad = (w, h, d, r, color, x, y, z, recline = 0) => {
+        const node = add(cushion(w, h, d, r, color), chairTop, { x, y, z }); node.rotation.x = recline; return node;
+      };
+      pad(1.32, 0.2, 1.12, 0.085, "#14171a", 0, SEAT_TOP - 0.1, 0);
+      pad(1.25, 0.065, 1.05, 0.025, "#080b0e", 0, 0.52, -0.015);
+      pad(1.3, 1.38, 0.23, 0.095, "#0b0e11", 0, 1.36, -0.59, -0.09);
+      for (let i = 0; i < 3; i++) {
+        const y = 0.91 + i * 0.4, z = -0.4 - i * 0.035;
+        pad(1.15 + (i === 1 ? 0.025 : 0), 0.375, 0.17, 0.08, i === 1 ? "#1b1e21" : "#16191c", 0, y, z, -0.09);
+        // A recessed seam and narrow welt separate the upholstered panels.
+        add(beam(-0.51, y - 0.17, z + 0.065, 0.51, y - 0.17, z + 0.065, 0.012, "#080a0c"), chairTop);
+      }
+      const chairFrame = [];
       for (const side of [-1, 1]) {
         const x = side * 0.77;
-        padded.push(beam(x, 0.66, -0.41, x, 1.08, -0.45, 0.065, metal, 0.25));
-        padded.push(beam(x, 0.66, 0.38, x, 1.08, 0.45, 0.065, metal, 0.25));
-        padded.push(bevelBox({ w: 0.15, h: 0.1, d: 1.04, bevel: 0.04, color: "#151719", emissive: 0.12, offset: { x, y: 1.13 } }));
+        chairFrame.push(beam(x, 0.56, -0.39, x, 0.95, -0.48, 0.055, metal, 0.12));
+        chairFrame.push(beam(x, 0.95, -0.48, x, 1.09, -0.37, 0.055, metal, 0.12));
+        chairFrame.push(beam(x, 0.56, 0.35, x, 1.06, 0.42, 0.055, metal, 0.12));
+        chairFrame.push(beam(side * 0.59, 0.6, -0.57, side * 0.59, 1.9, -0.7, 0.04, metal, 0.1));
+        pad(0.155, 0.11, 1.02, 0.05, "#111518", x, 1.125, 0.015);
       }
-      chairTop = add(merge(...padded));
+      chairFrame.push(beam(0.18, 0.51, 0.05, 0.58, 0.48, 0.13, 0.028, metal, 0.1));
+      add(merge(...chairFrame), chairTop);
+      pad(0.19, 0.055, 0.085, 0.025, dark, 0.57, 0.48, 0.13);
       const penGeometry = merge(lathe({ profile: [[0.012, -0.13], [0.016, -0.1], [0.016, 0.15], [0.012, 0.17]],
         segments: 8, color: "#202932", emissive: 0.2 }),
         lathe({ profile: [[0.002, -0.18], [0.012, -0.13]], segments: 8, color: "#c9d0d4", emissive: 0.35 }),
@@ -296,7 +383,7 @@
       const layout = panelLayout(feeds.length, false, previous);
       for (const p of panels) {
         const id = layout.cells[p.row * layout.cols + p.col], g = layout.groups[id];
-        const normal = cameras.panel(feeds[g.slot], g.size, p.col - g.col, p.row - g.row, p.pitchX, PITCH, p.scaleX, p.scaleY);
+        const normal = cameras.panel(feeds[g.slot], g.size, p.col - g.col, p.row - g.row, p.pitchX, PITCH, p.scaleX, p.scaleY, SCREEN_RADIUS);
         renderer.prepareGeometry(normal);
         p.previous = { normal: p.normal, group: p.group, size: p.size };
         p.next = { normal, group: id, size: g.size };

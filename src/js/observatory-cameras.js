@@ -4,8 +4,19 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const SLOTS = 32, SWITCH_SECONDS = 15;
+  // Shared curved glass/image strip. X stays in the original UV frame, while depth follows the room's circle.
+  const curvedSurface = (width, height, scaleX, scaleZ, radius) => {
+    const g = { verts: [], faces: [], lines: [], smooth: true, castShadow: false, architectRoom: true };
+    for (let i = 0; i <= 8; i++) {
+      const x = width * (i / 8 - 0.5), worldX = x * scaleX;
+      const z = (radius - Math.sqrt(radius * radius - worldX * worldX)) / scaleZ;
+      g.verts.push(x, -height / 2, z, x, height / 2, z);
+      if (i) { const a = (i - 1) * 2; g.faces.push({ i: [a, a + 2, a + 3, a + 1], color: [255, 255, 255], emissive: 1 }); }
+    }
+    return g;
+  };
   const create = ({ renderer, mouths, places }) => {
-    const channels = [], feeds = [], renderFeeds = [], sources = new Map(), meshes = new Set();
+    const channels = [], feeds = [], renderFeeds = [], sources = new Map(), meshes = new Set(), panelShapes = new Map();
     const debug = new URLSearchParams(location.search).get("debug") === "1";
     let prepared = false, active = false, switchIn = SWITCH_SECONDS, turn = 0, next = SLOTS, portrait = null;
     const channel = (id, label, eye, target, far, fov = 46, build = null, sourceId = id) => {
@@ -113,13 +124,15 @@
     };
     // UV windows share one target per feed. Crop to cover without stretching, and account for the
     // bezel gaps so a multi-panel picture continues behind them instead of repeating at every edge.
-    const panel = (feed, size, x, y, pitchX, pitchY, scaleX, scaleY) => {
-      const key = [size, x, y, pitchX, pitchY, scaleX, scaleY].join(":");
+    const panel = (feed, size, x, y, pitchX, pitchY, scaleX, scaleY, bendRadius = 0) => {
+      const shapeKey = [scaleX, bendRadius].join(":"), key = [size, x, y, pitchX, pitchY, scaleX, scaleY, bendRadius].join(":");
       let g = feed.tiles.get(key);
       if (g) return g;
       const width = Math.max((size - 1) * pitchX + 3.08 * scaleX, ((size - 1) * pitchY + 1.72 * scaleY) * 16 / 9);
       const height = width * 9 / 16;
-      g = { ...feed.geometry, imageSurface: { ...feed.geometry.imageSurface,
+      let shape = panelShapes.get(shapeKey);
+      if (!shape) { shape = bendRadius ? curvedSurface(3.08, 1.72, scaleX, 0.71, bendRadius) : feed.geometry; panelShapes.set(shapeKey, shape); }
+      g = { ...shape, imageSurface: { ...feed.geometry.imageSurface,
         rect: [(-width / 2 - ((size - 1) / 2 - x) * pitchX) / scaleX,
           (-height / 2 - (y - (size - 1) / 2) * pitchY) / scaleY, width / scaleX, height / scaleY] } };
       feed.tiles.set(key, g); feed.surfaces.push(g); meshes.add(g); return g;
@@ -167,8 +180,8 @@
       },
       liveGeometry(set) { for (const g of meshes) set.add(g); for (const source of sources.values()) for (const g of source.meshes) set.add(g); },
       dispose() { setActive(false); for (const g of meshes) renderer.releaseGeometry(g); for (const feed of renderFeeds) { feed.tiles.clear(); feed.surfaces.length = 0; }
-        feeds.length = renderFeeds.length = 0; portrait = null; meshes.clear(); }
+        feeds.length = renderFeeds.length = 0; portrait = null; meshes.clear(); panelShapes.clear(); }
     };
   };
-  BL.observatoryCameras = { create, SLOTS, SWITCH_SECONDS };
+  BL.observatoryCameras = { create, curvedSurface, SLOTS, SWITCH_SECONDS };
 })();

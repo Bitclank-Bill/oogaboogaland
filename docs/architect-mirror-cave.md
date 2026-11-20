@@ -7,16 +7,27 @@ from upstream `rock` at `45e02fd428cc0734b3c9a3f8f173bf741d68a094`.
 
 The driven Ooga crosses the existing mirror at one o'clock into an enclosed,
 circular chamber with black walls and ceiling, 608 small framed monitors, a pale
-floor and a padded swivel chair. A reflecting mirror behind the arrival matches
+polished floor and a sculpted black swivel chair. A reflecting mirror behind the arrival matches
 the island cave's
 five-metre-wide, three-metre-high visible opening. Walking through its glass
-returns the same Ooga outside the island mirror. The mirror fills a flush opening
-in the continuous wall mesh; its sides meet
-the adjoining wall facets exactly, and the return threshold follows its glass.
+returns the same Ooga outside the island mirror. The mirror stays flat in the continuous circular wall; its jambs meet the wall
+exactly, and a sealed soffit joins its lintel to the curved wall above. The return
+threshold follows its glass.
 The same 0.05-metre margin separates the TV rows, floor and ceiling. Four rows
 fit the mirror's three-metre height; eight more continue above it. Both monitor
 width and height are halved, preserving the earlier widescreen proportions. Light strips
-at the ceiling and floor are removed.
+at the ceiling and floor are removed. The circular shell has eight subdivisions
+per monitor column (416 around the room), and each screen, casing and glass face
+curves across eight strips. The four columns above the mirror follow the circle
+too; the face-camera-only infill uses the same curved mounts.
+
+The pale floor has finer, darker grout and one softened planar reflection using
+the hangar's existing glossy-reflector path, with lower strength (0.3). It reflects
+the chair, Ooga and screens through the renderer's bounded, quality-scaled capture
+passes. This adds one floor reflection target; the 32 area cameras are unchanged.
+TV glass uses the existing view-dependent grazing highlights and light glints,
+not per-screen scene captures. Two shared glass/casing shapes serve all monitors.
+The Canvas 2D fallback retains the pale floor without the reflection overlay.
 A brief pale veil softens the crossing. The old glyph room remains retired;
 shots and melee still ripple the unbreakable mirror. NPCs respect its barrier.
 
@@ -28,8 +39,12 @@ subscription, scene retention override or independently simulated crew. The
 main hub's existing release/retention policy still applies when leaving it.
 
 Walking and airborne collision keep the Ooga within the walls and below the
-ceiling. The chair has a solid cushion, back and armrests that rotate together
-over a fixed five-spoke caster base. Move and jump onto the cushion, then press
+ceiling. The chair has rounded black leather cushions, three padded back panels
+with recessed seams, a gently reclined shell, metal back and arm supports, rounded
+armrests and an under-seat adjustment lever. Its pedestal has five tapered spokes
+and paired rubber caster wheels with metal hubs. The seat, back and armrests rotate
+together over the fixed base; the seat height stays 0.72 m and the back collision
+extends to the new shell. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
 Sitting places a pen in the Ooga’s existing right hand. Both first and third
@@ -310,6 +325,9 @@ Added, unrun regression assertions cover 3×3-to-single and single-to-3×3 waves
 ordered tile arrivals, retaining old tiles while a destination is pending, shared
 feed retention and adjacency during and after waves. Fresh visual review of regrouping
 and last-frame retention remains pending because the Chrome connection is unavailable.
+The sculpted chair, curved wall/TVs, screen-glass highlights and live floor reflection
+have build/syntax validation only; screenshots and reflection-performance acceptance
+remain pending on the same unavailable Chrome connection.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 
