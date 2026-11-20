@@ -28,7 +28,10 @@ five cave themes and free banana chips.
   waiting between hands. Walking never silently submits a poker action.
 
 The gold, emerald and ivory interface uses the room's existing theme variables
-and original vector cards. Smaller viewports stack the information rail below
+and original vector cards. Banana Club's room is now white marble (see the
+marble hall in [banana-poker.md](banana-poker.md)), but its table view keeps
+its dark green and gold on purpose, so its text stays readable; only the
+style's lobby swatch turned white and gold. Smaller viewports stack the information rail below
 the hand, with a scrollable panel and compact private-card layout. Buttons keep
 visible keyboard focus; card motion respects reduced-motion preferences. Theme,
 history, verification and rules remain available without filling the action
@@ -69,6 +72,25 @@ over it:
   held in its chair while seated, and stands idle rather than frozen
   mid-stride while watching a table unseated. Losing a live seat with the
   view open closes the view.
+- **Emotes:** with a live room connection and an Ooga to drive, an Emote
+  button sits beside Walk the floor (in the status strip on phones, 44px tall)
+  and opens a menu of ten emotes, each an emoji and its name: a dropdown on
+  desktop, a sheet along the foot of the view on phones. A choice sends the
+  room's existing reaction; the emoji shows over the sender's face at their seat
+  and their seated Ooga acts out six of them (see Table emotes in
+  [banana-poker.md](banana-poker.md) for the set and who sees what). A refused
+  send reads "Not sent" on the button. The menu closes on a choice, a press
+  outside, the view closing or Escape, and Escape closes the menu before it
+  closes the view. With no backend or signed out the button never shows.
+- **Tells and fidgets:** every seated figure shows the hand's body language
+  without anyone choosing it: sweat on the brow after 5 seconds on turn (two
+  beads at 10), a gulp facing a bet of half the pot or more, a fold's cards
+  tossed to the middle, an all in's chips pushed in, a winner's cheer and a
+  busted seat's slump, and small fidgets while others act (off under reduced
+  motion). A chosen emote wins over them. Each page works them out from the
+  table's public state alone (see Tells and fidgets in
+  [banana-poker.md](banana-poker.md)); nothing is sent over the wire and no
+  card is read.
 
 ## Live feedback and request handling
 
@@ -137,6 +159,32 @@ Found / maintainer play-tests before marking the PR ready:
   falls back to the stand-in), a full table of nine real players, a player
   sitting down from the aisle, held items against the rail, and the sitting
   pose by eye in all five themes.
+- Emotes: the browser suite checks the Emote button and menu (Escape closing
+  the menu before the view, a press outside, Walk the floor from the keyboard),
+  the visitor's own emote at their seat with its gesture and its clearing, a
+  gesture replaced mid-run leaving the head level, standing mid-gesture, a
+  matched player's emote at their seat with their Ooga gesturing, a burst
+  showing the newest, the seat clearing when the player leaves, an emote at
+  another table showing only once the view switches there, the button going
+  when the connection drops, and on a phone the 44px button and the open menu on
+  screen with the table still fitting. The room's socket is faked there. Still
+  to check: two real accounts trading emotes at a live table; each gesture by
+  eye in each theme and on a wide-headed or hatted Ooga (so far only Groan,
+  Salute and Wow, on one Ooga in Banana Club); the knock, slow clap and shrug;
+  the phone menu on a small phone; and a burst at the room's limit.
+- Tells and fidgets: the Node checks cover each tell's trigger and timing, the
+  big-bet rule through real practice hands, precedence, settling, the fairness
+  boundary (a snapshot whose hidden fields throw, and a source naming no card
+  field), the bot hold and an allocation-free frame. The browser suite's checks
+  passed in the controller's run: a bot's fold, all in, cheer and slump at their
+  own seats, the visitor's sweat (and none over a held seat walked away from),
+  the bot hold on the scene's clock, an emote over a running tell, standing up
+  mid-tell, a remote standing up mid-tell, reduced motion, a tell running
+  through the round trip and a fold's toss on Canvas 2D. Reduced motion is read
+  once, when the room is entered. Not verified by eye: each tell and fidget on
+  screen in each theme, the bead's fit on a short, a tall and a remote Ooga, the
+  toss and push on each theme, and Canvas 2D. Also still to check: two real
+  accounts at a live table, and the frame-rate lane.
 
 Keep the existing browser STOP ledger in force. These are acceptance tasks for
 the maintainer, not authorization to retry a blocked browser session. Live

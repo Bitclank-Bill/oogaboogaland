@@ -108,24 +108,130 @@ seated requests leaving the seat. Unseated visitors can return through the
 mirror to ₿IFRÖST. Leaving the scene pauses its local tables; returning resumes
 them. Reloading resets practice chips.
 
-## Visual revision: Gatsby meets Ooga Booga Land
+## Visual revision: the marble hall
 
-Banana Club is a dim, high-class hall. The ambient light is low and each of
-the ten tables sits in its own pool of light. Three tiered diamond chandeliers
-hang down the room, and their crystal rings glint, each ring on its own beat.
-A two-wing bar stands backlit on the far wall, a cashier cage stands on the
-side wall near the mirror end, and the two far corners are lounges with sofas,
-low tables and palms. Table 10 is the high-roller table: it stands on a red
-carpet. A short velvet rope between two posts stands on the aisle side at each
-end of the table, not all round it, and the stretch by the chairs is left
-open. The floor is green carpet with a brass
-inlay. Hanging vines keep the tropical island character.
+Banana Club is a white marble hall. The floor is laid in large white marble
+tiles with grey veins, ringed by a border of darker marble, with the gold inlay
+lines and the gold-edged green runner on top. The long walls are veined white
+panels in two tiers above a darker base, the arched wall lights are glazed warm
+white, and round marble columns with gold bases and capitals stand down both
+walls. The ceiling beams are cream with a gold edge, and the far wall's
+lettering stands on a deep green marble field framed in gold, so it never sits
+light on light. Every vein is a thin flat strip laid from a fixed seed: there
+are no textures or images.
 
-The furniture collides with walkers and exists only in Banana Club. Switching
-theme while standing moves the visitor to the nearest spot clear of the new
-room's furniture. The lowest renderer tier still spends its ten point lights on
-the ten tables; the room's three lights follow, and the bar and cage lights come
-after those.
+The light is warmer and brighter than the old dim hall, with less bloom so the
+white stone does not glare, and each of the ten tables still sits in its own
+pool of light: over its felt its own lamp reaches further than any other light.
+Three tiered diamond chandeliers hang down the room, and their crystal rings
+glint, each ring on its own beat. A two-wing bar with a marble front and a nero
+marble top stands backlit on the far wall, a brass cashier cage with marble
+counters stands on the side wall near the mirror end, and the two far corners
+are lounges with oxblood leather sofas, marble-topped low tables and palms.
+Table 10 is the high-roller table: it stands on a red rosso marble inlay edged
+in gold and keeps its glowing gold pinstripe. A short velvet rope between two
+brass posts stands on the aisle side at each end of the table, not all round
+it, and the stretch by the chairs is left open.
+
+The tables are ornate in this style only: a turned marble pedestal with gold
+bands, an oxblood padded rail round the felt, gold inlay rings on the green
+felt and walnut chairs with carved backs, padded seats and gold finials. Each
+floating TABLE name hangs on a dark green marble plate framed in gold. The
+cave styles keep their stone tables.
+
+The furniture, the fountain and the statues' plinths collide with walkers and
+exist only in Banana Club. Switching theme while standing moves the visitor to
+the nearest spot clear of the new room's furniture. The lowest renderer tier
+still spends its ten point lights on the ten tables; the room's three lights
+follow, then the bar's two and the cage's, and the fountain's soft warm light
+comes last.
+
+### The fountain
+
+A round marble basin stands at the room's centre, between tables 5 and 6: a
+darker foot, a white wall with a gold line under a raised white rim 2.3 m in
+radius, and a pedestal rising out of the pool. On the pedestal a marble Ooga in
+a toga and a leaf ring tips an urn. The figure and its water are turned a
+little off the room's long axis, so from the mirror end it stands in
+three-quarter view beside its water rather than behind it. Water pours from
+the urn in five thin strands onto the pool's surface, where twelve droplets
+splash and fall back. The water is the island lake's moving translucent
+material, on both renderers. The figure is the same invented Ooga every time,
+baked into one marble piece.
+
+The basin is solid. The visitor, other players and the crowd walk round it,
+and standing up from table 5 or 6 puts the visitor on open floor beside the
+pool, not in it. A remote player whose last pose lies where the pool now
+stands is not moved by this page.
+
+₿IFRÖST's window shows the room with the fountain, the statues and the
+fountain's light, but its picture is taken once, so the water stands still
+there.
+
+### The road to Bitcoin
+
+Eight marble statues stand along the two long walls, four a side, 18 and 6 m
+either side of the room's middle, between the columns, each on a stepped
+plinth facing the centre aisle. They run in order from the mirror toward the
+bar, odd numbers on the left wall as seen from the mirror and even on the
+right. Every statue is the
+same stylised figure in a toga, with one plain face shared by all eight; they
+are told apart only by their pose and the object each holds. The Satoshi
+figure is hooded, and its hood is empty: there is no face inside, only a dark
+recess. A statue's walk block covers its plinth and everything it holds out
+over the aisle, so nobody walks into a held piece.
+
+Each plinth carries a brass plaque with the figure's name carved on it. To
+read a placard, hover over the plaque for its name, tap or click it, or press
+the act button while standing within 2 m of a plinth (not while seated). The
+placard opens in the board dialog the jumbotron uses, titled The road to
+Bitcoin, and its arrows page through all eight in order.
+
+| # | Figure | Holds | Placard |
+| --- | --- | --- | --- |
+| 1 | Ralph Merkle | a branching tree | Merkle's puzzles, 1974. Merkle trees, 1979, as a Stanford graduate student. |
+| 2 | David Chaum | a sealed envelope | Blind signatures, 1982. Ecash, and DigiCash, founded in Amsterdam about 1990. DigiCash went bankrupt in 1998. |
+| 3 | Adam Back | a stamp and hammer | Proposed hashcash in 1997. The whitepaper cites Adam Back's Hashcash. |
+| 4 | Wei Dai | a coin marked b | B-money, 1998. It is the whitepaper's very first citation. |
+| 5 | Nick Szabo | a gold bar | Bit gold: designed 1998, published 2005. Chained proofs of work. |
+| 6 | Hal Finney | a tablet marked 170 | Reusable proofs of work, 2004. First to write back that the paper seemed promising. Received 10 bitcoin in block 170, 12 January 2009. |
+| 7 | Satoshi Nakamoto | a scroll | Signed the whitepaper under a pen name. Mined the genesis block on 3 January 2009. To this day, nobody knows who that is. |
+| 8 | Laszlo Hanyecz | two pizza boxes | Paid 10,000 bitcoin for two pizzas in 2010. 22 May is Bitcoin Pizza Day. |
+
+Every placard line is a fact the project already states in its Bitcoin
+lectures, or for Pizza Day in its block trivia; the placards add nothing about
+anyone. The statues are stylised, not likenesses: no face, body or trait is
+modelled on a person, and the figure is an invented Ooga under a name no GitHub
+login can hold. Because named statues go a step past the lectures, this was
+flagged for the maintainers under the Privacy rule in `AGENTS.md`.
+
+### The lite set
+
+On Canvas 2D, which paints every face on the CPU, Banana Club builds a lighter
+set of the same room: half the marble veins (at least one each), half the
+turning on the columns, the table pedestals, rails and inlay rings, plainer
+chairs, a coarser fountain basin and pool, three water strands and six
+droplets instead of five and twelve, and a lighter leaf ring and skirt on each
+statue. The fountain and its figure, all eight statues, their plinths, plaques,
+carved names and placards stay. WebGL draws the full set on every quality tier.
+
+### Still to play-test
+
+These are open until checked by eye in the built page:
+
+- glare from the white stone, the fountain's light and the white figures under
+  bloom, on each quality tier;
+- the fountain's figure in three-quarter view beside its water, and whether the
+  thin water strands read clearly;
+- each statue's pose and held object from the aisle, and the carved names on
+  the plaques;
+- the table labels' new backing plates, and the padded rail against cards,
+  chips and the dealer button;
+- marble veins on large floor slabs on Canvas 2D (a vein can sort behind its
+  slab there);
+- the room in the ₿IFRÖST window's picture;
+- a remote player whose last pose is where the pool now stands;
+- the frame-rate lane with a full crowd in the hall.
 
 Cards now have rounded paper edges, proper suit shapes, corner ranks at both
 ends, traditional numbered pip layouts, original double-ended Jack/Queen/King
@@ -135,8 +241,7 @@ There are no card textures, remote fonts, external images or extra requests.
 Only public community cards use face-up meshes; private tabletop cards remain
 backs. The hand display has larger cards and accessible full card names.
 
-The original card artwork and Gatsby room remain in this poker-interface
-revision. Its appearance still needs local play-testing under the existing
+The original card artwork remains in this poker-interface revision. Its appearance still needs local play-testing under the existing
 browser-test stop instruction below.
 
 ## Cave themes
@@ -149,7 +254,7 @@ The original Banana Club remains the default.
 
 | Theme | Room character |
 | --- | --- |
-| Banana Club | Dim emerald hall, diamond chandeliers, a backlit bar, cashier cage, lounge corners and a roped high-roller table. |
+| Banana Club | White marble hall, gold columns, ornate tables, a centre fountain and eight statues, with diamond chandeliers, a backlit bar, cashier cage, lounge corners and a roped high-roller table. |
 | Crystal Grotto | Blue stone, cyan/amethyst wall crystals, teal lanterns and lagoon felt. |
 | Ember Cavern | Basalt colors, glowing amber fissures, copper trim and warm red felt. |
 | Jungle Ruins | Mossy limestone bands, hanging vines, rune stones and fern-green felt. |
@@ -353,6 +458,116 @@ services; a full table of nine real players; a player sitting down from the
 aisle (their Ooga eases into the chair already in the sitting pose); cast
 members' held items against the rail now that seated arms reach forward; and
 the sitting pose by eye in each theme.
+
+## Table emotes
+
+A player in the table view can send one of ten emotes from the Emote button
+(`poker-emotes.js`). Each is one emoji sent as the room's existing reaction,
+under the room's existing limit, so the protocol is unchanged and nothing new
+goes over the wire. Six of them have a gesture, which the sender's seated Ooga
+acts out over about a second and a half:
+
+| Emote | Emoji | Gesture |
+|---|---|---|
+| Nice hand | 👍 | knocks the table twice |
+| Good game | 🤝 | none |
+| Wow | 😮 | both arms up |
+| Phew | 😅 | none |
+| Laugh | 😂 | none |
+| Groan | 😩 | head in hands |
+| Slow clap | 👏 | three slow claps |
+| Thinking | 🤔 | none |
+| Shrug | 🤷 | shrugs |
+| Salute | 🫡 | salutes |
+
+The emoji shows over the sender's face at their seat for as long as a reaction
+shows on the floor, popping in and fading out (no motion under reduced motion).
+A newer emote from the same seat replaces the older one, so a burst shows one at
+a time. Any other emoji a player sends from the ordinary reaction bar also shows
+at their seat, with no gesture. Every gesture starts and ends on the sitting
+pose; one cut short by a newer gesture, by the player standing or by the chair
+changing hands leaves no arm turned and no head bowed.
+
+Who sees what:
+
+| Sender | Their seat in the table view | On the floor |
+|---|---|---|
+| The visitor, seated | the emoji at their own seat | the emoji over their head, and their Ooga gestures |
+| A live player matched at the viewed table | the emoji at their seat, for players and watchers of that table alike | the emoji over their head, and their Ooga gestures |
+| A player seated in a chair that is open on this page's table | nothing (the seat shows as open) | the emoji over their head, and their Ooga gestures |
+| A matched player at another table | nothing in this view; it shows there when the view switches to that table | as above |
+| A watcher on the rail, or anyone with no chair (the visitor too) | nothing at any seat | the emoji over their head |
+
+Computer opponents and live players' stand-ins do not emote. On a practice table
+the visitor's emote shows at their own seat on their own page only, since that
+table exists only there.
+
+The button shows only while the page has a live room connection that takes
+reactions and the visitor is driving an Ooga, which is when the room would
+accept one; with no backend, or signed out, it never appears, and if the
+connection drops it goes, taking an open menu with it. When the room refuses a
+send (the page's own limit, or the connection just dropped) the button reads
+"Not sent" until the menu next opens. The menu closes on a choice, on a press
+outside it, when the table view closes, and on Escape; Escape closes the menu
+first and leaves the table view only on the next press.
+
+Still to play-test: two real accounts trading emotes at a live table; each
+gesture by eye in each theme and on a wide-headed or hatted Ooga (so far only
+Groan, Salute and Wow have been looked at, on one Ooga in Banana Club); the
+knock, the slow clap and the shrug; the phone menu on a small phone; and a burst
+at the room's limit.
+
+## Tells and fidgets
+
+Every seated figure, the visitor's Ooga, signed-in players, live players'
+stand-ins and computer opponents alike, shows body language that follows the
+hand without anyone choosing it (`poker-tells.js`):
+
+| Tell | When | What shows |
+|---|---|---|
+| Sweat | the seat has been on its turn 5 seconds; two beads at 10 | a bead on the brow, then two, gone when the turn moves or the seat acts |
+| Gulp | the turn reaches a seat facing a bet of half the pot or more | a short head dip and shoulder hunch |
+| Fold toss | the seat's last action becomes Fold | the right hand flicks; its two card backs slide to the middle, shrinking away |
+| All-in push | the seat's last action becomes All in | both arms sweep forward; a chip stack slides from its pile to the middle |
+| Cheer | the hand's result names the seat a winner | both arms up |
+| Slump | the hand's result shows the seat in the hand with no chips left | head down, arms dropped |
+
+A blind is not a bet: the gulp needs a seat to have bet or raised, or gone all
+in for at least the current bet, so a short stack's all in that only calls
+does not count. Computer opponents never sweat. Turn time is counted on each
+page from when it sees the turn reach the seat, so on a live table a bead may
+appear a moment apart on two screens.
+
+While a seat is in the hand and another seat is acting, it fidgets now and
+then: riffling its chips, drumming the rail, or, once folded, only turning its
+head toward the seat on turn. Fidgets come every 4 to 11 seconds, chosen at
+random on each page, so they do not match across pages. Reduced motion turns
+fidgets off and keeps the tells; it is read once, when the room is entered.
+
+A chosen emote always wins over a tell; under it the fold toss, all-in push,
+cheer and slump come first, then the gulp, then fidgets. Sweat is a mark, not a
+pose, so it shows alongside any of them. Every tell and fidget starts and ends
+on the sitting pose, and one cut short by an emote, by the player standing or
+by the chair changing hands leaves no arm turned and no head bowed. On Canvas
+2D the poses stay and the beads, cards and chips do not show.
+
+On a practice table a computer opponent facing a big bet waits one second
+longer before acting, so its gulp can play. Pausing a practice game holds every
+tell where it stands.
+
+Nothing goes over the wire: each page works the tells out from the table state
+it already has, with no Worker, room or protocol change. The fairness boundary
+is binding: the tells are handed only a public view of each table (the phase,
+hand number, whose turn, the pot and current bet, and for each seat its round
+bet, stack, last action, whether it is in the hand or folded, whether it is a
+computer opponent, and the result's winners). No card is on it, so no tell, and
+no computer opponent's wait, can differ with what a seat holds.
+
+The browser checks for the tells passed in the controller's run. Still to
+play-test: each tell and fidget on screen in each theme, and whether a full
+table looks alive or twitchy; the bead's fit on a short, a tall and a remote
+Ooga; the toss and push on each theme; the poses on Canvas 2D; two real
+accounts at a live table; the frame-rate lane.
 
 ## Files and validation handoff
 
