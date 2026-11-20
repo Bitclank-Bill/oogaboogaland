@@ -9,13 +9,14 @@
   const apply = (body) => {
     const m = body?.portraits, cast = body?.cast;
     if (!m || !Array.isArray(cast) || cast.length > 128 || !HASH.test(m.revision) || !HASH.test(m.image)
+      || !/^[a-f0-9]{40}$/.test(m.baseline) || m.engine !== "island-character-data-v1" || !["staging", "production"].includes(m.environment)
       || m.version !== 1 || m.size !== 80 || m.columns !== 8 || m.fallback !== cast.length
       || m.rows !== Math.ceil((cast.length + 1) / 8) || !m.cells || typeof m.cells !== "object" || Array.isArray(m.cells)
       || !Number.isSafeInteger(body.catalogGeneration) || body.catalogGeneration <= 0 || body.catalogRevision !== m.revision) return false;
     const names = cast.map((row) => String(row?.handle || "").toLowerCase()).sort();
     if (Object.keys(m.cells).length !== names.length || new Set(names).size !== names.length
       || names.some((name, i) => !/^[a-z0-9-]{1,39}$/.test(name) || !Object.hasOwn(m.cells, name) || m.cells[name] !== i)) return false;
-    if (faces.baseline === m.baseline && body.catalogGeneration < generation) return false;
+    if (faces.baseline === m.baseline && (body.catalogGeneration < generation || body.catalogGeneration === generation && m.revision !== revision)) return false;
     if (m.revision === revision) { generation = body.catalogGeneration; return true; }
     faces = m; generation = body.catalogGeneration; revision = m.revision;
     path = `/api/chat/public/portraits/${m.revision}/${m.image}.png`;

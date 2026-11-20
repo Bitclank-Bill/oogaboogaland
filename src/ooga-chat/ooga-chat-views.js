@@ -614,7 +614,7 @@
       for (const p of audience) if (p.role === "speaker" && p.id.startsWith("gh:")) voices.set(p.login.toLowerCase(), p);
       paintVoices();
     };
-    const stopPortraits = BL.oogaChatPortraits.onChange(() => panel?.faceChanged());
+    const stopPortraits = BL.oogaChatPortraits.onChange(() => panel?.faceChanged(true));
     const face = (contributor) => BL.oogaChatPortraits.canvas(contributor.name);
     const stampOf = (c) => c.lastContributionAt || c.lastCommitAt;
     const online = (row) => {
