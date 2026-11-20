@@ -480,7 +480,7 @@
   };
   // True once the next scene has entered. A scene with `enterSteps` (a released hub, rebuilding its island's whole
   // visit) enters in slices instead: the departed scene is gone, nothing updates, draws or takes a key, and the screen
-  // holds (black, or an instant crossing's last frame) until the last slice, when `done` carries the transition on.
+  // holds black until the last slice, when `done` carries the transition on.
   // A first slice that finishes the enter (a kept hub resuming) completes in the same frame, as `enter` would.
   const swapScenes = (next, place, done) => {
     const leaving = active;
@@ -609,25 +609,12 @@
     if (fade === 0) settled();
   };
   // Fills in CSS pixels (clientWidth/clientHeight, cached above), not backing-store pixels.
-  // A second on black, or waiting for an instant crossing, turns on the boot curtain's spinner.
-  const SPINNER_AFTER = 1, SPINNER_R = 13, SPINNER_ACCENT = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ffd27a";
+  // Loading holds stay plain black, including an instant crossing awaiting its destination.
   const drawFade = () => {
-    overlayCtx.globalAlpha = fade;
+    overlayCtx.globalAlpha = transition && transition.instant && (!transition.ready || transition.entering) ? 1 : fade;
     overlayCtx.fillStyle = "#000000";
     overlayCtx.fillRect(0, 0, overlayCssW, overlayCssH);
     overlayCtx.globalAlpha = 1;
-    if (!transition || transition.held < SPINNER_AFTER
-      || !(fade === 1 || transition.instant && (!transition.ready || transition.entering))) return;
-    const x = overlayCssW / 2, y = overlayCssH / 2, turn = elapsed / 0.9 % 1 * Math.PI * 2;
-    // A transparent hold never redraws the scene's overlay. Erase only the old spinner, including stroke fringes.
-    const pad = SPINNER_R + 3;
-    if (fade < 1) overlayCtx.clearRect(x - pad, y - pad, pad * 2, pad * 2);
-    if (transition.entryFailed) return;
-    overlayCtx.lineWidth = 3;
-    overlayCtx.strokeStyle = "rgba(243, 239, 228, 0.18)";
-    overlayCtx.beginPath(); overlayCtx.arc(x, y, SPINNER_R, 0, Math.PI * 2); overlayCtx.stroke();
-    overlayCtx.strokeStyle = SPINNER_ACCENT;
-    overlayCtx.beginPath(); overlayCtx.arc(x, y, SPINNER_R, turn - Math.PI * 0.75, turn - Math.PI * 0.25); overlayCtx.stroke();
   };
 
   // Sampled from delivered frame intervals, never from the cost of issuing a frame.
@@ -677,7 +664,7 @@
   let lastRender = 0;
   let renderedFrames = 0;
   let firstDraw = false, firstPlayable = false;
-  // A first visit opens the Bananas panel a beat after the curtain (0.9 s) has parted on the world (`sheet.welcome`),
+  // A first visit opens the Bananas panel a beat after the black curtain (0.9 s) has faded (`sheet.welcome`),
   // unless the visitor chose a panel, left the scene or began a game meanwhile. Quiet `nosim` pages (the suite, the
   // cards) opt out unless `welcome=1` asks; `welcome=0` turns it off anywhere.
   const WELCOME_MS = 1800;
@@ -685,7 +672,7 @@
   let welcomeTimer = 0;
   const openCurtain = () => {
     curtain.addEventListener("transitionend", (e) => {
-      if (e.propertyName === "transform") curtain.remove();
+      if (e.target === curtain && e.propertyName === "opacity") curtain.remove();
     });
     curtain.dataset.open = "true";
   };

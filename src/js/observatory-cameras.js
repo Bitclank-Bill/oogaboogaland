@@ -98,9 +98,7 @@
     };
     const makeFeed = choice => {
       const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 144;
-      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#122326"; ctx.fillRect(0, 0, 256, 144);
-      ctx.fillStyle = "#aac8bd"; ctx.font = "16px monospace"; ctx.textAlign = "center";
-      ctx.fillText(renderer.kind === "webgl2" ? "CONNECTING" : "CAMERA OFFLINE", 128, 70);
+      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, 256, 144);
       const geometry = quad(3.08, 1.72, { canvas, version: 0, rect: [-1.54, -0.86, 3.08, 1.72], smooth: true });
       const feed = { geometry, surfaces: [], tiles: new Map(), camera: choice.camera, channel: choice, source: null,
         pending: true, holdFrame: true, visible: false, forceCapture: false, priority: false,

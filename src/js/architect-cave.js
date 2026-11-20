@@ -23,18 +23,20 @@
   const segmentClear = (x, y, z, toX, toY, toZ, radius, height) =>
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
     && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
-  const FACE_WAIT = 45, FACE_SWEEP = 4.2, FACE_HOLD = 8;
+  const FACE_WAIT = 45, FACE_SWEEP = 4.2, FACE_HOLD = 8, PATCH_SWEEP = 1.1;
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
   // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
-  const panelLayout = (count, initial = false, previous = null) => {
+  const panelLayout = (count, initial = false, previous = null, patch = null) => {
     const cols = BANKS + PORTAL_COLS, cells = new Int16Array(cols * ROWS).fill(-1), groups = [], uses = new Uint16Array(count);
     const fits = (col, row, size) => {
       if (row + size > ROWS || col + size > (col < BANKS ? BANKS : cols)) return false;
+      if (patch && (size > patch.maxSize || row + size > patch.row + patch.size || col + size > patch.col + patch.size)) return false;
       for (let y = row; y < row + size; y++) for (let x = col; x < col + size; x++)
         if (y < MIRROR_ROWS && x >= BANKS || cells[y * cols + x] >= 0) return false;
       return true;
     };
-    for (let row = 0; row < ROWS; row++) for (let col = 0; col < cols; col++) {
+    for (let row = patch ? patch.row : 0; row < (patch ? patch.row + patch.size : ROWS); row++)
+      for (let col = patch ? patch.col : 0; col < (patch ? patch.col + patch.size : cols); col++) {
       if (!fits(col, row, 1)) continue;
       const roll = Math.random();
       const size = fits(col, row, 3) && (initial && col === 0 && row === 0 || roll < 0.22) ? 3
@@ -124,6 +126,7 @@
     const group = createNode({ position: { x: 0, y: FLOOR, z: 0 }, visible: false });
     const cameras = BL.observatoryCameras.create({ renderer, mouths, places }), feeds = cameras.feeds;
     const meshes = [], panels = [], rowJitter = new Float64Array(ROWS), destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
+    const tiles = new Array((BANKS + PORTAL_COLS) * ROWS).fill(null);
     const params = new URLSearchParams(location.search);
     const crossingMatrix = BL.math.mat4.create();
     BL.math.mat4.identity(crossingMatrix);
@@ -131,7 +134,7 @@
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
-    let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 20 + Math.random() * 10;
+    let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 3 + Math.random() * 3;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     let penButton = null, penHand = null, clickTime = 1;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
@@ -281,8 +284,9 @@
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY, SCREEN_RADIUS);
         const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
         // Spread from the mirror around both sides. Lower rows lead, with row and tile jitter.
-        panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: layout.cells[row * layout.cols + col], size: group.size,
+        panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: group.row * layout.cols + group.col, size: group.size,
           distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0 });
+        tiles[row * layout.cols + col] = panels[panels.length - 1];
       };
       for (let i = 0; i < BANKS; i++) {
         const angle = PORTAL_ANGLE + (i + 0.5) * BANK_ANGLE;
@@ -381,21 +385,41 @@
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
     const finishLayout = () => {
-      layoutPending = layoutStarted = false; layoutTime = 0; layoutWait = 20 + Math.random() * 10;
+      layoutPending = layoutStarted = false; layoutTime = 0; layoutWait = 3 + Math.random() * 3;
       for (const p of panels) p.next = p.previous = null;
       for (const feed of feeds) feed.forceCapture = false;
     };
     const stageLayout = () => {
-      const previous = new Int16Array((BANKS + PORTAL_COLS) * ROWS).fill(-1);
-      for (const p of panels) previous[p.row * (BANKS + PORTAL_COLS) + p.col] = feeds.indexOf(p.normal.imageSurface.feed);
-      const layout = panelLayout(feeds.length, false, previous);
+      const cols = BANKS + PORTAL_COLS, selected = panels[Math.floor(Math.random() * panels.length)];
+      const patch = { col: selected.group % cols, row: Math.floor(selected.group / cols), size: selected.size, maxSize: 1 };
+      // A patch may absorb complete existing groups, never slice a neighboring mosaic in half.
+      const fits = size => {
+        if (patch.row + size > ROWS || patch.col + size > (patch.col < BANKS ? BANKS : cols)) return false;
+        for (let row = patch.row; row < patch.row + size; row++) for (let col = patch.col; col < patch.col + size; col++) {
+          const p = tiles[row * cols + col];
+          if (!p || p.group % cols < patch.col || Math.floor(p.group / cols) < patch.row
+            || p.group % cols + p.size > patch.col + size || Math.floor(p.group / cols) + p.size > patch.row + size) return false;
+        }
+        return true;
+      };
+      if (selected.size === 1) patch.size = patch.maxSize = fits(3) ? 3 : fits(2) ? 2 : 1;
+      else patch.maxSize = selected.size === 3 && Math.random() < 0.35 ? 2 : 1;
+      const previous = new Int16Array(cols * ROWS).fill(-1);
+      for (const p of panels) previous[p.row * cols + p.col] = feeds.indexOf(p.normal.imageSurface.feed);
+      const layout = panelLayout(feeds.length, false, previous, patch);
+      let nearest = Infinity, furthest = 0;
+      for (let row = patch.row; row < patch.row + patch.size; row++) rowJitter[row] = Math.random() * 0.05;
       for (const p of panels) {
         const id = layout.cells[p.row * layout.cols + p.col], g = layout.groups[id];
+        if (!g) continue;
         const normal = cameras.panel(feeds[g.slot], g.size, p.col - g.col, p.row - g.row, p.pitchX, PITCH, p.scaleX, p.scaleY, SCREEN_RADIUS);
         renderer.prepareGeometry(normal);
         p.previous = { normal: p.normal, group: p.group, size: p.size };
-        p.next = { normal, group: id, size: g.size };
+        p.next = { normal, group: g.row * cols + g.col, size: g.size };
+        nearest = Math.min(nearest, p.distance); furthest = Math.max(furthest, p.distance);
       }
+      for (const p of panels) if (p.next) p.delay = (p.distance - nearest) / Math.max(0.001, furthest - nearest) * 0.4
+        + (p.row - patch.row) * 0.2 + rowJitter[p.row] + Math.random() * 0.01;
       layoutPending = true; layoutStarted = false; layoutTime = 0;
     };
     const sweepDelays = () => {
@@ -410,16 +434,19 @@
       return true;
     };
     const updateLayout = dt => {
-      const ready = cameras.warm();
+      let ready = true;
+      for (const p of panels) if (p.next && !cameras.ready(p.next.normal.imageSurface.feed)) {
+        p.next.normal.imageSurface.feed.forceCapture = true; ready = false;
+      }
       if (!layoutStarted) {
         if (!ready) return;
-        layoutStarted = true; layoutTime = 0; sweepDelays();
+        layoutStarted = true; layoutTime = 0;
       } else layoutTime += dt;
       let remaining = false;
       for (const p of panels) if (p.next) {
         if (layoutTime < p.delay || !replaceTile(p)) remaining = true;
       }
-      if (!remaining && layoutTime >= FACE_SWEEP) finishLayout();
+      if (!remaining && layoutTime >= PATCH_SWEEP) finishLayout();
     };
     const resetBroadcast = () => {
       // Travel or an actor change cancels an unfinished layout back to its last complete assignment.
@@ -435,8 +462,8 @@
     };
     const beginSweep = phase => {
       broadcast = phase; broadcastTime = 0;
-      if (phase === "to-feeds") stageLayout();
-      else sweepDelays();
+      layoutStarted = false;
+      sweepDelays();
     };
     const updateBroadcast = (dt, actor) => {
       if (document.hidden) return;
@@ -493,7 +520,8 @@
           if (toFace) {
             if (cameras.ready(face)) p.node.geometry = p.portrait;
             else remaining = true;
-          } else if (p.next && !replaceTile(p)) remaining = true;
+          } else if (cameras.ready(p.normal.imageSurface.feed)) p.node.geometry = p.normal;
+          else remaining = true;
         }
         if (!remaining && broadcastTime >= FACE_SWEEP) {
           broadcast = toFace ? "face" : "feeds"; broadcastTime = 0;
@@ -593,12 +621,12 @@
       get active() { return active; }, get crossing() { return veil > 0; }, get prepared() { return prepared; },
       drawVeil(context) {
         if (!veil) return;
-        context.save(); context.globalAlpha = veil / 0.45 * 0.55; context.fillStyle = "#bed8d0";
+        context.save(); context.globalAlpha = veil / 0.45; context.fillStyle = "#000000";
         context.fillRect(0, 0, context.canvas.clientWidth, context.canvas.clientHeight); context.restore();
       },
       suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; }
+      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; tiles.fill(null); }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };

@@ -34,7 +34,8 @@ passes. This adds one floor reflection target; the 32 area cameras are unchanged
 TV glass uses the existing view-dependent grazing highlights and light glints,
 not per-screen scene captures. Two shared glass/casing shapes serve all monitors.
 The Canvas 2D fallback retains the pale floor without the reflection overlay.
-A brief pale veil softens the crossing. The old glyph room remains retired;
+A brief black fade softens the crossing. Startup and scene-loading holds are plain
+black, and unready TV feeds have a black placeholder without loading labels. The old glyph room remains retired;
 shots and melee still ripple the unbreakable mirror. NPCs respect its barrier.
 
 `architect-cave.js` owns the chamber. Its volume is below the island at y=-48,
@@ -112,18 +113,24 @@ old and new layouts, preserving this separation during the wave too. A proposed
 3×3 that exhausts the available choices splits into singles rather than repeating
 a neighboring channel.
 
-The arrangement is rebuilt every 20–30 seconds while area feeds are selected, and
-each return from the face view gets a fresh arrangement. Any region can become
-singles, 2×2s or 3×3s. Destination pictures warm before a roughly 4.2-second wave
-starts at the mirror, spreading outwards with the bottom rows leading. Tiles
-change individually in row order with small tile jitter and larger row jitter.
+While area feeds are selected, one local patch is chosen every 3–6 seconds after
+the previous patch finishes. At most nine screens change: a 3×3 may split into
+nine singles or a mix including a 2×2, and a region containing complete smaller
+groups may combine into a new mosaic. A patch never cuts an existing neighboring
+group, crosses the mirror gap or replaces screens elsewhere on the wall.
+Destination pictures warm before the patch's roughly 1.1-second wave. Within
+that patch, tiles change in outward row order with lower rows leading and small
+row/tile jitter. The rest of the wall keeps its current layout and live feeds.
+
 Splitting a 3×3 preserves its remaining old image tiles until their individual
 turns; assembling one replaces the nine old tiles individually. Each tile checks
 its destination again before switching. A delayed capture holds the outgoing
 picture and the transition waits to finish. Channel rotation pauses throughout,
 so an outgoing mosaic cannot lose or change its backing channel mid-wave.
-A pen click during regrouping queues the requested face/area view after that wave.
-Travel or changing actor cancels an unfinished regrouping to the last whole layout.
+A pen click during regrouping queues the requested face/area view after that patch.
+Only the face-view switch sweeps the whole room; returning restores the existing
+mosaic arrangement. Travel or changing actor cancels an unfinished patch back to
+its last complete assignment.
 
 Warmups include off-screen destinations, alternating with the face camera when
 needed so neither starves on a slow frame budget. They use the existing 32 targets
@@ -170,7 +177,7 @@ individual screens with the same live close-up of the controlled Ooga. It begins
 at the return mirror and spreads away around both sides. Bottom rows
 lead upper rows; fresh row and panel jitter makes the edge irregular. Every
 screen holds the complete face for a randomized 6–10 seconds, then the same outward pattern
-assembles a new mosaic arrangement. The timer pauses in hidden tabs and resets on
+restores the current mosaic arrangement. The timer pauses in hidden tabs and resets on
 travel or changing the controlled character. Automatic transitions are disabled
 while the player sits in the chair; clicking owns the choice until they stand.
 
@@ -346,7 +353,8 @@ both views, stationary third-person clicking, button travel, unchanged fist geom
 bottom-leading wave and feed-only mirror infill. The
 pen framing and revised down/up click sound still need visual/listening acceptance.
 Added, unrun regression assertions cover 3×3-to-single and single-to-3×3 waves,
-ordered tile arrivals, retaining old tiles while a destination is pending, shared
+ordered tile arrivals, keeping screens outside the selected patch unchanged,
+retaining old tiles while a destination is pending, shared
 feed retention and adjacency during and after waves. Fresh visual review of regrouping
 and last-frame retention remains pending because the Chrome connection is unavailable.
 The sculpted chair, curved wall/TVs, screen-glass highlights and live floor reflection
@@ -359,6 +367,8 @@ and recovery of diagonal movement/sprint without replaying released or Tab-cance
 New, unrun audio regressions cover lazy echo creation, bounded filtered taps,
 no feedback, exit gating, reuse and disposal without disconnecting dry playback.
 The revised ambience and live conversation echo still need listening acceptance.
+Black startup/loading holds and patch-local regrouping have build/syntax checks;
+the updated black-hold and patch-isolation regressions remain unrun.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

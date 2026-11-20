@@ -17157,7 +17157,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     }
     const before = panels.map(p => p.node.geometry), old = panels.find(p => p.size === 3);
     const nine = panels.filter(p => p.group === old.group), slot = old.normal.imageSurface.feed;
-    let blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, partialNeighbors;
+    let blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, partialNeighbors, isolated;
     const neighborsValid = () => panels.every(p => panels.every(q => {
       const sameLayout = !!p.next === !!q.next;
       const sameGroup = sameLayout && p.group === q.group;
@@ -17166,13 +17166,14 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
         || p.node.geometry.imageSurface.feed !== q.node.geometry.imageSurface.feed;
     }));
     const stage = roll => {
-      Math.random = () => roll;
+      let first = true;
+      Math.random = () => { if (first) { first = false; return (panels.indexOf(old) + 0.1) / panels.length; } return roll; };
       room.update(room.layoutWait + 0.01);
       Math.random = random;
     };
     try {
-      stage(0.99); // Every destination is a single full-frame feed.
-      const missing = panels[0].next.normal.imageSurface.feed, pending = missing.pending;
+      stage(0.99); // Only this nine-tile patch splits into independent full-frame feeds.
+      const missing = nine[0].next.normal.imageSurface.feed, pending = missing.pending;
       try {
         missing.pending = true;
         room.update(10);
@@ -17187,8 +17188,9 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       retained = room.renderFeeds.includes(slot) && slot.holdFrame && room.cameras.ready(slot);
       noBlank = panels.every(p => room.cameras.ready(p.node.geometry.imageSurface.feed));
       room.update(BL.architectCave.FACE_SWEEP);
-      singles = !room.layoutPending && panels.every(p => p.size === 1 && p.node.geometry === p.normal);
-      stage(0); // Reassemble singles into 3x3 mosaics, with smaller edge groups where needed.
+      singles = !room.layoutPending && nine.every(p => p.size === 1 && p.node.geometry === p.normal);
+      isolated = panels.every((p, i) => nine.includes(p) || p.node.geometry === before[i]);
+      stage(0); // Reassemble the same nine tiles, leaving all other groups in place.
       room.update(0);
       const group = panels.find(p => p.next?.size === 3).next.group;
       const joining = panels.filter(p => p.next?.group === group), outgoing = joining.map(p => p.node.geometry);
@@ -17197,7 +17199,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       partialNeighbors &&= neighborsValid();
       mergeOne = joining.filter(p => !p.next).length === 1
         && joining.every((p, i) => !p.next || p.node.geometry === outgoing[i]);
-      ordered = panels.every(p => panels.every(q => p.row !== q.row || (p.col < 24) !== (q.col < 24)
+      ordered = joining.every(p => joining.every(q => p.row !== q.row || (p.col < 24) !== (q.col < 24)
         || q.distance - p.distance < 1e-6 || p.delay < q.delay));
       noBlank &&= panels.every(p => room.cameras.ready(p.node.geometry.imageSurface.feed));
       room.update(BL.architectCave.FACE_SWEEP);
@@ -17207,10 +17209,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       const neighbors = panels.every(p => panels.every(q => p.group === q.group || Math.abs(p.row - q.row) > 1
         || Math.min(Math.abs(p.col - q.col), 52 - Math.abs(p.col - q.col)) > 1
         || p.normal.imageSurface.feed !== q.normal.imageSurface.feed));
-      return { blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, neighbors, partialNeighbors };
+      isolated &&= panels.every((p, i) => nine.includes(p) || p.node.geometry === before[i]);
+      return { blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, neighbors, partialNeighbors, isolated };
     } finally { Math.random = random; room.travel(true); }
   })()`);
-  record("hub observatory: mosaics split and assemble tile by tile, keeping outgoing images while replacements wait",
+  record("hub observatory: one patch splits and assembles tile by tile, preserving every outside screen and holding outgoing images until ready",
     Object.values(retiling).every(Boolean), JSON.stringify(retiling));
   const manualScreens = await b.evaluate(`(async () => {
     const B = __ooga, room = BL.scenes.hub.architect, actor = B.pilot.player;
@@ -22104,7 +22107,7 @@ scene("hub", { label: "entry failure", query: "hubcache=release", steps: [{ name
   await hubEntryFailure(b, "first");
 } }] });
 scene("hub", { label: "kept entry failure", query: "hubcache=keep", steps: [{ name: "hub kept entry failure", why: "regression: a kept hub resumes inside the first entry slice, where an error repeated the swap instead of offering Reload", run: b => hubEntryFailure(b, "resume") }] });
-scene("hub", { label: "entry spinner", query: "hubcache=keep", steps: [{ name: "hub entry spinner", why: "regression: transparent build and entry holds repainted spinner arcs without clearing them, accumulating a solid ring", run: async (b) => {
+scene("hub", { label: "black loading", query: "hubcache=keep", steps: [{ name: "hub black loading", why: "rule: build and entry holds stay opaque black without spinner graphics, including instant crossings", run: async (b) => {
   const rows = await b.evaluate(`(async () => {
     const B = __ooga, L = BL.scenes.lab, canvas = document.getElementById("overlay"), ctx = canvas.getContext("2d");
     const saved = { build: L.buildSteps, enter: L.enterSteps, clear: ctx.clearRect, fill: ctx.fillRect, arc: ctx.arc };
@@ -22114,7 +22117,7 @@ scene("hub", { label: "entry spinner", query: "hubcache=keep", steps: [{ name: "
     ctx.fillRect = function(x, y, w, h) {
       const a = S.audit;
       if (a && x === 0 && y === 0 && w === canvas.clientWidth && h === canvas.clientHeight) {
-        a.frames++; a.opaque = this.globalAlpha === 1; a.clear = null;
+        a.frames++; a.opaque = this.globalAlpha === 1 && this.fillStyle === "#000000"; a.clear = null;
         if (a.opaque) a.black++;
       }
       return saved.fill.call(this, x, y, w, h);
@@ -22167,9 +22170,9 @@ scene("hub", { label: "entry spinner", query: "hubcache=keep", steps: [{ name: "
       ctx.clearRect = saved.clear; ctx.fillRect = saved.fill; ctx.arc = saved.arc;
     }
   })()`);
-  record("hub entry spinner: repeated transparent build and entry frames erase a bounded square covering each spinner before repainting, while black holds keep their opaque fill",
-    rows.length === 4 && rows.every(row => row.frames > 100 && row.arcs > 100 && row.covered && row.bounded && row.blackIntact
-      && (row.label.startsWith("instant") ? row.fade === 0 && row.black === 0 && row.clears > 0 : row.fade === 1 && row.black === row.frames && row.clears === 0)), JSON.stringify(rows));
+  record("hub loading: repeated build and entry holds are opaque black with no spinner, for regular and instant crossings",
+    rows.length === 4 && rows.every(row => row.frames > 100 && row.arcs === 0 && row.black === row.frames
+      && row.fade === (row.label.startsWith("instant") ? 0 : 1)), JSON.stringify(rows));
 } }] });
 scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf", steps: [{ name: "work movement cave trips", why: "regression: cave traffic aimed through obstacles, started backwards detours and got trapped behind players by short lane hints", run: workCaveTrips }] });
 scene("hub", { label: "hammock", query: "solo=1&character=portlandhodl&pos=0", steps: [hubHammockEntry, hubHammockGetUp, hubHammockRopes, hubHammockEnds, hubHammock, hubHammockCamera, hubHammockRemoval] });
