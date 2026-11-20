@@ -11373,7 +11373,12 @@
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks, preciseHover: true });
     COMBAT_POINTER.x = COMBAT_POINTER.y = -1; carryTotemHovered = combatTotemHovered = false; combatTotemLink = null;
-    ctx.canvas.addEventListener("pointerleave", () => { COMBAT_POINTER.x = COMBAT_POINTER.y = -1; }, { signal: ctx.signal });
+    ctx.canvas.addEventListener("pointerleave", () => { COMBAT_POINTER.x = COMBAT_POINTER.y = -1; architectCave?.hoverAt(-1, -1); }, { signal: ctx.signal });
+    ctx.canvas.addEventListener("pointermove", event => {
+      if (event.pointerType !== "mouse" || !architectCave?.seated) return;
+      const point = combatPointer(event.clientX, event.clientY);
+      architectCave.hoverAt(point.x, point.y);
+    }, { capture: true, signal: ctx.signal });
     // Take seated right clicks before the pilot's ADS/double-right-click path.
     // Keep this local to the room; ordinary island combat bindings stay intact.
     let architectRightHeld = false;
@@ -12854,7 +12859,7 @@
     const gorilla = clankerPlay?.active, help = gorilla ? clankerPlay.controlsHelp(touch) : pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon", "jetpack"]);
     if (architectCave?.seated) {
       help.rows.push(H.row([], "Switch area feeds / your face", touch ? "Tap the view" : "Right mouse click"));
-      if (!touch) help.rows.push(H.row([], "Enhance feed to 6×6 / restore", "Left mouse click"));
+      if (!touch) help.rows.push(H.row([], "Enhance feed to 7×7 / restore", "Left mouse click"));
     }
     if (!touch) {
       const own = BL.net.ownCharacter(), cave = own && crew.cavemen.get(own.handle);

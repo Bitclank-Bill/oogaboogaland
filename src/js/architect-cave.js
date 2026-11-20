@@ -30,6 +30,7 @@
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
     && (toZ <= returnDepth(toX) - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
   const FACE_WAIT = 45, FACE_SWEEP = 2.8, FACE_HOLD = 8, PATCH_SWEEP = 1.1, TILE_FLASH = 0.16;
+  const ENHANCEMENT_SIZE = 7;
   const PEN_ARM_REST = -0.75; // The crew's default chair pose; never lower the arm past it.
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
   // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
@@ -175,6 +176,10 @@
     const focusMeshes = new Set(), screenTargets = [], screenPicker = BL.weaponTargets.create(screenTargets);
     const screenRay = {}, screenHit = { node: null, owner: null, distance: Infinity };
     let enhancement = null;
+    const hover = { x: -1, y: -1, stable: 0, poll: 0, cooldown: 0, sampled: false, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    let hoverFeed = null;
+    const clearHover = () => { if (hoverFeed) hoverFeed.prewarm = false; hoverFeed = null; hover.stable = hover.poll = 0; hover.sampled = false; };
+    const hoverAt = (x, y) => { hover.x = x; hover.y = y; };
     const params = new URLSearchParams(location.search);
     const crossingMatrix = BL.math.mat4.create();
     BL.math.mat4.identity(crossingMatrix);
@@ -580,13 +585,13 @@
       trimFocus();
     };
     const stageEnhancement = selected => {
-      const cols = BANKS + PORTAL_COLS, size = 6;
+      const cols = BANKS + PORTAL_COLS, size = ENHANCEMENT_SIZE;
       let patch = null, feed = null;
       if (selected) {
         feed = selected.normal.imageSurface.feed;
         const fromRow = Math.floor(selected.group / cols), fromCol = selected.group % cols;
         let best = Infinity;
-        // Find the closest complete 6x6 on the circular wall, including across
+        // Find the closest complete 7x7 on the circular wall, including across
         // its wrap. The four missing mirror rows must never become screens.
         for (let row = 0; row <= ROWS - size; row++) for (let col = 0; col < cols; col++) {
           const offset = (fromCol - col + cols) % cols;
@@ -601,6 +606,8 @@
         if (!patch) return false;
       }
       for (const f of feeds) f.enhanced = f === feed;
+      clearHover();
+      if (feed) feed.focusPending = true;
       enhancement = patch && { ...patch, feed };
       const pitch = col => col % cols < BANKS ? RADIUS * BANK_ANGLE : PORTAL_PITCH;
       let span = 0;
@@ -715,7 +722,8 @@
       }
       if (changed) returnMirror.reflectionRevision++;
       enhancement = null;
-      for (const feed of feeds) feed.enhanced = false;
+      clearHover();
+      for (const feed of feeds) feed.enhanced = feed.focusPending = false;
       finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
       manual = manualFace = false;
@@ -818,8 +826,34 @@
       if (!screenPicker.ray(screenHit, screenRay.ox, screenRay.oy, screenRay.oz, screenRay.dx, screenRay.dy, screenRay.dz, camera.far, null, null, true)) return true;
       const selected = screenHit.owner.panel;
       if (!selected) return true;
-      if (stageEnhancement(selected.size === 6 ? null : selected)) { clickTime = 0; audio?.click(); }
+      if (stageEnhancement(selected.size === ENHANCEMENT_SIZE ? null : selected)) { clickTime = 0; audio?.click(); }
       return true;
+    };
+    const updateHover = dt => {
+      hover.cooldown = Math.max(0, hover.cooldown - dt);
+      const locked = !!document.pointerLockElement;
+      if (!seated() || document.hidden || broadcast !== "feeds" || layoutPending || portraitActor || !locked && (hover.x < 0 || hover.y < 0)) { clearHover(); return; }
+      if (dt <= 0) return;
+      renderer.ray(locked ? renderer.size.width / 2 : hover.x, locked ? renderer.size.height / 2 : hover.y, camera, screenRay);
+      const slow = hover.sampled && Math.hypot(screenRay.dx - hover.dx, screenRay.dy - hover.dy, screenRay.dz - hover.dz) < dt * 0.08
+        && Math.hypot(screenRay.ox - hover.ox, screenRay.oy - hover.oy, screenRay.oz - hover.oz) < dt * 0.15;
+      if (!slow) clearHover();
+      hover.sampled = true;
+      hover.ox = screenRay.ox; hover.oy = screenRay.oy; hover.oz = screenRay.oz;
+      hover.dx = screenRay.dx; hover.dy = screenRay.dy; hover.dz = screenRay.dz;
+      hover.stable = slow ? hover.stable + Math.min(dt, 0.1) : 0;
+      hover.poll += dt;
+      // Only pick after the view settles, and no more than ten times a second.
+      // Fast cursor/camera motion cancels speculative detail immediately.
+      if (hover.stable < 0.45 || hover.poll < 0.1) return;
+      hover.poll = 0;
+      const hit = screenPicker.ray(screenHit, screenRay.ox, screenRay.oy, screenRay.oz, screenRay.dx, screenRay.dy, screenRay.dz, camera.far, null, null, true);
+      const feed = hit && screenHit.owner.panel?.normal.imageSurface.feed;
+      if (feed === hoverFeed) return;
+      if (hoverFeed) hoverFeed.prewarm = false;
+      hoverFeed = null;
+      if (!feed || feed.enhanced || hover.cooldown) return;
+      hoverFeed = feed; feed.prewarm = true; hover.cooldown = 1.25;
     };
     const endArrival = () => {
       if (!arrival.actor) return;
@@ -943,6 +977,7 @@
         }
         const rotating = broadcast === "feeds" && !layoutPending && !portraitActor;
         updateBroadcast(dt, actor);
+        updateHover(dt);
         updatePen(dt);
         if (rotating && broadcast === "feeds" && !layoutPending && !portraitActor) cameras.update(dt);
         if (audio) audio.update(dt, camera, seated());
@@ -970,7 +1005,7 @@
       arrival.cameraX = p.x - x; arrival.cameraY = p.y - y; arrival.cameraZ = p.z - z;
       camera.target.x += arrival.cameraX; camera.target.y += arrival.cameraY; camera.target.z += arrival.cameraZ;
     };
-    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, viewRoots, panels, group, cameras, seat, sit, toggleView, enhanceAt, supportAt, segmentClear: chairClear,
+    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, viewRoots, panels, group, cameras, seat, sit, toggleView, enhanceAt, hoverAt, supportAt, segmentClear: chairClear,
       nearbySeat(x, y, z, reach) {
         return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
@@ -990,7 +1025,7 @@
       },
       suspend() { endArrival(); if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); for (const mesh of focusMeshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { endArrival(); if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; for (const mesh of focusMeshes) renderer.releaseGeometry(mesh); focusMeshes.clear(); screenTargets.length = 0; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = viewRoots.length = 0; tiles.fill(null); }
+      dispose() { endArrival(); clearHover(); if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; for (const mesh of focusMeshes) renderer.releaseGeometry(mesh); focusMeshes.clear(); screenTargets.length = 0; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = viewRoots.length = 0; tiles.fill(null); }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, RADIUS, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };

@@ -159,7 +159,7 @@ Right-click (or tap the view on touch devices) toggles area feeds and the face
 broadcast using the same outward sweep. The chosen view stays until the next
 right-click; a click during a sweep queues that view until the sweep completes.
 Desktop left-click selects the TV under the cursor (the center crosshair while
-pointer-locked) and expands its camera picture across a nearby 6×6 region.
+pointer-locked) and expands its camera picture across a nearby 7×7 region.
 Clicking that enlargement restores the saved smaller grids; clicking another
 picture restores the old region and enlarges the new one. Only one enlargement
 exists at a time. Standing removes the pen, restores the ordinary layout and
@@ -237,7 +237,7 @@ Only the face-view switch sweeps the whole room; returning restores the existing
 mosaic arrangement. Travel or changing actor cancels an unfinished patch back to
 its last complete assignment.
 
-The chair-selected enlargement uses the nearest complete 6×6 region containing
+The chair-selected enlargement uses the nearest complete 7×7 region containing
 the selected mosaic, wrapping around the circular wall when needed. It avoids
 the return mirror and accounts for the narrower columns above it in its image
 coordinates. It may temporarily cover parts of neighboring mosaics; their exact
@@ -247,23 +247,51 @@ Selection waits while a tile wave or face broadcast is active. The selected
 camera's channel stays pinned while the remaining slots rotate. Face broadcasts
 retain the enlargement and reveal it again on return to the area views.
 
-An enlargement adds 36 temporary image surfaces, sharing the existing camera
-target. A move can briefly retain another 36 outgoing surfaces until the wave
+An enlargement adds 49 temporary image surfaces, sharing the existing camera
+target. A move can briefly retain another 49 outgoing surfaces until the wave
 finishes; then those geometries are released. Restoring, leaving or changing
 actor releases the enhancement surfaces. No extra camera targets or network
 subscriptions are created.
 
-The focused chair browser check passes nine checks covering mouse selection,
+Hovering a TV from the chair warms just that feed after the cursor and camera
+have moved slowly for 450 ms. Precise screen picking runs at most ten times a
+second after settling; a different speculative target is admitted at most once
+per 1.25 seconds. Fast movement, leaving the view, standing, face broadcasts and
+layout waves cancel the speculative request. Pointer lock uses the center ray,
+so looking across the wall follows the same settling rule. The hovered channel
+stays pinned while warming. This prepares existing local observer geometry and
+a sharper camera capture; it does not fetch another zone or subscribe to players.
+
+Speculative high detail requires measured frame intervals below 22 ms, a
+nonzero adaptive tier and enough remaining detail budget after the selected
+enhancement. It gets one early capture when it needs a resolution upgrade,
+within the existing global limit, without acquiring the enhanced 15 Hz cadence.
+An explicit click admits enhanced detail immediately at the current adaptive
+tier and holds the tile wave until its first enhanced capture is ready. It no
+longer expands a low-quality frame and waits two seconds for that admission.
+
+Resolution changes on an enhanced or hovered feed retain its previous color
+texture for a 450 ms smooth fade into the new live texture. The screen shader
+mixes them every displayed frame, including in room reflections, independently
+of the camera's capture cadence. Each changing feed retains at most one previous
+color texture, released when the fade expires, the feed is disposed or context
+resources are reset. No additional scene capture or depth target is required.
+
+The focused chair browser check passes twelve checks covering mouse selection,
 progressive replacement, holding unready images, exact layout restoration,
 retargeting over the mirror columns, right-click face toggling, adaptive detail,
 capture/geometry bounds, enhanced refresh priority under healthy/slow frame
-timing and standing cleanup, plus a clean console. In six seconds of controlled
+timing, hover settling/cancellation, resolution fading and standing cleanup,
+plus a clean console. In six seconds of controlled
 16.7 ms frame intervals, the enhanced picture received 90 captures and the
 others shared 90. At controlled 50 ms intervals, each received 20 captures over
 six seconds, with the enhanced view reduced to 256×144. These verify scheduling
 and adaptation, not actual device FPS. Its saved
-view is `untracked/architect-focus/enhanced-6x6.png`. This is scoped coverage;
-the global tier and full scene suite were not rerun for this change.
+view is `untracked/architect-focus/enhanced-7x7.png`. The warm-up and shader
+changes also passed all 805 global unit checks, with only the intentional
+fragment shader snapshot updated for `uCanvasBlend`/`uCanvasPrevious` (the blend
+is zero on every other surface). The final 7×7 sizing passed build/syntax and
+the twelve focused checks above. The full browser suite was not rerun.
 
 Warmups include off-screen destinations, alternating with the face camera when
 needed so neither starves on a slow frame budget. They use the existing 32 targets
@@ -282,21 +310,22 @@ WebGL contexts.
   above 40 ms/frame), then waits six seconds before accumulating upgrade time.
   Each upward step needs eight continuous seconds below 18.5 ms/frame. This
   measures frame cadence, not GPU time or available VRAM.
-- A chair-selected 6×6 receives detail first: up to 1024×576 on the highest
+- A chair-selected 7×7 receives detail first: up to 1024×576 on the highest
   adaptive level, 512×288 on the middle and 256×144 on the lowest. It spends
   eight, four or one detail steps respectively, leaving less detail for other
   visible feeds. The lowest level grants that single step only to the selected
   view. Its highest tier includes island objects down to a 0.08-metre radius
   and the observer models' existing finest detail; excluded effects and objects
-  absent from those models remain excluded. The same cooldown and stable
-  admission rules apply, so selection does not promise an immediate upgrade.
+  absent from those models remain excluded. Adaptive tier recovery still uses
+  its cooldown; explicit selection bypasses the ordinary two-second admission
+  delay within the tier already available.
 - After that selected view, visible 3×3 mosaics receive detail first, then 2×2s, then singles. Within each
   group the largest projected picture leads; mosaic span counts toward picture
   size, rather than treating its tiles as independent small images. Distant
   pictures remain lightweight. The adaptive budget admits eight detail steps at
   the middle level and 24 at the highest: furnished costs one, close-detail two.
   This promotes selected feeds instead of upgrading the whole wall together.
-  Upgrades also require two seconds of stable admission;
+  Ordinary upgrades also require two seconds of stable admission;
   downgrades are immediate. Targets resize only as their next capture renders,
   preserving the existing image until replacement. At most one resizes a frame.
 - The enhanced picture requests a capture every two global capture slots, with

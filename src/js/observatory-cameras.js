@@ -154,7 +154,7 @@
           do { choice = channels[next++ % channels.length]; } while (selected(choice.id));
           // A chair-selected feed keeps its zone until the player restores it.
           let feed = feeds[turn++ % feeds.length];
-          while (feed.enhanced) feed = feeds[turn++ % feeds.length];
+          while (feed.enhanced || feed.prewarm) feed = feeds[turn++ % feeds.length];
           select(feed, choice); syncSources();
         }
       }

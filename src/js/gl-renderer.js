@@ -489,6 +489,8 @@ in vec3 vLocal;
 // Revisioned canvases retain ordinary surface lighting, emission, fog and Matrix behavior.
 uniform float uCanvasSurface;
 uniform float uCanvasFeed;
+uniform float uCanvasBlend;
+uniform sampler2D uCanvasPrevious;
 uniform sampler2D uCanvasImage;
 uniform vec4 uCanvasRect;
 uniform vec3 uCanvasCurve;
@@ -505,6 +507,7 @@ vec4 canvasColor() {
   if (uCanvasCurve.x > 0.0) local = vec2(atan(vLocal.x, uCanvasCurve.x - vLocal.z) * uCanvasCurve.x - uCanvasCurve.y, vLocal.y - uCanvasCurve.z);
   vec2 uv = (local - uCanvasRect.xy) / uCanvasRect.zw;
   vec4 color = texture(uCanvasImage, vec2(uv.x, mix(1.0 - uv.y, uv.y, uCanvasFeed)) * uCanvasScale);
+  if (uCanvasBlend > 0.0) color = mix(color, texture(uCanvasPrevious, uv * uCanvasScale), uCanvasBlend);
   color.rgb = mix(uCanvasBackground, color.rgb, color.a);
   return color;
 }
@@ -1229,7 +1232,7 @@ void main() {
   const ORDINARY_MESH_FS = derive(MESH_FS, ["flat in vec4 vVoxel;", "uniform vec4 uVoxel;"], [/\bvVoxel\b/g, "uVoxel"]);
   // The camera's depth pre-pass: the mesh shader's cuts and nothing else, the rest compiled away.
   const DEPTH_MESH_FS = ORDINARY_MESH_FS.slice(0, ORDINARY_MESH_FS.indexOf("void main() {")) + "void main() {\n  if (clipped()) discard;\n}";
-  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uGlassGrazing", "uChrome", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasFeed", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
+  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uGlassGrazing", "uChrome", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasFeed", "uCanvasBlend", "uCanvasPrevious", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
   const ORDINARY_SHADOW_VS = derive(SHADOW_VS, [RIG_GLSL, ""], ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
     ["layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n"]);
   const LINE_VS = `#version 300 es
@@ -2039,7 +2042,8 @@ void main() {
     let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7, cameraFeedLastPriority = false;
     let cameraFeedLevel = 1, cameraFeedGoodMs = 0, cameraFeedBadMs = 0, cameraFeedHoldUntil = 0, cameraFeedDetail = 0;
     const cameraFeedCandidates = [];
-    const cameraFeedRank = (a, b) => (b.enhanced ? 1 : 0) - (a.enhanced ? 1 : 0) || b.mosaicSize - a.mosaicSize || b.screenSize - a.screenSize;
+    const cameraFeedRank = (a, b) => (b.enhanced ? 2 : b.prewarm ? 1 : 0) - (a.enhanced ? 2 : a.prewarm ? 1 : 0) || b.mosaicSize - a.mosaicSize || b.screenSize - a.screenSize;
+    let cameraFeedBlendClock = 0, canvasPreviousTexture = null;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
     // draws; every other pass leaves glass out.
@@ -2089,6 +2093,10 @@ void main() {
       if (p.u.uCanvasImage) {
         gl.useProgram(p.prog);
         gl.uniform1i(p.u.uCanvasImage, 6);
+      }
+      if (p.u.uCanvasPrevious) {
+        gl.useProgram(p.prog);
+        gl.uniform1i(p.u.uCanvasPrevious, 9);
       }
       // Active water samplers must never alias the shadow sampler's unit 0, even outside DSB.
       // Linking also runs after context restoration and for the optional rig programs.
@@ -2238,9 +2246,15 @@ void main() {
       mirror.width = mirror.height = mirror.renderWidth = mirror.renderHeight = 0;
       mirrorDebug.width = mirrorDebug.height = mirrorDebug.textureWidth = mirrorDebug.textureHeight = mirrorDebug.samples = 0;
     };
+    const releaseFeedPrevious = t => {
+      if (!t.previousTex) return;
+      if (canvasPreviousTexture === t.previousTex) canvasPreviousTexture = null;
+      gl.deleteTexture(t.previousTex); t.previousTex = null; mirrorDebug.resources--;
+    };
     const destroyReflector = (geometry) => {
       const t = reflectorTargets.get(geometry);
       if (!t) return;
+      releaseFeedPrevious(t);
       if (t.fb) {
         gl.deleteTexture(t.tex);
         gl.deleteRenderbuffer(t.depth);
@@ -2259,7 +2273,11 @@ void main() {
       const size = t.fixedWidth || settings.mirror, targetHeight = t.fixedHeight || size;
       if (t.fb && t.size === size) return;
       if (t.fb) {
-        gl.deleteTexture(t.tex);
+        releaseFeedPrevious(t);
+        if (t.blendResize && t.valid) {
+          t.previousTex = t.tex; t.previousAt = cameraFeedBlendClock;
+          mirrorDebug.resources++;
+        } else gl.deleteTexture(t.tex);
         gl.deleteRenderbuffer(t.depth);
         gl.deleteFramebuffer(t.fb);
         mirrorDebug.resources -= 3;
@@ -2371,6 +2389,7 @@ void main() {
       mirror.shards = mirrorDebug.shardsDrawn = 0;
     };
     const forgetMirror = () => {
+      canvasPreviousTexture = null;
       environment.program = null;
       environment.ready = false;
       environment.fb = environment.tex = environment.depth = null;
@@ -3673,6 +3692,16 @@ void main() {
       const feedGeometry = feed && (feed.seedOnly || cameraFeedRoom && feed.roomBackground) ? feed.backGeometry : feed?.geometry;
       const feedTarget = feed ? reflectorTargets.get(feedGeometry) : null;
       const feedReady = !!feedTarget?.valid && (!feed.pending || feed.holdFrame);
+      const fade = feedReady && feedTarget.previousTex ? Math.max(0, 1 - (cameraFeedBlendClock - feedTarget.previousAt) / 450) : 0;
+      const blend = fade * fade * (3 - 2 * fade);
+      if (program.canvasBlend !== blend) { gl.uniform1f(program.u.uCanvasBlend, blend); program.canvasBlend = blend; }
+      if (program.u.uCanvasPrevious) {
+        const previous = blend ? feedTarget.previousTex : res.matrixTexture;
+        if (canvasPreviousTexture !== previous) {
+          gl.activeTexture(gl.TEXTURE0 + 9); gl.bindTexture(gl.TEXTURE_2D, previous); gl.activeTexture(gl.TEXTURE0);
+          canvasPreviousTexture = previous;
+        }
+      }
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
       if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== version) {
@@ -4680,6 +4709,8 @@ void main() {
       // Decide the one capture before collecting observer graphs. Every other camera keeps its texture
       // without walking, transforming or uploading its source world this frame.
       const cameraFeeds = opts.cameraFeeds, stamp = performance.now();
+      cameraFeedBlendClock = stamp;
+      for (const t of reflectorTargets.values()) if (t.previousTex && stamp - t.previousAt >= 450) releaseFeedPrevious(t);
       let captureFeed = null;
       if (cameraFeeds?.length && !document.hidden) {
         const frameMs = stamp - cameraFeedFrameAt;
@@ -4724,7 +4755,7 @@ void main() {
             : (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
           feed.mosaicSize = grid; feed.screenSize = size; feed.detailTarget = 0;
           feed.adaptiveLevel = cameraFeedLevel;
-          if (!feed.roomBackground && feed.visible && (feed.enhanced || size > 0.12)) cameraFeedCandidates.push(feed);
+          if (!feed.roomBackground && feed.visible && (feed.enhanced || feed.prewarm || size > 0.12)) cameraFeedCandidates.push(feed);
         }
         // Admit detail per feed: 3x3 pictures first, then 2x2s, then singles.
         // Within each group favor the largest projected picture. A furnished
@@ -4733,8 +4764,8 @@ void main() {
         let detailBudget = cameraFeedLevel === 2 ? 24 : cameraFeedLevel === 1 ? 8 : cameraFeedCandidates[0]?.enhanced ? 1 : 0;
         for (let i = 0; i < cameraFeedCandidates.length && detailBudget; i++) {
           const feed = cameraFeedCandidates[i];
-          if (feed.enhanced) {
-            // One selected 6x6 can spend more of the same budget: 1024/512/256
+          if (feed.enhanced || feed.prewarm && cameraFeedLevel > 0 && cameraFeedFrameMs < 22 && detailBudget >= (cameraFeedLevel === 2 ? 8 : 4)) {
+            // One selected 7x7 can spend more of the same budget: 1024/512/256
             // across adaptive levels, while ordinary feeds relinquish detail.
             feed.detailTarget = cameraFeedLevel + 1;
             detailBudget = Math.max(0, detailBudget - (feed.detailTarget === 3 ? 8 : feed.detailTarget === 2 ? 4 : 1));
@@ -4747,7 +4778,7 @@ void main() {
         for (let i = 0; i < cameraFeeds.length; i++) {
           const feed = cameraFeeds[i], wanted = feed.detailTarget;
           if (feed.detailWanted !== wanted) { feed.detailWanted = wanted; feed.detailSince = stamp; }
-          if (feed.detail !== wanted && (feed.detail === undefined || wanted < feed.detail || stamp - feed.detailSince >= 2000)) {
+          if (feed.detail !== wanted && (feed.detail === undefined || wanted < feed.detail || feed.enhanced || feed.prewarm && wanted > cameraFeedLevel || stamp - feed.detailSince >= 2000)) {
             feed.detail = wanted; feed.heaviest = null;
           }
         }
@@ -4772,6 +4803,12 @@ void main() {
             if (feed.enhanced && feed.visible && stamp - feed.last >= feed.refreshMs) { captureFeed = feed; break; }
           }
           if (!captureFeed) captureFeed = warmFeed;
+          // Hover warming gets one early capture when it was admitted above the
+          // ordinary detail ceiling; it does not acquire the 15 Hz focus cadence.
+          for (let i = 0; !captureFeed && i < cameraFeeds.length; i++) {
+            const feed = cameraFeeds[i];
+            if (feed.prewarm && feed.visible && feed.detail > cameraFeedLevel && feed.captureWidth < (feed.detail === 3 ? 1024 : 512)) { captureFeed = feed; break; }
+          }
           for (let attempt = 0; !captureFeed && attempt < cameraFeeds.length; attempt++) {
             const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
             if (!feed.visible || stamp - feed.last < feed.refreshMs) continue;
@@ -4943,6 +4980,7 @@ void main() {
         const feed = captureFeed;
         const seed = !!feed.backGeometry && feed.pending;
         const target = reflectorTarget(seed ? feed.backGeometry : feed.geometry), cam = feed.camera;
+        target.blendResize = !feed.roomBackground && !feed.pending && !!(feed.enhanced || feed.prewarm);
         target.fixedWidth = feed.detail === 3 ? 1024 : feed.detail === 2 ? 512 : feed.detail === 1 ? 256 : qualityName === "low" || !feed.roomBackground ? 192 : 256;
         target.fixedHeight = target.fixedWidth * 9 / 16;
         feed.captureWidth = target.fixedWidth; feed.captureHeight = target.fixedHeight;
@@ -4980,6 +5018,7 @@ void main() {
         if (feed.backGeometry) feed.seedOnly = seed;
         feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
         feed.pending = feed.forceCapture = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
+        feed.focusPending = false;
         cameraFeedLast = stamp;
         cameraFeedLastPriority = !!feed.priority;
       }
@@ -5289,7 +5328,8 @@ void main() {
       releaseGeometry,
       prepareScene,
       // A retained old frame may still be displayed while pending, but a new tile waits for its selected channel.
-      cameraFeedReady: feed => !lost && !feed.pending && !!reflectorTargets.get(feed.seedOnly ? feed.backGeometry : feed.geometry)?.valid,
+      cameraFeedReady: feed => !lost && !feed.pending && !feed.focusPending && !!reflectorTargets.get(feed.seedOnly ? feed.backGeometry : feed.geometry)?.valid,
+      cameraFeedBlend: feed => { const t = reflectorTargets.get(feed.geometry); return t?.previousTex ? Math.max(0, 1 - (cameraFeedBlendClock - t.previousAt) / 450) : 0; },
       // Owners of bounded, alternating meshes may prepare every variant before their first visible swap.
       prepareGeometry: (geometry) => { if (lost || !pollPrograms()) return false; recordFor(geometry); return true; },
       // A scene entering in slices (a released hub's return) builds here, a slice at a time, the meshes its first frame

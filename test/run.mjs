@@ -17579,7 +17579,7 @@ const hubObservatoryFloor = { name: "hub observatory floor reflection", why: "re
   record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
     floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
 } };
-const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated mouse buttons select one enhanced 6x6 feed or the face view without blank tiles or losing the saved layout", run: async b => {
+const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated mouse buttons select one enhanced 7x7 feed or the face view without blank tiles or losing the saved layout", run: async b => {
   await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect;
     B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
@@ -17622,6 +17622,43 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     await b.click(p.x, p.y);
   };
   try {
+    // Settle only the renderer's adaptive clock, without advancing the room's
+    // random regrouping timer. Hover then runs through the actual mouse hook.
+    await b.evaluate('__focusCheck.step(1800, 0)');
+    const hoverPoint = await b.evaluate('__focusCheck.aim(24, 5)');
+    await b.mouse('mouseMoved', hoverPoint.x, hoverPoint.y);
+    const moving = await b.evaluate(`(() => {
+      const D = __focusCheck, room = D.room, x = D.R.size.width / 2, y = D.R.size.height / 2;
+      for (let i = 0; i < 40; i++) { room.hoverAt(x + (i % 2 ? 100 : -100), y); D.step(1); }
+      const quiet = room.feeds.every(f => !f.prewarm);
+      room.hoverAt(x, y); D.step(20);
+      return quiet && room.feeds.every(f => !f.prewarm);
+    })()`);
+    record("Observatory hover: fast movement and short pauses do not prewarm camera detail", moving);
+    const warmed = await b.evaluate(`(() => {
+      const D = __focusCheck, room = D.room;
+      let f, start = 0;
+      for (let i = 0; i < 120; i++) {
+        D.step(1); f = room.feeds.find(f => f.prewarm);
+        if (f && f.captureWidth === 1024) { start = D.R.cameraFeedBlend(f); break; }
+      }
+      if (!f) return { warmed: false };
+      const channel = f.channel; room.cameras.update(16);
+      D.step(10); const middle = D.R.cameraFeedBlend(f);
+      D.step(30); const end = D.R.cameraFeedBlend(f);
+      return { warmed: f.captureWidth === 1024, exclusive: room.feeds.filter(f => f.prewarm).length === 1,
+        pinned: channel === f.channel, normalCadence: f.refreshMs >= 160,
+        blend: start > 0.9 && middle > 0 && middle < start && end === 0, bounded: !D.overBudget };
+    })()`);
+    record("Observatory hover: settled cursor warms one pinned feed and blends its resolution smoothly without extra captures", Object.values(warmed).every(Boolean), JSON.stringify(warmed));
+    const cancelled = await b.evaluate(`(() => {
+      const D = __focusCheck; D.room.hoverAt(-1, -1); D.step(1);
+      const clear = D.room.feeds.every(f => !f.prewarm);
+      for (let i = 0; i < 200 && D.room.layoutPending; i++) D.step(1);
+      D.baseline = D.snapshot(); D.surfaceCount = D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0);
+      return clear;
+    })()`);
+    record("Observatory hover: leaving the view cancels speculative detail", cancelled);
     await click(24, 5);
     const wave = await b.evaluate(`(() => {
       const D = __focusCheck, room = D.room, focus = room.enhancement;
@@ -17639,11 +17676,11 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       const outside = room.panels.filter(p => !pending.includes(p)).every(p => p.node.geometry === originals.get(p));
       const noBlank = pending.every(p => p.node.geometry === originals.get(p) || ready(p.node.geometry.imageSurface.feed));
       D.step(100);
-      return { selected: true, count: pending.length, held, partial: replaced > 0 && replaced < 36, outside, noBlank,
-        complete: !room.layoutPending && room.panels.filter(p => p.size === 6).length === 36,
+      return { selected: true, count: pending.length, held, partial: replaced > 0 && replaced < 49, outside, noBlank,
+        complete: !room.layoutPending && room.panels.filter(p => p.size === 7).length === 49,
         areaMode: room.broadcast === "feeds" };
     })()`);
-    record("Observatory focus: left click expands exactly 36 tiles progressively, preserving outside tiles and holding unready replacements", Object.values(wave).every(v => v === true || v === 36), JSON.stringify(wave));
+    record("Observatory focus: left click expands exactly 49 tiles progressively, preserving outside tiles and holding unready replacements", Object.values(wave).every(v => v === true || v === 49), JSON.stringify(wave));
     // A slow real startup may have reached level zero before the controlled
     // clock starts: allow its six-second cooldown, two eight-second upgrades
     // and two-second admission, plus one scheduled capture. Keep the same target.
@@ -17656,7 +17693,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       const channel = f.channel; D.room.cameras.update(16);
       return { enhanced: true, detail: f.detail, width: f.captureWidth, level: f.adaptiveLevel, frameMs: f.frameMs, pinned: f.channel === channel,
         exclusive: D.room.feeds.filter(f => f.enhanced).length === 1, bounded: !D.overBudget,
-        surfaces: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 36 };
+        surfaces: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 49 };
     })()`);
     record("Observatory focus: one pinned feed gains 1024px detail without adding captures or unbounded screen geometry", quality.enhanced && quality.detail === 3 && quality.width === 1024 && quality.pinned && quality.exclusive && quality.bounded && quality.surfaces, JSON.stringify(quality));
     const cadence = await b.evaluate(`(() => {
@@ -17669,7 +17706,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     record("Observatory focus: enhanced picture receives about 15 updates per second while other feeds share the remaining capture slots", cadence.focused >= 80 && cadence.focused <= 92 && cadence.others >= 60 && cadence.total <= 181 && cadence.bounded, JSON.stringify(cadence));
     if (process.env.OBSERVATORY_SHOTS) {
       mkdirSync(process.env.OBSERVATORY_SHOTS, { recursive: true });
-      await b.screenshot(join(process.env.OBSERVATORY_SHOTS, 'enhanced-6x6.png'));
+      await b.screenshot(join(process.env.OBSERVATORY_SHOTS, 'enhanced-7x7.png'));
     }
     const slow = await b.evaluate(`(() => {
       const D = __focusCheck, f = D.room.enhancement.feed;
@@ -17689,12 +17726,12 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     await click(50, 4);
     const moved = await b.evaluate(`(() => {
       const D = __focusCheck; D.step(100); const focus = D.room.enhancement;
-      const large = D.room.panels.filter(p => p.size === 6);
-      return { one: !!focus && D.room.feeds.filter(f => f.enhanced).length === 1 && large.length === 36,
+      const large = D.room.panels.filter(p => p.size === 7);
+      return { one: !!focus && D.room.feeds.filter(f => f.enhanced).length === 1 && large.length === 49,
         includesClick: large.some(p => p.col === 50 && p.row === 4), mirrorClear: large.every(p => p.col < 48 || p.row >= 4),
         continuous: large.some(p => p.col < 48) && large.some(p => p.col >= 48),
-        outside: D.room.panels.every((p, i) => p.size === 6 || D.same(p, D.baseline[i])),
-        released: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 36 };
+        outside: D.room.panels.every((p, i) => p.size === 7 || D.same(p, D.baseline[i])),
+        released: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 49 };
     })()`);
     record("Observatory focus: another feed replaces the old enlargement across the mirror columns without covering the exit or retaining old geometry", Object.values(moved).every(Boolean), JSON.stringify(moved));
     const p = await b.evaluate('__focusCheck.aim(50, 4)');
@@ -34259,7 +34296,9 @@ const raceRigChecks = async () => {
     // glancing view (to 94dab4cf); it is 1 for every other geometry, so DSB Land's water is as it was.
     // The Observatory adds uCanvasFeed for camera texture orientation and uChrome for polished chair metal
     // (to edd7c63c); both uniforms are 0 for every other geometry.
-    "edd7c63c92b3b0d68ded9ce2747a84ad3973158485cde32194e3809503842c09",
+    // Observatory quality fades add uCanvasPrevious and uCanvasBlend (to a5600e80).
+    // uCanvasBlend stays 0 outside a transitioning camera feed; ordinary output is unchanged.
+    "a5600e80e22eaa8b0c5f7bd50a087bf2165bc07401f73f41abea2cdf1aa59496",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
