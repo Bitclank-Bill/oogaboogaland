@@ -586,8 +586,8 @@
       if (fade === 1 || transition.instant) transition.held += dt;
       return;
     }
-    // An instant crossing (a doorway seen from the Ooga's eyes, a mirror) never goes black: the scene left keeps
-    // playing while it prepares, and its last frame holds while the next one builds.
+    // Instant crossings skip the fade ramp. The departing scene can keep updating,
+    // but drawFade covers preparation and sliced entry with an opaque black hold.
     if (transition.instant) {
       if (!transition.ready || !buildLanding(transition)) { transition.held += dt; return; }
       const arrive = () => { settled(); fade = 0; };

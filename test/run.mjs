@@ -24296,6 +24296,37 @@ const hubObservatoryFloor = { name: "hub observatory floor reflection", why: "re
   record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
     floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
 } };
+const hubObservatoryAdmission = { name: "hub observatory admission", why: "rule: only mirror travel grants room collision, equipment and zone ownership", run: async b => {
+  const result = await b.evaluate(`(() => {
+    const B = __ooga, room = BL.scenes.hub.architect, a = B.pilot.player, S = B.headquarters.solids;
+    const F = BL.architectCave.FLOOR, m = B.mirrorCave.mouth;
+    room.travel(false); B.advance(1.1, 1 / 60);
+    const place = (x, y, z) => B.pilot.navigate({ position: { x, y, z }, yaw: 0, pitch: 0.1, dist: 4 });
+    place(13, -47, 0);
+    B.crew.setJetpackOwnership(a, true); B.crew.wearJetpack(a, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
+    B.advance(0.1, 1 / 60);
+    const outside = !room.active && !room.contains(13, -47, 0) && !!a.jet && BL.net.state.zone !== "mirror"
+      && S.supportAt(13, 0, -47, -47, a) < F && S.ceilingAt(13, 0, -47, a) > F + BL.architectCave.HEIGHT
+      && S.flyable(13, 0, 13.2, 0, -47, a.bodyHeight, a);
+    B.crew.removeJetpack(a); B.crew.setJetpackOwnership(a, false);
+    place(0, -35, 0); B.advance(0.1, 1 / 60);
+    const shaft = !room.active && S.supportAt(0, 0, -35, -35, a) < F && BL.net.state.zone !== "mirror";
+    B.advance(4, 1 / 60);
+    const respawn = !room.active && a.root.position.y - a.baseY > -32;
+    const atMirror = z => place(m.x + Math.sin(m.ry) * z, m.floorY, m.z + Math.cos(m.ry) * z);
+    atMirror(0.8); room.update(1.1); atMirror(0.4); room.update(0.01); B.advance(2, 1 / 60);
+    const entered = room.active && room.contains(a.root.position.x, F, a.root.position.z)
+      && S.supportAt(0, 7.8, F, F, a) === F && BL.net.state.zone === "mirror";
+    const other = [...B.cavemen.values()].find(c => c !== a);
+    const foreign = !!other && !room.contains(0, F, 7.8, other) && S.supportAt(0, 7.8, F, F, other) < F;
+    place(0, F, BL.architectCave.RADIUS); room.update(0.1); B.advance(2, 1 / 60);
+    const exited = !room.active && !room.contains(0, F, 7.8) && BL.net.state.zone !== "mirror";
+    return { outside, shaft, respawn, entered, foreign, exited };
+  })()`);
+  record("Observatory admission: abyss flyers keep equipment and respawn; only mirror crossings enable room physics and zone",
+    Object.values(result).every(Boolean), JSON.stringify(result));
+} };
+
 const hubObservatoryLake = { name: "hub observatory lake", why: "rule: a visible lake camera follows mined blocks without waking outdoor effects", run: async b => {
   await b.evaluate(`(() => { window.requestAnimationFrame = () => 0; })()`);
   await b.sleep(50);
@@ -35465,6 +35496,7 @@ for (const character of ["portlandhodl", "w-s-bitcoin"]) for (const opts of [{ w
 scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror, hubObservatoryIsolation, hubObservatoryFloor] });
 scene("hub", { label: "observatory focus", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryFocus] });
 scene("hub", { label: "observatory lake", query: "view=architect&character=w-s-bitcoin&pos=0", steps: [hubObservatoryLake] });
+scene("hub", { label: "observatory admission", query: "view=architect&character=w-s-bitcoin&pos=0", steps: [hubObservatoryAdmission] });
 scene("hub", { label: "observatory authored detail", query: "view=architect&character=w-s-bitcoin&combat=0&pos=0", steps: [hubObservatoryAuthored] });
 scene("hub", { label: "matrix", steps: [hubMatrix] });
 scene("hub", { label: "oogatron popups", url: hubPage(dist, "pos=0"), steps: [oogatronPopups] });

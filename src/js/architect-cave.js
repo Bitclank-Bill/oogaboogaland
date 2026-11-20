@@ -186,7 +186,7 @@
     const arrival = { actor: null, time: 0, duration: 0, x: 0, y: 0, z: 0, dx: 0, dz: 0, lastX: 0, lastZ: 0,
       cameraX: 0, cameraY: 0, cameraZ: 0, heading: 0, back: false };
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
-    let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
+    let active = false, visitor = null, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
     let requestedSweepOrigin = null, sweepOrigin = null;
@@ -1027,7 +1027,7 @@
       endArrival();
       const actor = pilot.player, crossing = preserveView && actor && inside !== active;
       if (seat.sitter) crew.standPlayer(seat.sitter);
-      prepare(); resetBroadcast(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
+      prepare(); resetBroadcast(); active = inside; visitor = inside ? actor : null; group.visible = inside; cooldown = 1; veil = 0.45;
       const m = mirror.mouth;
       destination.position.x = inside ? 0 : m.x + Math.sin(m.ry) * 2.4;
       destination.position.y = inside ? FLOOR : m.floorY;
@@ -1079,12 +1079,9 @@
       if (!actor) { if (active) travel(false); return; }
       if (preview) { preview = false; travel(true, false); }
       const p = actor.root.position, feet = p.y - actor.baseY;
-      if (!active && contains(p.x, feet, p.z)) {
-        prepare(); active = true; group.visible = true;
-        if (!audio) audio = BL.architectAudio.create();
-        audio.setActive(true); cameras.setActive(true); weather.setExterior(false);
-      }
-      if (active && !contains(p.x, feet, p.z)) { resetBroadcast(); active = false; group.visible = false; audio?.setActive(false); cameras.setActive(false); weather.setExterior(true); }
+      // This volume overlaps the outdoor abyss. Only travel (or the explicit debug
+      // preview above) admits a visitor; falling through these coordinates never does.
+      if (active && (actor !== visitor || !contains(p.x, feet, p.z))) { resetBroadcast(); active = false; visitor = null; group.visible = false; audio?.setActive(false); cameras.setActive(false); weather.setExterior(true); }
       parkEquipment(active ? actor : null);
       if (!seated()) removePen();
       if (active) {
@@ -1134,6 +1131,7 @@
       camera.target.x += arrival.cameraX; camera.target.y += arrival.cameraY; camera.target.z += arrival.cameraZ;
     };
     return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, viewRoots, panels, group, cameras, seat, sit, toggleView, enhanceAt, hoverAt, supportAt, segmentClear: chairClear,
+      contains(x, y, z, actor = pilot.player) { return active && actor === visitor && contains(x, y, z); },
       nearbySeat(x, y, z, reach) {
         return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
