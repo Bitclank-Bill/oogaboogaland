@@ -35,6 +35,9 @@ export const createCatalogStore = ({ accountId, bucket, accessKeyId, secretAcces
     const signing = hmac(hmac(hmac(hmac(`AWS4${secretAccessKey}`, day), "auto"), "s3"), "aws4_request");
     const signature = createHmac("sha256", signing).update(`AWS4-HMAC-SHA256\n${timestamp}\n${scope}\n${hash(canonical)}`).digest("hex");
     headers.authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signed}, Signature=${signature}`;
+    // Compression can weaken the object ETag. Keep transport negotiation outside SigV4,
+    // and read the original bytes so their strong ETag remains usable for conditional writes.
+    if (method === "GET") headers["accept-encoding"] = "identity";
     const controller = new AbortController();
     let timer, reader = null;
     const deadline = new Promise((_, reject) => { timer = setTimeout(() => {

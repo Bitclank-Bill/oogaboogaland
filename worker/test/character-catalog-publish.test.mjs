@@ -168,6 +168,26 @@ test("R2 adapter handles 404/412, bounds streaming reads and rejects weak ETags"
   }
 });
 
+test("R2 reads disable compression so the original object ETag can guard its next write", async () => {
+  const payload = bytes('{"message":"Ooga 🍌"}\n'), etag = '"original"';
+  let written = false;
+  const store = createCatalogStore({ ...credentials, fetcher: async (_, request) => {
+    if (request.method === "GET") {
+      const compressed = request.headers["accept-encoding"] !== "identity";
+      // Fetch decodes a compressed body, while Cloudflare's response keeps the weakened ETag.
+      return new Response(payload, { headers: { etag: compressed ? `W/${etag}` : etag,
+        "content-length": String(payload.byteLength), ...(compressed ? { "content-encoding": "gzip" } : {}) } });
+    }
+    assert.equal(request.headers["if-match"], etag);
+    written = true;
+    return new Response(null, { headers: { etag: '"updated"' } });
+  } });
+  const current = await store.get(pointerKey);
+  assert.equal(current.etag, etag); assert.deepEqual(current.bytes, payload);
+  assert.deepEqual(await store.put(pointerKey, bytes("next"), { ifMatch: current.etag, contentType: "application/json" }), { etag: '"updated"' });
+  assert.equal(written, true);
+});
+
 test("R2 adapter bounds a stalled body, cancels it and never exposes credential-bearing fetch errors", async () => {
   let cancelled = false;
   const body = new ReadableStream({ cancel() { cancelled = true; } });

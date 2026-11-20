@@ -313,6 +313,71 @@ run separately from this acceptance plan. Follow AGENTS.md's testing policy.
   live-wake/separate-bodies geometry (849 to 852) failures also reproduce on
   that baseline. Their assertions remain intact; they were not rerun again.
 
-Live Cloudflare staging publication, production provisioning, and the decisive
-unrelated-merge acceptance experiment remain rollout steps. No deployment or
-automatic-publication switch was changed while implementing these checks.
+## Live staging acceptance (2026-11-20)
+
+This run used an explicit temporary fixture: runtime code `2c1fbd5c` with the
+57-character source cast from `45e02fd4`, before NEEDcreations was added. It
+reverified the real merged daily bundle [#146](https://github.com/OogaBoogaX/oogaboogaland/pull/146)
+(`491ecb11873be8c01c5860fb6753499ae72a8184`), including NEEDcreations's source
+PR #812, and published those verified bytes to staging R2. This was a controlled
+historical replay through the CLI, not a normal GitHub workflow run: the catalog
+workflows were not yet on `rock`, and `2c1fbd5c` was an unmerged runtime commit.
+
+| Step | Characters | Generation | Catalog revision |
+|---|---:|---:|---|
+| Bootstrap | 57 | 1 | `39ceee6f…` |
+| Publish NEEDcreations | 58 | 2 | `55b1a092…` |
+| Roll back | 57 | 3 | `39ceee6f…` |
+
+- All three snapshots retained Worker version
+  `2afa014b-fced-4480-b33a-f3ab3077e55a`. The HTML and served main JavaScript,
+  stylesheet and jumbotron data had identical SHA-256 hashes throughout.
+  Publication and rollback changed catalog data without deploying code or
+  replacing those assets.
+- Re-delivery after rollback was a no-op at generation 3. Preparing a new
+  baseline that would silently reintroduce NEEDcreations was refused by the
+  historical rollback-preservation check.
+- Real R2 testing exposed a compressed GET response with a weakened ETag.
+  The storage adapter now requests `Accept-Encoding: identity` on GET while
+  retaining strict strong-ETag validation for conditional writes; its focused
+  publication suite passed **13/13**, including that regression.
+- Staging storage and the `character-catalog-staging` environment were
+  configured with separate bucket-scoped read-only and read/write credentials,
+  using the four `CHARACTER_CATALOG_R2_READ_*` and
+  `CHARACTER_CATALOG_R2_WRITE_*` secret names in the setup table. A PUT using
+  the read-only credentials returned **403**. Production publication remains
+  disabled.
+- Browser checks confirmed an existing tab retained 57 characters while a
+  new tab loaded 58 and rendered NEEDcreations. After rollback, the published
+  tab retained its appearance and a new tab loaded 57. Visible contributor
+  panels also showed old/new counts of 57/58 while signed in as `w-s-bitcoin`.
+  These observations do not establish live NPC host negotiation or Room
+  hibernation behavior; those checks remain outstanding.
+- Chat's public response reached the 58-character revision with its matching
+  portrait manifest. Its same-origin portrait endpoint served a valid 640×640
+  atlas whose SHA-256 matched that manifest. The strict live Chat console check
+  **failed** on a 401 resource error and a PWA install-banner message; the
+  assertion remains intact. The PWA code
+  matches the baseline byte for byte, and the 401 appears consistent with the
+  signed-out session request, but this does not count as clean-console
+  acceptance.
+
+Manual handoff and interrupted-release recovery also passed. The accepted
+58-character revision was deliberately restored at generation 4, then fenced
+at generation 5. The pending transition refused publication, a stale publisher
+and a different resume target. Completion while the old Worker still ran was
+refused. Resuming preserved the transition token, release ETag and target
+activation, reused identical portraits, and restaged as `already-published`.
+
+After the deliberate code deployment, Worker version
+`57994074-f640-4829-93f0-dd27765f3d6d` confirmed the exact application baseline
+`2c1fbd5c0d7b6378540d983f71f528d2cca9c55f`, 58 characters and catalog
+`332a972b…` at generation 1 in its new namespace. The release state completed
+at generation 4 with `pending: null`; a subsequent no-op rollback plan
+succeeded, confirming the publication gate reopened.
+
+`CHARACTER_CATALOG_STAGING_RUNTIME_ENABLED` remains unset until the catalog-aware
+workflow is merged. The current legacy staging workflow on `rock` would
+replace this setup and disable catalog loading. The normal GitHub workflow
+path, a new daily bundle after an unrelated merge, live NPC negotiation, Room
+hibernation and production rollout remain unverified.
