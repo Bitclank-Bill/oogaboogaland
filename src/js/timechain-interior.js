@@ -310,18 +310,56 @@
     // their tops; the doorway and the vestibule open to the guided walk alone.
     let guided = false;
     const solids = built.solids, tops = solids.filter((o) => o.top !== undefined);
-    // A solid hung in the air with a top to stand on (the Block Party's mirror ball) is also a ceiling to a body under
-    // it, so one rising from below stops at its underside rather than passing up through it to its top.
+    // A solid hung in the air with a top to stand on (the Block Party's mirror ball and its balcony) is also a ceiling
+    // to a body under it, so one rising from below stops at its underside rather than passing up through it to its top.
     const hung = tops.filter((o) => o.below !== undefined);
+    const under = (o, x, z, r) => o.r !== undefined ? Math.hypot(x - o.x, z - o.z) < o.r + r : ROOMS.inBox(o, x, z, r);
     const overhead = (x, z, feet, r) => {
       let c = roof(x, z, 0.3);
       for (let i = 0; i < hung.length; i++) {
         const o = hung[i];
-        if (feet >= o.below || Math.hypot(x - o.x, z - o.z) >= o.r + r) continue;
+        if (feet >= o.below || !under(o, x, z, r)) continue;
         if (o.below < c) c = o.below;
       }
       return c;
     };
+    // Thrusting up against the dome (over the sphere's middle height, where it leans in), the Ooga slides in along it as
+    // far as keeps it rising at the jetpack's rise, never faster than it flies, so it goes on up the curve rather than
+    // stopping where its head first meets it (the crew's `glideJetCeiling`, after the hub's under its island). A deck's
+    // flat underside over it stops it as before, and so does anything in the way of the slide.
+    const glideJetCeiling = (cave, dt) => {
+      const p = cave.root.position, feet = p.y - cave.baseY, height = cave.bodyHeight + Math.max(0, cave.viewLift), r = cave.bodyRadius || 0.35;
+      const radius = Math.hypot(p.x, p.z), dome = roof(p.x, p.z, 0.3), head = feet + height;
+      if (guided || radius < 0.05 || head <= L.c || dome - head > 0.15 || overhead(p.x, p.z, feet, r) < dome - 1e-6) return false;
+      const step = Math.min(BL.crew.JET_SPEED * dt, BL.crew.JET_RISE * dt * (head - L.c) / radius, radius - 0.05), k = 1 - step / radius;
+      const x = p.x * k, z = p.z * k;
+      // In toward the middle only takes it away from the wall, so only the solids can be in the way (the body pressed to
+      // the dome may already stand a little past where a walking step would let it).
+      for (let i = 0; i < solids.length; i++) {
+        const o = solids[i];
+        if (ROOMS.blocks(o, feet) && (o.r !== undefined ? Math.hypot(x - o.x, z - o.z) < o.r + r : ROOMS.inBox(o, x, z, r))) return false;
+      }
+      if (overhead(x, z, feet, r) < head) return false;
+      p.x = x; p.z = z;
+      return true;
+    };
+    // A kind's decks (the Block Party's balconies, one over the other): the view over them keeps to the level the Ooga
+    // driven (`driver`) is on, over every deck under it and under every deck over it.
+    const decks = solids.filter((o) => o.deck), DECK_RANGE = { lo: 0, hi: 0 };
+    let driver = null;
+    const deckRange = (x, z, lo, hi, margin) => {
+      const feet = driver ? driver.root.position.y - driver.baseY : 0;
+      DECK_RANGE.lo = lo; DECK_RANGE.hi = hi;
+      for (let i = 0; i < decks.length; i++) {
+        const d = decks[i];
+        if (!ROOMS.inBox(d, x, z, margin)) continue;
+        if (feet >= d.below) DECK_RANGE.lo = Math.max(DECK_RANGE.lo, d.top + margin);
+        else DECK_RANGE.hi = Math.min(DECK_RANGE.hi, d.below - margin);
+      }
+      return DECK_RANGE;
+    };
+    // The visitor's own dancing level, for its pose to the room and its own body (a kind that dances; 0 elsewhere).
+    const danceLevel = () => motion && motion.danceLevel ? motion.danceLevel() : 0;
     const walkable = (ax, az, bx, bz, y, height, actor) => {
       const r = actor && actor.bodyRadius || 0.35, steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 0.2));
       for (let i = 1; i <= steps; i++) if (!ROOMS.clearAt(L, ax + (bx - ax) * i / steps, az + (bz - az) * i / steps, r, guided, y, solids)) return false;
@@ -346,7 +384,7 @@
     // a shoulder and slides round it rather than stopping dead. The nearest solid its body would meet along its line
     // within `reach`, as the solid's extents in the walker's frame (along the line, and across it to the right).
     const SHOULDER_SIDE = 0.315;
-    const blocks = (o, feet) => !(o.top !== undefined && feet >= o.top - ROOMS.STEP_UP) && !(o.below !== undefined && feet + 1.8 <= o.below);
+    const blocks = ROOMS.blocks;
     const shoulderObstacle = (cave, fx, fz, reach, out) => {
       const p = cave.root.position, feet = p.y - cave.baseY, r = cave.bodyRadius;
       let best = reach;
@@ -406,6 +444,50 @@
       }
       return true;
     };
+    // Walking into the sphere's wall or a solid at a slant (a balcony's balustrade), the step goes on along it rather
+    // than stopping: taken whole, then pushed back out of whatever it went into, square to that face, a few times over
+    // for a corner. A box's face is the one its walker came from. Only a push that still leaves the walker going its
+    // way counts; the crew checks the step it hands back as it would any other.
+    const slideStep = (cave, flying, ax, az, bx, bz, out) => {
+      if (guided) return false;
+      const feet = cave.root.position.y - cave.baseY, r = cave.bodyRadius, E = 1e-4;
+      let x = bx, z = bz;
+      for (let pass = 0; pass < 4; pass++) {
+        let pushed = false;
+        const d = Math.hypot(x, z), max = ROOMS.wallLimit(L, x, z, feet, solids) - r - E;
+        if (d > max && d > 1e-6) { x *= max / d; z *= max / d; pushed = true; }
+        const zMax = L.doorZ - 0.12 - r - E;
+        if (z > zMax) { z = zMax; pushed = true; }
+        for (let i = 0; i < solids.length; i++) {
+          const o = solids[i];
+          if (!blocks(o, feet)) continue;
+          if (o.r !== undefined) {
+            const dx = x - o.x, dz = z - o.z, e = Math.hypot(dx, dz), reach = o.r + r + E;
+            if (e >= reach || e < 1e-6) continue;
+            x = o.x + dx * reach / e; z = o.z + dz * reach / e; pushed = true;
+            continue;
+          }
+          // A box, rounded at its corners by the body (ROOMS.inBox): out along the line from the nearest point of the
+          // box itself, or, with the middle already over it, across its nearer side the walker came from.
+          if (!ROOMS.inBox(o, x, z, r)) continue;
+          const c = o.ry ? Math.cos(o.ry) : 1, s = o.ry ? Math.sin(o.ry) : 0, dx = x - o.x, dz = z - o.z;
+          let u = dx * c - dz * s, v = dx * s + dz * c;
+          const nu = u - Math.max(-o.hx, Math.min(o.hx, u)), nv = v - Math.max(-o.hz, Math.min(o.hz, v)), e = Math.hypot(nu, nv);
+          if (e > 1e-6) { u += nu * (r + E - e) / e; v += nv * (r + E - e) / e; }
+          else {
+            const fx = ax - o.x, fz = az - o.z, fu = fx * c - fz * s, fv = fx * s + fz * c;
+            if (o.hz - Math.abs(v) < o.hx - Math.abs(u)) v = (fv < 0 ? -1 : 1) * (o.hz + r + E);
+            else u = (fu < 0 ? -1 : 1) * (o.hx + r + E);
+          }
+          x = o.x + u * c + v * s; z = o.z - u * s + v * c; pushed = true;
+        }
+        if (!pushed) break;
+      }
+      const mx = x - ax, mz = z - az;
+      if (mx * (bx - ax) + mz * (bz - az) <= 1e-9) return false;
+      out.x = x; out.z = z;
+      return true;
+    };
     // The room's solids never move, and a pass lets go once the line past one is walkable.
     const shoulderObstacleActive = () => true;
     const shoulderPropClear = (cave, x, z) => {
@@ -425,12 +507,24 @@
       const r = Math.hypot(p.x, p.z), max = ROOMS.wallAt(L, Math.max(L.yMin, p.y - 1.6)) - 0.2;
       if (r > max && !corridor(p)) { p.x *= max / r; p.z *= max / r; }
       if (!guided) p.z = Math.min(p.z, L.doorZ - 0.3);
-      p.y = clamp(p.y, ROOMS.floorAt(L, p.x, p.z) + 0.4, roof(p.x, p.z, 0.5));
+      const range = deckRange(p.x, p.z, ROOMS.floorAt(L, p.x, p.z) + 0.4, roof(p.x, p.z, 0.5), 0.4);
+      p.y = clamp(p.y, range.lo, range.hi);
     };
     // The eye stays inside the sphere, over the floor and short of the doors. The floor and the dome meet the wall (in
     // the theater at a shallow angle, its sphere's middle under the landing), so the eye is pulled in from the wall at
     // its height, then put between the floor and the dome over where it stands, and where they leave it no room it is
     // pulled further in, until it is inside all three.
+    // The ground under the eye: the room's floor, or the top of a solid marked `floor` it stands over (the Block Party's
+    // stage and its steps), within a little of its edge so the eye never grazes its side.
+    const floors = solids.filter((o) => o.floor);
+    const groundUnder = (x, z) => {
+      let g = ROOMS.floorAt(L, x, z);
+      for (let i = 0; i < floors.length; i++) {
+        const o = floors[i];
+        if (o.top > g && ROOMS.inBox(o, x, z, 0.2)) g = o.top;
+      }
+      return g;
+    };
     const clampCamera = (p) => {
       const x = p.x, y = p.y, z = p.z;
       if (!guided || Math.abs(p.x) > DOOR.halfW - 0.2) p.z = Math.min(p.z, L.doorZ - 0.2);
@@ -441,7 +535,7 @@
           const dy = clamp(p.y - L.c, -R + 0.1, R - 0.1), max = Math.sqrt(R * R - dy * dy), r = Math.hypot(p.x, p.z);
           if (r > max) { p.x *= max / r; p.z *= max / r; }
         }
-        const lo = ROOMS.floorAt(L, p.x, p.z) + 0.3, hi = roof(p.x, p.z, 0.3);
+        const range = deckRange(p.x, p.z, groundUnder(p.x, p.z) + 0.3, roof(p.x, p.z, 0.3), 0.3), lo = range.lo, hi = range.hi;
         if (lo <= hi) { p.y = clamp(p.y, lo, hi); if (!walled || Math.hypot(p.x, p.y - L.c, p.z) <= R + 1e-9) break; continue; }
         const r = Math.hypot(p.x, p.z), k = r > 0.25 ? (r - 0.25) / r : 0;
         p.x *= k; p.z *= k; p.y = lo;
@@ -455,10 +549,12 @@
       camera.target.x += p.x - x; camera.target.y += p.y - y; camera.target.z += p.z - z;
     };
     const view = { yaw: 0, pitch: 0.05, dist: 4, target: { x: L.arrival.x, y: 1.6, z: L.arrival.z } };
+    // The Block Party's orbit goes as far as the room is across, so only its walls (`clampCamera`) stop it: from one
+    // side of the floor the view backs out to the other.
     const pilot = pilotMod.create({
-      renderer, canvas, camera, hud, presets: { entrance: view }, landing: "entrance", pitch: [-0.2, 1.2], dist: [3, 8],
+      renderer, canvas, camera, hud, presets: { entrance: view }, landing: "entrance", pitch: [-0.2, 1.2], dist: [3, L.kind === "party" ? 2 * L.R : 8],
       follow: { y: 0.9, min: 3, max: 6, pitch: [0.2, 0.7] },
-      clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: (x, z) => roof(x, z, 0), coarse: COARSE, mayPossess: (cave) => BL.net.mayDrive(cave.traits.name),
+      clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: (x, z) => deckRange(x, z, -Infinity, roof(x, z, 0), 0).hi, coarse: COARSE, mayPossess: (cave) => BL.net.mayDrive(cave.traits.name),
       jetpackStatus: (who) => {
         if (!kind.jetpack) return NO_JETPACK;
         JETPACK.equipped = !!(who && who.jet); JETPACK.fuel = who ? who.jetFuel : 1;
@@ -555,6 +651,8 @@
     // what it lets go of on leaving (`dispose`, the Block Party's radio). `built.ear` is where the visitor hears from
     // (their Ooga, else the view's target), kept current every frame for a kind's sounds.
     const ear = built.ear = { x: 0, y: 0, z: 0 };
+    // A glossy reflector (a kind's polished or glass floor) is WebGL's alone: Canvas 2D would draw it as a solid face.
+    if (renderer.kind !== "webgl2") for (const name in built.nodes) { const n = built.nodes[name]; if (n.geometry && n.geometry.reflector) n.visible = false; }
     const motion = kind.animate ? kind.animate(built.nodes, built, feeds, pilot.setMenuOpen) : null;
 
     const NO_ACTORS = [], actors = [];
@@ -583,8 +681,9 @@
     // anywhere else it jumps. Seated, Space or a step stands up (the crew's own).
     const nearExit = () => {
       if (!avatar) return false;
+      // On the floor, never from the balcony over it.
       const p = avatar.root.position, E = L.exitButton;
-      return Math.hypot(p.x - E.x, p.z - E.z) < L.exitReach;
+      return p.y - avatar.baseY < 1 && Math.hypot(p.x - E.x, p.z - E.z) < L.exitReach;
     };
     // A free seat beside the Ooga and in front of the view, on the floor the Ooga stands on (a raked hall's own row),
     // and only one the crew would seat it in now (crew.js `sitPlayer`: standing on the ground, with somewhere clear to
@@ -742,10 +841,10 @@
     };
     if (playerName) {
       const sharedCtx = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt, walkable, useNear, jetpackAllowed: () => !!kind.jetpack,
-        ceilingAt: (x, z, feet, actor) => overhead(x, z, feet, actor ? actor.bodyRadius : 0.35), shoulderObstacle, shoulderObstacleActive, shoulderPropClear };
+        ceilingAt: (x, z, feet, actor) => overhead(x, z, feet, actor ? actor.bodyRadius : 0.35), shoulderObstacle, shoulderObstacleActive, shoulderPropClear, slideStep, glideJetCeiling };
       people = sharedCtx.crew = BL.crew.create(sharedCtx);
       pilot.bind(sharedCtx);
-      avatar = people.cavemen.get(playerName);
+      avatar = driver = people.cavemen.get(playerName);
       // This visit owns a separate weapon map: leave both weapons outside, along with any jetpack.
       avatar.weapon.primaryOwned = avatar.weapon.secondaryOwned = false;
       people.selectWeapon(0, avatar);
@@ -802,7 +901,7 @@
       BL.net.setBody(avatar ? avatar.traits.name : null);
       if (avatar) {
         const p = avatar.root.position;
-        BL.net.sendPose(p.x, p.y - avatar.baseY, p.z, avatar.root.rotation.y, null, BL.crew.jetFlags(avatar), 0, BL.crew.visualState(avatar));
+        BL.net.sendPose(p.x, p.y - avatar.baseY, p.z, avatar.root.rotation.y, null, BL.crew.jetFlags(avatar), 0, BL.crew.visualState(avatar), 0, danceLevel());
       }
       BL.net.setZone(room.zone);
       if (guide.stage) BL.net.passDoor(room.zone, "in");
@@ -861,6 +960,9 @@
       return { x: p.x, dz: p.z - exitEye, heading: Math.atan2(dx, dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)) };
     };
     // Space at the button: turn to the doorway, the doors part, walk through into the vestibule, then the island.
+    // Whether a room's own music was faded out for a walk to the doors (`musicOut`), so it comes back if the visitor
+    // stays after all (the director's `stay`, once the guided walk has let go).
+    let musicOut = false;
     const walkOut = () => {
       if (guide.stage || leaving) return;
       if (!avatar || !nearExit() && Math.hypot(avatar.root.position.x - L.doorStep.x, avatar.root.position.z - L.doorStep.z) > 3) { handOff(); return; }
@@ -868,6 +970,8 @@
       if (pilot.player !== avatar && !pilot.possess(avatar)) return;
       exitView = pilot.viewState();
       pilot.enterClose();
+      // A room with its own music (the Block Party's) lets it fade out on the walk to the doors.
+      if (motion && motion.fadeOut) { motion.fadeOut(); musicOut = true; }
       guide.stage = "toDoor"; guide.t = 0;
       guided = true;
       pilot.setActive(false);
@@ -1144,7 +1248,19 @@
         }
       } else if (guide.stage === "out") people.steer(0, 0, 0, 0, 0);
     };
+    // The view turned `a` (rad) about the visitor's Ooga's hips, as a dance spin turns the body (node rotation.y).
+    let viewSpun = 0;
+    const spinPoint = (p, o, c, s) => { const x = p.x - o.x, z = p.z - o.z; p.x = o.x + x * c + z * s; p.z = o.z - x * s + z * c; };
+    const spinView = (a) => {
+      const o = avatar.root.position, c = Math.cos(a), s = Math.sin(a);
+      spinPoint(camera.position, o, c, s); spinPoint(camera.target, o, c, s);
+    };
     const update = (dt, elapsed) => {
+      // Last frame's dancing comes off the bodies before anything reads or moves them (the Block Party's), and its spin
+      // off a first-person view.
+      if (motion && motion.undance) motion.undance();
+      if (viewSpun && avatar) spinView(-viewSpun);
+      viewSpun = 0;
       pilot.readInput(dt);
       if (guide.stage && avatar) runGuide(dt);
       if (people) people.update(dt, elapsed);
@@ -1163,7 +1279,7 @@
         BL.net.setBody(driven ? driven.traits.name : null);
         if (driven) {
           const p = driven.root.position;
-          BL.net.sendPose(p.x, p.y - driven.baseY, p.z, driven.root.rotation.y, null, BL.crew.jetFlags(driven), 0, BL.crew.visualState(driven));
+          BL.net.sendPose(p.x, p.y - driven.baseY, p.z, driven.root.rotation.y, null, BL.crew.jetFlags(driven), 0, BL.crew.visualState(driven), 0, danceLevel());
           BL.net.setHealth(driven.health.value, driven.health.stunned);
         }
       }
@@ -1190,6 +1306,24 @@
       const heard = avatar ? avatar.root.position : camera.target;
       ear.x = heard.x; ear.y = heard.y; ear.z = heard.z;
       if (motion) motion.update(dt, elapsed);
+      if (musicOut && !leaving && !guide.stage) { musicOut = false; motion.fadeBack(); }
+      // A kind that moves the Oogas to its music (the Block Party's groove) poses each one, after the crew and the other
+      // players are posed: the visitor's own (standing still, from its own eyes too, held under them) and every other shown.
+      if (motion && motion.dance) {
+        // Seen from its own eyes, the view spins with the body: turned about the hips as the body is, this frame only.
+        if (avatar && !guide.stage) {
+          const eyes = pilot.mode === "first-person", spun = motion.dance(avatar, dt, eyes, danceLevel()) || 0;
+          if (eyes && spun) spinView(viewSpun = spun);
+        }
+        if (remotes) {
+          const list = remotes.actors();
+          for (let i = 0; i < list.length; i++) {
+            const cave = remotes.body(list[i].id), rec = BL.net.remotes.get(list[i].id);
+            // A player whose page doesn't say its level dances at the default one.
+            if (cave) motion.dance(cave, dt, false, rec && rec.dance >= 0 ? rec.dance : undefined);
+          }
+        }
+      }
       if (scrubPointer !== null && !motion.scrubbing) finishScrub(true);
       quizHover();
       hud.updateBoard(elapsed);
@@ -1200,6 +1334,9 @@
     const drawExtra = (ctx2d, project) => { if (motion && motion.draw) motion.draw(ctx2d, fx.projectRaw); if (remotes) remotes.drawNames(ctx2d, project); };
     const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
     const onKey = (e) => {
+      // Keys a kind claims for its own (`motion.claims`, by key) come to it before the room's: the Block Party's 0 stops
+      // its dancing rather than resetting the view.
+      if (motion && motion.claims && motion.claims.includes(e.key) && !guide.stage) return !!motion.key(e, hud);
       if (kind.jetpack && BL.controls.matches(e, "jetpack") && !e.repeat && !guide.stage) { toggleJetpack(); return true; }
       if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) return pilot.resetCamera();
       if (e.key.toLowerCase() === "x" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) {
@@ -1207,12 +1344,30 @@
         return pilot.modeAction("mode-toggle");
       }
       if (BL.controls.matches(e, "escape")) {
-        if (!guide.stage && !pilot.escape()) walkOut();
+        if (!guide.stage && !leaving && !pilot.escape()) askExit();
         return true;
       }
       // A kind's own keys (the Lecture Hall's pause and sections).
       return !!(motion && motion.key && !guide.stage && motion.key(e, hud));
     };
+    // Escape asks before it walks the Ooga out (the Leave button and the Exit button do not): Leave walks out, Stay,
+    // Escape again or a press outside closes it. The Ooga is held while it is open, as the controls panel holds it.
+    const exitAsk = document.getElementById("sphere-exit");
+    const closeExit = () => { if (exitAsk.open) exitAsk.close(); pilot.setMenuOpen(false, false); };
+    const askExit = () => {
+      if (exitAsk.open) return;
+      pilot.controls.reset();
+      pilot.setMenuOpen(true, false);
+      exitAsk.showModal();
+    };
+    exitAsk.addEventListener("close", () => pilot.setMenuOpen(false, false), { signal: ctx.signal });
+    exitAsk.addEventListener("click", (e) => {
+      const choice = e.target.closest("[data-sphere-exit]");
+      if (!choice) return;
+      closeExit();
+      if (choice.dataset.sphereExit === "leave") walkOut();
+    }, { signal: ctx.signal });
+    hud.dismissOutside(exitAsk, closeExit);
     const onDonation = (donation, counted = null) => {
       game.recordDonation(donation, counted && counted.exact);
       world.level = Math.min(BL.pile.MAX_BANANAS, world.level + (counted ? counted.exact : BL.game.bananasFor(donation.sats)));
@@ -1225,8 +1380,9 @@
       const help = pilot.controlsHelp(touch, kind.jetpack ? ["jetpack"] : []);
       // The room intercepts these bindings before the pilot, including R/F in
       // free-camera mode. Keep its reference under the same input policy.
+      const claimed = motion && motion.claims || [];
       help.rows = help.rows.flatMap(row => {
-        const keys = row.keys.filter(key => !WEAPON_KEYS.has(key));
+        const keys = row.keys.filter(key => !WEAPON_KEYS.has(key) && !claimed.includes(key));
         return row.keys.length && !keys.length ? [] : [{ ...row, keys }];
       });
       // A kind's own keys and buttons (the Lecture Hall's).
@@ -1257,6 +1413,7 @@
       }
       world.sphereKeep = null;
       finishScrub(true, false);
+      closeExit();
       reader.dispose();
       holdings.dispose();
       sound.dispose();
@@ -1288,6 +1445,7 @@
     const liveGeometry = (set) => {
       if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
       if (remotes) remotes.liveGeometry(set);
+      if (motion && motion.liveGeometry) motion.liveGeometry(set);
       if (world.sphereKeep) for (const geometry of world.sphereKeep) set.add(geometry);
     };
     const stats = () => {
