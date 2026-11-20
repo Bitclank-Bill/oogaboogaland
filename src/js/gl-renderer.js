@@ -488,6 +488,7 @@ ${PORTAL_LIQUID_GLSL}
 in vec3 vLocal;
 // Revisioned canvases retain ordinary surface lighting, emission, fog and Matrix behavior.
 uniform float uCanvasSurface;
+uniform float uCanvasFeed;
 uniform sampler2D uCanvasImage;
 uniform vec4 uCanvasRect;
 uniform vec3 uCanvasCurve;
@@ -503,7 +504,7 @@ vec4 canvasColor() {
   vec2 local = vLocal.xy;
   if (uCanvasCurve.x > 0.0) local = vec2(atan(vLocal.x, uCanvasCurve.x - vLocal.z) * uCanvasCurve.x - uCanvasCurve.y, vLocal.y - uCanvasCurve.z);
   vec2 uv = (local - uCanvasRect.xy) / uCanvasRect.zw;
-  vec4 color = texture(uCanvasImage, vec2(uv.x, 1.0 - uv.y) * uCanvasScale);
+  vec4 color = texture(uCanvasImage, vec2(uv.x, mix(1.0 - uv.y, uv.y, uCanvasFeed)) * uCanvasScale);
   color.rgb = mix(uCanvasBackground, color.rgb, color.a);
   return color;
 }
@@ -1215,7 +1216,7 @@ void main() {
   const ORDINARY_MESH_FS = derive(MESH_FS, ["flat in vec4 vVoxel;", "uniform vec4 uVoxel;"], [/\bvVoxel\b/g, "uVoxel"]);
   // The camera's depth pre-pass: the mesh shader's cuts and nothing else, the rest compiled away.
   const DEPTH_MESH_FS = ORDINARY_MESH_FS.slice(0, ORDINARY_MESH_FS.indexOf("void main() {")) + "void main() {\n  if (clipped()) discard;\n}";
-  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uGlassGrazing", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
+  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uGlassGrazing", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasFeed", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
   const ORDINARY_SHADOW_VS = derive(SHADOW_VS, [RIG_GLSL, ""], ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
     ["layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n"]);
   const LINE_VS = `#version 300 es
@@ -2014,7 +2015,7 @@ void main() {
     const instanceStream = { buffer: null, data: null, capacity: 0, slot: 0, trimFrame: -1, trimSince: -1 };
     const reflectorNodes = [], reflectorTargets = new Map();
     let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossClock = 0;
-    let reducedCapture = false;
+    let reducedCapture = false, cameraFeedCapture = false, cameraFeedTurn = 0;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
     // draws; every other pass leaves glass out.
@@ -2231,7 +2232,7 @@ void main() {
     };
     // One square allocation per reflector at the tier's mirror size, as the mirror keeps.
     const ensureReflectorTarget = (t) => {
-      const size = settings.mirror;
+      const size = t.fixedWidth || settings.mirror, targetHeight = t.fixedHeight || size;
       if (t.fb && t.size === size) return;
       if (t.fb) {
         gl.deleteTexture(t.tex);
@@ -2239,8 +2240,8 @@ void main() {
         gl.deleteFramebuffer(t.fb);
         mirrorDebug.resources -= 3;
       }
-      t.tex = createTexture(size, size, gl.RGBA8, gl.LINEAR);
-      t.depth = createRenderbuffer(size, size, gl.DEPTH_COMPONENT24, 0);
+      t.tex = createTexture(size, targetHeight, gl.RGBA8, gl.LINEAR);
+      t.depth = createRenderbuffer(size, targetHeight, gl.DEPTH_COMPONENT24, 0);
       t.fb = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex, 0);
@@ -3575,10 +3576,13 @@ void main() {
       const surface = rec.geometry.imageSurface;
       if (surface?.atlas && !surface.canvas) BL.models.paintFoliageAtlas(surface);
       const canvas = surface?.canvas;
+      const feedTarget = surface?.feed ? reflectorTargets.get(rec.geometry) : null;
+      const feedReady = !!feedTarget?.valid;
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
       if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== surface.version) {
         gl.uniform1f(program.u.uCanvasSurface, canvas ? 1 : 0);
+        gl.uniform1f(program.u.uCanvasFeed, feedReady ? 1 : 0);
         // Keep only a number: an idle depth program must never retain a departed scene's canvas.
         program.canvasSurfaceId = identity;
         program.canvasSurfaceVersion = canvas ? surface.version : -1;
@@ -3595,6 +3599,7 @@ void main() {
       }
       if (!canvas) return;
       gl.activeTexture(gl.TEXTURE6);
+      if (feedReady) { gl.bindTexture(gl.TEXTURE_2D, feedTarget.tex); gl.activeTexture(gl.TEXTURE0); return; }
       if (!rec.imageTexture) {
         rec.imageTexture = gl.createTexture();
         imageTextures++;
@@ -3771,6 +3776,7 @@ void main() {
       const meshPass = useProgram === "mesh" || useProgram === "depth" || useProgram === "plain";
       for (let i = 0; i < activeRecords.length; i++) {
         const rec = activeRecords[i], g = rec.geometry, program = programs[useProgram];
+        if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;
         if (reducedCapture && (g.sway || g.foliageVisibility === false || g.imageSurface || g.projective)) continue;
         const part = rec[kind], n = rec.batch && rec.batch.drawInstanceCount !== undefined ? rec.drawCount : cull ? rec.drawCount : rec.count;
@@ -4086,7 +4092,7 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixLivingGlobal, matrix ? matrix.livingGlobal ?? 1 : 1);
       pg.mesh.matrixNone = !matrix;
       const previousReducedCapture = reducedCapture;
-      reducedCapture = cube || qualityName !== "high";
+      reducedCapture = cameraFeedCapture || cube || qualityName !== "high";
       try {
       drawParts("mesh", "mesh", true);
       if (skyOn) drawSky(mirrorInvViewProj, mirrorEye.y);
@@ -4677,6 +4683,34 @@ void main() {
           if (!prepareMirrorCamera(camera, node, t)) continue;
           renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight, -1, t);
           t.at = glossClock;
+        }
+      }
+      // One visible camera feed per frame, sharing the current world instances. No nested render, shadow
+      // rebuild, CPU readback or recursive portal capture. Its geometry owns the target through releaseGeometry.
+      const feeds = opts.cameraFeeds;
+      if (feeds?.length && !document.hidden) {
+        for (let attempt = 0; attempt < feeds.length; attempt++) {
+          const index = (cameraFeedTurn + attempt) % feeds.length, feed = feeds[index];
+          const rec = records.get(feed.geometry), stamp = performance.now();
+          if (!rec?.active || rec.offscreen || !rec.drawCount || stamp - feed.last < (qualityName === "low" ? 200 : 90)) continue;
+          const target = reflectorTarget(feed.geometry), cam = feed.camera;
+          target.fixedWidth = qualityName === "low" ? 192 : 256; target.fixedHeight = target.fixedWidth * 9 / 16;
+          target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;
+          Object.assign(mirrorEye, cam.position);
+          mat4.lookAt(mirrorView, cam.position, cam.target, cam.up || UP);
+          BL.scene.cameraProjection(mirrorProj, cam, 16 / 9);
+          mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
+          skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
+          const offset = infoPass * 3, calls = infoLive[offset], triangles = infoLive[offset + 1];
+          cameraFeedCapture = true;
+          try {
+            renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, 0, 1, shadowBias,
+              lx, ly, lz, sh, lights, 0, skyOn, fogColor, fogA, fogB, null, NO_SPOT_LIGHT, null, -1, target);
+          } finally { cameraFeedCapture = false; }
+          feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
+          feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
+          cameraFeedTurn = (index + 1) % feeds.length;
+          break;
         }
       }
       const viewActor = opts.beforeView?.();

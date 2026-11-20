@@ -1,10 +1,11 @@
 # Architect mirror cave proposal
 
-Status: feasibility and implementation proposal only. No game behavior changes.
+Status: implementation in progress in draft PR #827. The maintainer authorized
+building this in the working conversation.
 Starting point: upstream `rock` at
 `45e02fd428cc0734b3c9a3f8f173bf741d68a094` (November 20, 2026).
-A maintainer-approved issue is required before implementation under
-[CONTRIBUTING.md](../CONTRIBUTING.md#ask-first); this draft does not claim one.
+The first checkpoint builds the chamber, nearby geometry preparation, walking
+portal and four shared GPU camera feeds. Sound and acceptance work follow.
 
 ## Visitor experience
 
@@ -160,5 +161,6 @@ appropriate shared-renderer checks when tests are requested; extend existing
 mirror and scene round-trip checks rather than duplicating them. Measure capture
 cost and whole-frame time, as well as retained CPU/GPU resources over repeated
 visits. Historical reflection benchmarks do not establish spare GPU capacity.
-No implementation, browser run, screenshot or performance result is claimed by
-this proposal.
+The initial chamber and live screens have been viewed in the in-app browser.
+The design below records the planned budgets; it is not a performance result.
+Full renderer and multiplayer acceptance remain outstanding.

@@ -65,7 +65,7 @@
   const STEP_MAX = pilotMod.WALK.step;
   const MATRIX_GATE_HIDDEN_Y = 3.2, MATRIX_BUTTON_REACH = 3.4, MATRIX_BUTTON_USE_REACH = 2.2;
   const MIRROR_GATE_Z = 0.28;
-  const MIRROR_GATE_CLOSED = true;
+  const MIRROR_GATE_CLOSED = false;
   const PORTAL_Z = 0.5, PORTAL_MIN_X = -2.48, PORTAL_MAX_X = 2.48, PORTAL_MIN_Y = 0, PORTAL_MAX_Y = 2.98;
   const RIM_SEAM_DROP = 0.015;
   // The sign's back reaches 0.07 m behind its origin; the Arcade's flat wall sits behind the projecting rim.
@@ -84,6 +84,7 @@
     stars: 0, torch: 0, day: 1, twilight: 0, lampFactor: 0, directStrength: 1, directionalLightStrength: 1, sunStrength: 1, moonStrength: 0, moonIllumination: 1, moonPhase: 0.5, ambientFloor: 0.18, diffuseFloor: 0, shadowStrength: 1, shadowFloor: 0, shadowBias: 0.002, outdoorDarkestSurfaceEstimate: 0.34, activeLightSource: "sun", latitude: 20, dayOfYear: 172, continuousDay: 171.5, solarDeclination: 0, siderealAngle: 0, sunAltitude: 90, sunAzimuth: 180, moonAltitude: -90, moonAzimuth: 0, sunriseHour: 6, sunsetHour: 18,
     time: 0, bloomStrength: 0.5, lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 34, sea: -70, cutawayMaxY: 1e6, birdsEyeCutaway: false, cutawayFade: 0, cutawayRockMix: 0, cutawayRegions: [], cutawayRegionCount: 0, cutawayCloudY: 0, cutawayCloudMix: 0
   };
+  let architectCave = null;
   let viewPoseActor = null;
   RENDER_OPTS.beforeView = () => {
     const cave = pilot?.player;
@@ -3577,6 +3578,7 @@
   const waterSupportAt = (x, z, y, rise, player) => mempoolIsland ? mempoolIsland.floatAt(x, z, y, rise, player ? player.bodyHeight * OOGA_DRAUGHT : CLOSE_VIEW.eyeHeight * OOGA_DRAUGHT) : -Infinity;
   const rageThrown = actor => !!(actor?.leap?.thrown && actor.leap.rageThrown);
   const playerSupportAt = (x, z, y = 0, previousY = y, player = pilot?.player, ignoreClanker = false, passTraffic = false) => {
+    if (BL.architectCave.contains(x, y, z)) return BL.architectCave.FLOOR;
     passTraffic = passTraffic || rageThrown(player);
     const step = !player || player.hop === 0 && player.hopV <= 0;
     const from = Math.max(y, previousY), rise = step ? STEP_MAX : 0;
@@ -3588,6 +3590,7 @@
   };
   const abyssAt = (x, z, y, actor = pilot?.player) => playerSupportAt(x, z, y, y, actor) === ABYSS_FLOOR;
   const visualSupportAt = (x, z, y) => {
+    if (BL.architectCave.contains(x, y, z)) return BL.architectCave.FLOOR;
     if (cloudPlaying()) return playerSupportAt(x, z, y, y);
     const floor = Math.max(cloudHopper ? cloudHopper.supportAt(x, z, y, STEP_MAX) : -Infinity, bedSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS), propSupportAt(x, z, y, STEP_MAX, pilot.player), waterSupportAt(x, z, y, STEP_MAX, pilot.player));
     return floor > -Infinity && floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? floor : island.smoothSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS);
@@ -4698,6 +4701,7 @@
     && (!totemsBlock(actor) || totemSolids.clearAt(x, y, z, radius, height));
   const JETPACK_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
   const jetpackAllowed = (cave) => {
+    if (architectCave?.active && cave === pilot.player) return false;
     if (cloudHopper?.active) return !cloudHopper.held && cave === cloudHopper.actor;
     const p = cave.root.position, feet = p.y - cave.baseY;
     const basement = island.headquarters.basement, hole = basement.hole;
@@ -4752,6 +4756,7 @@
     return radius;
   };
   const mirrorActorSegmentClear = (x, y, z, toX, toY, toZ, height, actor, fixedRadius = 0) => {
+    if (actor && actor === pilot?.player && !clankerPlay.active) return true;
     if (!fixedRadius && !actor) return true;
     const m = mirrorCave.mouth, sr = matrixCave.sr, cr = matrixCave.cr;
     const bounds = BL.scene.boundsOf(mirrorCave.node.geometry), radius = fixedRadius || mirrorActorRadius(actor);
@@ -4792,6 +4797,7 @@
     return ceiling;
   };
   const ceilingAt = (x, z, y, actor = pilot?.player, passengers = true, props = true) => {
+    if (BL.architectCave.contains(x, y, z)) return BL.architectCave.FLOOR + BL.architectCave.HEIGHT;
     let ceiling = Math.min(island.ceilingAt(x, y, z, PLAYER_RADIUS), entranceCeilingAt(x, z, y, PLAYER_RADIUS), bedCeilingAt(x, z, y, PLAYER_RADIUS), matrixGateCeilingAt(x, z, y), props ? propCeilingAt(x, z, y, PLAYER_RADIUS, actor) : Infinity);
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
       const entry = CAMERA_OPENINGS[i], m = entry.mouth, rim = entry.rim;
@@ -5070,6 +5076,7 @@
       && mirrorActorSegmentClear(fromX, y, fromZ, toX, y, toZ, height, actor);
   };
   const walkable = (fromX, fromZ, toX, toZ, y, height = 1.5, actor = pilot?.player) => {
+    if (BL.architectCave.contains(fromX, y, fromZ)) return BL.architectCave.clear(toX, toZ) && y + height <= BL.architectCave.FLOOR + BL.architectCave.HEIGHT;
     // An occupied hammock is a wall to walk into, not a cloth to cross (an empty one is stepped onto): whoever is inside it already may leave.
     if (hammock && hammock.blocks(toX, y, toZ, PLAYER_RADIUS) && !hammock.blocks(fromX, y, fromZ, PLAYER_RADIUS)) return false;
     if (Math.hypot(toX, toZ) > worldBound() || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
@@ -7006,6 +7013,7 @@
     return nearest && nearestDistance <= (nearest.ramp.width / 2 + clearance) ** 2 ? nearest : null;
   };
   const updatePlayerCave = (player) => {
+    if (architectCave?.active) { caveEntryPlayer = null; playerCaveIndex = 0; return; }
     if (!player) {
       caveEntryPlayer = null;
       playerCaveIndex = 0;
@@ -7260,6 +7268,7 @@
     return true;
   };
   const updateAreaLabel = () => {
+    if (architectCave?.active) { hud.setAreaLabel("THE OBSERVATORY"); return; }
     const gorilla = clankerPlay.active ? clankerPlay.player : null, player = gorilla || pilot.player;
     // A look keeps its destination's name: the Ooga stands where it was, away from that place, and the first movement
     // (which ends the look) brings back the Ooga's own area.
@@ -7564,6 +7573,10 @@
     return feet < island.surfaceAt(p.x, p.z) - STEP_MAX && !mempoolIsland.coveredAt(p.x, feet + 0.5, p.z);
   };
   const clampCamera = (p, closeMix = 0, closeClearance = CLEARANCE, smoothStep = false, dt = 0, resetSmooth = false, directView = false, freeMove = false, preserveExitAngle = false) => {
+    if (architectCave?.active) {
+      setCameraCave(0); cameraPreviousValid = false; cameraTerrainValid = false;
+      camera.near = 0.1; architectCave.clampCamera(p); return false;
+    }
     // The course keeps the player's chosen camera offset even through rock.
     // Only its DQ fall sequence holds the eye independently of the Ooga.
     if (cloudPlaying()) {
@@ -8261,6 +8274,7 @@
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
     if (!cloudHopper?.active) islandGuide.update(dt, elapsed);
+    if (architectCave) { architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.feeds : null; }
     shareDrivenPose();
     timechainIsland.site.view(camera.position);
     const firstPerson = clankerPlay.active ? clankerPlay.firstPerson : pilot.closeMix > 0.8 || pilot.mode === "eye-level";
@@ -8271,11 +8285,11 @@
       const limit = sign.node.geometry === sign.pixels ? 20 : 16;
       sign.node.geometry = dx * dx + dy * dy + dz * dz < limit * limit ? sign.pixels : sign.solid;
     }
-    if (!cloudPlaying()) updateBirdsEyeCutaway(dt);
+    if (!cloudPlaying() && !architectCave?.active) updateBirdsEyeCutaway(dt);
     else {
       clearCutawayHidden(); RENDER_OPTS.cutawayMaxY = 1e6; RENDER_OPTS.birdsEyeCutaway = false;
       RENDER_OPTS.cutawayFade = RENDER_OPTS.cutawayRockMix = RENDER_OPTS.cutawayRegionCount = 0;
-      cloudMask();
+      if (cloudPlaying()) cloudMask();
     }
     updateAreaLabel();
     if (POSITION_DEBUG && elapsed >= positionDebugNext) {
@@ -8705,6 +8719,7 @@
   };
   const zoneOf = (cave, gorilla = false) => {
     const p = cave.root.position, feet = p.y - (gorilla ? 0 : cave.baseY);
+    if (BL.architectCave.contains(p.x, feet, p.z)) return "mirror";
     if (!gorilla && playerCaveIndex) return caveZone(playerCaveIndex, p.x, feet, p.z);
     if (gorilla && island.cavityAt(p.x, p.z, CAMERA_COLUMN, 0, feet)
       && feet >= CAMERA_COLUMN.floor - 1e-6 && feet < CAMERA_COLUMN.ceiling) {
@@ -10823,7 +10838,9 @@
   // frames of lag only show as an outline catching up. Behind cave rock at 1920x1080 and DPR 2, 15 Hz is a 25 ms
   // frame becoming 19 ms; 30 Hz spent about 19 ms on every other frame.
   const SIGHT_RECOMPUTE_HZ = 15;
+  const drawArchitectExtra = () => {};
   const overlay = (dt) => {
+    if (architectCave?.active) { fx.drawOverlay(dt, drawArchitectExtra); return; }
     if (cloudPlaying()) {
       fx.drawOverlay(dt, cloudHopper.drawOverlay);
       // An Ooga inside a tornado, or behind it, shows its outline through the funnel, keyed dark so it reads on the
@@ -11012,6 +11029,7 @@
     }
   };
   const suspendHub = () => {
+    architectCave?.suspend(); RENDER_OPTS.cameraFeeds = null;
     stopLazyBedding();
     // A kept hammock stays hung; its sitter gets up to go.
     if (hammock) vacateHammock();
@@ -11953,6 +11971,7 @@
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
+    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave });
     yield* pause(slice);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
@@ -12613,6 +12632,7 @@
       bifrostIsle.heimdall.dispose();
     }
     bifrostIsle = null;
+    architectCave?.dispose(); architectCave = null; RENDER_OPTS.cameraFeeds = null;
     mirrorCave.body.dispose();
     pilot.dispose();
     if (oogatronUnsub) {
@@ -12693,6 +12713,7 @@
     hubScene.islandGeometry(set);
   };
   const islandGeometry = (set) => {
+    architectCave?.liveGeometry(set);
     if (cloudHopper?.cabinet.frames) for (const geometry of cloudHopper.cabinet.frames) set.add(geometry);
     cloudHopper?.liveGeometry(set);
     if (islandGuide) islandGuide.liveGeometry(set);
@@ -12730,6 +12751,7 @@
     micKey: true,
     get cabinetMenu() { return cloudHopper && cloudHopper.phase === "intro"; },
     id: "hub", enter, enterSteps, update, overlay, onDonation, previewDonation, onKey, renderOpts: RENDER_OPTS, stay, leave, stats, liveGeometry, cachedGeometry, islandGeometry, libraryNook: LIBRARY,
+    get architect() { return architectCave; },
     get retained() { return heldHub; }, get elapsed() { return now; },
     get retainedRoot() { return heldHub ? root : null; },
     // Readying the hall takes a slice of frames that are otherwise the island's; the tier does not judge them.
@@ -12742,6 +12764,7 @@
     get inMotion() {
       // A crossing through the Timechain Sphere's doors keeps full rate, so its walk and swoop finish smoothly, and so
       // does a walk through the Factory's shield and its dissolve.
+      if (architectCave?.active) return true;
       if (cloudHopper?.active) return true;
       if (timechainIsland && timechainIsland.gate.busy) return true;
       if (factoryWalk.phase || factoryWalk.still > 0) return true;
