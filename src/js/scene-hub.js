@@ -656,6 +656,12 @@
   let phase = null;
   const updatePositionDebug = (force = false) => {
     if (!positionDebug || !camera || !pilot) return;
+    if (architectCave) {
+      positionDebug.dataset.observatory = JSON.stringify({ panels: architectCave.panels.length,
+        broadcast: architectCave.broadcast, time: architectCave.broadcastTime,
+        facePanels: architectCave.panels.filter(p => p.node.geometry === p.portrait).length,
+        faceCaptures: architectCave.cameras.portrait?.captures || 0 });
+    }
     if (architectCave) positionDebug.dataset.cameras = JSON.stringify(architectCave.feeds.map(f => ({ captures: f.captures, channel: f.channel?.id, pending: f.pending, calls: f.draws, triangles: f.triangles, frameMs: f.frameMs, captureGap: f.captureGap, refreshMs: f.refreshMs, heaviest: f.heaviest })));
     pilot.capturePose(POSITION_POSE);
     const p = camera.position, t = camera.target, up = camera.up;
@@ -8286,7 +8292,7 @@
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
     if (!cloudHopper?.active && !architectCave?.active) islandGuide.update(dt, elapsed);
-    if (architectCave) { architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.feeds : null; }
+    if (architectCave) { architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.renderFeeds : null; }
     shareDrivenPose();
     timechainIsland.site.view(camera.position);
     const firstPerson = clankerPlay.active ? clankerPlay.firstPerson : pilot.closeMix > 0.8 || pilot.mode === "eye-level";

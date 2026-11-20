@@ -5,9 +5,9 @@
   const BL = window.BL = window.BL || {};
   const SLOTS = 32, SWITCH_SECONDS = 15;
   const create = ({ renderer, mouths, places }) => {
-    const channels = [], feeds = [], sources = new Map(), meshes = new Set();
+    const channels = [], feeds = [], renderFeeds = [], sources = new Map(), meshes = new Set();
     const debug = new URLSearchParams(location.search).get("debug") === "1";
-    let prepared = false, active = false, switchIn = SWITCH_SECONDS, turn = 0, next = SLOTS;
+    let prepared = false, active = false, switchIn = SWITCH_SECONDS, turn = 0, next = SLOTS, portrait = null;
     const channel = (id, label, eye, target, far, fov = 46, build = null, sourceId = id) => {
       const camera = BL.scene.createCamera({ fov, near: 0.5, far });
       Object.assign(camera.position, eye); Object.assign(camera.target, target);
@@ -64,17 +64,10 @@
     workshop("arcade-carnival", "ARCADE / CARNIVAL", "arcade.hall", [-1, 5, -9], [12, 1, -3], 30);
     const quad = (width, height, surface) => ({ verts: [-width / 2, -height / 2, 0, width / 2, -height / 2, 0, width / 2, height / 2, 0, -width / 2, height / 2, 0],
       faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false, architectRoom: true, imageSurface: surface });
-    const paint = (feed) => {
-      const surface = feed.label.imageSurface, canvas = surface.canvas, ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#0c1718"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#b7d4c5"; ctx.font = "bold 18px monospace"; ctx.textAlign = "left";
-      ctx.fillText(String(channels.indexOf(feed.channel) + 1).padStart(2, "0") + " / " + feed.channel.label, 8, 23, canvas.width - 16);
-      surface.version++;
-    };
     const selected = (id) => { for (const feed of feeds) if (feed.channel.id === id) return true; return false; };
     const select = (feed, choice) => {
       feed.channel = choice; feed.camera = choice.camera; feed.source = null; feed.last = -Infinity;
-      feed.pending = true; feed.heaviest = null; feed.geometry.imageSurface.version++; paint(feed);
+      feed.pending = true; feed.heaviest = null; feed.geometry.imageSurface.version++;
     };
     const syncSources = () => {
       for (const [id, source] of sources) {
@@ -92,24 +85,44 @@
         feed.source = source;
       }
     };
+    const makeFeed = choice => {
+      const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 144;
+      const ctx = canvas.getContext("2d"); ctx.fillStyle = "#122326"; ctx.fillRect(0, 0, 256, 144);
+      ctx.fillStyle = "#aac8bd"; ctx.font = "16px monospace"; ctx.textAlign = "center";
+      ctx.fillText(renderer.kind === "webgl2" ? "CONNECTING" : "CAMERA OFFLINE", 128, 70);
+      const geometry = quad(3.08, 1.72, { canvas, version: 0, rect: [-1.54, -0.86, 3.08, 1.72], smooth: true });
+      const feed = { geometry, surfaces: [], tiles: new Map(), camera: choice.camera, channel: choice, source: null,
+        pending: true, visible: false, forceCapture: false, priority: false,
+        captures: 0, last: -Infinity, draws: 0, triangles: 0, profile: debug };
+      geometry.imageSurface.feed = feed; meshes.add(geometry); return feed;
+    };
     const prepare = () => {
       if (prepared) return; prepared = true;
-      for (let i = 0; i < Math.min(SLOTS, channels.length); i++) {
-        const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 144;
-        const ctx = canvas.getContext("2d"); ctx.fillStyle = "#122326"; ctx.fillRect(0, 0, 256, 144);
-        ctx.fillStyle = "#aac8bd"; ctx.font = "16px monospace"; ctx.textAlign = "center";
-        ctx.fillText(renderer.kind === "webgl2" ? "CONNECTING" : "CAMERA OFFLINE", 128, 70);
-        const geometry = quad(3.08, 1.72, { canvas, version: 0, rect: [-1.54, -0.86, 3.08, 1.72], smooth: true });
-        const labelCanvas = document.createElement("canvas"); labelCanvas.width = 384; labelCanvas.height = 32;
-        const label = quad(3.08, 0.25, { canvas: labelCanvas, version: 0, rect: [-1.54, -0.125, 3.08, 0.25], smooth: true });
-        const feed = { geometry, label, camera: channels[i].camera, channel: channels[i], source: null, pending: true, visible: true,
-          captures: 0, last: -Infinity, draws: 0, triangles: 0, profile: debug };
-        geometry.imageSurface.feed = feed; meshes.add(geometry); meshes.add(label); feeds.push(feed); paint(feed);
-      }
+      for (let i = 0; i < Math.min(SLOTS, channels.length); i++) feeds.push(makeFeed(channels[i]));
+      portrait = makeFeed({ id: "portrait", label: "OOGA CLOSE-UP", camera: BL.scene.createCamera({ fov: 36, near: 0.03, far: 4 }) });
+      portrait.camera.up = { x: 0, y: 1, z: 0 };
+      portrait.priority = true; portrait.interval = 100;
+      portrait.light = { clear: [0.015, 0.015, 0.018], sky: [0.6, 0.58, 0.55], ground: [0.3, 0.27, 0.24],
+        direct: [0, 0, 0], directStrength: 0, ambientFloor: 0.75, diffuseFloor: 0 };
+      renderFeeds.push(...feeds, portrait);
+    };
+    // UV windows share one target per feed. Crop to cover without stretching, and account for the
+    // bezel gaps so a multi-panel picture continues behind them instead of repeating at every edge.
+    const panel = (feed, size, x, y, pitchX, pitchY, scaleX, scaleY) => {
+      const key = [size, x, y, pitchX, pitchY, scaleX, scaleY].join(":");
+      let g = feed.tiles.get(key);
+      if (g) return g;
+      const width = Math.max((size - 1) * pitchX + 3.08 * scaleX, ((size - 1) * pitchY + 1.72 * scaleY) * 16 / 9);
+      const height = width * 9 / 16;
+      g = { ...feed.geometry, imageSurface: { ...feed.geometry.imageSurface,
+        rect: [(-width / 2 - ((size - 1) / 2 - x) * pitchX) / scaleX,
+          (-height / 2 - (y - (size - 1) / 2) * pitchY) / scaleY, width / scaleX, height / scaleY] } };
+      feed.tiles.set(key, g); feed.surfaces.push(g); meshes.add(g); return g;
     };
     const setActive = (on) => {
       if (active === on) return;
       active = on;
+      if (!on && portrait) portrait.forceCapture = false;
       if (on) prepare();
       syncSources();
     };
@@ -120,7 +133,7 @@
         if (switchIn <= 0) {
           switchIn = SWITCH_SECONDS;
           // Rotate every slot fairly, including those behind the viewer. Their captures stay idle.
-          // A pending image cannot show the old area underneath the replacement area's label.
+          // Pending replacements never show an old area as the newly selected channel.
           let choice;
           do { choice = channels[next++ % channels.length]; } while (selected(choice.id));
           select(feeds[turn++ % feeds.length], choice); syncSources();
@@ -128,7 +141,7 @@
       }
       // Observer poses update only when the renderer actually captures that source.
     };
-    return { feeds, channels, prepare, setActive, update,
+    return { feeds, renderFeeds, channels, prepare, panel, setActive, update, get portrait() { return portrait; },
       observes(id) {
         if (active) for (const feed of feeds) if (feed.visible && feed.channel.id === id) return true;
         return false;
@@ -142,7 +155,8 @@
         return false;
       },
       liveGeometry(set) { for (const g of meshes) set.add(g); for (const source of sources.values()) for (const g of source.meshes) set.add(g); },
-      dispose() { setActive(false); for (const g of meshes) renderer.releaseGeometry(g); feeds.length = 0; meshes.clear(); }
+      dispose() { setActive(false); for (const g of meshes) renderer.releaseGeometry(g); for (const feed of renderFeeds) { feed.tiles.clear(); feed.surfaces.length = 0; }
+        feeds.length = renderFeeds.length = 0; portrait = null; meshes.clear(); }
     };
   };
   BL.observatoryCameras = { create, SLOTS, SWITCH_SECONDS };

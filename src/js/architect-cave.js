@@ -5,10 +5,10 @@
   const BL = window.BL = window.BL || {};
   const { createNode, addChild, removeChild } = BL.scene;
   const { box, bevelBox, beam, lathe, merge, geometry, pushVert, face } = BL.models;
-  const FLOOR = -48, RADIUS = 10.8, HEIGHT = 9.1, TAU = Math.PI * 2;
+  const FLOOR = -48, RADIUS = 10.8, HEIGHT = 9.05, TAU = Math.PI * 2;
   // Match the island cave's five-metre opening, with its glass reaching the floor.
   const RETURN_HALF_W = 2.5, RETURN_HEIGHT = 3, RETURN_Z = Math.sqrt(RADIUS * RADIUS - RETURN_HALF_W * RETURN_HALF_W);
-  const BANKS = 24, ROWS = 6, PITCH = RETURN_HEIGHT / 2, GAP = 0.1, WALL = "#080a0b";
+  const BANKS = 48, ROWS = 12, MIRROR_ROWS = 4, PITCH = RETURN_HEIGHT / MIRROR_ROWS, GAP = 0.05, PORTAL_COLS = 4, WALL = "#080a0b";
   const PORTAL_ANGLE = Math.asin(RETURN_HALF_W / RADIUS), BANK_ANGLE = (TAU - 2 * PORTAL_ANGLE) / BANKS;
   const BANK_RADIUS = RADIUS * Math.cos(BANK_ANGLE / 2);
   const SEAT_TOP = 0.72;
@@ -22,24 +22,42 @@
   const segmentClear = (x, y, z, toX, toY, toZ, radius, height) =>
     clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
     && (toZ <= RETURN_Z - radius || Math.abs(toX) < RETURN_HALF_W - radius - 0.08 && toY < FLOOR + RETURN_HEIGHT - 0.5);
-  // A balanced shuffle of shared slots, with no touching repeats (including diagonals and the wrap).
-  // Slots always hold distinct channels, so periodic channel replacement preserves that guarantee.
-  const panelSlots = (count) => {
-    const cols = BANKS + 2, slots = new Int16Array(cols * ROWS).fill(-1), uses = new Uint16Array(count);
+  const FACE_WAIT = 45, FACE_SWEEP = 4.2, FACE_HOLD = 8;
+  // Tile the wall with single screens and square video groups. Independent groups must not repeat
+  // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
+  const panelLayout = count => {
+    const cols = BANKS + PORTAL_COLS, cells = new Int16Array(cols * ROWS).fill(-1), groups = [], uses = new Uint16Array(count);
+    const fits = (col, row, size) => {
+      if (row + size > ROWS || col + size > (col < BANKS ? BANKS : cols)) return false;
+      for (let y = row; y < row + size; y++) for (let x = col; x < col + size; x++)
+        if (y < MIRROR_ROWS && x >= BANKS || cells[y * cols + x] >= 0) return false;
+      return true;
+    };
     for (let row = 0; row < ROWS; row++) for (let col = 0; col < cols; col++) {
-      if (row < 2 && col >= BANKS) continue;
-      let best = Infinity, choice = -1, ties = 0;
-      for (let slot = 0; slot < count; slot++) {
-        if (col && slots[row * cols + col - 1] === slot || col === cols - 1 && slots[row * cols] === slot) continue;
-        let touches = false;
-        if (row) for (let dx = -1; dx <= 1; dx++) if (slots[(row - 1) * cols + (col + dx + cols) % cols] === slot) touches = true;
-        if (touches || uses[slot] > best) continue;
-        if (uses[slot] < best) { best = uses[slot]; ties = 0; }
-        if (Math.random() * ++ties < 1) choice = slot;
-      }
-      slots[row * cols + col] = choice; uses[choice]++;
+      if (!fits(col, row, 1)) continue;
+      const roll = Math.random();
+      const size = fits(col, row, 3) && (col === 0 && row === 0 || roll < 0.22) ? 3
+        : fits(col, row, 2) && (col === 3 && row === 0 || roll < 0.65) ? 2 : 1;
+      const id = groups.length;
+      groups.push({ col, row, size, slot: -1 });
+      for (let y = row; y < row + size; y++) for (let x = col; x < col + size; x++) cells[y * cols + x] = id;
     }
-    return slots;
+    for (let id = 0; id < groups.length; id++) {
+      const g = groups[id], excluded = new Uint8Array(count);
+      for (let y = Math.max(0, g.row - 1); y <= Math.min(ROWS - 1, g.row + g.size); y++)
+        for (let x = g.col - 1; x <= g.col + g.size; x++) {
+          const neighbor = cells[y * cols + (x + cols) % cols];
+          if (neighbor >= 0 && neighbor !== id && groups[neighbor].slot >= 0) excluded[groups[neighbor].slot] = 1;
+        }
+      let best = Infinity, ties = 0;
+      for (let slot = 0; slot < count; slot++) {
+        if (excluded[slot] || uses[slot] > best) continue;
+        if (uses[slot] < best) { best = uses[slot]; ties = 0; }
+        if (Math.random() * ++ties < 1) g.slot = slot;
+      }
+      uses[g.slot]++;
+    }
+    return { cells, groups, cols };
   };
   const disc = (radius, y, color, down = false) => {
     const g = geometry(), rgb = BL.math.hexToRgb(color);
@@ -52,10 +70,11 @@
   const create = ({ root, renderer, camera, pilot, crew, mirror, weather, mouths, places }) => {
     const group = createNode({ position: { x: 0, y: FLOOR, z: 0 }, visible: false });
     const cameras = BL.observatoryCameras.create({ renderer, mouths, places }), feeds = cameras.feeds;
-    const meshes = [], destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
+    const meshes = [], panels = [], rowJitter = new Float64Array(ROWS), destination = { position: { x: 0, y: FLOOR, z: 7.8 }, yaw: 0, pitch: 0.12, dist: 4, framed: true };
     const params = new URLSearchParams(location.search);
     let preview = params.get("debug") === "1" && params.get("view") === "architect";
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
+    let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null };
     const chairClear = (x, y, z, toX, toY, toZ, radius, height) => {
@@ -125,26 +144,35 @@
       }
       wall(-RETURN_HALF_W, RETURN_Z, RETURN_HALF_W, RETURN_Z, RETURN_HEIGHT);
       add(walls);
-      const slots = panelSlots(feeds.length), cols = BANKS + 2;
-      const rackAt = (bank, col, x, row) => {
-        const rack = createNode({ position: { x, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 }, scale: { x: ((col < BANKS ? 2 * RADIUS * Math.sin(BANK_ANGLE / 2) : RETURN_HALF_W) - GAP) / 3.36,
-          y: (PITCH - GAP) / 1.96, z: 0.71 } });
+      const layout = panelLayout(feeds.length);
+      const rackAt = (bank, col, x, row, angle) => {
+        const pitchX = col < BANKS ? 2 * RADIUS * Math.sin(BANK_ANGLE / 2) : RETURN_HALF_W * 2 / PORTAL_COLS;
+        const scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
+        const rack = createNode({ position: { x, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 },
+          scale: { x: scaleX, y: scaleY, z: 0.71 } });
         addChild(bank, rack); add(housing, rack);
-        const feed = feeds[slots[row * cols + col]];
-        add(feed.geometry, rack, { x: 0, y: 0, z: 0.19 });
-        add(feed.label, rack, { x: 0, y: -0.735, z: 0.195 });
+        const group = layout.groups[layout.cells[row * layout.cols + col]], feed = feeds[group.slot];
+        const normal = cameras.panel(feed, group.size, col - group.col, row - group.row, pitchX, PITCH, scaleX, scaleY);
+        const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY);
+        const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
+        // Both sides spread away from the wall opposite the mirror. Higher rows lead, with row and tile jitter.
+        panels.push({ node, normal, portrait, row, col, group: layout.cells[row * layout.cols + col], size: group.size,
+          distance: Math.abs(Math.atan2(Math.sin(angle - Math.PI), Math.cos(angle - Math.PI))) / Math.PI, delay: 0 });
       };
       for (let i = 0; i < BANKS; i++) {
         const angle = PORTAL_ANGLE + (i + 0.5) * BANK_ANGLE;
         const bank = createNode({ position: { x: Math.sin(angle) * BANK_RADIUS, y: 0, z: Math.cos(angle) * BANK_RADIUS },
           rotation: { x: 0, y: angle + Math.PI, z: 0 } });
         addChild(group, bank);
-        for (let row = 0; row < ROWS; row++) rackAt(bank, i, 0, row);
+        for (let row = 0; row < ROWS; row++) rackAt(bank, i, 0, row, angle);
       }
       const portal = createNode({ position: { x: 0, y: 0, z: RETURN_Z }, rotation: { x: 0, y: Math.PI, z: 0 } });
       addChild(group, portal);
-      for (let row = 2; row < ROWS; row++) {
-        rackAt(portal, BANKS, 1.25, row); rackAt(portal, BANKS + 1, -1.25, row);
+      for (let row = MIRROR_ROWS; row < ROWS; row++) {
+        for (let col = 0; col < PORTAL_COLS; col++) {
+          const x = RETURN_HALF_W - (col + 0.5) * RETURN_HALF_W * 2 / PORTAL_COLS;
+          rackAt(portal, BANKS + col, x, row, Math.atan2(-x, RETURN_Z));
+        }
       }
       const frame = [];
       for (const x of [-RETURN_HALF_W, RETURN_HALF_W]) frame.push(box({ w: 0.06, h: RETURN_HEIGHT, d: 0.06,
@@ -173,12 +201,58 @@
         padded.push(bevelBox({ w: 0.15, h: 0.1, d: 1.04, bevel: 0.04, color: dark, emissive: 0.25, offset: { x, y: 1.13 } }));
       }
       chairTop = add(merge(...padded));
-      const live = new Set(meshes); renderer.prepareScene(live);
+      const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
+    };
+    const resetBroadcast = () => {
+      broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
+      for (const p of panels) p.node.geometry = p.normal;
+      if (cameras.portrait) cameras.portrait.forceCapture = false;
+    };
+    const beginSweep = phase => {
+      broadcast = phase; broadcastTime = 0;
+      for (let row = 0; row < ROWS; row++) rowJitter[row] = Math.random() * 0.12;
+      for (const p of panels) p.delay = p.distance * 2.9 + (ROWS - 1 - p.row) / (ROWS - 1) * 0.7 + rowJitter[p.row] + Math.random() * 0.35;
+    };
+    const updateBroadcast = (dt, actor) => {
+      if (document.hidden) return;
+      const face = cameras.portrait;
+      if (broadcastActor !== actor) { resetBroadcast(); broadcastActor = actor; }
+      broadcastTime += dt;
+      if (broadcast === "feeds" && broadcastTime >= FACE_WAIT - 0.75 && portraitActor !== actor) {
+        portraitActor = actor; face.pending = true; face.last = -Infinity; face.forceCapture = true;
+        face.geometry.imageSurface.version++;
+      }
+      // Face framing follows the authored head transform, including swivel, looking and custom proportions.
+      if (broadcast !== "feeds" || portraitActor) {
+        BL.scene.updateWorld(actor.root, actor.root.parent?.world);
+        const head = actor.parts.head, m = head.world, b = BL.scene.boundsOf(head.geometry), c = b.center, cam = face.camera;
+        cam.target.x = m[0] * c[0] + m[4] * c[1] + m[8] * c[2] + m[12];
+        cam.target.y = m[1] * c[0] + m[5] * c[1] + m[9] * c[2] + m[13];
+        cam.target.z = m[2] * c[0] + m[6] * c[1] + m[10] * c[2] + m[14];
+        const scale = Math.hypot(m[4], m[5], m[6]), widthScale = Math.hypot(m[0], m[1], m[2]);
+        const distance = Math.max(0.65, (b.max[1] - b.min[1]) * scale * 2, (b.max[0] - b.min[0]) * widthScale * 1.3);
+        const forward = Math.hypot(m[8], m[9], m[10]) || 1, up = scale || 1;
+        cam.position.x = cam.target.x + m[8] / forward * distance;
+        cam.position.y = cam.target.y + m[9] / forward * distance;
+        cam.position.z = cam.target.z + m[10] / forward * distance;
+        cam.up.x = m[4] / up; cam.up.y = m[5] / up; cam.up.z = m[6] / up;
+        cam.far = distance + Math.max(1, b.radius * scale * 2);
+      }
+      if (broadcast === "feeds" && broadcastTime >= FACE_WAIT && (!face.pending || renderer.kind !== "webgl2")) beginSweep("to-face");
+      if (broadcast === "face" && broadcastTime >= FACE_HOLD) beginSweep("to-feeds");
+      if (broadcast === "to-face" || broadcast === "to-feeds") {
+        const toFace = broadcast === "to-face";
+        for (const p of panels) p.node.geometry = (broadcastTime >= p.delay) === toFace ? p.portrait : p.normal;
+        if (broadcastTime >= FACE_SWEEP) {
+          broadcast = toFace ? "face" : "feeds"; broadcastTime = 0;
+          if (!toFace) portraitActor = null;
+        }
+      }
     };
     const travel = (inside) => {
       if (seat.sitter) crew.standPlayer(seat.sitter);
-      prepare(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
+      prepare(); resetBroadcast(); active = inside; group.visible = inside; cooldown = 1; veil = 0.45;
       const m = mirror.mouth;
       destination.position.x = inside ? 0 : m.x + Math.sin(m.ry) * 2.4;
       destination.position.y = inside ? FLOOR : m.floorY;
@@ -201,13 +275,14 @@
         if (!audio) audio = BL.architectAudio.create();
         audio.setActive(true); cameras.setActive(true); weather.setExterior(false);
       }
-      if (active && !contains(p.x, feet, p.z)) { active = false; group.visible = false; audio?.setActive(false); cameras.setActive(false); weather.setExterior(true); }
+      if (active && !contains(p.x, feet, p.z)) { resetBroadcast(); active = false; group.visible = false; audio?.setActive(false); cameras.setActive(false); weather.setExterior(true); }
       if (active) {
         if (seat.sitter && seat.sitter === actor && actor.camp.seat === seat) {
           seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
           actor.root.rotation.y = seat.ry; actor.parts.head.rotation.y = 0;
         }
-        cameras.update(dt);
+        updateBroadcast(dt, actor);
+        if (broadcast !== "face") cameras.update(dt);
         if (audio) audio.update(dt, camera);
         if (!cooldown && p.z >= RETURN_Z && Math.abs(p.x) < RETURN_HALF_W - 0.4
           && feet >= FLOOR - 0.2 && feet < FLOOR + RETURN_HEIGHT - 0.5) travel(false);
@@ -225,12 +300,13 @@
       if (r > limit) { p.x *= limit / r; p.z *= limit / r; }
       p.y = Math.max(FLOOR + 0.25, Math.min(FLOOR + HEIGHT - 0.3, p.y));
     };
-    return { prepare, update, travel, clampCamera, feeds, group, cameras, seat, sit, supportAt, segmentClear: chairClear,
+    return { prepare, update, travel, clampCamera, feeds, renderFeeds: cameras.renderFeeds, panels, group, cameras, seat, sit, supportAt, segmentClear: chairClear,
       nearbySeat(x, y, z, reach) {
         return active && !seat.sitter && Math.hypot(x, z) < Math.min(reach, 1.7)
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
       },
       get returnMirror() { return returnMirror; },
+      get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,
       get active() { return active; }, get crossing() { return veil > 0; }, get prepared() { return prepared; },
       drawVeil(context) {
@@ -240,8 +316,8 @@
       },
       suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = 0; }
+      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; }
     };
   };
-  BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT };
+  BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };
 })();

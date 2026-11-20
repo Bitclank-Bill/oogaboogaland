@@ -3579,16 +3579,17 @@ void main() {
       const surface = rec.geometry.imageSurface;
       if (surface?.atlas && !surface.canvas) BL.models.paintFoliageAtlas(surface);
       const canvas = surface?.canvas;
-      const feedTarget = surface?.feed ? reflectorTargets.get(rec.geometry) : null;
+      const feed = surface?.feed, version = feed ? feed.geometry.imageSurface.version : surface?.version;
+      const feedTarget = feed ? reflectorTargets.get(feed.geometry) : null;
       const feedReady = !!feedTarget?.valid && !surface.feed.pending;
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
-      if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== surface.version) {
+      if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== version) {
         gl.uniform1f(program.u.uCanvasSurface, canvas ? 1 : 0);
         gl.uniform1f(program.u.uCanvasFeed, feedReady ? 1 : 0);
         // Keep only a number: an idle depth program must never retain a departed scene's canvas.
         program.canvasSurfaceId = identity;
-        program.canvasSurfaceVersion = canvas ? surface.version : -1;
+        program.canvasSurfaceVersion = canvas ? version : -1;
         if (canvas) {
           gl.uniform1f(program.u.uCanvasAtlas, surface.atlas ? 1 : 0);
           if (surface.atlas) { gl.uniform3fv(program.u.uCanvasAtlasMin, surface.atlasMin); gl.uniform3fv(program.u.uCanvasAtlasMax, surface.atlasMax); }
@@ -3603,6 +3604,8 @@ void main() {
       if (!canvas) return;
       gl.activeTexture(gl.TEXTURE6);
       if (feedReady) { gl.bindTexture(gl.TEXTURE_2D, feedTarget.tex); gl.activeTexture(gl.TEXTURE0); return; }
+      // Tile UVs are independent, but the fallback and live textures belong to the feed alone.
+      if (feed) rec = recordFor(feed.geometry);
       if (!rec.imageTexture) {
         rec.imageTexture = gl.createTexture();
         imageTextures++;
@@ -3612,15 +3615,15 @@ void main() {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, surface.atlas || surface.smooth ? gl.LINEAR : gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        rec.canvasWidth = canvas.width; rec.canvasHeight = canvas.height; rec.canvasVersion = surface.version;
+        rec.canvasWidth = canvas.width; rec.canvasHeight = canvas.height; rec.canvasVersion = version;
       } else {
         gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture);
         if (rec.canvasWidth !== canvas.width || rec.canvasHeight !== canvas.height) {
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
-          rec.canvasWidth = canvas.width; rec.canvasHeight = canvas.height; rec.canvasVersion = surface.version;
-        } else if (rec.canvasVersion !== surface.version) {
+          rec.canvasWidth = canvas.width; rec.canvasHeight = canvas.height; rec.canvasVersion = version;
+        } else if (rec.canvasVersion !== version) {
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
-          rec.canvasVersion = surface.version;
+          rec.canvasVersion = version;
         }
       }
       gl.activeTexture(gl.TEXTURE0);
@@ -4577,22 +4580,33 @@ void main() {
         // Bound total capture work as well as each feed. Slow main frames trade feed cadence for movement.
         const captureGap = cameraFeedFrameMs > 40 ? Math.min(500, Math.max(125, cameraFeedFrameMs * 2)) : cameraFeedFrameMs > 24 ? 66.7 : 33.3;
         for (let i = 0; i < cameraFeeds.length; i++) {
-          const feed = cameraFeeds[i], rec = records.get(feed.geometry);
-          feed.visible = !!rec?.active && !rec.offscreen && rec.drawCount > 0;
+          const feed = cameraFeeds[i], surfaces = feed.surfaces;
+          feed.visible = !!feed.forceCapture;
           feed.frameMs = cameraFeedFrameMs; feed.captureGap = captureGap;
-          if (!feed.visible) continue;
           let size = 0;
-          for (let j = 0; j < rec.drawCount; j++) {
-            const o = j * 4, s = rec.spheres;
-            const distance = Math.hypot(s[o] - camera.position.x, s[o + 1] - camera.position.y, s[o + 2] - camera.position.z);
-            size = Math.max(size, (s[o + 3] - CULL_MARGIN) / Math.max(0.1, distance));
+          for (let k = 0; k < (surfaces ? surfaces.length : 1); k++) {
+            const rec = records.get(surfaces ? surfaces[k] : feed.geometry);
+            if (!rec?.active || rec.offscreen || !rec.drawCount) continue;
+            feed.visible = true;
+            for (let j = 0; j < rec.drawCount; j++) {
+              const o = j * 4, s = rec.spheres;
+              const distance = Math.hypot(s[o] - camera.position.x, s[o + 1] - camera.position.y, s[o + 2] - camera.position.z);
+              size = Math.max(size, (s[o + 3] - CULL_MARGIN) / Math.max(0.1, distance));
+            }
           }
-          feed.refreshMs = (size > 0.28 ? 160 : size > 0.12 ? 350 : 700) * (qualityName === "low" ? 1.5 : 1);
+          feed.refreshMs = (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
         }
-        if (stamp - cameraFeedLast >= captureGap) for (let attempt = 0; attempt < cameraFeeds.length; attempt++) {
-          const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
-          if (!feed.visible || stamp - feed.last < feed.refreshMs) continue;
-          captureFeed = feed; cameraFeedTurn = (index + 1) % cameraFeeds.length; break;
+        if (stamp - cameraFeedLast >= captureGap) {
+          // The single face broadcast gets a bounded cadence during a sweep; other slots keep their fair turn.
+          for (let i = 0; i < cameraFeeds.length; i++) {
+            const feed = cameraFeeds[i];
+            if (feed.priority && feed.visible && stamp - feed.last >= feed.refreshMs) { captureFeed = feed; break; }
+          }
+          for (let attempt = 0; !captureFeed && attempt < cameraFeeds.length; attempt++) {
+            const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
+            if (!feed.visible || stamp - feed.last < feed.refreshMs) continue;
+            captureFeed = feed; cameraFeedTurn = (index + 1) % cameraFeeds.length;
+          }
         }
         const source = captureFeed?.source;
         if (source) {
@@ -4751,7 +4765,7 @@ void main() {
         cameraFeedCapture = true; cameraFeedSource = feed.source || null;
         if (feed.profile && !feed.heaviest) captureProfile = new Map();
         try {
-          const light = feed.source?.light;
+          const light = feed.light || feed.source?.light;
           renderMirrorCapture(light?.clear || clear, light?.sky || sky, light?.ground || ground, light?.direct || direct,
             light ? light.directStrength : directStrength, light ? light.ambientFloor : ambientFloor,
             light ? light.diffuseFloor : diffuseFloor, 0, 1, shadowBias, lx, ly, lz, sh, lights, 0,
@@ -4765,7 +4779,7 @@ void main() {
           }
         }
         feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
-        feed.pending = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
+        feed.pending = feed.forceCapture = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
         cameraFeedLast = stamp;
       }
       const viewActor = opts.beforeView?.();

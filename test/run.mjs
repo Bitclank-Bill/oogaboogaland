@@ -16987,7 +16987,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const B = __ooga, room = BL.scenes.hub.architect, cameras = room.cameras;
     const slots = room.feeds.map(f => f.geometry), seen = new Set(room.feeds.map(f => f.channel.id));
     const assigned = new Set();
-    BL.scene.traverseVisible(room.group, node => { if (node.geometry?.imageSurface?.feed) assigned.add(node.geometry); });
+    BL.scene.traverseVisible(room.group, node => { if (node.geometry?.imageSurface?.feed) assigned.add(node.geometry.imageSurface.feed.geometry); });
     const source = room.feeds.find(f => f.channel.id === "bifrost.chamber").source;
     const isolated = source.root.cameraHidden && !source.root.parent
       && Array.from(source.meshes).every(g => g.cameraFeedSource === source && g.castShadow === false);
@@ -17056,6 +17056,43 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: solid cushion supports sitting, swivel follows view, standing and travel release the seat",
     Object.values(chair).every(Boolean), JSON.stringify(chair));
+  const broadcast = await b.evaluate(`(async () => {
+    const B = __ooga, room = BL.scenes.hub.architect, panels = room.panels, face = room.cameras.portrait;
+    const sizes = new Set(panels.map(p => p.size)), groups = new Map();
+    for (const p of panels) { if (!groups.has(p.group)) groups.set(p.group, []); groups.get(p.group).push(p); }
+    const mosaics = panels.length === 608 && [1, 2, 3].every(n => sizes.has(n))
+      && Array.from(groups.values()).every(g => g.length === g[0].size ** 2
+        && g.every(p => p.normal.imageSurface.feed === g[0].normal.imageSurface.feed)
+        && new Set(g.map(p => p.normal.imageSurface.rect.join(","))).size === g.length);
+    const neighborRule = panels.every(p => panels.every(q => {
+      const dx = Math.abs(p.col - q.col);
+      return p.group === q.group || Math.abs(p.row - q.row) > 1 || Math.min(dx, 52 - dx) > 1
+        || p.normal.imageSurface.feed !== q.normal.imageSurface.feed;
+    }));
+    room.update(BL.architectCave.FACE_WAIT - room.broadcastTime - 0.5);
+    const warm = face.forceCapture && face.pending && room.broadcast === "feeds";
+    // Allow the global capture interval to elapse, then render the real head before the wave.
+    await new Promise(resolve => setTimeout(resolve, 510));
+    B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    const captured = !face.pending && face.captures > 0 && Object.values(face.camera.up).every(Number.isFinite);
+    room.update(0.6); room.update(1.5);
+    const count = () => panels.filter(p => p.node.geometry === p.portrait).length;
+    const partial = room.broadcast === "to-face" && count() > 0 && count() < panels.length;
+    const mean = list => list.reduce((n, p) => n + p.delay, 0) / list.length;
+    const leads = mean(panels.filter(p => p.row === 11 && p.col < 48)) < mean(panels.filter(p => p.row === 0))
+      && mean(panels.filter(p => p.distance < 0.2)) < mean(panels.filter(p => p.distance > 0.8));
+    room.update(BL.architectCave.FACE_SWEEP);
+    const full = room.broadcast === "face" && count() === 608 && room.renderFeeds.length === 33
+      && panels.every(p => p.node.geometry.imageSurface.feed === face);
+    room.update(BL.architectCave.FACE_HOLD); room.update(1.5);
+    const restoring = room.broadcast === "to-feeds" && count() > 0 && count() < panels.length;
+    room.update(BL.architectCave.FACE_SWEEP);
+    const restored = room.broadcast === "feeds" && panels.every(p => p.node.geometry === p.normal);
+    room.travel(true);
+    return { mosaics, neighborRule, warm, captured, partial, leads, full, restoring, restored };
+  })()`);
+  record("hub observatory: 608 panels share mosaic textures and a live head sweep leads from the far wall before restoring them",
+    Object.values(broadcast).every(Boolean), JSON.stringify(broadcast));
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", code: "KeyS" });
   await b.evaluate(`__ooga.advance(1, 1 / 60)`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "s", code: "KeyS" });

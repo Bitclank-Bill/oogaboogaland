@@ -6,15 +6,16 @@ from upstream `rock` at `45e02fd428cc0734b3c9a3f8f173bf741d68a094`.
 ## Walking through
 
 The driven Ooga crosses the existing mirror at one o'clock into an enclosed,
-circular chamber with black walls and ceiling, 152 small framed monitors, a pale
+circular chamber with black walls and ceiling, 608 small framed monitors, a pale
 floor and a padded swivel chair. A reflecting mirror behind the arrival matches
 the island cave's
 five-metre-wide, three-metre-high visible opening. Walking through its glass
 returns the same Ooga outside the island mirror. The mirror fills a flush opening
 in the continuous wall mesh; its sides meet
 the adjoining wall facets exactly, and the return threshold follows its glass.
-The same 0.1-metre margin separates the TV rows, floor and ceiling. Two rows
-fit the mirror's three-metre height; four more continue above it. Light strips
+The same 0.05-metre margin separates the TV rows, floor and ceiling. Four rows
+fit the mirror's three-metre height; eight more continue above it. Both monitor
+width and height are halved, preserving the earlier widescreen proportions. Light strips
 at the ceiling and floor are removed.
 A brief pale veil softens the crossing. The old glyph room remains retired;
 shots and melee still ripple the unbreakable mirror. NPCs respect its barrier.
@@ -43,18 +44,18 @@ No network asset is required: this is prebuilding and GPU warming, rather than
 a network fetch. Captures and audio begin only on entry. A direct debug arrival
 uses the same preparation path if nothing has been warmed yet.
 
-The room remains prepared for the hub visit, with at most 32 small camera targets;
+The room remains prepared for the hub visit, with at most 33 small camera targets (32 area feeds and one shared face camera);
 leaving the hub releases them with their owning geometries. Context restoration
 recreates targets and quality changes select the current target size.
 
 ## Live camera screens
 
-The 152 screens share **32 simultaneous camera slots**. Every 15 seconds inside
+The 608 screens share **32 simultaneous camera slots**. Every 15 seconds inside
 the room, one slot takes the next view that is not already on the wall. All slots
 take their turn, including those behind the viewer; rendering still skips feeds
 with no visible screens. Rotation pauses outside the room and in hidden tabs,
-with no catch-up burst. A changed slot shows CONNECTING until its first new
-capture, so an old area's picture never appears under a replacement area's name.
+with no catch-up burst. Rotation also pauses during the full face broadcast. A changed slot shows CONNECTING until its first new
+capture, so a replacement never passes off the previous area's picture as live.
 
 The catalog in `observatory-cameras.js` currently contains **34 views**: the
 original eleven (pile, lake, Merge Rock, Bifrost chamber, five cave entrances,
@@ -62,9 +63,12 @@ Sphere exterior and Bifrost islet), seven public Timechain rooms, B.C.A. office,
 EntropyLab floor, HQ, HQ basement, Mempool chamber, Library nook, HQ window gallery
 and north pass, plus three Factory views, three Arcade views and two Hangar views.
 These are 34 camera views, not 34 distinct protocol zones.
-Repeated screens share a slot's texture; their balanced random placement forbids
-matching neighbors, including diagonals and the wrap around the room. Since
-every slot holds a different channel, rotation preserves this separation.
+The wall mixes single screens with 2×2 and 3×3 mosaics. Each mosaic divides one
+image across its panels, allowing for the bezel gaps and cropping without
+stretching. Labels beneath the screens are removed. Independent groups share
+slot textures, with balanced random placement forbidding matching neighbors,
+including diagonals and the wrap around the room. Adjacent tiles of one deliberate
+mosaic are the exception. Unique slot channels preserve this separation during rotation.
 Adding catalog entries does not allocate additional screen targets. There are no pixel reads, image encoding or additional
 WebGL contexts.
 
@@ -92,9 +96,29 @@ WebGL contexts.
   Existing foliage silhouettes remain; the pile uses its distant banana shell.
 - Canvas 2D draws the room with honestly labelled offline screens.
 
-Thirty-two high-tier color targets use 4.5 MiB before depth attachments. Source world
+Thirty-two high-tier area targets use 4.5 MiB before depth attachments; the shared
+face target adds 0.14 MiB only when first captured. Source world
 geometry and simulation dominate the memory budget; screen count does not
 multiply the number of cameras or textures.
+
+### Face broadcast
+
+After 45 seconds of regular feeds, an approximately 4.2-second wave replaces
+individual screens with the same live close-up of the controlled Ooga. It begins
+opposite the return mirror and spreads around both sides toward it. Upper rows
+lead lower rows; fresh row and panel jitter makes the edge irregular. Every
+screen holds the complete face for eight seconds, then the same outward pattern
+restores the original mosaics. The timer pauses in hidden tabs and resets on
+travel or changing the controlled character.
+
+One camera follows the actual authored head transform and proportions, including
+looking and swiveling. Its image is shared by every panel. It prewarms before the
+wave and waits for its first valid capture. During the broadcast it requests up
+to ten captures per second (less on low quality or slow frames), within the same
+global capture budget; it never adds an extra capture pass to a frame. Area feeds
+with no visible panels stop capturing. No separate avatar or simulation is made.
+The debug position display's `data-observatory` reports the phase and changed
+panel count alongside the existing camera counters.
 
 ### Separate areas and eventual coverage
 
@@ -168,7 +192,7 @@ cheaper. Real device performance and multiplayer fidelity still need acceptance.
 With `debug=1&pos=1`, the existing position display's `data-cameras` contains
 current per-camera capture, draw-call and triangle counts, plus the five largest
 mesh contributors from its first capture. The normal page does not allocate
-that profiling map. A local 32-feed snapshot showed a smoothed render-frame interval of about 13.3 ms
+that profiling map. Before the denser mosaic layout, a local 32-feed snapshot showed a smoothed render-frame interval of about 13.3 ms
 at the arrival view, with all slots capturing and no console warnings/errors.
 Factory views submitted 16,195–18,267 triangles; Arcade 1,056; Hangar 744,
 without visitors. This is one desktop preview, not a before/after benchmark,
@@ -198,7 +222,7 @@ listening and long-session balance are still maintainer acceptance work.
 The authorized checks are `npm run build`, syntax checks on every changed JS/MJS
 file, and the requested in-game browser screenshots. Browser interaction covered
 live screens, walking into and out of the mirror, returning to the same room,
-wall collision and a jump, with a clean console on the updated page.
+wall collision and a jump, with a clean console on the earlier 152-panel page.
 
 The existing mirror regression checks retain shot/melee, unbreakable-surface and
 scene-round-trip assertions, update the gate expectation, and add real-key
@@ -213,6 +237,13 @@ The chair was manually jumped onto, sat in, swiveled and stood from, followed
 by a successful return through the mirror. Build and syntax checks cover the
 new wall/ceiling, equal margins and seating; the updated chair lifecycle and
 32-slot automated regressions have not been run.
+The initial 304-panel mosaic layout was viewed and captured. Review caught its
+incorrectly retained height; the final 608-panel layout halves both dimensions
+and fills twelve rows. The first face prewarm exposed a missing camera up vector,
+now initialized explicitly. The browser connection became unavailable before the
+corrected face cycle or final proportions could be checked; these still need
+visual acceptance and a fresh screenshot. Added, unrun regressions cover mosaic
+coverage and adjacency, shared textures, face prewarming and both sweep directions.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 
