@@ -360,7 +360,7 @@
         n.scale.x = n.scale.y = sc; n.scale.z = Math.max(0.001, sc * 0.6);
       }
       for (let i = 0; i < halos.length; i++) { const h = halos[i], sc = clamp01((vis - h.t) / 0.06) * h.k * (0.88 + 0.12 * Math.sin(now * 1.3 + i * 0.9)) * (0.8 + 0.2 * blaze); h.node.scale.x = h.node.scale.y = h.node.scale.z = Math.max(0.001, sc); }
-      for (const h of pools) { const sc = ease(clamp01(vis)) * h.k * (0.94 + 0.06 * Math.sin(now * 0.9)) * (0.8 + 0.2 * blaze); h.node.scale.x = h.node.scale.y = h.node.scale.z = Math.max(0.001, sc); }
+      for (let i = 0; i < pools.length; i++) { const h = pools[i], sc = ease(clamp01(vis)) * h.k * (0.94 + 0.06 * Math.sin(now * 0.9)) * (0.8 + 0.2 * blaze); h.node.scale.x = h.node.scale.y = h.node.scale.z = Math.max(0.001, sc); }
       if (band) { const kb = clamp01((vis - 0.58) / 0.04); band.scale.x = band.scale.y = band.scale.z = Math.max(0.001, kb); band.visible = kb > 0.01; }
       for (let i = 0; i < swirl.length; i++) if (swirl[i]) { const sc = st.openK * (0.85 + 0.25 * Math.sin(now * 1.4 + i * 2.1)); swirl[i].scale.x = swirl[i].scale.y = swirl[i].scale.z = Math.max(0.001, sc); }
     };
@@ -1340,7 +1340,8 @@
     const faceG = faceOf(GREEN), faceO = faceOf(C.btc);
     // The spiral, three turns from genesis out to the rim, the blocks evenly spaced along it (by arc length).
     const SPB = (POC.chainR1 - POC.chainR0) / (6 * Math.PI), SPL = POC.chainR0 * 6 * Math.PI + SPB * 36 * Math.PI * Math.PI / 2;
-    const chainAt = (i) => { const sArc = SPL * Math.max(0, i) / (POC.chain - 1), th = (-POC.chainR0 + Math.sqrt(POC.chainR0 * POC.chainR0 + 2 * SPB * sArc)) / SPB, r = POC.chainR0 + SPB * th; return [r * Math.sin(th), -r * Math.cos(th), th]; };
+    // Written into `out` (x, z, the spiral's angle), so the frame loop asks it without allocating.
+    const chainAt = (i, out) => { const sArc = SPL * Math.max(0, i) / (POC.chain - 1), th = (-POC.chainR0 + Math.sqrt(POC.chainR0 * POC.chainR0 + 2 * SPB * sArc)) / SPB, r = POC.chainR0 + SPB * th; out[0] = r * Math.sin(th); out[1] = -r * Math.cos(th); out[2] = th; return out; };
     // The spiral recedes: genesis nearest the glass, the rim's blocks deepest and dimmer.
     const chainY = (i) => M.chainY + 0.25 - 0.9 * i / (POC.chain - 1);
     const blockGeo = own(() => noShadow(BL.models.merge(box({ w: 0.6, h: 0.6, d: 0.6, color: "#3b2608" }), box({ w: 0.56, h: 0.56, d: 0.62, color: C.btc, emissive: 0.8 }), box({ w: 0.62, h: 0.56, d: 0.56, color: C.btc, emissive: 0.8 }))));
@@ -1356,12 +1357,12 @@
       K.add(coastlines(), 0, M.mapY, 0, { glow: true });
       K.add(arcs(), 0, 0, 0);
       // The chain's link: one faint line along the spiral under the blocks.
-      { const geo = RM.helpers.blank(), w = 0.008, m = 4; for (let i = 0; i < (POC.chain - 1) * m; i++) { const a = chainAt(i / m), b = chainAt((i + 1) / m), ya = chainY(i / m), yb = chainY((i + 1) / m), dx = b[0] - a[0], dz = b[1] - a[1], d = Math.hypot(dx, dz) || 1, nx = -dz / d * w, nz = dx / d * w; RM.helpers.face(geo, [[a[0] + nx, ya, a[1] + nz], [b[0] + nx, yb, b[1] + nz], [b[0] - nx, yb, b[1] - nz], [a[0] - nx, ya, a[1] - nz]], GREEN, 0.22, [0, 1, 0]); } K.add(noShadow(geo), 0, 0, 0); }
+      { const geo = RM.helpers.blank(), w = 0.008, m = 4; for (let i = 0; i < (POC.chain - 1) * m; i++) { const a = chainAt(i / m, [0, 0, 0]), b = chainAt((i + 1) / m, [0, 0, 0]), ya = chainY(i / m), yb = chainY((i + 1) / m), dx = b[0] - a[0], dz = b[1] - a[1], d = Math.hypot(dx, dz) || 1, nx = -dz / d * w, nz = dx / d * w; RM.helpers.face(geo, [[a[0] + nx, ya, a[1] + nz], [b[0] + nx, yb, b[1] + nz], [b[0] - nx, yb, b[1] - nz], [a[0] - nx, ya, a[1] - nz]], GREEN, 0.22, [0, 1, 0]); } K.add(noShadow(geo), 0, 0, 0); }
       clusters.forEach((n, i) => K.node(`pocCluster${i}`, nodeLight(), n.x, n.y, n.z, { rx: -HALF_PI, glow: true, scale: 0.3 + 0.05 * n.w }));
       for (let i = 0; i < M.pulses; i++) K.node(`pocPulse${i}`, dotG(), 0, -1, 0, FLAT);
       for (let i = 0; i < M.markers; i++) for (let k = 0; k < 3; k++) K.node(`pocMark${i}_${k}`, dotW(), 0, -1, 0, FLAT);
       for (let i = 0; i < M.stream; i++) K.node(`pocStream${i}`, dotWSmall(), 0, -1, 0, FLAT);
-      for (let i = 0; i < POC.chain; i++) { const [cx, cz] = chainAt(i); K.node(`pocChain${i}`, (i ? edgesG : edgesO)(), cx, chainY(i), cz, {}); K.node(`pocChainF${i}`, (i ? faceG : faceO)(), cx, chainY(i), cz, { ry: Math.PI - Math.atan2(cx, cz), glow: true }); }
+      for (let i = 0; i < POC.chain; i++) { const [cx, cz] = chainAt(i, [0, 0, 0]); K.node(`pocChain${i}`, (i ? edgesG : edgesO)(), cx, chainY(i), cz, {}); K.node(`pocChainF${i}`, (i ? faceG : faceO)(), cx, chainY(i), cz, { ry: Math.PI - Math.atan2(cx, cz), glow: true }); }
       path.forEach(([x, z], i) => K.node(`pocRing${i}`, plinthGlow(), x, POC.roadY - 0.25, z, FLAT));
       for (let i = 0; i < POC.atoms; i++) for (let k = 0; k < 2; k++) K.node(`pocAtom${i}_${k}`, dotG(), 0, POC.roadY, 0, FLAT);
       for (let i = 0; i < 4; i++) K.node(`pocBurst${i}`, bloom(), 0, POC.roadY - 0.1 - i * 0.03, 0, FLAT);
@@ -1380,26 +1381,29 @@
       const clusterN = clusters.map((_, i) => N(`pocCluster${i}`)), pulseN = arr("pocPulse", M.pulses), streamN = arr("pocStream", M.stream);
       const markers = Array.from({ length: M.markers }, (_, i) => ({ nodes: [0, 1, 2].map((k) => N(`pocMark${i}_${k}`)), link: i % links.length, t: (i * 0.37) % 1, dir: 1, speed: 0.12 + (i % 4) * 0.03 }));
       const cites = THREADS.map((th, k) => ({ nodes: Array.from({ length: 5 }, (_, i) => N(`pocCite${k}_${i}`)), i: PLINTHS.findIndex((p) => p.id === th.id) })).filter((c) => c.i >= 0);
+      // Each citation's plinth stands still: its spot is found once here, not every frame.
+      for (const c of cites) c.spot = spotOf(c.i);
       const linkLen = linksD.map((n, i) => { const a = i / POC.netDots * TAU, el = (28 + (i % 3) * 14) * DEG, q = ROOMS.onSphere(L, a, el, 0.985), a2 = (i + 1) / POC.netDots * TAU, el2 = (28 + ((i + 1) % 3) * 14) * DEG, q2 = ROOMS.onSphere(L, a2, el2, 0.985); return Math.hypot(q2.x - q.x, q2.y - q.y, q2.z - q.z); });
       const capEl = CAP.el * DEG, capY = L.c + L.R * 0.97 * Math.sin(capEl) - 0.6, blockTop = capY - 0.3, blockFloor = POC.roadY;
       const chainE = arr("pocChain", POC.chain), chainF = arr("pocChainF", POC.chain);
-      const p = { x: 0, z: 0 }, q3 = { x: 0, y: 0, z: 0 }, T = POC;
+      // The frame loop's scratch: a point on the road, one in the room, the spiral's places, the candidates of a firing.
+      const p = { x: 0, z: 0 }, q3 = { x: 0, y: 0, z: 0 }, T = POC, ch0 = [0, 0, 0], ch1 = [0, 0, 0], cands = new Int32Array(Math.max(1, ...clusters.map((n) => n.links.length)));
       const tStream = T.stream, tTurn = tStream + T.turn, tBurst = tTurn + T.burst, tCharge = tBurst + T.charge, tNet = tCharge + T.net, tFade = tNet + T.fade;
       const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000;
       let forced = -1, lastT = -1, lastNow = 0, seedNow = 0;
       const rnd = (k) => { const x = Math.sin(k * 12.9898 + seedNow * 78.233) * 43758.5453; return x - Math.floor(x); };
-      const setScale = (n, s) => { n.scale.x = s; n.scale.y = s; n.scale.z = s; }, TRAIL = [0.7, 0.45, 0.28];
+      const setScale = (n, s) => { n.scale.x = s; n.scale.y = s; n.scale.z = s; }, TRAIL = [0.7, 0.45, 0.28], ATOM_LAG = [0, 0.5], ATOM_SIZE = [1, 0.5], BURST_LAG = [0, 0.08];
       const setBar = (n, len, thick) => { n.scale.x = Math.max(0.001, len); n.scale.y = n.scale.z = Math.max(0.001, thick); };
       const ease = (k) => k * k * (3 - 2 * k), clamp01 = (v) => Math.max(0, Math.min(1, v));
       // ---- the live side: the feed's blocks and inflow, the fallback timer, the fill ----
       const now0 = clock();
       // `heat` is the ₿'s fill: 0 as a block lands, 1 ten minutes on, and on to 1.3 while the next one is late.
-      const live = { mode: "fallback", rate: 1.2, liveAt: 0, lastBlockAt: now0 - (now0 % M.fallback), dropAt: -1e9, height: 0, fill: 0, heat: 0, landed: -1e9, landSeed: 0, drops: 0, newest: 0, wave: null, nextFee: 0 };
+      const live = { mode: "fallback", rate: 1.2, liveAt: 0, lastBlockAt: now0 - (now0 % M.fallback), dropAt: -1e9, height: 0, fill: 0, heat: 0, landed: -1e9, landSeed: 0, drops: 0, newest: 0, wave: { on: false, at: 0, from: 0 }, nextFee: 0 };
       // With the feeds on, the time of the chain's own last block (chain.js's snapshot) sets where the fill stands.
       const chainTip = () => { const snap = BL.chain && BL.chain.snapshot; return snap && snap.lastBlockAt > 0 ? snap.lastBlockAt / 1000 : 0; };
       let fallbackSlot = Math.floor(now0 / M.fallback);
       // A block: the mark peaks for two seconds (its lock wave), then one of its blocks drops and the fill starts again.
-      const drop = (height, from) => { const t = clock() + 2; live.dropAt = t; live.lastBlockAt = t; live.height = height || 0; live.drops++; live.newest = (live.newest + 1) % POC.chain; live.wave = { at: t + 5.2, from: from === undefined ? Math.floor(rnd(live.drops) * clusters.length) : from }; };
+      const drop = (height, from) => { const t = clock() + 2; live.dropAt = t; live.lastBlockAt = t; live.height = height || 0; live.drops++; live.newest = (live.newest + 1) % POC.chain; const w = live.wave; w.on = true; w.at = t + 5.2; w.from = from === undefined ? Math.floor(rnd(live.drops) * clusters.length) : from; };
       let unsub = null;
       if (BL.mempool && BL.mempool.subscribe && BL.mempool.state && BL.mempool.state.enabled) unsub = BL.mempool.subscribe((e) => { if (e.type === "block") drop(e.height); else if (e.type === "stats") { live.mode = "live"; live.liveAt = clock(); live.rate = Math.max(2, Math.min(5, (e.inflow || 0) / 300)); } else if (e.type === "fees") live.nextFee = e.nextFee || 0; });
       // ---- firing along the arcs ----
@@ -1408,16 +1412,27 @@
         const n = clusters[ni]; if (!n) return;
         n.glow = Math.max(n.glow, Math.min(1.4, energy));
         if (energy < 0.3) return;
-        let cands = n.links.filter((li) => li !== except);
-        if (inward) cands = cands.filter((li) => { const l = links[li], o = l.a === ni ? l.b : l.a; return Math.hypot(clusters[o].x, clusters[o].z) < Math.hypot(n.x, n.z); });
-        for (let k = 0; k < (energy > 0.9 ? 2 : 1) && cands.length; k++) {
-          const li = cands.splice(Math.floor(rnd(ni * 7 + k) * cands.length), 1)[0], free = pulses.find((pu) => !pu.on);
+        // The links it may fire along, into the scratch list in their own order (inward: only toward the middle).
+        let nc = 0;
+        for (let j = 0; j < n.links.length; j++) {
+          const li = n.links[j];
+          if (li === except) continue;
+          if (inward) { const l = links[li], o = l.a === ni ? l.b : l.a; if (Math.hypot(clusters[o].x, clusters[o].z) >= Math.hypot(n.x, n.z)) continue; }
+          cands[nc++] = li;
+        }
+        for (let k = 0; k < (energy > 0.9 ? 2 : 1) && nc; k++) {
+          const pick = Math.floor(rnd(ni * 7 + k) * nc), li = cands[pick];
+          for (let j = pick; j < nc - 1; j++) cands[j] = cands[j + 1];
+          nc--;
+          let free = null;
+          for (let j = 0; j < pulses.length; j++) if (!pulses[j].on) { free = pulses[j]; break; }
           if (!free) return;
-          Object.assign(free, { on: true, link: li, dir: links[li].a === ni ? 1 : -1, t: 0, energy });
+          free.on = true; free.link = li; free.dir = links[li].a === ni ? 1 : -1; free.t = 0; free.energy = energy;
         }
       };
       const stepPulses = (dt, cascade, inward) => {
-        for (const pu of pulses) {
+        for (let j = 0; j < pulses.length; j++) {
+          const pu = pulses[j];
           if (!pu.on) { setScale(pu.node, 0.001); continue; }
           const l = links[pu.link];
           pu.t += dt * 4.2 / l.len;
@@ -1438,7 +1453,8 @@
         spawnAcc += dt * rate;
         // Each spawn is a short trail of three dots from one cluster, so the dots read as streams up the wall.
         while (spawnAcc >= 1) { spawnAcc -= 1; const ci = Math.floor(rnd(Math.floor(now * 50)) * clusters.length), c = clusters[ci], size = 0.8 + Math.min(0.8, live.nextFee / 40); for (let k = 0; k < 3; k++) { let free = null; for (let j = 0; j < stream.length; j++) if (!stream[j].on) { free = stream[j]; break; } if (!free) break; free.on = true; free.t = -k * 0.22; free.x0 = c.x; free.z0 = c.z; free.az = Math.atan2(c.x, -c.z); free.size = size * (1 - 0.22 * k); free.tgt = -2; free.tx = 0; free.tz = 0; } c.glow = Math.max(c.glow, 0.5); }
-        for (const d of stream) {
+        for (let j = 0; j < stream.length; j++) {
+          const d = stream[j];
           if (!d.on) { setScale(d.node, 0.001); continue; }
           d.t += dt;
           const n = d.node;
@@ -1466,7 +1482,7 @@
       // The hints' geometry.
       const foot = portalFoot(L), nearIdx = PLINTHS.reduce((b, _, i) => Math.abs(azOf(i) - PORTAL.az) < Math.abs(azOf(b) - PORTAL.az) ? i : b, 0), sPortal = cum[nearIdx], roadPt = at(sPortal, { x: 0, z: 0 });
       const strays = arr("pocStray", 3), arm = arr("pocArm", 8), trickle = arr("pocTrickle", 8);
-      { const e = chainAt(POC.chain - 1); arm.forEach((n, i) => { if (!n) return; const u = (i + 1) / 8; n.position.x = e[0] + (foot.x - e[0]) * u; n.position.z = e[1] + (foot.z - e[1]) * u; }); }
+      { const e = chainAt(POC.chain - 1, ch0); for (let i = 0; i < arm.length; i++) { const n = arm[i]; if (!n) continue; const u = (i + 1) / 8; n.position.x = e[0] + (foot.x - e[0]) * u; n.position.z = e[1] + (foot.z - e[1]) * u; } }
       const tStray0 = T.stream * sPortal / ringLen;
       const update = () => {
         const now = clock(), dt = lastNow ? Math.min(0.1, now - lastNow) : 1 / 60; lastNow = now; seedNow = Math.floor(now * 8);
@@ -1487,26 +1503,27 @@
         // ---- the network's firings: the story when the show runs, a propagation wave on a block, gentle traffic otherwise ----
         if (t < tStream) { if (crossed(t, 0.5)) { at(head, p); fire(nearest(p.x, p.z), 1.1); } }
         else if (t < tTurn) { if (crossed(t, 0.3)) for (let k = 0; k < 2; k++) fire(Math.floor(rnd(Math.floor(t * 10) + k * 31) * clusters.length), 1.0, -1, true); }
-        else if (t < tBurst) { if (crossed(t, 10, tTurn)) for (const n of clusters) n.glow = 1.3; }
+        else if (t < tBurst) { if (crossed(t, 10, tTurn)) for (let i = 0; i < clusters.length; i++) clusters[i].glow = 1.3; }
         else if (t < tNet) { const front = (t - tBurst) * M.wave; for (let i = 0; i < clusters.length; i++) { const r = Math.hypot(clusters[i].x, clusters[i].z); if (r <= front && r > front - M.wave * dt * 1.05) fire(i, 1.1); } }
         if (crossed(now, 0.9)) fire(Math.floor(rnd(Math.floor(now)) * clusters.length), 0.6);
-        if (live.wave && now >= live.wave.at) { const w = live.wave, o = clusters[w.from], front = (now - w.at) * M.wave; for (let i = 0; i < clusters.length; i++) { const r = Math.hypot(clusters[i].x - o.x, clusters[i].z - o.z); if (r <= front && r > front - M.wave * dt * 1.05) fire(i, 1.3); } if (front > 2 * M.mapR) live.wave = null; }
+        if (live.wave.on && now >= live.wave.at) { const w = live.wave, o = clusters[w.from], front = (now - w.at) * M.wave; for (let i = 0; i < clusters.length; i++) { const r = Math.hypot(clusters[i].x - o.x, clusters[i].z - o.z); if (r <= front && r > front - M.wave * dt * 1.05) fire(i, 1.3); } if (front > 2 * M.mapR) live.wave.on = false; }
         stepPulses(dt, 0.7, t >= tStream && t < tTurn);
         for (let i = 0; i < clusters.length; i++) { const n = clusters[i], node = clusterN[i]; if (!node) continue; n.glow *= Math.exp(-dt * 1.5); setScale(node, (0.3 + 0.05 * n.w) * (1 + 0.06 * Math.sin(now * 0.8 + n.seed)) + 0.55 * n.glow); }
         stepMarkers(dt, now);
         stepStream(dt, now);
         // ---- the road's atoms (the show's stream phase), the plinth glows, the bloom ----
         for (let i = 0; i < atoms.length; i++) {
-          const [n0, n1] = atoms[i], s = head - i * T.spacing;
-          if (t >= tFade || (!bursting && s < 0)) { setScale(n0, 0.001); setScale(n1, 0.001); continue; }
-          if (!bursting) { [[n0, 0, 1], [n1, 0.5, 0.5]].forEach(([n, lag, sc]) => { at(s - lag, p); n.position.x = p.x + Math.sin(t * 7 + i * 1.7) * 0.2; n.position.z = p.z + Math.cos(t * 5 + i * 2.1) * 0.2; n.position.y = T.roadY + Math.sin(t * 9 + i) * 0.08; setScale(n, sc); }); }
-          else { const r = tb * 9, a = i / atoms.length * TAU + tb * 2, sc = tb < T.burst ? 1.2 * (1 - tb / T.burst) : 0.001; [[n0, 0], [n1, 0.08]].forEach(([n, lag]) => { const rr = Math.max(0, r - lag * 9); n.position.x = Math.sin(a - lag * 2) * rr; n.position.z = -Math.cos(a - lag * 2) * rr; n.position.y = T.roadY; setScale(n, sc); }); }
+          const pair = atoms[i], s = head - i * T.spacing;
+          if (t >= tFade || (!bursting && s < 0)) { setScale(pair[0], 0.001); setScale(pair[1], 0.001); continue; }
+          // Each atom is a dot and its fainter follower (`ATOM_LAG`, `ATOM_SIZE`; out in the burst, `BURST_LAG`).
+          if (!bursting) for (let k = 0; k < 2; k++) { const n = pair[k]; at(s - ATOM_LAG[k], p); n.position.x = p.x + Math.sin(t * 7 + i * 1.7) * 0.2; n.position.z = p.z + Math.cos(t * 5 + i * 2.1) * 0.2; n.position.y = T.roadY + Math.sin(t * 9 + i) * 0.08; setScale(n, ATOM_SIZE[k]); }
+          else { const r = tb * 9, a = i / atoms.length * TAU + tb * 2, sc = tb < T.burst ? 1.2 * (1 - tb / T.burst) : 0.001; for (let k = 0; k < 2; k++) { const n = pair[k], lag = BURST_LAG[k], rr = Math.max(0, r - lag * 9); n.position.x = Math.sin(a - lag * 2) * rr; n.position.z = -Math.cos(a - lag * 2) * rr; n.position.y = T.roadY; setScale(n, sc); } }
         }
         for (let i = 0; i < rings.length; i++) { const reached = head - cum[i]; let s = 0.001; if (bursting) s = i === rings.length - 1 ? 0.001 : Math.max(0.001, 0.6 * after); else if (reached > 0) s = reached < 1.5 ? 0.3 + 0.9 * reached / 1.5 : Math.max(0.6, 1.2 - (reached - 1.5) * 0.08); setScale(rings[i], s); }
         const kb = bursting ? (tb < T.burst ? tb / T.burst : Math.max(0, 1 - (tb - T.burst) / 1.5)) : 0;
         for (let i = 0; i < bursts.length; i++) setScale(bursts[i], Math.max(0.001, kb * (3 + i * 2.2)));
         const onRefs = BL.timechainGenesis.readerPage === 8;
-        for (let c = 0; c < cites.length; c++) { const ct = cites[c], sp = spotOf(ct.i), on = onRefs || (t >= tBurst + c * 0.4 && t < tNet); for (let i = 0; i < ct.nodes.length; i++) { const n = ct.nodes[i]; if (!n) continue; if (!on) { setScale(n, 0.001); continue; } const u = ((now * 0.5 + i / ct.nodes.length + c * 0.13) % 1); n.position.x = sp.x * 0.1 + sp.x * 0.8 * u; n.position.z = sp.z * 0.1 + sp.z * 0.8 * u; setScale(n, 0.5 * (u < 0.1 ? u / 0.1 : u > 0.9 ? (1 - u) / 0.1 : 1) * after); } }
+        for (let c = 0; c < cites.length; c++) { const ct = cites[c], sp = ct.spot, on = onRefs || (t >= tBurst + c * 0.4 && t < tNet); for (let i = 0; i < ct.nodes.length; i++) { const n = ct.nodes[i]; if (!n) continue; if (!on) { setScale(n, 0.001); continue; } const u = ((now * 0.5 + i / ct.nodes.length + c * 0.13) % 1); n.position.x = sp.x * 0.1 + sp.x * 0.8 * u; n.position.z = sp.z * 0.1 + sp.z * 0.8 * u; setScale(n, 0.5 * (u < 0.1 ? u / 0.1 : u > 0.9 ? (1 - u) / 0.1 : 1) * after); } }
         const charged = t >= tBurst && t < tFade;
         for (let i = 0; i < dots.length; i++) { const lit = charged && t >= tCharge + (i / dots.length) * T.net * 0.8; if (dots[i]) setScale(dots[i], lit ? 0.9 * after : 0.001); const frontAt = (t - tCharge) / (T.net * 0.8) * dots.length, linkLit = charged && i + 1 <= frontAt && i + 1 > frontAt - 8; if (linksD[i]) setBar(linksD[i], linkLit ? linkLen[i] : 0, linkLit ? 0.6 * after : 0); }
         // ---- the block: on a drop it falls from the ₿ to the glass (5 s), runs the spiral to the newest place (5 s), and a pulse runs back to genesis (5 s) ----
@@ -1514,17 +1531,17 @@
         // comes out under the glass at the chain's first place.
         if (block) {
           if (td >= 0 && td < 5) {
-            const d = ease(td / 5), g0 = chainAt(0), from = MARK.squares[MARK.drop], y = blockTop - (blockTop - blockFloor) * d, over = MID_TOP + HOLO.foot + HOLO.tall + 0.6;
+            const d = ease(td / 5), g0 = chainAt(0, ch0), from = MARK.squares[MARK.drop], y = blockTop - (blockTop - blockFloor) * d, over = MID_TOP + HOLO.foot + HOLO.tall + 0.6;
             const off = y > over ? 1 - ease((blockTop - y) / (blockTop - over)) : 0, under = y < MID_TOP ? (MID_TOP - y) / (MID_TOP - blockFloor) : 0;
             block.position.x = from.x * off + g0[0] * under; block.position.z = from.z * off + g0[1] * under; block.position.y = y; block.rotation.y = now * 0.6; setScale(block, 1);
           }
-          else if (td >= 5 && td < 10) { const u = ease((td - 5) / 5), i = u * live.newest, kk = Math.floor(i), f = i - kk, a0 = chainAt(kk), a1 = chainAt(Math.min(POC.chain - 1, kk + 1)); block.position.x = a0[0] + (a1[0] - a0[0]) * f; block.position.z = a0[1] + (a1[1] - a0[1]) * f; block.position.y = blockFloor + (M.chainY - blockFloor) * Math.min(1, u * 3); block.rotation.y = -a0[2]; setScale(block, 0.6); }
+          else if (td >= 5 && td < 10) { const u = ease((td - 5) / 5), i = u * live.newest, kk = Math.floor(i), f = i - kk, a0 = chainAt(kk, ch0), a1 = chainAt(Math.min(POC.chain - 1, kk + 1), ch1); block.position.x = a0[0] + (a1[0] - a0[0]) * f; block.position.z = a0[1] + (a1[1] - a0[1]) * f; block.position.y = blockFloor + (M.chainY - blockFloor) * Math.min(1, u * 3); block.rotation.y = -a0[2]; setScale(block, 0.6); }
           else setScale(block, 0.001);
         }
         // ---- the chain: holographic cubes gliding slowly along the spiral; genesis and the newest in orange; the pulse back ----
         const glide = (now * 0.05) % 1, pulseAt = td >= 10 && td < 15 ? (1 - ease((td - 10) / 5)) * live.newest : -1;
         for (let i = 0; i < chainE.length; i++) {
-          const e = chainE[i], f = chainF[i], pos = chainAt(Math.min(POC.chain - 1 + 0.999, i + glide));
+          const e = chainE[i], f = chainF[i], pos = chainAt(Math.min(POC.chain - 1 + 0.999, i + glide), ch0);
           const orange = i === 0 || i === live.newest, lit = pulseAt >= 0 && i - pulseAt >= 0 && i - pulseAt < 8;
           const deep = 1 - 0.35 * i / (POC.chain - 1);
           if (e) { e.position.x = pos[0]; e.position.z = pos[1]; e.position.y = chainY(i + glide); e.rotation.y = -pos[2] + now * 0.15; e.geometry = orange ? edgesO() : edgesG(); setScale(e, deep * (orange ? 1.3 : 0.9) * (lit ? 1.35 : 1) * (i === live.newest && td >= 0 && td < 10 ? 0.001 : 1)); }
@@ -1746,10 +1763,11 @@
     // same squares turn), how many have been handed to a dot (`next`), and `light`, a landing.
     const tiles = MARK.squares.map((q, i) => ({ ...q, node: nodes[`btile${i}`], lit: false, at: -1e9, d: Math.hypot(q.x, q.z), seed: (i * 7919) % 97, look: "", sc: -1 })), reach = Math.max(...tiles.map((q) => q.d));
     const glowOf = Array.from({ length: MARK.cols * MARK.rows }, (_, k) => nodes[`bglow:${k % MARK.cols}:${Math.floor(k / MARK.cols)}`] || null), litArea = new Float32Array(MARK.cols * MARK.rows);
-    const mark = { order: [], next: 0, lit: 0, target: 0, block: NaN, count: tiles.length,
+    const mark = { order: new Int32Array(tiles.length), next: 0, lit: 0, target: 0, block: NaN, count: tiles.length,
       claim() { return this.next < this.target ? this.order[this.next++] : -1; },
-      light(i, at, spark) { const q = tiles[i]; if (!q || q.lit) return; q.lit = true; q.at = spark ? at : -1e9; this.lit++; for (const k of q.cells) litArea[k] += q.n * q.n / q.cells.length / 16; },
-      reset(blockAt) { this.block = blockAt; this.next = 0; this.lit = 0; litArea.fill(0); for (const q of tiles) { q.lit = false; q.at = -1e9; } const rr = P.rng(Math.floor(blockAt) % 2147483647 || 1); this.order = tiles.map((_, i) => i); for (let i = this.order.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)); [this.order[i], this.order[j]] = [this.order[j], this.order[i]]; } }
+      light(i, at, spark) { const q = tiles[i]; if (!q || q.lit) return; q.lit = true; q.at = spark ? at : -1e9; this.lit++; for (let j = 0; j < q.cells.length; j++) litArea[q.cells[j]] += q.n * q.n / q.cells.length / 16; },
+      // The order is shuffled in place, in the one list the mark keeps; only the block's own generator is made anew.
+      reset(blockAt) { this.block = blockAt; this.next = 0; this.lit = 0; litArea.fill(0); for (let i = 0; i < tiles.length; i++) { tiles[i].lit = false; tiles[i].at = -1e9; } const rr = P.rng(Math.floor(blockAt) % 2147483647 || 1), o = this.order; for (let i = 0; i < o.length; i++) o[i] = i; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)), v = o[i]; o[i] = o[j]; o[j] = v; } }
     };
     BL.timechainGenesis.mark = mark;
     let screenState = -2;
@@ -2037,8 +2055,8 @@
           let d = Infinity;
           for (let j = 0; j < s.spots.length; j++) d = Math.min(d, Math.hypot(s.spots[j].x - px, s.spots[j].z - pz));
           const near = s.isNear ? d < LOD_FAR : d < LOD_NEAR;
-          if (near !== s.isNear) { s.isNear = near; s.near.visible = s.nearGlass.visible = near; s.far.visible = s.farGlass.visible = !near; for (const q of s.flows) q.node.visible = near; for (const q of s.blinks) q.node.visible = near; }
-          if (near && !calm.matches) { for (const q of s.flows) drift(q, (now / q.period + q.phase) % 1); for (const q of s.blinks) q.node.visible = (now / q.period + q.phase) % 1 < 0.6; }
+          if (near !== s.isNear) { s.isNear = near; s.near.visible = s.nearGlass.visible = near; s.far.visible = s.farGlass.visible = !near; for (let j = 0; j < s.flows.length; j++) s.flows[j].node.visible = near; for (let j = 0; j < s.blinks.length; j++) s.blinks[j].node.visible = near; }
+          if (near && !calm.matches) { for (let j = 0; j < s.flows.length; j++) { const q = s.flows[j]; drift(q, (now / q.period + q.phase) % 1); } for (let j = 0; j < s.blinks.length; j++) { const q = s.blinks[j]; q.node.visible = (now / q.period + q.phase) % 1 < 0.6; } }
         }
         portal.update(dt, px, pz, now);
         if (dropnowAt && now >= dropnowAt) { dropnowAt = 0; dbg.genesis.dropBlock(); }
