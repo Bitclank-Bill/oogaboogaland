@@ -44,7 +44,7 @@ No network asset is required: this is prebuilding and GPU warming, rather than
 a network fetch. Captures and audio begin only on entry. A direct debug arrival
 uses the same preparation path if nothing has been warmed yet.
 
-The room remains prepared for the hub visit, with at most 34 small camera targets (32 area feeds and two alternating face buffers);
+The room remains prepared for the hub visit, with at most 34 small camera targets (32 area feeds and a clean face seed and a live face buffer);
 leaving the hub releases them with their owning geometries. Context restoration
 recreates targets and quality changes select the current target size.
 
@@ -97,7 +97,7 @@ WebGL contexts.
 - Canvas 2D draws the room with honestly labelled offline screens.
 
 Thirty-two high-tier area targets use 4.5 MiB before depth attachments; the shared
-face camera adds two alternating buffers totaling 0.28 MiB as it starts capturing. Source world
+face camera adds two buffers totaling 0.28 MiB as it starts capturing. Source world
 geometry and simulation dominate the memory budget; screen count does not
 multiply the number of cameras or textures.
 
@@ -113,10 +113,13 @@ travel or changing the controlled character.
 
 One camera follows the actual authored head transform and proportions, including
 looking and swiveling. It includes the actual room behind the Ooga: walls, floor,
-chair and the TV wall, with its camera kept inside the chamber. Background TVs
-sample their last completed images. Two small face buffers alternate so a screen
-never samples the framebuffer currently being written; this adds no nested
-captures. Mirrors and portal effects remain excluded. Its image is shared by every panel. It prewarms before the
+chair and the TV wall, with its camera kept inside the chamber. Background TVs show the Ooga’s face with recursion capped at one nested layer.
+The prewarm captures a clean image before any screen switches to faces; that
+image is held inside the background TVs for the whole transition. The foreground
+close-up stays live in a separate buffer. The deepest image therefore contains
+ordinary area feeds, never another face broadcast. This prevents feedback from
+deepening over time and avoids sampling the framebuffer being written; it adds
+no nested captures. Mirrors and portal effects remain excluded. Its image is shared by every panel. It prewarms before the
 wave and waits for its first valid capture. During the broadcast it requests up
 to ten captures per second (less on low quality or slow frames), within the same
 global capture budget; it never adds an extra capture pass to a frame. Area feeds

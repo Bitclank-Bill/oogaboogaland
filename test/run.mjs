@@ -17087,7 +17087,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const beforeBackground = face.captures;
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
-    const background = face.roomTriangles > 0 && face.captures > beforeBackground && face.camera.far > 22;
+    const background = face.roomTriangles > 0 && face.captures > beforeBackground && face.camera.far > 22 && !face.seedOnly;
     room.update(BL.architectCave.FACE_HOLD); room.update(1.5);
     const restoring = room.broadcast === "to-feeds" && count() > 0 && count() < panels.length;
     room.update(BL.architectCave.FACE_SWEEP);

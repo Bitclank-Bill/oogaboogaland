@@ -3580,7 +3580,10 @@ void main() {
       if (surface?.atlas && !surface.canvas) BL.models.paintFoliageAtlas(surface);
       const canvas = surface?.canvas;
       const feed = surface?.feed, version = feed ? feed.geometry.imageSurface.version : surface?.version;
-      const feedTarget = feed ? reflectorTargets.get(feed.geometry) : null;
+      // A face capture sees the clean prewarm image in its background TVs. That image was taken
+      // before any TV showed a face, so repeated live captures cannot deepen the recursion.
+      const feedGeometry = feed && (feed.seedOnly || cameraFeedRoom && feed.roomBackground) ? feed.backGeometry : feed?.geometry;
+      const feedTarget = feed ? reflectorTargets.get(feedGeometry) : null;
       const feedReady = !!feedTarget?.valid && !surface.feed.pending;
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
@@ -4753,8 +4756,8 @@ void main() {
       // rebuild, CPU readback or recursive portal capture. Its geometry owns the target through releaseGeometry.
       if (captureFeed) {
         const feed = captureFeed;
-        const previous = reflectorTarget(feed.geometry);
-        const target = feed.backGeometry ? reflectorTarget(feed.backGeometry) : previous, cam = feed.camera;
+        const seed = !!feed.backGeometry && feed.pending;
+        const target = reflectorTarget(seed ? feed.backGeometry : feed.geometry), cam = feed.camera;
         target.fixedWidth = qualityName === "low" ? 192 : 256; target.fixedHeight = target.fixedWidth * 9 / 16;
         target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;
         Object.assign(mirrorEye, cam.position);
@@ -4783,8 +4786,9 @@ void main() {
             captureProfile = captureGeometry = null;
           }
         }
-        // Publish only after the capture finishes; no screen samples the framebuffer being written.
-        if (feed.backGeometry) { reflectorTargets.set(feed.geometry, target); reflectorTargets.set(feed.backGeometry, previous); }
+        // Until the first live capture, display the clean seed. Keep it unchanged throughout this
+        // broadcast: later passes write only the foreground target and sample only the seed behind it.
+        if (feed.backGeometry) feed.seedOnly = seed;
         feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
         feed.pending = feed.forceCapture = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
         cameraFeedLast = stamp;
