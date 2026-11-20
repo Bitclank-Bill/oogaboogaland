@@ -5,7 +5,7 @@
   const BL = window.BL = window.BL || {};
   const create = () => {
     const channel = BL.sound.channel("room"), voices = [];
-    let ctx = null, master = null, bank = null, pan = null, relay = null, crossing = null, penNoise = null, penTone = null;
+    let ctx = null, master = null, bank = null, pan = null, relay = null, crossing = null, penNoise = null, penBody = null, penTone = null, penFilter = null;
     let enabled = true, disposed = false, timer = 0, since = 0, elapsed = 0, nextTick = 8;
     const gain = (value, to) => {
       const node = ctx.createGain(); node.gain.value = value; node.connect(to); return node;
@@ -40,24 +40,43 @@
       const random = BL.math.mulberry32(71403);
       for (let i = 0; i < samples.length; i++) samples[i] = random() * 2 - 1;
       const noise = ctx.createBufferSource(); noise.buffer = buffer; noise.loop = true; noise.connect(air); noise.start(); voices.push(noise);
-      const clickFilter = ctx.createBiquadFilter(); clickFilter.type = "bandpass"; clickFilter.frequency.value = 2400; clickFilter.Q.value = 1.4;
-      penNoise = gain(0, master); noise.connect(clickFilter); clickFilter.connect(penNoise);
-      penTone = tone(1250, 0, master);
+      penFilter = ctx.createBiquadFilter(); penFilter.type = "bandpass"; penFilter.frequency.value = 3200; penFilter.Q.value = 0.8;
+      penNoise = gain(0, master); noise.connect(penFilter); penFilter.connect(penNoise);
+      const bodyFilter = ctx.createBiquadFilter(); bodyFilter.type = "bandpass"; bodyFilter.frequency.value = 850; bodyFilter.Q.value = 1.1;
+      penBody = gain(0, master); noise.connect(bodyFilter); bodyFilter.connect(penBody);
+      penTone = tone(2300, 0, master);
       relay = tone(683, 0, pan); crossing = tone(196, 0, master);
       master.gain.setTargetAtTime(0.65, ctx.currentTime, 0.35); arrive();
     };
-    const clickEnvelope = (volume, level, now) => {
+    const clickPulse = (volume, at, level, tail) => {
+      volume.setValueAtTime(0, at - 0.001);
+      volume.linearRampToValueAtTime(level, at);
+      volume.exponentialRampToValueAtTime(0.0001, at + tail);
+      volume.setValueAtTime(0, at + tail + 0.002);
+    };
+    const clickEnvelope = (volume, down, up, now, tail) => {
       volume.cancelScheduledValues(now); volume.setValueAtTime(0, now);
-      volume.setValueAtTime(0, now + 0.046); volume.linearRampToValueAtTime(level, now + 0.05);
-      volume.exponentialRampToValueAtTime(0.0001, now + 0.075);
-      volume.linearRampToValueAtTime(level * 0.45, now + 0.105);
-      volume.exponentialRampToValueAtTime(0.0001, now + 0.14); volume.setValueAtTime(0, now + 0.15);
+      // A dry latch, silence, then a brighter return-stop click: two attacks, never a swelling second beep.
+      clickPulse(volume, now + 0.05, down, tail);
+      clickPulse(volume, now + 0.17, up, tail * 0.7);
     };
     const click = () => {
       activate();
       if (!ctx || !enabled || disposed || document.hidden || BL.sound.muted) return;
-      // The latch engages at the thumb's deepest press; its spring releases on the return.
-      clickEnvelope(penNoise.gain, 0.11, ctx.currentTime); clickEnvelope(penTone.volume.gain, 0.025, ctx.currentTime);
+      const now = ctx.currentTime, strength = 0.94 + Math.random() * 0.12;
+      // Match the button reaching its stop at 50 ms and springing fully back at 170 ms.
+      // Low plastic-body noise gives the press weight; the release is shorter and sharper.
+      clickEnvelope(penNoise.gain, 0.16 * strength, 0.2 * strength, now, 0.013);
+      clickEnvelope(penBody.gain, 0.12 * strength, 0.065 * strength, now, 0.024);
+      clickEnvelope(penTone.volume.gain, 0.008 * strength, 0.005 * strength, now, 0.009);
+      const filter = penFilter.frequency, spring = penTone.source.frequency;
+      filter.cancelScheduledValues(now); filter.setValueAtTime(3200 * strength, now);
+      filter.setValueAtTime(4600 * strength, now + 0.16);
+      spring.cancelScheduledValues(now); spring.setValueAtTime(2300 * strength, now);
+      spring.setValueAtTime(2300 * strength, now + 0.049);
+      spring.exponentialRampToValueAtTime(1600 * strength, now + 0.063);
+      spring.setValueAtTime(3100 * strength, now + 0.169);
+      spring.exponentialRampToValueAtTime(2200 * strength, now + 0.18);
     };
     const quiet = () => {
       clearTimeout(timer); timer = 0;
@@ -103,7 +122,7 @@
         window.removeEventListener("pointerdown", activate, true); window.removeEventListener("keydown", activate, true);
         document.removeEventListener("visibilitychange", refresh);
         if (ctx) ctx.close().catch(() => {});
-        ctx = master = bank = pan = relay = crossing = penNoise = penTone = null; voices.length = 0;
+        ctx = master = bank = pan = relay = crossing = penNoise = penBody = penTone = penFilter = null; voices.length = 0;
       }
     };
   };

@@ -35,11 +35,10 @@ the occupied chair; movement or Space stands up into clear floor ahead of it.
 Sitting places a pen in the Ooga’s existing right hand. Both first and third
 person keep the default seated arm and wrist pose, anchored to the body. Looking
 down moves the camera, so the pen naturally moves through the frame with the arm.
-The grip uses the character’s existing fist builder, preserving its palm, finger
-layout, size and hand color; only its original thumb folds over the clicker.
-Clicking depresses the thumb and button, then springs them back over 170 ms.
-The same hand appears in the room, reflections and face feed. Standing restores
-the original fist geometry. Left-click (or tap the view), without moving the cursor,
+The character’s default fist, including its thumb, stays unchanged; the pen
+sticks out of that fist. Clicking depresses the pen button and springs it back
+over 170 ms. The same hand appears in the room, reflections and face feed.
+Left-click (or tap the view), without moving the cursor,
 toggles area feeds and the face broadcast using the same outward sweep. The
 chosen view stays until the next click; standing removes the pen and resumes
 automatic transitions. A click during a sweep queues the chosen view until the
@@ -259,9 +258,11 @@ not reuse Bifrost's motif, heartbeat, world chords or recordings.
 
 Seven oscillators and one looping noise source are built once after browser audio
 activation. Slow controls update at 10 Hz, with no per-frame or per-cue node
-allocation. The pen’s dry two-part click uses a pooled filtered-noise branch
-and a brief resonant tone: its latch sounds at the 50 ms thumb press, followed
-by the quieter spring release. It follows the Room hum channel and master mute.
+allocation. The pen’s two-part click uses separate pooled noise bands for the
+plastic body and crisp mechanism, with a very short, quiet spring resonance.
+The down-click lands at the button stop (50 ms); after a silent gap, a brighter,
+shorter up-click lands at its return stop (170 ms). Slight intensity and pitch
+variation keeps repeated clicks from sounding identical. It follows the Room hum channel and master mute.
 The monitor texture grows toward the walls and pans with the view;
 the center is quieter. Weather audio is disabled inside. The pictures have no
 soundtrack or duplicated outdoor voice.
@@ -302,9 +303,9 @@ sweep directions. The background update, seated pen/click controls and equipment
 browser acceptance. Added, unrun checks cover ownership hiding, pen cleanup,
 persistent seated views and automatic transitions resuming after standing.
 Additional unrun assertions cover the original fist layout, body-anchored arm in
-both views, stationary third-person clicking, thumb/button travel, hand restoration,
+both views, stationary third-person clicking, button travel, unchanged fist geometry,
 bottom-leading wave and feed-only mirror infill. The
-pen framing, thumb contact and click sound still need visual/listening acceptance.
+pen framing and revised down/up click sound still need visual/listening acceptance.
 Added, unrun regression assertions cover 3×3-to-single and single-to-3×3 waves,
 ordered tile arrivals, retaining old tiles while a destination is pending, shared
 feed retention and adjacency during and after waves. Fresh visual review of regrouping

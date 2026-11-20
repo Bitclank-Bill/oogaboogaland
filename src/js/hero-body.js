@@ -273,7 +273,7 @@
   const POINTING = [[BACK, KNUCKLE], [BACK, -2.6], [-1.1, -2.8], [-0.62, -2.8], [-0.42, -2.6], [-0.42, ROOT], [BACK, ROOT]];
   // `point` is the same fist with the finger beside the thumb out straight, the thumb lying across the other two.
   // `lift` folds the thumb across that much higher up the fist, so its base runs less far down the palm.
-  const hand = (side, skin, s = 1, wrist = [1.25, 1.05, 0.4], point = false, lift = 0, penThumb = null) => {
+  const hand = (side, skin, s = 1, wrist = [1.25, 1.05, 0.4], point = false, lift = 0) => {
     const g = geometry(), inside = shade(skin, 0.5);
     // The hand: whole from the wrist down over the fingers' tips (the heel of the palm), and behind them below that
     // (the back of the hand) down to the knuckles, its corners easing to the fingers' where they root in it.
@@ -302,19 +302,7 @@
     // The thumb's stations as [how far in from the hand's side (or, from the fold on, where across), height, ...]:
     // lifted, the base is drawn up toward the wrist and everything from the fold on rises with it.
     const up = (y) => y + lift * Math.max(0, Math.min(1, (1.25 - y) / 1.5));
-    // A pen uses the same palm, finger cuts and thumb sections. Only the thumb's fold changes:
-    // it curls over the end of the pen on its own side of the fist, still rooted inside the wrist.
-    if (penThumb) sweep(penThumb, [
-      [(wide(1.25) - 0.4) * S, 1.25, 0.55, S, 0, 0.36, 0.55, 0.22],
-      [(wide(0.75) - 0.25) * S, 0.75, 0.7, 0.95 * S, 0.3, 0.58, 0.66, 0.26],
-      [1.75 * S, 0.45, 0.85, 0.97 * S, -0.25, 0.6, 0.64, 0.26],
-      [2.45 * S, 0.3, 1.08, 0.6 * S, 0.8, 0.55, 0.58, 0.24],
-      [2.9 * S, 0.1, 1.15, S, 0, 0.5, 0.52, 0.22],
-      [2.85 * S, -0.35, 1.15, 0.3 * S, -0.95, 0.47, 0.47, 0.2],
-      [2.55 * S, -0.35, 1.15, 0, -1, 0.44, 0.43, 0.2],
-      [2.2 * S, -0.35, 1.15, 0, -1, 0.4, 0.38, 0.18]
-    ], skin);
-    else sweep(g, [[null, 0.4, 1.25, 0.55, S, 0, 0.36, 0.55, 0.22], [null, 0.25, 0.75, 0.7, 0.95 * S, 0.3, 0.58, 0.66, 0.26], [null, 0.18, 0.2, 0.85, 0.97 * S, -0.25, 0.6, 0.64, 0.26],
+    sweep(g, [[null, 0.4, 1.25, 0.55, S, 0, 0.36, 0.55, 0.22], [null, 0.25, 0.75, 0.7, 0.95 * S, 0.3, 0.58, 0.66, 0.26], [null, 0.18, 0.2, 0.85, 0.97 * S, -0.25, 0.6, 0.64, 0.26],
       [1.52, 0, -0.25, 1.08, 0.8 * S, -0.6, 0.55, 0.58, 0.24], [1.25, 0, -0.55, 1.36, 0.3 * S, -0.95, 0.5, 0.52, 0.22], [0.8, 0, -0.66, 1.46, 0, -1, 0.47, 0.47, 0.2],
       [0.25, 0, -0.68, 1.44, 0, -1, 0.44, 0.43, 0.2], [-0.1, 0, -0.68, 1.4, 0, -1, 0.4, 0.38, 0.18]]
       .map(([x, inset, y, ...rest]) => [(x === null ? wide(up(y)) - inset : x) * S, up(y), ...rest]), skin);
@@ -556,18 +544,6 @@
     for (const [g, side, tone] of [[handR, -1, hands[0]], [handL, 1, hands[1]]]) {
       let made = null;
       g.pointing = () => made || (made = scaled(hand(side, tone, hs, wristOf, true), u), made.characterPart = true, made);
-      let grip = null;
-      g.penGrip = () => {
-        if (grip) return grip;
-        const thumb = geometry(), fist = scaled(hand(side, tone, hs, wristOf, false, 0, thumb), u), unit = hs * u;
-        scaled(thumb, unit);
-        const pivot = [side * (wristOf[0] - 0.4) * unit, 1.25 * unit, 0.55 * unit];
-        for (let i = 0; i < thumb.verts.length; i += 3) {
-          thumb.verts[i] -= pivot[0]; thumb.verts[i + 1] -= pivot[1]; thumb.verts[i + 2] -= pivot[2];
-        }
-        fist.characterPart = thumb.characterPart = true;
-        return grip = { fist, thumb, pivot, unit };
-      };
     }
     return { torso: scaled(torso, u), arm: armR, armL, forearm: forearmR, forearmL, leg: legR, legL,
       handR, handL, armX: B.armX * u, armDrop: (B.armDrop || 0) * u, armScale: armK,

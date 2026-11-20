@@ -92,24 +92,21 @@
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
     let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 20 + Math.random() * 10;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
-    let penButton = null, penThumb = null, penHand = null, originalHand = null, clickTime = 1;
+    let penButton = null, penHand = null, clickTime = 1;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
     const removePen = () => {
       if (pen?.parent) removeChild(pen.parent, pen);
-      if (penThumb?.parent) removeChild(penThumb.parent, penThumb);
-      if (penHand) penHand.geometry = originalHand;
-      penHand = originalHand = null;
+      penHand = null;
       clickTime = 1;
     };
     const updatePen = dt => {
       if (!penHand) return;
       clickTime = Math.min(1, clickTime + dt);
-      const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.08 ? 1 : Math.max(0, 1 - (clickTime - 0.08) / 0.09);
+      const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.1 ? 1 : Math.max(0, 1 - (clickTime - 0.1) / 0.07);
       penButton.position.y = 0.19 - press * 0.018;
-      penThumb.rotation.z = press * 0.15;
-      // The crew owns the normal seated arm pose in every view. Only the thumb and clicker move.
+      // The crew owns the default arm and fist in every view. Only the pen clicker moves.
     };
     const parkEquipment = actor => {
       if (actor === parkedActor) return;
@@ -149,22 +146,14 @@
       if (!active || !crew.sitPlayer(seat)) return false;
       seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
       seat.sitter.root.rotation.y = seat.ry;
-      penHand = seat.sitter.parts.fingersR; originalHand = penHand.geometry;
-      const grip = originalHand.penGrip?.();
-      if (grip) {
-        penHand.geometry = grip.fist; penThumb.geometry = grip.thumb;
-        penThumb.position.x = grip.pivot[0]; penThumb.position.y = grip.pivot[1]; penThumb.position.z = grip.pivot[2];
-        penThumb.rotation.z = 0;
-        addChild(penHand, penThumb);
-        pen.position.x = 0.74 * grip.unit; pen.position.y = -0.35 * grip.unit; pen.position.z = 1.15 * grip.unit;
-        pen.scale.x = pen.scale.y = pen.scale.z = 14 * grip.unit;
-        for (const g of [grip.fist, grip.thumb]) {
-          if (!meshes.includes(g)) meshes.push(g);
-          renderer.prepareGeometry(g);
-        }
+      penHand = seat.sitter.parts.fingersR;
+      const actor = seat.sitter;
+      if (actor.modelled && actor.fist) {
+        const unit = actor.fist.palm / (1.1 * actor.armScale);
+        pen.position.x = 0.74 * unit; pen.position.y = -0.35 * unit; pen.position.z = 1.15 * unit;
+        pen.scale.x = pen.scale.y = pen.scale.z = 14 * unit;
       } else {
-        // Older voxel hands keep their authored fingers and arm as well.
-        const b = BL.scene.boundsOf(originalHand), h = seat.sitter.traits.height;
+        const b = BL.scene.boundsOf(penHand.geometry), h = actor.traits.height;
         pen.position.x = b.center[0]; pen.position.y = b.center[1]; pen.position.z = b.center[2];
         pen.scale.x = pen.scale.y = pen.scale.z = h;
       }
@@ -293,7 +282,6 @@
       const buttonGeometry = lathe({ profile: [[0.011, -0.02], [0.011, 0.02]], segments: 8, color: "#c9d0d4", emissive: 0.35 });
       buttonGeometry.characterPart = true;
       penButton = add(buttonGeometry, pen, { x: 0, y: 0.19, z: 0 });
-      penThumb = createNode();
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
@@ -488,7 +476,7 @@
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
       },
       get returnMirror() { return returnMirror; },
-      get seated() { return seated(); }, get pen() { return pen; }, get penThumb() { return penThumb; }, get penButton() { return penButton; },
+      get seated() { return seated(); }, get pen() { return pen; }, get penButton() { return penButton; },
       get layoutPending() { return layoutPending; }, get layoutWait() { return layoutWait; },
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },

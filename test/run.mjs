@@ -17187,7 +17187,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     B.advance(0.3, 1 / 60);
     const originalHand = actor.parts.fingersR.geometry, originalArm = actor.parts.armR.geometry;
     const sitting = room.sit(), pen = room.pen.parent === actor.parts.fingersR;
-    const sameFist = actor.parts.fingersR.geometry.verts.every((v, i) => v === originalHand.verts[i]);
+    const sameFist = actor.parts.fingersR.geometry === originalHand;
     B.advance(0.3, 1 / 60);
     room.update(120);
     const heldFeeds = room.broadcast === "feeds";
@@ -17206,14 +17206,14 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     canvas.dispatchEvent(new PointerEvent("pointerup", { ...pointer, buttons: 0 }));
     room.update(0.05);
     const clicked = room.penButton.position.y < 0.18;
-    const pressed = room.penThumb.rotation.z > 0;
+    const pressed = actor.parts.fingersR.geometry === originalHand && room.penButton.position.y < 0.18;
     room.update(0.2);
-    const springBack = room.penButton.position.y === 0.19 && room.penThumb.rotation.z === 0;
+    const springBack = room.penButton.position.y === 0.19 && actor.parts.fingersR.geometry === originalHand;
     const pose = () => JSON.stringify([actor.parts.armR.position, actor.parts.armR.rotation, actor.parts.armR.quaternion,
       actor.parts.forearmR.position, actor.parts.forearmR.rotation, actor.parts.fingersR.position, actor.parts.fingersR.quaternion, room.pen.position]);
     const seatedPose = pose();
     B.pilot.enterClose(); B.advance(0.8, 1 / 60);
-    const firstPersonPen = room.pen.parent === actor.parts.fingersR && room.penThumb.parent === actor.parts.fingersR
+    const firstPersonPen = room.pen.parent === actor.parts.fingersR && actor.parts.fingersR.geometry === originalHand
       && actor.parts.armR.geometry === originalArm && actor.parts.armR.cameraHidden === armHidden;
     B.pilot.hooks.onOrbit(0, 180); B.advance(0.3, 1 / 60);
     const bodyAnchored = pose() === seatedPose;
@@ -17224,7 +17224,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.toggleView(); room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
     const restored = room.broadcast === "feeds";
     const stand = B.crew.standPlayer(actor); room.update(0);
-    const released = !room.pen.parent && !room.toggleView() && !room.penThumb.parent && actor.parts.fingersR.geometry === originalHand && actor.parts.armR.cameraHidden === armHidden;
+    const released = !room.pen.parent && !room.toggleView() && actor.parts.fingersR.geometry === originalHand && actor.parts.armR.cameraHidden === armHidden;
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
