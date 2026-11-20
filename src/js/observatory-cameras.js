@@ -32,8 +32,11 @@
       const room = BL.timechainRooms.get(id);
       if (room.lockable) continue;
       const L = BL.timechainRooms.layout(id);
-      channel(room.zone, "TCS / " + room.name.toUpperCase(), { x: L.R * 0.12, y: 3.5, z: L.doorZ - 2 },
-        { x: 0, y: L.yMin + 1.2, z: -L.R * 0.2 }, L.R * 2.5, 68, () => BL.observatoryTimechain.create(renderer, id));
+      const shots = { 2: [6, 3.5, 8, 0, 1, 0], 3: [5, 3.5, -1, 0, 2, -8], 4: [7, 3.5, 6, 0, 1, 0],
+        6: [7, 3.5, -4, 0, 1.8, -14], 7: [3, 2.5, 5, 0, 1, 0] };
+      const shot = shots[id] || [L.R * 0.12, 3.5, L.doorZ - 2, 0, L.yMin + 1.2, -L.R * 0.2];
+      channel(room.zone, "TCS / " + room.name.toUpperCase(), { x: shot[0], y: shot[1], z: shot[2] },
+        { x: shot[3], y: shot[4], z: shot[5] }, L.R * 2.5, 64, () => BL.observatoryTimechain.create(renderer, id));
     }
     const local = (m, x, y, z) => ({ x: m.x + x * Math.cos(m.ry) + z * Math.sin(m.ry),
       y: (m.floorY ?? m.y ?? m.floor) + y, z: m.z - x * Math.sin(m.ry) + z * Math.cos(m.ry) });
