@@ -33582,18 +33582,36 @@ const pokerTrip = (() => {
     const before = await b.evaluate(`(() => {
       const P = BL.scenes.poker.debug.poker;
       if (P.session.live) throw new Error("Poker round trip needs a local session");
+      // Leave seated at a practice table whose hand has just ended, so the visit the trip comes back to opens with the
+      // visitor in that seat and the table showing that result: the one case the music's dip must ignore on entry.
+      const click = a => document.querySelector('[data-poker-action="' + a + '"]').click(), t = P.session.tables[1];
+      P.select(1); click("join"); click("bots"); click("start");
+      let guard = 0; while (t.playing && guard++ < 500) { if (t.snapshot("local-player").legal) click("call"); __ooga.advance(0.81, 1 / 30); }
       const paused = P.session.paused;
       if (!paused) P.action("pause");
       if (!P.session.paused) throw new Error("Poker round trip could not pause the local session");
-      return { paused, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent };
+      return { paused, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent, contexts: (window.__pokerContexts || []).length };
     })()`);
     try {
       await check.run(b);
       const after = await b.evaluate(`(() => {
         const P = BL.scenes.poker.debug.poker;
-        return { paused: P.session.paused, local: !P.session.live, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent };
+        return { paused: P.session.paused, local: !P.session.live, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent, board: document.getElementById("board-modal").open };
       })()`);
-      record("poker round trip: both visits compare the same paused local hand and table", after.local && after.paused && after.title === before.title && JSON.stringify(after.versions) === JSON.stringify(before.versions), JSON.stringify({ before, after }));
+      record("poker round trip: both visits compare the same paused local hand and table, and no placard is left open", after.local && after.paused && !after.board && after.title === before.title && JSON.stringify(after.versions) === JSON.stringify(before.versions), JSON.stringify({ before, after }));
+      // The first visit's sound once it has gone, and the music of the visit the trip came back to: the visitor seated
+      // at table two with its table view open, the table showing the hand that ended before the trip, and no hand marked.
+      const sound = await b.evaluate(`(() => {
+        const P = BL.scenes.poker.debug.poker, first = window.__pokerFirstAudio, now = P.audio, made = (window.__pokerContexts || []).slice(0, ${before.contexts});
+        const s = P.snapshots[1];
+        return { firstOpen: first ? first.stats.open : null, made: made.length, closed: made.filter(c => c.state === "closed").length, fresh: now !== first, hands: now.stats.hands,
+          seated: document.body.hasAttribute("data-poker-seated") && P.session.tables[1].snapshot().seats.some(p => p?.id === "local-player"),
+          viewing: document.body.hasAttribute("data-poker-table-view"), result: !!(s && s.result), phase: s && s.phase };
+      })()`);
+      record("rule: the room's music closes when the visitor leaves (every context made before the trip is closed after it)",
+        sound.firstOpen === false && sound.made > 0 && sound.closed === sound.made && sound.fresh, JSON.stringify(sound));
+      record("rule: coming back seated at a table already showing its result marks no hand for the music's dip",
+        sound.seated && sound.viewing && sound.result && sound.hands === 0, JSON.stringify(sound));
     } finally {
       await b.evaluate(`(() => {
         const P = BL.scenes.poker.debug?.poker;
@@ -33602,12 +33620,39 @@ const pokerTrip = (() => {
     }
   } };
 })();
+// With POKER_TIMING set, the poker sessions print the room's build time (boot marks) and the CPU cost of a stepped frame
+// (GL calls return before the GPU draws, so this is the issuing cost only), for the frame-rate question.
+const pokerTiming = async (b, label) => {
+  if (!process.env.POKER_TIMING) return;
+  const t = await b.evaluate(`(() => { const B = __ooga, m = B.timing; B.advance(1, 1 / 60); const t0 = performance.now(); B.advance(2, 1 / 60); const ms = (performance.now() - t0) / 120;
+    const g = B.renderer.stats || {}; return { renderer: B.renderer.kind, quality: B.renderer.quality, buildMs: m.ready - m.renderer, frameCpuMs: +ms.toFixed(2), records: g.records, drawn: g.drawn, culled: g.culled, visibleNodes: B.stats().visibleNodes }; })()`);
+  console.log(`TIMING ${label} ${JSON.stringify(t)}`);
+};
 scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor and play", why: "playthrough: a visitor walks the floor, fills a table, plays to settlement and stands without exposing hidden cards", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
+  // Every AudioContext the page makes from here on, so the round trip can see the visit's own closed after it leaves.
+  await b.evaluate(`(() => { const A = window.AudioContext; window.__pokerContexts = []; window.AudioContext = class extends A { constructor(...a) { super(...a); window.__pokerContexts.push(this); } }; })()`);
+  const silent = await b.evaluate(`({ ...BL.scenes.poker.debug.poker.audio.stats })`);
+  // The crowd fills to its tier's cap, then a minute on the floor (members walking, sitting, talking) keeps the heap
+  // within the soaks' tenth.
+  await b.send("HeapProfiler.enable");
+  // Used heap after a forced GC, not the soaks' object count: their count walks a whole heap snapshot, which on this
+  // page costs more than the minute it measures, and one growing pool shows in either.
+  const usedHeap = async () => { await b.send("HeapProfiler.collectGarbage"); return (await b.send("Runtime.getHeapUsage")).result.usedSize; };
+  await pokerTiming(b, "webgl");
+  const capped = await b.evaluate(`(() => { __ooga.advance(5, 1 / 30); return { quality: __ooga.renderer.quality, crowd: BL.scenes.poker.debug.poker.crowd.stats().crowd }; })()`);
+  const heapBefore = await usedHeap();
+  await b.evaluate(`__ooga.advance(60, 1 / 30)`);
+  const heapAfter = await usedHeap();
+  record("rule: the crowd holds its tier's cap and grows no heap in a minute", capped.crowd === { high: 16, medium: 10, low: 6 }[capped.quality] && heapAfter - heapBefore <= heapBefore * 0.1,
+    JSON.stringify({ ...capped, heapMB: [heapBefore, heapAfter].map(n => +(n / 1e6).toFixed(2)) }));
   const walking = await walkKeys(b, "portlandhodl", 0, 18, [0, 1.5], 0.45);
   record("poker walking: spectators move with WASD from two camera angles", allWalk(walking), JSON.stringify(walking));
+  const heard = await b.evaluate(`(() => { const A = BL.scenes.poker.debug.poker.audio; window.__pokerFirstAudio = A; return { open: A.stats.open, contexts: A.stats.contexts, made: window.__pokerContexts.length }; })()`);
+  record("rule: the room's music opens on the visitor's first key",
+    !silent.open && silent.contexts === 0 && heard.open && heard.contexts === 1, JSON.stringify({ before: { open: silent.open, contexts: silent.contexts }, heard }));
   await walkingModeControls(b, "poker");
-  const r = await b.evaluate(`(() => {
+  const r = await b.evaluate(`(async () => {
     const B = __ooga, P = BL.scenes.poker.debug.poker, click = a => document.querySelector('[data-poker-action="' + a + '"]').click();
     const suit = BL.pokerModels.geometry(P.session.theme);
     const count = P.room.tables.length, seats = P.room.tables.every(t => t.chairs.length === 9), dealers = P.room.tables.every(t =>
@@ -33618,15 +33663,344 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     BL.scenes.poker.onKey(new KeyboardEvent("keydown", { key: "x", code: "KeyX", cancelable: true }));
     document.getElementById("mode-hud").click();
     const modeHeld = B.pilot.player === cave && cave.weapon.aiming === aiming && document.body.hasAttribute("data-poker-seated");
-    for (let i = 0; i < 4; i++) click("bots"); click("start");
+    // The driven Ooga a frame after sitting, then a frame after Walk the floor: its left leg's swing (0 standing still,
+    // the crew's standing gait), its left arm and its feet over its standing height. Return to the table seats it again for the rest of the step.
+    const pose = () => { B.advance(1 / 30, 1 / 30); return { leg: cave.parts.legL.rotation.x, arm: cave.parts.armL.rotation.x, lift: cave.root.position.y - cave.baseY }; };
+    const sat = pose(); click("walk"); const stood = pose(); click("return");
+    const sitting = { sat, stood, chair: BL.pokerPresence.CHAIR_Y, ok: sat.leg === -1.35 && sat.arm === -0.9 && Math.abs(sat.lift - BL.pokerPresence.CHAIR_Y) < 1e-9 && stood.leg === 0 && Math.abs(stood.lift) < 1e-3 && document.body.hasAttribute("data-poker-seated") };
+    for (let i = 0; i < 4; i++) click("bots");
+    // Each seat's figure as drawn: a bot's name, "none" for a bot with no figure up, "shown" for anything else drawn.
+    const C = BL.pokerCrowdModels, t0 = P.session.tables[0], walking = new Set(C.castFor(Math.floor(Date.now() / 86400000), 16).map(m => m.traits.name));
+    // Every figure ever drawn at the table, and how many of them are still on its root: a seat changing hands keeps one.
+    const view0 = P.room.tables[0], drawn = new Set(), onRoot = () => [...drawn].filter(r => view0.root.children.includes(r)).length;
+    const figures = () => { B.advance(0.9, 1 / 30); for (const a of view0.actors) if (a) drawn.add(a.root); return t0.snapshot().seats.map((p, j) => { const a = view0.actors[j], up = !!a && a.root.visible; return p?.bot ? (up ? a.traits.name : "none") : (up ? "shown" : null); }); };
+    const before = figures(), rooted = [onRoot()], bots = t0.snapshot().seats.map((p, j) => p?.bot ? [p.id, p.name, j] : null).filter(Boolean);
+    for (const [id] of bots) t0.leave(id);
+    const gone = figures(); rooted.push(onRoot());
+    for (const [id, name, j] of bots) t0.join(id, name, true, j);
+    const after = figures(), cast = before.filter(n => n !== null); rooted.push(onRoot());
+    // One bot's seat taken by someone else, then given back: its figure leaves the root, then one comes back.
+    const [swapId, swapName, swapSeat] = bots[0];
+    t0.leave(swapId); t0.join("guest-x", "Guest", false, swapSeat); figures(); rooted.push(onRoot(), view0.actors[swapSeat] ? 1 : 0);
+    t0.leave("guest-x"); t0.join(swapId, swapName, true, swapSeat); const back = figures(); rooted.push(onRoot());
+    const dressed = { before, gone, after, rooted, ok: bots.length === 8 && cast.length === 8 && cast.every(n => n.endsWith("/ember-den") && !walking.has(n)) &&
+      new Set(cast).size === 8 && gone.every(n => n === null) && after.join() === before.join() && back.join() === before.join() && rooted.join() === "8,0,8,7,0,8" };
+    // Each seat's face as the panel shows it: null when hidden, else how many pixels carry ink (alpha above 0) and an
+    // FNV-1a hash of every pixel, so two faces differ when any pixel does. Read through a willReadFrequently copy, since
+    // repeated readbacks of the page's own canvases warn on the console. A coarse step: only the scene's 0.8 s practice
+    // timer has to pass, and no table is playing while the faces are read.
+    const readSheet = document.createElement("canvas"), readCtx = readSheet.getContext("2d", { willReadFrequently: true });
+    const faceRead = () => { B.advance(0.9, 0.1); return [...document.querySelectorAll(".poker-seat-button .poker-face")].map(c => {
+      if (c.hidden || !c.getClientRects().length) return null;
+      readSheet.width = c.width; readSheet.height = c.height; readCtx.drawImage(c, 0, 0);
+      const d = readCtx.getImageData(0, 0, c.width, c.height).data; let ink = 0, hash = 2166136261;
+      for (let k = 0; k < d.length; k++) { hash = Math.imul(hash ^ d[k], 16777619) >>> 0; if ((k & 3) === 3 && d[k]) ink++; }
+      return { ink, hash }; }); };
+    // The visitor and three bots, then one of those bots leaves; every bot comes back to its seat after.
+    const heroSeat = t0.snapshot().seats.findIndex(p => p?.id === "local-player");
+    for (const [id] of bots.slice(3)) t0.leave(id);
+    const four = faceRead(), botFace = four[bots[0][2]];
+    t0.leave(bots[2][0]); const three = faceRead();
+    for (const [id, name, j] of bots.slice(2)) t0.join(id, name, true, j);
+    const shownFaces = list => list.filter(Boolean).length;
+    const faced = { four: four.map(f => f && f.ink), three: three.map(f => f && f.ink), heroSeat, ok: shownFaces(four) === 4 && four.every(f => !f || f.ink > 0)
+      && !!four[heroSeat] && !!botFace && four[heroSeat].hash !== botFace.hash && shownFaces(three) === 3 && three[bots[2][2]] === null };
+    // The deal re-renders the panel at once (the action's refresh), so the dealer's gesture shows with no frame between.
+    click("start"); const dealtAt = performance.now(), dealing = document.querySelector(".poker-dealer").hasAttribute("data-dealing");
     const t = P.session.tables[0], privateCards = t.snapshot().seats.every(s => s.cards.every(c => c === null));
     let guard = 0; while (t.playing && guard++ < 500) { if (t.snapshot("local-player").legal) click("call"); B.advance(0.81, 1 / 30); }
-    const done = t.snapshot(), total = done.seats.reduce((n, s) => n + s.stack, 0), shown = document.querySelector('[data-poker="street"]').textContent;
+    const done = t.snapshot(), total = done.seats.reduce((n, s) => n + s.stack, 0), shown = document.querySelector('[data-poker="street"]').textContent, hands = P.audio.stats.hands;
+    // The gesture's timeout runs on real time (advance drives the scene's clock, never a timeout): wait out what is left of
+    // 750 ms since the deal, and never under 20 ms, since a zero-delay timer can run ahead of an overdue delayed one. The
+    // hand above settled, and table one's next deal waits five seconds of scene time, so nothing deals again meanwhile.
+    await new Promise(r => setTimeout(r, Math.max(20, 750 - (performance.now() - dealtAt))));
+    const dealtFor = performance.now() - dealtAt, dealt = document.querySelector(".poker-dealer").hasAttribute("data-dealing");
     click("stand"); P.select(9); click("bots"); click("start"); B.advance(1, 1 / 30);
-    return { count, seats, dealers, privateCards, modeHeld, phase: done.phase, total, shown, tableTen: P.session.tables[9].snapshot().hand, standing: !document.body.hasAttribute("data-poker-seated") };
+    const L = P.renderOpts.lights, lit = [];
+    for (let i = 0; i < 10; i++) lit.push(BL.pokerModels.TABLES.findIndex(p => Math.abs(p.x - L[i * 8]) < 1e-3 && Math.abs(p.z - L[i * 8 + 2]) < 1e-3));
+    const tableLights = new Set(lit.filter(i => i >= 0)).size, lightCount = P.renderOpts.lightCount;
+    // Over each felt's middle, of every light whose range reaches it, its own lamp is the nearest and reaches farthest past it.
+    const lampsLead = BL.pokerModels.TABLES.every((p, k) => {
+      const reach = [];
+      for (let i = 0; i < lightCount; i++) { const o = i * 8, d = Math.hypot(L[o] - p.x, L[o + 1] - 1.38, L[o + 2] - p.z); if (d < L[o + 3]) reach.push({ own: lit[i] === k, d, past: L[o + 3] - d }); }
+      const own = reach.find(e => e.own);
+      return !!own && reach.every(e => e === own || e.d > own.d && e.past < own.past);
+    });
+    return { lampsLead, count, seats, dealers, privateCards, modeHeld, phase: done.phase, total, shown, hands, tableTen: P.session.tables[9].snapshot().hand, standing: !document.body.hasAttribute("data-poker-seated"), tableLights, lightCount, dressed, faced, dealing, dealt, dealtFor, sitting };
   })()`);
+  record("rule: the visitor's own Ooga sits in its chair and stands up again", r.sitting.ok, JSON.stringify(r.sitting));
+  // A signed-in player as the room reports one (a record in BL.net.remotes, as the hub's hammock checks give one), in
+  // this scene's zone, driving a roster Ooga other than the visitor's, sent from table two's fourth chair at chair height.
+  // Not live: seated as itself in a chair this page has empty, hidden while a computer opponent takes that chair here,
+  // standing at floor height. Then live as far as the scene reads it (`session.live` with no deadline, never dealt to),
+  // with a human seat carrying the remote's name and its stand-in drawn (put up by the remote sitting once and leaving,
+  // since the fake never syncs a table): a remote driving the visitor's own Ooga (a body
+  // the pool hides) takes nothing from it; the remote arriving takes the stand-in down within a frame and puts its own
+  // face at the seat; leaving brings the stand-in and its face back the next frame. Whatever happens, the remotes, the
+  // seats and the fake are gone before the step goes on.
+  const presence = await b.evaluate(`(() => {
+    const B = __ooga, P = BL.scenes.poker.debug.poker, N = BL.net, M = BL.pokerModels, T = 1, J = 3, t1 = P.session.tables[T];
+    const name = BL.contributors.activeRoster.find(c => c.name !== "portlandhodl").name, spot = M.TABLES[T], chair = M.SEATS[J];
+    const peer = (id, body) => ({ id, login: "seat-peer-" + id, display: "Seat peer", body, zone: N.state.zone, poseZone: N.state.zone,
+      x: spot.x + chair.x, y: BL.pokerPresence.CHAIR_Y, z: spot.z + chair.z, yaw: chair.yaw, voice: false, muted: false });
+    const rec = peer(7301, name);
+    const look = id => { const c = BL.remotePlayers.body(id); return c ? { shown: c.root.visible, leg: c.parts.legL.rotation.x } : null; };
+    // The seat's face as the panel shows it, and a fresh face of a model at that canvas's size, each as an FNV-1a hash
+    // of every pixel read through a willReadFrequently copy, as the seat faces above are read.
+    const sheet = document.createElement("canvas"), sheetCtx = sheet.getContext("2d", { willReadFrequently: true });
+    const hashOf = c => { sheet.width = c.width; sheet.height = c.height; sheetCtx.clearRect(0, 0, c.width, c.height); sheetCtx.drawImage(c, 0, 0);
+      const d = sheetCtx.getImageData(0, 0, c.width, c.height).data; let hash = 2166136261; for (let k = 0; k < d.length; k++) hash = Math.imul(hash ^ d[k], 16777619) >>> 0; return hash; };
+    const seatFace = () => { const c = document.querySelectorAll(".poker-seat-button .poker-face")[J]; return c.hidden ? null : hashOf(c); };
+    const faceOf = cave => { const c = document.createElement("canvas"); BL.hud.renderFaceIcon(c, cave, null, 96); return hashOf(c); };
+    const view = P.room.tables[T], frame = () => B.advance(1 / 30, 1 / 30);
+    let seated, hidden, standing, before, mirrored, matched, left;
+    try {
+      N.remotes.set(rec.id, rec); frame(); seated = look(rec.id);
+      t1.join("bot-peer", "Bot peer", true, J); B.advance(0.9, 1 / 30); hidden = look(rec.id);
+      t1.leave("bot-peer"); B.advance(0.9, 1 / 30);
+      rec.y = 0; frame(); standing = look(rec.id);
+      rec.y = BL.pokerPresence.CHAIR_Y; N.remotes.delete(rec.id); frame();
+      // A human at that chair with the remote's name, then the tables made live as the scene reads them. The fake never
+      // syncs a table (only the live service's own updates would), so the stand-in is first put up by a presence change:
+      // the remote sits once and leaves, which builds it.
+      P.select(T); t1.join("guest-peer", rec.display, false, J); B.advance(0.9, 1 / 30);
+      P.session.live = { deadline: null, connection: "live", busy: false, fairness: null, dispose() {} };
+      frame(); N.remotes.set(rec.id, rec); frame(); N.remotes.delete(rec.id); frame(); const actor = view.actors[J];
+      before = { standIn: !!actor, face: seatFace(), own: actor ? faceOf(actor) : null };
+      // The same name driving the visitor's own Ooga: the pool keeps that body hidden, so the seat stays the stand-in's.
+      const me = BL.scenes.poker.debug.crew.player, twin = peer(7302, me ? me.traits.name : "");
+      N.remotes.set(twin.id, twin); frame();
+      mirrored = { me: !!me, body: look(twin.id), same: !!actor && view.actors[J] === actor, face: seatFace() };
+      N.remotes.delete(twin.id); frame();
+      N.remotes.set(rec.id, rec); frame();
+      matched = { standIn: !!view.actors[J], body: look(rec.id), face: seatFace(), own: faceOf(BL.remotePlayers.body(rec.id)) };
+      N.remotes.delete(rec.id); frame();
+      left = { standIn: !!view.actors[J], face: seatFace(), own: view.actors[J] ? faceOf(view.actors[J]) : null };
+    } finally {
+      delete P.session.live; N.remotes.delete(7301); N.remotes.delete(7302);
+      for (const id of ["bot-peer", "guest-peer"]) if (t1.snapshot().seats.some(p => p?.id === id)) t1.leave(id);
+      B.advance(0.9, 1 / 30);
+    }
+    const clean = !P.session.live && !view.actors[J] && !t1.snapshot().seats[J] && !N.remotes.has(7301) && !N.remotes.has(7302);
+    return { name, seated, hidden, standing, before, mirrored, matched, left, clean,
+      ok: !!seated && seated.shown && seated.leg === -1.35 && !!hidden && !hidden.shown && !!standing && standing.shown && standing.leg !== -1.35
+        && before.standIn && before.face !== null && before.face === before.own
+        && mirrored.me && !!mirrored.body && !mirrored.body.shown && mirrored.same && mirrored.face === before.face
+        && !matched.standIn && !!matched.body && matched.body.shown && matched.body.leg === -1.35 && matched.face !== null && matched.face === matched.own && matched.face !== before.face
+        && left.standIn && left.face !== null && left.face === left.own && clean };
+  })()`);
+  record("rule: a signed-in player at a chair sits as themselves, alone in that seat, and the stand-in returns when they go", presence.ok, JSON.stringify(presence));
+  // Emotes. Faked: the room's two flags the scene reads for availability (`reactions`, `room`), the visitor's send
+  // (`BL.net.sendReaction` stubbed to accept and, as the real one does after a send, hand the scene's subscriber
+  // `(0, emoji)`), a remote's reaction (handed to that same subscriber, `debug.poker.react`, as net.js would from the
+  // socket), the remotes and `session.live` as the presence check above fakes them. Real: the button, the menu, Escape,
+  // the scene's chair matching, timing, the seats' emoji and the bodies' gestures. The visitor at table five; the
+  // presence check's remote matched at table two's fourth chair, a second remote at table three's.
+  const emotes = await b.evaluate(`(() => {
+    const B = __ooga, P = BL.scenes.poker.debug.poker, N = BL.net, M = BL.pokerModels, E = BL.pokerEmotes, J = 3;
+    const click = a => document.querySelector('[data-poker-action="' + a + '"]').click(), frame = () => B.advance(1 / 30, 1 / 30);
+    // Escape as the keyboard sends it, to the focused element, so it passes the window's capture listeners (the HUD's
+    // popup close) before the director's own on the way back up (sent to the window itself, the director's ran first); a
+    // press as the pointer makes one, its pointerdown (which the HUD's outside-press close and the panel's capture
+    // listener read) and then its click.
+    const esc = () => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+    const down = n => { const r = n.getBoundingClientRect(); n.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, composed: true, pointerId: 1, isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 })); };
+    const press = n => { down(n); n.click(); };
+    const head = document.querySelector('.poker-table-tools [data-poker="emote"]'), strip = document.querySelector('.poker-status-strip [data-poker="emote"]'), menu = document.querySelector('[data-poker="emote-menu"]');
+    const pick = id => { press(head); press(menu.querySelector('[data-emote="' + id + '"]')); };
+    const viewing = () => document.body.hasAttribute("data-poker-table-view");
+    const shows = n => !n.hidden && n.getClientRects().length > 0;
+    const seatsNow = () => [...document.querySelectorAll(".poker-seat-emote")].map(n => n.hidden ? "" : n.textContent);
+    const others = (list, j) => list.every((e, i) => i === j || e === "");
+    const names = BL.contributors.activeRoster.filter(c => c.name !== "portlandhodl").map(c => c.name);
+    const peer = (id, t, body) => { const spot = M.TABLES[t], chair = M.SEATS[J]; return { id, login: "emote-peer-" + id, display: "Emote peer " + id, body, zone: N.state.zone, poseZone: N.state.zone,
+      x: spot.x + chair.x, y: BL.pokerPresence.CHAIR_Y, z: spot.z + chair.z, yaw: chair.yaw, voice: false, muted: false }; };
+    const near = peer(7311, 1, names[0]), far = peer(7312, 2, names[1]), t1 = P.session.tables[1], t2 = P.session.tables[2], t4 = P.session.tables[4];
+    const arms = c => c ? { lx: c.parts.armL.rotation.x, ly: c.parts.armL.rotation.y, rx: c.parts.armR.rotation.x, ry: c.parts.armR.rotation.y, head: c.parts.head.rotation.x } : null;
+    const saved = { reactions: N.state.reactions, room: N.state.room, send: N.sendReaction, selected: P.selected };
+    const out = {};
+    try {
+      N.state.reactions = true; N.state.room = "live";
+      P.select(4); click("join"); frame();
+      const cave = B.pilot.player, heroSeat = t4.snapshot().seats.findIndex(p => p?.id === "local-player");
+      out.shown = { head: shows(head), menu: shows(menu), seat: heroSeat };
+      // Escape closes the menu first and the table view only on the next press; a press outside closes the menu; Walk the
+      // floor from the keyboard (a click with no pointerdown) takes the menu with the view, and it is shut when the view reopens.
+      press(head); const opened = shows(menu); esc(); frame();
+      const once = { menu: shows(menu), view: viewing() }; esc(); frame();
+      const second = { view: viewing() }; click("return"); frame();
+      press(head); const reopened = shows(menu); down(document.querySelector('[data-poker="title"]')); const outside = { menu: shows(menu), view: viewing() };
+      press(head); const again = shows(menu); click("walk"); frame(); const walkedOut = { menu: !menu.hidden }; click("return"); frame();
+      const returned = { menu: !menu.hidden, view: viewing() };
+      out.escape = { opened, once, second, reopened, outside, again, walkedOut, returned, ok: opened && !once.menu && once.view && !second.view && reopened && !outside.menu && outside.view
+        && again && !walkedOut.menu && !returned.menu && returned.view };
+      N.sendReaction = e => { P.react(0, e); return true; };
+      pick("clap"); frame();
+      const sat = { lx: -0.9 }, picked = { menu: shows(menu), label: head.textContent, seats: seatsNow() };
+      B.advance(0.5, 1 / 30); const mid = arms(cave);
+      B.advance(E.SHOW_TIME, 1 / 30); const after = { seats: seatsNow(), arms: arms(cave) };
+      out.own = { picked, mid, after, ok: !picked.menu && picked.label === "Emote" && picked.seats[heroSeat] === "👏" && others(picked.seats, heroSeat)
+        && mid.lx !== sat.lx && after.seats.every(e => e === "") && after.arms.lx === -0.9 && after.arms.ly === 0 && after.arms.ry === 0 };
+      // A gesture replacing one that bows the head mid-run (Groan, then Nice hand) leaves the head level and no arm turned.
+      pick("groan"); B.advance(0.5, 1 / 30); const groaning = arms(cave); pick("nice"); B.advance(E.GESTURE_TIME + 0.2, 1 / 30); const replaced = arms(cave);
+      out.replace = { groaning, replaced, ok: groaning.head > 0.3 && replaced.head === 0 && replaced.ly === 0 && replaced.ry === 0 };
+      B.advance(E.SHOW_TIME, 1 / 30);
+      // Standing mid-gesture (Walk the floor) drops the emote and leaves no arm turned.
+      pick("salute"); B.advance(0.5, 1 / 30); const saluting = arms(cave);
+      click("walk"); frame(); const walked = { seats: seatsNow(), arms: arms(cave) };
+      out.stood = { saluting, walked, ok: saluting.ry !== 0 && walked.seats.every(e => e === "") && walked.arms.ly === 0 && walked.arms.ry === 0 };
+      click("return"); click("stand"); frame();
+      // The remotes: seats taken by their names first (synced by the practice timer), then live as the scene reads it.
+      P.select(1); t1.join("emote-guest-1", near.display, false, J); t2.join("emote-guest-2", far.display, false, J); B.advance(0.9, 1 / 30);
+      P.session.live = { deadline: null, connection: "live", busy: false, fairness: null, action() {}, dispose() {} };
+      N.remotes.set(near.id, near); N.remotes.set(far.id, far); frame(); frame();
+      const body = () => BL.remotePlayers.body(near.id);
+      P.react(near.id, "👏"); frame(); const first = seatsNow(); B.advance(0.5, 1 / 30); const moving = arms(body());
+      P.react(near.id, "😮"); P.react(near.id, "🤔"); P.react(near.id, "😮"); frame(); const burst = seatsNow(); B.advance(0.5, 1 / 30); const rising = arms(body());
+      N.remotes.delete(near.id); frame(); const gone = seatsNow();
+      out.remote = { first, moving, burst, rising, gone, ok: first[J] === "👏" && others(first, J) && !!moving && moving.lx !== -0.9 && burst[J] === "😮" && others(burst, J)
+        && !!rising && rising.lx < -1.2 && gone.every(e => e === "") };
+      P.react(far.id, "🤔"); frame(); const here = seatsNow(); P.select(2); frame(); const there = seatsNow(); P.select(1); frame(); const back = seatsNow();
+      out.tables = { here, there, back, ok: here.every(e => e === "") && there[J] === "🤔" && others(there, J) && back.every(e => e === "") };
+      P.select(2); frame(); press(head); const open = shows(menu); N.state.room = "connecting"; frame();
+      out.off = { open, head: shows(head), strip: shows(strip), menu: shows(menu), ok: open && !shows(head) && !shows(strip) && !shows(menu) };
+    } finally {
+      N.sendReaction = saved.send; N.state.reactions = saved.reactions; N.state.room = saved.room;
+      delete P.session.live; N.remotes.delete(7311); N.remotes.delete(7312);
+      for (const [t, id] of [[t1, "emote-guest-1"], [t2, "emote-guest-2"]]) if (t.snapshot().seats.some(p => p?.id === id)) t.leave(id);
+      if (t4.snapshot().seats.some(p => p?.id === "local-player")) click("stand");
+      P.select(saved.selected); B.advance(0.9, 1 / 30);
+    }
+    out.clean = N.sendReaction === saved.send && !P.session.live && !N.remotes.has(7311) && !N.remotes.has(7312) && seatsNow().every(e => e === "") && !shows(head)
+      && !t1.snapshot().seats[J] && !t2.snapshot().seats[J] && !t4.snapshot().seats.some(p => p?.id === "local-player") && P.selected === saved.selected;
+    out.ok = !!out.shown && out.shown.head && !out.shown.menu && !!out.escape && out.escape.ok && out.own.ok && out.replace.ok && out.stood.ok && out.remote.ok && out.tables.ok && out.off.ok && out.clean;
+    return out;
+  })()`);
+  record("rule: an emote shows at its sender's seat and nowhere else, moves its sender's body, and clears", emotes.ok, JSON.stringify(emotes));
+  // Banana Club's marble hall in play: standing up from tables 5 and 6 (the pair either side of the fountain) lands on
+  // open floor beside the pool; the fountain's water moves from frame to frame; a cave theme takes the fountain, statues
+  // and marble out of the room and Banana Club brings them back whole. The theme and seat are put back whatever happens.
+  const hall = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, M = BL.pokerModels, F = BL.pokerFountain, was = P.session.theme;
+    const inRoom = node => { for (let n = node; n; n = n.parent) if (n === P.room.root) return true; return false; };
+    let stood = [], moved = false, cave = null, back = null;
+    try {
+      if (was !== "gatsby") P.action("theme", "gatsby");
+      for (const k of [4, 5]) {
+        P.select(k); P.action("join"); P.action("stand"); B.advance(1 / 30, 1 / 30);
+        const c = D.pilot.player, p = c.root.position;
+        stood.push({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), clear: Math.hypot(p.x - F.X, p.z - F.Z) >= F.RADIUS + c.bodyRadius && M.walkable(p.x, p.z, p.x, p.z, 0, 2, c) });
+      }
+      const water = () => { const out = [], stack = [P.room.fountain.root]; while (stack.length) { const n = stack.pop(); out.push(n.position.x, n.position.y, n.position.z, n.scale.x); stack.push(...n.children); } return out.join(); };
+      const first = water(); B.advance(1 / 30, 1 / 30); moved = water() !== first;
+      const tiles = M.geometry("gatsby").tiles.field, look = () => { let marble = 0; const stack = [P.room.root]; while (stack.length) { const n = stack.pop(); if (tiles.includes(n.geometry)) marble++; stack.push(...n.children); } return { marble, fountain: inRoom(P.room.fountain.root), statues: inRoom(P.room.statues.root) && P.room.statues.root.children.length === 8 }; };
+      P.action("theme", "ember"); B.advance(1 / 30, 1 / 30); cave = look();
+      P.action("theme", "gatsby"); B.advance(1 / 30, 1 / 30); back = look();
+    } finally { if (P.session.theme !== was) P.action("theme", was); }
+    return { stood, moved, cave, back, ok: stood.length === 2 && stood.every(s => s.clear) && moved && cave.marble === 0 && !cave.fountain && !cave.statues && back.marble > 0 && back.fountain && back.statues };
+  })()`);
+  record("rule: in Banana Club standing up beside the fountain lands outside the pool, its water moves, and a cave theme takes the marble hall away and gives it back whole", hall.ok, JSON.stringify(hall));
+  // Regression: a visitor holding a seat who chose Walk the floor is standing, yet switching to Banana Club left the Ooga
+  // inside the fountain and the act button beside a statue opened the held table. Hold table 5 in a cave, walk the floor,
+  // switch to Banana Club: the Ooga lands on clear floor and, still holding the seat, the act button by a plinth opens
+  // that statue's placard. The seat, board and theme are put back whatever happens.
+  const walker = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, M = BL.pokerModels, F = BL.pokerFountain, St = BL.pokerStatues, was = P.session.theme;
+    const held = () => P.session.tables[4].snapshot().seats.some(s => s?.id === "local-player"), open = D.hud.openBoard;
+    let walking = null, landed = null, act = null;
+    try {
+      P.action("theme", "ember"); P.select(4); P.action("join"); P.action("walk"); B.advance(1 / 30, 1 / 30);
+      const c = D.pilot.player, p = c.root.position;
+      walking = { held: held(), seated: document.body.hasAttribute("data-poker-seated") };
+      P.action("theme", "gatsby"); B.advance(1 / 30, 1 / 30);
+      landed = { x: +p.x.toFixed(2), z: +p.z.toFixed(2), clear: Math.hypot(p.x - F.X, p.z - F.Z) >= F.RADIUS + c.bodyRadius && M.walkable(p.x, p.z, p.x, p.z, 0, 2, c) };
+      const s = St.SLOTS[2], spot = M.nearestClear(s.x, s.z, c, { x: 0, z: 0 });
+      p.x = spot.x; p.z = spot.z; B.advance(1 / 30, 1 / 30);
+      let boards = 0; D.hud.openBoard = board => { boards++; return open(board); };
+      D.crew.playerAction(); B.advance(1 / 30, 1 / 30);
+      act = { boards, page: document.getElementById("board-caption").textContent, table: document.body.hasAttribute("data-poker-seated"), held: held() };
+    } finally {
+      D.hud.openBoard = open; if (document.getElementById("board-modal").open) D.hud.closeBoard();
+      if (held()) { P.action("return"); P.action("stand"); }
+      if (P.session.theme !== was) P.action("theme", was); B.advance(1 / 30, 1 / 30);
+    }
+    return { walking, landed, act, ok: walking.held && !walking.seated && landed.clear && act.boards === 1 && act.page === St.FIGURES[2].name && !act.table && act.held && !held() };
+  })()`);
+  record("regression: holding a seat while walking the floor, Banana Club moves the Ooga clear of the fountain and the act button by a statue opens its placard", walker.ok, JSON.stringify(walker));
+  // Regression: the plaques stayed pick targets in a cave, picked at their last place by the wall: in a cave theme a
+  // pick, a hover and a real click where the third plaque stood show no placard and open no board.
+  const caveAt = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, plaque = P.room.statues.plaques[2].node;
+    window.__pokerWas = P.session.theme; window.__pokerWalker = D.pilot.player;
+    BL.scene.updateWorld(P.room.root, null);
+    const m = plaque.world, at = (u, v) => ({ x: m[0] * u + m[4] * v + m[8] * 0.03 + m[12], y: m[1] * u + m[5] * v + m[9] * 0.03 + m[13], z: m[2] * u + m[6] * v + m[10] * 0.03 + m[14] });
+    P.action("theme", "ember"); D.pilot.release(true);
+    D.pilot.navigate({ position: at(0, 0.17), target: at(0, 0.17), yaw: Math.PI / 2, pitch: 0.3, dist: 3 }); B.advance(0.5, 1 / 30);
+    const w = at(0, 0.17), point = B.project(w.x, w.y, w.z, {}), hit = point && B.input.pick(point.x, point.y);
+    window.__pokerSeen = { tips: [], boards: 0 };
+    const tip = D.hud.tooltip.show, open = D.hud.openBoard;
+    window.__pokerHooks = { tip, open };
+    D.hud.tooltip.show = (text, ...rest) => { window.__pokerSeen.tips.push(String(text)); return tip(text, ...rest); };
+    D.hud.openBoard = board => { window.__pokerSeen.boards++; return open(board); };
+    return { point: point && { x: point.x, y: point.y }, picked: hit ? hit.owner.kind : null };
+  })()`);
+  if (caveAt.point) { await b.click(caveAt.point.x, caveAt.point.y); await b.sleep(50); }
+  const caveSeen = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, seen = window.__pokerSeen, modal = document.getElementById("board-modal").open;
+    D.hud.tooltip.show = window.__pokerHooks.tip; D.hud.openBoard = window.__pokerHooks.open;
+    if (modal) D.hud.closeBoard();
+    P.action("theme", window.__pokerWas); if (window.__pokerWalker) D.pilot.possess(window.__pokerWalker); B.advance(1 / 30, 1 / 30);
+    delete window.__pokerSeen; delete window.__pokerHooks; delete window.__pokerWas; delete window.__pokerWalker;
+    return { tips: seen.tips.filter(t => t.includes("placard")).length, boards: seen.boards, modal };
+  })()`);
+  record("regression: in a cave theme the statues' plaques pick, hover and tap as nothing", !!caveAt.point && caveAt.picked !== "placard" && caveSeen.tips === 0 && caveSeen.boards === 0 && !caveSeen.modal, JSON.stringify({ caveAt, caveSeen }));
+  // A real click on a statue's plaque opens the placard board on that figure; its arrows page through all eight, a table
+  // view and Escape close it, and the placard is left open for the round trip, whose leaving must close it.
+  const plaqueAt = await b.evaluate(`(() => {
+    // The free camera, let go of the Ooga (taken back after), looking straight at the third plaque from the room.
+    const B = __ooga, D = BL.scenes.poker.debug, plaque = D.poker.room.statues.plaques[2].node;
+    window.__pokerWalker = D.pilot.player; D.pilot.release(true);
+    BL.scene.updateWorld(D.poker.room.root, null);
+    const m = plaque.world, at = (u, v) => ({ x: m[0] * u + m[4] * v + m[8] * 0.03 + m[12], y: m[1] * u + m[5] * v + m[9] * 0.03 + m[13], z: m[2] * u + m[6] * v + m[10] * 0.03 + m[14] });
+    D.pilot.navigate({ position: at(0, 0.17), target: at(0, 0.17), yaw: Math.PI / 2, pitch: 0.3, dist: 3 }); B.advance(0.5, 1 / 30);
+    const tried = [];
+    for (const [u, v] of [[0, 0.17], [0.15, 0.17], [-0.15, 0.17], [0, 0.08], [0, 0.26]]) {
+      const w = at(u, v), point = B.project(w.x, w.y, w.z, {}), hit = point && B.input.pick(point.x, point.y);
+      if (hit?.owner.kind === "placard" && hit.owner.index === 2) return { x: point.x, y: point.y };
+      tried.push({ point: point && [Math.round(point.x), Math.round(point.y)], hit: hit?.owner.kind || null });
+    }
+    return { tried, camera: [D.camera.position.x, D.camera.position.y, D.camera.position.z].map(n => +n.toFixed(2)) };
+  })()`);
+  if (plaqueAt.x !== undefined) { await b.click(plaqueAt.x, plaqueAt.y); await b.sleep(50); }
+  const placard = await b.evaluate(`(() => {
+    const B = __ooga, P = BL.scenes.poker.debug.poker, St = BL.pokerStatues, modal = document.getElementById("board-modal"), caption = () => document.getElementById("board-caption").textContent;
+    const opened = modal.open, first = caption(), seen = [first];
+    for (let i = 0; i < 8; i++) { modal.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true })); B.advance(1 / 30, 1 / 30); seen.push(caption()); }
+    P.select(3); B.advance(1 / 30, 1 / 30);
+    modal.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    const closed = !modal.open;
+    P.action("walk"); if (window.__pokerWalker) BL.scenes.poker.debug.pilot.possess(window.__pokerWalker); delete window.__pokerWalker;
+    St.board().go(5); BL.scenes.poker.debug.hud.openBoard(St.board()); B.advance(1 / 30, 1 / 30);
+    return { opened, first, all: new Set(seen).size, wrapped: seen[8] === first, closed, reopened: modal.open,
+      ok: opened && first === St.FIGURES[2].name && new Set(seen).size === 8 && seen[8] === first && closed && modal.open };
+  })()`);
+  record("rule: a tap on a statue's plaque opens its placard, the arrows reach all eight, and a table view and Escape close it", plaqueAt.x !== undefined && placard.ok, JSON.stringify({ plaqueAt, placard }));
+  const dealer = await b.evaluate(`(() => {
+    // Pixels with ink (alpha above 0), read through a willReadFrequently copy as the seat faces above are.
+    const c = document.querySelector('[data-poker="dealer-face"]'), copy = document.createElement("canvas"), x = copy.getContext("2d", { willReadFrequently: true });
+    copy.width = c.width; copy.height = c.height; x.drawImage(c, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let ink = 0;
+    for (let k = 3; k < d.length; k += 4) if (d[k]) ink++;
+    return { ink };
+  })()`);
+  record("rule: the dealer's face is painted and the deal gesture shows on a deal and ends", dealer.ink > 0 && r.dealing && !r.dealt && r.dealtFor > 700,
+    JSON.stringify({ ...dealer, dealing: r.dealing, after: r.dealt, ms: Math.round(r.dealtFor) }));
+  record("rule: a computer opponent sits as a dressed guest, a seat keeps its character, and a seat changing hands leaves one figure on the table", r.dressed.ok, JSON.stringify(r.dressed));
+  record("rule: every occupied seat shows its own character's face and an emptied seat loses it", r.faced.ok, JSON.stringify(r.faced));
   record("poker local play: ten suited dealers, 90 chairs, nine-player settlement, table ten playable and private snapshots", r.count === 10 && r.seats && r.dealers && r.privateCards && r.phase === "showdown" && r.total === 9000 && r.shown === "Hand complete" && r.tableTen === 1 && r.standing, JSON.stringify(r));
   record("poker modes: table focus keeps X and the portrait from changing the seated Ooga's mode", r.modeHeld);
+  record("rule: the hand played out at the visitor's own table marks one hand for the music (one win() call)", r.hands === 1, JSON.stringify({ hands: r.hands }));
+  record("poker light: the lowest tier's ten lights are the ten tables, with the room's three and Banana Club's four after them, each table's lamp the nearest light over its felt and the one reaching farthest past it", r.tableLights === 10 && r.lightCount === 17 && r.lampsLead, JSON.stringify({ tableLights: r.tableLights, lightCount: r.lightCount, lampsLead: r.lampsLead }));
   if (process.env.POKER_SHOTS) {
     await b.evaluate(`(() => { const P = BL.scenes.poker.debug.pilot; P.release(true); P.goPreset("entrance"); __ooga.advance(2); })()`);
     await b.screenshot(join(process.env.POKER_SHOTS, "poker-floor.png"));
@@ -33634,12 +34008,43 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
 } }, pokerTrip] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
-  const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; P.action("join"); P.action("bots"); P.action("start"); __ooga.advance(1); return { kind: __ooga.renderer.kind, phase: P.session.tables[0].snapshot().phase, nodes: __ooga.stats().visibleNodes }; })()`);
-  record("poker fallback: stone tables and a playable hand on Canvas 2D", r.kind === "canvas2d" && r.phase !== "waiting" && r.nodes > 120, JSON.stringify(r));
+  await pokerTiming(b, "canvas2d");
+  const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; P.action("join"); P.action("bots"); P.action("start"); __ooga.advance(1); const phase = P.session.tables[0].snapshot().phase; __ooga.advance(2, 1 / 30); return { kind: __ooga.renderer.kind, phase, nodes: __ooga.stats().visibleNodes, crowd: P.crowd.stats().crowd }; })()`);
+  record("poker fallback: stone tables, a playable hand and a crowd of six on Canvas 2D", r.kind === "canvas2d" && r.phase !== "waiting" && r.nodes > 120 && r.crowd === 6, JSON.stringify(r));
 } }] });
 scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="poker"]', required: ["#joy-move", "#joy-look", '[data-poker-action="quick"]'] }), { name: "poker phone actions", why: "rule: seated touch players can read private cards and access legal actions without horizontal overflow", run: async b => {
   const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; document.querySelector('[data-poker-action="quick"]').click(); const panel = document.querySelector('[data-poker="focus"]'), r = panel.getBoundingClientRect(); return { fits: !panel.hidden && r.left >= 0 && r.right <= innerWidth && panel.scrollWidth <= panel.clientWidth + 1, seats: document.querySelectorAll(".poker-seats button").length, cards: document.querySelectorAll(".poker-hand .poker-card").length }; })()`);
   record("poker phone: nine seat choices and two private cards fit the panel", r.fits && r.seats === 9 && r.cards === 2, JSON.stringify(r));
+  // The room faked only as far as the scene reads it for the Emote button (`reactions`, `room`), restored after. Open,
+  // the menu lies inside the screen and its first and last emotes are uncovered; Escape closes it and leaves the table
+  // view open, and a press outside closes it again; closed, the table still fits as above,
+  // and the private cards and the betting actions shown lie inside the screen and are uncovered.
+  const em = await b.evaluate(`(() => {
+    const N = BL.net, saved = { reactions: N.state.reactions, room: N.state.room };
+    const inside = r => r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+    const uncovered = n => { const r = n.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!hit && (hit === n || n.contains(hit)); };
+    const fit = () => {
+      const panel = document.querySelector('[data-poker="focus"]'), r = panel.getBoundingClientRect();
+      const dock = [...document.querySelectorAll('.poker-hand .poker-card, .poker-actions button')].filter(n => n.getClientRects().length);
+      return { fits: !panel.hidden && r.left >= 0 && r.right <= innerWidth && panel.scrollWidth <= panel.clientWidth + 1, seats: document.querySelectorAll(".poker-seats button").length, cards: document.querySelectorAll(".poker-hand .poker-card").length,
+        dock: dock.length, dockOk: dock.length > 0 && dock.every(n => inside(n.getBoundingClientRect()) && uncovered(n)) };
+    };
+    try {
+      N.state.reactions = true; N.state.room = "live"; __ooga.advance(1 / 30, 1 / 30);
+      const button = document.querySelector('.poker-status-strip [data-poker="emote"]'), menu = document.querySelector('[data-poker="emote-menu"]'), br = button.getBoundingClientRect();
+      const shown = { visible: !button.hidden && inside(br) && uncovered(button), height: br.height };
+      // Pressed as a finger does (its pointerdown, then its click); Escape sent to the focused element as the keyboard sends it.
+      const press = n => { const r = n.getBoundingClientRect(); n.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: "touch", isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 })); };
+      press(button); button.click();
+      const items = menu.querySelectorAll("button"), open = { visible: !menu.hidden && inside(menu.getBoundingClientRect()), ends: uncovered(items[0]) && uncovered(items[items.length - 1]) };
+      (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+      const escaped = { menu: menu.hidden, view: document.body.hasAttribute("data-poker-table-view") };
+      press(button); button.click(); const reopened = !menu.hidden; press(document.querySelector('[data-poker="title"]'));
+      const closed = { menu: menu.hidden, reopened, ...fit() };
+      return { shown, open, escaped, closed, ok: shown.visible && shown.height >= 44 && open.visible && open.ends && escaped.menu && escaped.view && reopened && closed.menu && closed.fits && closed.seats === 9 && closed.cards === 2 && closed.dockOk };
+    } finally { N.state.reactions = saved.reactions; N.state.room = saved.room; __ooga.advance(1 / 30, 1 / 30); }
+  })()`);
+  record("rule: the Emote button and its open menu are on screen, and the table still fits", em.ok, JSON.stringify(em));
   if (process.env.POKER_SHOTS) await b.screenshot(join(process.env.POKER_SHOTS, "poker-phone.png"));
 } }] });
 scene("hub", { label: "gorilla population restoration", query: "status=clankin", exclusive: true, opts: { motion: true }, steps: [hubGorillaPopulation] });
@@ -35411,6 +35816,527 @@ const factoryChecks = (BL) => {
     record("factory demo node: the first channel reaches the forge within ten seconds and the forge never waits a minute, while the number of open lines holds steady", forge[0] < 10 && Math.max(...gaps) < 60 && counts.length > 8 && Math.max(...counts) - Math.min(...counts) <= 2, JSON.stringify({ first: forge[0], longest: Math.max(...gaps), openLines: [Math.min(...counts), Math.max(...counts)], channels: start }));
   }
 };
+const pokerMarbleChecks = (BL) => {
+  const K = BL.pokerMarble, faces = g => BL.compactGeometry?.storageOf(g)?.count ?? g.faces.length;
+  const ys = g => { let lo = Infinity, hi = -Infinity; for (let i = 1; i < g.verts.length; i += 3) { lo = Math.min(lo, g.verts[i]); hi = Math.max(hi, g.verts[i]); } return [lo, hi]; };
+  // Rule: the vein layout is the seed's alone, so two builds of one seed (here a second one moved by its offset) lie the same.
+  const a = K.slab({ w: 2, h: 0.2, d: 4, seed: 7 }), b = K.slab({ w: 2, h: 0.2, d: 4, seed: 7, offset: { x: 1 } }), c = K.slab({ w: 2, h: 0.2, d: 4, seed: 8 });
+  let same = a !== b && a.verts.length === b.verts.length && faces(a) === faces(b) && K.slab({ w: 2, h: 0.2, d: 4, seed: 7 }) === a;
+  for (let i = 0; same && i < a.verts.length; i++) same = Math.abs(a.verts[i] + (i % 3 ? 0 : 1) - b.verts[i]) < 1e-9;
+  let differs = false;
+  for (let i = 0; !differs && i < a.verts.length; i++) differs = Math.abs(a.verts[i] - c.verts[i]) > 1e-6;
+  record("poker marble: a slab's veins come from its seed, the same every time and different for another seed", same && differs);
+  // Rule: Canvas 2D and the low tier get half the veins and half the turning, never the stone itself taken away.
+  let liteFewer = false, liteStillBuilds = false;
+  const stone = faces(K.slab({ w: 2, h: 0.2, d: 4, seed: 7, veins: 0 })), column = K.column({ h: 3 });
+  try {
+    K.setLite(true);
+    const thin = K.slab({ w: 2, h: 0.2, d: 4, seed: 7 }), one = K.slab({ w: 2, h: 0.2, d: 4, seed: 7, veins: 1 }), turned = K.column({ h: 3 });
+    liteFewer = thin !== a && (faces(thin) - stone) * 2 === faces(a) - stone && faces(turned) * 2 === faces(column);
+    liteStillBuilds = (faces(one) - stone) * 3 === faces(thin) - stone && faces(one) > stone && ys(turned)[1] === ys(column)[1];
+  } finally { K.setLite(false); }
+  liteStillBuilds = liteStillBuilds && K.slab({ w: 2, h: 0.2, d: 4, seed: 7 }) === a && K.column({ h: 3 }) === column;
+  record("poker marble: lite keeps the stone and thins the veins and the turning", liteFewer && liteStillBuilds);
+  // Rule: the room stands these straight on its floor, so each starts at y 0, and each build is made once.
+  const plinth = K.plinth(), plaque = K.plaque();
+  const onFloor = [column, plinth, plaque].every(g => Math.abs(ys(g)[0]) < 1e-9) && Math.abs(ys(column)[1] - 3) < 1e-9 && Math.abs(ys(plinth)[1] - 0.9) < 1e-9;
+  const cached = K.column({ h: 3, r: 0.42 }) === column && K.plinth({ w: 1.2 }) === plinth && K.plaque({}) === plaque && K.plinth({ w: 1.4 }) !== plinth && Object.isFrozen(K);
+  record("poker marble: a column, a plinth and a plaque stand on the floor and are cached", onFloor && cached);
+};
+// BEGIN pokerMarbleHallChecks
+const pokerMarbleHallChecks = (BL) => {
+  // The marble kit's veins (Task 1b).
+  {
+    // Function body for Node checks beside pokerMarbleChecks: takes `BL` and `record(name, ok, detail)`.
+    // Rule: a vein lies wholly on the flat of the face it sits on (never over the bevel or past the face) and faces out of
+    // the stone, and veins sit only on the slab's largest faces (all on the top when those are the top and underside).
+    {
+      const K = BL.pokerMarble, C = BL.compactGeometry;
+      const faceAt = (g, n) => C?.storageOf(g) ? C.copyFace(g, n) : g.faces[n];
+      const count = g => C?.storageOf(g)?.count ?? g.faces.length;
+      const sizes = [[4, 0.1, 4], [0.12, 1, 3], [1.04, 0.62, 1.04], [6, 4, 0.15], [2.5, 1.02, 0.6], [3.1, 0.08, 7.3]];
+      let inside = true, outward = true, largest = true, veinsSeen = 0;
+      const bad = [];
+      for (const [w, h, d] of sizes) {
+        const half = [w / 2, h / 2, d / 2], area = [d * h, w * d, w * h];
+        // The faces the slab should vein: the axis of largest area (ties to y, then z), and only its + side when it is y.
+        const axis = area[1] >= area[0] && area[1] >= area[2] ? 1 : area[2] >= area[0] ? 2 : 0;
+        const stone = count(K.slab({ w, h, d, seed: 1, veins: 0 }));
+        // The flat of each face, read from the bare stone's own vertices on that face's plane.
+        const bare = K.slab({ w, h, d, seed: 1, veins: 0 }), flat = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        for (let i = 0; i < bare.verts.length; i += 3) for (let a = 0; a < 3; a++) {
+          if (Math.abs(Math.abs(bare.verts[i + a]) - half[a]) > 1e-9) continue;
+          for (let b = 0; b < 3; b++) if (b !== a) flat[a][b] = Math.max(flat[a][b], Math.abs(bare.verts[i + b]));
+        }
+        for (let seed = 0; seed < 220; seed++) {
+          const g = K.slab({ w, h, d, seed, veins: 6 });
+          for (let n = stone; n < count(g); n++) {
+            veinsSeen++;
+            const ids = faceAt(g, n).i, p = ids.map(k => [g.verts[k * 3], g.verts[k * 3 + 1], g.verts[k * 3 + 2]]);
+            // The face a vein sits on: the axis all its corners stand just proud of.
+            const a = [0, 1, 2].find(k => p.every(q => Math.abs(Math.abs(q[k]) - half[k] - 0.004) < 1e-6));
+            if (a === undefined) { inside = false; bad.push([w, h, d, seed, "off face"]); continue; }
+            const sign = Math.sign(p[0][a]);
+            if (a !== axis || (axis === 1 && sign < 0)) { largest = false; bad.push([w, h, d, seed, "axis " + a + sign]); }
+            for (const q of p) for (let b = 0; b < 3; b++) if (b !== a && Math.abs(q[b]) > flat[a][b] + 1e-9) { inside = false; bad.push([w, h, d, seed, "over " + b]); }
+            // Newell normal along the face's axis must point out of the stone.
+            let nn = 0;
+            const b = (a + 1) % 3, c = (a + 2) % 3;
+            for (let k = 0; k < p.length; k++) { const u = p[k], v = p[(k + 1) % p.length]; nn += (u[b] - v[b]) * (u[c] + v[c]); }
+            if (!(nn * sign > 0)) { outward = false; bad.push([w, h, d, seed, "inward"]); }
+          }
+        }
+      }
+      record("poker marble: every vein lies on the flat of its face, facing out, for many sizes and seeds", inside && outward && veinsSeen > 0, JSON.stringify(bad.slice(0, 5)));
+      record("poker marble: veins sit on the slab's largest faces, all on the top when the top is largest", largest, JSON.stringify(bad.slice(0, 5)));
+
+      // Rule: a plinth's veins go round its four upright faces, the faces a visitor sees, each inside its face and facing out.
+      {
+        const vein = BL.math.hexToRgb(K.VEIN).join(), wrong = [];
+        let upright = true, round = true;
+        for (const lite of [false, true]) for (const [w, h] of [[1.2, 0.9], [1.6, 1.1], [0.9, 0.7]]) {
+          K.setLite(lite);
+          const g = K.plinth({ w, h }), half = [(w - 0.16) / 2, (h - 0.28) / 2, (w - 0.16) / 2], cy = 0.14 + (h - 0.28) / 2, seen = new Set();
+          // The body's flat, read from a bare body of the plinth's own size.
+          const bare = K.slab({ w: w - 0.16, h: h - 0.28, d: w - 0.16, seed: 41, veins: 0, on: "sides", offset: { y: cy } }), flat = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+          for (let i = 0; i < bare.verts.length; i += 3) for (let a = 0; a < 3; a++) {
+            const q = [bare.verts[i], bare.verts[i + 1] - cy, bare.verts[i + 2]];
+            if (Math.abs(Math.abs(q[a]) - half[a]) > 1e-9) continue;
+            for (let b = 0; b < 3; b++) if (b !== a) flat[a][b] = Math.max(flat[a][b], Math.abs(q[b]));
+          }
+          for (let n = 0; n < count(g); n++) {
+            const f = faceAt(g, n);
+            if (f.color.join() !== vein) continue;
+            const p = f.i.map(k => [g.verts[k * 3], g.verts[k * 3 + 1] - cy, g.verts[k * 3 + 2]]);
+            const a = [0, 2].find(k => p.every(q => Math.abs(Math.abs(q[k]) - half[k] - 0.004) < 1e-6));
+            if (a === undefined) { upright = false; wrong.push([lite, w, h, "not upright"]); continue; }
+            const sign = Math.sign(p[0][a]), b = (a + 1) % 3, c = (a + 2) % 3;
+            seen.add(a * 2 + (sign > 0 ? 1 : 0));
+            for (const q of p) for (let e = 0; e < 3; e++) if (e !== a && Math.abs(q[e]) > flat[a][e] + 1e-9) { upright = false; wrong.push([lite, w, h, "over " + e]); }
+            let nn = 0;
+            for (let k = 0; k < p.length; k++) { const u = p[k], v = p[(k + 1) % p.length]; nn += (u[b] - v[b]) * (u[c] + v[c]); }
+            if (!(nn * sign > 0)) { upright = false; wrong.push([lite, w, h, "inward"]); }
+          }
+          // Four veins go once round the four sides; lite's two lie on two of them.
+          if (seen.size !== (lite ? 2 : 4)) { round = false; wrong.push([lite, w, h, "faces " + seen.size]); }
+        }
+        K.setLite(false);
+        record("poker marble: a plinth's veins lie on its four upright faces, inside them and facing out", upright && round, JSON.stringify(wrong.slice(0, 5)));
+      }
+      // Regression guard: `on` left out keeps the largest-faces slabs exactly as they were built before it existed (golden hashes).
+      {
+        const sig = g => { let s = ""; for (let i = 0; i < g.verts.length; i++) s += g.verts[i].toFixed(6) + ","; for (let n = 0; n < count(g); n++) { const f = faceAt(g, n); s += f.i.join(".") + ":" + f.color.join(".") + ";"; } return BL.math.fnv1a(s); };
+        const got = [];
+        for (const lite of [false, true]) {
+          K.setLite(lite);
+          for (const a of [{ w: 3.98, h: 0.35, d: 3.98, seed: 11, veins: 3 }, { w: 3.1, h: 0.08, d: 7.3, seed: 31 }, { w: 2.5, h: 1.02, d: 0.6, seed: 60, veins: 4 }, { w: 0.5, h: 1.1, d: 2.4, seed: 70, veins: 4, offset: { x: 1, y: 2, z: 3 } }]) got.push(sig(K.slab(a)));
+        }
+        K.setLite(false);
+        record("poker marble: a slab without `on` is built exactly as before", got.join() === [3101402038, 513827274, 136968587, 2354633940, 2021854259, 3756220481, 155386876, 3994475038].join(), JSON.stringify(got));
+      }
+    }
+  }
+  // The shell, the light and the ornate tables (Task 2).
+  {
+    // Task 2 checks: the marble shell, the light and the ornate tables. A function body for test/run.mjs's unit tier.
+    // Inputs: `BL`, the unit tier's global with every module src/index.html lists loaded (pokerModels, pokerThemes,
+    // pokerMarble, models, scene, agent and what they read), and `record(name, ok, detail)`.
+    {
+      const P = BL.pokerModels, T = BL.pokerThemes;
+      // FNV-1a over exact float bits and strings, so a hash moves with any vertex, colour, flag or transform.
+      const f64 = new Float64Array(1), u32 = new Uint32Array(f64.buffer);
+      let h = 0;
+      const mix = n => { h ^= n; h = Math.imul(h, 16777619) >>> 0; };
+      const num = v => { f64[0] = v; mix(u32[0]); mix(u32[1]); };
+      const str = s => { for (let i = 0; i < s.length; i++) mix(s.charCodeAt(i)); mix(0); };
+      const val = v => { if (typeof v === "number") num(v); else if (typeof v === "boolean") num(v ? 1 : 0); else if (typeof v === "string") str(v); else if (v == null) str("~"); else if (typeof v.length === "number") { num(v.length); for (let i = 0; i < v.length; i++) val(v[i]); } };
+      const geoHash = new Map();
+      const hashGeometry = g => {
+        if (!g) return "none";
+        if (geoHash.has(g)) return geoHash.get(g);
+        const was = h; h = 2166136261;
+        val(g.verts); num(g.faces.length);
+        for (let i = 0; i < g.faces.length; i++) {
+          const f = g.faces[i];
+          val(f.i); val(f.color);
+          for (const key of Object.keys(f).sort()) if (key !== "i" && key !== "color" && f[key] !== undefined && typeof f[key] !== "object") { str(key); val(f[key]); }
+        }
+        for (const key of Object.keys(g).sort()) if (key !== "verts" && key !== "faces" && key !== "compactGeometry") {
+          const v = g[key];
+          if (typeof v !== "object" || v === null || typeof v.length === "number") { str(key); val(v); }
+        }
+        const out = h.toString(16); h = was; geoHash.set(g, out); return out;
+      };
+      const hashValue = v => { h = 2166136261; val(v); return h.toString(16); };
+      const hashBuilt = built => {
+        const parts = [];
+        // `fanlight` is left out: before the marble hall every theme's record built it, though only Banana Club placed it.
+        for (const key of Object.keys(built).sort()) {
+          const v = built[key];
+          if (key === "fanlight") continue;
+          if (v && v.verts) parts.push(key + "=" + hashGeometry(v));
+          else if (v && v.geometry) parts.push(key + "=" + hashGeometry(v.geometry) + "/" + v.width);
+          else if (Array.isArray(v)) parts.push(key + "=" + v.map(g => hashGeometry(g?.verts ? g : null)).join(","));
+          else if (v && typeof v === "object") parts.push(key + "=" + hashValue(JSON.stringify(v, (k, x) => x && x.verts ? hashGeometry(x) : x)));
+          else parts.push(key + "=" + String(v));
+        }
+        return hashValue(parts.join("|"));
+      };
+      const hashNode = n => {
+        const p = n.position, r = n.rotation, s = n.scale;
+        val([p.x, p.y, p.z, r.x, r.y, r.z, s.x, s.y, s.z, n.visible !== false, n.glow ?? -1]);
+        if (n.quaternion) val([n.quaternion.x, n.quaternion.y, n.quaternion.z, n.quaternion.w]);
+        str(hashGeometry(n.geometry)); num(n.children.length);
+        for (const c of n.children) hashNode(c);
+      };
+      const hashRoom = room => {
+        const keep = new Map(geoHash);
+        h = 2166136261; hashNode(room.root); const out = h.toString(16);
+        geoHash.clear(); for (const [k, v] of keep) geoHash.set(k, v);
+        return out;
+      };
+      const caves = T.themes.filter(t => t.id !== "gatsby");
+      const room = P.build(), seen = {};
+      try {
+        for (const t of caves) {
+          room.setTheme(t.id);
+          seen[t.id] = [hashValue(JSON.stringify(t)), hashBuilt(P.geometry(t.id)), hashValue(Array.from(P.lights(t.id))), hashRoom(room)].join(":");
+        }
+      } finally { room.setTheme("gatsby"); for (const tb of room.tables) tb.agent.dispose(); }
+      // Recorded from rock at 45e02fd4, the tree before the marble hall: theme record, built geometry, light array, built room.
+      const BEFORE = {
+        crystal: "f66ee59a:f650e3cd:117697cd:9c34b100",
+        ember: "3d2a6db1:e1d70253:117697cd:7671f6d5",
+        jungle: "4b98f2e:b42da904:117697cd:a25ef873",
+        moonstone: "21fcded:fc2c080d:117697cd:61030f41"
+      };
+      // Rule: only Banana Club changes; every cave builds exactly as before, geometry, lights, tables and theme alike.
+      record("poker marble hall: the four cave styles build exactly as before the marble hall", caves.every(t => seen[t.id] === BEFORE[t.id]), JSON.stringify(seen));
+
+      // Rule: Banana Club builds on the full set and on Canvas 2D's lite set, the lite one lighter, and each room switches back.
+      const faces = g => BL.compactGeometry?.storageOf(g)?.count ?? g.faces.length;
+      const rooms = [];
+      let builds = false, liteLighter = false;
+      try {
+        P.setLite(false); const full = P.geometry("gatsby"); rooms.push(P.build());
+        P.setLite(true); const lite = P.geometry("gatsby"); const liteRoom = P.build(); rooms.push(liteRoom);
+        liteRoom.setTheme("ember"); liteRoom.setTheme("gatsby");
+        liteLighter = lite !== full && faces(lite.shell) < faces(full.shell) && faces(lite.base) <= faces(full.base) && faces(lite.chair) <= faces(full.chair);
+        P.setLite(false);
+        builds = P.geometry("gatsby") === full && rooms.every(r => r.theme === "gatsby" && r.tables.length === 10) && liteRoom.tables[0].base.geometry === lite.base;
+      } finally { P.setLite(false); for (const r of rooms) for (const tb of r.tables) tb.agent.dispose(); }
+      record("poker marble hall: Banana Club builds on the full and lite sets, the lite one with fewer faces", builds && liteLighter);
+
+      // Rule: the ornate table keeps the old footprint, seat spots and felt height, so walking and seated figures stay put.
+      const club = P.build();
+      let table = false;
+      try {
+        const g = P.geometry("gatsby"), t = club.tables[0], ys = geo => { let lo = Infinity, hi = -Infinity; for (let i = 1; i < geo.verts.length; i += 3) { lo = Math.min(lo, geo.verts[i]); hi = Math.max(hi, geo.verts[i]); } return [lo, hi]; };
+        // How far a table's pieces reach in x and z once scaled, against the walkable ellipse (4.85 by 3.25).
+        let inside = true;
+        for (const n of [t.base, t.top, t.rim, t.felt, t.pinstripe]) {
+          const v = n.geometry.verts;
+          for (let i = 0; i < v.length; i += 3) { const x = v[i] * n.scale.x / 4.85, z = v[i + 2] * n.scale.z / 3.25; if (x * x + z * z > 1.0001) inside = false; }
+        }
+        const seats = hashValue(P.SEATS.map(s => [s.x, s.z, s.yaw]).flat());
+        const chairsAt = club.tables.every(tb => tb.chairs.every((c, j) => c.position.x === P.SEATS[j].x && c.position.z === P.SEATS[j].z && c.position.y === 0 && c.rotation.y === P.SEATS[j].yaw && c.geometry === g.chair));
+        table = Math.abs(ys(g.felt)[1] - 1.38) < 1e-9 && t.felt.scale.x === 4.38 && t.felt.scale.z === 2.8 && inside && chairsAt &&
+          seats === "a2a29b1" && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
+      } finally { for (const tb of club.tables) tb.agent.dispose(); }
+      record("poker marble hall: the ornate table keeps its footprint, seat spots and felt height", table);
+
+      // Rule: the table view's panel reads the theme's ui block and felt, which the marble hall leaves as they were.
+      const gatsby = T.get("gatsby");
+      record("poker marble hall: Banana Club's panel colours and felt are unchanged", hashValue(JSON.stringify({ ui: gatsby.ui, felt: gatsby.felt })) === "c29e6fb0" &&
+        hashValue(Array.from(P.lights("gatsby"))) === "c7924b36", JSON.stringify({ ui: hashValue(JSON.stringify({ ui: gatsby.ui, felt: gatsby.felt })), lights: hashValue(Array.from(P.lights("gatsby"))), seats: hashValue(P.SEATS.map(s => [s.x, s.z, s.yaw]).flat()) }));
+    }
+  }
+  // The fountain (Task 3).
+  {
+    // Task 3's checks: the fountain (`BL.pokerFountain`). A function body taking `BL` and `record(name, ok, detail)`.
+    // Loader inputs: a `BL` with these modules loaded in `src/index.html` order: math, scene, models, hero-body, caves,
+    // contributor-identities, activity-repos, characters, characters.gen, roster-panel, contributors (the
+    // CONTRIBUTOR_SOURCES of `test/run.mjs`), then poker-marble and poker-fountain; compact-geometry (before models) too, so
+    // the bake reads the page's packed character meshes. In `test/run.mjs`'s unit tier this is the
+    // global `BL` once `poker-fountain.js` has its script tag; it fits beside `pokerMarbleChecks(BL)`.
+    const F = BL.pokerFountain, S = BL.scene;
+    // Every node under a root (the root first), and every vertex of every visible geometry in the root's frame.
+    const nodesOf = (root) => { const out = [], stack = [root]; while (stack.length) { const n = stack.pop(); out.push(n); for (const c of n.children) stack.push(c); } return out; };
+    const extent = (root) => {
+      S.updateWorld(root, null);
+      let reach = 0, top = -Infinity, low = Infinity;
+      for (const n of nodesOf(root)) {
+        if (!n.geometry) continue;
+        const m = n.world, v = n.geometry.verts;
+        for (let i = 0; i < v.length; i += 3) {
+          const x = m[0] * v[i] + m[4] * v[i + 1] + m[8] * v[i + 2] + m[12], y = m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13], z = m[2] * v[i] + m[6] * v[i + 1] + m[10] * v[i + 2] + m[14];
+          reach = Math.max(reach, Math.hypot(x - F.X, z - F.Z)); top = Math.max(top, y); low = Math.min(low, y);
+        }
+      }
+      return { reach, top, low };
+    };
+    // The water's nodes: strands carry `lakeFlow`; droplets are the other lake nodes that share one geometry.
+    const water = (root) => {
+      const lake = nodesOf(root).filter((n) => n.geometry && n.geometry.faces.length && n.geometry.faces.every((f) => f.lake));
+      const strands = lake.filter((n) => n.geometry.lakeFlow), rest = lake.filter((n) => !n.geometry.lakeFlow), counts = new Map();
+      for (const n of rest) counts.set(n.geometry, (counts.get(n.geometry) || 0) + 1);
+      const dropGeo = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+      return { strands, drops: rest.filter((n) => n.geometry === dropGeo), surfaces: rest.filter((n) => n.geometry !== dropGeo) };
+    };
+    const full = F.build(false), lite = F.build(true);
+    record("poker fountain: build gives a root, an update and a dispose, and the kit is frozen",
+      Object.isFrozen(F) && F.X === 0 && F.Z === 0 && F.RADIUS === 2.3 && [full, lite].every((b) => b.root && b.root.children.length && typeof b.update === "function" && typeof b.dispose === "function"));
+    const eFull = extent(full.root), eLite = extent(lite.root);
+    record("poker fountain: everything stands within the rim's radius, on the floor and under 3 m",
+      [eFull, eLite].every((e) => e.reach <= F.RADIUS + 1e-6 && e.top < 3 && e.low >= -1e-6), JSON.stringify({ full: eFull, lite: eLite }));
+    // 600 steps of a sixtieth: every droplet stays inside the basin's inner wall and over the floor, something moves every
+    // step, and the graph keeps exactly the nodes and geometries it was built with.
+    const wFull = water(full.root), wLite = water(lite.root), before = nodesOf(full.root), geos = before.map((n) => n.geometry);
+    const state = () => { const out = []; for (const n of before) out.push(n.position.x, n.position.y, n.position.z, n.scale.x, n.scale.y, n.scale.z, n.glow); return out; };
+    let inside = true, everyStepMoves = true, previous = state(), worst = 0;
+    for (let k = 1; k <= 600; k++) {
+      full.update(1 / 60, k / 60);
+      for (const d of wFull.drops) {
+        const r = Math.hypot(d.position.x - F.X, d.position.z - F.Z);
+        worst = Math.max(worst, r);
+        if (r > F.RADIUS - 0.3 || d.position.y < 0.2 || d.position.y > 3) inside = false;
+      }
+      const now = state();
+      if (!now.some((v, i) => v !== previous[i])) everyStepMoves = false;
+      previous = now;
+    }
+    const after = nodesOf(full.root), sameGraph = after.length === before.length && after.every((n, i) => n === before[i] && n.geometry === geos[i]);
+    record("poker fountain: 600 steps keep the droplets in the basin, move something every step and add no node",
+      inside && everyStepMoves && sameGraph && wFull.drops.length > 0, JSON.stringify({ worst: +worst.toFixed(3), inside, everyStepMoves, sameGraph }));
+    record("poker fountain: five strands and twelve droplets, three and six lite, over one pool surface each",
+      wFull.strands.length === 5 && wFull.drops.length === 12 && wLite.strands.length === 3 && wLite.drops.length === 6 && wFull.surfaces.length === 1 && wLite.surfaces.length === 1
+      && wFull.strands.concat(wFull.drops, wFull.surfaces).every((n) => n.geometry.glass > 0 && n.geometry.faces.every((f) => f.lake && !f.water)),
+      JSON.stringify({ full: [wFull.strands.length, wFull.drops.length], lite: [wLite.strands.length, wLite.drops.length] }));
+    // From the room's +z end the figure is not behind its water: every strand vertex away from the centre lies well off
+    // the line from the figure's centre toward +z.
+    S.updateWorld(full.root, null);
+    let nearest = Infinity;
+    for (const n of wFull.strands) {
+      const m = n.world, v = n.geometry.verts;
+      for (let i = 0; i < v.length; i += 3) {
+        const x = m[0] * v[i] + m[4] * v[i + 1] + m[8] * v[i + 2] + m[12] - F.X, z = m[2] * v[i] + m[6] * v[i + 1] + m[10] * v[i + 2] + m[14] - F.Z;
+        if (Math.hypot(x, z) > 0.3) nearest = Math.min(nearest, Math.abs(Math.atan2(x, z)));
+      }
+    }
+    record("poker fountain: the water falls beside the figure, not between it and the room's +z end", nearest > 0.4, `nearest bearing ${nearest.toFixed(3)} rad`);
+    // A negative, NaN or infinite time neither sinks nor loses a droplet.
+    let sane = true;
+    for (const t of [-3.7, -0.01, NaN, Infinity, -Infinity, 1e9]) {
+      full.update(1 / 60, t);
+      for (const d of wFull.drops) {
+        const p = d.position, r = Math.hypot(p.x - F.X, p.z - F.Z);
+        if (![p.x, p.y, p.z, d.scale.x, d.glow].every(Number.isFinite) || r > F.RADIUS - 0.3 || p.y < 0.2 || p.y > 3 || d.scale.x <= 0) sane = false;
+      }
+    }
+    record("poker fountain: a negative or non-finite time keeps every droplet in the basin", sane);
+    full.dispose(); lite.dispose();
+    full.update(1 / 60, 1);
+    record("poker fountain: dispose empties the root", full.root.children.length === 0 && lite.root.children.length === 0);
+  }
+  // The statues and their placards (Task 4).
+  {
+    // pokerStatuesChecks: a function body. Loader inputs from test/run.mjs's scope: record, readFileSync, join, root,
+    // runInNewContext. It loads its own bare context: math, scene, compact-geometry, models, hero-body, sign-glyphs,
+    // jumbotron-font, poker-marble, poker-statues, with a canvas stand-in whose 2D context ignores every draw.
+    const ctx2d = { fillStyle: "", strokeStyle: "", lineWidth: 1, fillRect() {}, strokeRect() {} };
+    const context = { window: { location: { search: "" } }, URLSearchParams, location: { search: "" }, console, performance,
+      document: { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) } };
+    const sources = ["math", "scene", "compact-geometry", "models", "hero-body", "sign-glyphs", "jumbotron-font", "poker-marble", "poker-statues"];
+    const statueSource = readFileSync(join(root, "src/js/poker-statues.js"), "utf8");
+    for (const name of sources) runInNewContext(name === "poker-statues" ? statueSource : readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
+    const BL = context.window.BL, P = BL.pokerStatues, font = BL.jumbotronFont;
+    const TABLE = [
+      ["merkle", "Ralph Merkle", "a branching tree", ["Merkle's puzzles, 1974.", "Merkle trees, 1979, as a Stanford graduate student."]],
+      ["chaum", "David Chaum", "a sealed envelope", ["Blind signatures, 1982.", "Ecash, and DigiCash, founded in Amsterdam about 1990.", "DigiCash went bankrupt in 1998."]],
+      ["back", "Adam Back", "a stamp and hammer", ["Proposed hashcash in 1997.", "The whitepaper cites Adam Back's Hashcash."]],
+      ["dai", "Wei Dai", "a coin marked b", ["B-money, 1998.", "It is the whitepaper's very first citation."]],
+      ["szabo", "Nick Szabo", "a gold bar", ["Bit gold: designed 1998, published 2005.", "Chained proofs of work."]],
+      ["finney", "Hal Finney", "a tablet marked 170", ["Reusable proofs of work, 2004.", "First to write back that the paper seemed promising.", "Received 10 bitcoin in block 170, 12 January 2009."]],
+      ["satoshi", "Satoshi Nakamoto", "a scroll", ["Signed the whitepaper under a pen name.", "Mined the genesis block on 3 January 2009.", "To this day, nobody knows who that is."]],
+      ["hanyecz", "Laszlo Hanyecz", "two pizza boxes", ["Paid 10,000 bitcoin for two pizzas in 2010.", "22 May is Bitcoin Pizza Day."]]
+    ];
+    // Rule: the placards are the plan's table word for word, in order, and nobody else is written about anywhere in the module.
+    const tableExact = P.FIGURES.length === 8 && Object.isFrozen(P) && Object.isFrozen(P.FIGURES) && P.FIGURES.every((f, i) => Object.isFrozen(f) && Object.isFrozen(f.lines)
+      && Object.keys(f).join() === "id,name,attribute,lines" && f.id === TABLE[i][0] && f.name === TABLE[i][1] && f.attribute === TABLE[i][2] && f.lines.join("|") === TABLE[i][3].join("|"));
+    const count = (text, part) => text.split(part).length - 1;
+    const start = statueSource.indexOf("const FIGURES"), end = statueSource.indexOf("\n  ].map(f => Object.freeze", start), outside = statueSource.slice(0, start) + statueSource.slice(end);
+    const people = ["Ralph", "Merkle", "David", "Chaum", "Adam", "Wei Dai", "Szabo", "Finney", "Satoshi", "Nakamoto", "Laszlo", "Hanyecz", "Hashcash", "DigiCash", "whitepaper", "genesis", "pizza"];
+    // The region left out of the scan is the table alone: it opens at FIGURES, closes at its own map, and holds eight entries.
+    const tableOnly = start > 0 && end > start && count(statueSource.slice(start, end), "{ id: ") === 8 && count(statueSource.slice(start, end), "\n") === 8;
+    const linesOnce = tableOnly && TABLE.every(row => row[3].every(line => count(statueSource, line) === 1)) && start > 0 && end > start
+      && people.every(word => !new RegExp(`\\b${word}\\b`, "i").test(outside.replace(/two pizza boxes|Pizza boxes/gi, "")));
+    record("poker statues: the placards are the plan's eight figures word for word, and the module writes about no one else", tableExact && linesOnce);
+    // Rule: eight plinths, four a side in mirror pairs, each facing the centre line, clear of the columns and inside the walkable band.
+    const columns = [];
+    for (const side of [-1, 1]) for (let k = 0; k <= 8; k++) columns.push([side * 23.8, -34 + k * 8.5]);
+    const slotsOk = P.SLOTS.length === 8 && Object.isFrozen(P.SLOTS) && P.SLOTS.every((s, i) => {
+      const twin = P.SLOTS[i ^ 1];
+      return twin.x === -s.x && twin.z === s.z && Math.abs(Math.sin(s.yaw) + Math.sign(s.x)) < 1e-9 && Math.abs(Math.cos(s.yaw)) < 1e-9
+        && columns.every(([x, z]) => Math.hypot(s.x - x, s.z - z) >= 1.2) && Math.abs(s.x) + P.PLINTH.w / 2 <= 23;
+    });
+    record("poker statues: eight mirrored slots face the centre line, clear of every column and inside the walkable band", slotsOk);
+    // Rule: each statue is one geometry stood on its plinth, under 3.2 m in all, the eight differ, and all eight are one figure.
+    const names = new Set(), caveman = BL.models.caveman;
+    BL.models.caveman = traits => { names.add(traits.name); return caveman(traits); };
+    let statuesOk = true, inFootprint = true, reach = 0, side = 0;
+    try {
+      for (const lite of [false, true]) {
+        const built = P.build(lite), geos = [];
+        statuesOk = statuesOk && built.root.children.length === 8 && built.plaques.length === 8;
+        built.root.children.forEach((group, i) => {
+          const [plinth, statue, plaque] = group.children, v = statue.geometry.verts;
+          let lo = Infinity, hi = -Infinity;
+          for (let k = 1; k < v.length; k += 3) { lo = Math.min(lo, v[k]); hi = Math.max(hi, v[k]); }
+          const s = P.SLOTS[i], plaqueX = s.x + Math.sin(s.yaw) * plaque.position.z;
+          for (let k = 0; k < v.length; k += 3) if (Math.abs(v[k]) > P.PLINTH.side || v[k + 2] > P.PLINTH.reach || v[k + 2] < -P.PLINTH.w / 2) inFootprint = false;
+          reach = Math.max(reach, ...Array.from({ length: v.length / 3 }, (_, k) => v[k * 3 + 2]));
+          side = Math.max(side, ...Array.from({ length: v.length / 3 }, (_, k) => Math.abs(v[k * 3])));
+          statuesOk = statuesOk && group.children.length === 3 && statue.children.length === 0 && plinth.geometry && statue.position.y === P.PLINTH.h
+            && Math.abs(lo) < 1e-9 && statue.position.y + hi < 3.2 && group.position.x === s.x && group.position.z === s.z && group.rotation.y === s.yaw
+            && built.plaques[i].node === plaque && built.plaques[i].index === i && plaque.position.z > 0 && plaque.position.z <= P.PLINTH.w / 2 && Math.abs(plaqueX) < Math.abs(s.x);
+          geos.push(statue.geometry);
+        });
+        const differ = geos.every((a, i) => geos.every((b, j) => i === j || a !== b && (a.verts.length !== b.verts.length || a.verts.some((x, k) => Math.abs(x - b.verts[k]) > 1e-6))));
+        statuesOk = statuesOk && differ && P.build(lite).root.children.every((g, i) => g.children[1].geometry === geos[i]);
+        built.dispose();
+        statuesOk = statuesOk && built.root.children.length === 0;
+      }
+    } finally { BL.models.caveman = caveman; }
+    const up = x => Math.ceil(x / 0.05 - 1e-9) * 0.05;
+    record("poker statues: every statue's baked bounds lie inside the exported walk-block footprint, measured from the bakes and rounded up to 0.05 m",
+      inFootprint && Math.abs(P.PLINTH.reach - up(reach)) < 1e-9 && Math.abs(P.PLINTH.side - up(side)) < 1e-9, JSON.stringify({ reach, side }));
+    record("poker statues: each is one geometry on its plinth under 3.2 m, all eight differ, cached, and every one is the same invented figure", statuesOk && names.size === 1 && !names.has(undefined));
+    // Rule: each plaque carries its figure's name, first name over surname, in carved cells on the shared plate and inside it.
+    let namesOk = true;
+    {
+      const G = BL.signGlyphs.SIGN_GLYPHS, a = P.build(false), b = P.build(true), plates = new Set(), seen = new Set();
+      a.plaques.forEach(({ node: plate }, i) => {
+        const carved = plate.children[0]?.geometry, v = carved?.verts || [], pv = plate.geometry.verts;
+        let px = 0, py0 = Infinity, py1 = -Infinity, pz = -Infinity, cellsOk = true;
+        for (let k = 0; k < pv.length; k += 3) { px = Math.max(px, Math.abs(pv[k])); py0 = Math.min(py0, pv[k + 1]); py1 = Math.max(py1, pv[k + 1]); pz = Math.max(pz, pv[k + 2]); }
+        for (let k = 0; k < v.length; k += 3) if (Math.abs(v[k]) > px - 0.02 || v[k + 1] < py0 || v[k + 1] > py1 || v[k + 2] < pz - 1e-9) cellsOk = false;
+        const cells = [...P.FIGURES[i].name.replace(/ /g, "")].reduce((n, ch) => n + G[ch].join("").split("1").length - 1, 0);
+        plates.add(plate.geometry); seen.add(carved);
+        namesOk = namesOk && plate.children.length === 1 && cellsOk && carved.faces.length === cells * 6 && b.plaques[i].node.children[0].geometry === carved;
+      });
+      namesOk = namesOk && plates.size === 1 && seen.size === 8;
+    }
+    record("poker statues: each plaque carries its figure's name in carved cells on the one shared plate, standing proud and inside it", namesOk);
+    // Rule: the board pages 0 to 7, clamps, and draws exactly its figure's name and lines, every line inside the canvas.
+    const board = P.board(), drawn = [], draw = font.drawText;
+    let boardOk = board === P.board() && board.title === "The road to Bitcoin" && board.count === 8 && typeof board.help === "string";
+    font.drawText = (c, text, x, y, color, scale) => { drawn.push({ text, x, y, scale }); return draw(c, text, x, y, color, scale); };
+    try {
+      for (let i = 0; i < 8; i++) {
+        drawn.length = 0;
+        const version = board.version;
+        board.go(i);
+        const words = drawn.map(d => d.text).join(" ").split(/\s+/).join(" "), want = [P.FIGURES[i].name, ...P.FIGURES[i].lines].join(" ").split(/\s+/).join(" ");
+        const inside = drawn.every(d => d.x >= 0 && d.y >= 0 && d.x + font.measureText(d.text, d.scale) <= board.canvas.width && d.y + font.GLYPH_H * d.scale <= board.canvas.height);
+        boardOk = boardOk && board.index === i && board.version === version + 1 && words === want && inside && board.caption === P.FIGURES[i].name
+          && board.note === P.FIGURES[i].attribute && P.tip(i) === `${P.FIGURES[i].name} · read the placard`;
+      }
+      board.go(-3); boardOk = boardOk && board.index === 0;
+      board.go(99); boardOk = boardOk && board.index === 7;
+    } finally { font.drawText = draw; }
+    record("poker statues: the placard board pages 0 to 7 and draws just its figure's name and lines, wrapped inside the canvas", boardOk);
+  }
+  // The hall in the room (Task 5).
+  {
+    // Task 5's checks: the marble hall in the room. A block for test/run.mjs's unit tier, using `BL` and `record`.
+    {
+      const P = BL.pokerModels, F = BL.pokerFountain, St = BL.pokerStatues, K = BL.pokerMarble, S = BL.scene;
+      // Every vertex of a node's subtree in the world, each face's edges cut in four, so a thin disc's rim is sampled too.
+      const pointsOf = (node, out = []) => {
+        if (node.geometry) {
+          const m = node.world, v = node.geometry.verts, at = (i, k) => m[k] * v[i * 3] + m[4 + k] * v[i * 3 + 1] + m[8 + k] * v[i * 3 + 2] + m[12 + k];
+          for (const f of node.geometry.faces) for (let e = 0; e < f.i.length; e++) {
+            const a = f.i[e], b = f.i[(e + 1) % f.i.length];
+            for (let s = 0; s < 4; s++) { const u = s / 4; out.push([0, 1, 2].map(k => at(a, k) * (1 - u) + at(b, k) * u)); }
+          }
+        }
+        for (const c of node.children) if (c.visible !== false) pointsOf(c, out);
+        return out;
+      };
+      // The rail's closed tube as world triangles, and whether a point lies inside it: an upward ray crosses it an odd number of times.
+      const trianglesOf = node => {
+        const m = node.world, v = node.geometry.verts, tris = [], at = i => [0, 1, 2].map(k => m[k] * v[i * 3] + m[4 + k] * v[i * 3 + 1] + m[8 + k] * v[i * 3 + 2] + m[12 + k]);
+        for (const f of node.geometry.faces) for (let k = 1; k + 1 < f.i.length; k++) tris.push([at(f.i[0]), at(f.i[k]), at(f.i[k + 1])]);
+        return tris;
+      };
+      const inside = (tris, q) => {
+        let n = 0;
+        for (const [a, b, c] of tris) {
+          const d = (b[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (b[2] - a[2]);
+          if (!d) continue;
+          const u = ((q[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (q[2] - a[2])) / d, w = ((b[0] - a[0]) * (q[2] - a[2]) - (q[0] - a[0]) * (b[2] - a[2])) / d;
+          if (u < 0 || w < 0 || u + w > 1) continue;
+          if (a[1] + u * (b[1] - a[1]) + w * (c[1] - a[1]) > q[1]) n++;
+        }
+        return n % 2 === 1;
+      };
+      {
+        // Regression: Banana Club's padded rail sat on the felt's edge and swallowed half the dealer button and the corners of
+        // the cards at five seats. Every seat's button (placed as scene-poker.js's syncTable places it), card backs and its
+        // tallest chip stack (12 high, the scene's cap) lie outside the rail on the full and lite sets.
+        const hits = [];
+        for (const lite of [false, true]) {
+          P.setLite(lite);
+          const room = P.build(), t = room.tables[4];
+          try {
+            S.updateWorld(room.root, null);
+            const tris = trianglesOf(t.rim);
+            P.SEATS.forEach((s, j) => {
+              t.button.visible = t.backs[j].visible = t.chips[j].visible = true; t.chips[j].scale.y = 12;
+              t.button.position.x = s.x * 0.72; t.button.position.z = s.z * 0.65; t.button.position.y = 1.4;
+              S.updateWorld(room.root, null);
+              for (const [what, n] of [["button", t.button], ["cards", t.backs[j]], ["chips", t.chips[j]]]) if (pointsOf(n).some(q => inside(tris, q))) hits.push({ lite, seat: j, what });
+            });
+          } finally { P.setLite(false); for (const tb of room.tables) tb.agent.dispose(); }
+        }
+        record("poker marble hall: the padded rail clears every seat's dealer button, card backs and chip stack", hits.length === 0, JSON.stringify(hits));
+      }
+      {
+        // Rule: the marble hall is Banana Club's alone: its room stands on the kit's slabs, columns and plinths, the fountain
+        // and eight statues stand in it, its floor and walls are the kit's white and shade marble, and no cave holds any of it.
+        const room = P.build(), kit = new Set([...P.geometry("gatsby").tiles.field, ...P.geometry("gatsby").tiles.border, K.column({ h: 8.8 }), K.plinth(St.PLINTH)]);
+        const found = () => { const seen = new Set(), stack = [room.root]; let fountain = false, statues = false; while (stack.length) { const n = stack.pop(); if (kit.has(n.geometry)) seen.add(n.geometry); if (n === room.fountain.root) fountain = true; if (n === room.statues.root) statues = true; stack.push(...n.children); } return { kit: seen.size, fountain, statues }; };
+        let hall = null, caves = [];
+        try {
+          hall = found();
+          for (const t of BL.pokerThemes.themes) if (t.id !== "gatsby") { room.setTheme(t.id); caves.push(found()); }
+          room.setTheme("gatsby");
+          const back = found(), g = BL.pokerThemes.get("gatsby");
+          record("poker marble hall: Banana Club stands on the kit's marble with its fountain and statues, its floor and walls the kit's white and shade, and no cave keeps any of it",
+            hall.kit === kit.size && hall.fountain && hall.statues && room.statues.root.children.length === 8 && caves.every(c => c.kit === 0 && !c.fountain && !c.statues) &&
+            back.kit === kit.size && back.fountain && back.statues && g.stone[0] === K.WHITE && g.panel === K.SHADE, JSON.stringify({ hall, caves, back }));
+        } finally { for (const t of room.tables) t.agent.dispose(); }
+      }
+      {
+        // Rule: the statues' walk block holds every vertex of its statue, so no head walks into a held piece above the plinth,
+        // and a walker of the widest Ooga's girth standing up from any table, at the aisle spot the scene uses or at either
+        // end of the table, lands on open floor outside the pool.
+        const room = P.build(), blocks = P.FURNITURE.filter(f => f.kind === "plinth");
+        let covered = blocks.length === 8;
+        try {
+          S.updateWorld(room.root, null);
+          room.statues.root.children.forEach((group, i) => { const b = blocks[i]; covered = covered && pointsOf(group).every(([x, , z]) => Math.abs(x - b.x) <= b.hx + 1e-6 && Math.abs(z - b.z) <= b.hz + 1e-6); });
+        } finally { for (const t of room.tables) t.agent.dispose(); }
+        const wide = { bodyRadius: 0.65 }, out = { x: 0, z: 0 };
+        P.setFloor("gatsby");
+        const stood = P.TABLES.flatMap((t, i) => [0, t.x - 6, t.x + 6].map(x => { P.nearestClear(x, t.z, wide, out); return { table: i + 1, x: out.x, z: out.z, clear: Math.hypot(out.x - F.X, out.z - F.Z) >= F.RADIUS + wide.bodyRadius && P.walkable(out.x, out.z, out.x, out.z, 0, 2, wide) }; }));
+        record("poker marble hall: each statue's walk block holds the whole statue, and standing up from any table, in the aisle or at either end, lands on open floor outside the pool",
+          covered && stood.length === 30 && stood.every(s => s.clear), JSON.stringify({ covered, stood: stood.filter(s => !s.clear) }));
+      }
+    }
+  }
+};
+// END pokerMarbleHallChecks
 const pokerChecks = (BL) => {
   const R = BL.pokerRules, c = text => "23456789TJQKA".indexOf(text[0]) + "cdhs".indexOf(text[1]) * 13;
   const cards = text => text.split(" ").map(c);
@@ -35492,10 +36418,72 @@ const pokerChecks = (BL) => {
     const short = t.snapshot("b"), amount = BL.pokerHud.betAmount(short, "pot");
     t.act("b", "raise", amount); t.act("c", "call"); const locked = t.snapshot("a");
     record("poker sizing: short all-in caps the preset and never bypasses closed raise rights", short.legal.min > short.legal.max && amount === 1000 && !locked.legal.canRaise && BL.pokerHud.betAmount(locked, "all") === null);
+    {
+      const c = (pot) => BL.pokerHud.potChips(pot, [0, 0, 0]).join();
+      record("poker pot chips: stacks grow with the pot and never pass eight", c(0) === "0,0,0" && c(10) === "1,0,0" && c(155) === "7,0,0" && c(400) === "8,2,0" && c(3200) === "8,8,2" && c(1e9) === "8,8,8");
+    }
     record("poker public state: blind markers and contributions are exposed without private cards", hu.smallBlind === hu.dealer && hu.bigBlind === 1 && hu.seats[0].totalBet === 5 && hu.seats[1].totalBet === 10 && hu.seats[0].lastAction === "Small blind" && hu.seats.every(p => !p || p.cards.every(c => c === null)));
   }
   const walk = BL.pokerModels.walkable, actor = { bodyRadius: 0.65 };
-  record("poker floor: wide spectators can traverse the main and row aisles; table and chair sweeps collide", walk(0, 34, 0, -34, 0, 2, actor) && walk(-21, 18, 21, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && !walk(22, 0, 26, 0, 0, 2, actor));
+  // Banana Club's fountain fills the middle of the main aisle, so wide spectators walk round it on either side, and its
+  // statues stand at the row aisles' ends.
+  const round = side => walk(0, 34, 0, 6, 0, 2, actor) && walk(0, 6, side * 3.6, 0, 0, 2, actor) && walk(side * 3.6, 0, 0, -6, 0, 2, actor) && walk(0, -6, 0, -34, 0, 2, actor);
+  record("poker floor: wide spectators can traverse the main aisle round the fountain and the row aisles; the pool, table and chair sweeps collide", !walk(0, 34, 0, -34, 0, 2, actor) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && !walk(22, 0, 26, 0, 0, 2, actor));
+  {
+    const P = BL.pokerModels, a = { bodyRadius: 0.65 }, out = { x: 0, z: 0 };
+    P.setFloor("gatsby");
+    // The fountain blocks the straight walk down the middle and the walk round it is open either side; the statues close
+    // the row aisles' last metre by the wall.
+    const club = !walk(0, 34, 0, -34, 0, 2, a) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, a) && walk(-20.4, -18, 20.4, -18, 0, 2, a) && !walk(-21, 18, 21, 18, 0, 2, a) &&
+      !walk(10, -33, 10, -34.8, 0, 2, a) && !walk(20, 31, 22.3, 31, 0, 2, a) && !walk(-19, -31, -22, -31, 0, 2, a) &&
+      walk(3.9, -30, 3.9, -18, 0, 2, a) && !walk(3.5, -27.6, 6.5, -27.6, 0, 2, { bodyRadius: 0.4 });
+    const moved = P.nearestClear(10, -35.3, a, out), kept = P.nearestClear(0, 29, a, { x: 0, z: 0 });
+    const clear = Math.hypot(moved.x - 10, moved.z + 35.3) <= 4 && walk(moved.x, moved.z, moved.x, moved.z, 0, 2, a) && kept.x === 0 && kept.z === 29;
+    P.setFloor("crystal");
+    const cave = walk(10, -33, 10, -34.8, 0, 2, a) && walk(20, 31, 22.3, 31, 0, 2, a) && walk(0, 34, 0, -34, 0, 2, a) && walk(-21, 18, 21, 18, 0, 2, a);
+    P.setFloor("gatsby");
+    // Every walkway beside the fountain and each statue is at least 2.3 m: a body 2.3 m across (radius 1.15) circles the
+    // pool against its rim, and passes each statue's walk block along the side aisle.
+    const across = { bodyRadius: 1.15 }, ring = F => Array.from({ length: 32 }, (_, k) => { const t = k / 32 * Math.PI * 2, d = F.RADIUS + 1.16; return walk(F.X + Math.sin(t) * d, F.Z + Math.cos(t) * d, F.X + Math.sin(t) * d, F.Z + Math.cos(t) * d, 0, 2, across); }).every(Boolean);
+    const aisles = P.FURNITURE.filter(f => f.kind === "plinth").every(f => { const x = f.x - Math.sign(f.x) * (f.hx + 1.16); return walk(x, f.z - 3, x, f.z + 3, 0, 2, across); });
+    const wide = ring(BL.pokerFountain) && aisles;
+    record("poker furniture: Banana Club's fittings, fountain and statues collide, its walkways keep 2.3 m and more, and the caves stay open", club && clear && cave && wide, JSON.stringify({ club, clear, cave, wide }));
+    record("poker furniture: a saved spot inside the bar no longer holds", !BL.visitSpot.holds({ x: 10, y: 0, z: -34.2, yaw: 0 }, P.walkable, a));
+  }
+  {
+    const P = BL.pokerModels, L = P.lights("gatsby");
+    record("poker furniture lights: Banana Club adds four after the room's, the bar's two, the cage's and the fountain's, the caves none",
+      L.length === 32 && L[0] === -10 && L[8] === 10 && L[16] === Math.fround(20.6) && L[17] === Math.fround(2.4) && L[19] === 7 &&
+      L[24] === BL.pokerFountain.X && L[26] === BL.pokerFountain.Z && L[25] > 2.8 && L[27] === 6 &&
+      BL.pokerThemes.themes.filter(t => t.id !== "gatsby").every(t => P.lights(t.id).length === 0));
+    const room = P.build();
+    try {
+      const wall = room.root.children[0].children.filter(n => n.geometry === P.geometry("gatsby").fanlight && Math.abs(n.position.z + 36.35) < 0.01);
+      record("poker furniture: the bar's shelves replace the far wall's fanlights and the room keeps its three top-level parts",
+        wall.length === 0 && room.root.children.length === 2 + room.tables.length &&
+        room.tables[P.HIGH_ROLLER].pinstripe.geometry !== room.tables[0].pinstripe.geometry);
+    } finally { for (const t of room.tables) t.agent.dispose(); }
+  }
+  {
+    const room = BL.pokerModels.build();
+    try {
+      const club = room.sparkle.length === 12 && new Set(room.sparkle.map(n => n.geometry)).size === 4 &&
+        room.sparkle.every(n => n.geometry.castShadow === false);
+      room.setTheme("ember"); const cave = room.sparkle.length === 0;
+      room.setTheme("gatsby");
+      record("poker chandeliers: three fixtures share four crystal meshes in Banana Club and none hang in the caves", club && cave && room.sparkle.length === 12);
+    } finally { for (const t of room.tables) t.agent.dispose(); }
+  }
+  {
+    // Rule: Canvas 2D paints every face on the CPU, so it gets a lighter Banana Club with the same fittings and glints.
+    const P = BL.pokerModels, full = P.geometry("gatsby"), faces = g => BL.compactGeometry?.storageOf(g)?.count ?? g.faces.length, rooms = [];
+    try {
+      P.setLite(true); const room = P.build(); rooms.push(room);
+      const lite = room.sparkle.length === 12 && new Set(room.sparkle.map(n => n.geometry)).size === 4 && faces(P.geometry("gatsby").shell) < faces(full.shell);
+      P.setLite(false); rooms.push(P.build());
+      record("poker lite club: Canvas 2D's Banana Club keeps twelve glints on four meshes with fewer shell faces, and the full set comes back", lite && P.geometry("gatsby") === full);
+    } finally { P.setLite(false); for (const r of rooms) for (const t of r.tables) t.agent.dispose(); }
+  }
   {
     // Contract: changing the scenery during a hand must keep pick targets,
     // chairs, dealers and private/public card nodes alive without growing the room.
@@ -35514,6 +36502,316 @@ const pokerChecks = (BL) => {
       room.setTheme("gatsby");
       record("poker themes: repeated switches preserve seats, dealers and dealt cards with a bounded scene", stable && count(room.root) === baseline && BL.pokerModels.geometry("invalid") === BL.pokerModels.geometry("gatsby"));
     } finally { for (const t of room.tables) t.agent.dispose(); }
+  }
+  {
+    const T = BL.pokerThemes, club = T.get("gatsby"), caves = T.themes.filter(t => t.id !== "gatsby");
+    // The owner asked for a white marble hall brighter than the caves: Banana Club's ambient sits in a window above every
+    // cave's, its direct light in a window, its bloom capped low so the white stone does not glare (caves carry none of
+    // their own, drawing at the scene's default), its light warm (more red than blue), and its table pools still
+    // narrower than the caves' (range 14). The caves' records themselves are pinned by the marble hall's cave hash.
+    record("poker light: Banana Club is a bright warm white hall, its ambient in a window above every cave's, its direct light in a window, its bloom capped low, and the caves unchanged",
+      caves.every(t => t.tableRange === undefined && t.tableY === undefined && t.bloom === undefined && t.directStrength === undefined) &&
+      caves.map(t => t.ambient).join() === "0.51,0.52,0.55,0.54" && club.ambient >= 0.5 && club.ambient <= 0.6 && caves.every(t => club.ambient > t.ambient) &&
+      club.directStrength >= 0.35 && club.directStrength <= 0.5 && club.bloom <= 0.25 &&
+      club.direct[0] > club.direct[2] && club.sky[0] > club.sky[2] && club.ground[0] > club.ground[2] && club.tableRange < 14,
+      JSON.stringify({ ambient: club.ambient, directStrength: club.directStrength, bloom: club.bloom, sky: club.sky, direct: club.direct, tableRange: club.tableRange }));
+  }
+  {
+    const C = BL.pokerCrowdModels, handles = new Set(BL.characters.all().map(c => (c.github || c.handle).toLowerCase()));
+    const names = C.CAST.map(m => m.rig === "caveman" ? m.traits.name : m.id + "/ember-den");
+    const pick = (d, n) => C.castFor(d, n).map(m => m.id).join();
+    const ok = n => { const a = C.castFor(20000, n); return a.length === n && a.some(m => m.type === "waiter") && a.some(m => m.type === "security") && !a.some(m => m.type === "player") && a.filter(m => m.type === "drunk").length <= 1 && a.filter(m => m.type === "walker").length <= 1; };
+    record("poker crowd cast: twenty-nine invented members, none a contributor, the same every time and different each day",
+      C.CAST.length === 29 && new Set(names).size === 29 && names.every(n => n.endsWith("/ember-den") && !handles.has(n.split("/")[0])) &&
+      ok(16) && ok(10) && ok(6) && pick(20000, 16) === pick(20000, 16) && pick(20000, 16) !== pick(20001, 16) &&
+      C.seatTraits(3, 4).name === C.seatTraits(3, 4).name && C.TYPES[0] === "walker");
+  }
+  {
+    const P = BL.pokerModels, R = BL.pokerCrowd.router(P.walkable), out = new Float32Array(48), a = { bodyRadius: 0.4 };
+    const legs = n => { for (let i = 1; i < n; i++) if (!P.walkable(out[i * 2 - 2], out[i * 2 - 1], out[i * 2], out[i * 2 + 1], 0, 2, a)) return false; return n > 0; };
+    P.setFloor("gatsby"); R.rebuild();
+    const club = P.spots("gatsby"), stool = club.find(s => s.kind === "stool"), rail = club.filter(s => s.kind === "rail");
+    const toBar = legs(R.find(0, 30, stool.x, stool.z + 1, out)), acrossRows = legs(R.find(-20, 30, 20, -30, out)), walled = R.find(0, 30, 60, 0, out) === 0;
+    // Straight down the middle, the route goes round the fountain on legs a walker can take.
+    const downMiddle = legs(R.find(0, 30, 0, -30, out));
+    const clubCells = R.cells;
+    P.setFloor("crystal"); R.rebuild();
+    const cave = P.spots("crystal");
+    record("poker crowd routes: the lattice reaches the bar, crosses the rows and passes the fountain on legs a walker can take, and follows the theme's floor",
+      toBar && acrossRows && downMiddle && walled && rail.length === 40 && club.filter(s => s.kind === "stool").length === 10 &&
+      !cave.some(s => s.kind === "stool" || s.kind === "sofa" || s.kind === "cage") && cave.filter(s => s.kind === "rail").length === 40 && R.cells > clubCells);
+    P.setFloor("gatsby");
+  }
+  const quietFx = { say() {}, sayAt() {}, hush() {} };
+  {
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), others = [{ x: 0, z: 18, radius: 0.5 }];
+    P.setFloor("gatsby");
+    // The carried item hangs from the right arm: a cane's plant is that arm's, a businessman's briefcase arm stays still.
+    const caneAt = [], arms = { suitHeld: 0, suitSwung: 0, suitL: [Infinity, -Infinity], caneR: [Infinity, -Infinity], itemArm: true };
+    const onStep = (kind, x, z) => { if (kind === "cane") for (const m of crowd.members) if (m.type === "cane" && m.x === x && m.z === z) caneAt.push(m.parts.armR.rotation.x); };
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => out, others: () => others, day: 20000, cap: 16, onStep });
+    let inside = 0, max = 0;
+    try {
+      for (let f = 0; f < 3600; f++) {
+        crowd.update(1 / 30, f / 30);
+        for (const m of crowd.members) if (m.state === "walk" && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, { bodyRadius: 0.3 })) inside++;
+        max = Math.max(max, crowd.stats().crowd);
+        for (const m of crowd.members) {
+          if (!m.root || m.state !== "walk" || m.pending) continue;
+          if (m.type === "businessman") {
+            if (m.parts.armR.rotation.x === -0.05) arms.suitHeld++; else arms.suitSwung++;
+            arms.suitL[0] = Math.min(arms.suitL[0], m.parts.armL.rotation.x); arms.suitL[1] = Math.max(arms.suitL[1], m.parts.armL.rotation.x);
+          }
+          if (m.type === "cane") { arms.caneR[0] = Math.min(arms.caneR[0], m.parts.armR.rotation.x); arms.caneR[1] = Math.max(arms.caneR[1], m.parts.armR.rotation.x); }
+          if ((m.type === "businessman" || m.type === "cane") && m.parts.club.parent !== m.parts.armR) arms.itemArm = false;
+        }
+      }
+      const nodes = root.children.length, moved = crowd.members.filter(m => Math.hypot(m.x, m.z - 18) > 1).length;
+      crowd.setCap(6); crowd.update(1 / 30, 121);
+      const shrunk = crowd.stats().crowd === 6 && root.children.filter(n => n.visible).length === 6;
+      record("poker crowd pool: sixteen members walk two minutes without entering furniture, the pool never grows, and a lower tier shrinks it at once",
+        inside === 0 && max === 16 && nodes === 16 && moved >= 14 && shrunk);
+      record("poker crowd styles: the item's arm carries it, a briefcase held still and a cane planted forward on each cane step, the free arm swinging",
+        arms.itemArm && arms.suitHeld > 0 && arms.suitSwung === 0 && arms.suitL[1] - arms.suitL[0] > 0.3 &&
+        caneAt.length > 0 && caneAt.every(x => x <= -0.65) && arms.caneR[1] - arms.caneR[0] > 0.3, JSON.stringify({ arms, caneAt: caneAt.length }));
+    } finally { crowd.dispose(); }
+    record("poker crowd pool: dispose leaves nothing on the root and no route pending", root.children.length === 0 &&
+      crowd.members.every(m => !m.pending && m.n === 0 && m.spot === null && m.root === null));
+  }
+  {
+    // Rule: a sofa seat has no route of its own, so a guest walks to its approach, then moves straight in and back out.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), sofa = P.spots("gatsby").find(s => s.kind === "sofa");
+    P.setFloor("gatsby");
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => out, others: () => [], day: 20000, cap: 6 });
+    try {
+      const run = s => { for (let f = 0; f < s * 30; f++) crowd.update(1 / 30, 0); };
+      run(1);
+      const m = crowd.members.filter(m => m.root && m.rig === "caveman").sort((a, b) => a.rank - b.rank)[0], a = crowd.approach(sofa);
+      crowd.send(m, a.x, a.z, sofa);
+      // On arrival it moves straight in and sits; when its time is up it moves straight back out.
+      let reached = false;
+      for (let f = 0; f < 90 * 30 && !reached; f++) { crowd.update(1 / 30, 0); reached = m.state === "slide" && m.spot === sofa && m.reached; }
+      run(0.5);
+      const seated = m.state === "sit" && Math.hypot(m.x - sofa.x, m.z - sofa.z) < 0.01;
+      m.clock = 0; run(0.5);
+      record("poker crowd seats: a sofa is walked to by its approach, then entered and left by the same straight move",
+        reached && seated && m.state === "idle" && Math.hypot(m.x - a.x, m.z - a.z) < 0.01 && P.walkable(m.x, m.z, m.x, m.z, 0, 2, { bodyRadius: 0.4 }));
+    } finally { crowd.dispose(); }
+  }
+  // The crowd's view of a table is what every player sees: these five, never a seat's cards.
+  const tableView = () => Array.from({ length: 10 }, () => ({ pot: 0, phase: "waiting", hand: 0, winner: -1, allIn: false }));
+  const STAND3 = { bodyRadius: 0.3 };
+  {
+    // Rule: five minutes of the club: guests take stools, sofas and rails, and the room never shows more than two of their bubbles.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), body = { x: 0, z: 18, radius: 0.5 }, others = [body];
+    P.setFloor("gatsby");
+    const tables = tableView(), said = [];
+    let now = 0;
+    // A caveman speaking with a cheer or a hand to the head up is saying a reaction's line.
+    let reactLines = 0;
+    const fx = { say(m) { said.push(now); if (m.cheer > 0 || m.gasp > 0) reactLines++; }, sayAt() { said.push(now); }, hush() {} };
+    const crowd = BL.pokerCrowd.create({ root, fx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => { const v = tables[t]; out.pot = v.pot; out.phase = v.phase; out.hand = v.hand; out.winner = v.winner; out.allIn = v.allIn; },
+      others: () => others, visitor: () => body, day: 20000, cap: 16 });
+    let sawStool = false, sawSofa = false, sawRail = false, maxBubbles = 0, insideWhileWalking = 0, counted = true;
+    const seen = new Set();
+    let bossWatched = false;
+    try {
+      const dt = 1 / 20;
+      for (let f = 0; f < 300 / dt; f++) {
+        now = f * dt;
+        // Each table plays a hand every 20 s: the pot grows past 400, someone goes all in, and a seat wins it.
+        for (let t = 0; t < 10; t++) {
+          const k = (now + t * 2) % 20, v = tables[t];
+          v.hand = Math.floor((now + t * 2) / 20); v.phase = k < 16 ? "flop" : "showdown"; v.pot = Math.floor(k * 40);
+          v.allIn = k > 10; v.winner = k < 16 ? -1 : t % 9;
+        }
+        crowd.update(dt, now);
+        for (const m of crowd.members) {
+          if (!m.root || !m.on) continue;
+          if (m.state === "sit" && m.spot?.kind === "stool") sawStool = true;
+          if (m.state === "sit" && m.spot?.kind === "sofa") sawSofa = true;
+          if (m.state === "watch" && m.spot?.kind === "rail") sawRail = true;
+          if (m.state === "walk" && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, STAND3)) insideWhileWalking++;
+          seen.add(m.state + (m.job ? "/" + m.job : ""));
+          if (m.type === "pitBoss" && m.state === "watch" && m.job === "boss") bossWatched = true;
+        }
+        let up = 0;
+        for (const at of said) if (at > now - 2.4) up++;
+        maxBubbles = Math.max(maxBubbles, up);
+        counted &&= crowd.stats().crowdBubbles === crowd.members.filter(m => m.talk > 0).length;
+      }
+    } finally { crowd.dispose(); }
+    record("poker crowd behaviour: within five minutes guests sit at the bar and the lounge, watch tables, and never hold more than two bubbles",
+      sawStool && sawSofa && sawRail && maxBubbles <= 2 && insideWhileWalking === 0, JSON.stringify({ sawStool, sawSofa, sawRail, maxBubbles, insideWhileWalking, said: said.length, counted, seen: [...seen].sort() }));
+    record("poker crowd speech: the crowd counts its own bubbles as they show", counted && said.length > 0);
+    // The tables' feed reached the crowd: the pit boss went to a big pot and a watcher spoke up at a reaction.
+    record("poker crowd behaviour: the five minutes' tables are read, bringing the pit boss to a big pot and a watcher's line at a reaction",
+      bossWatched && reactLines > 0, JSON.stringify({ bossWatched, reactLines }));
+  }
+  {
+    // Rule: a big pot and a win are read from the five public fields alone.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode();
+    P.setFloor("gatsby");
+    const tables = tableView(), keys = new Set(), watched = new WeakSet();
+    tables[7].hand = 3; tables[7].phase = "flop";
+    // The crowd's own `out` records every key read from it: its five fields turn to getters and anything else falls
+    // through to a recording prototype. The fake returns nothing, so only `out` can carry the table to the crowd.
+    const watch = out => {
+      if (watched.has(out)) return;
+      watched.add(out);
+      for (const k of Object.keys(out)) { let v = out[k]; Object.defineProperty(out, k, { get() { keys.add(k); return v; }, set(x) { v = x; }, enumerable: true }); }
+      Object.setPrototypeOf(out, new Proxy({}, { get(o, k) { keys.add(k); return undefined; } }));
+    };
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"),
+      publicState: (t, out) => { watch(out); const v = tables[t]; out.pot = v.pot; out.phase = v.phase; out.hand = v.hand; out.winner = v.winner; out.allIn = v.allIn; },
+      others: () => [], visitor: () => null, day: 20000, cap: 16 });
+    let bossAtTable7 = false, cheered = false;
+    try {
+      const dt = 1 / 20, run = (s, until) => { for (let f = 0; f < s / dt; f++) { crowd.update(dt, 0); if (until()) return true; } return false; };
+      run(2, () => false);
+      const boss = crowd.members.find(m => m.type === "pitBoss");
+      const guest = crowd.members.filter(m => m.root && m.rig === "caveman" && m.type !== "walker").sort((a, b) => a.rank - b.rank)[0];
+      const rail = P.spots("gatsby").find(s => s.kind === "rail" && s.table === 7);
+      crowd.send(guest, rail.x, rail.z, rail);
+      const watching = run(90, () => guest.state === "watch" && guest.spot === rail);
+      tables[7].pot = 520;
+      bossAtTable7 = watching && run(90, () => boss.state === "watch" && boss.table === 7) && guest.state === "watch";
+      tables[7].winner = 4;
+      cheered = run(1, () => guest.cheer > 0);
+    } finally { crowd.dispose(); }
+    const readKeys = [...keys].map(String).sort();
+    record("poker crowd reactions: a big pot brings the pit boss to that table and a win makes its watchers cheer, from public state alone",
+      bossAtTable7 && cheered && readKeys.join() === "allIn,hand,phase,pot,winner", JSON.stringify({ bossAtTable7, cheered, readKeys }));
+  }
+  {
+    // Regression: a hand cancelled mid-play (phase back to waiting, no winner, the same hand) let nobody go: the
+    // leaning watchers' clocks stayed frozen and the pit boss watched until the next deal.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode();
+    P.setFloor("gatsby");
+    const tables = tableView();
+    tables[7].hand = 3; tables[7].phase = "flop";
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"),
+      publicState: (t, out) => { const v = tables[t]; out.pot = v.pot; out.phase = v.phase; out.hand = v.hand; out.winner = v.winner; out.allIn = v.allIn; },
+      others: () => [], visitor: () => null, day: 20000, cap: 16 });
+    let started = false, bossLeft = false, clockRuns = false;
+    try {
+      const dt = 1 / 20, run = (s, until) => { for (let f = 0; f < s / dt; f++) { crowd.update(dt, 0); if (until()) return true; } return false; };
+      run(2, () => false);
+      const boss = crowd.members.find(m => m.type === "pitBoss");
+      const guest = crowd.members.filter(m => m.root && m.rig === "caveman" && m.type !== "walker").sort((a, b) => a.rank - b.rank)[0];
+      const rail = P.spots("gatsby").find(s => s.kind === "rail" && s.table === 7);
+      crowd.send(guest, rail.x, rail.z, rail);
+      const watching = run(90, () => guest.state === "watch" && guest.spot === rail);
+      tables[7].pot = 520;
+      started = watching && run(90, () => boss.state === "watch" && boss.table === 7) && guest.state === "watch";
+      const frozen = guest.clock;
+      tables[7].phase = "waiting"; tables[7].pot = 0;
+      bossLeft = run(3, () => boss.job !== "boss");
+      run(1, () => false);
+      clockRuns = guest.state !== "watch" || guest.clock < frozen - 0.5;
+    } finally { crowd.dispose(); }
+    record("poker crowd reactions: a cancelled hand sends the pit boss back and lets its watchers' time run again",
+      started && bossLeft && clockRuns, JSON.stringify({ started, bossLeft, clockRuns }));
+  }
+  {
+    // Rule: a cave theme takes the bar away from under its guests: they stand where a walker can, and walk on.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode();
+    P.setFloor("gatsby");
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => out,
+      others: () => [], visitor: () => null, day: 20000, cap: 16 });
+    let seatedBefore = 0, seatedOnMissing = 0, insideAfter = 0, walkedOn = 0, keptSeat = false;
+    try {
+      const dt = 1 / 20, run = (s, each) => { for (let f = 0; f < s / dt; f++) { crowd.update(dt, 0); each(); } };
+      run(2, () => {});
+      const stools = P.spots("gatsby").filter(s => s.kind === "stool"), guests = crowd.members.filter(m => m.root && m.rig === "caveman" && m.type !== "walker").slice(0, 3);
+      guests.forEach((m, i) => { const a = crowd.approach(stools[i * 3]); crowd.send(m, a.x, a.z, stools[i * 3]); });
+      let seated = [];
+      for (let f = 0; f < 90 / dt && seated.length < guests.length; f++) { crowd.update(dt, 0); seated = guests.filter(m => m.state === "sit" && m.spot.kind === "stool"); }
+      seatedBefore = seated.length;
+      // The same floor again keeps every seat: a guest seated inside its stool stays seated there.
+      crowd.refloor(P.spots("gatsby"));
+      run(0.5, () => {});
+      keptSeat = seated.length > 0 && seated.every(m => m.state === "sit" && Math.hypot(m.x - m.spot.x, m.z - m.spot.z) < 0.01);
+      P.setFloor("crystal");
+      const cave = P.spots("crystal");
+      crowd.refloor(cave);
+      seatedOnMissing = crowd.members.filter(m => m.on && m.root && (m.state === "sit" || m.state === "slide" || m.spot && m.spot.kind !== "post" && !cave.includes(m.spot))).length +
+        seated.filter(m => m.root.position.y !== m.baseY).length;
+      run(20, () => { for (const m of crowd.members) if (m.on && m.root && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, STAND3)) insideAfter++; });
+      walkedOn = seated.filter(m => Math.hypot(m.x - m.backX, m.z - m.backZ) > 1 || m.state === "walk").length;
+      // And back: the club's fittings come up under whoever stands there, who steps clear; only a seat is sat inside.
+      P.setFloor("gatsby"); crowd.refloor(P.spots("gatsby"));
+      run(20, () => { for (const m of crowd.members) if (m.on && m.root && m.state !== "sit" && m.state !== "slide" && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, STAND3)) insideAfter++; });
+    } finally { crowd.dispose(); P.setFloor("gatsby"); }
+    // Every guest who lost a stool is sent elsewhere at once, and every place the cave floor offers lies over 4 m from the
+    // bar, so in 20 s each of them has walked over a metre from its seat's approach or is still walking.
+    record("poker crowd theme switch: guests seated at the bar stand and walk on when the bar is gone",
+      seatedBefore > 0 && seatedOnMissing === 0 && insideAfter === 0 && walkedOn === seatedBefore, JSON.stringify({ seatedBefore, seatedOnMissing, insideAfter, walkedOn }));
+    record("poker crowd theme switch: a seat the new floor keeps stays sat on", keptSeat);
+  }
+  {
+    // Rule: a destination with no route, or one its route stops short of, sends the member somewhere else, never stalls it.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), list = P.spots("gatsby");
+    P.setFloor("gatsby");
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: list, publicState: (t, out) => out,
+      others: () => [], visitor: () => null, day: 20000, cap: 6 });
+    let moved = 0, thrown = null;
+    try {
+      const dt = 1 / 20;
+      for (let f = 0; f < 2 / dt; f++) crowd.update(dt, 0);
+      const m = crowd.members.filter(m => m.root && m.rig === "caveman").sort((a, b) => a.rank - b.rank)[0];
+      const nowhere = Object.freeze({ kind: "rail", x: 60, z: 0, yaw: 0, table: 3 }), inBar = Object.freeze({ kind: "rail", x: -10, z: -35.3, yaw: 0, table: 3 });
+      for (const target of [nowhere, inBar]) {
+        crowd.send(m, target.x, target.z, target);
+        let ok = false;
+        for (let f = 0; f < 60 / dt && !ok; f++) { crowd.update(dt, 0); ok = m.spot !== target && m.spot !== null && list.includes(m.spot) && (m.state === "walk" || m.reached); }
+        if (ok) moved++;
+      }
+    } catch (e) { thrown = e.message; } finally { crowd.dispose(); }
+    record("poker crowd routes: a destination with no route, or one a route stops short of, sends the member somewhere else",
+      moved === 2 && thrown === null, JSON.stringify({ moved, thrown }));
+  }
+  {
+    // Rule: a computer opponent sits as one of the twelve seat-only opponents, never twice at one table, and the
+    // same seat holds the same one whatever order the seats are asked in.
+    const C = BL.pokerCrowdModels, UP = [0, 1, 2, 3, 4, 5, 6, 7, 8], DOWN = UP.slice().reverse();
+    const players = C.CAST.filter(m => m.type === "player"), playerNames = new Set(players.map(m => m.traits.name));
+    const repeats = [], outside = [], drift = [];
+    for (let t = 0; t < 10; t++) {
+      const names = UP.map(s => C.seatTraits(t, s)?.name);
+      if (new Set(names).size !== 9) repeats.push(t);
+      if (names.some(n => !playerNames.has(n))) outside.push(t);
+      if (DOWN.map(s => C.seatTraits(t, s)?.name).reverse().join() !== names.join()) drift.push(t);
+    }
+    record("poker crowd seats: no table seats one character twice", repeats.length === 0, JSON.stringify(repeats));
+    record("poker crowd seats: every seat holds a seat-only opponent and keeps it whatever order the seats are asked in",
+      outside.length === 0 && drift.length === 0, JSON.stringify({ outside, drift }));
+    // Rule: nobody who can sit can walk: no cap on any day deals a seated opponent to the floor.
+    const walking = [];
+    for (let d = 19990; d < 20090; d++) for (const cap of [0, 2, 6, 10, 16, 20]) for (const m of C.castFor(d, cap)) if (playerNames.has(m.traits.name)) walking.push(d + "/" + cap);
+    record("poker crowd seats: no seated opponent is ever dealt to the floor", walking.length === 0, JSON.stringify(walking.slice(0, 5)));
+    // Rule: the twelve opponents build and read as twelve different people.
+    let built = 0, thrown = null;
+    try { for (const m of players) { BL.models.caveman(m.traits); built++; } } catch (e) { thrown = e.message; }
+    // Two opponents look alike when their cloth, skin and hair are all within 40 of each other in RGB.
+    const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), apart = (a, b) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i])) >= 40;
+    const alike = [];
+    for (let i = 0; i < players.length; i++) for (let j = i + 1; j < players.length; j++) {
+      const a = players[i].traits, b = players[j].traits;
+      if (!apart(a.fur, b.fur) && !apart(a.skin, b.skin) && !apart(a.hair, b.hair)) alike.push(a.display + " / " + b.display);
+    }
+    record("poker crowd seats: the twelve opponents build, each under its own name and each looking unlike the rest",
+      players.length === 12 && playerNames.size === 12 && built === 12 && thrown === null && alike.length === 0 &&
+      players.every((m, i) => m.id === "player-" + (i + 1) && m.traits.name === m.id + "/ember-den"), JSON.stringify({ built, thrown, alike }));
+    // Rule: only a computer opponent is cast; a human in the same seat shows the stand-in, so a seat changing hands
+    // between frames changes the figure's traits, which is what the scene rebuilds on.
+    let humans = true, bots = true;
+    for (let t = 0; t < 10; t++) for (let s = 0; s < 9; s++) {
+      const bot = C.seatFigure(t, s, true), human = C.seatFigure(t, s, false);
+      humans &&= human.name === "Banana Bot " + s && !human.name.endsWith("/ember-den") && !BL.characters.get(human.name) && human === C.seatFigure(t, s, false);
+      bots &&= bot === C.seatTraits(t, s) && bot.name.endsWith("/ember-den") && bot !== human;
+    }
+    record("poker crowd seats: a human seat never shows a cast member and a seat changing hands changes its figure", humans && bots, JSON.stringify({ humans, bots }));
   }
 };
 const pokerProtocolChecks = async () => {
@@ -36615,6 +37913,422 @@ const ghostAudioChecks = async () => {
       &&out.walk.reschedules>0&&out.walk.reschedules<=52&&out.walk.decodes===0&&out.walk.loads===0&&out.walk.end===0
       &&Math.abs(out.mid-0.35*Math.SQRT1_2)<1e-4&&out.hushed===0&&out.after===1&&out.muted===0&&out.unmuted===out.mid
       &&!out.disposed.playing&&out.disposed.sources===0&&out.disposed.contexts===1&&out.disposed.state==="closed"&&out.disposed.sound,JSON.stringify(out));
+};
+// The Ember Den's table emotes (poker-emotes.js) in a bare context, beside the room's reaction policy over emoji-data.js:
+// the ten in the menu's order, each an emoji the room accepts; and the six gestures on a stand-in seated caveman whose
+// arms and head hold the sitting pose (poker-models.js's `sitPose`: arms' x -0.9, copied here) and whose every other part
+// records a write.
+const pokerEmoteChecks = () => {
+  const context = { window: { BL: {} } };
+  for (const file of ["emoji-data.js", "reaction-policy.js", "poker-emotes.js"]) runInNewContext(readFileSync(join(root, "src/js", file), "utf8"), context);
+  const E = context.window.BL.pokerEmotes, policy = context.window.BL.reactionPolicy;
+  const names = E.EMOTES.map(e => e.name), allAccepted = E.EMOTES.every(e => policy.valid(e.emoji)), unique = new Set(E.EMOTES.map(e => e.emoji)).size === 10;
+  record("poker emotes: ten, each a different emoji the room accepts, named, in the menu's order", names.join() === "Nice hand,Good game,Wow,Phew,Laugh,Groan,Slow clap,Thinking,Shrug,Salute" && allAccepted && unique, names.join());
+  record("poker emotes: an emoji finds its emote with or without a skin tone, and any other emoji finds none", E.byEmoji("👍").id === "nice" && E.byEmoji("👍🏽").id === "nice" && E.byEmoji("👏🏿").id === "clap" && E.byEmoji("🔥") === null && E.byEmoji("") === null);
+  const SIT = { armL: [-0.9, 0, 0.1], armR: [-0.9, 0, -0.1], head: [0, 0, 0] };
+  let foreign = 0;
+  const watched = () => {
+    const r = {};
+    for (const k of ["x", "y", "z"]) { let v = 0; Object.defineProperty(r, k, { get: () => v, set: n => { foreign++; v = n; } }); }
+    return r;
+  };
+  const cave = { parts: {}, root: { rotation: watched(), position: watched() } };
+  for (const k of ["legL", "legR", "torso", "club", "snack", "face", "gun"]) cave.parts[k] = { rotation: watched(), position: watched() };
+  // The arms' z and the head's y and z are never a gesture's: a write to one while a gesture runs counts as foreign too
+  // (the sitting pose itself writes them with `counting` off).
+  let counting = false;
+  const offAxis = (r, k) => { let v = 0; Object.defineProperty(r, k, { get: () => v, set: n => { if (counting) foreign++; v = n; } }); return r; };
+  for (const k of ["armL", "armR", "head"]) cave.parts[k] = { rotation: offAxis(k === "head" ? offAxis({ x: 0 }, "y") : { x: 0, y: 0 }, "z"), position: watched() };
+  const sit = () => { counting = false; for (const k in SIT) { const r = cave.parts[k].rotation; r.x = SIT[k][0]; r.y = SIT[k][1]; r.z = SIT[k][2]; } counting = true; };
+  const atSit = () => Object.keys(SIT).every(k => { const r = cave.parts[k].rotation; return r.x === SIT[k][0] && r.y === SIT[k][1] && r.z === SIT[k][2]; });
+  let everyGestureSettles = true, everyGestureMoves = true;
+  for (let kind = 1; kind < E.GESTURES.length; kind++) {
+    for (const t of [-0.5, 0, 1, 1.5]) { sit(); E.gesture(cave, kind, t); if (!atSit()) everyGestureSettles = false; }
+    // From any mid-run pose, the last frame puts the sitting pose back.
+    sit(); E.gesture(cave, kind, 0.5); if (atSit()) everyGestureMoves = false;
+    E.gesture(cave, kind, 1); if (!atSit()) everyGestureSettles = false;
+    for (let i = 1; i < 60; i++) { sit(); E.gesture(cave, kind, i / 60); }
+  }
+  record("poker emotes: six gestures, each starting and ending on the sitting pose and moving in between", E.GESTURES.length === 7 && everyGestureSettles && everyGestureMoves);
+  record("poker emotes: a gesture writes only the arms and the head", foreign === 0, "foreign writes " + foreign);
+};
+// The Ember Den's seating rule (poker-presence.js) in a bare context, on the room's layout copied from poker-models.js
+// (`TABLES`, `SEATS`): which remote's sent position is a chair, and which remote a chair is honoured for. Remotes come
+// as a Map, as `BL.net.remotes` holds them, with the room's integer ids.
+const pokerPresenceChecks = () => {
+  const context = { window: { BL: {} } };
+  const source = readFileSync(join(root, "src/js/poker-presence.js"), "utf8");
+  runInNewContext(source, context);
+  const P = context.window.BL.pokerPresence;
+  const T = Array.from({ length: 10 }, (_, i) => ({ x: i % 2 ? 11 : -11, z: 24 - Math.floor(i / 2) * 12 }));
+  const S = Array.from({ length: 9 }, (_, i) => {
+    const a = -Math.PI / 2 + 0.55 + i * (Math.PI * 2 - 1.1) / 8;
+    return { x: Math.cos(a) * 6, z: Math.sin(a) * 4.2 };
+  });
+  const N = T.length * S.length, spot = k => ({ x: T[(k / S.length) | 0].x + S[k % S.length].x, z: T[(k / S.length) | 0].z + S[k % S.length].z });
+  const at = (t, s, dx, y, dz) => P.seatAt(T, S, T[t].x + S[s].x + dx, y, T[t].z + S[s].z + dz);
+  // Every chair's own spot reads as that chair, and no two chairs stand within two radii of each other.
+  let everyChairUnique = true, nearest = Infinity;
+  for (let k = 0; k < N; k++) {
+    const a = spot(k);
+    if (P.seatAt(T, S, a.x, P.CHAIR_Y, a.z) !== k) everyChairUnique = false;
+    for (let j = k + 1; j < N; j++) { const b = spot(j); nearest = Math.min(nearest, Math.hypot(a.x - b.x, a.z - b.z)); }
+  }
+  everyChairUnique = everyChairUnique && nearest > 2 * P.RADIUS;
+  // Every seat entry handed to `seatOf` throws if anything reads its cards.
+  let cardsUntouched = true;
+  const entry = (fields) => {
+    const e = Object.assign({ bot: false, id: "s", name: "" }, fields);
+    for (const key of ["cards", "hand", "hole"]) Object.defineProperty(e, key, { get() { cardsUntouched = false; throw new Error("read " + key); } });
+    return e;
+  };
+  const k = 3 * 9 + 4, ks = 3, kk = 4;
+  const remote = (id, fields) => Object.assign({ id, display: "Ann", zone: "poker", body: "ooga:ann", x: spot(k).x, y: P.CHAIR_Y, z: spot(k).z }, fields);
+  const owner = new Array(N).fill(null);
+  // One resolve: `seat` is what `seatOf` gives for chair k (every other chair gives null), live or not.
+  const resolve = (list, live, seat) => {
+    const remotes = new Map(list.map(r => [r.id, r]));
+    try { return P.resolve({ tables: T, seats: S, remotes, zone: "poker", live, heroId: "hero", seatOf: (t, s) => t === ks && s === kk ? seat : null }, owner); }
+    catch (err) { cardsUntouched = false; throw err; }
+  };
+  const honoured = (r, live, seat) => resolve([r], live, seat)[k] === r;
+  const ann = remote(5);
+  const liveMatched = honoured(ann, true, entry({ name: "Ann", id: "s1" }));
+  const liveWrongName = honoured(ann, true, entry({ name: "Bob", id: "s1" }));
+  const liveBotSeat = honoured(ann, true, entry({ name: "Ann", id: "s1", bot: true }));
+  const liveOpenSeat = honoured(ann, true, null);
+  // A seat and a remote that both carry no name (empty, or none at all) are never a match.
+  const liveNoName = honoured(remote(5, { display: "" }), true, entry({ name: "", id: "s1" })) || honoured(remote(5, { display: undefined }), true, entry({ name: undefined, id: "s1" }));
+  const practiceEmpty = honoured(ann, false, null);
+  const practiceTaken = honoured(ann, false, entry({ name: "Ann", id: "s1" }));
+  const low = remote(3), high = remote(9);
+  const ownSeatLive = resolve([ann], true, entry({ name: "Ann", id: "hero" }))[k];
+  const ownSeatPractice = resolve([ann], false, entry({ name: "Ann", id: "hero" }))[k];
+  const otherZone = resolve([remote(5, { zone: "hub" })], false, null)[k];
+  const noBody = resolve([remote(5, { body: null })], false, null)[k];
+  // The pair last, so `owner` holds their chair for stateOf.
+  resolve([high, low], false, null);
+  record("poker presence: a position reads as a chair only at chair height, on the spot", at(3, 4, 0, 0.45, 0) === 3 * 9 + 4 && at(3, 4, 0.49, 0.45, 0) === 3 * 9 + 4 && at(3, 4, 0.51, 0.45, 0) === -1 && at(3, 4, 0, 0, 0) === -1 && at(3, 4, 0, 0.56, 0) === -1);
+  record("poker presence: every chair is its own, none within reach of another", everyChairUnique, `nearest ${nearest.toFixed(2)} m`);
+  record("poker presence: live, a remote is honoured only in a human seat that carries its name", liveMatched && !liveWrongName && !liveBotSeat && !liveOpenSeat && !liveNoName, JSON.stringify({ liveMatched, liveWrongName, liveBotSeat, liveOpenSeat, liveNoName }));
+  record("poker presence: not live, a remote is honoured only in a chair this page has empty", practiceEmpty && !practiceTaken, JSON.stringify({ practiceEmpty, practiceTaken }));
+  record("poker presence: two at one chair, the lower id is honoured and the other hidden", owner[k] === low && P.stateOf(T, S, owner, high) === 2 && P.stateOf(T, S, owner, low) === 1);
+  record("poker presence: the visitor's own seat is never given to a remote", ownSeatLive === null && ownSeatPractice === null);
+  record("poker presence: another zone or no body is never seated", otherZone === null && noBody === null);
+  record("poker presence: the rule never reads a card", cardsUntouched && !/cards|hole|board|deck/.test(source));
+};
+// The Ember Den's music and room sound (poker-audio.js) on a fake AudioContext that counts every node it makes: no
+// context before a gesture or while the page is muted, one after, both channels held until dispose, and a minute of
+// frames building nothing after init. Every frequency set on a voice is logged by the oscillator's type or the filter's
+// (lowpass tone filters left out), so the lounge's tunes can be heard as data; every param keeps the times scheduled on
+// it, so a cancel that deletes a note already scheduled is counted (`lost`), and every oscillator type set is counted.
+// Listeners are kept by target, type, function and capture flag, as the browser keeps them.
+const pokerAudioChecks = (BL) => {
+  const ctxs = [], entries = [], held = [], timers = new Map();
+  let nodes = 0, closed = 0, released = 0, toDestination = 0, soundFn = null, log = null, watch = null, timerId = 0, lost = 0, typeSets = 0;
+  // `kind` and `of` (the node the param belongs to) tag a param for `watch`, which lists every call on it, cancels included.
+  const param = (owner, kind, of) => {
+    const p = { value: 0, at: [], last: 0 };
+    for (const m of ["setValueAtTime", "exponentialRampToValueAtTime", "linearRampToValueAtTime", "setTargetAtTime", "cancelScheduledValues", "cancelAndHoldAtTime"]) p[m] = (v, t, c) => {
+      if (watch && kind) watch.push({ kind, m, v, t, c, p, of });
+      if (m === "cancelScheduledValues" || m === "cancelAndHoldAtTime") { const keep = p.at.filter(e => e < v); lost += p.at.length - keep.length; p.at = keep; return; }
+      p.at.push(t);
+      p.last = v;
+      if (m === "setValueAtTime" && owner && log && owner.type !== "lowpass") log(owner.type, v, t);
+    };
+    return p;
+  };
+  const node = (extra) => { nodes++; return Object.assign({ connect(to) { this.to = to; if (to && to.destination) toDestination++; }, disconnect() {}, start() {}, stop() {} }, extra); };
+  class Ctx {
+    constructor() { ctxs.push(this); this.currentTime = 0; this.state = "running"; this.sampleRate = 800; this.destination = { destination: true }; this.gains = []; }
+    createGain() { const g = node({}); g.gain = param(null, "gain", g); this.gains.push(g); return g; }
+    createOscillator() { const o = node({ detune: param() }); let type = "sine"; Object.defineProperty(o, "type", { get: () => type, set: v => { type = v; typeSets++; } }); o.frequency = param(o, "freq", o); return o; }
+    createBiquadFilter() { const f = node({ Q: param(), gain: param(), type: "lowpass" }); f.frequency = param(f); return f; }
+    createStereoPanner() { const p = node({}); p.pan = param(null, "pan", p); return p; }
+    createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; }
+    createBufferSource() { return node({ buffer: null, loop: false }); }
+    resume() { return Promise.resolve(); }
+    close() { this.state = "closed"; closed++; return Promise.resolve(); }
+  }
+  // Every channel taken is also taken from the real sound.js (which throws on a name it does not have), so the
+  // speaker panel's list for the place is read from the app itself.
+  const real = { window: { addEventListener() {} } };
+  runInNewContext(readFileSync(join(root, "src/js/sound.js"), "utf8"), real);
+  const realSound = real.window.BL.sound, channelNodes = {};
+  const sound = { muted: false, subscribe: fn => { soundFn = fn; return () => { soundFn = null; }; },
+    channel: id => { held.push(id); const own = realSound.channel(id);
+      return { id, gain: 1, level: 1, node: () => channelNodes[id] || (channelNodes[id] = { channel: id }), subscribe: () => () => {}, show() {}, release() { own.release(); released++; } }; } };
+  const mute = on => { sound.muted = on; soundFn(on); };
+  const activation = { hasBeenActive: false };
+  const capture = o => o === true || !!(o && o.capture);
+  const target = name => ({
+    addEventListener: (k, fn, o) => entries.push({ name, k, fn, cap: capture(o) }),
+    removeEventListener: (k, fn, o) => { const i = entries.findIndex(e => e.name === name && e.k === k && e.fn === fn && e.cap === capture(o)); if (i >= 0) entries.splice(i, 1); } });
+  const fire = (name, k) => { for (const e of entries.slice()) if (e.name === name && e.k === k) e.fn(); };
+  const window = { BL: { sound, pokerModels: BL.pokerModels }, ...target("window") };
+  const document = { hidden: false, ...target("document") };
+  const setHidden = on => { document.hidden = on; fire("document", "visibilitychange"); };
+  // The room's own chips and glasses draw from Math.random; here it is mulberry32 from a fixed seed, so every run hears the same room.
+  let seed = 0x5eed;
+  const seeded = Object.assign(Object.create(Math), { random: () => {
+    seed = seed + 1831565813 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  } });
+  const context = { window, document, navigator: { userActivation: activation }, AudioContext: Ctx, Math: seeded, Float32Array,
+    setTimeout: (fn) => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => { timers.delete(id); } };
+  const tick = () => { const [id, fn] = [...timers][0]; timers.delete(id); fn(); };
+  runInNewContext(readFileSync(join(root, "src/js/math.js"), "utf8"), context);
+  runInNewContext(readFileSync(join(root, "src/js/poker-audio.js"), "utf8"), context);
+  const A = window.BL.pokerAudio.create(), ear = { x: 0, z: 0, fx: 0, fz: 1 }, snap = () => ({ ...A.stats, contexts: ctxs.length });
+  A.update(1 / 60, ear);
+  const before = snap();
+  mute(true); activation.hasBeenActive = true;
+  fire("window", "pointerdown"); A.update(1 / 60, ear);
+  const mutedFirst = snap();
+  mute(false); A.update(1 / 60, ear);
+  const after = snap(), nodesAfterInit = nodes, ctx = ctxs[0], panel = realSound.channels().map(c => c.id).join();
+  for (let i = 0; i < 3600; i++) { if (ctx) ctx.currentTime += 1 / 60; A.update(1 / 60, ear); }
+  const nodesAfterMinute = nodes;
+  A.dispose();
+  const leftListening = entries.length, panelAfter = realSound.channels().length;
+  // Created while the page is already muted: a gesture and a frame open nothing.
+  sound.muted = true;
+  const M = window.BL.pokerAudio.create();
+  fire("window", "pointerdown"); M.update(1 / 60, ear);
+  const mutedAtCreate = ctxs.length - 1;
+  M.dispose(); sound.muted = false;
+  record("poker audio: no context before a gesture or while muted, one after, none after dispose; the music on the shared Music channel, so the place lists only Room hum",
+    before.contexts === 0 && mutedFirst.contexts === 0 && after.contexts === 1 && after.open &&
+    after.tones === 10 && after.noises === 5 && closed === 1 && held.join() === "music,room,music,room" && released === 4 &&
+    panel === "room" && panelAfter === 0 &&
+    leftListening === 0 && mutedAtCreate === 0 && entries.length === 0 && toDestination === 0,
+    JSON.stringify({ before, mutedFirst, after, closed, held, released, panel, panelAfter, leftListening, mutedAtCreate, toDestination, open: A.stats.open, tones: window.BL.pokerAudio.TONES, noises: window.BL.pokerAudio.NOISES }));
+  record("poker audio: a minute of playing builds no node after init", nodesAfterInit > 0 && nodesAfterInit === nodesAfterMinute, JSON.stringify({ nodesAfterInit, nodesAfterMinute }));
+
+  // The lounge's tunes. A fresh instance plays from the first tune's top; `frames(I, seconds)` plays it at 60 frames
+  // a second on its own context's clock, its first frame scheduling the tune's first step.
+  const S = window.BL.pokerAudio.SONGS, chordCount = window.BL.pokerAudio.CHORDS.length;
+  const fnv = text => { let h = 2166136261; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h >>> 0; };
+  const fresh = () => { const I = window.BL.pokerAudio.create(); fire("window", "pointerdown"); return { I, ctx: ctxs[ctxs.length - 1] }; };
+  // `away` hears from too far for any room cue, so the tunes are heard alone.
+  const away = { x: 0, z: 400, fx: 0, fz: 1 };
+  const frames = (run, seconds, e = away) => { for (let i = 0; i < seconds * 60; i++) { run.ctx.currentTime += 1 / 60; run.I.update(1 / 60, e); } };
+  // The first chorus of slowBlues hashed, and the bass's approach on beat 3 of the first chorus's last bar (to its own
+  // F7: 82.41 or 92.50 Hz) and of the third chorus's last bar (to afterHours' Cmaj7: 61.74 or 69.30 Hz).
+  const tuneRun = () => {
+    const run = fresh(), events = [], out = { bass: 0, wrap: null, turn: null };
+    log = (kind, v, t) => {
+      const st = run.I.stats;
+      if (st.song !== "slowBlues") return;
+      if (st.bar < 12) { events.push(kind + ":" + Math.round(t * 1000) + ":" + v.toFixed(2)); if (kind === "triangle") out.bass++; }
+      if (kind === "triangle" && st.step === 9 && st.bar === 11) out.wrap = v.toFixed(2);
+      if (kind === "triangle" && st.step === 9 && st.bar === 35) out.turn = v.toFixed(2);
+    };
+    frames(run, 95);
+    log = null; run.I.dispose();
+    return { hash: fnv(events.join()), events: events.length, ...out };
+  };
+  const a = tuneRun(), b = tuneRun();
+  // A minute hidden with no frame, then one frame: only the steps due in the next 0.12 s are scheduled, at least one,
+  // and the tune stands where one played without a gap stands at the same instant (its last frame at the gap's time).
+  const control = fresh();
+  frames(control, 5);
+  const gapAt = control.ctx.currentTime + 60;
+  for (let i = 1; i < 3600; i++) { control.ctx.currentTime += 1 / 60; control.I.update(1 / 60, away); }
+  control.ctx.currentTime = gapAt; control.I.update(1 / 60, away);
+  const want = { song: control.I.stats.song, bar: control.I.stats.bar, step: control.I.stats.step };
+  control.I.dispose();
+  const gap = fresh(), times = new Set();
+  frames(gap, 5);
+  gap.ctx.currentTime += 60;
+  const gapLanded = gap.ctx.currentTime === gapAt;
+  log = (kind, v, t) => times.add(Math.round(t * 1000));
+  gap.I.update(1 / 60, away);
+  log = null;
+  const burstAfterGap = times.size, landed = { song: gap.I.stats.song, bar: gap.I.stats.bar, step: gap.I.stats.step };
+  // Hidden, one background tick keeps the music scheduled 2 s ahead, but none while muted; shown, and after dispose,
+  // no timer is left.
+  const hidden = {};
+  setHidden(true);
+  hidden.armed = timers.size;
+  const now = gap.ctx.currentTime += 0.5;
+  let ahead = 0;
+  log = (kind, v, t) => { ahead = Math.max(ahead, t - now); };
+  tick();
+  log = null;
+  hidden.ahead = +ahead.toFixed(2); hidden.rearmed = timers.size;
+  mute(true); hidden.muted = timers.size;
+  mute(false); hidden.unmuted = timers.size;
+  setHidden(false); hidden.shown = timers.size;
+  mute(true); setHidden(true); hidden.hiddenMuted = timers.size; setHidden(false);
+  // Muted mid-tune with frames running, the tune keeps time; unmuted, it carries on rather than restarting.
+  const playing = { song: gap.I.stats.song, bar: gap.I.stats.bar };
+  frames(gap, 5);
+  playing.muted = { song: gap.I.stats.song, bar: gap.I.stats.bar };
+  mute(false); frames(gap, 3);
+  playing.unmuted = { song: gap.I.stats.song, bar: gap.I.stats.bar };
+  setHidden(true); gap.I.dispose(); document.hidden = false;
+  hidden.disposed = timers.size;
+  // Hidden for ten seconds of 500 ms ticks: every note scheduled keeps its envelope and no oscillator is retyped.
+  const H = fresh(), typesAfterInit = typeSets;
+  frames(H, 1);
+  const lostBefore = lost, scheduledBefore = H.I.stats.scheduled;
+  setHidden(true);
+  for (let i = 0; i < 20; i++) { H.ctx.currentTime += 0.5; tick(); }
+  setHidden(false);
+  const kept = { lost: lost - lostBefore, retyped: typeSets - typesAfterInit, scheduled: H.I.stats.scheduled - scheduledBefore };
+  H.I.dispose();
+  const destinationAtEnd = toDestination;
+  record("poker music: the three charts parse to bars of known chords", S.map(s => s.bars.length).join() === "12,16,12" && S.every(s => s.bars.every(c => c < chordCount)), JSON.stringify({ songs: S.map(s => s.id + ":" + s.bars.join(" ")), chordCount }));
+  record("poker music: a chorus schedules the same notes on every run and one bass note a beat, approaching its own top between choruses and the next tune's at the end",
+    a.hash === b.hash && a.bass === 12 * 4 && a.events > a.bass && ["82.41", "92.50"].includes(a.wrap) && ["61.74", "69.30"].includes(a.turn), JSON.stringify({ a, b }));
+  record("poker music: a hidden minute skips its steps instead of replaying them, muted or not the tune keeps time, and the background tick runs only while hidden and heard",
+    burstAfterGap >= 1 && burstAfterGap <= 2 && gapLanded && JSON.stringify(landed) === JSON.stringify(want) &&
+    hidden.armed === 1 && hidden.ahead > 1.3 && hidden.ahead <= 2 && hidden.rearmed === 1 && hidden.muted === 0 && hidden.unmuted === 1 &&
+    hidden.shown === 0 && hidden.hiddenMuted === 0 && hidden.disposed === 0 &&
+    playing.muted.song === playing.song && playing.muted.bar > playing.bar && playing.unmuted.song === playing.song && playing.unmuted.bar > playing.muted.bar,
+    JSON.stringify({ burstAfterGap, gapLanded, landed, want, hidden, playing }));
+  record("poker music: hidden ticks keep every scheduled note's envelope, retype no oscillator, and nothing ever reaches the destination",
+    kept.lost === 0 && kept.retyped === 0 && kept.scheduled > 0 && destinationAtEnd === 0, JSON.stringify({ kept, destinationAtEnd }));
+
+  // The room. A cue heard from the origin facing +z (so +x is on the left): the voices it gates, its peak level and its
+  // last pan, read from the params it schedules.
+  const placed = fresh();
+  const heard = (name, x, z, run = placed) => {
+    watch = []; run.I.cue(name, x, z);
+    const w = watch; watch = null;
+    const gains = w.filter(e => e.kind === "gain"), pans = w.filter(e => e.kind === "pan");
+    return { voices: new Set(gains.map(e => e.p)).size, level: Math.max(0, ...gains.filter(e => e.m === "exponentialRampToValueAtTime").map(e => e.v)), pan: pans.length ? pans[pans.length - 1].v : null };
+  };
+  placed.I.update(0, ear);
+  const near = heard("heel", 0, 2), far = heard("heel", 0, 20), left = heard("heel", 5, 0), right = heard("heel", -5, 0), beyond = heard("heel", 0, 31);
+  const stats = { ...placed.I.stats };
+  const recipes = ["chip", "glass", "cane", "walker"].map(name => heard(name, 0, 3).voices);
+  placed.I.dispose();
+  // The bed's level at the bar and the mirror end, then on the same visit after switching to a cave and back.
+  const bedRun = fresh(), roomBus = bedRun.ctx.gains.find(g => g.to === channelNodes.room), bedStage = bedRun.ctx.gains.find(g => g.to === roomBus);
+  const barEar = { x: 10, z: -33, fx: 0, fz: -1 };
+  bedRun.I.update(0.2, barEar);
+  const bedAtBar = bedStage.gain.last;
+  bedRun.I.update(0.2, { x: 0, z: 34, fx: 0, fz: 1 });
+  const bedAtMirror = bedStage.gain.last;
+  bedRun.I.setTheme("crystal");
+  frames(bedRun, 15, barEar);
+  const caveBed = bedStage.gain.last, caveGlass = bedRun.I.pools.roomSines.some(v => v.until > 0);
+  bedRun.I.setTheme("gatsby");
+  frames(bedRun, 15, barEar);
+  const clubBed = bedStage.gain.last, clubGlass = bedRun.I.pools.roomSines.some(v => v.until > 0);
+  bedRun.I.dispose();
+  // A minute of play near the bar with the room's own chips and glasses sounding: no voice stolen, the music's
+  // scheduled notes all kept, no node built and no oscillator retyped.
+  const busy = fresh(), nodesBefore = nodes, lostAtStart = lost, typesAtStart = typeSets;
+  frames(busy, 60, { x: 0, z: -12, fx: 0, fz: -1 });
+  const minute = { steals: busy.I.stats.steals, cues: busy.I.stats.cues, dropped: busy.I.stats.dropped, busy: busy.I.stats.busy, scheduled: busy.I.stats.scheduled, lost: lost - lostAtStart, nodes: nodes - nodesBefore, retyped: typeSets - typesAtStart };
+  busy.I.dispose();
+  // Every one-shot on the room bus: what a glass, a cane and a walker schedule (gains, pans, pitches) leads through the
+  // connect graph to the room channel, never the music's, and the music's tone pools are left as they were.
+  const busOf = n => { while (n && n.to && !n.to.channel) n = n.to; return n && n.to ? n.to.channel : null; };
+  const routed = fresh();
+  routed.I.update(0, ear);
+  const musicUntil = () => [...routed.I.pools.triangles, ...routed.I.pools.sines].map(v => v.until).join();
+  const untilBefore = musicUntil();
+  watch = []; routed.I.cue("glass", 0, 3); routed.I.cue("cane", 0, 3); routed.I.cue("walker", 0, 3);
+  const rw = watch; watch = null;
+  const routes = { gated: new Set(rw.filter(e => e.kind === "gain").map(e => e.p)).size, buses: [...new Set(rw.map(e => busOf(e.of)))],
+    musicKept: musicUntil() === untilBefore, roomTones: routed.I.stats.roomTones, exported: window.BL.pokerAudio.ROOM_TONES };
+  routed.I.dispose();
+  // A full pool drops the next cue instead of taking a voice: two glasses fill the room's two sines and five heels the
+  // five noise voices, at one instant; a third glass and a sixth heel gate nothing, cut nothing and count as busy.
+  const full = fresh();
+  full.I.update(0, ear);
+  for (let i = 0; i < 2; i++) full.I.cue("glass", 0, 3);
+  for (let i = 0; i < 5; i++) full.I.cue("heel", 0, 3);
+  const lostAtFull = lost, extraGlass = heard("glass", 0, 3, full), extraHeel = heard("heel", 0, 3, full);
+  const crowded = { glass: extraGlass.voices, heel: extraHeel.voices, busy: full.I.stats.busy, dropped: full.I.stats.dropped, lost: lost - lostAtFull };
+  full.I.dispose();
+  // A steal on the music's own pool: every bass voice made to look busy for ten seconds, then a second of play. The
+  // next bass note takes one anyway, holds and eases its gain down before the new attack, cancels its pitch from the
+  // same instant, and counts one steal.
+  const thief = fresh();
+  frames(thief, 1);
+  for (const v of thief.I.pools.triangles) v.until = thief.ctx.currentTime + 10;
+  const stealsAtStart = thief.I.stats.steals;
+  watch = []; frames(thief, 1);
+  const sw = watch; watch = null;
+  const fade = sw.find(e => e.kind === "gain" && e.m === "setTargetAtTime" && e.v < 0.001);
+  const onFaded = fade ? sw.filter(e => e.p === fade.p) : [], fadeAt = onFaded.indexOf(fade);
+  const hold = onFaded.find(e => e.m === "cancelAndHoldAtTime"), attack = onFaded.slice(fadeAt + 1).find(e => e.m === "setValueAtTime");
+  const pitch = fade ? sw.filter(e => e.kind === "freq" && e.of.to && e.of.to.to === fade.of) : [];
+  const steal = { steals: thief.I.stats.steals - stealsAtStart, fadeAt, holdAt: hold && hold.v, fadeFrom: fade && fade.t,
+    attackAfter: attack && fade ? +(attack.t - fade.t).toFixed(4) : null, pitchCancelledAt: (pitch.find(e => e.m === "cancelScheduledValues") || {}).v,
+    pitchSetAfter: attack && pitch.some(e => e.m === "setValueAtTime" && e.t === attack.t) };
+  thief.I.dispose();
+  // The ducks, read from the music bus's own gain: the target in force at a moment, replayed from every call on it,
+  // cancels included. Sitting dips it, a win dips it further for a moment and comes back to the seated level, a mute
+  // and unmute while seated comes back seated too, and standing returns it to the free level.
+  const duckRun = fresh(), bus = duckRun.ctx.gains.find(g => g.to === channelNodes.music), busCalls = [];
+  duckRun.I.update(0, away);
+  watch = busCalls;
+  const levelAt = t => {
+    let kept = [];
+    for (const e of busCalls) {
+      if (e.p !== bus.gain) continue;
+      if (e.m === "cancelScheduledValues" || e.m === "cancelAndHoldAtTime") kept = kept.filter(k => k.t < e.v);
+      else kept.push(e);
+    }
+    let best = null;
+    for (const k of kept) if (k.t <= t && (!best || k.t >= best.t)) best = k;
+    return best ? best.v : bus.gain.value;
+  };
+  const duckNow = () => duckRun.ctx.currentTime;
+  // The bus's last ease: the time it starts, its target and how long it takes to come within 5% (three time constants).
+  const lastEase = () => { const e = busCalls.filter(c => c.p === bus.gain && c.m === "setTargetAtTime").pop(); return e && { t: e.t, v: e.v, over: +(e.c * 3).toFixed(6) }; };
+  const free = levelAt(duckNow());
+  duckRun.I.setSeated(true);
+  const seated = levelAt(duckNow()), sitEase = lastEase();
+  frames(duckRun, 1);
+  duckRun.I.win();
+  const wonAt = duckNow(), won = levelAt(wonAt + 0.1), afterWin = levelAt(wonAt + 1.6), winReturn = lastEase();
+  frames(duckRun, 2);
+  mute(true);
+  const mutedSeated = levelAt(duckNow());
+  mute(false);
+  const afterMute = levelAt(duckNow());
+  duckRun.I.setSeated(false);
+  const stoodUp = levelAt(duckNow());
+  // Standing up while a win still holds: the dip holds to its end, then the music comes back to the free level, not the seated one.
+  duckRun.I.setSeated(true);
+  frames(duckRun, 1);
+  duckRun.I.win();
+  const overlapAt = duckNow();
+  frames(duckRun, 0.5);
+  duckRun.I.setSeated(false);
+  const overlap = { during: levelAt(duckNow()), after: levelAt(overlapAt + 1.6), back: lastEase() };
+  watch = null;
+  duckRun.I.dispose();
+  const same = (a, b) => Math.abs(a - b) < 1e-9;
+  record("poker audio: sitting ducks the music over 0.6 s, a win dips it further and comes back 1.5 s later over 0.6 s, and standing mid-win comes back free",
+    seated < free && won < seated && afterWin === seated && stoodUp === free && mutedSeated === 0 && afterMute === seated
+      && sitEase.v === seated && same(sitEase.over, 0.6) && winReturn.v === seated && same(winReturn.t, wonAt + 1.5) && same(winReturn.over, 0.6)
+      && overlap.during === won && overlap.after === free && overlap.back.v === free && same(overlap.back.t, overlapAt + 1.5) && same(overlap.back.over, 0.6),
+    JSON.stringify({ free, seated, won, afterWin, mutedSeated, afterMute, stoodUp, sitEase, wonAt, winReturn, overlapAt, overlap }));
+  record("poker room sound: a glass, a cane and a walker sound on the room's own tone voices through the room bus, never the music's",
+    routes.gated === 3 && routes.buses.join() === "room" && routes.musicKept && routes.roomTones === 4 && routes.exported === 4, JSON.stringify(routes));
+  record("poker room sound: a cue finding its pool full is dropped as busy, gating no voice and cutting no envelope",
+    crowded.glass === 0 && crowded.heel === 0 && crowded.busy === 2 && crowded.dropped === 0 && crowded.lost === 0, JSON.stringify(crowded));
+  record("poker music: a stolen voice is held and eased down before the new note's attack, its pitch cancelled from then, and the steal counted",
+    steal.steals === 1 && steal.fadeAt > 0 && steal.holdAt === steal.fadeFrom && steal.attackAfter >= 0.012 && steal.pitchCancelledAt === steal.fadeFrom && steal.pitchSetAfter === true,
+    JSON.stringify(steal));
+  record("poker room sound: a cue is louder near and to its own side, and silent past thirty metres",
+    near.level > far.level && left.pan < 0 && right.pan > 0 && beyond.voices === 0 && stats.cues === 5 && recipes.every(v => v === 1),
+    JSON.stringify({ near, far, left, right, beyond, cues: stats.cues, recipes }));
+  record("poker room sound: the bar swells the bed and plays glass cues only while Banana Club is active",
+    bedAtBar > bedAtMirror && caveBed < bedAtBar && !caveGlass && clubBed === bedAtBar && clubGlass,
+    JSON.stringify({ bedAtBar, bedAtMirror, caveBed, caveGlass, clubBed, clubGlass }));
+  record("poker room sound: a minute of play with the room's own chips and glasses steals no voice from the music, cuts no scheduled note, builds no node and retypes no oscillator",
+    minute.steals === 0 && minute.lost === 0 && minute.nodes === 0 && minute.retyped === 0 && minute.cues > minute.dropped && minute.busy === 0 && minute.scheduled > 0, JSON.stringify(minute));
 };
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -42984,6 +44698,11 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   bigBitcoinChecks(BL);
   if(ARGS.includes("big-unit"))return;
   pokerChecks(BL);
+  pokerMarbleChecks(BL);
+  pokerMarbleHallChecks(BL);
+  pokerPresenceChecks();
+  pokerEmoteChecks();
+  pokerAudioChecks(BL);
   {
     // A roof lip may intersect the visual pose, but a blocked core rejects a mount.
     const solid = (_x, y, z) => y > 1 && z >= 0;
