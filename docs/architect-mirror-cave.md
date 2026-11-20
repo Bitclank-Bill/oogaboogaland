@@ -274,26 +274,42 @@ remains before merging.
 
 ## Sound
 
-`architect-audio.js` follows Bifrost's lifecycle discipline, with an original
-palette: a low electrical resonance, filtered ventilation, gently beating
-monitor tones, sparse soft relay ticks and a descending crossing tone. It does
-not reuse Bifrost's motif, heartbeat, world chords or recordings.
+`architect-audio.js` follows Bifrost's layered, spatial, room-responsive approach
+and pooled lifecycle, with an original palette. The close-pitched electrical
+beats are replaced by a quieter 49/98 Hz foundation and soft 147/196 Hz rack
+harmonics, filtered ventilation and a sparse, decaying glass resonance every
+18–36 seconds. Slow level and filter motion gives the bed some movement without
+a rhythmic heartbeat. The rack remains a quiet spatial anchor; sitting reduces
+it. Face view thins the foundation and opens the air slightly. Received voices or
+local speaking lower the ambient layers to 55%, leaving the pen and crossing cues
+clear. This reuses no Bifrost motif, world chord, heartbeat or recording.
 
 Seven oscillators and one looping noise source are built once after browser audio
 activation. Slow controls update at 10 Hz, with no per-frame or per-cue node
-allocation. The pen’s two-part click uses separate pooled noise bands for the
-plastic body and crisp mechanism, with a very short, quiet spring resonance.
-The down-click lands at the button stop (50 ms); after a silent gap, a brighter,
-shorter up-click lands at its return stop (170 ms). Slight intensity and pitch
-variation keeps repeated clicks from sounding identical. It follows the Room hum channel and master mute.
-The monitor texture grows toward the walls and pans with the view;
-the center is quieter. Weather audio is disabled inside. The pictures have no
-soundtrack or duplicated outdoor voice.
+allocation. The pen’s two-part click retains its separate pooled noise bands for
+the plastic body and crisp mechanism, with a short spring resonance. The down-click
+lands at the button stop (50 ms); after a gap, the brighter up-click lands at its
+return stop (170 ms). Small intensity and pitch changes vary repeated clicks.
 
-The existing **Room hum** channel and master mute control the sound. Leaving
-fades it out and suspends its context; hidden tabs do likewise. Returning reuses
-the graph, and hub disposal closes it and removes listeners. Headphone/laptop
-listening and long-session balance are still maintainer acceptance work.
+`room-acoustics.js` adds a parallel, local-only reflection path to the driven
+Ooga's footsteps, the room's cues and received conversation. Three stereo taps
+at 37, 67 and 113 ms pass through 180 Hz high-pass and 2.6 kHz low-pass filters.
+There is no feedback, microphone monitoring or change to transmitted voice.
+Voices get 60% of the footstep reflection strength, ambience/cues 40%; dry audio
+stays intact. Each received voice's echo enters before its existing gain and
+limiter, so local mute, hearing cutoff and receive volume also control the tail.
+Voice still bypasses the environment mute as before, except for the existing
+overheard-voice policy. Without Web Audio, voice retains its dry element fallback.
+
+The reflection graph is allocated only when needed in this room, reused on
+return and disconnected on source disposal. The wet output is cut immediately
+on leaving, so this room's echo does not follow the listener onto the island.
+The room's **Room hum** channel and master mute still control ambience and pen
+clicks; footsteps retain their own channel. Weather is disabled inside, and the
+camera pictures have no soundtrack or duplicated outdoor voice. Ambient sound
+fades out and its context suspends on leaving or hiding the tab; returning reuses
+it, and hub disposal closes it and removes listeners. Headphone/laptop listening,
+voice intelligibility and long-session balance remain maintainer acceptance work.
 
 ## Validation and preview
 
@@ -340,6 +356,9 @@ The white ceiling, attached armrest brackets and direction-preserving mirror
 crossings also need in-game review. New, unrun assertions cover backing through
 both mirrors in first and third person, continued held movement after arrival,
 and recovery of diagonal movement/sprint without replaying released or Tab-cancelled keys.
+New, unrun audio regressions cover lazy echo creation, bounded filtered taps,
+no feedback, exit gating, reuse and disposal without disconnecting dry playback.
+The revised ambience and live conversation echo still need listening acceptance.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

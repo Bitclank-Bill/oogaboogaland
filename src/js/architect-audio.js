@@ -1,12 +1,13 @@
-// The observatory: ventilation, restrained electrical resonance and a nearby monitor bank.
+// The observatory: quiet air, slow harmonic motion and distant glass settling.
 // One pooled graph, independent of screen refreshes; no recordings or per-frame/cue nodes.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const create = () => {
     const channel = BL.sound.channel("room"), voices = [];
-    let ctx = null, master = null, bank = null, pan = null, relay = null, crossing = null, penNoise = null, penBody = null, penTone = null, penFilter = null;
-    let enabled = true, disposed = false, timer = 0, since = 0, elapsed = 0, nextTick = 8;
+    channel.show(false);
+    let ctx = null, master = null, ambience = null, foundation = null, airLevel = null, airFilter = null, bank = null, pan = null, relay = null, crossing = null, penNoise = null, penBody = null, penTone = null, penFilter = null, acoustics = null;
+    let enabled = false, disposed = false, timer = 0, since = 0, elapsed = 0, nextTick = 18;
     const gain = (value, to) => {
       const node = ctx.createGain(); node.gain.value = value; node.connect(to); return node;
     };
@@ -31,22 +32,27 @@
         || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
       if (ctx) { if (ctx.state === "suspended") ctx.resume().catch(() => {}); return; }
       ctx = new AudioContext(); master = gain(0, channel.node(ctx));
-      tone(73.4, 0.055, master); tone(110.2, 0.018, master);
-      pan = ctx.createStereoPanner(); pan.connect(master); bank = gain(0, pan);
-      tone(293.7, 0.018, bank); tone(301.1, 0.009, bank);
-      const air = ctx.createBiquadFilter(); air.type = "lowpass"; air.frequency.value = 460; air.Q.value = 0.4;
-      air.connect(gain(0.035, master));
+      acoustics = BL.roomAcoustics.create(ctx, master, channel.node(ctx), 0.4);
+      ambience = gain(1, master); foundation = gain(1, ambience);
+      // Open octaves/fifths instead of close-pitched electrical beats. The room breathes
+      // through levels and air colour, leaving speech frequencies mostly empty.
+      tone(49, 0.026, foundation); tone(98, 0.008, foundation);
+      pan = ctx.createStereoPanner(); pan.connect(ambience); bank = gain(0, pan);
+      tone(147, 0.009, bank); tone(196, 0.004, bank);
+      airFilter = ctx.createBiquadFilter(); airFilter.type = "lowpass"; airFilter.frequency.value = 720; airFilter.Q.value = 0.4;
+      const airHigh = ctx.createBiquadFilter(); airHigh.type = "highpass"; airHigh.frequency.value = 150; airHigh.Q.value = 0.4;
+      airHigh.connect(airFilter); airLevel = gain(0.021, ambience); airFilter.connect(airLevel);
       const buffer = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate), samples = buffer.getChannelData(0);
       const random = BL.math.mulberry32(71403);
       for (let i = 0; i < samples.length; i++) samples[i] = random() * 2 - 1;
-      const noise = ctx.createBufferSource(); noise.buffer = buffer; noise.loop = true; noise.connect(air); noise.start(); voices.push(noise);
+      const noise = ctx.createBufferSource(); noise.buffer = buffer; noise.loop = true; noise.connect(airHigh); noise.start(); voices.push(noise);
       penFilter = ctx.createBiquadFilter(); penFilter.type = "bandpass"; penFilter.frequency.value = 3200; penFilter.Q.value = 0.8;
       penNoise = gain(0, master); noise.connect(penFilter); penFilter.connect(penNoise);
       const bodyFilter = ctx.createBiquadFilter(); bodyFilter.type = "bandpass"; bodyFilter.frequency.value = 850; bodyFilter.Q.value = 1.1;
       penBody = gain(0, master); noise.connect(bodyFilter); bodyFilter.connect(penBody);
       penTone = tone(2300, 0, master);
-      relay = tone(683, 0, pan); crossing = tone(196, 0, master);
-      master.gain.setTargetAtTime(0.65, ctx.currentTime, 0.35); arrive();
+      relay = tone(392, 0, pan); crossing = tone(196, 0, master);
+      master.gain.setTargetAtTime(0.55, ctx.currentTime, 0.6); arrive();
     };
     const clickPulse = (volume, at, level, tail) => {
       volume.setValueAtTime(0, at - 0.001);
@@ -88,13 +94,14 @@
     const refresh = () => {
       if (!enabled || document.hidden || BL.sound.muted) { quiet(); return; }
       clearTimeout(timer); timer = 0; activate();
-      if (ctx) master.gain.setTargetAtTime(0.65, ctx.currentTime, 0.25);
+      if (ctx) master.gain.setTargetAtTime(0.55, ctx.currentTime, 0.5);
     };
     const setActive = (on) => {
       on = !!on; if (enabled === on) return;
-      enabled = on; channel.show(on); refresh(); if (on) arrive();
+      const ready = !!ctx;
+      enabled = on; channel.show(on); BL.roomAcoustics.setActive(on); refresh(); if (on && ready) arrive();
     };
-    const update = (dt, camera) => {
+    const update = (dt, camera, face = false, seated = false) => {
       if (!enabled || disposed || document.hidden) return;
       if (!ctx) activate();
       since += dt; elapsed += dt;
@@ -102,15 +109,21 @@
       const step = since; since = 0;
       const eye = camera.position, dx = camera.target.x - eye.x, dz = camera.target.z - eye.z;
       const length = Math.max(0.001, Math.hypot(dx, dz)), radius = Math.hypot(eye.x, eye.z);
-      // The north-east rack has a slightly louder cooling fan. Its pan follows the listener's right vector.
+      // The north-east rack is a quiet spatial anchor, rather than a constant buzzing foreground.
       const sx = 7.5 - eye.x, sz = -7.5 - eye.z, distance = Math.max(1, Math.hypot(sx, sz));
       pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, (-dz * sx + dx * sz) / (length * distance))), ctx.currentTime, 0.25);
-      bank.gain.setTargetAtTime((0.16 + Math.min(1, radius / 9) * 0.6) * (0.9 + Math.sin(elapsed * 0.21) * 0.1), ctx.currentTime, 0.4);
+      const now = ctx.currentTime, talking = BL.voice.stats.speaking || BL.voice.stats.hearing > 0;
+      ambience.gain.setTargetAtTime(talking ? 0.55 : 1, now, 0.6);
+      foundation.gain.setTargetAtTime((face ? 0.68 : 1) * (0.92 + Math.sin(elapsed * 0.17) * 0.08), now, 1.2);
+      bank.gain.setTargetAtTime((0.12 + Math.min(1, radius / 9) * 0.35) * (seated ? 0.65 : 1), now, 0.7);
+      airFilter.frequency.setTargetAtTime((face ? 1050 : 720) + Math.sin(elapsed * 0.11) * 110, now, 1.2);
+      airLevel.gain.setTargetAtTime((face ? 0.026 : 0.021) * (0.9 + Math.sin(elapsed * 0.23) * 0.1), now, 1);
       if ((nextTick -= step) <= 0) {
-        nextTick = 9 + Math.random() * 12;
-        const now = ctx.currentTime, volume = relay.volume.gain;
+        nextTick = 18 + Math.random() * 18;
+        const volume = relay.volume.gain;
+        relay.source.frequency.setValueAtTime(392 * (Math.random() < 0.5 ? 1 : 1.5), now);
         volume.cancelScheduledValues(now); volume.setValueAtTime(0, now);
-        volume.linearRampToValueAtTime(0.008, now + 0.004); volume.exponentialRampToValueAtTime(0.0001, now + 0.12);
+        volume.linearRampToValueAtTime(0.006, now + 0.025); volume.exponentialRampToValueAtTime(0.0001, now + 2.4);
       }
     };
     const off = BL.sound.subscribe(refresh);
@@ -118,11 +131,11 @@
     document.addEventListener("visibilitychange", refresh);
     return { update, setActive, click,
       dispose() {
-        disposed = true; clearTimeout(timer); off(); channel.release();
+        disposed = true; clearTimeout(timer); off(); BL.roomAcoustics.setActive(false); acoustics?.dispose(); acoustics = null; channel.release();
         window.removeEventListener("pointerdown", activate, true); window.removeEventListener("keydown", activate, true);
         document.removeEventListener("visibilitychange", refresh);
         if (ctx) ctx.close().catch(() => {});
-        ctx = master = bank = pan = relay = crossing = penNoise = penBody = penTone = penFilter = null; voices.length = 0;
+        ctx = master = ambience = foundation = airLevel = airFilter = bank = pan = relay = crossing = penNoise = penBody = penTone = penFilter = null; voices.length = 0;
       }
     };
   };

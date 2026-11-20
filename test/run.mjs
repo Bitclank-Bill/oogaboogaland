@@ -6425,6 +6425,37 @@ const dsbSharedDataChecks = async () => {
 // The six rain steps in Node: soak alone picks them, a step holds against a hover on its boundary, and
 // the amount that falls is continuous through them.
 const environmentSoundChecks = async () => {
+  {
+    // Inspect the real parallel effect: no outside allocation, bounded feed-forward
+    // taps, reusable room visits and disposal that preserves the source's dry wire.
+    const acousticContext = { window: {} }, acousticNodes = [];
+    const acousticParam = () => ({ value: 0, cancelScheduledValues() {}, setValueAtTime(v) { this.value = v; }, setTargetAtTime(v) { this.value = v; } });
+    const acousticNode = kind => {
+      const n = { kind, out: new Set(), gain: acousticParam(), frequency: acousticParam(), Q: acousticParam(), pan: acousticParam(), delayTime: acousticParam(),
+        connect(to) { this.out.add(to); }, disconnect(to) { if (to) this.out.delete(to); else this.out.clear(); } };
+      acousticNodes.push(n); return n;
+    };
+    const acousticAudio = { currentTime: 0, createGain: () => acousticNode("gain"), createBiquadFilter: () => acousticNode("filter"),
+      createDelay: () => acousticNode("delay"), createStereoPanner: () => acousticNode("pan") };
+    runInNewContext(await readFile(join(root, "src/js/room-acoustics.js"), "utf8"), acousticContext);
+    const acoustics = acousticContext.window.BL.roomAcoustics, source = acousticNode("source"), output = acousticNode("volume");
+    source.connect(output);
+    const effect = acoustics.create(acousticAudio, source, output, 0.6), lazy = acousticNodes.length === 2;
+    acoustics.setActive(true);
+    const count = acousticNodes.length, send = [...source.out].find(n => n !== output), wet = acousticNodes.find(n => n !== source && n.out.has(output));
+    const taps = acousticNodes.filter(n => n.kind === "delay"), filters = acousticNodes.filter(n => n.kind === "filter");
+    const acyclic = (n, path = new Set()) => !path.has(n) && [...n.out].every(next => acyclic(next, new Set([...path, n])));
+    const routed = source.out.has(output) && send.gain.value === 1 && wet.gain.value === 1 && acyclic(source)
+      && taps.length === 3 && taps.every(n => n.delayTime.value > 0 && n.delayTime.value < 0.12)
+      && filters.some(n => n.type === "highpass") && filters.some(n => n.type === "lowpass");
+    acoustics.setActive(false);
+    const off = send.gain.value === 0 && wet.gain.value === 0 && source.out.has(output);
+    acoustics.setActive(true); const reusedRoom = acousticNodes.length === count;
+    effect.dispose(); acoustics.setActive(false); acoustics.setActive(true);
+    const cleaned = source.out.size === 1 && source.out.has(output) && acousticNodes.slice(2).every(n => !n.out.size) && acousticNodes.length === count;
+    record("room acoustics: short filtered reflections are lazy, feed-forward, routed before volume, gated on exit, reused and fully disconnected without losing dry playback",
+      lazy && routed && off && reusedRoom && cleaned, JSON.stringify({ lazy, routed, off, reusedRoom, cleaned }));
+  }
   const events = new Map(), contexts = [];
   let saved = "off", writable = true;
   const param = () => ({ value: 0, calls: 0, setTargetAtTime(v) { this.value = v; this.calls++; },
@@ -6443,7 +6474,7 @@ const environmentSoundChecks = async () => {
   }
   const context = { window: { addEventListener: (k, fn) => events.set(k, fn) }, AudioContext,
     navigator: { userActivation: { hasBeenActive: true } }, localStorage: { getItem: () => saved, setItem: (k, v) => { if (!writable) throw Error("blocked"); saved = v; } } };
-  for (const file of ["math", "scene", "sound", "footsteps", "pet-reactions"]) runInNewContext(await readFile(join(root, `src/js/${file}.js`), "utf8"), context);
+  for (const file of ["math", "scene", "sound", "room-acoustics", "footsteps", "pet-reactions"]) runInNewContext(await readFile(join(root, `src/js/${file}.js`), "utf8"), context);
   const { sound, footsteps } = context.window.BL, feet = footsteps.create(), walker = { act: { phase: 0 }, hop: 0, ladder: null };
   feet.update(walker); walker.act.phase = Math.PI; feet.update(walker);
   const startsMuted = sound.muted && contexts.length === 0 && feet.steps === 1;
@@ -29759,7 +29790,7 @@ const footstepChecks = BL => {
 // when someone is listed, without touching the visitor's own mute or telling the room. voice.js runs in a fixture
 // with a fake microphone, peer connection and Worker, so every state of the track is read directly.
 const voiceAloneChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],emits=[];
+  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],emits=[];
   const track={enabled:true,stop(){},clone(){return {enabled:true,stop(){}};}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
   class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0\r\na=candidate:1 1 udp 2122260223 127.0.0.1 9 typ host\r\n"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
   class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
@@ -29807,7 +29838,7 @@ const voiceAloneChecks = async () => {
 };
 // A fresh fixture of voice.js for the failure paths: whatever the SFU refuses is named in `failing`, and timers are held.
 const voiceFailureChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const page=(joined=false,AudioContext=undefined)=>{
     const timers=[],calls=[],bodies=[],pcs=[],failing=new Set(),holds=new Map();let holdLeave=null;
     const track={enabled:true,stopped:false,stop(){this.stopped=true;},clone(){return {enabled:true,stop(){}};}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
@@ -29889,7 +29920,7 @@ const voiceFailureChecks = async () => {
 // Someone who pressed Join voice comes back in voice, muted, on their first press, with the microphone never touched
 // until they unmute; only Leave voice ends that. voice.js runs per "page" over one shared localStorage.
 const voiceReturnChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
   const stored=new Map(),settle=()=>new Promise(r=>setTimeout(r,0));
   const page=({active=false,zone="outside",denied=false}={})=>{
     const ops=[],told=[],presses=new Map();let mics=0;
@@ -29982,7 +30013,7 @@ const voiceHandoffChecks = () => {
 };
 // iOS keeps every element at 1; both paths must sound the same at every step.
 const voiceHearingChecks = async () => {
-  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
+  const source=readFileSync(join(root,"src/js/duel-listening.js"),"utf8")+readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/room-acoustics.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
   const remote=(login,zone,x,z,placed=true)=>({login,zone,poseZone:placed?zone:null,x,y:0,z});
   const rig=(ios,webAudio=true,saved=null,store=new Map())=>{
     const ops=[],bodies=[],netMuted=[],timers=new Map(),els=[],pulled=[],gains=[],limiters=[],ctxs=[],handlers=new Map(),subscribers=new Set();let timerId=0,onTrack=null,captures=0;
@@ -34909,7 +34940,7 @@ const studioCatalogueProof = async () => {
 
 // Exercise the shipped voice lifecycle with deferred permissions/signaling and no real devices/network.
 const studioVoiceLifecycleProof = async () => {
-  const source=await readFile(join(root,"src/js/duel-listening.js"),"utf8")+await readFile(join(root,"src/js/voice.js"),"utf8");
+  const source=await readFile(join(root,"src/js/duel-listening.js"),"utf8")+await readFile(join(root,"src/js/room-acoustics.js"),"utf8")+await readFile(join(root,"src/js/voice.js"),"utf8");
   const fixture=(gathering="complete",candidate=true,failFirstPeer=false,voiceTurn=false,stunDead=false)=>{
     const calls=[],streams=[],peers=[],elements=[],timers=new Map(),failing=new Map(),clock={at:null};let timerId=0,gum=0,permission=null,publishResponse=null,deferred=null,peerAttempts=0;
     class Peer {

@@ -562,7 +562,7 @@
         updateBroadcast(dt, actor);
         updatePen(dt);
         if (rotating && broadcast === "feeds" && !layoutPending && !portraitActor) cameras.update(dt);
-        if (audio) audio.update(dt, camera);
+        if (audio) audio.update(dt, camera, broadcast === "face" || broadcast === "to-face", seated());
         if (!cooldown && p.z >= RETURN_Z && Math.abs(p.x) < RETURN_HALF_W - 0.4
           && feet >= FLOOR - 0.2 && feet < FLOOR + RETURN_HEIGHT - 0.5) travel(false);
         return;
