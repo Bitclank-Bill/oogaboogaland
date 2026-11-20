@@ -82,14 +82,12 @@ Each Ooga is then handled according to its row:
   (`refreshStates`) before it is followed.
 - **Gorillas.** Each working Ooga's gorilla is told the cave it goes ahead to, whenever that changes.
 
-While the world runs, the hub stops updating `npc-sync.js`. The props still sync through the room's host
-(`prop-sync.js`).
+While the world runs, a page never follows the room's crew host (`npc-sync.js`), since the world places its
+Oogas. While it is the host itself, it goes on sending the crew as the world moves it, so pages without the world
+see the same crew. The props still sync through the room's host (`prop-sync.js`).
 
 ### Left to do
 
-- **Mixed rooms.** A page with the flag sends no `npc-sync` frames, so if the room elects it host, flagless pages
-  following it hold their crew still. Turning the world on for everyone fixes this; until then, test with every
-  page flagged.
 - **The pile.** Ease rows near the pile out to the page's own ring, or have the Worker read the pile.
 - **First arrival.** On a signed-out page the first frame beams every Ooga from where the crew put it to where the
   world does. The local world could start from the crew's own positions.

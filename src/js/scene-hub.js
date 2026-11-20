@@ -3505,7 +3505,8 @@
   // The island's world (island-world.js), where the page asks for it.
   const startIslandWorld = () => {
     if (!BL.islandWorld.enabled()) return;
-    islandWorld = BL.islandWorld.create({ crew, clankers: { plan: (cave, site) => clankers && clankers.plan(cave, site) },
+    // A plan goes to this page's gorilla and, while this page is the room's crew host, into its frames for the rest.
+    islandWorld = BL.islandWorld.create({ crew, clankers: { plan: (cave, site) => { if (npcSync) npcSync.recordPlan(cave, site); if (clankers) clankers.plan(cave, site); } },
       platform: () => altar.platformRadius });
   };
   const routineLayout = () => {
@@ -8248,7 +8249,9 @@
     const ownBody = crew.player?.npc ? crew.player : null;
     if (ownBody && ownBody.root.visible) floatPose(ownBody, ownBody.root.position.y - ownBody.baseY, ownBody.bodyHeight, ownBody.phase, elapsed);
     footsteps.update(crew.player);
-    if (!cloudPlaying() && !islandWorld) npcSync.update(dt);
+    // With the island's world, this page never follows the room's crew host (the world places its Oogas), but while it
+    // is the host it goes on sending the crew as the world moves it, so pages without the world see the same crew.
+    if (!cloudPlaying() && (!islandWorld || BL.net.state.room === "live" && BL.net.state.hostId === BL.net.state.selfId)) npcSync.update(dt);
     if (!cloudPlaying()) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
     hideSeatGlows();
