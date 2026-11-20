@@ -18,7 +18,7 @@ the way.
 |---|---|---|
 | `src/js/island-layout.js` | page and Worker, baked | The hub's routine tables: the meadow's paths, fire seats, stroll spots, each work cave's fan of places that every Ooga may shoot from, and the sealed caves' fronts. `scripts/island-layout.mjs` bakes it from the real hub in the suite's Chrome, because those tables depend on props and geometry only the page builds. The hub's "island layout" check fails when the hub and the file disagree. |
 | `src/js/island-sim.js` | page and Worker | The passive routine (below) over those tables, with no terrain, props or collision. It runs fixed 50 ms steps, is seeded and allocates nothing per step. Its output is one `game-wire.js` row per Ooga. |
-| `worker/src/games/island.js` | Worker | Kind `island`, venue `main`, on `game-host.js`. It takes the cast from `characters.gen.json`, and states and caves from Oogatron's stats through the `OOGATRON` binding, read every minute while it runs, as a page polls them. It sends motion at 10 Hz, skips frames while nothing moves (at most 2 s apart), and sends the cast's names as its state. It runs only while a page follows it, and keeps no record: a restart starts the routine afresh. |
+| `worker/src/games/island.js` | Worker | Kind `island`, venue `main`, on `game-host.js`. It takes the cast from `characters.gen.json`, and states and caves from Oogatron's stats through the `OOGATRON` binding, read every minute while it runs, as a page polls them. Until the first reading it starts from the snapshot every deploy bakes into the page (`jumbotron-data.js`), as a page does, so a world that cannot reach Oogatron shows what a page would. It sends motion at 10 Hz, skips frames while nothing moves (at most 2 s apart), and sends the cast's names as its state. It runs only while a page follows it, and keeps no record: a restart starts the routine afresh. |
 | `src/js/island-world.js` | page | Follows the world on the island, behind `?islandworld=1` for now (next section). |
 
 ### The routine
@@ -87,8 +87,6 @@ While the world runs, the hub stops updating `npc-sync.js`. The props still sync
 
 ### Left to do
 
-- **Check the server path.** Follow a real Worker signed in (`wrangler dev` with a session). It is unit-checked
-  (`game-host.test.mjs`), but no page has followed it yet.
 - **Mixed rooms.** A page with the flag sends no `npc-sync` frames, so if the room elects it host, flagless pages
   following it hold their crew still. Turning the world on for everyone fixes this; until then, test with every
   page flagged.

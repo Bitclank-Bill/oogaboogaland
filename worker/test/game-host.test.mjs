@@ -416,3 +416,17 @@ test("a game that keeps no record writes nothing to storage", async () => {
   assert.equal(writes, 0);
   h.host.webSocketClose(ws, 1000, "", true);
 });
+
+test("a world that cannot read Oogatron starts from the stats every deploy bakes into the page, as a page does", async () => {
+  const h = harness();
+  h.clock.now = Date.parse(globalThis.BL.jumbotronData.meta.generated_at) + 30 * 60e3;
+  await h.join(1, "island:main:v1");
+  const sim = h.host.game.sim, now = h.clock.now, cast = castFrom(CAST_ROWS), check = globalThis.BL.islandSim.create();
+  applyStats(cast, globalThis.BL.jumbotronData, now);
+  check.setCast(cast);
+  applyActivity(check, cast, now);
+  const wants = (s) => s.oogas.map((o) => `${o.name}:${o.want}:${o.mask}`).join(",");
+  assert.equal(wants(sim), wants(check), "each Ooga's state and caves as the baked snapshot gives them");
+  assert.notEqual(wants(sim), wants((() => { const plain = globalThis.BL.islandSim.create(), bare = castFrom(CAST_ROWS); plain.setCast(bare); applyActivity(plain, bare, now); return plain; })()),
+    "which is not the cast's own bundled dates");
+});

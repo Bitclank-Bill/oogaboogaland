@@ -4,8 +4,9 @@
 //
 // The cast is the Worker's own (characters.gen.json, as the room's ownership rules are), in join order. Who works,
 // chills, sleeps or is away, and at which caves, comes from Oogatron's stats (contributor-policy.js's reader through
-// the OOGATRON binding), read when the world starts and every `REFRESH_MS` while it runs, as a page polls them; until
-// the first reading, each Ooga's bundled last commit stands in, as on a page. Each Ooga's state is the windows of
+// the OOGATRON binding), read when the world starts and every `REFRESH_MS` while it runs, as a page polls them. Until
+// the first reading, the world starts from the snapshot every deploy bakes into the page (jumbotron-data.js), as a
+// page does, so a world that cannot reach Oogatron shows what a page would. Each Ooga's state is the windows of
 // roster-panel.js (island-sim.js `stateAt`), its caves the ones it was active at within the hour (`sitesFor`).
 //
 // Out: every tick, the motion frame of game-wire.js, a row an Ooga (island-sim.js `motion`; nothing when no Ooga has
@@ -16,6 +17,7 @@ import "../../../src/js/math.js";
 import "../../../src/js/npc-paths.js";
 import "../../../src/js/island-layout.js";
 import "../../../src/js/island-sim.js";
+import "../../../src/js/jumbotron-data.js";
 import { oogatron, readContributorSnapshot } from "../contributor-policy.js";
 import CAST_ROWS from "../characters.gen.json" with { type: "json" };
 
@@ -80,6 +82,7 @@ const create = (now, env) => {
   sim.setCast(cast);
   const fetcher = oogatron(env);
   const readRepos = new Set();
+  applyStats(cast, globalThis.BL.jumbotronData, now, readRepos);
   let pages = 0, last = now, readAt = -Infinity, reading = null, sentAt = -Infinity, sentStir = -1, appliedAt = -Infinity;
   // Without the binding (a local Worker, the checks) the bundled stamps stand.
   const read = (at) => {
