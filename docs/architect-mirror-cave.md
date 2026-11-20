@@ -57,13 +57,15 @@ extends to the new shell. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
 Sitting places a pen slightly higher through the center of the Ooga’s existing
-right fist, clear of the thumb and exposing more of its barrel. Third person keeps the default seated arm pose. In first
-person, looking up rotates the existing stiff arm from its shoulder, keeping the
-elbow bend, wrist, fist and shoulder position unchanged. The lift stops when the
-shoulder-to-fist line is horizontal; looking farther up lets the fist leave the
-view. Looking down returns it to the original seated rest and never lowers it
-further. The cap is derived from the character’s own hand/arm geometry, and the
-lift blends with the first-person camera transition. Nothing is screen-anchored.
+right fist, clear of the thumb and exposing more of its barrel. Third person
+keeps the default seated arm pose. First person solves the rigid arm's shoulder
+arc against the actual camera eye and field of view, aiming the fist into the
+lower view (75% down from its center). The elbow bend, wrist, fist and shoulder
+position stay unchanged. Shoulder rotation stops at 90 degrees forward;
+looking farther up lets the fist leave the view. Looking down returns it to
+the original seated rest and never lowers it further. The solve uses the
+character's own hand/arm geometry and blends with the first-person camera
+transition. Nothing is screen-anchored.
 The character’s default fist, including its thumb, stays unchanged; the pen
 sticks out of that fist. Clicking depresses the pen button and springs it back
 over 170 ms. The same hand appears in the room, reflections and face feed.
@@ -373,6 +375,9 @@ remain pending on the same unavailable Chrome connection.
 New, unrun assertions cover the higher pen, unchanged elbow/wrist grip, fixed
 shoulder pivot and bounded lift/rest across first-person pitch. In-game framing
 acceptance remains pending.
+The revised shoulder solve uses eye-to-hand projection rather than the
+shoulder-to-hand elevation; the updated, unrun regression checks the fist's
+position in the first-person frame as well as the movement limits.
 The faster global wave, tighter row timing and per-tile flashes pass build/syntax
 checks; updated regression assertions remain unrun and visual acceptance is pending.
 The white ceiling, attached armrest brackets and direction-preserving mirror

@@ -17266,18 +17266,27 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       actor.parts.fingersR.rotation, actor.parts.fingersR.quaternion, room.pen.position]);
     const grip = rigid();
     const aimPen = elevation => {
-      const eye = B.camera.position;
-      B.camera.target.x = eye.x; B.camera.target.y = eye.y + Math.sin(elevation); B.camera.target.z = eye.z - Math.cos(elevation);
+      const eye = B.camera.position, yaw = actor.root.rotation.y;
+      B.camera.target.x = eye.x + Math.sin(yaw) * Math.cos(elevation);
+      B.camera.target.y = eye.y + Math.sin(elevation);
+      B.camera.target.z = eye.z + Math.cos(yaw) * Math.cos(elevation);
       room.update(0); return arm.rotation.x;
     };
     const low = aimPen(-1.4), level = aimPen(0), raised = aimPen(0.6), ceiling = aimPen(1.4);
-    BL.scene.updateWorld(actor.root, actor.root.parent?.world);
-    const hand = actor.parts.fingersR, center = BL.scene.boundsOf(hand.geometry).center, m = hand.world;
-    const handY = m[1] * center[0] + m[5] * center[1] + m[9] * center[2] + m[13];
     const cappedLift = level < low && raised <= level && Math.abs(raised - ceiling) < 1e-6
-      && handY <= arm.world[13] + 0.002 && aimPen(-1.4) === low;
+      && Math.abs(ceiling + Math.PI / 2) < 1e-6 && aimPen(-1.4) === low;
+    const trackingPitch = aimPen(-0.6);
+    BL.scene.updateWorld(actor.root, actor.root.parent?.world);
+    const hand = actor.parts.fingersR, center = BL.scene.boundsOf(hand.geometry).center, m = hand.world, eye = B.camera.position;
+    const dx = m[0] * center[0] + m[4] * center[1] + m[8] * center[2] + m[12] - eye.x;
+    const dy = m[1] * center[0] + m[5] * center[1] + m[9] * center[2] + m[13] - eye.y;
+    const dz = m[2] * center[0] + m[6] * center[1] + m[10] * center[2] + m[14] - eye.z;
+    const forward = dx * Math.sin(actor.root.rotation.y) + dz * Math.cos(actor.root.rotation.y);
+    const screenY = (dy * Math.cos(-0.6) - forward * Math.sin(-0.6))
+      / (forward * Math.cos(-0.6) + dy * Math.sin(-0.6)) / Math.tan(B.camera.fov / 2);
+    const followsEye = trackingPitch < low && trackingPitch > ceiling && Math.abs(screenY + 0.75) < 0.03;
     const rigidShoulder = rigid() === grip && JSON.stringify(arm.position) === pivot;
-    const higherPen = !actor.modelled || room.pen.position.x < 0;
+    const higherPen = (!actor.modelled || room.pen.position.x < 0) && room.pen.position.z === 0;
     Object.assign(B.camera.target, target); room.update(0);
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
@@ -17290,7 +17299,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
-    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, bodyAnchored, cappedLift, rigidShoulder, higherPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
+    return { sitting, pen, sameFist, heldFeeds, firstPersonPen, bodyAnchored, cappedLift, followsEye, rigidShoulder, higherPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
   })()`);
   record("hub observatory: seated pen toggles persistent views, standing removes it and resumes automatic transitions",
     Object.values(manualScreens).every(Boolean), JSON.stringify(manualScreens));

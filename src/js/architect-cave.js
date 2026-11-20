@@ -139,6 +139,7 @@
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     let penButton = null, penHand = null, penArm = null, penArmPitch = NaN, clickTime = 1;
     const penHandPoint = new Float64Array(3);
+    const penViewInverse = BL.math.mat4.create();
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
@@ -153,8 +154,9 @@
       clickTime = Math.min(1, clickTime + dt);
       const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.1 ? 1 : Math.max(0, 1 - (clickTime - 0.1) / 0.07);
       penButton.position.y = 0.19 - press * 0.018;
-      // Keep the complete bent arm rigid. Find the fist in the shoulder's frame,
-      // then lift only at that shoulder, no higher than a horizontal shoulder-to-fist line.
+      if (!pilot.closeMix) { penArm.rotation.x = penArmPitch = PEN_ARM_REST; return; }
+      // Keep the complete bent arm rigid. Solve its shoulder arc against the eye's
+      // lower view, rather than aiming from the much lower shoulder toward the horizon.
       const center = BL.scene.boundsOf(penHand.geometry).center;
       penHandPoint.set(center);
       for (let part = penHand; part !== penArm; part = part.parent) {
@@ -163,11 +165,25 @@
       }
       const roll = penArm.rotation.z;
       const y = penHandPoint[0] * penArm.scale.x * Math.sin(roll) + penHandPoint[1] * penArm.scale.y * Math.cos(roll);
-      const restElevation = Math.atan2(y, penHandPoint[2] * penArm.scale.z) - PEN_ARM_REST;
-      const eye = camera.position, target = camera.target;
-      const elevation = Math.atan2(target.y - eye.y, Math.hypot(target.x - eye.x, target.z - eye.z));
-      const lift = Math.max(0, Math.min(-restElevation, elevation - 0.35 - restElevation));
-      penArmPitch = PEN_ARM_REST - lift * pilot.closeMix;
+      const z = penHandPoint[2] * penArm.scale.z, reach = Math.max(1e-6, Math.hypot(y, z)), angle = Math.atan2(y, z);
+      const parent = penArm.parent, math = BL.math.mat4;
+      BL.scene.updateLocal(parent);
+      if (parent.parent) math.multiply(parent.world, parent.parent.world, parent.local);
+      else parent.world.set(parent.local);
+      math.invert(penViewInverse, parent.world);
+      const eye = camera.position, target = camera.target, pivot = penArm.position;
+      const sy = Math.sin(penArm.rotation.y), cy = Math.cos(penArm.rotation.y);
+      math.transformPoint(penHandPoint, penViewInverse, eye.x, eye.y, eye.z);
+      const eyeY = penHandPoint[1] - pivot.y, eyeZ = (penHandPoint[0] - pivot.x) * sy + (penHandPoint[2] - pivot.z) * cy;
+      math.transformPoint(penHandPoint, penViewInverse, target.x, target.y, target.z);
+      const forwardY = penHandPoint[1] - pivot.y - eyeY;
+      const forwardZ = (penHandPoint[0] - pivot.x) * sy + (penHandPoint[2] - pivot.z) * cy - eyeZ;
+      const elevation = Math.atan2(forwardY, forwardZ) - Math.atan(Math.tan(camera.fov / 2) * 0.75);
+      const offset = (eyeY * Math.cos(elevation) - eyeZ * Math.sin(elevation)) / reach;
+      const aim = angle - elevation - Math.asin(Math.max(-1, Math.min(1, offset)));
+      // The upper arm may reach forward, but never overhead or below the seated rest.
+      const pitch = Math.max(-Math.PI / 2, Math.min(PEN_ARM_REST, aim));
+      penArmPitch = PEN_ARM_REST + (pitch - PEN_ARM_REST) * pilot.closeMix;
       penArm.rotation.x = penArmPitch;
     };
     const parkEquipment = actor => {
