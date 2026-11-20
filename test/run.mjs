@@ -17085,10 +17085,42 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const start = { x: a.root.position.x, y: a.root.position.y - a.baseY, z: a.root.position.z };
     B.pilot.navigate({ position: { x: 0, y: floor, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
     B.advance(0.4, 1 / 60);
-    const sit = room.sit(), seat = room.seat, oldYaw = seat.ry;
+    const sit = room.sit(), seat = room.seat;
+    B.pilot.enterClose(true); B.advance(1, 1 / 60);
+    const oldYaw = seat.ry;
     B.pilot.orbit.yaw += 0.8; B.pilot.orbit.tYaw = B.pilot.orbit.yaw;
     room.update(1 / 60);
     const swivel = Math.abs(seat.ry - oldYaw - 0.8) < 1e-6 && a.root.rotation.y === seat.ry;
+    B.advance(1, 1 / 60);
+    const ray = () => {
+      const p = B.camera.position, t = B.camera.target, n = Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z);
+      return [(t.x - p.x) / n, (t.y - p.y) / n, (t.z - p.z) / n];
+    };
+    let previous = ray(), smooth = true, shoulder = true;
+    B.pilot.hooks.onZoom(1.15, {});
+    for (let i = 0; i < 90; i++) {
+      B.advance(1 / 60, 1 / 60);
+      const next = ray();
+      smooth &&= next.reduce((sum, n, j) => sum + n * previous[j], 0) > 0.97;
+      shoulder &&= B.pilot.view === "shoulder" && B.pilot.aiming;
+      previous = next;
+    }
+    B.pilot.hooks.onOrbit(100, 0); B.advance(1, 1 / 60);
+    const dx = B.camera.position.x - a.root.position.x, dz = B.camera.position.z - a.root.position.z;
+    const behind = -(dx * Math.sin(seat.ry) + dz * Math.cos(seat.ry)) / Math.hypot(dx, dz) > 0.8;
+    B.pilot.enterClose(); B.advance(1, 1 / 60);
+    B.pilot.modeAction("mode-toggle"); B.advance(1, 1 / 60);
+    const carryYaw = seat.ry;
+    B.pilot.hooks.onZoom(3, {}); B.advance(1, 1 / 60);
+    const orbitYaw = B.pilot.orbit.yaw;
+    B.pilot.hooks.onOrbit(200, 40); B.advance(1, 1 / 60);
+    const carryOrbit = !B.pilot.closeWanted && !B.pilot.aiming && Math.abs(B.pilot.orbit.yaw - orbitYaw) > 0.2
+      && seat.ry === carryYaw && a.root.rotation.y === carryYaw
+      && a.parts.head.rotation.y === 0 && a.parts.head.rotation.x === 0;
+    // Changing camera intent from third-person carry must work with the loadout parked.
+    B.pilot.modeAction("mode-toggle"); B.advance(1, 1 / 60);
+    const parkedCamera = B.pilot.aiming && !!a.weapon.parked && !a.weapon.equipped && !a.weapon.primaryEquipped;
+    B.pilot.modeAction("mode-toggle"); B.advance(1, 1 / 60);
     const stand = B.crew.standPlayer(a), clear = !a.camp.seat && !seat.sitter
       && room.segmentClear(a.root.position.x, floor, a.root.position.z, a.root.position.x, floor, a.root.position.z, 0.3, a.bodyHeight);
     const top = room.supportAt(0, 0, floor + 1.1, 0);
@@ -17102,9 +17134,9 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       && a.weapon.primaryOwned === parked.primaryOwned && a.weapon.secondaryOwned === parked.secondaryOwned
       && a.weapon.ammo === parked.ammo && a.weapon.selectedSlot === parked.selectedSlot;
     room.travel(true); B.pilot.navigate({ position: start, yaw: 0, pitch: 0.1, dist: 4 }); B.advance(1.1, 1 / 60);
-    return { sit, swivel, stand, clear, cushion, onCushion, released };
+    return { sit, swivel, smooth, shoulder, behind, carryOrbit, parkedCamera, stand, clear, cushion, onCushion, released };
   })()`);
-  record("hub observatory: solid cushion supports sitting, swivel follows view, standing and travel release the seat",
+  record("hub observatory: combat zoom stays behind the chair, carry orbits a forward-facing sitter, standing and travel release the seat",
     Object.values(chair).every(Boolean), JSON.stringify(chair));
   const broadcast = await b.evaluate(`(async () => {
     const B = __ooga, room = BL.scenes.hub.architect, panels = room.panels, face = room.cameras.portrait;

@@ -61,8 +61,12 @@ pad. Its pedestal has five tapered spokes
 and paired rubber caster wheels with metal hubs. The seat, back and armrests rotate
 together over the fixed base; the seat height stays 0.72 m and the back collision
 extends to the new shell. Move and jump onto the cushion, then press
-Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
-the occupied chair; movement or Space stands up into clear floor ahead of it.
+Space to sit (or sit from nearby on the floor). First person and combat looking
+swivel the occupied chair; combat zoom-out stays in the shoulder camera with the
+chair back facing it. Third-person carry orbits independently while the chair,
+body and head keep facing forward, including during zoom-out. The seat opts into
+combat camera control only; weapons remain parked. Movement or Space stands up
+into clear floor ahead of it.
 Sitting places a pen slightly higher through the center of the Ooga’s existing
 right fist, clear of the thumb and exposing more of its barrel. Third person
 keeps the default seated arm pose. First person solves the rigid arm's shoulder

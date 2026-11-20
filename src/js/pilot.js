@@ -436,7 +436,10 @@
     // Lying in a hammock keeps the view it was lain down in: combat's look and capture carry on, with the weapons parked
     // under the cloth (the crew refuses them on a seat) and a dot for a crosshair (`syncWeaponHud`).
     const lyingLook = (cave) => active && !!cave && !!cave.camp.seat?.lying && !crew.sleeping && !cave.health.stunned;
-    const restCombat = (cave) => lyingLook(cave) && cave.weapon.aiming;
+    // A swivel seat can keep combat's camera through the first-person/shoulder
+    // handoff without granting permission to equip or fire a weapon.
+    const seatCombatReady = (cave) => lyingLook(cave) || active && !!cave && !!cave.camp.seat?.combatView && !crew.sleeping && !cave.health.stunned;
+    const restCombat = (cave) => seatCombatReady(cave) && cave.weapon.aiming;
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + SHOULDER_LEVEL));
     // Level and downward aim lift the eye so the head sits below the
     // crosshair and the band beside it stays clear. Looking up sinks the body
@@ -2116,7 +2119,7 @@
         return true;
       }
       // A game's combat intent survives sleep/stuns; readiness still gates aiming and attacks.
-      if (!weaponViewReady(cave) && !lyingLook(cave) && !combatOnly) {
+      if (!weaponViewReady(cave) && !seatCombatReady(cave) && !combatOnly) {
         hud.hint(crew.sleeping ? "Wake this Ooga Booga before entering shooter mode" : "Stand up before entering shooter mode");
         return true;
       }
@@ -4001,7 +4004,7 @@
       if (cave) {
         if (!touch) rows.push(H.row(["shiftleft"], "Run"));
         rows.push(H.row(touch ? [] : [" "], hud.el.act.textContent.trim() || "Jump / use nearby object", touch ? "Action button" : ""));
-        if (!firstOnly && !ctx.combatOnly?.() && (weaponViewReady(cave) || lyingLook(cave))) add("view", "Toggle view control", "View button");
+        if (!firstOnly && !ctx.combatOnly?.() && (weaponViewReady(cave) || seatCombatReady(cave))) add("view", "Toggle view control", "View button");
         if (!touch && !firstOnly && armed()) rows.push(H.row([], "Zoom / aim", "Hold right mouse click"));
         if (!touch && armed() && shoulderView && !closeWanted) rows.push(H.row(["shiftright"], "Tap to swap shoulder · hold with A/D to peek"));
         if (!touch && birdsEye()) add("north", "Face north", "");

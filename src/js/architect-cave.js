@@ -141,7 +141,7 @@
     let penButton = null, penHand = null, penArm = null, penArmPitch = NaN, clickTime = 1;
     const penHandPoint = new Float64Array(3);
     const penViewInverse = BL.math.mat4.create();
-    const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
+    const seat = { kind: "architect-chair", combatView: true, x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
     const removePen = () => {
@@ -652,8 +652,12 @@
       if (!seated()) removePen();
       if (active) {
         if (seat.sitter && seat.sitter === actor && actor.camp.seat === seat) {
-          seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
+          // Carry's third-person camera orbits independently, including while
+          // first person fades out. Combat keeps the camera behind the chair.
+          const followView = pilot.closeWanted || pilot.aiming;
+          if (followView) { seat.ry = pilot.orbit.yaw + Math.PI; turnChair(); }
           actor.root.rotation.y = seat.ry; actor.parts.head.rotation.y = 0;
+          if (!followView) actor.parts.head.rotation.x = 0;
         }
         const rotating = broadcast === "feeds" && !layoutPending && !portraitActor;
         updateBroadcast(dt, actor);
