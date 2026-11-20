@@ -86,6 +86,16 @@ account; the studio does not join the Room. Local preview links to the staging
 studio for account saving. A new creator version offers **Accept update** or
 **Keep my version**; a later distinct version can offer again.
 
+Every equipped hat uses the renderer's `geometry.depthOffset` surface priority,
+including future catalog versions and every personal size. WebGL applies the
+same small depth bias in the depth prepass, normal view and reflections, so a
+hat wins coincident head/hair surfaces without changing its geometry or shadow.
+Ordinary nearer surfaces still occlude it. Canvas and HUD portraits use a small
+face-sort tie bias as their painter fallback. This prevents depth fighting; it
+does not turn a hat that is too small into a correct fit or hide hair protruding
+through it. In particular, the space helmet at 80% intersects the apple shell;
+100% remains its reviewed fit.
+
 `GET /api/equipment` returns the account's current record. `PUT /api/equipment`
 takes its expected `revision` and either `selection` (with optional `size`),
 `size` alone, or a `decline` version. `size` is an integer percentage from 80 to

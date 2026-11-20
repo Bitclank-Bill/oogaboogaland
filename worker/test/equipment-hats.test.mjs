@@ -122,6 +122,8 @@ test("normal and slim recipients share immutable hats, while live roots, poses a
     assert.equal(a.root.position.x, 9); assert.equal(a.root.rotation.y, 1.2); assert.equal(a.parts.head.rotation.x, 0.2);
     assert.equal(a.health.value, 31); assert.equal(a.weapon.ammo, 7);
     assert.equal(a.equipmentHatNode.children[0].geometry, b.equipmentHatNode.children[0].geometry);
+    for (const child of a.equipmentHatNode.children) assert.equal(child.geometry.depthOffset, true, row.id + " wins head/hair depth ties");
+    assert.equal(a.headOpen.depthOffset, undefined, "the wearer's head keeps ordinary depth");
     const unchanged = a.equipmentHatNode;
     for (let i = 0; i < 20; i++) assert.equal(render.apply(a, selected), true);
     assert.equal(a.equipmentHatNode, unchanged, "same revision never allocates another node");

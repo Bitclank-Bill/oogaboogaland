@@ -18375,6 +18375,80 @@ const sharedCameraRendering = { name: "shared camera rendering", why: "rule: gam
     && state.filter(r => r.fallback).every(r => r.error < 0.002) && settled.every(r => r.aligned < 0.001 && r.parallel < 1e-6), JSON.stringify(state));
   record("shared camera rendering: rendered near and far objects follow projected positions, including a batch outside the old perspective frustum", samples.every(r => r.pixels[0]?.[0] > r.pixels[0]?.[1] + 40 && r.pixels[1]?.[2] > r.pixels[1]?.[1] + 40
     && (!r.pixels[2] || r.pixels[2][0] > r.pixels[2][1] + 40 && r.pixels[2][2] > r.pixels[2][1] + 40)) && settled.every(r => r.pixels[2]), JSON.stringify(samples.map(({ kind, mix, pixels }) => ({ kind, mix, pixels }))));
+  const overlays = await b.evaluate(`(async () => {
+    const S = BL.scene, rows = [], originalURL = location.href;
+    const camera = S.createCamera({ fov: 40, near: 0.1, far: 80 });
+    const opts = { bloomStrength: 0, shadowStrength: 0, ambientFloor: 1, directStrength: 0 };
+    const panel = (color, half = 1, z = 0, depthOffset = false) => ({
+      verts: [-half, -half, z, half, -half, z, half, half, z, -half, half, z],
+      faces: [{ i: [0, 1, 2, 3], color }], lines: [], depthOffset
+    });
+    try {
+      // Force both GPU paths even on hardware which normally omits the prepass.
+      for (const mode of ["0", "1", "canvas", "icon"]) {
+        const element = document.createElement("canvas");
+        element.style.cssText = "position:fixed;left:-1000px;top:0;width:256px;height:256px";
+        document.body.appendChild(element);
+        let renderer;
+        try {
+          const url = new URL(originalURL); url.searchParams.set("debug", "1"); url.searchParams.set("prepass", mode);
+          history.replaceState(null, "", url);
+          const fallback = mode === "canvas" || mode === "icon";
+          if (fallback) element.getContext("2d", { willReadFrequently: true });
+          renderer = mode === "icon" ? BL.iconRenderer.createRenderer(element, { width: 256, height: 256 })
+            : mode === "canvas" ? BL.canvasRenderer.createRenderer(element, { width: 256, height: 256 })
+            : BL.glRenderer.createRenderer(element, { quality: "low" });
+          if (!fallback) renderer.resize();
+          history.replaceState(null, "", originalURL);
+          const gl = fallback ? null : element.getContext("webgl2"), view = BL.math.mat4.create(), pointInView = new Float32Array(3);
+          const sample = (x, z = 0) => {
+            let point;
+            if (mode === "icon") {
+              BL.math.mat4.lookAt(view, camera.position, camera.target, { x: 0, y: 1, z: 0 });
+              BL.math.mat4.transformPoint(pointInView, view, x, 0, z);
+              const f = 128 / Math.tan(camera.fov / 2);
+              point = { x: 128 + pointInView[0] * f / -pointInView[2], y: 128 - pointInView[1] * f / -pointInView[2] };
+            } else point = renderer.project(x, 0, z, {});
+            const size = renderer.size || { width: 256, height: 256 };
+            const px = Math.floor(point.x * element.width / size.width), py = Math.floor(point.y * element.height / size.height);
+            if (!gl) return Array.from(element.getContext("2d").getImageData(px, py, 1, 1).data);
+            const pixel = new Uint8Array(4); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.readPixels(px, element.height - 1 - py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel); return Array.from(pixel);
+          };
+          for (const reverse of [false, true]) {
+            const root = S.createNode(), blue = panel([0, 0, 255]), red = panel([255, 0, 0], 1, 0, true), green = panel([0, 255, 0], 0.25, 0.15);
+            const backing = S.createNode({ geometry: blue }), overlay = S.createNode({ geometry: red }), foreground = S.createNode({ geometry: green });
+            S.addChild(root, ...(reverse ? [overlay, backing, foreground] : [backing, overlay, foreground]));
+            try {
+              for (const [side, lift] of [[0, 0], [0.4, 0.25], [-0.5, 0.4]]) for (const distance of [4, 12]) {
+                Object.assign(camera.position, { x: side * distance, y: lift * distance, z: distance });
+                Object.assign(camera.target, { x: 0, y: 0, z: 0 });
+                overlay.visible = true;
+                const deadline = performance.now() + 10000;
+                while (!renderer.render(root, camera, opts) && gl && !renderer.ready) {
+                  if (renderer.failure || performance.now() > deadline) throw new Error("Overlay renderer did not initialize: " + renderer.failure);
+                  await new Promise(resolve => setTimeout(resolve, 10));
+                }
+                const pixels = [sample(-0.6), sample(0, 0.15), sample(0.6)];
+                const clean = !gl || !gl.isEnabled(gl.POLYGON_OFFSET_FILL) && gl.getError() === gl.NO_ERROR;
+                // The next frame has only ordinary surfaces: the prior overlay cannot leave biased state behind.
+                overlay.visible = false; renderer.render(root, camera, opts);
+                const ordinary = [sample(-0.6), sample(0, 0.15), sample(0.6)];
+                rows.push({ mode, reverse, side, lift, distance, pixels, ordinary,
+                  clean: clean && (!gl || !gl.isEnabled(gl.POLYGON_OFFSET_FILL) && gl.getError() === gl.NO_ERROR) });
+              }
+            } finally { for (const geometry of [blue, red, green]) renderer.releaseGeometry?.(geometry); }
+          }
+        } finally { renderer?.dispose(); element.remove(); history.replaceState(null, "", originalURL); }
+      }
+      return rows;
+    } finally { history.replaceState(null, "", originalURL); }
+  })()`);
+  const dominates = (pixel, channel) => pixel && pixel[channel] > 60 && pixel.every((value, i) => i === channel || i === 3 || pixel[channel] > value + 40);
+  record("shared camera rendering: coplanar depth-offset surfaces win both gather orders at varied angles and zooms in WebGL with and without a prepass and in Canvas", overlays.length === 48
+    && overlays.every(row => dominates(row.pixels[0], 0) && dominates(row.pixels[2], 0)), JSON.stringify(overlays));
+  record("shared camera rendering: ordinary foreground surfaces occlude depth-offset overlays and subsequent ordinary draws inherit no offset state", overlays.every(row => row.clean
+    && dominates(row.pixels[1], 1) && dominates(row.ordinary[0], 2) && dominates(row.ordinary[1], 1) && dominates(row.ordinary[2], 2)), JSON.stringify(overlays));
   const culling = await b.evaluate(`(() => {
     const B = __ooga, S = BL.scene, R = B.renderer, root = S.createNode(), rows = [];
     const camera = S.createCamera({ near: 0.1, far: 80, orthoHeight: 10, orthoMix: 1 });

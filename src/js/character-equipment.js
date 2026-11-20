@@ -81,7 +81,9 @@
     if (!found) {
       found = recipes.get(version).nodes.map((node) => ({
         verts: [...node.geometry.verts], faces: node.geometry.faces.map((face) => ({ i: [...face.i], color: [...face.color], emissive: face.emissive })),
-        lines: [], characterPart: true
+        // Win depth ties with head/hair without inflating the fitted mesh or changing its shadow.
+        // This is a renderer policy for every catalog version, never part of the immutable archive.
+        lines: [], characterPart: true, depthOffset: true
       }));
       geometry.set(version, found);
     }
