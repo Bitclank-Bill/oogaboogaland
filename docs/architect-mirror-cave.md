@@ -253,10 +253,15 @@ finishes; then those geometries are released. Restoring, leaving or changing
 actor releases the enhancement surfaces. No extra camera targets or network
 subscriptions are created.
 
-The focused chair browser check passes seven checks covering mouse selection,
+The focused chair browser check passes nine checks covering mouse selection,
 progressive replacement, holding unready images, exact layout restoration,
 retargeting over the mirror columns, right-click face toggling, adaptive detail,
-capture/geometry bounds and standing cleanup, plus a clean console. Its saved
+capture/geometry bounds, enhanced refresh priority under healthy/slow frame
+timing and standing cleanup, plus a clean console. In six seconds of controlled
+16.7 ms frame intervals, the enhanced picture received 90 captures and the
+others shared 90. At controlled 50 ms intervals, each received 20 captures over
+six seconds, with the enhanced view reduced to 256×144. These verify scheduling
+and adaptation, not actual device FPS. Its saved
 view is `untracked/architect-focus/enhanced-6x6.png`. This is scoped coverage;
 the global tier and full scene suite were not rerun for this change.
 
@@ -294,11 +299,18 @@ WebGL contexts.
   Upgrades also require two seconds of stable admission;
   downgrades are immediate. Targets resize only as their next capture renders,
   preserving the existing image until replacement. At most one resizes a frame.
-- At most one visible or explicitly prewarming feed per displayed frame, rotating fairly between due cameras.
+- The enhanced picture requests a capture every two global capture slots, with
+  priority over ordinary area refreshes and warmups. That permits about 15
+  updates/second with headroom, about 7.5 above 24 ms/frame and 4 or less above
+  40 ms/frame. Other feeds share the remaining slots in their existing rotation;
+  face captures retain precedence. Invisible enhancements remain idle, and
+  restoring or moving the selection immediately removes its old cadence priority.
+  These are scheduling ceilings, not measured device FPS.
+- At most one visible or explicitly prewarming feed per displayed frame, rotating fairly between ordinary due cameras.
   Total capture work is also limited to about 30 captures/second, dropping to 15
   when average frame time exceeds 24 ms, then 8 or less above 40 ms. This is based
   on smoothed render-frame intervals, not a GPU timer or a promised frame rate.
-  With all 32 slots visible, the 30-capture limit permits roughly 0.94 updates per
+  Without an enhancement, with all 32 slots visible, the 30-capture limit permits roughly 0.94 updates per
   feed per second; 15 permits roughly 0.47. These are ceilings, not measurements.
 - Nearby screens request a refresh no sooner than 160 ms, medium screens 350 ms,
   and distant screens 700 ms, multiplied by 1.5 on low quality. The largest visible

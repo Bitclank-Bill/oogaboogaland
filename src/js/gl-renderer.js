@@ -4718,7 +4718,10 @@ void main() {
               size = Math.max(size, span * (s[o + 3] - CULL_MARGIN) / Math.max(0.1, distance));
             }
           }
-          feed.refreshMs = (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
+          // Reserve at most half of the capture cadence for the selected picture:
+          // about 15 Hz with headroom, slowing with the same global load budget.
+          feed.refreshMs = feed.enhanced ? Math.max(66.7, captureGap * 2)
+            : (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
           feed.mosaicSize = grid; feed.screenSize = size; feed.detailTarget = 0;
           feed.adaptiveLevel = cameraFeedLevel;
           if (!feed.roomBackground && feed.visible && (feed.enhanced || size > 0.12)) cameraFeedCandidates.push(feed);
@@ -4760,6 +4763,13 @@ void main() {
           for (let i = 0; !captureFeed && i < cameraFeeds.length; i++) {
             const feed = cameraFeeds[i];
             if (feed.priority && feed.visible && stamp - feed.last >= feed.refreshMs) { captureFeed = feed; break; }
+          }
+          // Face captures retain precedence. The enhanced area picture takes
+          // its next due slot before ordinary warmups and round-robin refreshes;
+          // its two-slot interval leaves time for both of those to progress.
+          for (let i = 0; !captureFeed && i < cameraFeeds.length; i++) {
+            const feed = cameraFeeds[i];
+            if (feed.enhanced && feed.visible && stamp - feed.last >= feed.refreshMs) { captureFeed = feed; break; }
           }
           if (!captureFeed) captureFeed = warmFeed;
           for (let attempt = 0; !captureFeed && attempt < cameraFeeds.length; attempt++) {

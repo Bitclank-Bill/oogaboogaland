@@ -17595,8 +17595,8 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     Object.defineProperty(performance, "now", { configurable: true, value: () => stamp });
     R.setQuality("high"); R.setScale(0.5);
     const D = window.__focusCheck = { B, R, hub, room, now, overBudget: false,
-      step(n, dt = 1 / 60) { for (let i = 0; i < n; i++) {
-        stamp += 16.7; room.update(dt);
+      step(n, dt = 1 / 60, frameMs = 16.7) { for (let i = 0; i < n; i++) {
+        stamp += frameMs; room.update(dt);
         const before = room.renderFeeds.reduce((sum, f) => sum + f.captures, 0);
         R.render(hub.root, B.camera, B.renderOpts);
         if (room.renderFeeds.reduce((sum, f) => sum + f.captures, 0) - before > 1) this.overBudget = true;
@@ -17659,10 +17659,27 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
         surfaces: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 36 };
     })()`);
     record("Observatory focus: one pinned feed gains 1024px detail without adding captures or unbounded screen geometry", quality.enhanced && quality.detail === 3 && quality.width === 1024 && quality.pinned && quality.exclusive && quality.bounded && quality.surfaces, JSON.stringify(quality));
+    const cadence = await b.evaluate(`(() => {
+      const D = __focusCheck, f = D.room.enhancement.feed;
+      const before = D.room.renderFeeds.map(f => f.captures), selected = f.captures;
+      D.step(360);
+      const total = D.room.renderFeeds.reduce((sum, f, i) => sum + f.captures - before[i], 0), focused = f.captures - selected;
+      return { focused, others: total - focused, total, bounded: !D.overBudget };
+    })()`);
+    record("Observatory focus: enhanced picture receives about 15 updates per second while other feeds share the remaining capture slots", cadence.focused >= 80 && cadence.focused <= 92 && cadence.others >= 60 && cadence.total <= 181 && cadence.bounded, JSON.stringify(cadence));
     if (process.env.OBSERVATORY_SHOTS) {
       mkdirSync(process.env.OBSERVATORY_SHOTS, { recursive: true });
       await b.screenshot(join(process.env.OBSERVATORY_SHOTS, 'enhanced-6x6.png'));
     }
+    const slow = await b.evaluate(`(() => {
+      const D = __focusCheck, f = D.room.enhancement.feed;
+      D.step(200, 0.05, 50);
+      const before = D.room.renderFeeds.map(f => f.captures), selected = f.captures;
+      D.step(120, 0.05, 50);
+      const total = D.room.renderFeeds.reduce((sum, f, i) => sum + f.captures - before[i], 0), focused = f.captures - selected;
+      return { focused, others: total - focused, total, detail: f.detail, width: f.captureWidth, bounded: !D.overBudget };
+    })()`);
+    record("Observatory focus: slow frames reduce enhanced cadence and detail without starving other feeds or exceeding the global budget", slow.focused >= 16 && slow.focused <= 24 && slow.others >= 12 && slow.total <= 49 && slow.detail === 1 && slow.width === 256 && slow.bounded, JSON.stringify(slow));
     await click(24, 5);
     const restored = await b.evaluate(`(() => { const D = __focusCheck; D.step(100); return !D.room.enhancement && !D.room.layoutPending
       && D.room.panels.every((p, i) => D.same(p, D.baseline[i]))
