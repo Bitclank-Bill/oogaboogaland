@@ -83,7 +83,7 @@
     audio.setTheme(theme.id);
     // A theme's own lights (Banana Club's bar, cage and fountain) follow the room's thirteen, in slots no tier keeps first.
     extraLights = BL.pokerModels.lights(theme.id); renderOpts.lightCount = 13 + extraLights.length / 8;
-    const p = avatar && (seatTable < 0 || pendingStand) ? avatar.root.position : null;
+    const p = avatar && !seated ? avatar.root.position : null;
     if (p && !BL.pokerModels.walkable(p.x, p.z, p.x, p.z, 0, avatar.bodyHeight, avatar)) { BL.pokerModels.nearestClear(p.x, p.z, avatar, CLEAR); p.x = CLEAR.x; p.z = CLEAR.z; }
   };
   const leaveFloor = () => { if (leaving) return; if (session.live && seatTable >= 0) { panel.notice("Stand between hands before leaving. You can walk the floor while connected."); return; } if (go("bifrost", null, true)) leaving = true; };
@@ -107,7 +107,7 @@
   // figure's page, and its arrows page through all eight.
   const openPlacard = i => { const board = BL.pokerStatues.board(); board.go(i); hud.openBoard(board); };
   const nearPlacard = () => {
-    if (theme.id !== "gatsby" || seatTable >= 0 && !pendingStand || !avatar) return -1;
+    if (theme.id !== "gatsby" || seated || !avatar) return -1;
     const p = avatar.root.position, half = BL.pokerStatues.PLINTH.w / 2;
     let best = -1, bestD = 2;
     BL.pokerStatues.SLOTS.forEach((s, i) => { const d = Math.hypot(Math.max(0, Math.abs(p.x - s.x) - half), Math.max(0, Math.abs(p.z - s.z) - half)); if (d <= bestD) { bestD = d; best = i; } });

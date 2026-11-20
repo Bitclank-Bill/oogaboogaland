@@ -26607,6 +26607,33 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     return { stood, moved, cave, back, ok: stood.length === 2 && stood.every(s => s.clear) && moved && cave.marble === 0 && !cave.fountain && !cave.statues && back.marble > 0 && back.fountain && back.statues };
   })()`);
   record("rule: in Banana Club standing up beside the fountain lands outside the pool, its water moves, and a cave theme takes the marble hall away and gives it back whole", hall.ok, JSON.stringify(hall));
+  // Regression: a visitor holding a seat who chose Walk the floor is standing, yet switching to Banana Club left the Ooga
+  // inside the fountain and the act button beside a statue opened the held table. Hold table 5 in a cave, walk the floor,
+  // switch to Banana Club: the Ooga lands on clear floor and, still holding the seat, the act button by a plinth opens
+  // that statue's placard. The seat, board and theme are put back whatever happens.
+  const walker = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, M = BL.pokerModels, F = BL.pokerFountain, St = BL.pokerStatues, was = P.session.theme;
+    const held = () => P.session.tables[4].snapshot().seats.some(s => s?.id === "local-player"), open = D.hud.openBoard;
+    let walking = null, landed = null, act = null;
+    try {
+      P.action("theme", "ember"); P.select(4); P.action("join"); P.action("walk"); B.advance(1 / 30, 1 / 30);
+      const c = D.pilot.player, p = c.root.position;
+      walking = { held: held(), seated: document.body.hasAttribute("data-poker-seated") };
+      P.action("theme", "gatsby"); B.advance(1 / 30, 1 / 30);
+      landed = { x: +p.x.toFixed(2), z: +p.z.toFixed(2), clear: Math.hypot(p.x - F.X, p.z - F.Z) >= F.RADIUS + c.bodyRadius && M.walkable(p.x, p.z, p.x, p.z, 0, 2, c) };
+      const s = St.SLOTS[2], spot = M.nearestClear(s.x, s.z, c, { x: 0, z: 0 });
+      p.x = spot.x; p.z = spot.z; B.advance(1 / 30, 1 / 30);
+      let boards = 0; D.hud.openBoard = board => { boards++; return open(board); };
+      D.crew.playerAction(); B.advance(1 / 30, 1 / 30);
+      act = { boards, page: document.getElementById("board-caption").textContent, table: document.body.hasAttribute("data-poker-seated"), held: held() };
+    } finally {
+      D.hud.openBoard = open; if (document.getElementById("board-modal").open) D.hud.closeBoard();
+      if (held()) { P.action("return"); P.action("stand"); }
+      if (P.session.theme !== was) P.action("theme", was); B.advance(1 / 30, 1 / 30);
+    }
+    return { walking, landed, act, ok: walking.held && !walking.seated && landed.clear && act.boards === 1 && act.page === St.FIGURES[2].name && !act.table && act.held && !held() };
+  })()`);
+  record("regression: holding a seat while walking the floor, Banana Club moves the Ooga clear of the fountain and the act button by a statue opens its placard", walker.ok, JSON.stringify(walker));
   // Regression: the plaques stayed pick targets in a cave, picked at their last place by the wall: in a cave theme a
   // pick, a hover and a real click where the third plaque stood show no placard and open no board.
   const caveAt = await b.evaluate(`(() => {
@@ -28651,12 +28678,12 @@ const pokerMarbleHallChecks = (BL) => {
           seen[t.id] = [hashValue(JSON.stringify(t)), hashBuilt(P.geometry(t.id)), hashValue(Array.from(P.lights(t.id))), hashRoom(room)].join(":");
         }
       } finally { room.setTheme("gatsby"); for (const tb of room.tables) tb.agent.dispose(); }
-      // Recorded from the tree before Task 2's first edit: theme record, built geometry, light array, built room.
+      // Recorded from rock at 45e02fd4, the tree before the marble hall: theme record, built geometry, light array, built room.
       const BEFORE = {
-        crystal: "f66ee59a:d32a764:117697cd:984b4ec0",
-        ember: "3d2a6db1:55476287:117697cd:74fe9bfb",
-        jungle: "4b98f2e:50a27997:117697cd:ff3634b",
-        moonstone: "21fcded:6e6d0200:117697cd:e5934591"
+        crystal: "f66ee59a:f650e3cd:117697cd:9c34b100",
+        ember: "3d2a6db1:e1d70253:117697cd:7671f6d5",
+        jungle: "4b98f2e:b42da904:117697cd:a25ef873",
+        moonstone: "21fcded:fc2c080d:117697cd:61030f41"
       };
       // Rule: only Banana Club changes; every cave builds exactly as before, geometry, lights, tables and theme alike.
       record("poker marble hall: the four cave styles build exactly as before the marble hall", caves.every(t => seen[t.id] === BEFORE[t.id]), JSON.stringify(seen));
