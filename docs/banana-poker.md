@@ -13,7 +13,9 @@ The existing ten-table floor and five cave themes remain. Read
 security assumptions and hosting requirements.
 
 The current interface revision adds a filtered table browser, a clearer betting
-dock and live connection feedback. See [poker-interface.md](poker-interface.md)
+dock and live connection feedback, and the table view now shows the room
+behind it, a face at every seat, the pot's chips and the dealer's own gorilla.
+See [poker-interface.md](poker-interface.md)
 for the interaction changes and remaining play-tests, and
 [poker-integration.md](poker-integration.md) for signed-in deployment and recovery.
 
@@ -54,10 +56,16 @@ add three bots at a time, and deal when ready. You can also run a bots-only tabl
 while spectating. Every table has nine player seats plus a suited gorilla
 dealer. Two funded seats suffice; there is no table owner or privileged host.
 
-Choosing a table opens a focused oval-table view over the room. Your seat stays
-at the bottom. Player stacks, round bets, dealer and blind markers, folds,
-all-ins and the acting player appear around the rail. Community cards and the
-pot sit in the center; your private cards and actions are in the lower dock.
+Choosing a table opens a focused oval-table view over the room. On desktop the
+room shows dimly through its backdrop and keeps moving; on phones the backdrop
+is solid. Your seat stays at the bottom. Every occupied seat shows its
+character's face, and player stacks, round bets, dealer and blind markers,
+folds, all-ins and the acting player appear around the stitched leather rail.
+Community cards and the pot sit in the center, with chip stacks that grow with
+the pot. The dealer shows the room's own gorilla and dips to deal each hand.
+Your private cards and actions are in the lower dock. See
+[poker-interface.md](poker-interface.md) for the table view's details and its
+remaining play-tests.
 Public showdown cards appear at the eligible players' seats. A winner banner
 shows chips collected, including returned contributions, rather than claiming
 that the full award is profit.
@@ -76,10 +84,11 @@ Auto deal defaults on and waits at least five seconds after settlement. It
 refills busted computer seats for free between hands. A busted human stops the
 loop and chooses a free refill explicitly. Auto deal can be disabled per table;
 Pause practice pauses all local tables. Optional synthesized deal/turn/win sounds
-start only after opting in, with no audio downloads. The history keeps the last
-twelve completed public hand summaries per table during this floor visit; it
-never archives a player's private or folded cards. Card motion respects the
-reduced-motion preference.
+start only after opting in, with no audio downloads. The room's own music and
+sound play without opting in once the page has had a click or key (see Sound).
+The history keeps the last twelve completed public hand summaries per table
+during this floor visit; it never archives a player's private or folded cards.
+Card motion and the dealer's deal gesture respect the reduced-motion preference.
 
 WASD/sticks move the spectator; drag/look controls use the shared pilot. The
 central aisle and passages between table rows remain walkable. **Walk the floor**
@@ -101,12 +110,22 @@ them. Reloading resets practice chips.
 
 ## Visual revision: Gatsby meets Ooga Booga Land
 
-The underground room now uses ivory limestone, emerald upholstery, brass
-sunburst wall panels and geometric floor inlays. Three chandelier clusters are
-built with the world's existing hanging lantern and cable kit. Hanging vines
-keep the tropical island character. Warmer, brighter ambient light lifts the
-room; the first ten point lights still serve the ten tables on the low tier.
-Decoration sits overhead or against the walls, outside the spectator aisles.
+Banana Club is a dim, high-class hall. The ambient light is low and each of
+the ten tables sits in its own pool of light. Three tiered diamond chandeliers
+hang down the room, and their crystal rings glint, each ring on its own beat.
+A two-wing bar stands backlit on the far wall, a cashier cage stands on the
+side wall near the mirror end, and the two far corners are lounges with sofas,
+low tables and palms. Table 10 is the high-roller table: it stands on a red
+carpet. A short velvet rope between two posts stands on the aisle side at each
+end of the table, not all round it, and the stretch by the chairs is left
+open. The floor is green carpet with a brass
+inlay. Hanging vines keep the tropical island character.
+
+The furniture collides with walkers and exists only in Banana Club. Switching
+theme while standing moves the visitor to the nearest spot clear of the new
+room's furniture. The lowest renderer tier still spends its ten point lights on
+the ten tables; the room's three lights follow, and the bar and cage lights come
+after those.
 
 Cards now have rounded paper edges, proper suit shapes, corner ranks at both
 ends, traditional numbered pip layouts, original double-ended Jack/Queen/King
@@ -130,7 +149,7 @@ The original Banana Club remains the default.
 
 | Theme | Room character |
 | --- | --- |
-| Banana Club | Ivory limestone, emerald felt, brass fanlights and chandeliers. |
+| Banana Club | Dim emerald hall, diamond chandeliers, a backlit bar, cashier cage, lounge corners and a roped high-roller table. |
 | Crystal Grotto | Blue stone, cyan/amethyst wall crystals, teal lanterns and lagoon felt. |
 | Ember Cavern | Basalt colors, glowing amber fissures, copper trim and warm red felt. |
 | Jungle Ruins | Mossy limestone bands, hanging vines, rune stones and fern-green felt. |
@@ -161,6 +180,77 @@ used.
 Scenery is built lazily and cached for at most those five themes. Retired scenery
 nodes leave the graph for the renderer's existing housekeeping; no new per-frame
 geometry, particles or allocations were introduced by theme switching.
+
+## The floor
+
+A crowd walks the floor in every theme. Its cast has 29 invented characters,
+none of them a contributor: twelve walking guests, five gorilla staff and twelve
+seat-only opponents. Every name ends in `/ember-den`, so none can match a GitHub
+login, and none is registered as a character or joins the roster.
+
+- **Guests.** Two high rollers in dinner jackets with cigars, three businessmen
+  with briefcases, three ladies in gowns with clutches and heels, two old Oogas
+  on canes, one on a walking frame and one comic drunk with a glass and a tilted
+  hat. Each type walks its own way: the businessmen hurry, the ladies sway, the
+  canes plant upright at every other step, the frame lifts and shuffles, the
+  drunk weaves.
+- **Staff.** Two waiters with a tray of drinks held out level, the pit boss and
+  two security in dark glasses.
+- **Opponents.** Twelve characters who only ever sit at a table. Every
+  computer opponent sits as one of them, never twice at one table, and a seat
+  keeps its opponent for good. A human seat shows the hashed
+  `Banana Bot <seat>` stand-in unless that player sits there as their own Ooga
+  (below). When a seat changes hands, empties or is the visitor's, its old
+  figure leaves the table.
+
+How many walk follows the renderer: 16 on the high tier, 10 on medium, 6 on the
+lowest and on Canvas 2D. The day picks who walks, the same on every page: a
+waiter and security always, the pit boss and the second waiter and security on
+a full floor, then guests in the day's order, with at most one drunk and one
+frame. Members are built one at a time as they first appear.
+
+Guests walk to the table rails, the bar stools, the lounge sofas, the cashier
+cage and the ropes, sit down by a short slide, watch a table for a while and
+move on. The waiters make rounds of a stool and three tables, the pit boss
+keeps the middle of the floor, and security stands at the doors and ropes. When
+a theme without the bar or lounges comes in, anyone seated stands and walks on.
+
+The crowd reads only what every player sees of a table: its pot, phase, hand
+number, winner and whether anyone is all in. It never sees a card. A big pot
+brings the pit boss to that table and leans the watchers in, an all in puts a
+hand to their heads, and a win makes them cheer. Members speak short lines, at
+most two bubbles at a time, greet a visitor who comes close, and the drunk
+mutters. After his third stumble, security walks him to a sofa.
+
+Members give way to the visitor's Ooga and to other players. A guest held up
+for a few seconds goes somewhere else; it does not plan a way round. Members
+are never walk blocks, so nobody is ever stuck behind one.
+
+On an M-series Mac the full crowd of 16 costs about 164 draw calls and 77,000
+triangles a frame over the empty floor; the lowest tier's six cost about 69
+draw calls and 30,000 triangles. Building a member takes 4 to 8 ms, one every
+0.15 s.
+
+## Sound
+
+The room plays quiet lounge music: a bass, a piano and brushes in swing time,
+three tunes in turn with a short rest between them. Under it is the murmur of
+the room, louder near the bar and the tables, with chips clicking at the tables
+and glasses at the bar. The crowd's heels, canes and walking frame are heard
+where they step, quieter further away and to the side they are on.
+
+The music plays on the speaker panel's **Music** row, the one every place's
+music shares, and while you are in the room the panel shows **Room hum** for
+the murmur and every placed sound. The table's own deal, turn and win sounds
+keep their **Poker table** row. The page mute silences all of them.
+
+The music dips while a table's playing view is open, and dips further for a
+moment when a hand ends at the table you sit at or watch, then comes back. It
+does not dip for a hand that had already ended when you came in.
+
+Everything is synthesized in the page (`src/js/poker-audio.js`): no audio files
+and no network. Nothing sounds until the page has had a click or a key, and
+leaving the room stops it.
 
 ## Chips and rules
 
@@ -225,6 +315,44 @@ The new protocol uses proofs without publishing whole-deck seeds or private
 keys. Folded-card privacy depends on the assumptions in the protocol document.
 Independent review remains required. Refunds do not eliminate selective-abort
 bias or collusion.
+
+## Players at the tables
+
+Every signed-in player seated at a table is drawn once, as the Ooga they drive,
+sitting in their chair. The visitor's own Ooga sits in its chair while seated
+and stands up when it walks the floor. Each page sends where its Ooga is, as it
+always has; a position at chair height on a chair's spot reads as that chair
+(`poker-presence.js`), so nothing new goes over the wire. One sitting pose
+(`pokerModels.sitPose`, undone by `standPose`) seats the visitor, the stand-ins
+and the cast members alike.
+
+What a viewer sees depends on whether they are connected to the live tables:
+
+- **Live.** A player is drawn seated only when the live table holds a human in
+  that chair under the same name as the player's display name. Their own Ooga
+  takes the seat, the stand-in is not built (or is taken down within a frame),
+  and the table view shows their own Ooga's face. Anyone else at a chair, such
+  as a player sitting at their own practice table, is hidden until they stand,
+  so no figure stands in a seat the viewer can still take.
+- **Not live.** A player at a chair is drawn seated when that chair is empty on
+  this page, and hidden when this page's practice table has someone in it.
+
+Two players at one chair: the lower room id is drawn, the other hidden. The
+visitor's own chair is never given to anyone else.
+
+A live seat falls back to the stand-in, with the stand-in's face, when the
+player is not matched: their room connection is down or paused, the room
+already shows 32 other players (the pool's cap), their body is hidden (for
+example they drive the same Ooga as the visitor), or their display name
+differs between the room and the poker service. When a match starts or ends
+with no table event (a page drops, a player stands), the figure and the face
+follow within a frame. A page with no backend sees the floor exactly as before.
+
+Still to play-test: two real accounts at a live table; a rename between the two
+services; a full table of nine real players; a player sitting down from the
+aisle (their Ooga eases into the chair already in the sitting pose); cast
+members' held items against the rail now that seated arms reach forward; and
+the sitting pose by eye in each theme.
 
 ## Files and validation handoff
 

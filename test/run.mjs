@@ -26376,10 +26376,15 @@ const pokerTrip = (() => {
     const before = await b.evaluate(`(() => {
       const P = BL.scenes.poker.debug.poker;
       if (P.session.live) throw new Error("Poker round trip needs a local session");
+      // Leave seated at a practice table whose hand has just ended, so the visit the trip comes back to opens with the
+      // visitor in that seat and the table showing that result: the one case the music's dip must ignore on entry.
+      const click = a => document.querySelector('[data-poker-action="' + a + '"]').click(), t = P.session.tables[1];
+      P.select(1); click("join"); click("bots"); click("start");
+      let guard = 0; while (t.playing && guard++ < 500) { if (t.snapshot("local-player").legal) click("call"); __ooga.advance(0.81, 1 / 30); }
       const paused = P.session.paused;
       if (!paused) P.action("pause");
       if (!P.session.paused) throw new Error("Poker round trip could not pause the local session");
-      return { paused, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent };
+      return { paused, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent, contexts: (window.__pokerContexts || []).length };
     })()`);
     try {
       await check.run(b);
@@ -26388,6 +26393,19 @@ const pokerTrip = (() => {
         return { paused: P.session.paused, local: !P.session.live, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent };
       })()`);
       record("poker round trip: both visits compare the same paused local hand and table", after.local && after.paused && after.title === before.title && JSON.stringify(after.versions) === JSON.stringify(before.versions), JSON.stringify({ before, after }));
+      // The first visit's sound once it has gone, and the music of the visit the trip came back to: the visitor seated
+      // at table two with its table view open, the table showing the hand that ended before the trip, and no hand marked.
+      const sound = await b.evaluate(`(() => {
+        const P = BL.scenes.poker.debug.poker, first = window.__pokerFirstAudio, now = P.audio, made = (window.__pokerContexts || []).slice(0, ${before.contexts});
+        const s = P.snapshots[1];
+        return { firstOpen: first ? first.stats.open : null, made: made.length, closed: made.filter(c => c.state === "closed").length, fresh: now !== first, hands: now.stats.hands,
+          seated: document.body.hasAttribute("data-poker-seated") && P.session.tables[1].snapshot().seats.some(p => p?.id === "local-player"),
+          viewing: document.body.hasAttribute("data-poker-table-view"), result: !!(s && s.result), phase: s && s.phase };
+      })()`);
+      record("rule: the room's music closes when the visitor leaves (every context made before the trip is closed after it)",
+        sound.firstOpen === false && sound.made > 0 && sound.closed === sound.made && sound.fresh, JSON.stringify(sound));
+      record("rule: coming back seated at a table already showing its result marks no hand for the music's dip",
+        sound.seated && sound.viewing && sound.result && sound.hands === 0, JSON.stringify(sound));
     } finally {
       await b.evaluate(`(() => {
         const P = BL.scenes.poker.debug?.poker;
@@ -26398,10 +26416,28 @@ const pokerTrip = (() => {
 })();
 scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor and play", why: "playthrough: a visitor walks the floor, fills a table, plays to settlement and stands without exposing hidden cards", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
+  // Every AudioContext the page makes from here on, so the round trip can see the visit's own closed after it leaves.
+  await b.evaluate(`(() => { const A = window.AudioContext; window.__pokerContexts = []; window.AudioContext = class extends A { constructor(...a) { super(...a); window.__pokerContexts.push(this); } }; })()`);
+  const silent = await b.evaluate(`({ ...BL.scenes.poker.debug.poker.audio.stats })`);
+  // The crowd fills to its tier's cap, then a minute on the floor (members walking, sitting, talking) keeps the heap
+  // within the soaks' tenth.
+  await b.send("HeapProfiler.enable");
+  // Used heap after a forced GC, not the soaks' object count: their count walks a whole heap snapshot, which on this
+  // page costs more than the minute it measures, and one growing pool shows in either.
+  const usedHeap = async () => { await b.send("HeapProfiler.collectGarbage"); return (await b.send("Runtime.getHeapUsage")).result.usedSize; };
+  const capped = await b.evaluate(`(() => { __ooga.advance(5, 1 / 30); return { quality: __ooga.renderer.quality, crowd: BL.scenes.poker.debug.poker.crowd.stats().crowd }; })()`);
+  const heapBefore = await usedHeap();
+  await b.evaluate(`__ooga.advance(60, 1 / 30)`);
+  const heapAfter = await usedHeap();
+  record("rule: the crowd holds its tier's cap and grows no heap in a minute", capped.crowd === { high: 16, medium: 10, low: 6 }[capped.quality] && heapAfter - heapBefore <= heapBefore * 0.1,
+    JSON.stringify({ ...capped, heapMB: [heapBefore, heapAfter].map(n => +(n / 1e6).toFixed(2)) }));
   const walking = await walkKeys(b, "portlandhodl", 0, 18, [0, 1.5], 0.45);
   record("poker walking: spectators move with WASD from two camera angles", allWalk(walking), JSON.stringify(walking));
+  const heard = await b.evaluate(`(() => { const A = BL.scenes.poker.debug.poker.audio; window.__pokerFirstAudio = A; return { open: A.stats.open, contexts: A.stats.contexts, made: window.__pokerContexts.length }; })()`);
+  record("rule: the room's music opens on the visitor's first key",
+    !silent.open && silent.contexts === 0 && heard.open && heard.contexts === 1, JSON.stringify({ before: { open: silent.open, contexts: silent.contexts }, heard }));
   await walkingModeControls(b, "poker");
-  const r = await b.evaluate(`(() => {
+  const r = await b.evaluate(`(async () => {
     const B = __ooga, P = BL.scenes.poker.debug.poker, click = a => document.querySelector('[data-poker-action="' + a + '"]').click();
     const suit = BL.pokerModels.geometry(P.session.theme);
     const count = P.room.tables.length, seats = P.room.tables.every(t => t.chairs.length === 9), dealers = P.room.tables.every(t =>
@@ -26412,15 +26448,142 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     BL.scenes.poker.onKey(new KeyboardEvent("keydown", { key: "x", code: "KeyX", cancelable: true }));
     document.getElementById("mode-hud").click();
     const modeHeld = B.pilot.player === cave && cave.weapon.aiming === aiming && document.body.hasAttribute("data-poker-seated");
-    for (let i = 0; i < 4; i++) click("bots"); click("start");
+    // The driven Ooga a frame after sitting, then a frame after Walk the floor: its left leg's swing (0 standing still,
+    // the crew's standing gait), its left arm and its feet over its standing height. Return to the table seats it again for the rest of the step.
+    const pose = () => { B.advance(1 / 30, 1 / 30); return { leg: cave.parts.legL.rotation.x, arm: cave.parts.armL.rotation.x, lift: cave.root.position.y - cave.baseY }; };
+    const sat = pose(); click("walk"); const stood = pose(); click("return");
+    const sitting = { sat, stood, chair: BL.pokerPresence.CHAIR_Y, ok: sat.leg === -1.35 && sat.arm === -0.9 && Math.abs(sat.lift - BL.pokerPresence.CHAIR_Y) < 1e-9 && stood.leg === 0 && Math.abs(stood.lift) < 1e-3 && document.body.hasAttribute("data-poker-seated") };
+    for (let i = 0; i < 4; i++) click("bots");
+    // Each seat's figure as drawn: a bot's name, "none" for a bot with no figure up, "shown" for anything else drawn.
+    const C = BL.pokerCrowdModels, t0 = P.session.tables[0], walking = new Set(C.castFor(Math.floor(Date.now() / 86400000), 16).map(m => m.traits.name));
+    // Every figure ever drawn at the table, and how many of them are still on its root: a seat changing hands keeps one.
+    const view0 = P.room.tables[0], drawn = new Set(), onRoot = () => [...drawn].filter(r => view0.root.children.includes(r)).length;
+    const figures = () => { B.advance(0.9, 1 / 30); for (const a of view0.actors) if (a) drawn.add(a.root); return t0.snapshot().seats.map((p, j) => { const a = view0.actors[j], up = !!a && a.root.visible; return p?.bot ? (up ? a.traits.name : "none") : (up ? "shown" : null); }); };
+    const before = figures(), rooted = [onRoot()], bots = t0.snapshot().seats.map((p, j) => p?.bot ? [p.id, p.name, j] : null).filter(Boolean);
+    for (const [id] of bots) t0.leave(id);
+    const gone = figures(); rooted.push(onRoot());
+    for (const [id, name, j] of bots) t0.join(id, name, true, j);
+    const after = figures(), cast = before.filter(n => n !== null); rooted.push(onRoot());
+    // One bot's seat taken by someone else, then given back: its figure leaves the root, then one comes back.
+    const [swapId, swapName, swapSeat] = bots[0];
+    t0.leave(swapId); t0.join("guest-x", "Guest", false, swapSeat); figures(); rooted.push(onRoot(), view0.actors[swapSeat] ? 1 : 0);
+    t0.leave("guest-x"); t0.join(swapId, swapName, true, swapSeat); const back = figures(); rooted.push(onRoot());
+    const dressed = { before, gone, after, rooted, ok: bots.length === 8 && cast.length === 8 && cast.every(n => n.endsWith("/ember-den") && !walking.has(n)) &&
+      new Set(cast).size === 8 && gone.every(n => n === null) && after.join() === before.join() && back.join() === before.join() && rooted.join() === "8,0,8,7,0,8" };
+    // Each seat's face as the panel shows it: null when hidden, else how many pixels carry ink (alpha above 0) and an
+    // FNV-1a hash of every pixel, so two faces differ when any pixel does. Read through a willReadFrequently copy, since
+    // repeated readbacks of the page's own canvases warn on the console. A coarse step: only the scene's 0.8 s practice
+    // timer has to pass, and no table is playing while the faces are read.
+    const readSheet = document.createElement("canvas"), readCtx = readSheet.getContext("2d", { willReadFrequently: true });
+    const faceRead = () => { B.advance(0.9, 0.1); return [...document.querySelectorAll(".poker-seat-button .poker-face")].map(c => {
+      if (c.hidden || !c.getClientRects().length) return null;
+      readSheet.width = c.width; readSheet.height = c.height; readCtx.drawImage(c, 0, 0);
+      const d = readCtx.getImageData(0, 0, c.width, c.height).data; let ink = 0, hash = 2166136261;
+      for (let k = 0; k < d.length; k++) { hash = Math.imul(hash ^ d[k], 16777619) >>> 0; if ((k & 3) === 3 && d[k]) ink++; }
+      return { ink, hash }; }); };
+    // The visitor and three bots, then one of those bots leaves; every bot comes back to its seat after.
+    const heroSeat = t0.snapshot().seats.findIndex(p => p?.id === "local-player");
+    for (const [id] of bots.slice(3)) t0.leave(id);
+    const four = faceRead(), botFace = four[bots[0][2]];
+    t0.leave(bots[2][0]); const three = faceRead();
+    for (const [id, name, j] of bots.slice(2)) t0.join(id, name, true, j);
+    const shownFaces = list => list.filter(Boolean).length;
+    const faced = { four: four.map(f => f && f.ink), three: three.map(f => f && f.ink), heroSeat, ok: shownFaces(four) === 4 && four.every(f => !f || f.ink > 0)
+      && !!four[heroSeat] && !!botFace && four[heroSeat].hash !== botFace.hash && shownFaces(three) === 3 && three[bots[2][2]] === null };
+    // The deal re-renders the panel at once (the action's refresh), so the dealer's gesture shows with no frame between.
+    click("start"); const dealtAt = performance.now(), dealing = document.querySelector(".poker-dealer").hasAttribute("data-dealing");
     const t = P.session.tables[0], privateCards = t.snapshot().seats.every(s => s.cards.every(c => c === null));
     let guard = 0; while (t.playing && guard++ < 500) { if (t.snapshot("local-player").legal) click("call"); B.advance(0.81, 1 / 30); }
-    const done = t.snapshot(), total = done.seats.reduce((n, s) => n + s.stack, 0), shown = document.querySelector('[data-poker="street"]').textContent;
+    const done = t.snapshot(), total = done.seats.reduce((n, s) => n + s.stack, 0), shown = document.querySelector('[data-poker="street"]').textContent, hands = P.audio.stats.hands;
+    // The gesture's timeout runs on real time (advance drives the scene's clock, never a timeout): wait out what is left of
+    // 750 ms since the deal, and never under 20 ms, since a zero-delay timer can run ahead of an overdue delayed one. The
+    // hand above settled, and table one's next deal waits five seconds of scene time, so nothing deals again meanwhile.
+    await new Promise(r => setTimeout(r, Math.max(20, 750 - (performance.now() - dealtAt))));
+    const dealtFor = performance.now() - dealtAt, dealt = document.querySelector(".poker-dealer").hasAttribute("data-dealing");
     click("stand"); P.select(9); click("bots"); click("start"); B.advance(1, 1 / 30);
-    return { count, seats, dealers, privateCards, modeHeld, phase: done.phase, total, shown, tableTen: P.session.tables[9].snapshot().hand, standing: !document.body.hasAttribute("data-poker-seated") };
+    const L = P.renderOpts.lights, lit = [];
+    for (let i = 0; i < 10; i++) lit.push(BL.pokerModels.TABLES.findIndex(p => Math.abs(p.x - L[i * 8]) < 1e-3 && Math.abs(p.z - L[i * 8 + 2]) < 1e-3));
+    const tableLights = new Set(lit.filter(i => i >= 0)).size, lightCount = P.renderOpts.lightCount;
+    return { count, seats, dealers, privateCards, modeHeld, phase: done.phase, total, shown, hands, tableTen: P.session.tables[9].snapshot().hand, standing: !document.body.hasAttribute("data-poker-seated"), tableLights, lightCount, dressed, faced, dealing, dealt, dealtFor, sitting };
   })()`);
+  record("rule: the visitor's own Ooga sits in its chair and stands up again", r.sitting.ok, JSON.stringify(r.sitting));
+  // A signed-in player as the room reports one (a record in BL.net.remotes, as the hub's hammock checks give one), in
+  // this scene's zone, driving a roster Ooga other than the visitor's, sent from table two's fourth chair at chair height.
+  // Not live: seated as itself in a chair this page has empty, hidden while a computer opponent takes that chair here,
+  // standing at floor height. Then live as far as the scene reads it (`session.live` with no deadline, never dealt to),
+  // with a human seat carrying the remote's name and its stand-in drawn (put up by the remote sitting once and leaving,
+  // since the fake never syncs a table): a remote driving the visitor's own Ooga (a body
+  // the pool hides) takes nothing from it; the remote arriving takes the stand-in down within a frame and puts its own
+  // face at the seat; leaving brings the stand-in and its face back the next frame. Whatever happens, the remotes, the
+  // seats and the fake are gone before the step goes on.
+  const presence = await b.evaluate(`(() => {
+    const B = __ooga, P = BL.scenes.poker.debug.poker, N = BL.net, M = BL.pokerModels, T = 1, J = 3, t1 = P.session.tables[T];
+    const name = BL.contributors.activeRoster.find(c => c.name !== "portlandhodl").name, spot = M.TABLES[T], chair = M.SEATS[J];
+    const peer = (id, body) => ({ id, login: "seat-peer-" + id, display: "Seat peer", body, zone: N.state.zone, poseZone: N.state.zone,
+      x: spot.x + chair.x, y: BL.pokerPresence.CHAIR_Y, z: spot.z + chair.z, yaw: chair.yaw, voice: false, muted: false });
+    const rec = peer(7301, name);
+    const look = id => { const c = BL.remotePlayers.body(id); return c ? { shown: c.root.visible, leg: c.parts.legL.rotation.x } : null; };
+    // The seat's face as the panel shows it, and a fresh face of a model at that canvas's size, each as an FNV-1a hash
+    // of every pixel read through a willReadFrequently copy, as the seat faces above are read.
+    const sheet = document.createElement("canvas"), sheetCtx = sheet.getContext("2d", { willReadFrequently: true });
+    const hashOf = c => { sheet.width = c.width; sheet.height = c.height; sheetCtx.clearRect(0, 0, c.width, c.height); sheetCtx.drawImage(c, 0, 0);
+      const d = sheetCtx.getImageData(0, 0, c.width, c.height).data; let hash = 2166136261; for (let k = 0; k < d.length; k++) hash = Math.imul(hash ^ d[k], 16777619) >>> 0; return hash; };
+    const seatFace = () => { const c = document.querySelectorAll(".poker-seat-button .poker-face")[J]; return c.hidden ? null : hashOf(c); };
+    const faceOf = cave => { const c = document.createElement("canvas"); BL.hud.renderFaceIcon(c, cave, null, 96); return hashOf(c); };
+    const view = P.room.tables[T], frame = () => B.advance(1 / 30, 1 / 30);
+    let seated, hidden, standing, before, mirrored, matched, left;
+    try {
+      N.remotes.set(rec.id, rec); frame(); seated = look(rec.id);
+      t1.join("bot-peer", "Bot peer", true, J); B.advance(0.9, 1 / 30); hidden = look(rec.id);
+      t1.leave("bot-peer"); B.advance(0.9, 1 / 30);
+      rec.y = 0; frame(); standing = look(rec.id);
+      rec.y = BL.pokerPresence.CHAIR_Y; N.remotes.delete(rec.id); frame();
+      // A human at that chair with the remote's name, then the tables made live as the scene reads them. The fake never
+      // syncs a table (only the live service's own updates would), so the stand-in is first put up by a presence change:
+      // the remote sits once and leaves, which builds it.
+      P.select(T); t1.join("guest-peer", rec.display, false, J); B.advance(0.9, 1 / 30);
+      P.session.live = { deadline: null, connection: "live", busy: false, fairness: null, dispose() {} };
+      frame(); N.remotes.set(rec.id, rec); frame(); N.remotes.delete(rec.id); frame(); const actor = view.actors[J];
+      before = { standIn: !!actor, face: seatFace(), own: actor ? faceOf(actor) : null };
+      // The same name driving the visitor's own Ooga: the pool keeps that body hidden, so the seat stays the stand-in's.
+      const me = BL.scenes.poker.debug.crew.player, twin = peer(7302, me ? me.traits.name : "");
+      N.remotes.set(twin.id, twin); frame();
+      mirrored = { me: !!me, body: look(twin.id), same: !!actor && view.actors[J] === actor, face: seatFace() };
+      N.remotes.delete(twin.id); frame();
+      N.remotes.set(rec.id, rec); frame();
+      matched = { standIn: !!view.actors[J], body: look(rec.id), face: seatFace(), own: faceOf(BL.remotePlayers.body(rec.id)) };
+      N.remotes.delete(rec.id); frame();
+      left = { standIn: !!view.actors[J], face: seatFace(), own: view.actors[J] ? faceOf(view.actors[J]) : null };
+    } finally {
+      delete P.session.live; N.remotes.delete(7301); N.remotes.delete(7302);
+      for (const id of ["bot-peer", "guest-peer"]) if (t1.snapshot().seats.some(p => p?.id === id)) t1.leave(id);
+      B.advance(0.9, 1 / 30);
+    }
+    const clean = !P.session.live && !view.actors[J] && !t1.snapshot().seats[J] && !N.remotes.has(7301) && !N.remotes.has(7302);
+    return { name, seated, hidden, standing, before, mirrored, matched, left, clean,
+      ok: !!seated && seated.shown && seated.leg === -1.35 && !!hidden && !hidden.shown && !!standing && standing.shown && standing.leg !== -1.35
+        && before.standIn && before.face !== null && before.face === before.own
+        && mirrored.me && !!mirrored.body && !mirrored.body.shown && mirrored.same && mirrored.face === before.face
+        && !matched.standIn && !!matched.body && matched.body.shown && matched.body.leg === -1.35 && matched.face !== null && matched.face === matched.own && matched.face !== before.face
+        && left.standIn && left.face !== null && left.face === left.own && clean };
+  })()`);
+  record("rule: a signed-in player at a chair sits as themselves, alone in that seat, and the stand-in returns when they go", presence.ok, JSON.stringify(presence));
+  const dealer = await b.evaluate(`(() => {
+    // Pixels with ink (alpha above 0), read through a willReadFrequently copy as the seat faces above are.
+    const c = document.querySelector('[data-poker="dealer-face"]'), copy = document.createElement("canvas"), x = copy.getContext("2d", { willReadFrequently: true });
+    copy.width = c.width; copy.height = c.height; x.drawImage(c, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data; let ink = 0;
+    for (let k = 3; k < d.length; k += 4) if (d[k]) ink++;
+    return { ink };
+  })()`);
+  record("rule: the dealer's face is painted and the deal gesture shows on a deal and ends", dealer.ink > 0 && r.dealing && !r.dealt && r.dealtFor > 700,
+    JSON.stringify({ ...dealer, dealing: r.dealing, after: r.dealt, ms: Math.round(r.dealtFor) }));
+  record("rule: a computer opponent sits as a dressed guest, a seat keeps its character, and a seat changing hands leaves one figure on the table", r.dressed.ok, JSON.stringify(r.dressed));
+  record("rule: every occupied seat shows its own character's face and an emptied seat loses it", r.faced.ok, JSON.stringify(r.faced));
   record("poker local play: ten suited dealers, 90 chairs, nine-player settlement, table ten playable and private snapshots", r.count === 10 && r.seats && r.dealers && r.privateCards && r.phase === "showdown" && r.total === 9000 && r.shown === "Hand complete" && r.tableTen === 1 && r.standing, JSON.stringify(r));
   record("poker modes: table focus keeps X and the portrait from changing the seated Ooga's mode", r.modeHeld);
+  record("rule: the hand played out at the visitor's own table marks one hand for the music (one win() call)", r.hands === 1, JSON.stringify({ hands: r.hands }));
+  record("poker light: the lowest tier's ten lights are the ten tables, with the room's three and Banana Club's own after them", r.tableLights === 10 && r.lightCount === 16, JSON.stringify({ tableLights: r.tableLights, lightCount: r.lightCount }));
   if (process.env.POKER_SHOTS) {
     await b.evaluate(`(() => { const P = BL.scenes.poker.debug.pilot; P.release(true); P.goPreset("entrance"); __ooga.advance(2); })()`);
     await b.screenshot(join(process.env.POKER_SHOTS, "poker-floor.png"));
@@ -26428,8 +26591,8 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
 } }, pokerTrip] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
-  const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; P.action("join"); P.action("bots"); P.action("start"); __ooga.advance(1); return { kind: __ooga.renderer.kind, phase: P.session.tables[0].snapshot().phase, nodes: __ooga.stats().visibleNodes }; })()`);
-  record("poker fallback: stone tables and a playable hand on Canvas 2D", r.kind === "canvas2d" && r.phase !== "waiting" && r.nodes > 120, JSON.stringify(r));
+  const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; P.action("join"); P.action("bots"); P.action("start"); __ooga.advance(1); const phase = P.session.tables[0].snapshot().phase; __ooga.advance(2, 1 / 30); return { kind: __ooga.renderer.kind, phase, nodes: __ooga.stats().visibleNodes, crowd: P.crowd.stats().crowd }; })()`);
+  record("poker fallback: stone tables, a playable hand and a crowd of six on Canvas 2D", r.kind === "canvas2d" && r.phase !== "waiting" && r.nodes > 120 && r.crowd === 6, JSON.stringify(r));
 } }] });
 scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="poker"]', required: ["#joy-move", "#joy-look", '[data-poker-action="quick"]'] }), { name: "poker phone actions", why: "rule: seated touch players can read private cards and access legal actions without horizontal overflow", run: async b => {
   const r = await b.evaluate(`(() => { const P = BL.scenes.poker.debug.poker; document.querySelector('[data-poker-action="quick"]').click(); const panel = document.querySelector('[data-poker="focus"]'), r = panel.getBoundingClientRect(); return { fits: !panel.hidden && r.left >= 0 && r.right <= innerWidth && panel.scrollWidth <= panel.clientWidth + 1, seats: document.querySelectorAll(".poker-seats button").length, cards: document.querySelectorAll(".poker-hand .poker-card").length }; })()`);
@@ -28284,10 +28447,61 @@ const pokerChecks = (BL) => {
     const short = t.snapshot("b"), amount = BL.pokerHud.betAmount(short, "pot");
     t.act("b", "raise", amount); t.act("c", "call"); const locked = t.snapshot("a");
     record("poker sizing: short all-in caps the preset and never bypasses closed raise rights", short.legal.min > short.legal.max && amount === 1000 && !locked.legal.canRaise && BL.pokerHud.betAmount(locked, "all") === null);
+    {
+      const c = (pot) => BL.pokerHud.potChips(pot, [0, 0, 0]).join();
+      record("poker pot chips: stacks grow with the pot and never pass eight", c(0) === "0,0,0" && c(10) === "1,0,0" && c(155) === "7,0,0" && c(400) === "8,2,0" && c(3200) === "8,8,2" && c(1e9) === "8,8,8");
+    }
     record("poker public state: blind markers and contributions are exposed without private cards", hu.smallBlind === hu.dealer && hu.bigBlind === 1 && hu.seats[0].totalBet === 5 && hu.seats[1].totalBet === 10 && hu.seats[0].lastAction === "Small blind" && hu.seats.every(p => !p || p.cards.every(c => c === null)));
   }
   const walk = BL.pokerModels.walkable, actor = { bodyRadius: 0.65 };
   record("poker floor: wide spectators can traverse the main and row aisles; table and chair sweeps collide", walk(0, 34, 0, -34, 0, 2, actor) && walk(-21, 18, 21, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && !walk(22, 0, 26, 0, 0, 2, actor));
+  {
+    const P = BL.pokerModels, a = { bodyRadius: 0.65 }, out = { x: 0, z: 0 };
+    P.setFloor("gatsby");
+    const club = walk(0, 34, 0, -34, 0, 2, a) && walk(-21, 18, 21, 18, 0, 2, a) && walk(-21, -18, 21, -18, 0, 2, a) &&
+      !walk(10, -33, 10, -34.8, 0, 2, a) && !walk(20, 31, 22.3, 31, 0, 2, a) && !walk(-19, -31, -22, -31, 0, 2, a) &&
+      walk(3.9, -30, 3.9, -18, 0, 2, a) && !walk(3.5, -27.6, 6.5, -27.6, 0, 2, { bodyRadius: 0.4 });
+    const moved = P.nearestClear(10, -35.3, a, out), kept = P.nearestClear(0, 29, a, { x: 0, z: 0 });
+    const clear = Math.hypot(moved.x - 10, moved.z + 35.3) <= 4 && walk(moved.x, moved.z, moved.x, moved.z, 0, 2, a) && kept.x === 0 && kept.z === 29;
+    P.setFloor("crystal");
+    const cave = walk(10, -33, 10, -34.8, 0, 2, a) && walk(20, 31, 22.3, 31, 0, 2, a);
+    P.setFloor("gatsby");
+    record("poker furniture: Banana Club's fittings collide, its aisles keep their width, and the caves stay open", club && clear && cave);
+    record("poker furniture: a saved spot inside the bar no longer holds", !BL.visitSpot.holds({ x: 10, y: 0, z: -34.2, yaw: 0 }, P.walkable, a));
+  }
+  {
+    const P = BL.pokerModels, L = P.lights("gatsby");
+    record("poker furniture lights: Banana Club adds three after the room's, the caves none",
+      L.length === 24 && L[0] === -10 && L[8] === 10 && L[16] === Math.fround(20.6) && L[17] === Math.fround(2.4) && L[19] === 7 &&
+      BL.pokerThemes.themes.filter(t => t.id !== "gatsby").every(t => P.lights(t.id).length === 0));
+    const room = P.build();
+    try {
+      const wall = room.root.children[0].children.filter(n => n.geometry === P.geometry("gatsby").fanlight && Math.abs(n.position.z + 36.35) < 0.01);
+      record("poker furniture: the bar's shelves replace the far wall's fanlights and the room keeps its three top-level parts",
+        wall.length === 0 && room.root.children.length === 2 + room.tables.length &&
+        room.tables[P.HIGH_ROLLER].pinstripe.geometry !== room.tables[0].pinstripe.geometry);
+    } finally { for (const t of room.tables) t.agent.dispose(); }
+  }
+  {
+    const room = BL.pokerModels.build();
+    try {
+      const club = room.sparkle.length === 12 && new Set(room.sparkle.map(n => n.geometry)).size === 4 &&
+        room.sparkle.every(n => n.geometry.castShadow === false);
+      room.setTheme("ember"); const cave = room.sparkle.length === 0;
+      room.setTheme("gatsby");
+      record("poker chandeliers: three fixtures share four crystal meshes in Banana Club and none hang in the caves", club && cave && room.sparkle.length === 12);
+    } finally { for (const t of room.tables) t.agent.dispose(); }
+  }
+  {
+    // Rule: Canvas 2D paints every face on the CPU, so it gets a lighter Banana Club with the same fittings and glints.
+    const P = BL.pokerModels, full = P.geometry("gatsby"), faces = g => BL.compactGeometry?.storageOf(g)?.count ?? g.faces.length, rooms = [];
+    try {
+      P.setLite(true); const room = P.build(); rooms.push(room);
+      const lite = room.sparkle.length === 12 && new Set(room.sparkle.map(n => n.geometry)).size === 4 && faces(P.geometry("gatsby").shell) < faces(full.shell);
+      P.setLite(false); rooms.push(P.build());
+      record("poker lite club: Canvas 2D's Banana Club keeps twelve glints on four meshes with fewer shell faces, and the full set comes back", lite && P.geometry("gatsby") === full);
+    } finally { P.setLite(false); for (const r of rooms) for (const t of r.tables) t.agent.dispose(); }
+  }
   {
     // Contract: changing the scenery during a hand must keep pick targets,
     // chairs, dealers and private/public card nodes alive without growing the room.
@@ -28306,6 +28520,307 @@ const pokerChecks = (BL) => {
       room.setTheme("gatsby");
       record("poker themes: repeated switches preserve seats, dealers and dealt cards with a bounded scene", stable && count(room.root) === baseline && BL.pokerModels.geometry("invalid") === BL.pokerModels.geometry("gatsby"));
     } finally { for (const t of room.tables) t.agent.dispose(); }
+  }
+  {
+    const T = BL.pokerThemes, club = T.get("gatsby"), caves = T.themes.filter(t => t.id !== "gatsby");
+    record("poker light: only Banana Club dims and narrows its table lights",
+      caves.every(t => t.tableRange === undefined && t.tableY === undefined && t.bloom === undefined && t.directStrength === undefined) &&
+      caves.map(t => t.ambient).join() === "0.51,0.52,0.55,0.54" && caves.every(t => club.ambient < t.ambient && club.directStrength < 0.38) && club.tableRange < 14);
+  }
+  {
+    const C = BL.pokerCrowdModels, handles = new Set(BL.characters.all().map(c => (c.github || c.handle).toLowerCase()));
+    const names = C.CAST.map(m => m.rig === "caveman" ? m.traits.name : m.id + "/ember-den");
+    const pick = (d, n) => C.castFor(d, n).map(m => m.id).join();
+    const ok = n => { const a = C.castFor(20000, n); return a.length === n && a.some(m => m.type === "waiter") && a.some(m => m.type === "security") && !a.some(m => m.type === "player") && a.filter(m => m.type === "drunk").length <= 1 && a.filter(m => m.type === "walker").length <= 1; };
+    record("poker crowd cast: twenty-nine invented members, none a contributor, the same every time and different each day",
+      C.CAST.length === 29 && new Set(names).size === 29 && names.every(n => n.endsWith("/ember-den") && !handles.has(n.split("/")[0])) &&
+      ok(16) && ok(10) && ok(6) && pick(20000, 16) === pick(20000, 16) && pick(20000, 16) !== pick(20001, 16) &&
+      C.seatTraits(3, 4).name === C.seatTraits(3, 4).name && C.TYPES[0] === "walker");
+  }
+  {
+    const P = BL.pokerModels, R = BL.pokerCrowd.router(P.walkable), out = new Float32Array(48), a = { bodyRadius: 0.4 };
+    const legs = n => { for (let i = 1; i < n; i++) if (!P.walkable(out[i * 2 - 2], out[i * 2 - 1], out[i * 2], out[i * 2 + 1], 0, 2, a)) return false; return n > 0; };
+    P.setFloor("gatsby"); R.rebuild();
+    const club = P.spots("gatsby"), stool = club.find(s => s.kind === "stool"), rail = club.filter(s => s.kind === "rail");
+    const toBar = legs(R.find(0, 30, stool.x, stool.z + 1, out)), acrossRows = legs(R.find(-20, 30, 20, -30, out)), walled = R.find(0, 30, 60, 0, out) === 0;
+    const clubCells = R.cells;
+    P.setFloor("crystal"); R.rebuild();
+    const cave = P.spots("crystal");
+    record("poker crowd routes: the lattice reaches the bar and crosses the rows on legs a walker can take, and follows the theme's floor",
+      toBar && acrossRows && walled && rail.length === 40 && club.filter(s => s.kind === "stool").length === 10 &&
+      !cave.some(s => s.kind === "stool" || s.kind === "sofa" || s.kind === "cage") && cave.filter(s => s.kind === "rail").length === 40 && R.cells > clubCells);
+    P.setFloor("gatsby");
+  }
+  const quietFx = { say() {}, sayAt() {}, hush() {} };
+  {
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), others = [{ x: 0, z: 18, radius: 0.5 }];
+    P.setFloor("gatsby");
+    // The carried item hangs from the right arm: a cane's plant is that arm's, a businessman's briefcase arm stays still.
+    const caneAt = [], arms = { suitHeld: 0, suitSwung: 0, suitL: [Infinity, -Infinity], caneR: [Infinity, -Infinity], itemArm: true };
+    const onStep = (kind, x, z) => { if (kind === "cane") for (const m of crowd.members) if (m.type === "cane" && m.x === x && m.z === z) caneAt.push(m.parts.armR.rotation.x); };
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => out, others: () => others, day: 20000, cap: 16, onStep });
+    let inside = 0, max = 0;
+    try {
+      for (let f = 0; f < 3600; f++) {
+        crowd.update(1 / 30, f / 30);
+        for (const m of crowd.members) if (m.state === "walk" && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, { bodyRadius: 0.3 })) inside++;
+        max = Math.max(max, crowd.stats().crowd);
+        for (const m of crowd.members) {
+          if (!m.root || m.state !== "walk" || m.pending) continue;
+          if (m.type === "businessman") {
+            if (m.parts.armR.rotation.x === -0.05) arms.suitHeld++; else arms.suitSwung++;
+            arms.suitL[0] = Math.min(arms.suitL[0], m.parts.armL.rotation.x); arms.suitL[1] = Math.max(arms.suitL[1], m.parts.armL.rotation.x);
+          }
+          if (m.type === "cane") { arms.caneR[0] = Math.min(arms.caneR[0], m.parts.armR.rotation.x); arms.caneR[1] = Math.max(arms.caneR[1], m.parts.armR.rotation.x); }
+          if ((m.type === "businessman" || m.type === "cane") && m.parts.club.parent !== m.parts.armR) arms.itemArm = false;
+        }
+      }
+      const nodes = root.children.length, moved = crowd.members.filter(m => Math.hypot(m.x, m.z - 18) > 1).length;
+      crowd.setCap(6); crowd.update(1 / 30, 121);
+      const shrunk = crowd.stats().crowd === 6 && root.children.filter(n => n.visible).length === 6;
+      record("poker crowd pool: sixteen members walk two minutes without entering furniture, the pool never grows, and a lower tier shrinks it at once",
+        inside === 0 && max === 16 && nodes === 16 && moved >= 14 && shrunk);
+      record("poker crowd styles: the item's arm carries it, a briefcase held still and a cane planted forward on each cane step, the free arm swinging",
+        arms.itemArm && arms.suitHeld > 0 && arms.suitSwung === 0 && arms.suitL[1] - arms.suitL[0] > 0.3 &&
+        caneAt.length > 0 && caneAt.every(x => x <= -0.65) && arms.caneR[1] - arms.caneR[0] > 0.3, JSON.stringify({ arms, caneAt: caneAt.length }));
+    } finally { crowd.dispose(); }
+    record("poker crowd pool: dispose leaves nothing on the root and no route pending", root.children.length === 0 &&
+      crowd.members.every(m => !m.pending && m.n === 0 && m.spot === null && m.root === null));
+  }
+  {
+    // Rule: a sofa seat has no route of its own, so a guest walks to its approach, then moves straight in and back out.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), sofa = P.spots("gatsby").find(s => s.kind === "sofa");
+    P.setFloor("gatsby");
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => out, others: () => [], day: 20000, cap: 6 });
+    try {
+      const run = s => { for (let f = 0; f < s * 30; f++) crowd.update(1 / 30, 0); };
+      run(1);
+      const m = crowd.members.filter(m => m.root && m.rig === "caveman").sort((a, b) => a.rank - b.rank)[0], a = crowd.approach(sofa);
+      crowd.send(m, a.x, a.z, sofa);
+      // On arrival it moves straight in and sits; when its time is up it moves straight back out.
+      let reached = false;
+      for (let f = 0; f < 90 * 30 && !reached; f++) { crowd.update(1 / 30, 0); reached = m.state === "slide" && m.spot === sofa && m.reached; }
+      run(0.5);
+      const seated = m.state === "sit" && Math.hypot(m.x - sofa.x, m.z - sofa.z) < 0.01;
+      m.clock = 0; run(0.5);
+      record("poker crowd seats: a sofa is walked to by its approach, then entered and left by the same straight move",
+        reached && seated && m.state === "idle" && Math.hypot(m.x - a.x, m.z - a.z) < 0.01 && P.walkable(m.x, m.z, m.x, m.z, 0, 2, { bodyRadius: 0.4 }));
+    } finally { crowd.dispose(); }
+  }
+  // The crowd's view of a table is what every player sees: these five, never a seat's cards.
+  const tableView = () => Array.from({ length: 10 }, () => ({ pot: 0, phase: "waiting", hand: 0, winner: -1, allIn: false }));
+  const STAND3 = { bodyRadius: 0.3 };
+  {
+    // Rule: five minutes of the club: guests take stools, sofas and rails, and the room never shows more than two of their bubbles.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), body = { x: 0, z: 18, radius: 0.5 }, others = [body];
+    P.setFloor("gatsby");
+    const tables = tableView(), said = [];
+    let now = 0;
+    // A caveman speaking with a cheer or a hand to the head up is saying a reaction's line.
+    let reactLines = 0;
+    const fx = { say(m) { said.push(now); if (m.cheer > 0 || m.gasp > 0) reactLines++; }, sayAt() { said.push(now); }, hush() {} };
+    const crowd = BL.pokerCrowd.create({ root, fx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => { const v = tables[t]; out.pot = v.pot; out.phase = v.phase; out.hand = v.hand; out.winner = v.winner; out.allIn = v.allIn; },
+      others: () => others, visitor: () => body, day: 20000, cap: 16 });
+    let sawStool = false, sawSofa = false, sawRail = false, maxBubbles = 0, insideWhileWalking = 0, counted = true;
+    const seen = new Set();
+    let bossWatched = false;
+    try {
+      const dt = 1 / 20;
+      for (let f = 0; f < 300 / dt; f++) {
+        now = f * dt;
+        // Each table plays a hand every 20 s: the pot grows past 400, someone goes all in, and a seat wins it.
+        for (let t = 0; t < 10; t++) {
+          const k = (now + t * 2) % 20, v = tables[t];
+          v.hand = Math.floor((now + t * 2) / 20); v.phase = k < 16 ? "flop" : "showdown"; v.pot = Math.floor(k * 40);
+          v.allIn = k > 10; v.winner = k < 16 ? -1 : t % 9;
+        }
+        crowd.update(dt, now);
+        for (const m of crowd.members) {
+          if (!m.root || !m.on) continue;
+          if (m.state === "sit" && m.spot?.kind === "stool") sawStool = true;
+          if (m.state === "sit" && m.spot?.kind === "sofa") sawSofa = true;
+          if (m.state === "watch" && m.spot?.kind === "rail") sawRail = true;
+          if (m.state === "walk" && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, STAND3)) insideWhileWalking++;
+          seen.add(m.state + (m.job ? "/" + m.job : ""));
+          if (m.type === "pitBoss" && m.state === "watch" && m.job === "boss") bossWatched = true;
+        }
+        let up = 0;
+        for (const at of said) if (at > now - 2.4) up++;
+        maxBubbles = Math.max(maxBubbles, up);
+        counted &&= crowd.stats().crowdBubbles === crowd.members.filter(m => m.talk > 0).length;
+      }
+    } finally { crowd.dispose(); }
+    record("poker crowd behaviour: within five minutes guests sit at the bar and the lounge, watch tables, and never hold more than two bubbles",
+      sawStool && sawSofa && sawRail && maxBubbles <= 2 && insideWhileWalking === 0, JSON.stringify({ sawStool, sawSofa, sawRail, maxBubbles, insideWhileWalking, said: said.length, counted, seen: [...seen].sort() }));
+    record("poker crowd speech: the crowd counts its own bubbles as they show", counted && said.length > 0);
+    // The tables' feed reached the crowd: the pit boss went to a big pot and a watcher spoke up at a reaction.
+    record("poker crowd behaviour: the five minutes' tables are read, bringing the pit boss to a big pot and a watcher's line at a reaction",
+      bossWatched && reactLines > 0, JSON.stringify({ bossWatched, reactLines }));
+  }
+  {
+    // Rule: a big pot and a win are read from the five public fields alone.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode();
+    P.setFloor("gatsby");
+    const tables = tableView(), keys = new Set(), watched = new WeakSet();
+    tables[7].hand = 3; tables[7].phase = "flop";
+    // The crowd's own `out` records every key read from it: its five fields turn to getters and anything else falls
+    // through to a recording prototype. The fake returns nothing, so only `out` can carry the table to the crowd.
+    const watch = out => {
+      if (watched.has(out)) return;
+      watched.add(out);
+      for (const k of Object.keys(out)) { let v = out[k]; Object.defineProperty(out, k, { get() { keys.add(k); return v; }, set(x) { v = x; }, enumerable: true }); }
+      Object.setPrototypeOf(out, new Proxy({}, { get(o, k) { keys.add(k); return undefined; } }));
+    };
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"),
+      publicState: (t, out) => { watch(out); const v = tables[t]; out.pot = v.pot; out.phase = v.phase; out.hand = v.hand; out.winner = v.winner; out.allIn = v.allIn; },
+      others: () => [], visitor: () => null, day: 20000, cap: 16 });
+    let bossAtTable7 = false, cheered = false;
+    try {
+      const dt = 1 / 20, run = (s, until) => { for (let f = 0; f < s / dt; f++) { crowd.update(dt, 0); if (until()) return true; } return false; };
+      run(2, () => false);
+      const boss = crowd.members.find(m => m.type === "pitBoss");
+      const guest = crowd.members.filter(m => m.root && m.rig === "caveman" && m.type !== "walker").sort((a, b) => a.rank - b.rank)[0];
+      const rail = P.spots("gatsby").find(s => s.kind === "rail" && s.table === 7);
+      crowd.send(guest, rail.x, rail.z, rail);
+      const watching = run(90, () => guest.state === "watch" && guest.spot === rail);
+      tables[7].pot = 520;
+      bossAtTable7 = watching && run(90, () => boss.state === "watch" && boss.table === 7) && guest.state === "watch";
+      tables[7].winner = 4;
+      cheered = run(1, () => guest.cheer > 0);
+    } finally { crowd.dispose(); }
+    const readKeys = [...keys].map(String).sort();
+    record("poker crowd reactions: a big pot brings the pit boss to that table and a win makes its watchers cheer, from public state alone",
+      bossAtTable7 && cheered && readKeys.join() === "allIn,hand,phase,pot,winner", JSON.stringify({ bossAtTable7, cheered, readKeys }));
+  }
+  {
+    // Regression: a hand cancelled mid-play (phase back to waiting, no winner, the same hand) let nobody go: the
+    // leaning watchers' clocks stayed frozen and the pit boss watched until the next deal.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode();
+    P.setFloor("gatsby");
+    const tables = tableView();
+    tables[7].hand = 3; tables[7].phase = "flop";
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"),
+      publicState: (t, out) => { const v = tables[t]; out.pot = v.pot; out.phase = v.phase; out.hand = v.hand; out.winner = v.winner; out.allIn = v.allIn; },
+      others: () => [], visitor: () => null, day: 20000, cap: 16 });
+    let started = false, bossLeft = false, clockRuns = false;
+    try {
+      const dt = 1 / 20, run = (s, until) => { for (let f = 0; f < s / dt; f++) { crowd.update(dt, 0); if (until()) return true; } return false; };
+      run(2, () => false);
+      const boss = crowd.members.find(m => m.type === "pitBoss");
+      const guest = crowd.members.filter(m => m.root && m.rig === "caveman" && m.type !== "walker").sort((a, b) => a.rank - b.rank)[0];
+      const rail = P.spots("gatsby").find(s => s.kind === "rail" && s.table === 7);
+      crowd.send(guest, rail.x, rail.z, rail);
+      const watching = run(90, () => guest.state === "watch" && guest.spot === rail);
+      tables[7].pot = 520;
+      started = watching && run(90, () => boss.state === "watch" && boss.table === 7) && guest.state === "watch";
+      const frozen = guest.clock;
+      tables[7].phase = "waiting"; tables[7].pot = 0;
+      bossLeft = run(3, () => boss.job !== "boss");
+      run(1, () => false);
+      clockRuns = guest.state !== "watch" || guest.clock < frozen - 0.5;
+    } finally { crowd.dispose(); }
+    record("poker crowd reactions: a cancelled hand sends the pit boss back and lets its watchers' time run again",
+      started && bossLeft && clockRuns, JSON.stringify({ started, bossLeft, clockRuns }));
+  }
+  {
+    // Rule: a cave theme takes the bar away from under its guests: they stand where a walker can, and walk on.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode();
+    P.setFloor("gatsby");
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots("gatsby"), publicState: (t, out) => out,
+      others: () => [], visitor: () => null, day: 20000, cap: 16 });
+    let seatedBefore = 0, seatedOnMissing = 0, insideAfter = 0, walkedOn = 0, keptSeat = false;
+    try {
+      const dt = 1 / 20, run = (s, each) => { for (let f = 0; f < s / dt; f++) { crowd.update(dt, 0); each(); } };
+      run(2, () => {});
+      const stools = P.spots("gatsby").filter(s => s.kind === "stool"), guests = crowd.members.filter(m => m.root && m.rig === "caveman" && m.type !== "walker").slice(0, 3);
+      guests.forEach((m, i) => { const a = crowd.approach(stools[i * 3]); crowd.send(m, a.x, a.z, stools[i * 3]); });
+      let seated = [];
+      for (let f = 0; f < 90 / dt && seated.length < guests.length; f++) { crowd.update(dt, 0); seated = guests.filter(m => m.state === "sit" && m.spot.kind === "stool"); }
+      seatedBefore = seated.length;
+      // The same floor again keeps every seat: a guest seated inside its stool stays seated there.
+      crowd.refloor(P.spots("gatsby"));
+      run(0.5, () => {});
+      keptSeat = seated.length > 0 && seated.every(m => m.state === "sit" && Math.hypot(m.x - m.spot.x, m.z - m.spot.z) < 0.01);
+      P.setFloor("crystal");
+      const cave = P.spots("crystal");
+      crowd.refloor(cave);
+      seatedOnMissing = crowd.members.filter(m => m.on && m.root && (m.state === "sit" || m.state === "slide" || m.spot && m.spot.kind !== "post" && !cave.includes(m.spot))).length +
+        seated.filter(m => m.root.position.y !== m.baseY).length;
+      run(20, () => { for (const m of crowd.members) if (m.on && m.root && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, STAND3)) insideAfter++; });
+      walkedOn = seated.filter(m => Math.hypot(m.x - m.backX, m.z - m.backZ) > 1 || m.state === "walk").length;
+      // And back: the club's fittings come up under whoever stands there, who steps clear; only a seat is sat inside.
+      P.setFloor("gatsby"); crowd.refloor(P.spots("gatsby"));
+      run(20, () => { for (const m of crowd.members) if (m.on && m.root && m.state !== "sit" && m.state !== "slide" && !P.walkable(m.x, m.z, m.x, m.z, 0, 2, STAND3)) insideAfter++; });
+    } finally { crowd.dispose(); P.setFloor("gatsby"); }
+    // Every guest who lost a stool is sent elsewhere at once, and every place the cave floor offers lies over 4 m from the
+    // bar, so in 20 s each of them has walked over a metre from its seat's approach or is still walking.
+    record("poker crowd theme switch: guests seated at the bar stand and walk on when the bar is gone",
+      seatedBefore > 0 && seatedOnMissing === 0 && insideAfter === 0 && walkedOn === seatedBefore, JSON.stringify({ seatedBefore, seatedOnMissing, insideAfter, walkedOn }));
+    record("poker crowd theme switch: a seat the new floor keeps stays sat on", keptSeat);
+  }
+  {
+    // Rule: a destination with no route, or one its route stops short of, sends the member somewhere else, never stalls it.
+    const P = BL.pokerModels, S = BL.scene, root = S.createNode(), list = P.spots("gatsby");
+    P.setFloor("gatsby");
+    const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: list, publicState: (t, out) => out,
+      others: () => [], visitor: () => null, day: 20000, cap: 6 });
+    let moved = 0, thrown = null;
+    try {
+      const dt = 1 / 20;
+      for (let f = 0; f < 2 / dt; f++) crowd.update(dt, 0);
+      const m = crowd.members.filter(m => m.root && m.rig === "caveman").sort((a, b) => a.rank - b.rank)[0];
+      const nowhere = Object.freeze({ kind: "rail", x: 60, z: 0, yaw: 0, table: 3 }), inBar = Object.freeze({ kind: "rail", x: -10, z: -35.3, yaw: 0, table: 3 });
+      for (const target of [nowhere, inBar]) {
+        crowd.send(m, target.x, target.z, target);
+        let ok = false;
+        for (let f = 0; f < 60 / dt && !ok; f++) { crowd.update(dt, 0); ok = m.spot !== target && m.spot !== null && list.includes(m.spot) && (m.state === "walk" || m.reached); }
+        if (ok) moved++;
+      }
+    } catch (e) { thrown = e.message; } finally { crowd.dispose(); }
+    record("poker crowd routes: a destination with no route, or one a route stops short of, sends the member somewhere else",
+      moved === 2 && thrown === null, JSON.stringify({ moved, thrown }));
+  }
+  {
+    // Rule: a computer opponent sits as one of the twelve seat-only opponents, never twice at one table, and the
+    // same seat holds the same one whatever order the seats are asked in.
+    const C = BL.pokerCrowdModels, UP = [0, 1, 2, 3, 4, 5, 6, 7, 8], DOWN = UP.slice().reverse();
+    const players = C.CAST.filter(m => m.type === "player"), playerNames = new Set(players.map(m => m.traits.name));
+    const repeats = [], outside = [], drift = [];
+    for (let t = 0; t < 10; t++) {
+      const names = UP.map(s => C.seatTraits(t, s)?.name);
+      if (new Set(names).size !== 9) repeats.push(t);
+      if (names.some(n => !playerNames.has(n))) outside.push(t);
+      if (DOWN.map(s => C.seatTraits(t, s)?.name).reverse().join() !== names.join()) drift.push(t);
+    }
+    record("poker crowd seats: no table seats one character twice", repeats.length === 0, JSON.stringify(repeats));
+    record("poker crowd seats: every seat holds a seat-only opponent and keeps it whatever order the seats are asked in",
+      outside.length === 0 && drift.length === 0, JSON.stringify({ outside, drift }));
+    // Rule: nobody who can sit can walk: no cap on any day deals a seated opponent to the floor.
+    const walking = [];
+    for (let d = 19990; d < 20090; d++) for (const cap of [0, 2, 6, 10, 16, 20]) for (const m of C.castFor(d, cap)) if (playerNames.has(m.traits.name)) walking.push(d + "/" + cap);
+    record("poker crowd seats: no seated opponent is ever dealt to the floor", walking.length === 0, JSON.stringify(walking.slice(0, 5)));
+    // Rule: the twelve opponents build and read as twelve different people.
+    let built = 0, thrown = null;
+    try { for (const m of players) { BL.models.caveman(m.traits); built++; } } catch (e) { thrown = e.message; }
+    // Two opponents look alike when their cloth, skin and hair are all within 40 of each other in RGB.
+    const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)), apart = (a, b) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i])) >= 40;
+    const alike = [];
+    for (let i = 0; i < players.length; i++) for (let j = i + 1; j < players.length; j++) {
+      const a = players[i].traits, b = players[j].traits;
+      if (!apart(a.fur, b.fur) && !apart(a.skin, b.skin) && !apart(a.hair, b.hair)) alike.push(a.display + " / " + b.display);
+    }
+    record("poker crowd seats: the twelve opponents build, each under its own name and each looking unlike the rest",
+      players.length === 12 && playerNames.size === 12 && built === 12 && thrown === null && alike.length === 0 &&
+      players.every((m, i) => m.id === "player-" + (i + 1) && m.traits.name === m.id + "/ember-den"), JSON.stringify({ built, thrown, alike }));
+    // Rule: only a computer opponent is cast; a human in the same seat shows the stand-in, so a seat changing hands
+    // between frames changes the figure's traits, which is what the scene rebuilds on.
+    let humans = true, bots = true;
+    for (let t = 0; t < 10; t++) for (let s = 0; s < 9; s++) {
+      const bot = C.seatFigure(t, s, true), human = C.seatFigure(t, s, false);
+      humans &&= human.name === "Banana Bot " + s && !human.name.endsWith("/ember-den") && !BL.characters.get(human.name) && human === C.seatFigure(t, s, false);
+      bots &&= bot === C.seatTraits(t, s) && bot.name.endsWith("/ember-den") && bot !== human;
+    }
+    record("poker crowd seats: a human seat never shows a cast member and a seat changing hands changes its figure", humans && bots, JSON.stringify({ humans, bots }));
   }
 };
 const pokerProtocolChecks = async () => {
@@ -29407,6 +29922,384 @@ const ghostAudioChecks = async () => {
       &&out.walk.reschedules>0&&out.walk.reschedules<=52&&out.walk.decodes===0&&out.walk.loads===0&&out.walk.end===0
       &&Math.abs(out.mid-0.35*Math.SQRT1_2)<1e-4&&out.hushed===0&&out.after===1&&out.muted===0&&out.unmuted===out.mid
       &&!out.disposed.playing&&out.disposed.sources===0&&out.disposed.contexts===1&&out.disposed.state==="closed"&&out.disposed.sound,JSON.stringify(out));
+};
+// The Ember Den's seating rule (poker-presence.js) in a bare context, on the room's layout copied from poker-models.js
+// (`TABLES`, `SEATS`): which remote's sent position is a chair, and which remote a chair is honoured for. Remotes come
+// as a Map, as `BL.net.remotes` holds them, with the room's integer ids.
+const pokerPresenceChecks = () => {
+  const context = { window: { BL: {} } };
+  const source = readFileSync(join(root, "src/js/poker-presence.js"), "utf8");
+  runInNewContext(source, context);
+  const P = context.window.BL.pokerPresence;
+  const T = Array.from({ length: 10 }, (_, i) => ({ x: i % 2 ? 11 : -11, z: 24 - Math.floor(i / 2) * 12 }));
+  const S = Array.from({ length: 9 }, (_, i) => {
+    const a = -Math.PI / 2 + 0.55 + i * (Math.PI * 2 - 1.1) / 8;
+    return { x: Math.cos(a) * 6, z: Math.sin(a) * 4.2 };
+  });
+  const N = T.length * S.length, spot = k => ({ x: T[(k / S.length) | 0].x + S[k % S.length].x, z: T[(k / S.length) | 0].z + S[k % S.length].z });
+  const at = (t, s, dx, y, dz) => P.seatAt(T, S, T[t].x + S[s].x + dx, y, T[t].z + S[s].z + dz);
+  // Every chair's own spot reads as that chair, and no two chairs stand within two radii of each other.
+  let everyChairUnique = true, nearest = Infinity;
+  for (let k = 0; k < N; k++) {
+    const a = spot(k);
+    if (P.seatAt(T, S, a.x, P.CHAIR_Y, a.z) !== k) everyChairUnique = false;
+    for (let j = k + 1; j < N; j++) { const b = spot(j); nearest = Math.min(nearest, Math.hypot(a.x - b.x, a.z - b.z)); }
+  }
+  everyChairUnique = everyChairUnique && nearest > 2 * P.RADIUS;
+  // Every seat entry handed to `seatOf` throws if anything reads its cards.
+  let cardsUntouched = true;
+  const entry = (fields) => {
+    const e = Object.assign({ bot: false, id: "s", name: "" }, fields);
+    for (const key of ["cards", "hand", "hole"]) Object.defineProperty(e, key, { get() { cardsUntouched = false; throw new Error("read " + key); } });
+    return e;
+  };
+  const k = 3 * 9 + 4, ks = 3, kk = 4;
+  const remote = (id, fields) => Object.assign({ id, display: "Ann", zone: "poker", body: "ooga:ann", x: spot(k).x, y: P.CHAIR_Y, z: spot(k).z }, fields);
+  const owner = new Array(N).fill(null);
+  // One resolve: `seat` is what `seatOf` gives for chair k (every other chair gives null), live or not.
+  const resolve = (list, live, seat) => {
+    const remotes = new Map(list.map(r => [r.id, r]));
+    try { return P.resolve({ tables: T, seats: S, remotes, zone: "poker", live, heroId: "hero", seatOf: (t, s) => t === ks && s === kk ? seat : null }, owner); }
+    catch (err) { cardsUntouched = false; throw err; }
+  };
+  const honoured = (r, live, seat) => resolve([r], live, seat)[k] === r;
+  const ann = remote(5);
+  const liveMatched = honoured(ann, true, entry({ name: "Ann", id: "s1" }));
+  const liveWrongName = honoured(ann, true, entry({ name: "Bob", id: "s1" }));
+  const liveBotSeat = honoured(ann, true, entry({ name: "Ann", id: "s1", bot: true }));
+  const liveOpenSeat = honoured(ann, true, null);
+  // A seat and a remote that both carry no name (empty, or none at all) are never a match.
+  const liveNoName = honoured(remote(5, { display: "" }), true, entry({ name: "", id: "s1" })) || honoured(remote(5, { display: undefined }), true, entry({ name: undefined, id: "s1" }));
+  const practiceEmpty = honoured(ann, false, null);
+  const practiceTaken = honoured(ann, false, entry({ name: "Ann", id: "s1" }));
+  const low = remote(3), high = remote(9);
+  const ownSeatLive = resolve([ann], true, entry({ name: "Ann", id: "hero" }))[k];
+  const ownSeatPractice = resolve([ann], false, entry({ name: "Ann", id: "hero" }))[k];
+  const otherZone = resolve([remote(5, { zone: "hub" })], false, null)[k];
+  const noBody = resolve([remote(5, { body: null })], false, null)[k];
+  // The pair last, so `owner` holds their chair for stateOf.
+  resolve([high, low], false, null);
+  record("poker presence: a position reads as a chair only at chair height, on the spot", at(3, 4, 0, 0.45, 0) === 3 * 9 + 4 && at(3, 4, 0.49, 0.45, 0) === 3 * 9 + 4 && at(3, 4, 0.51, 0.45, 0) === -1 && at(3, 4, 0, 0, 0) === -1 && at(3, 4, 0, 0.56, 0) === -1);
+  record("poker presence: every chair is its own, none within reach of another", everyChairUnique, `nearest ${nearest.toFixed(2)} m`);
+  record("poker presence: live, a remote is honoured only in a human seat that carries its name", liveMatched && !liveWrongName && !liveBotSeat && !liveOpenSeat && !liveNoName, JSON.stringify({ liveMatched, liveWrongName, liveBotSeat, liveOpenSeat, liveNoName }));
+  record("poker presence: not live, a remote is honoured only in a chair this page has empty", practiceEmpty && !practiceTaken, JSON.stringify({ practiceEmpty, practiceTaken }));
+  record("poker presence: two at one chair, the lower id is honoured and the other hidden", owner[k] === low && P.stateOf(T, S, owner, high) === 2 && P.stateOf(T, S, owner, low) === 1);
+  record("poker presence: the visitor's own seat is never given to a remote", ownSeatLive === null && ownSeatPractice === null);
+  record("poker presence: another zone or no body is never seated", otherZone === null && noBody === null);
+  record("poker presence: the rule never reads a card", cardsUntouched && !/cards|hole|board|deck/.test(source));
+};
+// The Ember Den's music and room sound (poker-audio.js) on a fake AudioContext that counts every node it makes: no
+// context before a gesture or while the page is muted, one after, both channels held until dispose, and a minute of
+// frames building nothing after init. Every frequency set on a voice is logged by the oscillator's type or the filter's
+// (lowpass tone filters left out), so the lounge's tunes can be heard as data; every param keeps the times scheduled on
+// it, so a cancel that deletes a note already scheduled is counted (`lost`), and every oscillator type set is counted.
+// Listeners are kept by target, type, function and capture flag, as the browser keeps them.
+const pokerAudioChecks = (BL) => {
+  const ctxs = [], entries = [], held = [], timers = new Map();
+  let nodes = 0, closed = 0, released = 0, toDestination = 0, soundFn = null, log = null, watch = null, timerId = 0, lost = 0, typeSets = 0;
+  // `kind` and `of` (the node the param belongs to) tag a param for `watch`, which lists every call on it, cancels included.
+  const param = (owner, kind, of) => {
+    const p = { value: 0, at: [], last: 0 };
+    for (const m of ["setValueAtTime", "exponentialRampToValueAtTime", "linearRampToValueAtTime", "setTargetAtTime", "cancelScheduledValues", "cancelAndHoldAtTime"]) p[m] = (v, t, c) => {
+      if (watch && kind) watch.push({ kind, m, v, t, c, p, of });
+      if (m === "cancelScheduledValues" || m === "cancelAndHoldAtTime") { const keep = p.at.filter(e => e < v); lost += p.at.length - keep.length; p.at = keep; return; }
+      p.at.push(t);
+      p.last = v;
+      if (m === "setValueAtTime" && owner && log && owner.type !== "lowpass") log(owner.type, v, t);
+    };
+    return p;
+  };
+  const node = (extra) => { nodes++; return Object.assign({ connect(to) { this.to = to; if (to && to.destination) toDestination++; }, disconnect() {}, start() {}, stop() {} }, extra); };
+  class Ctx {
+    constructor() { ctxs.push(this); this.currentTime = 0; this.state = "running"; this.sampleRate = 800; this.destination = { destination: true }; this.gains = []; }
+    createGain() { const g = node({}); g.gain = param(null, "gain", g); this.gains.push(g); return g; }
+    createOscillator() { const o = node({ detune: param() }); let type = "sine"; Object.defineProperty(o, "type", { get: () => type, set: v => { type = v; typeSets++; } }); o.frequency = param(o, "freq", o); return o; }
+    createBiquadFilter() { const f = node({ Q: param(), gain: param(), type: "lowpass" }); f.frequency = param(f); return f; }
+    createStereoPanner() { const p = node({}); p.pan = param(null, "pan", p); return p; }
+    createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; }
+    createBufferSource() { return node({ buffer: null, loop: false }); }
+    resume() { return Promise.resolve(); }
+    close() { this.state = "closed"; closed++; return Promise.resolve(); }
+  }
+  // Every channel taken is also taken from the real sound.js (which throws on a name it does not have), so the
+  // speaker panel's list for the place is read from the app itself.
+  const real = { window: { addEventListener() {} } };
+  runInNewContext(readFileSync(join(root, "src/js/sound.js"), "utf8"), real);
+  const realSound = real.window.BL.sound, channelNodes = {};
+  const sound = { muted: false, subscribe: fn => { soundFn = fn; return () => { soundFn = null; }; },
+    channel: id => { held.push(id); const own = realSound.channel(id);
+      return { id, gain: 1, level: 1, node: () => channelNodes[id] || (channelNodes[id] = { channel: id }), subscribe: () => () => {}, show() {}, release() { own.release(); released++; } }; } };
+  const mute = on => { sound.muted = on; soundFn(on); };
+  const activation = { hasBeenActive: false };
+  const capture = o => o === true || !!(o && o.capture);
+  const target = name => ({
+    addEventListener: (k, fn, o) => entries.push({ name, k, fn, cap: capture(o) }),
+    removeEventListener: (k, fn, o) => { const i = entries.findIndex(e => e.name === name && e.k === k && e.fn === fn && e.cap === capture(o)); if (i >= 0) entries.splice(i, 1); } });
+  const fire = (name, k) => { for (const e of entries.slice()) if (e.name === name && e.k === k) e.fn(); };
+  const window = { BL: { sound, pokerModels: BL.pokerModels }, ...target("window") };
+  const document = { hidden: false, ...target("document") };
+  const setHidden = on => { document.hidden = on; fire("document", "visibilitychange"); };
+  // The room's own chips and glasses draw from Math.random; here it is mulberry32 from a fixed seed, so every run hears the same room.
+  let seed = 0x5eed;
+  const seeded = Object.assign(Object.create(Math), { random: () => {
+    seed = seed + 1831565813 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  } });
+  const context = { window, document, navigator: { userActivation: activation }, AudioContext: Ctx, Math: seeded, Float32Array,
+    setTimeout: (fn) => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => { timers.delete(id); } };
+  const tick = () => { const [id, fn] = [...timers][0]; timers.delete(id); fn(); };
+  runInNewContext(readFileSync(join(root, "src/js/math.js"), "utf8"), context);
+  runInNewContext(readFileSync(join(root, "src/js/poker-audio.js"), "utf8"), context);
+  const A = window.BL.pokerAudio.create(), ear = { x: 0, z: 0, fx: 0, fz: 1 }, snap = () => ({ ...A.stats, contexts: ctxs.length });
+  A.update(1 / 60, ear);
+  const before = snap();
+  mute(true); activation.hasBeenActive = true;
+  fire("window", "pointerdown"); A.update(1 / 60, ear);
+  const mutedFirst = snap();
+  mute(false); A.update(1 / 60, ear);
+  const after = snap(), nodesAfterInit = nodes, ctx = ctxs[0], panel = realSound.channels().map(c => c.id).join();
+  for (let i = 0; i < 3600; i++) { if (ctx) ctx.currentTime += 1 / 60; A.update(1 / 60, ear); }
+  const nodesAfterMinute = nodes;
+  A.dispose();
+  const leftListening = entries.length, panelAfter = realSound.channels().length;
+  // Created while the page is already muted: a gesture and a frame open nothing.
+  sound.muted = true;
+  const M = window.BL.pokerAudio.create();
+  fire("window", "pointerdown"); M.update(1 / 60, ear);
+  const mutedAtCreate = ctxs.length - 1;
+  M.dispose(); sound.muted = false;
+  record("poker audio: no context before a gesture or while muted, one after, none after dispose; the music on the shared Music channel, so the place lists only Room hum",
+    before.contexts === 0 && mutedFirst.contexts === 0 && after.contexts === 1 && after.open &&
+    after.tones === 10 && after.noises === 5 && closed === 1 && held.join() === "music,room,music,room" && released === 4 &&
+    panel === "room" && panelAfter === 0 &&
+    leftListening === 0 && mutedAtCreate === 0 && entries.length === 0 && toDestination === 0,
+    JSON.stringify({ before, mutedFirst, after, closed, held, released, panel, panelAfter, leftListening, mutedAtCreate, toDestination, open: A.stats.open, tones: window.BL.pokerAudio.TONES, noises: window.BL.pokerAudio.NOISES }));
+  record("poker audio: a minute of playing builds no node after init", nodesAfterInit > 0 && nodesAfterInit === nodesAfterMinute, JSON.stringify({ nodesAfterInit, nodesAfterMinute }));
+
+  // The lounge's tunes. A fresh instance plays from the first tune's top; `frames(I, seconds)` plays it at 60 frames
+  // a second on its own context's clock, its first frame scheduling the tune's first step.
+  const S = window.BL.pokerAudio.SONGS, chordCount = window.BL.pokerAudio.CHORDS.length;
+  const fnv = text => { let h = 2166136261; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h >>> 0; };
+  const fresh = () => { const I = window.BL.pokerAudio.create(); fire("window", "pointerdown"); return { I, ctx: ctxs[ctxs.length - 1] }; };
+  // `away` hears from too far for any room cue, so the tunes are heard alone.
+  const away = { x: 0, z: 400, fx: 0, fz: 1 };
+  const frames = (run, seconds, e = away) => { for (let i = 0; i < seconds * 60; i++) { run.ctx.currentTime += 1 / 60; run.I.update(1 / 60, e); } };
+  // The first chorus of slowBlues hashed, and the bass's approach on beat 3 of the first chorus's last bar (to its own
+  // F7: 82.41 or 92.50 Hz) and of the third chorus's last bar (to afterHours' Cmaj7: 61.74 or 69.30 Hz).
+  const tuneRun = () => {
+    const run = fresh(), events = [], out = { bass: 0, wrap: null, turn: null };
+    log = (kind, v, t) => {
+      const st = run.I.stats;
+      if (st.song !== "slowBlues") return;
+      if (st.bar < 12) { events.push(kind + ":" + Math.round(t * 1000) + ":" + v.toFixed(2)); if (kind === "triangle") out.bass++; }
+      if (kind === "triangle" && st.step === 9 && st.bar === 11) out.wrap = v.toFixed(2);
+      if (kind === "triangle" && st.step === 9 && st.bar === 35) out.turn = v.toFixed(2);
+    };
+    frames(run, 95);
+    log = null; run.I.dispose();
+    return { hash: fnv(events.join()), events: events.length, ...out };
+  };
+  const a = tuneRun(), b = tuneRun();
+  // A minute hidden with no frame, then one frame: only the steps due in the next 0.12 s are scheduled, at least one,
+  // and the tune stands where one played without a gap stands at the same instant (its last frame at the gap's time).
+  const control = fresh();
+  frames(control, 5);
+  const gapAt = control.ctx.currentTime + 60;
+  for (let i = 1; i < 3600; i++) { control.ctx.currentTime += 1 / 60; control.I.update(1 / 60, away); }
+  control.ctx.currentTime = gapAt; control.I.update(1 / 60, away);
+  const want = { song: control.I.stats.song, bar: control.I.stats.bar, step: control.I.stats.step };
+  control.I.dispose();
+  const gap = fresh(), times = new Set();
+  frames(gap, 5);
+  gap.ctx.currentTime += 60;
+  const gapLanded = gap.ctx.currentTime === gapAt;
+  log = (kind, v, t) => times.add(Math.round(t * 1000));
+  gap.I.update(1 / 60, away);
+  log = null;
+  const burstAfterGap = times.size, landed = { song: gap.I.stats.song, bar: gap.I.stats.bar, step: gap.I.stats.step };
+  // Hidden, one background tick keeps the music scheduled 2 s ahead, but none while muted; shown, and after dispose,
+  // no timer is left.
+  const hidden = {};
+  setHidden(true);
+  hidden.armed = timers.size;
+  const now = gap.ctx.currentTime += 0.5;
+  let ahead = 0;
+  log = (kind, v, t) => { ahead = Math.max(ahead, t - now); };
+  tick();
+  log = null;
+  hidden.ahead = +ahead.toFixed(2); hidden.rearmed = timers.size;
+  mute(true); hidden.muted = timers.size;
+  mute(false); hidden.unmuted = timers.size;
+  setHidden(false); hidden.shown = timers.size;
+  mute(true); setHidden(true); hidden.hiddenMuted = timers.size; setHidden(false);
+  // Muted mid-tune with frames running, the tune keeps time; unmuted, it carries on rather than restarting.
+  const playing = { song: gap.I.stats.song, bar: gap.I.stats.bar };
+  frames(gap, 5);
+  playing.muted = { song: gap.I.stats.song, bar: gap.I.stats.bar };
+  mute(false); frames(gap, 3);
+  playing.unmuted = { song: gap.I.stats.song, bar: gap.I.stats.bar };
+  setHidden(true); gap.I.dispose(); document.hidden = false;
+  hidden.disposed = timers.size;
+  // Hidden for ten seconds of 500 ms ticks: every note scheduled keeps its envelope and no oscillator is retyped.
+  const H = fresh(), typesAfterInit = typeSets;
+  frames(H, 1);
+  const lostBefore = lost, scheduledBefore = H.I.stats.scheduled;
+  setHidden(true);
+  for (let i = 0; i < 20; i++) { H.ctx.currentTime += 0.5; tick(); }
+  setHidden(false);
+  const kept = { lost: lost - lostBefore, retyped: typeSets - typesAfterInit, scheduled: H.I.stats.scheduled - scheduledBefore };
+  H.I.dispose();
+  const destinationAtEnd = toDestination;
+  record("poker music: the three charts parse to bars of known chords", S.map(s => s.bars.length).join() === "12,16,12" && S.every(s => s.bars.every(c => c < chordCount)), JSON.stringify({ songs: S.map(s => s.id + ":" + s.bars.join(" ")), chordCount }));
+  record("poker music: a chorus schedules the same notes on every run and one bass note a beat, approaching its own top between choruses and the next tune's at the end",
+    a.hash === b.hash && a.bass === 12 * 4 && a.events > a.bass && ["82.41", "92.50"].includes(a.wrap) && ["61.74", "69.30"].includes(a.turn), JSON.stringify({ a, b }));
+  record("poker music: a hidden minute skips its steps instead of replaying them, muted or not the tune keeps time, and the background tick runs only while hidden and heard",
+    burstAfterGap >= 1 && burstAfterGap <= 2 && gapLanded && JSON.stringify(landed) === JSON.stringify(want) &&
+    hidden.armed === 1 && hidden.ahead > 1.3 && hidden.ahead <= 2 && hidden.rearmed === 1 && hidden.muted === 0 && hidden.unmuted === 1 &&
+    hidden.shown === 0 && hidden.hiddenMuted === 0 && hidden.disposed === 0 &&
+    playing.muted.song === playing.song && playing.muted.bar > playing.bar && playing.unmuted.song === playing.song && playing.unmuted.bar > playing.muted.bar,
+    JSON.stringify({ burstAfterGap, gapLanded, landed, want, hidden, playing }));
+  record("poker music: hidden ticks keep every scheduled note's envelope, retype no oscillator, and nothing ever reaches the destination",
+    kept.lost === 0 && kept.retyped === 0 && kept.scheduled > 0 && destinationAtEnd === 0, JSON.stringify({ kept, destinationAtEnd }));
+
+  // The room. A cue heard from the origin facing +z (so +x is on the left): the voices it gates, its peak level and its
+  // last pan, read from the params it schedules.
+  const placed = fresh();
+  const heard = (name, x, z, run = placed) => {
+    watch = []; run.I.cue(name, x, z);
+    const w = watch; watch = null;
+    const gains = w.filter(e => e.kind === "gain"), pans = w.filter(e => e.kind === "pan");
+    return { voices: new Set(gains.map(e => e.p)).size, level: Math.max(0, ...gains.filter(e => e.m === "exponentialRampToValueAtTime").map(e => e.v)), pan: pans.length ? pans[pans.length - 1].v : null };
+  };
+  placed.I.update(0, ear);
+  const near = heard("heel", 0, 2), far = heard("heel", 0, 20), left = heard("heel", 5, 0), right = heard("heel", -5, 0), beyond = heard("heel", 0, 31);
+  const stats = { ...placed.I.stats };
+  const recipes = ["chip", "glass", "cane", "walker"].map(name => heard(name, 0, 3).voices);
+  placed.I.dispose();
+  // The bed's level at the bar and the mirror end, then on the same visit after switching to a cave and back.
+  const bedRun = fresh(), roomBus = bedRun.ctx.gains.find(g => g.to === channelNodes.room), bedStage = bedRun.ctx.gains.find(g => g.to === roomBus);
+  const barEar = { x: 10, z: -33, fx: 0, fz: -1 };
+  bedRun.I.update(0.2, barEar);
+  const bedAtBar = bedStage.gain.last;
+  bedRun.I.update(0.2, { x: 0, z: 34, fx: 0, fz: 1 });
+  const bedAtMirror = bedStage.gain.last;
+  bedRun.I.setTheme("crystal");
+  frames(bedRun, 15, barEar);
+  const caveBed = bedStage.gain.last, caveGlass = bedRun.I.pools.roomSines.some(v => v.until > 0);
+  bedRun.I.setTheme("gatsby");
+  frames(bedRun, 15, barEar);
+  const clubBed = bedStage.gain.last, clubGlass = bedRun.I.pools.roomSines.some(v => v.until > 0);
+  bedRun.I.dispose();
+  // A minute of play near the bar with the room's own chips and glasses sounding: no voice stolen, the music's
+  // scheduled notes all kept, no node built and no oscillator retyped.
+  const busy = fresh(), nodesBefore = nodes, lostAtStart = lost, typesAtStart = typeSets;
+  frames(busy, 60, { x: 0, z: -12, fx: 0, fz: -1 });
+  const minute = { steals: busy.I.stats.steals, cues: busy.I.stats.cues, dropped: busy.I.stats.dropped, busy: busy.I.stats.busy, scheduled: busy.I.stats.scheduled, lost: lost - lostAtStart, nodes: nodes - nodesBefore, retyped: typeSets - typesAtStart };
+  busy.I.dispose();
+  // Every one-shot on the room bus: what a glass, a cane and a walker schedule (gains, pans, pitches) leads through the
+  // connect graph to the room channel, never the music's, and the music's tone pools are left as they were.
+  const busOf = n => { while (n && n.to && !n.to.channel) n = n.to; return n && n.to ? n.to.channel : null; };
+  const routed = fresh();
+  routed.I.update(0, ear);
+  const musicUntil = () => [...routed.I.pools.triangles, ...routed.I.pools.sines].map(v => v.until).join();
+  const untilBefore = musicUntil();
+  watch = []; routed.I.cue("glass", 0, 3); routed.I.cue("cane", 0, 3); routed.I.cue("walker", 0, 3);
+  const rw = watch; watch = null;
+  const routes = { gated: new Set(rw.filter(e => e.kind === "gain").map(e => e.p)).size, buses: [...new Set(rw.map(e => busOf(e.of)))],
+    musicKept: musicUntil() === untilBefore, roomTones: routed.I.stats.roomTones, exported: window.BL.pokerAudio.ROOM_TONES };
+  routed.I.dispose();
+  // A full pool drops the next cue instead of taking a voice: two glasses fill the room's two sines and five heels the
+  // five noise voices, at one instant; a third glass and a sixth heel gate nothing, cut nothing and count as busy.
+  const full = fresh();
+  full.I.update(0, ear);
+  for (let i = 0; i < 2; i++) full.I.cue("glass", 0, 3);
+  for (let i = 0; i < 5; i++) full.I.cue("heel", 0, 3);
+  const lostAtFull = lost, extraGlass = heard("glass", 0, 3, full), extraHeel = heard("heel", 0, 3, full);
+  const crowded = { glass: extraGlass.voices, heel: extraHeel.voices, busy: full.I.stats.busy, dropped: full.I.stats.dropped, lost: lost - lostAtFull };
+  full.I.dispose();
+  // A steal on the music's own pool: every bass voice made to look busy for ten seconds, then a second of play. The
+  // next bass note takes one anyway, holds and eases its gain down before the new attack, cancels its pitch from the
+  // same instant, and counts one steal.
+  const thief = fresh();
+  frames(thief, 1);
+  for (const v of thief.I.pools.triangles) v.until = thief.ctx.currentTime + 10;
+  const stealsAtStart = thief.I.stats.steals;
+  watch = []; frames(thief, 1);
+  const sw = watch; watch = null;
+  const fade = sw.find(e => e.kind === "gain" && e.m === "setTargetAtTime" && e.v < 0.001);
+  const onFaded = fade ? sw.filter(e => e.p === fade.p) : [], fadeAt = onFaded.indexOf(fade);
+  const hold = onFaded.find(e => e.m === "cancelAndHoldAtTime"), attack = onFaded.slice(fadeAt + 1).find(e => e.m === "setValueAtTime");
+  const pitch = fade ? sw.filter(e => e.kind === "freq" && e.of.to && e.of.to.to === fade.of) : [];
+  const steal = { steals: thief.I.stats.steals - stealsAtStart, fadeAt, holdAt: hold && hold.v, fadeFrom: fade && fade.t,
+    attackAfter: attack && fade ? +(attack.t - fade.t).toFixed(4) : null, pitchCancelledAt: (pitch.find(e => e.m === "cancelScheduledValues") || {}).v,
+    pitchSetAfter: attack && pitch.some(e => e.m === "setValueAtTime" && e.t === attack.t) };
+  thief.I.dispose();
+  // The ducks, read from the music bus's own gain: the target in force at a moment, replayed from every call on it,
+  // cancels included. Sitting dips it, a win dips it further for a moment and comes back to the seated level, a mute
+  // and unmute while seated comes back seated too, and standing returns it to the free level.
+  const duckRun = fresh(), bus = duckRun.ctx.gains.find(g => g.to === channelNodes.music), busCalls = [];
+  duckRun.I.update(0, away);
+  watch = busCalls;
+  const levelAt = t => {
+    let kept = [];
+    for (const e of busCalls) {
+      if (e.p !== bus.gain) continue;
+      if (e.m === "cancelScheduledValues" || e.m === "cancelAndHoldAtTime") kept = kept.filter(k => k.t < e.v);
+      else kept.push(e);
+    }
+    let best = null;
+    for (const k of kept) if (k.t <= t && (!best || k.t >= best.t)) best = k;
+    return best ? best.v : bus.gain.value;
+  };
+  const duckNow = () => duckRun.ctx.currentTime;
+  // The bus's last ease: the time it starts, its target and how long it takes to come within 5% (three time constants).
+  const lastEase = () => { const e = busCalls.filter(c => c.p === bus.gain && c.m === "setTargetAtTime").pop(); return e && { t: e.t, v: e.v, over: +(e.c * 3).toFixed(6) }; };
+  const free = levelAt(duckNow());
+  duckRun.I.setSeated(true);
+  const seated = levelAt(duckNow()), sitEase = lastEase();
+  frames(duckRun, 1);
+  duckRun.I.win();
+  const wonAt = duckNow(), won = levelAt(wonAt + 0.1), afterWin = levelAt(wonAt + 1.6), winReturn = lastEase();
+  frames(duckRun, 2);
+  mute(true);
+  const mutedSeated = levelAt(duckNow());
+  mute(false);
+  const afterMute = levelAt(duckNow());
+  duckRun.I.setSeated(false);
+  const stoodUp = levelAt(duckNow());
+  // Standing up while a win still holds: the dip holds to its end, then the music comes back to the free level, not the seated one.
+  duckRun.I.setSeated(true);
+  frames(duckRun, 1);
+  duckRun.I.win();
+  const overlapAt = duckNow();
+  frames(duckRun, 0.5);
+  duckRun.I.setSeated(false);
+  const overlap = { during: levelAt(duckNow()), after: levelAt(overlapAt + 1.6), back: lastEase() };
+  watch = null;
+  duckRun.I.dispose();
+  const same = (a, b) => Math.abs(a - b) < 1e-9;
+  record("poker audio: sitting ducks the music over 0.6 s, a win dips it further and comes back 1.5 s later over 0.6 s, and standing mid-win comes back free",
+    seated < free && won < seated && afterWin === seated && stoodUp === free && mutedSeated === 0 && afterMute === seated
+      && sitEase.v === seated && same(sitEase.over, 0.6) && winReturn.v === seated && same(winReturn.t, wonAt + 1.5) && same(winReturn.over, 0.6)
+      && overlap.during === won && overlap.after === free && overlap.back.v === free && same(overlap.back.t, overlapAt + 1.5) && same(overlap.back.over, 0.6),
+    JSON.stringify({ free, seated, won, afterWin, mutedSeated, afterMute, stoodUp, sitEase, wonAt, winReturn, overlapAt, overlap }));
+  record("poker room sound: a glass, a cane and a walker sound on the room's own tone voices through the room bus, never the music's",
+    routes.gated === 3 && routes.buses.join() === "room" && routes.musicKept && routes.roomTones === 4 && routes.exported === 4, JSON.stringify(routes));
+  record("poker room sound: a cue finding its pool full is dropped as busy, gating no voice and cutting no envelope",
+    crowded.glass === 0 && crowded.heel === 0 && crowded.busy === 2 && crowded.dropped === 0 && crowded.lost === 0, JSON.stringify(crowded));
+  record("poker music: a stolen voice is held and eased down before the new note's attack, its pitch cancelled from then, and the steal counted",
+    steal.steals === 1 && steal.fadeAt > 0 && steal.holdAt === steal.fadeFrom && steal.attackAfter >= 0.012 && steal.pitchCancelledAt === steal.fadeFrom && steal.pitchSetAfter === true,
+    JSON.stringify(steal));
+  record("poker room sound: a cue is louder near and to its own side, and silent past thirty metres",
+    near.level > far.level && left.pan < 0 && right.pan > 0 && beyond.voices === 0 && stats.cues === 5 && recipes.every(v => v === 1),
+    JSON.stringify({ near, far, left, right, beyond, cues: stats.cues, recipes }));
+  record("poker room sound: the bar swells the bed and plays glass cues only while Banana Club is active",
+    bedAtBar > bedAtMirror && caveBed < bedAtBar && !caveGlass && clubBed === bedAtBar && clubGlass,
+    JSON.stringify({ bedAtBar, bedAtMirror, caveBed, caveGlass, clubBed, clubGlass }));
+  record("poker room sound: a minute of play with the room's own chips and glasses steals no voice from the music, cuts no scheduled note, builds no node and retypes no oscillator",
+    minute.steals === 0 && minute.lost === 0 && minute.nodes === 0 && minute.retyped === 0 && minute.cues > minute.dropped && minute.busy === 0 && minute.scheduled > 0, JSON.stringify(minute));
 };
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -35776,6 +36669,8 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   bigBitcoinChecks(BL);
   if(ARGS.includes("big-unit"))return;
   pokerChecks(BL);
+  pokerPresenceChecks();
+  pokerAudioChecks(BL);
   {
     // A roof lip may intersect the visual pose, but a blocked core rejects a mount.
     const solid = (_x, y, z) => y > 1 && z >= 0;
