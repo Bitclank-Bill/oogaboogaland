@@ -17410,6 +17410,50 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: mirror captures TV images and each flash/release on consecutive frames at every quality tier",
     reflectedFlashes.every(r => r.screenRetained && r.tracks), JSON.stringify(reflectedFlashes));
+  const floorReflection = await b.evaluate(`(() => {
+    const B = __ooga, R = B.renderer, quality = R.quality, root = BL.scene.createNode(), floor = BL.architectCave.FLOOR;
+    const disc = center => {
+      const g = { verts: [center, 0, 0], faces: [], lines: [], castShadow: false };
+      for (let i = 0; i <= 48; i++) { const a = i * Math.PI / 24; g.verts.push(Math.sin(a) * 11, Math.cos(a) * 11, 0); }
+      for (let i = 1; i <= 48; i++) g.faces.push({ i: [0, i + 1, i], color: [0, 0, 0], emissive: 1 });
+      return g;
+    };
+    const backing = disc(0), fan = disc(0), shifted = disc(2);
+    for (const g of [fan, shifted]) { g.reflector = true; g.gloss = 0.3; }
+    const ceiling = { verts: [-30, -30, 0, 30, -30, 0, 30, 30, 0, -30, 30, 0],
+      faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 1 }], lines: [], castShadow: false };
+    const ground = BL.scene.createNode({ geometry: backing, position: { x: 0, y: floor, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } });
+    const polish = BL.scene.createNode({ geometry: fan, position: { x: 0, y: floor + 0.014, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, reflectionRevision: 0 });
+    BL.scene.addChild(root, ground, polish, BL.scene.createNode({ geometry: ceiling, position: { x: 0, y: floor + 9, z: 0 }, rotation: { x: Math.PI / 2, y: 0, z: 0 } }));
+    const camera = BL.scene.createCamera({ far: 90 }), display = document.getElementById("scene"), sample = document.createElement("canvas");
+    sample.width = 48; sample.height = 32;
+    const pixels = sample.getContext("2d", { willReadFrequently: true }), rows = [];
+    const draw = (visible, geometry) => {
+      ground.visible = visible; polish.geometry = geometry; polish.reflectionRevision++;
+      R.render(root, camera, { clear: [0, 0, 0], bloomStrength: 0 });
+      pixels.drawImage(display, 0, 0, 48, 32); return pixels.getImageData(0, 0, 48, 32).data.slice();
+    };
+    try {
+      for (const tier of ["high", "low"]) for (const height of [4.5, 0.3]) {
+        R.setQuality(tier);
+        Object.assign(camera.position, { x: -0.7, y: floor + height, z: 5.5 });
+        Object.assign(camera.target, { x: 1.7, y: floor, z: 2 });
+        const reference = draw(false, fan), backed = draw(true, fan), retiled = draw(true, shifted);
+        let lit = 0, backingLeaks = 0, seams = 0;
+        for (let i = 0; i < reference.length; i += 4) if (reference[i] > 40) {
+          lit++; if (Math.abs(reference[i] - backed[i]) > 4) backingLeaks++;
+          if (Math.abs(backed[i] - retiled[i]) > 4) seams++;
+        }
+        rows.push({ tier, height, lit, backingLeaks, seams });
+      }
+      return rows;
+    } finally {
+      for (const g of [backing, fan, shifted, ceiling]) R.releaseGeometry(g);
+      R.setQuality(quality); R.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+  })()`);
+  record("hub observatory: glossy floor excludes its backing and stays continuous across different triangle fans and near-plane views",
+    floorReflection.every(r => r.lit > 128 && r.backingLeaks < r.lit * 0.02 && r.seams < r.lit * 0.02), JSON.stringify(floorReflection));
   const heldMovement = await b.evaluate(`(() => {
     const key = (type, key, code, repeat = false) => window.dispatchEvent(new KeyboardEvent(type, { key, code, repeat, bubbles: true }));
     key("keydown", "w", "KeyW"); key("keydown", "d", "KeyD"); key("keydown", "Shift", "ShiftLeft");

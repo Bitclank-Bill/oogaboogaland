@@ -34,6 +34,10 @@ The pale floor has finer, darker grout and one softened planar reflection using
 the hangar's existing glossy-reflector path, with lower strength (0.3). It reflects
 the chair, Ooga and screens through the renderer's bounded, quality-scaled capture
 passes. This adds one floor reflection target; the 32 area cameras are unchanged.
+Glossy sheets use ordinary near-plane clipping and raster depth, while doorway
+mirrors retain their aperture-depth handling. Their capture clips exactly at the
+sheet: the doorway tolerance could admit the backing floor only 14 mm below it
+and obscure parts of the reflection. Reflection strength and floor color are unchanged.
 TV glass uses the existing view-dependent grazing highlights and light glints,
 not per-screen scene captures. Two shared glass/casing shapes serve all monitors.
 The Canvas 2D fallback retains the pale floor without the reflection overlay.
@@ -394,6 +398,10 @@ reflection appearance and sealed joins need visual acceptance.
 Reflected TV flashes pass build/syntax checks. Added, unrun pixel checks cover TV
 retention and consecutive flash/release frames at all three quality tiers;
 in-game reflection review remains pending.
+The floor-clipping correction passes build/syntax checks. New, unrun pixel
+checks compare an exposed reflection with its backing floor present and with
+a different triangle fan, from normal and near-floor views at high/low quality.
+The reported diagonal patches still need visual confirmation in the original view.
 The white ceiling, attached armrest brackets and direction-preserving mirror
 crossings also need in-game review. New, unrun assertions cover backing through
 both mirrors in first and third person, continued held movement after arrival,

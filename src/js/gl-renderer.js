@@ -1361,6 +1361,7 @@ uniform mat4 uViewProj;
 uniform mat4 uReflectionViewProj;
 uniform mat4 uMirrorWorld;
 uniform float uShard;
+uniform vec4 uGloss;
 out vec4 vReflection;
 out vec3 vWorld;
 out vec2 vPortalUv;
@@ -1388,7 +1389,8 @@ void main() {
   // Clip the aperture in x/y/w, preserving its physical depth for the fragment
   // shader. Clamping individual vertices to the near plane bends the pane and
   // even far-clips visible glass when a corner lies behind the eye.
-  if (uShard < 0.5) gl_Position.z = 0.0;
+  // Floor overlays need ordinary near-plane clipping and raster depth across their triangles.
+  if (uShard < 0.5 && uGloss.w <= 0.0) gl_Position.z = 0.0;
 }`;
   const MIRROR_FS = `#version 300 es
 precision highp float;
@@ -1443,7 +1445,7 @@ void main() {
   if (cutaway(vWorld)) discard;
   // The ratio cancels perspective interpolation, recovering the original
   // planar depth. Glass inside the near plane still closes the cave entrance.
-  gl_FragDepth = clamp(0.5 * vClipDepth.x / vClipDepth.y + 0.5, 0.0, 1.0);
+  gl_FragDepth = uGloss.w > 0.0 ? gl_FragCoord.z : clamp(0.5 * vClipDepth.x / vClipDepth.y + 0.5, 0.0, 1.0);
   // The mirror's reveal drains its pane from the top; a glossy floor has no pane to drain, and its own axis runs far
   // past the pane's height.
   if (uGloss.w <= 0.0 && uRippleOnly < 0.5 && vPortalUv.y > 1.0 - uReveal) discard;
@@ -3391,10 +3393,13 @@ void main() {
       cy *= clipScale;
       cz *= clipScale;
       cw *= clipScale;
-      mirrorProj[2] = cx - mirrorProj[3] * 0.998;
-      mirrorProj[6] = cy - mirrorProj[7] * 0.998;
-      mirrorProj[10] = cz - mirrorProj[11] * 0.998;
-      mirrorProj[14] = cw - mirrorProj[15] * 0.998;
+      // A glossy sheet sits millimetres above its backing. The doorway's relaxed
+      // clip can admit that backing at distance, blotting out parts of the reflection.
+      const clip = node.geometry.gloss ? 1 : 0.998;
+      mirrorProj[2] = cx - mirrorProj[3] * clip;
+      mirrorProj[6] = cy - mirrorProj[7] * clip;
+      mirrorProj[10] = cz - mirrorProj[11] * clip;
+      mirrorProj[14] = cw - mirrorProj[15] * clip;
       mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
       if (!own) return true;
       mirrorDebug.cameraPosition[0] = mirrorEye.x;
