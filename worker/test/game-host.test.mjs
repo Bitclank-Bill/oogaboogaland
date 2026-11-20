@@ -8,6 +8,8 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import * as protocol from "../src/protocol.js";
 import { ghostHunt } from "../src/games/ghost-hunt.js";
+import { island, castFrom, applyStats, applyActivity } from "../src/games/island.js";
+import CAST_ROWS from "../src/characters.gen.json" with { type: "json" };
 import "../../src/js/game-wire.js";
 
 const WIRE = globalThis.BL.gameWire, SIM = globalThis.BL.ghostSim, ST = SIM.STATE;
@@ -36,7 +38,7 @@ const echo = {
     };
   }
 };
-const KINDS = new Map([[echo.id, echo], [ghostHunt.id, ghostHunt]]);
+const KINDS = new Map([[echo.id, echo], [ghostHunt.id, ghostHunt], [island.id, island]]);
 
 const harness = ({ stored = new Map(), env = {} } = {}) => {
   const clock = { now: 1.7e12 };
@@ -351,4 +353,66 @@ test("a hunt saved by the server is picked up again with its clock going on from
   assert.equal(S.round, round);
   assert.equal(S.epoch, H.t.now + 30000 - at, "thirty seconds down are not thirty seconds of hunt");
   assert.equal(ghostHunt.create(T0).save(), null, "an idle hunt saves nothing");
+});
+
+// ---- the island's world (games/island.js) ----
+const castRow = (handle, last, login = handle) => ({ handle, github_login: login, display: null, joined_at: "2025-10-01T00:00:00.000Z", last_commit_at: last, look: {} });
+
+test("the island's world runs while a page follows it: a row for every Ooga, quiet while none moves, and no record kept", async () => {
+  const h = harness();
+  const { res, ws } = await h.join(1, "island:main:v1");
+  assert.equal(res.status, 101);
+  const cast = states(ws).at(-1).s.cast;
+  assert.deepEqual(cast, castFrom(CAST_ROWS).map((c) => c.name), "the cast, in join order, at once");
+  h.run(30000);
+  const frame = WIRE.frame();
+  assert.ok(ws.bins.length > 0 && WIRE.decode(ws.bins.at(-1), frame), "motion frames");
+  assert.equal(frame.kind, island.code);
+  assert.equal(frame.count, cast.length, "a row an Ooga");
+  for (let i = 0; i < frame.count; i++) {
+    assert.equal(frame.rows[i * 8 + 1], i, "rows in cast order");
+    assert.equal(frame.rows[i * 8 + 2], globalThis.BL.math.fnv1a(cast[i]) & 0xffff, "each row names its Ooga");
+  }
+  assert.ok(ws.bins.length < 300, `frames skipped while nothing moves (${ws.bins.length} in 30 s at 10 Hz)`);
+  assert.equal(h.stored.has("game"), false, "nothing stored");
+  h.host.webSocketClose(ws, 1000, "", true);
+  const sent = ws.bins.length;
+  h.run(5000);
+  assert.equal(ws.bins.length, sent, "nobody following, nothing runs");
+  assert.equal(h.timers.filter((t) => t.at > h.clock.now).length, 0, "and no timer is left");
+});
+
+test("the island's states and caves come from Oogatron's stats, as a page's crew reads them", () => {
+  const now = Date.parse("2026-11-20T12:00:00Z"), iso = (ms) => new Date(now - ms).toISOString(), H = 3600e3;
+  const cast = castFrom([castRow("ann", iso(400 * 24 * H)), castRow("bob", iso(400 * 24 * H), "BobGH"), castRow("cy", iso(400 * 24 * H)),
+    castRow("dee", iso(400 * 24 * H)), castRow("eve", iso(30 * 60e3))]);
+  const stats = { meta: { schema_version: 3, org: "OogaBoogaX", generated_at: iso(0) },
+    contributors: [{ login: "ann", last_seen_at: iso(10 * 60e3) }, { login: "bobgh", last_seen_at: iso(3 * H) }, { login: "cy", last_seen_at: iso(5 * 24 * H) }],
+    repos: [{ name: "lightningfoundry", contributors: [{ login: "ann", last_seen_at: iso(10 * 60e3) }] },
+      { name: "somewhere-else", contributors: [{ login: "ann", last_seen_at: iso(20 * 60e3) }] }] };
+  assert.ok(applyStats(cast, stats, now) > 0);
+  const ISIM = globalThis.BL.islandSim, sim = ISIM.create();
+  sim.setCast(cast);
+  applyActivity(sim, cast, now);
+  const want = (name) => sim.byName(name).want, mask = (name) => sim.byName(name).mask;
+  const sites = globalThis.BL.islandLayout.sites, at = (pred) => sites.findIndex(pred);
+  assert.equal(want("ann"), 0, "seen ten minutes ago: working");
+  assert.equal(mask("ann"), 1 << at((s) => s.repo === "oogaboogax/lightningfoundry") | 1 << at((s) => s.fallback),
+    "at the cave of the repository they worked in, and the namesake cave for one with no cave");
+  assert.equal(want("bob"), 1, "three hours ago, by the login that owns the Ooga: chilling");
+  assert.equal(want("cy"), 2, "five days ago: sleeping");
+  assert.equal(want("dee"), 3, "a year ago: away");
+  assert.equal(want("eve"), 0, "an Ooga the stats leave out keeps its bundled stamp, as on a page");
+});
+
+test("a game that keeps no record writes nothing to storage", async () => {
+  const h = harness();
+  const { ws } = await h.join(1, "island:main:v1");
+  let writes = 0;
+  const put = h.host.ctx.storage.put, del = h.host.ctx.storage.delete;
+  h.host.ctx.storage.put = async (...a) => { writes++; return put(...a); };
+  h.host.ctx.storage.delete = async (...a) => { writes++; return del(...a); };
+  h.run(20000);
+  assert.equal(writes, 0);
+  h.host.webSocketClose(ws, 1000, "", true);
 });

@@ -790,6 +790,7 @@
   const fireHazards = [];
   let clankerFireReachable = null;
   const workZones = [];
+  const PLACE_AT = { x: 0, y: 0, z: 0 };
   // Every open cave's doorway, { x, z, sr, cr }, kept clear of the meadow's props (`entranceClear`).
   const entranceZones = [];
   const closedCaveZones = [];
@@ -3496,6 +3497,45 @@
       nearest = distance; out.x = s.x; out.y = feet; out.z = s.z;
     }
     return Number.isFinite(nearest);
+  };
+  // The island's routine tables as the server's island world (island-sim.js) reads them, for scripts/island-layout.mjs
+  // to bake into src/js/island-layout.js: everything static the passive crew's choices depend on, each spot with
+  // whether it passes the checks that never change (`ok`); what moves with the pile, the workers and the bodies about
+  // is left to the sim. Debug only.
+  const routineLayout = () => {
+    const r = (v) => Math.round(v * 100) / 100, height = Math.max(...crew.list.map((cave) => cave.traits.height));
+    const still = (s) => {
+      const feet = island.surfaceAt(s.x, s.z);
+      return feet === 0 && !npcRampRoofAt(s.x, feet, s.z) && !npcClosedCaveAt(s.x, s.z, feet, 1.5)
+        && npcFireClear(s.x, feet, s.z, s.x, feet, s.z, 1.5) && walkable(s.x, s.z, s.x, s.z, feet, 1.5, null);
+    };
+    // A spot as [x, z, its own heading or null, 1 when it passes the checks that never change].
+    const spot = (s) => [r(s.x), r(s.z), Number.isNaN(s.ry) ? null : r(s.ry), still(s) ? 1 : 0];
+    const fire = firePitRig.root.parent.position, places = crew.cavemen.size * 4 + 16, at = { x: 0, y: 0, z: 0 };
+    // The meadow planner's own lines (npc-paths.js `fixed`).
+    const lines = island.path.centerlines.filter((line) => line.length > 1 && Math.hypot(line[0].x, line[0].z) < island.meadowRadius
+      && Math.hypot(line[line.length - 1].x, line[line.length - 1].z) <= island.meadowRadius + 0.01);
+    return {
+      meadowRadius: island.meadowRadius,
+      lines: lines.map((line) => line.map((p) => [r(p.x), r(p.z)])),
+      fire: [r(fire.x), r(fire.z), FIRE_AVOID_RADIUS],
+      firstSeats: FIRE_SEATS,
+      seats: fireSeats.map(spot), chillSpots: chillSpots.map(spot), spots: spots.map(spot),
+      // Each work cave: its mouth [x, z, floor, heading], where its trail is rejoined, and its fan's places that every
+      // Ooga may shoot from, [place, x, z], in place order.
+      sites: crew.workSites.map((site) => {
+        const kept = [];
+        for (let place = 0; place < places; place++) {
+          site.placeAt(place, at);
+          if (site.placeClear(at.x, at.z, height)) kept.push([place, r(at.x), r(at.z)]);
+        }
+        return { id: site.mouth.id, repo: site.repo, additionalRepo: site.additionalRepo || null, fallback: !!site.fallback,
+          mouth: [r(site.mouth.x), r(site.mouth.z), r(site.mouth.floorY), r(site.mouth.ry)],
+          approach: [r(site.route[0].x), r(site.route[0].z)], approachDistance: site.approachDistance, places: kept };
+      }),
+      // The sealed caves' fronts, as the crew's `npcClosedCaveAt` reads them.
+      closed: closedCaveZones.map((zone) => [r(zone.x), r(zone.z), r(zone.sr), r(zone.cr), r(zone.half), r(zone.front)])
+    };
   };
   const pileRespawnSpot = (cave, out, initial = false, search = null) => {
     const inner = Math.max(5, altar.platformRadius + 1.3), outer = inner + 3;
@@ -11800,19 +11840,35 @@
         route: [approach],
         approachDistance: 2.5,
         target: (cave, out) => setVec(out, mouth.x, mouth.floorY + 1.5, mouth.z),
-        position: (cave, out, retry = false) => {
-          // Reserve the first free place in the fan. Leave the central path
-          // open for reload traffic and stagger each extra row behind it.
+        // Where fan place `place` stands. Leave the central path open for reload traffic and stagger each extra row
+        // behind it; a full-arm companion lane between the inner shooters; and, as a wide fan too close to the rim
+        // fires diagonally into its stone jambs, each row backed away enough to see across the opening.
+        placeAt: (place, out) => {
+          const row = Math.floor(place / 4), side = place & 1 ? 1 : -1;
+          const x = side * (2.2 + Math.floor(place % 4 / 2) * 1.35 + (row & 1) * 0.6);
+          const z = 4.8 + row * 1.35 + Math.abs(x) * 0.32;
+          out.x = mouth.x + cr * x + sr * z; out.y = mouth.floorY; out.z = mouth.z - sr * x + cr * z;
+          return out;
+        },
+        // Whether a body `height` tall may shoot from (px, pz): level ground, room to stand, and either gun shoulder
+        // clear to both sides of the usable doorway, not just a center-to-center ray that misses an obstructed muzzle.
+        placeClear: (px, pz, height) => {
+          if (Math.abs(island.supportAt(px, pz, mouth.floorY, 0.05, ABYSS_FLOOR, PLAYER_RADIUS) - mouth.floorY) > 0.05
+            || !island.clearAt(px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, height)
+            || !solids.segmentClear(px, mouth.floorY + 0.03, pz, px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, height)) return false;
+          for (let shoulder = -1; shoulder <= 1; shoulder += 2) for (let edge = -1; edge <= 1; edge++) {
+            const ax = px + cr * shoulder * 0.65 - sr, az = pz - sr * shoulder * 0.65 - cr;
+            const bx = mouth.x + cr * edge * 1.65 + sr * 0.5, bz = mouth.z - sr * edge * 1.65 + cr * 0.5;
+            if (!shared.workShotClear(ax, mouth.floorY + 1.25, az, bx, mouth.floorY + 1.5, bz)) return false;
+          }
+          return true;
+        },
+        position(cave, out, retry = false) {
+          // Reserve the first free place in the fan.
           const count = crew.cavemen.size * 4 + 16;
           for (let attempt = 0; attempt < count; attempt++) {
             const place = (attempt + (retry ? cave.work.place + 1 : 0)) % count;
-            const row = Math.floor(place / 4), side = place & 1 ? 1 : -1;
-            // Leave a full-arm companion lane between the inner shooters.
-            const x = side * (2.2 + Math.floor(place % 4 / 2) * 1.35 + (row & 1) * 0.6);
-            // A wide fan too close to the rim fires diagonally into its stone
-            // jambs. Back each row away enough to see across the opening.
-            const z = 4.8 + row * 1.35 + Math.abs(x) * 0.32;
-            const px = mouth.x + cr * x + sr * z, pz = mouth.z - sr * x + cr * z;
+            const { x: px, z: pz } = this.placeAt(place, PLACE_AT);
             let occupied = crew.spotOccupied(cave, px, mouth.floorY, pz);
             for (let i = 0; !occupied && i < crew.list.length; i++) {
               const other = crew.list[i];
@@ -11822,18 +11878,7 @@
                 || shared.workSites[other.work.site]?.repo !== slot.repo) continue;
               if (Math.hypot(other.work.position.x - px, other.work.position.z - pz) < 0.9) { occupied = true; break; }
             }
-            if (occupied || Math.abs(island.supportAt(px, pz, mouth.floorY, 0.05, ABYSS_FLOOR, PLAYER_RADIUS) - mouth.floorY) > 0.05
-              || !island.clearAt(px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, cave.traits.height)
-              || !solids.segmentClear(px, mouth.floorY + 0.03, pz, px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, cave.traits.height)) continue;
-            let clear = true;
-            // Cover either gun shoulder and both sides of the usable doorway,
-            // not just a center-to-center ray that misses an obstructed muzzle.
-            for (let shoulder = -1; shoulder <= 1 && clear; shoulder += 2) for (let edge = -1; edge <= 1; edge++) {
-              const ax = px + cr * shoulder * 0.65 - sr, az = pz - sr * shoulder * 0.65 - cr;
-              const bx = mouth.x + cr * edge * 1.65 + sr * 0.5, bz = mouth.z - sr * edge * 1.65 + cr * 0.5;
-              if (!shared.workShotClear(ax, mouth.floorY + 1.25, az, bx, mouth.floorY + 1.5, bz)) { clear = false; break; }
-            }
-            if (!clear) continue;
+            if (occupied || !this.placeClear(px, pz, cave.traits.height)) continue;
             out.x = px; out.y = mouth.floorY; out.z = pz;
             cave.work.place = place;
             return true;
@@ -12292,7 +12337,7 @@
         get bifrost() { return bifrostIsle; },
         get footsteps() { return footsteps; },
         get chalkboardAt() { return chalkboardClearance; },
-        slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, lab: null, hud, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, trimPool: fx.trimPool,
+        slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, lab: null, hud, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, routineLayout, trimPool: fx.trimPool,
         get shown() {
           return pile.shown;
         },
