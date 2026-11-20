@@ -570,6 +570,7 @@
   const effectsActiveAt = (x, y, z, active, near, far) => {
     const radius = active ? far : near, radius2 = radius * radius;
     if (effectPointNear(camera.position, x, y, z, radius2) || effectPointNear(camera.target, x, y, z, radius2)) return true;
+    if (architectCave?.nearFeed(x, y, z, radius2)) return true;
     const player = clankerPlay?.player || pilot?.player;
     return !!player && effectPointNear(player.root.position, x, y, z, radius2);
   };
@@ -656,7 +657,7 @@
   let phase = null;
   const updatePositionDebug = (force = false) => {
     if (!positionDebug || !camera || !pilot) return;
-    if (architectCave) positionDebug.dataset.cameras = JSON.stringify(architectCave.feeds.map(f => ({ captures: f.captures, calls: f.draws, triangles: f.triangles, heaviest: f.heaviest })));
+    if (architectCave) positionDebug.dataset.cameras = JSON.stringify(architectCave.feeds.map(f => ({ captures: f.captures, channel: f.channel?.id, pending: f.pending, calls: f.draws, triangles: f.triangles, heaviest: f.heaviest })));
     pilot.capturePose(POSITION_POSE);
     const p = camera.position, t = camera.target, up = camera.up;
     const dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
@@ -2938,7 +2939,7 @@
     const radius = poolEffectsActive ? POOL_EFFECTS_FAR : POOL_EFFECTS_NEAR;
     const player = clankerPlay?.player || pilot?.player;
     const active = !gameMode && !cloudPlaying() && (nearPoolEffects(camera.position, radius) || nearPoolEffects(camera.target, radius)
-      || !!player && nearPoolEffects(player.root.position, radius));
+      || !!player && nearPoolEffects(player.root.position, radius) || architectCave?.observes("rainforest"));
     if (active === poolEffectsActive) return;
     poolEffectsActive = active;
     weather.pause(!active);
@@ -11978,7 +11979,8 @@
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
     pile.core.geometry.cameraFeedKeep = true;
     models.bananaTileGeometry().cameraFeedKeep = models.bananaTileGeometry(true).cameraFeedKeep = true;
-    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave, weather, mouths: island.mouths });
+    architectCave = BL.architectCave.create({ root, renderer, camera, pilot, mirror: mirrorCave, weather, mouths: island.mouths,
+      places: { pool: mempoolIsland.place, repos: repoIsland.spot, sphere: timechainIsland.place, bifrost: bifrostIsle?.site.node.position } });
     yield* pause(slice);
     for (const cave of crew.list) entropyLab.phase.body.track(cave.root, cave.traits.height * 2,
       Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
