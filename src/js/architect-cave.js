@@ -9,6 +9,10 @@
   const contains = (x, y, z) => y < -32 && y > -55 && x * x + z * z < 225;
   const clear = (x, z, radius = 0.4) => Math.hypot(x, z) < RADIUS - radius - 0.55
     && !(Math.abs(x) < 1.15 + radius && z > -1.5 - radius && z < 0.8 + radius);
+  const segmentClear = (x, y, z, toX, toY, toZ, radius, height) =>
+    clear(toX, toZ, radius) && toY >= FLOOR - 1e-7 && toY + height <= FLOOR + HEIGHT
+    && BL.terrain.segmentBoxClear(x, y, z, toX - x, toY - y, toZ - z, radius, height,
+      -1.15, FLOOR, -1.5, 1.15, FLOOR + 2.4, 0.8);
   const disc = (radius, y, color, down = false) => {
     const g = geometry(), rgb = BL.math.hexToRgb(color);
     pushVert(g, 0, y, 0);
@@ -155,5 +159,5 @@
       dispose() { audio?.dispose(); audio = null; removeChild(root, group); feeds.length = meshes.length = 0; }
     };
   };
-  BL.architectCave = { create, contains, clear, FLOOR, HEIGHT };
+  BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT };
 })();
