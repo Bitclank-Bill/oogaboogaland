@@ -549,18 +549,19 @@
   };
   const startWardrobe = (signal) => {
     const $ = (id) => document.getElementById(id), equipment = BL.equipment;
-    const view = wardrobe = { select: $("studio-hat"), save: $("studio-hat-save"), own: $("studio-hat-own"), status: $("studio-hat-status"), link: $("studio-hat-link"), selection: null, dirty: false, ticket: 0, stop: null };
+    const view = wardrobe = { select: $("studio-hat"), range: $("studio-hat-size"), sizeOutput: $("studio-hat-size-value"), reset: $("studio-hat-size-reset"),
+      save: $("studio-hat-save"), own: $("studio-hat-own"), status: $("studio-hat-status"), link: $("studio-hat-link"), selection: null, size: 100, dirty: false, ticket: 0, stop: null };
     const key = (s) => s ? s.item === "none" ? "none" : `${s.item}@${s.version}` : "authored";
     const add = (value, label) => { const option = document.createElement("option"); option.value = value; option.textContent = label; view.select.append(option); };
     add("authored", "Original character look"); add("none", "No hat");
     for (const item of BL.equipmentHats.items) add(`${item.id}@${item.current}`, `${item.label} · ${item.creator}`);
     const owns = () => BL.net.ownCharacter()?.handle.toLowerCase() === state.name.toLowerCase();
     const draw = async () => {
-      const ticket = ++view.ticket, chosen = view.selection;
+      const ticket = ++view.ticket, chosen = view.selection, size = view.size;
       try {
         if (chosen && chosen.item !== "none" && !BL.equipmentHats.loaded(chosen.item, chosen.version)) await BL.equipmentHats.load(chosen.item, chosen.version);
         if (signal.aborted || wardrobe !== view || ticket !== view.ticket) return;
-        if (!BL.characterEquipment.apply(cave, chosen)) view.status.textContent = "This character needs a hat fitting before it can wear this selection.";
+        if (!BL.characterEquipment.apply(cave, chosen, size)) view.status.textContent = "This character needs a hat fitting before it can wear this selection.";
       } catch { if (!signal.aborted && wardrobe === view && ticket === view.ticket) view.status.textContent = "This hat could not be loaded. Try again."; }
     };
     const changed = () => {
@@ -568,11 +569,17 @@
       const own = owns(), s = equipment.state, supported = BL.characterEquipment.supports(cave);
       if (!view.dirty) {
         view.selection = own && s.supported ? s.record.selection : null;
+        view.size = view.selection && view.selection.item !== "none" ? s.record.size : 100;
         const value = key(view.selection);
         if (![...view.select.options].some((option) => option.value === value)) add(value, "My saved hat version");
         view.select.value = value;
         draw();
       }
+      view.range.value = String(view.size);
+      view.range.setAttribute("aria-valuetext", `${view.size}%`);
+      view.sizeOutput.value = `${view.size}%`;
+      view.range.disabled = !supported || !view.selection || view.selection.item === "none";
+      view.reset.disabled = view.range.disabled || view.size === 100;
       view.save.disabled = !own || !s.supported || s.busy || !supported;
       view.own.hidden = !BL.net.state.me || own;
       $("studio-hat-signin").hidden = !BL.net.state.backend || !!BL.net.state.me;
@@ -585,12 +592,20 @@
     view.select.addEventListener("change", () => {
       const value = view.select.value, [item, version] = value.split("@");
       view.selection = value === "authored" ? null : value === "none" ? { item: "none", version: null } : { item, version };
+      view.size = owns() && view.selection && view.selection.item !== "none" && key(view.selection) === key(equipment.state.record.selection) ? equipment.state.record.size : 100;
       view.dirty = true; changed(); draw(); view.select.blur();
     }, { signal });
+    const resize = (size) => {
+      if (view.range.disabled || !Number.isInteger(size) || size < 80 || size > 120 || size === view.size) return;
+      view.size = size; view.dirty = true; changed(); draw();
+    };
+    view.range.addEventListener("input", () => resize(Number(view.range.value)), { signal });
+    view.reset.addEventListener("click", () => resize(100), { signal });
     view.save.addEventListener("click", async () => {
       if (!owns()) return;
-      const submitted = key(view.selection);
-      if (await equipment.save(view.selection) && !signal.aborted && wardrobe === view && key(view.selection) === submitted) { view.dirty = false; changed(); }
+      const submitted = key(view.selection), size = view.size;
+      if (await equipment.save(view.selection, view.selection && view.selection.item !== "none" ? size : undefined)
+        && !signal.aborted && wardrobe === view && key(view.selection) === submitted && view.size === size) { view.dirty = false; changed(); }
     }, { signal });
     view.own.addEventListener("click", () => { const own = BL.net.ownCharacter(); if (own) show(own.handle); }, { signal });
     view.stop = equipment.subscribe(changed);

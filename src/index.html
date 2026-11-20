@@ -411,6 +411,9 @@
         <div class="studio-wardrobe">
           <label class="roster-sort-label" for="studio-hat">Try a hat</label>
           <select class="slab" id="studio-hat" aria-label="Hat" aria-describedby="studio-hat-status"></select>
+          <label class="roster-sort-label studio-hat-size-label" for="studio-hat-size">Hat size <output id="studio-hat-size-value" for="studio-hat-size">100%</output></label>
+          <input type="range" id="studio-hat-size" min="80" max="120" step="1" value="100" aria-valuetext="100%" aria-describedby="studio-hat-status" disabled>
+          <button type="button" class="foot-button" id="studio-hat-size-reset" disabled>Reset fitted size</button>
           <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save hat for my Ooga</button>
           <button type="button" class="foot-button" id="studio-hat-own" hidden>Show my Ooga</button>
           <p class="studio-note" id="studio-hat-status" role="status"></p>

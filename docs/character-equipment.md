@@ -67,7 +67,7 @@ uses same-origin account APIs to save equipment without taking over an island
 tab's room connection. Previewing another character never edits that character
 or its owner's equipment.
 
-The server stores the selected item/version and a monotonic appearance revision
+The server stores the selected item/version, personal size and a monotonic appearance revision
 against the numeric account ID. Changes validate the session, origin, item and
 expected revision, and persist before acknowledgement. The live Room sends
 small appearance updates to the wearer and players who can see the avatar,
@@ -76,17 +76,27 @@ current state, and stale updates cannot replace newer equipment. Pose handling
 performs no equipment storage reads.
 
 Open the hosted studio at `/?scene=studio`, sign in, select a hat and press
-**Save hat for my Ooga**. It can remain open beside an island tab on the same
+**Save hat for my Ooga**. **Hat size** previews 80–120% of the reviewed fitting;
+**Reset fitted size** returns to 100%. Both remain previews until Save. The
+percentage scales the hat uniformly around its fitting point (the center for
+the space helmet), reusing the attachment and geometry. A different hat starts
+at 100%; selecting the saved hat restores its saved size. This personal override
+does not create a catalog version or notify other wearers. It can remain open beside an island tab on the same
 account; the studio does not join the Room. Local preview links to the staging
 studio for account saving. A new creator version offers **Accept update** or
 **Keep my version**; a later distinct version can offer again.
 
 `GET /api/equipment` returns the account's current record. `PUT /api/equipment`
-takes its expected `revision` and either `selection` or a `decline` version.
+takes its expected `revision` and either `selection` (with optional `size`),
+`size` alone, or a `decline` version. `size` is an integer percentage from 80 to
+120. Omission preserves the saved size, including during Accept/Keep; older
+records and appearance messages without size default to 100.
 An original appearance is `selection: null`, and a bare head is
 `{ item: "none", version: null }`. Conflicts return 409 and the current record.
 The browser reads immutable geometry at `/api/equipment/hats/<sha256>.json`.
 Migration `0012_player_equipment.sql` adds one account row with deletion cascade.
+Migration `0013_player_equipment_size.sql` adds the validated size, defaulting
+existing choices to 100. An older Worker can still update the other columns.
 There is no purchase history or paid inventory in this iteration.
 
 Staging sets `EQUIPMENT_ENABLED=1`; production keeps it `0`. The staging workflow
@@ -135,12 +145,15 @@ equipment revision. It never appears in equipment messages or public metadata.
 
 The maintainer chose local multiplayer coverage plus a single-account live
 staging check. The local browser run, `node test/run.mjs equipment-app`, passed
-16/16 checks using the real hosted studio and renderer with explicit account,
+19/19 checks using the real hosted studio and renderer with explicit account,
 HTTP and socket fixtures. It covered all nine hat previews without reallocating
 the wearer, saving and reloading a pinned version, fixture creator revisions
 with **Accept update** and **Keep my version**, a later offer after declining,
 concurrent-save conflicts, authored/no-hat restoration, the apple-head fitting,
-and desktop and phone controls. Normal flows had clean consoles; the intentional
+and desktop and phone controls. Sizing checks cover preview-only slider/Reset,
+saved percentages across reloads, Accept/Keep preserving size, size-only live
+updates reusing attachments, legacy messages defaulting to 100, invalid/stale
+updates and a delayed Accept losing to a later Keep choice. Normal flows had clean consoles; the intentional
 409 response was checked separately for its expected browser resource error.
 
 The browser also applied fixture messages to local and remote avatar models:
@@ -157,6 +170,11 @@ checks, and retained Accept/Keep choices across reloads and newer metadata.
 Model tests separately checked all nine attachments, shared geometry, preserved
 authored heads and the reviewed apple fitting. Immutable archive validation and
 deployment retention checks cover keeping previously published versions.
+The 13 hat-model checks include physical apple clearances, reversible leaf/stalk
+tucking, six recipient types at 80/100/120%, fixed fitting anchors and repeated
+resizing without transform drift. Local Worker validation passed 831 of 833
+checks inside the sandbox; the two local-server checks blocked by `EPERM` passed
+in the seven-check poker-file rerun with local server access.
 
 At revision `39dc21ed82465bdbe22b25aee2e857aa3aadf649`,
 [Linux CI run 44800255713](https://github.com/OogaBoogaX/oogaboogaland/actions/runs/44800255713)

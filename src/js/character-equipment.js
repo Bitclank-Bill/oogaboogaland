@@ -88,12 +88,27 @@
     return found;
   };
   const selection = (cave) => worn.get(cave)?.selection || null;
-  const apply = (cave, selected) => {
+  const size = (cave) => worn.get(cave)?.size || 100;
+  const resize = (node, fit, percent) => {
+    const q = percent / 100, p = fit.position, s = fit.scale, a = fit.anchor;
+    // Always start from the reviewed fit. Returning to 100 is exact, even after many slider changes.
+    node.position.x = percent === 100 ? p.x : a.x + (p.x - a.x) * q;
+    node.position.y = percent === 100 ? p.y : a.y + (p.y - a.y) * q;
+    node.position.z = percent === 100 ? p.z : a.z + (p.z - a.z) * q;
+    node.scale.x = s.x * q; node.scale.y = s.y * q; node.scale.z = s.z * q;
+  };
+  const apply = (cave, selected, percent = 100) => {
+    if (!Number.isInteger(percent) || percent < 80 || percent > 120) return false;
     if (!supported(cave)) return selected === null;
     if (selected !== null && (!selected || !hats.has(selected.item, selected.version)
       || selected.item !== "none" && recipes.get(selected.version)?.item !== selected.item)) return false;
+    if (!selected || selected.item === "none") percent = 100;
     const old = worn.get(cave);
-    if (old && old.selection?.item === selected?.item && old.selection?.version === selected?.version || !old && selected === null) return true;
+    if (old && old.selection?.item === selected?.item && old.selection?.version === selected?.version) {
+      if (old.size !== percent) { if (old.node) resize(old.node, old.fit, percent); old.size = percent; }
+      return true;
+    }
+    if (!old && selected === null) return true;
     const head = cave.parts.head, native = cave.parts.nativeHat || [];
     const own = old || { open: cave.headOpen, closed: cave.headClosed, portrait: cave.portraitHead, visible: native.map((node) => node.visible), selection: null, node: null };
     const closed = head.geometry === cave.headClosed;
@@ -101,7 +116,7 @@
     const apple = cave.traits.name.toLowerCase() === "w-s-bitcoin" && BL.models.STYLE === "R";
     const covered = apple && selected && selected.item !== "none" && !OPEN_CROWNS.has(selected.item);
     const bare = selected && (cave.traits.dress?.hat || covered) ? cave.bareHead() : own;
-    let node = null;
+    let node = null, fit = null;
     if (selected && selected.item !== "none") {
       const archive = recipes.get(selected.version), shared = meshes(selected.version), h = cave.traits.height;
       node = createNode({ scale: { x: h, y: h, z: h } });
@@ -128,6 +143,18 @@
         const visible = !(apple && selected.item === "johnstackton21m-helmet" && i === 2);
         addChild(node, createNode({ position: vector(source.position), rotation: vector(source.rotation), scale: vector(source.scale), geometry: shared[i], visible }));
       }
+      const name = cave.traits.name.toLowerCase(), u = h / 16;
+      const crown = apple ? 8 : BL.models.STYLE !== "R" ? 7 : name === "bitcoin-bill" ? 9 : name === "midy-machete" ? 5.8 : 7;
+      const anchor = { x: 0, y: crown * u, z: apple ? -0.5 * u : 0 };
+      if (selected.item === "johnstackton21m-helmet") {
+        // This helmet encloses the head. Scale around its fitted dome center, including the donor's tilt.
+        BL.scene.updateWorld(node, null);
+        const center = [];
+        BL.math.mat4.transformPoint(center, node.children[0].world, 0, 0.2, 0);
+        anchor.x = center[0]; anchor.y = center[1]; anchor.z = center[2];
+      }
+      fit = { position: { ...node.position }, scale: { ...node.scale }, anchor };
+      resize(node, fit, percent);
     }
     if (own.node) removeChild(head, own.node);
     for (let i = 0; i < native.length; i++) native[i].visible = selected ? false : own.visible[i];
@@ -137,9 +164,10 @@
     if (node) addChild(head, node);
     own.node = cave.equipmentHatNode = node;
     own.selection = selected ? Object.freeze({ item: selected.item, version: selected.version }) : null;
+    own.fit = fit; own.size = percent;
     worn.set(cave, own);
     return true;
   };
-  BL.characterEquipment = { apply, clear: (cave) => apply(cave, null), supports: supported, selection, seed,
+  BL.characterEquipment = { apply, clear: (cave) => apply(cave, null), supports: supported, selection, size, seed,
     get loaded() { return recipes.size; } };
 })();

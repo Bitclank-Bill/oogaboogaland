@@ -39735,7 +39735,8 @@ const equipmentAppChecks = async () => {
     archives.set(version, json); return version;
   };
   const second = variant([35, 190, 90]), third = variant([190, 45, 170]);
-  let current = item.current, saved = { selection: null, revision: 0, declined: null, update: null };
+  let current = item.current, saved = { selection: null, size: 100, revision: 0, declined: null, update: null };
+  let heldArchive = null, archiveGate = null, releaseArchive = null;
   const account = { id: 71, login: "equipment-preview", display: "Equipment preview" }, at = Math.floor(Date.now() / 1000) - 3600;
   const answer = () => ({ ...saved, update: saved.selection?.item === item.id && saved.selection.version !== current && saved.declined !== current
     ? { item: item.id, version: current } : null });
@@ -39752,7 +39753,7 @@ const equipmentAppChecks = async () => {
       const command = JSON.parse(body); writes.push(command);
       if (command.revision !== saved.revision) return json(409, { error: "conflict", equipment: answer() });
       saved = { selection: Object.hasOwn(command, "selection") ? command.selection : saved.selection,
-        revision: saved.revision + 1, declined: command.decline || null, update: null };
+        size: command.size ?? saved.size, revision: saved.revision + 1, declined: command.decline || null, update: null };
       return json(200, { equipment: answer() });
     }
     const version = /^\/api\/equipment\/hats\/([a-f0-9]{64})\.json$/.exec(path)?.[1];
@@ -39760,6 +39761,7 @@ const equipmentAppChecks = async () => {
       network.archives++;
       archiveReads.push(version);
       if (!archives.has(version)) return json(404, { error: "not found" });
+      if (version === heldArchive) await archiveGate;
       res.writeHead(200, { "content-type": "application/json" }); res.end(archives.get(version)); return;
     }
     const file = resolve(staged, `.${path === "/" ? "/index.html" : path}`);
@@ -39781,9 +39783,10 @@ const equipmentAppChecks = async () => {
   const open = async (options = {}) => {
     b = await launch(options);
     await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
-      const actual = window.fetch.bind(window); window.__equipmentFixture = { sockets: [], sent: [] };
+      const actual = window.fetch.bind(window); window.__equipmentFixture = { sockets: [], sent: [], archives: [] };
       window.fetch = (input, options) => {
         const url = new URL(typeof input === "string" ? input : input.url, location.href);
+        if (url.pathname.startsWith('/api/equipment/hats/')) __equipmentFixture.archives.push(url.pathname);
         if (url.origin === location.origin && (!url.pathname.startsWith("/api/") || url.pathname === "/api/me" || url.pathname.startsWith("/api/equipment"))) return actual(input, options);
         return Promise.resolve(Response.json({}));
       };
@@ -39799,6 +39802,10 @@ const equipmentAppChecks = async () => {
     await wait("BL.equipment?.state.supported && BL.net.ownCharacter()?.handle==='equipment-preview' && !!document.getElementById('studio-hat')", "Hosted wardrobe did not initialize");
   };
   const choose = async (value) => b.evaluate(`(() => { const select=document.getElementById('studio-hat');select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  const resize = async (size) => {
+    await b.evaluate(`(() => { const input=document.getElementById('studio-hat-size');input.value=${size};input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+    await wait(`BL.characterEquipment.size(__ooga.studio.cave)===${size}`, "Hat size preview did not apply");
+  };
   const wearing = (selection) => `JSON.stringify(BL.characterEquipment.selection(__ooga.studio.cave))===${JSON.stringify(JSON.stringify(selection))}`;
   const save = async (selection) => {
     const previous = saved.revision;
@@ -39817,27 +39824,42 @@ const equipmentAppChecks = async () => {
     record("equipment studio: every registered hat previews on the same wearer without saving or opening a Room socket", previews === equipmentHats.items.length && writes.length === 0
       && await b.evaluate("__ooga.studio.cave===__equipmentCave && __ooga.studio.cave.root===__equipmentRoot && !__equipmentFixture.sockets.some(s=>s.url.includes('/room'))"));
     const first = { item: item.id, version: item.current };
-    await choose(`${item.id}@${item.current}`); await save(first);
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "Straw hat preview did not appear");
+    await b.evaluate("window.__sizedHat=__ooga.studio.cave.equipmentHatNode");
+    await resize(120);
+    const previewSize = await b.evaluate("__ooga.studio.cave.equipmentHatNode===__sizedHat && document.getElementById('studio-hat-size-value').textContent.includes('120')");
+    await b.evaluate("document.getElementById('studio-hat-size-reset').click()");
+    await wait("BL.characterEquipment.size(__ooga.studio.cave)===100", "Reset did not restore the fitted size");
+    record("equipment studio: size and Reset preview in place without saving or changing the catalog version", previewSize && writes.length === 0
+      && await b.evaluate("__ooga.studio.cave.equipmentHatNode===__sizedHat && document.getElementById('studio-hat-size').value==='100'"));
+    await resize(110); await save(first);
     await b.open(address); await untilReady(b, 30000); await wait(wearing(first), "Reload lost the saved hat");
-    record("equipment studio: the real save control persists its immutable version across a new page", saved.revision === 1 && saved.selection.version === item.current
-      && await b.evaluate("!document.getElementById('studio-hat-save').disabled && BL.equipment.state.record.revision===1"));
+    record("equipment studio: the real save control persists its immutable version and personal size across a new page", saved.revision === 1 && saved.selection.version === item.current && saved.size === 110
+      && await b.evaluate("!document.getElementById('studio-hat-save').disabled && BL.equipment.state.record.revision===1 && BL.characterEquipment.size(__ooga.studio.cave)===110 && document.getElementById('studio-hat-size').value==='110'"));
     current = second;
     await b.evaluate("BL.equipment.refresh()");
     await wait("!document.getElementById('equipment-update').hidden", "Creator update was not offered");
     record("equipment creator update: a newer immutable version offers a choice without replacing the worn geometry", await b.evaluate(wearing(first)) && saved.selection.version === item.current);
+    heldArchive = second; archiveGate = new Promise(resolve => { releaseArchive = resolve; });
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    await wait(`__equipmentFixture.archives.includes('/api/equipment/hats/${second}.json')`, "Accept did not start loading the offered archive");
     await b.evaluate("document.getElementById('equipment-decline').click()");
     await wait("!BL.equipment.state.busy && document.getElementById('equipment-update').hidden", "Keep my version did not complete");
+    releaseArchive(); heldArchive = null;
+    await wait(`BL.equipmentHats.loaded(${JSON.stringify(item.id)},${JSON.stringify(second)})`, "Delayed archive did not finish loading");
+    record("equipment creator update: a slow Accept cannot overwrite a later Keep choice", saved.selection.version === item.current && saved.declined === second && saved.size === 110
+      && writes.at(-1).decline === second && await b.evaluate(wearing(first)));
     await b.open(address); await untilReady(b, 30000); await wait(wearing(first), "Declined version did not survive reload");
-    record("equipment creator update: Keep retains the previous version and suppresses that offer after reload", saved.selection.version === item.current && saved.declined === second
-      && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    record("equipment creator update: Keep retains the previous version and size and suppresses that offer after reload", saved.selection.version === item.current && saved.declined === second && saved.size === 110
+      && await b.evaluate("document.getElementById('equipment-update').hidden && BL.characterEquipment.size(__ooga.studio.cave)===110"));
     current = third;
     await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "A later update was incorrectly suppressed");
     await b.evaluate("document.getElementById('equipment-accept').click()");
     const accepted = { item: item.id, version: third };
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.selection?.version===${JSON.stringify(third)}`, "Accept did not save the offered version");
     await wait(wearing(accepted), "Accepted version did not reach the existing wearer");
-    record("equipment creator update: a later offer loads verified changed geometry and Accept saves exactly that version", saved.selection.version === third && saved.declined === null
-      && archiveReads.includes(third) && writes.at(-1).selection.version === third && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    record("equipment creator update: Accept saves the new immutable version while retaining personal size", saved.selection.version === third && saved.declined === null && saved.size === 110
+      && archiveReads.includes(third) && writes.at(-1).selection.version === third && await b.evaluate("document.getElementById('equipment-update').hidden && BL.characterEquipment.size(__ooga.studio.cave)===110"));
     mkdirSync(shots, { recursive: true }); await b.screenshot(join(shots, "studio.png"));
     const live = await b.evaluate(`(() => {
       const own=BL.models.caveman(BL.contributors.traitsFor('equipment-preview'));
@@ -39848,34 +39870,38 @@ const equipmentAppChecks = async () => {
       BL.equipment.applyLocal(own);
       BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:1,selection:oldSelection}]});
       BL.equipment.applyRemote(peer,72);
-      const oldGeometry=peer.equipmentHatNode.children[0].geometry;
-      BL.equipment.receive({t:'equipment',id:72,revision:2,selection:newSelection});BL.equipment.applyRemote(peer,72);
+      const oldNode=peer.equipmentHatNode,oldGeometry=oldNode.children[0].geometry,legacy=BL.characterEquipment.size(peer)===100;
+      BL.equipment.receive({t:'equipment',id:72,revision:2,selection:oldSelection,size:80});BL.equipment.applyRemote(peer,72);
+      const resized=peer.equipmentHatNode===oldNode&&BL.characterEquipment.size(peer)===80&&BL.characterEquipment.size(own)===110;
+      BL.equipment.receive({t:'equipment',id:72,revision:3,selection:newSelection,size:120});BL.equipment.applyRemote(peer,72);
       const node=peer.equipmentHatNode,geometry=node.children[0].geometry,childCount=peer.parts.head.children.length;
       const changed=geometry!==oldGeometry&&JSON.stringify(geometry.faces[0].color)!==JSON.stringify(oldGeometry.faces[0].color);
       for(let i=0;i<20;i++)BL.equipment.applyRemote(peer,72);
       const reused=peer.equipmentHatNode===node&&peer.parts.head.children.length===childCount&&own.equipmentHatNode.children[0].geometry===geometry;
-      BL.equipment.receive({t:'equipment',id:72,revision:1,selection:{item:'none',version:null}});BL.equipment.applyRemote(peer,72);
-      const stale=BL.characterEquipment.selection(peer).version===newSelection.version;
+      BL.equipment.receive({t:'equipment',id:72,revision:1,selection:{item:'none',version:null},size:80});BL.equipment.applyRemote(peer,72);
+      BL.equipment.receive({t:'equipment',id:72,revision:4,selection:newSelection,size:1000});BL.equipment.applyRemote(peer,72);
+      const stale=BL.characterEquipment.selection(peer).version===newSelection.version&&BL.characterEquipment.size(peer)===120;
       BL.equipment.receive({t:'equipment',kind:'remove',ids:[72]});BL.equipment.applyRemote(peer,72);
       const removed=BL.characterEquipment.selection(peer)===null;
-      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:2,selection:newSelection}]});BL.equipment.applyRemote(peer,72);
-      const arrived=BL.characterEquipment.selection(peer).version===newSelection.version;
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:3,selection:newSelection,size:120}]});BL.equipment.applyRemote(peer,72);
+      const arrived=BL.characterEquipment.selection(peer).version===newSelection.version&&BL.characterEquipment.size(peer)===120;
       const retained=[own,peer].every((c,i)=>c.root===originals[i].root&&c.parts===originals[i].parts&&c.parts.armR===originals[i].arm
         &&c.parts.head===originals[i].head&&c.parts.torso.geometry===originals[i].body)&&own.root.position.x===3&&peer.root.position.z===7&&peer.parts.armR.rotation.x===.6;
       BL.equipment.clear(own);BL.equipment.clear(peer);
-      return {changed,reused,stale,removed,arrived,retained,clean:!own.equipmentHatNode&&!peer.equipmentHatNode};
+      return {changed,reused,resized,legacy,stale,removed,arrived,retained,clean:!own.equipmentHatNode&&!peer.equipmentHatNode};
     })()`);
-    record("equipment live messages: own and remote bodies retain pose and gameplay nodes, share immutable geometry and reject stale appearances", live.changed&&live.reused&&live.stale&&live.retained, JSON.stringify(live));
+    record("equipment live messages: size-only updates reuse the attachment, old messages default to fitted size and stale or invalid updates are ignored", live.resized&&live.legacy&&live.stale, JSON.stringify(live));
+    record("equipment live messages: own and remote bodies retain pose and gameplay nodes and share immutable geometry", live.changed&&live.reused&&live.retained, JSON.stringify(live));
     record("equipment live messages: leaving visibility clears borrowed geometry and a fresh arrival snapshot restores the saved version", live.removed&&live.arrived&&live.clean, JSON.stringify(live));
     record("equipment studio: ordinary save, reload and creator-update flows have a clean console", b.logs.length === 0, b.logs.join("\n"));
     const conflictLog = b.logs.length;
     // Another tab wins the revision before this page saves. The response is authoritative; the fixture never
     // rewrites the client record or bypasses the actual HTTP/CAS-error path.
-    saved = { selection: { item: "none", version: null }, revision: saved.revision + 1, declined: null, update: null };
+    saved = { selection: { item: "none", version: null }, size: 80, revision: saved.revision + 1, declined: null, update: null };
     await choose(`${item.id}@${item.current}`); await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait("!BL.equipment.state.busy && !!BL.equipment.state.error", "Conflicting save did not report the concurrent change");
     record("equipment studio: a stale save adopts the authoritative choice and reports the conflict without overwriting it", saved.selection.item === "none"
-      && await b.evaluate(`BL.equipment.state.record.revision===${saved.revision} && BL.equipment.state.record.selection.item==='none' && /another tab/.test(document.getElementById('studio-hat-status').textContent)`));
+      && await b.evaluate(`BL.equipment.state.record.revision===${saved.revision} && BL.equipment.state.record.selection.item==='none' && BL.equipment.state.record.size===80 && /another tab/.test(document.getElementById('studio-hat-status').textContent)`));
     const conflictLogs = b.logs.slice(conflictLog);
     record("equipment studio: an intentional HTTP conflict produces only its expected browser resource error", conflictLogs.length <= 1
       && conflictLogs.every(line=>line === "[log.error] Failed to load resource: the server responded with a status of 409 (Conflict)"), conflictLogs.join("\n"));
@@ -39883,7 +39909,8 @@ const equipmentAppChecks = async () => {
     b.logs.length = 0;
     await choose("none"); await save({ item: "none", version: null });
     await choose("authored"); await save(null);
-    record("equipment studio: no hat and original appearance are distinct saved choices", writes.at(-2).selection.item === "none" && writes.at(-1).selection === null && saved.selection === null);
+    record("equipment studio: no hat and original appearance are distinct saved choices with sizing disabled", writes.at(-2).selection.item === "none" && writes.at(-1).selection === null && saved.selection === null
+      && await b.evaluate("document.getElementById('studio-hat-size').disabled && document.getElementById('studio-hat-size-reset').disabled"));
     // A fresh document avoids the independently recorded Studio leave/input-target defect. This check concerns
     // the authored attachment's reversible appearance, not that existing scene-transition contract.
     await b.open(address.replace(`character=${account.login}`, `character=${encodeURIComponent(item.creator)}`));
@@ -39913,12 +39940,15 @@ const equipmentAppChecks = async () => {
     await open({ w: 390, h: 844, mobile: true });
     await b.evaluate("if(document.getElementById('studio-features').dataset.folded==='true')document.querySelector('.studio-features-edge').click()");
     await wait("document.getElementById('studio-features').dataset.folded!=='true' && document.getElementById('studio-hat').getBoundingClientRect().right<=innerWidth", "Phone wardrobe did not unfold into view");
-    const fit = await b.evaluate("['studio-hat','studio-hat-save'].map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {id,visible:r.width>0&&r.height>0,left:r.left,right:r.right,top:r.top,bottom:r.bottom};})");
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "Phone hat did not preview");
+    const fit = await b.evaluate("['studio-hat','studio-hat-size','studio-hat-size-reset','studio-hat-save'].map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {id,visible:r.width>0&&r.height>0,left:r.left,right:r.right,top:r.top,bottom:r.bottom};})");
     record("equipment studio: phone selection and save controls fit the viewport", fit.every(r=>r.visible&&r.left>=0&&r.right<=390&&r.top>=0&&r.bottom<=844), JSON.stringify(fit));
-    await choose(`${item.id}@${item.current}`); await save(first);
-    record("equipment studio: phone controls save through the same account API with a clean console", saved.selection.version === item.current && b.logs.length === 0, b.logs.join("\n"));
+    await resize(80); await save(first);
+    await b.open(address); await untilReady(b, 30000); await wait("BL.characterEquipment.size(__ooga.studio.cave)===80", "Phone reload lost the personal hat size");
+    record("equipment studio: phone controls save size through the same account API and retain it after reload with a clean console", saved.selection.version === item.current && saved.size === 80 && b.logs.length === 0, b.logs.join("\n"));
     writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png"] }, null, 2) + "\n");
   } finally {
+    releaseArchive?.();
     if (b) b.close(); await dispose(); await new Promise(done=>server.close(done)); rmSync(temporary, { recursive: true, force: true });
   }
 };

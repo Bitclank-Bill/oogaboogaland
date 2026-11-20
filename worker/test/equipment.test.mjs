@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { deletePlayer } from "../src/db.js";
 import { equipmentHats, equipmentHatArchive } from "../src/equipment-hats.js";
 import { equipmentCommand, equipmentRecord, nextEquipment } from "../src/equipment-model.js";
@@ -15,7 +17,7 @@ const setup = async t => { const db = equipmentDatabase(); t.after(() => db.sql.
 
 test("equipment: SQL CAS admits one concurrent save and deletion cascades", async t => {
   const { db, account } = await setup(t), token = account.session.token_hash;
-  assert.deepEqual(await readEquipment(db, 1, token), { selection: null, revision: 0, declined: null, update: null });
+  assert.deepEqual(await readEquipment(db, 1, token), { selection: null, size: 100, revision: 0, declined: null, update: null });
   const answers = await Promise.all([writeEquipment(db, 1, token, { revision: 0, selection: hat() }),
     writeEquipment(db, 1, token, { revision: 0, selection: NONE })]);
   assert.deepEqual(answers.map(a => a.status).sort(), [200, 409]);
@@ -41,22 +43,65 @@ test("equipment: session removal between read and write cannot save", async t =>
   assert.equal(db.sql.prepare("SELECT count(*) AS n FROM player_equipment").get().n, 0);
 });
 
+test("equipment: size migration preserves saved pins and enforces whole percentages", t => {
+  const sql = new DatabaseSync(":memory:"); t.after(() => sql.close());
+  for (const file of ["0001_init.sql", "0012_player_equipment.sql"])
+    sql.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
+  sql.prepare("INSERT INTO players (id, login, created_at, last_login_at) VALUES (1, 'owner1', 1, 1)").run();
+  const chosen = hat();
+  sql.prepare("INSERT INTO player_equipment (player_id, item, version, revision, declined, updated_at) VALUES (1, ?, ?, 4, NULL, 1)")
+    .run(chosen.item, chosen.version);
+  sql.exec(readFileSync(new URL("../migrations/0013_player_equipment_size.sql", import.meta.url), "utf8"));
+  const row = sql.prepare("SELECT item, version, revision, size FROM player_equipment").get();
+  assert.deepEqual({ ...row }, { item: chosen.item, version: chosen.version, revision: 4, size: 100 });
+  for (const size of [79, 121, 100.5, null, "bad"])
+    assert.throws(() => sql.prepare("UPDATE player_equipment SET size = ?").run(size));
+  sql.prepare("UPDATE player_equipment SET size = 120").run();
+  sql.prepare("UPDATE player_equipment SET item = NULL, version = NULL, revision = revision + 1").run();
+  assert.equal(sql.prepare("SELECT size FROM player_equipment").get().size, 120, "an old Worker can still save without knowing about size");
+});
+
+test("equipment: resize shares selection CAS and old clients preserve the remembered size", async t => {
+  const { db, account } = await setup(t), token = account.session.token_hash;
+  assert.equal((await writeEquipment(db, 1, token, { revision: 0, selection: hat(), size: 80 })).equipment.size, 80);
+  const answers = await Promise.all([writeEquipment(db, 1, token, { revision: 1, size: 120 }),
+    writeEquipment(db, 1, token, { revision: 1, selection: NONE, size: 90 })]);
+  assert.deepEqual(answers.map(a => a.status).sort(), [200, 409]);
+  let current = await readEquipment(db, 1, token);
+  assert.equal(current.revision, 2);
+  assert.deepEqual(current, answers.find(a => a.status === 200).equipment);
+  assert.deepEqual(current, answers.find(a => a.status === 409).equipment);
+  const size = current.size;
+  for (const selection of [NONE, null, hat()]) {
+    const saved = await writeEquipment(db, 1, token, { revision: current.revision, selection });
+    assert.equal(saved.status, 200); assert.equal(saved.equipment.size, size);
+    current = saved.equipment;
+  }
+  const reset = await writeEquipment(db, 1, token, { revision: current.revision, size: 100 });
+  assert.equal(reset.equipment.size, 100); assert.deepEqual(reset.equipment.selection, hat());
+  assert.equal(db.sql.prepare("SELECT size FROM player_equipment WHERE player_id = 1").get().size, 100);
+});
+
 test("equipment: pinned version and declined update survive newer metadata", () => {
   const v1 = "1".repeat(64), v2 = "2".repeat(64), v3 = "3".repeat(64);
   let current = v2;
   const hats = { current: () => current, has: (id, v) => id === "test-hat" && [v1, v2, v3].includes(v) };
-  const stored = { item: "test-hat", version: v1, revision: 1, declined: null };
+  const stored = { item: "test-hat", version: v1, size: 85, revision: 1, declined: null };
   let record = equipmentRecord(stored, hats);
   assert.deepEqual(record.selection, { item: "test-hat", version: v1 });
   assert.deepEqual(record.update, { item: "test-hat", version: v2 });
   const declined = nextEquipment(record, equipmentCommand({ revision: 1, decline: v2 }, hats));
+  assert.equal(declined.size, 85);
   record = equipmentRecord({ ...stored, revision: 2, declined: declined.declined }, hats);
   assert.equal(record.update, null); assert.equal(record.selection.version, v1);
+  const resized = nextEquipment(record, equipmentCommand({ revision: 2, size: 110 }, hats));
+  assert.equal(resized.size, 110); assert.equal(resized.declined, v2); assert.deepEqual(resized.selection, record.selection);
   current = v3;
   record = equipmentRecord({ ...stored, revision: 2, declined: declined.declined }, hats);
   assert.equal(record.update.version, v3); assert.equal(record.selection.version, v1);
   const accepted = nextEquipment(record, equipmentCommand({ revision: 2, selection: { item: "test-hat", version: v3 } }, hats));
   assert.equal(accepted.selection.version, v3); assert.equal(accepted.declined, null);
+  assert.equal(accepted.size, 85, "Accept changes the creator version without resetting fit");
   assert.throws(() => nextEquipment(record, { revision: 2, decline: v2 }), /no longer offered/);
   assert.equal(nextEquipment(record, { revision: 1, selection: null }), null);
 });
@@ -66,6 +111,17 @@ test("equipment: immutable selections reject unknown versions and unbounded/extr
     { revision: 0, selection: { ...hat(), version: "f".repeat(64) } }, { revision: 0, selection: null, id: 2 },
     { revision: Number.MAX_SAFE_INTEGER, selection: null }, { revision: 0, decline: "x" }]) assert.throws(() => equipmentCommand(input));
   assert.deepEqual(equipmentCommand({ revision: 0, selection: NONE }), { revision: 0, selection: NONE });
+  for (const size of [79, 121, 99.5, "100", null, undefined, NaN, Infinity]) {
+    assert.throws(() => equipmentCommand({ revision: 0, size }));
+    assert.throws(() => equipmentCommand({ revision: 0, selection: hat(), size }));
+  }
+  for (const size of [80, 100, 120]) {
+    assert.deepEqual(equipmentCommand({ revision: 0, size }), { revision: 0, size });
+    assert.deepEqual(equipmentCommand({ revision: 0, selection: hat(), size }), { revision: 0, selection: hat(), size });
+  }
+  assert.throws(() => equipmentCommand({ revision: 0, decline: "a".repeat(64), size: 100 }));
+  assert.throws(() => equipmentCommand({ revision: 0, size: 100, id: 2 }));
+  assert.throws(() => equipmentRecord({ item: null, version: null, revision: 1, declined: null, size: 100.5 }));
 });
 
 test("equipment: HTTP authentication, bounds, flag and server-owned identity", async t => {
@@ -84,11 +140,16 @@ test("equipment: HTTP authentication, bounds, flag and server-owned identity", a
   assert.equal((await send({ revision: 0, selection: NONE, id: 2 })).status, 400);
   const response = await send({ revision: 0, selection: NONE });
   assert.equal(response.status, 200); assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await response.json(), { equipment: { selection: NONE, revision: 1, declined: null, update: null } });
+  assert.deepEqual(await response.json(), { equipment: { selection: NONE, size: 100, revision: 1, declined: null, update: null } });
   const conflict = await send({ revision: 0, selection: null });
   assert.equal(conflict.status, 409); assert.equal((await conflict.json()).equipment.revision, 1);
   assert.equal((await send(null, { method: "GET" })).status, 200);
   assert.equal((await send({ revision: 1, selection: null }, { env: { ...env, EQUIPMENT_LIMITER: { limit: async () => ({ success: false }) } } })).status, 429);
+  assert.equal((await send({ revision: 1, size: 120.5 })).status, 400);
+  const resized = await send({ revision: 1, selection: hat(), size: 120 });
+  assert.equal(resized.status, 200); assert.equal((await resized.json()).equipment.size, 120);
+  const reset = await send({ revision: 2, size: 100 });
+  assert.equal(reset.status, 200); assert.equal((await reset.json()).equipment.size, 100);
 });
 
 test("equipment: only known immutable hat archives are public, digest checked and cacheable", async () => {

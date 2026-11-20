@@ -247,6 +247,73 @@ test("apple fittings keep practical crown clearance and authored hat proportions
   }
 });
 
+test("hat sizing preserves its fitting point and proportions without replacing nodes or accumulating drift", () => {
+  const f = fixture(), render = f.BL.characterEquipment, M = f.BL.math.mat4;
+  for (const [name, crown, depth] of [["Normal", 7, 0], ["Slim", 7, 0], ["w-s-bitcoin", 8, -0.5],
+    ["Bitcoin-Bill", 9, 0], ["midy-machete", 5.8, 0], ["johnstackton21m", 7, 0]]) {
+    const cave = f.cave(name), head = cave.parts.head, rootNode = cave.root, unit = cave.traits.height / 16;
+    rootNode.position.x = 4; rootNode.rotation.y = 1; head.rotation.x = 0.2;
+    head.geometry = cave.headClosed;
+    for (const row of catalog.items) {
+      const selected = { item: row.id, version: row.current };
+      assert.equal(render.apply(cave, selected), true); assert.equal(render.size(cave), 100);
+      const node = cave.equipmentHatNode, children = [...node.children], meshes = children.map((child) => child.geometry);
+      const state = () => JSON.stringify({ position: node.position, rotation: node.rotation, scale: node.scale });
+      const original = state(), originalBounds = bounds(fittedPoints(f, cave).flat()), open = cave.headOpen, closed = cave.headClosed;
+      const selection = render.selection(cave), anchor = [0, crown * unit, depth * unit], local = [], inverse = M.create();
+      let anchorNode = node;
+      if (row.id === "johnstackton21m-helmet") {
+        anchorNode = node.children[0]; local.push(0, 0.2, 0);
+        M.transformPoint(anchor, anchorNode.world, ...local);
+      } else {
+        M.invert(inverse, node.world); M.transformPoint(local, inverse, ...anchor);
+      }
+      for (const percent of [80, 100, 120]) {
+        assert.equal(render.apply(cave, selected, percent), true); assert.equal(render.size(cave), percent);
+        assert.equal(cave.equipmentHatNode, node); assert.equal(render.selection(cave), selection);
+        assert.equal(cave.root, rootNode); assert.equal(cave.parts.head, head);
+        assert.equal(rootNode.position.x, 4); assert.equal(rootNode.rotation.y, 1); assert.equal(head.rotation.x, 0.2);
+        assert.equal(cave.headOpen, open); assert.equal(cave.headClosed, closed); assert.equal(head.geometry, closed);
+        assert.equal(node.parent, head);
+        for (let i = 0; i < children.length; i++) { assert.equal(node.children[i], children[i]); assert.equal(node.children[i].geometry, meshes[i]); }
+        const resized = bounds(fittedPoints(f, cave).flat()), actual = [];
+        M.transformPoint(actual, anchorNode.world, ...local);
+        for (let axis = 0; axis < 3; axis++) {
+          assert.ok(Math.abs(actual[axis] - anchor[axis]) < unit * 1e-5, `${name}/${row.id}: fitting point moves at ${percent}%`);
+          assert.ok(Math.abs(resized.size[axis] / originalBounds.size[axis] - percent / 100) < 1e-5,
+            `${name}/${row.id}: shape proportions change at ${percent}%`);
+        }
+        if (percent === 100) assert.equal(state(), original, "100 restores the exact reviewed fit");
+      }
+      for (let i = 0; i < 30; i++) for (const percent of [80, 120, 100]) assert.equal(render.apply(cave, selected, percent), true);
+      assert.equal(state(), original); assert.equal(cave.equipmentHatNode, node); assert.equal(render.size(cave), 100);
+    }
+  }
+});
+
+test("invalid sizes cannot change worn equipment and removing a resized hat restores authored geometry", () => {
+  const f = fixture(), cave = f.cave("w-s-bitcoin"), render = f.BL.characterEquipment, row = catalog.items[0];
+  const selected = { item: row.id, version: row.current }, open = cave.headOpen, closed = cave.headClosed, portrait = cave.portraitHead;
+  cave.parts.head.geometry = closed;
+  const before = headGolden(cave.parts.head);
+  assert.equal(render.size(cave), 100); assert.equal(render.apply(cave, selected, 80), true);
+  const node = cave.equipmentHatNode, worn = headGolden(cave.parts.head), selection = render.selection(cave);
+  for (const invalid of [79, 121, 80.5, NaN, Infinity, -Infinity, null, "100", {}, []]) {
+    assert.equal(render.apply(cave, selected, invalid), false);
+    assert.equal(render.size(cave), 80); assert.equal(render.selection(cave), selection);
+    assert.equal(cave.equipmentHatNode, node); assert.equal(headGolden(cave.parts.head), worn);
+  }
+  assert.equal(render.apply(cave, { item: row.id, version: "a".repeat(64) }, 120), false);
+  assert.equal(render.size(cave), 80); assert.equal(cave.equipmentHatNode, node);
+  assert.equal(render.apply(cave, selected, undefined), true); assert.equal(render.size(cave), 100); assert.equal(cave.equipmentHatNode, node);
+  for (const selection of [{ item: "none", version: null }, null]) {
+    assert.equal(render.apply(cave, selected, 120), true);
+    assert.equal(render.apply(cave, selection, 80), true); assert.equal(render.size(cave), 100); assert.equal(cave.equipmentHatNode, null);
+    assert.equal(cave.headOpen, open); assert.equal(cave.headClosed, closed); assert.equal(cave.portraitHead, portrait);
+    assert.equal(cave.parts.head.geometry, closed); assert.equal(headGolden(cave.parts.head), before);
+  }
+});
+
 test("the straw hat seats on the recipient crown while its original taller-haired owner keeps its authored height", () => {
   const f = fixture(), render = f.BL.characterEquipment, row = catalog.items[0], selected = { item: row.id, version: row.current };
   const donor = f.cave("Bitcoin-Bill"), native = donor.parts.nativeHat[0];

@@ -55,24 +55,28 @@ const host = async (t, enabled = true) => {
 
 test("equipment Room: hosted Studio save never takes over a socket; join, reconnect and wake retain choice", async t => {
   const h = await host(t);
-  assert.equal((await h.save(1, { revision: 0, selection: hat() })).status, 200);
+  assert.equal((await h.save(1, { revision: 0, selection: hat(), size: 80 })).status, 200);
   const a = (await h.join()).ws, b = (await h.join(2)).ws;
   assert.equal(a.sent.find(m => m.t === "welcome").features.includes("equipment-v1"), true);
   assert.deepEqual(frames(a).find(m => m.equipment).equipment.selection, hat());
+  assert.equal(frames(a).find(m => m.equipment).equipment.size, 80);
   assert.ok(a.sent.findIndex(m => m.t === "join" && m.p.id === 2) < a.sent.findIndex(m => m.t === "equipment" && m.id === 2));
   a.sent.length = b.sent.length = 0;
   await h.save(1, { revision: 1, selection: NONE });
   assert.equal(a.closed, null); assert.equal(h.room.players.get(1).ws, a);
   assert.equal(frames(a).filter(m => m.equipment).length, 1, "one self acknowledgement per saved change");
   assert.equal(frames(b).at(-1).revision, 2); assert.deepEqual(frames(b).at(-1).selection, NONE);
+  assert.equal(frames(b).at(-1).size, 80);
   const resume = h.room.players.get(1).resumeKey;
   h.room.hold(h.room.players.get(1), { code: 1006 });
   const replacement = (await h.join(1, resume)).ws;
   assert.equal(replacement.sent.find(m => m.t === "welcome").resumed, true);
   assert.equal(frames(replacement).find(m => m.equipment).revision, 2);
+  assert.equal(frames(replacement).find(m => m.equipment).size, 80);
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.revision, 2);
   assert.deepEqual(plain(h.room.players.get(1).equipment.selection), NONE);
+  assert.equal(h.room.players.get(1).equipment.size, 80);
   assert.deepEqual(h.errors, []);
 });
 
@@ -80,44 +84,51 @@ test("equipment Room: appearance is scoped to visibility, catches up on entry an
   const h = await host(t), a = (await h.join()).ws, b = (await h.join(2)).ws, c = (await h.join(3)).ws;
   h.send(c, { t: "zone", name: "mine" });
   a.sent.length = b.sent.length = c.sent.length = 0;
-  await h.save(1, { revision: 0, selection: hat() });
+  await h.save(1, { revision: 0, selection: hat(), size: 120 });
   assert.equal(frames(b).some(m => m.id === 1 && m.revision === 1), true);
+  assert.equal(frames(b).at(-1).size, 120);
   assert.equal(frames(c).some(m => m.id === 1), false, "private scene never receives the outside choice");
   h.send(a, { t: "zone", name: "mine" });
   assert.deepEqual(frames(b).at(-1), { t: "equipment", kind: "remove", ids: [1] });
   assert.equal(frames(c).at(-1).revision, 1);
+  assert.equal(frames(c).at(-1).size, 120);
   const snapshot = frames(a).filter(m => m.kind === "snapshot").at(-1);
   assert.deepEqual(snapshot.rows.map(r => r.id), [3]);
+  assert.equal(snapshot.rows[0].size, 100);
   h.send(a, { t: "zone", name: "outside" });
   assert.equal(frames(b).at(-1).revision, 1, "re-entry resends the existing revision");
+  assert.equal(frames(b).at(-1).size, 120);
   assert.deepEqual(frames(c).at(-1), { t: "equipment", kind: "remove", ids: [1] });
 });
 
 test("equipment Room: an older admission/sweep read cannot regress a concurrent save", async t => {
   const h = await host(t), { ws } = await h.join();
-  await h.save(1, { revision: 0, selection: hat() });
-  const stale = { ...hat(), revision: 1, declined: null }, original = h.db.prepare;
+  await h.save(1, { revision: 0, selection: hat(), size: 80 });
+  const stale = { ...hat(), size: 80, revision: 1, declined: null }, original = h.db.prepare;
   let resolve;
   h.db.prepare = query => {
     h.db.prepare = original;
     return { bind: () => ({ first: () => new Promise(done => { resolve = done; }) }) };
   };
   const reading = equipmentRoom.refresh(h.room, h.room.players.get(1));
-  await h.save(1, { revision: 1, selection: NONE });
+  await h.save(1, { revision: 1, selection: NONE, size: 120 });
   resolve(stale); await reading;
   assert.equal(h.room.players.get(1).equipment.revision, 2);
   assert.deepEqual(plain(h.room.players.get(1).equipment.selection), NONE);
   assert.equal(frames(ws).at(-1).revision, 2);
+  assert.equal(h.room.players.get(1).equipment.size, 120);
+  assert.equal(frames(ws).at(-1).size, 120);
 });
 
 test("equipment Room: a commit interrupted before publication catches up after hibernation", async t => {
   const h = await host(t), { ws } = await h.join();
   await h.save(1, { revision: 0, selection: hat() });
-  await writeEquipment(h.db, 1, h.accounts[0].session.token_hash, { revision: 1, selection: NONE });
+  await writeEquipment(h.db, 1, h.accounts[0].session.token_hash, { revision: 1, selection: NONE, size: 110 });
   assert.equal(h.room.players.get(1).equipment.revision, 1);
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.revision, 2);
   assert.equal(frames(ws).at(-1).revision, 2);
+  assert.equal(frames(ws).at(-1).size, 110);
   assert.deepEqual((await readEquipment(h.db, 1)).selection, NONE);
 });
 
@@ -134,7 +145,7 @@ test("equipment Room: concurrent Studio saves use CAS and disabled deployments k
 
 test("equipment Room: a creator update offers acceptance and a declined version survives reload and deploy", async t => {
   const h = await host(t), { ws } = await h.join(), chosen = hat();
-  await h.save(1, { revision: 0, selection: chosen });
+  await h.save(1, { revision: 0, selection: chosen, size: 90 });
   const v2 = "2".repeat(64), v3 = "3".repeat(64), original = equipmentHats.current;
   let offered = v2;
   equipmentHats.current = id => id === chosen.item ? offered : original(id);
@@ -144,11 +155,13 @@ test("equipment Room: a creator update offers acceptance and a declined version 
   assert.equal(h.room.players.get(1).equipment.selection.version, chosen.version, "new metadata cannot change what is worn");
   const kept = await h.save(1, { revision: 1, decline: v2 });
   assert.equal(kept.equipment.declined, v2); assert.equal(kept.equipment.update, null);
+  assert.equal(kept.equipment.size, 90);
   assert.equal(h.db.sql.prepare("SELECT declined FROM player_equipment WHERE player_id = 1").get().declined, v2);
   const unchanged = await h.save(1, { revision: 2, selection: chosen });
   assert.equal(unchanged.equipment.revision, 3);
   assert.equal(unchanged.equipment.declined, v2, "saving the same pinned selection does not undo Keep my version");
   assert.equal(unchanged.equipment.update, null);
+  assert.equal(unchanged.equipment.size, 90);
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.update, null);
   assert.equal(h.room.players.get(1).equipment.selection.version, chosen.version);
@@ -161,9 +174,29 @@ test("equipment Room: a creator update offers acceptance and a declined version 
   equipmentHats.accept(chosen.item, v3); // A future reviewed Worker retains v1 and adds the new immutable version.
   const accepted = await h.save(1, { revision: 3, selection: { item: chosen.item, version: v3 } });
   assert.equal(accepted.equipment.revision, 4); assert.equal(accepted.equipment.declined, null);
+  assert.equal(accepted.equipment.size, 90);
   assert.equal(frames(ws).at(-1).selection.version, v3);
   await h.wake();
   assert.equal(h.room.players.get(1).equipment.selection.version, v3);
+  assert.equal(h.room.players.get(1).equipment.size, 90);
+});
+
+test("equipment Room: size-only updates reach visible peers and old attachments normalize to 100", async t => {
+  const h = await host(t), a = (await h.join()).ws, b = (await h.join(2)).ws;
+  await h.save(1, { revision: 0, selection: hat() });
+  a.sent.length = b.sent.length = 0;
+  const answer = await h.save(1, { revision: 1, size: 115 });
+  assert.equal(answer.status, 200); assert.equal(answer.equipment.revision, 2);
+  assert.deepEqual(answer.equipment.selection, hat());
+  assert.equal(frames(b).at(-1).size, 115); assert.equal(frames(a).at(-1).equipment.size, 115);
+  assert.equal(a.attachment.equipment.size, 115);
+  const legacy = { ...a.attachment.equipment }; delete legacy.size;
+  assert.equal(equipmentRoom.saved(h.room, legacy).size, 100);
+  assert.equal(equipmentRoom.saved(h.room, { ...legacy, size: 121 }), null);
+  assert.equal(equipmentRoom.saved(h.room, { selection: null, revision: 0, declined: null, size: 80 }), null);
+  delete a.attachment.equipment.size;
+  await h.wake();
+  assert.equal(h.room.players.get(1).equipment.size, 115, "D1 catches an old attachment up before it becomes authoritative");
 });
 
 test("equipment Room: deletion followed by recreation evicts the old socket before applying the reset revision", async t => {
