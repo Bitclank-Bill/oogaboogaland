@@ -230,6 +230,7 @@
       if (refused) return hud.toast(refused);
       open("raid");
     };
+    // The raid's code is fetched only here, once the visitor has asked to play: nearness and a hover fetch nothing.
     const loading = BL.deferred.load("raid-scene");
     if (!loading) return ask();
     loading.then(() => { if (hud && !leaving) ask(); }, () => { if (hud) hud.toast("Ooga Raid could not load · try again"); });
@@ -2049,7 +2050,6 @@
       onHover: (hit, p) => {
         if (hit && !inView(hit)) hit = null;
         if (hit?.owner.kind === "cabinet" && GAMES[hit.owner.game] && !GAMES[hit.owner.game].unavailable) BL.deferred.prefetchScene(GAMES[hit.owner.game].id);
-        else if (hit?.owner.kind === "door" && BL.scenes.raid) BL.deferred.prefetchScene("raid");
         if (hit) hud.tooltip.show(tipFor(hit), p.x, p.y);
         else hud.tooltip.hide();
       },
@@ -2280,9 +2280,6 @@
         const c = live[i], dx = p.x - c.x, dy = p.y - c.y, dz = p.z - c.z;
         if (GAMES[c.game] && !GAMES[c.game].unavailable && dx * dx + dy * dy + dz * dz <= 225) BL.deferred.prefetchScene(GAMES[c.game].id);
       }
-      // Ooga Raid behind the back door, as near as the cabinets ask theirs.
-      const bd = LAYOUT.backDoor, bx = p.x - bd.x, bz = p.z - bd.z;
-      if (BL.scenes.raid && bx * bx + bz * bz <= 225) BL.deferred.prefetchScene("raid");
     }
     if (!leaving) pilot.readInput(dt);
     slideStep(dt);

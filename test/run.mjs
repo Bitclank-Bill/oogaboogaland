@@ -10105,6 +10105,11 @@ const raidSecretsChecks = async () => {
     JSON.stringify({ start, respawn, continued, slow, hashes, camp: [camp.state.stageIndex, camp.sim.stage.id], refused }));
 };
 const raidChecks = async () => {
+  // The heap checks below count numbers boxed by code V8 has not yet optimized. Node 24, like Chrome, optimizes a function
+  // with Maglev after some 400 calls; Node 22 ships without Maglev and leaves it unoptimized until TurboFan's 3,000, so a
+  // routine the sim calls only now and then (a lob's flight, a drone's hover, the spawner's dice) can cross that line in
+  // a window and box there, which the browser never does. The same 400 for TurboFan has Node 22 tier as the page does.
+  setFlagsFromString("--invocation-count-for-turbofan=400");
   const context = { window: { BL: {} } };
   for (const name of RAID_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const { raidStages: S, raidSim: M } = context.window.BL;
