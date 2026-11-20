@@ -32,7 +32,13 @@ ceiling. The chair has a solid cushion, back and armrests that rotate together
 over a fixed five-spoke caster base. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
-Sitting places a small pen in the Ooga’s right hand. Left-click (or tap the view)
+Sitting places a small pen in the Ooga’s right hand. In first person, a matching
+skin-colored hand and pen stay at the lower right of the view, with the thumb
+over the clicker. Clicking depresses the thumb and button, then springs them
+back over 170 ms. The world pen’s button follows the same animation. This
+view model is excluded from reflections, camera feeds and shadows; the real
+arm remains there for captures and returns to the main view on standing or
+leaving first person. Left-click (or tap the view)
 toggles area feeds and the face broadcast using the same outward sweep. The
 chosen view stays until the next click; standing removes the pen and resumes
 automatic transitions. A click during a sweep queues the chosen view until the
@@ -115,8 +121,8 @@ multiply the number of cameras or textures.
 While nobody is controlling the chair, a randomized 34–56 seconds of regular
 feeds is followed by an approximately 4.2-second wave that replaces
 individual screens with the same live close-up of the controlled Ooga. It begins
-opposite the return mirror and spreads around both sides toward it. Upper rows
-lead lower rows; fresh row and panel jitter makes the edge irregular. Every
+at the return mirror and spreads away around both sides. Bottom rows
+lead upper rows; fresh row and panel jitter makes the edge irregular. Every
 screen holds the complete face for a randomized 6–10 seconds, then the same outward pattern
 restores the original mosaics. The timer pauses in hidden tabs and resets on
 travel or changing the controlled character. Automatic transitions are disabled
@@ -130,7 +136,10 @@ image is held inside the background TVs for the whole transition. The foreground
 close-up stays live in a separate buffer. The deepest image therefore contains
 ordinary area feeds, never another face broadcast. This prevents feedback from
 deepening over time and avoids sampling the framebuffer being written; it adds
-no nested captures. Mirrors and portal effects remain excluded. Its image is shared by every panel. It prewarms before the
+no nested captures. In this camera image only, sixteen extra face screens fill
+the return-mirror opening. The clean seed uses an area feed in those tiles,
+so they cannot introduce another recursive layer. The real room’s mirror stays
+visible and usable. Mirror reflections and portal effects remain excluded. Its image is shared by every panel. It prewarms before the
 wave and waits for its first valid capture. During the broadcast it requests up
 to ten captures per second (less on low quality or slow frames), within the same
 global capture budget; it never adds an extra capture pass to a frame. Area feeds
@@ -224,9 +233,12 @@ palette: a low electrical resonance, filtered ventilation, gently beating
 monitor tones, sparse soft relay ticks and a descending crossing tone. It does
 not reuse Bifrost's motif, heartbeat, world chords or recordings.
 
-Six oscillators and one looping noise source are built once after browser audio
+Seven oscillators and one looping noise source are built once after browser audio
 activation. Slow controls update at 10 Hz, with no per-frame or per-cue node
-allocation. The monitor texture grows toward the walls and pans with the view;
+allocation. The pen’s dry two-part click uses a pooled filtered-noise branch
+and a brief resonant tone: its latch sounds at the 50 ms thumb press, followed
+by the quieter spring release. It follows the Room hum channel and master mute.
+The monitor texture grows toward the walls and pans with the view;
 the center is quieter. Weather audio is disabled inside. The pictures have no
 soundtrack or duplicated outdoor voice.
 
@@ -265,6 +277,9 @@ coverage and adjacency, shared textures, face prewarming, room geometry in the f
 sweep directions. The background update, seated pen/click controls and equipment parking also need
 browser acceptance. Added, unrun checks cover ownership hiding, pen cleanup,
 persistent seated views and automatic transitions resuming after standing.
+Additional unrun assertions cover the first-person pen and button travel, arm
+visibility restoration, bottom-leading wave and feed-only mirror infill. The
+pen framing, thumb contact and click sound still need visual/listening acceptance.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

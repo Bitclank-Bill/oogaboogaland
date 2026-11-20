@@ -3579,12 +3579,13 @@ void main() {
       const surface = rec.geometry.imageSurface;
       if (surface?.atlas && !surface.canvas) BL.models.paintFoliageAtlas(surface);
       const canvas = surface?.canvas;
-      const feed = surface?.feed, version = feed ? feed.geometry.imageSurface.version : surface?.version;
+      const feed = cameraFeedRoom && surface?.seedFeed && surface.feed.pending ? surface.seedFeed : surface?.feed;
+      const version = feed ? feed.geometry.imageSurface.version : surface?.version;
       // A face capture sees the clean prewarm image in its background TVs. That image was taken
       // before any TV showed a face, so repeated live captures cannot deepen the recursion.
       const feedGeometry = feed && (feed.seedOnly || cameraFeedRoom && feed.roomBackground) ? feed.backGeometry : feed?.geometry;
       const feedTarget = feed ? reflectorTargets.get(feedGeometry) : null;
-      const feedReady = !!feedTarget?.valid && !surface.feed.pending;
+      const feedReady = !!feedTarget?.valid && !feed.pending;
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
       if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== version) {
@@ -3788,6 +3789,7 @@ void main() {
       const drawRecords = cameraFeedSource?.captureRecords || activeRecords;
       for (let i = 0; i < drawRecords.length; i++) {
         const rec = drawRecords[i], g = rec.geometry, program = programs[useProgram];
+        if (g.architectHandView && !cull || g.architectFeedOnly && !cameraFeedRoom) continue;
         if ((g.cameraFeedSource || null) !== cameraFeedSource) continue;
         if (cameraFeedCapture && (g.reflector || g.mirrorSource || g.architectRoom && !cameraFeedRoom || g.lightBeam)) continue;
         if (g.mirrorRippleOnly) continue;

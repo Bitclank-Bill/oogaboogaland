@@ -77,10 +77,43 @@
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
+    let penButton = null, penView = null, viewButton = null, viewHand = null, viewThumb = null, viewSkin = "", clickTime = 1;
+    let viewArm = null, viewArmHidden = false;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
       walkAt: { x: 0, z: 1.7 }, sitter: null, releaseEquipment: () => removePen() };
     const seated = () => active && seat.sitter === pilot.player && !!seat.sitter && seat.sitter.camp.seat === seat;
-    const removePen = () => { if (pen?.parent) removeChild(pen.parent, pen); };
+    const removePen = () => {
+      if (pen?.parent) removeChild(pen.parent, pen);
+      if (penView) penView.visible = false;
+      if (viewArm) { viewArm.cameraHidden = viewArmHidden; viewArm = null; }
+      clickTime = 1;
+    };
+    const updatePen = dt => {
+      if (!penView) return;
+      clickTime = Math.min(1, clickTime + dt);
+      const press = clickTime < 0.05 ? clickTime / 0.05 : clickTime < 0.08 ? 1 : Math.max(0, 1 - (clickTime - 0.08) / 0.09);
+      penButton.position.y = viewButton.position.y = 0.19 - press * 0.018;
+      viewThumb.rotation.z = press * 0.11;
+      penView.visible = seated() && pilot.closeMix > 0.8 && !pilot.looking;
+      if (!penView.visible) {
+        if (viewArm) { viewArm.cameraHidden = viewArmHidden; viewArm = null; }
+        return;
+      }
+      if (!viewArm) { viewArm = pilot.player.parts.armR; viewArmHidden = viewArm.cameraHidden; viewArm.cameraHidden = true; }
+      const eye = camera.position, target = camera.target;
+      let dx = target.x - eye.x, dy = target.y - eye.y, dz = target.z - eye.z;
+      const length = Math.hypot(dx, dy, dz) || 1; dx /= length; dy /= length; dz /= length;
+      const flat = Math.hypot(dx, dz) || 1, rx = -dz / flat, rz = dx / flat;
+      const ux = -rz * dy, uy = rz * dx - rx * dz, uz = rx * dy;
+      const distance = 0.5, halfH = Math.tan(camera.fov / 2) * distance;
+      const halfW = halfH * renderer.size.width / Math.max(1, renderer.size.height), scale = halfH * 1.65;
+      const x = Math.max(0, Math.min(halfW * 0.55, halfW - scale * 0.2)), y = -halfH * 0.45;
+      penView.position.x = eye.x + dx * distance + rx * x + ux * y;
+      penView.position.y = eye.y + dy * distance + uy * y;
+      penView.position.z = eye.z + dz * distance + rz * x + uz * y;
+      penView.rotation.x = Math.asin(dy); penView.rotation.y = Math.atan2(-dx, -dz);
+      penView.scale.x = penView.scale.y = penView.scale.z = scale;
+    };
     const parkEquipment = actor => {
       if (actor === parkedActor) return;
       removePen();
@@ -123,6 +156,17 @@
       pen.position.x = center[0]; pen.position.y = center[1]; pen.position.z = center[2];
       pen.scale.x = pen.scale.y = pen.scale.z = seat.sitter.traits.height;
       addChild(hand, pen);
+      const skin = seat.sitter.traits.skin;
+      if (viewSkin !== skin) {
+        viewSkin = skin;
+        const rgb = BL.math.hexToRgb(skin);
+        for (const node of [viewHand, viewThumb]) {
+          renderer.releaseGeometry(node.geometry);
+          for (const f of node.geometry.faces) f.color = rgb.slice();
+          renderer.prepareGeometry(node.geometry);
+        }
+      }
+      clickTime = 1;
       updateBroadcast(0, seat.sitter);
       return true;
     };
@@ -179,9 +223,9 @@
         const normal = cameras.panel(feed, group.size, col - group.col, row - group.row, pitchX, PITCH, scaleX, scaleY);
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY);
         const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
-        // Both sides spread away from the wall opposite the mirror. Higher rows lead, with row and tile jitter.
+        // Spread from the mirror around both sides. Lower rows lead, with row and tile jitter.
         panels.push({ node, normal, portrait, row, col, group: layout.cells[row * layout.cols + col], size: group.size,
-          distance: Math.abs(Math.atan2(Math.sin(angle - Math.PI), Math.cos(angle - Math.PI))) / Math.PI, delay: 0 });
+          distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0 });
       };
       for (let i = 0; i < BANKS; i++) {
         const angle = PORTAL_ANGLE + (i + 0.5) * BANK_ANGLE;
@@ -197,6 +241,17 @@
           const x = RETURN_HALF_W - (col + 0.5) * RETURN_HALF_W * 2 / PORTAL_COLS;
           rackAt(portal, BANKS + col, x, row, Math.atan2(-x, RETURN_Z));
         }
+      }
+      // This infill exists only inside the face camera. The physical return mirror stays untouched.
+      const infill = createNode({ cameraHidden: true }); addChild(portal, infill);
+      const pitchX = RETURN_HALF_W * 2 / PORTAL_COLS, scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
+      const faceTile = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY);
+      const infillScreen = { ...faceTile, architectFeedOnly: true, imageSurface: { ...faceTile.imageSurface, seedFeed: feeds[0] } };
+      const infillFrame = { ...housing, castShadow: false, architectFeedOnly: true };
+      for (let row = 0; row < MIRROR_ROWS; row++) for (let col = 0; col < PORTAL_COLS; col++) {
+        const rack = createNode({ position: { x: RETURN_HALF_W - (col + 0.5) * pitchX, y: PITCH * (row + 0.5) + GAP / 2, z: 0.1 },
+          scale: { x: scaleX, y: scaleY, z: 0.71 } });
+        addChild(infill, rack); add(infillFrame, rack); add(infillScreen, rack, { x: 0, y: 0, z: 0.19 });
       }
       const frame = [];
       for (const x of [-RETURN_HALF_W, RETURN_HALF_W]) frame.push(box({ w: 0.06, h: RETURN_HEIGHT, d: 0.06,
@@ -231,6 +286,21 @@
         box({ w: 0.012, h: 0.09, d: 0.012, color: "#c9d0d4", emissive: 0.35, offset: { x: 0.02, y: 0.11 } }));
       penGeometry.characterPart = true;
       pen = add(penGeometry, group); pen.rotation.z = -0.35; removePen();
+      const buttonGeometry = lathe({ profile: [[0.011, -0.02], [0.011, 0.02]], segments: 8, color: "#c9d0d4", emissive: 0.35 });
+      buttonGeometry.characterPart = true;
+      penButton = add(buttonGeometry, pen, { x: 0, y: 0.19, z: 0 });
+      penView = createNode({ visible: false }); addChild(root, penView);
+      const viewPart = (g, parent = penView, position = null) => add({ ...g, castShadow: false, architectHandView: true }, parent, position);
+      const fingers = [bevelBox({ w: 0.15, h: 0.2, d: 0.09, color: "#ffffff", offset: { x: 0.045, y: -0.04, z: -0.035 } }),
+        bevelBox({ w: 0.1, h: 0.42, d: 0.1, color: "#ffffff", offset: { x: 0.08, y: -0.29, z: -0.035 } })];
+      for (let i = 0; i < 4; i++) fingers.push(bevelBox({ w: 0.13 - i * 0.006, h: 0.043, d: 0.065, bevel: 0.012,
+        color: "#ffffff", offset: { x: -0.01, y: 0.025 - i * 0.047, z: 0.04 } }));
+      viewHand = viewPart(merge(...fingers));
+      viewThumb = viewPart(merge(beam(0, 0, 0, -0.03, 0.16, 0, 0.06, "#ffffff"),
+        bevelBox({ w: 0.18, h: 0.05, d: 0.06, bevel: 0.015, color: "#ffffff", offset: { x: -0.105, y: 0.195 } })),
+        penView, { x: 0.1, y: 0.07, z: 0.025 });
+      const viewPen = viewPart(penGeometry, penView, { x: -0.065, y: 0.04, z: 0.04 });
+      viewButton = viewPart(buttonGeometry, viewPen, { x: 0, y: 0.19, z: 0 });
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
@@ -244,7 +314,7 @@
     const beginSweep = phase => {
       broadcast = phase; broadcastTime = 0;
       for (let row = 0; row < ROWS; row++) rowJitter[row] = Math.random() * 0.12;
-      for (const p of panels) p.delay = p.distance * 2.9 + (ROWS - 1 - p.row) / (ROWS - 1) * 0.7 + rowJitter[p.row] + Math.random() * 0.35;
+      for (const p of panels) p.delay = p.distance * 2.9 + p.row / (ROWS - 1) * 0.7 + rowJitter[p.row] + Math.random() * 0.35;
     };
     const updateBroadcast = (dt, actor) => {
       if (document.hidden) return;
@@ -295,6 +365,7 @@
       if (!seated()) return false;
       if (!manual) updateBroadcast(0, pilot.player);
       manualFace = !manualFace;
+      clickTime = 0; audio?.click();
       if (!manualFace && broadcast === "feeds") { portraitActor = null; cameras.portrait.forceCapture = false; }
       return true;
     };
@@ -333,6 +404,7 @@
           actor.root.rotation.y = seat.ry; actor.parts.head.rotation.y = 0;
         }
         updateBroadcast(dt, actor);
+        updatePen(dt);
         if (broadcast !== "face") cameras.update(dt);
         if (audio) audio.update(dt, camera);
         if (!cooldown && p.z >= RETURN_Z && Math.abs(p.x) < RETURN_HALF_W - 0.4
@@ -357,7 +429,7 @@
           && y >= FLOOR - 0.05 && y <= FLOOR + SEAT_TOP + 0.1 ? seat : null;
       },
       get returnMirror() { return returnMirror; },
-      get seated() { return seated(); }, get pen() { return pen; },
+      get seated() { return seated(); }, get pen() { return pen; }, get penView() { return penView; }, get penButton() { return penButton; },
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,
@@ -369,7 +441,7 @@
       },
       suspend() { if (active) travel(false); audio?.setActive(false); },
       liveGeometry(set) { for (const mesh of meshes) set.add(mesh); cameras.liveGeometry(set); },
-      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); meshes.length = panels.length = 0; }
+      dispose() { if (seat.sitter) crew.standPlayer(seat.sitter); active = false; parkEquipment(null); removePen(); audio?.dispose(); audio = null; cameras.dispose(); removeChild(root, group); if (penView) removeChild(root, penView); meshes.length = panels.length = 0; }
     };
   };
   BL.architectCave = { create, contains, clear, segmentClear, FLOOR, HEIGHT, FACE_WAIT, FACE_SWEEP, FACE_HOLD };

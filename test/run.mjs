@@ -17083,7 +17083,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const count = () => panels.filter(p => p.node.geometry === p.portrait).length;
     const partial = room.broadcast === "to-face" && count() > 0 && count() < panels.length;
     const mean = list => list.reduce((n, p) => n + p.delay, 0) / list.length;
-    const leads = mean(panels.filter(p => p.row === 11 && p.col < 48)) < mean(panels.filter(p => p.row === 0))
+    const leads = mean(panels.filter(p => p.row === 0)) < mean(panels.filter(p => p.row === 11 && p.col < 48))
       && mean(panels.filter(p => p.distance < 0.2)) < mean(panels.filter(p => p.distance > 0.8));
     room.update(BL.architectCave.FACE_SWEEP);
     const full = room.broadcast === "face" && count() === 608 && room.renderFeeds.length === 33
@@ -17096,10 +17096,16 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const restoring = room.broadcast === "to-feeds" && count() > 0 && count() < panels.length;
     room.update(BL.architectCave.FACE_SWEEP);
     const restored = room.broadcast === "feeds" && panels.every(p => p.node.geometry === p.normal);
+    let infill = 0;
+    BL.scene.traverseVisible(room.group, node => {
+      const g = node.geometry;
+      if (g?.architectFeedOnly && g.imageSurface?.feed === face && g.imageSurface.seedFeed !== face && BL.scene.hiddenFromCamera(node)) infill++;
+    });
+    const mirrorFilled = infill === 16 && room.returnMirror.visible && room.returnMirror.geometry.reflector;
     room.travel(true);
-    return { mosaics, neighborRule, warm, captured, partial, leads, full, background, restoring, restored };
+    return { mosaics, neighborRule, warm, captured, partial, leads, full, background, restoring, restored, mirrorFilled };
   })()`);
-  record("hub observatory: 608 panels share mosaic textures and a live head sweep leads from the far wall before restoring them",
+  record("hub observatory: 608 panels share mosaic textures, the sweep leads from the mirror and its face-only infill preserves the exit",
     Object.values(broadcast).every(Boolean), JSON.stringify(broadcast));
   const manualScreens = await b.evaluate(`(async () => {
     const B = __ooga, room = BL.scenes.hub.architect, actor = B.pilot.player;
@@ -17108,7 +17114,14 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     const sitting = room.sit(), pen = room.pen.parent === actor.parts.fingersR;
     room.update(120);
     const heldFeeds = room.broadcast === "feeds";
-    const clicked = room.toggleView(); room.update(0);
+    const armHidden = actor.parts.armR.cameraHidden;
+    B.pilot.enterClose(); B.advance(0.8, 1 / 60);
+    const firstPersonPen = room.penView.visible && actor.parts.armR.cameraHidden
+      && Math.hypot(room.penView.position.x - B.camera.position.x, room.penView.position.y - B.camera.position.y, room.penView.position.z - B.camera.position.z) < 1;
+    const clicked = room.toggleView(); room.update(0.05);
+    const pressed = room.penButton.position.y < 0.18;
+    room.update(0.2);
+    const springBack = room.penButton.position.y === 0.19;
     await new Promise(resolve => setTimeout(resolve, 510));
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
@@ -17116,11 +17129,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     room.toggleView(); room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
     const restored = room.broadcast === "feeds";
     const stand = B.crew.standPlayer(actor); room.update(0);
-    const released = !room.pen.parent && !room.toggleView();
+    const released = !room.pen.parent && !room.toggleView() && !room.penView.visible && actor.parts.armR.cameraHidden === armHidden;
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
-    return { sitting, pen, heldFeeds, clicked, heldFace, restored, stand, released, automatic };
+    return { sitting, pen, heldFeeds, firstPersonPen, clicked, pressed, springBack, heldFace, restored, stand, released, automatic };
   })()`);
   record("hub observatory: seated pen toggles persistent views, standing removes it and resumes automatic transitions",
     Object.values(manualScreens).every(Boolean), JSON.stringify(manualScreens));

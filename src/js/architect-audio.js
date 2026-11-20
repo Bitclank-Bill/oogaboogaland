@@ -5,7 +5,7 @@
   const BL = window.BL = window.BL || {};
   const create = () => {
     const channel = BL.sound.channel("room"), voices = [];
-    let ctx = null, master = null, bank = null, pan = null, relay = null, crossing = null;
+    let ctx = null, master = null, bank = null, pan = null, relay = null, crossing = null, penNoise = null, penTone = null;
     let enabled = true, disposed = false, timer = 0, since = 0, elapsed = 0, nextTick = 8;
     const gain = (value, to) => {
       const node = ctx.createGain(); node.gain.value = value; node.connect(to); return node;
@@ -40,8 +40,24 @@
       const random = BL.math.mulberry32(71403);
       for (let i = 0; i < samples.length; i++) samples[i] = random() * 2 - 1;
       const noise = ctx.createBufferSource(); noise.buffer = buffer; noise.loop = true; noise.connect(air); noise.start(); voices.push(noise);
+      const clickFilter = ctx.createBiquadFilter(); clickFilter.type = "bandpass"; clickFilter.frequency.value = 2400; clickFilter.Q.value = 1.4;
+      penNoise = gain(0, master); noise.connect(clickFilter); clickFilter.connect(penNoise);
+      penTone = tone(1250, 0, master);
       relay = tone(683, 0, pan); crossing = tone(196, 0, master);
       master.gain.setTargetAtTime(0.65, ctx.currentTime, 0.35); arrive();
+    };
+    const clickEnvelope = (volume, level, now) => {
+      volume.cancelScheduledValues(now); volume.setValueAtTime(0, now);
+      volume.setValueAtTime(0, now + 0.046); volume.linearRampToValueAtTime(level, now + 0.05);
+      volume.exponentialRampToValueAtTime(0.0001, now + 0.075);
+      volume.linearRampToValueAtTime(level * 0.45, now + 0.105);
+      volume.exponentialRampToValueAtTime(0.0001, now + 0.14); volume.setValueAtTime(0, now + 0.15);
+    };
+    const click = () => {
+      activate();
+      if (!ctx || !enabled || disposed || document.hidden || BL.sound.muted) return;
+      // The latch engages at the thumb's deepest press; its spring releases on the return.
+      clickEnvelope(penNoise.gain, 0.11, ctx.currentTime); clickEnvelope(penTone.volume.gain, 0.025, ctx.currentTime);
     };
     const quiet = () => {
       clearTimeout(timer); timer = 0;
@@ -81,13 +97,13 @@
     const off = BL.sound.subscribe(refresh);
     window.addEventListener("pointerdown", activate, true); window.addEventListener("keydown", activate, true);
     document.addEventListener("visibilitychange", refresh);
-    return { update, setActive,
+    return { update, setActive, click,
       dispose() {
         disposed = true; clearTimeout(timer); off(); channel.release();
         window.removeEventListener("pointerdown", activate, true); window.removeEventListener("keydown", activate, true);
         document.removeEventListener("visibilitychange", refresh);
         if (ctx) ctx.close().catch(() => {});
-        ctx = master = bank = pan = relay = crossing = null; voices.length = 0;
+        ctx = master = bank = pan = relay = crossing = penNoise = penTone = null; voices.length = 0;
       }
     };
   };
