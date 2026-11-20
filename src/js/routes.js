@@ -62,7 +62,7 @@
         ["Movie Theater", "Recliners on a steep rake facing a dome that is all picture, the biggest room in the Sphere."],
         ["Block Party", "Live dance radio in a club of light: an LED floor and wall that move to the music, lasers on the walls, and EDM Sessions live from the DJ booth. The latest block lights the scoreboard as it lands."],
         ["Planetarium", "Tonight's sky over London on the whole dome, from reclining seats round the star projector."],
-        ["Genesis Museum", "The road to Bitcoin, 1974 to 2009: the technologies and events before the genesis block on a ring of plinths, the whitepaper in the middle, Block 0 at the end of the walk, a glass floor over a living map of the network, and the timeline round the dome."]
+        ["Genesis Museum", "The road to Bitcoin, 1974 to 2009: the technologies and events before the genesis block on a ring of plinths, a hologram of Satoshi's statue in the middle that opens the whitepaper, Block 0 at the end of the walk, a glass floor over a living map of the network, and the timeline round the dome."]
       ].map(([name, what], i) => ({ path: `sphere-${i}`, scene: "timechain", place: String(i), title: `Timechain Sphere · ${name}`, description: `${name}, room ${i} of the Timechain Sphere. ${what}` }))
     ]
   };
