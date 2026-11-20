@@ -280,7 +280,9 @@
     const contributors = async () => {
       try {
         const response = await ask(PUBLIC_PATH, { headers: { accept: "application/json" } });
-        return response.ok ? await json(response) : null;
+        const body = response.ok ? await json(response) : null;
+        BL.oogaChatPortraits?.apply(body);
+        return body;
       } catch {
         return null;
       }

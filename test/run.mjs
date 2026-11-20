@@ -37959,7 +37959,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         // A follower plays frames back DELAY behind their arrival; a frame's events replay once playback reaches it.
         const reach = () => sync.update(BL.npcSync.DELAY + 0.05);
         sync = BL.npcSync.create(options); sync.update(0.3); reach();
-        const rejected = sync.frames === 0 && plans === 0 && crew.list.every(c => !c.puppet);
+        const rejected = sync.frames === 0 && plans === 0 && sync.incompatible && crew.list.every(c => c.puppet);
         sync.dispose();
         crew.workSites = [{ mouth: { id: "c11" } }, { mouth: { id: "c10" } }];
         sync = BL.npcSync.create(options); sync.update(0.3);
@@ -37968,7 +37968,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const accepted = waiting && sync.frames === 1 && plans === 1 && oldest.puppet;
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
-        const cleared = sync.frames === 1 && plans === 1 && crew.list.every(c => !c.puppet);
+        const cleared = sync.frames === 1 && plans === 1 && sync.incompatible && crew.list.every(c => c.puppet);
         BL.net.npcFrame = matchingFrame; BL.net.state.npcVersion++;
         sync.update(0.3); reach();
         const resumed = sync.frames === 2 && plans === 2 && oldest.puppet;
@@ -37977,7 +37977,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const releasedHost = sync.frames === 2 && plans === 2 && crew.list.every(c => !c.puppet);
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
-        const rejectedHost = sync.frames === 2 && plans === 2 && crew.list.every(c => !c.puppet);
+        const rejectedHost = sync.frames === 2 && plans === 2 && sync.incompatible && crew.list.every(c => c.puppet);
         // A cached host frame still contains the old sleeping poses when an
         // owner arrives. Local control and remote ownership must win immediately.
         sync.dispose();
@@ -37993,7 +37993,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const remote = !next.puppet && next.remoteControlled && !next.root.visible && next.state === "away" && !next.bedroll;
         sync.dispose(); crew.release();
         next.override = nextOverride; next.remoteControlled = false; crew.refreshStates(true);
-        record("NPC sync: matching site order accepts poses and events; incompatible catalogs and host changes release stale poses",
+        record("NPC sync: matching site order accepts poses and events; incompatible catalogs hold puppets and host changes release stale poses",
           accepted && rejected && cleared && resumed && releasedHost && rejectedHost && owned && remote,
           JSON.stringify({ accepted, rejected, cleared, resumed, releasedHost, rejectedHost, owned, remote }));
         // Regression (#498): an Ooga asleep on this page carries its crew's sleepRotation on the root. An upright
