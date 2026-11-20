@@ -17588,6 +17588,13 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     if (!room.sit()) throw new Error("Could not sit in the Observatory chair");
     B.advance(0.2, 1 / 60); window.requestAnimationFrame = () => 0;
   })()`);
+  const voice = await b.evaluate(`(() => {
+    BL.net.setBlend("hq-basement", 1); __ooga.advance(0.2, 1 / 60);
+    const s = BL.net.state;
+    return { zone: s.zone, to: s.blendTo, t: s.blendT,
+      gain: BL.voiceBlend.gain("mirror", s.blendTo, s.blendT, "mirror", null, 0) };
+  })()`);
+  record("Observatory voice: the room clears an island basement blend and hears an unlinked room visitor", voice.zone === "mirror" && voice.to === null && voice.t === 0 && voice.gain === 1, JSON.stringify(voice));
   await b.sleep(50);
   await b.evaluate(`(() => {
     const B = __ooga, R = B.renderer, hub = BL.scenes.hub, room = hub.architect;
@@ -17671,13 +17678,13 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       let f, start = 0;
       for (let i = 0; i < 120; i++) {
         D.step(1); f = room.feeds.find(f => f.prewarm);
-        if (f && f.captureWidth === 1024) { start = D.R.cameraFeedBlend(f); break; }
+        if (f && f.captureWidth === 1200) { start = D.R.cameraFeedBlend(f); break; }
       }
       if (!f) return { warmed: false };
       const channel = f.channel; room.cameras.update(16);
       D.step(10); const middle = D.R.cameraFeedBlend(f);
       D.step(30); const end = D.R.cameraFeedBlend(f);
-      return { warmed: f.captureWidth === 1024, exclusive: room.feeds.filter(f => f.prewarm).length === 1,
+      return { warmed: f.captureWidth === 1200, exclusive: room.feeds.filter(f => f.prewarm).length === 1,
         pinned: channel === f.channel, normalCadence: f.refreshMs >= 160,
         blend: start > 0.9 && middle > 0 && middle < start && end === 0, bounded: !D.overBudget };
     })()`);
@@ -17737,7 +17744,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     // clock starts: allow its six-second cooldown, two eight-second upgrades
     // and two-second admission, plus one scheduled capture. Keep the same target.
     await b.evaluate(`(() => { const D = __focusCheck, f = D.room.enhancement?.feed;
-      for (let i = 0; f && i < 1800 && (f.detail !== 3 || f.captureWidth !== 1024); i++) D.step(1);
+      for (let i = 0; f && i < 1800 && (f.detail !== 3 || f.captureWidth !== 1200); i++) D.step(1);
     })()`);
     const quality = await b.evaluate(`(() => {
       const D = __focusCheck, f = D.room.enhancement?.feed;
@@ -17747,7 +17754,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
         exclusive: D.room.feeds.filter(f => f.enhanced).length === 1, bounded: !D.overBudget,
         surfaces: D.surfaces(49) };
     })()`);
-    record("Observatory focus: one pinned feed gains 1024px detail without adding captures or unbounded screen geometry", quality.enhanced && quality.detail === 3 && quality.width === 1024 && quality.pinned && quality.exclusive && quality.bounded && quality.surfaces, JSON.stringify(quality));
+    record("Observatory focus: one pinned feed preserves the original 6x6 pixel density without adding captures or unbounded screen geometry", quality.enhanced && quality.detail === 3 && quality.width === 1200 && quality.width / 7 >= 1024 / 6 && quality.pinned && quality.exclusive && quality.bounded && quality.surfaces, JSON.stringify(quality));
     const cadence = await b.evaluate(`(() => {
       const D = __focusCheck, f = D.room.enhancement.feed;
       const before = D.room.renderFeeds.map(f => f.captures), selected = f.captures;
@@ -17768,7 +17775,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       const total = D.room.renderFeeds.reduce((sum, f, i) => sum + f.captures - before[i], 0), focused = f.captures - selected;
       return { focused, others: total - focused, total, detail: f.detail, width: f.captureWidth, bounded: !D.overBudget };
     })()`);
-    record("Observatory focus: slow frames reduce enhanced cadence and detail without starving other feeds or exceeding the global budget", slow.focused >= 16 && slow.focused <= 24 && slow.others >= 12 && slow.total <= 49 && slow.detail === 1 && slow.width === 256 && slow.bounded, JSON.stringify(slow));
+    record("Observatory focus: slow frames reduce enhanced cadence and detail without starving other feeds or exceeding the global budget", slow.focused >= 16 && slow.focused <= 24 && slow.others >= 12 && slow.total <= 49 && slow.detail === 1 && slow.width === 304 && slow.bounded, JSON.stringify(slow));
     await click(24, 5);
     const restored = await b.evaluate(`(() => { const D = __focusCheck; D.step(100); return !D.room.enhancement && !D.room.layoutPending
       && D.room.panels.every((p, i) => D.same(p, D.baseline[i]))
@@ -22425,6 +22432,39 @@ const bootFixture = async (b, body) => {
   await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.result.identifier });
 };
 const bootWait = (b, condition, ms = 15000) => b.evaluate(`new Promise(resolve=>{const start=performance.now(),tick=()=>{let value=false;try{value=!!(${condition});}catch{}if(value||performance.now()-start>${ms})resolve(value);else setTimeout(tick,25);};tick();})`);
+const hubRendererFailure = { name: "hub renderer failure", why: "regression: black loading curtains hid the renderer failure message and retry control", run: async b => {
+  const normal = await b.evaluate(`(() => { const c = document.getElementById("curtain");
+    return !c || !c.dataset.failed && getComputedStyle(c.querySelector(".curtain-label")).visibility === "hidden"; })()`);
+  const url = await b.evaluate("location.href");
+  const script = await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+    window.__rendererFailure = { attempts: [], warnings: 0 };
+    const get = HTMLCanvasElement.prototype.getContext, warn = console.warn;
+    HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+      if (this.id === "scene") { __rendererFailure.attempts.push(type); throw new Error("renderer failure fixture"); }
+      return get.call(this, type, ...args);
+    };
+    console.warn = (...args) => { if (args[0] === "WebGL2 renderer failed, using Canvas 2D fallback" && args[1]?.message === "renderer failure fixture") __rendererFailure.warnings++; else warn(...args); };
+  })()` });
+  try {
+    await b.open(url);
+    const failed = await bootWait(b, 'document.getElementById("curtain")?.dataset.failed === "true"');
+    const r = await b.evaluate(`(() => {
+      const c = document.getElementById("curtain"), saying = document.getElementById("curtain-saying"), button = saying.querySelector("button"), rect = button?.getBoundingClientRect();
+      return { ...__rendererFailure, text: saying.textContent, visible: !!button && getComputedStyle(button).visibility === "visible" && rect.width > 0 && rect.height > 0,
+        focused: document.activeElement === button, usable: !!button && !button.closest("[inert]"),
+        hit: !!button && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === button,
+        x: rect?.x + rect?.width / 2, y: rect?.y + rect?.height / 2 };
+    })()`);
+    record("renderer failure: normal loading stays black, but both failed renderers show a focused and clickable retry", normal && failed && r.attempts.includes("webgl2") && r.attempts.includes("2d") && r.warnings === 1 && r.text.includes("The island could not open.") && r.visible && r.focused && r.usable && r.hit, JSON.stringify(r));
+    await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.result.identifier });
+    if (r.hit) {
+      await b.mouse("mousePressed", r.x, r.y, { button: "left", buttons: 1 });
+      await b.mouse("mouseReleased", r.x, r.y, { button: "left", buttons: 0 });
+      const recovered = await bootWait(b, 'window.__ooga?.scene === "hub"', 25000);
+      record("renderer failure: retry reloads into a playable island", recovered);
+    }
+  } finally { await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.result.identifier }).catch(() => {}); }
+} };
 const hubBootHold = { name: "hub boot hold", why: "regression: sliced cold boot accepted canvas, HUD and keyboard input before the first visit was ready", run: async (b) => {
   await bootFixture(b, `
     const H=BL.scenes.hub,steps=H.enterSteps,createPilot=BL.pilot.create,S=window.__bootHold={released:false,paused:false,actions:0};
@@ -22499,6 +22539,7 @@ const hubBootDonationReplay = { name: "hub boot donation replay", why: "regressi
   const state = await b.evaluate(`({ready:${ready},captured:!!window.__bootDonation?.fn,seen:__bootDonationState.seen,donations:__ooga.game.state.donations,toast:document.getElementById("toast").textContent})`);
   record("hub boot donation replay: the real subscription replays a boot tip to the arriving scene exactly once", paused && captured && ready && state.seen === 1 && state.donations === 1 && /1\.2K|1,200/.test(state.toast), JSON.stringify(state));
 } };
+scene("hub", { label: "renderer failure", steps: [hubRendererFailure] });
 scene("hub", { label: "boot lifecycle", query: "terrainworker=0", steps: [hubBootHold, hubBootFailure, hubBootPagehide, hubBootTierUploads, hubBootDonationReplay] });
 // A scene with no enterSteps is entered in one go: a throw there must end at the Reload notice, not throw again every frame.
 const ordinaryEntryFailure = { name: "ordinary entry failure", why: "regression: a throw from an ordinary scene's enter left every later frame throwing on a black screen with no way out", run: async (b) => {

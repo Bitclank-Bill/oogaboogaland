@@ -8841,6 +8841,8 @@
   };
   // The level the driven body stands at, against nothing but where it is: its zone never changes what it hears.
   const shareBlend = (driven, gorilla, zone) => {
+    // The Observatory shares no acoustic level with the island above it.
+    if (zone === "mirror") { BL.net.setBlend(null, 0); return; }
     const p = driven.root.position, feet = p.y - (gorilla ? 0 : driven.baseY);
     if (levelOf(p.x, feet, p.z, zone, LEVEL_AT)) BL.net.setBlend(LEVEL_AT.to, LEVEL_AT.t);
     else BL.net.setBlend(null, 0);

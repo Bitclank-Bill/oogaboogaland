@@ -2043,6 +2043,13 @@ void main() {
     let cameraFeedLevel = 1, cameraFeedGoodMs = 0, cameraFeedBadMs = 0, cameraFeedHoldUntil = 0, cameraFeedDetail = 0;
     const cameraFeedCandidates = [];
     const cameraFeedRank = (a, b) => (b.enhanced ? 2 : b.prewarm ? 1 : 0) - (a.enhanced ? 2 : a.prewarm ? 1 : 0) || b.mosaicSize - a.mosaicSize || b.screenSize - a.screenSize;
+    const cameraFeedWidth = feed => {
+      const width = feed.detail === 3 ? 1024 : feed.detail === 2 ? 512 : feed.detail === 1 ? 256 : qualityName === "low" || !feed.roomBackground ? 192 : 256;
+      // Preserve the original 6x6's pixels per tile as the selected grid grows.
+      // Hover uses the same target only when its extra detail was admitted.
+      return feed.detail > 0 && (feed.enhanced || feed.prewarm && feed.detail > feed.adaptiveLevel)
+        ? Math.ceil(width * Math.max(1, (feed.focusSize || 6) / 6) / 16) * 16 : width;
+    };
     let cameraFeedBlendClock = 0, canvasPreviousTexture = null;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
@@ -4765,8 +4772,8 @@ void main() {
         for (let i = 0; i < cameraFeedCandidates.length && detailBudget; i++) {
           const feed = cameraFeedCandidates[i];
           if (feed.enhanced || feed.prewarm && cameraFeedLevel > 0 && cameraFeedFrameMs < 22 && detailBudget >= (cameraFeedLevel === 2 ? 8 : 4)) {
-            // One selected 7x7 can spend more of the same budget: 1024/512/256
-            // across adaptive levels, while ordinary feeds relinquish detail.
+            // One selected grid can spend more of the same budget, with capture
+            // size scaled to its span, while ordinary feeds relinquish detail.
             feed.detailTarget = cameraFeedLevel + 1;
             detailBudget = Math.max(0, detailBudget - (feed.detailTarget === 3 ? 8 : feed.detailTarget === 2 ? 4 : 1));
           } else {
@@ -4807,7 +4814,7 @@ void main() {
           // ordinary detail ceiling; it does not acquire the 15 Hz focus cadence.
           for (let i = 0; !captureFeed && i < cameraFeeds.length; i++) {
             const feed = cameraFeeds[i];
-            if (feed.prewarm && feed.visible && feed.detail > cameraFeedLevel && feed.captureWidth < (feed.detail === 3 ? 1024 : 512)) { captureFeed = feed; break; }
+            if (feed.prewarm && feed.visible && feed.detail > cameraFeedLevel && feed.captureWidth < cameraFeedWidth(feed)) { captureFeed = feed; break; }
           }
           for (let attempt = 0; !captureFeed && attempt < cameraFeeds.length; attempt++) {
             const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
@@ -4981,7 +4988,7 @@ void main() {
         const seed = !!feed.backGeometry && feed.pending;
         const target = reflectorTarget(seed ? feed.backGeometry : feed.geometry), cam = feed.camera;
         target.blendResize = !feed.roomBackground && !feed.pending && !!(feed.enhanced || feed.prewarm);
-        target.fixedWidth = feed.detail === 3 ? 1024 : feed.detail === 2 ? 512 : feed.detail === 1 ? 256 : qualityName === "low" || !feed.roomBackground ? 192 : 256;
+        target.fixedWidth = cameraFeedWidth(feed);
         target.fixedHeight = target.fixedWidth * 9 / 16;
         feed.captureWidth = target.fixedWidth; feed.captureHeight = target.fixedHeight;
         target.renderWidth = target.fixedWidth; target.renderHeight = target.fixedHeight;

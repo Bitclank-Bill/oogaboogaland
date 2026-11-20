@@ -283,23 +283,26 @@ of the camera's capture cadence. Each changing feed retains at most one previous
 color texture, released when the fade expires, the feed is disposed or context
 resources are reset. No additional scene capture or depth target is required.
 
-The focused chair browser check passes thirteen checks covering mouse selection,
+The focused chair browser check passes fourteen checks covering mouse selection,
 progressive replacement, holding unready images, exact layout restoration,
 retargeting over the mirror columns, right-click face toggling, adaptive detail,
 capture/geometry bounds, enhanced refresh priority under healthy/slow frame
 timing, hover settling/cancellation, resolution fading, complete smaller shots
-along partially covered 2×2/3×3 mosaics, and standing cleanup,
-plus a clean console. In six seconds of controlled
+along partially covered 2×2/3×3 mosaics, standing cleanup, and clearing the
+island basement voice blend inside the room, plus a clean console. In six seconds of controlled
 16.7 ms frame intervals, the enhanced picture received 90 captures and the
 others shared 90. At controlled 50 ms intervals, each received 20 captures over
-six seconds, with the enhanced view reduced to 256×144. These verify scheduling
+six seconds, with the enhanced view reduced to 304×171. These verify scheduling
 and adaptation, not actual device FPS. Its saved
 view is `untracked/architect-focus/enhanced-7x7.png`. The warm-up and shader
 changes also passed all 805 global unit checks, with only the intentional
 fragment shader snapshot updated for `uCanvasBlend`/`uCanvasPrevious` (the blend
 is zero on every other surface). The 7×7 sizing and edge repairs passed
-build/syntax and the thirteen focused checks above. The full browser suite
-was not rerun.
+build/syntax and the fourteen focused checks above, including 1200×675
+admission preserving the old 6×6 pixel density. Three additional startup
+checks verify that ordinary loading remains black, failure of both renderers
+reveals a focused and clickable retry, and retry reloads a playable island
+with a clean console. The full browser suite was not rerun.
 
 Warmups include off-screen destinations, alternating with the face camera when
 needed so neither starves on a slow frame budget. They use the existing 32 targets
@@ -318,8 +321,10 @@ WebGL contexts.
   above 40 ms/frame), then waits six seconds before accumulating upgrade time.
   Each upward step needs eight continuous seconds below 18.5 ms/frame. This
   measures frame cadence, not GPU time or available VRAM.
-- A chair-selected 7×7 receives detail first: up to 1024×576 on the highest
-  adaptive level, 512×288 on the middle and 256×144 on the lowest. It spends
+- A chair-selected 7×7 receives detail first: up to 1200×675 on the highest
+  adaptive level, 608×342 on the middle and 304×171 on the lowest. Capture
+  dimensions scale with the selected grid to retain the original 6×6 pixel
+  density; hover warming uses the same dimensions. It spends
   eight, four or one detail steps respectively, leaving less detail for other
   visible feeds. The lowest level grants that single step only to the selected
   view. Its highest tier includes island objects down to a 0.08-metre radius
@@ -371,9 +376,9 @@ WebGL contexts.
 
 Thirty-two area color targets use 2.53 MiB at lightweight, 4.5 MiB at furnished,
 and 18 MiB if all retain close-detail targets, before depth attachments.
-An enhanced target uses 2.25 MiB. Repeatedly enhancing different slots can leave
+An enhanced target uses about 3.09 MiB. Repeatedly enhancing different slots can leave
 their larger images retained until a later scheduled capture resizes them; the
-absolute bound for all 32 area color targets is therefore 72 MiB before depth.
+absolute bound for all 32 area color targets is therefore about 98.9 MiB before depth.
 The active detail budget admits at most twelve close-detail feeds at once; old
 off-screen targets keep their images until their next scheduled capture resizes
 them. The shared face camera adds two

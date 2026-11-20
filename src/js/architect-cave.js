@@ -369,6 +369,7 @@
       }
       add(merge(...seams));
       cameras.prepare();
+      for (const feed of feeds) feed.focusSize = ENHANCEMENT_SIZE;
       const housings = new Map(), glasses = new Map();
       // Wall and return glass share the same cylinder and exact boundary vertices.
       const walls = geometry(), rgb = BL.math.hexToRgb(WALL);

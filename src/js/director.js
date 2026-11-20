@@ -132,6 +132,8 @@
       retry.type = "button"; retry.className = "link"; retry.textContent = "Try again";
       retry.addEventListener("click", () => location.reload(), { once: true });
       saying.textContent = "The island could not open. "; saying.appendChild(retry);
+      curtain.dataset.failed = "true";
+      retry.focus();
       return;
     }
   }
