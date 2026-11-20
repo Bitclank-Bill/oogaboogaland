@@ -17611,7 +17611,38 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       },
       same(p, saved) { return p.normal === saved.normal && p.group === saved.group && p.size === saved.size; },
-      snapshot() { return room.panels.map(p => ({ normal: p.normal, group: p.group, size: p.size })); }
+      snapshot() { return room.panels.map(p => ({ normal: p.normal, group: p.group, size: p.size })); },
+      surfaces(extra) { return room.feeds.every(f => f.tiles.size <= 28)
+        && room.feeds.reduce((sum, f) => sum + f.surfaces.length - f.tiles.size, 0) === extra; },
+      edges() {
+        const focus = room.enhancement, groups = new Map(), affected = new Set(), current = new Map();
+        const inside = p => focus && (p.col - focus.col + 52) % 52 < 7 && p.row >= focus.row && p.row < focus.row + 7;
+        room.panels.forEach((p, i) => {
+          const base = this.baseline[i];
+          if (!groups.has(base.group)) groups.set(base.group, []);
+          groups.get(base.group).push({ p, base });
+          if (!current.has(p.group)) current.set(p.group, []);
+          current.get(p.group).push(p);
+          if (inside(p)) affected.add(p);
+        });
+        let retained = true, cuts = 0;
+        for (const members of groups.values()) {
+          const outside = members.filter(({ p }) => !inside(p)), base = members[0].base;
+          if (base.size < 2 || !outside.length || outside.length === members.length) continue;
+          cuts++; for (const { p } of outside) affected.add(p);
+          const kept = outside.filter(({ p }) => p.normal.imageSurface.feed === base.normal.imageSurface.feed);
+          retained &&= kept.length > 0 && kept[0].p.size < base.size && kept.length === kept[0].p.size ** 2
+            && kept.every(({ p }) => p.group === kept[0].p.group)
+            && outside.every(({ p }) => kept.some(k => k.p === p) || p.size === 1);
+        }
+        const complete = [...current.values()].every(members => {
+          const first = members[0], row = Math.floor(first.group / 52), col = first.group % 52;
+          return members.length === first.size ** 2 && members.every(p => p.size === first.size
+            && p.normal.imageSurface.feed === first.normal.imageSurface.feed
+            && p.row >= row && p.row < row + first.size && (p.col - col + 52) % 52 < first.size);
+        });
+        return { cuts, retained, complete, untouched: room.panels.every((p, i) => affected.has(p) || this.same(p, this.baseline[i])) };
+      }
     };
     // Finish any ordinary patch already in flight before taking the baseline.
     for (let i = 0; i < 200 && room.layoutPending; i++) D.step(1);
@@ -17659,28 +17690,49 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       return clear;
     })()`);
     record("Observatory hover: leaving the view cancels speculative detail", cancelled);
+    await b.evaluate(`(() => {
+      const D = __focusCheck, room = D.room, cols = 52;
+      const assign = (p, f, size, col, row) => {
+        p.normal = room.cameras.panel(f, size, p.col - col, p.row - row, p.pitchX, 0.75, p.scaleX, p.scaleY, 10.8 - 0.025 - 0.068 * 0.71);
+        p.node.geometry = p.normal; p.size = size; p.group = row * cols + col;
+        D.R.prepareGeometry(p.normal);
+      };
+      // Known 2x2/3x3 mosaics straddle both the first expansion and the wrapped
+      // expansion above the mirror. Every remaining panel starts as a full shot.
+      for (const p of room.panels) assign(p, room.feeds[(p.col + p.row * 5) % 32], 1, p.col, p.row);
+      for (const [col, row, size] of [[19, 3, 3], [27, 7, 2], [1, 6, 3], [46, 9, 2]]) {
+        const inside = p => p.col >= col && p.col < col + size && p.row >= row && p.row < row + size;
+        const adjacent = room.panels.filter(p => !inside(p) && p.col >= col - 1 && p.col <= col + size && p.row >= row - 1 && p.row <= row + size);
+        const f = room.feeds.find((f, i) => i !== 17 && i !== 6 && adjacent.every(p => p.normal.imageSurface.feed !== f));
+        for (const p of room.panels) if (inside(p)) assign(p, f, size, col, row);
+      }
+      D.baseline = D.snapshot();
+    })()`);
     await click(24, 5);
     const wave = await b.evaluate(`(() => {
       const D = __focusCheck, room = D.room, focus = room.enhancement;
       if (!focus) return { selected: false };
       const pending = room.panels.filter(p => p.next), originals = new Map(room.panels.map(p => [p, p.node.geometry]));
+      const large = pending.filter(p => p.next.size === 7);
       const ready = room.cameras.ready;
       room.cameras.ready = f => f === focus.feed ? false : ready(f);
       D.step(10, 0.1);
       const held = room.panels.every(p => p.node.geometry === originals.get(p));
       room.cameras.ready = ready;
-      // All replacements use one already captured feed, but reveal on separate tile deadlines.
+      // The enlargement and its edge repairs wait for their destination pictures.
       for (let i = 0; i < 60 && !ready(focus.feed); i++) D.step(1);
       D.step(1, 0); D.step(1, 0.5);
-      const replaced = pending.filter(p => p.node.geometry !== originals.get(p)).length;
+      const replaced = large.filter(p => p.node.geometry !== originals.get(p)).length;
       const outside = room.panels.filter(p => !pending.includes(p)).every(p => p.node.geometry === originals.get(p));
       const noBlank = pending.every(p => p.node.geometry === originals.get(p) || ready(p.node.geometry.imageSurface.feed));
       D.step(100);
-      return { selected: true, count: pending.length, held, partial: replaced > 0 && replaced < 49, outside, noBlank,
+      return { selected: true, count: large.length, held, partial: replaced > 0 && replaced < 49, outside, noBlank,
         complete: !room.layoutPending && room.panels.filter(p => p.size === 7).length === 49,
         areaMode: room.broadcast === "feeds" };
     })()`);
     record("Observatory focus: left click expands exactly 49 tiles progressively, preserving outside tiles and holding unready replacements", Object.values(wave).every(v => v === true || v === 49), JSON.stringify(wave));
+    const edges = await b.evaluate('__focusCheck.edges()');
+    record("Observatory focus: partially covered 2x2 and 3x3 mosaics become complete smaller shots while retaining each displaced feed once", edges.cuts === 2 && edges.retained && edges.complete && edges.untouched, JSON.stringify(edges));
     // A slow real startup may have reached level zero before the controlled
     // clock starts: allow its six-second cooldown, two eight-second upgrades
     // and two-second admission, plus one scheduled capture. Keep the same target.
@@ -17693,7 +17745,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       const channel = f.channel; D.room.cameras.update(16);
       return { enhanced: true, detail: f.detail, width: f.captureWidth, level: f.adaptiveLevel, frameMs: f.frameMs, pinned: f.channel === channel,
         exclusive: D.room.feeds.filter(f => f.enhanced).length === 1, bounded: !D.overBudget,
-        surfaces: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 49 };
+        surfaces: D.surfaces(49) };
     })()`);
     record("Observatory focus: one pinned feed gains 1024px detail without adding captures or unbounded screen geometry", quality.enhanced && quality.detail === 3 && quality.width === 1024 && quality.pinned && quality.exclusive && quality.bounded && quality.surfaces, JSON.stringify(quality));
     const cadence = await b.evaluate(`(() => {
@@ -17720,7 +17772,7 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
     await click(24, 5);
     const restored = await b.evaluate(`(() => { const D = __focusCheck; D.step(100); return !D.room.enhancement && !D.room.layoutPending
       && D.room.panels.every((p, i) => D.same(p, D.baseline[i]))
-      && D.room.feeds.every(f => !f.enhanced) && D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount; })()`);
+      && D.room.feeds.every(f => !f.enhanced) && D.surfaces(0); })()`);
     record("Observatory focus: clicking the enlargement restores its exact saved small-grid layout and releases its surfaces", restored);
     await click(24, 5); await b.evaluate('__focusCheck.step(100)');
     await click(50, 4);
@@ -17730,8 +17782,8 @@ const hubObservatoryFocus = { name: "hub observatory focus", why: "rule: seated 
       return { one: !!focus && D.room.feeds.filter(f => f.enhanced).length === 1 && large.length === 49,
         includesClick: large.some(p => p.col === 50 && p.row === 4), mirrorClear: large.every(p => p.col < 48 || p.row >= 4),
         continuous: large.some(p => p.col < 48) && large.some(p => p.col >= 48),
-        outside: D.room.panels.every((p, i) => p.size === 7 || D.same(p, D.baseline[i])),
-        released: D.room.feeds.reduce((sum, f) => sum + f.surfaces.length, 0) === D.surfaceCount + 49 };
+        outside: D.edges().untouched, edges: D.edges().cuts === 2 && D.edges().retained && D.edges().complete,
+        released: D.surfaces(49) };
     })()`);
     record("Observatory focus: another feed replaces the old enlargement across the mirror columns without covering the exit or retaining old geometry", Object.values(moved).every(Boolean), JSON.stringify(moved));
     const p = await b.evaluate('__focusCheck.aim(50, 4)');

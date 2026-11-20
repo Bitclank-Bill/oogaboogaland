@@ -240,8 +240,13 @@ its last complete assignment.
 The chair-selected enlargement uses the nearest complete 7×7 region containing
 the selected mosaic, wrapping around the circular wall when needed. It avoids
 the return mirror and accounts for the narrower columns above it in its image
-coordinates. It may temporarily cover parts of neighboring mosaics; their exact
-assignments are saved and restored. Each affected tile switches and flashes on
+coordinates. When it partly covers a 2×2 or 3×3 mosaic, the uncovered tiles are
+retiled into complete smaller pictures. The displaced shot survives once in the
+largest smaller square that fits (2×2 for a 3×3 when possible, otherwise one
+screen); other exposed tiles receive new single-screen shots. New shots exclude
+neighboring incoming/outgoing feeds and the enhanced feed. Unaffected mosaics
+stay unchanged. The enlargement and these edge repairs save their original
+assignments, restoring them together when closed or moved. Each affected tile switches and flashes on
 its own deadline, retaining its outgoing image until the destination is ready.
 Selection waits while a tile wave or face broadcast is active. The selected
 camera's channel stays pinned while the remaining slots rotate. Face broadcasts
@@ -251,7 +256,8 @@ An enlargement adds 49 temporary image surfaces, sharing the existing camera
 target. A move can briefly retain another 49 outgoing surfaces until the wave
 finishes; then those geometries are released. Restoring, leaving or changing
 actor releases the enhancement surfaces. No extra camera targets or network
-subscriptions are created.
+subscriptions are created. Edge repairs reuse the existing small-panel cache,
+which remains bounded to 28 variants per camera slot.
 
 Hovering a TV from the chair warms just that feed after the cursor and camera
 have moved slowly for 450 ms. Precise screen picking runs at most ten times a
@@ -277,11 +283,12 @@ of the camera's capture cadence. Each changing feed retains at most one previous
 color texture, released when the fade expires, the feed is disposed or context
 resources are reset. No additional scene capture or depth target is required.
 
-The focused chair browser check passes twelve checks covering mouse selection,
+The focused chair browser check passes thirteen checks covering mouse selection,
 progressive replacement, holding unready images, exact layout restoration,
 retargeting over the mirror columns, right-click face toggling, adaptive detail,
 capture/geometry bounds, enhanced refresh priority under healthy/slow frame
-timing, hover settling/cancellation, resolution fading and standing cleanup,
+timing, hover settling/cancellation, resolution fading, complete smaller shots
+along partially covered 2×2/3×3 mosaics, and standing cleanup,
 plus a clean console. In six seconds of controlled
 16.7 ms frame intervals, the enhanced picture received 90 captures and the
 others shared 90. At controlled 50 ms intervals, each received 20 captures over
@@ -290,8 +297,9 @@ and adaptation, not actual device FPS. Its saved
 view is `untracked/architect-focus/enhanced-7x7.png`. The warm-up and shader
 changes also passed all 805 global unit checks, with only the intentional
 fragment shader snapshot updated for `uCanvasBlend`/`uCanvasPrevious` (the blend
-is zero on every other surface). The final 7×7 sizing passed build/syntax and
-the twelve focused checks above. The full browser suite was not rerun.
+is zero on every other surface). The 7×7 sizing and edge repairs passed
+build/syntax and the thirteen focused checks above. The full browser suite
+was not rerun.
 
 Warmups include off-screen destinations, alternating with the face camera when
 needed so neither starves on a slow frame budget. They use the existing 32 targets

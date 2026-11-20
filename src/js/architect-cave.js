@@ -584,6 +584,72 @@
       for (const feed of feeds) feed.forceCapture = false;
       trimFocus();
     };
+    const retileFocusEdges = (inside, focusFeed) => {
+      const cols = BANKS + PORTAL_COLS, groups = new Map(), repairs = new Map(), loose = [];
+      const baseline = p => p.saved || p;
+      const plannedFeed = p => inside(p) ? focusFeed : (repairs.get(p) || baseline(p)).normal.imageSurface.feed;
+      const neighbors = (p, visit) => {
+        for (let y = Math.max(0, p.row - 1); y <= Math.min(ROWS - 1, p.row + 1); y++)
+          for (let x = p.col - 1; x <= p.col + 1; x++) {
+            const other = tiles[y * cols + (x + cols) % cols];
+            if (other && other !== p) visit(other);
+          }
+      };
+      const assign = (p, feed, size, origin) => repairs.set(p, {
+        normal: cameras.panel(feed, size, p.col - origin.col, p.row - origin.row, p.pitchX, PITCH, p.scaleX, p.scaleY, SCREEN_RADIUS),
+        group: origin.row * cols + origin.col, size
+      });
+      // Plan against the saved small layout, so moving the enhancement restores
+      // its old edge repairs before working out which mosaics the new patch cuts.
+      for (const p of panels) {
+        const base = baseline(p);
+        if (base.size < 2 || base.size > 3) continue;
+        let group = groups.get(base.group);
+        if (!group) groups.set(base.group, group = []);
+        group.push(p);
+      }
+      for (const members of groups.values()) {
+        const remaining = members.filter(p => !inside(p));
+        if (!remaining.length || remaining.length === members.length) continue;
+        const base = baseline(members[0]), feed = base.normal.imageSurface.feed, available = new Set(remaining);
+        let keep = null, keepSize = base.size - 1;
+        for (; keepSize > 0; keepSize--) {
+          let best = Infinity;
+          for (const origin of remaining) {
+            const candidate = [];
+            for (let y = 0; y < keepSize; y++) for (let x = 0; x < keepSize; x++) {
+              const p = tiles[(origin.row + y) * cols + origin.col + x];
+              if (available.has(p)) candidate.push(p);
+            }
+            if (candidate.length !== keepSize * keepSize) continue;
+            let score = 0;
+            for (const p of candidate) neighbors(p, other => {
+              if (!available.has(other) && plannedFeed(other) === feed) score++;
+            });
+            if (score < best) { best = score; keep = candidate; }
+          }
+          if (keep) break;
+        }
+        // Retain the old shot once, in the largest smaller square that fits.
+        // Reserve every retained shot before choosing the new neighboring shots.
+        for (const p of keep) assign(p, feed, keepSize, keep[0]);
+        for (const p of remaining) if (!repairs.has(p)) loose.push(p);
+      }
+      const uses = new Uint16Array(feeds.length);
+      for (const p of loose) {
+        const excluded = new Set([focusFeed, baseline(p).normal.imageSurface.feed, p.normal.imageSurface.feed]);
+        neighbors(p, other => { excluded.add(plannedFeed(other)); excluded.add(other.normal.imageSurface.feed); });
+        let choice = -1, best = Infinity, ties = 0;
+        for (let i = 0; i < feeds.length; i++) {
+          if (excluded.has(feeds[i]) || uses[i] > best) continue;
+          if (uses[i] < best) { best = uses[i]; ties = 0; }
+          if (Math.random() * ++ties < 1) choice = i;
+        }
+        // At most 19 old/new neighboring slots are excluded out of 32.
+        uses[choice]++; assign(p, feeds[choice], 1, p);
+      }
+      return repairs;
+    };
     const stageEnhancement = selected => {
       const cols = BANKS + PORTAL_COLS, size = ENHANCEMENT_SIZE;
       let patch = null, feed = null;
@@ -605,6 +671,8 @@
         }
         if (!patch) return false;
       }
+      const insidePatch = p => patch && (p.col - patch.col + cols) % cols < size && p.row >= patch.row && p.row < patch.row + size;
+      const repairs = patch ? retileFocusEdges(insidePatch, feed) : null;
       for (const f of feeds) f.enhanced = f === feed;
       clearHover();
       if (feed) feed.focusPending = true;
@@ -620,10 +688,11 @@
       for (const p of panels) {
         const x = patch ? (p.col - patch.col + cols) % cols : -1, y = patch ? p.row - patch.row : -1;
         const inside = patch && x < size && y >= 0 && y < size;
-        if (!inside && !p.saved) continue;
+        const repair = repairs?.get(p);
+        if (!inside && !repair && !p.saved) continue;
         p.previous = { normal: p.normal, group: p.group, size: p.size };
+        if ((inside || repair) && !p.saved) p.saved = p.previous;
         if (inside) {
-          if (!p.saved) p.saved = p.previous;
           let center = p.pitchX / 2;
           for (let i = 0; i < x; i++) center += pitch(patch.col + i);
           // UVs use physical arc widths, including the narrower columns above
@@ -634,6 +703,10 @@
           focusMeshes.add(normal); feed.surfaces.push(normal); renderer.prepareGeometry(normal);
           p.next = { normal, group: patch.row * cols + patch.col, size };
           p.delay = Math.abs(x - (size - 1) / 2) * 0.10 + y * 0.12 + rowJitter[p.row];
+        } else if (repair) {
+          renderer.prepareGeometry(repair.normal); p.next = repair;
+          const localX = x > cols / 2 ? x - cols : x;
+          p.delay = Math.abs(localX - (size - 1) / 2) * 0.10 + Math.max(0, y) * 0.12 + rowJitter[p.row];
         } else {
           p.next = p.saved;
           p.delay = p.distance * 0.35 + p.row / ROWS * 0.55 + rowJitter[p.row];
