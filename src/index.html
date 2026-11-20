@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' https://stream.noderunnersradio.com https://s2.radio.co https://ice1.somafm.com; connect-src 'self' https: wss:; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' https://stream.noderunnersradio.com https://s2.radio.co; connect-src 'self' https: wss:; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -699,6 +699,16 @@
           </span>
         </span>
       </button>
+      <div class="dance-hud" id="dance-hud" role="group" aria-label="Dance level" data-level="1" hidden>
+        <button type="button" class="dance-step" data-action="dance-down" aria-label="Dance calmer" title="Dance calmer (-)">&minus;</button>
+        <span class="dance-read" aria-live="polite">
+          <svg class="dance-icon" viewBox="0 0 9 11" shape-rendering="crispEdges" aria-hidden="true">
+            <path fill="#ffcf5a" d="M3 0h2v2H3zM2 2h4v1H2zM6 1h1v1H6zM7 0h1v1H7zM1 3h1v1H1zM0 4h1v1H0zM3 3h3v3H3zM3 6h1v2H3zM5 6h1v1H5zM6 7h1v2H6zM2 8h1v2H2zM7 9h1v1H7zM1 10h2v1H1z"/>
+          </svg>
+          <span class="dance-num" id="dance-level">1</span>
+        </span>
+        <button type="button" class="dance-step" data-action="dance-up" aria-label="Dance harder" title="Dance harder (=)">+</button>
+      </div>
       <button type="button" class="gorilla-hud" id="gorilla-smash-hud" data-action="gorilla-smash"
         aria-label="Ground smash; hold for double damage" title="Ground smash · hold for double damage (1)" hidden>
         <span class="weapon-toggle">
@@ -2142,6 +2152,16 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
         </div>
       </div>
     </dialog>
+    <dialog class="modal" id="sphere-exit" aria-labelledby="sphere-exit-title" aria-describedby="sphere-exit-note">
+      <div class="panel-head">
+        <h2 id="sphere-exit-title">Leave this room?</h2>
+      </div>
+      <p class="help" id="sphere-exit-note">Your Ooga walks back out through the doors to the Timechain Sphere's bridge.</p>
+      <div class="actions">
+        <button type="button" data-sphere-exit="stay">Stay</button>
+        <button type="button" data-sphere-exit="leave" autofocus>Leave</button>
+      </div>
+    </dialog>
     <dialog class="modal" id="ooga-portal-menu" aria-labelledby="ooga-portal-title" aria-describedby="ooga-portal-status">
       <div class="panel-head">
         <h2 id="ooga-portal-title">OOGA PORTAL DIALER</h2>
@@ -2540,7 +2560,7 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/retro-games.js" data-defer="arcade"></script>
   <script src="js/scene-arcade.js" data-defer="arcade-scene"></script>
   <script src="js/carnival-audio.js" data-defer="arcade"></script>
-  <script src="js/scene-carnival.js"></script>
+  <script src="js/scene-carnival.js" data-defer="carnival-scene"></script>
   <script src="js/race-track.js" data-defer="race"></script>
   <script src="js/racers.js" data-defer="race"></script>
   <script src="js/race-items.js" data-defer="race"></script>
@@ -2557,10 +2577,10 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/block-sim.js"></script>
   <script src="js/block-live.js"></script>
   <script src="js/block-viewer.js" data-defer="block-viewer"></script>
-  <script src="js/block-trivia.js"></script>
+  <script src="js/block-trivia.js" data-defer="block-scene"></script>
   <script src="js/block-models.js"></script>
-  <script src="js/block-audio.js"></script>
-  <script src="js/scene-block.js"></script>
+  <script src="js/block-audio.js" data-defer="block-scene"></script>
+  <script src="js/scene-block.js" data-defer="block-scene"></script>
   <script src="js/mine-models.js"></script>
   <script src="js/mine-sim.js"></script>
   <script src="js/mine-hud.js" data-defer="mine"></script>
@@ -2661,7 +2681,8 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/timechain-room-planetarium.js" data-defer="timechain"></script>
   <script src="js/timechain-room-conference.js" data-defer="timechain"></script>
   <script src="js/timechain-room-temple.js" data-defer="timechain"></script>
-  <script src="js/timechain-party-radio.js" data-defer="timechain"></script>
+  <script src="js/timechain-party-radio.js" data-defer="party-radio"></script>
+  <script src="js/timechain-party-dance.js" data-defer="timechain"></script>
   <script src="js/timechain-room-party.js" data-defer="timechain"></script>
   <script src="js/timechain-room-workout.js" data-defer="timechain"></script>
   <script src="js/timechain-room-mining.js" data-defer="timechain"></script>
@@ -2700,8 +2721,8 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/poker-hud.js" data-defer="poker"></script>
   <script src="js/scene-poker.js"></script>
   <!-- HALLOWEEN: only the herald is present at entry; the hunt loads when a player starts or joins. -->
-  <script src="js/ghost-herald-data.js"></script>
-  <script src="js/ghost-entry.js"></script>
+  <script src="js/ghost-herald-data.js" data-defer="arcade-scene"></script>
+  <script src="js/ghost-entry.js" data-defer="arcade-scene"></script>
   <script src="js/ghost-sim.js" data-defer="halloween"></script>
   <script src="js/ghost-art-data.js" data-defer="halloween"></script>
   <script src="js/ghost-models.js" data-defer="halloween"></script>
