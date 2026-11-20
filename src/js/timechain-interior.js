@@ -1338,8 +1338,12 @@
       }
       // A kind's moving floor (`motion.carry(x, z, dt)`: how far it carries a body standing at (x, z) this frame, or
       // null): the played Ooga rides it hands-free and steps off by walking; others' positions come over the net as
-      // their own pages move them, so a rider looks right everywhere with no new message.
-      if (motion && motion.carry && avatar && !avatar.camp.seat && avatar.hop <= 0) { const p = avatar.root.position, v = motion.carry(p.x, p.z, dt); if (v) { p.x += v.x; p.z += v.z; } }
+      // their own pages move them, so a rider looks right everywhere with no new message. The carry is a move like a
+      // step, so it goes only where a step could: up against a solid it holds the rider where it stands.
+      if (motion && motion.carry && avatar && !avatar.camp.seat && avatar.hop <= 0) {
+        const p = avatar.root.position, v = motion.carry(p.x, p.z, dt);
+        if (v && walkable(p.x, p.z, p.x + v.x, p.z + v.z, p.y - avatar.baseY, avatar.bodyHeight, avatar)) { p.x += v.x; p.z += v.z; }
+      }
       if (musicOut && !leaving && !guide.stage) { musicOut = false; motion.fadeBack(); }
       // A kind that moves the Oogas to its music (the Block Party's groove) poses each one, after the crew and the other
       // players are posed: the visitor's own (standing still, from its own eyes too, held under them) and every other shown.
