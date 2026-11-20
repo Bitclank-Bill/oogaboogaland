@@ -14,7 +14,7 @@
 // Every other change of state is a beam, as the passive crew's is. Players never touch it: there are none in here.
 //
 // Inputs: the cast (`setCast`), each Ooga's state and the caves it is active at (`setActivity`), the pile's platform
-// radius (`setPile`). Output: game-wire.js rows (`motion`). `step` runs fixed steps on the sim's own clock; nothing in
+// radius (`setPile`, or `setBananas` from its count). Output: game-wire.js rows (`motion`). `step` runs fixed steps on the sim's own clock; nothing in
 // it allocates once the cast is set.
 (() => {
   "use strict";
@@ -73,10 +73,12 @@
     // `stir` moves whenever anything a page shows did: someone walked, or started doing something else.
     let t = 0, version = 0, stir = 0;
 
+    // The ring moves in PATH_UNIT steps, so a pile shrinking by the hour replans nobody until the ring itself moves.
     const setPile = (radius) => {
-      if (radius === platform) return;
       platform = radius;
-      ring.inner = Math.ceil((radius + PATH_UNIT - 1e-9) / PATH_UNIT) * PATH_UNIT;
+      const inner = Math.ceil((radius + PATH_UNIT - 1e-9) / PATH_UNIT) * PATH_UNIT;
+      if (inner === ring.inner) return;
+      ring.inner = inner;
       ring.center = ring.inner + RING_HALF; ring.outer = ring.center + RING_HALF;
       ring.loading = ring.inner + RING_HALF / 2; ring.traffic = ring.outer - RING_HALF / 2;
       path.debug.ringTrafficRadius = ring.traffic; path.debug.ringCenterRadius = ring.center;
@@ -94,6 +96,15 @@
         legs: new Float64Array(LEGS * 3), legCount: 0, leg: 0, speed: 0,
         phase: NONE, site: -1, plan: -1, px: 0, pz: 0, timer: 0, fired: 0, ammo: AMMO, slot: -1, reservedAt: 0,
         mode: 0, until: 0, trips: 0, table: -1, spot: -1, retryAt: 0 };
+    };
+    /** The pile as `count` bananas: its platform radius from the layout's table (scene-hub.js `routineLayout`), eased
+     * between entries by the cube root, as the pile grows. */
+    const setBananas = (count) => {
+      const table = L.pile, x = Math.cbrt(Math.max(0, count));
+      let k = 1;
+      while (k < table.length - 1 && Math.cbrt(table[k][0]) < x) k++;
+      const a = Math.cbrt(table[k - 1][0]), b = Math.cbrt(table[k][0]), u = b > a ? Math.min(1, Math.max(0, (x - a) / (b - a))) : 1;
+      setPile(table[k - 1][1] + (table[k][1] - table[k - 1][1]) * u);
     };
     /** The cast, in roster order: [{ name, maintainer }]. Oogas kept across calls keep where they are. */
     const setCast = (list) => {
@@ -457,7 +468,7 @@
     };
 
     return {
-      setCast, setActivity, setPile, step, motion,
+      setCast, setActivity, setPile, setBananas, step, motion,
       get t() { return t; }, get version() { return version; }, get stir() { return stir; }, get oogas() { return oogas; }, get ring() { return ring; },
       get fan() { return fanCount; }, get platform() { return platform; }, byName: (name) => byName.get(name) || null
     };

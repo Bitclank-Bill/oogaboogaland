@@ -3509,6 +3509,7 @@
     islandWorld = BL.islandWorld.create({ crew, clankers: { plan: (cave, site) => { if (npcSync) npcSync.recordPlan(cave, site); if (clankers) clankers.plan(cave, site); } },
       platform: () => altar.platformRadius });
   };
+  const PILE_TABLE = [0, 100, 302, 400, 500, 604, 1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5, 2e5, 5e5, 1e6, 2e6, 5e6, 1e7];
   const routineLayout = () => {
     const r = (v) => Math.round(v * 100) / 100, height = Math.max(...crew.list.map((cave) => cave.traits.height));
     const still = (s) => {
@@ -3541,7 +3542,10 @@
           approach: [r(site.route[0].x), r(site.route[0].z)], approachDistance: site.approachDistance, places: kept };
       }),
       // The sealed caves' fronts, as the crew's `npcClosedCaveAt` reads them.
-      closed: closedCaveZones.map((zone) => [r(zone.x), r(zone.z), r(zone.sr), r(zone.cr), r(zone.half), r(zone.front)])
+      closed: closedCaveZones.map((zone) => [r(zone.x), r(zone.z), r(zone.sr), r(zone.cr), r(zone.half), r(zone.front)]),
+      // The pile's platform radius by banana count, [count, radius], as `layoutPile` sizes it (pile.js's footprint and
+      // the altar's ring), for the server, which knows the count but cannot load pile.js.
+      pile: PILE_TABLE.map((count) => [count, r(pileMod.visualFootprintFor(count, PILE_SCALE) + ALTAR_RING_GAP + ALTAR_BLOCK_WIDTH)])
     };
   };
   const pileRespawnSpot = (cave, out, initial = false, search = null) => {

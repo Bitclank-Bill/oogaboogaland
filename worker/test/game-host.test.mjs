@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import * as protocol from "../src/protocol.js";
 import { ghostHunt } from "../src/games/ghost-hunt.js";
-import { island, castFrom, applyStats, applyActivity } from "../src/games/island.js";
+import { island, castFrom, applyStats, applyActivity, bananasAt } from "../src/games/island.js";
 import CAST_ROWS from "../src/characters.gen.json" with { type: "json" };
 import "../../src/js/game-wire.js";
 
@@ -429,4 +429,39 @@ test("a world that cannot read Oogatron starts from the stats every deploy bakes
   assert.equal(wants(sim), wants(check), "each Ooga's state and caves as the baked snapshot gives them");
   assert.notEqual(wants(sim), wants((() => { const plain = globalThis.BL.islandSim.create(), bare = castFrom(CAST_ROWS); plain.setCast(bare); applyActivity(plain, bare, now); return plain; })()),
     "which is not the cast's own bundled dates");
+});
+
+test("the island's pile comes from bananapayserver: one short socket for its pile, read again every few minutes while the world runs", async () => {
+  const at = Date.parse("2026-11-20T12:00:00Z"), sockets = [];
+  const socket = () => {
+    const on = {};
+    return { closed: null, addEventListener(type, fn) { on[type] = fn; }, close(code) { this.closed = code; },
+      accept() {
+        queueMicrotask(() => {
+          on.message({ data: JSON.stringify({ type: "status", open: true }) });
+          on.message({ data: JSON.stringify({ type: "pile", bananas: 5000, at, eatPerHour: 60 }) });
+        });
+      } };
+  };
+  const DONATIONS = { fetch: async (req) => {
+    const ws = socket();
+    sockets.push({ path: new URL(req.url).pathname, upgrade: req.headers.get("upgrade"), client: req.headers.get("x-client"), ws });
+    return { webSocket: ws };
+  } };
+  const game = island.create(at, { DONATIONS, SITE_ORIGIN: "https://site.test" }), settle = () => new Promise((r) => setTimeout(r, 5));
+  game.join({});
+  game.step(at);
+  await settle();
+  game.step(at + 4 * 60000);
+  const check = globalThis.BL.islandSim.create();
+  check.setBananas(bananasAt({ bananas: 5000, at, eatPerHour: 60 }, at + 4 * 60000));
+  assert.equal(sockets.length, 1);
+  assert.deepEqual([sockets[0].path, sockets[0].upgrade, sockets[0].client, sockets[0].ws.closed], ["/donations/socket", "websocket", "island-world", 1000]);
+  assert.equal(game.sim.platform, check.platform, "sized by the pile eaten down to now (4,996 bananas four minutes on)");
+  assert.notEqual(game.sim.platform, globalThis.BL.islandSim.create().platform, "not the nominal pile");
+  game.step(at + 4.5 * 60000); await settle();
+  assert.equal(sockets.length, 1, "not again within five minutes");
+  game.step(at + 5 * 60000 + 1); await settle();
+  assert.equal(sockets.length, 2, "and again after them");
+  assert.equal(bananasAt({ bananas: 10, at, eatPerHour: 60 }, at + 3600e3), 0, "never below none");
 });

@@ -9,6 +9,9 @@
 // page does, so a world that cannot reach Oogatron shows what a page would. Each Ooga's state is the windows of
 // roster-panel.js (island-sim.js `stateAt`), its caves the ones it was active at within the hour (`sitesFor`).
 //
+// The banana pile's size (its ring, reload fan and where workers turn up) comes from bananapayserver, read through the
+// DONATIONS binding every few minutes while the world runs (`readPile`).
+//
 // Out: every tick, the motion frame of game-wire.js, a row an Ooga (island-sim.js `motion`; nothing when no Ooga has
 // moved or changed since the last, but at least every `KEEP_MS`); the state, the cast's names in row order, at once to
 // a page joining and every `stateEvery` ticks. The world runs only while a page follows it, and keeps no record: a
@@ -24,6 +27,40 @@ import CAST_ROWS from "../characters.gen.json" with { type: "json" };
 const SIM = globalThis.BL.islandSim, LAYOUT = globalThis.BL.islandLayout, IDENTITIES = globalThis.BL.contributorIdentities;
 const REFRESH_MS = 60000, RETRY_MS = 15000, KEEP_MS = 2000, STEP_MAX_MS = 1000, ACTIVITY_MS = 1000, MAX_REPOS = 64;
 const ENTROPY = "oogaboogax/entropylab";
+const PILE_MS = 5 * 60000, PILE_RETRY_MS = 60000, PILE_WAIT_MS = 5000, HOUR_MS = 3600e3;
+const finite = (v) => typeof v === "number" && Number.isFinite(v);
+
+/** One reading of the banana pile from bananapayserver, through the DONATIONS binding: a short socket to its
+ * /donations/socket (as donations.js passes a page's on), its first `pile` message, then closed. Resolves
+ * { bananas, at, eatPerHour } (bananapayserver's docs/protocol.md), or null with no reading within `PILE_WAIT_MS`. */
+export const readPile = async (donations, origin) => {
+  const key = new Uint8Array(16);
+  crypto.getRandomValues(key);
+  const res = await donations.fetch(new Request(new URL("/donations/socket", origin), { headers: { upgrade: "websocket", connection: "Upgrade",
+    "sec-websocket-version": "13", "sec-websocket-key": btoa(String.fromCharCode(...key)), "x-client": "island-world" } }));
+  const ws = res.webSocket;
+  if (!ws) return null;
+  ws.accept();
+  return new Promise((resolve) => {
+    let timer = 0;
+    const done = (pile) => {
+      clearTimeout(timer);
+      try { ws.close(1000, "read"); } catch { /* closed */ }
+      resolve(pile);
+    };
+    timer = setTimeout(() => done(null), PILE_WAIT_MS);
+    ws.addEventListener("message", (e) => {
+      let m = null;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m && m.type === "pile" && finite(m.bananas) && finite(m.eatPerHour))
+        done({ bananas: Math.max(0, m.bananas), at: finite(m.at) ? m.at : Date.now(), eatPerHour: Math.max(0, m.eatPerHour) });
+    });
+    ws.addEventListener("close", () => done(null));
+    ws.addEventListener("error", () => done(null));
+  });
+};
+/** The pile a reading gives at `at`: its bananas less what has been eaten since, never below none. */
+export const bananasAt = (pile, at) => Math.max(0, pile.bananas - pile.eatPerHour * Math.max(0, at - pile.at) / HOUR_MS);
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /** The cast as the island world runs it, from the Worker's cast rows: join order, each with its owner's login. */
@@ -84,6 +121,20 @@ const create = (now, env) => {
   const readRepos = new Set();
   applyStats(cast, globalThis.BL.jumbotronData, now, readRepos);
   let pages = 0, last = now, readAt = -Infinity, reading = null, sentAt = -Infinity, sentStir = -1, appliedAt = -Infinity;
+  // The pile, read every PILE_MS while the world runs (a minute after a failed read): between donations it only
+  // shrinks at its stated rate, so one reading gives its size until the next. Without the binding (donations
+  // simulated, the checks) the world keeps island-sim.js's own nominal pile.
+  const donations = env && env.DONATIONS && typeof env.DONATIONS.fetch === "function" ? env.DONATIONS : null;
+  const origin = env && env.SITE_ORIGIN || "https://oogaboogaland.invalid";
+  let pile = null, pileAt = -Infinity, pileReading = null;
+  const readPileSoon = (at) => {
+    if (!donations || pileReading || at < pileAt) return;
+    pileAt = at + PILE_RETRY_MS;
+    pileReading = readPile(donations, origin)
+      .then((reading) => { if (reading) { pile = reading; pileAt = at + PILE_MS; } })
+      .catch(() => {})
+      .finally(() => { pileReading = null; });
+  };
   // Without the binding (a local Worker, the checks) the bundled stamps stand.
   const read = (at) => {
     if (!fetcher || reading || at < readAt) return;
@@ -101,7 +152,12 @@ const create = (now, env) => {
     running() { return pages > 0; },
     step(at) {
       read(at);
-      if (at - appliedAt >= ACTIVITY_MS) { appliedAt = at; applyActivity(sim, cast, at); }
+      readPileSoon(at);
+      if (at - appliedAt >= ACTIVITY_MS) {
+        appliedAt = at;
+        applyActivity(sim, cast, at);
+        if (pile) sim.setBananas(bananasAt(pile, at));
+      }
       sim.step(Math.min(STEP_MAX_MS, Math.max(0, at - last)) / 1000);
       last = at;
       return false;

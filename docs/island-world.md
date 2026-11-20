@@ -48,8 +48,11 @@ three. A frame for 60 Oogas is about 750 bytes.
 ## Known approximations
 
 - **The pile's size.** The ring, reload fan and starting spots depend on the pile's platform radius. The server
-  uses a nominal one (`PLATFORM`, 2.4 m) because the Worker does not read the pile yet. A page can ease rows near
-  the pile out to its own ring, or the Worker can read the pile from bananapayserver later.
+  reads the pile from bananapayserver (its `pile` message, `{ bananas, at, eatPerHour }`) through the `DONATIONS`
+  binding when the world starts and every 5 minutes while it runs, and sizes it from a table baked from the hub
+  (`island-layout.js` `pile`). Between donations the pile only shrinks at its stated rate, so a reading is exact
+  until the next donation, and at most 5 minutes behind after one. Without the binding (donations simulated) it keeps
+  a nominal pile (`PLATFORM`, 2.4 m, about 30,000 bananas). A signed-out page's own world takes the page's pile.
 - **The gorillas.** On a page, a worker waits to fire until its gorilla is in the cave. The server cannot see the
   gorillas, so its workers fire on their own schedule. Pages still run their own gorillas from the trips each row
   names.
@@ -88,7 +91,6 @@ see the same crew. The props still sync through the room's host (`prop-sync.js`)
 
 ### Left to do
 
-- **The pile.** Ease rows near the pile out to the page's own ring, or have the Worker read the pile.
 - **First arrival.** On a signed-out page the first frame beams every Ooga from where the crew put it to where the
   world does. The local world could start from the crew's own positions.
 - **Turning it on.** Make it the default, and retire `npc-sync.js` for the Oogas, once play-testing says so.
