@@ -25,7 +25,7 @@
   const FACE_WAIT = 45, FACE_SWEEP = 4.2, FACE_HOLD = 8;
   // Tile the wall with single screens and square video groups. Independent groups must not repeat
   // a neighboring feed; adjacency within one deliberate mosaic is the only exception.
-  const panelLayout = count => {
+  const panelLayout = (count, initial = false, previous = null) => {
     const cols = BANKS + PORTAL_COLS, cells = new Int16Array(cols * ROWS).fill(-1), groups = [], uses = new Uint16Array(count);
     const fits = (col, row, size) => {
       if (row + size > ROWS || col + size > (col < BANKS ? BANKS : cols)) return false;
@@ -36,8 +36,8 @@
     for (let row = 0; row < ROWS; row++) for (let col = 0; col < cols; col++) {
       if (!fits(col, row, 1)) continue;
       const roll = Math.random();
-      const size = fits(col, row, 3) && (col === 0 && row === 0 || roll < 0.22) ? 3
-        : fits(col, row, 2) && (col === 3 && row === 0 || roll < 0.65) ? 2 : 1;
+      const size = fits(col, row, 3) && (initial && col === 0 && row === 0 || roll < 0.22) ? 3
+        : fits(col, row, 2) && (initial && col === 3 && row === 0 || roll < 0.65) ? 2 : 1;
       const id = groups.length;
       groups.push({ col, row, size, slot: -1 });
       for (let y = row; y < row + size; y++) for (let x = col; x < col + size; x++) cells[y * cols + x] = id;
@@ -46,14 +46,28 @@
       const g = groups[id], excluded = new Uint8Array(count);
       for (let y = Math.max(0, g.row - 1); y <= Math.min(ROWS - 1, g.row + g.size); y++)
         for (let x = g.col - 1; x <= g.col + g.size; x++) {
-          const neighbor = cells[y * cols + (x + cols) % cols];
+          const cell = y * cols + (x + cols) % cols, neighbor = cells[cell];
           if (neighbor >= 0 && neighbor !== id && groups[neighbor].slot >= 0) excluded[groups[neighbor].slot] = 1;
+          // Also avoid the outgoing layout, including tiles inside this destination group that have
+          // not switched yet. Independent neighbors cannot collide halfway through the wave either.
+          if (previous && previous[cell] >= 0) excluded[previous[cell]] = 1;
         }
       let best = Infinity, ties = 0;
       for (let slot = 0; slot < count; slot++) {
         if (excluded[slot] || uses[slot] > best) continue;
         if (uses[slot] < best) { best = uses[slot]; ties = 0; }
         if (Math.random() * ++ties < 1) g.slot = slot;
+      }
+      if (g.slot < 0 && g.size === 3) {
+        // A 3x3 may meet too many old and new channels at once. Singles have at most nine old
+        // and eight new neighbors, so splitting this group guarantees a choice within 32 slots.
+        g.size = 1;
+        for (let y = g.row; y < g.row + 3; y++) for (let x = g.col; x < g.col + 3; x++) {
+          if (x === g.col && y === g.row) continue;
+          cells[y * cols + x] = groups.length;
+          groups.push({ col: x, row: y, size: 1, slot: -1 });
+        }
+        id--; continue;
       }
       uses[g.slot]++;
     }
@@ -76,6 +90,7 @@
     let active = false, prepared = false, previousAlong = NaN, cooldown = 0, veil = 0, audio = null, returnMirror = null, chairTop = null;
     let broadcast = "feeds", broadcastTime = 0, portraitActor = null, broadcastActor = null;
     let manual = false, manualFace = false, faceWait = FACE_WAIT, faceHold = FACE_HOLD;
+    let layoutPending = false, layoutStarted = false, layoutTime = 0, layoutWait = 20 + Math.random() * 10;
     let parkedActor = null, jetOwned = false, jetWorn = false, pen = null;
     let penButton = null, penThumb = null, penHand = null, originalHand = null, clickTime = 1;
     const seat = { kind: "architect-chair", x: 0, y: FLOOR + SEAT_TOP, z: 0, ry: 0, floor: FLOOR,
@@ -201,7 +216,7 @@
       }
       wall(-RETURN_HALF_W, RETURN_Z, RETURN_HALF_W, RETURN_Z, RETURN_HEIGHT);
       add(walls);
-      const layout = panelLayout(feeds.length);
+      const layout = panelLayout(feeds.length, true);
       const rackAt = (bank, col, x, row, angle) => {
         const pitchX = col < BANKS ? 2 * RADIUS * Math.sin(BANK_ANGLE / 2) : RETURN_HALF_W * 2 / PORTAL_COLS;
         const scaleX = (pitchX - GAP) / 3.36, scaleY = (PITCH - GAP) / 1.96;
@@ -213,7 +228,7 @@
         const portrait = cameras.panel(cameras.portrait, 1, 0, 0, pitchX, PITCH, scaleX, scaleY);
         const node = add(normal, rack, { x: 0, y: 0, z: 0.19 });
         // Spread from the mirror around both sides. Lower rows lead, with row and tile jitter.
-        panels.push({ node, normal, portrait, row, col, group: layout.cells[row * layout.cols + col], size: group.size,
+        panels.push({ node, normal, portrait, row, col, pitchX, scaleX, scaleY, next: null, previous: null, group: layout.cells[row * layout.cols + col], size: group.size,
           distance: Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle))) / Math.PI, delay: 0 });
       };
       for (let i = 0; i < BANKS; i++) {
@@ -282,17 +297,63 @@
       const live = new Set(meshes); cameras.liveGeometry(live); renderer.prepareScene(live);
       for (const mesh of live) renderer.prepareGeometry(mesh);
     };
+    const finishLayout = () => {
+      layoutPending = layoutStarted = false; layoutTime = 0; layoutWait = 20 + Math.random() * 10;
+      for (const p of panels) p.next = p.previous = null;
+      for (const feed of feeds) feed.forceCapture = false;
+    };
+    const stageLayout = () => {
+      const previous = new Int16Array((BANKS + PORTAL_COLS) * ROWS).fill(-1);
+      for (const p of panels) previous[p.row * (BANKS + PORTAL_COLS) + p.col] = feeds.indexOf(p.normal.imageSurface.feed);
+      const layout = panelLayout(feeds.length, false, previous);
+      for (const p of panels) {
+        const id = layout.cells[p.row * layout.cols + p.col], g = layout.groups[id];
+        const normal = cameras.panel(feeds[g.slot], g.size, p.col - g.col, p.row - g.row, p.pitchX, PITCH, p.scaleX, p.scaleY);
+        renderer.prepareGeometry(normal);
+        p.previous = { normal: p.normal, group: p.group, size: p.size };
+        p.next = { normal, group: id, size: g.size };
+      }
+      layoutPending = true; layoutStarted = false; layoutTime = 0;
+    };
+    const sweepDelays = () => {
+      for (let row = 0; row < ROWS; row++) rowJitter[row] = Math.random() * 0.12;
+      // Small tile jitter keeps each side of a row moving outwards in order; rows retain their uneven edge.
+      for (const p of panels) p.delay = p.distance * 2.9 + p.row / (ROWS - 1) * 0.7 + rowJitter[p.row] + Math.random() * 0.035;
+    };
+    const replaceTile = p => {
+      if (!p.next || !cameras.ready(p.next.normal.imageSurface.feed)) return false;
+      p.normal = p.next.normal; p.group = p.next.group; p.size = p.next.size; p.next = null;
+      p.node.geometry = p.normal;
+      return true;
+    };
+    const updateLayout = dt => {
+      const ready = cameras.warm();
+      if (!layoutStarted) {
+        if (!ready) return;
+        layoutStarted = true; layoutTime = 0; sweepDelays();
+      } else layoutTime += dt;
+      let remaining = false;
+      for (const p of panels) if (p.next) {
+        if (layoutTime < p.delay || !replaceTile(p)) remaining = true;
+      }
+      if (!remaining && layoutTime >= FACE_SWEEP) finishLayout();
+    };
     const resetBroadcast = () => {
+      // Travel or an actor change cancels an unfinished layout back to its last complete assignment.
+      for (const p of panels) {
+        if (p.previous) { p.normal = p.previous.normal; p.group = p.previous.group; p.size = p.previous.size; }
+        p.node.geometry = p.normal;
+      }
+      finishLayout();
       broadcast = "feeds"; broadcastTime = 0; portraitActor = broadcastActor = null;
       manual = manualFace = false;
       faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
-      for (const p of panels) p.node.geometry = p.normal;
       if (cameras.portrait) cameras.portrait.forceCapture = false;
     };
     const beginSweep = phase => {
       broadcast = phase; broadcastTime = 0;
-      for (let row = 0; row < ROWS; row++) rowJitter[row] = Math.random() * 0.12;
-      for (const p of panels) p.delay = p.distance * 2.9 + p.row / (ROWS - 1) * 0.7 + rowJitter[p.row] + Math.random() * 0.35;
+      if (phase === "to-feeds") stageLayout();
+      else sweepDelays();
     };
     const updateBroadcast = (dt, actor) => {
       if (document.hidden) return;
@@ -306,7 +367,14 @@
         if (broadcast === "feeds") { portraitActor = null; face.forceCapture = false; }
       }
       broadcastTime += dt;
-      if (broadcast === "feeds" && (manual ? manualFace : broadcastTime >= faceWait - 0.75) && portraitActor !== actor) {
+      if (broadcast === "feeds") {
+        if (layoutPending) updateLayout(dt);
+        else if (!portraitActor && !(manual ? manualFace : broadcastTime >= faceWait - 0.75)) {
+          layoutWait -= dt;
+          if (layoutWait <= 0) stageLayout();
+        }
+      }
+      if (broadcast === "feeds" && !layoutPending && (manual ? manualFace : broadcastTime >= faceWait - 0.75) && portraitActor !== actor) {
         portraitActor = actor; face.pending = true; face.last = -Infinity; face.forceCapture = true;
         face.geometry.imageSurface.version++;
       }
@@ -327,14 +395,26 @@
         cam.up.x = m[4] / up; cam.up.y = m[5] / up; cam.up.z = m[6] / up;
         cam.far = distance + RADIUS * 2 + 1;
       }
-      if (broadcast === "feeds" && (manual ? manualFace : broadcastTime >= faceWait) && (!face.pending || renderer.kind !== "webgl2")) beginSweep("to-face");
+      if (broadcast === "feeds" && !layoutPending && (manual ? manualFace : broadcastTime >= faceWait) && cameras.ready(face)) beginSweep("to-face");
       if (broadcast === "face" && (manual ? !manualFace : broadcastTime >= faceHold)) beginSweep("to-feeds");
       if (broadcast === "to-face" || broadcast === "to-feeds") {
         const toFace = broadcast === "to-face";
-        for (const p of panels) p.node.geometry = (broadcastTime >= p.delay) === toFace ? p.portrait : p.normal;
-        if (broadcastTime >= FACE_SWEEP) {
+        const ready = toFace || cameras.warm();
+        if (!toFace && !layoutStarted) {
+          if (!ready) return;
+          layoutStarted = true; broadcastTime = 0; sweepDelays();
+        }
+        let remaining = false;
+        for (const p of panels) {
+          if (broadcastTime < p.delay) { remaining = true; continue; }
+          if (toFace) {
+            if (cameras.ready(face)) p.node.geometry = p.portrait;
+            else remaining = true;
+          } else if (p.next && !replaceTile(p)) remaining = true;
+        }
+        if (!remaining && broadcastTime >= FACE_SWEEP) {
           broadcast = toFace ? "face" : "feeds"; broadcastTime = 0;
-          if (!toFace) { portraitActor = null; faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); }
+          if (!toFace) { finishLayout(); portraitActor = null; faceWait = FACE_WAIT * (0.75 + Math.random() * 0.5); }
           else faceHold = FACE_HOLD * (0.75 + Math.random() * 0.5);
         }
       }
@@ -381,9 +461,10 @@
           seat.ry = pilot.orbit.yaw + Math.PI; turnChair();
           actor.root.rotation.y = seat.ry; actor.parts.head.rotation.y = 0;
         }
+        const rotating = broadcast === "feeds" && !layoutPending && !portraitActor;
         updateBroadcast(dt, actor);
         updatePen(dt);
-        if (broadcast !== "face") cameras.update(dt);
+        if (rotating && broadcast === "feeds" && !layoutPending && !portraitActor) cameras.update(dt);
         if (audio) audio.update(dt, camera);
         if (!cooldown && p.z >= RETURN_Z && Math.abs(p.x) < RETURN_HALF_W - 0.4
           && feet >= FLOOR - 0.2 && feet < FLOOR + RETURN_HEIGHT - 0.5) travel(false);
@@ -408,6 +489,7 @@
       },
       get returnMirror() { return returnMirror; },
       get seated() { return seated(); }, get pen() { return pen; }, get penThumb() { return penThumb; }, get penButton() { return penButton; },
+      get layoutPending() { return layoutPending; }, get layoutWait() { return layoutWait; },
       get faceWait() { return faceWait; }, get faceHold() { return faceHold; },
       get broadcast() { return broadcast; }, get broadcastTime() { return broadcastTime; },
       observes: cameras.observes, nearFeed: cameras.near,

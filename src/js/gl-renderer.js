@@ -2017,7 +2017,7 @@ void main() {
     const reflectorNodes = [], reflectorTargets = new Map();
     let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossClock = 0;
     let reducedCapture = false, cameraFeedCapture = false, cameraFeedRoom = false, cameraFeedSource = null, cameraFeedTurn = 0;
-    let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7;
+    let cameraFeedLast = -Infinity, cameraFeedFrameAt = 0, cameraFeedFrameMs = 16.7, cameraFeedLastPriority = false;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
     // draws; every other pass leaves glass out.
@@ -3585,7 +3585,7 @@ void main() {
       // before any TV showed a face, so repeated live captures cannot deepen the recursion.
       const feedGeometry = feed && (feed.seedOnly || cameraFeedRoom && feed.roomBackground) ? feed.backGeometry : feed?.geometry;
       const feedTarget = feed ? reflectorTargets.get(feedGeometry) : null;
-      const feedReady = !!feedTarget?.valid && !feed.pending;
+      const feedReady = !!feedTarget?.valid && (!feed.pending || feed.holdFrame);
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
       if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== version) {
@@ -4604,11 +4604,19 @@ void main() {
           feed.refreshMs = (feed.interval || (size > 0.28 ? 160 : size > 0.12 ? 350 : 700)) * (qualityName === "low" ? 1.5 : 1);
         }
         if (stamp - cameraFeedLast >= captureGap) {
-          // The single face broadcast gets a bounded cadence during a sweep; other slots keep their fair turn.
-          for (let i = 0; i < cameraFeeds.length; i++) {
+          // Prewarm a new layout within the same capture budget. Alternate with the face camera so
+          // low frame rates cannot starve either the pending area pictures or the live face.
+          let warmFeed = null;
+          for (let attempt = 0; attempt < cameraFeeds.length; attempt++) {
+            const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
+            if (feed.forceCapture && !feed.priority) { warmFeed = feed; cameraFeedTurn = (index + 1) % cameraFeeds.length; break; }
+          }
+          if (warmFeed && cameraFeedLastPriority) captureFeed = warmFeed;
+          for (let i = 0; !captureFeed && i < cameraFeeds.length; i++) {
             const feed = cameraFeeds[i];
             if (feed.priority && feed.visible && stamp - feed.last >= feed.refreshMs) { captureFeed = feed; break; }
           }
+          if (!captureFeed) captureFeed = warmFeed;
           for (let attempt = 0; !captureFeed && attempt < cameraFeeds.length; attempt++) {
             const index = (cameraFeedTurn + attempt) % cameraFeeds.length, feed = cameraFeeds[index];
             if (!feed.visible || stamp - feed.last < feed.refreshMs) continue;
@@ -4794,6 +4802,7 @@ void main() {
         feed.draws = infoLive[offset] - calls; feed.triangles = infoLive[offset + 1] - triangles;
         feed.pending = feed.forceCapture = false; feed.last = stamp; feed.captures++; feed.geometry.imageSurface.version++;
         cameraFeedLast = stamp;
+        cameraFeedLastPriority = !!feed.priority;
       }
       const viewActor = opts.beforeView?.();
       if (viewActor) {
@@ -5100,6 +5109,8 @@ void main() {
       setScale,
       releaseGeometry,
       prepareScene,
+      // A retained old frame may still be displayed while pending, but a new tile waits for its selected channel.
+      cameraFeedReady: feed => !lost && !feed.pending && !!reflectorTargets.get(feed.seedOnly ? feed.backGeometry : feed.geometry)?.valid,
       // Owners of bounded, alternating meshes may prepare every variant before their first visible swap.
       prepareGeometry: (geometry) => { if (lost || !pollPrograms()) return false; recordFor(geometry); return true; },
       // A scene entering in slices (a released hub's return) builds here, a slice at a time, the meshes its first frame

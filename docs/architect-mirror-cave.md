@@ -70,8 +70,9 @@ The 608 screens share **32 simultaneous camera slots**. Every 15 seconds inside
 the room, one slot takes the next view that is not already on the wall. All slots
 take their turn, including those behind the viewer; rendering still skips feeds
 with no visible screens. Rotation pauses outside the room and in hidden tabs,
-with no catch-up burst. Rotation also pauses during the full face broadcast. A changed slot shows CONNECTING until its first new
-capture, so a replacement never passes off the previous area's picture as live.
+with no catch-up burst. Rotation also pauses during face broadcasts, prewarming and tile waves. A changed
+slot retains its last captured picture until the replacement has rendered; switches
+do not insert a CONNECTING or blank frame. Initial startup still needs a first capture.
 
 The catalog in `observatory-cameras.js` currently contains **34 views**: the
 original eleven (pile, lake, Merge Rock, Bifrost chamber, five cave entrances,
@@ -84,12 +85,34 @@ image across its panels, allowing for the bezel gaps and cropping without
 stretching. Labels beneath the screens are removed. Independent groups share
 slot textures, with balanced random placement forbidding matching neighbors,
 including diagonals and the wrap around the room. Adjacent tiles of one deliberate
-mosaic are the exception. Unique slot channels preserve this separation during rotation.
+mosaic are the exception. New groups exclude neighboring channels from both the
+old and new layouts, preserving this separation during the wave too. A proposed
+3×3 that exhausts the available choices splits into singles rather than repeating
+a neighboring channel.
+
+The arrangement is rebuilt every 20–30 seconds while area feeds are selected, and
+each return from the face view gets a fresh arrangement. Any region can become
+singles, 2×2s or 3×3s. Destination pictures warm before a roughly 4.2-second wave
+starts at the mirror, spreading outwards with the bottom rows leading. Tiles
+change individually in row order with small tile jitter and larger row jitter.
+Splitting a 3×3 preserves its remaining old image tiles until their individual
+turns; assembling one replaces the nine old tiles individually. Each tile checks
+its destination again before switching. A delayed capture holds the outgoing
+picture and the transition waits to finish. Channel rotation pauses throughout,
+so an outgoing mosaic cannot lose or change its backing channel mid-wave.
+A pen click during regrouping queues the requested face/area view after that wave.
+Travel or changing actor cancels an unfinished regrouping to the last whole layout.
+
+Warmups include off-screen destinations, alternating with the face camera when
+needed so neither starves on a slow frame budget. They use the existing 32 targets
+and the same global capture limit. UV meshes are cached in a bounded set of at most
+28 variants per slot (14 tile positions across two wall pitches); regrouping does
+not add cameras, textures, readbacks or per-frame geometry allocations.
 Adding catalog entries does not allocate additional screen targets. There are no pixel reads, image encoding or additional
 WebGL contexts.
 
 - High/medium: 256 x 144 pixels. Low: 192 x 108 pixels.
-- At most one visible feed per displayed frame, rotating fairly between due cameras.
+- At most one visible or explicitly prewarming feed per displayed frame, rotating fairly between due cameras.
   Total capture work is also limited to about 30 captures/second, dropping to 15
   when average frame time exceeds 24 ms, then 8 or less above 40 ms. This is based
   on smoothed render-frame intervals, not a GPU timer or a promised frame rate.
@@ -97,14 +120,14 @@ WebGL contexts.
   feed per second; 15 permits roughly 0.47. These are ceilings, not measurements.
 - Nearby screens request a refresh no sooner than 160 ms, medium screens 350 ms,
   and distant screens 700 ms, multiplied by 1.5 on low quality. The largest visible
-  duplicate determines a slot's cadence. Off-screen feeds are idle; no catch-up burst.
+  duplicate determines a slot's cadence. Off-screen feeds are idle except for a requested layout warmup; no catch-up burst.
 - Only the source selected for this frame's capture updates visitors and transforms,
   joins the renderer's records, or uploads instances. Source captures traverse only
   that source's record list, instead of scanning all hub geometry in every pass.
   Angles of one room share its geometry and visitor pool. Camera proximity no longer
   activates the hub's optional portal/particle effects or the lake's cosmetic effects.
-- Captures stop outside the chamber, when no screen using the feed is visible,
-  and while the document is hidden.
+- Captures stop outside the chamber and while the document is hidden. A feed
+  with no visible screen stays idle unless it is warming for the next layout.
 - Each feed has its own view, frustum and short far plane. The current world is
   updated once. Captures reuse its instance buffers and omit new shadow maps,
   postprocessing, recursive screens, mirrors, portal pictures and light beams.
@@ -125,7 +148,7 @@ individual screens with the same live close-up of the controlled Ooga. It begins
 at the return mirror and spreads away around both sides. Bottom rows
 lead upper rows; fresh row and panel jitter makes the edge irregular. Every
 screen holds the complete face for a randomized 6–10 seconds, then the same outward pattern
-restores the original mosaics. The timer pauses in hidden tabs and resets on
+assembles a new mosaic arrangement. The timer pauses in hidden tabs and resets on
 travel or changing the controlled character. Automatic transitions are disabled
 while the player sits in the chair; clicking owns the choice until they stand.
 
@@ -282,6 +305,10 @@ Additional unrun assertions cover the original fist layout, body-anchored arm in
 both views, stationary third-person clicking, thumb/button travel, hand restoration,
 bottom-leading wave and feed-only mirror infill. The
 pen framing, thumb contact and click sound still need visual/listening acceptance.
+Added, unrun regression assertions cover 3×3-to-single and single-to-3×3 waves,
+ordered tile arrivals, retaining old tiles while a destination is pending, shared
+feed retention and adjacency during and after waves. Fresh visual review of regrouping
+and last-frame retention remains pending because the Chrome connection is unavailable.
 Multiplayer sessions, context-loss recovery, lower-tier/mobile profiling and
 listening acceptance remain before review readiness. Keep the PR draft.
 

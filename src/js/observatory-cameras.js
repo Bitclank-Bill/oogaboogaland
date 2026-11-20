@@ -92,7 +92,7 @@
       ctx.fillText(renderer.kind === "webgl2" ? "CONNECTING" : "CAMERA OFFLINE", 128, 70);
       const geometry = quad(3.08, 1.72, { canvas, version: 0, rect: [-1.54, -0.86, 3.08, 1.72], smooth: true });
       const feed = { geometry, surfaces: [], tiles: new Map(), camera: choice.camera, channel: choice, source: null,
-        pending: true, visible: false, forceCapture: false, priority: false,
+        pending: true, holdFrame: true, visible: false, forceCapture: false, priority: false,
         captures: 0, last: -Infinity, draws: 0, triangles: 0, profile: debug };
       geometry.imageSurface.feed = feed; meshes.add(geometry); return feed;
     };
@@ -103,6 +103,7 @@
       portrait.camera.up = { x: 0, y: 1, z: 0 };
       // One clean prewarm image backs the nested TVs; the separate foreground image stays live.
       portrait.roomBackground = true; portrait.backGeometry = { ...portrait.geometry };
+      portrait.holdFrame = false;
       portrait.seedOnly = false;
       meshes.add(portrait.backGeometry);
       portrait.priority = true; portrait.interval = 100;
@@ -126,7 +127,7 @@
     const setActive = (on) => {
       if (active === on) return;
       active = on;
-      if (!on && portrait) portrait.forceCapture = false;
+      if (!on) for (const feed of renderFeeds) feed.forceCapture = false;
       if (on) prepare();
       syncSources();
     };
@@ -137,7 +138,7 @@
         if (switchIn <= 0) {
           switchIn = SWITCH_SECONDS;
           // Rotate every slot fairly, including those behind the viewer. Their captures stay idle.
-          // Pending replacements never show an old area as the newly selected channel.
+          // The old captured picture stays on screen until the selected channel's first capture replaces it.
           let choice;
           do { choice = channels[next++ % channels.length]; } while (selected(choice.id));
           select(feeds[turn++ % feeds.length], choice); syncSources();
@@ -145,7 +146,13 @@
       }
       // Observer poses update only when the renderer actually captures that source.
     };
-    return { feeds, renderFeeds, channels, prepare, panel, setActive, update, get portrait() { return portrait; },
+    const ready = feed => renderer.kind !== "webgl2" || renderer.cameraFeedReady(feed);
+    const warm = () => {
+      let complete = true;
+      for (const feed of feeds) if (!ready(feed)) { feed.forceCapture = true; complete = false; }
+      return complete;
+    };
+    return { feeds, renderFeeds, channels, prepare, panel, setActive, update, ready, warm, get portrait() { return portrait; },
       observes(id) {
         if (active) for (const feed of feeds) if (feed.visible && feed.channel.id === id) return true;
         return false;

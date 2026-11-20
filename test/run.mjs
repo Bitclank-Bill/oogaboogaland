@@ -17034,6 +17034,15 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: 32 stable slots rotate public views individually, pause outside and release isolated observers",
     Object.values(channels).every(Boolean), JSON.stringify(channels));
+  const warmAreas = await b.evaluate(`(async () => {
+    const B = __ooga, room = BL.scenes.hub.architect;
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    return room.feeds.every(f => room.cameras.ready(f));
+  })()`);
+  record("hub observatory: all area replacements prewarm inside the shared capture budget", warmAreas);
   const chair = await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect, floor = BL.architectCave.FLOOR, a = B.pilot.player;
     const start = { x: a.root.position.x, y: a.root.position.y - a.baseY, z: a.root.position.z };
@@ -17107,6 +17116,71 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
   })()`);
   record("hub observatory: 608 panels share mosaic textures, the sweep leads from the mirror and its face-only infill preserves the exit",
     Object.values(broadcast).every(Boolean), JSON.stringify(broadcast));
+  const retiling = await b.evaluate(`(async () => {
+    const B = __ooga, room = BL.scenes.hub.architect, panels = room.panels, random = Math.random;
+    B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
+    B.advance(0.3, 1 / 60); room.sit(); room.update(0);
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    const before = panels.map(p => p.node.geometry), old = panels.find(p => p.size === 3);
+    const nine = panels.filter(p => p.group === old.group), slot = old.normal.imageSurface.feed;
+    let blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, partialNeighbors;
+    const neighborsValid = () => panels.every(p => panels.every(q => {
+      const sameLayout = !!p.next === !!q.next;
+      const sameGroup = sameLayout && p.group === q.group;
+      return sameGroup || Math.abs(p.row - q.row) > 1
+        || Math.min(Math.abs(p.col - q.col), 52 - Math.abs(p.col - q.col)) > 1
+        || p.node.geometry.imageSurface.feed !== q.node.geometry.imageSurface.feed;
+    }));
+    const stage = roll => {
+      Math.random = () => roll;
+      room.update(room.layoutWait + 0.01);
+      Math.random = random;
+    };
+    try {
+      stage(0.99); // Every destination is a single full-frame feed.
+      const missing = panels[0].next.normal.imageSurface.feed, pending = missing.pending;
+      try {
+        missing.pending = true;
+        room.update(10);
+        blocked = room.layoutPending && missing.forceCapture && panels.every((p, i) => p.node.geometry === before[i]);
+      } finally { missing.pending = pending; }
+      room.update(0);
+      const times = nine.map(p => p.delay).sort((a, b) => a - b);
+      room.update((times[0] + times[1]) / 2);
+      splitOne = nine.filter(p => p.next === null).length === 1
+        && nine.filter(p => p.next !== null).every(p => p.node.geometry === before[panels.indexOf(p)]);
+      partialNeighbors = neighborsValid();
+      retained = room.renderFeeds.includes(slot) && slot.holdFrame && room.cameras.ready(slot);
+      noBlank = panels.every(p => room.cameras.ready(p.node.geometry.imageSurface.feed));
+      room.update(BL.architectCave.FACE_SWEEP);
+      singles = !room.layoutPending && panels.every(p => p.size === 1 && p.node.geometry === p.normal);
+      stage(0); // Reassemble singles into 3x3 mosaics, with smaller edge groups where needed.
+      room.update(0);
+      const group = panels.find(p => p.next?.size === 3).next.group;
+      const joining = panels.filter(p => p.next?.group === group), outgoing = joining.map(p => p.node.geometry);
+      const arrivals = joining.map(p => p.delay).sort((a, b) => a - b);
+      room.update((arrivals[0] + arrivals[1]) / 2);
+      partialNeighbors &&= neighborsValid();
+      mergeOne = joining.filter(p => !p.next).length === 1
+        && joining.every((p, i) => !p.next || p.node.geometry === outgoing[i]);
+      ordered = panels.every(p => panels.every(q => p.row !== q.row || (p.col < 24) !== (q.col < 24)
+        || q.distance - p.distance < 1e-6 || p.delay < q.delay));
+      noBlank &&= panels.every(p => room.cameras.ready(p.node.geometry.imageSurface.feed));
+      room.update(BL.architectCave.FACE_SWEEP);
+      merged = !room.layoutPending && joining.length === 9 && joining.every(p => p.size === 3
+        && p.normal.imageSurface.feed === joining[0].normal.imageSurface.feed)
+        && new Set(joining.map(p => p.normal.imageSurface.rect.join(","))).size === 9;
+      const neighbors = panels.every(p => panels.every(q => p.group === q.group || Math.abs(p.row - q.row) > 1
+        || Math.min(Math.abs(p.col - q.col), 52 - Math.abs(p.col - q.col)) > 1
+        || p.normal.imageSurface.feed !== q.normal.imageSurface.feed));
+      return { blocked, splitOne, singles, mergeOne, merged, ordered, noBlank, retained, neighbors, partialNeighbors };
+    } finally { Math.random = random; room.travel(true); }
+  })()`);
+  record("hub observatory: mosaics split and assemble tile by tile, keeping outgoing images while replacements wait",
+    Object.values(retiling).every(Boolean), JSON.stringify(retiling));
   const manualScreens = await b.evaluate(`(async () => {
     const B = __ooga, room = BL.scenes.hub.architect, actor = B.pilot.player;
     B.pilot.navigate({ position: { x: 0, y: BL.architectCave.FLOOR, z: 1.5 }, yaw: 0, pitch: 0.1, dist: 4 });
@@ -17117,6 +17191,12 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     B.advance(0.3, 1 / 60);
     room.update(120);
     const heldFeeds = room.broadcast === "feeds";
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    if (room.layoutPending) { room.update(0); room.update(BL.architectCave.FACE_SWEEP); }
+
     const armHidden = actor.parts.armR.cameraHidden;
     // A stationary third-person click, with no hover or pointermove first, reaches the scene's tap hook.
     const canvas = document.getElementById("scene"), rect = canvas.getBoundingClientRect();
