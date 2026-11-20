@@ -211,13 +211,14 @@
       penHand = seat.sitter.parts.fingersR;
       const actor = seat.sitter;
       penArm = actor.parts.armR;
+      // Run the barrel through the fist's depth center, behind the thumb on its palm side.
       if (actor.modelled && actor.fist) {
         const unit = actor.fist.palm / (1.1 * actor.armScale);
-        pen.position.x = -0.16 * unit; pen.position.y = -0.35 * unit; pen.position.z = 1.15 * unit;
+        pen.position.x = -0.16 * unit; pen.position.y = -0.35 * unit; pen.position.z = 0;
         pen.scale.x = pen.scale.y = pen.scale.z = 14 * unit;
       } else {
         const b = BL.scene.boundsOf(penHand.geometry), h = actor.traits.height;
-        pen.position.x = b.center[0] - h * 0.065; pen.position.y = b.center[1]; pen.position.z = b.center[2];
+        pen.position.x = b.center[0] - h * 0.065; pen.position.y = b.center[1]; pen.position.z = 0;
         pen.scale.x = pen.scale.y = pen.scale.z = h;
       }
       penButton.position.y = 0.19;

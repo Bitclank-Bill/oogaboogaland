@@ -56,8 +56,8 @@ together over the fixed base; the seat height stays 0.72 m and the back collisio
 extends to the new shell. Move and jump onto the cushion, then press
 Space to sit (or sit from nearby on the floor). Looking around or Q/E swivels
 the occupied chair; movement or Space stands up into clear floor ahead of it.
-Sitting places a pen slightly higher in the Ooga’s existing right fist, exposing
-more of its barrel. Third person keeps the default seated arm pose. In first
+Sitting places a pen slightly higher through the center of the Ooga’s existing
+right fist, clear of the thumb and exposing more of its barrel. Third person keeps the default seated arm pose. In first
 person, looking up rotates the existing stiff arm from its shoulder, keeping the
 elbow bend, wrist, fist and shoulder position unchanged. The lift stops when the
 shoulder-to-fist line is horizontal; looking farther up lets the fist leave the
