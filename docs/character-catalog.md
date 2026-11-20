@@ -4,8 +4,8 @@ Implementation issue: [#831](https://github.com/OogaBoogaX/oogaboogaland/issues/
 
 The catalog lets approved plain-data characters reach production independently
 of code merged into `rock`. Code releases remain manual. This document describes
-the staged implementation; the foundation does not enable publishing, add a
-public endpoint, or change the running island.
+the staged implementation. Runtime support starts disabled; merging its code
+does not publish a catalog or change the running island.
 
 ## Release boundary
 
@@ -84,7 +84,28 @@ replay events in merge order, validate the runtime's supported engine, upload
 immutable bytes, and conditionally compare-and-swap the stored activation.
 The pure planner's generation check alone provides no distributed write lock.
 
-## Planned runtime
+## Runtime configuration
+
+The Worker opts in only with `CHARACTER_CATALOG_ENABLED="1"`. Both checked-in
+environment configurations keep it `"0"`. Before enabling, bind that
+environment's private R2 bucket as `CHARACTER_CATALOGS`, set
+`CHARACTER_CATALOG_ENGINE` to the supported engine identifier, and set
+`CHARACTER_CATALOG_BASELINE` to the approved deployed 40-character commit.
+`ENVIRONMENT` must match the catalog. Enabling with missing configuration fails
+closed; it does not silently authorize against the embedded cast.
+
+Each baseline has its own `catalogs/<baseline>/active.json` pointer and immutable
+`catalogs/<baseline>/<sha256>.json` snapshots. A new code release cannot switch
+an old reader to an incompatible baseline by replacing its pointer.
+
+`GET /api/characters/catalog` (also `HEAD`) returns the validated current
+revision, activation generation and catalog. Optional `baseline` and `engine`
+queries refuse incompatible readers with 409; they cannot choose the server's
+ownership revision. Disabled is 404, unavailable is 503 with `Retry-After`, and
+responses are `no-store`. This endpoint publishes character data, never source
+code or account sessions.
+
+## Runtime integration
 
 One environment-scoped Worker loader will validate complete immutable snapshots
 and construct ownership maps and cast indexes. It will deduplicate bounded
