@@ -31230,6 +31230,30 @@ const timechainTrip = { name: "timechain round trip", why: "contract: a room lef
     laps.every(l => l.scene === "timechain" && l.room === 0 && l.timers === 0 && l.requests === 0) && grew.length === 0 && donated.scene === "timechain" && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25,
     JSON.stringify({ grew, donated, first: laps[0], second: laps[1] }));
 } };
+// A block's arrival in the Genesis Museum, forced: NEW BLOCK turns round the middle first with its sound (once), then
+// the orange bloom under the whitepaper while the block still waits, then the block falls, and its height stays up in
+// stars five minutes on and is gone by eight; the history road's own burst time leaves the bloom dark.
+const timechainMined = { name: "timechain block mined", why: "rule: the Genesis Museum announces a block in order (words and sound, bloom, the fall) and holds its height for minutes", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const r = await b.evaluate(`(async () => {
+    const B = window.__ooga, G = BL.timechainGenesis, P = G.floorPoc, N = B.timechain.built.nodes;
+    const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000;
+    const stars = () => Object.keys(N).filter((k) => k.startsWith("hstar") && N[k].scale.x > 0.05).length;
+    const read = () => ({ td: +(clock() - P.live.dropAt).toFixed(2), words: +N.pocNews.scale.y.toFixed(3), bloom: +N.pocBurst0.scale.x.toFixed(3), block: +N.pocBlock.scale.x.toFixed(3), sounds: G.blockSound.plays - plays0 });
+    // Each moment of the arrival is reached by moving the drop's time, not by waiting for it.
+    const at = (td) => { P.live.dropAt = clock() - td; B.advance(1 / 30, 1 / 30); return read(); };
+    const plays0 = G.blockSound.plays;
+    P.force(P.phases.burst + 1); B.advance(1 / 30, 1 / 30); const road = read(); P.force(-1);
+    P.drop(870000);
+    const lead = -P.live.dropAt + clock(), words = at(lead + 0.8), glow = at(lead + 3), falling = at(0.5);
+    at(300); const five = stars();
+    at(480); const eight = stars();
+    return { road, lead: +lead.toFixed(2), words, glow, falling, five, eight };
+  })()`);
+  record("timechain block mined: a forced block shows NEW BLOCK first with its sound once, then the orange bloom before the block falls, then the fall, its height still up five minutes on and gone by eight, and the history road's burst time leaves the bloom dark",
+    r.road.bloom <= 0.001 && r.lead < -2 && r.words.words > 0.5 && r.words.bloom <= 0.001 && r.words.block <= 0.001 && r.words.sounds === 1
+      && r.glow.td < 0 && r.glow.bloom > 1.5 && r.glow.block <= 0.001 && r.falling.block === 1 && r.falling.sounds === 1 && r.five > 20 && r.eight === 0, JSON.stringify(r));
+} };
 // The Genesis Museum's glass floor on WebGL: one glossy reflector over it, gentle enough that the world under the glass
 // shows through, which the renderer captures once the floor is in view (its Canvas 2D side is `timechainCanvas`).
 const timechainGlass = { name: "timechain glass", why: "rule: the Genesis Museum's glass floor softly mirrors the room on WebGL", run: async (b) => {
@@ -31349,8 +31373,8 @@ const timechainMark = { name: "timechain mark", why: "regression: the stream's d
     let frames = 0, dotsOver = 0, inFront = 0, swollen = 0; const lit0 = G.mark.lit;
     for (const t0 = performance.now(); frames < 100 && performance.now() - t0 < 30000;) {
       await pause(30); R.setQuality("high"); B.advance(1 / 30, 1 / 30);
-      // Not while a block drops: its wave, its fall and the square it takes are another matter.
-      const td = clock() - G.live.dropAt; if (td > -3 && td < 12) continue;
+      // Not while a block arrives (announced 5.5 s before it falls): its wave, its fall and the square it takes are another matter.
+      const td = clock() - G.live.dropAt; if (td > -6 && td < 12) continue;
       x.drawImage(c, 0, 0); frames++;
       const d = x.getImageData(x0, y0, w, h).data, near = over(); dotsOver += near.length;
       for (const n of near) if (n.position.y < top) inFront++;
@@ -31387,7 +31411,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainMarkLink, timechainHologram, timechainGlass, timechainFirst, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainMarkLink, timechainHologram, timechainGlass, timechainMined, timechainFirst, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 const timechainLectureScreens = {
   name: "timechain lecture screens", why: "regression: projected answers, screen focus, gestures, scrub holds, background sync and live popups follow the same lecture clock", run: async b => {

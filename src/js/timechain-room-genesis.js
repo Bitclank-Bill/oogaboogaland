@@ -134,6 +134,62 @@
       close() { if (ctx) ctx.close().catch(() => {}); ctx = null; }
     };
   })();
+  // NEW BLOCK's sound, once a block as the words appear, synthesized here like the portal's (nothing to credit) and
+  // played through the page's mute and its own row in the sound panel (`newblock`), held only while the room is
+  // open; a context only once the page has had a gesture, never in a test or a render (?nosim=1). Four candidates
+  // until one is chosen, `?blocksound=1`..`4` picking one (the bright chime the default): each is `(ctx, out, t)`
+  // scheduling one short, quiet sound from `t`, so the same voices can be rendered offline. `plays` counts the blocks
+  // it sounded for, heard or not.
+  const blockSound = (() => {
+    const params = new URLSearchParams(location.search), SILENT = params.has("nosim");
+    const noise = (ctx, secs) => { const n = Math.floor(ctx.sampleRate * secs), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; const s = ctx.createBufferSource(); s.buffer = b; return s; };
+    // A struck bell: `parts` [ratio, level, seconds to die away] over `f`, each with a twin a hair sharp so it shimmers.
+    const bell = (ctx, out, f, t, peak, parts, beat = 0.6) => {
+      for (const [ratio, level, fade] of parts) for (const side of [-1, 1]) {
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f * ratio + side * beat / 2; o.connect(g); g.connect(out);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * level / 2), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + fade);
+        o.start(t); o.stop(t + fade + 0.05);
+      }
+    };
+    const air = (ctx, out, t, secs, f0, f1, peak, type = "bandpass") => {
+      const s = noise(ctx, secs), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      f.type = type; f.Q.value = type === "bandpass" ? 1.4 : 0.7; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + secs);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + secs * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + secs);
+      s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t + secs + 0.02);
+    };
+    const CHIME = [[1, 1, 1.5], [2, 0.32, 0.9], [3.01, 0.12, 0.5], [0.5, 0.18, 1.2]];
+    const OPTIONS = [
+      // 1, the bright chime: a breath of rising air, then two bell notes a fourth apart, rising (ding-dong).
+      (ctx, out, t) => { air(ctx, out, t, 0.45, 600, 3200, 0.012); bell(ctx, out, 987.77, t + 0.18, 0.07, CHIME); bell(ctx, out, 1318.51, t + 0.48, 0.065, CHIME); },
+      // 2, the Temple's bell (timechain-room-temple.js `VOICES.bell`): one gentle ring of its partials and blow.
+      (ctx, out, t) => { const v = BL.timechainRoomKinds.temple.VOICES.bell; bell(ctx, out, v.f, t, 0.045, v.parts.map(([r, l, fade]) => [r, l, Math.min(fade, 6)]), v.beat); air(ctx, out, t, 0.2, v.thud[0], v.thud[0] * 1.2, 0.03); },
+      // 3, coin and sparkle: a quick glittering run up, then a bright "ching" of two high rings over a hiss.
+      (ctx, out, t) => { [1046.5, 1318.51, 1567.98, 2093, 2637].forEach((f, i) => bell(ctx, out, f, t + i * 0.055, 0.035, [[1, 1, 0.35], [2, 0.2, 0.2]], 0)); bell(ctx, out, 2637, t + 0.33, 0.045, [[1, 1, 1.2], [1.5, 0.5, 0.9], [2.01, 0.3, 0.6]], 1.5); air(ctx, out, t + 0.31, 0.35, 9000, 5000, 0.01, "highpass"); },
+      // 4, the deep swell: a warm low rush rising for a second, then one chime over it.
+      (ctx, out, t) => {
+        air(ctx, out, t, 1.3, 140, 1800, 0.05, "lowpass");
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(65.4, t); o.frequency.exponentialRampToValueAtTime(130.8, t + 1.15); o.connect(g); g.connect(out);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6); o.start(t); o.stop(t + 1.65);
+        bell(ctx, out, 1046.5, t + 1.05, 0.07, [[1, 1, 1.8], [2, 0.3, 1.1], [0.5, 0.25, 1.5], [3.01, 0.1, 0.6]]);
+      }
+    ];
+    const pick = Math.max(1, Math.min(OPTIONS.length, Math.floor(Number(params.get("blocksound")) || 1)));
+    let ctx = null, channel = null, plays = 0, sounded = -1;
+    return {
+      OPTIONS, get pick() { return pick; }, get plays() { return plays; },
+      enter() { sounded = -1; if (!channel) channel = BL.sound.channel("newblock"); },
+      // Once for block `key`, never again for the same one.
+      play(key) {
+        if (key === sounded) return;
+        sounded = key; plays++;
+        if (SILENT || !channel || typeof AudioContext === "undefined" || BL.sound.muted) return;
+        if (!ctx) { if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; try { ctx = new AudioContext(); } catch { return; } }
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+        OPTIONS[pick - 1](ctx, channel.node(ctx), ctx.currentTime + 0.02);
+      },
+      leave() { if (ctx) ctx.close().catch(() => {}); ctx = null; if (channel) channel.release(); channel = null; }
+    };
+  })();
   // The door's place: on the wall at PORTAL.az. Nothing of it is built: it is light drawn on the wall itself, dots of
   // glow set on the sphere's own surface (so they follow its curve), the inscription in the room's letters, the ₿ in
   // small blocks, and three rings of orange light where it opens. Door coordinates: u across the wall in metres of
@@ -1165,14 +1221,24 @@
   // chain as a spiral of holographic blocks from genesis out to the rim; a stream of dots from the clusters across
   // the map, up the wall and over the dome into the ₿, which fills dim to bright through each block interval and
   // drops a block into the chain on each real block (mempool.js's feed) or, with the feeds off, on a shared
-  // ten-minute timer, a wave of firings crossing the map as it lands. A scripted road of history (48 s on the
-  // shared clock: the stream round the plinths 1974 to 2009, the turn in, the burst under the whitepaper, the
-  // wave across the map, the dome's net) runs over it. Everything is soft additive light (the renderer's blended
+  // ten-minute timer, announced first (`MINED`): NEW BLOCK turning round the middle, an orange bloom under the
+  // whitepaper, then the ₿'s two-second lock and the fall, and a wave of firings crossing the map as it lands.
+  // A scripted road of history (48 s on the shared clock: the stream round the plinths 1974 to 2009, the turn in,
+  // the dots bursting out under the whitepaper, the wave across the map, the dome's net) runs over it. Everything is soft additive light (the renderer's blended
   // pictures) or thin lines; every clock is the room's (`net.serverNow`), so every visitor sees the same moment;
   // nothing allocates a frame, and nothing is sent anywhere.
   // `gloss` is the glass's sheen (`glassSheen`), laid `sheenLift` over its top; under it the glass pales toward a
   // glancing view only `grazing` as much as glass does (as the Block Party's floors), so the sheen shows there.
   const POC = { glassY: 0, gloss: 0.55, sheenLift: 0.001, grazing: 0.35, roadY: -0.5, chainY: -1.6, pitY: -2.3, cycle: 48, stream: 20, turn: 3, burst: 2, charge: 3, net: 6, fade: 4, atoms: 40, spacing: 0.32, glass: 0.08, spokes: 0, seams: 0, pulses: 48, motes: 24, netDots: 24, chain: 96, chainR0: 2.2, chainR1: 11.8 };
+  // A block's arrival, in seconds from the block (the drop `lead` after it, so the room says so before the block
+  // falls): NEW BLOCK round the middle for `text` (`NEWS`), turning `spin` radians a second; the orange bloom under
+  // the whitepaper from `glow`, swelling over `rise` and fading over `fade`; then the ₿'s two-second lock, the fall
+  // and the height in stars.
+  const MINED = { lead: 5.5, text: 2.8, spin: 0.9, glow: 2, rise: 1, fade: 1.5 };
+  // NEW BLOCK on a ring round the drum and the hologram's foot, facing out, its pixel letters in Bitcoin orange a
+  // dot to each lit pixel (`dot` of a pixel's pitch across), the words `repeat` times round so they read from
+  // anywhere on the ring; its faces face out alone, so the far side never shows through backwards.
+  const NEWS = { word: "NEW BLOCK  ", repeat: 3, r: MID_R + 0.3, y: MID_TOP + 0.4, dot: 0.78 };
   // Soft additive light: a radial gradient on a quad the renderer blends after the glass (its "add" pictures), so
   // every dot under the floor, and the ₿'s glow above, is light with no edge. `peak` is the middle's alpha.
   const rgba = (hex, al) => { const c = BL.math.hexToRgb(hex); return `rgba(${c[0]},${c[1]},${c[2]},${al})`; };
@@ -1333,10 +1399,11 @@
 
   // ---------- the block's height, in stars ----------
   // As a block drops, stars come out round the mark, drift together into BLOCK and the block's height in the island's
-  // pixel letters, a star to each lit pixel, twinkle there and scatter again. The line bends a little round the
+  // pixel letters, a star to each lit pixel, and twinkle there until about six minutes after the block (`hold`), or
+  // the next block's height takes their place, then scatter again. The line bends a little round the
   // mark's ring (`bend` the radius it bends on), `gap` of the ring's radius clear of it, on the front's side, so it
   // reads the right way up to a visitor facing the front as the mark does. Only a height the feed gave is written.
-  const HEIGHT = { stars: 260, pitch: 0.16, gap: 0.42, bend: 14, early: 1.2, gather: 2.2, hold: 4.8, scatter: 2.4 };
+  const HEIGHT = { stars: 260, pitch: 0.16, gap: 0.42, bend: 14, early: 1.2, gather: 2.2, hold: 355.4, scatter: 2.4 };
 
   const floorPoc = (() => {
     // The path of the history road: the walk ring under the plinths in order, then in to the middle.
@@ -1396,6 +1463,26 @@
     const blockGeo = own(() => noShadow(BL.models.merge(box({ w: 0.6, h: 0.6, d: 0.6, color: "#3b2608" }), box({ w: 0.56, h: 0.56, d: 0.62, color: C.btc, emissive: 0.8 }), box({ w: 0.62, h: 0.56, d: 0.56, color: C.btc, emissive: 0.8 }))));
     const bar = own(() => noShadow(box({ w: 1, h: 0.04, d: 0.04, color: C.amber, emissive: 0.9, offset: { x: 0.5 } })));
     const ring = own(() => { const g = RM.helpers.blank(), n = 28, r0 = 0.55, r1 = 0.8; for (let k = 0; k < n; k++) { const a = TAU * k / n, b = TAU * (k + 1) / n; RM.helpers.face(g, [[r0 * Math.sin(a), 0, -r0 * Math.cos(a)], [r1 * Math.sin(a), 0, -r1 * Math.cos(a)], [r1 * Math.sin(b), 0, -r1 * Math.cos(b)], [r0 * Math.sin(b), 0, -r0 * Math.cos(b)]], C.btc, 1, [0, 1, 0]); } return noShadow(g); });
+    // NEW BLOCK's ring (`NEWS`): a dot to each lit pixel, or on Canvas 2D a bar to each lit run in a row, far fewer faces.
+    const newsGeo = (dots) => {
+      const T = BL.jumbotron.text, geo = RM.helpers.blank(), w = NEWS.word, cw = T.GLYPH_W + T.TRACKING, span = w.length * cw, cols = span * NEWS.repeat;
+      const step = TAU / cols, px = step * NEWS.r, m = dots ? px * (1 - NEWS.dot) / 2 : 0, pt = (a, y) => [NEWS.r * Math.sin(a), y, NEWS.r * Math.cos(a)];
+      const lit = (col, row) => { const k = col % span, c = k % cw; return c < T.GLYPH_W && ((T.glyphOf(w[Math.floor(k / cw)])[row] >> (T.GLYPH_W - 1 - c)) & 1) === 1; };
+      // Columns run round with the bearing, so the words read left to right from outside.
+      for (let row = 0; row < T.GLYPH_H; row++) {
+        const y1 = (T.GLYPH_H / 2 - row) * px - m, y0 = y1 - px + 2 * m;
+        for (let c = 0; c < cols; c++) {
+          if (!lit(c, row)) continue;
+          let e = c;
+          if (!dots) while (e + 1 < cols && lit(e + 1, row)) e++;
+          const a0 = c * step + m / NEWS.r, a1 = (e + 1) * step - m / NEWS.r, am = (a0 + a1) / 2;
+          RM.helpers.face(geo, [pt(a0, y0), pt(a1, y0), pt(a1, y1), pt(a0, y1)], C.btc, 1, [Math.sin(am), 0, Math.cos(am)]);
+          c = e;
+        }
+      }
+      return noShadow(geo);
+    };
+    const newsDots = own(() => newsGeo(true)), newsRuns = own(() => newsGeo(false));
     // The glass's sheen, one disc over the whole floor out to just short of the wall, built once a room.
     const glassSheen = RM.helpers.perRoom((id) => RM.helpers.glossSheet(0, ROOMS.layout(id).r0 - 0.02, 0, TAU, POC.gloss));
     // The void: a black disc far below, its two outer rings a faint cool glow (the atmosphere of the night-side references,
@@ -1420,6 +1507,7 @@
       path.forEach(([x, z], i) => K.node(`pocRing${i}`, plinthGlow(), x, POC.roadY - 0.25, z, FLAT));
       for (let i = 0; i < POC.atoms; i++) for (let k = 0; k < 2; k++) K.node(`pocAtom${i}_${k}`, dotG(), 0, POC.roadY, 0, FLAT);
       for (let i = 0; i < 4; i++) K.node(`pocBurst${i}`, bloom(), 0, POC.roadY - 0.1 - i * 0.03, 0, FLAT);
+      K.node("pocNews", newsDots(), 0, NEWS.y, 0, { glow: true, scale: 0.001 });
       THREADS.forEach((th, k) => { for (let i = 0; i < 5; i++) K.node(`pocCite${k}_${i}`, dotG(), 0, POC.roadY - 0.15, 0, FLAT); });
       for (let i = 0; i < POC.netDots; i++) { const a = i / POC.netDots * TAU, el = (28 + (i % 3) * 14) * DEG, q = ROOMS.onSphere(L, a, el, 0.985); K.node(`pocDot${i}`, ring(), q.x, q.y, q.z, { glow: true, scale: 0.001 }); }
       for (let i = 0; i < POC.netDots; i++) { const a = i / POC.netDots * TAU, el = (28 + (i % 3) * 14) * DEG, q = ROOMS.onSphere(L, a, el, 0.985), el2 = (28 + ((i + 1) % 3) * 14) * DEG, a2 = (i + 1) / POC.netDots * TAU, q2 = ROOMS.onSphere(L, a2, el2, 0.985); K.node(`pocLink${i}`, bar(), (q.x + q2.x) / 2, (q.y + q2.y) / 2, (q.z + q2.z) / 2, { ry: Math.atan2(-(q2.z - q.z), q2.x - q.x), rz: Math.atan2(q2.y - q.y, Math.hypot(q2.x - q.x, q2.z - q.z)), glow: true, scale: 0.001 }); }
@@ -1428,8 +1516,11 @@
       // arm reaching the same foot after a drop and ending in one bright point, a resting trickle always drifting that way.
       { const f = portalFoot(L); for (let i = 0; i < 3; i++) K.node(`pocStray${i}`, dotG(), f.x, POC.roadY, f.z, FLAT); for (let i = 0; i < 8; i++) K.node(`pocArm${i}`, (i === 7 ? dotO : dotWSmall)(), f.x, M.chainY, f.z, FLAT); for (let i = 0; i < 8; i++) K.node(`pocTrickle${i}`, dotG(), f.x, POC.roadY - 0.12, f.z, FLAT); }
     };
-    const animate = (nodes, built) => {
-      const L = built.layout, N = (name) => nodes[name], arr = (name, n) => Array.from({ length: n }, (_, i) => nodes[`${name}${i}`]);
+    const animate = (nodes, built, drawnBy) => {
+      const L = built.layout, N = (name) => nodes[name], news = N("pocNews"), calm = matchMedia("(prefers-reduced-motion: reduce)");
+      if (news && drawnBy === "canvas2d") news.geometry = newsRuns();
+      blockSound.enter();
+      const arr = (name, n) => Array.from({ length: n }, (_, i) => nodes[`${name}${i}`]);
       const rings = path.map((_, i) => N(`pocRing${i}`)), bursts = arr("pocBurst", 4), dots = arr("pocDot", POC.netDots), linksD = arr("pocLink", POC.netDots), block = N("pocBlock");
       const atoms = Array.from({ length: POC.atoms }, (_, i) => [0, 1].map((k) => N(`pocAtom${i}_${k}`)));
       const clusterN = clusters.map((_, i) => N(`pocCluster${i}`)), pulseN = arr("pocPulse", M.pulses), streamN = arr("pocStream", M.stream);
@@ -1457,7 +1548,7 @@
       const chainTip = () => { const snap = BL.chain && BL.chain.snapshot; return snap && snap.lastBlockAt > 0 ? snap.lastBlockAt / 1000 : 0; };
       let fallbackSlot = Math.floor(now0 / M.fallback);
       // A block: the mark peaks for two seconds (its lock wave), then one of its blocks drops and the fill starts again.
-      const drop = (height, from) => { const t = clock() + 2; live.dropAt = t; live.lastBlockAt = t; live.height = height || 0; live.drops++; live.newest = (live.newest + 1) % POC.chain; const w = live.wave; w.on = true; w.at = t + 5.2; w.from = from === undefined ? Math.floor(rnd(live.drops) * clusters.length) : from; };
+      const drop = (height, from) => { const t = clock() + MINED.lead; live.dropAt = t; live.lastBlockAt = t; live.height = height || 0; live.drops++; live.newest = (live.newest + 1) % POC.chain; const w = live.wave; w.on = true; w.at = t + 5.2; w.from = from === undefined ? Math.floor(rnd(live.drops) * clusters.length) : from; };
       let unsub = null;
       if (BL.mempool && BL.mempool.subscribe && BL.mempool.state && BL.mempool.state.enabled) unsub = BL.mempool.subscribe((e) => { if (e.type === "block") drop(e.height); else if (e.type === "stats") { live.mode = "live"; live.liveAt = clock(); live.rate = Math.max(2, Math.min(5, (e.inflow || 0) / 300)); } else if (e.type === "fees") live.nextFee = e.nextFee || 0; });
       // ---- firing along the arcs ----
@@ -1574,7 +1665,13 @@
           else { const r = tb * 9, a = i / atoms.length * TAU + tb * 2, sc = tb < T.burst ? 1.2 * (1 - tb / T.burst) : 0.001; for (let k = 0; k < 2; k++) { const n = pair[k], lag = BURST_LAG[k], rr = Math.max(0, r - lag * 9); n.position.x = Math.sin(a - lag * 2) * rr; n.position.z = -Math.cos(a - lag * 2) * rr; n.position.y = T.roadY; setScale(n, sc); } }
         }
         for (let i = 0; i < rings.length; i++) { const reached = head - cum[i]; let s = 0.001; if (bursting) s = i === rings.length - 1 ? 0.001 : Math.max(0.001, 0.6 * after); else if (reached > 0) s = reached < 1.5 ? 0.3 + 0.9 * reached / 1.5 : Math.max(0.6, 1.2 - (reached - 1.5) * 0.08); setScale(rings[i], s); }
-        const kb = bursting ? (tb < T.burst ? tb / T.burst : Math.max(0, 1 - (tb - T.burst) / 1.5)) : 0;
+        // A block's arrival (`MINED`, from the block): NEW BLOCK turning round the middle, then the bloom under the
+        // whitepaper, once a block (the history road's own burst keeps its dots alone). Reduced motion holds the
+        // words still and only fades them.
+        const sb = td + MINED.lead, kn = sb >= 0 && sb < MINED.text ? Math.min(1, sb / 0.3, (MINED.text - sb) / 0.4) : 0;
+        if (kn > 0) blockSound.play(live.drops);
+        if (news) { news.scale.x = news.scale.z = kn > 0 ? 1 : 0.001; news.scale.y = Math.max(0.001, kn); news.rotation.y = calm.matches ? 0 : -sb * MINED.spin; }
+        const gb = sb - MINED.glow, kb = gb >= 0 && gb < MINED.rise ? gb / MINED.rise : gb >= MINED.rise && gb < MINED.rise + MINED.fade ? 1 - (gb - MINED.rise) / MINED.fade : 0;
         for (let i = 0; i < bursts.length; i++) setScale(bursts[i], Math.max(0.001, kb * (3 + i * 2.2)));
         const onRefs = BL.timechainGenesis.readerPage === 8;
         for (let c = 0; c < cites.length; c++) { const ct = cites[c], sp = ct.spot, on = onRefs || (t >= tBurst + c * 0.4 && t < tNet); for (let i = 0; i < ct.nodes.length; i++) { const n = ct.nodes[i]; if (!n) continue; if (!on) { setScale(n, 0.001); continue; } const u = ((now * 0.5 + i / ct.nodes.length + c * 0.13) % 1); n.position.x = sp.x * 0.1 + sp.x * 0.8 * u; n.position.z = sp.z * 0.1 + sp.z * 0.8 * u; setScale(n, 0.5 * (u < 0.1 ? u / 0.1 : u > 0.9 ? (1 - u) / 0.1 : 1) * after); } }
@@ -1609,7 +1706,7 @@
       };
       BL.timechainGenesis.live = live;
       BL.timechainGenesis.floorPoc = { force: (t) => { forced = t; lastT = -1; }, drop: (h) => drop(h), cycle: T.cycle, stream: T.stream, turn: T.turn, phases: { stream: 0, turn: tStream, burst: tTurn, charge: tBurst, net: tCharge, fade: tNet, dark: tFade }, cum, ringLen, total, path, clusters: clusters.length, links: links.length, live };
-      return { update, dispose() { if (unsub) unsub(); } };
+      return { update, dispose() { if (unsub) unsub(); blockSound.leave(); } };
     };
     return { plan, animate };
   })();
@@ -1811,7 +1908,7 @@
   // `hud` is the visit's HUD (its Proof of Knowledge panel and whitepaper reader); `gone` ends every listener the visit
   // put on them. A tap on a piece, or Space in front of one, opens it in the model viewer, every entry in date order.
   const animate = (nodes, built, feeds, menuOpen, hud, drawnBy) => {
-    const gone = new AbortController(), poc = floorPoc.animate(nodes, built);
+    const gone = new AbortController(), poc = floorPoc.animate(nodes, built, drawnBy);
     const spots = PLINTHS.map((p, i) => ({ ...spotOf(i), index: p.entries[0].index }));
     const smooth = (k) => k * k * (3 - 2 * k), unit = (v) => Math.max(0, Math.min(1, v));
     // The pieces' glass, each plinth's near mesh and each sector's far one: it breathes, each sector a little after the
@@ -2195,6 +2292,6 @@
     portal.bind(self);
     return self;
   };
-  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, firstBuilds, LINK, RING, BIG, TOP, RISE, DEPTH, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
+  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, firstBuilds, LINK, RING, BIG, TOP, RISE, DEPTH, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, blockSound, readerPage: -1 };
   BL.timechainRoomKinds.genesis = { plan, steps, animate, door };
 })();
