@@ -38,7 +38,7 @@ is unchanged and never stages the app.
 | `src/ooga-chat/ooga-chat-device.js` | `BL.oogaChatDevice`: the network, install help, a waiting update, the worker's registration and the M key |
 | `src/ooga-chat/service-worker.js` | the service worker, staged as `/sw.js` with its build and file list filled in |
 | `src/ooga-chat/ooga-chat-shell.js` | `BL.oogaChatShell`: the tabs and the views they keep |
-| `src/ooga-chat/ooga-chat-chunks.js` | `BL.oogaChatChunks`: the deferred chunks (Size, below): `load(group)`, `ready(group, fn)`, `prefetch()` once the first view has painted, and `stale` once a chunk was found gone after a deploy |
+| `src/ooga-chat/ooga-chat-chunks.js` | `BL.oogaChatChunks`: the deferred chunks (Load order, below): `load(group)`, `ready(group, fn)`, `prefetch()` once the first view has painted, and `stale` once a chunk was found gone after a deploy |
 | `src/ooga-chat/ooga-chat-views.js` | `BL.oogaChatViews`: the Ooga Chat tab (sign-in, or the island's Ooga Chat panel: the zones, the roster and its footer), the stand-in for a tab whose chunk is on its way (`deferred`), the stand-in for a panel not built yet, and the kit the chunks' views build with. Every view is the island's own panel in its markup (#656) |
 | `src/ooga-chat/ooga-chat-bananas.js` | in the `bananas` chunk: the Bananas tab's view |
 | `src/ooga-chat/ooga-chat-panels.js` | in the `panels` chunk: Contributing Oogas, Online Oogas and The Commons, with the island's account row at their foot |
@@ -83,10 +83,13 @@ module reads nothing at load but `window.BL` and the document.
 `ooga-chat-http.js`, `ooga-chat-media.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, `ooga-chat-faces.js`, `ooga-chat-portraits.js`, `ooga-chat-bananas.js`, `ooga-chat-panels.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
 `fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app, each in the same group.
 
-**Chunks.** A script tagged `data-defer="bananas"` or `data-defer="panels"` in both entries leaves the first load in a
-staged build. `bananas` is `donations.js`, `banana-panel.js`, Feed the Oogas (`qr.js` through `donation-popup.js`),
+**Chunks.** A script tagged `data-defer="bananas"`, `data-defer="panels"` or `data-defer="emoji"` in both entries
+leaves the first load in a staged build. `bananas` is `donations.js`, `banana-panel.js`, Feed the Oogas (`qr.js` through `donation-popup.js`),
 `ooga-chat-donor.js` and `ooga-chat-bananas.js`; `panels` is `zone-map.js`, `commons-log.js`, `format-large.js`,
-`roster-panel.js`, `contributor-identities.js`, `activity-repos.js` and `ooga-chat-panels.js`. Each runs after the whole
+`roster-panel.js`, `contributor-identities.js`, `activity-repos.js` and `ooga-chat-panels.js`; `emoji` is
+`emoji-data.js` and `reaction-bar.js`, the emoji bar and its picker over the whole list, which only a signed-in visitor
+sees, so the app asks for it as soon as an account is signed in (until then a view's bar waits, its slot hidden, and a
+reaction heard is let go; `reaction-policy.js` stays and reads the list only when first asked). Each runs after the whole
 first load, so it may read any of it at load; nothing in the first load may read a chunk's modules at load (the app
 waits with `BL.oogaChatChunks.ready`, and a tab's view is `deferred` until its chunk is here). The Commons' model
 (`ooga-chat-commons.js`, with `chat-policy.js`) stays in the first load, since its socket is the app's. From source the
@@ -572,10 +575,11 @@ each player's volume and mute, the optional duel muting and the voice handoffs o
 `bananas` 42.3 KB and `panels` 25.7 KB gzipped, fetched once the first view has painted and the browser is idle (never
 under Save-Data, where a tab's first opening fetches its chunk and shows Opening… meanwhile). That took the first load
 to 176.6 KB (`index.html` 0.6 KB, script 85.7 KB, stylesheet 12.6 KB, sign-in picture 77.7 KB at its largest; 29.7 or
-42.1 KB on most phones and 1x screens, Artwork below), and the budget down to 180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. A chunk that cannot be fetched
-offers Try again; one gone after a deploy (a 404 to a HEAD, on a page the service worker does not keep) offers Reload.
-The next large piece is the emoji list (`emoji-data.js`, about 18 KB), which only the picker needs; deferring it means
-`reaction-policy.js` and `reaction-bar.js`, which the island shares, no longer reading it at load.
+42.1 KB on most phones and 1x screens, Artwork below), and the budget down to 180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker
+with the whole emoji list (`emoji`, 24.4 KB), wanted only signed in, followed once `reaction-policy.js` read the list
+when first asked rather than at load (the island and the Worker load it first anyway): the first load is now 153.3 KB
+(script 62.4 KB) and the budget 156 KB. A chunk that cannot be fetched offers Try again; one gone after a deploy (a 404
+to a HEAD, on a page the service worker does not keep) offers Reload.
 
 ## Artwork
 

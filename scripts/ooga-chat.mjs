@@ -45,9 +45,10 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
 // the time it was split). Then every tab but Ooga Chat moved into a chunk of its own, fetched once the first view has
 // painted (Bananas with Feed the Oogas and donations.js, about 45 KB; Contributing Oogas, Online Oogas and The Commons
 // with their island modules, about 24 KB), which took the first load to about 176.6 KB. The build fails past this, set
-// just above it, so a tab's code cannot slip back into the first load unnoticed. The next large piece is the emoji list
-// (emoji-data.js, about 18 KB), which only the picker needs; reaction-policy.js and reaction-bar.js read it at load.
-export const FIRST_LOAD_BUDGET = 180 * 1024;
+// just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker with the
+// whole emoji list (emoji-data.js and reaction-bar.js, about 24 KB), wanted only signed in, then moved into a chunk of
+// their own too, once reaction-policy.js read the list when first asked rather than at load: about 153.3 KB.
+export const FIRST_LOAD_BUDGET = 156 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
 // (a rule's other selectors, another panel's, left behind), in an @media, @supports or @container block too, and every

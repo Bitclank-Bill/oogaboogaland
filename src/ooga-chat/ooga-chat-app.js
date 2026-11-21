@@ -103,7 +103,19 @@
     // signed in, working while the feed is live), its hand follows the visitor's own row as the server keeps it, and
     // what it sends goes over the audience socket as a request (#668). A hand the server refuses goes back to the row's.
     // Every reaction the server sends to the zone, the visitor's own included, pops over that participant's circle.
-    const linkSubs = new Set(), pops = new Set();
+    // The bar and the emoji list it checks against come in the `emoji` chunk, asked for once signed in: until it is
+    // here a view's bar waits in `mounts`, and a reaction heard is let go (it would be gone in a moment anyway).
+    const linkSubs = new Set(), pops = new Set(), mounts = [];
+    let reactionBars = null, emojiAsked = 0;
+    const bars = { refresh: () => reactionBars?.refresh(), mount(host, options) {
+      if (reactionBars) return reactionBars.mount(host, options);
+      host.hidden = true;
+      mounts.push([host, options]);
+    } };
+    BL.oogaChatChunks.ready("emoji", () => {
+      reactionBars = BL.reactionBar.create(link);
+      for (const [host, options] of mounts.splice(0)) reactionBars.mount(host, options);
+    });
     let handRequest = 0;
     const link = { state: { me: null, reactions: false, room: "off", hand: false, handTone: 0, handEmoji: "", customHand: true },
       sendReaction: (emoji) => !!feed && feed.request("reaction", { emoji }) > 0,
@@ -121,6 +133,11 @@
     };
     const syncLink = (force = false) => {
       const s = link.state, who = state.mode === "live" && state.session ? state.session.identity : null, room = who ? state.audience.status : "off";
+      // Signed in, the bar is wanted now: its chunk is asked for at once (again at most every 30 s after a failure).
+      if (who && !reactionBars && Date.now() - emojiAsked > 30000) {
+        emojiAsked = Date.now();
+        BL.oogaChatChunks.load("emoji")?.catch(() => {});
+      }
       const hand = ownHand(), next = { me: who, reactions: !!who, room, hand: !!hand, handEmoji: hand };
       if (!force && s.me === next.me && s.reactions === next.reactions && s.room === next.room && (handRequest || s.hand === next.hand && s.handEmoji === next.handEmoji)) return;
       Object.assign(s, handRequest ? { me: next.me, reactions: next.reactions, room } : next);
@@ -172,7 +189,7 @@
       feed = adapter.audience(state.boot, {
         message(msg) {
           if (msg && msg.type === "reaction") {
-            if (msg.zone === state.zone && typeof msg.participantId === "string" && typeof msg.emoji === "string" && BL.reactionPolicy.valid(msg.emoji))
+            if (reactionBars && msg.zone === state.zone && typeof msg.participantId === "string" && typeof msg.emoji === "string" && BL.reactionPolicy.valid(msg.emoji))
               for (const fn of pops) fn(msg.participantId, msg.emoji);
             return;
           }
@@ -325,7 +342,7 @@
           return result;
         } },
       contributors: () => adapter.contributors(),
-      reactions: { bars: BL.reactionBar.create(link), onPop(fn) { pops.add(fn); return () => pops.delete(fn); } } };
+      reactions: { bars, onPop(fn) { pops.add(fn); return () => pops.delete(fn); } } };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }
     }, tabs: [
