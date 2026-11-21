@@ -19932,7 +19932,14 @@ const bananaListsHold = (s) => s.visible && s.rows === s.donors && s.rows > 5 &&
 const FOOT_SPACE = (selector) => `(() => {
   const el = document.querySelector(${JSON.stringify(selector)}), panel = el.closest(".panel"), body = el.closest(".sheet-body");
   panel.scrollTop = panel.scrollHeight; body.scrollTop = body.scrollHeight;
-  let prev = el.previousElementSibling; while (prev && !prev.getClientRects().length) prev = prev.previousElementSibling;
+  let anchor = el, prev = null;
+  // Account actions now share a footer wrapper. Find the preceding visible
+  // content outside that wrapper when its earlier children are hidden.
+  while (anchor && anchor !== panel && !prev) {
+    prev = anchor.previousElementSibling;
+    while (prev && !prev.getClientRects().length) prev = prev.previousElementSibling;
+    anchor = anchor.parentElement;
+  }
   const r = el.getBoundingClientRect(), b = body.getBoundingClientRect(), inside = b.bottom - parseFloat(getComputedStyle(body).borderBottomWidth);
   // The suite's screens have no safe-area inset, so a docked drawer's inset adds nothing here.
   const above = r.top - prev.getBoundingClientRect().bottom, below = inside - r.bottom;
@@ -21119,7 +21126,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
   const read = () => b.evaluate(`(() => { const s = document.getElementById("sheet"); return {
     scene: __ooga.scene, open: s.dataset.open, hidden: s.hidden, painted: getComputedStyle(s).display !== "none",
     tab: s.querySelector('[aria-selected="true"]')?.dataset.tab || null,
-    panels: document.querySelectorAll(".sheet").length, content: document.querySelectorAll(".sheet [data-panel]").length,
+    panels: document.querySelectorAll(".sheet").length, content: [...document.querySelectorAll(".sheet [data-panel]")].map(p => p.dataset.panel).sort().join(","),
     saved: JSON.parse(localStorage.getItem("oogaboogaland.sheet.v1")), subscriptions: __panelTravel.live.size
   }; })()`);
   const listeners = async () => {
@@ -21154,7 +21161,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
       await b.evaluate('__ooga.hud.selectTab("bananas")');
       const metrics = await b.evaluate(`(() => { const costs = []; for (let i = 0; i < 24; i++) { const t = performance.now(); __ooga.advance(1 / 60, 1 / 60); costs.push(performance.now() - t); } costs.sort((a,b)=>a-b); return { median: costs[12], p95: costs[22], dom: document.getElementsByTagName("*").length }; })()`);
       rounds.push({ subscriptions: state.subscriptions, listeners: await listeners(), metrics });
-      record("shared panel: ordinary environments preserve the " + (pass ? "closed" : "open") + " choice and one content owner", rows.every(r => r.scene && r.painted && !r.hidden && r.open === String(!pass) && r.saved.tab === "bananas" && r.panels === 1 && r.content === 4), JSON.stringify(rows));
+      record("shared panel: ordinary environments preserve the " + (pass ? "closed" : "open") + " choice and one content owner", rows.every(r => r.scene && r.painted && !r.hidden && r.open === String(!pass) && r.saved.tab === "bananas" && r.panels === 1 && r.content === "bananas,chat,cloud,players,roster"), JSON.stringify(rows));
     }
     record("shared panel: repeated travel keeps net subscriptions, DOM and event listeners bounded", rounds[0].subscriptions === rounds[1].subscriptions && rounds[0].metrics.dom === rounds[1].metrics.dom && JSON.stringify(rounds[0].listeners) === JSON.stringify(rounds[1].listeners), JSON.stringify(rounds));
     await b.evaluate('__ooga.hud.selectTab("bananas"); __ooga.hud.foldPanels()');
@@ -23961,10 +23968,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       singles = !room.layoutPending && nine.every(p => p.size === 1 && p.node.geometry === p.normal);
       isolated = panels.every((p, i) => nine.includes(p) || p.node.geometry === before[i]);
       stage(0); // Reassemble the same nine tiles, leaving all other groups in place.
-      room.update(0);
       const group = panels.find(p => p.next?.size === 3).next.group;
       const joining = panels.filter(p => p.next?.group === group), outgoing = joining.map(p => p.node.geometry);
       const arrivals = joining.map(p => p.delay).sort((a, b) => a - b);
+      // Capture the group before its zero-delay first tile is replaced.
+      room.update(0);
       room.update((arrivals[0] + arrivals[1]) / 2);
       partialNeighbors &&= neighborsValid();
       mergeOne = joining.filter(p => !p.next).length === 1
@@ -24099,6 +24107,10 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       for (let i = 0; i < 60 && !room.active; i++) B.advance(1 / 60, 1 / 60);
       const facing = room.active && angle(B.pilot.orbit.yaw, Math.PI + 0.2)
         && Math.abs(B.pilot.orbit.pitch - pitch) < 0.02 && Math.abs(B.pilot.orbit.dist - distance) < 0.02 && B.pilot.view === view;
+      // Physical crossings now walk from the glass to the landing. Keep S held
+      // through that animation, then measure movement after control is returned.
+      for (let i = 0; i < 180 && room.arriving; i++) B.advance(1 / 60, 1 / 60);
+      const arrived = !room.arriving;
       const z = B.pilot.player.root.position.z;
       B.advance(0.12, 1 / 60); key("keyup");
       const departingMirror = room.active && B.pilot.player.root.position.z < z - 0.2;
@@ -24107,14 +24119,15 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       B.advance(1.1, 1 / 60); key("keydown");
       for (let i = 0; i < 60 && room.active; i++) B.advance(1 / 60, 1 / 60);
       const returned = !room.active && angle(B.pilot.orbit.yaw, m.ry + 0.2) && B.pilot.view === view;
+      for (let i = 0; i < 180 && room.arriving; i++) B.advance(1 / 60, 1 / 60);
       const p = B.pilot.player.root.position, along = () => (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry), before = along();
       B.advance(0.12, 1 / 60); key("keyup");
-      results.push({ close, facing, departingMirror, returned, departingIslandMirror: along() > before + 0.2 });
+      results.push({ close, facing, arrived, departingMirror, returned, arrivedIsland: !room.arriving, departingIslandMirror: along() > before + 0.2 });
     }
     return results;
   })()`);
   record("hub mirror: backward crossings preserve first/third-person view and keep held S walking away in both directions",
-    backward.every(r => r.facing && r.departingMirror && r.returned && r.departingIslandMirror), JSON.stringify(backward));
+    backward.every(r => r.facing && r.arrived && r.departingMirror && r.returned && r.arrivedIsland && r.departingIslandMirror), JSON.stringify(backward));
   const curvedExit = await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect, results = [];
     for (const x of [0, 1.8, -1.8]) {
@@ -29346,7 +29359,11 @@ scene("hub", { opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${h
 // The Oogas are left out: where each one stands draws on the crew's unseeded choices.
 const hubSlicedReturn = { name: "hub sliced return", why: "rule: a released hub rebuilt in slices behind the fade is the same island, with the same pick targets, rock guides and outlines, as one rebuilt at once", run: async (b) => {
   await b.evaluate(`(() => {
-    const H = BL.scenes.hub, steps = H.enterSteps, enter = H.enter, S = window.__sliced = { digests: [], restore: () => { H.enterSteps = steps; H.enter = enter; } };
+    const H = BL.scenes.hub, steps = H.enterSteps, enter = H.enter, serverNow = BL.net.serverNow;
+    const S = window.__sliced = { digests: [], restore: () => { H.enterSteps = steps; H.enter = enter; BL.net.serverNow = serverNow; } };
+    // Cloud positions follow the shared wall clock. Compare both builds at the
+    // same instant while retaining their geometry and transforms in the digest.
+    const stamp = serverNow(); BL.net.serverNow = () => stamp;
     const digest = (slices) => {
       const D = H.debug, top = H.root, skip = new Set(), geo = new Map();
       for (const c of D.cavemen.values()) skip.add(c.root);
@@ -30843,7 +30860,9 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
   // Snapshot inside the fetch and its account notification so no simulated movement hides a teleport.
   await b.evaluate(`(() => {
     const B = __ooga, cave = B.pilot.player, ${sphereLocal};
-    const W = window.__sphereAccount = { fetch: window.fetch, WebSocket: window.WebSocket, state: { ...BL.net.state }, calls: 0, before: null, after: null };
+    // npcHold is derived from the account/catalogue fields, not writable account state.
+    const { npcHold, ...state } = BL.net.state;
+    const W = window.__sphereAccount = { fetch: window.fetch, WebSocket: window.WebSocket, state, calls: 0, before: null, after: null };
     const read = () => ({ selected: B.pilot.player === cave, body: [cave.root.position.x, cave.root.position.y, cave.root.position.z],
       eye: [B.camera.position.x, B.camera.position.y, B.camera.position.z], target: [B.camera.target.x, B.camera.target.y, B.camera.target.z],
       mode: B.pilot.mode, lens: T.gate.debug.lens, held: B.pilot.travelRefusal() === "Finish the current interaction before travelling" });
@@ -31077,11 +31096,12 @@ const timechainLectureScreens = {
   const check = (ok, message, detail) => record(`lecture screen: ${message}`, ok, detail);
   // The idle catalogue must accept the same real pointer in carry and combat, before any timeline exists.
   await b.evaluate(`window.catalogueTest = {
-    point(i) {
+    point(i, turn = false) {
       const B=__ooga, M=B.timechain.motion, D=M.screens().outline, r=M.catalogueRows[i], deg=Math.PI/180;
       const x=(r.x+r.w*.5)/D.w, y=(r.y+r.h*.5)/D.h;
       const el=Math.asin(Math.sin(D.el1*deg)-y*(Math.sin(D.el1*deg)-Math.sin(D.el0*deg)));
       const p=BL.timechainRooms.onSphere(B.timechain.layout,(D.az0+x*(D.az1-D.az0))*deg,el,.994);
+      if (turn) { B.pilot.turnToward(p.x,p.y,p.z); B.advance(1,1/60); }
       return B.project(p.x,p.y,p.z);
     }
   }`);
@@ -31099,7 +31119,9 @@ const timechainLectureScreens = {
     for (const i of [1, 7, 0]) {
       // A preceding physical click can capture mouse-look. Release it before testing the free pointer again.
       await b.evaluate('__ooga.pilot.freeCursor()'); await b.sleep(60);
-      const pt=await b.evaluate(`catalogueTest.point(${i})`);
+      // The two columns wrap around the dome; turn to the chosen row before
+      // sending a physical pointer, so the second column is inside the viewport.
+      const pt=await b.evaluate(`catalogueTest.point(${i}, true)`);
       await b.mouse('mouseMoved',pt.x,pt.y,{button:'none'});
       await b.evaluate('__ooga.advance(.1,1/60)');
       check(await b.evaluate(`__ooga.timechain.motion.catalogueHover===${i}`), `idle catalogue hover in ${combat ? 'combat' : 'carry'}, lecture ${i+1}`, JSON.stringify({pt, actual:await b.evaluate('__ooga.timechain.motion.catalogueHover')}));
@@ -37067,17 +37089,19 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
         expected = meta.node_count * fields.length;
         chunk = header.slice(match.index + match[0].length); header = "";
       }
-      for (let i = 0; i < chunk.length; i++) {
-        const ch = chunk[i];
-        if (ch >= "0" && ch <= "9") { token += ch; continue; }
-        if (token) {
-          const value = Number(token), field = values++ % fields.length;
-          if (field === iType) type = value;
-          if (field === iSize) { total += value; if (type === code) compiled += value; }
-          token = "";
-        }
-        if (ch === "]") { done = true; break; }
+      // Parse bounded numeric chunks natively instead of concatenating every
+      // digit in JavaScript. A large scene can contain millions of heap records;
+      // retain only the incomplete number across chunks, never the whole snapshot.
+      const end = chunk.indexOf("]"), last = end >= 0 ? end : chunk.lastIndexOf(",");
+      if (last < 0) { token += chunk; return; }
+      const numbers = JSON.parse("[" + token + chunk.slice(0, last) + "]");
+      token = end >= 0 ? "" : chunk.slice(last + 1);
+      for (const value of numbers) {
+        const field = values++ % fields.length;
+        if (field === iType) type = value;
+        if (field === iSize) { total += value; if (type === code) compiled += value; }
       }
+      if (end >= 0) done = true;
     });
     try { await b.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }); }
     finally { b.on("HeapProfiler.addHeapSnapshotChunk", null); }
@@ -37511,7 +37535,15 @@ const pokerMarbleHallChecks = (BL) => {
         }
       } finally { room.setTheme("gatsby"); for (const tb of room.tables) tb.agent.dispose(); }
       // Recorded from rock at 45e02fd4, the tree before the marble hall: theme record, built geometry, light array, built room.
-      const BEFORE = {
+      // The same pre-marble builder at 45e02fd4 on macOS/arm64 produces these
+      // exact float-bit hashes. Keep an exact baseline per platform rather than
+      // rounding geometry or accepting a tolerance for every vertex.
+      const BEFORE = process.platform === "darwin" && process.arch === "arm64" ? {
+        crystal: "f66ee59a:d32a764:117697cd:984b4ec0",
+        ember: "3d2a6db1:55476287:117697cd:74fe9bfb",
+        jungle: "4b98f2e:50a27997:117697cd:ff3634b",
+        moonstone: "21fcded:6e6d0200:117697cd:e5934591"
+      } : {
         crystal: "f66ee59a:f650e3cd:117697cd:9c34b100",
         ember: "3d2a6db1:e1d70253:117697cd:7671f6d5",
         jungle: "4b98f2e:b42da904:117697cd:a25ef873",
@@ -48528,7 +48560,9 @@ scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&wea
     record("DSB pier browser "+x+": reverse input returns ashore",back.z<38.2&&back.depth===0,JSON.stringify(back));visits.push({x,end,back});
   }
   const state=await b.evaluate(`(${shorelineState.toString()})()`);
-  record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===136&&state.readbacks===0,JSON.stringify(state));
+  // Island-wide wading changed the extracted coastline: 24 impulses, 41 swash,
+  // 33 contacts, 30 streaks and 5 impact patches, still one fixed pool per visit.
+  record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===133&&state.readbacks===0,JSON.stringify(state));
   b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
   const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,"pier-state.json"),JSON.stringify({visits,state,logs:b.logs},null,2));
 }}]});
@@ -49124,8 +49158,13 @@ function inspectDSBIslandPage() {
       accessible++;if(w<.99)errors.push(i+" access");
       const sx=x+near.nx*7,sz=z+near.nz*7;
       if(L.heightAt(sx,sz)>=C.LEVEL)errors.push(i+" dry shelf");
-      const px=x+near.nx*8,pz=z+near.nz*8,dx=x+near.nx*23,dz=z+near.nz*23;
-      if(!L.walkable(px,pz,dx,dz,L.heightAt(px,pz),D.avatar.bodyHeight,D.avatar))stops++;
+      const px=x+near.nx*8,pz=z+near.nz*8;
+      // Concave stretches have a wider shelf: locate actual water deeper than
+      // this Ooga can wade, rather than assuming every coast reaches it at 23 m.
+      let distance=8;
+      while(distance<50&&C.LEVEL-L.heightAt(x+near.nx*distance,z+near.nz*distance)<=C.maxDepth(D.avatar))distance++;
+      const dx=x+near.nx*distance,dz=z+near.nz*distance;
+      if(distance<50&&!L.walkable(px,pz,dx,dz,L.heightAt(px,pz),D.avatar.bodyHeight,D.avatar))stops++;
       else errors.push(i+" deep");
     }
   }
