@@ -241,6 +241,12 @@
   // Reactions and speech: tables read twice a second, a pot of 400 or more is big, two crowd bubbles at most.
   const POLL = 0.5, BIG_POT = 400, LEAN_IN = 0.2, CHEER = 1.2, GASP = 2, SAY = 2.4, TALK = 2.5, BUBBLES = 2;
   const RETURN_LINE = "Who threw me out?";
+  // At the gaming tables (poker-games.js): a guest stands leaning on the rail by `GAME_LEAN` and further in by
+  // `GAME_IN` while the wheel slows or the dice fly; reaching in to bet brings the right arm to `BET_ARM`; a shrug lifts
+  // both arms out by `SHRUG`; the shooter shakes the dice overhead and throws (`TOSS` s). The cues, by number:
+  // bet, lean, split (one or two cheer, the rest groan or shrug), cheer, groan, shake, toss.
+  const GAME_LEAN = 0.08, GAME_IN = 0.16, BET_ARM = -1.25, SHRUG = 0.45, SHRUG_TIME = 1.6, TOSS = 0.55;
+  const GAME = Object.freeze({ BET: 1, LEAN: 2, SPLIT: 3, CHEER: 4, GROAN: 5, SHAKE: 6, TOSS: 7 });
   const GREET_R = 2.5, GREET_EVERY = 60, STAGGER = 1.2, STUMBLES = 3, ESCORT_SIT = 30, SERVE = 4, TRAIL = 1.6, TRAIL_GO = 2.4;
   // The lounges' residents: a sip every `SIP_GAP` to twice that, taking `SIP` s (up, at the lips, down), the glass held
   // at the lap between; the head turns to whoever speaks within `HEED_TALK` m, else whoever passes within `HEED_PASS`,
@@ -249,14 +255,14 @@
   // Where a guest goes next, by weight; a kind with no free place falls to a stroll.
   const dest = pairs => Object.freeze({ kinds: pairs.map(p => p[0]), weights: pairs.map(p => p[1]), sum: pairs.reduce((n, p) => n + p[1], 0) });
   const DEST = Object.freeze({
-    highRoller: dest([["rail", 5], ["stool", 2], ["stroll", 1], ["rope", 1], ["group", 3], ["glass", 2], ["bar", 2]]),
-    businessman: dest([["cage", 3], ["rail", 3], ["stroll", 2], ["stool", 1], ["group", 3], ["glass", 1], ["bar", 2]]),
-    lady: dest([["stool", 3], ["rail", 2], ["stroll", 1], ["group", 4], ["glass", 3], ["bar", 1]]),
-    drunk: dest([["stool", 3], ["rail", 2], ["stroll", 4], ["bar", 2]])
+    highRoller: dest([["rail", 5], ["stool", 2], ["stroll", 1], ["rope", 1], ["group", 3], ["glass", 2], ["bar", 2], ["game", 6]]),
+    businessman: dest([["cage", 3], ["rail", 3], ["stroll", 2], ["stool", 1], ["group", 3], ["glass", 1], ["bar", 2], ["game", 6]]),
+    lady: dest([["stool", 3], ["rail", 2], ["stroll", 1], ["group", 4], ["glass", 3], ["bar", 1], ["game", 5]]),
+    drunk: dest([["stool", 3], ["rail", 2], ["stroll", 4], ["bar", 2], ["game", 3]])
   });
   // The pit boss's post in the middle of the floor.
   const POST = Object.freeze({ kind: "post", x: 0, z: 0, yaw: 0, table: -1 });
-  const KINDS = ["rail", "stool", "cage", "rope", "door", "stroll", "group", "glass", "bar", "lounge"];
+  const KINDS = ["rail", "stool", "cage", "rope", "door", "stroll", "group", "glass", "bar", "lounge", "game"];
 
   // `create` keeps a fixed pool of everyone the day could put on the floor (`castFor(day, Infinity)`), built as the
   // cap needs them and shown up to it: `castFor(day, n)` is a subset of that pool, so a cap change only parks or
@@ -288,7 +294,9 @@
         job: "", table: -1, hand: -1, partner: null, seatY: 0, loop: 0, stops: [null, null, null, null],
         lean: 0, cheer: 0, gasp: 0, armUp: 0, handUp: 0, talk: 0, greet: 0, mutter: 12 + 13 * rand(),
         // Walking time to the drunk's next stumble, the stumble under way and how many so far.
-        walked: 0, restAt: 20 + 20 * rand(), stagger: 0, stumbles: 0
+        walked: 0, restAt: 20 + 20 * rand(), stagger: 0, stumbles: 0,
+        // At a gaming table: which (-1 none), and the cues' timers and blends.
+        game: -1, gameLean: 0, bet: 0, betK: 0, shrug: 0, shrugK: 0, shake: 0, toss: 0
       };
     });
     // The residents: one record a lounge seat the floor offers (filled by `setSpots`), each a lounge cast member in turn.
@@ -442,7 +450,7 @@
       if (m.partner) cancelEscort(m);
       // Its bubble goes with it: a caveman's line is hushed, and the count is released at once.
       if (m.talk > 0) { m.talk = 0; bubbles--; stat.crowdBubbles = bubbles; if (!m.agent) fx.hush(m); }
-      m.state = "parked"; m.pending = false; m.n = 0; m.spot = null; m.job = ""; m.table = -1; m.loop = 0; m.slide.seat = 0; m.stagger = 0;
+      m.state = "parked"; m.pending = false; m.n = 0; m.spot = null; m.job = ""; m.table = -1; m.game = -1; m.loop = 0; m.slide.seat = 0; m.stagger = 0;
       if (m.smoke) m.smoke.hide();
       if (m.root) { m.root.visible = false; if (m.agent) m.agent.place(m.x, m.z, m.yaw); }
     };
@@ -527,7 +535,7 @@
     };
     // Where to go next, by type.
     const next = m => {
-      m.stuck = 0;
+      m.stuck = 0; m.game = -1;
       if (m.partner) cancelEscort(m);
       if (m.job !== "boss") m.table = -1;
       let s;
@@ -554,6 +562,7 @@
       else if (m.job === "post") settle(m, s.yaw, "post", m.type === "security" ? 60 + 30 * m.rand() : Infinity);
       else if (m.job === "boss") { m.table = s.table; settle(m, s.yaw, "watch", Infinity); }
       else if (m.job === "escorted" || SEAT_Y[s.kind] !== undefined) sitDown(m, s, m.job === "escorted" ? ESCORT_SIT : 15 + 25 * m.rand());
+      else if (s.kind === "game") { m.table = -1; m.game = s.game; settle(m, s.yaw, "watch", 18 + 24 * m.rand()); }
       else if (s.kind === "rail" || s.kind === "cage" || s.kind === "rope") { m.table = s.table; settle(m, s.yaw, "watch", s.kind === "cage" ? 5 + 4 * m.rand() : 6 + 14 * m.rand()); }
       else if (s.kind === "glass") settle(m, s.yaw, "watch", 8 + 12 * m.rand());
       else if (s.kind === "group" || s.kind === "bar") settle(m, s.yaw, "chat", s.kind === "group" ? 10 + 15 * m.rand() : 6 + 10 * m.rand());
@@ -646,13 +655,13 @@
 
     // ---- speech and reactions ----
     // A line from the member's type, only while fewer than two crowd bubbles are up and its own is down.
-    const speak = m => {
+    const sayLine = (m, line) => {
       if (bubbles >= BUBBLES || m.talk > 0) return false;
-      const lines = LINES[m.type], line = lines[Math.floor(m.rand() * lines.length)];
       if (m.agent) fx.sayAt(m.x, 2.1, m.z, line, SAY); else fx.say(m, line, SAY);
       m.talk = TALK; bubbles++;
       return true;
     };
+    const speak = m => { const lines = LINES[m.type]; return bubbles < BUBBLES && m.talk <= 0 && sayLine(m, lines[Math.floor(m.rand() * lines.length)]); };
     // The guests watching table t cheer or put a hand to their head, and one of them says something.
     const react = (t, cheer) => {
       let said = false;
@@ -663,6 +672,44 @@
         if (!said) said = speak(m);
       }
     };
+    // ---- the gaming tables ----
+    // Whether m stands watching gaming table g.
+    const atGame = (m, g) => m.on && m.root && !m.agent && m.game === g && m.state === "watch";
+    // A cue from gaming table g to the guests standing at it (see `GAME`), lasting `seconds` where it lasts; returns how
+    // many took it (for a bet, how many reached in).
+    const gameCue = (g, cue, seconds) => {
+      let n = 0, cheered = 0;
+      for (let k = 0; k < members.length; k++) {
+        const m = members[k];
+        if (!atGame(m, g)) continue;
+        if (cue === GAME.BET) { if (m.rand() < 0.75) { m.bet = seconds; n++; } continue; }
+        n++;
+        if (cue === GAME.LEAN) m.gameLean = seconds;
+        else if (cue === GAME.CHEER) m.cheer = CHEER;
+        else if (cue === GAME.GROAN) m.gasp = GASP;
+        else if (cue === GAME.SPLIT) {
+          if (cheered < 1 || cheered < 2 && m.rand() < 0.35) { m.cheer = CHEER; cheered++; }
+          else if (m.rand() < 0.5) m.gasp = GASP; else m.shrug = SHRUG_TIME;
+        } else if ((cue === GAME.SHAKE || cue === GAME.TOSS) && m.spot && m.spot.role === "shooter") {
+          if (cue === GAME.SHAKE) m.shake = seconds; else { m.shake = 0; m.toss = TOSS; }
+        } else if (cue === GAME.SHAKE || cue === GAME.TOSS) n--;
+      }
+      return n;
+    };
+    // One guest at gaming table g says `line` (one cheering, when `cheering`, if any is), within the bubbles' cap.
+    const gameSay = (g, line, cheering) => {
+      let pick = null;
+      for (let k = 0; k < members.length; k++) {
+        const m = members[k];
+        if (!atGame(m, g) || m.talk > 0) continue;
+        if (!pick || cheering && m.cheer > 0 && !(pick.cheer > 0)) pick = m;
+      }
+      return !!pick && sayLine(pick, line);
+    };
+    // The guest standing at gaming table g's shooter's place, or null; whether its place `slot` is taken; how many stand at it.
+    const gameShooter = g => { for (let k = 0; k < members.length; k++) { const m = members[k]; if (atGame(m, g) && m.spot && m.spot.role === "shooter") return m; } return null; };
+    const gameAt = (g, slot) => { for (let k = 0; k < members.length; k++) { const m = members[k]; if (atGame(m, g) && m.spot && m.spot.slot === slot) return true; } return false; };
+    const gameCount = g => { let n = 0; for (let k = 0; k < members.length; k++) if (atGame(members[k], g)) n++; return n; };
     // A big pot: the pit boss walks to that table's rail and watches until the hand is over.
     const bossTo = (t, hand) => {
       for (let k = 0; k < members.length; k++) {
@@ -721,7 +768,14 @@
         p.armL.rotation.x += -0.55 * g * g; headX -= 0.06 * g;
       }
       lean += m.lean;
+      // At a gaming table, leaning on its rail, further in while the wheel slows or the dice fly.
+      if (!walking && m.game >= 0 && m.state === "watch") lean += GAME_LEAN + (m.gameLean > 0 ? GAME_IN : 0);
       leanBody(m, lean);
+      if (m.betK > 0.01) p.armR.rotation.x += (BET_ARM - p.armR.rotation.x) * m.betK;
+      if (m.shrugK > 0.01) { p.armR.rotation.z -= SHRUG * m.shrugK; p.armL.rotation.z += SHRUG * m.shrugK; p.armL.rotation.x += (-0.7 - p.armL.rotation.x) * m.shrugK; headX += 0.1 * m.shrugK; }
+      // The shooter shakes the dice overhead, then throws them down the table.
+      if (m.shake > 0) p.armR.rotation.x = -2.3 + 0.28 * Math.sin(m.shake * 30);
+      else if (m.toss > 0) { const k = 1 - m.toss / TOSS; p.armR.rotation.x = -2.3 + 1.5 * k * k * (3 - 2 * k); }
       if (m.armUp > 0.01) {
         const k = m.armUp, wave = Math.sin(m.cheer * 14) * 0.35;
         p.armR.rotation.x += (-2.6 + wave - p.armR.rotation.x) * k; p.armL.rotation.x += (-2.6 - wave - p.armL.rotation.x) * k;
@@ -896,6 +950,14 @@
         if (m.gasp > 0) m.gasp -= dt;
         m.gesture += dt * 1.4;
         m.armUp = Mth.damp(m.armUp, m.cheer > 0 ? 1 : 0, 10, dt); m.handUp = Mth.damp(m.handUp, m.gasp > 0 ? 1 : 0, 8, dt);
+        if (m.game >= 0 || m.betK > 0.001 || m.shrugK > 0.001 || m.shake > 0 || m.toss > 0) {
+          if (m.gameLean > 0) m.gameLean -= dt;
+          if (m.bet > 0) m.bet -= dt;
+          if (m.shrug > 0) m.shrug -= dt;
+          if (m.shake > 0) m.shake -= dt;
+          if (m.toss > 0) m.toss -= dt;
+          m.betK = Mth.damp(m.betK, m.bet > 0 ? 1 : 0, 8, dt); m.shrugK = Mth.damp(m.shrugK, m.shrug > 0 ? 1 : 0, 8, dt);
+        }
         m.lean = Mth.damp(m.lean, m.state === "watch" && bigLive(m.table) ? LEAN_IN : 0, 6, dt);
         if (m.greet > 0) m.greet -= dt;
         else if (vis && near(m.x, m.z, vis.x, vis.z, GREET_R) && speak(m)) m.greet = GREET_EVERY;
@@ -967,7 +1029,7 @@
         if (d > bestD) { bestD = d; best = m; }
       }
       if (!best) return null;
-      best.n = 0; best.spot = null; best.table = -1;
+      best.n = 0; best.spot = null; best.table = -1; best.game = -1;
       place(best, x, z, yaw); idle(best, 2.2);
       best.gasp = GASP;
       if (bubbles < BUBBLES && best.talk <= 0) { fx.say(best, RETURN_LINE, SAY); best.talk = TALK; bubbles++; }
@@ -975,8 +1037,8 @@
     };
     setSpots(spots);
     setCap(cap);
-    return { update, setCap, liveGeometry, stats: () => stat, dispose, members, residents, send, approach, returnGuest, find: paths.find };
+    return { update, setCap, liveGeometry, stats: () => stat, dispose, members, residents, send, approach, returnGuest, find: paths.find, gameCue, gameSay, gameShooter, gameAt, gameCount };
   };
 
-  BL.pokerCrowd = { router, create, smoke, smokeTargets, SMOKE: Object.freeze({ WISP: SMOKE_WISP, get B() { return smokeTargets().length / 2; }, GRID: SMOKE_GRID, CYCLE: SMOKE_CYCLE, FORM: SMOKE_FORM, HOLD: SMOKE_HOLD, GONE: SMOKE_GONE, SCALE: SMOKE_SCALE, LIFT: SMOKE_LIFT }) };
+  BL.pokerCrowd = { GAME, router, create, smoke, smokeTargets, SMOKE: Object.freeze({ WISP: SMOKE_WISP, get B() { return smokeTargets().length / 2; }, GRID: SMOKE_GRID, CYCLE: SMOKE_CYCLE, FORM: SMOKE_FORM, HOLD: SMOKE_HOLD, GONE: SMOKE_GONE, SCALE: SMOKE_SCALE, LIFT: SMOKE_LIFT }) };
 })();

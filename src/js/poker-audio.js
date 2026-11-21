@@ -58,8 +58,13 @@
   const CHIP_HZ = 5200, CHIP_DUR = 0.03, CHIP_GAP = 0.05, CHIP_LEVEL = 0.5;
   const GLASS_HZ = 2100, GLASS_TO = 1900, GLASS_DUR = 0.4, GLASS_CUT = 6000, GLASS_LEVEL = 0.22;
   const HEEL_HZ = 1800, HEEL_DUR = 0.035, HEEL_LEVEL = 0.4;
+  // The gaming tables' cues (poker-games.js), on the same noise voices: the ball's rattle round the wheel and its drop
+  // into a pocket, the dice on the felt, and the crowd's roar and murmur round a table, each `[band Hz, taps, gap, length,
+  // level, attack]`, all well under the chips' level, so they sit low under the music.
+  const GAME_CUES = Object.freeze({ rattle: [3400, 3, 0.07, 0.025, 0.2, 0.002], drop: [2600, 2, 0.05, 0.03, 0.28, 0.002], dice: [1500, 2, 0.04, 0.04, 0.28, 0.002],
+    roar: [750, 1, 0, 0.7, 0.12, 0.08], murmur: [480, 1, 0, 0.8, 0.07, 0.15] });
   // Which pool each cue plays on.
-  const CUE_KINDS = Object.freeze({ chip: "noise", heel: "noise", glass: "sine" });
+  const CUE_KINDS = Object.freeze({ chip: "noise", heel: "noise", glass: "sine", rattle: "noise", drop: "noise", dice: "noise", roar: "noise", murmur: "noise" });
   // The room's own cues: a chip at a random table every `CHIP_MIN` to `CHIP_MAX` seconds, a glass at a random bar wing
   // every `GLASS_MIN` to `GLASS_MAX`.
   const CHIP_MIN = 1.5, CHIP_MAX = 4, GLASS_MIN = 6, GLASS_MAX = 14;
@@ -543,13 +548,13 @@
       return null;
     };
     // `count` taps `gap` apart on the free voice `v` from `now`, each up to `level` and away by `dur`, where AT says.
-    const taps = (v, count, gap, level, dur, now) => {
+    const taps = (v, count, gap, level, dur, now, attack = 0.002) => {
       const g = v.gain.gain, peak = Math.max(0.0002, level * AT.level);
       g.cancelScheduledValues(now);
       for (let i = 0; i < count; i++) {
         const t = now + i * gap;
         g.setValueAtTime(0.0001, t);
-        g.exponentialRampToValueAtTime(peak, t + 0.002);
+        g.exponentialRampToValueAtTime(peak, t + attack);
         g.exponentialRampToValueAtTime(0.0001, t + dur);
       }
       v.pan.pan.setValueAtTime(AT.pan, now);
@@ -565,7 +570,11 @@
       const v = kind === "noise" ? free(noises, noiseNext = (noiseNext + 1) % NOISES, now)
         : free(roomSines, roomSineNext = (roomSineNext + 1) % ROOM_TONES, now);
       if (v === null) { stats.busy++; return; }
-      if (kind === "noise") {
+      const game = GAME_CUES[name];
+      if (game) {
+        v.filter.frequency.setValueAtTime(game[0], now);
+        taps(v, game[1], game[2], game[4], game[3], now, game[5]);
+      } else if (kind === "noise") {
         const chip = name === "chip";
         v.filter.frequency.setValueAtTime(chip ? CHIP_HZ : HEEL_HZ, now);
         taps(v, chip ? 2 : 1, CHIP_GAP, chip ? CHIP_LEVEL : HEEL_LEVEL, chip ? CHIP_DUR : HEEL_DUR, now);

@@ -6,6 +6,15 @@
   const PORTAL_Z = REAR_WALL_Z - BL.bifrostModels.MIRROR_Z - 0.05;
   const EXIT_Z = PORTAL_Z + BL.bifrostModels.MIRROR_Z;
   const TABLES = Array.from({ length: 10 }, (_, i) => ({ x: i % 2 ? 11 : -11, z: 24 - Math.floor(i / 2) * 12 }));
+  // The gaming floor's set dressing (poker-games.js): two roulette and two craps tables, one in each bank's cross aisle
+  // either side of the middle row, midway between it and its neighbour (z +-6) on the bank's line, the kinds alternating
+  // corner to corner. The aisles at z +-18 stay open, since the row-aisle walk crosses them straight; at z +-6 a 7 m gap
+  // between the chairs leaves 2.3 m and more each side of a table. Each roulette wheel and each craps table's far wall
+  // faces the promenade; the shooter's end is toward the side aisle.
+  const GAMES = Object.freeze([[2, 4, "roulette"], [3, 5, "craps"], [4, 6, "craps"], [5, 7, "roulette"]].map(([a, b, kind]) => {
+    const x = TABLES[a].x, inward = x < 0;
+    return Object.freeze({ kind, x, z: (TABLES[a].z + TABLES[b].z) / 2, yaw: (kind === "roulette") === inward ? Math.PI : 0 });
+  }));
   // Every figure in the room is drawn at the game's scale 1: an Ooga of the roster's middle height (1.04) stands 1.625 m,
   // its hip (the leg's pivot, the root) 0.455 m up, its one rigid leg swinging forward whole to sit. The tables and
   // chairs are built for that body: the felt at FELT_Y and the padded rail's top at RAIL_TOP, the chair's seat at
@@ -13,18 +22,43 @@
   // the sitting pose's -1.35 just clear the cushion back to the seat's front edge, so they overhang it like lower legs.
   const FELT_Y = 0.78, RAIL_TOP = 0.915, SEAT_TOP = 0.47, SIT_HIP = 0.155, DEALER_SCALE = 0.7;
   const sitY = height => SEAT_TOP + SIT_HIP * height;
-  // The chairs on a 5.2 by 3.6 m ring, each chair's front edge about 0.16 m from the rail, so a seated Ooga is at the
-  // table; the cards, chips and dealer button are laid from `PLACES`, the same angles on the 6 by 4.2 m ring the chairs
-  // stood on when the room was built for a larger body, so the felt's layout keeps its spacing.
-  const ringAt = (i, rx, rz) => { const a = -Math.PI / 2 + 0.55 + i * (Math.PI * 2 - 1.1) / 8; return [Math.cos(a) * rx, Math.sin(a) * rz]; };
-  const SEATS = Array.from({ length: 9 }, (_, i) => {
-    const [x, z] = ringAt(i, 5.2, 3.6);
+  // Each table drawn at Ooga scale in plan as well: every radius of the old table (felt 4.38 by 2.8, the rail's inner
+  // edge 4.55 by 2.95, inlay 4.02 by 2.44, the pedestal, the cards, chips and board) times TABLE_K. The padded rail's
+  // tube (0.22 across) and the overhangs past it stay their own size, an Ooga's forearm: the rail's middle 0.11 m out
+  // from its inner edge, the stone top reaching 0.09 m past that middle and the walk block 0.19 m, as they did. TABLE_K is chosen from the seating: nine chairs round the felt at a
+  // 1.38 to 1.43 m pitch, shoulder room for an Ooga a metre wide with its arms, and 2.75 m left for the dealer.
+  const TABLE_K = 0.45;
+  const FELT_A = 4.38 * TABLE_K, FELT_B = 2.8 * TABLE_K, RAIL_A = 4.55 * TABLE_K + 0.11, RAIL_B = 2.95 * TABLE_K + 0.11;
+  const TOP_A = RAIL_A + 0.09, TOP_B = RAIL_B + 0.09, WALK_A = RAIL_A + 0.19, WALK_B = RAIL_B + 0.19;
+  // The chairs on a ring 0.42 m outside the rail's outer edge, so each chair's front edge stands about 0.15 m from the
+  // rail and a seated Ooga is at the table, spread evenly by distance round the ring (not by angle, which crowds the
+  // ends) over the arc the old layout gave them, the 1.1 radians left over the dealer's. The cards, chips and dealer
+  // button are laid from `PLACES`: the old layout's 6 by 4.2 ring times TABLE_K, at each chair's own angle.
+  const SEAT_A = RAIL_A + 0.11 + 0.42, SEAT_B = RAIL_B + 0.11 + 0.42, SEAT_SPAN = Math.PI * 2 - 1.1;
+  const seatAngles = (() => {
+    const N = 2048, a0 = -Math.PI / 2 + 0.55, cum = new Float64Array(N + 1), out = [];
+    for (let i = 1; i <= N; i++) { const t0 = a0 + SEAT_SPAN * (i - 1) / N, t1 = a0 + SEAT_SPAN * i / N; cum[i] = cum[i - 1] + Math.hypot(SEAT_A * (Math.cos(t1) - Math.cos(t0)), SEAT_B * (Math.sin(t1) - Math.sin(t0))); }
+    for (let j = 0, i = 0; j < 9; j++) {
+      const want = cum[N] * j / 8;
+      while (i < N - 1 && cum[i + 1] < want) i++;
+      out.push(a0 + SEAT_SPAN * (i + (want - cum[i]) / (cum[i + 1] - cum[i])) / N);
+    }
+    return out;
+  })();
+  const SEATS = seatAngles.map(a => {
+    const x = Math.cos(a) * SEAT_A, z = Math.sin(a) * SEAT_B;
     return { x, z, yaw: Math.atan2(-x, -z) };
   });
-  const PLACES = Object.freeze(Array.from({ length: 9 }, (_, i) => { const [x, z] = ringAt(i, 6, 4.2); return Object.freeze({ x, z }); }));
+  const PLACES = Object.freeze(seatAngles.map(a => Object.freeze({ x: Math.cos(a) * 6 * TABLE_K, z: Math.sin(a) * 4.2 * TABLE_K })));
+  // The dealer stands 0.43 m behind the rail's outer edge on the gap the chairs leave.
+  const DEALER_Z = -(RAIL_B + 0.11 + 0.43);
+  // The dealt card runs from DEAL_FROM toward the table's far side over DEAL_RUN (the old 2.4 and 2.1 m, times TABLE_K).
+  const DEAL_FROM = -2.4 * TABLE_K, DEAL_RUN = 2.1 * TABLE_K;
   const box = (w, h, d, color, x = 0, y = 0, z = 0) => M.bevelBox({ w, h, d, color, offset: { x, y, z } });
   const disk = (radius, bottom, top, color, segments = 48) => M.lathe({ segments, profile: [[0, bottom], [radius, bottom], [radius, top], [0, top]], color });
   const node = (geo, x = 0, y = 0, z = 0) => S.createNode({ geometry: geo, position: { x, y, z } });
+  // A card, chip or button laid on the felt: at TABLE_K of its size every way, as the table is in plan.
+  const onFelt = (geo, x = 0, y = 0, z = 0) => { const n = node(geo, x, y, z); n.scale.x = n.scale.y = n.scale.z = TABLE_K; return n; };
   // Banana Club is a white marble hall built from the marble kit, in the colours of its one preset (poker-themes.js).
   const K = BL.pokerMarble, GOLD = K.GOLD, T = BL.pokerThemes.club;
   // Banana Club's fittings, each drawn inside its FURNITURE box: one-offs bake into the shell, and pieces repeated
@@ -125,6 +159,11 @@
     // A table lamp at each end: a gold foot and stem under a glowing silk shade, so the lounge reads warm against the night.
     ...[-1, 1].flatMap(sz => [flat(0.16, 0.04, 0.16, GOLD, 0, 0.4, sz * 0.6), flat(0.035, 0.36, 0.035, GOLD, 0, 0.6, sz * 0.6),
       flat(0.3, 0.22, 0.3, "#ffd9a0", 0, 0.89, sz * 0.6, 0.95), flat(0.32, 0.02, 0.32, GOLD, 0, 1.01, sz * 0.6)]));
+  // A high-top cocktail table for the crowd to stand at with a drink: a small round marble top at 0.95 (the bar
+  // counter's height, at an Ooga's chest) with a gold rim, on a gold stem and foot.
+  const highTop = () => M.merge(M.lathe({ segments: lite ? 6 : 16, profile: [[0, 0], [0.24, 0], [0.24, 0.025], [0.07, 0.05], [0.035, 0.08], [0.035, 0.88], [0.09, 0.9], [0, 0.9]], color: GOLD }),
+    M.lathe({ segments: lite ? 8 : 24, profile: [[0, 0.9], [0.34, 0.9], [0.345, 0.925], [0.34, 0.95], [0, 0.95]], color: K.WHITE }),
+    M.lathe({ segments: lite ? 8 : 24, profile: [[0.34, 0.925], [0.352, 0.925], [0.352, 0.952], [0.34, 0.952]], color: GOLD }));
   const ropePost = () => M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.17, 0], [0.17, 0.035], [0.06, 0.075], [0.035, 0.1], [0.035, 0.79], [0.06, 0.81], [0.075, 0.855], [0.05, 0.895], [0, 0.9]], color: K.BRASS });
   // The dressing kit's palm is a 4 m tree; a potted one grows hub leaf cards from a lathe pot, its crown pulled in to the box.
   const palm = () => {
@@ -160,15 +199,14 @@
     }
     return M.merge(...parts);
   };
-  // Six-sided double-pointed gems, 0.26 m wide and 0.6 m long, white and pale blue in turn. Each ring's mesh is a double
-  // curtain: a row under the ring, and a row half a step round, 0.45 m lower and 0.12 m in, each gem on a fine strand
-  // from the ring. The drop is six 0.4 m gems tip to tip down the stem and a 0.9 m pendant ending at y 3.3. Four meshes,
-  // shared by the three chandeliers, lit from within so the dim room and the lowest tier's missing bloom still see them.
-  // Lite: one row of half as many four-sided gems a ring, no strands, and the pendant alone for the drop.
-  const TINTS = ["#ffffff", "#d6eaff"];
+  // Linked courses of bevelled brass and opal blocks. All three fixtures instance the
+  // same four meshes. The observed block height selects one brighter course in the room.
+  const TINTS = ["#ddbe85", "#b89661"];
   const crystals = () => {
     const gem = (x, top, z, width, length, color) => {
-      const g = M.lathe({ segments: lite ? 4 : 6, profile: [[0, top], [width / 2, top - length * 0.3], [0, top - length]], color, emissive: 1 });
+      const h = width * 0.94, bottom = top - length;
+      const g = M.merge(flat(0.025, length - h, 0.025, GOLD, 0, top - (length - h) / 2),
+        M.bevelBox({ w: width, h, d: width, bevel: 0.025, color, emissive: 0.76, offset: { y: bottom + h / 2 } }));
       for (let i = 0; i < g.verts.length; i += 3) { g.verts[i] += x; g.verts[i + 2] += z; } return g; };
     const meshes = CRYSTAL_RINGS.map(([r, y, count]) => {
       const parts = [];
@@ -184,7 +222,8 @@
     for (const g of meshes) g.castShadow = false;
     return meshes;
   };
-  // Banana Club's ornate table. Each part is built in the unit space its table node scales (top 4.75 by 3.15, rim 4.5 by 2.92, pinstripe 4.02 by 2.44; the base unscaled).
+  // Banana Club's ornate table. Each part is built in the unit space its table node scales (top TOP_A by TOP_B, felt FELT_A by
+  // FELT_B, pinstripe 4.02 by 2.44 times TABLE_K; the base and the rail built at size).
   // A turned marble pedestal with gold bands, pulled into an oval under the top; it meets the top at y 0.52. The table
   // stands at an Ooga's height (felt FELT_Y), so the pedestal is drawn shorter in proportion: a lower plinth and a
   // tighter waist, the same bands.
@@ -196,14 +235,14 @@
       M.lathe({ segments, color: GOLD, profile: [[1.08, 0.465], [1.14, 0.482], [1.12, 0.498]] }),
       M.lathe({ segments, color: K.WHITE, profile: [[1.12, 0.498], [1.22, 0.505], [1.22, 0.52], [0, 0.52]] })
     ]);
-    for (let i = 0; i < g.verts.length; i += 3) { g.verts[i] *= 1.7; g.verts[i + 2] *= 1.15; }
+    for (let i = 0; i < g.verts.length; i += 3) { g.verts[i] *= 1.7 * TABLE_K; g.verts[i + 2] *= 1.15 * TABLE_K; }
     return g;
   };
-  // A padded oxblood rail round the felt: a tube along an oval of 4.66 by 3.06 m, 0.22 m across and 0.17 m high, out on
-  // the top's edge (4.75 by 3.15, reaching 4.77 by 3.17) and clear of the felt (4.38 by 2.8), so the button, cards and chips lie inside it.
-  // Built at room size, then divided by the rim node's scale (4.5 by 2.92).
+  // A padded oxblood rail round the felt: a tube along an oval of RAIL_A by RAIL_B, 0.22 m across and 0.17 m high, out
+  // on the top's edge (TOP_A by TOP_B) and clear of the felt (FELT_A by FELT_B), so the button, cards and chips lie
+  // inside it. Built at room size, then divided by the rim node's scale (4.5 by 2.92 times TABLE_K).
   const rail = () => {
-    const A = 4.66, B = 3.06, SX = 4.5, SZ = 2.92, segments = lite ? 28 : 56, sides = lite ? 5 : 8, across = 0.11, high = 0.085, y = RAIL_TOP - high;
+    const A = RAIL_A, B = RAIL_B, SX = 4.5 * TABLE_K, SZ = 2.92 * TABLE_K, segments = lite ? 28 : 56, sides = lite ? 5 : 8, across = 0.11, high = 0.085, y = RAIL_TOP - high;
     const geo = M.merge(), rgb = BL.math.hexToRgb(OXBLOOD), rows = [];
     for (let k = 0; k < segments; k++) {
       const t = k / segments * Math.PI * 2, c = Math.cos(t), s = Math.sin(t), l = Math.hypot(c / A, s / B), nx = c / A / l, nz = s / B / l, row = [];
@@ -232,9 +271,9 @@
     return M.merge(M.lathe({ segments, profile: [[1, y], [0.985, y]], color: GOLD, emissive: 0.2 }),
       M.lathe({ segments, profile: [[0.958, y], [0.952, y]], color: GOLD, emissive: 0.2 }));
   };
-  // The stone top under the felt, its underside bevelled up toward the edge (0.52 in the middle, 0.64 at the rim) so a
+  // The stone top under the felt, its underside bevelled up toward the edge (0.52 in the middle, 0.66 at the rim) so a
   // seated Ooga's feet, reaching just under the rail, pass below it.
-  const stoneTop = () => M.lathe({ segments: 48, profile: [[0, 0.52], [0.92, 0.52], [1, 0.64], [1, FELT_Y - 0.06], [0, FELT_Y - 0.06]], color: T.stone[5] });
+  const stoneTop = () => M.lathe({ segments: 48, profile: [[0, 0.52], [0.88, 0.52], [1, 0.66], [1, FELT_Y - 0.06], [0, FELT_Y - 0.06]], color: T.stone[5] });
   // A walnut chair for an Ooga, built about the seated figure's root (its hip, the chair's spot), its back at -z: turned
   // legs, a seat of 0.75 by 0.56 with its oxblood cushion's top at SEAT_TOP and front edge 0.27 m before the hip (a
   // shallow seat, so a seated Ooga's rigid legs overhang it like lower legs), the back pad's face 0.18 m behind the hip
@@ -255,12 +294,12 @@
     scoped.use();
     const key = lite ? "gatsby-lite" : "gatsby";
     if (cache.has(key)) return cache.get(key);
-    const shell = [clubFurniture()], lamps = BL.dressing.set();
+    const shell = [clubFurniture()];
     // The marble floor tiles, wall panels and columns are a few cached geometries placed as nodes in `build`; the walls
     // are `poker-glazing.js`'s glass and the roof `poker-vault.js`'s glass vault, both stood in `build`.
     // Each table lamp's cable hangs from the vault's purlin over its row on a slim gold rod at either end.
     const V = BL.pokerVault;
-    for (const p of TABLES) for (const dz of [-1.8, 1.8]) {
+    for (const p of TABLES) for (const dz of [-1.8 * TABLE_K, 1.8 * TABLE_K]) {
       const top = V.lampHang(p.x);
       shell.push(M.beam(p.x, 8.76, p.z + dz, p.x, top + 0.02, p.z + dz, 0.035, T.accent), flat(0.1, 0.05, 0.1, T.accent, p.x, top - 0.02, p.z + dz));
     }
@@ -275,22 +314,32 @@
     for (const [w, h] of [[12.8, 2.96], [12.5, 2.66]]) shell.push(flat(w, 0.04, 0.02, T.accent, 0, 6.4 + h / 2, -36.53), flat(w, 0.04, 0.02, T.accent, 0, 6.4 - h / 2, -36.53),
       flat(0.04, h, 0.02, T.accent, -w / 2, 6.4, -36.53), flat(0.04, h, 0.02, T.accent, w / 2, 6.4, -36.53));
     for (const x of [-5.2, 5.2]) shell.push(M.beam(x, 8.12, -36.46, x, BL.pokerVault.SPRING + 0.02, -36.46, 0.026, T.accent), flat(0.09, 0.03, 0.09, T.accent, x, BL.pokerVault.SPRING - 0.015, -36.46));
-    // The lamps hang 0.6 m lower than they did over the taller tables, so each keeps its height over the felt.
-    for (const p of TABLES) lamps.cable(p.x, 8.8, p.z - 1.8, p.x, 8.8, p.z + 1.8, 3.7, [0.25, 0.5, 0.75], "hanging", 0);
+    // Twin rods suspend a stepped brass and opal pendant above each felt.
+    const shade = M.merge(
+      M.lathe({ segments: lite ? 8 : 16, profile: [[0, 3.45], [0.54, 3.45], [0.54, 3.52], [0.43, 3.57], [0.43, 3.67], [0.26, 3.7], [0.23, 3.82], [0, 3.82]], color: GOLD }),
+      M.lathe({ segments: lite ? 8 : 16, profile: [[0, 3.31], [0.31, 3.31], [0.45, 3.45]], color: "#ecd5a2", emissive: 0.68 }));
+    for (const p of [...TABLES, ...GAMES]) {
+      const dz = GAMES.includes(p) ? 0.6 : 1.8 * TABLE_K;
+      for (const sign of [-1, 1]) {
+        const z = p.z + sign * dz;
+        if (GAMES.includes(p)) shell.push(M.beam(p.x, 8.76, z, p.x, V.lampHang(p.x), z, 0.035, T.accent));
+        shell.push(M.beam(p.x, 8.8, z, p.x, 3.81, p.z + sign * 0.15, 0.035, GOLD));
+      }
+    }
     const jacket = M.merge(box(0.92, 0.96, 0.66, "#292f33", 0, 0.49),
       box(0.31, 0.66, 0.08, "#e6e1ce", 0, 0.62, 0.36),
       box(0.1, 0.48, 0.09, "#e6b634", 0, 0.52, 0.42),
       box(0.18, 0.14, 0.1, "#f7d052", 0, 0.84, 0.42));
     const built = {
-      shell: M.merge(...shell), lamps: lamps.build(), chair: ornateChair(), jacket,
+      shell: M.merge(...shell), shade, chair: ornateChair(), jacket,
       sleeve: box(0.4, 0.78, 0.43, "#292f33", 0, -0.29, 0.025),
       cuff: box(0.41, 0.12, 0.44, "#e6e1ce", 0, -0.73, 0.025),
       base: pedestal(), stone: stoneTop(), rim: rail(), felt: disk(1, FELT_Y - 0.02, FELT_Y, T.felt), pinstripe: inlay(),
       back: BL.pokerCards.geometry(null), chip: disk(0.17, 0, 0.055, "#e2b43c"),
       button: disk(0.16, 0, 0.055, "#ece3c7"),
-      title: BL.poolModels.carve("BANANA POKER", { cell: 0.24, color: T.accent }),
-      welcome: BL.poolModels.carve("GOOD HANDS GOOD COMPANY", { cell: 0.1, color: T.mineral, emissive: 0.1 }),
-      stool: stool(), sofa: sofa(), armchair: armchair(), lowTable: lowTable(),
+      title: BL.poolModels.carve("GENESIS VAULT", { cell: 0.24, color: T.accent }),
+      welcome: BL.poolModels.carve("BLOCK 0   03 JAN 2009", { cell: 0.1, color: T.mineral, emissive: 0.1 }),
+      stool: stool(), sofa: sofa(), armchair: armchair(), lowTable: lowTable(), highTop: highTop(),
       // Floor tiles (the floor module's six veined white seeds and two dark ones for the border).
       tiles: BL.pokerFloor.tiles(lite),
       column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(),
@@ -304,7 +353,7 @@
     built.cashier.geometry.castShadow = false; built.plate.castShadow = false;
     // The evening hall's haze takes nothing off what glows: the crystals, the lanterns' lit glass and the cashier's
     // sign stay crisp down the hall.
-    for (const g of [...built.crystals, built.cashier.geometry, built.lamps.glow, built.lamps.lampGlow, built.lamps.swingGlow, built.lamps.swingLampGlow]) if (g) g.fogPierce = 1;
+    for (const g of [...built.crystals, built.cashier.geometry, built.shade]) g.fogPierce = 1;
     cache.set(key, built); return built;
   };
   const card = c => BL.pokerCards.geometry(c);
@@ -333,12 +382,12 @@
     const tossNode = () => {
       if (t.toss) return t.toss;
       const toss = S.createNode();
-      S.addChild(toss, node(g.back, -0.26), node(g.back, 0.26, 0.015)); toss.visible = false; S.addChild(t.root, toss);
+      S.addChild(toss, onFelt(g.back, -0.26 * TABLE_K), onFelt(g.back, 0.26 * TABLE_K, 0.015 * TABLE_K)); toss.visible = false; S.addChild(t.root, toss);
       return t.toss = toss;
     };
     const pushNode = () => {
       if (t.push) return t.push;
-      const push = node(g.chip); push.scale.y = 5; push.visible = false; S.addChild(t.root, push);
+      const push = onFelt(g.chip); push.scale.y = 5 * TABLE_K; push.visible = false; S.addChild(t.root, push);
       return t.push = push;
     };
     return {
@@ -375,25 +424,25 @@
     S.addChild(root, environment, fixtures);
     for (let i = 0; i < 10; i++) {
       const p = TABLES[i], group = S.createNode({ position: { x: p.x, y: 0, z: p.z } });
-      const top = node(geo.stone); top.scale.x = 4.75; top.scale.z = 3.15;
-      const rim = node(geo.rim); rim.scale.x = 4.5; rim.scale.z = 2.92;
-      const felt = node(geo.felt); felt.scale.x = 4.38; felt.scale.z = 2.8;
-      const pinstripe = node(i === HIGH_ROLLER ? geo.pinstripeGold : geo.pinstripe); pinstripe.scale.x = 4.02; pinstripe.scale.z = 2.44;
+      const top = node(geo.stone); top.scale.x = TOP_A; top.scale.z = TOP_B;
+      const rim = node(geo.rim); rim.scale.x = 4.5 * TABLE_K; rim.scale.z = 2.92 * TABLE_K;
+      const felt = node(geo.felt); felt.scale.x = FELT_A; felt.scale.z = FELT_B;
+      const pinstripe = node(i === HIGH_ROLLER ? geo.pinstripeGold : geo.pinstripe); pinstripe.scale.x = 4.02 * TABLE_K; pinstripe.scale.z = 2.44 * TABLE_K;
       const base = node(geo.base);
       S.addChild(group, base, top, rim, felt, pinstripe);
       const chairs = [], chips = [], backs = [];
       for (let j = 0; j < SEATS.length; j++) {
         const s = SEATS[j], pl = PLACES[j], chair = node(geo.chair, s.x, 0, s.z); chair.rotation.y = s.yaw; chairs.push(chair); S.addChild(group, chair);
-        const pile = node(geo.chip, pl.x * 0.65, FELT_Y + 0.01, pl.z * 0.59); pile.visible = false; chips.push(pile); S.addChild(group, pile);
+        const pile = onFelt(geo.chip, pl.x * 0.65, FELT_Y + 0.01, pl.z * 0.59); pile.visible = false; chips.push(pile); S.addChild(group, pile);
         const cards = S.createNode({ position: { x: pl.x * 0.57, y: FELT_Y + 0.02, z: pl.z * 0.57 }, rotation: { x: 0, y: s.yaw, z: 0 } });
-        S.addChild(cards, node(geo.back, -0.26), node(geo.back, 0.26, 0.015)); cards.visible = false; backs.push(cards); S.addChild(group, cards);
+        S.addChild(cards, onFelt(geo.back, -0.26 * TABLE_K), onFelt(geo.back, 0.26 * TABLE_K, 0.015 * TABLE_K)); cards.visible = false; backs.push(cards); S.addChild(group, cards);
       }
       // Deal left to right and print upright as seen from the gorilla's side of the table.
-      const board = Array.from({ length: 5 }, (_, j) => { const n = node(geo.back, (2 - j) * 0.72, FELT_Y + 0.03); n.rotation.y = Math.PI; n.visible = false; S.addChild(group, n); return n; });
-      const button = node(geo.button); S.addChild(group, button); button.visible = false;
+      const board = Array.from({ length: 5 }, (_, j) => { const n = onFelt(geo.back, (2 - j) * 0.72 * TABLE_K, FELT_Y + 0.03); n.rotation.y = Math.PI; n.visible = false; S.addChild(group, n); return n; });
+      const button = onFelt(geo.button); S.addChild(group, button); button.visible = false;
       const lettering = BL.poolModels.carve(`TABLE ${i + 1}`, { cell: 0.1, color: "#ffe1a0", emissive: 1 });
       lettering.geometry.castShadow = false;
-      const label = S.createNode({ position: { x: 0, y: 4.05, z: 0 } });
+      const label = S.createNode({ position: { x: 0, y: 2.95, z: 0 } });
       label.scale.x = label.scale.y = label.scale.z = 0.7;
       const text = node(lettering.geometry, -(lettering.width - 0.2) / 2);
       text.glow = 1;
@@ -401,12 +450,12 @@
       // The name's plate behind it.
       const plate = node(geo.plate); S.addChild(label, plate);
       // The dealer, a gorilla at DEALER_SCALE: as tall as a standing Ooga guest, so it reads as staff beside the table, not over it.
-      const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: -3.6, managed: true, scale: DEALER_SCALE });
-      agent.poseManaged(1, 0, 0, -3.6, 0, 0, false, true);
+      const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: DEALER_Z, managed: true, scale: DEALER_SCALE });
+      agent.poseManaged(1, 0, 0, DEALER_Z, 0, 0, false, true);
       S.addChild(agent.parts.torso, node(geo.jacket));
       for (const arm of [agent.parts.armR, agent.parts.armL]) S.addChild(arm, node(geo.sleeve), node(geo.cuff));
       S.addChild(group, agent.root);
-      const dealCard = node(geo.back, 0, FELT_Y + 0.12, -2.4); dealCard.visible = false; S.addChild(group, dealCard);
+      const dealCard = onFelt(geo.back, 0, FELT_Y + 0.12, DEAL_FROM); dealCard.visible = false; S.addChild(group, dealCard);
       S.addChild(root, group);
       const table = { root: group, base, top, rim, felt, pinstripe, chairs, chips, backs, board, button, label, plate, agent, dealCard,
         beads: SEATS.map(() => null), toss: null, push: null, actors: new Array(SEATS.length).fill(null), version: -1, pulse: 0 };
@@ -414,12 +463,11 @@
     }
     const sparkle = [];
     // The fountain, statues, patterned marble floor, glass vault and glass walls, built once a room on the set `setLite`
-    // chose; the fountain moves only when its scene calls its `update`.
-    const fountain = BL.pokerFountain.build(lite), statues = BL.pokerStatues.build(lite), floor = BL.pokerFloor.build(lite), vault = BL.pokerVault.build(lite);
+    // chose; the hall animates only while its scene is active.
+    const hall = BL.pokerHall.build(lite), statues = BL.pokerStatues.build(lite), floor = BL.pokerFloor.build(lite), vault = BL.pokerVault.build(lite);
     const glazing = BL.pokerGlazing.build(lite);
-    fountain.root.position.x = BL.pokerFountain.X; fountain.root.position.z = BL.pokerFountain.Z;
     S.addChild(environment, node(geo.shell));
-    S.addChild(fixtures, ...BL.dressing.nodes(geo.lamps, { glow: 1 }));
+    for (const p of [...TABLES, ...GAMES]) S.addChild(fixtures, node(geo.shade, p.x, 0, p.z));
     S.addChild(environment, floor.root, vault.root, glazing.root);
     // A colonnade of round columns before the glass.
     for (const side of [-1, 1]) for (let z = -34; z <= 34; z += 8.5) S.addChild(environment, node(geo.column, side * 23.8, 0, z));
@@ -434,6 +482,7 @@
       // Facing its `yaw`: the piece's front looks down -x, so it turns by a quarter more.
       else if (f.kind === "armchair") { const n = node(geo.armchair, f.x, 0, f.z); n.rotation.y = f.yaw + Math.PI / 2; S.addChild(environment, n); }
       else if (f.kind === "lowTable") S.addChild(environment, node(geo.lowTable, f.x, 0, f.z));
+      else if (f.kind === "highTop") S.addChild(environment, node(geo.highTop, f.x, 0, f.z));
       else if (f.kind === "palm") S.addChild(environment, node(geo.palm, f.x, 0, f.z));
       else if (f.kind === "ropePost") S.addChild(environment, node(geo.post, f.x, 0, f.z));
       else if (f.kind === "cage") {
@@ -442,15 +491,21 @@
         sign.rotation.y = -Math.PI / 2; S.addChild(environment, sign);
       }
     }
-    S.addChild(environment, fountain.root, statues.root);
+    S.addChild(environment, hall.root, statues.root);
+    // The gaming tables and their staff, on the set this room is built on.
+    const games = BL.pokerGames.build(GAMES, { lite, dress: { jacket: geo.jacket, sleeve: geo.sleeve, cuff: geo.cuff }, scale: DEALER_SCALE });
+    S.addChild(environment, games.root);
     const title = geo.title;
     S.addChild(environment, node(title.geometry, -title.width / 2, 6.4, -36.15));
     const welcome = geo.welcome;
     S.addChild(environment, node(welcome.geometry, -welcome.width / 2, 5.2, -36.15));
-    return { root, tables, fixtures, sparkle, fountain, statues, floor, vault, glazing };
+    return { root, tables, fixtures, sparkle, hall, statues, floor, vault, glazing, games };
   };
   // Banana Club's fittings as axis-aligned boxes (centre, half-extents) in room coordinates; the geometry is built from
   // the same table. `solid` ones stop walkers, while the high-roller corner is only a mark round table 9.
+  // Beside the tables on the side aisles' side (x 17) and the promenade's (x 5.5), 2.4 m and more clear of the chairs,
+  // off the cross aisles, the fountain's ring and the high-roller's ropes.
+  const HIGH_TOPS = [...[-17, 17].flatMap(x => [24, 12, 0, -12].map(z => [x, z])), ...[-5.5, 5.5].flatMap(x => [24, 12, -12].map(z => [x, z])), [-5.5, -24]];
   const FURNITURE = Object.freeze([
     { kind: "bar", x: -10, z: -35.3, hx: 8, hz: 0.9, solid: true }, { kind: "bar", x: 10, z: -35.3, hx: 8, hz: 0.9, solid: true },
     { kind: "cage", x: 22.4, z: 31, hx: 1.0, hz: 2.5, solid: true },
@@ -468,6 +523,10 @@
     { kind: "ropePost", x: 5.0, z: -21.8, hx: 0.2, hz: 0.2, solid: true }, { kind: "ropePost", x: 5.0, z: -20.2, hx: 0.2, hz: 0.2, solid: true },
     { kind: "rope", x: 5.0, z: -27.6, hx: 0.1, hz: 0.8, solid: true }, { kind: "rope", x: 5.0, z: -21.0, hx: 0.1, hz: 0.8, solid: true },
     { kind: "highRoller", x: 11, z: -24, hx: 7.0, hz: 5.0, solid: false },
+    // High-top cocktail tables for the crowd beside the tables, fifteen down the two banks.
+    ...HIGH_TOPS.map(([x, z]) => ({ kind: "highTop", x, z, hx: 0.3, hz: 0.3, solid: true })),
+    // The gaming tables (turned only by half turns, so their boxes keep their own half-extents).
+    ...GAMES.map((g, game) => ({ kind: "game", game, x: g.x, z: g.z, hx: BL.pokerGames.FOOT[g.kind].hx, hz: BL.pokerGames.FOOT[g.kind].hz, solid: true })),
     // Each statue from its plinth's back edge to as far as it reaches toward the room, and as wide as it reaches, so no
     // head meets a held piece above the plinth.
     ...BL.pokerStatues.SLOTS.map(s => {
@@ -500,7 +559,7 @@
     if (Math.abs(bx) > 23 - r || bz < -35.5 + r || bz > rear) return false;
     // A swept ellipse catches a fast step through a table, not just its endpoint.
     for (const t of TABLES) {
-      const rx = 4.85 + r, rz = 3.25 + r, x = (ax - t.x) / rx, z = (az - t.z) / rz;
+      const rx = WALK_A + r, rz = WALK_B + r, x = (ax - t.x) / rx, z = (az - t.z) / rz;
       const dx = (bx - ax) / rx, dz = (bz - az) / rz, d = dx * dx + dz * dz;
       const u = d ? Math.max(0, Math.min(1, -(x * dx + z * dz) / d)) : 0;
       if ((x + u * dx) ** 2 + (z + u * dz) ** 2 < 1) return false;
@@ -547,11 +606,14 @@
     const add = (kind, x, z, yaw, table = -1) => list.push(Object.freeze({ kind, x, z, yaw, table }));
     const stand = (kind, x, z, yaw) => { nearestClear(x, z, STAND, clear); add(kind, clear.x, clear.z, yaw); };
     TABLES.forEach((t, i) => {
-      for (const [ox, oz] of [[-3.4, -5.3], [3.4, -5.3], [-3.4, 5.3], [3.4, 5.3]]) {
+      // Four lines out from the table's corners (the old layout's, times TABLE_K), a watcher at the first clear place on
+      // each and a second ring a step further back behind the first.
+      for (const [ox, oz] of [[-3.4, -5.3], [3.4, -5.3], [-3.4, 5.3], [3.4, 5.3]].map(([x, z]) => [x * TABLE_K, z * TABLE_K])) {
         const len = Math.hypot(ox, oz), ux = ox / len, uz = oz / len;
-        for (let d = 0; d <= 1.5; d += 0.25) {
+        let from = 0;
+        for (let ring = 0; ring < 2; ring++) for (let d = from; d <= from + 1.5; d += 0.25) {
           const x = t.x + ox + ux * d, z = t.z + oz + uz * d;
-          if (walkable(x, z, x, z, 0, 2, STAND)) { add("rail", x, z, Math.atan2(-ux, -uz), i); break; }
+          if (walkable(x, z, x, z, 0, 2, STAND)) { add("rail", x, z, Math.atan2(-ux, -uz), i); from = d + 1.1; break; }
         }
       }
     });
@@ -561,12 +623,21 @@
     for (const z of STROLL_Z) for (const x of [-20, 0, 20]) stand("stroll", x, aisle(x, z), 0);
     for (const z of STROLL_MID) for (const x of [-20, 0, 20]) if (x || Math.abs(z) > 6) stand("stroll", x, aisle(x, z), 0);
     for (const x of [-3, 3]) stand("door", x, 33, Math.PI);
+    // Three guests round each high-top, facing it, as a conversation group.
+    for (const [gx, gz] of HIGH_TOPS) for (let k = 0; k < 3; k++) {
+      const a = (k + 0.5) * 2 * Math.PI / 3 + gz * 0.1;
+      nearestClear(gx + Math.sin(a) * 0.95, gz + Math.cos(a) * 0.95, STAND, clear);
+      add("group", clear.x, clear.z, Math.atan2(gx - clear.x, gz - clear.z));
+    }
     for (const [gx, gz, n] of GROUPS) for (let k = 0; k < n; k++) {
       const a = (k + 0.5) * 2 * Math.PI / n + gx * 0.1;
       nearestClear(gx + Math.sin(a) * GROUP_R, gz + Math.cos(a) * GROUP_R, STAND, clear);
       add("group", clear.x, clear.z, Math.atan2(gx - clear.x, gz - clear.z));
     }
     for (const side of [-1, 1]) for (const z of GLASS_Z) for (const dz of [-0.6, 0.6]) stand("glass", side * GLASS_X, z + dz, side * Math.PI / 2);
+    // The gaming tables' places: guests round each, facing it, and the craps shooter's at its end (`slot` its index in
+    // `pokerGames.SPOTS`, `role` "guest" or "shooter").
+    GAMES.forEach((g, game) => BL.pokerGames.spotsFor(g).forEach((s, slot) => list.push(Object.freeze({ kind: "game", x: s.x, z: s.z, yaw: s.yaw, table: -1, game, slot, role: s.role }))));
     for (const f of FURNITURE) {
       const side = -Math.sign(f.x);
       if (f.kind === "bar") {
@@ -591,6 +662,9 @@
   // One warm light a lounge, from its table lamps, after the colonnade's and counted on the top WebGL tier alone with it,
   // so the women on the sofas and in the armchairs read lit, not dark against the night.
   const LOUNGE_LIGHTS = Float32Array.from(FURNITURE.filter(f => f.kind === "lowTable").flatMap(f => [f.x, 1.3, f.z, 6.5, 1.9, 1.35, 0.8, 0]));
+  // One warm light a gaming table, from its lamp, after the lounges' and counted on the top WebGL tier alone with them:
+  // the four fit the tier's 32 after the 27 before them.
+  const GAME_LIGHTS = Float32Array.from(GAMES.flatMap(g => [g.x, 3.6, g.z, 7, 1.6, 1.2, 0.75, 0]));
   // The one sitting pose for a caveman at a table, the same for every figure: the legs forward over the chair and both
   // arms brought forward to the rail. `standPose` sets back exactly these four rotations to the crew's standing values.
   const SIT_LEGS = -1.35, SIT_ARMS = -0.9, STAND_ARMS = -0.2;
@@ -604,5 +678,5 @@
     if (p.legL) p.legL.rotation.x = 0; if (p.legR) p.legR.rotation.x = 0;
     if (p.armL) p.armL.rotation.x = STAND_ARMS; if (p.armR) p.armR.rotation.x = STAND_ARMS;
   };
-  BL.pokerModels = { FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, spots, sitPose, standPose };
+  BL.pokerModels = { TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, sitPose, standPose };
 })();

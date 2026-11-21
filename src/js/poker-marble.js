@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, hexToRgb = BL.math.hexToRgb;
-  const WHITE = "#ece8e1", VEIN = "#a29c94", SHADE = "#cbc4b8", GOLD = "#c8a45f", CREAM = "#efe3c8", BRASS = "#b8924a";
+  const WHITE = "#ece8e1", VEIN = "#a29c94", SHADE = "#cbc4b8", GOLD = "#b8893b", CREAM = "#efe3c8", BRASS = "#b8924a";
   const LIFT = 0.004;
   // `lite` (set by the scene from the renderer, before it builds) halves the veins and the turning.
   let lite = false;
@@ -61,7 +61,7 @@
     const segments = lite ? 10 : 20;
     return once(["column", h, r, segments].join(":"), () => M.shaded([
       M.lathe({ segments, color: GOLD, profile: [[0, 0], [r * 1.3, 0], [r * 1.3, 0.12], [r * 1.15, 0.18], [r * 1.08, 0.3], [0, 0.3]] }),
-      M.lathe({ segments, color: WHITE, profile: [[r, 0.3], [r * 0.94, h - 0.34]] }),
+      M.lathe({ segments, color: "#161411", profile: [[r, 0.3], [r * 0.94, h - 0.34]] }),
       M.lathe({ segments, color: GOLD, profile: [[0, h - 0.34], [r * 1.08, h - 0.34], [r * 1.2, h - 0.2], [r * 1.35, h - 0.12], [r * 1.35, h], [0, h]] })
     ]));
   };

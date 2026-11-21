@@ -19,13 +19,13 @@ See [poker-interface.md](poker-interface.md)
 for the interaction changes and remaining play-tests, and
 [poker-integration.md](poker-integration.md) for signed-in deployment and recovery.
 
-Browser playthrough, fallback rendering, touch layout, audio, automatic hand
-progression, visual appearance, scene round trips, and the
-changed hub entry remain unverified:
-the available Chromium lost its DevTools connection on both previous attempts
-before assertions could run. The repository's consecutive-failure rule requires
-stopping; the handoff includes the unchanged failure ledger. No browser test was
-retried for this revision. This document does not authorize another retry.
+The local poker browser playthrough covers practice hands, the ₿IFRÖST return trip, Canvas rendering and a phone-sized layout. Player-eye captures of the Bitcoin hall and its rooms were taken on desktop WebGL. Listening to the music, evaluating motion on a physical phone and playing a live hand with two signed-in accounts still need a play-test.
+
+## Exploring Banana Club
+
+Follow the stream of amber blocks past the bull and bear to the Genesis Vault. The west bar holds a copy of the whitepaper. Walk up and use the action button or select the book to find the Cypherpunk Lounge. Look by the fire for a founder’s pass, then take it to the vault to enter Cold Storage.
+
+The east bar looks into the whale aquarium. Its lift leads to the spectator balcony and Gate 21. The rooftop opens on the twenty-first visit or when you win a share of a non-refund pot worth at least 100 play chips. That win also opens Cold Storage. Room discoveries and visit counts are saved in this browser. Use the marked return controls to get back to the gaming floor.
 
 ## Play
 
@@ -158,7 +158,9 @@ seated requests leaving the seat. Unseated visitors can return through the
 mirror to ₿IFRÖST. Leaving the scene pauses its local tables; returning resumes
 them. Reloading resets practice chips.
 
-## Visual revision: the marble hall
+## Earlier marble hall design
+
+This section records the hall before the Bitcoin interior pass. The bronze bull and bear now occupy the old fountain footprint, and the black marble promenade carries the transaction river. The room guide above describes the current layout.
 
 Banana Club is a white marble hall, now a glass pavilion adrift in space, lit
 for the evening. Its polished floor is a
@@ -272,14 +274,20 @@ Everything in the room is built for an Ooga at the game's own scale (a
 middle-height Ooga stands 1.625 m, its hip 0.455 m up), and every figure in the
 room is drawn at that scale. The felt lies at 0.78 m and the padded rail's top
 at 0.915 m, so a standing Ooga looks down onto the felt and a seated one sees
-well over the rail. A chair's seat is 0.47 m high and shallow (0.45 m usable),
+well over the rail. In plan each table is 0.45 of the size it was built at for
+a larger body: the felt is 3.94 by 2.52 m, nine chairs stand 1.42 to 1.47 m
+apart round it with 2.8 m left for the dealer, and a card is 0.27 by 0.38 m and
+a chip 0.15 m across, sized to an Ooga's hands. The padded rail keeps its
+forearm-sized tube. The table view comes in with the table, so the felt fills it
+as before. A chair's seat is 0.47 m high and shallow (0.45 m usable),
 so a seated Ooga's straight legs reach past its front edge like lower legs; its
 back pad meets the Ooga's back and its carved crest stands at 1.06 m, about a
-seated Ooga's shoulder. The chairs stand on a 5.2 by 3.6 m ring, each front
-about 0.16 m from the rail, so a seated Ooga is at the table; the cards, chips
-and dealer button keep their places on the felt (laid from the old 6 by 4.2 m
-ring) and their table-sized look, read from the table view overhead. The table
-lamps hang 0.6 m lower than before, as the tables came down 0.6 m. The dealer
+seated Ooga's shoulder. Each chair's front is about 0.15 m from the rail, so a
+seated Ooga is at the table. The table lamps hang 0.6 m lower than before, as
+the tables came down 0.6 m, and closer together over the smaller felt. Fifteen
+high-top cocktail tables (a small marble top at 0.95 m on a gold stem) stand
+beside the tables, where guests gather in threes with their drinks, and each
+table has two rings of watchers' places. The dealer
 gorilla stands about as tall as a standing guest. Bar stools are 0.62 m at a
 0.95 m counter whose marble is set back under the top; the cashier's counter is
 0.95 m; the lounges' sofas and armchairs seat at 0.40 m with backs at 0.85 m;
@@ -525,6 +533,77 @@ On an M-series Mac the high tier with 64 walking and 14 in the lounges draws
 about 1,550 draw calls and 400,000 visible faces in the promenade view, at
 about 9 ms a frame (8.85 ms measured; 48 walking measured 9.6 ms).
 
+## The gaming floor
+
+Between the poker tables stand two roulette tables and two craps tables, for
+watching. They are set dressing: nobody can bet at them, they take no chips,
+pay nothing, keep no score, save nothing and send nothing anywhere, and nothing
+about them reaches the poker tables or anything a player can win or lose.
+Hovering one says "Roulette · watch a spin" or "Craps · watch a throw"; a tap,
+or the act button within a step of one, says only that they are for watching.
+
+They stand in the banks' cross aisles either side of the middle row, midway
+between it and its neighbour (x ±11, z ±6), roulette and craps alternating
+corner to corner, each a walk block with 2.3 m and more of walkway round it to
+the poker tables' chairs. The cross aisles at z ±18 stay open. Each roulette
+wheel and each craps table's far wall faces the promenade. A lamp hangs over
+each from the same purlin as the poker tables' lamps, and on the top WebGL tier
+each lamp casts a light (31 lights there).
+
+The tables are at an Ooga's scale. The roulette table is 3.2 by 1.3 m on six
+turned marble legs, its top at 0.88 m and its padded oxblood rail at 0.92 m (the
+poker tables' rail height), with a wheel 0.86 m across set into one end: a dark
+wood bowl, a rotor of 37 pockets (red, black and one green) with gold frets and
+a gold turret, and a white ball. Its layout is the number grid in red and black
+cells with the numbers lettered in the carved signs' alphabet, the column bets,
+the dozens and the even-money bets ruled in white. The craps table is 3.8 by
+1.6 m, its padded rail at 0.95 m over a chip groove, the felt sunk 0.2 m to
+0.75 m, a wall of gold diamonds at each end, gold mounts at the corners, and a
+flat-colour layout: pass lines, field, come box, the place numbers and a
+proposition box. Its dice are 0.08 m cubes (real dice are about 0.016 m; at that
+size they vanish from standing height), the shared die mesh with pips.
+
+Each table is run by a gorilla in the dealers' jacket, at the dealers' scale:
+the croupier stands behind the roulette wheel, the stickman at the middle of the
+craps table's far long side with his curved stick. Guests are the room's own
+crowd: six places round each roulette layout and seven along the craps rails
+with the shooter's place at the end, taken through the crowd's places like any
+other, so a table fills and empties as people stroll by. A table with nobody at
+it still runs its cycle with its croupier alone.
+
+- **Roulette, every 20 s:** the guests reach in and put chips down; the
+  croupier calls no more bets and spins; the rotor turns one way and the ball
+  runs the rim the other, slows, rattles down and drops into a pocket; a marker
+  goes on the winning number; one or two guests cheer and the rest groan or
+  shrug; the croupier sweeps the chips away.
+- **Craps, every 15 s:** the stickman pushes the dice to whoever stands at the
+  shooter's place (or to himself, with nobody there); the shooter shakes and
+  throws; the dice fly down the table, hit the far wall and tumble to rest;
+  the crowd leans in and cheers a 7 or 11 on the come-out, groans at 2, 3 or 12
+  or a seven-out, and murmurs at a point (marked by the white puck on its
+  number); the stickman rakes the dice back.
+
+Now and then a guest says something ("Red again!", "Seven!", "Come on..."),
+inside the crowd's two-bubble cap. The ball's rattle and drop, the dice on the
+felt and the crowd's roar or murmur come from the room's own pooled voices,
+placed by distance and side, well under the music, and not at all from a table
+further than 18 m from the view.
+
+Every outcome is for show: the wheel's pocket and the dice are drawn from the
+module's own seeded generator, from the table and a running count of its spins
+or throws, so no two tables match and nothing is shared with anyone. The wheel
+is eased to stop on the pocket drawn and the dice to rest on the faces drawn.
+Two tables of a kind run half a cycle apart. A table further than 30 m from the
+view keeps its clock and outcomes but leaves its staff's arms still.
+
+On Canvas 2D the tables are built plainer: fewer sides on the legs and the
+wheel, no frets or numbers, half the diamonds; the wheel, ball and dice still
+move and the guests still stand at them.
+
+The module is `src/js/poker-games.js`. Not verified: how the tables feel to walk
+round in live play with a full crowd, their look on a phone, the sounds by ear,
+and the Canvas 2D set beyond one picture.
+
 ## Sound
 
 The room plays four recorded lounge tracks by Kevin MacLeod (CC BY 4.0; see
@@ -626,8 +705,8 @@ and stands up when it walks the floor. Each page sends where its Ooga is, as it
 always has; a position at chair height (soles about 0.18 m up, within 0.1 m) on
 a chair's spot reads as that chair (`poker-presence.js`), so nothing new goes
 over the wire. A page from before the Ooga-scale chairs sends soles at 0.45 m
-on the old, wider ring, so pages on the two versions do not see each other
-seated. One sitting pose
+on the old, wider ring; for one release this page reads that as the same chair
+too, though the old page still sees a newer player standing. One sitting pose
 (`pokerModels.sitPose`, undone by `standPose`) seats the visitor, the stand-ins
 and the cast members alike.
 

@@ -19409,7 +19409,19 @@ const adaptiveQualityChecks = async () => {
 // failure prints OPEN and does not fail the run.
 const sceneUrl = (id, query = "") => `${src}?debug=1&nosim=1${id === "hub" ? "" : `&scene=${id}`}${process.env.TEST_CANVAS2D==="1"?"&canvas2d=1":""}${clock(query)}`;
 // A scene's construction slices run as real tasks while the fade holds black, so each step gives them one.
-const tourGo = (b, id) => b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("${id}"); while ((B.transitioning || B.scene !== "${id}") && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom }; })()`);
+// `settle`, an expression for a function returning `{ built, made, target }`, holds the reading until a scene that
+// builds on a time budget has finished: `made` equal to `target` and `built` unchanged for SETTLE_STILL frames in a
+// row, at most SETTLE_FRAMES frames of 1/30 s; `settled` says whether it did.
+const SETTLE_FRAMES = 900, SETTLE_STILL = 3;
+const tourGo = (b, id, settle = null) => b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("${id}"); while ((B.transitioning || B.scene !== "${id}") && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30);
+  let settled = null;
+  if (${settle ? "true" : "false"} && B.scene === "${id}") {
+    const read = ${settle || "null"};
+    let s = read(), last = s.built, still = 0, frames = 0;
+    while (still < ${SETTLE_STILL} && frames < ${SETTLE_FRAMES}) { B.advance(1 / 30, 1 / 30); frames++; s = read(); still = s.made === s.target && s.built === last ? still + 1 : 0; last = s.built; }
+    settled = { ok: still >= ${SETTLE_STILL}, frames, built: s.built, made: s.made, target: s.target };
+  }
+  B.housekeep(); const s = B.stats(); return { scene: B.scene, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom, settled }; })()`);
 const hubBedState = (fresh = false) => {
   const B = window.__ooga, actors = B.crew.list, beds = B.headquarters.mattresses, outdoors = B.headquarters.outdoorBeds, failures = [];
   const sphere = window.BL.scenes.hub.debug.timechainIsland;
@@ -20004,18 +20016,20 @@ const hubOutdoorTravel = { name: "hub outdoor travel", why: "rule: passive Hub N
 } };
 // Away and back twice. The director's ?debug=1 leave contract throws inside advance on a broken leave,
 // and the second visit may hold no more GPU records, nodes, input targets or DOM than the first.
-const trip = (id) => ({ name: `${id} round trip`, why: "contract: a scene left and entered again keeps nothing from the last visit, and takes a donation whenever one arrives", run: async (b) => {
+// `settle` (see tourGo) reads both visits only once the scene has finished what it builds on a time budget; a wait
+// that runs out fails the check.
+const trip = (id, settle = null) => ({ name: `${id} round trip`, why: "contract: a scene left and entered again keeps nothing from the last visit, and takes a donation whenever one arrives", run: async (b) => {
   const away = id === "hub" ? "lab" : "hub", laps = [], beds = [];
   for (let i = 0; i < 2; i++) {
     await tourGo(b, away);
-    laps.push(await tourGo(b, id));
+    laps.push(await tourGo(b, id, settle));
     if (id === "hub") beds.push(await b.evaluate(`(${hubBedState.toString()})()`));
   }
   if (laps.some((l) => l.scene !== id)) throw new Error(`go("${id}") landed on ${laps.map((l) => l.scene).join()}`);
   const grew = ["records", "nodes", "targets", "dom"].filter((k) => laps[1][k] > laps[0][k] * 1.02 + 4);
   // A payment can arrive in any scene: the director hands it to the active one exactly like this.
   const donated = await b.evaluate(`(() => { const B = window.__ooga, g = B.game.state, before = { donations: g.donations, sats: g.totalSats, bananas: g.bananas }; window.BL.scenes[B.scene].onDonation({ id: "trip-${id}", sats: 2100, handle: "tester", message: "ooga", at: Date.now() }, { exact: 1.25, rounded: 1 }); B.advance(1, 1 / 30); return { scene: B.scene, donations: g.donations - before.donations, sats: g.totalSats - before.sats, bananas: g.bananas - before.bananas }; })()`);
-  record(`${id} round trip: leaving and entering twice keeps the leave contract and holds nothing the first visit did not, and a donation mid-visit is taken`, grew.length === 0 && beds.every(state => !state.failures.length) && donated.scene === id && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25, JSON.stringify({ grew, beds, donated, first: laps[0], second: laps[1] }));
+  record(`${id} round trip: leaving and entering twice keeps the leave contract and holds nothing the first visit did not, and a donation mid-visit is taken`, grew.length === 0 && laps.every(l => !l.settled || l.settled.ok) && beds.every(state => !state.failures.length) && donated.scene === id && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25, JSON.stringify({ grew, beds, donated, first: laps[0], second: laps[1] }));
 } });
 // A focused local playthrough: entering, bounded resting view, standing and removal.
 const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off the path, with bed head-turn limits and complete stand-up cleanup", run: async (b) => {
@@ -35703,8 +35717,10 @@ scene("dash", { steps: [carnivalPlay("dash", 0.5), trip("dash")] });
 scene("stacker", { steps: [carnivalPlay("stacker", 0.5), trip("stacker")] });
 // The previous play check leaves table ten running. Freeze local deals while comparing
 // visits: different community cards legitimately have different SVG element counts.
+// The crowd builds its members on a wall-clock budget a frame, so each visit is read only once it has built everyone on
+// the floor and every seated resident (`built` from the crowd's stats, steady).
 const pokerTrip = (() => {
-  const check = trip("poker");
+  const check = trip("poker", `() => { const C = window.BL.scenes.poker.debug.poker.crowd; let made = 0, target = 0; for (const m of C.members) if (m.on) { target++; if (m.root) made++; } for (const r of C.residents) if (r.spot) { target++; if (r.root) made++; } return { built: C.stats().built, made, target }; }`);
   return { ...check, run: async b => {
     const before = await b.evaluate(`(() => {
       const P = BL.scenes.poker.debug.poker;
@@ -35721,14 +35737,18 @@ const pokerTrip = (() => {
       const paused = P.session.paused;
       if (!paused) P.action("pause");
       if (!P.session.paused) throw new Error("Poker round trip could not pause the local session");
+      window.__pokerGames = P.games;
       return { paused, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent, contexts: (window.__pokerContexts || []).length, tellsRunning };
     })()`);
     try {
       await check.run(b);
       const after = await b.evaluate(`(() => {
         const P = BL.scenes.poker.debug.poker;
-        return { paused: P.session.paused, local: !P.session.live, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent, board: document.getElementById("board-modal").open };
+        const old = window.__pokerGames; window.__pokerGames = null;
+        return { paused: P.session.paused, local: !P.session.live, versions: P.session.tables.map(t => t.version), title: document.querySelector('[data-poker="title"]').textContent, board: document.getElementById("board-modal").open,
+          gamesGone: !!old && old.tables.length === 0 && !old.root.parent && P.games !== old && P.games.tables.length === 4 };
       })()`);
+      record("poker games: leaving disposes the visit's gaming tables and staff, and the visit come back to builds its own four", after.gamesGone, JSON.stringify({ gamesGone: after.gamesGone }));
       record("poker round trip: both visits compare the same paused local hand and table, and no placard is left open", after.local && after.paused && !after.board && after.title === before.title && JSON.stringify(after.versions) === JSON.stringify(before.versions), JSON.stringify({ before, after }));
       // The first visit's sound once it has gone, and the music of the visit the trip came back to: the visitor seated
       // at table two with its table view open, the table showing the hand that ended before the trip, and no hand marked.
@@ -36388,8 +36408,23 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     const walker = crowd.members.find(m => m.root && m.root.visible && m.rig === "caveman" && (m.state === "walk" || m.state === "idle"));
     let standTop = -Infinity; if (walker) each(walker.root, (x, y) => { standTop = Math.max(standTop, y); });
     const standing = !!walker;
-    return { scales, fig: { height: fig.traits.height, hip: fig.root.position.y, seatTop, hipOver: fig.root.position.y - seatTop, legLow, inSeat, eye, railTop, eyeOverRail: eye - railTop }, standing, standEye: walker ? standTop - 0.425 * walker.traits.height / 1.04 : null, felt: M.FELT_Y };
+    // Table two's view (its map preset, as the Map's destination opens it): every point round the felt's edge projects
+    // inside the canvas, so the preset brought in with the table's plan still frames the whole felt. The view is handed
+    // back to the visitor's Ooga after.
+    D.pilot.goPreset("table-2"); B.advance(1.5, 1 / 30);
+    const size = B.renderer.size, at = {}, tp1 = M.TABLES[1];
+    let framed = 0, edge = 0;
+    for (let k = 0; k < 64; k++) {
+      const a = k / 64 * Math.PI * 2, q = B.renderer.project(tp1.x + Math.cos(a) * M.FELT_A, M.FELT_Y, tp1.z + Math.sin(a) * M.FELT_B, at);
+      edge++; if (q && q.x >= 0 && q.x <= size.width && q.y >= 0 && q.y <= size.height) framed++;
+    }
+    const frame = { framed, edge, dist: Math.hypot(D.camera.position.x - D.camera.target.x, D.camera.position.y - D.camera.target.y, D.camera.position.z - D.camera.target.z), target: [D.camera.target.x - tp1.x, D.camera.target.z - tp1.z] };
+    D.pilot.resetCamera(); B.advance(0.5, 1 / 30);
+    return { scales, fig: { height: fig.traits.height, hip: fig.root.position.y, seatTop, hipOver: fig.root.position.y - seatTop, legLow, inSeat, eye, railTop, eyeOverRail: eye - railTop }, standing, standEye: walker ? standTop - 0.425 * walker.traits.height / 1.04 : null, felt: M.FELT_Y, view: frame };
   })()`);
+  // Rule (the shrink in plan): the table view came in with the table (7.1 m times TABLE_K), and still frames the whole felt.
+  record("rule: the table view frames the whole felt of the smaller table, from a distance brought in with its plan",
+    scale.view.framed === scale.view.edge && scale.view.dist < 7.1 * 0.6 && scale.view.dist > 2 && Math.hypot(...scale.view.target) < 0.01, JSON.stringify(scale.view));
   const ones = a => a.length > 0 && a.every(v => v === 1);
   record("regression: every figure the poker room seats or stands is drawn at the game's scale 1: the visitor, a remote player, a stand-in, the computer opponents, the crowd's walkers and sitters and the lounges' residents",
     scale.scales.visitor === 1 && presence.seated?.scale === 1 && presence.before?.scale === 1 && ones(scale.scales.bots) && ones(scale.scales.walkers) && ones(scale.scales.residents) && scale.scales.sitters.every(v => v === 1),
@@ -36503,11 +36538,11 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
       const c = D.pilot.player, p = c.root.position;
       stood.push({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), clear: Math.hypot(p.x - F.X, p.z - F.Z) >= F.RADIUS + c.bodyRadius && M.walkable(p.x, p.z, p.x, p.z, 0, 2, c) });
     }
-    const water = () => { const out = [], stack = [P.room.fountain.root]; while (stack.length) { const n = stack.pop(); out.push(n.position.x, n.position.y, n.position.z, n.scale.x); stack.push(...n.children); } return out.join(); };
+    const water = () => { const out = [], stack = [P.room.hall.root]; while (stack.length) { const n = stack.pop(); out.push(n.position.x, n.position.y, n.position.z, n.scale.x); stack.push(...n.children); } return out.join(); };
     const first = water(); B.advance(1 / 30, 1 / 30); const moved = water() !== first;
     return { stood, moved, ok: stood.length === 2 && stood.every(s => s.clear) && moved };
   })()`);
-  record("rule: standing up beside the fountain lands outside the pool, and its water moves", hall.ok, JSON.stringify(hall));
+  record("rule: standing up beside the bull and bear lands outside its plinth, and the river moves", hall.ok, JSON.stringify(hall));
   // Regression: a visitor holding a seat who chose Walk the floor is standing, yet the act button beside a statue opened
   // the held table. Hold table 5 and walk the floor: still holding the seat, the act button by a plinth opens that
   // statue's placard. The seat and board are put back whatever happens.
@@ -36583,13 +36618,49 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
   // Re-pinned (glass walls): Banana Club's colonnade adds eight lights, one before each statue, after the seventeen and
   // counted on the top WebGL tier alone (a tier keeping fewer would light some statues and not their neighbours), so
   // the count is 25 there and 17 on every other tier; the tables still lead and own their felts. Re-pinned (wave 3): the
-  // lounges' two lamp lights follow the colonnade on the top tier, 27 there.
-  record("poker light: the lowest tier's ten lights are the ten tables, with the room's three and Banana Club's four after them (and its colonnade's eight on the top tier alone), each table's lamp the nearest light over its felt and the one reaching farthest past it", r.tableLights === 10 && r.lightCount === (r.kind === "webgl2" && r.quality === "high" ? 27 : 17) && r.lampsLead, JSON.stringify({ tableLights: r.tableLights, lightCount: r.lightCount, quality: r.quality, lampsLead: r.lampsLead }));
+  // lounges' two lamp lights follow the colonnade on the top tier, 27 there. Re-pinned (the gaming floor): the four
+  // gaming tables' lamp lights follow the lounges' on the top tier, 31 there of its 32; every other tier keeps 17.
+  record("poker light: the lowest tier's ten lights are the ten tables, with the room's three and Banana Club's four after them (and its colonnade's eight on the top tier alone), each table's lamp the nearest light over its felt and the one reaching farthest past it", r.tableLights === 10 && r.lightCount === (r.kind === "webgl2" && r.quality === "high" ? 31 : 17) && r.lampsLead, JSON.stringify({ tableLights: r.tableLights, lightCount: r.lightCount, quality: r.quality, lampsLead: r.lampsLead }));
+  // Rule (owner): the gaming floor runs in the room: its four tables on the graph under the room, and with a guest held
+  // at each table's first place and each table's clock set just before its spin or its shake, 7.5 s of frames bring
+  // each wheel's spin to its drop and each craps throw to rest, the guests reacting.
+  const gaming = await b.evaluate(`(() => {
+    const P = BL.scenes.poker.debug.poker, G = P.games, C = P.crowd, env = P.room.root.children[0], before = G.stats(), spins = before.spins, throws = before.throws, reactions = before.reactions;
+    const onGraph = G.tables.length === 4 && G.root.parent === env && G.tables.every(t => t.root.parent === G.root);
+    const places = BL.pokerModels.spots().filter(s => s.kind === "game" && s.slot === 0), free = C.members.filter(m => m.on && m.root && !m.agent && !m.job && !m.partner);
+    places.forEach((s, k) => { const m = free[k]; m.pending = false; m.n = 0; m.slide.seat = 0; m.x = s.x; m.z = s.z; m.yaw = m.want = s.yaw; m.root.position.x = s.x; m.root.position.z = s.z; m.root.position.y = m.baseY; m.state = "watch"; m.clock = 1e9; m.spot = s; m.game = s.game; m.table = -1; });
+    for (const t of G.tables) t.clock = t.kind === "roulette" ? BL.pokerGames.RT.SPIN - 0.05 : BL.pokerGames.CT.SHAKE - 0.05;
+    __ooga.advance(7.5, 1 / 15);
+    const after = G.stats();
+    return { onGraph, kinds: G.tables.map(t => t.kind).join(), spins: after.spins - spins, throws: after.throws - throws, reactions: after.reactions - reactions, held: G.tables.map(t => C.gameCount(t.index)) };
+  })()`);
+  record("poker games: the room's two roulette and two craps tables are on its graph, and over advanced frames each wheel spins and each craps table throws with its guests reacting",
+    gaming.onGraph && gaming.spins === 2 && gaming.throws === 2 && gaming.reactions === 4, JSON.stringify(gaming));
   if (process.env.POKER_SHOTS) {
     await b.evaluate(`(() => { const P = BL.scenes.poker.debug.pilot; P.release(true); P.goPreset("entrance"); __ooga.advance(2); })()`);
     await b.screenshot(join(process.env.POKER_SHOTS, "poker-floor.png"));
   }
 } }, pokerTellsStep, pokerTrip, pokerGloss] });
+scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ name: "Ember Den room keys and return trips", why: "playthrough: use the room controls at walking height and revisit with the saved keys", run: async b => {
+  await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
+  const route = await b.evaluate(`(() => {
+    const D = BL.scenes.poker.debug, P = D.poker, route = [];
+    const use = i => {
+      const d = BL.pokerSalons.DOORS[i], r = BL.pokerSalons.ROOMS[d[0]], t = P.salons.targets[i].position;
+      D.pilot.navigate({ position: { x: t.x, y: r ? r.y : 0, z: t.z + (i === 3 || i === 4 ? -1.45 : 1.45) }, yaw: 0, pitch: 0.17, dist: 3 });
+      D.pilot.action();
+      __ooga.advance(0.1, 1 / 30);
+      route.push(P.salon);
+    };
+    [1, 0, 8, 3, 1, 4, 2, 6].forEach(use);
+    const game = __ooga.game;
+    for (let i = game.state.emberDen.visits; i < 21; i++) game.recordDen("visit");
+    [6, 7, 5].forEach(use);
+    return { route, saved: BL.game.create().state.emberDen };
+  })()`);
+  record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the roof holds until visit 21, and all routes return",
+    route.route.join() === "-1,0,0,-1,1,-1,2,2,3,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
+} }] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
   await pokerTiming(b, "canvas2d");
@@ -38593,28 +38664,33 @@ const pokerMarbleHallChecks = (BL) => {
       } finally { P.setLite(false); for (const r of rooms) for (const tb of r.tables) tb.agent.dispose(); }
       record("poker marble hall: Banana Club builds on the full and lite sets, the lite one with fewer faces", builds && liteLighter);
 
-      // Rule: the ornate table keeps the old footprint, and its felt, chairs and the felt's layout stand where the Ooga-scale
-      // resize put them: the felt's top at FELT_Y (0.78, 0.6 m under the 1.38 built for a larger body), the chairs on
-      // their 5.2 by 3.6 ring (the seats hash), and the cards' and chips' places on the old 6 by 4.2 ring at the same
-      // angles (PLACES, whose hash is the old seats' "a2a29b1"), so the felt reads as it always did.
+      // Rule: the ornate table stands at Ooga scale in height and plan: the felt's top at FELT_Y (0.78, 0.6 m under the
+      // 1.38 built for a larger body), the felt TABLE_K (0.45) of its old 4.38 by 2.8 in plan, every piece inside the walk
+      // block (the old 4.85 by 3.25, now the rail's middle plus 0.19), the chairs where the seats hash pins them, and each
+      // card and chip place on the old 6 by 4.2 ring times TABLE_K at its own chair's angle (each chair and its place
+      // in the same ratio to their rings), so the felt's layout keeps its proportions.
       const club = P.build();
       let table = false, tableDetail = "";
       try {
         const g = P.geometry(), t = club.tables[0], ys = geo => { let lo = Infinity, hi = -Infinity; for (let i = 1; i < geo.verts.length; i += 3) { lo = Math.min(lo, geo.verts[i]); hi = Math.max(hi, geo.verts[i]); } return [lo, hi]; };
-        // How far a table's pieces reach in x and z once scaled, against the walkable ellipse (4.85 by 3.25).
+        // How far a table's pieces reach in x and z once scaled, against the walkable ellipse (WALK_A by WALK_B).
         let inside = true;
         for (const n of [t.base, t.top, t.rim, t.felt, t.pinstripe]) {
           const v = n.geometry.verts;
-          for (let i = 0; i < v.length; i += 3) { const x = v[i] * n.scale.x / 4.85, z = v[i + 2] * n.scale.z / 3.25; if (x * x + z * z > 1.0001) inside = false; }
+          for (let i = 0; i < v.length; i += 3) { const x = v[i] * n.scale.x / P.WALK_A, z = v[i + 2] * n.scale.z / P.WALK_B; if (x * x + z * z > 1.0001) inside = false; }
         }
         const seats = hashValue(P.SEATS.map(s => [s.x, s.z, s.yaw]).flat());
         const chairsAt = club.tables.every(tb => tb.chairs.every((c, j) => c.position.x === P.SEATS[j].x && c.position.z === P.SEATS[j].z && c.position.y === 0 && c.rotation.y === P.SEATS[j].yaw && c.geometry === g.chair));
-        const places = hashValue(P.PLACES.map(s => [s.x, s.z]).flat()), oldRing = hashValue(P.PLACES.map((p, j) => [p.x, p.z, Math.atan2(-p.x, -p.z)]).flat());
-        table = Math.abs(ys(g.felt)[1] - P.FELT_Y) < 1e-9 && Math.abs(P.FELT_Y - 0.78) < 1e-9 && t.felt.scale.x === 4.38 && t.felt.scale.z === 2.8 && inside && chairsAt &&
-          seats === "eb0f33b2" && oldRing === "a2a29b1" && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
-        tableDetail = JSON.stringify({ felt: ys(g.felt), seats, places, oldRing, inside, chairsAt });
+        const places = hashValue(P.PLACES.map(s => [s.x, s.z]).flat());
+        // Each place on the 6 by 4.2 ring times TABLE_K (unit radius at its angle), and its chair at the same angle.
+        const onRing = P.PLACES.every(p => Math.abs((p.x / (6 * P.TABLE_K)) ** 2 + (p.z / (4.2 * P.TABLE_K)) ** 2 - 1) < 1e-9);
+        const sameAngle = P.PLACES.every((p, j) => Math.abs(P.SEATS[j].x / p.x - P.SEATS[0].x / P.PLACES[0].x) < 1e-9 && Math.abs(P.SEATS[j].z / p.z - P.SEATS[0].z / P.PLACES[0].z) < 1e-9);
+        table = Math.abs(ys(g.felt)[1] - P.FELT_Y) < 1e-9 && Math.abs(P.FELT_Y - 0.78) < 1e-9 && P.TABLE_K === 0.45 && Math.abs(t.felt.scale.x - 4.38 * 0.45) < 1e-12 && Math.abs(t.felt.scale.z - 2.8 * 0.45) < 1e-12 &&
+          Math.abs(P.WALK_A - (P.RAIL_A + 0.19)) < 1e-12 && Math.abs(P.WALK_B - (P.RAIL_B + 0.19)) < 1e-12 && inside && chairsAt && onRing && sameAngle &&
+          seats === "268e7384" && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
+        tableDetail = JSON.stringify({ felt: ys(g.felt), seats, places, inside, chairsAt, onRing, sameAngle, walk: [P.WALK_A, P.WALK_B] });
       } finally { for (const tb of club.tables) tb.agent.dispose(); }
-      record("poker marble hall: the ornate table keeps its footprint, its felt at FELT_Y, its chairs on their ring and the felt's layout", table, tableDetail);
+      record("poker marble hall: the ornate table stands at Ooga scale, its felt at FELT_Y and TABLE_K of its old plan, its chairs on their ring and the felt's layout in proportion", table, tableDetail);
 
       // Regression (the owner's walk of the room): the chair fitted a 2.7 m person and the table a 3.2 m one, so the Oogas
       // could not see over the tables. Measured from the built geometry against a middle-height (1.04) Ooga's standing
@@ -38629,9 +38705,13 @@ const pokerMarbleHallChecks = (BL) => {
         const cv = vertsOf(g.chair);
         let seat = -Infinity, crest = -Infinity, front = -Infinity;
         for (let i = 0; i < cv.length; i += 3) { crest = Math.max(crest, cv[i + 1]); front = Math.max(front, cv[i + 2]); if (Math.abs(cv[i]) <= 0.4 && cv[i + 2] > -0.17 && cv[i + 2] <= 0.3 && cv[i + 1] < 0.7) seat = Math.max(seat, cv[i + 1]); }
-        const rv = vertsOf(g.rim);
+        // The room as built: the rail's reach through its own node's scale, a board card's and a chip pile's size through theirs.
+        const dealerRoom = P.build(), t0 = dealerRoom.tables[0], rv = vertsOf(g.rim);
         let rail = -Infinity, ax = 0, az = 0;
-        for (let i = 0; i < rv.length; i += 3) { rail = Math.max(rail, rv[i + 1]); ax = Math.max(ax, Math.abs(rv[i] * 4.5)); az = Math.max(az, Math.abs(rv[i + 2] * 2.92)); }
+        for (let i = 0; i < rv.length; i += 3) { rail = Math.max(rail, rv[i + 1]); ax = Math.max(ax, Math.abs(rv[i] * t0.rim.scale.x)); az = Math.max(az, Math.abs(rv[i + 2] * t0.rim.scale.z)); }
+        const span2 = (geo, k) => { const v = vertsOf(geo); let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (let i = 0; i < v.length; i += 3) { x0 = Math.min(x0, v[i]); x1 = Math.max(x1, v[i]); z0 = Math.min(z0, v[i + 2]); z1 = Math.max(z1, v[i + 2]); } return [(x1 - x0) * k, (z1 - z0) * k]; };
+        const cardSize = span2(t0.board[0].geometry, t0.board[0].scale.x), chipSize = span2(t0.chips[0].geometry, t0.chips[0].scale.x);
+        const pitch = P.SEATS.slice(1).map((s, j) => Math.hypot(s.x - P.SEATS[j].x, s.z - P.SEATS[j].z));
         // The bar's counter: the shell's highest point over the counter's run (in front of the back bar's shelves).
         const bar = P.FURNITURE.find(f => f.kind === "bar"), sv = vertsOf(g.shell), barFront = bar.z + bar.hz;
         let counter = -Infinity;
@@ -38643,17 +38723,189 @@ const pokerMarbleHallChecks = (BL) => {
           return (fx / ax) ** 2 + (fz / az) ** 2 > 1 ? best : -best;
         });
         // The dealer as the room builds it (standing upright behind its table), its highest point.
-        const dealerRoom = P.build();
         let dealer = -Infinity;
         try {
           const ag = dealerRoom.tables[0].agent; S.updateWorld(dealerRoom.root, null);
           S.traverseVisible(ag.root, n => { const v = n.geometry && vertsOf(n.geometry); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) dealer = Math.max(dealer, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); });
         } finally { for (const tb of dealerRoom.tables) tb.agent.dispose(); }
-        const ratio = { tall, seat: seat / tall, crest: crest / tall, rail: rail / tall, counter: counter / tall, dealer: dealer / tall };
+        const ratio = { tall, seat: seat / tall, crest: crest / tall, rail: rail / tall, counter: counter / tall, dealer: dealer / tall, card: Math.max(...cardSize) / tall, chip: Math.max(...chipSize) / tall };
         record("regression: Banana Club's chair, table rail and bar counter are sized for an Ooga, each chair's front is at the rail, and the dealer is no taller than 1.25 Oogas",
           tall > 1.6 && tall < 1.65 && ratio.dealer <= 1.25 && ratio.dealer >= 0.9 && ratio.seat >= 0.25 && ratio.seat <= 0.35 && ratio.crest >= 0.55 && ratio.crest <= 0.75 && ratio.rail >= 0.5 && ratio.rail <= 0.62 &&
           ratio.counter >= 0.52 && ratio.counter <= 0.64 && Math.abs(rail - P.RAIL_TOP) < 1e-9 && Math.abs(seat - P.SEAT_TOP) < 1e-9 && gaps.every(d => d > 0 && d <= 0.3),
           JSON.stringify({ ratio: Object.fromEntries(Object.entries(ratio).map(([k, v]) => [k, +v.toFixed(3)])), seat, crest, rail, counter, dealer, gaps: gaps.map(d => +d.toFixed(3)) }));
+        // Regression (the owner's second walk): with the Oogas at the game's scale the tables were still built in plan for
+        // a body twice their size: nine players 2.9 m apart round an 8.8 by 5.6 m felt, a card (0.6 by 0.84) as wide as an
+        // Ooga's torso and a chip stack like a drum. Neighbouring chairs now sit 1.2 to 1.6 m apart (shoulder room for an
+        // Ooga a metre wide with its arms) with no two presence circles overlapping; a card's long side is 0.15 to 0.3 of a
+        // middle-height Ooga's standing height (it was 0.52: past 0.3 it is torso-sized again, under 0.15 too small to
+        // read) and a chip 0.05 to 0.12 of it (it was 0.21).
+        record("regression: Banana Club's tables are Ooga-sized in plan: chairs 1.2 to 1.6 m apart with no presence circles overlapping, cards and chips sized for an Ooga's hands",
+          pitch.every(d => d >= 1.2 && d <= 1.6) && pitch.every(d => d > 2 * BL.pokerPresence.RADIUS) && ratio.card >= 0.15 && ratio.card <= 0.3 && ratio.chip >= 0.05 && ratio.chip <= 0.12,
+          JSON.stringify({ pitch: pitch.map(d => +d.toFixed(3)), card: cardSize.map(v => +v.toFixed(3)), chip: chipSize.map(v => +v.toFixed(3)), cardRatio: +ratio.card.toFixed(3), chipRatio: +ratio.chip.toFixed(3) }));
+
+        // The gaming floor (poker-games.js): two roulette and two craps tables as set dressing, run by gorillas for the
+        // crowd. One room built for these checks, its staff disposed after.
+        {
+          const Gm = BL.pokerGames, gg = Gm.geometry(), groom = P.build(), games = groom.games, T = games.tables;
+          try {
+            const kinds = T.map(t => t.kind), byKind = k => T.filter(t => t.kind === k);
+            const shared = ["roulette", "craps"].every(k => new Set(byKind(k).map(t => t.body.geometry)).size === 1) && byKind("roulette").every(t => t.rotor.geometry === gg.rotor && t.ball.geometry === gg.ball) &&
+              byKind("craps").every(t => t.dice.every(d => d.geometry === gg.die) && t.stick.geometry === gg.stick) && T.every(t => t.body.geometry === (t.kind === "roulette" ? gg.rouletteBody : gg.crapsBody));
+            // Each where the room says, from its own tables: on a bank's line, midway between two neighbouring rows, its walk block in FURNITURE.
+            const blocks = P.FURNITURE.filter(f => f.kind === "game");
+            const placed = T.every((t, i) => { const L = P.GAMES[i], f = blocks[i]; return t.root.position.x === L.x && t.root.position.z === L.z && t.root.rotation.y === L.yaw && P.TABLES.some(p => p.x === L.x) &&
+              P.TABLES.filter(p => p.x === L.x && Math.abs(p.z - L.z) === 6).length === 2 && f.x === L.x && f.z === L.z && f.solid && f.hx === Gm.FOOT[L.kind].hx && f.hz === Gm.FOOT[L.kind].hz && !P.walkable(L.x, L.z, L.x, L.z, 0, 2, { bodyRadius: 0.3 }); });
+            const onGraph = games.root.parent === groom.root.children[0] && T.every(t => t.root.parent === games.root);
+            // Rule (owner): two of each kind, the two of a kind on one set of meshes, each a walk block where the room places it.
+            record("poker games: two roulette and two craps tables stand in the room, the two of a kind on shared meshes, each a walk block on a bank's line midway between two rows",
+              kinds.filter(k => k === "roulette").length === 2 && kinds.filter(k => k === "craps").length === 2 && shared && placed && onGraph && blocks.length === 4, JSON.stringify({ kinds, shared, placed, onGraph }));
+            // Rule (owner): nothing on the floor's medallions or orange stone. Each table's walk block, and each of its
+            // guests' places with a body's reach (0.45 m) round it, clear of every medallion's outer ring, the runner and
+            // the orange aisles and panels.
+            const F = BL.pokerFloor, rects = [...F.STRIP, ...F.INLAYS];
+            const clearOf = (x0, z0, x1, z1) => F.MEDALLIONS.every(m => Math.hypot(Math.max(x0 - m.x, 0, m.x - x1), Math.max(z0 - m.z, 0, m.z - z1)) > m.r) && rects.every(([a, b, c, d]) => x1 <= a || x0 >= c || z1 <= b || z0 >= d);
+            const places = P.spots().filter(s => s.kind === "game");
+            const offFloorArt = blocks.every(f => clearOf(f.x - f.hx, f.z - f.hz, f.x + f.hx, f.z + f.hz)) && places.length === 28 && places.every(s => clearOf(s.x - 0.45, s.z - 0.45, s.x + 0.45, s.z + 0.45));
+            record("poker games: no gaming table or guest's place covers a floor medallion, the orange runner or an orange aisle", offFloorArt, JSON.stringify({ places: places.length }));
+            // Regression guard (the owner's two walks of the room, which found the poker furniture at giant scale): the
+            // roulette table's rail top and the craps table's outer rail 0.5 to 0.62 of a middle-height Ooga's standing
+            // height, as the poker tables' rail is, measured from their built meshes (the roulette rail away from the wheel's
+            // bowl, the craps rail along its long sides between the gold corner mounts); the croupiers no taller than 1.25 Oogas.
+            const R = Gm.ROULETTE, C = Gm.CRAPS, C1 = BL.compactGeometry, faceAt = (geo, n) => C1?.storageOf(geo) ? C1.copyFace(geo, n) : geo.faces[n];
+            // The highest point of the faces whose middles lie where `keep` says, on a body's mesh.
+            const topOf = (geo, keep) => {
+              const v = vertsOf(geo), n = C1?.storageOf(geo)?.count ?? geo.faces.length;
+              let top = -Infinity;
+              for (let k = 0; k < n; k++) {
+                const f = faceAt(geo, k); let x = 0, z = 0, y = -Infinity;
+                for (const j of f.i) { x += v[j * 3] / f.i.length; z += v[j * 3 + 2] / f.i.length; y = Math.max(y, v[j * 3 + 1]); }
+                if (keep(x, z)) top = Math.max(top, y);
+              }
+              return top;
+            };
+            let staff = 0;
+            const rRail = topOf(gg.rouletteBody, (x, z) => Math.abs(x - R.WHEEL_X) > R.BOWL + 0.02), cRail = topOf(gg.crapsBody, (x, z) => Math.abs(x) < 1.2 && Math.abs(z) > C.W / 2 - 0.13);
+            S.updateWorld(groom.root, null);
+            for (const t of T) { let top = -Infinity; S.traverseVisible(t.agent.root, n => { const v = n.geometry && vertsOf(n.geometry); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) top = Math.max(top, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); }); staff = Math.max(staff, top / tall); }
+            const gr = { roulette: rRail / tall, craps: cRail / tall, staff };
+            record("regression: the gaming tables stand at an Ooga's scale: the roulette rail and the craps rail 0.5 to 0.62 of a middle-height Ooga's height, their staff no taller than 1.25 Oogas",
+              gr.roulette >= 0.5 && gr.roulette <= 0.62 && gr.craps >= 0.5 && gr.craps <= 0.62 && Math.abs(rRail - R.RAIL_TOP) < 1e-6 && Math.abs(cRail - C.RAIL_TOP) < 1e-6 && staff >= 0.9 && staff <= 1.25,
+              JSON.stringify({ rRail, cRail, ratio: Object.fromEntries(Object.entries(gr).map(([k, v]) => [k, +v.toFixed(3)])) }));
+            // A stand-in crowd with one guest at every table, which takes every cue and counts what each table cued.
+            const log = [];
+            const crowd = { gameCue: (g, cue) => { log.push(g * 16 + cue); return 1; }, gameSay: () => false, gameShooter: () => null, gameAt: (g, slot) => slot === 0, gameCount: () => 1 };
+            const ctx = { crowd, cue: () => {} }, eye = { x: 0, z: 0 }, DT = 1 / 30;
+            const R0 = T.find(t => t.kind === "roulette"), R1 = T.filter(t => t.kind === "roulette")[1], C0 = T.find(t => t.kind === "craps");
+            const kids = T.map(t => t.root.children.length);
+            let stopped = 0, spins = 0, worst = 0, drawn = true, diceShown = 0, throws = 0, reacted = 0, walled = 0, maxChips = 0, maxPerTable = 0, cueRight = 0;
+            const spinAt = [[], []], R_END = Gm.RT.SPIN + Gm.RT.SPIN_T;
+            // Rule: the wheel stops on the pocket it drew and the dice show the faces of the total the crowd reacts to,
+            // read from the drawn nodes: the pocket whose centre lies under the ball once the rotor stops (and the draw
+            // the module gives for that table and spin), and each die's pips facing up, counted from its own mesh.
+            const C2 = BL.compactGeometry, faceOf = (geo, n) => C2?.storageOf(geo) ? C2.copyFace(geo, n) : geo.faces[n], faceCount = geo => C2?.storageOf(geo)?.count ?? geo.faces.length;
+            const pipsUp = node => {
+              S.updateWorld(node.parent, null);
+              const v = vertsOf(node.geometry), m = node.world, n = faceCount(node.geometry), cy = m[13];
+              let up = 0;
+              for (let k = 0; k < n; k++) {
+                const f = faceOf(node.geometry, k);
+                if (f.i.length !== 12) continue;
+                let lo = Infinity, hi = -Infinity;
+                for (const j of f.i) { const y = m[1] * v[j * 3] + m[5] * v[j * 3 + 1] + m[9] * v[j * 3 + 2] + m[13]; lo = Math.min(lo, y); hi = Math.max(hi, y); }
+                if (hi - lo < 1e-4 && lo > cy + C.DIE * 0.45) up++;
+              }
+              return up;
+            };
+            const point = new Map(T.map(t => [t, 0])), was = new Map();
+            for (let f = 0; f < 40 * 60 * 30; f++) {
+              const prevR = [R0.clock, R1.clock], prevC = C0.reacted, logAt = log.length;
+              was.set(C0, C0.point);
+              games.update(DT, eye, ctx);
+              for (const [j, t] of [R0, R1].entries()) {
+                if (t.cycles > 0 && prevR[j] < Gm.RT.SPIN && t.clock >= Gm.RT.SPIN) spinAt[j].push(f);
+                if (prevR[j] < R_END && t.clock >= R_END) {
+                  const r = games.pocketUnderBall(t); spins++; worst = Math.max(worst, r.distance);
+                  if (r.pocket === t.pocket) stopped++;
+                  drawn = drawn && t.pocket === Gm.drawPocket(t.k, t.count) && t.number === Gm.POCKETS[t.pocket];
+                }
+              }
+              if (!prevC && C0.reacted && C0.count > 0) {
+                throws++;
+                const a = pipsUp(C0.dice[0]), b = pipsUp(C0.dice[1]), total = a + b, before = was.get(C0), o = Gm.crapsOutcome(total, before);
+                if (a === C0.faces[0] && b === C0.faces[1] && total === C0.total) diceShown++;
+                walled += C0.hitWall[0] || C0.hitWall[1] ? 1 : 0;
+                const want = C0.index * 16 + (o > 0 ? Gm.GAME.CHEER : o < 0 ? Gm.GAME.GROAN : Gm.GAME.LEAN);
+                if (log.slice(logAt).includes(want)) cueRight++;
+              }
+              let all = 0;
+              for (const t of T) { let n = 0; for (const c of t.chips) if (c.visible) n++; maxPerTable = Math.max(maxPerTable, n); all += n; }
+              maxChips = Math.max(maxChips, all);
+              if (log.length > 4096) log.length = 0;
+            }
+            record("poker games: over 40 simulated minutes each roulette wheel stops with its ball on the pocket it drew, the module's own draw for that table and spin",
+              spins >= 230 && stopped === spins && worst < 1e-6 && drawn, JSON.stringify({ spins, stopped, worst, drawn }));
+            record("poker games: every craps throw's dice come to rest showing the faces it drew, their total the one the crowd's reaction is cued for, and a die off the far wall",
+              throws >= 150 && diceShown === throws && cueRight === throws && walled === throws, JSON.stringify({ throws, diceShown, cueRight, walled }));
+            // Rule: the cycles run and repeat on their own clocks and the two tables of a kind never spin or throw together.
+            const cyc = T.map(t => [t.kind, t.cycles]), apart = spinAt[0].length > 100 && spinAt[0].every((f, j) => spinAt[1][j] === undefined || Math.abs(f - spinAt[1][j]) > 60);
+            const crapsApart = Math.abs(T.filter(t => t.kind === "craps")[0].clock - T.filter(t => t.kind === "craps")[1].clock) > 2;
+            record("poker games: each table's cycle advances and repeats (a roulette spin every 20 s, a craps throw every 15 s), and the two tables of a kind run out of step",
+              T.every(t => t.cycles >= Math.floor(2400 / Gm.CYCLE[t.kind]) - 1 && t.count >= t.cycles - 1) && apart && crapsApart, JSON.stringify({ cyc, apart, crapsApart }));
+            // Rule: every chip, marker and die is a fixed pool: nothing is added to a table's nodes over the run, and no
+            // table shows more chips than its pool.
+            record("poker games: over the long run no table grows a node and no table shows more chips than its fixed pool",
+              T.every((t, i) => t.root.children.length === kids[i]) && maxPerTable <= Math.max(Gm.R_CHIPS, Gm.C_CHIPS) && maxChips > 0, JSON.stringify({ kids, maxPerTable, maxChips }));
+            // Rule: the frames allocate nothing. A fresh copy of the module, as the tells' check has one, over the real
+            // math and scene modules in a context of its own (the room's other builders stood in by empty meshes and the
+            // staff by bare nodes), so the nodes it moves have shapes only its own writes have made: a node made in this
+            // shared context carries fields other checks have widened, and storing a fraction there boxes it. After a
+            // warm-up of 300,000 frames (so the cycles' rare moments run optimized too, as minutes on the page leave them),
+            // five windows of 54,000 frames (30 minutes each) of the four tables' update with a stand-in crowd, each
+            // measured as the bytes it adds to V8's new space; a window in which a collection ran is set aside; the
+            // quietest left adds under 4 bytes a frame. The frames themselves add nothing: what is left is the draws at a
+            // spin's or a throw's start (a few dozen numbers a cycle), and one node moved by a boxed fraction every
+            // frame (16 bytes) fails it.
+            {
+              const fresh = { window: { BL: {} } }, read = f => readFileSync(new URL("../src/js/" + f, import.meta.url), "utf8");
+              runInNewContext(read("math.js"), fresh); runInNewContext(read("scene.js"), fresh);
+              runInNewContext(`(() => { const BL = window.BL, S = BL.scene, geo = () => ({ verts: [], faces: [], castShadow: true });
+                const turn = { x: 0, y: 0, z: 0 }, stub = { scopedMap: () => new Map(), track: () => ({ use() {} }), dieRotationFor: () => turn };
+                BL.models = new Proxy(stub, { get: (t, k) => t[k] || geo });
+                BL.pokerMarble = { GOLD: "#c8a45f", WHITE: "#ece8e1", SHADE: "#cbc4b8" }; BL.pokerThemes = { club: { felt: "#317459" } };
+                BL.hubModels = { SIGN_GLYPHS: new Proxy({}, { get: () => ["000", "000", "000", "000", "000"] }) }; BL.poolModels = { carve: () => ({ geometry: geo(), width: 0.1 }) };
+                BL.agent = { create: () => ({ root: S.createNode(), parts: { torso: S.createNode(), armR: S.createNode(), armL: S.createNode() }, poseManaged() {}, liveGeometry() {}, dispose() {} }) };
+              })()`, fresh);
+              runInNewContext(read("poker-games.js"), fresh);
+              const FRAMES = 54000, own = fresh.window.BL.pokerGames.build(P.GAMES, {});
+              const quietCtx = runInNewContext("({ crowd: { gameCue: () => 1, gameSay: () => false, gameShooter: () => null, gameAt: () => false, gameCount: () => 1 }, cue() {} })", fresh), view = runInNewContext("({ x: 0, z: 0 })", fresh);
+              const newSpace = () => { for (const sp of v8.getHeapSpaceStatistics()) if (sp.space_name === "new_space") return sp.space_used_size; return NaN; };
+              for (let f = 0; f < 300000; f++) own.update(DT, view, quietCtx);
+              const windows = [];
+              for (let w = 0; w < 5; w++) {
+                const profiler = new v8.GCProfiler(), before = newSpace();
+                profiler.start(); for (let f = 0; f < FRAMES; f++) own.update(DT, view, quietCtx); const gcs = profiler.stop().statistics.length;
+                windows.push({ gcs, bytes: newSpace() - before });
+              }
+              const quiet = windows.filter(w => w.gcs === 0).map(w => w.bytes), least = quiet.length ? Math.min(...quiet) : NaN;
+              own.dispose();
+              record("poker games: half an hour of frames of the four gaming tables adds under 4 bytes a frame to new space, only the cycles' draws", least < 4 * FRAMES, JSON.stringify({ least, perFrame: +(least / FRAMES).toFixed(2), windows }));
+            }
+            // Rule (owner: set dressing only): the module names nothing of the poker game, a seat's hidden cards, a balance,
+            // tickets, saves, storage or the network; and ten simulated minutes of the tables leave a game's saved state
+            // exactly as it was.
+            const src = readFileSync(new URL("../src/js/poker-games.js", import.meta.url), "utf8").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
+            const touches = src.match(/pokerRules|pokerLive|snapshot|\.cards\b|\bseats?\b|balance|ticket|localStorage|sessionStorage|indexedDB|fetch\s*\(|XMLHttpRequest|WebSocket|BL\.net|BL\.game\b|recordArcade|addTickets|spendTickets|visitSpot/g) || [];
+            const game = BL.game.create(), stateBefore = JSON.stringify(game.state);
+            for (let f = 0; f < 10 * 60 * 30; f++) games.update(DT, eye, ctx);
+            record("poker games: set dressing only: the module names no poker rule, hidden card, balance, ticket, save, storage or network, and ten minutes of play leave the game's state as it was",
+              touches.length === 0 && JSON.stringify(game.state) === stateBefore, JSON.stringify({ touches }));
+            // Contract: disposing the tables (the scene's leave) takes them and their staff off the graph and empties the handle.
+            const agents = T.map(t => t.agent), root = games.root;
+            games.dispose();
+            record("poker games: disposing them takes the gaming tables and their staff off the graph and leaves nothing in the handle",
+              !root.parent && root.children.length === 0 && games.tables.length === 0 && agents.every(a => !a.root.parent), "");
+          } finally { for (const tb of groom.tables) tb.agent.dispose(); if (games.tables.length) games.dispose(); }
+        }
 
         // Rule: the seating rule (poker-presence.js) still reads every roster Ooga seated as the room seats it, and only
         // there: its root at sitY(height), its soles (root less the rig's own standing root height) within BAND of
@@ -38674,7 +38926,7 @@ const pokerMarbleHallChecks = (BL) => {
 
       // Rule: the ₿IFRÖST window's poker colours (the preset's ui block) and felt, and the room's own lights, stay as they were.
       const preset = T.club;
-      record("poker marble hall: Banana Club's window colours, felt and lights are unchanged", hashValue(JSON.stringify({ ui: preset.ui, felt: preset.felt })) === "7a664d26" &&
+      record("poker marble hall: Banana Club keeps its window palette and fixture lights with deep green gaming felt", preset.felt === "#1f4a3a" && JSON.stringify(preset.ui) === JSON.stringify({ accent: "#dfbe77", bright: "#f4dda2", deep: "#142820", feltLight: "#3b7963" }) &&
         hashValue(Array.from(P.CLUB_LIGHTS)) === "c7924b36", JSON.stringify({ ui: hashValue(JSON.stringify({ ui: preset.ui, felt: preset.felt })), lights: hashValue(Array.from(P.CLUB_LIGHTS)), seats: hashValue(P.SEATS.map(s => [s.x, s.z, s.yaw]).flat()) }));
     }
   }
@@ -38931,7 +39183,7 @@ const pokerMarbleHallChecks = (BL) => {
       {
         // Rule: the room stands on the kit's slabs, columns and plinths, and the fountain and eight statues stand in it.
         const room = P.build(), kit = new Set([...P.geometry().tiles.field, ...P.geometry().tiles.border, K.column({ h: 8.8 }), K.plinth(St.PLINTH)]);
-        const found = () => { const seen = new Set(), stack = [room.root]; let fountain = false, statues = false; while (stack.length) { const n = stack.pop(); if (kit.has(n.geometry)) seen.add(n.geometry); if (n === room.fountain.root) fountain = true; if (n === room.statues.root) statues = true; stack.push(...n.children); } return { kit: seen.size, fountain, statues }; };
+        const found = () => { const seen = new Set(), stack = [room.root]; let fountain = false, statues = false; while (stack.length) { const n = stack.pop(); if (kit.has(n.geometry)) seen.add(n.geometry); if (n === room.hall.root) fountain = true; if (n === room.statues.root) statues = true; stack.push(...n.children); } return { kit: seen.size, fountain, statues }; };
         try {
           const hall = found();
           record("poker marble hall: Banana Club stands on the kit's marble with its fountain and statues",
@@ -39187,7 +39439,8 @@ const pokerVaultChecks = (BL) => {
       // from the table) up to the purlin over the lamp row, in the room's shell.
       const shell = room.root.children[0].children.find(n => n.geometry === g.shell), v = g.shell.verts;
       const near = (x, y, z) => { for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) < 0.06 && Math.abs(v[i + 1] - y) < 0.06 && Math.abs(v[i + 2] - z) < 0.06) return true; return false; };
-      const hung = P.TABLES.every(t => [-1.8, 1.8].every(dz => near(t.x, 8.8, t.z + dz) && near(t.x, V.lampHang(t.x), t.z + dz)));
+      // The cables' ends came in with the table's plan (TABLE_K of the old 1.8 m).
+      const hung = P.TABLES.every(t => [-1.8 * P.TABLE_K, 1.8 * P.TABLE_K].every(dz => near(t.x, 8.8, t.z + dz) && near(t.x, V.lampHang(t.x), t.z + dz)));
       record("poker vault: every table lamp's cable hangs from the purlin over its row on a gold hanger", !!shell && hung && Math.abs(V.LAMP_X) === Math.abs(P.TABLES[0].x));
     }
     {
@@ -39417,7 +39670,10 @@ const pokerGlazingChecks = (BL) => {
       // glass, and every sconce flame and cup glows with no light of its own.
       const kit = new Set(nodesOf(full.root).map(n => n.geometry).filter(Boolean)), vaultKit = nodesOf(room.vault.root).some(n => kit.has(n.geometry) && n.geometry !== undefined);
       // Re-pinned (wave 3, Task A): the lounges' eight armchairs are furniture of their own, not the glazing's; the rest stay 24.
-      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair").length === 24 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
+      // Re-pinned (the shrink in plan): the fifteen high-top cocktail tables are the crowd's furniture, not the glazing's.
+      // Re-pinned (the gaming floor): the four roulette and craps tables are the gaming floor's walk blocks, not the
+      // glazing's; the rest stay 24.
+      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "game").length === 24 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 15 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
         !P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
       const sconces = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).flame), cups = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).cup);
       const placedLights = sconces.length === 18 && sconces.every(n => Math.abs(n.position.y - G.SCONCE_Y) < 1e-9 && Math.abs(Math.abs(n.position.x) - (23.8 - 0.41)) < 1e-9) &&
@@ -39471,7 +39727,7 @@ const pokerEveningChecks = (BL) => {
     const o = clone(base); T.light(o, "webgl2");
     const c = clone(base); T.light(c, "canvas2d");
     const atBar = (65 - o.fogNear) / (o.fogFar - o.fogNear), up = o.light ? o.light.y / Math.hypot(o.light.x, o.light.y, o.light.z) : 0;
-    const hall = o.light && o.light.x === club.light.x && o.light.y === club.light.y && o.light.z === club.light.z && up >= Math.sin(35 * Math.PI / 180) && up <= Math.sin(65 * Math.PI / 180) &&
+    const hall = o.light && o.light.x === club.light.x && o.light.y === club.light.y && o.light.z === club.light.z && up >= Math.sin(19 * Math.PI / 180) && up <= Math.sin(25 * Math.PI / 180) &&
       Array.isArray(o.fog) && o.fog.length === 3 &&
       o.fog[0] > o.fog[1] && o.fog[1] > o.fog[2] && Math.max(...o.fog) <= 0.25 && o.fogNear >= 10 && o.fogNear < o.fogFar && atBar > 0 && atBar <= 0.5 &&
       o.ambientFloor === club.ambient && o.bloomStrength === club.bloom && o.directStrength === club.directStrength;
@@ -39566,7 +39822,8 @@ const pokerEveningChecks = (BL) => {
     const full = Fl.build(false), lite = Fl.build(true);
     try {
       const nodes = []; { const st = [full.root]; while (st.length) { const n = st.pop(); nodes.push(n); for (const c of n.children) st.push(c); } }
-      const runner = nodes.find(n => n.geometry && colours(n.geometry).has(orange) && !full.medallions.includes(n));
+      const nero = hex("#13120f").join();
+      const runner = nodes.find(n => n.geometry && colours(n.geometry).has(nero) && colours(n.geometry).has(hex("#463e31").join()) && !colours(n.geometry).has(orange));
       const all = new Set(); for (const n of nodes) if (n.geometry) for (const c of colours(n.geometry)) all.add(c);
       const medals = full.medallions.every(n => colours(n.geometry).has(orange) && !colours(n.geometry).has(verde));
       const strip = !!runner && !all.has(green) && medals && Fl.ORANGE.toLowerCase() !== T.club.runner.toLowerCase();
@@ -39585,7 +39842,7 @@ const pokerEveningChecks = (BL) => {
       const shared = placed >= 4 * 2 * 12 && others === 0 && Fl.mark() === mark && Fl.rosette() === rosette && faces(rosette) === 4 * per + 5;
       const liteNodes = []; { const st = [lite.root]; while (st.length) { const n = st.pop(); liteNodes.push(n); for (const c of n.children) st.push(c); } }
       const liteOk = liteNodes.every(n => n.geometry !== rosette) && liteNodes.some(n => n.geometry && colours(n.geometry).has(orange));
-      record("poker floor: the runner is Bitcoin-orange marble with a rosette of Bitcoin marks: orange, never the old green, four-fold symmetric, one shared mark and tile, marks off on the lite set",
+      record("poker floor: the runner is lacquer-dark with bronze veins and a rosette of Bitcoin marks, with copper medallions, four-fold symmetric, one shared mark and tile, marks off on the lite set",
         strip && symmetric && shared && liteOk, JSON.stringify({ strip, medals, symmetric, mids: mids.map(key), markFaces: per, rosetteFaces: faces(rosette), tiles: placed, liteOk }));
     } finally { full.dispose(); lite.dispose(); }
   }
@@ -39665,7 +39922,7 @@ const pokerTellPropChecks = (BL) => {
     S.traverseVisible(browCave.root, n => { const v = n.geometry && (n.geometry.verts || BL.compactGeometry?.storageOf(n.geometry)?.verts); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) headTop = Math.max(headTop, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); });
     const brow = P.SEATS.every((s, j) => {
       const node = t.beadAt(j), n = node.position, out = Math.hypot(n.x - s.x, n.z - s.z), ahead = (n.x - s.x) * Math.sin(s.yaw) + (n.z - s.z) * Math.cos(s.yaw);
-      return n.y > headTop - 0.45 && n.y < headTop - 0.15 && out > 0.15 && out < 0.45 && near(ahead, out, 1e-6) && (n.x / 4.85) ** 2 + (n.z / 3.25) ** 2 > 1 && near(node.rotation.y, s.yaw);
+      return n.y > headTop - 0.45 && n.y < headTop - 0.15 && out > 0.15 && out < 0.45 && near(ahead, out, 1e-6) && (n.x / P.WALK_A) ** 2 + (n.z / P.WALK_B) ** 2 > 1 && near(node.rotation.y, s.yaw);
     });
     record("poker tell props: each bead sits at brow height just in front of its seat, facing the table, outside the table", brow,
       JSON.stringify(t.beads.slice(0, 3).map(n => [n.position.x, n.position.y, n.position.z].map(v => +v.toFixed(3)))));
@@ -39862,8 +40119,15 @@ const pokerChecks = (BL) => {
     // pool against its rim, and passes each statue's walk block along the side aisle.
     const across = { bodyRadius: 1.15 }, ring = F => Array.from({ length: 32 }, (_, k) => { const t = k / 32 * Math.PI * 2, d = F.RADIUS + 1.16; return walk(F.X + Math.sin(t) * d, F.Z + Math.cos(t) * d, F.X + Math.sin(t) * d, F.Z + Math.cos(t) * d, 0, 2, across); }).every(Boolean);
     const aisles = P.FURNITURE.filter(f => f.kind === "plinth").every(f => { const x = f.x - Math.sign(f.x) * (f.hx + 1.16); return walk(x, f.z - 3, x, f.z + 3, 0, 2, across); });
-    const wide = ring(BL.pokerFountain) && aisles;
-    record("poker furniture: Banana Club's fittings, fountain and statues collide, and its walkways keep 2.3 m and more", club && clear && wide, JSON.stringify({ club, clear, wide }));
+    // The gaming tables (poker-games.js) too: the same 2.3 m body passes along each of a table's long sides from end to
+    // end and past each of its ends, beside its walk block, between it and the poker tables' chairs.
+    const games = P.FURNITURE.filter(f => f.kind === "game");
+    const gaming = games.length === 4 && games.every(f => [-1, 1].every(q => {
+      const z = f.z + q * (f.hz + 1.16), x = f.x + q * (f.hx + 1.16);
+      return walk(f.x - f.hx - 0.6, z, f.x + f.hx + 0.6, z, 0, 2, across) && walk(x, f.z - f.hz - 0.6, x, f.z + f.hz + 0.6, 0, 2, across);
+    }));
+    const wide = ring(BL.pokerFountain) && aisles && gaming;
+    record("poker furniture: Banana Club's fittings, fountain, statues and gaming tables collide, and its walkways keep 2.3 m and more", club && clear && wide, JSON.stringify({ club, clear, wide, gaming }));
     record("poker furniture: a saved spot inside the bar no longer holds", !BL.visitSpot.holds({ x: 10, y: 0, z: -34.2, yaw: 0 }, P.walkable, a));
   }
   {
@@ -39911,12 +40175,12 @@ const pokerChecks = (BL) => {
     // warm), its shadows softened to 0.4 to 0.7 of full; the fill, bloom, pools and ground keep their windows.
     {
       const fill = Math.max(luma(club.sky), club.ambient);
-      record("poker light: Banana Club is an evening hall, its fill (sky and ambient) in a window, its moonlight a cool accent and its bloom and table pools in windows round the tuned values, and its lamps warm",
-        club.ambient >= 0.24 && club.ambient <= 0.3 && fill >= 0.25 && fill <= 0.36 &&
-        club.directStrength >= 0.1 && club.directStrength <= 0.2 && club.shadowStrength >= 0.4 && club.shadowStrength <= 0.7 && club.bloom >= 0.5 && club.bloom <= 0.7 &&
-        club.tableRange >= 9 && club.tableRange <= 13 && club.roomRange >= 13 && club.roomRange <= 17 &&
-        luma(club.tableLight) >= 1 && luma(club.tableLight) <= 1.6 && luma(club.ground) >= 0.4 && luma(club.ground) <= 0.65 &&
-        club.direct[2] > club.direct[0] && club.sky[0] > club.sky[2] && club.ground[0] > club.ground[2] && club.tableLight[0] > club.tableLight[2],
+      record("poker light: Banana Club is an evening hall, its fill (sky and ambient) in a window, its Bitcoin moon a warm key and its bloom and table pools in windows round the tuned values, and its lamps warm",
+        club.ambient >= 0.14 && club.ambient <= 0.17 && fill >= 0.14 && fill <= 0.18 &&
+        club.directStrength >= 0.23 && club.directStrength <= 0.27 && club.shadowStrength >= 0.4 && club.shadowStrength <= 0.7 && club.bloom >= 0.5 && club.bloom <= 0.7 &&
+        club.tableRange >= 7 && club.tableRange <= 8.5 && club.roomRange >= 9 && club.roomRange <= 11 &&
+        luma(club.tableLight) >= 1 && luma(club.tableLight) <= 1.6 && luma(club.ground) >= 0.26 && luma(club.ground) <= 0.33 &&
+        club.direct[0] > club.direct[2] && club.sky[0] > club.sky[2] && club.ground[0] > club.ground[2] && club.tableLight[0] > club.tableLight[2],
         JSON.stringify({ ambient: club.ambient, fill: +fill.toFixed(3), directStrength: club.directStrength, shadowStrength: club.shadowStrength, direct: club.direct, bloom: club.bloom, tableRange: club.tableRange, roomRange: club.roomRange, sky: club.sky, ground: club.ground, tableLight: club.tableLight }));
     }
   }
@@ -39979,7 +40243,8 @@ const pokerChecks = (BL) => {
     // Straight down the middle, the route goes round the fountain on legs a walker can take.
     const downMiddle = legs(R.find(0, 30, 0, -30, out));
     record("poker crowd routes: the lattice reaches the bar, crosses the rows and passes the fountain on legs a walker can take",
-      toBar && acrossRows && downMiddle && walled && rail.length === 40 && club.filter(s => s.kind === "stool").length === 10);
+      // Rail spots: two rings of four a table since the shrink in plan (a second watcher a step behind each), 80 in all (was 40).
+      toBar && acrossRows && downMiddle && walled && rail.length === 80 && club.filter(s => s.kind === "stool").length === 10, JSON.stringify({ toBar, acrossRows, downMiddle, walled, rail: rail.length }));
     // Rule: a floor of 48 has somewhere to be: over twice as many standing places as people, groups to talk in, places
     // at the glass on both sides, and a place to stand at the bar; every standing place one a walker stands on.
     const kinds = k => club.filter(s => s.kind === k).length, standing = club.filter(s => s.kind !== "stool" && s.kind !== "lounge" && s.kind !== "cage");
@@ -42406,7 +42671,13 @@ const pokerPresenceChecks = () => {
   resolve([high, low], false, null);
   // Chair height is 0.18 since the Ooga-scale chairs (soles of a seated middle-height Ooga, 0.176; it was 0.45): read
   // there and on the band's edge, never on the floor nor 0.11 above the chair, and only within RADIUS of the spot.
-  record("poker presence: a position reads as a chair only at chair height, on the spot", at(3, 4, 0, 0.18, 0) === 3 * 9 + 4 && at(3, 4, 0.49, 0.18, 0) === 3 * 9 + 4 && at(3, 4, 0, 0.275, 0) === 3 * 9 + 4 && at(3, 4, 0.51, 0.18, 0) === -1 && at(3, 4, 0, 0, 0) === -1 && at(3, 4, 0, 0.29, 0) === -1 && P.CHAIR_Y === 0.18);
+  // For one release a page from before them still reads as seated: soles at 0.45 within the same band, on the old 6 by
+  // 4.2 ring round the same tables (chair s there is chair s here), never at the old height on the new ring nor between
+  // the bands.
+  const old = (t, s, dx, y, dz) => P.seatAt(T, S, T[t].x + P.OLD_SEATS[s].x + dx, y, T[t].z + P.OLD_SEATS[s].z + dz);
+  const oldBand = { onOld: old(3, 4, 0, 0.45, 0), edge: old(3, 4, 0.49, 0.54, 0), wide: old(3, 4, 0.51, 0.45, 0), newRing: at(3, 4, 0, 0.45, 0), between: old(3, 4, 0, 0.3, 0), over: old(3, 4, 0, 0.56, 0), lowOnOld: old(3, 4, 0, 0.18, 0) };
+  record("poker presence: a position reads as a chair only at chair height, on the spot", at(3, 4, 0, 0.18, 0) === 3 * 9 + 4 && at(3, 4, 0.49, 0.18, 0) === 3 * 9 + 4 && at(3, 4, 0, 0.275, 0) === 3 * 9 + 4 && at(3, 4, 0.51, 0.18, 0) === -1 && at(3, 4, 0, 0, 0) === -1 && at(3, 4, 0, 0.29, 0) === -1 && P.CHAIR_Y === 0.18
+    && oldBand.onOld === 3 * 9 + 4 && oldBand.edge === 3 * 9 + 4 && oldBand.wide === -1 && oldBand.newRing === -1 && oldBand.between === -1 && oldBand.over === -1 && oldBand.lowOnOld === -1 && P.OLD_CHAIR_Y === 0.45, JSON.stringify(oldBand));
   record("poker presence: every chair is its own, none within reach of another", everyChairUnique, `nearest ${nearest.toFixed(2)} m`);
   record("poker presence: live, a remote is honoured only in a human seat that carries its name", liveMatched && !liveWrongName && !liveBotSeat && !liveOpenSeat && !liveNoName, JSON.stringify({ liveMatched, liveWrongName, liveBotSeat, liveOpenSeat, liveNoName }));
   record("poker presence: not live, a remote is honoured only in a chair this page has empty", practiceEmpty && !practiceTaken, JSON.stringify({ practiceEmpty, practiceTaken }));

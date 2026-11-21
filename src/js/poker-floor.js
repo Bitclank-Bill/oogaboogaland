@@ -1,8 +1,8 @@
 // Banana Club's floor: a polished marble hall with a dark border, a field of white veined tiles patterned with dark
-// diamonds, gold lines, three inlaid medallions, the runner of Bitcoin-orange marble with its rosette of Bitcoin marks,
-// the same orange marble and rosette in an aisle down each side and a framed panel under each lounge (no red or maroon
+// diamonds, gold lines, three inlaid medallions, the runner of dark veined marble with its rosette of Bitcoin marks,
+// the same dark marble and rosette in an aisle down each side and a framed panel under each lounge (no red or maroon
 // anywhere on the floor), all flat and laid side by side (no layer stacked on another where it can be cut instead, for
-// the Canvas 2D sort), and on WebGL a gloss sheet over the whole polished floor but the fountain's basin.
+// the Canvas 2D sort), and on WebGL a gloss sheet over the whole polished floor but the sculpture’s plinth.
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene, K = BL.pokerMarble, hexToRgb = BL.math.hexToRgb;
@@ -11,7 +11,7 @@
   const GLOSS = 0.45, Y = 0.02;
   // Heights: the marble's top (the tiles' slabs are 0.35 thick, set 0.19 down), the cloth's top, the skirts' foot.
   const TOP = -0.015, CLOTH = 0.006, SKIRT = -0.08, LIFT = 0.004, TILE_H = 0.35, TILE_Y = TOP - TILE_H / 2;
-  const WHITE = K.WHITE, NERO = "#2b2724", NERO_SOFT = "#4a433d", GOLD = K.GOLD, DARK_GOLD = "#8a6a35", GREY = "#b9b2a6";
+  const WHITE = "#efe6d2", NERO = "#13120f", NERO_SOFT = "#332d25", GOLD = K.GOLD, DARK_GOLD = "#8a6a35", GREY = "#b9b2a6";
   const VEINS = { field: ["#bab3a8", "#c6b28d", "#bab3a8"], border: ["#cfc6b8", "#8f7a55"] };
   // The field is a diamond checker: a nero diamond at every corner where field tiles meet, of half-diagonal REACH, so
   // it reaches the tiles' mid-edges and the field is half dark and half white, cut into triangles where it meets the
@@ -22,10 +22,10 @@
   // Bitcoin marks: square tiles of TILE m, four across the strip, each with four marks turned round its middle (their
   // feet toward it) and small light diamonds at its middle and corners. The marks sit tone-on-tone, darker than the
   // stone, the diamonds lighter.
-  const ORANGE = "#d7761c", ORANGE_VEINS = ["#bd6118", "#e39448", "#c4681c", "#e39448", "#bd6118", "#ebb67e"], STRIP_HALF = 3, TILE = 1.5, MARK_AT = 0.36;
-  const MARK = Object.freeze({ mark: "#b65e10", gem: "#efa24c" });
-  // The layout, in room metres. The runner's two lengths run between the medallions; its orange stone is STRIP_HALF
-  // either side of x = 0 and its frame reaches RUNNER_HALF. The orange aisles lie between the tables' chairs and the
+  const ORANGE = "#d7761c", DARK_VEINS = ["#463e31", "#514637", "#342e26", "#514637", "#463e31", "#645239"], STRIP_HALF = 3, TILE = 1.5, MARK_AT = 0.36;
+  const MARK = Object.freeze({ mark: "#483a26", gem: "#987341" });
+  // The layout, in room metres. The runner's two lengths run between the medallions; its dark stone is STRIP_HALF
+  // either side of x = 0 and its frame reaches RUNNER_HALF. The bronze-edged aisles lie between the tables' chairs and the
   // statues' plinths, the orange panels under the far corners' lounges; each frames one rosette tile across its stone
   // (`AISLE_FRAME`), the panel two by two (`PANEL_FRAME`), whole tiles only.
   const CELL = 4, RUNNER_HALF = 3.65, END = 0.08, RUNS = [[6, 26], [-26, -6]];
@@ -35,7 +35,7 @@
     { x: 0, z: 29, r: 2.8, block: [-6, 26, 6, 34], points: 8, rIn: 0.32, ro: 2.3, tips: [2.3, 1.45], rings: [[2.3, 2.38, GOLD], [2.38, 2.68, NERO], [2.68, 2.8, GOLD]], seed: 82 },
     { x: 0, z: -30, r: 3.6, block: [-6, -34, 6, -26], points: 8, rIn: 0.4, ro: 3, tips: [3, 1.9], rings: [[3, 3.08, GOLD], [3.08, 3.45, NERO], [3.45, 3.6, GOLD]], seed: 83 }
   ].map(m => Object.freeze(m)));
-  // The runner's orange stone, as rectangles [x0, z0, x1, z1] (polished: under the gloss sheet).
+  // The runner's dark stone, as rectangles [x0, z0, x1, z1] (polished: under the gloss sheet).
   const STRIP = Object.freeze(RUNS.map(([a, b]) => Object.freeze([-STRIP_HALF, a + END, STRIP_HALF, b - END])));
   // The orange aisles and lounge panels, as rectangles [x0, z0, x1, z1] (polished, under the gloss sheet; the gold seam
   // lines stop at them). There is no cloth on the floor.
@@ -140,7 +140,7 @@
   };
   const runnerRow = row => row >= 3 && row <= 15 && (row <= 7 || row >= 11);
   // One length of runner from za to zb, all flush at the marble's top: gold end bars; each side a gold line, a nero band
-  // and the gold trim; the orange stone between them in 4 m rows, veined. A skirt closes it against the bevelled tiles.
+  // and the gold trim; the dark stone between them in 4 m rows, veined. A skirt closes it against the bevelled tiles.
   const runner = (za, zb, lite) => {
     const geo = M.merge(), seams = [za + END], rand = BL.math.mulberry32(901);
     for (let z = za + CELL; z < zb - END; z += CELL) seams.push(z);
@@ -150,8 +150,8 @@
       const a = seams[k], b = seams[k + 1];
       for (const s of [-1, 1]) for (const [p, q, hex] of [[STRIP_HALF, 3.05, GOLD], [3.05, 3.565, NERO], [3.565, RUNNER_HALF, GOLD]])
         rect(geo, Math.min(s * p, s * q), a, Math.max(s * p, s * q), b, TOP, hex);
-      rect(geo, -STRIP_HALF, a, STRIP_HALF, b, TOP, ORANGE);
-      veins(geo, rand, 0, (a + b) / 2, STRIP_HALF - 0.05, (b - a) / 2 - 0.05, TOP + LIFT, lite ? 2 : 9, lite ? ORANGE_VEINS.slice(0, 1) : ORANGE_VEINS, null, lite ? BOLD : FINE);
+      rect(geo, -STRIP_HALF, a, STRIP_HALF, b, TOP, NERO);
+      veins(geo, rand, 0, (a + b) / 2, STRIP_HALF - 0.05, (b - a) / 2 - 0.05, TOP + LIFT, lite ? 2 : 9, lite ? DARK_VEINS.slice(0, 1) : DARK_VEINS, null, lite ? BOLD : FINE);
     }
     skirt(geo, -RUNNER_HALF, za, RUNNER_HALF, zb, TOP, SKIRT, GOLD);
     geo.castShadow = false;
@@ -212,8 +212,8 @@
     const sx = hx - frame, sz = hz - frame;
     for (let z = -sz; z < sz - 1e-6; z += CELL) {
       const b = Math.min(sz, z + CELL);
-      rect(geo, -sx, z, sx, b, TOP, ORANGE);
-      veins(geo, rand, 0, (z + b) / 2, sx - 0.05, (b - z) / 2 - 0.05, TOP + LIFT, lite ? 1 : Math.max(2, Math.round(9 * sx / STRIP_HALF)), lite ? ORANGE_VEINS.slice(0, 1) : ORANGE_VEINS, null, lite ? BOLD : FINE);
+      rect(geo, -sx, z, sx, b, TOP, NERO);
+      veins(geo, rand, 0, (z + b) / 2, sx - 0.05, (b - z) / 2 - 0.05, TOP + LIFT, lite ? 1 : Math.max(2, Math.round(9 * sx / STRIP_HALF)), lite ? DARK_VEINS.slice(0, 1) : DARK_VEINS, null, lite ? BOLD : FINE);
     }
     skirt(geo, -hx, -hz, hx, hz, TOP, SKIRT, GOLD);
     geo.castShadow = false;
@@ -325,7 +325,7 @@
     geo.castShadow = false;
     return geo;
   });
-  // The gloss sheet: the hall's floor inside its walls less the fountain's basin, in its node's xy plane
+  // The gloss sheet: the hall's floor inside its walls less the sculpture’s plinth, in its node's xy plane
   // facing +z (the node lays it face up, so its y runs along the room's -z).
   const glossGeometry = () => once("gloss", () => {
     const geo = { verts: [], faces: [], lines: [], castShadow: false, reflector: true, gloss: GLOSS };
