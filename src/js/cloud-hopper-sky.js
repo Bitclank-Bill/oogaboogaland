@@ -17,7 +17,7 @@
 // - `storm` (Thunderhead): rain round the eye, lightning striking the sea with the sky's flash and the strike's
 //   distance for its thunder, and storm-dark isles far out to either side whose lighthouses sweep their beams round,
 //   only their light glowing faintly through the haze from far off. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
-// - `eye` (Storm's Eye): the storm's eyewall at sunrise, a ring of Amber Spires' towers and banks in storm-slate inks,
+// - `eye` (Flipside): the storm's eyewall at sunrise, a ring of Amber Spires' towers and banks in storm-slate inks,
 //   gold where they face the sun, turning slowly round the course, with lightning deep in the wall.
 // The moving parts are instanced batches written in place (one draw each) and a few node transforms; nothing
 // allocates a frame. The Canvas 2D renderer gets the still scenery and a thinner aurora, without the flocks,
@@ -308,7 +308,7 @@
     return { geo, height: y1 * unit };
   };
   // A low sun's inks for a cloud: under its base, through its middle, on its tops, where a face turns to the sun and
-  // where it turns away. Amber Spires' are a sunset's; Storm's Eye's eyewall is storm cloud lit by the rising sun.
+  // where it turns away. Amber Spires' are a sunset's; Flipside's eyewall is storm cloud lit by the rising sun.
   const SUNSET = { dusk: hexToRgb("#7a6a9a"), rose: hexToRgb("#f2a487"), cream: hexToRgb("#fff0cf"), gold: hexToRgb("#ffb347"), lilac: hexToRgb("#9d8cd4") };
   // How much of the distance haze the eyewall takes off itself, standing a kilometre off.
   const EYE_PIERCE = 0.7;

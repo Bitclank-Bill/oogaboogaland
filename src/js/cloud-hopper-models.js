@@ -186,7 +186,7 @@
     geometry.castShadow = false; geometry.cutawayPreserve = true;
     return geometry;
   });
-  // A portal cloud (Storm's Eye): bright gold, glowing a little by itself so it reads against the sunrise and the
+  // A portal cloud (Flipside): bright gold, glowing a little by itself so it reads against the sunrise and the
   // eyewall's own gold, with amber in its shade. No other cloud or pickup is gold.
   const portalCloud = M.variants((index) => {
     const geometry = M.merge(BL.hubModels.cloud(index));

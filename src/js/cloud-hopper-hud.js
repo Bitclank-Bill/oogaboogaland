@@ -22,7 +22,7 @@
     ["jetpack", "Jetpacks", "Press J to wear a jetpack, then hold Space to fly up. Fuel never refills, so grab another pack for more."],
     ["finish", "Banana pile", "Land on the banana pile to stop the clock. Toggle the global record ghost in the timer to compare runs. Clouds change each run; the ghost shows its original route."]
   ];
-  // Bounce clouds (from Level 2), Aurora Heights' gusts, Thunderhead's tornadoes, Storm's Eye's portal clouds and the
+  // Bounce clouds (from Level 2), Aurora Heights' gusts, Thunderhead's tornadoes, Flipside's portal clouds and the
   // power-ups, each introduced the first time a session plays a level that carries it.
   const ITEMS = {
     bounce: ["bounce", "Bounce clouds", "Touch a purple cloud anywhere to bounce high. Steer to your next cloud on the way down."],

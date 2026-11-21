@@ -367,7 +367,7 @@
       gustWhistle.frequency.cancelScheduledValues(now); gustWhistle.frequency.setValueAtTime(gustWhistle.frequency.value, now);
       gustWhistle.frequency.setTargetAtTime(1100 + 900 * level, now, 0.3);
     };
-    // Storm's Eye's world turning over: a deep swell with air rushing up through it. `turned` tells the score.
+    // Flipside's world turning over: a deep swell with air rushing up through it. `turned` tells the score.
     const turnOver = () => {
       if (!ready()) return;
       toneCue("sine", 70, 190, 2, 0.2); airCue(200, 2600, 2, 0.16, 0.8); toneCue("triangle", 520, 1040, 0.5, 0.06, 1.7);

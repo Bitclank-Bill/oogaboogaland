@@ -1,4 +1,4 @@
-// Cloud Hopper's tornadoes, on Thunderhead and Storm's Eye (its sky's `tornado`). Each run has its spots down the course, seeded with
+// Cloud Hopper's tornadoes, on Thunderhead and Flipside (its sky's `tornado`). Each run has its spots down the course, seeded with
 // it (`SPOTS`, each somewhere in its own stretch of the course and well off to one side). Over the next spot the storm turns, a cap gathering (`FORM` seconds) and brewing there, so a rider
 // sees from afar where it will come down; once the rider comes within `TRIGGER` of it, or passes it, a funnel lowers
 // slowly from it through the course (`DROP`), a thin, weak rope as its tip reaches the course that grows wider and

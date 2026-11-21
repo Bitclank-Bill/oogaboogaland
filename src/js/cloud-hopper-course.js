@@ -11,7 +11,7 @@
   const CLOUD_GAP = 1.5;
   // The most eligible clouds a course's start, finish and jetpacks ever keep from being special.
   const SPECIAL_SPARE = 7;
-  // A portal cloud (Storm's Eye): its half-size (m); how far over the landing behind it its top stands; its lane and
+  // A portal cloud (Flipside): its half-size (m); how far over the landing behind it its top stands; its lane and
   // speed [least, range], several times an ordinary cloud's; its slot (s), far shorter than a fading cloud's, and how
   // long it is gone in it. WARP is how far along the course it throws a rider (m), to a landing between WARP_NEAR and
   // WARP_FAR on that never fades, its own for the whole run.
@@ -47,7 +47,7 @@
   // most `bounceMax` bounces), the chance of a second
   // jetpack (`twoPacks`), and how many X-ray, Updraft and grappling hook pickups it carries (plan 3). `flips` are the
   // stretches of the way down ([from, to] shares) in each of which the world turns over once, at a place seeded with
-  // the course, and `portals` how many portal clouds it carries (Storm's Eye); neither moves, adds to or takes from
+  // the course, and `portals` how many portal clouds it carries (Flipside); neither moves, adds to or takes from
   // the course's other clouds. These defaults are the old course's.
   const LAYOUT = Object.freeze({ step: 11.5, main: Object.freeze([2.7, 0.9, 1.9, 0.7]), side: Object.freeze([2.8, 0.7, 2.1, 0.5]),
     turn: 40, sway: 7, lane: Object.freeze([5, 3]), speed: Object.freeze([0.9, 0.6]), sides: Infinity, sideMax: 24,
@@ -110,7 +110,7 @@
   // caller. `hit` finds where a ray first meets a cloud, for the grappling hook. `whirl` is a tornado's hold on the
   // clouds near it (cloud-hopper-tornado.js), the one thing besides race time that moves them. runSpeed and jumpSpeed are the player's, for the fairness checks;
   // `layout` and `timing` override LAYOUT's and TIMING's fields (a level's). `landings` are the main landings in the
-  // course's order. `flips` are the places the world turns over (Storm's Eye; `due` says a rider has reached the
+  // course's order. `flips` are the places the world turns over (Flipside; `due` says a rider has reached the
   // next), `portals` its portal clouds (`kind` `portal`: touched as a boost cloud is) and `warpTo` the landing one
   // throws a rider on to.
   const create = ({ start, finish, mainlandRadius = 30, seed = 1, layout: shape = LAYOUT, timing: tune = TIMING,

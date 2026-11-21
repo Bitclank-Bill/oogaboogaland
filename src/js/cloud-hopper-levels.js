@@ -18,6 +18,8 @@
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
   const BASE_ROUTE = 430.5 * 0.79, GROWTH = 1.42;
+  // Level 5's display name, in one place (its board, `cloud-hopper-l5`, and its migration keep their ids).
+  const LEVEL_5_NAME = "Flipside";
   const level = (id, name, sky, slope, layout, timing) => Object.freeze({ id, name, sky: sky && Object.freeze(sky), courseVersion: 1, board: `cloud-hopper-l${id}`,
     route: BASE_ROUTE * GROWTH ** (id - 1), slope, layout: Object.freeze({ sides: 0.55, sideMax: 64, ...layout }), timing: Object.freeze(timing) });
   const LEVELS = Object.freeze([
@@ -52,10 +54,10 @@
     // counts on 90% of a running jump.
     // A little more height than its first cut (`slope` 0.38 for 0.34) and gentle `terraces`: its drops come in slightly
     // uneven steps, none a plunge.
-    level(5, "Storm's Eye", { hour: 6.6, clouds: 0.6, storm: 0.35, scenery: "eye", tornado: true }, 0.38,
+    level(5, LEVEL_5_NAME, { hour: 6.6, clouds: 0.6, storm: 0.35, scenery: "eye", tornado: true }, 0.38,
       { step: 13.2, main: [2.6, 0.85, 1.8, 0.65], side: [2.7, 0.65, 2, 0.45], turn: 52, sway: 8, lane: [5.3, 3.2], speed: [0.95, 0.65],
         sides: 0.12, boost: 0.27, bounce: 0.22, twoPacks: 1, xray: 3, updraft: 2, hook: 2, gusts: 2, gustBlow: 2, gustPush: 0.6, flips: [[0.4, 0.6]], portals: 2, terraces: 1 },
       { permanent: 0.48, ordinary: [12.8, 30.6], warn: 1.4, fade: 0.6, hidden: [3, 4.5], stagger: 2.5, spine: 4, pace: 3.5, reach: 0.9 })
   ]);
-  BL.cloudHopperLevels = { LEVELS, BASE_ROUTE, GROWTH, get: id => LEVELS[id - 1] || null };
+  BL.cloudHopperLevels = { LEVELS, BASE_ROUTE, GROWTH, LEVEL_5_NAME, get: id => LEVELS[id - 1] || null };
 })();

@@ -238,7 +238,7 @@
     song.harmony = Uint8Array.from(song.harmony); song.roots = Uint8Array.from(song.roots); song.walk = Uint8Array.from(song.walk);
   }
   const MAX_STEPS = Math.ceil(MAX_AHEAD / Math.min(...SONGS.map(song => song.step))) + 1;
-  // Whether Storm's Eye's world is turned over, when the melody drops an octave under a filter at TURNED_CUTOFF of its own.
+  // Whether Flipside's world is turned over, when the melody drops an octave under a filter at TURNED_CUTOFF of its own.
   const TURNED_CUTOFF = 0.6;
   let turnedOver = false;
 
@@ -433,7 +433,7 @@
       }
       if (song.melody.note[i]) {
         const duration = Math.max(0.1, song.melody.length[i] * step - song.lead.gap);
-        // While Storm's Eye's world is turned over its melody plays an octave down and darker.
+        // While Flipside's world is turned over its melody plays an octave down and darker.
         note(lead, song.melody.note[i] - (turnedOver ? 12 : 0), duration, song.lead.level[open], at, song.lead.cutoff[open] * (turnedOver ? TURNED_CUTOFF : 1), song.lead.attack, song.lead.held);
       }
       const root = song.roots[harmony];
@@ -511,7 +511,7 @@
     };
     const quiet = () => { for (const p of players) p.quiet(); };
     const stop = () => { outgoing.length = 0; entering = -1; for (const p of players) p.stop(); };
-    // Storm's Eye's world turned over, or upright again: heard from the melody's next note.
+    // Flipside's world turned over, or upright again: heard from the melody's next note.
     const turned = (on) => { turnedOver = !!on; };
     return { stage, tick, quiet, stop, song, turned, get chosen() { return chosen; }, get mode() { return mode; } };
   };

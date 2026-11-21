@@ -42,7 +42,7 @@
   const SWEPT_DWELL = 0.15, SWEPT_DRAW = 0.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
   const SWEPT_OUT = 12, SWEPT_BEHIND = 6, SWEPT_UNDER = 4;
-  // Once a run Storm's Eye's world turns over, unannounced, as the rider reaches a place seeded with its course
+  // Once a run Flipside's world turns over, unannounced, as the rider reaches a place seeded with its course
   // (`course.due`), as a tornado comes or a gust blows, and stays so to the finish: the sky, the sea, the storm round
   // it and the clouds roll half a turn round the course's axis over TURN_SECONDS (at once under reduced motion),
   // while the island stays the right way up to the rider, to be landed on and the run won on it. The rider goes on as it was going, its speed and the controls held untouched, so it steers all through
@@ -122,7 +122,7 @@
     platform.visible = !ctx.arcade;
     const routeRoot = createNode({ visible: false, sightHidden: true });
     addChild(gameRoot, routeRoot);
-    // ---- the world turned over (Storm's Eye) ----------------------------------------------------------------------
+    // ---- the world turned over (Flipside) ----------------------------------------------------------------------
     // The rider and its physics never turn: gravity stays down the screen, the controls stay as they are, and every
     // cloud stays where the course has it, with the same height to land on. What turns is the view, by `turn` radians
     // round the course's axis (`turnAxis`, through `turnAbout`), which rolls the sky and the sea. Everything that
@@ -138,7 +138,7 @@
     // are done, `turning` the seconds into one (-1 none) from `turnFrom`, `lowering` its first FALL_SECONDS, while the
     // rider falls by itself before the gust; `climbing` is a rider lifted by the gust and not
     // yet landed, `rescued` that its one fall has been put back. A course's first roll turns the world round the
-    // rider (`turnPivot`) and leaves it upside down; Storm's Eye has the one, so its world stays so to the finish.
+    // rider (`turnPivot`) and leaves it upside down; Flipside has the one, so its world stays so to the finish.
     // (A second would turn it back round an axis sliding from there to the rider, to end upright with no far swing.)
     const turnAxis = { x: 1, z: 0 }, turnPivot = { x: 0, y: 0, z: 0 }, turnAbout = { x: 0, y: 0, z: 0 }, checkpoint = { x: 0, y: 0, z: 0 };
     const ORIGIN = { x: 0, y: 0, z: 0 }, spun = { x: 0, y: 0, z: 0 }, turnedUp = { x: 0, y: 1, z: 0 }, turnHeld = { x: 0, y: 0, z: 0 };
@@ -1773,7 +1773,7 @@
       get tornado() { return tornado; }, get tornadoes() { return tornadoes; }, get whirled() { return whirled; }, get swept() { return swept; }, get hiddenByTornado() { return hiddenByTornado(); },
       // Aurora Heights' gust and how fast it slides a planted Ooga, for debugging.
       get gust() { return gust; }, get slide() { return Math.hypot(slideX, slideZ); },
-      // Storm's Eye's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
+      // Flipside's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
       get turn() { return turn; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
       // Where a rescued fall from the gust is put back, for the tests.
