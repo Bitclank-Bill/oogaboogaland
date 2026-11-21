@@ -68,7 +68,7 @@
   let lite = false;
   // Dark walnut stays for the back bar and the sofa frames, oxblood leather for the sofas and the table rails, a nero
   // marble for the bar top; the high-roller inlay is the floor's orange.
-  const WOOD = "#3b2519", OXBLOOD = "#5c1a22", ROPE = "#7a1622", BOTTLES = ["#d9892c", "#4f9a4a", "#dfe8de"], NERO = "#2e2a26";
+  const WOOD = "#3b2519", OXBLOOD = "#5c1a22", ROPE = "#7a1622", NERO = "#2e2a26";
   const flat = (w, h, d, color, x = 0, y = 0, z = 0, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   // A veined marble block at (x, y, z): a moved copy of the kit's cached slab, so a seed is built once however often it is placed.
   const marble = (w, h, d, seed, veins, x, y, z, color = K.WHITE) => M.moved(M.merge(K.slab({ w, h, d, seed, veins, color })), x, y, z);
@@ -85,33 +85,10 @@
   };
   const clubFurniture = () => {
     // The floor and its gold lines are `poker-floor.js`'s.
-    const parts = [], block = lite ? flat : box, rand = BL.math.mulberry32(907);
+    const parts = [], block = lite ? flat : box;
     for (const f of FURNITURE) {
       if (f.kind === "bar") {
-        // Against the wall, six bays of bottle shelves; a bartender's walk; then the counter, with its stools in front.
-        const back = f.z - f.hz, front = f.z + f.hz;
-        for (let k = 0; k <= 6; k++) parts.push(flat(0.08, 3.05, 0.35, WOOD, f.x - 7.5 + k * 2.5, 2.725, back + 0.175));
-        for (let k = 0; k < 6; k++) {
-          const x = f.x - 6.25 + k * 2.5;
-          parts.push(flat(2.5, 4.3, 0.04, WOOD, x, 2.15, back + 0.02), block(2.5, 1.2, 0.35, WOOD, x, 0.6, back + 0.175), block(2.5, 0.12, 0.4, WOOD, x, 4.31, back + 0.2));
-          for (const y of [1.95, 2.7, 3.45]) parts.push(flat(2.5, 0.05, 0.33, WOOD, x, y - 0.025, back + 0.185));
-          for (const y of [1.2, 1.95, 2.7, 3.45, 4.25]) parts.push(flat(2.5, 0.035, 0.02, GOLD, x, y - 0.02, back + 0.36));
-          for (const y of [1.2, 1.95, 2.7, 3.45]) for (let b = 0; b < 5; b++) {
-            const h = 0.26 + rand() * 0.14, bx = x - 1 + b * 0.5 + (rand() - 0.5) * 0.12, tint = BOTTLES[Math.floor(rand() * 3)];
-            if (lite) { if (!(b & 1)) parts.push(flat(0.12, h + 0.1, 0.12, tint, bx, y + (h + 0.1) / 2, back + 0.18, 0.6)); continue; }
-            parts.push(flat(0.12, h, 0.12, tint, bx, y + h / 2, back + 0.18, 0.6), flat(0.045, 0.1, 0.045, tint, bx, y + h + 0.05, back + 0.18, 0.6));
-          }
-          // The counter at an Ooga's waist (0.95), its marble body set back under the top's overhang so a guest's legs
-          // from a stool reach under it, the brass foot rail along the body's foot.
-          parts.push(marble(2.5, 0.87, 0.35, 60 + k, 4, x, 0.435, front - 0.9, f.x > 0 ? "#242e31" : K.WHITE), block(2.5, 0.08, 0.7, NERO, x, 0.91, front - 0.72),
-            flat(2.5, 0.05, 0.03, GOLD, x, 0.91, front - 0.355), flat(2.5, 0.045, 0.045, GOLD, x, 0.2, front - 0.69));
-          // The backboard's back, seen through the glass: a raised walnut frame a bay with a middle rail.
-          for (const y of [0.1, 2.15, 4.2]) parts.push(flat(2.5, 0.12, 0.03, WOOD, x, y, back - 0.015));
-          for (const dx of [-1.2, 1.2]) parts.push(flat(0.1, 4.3, 0.03, WOOD, x + dx, 2.15, back - 0.015));
-        }
-        // Each wing's ends close with a walnut side panel, and a gold edge runs along the crown's back.
-        for (const ex of [f.x - 7.53, f.x + 7.53]) parts.push(flat(0.06, 4.37, 0.43, WOOD, ex, 2.185, back + 0.2));
-        parts.push(flat(15.06, 0.04, 0.03, GOLD, f.x, 4.35, back - 0.015));
+        parts.push(BL.pokerTerrace.bar(f.x, f.z, lite));
       } else if (f.kind === "cage") {
         // The cashier's booth: a marble counter facing the room under a brass grille with a teller's gap, marble sides and
         // a cream canopy. The valance stays oxblood, so the lit CASHIER sign in front of it reads against dark.
@@ -138,8 +115,8 @@
   };
   // The repeated pieces, each built about its own origin to stand at its box's centre; the sofa's back is at +x.
   // The bar stool's felt top at 0.62, a little under an Ooga's hip, below the 0.95 counter.
-  const stool = () => M.merge(M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.19, 0], [0.19, 0.03], [0.05, 0.06], [0.035, 0.08], [0.035, 0.5], [0.14, 0.52], [0, 0.52]], color: GOLD }),
-    M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0.52], [0.2, 0.52], [0.2, 0.59], [0.17, 0.62], [0, 0.62]], color: T.felt }));
+  const stool = (leather = OXBLOOD) => M.merge(M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.19, 0], [0.19, 0.03], [0.05, 0.06], [0.035, 0.08], [0.035, 0.5], [0.14, 0.52], [0, 0.52]], color: GOLD }),
+    M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0.52], [0.2, 0.52], [0.2, 0.59], [0.17, 0.62], [0, 0.62]], color: leather }));
   // Oxblood leather on a walnut frame. The lounges' seats are built round where a resident's hip sits (sofa x 0.12,
   // armchair x 0): the cushion at 0.40 runs 0.27 m in front of the hip and the back cushion's face stands where the
   // Ooga's back is, so a resident sits on the cushion against the back with the legs over the front edge.
@@ -375,7 +352,7 @@
       vaultSign: BL.pokerIce.sign(lite),
       title: BL.pokerIce.line("GENESIS VAULT", 0.213, "#e0f4ff", lite),
       welcome: BL.pokerIce.line("BLOCK 0 · 03 JAN 2009", 0.095, "#b1d6ed", lite),
-      stool: stool(), sofa: sofa(), armchair: armchair(), lowTable: lowTable(), highTop: highTop(),
+      stool: stool(), tealStool: stool("#28615c"), sofa: sofa(), armchair: armchair(), lowTable: lowTable(), highTop: highTop(),
       // Floor tiles (the floor module's six veined white seeds and two dark ones for the border).
       tiles: BL.pokerFloor.tiles(lite),
       column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(), ray: chandelierRay(),
@@ -507,7 +484,7 @@
     for (const p of [...TABLES, ...GAMES]) S.addChild(fixtures, node(geo.shade, p.x, 0, p.z));
     S.addChild(environment, floor.root, vault.root, glazing.root);
     // A colonnade of round columns before the glass.
-    for (const side of [-1, 1]) for (let z = -34; z <= 34; z += 8.5) S.addChild(environment, node(geo.column, side * 23.8, 0, z));
+    for (const side of [-1, 1]) for (let z = -34; z <= 34; z += 8.5) if (side < 0 || z !== 0) S.addChild(environment, node(geo.column, side * 23.8, 0, z));
     for (let f = 0; f < 3; f++) {
       const z = (f - 1) * 24;
       S.addChild(fixtures, node(geo.chandelier, 0, CHANDELIER_LIFT, z));
@@ -520,7 +497,7 @@
       }
     }
     for (const f of FURNITURE) {
-      if (f.kind === "bar") for (let k = 0; k < 5; k++) S.addChild(environment, node(geo.stool, f.x - 6 + k * 3, 0, f.z + f.hz - 0.22));
+      if (f.kind === "bar") for (let k = 0; k < 5; k++) S.addChild(environment, node(f.x < 0 ? geo.stool : geo.tealStool, f.x - 6 + k * 3, 0, f.z + f.hz - 0.22));
       else if (f.kind === "sofa") { const n = node(geo.sofa, f.x, 0, f.z); n.rotation.y = f.x < 0 ? Math.PI : 0; S.addChild(environment, n); }
       // Facing its `yaw`: the piece's front looks down -x, so it turns by a quarter more.
       else if (f.kind === "armchair") { const n = node(geo.armchair, f.x, 0, f.z); n.rotation.y = f.yaw + Math.PI / 2; S.addChild(environment, n); }
@@ -601,7 +578,7 @@
     const r = actor?.bodyRadius || 0.4;
     // Leave room to reach the glass, but never continue through the wall behind it.
     const rear = Math.abs(bx) < BL.bifrostModels.WINDOW.halfW - r ? REAR_WALL_Z - 0.01 : 35.5 - r;
-    if (Math.abs(bx) > 23 - r || bz < -35.5 + r || bz > rear) return false;
+    if (bx < -23 + r || !BL.pokerTerrace.clear(ax, az, bx, bz, r) || bz < -35.5 + r || bz > rear) return false;
     // A swept ellipse catches a fast step through a table, not just its endpoint.
     for (const t of TABLES) {
       const rx = WALK_A + r, rz = WALK_B + r, x = (ax - t.x) / rx, z = (az - t.z) / rz;

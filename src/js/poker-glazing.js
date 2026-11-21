@@ -80,18 +80,25 @@
   // Frames cast no shadow: the moon through the glass laid their posts and mullions over the floor as a grid.
   // A long side's frame, built at +x (a node turned half about y stands it at -x): sill, coping, posts, mullions, the
   // transom and a head rail under the cornice.
-  const side = lite => once(lite ? "side-lite" : "side", () => {
-    const len = SILL.endOuter * 2, x0 = SILL.inner, x1 = SILL.outer, w = x1 - x0, mid = (x0 + x1) / 2, tall = HEAD - SILL_TOP, ym = (SILL_TOP + HEAD) / 2;
+  const OPEN = 4.25;
+  const side = (lite, east = false) => once("side:" + lite + ":" + east, () => {
+    const len = east ? SILL.endOuter - OPEN : SILL.endOuter * 2, x0 = SILL.inner, x1 = SILL.outer, w = x1 - x0, mid = (x0 + x1) / 2, tall = HEAD - SILL_TOP, ym = (SILL_TOP + HEAD) / 2;
     const parts = [M.merge(K.slab({ w, h: SILL.body, d: len, seed: 51, veins: 8, offset: { x: mid, y: SILL.body / 2, z: 0 } })),
       box(w + 0.04, 0.09, len + 0.02, SHADE, mid, 0.045, 0),
       box(0.02, 0.025, len - 0.2, GOLD, x0 - 0.005, 0.34, 0),
       box(w + 0.02, SILL.bead - SILL.body, len + 0.02, GOLD, mid, (SILL.body + SILL.bead) / 2, 0),
       box(w + 0.1, SILL_TOP - SILL.bead, len + 0.1, WHITE, mid + 0.02, (SILL.bead + SILL_TOP) / 2, 0, MOONLIT),
-      box(0.09, 0.04, len - 0.4, PALE_GOLD, SIDE_X, SILL_TOP + 0.02, 0),
-      box(TRANSOM.d, 0.06, END_Z * 2, PALE_GOLD, SIDE_X, HEAD - 0.03, 0)];
-    const posts = sidePosts();
+      box(0.09, 0.04, len - 0.4, PALE_GOLD, SIDE_X, SILL_TOP + 0.02, 0)];
+    if (east) {
+      const half = M.merge(...parts), midZ = OPEN + len / 2;
+      parts.length = 0;
+      parts.push(M.moved(M.merge(half), 0, 0, midZ), M.moved(half, 0, 0, -midZ));
+    }
+    parts.push(box(TRANSOM.d, 0.06, END_Z * 2, PALE_GOLD, SIDE_X, HEAD - 0.03, 0));
+    const posts = east ? sidePosts().flatMap(z => z === 0 ? [-OPEN, OPEN] : [z]) : sidePosts();
     for (const z of posts) parts.push(box(POST.d, tall, Math.abs(z) === END_Z ? POST.d : POST.w, GOLD, SIDE_X, ym, z));
     for (const [a, b] of bays(posts)) {
+      if (east && a === -OPEN && b === OPEN) continue;
       if (!lite) for (const z of splits(a, b)) parts.push(box(MULLION.d, tall, MULLION.w, GOLD, SIDE_X, ym, z));
       parts.push(box(TRANSOM.d, TRANSOM.h, b - a, GOLD, SIDE_X, TRANSOM_Y, (a + b) / 2));
     }
@@ -145,13 +152,14 @@
   };
   // What lies outside a long side, built at +x: the terrace slab with a gold nosing, the podium under it with a gold
   // band, and the balustrade with its corner newels.
-  const terraceSide = lite => once(lite ? "terrace-side-lite" : "terrace-side", () => {
+  const terraceSide = (lite, east = false) => once("terrace-side:" + lite + ":" + east, () => {
     const T = TERRACE, w = T.out - SILL.outer, len = T.endOut * 2, pw = T.podiumOut - T.podiumIn;
     const parts = [M.merge(K.slab({ w, h: T.top - T.under, d: len, seed: 61, veins: 10, on: "top", offset: { x: (SILL.outer + T.out) / 2, y: (T.top + T.under) / 2, z: 0 } })),
       box(0.05, 0.1, len + 0.1, GOLD, T.out + 0.02, T.top - 0.05, 0),
       box(pw, T.under - T.podium, T.podiumEnd * 2, SHADE, (T.podiumIn + T.podiumOut) / 2, (T.under + T.podium) / 2, 0),
       box(pw + 0.06, 0.05, T.podiumEnd * 2 + 0.06, GOLD, (T.podiumIn + T.podiumOut) / 2, T.under - 0.12, 0)];
-    run(parts, lite, true, RAIL.x, -RAIL.z, RAIL.z, RAIL.sideSegments, true);
+    if (east) for (const s of [-1, 1]) run(parts, lite, true, RAIL.x, s * 7, s * RAIL.z, 8, true);
+    else run(parts, lite, true, RAIL.x, -RAIL.z, RAIL.z, RAIL.sideSegments, true);
     return noShadow(moonlit(M.merge(...parts)));
   });
   // What lies outside an end wall, built at +z, fitted between the long sides' pieces.
@@ -211,7 +219,7 @@
     return noShadow(geo);
   });
   // Every geometry of one set, for the room's record and the checks.
-  const parts = (lite = false) => ({ pane: pane(), paneLow: paneLow(), side: side(lite), end: end(lite), terraceSide: terraceSide(lite), terraceEnd: terraceEnd(lite), abacus: abacus(),
+  const parts = (lite = false) => ({ pane: pane(), paneLow: paneLow(), side: side(lite), eastSide: side(lite, true), eastTerrace: terraceSide(lite, true), end: end(lite), terraceSide: terraceSide(lite), terraceEnd: terraceEnd(lite), abacus: abacus(),
     sconce: lite ? null : sconce(), flame: lite ? null : flame(), cup: cup(), portal: portal(), shard: lite ? null : shard() });
   // The panes, one a bay and tier on every wall, in the order the glazing stands them (a pane's id is its place here):
   // the +x side's bays and tiers, the +z end's, then the -x side's and the -z end's. Each describes its glass for an
@@ -236,7 +244,10 @@
         x, z, ry: alongZ ? (s > 0 ? 0 : Math.PI) : -s * Math.PI / 2, len }));
     };
     for (const s of [1, -1]) {
-      for (const [a, b] of bays(sidePosts())) for (const tier of [0, 1]) add(s > 0 ? "+x" : "-x", tier, s, a, b, true);
+      for (const [left, right] of bays(sidePosts())) {
+        const a = s > 0 && left === 0 ? OPEN : left, b = s > 0 && right === 0 ? -OPEN : right;
+        for (const tier of [0, 1]) add(s > 0 ? "+x" : "-x", tier, s, a, b, true);
+      }
       for (const [a, b] of bays(endPosts(lite))) for (const tier of [0, 1]) add(s > 0 ? "+z" : "-z", tier, s, a, b, false);
     }
     // Frozen only once all exist: by then every pane has the one map with its fields' final representations, so the
@@ -255,7 +266,7 @@
   const cylinder = (x, z, r, y0, y1) => blocker("cylinder", x, z, r, x - r, x + r, y0, y1, z - r, z + r);
   const slab = (x0, x1, y0, y1, z0, z1) => blocker("box", (x0 + x1) / 2, (z0 + z1) / 2, 0, x0, x1, y0, y1, z0, z1);
   const BLOCKERS = Object.freeze([
-    ...[-1, 1].flatMap(s => COLUMN_Z.map(z => cylinder(s * COLUMN_X, z, COLUMN_BASE, 0, HEAD))),
+    ...[-1, 1].flatMap(s => COLUMN_Z.filter(z => s < 0 || z !== 0).map(z => cylinder(s * COLUMN_X, z, COLUMN_BASE, 0, HEAD))),
     slab(-OUTER - 0.3, OUTER + 0.3, 0, ARCH_TOP + 0.26, PORTAL_Z - BM.FRAME.courseFront - 0.15, SILL.endInner),
     slab(-6.75, 6.75, 4.6, 8.2, -36.6, -36.1)].map(b => Object.freeze(b)));
   const blockers = () => BLOCKERS;
@@ -277,7 +288,7 @@
   };
   // Where the uplight cups stand: two at each column's flanks and two before each statue's plinth, as [x, z].
   const CUPS = Object.freeze([
-    ...[-1, 1].flatMap(s => COLUMN_Z.flatMap(z => [[s * 23.9, z - 0.66], [s * 23.9, z + 0.66]])),
+    ...[-1, 1].flatMap(s => COLUMN_Z.filter(z => s < 0 || z !== 0).flatMap(z => [[s * 23.9, z - 0.66], [s * 23.9, z + 0.66]])),
     ...BL.pokerStatues.SLOTS.flatMap(({ x, z }) => { const front = x - Math.sign(x) * (BL.pokerStatues.PLINTH.w / 2 + 0.16); return [[front, z - 0.45], [front, z + 0.45]]; })
   ].map(p => Object.freeze(p)));
   const build = (lite = false) => {
@@ -286,7 +297,7 @@
     for (const s of [1, -1]) {
       const ry = s > 0 ? 0 : Math.PI;
       // The terrace's nodes glow, so its moonlit share shows.
-      put(p.side, 0, 0, 0, ry).glow = 1; put(p.terraceSide, 0, 0, 0, ry).glow = 1; put(p.end, 0, 0, 0, ry).glow = 1; put(p.terraceEnd, 0, 0, 0, ry).glow = 1;
+      put(s > 0 ? p.eastSide : p.side, 0, 0, 0, ry).glow = 1; put(s > 0 ? p.eastTerrace : p.terraceSide, 0, 0, 0, ry).glow = 1; put(p.end, 0, 0, 0, ry).glow = 1; put(p.terraceEnd, 0, 0, 0, ry).glow = 1;
     }
     // The panes, one a bay and tier on every wall, all one geometry: the long sides facing -x / +x, the ends -z / +z.
     // The lower tier's panes glow their sheen; the lite set (Canvas 2D, which sorts its translucent faces by depth and
@@ -297,6 +308,7 @@
       return n;
     });
     for (const s of [1, -1]) for (const z of COLUMN_Z) {
+      if (s > 0 && z === 0) continue;
       put(p.abacus, s * COLUMN_X, 0, z);
       if (p.sconce) { const x = s * (COLUMN_X - 0.41), ry = s > 0 ? 0 : Math.PI; put(p.sconce, x, SCONCE_Y, z, ry); const f = put(p.flame, x, SCONCE_Y, z, ry); f.glow = 1; flames.push(f); }
     }
@@ -390,6 +402,6 @@
     const dispose = () => { reset(); while (root.children.length) S.removeChild(root, root.children[root.children.length - 1]); };
     return { root, glass, flames, dispose, panes: () => list, blockers, shatter, update, intact, broken, shards: shardsOut, reset };
   };
-  BL.pokerGlazing = Object.freeze({ SIDE_X, END_Z, SILL_TOP, HEAD, TRANSOM_Y, SILL, TERRACE, RAIL, COLUMN_X, COLUMN_Z, SCONCE_Y, CUPS, PORTAL_Z, BOARD_Y, BOARD_Z,
+  BL.pokerGlazing = Object.freeze({ OPEN, SIDE_X, END_Z, SILL_TOP, HEAD, TRANSOM_Y, SILL, TERRACE, RAIL, COLUMN_X, COLUMN_Z, SCONCE_Y, CUPS, PORTAL_Z, BOARD_Y, BOARD_Z,
     HEAL_AFTER, HEAL_TIME, SHARD_LIFE, SHARDS_PER, SHARD_CAP, MAX_BROKEN, sidePosts, endPosts, parts, panes, blockers, build });
 })();

@@ -133,6 +133,7 @@
   const POKER_SKY_SCALE = 0.7;
   const pokerRoom = () => {
     const room = BL.pokerModels.build().root;
+    addChild(room, BL.pokerTerrace.build(renderer.kind === "canvas2d").root);
     addChild(room, BL.pokerThemes.hang({ canvas: renderer.kind === "canvas2d", sparse: renderer.kind === "canvas2d", scale: POKER_SKY_SCALE, ship: false }).root);
     return room;
   };

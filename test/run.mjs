@@ -36665,20 +36665,34 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
       __ooga.advance(0.1, 1 / 30);
       route.push(P.salon);
     };
-    [1, 0, 8, 3, 1].forEach(use);
+    [1, 0, 6, 3, 1].forEach(use);
     const glyph = P.salons.glyph, before = glyph.rotation.y, core = BL.bifrostModels.coreGlyph().verts;
     const same = glyph.geometry.verts.length === core.length && core.every((v,i) => Math.abs(v * 2.48 / 1.9 - glyph.geometry.verts[i]) < 1e-6);
     __ooga.advance(0.5, 1/30);
     const icyCore = P.salon === 1 && glyph.parent.visible && glyph.geometry.chrome > 0 && same && Math.abs(glyph.rotation.y - before - 0.3) < 1e-5;
-    [4, 2, 6].forEach(use);
+    [4, 2].forEach(use);
     const game = __ooga.game;
     for (let i = game.state.emberDen.visits; i < 21; i++) game.recordDen("visit");
-    [6, 7, 5].forEach(use);
-    return { route, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible };
+    [2, 5].forEach(use);
+    const scope = BL.pokerTerrace.station;
+    D.pilot.navigate({position:{x:scope.x - 1.4,y:0,z:scope.z},yaw:0,pitch:.17,dist:3});
+    D.pilot.action(); __ooga.advance(.1,1/30);
+    const lens = document.querySelector(".den-eyepiece"), opened = lens.open, fov = D.camera.fov;
+    const forward = () => Math.atan2(D.camera.target.x-D.camera.position.x,D.camera.target.z-D.camera.position.z);
+    const moon = P.cosmos.parts.planets.find(p=>p.key==="giant").node.position;
+    const bearing = Math.atan2(moon.x-scope.x,moon.z-scope.z);
+    lens.querySelector('[aria-label="Zoom in"]').click();
+    lens.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowRight",bubbles:true}));
+    const moved = Math.abs(forward()-bearing)>.001, zoomed = D.camera.fov < fov;
+    lens.querySelector('[aria-label="Center on the Moon"]').click();
+    const centered = Math.abs(forward()-bearing)<1e-6;
+    lens.querySelector('[aria-label="Leave telescope"]').click();
+    return { route, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
   })()`);
+  record("poker terrace: use the telescope, aim, magnify, reacquire the moon and leave the eyepiece", route.scope);
   record("poker rooms: the icy ₿IFRÖST core turns on its pedestal in Cold Storage and leaves the view on exit", route.icyCore && route.hidden);
   record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the roof holds until visit 21, and all routes return",
-    route.route.join() === "-1,0,0,-1,1,-1,2,2,3,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
+    route.route.join() === "-1,0,0,-1,1,-1,-1,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
 } }] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
@@ -38731,10 +38745,14 @@ const pokerMarbleHallChecks = (BL) => {
         const span2 = (geo, k) => { const v = vertsOf(geo); let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (let i = 0; i < v.length; i += 3) { x0 = Math.min(x0, v[i]); x1 = Math.max(x1, v[i]); z0 = Math.min(z0, v[i + 2]); z1 = Math.max(z1, v[i + 2]); } return [(x1 - x0) * k, (z1 - z0) * k]; };
         const cardSize = span2(t0.board[0].geometry, t0.board[0].scale.x), chipSize = span2(t0.chips[0].geometry, t0.chips[0].scale.x);
         const pitch = P.SEATS.slice(1).map((s, j) => Math.hypot(s.x - P.SEATS[j].x, s.z - P.SEATS[j].z));
-        // The bar's counter: the shell's highest point over the counter's run (in front of the back bar's shelves).
-        const bar = P.FURNITURE.find(f => f.kind === "bar"), sv = vertsOf(g.shell), barFront = bar.z + bar.hz;
+        // Read the broad countertop face itself, clear of the bottles, reading lamp and tools resting on it.
+        const bar = P.FURNITURE.find(f => f.kind === "bar"), sv = vertsOf(g.shell);
         let counter = -Infinity;
-        for (let i = 0; i < sv.length; i += 3) if (Math.abs(sv[i] - bar.x) < bar.hx - 0.6 && sv[i + 2] > barFront - 1.2 && sv[i + 2] < barFront - 0.3 && sv[i + 1] < 1.6) counter = Math.max(counter, sv[i + 1]);
+        for (const f of g.shell.faces) {
+          const v = f.i.map(i => [sv[3*i],sv[3*i+1],sv[3*i+2]]);
+          if (!v.every(q => Math.abs(q[0]-bar.x)<bar.hx && Math.abs(q[2]-bar.z)<1 && Math.abs(q[1]-v[0][1])<1e-6)) continue;
+          if (Math.max(...v.map(q=>q[0]))-Math.min(...v.map(q=>q[0]))>14 && Math.max(...v.map(q=>q[2]))-Math.min(...v.map(q=>q[2]))>.8) counter=Math.max(counter,v[0][1]);
+        }
         // Each chair's front edge's middle, from its spot toward the table by the chair's own depth, to the rail's outer edge.
         const gaps = P.SEATS.map(s => {
           const fx = s.x + Math.sin(s.yaw) * front, fz = s.z + Math.cos(s.yaw) * front;
@@ -39550,13 +39568,13 @@ const pokerGlazingChecks = (BL) => {
       S.updateWorld(b.root, null);
       const k = G.parts(l), panes = nodesOf(b.root).filter(n => n.geometry && clear(n.geometry)), kinds = l ? [k.pane] : [k.pane, k.paneLow];
       const facing = panes.every(n => tris(n).every(t => { const nn = normalOf(t), c = t[0]; return nn[0] * -c[0] + nn[2] * -c[2] > 0; }));
-      const frames = new Set([k.side, k.end, k.terraceSide, k.terraceEnd]);
+      const frames = new Set([k.side, k.eastSide, k.end, k.eastTerrace, k.terraceSide, k.terraceEnd]);
       const quiet = nodesOf(b.root).filter(n => n.geometry && !clear(n.geometry) && n.geometry.castShadow === false && !frames.has(n.geometry))
         .every(n => { const g = n.geometry; for (let i = 0; i < faces(g); i++) if (!(faceAt(g, i).emissive >= 0.5)) return false; return true; });
       const low = k.paneLow, lowOk = low.glassOpacity > V.GLAZE.opacity && low.glassOpacity <= 0.2 && low.castShadow === false && [...Array(faces(low)).keys()].every(i => faceAt(low, i).emissive === 1);
       return panes.length >= 40 && panes.every(n => kinds.includes(n.geometry)) && kinds.every(g => panes.some(n => n.geometry === g)) && b.glass.length === kinds.length && kinds.every(g => b.glass.includes(g)) &&
         !k.pane.glass && k.pane.glassOpacity === V.GLAZE.opacity && k.pane.glassGrazing === V.GLAZE.wall && k.pane.castShadow === false && lowOk &&
-        faceAt(k.pane, 0).color.join() === V.parts(l).panes[0].faces[0].color.join() && facing && quiet && [k.side, k.end, k.terraceSide, k.terraceEnd].every(g => g.castShadow === false);
+        faceAt(k.pane, 0).color.join() === V.parts(l).panes[0].faces[0].color.join() && facing && quiet && [k.side, k.eastSide, k.end, k.eastTerrace, k.terraceSide, k.terraceEnd].every(g => g.castShadow === false);
     }) && nodesOf(full.root).every((n, i) => n.geometry === nodesOf(again.root)[i].geometry) && G.parts(false).side === G.parts(false).side;
     record("poker glazing: every pane is one of two shared geometries (one on the lite set) of the vault's glass, casting no shadow and facing into the hall, and a rebuild shares all", glassOk);
     // Rule: the lite set (Canvas 2D) is lighter: fewer faces and nodes, fewer mullions, no sconces.
@@ -39577,7 +39595,7 @@ const pokerGlazingChecks = (BL) => {
       // standing height, level and upward in every direction (0, 15, 40, 65 and 90 degrees), all first meet glass, the
       // sill, the glazing's frame, a column, the cornice, the vault or a lunette, inside the glass line and under 17 m.
       // (What stands outside the glass, the terrace and balustrade, is left out: a ray must stop at the glass line.)
-      const walls = [], outside = new Set([G.parts(set).terraceSide, G.parts(set).terraceEnd]);
+      const walls = [], outside = new Set([G.parts(set).terraceSide, G.parts(set).eastTerrace, G.parts(set).terraceEnd]);
       trisUnder(vaultRoot, () => true, walls); trisUnder(glazing, n => !outside.has(n.geometry), walls); for (const c of columns) tris(c, walls);
       // Bucketed for speed: a ray from inside leaves the glass line's box through one wall or the top, so it is tested
       // against what stands within 1.5 m of that wall plus everything over 8.5 m (cornice, vault, lunettes, heads), which
@@ -39596,12 +39614,14 @@ const pokerGlazingChecks = (BL) => {
         const el = e * Math.PI / 180, az = k * Math.PI / 4, d = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)], o = [x, 1.7, z];
         const { s } = first(o, d, bucket(o, d)); rays++;
         const p = [o[0] + d[0] * s, o[1] + d[1] * s, o[2] + d[2] * s];
+        const reach = (G.SIDE_X - x) / d[0], atZ = z + reach * d[2], atY = 1.7 + reach * d[1];
+        if (d[0] > 0 && Math.abs(atZ) < G.OPEN && atY < G.HEAD) continue;
         if (!(s < Infinity) || p[1] >= 17 || Math.abs(p[0]) > G.SILL.outer + 0.06 || Math.abs(p[2]) > G.SILL.endOuter + 0.1) escaped.push([x, z, e, k]);
       }
       // ... and the slab and flat beams are gone: no face of the shell at or over the wall tops reaches 40 m across.
       let slab = 0;
       for (const t of tris(shell)) { const ys = t.map(q => q[1]), xs = t.map(q => q[0]); if (Math.min(...ys) > 8.2 && Math.max(...xs) - Math.min(...xs) > 40 && t.some(q => Math.abs(q[2]) < 36)) slab++; }
-      record(`poker glazing: Banana Club's room is closed on all four sides and overhead by glass, sill, columns, cornice, vault and lunettes, the slab gone (${tag})`,
+      record(`poker glazing: Banana Club's glass walls and vaulted roof enclose the hall around the open east bay (${tag})`,
         escaped.length === 0 && slab === 0 && rays > 1000, JSON.stringify({ rays, escaped: escaped.slice(0, 6), slab }));
       // Rule: no solid wall stands between the sill and the cornice: under the room's environment no opaque face in the
       // walls' zone (|x| over 24.3 or |z| over 36.4, y between 0.75 and 9.05) is broader than 0.4 m both ways in its
@@ -39620,7 +39640,8 @@ const pokerGlazingChecks = (BL) => {
       // Rule: the terrace and balustrade hide the floor slab: from eyes along the inside of the glass (seated, standing
       // and the camera's highest, at the camera's bounds on every wall) looking out and down, the first opaque thing a ray meets is never a
       // face of the floor beyond the sill's inner line (its top, side or underside out there) nor one facing down.
-      const floorTris = trisUnder(room.floor.root, n => !clear(n.geometry)), opaque = floorTris.concat(trisUnder(glazing, n => !clear(n.geometry)));
+      const terrace = BL.pokerTerrace.build(set); S.updateWorld(terrace.root, null);
+      const floorTris = trisUnder(room.floor.root, n => !clear(n.geometry)), opaque = floorTris.concat(trisUnder(terrace.root, n => !clear(n.geometry)), trisUnder(glazing, n => !clear(n.geometry)));
       for (const c of columns) tris(c, opaque);
       // Each wall's eyes test what lies within 4 m of that wall's glass and under 2.5 m (a ray going down and out meets
       // nothing else first), so the check stays quick.
@@ -39681,7 +39702,7 @@ const pokerGlazingChecks = (BL) => {
       // Rule: the columns, statues, cage and bar stand where they did: nine marble columns a side at x +-23.8 every 8.5 m
       // from z -34, the kit's own column, eight statue slots as before, and the cage and bar boxes unchanged.
       const cols = env.children.filter(n => n.geometry === g.column && g.column === K.column({ h: 8.8 }));
-      const colsOk = cols.length === 18 && [-1, 1].every(s => G.COLUMN_Z.every(z => cols.some(n => n.position.x === s * 23.8 && n.position.y === 0 && n.position.z === z))) &&
+      const colsOk = cols.length === 17 && [-1, 1].every(s => G.COLUMN_Z.filter(z => s < 0 || z !== 0).every(z => cols.some(n => n.position.x === s * 23.8 && n.position.y === 0 && n.position.z === z))) &&
         G.COLUMN_Z.every((z, k) => z === -34 + k * 8.5) && G.COLUMN_X === 23.8;
       const slots = BL.pokerStatues.SLOTS.map(s => [s.x, s.z]).join(";") === "-22.3,18;22.3,18;-22.3,6;22.3,6;-22.3,-6;22.3,-6;-22.3,-18;22.3,-18";
       const boxes = P.FURNITURE.filter(f => f.kind === "cage" || f.kind === "bar").map(f => [f.kind, f.x, f.z, f.hx, f.hz].join()).join(";") === "bar,-10,-35.3,8,0.9;bar,10,-35.3,8,0.9;cage,22.4,31,1,2.5";
@@ -39695,10 +39716,10 @@ const pokerGlazingChecks = (BL) => {
       // Re-pinned (the gaming floor): the four roulette and craps tables are the gaming floor's walk blocks, not the
       // glazing's; the rest stay 24.
       const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game").length === 24 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
-        !P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
+        P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
       const sconces = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).flame), cups = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).cup);
-      const placedLights = sconces.length === 18 && sconces.every(n => Math.abs(n.position.y - G.SCONCE_Y) < 1e-9 && Math.abs(Math.abs(n.position.x) - (23.8 - 0.41)) < 1e-9) &&
-        cups.length === 52 && cups.every(n => n.position.y === 0 && Math.abs(n.position.x) < 24.38);
+      const placedLights = sconces.length === 17 && sconces.every(n => Math.abs(n.position.y - G.SCONCE_Y) < 1e-9 && Math.abs(Math.abs(n.position.x) - (23.8 - 0.41)) < 1e-9) &&
+        cups.length === 50 && cups.every(n => n.position.y === 0 && Math.abs(n.position.x) < 24.38);
       record("poker glazing: no walk block, pick target, point light or vault part is added, and the room keeps its three top-level parts",
         quiet && !vaultKit && placedLights && room.root.children.length === 2 + room.tables.length, JSON.stringify({ quiet, vaultKit, sconces: sconces.length, cups: cups.length }));
     }
@@ -39715,10 +39736,10 @@ const pokerGlazingChecks = (BL) => {
       const room = rooms[0];
       // Rule: the terrace and balustrade outside catch the moon (every face glowing a share of its colour, the nodes lit
       // to show it), and the colonnade's eighteen candle flames are the ones the scene flickers.
-      const k = G.parts(false), terraces = nodesOf(room.glazing.root).filter(n => n.geometry === k.terraceSide || n.geometry === k.terraceEnd);
-      const moonlit = terraces.length === 4 && terraces.every(n => n.glow === 1) && [k.terraceSide, k.terraceEnd].every(t => { for (let i = 0; i < faces(t); i++) if (!(faceAt(t, i).emissive >= 0.15)) return false; return true; });
-      const flames = room.glazing.flames.length === 18 && room.glazing.flames.every(n => n.geometry === k.flame);
-      record("poker glazing: the terrace and balustrade catch the moon, and the colonnade's eighteen flames are the scene's to flicker", moonlit && flames, JSON.stringify({ terraces: terraces.length, flames: room.glazing.flames.length }));
+      const k = G.parts(false), terraces = nodesOf(room.glazing.root).filter(n => n.geometry === k.eastTerrace || n.geometry === k.terraceSide || n.geometry === k.terraceEnd);
+      const moonlit = terraces.length === 4 && terraces.every(n => n.glow === 1) && [k.eastTerrace, k.terraceSide, k.terraceEnd].every(t => { for (let i = 0; i < faces(t); i++) if (!(faceAt(t, i).emissive >= 0.15)) return false; return true; });
+      const flames = room.glazing.flames.length === 17 && room.glazing.flames.every(n => n.geometry === k.flame);
+      record("poker glazing: the terrace and balustrade catch the moon, and the colonnade's seventeen flames are the scene's to flicker", moonlit && flames, JSON.stringify({ terraces: terraces.length, flames: room.glazing.flames.length }));
     }
   } finally {
     P.setLite(false);
@@ -40126,7 +40147,7 @@ const pokerChecks = (BL) => {
   // Banana Club's fountain fills the middle of the main aisle, so wide spectators walk round it on either side, and its
   // statues stand at the row aisles' ends.
   const round = side => walk(0, 34, 0, 6, 0, 2, actor) && walk(0, 6, side * 3.6, 0, 0, 2, actor) && walk(side * 3.6, 0, 0, -6, 0, 2, actor) && walk(0, -6, 0, -34, 0, 2, actor);
-  record("poker floor: wide spectators can traverse the main aisle round the fountain and the row aisles; the pool, table and chair sweeps collide", !walk(0, 34, 0, -34, 0, 2, actor) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && !walk(22, 0, 26, 0, 0, 2, actor));
+  record("poker floor: wide spectators can traverse the main aisle round the fountain and the row aisles; the pool, table and chair sweeps collide", !walk(0, 34, 0, -34, 0, 2, actor) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && walk(22, 0, 26, 0, 0, 2, actor) && !walk(22, 9, 26, 9, 0, 2, actor) && !walk(28, 0, 34, 0, 0, 2, actor));
   {
     const P = BL.pokerModels, a = { bodyRadius: 0.65 }, out = { x: 0, z: 0 };
     // The fountain blocks the straight walk down the middle and the walk round it is open either side; the statues close
@@ -40419,7 +40440,7 @@ const pokerChecks = (BL) => {
     const faceCount = geo => BL.compactGeometry?.storageOf(geo)?.count ?? geo.faces.length;
     S.updateWorld(room.root, null);
     const seatsOf = [];
-    S.traverseVisible(room.root, n => { if (n.geometry === g.sofa || n.geometry === g.armchair || n.geometry === g.stool) seatsOf.push(n); });
+    S.traverseVisible(room.root, n => { if (n.geometry === g.sofa || n.geometry === g.armchair || n.geometry === g.stool || n.geometry === g.tealStool) seatsOf.push(n); });
     const tris = new Map(seatsOf.map(n => {
       const v = vertsOf(n.geometry), m = n.world, at = i => [0, 1, 2].map(k => m[k] * v[i * 3] + m[4 + k] * v[i * 3 + 1] + m[8 + k] * v[i * 3 + 2] + m[12 + k]), out = [];
       for (let f = 0; f < faceCount(n.geometry); f++) { const ix = faceAt(n.geometry, f).i; for (let k = 1; k + 1 < ix.length; k++) out.push([at(ix[0]), at(ix[k]), at(ix[k + 1])]); }
@@ -42019,7 +42040,7 @@ const pokerCarryChecks = (BL) => {
     const a = plain(1), b = plain(0.9), ts = Array.from({ length: 256 }, (_, i) => i / 255 + 0.0001); ts.push({}); ts.pop();
     const steps = [C.FIXED, {}]; steps.pop(); const dt = steps[0];
     const pz = C.createPose(), co = C.createCarried(), fl = C.createFlight(), dir = { x: 0.8, y: 0.6, z: 0 }, from = { x: 0.5, y: 2.5, z: 0.5, q: co.q };
-    const id1 = panes.find(p => p.wall === "+x" && p.tier === 0 && near(p.cz, 4.25)).id, pane0 = panes[id1], hitAt = { x: G.SIDE_X, y: 2.3, z: 3.2 }, out1 = { x: 1, y: 0, z: 0 }, rayO = { x: 20.5, y: 1.7, z: 3.2 }, rayD = { x: 0.995, y: 0.0998, z: 0 };
+    const id1 = panes.find(p => p.wall === "+x" && p.tier === 0 && near(p.cz, 12.75)).id, pane0 = panes[id1], hitAt = { x: G.SIDE_X, y: 2.3, z: 11.7 }, out1 = { x: 1, y: 0, z: 0 }, rayO = { x: 20.5, y: 1.7, z: 11.7 }, rayD = { x: 0.995, y: 0.0998, z: 0 };
     let k = 0;
     const carryAllocDriver = (n) => {
       for (let i = 0; i < n; i++) {
@@ -42071,9 +42092,9 @@ const pokerCarryChecks = (BL) => {
     }
   }
   const at = (from, to) => { const d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]], L = Math.hypot(...d); const ok = C.aimAt(panes, { x: from[0], y: from[1], z: from[2] }, { x: d[0] / L, y: d[1] / L, z: d[2] / L }, aim, blockers); return ok ? "glass" : aim.reason; };
-  const bay = panes.find(p => p.wall === "+x" && p.tier === 0 && near(p.cz, 4.25)), mullion = bay.members[0];
-  const refusals = { column: at([20, 2, 8.5], [24.42, 2, 8.5]), mullion: at([20, 2.3, mullion], [24.42, 2.3, mullion]), transom: at([20, 1.7, 3.2], [24.42, G.TRANSOM_Y, 3.2]),
-    sill: at([20, 1.7, 3.2], [24.42, 0.4, 3.2]), vault: at([20, 1.7, 3.2], [24.42, 9.8, 3.2]), inward: at([20, 1.7, 3.2], [10, 1.7, 3.2]) };
+  const bay = panes.find(p => p.wall === "+x" && p.tier === 0 && near(p.cz, 12.75)), mullion = bay.members[0];
+  const refusals = { column: at([20, 2, 8.5], [24.42, 2, 8.5]), mullion: at([20, 2.3, mullion], [24.42, 2.3, mullion]), transom: at([20, 1.7, 11.7], [24.42, G.TRANSOM_Y, 11.7]),
+    sill: at([20, 1.7, 11.7], [24.42, 0.4, 11.7]), vault: at([20, 1.7, 11.7], [24.42, 9.8, 11.7]), inward: at([20, 1.7, 11.7], [10, 1.7, 11.7]) };
   record("poker carry: aimAt picks the pane at bays and tiers on all four walls, and refuses a column, mullion, transom, sill, vault or a pane across the hall",
     picks.length >= 12 && picks.every(p => p[3]) && refusals.column === "column" && refusals.mullion === "frame" && refusals.transom === "frame" && refusals.sill === "sill" &&
     refusals.vault === "vault" && refusals.inward === "far", JSON.stringify({ picks: picks.filter(p => !p[3]), refusals }));
@@ -42110,7 +42131,7 @@ const pokerCarryChecks = (BL) => {
     }
     throws.push(res);
   }
-  const lowPane = panes.find(q => q.wall === "+x" && q.tier === 0 && near(q.cz, 4.25)), lowSpot = spotOn(lowPane, 0.2);
+  const lowPane = panes.find(q => q.wall === "+x" && q.tier === 0 && near(q.cz, 12.75)), lowSpot = spotOn(lowPane, 0.2);
   const lc = { parts: {}, traits: { height: 1 }, root: { position: { x: 13, y: C.LEG_SHARE, z: lowSpot.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } } };
   C.carriedAt(lc, carried, 1, false);
   const ld = [lowSpot.x - 13, lowSpot.y - 1.6, 0], lL = Math.hypot(...ld), low = C.plan(panes, { x: 13, y: 1.6, z: lowSpot.z }, { x: ld[0] / lL, y: ld[1] / lL, z: 0 }, carried, aim, blockers) ? "planned" : aim.reason;
@@ -42126,9 +42147,9 @@ const pokerCarryChecks = (BL) => {
   const paneNodes = b => b.root.children.filter(n => n.geometry && (n.geometry.glass || n.geometry.glassOpacity));
   const scales = paneNodes(full).map(n => [n.scale.y, n.scale.z]);
   const hidden = b => paneNodes(b).filter(n => n.visible === false).length;
-  const id1 = panes.find(p => p.wall === "+x" && p.tier === 0 && near(p.cz, 4.25)).id, id2 = panes.find(p => p.wall === "-z" && p.tier === 1).id, id3 = panes.find(p => p.wall === "-x" && p.tier === 0).id;
-  const shattered = full.shatter(id1, { x: G.SIDE_X, y: 2.3, z: 3.2 }, { x: 1, y: 0, z: 0 });
-  const one = { hidden: hidden(full), intact1: full.intact(id1), others: panes.every(p => p.id === id1 || full.intact(p.id)), shards: full.shards(), again: full.shatter(id1, { x: G.SIDE_X, y: 2.3, z: 3.2 }, { x: 1, y: 0, z: 0 }), bad: full.shatter(-1, null, null) || full.shatter(panes.length, null, null) };
+  const id1 = panes.find(p => p.wall === "+x" && p.tier === 0 && near(p.cz, 12.75)).id, id2 = panes.find(p => p.wall === "-z" && p.tier === 1).id, id3 = panes.find(p => p.wall === "-x" && p.tier === 0).id;
+  const shattered = full.shatter(id1, { x: G.SIDE_X, y: 2.3, z: 11.7 }, { x: 1, y: 0, z: 0 });
+  const one = { hidden: hidden(full), intact1: full.intact(id1), others: panes.every(p => p.id === id1 || full.intact(p.id)), shards: full.shards(), again: full.shatter(id1, { x: G.SIDE_X, y: 2.3, z: 11.7 }, { x: 1, y: 0, z: 0 }), bad: full.shatter(-1, null, null) || full.shatter(panes.length, null, null) };
   full.update(0.5);
   full.shatter(id2, { x: 0, y: 5, z: -G.END_Z }, { x: 0, y: 0.2, z: -1 });
   const two = { broken: full.broken(), shards: full.shards(), hidden: hidden(full) };
@@ -42971,7 +42992,7 @@ const pokerAudioChecks = (BL) => {
   // The ducks, read from the music bus's own gain: the target in force at a moment, replayed from every call on it,
   // cancels included. Sitting dips it, a win dips it further for a moment and comes back to the seated level, a mute
   // and unmute while seated comes back seated too, and standing returns it to the free level.
-  const duckRun = fresh(), bus = duckRun.ctx.gains.find(g => g.to === channelNodes.music), busCalls = [];
+  const duckRun = fresh(), bus = duckRun.I.pools.triangles[0].pan.to.to, busCalls = [];
   duckRun.I.update(0, away);
   watch = busCalls;
   const levelAt = t => {
@@ -42988,6 +43009,14 @@ const pokerAudioChecks = (BL) => {
   const duckNow = () => duckRun.ctx.currentTime;
   // The bus's last ease: the time it starts, its target and how long it takes to come within 5% (three time constants).
   const lastEase = () => { const e = busCalls.filter(c => c.p === bus.gain && c.m === "setTargetAtTime").pop(); return e && { t: e.t, v: e.v, over: +(e.c * 3).toFixed(6) }; };
+  const distance = bus.to, filter = distance.to, stereo = filter.to;
+  duckRun.I.update(1, {x:32,z:0,fx:0,fz:1});
+  const railLevel = distance.gain.last, railPan = stereo.pan.last, railTone = filter.frequency.last;
+  duckRun.I.update(1, {x:32,z:0,fx:0,fz:-1});
+  const turnedPan = stereo.pan.last;
+  duckRun.I.update(1, {x:21,z:0,fx:1,fz:0});
+  record("poker audio: the doorway attenuates and localizes both music sources on the terrace, reverses across the listener and restores the indoor mix",
+    stereo.to === channelNodes.music && railLevel === .25 && railPan > .8 && turnedPan < -.8 && railTone > 0 && distance.gain.last === 1 && stereo.pan.last === 0);
   const free = levelAt(duckNow());
   duckRun.I.setSeated(true);
   const seated = levelAt(duckNow()), sitEase = lastEase();
@@ -43158,7 +43187,7 @@ const pokerPlaylistChecks = async (BL) => {
     };
     // The graph: the synth's gain (where every music voice's panner leads), the playlist's fade, the music bus.
     W.graph = () => {
-      const synth = W.A.pools.triangles[0].pan.to, bus = W.ctx.gains.find(g => g.to === channelNodes.music);
+      const synth = W.A.pools.triangles[0].pan.to, bus = synth.to;
       const fade = W.ctx.gains.find(g => g.to === bus && g !== synth);
       return { synth, fade, bus };
     };
@@ -43294,8 +43323,7 @@ const pokerPlaylistChecks = async (BL) => {
       JSON.stringify({ during, second }));
   }
 
-  // The ducks scale the playlist as they scale the synth: both reach the one music bus, the only node between them and
-  // the shared Music channel, and while a track plays sitting, a win and the mute move that bus as they always have.
+  // A track, a brush and a tone share the ducking bus, then the terrace gain, filter and pan on the way to Music.
   {
     const W = world({ seed: 8 });
     W.gesture();
@@ -43304,7 +43332,8 @@ const pokerPlaylistChecks = async (BL) => {
     const { synth, fade, bus } = W.graph(), src = W.sources[W.sources.length - 1];
     const path = (n) => { const out = []; while (n && n.to) { out.push(n); if (n.to.channel) { out.push(n.to.channel); break; } n = n.to; } return out; };
     const voice = path(W.A.pools.triangles[0].pan), brush = path(W.A.pools.brushes[0].pan), track = path(src);
-    const tail = (p) => p.slice(-2);
+    const sharedPath = [bus, bus.to, bus.to.to, bus.to.to.to, "music"];
+    const throughMusic = p => sharedPath.every((node,i) => p[p.length - sharedPath.length + i] === node);
     const levelAt = () => bus.gain.at(W.ctx.currentTime + 2);
     const free = levelAt();
     W.A.setSeated(true);
@@ -43320,7 +43349,7 @@ const pokerPlaylistChecks = async (BL) => {
     const playing = W.A.nowPlaying !== null;
     W.A.dispose();
     record("poker playlist: sitting, a win and the mute scale a playing track exactly as the synth, through the one music bus both play into",
-      playing && tail(voice)[0] === bus && tail(brush)[0] === bus && tail(track)[0] === bus && tail(track)[1] === "music" && voice.includes(synth) && track.includes(fade) &&
+      playing && throughMusic(voice) && throughMusic(brush) && throughMusic(track) && voice.includes(synth) && track.includes(fade) &&
       near(free, 0.16) && near(seated, 0.16 * 0.45, 1e-4) && near(won, 0.16 * 0.25, 1e-3) && near(muted, 0, 1e-9) && near(back, 0.16, 1e-4),
       JSON.stringify({ playing, free, seated, won, muted, back, voice: voice.length, track: track.length }));
   }

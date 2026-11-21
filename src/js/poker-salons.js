@@ -6,19 +6,16 @@
   const ROOMS = [
     { name: "Cypherpunk Lounge", x: -13, z: -43, y: 0, w: 13, d: 11, h: 4.5 },
     { name: "Cold Storage", x: 1, z: -43, y: 0, w: 13, d: 11, h: 5 },
-    { name: "Spectator Balcony", x: 12, z: -31, y: 5.3, w: 13, d: 7, h: 4.4 },
     { name: "21 Club", x: 10, z: -28, y: 17, w: 18, d: 15, h: 6 }
   ];
   // From, to, local x/z of the control, and local x/z where the player arrives. -1 is the main floor.
   const DOORS = [
     [-1, 0, -13, -34.3, 0, 3.5, "Whitepaper"],
     [-1, 1, 0, -35.8, 0, 3.5, "Genesis Vault"],
-    [-1, 2, 17.4, -34.25, 4.2, -1.2, "Gallery lift"],
+    [-1, 2, 17.4, -34.25, 5.4, -3.4, "Gate 21"],
     [0, -1, 0, 5.1, -13, -32, "Back to the bar"],
     [1, -1, 0, 5.1, 0, -33, "Back to the hall"],
-    [2, -1, 5.6, -2.6, 17.4, -32, "Gaming floor"],
-    [2, 3, 3.3, -2.6, 5.4, -3.4, "Gate 21"],
-    [3, 2, 6.4, -4.6, 3.2, -0.7, "Spectator balcony"],
+    [2, -1, 6.4, -4.6, 17.4, -32, "Gaming floor"],
     [0, 0, -1.22, -4.81, 0, 0, "Founders pass"]
   ];
   const mesh = (w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
@@ -135,25 +132,9 @@
         }
       }
       solid(0,0,3.18,3.18);
-    } else if (id === 2) {
-      for (const x of [-4.6, -2.9, -0.5, 1.2]) chair(x, 0.2, 0, "#52342b");
-      slab(-3, 1.2, -2.65, 5.2, 2.4, 0.24, WALNUT);
-      parts.push(letters("SPECTATOR GALLERY", 0.072, IVORY, -3, 1.7, -2.48));
-      solid(-3, -2.65, 5.2, 0.4);
     } else {
-      // Sky bar, fire pits and a brass telescope on a splayed tripod.
-      slab(-3.6, 0.63, -4.8, 6.4, 1.26, 1, WALNUT); slab(-3.6, 1.3, -4.8, 6.6, 0.12, 1.14, GOLD); solid(-3.6, -4.8, 6.6, 1.14);
-      for (let i = 0; i < 8; i++) {
-        const x = -6.15 + i * 0.46;
-        cylinder(x, -5.11, [[0, 1.36], [0.1, 1.36], [0.1, 1.62], [0.045, 1.68], [0.045, 1.82], [0, 1.82]], ["#795733", "#30624d", "#9c6452"][i % 3]);
-        slab(x, 1.51, -5.01, 0.11, 0.11, 0.022, IVORY);
-      }
-      for (let k = 0; k < 3; k++) {
-        const x = -6 + k * 2;
-        cylinder(x, -3.62, [[0, 0], [0.3, 0], [0.3, 0.06], [0.09, 0.12], [0.09, 0.75], [0.34, 0.75], [0.34, 0.87], [0, 0.87]], GOLD);
-        solid(x, -3.62, 0.68, 0.68);
-      }
-      parts.push(letters("21 CLUB", 0.09, IVORY, -3.6, 0.9, -4.24));
+      parts.push(BL.pokerTerrace.roofBar(lite)); solid(-3.6, -4.8, 6.6, 1.14);
+      for (const x of [-6, -4, -2]) solid(x, -3.62, 0.68, 0.68);
       for (const s of [-1, 1]) { fire(s * 4.3, 1, 0.86); chair(s * 6.3, 1.1, -s * 1.4, "#553e30"); chair(s * 4.3, 3.1, Math.PI, "#553e30"); }
       for (let i = 0; i < 3; i++) { const t = i * Math.PI * 2 / 3; parts.push(M.beam(Math.cos(t) * 0.58, 0, -3 + Math.sin(t) * 0.58, 0, 1.52, -3, 0.1, GOLD)); }
       parts.push(M.beam(-0.16, 1.33, -2.3, 0.23, 1.99, -4.06, 0.33, GOLD)); solid(0, -3, 1.2, 2.1);
@@ -178,11 +159,11 @@
         glyph = add(room, g.glyph, 0, 2.22, 0);
       }
     });
-    // A glazed lift shaft at the far right links the three landings visibly from the tables.
+    // A glazed lift shaft at the far right links the two landings visibly from the tables.
     const lift = [], x = 17.4, z = -35.05;
     for (const dx of [-0.78, 0.78]) for (const dz of [-0.72, 0.72])
       lift.push(mesh(0.095, 19.35, 0.095, GOLD, x + dx, 9.675, z + dz));
-    for (const y of [0.02, 2.35, 5.32, 7.65, 17.02, 19.35])
+    for (const y of [0.02, 2.35, 17.02, 19.35])
       lift.push(mesh(1.68, 0.085, 1.55, GOLD, x, y, z));
     const glazing = mesh(1.51, 19.25, 1.38, "#d7ceb9", x, 9.65, z);
     glazing.glassOpacity = 0.055; glazing.glassGrazing = 0.5; glazing.castShadow = false;
@@ -194,11 +175,11 @@
         [mesh(1.9, 0.51, 0.12, LACQUER, 0, 0, 0), mesh(1.94, 0.045, 0.15, GOLD, 0, 0.27, 0),
          letters(label, Math.min(0.072, 0.44 / label.length), IVORY, 0, 0.09, -0.055)];
       // Return signs on the front wall face into their room.
-      const n = add(root, M.merge(...parts), p.x + x, p.y + (i === 8 ? 2.47 : 1.55), p.z + z);
+      const n = add(root, M.merge(...parts), p.x + x, p.y + (i === 6 ? 2.47 : 1.55), p.z + z);
       if (i === 3 || i === 4) n.rotation.y = Math.PI;
       targets.push(n);
     });
-    // The two closed rooms have opaque walls behind the bar. The balcony and rooftop are visible from outside.
+    // The two closed rooms have opaque walls behind the bar. The rooftop is visible from outside.
     const show = id => {
       for (let i = 0; i < 2; i++) rooms[i].visible = i === id;
       for (let i = 0; i < targets.length; i++) targets[i].visible = DOORS[i][0] === id;

@@ -224,7 +224,19 @@
   const humanAt = new Uint8Array(10), FAR_DEAL = 25, NEXT_FAR = 9;
   const theme = Themes.club;
   const clamp = BL.math.clamp;
-  let salons = null, salon = -1;
+  let salons = null, salon = -1, telescope = null, byScope = false;
+  const nearScope = () => {
+    const p = avatar.root.position, t = BL.pokerTerrace.station;
+    return salon < 0 && Math.hypot(p.x - t.x, p.z - t.z) <= 2.65;
+  };
+  const useScope = () => {
+    if (!pilot.player || seated || carry.phase !== IDLE || panel.focused || seatTable >= 0 || !nearScope()) {
+      hud.toast("Walk up to the brass telescope on the terrace."); return;
+    }
+    telescope.open();
+  };
+  const eastLimit = (p, inside) => Math.abs(p.z) < BL.pokerGlazing.OPEN || p.x > 25 && Math.abs(p.z) < 7
+    ? BL.pokerTerrace.outer(p.z) - 0.2 : inside;
   const currentSalon = () => salon < 0 ? null : BL.pokerSalons.ROOMS[salon];
   const floorWalk = (ax, az, bx, bz, y, h, actor) => salon >= 0 && actor === avatar ?
     BL.pokerSalons.clear(salons.solids[salon], currentSalon(), ax, az, bx, bz, actor.bodyRadius) :
@@ -259,8 +271,8 @@
     const den = game.state.emberDen;
     if (i === 0) return den.lounge ? "Enter the Cypherpunk Lounge" : "Pull the whitepaper";
     if (i === 1 && !den.pass && !den.bigWin && den.visits < 21) return "Cold Storage · find the founder’s pass or win a 100-chip pot";
-    if (i === 6 && !den.bigWin && den.visits < 21) return "21 Club · " + den.visits + "/21 visits, or win a 100-chip pot";
-    if (i === 8) return den.pass ? "Founder’s pass · Cold Storage unlocked" : "Pick up the founder’s pass";
+    if (i === 2 && !den.bigWin && den.visits < 21) return "21 Club · " + den.visits + "/21 visits, or win a 100-chip pot";
+    if (i === 6) return den.pass ? "Founder’s pass · Cold Storage unlocked" : "Pick up the founder’s pass";
     return BL.pokerSalons.DOORS[i][6];
   };
   const useDoor = i => {
@@ -270,21 +282,21 @@
     const d = BL.pokerSalons.DOORS[i], p = avatar.root.position, t = salons.targets[i].position;
     if (d[0] !== salon) return;
     if (Math.hypot(p.x - t.x, p.z - t.z) > 2.9) { hud.toast("Walk closer · " + doorHint(i)); return; }
-    if (i === 8) { game.recordDen("pass"); hud.toast(doorHint(i)); return; }
+    if (i === 6) { game.recordDen("pass"); hud.toast(doorHint(i)); return; }
     const den = game.state.emberDen;
-    if ((i === 6 || i === 1 && !den.pass) && !den.bigWin && den.visits < 21) { hud.toast(doorHint(i)); return; }
+    if ((i === 2 || i === 1 && !den.pass) && !den.bigWin && den.visits < 21) { hud.toast(doorHint(i)); return; }
     if (i === 0) game.recordDen("lounge");
     salon = d[1]; salons.show(salon); const r = currentSalon();
     const position = { x: d[4] + (r ? r.x : 0), y: r ? r.y : 0, z: d[5] + (r ? r.z : 0) };
-    pilot.navigate({ position, yaw: salon < 0 || i === 2 || i === 7 ? Math.PI : 0, pitch: 0.2, dist: 3 });
+    pilot.navigate({ position, yaw: salon < 0 || i === 2 ? Math.PI : 0, pitch: 0.2, dist: 3 });
     keepCameraInside(); hud.setAreaLabel(r ? r.name : "Ember Den"); hud.toast(r ? r.name : "Ember Den");
   };
-  const clampTarget = p => { if (salon >= 0) { salonClamp(p, currentSalon(), 0.6); return; } p.x = clamp(p.x, -22, 22); p.z = clamp(p.z, -34, 34); p.y = clamp(p.y, 0.5, 7); };
+  const clampTarget = p => { if (salon >= 0) { salonClamp(p, currentSalon(), 0.6); return; } p.x = clamp(p.x, -22, eastLimit(p, 22)); p.z = clamp(p.z, -34, 34); p.y = clamp(p.y, 0.5, 7); };
   const clampCamera = p => {
     const x = p.x, y = p.y, z = p.z;
     // Stay inside the wall finishes and columns, with clearance for the camera's near plane.
     if (salon >= 0) { salonClamp(p, currentSalon(), 0.24); return p.x !== x || p.y !== y || p.z !== z; }
-    p.x = clamp(x, -23, 23); p.z = clamp(z, -35.7, 35.7); p.y = clamp(y, 0.8, 8.5);
+    p.x = clamp(x, -23, eastLimit(p, 23)); p.z = clamp(z, -35.7, 35.7); p.y = clamp(y, 0.8, 8.5);
     return p.x !== x || p.y !== y || p.z !== z;
   };
   const keepCameraInside = () => {
@@ -867,8 +879,8 @@
       clampTarget, clampCamera, observeOrbit: keepCameraInside, ceilingAt: () => salon < 0 ? 8.5 : currentSalon().y + currentSalon().h - 0.2, coarse: matchMedia("(pointer: coarse)").matches, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: ground } });
     Object.assign(hooks, pilot.hooks, {
-      onHover: (hit, p) => { if (hit?.owner.kind === "salon" && BL.pokerSalons.DOORS[hit.owner.index][0] === salon) hud.tooltip.show(doorHint(hit.owner.index), p.x, p.y); else if (salon >= 0) hud.tooltip.hide(); else if (hit?.owner.kind === "poker") hud.tooltip.show(`Table ${hit.owner.index + 1} · select to play or watch`, p.x, p.y); else if (hit?.owner.kind === "placard") hud.tooltip.show(BL.pokerStatues.tip(hit.owner.index), p.x, p.y); else if (hit?.owner.kind === "music") hud.tooltip.show("Lounge music · select for credits", p.x, p.y); else if (hit?.owner.kind === "game") hud.tooltip.show(BL.pokerGames.TOOLTIP[BL.pokerModels.GAMES[hit.owner.index].kind], p.x, p.y); else hud.tooltip.hide(); },
-      onTap: hit => { if (hit?.owner.kind === "salon") useDoor(hit.owner.index); else if (salon >= 0) return; else if (hit?.owner.kind === "poker") select(hit.owner.index); else if (hit?.owner.kind === "placard") openPlacard(hit.owner.index); else if (hit?.owner.kind === "music") openCredits(); else if (hit?.owner.kind === "poker-exit") leaveFloor(); else if (hit?.owner.kind === "game") hud.toast(BL.pokerGames.WATCH_ONLY); }
+      onHover: (hit, p) => { if (hit?.owner.kind === "telescope") hud.tooltip.show("Look through the telescope", p.x, p.y); else if (hit?.owner.kind === "salon" && BL.pokerSalons.DOORS[hit.owner.index][0] === salon) hud.tooltip.show(doorHint(hit.owner.index), p.x, p.y); else if (salon >= 0) hud.tooltip.hide(); else if (hit?.owner.kind === "poker") hud.tooltip.show(`Table ${hit.owner.index + 1} · select to play or watch`, p.x, p.y); else if (hit?.owner.kind === "placard") hud.tooltip.show(BL.pokerStatues.tip(hit.owner.index), p.x, p.y); else if (hit?.owner.kind === "music") hud.tooltip.show("Lounge music · select for credits", p.x, p.y); else if (hit?.owner.kind === "game") hud.tooltip.show(BL.pokerGames.TOOLTIP[BL.pokerModels.GAMES[hit.owner.index].kind], p.x, p.y); else hud.tooltip.hide(); },
+      onTap: hit => { if (hit?.owner.kind === "telescope") useScope(); else if (hit?.owner.kind === "salon") useDoor(hit.owner.index); else if (salon >= 0) return; else if (hit?.owner.kind === "poker") select(hit.owner.index); else if (hit?.owner.kind === "placard") openPlacard(hit.owner.index); else if (hit?.owner.kind === "music") openCredits(); else if (hit?.owner.kind === "poker-exit") leaveFloor(); else if (hit?.owner.kind === "game") hud.toast(BL.pokerGames.WATCH_ONLY); }
     });
     hud.setDestinations(Object.keys(VIEW_NAMES), VIEW_NAMES);
     hud.setAreaLabel("Ember Den");
@@ -889,6 +901,10 @@
     salons = BL.pokerSalons.build(ctx.renderer.kind === "canvas2d", room.hall.vaultDoor); S.addChild(root, salons.root);
     salons.targets.forEach((n, index) => { input.add(n, { kind: "salon", index }); targets.push(n); });
     cosmos = Themes.hang({ canvas: ctx.renderer.kind === "canvas2d", sparse: ctx.renderer.kind === "canvas2d" || ctx.renderer.quality === "low" });
+    const terrace = BL.pokerTerrace.build(ctx.renderer.kind === "canvas2d");
+    S.addChild(root, terrace.root);
+    input.add(terrace.target, { kind: "telescope" }); targets.push(terrace.target);
+    telescope = BL.pokerTelescope.create(camera, pilot, terrace, cosmos.parts.planets.find(p => p.key === "giant").node);
     for (let i = 0; i < 10; i++) { input.add(room.tables[i].top, { kind: "poker", index: i }); targets.push(room.tables[i].top); }
     for (const p of room.statues.plaques) { input.add(p.node, { kind: "placard", index: p.index }); targets.push(p.node); }
     for (const t of room.games.tables) { input.add(t.body, { kind: "game", index: t.index }); targets.push(t.body); }
@@ -922,7 +938,7 @@
     const name = [world.pilot, requested, BL.net.preferredCharacter()?.handle].find(n => BL.contributors.activeRoster.some(c => c.name === n && mayPick(c))) || (BL.contributors.activeRoster.find(mayPick) || BL.contributors.activeRoster[0]).name;
     world.pilot = null;
     const playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-    const shared = { root, input, hud, game: ctx.game, world: playerWorld, playerName: name, weaponsEnabled: false, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: ground, walkable: floorWalk, useNear: () => { if (carry.phase === HOLD) { throwNow(); return true; } if (scripted()) return true; const door = nearDoor(); if (door >= 0) { useDoor(door); return true; } if (salon >= 0) return true; const i = nearPlacard(); if (i >= 0) openPlacard(i); else if (nearMusic()) openCredits(); else if (nearGame()) hud.toast(BL.pokerGames.WATCH_ONLY); else select(selected); }, residentPose: cave => {
+    const shared = { root, input, hud, game: ctx.game, world: playerWorld, playerName: name, weaponsEnabled: false, fx, viewYaw: 0, outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: ground, walkable: floorWalk, useNear: () => { if (carry.phase === HOLD) { throwNow(); return true; } if (scripted()) return true; if (nearScope()) { useScope(); return true; } const door = nearDoor(); if (door >= 0) { useDoor(door); return true; } if (salon >= 0) return true; const i = nearPlacard(); if (i >= 0) openPlacard(i); else if (nearMusic()) openCredits(); else if (nearGame()) hud.toast(BL.pokerGames.WATCH_ONLY); else select(selected); }, residentPose: cave => {
       // Walking to a chair, lifting, winding up and throwing, the scene poses the visitor's Ooga itself.
       if (cave === avatar && scripted()) return true;
       if (!seated || cave !== avatar) return false;
@@ -999,7 +1015,7 @@
     // Clear the overhead sightline while keeping the tables illuminated.
     room.fixtures.visible = !tableView || panel.focused;
     // Restored views and possession blends can replace the ordinary solver's camera position.
-    keepCameraInside();
+    if (telescope.active) telescope.pose(); else keepCameraInside();
     if (carry.phase === HOLD) aimStep();
     // A guest thrown out or walked out comes back in through the mirror a while later.
     for (let k = 0; k < RETURN_SLOTS; k++) if (elapsed >= returns[k]) { returns[k] = Infinity; crowd.returnGuest(0, BL.pokerModels.EXIT_Z - 1.8, Math.PI, camera.position); }
@@ -1043,6 +1059,9 @@
       if (want !== shownChair[i] || count !== shownCount[i]) { shownChair[i] = want; shownCount[i] = count; panel.showEmote(i, want < 0 ? "" : emoteEmoji[k]); }
     }
     panel.setEmoteAvailable(BL.net.state.reactions && BL.net.state.room === "live" && !!people.player);
+    const atScope = !!drivenHere && nearScope();
+    if (atScope && !byScope && !telescope.active) hud.toast("Telescope · tap the brass tube or use Act to look through it.");
+    byScope = atScope;
     footsteps.update(drivenHere);
     // The room is heard from the Ooga driven here, else the visitor's own, facing the view's way on the floor; a view
     // straight down keeps the last facing.
@@ -1123,6 +1142,19 @@
         lights[off + 3] = 9; lights[off + 4] = ice ? 0.7 : 1.55; lights[off + 5] = ice ? 1.15 : 1.08; lights[off + 6] = ice ? 1.65 : 0.67;
       }
     }
+    if (salon < 0 && camera.position.x > 17 && Math.abs(camera.position.z) < 11) {
+      // Borrow the two far-end table lamps for the brass lanterns while looking out from this bay.
+      const fade = clamp((camera.position.x - 17) / 5, 0, 1) * clamp((11 - Math.abs(camera.position.z)) / 4, 0, 1);
+      for (let slot = 0; slot < 10; slot++) {
+        const i = (near + slot) % 10;
+        if (i !== 0 && i !== 8) continue;
+        const off = slot * 8, s = i === 0 ? 1 : -1;
+        lights[off] += (28 - lights[off]) * fade; lights[off+1] += (1.7 - lights[off+1]) * fade;
+        lights[off+2] += (s * 4.9 - lights[off+2]) * fade; lights[off+3] += (7.4 - lights[off+3]) * fade;
+        lights[off+4] += (1.85 - lights[off+4]) * fade; lights[off+5] += (1.12 - lights[off+5]) * fade;
+        lights[off+6] += (.65 - lights[off+6]) * fade;
+      }
+    }
     // The colonnade's candles flicker, each on its own beat.
     for (let i = 0; i < room.glazing.flames.length; i++) room.glazing.flames[i].glow = 0.84 + BL.blaze.flare(elapsed, i * 2.3) * 1.3;
     if (!session.live && !session.paused) {
@@ -1170,7 +1202,7 @@
     S.stepTweens(dt); fx.update(dt, elapsed);
   };
   const extra = (c, project) => remotes.drawNames(c, project);
-  const onKey = e => { if (BL.controls.matches(e, "view") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && modeAction("mode-toggle")) { e.preventDefault(); return true; } if (BL.controls.matches(e, "escape")) { if (panel.closeEmoteMenu()) return true; if (carry.phase >= LIFT) { if (carry.npc) putDown(); return true; } if (carry.phase === WALK) { dropRequest(); return true; } if (panel.focused) action("walk"); else if (seatTable >= 0 && !pendingStand) action("stand"); else if (!pilot.escape()) leaveFloor(); return true; } if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera(); return false; };
+  const onKey = e => { if (telescope.active) { if (e.key === "Escape") telescope.close(); return true; } if (BL.controls.matches(e, "view") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && modeAction("mode-toggle")) { e.preventDefault(); return true; } if (BL.controls.matches(e, "escape")) { if (panel.closeEmoteMenu()) return true; if (carry.phase >= LIFT) { if (carry.npc) putDown(); return true; } if (carry.phase === WALK) { dropRequest(); return true; } if (panel.focused) action("walk"); else if (seatTable >= 0 && !pendingStand) action("stand"); else if (!pilot.escape()) leaveFloor(); return true; } if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera(); return false; };
   const leave = () => {
     visit++; pendingLive?.dispose(); pendingLive = null;
     abortCarry(); panel.nowPlaying(null);
@@ -1189,6 +1221,7 @@
     for (const r of seatSmokes) r.dispose(); seatSmokes = null; seatSmoked.fill(null);
     // After the crowd, so no footfall reaches a closed context.
     audio.dispose(); audio = null; cheers = false;
+    telescope.dispose(); telescope = null; byScope = false;
     people.dispose(); fx.dispose(); pilot.dispose();
     for (const n of targets) input.remove(n); targets.length = 0;
     mirror.phase.dispose(); mirror.body.dispose(); mirror.glass.mirrorRipples = null;

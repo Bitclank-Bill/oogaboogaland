@@ -143,6 +143,7 @@
     let fadeAt = 0, endAt = 0, prefetchAt = 0, prefetched = false;
     // `off`: a decode failed, so this browser cannot play the tracks' format and the playlist stops for the visit.
     const playlist = { loaded: [], decoding: null, playing: null, failed: [], fallback: true, held: 0, played: 0, off: false };
+    let doorGain, doorFilter, doorPan, lastDistance = -1, lastPan = -2;
     const musicChannel = BL.sound.channel("music"), roomChannel = BL.sound.channel("room");
     const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], bed = {};
     let roomSineNext = 0;
@@ -311,7 +312,10 @@
     const init = () => {
       ctx = new AudioContext();
       stats.contexts++;
-      music = gain(musicLevel(0), musicChannel.node(ctx));
+      doorPan = panner(musicChannel.node(ctx));
+      doorFilter = filter("lowpass", Math.min(22000, ctx.sampleRate * 0.49), 0.707, doorPan);
+      doorGain = gain(1, doorFilter);
+      music = gain(musicLevel(0), doorGain);
       // The synth's level under the bus (1, or 0 while a track plays) and the playlist's fade, each track's trim into it.
       synth = gain(1, music);
       fade = gain(0, music);
@@ -627,6 +631,19 @@
       if ((bedWait -= dt) <= 0) {
         bedWait = BED_EVERY;
         bedLevel();
+        // Outdoors, both the recording and the synth reach the ear from the open bay.
+        const dx = 24.42 - ear.x, dz = -ear.z, dist = Math.hypot(dx, dz);
+        const outside = Math.max(0, Math.min(1, -dx / 7));
+        const pan = dist > 0 ? outside * 0.9 * (-dx * ear.fz + dz * ear.fx) / dist : 0;
+        if (Math.abs(outside - lastDistance) > 0.004 || outside !== lastDistance && (outside === 0 || outside === 1)) {
+          doorGain.gain.setTargetAtTime(Math.pow(0.25, outside), ctx.currentTime, 0.09);
+          const top = Math.min(22000, ctx.sampleRate * 0.49);
+          doorFilter.frequency.setTargetAtTime(top * Math.pow(1600 / top, outside), ctx.currentTime, 0.09);
+          lastDistance = outside;
+        }
+        if (Math.abs(pan - lastPan) > 0.008 || pan === 0 && lastPan !== 0) {
+          doorPan.pan.setTargetAtTime(pan, ctx.currentTime, 0.09); lastPan = pan;
+        }
       }
       if ((chipWait -= dt) <= 0) {
         chipWait = between(CHIP_MIN, CHIP_MAX);

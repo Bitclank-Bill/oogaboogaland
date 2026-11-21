@@ -13894,3 +13894,11 @@ body[data-active-scene] #cave-directory-button { min-height: 44px; }
 .wp-reader .wpr-site { color: var(--gn-teal-text); }
 .wp-reader .wpr-about { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--gn-teal); background: var(--gn-panel); color: var(--gn-teal-text); font: inherit; font-size: 11px; letter-spacing: 0.08em; cursor: pointer; white-space: nowrap; }
 .wp-reader .wpr-about:hover { background: color-mix(in srgb, var(--gn-teal) 18%, transparent); }
+
+.den-eyepiece[open] { inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; box-sizing: border-box; margin: 0; border: 0; padding: 0; background: radial-gradient(circle closest-side, transparent 88%, #513e27 89%, #191719 90%, #08090b 94%); color: #f7e9ce; touch-action: none; cursor: crosshair; }
+.den-eyepiece::backdrop { background: transparent; }
+.den-optics { position: absolute; bottom: max(12px,env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: max-content; max-width: 95%; padding: 8px 12px; background: #17151bf2; border: 1px solid #856845; border-radius: 8px; cursor: default; font: 14px/1.3 system-ui,sans-serif; }
+.den-optics p { width: 100%; text-align: center; margin: 0 0 3px; }
+.den-optics output { min-width: 3em; text-align: center; font-variant-numeric: tabular-nums; }
+.den-optics button { min-height: 40px; min-width: 40px; border: 1px solid #997e59; background: #30282a; color: #fff2d7; padding: 0 .65em; border-radius: 4px; cursor: pointer; }
+body:has(.den-eyepiece[open]) #stage > :not(#scene) { visibility: hidden; }

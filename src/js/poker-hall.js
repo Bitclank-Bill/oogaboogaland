@@ -192,7 +192,7 @@
     bronze.scale.y = 1.10;
     bronze.rotation.y = -0.72;
     const vaultDoor = child(root, g.safe, 0, 0, -35.8);
-    const tank = child(root, g.tank, 10, 2.79, -35.55);
+    const tank = child(root, g.tank, 10, 3.01, -36.19);
     // Compress the swimming circuit in depth to keep both animals inside the recessed window at the turns.
     const school = S.createNode({ position: { x: 0, y: 0, z: 0.52 } });
     S.addChild(tank, school); school.scale.z = 0.21;
