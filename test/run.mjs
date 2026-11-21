@@ -30997,6 +30997,20 @@ const timechainFirst = { name: "timechain first version", why: "rule: up close a
   record("timechain first version: up close a ring plinth shows the first version built for it with FIRST VERSION on its plaque's band, and a few metres back today's piece is there again, no other plinth changed",
     r.near.first && !r.near.piece && r.near.tag && r.near.others === 0 && !r.back.first && r.back.piece && !r.back.tag && r.back.others === 0, JSON.stringify(r));
 } };
+// The ₿ over the crown leads to the site whose feed it draws: a press on it (window.open stubbed) opens mempool.space
+// in a new tab with no opener and no referrer, and its tip says so.
+const timechainMarkLink = { name: "timechain mark link", why: "rule: a press on the ₿ over the crown opens mempool.space in a new tab, with no handle back to the page and no referrer", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const at = await b.evaluate(`(() => { const B = window.__ooga, live = B.timechain.built.live.find((l) => l.spec.id === "mark"), v = live.node.geometry.verts;
+    window.__markOpened = []; window.__markOpen = window.open; window.open = (...args) => { window.__markOpened.push(args); return null; };
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 7 }, yaw: 0, pitch: -1.0, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30);
+    let x = 0, y = 0, z = 0; for (let i = 0; i < v.length; i += 3) { x += v[i]; y += v[i + 1]; z += v[i + 2]; } const n = v.length / 3, m = live.node.world; x /= n; y /= n; z /= n;
+    const p = B.renderer.project(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]); return { x: p.x, y: p.y, tip: live.spec.tip }; })()`);
+  await b.click(at.x, at.y);
+  const r = await b.evaluate(`(() => { window.__ooga.advance(0.2, 1 / 30); const opened = window.__markOpened; window.open = window.__markOpen; delete window.__markOpen; delete window.__markOpened; return { opened }; })()`);
+  record("timechain mark link: a press on the ₿ over the crown opens mempool.space in a new tab with noopener and noreferrer, and its tip offers it",
+    r.opened.length === 1 && r.opened[0][0] === "https://mempool.space" && r.opened[0][1] === "_blank" && /noopener/.test(r.opened[0][2]) && /noreferrer/.test(r.opened[0][2]) && /mempool\.space/.test(at.tip), JSON.stringify({ at, ...r }));
+} };
 // Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
 const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
 const timechainMark = { name: "timechain mark", why: "regression: the stream's dots ended their flight in front of the mark's squares and a landing's spark swelled over its neighbours, so squares no dot had reached flashed yellow", run: async (b) => {
@@ -31053,7 +31067,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainHologram, timechainFirst, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainMarkLink, timechainHologram, timechainFirst, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 const timechainLectureScreens = {
   name: "timechain lecture screens", why: "regression: projected answers, screen focus, gestures, scrub holds, background sync and live popups follow the same lecture clock", run: async b => {

@@ -663,6 +663,8 @@
   // A plinth's first version (timechain-genesis-first.js) takes its piece's place while a visitor stands within
   // `near` metres of it (the reach at which its ring of light rises), the nearest plinth alone, and gives it back
   // beyond `far`; the change takes `time` seconds, under a column of light. `scale`: a first version shown larger.
+  // Where the ₿ over the crown leads: the site whose feed it draws.
+  const MEMPOOL_URL = "https://mempool.space";
   const FIRST = { near: 3 * BIG, far: 3 * BIG + 0.5, time: 0.45, scale: { byzantine: 1.15 } };
   // The plinth's deck in its own frame (plinthBody): its front and back edges, how far in from them the first version's
   // ring of light keeps, and where the label strip stands along its front.
@@ -1636,7 +1638,7 @@
     K.dome((ctx, D) => paintDome(ctx, D, L));
     // The cap stands well inside the dome, so Canvas 2D's face sort keeps it in front of the dome's own faces; its key
     // never changes, so it is painted once.
-    K.live({ cap: true, el0: Math.acos((CAP.rIn + CAP.ring / 2) / (L.R * 0.97)) / DEG, inset: 0.97, w: CAP.px, h: CAP.px, tip: "Where the road led: the whitepaper and the genesis block", key: () => "genesis", paint: (ctx) => paintCap(ctx) });
+    K.live({ cap: true, el0: Math.acos((CAP.rIn + CAP.ring / 2) / (L.R * 0.97)) / DEG, inset: 0.97, w: CAP.px, h: CAP.px, id: "mark", tip: "Where the road led: the whitepaper and the genesis block · Open mempool.space ↗", key: () => "genesis", paint: (ctx) => paintCap(ctx) });
     floorPoc.plan(K, L);
     // The ₿ over the crown, a mosaic of squares (`MARK`): one tile geometry shared by every square, each a node the
     // animator sizes, turns from white to orange as its transaction lands, flashes on a block and lets one fall.
@@ -2171,6 +2173,9 @@
       },
       tap(owner) {
         if (owner.kind === "genesis-portal") return portal.tapDoor();
+        // The ₿ over the crown is the live feed's own picture: a press on it opens the feed's site in a new tab, as the
+        // island's totems open theirs.
+        if (owner.kind === "live" && owner.slot.spec.id === "mark") { window.open(MEMPOOL_URL, "_blank", "noopener,noreferrer"); return true; }
         if (owner.kind !== "genesis") return false;
         if (EXHIBITS[owner.index].plinth !== "centre" && portal.hit(EXHIBITS[owner.index].plinthIndex)) return true;
         look(owner.index);
