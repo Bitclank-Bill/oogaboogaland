@@ -114,7 +114,8 @@ export const audienceRoom = {
 
   // The island's word on its players, sent only when it changes (or `force`d), newest `seq` winning at the Audience.
   world(room, force = false) {
-    if (!enabled(room)) return null;
+    // A Room waking from hibernation or a deploy speaks once its stored voice links are loaded (room.js), never before.
+    if (!enabled(room) || room.linksReady === false) return null;
     const speakers = [], active = [], linked = [];
     for (const p of room.players.values()) {
       // In the island's voice at all: its source wins.

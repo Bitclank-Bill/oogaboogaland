@@ -490,7 +490,9 @@ sees who can hear it: the Room names its partners for every player in voice, the
 to it by name (`listeners`' `ears`), and the island player's `links` frame carries them as `app`, each a row of its
 Online Oogas with the link (under Ooga Chat, or Main Island while listening there, or on its cloud while speaking),
 whose click takes back that one ask. Deleting an Ooga Chat account the island never had takes the links it asked
-for from there (`forgetVoiceLinks`, as `DELETE /api/me` does for an island account). The other way, an island
+for from there (`forgetVoiceLinks`, as `DELETE /api/me` does for an island account). A Room waking from hibernation or a deploy
+sends its first word only once its stored links have loaded, so a wake never names an empty list and closes a
+partner's pull. The other way, an island
 player hears a linked partner speaking from Ooga Chat wherever it stands (`addSources`), and a partner listening from
 Ooga Chat keeps the island microphone from being alone (`listeners`' `ears`). A link is the same ask in both apps: a
 contributor's Online Oogas in Ooga Chat shows it on each island player's row and asks or takes back through the Commons

@@ -112,6 +112,9 @@ export class Room extends DurableObject {
     this.chatBuckets = new Map();
     this.pmAccounts = new Map();
     this.links = new Map();
+    // Until the stored voice links load, the island's word to the Audience waits (room-audience.js `world`): sent sooner,
+    // it would name no linked partner and close every pull a partner in Ooga Chat holds.
+    this.linksReady = false;
     this.doorQueue = [];
     this.doorActive = null;
     this.doorPasses = new Map();
@@ -168,6 +171,11 @@ export class Room extends DurableObject {
         this.cloudsRev = clouds && Number.isSafeInteger(clouds.revision) ? clouds.revision : 0;
       }, () => { this.clouds = []; this.cloudsRev = 0; });
       await this.restoring("voiceLinks", (links) => { this.links = restoreLinks(links); });
+      // The links are here, and the players (rebuilt from their sockets below, which ran at the first await above): outdoor
+      // grants held over a wake or a redeploy are checked again, taken back if the switch is now off, and the island's
+      // word, held back until now, goes with every linked partner in it.
+      this.linksReady = true;
+      audienceRoom.restore(this);
       await this.restoring("chalk", async (chalk) => {
         const marks = chalk && CHALK.restore(chalk.marks);
         // A board stored before the board grew (no `v`) is widened as it loads; the next save stores it widened.
@@ -223,8 +231,6 @@ export class Room extends DurableObject {
     this.restoreDoor();
     this.hostId = electHost(this.players.values(), 0, (p) => this.npcEligible(p));
     this.followers = npcFollowers(this.players.values(), this.hostId, (p) => this.npcEligible(p));
-    // Outdoor grants held over a wake or a redeploy are checked again, and taken back if the switch is now off.
-    audienceRoom.restore(this);
     this.inspect.woke(this.players.size);
   }
 

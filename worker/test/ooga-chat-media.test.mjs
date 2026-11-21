@@ -461,6 +461,21 @@ test("the island: a voice link holds with an Ooga Chat speaker wherever the isla
   assert.equal(voice(b).ears, 33);
 });
 
+test("regression: a Room that wakes names its linked partners in its first word, never an empty list that would close their pulls", async () => {
+  const h = await roomHarness(), worlds = [];
+  h.room.env.AUDIENCE = { getByName: () => ({ world: async (...args) => { worlds.push(plain(args)); return { ok: true, pending: [] }; }, watch: async () => {}, snapshot: async () => null }) };
+  await h.join(1, "a");
+  h.room.saveAttachment(h.room.players.get(1));
+  h.room.links = new Map([[1, new Set([777])], [777, new Set([1])]]);
+  h.room.saveLinks();
+  worlds.length = 0;
+  const woken = await h.wake();
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(woken.players.get(1).voice.pub, "the player's publication came back with its socket");
+  assert.ok(worlds.length > 0, "the woken Room speaks");
+  assert.ok(worlds.every((w) => w[3].some((l) => l.id === "gh:1" && l.to.includes("gh:777"))), "every word names the partner, the first included");
+});
+
 test("the island follows the active microphone across both handoffs while the speaker remains signed in to OBL", async () => {
   const h = await roomHarness(), a = await h.join(1, "a"), b = await h.join(2, "b");
   const listener = h.room.players.get(1), speaker = h.room.players.get(2);
