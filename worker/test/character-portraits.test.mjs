@@ -160,6 +160,36 @@ test("Chat retries a failed immutable atlas at a bounded cadence without needing
   assert.equal(f.images.length, 2, "a good atlas is retained without polling its bytes");
 });
 
+test("a stalled contributors body stays inside the HTTP deadline and cannot block later portrait refreshes", async () => {
+  const f = portraitClient(), timers = new Map();
+  let serial = 0, requests = 0, stalled = true;
+  Object.assign(f.context, {
+    setTimeout: (fn, ms) => { const id = ++serial; timers.set(id, { fn, ms }); return id; },
+    clearTimeout: (id) => timers.delete(id)
+  });
+  f.BL.oogaChatConfig = {};
+  runInNewContext(readFileSync(new URL("../../src/ooga-chat/ooga-chat-http.js", import.meta.url), "utf8"), f.context);
+  const adapter = f.BL.oogaChatHttp.create({ fetch: async (path, init) => {
+    requests++; assert.equal(path, "/api/chat/public/contributors");
+    return { ok: true, status: 200, headers: { get: () => "application/json" }, json: () => stalled
+      ? new Promise((resolve, reject) => init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }))
+      : Promise.resolve(clientBody()) };
+  } });
+  f.portraits.configure(() => adapter.contributors());
+  f.portraits.refresh(); await drain();
+  assert.equal(requests, 1); assert.equal(adapter.pending, 1, "receiving headers does not finish the bounded read");
+  assert.equal(timers.size, 1); assert.equal([...timers.values()][0].ms, 8000);
+  [...timers.values()][0].fn(); await drain();
+  assert.equal(adapter.pending, 0); assert.equal(timers.size, 0); assert.equal(f.portraits.revision, "embedded");
+  stalled = false; f.clock.at += 120000; f.portraits.refresh(); await drain();
+  assert.equal(requests, 2); assert.equal(f.portraits.revision, revision, "the next refresh can adopt a complete answer");
+  assert.equal(adapter.pending, 0); assert.equal(timers.size, 0);
+  stalled = true; f.clock.at += 120000; f.portraits.refresh(); await drain();
+  assert.equal(adapter.pending, 1);
+  adapter.dispose(); await drain();
+  assert.equal(adapter.pending, 0); assert.equal(timers.size, 0); assert.equal(f.portraits.revision, revision, "disposal keeps the last good metadata");
+});
+
 test("Chat keeps the last complete atlas through failed replacements and ignores superseded image loads", () => {
   const f = portraitClient();
   f.portraits.apply(clientBody()); f.portraits.canvas("Alice"); f.images[0].load();

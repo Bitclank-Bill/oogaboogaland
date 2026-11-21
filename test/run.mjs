@@ -17297,6 +17297,8 @@ const oogaChatAppChecks = async () => {
     try {
       const seen = await tabs(b);
       for (const tab of seen) await open(b, tab, tab === "roster" ? 1200 : 300);
+      // Compare the same visible view: Listen owns a portrait refresh interval only while its tab shows.
+      await open(b, "chat", 300);
       const warm = await b.evaluate(`(() => { for (const v of document.querySelectorAll(".oc-view")) v.firstElementChild.__kept = true;
         return { nodes: document.querySelectorAll("*").length, intervals: __oc.intervals.size }; })()`);
       for (let round = 0; round < 6; round++) for (const tab of seen) await open(b, tab, 60);
