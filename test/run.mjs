@@ -4421,7 +4421,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "raid", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
@@ -4431,7 +4431,7 @@ const BROWSER_ONLY = ARGS.includes("--browser-only");
 if (BROWSER_ONLY && (!PICKED.length || FULL || ARGS.some(arg => arg !== "--browser-only" && !SCENES.includes(arg)))) {
   throw new Error("--browser-only requires named scenes and cannot be combined with full, unit, perf or dedicated checks");
 }
-const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app"].includes(ARGS[0]));
+const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app", "character-catalog-app"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -5149,7 +5149,7 @@ const hudNoticeChecks = async () => {
 const characterChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
-  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
+  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "hat", "hatNodes", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
   // `hatY` placed the loot crates' swag hats; nothing calls it now, and a file that still defines it builds the same.
   const collect = node => {
     if (node.geometry) mirrorGeometries.add(node.geometry);
@@ -17297,6 +17297,8 @@ const oogaChatAppChecks = async () => {
     try {
       const seen = await tabs(b);
       for (const tab of seen) await open(b, tab, tab === "roster" ? 1200 : 300);
+      // Compare the same visible view: Listen owns a portrait refresh interval only while its tab shows.
+      await open(b, "chat", 300);
       const warm = await b.evaluate(`(() => { for (const v of document.querySelectorAll(".oc-view")) v.firstElementChild.__kept = true;
         return { nodes: document.querySelectorAll("*").length, intervals: __oc.intervals.size }; })()`);
       for (let round = 0; round < 6; round++) for (const tab of seen) await open(b, tab, 60);
@@ -30800,6 +30802,24 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   record("timechain bridge keypad: walked back out in first person the view stays in the Ooga's head to the end and after",
     out.done && out.frames > 60 && out.worst < 0.45 && out.view === "first-person" && out.state === "idle" && out.along > 17, JSON.stringify(out));
 } };
+// Walked in and back out in combat, the pilot's camera at the shoulder hid the head while the doorway still held it
+// hidden, and put it back hidden for good.
+const sphereCombatHead = { name: "timechain combat head", why: "regression: an Ooga that crossed the Sphere's doorway in combat came back out with its head hidden from the camera for good", run: async (b) => {
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} B.pilot.exitClose(false); B.advance(0.3, 1 / 60); if (!B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(0.6, 1 / 60); })()`);
+  const before = await b.evaluate(`({ aiming: __ooga.pilot.aiming, view: __ooga.pilot.mode })`);
+  await b.key(" ");
+  await b.key("3");
+  await b.key("Enter");
+  const inside = await untilPage(b, 'B.scene === "timechain" && !B.transitioning && B.timechain.guide.stage === null', 20000);
+  await b.evaluate(`(() => { const B = __ooga, L = B.timechain.layout; B.advance(1.2, 1 / 60); B.pilot.navigate({ position: { x: L.exitButton.x + 0.6, y: 0, z: L.doorZ - 1 }, yaw: Math.PI, pitch: 0.05, dist: 4 }); B.advance(0.3, 1 / 60); })()`);
+  await b.key(" ");
+  const out = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "idle"', 25000);
+  const read = `({ aiming: __ooga.pilot.aiming, view: __ooga.pilot.mode, hidden: __ooga.pilot.player.parts.head.cameraHidden })`;
+  const back = await b.evaluate(`(() => { __ooga.advance(1.2, 1 / 60); return ${read}; })()`);
+  const carried = await b.evaluate(`(() => { const B = __ooga; if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(1.5, 1 / 60); return ${read}; })()`);
+  record("timechain combat head: walked through the doorway in combat and back out, the Ooga's head shows at the shoulder and after leaving combat",
+    before.aiming && before.view === "shoulder" && inside && out && back.view !== "first-person" && !back.hidden && !carried.aiming && carried.view !== "first-person" && !carried.hidden, JSON.stringify({ before, back, carried }));
+} };
 const sphereAccount = { name: "timechain account", why: "regression: account Retry must keep the owned Ooga at the keypad; an unanswered account still offers a solo visit without guessing", run: async (b) => {
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; BL.net.state.resolved = false; ${sphereStand("0.7", "13.8")} })()`);
   await b.key(" ");
@@ -30864,7 +30884,7 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
       && retry.before.selected && retry.after.selected && retry.before.held && retry.after.held && retry.before.mode === retry.after.mode && retry.after.lens === "eyes"
       && released.state === "idle" && released.selected === "portlandhodl" && released.refusal === null && released.near < 2, JSON.stringify({ retry, released }));
 } };
-scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereBridgeKeypad, sphereAccount, trip("hub")] });
+scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereCombatHead, sphereBridgeKeypad, sphereAccount, trip("hub")] });
 // The released hub (phones under 8 GB): the walk-out rebuilds the hub behind the room's held frame.
 scene("hub", { label: "timechain doorway release", query: "solo=1&character=portlandhodl&view=timechain&pos=0&hubcache=release", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
 scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
@@ -47391,7 +47411,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         // A follower plays frames back DELAY behind their arrival; a frame's events replay once playback reaches it.
         const reach = () => sync.update(BL.npcSync.DELAY + 0.05);
         sync = BL.npcSync.create(options); sync.update(0.3); reach();
-        const rejected = sync.frames === 0 && plans === 0 && crew.list.every(c => !c.puppet);
+        const rejected = sync.frames === 0 && plans === 0 && sync.incompatible && crew.list.every(c => c.puppet);
         sync.dispose();
         crew.workSites = [{ mouth: { id: "c11" } }, { mouth: { id: "c10" } }];
         sync = BL.npcSync.create(options); sync.update(0.3);
@@ -47400,7 +47420,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const accepted = waiting && sync.frames === 1 && plans === 1 && oldest.puppet;
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
-        const cleared = sync.frames === 1 && plans === 1 && crew.list.every(c => !c.puppet);
+        const cleared = sync.frames === 1 && plans === 1 && sync.incompatible && crew.list.every(c => c.puppet);
         BL.net.npcFrame = matchingFrame; BL.net.state.npcVersion++;
         sync.update(0.3); reach();
         const resumed = sync.frames === 2 && plans === 2 && oldest.puppet;
@@ -47409,7 +47429,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const releasedHost = sync.frames === 2 && plans === 2 && crew.list.every(c => !c.puppet);
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
-        const rejectedHost = sync.frames === 2 && plans === 2 && crew.list.every(c => !c.puppet);
+        const rejectedHost = sync.frames === 2 && plans === 2 && sync.incompatible && crew.list.every(c => c.puppet);
         // A cached host frame still contains the old sleeping poses when an
         // owner arrives. Local control and remote ownership must win immediately.
         sync.dispose();
@@ -47425,7 +47445,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const remote = !next.puppet && next.remoteControlled && !next.root.visible && next.state === "away" && !next.bedroll;
         sync.dispose(); crew.release();
         next.override = nextOverride; next.remoteControlled = false; crew.refreshStates(true);
-        record("NPC sync: matching site order accepts poses and events; incompatible catalogs and host changes release stale poses",
+        record("NPC sync: matching site order accepts poses and events; incompatible catalogs hold puppets and host changes release stale poses",
           accepted && rejected && cleared && resumed && releasedHost && rejectedHost && owned && remote,
           JSON.stringify({ accepted, rejected, cleared, resumed, releasedHost, rejectedHost, owned, remote }));
         // Regression (#498): an Ooga asleep on this page carries its crew's sleepRotation on the root. An upright
@@ -49179,6 +49199,153 @@ const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract:
 scene("dsb",{label:"integration checkpoint",query:"&weather=clear&time=1200",steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 
+// A real hosted build fetches an independent catalog before any contributor/model consumer initializes. This
+// dedicated check keeps that network boundary active; only unrelated feeds are fixtures, never nosim or net=0.
+const characterCatalogAppChecks = async () => {
+  const { catalogBaseline } = await import("../scripts/character-catalog-build.mjs");
+  const { seedCatalog } = await import("../scripts/character-catalog.mjs");
+  const { safeCharacterSource } = await import("../scripts/character-safety.mjs");
+  const { createPortraitManifest } = await import("../worker/src/character-portraits-format.js");
+  const chatBuild = await import("../scripts/ooga-chat.mjs");
+  const temporary = mkdtempSync(join(tmpdir(), "catalog-app-")), staged = join(temporary, "site"), shots = join(root, "untracked", "character-catalog");
+  const chatSite = join(temporary, "chat");
+  const baseline = "1".repeat(40), engine = "island-character-data-v1", environment = "staging";
+  const build = spawnSync(process.execPath, [join(root, "scripts/site.mjs"), staged, "--audio-assets", "--image-assets", "--worker-page", "--page-assets"], {
+    cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: baseline, CHARACTER_CATALOG_ENGINE: engine, CHARACTER_CATALOG_ENVIRONMENT: environment }
+  });
+  if (build.status !== 0) { rmSync(temporary, { recursive: true, force: true }); throw new Error("Catalog acceptance site build failed: " + build.stderr); }
+  chatBuild.build(chatSite, { fixtures: true });
+  const sources = catalogBaseline(root).map(({ path, kind, blob }) => ({ path, kind, blob, source: readFileSync(join(root, path), "utf8") }));
+  const at = Math.floor(Date.now() / 1000) - 7200;
+  const snapshot = (hair) => {
+    const source = safeCharacterSource({ handle: "CatalogPreview", joined: at, lastCommit: at, look: { hair, skin: "#a9744c", eyeColor: "#55ffaa", build: "slim" } });
+    const blob = createHash("sha1").update(`blob ${Buffer.byteLength(source)}\0${source}`).digest("hex");
+    return seedCatalog({ environment, engine, baseline, sources: [...sources, { path: "src/characters/CatalogPreview.js", kind: "data", blob, source }] });
+  };
+  let active = snapshot("#22cc88"), generation = 1, hold = true, catalogReads = 0, portraitPng = null, portraits = null, servingChat = false;
+  const portraitReads = [];
+  const pending = [], types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
+  const answer = (res) => { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ revision: active.digest, generation, catalog: active.catalog })); };
+  const server = createServer((req, res) => {
+    const path = new URL(req.url, "http://localhost").pathname;
+    if (path === "/api/characters/catalog") { catalogReads++; if (hold) pending.push(res); else answer(res); return; }
+    if (path === "/api/chat/public/contributors") {
+      const now = Date.now(), cast = active.catalog.entries.map((entry) => ({ handle: entry.identity.handle, github: entry.identity.github,
+        display: null, joinedAt: (entry.row?.joined || at) * 1000, lastCommitAt: (entry.row?.lastCommit || at) * 1000 }));
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ schema: 1, revision: active.digest, catalogRevision: active.digest, catalogGeneration: generation,
+        cast, portraits, sources: { cast: { state: "ok" }, stats: { state: "ok", generatedAt: now } },
+        stats: { meta: { org: "OogaBoogaX", schema_version: 3, generated_at: new Date(now).toISOString() },
+          contributors: [{ login: "CatalogPreview", last_seen_at: new Date(at * 1000).toISOString() }] } })); return;
+    }
+    if (portraits && path === `/api/chat/public/portraits/${active.digest}/${portraits.image}.png`) {
+      portraitReads.push(path); res.writeHead(200, { "content-type": "image/png" }); res.end(portraitPng); return;
+    }
+    const directory = servingChat ? chatSite : staged;
+    const file = resolve(directory, `.${path === "/" ? "/index.html" : path.replace(/^\/chat\//, "/")}`);
+    let body = null;
+    if (file.startsWith(directory + sep)) try { body = readFileSync(file); } catch { /* fixture 404 */ }
+    res.writeHead(body ? 200 : 404, { "content-type": types[extname(file)] || "application/octet-stream" }); res.end(body || "");
+  });
+  await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  let b;
+  try {
+    b = await launch({ w: 1000, h: 760 });
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const actual = window.fetch.bind(window);
+      window.fetch = (input, options) => {
+        const url = new URL(typeof input === "string" ? input : input.url, location.href);
+        if (url.origin === location.origin && !url.pathname.startsWith("/api/") || url.origin === location.origin && url.pathname === "/api/characters/catalog") return actual(input, options);
+        return Promise.resolve(Response.json(url.pathname === "/api/me" ? { player: null, donations: false, tess: false } : {}));
+      };
+      window.WebSocket = class extends EventTarget { static CONNECTING=0;static OPEN=1;static CLOSING=2;static CLOSED=3;readyState=3;send(){}close(){} };
+    })();` });
+    const address = `${origin}/?debug=1&scene=lab&solo=1&character=CatalogPreview&status=chillin&hour=12&day=80&welcome=0&pos=0`;
+    await b.open(address);
+    let deadline = Date.now() + 15000;
+    while (!pending.length && Date.now() < deadline) await b.sleep(20);
+    const before = await b.evaluate("({requested:!!BL.characterCatalog,compiled:!!BL.characters.get('midy-machete'),contributors:!!BL.contributors,scene:!!window.__ooga})");
+    record("character catalog page: a real hosted fetch holds contributor and model consumers behind the embedded registry", pending.length === 1 && before.requested && before.compiled && !before.contributors && !before.scene, JSON.stringify(before));
+    hold = false; for (const reply of pending.splice(0)) answer(reply);
+    await untilReady(b, 30000);
+    const view = await b.evaluate(`(() => { const c = BL.characters.get("CatalogPreview"), traits = BL.contributors.traitsFor("CatalogPreview");
+      return { status: BL.characterCatalog.current.status, revision: BL.characterCatalog.current.revision, roster: BL.characterCatalog.current.roster,
+        hair: c?.look.hair, contributor: BL.contributors.roster.some(row=>row.name==="CatalogPreview"), model: !!BL.models.caveman(traits).root,
+        scene: __ooga.scene, csp: document.querySelector('[http-equiv="Content-Security-Policy"]').content,
+        disabled: new URLSearchParams(location.search).has("nosim") || new URLSearchParams(location.search).get("net")==="0" }; })()`);
+    record("character catalog page: accepted data builds its contributor and real WebGL model under strict same-origin script policy", view.status === "ready" && view.revision === active.digest && /^[a-f0-9]{64}$/.test(view.roster)
+      && view.hair === "#22cc88" && view.contributor && view.model && view.scene === "lab" && !view.disabled
+      && view.csp.includes("script-src 'self'") && !/unsafe-inline|unsafe-eval/.test(view.csp), JSON.stringify(view));
+    mkdirSync(shots, { recursive: true });
+    await b.evaluate(`(() => { const card=document.createElement("div"), canvas=document.createElement("canvas"),title=document.createElement("div");
+      card.style.cssText="position:fixed;z-index:99999;right:20px;top:80px;padding:20px;background:#161b20;border:1px solid #ffd257;color:#ffd257;font:18px system-ui;text-align:center";
+      title.textContent="CatalogPreview · published data fixture"; card.append(title,canvas);document.body.append(card);
+      BL.hud.renderFaceIcon(canvas,BL.models.caveman(BL.contributors.traitsFor("CatalogPreview")),null,240); })()`);
+    await b.screenshot(join(shots, "catalog-preview.png"));
+    const atlas = () => b.evaluate(`(() => { const names=BL.characters.all().map(c=>c.handle).sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1).concat("ooga chat");
+      const sheet=document.createElement("canvas");sheet.width=640;sheet.height=Math.ceil(names.length/8)*80;const g=sheet.getContext("2d");
+      names.forEach((name,i)=>{const c=document.createElement("canvas");BL.hud.renderFaceIcon(c,BL.models.caveman(BL.contributors.traitsFor(name)),null,80);g.drawImage(c,i%8*80,Math.floor(i/8)*80);});
+      return sheet.toDataURL("image/png"); })()`);
+    const firstPortraitPng = Buffer.from((await atlas()).split(",")[1], "base64");
+    const first = active.digest; active = snapshot("#aa3355"); generation++;
+    await b.evaluate("BL.characterCatalog.start(()=>{})");
+    record("character catalog page: a running page pins its appearance when the endpoint advances", catalogReads === 1 && await b.evaluate(`BL.characterCatalog.current.revision===${JSON.stringify(first)}&&BL.characters.get('CatalogPreview').look.hair==='#22cc88'`));
+    await b.open(address); deadline = Date.now() + 30000;
+    while (!await b.evaluate(`window.BL?.characterCatalog?.current.revision===${JSON.stringify(active.digest)}`).catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Refreshed catalog page did not adopt the next revision");
+      await b.sleep(40);
+    }
+    await untilReady(b, 30000);
+    record("character catalog page: refreshing adopts the new appearance with the same NPC roster signature", catalogReads === 2 && await b.evaluate(`BL.characters.get('CatalogPreview').look.hair==='#aa3355'&&BL.characterCatalog.current.roster===${JSON.stringify(view.roster)}`));
+    // The exact accepted models produce the image served to Chat. Its new contributor cannot appear in Chat's
+    // bundled atlas, so a successfully loaded face here crosses both the public JSON and immutable image routes.
+    const image = await atlas();
+    portraitPng = Buffer.from(image.split(",")[1], "base64");
+    portraits = createPortraitManifest(active.catalog, active.digest, createHash("sha256").update(portraitPng).digest("hex"));
+    record("character catalog page: both real hosted boots have clean consoles", b.logs.length === 0, b.logs.join("\n"));
+    b.close(); servingChat = true; b = await launch({ w: 1000, h: 760 });
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `window.BL={};window.__portraitGL=0;
+      { const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){if(/webgl/i.test(type))__portraitGL++;return get.call(this,type,...args);}; }
+      Object.defineProperty(BL,"oogaChatFixtures",{configurable:true,set(fixtures){const create=fixtures.create;
+        fixtures.create=(...args)=>{const original=create(...args),http=BL.oogaChatHttp.create();return {...original,contributors:http.contributors,dispose(){original.dispose();http.dispose();}};};
+        Object.defineProperty(BL,"oogaChatFixtures",{value:fixtures,writable:true,configurable:true});}});` });
+    await b.open(`${origin}/fixture.html?state=signed-out`); deadline = Date.now() + 15000;
+    while (!await b.evaluate("!!document.querySelector('#oc-tab-roster')").catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Catalog Chat fixture did not start: " + b.logs.join(" | ")); await b.sleep(40);
+    }
+    await b.evaluate("document.querySelector('#oc-tab-roster').click()");
+    while (!await b.evaluate("!!document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"]')").catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Catalog Chat roster did not load"); await b.sleep(40);
+    }
+    await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-name').click()");
+    while (!await b.evaluate("!!BL.oogaChatPortraits.canvas('CatalogPreview')").catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Catalog Chat portrait did not load"); await b.sleep(40);
+    }
+    const chat = await b.evaluate("({revision:BL.oogaChatPortraits.revision,gl:__portraitGL,face:!!document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face'),width:BL.oogaChatPortraits.canvas('CatalogPreview').width})");
+    record("character catalog Chat: the real public adapter paints a newly published face from its same-origin immutable atlas without a 3D engine",
+      chat.revision === active.digest && chat.gl === 0 && chat.face && chat.width === 80
+      && portraitReads.includes(`/api/chat/public/portraits/${active.digest}/${portraits.image}.png`) && b.logs.length === 0, JSON.stringify({ chat, portraitReads, logs: b.logs }));
+    const faceBefore = await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face').toDataURL()");
+    active = snapshot("#22cc88"); generation++; portraitPng = firstPortraitPng;
+    portraits = createPortraitManifest(active.catalog, active.digest, createHash("sha256").update(portraitPng).digest("hex"));
+    await b.evaluate("BL.oogaChatHttp.create().contributors().then(()=>true)"); deadline = Date.now() + 10000;
+    while (!await b.evaluate(`(() => { const face=document.querySelector('.oc-roster li[data-name="CatalogPreview"] .roster-stats-face');
+      return BL.oogaChatPortraits.revision===${JSON.stringify(active.digest)}&&!!BL.oogaChatPortraits.canvas('CatalogPreview')
+        &&!!face&&face.toDataURL()!==${JSON.stringify(faceBefore)}; })()`)) {
+      if (Date.now() > deadline) throw new Error("Updated Chat portrait did not load"); await b.sleep(40);
+    }
+    const faceAfter = await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face').toDataURL()");
+    record("character catalog Chat: an already open contributor strip replaces its cached crop after a later activation", faceAfter !== faceBefore
+      && portraitReads.includes(`/api/chat/public/portraits/${active.digest}/${portraits.image}.png`) && b.logs.length === 0, JSON.stringify({ portraitReads, logs: b.logs }));
+    await b.screenshot(join(shots, "catalog-chat.png"));
+  } finally {
+    for (const reply of pending) reply.end();
+    if (b) b.close(); await dispose();
+    await new Promise((done) => server.close(done)); rmSync(temporary, { recursive: true, force: true });
+  }
+};
+
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));
   if (ONLY && (PICKED.length || PERF) && !picked.length) throw new Error(`No requested scene checks match ONLY=${ONLY}`);
@@ -49209,6 +49376,7 @@ if (ARGS.includes("cloud-hopper-arcade")) {
 }
 if (ARGS.includes("cloud-hopper-record")) { await highscoreClientChecks(); await cloudHopperRecordChecks(); }
 if (ARGS.includes("ooga-chat-app")) { await oogaChatAppChecks(); await dispose(); }
+if (ARGS.includes("character-catalog-app")) { await characterCatalogAppChecks(); await dispose(); }
 // The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (UNIT || ARGS.includes("cloud-hopper-controller")) await unitChecks();
 if (PROTOCOL) await pokerProtocolChecks();

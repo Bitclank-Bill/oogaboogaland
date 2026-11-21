@@ -617,11 +617,14 @@
       // back in.
       if (eyes) g.lens = null;
       else lens("back");
+      // The head is given back before the pilot moves its camera: `navigate` poses that camera at once, and in combat or
+      // first person it hides the head itself, keeping what it found to put back later. Found still hidden here, that
+      // would put it back hidden for good.
+      hideHead(cave, false);
       hold(false);
       // The pilot's own camera resumes behind the Ooga where it now stands on the bridge, not where it was left inside
       // the doors when the island opened; in first person, looking as the eyes look now.
       if (cave) pilot.navigate({ position: { x: cave.root.position.x, y: cave.root.position.y - cave.baseY, z: cave.root.position.z }, yaw: eyes ? g.to.yaw + Math.PI : cave.root.rotation.y + Math.PI, pitch: g.view ? g.view.pitch : eyes ? -g.pitch : 0.12, dist: g.view ? g.view.distance : 4.5 });
-      hideHead(cave, false);
       // In the view and mode the room was left in.
       if (cave && g.view) pilot.adopt(g.view, false);
       if (cave) pilot.controls.takeMovement();
