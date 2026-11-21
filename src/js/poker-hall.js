@@ -3,6 +3,7 @@
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene;
   const BRASS = "#b8893b", LIGHT = "#e2c88d", BLACK = "#17140f", ORANGE = "#f7931a";
+  const MOON_RADIUS = 26;
   const cache = M.scopedMap();
   const box = (x, y, z, w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   const turn = (profile, color, segments, emissive = 0) => M.lathe({ profile, color, segments, emissive });
@@ -18,7 +19,7 @@
     const key = "luna-" + sparse + "-" + canvas;
     if (cache.has(key)) return cache.get(key);
     const map = BL.pokerMoonMap, land = M.geometry();
-    const cols = sparse ? 64 : 96, rows = cols / 2, radius = 26;
+    const cols = sparse ? 64 : 96, rows = cols / 2, radius = MOON_RADIUS;
     const samples = map.fallback;
     const sample = (u, v, channel) => {
       const x = Math.floor(u * map.width) % map.width, y = Math.min(map.height - 1, Math.floor(v * map.height));
@@ -65,10 +66,12 @@
     frame.rotation.y = Math.atan2(-p.dir[0], -p.dir[2]);
     frame.rotation.x = Math.asin(p.dir[1]);
     const globe = child(frame, lunarSurface(sparse, canvas));
+    const hole = rig.parts.blackHole = BL.pokerBlackHole.create(rig.parts.still, MOON_RADIUS, canvas);
     const update = rig.update;
     // The original giant turned 0.05 radians per second. Its polar axis stays fixed as the marking rotates out of sight.
     rig.update = (dt, t, opts) => {
       update(dt, t, opts);
+      hole.update(dt);
       globe.rotation.y = (globe.rotation.y + dt * 0.05) % (2 * Math.PI);
     };
   };

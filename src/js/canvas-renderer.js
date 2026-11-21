@@ -1893,10 +1893,11 @@
       }
     };
     const drawImageSurface = (node) => {
-      const surface = node.geometry.imageSurface, asset = surface.asset, image = asset.load();
+      const surface = node.geometry.imageSurface, asset = surface.asset, image = surface.fallback ? surface.fallback() : asset.load();
       const dynamic = surface.dynamic === true;
-      if (dynamic ? image.readyState < 2 || image.seeking || !image.videoWidth || !image.videoHeight : !image.complete || !image.naturalWidth) return;
-      const imageWidth = dynamic ? image.videoWidth : asset.width, imageHeight = dynamic ? image.videoHeight : asset.height;
+      if (!surface.fallback && (dynamic ? image.readyState < 2 || image.seeking || !image.videoWidth || !image.videoHeight : !image.complete || !image.naturalWidth)) return;
+      const imageWidth = dynamic ? image.videoWidth : surface.fallback ? image.width : asset.width;
+      const imageHeight = dynamic ? image.videoHeight : surface.fallback ? image.height : asset.height;
       mat4.multiply(imageView, view, node.world);
       const rect = surface.rect, z = node.geometry.verts[2], m = imageView;
       // Front-on screens are exactly affine; oblique screens use at most

@@ -904,7 +904,7 @@
     const terrace = BL.pokerTerrace.build(ctx.renderer.kind === "canvas2d");
     S.addChild(root, terrace.root);
     input.add(terrace.target, { kind: "telescope" }); targets.push(terrace.target);
-    telescope = BL.pokerTelescope.create(camera, pilot, terrace, cosmos.parts.planets.find(p => p.key === "giant").node);
+    telescope = BL.pokerTelescope.create(camera, pilot, terrace, cosmos.parts.planets.find(p => p.key === "giant").node, cosmos.parts.blackHole);
     for (let i = 0; i < 10; i++) { input.add(room.tables[i].top, { kind: "poker", index: i }); targets.push(room.tables[i].top); }
     for (const p of room.statues.plaques) { input.add(p.node, { kind: "placard", index: p.index }); targets.push(p.node); }
     for (const t of room.games.tables) { input.add(t.body, { kind: "game", index: t.index }); targets.push(t.body); }

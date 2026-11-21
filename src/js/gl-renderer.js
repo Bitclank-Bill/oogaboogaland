@@ -3788,7 +3788,27 @@ void main() {
       }
       gl.activeTexture(gl.TEXTURE0);
     };
+    // The astronomical plate is procedural at eyepiece resolution. Compile its program
+    // only in a renderer that actually sees it and release it with that GL context.
+    const drawAccretion = (rec, count, cameraPass, resume) => {
+      const surface = rec.geometry.imageSurface;
+      if (!res.programs.accretion) {
+        const p = compile(IMAGE_VS, surface.accretion, ["uViewProj", "uRect", "uTime"]);
+        finishProgram(p);
+        res.programs.accretion = p;
+      }
+      const p = res.programs.accretion;
+      gl.useProgram(p.prog);
+      gl.uniformMatrix4fv(p.u.uViewProj, false, cameraPass ? viewProj : mirrorViewProj);
+      gl.uniform4fv(p.u.uRect, surface.rect);
+      gl.uniform1f(p.u.uTime, surface.time);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.bindVertexArray(rec.mesh.vao);
+      drawPart(rec.mesh, 0, rec.mesh.count, count);
+      gl.useProgram(resume.prog);
+    };
     const drawImageSurface = (rec, count, cameraPass, resume) => {
+      if (rec.geometry.imageSurface.accretion) { drawAccretion(rec, count, cameraPass, resume); return; }
       const surface = rec.geometry.imageSurface, image = surface.asset.load(), p = programs.image;
       const dynamic = surface.dynamic === true;
       let ready = dynamic ? image.readyState >= 2 && !image.seeking && image.videoWidth > 0 && image.videoHeight > 0
