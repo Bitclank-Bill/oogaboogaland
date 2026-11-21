@@ -49162,7 +49162,9 @@ const characterCatalogAppChecks = async () => {
     active = snapshot("#22cc88"); generation++; portraitPng = firstPortraitPng;
     portraits = createPortraitManifest(active.catalog, active.digest, createHash("sha256").update(portraitPng).digest("hex"));
     await b.evaluate("BL.oogaChatHttp.create().contributors().then(()=>true)"); deadline = Date.now() + 10000;
-    while (!await b.evaluate(`BL.oogaChatPortraits.revision===${JSON.stringify(active.digest)}&&!!BL.oogaChatPortraits.canvas('CatalogPreview')`)) {
+    while (!await b.evaluate(`(() => { const face=document.querySelector('.oc-roster li[data-name="CatalogPreview"] .roster-stats-face');
+      return BL.oogaChatPortraits.revision===${JSON.stringify(active.digest)}&&!!BL.oogaChatPortraits.canvas('CatalogPreview')
+        &&!!face&&face.toDataURL()!==${JSON.stringify(faceBefore)}; })()`)) {
       if (Date.now() > deadline) throw new Error("Updated Chat portrait did not load"); await b.sleep(40);
     }
     const faceAfter = await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face').toDataURL()");

@@ -116,3 +116,136 @@ test("Chat client changes face index and sheet together, rejects malformed maps 
   assert.equal(portraits.apply({ ...next, portraits: { ...next.portraits, cells: { alice: 0, wrong: 1 } } }), false);
   assert.equal(portraits.apply({ ...next, catalogGeneration: 3 }), true); assert.equal(portraits.revision, second);
 });
+
+const clientBody = (id = revision, generation = 2, handles = ["Alice", "Zoe"]) => ({
+  cast: handles.map((handle) => ({ handle })), catalogRevision: id, catalogGeneration: generation,
+  portraits: createPortraitManifest({ ...catalog, entries: handles.map((handle) => ({ identity: { handle } })) }, id, manifest.image)
+});
+const portraitClient = () => {
+  const clock = { at: 1000000 }, images = [];
+  class Image extends EventTarget {
+    constructor() { super(); images.push(this); }
+    load(width = 640, height = 80) { this.naturalWidth = width; this.naturalHeight = height; this.dispatchEvent(new Event("load")); }
+    fail() { this.naturalWidth = 0; this.dispatchEvent(new Event("error")); }
+  }
+  const canvas = () => {
+    const value = { getContext: () => ({ drawImage: (...args) => { value.drawn = args; } }),
+      toDataURL: () => `${value.drawn[0].src}:${value.drawn[1]},${value.drawn[2]}` };
+    return value;
+  };
+  const document = new EventTarget();
+  document.createElement = canvas;
+  const window = { BL: { oogaChatFaces: { cells: { alice: 0, zoe: 1 }, size: 80, columns: 8, fallback: 2 } } };
+  const context = { window, document, Image, Date: { now: () => clock.at }, AbortController };
+  runInNewContext(readFileSync(new URL("../../src/ooga-chat/ooga-chat-portraits.js", import.meta.url), "utf8"), context);
+  return { clock, images, canvas, context, document, BL: window.BL, portraits: window.BL.oogaChatPortraits };
+};
+const drain = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
+
+test("Chat retries a failed immutable atlas at a bounded cadence without needing another revision", () => {
+  const f = portraitClient(), body = clientBody();
+  f.portraits.apply(body);
+  assert.equal(f.portraits.canvas("Alice"), null);
+  assert.equal(f.images.length, 1);
+  f.images[0].fail();
+  for (let i = 0; i < 100; i++) { f.portraits.apply(body); f.portraits.canvas("Alice"); f.portraits.refresh(); }
+  assert.equal(f.images.length, 1, "repaints and repeated same-revision metadata cannot flood the image endpoint");
+  f.clock.at += 119999; f.portraits.apply(body); assert.equal(f.images.length, 1);
+  f.clock.at++; f.portraits.apply(body); assert.equal(f.images.length, 2, "the Contributing Oogas metadata poll alone retries a failed image");
+  assert.equal(f.images[1].src, f.images[0].src, "recovery retries the exact immutable URL");
+  f.images[1].load();
+  const face = f.portraits.canvas("Alice");
+  assert.equal(face.drawn[0], f.images[1]); assert.equal(face.drawn[1], 0);
+  f.clock.at += 120000; f.portraits.refresh();
+  assert.equal(f.images.length, 2, "a good atlas is retained without polling its bytes");
+});
+
+test("Chat keeps the last complete atlas through failed replacements and ignores superseded image loads", () => {
+  const f = portraitClient();
+  f.portraits.apply(clientBody()); f.portraits.canvas("Alice"); f.images[0].load();
+  const original = f.portraits.canvas("Alice"), names = ["Aaron", "Alice", "Zoe"];
+  f.portraits.apply(clientBody("c".repeat(64), 3, names));
+  assert.equal(f.portraits.canvas("Alice"), original, "new slot order cannot be used with the old image");
+  const superseded = f.images[1];
+  f.portraits.apply(clientBody("d".repeat(64), 4, names));
+  assert.equal(f.portraits.canvas("Alice"), original);
+  superseded.load();
+  assert.equal(f.portraits.canvas("Alice"), original, "a late image cannot undo the newer revision");
+  f.images[2].load(640, 160);
+  assert.equal(f.portraits.canvas("Alice"), original, "invalid dimensions preserve the last complete atlas");
+  assert.equal(f.images.length, 3);
+  f.clock.at += 120000; f.portraits.refresh(); f.images[3].load();
+  const current = f.portraits.canvas("Alice"), fallback = f.portraits.canvas("Unknown");
+  assert.notEqual(current, original); assert.equal(current.drawn[0], f.images[3]); assert.equal(current.drawn[1], 80);
+  assert.equal(fallback.drawn[0], f.images[3]); assert.equal(fallback.drawn[1], 240);
+});
+
+test("a quiet Listen view refreshes cached faces and stops its polling while hidden, signed out or disposed", async () => {
+  const f = portraitClient(), { document, BL } = f, timers = new Map(), frames = new Map(), observers = [], drawn = new Map();
+  let serial = 0, calls = 0, answer = clientBody();
+  class Element extends EventTarget {
+    constructor(tag) { super(); this.tagName = tag; this.children = []; this.dataset = {}; this.attributes = new Map(); this.hidden = false; this.ownerDocument = document; }
+    append(...children) { for (const child of children) if (child && typeof child === "object") { child.parentElement = this; this.children.push(child); } }
+    setAttribute(key, value) { this.attributes.set(key, String(value)); }
+    getAttribute(key) { return this.attributes.get(key) ?? null; }
+    closest() { for (let node = this; node; node = node.parentElement) if (node.hidden) return node; return null; }
+    contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
+    remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter((child) => child !== this); this.parentElement = null; }
+    focus() { document.activeElement = this; }
+  }
+  document.createElement = (tag) => tag === "canvas" ? f.canvas() : new Element(tag);
+  document.body = new Element("body"); document.hidden = false;
+  Object.assign(f.context, {
+    MutationObserver: class {
+      constructor(fn) { this.fn = fn; observers.push(this); }
+      observe(target) { this.target = target; }
+      disconnect() { this.target = null; }
+    },
+    setInterval: (fn, ms) => { const id = ++serial; timers.set(id, { fn, ms }); return id; }, clearInterval: (id) => timers.delete(id),
+    requestAnimationFrame: (fn) => { const id = ++serial; frames.set(id, fn); return id; }, cancelAnimationFrame: (id) => frames.delete(id)
+  });
+  const render = () => { for (const [id, fn] of [...frames]) { frames.delete(id); fn(); } };
+  const noop = () => {};
+  BL.signGlyphs = { letter: noop }; BL.oogaChatAuth = { gates: () => ({ joinVoice: false }) };
+  BL.audienceTiles = { create: () => {
+    let people = [];
+    const paint = (describe) => { for (const person of people) { const tile = {}; describe(person, tile); drawn.set(person.id, tile); } };
+    return { draw(list, describe) { people = list; paint(describe); }, repaint: paint, pop: noop, dispose: noop };
+  } };
+  BL.oogaChatPortraits.configure(async () => { calls++; return answer; });
+  runInNewContext(readFileSync(new URL("../../src/ooga-chat/ooga-chat-views.js", import.meta.url), "utf8"), f.context);
+  const voice = { role: "listener", phase: "idle", talking: [] }, state = {
+    mode: "live", boot: { features: {} }, auth: "signed-in", busy: null, device: { online: true }, zone: "main", voice,
+    session: { identity: { principal: "listener", participant: "gh:1", display: "Listener", login: "listener" } },
+    audience: { version: 1, status: "live", list: [{ id: "gh:2", display: "Alice", role: "speaker", source: "world", character: "Alice", muted: false }] }
+  };
+  const view = BL.oogaChatViews.chat({ actions: {}, media: { state: voice, available: true, VOLUME_MAX: 2, mutedLocally: () => false, mutedByDuel: () => false },
+    reactions: { bars: { mount: noop, refresh: noop }, onPop: () => noop } });
+  const panel = new Element("section"); document.body.append(panel); panel.append(view.node);
+  view.update(state); await drain(); render();
+  f.images.at(-1).load(); render();
+  const original = drawn.get("gh:2").face;
+  assert.ok(original.includes(revision)); assert.equal(calls, 1); assert.equal(timers.size, 1);
+  assert.equal([...timers.values()][0].ms, 120000);
+  for (let i = 0; i < 50; i++) view.update(state);
+  assert.equal(timers.size, 1); assert.equal(calls, 1);
+  answer = clientBody("e".repeat(64), 3, ["Aaron", "Alice", "Zoe"]); f.clock.at += 120000;
+  for (const timer of timers.values()) timer.fn();
+  await drain(); render();
+  assert.equal(calls, 2, "no audience/voice update or Contributing Oogas visit was needed");
+  assert.equal(drawn.get("gh:2").face, original, "cached face stays usable while the replacement loads");
+  f.images.at(-1).load(); render();
+  assert.notEqual(drawn.get("gh:2").face, original); assert.ok(drawn.get("gh:2").face.endsWith(":80,0"));
+  panel.hidden = true; for (const observer of observers) if (observer.target === panel) observer.fn();
+  assert.equal(timers.size, 0);
+  f.clock.at += 120000; panel.hidden = false;
+  for (const observer of observers) if (observer.target === panel) observer.fn();
+  await drain(); assert.equal(calls, 3); assert.equal(timers.size, 1);
+  document.hidden = true; document.dispatchEvent(new Event("visibilitychange")); assert.equal(timers.size, 0);
+  document.hidden = false; document.dispatchEvent(new Event("visibilitychange")); assert.equal(timers.size, 1);
+  view.update({ ...state, session: null }); assert.equal(timers.size, 0);
+  view.update(state); assert.equal(timers.size, 1);
+  view.dispose(); assert.equal(timers.size, 0); assert.equal(frames.size, 0);
+  assert.ok(observers.every((observer) => !observer.target));
+  document.dispatchEvent(new Event("visibilitychange")); assert.equal(timers.size, 0, "disposed listeners cannot restart polling");
+});
