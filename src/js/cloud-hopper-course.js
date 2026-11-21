@@ -167,6 +167,17 @@
       clouds.push(cloud);
       return cloud;
     };
+    // Gentle terraces (a layout's `terraces`): each landing's share of the drop weighted from a stream of its own, from
+    // seven tenths of an even step to a step and three tenths, so the descent comes in slightly uneven steps with no
+    // plunge; the order never changes (each landing is lower than the one before), and the landings' places across
+    // the course are the same as without.
+    let terrace = null;
+    if (layout.terraces) {
+      const tr = mulberry32(seed ^ 0x2545f491), w = [];
+      for (let i = 0; i < count; i++) w.push(0.7 + tr() * 0.6);
+      const sum = w.reduce((a, b) => a + b, 0); let run = 0;
+      terrace = w.map((v) => (run += v) / sum);
+    }
     for (let i = 0; i < count; i++) {
       if (i >= nextTurn) {
         target = (rand() - 0.5) * 2 * layout.turn;
@@ -179,7 +190,7 @@
       lateral = clamp(lateral, -remaining * layout.sway, remaining * layout.sway);
       const last = remaining === 0, t = (i + 1) * step;
       const along = last ? 1 : t + (rand() - 0.5) * step * alongJitter;
-      const down = last ? 1 : t + (rand() - 0.5) * step * 0.2;
+      const jitter = (rand() - 0.5) * step * 0.2, down = last ? 1 : terrace ? terrace[i] : t + jitter;
       const radial = startDistance - distance * along;
       const x = finish.x + nx * radial + sideX * lateral, z = finish.z + nz * radial + sideZ * lateral;
       const y = start.y - drop * down;
