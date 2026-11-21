@@ -49130,11 +49130,51 @@ const equipmentAppChecks = async () => {
   };
   const second = variant([35, 190, 90]), third = variant([190, 45, 170]);
   const retryVersion = variant([90, 130, 210]), cancelledVersion = variant([210, 130, 90]), pendingVersion = variant([130, 210, 90]);
+  // Publish a bounded catalog fixture through the same generated-register boundary as a reviewed build.
+  // Geometry/revision bytes still use the real validators, hashes, HTTP loader, UI and account save path.
+  const fixtureItems = [], fixtureRevisions = {}, fixtureCurrent = new Map();
+  const immutable = (value) => {
+    const text = equipmentHats.encode(value), version = createHash("sha256").update(text).digest("hex");
+    archives.set(version, text); return version;
+  };
+  const content = (color) => {
+    const value = equipmentHats.contentOf(JSON.parse(archives.get(item.current)));
+    if (color) for (const node of value.nodes) for (const face of node.geometry.faces) face.color = color;
+    equipmentHats.validateContent(value); return immutable(value);
+  };
+  const originalContent = content(), blueContent = content([40, 100, 210]);
+  const published = (id, hash, parent) => {
+    const archive = { format: 2, item: id, content: hash, profile: "straw", parent };
+    equipmentHats.validate(archive, id);
+    const version = immutable(archive);
+    fixtureRevisions[version] = { item: id, content: hash, profile: "straw", parent };
+    return { item: id, version };
+  };
+  const fixtureItem = (id, label, creator, hash, parent) => {
+    const selection = published(id, hash, parent);
+    fixtureItems.push({ id, label, creator, current: selection.version, versions: [selection.version], parent });
+    fixtureCurrent.set(id, selection.version); return selection;
+  };
+  const duplicate = fixtureItem("equipment-copy", "Shared straw hat", "HatCopy", originalContent, { item: item.id, version: item.current });
+  const fork = fixtureItem("equipment-blue", "Blue straw hat", "HatBlue", blueContent, { item: item.id, version: item.current });
+  const forkCopy = fixtureItem("equipment-blue-copy", "Shared blue hat", "HatBlueCopy", blueContent, { item: item.id, version: item.current });
+  const nested = fixtureItem("equipment-purple", "Purple straw hat", "HatPurple", content([170, 60, 190]), fork);
+  const forkSecond = published(fork.item, content([45, 170, 190]), { item: item.id, version: item.current });
+  const forkThird = published(fork.item, content([220, 100, 40]), { item: item.id, version: item.current });
+  const mainFile = readdirSync(join(staged, "js")).find(name => /^main-[a-f0-9]+\.js$/.test(name));
+  const mainPath = join(staged, "js", mainFile), main = readFileSync(mainPath, "utf8"), registry = "globalThis.BL.equipmentHats.register(";
+  if (!main.includes(registry)) throw new Error("Equipment fixture registry boundary is missing");
+  const augment = `(() => {const hats=globalThis.BL.equipmentHats,register=hats.register;
+    hats.register=(rows,revisions)=>register([...rows,...${JSON.stringify(fixtureItems)}],{...revisions,...${JSON.stringify(Object.fromEntries(fixtureItems.map(row => [row.current, fixtureRevisions[row.current]])))}});})();\n`;
+  writeFileSync(mainPath, main.replace(registry, augment + registry));
   let current = item.current, saved = { selection: null, size: 100, revision: 0, declined: null, update: null };
   let heldArchive = null, archiveGate = null, releaseArchive = null;
   const account = { id: 71, login: "equipment-preview", display: "Equipment preview" }, at = Math.floor(Date.now() / 1000) - 3600;
-  const answer = () => ({ ...saved, update: saved.selection?.item === item.id && saved.selection.version !== current && saved.declined !== current
-    ? { item: item.id, version: current } : null });
+  const answer = () => {
+    const latest = saved.selection?.item === item.id ? current : fixtureCurrent.get(saved.selection?.item);
+    return { ...saved, update: latest && saved.selection.version !== latest && saved.declined !== latest
+      ? { item: saved.selection.item, version: latest } : null };
+  };
   const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, "http://localhost").pathname;
@@ -49202,7 +49242,14 @@ const equipmentAppChecks = async () => {
     await b.open(address); await untilReady(b, 30000);
     await wait("BL.equipment?.state.supported && BL.net.ownCharacter()?.handle==='equipment-preview' && !!document.getElementById('studio-hat')", "Hosted wardrobe did not initialize");
   };
-  const choose = async (value) => b.evaluate(`(() => { const select=document.getElementById('studio-hat');select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  const choose = async (value) => b.evaluate(`(() => {
+    const value=${JSON.stringify(value)}, selection=value.includes('@')?{item:value.split('@')[0],version:value.split('@')[1]}:null;
+    const choice=selection?BL.equipmentHats.choiceFor(selection):null;
+    const input=[...document.querySelectorAll('#studio-hat input[type=radio]')].find(input=>choice?input.dataset.hatKey===choice.key:input.value===value);
+    if(!input)throw new Error('Hat choice is missing: '+value);
+    for(let parent=input.closest('details');parent;parent=parent.parentElement.closest('details'))parent.open=true;
+    input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
   const resize = async (size) => {
     await b.evaluate(`(() => { const input=document.getElementById('studio-hat-size');input.value=${size};input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
     await wait(`BL.characterEquipment.size(__ooga.studio.cave)===${size}`, "Hat size preview did not apply");
@@ -49216,6 +49263,24 @@ const equipmentAppChecks = async () => {
   };
   try {
     await open({ w: 1000, h: 760 });
+    const groups = await b.evaluate(`(() => {
+      const hats=BL.equipmentHats,original=hats.choiceFor({item:${JSON.stringify(item.id)},version:${JSON.stringify(item.current)}}),
+        copy=hats.choiceFor(${JSON.stringify(duplicate)}),fork=hats.choiceFor(${JSON.stringify(fork)}),child=hats.choiceFor(${JSON.stringify(nested)});
+      const inputs=[...document.querySelectorAll('#studio-hat input[type=radio]')],row=inputs.find(input=>input.dataset.hatKey===original.key),
+        variant=inputs.find(input=>input.dataset.hatKey===fork.key),nested=inputs.find(input=>input.dataset.hatKey===child.key);
+      return {shared:original.key===copy.key,one:inputs.filter(input=>input.dataset.hatKey===original.key).length===1,
+        credits:row.closest('label').textContent.includes('HatCopy')&&row.closest('label').textContent.includes(${JSON.stringify(item.creator)}),
+        collapsed:!variant.closest('details').open,nested:!!nested.closest('details').parentElement.closest('details')};
+    })()`);
+    record("equipment catalog: identical hats share one credited choice and edited forks form collapsed nested variants", Object.values(groups).every(Boolean), JSON.stringify(groups));
+    await b.evaluate("document.querySelector('.studio-hat-variants > summary').focus()");
+    await b.key("Enter");
+    await wait("document.querySelector('.studio-hat-variants').open", "Keyboard did not expand variants");
+    await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').focus()`);
+    await b.key(" "); await wait(wearing(fork), "Keyboard did not preview the full immutable fork");
+    record("equipment catalog: keyboard disclosure and selection preview a full immutable variant without saving", writes.length === 0
+      && archiveReads.includes(fork.version) && archiveReads.includes(blueContent)
+      && await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').checked`));
     await b.evaluate("window.__equipmentCave=__ooga.studio.cave;window.__equipmentRoot=__ooga.studio.cave.root");
     let previews = 0;
     for (const entry of equipmentHats.items) {
@@ -49459,7 +49524,41 @@ const equipmentAppChecks = async () => {
       E.clear(p.own);E.clear(p.peer);E.clear(p.cancelled);return ok;
     })()`));
     record("equipment studio: safe-minimum acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
-    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png"] }, null, 2) + "\n");
+    // A separately authored identical hat keeps its own update stream when represented by the shared row.
+    account.login = "equipment-preview"; account.display = "Equipment preview";
+    saved = { selection: duplicate, size: 115, revision: saved.revision + 1, declined: null, update: null };
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(duplicate), "Shared hat lost its saved item identity");
+    const beforeAlias = writes.length;
+    await choose(`${item.id}@${item.current}`); await save(duplicate);
+    record("equipment catalog: selecting a deduplicated row keeps the saved creator identity and personal size", writes.length === beforeAlias + 1
+      && writes.at(-1).selection.item === duplicate.item && saved.size === 115 && saved.update === null);
+    // Updating the original must never offer its version to a fork or a copied item's wearer.
+    current = second;
+    await b.evaluate("BL.equipment.refresh()");
+    record("equipment catalog: an original creator update cannot change or notify another item's wearer", await b.evaluate(wearing(duplicate) + " && document.getElementById('equipment-update').hidden"));
+    saved = { selection: fork, size: 90, revision: saved.revision + 1, declined: null, update: null };
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(fork), "Saved fork did not reload");
+    record("equipment catalog: a saved variant reopens its family with its own version and size", await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').closest('details').open && BL.characterEquipment.size(__ooga.studio.cave)===90 && document.getElementById('equipment-update').hidden`));
+    fixtureCurrent.set(fork.item, forkSecond.version);
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "Fork update was not offered");
+    await b.evaluate("document.getElementById('equipment-decline').click()");
+    await wait("!BL.equipment.state.busy && document.getElementById('equipment-update').hidden", "Fork Keep did not complete");
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(fork), "Keep lost the fork's old version");
+    record("equipment catalog: Keep pins a fork's prior full version and suppresses its declined update after reconnect", saved.selection.version === fork.version
+      && saved.declined === forkSecond.version && saved.size === 90 && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    fixtureCurrent.set(fork.item, forkThird.version);
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "Later fork update was not offered");
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    await wait(wearing(forkThird) + " && !BL.equipment.state.busy", "Fork Accept did not install its full version");
+    const pin = await b.evaluate("document.querySelector('#studio-hat input:checked')?.value");
+    await choose("none");
+    const retainedPin = await b.evaluate(`[...document.querySelectorAll('#studio-hat input')].some(input=>input.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)})`);
+    record("equipment catalog: Accept advances only the fork and its historical saved row remains available while previewing", saved.selection.version === forkThird.version
+      && saved.selection.item === fork.item && saved.declined === null && saved.size === 90 && pin === `${forkThird.item}@${forkThird.version}` && retainedPin);
+    await choose(`${forkThird.item}@${forkThird.version}`); await wait(wearing(forkThird), "Saved historical fork could not be selected again");
+    await b.screenshot(join(shots, "hat-variants-phone.png"));
+    record("equipment catalog: duplicate and fork save/update checks keep a clean console", b.logs.length === 0, b.logs.join("\n"));
+    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png", "hat-variants-phone.png"] }, null, 2) + "\n");
   } finally {
     releaseArchive?.();
     if (b) b.close(); await dispose(); await new Promise(done=>server.close(done)); rmSync(temporary, { recursive: true, force: true });

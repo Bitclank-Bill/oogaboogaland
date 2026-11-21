@@ -548,13 +548,70 @@
     return false;
   };
   const startWardrobe = (signal) => {
-    const $ = (id) => document.getElementById(id), equipment = BL.equipment;
-    const view = wardrobe = { select: $("studio-hat"), range: $("studio-hat-size"), sizeOutput: $("studio-hat-size-value"), reset: $("studio-hat-size-reset"),
+    const $ = (id) => document.getElementById(id), equipment = BL.equipment, hats = BL.equipmentHats;
+    const view = wardrobe = { choices: $("studio-hat-choices"), range: $("studio-hat-size"), sizeOutput: $("studio-hat-size-value"), reset: $("studio-hat-size-reset"),
       save: $("studio-hat-save"), own: $("studio-hat-own"), status: $("studio-hat-status"), link: $("studio-hat-link"), selection: null, size: 100, dirty: false, ticket: 0, stop: null };
     const key = (s) => s ? s.item === "none" ? "none" : `${s.item}@${s.version}` : "authored";
-    const add = (value, label) => { const option = document.createElement("option"); option.value = value; option.textContent = label; view.select.append(option); };
-    add("authored", "Original character look"); add("none", "No hat");
-    for (const item of BL.equipmentHats.items) add(`${item.id}@${item.current}`, `${item.label} · ${item.creator}`);
+    const rows = [], grouped = new Map(), disclosures = [], savedRows = new Map();
+    let selectedKey = null, serial = 0;
+    const add = (parent, selection, label, creators = [], choice = null, parents = []) => {
+      const node = document.createElement("label"), input = document.createElement("input"), words = document.createElement("span"), name = document.createElement("span");
+      node.className = "studio-hat-choice" + (parent === view.choices ? " slab" : "");
+      input.type = "radio"; input.name = "studio-hat-choice"; input.id = `studio-hat-choice-${serial++}`;
+      input.value = key(selection); input.dataset.hatItem = selection?.item || "authored";
+      if (choice) input.dataset.hatKey = choice.key;
+      name.className = "studio-hat-name"; name.textContent = label; words.append(name);
+      if (creators.length) {
+        const credit = document.createElement("span"); credit.className = "studio-hat-credit";
+        credit.textContent = "By " + creators.join(", "); words.append(credit);
+      }
+      node.append(input, words); parent.append(node);
+      const row = { node, input, selection, label, choice, parents };
+      rows.push(row); return row;
+    };
+    const authored = add(view.choices, null, "Original character look"), none = add(view.choices, { item: "none", version: null }, "No hat");
+    const family = (choice, parent, parents) => {
+      const node = document.createElement("div"); node.className = "studio-hat-family" + (parent === view.choices ? " slab" : "");
+      parent.append(node);
+      const row = add(node, choice.selection, choice.label, choice.creators, choice, parents);
+      grouped.set(choice.key, row);
+      if (choice.children.length) {
+        const details = document.createElement("details"), summary = document.createElement("summary");
+        details.className = "studio-hat-variants";
+        const disclosure = { details, summary, count: choice.children.length };
+        disclosures.push(disclosure); details.append(summary); node.append(details);
+        for (const child of choice.children) family(child, details, [...parents, disclosure]);
+      }
+    };
+    for (const choice of hats.groups()) family(choice, view.choices, []);
+    const showSelection = () => {
+      const saved = owns() && equipment.state.supported ? equipment.state.record.selection : null, retained = new Set();
+      // Keep a distinct old pin available while trying another hat. Only the saved and current preview pins may
+      // add rows beyond the catalog, so successive accepts or other-tab changes cannot grow a version history here.
+      for (const selection of [saved, view.selection]) {
+        if (!selection || selection.item === "none") continue;
+        const choice = hats.choiceFor(selection), value = key(selection);
+        if (choice && grouped.has(choice.key)) continue;
+        retained.add(value);
+        if (!savedRows.has(value)) {
+          const item = hats.get(selection.item, selection.version) || hats.get(selection.item);
+          const row = add(view.choices, selection, `${item?.label || "My hat"} · saved version`, item?.creator ? [item.creator] : []);
+          row.input.dataset.savedVersion = "true"; savedRows.set(value, row);
+        }
+      }
+      for (const [value, row] of savedRows) if (!retained.has(value)) { row.node.remove(); rows.splice(rows.indexOf(row), 1); savedRows.delete(value); }
+      const value = key(view.selection), choice = view.selection && view.selection.item !== "none" ? hats.choiceFor(view.selection) : null;
+      const selected = !view.selection ? authored : view.selection.item === "none" ? none : (choice && grouped.get(choice.key)) || savedRows.get(value);
+      for (const row of rows) {
+        row.input.checked = row === selected;
+        // The visible duplicate row represents the wearer's exact pin, never a silent transfer to another creator.
+        row.input.value = key(row === selected ? view.selection : row.selection);
+      }
+      if (selectedKey !== value) for (const parent of selected.parents) parent.details.open = true;
+      for (const disclosure of disclosures) disclosure.summary.textContent = `Variants (${disclosure.count})`
+        + (selected.parents.includes(disclosure) ? ` · ${selected.label} selected` : "");
+      selectedKey = value;
+    };
     const owns = () => BL.net.ownCharacter()?.handle.toLowerCase() === state.name.toLowerCase();
     const draw = async () => {
       const ticket = ++view.ticket, chosen = view.selection, size = view.size;
@@ -570,10 +627,8 @@
       if (!view.dirty) {
         view.selection = own && s.supported ? s.record.selection : null;
         view.size = view.selection && view.selection.item !== "none" ? s.record.size : 100;
-        const value = key(view.selection);
-        if (![...view.select.options].some((option) => option.value === value)) add(value, "My saved hat version");
-        view.select.value = value;
       }
+      showSelection();
       const minimum = BL.characterEquipment.minimumSize(cave, view.selection);
       view.range.min = String(minimum);
       view.size = Math.max(minimum, view.size);
@@ -593,11 +648,12 @@
       view.link.hidden = s.supported || document.documentElement.dataset.workerPage === "1";
       view.link.href = `https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev/?scene=studio&character=${encodeURIComponent(state.name)}`;
     };
-    view.select.addEventListener("change", () => {
-      const value = view.select.value, [item, version] = value.split("@");
-      view.selection = value === "authored" ? null : value === "none" ? { item: "none", version: null } : { item, version };
+    view.choices.addEventListener("change", (event) => {
+      const row = rows.find((row) => row.input === event.target);
+      if (!row || !row.input.checked) return;
+      view.selection = row.choice ? hats.selectionFor(row.choice, owns() ? equipment.state.record.selection : null) : row.selection;
       view.size = owns() && view.selection && view.selection.item !== "none" && key(view.selection) === key(equipment.state.record.selection) ? equipment.state.record.size : 100;
-      view.dirty = true; changed(); draw(); view.select.blur();
+      view.dirty = true; changed(); draw();
     }, { signal });
     const resize = (size) => {
       if (view.range.disabled || !Number.isInteger(size) || size < BL.characterEquipment.minimumSize(cave, view.selection) || size > 120 || size === view.size) return;
@@ -1157,7 +1213,7 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
-    if (wardrobe) { wardrobe.stop(); wardrobe.select.replaceChildren(); wardrobe = null; }
+    if (wardrobe) { wardrobe.stop(); wardrobe.choices.replaceChildren(); wardrobe = null; }
     window.clearInterval(watchTimer);
     watchTimer = 0;
     homeLink.title = homeTitle;

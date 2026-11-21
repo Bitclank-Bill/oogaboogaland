@@ -25,6 +25,25 @@ const fixture = () => {
   write(`src/equipment/hats/${item.current}.json`, original); write(`src/equipment/hats/${version}.json`, next);
   return { directory, write, catalog, close: () => rmSync(directory, { recursive: true, force: true }) };
 };
+const sharedFixture = () => {
+  const f = fixture(), content = equipmentHats.contentOf(JSON.parse(original)), text = equipmentHats.encode(content);
+  const hash = createHash("sha256").update(text).digest("hex"), profile = equipmentHats.legacyProfile(item.id);
+  const first = { format: 2, item: item.id, content: hash, profile, parent: null };
+  const second = { ...first, item: "shared-straw", parent: { item: item.id, version: item.current } };
+  const install = value => {
+    const bytes = equipmentHats.encode(value), digest = createHash("sha256").update(bytes).digest("hex");
+    f.write(`src/equipment/hats/${digest}.json`, bytes); return digest;
+  };
+  const firstVersion = install(first), secondVersion = install(second);
+  f.write(`src/equipment/hats/${hash}.json`, text);
+  f.catalog.format = 2;
+  f.catalog.items[0] = { ...f.catalog.items[0], current: firstVersion, parent: null,
+    versions: [...f.catalog.items[0].versions, firstVersion] };
+  f.catalog.items.push({ id: second.item, label: "Shared straw", creator: "AnotherCreator", current: secondVersion,
+    versions: [secondVersion], parent: second.parent });
+  f.write("src/equipment/hats/catalog.json", f.catalog);
+  return { ...f, content, text, hash, first, second, firstVersion, secondVersion, install };
+};
 
 test("forward release retains an older worn version and an empty first deployment is valid", () => {
   const f = fixture();
@@ -41,6 +60,53 @@ test("enabled rollback cannot lose a saved version even when other archives rema
     f.write("src/equipment/hats/catalog.json", f.catalog);
     assert.throws(() => validateEquipmentRetention(f.directory, saved), /omits a retained hat version/);
   } finally { f.close(); }
+});
+
+test("shared full geometry retains both item-bound revisions and legacy saves", async () => {
+  const f = sharedFixture(), rows = [{ item: item.id, version: item.current },
+    { item: item.id, version: f.firstVersion }, { item: f.second.item, version: f.secondVersion }];
+  try {
+    assert.notEqual(f.firstVersion, f.secondVersion, "a shared mesh does not erase item ownership or parent history");
+    assert.deepEqual(validateEquipmentRetention(f.directory, result(rows)), { enabled: true, retained: 3 });
+    assert.deepEqual(await preflightEquipmentRetention({ releaseDir: f.directory, environment: "staging",
+      fetcher: async () => Response.json({ format: 1, items: f.catalog.items.map(({ id, versions }) => ({ id, versions })) }) }),
+    { enabled: true, retained: 4 });
+    f.catalog.items.pop(); f.write("src/equipment/hats/catalog.json", f.catalog);
+    assert.throws(() => validateEquipmentRetention(f.directory, result(rows)), /omits a retained hat version/,
+      "retaining the shared blob and another item cannot replace the saved variant identity");
+  } finally { f.close(); }
+});
+
+test("retained revision manifests require complete canonical content with the pinned digest", () => {
+  for (const damage of ["missing", "digest", "noncanonical", "shape"]) {
+    const f = sharedFixture();
+    try {
+      if (damage === "missing") rmSync(join(f.directory, `src/equipment/hats/${f.hash}.json`));
+      else if (damage === "digest") f.write(`src/equipment/hats/${f.hash}.json`, f.text + " ");
+      else {
+        const text = damage === "noncanonical" ? " " + f.text : equipmentHats.encode({ ...f.content, nodes: [] });
+        const hash = createHash("sha256").update(text).digest("hex");
+        f.write(`src/equipment/hats/${hash}.json`, text);
+        const revision = f.install({ ...f.first, content: hash });
+        f.catalog.items[0].current = revision; f.catalog.items[0].versions.push(revision);
+        f.write("src/equipment/hats/catalog.json", f.catalog);
+      }
+      assert.throws(() => validateEquipmentRetention(f.directory, result([{ item: item.id, version: f.catalog.items[0].current }])));
+    } finally { f.close(); }
+  }
+});
+
+test("a retained revision pins its item, profile and parent even when its shared geometry is unchanged", () => {
+  for (const field of ["item", "profile", "parent"]) {
+    const f = sharedFixture();
+    try {
+      const changed = { ...f.second, [field]: field === "item" ? item.id : field === "profile"
+        ? equipmentHats.legacyProfile(equipmentHats.items[1].id) : null };
+      assert.notDeepEqual(changed, f.second);
+      f.write(`src/equipment/hats/${f.secondVersion}.json`, equipmentHats.encode(changed));
+      assert.throws(() => validateEquipmentRetention(f.directory, result([{ item: f.second.item, version: f.secondVersion }])), /archive digest differs/);
+    } finally { f.close(); }
+  }
 });
 
 test("preflight preserves all published versions, including one nobody has selected yet", async () => {
