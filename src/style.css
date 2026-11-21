@@ -12503,8 +12503,19 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
 }
 .studio-side button { flex: 0 0 auto; padding: 0 10px; }
 .studio-wardrobe { display: grid; gap: 7px; margin: 12px 0; }
-.studio-wardrobe select { width: 100%; min-width: 0; min-height: 44px; padding: 7px; font-size: 12px; color: var(--paper); cursor: pointer; }
-.studio-wardrobe :is(select, input[type="range"]):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-hats { width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; }
+.studio-hats legend { padding: 0; margin-bottom: 6px; }
+#studio-hat-choices { display: grid; gap: 5px; max-height: min(32vh, 240px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--wood-edge) rgba(0, 0, 0, 0.25); }
+.studio-hat-family { min-width: 0; padding: 3px; }
+.studio-hat-choice { display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 6px; border-radius: 4px; cursor: pointer; }
+.studio-hat-choice:has(input:checked) { background: rgba(216, 137, 43, 0.16); }
+.studio-hat-choice input { flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.studio-hat-choice span { min-width: 0; overflow-wrap: anywhere; }
+.studio-hat-name { display: block; color: var(--paper); font-size: 12px; line-height: 1.4; }
+.studio-hat-credit { display: block; color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; }
+.studio-hat-variants { margin-left: 8px; padding-left: 6px; border-left: 1px solid var(--stone-dk); }
+.studio-hat-variants > summary { min-height: 44px; align-content: center; padding: 0 6px; color: var(--accent-text); font-size: 11px; cursor: pointer; overflow-wrap: anywhere; }
+.studio-wardrobe :is(input[type="radio"], input[type="range"], summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .studio-hat-size-label { display: flex; justify-content: space-between; gap: 8px; }
 .studio-hat-size-label output { color: var(--accent-text); font-variant-numeric: tabular-nums; }
 .studio-wardrobe input[type="range"] { width: 100%; min-width: 0; height: 44px; margin: 0; accent-color: var(--accent); cursor: pointer; }

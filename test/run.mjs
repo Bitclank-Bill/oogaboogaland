@@ -44035,7 +44035,10 @@ const browserDriverProof = async () => {
       }
     }
     const context = {
-      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => "9999\nsynthetic",
+      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => {
+        if (mode === "no-port" || mode === "late-port" && clock < 15000) throw new Error("Port not published");
+        return "9999\nsynthetic";
+      },
       rmSync: profile => removed.push(profile), writeFileSync() {}, tmpdir: () => "/tmp", join: (...parts) => parts.join("/"),
       process: { env: {}, once() {} }, setTimeout: timeout, clearTimeout: clear, queueMicrotask, WebSocket: Socket,
       AbortSignal: { timeout(ms) {
@@ -44047,14 +44050,15 @@ const browserDriverProof = async () => {
         requests.push({ url, bounded: !!opts?.signal });
         if (mode === "discovery-hang") return new Promise((resolve, reject) => opts?.signal?.once("abort", () => reject(new Error("synthetic abort"))));
         discovery++;
-        return { json: async () => mode === "missing-page" && discovery === 1 ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
+        return { json: async () => mode === "missing-page" && discovery === 1 || mode === "late-page" && clock < 15000
+          ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
       },
       Date: class extends Date { static now() { return clock; } }, console, Buffer
     };
     const script = source.replace(/^import .*;\n/gm, "").replace(/export const /g, "const ")
       + "\nthis.driver = { launch, acquire, release, dispose };";
     runInNewContext(script, context);
-    return { ...context.driver, children, sockets, timers, removed, requests,
+    return { ...context.driver, children, sockets, timers, removed, requests, now: () => clock,
       fire(ms) {
         const timer = [...timers].find(timer => timer.ms === ms && timer.active);
         if (!timer) throw new Error(`No timer ${ms}`);
@@ -44080,7 +44084,7 @@ const browserDriverProof = async () => {
     await flush();
     const before = new Set(f.timers);
     let error = null;
-    const expired = f.launch().catch(err => { error = err; });
+    const expired = f.launch({ startupMs: 30000 }).catch(err => { error = err; });
     const admission = [...f.timers].find(timer => !before.has(timer) && timer.ms === 10000 && timer.active);
     if (admission) { admission.active = false; f.timers.delete(admission); admission.fn(); }
     await flush();
@@ -44149,6 +44153,44 @@ const browserDriverProof = async () => {
     let browser = null, error = null;
     try { browser = await f.launch(); } catch (err) { error = err.message; }
     rows.push({ name: "wait for usable page", pass: !!browser && f.requests.length === 2, requests: f.requests.length, error });
+    await f.dispose();
+  }
+  for (const mode of ["late-port", "late-page"]) for (const startupMs of [undefined, 30000]) {
+    const f = fixture(mode);
+    let browser = null, error = null;
+    try { browser = await f.launch({ startupMs }); } catch (err) { error = err; }
+    const elapsed = f.now(), failed = !!error?.driver && error.message.includes("startup deadline")
+      && elapsed >= 10000 && elapsed < 12000 && f.children[0].kills.includes("SIGKILL") && f.removed.includes("synthetic-profile-1");
+    rows.push({ name: `${mode}: ${startupMs === undefined ? "default discovery stays at 10 s" : "cold discovery waits for a usable page"}`,
+      pass: startupMs === undefined ? !browser && failed : !!browser && !error && elapsed >= 15000 && elapsed < 30000 && f.children[0].kills.length === 0,
+      elapsed, error: error?.message });
+    await f.dispose();
+  }
+  {
+    const f = fixture("no-port");
+    let error = null;
+    try { await f.launch({ startupMs: 30000 }); } catch (err) { error = err; }
+    rows.push({ name: "cold discovery still expires and cleans up a process that never publishes a port", pass: !!error?.driver
+      && error.message.includes("startup deadline before publishing a DevTools port") && f.now() === 30000
+      && f.children[0].kills.includes("SIGKILL") && f.removed.includes("synthetic-profile-1") && f.sockets.length === 0 });
+    await f.dispose();
+  }
+  {
+    const f = fixture("setup-held");
+    let error = null;
+    const pending = f.launch({ startupMs: 30000 }).catch(err => { error = err; });
+    await flush(); f.fire(10000); await pending;
+    rows.push({ name: "cold discovery allowance does not extend DevTools setup commands", pass: !!error?.driver
+      && error.message.startsWith("Runtime.enable got no reply in 10 s") && f.children[0].kills.includes("SIGKILL")
+      && f.removed.includes("synthetic-profile-1") });
+    await f.dispose();
+  }
+  {
+    const f = fixture(), invalid = [9999, 60001, NaN, Infinity, 30000.5, null, "30000"];
+    let rejected = 0;
+    for (const startupMs of invalid) try { await f.launch({ startupMs }); } catch (err) { if (/startupMs/.test(err.message)) rejected++; }
+    rows.push({ name: "invalid discovery allowances reject before spawning or queueing", pass: rejected === invalid.length
+      && f.children.length === 0 && f.timers.size === 0 });
     await f.dispose();
   }
   {
@@ -46793,7 +46835,7 @@ const unitChecks = async () => {
   const rigDisposal = await raceRigDisposalProof();
   record("race rig disposal: pending and linked variants release owned shaders and programs exactly once without context-loss support", rigDisposal.every(r => !r.programs && !r.shaders && !r.duplicateDeletes && r.arraysCleared && r.aliasesReleased), JSON.stringify(rigDisposal));
   const driver = await browserDriverProof();
-  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 17 && driver.failures === 0, JSON.stringify(driver));
+  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 24 && driver.failures === 0, JSON.stringify(driver));
 
 const carriedRelease = carriedReleaseProof();
 record("gorilla release: insufficient upright headroom retains the grab; unaimed throws keep a forward 45-degree launch at either charge despite running momentum, while aimed throws retain their target and momentum", carriedRelease.valid, JSON.stringify(carriedRelease));
@@ -49446,7 +49488,7 @@ scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=120
 // Explicit account/API fixtures exercise the real hosted wardrobe and model consumers. They are not live
 // staging authentication or a substitute for two different signed-in people observing the actual Room.
 const equipmentAppChecks = async () => {
-  const { equipmentHats } = await import("../worker/src/equipment-hats.js");
+  const { equipmentHats, equipmentHatArchive } = await import("../worker/src/equipment-hats.js");
   const temporary = mkdtempSync(join(tmpdir(), "equipment-app-")), staged = join(temporary, "site");
   const build = spawnSync(process.execPath, [join(root, "scripts/site.mjs"), staged, "--audio-assets", "--image-assets", "--worker-page", "--page-assets"], {
     cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: "", CHARACTER_CATALOG_ENGINE: "", CHARACTER_CATALOG_ENVIRONMENT: "" }
@@ -49455,22 +49497,69 @@ const equipmentAppChecks = async () => {
   const item = equipmentHats.items[0], helmetItem = equipmentHats.items.find(row => row.id === "johnstackton21m-helmet");
   const helmet = { item: helmetItem.id, version: helmetItem.current }, archives = new Map(), archiveReads = [], writes = [];
   const shots = join(root, "untracked", "equipment"), network = { accounts: 0, equipment: 0, saves: 0, archives: 0 };
-  for (const entry of equipmentHats.items) for (const version of entry.versions)
-    archives.set(version, readFileSync(join(root, "src/equipment/hats", version + ".json"), "utf8"));
+  for (const entry of equipmentHats.items) for (const version of entry.versions) {
+    const text = equipmentHatArchive(version), archive = JSON.parse(text); archives.set(version, text);
+    if (archive.format === 2) archives.set(archive.content, equipmentHatArchive(archive.content));
+  }
+  const fullContent = (archive) => archive.format === 1 ? equipmentHats.contentOf(archive) : JSON.parse(archives.get(archive.content));
   const variant = (color) => {
-    const archive = JSON.parse(archives.get(item.current));
-    for (const node of archive.nodes) for (const face of node.geometry.faces) face.color = color;
+    const archive = JSON.parse(archives.get(item.current)), content = fullContent(archive);
+    for (const node of content.nodes) for (const face of node.geometry.faces) face.color = color;
+    if (archive.format === 2) {
+      const text = equipmentHats.encode(content), hash = createHash("sha256").update(text).digest("hex");
+      archives.set(hash, text); archive.content = hash;
+    }
     equipmentHats.validate(archive, item.id);
     const json = equipmentHats.encode(archive), version = createHash("sha256").update(json).digest("hex");
     archives.set(version, json); return version;
   };
   const second = variant([35, 190, 90]), third = variant([190, 45, 170]);
   const retryVersion = variant([90, 130, 210]), cancelledVersion = variant([210, 130, 90]), pendingVersion = variant([130, 210, 90]);
+  // Publish a bounded catalog fixture through the same generated-register boundary as a reviewed build.
+  // Geometry/revision bytes still use the real validators, hashes, HTTP loader, UI and account save path.
+  const fixtureItems = [], fixtureRevisions = {}, fixtureCurrent = new Map();
+  const immutable = (value) => {
+    const text = equipmentHats.encode(value), version = createHash("sha256").update(text).digest("hex");
+    archives.set(version, text); return version;
+  };
+  const content = (color) => {
+    const value = fullContent(JSON.parse(archives.get(item.current)));
+    if (color) for (const node of value.nodes) for (const face of node.geometry.faces) face.color = color;
+    equipmentHats.validateContent(value); return immutable(value);
+  };
+  const originalContent = content(), blueContent = content([40, 100, 210]);
+  const published = (id, hash, parent) => {
+    const archive = { format: 2, item: id, content: hash, profile: equipmentHats.get(item.id).profile, parent };
+    equipmentHats.validate(archive, id);
+    const version = immutable(archive);
+    fixtureRevisions[version] = { item: id, content: hash, profile: archive.profile, parent };
+    return { item: id, version };
+  };
+  const fixtureItem = (id, label, creator, hash, parent) => {
+    const selection = published(id, hash, parent);
+    fixtureItems.push({ id, label, creator, current: selection.version, versions: [selection.version], parent });
+    fixtureCurrent.set(id, selection.version); return selection;
+  };
+  const duplicate = fixtureItem("equipment-copy", "Shared straw hat", "HatCopy", originalContent, { item: item.id, version: item.current });
+  const fork = fixtureItem("equipment-blue", "Blue straw hat", "HatBlue", blueContent, { item: item.id, version: item.current });
+  const forkCopy = fixtureItem("equipment-blue-copy", "Shared blue hat", "HatBlueCopy", blueContent, { item: item.id, version: item.current });
+  const nested = fixtureItem("equipment-purple", "Purple straw hat", "HatPurple", content([170, 60, 190]), fork);
+  const forkSecond = published(fork.item, content([45, 170, 190]), { item: item.id, version: item.current });
+  const forkThird = published(fork.item, content([220, 100, 40]), { item: item.id, version: item.current });
+  const mainFile = readdirSync(join(staged, "js")).find(name => /^main-[a-f0-9]+\.js$/.test(name));
+  const mainPath = join(staged, "js", mainFile), main = readFileSync(mainPath, "utf8"), registry = "globalThis.BL.equipmentHats.register(";
+  if (!main.includes(registry)) throw new Error("Equipment fixture registry boundary is missing");
+  const augment = `(() => {const hats=globalThis.BL.equipmentHats,register=hats.register;
+    hats.register=(rows,revisions)=>register([...rows,...${JSON.stringify(fixtureItems)}],{...revisions,...${JSON.stringify(Object.fromEntries(fixtureItems.map(row => [row.current, fixtureRevisions[row.current]])))}});})();\n`;
+  writeFileSync(mainPath, main.replace(registry, augment + registry));
   let current = item.current, saved = { selection: null, size: 100, revision: 0, declined: null, update: null };
   let heldArchive = null, archiveGate = null, releaseArchive = null;
   const account = { id: 71, login: "equipment-preview", display: "Equipment preview" }, at = Math.floor(Date.now() / 1000) - 3600;
-  const answer = () => ({ ...saved, update: saved.selection?.item === item.id && saved.selection.version !== current && saved.declined !== current
-    ? { item: item.id, version: current } : null });
+  const answer = () => {
+    const latest = saved.selection?.item === item.id ? current : fixtureCurrent.get(saved.selection?.item);
+    return { ...saved, update: latest && saved.selection.version !== latest && saved.declined !== latest
+      ? { item: saved.selection.item, version: latest } : null };
+  };
   const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
   const server = createServer(async (req, res) => {
     const path = new URL(req.url, "http://localhost").pathname;
@@ -49538,7 +49627,14 @@ const equipmentAppChecks = async () => {
     await b.open(address); await untilReady(b, 30000);
     await wait("BL.equipment?.state.supported && BL.net.ownCharacter()?.handle==='equipment-preview' && !!document.getElementById('studio-hat')", "Hosted wardrobe did not initialize");
   };
-  const choose = async (value) => b.evaluate(`(() => { const select=document.getElementById('studio-hat');select.value=${JSON.stringify(value)};select.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  const choose = async (value) => b.evaluate(`(() => {
+    const value=${JSON.stringify(value)}, selection=value.includes('@')?{item:value.split('@')[0],version:value.split('@')[1]}:null;
+    const choice=selection?BL.equipmentHats.choiceFor(selection):null;
+    const input=[...document.querySelectorAll('#studio-hat input[type=radio]')].find(input=>choice?input.dataset.hatKey===choice.key:input.value===value);
+    if(!input)throw new Error('Hat choice is missing: '+value);
+    for(let parent=input.closest('details');parent;parent=parent.parentElement.closest('details'))parent.open=true;
+    input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
   const resize = async (size) => {
     await b.evaluate(`(() => { const input=document.getElementById('studio-hat-size');input.value=${size};input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
     await wait(`BL.characterEquipment.size(__ooga.studio.cave)===${size}`, "Hat size preview did not apply");
@@ -49552,6 +49648,27 @@ const equipmentAppChecks = async () => {
   };
   try {
     await open({ w: 1000, h: 760 });
+    const groups = await b.evaluate(`(() => {
+      const hats=BL.equipmentHats,original=hats.choiceFor({item:${JSON.stringify(item.id)},version:${JSON.stringify(item.current)}}),
+        copy=hats.choiceFor(${JSON.stringify(duplicate)}),fork=hats.choiceFor(${JSON.stringify(fork)}),child=hats.choiceFor(${JSON.stringify(nested)});
+      const inputs=[...document.querySelectorAll('#studio-hat input[type=radio]')],row=inputs.find(input=>input.dataset.hatKey===original.key),
+        variant=inputs.find(input=>input.dataset.hatKey===fork.key),nested=inputs.find(input=>input.dataset.hatKey===child.key);
+      return {shared:original.key===copy.key,one:inputs.filter(input=>input.dataset.hatKey===original.key).length===1,
+        credits:row.closest('label').textContent.includes('HatCopy')&&row.closest('label').textContent.includes(${JSON.stringify(item.creator)}),
+        collapsed:!variant.closest('details').open,nested:!!nested.closest('details').parentElement.closest('details')};
+    })()`);
+    record("equipment catalog: identical hats share one credited choice and edited forks form collapsed nested variants", Object.values(groups).every(Boolean), JSON.stringify(groups));
+    await b.evaluate("document.querySelector('.studio-hat-variants > summary').focus()");
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await wait("document.querySelector('.studio-hat-variants').open", "Keyboard did not expand variants");
+    await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').focus()`);
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: " ", code: "Space", text: " ", windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: " ", code: "Space", windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+    await wait(wearing(fork), "Keyboard did not preview the full immutable fork");
+    record("equipment catalog: keyboard disclosure and selection preview a full immutable variant without saving", writes.length === 0
+      && archiveReads.includes(fork.version) && archiveReads.includes(blueContent)
+      && await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').checked`));
     await b.evaluate("window.__equipmentCave=__ooga.studio.cave;window.__equipmentRoot=__ooga.studio.cave.root");
     let previews = 0;
     for (const entry of equipmentHats.items) {
@@ -49795,7 +49912,46 @@ const equipmentAppChecks = async () => {
       E.clear(p.own);E.clear(p.peer);E.clear(p.cancelled);return ok;
     })()`));
     record("equipment studio: safe-minimum acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
-    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png"] }, null, 2) + "\n");
+    // A separately authored identical hat keeps its own update stream when represented by the shared row.
+    account.login = "equipment-preview"; account.display = "Equipment preview";
+    saved = { selection: duplicate, size: 115, revision: saved.revision + 1, declined: null, update: null };
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(duplicate), "Shared hat lost its saved item identity");
+    const beforeAlias = writes.length;
+    await choose(`${item.id}@${item.current}`); await save(duplicate);
+    record("equipment catalog: selecting a deduplicated row keeps the saved creator identity and personal size", writes.length === beforeAlias + 1
+      && writes.at(-1).selection.item === duplicate.item && saved.size === 115 && saved.update === null);
+    // Updating the original must never offer its version to a fork or a copied item's wearer.
+    current = second;
+    await b.evaluate("BL.equipment.refresh()");
+    record("equipment catalog: an original creator update cannot change or notify another item's wearer", await b.evaluate(wearing(duplicate) + " && document.getElementById('equipment-update').hidden"));
+    saved = { selection: fork, size: 90, revision: saved.revision + 1, declined: null, update: null };
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(fork), "Saved fork did not reload");
+    record("equipment catalog: a saved variant reopens its family with its own version and size", await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').closest('details').open && BL.characterEquipment.size(__ooga.studio.cave)===90 && document.getElementById('equipment-update').hidden`));
+    fixtureCurrent.set(fork.item, forkSecond.version);
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "Fork update was not offered");
+    await b.evaluate("document.getElementById('equipment-decline').click()");
+    await wait("!BL.equipment.state.busy && document.getElementById('equipment-update').hidden", "Fork Keep did not complete");
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(fork), "Keep lost the fork's old version");
+    record("equipment catalog: Keep pins a fork's prior full version and suppresses its declined update after reconnect", saved.selection.version === fork.version
+      && saved.declined === forkSecond.version && saved.size === 90 && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    fixtureCurrent.set(fork.item, forkThird.version);
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "Later fork update was not offered");
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    await wait(wearing(forkThird) + " && !BL.equipment.state.busy", "Fork Accept did not install its full version");
+    const pin = await b.evaluate("document.querySelector('#studio-hat input:checked')?.value");
+    await choose("none");
+    const retainedPin = await b.evaluate(`[...document.querySelectorAll('#studio-hat input')].some(input=>input.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)})`);
+    record("equipment catalog: Accept advances only the fork and its historical saved row remains available while previewing", saved.selection.version === forkThird.version
+      && saved.selection.item === fork.item && saved.declined === null && saved.size === 90 && pin === `${forkThird.item}@${forkThird.version}` && retainedPin);
+    await choose(`${forkThird.item}@${forkThird.version}`); await wait(wearing(forkThird), "Saved historical fork could not be selected again");
+    record("equipment catalog: a restored historical choice stays visible in the bounded phone list with Save reachable", await b.evaluate(`(() => {
+      const box=document.getElementById('studio-hat-choices').getBoundingClientRect(),row=document.querySelector('#studio-hat input:checked').closest('label').getBoundingClientRect(),
+        save=document.getElementById('studio-hat-save').getBoundingClientRect();
+      return row.top>=box.top-1&&row.bottom<=box.bottom+1&&save.top>=0&&save.bottom<=innerHeight;
+    })()`));
+    await b.screenshot(join(shots, "hat-variants-phone.png"));
+    record("equipment catalog: duplicate and fork save/update checks keep a clean console", b.logs.length === 0, b.logs.join("\n"));
+    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png", "hat-variants-phone.png"] }, null, 2) + "\n");
   } finally {
     releaseArchive?.();
     if (b) b.close(); await dispose(); await new Promise(done=>server.close(done)); rmSync(temporary, { recursive: true, force: true });
