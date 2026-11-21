@@ -1392,7 +1392,18 @@
       sleepCameraUp.x = sleepUp[0]; sleepCameraUp.y = sleepUp[1]; sleepCameraUp.z = sleepUp[2];
       camera.up = sleepCameraUp;
       camera.fov = carryFov; camera.near = savedNear;
-      if (!carrySelection && ctx.observeOrbit) ctx.observeOrbit(camera.position, dt);
+      if (ctx.observeOrbit) {
+        if (!carrySelection) ctx.observeOrbit(camera.position, dt);
+      } else if (!externalControl) {
+        // Restored carry views still belong inside the scene, including the
+        // stationary selection held just after arrival. Keep their look and
+        // requested zoom while moving both eye and target clear of the walls.
+        const x = camera.position.x, y = camera.position.y, z = camera.position.z;
+        clampCamera(camera.position, 0, undefined, false, dt);
+        camera.target.x += camera.position.x - x;
+        camera.target.y += camera.position.y - y;
+        camera.target.z += camera.position.z - z;
+      }
       setOverheadProjection(cave, carryStartOrtho * (1 - mix));
       camera.orthoHeight = carryStartScale * (1 - mix) + camera.orthoHeight * mix;
       syncHeadVisibility(cave);

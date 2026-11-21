@@ -27613,8 +27613,14 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
     if (P.aiming) P.modeAction("mode-toggle"); P.exitClose(); P.navigate({ position: { x: d.x + sr * 0.9, y: d.floorY, z: d.z + cr * 0.9 }, yaw: d.ry, pitch: 0.2, dist: 20, framed: true }); B.advance(0.4, 1 / 60);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(0.8, 1 / 60); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); })()`);
   await untilPage(b, 'B.scene === "bifrost" && !B.transitioning', 15000);
-  const wide = await b.evaluate(`(() => { const B = __ooga; B.advance(3, 1 / 60); const a = B.pilot.player, p = a.root.position; return { z: p.z, feet: p.y - a.baseY, hall: BL.bifrostModels.HALL.r, field: BL.bifrostModels.ENTRY.field, view: B.pilot.viewState() }; })()`);
+  const wide = await b.evaluate(`(() => { const B = __ooga; B.advance(3, 1 / 60); const a = B.pilot.player, p = a.root.position, E = BL.bifrostModels.ENTRY;
+    const eye = () => ({ ...B.camera.position }); const stationary = eye(), z = p.z;
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(.2, 1 / 60);
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); const walking = eye();
+    return { stationary, walking, z, feet: p.y - a.baseY, hall: BL.bifrostModels.HALL.r, field: E.field, halfW: E.halfW, view: B.pilot.viewState() }; })()`);
   record("bifrost exit: a wide orbit returns through the field without guiding the Ooga out of the safe entrance corridor", wide.z > wide.hall && wide.z < wide.field - 2 && Math.abs(wide.feet) < 0.03 && wide.view.view === "orbit" && Math.abs(wide.view.distance - 20) < 0.03, JSON.stringify(wide));
+  record("bifrost arrival: the restored wide orbit keeps its eye inside the entry field after handoff, at rest and walking",
+    [wide.stationary, wide.walking].every(p => p.z <= wide.field - .3 + 1e-6 && Math.abs(p.x) <= wide.halfW - .4 + 1e-6 && p.y >= .5), JSON.stringify(wide));
 } };
 scene("lab", { label: "canvas bounds", steps: [{ name: "canvas bounds", why: "regression: distant Timechain views spent the watchdog shading complete offscreen objects; conservative rejection must preserve every visible pixel", run: async (b) => {
   const rows = await b.evaluate(`(() => {
@@ -48866,7 +48872,7 @@ const dsbDoorHandoff = { name: "dsb door handoff", why: "regression: building fa
       if (view === "first-person") P.enterClose(); else P.exitClose();
       for (const inside of [true, false]) {
         const point = inside ? d.entry : I.active.room.exit;
-        P.navigate({ position: point, yaw: inside ? d.building.yaw : Math.PI, pitch: 0.31, dist: 5.3 });
+        P.navigate({ position: point, yaw: inside ? d.building.yaw : Math.PI, pitch: 0.22, dist: 7 });
         for (let i = 0; i < 30; i++) step();
         const saved = P.viewState();
         __doorCameraTrace.reset();
@@ -48874,15 +48880,25 @@ const dsbDoorHandoff = { name: "dsb door handoff", why: "regression: building fa
         key(true); P.controls.reset(); if (release) key(false);
         for (let i = 0; i < 30 && I.transitioning; i++) step();
         const got = P.viewState(), axes = { ...P.controls.read() };
-        for (let i = 0; i < 30; i++) step();
+        const cameraInside = () => {
+          if (!I.active) return true;
+          const p = B.camera.position, b = I.active.room.bounds;
+          return p.x >= b.minX + .2 - 1e-6 && p.x <= b.maxX - .2 + 1e-6
+            && p.z >= b.minZ + .2 - 1e-6 && p.z <= b.maxZ - .2 + 1e-6
+            && p.y >= I.active.room.groundAt(p.x, p.z) + .74 - 1e-6 && p.y <= I.active.room.ceiling - .7 + 1e-6;
+        };
+        let contained = cameraInside();
+        for (let i = 0; i < 30; i++) { step(); contained = cameraInside() && contained; }
         key(false);
-        rows.push({ camera: __doorCameraTrace.result(), view, release, inside, accepted, active: !!I.active, saved, got, y: axes.y });
+        rows.push({ contained, camera: __doorCameraTrace.result(), view, release, inside, accepted, active: !!I.active, saved, got, y: axes.y });
       }
     }
     return rows;
   })()`);
   record("DSB doors: camera settles behind the black fade with no visible arrival sweep",
     rows.every(r => r.camera.frames > 30 && r.camera.yaw < 0.12 && r.camera.pitch < 0.12 && r.camera.eye < 0.75), JSON.stringify(rows.map(r => ({ view: r.view, inside: r.inside, ...r.camera }))));
+  record("DSB doors: restored first-person and orbit eyes stay inside the room after handoff, at rest and walking",
+    rows.every(r => r.contained), JSON.stringify(rows));
   record("DSB doors: entry and exit preserve first-person/orbit pitch and zoom, resume held S, and do not revive released keys",
     rows.every(r => r.accepted && r.active === r.inside && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
       && Math.abs(r.got.distance - r.saved.distance) < 0.01 && r.y === (r.release ? 0 : -1)), JSON.stringify(rows));

@@ -512,6 +512,10 @@
       reset();
       const actor = pilot.player;
       if (!actor || !state) return;
+      // Build the retained view before this walk's display clamp owns it.
+      // Otherwise its initial wall correction becomes part of the translated
+      // eye and disappears abruptly when the ordinary camera resumes.
+      pilot.setExternalControl(true, null, true);
       restoreDoorView(pilot, heading, state, from);
       const p = actor.root.position;
       walk = { actor, cx: 0, cy: 0, cz: 0, x: p.x, z: p.z, y: p.y, lastX: p.x, lastZ: p.z, dx: to.x - p.x, dz: to.z - p.z,
