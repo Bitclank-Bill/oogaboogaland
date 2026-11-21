@@ -22,6 +22,10 @@
   const WIDTH = 7, DELAY_MS = 150, DEPTH = 24, LOCAL_DELAY_MS = 2 * SIM.STEP * 1000, ACTIVITY_S = 1, REFRESH_S = 0.5, SEED_S = 2;
 
   const enabled = () => !/(?:^|[?&])islandworld=0(?:&|$)/.test(location.search.slice(1));
+  // The account this page was kicked from the server's world as, if it was, for the page's life: it stays on its own
+  // world, however often the hub builds its world again, until the account changes, or two tabs of one account would
+  // keep taking the world from each other.
+  let kickedAs = null;
 
   const create = ({ crew, clankers = null, contributors = BL.contributors, platform = null, net = BL.net }) => {
     // The cast the world runs: every roster Ooga but a guest's own likeness, in the crew's order.
@@ -79,10 +83,11 @@
         motion: (f) => { if (f.kind === SIM.KIND && slots.some(Boolean)) take(f, f.serverMs); }
       });
     };
-    // The account this page was kicked from the server's world as, if it was: it stays on its own world until the
-    // account changes, or two tabs of one account would keep taking the world from each other.
-    let kickedAs = null;
-    const offered = () => !!BL.gameNet && BL.gameNet.offers("island") && net.state.me.id !== kickedAs;
+    const offered = () => {
+      const id = net.state.me ? net.state.me.id : null;
+      if (kickedAs !== null && id !== kickedAs) kickedAs = null;
+      return !!BL.gameNet && BL.gameNet.offers("island") && id !== kickedAs;
+    };
     // On every account change: signed out, the page runs the world itself from where the crew stands; signed in (or
     // in late, after a failed first look), it follows the server's.
     const reconcile = () => {
