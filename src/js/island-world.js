@@ -11,8 +11,8 @@
 // bed is beamed to its routine (`refreshStates`) before it is followed. Each working Ooga's gorilla is told the cave
 // it goes ahead to when that changes (`clankers.plan`).
 //
-// For now only behind `?islandworld=1`: the room's browser host (npc-sync.js) carries the crew everywhere else, and
-// the hub leaves it be while this runs.
+// On for every visit; `?islandworld=0` turns it off, and then the room's browser host (npc-sync.js) carries the crew
+// as before. While it runs, the hub leaves that host's crew be.
 (() => {
   "use strict";
   const BL = window.BL;
@@ -21,7 +21,7 @@
   // A row in the timeline: the Ooga's id, x, z, its heading's cosine and sine, its gorilla's cave plus one, flags.
   const WIDTH = 7, DELAY_MS = 150, DEPTH = 24, LOCAL_DELAY_MS = 2 * SIM.STEP * 1000, ACTIVITY_S = 1, REFRESH_S = 0.5, SEED_S = 2;
 
-  const enabled = () => /(?:^|[?&])islandworld=1(?:&|$)/.test(location.search.slice(1));
+  const enabled = () => !/(?:^|[?&])islandworld=0(?:&|$)/.test(location.search.slice(1));
 
   const create = ({ crew, clankers = null, contributors = BL.contributors, platform = null, net = BL.net }) => {
     // The cast the world runs: every roster Ooga but a guest's own likeness, in the crew's order.
