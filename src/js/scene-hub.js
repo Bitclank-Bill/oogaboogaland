@@ -6317,8 +6317,8 @@
     w.phase = 0; w.through = false; w.seen = false;
     crew.steer(0, 0, 0, 0, 0);
     w.eyes.letGo(FOLLOW.min);
-    // A forward key held through the walk goes on walking; anything else waits to be let go, as the view has turned.
-    w.settle = player === w.cave && !pilot.controls.takeForward();
+    // The eye rig restores the view and movement still held when the walk releases it.
+    w.settle = false;
   };
   const factoryGlide = (dt, player, along, across, feet) => {
     const w = factoryWalk, G = BL.factoryWindow.GLIDE, m = factoryMouth.mouth, p = player.root.position;
@@ -6352,7 +6352,7 @@
     // Still played, so the crew never stands it up and turns it back out to work. The island's meshes stay on the GPU while
     // the visit lasts (`world.islandKeep`), so walking back out uploads nothing, and this frame, once drawn, is held over
     // the factory's first (`grab`).
-    world.factoryCrossing = { across, past: shield - along };
+    world.factoryCrossing = { across, past: shield - along, view: w.eyes.returnView, focused: w.eyes.focused };
     world.islandKeep = islandMeshes();
     w.phase = 0;
     w.grab = true;
@@ -6399,7 +6399,7 @@
     const m = factoryMouth.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), G = BL.factoryWindow.GLIDE, player = pilot.player;
     const along = BL.factoryModels.SHIELD_Z + c.past, across = clamp(c.across, -1.2, 1.2), x = m.x + sr * along + cr * across, z = m.z + cr * along - sr * across;
     pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch: 0, dist: FOLLOW.min, framed: true });
-    factoryWalk.eyes.arrive(player, m.ry);
+    factoryWalk.eyes.arrive(player, m.ry, c);
     const p = player.root.position;
     Object.assign(factoryWalk, { phase: FACTORY_WALK_OUT, cave: player, t: 0, x: p.x, z: p.z, seen: true, through: false, stop: BL.factoryWindow.stopPast(FOLLOW.min), still: c.held ? 1 : 0, hold: c.held ? G.still : 0 });
   };

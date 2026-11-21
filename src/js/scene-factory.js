@@ -1153,7 +1153,7 @@
     // A step short of this shield in the tunnel the two ends share, which the walk opens.
     walk.phase = WALK_ON;
     pilot.navigate({ yaw: 0, pitch: 0, dist: FOLLOW.min, position: { x: clamp(c.across, -1.2, 1.2), y: LAYOUT.entrance.y, z: GATE_Z - c.past }, framed: true });
-    eyes.arrive(avatar, Math.PI);
+    eyes.arrive(avatar, Math.PI, c);
     const p = avatar.root.position;
     Object.assign(walk, { phase: WALK_ON, t: 0, x: p.x, z: p.z, through: false, handing: false });
   };
@@ -1172,8 +1172,8 @@
     walk.through = false;
     people.steer(0, 0, 0, 0, 0);
     eyes.letGo(FOLLOW.min);
-    // A forward key held through the walk goes on walking; anything else waits to be let go, as the view has turned.
-    walk.settle = people.player === avatar && !pilot.controls.takeForward();
+    // The eye rig restores the view and movement still held when the walk releases it.
+    walk.settle = false;
   };
   const walkStep = (dt) => {
     const w = walk, G = BL.factoryWindow.GLIDE, p = avatar.root.position, off = w.phase === WALK_OFF;
@@ -1200,7 +1200,7 @@
       people.steer(0, 0, 0, 0, 0);
       return;
     }
-    world.factoryCrossing = { across: p.x, past: p.z - GATE_Z, held: kept };
+    world.factoryCrossing = { across: p.x, past: p.z - GATE_Z, held: kept, view: eyes.returnView, focused: eyes.focused };
     w.phase = 0;
     w.grab = kept;
     people.steer(0, 0, 0, 0, 0);

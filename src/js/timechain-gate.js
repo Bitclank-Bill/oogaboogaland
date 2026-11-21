@@ -614,7 +614,7 @@
       hold(false);
       // The pilot's own camera resumes behind the Ooga where it now stands on the bridge, not where it was left inside
       // the doors when the island opened; in first person, looking as the eyes look now.
-      if (cave) pilot.navigate({ position: { x: cave.root.position.x, y: cave.root.position.y - cave.baseY, z: cave.root.position.z }, yaw: cave.root.rotation.y + Math.PI, pitch: eyes ? -g.pitch : 0.12, dist: 4.5 });
+      if (cave) pilot.navigate({ position: { x: cave.root.position.x, y: cave.root.position.y - cave.baseY, z: cave.root.position.z }, yaw: cave.root.rotation.y + Math.PI, pitch: g.view ? g.view.pitch : eyes ? -g.pitch : 0.12, dist: g.view ? g.view.distance : 4.5 });
       if (eyes) {
         // The pilot's first person blends from the camera shown, so it starts from these same eyes.
         eyePose(cave, g.to);
@@ -624,6 +624,7 @@
       hideHead(cave, false);
       // In the view and mode the room was left in.
       if (cave && g.view) pilot.adopt(g.view);
+      if (cave) pilot.controls.takeMovement();
       g.view = null;
       if (g.jetpack && g.jetpack.equipped && cave && h.equipJetpack(cave)) cave.jetFuel = g.jetpack.fuel;
       else if (g.jetpack && cave) cave.jetFuel = g.jetpack.fuel;

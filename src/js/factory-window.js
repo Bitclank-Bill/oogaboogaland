@@ -383,7 +383,7 @@
   const stopPast = (dist) => Math.max(ARRIVE, dist * Math.cos(LET_GO_PITCH) + CLEAR_BACK);
   const eyes = (pilot, camera) => {
     const IN_EYES = 1, GOING_BACK = 2, from = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
-    let mode = 0, cave = null, heading = 0, glide = 1, fromFov = 0, head = null, headWas = false;
+    let mode = 0, cave = null, heading = 0, glide = 1, fromFov = 0, head = null, headWas = false, returnView = null, focused = false;
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     const eyePose = (out) => {
       const p = cave.root.position, ahead = EYE_AHEAD * cave.traits.height;
@@ -407,11 +407,16 @@
       else if (!on && head) { head.cameraHidden = headWas; head = null; }
     };
     const enter = (walker, way) => {
+      returnView = pilot.viewState(); focused = pilot.captureControl({}).focused;
+      // The guide turns the body. Carry the look relative to the doorway instead,
+      // so backing into it or approaching at an angle cannot turn the restored camera.
+      if (returnView) returnView.relYaw += walker.root.rotation.y - way;
       cave = walker; heading = way; mode = IN_EYES; glide = CALM.matches ? 1 : 0; fromFov = camera.fov;
       read(from);
       pilot.setExternalControl(true);
     };
-    const arrive = (walker, way) => {
+    const arrive = (walker, way, crossing = null) => {
+      returnView = crossing?.view || null; focused = !!crossing?.focused;
       cave = walker; heading = way; mode = IN_EYES; glide = 1; fromFov = 0;
       pilot.setExternalControl(true);
       hideHead(true);
@@ -423,9 +428,15 @@
       pilot.setExternalControl(false);
       read(from);
       fromFov = camera.fov; mode = GOING_BACK; glide = CALM.matches ? 1 : 0; cave = null;
+      const kept = returnView, focus = focused;
+      returnView = null; focused = false;
       if (pilot.player !== walker) return;
       const p = walker.root.position;
-      pilot.navigate({ position: { x: p.x, y: p.y - walker.baseY, z: p.z }, yaw: walker.root.rotation.y + Math.PI, pitch: LET_GO_PITCH, dist });
+      const yaw = kept ? heading + kept.relYaw : walker.root.rotation.y + Math.PI;
+      pilot.navigate({ position: { x: p.x, y: p.y - walker.baseY, z: p.z }, yaw: kept?.view === "first-person" ? yaw : walker.root.rotation.y + Math.PI, pitch: kept ? kept.pitch : LET_GO_PITCH, dist: kept ? kept.distance : dist });
+      if (kept) { kept.relYaw = yaw - walker.root.rotation.y; pilot.adopt(kept); }
+      if (focus) pilot.focusAim();
+      pilot.controls.takeMovement();
     };
     const view = (dt) => {
       if (mode === IN_EYES) {
@@ -446,9 +457,9 @@
     const reset = () => {
       if (mode === IN_EYES) pilot.setExternalControl(false);
       if (head) hideHead(false);
-      mode = 0; cave = null;
+      mode = 0; cave = null; returnView = null; focused = false;
     };
-    return { enter, arrive, letGo, view, reset, ahead: (walker) => EYE_AHEAD * walker.traits.height, get on() { return mode === IN_EYES; }, get there() { return mode === IN_EYES && glide >= 1; } };
+    return { enter, arrive, letGo, view, reset, ahead: (walker) => EYE_AHEAD * walker.traits.height, get returnView() { return returnView; }, get focused() { return focused; }, get on() { return mode === IN_EYES; }, get there() { return mode === IN_EYES && glide >= 1; } };
   };
   BL.factoryWindow = { create, relief, grab, still, crossing, arrival, eyes, stopPast, AXIS, DEPTH, TINT, GLIDE };
 })();

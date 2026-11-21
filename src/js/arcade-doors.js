@@ -95,8 +95,9 @@
       if (pilot.player !== cave) { state.returnView = null; state.focused = false; return; }
       const p = cave.root.position;
       const kept = state.returnView;
-      pilot.navigate({ position: { x: p.x, y: p.y - cave.baseY, z: p.z }, yaw: cave.root.rotation.y + Math.PI, pitch: kept ? kept.pitch : LET_GO_PITCH, dist: kept ? kept.distance : followMin });
-      if (kept) pilot.adopt(kept);
+      const yaw = kept ? state.heading + kept.relYaw : cave.root.rotation.y + Math.PI;
+      pilot.navigate({ position: { x: p.x, y: p.y - cave.baseY, z: p.z }, yaw: kept?.view === "first-person" ? yaw : cave.root.rotation.y + Math.PI, pitch: kept ? kept.pitch : LET_GO_PITCH, dist: kept ? kept.distance : followMin });
+      if (kept) { kept.relYaw = yaw - cave.root.rotation.y; pilot.adopt(kept); }
       state.returnView = null;
       // Mouse-look, if the walk took it away.
       if (state.focused) pilot.focusAim();
@@ -195,6 +196,7 @@
         state.t = 0; state.cave = player; state.dist = pilot.orbit.dist; state.pitch = 0; state.heading = Math.atan2(sign * F.sr, sign * F.cr);
         state.focused = pilot.captureControl({}).focused;
         state.returnView = pilot.viewState();
+        if (state.returnView) state.returnView.relYaw += player.root.rotation.y - state.heading;
         door.away(sign);
         pilot.setExternalControl(true);
         lens("eyes");

@@ -1228,7 +1228,13 @@
           doors.want = 0;
           finishGuide();
           // In, the view and mode the visitor walked up to the keypad in (first person and carry only for the walk).
-          if (visit.view) pilot.adopt(visit.view);
+          if (visit.view) {
+            // First person normally keeps the guide's look on adopt. Restore its
+            // chosen pitch before handing back the camera and held movement.
+            if (visit.view.view === "first-person") pilot.navigate({ position: { x: p.x, y: p.y - avatar.baseY, z: p.z }, yaw: avatar.root.rotation.y + Math.PI, pitch: visit.view.pitch, dist: visit.view.distance });
+            pilot.adopt(visit.view);
+          }
+          pilot.controls.takeMovement();
         }
       } else if (guide.stage === "toDoor") {
         if (steerTo(L.doorStep.x, L.doorStep.z, dt) || guide.t > GUIDE_LIMIT) {
