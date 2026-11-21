@@ -49110,7 +49110,7 @@ scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=120
 // Explicit account/API fixtures exercise the real hosted wardrobe and model consumers. They are not live
 // staging authentication or a substitute for two different signed-in people observing the actual Room.
 const equipmentAppChecks = async () => {
-  const { equipmentHats } = await import("../worker/src/equipment-hats.js");
+  const { equipmentHats, equipmentHatArchive } = await import("../worker/src/equipment-hats.js");
   const temporary = mkdtempSync(join(tmpdir(), "equipment-app-")), staged = join(temporary, "site");
   const build = spawnSync(process.execPath, [join(root, "scripts/site.mjs"), staged, "--audio-assets", "--image-assets", "--worker-page", "--page-assets"], {
     cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: "", CHARACTER_CATALOG_ENGINE: "", CHARACTER_CATALOG_ENVIRONMENT: "" }
@@ -49119,11 +49119,18 @@ const equipmentAppChecks = async () => {
   const item = equipmentHats.items[0], helmetItem = equipmentHats.items.find(row => row.id === "johnstackton21m-helmet");
   const helmet = { item: helmetItem.id, version: helmetItem.current }, archives = new Map(), archiveReads = [], writes = [];
   const shots = join(root, "untracked", "equipment"), network = { accounts: 0, equipment: 0, saves: 0, archives: 0 };
-  for (const entry of equipmentHats.items) for (const version of entry.versions)
-    archives.set(version, readFileSync(join(root, "src/equipment/hats", version + ".json"), "utf8"));
+  for (const entry of equipmentHats.items) for (const version of entry.versions) {
+    const text = equipmentHatArchive(version), archive = JSON.parse(text); archives.set(version, text);
+    if (archive.format === 2) archives.set(archive.content, equipmentHatArchive(archive.content));
+  }
+  const fullContent = (archive) => archive.format === 1 ? equipmentHats.contentOf(archive) : JSON.parse(archives.get(archive.content));
   const variant = (color) => {
-    const archive = JSON.parse(archives.get(item.current));
-    for (const node of archive.nodes) for (const face of node.geometry.faces) face.color = color;
+    const archive = JSON.parse(archives.get(item.current)), content = fullContent(archive);
+    for (const node of content.nodes) for (const face of node.geometry.faces) face.color = color;
+    if (archive.format === 2) {
+      const text = equipmentHats.encode(content), hash = createHash("sha256").update(text).digest("hex");
+      archives.set(hash, text); archive.content = hash;
+    }
     equipmentHats.validate(archive, item.id);
     const json = equipmentHats.encode(archive), version = createHash("sha256").update(json).digest("hex");
     archives.set(version, json); return version;
@@ -49138,16 +49145,16 @@ const equipmentAppChecks = async () => {
     archives.set(version, text); return version;
   };
   const content = (color) => {
-    const value = equipmentHats.contentOf(JSON.parse(archives.get(item.current)));
+    const value = fullContent(JSON.parse(archives.get(item.current)));
     if (color) for (const node of value.nodes) for (const face of node.geometry.faces) face.color = color;
     equipmentHats.validateContent(value); return immutable(value);
   };
   const originalContent = content(), blueContent = content([40, 100, 210]);
   const published = (id, hash, parent) => {
-    const archive = { format: 2, item: id, content: hash, profile: "straw", parent };
+    const archive = { format: 2, item: id, content: hash, profile: equipmentHats.get(item.id).profile, parent };
     equipmentHats.validate(archive, id);
     const version = immutable(archive);
-    fixtureRevisions[version] = { item: id, content: hash, profile: "straw", parent };
+    fixtureRevisions[version] = { item: id, content: hash, profile: archive.profile, parent };
     return { item: id, version };
   };
   const fixtureItem = (id, label, creator, hash, parent) => {
@@ -49274,10 +49281,13 @@ const equipmentAppChecks = async () => {
     })()`);
     record("equipment catalog: identical hats share one credited choice and edited forks form collapsed nested variants", Object.values(groups).every(Boolean), JSON.stringify(groups));
     await b.evaluate("document.querySelector('.studio-hat-variants > summary').focus()");
-    await b.key("Enter");
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
     await wait("document.querySelector('.studio-hat-variants').open", "Keyboard did not expand variants");
     await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').focus()`);
-    await b.key(" "); await wait(wearing(fork), "Keyboard did not preview the full immutable fork");
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: " ", code: "Space", text: " ", windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: " ", code: "Space", windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 });
+    await wait(wearing(fork), "Keyboard did not preview the full immutable fork");
     record("equipment catalog: keyboard disclosure and selection preview a full immutable variant without saving", writes.length === 0
       && archiveReads.includes(fork.version) && archiveReads.includes(blueContent)
       && await b.evaluate(`document.querySelector('[data-hat-item="${fork.item}"]').checked`));
@@ -49556,6 +49566,11 @@ const equipmentAppChecks = async () => {
     record("equipment catalog: Accept advances only the fork and its historical saved row remains available while previewing", saved.selection.version === forkThird.version
       && saved.selection.item === fork.item && saved.declined === null && saved.size === 90 && pin === `${forkThird.item}@${forkThird.version}` && retainedPin);
     await choose(`${forkThird.item}@${forkThird.version}`); await wait(wearing(forkThird), "Saved historical fork could not be selected again");
+    record("equipment catalog: a restored historical choice stays visible in the bounded phone list with Save reachable", await b.evaluate(`(() => {
+      const box=document.getElementById('studio-hat-choices').getBoundingClientRect(),row=document.querySelector('#studio-hat input:checked').closest('label').getBoundingClientRect(),
+        save=document.getElementById('studio-hat-save').getBoundingClientRect();
+      return row.top>=box.top-1&&row.bottom<=box.bottom+1&&save.top>=0&&save.bottom<=innerHeight;
+    })()`));
     await b.screenshot(join(shots, "hat-variants-phone.png"));
     record("equipment catalog: duplicate and fork save/update checks keep a clean console", b.logs.length === 0, b.logs.join("\n"));
     writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png", "hat-variants-phone.png"] }, null, 2) + "\n");

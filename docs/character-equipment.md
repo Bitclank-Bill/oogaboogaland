@@ -40,8 +40,8 @@ restore them. The original head, face, tusks and blink geometry remain intact.
 ## Shared hats and variants
 
 The catalog follow-up in [#831](https://github.com/OogaBoogaX/oogaboogaland/issues/831)
-keeps item identity separate from shared geometry. Identical geometry is stored
-once, and identical wearable choices appear together with their creator credits.
+keeps item identity separate from shared geometry. New revisions reuse identical
+geometry, and identical wearable choices appear together with their creator credits.
 An edited fork has its own item and update history, with a parent item and exact
 parent version. The Studio groups forks in expandable variants under the original.
 

@@ -7,7 +7,10 @@ import { join } from "node:path";
 import { validateEquipmentRetention, preflightEquipmentRetention } from "../../scripts/equipment-retention.mjs";
 import { equipmentHats } from "../src/equipment-hats.js";
 
-const root = new URL("../../", import.meta.url), item = equipmentHats.items[0];
+// Start the migration fixture from the first published straw archive, independent of later
+// catalog updates. sharedFixture below adds item-bound v2 manifests and their complete blob.
+const root = new URL("../../", import.meta.url), legacyVersion = "c6f85793cc6314e8e0ca023c21ebb925060400ed3b4bc499694c32daa050e8eb";
+const item = { ...equipmentHats.items.find(row => row.id === "bitcoin-bill-straw"), current: legacyVersion, versions: [legacyVersion], parent: null };
 const original = readFileSync(new URL(`src/equipment/hats/${item.current}.json`, root), "utf8");
 const changed = JSON.parse(original); changed.nodes[0].geometry.faces[0].color = [201, 13, 93];
 const next = equipmentHats.encode(changed), version = createHash("sha256").update(next).digest("hex");

@@ -610,6 +610,13 @@
       if (selectedKey !== value) for (const parent of selected.parents) parent.details.open = true;
       for (const disclosure of disclosures) disclosure.summary.textContent = `Variants (${disclosure.count})`
         + (selected.parents.includes(disclosure) ? ` · ${selected.label} selected` : "");
+      if (selectedKey !== value && view.choices.clientHeight) {
+        // Keep the pin in view without moving focus or scrolling the surrounding studio panel.
+        const bounds = view.choices.getBoundingClientRect(), row = selected.node.getBoundingClientRect();
+        const top = bounds.top + view.choices.clientTop, bottom = top + view.choices.clientHeight;
+        if (row.top < top || row.height > view.choices.clientHeight) view.choices.scrollTop += row.top - top;
+        else if (row.bottom > bottom) view.choices.scrollTop += row.bottom - bottom;
+      }
       selectedKey = value;
     };
     const owns = () => BL.net.ownCharacter()?.handle.toLowerCase() === state.name.toLowerCase();
