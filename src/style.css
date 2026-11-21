@@ -12578,11 +12578,16 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
 .studio-size-line .studio-hat-size-label { flex: 1 1 auto; }
 .studio-size-line .link { padding: 0; min-height: 0; font-size: 11px; }
 .studio-size-line .link:disabled { opacity: 0.4; cursor: default; }
-.studio-changes { color: var(--accent-text); font-size: 11px; white-space: nowrap; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+.studio-changes { color: var(--accent-text); font-size: 11px; white-space: nowrap; }
 .studio-changes .link { padding: 0; min-height: 0; font-size: 11px; }
 .studio-slot-credit { color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
 .studio-slot-credit:empty { display: none; }
-.studio-wardrobe-foot { position: sticky; bottom: 0; z-index: 1; display: grid; gap: 6px; margin: 0 -2px; padding: 8px 2px; background: var(--planks); box-shadow: 0 -6px 8px -6px #0008; }
+/* The foot pinned under the slots is a stone slab of its own: a copy of the planks could never line its seams up with
+   the panel's behind it as the slots scroll, so it would read as a broken board. Its text stands on the stone. */
+.studio-wardrobe-foot { position: sticky; bottom: 0; z-index: 1; display: grid; gap: 6px; margin-top: 2px; padding: 8px; background: var(--slab-dark);
+  border: 2px solid var(--stone-dk); border-radius: 9px 7px 10px 8px; box-shadow: var(--tablet-shadow); }
+.studio-wardrobe .studio-wardrobe-foot .studio-note { padding: 0; background: none; color: rgba(243, 239, 228, 0.62); font-size: 11px; }
+.studio-wardrobe .studio-wardrobe-foot .studio-note:empty { display: none; }
 .studio-wardrobe :is(input[type="range"], summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .studio-hat-size-label { display: flex; justify-content: space-between; gap: 8px; }
 .studio-hat-size-label output { color: var(--accent-text); font-variant-numeric: tabular-nums; }
