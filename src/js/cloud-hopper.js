@@ -46,20 +46,21 @@
   // (`course.due`), as a tornado comes or a gust blows, and stays so to the finish: the sky, the sea, the storm round
   // it and the clouds roll half a turn round the course's axis over TURN_SECONDS (at once under reduced motion),
   // while the island stays the right way up to the rider, to be landed on and the run won on it. The rider goes on as it was going, its speed and the controls held untouched, so it steers all through
-  // the roll; only its height is taken from it, for the roll's first TURN_HOLD seconds, while it is lowered TURN_DROP
-  // metres under where it was, below the clouds. Then, the world still rolling, a burst of updraft wind under it
-  // throws it back up (`windLift`): the same for every rider, pack or none, a pack and fuel it holds left as they
+  // the roll. As the world turns the clouds stop holding it for FALL_SECONDS (`lowering`): it simply falls, by the
+  // crew's own gravity and its own speed, nothing of it held or moved by the run. Then, the world still rolling, a
+  // burst of updraft wind under it throws it back up (`windLift`): the same for every rider, pack or none, a pack and fuel it holds left as they
   // were. The lift is aimed at the nearest landing ahead that will still be solid when it gets there (`liftTarget`):
   // up to LIFT_OVER over that cloud's top (higher only when it is too far to reach at LIFT_SPEED otherwise), and
   // forward at a steady speed just far enough to come down on its middle where its swing will have it, with no hands on the controls; no further, so it never
   // carries a rider on down the course. The rider then steers and lands it itself. One that falls CLIMB_FALL
   // metres further under the course, where it is, before its first landing
-  // is lifted again, once, from rest under where the roll began; from then on, as after that first
+  // is lifted again, once, from rest TURN_DROP under where the roll began; from then on, as after that first
   // landing, a fall is lost as any other is. It changes nothing of the course.
-  const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FALL = 30;
-  // The wind lift: how far over the target cloud's top its arc peaks, how far off a cloud may be to aim at, and how
-  // long its wind shows round the rider.
-  const LIFT_OVER = 1.6, LIFT_REACH = 36, LIFT_SHOW = 1, LIFT_SPEED = 14;
+  const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FALL = 30, FALL_SECONDS = 0.45;
+  // The wind lift: how far over the target cloud's top its arc peaks, how far off a cloud may be to aim at, how long
+  // its wind shows round the rider, its fastest speed across, and the least it lifts a rider over where it caught it
+  // (so it is always a lift, even over a cloud below).
+  const LIFT_OVER = 1.6, LIFT_REACH = 36, LIFT_SHOW = 1, LIFT_SPEED = 14, LIFT_UP = 1.2;
   // A portal cloud throws the rider that touches it on down the course: over WARP_SECONDS the Ooga, unseen, streaks
   // to a landing as SPARKS violet sparkles trailing WARP_TRAIL metres, the view gliding after it, and comes out WARP_EDGE inside the
   // landing's near side and WARP_OVER above it, with the speed it went in with (no more than carries it across the
@@ -134,8 +135,8 @@
     // middle, so one upside down shows its flat underside upward, level with the top it had, and that underside is
     // what the rider lands, stands and bounces on, its puffs hanging under it. Lit from under meanwhile, the clouds
     // take the night fill, and a boost cloud's arrows show on its underside (`underNodes`). `turns` is how many rolls
-    // are done, `turning` the seconds into one (-1 none) from `turnFrom`, `lowering` its start, while the rider's
-    // height is eased from `turnHeld` down to `checkpoint`'s; `climbing` is a rider let go under the clouds and not
+    // are done, `turning` the seconds into one (-1 none) from `turnFrom`, `lowering` its first FALL_SECONDS, while the
+    // rider falls by itself before the gust; `climbing` is a rider lifted by the gust and not
     // yet landed, `rescued` that its one fall has been put back. A course's first roll turns the world round the
     // rider (`turnPivot`) and leaves it upside down; Storm's Eye has the one, so its world stays so to the finish.
     // (A second would turn it back round an axis sliding from there to the rider, to end upright with no far swing.)
@@ -269,10 +270,10 @@
       for (const c of course.landings) { const d = (c.x - x) ** 2 + (c.z - z) ** 2; if (d < near) { near = d; top = c.top; } }
       return top;
     };
-    // The rider has reached where the world turns over, `level` the course's height there: its height is taken, to be
-    // lowered under the clouds as the world starts to roll (never further under the course than TURN_DROP, so the
-    // wind lift always reaches it, and never nearer the sea than a climb's fall). Its speed over the course and
-    // the controls held are left as they are, and the view stays the player's own to look round with.
+    // The rider has reached where the world turns over, `level` the course's height there: it starts to fall as the
+    // world starts to roll (`checkpoint`, where a rescued fall is put back, stands TURN_DROP under where it was, and
+    // never nearer the sea than a climb's fall). Its speed over the course and the controls held are left as they
+    // are, and the view stays the player's own to look round with.
     const beginTurn = (level) => {
       const p = actor.root.position;
       turning = 0; turnFrom = turn; lowering = true; climbing = rescued = false;
@@ -296,7 +297,7 @@
         const d = Math.hypot(c.x - x, c.z - z);
         if (d < anyNear) { anyNear = d; any = c; }
         if (d > LIFT_REACH || Math.hypot(c.x - end.x, c.z - end.z) > out + Math.max(c.rx, c.rz)) continue;
-        const apex = Math.max(feet, c.top + LIFT_OVER), t = Math.sqrt(2 * (apex - feet) / g) + Math.sqrt(2 * (apex - c.top) / g);
+        const apex = Math.max(feet + LIFT_UP, c.top + LIFT_OVER), t = Math.sqrt(2 * (apex - feet) / g) + Math.sqrt(2 * (apex - c.top) / g);
         if (!course.steadyAt(c, seconds + t) || !course.steadyAt(c, seconds + t + 1)) continue;
         if (d < near) { near = d; best = c; }
       }
@@ -304,7 +305,7 @@
       if (!c) return null;
       // Peaking LIFT_OVER over its top, or higher where the cloud is too far to reach in that time at LIFT_SPEED
       // across (a rider let go well over it, or far from it), so the flight lasts long enough to get there.
-      let apex = Math.max(feet, c.top + LIFT_OVER), vy = 0, t = 0, ax = c.x, az = c.z;
+      let apex = Math.max(feet + LIFT_UP, c.top + LIFT_OVER), vy = 0, t = 0, ax = c.x, az = c.z;
       for (let tries = 0; tries < 80; tries++, apex += 0.5) {
         vy = Math.sqrt(2 * g * (apex - feet)); t = vy / g + Math.sqrt(2 * (apex - c.top) / g);
         const off = course.offsetAt(c, seconds + t);
@@ -333,9 +334,9 @@
     // under where the roll began, at rest.
     const startClimb = (again) => {
       const p = actor.root.position, leap = actor.leap;
-      if (again) { Object.assign(p, checkpoint); leap.vx = leap.vz = 0; }
-      else p.y = checkpoint.y;
-      actor.hop = 1; actor.hopV = 0; actor.jumps = 1; leap.land = 0;
+      if (again) { Object.assign(p, checkpoint); leap.vx = leap.vz = 0; actor.hop = 1; }
+      else actor.hop = Math.max(actor.hop, 1e-3);
+      actor.hopV = 0; actor.jumps = 1; leap.land = 0;
       climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
       windLift();
     };
@@ -349,30 +350,25 @@
       out.z = turnPivot.z + (turnHeld.z - turnPivot.z) * slide;
       return over;
     };
-    // Each frame of a roll, after the crew moved: the world turns on, and while the rider is being lowered its height
-    // (and only that) is overwritten, until it is let go TURN_HOLD seconds in, the roll going on without it. Whether
-    // the rider's height was the roll's this frame, so the run's own work on it waits. Under reduced motion the
-    // world is over at once as the rider is let go.
+    // Each frame of a roll, after the crew moved: the world turns on, and FALL_SECONDS in, the rider having fallen
+    // meanwhile by itself (nothing of it held or moved by the run), the gust catches it. Whether the rider is still
+    // falling, so the run's other work on it (the wind's and a tornado's push, pickups, portals) waits for the gust,
+    // as it waited through the old lowering. Under reduced motion the world is over at once.
     const turnStep = () => {
       turning += stepTime;
-      const p = actor.root.position, held = lowering, over = rollAt(turning, rolled);
+      const over = rollAt(turning, rolled), falling = lowering;
       turn = rolled.turn; turnAbout.x = rolled.x; turnAbout.y = rolled.y; turnAbout.z = rolled.z;
-      if (held) {
-        const d = stillMotion ? 0 : Math.min(1, turning / TURN_HOLD);
-        p.y = turnHeld.y + (checkpoint.y - turnHeld.y) * d * d * (3 - 2 * d);
-        actor.hop = 1; actor.hopV = 0;
-        seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
-        if (turning >= TURN_HOLD - 1e-9) {
-          lowering = false; startClimb(false);
-          hud.toast("The world turned over · the wind lifts you · steer onto a cloud");
-        }
+      if (lowering && turning >= FALL_SECONDS - 1e-9) {
+        lowering = false; startClimb(false);
+        hud.toast("The world turned over · the wind lifts you · steer onto a cloud");
       }
+      if (falling) seconds = (raceNow() - startedAt) / 1000, overlay.update(seconds);
       holdGame();
-      if (!over) return held;
+      if (!over) return falling;
       turning = -1; turns++;
       if (turnFrom === 0) relight(true);
       else relight(false);
-      return held;
+      return falling;
     };
     // A portal touched: it flashes and, if a landing stands safe to come out on, the rider goes in with its speed
     // and its controls as they are.
@@ -1126,7 +1122,7 @@
           slideX += (gust.pushX * GUST_SLIDE * push - slideX) * k; slideZ += (gust.pushZ * GUST_SLIDE * push - slideZ) * k;
           p.x += slideX * dt; p.z += slideZ * dt;
         } else {
-          // Not while the roll is lowering it: it cannot fly against the push yet.
+          // Not while it falls into the flip: the gust is still to come.
           if (actor.hop > 0 && !lowering) {
             actor.leap.vx += slideX + gust.pushX * GUST_PUSH * push * dt; actor.leap.vz += slideZ + gust.pushZ * GUST_PUSH * push * dt;
           }
@@ -1210,8 +1206,11 @@
       const p = platform.position, r = RADIUS + radius;
       return platform.visible && (x - p.x) ** 2 + (z - p.z) ** 2 <= r * r && p.y <= y + rise + 1e-5 ? p.y : -Infinity;
     };
+    // While the rider falls into the flip (`lowering`) the clouds right round it hold it no longer, so it drops away.
+    const dropping = (x, z, y) => { if (!lowering || !actor) return false; const p = actor.root.position;
+      return Math.hypot(x - p.x, z - p.z) < 2.5 && Math.abs(y - (p.y - actor.baseY)) < 2.5; };
     const supportAt = (x, z, y, rise, radius = 0.3) => Math.max(platformSupport(x, z, y, rise, radius),
-      course && !held() ? course.supportAt(x, z, y, rise, radius) : -Infinity);
+      course && !held() && !dropping(x, z, y) ? course.supportAt(x, z, y, rise, radius) : -Infinity);
     const launchFromCloud = () => {
       const p = actor.root.position, feet = p.y - actor.baseY, radius = actor.bodyRadius || 0.3;
       let cloud = null, first = Infinity, fresh = true;
@@ -1777,6 +1776,8 @@
       // Storm's Eye's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
       get turn() { return turn; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
+      // Where a rescued fall from the gust is put back, for the tests.
+      get checkpoint() { return checkpoint; },
       // The wind lift's last aim: the landing, where its middle was to be as the rider came down, and the flight's time.
       get liftAim() { return liftAim.cloud ? liftAim : null; }, get lifts() { return lifts; },
       // What is readied ahead, for debugging: the run's meshes, the landing found for the portal about to be touched
