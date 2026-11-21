@@ -1995,7 +1995,7 @@
       fogNear = 1e8;
       fogFar = 1e8 + 1;
       }
-      const gradientSky = !!(horizon && zenith);
+      const gradientSky = !!(horizon && zenith) && !opts.viewRoots;
       if (gradientSky) buildSky(horizon, zenith);
       if (clear !== clearRef) {
         clearRef = clear;
@@ -2039,8 +2039,12 @@
       gatheredMirror = null;
       mirrorComposeNode = null;
       const viewActor = !environmentCapture && opts.beforeView?.();
-      updateWorld(root, null);
-      traverseVisible(root, gatherNode);
+      if (opts.viewRoots) {
+        for (const node of opts.viewRoots) {
+          updateWorld(node, node.parent?.world || null);
+          traverseVisible(node, gatherNode);
+        }
+      } else { updateWorld(root, null); traverseVisible(root, gatherNode); }
       const mirrorNode = gatheredMirror;
       if (viewActor) { opts.afterView?.(); updateWorld(viewActor.root, viewActor.root.parent?.world || null); }
       if (!environmentCapture && mirrorNode && mirrorDebug.shardsDrawn) updateEnvironment(root, mirrorNode, camera, opts);

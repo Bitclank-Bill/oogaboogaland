@@ -263,7 +263,13 @@ a change to the game, reviewed as ordinary code, so ask a maintainer before prom
 - sound;
 - anything other players' pages must agree on beyond the shape itself;
 - a change to the shared bodies (how shoulders, hands or hips are built for everyone);
-- a new plain-data option.
+- a new plain-data option;
+- a panel tab of their own. That is planned: [custom-tabs.md](custom-tabs.md) describes it
+  (text and a pixel icon, for everyone, signed-in players or contributors as the builder
+  chooses, off by default until a visitor adds it). Until it is built, don't
+  add a `tab` field; help the player write the tab's title, who should see it and its text in an issue instead.
+  Anyone can read a tab's text in the page's source, whoever it is shown to, so it holds
+  nothing private.
 
 If the wish is close to something an Ooga already does, say which one, and build on that.
 
@@ -369,7 +375,8 @@ draft: the bot never reads a draft, so nothing happens to it, however long the p
   building or debugging. Mark it **ready for review** only after the work and authorized
   checks are complete, and record the validation and any remaining acceptance work in
   its description. Return it to draft for substantial new work; small review fixes can
-  stay ready. Batch related fixes before pushing. Commit as the player. Do not
+  stay ready. While it is draft, commit and push each round the player approves; once
+  it is ready, batch related fixes before pushing. Commit as the player. Do not
   force-push over commits the bot has read.
 - The bot reads the file as text and never runs it. It copies an accepted file into one of
   two standing bundle PRs, says which and why, and **closes your PR on purpose**: the

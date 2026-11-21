@@ -105,8 +105,24 @@
     const node = make("section", "panel oc-panel oc-chat", head.header, line, alert.el, signedOut, ...space.nodes);
     node.dataset.panel = "cloud";
     node.dataset.space = "off";
-    let principal = null, refocus = false;
+    let principal = null, refocus = false, portraitTimer = 0, portraitWatch = null;
+    // A quiet Listen view can keep the same cached speaker tiles indefinitely. Refresh their source even with no
+    // audience/voice changes, only while this signed-in tab and document show; the portrait reader shares its throttle.
+    const watchPortraits = () => {
+      if (document.hidden || !principal || node.closest("[hidden]")) {
+        clearInterval(portraitTimer); portraitTimer = 0; return;
+      }
+      if (!portraitTimer) {
+        BL.oogaChatPortraits.refresh();
+        portraitTimer = setInterval(() => BL.oogaChatPortraits.refresh(), 120000);
+      }
+    };
+    document.addEventListener("visibilitychange", watchPortraits, { signal });
     const update = (state) => {
+      if (!portraitWatch && node.parentElement) {
+        portraitWatch = new MutationObserver(watchPortraits);
+        portraitWatch.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
+      }
       const { mode, boot, session, auth, notice: shown, busy } = state;
       const live = mode === "live", who = live && session;
       // Sign-in shows once signed out is known: loading and the session check show only the title and status. Signing
@@ -137,6 +153,7 @@
       if (!who) {
         if (was) refocus = true;
         principal = null;
+        watchPortraits();
         const first = Object.values(providers).find((el) => !el.disabled);
         if (refocus && first) {
           refocus = false;
@@ -146,10 +163,13 @@
       }
       refocus = false;
       principal = session.identity.principal;
+      watchPortraits();
       if (was !== principal && lost) space.focus();
     };
     const dispose = () => {
       listeners.abort();
+      clearInterval(portraitTimer);
+      portraitWatch?.disconnect();
       space.dispose();
       node.remove();
     };
