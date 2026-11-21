@@ -31,8 +31,15 @@ permissions:
 
 # The entire plan/render/publish transaction shares the manual code deployment's
 # environment lock. Queue every request so catalog events cannot replace a manual deployment.
+# Runs whose plan is disabled use their own group and never enter a deployment queue.
 concurrency:
-  group: cloudflare-${{ inputs.environment || 'production' }}
+  group: >-
+    ${{ github.repository == 'OogaBoogaX/oogaboogaland' &&
+        (vars.CHARACTER_CATALOG_PUBLISH_ENABLED == 'true' || github.event_name == 'workflow_dispatch') &&
+        (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/rock') &&
+        (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') &&
+        format('cloudflare-{0}', inputs.environment || 'production') ||
+        format('character-catalog-skipped-{0}', github.run_id) }}
   cancel-in-progress: false
   queue: max
 
