@@ -37,6 +37,24 @@ muzzle lining is hidden. Closed hats tuck the apple's stalk and leaf away using
 a cached head variant. Open flame/ruby crowns, no hat and the original look
 restore them. The original head, face, tusks and blink geometry remain intact.
 
+## Shared hats and variants
+
+The catalog follow-up in [#831](https://github.com/OogaBoogaX/oogaboogaland/issues/831)
+keeps item identity separate from shared geometry. Identical geometry is stored
+once, and identical wearable choices appear together with their creator credits.
+An edited fork has its own item and update history, with a parent item and exact
+parent version. The Studio groups forks in expandable variants under the original.
+
+Each published geometry version is complete and immutable; loading it never
+requires applying patches to a parent. A parent update does not change its forks.
+Saved item/version choices, personal size and declined updates remain intact, and
+only an update to the selected item's own history offers Accept or Keep. Existing
+archives stay readable during the transition. Fitting rules remain explicit, so
+sharing geometry cannot accidentally change a helmet's minimum size or attachment.
+
+This follow-up is in development; the current authoring and Studio implementation
+below still describes the initial nine-hat catalog.
+
 ## Updating an authored hat
 
 The nine existing custom character files expose `dress.hat(k, v)` for hat-only
