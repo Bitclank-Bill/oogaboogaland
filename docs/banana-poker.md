@@ -268,6 +268,24 @@ bands, an oxblood padded rail round the felt, gold inlay rings on the green
 felt and walnut chairs with carved backs, padded seats and gold finials. Each
 floating TABLE name hangs on a dark green marble plate framed in gold.
 
+Everything in the room is built for an Ooga at the game's own scale (a
+middle-height Ooga stands 1.625 m, its hip 0.455 m up), and every figure in the
+room is drawn at that scale. The felt lies at 0.78 m and the padded rail's top
+at 0.915 m, so a standing Ooga looks down onto the felt and a seated one sees
+well over the rail. A chair's seat is 0.47 m high and shallow (0.45 m usable),
+so a seated Ooga's straight legs reach past its front edge like lower legs; its
+back pad meets the Ooga's back and its carved crest stands at 1.06 m, about a
+seated Ooga's shoulder. The chairs stand on a 5.2 by 3.6 m ring, each front
+about 0.16 m from the rail, so a seated Ooga is at the table; the cards, chips
+and dealer button keep their places on the felt (laid from the old 6 by 4.2 m
+ring) and their table-sized look, read from the table view overhead. The table
+lamps hang 0.6 m lower than before, as the tables came down 0.6 m. The dealer
+gorilla stands about as tall as a standing guest. Bar stools are 0.62 m at a
+0.95 m counter whose marble is set back under the top; the cashier's counter is
+0.95 m; the lounges' sofas and armchairs seat at 0.40 m with backs at 0.85 m;
+the low tables are 0.38 m and the rope posts 0.9 m. Everyone seated, at a table,
+on a stool or in a lounge, rests the hip about 0.16 m over the seat.
+
 The furniture, the fountain and the statues' plinths collide with walkers. The lowest renderer tier
 still spends its ten point lights on the ten tables; the room's three lights
 follow, then the bar's two and the cage's, and the fountain's soft warm light;
@@ -605,8 +623,11 @@ bias or collusion.
 Every signed-in player seated at a table is drawn once, as the Ooga they drive,
 sitting in their chair. The visitor's own Ooga sits in its chair while seated
 and stands up when it walks the floor. Each page sends where its Ooga is, as it
-always has; a position at chair height on a chair's spot reads as that chair
-(`poker-presence.js`), so nothing new goes over the wire. One sitting pose
+always has; a position at chair height (soles about 0.18 m up, within 0.1 m) on
+a chair's spot reads as that chair (`poker-presence.js`), so nothing new goes
+over the wire. A page from before the Ooga-scale chairs sends soles at 0.45 m
+on the old, wider ring, so pages on the two versions do not see each other
+seated. One sitting pose
 (`pokerModels.sitPose`, undone by `standPose`) seats the visitor, the stand-ins
 and the cast members alike.
 

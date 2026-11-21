@@ -270,7 +270,7 @@
   const sit = index => {
     const p = BL.pokerModels.TABLES[selected], s = BL.pokerModels.SEATS[index];
     avatar.root.position.x = p.x + s.x; avatar.root.position.z = p.z + s.z;
-    avatar.root.position.y = avatar.baseY + BL.pokerPresence.CHAIR_Y; avatar.root.rotation.y = s.yaw;
+    avatar.root.position.y = BL.pokerModels.sitY(avatar.traits.height); avatar.root.rotation.y = s.yaw;
     pilot.controls.reset(); pilot.setActive(false); seated = true; heroChair = index >= 0 ? selected * 9 + index : -1;
     document.body.dataset.pokerSeated = "true";
   };
@@ -291,7 +291,7 @@
     seatFigures(i);
     for (let j = 0; j < 5; j++) { view.board[j].visible = j < s.board.length && Number.isInteger(s.board[j]); if (view.board[j].visible) view.board[j].geometry = BL.pokerModels.card(s.board[j]); }
     view.button.visible = s.dealer >= 0;
-    if (s.dealer >= 0) { const p = BL.pokerModels.SEATS[s.dealer]; view.button.position.x = p.x * 0.72; view.button.position.z = p.z * 0.65; view.button.position.y = 1.4; }
+    if (s.dealer >= 0) { const p = BL.pokerModels.PLACES[s.dealer]; view.button.position.x = p.x * 0.72; view.button.position.z = p.z * 0.65; view.button.position.y = BL.pokerModels.FELT_Y + 0.02; }
   };
   // Table i's seated figures, card backs and chips from its last snapshot, run on a table event and when a chair's
   // remote changes (a live seat taken by its player's own Ooga keeps no stand-in).
@@ -314,8 +314,9 @@
       if (visibleActor && !view.actors[j]) {
         resetChair(i * 9 + j);
         const actor = BL.models.caveman(traits);
-        actor.root.position.x = slot.x; actor.root.position.z = slot.z; actor.root.position.y = 0.6;
-        actor.root.rotation.y = slot.yaw; actor.root.scale.x = actor.root.scale.y = actor.root.scale.z = 0.82;
+        // At the game's scale 1, as every Ooga, its hip over the seat as the visitor's sits.
+        actor.root.position.x = slot.x; actor.root.position.z = slot.z; actor.root.position.y = BL.pokerModels.sitY(traits.height);
+        actor.root.rotation.y = slot.yaw;
         // A cast member's item stays in hand (its dress hides the club when it carries none).
         if (actor.parts.club && !bot && !figure) actor.parts.club.visible = false;
         // Held a little up in the hand, clear of the seat it would rest in.
@@ -483,7 +484,7 @@
   // goes to the room but the carrier's own pose. One state, pose, spot, flight and aim a visit (made in `enter`), so
   // no frame allocates.
   const IDLE = 0, QUEUED = 1, WALK = 2, LIFT = 3, HOLD = 4, WIND = 5, RELEASE = 6;
-  const SEAT_SCALE = 0.82, WALK_SPEED = 2.4, OUT_SPEED = 1.3, CHAIR_BACK = 1.15, RETURN_AFTER = 60, RETURN_SLOTS = 4;
+  const WALK_SPEED = 2.4, OUT_SPEED = 1.3, CHAIR_BACK = 1.15, RETURN_AFTER = 60, RETURN_SLOTS = 4;
   const AIM_HINTS = { glass: "Ready: throw it through the window", frame: "Aim at a window", sill: "Aim at a window", vault: "Aim at a window", column: "Aim at a window",
     blocked: "Aim at a window", none: "Aim at a window", far: "Too far: walk closer to the glass", speed: "Too far: walk closer to the glass",
     near: "Too close: step back from the glass", low: "Aim higher", high: "Aim lower" };
@@ -573,7 +574,7 @@
     q[0] = 0; q[1] = Math.sin(yaw / 2); q[2] = 0; q[3] = Math.cos(yaw / 2);
     carry.seatX = actor.root.position.x; carry.seatY = actor.root.position.y; carry.seatZ = actor.root.position.z;
     actor.root.quaternion = carry.q;
-    carry.npc = actor; carry.npcH = actor.traits.height * SEAT_SCALE; carry.seed = BL.math.fnv1a(actor.traits.name) % 9973;
+    carry.npc = actor; carry.npcH = actor.traits.height; carry.seed = BL.math.fnv1a(actor.traits.name) % 9973;
     carry.phase = LIFT; carry.t = 0;
     refresh(true);
   };
@@ -592,7 +593,7 @@
     carry.npc = null; finishWalker();
     standUp(npc); npc.root.quaternion = null;
     const p = BL.pokerModels.nearestClear(a.position.x + Math.sin(a.rotation.y) * 0.9, a.position.z + Math.cos(a.rotation.y) * 0.9, avatar, SPOT);
-    npc.root.position.x = p.x; npc.root.position.z = p.z; npc.root.position.y = C.LEG_SHARE * npc.traits.height * SEAT_SCALE;
+    npc.root.position.x = p.x; npc.root.position.z = p.z; npc.root.position.y = C.LEG_SHARE * npc.traits.height;
     walker.npc = npc; walker.phase = 0;
     walker.n = crowd.find(p.x, p.z, 0, BL.pokerModels.EXIT_Z - 2.2, walker.route); walker.i = 0;
     if (!walker.n) finishWalker();
@@ -673,7 +674,7 @@
       const f = flyer.flight, npc = flyer.npc;
       C.throwRun(f, dt);
       npc.root.position.x = f.x; npc.root.position.y = f.y; npc.root.position.z = f.z;
-      npc.root.scale.x = npc.root.scale.y = npc.root.scale.z = SEAT_SCALE * f.scale;
+      npc.root.scale.x = npc.root.scale.y = npc.root.scale.z = f.scale;
       C.flail(npc, f.time, flyer.seed);
       if (f.crossed && !flyer.shattered) {
         flyer.shattered = true;
@@ -747,7 +748,7 @@
     // the ceiling.
     if (!presets["table-1"]) for (let i = 0; i < BL.pokerModels.TABLES.length; i++) {
       const table = BL.pokerModels.TABLES[i], name = `table-${i + 1}`;
-      presets[name] = { yaw: Math.PI, pitch: 1.48, dist: 7.1, target: { x: table.x, y: 1.41, z: table.z } };
+      presets[name] = { yaw: Math.PI, pitch: 1.48, dist: 7.1, target: { x: table.x, y: BL.pokerModels.FELT_Y + 0.03, z: table.z } };
       VIEW_NAMES[name] = `Table ${i + 1}`;
     }
     visit++; seated = false;

@@ -6,11 +6,22 @@
   const PORTAL_Z = REAR_WALL_Z - BL.bifrostModels.MIRROR_Z - 0.05;
   const EXIT_Z = PORTAL_Z + BL.bifrostModels.MIRROR_Z;
   const TABLES = Array.from({ length: 10 }, (_, i) => ({ x: i % 2 ? 11 : -11, z: 24 - Math.floor(i / 2) * 12 }));
+  // Every figure in the room is drawn at the game's scale 1: an Ooga of the roster's middle height (1.04) stands 1.625 m,
+  // its hip (the leg's pivot, the root) 0.455 m up, its one rigid leg swinging forward whole to sit. The tables and
+  // chairs are built for that body: the felt at FELT_Y and the padded rail's top at RAIL_TOP, the chair's seat at
+  // SEAT_TOP. A seated figure's root stands at `sitY(height)`: SIT_HIP of its height over the seat, where its legs at
+  // the sitting pose's -1.35 just clear the cushion back to the seat's front edge, so they overhang it like lower legs.
+  const FELT_Y = 0.78, RAIL_TOP = 0.915, SEAT_TOP = 0.47, SIT_HIP = 0.155, DEALER_SCALE = 0.7;
+  const sitY = height => SEAT_TOP + SIT_HIP * height;
+  // The chairs on a 5.2 by 3.6 m ring, each chair's front edge about 0.16 m from the rail, so a seated Ooga is at the
+  // table; the cards, chips and dealer button are laid from `PLACES`, the same angles on the 6 by 4.2 m ring the chairs
+  // stood on when the room was built for a larger body, so the felt's layout keeps its spacing.
+  const ringAt = (i, rx, rz) => { const a = -Math.PI / 2 + 0.55 + i * (Math.PI * 2 - 1.1) / 8; return [Math.cos(a) * rx, Math.sin(a) * rz]; };
   const SEATS = Array.from({ length: 9 }, (_, i) => {
-    const a = -Math.PI / 2 + 0.55 + i * (Math.PI * 2 - 1.1) / 8;
-    const x = Math.cos(a) * 6, z = Math.sin(a) * 4.2;
+    const [x, z] = ringAt(i, 5.2, 3.6);
     return { x, z, yaw: Math.atan2(-x, -z) };
   });
+  const PLACES = Object.freeze(Array.from({ length: 9 }, (_, i) => { const [x, z] = ringAt(i, 6, 4.2); return Object.freeze({ x, z }); }));
   const box = (w, h, d, color, x = 0, y = 0, z = 0) => M.bevelBox({ w, h, d, color, offset: { x, y, z } });
   const disk = (radius, bottom, top, color, segments = 48) => M.lathe({ segments, profile: [[0, bottom], [radius, bottom], [radius, top], [0, top]], color });
   const node = (geo, x = 0, y = 0, z = 0) => S.createNode({ geometry: geo, position: { x, y, z } });
@@ -56,8 +67,10 @@
             if (lite) { if (!(b & 1)) parts.push(flat(0.12, h + 0.1, 0.12, tint, bx, y + (h + 0.1) / 2, back + 0.18, 0.6)); continue; }
             parts.push(flat(0.12, h, 0.12, tint, bx, y + h / 2, back + 0.18, 0.6), flat(0.045, 0.1, 0.045, tint, bx, y + h + 0.05, back + 0.18, 0.6));
           }
-          parts.push(marble(2.5, 1.02, 0.6, 60 + k, 4, x, 0.51, front - 0.75), block(2.5, 0.08, 0.7, NERO, x, 1.06, front - 0.72),
-            flat(2.5, 0.05, 0.03, GOLD, x, 1.06, front - 0.355), flat(2.5, 0.045, 0.045, GOLD, x, 0.24, front - 0.42));
+          // The counter at an Ooga's waist (0.95), its marble body set back under the top's overhang so a guest's legs
+          // from a stool reach under it, the brass foot rail along the body's foot.
+          parts.push(marble(2.5, 0.87, 0.35, 60 + k, 4, x, 0.435, front - 0.9), block(2.5, 0.08, 0.7, NERO, x, 0.91, front - 0.72),
+            flat(2.5, 0.05, 0.03, GOLD, x, 0.91, front - 0.355), flat(2.5, 0.045, 0.045, GOLD, x, 0.2, front - 0.69));
           // The backboard's back, seen through the glass: a raised walnut frame a bay with a middle rail.
           for (const y of [0.1, 2.15, 4.2]) parts.push(flat(2.5, 0.12, 0.03, WOOD, x, y, back - 0.015));
           for (const dx of [-1.2, 1.2]) parts.push(flat(0.1, 4.3, 0.03, WOOD, x + dx, 2.15, back - 0.015));
@@ -69,9 +82,9 @@
         // The cashier's booth: a marble counter facing the room under a brass grille with a teller's gap, marble sides and
         // a cream canopy. The valance stays oxblood, so the lit CASHIER sign in front of it reads against dark.
         const x0 = f.x - f.hx, x1 = f.x + f.hx, z0 = f.z - f.hz, z1 = f.z + f.hz;
-        for (const z of [f.z - 1.2, f.z + 1.2]) parts.push(marble(0.5, 1.1, 2.4, z < f.z ? 70 : 71, 4, x0 + 0.3, 0.55, z), flat(0.56, 0.04, 2.4, K.BRASS, x0 + 0.3, 1.12, z),
+        for (const z of [f.z - 1.2, f.z + 1.2]) parts.push(marble(0.5, 0.91, 2.4, z < f.z ? 70 : 71, 4, x0 + 0.3, 0.455, z), flat(0.56, 0.04, 2.4, K.BRASS, x0 + 0.3, 0.93, z),
           flat(0.05, 0.05, 2.4, K.BRASS, x0 + 0.3, 2.6, z), block(0.1, 3.4, 2.4, K.WHITE, x1 - 0.05, 1.7, z));
-        for (let n = 1; n < 25; n += lite ? 2 : 1) { const z = z0 + n * 0.2; if (Math.abs(z - f.z) > 0.45) parts.push(flat(0.03, 1.5, 0.03, K.BRASS, x0 + 0.3, 1.85, z)); }
+        for (let n = 1; n < 25; n += lite ? 2 : 1) { const z = z0 + n * 0.2; if (Math.abs(z - f.z) > 0.45) parts.push(flat(0.03, 1.65, 0.03, K.BRASS, x0 + 0.3, 1.775, z)); }
         for (const z of [z0 + 0.05, z1 - 0.05]) parts.push(block(1.9, 2.6, 0.1, K.WHITE, f.x, 1.3, z));
         // The back's face to the glass: a gold coping along its top and a darker marble foot.
         parts.push(flat(0.16, 0.05, 4.84, GOLD, x1 - 0.05, 3.425, f.z), flat(0.12, 0.12, 4.82, K.SHADE, x1 - 0.03, 0.06, f.z));
@@ -86,29 +99,33 @@
     }
     // Deep red ropes between the outer pairs of posts leave the middle gap open.
     const posts = FURNITURE.filter(f => f.kind === "ropePost");
-    for (let i = 0; i < posts.length; i += 2) parts.push(...cord(posts[i].x, posts[i].z, posts[i + 1].z, 0.86, 0.22, 0.025, ROPE));
+    for (let i = 0; i < posts.length; i += 2) parts.push(...cord(posts[i].x, posts[i].z, posts[i + 1].z, 0.77, 0.2, 0.025, ROPE));
     return M.merge(...parts);
   };
   // The repeated pieces, each built about its own origin to stand at its box's centre; the sofa's back is at +x.
-  const stool = () => M.merge(M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.19, 0], [0.19, 0.03], [0.05, 0.06], [0.035, 0.08], [0.035, 0.66], [0.14, 0.68], [0, 0.68]], color: GOLD }),
-    M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0.68], [0.2, 0.68], [0.2, 0.77], [0.17, 0.8], [0, 0.8]], color: T.felt }));
-  // Oxblood leather on a walnut frame.
-  const sofa = () => M.merge(box(1.1, 0.3, 3.9, WOOD, 0, 0.25), box(0.25, 0.78, 3.9, OXBLOOD, 0.45, 0.64),
-    ...[-1, 1].flatMap(sz => [-1, 1].map(sx => flat(0.08, 0.1, 0.08, GOLD, sx * 0.45, 0.05, sz * 1.85))),
-    ...[-1.17, 0, 1.17].flatMap(z => [box(0.86, 0.16, 1.14, OXBLOOD, -0.1, 0.48, z), box(0.16, 0.5, 1.14, OXBLOOD, 0.27, 0.78, z)]),
-    ...[-1, 1].flatMap(s => [box(1.12, 0.36, 0.2, OXBLOOD, 0, 0.56, s * 1.87), flat(1.12, 0.03, 0.2, GOLD, 0, 0.755, s * 1.87)]));
+  // The bar stool's felt top at 0.62, a little under an Ooga's hip, below the 0.95 counter.
+  const stool = () => M.merge(M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.19, 0], [0.19, 0.03], [0.05, 0.06], [0.035, 0.08], [0.035, 0.5], [0.14, 0.52], [0, 0.52]], color: GOLD }),
+    M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0.52], [0.2, 0.52], [0.2, 0.59], [0.17, 0.62], [0, 0.62]], color: T.felt }));
+  // Oxblood leather on a walnut frame. The lounges' seats are built round where a resident's hip sits (sofa x 0.12,
+  // armchair x 0): the cushion at 0.40 runs 0.27 m in front of the hip and the back cushion's face stands where the
+  // Ooga's back is, so a resident sits on the cushion against the back with the legs over the front edge.
+  const sofa = () => M.merge(box(0.72, 0.24, 3.9, WOOD, 0.19, 0.2), box(0.16, 0.6, 3.9, OXBLOOD, 0.48, 0.55),
+    ...[-1, 1].flatMap(sz => [-1, 1].map(sx => flat(0.08, 0.08, 0.08, GOLD, 0.19 + sx * 0.32, 0.04, sz * 1.85))),
+    ...[-1.17, 0, 1.17].flatMap(z => [box(0.46, 0.08, 1.14, OXBLOOD, 0.08, 0.36, z), box(0.12, 0.4, 1.14, OXBLOOD, 0.36, 0.6, z)]),
+    ...[-1, 1].flatMap(s => [box(0.74, 0.26, 0.2, OXBLOOD, 0.19, 0.45, s * 1.87), flat(0.74, 0.03, 0.2, GOLD, 0.19, 0.595, s * 1.87)]));
   // A lounge armchair to sit the sofa's company, in the same oxblood leather on walnut with gold feet and arm caps,
-  // built like the sofa about its own origin with its back at +x.
-  const armchair = () => M.merge(box(0.86, 0.26, 0.92, WOOD, 0, 0.22), box(0.66, 0.16, 0.72, OXBLOOD, -0.08, 0.43, 0),
-    box(0.2, 0.74, 0.92, OXBLOOD, 0.33, 0.7, 0),
-    ...[-1, 1].flatMap(s => [box(0.86, 0.3, 0.14, OXBLOOD, 0, 0.5, s * 0.39), flat(0.86, 0.03, 0.14, GOLD, 0, 0.665, s * 0.39)]),
-    ...[-1, 1].flatMap(sz => [-1, 1].map(sx => flat(0.07, 0.09, 0.07, GOLD, sx * 0.36, 0.045, sz * 0.39))));
-  const lowTable = () => M.merge(marble(0.95, 0.06, 1.75, 80, 2, 0, 0.42, 0), flat(0.97, 0.025, 1.77, GOLD, 0, 0.385),
-    ...[-1, 1].flatMap(sz => [-1, 1].map(sx => flat(0.05, 0.37, 0.05, GOLD, sx * 0.4, 0.185, sz * 0.8))), flat(0.08, 0.1, 0.08, "#ffd28a", 0, 0.5, 0, 0.8),
+  // built like the sofa about its own origin with its back at +x: seat 0.40, arms 0.56, back 0.85.
+  const armchair = () => M.merge(box(0.62, 0.22, 0.86, WOOD, 0.04, 0.19), box(0.45, 0.1, 0.63, OXBLOOD, -0.045, 0.35, 0),
+    box(0.18, 0.6, 0.86, OXBLOOD, 0.26, 0.55, 0),
+    ...[-1, 1].flatMap(s => [box(0.62, 0.22, 0.11, OXBLOOD, 0.04, 0.42, s * 0.375), flat(0.62, 0.03, 0.11, GOLD, 0.04, 0.545, s * 0.375)]),
+    ...[-1, 1].flatMap(sz => [-1, 1].map(sx => flat(0.07, 0.09, 0.07, GOLD, 0.04 + sx * 0.27, 0.045, sz * 0.375))));
+  // The low table's marble top at 0.38, its lamps in proportion.
+  const lowTable = () => M.merge(marble(0.95, 0.06, 1.75, 80, 2, 0, 0.35, 0), flat(0.97, 0.025, 1.77, GOLD, 0, 0.315),
+    ...[-1, 1].flatMap(sz => [-1, 1].map(sx => flat(0.05, 0.3, 0.05, GOLD, sx * 0.4, 0.15, sz * 0.8))), flat(0.08, 0.1, 0.08, "#ffd28a", 0, 0.43, 0, 0.8),
     // A table lamp at each end: a gold foot and stem under a glowing silk shade, so the lounge reads warm against the night.
-    ...[-1, 1].flatMap(sz => [flat(0.18, 0.04, 0.18, GOLD, 0, 0.47, sz * 0.6), flat(0.035, 0.42, 0.035, GOLD, 0, 0.69, sz * 0.6),
-      flat(0.34, 0.26, 0.34, "#ffd9a0", 0, 1.02, sz * 0.6, 0.95), flat(0.36, 0.02, 0.36, GOLD, 0, 1.16, sz * 0.6)]));
-  const ropePost = () => M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.17, 0], [0.17, 0.035], [0.06, 0.08], [0.035, 0.11], [0.035, 0.88], [0.06, 0.9], [0.075, 0.95], [0.05, 0.995], [0, 1]], color: K.BRASS });
+    ...[-1, 1].flatMap(sz => [flat(0.16, 0.04, 0.16, GOLD, 0, 0.4, sz * 0.6), flat(0.035, 0.36, 0.035, GOLD, 0, 0.6, sz * 0.6),
+      flat(0.3, 0.22, 0.3, "#ffd9a0", 0, 0.89, sz * 0.6, 0.95), flat(0.32, 0.02, 0.32, GOLD, 0, 1.01, sz * 0.6)]));
+  const ropePost = () => M.lathe({ segments: lite ? 4 : 12, profile: [[0, 0], [0.17, 0], [0.17, 0.035], [0.06, 0.075], [0.035, 0.1], [0.035, 0.79], [0.06, 0.81], [0.075, 0.855], [0.05, 0.895], [0, 0.9]], color: K.BRASS });
   // The dressing kit's palm is a 4 m tree; a potted one grows hub leaf cards from a lathe pot, its crown pulled in to the box.
   const palm = () => {
     const H = BL.hubModels, rand = BL.math.mulberry32(41);
@@ -168,14 +185,16 @@
     return meshes;
   };
   // Banana Club's ornate table. Each part is built in the unit space its table node scales (top 4.75 by 3.15, rim 4.5 by 2.92, pinstripe 4.02 by 2.44; the base unscaled).
-  // A turned marble pedestal with gold bands, pulled into an oval under the top; it meets the top at y 1.02.
+  // A turned marble pedestal with gold bands, pulled into an oval under the top; it meets the top at y 0.52. The table
+  // stands at an Ooga's height (felt FELT_Y), so the pedestal is drawn shorter in proportion: a lower plinth and a
+  // tighter waist, the same bands.
   const pedestal = () => {
     const segments = lite ? 12 : 24, g = M.shaded([
-      M.lathe({ segments, color: K.SHADE, profile: [[0, 0], [1.5, 0], [1.5, 0.12], [1.38, 0.18]] }),
-      M.lathe({ segments, color: GOLD, profile: [[1.38, 0.18], [1.41, 0.21], [1.38, 0.24], [1.2, 0.26]] }),
-      M.lathe({ segments, color: K.WHITE, profile: [[1.2, 0.26], [0.9, 0.4], [0.72, 0.6], [0.85, 0.8], [1.08, 0.9]] }),
-      M.lathe({ segments, color: GOLD, profile: [[1.08, 0.9], [1.14, 0.93], [1.12, 0.96]] }),
-      M.lathe({ segments, color: K.WHITE, profile: [[1.12, 0.96], [1.22, 0.98], [1.22, 1.02], [0, 1.02]] })
+      M.lathe({ segments, color: K.SHADE, profile: [[0, 0], [1.5, 0], [1.5, 0.07], [1.38, 0.1]] }),
+      M.lathe({ segments, color: GOLD, profile: [[1.38, 0.1], [1.41, 0.12], [1.38, 0.14], [1.2, 0.155]] }),
+      M.lathe({ segments, color: K.WHITE, profile: [[1.2, 0.155], [0.92, 0.23], [0.76, 0.32], [0.88, 0.41], [1.08, 0.465]] }),
+      M.lathe({ segments, color: GOLD, profile: [[1.08, 0.465], [1.14, 0.482], [1.12, 0.498]] }),
+      M.lathe({ segments, color: K.WHITE, profile: [[1.12, 0.498], [1.22, 0.505], [1.22, 0.52], [0, 0.52]] })
     ]);
     for (let i = 0; i < g.verts.length; i += 3) { g.verts[i] *= 1.7; g.verts[i + 2] *= 1.15; }
     return g;
@@ -184,7 +203,7 @@
   // the top's edge (4.75 by 3.15, reaching 4.77 by 3.17) and clear of the felt (4.38 by 2.8), so the button, cards and chips lie inside it.
   // Built at room size, then divided by the rim node's scale (4.5 by 2.92).
   const rail = () => {
-    const A = 4.66, B = 3.06, SX = 4.5, SZ = 2.92, segments = lite ? 28 : 56, sides = lite ? 5 : 8, across = 0.11, high = 0.085, y = 1.43;
+    const A = 4.66, B = 3.06, SX = 4.5, SZ = 2.92, segments = lite ? 28 : 56, sides = lite ? 5 : 8, across = 0.11, high = 0.085, y = RAIL_TOP - high;
     const geo = M.merge(), rgb = BL.math.hexToRgb(OXBLOOD), rows = [];
     for (let k = 0; k < segments; k++) {
       const t = k / segments * Math.PI * 2, c = Math.cos(t), s = Math.sin(t), l = Math.hypot(c / A, s / B), nx = c / A / l, nz = s / B / l, row = [];
@@ -209,21 +228,27 @@
   // A gold inlay ring laid on the felt, a broad band and a fine one inside it.
   const inlay = () => {
     const segments = lite ? 32 : 64;
-    return M.merge(M.lathe({ segments, profile: [[1, 1.384], [0.985, 1.384]], color: GOLD, emissive: 0.2 }),
-      M.lathe({ segments, profile: [[0.958, 1.384], [0.952, 1.384]], color: GOLD, emissive: 0.2 }));
+    const y = FELT_Y + 0.004;
+    return M.merge(M.lathe({ segments, profile: [[1, y], [0.985, y]], color: GOLD, emissive: 0.2 }),
+      M.lathe({ segments, profile: [[0.958, y], [0.952, y]], color: GOLD, emissive: 0.2 }));
   };
-  // A walnut chair with turned legs, an oxblood seat and back pad, a stepped carved crest and gold finials, seated at
-  // 0.68, its back at -z.
+  // The stone top under the felt, its underside bevelled up toward the edge (0.52 in the middle, 0.64 at the rim) so a
+  // seated Ooga's feet, reaching just under the rail, pass below it.
+  const stoneTop = () => M.lathe({ segments: 48, profile: [[0, 0.52], [0.92, 0.52], [1, 0.64], [1, FELT_Y - 0.06], [0, FELT_Y - 0.06]], color: T.stone[5] });
+  // A walnut chair for an Ooga, built about the seated figure's root (its hip, the chair's spot), its back at -z: turned
+  // legs, a seat of 0.75 by 0.56 with its oxblood cushion's top at SEAT_TOP and front edge 0.27 m before the hip (a
+  // shallow seat, so a seated Ooga's rigid legs overhang it like lower legs), the back pad's face 0.18 m behind the hip
+  // where the Ooga's back rests, a stepped carved crest to 1.06 (about a seated Ooga's shoulder) and gold finials.
   const ornateChair = () => {
-    const block = lite ? flat : box, segments = lite ? 4 : 6;
-    const leg = (x, z) => M.moved(M.lathe({ segments, profile: [[0.055, 0], [0.04, 0.25], [0.06, 0.47]], color: T.wood }), x, 0, z);
-    const finial = x => M.moved(M.lathe({ segments, profile: [[0, 0], [0.06, 0.03], [0.07, 0.08], [0.03, 0.14], [0, 0.17]], color: GOLD, emissive: 0.15 }), x, 1.48, -0.4);
-    return M.merge(block(0.95, 0.14, 0.9, T.wood, 0, 0.54), block(0.86, 0.1, 0.8, OXBLOOD, 0, 0.63, 0.03),
-      leg(-0.36, 0.33), leg(0.36, 0.33), leg(-0.36, -0.33), leg(0.36, -0.33),
-      block(0.1, 1, 0.12, T.wood, -0.43, 0.98, -0.4), block(0.1, 1, 0.12, T.wood, 0.43, 0.98, -0.4),
-      block(0.74, 0.66, 0.08, OXBLOOD, 0, 1.03, -0.35), flat(0.78, 0.05, 0.1, T.wood, 0, 0.7, -0.4),
-      block(0.96, 0.1, 0.13, T.wood, 0, 1.43, -0.4), flat(0.56, 0.08, 0.11, T.wood, 0, 1.52, -0.4), flat(0.26, 0.07, 0.1, T.wood, 0, 1.595, -0.4),
-      flat(0.5, 0.03, 0.02, GOLD, 0, 1.52, -0.34), finial(-0.43), finial(0.43));
+    const block = lite ? flat : box, segments = lite ? 4 : 6, top = SEAT_TOP;
+    const leg = (x, z) => M.moved(M.lathe({ segments, profile: [[0.04, 0], [0.03, 0.18], [0.045, top - 0.11]], color: T.wood }), x, 0, z);
+    const finial = x => M.moved(M.lathe({ segments, profile: [[0, 0], [0.045, 0.02], [0.05, 0.055], [0.022, 0.095], [0, 0.12]], color: GOLD, emissive: 0.15 }), x, 0.97, -0.25);
+    return M.merge(block(0.75, 0.07, 0.56, T.wood, 0, top - 0.075, -0.01), block(0.68, 0.04, 0.52, OXBLOOD, 0, top - 0.02, 0.01),
+      leg(-0.3, 0.22), leg(0.3, 0.22), leg(-0.3, -0.24), leg(0.3, -0.24),
+      block(0.07, 0.58, 0.08, T.wood, -0.34, 0.65, -0.25), block(0.07, 0.58, 0.08, T.wood, 0.34, 0.65, -0.25),
+      block(0.56, 0.42, 0.06, OXBLOOD, 0, 0.72, -0.21), flat(0.6, 0.04, 0.07, T.wood, 0, 0.5, -0.25),
+      block(0.76, 0.06, 0.1, T.wood, 0, 0.94, -0.25), flat(0.44, 0.05, 0.09, T.wood, 0, 0.995, -0.25), flat(0.2, 0.04, 0.08, T.wood, 0, 1.04, -0.25),
+      flat(0.4, 0.02, 0.02, GOLD, 0, 0.995, -0.198), finial(-0.34), finial(0.34));
   };
   const cache = BL.models.scopedMap(), scoped = M.track(() => cache.clear());
   const geometry = () => {
@@ -250,7 +275,8 @@
     for (const [w, h] of [[12.8, 2.96], [12.5, 2.66]]) shell.push(flat(w, 0.04, 0.02, T.accent, 0, 6.4 + h / 2, -36.53), flat(w, 0.04, 0.02, T.accent, 0, 6.4 - h / 2, -36.53),
       flat(0.04, h, 0.02, T.accent, -w / 2, 6.4, -36.53), flat(0.04, h, 0.02, T.accent, w / 2, 6.4, -36.53));
     for (const x of [-5.2, 5.2]) shell.push(M.beam(x, 8.12, -36.46, x, BL.pokerVault.SPRING + 0.02, -36.46, 0.026, T.accent), flat(0.09, 0.03, 0.09, T.accent, x, BL.pokerVault.SPRING - 0.015, -36.46));
-    for (const p of TABLES) lamps.cable(p.x, 8.8, p.z - 1.8, p.x, 8.8, p.z + 1.8, 3.1, [0.25, 0.5, 0.75], "hanging", 0);
+    // The lamps hang 0.6 m lower than they did over the taller tables, so each keeps its height over the felt.
+    for (const p of TABLES) lamps.cable(p.x, 8.8, p.z - 1.8, p.x, 8.8, p.z + 1.8, 3.7, [0.25, 0.5, 0.75], "hanging", 0);
     const jacket = M.merge(box(0.92, 0.96, 0.66, "#292f33", 0, 0.49),
       box(0.31, 0.66, 0.08, "#e6e1ce", 0, 0.62, 0.36),
       box(0.1, 0.48, 0.09, "#e6b634", 0, 0.52, 0.42),
@@ -259,7 +285,7 @@
       shell: M.merge(...shell), lamps: lamps.build(), chair: ornateChair(), jacket,
       sleeve: box(0.4, 0.78, 0.43, "#292f33", 0, -0.29, 0.025),
       cuff: box(0.41, 0.12, 0.44, "#e6e1ce", 0, -0.73, 0.025),
-      base: pedestal(), stone: disk(1, 1.02, 1.32, T.stone[5]), rim: rail(), felt: disk(1, 1.36, 1.38, T.felt), pinstripe: inlay(),
+      base: pedestal(), stone: stoneTop(), rim: rail(), felt: disk(1, FELT_Y - 0.02, FELT_Y, T.felt), pinstripe: inlay(),
       back: BL.pokerCards.geometry(null), chip: disk(0.17, 0, 0.055, "#e2b43c"),
       button: disk(0.16, 0, 0.055, "#ece3c7"),
       title: BL.poolModels.carve("BANANA POKER", { cell: 0.24, color: T.accent }),
@@ -268,7 +294,7 @@
       // Floor tiles (the floor module's six veined white seeds and two dark ones for the border).
       tiles: BL.pokerFloor.tiles(lite),
       column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(),
-      pinstripeGold: M.lathe({ segments: 64, profile: [[1, 1.385], [0.993, 1.385]], color: "#f2cf6e", emissive: 0.45 }),
+      pinstripeGold: M.lathe({ segments: 64, profile: [[1, FELT_Y + 0.005], [0.993, FELT_Y + 0.005]], color: "#f2cf6e", emissive: 0.45 }),
       cashier: BL.poolModels.carve("CASHIER", { cell: 0.12, color: "#ffe1a0", emissive: 1 }),
       // A dark green marble plate framed in gold behind each floating table name, wide enough for TABLE 10, so the light
       // letters never read against white stone or the cream ceiling.
@@ -284,8 +310,8 @@
   const card = c => BL.pokerCards.geometry(c);
   // The tells' sweat (poker-tells.js): a pale drop on the brow, then a second running down beside it, two meshes shared
   // by every table, built about a seat's bead node with +z toward the table. The node stands at a seated
-  // Ooga's brow for the roster's middle height (1.04): 1.8 m up and 0.3 m in front of the chair's centre.
-  const BEAD_Y = 1.8, BEAD_OUT = 0.3, NOOP = () => {};
+  // Ooga's brow for the roster's middle height (1.04): 0.895 m over its seated hip and 0.3 m in front of the chair's centre.
+  const BEAD_Y = sitY(1.04) + 0.895, BEAD_OUT = 0.3, NOOP = () => {};
   const beadGeometry = M.cached(() => {
     const drop = (x, y) => M.moved(M.lathe({ segments: 6, profile: [[0, 0.075], [0.016, 0.05], [0.03, 0.02], [0.026, 0.004], [0, 0]], color: "#bfe8ff", emissive: 0.35 }), x, y, 0);
     const one = drop(0.09, 0), two = M.merge(drop(0.09, 0), drop(-0.06, -0.07));
@@ -356,30 +382,31 @@
       const base = node(geo.base);
       S.addChild(group, base, top, rim, felt, pinstripe);
       const chairs = [], chips = [], backs = [];
-      for (const s of SEATS) {
-        const chair = node(geo.chair, s.x, 0, s.z); chair.rotation.y = s.yaw; chairs.push(chair); S.addChild(group, chair);
-        const pile = node(geo.chip, s.x * 0.65, 1.39, s.z * 0.59); pile.visible = false; chips.push(pile); S.addChild(group, pile);
-        const cards = S.createNode({ position: { x: s.x * 0.57, y: 1.4, z: s.z * 0.57 }, rotation: { x: 0, y: s.yaw, z: 0 } });
+      for (let j = 0; j < SEATS.length; j++) {
+        const s = SEATS[j], pl = PLACES[j], chair = node(geo.chair, s.x, 0, s.z); chair.rotation.y = s.yaw; chairs.push(chair); S.addChild(group, chair);
+        const pile = node(geo.chip, pl.x * 0.65, FELT_Y + 0.01, pl.z * 0.59); pile.visible = false; chips.push(pile); S.addChild(group, pile);
+        const cards = S.createNode({ position: { x: pl.x * 0.57, y: FELT_Y + 0.02, z: pl.z * 0.57 }, rotation: { x: 0, y: s.yaw, z: 0 } });
         S.addChild(cards, node(geo.back, -0.26), node(geo.back, 0.26, 0.015)); cards.visible = false; backs.push(cards); S.addChild(group, cards);
       }
       // Deal left to right and print upright as seen from the gorilla's side of the table.
-      const board = Array.from({ length: 5 }, (_, j) => { const n = node(geo.back, (2 - j) * 0.72, 1.41); n.rotation.y = Math.PI; n.visible = false; S.addChild(group, n); return n; });
+      const board = Array.from({ length: 5 }, (_, j) => { const n = node(geo.back, (2 - j) * 0.72, FELT_Y + 0.03); n.rotation.y = Math.PI; n.visible = false; S.addChild(group, n); return n; });
       const button = node(geo.button); S.addChild(group, button); button.visible = false;
       const lettering = BL.poolModels.carve(`TABLE ${i + 1}`, { cell: 0.1, color: "#ffe1a0", emissive: 1 });
       lettering.geometry.castShadow = false;
-      const label = S.createNode({ position: { x: 0, y: 4.65, z: 0 } });
+      const label = S.createNode({ position: { x: 0, y: 4.05, z: 0 } });
       label.scale.x = label.scale.y = label.scale.z = 0.7;
       const text = node(lettering.geometry, -(lettering.width - 0.2) / 2);
       text.glow = 1;
       S.addChild(label, text); S.addChild(group, label);
       // The name's plate behind it.
       const plate = node(geo.plate); S.addChild(label, plate);
-      const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: -3.6, managed: true, scale: 1.16 });
+      // The dealer, a gorilla at DEALER_SCALE: as tall as a standing Ooga guest, so it reads as staff beside the table, not over it.
+      const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: -3.6, managed: true, scale: DEALER_SCALE });
       agent.poseManaged(1, 0, 0, -3.6, 0, 0, false, true);
       S.addChild(agent.parts.torso, node(geo.jacket));
       for (const arm of [agent.parts.armR, agent.parts.armL]) S.addChild(arm, node(geo.sleeve), node(geo.cuff));
       S.addChild(group, agent.root);
-      const dealCard = node(geo.back, 0, 1.5, -2.4); dealCard.visible = false; S.addChild(group, dealCard);
+      const dealCard = node(geo.back, 0, FELT_Y + 0.12, -2.4); dealCard.visible = false; S.addChild(group, dealCard);
       S.addChild(root, group);
       const table = { root: group, base, top, rim, felt, pinstripe, chairs, chips, backs, board, button, label, plate, agent, dealCard,
         beads: SEATS.map(() => null), toss: null, push: null, actors: new Array(SEATS.length).fill(null), version: -1, pulse: 0 };
@@ -507,7 +534,7 @@
   // promenade, places at the side walls looking out (`glass`, in pairs), the bar stools, places
   // standing at the bar between them, the cage's window, a bouncer's place by each rope, and the lounges' seats
   // (`lounge`, with `seat` "sofa" or "armchair" and `side` -1 or 1), which only their residents sit in. Stools and
-  // seats stand inside their furniture, being sat on; a standing spot inside something is moved out (a rail spot along
+  // seats stand inside their furniture, being sat on (a lounge seat where the resident's hip rests on its cushion); a standing spot inside something is moved out (a rail spot along
   // its own line from the table, dropped past 1.5 m). Laid once a page.
   let spotList = null;
   const STAND = { bodyRadius: 0.5 }, STROLL_Z = [30, 18, 6, -6, -18, -30], STROLL_MID = [24, 12, 0, -12, -24];
@@ -545,8 +572,8 @@
       if (f.kind === "bar") {
         for (let k = -6; k <= 6; k += 3) add("stool", f.x + k, -34.6, Math.PI);
         for (let k = -4.5; k <= 4.5; k += 3) if (Math.abs(f.x + k) > 4) stand("bar", f.x + k, -33.9, Math.PI);
-      } else if (f.kind === "sofa") for (const dz of [-1.17, 0, 1.17]) list.push(Object.freeze({ kind: "lounge", x: f.x + side * 0.5, z: f.z + dz, yaw: side * Math.PI / 2, table: -1, seat: "sofa", side: -side }));
-      else if (f.kind === "armchair") list.push(Object.freeze({ kind: "lounge", x: f.x + Math.sin(f.yaw) * 0.08, z: f.z + Math.cos(f.yaw) * 0.08, yaw: f.yaw, table: -1, seat: "armchair", side: Math.sign(f.x) }));
+      } else if (f.kind === "sofa") for (const dz of [-1.17, 0, 1.17]) list.push(Object.freeze({ kind: "lounge", x: f.x - side * 0.12, z: f.z + dz, yaw: side * Math.PI / 2, table: -1, seat: "sofa", side: -side }));
+      else if (f.kind === "armchair") list.push(Object.freeze({ kind: "lounge", x: f.x, z: f.z, yaw: f.yaw, table: -1, seat: "armchair", side: Math.sign(f.x) }));
       else if (f.kind === "cage") add("cage", f.x + side * 1.6, f.z, -side * Math.PI / 2);
       else if (f.kind === "rope") add("rope", f.x + side, f.z, side * Math.PI / 2);
     }
@@ -577,5 +604,5 @@
     if (p.legL) p.legL.rotation.x = 0; if (p.legR) p.legR.rotation.x = 0;
     if (p.armL) p.armL.rotation.x = STAND_ARMS; if (p.armR) p.armR.rotation.x = STAND_ARMS;
   };
-  BL.pokerModels = { TABLES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, spots, sitPose, standPose };
+  BL.pokerModels = { FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, spots, sitPose, standPose };
 })();

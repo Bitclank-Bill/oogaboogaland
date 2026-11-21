@@ -36129,13 +36129,14 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     // Put down: nothing posed on the guest or the carrier, and it walks out through the mirror; a guest comes back.
     document.querySelector('[data-poker-action="put-down"]').click(); B.advance(1 / 30, 1 / 30);
     const down = { phase: P.carry.phase, quat: guest.root.quaternion, walking: P.walker.npc === guest, pitch: cave.root.rotation.x,
-      carrierArm: cave.parts.armL.rotation.x, scale: guest.root.scale.x, upright: Math.abs(guest.root.position.y - C.LEG_SHARE * guest.traits.height * 0.82) < 1e-6 };
+      carrierArm: cave.parts.armL.rotation.x, scale: guest.root.scale.x, upright: Math.abs(guest.root.position.y - C.LEG_SHARE * guest.traits.height) < 1e-6 };
     const walkedOut = until(() => !P.walker.npc, 40, 0.2), slots = [...P.returns].filter(Number.isFinite).length;
     // The return's minute brought forward: its slot due now, as the scene's own clock would make it in time.
     const due = P.returns.findIndex(Number.isFinite); if (due >= 0) P.returns[due] = 0;
     const exitZ = M.EXIT_Z - 1.8, back = until(() => P.crowd.members.some(m => m.on && m.root && Math.hypot(m.x, m.z - exitZ) < 0.3 && m.gasp > 0), 2, 1 / 30);
     out.putDown = { down, walkedOut, offGraph: !guest.root.parent, slots, back,
-      ok: second.held && down.phase === 0 && down.quat === null && down.walking && down.pitch === 0 && down.scale === 0.82 && down.upright && walkedOut && !guest.root.parent && slots >= 1 && back };
+      // Set down at the game's scale 1, as every figure in the room is drawn (it was 0.82 when the seat figures were shrunk).
+      ok: second.held && down.phase === 0 && down.quat === null && down.walking && down.pitch === 0 && down.scale === 1 && down.upright && walkedOut && !guest.root.parent && slots >= 1 && back };
     out.credits = (() => {
       P.openCredits(); B.advance(1 / 30, 1 / 30);
       const modal = document.getElementById("board-modal"), caption = () => document.getElementById("board-caption").textContent, seen = [caption()];
@@ -36220,9 +36221,12 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     const modeHeld = B.pilot.player === cave && cave.weapon.aiming === aiming && document.body.hasAttribute("data-poker-seated");
     // The driven Ooga a frame after sitting, then a frame after Walk the floor: its left leg's swing (0 standing still,
     // the crew's standing gait), its left arm and its feet over its standing height. Return to the table seats it again for the rest of the step.
-    const pose = () => { B.advance(1 / 30, 1 / 30); return { leg: cave.parts.legL.rotation.x, arm: cave.parts.armL.rotation.x, lift: cave.root.position.y - cave.baseY }; };
+    const pose = () => { B.advance(1 / 30, 1 / 30); return { leg: cave.parts.legL.rotation.x, arm: cave.parts.armL.rotation.x, lift: cave.root.position.y - cave.baseY, hip: cave.root.position.y }; };
     const sat = pose(); click("walk"); const stood = pose(); click("return");
-    const sitting = { sat, stood, chair: BL.pokerPresence.CHAIR_Y, ok: sat.leg === -1.35 && sat.arm === -0.9 && Math.abs(sat.lift - BL.pokerPresence.CHAIR_Y) < 1e-9 && stood.leg === 0 && Math.abs(stood.lift) < 1e-3 && document.body.hasAttribute("data-poker-seated") };
+    // Seated, the root (the hip) stands at the room's own sitting height for this Ooga's size (pokerModels.sitY), and the
+    // soles it sends read as a chair to the seating rule (within BAND of CHAIR_Y), so other pages seat it.
+    const Pr = BL.pokerPresence, hipAt = BL.pokerModels.sitY(cave.traits.height);
+    const sitting = { sat, stood, chair: Pr.CHAIR_Y, hipAt, ok: sat.leg === -1.35 && sat.arm === -0.9 && Math.abs(sat.hip - hipAt) < 1e-9 && Math.abs(sat.lift - Pr.CHAIR_Y) <= Pr.BAND && stood.leg === 0 && Math.abs(stood.lift) < 1e-3 && document.body.hasAttribute("data-poker-seated") };
     for (let i = 0; i < 4; i++) click("bots");
     // Each seat's figure as drawn: a bot's name, "none" for a bot with no figure up, "shown" for anything else drawn.
     const C = BL.pokerCrowdModels, t0 = P.session.tables[0], walking = new Set(C.castFor(Math.floor(Date.now() / 86400000), Infinity).map(m => m.traits.name));
@@ -36284,7 +36288,7 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     // Over each felt's middle, of every light whose range reaches it, its own lamp is the nearest and reaches farthest past it.
     const lampsLead = BL.pokerModels.TABLES.every((p, k) => {
       const reach = [];
-      for (let i = 0; i < lightCount; i++) { const o = i * 8, d = Math.hypot(L[o] - p.x, L[o + 1] - 1.38, L[o + 2] - p.z); if (d < L[o + 3]) reach.push({ own: lit[i] === k, d, past: L[o + 3] - d }); }
+      for (let i = 0; i < lightCount; i++) { const o = i * 8, d = Math.hypot(L[o] - p.x, L[o + 1] - BL.pokerModels.FELT_Y, L[o + 2] - p.z); if (d < L[o + 3]) reach.push({ own: lit[i] === k, d, past: L[o + 3] - d }); }
       const own = reach.find(e => e.own);
       return !!own && reach.every(e => e === own || e.d > own.d && e.past < own.past);
     });
@@ -36306,7 +36310,7 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     const peer = (id, body) => ({ id, login: "seat-peer-" + id, display: "Seat peer", body, zone: N.state.zone, poseZone: N.state.zone,
       x: spot.x + chair.x, y: BL.pokerPresence.CHAIR_Y, z: spot.z + chair.z, yaw: chair.yaw, voice: false, muted: false });
     const rec = peer(7301, name);
-    const look = id => { const c = BL.remotePlayers.body(id); return c ? { shown: c.root.visible, leg: c.parts.legL.rotation.x } : null; };
+    const look = id => { const c = BL.remotePlayers.body(id); return c ? { shown: c.root.visible, leg: c.parts.legL.rotation.x, scale: c.root.scale.x } : null; };
     // The seat's face as the panel shows it, and a fresh face of a model at that canvas's size, each as an FNV-1a hash
     // of every pixel read through a willReadFrequently copy, as the seat faces above are read.
     const sheet = document.createElement("canvas"), sheetCtx = sheet.getContext("2d", { willReadFrequently: true });
@@ -36328,7 +36332,7 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
       P.select(T); t1.join("guest-peer", rec.display, false, J); B.advance(0.9, 1 / 30);
       P.session.live = { deadline: null, connection: "live", busy: false, fairness: null, dispose() {} };
       frame(); N.remotes.set(rec.id, rec); frame(); N.remotes.delete(rec.id); frame(); const actor = view.actors[J];
-      before = { standIn: !!actor, face: seatFace(), own: actor ? faceOf(actor) : null };
+      before = { standIn: !!actor, face: seatFace(), own: actor ? faceOf(actor) : null, scale: actor ? actor.root.scale.x : null };
       // The same name driving the visitor's own Ooga: the pool keeps that body hidden, so the seat stays the stand-in's.
       const me = BL.scenes.poker.debug.crew.player, twin = peer(7302, me ? me.traits.name : "");
       N.remotes.set(twin.id, twin); frame();
@@ -36352,6 +36356,47 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
         && left.standIn && left.face !== null && left.face === left.own && clean };
   })()`);
   record("rule: a signed-in player at a chair sits as themselves, alone in that seat, and the stand-in returns when they go", presence.ok, JSON.stringify(presence));
+  // Regression (the owner's walk of the room): the Oogas were too small to see over the poker tables and did not sit in
+  // the chairs. The seat figures were drawn at 0.82 with the hip fixed at 0.6 (eye 0.17 under the felt, legs through the
+  // seat) and the visitor's hip was 0.225 over a 0.68 seat at a 1.38 felt. Every figure the room seats or stands is drawn
+  // at the game's scale 1, and a seated figure as drawn (a computer opponent at table one, measured from its own rig and
+  // its own chair's geometry in the world) sees over the rail and sits on its seat.
+  const scale = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, M = BL.pokerModels, S = BL.scene, t = P.session.tables[0], view = P.room.tables[0];
+    const cave = D.pilot.player, crowd = P.crowd;
+    if (!t.playing && t.snapshot().seats.filter(p => p && p.bot).length < 2) { P.select(0); for (let i = 0; i < 2; i++) document.querySelector('[data-poker-action="bots"]').click(); B.advance(0.5, 1 / 30); }
+    const vertsOf = g => g.verts || BL.compactGeometry?.storageOf(g)?.verts;
+    // Every vertex under a node in the world, through \`fn(x, y, z, node)\`.
+    const each = (top, fn) => { S.updateWorld(BL.scenes.poker.root, null); S.traverseVisible(top, n => { const v = n.geometry && vertsOf(n.geometry); if (!v) return; const m = n.world;
+      for (let i = 0; i < v.length; i += 3) fn(m[0] * v[i] + m[4] * v[i + 1] + m[8] * v[i + 2] + m[12], m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13], m[2] * v[i] + m[6] * v[i + 1] + m[10] * v[i + 2] + m[14], n); }); };
+    const scales = { visitor: cave.root.scale.x, bots: [], walkers: [], residents: [], sitters: [] };
+    for (const tv of P.room.tables) for (const a of tv.actors) if (a) scales.bots.push(a.root.scale.x);
+    for (const m of crowd.members) if (m.root && m.rig === "caveman") (m.state === "sit" ? scales.sitters : scales.walkers).push(m.root.scale.x);
+    for (const r of crowd.residents) if (r.root) scales.residents.push(r.root.scale.x);
+    const j = view.actors.findIndex(Boolean), fig = view.actors[j], chair = view.chairs[j], s = M.SEATS[j], tp = M.TABLES[0];
+    // In the chair's own frame: x across, z toward the table (its yaw), y up.
+    const local = (x, z) => { const dx = x - tp.x - chair.position.x, dz = z - tp.z - chair.position.z, c = Math.cos(s.yaw), sn = Math.sin(s.yaw); return { x: dx * c - dz * sn, z: dx * sn + dz * c }; };
+    let seatTop = -Infinity, front = -Infinity, half = 0, crest = -Infinity;
+    each(chair, (x, y, z) => { const l = local(x, z); front = Math.max(front, l.z); half = Math.max(half, Math.abs(l.x)); crest = Math.max(crest, y); if (Math.abs(l.x) <= 0.4 && l.z > -0.17 && l.z <= 0.3 && y < 0.7) seatTop = Math.max(seatTop, y); });
+    let headTop = -Infinity, legLow = Infinity, inSeat = 0;
+    each(fig.root, (x, y, z, n) => { headTop = Math.max(headTop, y); });
+    for (const leg of [fig.parts.legL, fig.parts.legR]) each(leg, (x, y, z) => { const l = local(x, z); if (l.z <= front && Math.abs(l.x) <= half) { inSeat++; legLow = Math.min(legLow, y); } });
+    let railTop = -Infinity; each(view.rim, (x, y) => { railTop = Math.max(railTop, y); });
+    // The eye line, 0.425 m under the head's top on an Ooga 1.04 tall (the rig as measured), for this figure's height.
+    const eye = headTop - 0.425 * fig.traits.height / 1.04;
+    // A standing Ooga's eye: a guest of the crowd walking or waiting on the floor.
+    const walker = crowd.members.find(m => m.root && m.root.visible && m.rig === "caveman" && (m.state === "walk" || m.state === "idle"));
+    let standTop = -Infinity; if (walker) each(walker.root, (x, y) => { standTop = Math.max(standTop, y); });
+    const standing = !!walker;
+    return { scales, fig: { height: fig.traits.height, hip: fig.root.position.y, seatTop, hipOver: fig.root.position.y - seatTop, legLow, inSeat, eye, railTop, eyeOverRail: eye - railTop }, standing, standEye: walker ? standTop - 0.425 * walker.traits.height / 1.04 : null, felt: M.FELT_Y };
+  })()`);
+  const ones = a => a.length > 0 && a.every(v => v === 1);
+  record("regression: every figure the poker room seats or stands is drawn at the game's scale 1: the visitor, a remote player, a stand-in, the computer opponents, the crowd's walkers and sitters and the lounges' residents",
+    scale.scales.visitor === 1 && presence.seated?.scale === 1 && presence.before?.scale === 1 && ones(scale.scales.bots) && ones(scale.scales.walkers) && ones(scale.scales.residents) && scale.scales.sitters.every(v => v === 1),
+    JSON.stringify({ visitor: scale.scales.visitor, remote: presence.seated?.scale, standIn: presence.before?.scale, bots: [...new Set(scale.scales.bots)], walkers: [...new Set(scale.scales.walkers)], residents: [...new Set(scale.scales.residents)], sitters: [...new Set(scale.scales.sitters)] }));
+  record("regression: a seated Ooga at a poker table sees over the rail by 0.3 m or more, sits 0.1 to 0.2 m over its seat with its legs on or over the cushion, and a standing one's eye is over the felt",
+    scale.fig.eyeOverRail >= 0.3 && scale.fig.hipOver >= 0.1 && scale.fig.hipOver <= 0.2 && scale.fig.inSeat > 0 && scale.fig.legLow >= scale.fig.seatTop - 1e-3 && scale.standing && scale.standEye > scale.felt,
+    JSON.stringify(scale));
   // Emotes. Faked: the room's two flags the scene reads for availability (`reactions`, `room`), the visitor's send
   // (`BL.net.sendReaction` stubbed to accept and, as the real one does after a send, hand the scene's subscriber
   // `(0, emoji)`), a remote's reaction (handed to that same subscriber, `debug.poker.react`, as net.js would from the
@@ -38548,9 +38593,12 @@ const pokerMarbleHallChecks = (BL) => {
       } finally { P.setLite(false); for (const r of rooms) for (const tb of r.tables) tb.agent.dispose(); }
       record("poker marble hall: Banana Club builds on the full and lite sets, the lite one with fewer faces", builds && liteLighter);
 
-      // Rule: the ornate table keeps the old footprint, seat spots and felt height, so walking and seated figures stay put.
+      // Rule: the ornate table keeps the old footprint, and its felt, chairs and the felt's layout stand where the Ooga-scale
+      // resize put them: the felt's top at FELT_Y (0.78, 0.6 m under the 1.38 built for a larger body), the chairs on
+      // their 5.2 by 3.6 ring (the seats hash), and the cards' and chips' places on the old 6 by 4.2 ring at the same
+      // angles (PLACES, whose hash is the old seats' "a2a29b1"), so the felt reads as it always did.
       const club = P.build();
-      let table = false;
+      let table = false, tableDetail = "";
       try {
         const g = P.geometry(), t = club.tables[0], ys = geo => { let lo = Infinity, hi = -Infinity; for (let i = 1; i < geo.verts.length; i += 3) { lo = Math.min(lo, geo.verts[i]); hi = Math.max(hi, geo.verts[i]); } return [lo, hi]; };
         // How far a table's pieces reach in x and z once scaled, against the walkable ellipse (4.85 by 3.25).
@@ -38561,10 +38609,68 @@ const pokerMarbleHallChecks = (BL) => {
         }
         const seats = hashValue(P.SEATS.map(s => [s.x, s.z, s.yaw]).flat());
         const chairsAt = club.tables.every(tb => tb.chairs.every((c, j) => c.position.x === P.SEATS[j].x && c.position.z === P.SEATS[j].z && c.position.y === 0 && c.rotation.y === P.SEATS[j].yaw && c.geometry === g.chair));
-        table = Math.abs(ys(g.felt)[1] - 1.38) < 1e-9 && t.felt.scale.x === 4.38 && t.felt.scale.z === 2.8 && inside && chairsAt &&
-          seats === "a2a29b1" && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
+        const places = hashValue(P.PLACES.map(s => [s.x, s.z]).flat()), oldRing = hashValue(P.PLACES.map((p, j) => [p.x, p.z, Math.atan2(-p.x, -p.z)]).flat());
+        table = Math.abs(ys(g.felt)[1] - P.FELT_Y) < 1e-9 && Math.abs(P.FELT_Y - 0.78) < 1e-9 && t.felt.scale.x === 4.38 && t.felt.scale.z === 2.8 && inside && chairsAt &&
+          seats === "eb0f33b2" && oldRing === "a2a29b1" && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
+        tableDetail = JSON.stringify({ felt: ys(g.felt), seats, places, oldRing, inside, chairsAt });
       } finally { for (const tb of club.tables) tb.agent.dispose(); }
-      record("poker marble hall: the ornate table keeps its footprint, seat spots and felt height", table);
+      record("poker marble hall: the ornate table keeps its footprint, its felt at FELT_Y, its chairs on their ring and the felt's layout", table, tableDetail);
+
+      // Regression (the owner's walk of the room): the chair fitted a 2.7 m person and the table a 3.2 m one, so the Oogas
+      // could not see over the tables. Measured from the built geometry against a middle-height (1.04) Ooga's standing
+      // height from its own built rig: the chair's seat top 0.25 to 0.35 of it and its crest 0.55 to 0.75, the rail's top
+      // 0.5 to 0.62, the bar counter's top 0.52 to 0.64; and each chair's front edge within 0.3 m of the rail, outside it.
+      {
+        const S = BL.scene, vertsOf = geo => geo.verts || BL.compactGeometry?.storageOf(geo)?.verts, g = P.geometry();
+        const tr = BL.contributors.traitsFor("Scale Check"); tr.height = 1.04;
+        const cave = BL.models.caveman(tr); S.updateWorld(cave.root, null);
+        let tall = -Infinity;
+        S.traverseVisible(cave.root, n => { const v = n.geometry && vertsOf(n.geometry); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) tall = Math.max(tall, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); });
+        const cv = vertsOf(g.chair);
+        let seat = -Infinity, crest = -Infinity, front = -Infinity;
+        for (let i = 0; i < cv.length; i += 3) { crest = Math.max(crest, cv[i + 1]); front = Math.max(front, cv[i + 2]); if (Math.abs(cv[i]) <= 0.4 && cv[i + 2] > -0.17 && cv[i + 2] <= 0.3 && cv[i + 1] < 0.7) seat = Math.max(seat, cv[i + 1]); }
+        const rv = vertsOf(g.rim);
+        let rail = -Infinity, ax = 0, az = 0;
+        for (let i = 0; i < rv.length; i += 3) { rail = Math.max(rail, rv[i + 1]); ax = Math.max(ax, Math.abs(rv[i] * 4.5)); az = Math.max(az, Math.abs(rv[i + 2] * 2.92)); }
+        // The bar's counter: the shell's highest point over the counter's run (in front of the back bar's shelves).
+        const bar = P.FURNITURE.find(f => f.kind === "bar"), sv = vertsOf(g.shell), barFront = bar.z + bar.hz;
+        let counter = -Infinity;
+        for (let i = 0; i < sv.length; i += 3) if (Math.abs(sv[i] - bar.x) < bar.hx - 0.6 && sv[i + 2] > barFront - 1.2 && sv[i + 2] < barFront - 0.3 && sv[i + 1] < 1.6) counter = Math.max(counter, sv[i + 1]);
+        // Each chair's front edge's middle, from its spot toward the table by the chair's own depth, to the rail's outer edge.
+        const gaps = P.SEATS.map(s => {
+          const fx = s.x + Math.sin(s.yaw) * front, fz = s.z + Math.cos(s.yaw) * front;
+          let best = Infinity; for (let k = 0; k < 4096; k++) { const a = k / 4096 * Math.PI * 2; best = Math.min(best, Math.hypot(fx - ax * Math.cos(a), fz - az * Math.sin(a))); }
+          return (fx / ax) ** 2 + (fz / az) ** 2 > 1 ? best : -best;
+        });
+        // The dealer as the room builds it (standing upright behind its table), its highest point.
+        const dealerRoom = P.build();
+        let dealer = -Infinity;
+        try {
+          const ag = dealerRoom.tables[0].agent; S.updateWorld(dealerRoom.root, null);
+          S.traverseVisible(ag.root, n => { const v = n.geometry && vertsOf(n.geometry); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) dealer = Math.max(dealer, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); });
+        } finally { for (const tb of dealerRoom.tables) tb.agent.dispose(); }
+        const ratio = { tall, seat: seat / tall, crest: crest / tall, rail: rail / tall, counter: counter / tall, dealer: dealer / tall };
+        record("regression: Banana Club's chair, table rail and bar counter are sized for an Ooga, each chair's front is at the rail, and the dealer is no taller than 1.25 Oogas",
+          tall > 1.6 && tall < 1.65 && ratio.dealer <= 1.25 && ratio.dealer >= 0.9 && ratio.seat >= 0.25 && ratio.seat <= 0.35 && ratio.crest >= 0.55 && ratio.crest <= 0.75 && ratio.rail >= 0.5 && ratio.rail <= 0.62 &&
+          ratio.counter >= 0.52 && ratio.counter <= 0.64 && Math.abs(rail - P.RAIL_TOP) < 1e-9 && Math.abs(seat - P.SEAT_TOP) < 1e-9 && gaps.every(d => d > 0 && d <= 0.3),
+          JSON.stringify({ ratio: Object.fromEntries(Object.entries(ratio).map(([k, v]) => [k, +v.toFixed(3)])), seat, crest, rail, counter, dealer, gaps: gaps.map(d => +d.toFixed(3)) }));
+
+        // Rule: the seating rule (poker-presence.js) still reads every roster Ooga seated as the room seats it, and only
+        // there: its root at sitY(height), its soles (root less the rig's own standing root height) within BAND of
+        // CHAIR_Y on its chair's spot, CHAIR_Y clear of the floor by more than BAND, and no two chair spots within two radii.
+        const Pr = BL.pokerPresence, roster = BL.contributors.activeRoster;
+        let soles = [Infinity, -Infinity], readAsChair = true;
+        for (const c of roster) {
+          const traits = BL.contributors.traitsFor(c.name), rig = BL.models.caveman(traits), base = rig.root.position.y, sole = P.sitY(traits.height) - base;
+          soles = [Math.min(soles[0], sole), Math.max(soles[1], sole)];
+          if (Pr.seatAt(P.TABLES, P.SEATS, P.TABLES[3].x + P.SEATS[5].x, sole, P.TABLES[3].z + P.SEATS[5].z) !== 3 * 9 + 5) readAsChair = false;
+        }
+        let nearest = Infinity;
+        for (let a = 0; a < 9; a++) for (let c = a + 1; c < 9; c++) nearest = Math.min(nearest, Math.hypot(P.SEATS[a].x - P.SEATS[c].x, P.SEATS[a].z - P.SEATS[c].z));
+        record("poker presence: every roster Ooga seated at the Ooga-scale chairs sends soles the seating rule reads as its chair, clear of the floor",
+          roster.length > 10 && readAsChair && Pr.CHAIR_Y > Pr.BAND && Pr.seatAt(P.TABLES, P.SEATS, P.TABLES[3].x + P.SEATS[5].x, 0, P.TABLES[3].z + P.SEATS[5].z) === -1 && nearest > 2 * Pr.RADIUS,
+          JSON.stringify({ roster: roster.length, soles: soles.map(v => +v.toFixed(3)), chair: Pr.CHAIR_Y, band: Pr.BAND, nearest: +nearest.toFixed(2) }));
+      }
 
       // Rule: the ₿IFRÖST window's poker colours (the preset's ui block) and felt, and the room's own lights, stay as they were.
       const preset = T.club;
@@ -38812,9 +38918,9 @@ const pokerMarbleHallChecks = (BL) => {
           try {
             S.updateWorld(room.root, null);
             const tris = trianglesOf(t.rim);
-            P.SEATS.forEach((s, j) => {
+            P.PLACES.forEach((s, j) => {
               t.button.visible = t.backs[j].visible = t.chips[j].visible = true; t.chips[j].scale.y = 12;
-              t.button.position.x = s.x * 0.72; t.button.position.z = s.z * 0.65; t.button.position.y = 1.4;
+              t.button.position.x = s.x * 0.72; t.button.position.z = s.z * 0.65; t.button.position.y = P.FELT_Y + 0.02;
               S.updateWorld(room.root, null);
               for (const [what, n] of [["button", t.button], ["cards", t.backs[j]], ["chips", t.chips[j]]]) if (pointsOf(n).some(q => inside(tris, q))) hits.push({ lite, seat: j, what });
             });
@@ -39323,7 +39429,7 @@ const pokerGlazingChecks = (BL) => {
       // Wave 2b's light for a room with no walls. Rule: Banana Club's colonnade lights are eight, one low before each
       // statue's plinth, warm, short (6 m at most), after the club's four (whose list is unchanged), and none reaches a
       // table's felt, so each table's lamp still leads over it.
-      const C = P.COLONNADE, slots = BL.pokerStatues.SLOTS, felts = P.TABLES.map(t => [t.x, 1.38, t.z]);
+      const C = P.COLONNADE, slots = BL.pokerStatues.SLOTS, felts = P.TABLES.map(t => [t.x, P.FELT_Y, t.z]);
       const each = Array.from({ length: C.length / 8 }, (_, i) => Array.from(C.subarray(i * 8, i * 8 + 8)));
       const colonnade = C.length === 64 && each.every((l, i) => Math.abs(Math.abs(l[0]) - (Math.abs(slots[i].x) - 0.9)) < 1e-6 && Math.sign(l[0]) === Math.sign(slots[i].x) && l[2] === slots[i].z &&
         l[1] < 0.5 && l[3] > 0 && l[3] <= 6 && l[4] > l[5] && l[5] > l[6] && l[7] === 0 && felts.every(f => Math.hypot(f[0] - l[0], f[1] - l[1], f[2] - l[2]) > l[3])) &&
@@ -39550,9 +39656,16 @@ const pokerTellPropChecks = (BL) => {
     record("poker tell props: setBeads shows one bead, two, then none, at its own seat alone", a && b && alone && gone, JSON.stringify({ a, b, alone, gone }));
 
     // Rule: each seat's beads sit at a seated Ooga's brow, a little in front of the seat toward the table and outside it.
+    // The brow band is read off a middle-height (1.04) Ooga built and seated as the room seats one (sitPose, its root at
+    // sitY): between 0.45 and 0.15 m under the top of its head, where the eyes and brow are (the bead stood 0.275 m
+    // under it before the resize, at 1.8 over a 0.905 hip; it now follows the hip down to the shorter chairs).
+    const browTraits = BL.contributors.traitsFor("Bead Brow"); browTraits.height = 1.04;
+    const browCave = BL.models.caveman(browTraits); P.sitPose(browCave); browCave.root.position.y = P.sitY(1.04); S.updateWorld(browCave.root, null);
+    let headTop = -Infinity;
+    S.traverseVisible(browCave.root, n => { const v = n.geometry && (n.geometry.verts || BL.compactGeometry?.storageOf(n.geometry)?.verts); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) headTop = Math.max(headTop, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); });
     const brow = P.SEATS.every((s, j) => {
       const node = t.beadAt(j), n = node.position, out = Math.hypot(n.x - s.x, n.z - s.z), ahead = (n.x - s.x) * Math.sin(s.yaw) + (n.z - s.z) * Math.cos(s.yaw);
-      return n.y > 1.6 && n.y < 2 && out > 0.15 && out < 0.45 && near(ahead, out, 1e-6) && (n.x / 4.85) ** 2 + (n.z / 3.25) ** 2 > 1 && near(node.rotation.y, s.yaw);
+      return n.y > headTop - 0.45 && n.y < headTop - 0.15 && out > 0.15 && out < 0.45 && near(ahead, out, 1e-6) && (n.x / 4.85) ** 2 + (n.z / 3.25) ** 2 > 1 && near(node.rotation.y, s.yaw);
     });
     record("poker tell props: each bead sits at brow height just in front of its seat, facing the table, outside the table", brow,
       JSON.stringify(t.beads.slice(0, 3).map(n => [n.position.x, n.position.y, n.position.z].map(v => +v.toFixed(3)))));
@@ -39940,7 +40053,8 @@ const pokerChecks = (BL) => {
   {
     // Rule: the lounges' residents fill every lounge seat, each seated in her seat for good with a martini in hand,
     // sipping on her own timer (raising the glass to her lips and lowering it, the glass upright), turning her head to
-    // whoever passes; on the lite set only the sofas are filled.
+    // whoever passes; on the lite set only the sofas are filled. Seated: the hip SIT_HIP of her height over the 0.40
+    // cushions (it was a fixed 0.46, under the old 0.51 to 0.56 cushions' tops, so the legs sank into the seat).
     const P = BL.pokerModels, S = BL.scene, root = S.createNode(), body = { x: 0, z: 0, radius: 0.5 };
     const seats = P.spots().filter(s => s.kind === "lounge");
     const crowd = BL.pokerCrowd.create({ root, fx: quietFx, walkable: P.walkable, spots: P.spots(), publicState: (t, out) => out, others: () => [], visitor: () => body, day: 20000, cap: 2 });
@@ -39950,7 +40064,7 @@ const pokerChecks = (BL) => {
       for (let f = 0; f < 90; f++) { crowd.update(1 / 30, f / 30); lite.update(1 / 30, f / 30); }
       const res = crowd.residents.filter(x => x.root && x.spot);
       const martini = res.every(x => x.parts.club.visible && x.traits.outfit.item === "martini");
-      const seated = res.every(x => Math.hypot(x.root.position.x - x.spot.x, x.root.position.z - x.spot.z) < 1e-9 && Math.abs(x.root.position.y - 0.46) < 1e-9 && x.parts.legR.rotation.x < -1.2 && x.root.visible);
+      const seated = res.every(x => Math.hypot(x.root.position.x - x.spot.x, x.root.position.z - x.spot.z) < 1e-9 && Math.abs(x.root.position.y - (0.4 + P.SIT_HIP * x.traits.height)) < 1e-9 && x.parts.legR.rotation.x < -1.2 && x.root.visible);
       // A minute: every resident sips at least once, the arm up past -2 with the glass kept upright, and no two in step.
       const sipped = new Set(), firstSip = new Map(), lowest = new Map();
       let upright = true;
@@ -39993,6 +40107,63 @@ const pokerChecks = (BL) => {
       record("poker crowd seats: a bar stool is walked to by its approach, then entered and left by the same straight move",
         reached && seated && m.state === "idle" && Math.hypot(m.x - a.x, m.z - a.z) < 0.01 && P.walkable(m.x, m.z, m.x, m.z, 0, 2, { bodyRadius: 0.4 }));
     } finally { crowd.dispose(); }
+  }
+  {
+    // Regression (the owner's walk of the room): the lounges' residents sat with the hip at 0.46 on cushions 0.51 to 0.56
+    // high, their legs sunk into the seats. Each resident, and a guest on a bar stool, sits 0.1 to 0.2 m over the seat's
+    // own surface under its hip, and no vertex of its legs lies under the surface of the seat it sits on (each found by a
+    // vertical line through the built furniture's faces, placed as the room places it).
+    const P = BL.pokerModels, S = BL.scene, g = P.geometry(), room = P.build(), vertsOf = geo => geo.verts || BL.compactGeometry?.storageOf(geo)?.verts;
+    const faceAt = (geo, n) => BL.compactGeometry?.storageOf(geo) ? BL.compactGeometry.copyFace(geo, n) : geo.faces[n];
+    const faceCount = geo => BL.compactGeometry?.storageOf(geo)?.count ?? geo.faces.length;
+    S.updateWorld(room.root, null);
+    const seatsOf = [];
+    S.traverseVisible(room.root, n => { if (n.geometry === g.sofa || n.geometry === g.armchair || n.geometry === g.stool) seatsOf.push(n); });
+    const tris = new Map(seatsOf.map(n => {
+      const v = vertsOf(n.geometry), m = n.world, at = i => [0, 1, 2].map(k => m[k] * v[i * 3] + m[4 + k] * v[i * 3 + 1] + m[8 + k] * v[i * 3 + 2] + m[12 + k]), out = [];
+      for (let f = 0; f < faceCount(n.geometry); f++) { const ix = faceAt(n.geometry, f).i; for (let k = 1; k + 1 < ix.length; k++) out.push([at(ix[0]), at(ix[k]), at(ix[k + 1])]); }
+      return [n, out];
+    }));
+    // The highest crossing of the vertical line at (x, z) with a piece's faces under `below`, or -Infinity.
+    const under = (n, x, z, below) => {
+      let best = -Infinity;
+      for (const [a, b, c] of tris.get(n)) {
+        const d = (b[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (b[2] - a[2]);
+        if (!d) continue;
+        const u = ((x - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (z - a[2])) / d, w = ((b[0] - a[0]) * (z - a[2]) - (x - a[0]) * (b[2] - a[2])) / d;
+        if (u < 0 || w < 0 || u + w > 1) continue;
+        const y = a[1] + u * (b[1] - a[1]) + w * (c[1] - a[1]);
+        if (y < below && y > best) best = y;
+      }
+      return best;
+    };
+    const nearestPiece = (x, z) => seatsOf.reduce((b, n) => Math.hypot(n.position.x - x, n.position.z - z) < Math.hypot(b.position.x - x, b.position.z - z) ? n : b);
+    const measure = who => {
+      S.updateWorld(who.root, null);
+      const p = who.root.position, piece = nearestPiece(p.x, p.z), seat = under(piece, p.x, p.z, p.y);
+      let sunk = 0, legs = 0;
+      for (const leg of [who.parts.legL, who.parts.legR]) S.traverseVisible(leg, n => {
+        const v = n.geometry && vertsOf(n.geometry); if (!v) return; const m = n.world;
+        for (let i = 0; i < v.length; i += 3) {
+          const x = m[0] * v[i] + m[4] * v[i + 1] + m[8] * v[i + 2] + m[12], y = m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13], z = m[2] * v[i] + m[6] * v[i + 1] + m[10] * v[i + 2] + m[14];
+          legs++; const top = under(piece, x, z, p.y); if (top > -Infinity && y < top - 1e-3) sunk++;
+        }
+      });
+      return { over: +(p.y - seat).toFixed(3), sunk, legs };
+    };
+    const crowd = BL.pokerCrowd.create({ root: S.createNode(), fx: quietFx, walkable: P.walkable, spots: P.spots(), publicState: (t, out) => out, others: () => [], day: 20000, cap: 6 });
+    let rows = [];
+    try {
+      for (let f = 0; f < 90; f++) crowd.update(1 / 30, f / 30);
+      rows = crowd.residents.filter(x => x.root && x.spot).map(x => ({ kind: x.spot.seat, ...measure(x) }));
+      const stool = P.spots().find(s => s.kind === "stool"), m = crowd.members.filter(c => c.root && c.rig === "caveman").sort((a, b) => a.rank - b.rank)[0], a = crowd.approach(stool);
+      crowd.send(m, a.x, a.z, stool);
+      for (let f = 0; f < 90 * 30 && m.state !== "sit"; f++) crowd.update(1 / 30, 0);
+      for (let f = 0; f < 15; f++) crowd.update(1 / 30, 0);
+      if (m.state === "sit") rows.push({ kind: "stool", ...measure(m) });
+    } finally { crowd.dispose(); for (const tb of room.tables) tb.agent.dispose(); }
+    record("regression: the lounges' residents and a guest on a bar stool sit 0.1 to 0.2 m over their seats with no leg sunk into the seat",
+      rows.length === 15 && rows.some(r => r.kind === "stool") && rows.every(r => r.over >= 0.1 && r.over <= 0.2 && r.sunk === 0 && r.legs > 0), JSON.stringify(rows));
   }
   // The crowd's view of a table is what every player sees: these five, never a seat's cards.
   const tableView = () => Array.from({ length: 10 }, () => ({ pot: 0, phase: "waiting", hand: 0, winner: -1, allIn: false }));
@@ -42188,7 +42359,7 @@ const pokerPresenceChecks = () => {
   const T = Array.from({ length: 10 }, (_, i) => ({ x: i % 2 ? 11 : -11, z: 24 - Math.floor(i / 2) * 12 }));
   const S = Array.from({ length: 9 }, (_, i) => {
     const a = -Math.PI / 2 + 0.55 + i * (Math.PI * 2 - 1.1) / 8;
-    return { x: Math.cos(a) * 6, z: Math.sin(a) * 4.2 };
+    return { x: Math.cos(a) * 5.2, z: Math.sin(a) * 3.6 };
   });
   const N = T.length * S.length, spot = k => ({ x: T[(k / S.length) | 0].x + S[k % S.length].x, z: T[(k / S.length) | 0].z + S[k % S.length].z });
   const at = (t, s, dx, y, dz) => P.seatAt(T, S, T[t].x + S[s].x + dx, y, T[t].z + S[s].z + dz);
@@ -42233,7 +42404,9 @@ const pokerPresenceChecks = () => {
   const noBody = resolve([remote(5, { body: null })], false, null)[k];
   // The pair last, so `owner` holds their chair for stateOf.
   resolve([high, low], false, null);
-  record("poker presence: a position reads as a chair only at chair height, on the spot", at(3, 4, 0, 0.45, 0) === 3 * 9 + 4 && at(3, 4, 0.49, 0.45, 0) === 3 * 9 + 4 && at(3, 4, 0.51, 0.45, 0) === -1 && at(3, 4, 0, 0, 0) === -1 && at(3, 4, 0, 0.56, 0) === -1);
+  // Chair height is 0.18 since the Ooga-scale chairs (soles of a seated middle-height Ooga, 0.176; it was 0.45): read
+  // there and on the band's edge, never on the floor nor 0.11 above the chair, and only within RADIUS of the spot.
+  record("poker presence: a position reads as a chair only at chair height, on the spot", at(3, 4, 0, 0.18, 0) === 3 * 9 + 4 && at(3, 4, 0.49, 0.18, 0) === 3 * 9 + 4 && at(3, 4, 0, 0.275, 0) === 3 * 9 + 4 && at(3, 4, 0.51, 0.18, 0) === -1 && at(3, 4, 0, 0, 0) === -1 && at(3, 4, 0, 0.29, 0) === -1 && P.CHAIR_Y === 0.18);
   record("poker presence: every chair is its own, none within reach of another", everyChairUnique, `nearest ${nearest.toFixed(2)} m`);
   record("poker presence: live, a remote is honoured only in a human seat that carries its name", liveMatched && !liveWrongName && !liveBotSeat && !liveOpenSeat && !liveNoName, JSON.stringify({ liveMatched, liveWrongName, liveBotSeat, liveOpenSeat, liveNoName }));
   record("poker presence: not live, a remote is honoured only in a chair this page has empty", practiceEmpty && !practiceTaken, JSON.stringify({ practiceEmpty, practiceTaken }));

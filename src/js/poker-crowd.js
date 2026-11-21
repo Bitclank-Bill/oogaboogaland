@@ -233,9 +233,11 @@
   const GRID = 2, GX0 = -24, GZ0 = -36, GCOLS = 24, GROWS = 36;
   const STEP = { bodyRadius: 0.3 };
   const ground = () => 0, turnTo = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
-  // Seats: the height sat on (the floor where a spot has no seat), the 0.4 s blend in and out, the bots' legs, how far
-  // a short skirt tips forward over the lap.
-  const SEAT_Y = { stool: 0.68, lounge: 0.4 }, FLOOR_SEAT = 0.1, SIT_LIFT = 0.06, SIT_BLEND = 0.4, SIT_LEGS = -1.35, SKIRT_SIT = -0.8;
+  // Seats: the height sat on, each seat's top (the floor where a spot has no seat), the 0.4 s blend in and out, the
+  // bots' legs, how far a short skirt tips forward over the lap. A sitter's hip rests `pokerModels.SIT_HIP` of its
+  // height over the seat, as the card players' do (`sitLift`).
+  const SEAT_Y = { stool: 0.62, lounge: 0.4 }, FLOOR_SEAT = 0, SIT_BLEND = 0.4, SIT_LEGS = -1.35, SKIRT_SIT = -0.8;
+  const sitLift = who => BL.pokerModels.SIT_HIP * who.traits.height;
   // Reactions and speech: tables read twice a second, a pot of 400 or more is big, two crowd bubbles at most.
   const POLL = 0.5, BIG_POT = 400, LEAN_IN = 0.2, CHEER = 1.2, GASP = 2, SAY = 2.4, TALK = 2.5, BUBBLES = 2;
   const RETURN_LINE = "Who threw me out?";
@@ -424,7 +426,7 @@
       if (!s) return;
       const p = r.parts;
       r.root.position.x = s.x; r.root.position.z = s.z; r.root.rotation.y = s.yaw;
-      r.root.position.y = SEAT_Y.lounge + SIT_LIFT;
+      r.root.position.y = SEAT_Y.lounge + sitLift(r);
       p.legR.rotation.x = SIT_LEGS; p.legL.rotation.x = SIT_LEGS + 0.08;
       p.legR.rotation.z = -0.04; p.legL.rotation.z = 0.04;
       p.armL.rotation.x = -0.55; p.armR.rotation.x = SIP_REST;
@@ -568,7 +570,8 @@
     const walkAgent = m => { m.waypoint[0].x = m.route[m.i * 2]; m.waypoint[0].z = m.route[m.i * 2 + 1]; m.agent.walk(m.waypoint); m.agent.setGait("upright"); };
     // Sitting down blends from where the route ended onto the seat in 0.4 s, and standing up back the same way.
     const sitDown = (m, s, seconds) => {
-      m.seatY = SEAT_Y[s.kind] ?? FLOOR_SEAT; m.clock = seconds;
+      // `seatY` is where the hip comes to rest: the seat's top and the sitter's lift over it.
+      m.seatY = (SEAT_Y[s.kind] ?? FLOOR_SEAT) + sitLift(m); m.clock = seconds;
       slideIn(m, s.x, s.z, s.yaw, SIT_BLEND, "sit"); m.slide.seat = 1;
     };
     const standUp = m => {
@@ -737,7 +740,7 @@
     const sitPose = (m, k) => {
       const p = m.parts;
       p.legR.rotation.x += (SIT_LEGS - p.legR.rotation.x) * k; p.legL.rotation.x += (SIT_LEGS - p.legL.rotation.x) * k;
-      m.root.position.y = m.baseY + (m.seatY + SIT_LIFT - m.baseY) * k;
+      m.root.position.y = m.baseY + (m.seatY - m.baseY) * k;
       if (p.skirt) p.skirt.rotation.x = SKIRT_SIT * k;
     };
     const faceTo = (m, dt) => { m.yaw += Math.max(-TURN * dt, Math.min(TURN * dt, turnTo(m.yaw, m.want))); m.root.rotation.y = m.yaw; };

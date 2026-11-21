@@ -22,7 +22,7 @@
     // `light` is the main light's direction (the renderer's key), and a warm dark haze thickens down the hall, thin
     // enough that the far wall reads. Tuned by eye in the built room.
     sky: [0.27, 0.25, 0.24], ground: [0.64, 0.54, 0.42], direct: [0.55, 0.66, 0.92], ambient: 0.25,
-    tableRange: 11, tableY: 4.4, bloom: 0.6, directStrength: 0.15, shadowStrength: 0.55,
+    tableRange: 11, tableY: 3.8, bloom: 0.6, directStrength: 0.15, shadowStrength: 0.55,
     tableLight: [1.45, 1.18, 0.76], roomLight: [1.3, 1.08, 0.72], roomRange: 15,
     light: MOON, fog: [0.16, 0.11, 0.065], fogNear: 20, fogFar: 120,
     // The night over the glass vault: the sky pass's gradient, stars and moon (₿IFRÖST's own values), and how the
