@@ -30119,7 +30119,10 @@ const partyRadioChecks = async () => {
 // chairs keep human size while the architecture scales and the table grows to seat 4, 8 and 12.
 const timechainRoomChecks = async () => {
   const context = { window: { BL: {} } };
+  runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
   runInNewContext(await readFile(new URL("../src/js/timechain-rooms.js", import.meta.url), "utf8"), context);
+  const pilotSource = await readFile(new URL("../src/js/pilot.js", import.meta.url), "utf8");
+  const pilotMod = { WALK: runInNewContext(pilotSource.match(/^  const WALK = .*;$/m)[0] + "\nWALK") };
   const R = context.window.BL.timechainRooms;
   const good = [0, 1, 7, "0", "5", "7"].every(v => R.parse(v) === Number(v));
   const bad = [8, 9, "8", "9", 10, 3.5, -1, "03", "3a", " 3", "", "sphere-3", null, undefined, NaN, {}, [3]].every(v => R.parse(v) === null);
@@ -30203,8 +30206,8 @@ const timechainRoomChecks = async () => {
     const guide = { stage: "toDoor", t: 0, hold: 0 }, doors = { open: 0, want: 0 }, at = { x: from.x, y: 0, z: from.z };
     let push = null;
     const fixture = {
-      L, guide, doors, exitEye, visit: {}, avatar: { root: { position: at, rotation: { y: 0 } } }, camera: { position: at },
-      people: { steer(x, z, _, power) { push = power ? [x, z] : null; } },
+      L, guide, doors, exitEye, pilotMod, clamp: context.window.BL.math.clamp, visit: {}, avatar: { root: { position: at, rotation: { y: 0 } } }, camera: { position: at },
+      people: { steer(x, z, _, power, jump, speed = 1) { push = power ? [x * speed, z * speed] : null; } },
       pilot: { orbit: { yaw: 0, tYaw: 0, pitch: 0, tPitch: 0 }, navigate(to) { at.x = to.position.x; at.z = to.position.z; }, setActive() {}, adopt() {} },
       handOff: (signedOut = false, pose = null) => hand.push({ posed: !!pose, short: +(exitEye - at.z).toFixed(2) }), exitPose: () => ({})
     };
@@ -30212,7 +30215,7 @@ const timechainRoomChecks = async () => {
     for (let t = 0; t < 40 && guide.stage !== "out"; t += 1 / 30) {
       fixture.step(1 / 30);
       const stuck = hold === "wall" ? at.x === from.x && at.z === from.z : hold === "doorway" && push && at.z + push[1] * 0.05 > L.doorZ - 0.5;
-      if (push && !stuck) { at.x += push[0] * 0.05; at.z += push[1] * 0.05; }
+      if (push && !stuck) { at.x += push[0] * pilotMod.WALK.speed / 30; at.z += push[1] * pilotMod.WALK.speed / 30; }
       doors.open = doors.want;
     }
     walkOuts.push({ id, hold, stage: guide.stage, hand });
@@ -30225,14 +30228,15 @@ const timechainRoomChecks = async () => {
   for (const name of ["math", "scene", "models", "terrain", "sign-glyphs", "hub-models", "timechain-rooms", "deferred", "timechain-models", "timechain-gate"])
     runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), gateContext);
   const GB = gateContext.window.BL, SPOTS = GB.timechainModels.SPOTS;
+  GB.pilot = pilotMod;
   GB.net = { state: { doorway: false, room: null, lockedRooms: {} }, subscribeDoor: () => () => {}, cancelDoor() {}, doneDoor() {}, serverNow: () => 0 };
   const walkBack = (held, pose, others = null) => {
     const at = { x: 0, y: 0, z: 0 }, cave = { root: { position: at, rotation: { y: 0 } }, baseY: 0, headOffset: 1.5, viewLift: 0, traits: { name: "tester", height: 1.6 }, parts: { head: {} } };
     let push = null;
     const site = { plug: { visible: true }, choose() {}, lock() {}, pinMode() {}, setDoors() {}, say() {}, tick() {}, directory: {}, keys: [] };
     const gate = GB.timechainGate.create({
-      site, place: { x: 0, y: 0, z: 0, ry: 0 }, crew: { player: cave, steer(x, z, _, power) { push = power ? [x, z] : null; }, thrust() {} },
-      pilot: { navigate(to) { at.x = to.position.x; at.y = to.position.y; at.z = to.position.z; }, setExternalControl() {}, showAct() {}, adopt() {}, eyeFov: () => 1 },
+      site, place: { x: 0, y: 0, z: 0, ry: 0 }, crew: { player: cave, steer(x, z, _, power, jump, speed = 1) { push = power ? [x * speed, z * speed] : null; }, thrust() {} },
+      pilot: { navigate(to) { at.x = to.position.x; at.y = to.position.y; at.z = to.position.z; }, setExternalControl() {}, showAct() {}, adopt() {}, eyeFov: () => 1, controls: { takeMovement() {} } },
       hud: { hint() {}, el: { act: {} } }, camera: { position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 1 }, fov: 1 }, renderer: {}, canvas: {}, world: {}, go: () => true, equipJetpack: () => false, keep: () => null,
       others: () => others || []
     });
@@ -30241,7 +30245,7 @@ const timechainRoomChecks = async () => {
     let t = 0;
     for (; t < 20 && gate.busy; t += 1 / 30) {
       gate.update(1 / 30);
-      if (push && !held) { at.x += push[0] * 0.08; at.z += push[1] * 0.08; }
+      if (push && !held) { at.x += push[0] * pilotMod.WALK.speed / 30; at.z += push[1] * pilotMod.WALK.speed / 30; }
       gate.view(1 / 30);
     }
     gate.update(1 / 30);
