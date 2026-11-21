@@ -378,6 +378,11 @@
       if (!ready()) return;
       toneCue("triangle", 440, 1760, 0.22, 0.09); airCue(1200, 5200, 0.25, 0.08, 2); toneCue("sine", 1320, 660, 0.3, 0.07, 0.24);
     };
+    // The flip's wind lift: one short gust's whoosh, rising (the gusts' own air, nothing of the sky feather's tone).
+    const liftGust = () => {
+      if (!ready()) return;
+      airCue(220, 1900, 0.8, 0.18, 0.9); airCue(700, 2800, 0.6, 0.06, 3, 0.1);
+    };
     const gustWarn = () => {
       if (!ready()) return;
       airCue(240, 1500, BL.cloudHopperGust.WARN, 0.16, 0.9); airCue(900, 3200, BL.cloudHopperGust.WARN, 0.05, 4, 0.4);
@@ -446,7 +451,7 @@
       rainGain = roarGain = roarHowl = gustGain = gustWhistle = null;
     };
     return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain,
-      tornado, tornadoForm, gust, gustWarn, turnOver, turned, warp, stop, dispose };
+      tornado, tornadoForm, gust, gustWarn, liftGust, turnOver, turned, warp, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();

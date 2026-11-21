@@ -5433,7 +5433,7 @@ const cloudHopperFailureChecks = async engine => {
   let ghostUsername = "", shownScores = [], shownLatest = null;
   let ghostPosition = null, ghostHeading = 0, platformRadius = 0;
   let viewFrames = 0, islandFramed = false, frameReleased = false;
-  let audioStage = "", audioTicks = 0, audioStops = 0, audioDisposed = false;
+  let audioStage = "", audioTicks = 0, audioStops = 0, audioDisposed = false, featherSounds = 0, liftGusts = 0;
   let audioLevel = 0, audioFade = 0, audioUnlocks = 0, inputResets = 0, audioSong = -1;
   const storage = new Map(), guideKey = "ooga-cloud-hopper-guide-v1", visibilityListeners = new Set();
   const noop = () => {};
@@ -5493,7 +5493,7 @@ const cloudHopperFailureChecks = async engine => {
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
       rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
     cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song(index) { audioSong = index; }, jump: noop, fade: noop, warn: noop, jet: noop,
-      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop, turnOver: noop, turned: noop, warp: noop,
+      power: noop, xrayEnding: noop, updraft() { featherSounds++; }, liftGust() { liftGusts++; }, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop, turnOver: noop, turned: noop, warp: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
       stop() { audioStage = ""; audioLevel = 0; audioStops++; }, dispose() { audioDisposed = true; } }) },
@@ -6408,8 +6408,10 @@ const cloudHopperFailureChecks = async engine => {
         if (c.active) { checked++; held &&= flipper.supportAt(c.x, c.z, c.top, 0.1) === c.top; }
         if (flipper.turning) {
           const p = actor.root.position, before = { ...p };
-          // The pack is on from the roll's start, so Space pressed during it is thrust held, not a jump's press.
-          rows[`flip ${flips + 1}`] = flipper.lowering && !flipper.climbing && actor.root.parent === home && !!actor.jet && actor.jetpackOwned && !actor.jetRecovering;
+          // No pack is lent: whatever the rider holds (a pack picked up on the way, worn or not, or none) stays as it
+          // was, from the roll's start to its end.
+          const packOf = () => [!!actor.jet, actor.jetpackOwned, actor.jetFuel].join(), pack0 = packOf();
+          rows[`flip ${flips + 1}`] = flipper.lowering && !flipper.climbing && actor.root.parent === home;
           // The rider goes on over the course as the crew moves it, at a run with some speed of its flight's own and
           // Space held (a rising speed the crew gives it each frame): the roll takes its height alone, and that only
           // while it lowers it. Its place over the course, that speed and the controls held are never touched.
@@ -6419,13 +6421,17 @@ const cloudHopperFailureChecks = async engine => {
           for (let f = 0; f < 90 && flipper.lowering; f++) {
             actor.hopV = rise; fly(run[0], run[1]); t += 1 / 60; lost = t;
             steered &&= Math.abs(p.x - (before.x + run[0] * t)) < 1e-9 && Math.abs(p.z - (before.z + run[1] * t)) < 1e-9;
-            sunk &&= actor.hopV === 0 && p.y <= low && p.y < before.y && flipper.turning && camera.up !== up;
+            // (Only while lowered: the frame it is let go, the wind lift gives it its rising speed.)
+            if (flipper.lowering) sunk &&= actor.hopV === 0 && p.y <= low && p.y < before.y && flipper.turning && camera.up !== up;
             if (flipper.lowering) { steered &&= actor.leap.vx === own[0] && actor.leap.vz === own[1]; low = p.y; }
           }
-          // Let go under the clouds part way through the roll, going on as it came: where the crew has moved it, with
-          // the speed of its flight's own it had and nothing held let go of (the roll resets no input).
+          // Let go under the clouds part way through the roll where the crew has moved it, nothing held let go of (the
+          // roll resets no input), and lifted by the wind.
           const let_go = { ...p };
-          rows[`carried ${flips + 1}`] = steered && sunk && inputResets === resets && actor.leap.vx === own[0] && actor.leap.vz === own[1];
+          // Let go, the wind lifts it: up, and on toward the nearest landing ahead at a steady speed, never over 14 m/s.
+          const aim = flipper.liftAim, carry = aim?.t || 1;
+          rows[`carried ${flips + 1}`] = steered && sunk && inputResets === resets && !!aim && actor.hopV > 0 && Math.abs(actor.hopV - aim.vy) < 1e-9
+            && Math.abs(actor.leap.vx - (aim.x - p.x) / carry) < 1e-6 && Math.abs(actor.leap.vz - (aim.z - p.z) / carry) < 1e-6 && Math.hypot(actor.leap.vx, actor.leap.vz) <= 14 + 1e-9 && actor.leap.thrown && packOf() === pack0;
           // How long the rider's height was not its own: the 0.6 s the lowering takes and no more than a frame over,
           // well inside the roll, which is still turning the world as the controls answer again.
           const left = [];
@@ -6440,8 +6446,8 @@ const cloudHopperFailureChecks = async engine => {
           step(turnSeconds);
           flips++;
           const over = flips % 2 === 1;
-          rows[`flip ${flips}`] &&= !flipper.turning && flipper.turns === flips && Math.abs(flipper.turn - (over ? Math.PI : 0)) < 1e-9 && flipper.climbing && !!actor.jet && actor.jetpackOwned
-            && actor.jetFuel > 0.2 && Math.abs(before.y - let_go.y - 8) < 1e-6 && actor.root.parent === home && actor.pet.node.parent === home && (over ? camera.up.y < -0.999 && !!rootNode.quaternion && Math.abs(rootNode.quaternion[3]) < 1e-9 : !rootNode.quaternion) && flipper.phase === "running";
+          rows[`flip ${flips}`] &&= !flipper.turning && flipper.turns === flips && Math.abs(flipper.turn - (over ? Math.PI : 0)) < 1e-9 && flipper.climbing && packOf() === pack0
+            && Math.abs(before.y - let_go.y - 8) < 1e-6 && actor.root.parent === home && actor.pet.node.parent === home && (over ? camera.up.y < -0.999 && !!rootNode.quaternion && Math.abs(rootNode.quaternion[3]) < 1e-9 : !rootNode.quaternion) && flipper.phase === "running";
           // After it every cloud is over: its underside up at the height its top had the first time, as built the second.
           rows[`flip ${flips}`] &&= cloudsShow(built, over);
           if (extras && flips === 1) {
@@ -6449,12 +6455,12 @@ const cloudHopperFailureChecks = async engine => {
             const rolled = { ...camera.position }; flipper.preUpdate(0);
             rows.trueView = camera.up === up && (camera.position.x !== rolled.x || camera.position.y !== rolled.y);
             flipper.postUpdate(); flipper.turnView();
-            // A fall from the climb, thrown wide of the course by the speed it carried, goes back under where the
-            // roll began, at rest, with the fuel again: the speed kept through a roll never loses the run.
+            // A fall from the lift, thrown wide of the course by the speed it carried, goes back under where the
+            // roll began and is lifted again from rest; fuel it holds is its own, untouched.
             actor.jetFuel = 0.1; Object.assign(actor.root.position, let_go); actor.root.position.x += 40; actor.root.position.z -= 25; actor.root.position.y -= 60;
             actor.hop = 5; actor.hopV = -20; actor.leap.vx = 28; actor.leap.vz = -9; step(1 / 60);
             rows.checkpoint = flipper.climbing && flipper.phase === "running" && actor.root.position.x === before.x && actor.root.position.z === before.z && actor.root.position.y === let_go.y
-              && actor.hopV === 0 && actor.leap.vx === 0 && actor.leap.vz === 0 && actor.jetFuel > 0.2 && actor.jetFuel < 0.4;
+              && actor.hopV > 0 && !!flipper.liftAim && actor.jetFuel === 0.1;
           }
           // The climb comes back onto the same course: the landing it was on, or the next one that shows.
           while (!order[i].active && i < order.length - 1) i++;
@@ -6525,7 +6531,7 @@ const cloudHopperFailureChecks = async engine => {
       Object.assign(p, { x: c.x, y: c.top + actor.baseY - 5, z: c.z }); step(1 / 60);
       all.fallen &&= flipper.turning && flipper.lowering;
       step(turnSeconds + 0.05);
-      all.reach = flipper.climbing && flipper.turns === 1 && Math.abs(p.y - (c.top + actor.baseY - 8)) < 1e-6 && actor.jetFuel > 0.2;
+      all.reach = flipper.climbing && flipper.turns === 1 && Math.abs(p.y - (c.top + actor.baseY - 8)) < 1e-6 && actor.jet === null && actor.jetFuel === 0 && actor.hopV > 0;
     }
     const launchCloud = flipper.platform.children.find(k => k.rest);
     const turned = flipper.turn > 3 && actor.root.parent === home && !!rootNode.quaternion && camera.up !== up && !!launchCloud.quaternion && Math.abs(launchCloud.position.y + 2.5) < 1e-9;
@@ -6562,7 +6568,7 @@ const cloudHopperFailureChecks = async engine => {
       { const { order, i } = flipped(); let k = i; while (!plain(order[k])) k++;
         onto(order[k]); step(1 / 60);
         row.landed = flipper.turn > 3 && !flipper.turning && !flipper.climbing && flipper.phase === "running";
-        // The roll's pack is gone again at that landing, so Space is the rider's jump and air jump once more.
+        // No pack was lent, so at that landing Space is still the rider's jump and air jump.
         row.packOff = actor.jet === null && !actor.jetpackOwned && actor.jetFuel === 0;
         bare(); row.over = fall(order[k], 45); }
       callbacks.onExit();
@@ -6577,16 +6583,17 @@ const cloudHopperFailureChecks = async engine => {
       { const { began } = flipped();
         const let_go = { ...p }; row.letGo = flipper.climbing && !flipper.rescued && p.x === began.x && p.z === began.z;
         Object.assign(p, { x: began.x - 35, y: let_go.y - 60, z: began.z + 20 }); actor.hop = 5; actor.hopV = -25; step(1 / 60);
-        row.once = flipper.climbing && flipper.rescued && p.x === began.x && p.z === began.z && p.y === let_go.y && actor.jetFuel > 0.2 && flipper.phase === "running";
+        row.lifts = flipper.lifts;
+        row.once = flipper.climbing && flipper.rescued && p.x === began.x && p.z === began.z && p.y === let_go.y && actor.jetFuel === 0 && actor.jet === null && actor.hopV > 0 && flipper.phase === "running";
         p.y = let_go.y - 60; actor.hop = 5; actor.hopV = -25; step(1 / 60);
-        row.twice = !flipper.climbing && flipper.phase === "running" && p.y < let_go.y - 30;
+        row.twice = !flipper.climbing && flipper.phase === "running" && p.y < let_go.y - 30 && flipper.lifts === 2 && row.lifts === 2;
         bare(); row.after = fall({ x: p.x, z: p.z, top: p.y - actor.baseY + 45 }, 45); }
       callbacks.onExit();
-      // A pack the rider held unworn is put away again at the landing with its fuel; one it wore stays on.
+      // A pack the rider holds, worn or not, is left as it was all through the lift, its fuel untouched.
       for (const worn of [false, true]) { const { order, i } = flipped(() => { actor.jetpackOwned = true; actor.jet = worn ? pack() : null; actor.jetFuel = 0.5; });
         let k = i; while (!plain(order[k])) k++;
-        const on = !!actor.jet && flipper.climbing; onto(order[k]); step(1 / 60);
-        row[worn ? "packWorn" : "packAway"] = on && !flipper.climbing && actor.jetpackOwned && actor.jetFuel >= 0.5 && !!actor.jet === worn;
+        const on = flipper.climbing && !!actor.jet === worn && actor.jetpackOwned && actor.jetFuel === 0.5; onto(order[k]); step(1 / 60);
+        row[worn ? "packWorn" : "packAway"] = on && !flipper.climbing && actor.jetpackOwned && actor.jetFuel === 0.5 && !!actor.jet === worn;
         callbacks.onExit(); }
       // A rider flying on under the course after a roll, 8 m under it all the way for 160 m, is far under where it
       // was let go (the course falls a third of a metre a metre) and has not fallen: it is never put back.
@@ -6604,44 +6611,49 @@ const cloudHopperFailureChecks = async engine => {
         && row.packOff && row.packAway && row.packWorn && row.flown;
       if (!all[`${seed} lost`]) all[`${seed} lost: ${JSON.stringify(row)}`] = false;
     }
-    // The fuel a roll gives is just the climb's. Under four seeds, a rider with none is let go with
-    // what the pack burns, by the crew's own steps (thrust up to the rising speed, then gravity, a frame at a time),
-    // to rise back to 0.5 m over the height it was lowered from: enough with thrust coming 0.3 s late, and still
-    // enough 0.4 s late; within a fifth of the grant left over then, and two fifths with thrust from the first
-    // frame; under a third of a tank in all (it was seven tenths). The nearest landing showing is no higher than that
-    // and nearer than the rider flies at a walk meanwhile. A rider holding more keeps its own, to the drop.
+    // The wind lift puts a rider with its hands off within landing reach of a cloud, and no further. Under four
+    // seeds, at both the place itself and from rest after a fall, the rider let go is flown on by the crew's own
+    // rules a frame at a time (gravity on its rising speed, its thrown speed across held) with no
+    // input: it comes down on the landing aimed at, inside its footprint where the cloud's swing has it then, a
+    // landing that is the nearest showing in plan not behind the rider down the course, within the lift's reach;
+    // its arc peaks no more than 1.6 m over that top. A rider holding fuel keeps exactly what it held.
     const granted = [];
-    { const g = BL.pilot.WALK.gravity, K = BL.crew;
-      const burnTo = (rise, late) => { const dt = 1 / 60; let v = 0, y = 0, t = 0, used = 0;
-        while (y < rise && t < 20) { if (t >= late - 1e-9) { v = Math.min(v + K.JET_ACCEL * dt, K.JET_RISE); used += dt; } v -= g * dt; y += v * dt; t += dt; }
-        return { fuel: used / K.JET_FUEL_SECONDS, t, up: y >= rise }; };
+    { const g = BL.pilot.WALK.gravity;
+      const fliesOn = (aim, from) => { const c = aim.cloud, dt = 1 / 60; let x = from.x, z = from.z, y = from.y - actor.baseY, vy = actor.hopV, vx = actor.leap.vx, vz = actor.leap.vz, t = 0, peak = y;
+        while (t < 8) { vy -= g * dt; const ny = y + vy * dt; x += vx * dt; z += vz * dt; t += dt; peak = Math.max(peak, ny);
+          if (vy < 0 && ny <= c.top) break; y = ny; }
+        const off = flipper.course.offsetAt(c, flipper.time + t), cx = c.baseX + c.moveX * off, cz = c.baseZ + c.moveZ * off;
+        return { inside: Math.hypot(x - cx, z - cz) <= Math.min(c.rx, c.rz) * 0.75, from: +Math.hypot(x - cx, z - cz).toFixed(2), r: +Math.min(c.rx, c.rz).toFixed(2), peak: peak - c.top, t }; };
       for (const seed of [5150, 77, 4242, 9001]) {
         begin(seed);
-        const course = flipper.course, order = course.landings, p = actor.root.position;
-        const plain = (c) => c.kind === "normal" && c.active && !course.pickups.some(e => e.cloud === c);
-        // Across place `which` in the air beside the first landing past it, holding `held` of a tank: what the rider is let go with.
-        const cross = (which, held) => { const c = order.find(l => course.due(l.x, l.z, which));
-          actor.jetFuel = held; if (!held) { actor.jet = null; actor.jetpackOwned = false; }
-          Object.assign(p, { x: c.x, y: c.top + actor.baseY + 1.5, z: c.z + 9 }); actor.hop = 1.5; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0; step(1 / 60);
-          const from = p.y; step(2.3);
-          let near = null, off = Infinity;
-          for (const l of order) { if (!l.active) continue; const d = Math.hypot(l.x - p.x, l.z - p.z) - Math.min(l.rx, l.rz); if (d < off) { off = d; near = l; } }
-          return { fuel: actor.jetFuel, rise: from - p.y + 0.5, top: from - actor.baseY, near, off, ok: flipper.climbing && flipper.turns === which + 1 && !!actor.jet }; };
-        const fits = (out) => { const late = burnTo(out.rise, 0.3), later = burnTo(out.rise, 0.4), prompt = burnTo(out.rise, 0);
-          granted.push([+out.fuel.toFixed(3), +late.fuel.toFixed(3), +prompt.fuel.toFixed(3)]);
-          return out.ok && Math.abs(out.rise - 8.5) < 1e-6 && late.up && later.up && late.fuel <= out.fuel && later.fuel <= out.fuel
-            && out.fuel - late.fuel <= 0.2 * out.fuel && out.fuel - prompt.fuel <= 0.4 * out.fuel && out.fuel < 1 / 3
-            && out.near.top <= out.top + 1e-9 && Math.max(0, out.off) / BL.pilot.WALK.speed <= late.t; };
-        all[`${seed} fuel`] = fits(cross(0, 0));
+        const course = flipper.course, order = course.landings, p = actor.root.position, end = order.at(-1);
+        const c = order.find(l => course.due(l.x, l.z, 0));
+        actor.jet = null; actor.jetpackOwned = false; actor.jetFuel = 0;
+        Object.assign(p, { x: c.x, y: c.top + actor.baseY + 1.5, z: c.z + 9 }); actor.hop = 1.5; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0; step(1 / 60);
+        // To the moment it is let go and lifted: one gust, nothing of the feather's.
+        const feather0 = featherSounds, gusts0 = liftGusts;
+        for (let f = 0; f < 60 && flipper.lowering; f++) step(1 / 60);
+        const once = flipper.lifts === 1 && liftGusts === gusts0 + 1 && featherSounds === feather0, lifting = flipper.climbing;
+        const aim = flipper.liftAim, at = { ...p }, out = Math.hypot(at.x - end.x, at.z - end.z);
+        const ahead = order.filter(l => l.active && Math.hypot(l.x - at.x, l.z - at.z) <= 36 && Math.hypot(l.x - end.x, l.z - end.z) <= out + Math.max(l.rx, l.rz));
+        const nearest = ahead.length && aim && ahead.every(l => Math.hypot(l.x - at.x, l.z - at.z) >= Math.hypot(aim.cloud.x - at.x, aim.cloud.z - at.z) - 1e-9 || !course.steadyAt(l, flipper.time + aim.t));
+        const flown = aim ? fliesOn(aim, at) : null;
+        granted.push(flown && [flown.from, flown.r, +flown.peak.toFixed(2), +flown.t.toFixed(2)]);
+        // Landed and standing on through the rest of the roll and a few seconds more, it is never lifted again.
+        const on = order.filter(l => l.active && course.due(l.x, l.z, 0))[1] || order.at(-2);
+        for (let f = 0; f < 240; f++) { onto(on); step(1 / 60); }
+        const still = flipper.lifts === 1 && liftGusts === gusts0 + 1 && featherSounds === feather0;
+        all[`${seed} lift once, no feather`] = once && still;
+        all[`${seed} lift`] = !!aim && lifting && actor.jet === null && actor.jetFuel === 0 && !!nearest && flown.inside && flown.peak <= 1.6 + 0.05 && flown.peak > 0;
         callbacks.onExit();
       }
-      // Holding more than the climb takes: kept as it is. Holding less: made up to the climb's.
+      // Holding fuel, worn or not: kept exactly as it was.
       { const own = [];
         for (const [seed, held] of [[5150, 0.9], [77, 0.05]]) { begin(seed); const course = flipper.course, p = actor.root.position, c = course.landings.find(l => course.due(l.x, l.z, 0));
           actor.jetFuel = held;
           Object.assign(p, { x: c.x, y: c.top + actor.baseY + 1.5, z: c.z + 9 }); actor.hop = 1.5; actor.hopV = 0; step(1 / 60); step(2.3); own.push(actor.jetFuel);
           callbacks.onExit(); }
-        all.fuelKept = own[0] === 0.9 && Math.abs(own[1] - granted[0][0]) < 0.02 && own[1] > 0.05; }
+        all.fuelKept = own[0] === 0.9 && own[1] === 0.05; }
     }
     // Every tornado, the wind and the lightning are drawn where they act, at every point of a run: upright, upside
     // down, on every frame of the roll and in the moments after it. A tornado's slabs and spray and the wind's
@@ -6933,8 +6945,8 @@ const cloudHopperFailureChecks = async engine => {
       flipper.dispose(); }
     all.disposed = rootNode.children.length === 1;
     cloudSave.unlocked = 1;
-    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over once by itself wherever its place falls round the halfway mark and stays so to the pile (the scene's root drawn turned back with the run, so the island is the right way up to the rider and the run is won on it with the world still over), never during a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go with a jetpack and just the climb's fuel (under four seeds: what the pack burns by the crew's own steps to rise back over the height it was lowered from with thrust 0.3 s late, enough still 0.4 s late, a fifth of it left then at most and two fifths with thrust at once, under a third of a tank, the nearest landing no higher and within reach meanwhile; a rider holding more keeps its own), and the climb comes back onto the same course; through the roll the rider goes on over the course as it was going, its place, its flight's own speed and the controls held never touched, and comes out as fast as it went in; only its height is the roll's, for the 0.6 s the lowering takes and at most a frame more (the jetpack worn from the roll's start, so Space pressed meanwhile is thrust held), the controls answering again while the world is still turning; a fall from the climb before its first landing, however wide that speed threw it, goes back at rest under where the roll began with the fuel again, the once: a second fall from it, and any fall after that landing, is lost upside down by the rules it is upright (after the same grace with no way back, and at the sea), under four seeds, and never put back up; every showing landing holds the rider upright or turned over; no two attempts turn at the same place (24 running give 24 different places, and a draw repeating the last attempt's seed is not taken), and the seed in a won run's recording lays that run's flip and portals again exactly; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; with the game's own tornadoes and wind, under five seeds, each of the three tornadoes shows whenever there is any of it and is drawn (its batches' matrices read as the renderer reads them, as the world's own) where its axis and side stand in the run all the way down its funnel, upright, upside down, on every frame of the roll and in the moments after it, its lightning by it and the wind's streaks along its push; through a tornado's outer band, upright and upside down, a rider at 4 to 16 m off its side is only pushed (never moved by the run), harder the nearer and the same size both ways up, and past its reach not at all; a rider flying on under the falling course after a roll is never put back for being far under where it was let go; the roll's jetpack goes back as it was at the first landing (off if the roll gave it, put away if held unworn, on if worn), so the jump and air jump are the rider's again; Storm's Eye's wind pushes six tenths as hard as Aurora Heights' and each of its two gusts blows two seconds for three; its last jump is one plain jump (from the final landing's edge a rider at a walk, jumping once with no air jump, pack or hook, comes in 5 m and more over the island's rim, and over it with no jump at all); its hook is for clouds alone (thrown at the island from past the final landing it bites nothing and the rider goes into the sea, as on Thunderhead, and the run never asks its host about the land); a portal holds no rider and throws whoever touches it at once, to its own landing; no tornado ever stands by a portal's throw (under 200 seeds with the game's own tornadoes and riders at three paces none's hold reaches a portal, its landing or the way between at any second, nor in the runs upright or upside down, and every tornado still comes); the rider and its pet stay in the crew's own node throughout; and leaving part way puts the scene's root, the clouds and the view back as they were",
-      Object.values(all).every(Boolean) && lostFor.length === 12, JSON.stringify(all) + " height held s " + JSON.stringify([Math.min(...lostFor), Math.max(...lostFor)]) + " lost after s (upright, over, second fall) " + JSON.stringify(lostAfter) + " fuel (granted, burnt 0.3 s late, burnt at once) " + JSON.stringify(granted) + " tornado checks a seed by state (" + STATES.join(", ") + ") " + JSON.stringify(shownAt) + " each tornado by state " + JSON.stringify(covered) + " band push by distance (size, lift) upright " + JSON.stringify(bands.upright) + " over " + JSON.stringify(bands.over) + " wind streaks (upright, over) " + JSON.stringify(windAt) + " bolts " + JSON.stringify(boltsAt) + " worst gap m " + worstGap.toFixed(2) + " nearest a tornado's reach came to a portal's throw m (200 seeds, the runs upright, over) and tornadoes that came of 600 " + JSON.stringify(calmLeast));
+    record("Cloud Hopper Storm's Eye runs: under three seeds and with neither portal, either or both, a rider goes down the whole course to the pile; the world turns over once by itself wherever its place falls round the halfway mark and stays so to the pile (the scene's root drawn turned back with the run, so the island is the right way up to the rider and the run is won on it with the world still over), never during a warp nor on a rider fallen far under the course, lowering the rider under the clouds (never further under the course than its fuel climbs) and letting it go into a burst of updraft wind that lifts it, with no jetpack lent and fuel it holds untouched (under four seeds, flown on by the crew's own rules with hands off, it comes down inside the footprint of the nearest landing ahead within the lift's reach, where its swing has it then, its arc peaking no more than 1.6 m over that top: never further on), and the lift comes back onto the same course; through the roll the rider goes on over the course as it was going, its place, its flight's own speed and the controls held never touched, and comes out as fast as it went in; only its height is the roll's, for the 0.6 s the lowering takes and at most a frame more (no pack lent, before or after), the controls answering again while the world is still turning; a fall from the climb before its first landing, however wide that speed threw it, goes back under where the roll began and is lifted again from rest, the once: a second fall from it, and any fall after that landing, is lost upside down by the rules it is upright (after the same grace with no way back, and at the sea), under four seeds, and never put back up; every showing landing holds the rider upright or turned over; no two attempts turn at the same place (24 running give 24 different places, and a draw repeating the last attempt's seed is not taken), and the seed in a won run's recording lays that run's flip and portals again exactly; every mesh a warp or a flip shows is readied as the course is laid, a rider flying at a portal has its landing found before the touch (dropped if it turns away, the course and the run's nodes untouched) and one coming to a flip's place has the roll's meshes readied; a portal throws it on in a glide with its speed and controls kept, safe on a landing; every cloud rolls over with the world where it is, keeping the world's way up, so that turned over its underside is up at the height its top had and is what the rider stands on, with a boost cloud's arrows on whichever side is up and on neither as it rolls; gravity and landing, jetpack thrust, the controls, gusts, tornadoes, fading, the grappling hook and a bounce or boost cloud's launch all show and work turned over as they do upright; with the game's own tornadoes and wind, under five seeds, each of the three tornadoes shows whenever there is any of it and is drawn (its batches' matrices read as the renderer reads them, as the world's own) where its axis and side stand in the run all the way down its funnel, upright, upside down, on every frame of the roll and in the moments after it, its lightning by it and the wind's streaks along its push; through a tornado's outer band, upright and upside down, a rider at 4 to 16 m off its side is only pushed (never moved by the run), harder the nearer and the same size both ways up, and past its reach not at all; a rider flying on under the falling course after a roll is never put back for being far under where it was let go; a pack the rider holds, worn or put away, is left as it was with its fuel through the lift and at the first landing, and a rider with none has none; Storm's Eye's wind pushes six tenths as hard as Aurora Heights' and each of its two gusts blows two seconds for three; its last jump is one plain jump (from the final landing's edge a rider at a walk, jumping once with no air jump, pack or hook, comes in 5 m and more over the island's rim, and over it with no jump at all); its hook is for clouds alone (thrown at the island from past the final landing it bites nothing and the rider goes into the sea, as on Thunderhead, and the run never asks its host about the land); a portal holds no rider and throws whoever touches it at once, to its own landing; no tornado ever stands by a portal's throw (under 200 seeds with the game's own tornadoes and riders at three paces none's hold reaches a portal, its landing or the way between at any second, nor in the runs upright or upside down, and every tornado still comes); the rider and its pet stay in the crew's own node throughout; and leaving part way puts the scene's root, the clouds and the view back as they were",
+      Object.values(all).every(Boolean) && lostFor.length === 12, JSON.stringify(all) + " height held s " + JSON.stringify([Math.min(...lostFor), Math.max(...lostFor)]) + " lost after s (upright, over, second fall) " + JSON.stringify(lostAfter) + " lift (m from the middle, radius, peak over the top m, s) " + JSON.stringify(granted) + " tornado checks a seed by state (" + STATES.join(", ") + ") " + JSON.stringify(shownAt) + " each tornado by state " + JSON.stringify(covered) + " band push by distance (size, lift) upright " + JSON.stringify(bands.upright) + " over " + JSON.stringify(bands.over) + " wind streaks (upright, over) " + JSON.stringify(windAt) + " bolts " + JSON.stringify(boltsAt) + " worst gap m " + worstGap.toFixed(2) + " nearest a tornado's reach came to a portal's throw m (200 seeds, the runs upright, over) and tornadoes that came of 600 " + JSON.stringify(calmLeast));
   }
   // Reload within the same session, then start a fresh session while the old
   // localStorage marker still exists. Leaving the fresh guide is not completion.

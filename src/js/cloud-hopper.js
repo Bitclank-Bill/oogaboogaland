@@ -47,15 +47,19 @@
   // it and the clouds roll half a turn round the course's axis over TURN_SECONDS (at once under reduced motion),
   // while the island stays the right way up to the rider, to be landed on and the run won on it. The rider goes on as it was going, its speed and the controls held untouched, so it steers all through
   // the roll; only its height is taken from it, for the roll's first TURN_HOLD seconds, while it is lowered TURN_DROP
-  // metres under where it was, below the clouds. Then, the world still rolling, it is let go with a jetpack worn and
-  // just the fuel to fly back up to them (`climbFuel`: what the pack burns lifting it to the height it was lowered
-  // from, thrust coming CLIMB_LATE seconds late, to CLIMB_OVER over it, and holding it up for any way still to fly to
-  // the nearest landing, and CLIMB_SPARE of that; a rider holding more keeps its own). One that falls CLIMB_FALL
+  // metres under where it was, below the clouds. Then, the world still rolling, a burst of updraft wind under it
+  // throws it back up (`windLift`): the same for every rider, pack or none, a pack and fuel it holds left as they
+  // were. The lift is aimed at the nearest landing ahead that will still be solid when it gets there (`liftTarget`):
+  // up to LIFT_OVER over that cloud's top (higher only when it is too far to reach at LIFT_SPEED otherwise), and
+  // forward at a steady speed just far enough to come down on its middle where its swing will have it, with no hands on the controls; no further, so it never
+  // carries a rider on down the course. The rider then steers and lands it itself. One that falls CLIMB_FALL
   // metres further under the course, where it is, before its first landing
-  // starts the climb again, once, at rest, from under where the roll began; from then on, as after that first
+  // is lifted again, once, from rest under where the roll began; from then on, as after that first
   // landing, a fall is lost as any other is. It changes nothing of the course.
   const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FALL = 30;
-  const CLIMB_LATE = 0.3, CLIMB_OVER = 0.5, CLIMB_SPARE = 1.15;
+  // The wind lift: how far over the target cloud's top its arc peaks, how far off a cloud may be to aim at, and how
+  // long its wind shows round the rider.
+  const LIFT_OVER = 1.6, LIFT_REACH = 36, LIFT_SHOW = 1, LIFT_SPEED = 14;
   // A portal cloud throws the rider that touches it on down the course: over WARP_SECONDS the Ooga, unseen, streaks
   // to a landing as SPARKS violet sparkles trailing WARP_TRAIL metres, the view gliding after it, and comes out WARP_EDGE inside the
   // landing's near side and WARP_OVER above it, with the speed it went in with (no more than carries it across the
@@ -140,7 +144,7 @@
     const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 };
     // Where the roll stands (`rolled`), and where it will stand as this frame is drawn (`drawnTurn`).
     const rolled = { turn: 0, x: 0, y: 0, z: 0 }, drawnTurn = { turn: 0, x: 0, y: 0, z: 0 };
-    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, climbTo = 0, packWas = 2, viewTurned = false, trueUp = null, nightSky = false;
+    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, viewTurned = false, trueUp = null, nightSky = false;
     // A portal's warp: the seconds into it (-1 none) from `warpFrom` to the landing `warpTo`, where it comes out
     // (`warpAt`), the speed carried through, the seconds into its puff (-1 none), the portal that flashed and when,
     // and until when no tornado takes the rider.
@@ -238,6 +242,7 @@
       readyPortal = readyFlip = -1; readyTo = null;
       holdGame(); audio.turned(false);
       for (const spark of sparks) spark.visible = false;
+      liftAt = -1; lifts = 0; for (const s of liftStreaks) s.visible = false;
     };
     // After the pilot has set the view: the world rolls by turning the view the other way round the same axis.
     const turnView = () => {
@@ -266,62 +271,73 @@
     };
     // The rider has reached where the world turns over, `level` the course's height there: its height is taken, to be
     // lowered under the clouds as the world starts to roll (never further under the course than TURN_DROP, so the
-    // climb's fuel always reaches it, and never nearer the sea than a climb's fall). Its speed over the course and
+    // wind lift always reaches it, and never nearer the sea than a climb's fall). Its speed over the course and
     // the controls held are left as they are, and the view stays the player's own to look round with.
     const beginTurn = (level) => {
       const p = actor.root.position;
       turning = 0; turnFrom = turn; lowering = true; climbing = rescued = false;
-      climbTo = Math.max(p.y - actor.baseY, level); packWas = actor.jet ? 2 : actor.jetpackOwned ? 1 : 0;
       Object.assign(turnHeld, p); Object.assign(checkpoint, p);
       checkpoint.y = Math.min(p.y, Math.max(p.y - TURN_DROP, level + actor.baseY - TURN_DROP, ctx.seaY + actor.baseY + CLIMB_FALL + 10));
       if (turn === 0) Object.assign(turnPivot, p);
       if (hookHeld && hookAt !== HAND) letGo();
-      hookDown = false; packUp();
+      hookDown = false;
       audio.turnOver(); audio.turned(turn === 0);
     };
-    // The fuel for the climb, as a share of the rider's tank, by the pack's own figures: its thrust against gravity up
-    // to its rising speed, a tank burning for JET_FUEL_SECONDS of thrust. Thrust coming CLIMB_LATE seconds late (the
-    // rider fallen and still falling by then), what it burns to lift the rider from where it is to CLIMB_OVER over
-    // the height the roll lowered it from (`climbTo`); if the nearest landing showing is further off than it flies
-    // meanwhile at a walk (the speed of its flight's own carrying it on first), what holds it up the rest of the way;
-    // and CLIMB_SPARE of the sum, no more than a tank.
-    const climbFuel = () => {
-      const p = actor.root.position, feet = p.y - actor.baseY, g = BL.pilot.WALK.gravity, lift = BL.crew.JET_ACCEL - g, top = BL.crew.JET_RISE - g / 60;
-      const down = g * CLIMB_LATE, rise = Math.max(0, climbTo - feet) + CLIMB_OVER + 0.5 * g * CLIMB_LATE * CLIMB_LATE;
-      const spin = (top + down) / lift, gained = 0.5 * lift * spin * spin - down * spin;
-      const burn = rise <= gained ? (down + Math.sqrt(down * down + 2 * lift * rise)) / lift : spin + (rise - gained) / top;
-      let off = Infinity;
-      for (const c of course.landings) if (c.active) off = Math.min(off, Math.hypot(c.x - p.x, c.z - p.z) - Math.min(c.rx, c.rz));
-      const carried = actor.leap.thrown ? 0 : Math.hypot(actor.leap.vx, actor.leap.vz) / BL.pilot.WALK.ledgeDrag;
-      const hover = Math.max(0, (Math.max(0, off) + carried) / BL.pilot.WALK.speed - CLIMB_LATE - burn) * g / BL.crew.JET_ACCEL;
-      const tank = actor.traits.jetTank > 0 ? actor.traits.jetTank : 1;
-      return Math.min(1, (burn + hover) * CLIMB_SPARE / (BL.crew.JET_FUEL_SECONDS * tank));
+    // The landing the wind lift aims at, from the rider's feet `feet` at (x, z): the nearest in plan of those not
+    // behind it down the course (none further from the finish than it, by more than its own reach) that are within
+    // LIFT_REACH and will be solid from when the lift brings the rider down on them to a second after; the nearest
+    // that shows at all if none is. Into `liftAim`: the cloud, where its middle will be then, and the flight's time.
+    const liftAim = { cloud: null, x: 0, z: 0, top: 0, t: 0, vy: 0 };
+    const liftTarget = (x, z, feet) => {
+      const g = BL.pilot.WALK.gravity, end = course.landings[course.landings.length - 1], out = Math.hypot(x - end.x, z - end.z);
+      let best = null, near = Infinity, any = null, anyNear = Infinity;
+      for (const c of course.landings) {
+        if (!c.active) continue;
+        const d = Math.hypot(c.x - x, c.z - z);
+        if (d < anyNear) { anyNear = d; any = c; }
+        if (d > LIFT_REACH || Math.hypot(c.x - end.x, c.z - end.z) > out + Math.max(c.rx, c.rz)) continue;
+        const apex = Math.max(feet, c.top + LIFT_OVER), t = Math.sqrt(2 * (apex - feet) / g) + Math.sqrt(2 * (apex - c.top) / g);
+        if (!course.steadyAt(c, seconds + t) || !course.steadyAt(c, seconds + t + 1)) continue;
+        if (d < near) { near = d; best = c; }
+      }
+      const c = best || any;
+      if (!c) return null;
+      // Peaking LIFT_OVER over its top, or higher where the cloud is too far to reach in that time at LIFT_SPEED
+      // across (a rider let go well over it, or far from it), so the flight lasts long enough to get there.
+      let apex = Math.max(feet, c.top + LIFT_OVER), vy = 0, t = 0, ax = c.x, az = c.z;
+      for (let tries = 0; tries < 80; tries++, apex += 0.5) {
+        vy = Math.sqrt(2 * g * (apex - feet)); t = vy / g + Math.sqrt(2 * (apex - c.top) / g);
+        const off = course.offsetAt(c, seconds + t);
+        ax = c.baseX + c.moveX * off; az = c.baseZ + c.moveZ * off;
+        if (Math.hypot(ax - x, az - z) / t <= LIFT_SPEED) break;
+      }
+      liftAim.cloud = c; liftAim.x = ax; liftAim.z = az; liftAim.top = c.top; liftAim.t = t; liftAim.vy = vy;
+      return liftAim;
     };
-    // The climb's jetpack on the rider. It goes on as the roll starts, not as the rider is let go: Space pressed with
-    // no pack worn is a jump's press, never thrust however long it is held, so a player pressing it during the roll
-    // would be let go with no lift until it pressed again. Its fuel comes as the rider is let go.
-    const packUp = () => {
-      if (!actor.jetpackOwned) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
-      if (!actor.jet) crew.wearJetpack(actor, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
-      actor.jetRecovering = false; pilot.showAct();
+    // The wind lift: a gust from under the rider, up at the speed that peaks LIFT_OVER over the target's top and across
+    // at a steady speed to where its middle will be as it lands, shown as the gusts' own streaks rushing up past it and
+    // heard as a short gust's whoosh (nothing of the sky feather's). It fires once as the roll lets the rider go, and
+    // once more only for the one fall it is put back from (`startClimb`). The controls are left as they are; Space is
+    // the rider's own (a jump, an air jump, or its own pack's thrust). `lifts` counts them, for the tests.
+    let liftAt = -1, lifts = 0;
+    const windLift = () => {
+      const p = actor.root.position, leap = actor.leap, aim = liftTarget(p.x, p.z, p.y - actor.baseY);
+      lifts++;
+      liftAt = displayTime; audio.liftGust();
+      if (!aim) return;
+      // Thrown, as the wind carries it: its speed across holds (no drag) until it lands, which ends the throw.
+      actor.hopV = aim.vy; leap.thrown = true;
+      leap.vx = (aim.x - p.x) / aim.t; leap.vz = (aim.z - p.z) / aim.t;
     };
-    // The climb done, the pack goes back as it was before the roll: off altogether if the roll gave it, put away if
-    // the rider held one unworn, left on if it wore one. A pack worn takes Space for its thrust, so one left on with
-    // a little fuel would cost the rider its jump's height and its air jump on every landing after.
-    const packDown = () => {
-      if (packWas === 0) { crew.setJetpackOwnership(actor, false); actor.jetFuel = 0; actor.jetRecovering = false; }
-      else if (packWas === 1) crew.removeJetpack(actor);
-      if (packWas < 2) pilot.showAct();
-    };
-    // The rider let go under the clouds with the pack's fuel made up for the climb: as the roll lowered it, going on
-    // over the course as it came (the pack only lifts here, so it runs and steers through the air as before); or,
-    // fallen from the climb (`again`), back under where the roll began, at rest.
+    // The rider let go under the clouds and lifted: as the roll lowered it; or, fallen from the lift (`again`), from
+    // under where the roll began, at rest.
     const startClimb = (again) => {
       const p = actor.root.position, leap = actor.leap;
       if (again) { Object.assign(p, checkpoint); leap.vx = leap.vz = 0; }
       else p.y = checkpoint.y;
       actor.hop = 1; actor.hopV = 0; actor.jumps = 1; leap.land = 0;
-      packUp(); actor.jetFuel = Math.max(actor.jetFuel, climbFuel()); climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
+      climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
+      windLift();
     };
     // Where a roll stands `t` seconds in, into `out`: how far the world has turned and the point its axis goes
     // through; whether it is over (upside down round where it began after the first, upright after the second).
@@ -348,7 +364,7 @@
         seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
         if (turning >= TURN_HOLD - 1e-9) {
           lowering = false; startClimb(false);
-          hud.toast("The world turned over · hold Space to jetpack up");
+          hud.toast("The world turned over · the wind lifts you · steer onto a cloud");
         }
       }
       holdGame();
@@ -624,6 +640,13 @@
     for (let i = 0; i < 12; i++) {
       const leaf = createNode({ geometry: BL.cloudHopperModels.leaf(), visible: false, sightHidden: true });
       leaves.push(leaf); addChild(routeRoot, leaf);
+    }
+    // The wind lift's gust: streaks of wind like a gust's (cloud-hopper-gust.js's own look), built once, rushing up and
+    // on past the rider for LIFT_SHOW seconds as it is lifted.
+    const liftStreak = BL.models?.box ? BL.models.noShadow(BL.models.box({ w: 1, h: 0.045, d: 0.045, color: "#dff4ff", emissive: 0.75 })) : null, liftStreaks = [];
+    for (let i = 0; i < 18; i++) {
+      const s = createNode({ geometry: liftStreak, visible: false, sightHidden: true });
+      liftStreaks.push(s); addChild(routeRoot, s);
     }
     // A warp's sparkles: built once, shown while one streaks and puffs.
     const sparks = [];
@@ -1246,12 +1269,12 @@
         // The climb after it ends on a landing. A fall from it starts it again, the once; a second is a fall like
         // any other, lost by the rules every fall is, as is every fall after that first landing.
         if (climbing) {
-          if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) { climbing = false; packDown(); }
+          if (actor.hop < 0.001 && actor.hopV <= 0 && course.contactAt(p.x, p.z, feet)) climbing = false;
           // (Fallen, that is, CLIMB_FALL further under the course where it is than a roll lowers one: the course
           // falls away as it goes, so a rider flying on under it is far under where it was let go and has not fallen.)
           else if (feet < courseTop(p.x, p.z) - TURN_DROP - CLIMB_FALL) {
             if (rescued) climbing = false;
-            else { rescued = true; startClimb(true); hud.toast("Back under the clouds · hold Space to jetpack up"); }
+            else { rescued = true; startClimb(true); hud.toast("Back under the clouds · the wind lifts you again"); }
           }
         }
         if (course.flips.length || course.portals.length) readyAhead();
@@ -1268,7 +1291,6 @@
           if (!refill) crew.setJetpackOwnership(actor, true, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
           actor.jetFuel = 1; actor.jetRecovering = false;
           // One taken during a roll's climb is the rider's own from then on, and stays on at the landing.
-          if (lowering || climbing) packWas = 2;
           pilot.showAct(); hud.toast(refill ? "Jetpack refilled" : "Jetpack collected · J to equip");
         } else {
           // Another X-ray goggles refresh it to full; a feather or a hook is taken only with none held.
@@ -1527,6 +1549,22 @@
     };
     // The gust's leaves spiral up round the Ooga for under a second.
     const updateGust = () => {
+      if (liftAt >= 0) {
+        // Streaks of the lift's gust rushing up from under the rider and on the way it is carried, each its own place
+        // round it and speed, thinning as the gust passes; held still under reduced motion.
+        const age = displayTime - liftAt, on = age < LIFT_SHOW, p = actor.root.position, feet = p.y - actor.baseY;
+        const v = Math.hypot(actor.leap.vx, actor.leap.vz) || 1, fx = actor.leap.vx / v, fz = actor.leap.vz / v, rush = stillMotion ? 0 : 1;
+        for (let i = 0; i < liftStreaks.length; i++) {
+          const s = liftStreaks[i], a = i * 2.39996, r = 0.8 + (i % 4) * 0.55, up = ((i * 0.37 + age * (7 + (i % 3) * 2) * rush) % 6) - 3;
+          s.visible = on && age < LIFT_SHOW * (0.6 + 0.4 * ((i * 7) % 5) / 4);
+          if (!s.visible) continue;
+          s.position.x = p.x + Math.cos(a) * r + fx * up * 0.3; s.position.y = feet - 1 + up; s.position.z = p.z + Math.sin(a) * r + fz * up * 0.3;
+          // Laid along the wind: mostly up, leaning the way it carries the rider.
+          s.rotation.y = Math.atan2(-fz, fx); s.rotation.z = Math.PI / 2 - 0.35;
+          s.scale.x = 1.6 + (i % 3) * 0.6;
+        }
+        if (!on) { liftAt = -1; for (const s of liftStreaks) s.visible = false; }
+      }
       if (gustAt < 0) return;
       const age = displayTime - gustAt, on = age < 0.9, p = actor.root.position, feet = p.y - actor.baseY;
       for (let i = 0; i < leaves.length; i++) {
@@ -1739,6 +1777,8 @@
       // Storm's Eye's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
       get turn() { return turn; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
+      // The wind lift's last aim: the landing, where its middle was to be as the rider came down, and the flight's time.
+      get liftAim() { return liftAim.cloud ? liftAim : null; }, get lifts() { return lifts; },
       // What is readied ahead, for debugging: the run's meshes, the landing found for the portal about to be touched
       // (null none) and the flip readied for (-1 none).
       get warmed() { return warmedRun; }, get readied() { return readyPortal >= 0 ? readyTo : null; }, get readiedFlip() { return readyFlip; },
