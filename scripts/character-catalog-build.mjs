@@ -21,7 +21,9 @@ export const catalogContinuation = (sources, block, baseline) => {
   const boundary = sources.indexOf("js/character-catalog.js");
   if (boundary < 1 || sources[boundary - 1] !== "js/characters.gen.js" || sources.indexOf("js/contributors.js") <= boundary)
     throw new Error("Character catalog must load after the embedded cast and before contributors");
-  return `${sources.slice(0, boundary + 1).map(block).join("\n\n")}\n\nwindow.BL.characterCatalog.configure(${JSON.stringify(baseline)});\nwindow.BL.characterCatalog.start(() => {\n${sources.slice(boundary + 1).map(block).join("\n\n")}\n});`;
+  // The continuation runs after currentScript is cleared. Retain only the public build hash, never its URL.
+  const build = String.raw`window.BL.clientBuild = document.currentScript?.src.match(/\/main-([a-f0-9]{8,64})\.js(?:\?|$)/)?.[1] || "";`;
+  return `${sources.slice(0, boundary + 1).map(block).join("\n\n")}\n\n${build}\nwindow.BL.characterCatalog.configure(${JSON.stringify(baseline)});\nwindow.BL.characterCatalog.start(() => {\n${sources.slice(boundary + 1).map(block).join("\n\n")}\n});`;
 };
 
 export const catalogPageAttributes = (env) => {
