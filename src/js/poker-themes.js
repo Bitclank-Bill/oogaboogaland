@@ -2,12 +2,9 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  // Banana Club's moon, over the bar end to the left as the hall is entered: the sky pass draws it there and its light
-  // (the renderer's key) comes from it through the glass vault.
+  // The globe beyond the bar and the key light through the glass share this bearing.
   const MOON = (([x, y, z]) => { const l = Math.hypot(x, y, z); return Object.freeze({ x: x / l, y: y / l, z: z / l }); })([0.56, 0.46, -1]);
-  // The moon's face lit from the front: the sky pass lights its disc from `moonSun` (the way to the sun from the moon),
-  // which otherwise falls back to the key light, and the key light here comes from the moon itself, so its disc showed
-  // its night side. Straight back toward the room is a full moon.
+  // Direction back toward the room for consumers of the night lighting preset.
   const MOON_SUN = Object.freeze({ x: -MOON.x, y: -MOON.y, z: -MOON.z });
   const club = {
     // Marble: floor, wall panels, side walls, end walls, the cream ceiling and the table tops. Walnut chairs and pale
@@ -35,7 +32,7 @@
     // and a small ice world (`extra`) off the -x side toward the arrival.
     night: { horizon: [0.038, 0.03, 0.046], zenith: [0.006, 0.008, 0.03], stars: 1, sun: [0.05, 0.05, 0.08], moon: MOON, moonSun: MOON_SUN,
       cosmos: { scale: 1, tilt: 0, below: true, soft: true,
-        place: { giant: { dir: [0.56, 0.46, -1], ring: 0.5 }, red: [-1, 0.09, -0.3], ice: [1, 0.08, -0.7], extra: { dir: [-1, 0.06, 0.62], kind: "ice", size: 8 } },
+        place: { giant: { dir: [0.56, 0.46, -1] }, red: [-1, 0.09, -0.3], ice: [1, 0.08, -0.7], extra: { dir: [-1, 0.06, 0.62], kind: "ice", size: 8 } },
         grow: { red: 2 } } },
     // Canvas 2D has no reflection, bloom or glow to carry an evening room, so it keeps a brighter warm hall and no haze.
     canvas: { sky: [0.72, 0.66, 0.56], ground: [0.48, 0.43, 0.37], ambient: 0.48, directStrength: 0.4 }
@@ -52,18 +49,18 @@
     if (canvas) { delete opts.fog; delete opts.fogNear; delete opts.fogFar; } else { opts.fog = club.fog; opts.fogNear = club.fogNear; opts.fogFar = club.fogFar; }
     const night = club.night;
     opts.sun = night.sun;
-    opts.horizon = night.horizon; opts.zenith = night.zenith; opts.stars = night.stars; opts.moon = night.moon; opts.moonSun = night.moonSun;
+    opts.horizon = night.horizon; opts.zenith = night.zenith; opts.stars = night.stars; opts.skyMoonDisc = false; opts.moon = night.moon; opts.moonSun = night.moonSun;
     if (!opts.starMatrix) opts.starMatrix = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
   };
   // The night sky (`night.cosmos`), made and hung: a cosmos rig (cosmos.js) with the sky under the horizon when the
   // record asks (`below`), its worlds placed as `place` says and each world named in `grow` made that many times its
   // size (its moons' ways with it). The scene and the ₿IFRÖST chamber's picture of the room hang it alike.
-  const hang = ({ sparse, scale = club.night.cosmos.scale, ship = true }) => {
+  const hang = ({ sparse, canvas = false, scale = club.night.cosmos.scale, ship = true }) => {
     const c = club.night.cosmos, rig = BL.cosmos.create({ sparse, scale, tilt: c.tilt, ship, below: !!c.below });
     BL.cosmos.place(rig, c.place);
     if (c.soft) BL.cosmos.soften(rig);
     for (const key in c.grow) { const n = rig.parts.planets.find(p => p.key === key).node; n.scale.x = n.scale.y = n.scale.z = c.grow[key]; }
-    BL.pokerHall.hangMoon(rig, sparse);
+    BL.pokerHall.hangMoon(rig, sparse, canvas);
     return rig;
   };
   BL.pokerThemes = { club, light, hang };

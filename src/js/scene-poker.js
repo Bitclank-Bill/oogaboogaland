@@ -154,7 +154,7 @@
   };
   // The room's music and sound (poker-audio.js): where the visitor hears from, written in place each frame, the crowd's
   // footfalls handed on to it, and whether a table's result may dip the music (not on the visit's first refresh).
-  let audio = null, cheers = false, gameCtx = null;
+  let audio = null, cheers = false, gameCtx = null, unlistenBlock = null;
   const EAR = { x: 0, z: 0, fx: 0, fz: 1 }, onStep = (name, x, z) => audio.cue(name, x, z);
   // The crowd walking the floor (poker-crowd.js), as many as the renderer's tier carries, giving way to the bodies in
   // `crowdBodies`: the visitor's Ooga and the other players here, rewritten in place each frame.
@@ -879,7 +879,7 @@
     room = BL.pokerModels.build(); S.addChild(root, room.root);
     salons = BL.pokerSalons.build(ctx.renderer.kind === "canvas2d"); S.addChild(root, salons.root);
     salons.targets.forEach((n, index) => { input.add(n, { kind: "salon", index }); targets.push(n); });
-    cosmos = Themes.hang({ sparse: ctx.renderer.kind === "canvas2d" || ctx.renderer.quality === "low" });
+    cosmos = Themes.hang({ canvas: ctx.renderer.kind === "canvas2d", sparse: ctx.renderer.kind === "canvas2d" || ctx.renderer.quality === "low" });
     for (let i = 0; i < 10; i++) { input.add(room.tables[i].top, { kind: "poker", index: i }); targets.push(room.tables[i].top); }
     for (const p of room.statues.plaques) { input.add(p.node, { kind: "placard", index: p.index }); targets.push(p.node); }
     for (const t of room.games.tables) { input.add(t.body, { kind: "game", index: t.index }); targets.push(t.body); }
@@ -951,6 +951,9 @@
     // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).
     footsteps = BL.footsteps.create();
     audio = BL.pokerAudio.create(); cheers = false;
+    unlistenBlock = BL.mempool.subscribe(e => {
+      if (e.type === "block" && !document.hidden) room.hall.clock.block(e.height, audio.blockChime);
+    });
     mirror.body.track(avatar.root, avatar.traits.height * 2, Math.max(avatar.headOpen.verts.length, avatar.headClosed.verts.length));
     if (seatTable >= 0 && !pendingStand) sit(session.tables[seatTable].snapshot().seats.findIndex(s => s?.id === HERO));
     while (faces.length < BL.pokerRules.SEATS) { const f = { key: "", cave: null, tag: null, paint: canvas => BL.hud.renderFaceIcon(canvas, f.cave, null, 96) }; faces.push(f); }
@@ -1058,10 +1061,13 @@
       && avatar.root.position.z + avatar.bodyRadius > BL.pokerModels.EXIT_Z && !leaving) leaveFloor();
     // All ten table lights fit the lowest renderer tier; selected table goes first.
     const near = selected, lights = renderOpts.lights;
+    const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, Date.now(), camera.position, audio.blockChime);
+    const power = Math.min(1, left / 0.8), ease = power * power * (3 - 2 * power);
     for (let slot = 0; slot < 10; slot++) {
       const i = (near + slot) % 10, p = BL.pokerModels.TABLES[i], o = slot * 8;
       lights[o] = p.x; lights[o + 1] = theme.tableY; lights[o + 2] = p.z; lights[o + 3] = theme.tableRange;
-      lights[o + 4] = theme.tableLight[0]; lights[o + 5] = theme.tableLight[1]; lights[o + 6] = theme.tableLight[2];
+      lights[o + 4] = theme.tableLight[0] + 0.20 * ease;
+      lights[o + 5] = theme.tableLight[1] - 0.14 * ease; lights[o + 6] = theme.tableLight[2] - 0.2 * ease;
       const v = room.tables[i]; v.pulse = Math.max(0, v.pulse - dt);
       // Floating table names face the visitor and clear the overhead view with the fixtures.
       v.label.visible = room.fixtures.visible;
@@ -1073,13 +1079,16 @@
     }
     for (let i = 0; i < 3; i++) {
       const o = (10 + i) * 8;
-      lights[o] = 0; lights[o + 1] = 6.15; lights[o + 2] = (i - 1) * 24; lights[o + 3] = theme.roomRange;
-      lights[o + 4] = theme.roomLight[0]; lights[o + 5] = theme.roomLight[1]; lights[o + 6] = theme.roomLight[2];
+      lights[o] = 0; lights[o + 1] = 6.15; lights[o + 2] = (i - 1) * 24; lights[o + 3] = theme.roomRange + 4 * ease;
+      lights[o + 4] = theme.roomLight[0] + (2.5 - theme.roomLight[0]) * ease;
+      lights[o + 5] = theme.roomLight[1] + (0.95 - theme.roomLight[1]) * ease;
+      lights[o + 6] = theme.roomLight[2] + (0.18 - theme.roomLight[2]) * ease;
     }
-    // Successive observed blocks light successive courses of the linked brass blocks.
-    const tip = BL.chain.snapshot;
-    const litCourse = tip.heightAt > 0 ? tip.height % room.sparkle.length : -1;
-    for (let i = 0; i < room.sparkle.length; i++) { const n = room.sparkle[i]; n.glow = i === litCourse ? 1.35 : 0.4 + 0.08 * Math.sin(elapsed * 0.6 + n.ring + n.fixture); }
+    for (const n of room.sparkle) {
+      n.geometry = left > 0 ? n.amber : n.prism;
+      n.glow = 0.92 + 0.12 * Math.sin(elapsed * 0.78 + n.ring * 1.7 + n.fixture) + 0.15 * ease;
+    }
+    for (const n of room.rays) { n.visible = left > 0; n.smokeOpacity = ease; n.glow = ease; }
     room.hall.update(dt, elapsed);
     cosmos.update(dt, elapsed, renderOpts);
     hud.updateBoard(elapsed);
@@ -1162,6 +1171,7 @@
     unsubscribeAccount(); unsubscribeAccount = null; unsubscribeReactions(); unsubscribeReactions = null; BL.net.setBody(null);
     for (const t of room.tables) t.agent.dispose();
     room.games.dispose(); gameCtx.crowd = gameCtx.cue = null; gameCtx = null;
+    unlistenBlock(); unlistenBlock = null;
     hud.closeBoard(); room.hall.dispose(); room.statues.dispose(); room.floor.dispose(); cosmos.dispose();
     BL.pokerModels.setLite(false);
     remotes.dispose(); remotes = null; footsteps.dispose(); footsteps = null;

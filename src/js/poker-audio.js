@@ -21,7 +21,7 @@
 //
 // The lounge's playlist: four recordings by Kevin MacLeod (CC BY 4.0, CREDITS.md), each its own deferred group,
 // `lounge-track-<key>` (lounge-track-*.js; each key listed in deferred.js's `PRESENT` too, or its fetch throws), the one
-// exception here to synthesized sound. Shuffled with no repeat until all four have played, a new round never opening on
+// exception here to synthesized sound. Lobby Time opens the visit, then the other three play shuffled; a new round never opens on
 // the track just heard (ghost-audio.js's `advance` and `shuffle`). At most one decoded track is ever held (a decoded
 // track is 68 to 158 MB), so there is no crossfade between two recordings: a track fades in over `XFADE`, fades out
 // over its own reverb tail (`tail` plus `TAIL_PAD`) to its last sample, and is released; only then is the next decoded,
@@ -109,7 +109,7 @@
   // `tail` is its closing reverb in seconds. `TRACK_LEVEL` scales every trim against the synth under the one bus. A
   // track starts `TRACK_LEAD` after it is ready, fades in over `XFADE` as the synth fades down over the same, and fades
   // out over `tail + TAIL_PAD` to its end as the synth comes back up. The next group is fetched `PREFETCH` before the end.
-  const TRACK_LEVEL = 1, TRACK_LEAD = 0.1, XFADE = 3, TAIL_PAD = 1, PREFETCH = 20;
+  const TRACK_LEVEL = 1.85, TRACK_LEAD = 0.1, XFADE = 3, TAIL_PAD = 1, PREFETCH = 20;
   const MACLEOD = "Kevin MacLeod (incompetech.com)", LICENCE = "CC BY 4.0", LICENCE_URL = "https://creativecommons.org/licenses/by/4.0/";
   const track = (key, title, trim, tail) => Object.freeze({ key, title, by: MACLEOD, licence: LICENCE, url: LICENCE_URL, trim, tail });
   const TRACKS = Object.freeze([
@@ -154,7 +154,7 @@
     let song = SONGS[0], songIndex = 0, stepSeconds = 1, tuneSteps = 0, origin = 0, next = 0, timer = 0;
     let rngState = 0, rngChorus = -1, rngBar = -1;
     const draws = new Float64Array(4);
-    const stats = { open: false, contexts: 0, hands: 0, tones: 0, noises: 0, brushes: 0, song: null, bar: 0, step: 0, scheduled: 0, cues: 0, dropped: 0, busy: 0, steals: 0, roomTones: 0, playlist };
+    const stats = { open: false, contexts: 0, hands: 0, blockChimes: 0, tones: 0, noises: 0, brushes: 0, song: null, bar: 0, step: 0, scheduled: 0, cues: 0, dropped: 0, busy: 0, steals: 0, roomTones: 0, playlist };
     // Where the visitor hears from, copied from `update`'s `ear`; where the cue being placed sits from there (`AT`); the
     // bar's two wings and the tables, read once; and the countdowns to the bed's next level and the room's next cues.
     const EAR = { x: 0, z: 0, fx: 0, fz: 1 }, AT = { level: 0, pan: 0 };
@@ -480,8 +480,10 @@
       }
       if (muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
       init();
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
     };
     window.addEventListener("pointerdown", activate, true);
+    window.addEventListener("pointerup", activate, true);
     window.addEventListener("keydown", activate, true);
     // Clears the background tick and arms it again when it should run.
     const rearm = () => {
@@ -586,6 +588,22 @@
       }
     };
 
+    // A bell strike takes the two existing room oscillators. Its fundamental carries across the hall
+    // and the shorter, inharmonic overtone gives the attack a brass edge. Both follow the room mute.
+    const blockChime = (x,z) => {
+      if (!ready) return;
+      place(x,z);
+      AT.level = 0.28 + 0.72*AT.level;
+      const now = ctx.currentTime;
+      roomSines.forEach((v,i) => {
+        v.osc.frequency.cancelScheduledValues(now);
+        v.osc.frequency.setValueAtTime(i ? 1327 : 587.33,now);
+        v.filter.frequency.setValueAtTime(5100,now);
+        taps(v,1,0,i ? 0.17 : 0.38,i ? 0.85 : 2.2,now,0.007);
+      });
+      stats.blockChimes++;
+    };
+
     // The bed follows the nearest table or the nearer edge of the bar.
     const bedLevel = () => {
       let d2 = Infinity;
@@ -658,6 +676,7 @@
       offSound(); musicChannel.release(); roomChannel.release();
       disposed = true;
       window.removeEventListener("pointerdown", activate, true);
+      window.removeEventListener("pointerup", activate, true);
       window.removeEventListener("keydown", activate, true);
       document.removeEventListener("visibilitychange", onVisibility);
       if (timer) clearTimeout(timer);
@@ -684,10 +703,15 @@
 
     // `pools`, the voice pools by name, live, for tests and debugging to inspect.
     const pools = Object.freeze({ triangles, sines, noises, brushes, roomSines });
-    // The playlist in a fresh order, its first track's group asked for now that the room is entered.
+    // Lobby Time opens each visit. Keep the other three in a fresh order, and shuffle whole rounds thereafter.
     shuffle(-1);
+    const lobby = order.indexOf(0);
+    [order[0], order[lobby]] = [order[lobby], order[0]];
     want();
-    return { update, cue, setSeated, win, dispose, stats, pools, credits: CREDITS,
+    // Walking through the portal used a gesture in the previous scene. The room is built after that event;
+    // waiting solely for a new keydown left returning or stationary visitors listening to silence.
+    if (navigator.userActivation?.hasBeenActive) activate();
+    return { update, cue, blockChime, setSeated, win, dispose, stats, pools, credits: CREDITS,
       get nowPlaying() { return playing < 0 ? null : NOW[playing]; } };
   };
 

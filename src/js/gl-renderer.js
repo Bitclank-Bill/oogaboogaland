@@ -948,7 +948,7 @@ float matrixPermanentAt(vec3 point, float caveIndex) {
 }
 // Every cut a fragment takes, also the whole of the depth pre-pass's shader, so both passes keep the same pixels.
 bool clipped() {
-  if (uCanvasSurface > 0.5 && canvasColor().a <= (uCanvasAtlas > 0.5 ? 0.5 : 0.0)) return true;
+  if (uCanvasSurface > 0.5 && uCanvasCurve.x >= 0.0 && canvasColor().a <= (uCanvasAtlas > 0.5 ? 0.5 : 0.0)) return true;
   vWorld = uProjective > 0.5 ? vWorldH.xyz / vWorldH.w : vWorldH.xyz;
   if (vWorld.y < uClipMinY || dot(uObjectClip, vec4(vWorld, 1.0)) > 0.0 || abs(dot(uObjectSlab.xyz, vWorld) + uObjectSlab.w) > 1.0 || abs(dot(uObjectSlab2.xyz, vWorld) + uObjectSlab2.w) > 1.0 || cutaway(vWorld, vSmokeOpacity)) return true;
   if (uLakeOcclude.w > 0.0 && uEye.y > uLakeOcclude.y && vWorld.y < uLakeOcclude.y) {
@@ -998,7 +998,19 @@ void main() {
 #endif
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
-  if (uCanvasSurface > 0.5) base *= canvasColor().rgb;
+  if (uCanvasSurface > 0.5) {
+    // Spherical lunar reflectance. Crater floors and rims share the same fixed sunlight as the rest of the globe.
+    if (uCanvasCurve.x < 0.0) {
+      vec3 local = normalize(vLocal);
+      vec2 uv = vec2(0.5 + atan(local.x, local.z) / 6.2831853, 0.5 - asin(clamp(local.y, -1.0, 1.0)) / 3.1415927);
+      float albedo = texture(uCanvasImage, uv).r;
+      float daylight = 0.17 + 0.83 * sqrt(max(0.0, dot(n, vec3(-0.73,0.51,0.454))));
+      oColor = vec4(albedo * daylight * vec3(0.96,0.97,1.0), 1.0);
+      oBright = vec4(0.0,0.0,0.0,1.0);
+      return;
+    }
+    base *= canvasColor().rgb;
+  }
   // Mode 5 keeps its own palette in the Matrix; clouds are mode 4.
   float nativeMode = step(4.5, vParams.z);
   float cloud = step(3.5, vParams.z) * (1.0 - nativeMode);
@@ -1140,7 +1152,7 @@ void main() {
   else if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
 #endif
-  if (uChrome > 0.0) {
+  if (uChrome != 0.0) {
     vec3 eye = normalize(viewTowardEye(vWorld));
     vec3 reflected = reflect(-eye, n);
     float ceiling = smoothstep(0.06, 0.38, reflected.y);
@@ -1149,7 +1161,12 @@ void main() {
     metal = mix(metal, vec3(0.46, 0.49, 0.51), floor);
     float edge = pow(1.0 - abs(dot(n, eye)), 5.0);
     float glint = pow(max(dot(reflected, normalize(vec3(-0.45, 0.8, 0.25))), 0.0), 96.0);
-    col = mix(col, metal * (0.8 + 0.2 * edge) + vec3(glint * 0.45), uChrome);
+    // Cast metals reflect the room in their own hue. Chrome retains its silver finish.
+    if (uChrome < 0.0) {
+      float strip = (1.0 - smoothstep(0.0, 0.035, abs(reflected.y - 0.32 - 0.12 * reflected.x)));
+      metal = base * (0.23 + 0.96 * metal.r + 0.34 * strip);
+    }
+    col = mix(col, metal * (0.8 + 0.2 * edge) + vec3(glint * 0.45), abs(uChrome));
   }
   // Pale pigments fluoresce independently of the dim violet illumination. Keep their
   // hue, with a green fluorescence for whites; dark materials and transparent glass stay dark.
@@ -3731,7 +3748,8 @@ void main() {
           gl.uniform2f(program.u.uCanvasScale, (surface.width || canvas.width) / canvas.width, (surface.height || canvas.height) / canvas.height);
           const bg = surface.background;
           gl.uniform3f(program.u.uCanvasBackground, bg ? bg[0] / 255 : 0, bg ? bg[1] / 255 : 0, bg ? bg[2] / 255 : 0);
-          if (surface.curve) gl.uniform3fv(program.u.uCanvasCurve, surface.curve);
+          if (surface.lunar) gl.uniform3f(program.u.uCanvasCurve, -1, 0, 0);
+          else if (surface.curve) gl.uniform3fv(program.u.uCanvasCurve, surface.curve);
           else gl.uniform3f(program.u.uCanvasCurve, 0, 0, 0);
         }
       }
@@ -4029,7 +4047,7 @@ void main() {
             gl.uniform1f(mesh.u.uGlassGrazing, glassGrazing);
             mesh.glassGrazing = glassGrazing;
           }
-          const chrome = g.chrome || 0;
+          const chrome = g.tintedMetal ? -g.tintedMetal : g.chrome || 0;
           if (chrome !== mesh.chrome) {
             gl.uniform1f(mesh.u.uChrome, chrome);
             mesh.chrome = chrome;
@@ -4620,6 +4638,7 @@ void main() {
         shadowExtent = 13,
         horizon,
         zenith,
+        skyMoonDisc = true,
         moon = DEFAULT_MOON,
         moonSun = sunDirection,
         stars = 0,
@@ -4665,7 +4684,8 @@ void main() {
         gl.uniform3fv(pg.sky.u.uZenith, zenith);
         gl.uniform3fv(pg.sky.u.uSun, sun);
         gl.uniform3f(pg.sky.u.uSunDir, sx, sy, sz);
-        gl.uniform3f(pg.sky.u.uMoonDir, moon.x, moon.y, moon.z);
+        if (skyMoonDisc) gl.uniform3f(pg.sky.u.uMoonDir, moon.x, moon.y, moon.z);
+        else gl.uniform3f(pg.sky.u.uMoonDir, 0, 0, 0);
         gl.uniform3f(pg.sky.u.uMoonSunDir, moonSun.x, moonSun.y, moonSun.z);
         gl.uniformMatrix3fv(pg.sky.u.uStarMatrix, false, starMatrix);
         gl.uniform1f(pg.sky.u.uStars, stars);

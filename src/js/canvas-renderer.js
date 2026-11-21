@@ -2088,7 +2088,7 @@
         ctx.fillRect(0, -hazeShift, width, height);
         ctx.translate(0, -hazeShift);
         const moon = opts.moon, moonSun = opts.moonSun || opts.sunDirection;
-        if (gradientSky && moon && moonSun && moon.y > 0) {
+        if (gradientSky && opts.skyMoonDisc !== false && moon && moonSun && moon.y > 0) {
           const mx = view[0] * moon.x + view[4] * moon.y + view[8] * moon.z;
           const my = view[1] * moon.x + view[5] * moon.y + view[9] * moon.z;
           const mz = view[2] * moon.x + view[6] * moon.y + view[10] * moon.z;

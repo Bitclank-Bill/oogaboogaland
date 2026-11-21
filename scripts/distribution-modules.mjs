@@ -12,7 +12,7 @@ import { basename, join } from "node:path";
 const hash = (text, encoding) => createHash("sha256").update(text, "utf8").digest(encoding);
 // Groups the portable page leaves out (scripts/build.mjs never inlines them): the Ember Den's four lounge recordings
 // (about 18 MB), which would carry the single file past GitHub's 50 MB warning. The hosted pages still serve each as
-// its own same-origin file; the portable page's playlist finds no such file and the synthesized music plays alone.
+// its own same-origin file; the portable page carries its own smaller mono encodings.
 export const hostedOnly = (group) => group.startsWith("lounge-track-");
 export function externalizeModules(html, out, deferred, block, terrainWorker = null, transform = (src, text) => text, inline = [], micFilter = null) {
   const script = html.match(/<script>([\s\S]*?)<\/script>/);

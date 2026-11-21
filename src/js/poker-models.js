@@ -103,7 +103,7 @@
           }
           // The counter at an Ooga's waist (0.95), its marble body set back under the top's overhang so a guest's legs
           // from a stool reach under it, the brass foot rail along the body's foot.
-          parts.push(marble(2.5, 0.87, 0.35, 60 + k, 4, x, 0.435, front - 0.9), block(2.5, 0.08, 0.7, NERO, x, 0.91, front - 0.72),
+          parts.push(marble(2.5, 0.87, 0.35, 60 + k, 4, x, 0.435, front - 0.9, f.x > 0 ? "#242e31" : K.WHITE), block(2.5, 0.08, 0.7, NERO, x, 0.91, front - 0.72),
             flat(2.5, 0.05, 0.03, GOLD, x, 0.91, front - 0.355), flat(2.5, 0.045, 0.045, GOLD, x, 0.2, front - 0.69));
           // The backboard's back, seen through the glass: a raised walnut frame a bay with a middle rail.
           for (const y of [0.1, 2.15, 4.2]) parts.push(flat(2.5, 0.12, 0.03, WOOD, x, y, back - 0.015));
@@ -199,21 +199,40 @@
     }
     return M.merge(...parts);
   };
-  // Linked courses of bevelled brass and opal blocks. All three fixtures instance the
-  // same four meshes. The observed block height selects one brighter course in the room.
-  const TINTS = ["#ddbe85", "#b89661"];
+  // A brilliant cut with a flat table, kite-shaped crown and alternating pavilion facets.
+  // Cool and spectral faces catch the warm light; a second palette uses the same cuts for a mined block.
+  const TINTS = ["#e4ffff", "#c3b8ff"];
+  const FACETS = ["#ecffff", "#68bfea", "#91a7ef", "#e9bcf4", "#f9ffff", "#48adc2", "#efe3ff", "#577abc"];
   const crystals = () => {
     const gem = (x, top, z, width, length, color) => {
-      const h = width * 0.94, bottom = top - length;
-      const g = M.merge(flat(0.025, length - h, 0.025, GOLD, 0, top - (length - h) / 2),
-        M.bevelBox({ w: width, h, d: width, bevel: 0.025, color, emissive: 0.76, offset: { y: bottom + h / 2 } }));
-      for (let i = 0; i < g.verts.length; i += 3) { g.verts[i] += x; g.verts[i + 2] += z; } return g; };
+      const g = M.geometry(), depth = width * 1.40, bottom = top - length, sides = lite ? 6 : 8;
+      const layer = (r, h, spin) => Array.from({ length: sides }, (_, i) => {
+        const a = i * 2*Math.PI/sides + spin;
+        return M.pushVert(g, x+r*Math.cos(a), bottom+h, z+r*Math.sin(a));
+      });
+      const tip = M.pushVert(g,x,bottom,z), girdle = layer(width*0.55,depth*0.68,0);
+      const pavilion = layer(width*0.31,depth*0.34,Math.PI/sides);
+      const crown = layer(width*0.55,depth*0.73,0), table = layer(width*0.33,depth,Math.PI/sides);
+      const offset = color === TINTS[0] ? 0 : 3;
+      const facet = (points,i,glow) => M.face(g,points,BL.math.hexToRgb(FACETS[(i+offset)%FACETS.length]),{emissive:glow});
+      for (let i=0;i<sides;i++) {
+        const k=(i+1)%sides;
+        facet([tip,pavilion[i],pavilion[k]],i+3,0.52);
+        facet([pavilion[i],girdle[k],pavilion[k]],i+1,0.62);
+        facet([pavilion[i],girdle[i],girdle[k]],i,0.74);
+        facet([girdle[i],crown[i],crown[k],girdle[k]],i+2,0.88);
+        facet([crown[i],table[i],crown[k]],i+4,0.82);
+        facet([table[i],table[k],crown[k]],i+1,0.96);
+      }
+      facet(table.slice().reverse(),0,0.92);
+      return M.merge(g,flat(0.018,length-depth,0.018,GOLD,x,top-(length-depth)/2,z));
+    };
     const meshes = CRYSTAL_RINGS.map(([r, y, count]) => {
       const parts = [];
-      if (lite) for (let k = 0, n = Math.ceil(count / 2); k < n; k++) { const a = k * Math.PI * 2 / n; parts.push(gem(Math.cos(a) * r, y, Math.sin(a) * r, 0.26, 0.6, TINTS[k & 1])); }
+      if (lite) for (let k = 0, n = Math.ceil(count / 2); k < n; k++) { const a = k * Math.PI * 2 / n; parts.push(gem(Math.cos(a) * r, y, Math.sin(a) * r, 0.30, 0.6, TINTS[k & 1])); }
       else for (let k = 0; k < count; k++) {
         const a = k * Math.PI * 2 / count, b = (k + 0.5) * Math.PI * 2 / count, ri = r - 0.12;
-        parts.push(gem(Math.cos(a) * r, y, Math.sin(a) * r, 0.26, 0.6, TINTS[k & 1]), gem(Math.cos(b) * ri, y - 0.45, Math.sin(b) * ri, 0.26, 0.6, TINTS[(k + 1) & 1]),
+        parts.push(gem(Math.cos(a) * r, y, Math.sin(a) * r, 0.30, 0.6, TINTS[k & 1]), gem(Math.cos(b) * ri, y - 0.45, Math.sin(b) * ri, 0.30, 0.6, TINTS[(k + 1) & 1]),
           M.beam(Math.cos(b) * (r - 0.07), y, Math.sin(b) * (r - 0.07), Math.cos(b) * ri, y - 0.45, Math.sin(b) * ri, 0.02, TINTS[1], 0.6));
       }
       return M.merge(...parts);
@@ -221,6 +240,29 @@
     meshes.push(lite ? gem(0, 4.2, 0, 0.45, 0.9, TINTS[0]) : M.merge(...Array.from({ length: 6 }, (_, k) => gem(0, 4.2 + (6 - k) * 0.4, 0, 0.26 * 0.4 / 0.6, 0.4, TINTS[k & 1])), gem(0, 4.2, 0, 0.45, 0.9, TINTS[0])));
     for (const g of meshes) g.castShadow = false;
     return meshes;
+  };
+  const amberCrystals = g => {
+    const amber = M.geometry();
+    amber.verts = g.verts;
+    const orange = [[181,62,11],[246,98,13],[247,147,26],[255,176,58]];
+    for (const f of g.faces) amber.faces.push(f.emissive ? { ...f, color: orange[(f.color[0]+f.color[1]) % 4], emissive: f.emissive * 0.91 } : f);
+    amber.castShadow = false; amber.fogPierce = 1;
+    return amber;
+  };
+  // Two crossed, tapering ribbons. The beam shader fades from local x=0 to its distant tip.
+  const chandelierRay = () => {
+    const g=M.geometry(), ink=BL.math.hexToRgb("#ffa23a"), reach=8.4;
+    for (let plane=0;plane<2;plane++) {
+      const pairs=[];
+      for (const [x,w] of [[0,0.012],[0.8,0.046],[4,0.12],[reach,0.19]]) {
+        pairs.push([-1,1].map(s=>M.pushVert(g,x,plane?0:s*w,plane?s*w:0)));
+      }
+      for (let i=1;i<pairs.length;i++) {
+        const a=pairs[i-1], b=pairs[i]; M.face(g,[a[0],a[1],b[1],b[0]],ink,{emissive:1});
+      }
+    }
+    g.glass=0.075;g.lightBeam=reach;g.castShadow=false;g.twoSided=true;
+    return g;
   };
   // Banana Club's ornate table. Each part is built in the unit space its table node scales (top TOP_A by TOP_B, felt FELT_A by
   // FELT_B, pinstripe 4.02 by 2.44 times TABLE_K; the base and the rail built at size).
@@ -342,7 +384,7 @@
       stool: stool(), sofa: sofa(), armchair: armchair(), lowTable: lowTable(), highTop: highTop(),
       // Floor tiles (the floor module's six veined white seeds and two dark ones for the border).
       tiles: BL.pokerFloor.tiles(lite),
-      column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(),
+      column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(), ray: chandelierRay(),
       pinstripeGold: M.lathe({ segments: 64, profile: [[1, FELT_Y + 0.005], [0.993, FELT_Y + 0.005]], color: "#f2cf6e", emissive: 0.45 }),
       cashier: BL.poolModels.carve("CASHIER", { cell: 0.12, color: "#ffe1a0", emissive: 1 }),
       // A dark green marble plate framed in gold behind each floating table name, wide enough for TABLE 10, so the light
@@ -353,6 +395,7 @@
     built.cashier.geometry.castShadow = false; built.plate.castShadow = false;
     // The evening hall's haze takes nothing off what glows: the crystals, the lanterns' lit glass and the cashier's
     // sign stay crisp down the hall.
+    built.amber = built.crystals.map(amberCrystals);
     for (const g of [...built.crystals, built.cashier.geometry, built.shade]) g.fogPierce = 1;
     cache.set(key, built); return built;
   };
@@ -461,7 +504,7 @@
         beads: SEATS.map(() => null), toss: null, push: null, actors: new Array(SEATS.length).fill(null), version: -1, pulse: 0 };
       tables.push(Object.assign(table, lite ? LITE_PROPS : tellProps(table, geo)));
     }
-    const sparkle = [];
+    const sparkle = [], rays = [];
     // The fountain, statues, patterned marble floor, glass vault and glass walls, built once a room on the set `setLite`
     // chose; the hall animates only while its scene is active.
     const hall = BL.pokerHall.build(lite), statues = BL.pokerStatues.build(lite), floor = BL.pokerFloor.build(lite), vault = BL.pokerVault.build(lite);
@@ -474,7 +517,13 @@
     for (let f = 0; f < 3; f++) {
       const z = (f - 1) * 24;
       S.addChild(fixtures, node(geo.chandelier, 0, 0, z));
-      for (let ring = 0; ring < 4; ring++) { const n = node(geo.crystals[ring], 0, 0, z); n.ring = ring; n.fixture = f; sparkle.push(n); S.addChild(fixtures, n); }
+      for (let ring = 0; ring < 4; ring++) { const n = node(geo.crystals[ring], 0, 0, z); n.ring = ring; n.fixture = f; n.prism = n.geometry; n.amber = geo.amber[ring]; sparkle.push(n); S.addChild(fixtures, n); }
+      for (let k=0;k<(lite?4:7);k++) {
+        const a=(k+f*0.27)*2*Math.PI/(lite?4:7);
+        const ray=node(geo.ray, 0.62*Math.cos(a),5.6,z+0.62*Math.sin(a));
+        ray.rotation.y=-a; ray.rotation.z=-0.49-0.12*(k%3); ray.visible=false;
+        rays.push(ray); S.addChild(fixtures,ray);
+      }
     }
     for (const f of FURNITURE) {
       if (f.kind === "bar") for (let k = 0; k < 5; k++) S.addChild(environment, node(geo.stool, f.x - 6 + k * 3, 0, f.z + f.hz - 0.22));
@@ -499,7 +548,7 @@
     S.addChild(environment, node(title.geometry, -title.width / 2, 6.4, -36.15));
     const welcome = geo.welcome;
     S.addChild(environment, node(welcome.geometry, -welcome.width / 2, 5.2, -36.15));
-    return { root, tables, fixtures, sparkle, hall, statues, floor, vault, glazing, games };
+    return { root, tables, fixtures, sparkle, rays, hall, statues, floor, vault, glazing, games };
   };
   // Banana Club's fittings as axis-aligned boxes (centre, half-extents) in room coordinates; the geometry is built from
   // the same table. `solid` ones stop walkers, while the high-roller corner is only a mark round table 9.
@@ -524,7 +573,9 @@
     { kind: "rope", x: 5.0, z: -27.6, hx: 0.1, hz: 0.8, solid: true }, { kind: "rope", x: 5.0, z: -21.0, hx: 0.1, hz: 0.8, solid: true },
     { kind: "highRoller", x: 11, z: -24, hx: 7.0, hz: 5.0, solid: false },
     // High-top cocktail tables for the crowd beside the tables, fifteen down the two banks.
-    ...HIGH_TOPS.map(([x, z]) => ({ kind: "highTop", x, z, hx: 0.3, hz: 0.3, solid: true })),
+    ...HIGH_TOPS.map(([x, z]) => x === BL.pokerHourglass.X && z === BL.pokerHourglass.Z
+      ? { kind: "hourglass", x, z, hx: BL.pokerHourglass.RADIUS, hz: BL.pokerHourglass.RADIUS, solid: true }
+      : { kind: "highTop", x, z, hx: 0.3, hz: 0.3, solid: true }),
     // The gaming tables (turned only by half turns, so their boxes keep their own half-extents).
     ...GAMES.map((g, game) => ({ kind: "game", game, x: g.x, z: g.z, hx: BL.pokerGames.FOOT[g.kind].hx, hz: BL.pokerGames.FOOT[g.kind].hz, solid: true })),
     // Each statue from its plinth's back edge to as far as it reaches toward the room, and as wide as it reaches, so no
@@ -570,7 +621,7 @@
       }
     }
     for (let i = 0; i < solids.length; i++) if (crosses(ax, az, bx, bz, r, solids[i])) return false;
-    // The fountain: the swept step's nearest point to the pool's centre stays outside its rim grown by r.
+    // The swept step must clear the Charging Bull’s plinth, including the walker’s own radius.
     const vx = bx - ax, vz = bz - az, dd = vx * vx + vz * vz, k = dd ? Math.max(0, Math.min(1, ((F.X - ax) * vx + (F.Z - az) * vz) / dd)) : 0;
     return (ax + k * vx - F.X) ** 2 + (az + k * vz - F.Z) ** 2 >= (F.RADIUS + r) ** 2;
   };

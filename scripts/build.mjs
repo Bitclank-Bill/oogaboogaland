@@ -57,7 +57,8 @@ const latin1 = (code) => code.replace(/[^\x00-\xff]/g, (ch) => `\\u${ch.charCode
 export const block = (src) => latin1(`// ---- ${src} ----\n${read(src).trim().replace(/\r\n/g, "\n")}`).replace(/<\/script/gi, "<\\/script");
 // A hosted-only group (scripts/distribution-modules.mjs `hostedOnly`) stays out of the portable page.
 const portable = new Set(tags.filter(([, , group]) => !group || !hostedOnly(group)).map((m) => m[1]));
-const js = catalogContinuation(sources.filter((src) => portable.has(src)), block, catalogBaseline(root));
+export const portableLounge = "js/lounge-portable.js";
+const js = catalogContinuation([...sources.filter((src) => portable.has(src)), portableLounge], block, catalogBaseline(root));
 // A module tagged `data-early` runs where it stands, before the page's one script arrives (the loading curtain's
 // line). Its block opens as `<script data-early>`, so the distribution steps still find the page's script as the
 // first `<script>`, and its hash follows that script's in the policy, which they rewrite.

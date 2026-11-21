@@ -23,7 +23,9 @@ The local poker browser playthrough covers practice hands, the ₿IFRÖST return
 
 ## Exploring Banana Club
 
-Follow the stream of amber blocks past the bull and bear to the Genesis Vault. The west bar holds a copy of the whitepaper. Walk up and use the action button or select the book to find the Cypherpunk Lounge. Look by the fire for a founder’s pass, then take it to the vault to enter Cold Storage.
+Follow the stream of amber blocks past the Bitcoin-orange Charging Bull to the Genesis Vault. The west bar holds a copy of the whitepaper. Walk up and use the action button or select the book to find the Cypherpunk Lounge. Look by the fire for a founder’s pass, then take it to the vault to enter Cold Storage.
+
+The hourglass on the west side of the promenade shows the observed block height. Gold sand drains according to the time since the tip and the recent average block interval. When a new tip arrives, the height lifts, a two-tone chime sounds, and all three diamond chandeliers cast orange light for three seconds. Opening the room on an existing tip is quiet. The sound follows the room audio controls.
 
 The east bar looks into the whale aquarium. Its lift leads to the spectator balcony and Gate 21. The rooftop opens on the twenty-first visit or when you win a share of a non-refund pot worth at least 100 play chips. That win also opens Cold Storage. Room discoveries and visit counts are saved in this browser. Use the marked return controls to get back to the gaming floor.
 
@@ -160,7 +162,7 @@ them. Reloading resets practice chips.
 
 ## Earlier marble hall design
 
-This section records the hall before the Bitcoin interior pass. The bronze bull and bear now occupy the old fountain footprint, and the black marble promenade carries the transaction river. The room guide above describes the current layout.
+This section records the hall before the Bitcoin interior pass. The Charging Bull now occupies the old fountain footprint, and the black marble promenade carries the transaction river. The room guide above describes the current layout.
 
 Banana Club is a white marble hall, now a glass pavilion adrift in space, lit
 for the evening. Its polished floor is a
@@ -453,8 +455,8 @@ browser-test stop instruction below.
 
 The room has one look, Banana Club: an evening white marble glass pavilion,
 glass on all four sides under a glass vault, open to the ₿IFRÖST night sky
-above and below, with a polished checker floor and an orange Bitcoin runner,
-gold columns, ornate tables, a centre fountain and eight statues, diamond
+above and below, with a polished checker floor and a dark inlaid river,
+gold columns, ornate tables, the polished orange Charging Bull, diamond
 chandeliers, a backlit bar, a cashier cage, lounge corners and a roped
 high-roller table.
 
@@ -464,8 +466,7 @@ picture shows the room. The chamber takes that picture once a page.
 The room is reached through ₿IFRÖST's Ember Den window; no repository cave slot
 is claimed. `poker-themes.js` holds the room's one palette and light record
 (`club`), with `light` and `hang`. An older page saved a chosen look under
-`ooga-poker-theme` in localStorage; nothing reads that key now. No images,
-fonts, dependencies or network calls are used.
+`ooga-poker-theme` in localStorage; nothing reads that key now. The lunar surface loads with the room. Its embedded NASA atlas rotates once in about 126 seconds. Overlapping impact craters form a darker ₿ in the near-side terrain.
 
 ## The floor
 
@@ -607,9 +608,11 @@ and the Canvas 2D set beyond one picture.
 ## Sound
 
 The room plays four recorded lounge tracks by Kevin MacLeod (CC BY 4.0; see
-[CREDITS.md](../CREDITS.md)), shuffled, one decoded at a time, each fetched only
-as it comes up. The hosted site serves them; the portable single-file page
-leaves them out, so opened from disk the room plays its synthesized music. When a track starts, a small line under the header names it for
+[CREDITS.md](../CREDITS.md)). “Lobby Time” starts on entry, followed by “Cool Vibes,”
+“Vibing Over Venus,” and “Bossa Antigua” in shuffled order. The hosted site
+fetches the stereo recordings individually. The downloadable page includes
+compact mono recordings for offline play. Each version decodes one track at a time.
+On a direct launch, the first player gesture enables sound. When a track starts, a small line under the header names it for
 six seconds ("♪ "Lobby Time" · Kevin MacLeod"); a tap on it, or on the brass
 **Music** plate on the front of the bar, opens the credits, a page a track. The
 synthesized music is the fallback, and fills the gap between tracks: a bass, a
