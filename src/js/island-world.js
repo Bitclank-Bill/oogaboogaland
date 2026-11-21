@@ -19,7 +19,7 @@
   const SIM = BL.islandSim, W = BL.gameWire, TIMELINE = BL.gameTimeline;
   const { ACT, STATES } = SIM;
   // A row in the timeline: the Ooga's id, x, z, its heading's cosine and sine, its gorilla's cave plus one, flags.
-  const WIDTH = 7, DELAY_MS = 150, DEPTH = 24, LOCAL_DELAY_MS = 2 * SIM.STEP * 1000, ACTIVITY_S = 1, REFRESH_S = 0.5;
+  const WIDTH = 7, DELAY_MS = 150, DEPTH = 24, LOCAL_DELAY_MS = 2 * SIM.STEP * 1000, ACTIVITY_S = 1, REFRESH_S = 0.5, SEED_S = 2;
 
   const enabled = () => /(?:^|[?&])islandworld=1(?:&|$)/.test(location.search.slice(1));
 
@@ -30,7 +30,9 @@
     const timeline = TIMELINE.create({ slots: n, width: WIDTH, depth: DEPTH, lerp: [1, 2, 3, 4] });
     const table = new Float64Array(n * WIDTH), shown = new Float64Array(n * WIDTH);
     const slots = new Array(n).fill(null), plans = new Int16Array(n).fill(-1);
-    let link = null, sim = null, frame = null, activityIn = 0, live = false, refresh = false, refreshIn = 0;
+    let link = null, sim = null, frame = null, activityIn = 0, live = false, refresh = false, refreshIn = 0, age = 0, unseeded = 0;
+    // When each Ooga went to the local world, in its clock's ms (Infinity before): its rows before then are not its.
+    const seededAt = new Float64Array(n).fill(Infinity);
     const stats = { mode: "", frames: 0, followed: 0 };
 
     // A frame's rows into the timeline at `t` (ms), in the slots the cast puts them.
@@ -60,17 +62,27 @@
       stats.mode = "local";
       sim = SIM.create({ seed: (Math.random() * 0x100000000) >>> 0 });
       sim.setCast(caves.slice(0, n).map((cave) => ({ name: cave.traits.name, maintainer: !!cave.traits.maintainer })));
+      unseeded = n;
       frame = W.frame();
       cast(caves.slice(0, n).map((cave) => cave.traits.name));
     }
     // A local world's states and caves, as the page's own crew reads them (contributors.js `stateFor`, crew.js
-    // `siteActive`, whose caves are the layout's in the same order), once a second.
+    // `siteActive`, whose caves are the layout's in the same order), once a second. An Ooga the crew shows goes to the
+    // world only once the crew has placed it, with where it stands (`place`), so the world takes it up from there
+    // rather than beaming it; one the crew has not placed within `SEED_S` goes anyway.
     const activity = () => {
       const at = Date.now(), sites = crew.workSites || [];
       for (let i = 0; i < n; i++) {
+        const cave = caves[i], state = contributors.stateFor(cave.contributor, at);
+        if (seededAt[i] === Infinity) {
+          const shows = state === "working" || state === "chilling", placed = cave.root.visible && !cave.bedTravel.mode;
+          if (shows && !placed && age < SEED_S) continue;
+          if (shows && placed) sim.place(cave.traits.name, cave.root.position.x, cave.root.position.z, cave.root.rotation.y);
+          seededAt[i] = (sim.t + 2 * SIM.STEP) * 1000; unseeded--;
+        }
         let mask = 0;
-        for (let s = 0; s < sites.length; s++) if (crew.siteActive(caves[i], sites[s])) mask |= 1 << s;
-        sim.setActivity(caves[i].traits.name, contributors.stateFor(caves[i].contributor, at), mask);
+        for (let s = 0; s < sites.length; s++) if (crew.siteActive(cave, sites[s])) mask |= 1 << s;
+        sim.setActivity(cave.traits.name, state, mask);
       }
       if (platform) sim.setPile(platform());
     };
@@ -81,7 +93,9 @@
     /** Once a frame, before the crew's update: the world's rows into each Ooga's `follow` and `worldState`. */
     const update = (dt) => {
       if (sim) {
-        if ((activityIn -= dt) <= 0) { activityIn = ACTIVITY_S; activity(); }
+        age += dt;
+        // Every frame until each Ooga has gone to the world, then once a second.
+        if ((activityIn -= dt) <= 0 || unseeded > 0) { activityIn = ACTIVITY_S; activity(); }
         const before = sim.t;
         sim.step(dt);
         if (sim.t !== before) { sim.motion(frame, 0); take(frame, sim.t * 1000); }
@@ -92,7 +106,7 @@
       let followed = 0;
       for (let i = 0; i < n; i++) {
         const cave = slots[i], o = i * WIDTH;
-        if (!cave || !shown[o + 6]) continue;
+        if (!cave || !shown[o + 6] || sim && at < seededAt[i]) continue;
         const flags = shown[o + 6] - 1, act = flags & 7, state = STATES[flags >> 3 & 3], site = (flags >> 5) - 1;
         const plan = Math.round(shown[o + 5]) - 1;
         if (plan !== plans[i]) { plans[i] = plan; if (plan >= 0 && clankers) clankers.plan(cave, plan); }

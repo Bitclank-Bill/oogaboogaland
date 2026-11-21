@@ -46409,7 +46409,17 @@ const islandWorldProof = async () => {
   const ages = [-1, 0, 30e3, H - 1, H, 5 * H, 24 * H - 1, 24 * H, 29 * 24 * H, 30 * 24 * H, 30 * 24 * H + 1, 400 * 24 * H];
   const sites = L.sites, index = (pred) => sites.findIndex(pred);
   const lab = index((s) => s.repo === "oogaboogax/entropylab"), fallback = index((s) => s.fallback);
+  // A world started beside a crew that has placed its Oogas takes each up where it stands, once (island-world.js).
+  const seat = L.seats[0], placed = S.create({ seed: 3 });
+  placed.setCast(cast.slice(0, 3));
+  placed.place("ooga0", 7, 3, 1); placed.place("ooga1", seat[0] + 0.1, seat[1], 0); placed.place("ooga2", 7, -3, 0);
+  placed.setActivity("ooga0", "working", 0b0101); placed.setActivity("ooga1", "chilling", 0); placed.setActivity("ooga2", "sleeping", 0);
+  placed.step(S.STEP);
+  const [w, c, z] = placed.oogas, worker = w.visible && w.p.x === 7 && w.p.z === 3 && w.heading === 1;
+  const seated = c.p.x === seat[0] + 0.1 && c.p.z === seat[1] && c.table === 0 && c.spot === 0 && c.act === ACT.SIT;
+  placed.setActivity("ooga2", "working", 0b0101); placed.step(S.STEP);
   return {
+    startsPlaced: worker, startsSeated: seated, startsOnce: !z.start && Math.hypot(z.p.x - 7, z.p.z + 3) > 0.5,
     deterministic: rows(a) === rows(b) && rows(a) !== rows(world(6)),
     pileTable: L.pile.length > 4 && L.pile.every(([count, radius]) => { const p = S.create(); p.setBananas(count); return Math.abs(p.platform - radius) < 1e-9; }),
     roundRobin: rounds.length > 0 && rounds.every((r) => r.every((site) => site === 0 || site === 2)),
@@ -46483,7 +46493,7 @@ const unitChecks = async () => {
   record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; a walker between spoke samples, or a goal between them, is never sent back to a sample behind it or past the goal; a passive return leg keeps its reserved pile slot on the planned path while an ordinary one keeps the direct pile approach; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects; a passive gorilla's walk to its Ooga's pile slot goes straight over the pile while its work travel to a cave walks straight from another cave or the meadow, even when its origin is reset mid-walk, on terrain, still handing wall steps to the climber",
     Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
   const islandWorld = await islandWorldProof();
-  record("island world: one seed, one world; workers go round their active caves in turn, shoot from a place in the cave's fan and eat back at the reload fan, chillers idle on spots of their own clear of the pile's ring, sleepers and the away are not shown, its pile from a banana count is the hub's, and its windows and caves read as a page's crew reads them",
+  record("island world: one seed, one world; workers go round their active caves in turn, shoot from a place in the cave's fan and eat back at the reload fan, chillers idle on spots of their own clear of the pile's ring, sleepers and the away are not shown, its pile from a banana count is the hub's, its windows and caves read as a page's crew reads them, and a world started beside a placed crew takes each Ooga up where it stands, once",
     Object.values(islandWorld).every(Boolean), JSON.stringify(islandWorld));
   const passiveWeapons = await passiveWeaponTargetProof();
   record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",

@@ -13,7 +13,8 @@
 // - Sleeping and away: not shown here; the page's own crew beams a sleeper into its bed as it does today.
 // Every other change of state is a beam, as the passive crew's is. Players never touch it: there are none in here.
 //
-// Inputs: the cast (`setCast`), each Ooga's state and the caves it is active at (`setActivity`), the pile's platform
+// Inputs: the cast (`setCast`), each Ooga's state and the caves it is active at (`setActivity`), where an Ooga a crew
+// has already placed first shows up (`place`), the pile's platform
 // radius (`setPile`, or `setBananas` from its count). Output: game-wire.js rows (`motion`). `step` runs fixed steps on the sim's own clock; nothing in
 // it allocates once the cast is set.
 (() => {
@@ -36,6 +37,8 @@
   const CHILL_MIN = 120, CHILL_SPREAD = 120, SEAT_CHANCE = 0.6, REST_MIN = 7, REST_SPREAD = 16, RETRY_S = 1;
   // Bodies and the ring round the pile (terrain.js `setPathRadius`), the reload fan (crew.js `assignFanSlots`).
   const RADIUS = 0.3, GAP = 0.15, SHOULDER_GAP = 0.68, PLACE_GAP = 0.9, SKIP_APPROACH = 0.8;
+  // A starting place this near a seat or spot is that seat or spot.
+  const START_SNAP = 0.35;
   const PATH_UNIT = 0.125, RING_HALF = 1.125, CHILL_CLEAR = 1.5;
   const FAN_ARC = 2.2, FAN_SPREAD = 5, FAN_SLOTS = 128, FAN_CENTER = 1.5 * Math.PI;
   // Work zones (scene-hub.js `refreshWorkZones`) in each cave mouth's frame.
@@ -95,7 +98,7 @@
           laneX: new Float64Array(LANE), laneZ: new Float64Array(LANE) } },
         legs: new Float64Array(LEGS * 3), legCount: 0, leg: 0, speed: 0,
         phase: NONE, site: -1, plan: -1, px: 0, pz: 0, timer: 0, fired: 0, ammo: AMMO, slot: -1, reservedAt: 0,
-        mode: 0, until: 0, trips: 0, table: -1, spot: -1, retryAt: 0 };
+        mode: 0, until: 0, trips: 0, table: -1, spot: -1, retryAt: 0, start: false, startX: 0, startZ: 0, startHeading: 0 };
     };
     /** The pile as `count` bananas: its platform radius from the layout's table (scene-hub.js `routineLayout`), eased
      * between entries by the cube root, as the pile grows. */
@@ -123,6 +126,13 @@
       if (!o) return;
       o.want = typeof state === "number" ? state : STATES.indexOf(state);
       o.mask = mask;
+    };
+
+    /** Where Ooga `name` stands now, for its first showing alone: a world started beside a crew that has already placed
+     * its Oogas (a page's own) takes each up from there rather than beaming it to a spot of its own. */
+    const place = (name, x, z, heading) => {
+      const o = byName.get(name);
+      if (o) { o.start = true; o.startX = x; o.startZ = z; o.startHeading = heading; }
     };
 
     // ---- what stands where ----
@@ -327,6 +337,21 @@
       beam(o, Math.sin(o.index) * (inner + 6), Math.cos(o.index) * (inner + 6));
     };
 
+    // An Ooga's first showing where `place` put it, settled at the seat or spot it stands on if it stands on one.
+    const takeStart = (o) => {
+      if (!o.start) return false;
+      o.start = false;
+      beam(o, o.startX, o.startZ); o.heading = o.startHeading;
+      return true;
+    };
+    const settleHere = (o) => {
+      for (let table = 0; table < tables.length; table++) for (let i = 0; i < tables[table].length; i++) {
+        const s = tables[table][i];
+        if (Math.hypot(s[0] - o.p.x, s[1] - o.p.z) < START_SNAP && !taken(o, table, i)) { settle(o, table, i); return; }
+      }
+      o.table = o.spot = -1; o.mode = IDLE; o.act = ACT.STAND; o.until = t + pause(o);
+    };
+
     // ---- chilling ----
     const pause = (o) => CHILL_MIN + ((o.index * 0.61803398875 + o.trips * 0.41421356237) % 1) * CHILL_SPREAD;
     const settle = (o, table, i) => {
@@ -416,14 +441,16 @@
       const from = o.state;
       o.state = o.want;
       version++;
-      if (o.state === SLEEPING || o.state === AWAY) { hide(o); return; }
+      if (o.state === SLEEPING || o.state === AWAY) { hide(o); o.start = false; return; }
       if (o.state === WORKING) {
-        hide(o); workSpot(o); facePile(o);
+        hide(o);
+        if (!takeStart(o)) { workSpot(o); facePile(o); }
         o.act = ACT.STAND; o.ammo = AMMO; o.timer = 0; o.plan = -1; o.site = -1;
         return;
       }
       if (from === WORKING && o.visible) { o.mode = 0; o.table = o.spot = -1; chillReturn(o); return; }
       hide(o);
+      if (takeStart(o)) { settleHere(o); return; }
       // Nowhere to sit or stand: away for now, and asked again in a while, as the crew asks at its next refresh.
       if (!seatFirst(o)) { o.state = AWAY; hide(o); o.retryAt = t + RETRY_S; }
     };
@@ -468,7 +495,7 @@
     };
 
     return {
-      setCast, setActivity, setPile, setBananas, step, motion,
+      setCast, setActivity, place, setPile, setBananas, step, motion,
       get t() { return t; }, get version() { return version; }, get stir() { return stir; }, get oogas() { return oogas; }, get ring() { return ring; },
       get fan() { return fanCount; }, get platform() { return platform; }, byName: (name) => byName.get(name) || null
     };

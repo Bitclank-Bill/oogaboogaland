@@ -67,7 +67,10 @@ three. A frame for 60 Oogas is about 750 bytes.
 
 - **Signed in, with the Worker offering `island`.** It follows the server's world over `game-net.js`.
 - **Otherwise.** It runs `island-sim.js` itself, from the page's own contributors (`stateFor`) and the crew's own
-  cave rule (`siteActive`).
+  cave rule (`siteActive`). The crew has already placed its Oogas by then, so each Ooga the crew shows goes to the
+  world only once the crew has placed it, with where it stands (`place`): the world takes it up from there, and a
+  chiller on a seat or spot stays on it. One the crew has not placed within 2 s goes regardless. Its rows are ignored
+  until then, so it is never hidden as away meanwhile.
 
 Either way the rows go into one `game-timeline.js` and are drawn 150 ms behind the newest (two steps behind for the
 local world), eased between frames, as the ghost hunt draws.
@@ -91,8 +94,6 @@ see the same crew. The props still sync through the room's host (`prop-sync.js`)
 
 ### Left to do
 
-- **First arrival.** On a signed-out page the first frame beams every Ooga from where the crew put it to where the
-  world does. The local world could start from the crew's own positions.
 - **Turning it on.** Make it the default, and retire `npc-sync.js` for the Oogas, once play-testing says so.
 
 ## Cost
