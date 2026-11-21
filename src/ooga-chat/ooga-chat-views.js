@@ -73,6 +73,10 @@
     const listeners = new AbortController(), { signal } = listeners;
     const art = make("img", "oc-art");
     art.src = "art/sign-in-island.webp";
+    // Smaller copies for a screen that shows it smaller or at a lower density: up to 420px wide it spans the page less
+    // 86px, then less 114px, up to 506px (ooga-chat.css; scripts/ooga-chat.mjs ALTERNATE_ART).
+    art.srcset = "art/sign-in-island-520.webp 520w, art/sign-in-island-680.webp 680w, art/sign-in-island.webp 1005w";
+    art.sizes = "(max-width: 420px) calc(100vw - 86px), (max-width: 620px) calc(100vw - 114px), 506px";
     art.width = 1005;
     art.height = 670;
     art.alt = "Cavemen on clouds above a floating island, round a pile of bananas";

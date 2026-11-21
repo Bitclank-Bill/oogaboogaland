@@ -59,6 +59,9 @@ export const ISLAND_RULES = [".roster", ".players-", ".chat-", ".section-head", 
   ".cloud-mic", ".cloud-foot", ".cloud-mute", ".cloud-voice", ".reaction", ".panel-foot", ".voice-handoff"];
 // Pictures the app loads only when they are wanted, never on a first visit: the face sheet, when a stats strip opens.
 export const LAZY_ART = ["ooga-faces.png"];
+// Smaller copies of a picture in a view's srcset, which a visit loads in place of the full one: the first load counts
+// only the full one, the most a visit can fetch.
+export const ALTERNATE_ART = ["sign-in-island-520.webp", "sign-in-island-680.webp"];
 export const islandRules = (css, prefixes = ISLAND_RULES) => {
   const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const names = prefixes.map((prefix) => prefix.replace(/^[.#]/, ""));
@@ -345,7 +348,7 @@ ${hashed.map((path) => `\n/${path}\n  Cache-Control: public, max-age=31536000, i
     const bytes = readFileSync(join(out, path));
     return { path, bytes: bytes.length, gzip: gzipSync(bytes).length };
   });
-  const lazy = (path) => LAZY_ART.some((name) => path.startsWith(`art/${basename(name, extname(name))}-`));
+  const lazy = (path) => [...LAZY_ART, ...ALTERNATE_ART].some((name) => art.get(name) === `/${path}`);
   const first = inventory.filter((file) => file.path === "index.html" || file.path === sheet.slice(1) || file.path === script.slice(1) || file.path.startsWith("art/") && !lazy(file.path))
     .reduce((sum, file) => sum + file.gzip, 0);
   if (first > FIRST_LOAD_BUDGET) throw new Error(`ooga-chat: first load is ${first} bytes gzipped, over FIRST_LOAD_BUDGET (${FIRST_LOAD_BUDGET})`);

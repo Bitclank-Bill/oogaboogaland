@@ -571,8 +571,8 @@ each player's volume and mute, the optional duel muting and the voice handoffs o
 240.2 KB gzipped (script 149.3 KB). Every tab but Ooga Chat then moved into a chunk of its own (Chunks, above):
 `bananas` 42.3 KB and `panels` 25.7 KB gzipped, fetched once the first view has painted and the browser is idle (never
 under Save-Data, where a tab's first opening fetches its chunk and shows Opening… meanwhile). That took the first load
-to 176.6 KB (`index.html` 0.6 KB, script 85.7 KB, stylesheet 12.6 KB, sign-in picture 77.7 KB), and the budget down to
-180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. A chunk that cannot be fetched
+to 176.6 KB (`index.html` 0.6 KB, script 85.7 KB, stylesheet 12.6 KB, sign-in picture 77.7 KB at its largest; 29.7 or
+42.1 KB on most phones and 1x screens, Artwork below), and the budget down to 180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. A chunk that cannot be fetched
 offers Try again; one gone after a deploy (a 404 to a HEAD, on a page the service worker does not keep) offers Reload.
 The next large piece is the emoji list (`emoji-data.js`, about 18 KB), which only the picker needs; deferring it means
 `reaction-policy.js` and `reaction-bar.js`, which the island shares, no longer reading it at load.
@@ -580,8 +580,14 @@ The next large piece is the emoji list (`emoji-data.js`, about 18 KB), which onl
 ## Artwork
 
 `src/ooga-chat/art/sign-in-island.webp` (1005x670, 3:2) is the approved original illustration, sized for a Retina
-display at the picture's widest (502 CSS pixels) and laid flat on the slab's own colour (`--slab-dark`, #161412), which
-costs about a third of keeping its transparency. A new version replaces it under the same name; the build re-hashes it.
+display at the picture's widest (506 CSS pixels) and laid flat on the slab's own colour (`--slab-dark`, #161412), which
+costs about a third of keeping its transparency. `sign-in-island-520.webp` (29.7 KB) and `sign-in-island-680.webp`
+(42.1 KB) are the same picture made smaller (`cwebp -m 6 -q 80 -resize <w> <h>` from it), offered with it in the
+view's `srcset` with the `sizes` its layout gives (up to 420px wide the page less 86px, then less 114px, up to 506px),
+so the browser fetches one: 520w on a 1x screen and a 320px phone at 2x, 680w on other 2x phones, the original on 3x
+phones and 2x desktops. It chooses by screen alone; a static page cannot choose by network speed, and the browsers
+that report one are not Safari's. A new version replaces all three under the same names; the build re-hashes them,
+and counts only the original in the first load (`ALTERNATE_ART`), the most a visit can fetch.
 
 ## The installable app (#657)
 
