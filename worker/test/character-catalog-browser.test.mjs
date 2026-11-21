@@ -130,12 +130,13 @@ test("build identity uses exact source bytes without executing custom code and m
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("continuation survives hosted deferred-module and page extraction with strict CSP", async () => {
+test("continuation preserves strict CSP and the opt-in report build hash across hosted asynchronous boot", async () => {
   const out = mkdtempSync(join(tmpdir(), "catalog-distribution-"));
   try {
     const blocks = { "js/characters.gen.js": "window.order.push('compiled');",
       "js/character-catalog.js": "window.BL.characterCatalog={configure(){},start(fn){window.resume=fn;}};",
-      "js/deferred.js": "window.order.push('deferred');", "js/contributors.js": "window.order.push('contributors');" };
+      "js/deferred.js": "window.order.push('deferred');", "js/contributors.js": "window.order.push('contributors'); window.BL.net=window.net;",
+      "js/connection-reports.js": js("connection-reports") };
     const sources = Object.keys(blocks), block = (path) => `// ${path}\n${blocks[path]}`;
     const script = `\nwindow.BL={};window.order=[];\n${catalogContinuation(sources, block, [])}\n`, css = "body{}";
     const html = `<meta content="script-src 'sha256-${hash(script, "sha256", "base64")}'; style-src 'sha256-${hash(css, "sha256", "base64")}'"><style>${css}</style><script>${script}</script>`;
@@ -143,10 +144,31 @@ test("continuation survives hosted deferred-module and page extraction with stri
     assert.ok(!hosted.includes("unsafe-inline") && !hosted.includes("unsafe-eval") && !hosted.includes("<script>"));
     assert.match(hosted, /script-src 'self'/);
     const main = readdirSync(join(out, "js")).find((name) => name.startsWith("main-"));
-    const ctx = vm.createContext({}); vm.runInContext("window=globalThis", ctx);
+    const requests = [], timers = new Map(), input = { checked: false, addEventListener: (_kind, fn) => { input.change = fn; } };
+    const elements = { "players-diagnostics": {}, "players-diagnostics-input": input, "players-diagnostics-status": {} };
+    let observer = null, serial = 0;
+    const ctx = vm.createContext({ document: { currentScript: { src: `https://site.test/js/${main}?private-query` }, getElementById: (id) => elements[id] },
+      net: { state: { backend: true, connectionReports: true, me: { id: 71 }, room: "live" }, subscribe() {},
+        subscribeConnection: (fn) => { observer = fn; return () => { observer = null; }; } },
+      localStorage: { getItem: () => null, setItem() {} }, performance: { now: () => 1000 }, AbortController,
+      addEventListener() {}, removeEventListener() {},
+      setTimeout: (fn, ms) => { const id = ++serial; timers.set(id, { fn, ms }); return id; }, clearTimeout: (id) => timers.delete(id),
+      fetch: async (url, options) => { requests.push({ url, ...options }); return { ok: true, status: 201 }; } });
+    vm.runInContext("window=globalThis", ctx);
     vm.runInContext(readFileSync(join(out, "js", main), "utf8"), ctx);
-    assert.deepEqual([...ctx.order], ["compiled"]); ctx.resume();
+    assert.deepEqual([...ctx.order], ["compiled"]);
+    ctx.document.currentScript = null;
+    await Promise.resolve().then(() => ctx.resume());
     assert.deepEqual([...ctx.order], ["compiled", "contributors"]);
+    assert.equal(observer, null); assert.equal(requests.length, 0); assert.equal(timers.size, 0, "boot never opts into diagnostics");
+    input.checked = true; input.change();
+    observer({ kind: "socket-close", room: "live", code: 1006, clean: false });
+    const [timer, pending] = [...timers].find(([, value]) => value.ms === 2000);
+    timers.delete(timer); await pending.fn();
+    assert.equal(requests.length, 1); assert.equal(requests[0].url, "/api/connection-reports");
+    const report = JSON.parse(requests[0].body);
+    assert.equal(report.clientBuild, main.slice(5, -3)); assert.equal(report.consent, true);
+    assert.ok(!requests[0].body.includes("private-query") && !requests[0].body.includes("https://site.test"));
     assert.throws(() => catalogContinuation(["js/contributors.js"], block, []));
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
