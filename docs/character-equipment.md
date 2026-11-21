@@ -67,7 +67,7 @@ nothing changed. New clients can load either archive format. An older client
 that cannot load the new format keeps its old selection; refresh the page before
 accepting a newly published format-2 version.
 
-The Studio lists the hat in the hat's row with every other slot (see [The
+The Studio lists the hat in the hat tile's editor beside every other slot (see [The
 wardrobe](#the-wardrobe)): one dropdown option for identical current choices, its
 creators in the option's tooltip and under the dropdown, and each fork as an
 indented option under its original, a fork's own forks indented again. Selecting
@@ -95,12 +95,14 @@ later change makes a new item, and the old one stays registered, retired, for
 whoever wears it. There is no update offer for wardrobe pieces; choosing the
 piece again in the studio wears the current one.
 
-The studio shows one row for each slot, folded to its name and what is worn
-there; opening it shows a dropdown and, for the hat and the mask, a size. Each
-dropdown starts with **Original look** (the character's own) and, where an Ooga
-can go without one, the slot's none (**Bald**, **Clean-shaven**, **No shirt**,
-**Barefoot**…). **Save my look** saves the hat and the whole wardrobe at once.
-The signed-in account row's **My look** opens the studio on the player's own Ooga.
+The studio shows a tile for each slot, two to a row: its pixel mark, its name and
+what is worn there. Choosing a tile opens its editor across the grid under that
+tile's row: a dropdown, who made the piece and, for the hat and the mask, a size.
+Each dropdown starts with **Original look** (the character's own) and, where an
+Ooga can go without one, the slot's none (**Bald**, **Clean-shaven**, **No shirt**,
+**Barefoot**…). The foot counts unsaved changes beside **Save my look**, which
+saves the hat and the whole wardrobe at once, and its **Reset** puts the saved look
+back on. The signed-in account row's **My look** opens the studio on the player's own Ooga.
 
 The body wears the pieces by building its character again with them as data
 (`models.js` `templateFor`, keyed by what is worn) and giving each of its nodes the
