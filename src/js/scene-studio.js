@@ -247,9 +247,10 @@
     for (let i = 0; i < v.length; i += 3) for (let k = 0; k < 3; k++) { b[k] = Math.min(b[k], v[i + k]); b[k + 3] = Math.max(b[k + 3], v[i + k]); }
     return b;
   });
-  const propTarget = (node, kind, body) => input.add(node, { kind: "prop", piece: kind, body,
+  const propTargets = [];
+  const propTarget = (node, kind, body) => { propTargets.push(node); input.add(node, { kind: "prop", piece: kind, body,
     pickRay: (ray) => physics && physics.raycast(ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz, camera.far, PROP_HIT) && PROP_HIT.body === body ? PROP_HIT.t : NaN },
-    { radius: Math.max(0.35, physics.radius(body)) });
+    { radius: Math.max(0.35, physics.radius(body)) }); };
   // The chair stands where it belongs again (Chair, or sitting down in it after it was knocked over).
   const chairHome = () => {
     if (!physics.displaced(chairBody)) return;
@@ -1243,6 +1244,8 @@
     crew.dispose();
     fx.dispose();
     pilot.dispose();
+    for (const node of propTargets) input.remove(node);
+    propTargets.length = 0;
     while (root.children.length) removeChild(root, root.children[root.children.length - 1]);
     const count = input.targetCount;
     input.dispose();
