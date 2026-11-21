@@ -17,7 +17,7 @@ import { handleHighscores } from "./highscores.js";
 import { handleArcadePlays } from "./arcade-plays.js";
 import { handleCloudHopperReplays } from "./cloud-hopper-replays.js";
 import { pruneCloudHopperReplays } from "./cloud-hopper-replay-store.js";
-import { allowed, fromSite, getSessionFromRequest, readBody, text } from "./http.js";
+import { allowed, fromSite, getSessionForRemoval, getSessionFromRequest, readBody, text } from "./http.js";
 import { handlePoker } from "./poker.js";
 import { handleTess, pruneTess } from "./tess.js";
 import { handleWorld, handleWorldLive } from "./world.js";
@@ -100,10 +100,12 @@ const VOICE_BODY_MAX = 256 * 1024;
 const handleVoice = async (request, env, url, ctx) => {
   if (request.method !== "POST") return text("Method not allowed", 405);
   if (!fromSite(request, env.SITE_ORIGIN)) return text("Forbidden", 403);
-  const found = await serviceSession(request, env);
+  const op = url.pathname.slice("/api/voice/".length);
+  // Cleanup needs the account session and Room connection token, never a new character grant.
+  const cleanup = ["leave", "unpublish", "close"].includes(op);
+  const found = cleanup ? await getSessionForRemoval(request, env) : await serviceSession(request, env);
   if (found instanceof Response) return found;
   if (!found) return text("Sign in first", 401);
-  const op = url.pathname.slice("/api/voice/".length);
   const ice = op === "ice";
   if (!(await allowed(ice ? env.VOICE_ICE_LIMITER : env.VOICE_LIMITER, String(found.player.id)))) {
     inspectEdge(env, ctx, "limited", found.player, { which: ice ? "voice-ice" : "voice" });
