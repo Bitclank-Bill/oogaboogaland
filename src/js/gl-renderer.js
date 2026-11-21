@@ -1003,8 +1003,16 @@ void main() {
     if (uCanvasCurve.x < 0.0) {
       vec3 local = normalize(vLocal);
       vec2 uv = vec2(0.5 + atan(local.x, local.z) / 6.2831853, 0.5 - asin(clamp(local.y, -1.0, 1.0)) / 3.1415927);
-      float albedo = texture(uCanvasImage, uv).r;
-      float daylight = 0.17 + 0.83 * sqrt(max(0.0, dot(n, vec3(-0.73,0.51,0.454))));
+      vec3 material = texture(uCanvasImage, uv).rgb;
+      float albedo = dot(material, vec3(0.299,0.587,0.114));
+      // The JPEG chroma channels carry the gradient of depth below the uncut sphere.
+      // East and north turn with the terrain, while sunlight stays fixed over the hall.
+      vec2 slope = (vec2(material.b - albedo, material.r - albedo) / vec2(1.772,1.402)) * (255.0 / 48.0);
+      vec3 east = dFdx(vWorld) * dFdy(local.y) - dFdy(vWorld) * dFdx(local.y);
+      east *= inversesqrt(max(dot(east,east),1.e-18));
+      vec3 relief = normalize(n + slope.x * east + slope.y * cross(n,east));
+      vec3 sun = vec3(-0.73,0.51,0.454);
+      float daylight = 0.17 + 0.83 * smoothstep(-0.035,0.08,dot(n,sun)) * sqrt(max(0.0,dot(relief,sun)));
       oColor = vec4(albedo * daylight * vec3(0.96,0.97,1.0), 1.0);
       oBright = vec4(0.0,0.0,0.0,1.0);
       return;

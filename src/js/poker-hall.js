@@ -32,7 +32,7 @@
       const v = j / rows, lat = Math.PI * (0.5 - v), row = [];
       for (let i = 0; i < cols; i++) {
         const u = i / cols, lon = (u - 0.5) * Math.PI * 2;
-        const r = radius - 0.32 * sample(u, v, 1) / 255;
+        const r = radius - 1.6 * sample(u, v, 1) / 255;
         const x = Math.sin(lon) * Math.cos(lat), y = Math.sin(lat), z = Math.cos(lon) * Math.cos(lat);
         row.push(M.pushVert(land, x*r, y*r, z*r));
         land.normals.push(x, y, z);

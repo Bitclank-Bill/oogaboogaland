@@ -35792,7 +35792,14 @@ const pokerGloss = { name: "poker gloss floor", why: "rule: the glass walls stan
     const yaw = globe.rotation.y, beforeGlow = globe.glow;
     B.advance(2, 1 / 30);
     const night = { rigs: rigs(), fields: fields(), far: c.far, turned: P.cosmos.parts.sky.rotation.y > turn0, stars: o.starMatrix.some((v, i) => Math.abs(v - m0[i]) > 1e-4) };
-    night.lunar = !o.skyMoonDisc && giant.node.children.length === 1 && globe.children.length === 0 &&
+    const vertices = globe.geometry.verts;
+    let deepest = Infinity, surface = 0;
+    for (let i = 0; i < vertices.length; i += 3) {
+      const radius = Math.hypot(vertices[i], vertices[i + 1], vertices[i + 2]);
+      deepest = Math.min(deepest, radius);
+      surface = Math.max(surface, radius);
+    }
+    night.lunar = deepest < 25 && Math.abs(surface - 26) < 1e-5 && !o.skyMoonDisc && giant.node.children.length === 1 && globe.children.length === 0 &&
       !!globe.geometry.imageSurface?.lunar && Math.abs((globe.rotation.y-yaw+2*Math.PI)%(2*Math.PI)-0.10)<0.0001 && globe.glow === beforeGlow;
     window.__pokerGlazing = P.room.glazing.root; window.__pokerCosmos = P.cosmos;
     // Face the arrival mirror (a reflector of its own) from the floor, the camera held from outside as the pilot allows,
@@ -35818,7 +35825,7 @@ const pokerGloss = { name: "poker gloss floor", why: "rule: the glass walls stan
     here.kind === "webgl2" && here.club === 1 && here.mirror.alone > 0 && here.mirror.shared > 0 && left.detached && again.count === 1 && again.fresh,
     JSON.stringify({ here, left, again }));
   const n = here.night;
-  record("poker skylight: one ringless globe carries the lunar atlas, rotates at the giant's original rate and keeps the crater marking free of pulsing light", n.lunar);
+  record("poker skylight: one ringless globe carries the lunar atlas, rotates at the giant's original rate and carries recessed impacts below its uncut radius with steady light", n.lunar);
 
   record("rule: the night stands once over the glass vault and turns, the sky pass's stars with it and the camera reaching it; leaving disposes it and a new visit stands one",
     n.rigs === 1 && n.fields === 6 && n.far > 400 && n.turned && n.stars && left.rigGone && again.rigs === 1 && again.rigFresh,
@@ -46697,7 +46704,8 @@ const raceRigChecks = async () => {
     // other face is shaded as before.
     // The Ember Den adds spherical mapping to the lunar atlas and tinted metal to the chrome material.
     // Both are selected only by the new surfaces. Ordinary vertex and shadow paths retain their pinned bytes.
-    "82a7a39af3a8cd88765385e5428838cf39814426a9ab7ceab69b3c6301726757",
+    // A signed lunar slope map now lights the interior walls of the recessed craters.
+    "f92f07c1f516fe59a2970f5995083a475985580349488fbbfd8aa6b7af5b783e",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
