@@ -4,7 +4,10 @@
 // js/ooga-chat-<group>-<hash>.js and names the files here (`BL.oogaChatScripts`, written at the head of the first-load
 // script). From source the modules are on the page already, so `load` finds them present and answers null at once.
 // Otherwise it adds one same-origin script (the policy's 'self'), bounded by TIMEOUT_MS; a failure rejects and is
-// forgotten, so the next `load` tries again under a fresh address. A deploy replaces the files, so a page left open
+// forgotten, so the next `load` tries again, under a fresh address after an error. A timeout keeps the address and the
+// script: its copy may still arrive and run, and must not download twice. Whenever a group is found here, by `load`,
+// `ready` or a late copy's arrival, its waiting callbacks run, once. A chunk that runs twice returns at its head
+// (scripts/ooga-chat.mjs), since its group is already here. A deploy replaces the files, so a page left open
 // across one (and not kept by the service worker) finds its chunk gone: an error is probed with a HEAD, and a 404 marks
 // the page `stale`, which the tab's stand-in offers as a reload. `ready(group, fn)` runs fn once the group is present,
 // now or when it arrives; `prefetch` loads every group once the page is idle, never under Save-Data.
@@ -23,7 +26,7 @@
   };
   const ready = (group, fn) => {
     if (!PRESENT[group]) throw new Error(`No Ooga Chat group ${group}`);
-    if (PRESENT[group]()) return fn();
+    if (PRESENT[group]()) { arrived(group); return fn(); }
     if (!waiting.has(group)) waiting.set(group, []);
     waiting.get(group).push(fn);
   };
@@ -36,24 +39,31 @@
   };
   const load = (group) => {
     if (!PRESENT[group]) return Promise.reject(new Error(`No Ooga Chat group ${group}`));
-    if (PRESENT[group]()) return null;
+    if (PRESENT[group]()) { arrived(group); return null; }
     if (loading.has(group)) return loading.get(group);
     const file = BL.oogaChatScripts && BL.oogaChatScripts[group];
     if (!file) return Promise.reject(new Error(`No ${group} code on this page`));
     const tries = attempts.get(group) || 0, src = tries ? `${file}?r=${tries}` : file;
     const promise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      const finish = (error) => {
+      const finish = (error, fetched = true) => {
         clearTimeout(timer);
         script.onload = script.onerror = null;
         if (!error && !PRESENT[group]()) error = new Error(`The ${group} code did not start`);
         if (!error) { arrived(group); resolve(null); return; }
         loading.delete(group);
-        attempts.set(group, tries + 1);
-        script.remove();
+        if (fetched) {
+          attempts.set(group, tries + 1);
+          script.remove();
+        } else script.onload = script.onerror = () => {
+          // A timed-out copy that runs late still brings its group: whatever waits for it runs now.
+          script.onload = script.onerror = null;
+          script.remove();
+          if (PRESENT[group]()) arrived(group);
+        };
         reject(error);
       };
-      const timer = setTimeout(() => finish(new Error(`The ${group} code took too long`)), TIMEOUT_MS);
+      const timer = setTimeout(() => finish(new Error(`The ${group} code took too long`), false), TIMEOUT_MS);
       script.onload = () => finish(null);
       script.onerror = () => {
         clearTimeout(timer);

@@ -47,8 +47,8 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
 // with their island modules, about 24 KB), which took the first load to about 176.6 KB. The build fails past this, set
 // just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker with the
 // whole emoji list (emoji-data.js and reaction-bar.js, about 24 KB), wanted only signed in, then moved into a chunk of
-// their own too, once reaction-policy.js read the list when first asked rather than at load: about 153.3 KB, then 153.8 KB
-// with the voice links and listeners in Online Oogas (#861).
+// their own too, once reaction-policy.js read the list when first asked rather than at load: about 153.3 KB, then 154.1 KB
+// with the voice links and listeners in Online Oogas (#861) and each chunk's guard against running twice.
 export const FIRST_LOAD_BUDGET = 156 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
@@ -264,7 +264,9 @@ export const build = (out, { fixtures = false } = {}) => {
   };
   // Each deferred group first, so the first-load script can name their hashed files.
   const deferredOf = (entry) => [...new Set(entry.scripts.map((src) => entry.groups.get(src)).filter(Boolean))];
-  const chunks = Object.fromEntries(deferredOf(main).map((group) => [group, bundle(main.scripts.filter((src) => main.groups.get(src) === group))]));
+  // A chunk that runs twice (a late copy after a timeout, ooga-chat-chunks.js) returns at its head: its group is here.
+  const chunkOf = (group) => `(() => {\nif (window.BL && window.BL.oogaChatChunks && window.BL.oogaChatChunks.present(${JSON.stringify(group)})) return;\n\n${bundle(main.scripts.filter((src) => main.groups.get(src) === group))}})();\n`;
+  const chunks = Object.fromEntries(deferredOf(main).map((group) => [group, chunkOf(group)]));
   const scripts = Object.fromEntries(Object.entries(chunks).map(([group, code]) => [group, named("js", `ooga-chat-${group}`, "js", code)]));
   const head = `window.BL = window.BL || {};\nwindow.BL.oogaChatScripts = ${JSON.stringify(scripts)};\n\n`;
   const firstLoad = (entry) => `${head}${bundle(entry.scripts.filter((src) => !entry.groups.get(src)))}`;

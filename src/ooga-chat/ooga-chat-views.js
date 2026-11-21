@@ -506,7 +506,7 @@
     const node = make("div", "panel oc-panel", make("header", "panel-title", make("h2", "", heading)), make("div", "slab oc-slab oc-pending", line));
     let view = null, last = null, disposed = false;
     const show = () => {
-      if (disposed) return;
+      if (disposed || view) return;
       view = BL.oogaChatViews[name](ctx);
       node.replaceWith(view.node);
       if (last) view.update(last);
@@ -517,6 +517,8 @@
       text.textContent = stale ? "A newer Ooga Chat is out." : "This panel couldn't load.";
       again.textContent = stale ? "Reload" : "Try again";
       again.hidden = false;
+      // A copy that was only slow may still land: the view then takes this message's place.
+      if (!stale) BL.oogaChatChunks.ready(group, show);
     };
     const open = () => {
       text.textContent = "Opening…";

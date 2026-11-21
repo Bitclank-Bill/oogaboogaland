@@ -112,10 +112,6 @@
       host.hidden = true;
       mounts.push([host, options]);
     } };
-    BL.oogaChatChunks.ready("emoji", () => {
-      reactionBars = BL.reactionBar.create(link);
-      for (const [host, options] of mounts.splice(0)) reactionBars.mount(host, options);
-    });
     let handRequest = 0;
     const link = { state: { me: null, reactions: false, room: "off", hand: false, handTone: 0, handEmoji: "", customHand: true },
       sendReaction: (emoji) => !!feed && feed.request("reaction", { emoji }) > 0,
@@ -127,6 +123,11 @@
         return true;
       },
       subscribe(fn) { linkSubs.add(fn); return () => linkSubs.delete(fn); } };
+    // After `link`: from source the bar is on the page already, and this runs at once.
+    BL.oogaChatChunks.ready("emoji", () => {
+      reactionBars = BL.reactionBar.create(link);
+      for (const [host, options] of mounts.splice(0)) reactionBars.mount(host, options);
+    });
     const ownHand = () => {
       const id = state.session?.identity.participant, me = id ? state.audience.list.find((p) => p.id === id) : null;
       return me ? me.hand : "";

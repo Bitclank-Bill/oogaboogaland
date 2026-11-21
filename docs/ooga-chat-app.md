@@ -537,7 +537,7 @@ The accounts are named samples with no picture, never real people. Fixtures are 
 |---|---|
 | `index.html` | the entry, its build identity filled in |
 | `js/ooga-chat-<hash>.js`, `css/ooga-chat-<hash>.css` | every first-load module and every stylesheet in order, one file each; the script begins by naming the chunks (`BL.oogaChatScripts`) |
-| `js/ooga-chat-bananas-<hash>.js`, `js/ooga-chat-panels-<hash>.js` | each deferred group's modules in order, fetched when a tab needs them or once the first view has painted and the page is idle; shared by both entries and kept by the service worker with the rest of the shell |
+| `js/ooga-chat-bananas-<hash>.js`, `js/ooga-chat-panels-<hash>.js` | each deferred group's modules in order, fetched when a tab needs them or once the first view has painted and the page is idle; shared by both entries and kept by the service worker with the rest of the shell. Each begins by returning if its group is here already, so a late copy after a timeout runs once |
 | `art/<name>-<hash>.<ext>` | each picture under `src/ooga-chat/art/` that a view shows (the build fails on an unshown one) |
 | `manifest.webmanifest` | the installable app's manifest (below), linked by `index.html` only |
 | `icons/ooga-chat-<size>[-maskable]-<hash>.png` | the mark at 192, 512 and 512 maskable, for the manifest |
@@ -578,7 +578,7 @@ to 176.6 KB (`index.html` 0.6 KB, script 85.7 KB, stylesheet 12.6 KB, sign-in pi
 42.1 KB on most phones and 1x screens, Artwork below), and the budget down to 180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker
 with the whole emoji list (`emoji`, 24.4 KB), wanted only signed in, followed once `reaction-policy.js` read the list
 when first asked rather than at load (the island and the Worker load it first anyway): the first load came to 153.3 KB
-(script 62.4 KB), 153.8 KB with the voice links and listeners in Online Oogas (#861), and the budget is 156 KB. A chunk that cannot be fetched offers Try again; one gone after a deploy (a 404
+(script 62.4 KB), 154.1 KB with the voice links and listeners in Online Oogas (#861), and the budget is 156 KB. A chunk that cannot be fetched offers Try again; one gone after a deploy (a 404
 to a HEAD, on a page the service worker does not keep) offers Reload.
 
 ## Artwork
