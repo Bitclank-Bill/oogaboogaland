@@ -188,15 +188,22 @@
   };
   // Lays body pieces over a build's authored blocks (models.js): each clears its own slot's blocks from every part and
   // lays its own. `wear` lists [slot, content or "none"]; `P` is the build's palette names, `add` adds a colour.
+  // Taking a piece off leaves the body's own shape bare: its blocks turn skin (a belt's turn the cloth over it, or under
+  // it), and only what was built out past the torso goes. A row left empty would read as whatever else stands in it.
   const paint = (authored, wear, P, add) => {
     let lit = null;
     for (const [slot, content] of wear) {
       for (const part of PARTS) {
         const map = authored[part];
         if (!map) continue;
-        const gone = [];
-        map.each((x, y, z) => { if (regionOf(part, x, y, z) === slot) gone.push(x, y, z); });
-        for (let n = 0; n < gone.length; n += 3) map.del(gone[n], gone[n + 1], gone[n + 2]);
+        const mine = [];
+        map.each((x, y, z) => { if (regionOf(part, x, y, z) === slot) mine.push(x, y, z); });
+        for (let n = 0; n < mine.length; n += 3) {
+          const x = mine[n], y = mine[n + 1], z = mine[n + 2], built = part === "torso" && !(x >= 0 && x <= 8 && z >= 0 && z <= 5);
+          if (content !== "none" || built || slot === "back") map.del(x, y, z);
+          else if (slot === "belt") map.set(x, y, z, map.has(x, 4, z) ? map.get(x, 4, z) : map.has(x, 2, z) ? map.get(x, 2, z) : P.skin);
+          else map.set(x, y, z, P.skin);
+        }
       }
       if (content === "none") continue;
       const at = content.palette.map((c) => TOKENS.includes(c) ? P[c] : add(hexRgb(c)));

@@ -12555,6 +12555,7 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
 .studio-slot select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .studio-slot-credit { color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
 .studio-slot-credit:empty { display: none; }
+.studio-wardrobe-foot { position: sticky; bottom: 0; z-index: 1; display: grid; gap: 6px; margin: 0 -2px; padding: 8px 2px; background: var(--planks); box-shadow: 0 -6px 8px -6px #0008; }
 .studio-wardrobe :is(input[type="range"], summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .studio-hat-size-label { display: flex; justify-content: space-between; gap: 8px; }
 .studio-hat-size-label output { color: var(--accent-text); font-variant-numeric: tabular-nums; }

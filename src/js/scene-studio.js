@@ -599,6 +599,10 @@
       if (creators.length) option.title = credits(creators);
       row.select.append(option);
       const entry = { option, label, creators, pick, ...extra };
+      // What choosing it wears, as the page names it: the hat's `item@version`, `none` or `authored`; a slot's piece's
+      // version, `none` or `original`.
+      option.dataset.value = row === hatRow ? hatKey(extra?.choice ? extra.choice.selection : pick()) : pieceKey(pick());
+      if (extra?.choice) option.dataset.hatKey = extra.choice.key;
       row.options.push(entry);
       return entry;
     };
