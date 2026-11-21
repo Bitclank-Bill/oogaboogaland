@@ -512,11 +512,13 @@ test("normal archive builds allow one-file character edits; explicit authoring r
   try {
     mkdirSync(join(folder, "src/js"), { recursive: true }); mkdirSync(join(folder, "worker/src"), { recursive: true });
     for (const name of ["math", "scene", "models", "characters", "equipment-hats"]) cpSync(join(root, "src/js", name + ".js"), join(folder, "src/js", name + ".js"));
-    cpSync(join(root, "src/characters"), join(folder, "src/characters"), { recursive: true });
-    cpSync(join(root, "src/equipment"), join(folder, "src/equipment"), { recursive: true });
-    const first = catalog.items[0], oldFile = join(folder, "src/equipment/hats", first.current + ".json"), bytes = readFileSync(oldFile, "utf8");
+    // Isolate provenance and version history from live contributor edits and later catalog publications.
+    mkdirSync(join(folder, "src/characters"), { recursive: true });
+    for (const [, , handle] of HAT_SOURCES) writeFileSync(join(folder, "src/characters", handle + ".js"), reviewedHeads.sources[handle]);
+    authorEquipmentHats(folder);
+    const indexFile = join(folder, "src/equipment/hats/catalog.json"), index = readFileSync(indexFile, "utf8"), baseline = JSON.parse(index);
+    const first = baseline.items[0], oldFile = join(folder, "src/equipment/hats", first.current + ".json"), bytes = readFileSync(oldFile, "utf8");
     const sourceFile = join(folder, "src/characters/Bitcoin-Bill.js"), source = readFileSync(sourceFile, "utf8");
-    const indexFile = join(folder, "src/equipment/hats/catalog.json"), index = readFileSync(indexFile, "utf8");
     const outputs = ["src/js/equipment-hats.gen.js", "src/js/equipment-hat-data.gen.js", "worker/src/equipment-hat-data.gen.json"];
     writeEquipmentHats(folder);
     const generated = outputs.map(file => readFileSync(join(folder, file), "utf8"));
@@ -541,12 +543,12 @@ test("normal archive builds allow one-file character edits; explicit authoring r
     assert.deepEqual(drift.sourceChanged, [first.id]);
     assert.deepEqual(drift.geometryChanged, [{ id: first.id, current: first.current, extracted: extractHat(folder, first.id).version }]);
     assert.notEqual(drift.geometryChanged[0].extracted, first.current); unchanged();
-    const made = authorEquipmentHats(folder); assert.equal(made.versions, catalog.items.reduce((n, r) => n + r.versions.length, 0) + 1);
+    const made = authorEquipmentHats(folder); assert.equal(made.versions, baseline.items.reduce((n, r) => n + r.versions.length, 0) + 1);
     assert.equal(readFileSync(oldFile, "utf8"), bytes);
     const next = JSON.parse(readFileSync(indexFile, "utf8"));
     assert.notEqual(next.items[0].current, first.current); assert.ok(next.items[0].versions.includes(first.current));
     const changed = extractHat(folder, first.id); assert.equal(changed.version, next.items[0].current);
-    assert.deepEqual(checkEquipmentHatSources(folder), { items: catalog.items.length, sourceChanged: [], geometryChanged: [] });
+    assert.deepEqual(checkEquipmentHatSources(folder), { items: baseline.items.length, sourceChanged: [], geometryChanged: [] });
     writeFileSync(oldFile, bytes + " "); assert.throws(() => writeEquipmentHats(folder), /hash\/size/); writeFileSync(oldFile, bytes);
     next.items[0].versions = [next.items[0].current]; writeFileSync(indexFile, JSON.stringify(next));
     assert.throws(() => writeEquipmentHats(folder), /removed from its catalog/);
