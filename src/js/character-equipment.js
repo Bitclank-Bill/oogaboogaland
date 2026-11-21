@@ -109,7 +109,11 @@
     else percent = Math.max(percent, minimumSize(cave, selected));
     const old = worn.get(cave);
     if (old && old.selection?.item === selected?.item && old.selection?.version === selected?.version) {
-      if (old.size !== percent) { if (old.node) resize(old.node, old.fit, percent); old.size = percent; }
+      if (old.size !== percent) {
+        if (old.node) resize(old.node, old.fit, percent);
+        old.size = percent;
+        BL.crew?.refreshHatRide(cave);
+      }
       return true;
     }
     if (!old && selected === null) return true;
@@ -170,6 +174,7 @@
     own.selection = selected ? Object.freeze({ item: selected.item, version: selected.version }) : null;
     own.fit = fit; own.size = percent;
     worn.set(cave, own);
+    BL.crew?.refreshHatRide(cave);
     return true;
   };
   BL.characterEquipment = { apply, clear: (cave) => apply(cave, null), supports: supported, selection, size, minimumSize, seed,

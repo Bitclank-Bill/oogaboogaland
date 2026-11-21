@@ -39810,6 +39810,7 @@ const equipmentAppChecks = async () => {
     archives.set(version, json); return version;
   };
   const second = variant([35, 190, 90]), third = variant([190, 45, 170]);
+  const retryVersion = variant([90, 130, 210]), cancelledVersion = variant([210, 130, 90]), pendingVersion = variant([130, 210, 90]);
   let current = item.current, saved = { selection: null, size: 100, revision: 0, declined: null, update: null };
   let heldArchive = null, archiveGate = null, releaseArchive = null;
   const account = { id: 71, login: "equipment-preview", display: "Equipment preview" }, at = Math.floor(Date.now() / 1000) - 3600;
@@ -39858,10 +39859,16 @@ const equipmentAppChecks = async () => {
   const open = async (options = {}) => {
     b = await launch(options);
     await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
-      const actual = window.fetch.bind(window); window.__equipmentFixture = { sockets: [], sent: [], archives: [] };
+      const actual = window.fetch.bind(window); window.__equipmentFixture = { sockets: [], sent: [], archives: [], failures: {} };
       window.fetch = (input, options) => {
         const url = new URL(typeof input === "string" ? input : input.url, location.href);
-        if (url.pathname.startsWith('/api/equipment/hats/')) __equipmentFixture.archives.push(url.pathname);
+        if (url.pathname.startsWith('/api/equipment/hats/')) {
+          __equipmentFixture.archives.push(url.pathname);
+          if (__equipmentFixture.failures[url.pathname] > 0) {
+            __equipmentFixture.failures[url.pathname]--;
+            return Promise.reject(new TypeError('Fixture connection temporarily unavailable'));
+          }
+        }
         if (url.origin === location.origin && (!url.pathname.startsWith("/api/") || url.pathname === "/api/me" || url.pathname.startsWith("/api/equipment"))) return actual(input, options);
         return Promise.resolve(Response.json({}));
       };
@@ -40072,6 +40079,66 @@ const equipmentAppChecks = async () => {
     })()`);
     record("equipment live messages: legacy own and peer sizes cannot shrink the apple helmet below its safe fit, while larger updates reuse the body and attachment",
       Object.values(minimumLive).every(Boolean), JSON.stringify(minimumLive));
+    // A real loader rejection used to be cached as a successful application forever. Only the first
+    // two fetches fail here; recovery must install the immutable bytes with no new appearance message.
+    const retryPath = `/api/equipment/hats/${retryVersion}.json`, cancelledPath = `/api/equipment/hats/${cancelledVersion}.json`;
+    await b.evaluate(`(() => {
+      const E=BL.equipment, own=BL.models.caveman(BL.contributors.traitsFor('w-s-bitcoin')),
+        peer=BL.models.caveman(BL.contributors.traitsFor('equipment-peer')),selection={item:${JSON.stringify(item.id)},version:${JSON.stringify(retryVersion)}};
+      __equipmentFixture.failures[${JSON.stringify(retryPath)}]=2;
+      window.__equipmentRetry={own,peer,previous:E.state.record,frames:0,running:true};
+      own.root.position.x=3;peer.root.position.z=7;
+      E.receive({t:'equipment',id:71,revision:E.state.record.revision+1,selection,size:110});
+      // Peer72 above already reached revision4. Use a new identity so this revision1
+      // snapshot exercises loading rather than the client's required stale-row rejection.
+      E.receive({t:'equipment',kind:'snapshot',rows:[{id:75,revision:1,selection,size:90}]});
+      const frame=()=>{if(!__equipmentRetry.running)return;E.applyLocal(own);E.applyRemote(peer,75);__equipmentRetry.frames++;requestAnimationFrame(frame);};frame();
+      for(let i=0;i<200;i++){E.applyLocal(own);E.applyRemote(peer,75);}
+    })()`);
+    try {
+      await wait(`BL.characterEquipment.selection(__equipmentRetry.own)?.version===${JSON.stringify(retryVersion)} && BL.characterEquipment.selection(__equipmentRetry.peer)?.version===${JSON.stringify(retryVersion)}`,
+        "Transient hat failures never recovered without another appearance message", 15000);
+    } catch (error) {
+      const detail = await b.evaluate(`({own:BL.characterEquipment.selection(__equipmentRetry.own),peer:BL.characterEquipment.selection(__equipmentRetry.peer),
+        attempts:__equipmentFixture.archives.filter(path=>path===${JSON.stringify(retryPath)}).length,frames:__equipmentRetry.frames,hidden:document.hidden,
+        loaded:BL.equipmentHats.loaded(${JSON.stringify(item.id)},${JSON.stringify(retryVersion)})})`);
+      throw new Error(error.message + " " + JSON.stringify(detail));
+    }
+    record("equipment downloads: repeated transient failures recover unchanged own and peer choices through shared bounded retries", await b.evaluate(`(() => {
+      const p=__equipmentRetry,render=BL.characterEquipment;p.running=false;
+      const counts=__equipmentFixture.archives.filter(path=>path===${JSON.stringify(retryPath)}).length;
+      const ok=counts===3&&p.frames>1&&render.size(p.own)===110&&render.size(p.peer)===90
+        &&p.own.root.position.x===3&&p.peer.root.position.z===7&&p.own.equipmentHatNode.children[0].geometry===p.peer.equipmentHatNode.children[0].geometry;
+      BL.equipment.clear(p.own);BL.equipment.clear(p.peer);return ok;
+    })()`));
+    await b.evaluate(`(() => {
+      const E=BL.equipment,selection={item:${JSON.stringify(item.id)},version:${JSON.stringify(cancelledVersion)}};
+      __equipmentFixture.failures[${JSON.stringify(cancelledPath)}]=10;
+      __equipmentRetry.cancelled=BL.models.caveman(BL.contributors.traitsFor('equipment-peer'));
+      E.receive({t:'equipment',id:73,revision:1,selection,size:100});E.applyRemote(__equipmentRetry.cancelled,73);
+    })()`);
+    await wait(`__equipmentFixture.archives.filter(path=>path===${JSON.stringify(cancelledPath)}).length===1`, "Cancelled hat fixture did not attempt its first read");
+    await b.evaluate("BL.equipment.receive({t:'equipment',kind:'remove',ids:[73]});BL.equipment.clear(__equipmentRetry.cancelled)");
+    // A successful old in-flight read may still fill the shared immutable cache; it must not
+    // restore a cleared wearer or replace a newer selection captured while that read waited.
+    heldArchive = pendingVersion; archiveGate = new Promise(resolve => { releaseArchive = resolve; });
+    await b.evaluate(`(() => {
+      const E=BL.equipment,selection={item:${JSON.stringify(item.id)},version:${JSON.stringify(pendingVersion)}};
+      E.receive({t:'equipment',id:74,revision:1,selection,size:100});E.applyRemote(__equipmentRetry.cancelled,74);
+    })()`);
+    await wait(`__equipmentFixture.archives.includes('/api/equipment/hats/${pendingVersion}.json')`, "Superseded hat fixture did not start loading");
+    await b.evaluate("BL.equipment.receive({t:'equipment',id:74,revision:2,selection:{item:'none',version:null},size:100});BL.equipment.applyRemote(__equipmentRetry.cancelled,74);BL.equipment.clear(__equipmentRetry.cancelled)");
+    releaseArchive(); heldArchive = null;
+    await wait(`BL.equipmentHats.loaded(${JSON.stringify(item.id)},${JSON.stringify(pendingVersion)})`, "Superseded immutable read did not finish");
+    await b.sleep(1200);
+    record("equipment downloads: removing a wearer cancels retries and late geometry cannot restore cleared or superseded choices", await b.evaluate(`(() => {
+      const E=BL.equipment,p=__equipmentRetry;
+      const ok=__equipmentFixture.archives.filter(path=>path===${JSON.stringify(cancelledPath)}).length===1
+        &&!p.cancelled.equipmentHatNode&&BL.characterEquipment.selection(p.cancelled)===null;
+      E.receive({t:'equipment',kind:'remove',ids:[74,75]});
+      E.receive({t:'equipment',id:71,revision:E.state.record.revision+1,selection:p.previous.selection,size:p.previous.size});
+      E.clear(p.own);E.clear(p.peer);E.clear(p.cancelled);return ok;
+    })()`));
     record("equipment studio: safe-minimum acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
     writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png"] }, null, 2) + "\n");
   } finally {

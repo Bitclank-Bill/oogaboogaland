@@ -11,7 +11,7 @@ staging; it does not enable production.
 ## Content and ownership
 
 Each hat has a stable item ID, creator attribution and an immutable version.
-Changing a creator's hat advances that item's current version. Historical
+Publishing a creator's updated hat advances that item's current version. Historical
 geometry stays available: a wearer gets an update notice and can accept it or
 keep their version. Accepting updates their saved selection and live avatar;
 declining suppresses that revision's notice without changing their appearance.
@@ -39,20 +39,46 @@ restore them. The original head, face, tusks and blink geometry remain intact.
 
 ## Updating an authored hat
 
-The nine existing custom character files expose `dress.hat` and, where needed,
-`dress.hatNodes`; hair and facial details remain in their existing hooks. After
-reviewing a creator's source change, a maintainer runs:
+The nine existing custom character files expose `dress.hat(k, v)` for hat-only
+voxels and, where needed, `dress.hatNodes(k)` for hat-only nodes attached to
+`k.parts.head`. Hair, glasses and facial details remain in their existing hooks.
+Contributors submit only their character file, including when changing a hat.
+Their authored appearance changes with that character's code release.
+
+Ordinary builds generate shared wearable data from the committed catalog and
+immutable archives. They validate archive hashes, size, schema and retained
+history without reading or executing creator files for this step. A voice,
+body, date or hat edit therefore does not force a contributor to change shared
+files. Wearers keep the published geometry until a maintainer publishes an update.
+
+After reviewing local source changes, a maintainer can check for drift:
+
+```sh
+node scripts/equipment-hats.mjs --check-sources
+```
+
+This read-only command loads the allowlisted character files and extracts their
+hat geometry using the current model helpers. Its JSON lists `sourceChanged`
+(whole-file provenance differs) separately from `geometryChanged` (extracted
+geometry differs from the published current version). Only geometry drift gives
+exit status 1; an unrelated character edit can change provenance without changing
+a hat. Normal builds and contributor CI do not run this source-executing check.
+The `sources` hashes in `catalog.json` record the files used at the last explicit
+authoring operation; they are provenance, not a build freshness requirement.
+
+Review every reported geometry change before publishing; both commands inspect
+all nine approved sources. Then run:
 
 ```sh
 node scripts/equipment-hats.mjs --author
 ```
 
-This executes only the allowlisted sources' explicit hat builders in the local
-authoring process, writes immutable plain geometry under `src/equipment/hats/`,
+This loads the reviewed allowlisted character files and invokes their explicit
+hat builders in the local authoring process, writes immutable plain geometry under `src/equipment/hats/`,
 and advances that item's current version in `catalog.json`. The stable item ID
 does not change. All previous archives and their index entries stay committed.
-Ordinary builds validate source fingerprints, archive hashes, schema and history;
-they never execute a changed hat source to publish an unreviewed update.
+The maintainer commits the updated catalog and new archives in a separately
+reviewed change. A source edit alone never advances a wearable version.
 
 These initial hats come from custom JavaScript, so creator changes still require
 an approved manual code release and character-catalog baseline handoff. The
@@ -111,6 +137,17 @@ records and appearance messages without size default to 100.
 An original appearance is `selection: null`, and a bare head is
 `{ item: "none", version: null }`. Conflicts return 409 and the current record.
 The browser reads immutable geometry at `/api/equipment/hats/<sha256>.json`.
+Failed reads retry through one shared timer after 1, 4, 15 and then at most every
+30 seconds while that version is still selected. Hidden pages pause retries;
+removing or replacing a selection cancels its retry interest. Successful reads
+update waiting own/peer models and the Studio without requiring another snapshot.
+Late reads can warm the immutable cache but cannot restore an obsolete choice.
+
+Hat-riding pets remeasure their support after item, version or size changes,
+including no hat and the original appearance. Seats are cached by the canonical
+open head and equipment appearance, with at most 64 entries per head. The pet
+keeps its motion phase and quaternion; steady posing does not rescan geometry.
+
 Migration `0012_player_equipment.sql` adds one account row with deletion cascade.
 Migration `0013_player_equipment_size.sql` adds the validated size, defaulting
 existing choices to 100. An older Worker can still update the other columns.
@@ -162,7 +199,7 @@ equipment revision. It never appears in equipment messages or public metadata.
 
 The maintainer chose local multiplayer coverage plus a single-account live
 staging check. The local browser run, `node test/run.mjs equipment-app`, passed
-25/25 checks using the real hosted studio and renderer with explicit account,
+27/27 checks using the real hosted studio and renderer with explicit account,
 HTTP and socket fixtures. It covered all nine hat previews without reallocating
 the wearer, saving and reloading a pinned version, fixture creator revisions
 with **Accept update** and **Keep my version**, a later offer after declining,
@@ -175,6 +212,8 @@ cover the apple helmet's 100% slider limit, legacy undersized reads and live
 messages, save/reload at the displayed size, and other hats/characters retaining
 their 80% minimum. Normal flows had clean consoles; the intentional
 409 response was checked separately for its expected browser resource error.
+Download recovery checks reject two reads before succeeding without another
+appearance message, then verify retry cancellation and late-result cleanup.
 
 The browser also applied fixture messages to local and remote avatar models:
 changes preserved pose and gameplay nodes, reused immutable geometry, rejected
@@ -190,11 +229,17 @@ checks, and retained Accept/Keep choices across reloads and newer metadata.
 Model tests separately checked all nine attachments, shared geometry, preserved
 authored heads and the reviewed apple fitting. Immutable archive validation and
 deployment retention checks cover keeping previously published versions.
-The 14 hat-model checks include physical apple clearances, reversible leaf/stalk
+The 15 hat-model checks include physical apple clearances, reversible leaf/stalk
 tucking, six recipient types at 80/100/120%, fixed fitting anchors and repeated
 resizing without transform drift. Every legacy 80–99% apple-helmet request returns
 to the exact 100% fit without replacing nodes; its crown clears the actual inner
-lining faces by at least 0.2 voxel. Full local Worker validation passed 838/838
+lining faces by at least 0.2 voxel. The pet controller regression covers removal,
+replacement, sizing, restoration, cloning and blink-independent support, with no
+geometry scans or matrix allocations in steady frames. Focused hub pet browser
+checks passed 6/6 (`ONLY='hub pet' node test/run.mjs --browser-only hub`), excluding
+the global tier. Historical head goldens and the archived straw proportions use
+fixed reviewed source inputs, retaining their assertions while allowing live
+creator files to change. Full local Worker validation passed 839/839
 checks, including local-server integration checks. The focused equipment API and
 Room run passed 23/23, including durable fit correction, revision conflicts,
 canonical ownership, peer/wake recovery and catalog expiry/outage handling.

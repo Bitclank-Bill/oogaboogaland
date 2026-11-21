@@ -6,11 +6,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { authorEquipmentHats, extractHat, hatHash, HAT_SOURCES, writeEquipmentHats } from "../../scripts/equipment-hats.mjs";
+import { authorEquipmentHats, checkEquipmentHatSources, extractHat, hatHash, HAT_SOURCES, writeEquipmentHats } from "../../scripts/equipment-hats.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const read = (path) => readFileSync(join(root, path), "utf8");
 const catalog = JSON.parse(read("src/equipment/hats/catalog.json"));
+// Historical model-regression inputs stay fixed; contributors can edit their own live source
+// without rewriting engine goldens or historical archive comparisons. Fitting recipients,
+// removal and pet tests below still use live sources.
+const reviewedHeads = JSON.parse(read("worker/test/fixtures/equipment-authored-heads.json"));
 const archive = (row = catalog.items[0]) => JSON.parse(read(`src/equipment/hats/${row.current}.json`));
 const fixture = (options = {}) => {
   const context = vm.createContext({ URLSearchParams, location: { search: "" }, crypto: webcrypto, TextDecoder, TextEncoder,
@@ -18,11 +22,15 @@ const fixture = (options = {}) => {
   vm.runInContext("window = globalThis", context);
   const script = (name) => vm.runInContext(read(`src/js/${name}.js`), context);
   for (const name of ["math", "scene", "models", "hero-body", "caves", "contributor-identities", "activity-repos", "characters"]) script(name);
-  for (const [, , handle] of HAT_SOURCES) vm.runInContext(read(`src/characters/${handle}.js`), context);
+  for (const [, , handle] of HAT_SOURCES) vm.runInContext(options.reviewedHeads ? reviewedHeads.sources[handle] : read(`src/characters/${handle}.js`), context);
   for (const handle of ["natalievarty", "MrHodlX", "w-s-bitcoin"]) vm.runInContext(read(`src/characters/${handle}.js`), context);
   vm.runInContext("BL.characters.add({handle:'Normal',joined:1,lastCommit:1}); BL.characters.add({handle:'Slim',joined:1,lastCommit:1,look:{build:'slim'}})", context);
   for (const name of ["roster-panel", "contributors", "equipment-hats", "equipment-hats.gen", "character-equipment"]) script(name);
   if (options.seed !== false) script("equipment-hat-data.gen");
+  if (options.pets) {
+    vm.runInContext("BL.pilot = { WALK: { speed: 7.75, gravity: 9.8 } }", context);
+    for (const name of ["sign-glyphs", "hub-models", "crew"]) script(name);
+  }
   return { context, BL: context.BL, run: (code) => vm.runInContext(code, context),
     cave: (name) => context.BL.models.caveman(context.BL.contributors.traitsFor(name)),
     validate: (value, id) => { context.archiveText = JSON.stringify(value); context.item = id; return vm.runInContext("BL.equipmentHats.validate(JSON.parse(archiveText),item)", context); } };
@@ -85,7 +93,9 @@ const ORIGINAL_HEADS = {
 };
 
 test("the nine authored heads retain their original geometry and clones own their hat nodes", () => {
-  const f = fixture();
+  assert.equal(reviewedHeads.format, 1);
+  assert.deepEqual(Object.keys(reviewedHeads.sources).sort(), HAT_SOURCES.map(([, , handle]) => handle).sort());
+  const f = fixture({ reviewedHeads: true });
   for (const [, , handle] of HAT_SOURCES) {
     const a = f.cave(handle), b = f.cave(handle);
     assert.equal(headGolden(a.parts.head), ORIGINAL_HEADS[handle], handle);
@@ -99,7 +109,7 @@ test("the nine authored heads retain their original geometry and clones own thei
 });
 
 test("authored geometry goldens ignore only floating-point noise and retain shape, color and topology checks", () => {
-  const tree = headTree(fixture().cave("johnstackton21m").parts.head), expected = headGolden(tree);
+  const tree = headTree(fixture({ reviewedHeads: true }).cave("johnstackton21m").parts.head), expected = headGolden(tree);
   const copy = () => JSON.parse(JSON.stringify(tree)), helmet = (row) => row.children.find((child) => child.geometry?.verts.length > 300);
   const noise = copy(); helmet(noise).geometry.verts[0] += 1e-15;
   assert.notEqual(JSON.stringify(noise), JSON.stringify(tree)); assert.equal(headGolden(noise), expected);
@@ -365,14 +375,14 @@ test("invalid sizes cannot change worn equipment and removing a resized hat rest
 
 test("the straw hat seats on the recipient crown while its original taller-haired owner keeps its authored height", () => {
   const f = fixture(), render = f.BL.characterEquipment, row = catalog.items[0], selected = { item: row.id, version: row.current };
-  const donor = f.cave("Bitcoin-Bill"), native = donor.parts.nativeHat[0];
+  const donor = fixture({ reviewedHeads: true }).cave("Bitcoin-Bill"), native = donor.parts.nativeHat[0];
   for (const [name, height] of [["Normal", 7], ["Slim", 7], ["w-s-bitcoin", 8], ["Bitcoin-Bill", 9]]) {
     const cave = f.cave(name); assert.equal(render.apply(cave, selected), true);
     // The archived hat's shell begins nine cells above the donor's head pivot. Its seat must touch this crown.
     const node = cave.equipmentHatNode, shell = node.position.y + 9 / 16 * node.scale.y;
     assert.ok(Math.abs(shell / cave.traits.height * 16 - height) < 1e-12, name);
     // The already-roomy crown fits the apple without stretching the authored brim or feather spacing.
-    // Compare the actual attachment vertices with the donor's native hat, normalized only for body height.
+    // Compare with the reviewed archive donor's native hat, normalized only for body height.
     const borrowed = node.children[0];
     assert.equal(borrowed.geometry.verts.length, native.geometry.verts.length);
     for (let i = 0; i < borrowed.geometry.verts.length; i++) if (i % 3 !== 1) {
@@ -382,6 +392,80 @@ test("the straw hat seats on the recipient crown while its original taller-haire
       assert.ok(Math.abs(fitted - original) < 1e-9, name + " retains the authored hat proportions");
     }
   }
+});
+
+test("Bill's hat-riding pet follows no hat, immutable replacements and size changes without stale brim paths", () => {
+  const f = fixture({ pets: true }), render = f.BL.characterEquipment, S = f.BL.scene, M = f.BL.math.mat4;
+  const rootNode = S.createNode(), pets = f.BL.crew.createPets({ groundAt: () => 0, walkable: () => true }, rootNode);
+  const attach = (cave) => {
+    S.addChild(rootNode, cave.root); cave.baseY = 0; cave.jet = { power: 0, thrust: false }; cave.jetFuel = 1;
+    pets.attach(cave); pets.update(cave, 0); return cave.pet.ride;
+  };
+  const cave = f.cave("Bitcoin-Bill"), ride = attach(cave), dog = cave.parts.dog, quaternion = ride.q;
+  const originalHead = cave.headOpen, originalSeat = ride.seat, inverse = M.create(), point = [];
+  const path = () => {
+    const points = [];
+    S.updateWorld(cave.root); M.invert(inverse, cave.parts.head.world);
+    for (let i = 0; i < f.BL.crew.HAT_RIDE.ring; i++) {
+      ride.angle = i / f.BL.crew.HAT_RIDE.ring * Math.PI * 2; ride.step = 0; pets.update(cave, 0);
+      M.transformPoint(point, inverse, dog.position.x, dog.position.y, dog.position.z);
+      assert.ok(point.every(Number.isFinite)); points.push([...point]);
+      assert.equal(dog.quaternion, quaternion); assert.equal(cave.pet.mode, 4); assert.equal(dog.parent, rootNode);
+    }
+    return points;
+  };
+  const change = (selection, size = 100) => {
+    const phase = [ride.angle, ride.dir, ride.run, ride.step, ride.t, ride.kind];
+    assert.equal(render.apply(cave, selection, size), true);
+    assert.equal(cave.pet.ride, ride); assert.equal(ride.q, quaternion);
+    assert.deepEqual([ride.angle, ride.dir, ride.run, ride.step, ride.t, ride.kind], phase, "an appearance change preserves the pet's motion state");
+    return path();
+  };
+  const originalPath = path(), barePath = change({ item: "none", version: null }), bareSeat = ride.seat;
+  assert.equal(cave.headOpen, originalHead, "Bill's hidden native hat leaves the underlying head mesh unchanged");
+  assert.notEqual(bareSeat, originalSeat); assert.notDeepEqual(barePath, originalPath);
+  assert.ok(bareSeat.y.every((height) => height <= S.boundsOf(cave.headOpen).max[1] + 1e-6), "the bare-head path cannot float above the actual hair");
+  assert.ok(Math.max(...bareSeat.y) < Math.min(...originalSeat.y), "the pet leaves the removed hat's higher surface");
+  assert.ok(cave.parts.nativeHat.every((node) => !node.visible));
+  const row = catalog.items.find((item) => item.id === "bitcoin-bill-straw"), selected = { item: row.id, version: row.current };
+  const fittedPath = change(selected), fittedSeat = ride.seat;
+  assert.notEqual(fittedSeat, bareSeat); assert.notDeepEqual(fittedPath, barePath);
+  const smallPath = change(selected, 80), smallSeat = ride.seat, largePath = change(selected, 120), largeSeat = ride.seat;
+  assert.notDeepEqual(largePath, smallPath); assert.ok(Math.min(...largeSeat.y) > Math.min(...smallSeat.y), "the pet follows the enlarged hat's higher support");
+  assert.deepEqual(change(selected, 100), fittedPath); assert.equal(ride.seat, fittedSeat, "returning to a size reuses its measured seat");
+  const other = f.cave("Bitcoin-Bill");
+  assert.equal(render.apply(other, selected, 80), true);
+  assert.equal(attach(other).seat, smallSeat, "a pet attached after equipment receives the same cached size-specific seat");
+  assert.equal(ride.seat, fittedSeat, "another body cannot replace this pet's seat");
+  const blinking = f.cave("Bitcoin-Bill");
+  blinking.parts.head.geometry = blinking.headClosed;
+  assert.equal(render.apply(blinking, selected, 113), true);
+  const closedDescriptor = Object.getOwnPropertyDescriptor(blinking.headClosed, "verts");
+  let closedReads = 0;
+  Object.defineProperty(blinking.headClosed, "verts", { configurable: true, get() { closedReads++; return closedDescriptor.value; } });
+  try { attach(blinking); } finally { Object.defineProperty(blinking.headClosed, "verts", closedDescriptor); }
+  assert.equal(closedReads, 0, "a first measurement while blinking uses the canonical open head for its shared cache key");
+  const replacement = archive(row);
+  for (const node of replacement.nodes) node.position[1] += 0.15;
+  const version = hatHash(f.BL.equipmentHats.encode(replacement));
+  f.run(`BL.characterEquipment.seed(${JSON.stringify({ [version]: replacement })})`);
+  assert.notDeepEqual(change({ item: row.id, version }), fittedPath, "a new immutable geometry version remeasures the visible support");
+  assert.deepEqual(change(selected), fittedPath); assert.equal(ride.seat, fittedSeat);
+  const helmet = catalog.items.find((item) => item.id === "johnstackton21m-helmet");
+  assert.notDeepEqual(change({ item: helmet.id, version: helmet.current }), fittedPath, "changing the item replaces the pet's brim path");
+  assert.deepEqual(change(null), originalPath); assert.equal(ride.seat, originalSeat);
+  assert.ok(cave.parts.nativeHat.every((node) => node.visible)); assert.equal(cave.headOpen, originalHead);
+  assert.deepEqual(change({ item: "none", version: null }), barePath); assert.equal(ride.seat, bareSeat);
+  change(selected);
+  const geometry = cave.equipmentHatNode.children[0].geometry, vertices = geometry.verts, createMatrix = M.create;
+  let reads = 0, allocations = 0;
+  Object.defineProperty(geometry, "verts", { configurable: true, get() { reads++; return vertices; } });
+  M.create = () => { allocations++; return createMatrix(); };
+  try {
+    for (let frame = 0; frame < 120; frame++) { render.apply(cave, selected, 100); pets.update(cave, 1 / 60); }
+  } finally { Object.defineProperty(geometry, "verts", { configurable: true, writable: true, value: vertices }); M.create = createMatrix; }
+  assert.equal(reads, 0, "steady frames never rescan hat geometry"); assert.equal(allocations, 0, "steady posing allocates no matrices");
+  assert.equal(ride.seat, fittedSeat); assert.equal(ride.q, quaternion);
 });
 
 test("new versions load in old tabs with digest, schema and item verification; older worn geometry stays available", async () => {
@@ -423,7 +507,7 @@ test("malformed, oversized, substituted and noncanonical network archives cannot
   }
 });
 
-test("authoring adds immutable versions and normal builds refuse edited sources, tampering or lost history", () => {
+test("normal archive builds allow one-file character edits; explicit authoring retains verified immutable history", () => {
   const folder = mkdtempSync(join(tmpdir(), "ooga-hat-archives-"));
   try {
     mkdirSync(join(folder, "src/js"), { recursive: true }); mkdirSync(join(folder, "worker/src"), { recursive: true });
@@ -431,14 +515,38 @@ test("authoring adds immutable versions and normal builds refuse edited sources,
     cpSync(join(root, "src/characters"), join(folder, "src/characters"), { recursive: true });
     cpSync(join(root, "src/equipment"), join(folder, "src/equipment"), { recursive: true });
     const first = catalog.items[0], oldFile = join(folder, "src/equipment/hats", first.current + ".json"), bytes = readFileSync(oldFile, "utf8");
-    const sourceFile = join(folder, "src/characters/Bitcoin-Bill.js");
-    writeFileSync(sourceFile, readFileSync(sourceFile, "utf8").replace('"#d8c08a"', '"#d9c08a"'));
-    assert.throws(() => writeEquipmentHats(folder), /explicitly archive/);
+    const sourceFile = join(folder, "src/characters/Bitcoin-Bill.js"), source = readFileSync(sourceFile, "utf8");
+    const indexFile = join(folder, "src/equipment/hats/catalog.json"), index = readFileSync(indexFile, "utf8");
+    const outputs = ["src/js/equipment-hats.gen.js", "src/js/equipment-hat-data.gen.js", "worker/src/equipment-hat-data.gen.json"];
+    writeEquipmentHats(folder);
+    const generated = outputs.map(file => readFileSync(join(folder, file), "utf8"));
+    const unchanged = () => {
+      assert.equal(readFileSync(indexFile, "utf8"), index);
+      assert.deepEqual(outputs.map(file => readFileSync(join(folder, file), "utf8")), generated);
+    };
+    // A contributor changes only their own file; ordinary build inputs remain the reviewed archives.
+    const unrelated = source.replace(/lastCommit: (\d+)/, (_, at) => "lastCommit: " + (Number(at) + 1));
+    assert.notEqual(unrelated, source); writeFileSync(sourceFile, unrelated);
+    writeEquipmentHats(folder); unchanged();
+    const provenance = checkEquipmentHatSources(folder);
+    assert.deepEqual(provenance.sourceChanged, [first.id]); assert.deepEqual(provenance.geometryChanged, []); unchanged();
+    // The ordinary archive builder neither evaluates nor parses the character source.
+    writeFileSync(sourceFile, unrelated + "\nthrow new Error('source execution probe');\n");
+    writeEquipmentHats(folder); unchanged();
+    assert.throws(() => checkEquipmentHatSources(folder), /source execution probe/); unchanged();
+    const hatEdit = unrelated.replace('"#d8c08a"', '"#d9c08a"');
+    assert.notEqual(hatEdit, unrelated); writeFileSync(sourceFile, hatEdit);
+    writeEquipmentHats(folder); unchanged();
+    const drift = checkEquipmentHatSources(folder);
+    assert.deepEqual(drift.sourceChanged, [first.id]);
+    assert.deepEqual(drift.geometryChanged, [{ id: first.id, current: first.current, extracted: extractHat(folder, first.id).version }]);
+    assert.notEqual(drift.geometryChanged[0].extracted, first.current); unchanged();
     const made = authorEquipmentHats(folder); assert.equal(made.versions, catalog.items.reduce((n, r) => n + r.versions.length, 0) + 1);
     assert.equal(readFileSync(oldFile, "utf8"), bytes);
-    const indexFile = join(folder, "src/equipment/hats/catalog.json"), next = JSON.parse(readFileSync(indexFile, "utf8"));
+    const next = JSON.parse(readFileSync(indexFile, "utf8"));
     assert.notEqual(next.items[0].current, first.current); assert.ok(next.items[0].versions.includes(first.current));
     const changed = extractHat(folder, first.id); assert.equal(changed.version, next.items[0].current);
+    assert.deepEqual(checkEquipmentHatSources(folder), { items: catalog.items.length, sourceChanged: [], geometryChanged: [] });
     writeFileSync(oldFile, bytes + " "); assert.throws(() => writeEquipmentHats(folder), /hash\/size/); writeFileSync(oldFile, bytes);
     next.items[0].versions = [next.items[0].current]; writeFileSync(indexFile, JSON.stringify(next));
     assert.throws(() => writeEquipmentHats(folder), /removed from its catalog/);

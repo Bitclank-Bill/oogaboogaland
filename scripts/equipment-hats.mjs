@@ -1,5 +1,5 @@
 // Maintainer authoring only: archive the nine approved sources' explicit hat hooks as immutable plain geometry.
-// Normal builds verify the archived bytes and source fingerprints; they never publish changed source implicitly.
+// Normal builds use committed archives alone. Source drift is checked only by an explicit maintainer command.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -87,15 +87,15 @@ export const authorEquipmentHats = (base = root) => {
   return writeEquipmentHats(base);
 };
 
-export const writeEquipmentHats = (base = root) => {
+const readEquipmentHats = (base) => {
   const directory = join(base, "src/equipment/hats"), catalog = JSON.parse(read(join(directory, "catalog.json"))), context = contextFor(base);
   if (catalog.format !== 1 || catalog.items.length !== HAT_SOURCES.length) throw new Error("Invalid archived hat catalog");
   context.rowsText = JSON.stringify(catalog.items);
   vm.runInContext("BL.equipmentHats.register(JSON.parse(rowsText))", context);
   const archives = {}, current = {};
-  for (const [id, , handle] of HAT_SOURCES) {
+  for (const [id] of HAT_SOURCES) {
     const row = catalog.items.find((r) => r.id === id);
-    if (!row || catalog.sources[id] !== hatHash(read(pathFor(base, handle)))) throw new Error(`Hat source changed: explicitly archive ${id} with node scripts/equipment-hats.mjs --author`);
+    if (!row) throw new Error("Approved hat is missing from its catalog");
     for (const version of row.versions) {
       const text = read(join(directory, version + ".json"));
       if (hatHash(text) !== version || Buffer.byteLength(text) > context.BL.equipmentHats.MAX_BYTES) throw new Error("Immutable hat archive hash/size mismatch");
@@ -107,6 +107,23 @@ export const writeEquipmentHats = (base = root) => {
   }
   // An old file left out of the index is a lost historical version, not garbage to delete.
   for (const name of readdirSync(directory)) if (/^[a-f0-9]{64}\.json$/.test(name) && !Object.hasOwn(archives, name.slice(0, -5))) throw new Error("Archived hat version was removed from its catalog");
+  return { catalog, archives, current };
+};
+
+// Like --author, this executes reviewed local character code. It is deliberately outside normal builds:
+// unrelated voice/body changes may alter source provenance without changing the published hat at all.
+export const checkEquipmentHatSources = (base = root) => {
+  const { catalog } = readEquipmentHats(base), sourceChanged = [], geometryChanged = [];
+  for (const [id] of HAT_SOURCES) {
+    const extracted = extractHat(base, id), row = catalog.items.find((r) => r.id === id);
+    if (catalog.sources?.[id] !== extracted.source) sourceChanged.push(id);
+    if (row.current !== extracted.version) geometryChanged.push({ id, current: row.current, extracted: extracted.version });
+  }
+  return { items: catalog.items.length, sourceChanged, geometryChanged };
+};
+
+export const writeEquipmentHats = (base = root) => {
+  const { catalog, archives, current } = readEquipmentHats(base);
   const header = "// Generated from immutable src/equipment/hats archives by scripts/equipment-hats.mjs; do not edit.\n";
   writeFileSync(join(base, "src/js/equipment-hats.gen.js"), header + `globalThis.BL.equipmentHats.register(${JSON.stringify(catalog.items)});\n`);
   writeFileSync(join(base, "src/js/equipment-hat-data.gen.js"), header + `window.BL.characterEquipment.seed(${JSON.stringify(current)});\n`);
@@ -115,6 +132,9 @@ export const writeEquipmentHats = (base = root) => {
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  if (process.argv.length > 3 || process.argv[2] && process.argv[2] !== "--author") throw new Error("Usage: node scripts/equipment-hats.mjs [--author]");
-  console.log(JSON.stringify(process.argv[2] ? authorEquipmentHats() : writeEquipmentHats()));
+  const mode = process.argv[2];
+  if (process.argv.length > 3 || mode && mode !== "--author" && mode !== "--check-sources") throw new Error("Usage: node scripts/equipment-hats.mjs [--author|--check-sources]");
+  const result = mode === "--check-sources" ? checkEquipmentHatSources() : mode === "--author" ? authorEquipmentHats() : writeEquipmentHats();
+  console.log(JSON.stringify(result));
+  if (mode === "--check-sources" && result.geometryChanged.length) process.exitCode = 1;
 }
