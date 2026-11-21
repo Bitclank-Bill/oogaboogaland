@@ -1,4 +1,5 @@
-// Code a hosted page fetches only once it is needed: the Timechain rooms; DSB Land (its terrain, town, interiors, menus
+// Code a hosted page fetches only once it is needed: the wardrobe's pieces (equipment-wardrobe-data.gen.js), the first
+// time a body on the page wears one (in the studio, the first one previewed); the Timechain rooms; DSB Land (its terrain, town, interiors, menus
 // and their art, ~0.9 MB gzipped), which ₿IFRÖST's chamber also builds a picture of; the arcade's games (their rules,
 // the retro cabinets and the hall's sound), loaded by the arcade and every game in it, and the scenes of every game in
 // the hall but a stage cabinet (`carnival-scene`, on that base); Ooga Raid, behind the hall's back door (`raid-scene`,
