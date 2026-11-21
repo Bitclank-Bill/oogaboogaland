@@ -21134,6 +21134,8 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
     return JSON.parse(r.result.result.value);
   };
   await b.evaluate(`(() => {
+    // End the one-visit Controls coach before comparing persistent listeners.
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     const live = new Set(), subscribe = BL.net.subscribe;
     window.__panelTravel = { live, subscribe, me: BL.net.state.me, backend: BL.net.state.backend };
     BL.net.subscribe = fn => { const off = subscribe(fn); live.add(fn); return () => { live.delete(fn); off(); }; };
@@ -21147,6 +21149,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
   const rounds = [];
   try {
     await tourGo(b, "hub");
+    await b.evaluate('document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))');
     let state = await read();
     record("shared panel: Chat selected in Arcade stays open on mainland", state.open === "true" && state.tab === "chat" && state.painted, JSON.stringify(state));
     await tourGo(b, "arcade");
@@ -24010,11 +24013,15 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     if (room.layoutPending) { room.update(0); room.update(BL.architectCave.FACE_SWEEP); }
 
     const armHidden = actor.parts.armR.cameraHidden;
-    // A stationary third-person click, with no hover or pointermove first, reaches the scene's tap hook.
+    // A stationary right click on a visible screen reaches the scene's face-view hook.
     const canvas = document.getElementById("scene"), rect = canvas.getBoundingClientRect();
-    const pointer = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0,
-      clientX: rect.left + rect.width * 0.7, clientY: rect.top + rect.height * 0.6 };
-    canvas.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, buttons: 1 }));
+    BL.scene.updateWorld(room.group, room.group.parent.world);
+    const screenPoint = () => room.panels.map(p => B.project(p.node.world[12], p.node.world[13], p.node.world[14], {}))
+      .find(p => p && p.x > rect.width * 0.2 && p.x < rect.width * 0.8 && p.y > rect.height * 0.25 && p.y < rect.height * 0.65);
+    const screen = screenPoint();
+    const pointer = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 2,
+      clientX: screen.x, clientY: screen.y };
+    canvas.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, buttons: 2 }));
     canvas.dispatchEvent(new PointerEvent("pointerup", { ...pointer, buttons: 0 }));
     room.update(0.05);
     const clicked = room.penButton.position.y < 0.18;
@@ -24067,10 +24074,25 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
     const heldFace = room.broadcast === "face";
-    room.toggleView(); room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
-    const restored = room.broadcast === "feeds";
+    const backPanel = room.panels.find(p => p.col === 24 && p.row === 6);
+    B.pilot.turnToward(backPanel.node.world[12], backPanel.node.world[13], backPanel.node.world[14]); B.advance(0.8, 1 / 60);
+    const backScreen = screenPoint(), toggledBack = room.toggleView(backScreen.x, backScreen.y);
+    room.update(0);
+    // Feeds may have rotated while the face was held. Let the renderer supply
+    // their replacement images before advancing the return sweep.
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
+    const restored = toggledBack && room.broadcast === "feeds";
     const stand = B.crew.standPlayer(actor); room.update(0);
     const released = !room.pen.parent && !room.toggleView() && actor.parts.fingersR.geometry === originalHand && actor.parts.armR.cameraHidden === armHidden;
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    if (room.layoutPending) { room.update(0); room.update(BL.architectCave.FACE_SWEEP); }
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
@@ -37017,6 +37039,8 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   // Compare the same roster and work sites even when an activity expires during the soak.
   // Only classification uses this instant; scene animation and the Factory feed keep their clocks.
   await b.evaluate(`(() => {
+    // The transient Controls coach expires independently of scene travel.
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     const C = BL.contributors, at = Date.now(), stateFor = C.stateFor, hasRecentActivity = C.hasRecentActivity;
     C.stateFor = contributor => stateFor(contributor, at);
     C.hasRecentActivity = (contributor, repo) => hasRecentActivity(contributor, repo, at);
@@ -37030,6 +37054,7 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   // replacing any resource. Subsequent growth is still measured by the same bounds. Cloud Hopper's cabinet now stands in
   // Ooga Arcade (cloud-hopper.js \`arcade\`), so the hub holds none of its screen frames: \`frames\` reports that.
   const warmHubGeometry = () => b.evaluate(`(() => {
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     const B = __ooga, H = BL.scenes.hub, characters = new Set(), foliage = new Set(), frames = H.debug.cloudHopper?.cabinet.frames || [];
     const visit = node => {
       if (node.geometry?.characterPart) characters.add(node.geometry);
@@ -37037,6 +37062,9 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
       if (lods?.owner === node.geometry) foliage.add(node.geometry).add(lods.medium).add(lods.far);
       for (const child of node.children) visit(child);
     };
+    // Reconcile dead records before the baseline, just as the minute timer
+    // will during a long soak; replaced meshes are not retained scene owners.
+    B.housekeep();
     visit(H.root);
     for (const cave of H.debug.crew.list) {
       if (cave.headOpen) characters.add(cave.headOpen);
@@ -48422,8 +48450,9 @@ scene("dsb",{label:"wallets door",query:"&interior=free-wallets&weather=clear&ti
   await b.click(self.sx,self.sy);const walked=await walletsUntil(b,"!__ooga.dsb.walletWalk");
   const atFeet=await b.evaluate('(()=>{const D=__ooga.dsb,d=D.wallets.list()[0],a=D.avatar,p=a.root.position;return {state:d.state,off:Math.hypot(d.x-p.x,d.z-p.z),dy:Math.abs(d.y-(p.y-a.baseY))};})()');
   record("Wallets browser: out of VAC 2's door, a real click on the carrying Ooga sets its device down at its feet",!self.inside&&self.pick==="caveman"&&walked&&atFeet.state==="dropped"&&atFeet.off<.6&&atFeet.dy<.05,JSON.stringify({self,atFeet}));
-  // Down the beach in front of the door, a point well below the stoop the Ooga stands on.
-  await b.evaluate('(()=>{const D=__ooga.dsb;D.wallets.cool();D.takeWallet(1);})()');await walletsStep(b,6);
+  // Doorway travel preserves the view. Turn toward the beach before choosing a
+  // visible drop point below the stoop, as a visitor looking down to place it would.
+  await b.evaluate('(()=>{const B=__ooga,D=B.dsb,p=D.avatar.root.position;B.pilot.navigate({position:{x:p.x,y:p.y-D.avatar.baseY,z:p.z},yaw:B.pilot.orbit.yaw+Math.PI,pitch:.45,dist:5});D.wallets.cool();D.takeWallet(1);})()');await walletsStep(b,36);
   const spot=await b.evaluate(`(()=>{const D=__ooga.dsb,p=D.avatar.root.position,feet=p.y-D.avatar.baseY,W=innerWidth,H=innerHeight;
     for(const r of [2.5,3.5,4.5])for(let k=0;k<16;k++){const a=k*Math.PI/8,x=p.x+Math.sin(a)*r,z=p.z+Math.cos(a)*r,y=D.groundAt(x,z),s=__ooga.project(x,y,z,{});
       if(!s||s.x<12||s.x>W-12||s.y<12||s.y>H-12||document.elementFromPoint(s.x,s.y)?.tagName!=="CANVAS"||BL.scenes.dsb.input.pick(s.x,s.y)||feet-y<.4||!D.land.clearAt(x,z,.7))continue;
