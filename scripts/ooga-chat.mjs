@@ -47,7 +47,8 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
 // with their island modules, about 24 KB), which took the first load to about 176.6 KB. The build fails past this, set
 // just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker with the
 // whole emoji list (emoji-data.js and reaction-bar.js, about 24 KB), wanted only signed in, then moved into a chunk of
-// their own too, once reaction-policy.js read the list when first asked rather than at load: about 153.3 KB.
+// their own too, once reaction-policy.js read the list when first asked rather than at load: about 153.3 KB, then 153.8 KB
+// with the voice links and listeners in Online Oogas (#861).
 export const FIRST_LOAD_BUDGET = 156 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
