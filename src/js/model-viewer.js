@@ -1,8 +1,7 @@
 // A dialog that shows a model up close, beside what there is to know about it: the model on a canvas the visitor
 // turns by dragging, zooms with the wheel or a pinch, or works with the keys; its kicker, name, account, stats, note
 // and sources; paged through a set with the arrows. `open({ title, help, count, index, item(i) })`, an item being
-// { kicker, name, text, stats: [[label, value]], note, links: [{ href, label }], geometry, photo }, `photo` a still
-// of it as it once was, shown with a title and a line of text ({ src, title, text, alt }). The model is drawn in
+// { kicker, name, text, stats: [[label, value]], note, links: [{ href, label }], geometry }. The model is drawn in
 // Canvas 2D, lit as the HUD's icons are, its faces in the order a BSP tree gives from the eye: built once a model, it
 // draws every face behind whatever stands in front of it from any side, where a sort by depth would let a small part
 // on a big face fall behind it at some angles; a face marked `glass` (how see-through it is, 0 to 1) is drawn that
@@ -238,10 +237,6 @@
     els.stats.replaceChildren(...rows);
     els.note.textContent = item.note || "";
     els.note.hidden = !item.note;
-    const photo = item.photo || null;
-    els.photo.hidden = !photo;
-    if (photo) { els.photoImage.src = photo.src; els.photoImage.alt = photo.alt || ""; els.photoTitle.textContent = photo.title || ""; els.photoText.textContent = photo.text || ""; }
-    else els.photoImage.removeAttribute("src");
     const links = (item.links || []).map((l) => {
       const a = document.createElement("a");
       a.className = "board-link"; a.href = l.href; a.textContent = l.label; a.target = "_blank"; a.rel = "noopener noreferrer";
@@ -267,7 +262,7 @@
   const wire = () => {
     const $ = (id) => document.getElementById(id);
     els = { dialog: $("model-modal"), title: $("model-title"), canvas: $("model-canvas"), kicker: $("model-kicker"), name: $("model-name"), text: $("model-text"),
-      stats: $("model-stats"), note: $("model-note"), photo: $("model-photo"), photoImage: $("model-photo-image"), photoTitle: $("model-photo-title"), photoText: $("model-photo-text"), links: $("model-links"), count: $("model-count"), prev: $("model-prev"), next: $("model-next"), help: $("model-help"), close: $("model-close") };
+      stats: $("model-stats"), note: $("model-note"), links: $("model-links"), count: $("model-count"), prev: $("model-prev"), next: $("model-next"), help: $("model-help"), close: $("model-close") };
     els.actions = document.createElement("div");
     els.actions.className = "model-actions"; els.actions.hidden = true;
     els.help.parentNode.insertBefore(els.actions, els.help);

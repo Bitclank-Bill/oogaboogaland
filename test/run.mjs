@@ -30986,6 +30986,17 @@ const timechainHologram = { name: "timechain hologram", why: "contract: the holo
   record("timechain hologram: a click on the figure over the middle plinth and Space in front of it each open the pop-up at the whitepaper showing its page, its button opens the reader, and the piece before it shows Satoshi's statue with its credit and five plain links",
     click && space && reader && satoshi, JSON.stringify({ click, space, reader, satoshi }));
 } };
+// Up close a ring plinth trades its piece for the first version built for it, the plaque's band saying so; a few
+// metres back the piece is there again, and no other plinth has changed.
+const timechainFirst = { name: "timechain first version", why: "rule: up close a plinth shows its first version and its FIRST VERSION word in place of its piece, and stepping back brings the piece back, no other plinth changed", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const r = await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis, N = B.timechain.built.nodes, i = G.PLINTHS.findIndex((p) => p.id === "egold"), s = G.spotOf(i), len = Math.hypot(s.x, s.z);
+    const at = (d) => { B.pilot.navigate({ position: { x: s.x - s.x / len * d, y: 0, z: s.z - s.z / len * d }, yaw: Math.atan2(-s.x, -s.z), pitch: 0.1, dist: 0.6 }); B.pilot.enterClose(); B.advance(1.5, 1 / 30); };
+    const read = () => ({ first: N["galleryFirst" + i].visible && N["galleryFirst" + i].scale.x > 0.99, piece: N["galleryPiece" + i].visible && N["galleryPieceGlass" + i].visible, tag: N["firstTag" + i].visible, others: G.PLINTHS.filter((_, j) => j !== i && (N["galleryFirst" + j].visible || N["firstTag" + j].visible)).length });
+    at(2.5); const near = read(); at(5); const back = read(); return { near, back }; })()`);
+  record("timechain first version: up close a ring plinth shows the first version built for it with FIRST VERSION on its plaque's band, and a few metres back today's piece is there again, no other plinth changed",
+    r.near.first && !r.near.piece && r.near.tag && r.near.others === 0 && !r.back.first && r.back.piece && !r.back.tag && r.back.others === 0, JSON.stringify(r));
+} };
 // Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
 const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
 const timechainMark = { name: "timechain mark", why: "regression: the stream's dots ended their flight in front of the mark's squares and a landing's spark swelled over its neighbours, so squares no dot had reached flashed yellow", run: async (b) => {
@@ -31042,7 +31053,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainHologram, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainHologram, timechainFirst, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 const timechainLectureScreens = {
   name: "timechain lecture screens", why: "regression: projected answers, screen focus, gestures, scrub holds, background sync and live popups follow the same lecture clock", run: async b => {
