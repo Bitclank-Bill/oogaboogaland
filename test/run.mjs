@@ -29315,7 +29315,10 @@ scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
       JSON.stringify(result));
   }
 }] });
-scene("hub", { query: "islandworld=0", opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${hubSleepWire.toString()})()` } : {}, steps: [hubArrival, { name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hudVisit, hubKeptDelivery, hubMapNavigation, hubRainforestSteps, hubRoutes, hubFall, hubGrounding, hubCloudCamera, hubCloudFraming, hubKeypadRedirect, trip("hub"), factoryActivityRouting, hubLiveWake, hubSeparateBodies] });
+scene("hub", { opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${hubSleepWire.toString()})()` } : {}, steps: [hubArrival, { name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hudVisit, hubKeptDelivery, hubMapNavigation, hubRainforestSteps, hubRoutes, hubGrounding, hubCloudCamera, hubCloudFraming, hubKeypadRedirect, trip("hub")] });
+// These steps set Oogas' states or activity by hand and expect the crew to show them at once: the page crew's own
+// routine, which runs with `islandworld=0` (and in tabs from before the island world), not the world's.
+scene("hub", { label: "crew by hand", query: "islandworld=0", steps: [hubSeparateBodies, hubFall, trip("hub"), factoryActivityRouting, hubLiveWake] });
 // The same ownership contract exercises complete destruction on memory-limited devices.
 // A released hub's return enters in slices (`enterSteps`), one at boot or with no slicing in one go (`enter`): the same
 // statements in the same order, so the island it builds, its targets, rock guides and outline registry must be equal.

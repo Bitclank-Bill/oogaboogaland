@@ -69,13 +69,29 @@
       seededAt.fill(Infinity); unseeded = n; age = 0; activityIn = 0;
     };
 
-    if (BL.gameNet && BL.gameNet.offers("island")) {
+    // The server's world, for a signed-in page the Worker offers it to.
+    const startServer = () => {
       stats.mode = "server";
+      sim = null;
+      timeline.clear(); live = false;
       link = BL.gameNet.open("island", "main", {
         state: (msg) => { if (msg.s && Array.isArray(msg.s.cast)) cast(msg.s.cast); },
         motion: (f) => { if (f.kind === SIM.KIND && slots.some(Boolean)) take(f, f.serverMs); }
       });
-    } else startLocal();
+    };
+    // The account this page was kicked from the server's world as, if it was: it stays on its own world until the
+    // account changes, or two tabs of one account would keep taking the world from each other.
+    let kickedAs = null;
+    const offered = () => !!BL.gameNet && BL.gameNet.offers("island") && net.state.me.id !== kickedAs;
+    // On every account change: signed out, the page runs the world itself from where the crew stands; signed in (or
+    // in late, after a failed first look), it follows the server's.
+    const reconcile = () => {
+      const want = offered();
+      if (want && !link) startServer();
+      else if (!want && link) { link.close(); link = null; startLocal(); }
+    };
+    if (offered()) startServer(); else startLocal();
+    const unsubscribe = net.subscribe(reconcile);
     // A local world's states and caves, as the page's own crew reads them (contributors.js `stateFor`, crew.js
     // `siteActive`, whose caves are the layout's in the same order), once a second. An Ooga the crew shows goes to the
     // world only once the crew has placed it, with where it stands (`place`), so the world takes it up from there
@@ -104,7 +120,10 @@
     const update = (dt) => {
       // Kicked for good (another tab of this account took the world, or it is full): the page runs it itself from here,
       // as it would signed out, rather than holding the crew where the last frame left it.
-      if (link && link.state === "refused") { stats.refused = link.refused; link.close(); link = null; startLocal(); }
+      if (link && link.state === "refused") {
+        stats.refused = link.refused; kickedAs = net.state.me ? net.state.me.id : null;
+        link.close(); link = null; startLocal();
+      }
       if (sim) {
         age += dt;
         // Every frame until each Ooga has gone to the world, then once a second.
@@ -139,6 +158,7 @@
       if ((refreshIn -= dt) <= 0 && refresh) { refresh = false; refreshIn = REFRESH_S; crew.refreshStates(true); }
     };
     const dispose = () => {
+      unsubscribe();
       if (link) link.close();
       link = sim = null;
       for (const cave of caves) { unfollow(cave); cave.worldState = null; }
