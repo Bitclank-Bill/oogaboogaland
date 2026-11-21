@@ -756,7 +756,7 @@
       const from = scene.windows.find((w) => w.kind === "travel" && w.row.scene === ctx.from);
       if (from) standBefore(from, 2.8);
       else if (ctx.from === "hub" && crossing) {
-        gateWalk = BL.factoryWindow.portalWalk(pilot, people);
+        gateWalk = BL.factoryWindow.portalWalk(pilot, people, camera, clampCamera);
         const x = clamp(crossing.across, -ENTRY.halfW + 0.5, ENTRY.halfW - 0.5);
         // Clear the field at ordinary zooms without guiding a wide orbit through the central hall.
         gateWalk.begin({ x, y: 0, z: ENTRY.field - 0.1 }, { x, z: ENTRY.field - clamp(BL.factoryWindow.stopPast(0, crossing.view), 3, 6) }, Math.PI, crossing);

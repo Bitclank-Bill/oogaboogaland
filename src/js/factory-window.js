@@ -389,7 +389,8 @@
       const p = cave.root.position, ahead = EYE_AHEAD * cave.traits.height;
       out.x = p.x + Math.sin(heading) * ahead; out.z = p.z + Math.cos(heading) * ahead;
       out.y = p.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift;
-      out.yaw = heading; out.pitch = 0;
+      // Walking backwards or diagonally through a door must not turn the view down its axis.
+      out.yaw = heading + (returnView ? returnView.relYaw + Math.PI : 0); out.pitch = returnView ? -returnView.pitch : 0;
     };
     const read = (out) => {
       const p = camera.position, t = camera.target, dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
@@ -434,7 +435,7 @@
       const p = walker.root.position;
       const yaw = kept ? heading + kept.relYaw : walker.root.rotation.y + Math.PI;
       pilot.navigate({ position: { x: p.x, y: p.y - walker.baseY, z: p.z }, yaw: kept?.view === "first-person" ? yaw : walker.root.rotation.y + Math.PI, pitch: kept ? kept.pitch : LET_GO_PITCH, dist: kept ? kept.distance : dist });
-      if (kept) { kept.relYaw = yaw - walker.root.rotation.y; pilot.adopt(kept); }
+      if (kept) { kept.relYaw = yaw - walker.root.rotation.y; pilot.adopt(kept, false); }
       if (focus) pilot.focusAim();
       pilot.controls.takeMovement();
     };
@@ -477,14 +478,28 @@
       yaw: view.view === "first-person" ? yaw : heading + state.bodyYaw - Math.PI,
       pitch: view.pitch, dist: view.distance, framed: true });
     view.relYaw = yaw - actor.root.rotation.y;
-    pilot.adopt(view);
+    pilot.adopt(view, false);
     if (state.focused) pilot.focusAim();
   };
   // A short portal landing with the body and retained camera translated together.
   // It also works backwards: no guide turn, camera snap, or synthetic held key.
-  const portalWalk = (pilot, crew) => {
+  const portalWalk = (pilot, crew, camera = null, clampCamera = null) => {
     const matrix = BL.math.mat4.create();
     let walk = null;
+    const displayClamp = (undo = false) => {
+      if (!walk || !camera || !clampCamera) return;
+      const p = camera.position, t = camera.target, w = walk;
+      if (undo) {
+        p.x -= w.cx; p.y -= w.cy; p.z -= w.cz;
+        t.x -= w.cx; t.y -= w.cy; t.z -= w.cz;
+        w.cx = w.cy = w.cz = 0;
+      } else {
+        const x = p.x, y = p.y, z = p.z;
+        clampCamera(p);
+        w.cx = p.x - x; w.cy = p.y - y; w.cz = p.z - z;
+        t.x += w.cx; t.y += w.cy; t.z += w.cz;
+      }
+    };
     const reset = (resume = false) => {
       if (!walk) return;
       const same = pilot.player === walk.actor, focused = walk.focused;
@@ -499,24 +514,29 @@
       if (!actor || !state) return;
       restoreDoorView(pilot, heading, state, from);
       const p = actor.root.position;
-      walk = { actor, x: p.x, z: p.z, y: p.y, lastX: p.x, lastZ: p.z, dx: to.x - p.x, dz: to.z - p.z,
+      walk = { actor, cx: 0, cy: 0, cz: 0, x: p.x, z: p.z, y: p.y, lastX: p.x, lastZ: p.z, dx: to.x - p.x, dz: to.z - p.z,
         heading: actor.root.rotation.y, back: Math.cos(state.bodyYaw) < 0, focused: state.focused, groundAt, duration: Math.max(0.85, Math.hypot(to.x - p.x, to.z - p.z) / 4.5), time: 0 };
       pilot.setExternalControl(true);
+      displayClamp();
       crew.steer(0, 0);
     };
     const update = (dt) => {
       if (!walk) return;
       const w = walk, p = w.actor.root.position;
       if (pilot.player !== w.actor || Math.hypot(p.x - w.lastX, p.z - w.lastZ) > 0.5 || Math.abs(p.y - w.y) > 1) { reset(true); return; }
+      displayClamp(true);
       w.time = Math.min(1, w.time + dt / w.duration);
       const k = w.time * w.time * (3 - 2 * w.time), x = w.x + w.dx * k, z = w.z + w.dz * k;
       BL.math.mat4.identity(matrix);
       const y = w.groundAt ? w.groundAt(x, z) + w.actor.baseY : w.y;
       if (!Number.isFinite(y)) { reset(true); return; }
-      matrix[12] = x - p.x; matrix[13] = y - p.y; matrix[14] = z - p.z;
+      // The crew may already have adjusted the feet to a stair this frame; the
+      // retained camera still stands at last frame's height. Translate it once.
+      matrix[12] = x - w.lastX; matrix[13] = y - w.y; matrix[14] = z - w.lastZ;
       p.x = w.lastX = x; p.y = w.y = y; p.z = w.lastZ = z;
       w.actor.root.rotation.y = w.heading;
       pilot.transformView(matrix, 0);
+      displayClamp();
       BL.crew.poseGait(w.actor, BL.crew.GAIT.walk, Math.hypot(w.dx, w.dz) * k * 4 * (w.back ? -1 : 1));
       BL.crew.poseCloseWalk(w.actor, 0, w.back);
       if (w.time === 1) reset(true);

@@ -62,13 +62,14 @@
       lens: null, glide: 1, heading: 0, focused: false, returnView: null, from: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, fromFov: 0, pitch: 0, head: null };
     const set = (phase) => { if (state.phase !== phase) { state.phase = phase; onState(phase); } };
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-    // The eye as the pilot's first person places it, looking straight down the way through, so the view held here and
-    // the one the other scene takes over are the same view whichever way the Ooga was still turning.
+    // Keep the look relative to the doorway, including a visitor backing through it.
+    // Both scenes use the same eye while the guided body clears the threshold.
     const eyePose = (cave, out) => {
       const p = cave.root.position, heading = state.heading, ahead = 0.16 * cave.traits.height * Math.cos(state.pitch);
       out.x = p.x + Math.sin(heading) * ahead; out.z = p.z + Math.cos(heading) * ahead;
       out.y = p.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift;
-      out.yaw = heading; out.pitch = state.pitch;
+      out.yaw = heading + (state.returnView ? state.returnView.relYaw + Math.PI : 0);
+      out.pitch = state.returnView ? -state.returnView.pitch : state.pitch;
     };
     const readPose = (out) => {
       const p = camera.position, t = camera.target, dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
@@ -97,7 +98,7 @@
       const kept = state.returnView;
       const yaw = kept ? state.heading + kept.relYaw : cave.root.rotation.y + Math.PI;
       pilot.navigate({ position: { x: p.x, y: p.y - cave.baseY, z: p.z }, yaw: kept?.view === "first-person" ? yaw : cave.root.rotation.y + Math.PI, pitch: kept ? kept.pitch : LET_GO_PITCH, dist: kept ? kept.distance : followMin });
-      if (kept) { kept.relYaw = yaw - cave.root.rotation.y; pilot.adopt(kept); }
+      if (kept) { kept.relYaw = yaw - cave.root.rotation.y; pilot.adopt(kept, false); }
       state.returnView = null;
       // Mouse-look, if the walk took it away.
       if (state.focused) pilot.focusAim();

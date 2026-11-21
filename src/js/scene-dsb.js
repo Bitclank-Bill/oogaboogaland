@@ -365,7 +365,7 @@
         pilot.setActive(true);
         if(pilot.player!==avatar)pilot.possess(avatar);
         pilot.navigate({position,target:{x:position.x,y:position.y+1.7,z:position.z},yaw:interiorView?.view==="first-person"?yaw+Math.PI+interiorView.relYaw:yaw,pitch:interiorView?interiorView.pitch:.22,dist:interiorView?interiorView.distance:dist});
-        if(interiorView)pilot.adopt(interiorView);
+        if(interiorView)pilot.adopt(interiorView, false);
         pilot.setActive(!interiors?.transitioning);
       },
       // An entry or exit leaves the outdoor scope from its request, before the fade or the room's swap.

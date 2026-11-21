@@ -1218,15 +1218,15 @@
       && past > Math.max(-G.reach, d.plane - HANGAR_IN + OUT_SLACK) && toward > G.moving;
   };
   // On in through the hangar door's shield from the hangar: as far to its side and as far past it as the Ooga went
-  // through the hangar's, facing out along the walkway, the view square behind it, and the walk on.
+  // through the hangar's, keeping the doorway-relative view while walking on.
   const walkInHangar = (c) => {
     walk.view = c.doorView;
     const G = BL.factoryWindow.GLIDE, at = BL.factoryWindow.arrival(HANGAR_WAY, clamp(c.side, -1.2, 1.2), clamp(c.past, 0, G.past), ARRIVE);
-    pilot.navigate({ yaw: at.yaw, pitch: clamp(c.pitch, FOLLOW.pitch[0], IN_PITCH), dist: clamp(c.dist, FOLLOW.min, IN_VIEW), position: { x: at.x, y: LAYOUT.hangar.y, z: at.z }, framed: true });
-    pilot.orbit.tDist = HANGAR_ARRIVAL.dist;
+    if (walk.view) BL.factoryWindow.restoreDoorView(pilot, Math.atan2(-HANGAR_WAY.ox, -HANGAR_WAY.oz), walk.view, { x: at.x, y: LAYOUT.hangar.y, z: at.z });
+    else pilot.navigate({ yaw: at.yaw, pitch: clamp(c.pitch, FOLLOW.pitch[0], IN_PITCH), dist: clamp(c.dist, FOLLOW.min, IN_VIEW), position: { x: at.x, y: LAYOUT.hangar.y, z: at.z }, framed: true });
     const p = avatar.root.position;
     Object.assign(walk, { phase: HANGAR_ON, t: 0, x: p.x, z: p.z, through: false });
-    pilot.setExternalControl(true);
+    pilot.setExternalControl(true, null, true);
   };
   // The walk through the hangar's door, as the gate's (`walkStep`): down the door's middle, into the hangar with an
   // instant switch, or on from it to where an arrival stands.
@@ -1251,8 +1251,6 @@
     w.x = p.x; w.z = p.z;
     const k = off ? G.ahead : -G.ahead, wx = d.ox * k + d.oz * side * 0.6, wz = d.oz * k - d.ox * side * 0.6, l = Math.hypot(wx, wz);
     people.steer(wx / l, wz / l, 0, 1, 0, G.speed);
-    const behind = off ? Math.atan2(-d.ox, -d.oz) : Math.atan2(d.ox, d.oz);
-    o.tYaw = o.yaw + Math.atan2(Math.sin(behind - o.yaw), Math.cos(behind - o.yaw));
     if (!off) return;
     if (!w.through && past >= 0) {
       w.through = true;
@@ -2322,7 +2320,7 @@
       } else if (!hangarHeld && driven === avatar && walkingToHangar(s, p, previousX, previousZ, dt)) {
         walk.view = BL.factoryWindow.doorView(pilot, Math.atan2(HANGAR_WAY.ox, HANGAR_WAY.oz));
         Object.assign(walk, { phase: HANGAR_OFF, t: 0, x: p.x, z: p.z, through: false });
-        pilot.setExternalControl(true);
+        pilot.setExternalControl(true, null, true);
         pilot.controls.reset(); input.reset(); hud.tooltip.hide();
       } else if (!exitHeld && inOpening && p.z > HALL.front - 1.3) leaveCave();
       else if (!hangarHeld && throughHangar(s, p, driven.baseY)) enterHangar();
