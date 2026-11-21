@@ -31230,6 +31230,19 @@ const timechainTrip = { name: "timechain round trip", why: "contract: a room lef
     laps.every(l => l.scene === "timechain" && l.room === 0 && l.timers === 0 && l.requests === 0) && grew.length === 0 && donated.scene === "timechain" && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25,
     JSON.stringify({ grew, donated, first: laps[0], second: laps[1] }));
 } };
+// The Genesis Museum's glass floor on WebGL: one glossy reflector over it, gentle enough that the world under the glass
+// shows through, which the renderer captures once the floor is in view (its Canvas 2D side is `timechainCanvas`).
+const timechainGlass = { name: "timechain glass", why: "rule: the Genesis Museum's glass floor softly mirrors the room on WebGL", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const r = await b.evaluate(`(async () => { const B = window.__ooga, R = B.renderer, n = B.timechain.built.nodes.glassSheen;
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 7.5 }, yaw: 0, pitch: -0.2, dist: 2.4 }); B.pilot.enterClose(); B.advance(0.3, 1 / 30);
+    const f0 = B.renderedFrames; for (const t0 = performance.now(); B.renderedFrames < f0 + 6 && performance.now() - t0 < 10000;) await new Promise((done) => requestAnimationFrame(done));
+    const g = n && n.geometry;
+    return { kind: R.kind, sheen: !!n, visible: !!(n && n.visible), reflector: !!(g && g.reflector), gloss: g ? g.gloss : 0, captured: !!(g && R.cameraFeedReady({ geometry: g })) };
+  })()`);
+  record("timechain glass: on WebGL the Genesis Museum's glass floor carries one gentle glossy reflector, captured once the floor is in view",
+    r.kind === "webgl2" && r.sheen && r.visible && r.reflector && r.gloss > 0 && r.gloss < 1 && r.captured, JSON.stringify(r));
+} };
 // The Genesis Museum's door into the Mining Museum, walked by a solo visitor, and the room left with its reader open and
 // with a block half mined.
 const timechainPortal = { name: "timechain portal", why: "contract: the Genesis Museum's door hands a solo visitor into the Mining Museum publishing nothing, and the room left with the reader open or a block half mined leaves nothing behind", run: async (b) => {
@@ -31360,15 +31373,21 @@ const timechainMark = { name: "timechain mark", why: "regression: the stream's d
   record("timechain mark: between landings every white square of the mark keeps its colour, no dot of the stream comes in front of the squares and no landing's spark grows past its own square",
     r.frames >= 60 && r.squares > 200 && r.dotsOver > 0 && r.turned > 0 && r.inFront === 0 && r.swollen === 0 && r.worst <= 16, JSON.stringify(r));
 } };
-const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D", run: async (b) => {
+const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D, and a glass floor keeps no reflection there", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
   record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 1 && r.view === "first-person", JSON.stringify(r));
+  // The Genesis Museum's glass floor: its sheen is WebGL's alone, so on Canvas 2D no reflector of the room is shown.
+  await b.evaluate(genesisGo);
+  const g = await b.evaluate(`(() => { const B = window.__ooga, N = B.timechain.built.nodes, shown = Object.keys(N).filter((k) => N[k].geometry && N[k].geometry.reflector && N[k].visible);
+    return { kind: B.renderer.kind, room: B.timechain.room.id, sheen: !!N.glassSheen, shown }; })()`);
+  record("timechain canvas2d: the Genesis Museum builds its glass floor's sheen and shows no reflector of it on Canvas 2D",
+    g.kind === "canvas2d" && g.room === 8 && g.sheen && g.shown.length === 0, JSON.stringify(g));
 } };
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainMarkLink, timechainHologram, timechainFirst, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainMarkLink, timechainHologram, timechainGlass, timechainFirst, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 const timechainLectureScreens = {
   name: "timechain lecture screens", why: "regression: projected answers, screen focus, gestures, scrub holds, background sync and live popups follow the same lecture clock", run: async b => {

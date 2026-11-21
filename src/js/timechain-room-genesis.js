@@ -1170,7 +1170,9 @@
   // wave across the map, the dome's net) runs over it. Everything is soft additive light (the renderer's blended
   // pictures) or thin lines; every clock is the room's (`net.serverNow`), so every visitor sees the same moment;
   // nothing allocates a frame, and nothing is sent anywhere.
-  const POC = { glassY: 0, roadY: -0.5, chainY: -1.6, pitY: -2.3, cycle: 48, stream: 20, turn: 3, burst: 2, charge: 3, net: 6, fade: 4, atoms: 40, spacing: 0.32, glass: 0.08, spokes: 0, seams: 0, pulses: 48, motes: 24, netDots: 24, chain: 96, chainR0: 2.2, chainR1: 11.8 };
+  // `gloss` is the glass's sheen (`glassSheen`), laid `sheenLift` over its top; under it the glass pales toward a
+  // glancing view only `grazing` as much as glass does (as the Block Party's floors), so the sheen shows there.
+  const POC = { glassY: 0, gloss: 0.55, sheenLift: 0.001, grazing: 0.35, roadY: -0.5, chainY: -1.6, pitY: -2.3, cycle: 48, stream: 20, turn: 3, burst: 2, charge: 3, net: 6, fade: 4, atoms: 40, spacing: 0.32, glass: 0.08, spokes: 0, seams: 0, pulses: 48, motes: 24, netDots: 24, chain: 96, chainR0: 2.2, chainR1: 11.8 };
   // Soft additive light: a radial gradient on a quad the renderer blends after the glass (its "add" pictures), so
   // every dot under the floor, and the ₿'s glow above, is light with no edge. `peak` is the middle's alpha.
   const rgba = (hex, al) => { const c = BL.math.hexToRgb(hex); return `rgba(${c[0]},${c[1]},${c[2]},${al})`; };
@@ -1394,12 +1396,17 @@
     const blockGeo = own(() => noShadow(BL.models.merge(box({ w: 0.6, h: 0.6, d: 0.6, color: "#3b2608" }), box({ w: 0.56, h: 0.56, d: 0.62, color: C.btc, emissive: 0.8 }), box({ w: 0.62, h: 0.56, d: 0.56, color: C.btc, emissive: 0.8 }))));
     const bar = own(() => noShadow(box({ w: 1, h: 0.04, d: 0.04, color: C.amber, emissive: 0.9, offset: { x: 0.5 } })));
     const ring = own(() => { const g = RM.helpers.blank(), n = 28, r0 = 0.55, r1 = 0.8; for (let k = 0; k < n; k++) { const a = TAU * k / n, b = TAU * (k + 1) / n; RM.helpers.face(g, [[r0 * Math.sin(a), 0, -r0 * Math.cos(a)], [r1 * Math.sin(a), 0, -r1 * Math.cos(a)], [r1 * Math.sin(b), 0, -r1 * Math.cos(b)], [r0 * Math.sin(b), 0, -r0 * Math.cos(b)]], C.btc, 1, [0, 1, 0]); } return noShadow(g); });
+    // The glass's sheen, one disc over the whole floor out to just short of the wall, built once a room.
+    const glassSheen = RM.helpers.perRoom((id) => RM.helpers.glossSheet(0, ROOMS.layout(id).r0 - 0.02, 0, TAU, POC.gloss));
     // The void: a black disc far below, its two outer rings a faint cool glow (the atmosphere of the night-side references,
     // in the mesh itself rather than a dozen large blended sprites).
     const voidFloor = (L) => { const rf = L.r0 + 0.3, geo = RM.helpers.blank(), rings = 6, sectors = 48; for (let i = 0; i < rings; i++) { const r0 = rf * i / rings, r1 = rf * (i + 1) / rings; for (let k = 0; k < sectors; k++) { const b0 = TAU * k / sectors, b1 = TAU * (k + 1) / sectors, pt = (r, b) => [r * Math.sin(b), 0, -r * Math.cos(b)]; RM.helpers.face(geo, i === 0 ? [[0, 0, 0], pt(r1, b0), pt(r1, b1), pt(r1, b1)] : [pt(r0, b0), pt(r1, b0), pt(r1, b1), pt(r0, b1)], i < 4 ? "#020308" : i === 4 ? "#06111a" : "#0c2434", i < 4 ? 0 : 0.5, [0, 1, 0]); } } return noShadow(geo); };
     const FLAT = { rx: -HALF_PI, glow: true, scale: 0.001 };
     const plan = (K, L) => {
-      K.floorColor(C.glass); K.floorGlass(PALETTE.glass); K.rimColor("#1d5566");
+      K.floorColor(C.glass); K.floorGlass(PALETTE.glass, POC.grazing); K.rimColor("#1d5566");
+      // The glass's sheen (the room kit's `glossSheet`, as the Block Party's glass and the Hangar's runway): the room
+      // mirrored softly in it, gentle enough that the world under it still shows through. WebGL's alone.
+      K.node("glassSheen", glassSheen(L.id), 0, POC.glassY + POC.sheenLift, 0, { rx: -HALF_PI, glow: true });
       K.add(voidFloor(L), 0, M.voidY, 0);
       K.add(coastlines(), 0, M.mapY, 0, { glow: true });
       K.add(arcs(), 0, 0, 0);
