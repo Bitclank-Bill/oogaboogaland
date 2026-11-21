@@ -186,10 +186,11 @@
   const apply = (cave, value) => {
     if (!cave || !BL.characterEquipment) return;
     const old = applied.get(cave);
-    if (old && old.value === value && old.geometryEpoch === geometryEpoch) return;
+    // A body still waiting on the wardrobe's chunk asks again once its retry step has passed (`loadWardrobe` keeps it).
+    if (old && old.value === value && old.geometryEpoch === geometryEpoch) { if (old.wardrobe) loadWardrobe(); return; }
     const s = value ? value.selection : null, wardrobe = value ? value.wardrobe || null : null;
     if (!wardrobeReady(wardrobe)) {
-      applied.set(cave, { value, geometryEpoch, pending: true });
+      applied.set(cave, { value, geometryEpoch, pending: true, wardrobe: true });
       loadWardrobe(); return;
     }
     if (s && s.item !== "none" && !BL.equipmentHats.loaded(s.item, s.version)) {
