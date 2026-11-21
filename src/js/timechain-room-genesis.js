@@ -731,9 +731,10 @@
 
   // A plinth's first version as the room stands it on the plinth (`FIRST`), in the plinth's own frame with its top at
   // y = 0, settled (`GF.settle`) and with a cool ring of light on the deck round its foot. Built in the room's
-  // preparation, one plinth a step (`steps`), and kept; `firstMade` is the last one built for each plinth, so a step
-  // whose plinth's first version is still kept takes no frame.
-  const firstMade = [];
+  // preparation, one plinth a step (`steps`), and kept until the director lets the `timechain` scope go. `firstBuilds`
+  // counts the builds of each plinth's first version, never holding one, so a step whose plinth's first version is
+  // still kept takes no frame, and one let go is built again.
+  const firstBuilds = new Uint32Array(PLINTHS.length);
   const firstPiece = RM.helpers.perRoom((i) => {
     const p = PLINTHS[i], piece = GF.settle(RM.solo((k) => GF.model(k, p.model, FIRST.scale[p.model] || 1, RISE + 0.005, { unit: BIG, lip: RISE })));
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -742,7 +743,8 @@
     for (let v = 0; v < piece.verts.length; v += 3) { if (piece.verts[v + 1] < RISE + 0.012 || piece.verts[v + 2] < DECK.strip) continue; x0 = Math.min(x0, piece.verts[v]); x1 = Math.max(x1, piece.verts[v]); z0 = Math.min(z0, piece.verts[v + 2]); z1 = Math.max(z1, piece.verts[v + 2]); }
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, r = Math.min(0.55 * Math.hypot(x1 - x0, z1 - z0), widthOf(p) / 2 - DECK.margin - Math.abs(cx), cz - DECK.front - DECK.margin, DECK.back - cz - DECK.margin);
     const foot = RM.solo((k) => k.torus(r, 0.006, C.glow, cx, RISE + 0.008, cz, { emissive: 1, glow: true, seg: 64, sides: 4 }));
-    return (firstMade[i] = BL.models.merge(piece, noShadow(foot)));
+    firstBuilds[i]++;
+    return BL.models.merge(piece, noShadow(foot));
   });
 
   // ---------- pictures ----------
@@ -1296,7 +1298,7 @@
     return { verts, faces, lines: [] };
   });
   // The Temple's own steps build the statue at the doorway, a little each frame, and the last one makes the figure.
-  const steps = () => { const temple = BL.timechainRoomKinds.temple, first = PLINTHS.map((p, i) => () => { const was = firstMade[i]; return firstPiece(i) === was ? false : undefined; }); return temple && temple.steps ? [...temple.steps(), () => { holoFigure(); }, ...first] : first; };
+  const steps = () => { const temple = BL.timechainRoomKinds.temple, first = PLINTHS.map((p, i) => () => { const was = firstBuilds[i]; firstPiece(i); return firstBuilds[i] === was ? false : undefined; }); return temple && temple.steps ? [...temple.steps(), () => { holoFigure(); }, ...first] : first; };
   // The light the emitter throws up: a cone's skin from its ring to the ring under the figure, fading on the way (the
   // renderer's light beams fade along their own x, so the cone is built lying down and stood up).
   // The column of light over a plinth while its piece and its first version change places: a cylinder's skin of
@@ -2186,6 +2188,6 @@
     portal.bind(self);
     return self;
   };
-  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, LINK, RING, BIG, TOP, RISE, DEPTH, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
+  BL.timechainGenesis = { plan, animate, door, EXHIBITS, PLINTHS, firstBuilds, LINK, RING, BIG, TOP, RISE, DEPTH, widthOf, loops: { inner: TRAV.r, outer: TRAV2.r, width: TRAV.w, speed: TRAV.speed, doorGap: TRAV2.doorGap }, CLIPPINGS, QUOTES, THREADS, paintPlaque, paintDome, spotOf, azOf, ceilingBoxes: CEILING_BOXES, inscriptions: INSCRIPTIONS, readerPage: -1 };
   BL.timechainRoomKinds.genesis = { plan, steps, animate, door };
 })();

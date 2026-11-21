@@ -30993,9 +30993,19 @@ const timechainFirst = { name: "timechain first version", why: "rule: up close a
   const r = await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis, N = B.timechain.built.nodes, i = G.PLINTHS.findIndex((p) => p.id === "egold"), s = G.spotOf(i), len = Math.hypot(s.x, s.z);
     const at = (d) => { B.pilot.navigate({ position: { x: s.x - s.x / len * d, y: 0, z: s.z - s.z / len * d }, yaw: Math.atan2(-s.x, -s.z), pitch: 0.1, dist: 0.6 }); B.pilot.enterClose(); B.advance(1.5, 1 / 30); };
     const read = () => ({ first: N["galleryFirst" + i].visible && N["galleryFirst" + i].scale.x > 0.99, piece: N["galleryPiece" + i].visible && N["galleryPieceGlass" + i].visible, tag: N["firstTag" + i].visible, others: G.PLINTHS.filter((_, j) => j !== i && (N["galleryFirst" + j].visible || N["firstTag" + j].visible)).length });
-    at(2.5); const near = read(); at(5); const back = read(); return { near, back }; })()`);
+    at(2.5); const near = read(); at(5); const back = read(); window.__firstHeld = N["galleryFirst" + i].geometry; return { near, back, builds: [...G.firstBuilds] }; })()`);
   record("timechain first version: up close a ring plinth shows the first version built for it with FIRST VERSION on its plaque's band, and a few metres back today's piece is there again, no other plinth changed",
     r.near.first && !r.near.piece && r.near.tag && r.near.others === 0 && !r.back.first && r.back.piece && !r.back.tag && r.back.others === 0, JSON.stringify(r));
+  // Entering the room again from inside the Sphere builds no first version again; leaving the Sphere lets every one go
+  // with the director's release of its scope (the room keeps none of its own), so the next visit builds each afresh.
+  const builds = () => b.evaluate(`[...BL.timechainGenesis.firstBuilds]`);
+  await b.evaluate(genesisGo);
+  const again = await builds();
+  await b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("lab"); while ((B.transitioning || B.scene !== "lab") && performance.now() - t0 < 60000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`);
+  await b.evaluate(genesisGo);
+  const after = await builds(), fresh = await b.evaluate(`(() => { const i = BL.timechainGenesis.PLINTHS.findIndex((p) => p.id === "egold"), fresh = window.__ooga.timechain.built.nodes["galleryFirst" + i].geometry !== window.__firstHeld; delete window.__firstHeld; return fresh; })()`);
+  record("timechain first version: entering the room again inside the Sphere builds no first version again, and leaving the Sphere releases all 26 with its scope, so the next visit builds each afresh",
+    again.every((n, k) => n === r.builds[k]) && after.every((n, k) => n === r.builds[k] + 1) && fresh, JSON.stringify({ first: r.builds, again, after, fresh }));
 } };
 // The ₿ over the crown leads to the site whose feed it draws: a press on it (window.open stubbed) opens mempool.space
 // in a new tab with no opener and no referrer, and its tip says so.
