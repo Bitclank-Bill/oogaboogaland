@@ -127,8 +127,8 @@ test("presence relays without positions; a member sends nothing but lines; the i
   assert.ok(kinds.includes("join") && kinds.includes("body") && kinds.includes("zone") && kinds.includes("hand"));
   assert.ok(!kinds.includes("state"), "no pose snapshot ever reaches a member");
   assert.deepEqual(Object.keys(app.sent.find((m) => m.t === "join").p).sort(), ["body", "display", "hand", "handEmoji", "handTone", "id", "login", "muted", "voice", "zone"]);
-  // A member's world actions are ignored: no body, no reaction, no private conversation, no link.
-  for (const msg of [{ t: "body", name: "bea" }, { t: "react", e: "🔥" }, { t: "pm", op: "invite", to: 1 }, { t: "link", to: 1, on: true }, { t: "zone", name: "outside" }])
+  // A member's world actions are ignored: no body, no reaction, no private conversation (a voice link is its own check).
+  for (const msg of [{ t: "body", name: "bea" }, { t: "react", e: "🔥" }, { t: "pm", op: "invite", to: 1 }, { t: "zone", name: "outside" }])
     await h.send(app, msg);
   assert.equal(h.room.players.size, 1);
   assert.equal(isle.sent.filter((m) => m.t === "react" || m.t === "pm" || m.t === "links" && m.wants && m.wants.length).length, 0);
@@ -136,6 +136,29 @@ test("presence relays without positions; a member sends nothing but lines; the i
   assert.deepEqual(app.sent.filter((m) => m.t === "clouds").at(-1).clouds.map((c) => c.id), ["gh:2"], "cloud speakers are in Online Oogas too");
   await h.room.webSocketMessage(app, "not json");
   assert.equal(app.closed.code, 4400);
+});
+
+test("a voice link shows and holds in both apps: a member sees its account's links, asks from Ooga Chat, and hears asks made on the island", async () => {
+  const h = await harness();
+  const isle = await h.player(1, "amy"), mine = await h.player(2, "ottoz0r");
+  const { ws: app } = await h.member(2, "ottoz0r");
+  assert.deepEqual(app.sent.find((m) => m.op === "welcome").links, { wants: [], linked: [] }, "the welcome carries the account's links");
+  const links = (ws) => ws.sent.filter((m) => m.t === "links").at(-1);
+  // Asked on the island: the account's Ooga Chat member hears it too.
+  await h.send(mine, { t: "link", to: 1, on: true });
+  assert.deepEqual(links(app), { t: "links", wants: [1], linked: [] }, "the island's ask, without its words to the asker");
+  // Asked back from the other side: both of the account's sockets read it linked.
+  await h.send(isle, { t: "link", to: 2, on: true });
+  assert.deepEqual(links(app).linked, [1]);
+  assert.deepEqual(links(mine).linked, [1]);
+  // Taken back from Ooga Chat: the same ask the island keeps, so the island player and amy hear the link broken.
+  await h.send(app, { t: "link", to: 1, on: false });
+  assert.deepEqual(links(app).wants, []);
+  assert.deepEqual(links(mine).wants, [], "the island page of the same account follows");
+  assert.deepEqual(links(isle), { t: "links", wants: [2], linked: [] }, "amy's ask still stands, theirs to cancel");
+  // A member can only ask an island player, as the island can.
+  await h.send(app, { t: "link", to: 99, on: true });
+  assert.deepEqual(links(app).wants, []);
 });
 
 test("access ends: signing out or losing eligibility closes the account's members; the sweep's deadline closes them too", async () => {

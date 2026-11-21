@@ -32,6 +32,11 @@ const enabled = (room) => !!room.env && !!room.env.AUDIENCE && bridgeFeatures(ro
 // The outdoor handshake and Ooga Chat speakers heard on the island: the island's `outdoor` switch, which is its kill switch.
 const outdoorOn = (room) => enabled(room) && bridgeFeatures(room.env).outdoor;
 const isOpen = (p) => !!p.outdoor && p.outdoor.state === "open";
+// Accounts `id` holds a voice link with (both asked; protocol.js `voiceLinked`, kept here to stay out of its import).
+const partnersOf = (room, id) => {
+  const wants = room.links && room.links.get(id);
+  return wants ? [...wants].filter((other) => !!room.links.get(other)?.has(id)) : [];
+};
 /** Overhearing: a receive session the page opened by itself (`session` with `passive`), with no microphone of its own.
  *  It is in nobody's voice: it hears no place, only the public conversation `addSources` lists for it and a linked
  *  partner. A publishing session ends it. */
@@ -109,7 +114,7 @@ export const audienceRoom = {
   // The island's word on its players, sent only when it changes (or `force`d), newest `seq` winning at the Audience.
   world(room, force = false) {
     if (!enabled(room)) return null;
-    const speakers = [], active = [];
+    const speakers = [], active = [], linked = [];
     for (const p of room.players.values()) {
       // In the island's voice at all: its source wins.
       const inVoice = inVoiceOf(p);
@@ -122,10 +127,16 @@ export const audienceRoom = {
           hand: p.hand ? p.handEmoji || globalThis.BL.reactionPolicy.toned(globalThis.BL.reactionPolicy.HAND, p.handTone || 0) : "",
           // The microphone's publication, by reference, for Ooga Chat's listeners to pull (#666); a new one is a new gen.
           pub: p.voice.pub && p.voice.track ? { session: p.voice.pub, track: p.voice.track, gen: p.voice.gen || 0 } : null });
+      // A voice link holds wherever the player stands: its partners hear it from Ooga Chat too, public or not, and
+      // nobody else does. The publication goes by reference, with the partners who may pull it.
+      const partners = inVoice && outdoorOn(room) && p.voice.pub && p.voice.track ? partnersOf(room, p.id) : [];
+      if (partners.length) linked.push({ id: selfOf(p), to: partners.sort((a, b) => a - b).map((id) => `gh:${id}`),
+        pub: { session: p.voice.pub, track: p.voice.track, gen: p.voice.gen || 0 } });
     }
     speakers.sort((a, b) => (a.id < b.id ? -1 : 1));
+    linked.sort((a, b) => (a.id < b.id ? -1 : 1));
     active.sort();
-    const sig = JSON.stringify([speakers, active]);
+    const sig = JSON.stringify([speakers, active, linked]);
     if (room.audienceWorld === sig && !force) return null;
     room.audienceWorld = sig;
     room.audienceSeq = Math.max(Date.now(), (room.audienceSeq || 0) + 1);
@@ -133,7 +144,7 @@ export const audienceRoom = {
     // island's word is sent again from the Room's alarm (`retry`), so a grant the Room took back never leaves the
     // Audience listing its publication.
     // Its answer also carries the public receivers it counts now, which corrects a count the Room missed.
-    const told = stub(room).world(room.audienceSeq, speakers, active).then((answer) => {
+    const told = stub(room).world(room.audienceSeq, speakers, active, linked).then((answer) => {
       room.audienceRetry = null;
       if (answer && answer.ok && answer.listeners) audienceRoom.listeners(room, answer.listeners, true);
       return answer;
@@ -243,17 +254,19 @@ export const audienceRoom = {
     const sources = room.chatSources || [];
     if (!outdoorOn(room)) return plan;
     for (const p of room.players.values()) {
-      const o = p.outdoor;
-      if (!isOpen(p) || !isZone(o.scope)) continue;
+      const o = p.outdoor, open = isOpen(p) && isZone(o.scope);
+      // A linked partner speaking from Ooga Chat is heard wherever this player stands, as a linked island one is.
+      const partners = p.voice && p.voice.sub ? partnersOf(room, p.id) : [];
+      if (!open && !partners.length) continue;
       const peers = plan.get(p.id) || [];
-      if (o.scope === "main" && overhearing(p))
+      if (open && o.scope === "main" && overhearing(p))
         for (const q of room.players.values()) if (q !== p && q.voice && q.voice.track && isOpen(q) && q.outdoor.scope === o.scope && !peers.includes(q.id)) peers.push(q.id);
       for (const s of sources) {
         const v = room.players.get(s.id)?.voice;
         // During handoff an old chat reference can still be in flight. Never use it to admit an island microphone
         // from another place: that source is governed by voicePeers, and must not inherit a public chat grant.
         if (v && v.pub && v.track) continue;
-        if (s.zone === o.scope && s.id !== p.id && !peers.includes(s.id)) peers.push(s.id);
+        if (s.id !== p.id && !peers.includes(s.id) && (open && s.zone === o.scope || partners.includes(s.id))) peers.push(s.id);
       }
       plan.set(p.id, peers);
     }
@@ -358,11 +371,21 @@ export const audienceRoom = {
   // `quiet`: from a `world` answer, which repeats the count unchanged far more often than it changes: tell only a change.
   listeners(room, counts, quiet = false) {
     const next = { main: Number.isSafeInteger(counts && counts.main) ? counts.main : 0, dsb: Number.isSafeInteger(counts && counts.dsb) ? counts.dsb : 0 };
+    // Linked partners in Ooga Chat hearing an island player wherever it is: they keep its microphone from being alone.
+    const ears = {};
+    if (counts && counts.ears && typeof counts.ears === "object") for (const [id, n] of Object.entries(counts.ears).slice(0, 64))
+      if (/^gh:[1-9][0-9]{0,19}$/.test(id) && Number.isSafeInteger(n) && n > 0 && n < 64) ears[id] = n;
+    const earsWere = JSON.stringify(room.audienceEars || {}), earsNow = JSON.stringify(ears);
+    room.audienceEars = ears;
+    if (earsWere !== earsNow) room.updateVoice();
     const was = room.audienceCounts;
     room.audienceCounts = next;
     if (quiet && was && was.main === next.main && was.dsb === next.dsb) return;
     for (const p of room.players.values()) if (isOpen(p)) audienceRoom.tellAudience(room, p);
   },
+
+  /** How many linked partners hear player `id` from Ooga Chat now (`listeners`' `ears`). */
+  ears: (room, id) => (room.audienceEars && room.audienceEars[`gh:${id}`]) || 0,
 
   // A woken or redeployed Room: a grant the switch no longer allows is taken back, and every grant is checked again.
   restore(room) {

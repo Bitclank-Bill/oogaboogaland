@@ -42779,7 +42779,7 @@ const cloudPanelChecks = async BL => {
   const window = { BL: { audience: BL.audience, reactionPolicy: BL.reactionPolicy,
     net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
     voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
-    hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {} },
+    hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {}, showAccount() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
     nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible },
     reactions: { mount: (host, options) => { gate = options.handAllowed; }, refresh: () => refreshes.push(gate()) } } };
@@ -43022,6 +43022,7 @@ const playersColumnChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/routes.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/zone-map.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
+    runInNewContext(await readFile(join(root, "src/js/native-icons.js"), "utf8"), context);
     Object.assign(window.BL, {
       net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, clouds: [] }, remotes,
         voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },

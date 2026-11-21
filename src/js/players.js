@@ -62,19 +62,8 @@
   crosshairPath.setAttribute("fill", "currentColor");
   crosshairPath.setAttribute("d", "M3 1h3v1H3zM3 7h3v1H3zM1 3h1v3H1zM7 3h1v3H7zM2 2h1v1H2zM6 2h1v1H6zM2 6h1v1H2zM6 6h1v1H6zM4 0h1v3H4zM4 6h1v3H4zM0 4h3v1H0zM6 4h3v1H6zM4 4h1v1H4z");
   crosshair.append(crosshairPath);
-  // A voice link's mark, an 11x11 pixel chain of two links.
-  const linkIcon = document.createElementNS(SVG, "svg");
-  linkIcon.setAttribute("viewBox", "0 0 11 11");
-  linkIcon.setAttribute("aria-hidden", "true");
-  const linkPath = document.createElementNS(SVG, "path");
-  linkPath.setAttribute("fill", "currentColor");
-  linkPath.setAttribute("d", "M7 0h3v1H7zM6 1h1v1H6zM9 1h2v1H9zM5 2h1v1H5zM10 2h1v1h-1zM4 3h1v1H4zM10 3h1v1h-1zM4 4h1v1H4zM9 4h1v1H9zM2 5h1v1H2zM4 5h1v1H4zM8 5h1v1H8zM1 6h1v1H1zM4 6h4v1H4zM0 7h1v1H0zM0 8h1v1H0zM5 8h1v1H5zM0 9h2v1H0zM4 9h1v1H4zM1 10h3v1H1z");
-  linkIcon.append(linkPath);
-  const LINK_WORDS = {
-    none: (name) => `Link voices with ${name}: once they link back, you hear each other in any zone`,
-    asked: (name) => `Waiting for ${name} to link back: click to cancel`,
-    linked: (name) => `Voices linked with ${name}: click to unlink`,
-  };
+  // A voice link's mark and its words, shared with Ooga Chat's Online Oogas (native-icons.js).
+  const linkIcon = BL.nativeIcons.link(), LINK_WORDS = BL.nativeIcons.LINK_WORDS;
 
   const rows = new Map(), groups = new Map(), order = [], door = { x: 0, y: 0, z: 0 };
   let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "", shownRadius = -1;
@@ -90,7 +79,11 @@
     for (let i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;
   };
-  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : rows.get(Number(li.dataset.id));
+  // Ooga Chat's listeners on Main Island (the Ooga Chat tab's roster, cloud-panel.js `listeners`), in gray in its group
+  // after its players: in the conversation without a body, so no mark, link, crosshair or distance. Anyone also on the
+  // island, the visitor included, is listed once, as a player (cloud-panel.js decides who).
+  const listenerRows = new Map();
+  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : li.dataset.listener ? listenerRows.get(li.dataset.listener) : rows.get(Number(li.dataset.id));
   const makeRow = () => {
     const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
@@ -159,6 +152,8 @@
     rows.clear();
     for (const row of cloudRows.values()) row.li.remove();
     cloudRows.clear();
+    for (const row of listenerRows.values()) row.li.remove();
+    listenerRows.clear();
     selfRow.li.remove();
     for (const group of groups.values()) group.section.remove();
     groups.clear();
@@ -327,7 +322,7 @@
     status.hidden = !words;
     list.hidden = !live;
     paintHearing();
-    const chip = live ? `${s.online} online` : "Offline";
+    const chip = live ? `${BL.cloudPanel ? BL.cloudPanel.online(s) : s.online} online` : "Offline";
     if (count.textContent !== chip) count.textContent = chip;
     count.dataset.tone = live ? "live" : "idle";
     if (!s.me) { clear(); return; }
@@ -362,6 +357,23 @@
       order.push(row);
     }
     for (const [id, row] of cloudRows) if (row.seen !== pass) { row.li.remove(); cloudRows.delete(id); }
+    const listening = BL.cloudPanel ? BL.cloudPanel.listeners() : null;
+    if (listening) for (const l of listening) {
+      let row = listenerRows.get(l.id);
+      if (!row) {
+        row = makeRow();
+        row.listener = true; row.id = -Number(l.id.slice(l.id.indexOf(":") + 1));
+        row.li.dataset.id = String(row.id); row.li.dataset.listener = l.id; row.li.classList.add("players-listener");
+        const dot = row.li.querySelector(".roster-presence");
+        dot.dataset.online = "listener"; dot.title = "Listening in Ooga Chat"; dot.setAttribute("aria-label", "Listening in Ooga Chat");
+        row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
+        row.button.hidden = true;
+        listenerRows.set(l.id, row);
+      }
+      row.name = l.display; row.zone = "outside"; row.group = Z.groupOf("outside"); row.seen = pass;
+      order.push(row);
+    }
+    for (const [id, row] of listenerRows) if (row.seen !== pass) { row.li.remove(); listenerRows.delete(id); }
     Z.arrange(order, selfRow.group);
     let group = null, groupIndex = 0, rowIndex = 0;
     for (const row of order) {
@@ -563,5 +575,5 @@
     cloudSpot = fn;
     measure();
   };
-  BL.players = { setDoors, setCloudSpot, get stats() { return { showing, rows: rows.size, clouds: cloudRows.size, groups: groups.size, unread, speakOn }; } };
+  BL.players = { setDoors, setCloudSpot, refresh: () => render(), get stats() { return { showing, rows: rows.size, clouds: cloudRows.size, listeners: listenerRows.size, groups: groups.size, unread, speakOn }; } };
 })();

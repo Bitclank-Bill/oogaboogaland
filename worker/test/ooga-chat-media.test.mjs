@@ -140,6 +140,26 @@ test("a listener pulls its zone's speakers by reference: island and Ooga Chat on
   assert.deepEqual(h.room.sources.at(-1).map((s) => [s.id, s.zone]), [[1, "main"], [2, "dsb"]], "the Room hears Ooga Chat speakers by GitHub id and zone");
 });
 
+test("a voice link holds into Ooga Chat: a partner pulls a linked island player from any zone, listed nowhere, and nobody else does", async () => {
+  const h = host(), a = await h.make();
+  const partner = await connect(a, who(5), "dsb"), stranger = await connect(a, who(6));
+  await media(a, partner, "receive/open");
+  await media(a, stranger, "receive/open");
+  sfu.sessions.set("cave-pub", new Map([["0", { location: "local", status: "active" }]]));
+  partner.ws.sent.length = stranger.ws.sent.length = 0;
+  const answer = await a.world(7, [], ["gh:40"], [{ id: "gh:40", to: ["gh:5"], pub: { session: "cave-pub", track: "mic", gen: 2 } }]);
+  assert.ok(partner.ws.sent.some((m) => m.type === "media" && m.op === "sync"), "the partner is asked to sync, whatever zone it views");
+  assert.ok(!stranger.ws.sent.some((m) => m.type === "media"), "nobody else hears of it");
+  assert.deepEqual((await media(a, partner, "receive/sync")).body.tracks.map((t) => t.participant), ["gh:40"]);
+  assert.equal((await media(a, stranger, "receive/sync")).body.tracks.length, 0, "not public: no one but the partner pulls it");
+  assert.ok(!JSON.stringify([a.snapshot("main"), a.snapshot("dsb")]).includes("gh:40"), "a linked player is in no roster");
+  assert.deepEqual(answer.listeners.ears, { "gh:40": 1 }, "the partner keeps the island microphone from being alone");
+  // The link broken: the partner's pull is closed at once.
+  partner.ws.sent.length = 0;
+  await a.world(8, [], ["gh:40"], []);
+  assert.ok(partner.ws.sent.some((m) => m.type === "media" && m.op === "sync" && m.closed && m.closed.length === 1), "its mid closed");
+});
+
 test("an OC speaker still counts as a receiver and hears island microphones without any listener-only accounts", async () => {
   const h = host(), a = await h.make(), speaker = await connect(a, who(1));
   await speak(a, speaker);
@@ -409,6 +429,25 @@ test("the island: a player with an open outdoor grant hears Ooga Chat speakers o
   assert.deepEqual(plain(h.room.players.get(1).voice.mids), {});
   for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
   assert.ok(h.closes.some((mids) => mids.includes("r0")), "closed at the SFU, not just forgotten");
+});
+
+test("the island: a voice link holds with an Ooga Chat speaker wherever the island player stands, and names its partners to the Audience", async () => {
+  const h = await roomHarness(), worlds = [];
+  h.room.env.AUDIENCE = { getByName: () => ({ world: async (...args) => { worlds.push(plain(args)); return { ok: true, pending: [] }; }, watch: async () => {}, snapshot: async () => null }) };
+  const a = await h.join(1, "a"), b = await h.join(2, "b");
+  h.room.links = new Map([[1, new Set([777, 2])], [777, new Set([1])], [2, new Set([1])]]);
+  h.room.audienceSources([{ id: 777, zone: "dsb", session: "chat-pub", track: "mic", gen: 9 }]);
+  const voice = (ws) => ws.sent.filter((m) => m.t === "voice").at(-1);
+  assert.ok(voice(a).peers.includes(777), "no outdoor grant, another zone: the linked Ooga Chat speaker is heard");
+  assert.ok(!(voice(b) && voice(b).peers.includes(777)), "not by anyone it is not linked with");
+  const token = h.room.players.get(1).connectionToken;
+  const pull = await h.room.voiceRequest("pull", { headers: new Headers({ "x-player-id": "1", "x-room-token": token }), json: async () => ({ ids: [777] }) });
+  assert.deepEqual(plain((await pull.json()).tracks), [{ id: 777, mid: "r0" }]);
+  await protocol.audienceRoom.world(h.room, true);
+  assert.deepEqual(worlds.at(-1)[3].find((l) => l.id === "gh:1"), { id: "gh:1", to: ["gh:2", "gh:777"], pub: { session: "p1", track: "mic", gen: 1 } },
+    "the island's word names its linked partners with the publication they may pull");
+  protocol.audienceRoom.listeners(h.room, { main: 0, dsb: 0, ears: { "gh:2": 1 } });
+  assert.equal(voice(b).ears, 1, "a partner listening from Ooga Chat counts as an ear");
 });
 
 test("the island follows the active microphone across both handoffs while the speaker remains signed in to OBL", async () => {
