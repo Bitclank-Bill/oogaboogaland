@@ -630,11 +630,23 @@
   // same blocks of hair, worn long. It returns the head with its eyes open and shut.
   // An eye's colour unless a character names its own (`eyeColor`).
   const BROWN = "#5a3a1e";
+  // What a worn wardrobe changes on this head (`traits.wardrobe.head`, equipment-wardrobe.js): `hair` and `glasses` blocks
+  // of their own (or "none" for no hair), `beard` a colour (or "none"), and `eyes` and `mouth` the face's own traits.
   const head = (k, { palette, P }) => {
-    const t = k.traits, u = k.u, slim = !!t.slim, hairy = !t.bald && !t.hairless, kind = t.face || (slim || t.cleanShaven ? "nose" : "beard");
-    const skin = palette[P.skin], hair = palette[P.hair], hairDk = palette[P.hairDk], F = FRONT, v = makeVox();
+    const W = k.traits.wardrobe?.head || null, t = W ? { ...k.traits, ...(W.eyes || null), ...(W.mouth || null) } : k.traits;
+    const u = k.u, slim = !!t.slim, own = k.traits, ownKind = own.face || (slim || own.cleanShaven ? "nose" : "beard");
+    // A worn beard makes a beard of the face and taking one off leaves its mouth: the worn one, or a plain one. A worn
+    // mouth under the character's own beard waits there unseen.
+    const bearded = W?.beard ? W.beard !== "none" : ownKind === "beard";
+    const kind = !W ? ownKind : bearded ? "beard" : W.mouth ? W.mouth.face : ownKind === "beard" ? "nose" : ownKind;
+    const hairy = W?.hair ? false : !t.bald && !t.hairless;
+    const skin = palette[P.skin], F = FRONT, v = makeVox();
+    const hair = W?.hair && W.hair !== "none" ? W.hair.color : palette[P.hair], hairDk = W?.hair && W.hair !== "none" ? shade(W.hair.color, 0.85) : palette[P.hairDk];
     const grain = (x, y, z) => ((Math.imul(x + 3, 73856093) ^ Math.imul(y + 5, 19349663) ^ Math.imul(z + 7, 83492791)) >>> 0) % 100;
     const lock = (x, y, z) => v.set(x, y, z, grain(x, y, z) < 16 ? 3 : 2);
+    // The beard keeps the head's own hair colour when only the hair is worn, or takes a worn beard's.
+    const beardColor = W?.beard && W.beard !== "none" ? W.beard.color : W?.hair && W.hair !== "none" ? palette[P.hair] : null;
+    const beardLock = beardColor ? (x, y, z) => v.set(x, y, z, grain(x, y, z) < 16 ? 5 : 4) : lock;
     if (!slim) {
       v.fill(0, 6, 0, 5, 0, 5, 0);
       // The jaw stands a block proud of the face, unless the character's mouth lies flat on it (`look.flatMouth`).
@@ -664,10 +676,31 @@
       for (const x of [-1, 7]) for (let z = -1; z <= 4; z++) for (let y = 2; y <= 5; y++) lock(x, y, z);
     } else if (!slim) for (const x of [-1, 7]) v.fill(x, x, 2, 3, 2, 3, 1);
     if (!slim && kind === "beard") {
-      for (let x = 0; x <= 6; x++) for (let y = 0; y <= 1; y++) for (let z = 5; z <= 7; z++) lock(x, y, z);
-      for (let x = 1; x <= 5; x++) for (let y = -2; y <= -1; y++) for (let z = 5; z <= 7; z++) lock(x, y, z);
+      for (let x = 0; x <= 6; x++) for (let y = 0; y <= 1; y++) for (let z = 5; z <= 7; z++) beardLock(x, y, z);
+      for (let x = 1; x <= 5; x++) for (let y = -2; y <= -1; y++) for (let z = 5; z <= 7; z++) beardLock(x, y, z);
     }
-    const blocks = voxelGeometry(v, { unit: u, palette: [skin, shade(skin, 0.9), hair, hairDk], origin: { x: -3.5 * u, y: 0, z: -3 * u } });
+    const colours = [skin, shade(skin, 0.9), hair, hairDk];
+    // The authoring script reads the stock head's own blocks (scripts/equipment-wardrobe.mjs).
+    if (k.traits.capture) k.traits.capture.stockHeadBlocks = { v, palette: colours.slice() };
+    let worn;
+    if (W) {
+      if (beardColor) colours.push(beardColor, shade(beardColor, 0.85));
+      else colours.push(hair, hairDk);
+      // Worn blocks: hair over the skull (where no beard is), glasses before the eyes. Each one's colour is the head's
+      // own (`skin`, `hair` and their darker shades, by name) or its own.
+      const lay = (piece) => {
+        const at = piece.palette.map((c) => c === "skin" ? 0 : c === "skinDk" ? 1 : c === "hair" ? 2 : c === "hairDk" ? 3 : colours.push(P[c] !== undefined ? palette[P[c]] : rgb(c)) - 1);
+        if (piece.glow) for (const [i, level] of Object.entries(piece.glow)) (worn ||= {})[at[i]] = level;
+        for (let n = 0; n < piece.cells.length; n += 4) {
+          const x = piece.cells[n], y = piece.cells[n + 1], z = piece.cells[n + 2];
+          if (piece === W.hair && !slim && kind === "beard" && z >= 5 && y <= 1) continue;
+          v.set(x, y, z, at[piece.cells[n + 3]]);
+        }
+      };
+      if (W.hair && W.hair !== "none") lay(W.hair);
+      if (W.glasses && W.glasses !== "none") lay(W.glasses);
+    }
+    const blocks = voxelGeometry(v, { unit: u, palette: colours, origin: { x: -3.5 * u, y: 0, z: -3 * u }, emissive: worn });
     const white = t.eyeColor || "#f4f0e6", glow = t.eyeGlow || 0, nose = palette[P.nose], dark = "#2a1a14";
     const blockFace = (shut) => {
       const g = geometry(), z = 3.001;

@@ -12536,19 +12536,26 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
 }
 .studio-side button { flex: 0 0 auto; padding: 0 10px; }
 .studio-wardrobe { display: grid; gap: 7px; margin: 12px 0; }
-.studio-hats { width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; }
-.studio-hats legend { padding: 0; margin-bottom: 6px; }
-#studio-hat-choices { display: grid; gap: 5px; max-height: min(32vh, 240px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--wood-edge) rgba(0, 0, 0, 0.25); }
-.studio-hat-family { min-width: 0; padding: 3px; }
-.studio-hat-choice { display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 6px; border-radius: 4px; cursor: pointer; }
-.studio-hat-choice:has(input:checked) { background: rgba(216, 137, 43, 0.16); }
-.studio-hat-choice input { flex: 0 0 16px; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-.studio-hat-choice span { min-width: 0; overflow-wrap: anywhere; }
-.studio-hat-name { display: block; color: var(--paper); font-size: 12px; line-height: 1.4; }
-.studio-hat-credit { display: block; color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; }
-.studio-hat-variants { margin-left: 8px; padding-left: 6px; border-left: 1px solid var(--stone-dk); }
-.studio-hat-variants > summary { min-height: 44px; align-content: center; padding: 0 6px; color: var(--accent-text); font-size: 11px; cursor: pointer; overflow-wrap: anywhere; }
-.studio-wardrobe :is(input[type="radio"], input[type="range"], summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-wardrobe-title { margin: 0 0 1px; }
+.studio-slots { display: grid; gap: 5px; }
+/* A slot folded: its name, and what is worn there in the accent colour, on one line that wraps only a long name. */
+.studio-slot { min-width: 0; border-radius: 4px; }
+.studio-slot > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box; padding: 6px 8px; cursor: pointer; list-style: none; }
+.studio-slot > summary::-webkit-details-marker { display: none; }
+.studio-slot > summary::before { content: "\25B8"; flex: 0 0 auto; color: rgba(243, 239, 228, 0.6); font-size: 10px; }
+.studio-slot[open] > summary::before { content: "\25BE"; }
+.studio-slot-name { flex: 0 0 auto; color: var(--paper); font-size: 12px; }
+.studio-slot-value { flex: 1 1 auto; min-width: 0; color: var(--accent-text); font-size: 11px; text-align: right; overflow-wrap: anywhere; }
+.studio-slot[data-changed] .studio-slot-value::after { content: " \2022"; color: var(--accent); }
+.studio-slot[data-unsupported] .studio-slot-value { color: rgba(243, 239, 228, 0.5); }
+.studio-slot-body { display: grid; gap: 6px; padding: 0 8px 8px; }
+.studio-slot select { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 0 8px; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28); color: var(--paper); font: inherit; font-size: 12px; cursor: pointer; }
+.studio-slot select:disabled { opacity: 0.55; cursor: default; }
+.studio-slot select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-slot-credit { color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.studio-slot-credit:empty { display: none; }
+.studio-wardrobe :is(input[type="range"], summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .studio-hat-size-label { display: flex; justify-content: space-between; gap: 8px; }
 .studio-hat-size-label output { color: var(--accent-text); font-variant-numeric: tabular-nums; }
 .studio-wardrobe input[type="range"] { width: 100%; min-width: 0; height: 44px; margin: 0; accent-color: var(--accent); cursor: pointer; }

@@ -414,15 +414,12 @@
       </div>
       <div class="studio-scroll" id="studio-scroll">
         <p class="studio-who" id="studio-who"></p>
-        <div class="studio-wardrobe">
-          <fieldset class="studio-hats" id="studio-hat" aria-describedby="studio-hat-status">
-            <legend class="roster-sort-label">Try a hat</legend>
-            <div id="studio-hat-choices"></div>
-          </fieldset>
-          <label class="roster-sort-label studio-hat-size-label" for="studio-hat-size">Hat size <output id="studio-hat-size-value" for="studio-hat-size">100%</output></label>
-          <input type="range" id="studio-hat-size" min="80" max="120" step="1" value="100" aria-valuetext="100%" aria-describedby="studio-hat-status" disabled>
-          <button type="button" class="foot-button" id="studio-hat-size-reset" disabled>Reset fitted size</button>
-          <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save hat for my Ooga</button>
+        <!-- The wardrobe (scene-studio.js `startWardrobe`): a row for each slot (equipment-wardrobe.js `SLOTS`), folded to
+             its name and what is worn there, which opens on its list and, for the hat and the mask, a size. -->
+        <div class="studio-wardrobe" id="studio-wardrobe" aria-describedby="studio-hat-status">
+          <p class="roster-sort-label studio-wardrobe-title">Wardrobe</p>
+          <div class="studio-slots" id="studio-slots"></div>
+          <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save my look</button>
           <button type="button" class="foot-button" id="studio-hat-own" hidden>Show my Ooga</button>
           <p class="studio-note" id="studio-hat-status" role="status"></p>
           <a class="link" href="/auth/login?next=%2F%3Fscene%3Dstudio" id="studio-hat-signin" hidden>Sign in with GitHub to save</a>
@@ -2530,6 +2527,10 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/equipment-hats.gen.js"></script>
   <script src="js/character-equipment.js"></script>
   <script src="js/equipment-hat-data.gen.js"></script>
+  <script src="js/equipment-wardrobe.js"></script>
+  <script src="js/equipment-wardrobe.gen.js"></script>
+  <script src="js/character-wardrobe.js"></script>
+  <script src="js/equipment-wardrobe-data.gen.js" data-defer="wardrobe"></script>
   <script src="js/donations.js"></script>
   <script src="js/donation-rate.js"></script>
   <script src="js/mempool.js"></script>
