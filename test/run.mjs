@@ -31763,7 +31763,7 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
       return at({ x: m.x + Math.sin(m.ry) * along, y: m.floorY, z: m.z + Math.cos(m.ry) * along }, 0.5);
     });
     out.air = at({ x: 53.7, y: 8, z: -31 }, 0.5);
-    // Inside the Sphere's shell, down its passage short of the curtain, and Merge Rock, which has no public scope yet.
+    // Inside the Sphere's shell, down its passage short of the curtain, and Merge Rock, which is Main Island.
     // Only a crossing's Ooga stands behind the doors (timechain-gate.js puts one left there on the bridge), so the
     // passage is read from the hub's own shell test and reason at that spot rather than by parking an Ooga in it.
     const passage = BL.timechainModels.PASSAGE.curtain + 0.5, px = T.worldX(0, passage), pz = T.worldZ(0, passage);
@@ -31777,12 +31777,12 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
   record("voice levels: the bridges and the air off the edge are the land between, the cave entrances the island, and none of them is a crossing",
     lands.every((land) => !r[land].home.to && r[land].home.zone === "outside" && !r[land].bridge.to && r[land].bridge.zone === "between" && !r[land].land.to && r[land].land.zone === land)
       && r.mouth.zone === "outside" && r.air.zone === "between" && !r.air.to, JSON.stringify(r));
-  // The outdoor scope (outdoor-scope.js) goes by entrances, not the panels' zone names: the lab's room reads `outside`
-  // as a zone but is a cave, and the Sphere's passage is the way into its rooms.
-  record("outdoor scope: the island, its apron, bridges, air and the three bridged lands' tops are Main Island, while a cave's room, the Sphere's passage and Merge Rock are not",
+  // The outdoor scope (outdoor-scope.js): a cave's entrance on the island (the lab's room reads `outside`) is the
+  // island's surface, while the Sphere's passage is the way into its rooms.
+  record("outdoor scope: the island, its apron, a cave's entrance, bridges, air, Merge Rock and the three bridged lands' tops are Main Island, while the Sphere's passage is not",
     lands.every((land) => r[land].home.scope === "main" && r[land].bridge.scope === "main" && r[land].land.scope === "main")
-      && r.apron.scope === "main" && r.air.scope === "main" && r.mouth.scope === null && r.mouth.reason === "interior"
-      && r.passage.scope === null && r.passage.reason === "interior" && (!r.repos || r.repos.scope === null && r.repos.reason === "unscoped"), JSON.stringify(r));
+      && r.apron.scope === "main" && r.air.scope === "main" && r.mouth.scope === "main" && r.mouth.reason === "outdoor"
+      && r.passage.scope === null && r.passage.reason === "interior" && (!r.repos || r.repos.scope === "main"), JSON.stringify(r));
   record("outdoor scope: covered cave approaches before the Arcade doors and Factory shield stay in Main Island",
     r.canopies.every((p) => p.zone === "outside" && p.scope === "main"), JSON.stringify(r.canopies));
   // Levels: by height off the island's edge, and down HQ's ramps, its basement's and the rainforest's descent.
@@ -45334,18 +45334,17 @@ const outdoorScopeChecks = () => {
   runInNewContext(readFileSync(join(root, "src/js/zone-map.js"), "utf8"), context);
   const hub = (zone, inside = false, descending = false) => O.hubReason(zone, inside, descending);
   const policy = {
-    outdoors: ["outside", "between", "sphere", "rainforest", "bifrost"].every((zone) => hub(zone) === "outdoor"),
+    outdoors: ["outside", "between", "sphere", "rainforest", "bifrost", "repos"].every((zone) => hub(zone) === "outdoor"),
     entrances: ["outside", "sphere", "rainforest", "bifrost"].every((zone) => hub(zone, true) === "interior"),
     under: ["rainforest-under", "hq", "hq-basement"].every((zone) => hub(zone) === "descending") && hub("outside", false, true) === "descending"
       && hub("sphere", false, true) === "descending" && hub("between", false, true) === "descending" && hub("outside", true, true) === "interior",
-    unscoped: hub("repos") === "unscoped",
     // Grouped with the island by the panels (zone-map.js), but never public by that.
     grouped: ["lab", "bca", "factory", "arcade", "mirror", "cave-3"].every((zone) => Z.zoneMap.groupOf(zone) === "outside" && hub(zone) === "unknown"),
     elsewhere: ["", "none", "scene-transition", "lab.hall", "bifrost.chamber", "sphere-0", "sphere-1", "dsb-outside", "block-frenzy"].every((zone) => hub(zone) === "unknown"),
     dsb: O.dsbReason(false, false, false) === "outdoor" && O.dsbReason(true, false, false) === "transit" && O.dsbReason(false, true, false) === "entering"
       && O.dsbReason(false, true, true) === "entering" && O.dsbReason(false, false, true) === "interior"
   };
-  record("outdoor scope policy: only the island's outdoors, bridges and air and the Sphere's, rainforest's and Bifrost's tops are Main Island; cave and shell interiors, any descent, Merge Rock, the panels' island groupings and every other zone are not; DSB Land is outdoors only with no room, no fade and no arrival under way",
+  record("outdoor scope policy: only the island's outdoors (its cave entrances in its zone), bridges and air and the Sphere's, rainforest's and Bifrost's tops are Main Island, with Merge Rock; the Sphere's shell, any descent, the panels' island groupings and every other zone are not; DSB Land is outdoors only with no room, no fade and no arrival under way",
     Object.values(policy).every(Boolean), JSON.stringify(policy));
   // A transport's acknowledgements against moves, backtracking, resets and a lost transport.
   const T = O.create(), S = T.state, heard = [];
