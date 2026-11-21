@@ -8,7 +8,7 @@ import { activateCatalog, encodeCatalog, validateActivation } from "./character-
 import { createGitHub } from "./character-github.mjs";
 import { catalogStoreFromEnv, STORE_MAX_BYTES } from "./character-catalog-store.mjs";
 import { CatalogConflict, loadCatalogState, publishCatalog, seedFromApprovedBaseline, readCatalogPortraits } from "./character-catalog-publish.mjs";
-import { readReleaseState, prepareHandoff, beginHandoff, resumeHandoff, completeHandoff, abortUnfencedHandoff, checkHandoffPreservation } from "./character-catalog-handoff.mjs";
+import { readReleaseState, prepareHandoff, beginHandoff, resumeHandoff, completeHandoff, abortUnfencedHandoff, replaceUnstagedHandoff, checkHandoffPreservation } from "./character-catalog-handoff.mjs";
 import { canonicalJSON, prefixEvents } from "../worker/src/character-catalog-schema.js";
 
 const ENGINE = "island-character-data-v1", SHA = /^[a-f0-9]{40}$/, REPO = "OogaBoogaX/oogaboogaland";
@@ -44,19 +44,30 @@ const gate = async (store, plan, environment) => {
   }
   return release;
 };
-export const prepareManualRelease = async ({ gh, store, environment, target, resume = false, engine = ENGINE, token = randomBytes(16).toString("hex"), now = Date.now() }) => {
-  if (!origins[environment] || !SHA.test(target || "") || engine !== ENGINE) throw new Error("Explicit approved release SHA and supported engine required");
+export const prepareManualRelease = async ({ gh, store, environment, target, resume = false, replaceHeldTarget = null,
+  engine = ENGINE, token = randomBytes(16).toString("hex"), fetcher = fetch,
+  wait = (ms) => new Promise((done) => setTimeout(done, ms)), now = Date.now() }) => {
+  if (resume && replaceHeldTarget !== null) throw new Error("Resume and target replacement cannot be combined");
+  if (!origins[environment] || !SHA.test(target || "") || engine !== ENGINE
+    || replaceHeldTarget !== null && (!SHA.test(replaceHeldTarget) || replaceHeldTarget === target)) throw new Error("Explicit approved release SHA and supported engine required");
   let release = await readReleaseState(store, environment);
   if (!release) throw new Error("Bootstrap and register the current production baseline before a catalog-aware deployment");
+  if (replaceHeldTarget !== null && !release.state.pending) throw new CatalogConflict("There is no held target to replace");
   if (resume && !release.state.pending && release.state.context.baseline !== target) throw new Error("Resume SHA must match the held or already completed release");
   const context = { environment, baseline: target, engine };
   let encoded, operation, expectedETag, activation;
   if (release.state.pending) {
     const p = release.state.pending;
-    if (!same(p.to, context)) throw new CatalogConflict("A different release is held; resume its exact target SHA first");
-    token = p.token;
+    if (!same(p.to, context)) {
+      if (replaceHeldTarget !== p.to.baseline || !p.fenced) throw new CatalogConflict("A different release is held; resume its exact target SHA first");
+      encoded = await seedFromApprovedBaseline(gh, context, { now });
+      const verified = await verifyRuntimeCatalog({ context: p.from, revision: p.sourceRevision, generation: p.sourceGeneration, fetcher, wait, now });
+      release = await replaceUnstagedHandoff({ store, environment, expectedETag: release.etag, token: p.token, expectedTarget: replaceHeldTarget,
+        prepared: { ...encoded, context }, newToken: token, verified, now });
+    }
+    token = release.state.pending.token;
     release = await resumeHandoff({ store, environment, expectedETag: release.etag, token, now });
-    encoded = await seedFromApprovedBaseline(gh, context, { now });
+    encoded ||= await seedFromApprovedBaseline(gh, context, { now });
     const source = await loadCatalogState(store, release.state.context, { now });
     await checkHandoffPreservation(store, source, encoded.catalog, { now });
     operation = "handoff";
@@ -93,13 +104,12 @@ export const stageManualRelease = async ({ gh, store, plan, environment, portrai
     expectedETag: plan.expectedETag, now });
 };
 
-export const finishManualRelease = async ({ store, plan, environment, fetcher = fetch, wait = (ms) => new Promise((done) => setTimeout(done, ms)), now = Date.now() }) => {
-  validatedPlan(plan, environment, now); await gate(store, plan, environment);
-  const url = new URL("/api/characters/catalog", origins[environment]);
-  url.searchParams.set("baseline", plan.context.baseline); url.searchParams.set("engine", plan.context.engine);
+const verifyRuntimeCatalog = async ({ context, revision, generation, fetcher, wait, now }) => {
+  const url = new URL("/api/characters/catalog", origins[context.environment]);
+  url.searchParams.set("baseline", context.baseline); url.searchParams.set("engine", context.engine);
   let response;
   for (let attempt = 0; attempt < 5; attempt++) {
-    response = await fetcher(url.href, { redirect: "error", cache: "no-store", signal: AbortSignal.timeout(4000) });
+    response = await fetcher(url.href, { credentials: "omit", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(4000) });
     if (![409, 503].includes(response.status) || attempt === 4) break;
     response.body?.cancel().catch(() => {}); await wait(1000);
   }
@@ -113,9 +123,14 @@ export const finishManualRelease = async ({ store, plan, environment, fetcher = 
   } catch (error) { reader.cancel().catch(() => {}); throw error; }
   finally { reader.releaseLock(); }
   const value = JSON.parse(decode(Buffer.concat(chunks)));
-  if (value.revision !== plan.activation.revision || value.generation !== plan.activation.generation || !same(value.catalog || {}, plan.context)
-    || encodeCatalog(value.catalog, { now }).digest !== plan.activation.revision) throw new Error("The deployed runtime answered a different catalog");
-  const verified = { baseline: plan.context.baseline, engine: plan.context.engine, revision: value.revision, generation: value.generation };
+  if (value.revision !== revision || value.generation !== generation || !same(value.catalog || {}, context)
+    || encodeCatalog(value.catalog, { now }).digest !== revision) throw new Error("The deployed runtime answered a different catalog");
+  return { ...context, revision: value.revision, generation: value.generation };
+};
+
+export const finishManualRelease = async ({ store, plan, environment, fetcher = fetch, wait = (ms) => new Promise((done) => setTimeout(done, ms)), now = Date.now() }) => {
+  validatedPlan(plan, environment, now); await gate(store, plan, environment);
+  const verified = await verifyRuntimeCatalog({ context: plan.context, revision: plan.activation.revision, generation: plan.activation.generation, fetcher, wait, now });
   if (plan.operation === "redeploy") { await gate(store, plan, environment); return { state: "verified", ...verified }; }
   return completeHandoff({ store, environment, expectedETag: plan.releaseETag, token: plan.token, verified, now });
 };
@@ -157,13 +172,14 @@ const argumentsOf = (args) => {
   const [command, ...rest] = args, values = {};
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i];
-    if (!["--environment", "--target", "--resume", "--output", "--plan", "--portraits", "--release-dir", "--token", "--expected-etag"].includes(key) || values[key] || !rest[i + 1] || rest[i + 1].startsWith("--")) throw new Error("Invalid manual release arguments");
+    if (!["--environment", "--target", "--resume", "--replace-held-target", "--output", "--plan", "--portraits", "--release-dir", "--token", "--expected-etag"].includes(key) || values[key] || !rest[i + 1] || rest[i + 1].startsWith("--")) throw new Error("Invalid manual release arguments");
     values[key] = rest[i + 1];
   }
   if (!["prepare", "stage", "finish", "config", "status", "cancel-unfenced"].includes(command) || !origins[values["--environment"]]) throw new Error("Explicit manual release command/environment required");
   const required = { prepare: ["--target", "--output"], stage: ["--plan", "--portraits"], finish: ["--plan"], config: ["--plan", "--release-dir"], status: [], "cancel-unfenced": ["--token", "--expected-etag"] }[command];
-  if (required.some((key) => !values[key]) || Object.keys(values).some((key) => key !== "--environment" && !required.includes(key) && !(command === "prepare" && key === "--resume"))
+  if (required.some((key) => !values[key]) || Object.keys(values).some((key) => key !== "--environment" && !required.includes(key) && !(command === "prepare" && ["--resume", "--replace-held-target"].includes(key)))
     || values["--resume"] && !["true", "false"].includes(values["--resume"])) throw new Error("Missing or unexpected manual release argument");
+  if (values["--resume"] === "true" && values["--replace-held-target"]) throw new Error("Resume and target replacement cannot be combined");
   return { command, values };
 };
 export const runCatalogDeploy = async (args, env = process.env) => {
@@ -183,7 +199,8 @@ export const runCatalogDeploy = async (args, env = process.env) => {
     const out = resolve(values["--output"]);
     if (existsSync(out) && (!statSync(out).isDirectory() || readdirSync(out).length)) throw new Error("Manual release output must be an empty directory");
     const gh = createGitHub(REPO, env.GH_TOKEN || env.GITHUB_TOKEN);
-    const result = await prepareManualRelease({ gh, store, environment, target: values["--target"], resume: values["--resume"] === "true", engine: env.CHARACTER_CATALOG_ENGINE });
+    const result = await prepareManualRelease({ gh, store, environment, target: values["--target"], resume: values["--resume"] === "true",
+      replaceHeldTarget: values["--replace-held-target"] || null, engine: env.CHARACTER_CATALOG_ENGINE });
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, "plan.json"), canonicalJSON(result.plan), { flag: "wx" });
     writeFileSync(join(out, "catalog.json"), encodeCatalog(result.plan.catalog).json, { flag: "wx" });

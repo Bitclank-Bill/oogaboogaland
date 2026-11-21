@@ -5,7 +5,7 @@ import { encode as pngEncode } from "../../scripts/distribution-icons.mjs";
 import { safeCharacterSource } from "../../scripts/character-safety.mjs";
 import { seedCatalog, activateCatalog, planCatalog } from "../../scripts/character-catalog.mjs";
 import { publishCatalog, loadCatalogState, CatalogConflict } from "../../scripts/character-catalog-publish.mjs";
-import { readReleaseState, initializeRelease, prepareHandoff, beginHandoff, resumeHandoff, completeHandoff, checkPreservation, abortUnfencedHandoff } from "../../scripts/character-catalog-handoff.mjs";
+import { readReleaseState, initializeRelease, prepareHandoff, beginHandoff, resumeHandoff, completeHandoff, checkPreservation, abortUnfencedHandoff, replaceUnstagedHandoff } from "../../scripts/character-catalog-handoff.mjs";
 import { canonicalJSON } from "../src/character-catalog-schema.js";
 import { createPortraitManifest } from "../src/character-portraits-format.js";
 
@@ -127,6 +127,69 @@ test("same-baseline handoffs, stale tokens and wrong environment cannot change r
   const held = await begin(f);
   await assert.rejects(resumeHandoff({ store: f.store, environment: "production", expectedETag: held.etag, token: "a".repeat(32), now: NOW }), CatalogConflict);
   await assert.rejects(abortUnfencedHandoff({ store: f.store, environment: "production", expectedETag: held.etag, token, now: NOW }), /unfenced/);
+});
+
+const replacement = (f, held, extra = {}) => {
+  const context = { ...to, baseline: "8".repeat(40) };
+  return replaceUnstagedHandoff({ store: f.store, environment: "production", expectedETag: held.etag, token,
+    expectedTarget: to.baseline, prepared: { ...seed(context), context }, newToken: "b".repeat(32),
+    verified: { ...from, revision: f.first.digest, generation: held.state.pending.sourceGeneration }, now: NOW, ...extra });
+};
+
+test("unpublished target replacement preserves the source fence and barrier, with exact CAS readback after a lost acknowledgment", async () => {
+  const f = await fixture(), held = await begin(f), source = await loadCatalogState(f.store, from, { now: NOW });
+  const original = f.store.put, before = f.writes.length;
+  f.store.put = async (key, data, condition) => {
+    const result = await original(key, data, condition);
+    if (key === "release.json") throw new Error("acknowledgment lost after commit");
+    return result;
+  };
+  const replaced = await replacement(f, held);
+  assert.deepEqual(f.writes.slice(before), ["release.json"]);
+  assert.deepEqual(replaced.state.context, from); assert.equal(replaced.state.pending.fenced, true);
+  assert.equal(replaced.state.pending.to.baseline, "8".repeat(40)); assert.equal(replaced.state.pending.token, "b".repeat(32));
+  assert.equal(replaced.state.generation, held.state.generation + 1);
+  for (const key of ["from", "sourceETag", "sourceRevision", "sourceGeneration", "fenceHash", "fenced"])
+    assert.deepEqual(replaced.state.pending[key], held.state.pending[key], key);
+  assert.deepEqual(await loadCatalogState(f.store, from, { now: NOW }), source);
+  await assert.rejects(resumeHandoff({ store: f.store, environment: "production", expectedETag: held.etag, token, now: NOW }), CatalogConflict);
+});
+
+test("unpublished replacement rejects stale evidence, live mismatches and character regression without writes", async () => {
+  const f = await fixture(), held = await begin(f), before = f.writes.length;
+  for (const extra of [{ token: "0".repeat(32) }, { expectedETag: '"stale"' }, { expectedTarget: "7".repeat(40) },
+    { newToken: token }, { verified: { ...to, revision: f.first.digest, generation: 2 } },
+    { verified: { ...from, revision: f.first.digest, generation: 1 } }]) await assert.rejects(replacement(f, held, extra));
+  const context = { ...to, baseline: "8".repeat(40) };
+  await assert.rejects(replacement(f, held, { prepared: { ...seed(context, []), context } }), /removes/);
+  assert.equal(f.writes.length, before); assert.equal((await readReleaseState(f.store, "production")).etag, held.etag);
+});
+
+test("an activated target or changed source fence cannot be replaced", async () => {
+  const f = await fixture(), held = await begin(f);
+  await target(f);
+  const before = f.writes.length;
+  await assert.rejects(replacement(f, held), /already activated/);
+  assert.equal(f.writes.length, before);
+  const g = await fixture(), pending = await begin(g), source = await loadCatalogState(g.store, from, { now: NOW });
+  const active = { ...source.activation, generation: source.activation.generation + 1, previous: source.revision };
+  await g.store.put(`catalogs/${from.baseline}/active.json`, bytes(canonicalJSON(active)), { ifMatch: source.etag });
+  await assert.rejects(replacement(g, pending), /Source fence changed/);
+  assert.equal((await readReleaseState(g.store, "production")).etag, pending.etag);
+});
+
+test("a competing release-state CAS cannot be overwritten by target replacement", async () => {
+  const f = await fixture(), held = await begin(f), original = f.store.put;
+  f.store.put = async (key, data, condition) => {
+    if (key === "release.json") {
+      const other = { ...held.state, generation: held.state.generation + 1, pending: { ...held.state.pending, token: "c".repeat(32) } };
+      await original(key, bytes(canonicalJSON(other)), condition);
+    }
+    return original(key, data, condition);
+  };
+  await assert.rejects(replacement(f, held), CatalogConflict);
+  const actual = await readReleaseState(f.store, "production");
+  assert.equal(actual.state.pending.token, "c".repeat(32)); assert.equal(actual.state.pending.to.baseline, to.baseline);
 });
 
 test("a new baseline cannot revive a rolled-back addition, including after a later character publication", async () => {

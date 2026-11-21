@@ -12,6 +12,9 @@ on:
       resume:
         type: boolean
         default: false
+      replace_held_target:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -19,7 +22,40 @@ permissions:
 # The caller holds cloudflare-staging/production for this entire transaction.
 # A second concurrency group here would deadlock a reusable workflow against its caller.
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: character-catalog-${{ inputs.environment }}
+    steps:
+      - name: Validate approved immutable preflight inputs
+        run: node -e 'if (!["staging","production"].includes(process.env.CATALOG_ENVIRONMENT)) throw new Error("Invalid environment"); for (const key of ["TOOLING_SHA","TARGET_SHA"]) if (!/^[a-f0-9]{40}$/.test(process.env[key] || "")) throw new Error("Approved immutable SHA required"); if (process.env.REPLACE_HELD_TARGET && (!/^[a-f0-9]{40}$/.test(process.env.REPLACE_HELD_TARGET) || process.env.RESUME === "true")) throw new Error("Replacement requires the exact failed SHA and cannot also resume")'
+        env:
+          CATALOG_ENVIRONMENT: ${{ inputs.environment }}
+          TOOLING_SHA: ${{ vars.CHARACTER_CATALOG_TOOLING_SHA }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          REPLACE_HELD_TARGET: ${{ inputs.replace_held_target }}
+          RESUME: ${{ inputs.resume }}
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ vars.CHARACTER_CATALOG_TOOLING_SHA }}
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.target_sha }}
+          path: release
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      # No Cloudflare or publication credentials: compare every already published immutable version before fencing.
+      - name: Preserve published hat versions before starting the release handoff
+        run: node tooling/scripts/equipment-retention.mjs preflight "$CATALOG_ENVIRONMENT" release
+        env:
+          CATALOG_ENVIRONMENT: ${{ inputs.environment }}
   prepare:
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: character-catalog-${{ inputs.environment }}
@@ -47,11 +83,15 @@ jobs:
           package-manager-cache: false
       - name: Preserve live characters and fence the old publication context
         id: plan
-        run: node tooling/scripts/character-catalog-deploy.mjs prepare --environment "$CATALOG_ENVIRONMENT" --target "$TARGET_SHA" --resume "$RESUME" --output plan
+        run: |
+          args=(prepare --environment "$CATALOG_ENVIRONMENT" --target "$TARGET_SHA" --resume "$RESUME" --output plan)
+          if [ -n "$REPLACE_HELD_TARGET" ]; then args+=(--replace-held-target "$REPLACE_HELD_TARGET"); fi
+          node tooling/scripts/character-catalog-deploy.mjs "${args[@]}"
         env:
           CATALOG_ENVIRONMENT: ${{ inputs.environment }}
           TARGET_SHA: ${{ inputs.target_sha }}
           RESUME: ${{ inputs.resume }}
+          REPLACE_HELD_TARGET: ${{ inputs.replace_held_target }}
           GH_TOKEN: ${{ github.token }}
           CHARACTER_CATALOG_ENGINE: ${{ vars.CHARACTER_CATALOG_ENGINE }}
           CHARACTER_CATALOG_R2_ACCOUNT_ID: ${{ vars.CHARACTER_CATALOG_R2_ACCOUNT_ID }}
@@ -221,6 +261,25 @@ jobs:
           workingDirectory: release
           wranglerVersion: '4.153.0'
           command: d1 migrations apply DB --remote --config .catalog-wrangler.json
+      - name: Check whether the approved target enables account equipment
+        id: equipment
+        run: node -e 'const fs=require("node:fs"),c=JSON.parse(fs.readFileSync("release/.catalog-wrangler.json","utf8")),v=c.vars?.EQUIPMENT_ENABLED;if(v!==undefined&&v!=="0"&&v!=="1")throw new Error("Invalid equipment flag");if(v==="1"&&!fs.existsSync("release/scripts/equipment-retention.mjs"))throw new Error("Enabled target has no equipment retention guard");fs.appendFileSync(process.env.GITHUB_OUTPUT,`enabled=${v==="1"}\n`)'
+      - name: Read distinct saved hat versions without account identities
+        id: equipment_versions
+        if: steps.equipment.outputs.enabled == 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CHARACTER_CATALOG_R2_ACCOUNT_ID }}
+          workingDirectory: release
+          wranglerVersion: '4.153.0'
+          command: >-
+            d1 execute DB --remote --config .catalog-wrangler.json --json --command "SELECT DISTINCT item, version FROM player_equipment WHERE item IS NOT NULL AND item <> 'none' ORDER BY item, version LIMIT 257"
+      - name: Refuse a target that loses a saved immutable hat version
+        if: steps.equipment.outputs.enabled == 'true'
+        run: node tooling/scripts/equipment-retention.mjs release
+        env:
+          EQUIPMENT_RETENTION_RESULT: ${{ steps.equipment_versions.outputs.command-output }}
       - name: Deploy the approved Worker with the prepared catalog
         uses: cloudflare/wrangler-action@v4
         with:

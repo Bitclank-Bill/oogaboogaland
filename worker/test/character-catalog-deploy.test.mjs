@@ -7,7 +7,7 @@ import { safeCharacterSource } from "../../scripts/character-safety.mjs";
 import { seedCatalog, encodeCatalog, planCatalog, activateCatalog } from "../../scripts/character-catalog.mjs";
 import { loadCatalogState, publishCatalog, CatalogConflict } from "../../scripts/character-catalog-publish.mjs";
 import { initializeRelease, readReleaseState } from "../../scripts/character-catalog-handoff.mjs";
-import { prepareManualRelease, stageManualRelease, finishManualRelease, parseWranglerConfig, deploymentConfig } from "../../scripts/character-catalog-deploy.mjs";
+import { prepareManualRelease, stageManualRelease, finishManualRelease, parseWranglerConfig, deploymentConfig, runCatalogDeploy } from "../../scripts/character-catalog-deploy.mjs";
 import { createPortraitManifest } from "../src/character-portraits-format.js";
 
 const NOW = Date.parse("2026-11-20T16:00:00Z"), environment = "production", token = "a".repeat(32);
@@ -97,6 +97,53 @@ test("partial target upload reuses immutable portrait bytes even before its firs
   assert.equal(resumed.plan.reuse, true); assert.equal(resumed.plan.expectedETag, null);
   assert.deepEqual(resumed.portraits.png, portraits(plan.catalog).png);
   await stage(f, resumed.plan); assert.equal((await loadCatalogState(f.store, to, { now: NOW })).revision, plan.activation.revision);
+});
+
+const replacementSource = (f, target) => ({
+  async tree(ref) { assert.equal(ref, target); return new Map(f.files.map(file => [file.path, { type: "blob", mode: "100644", sha: file.blob, size: Buffer.byteLength(file.source) }])); },
+  async file(ref, path) { assert.equal(ref, target); const file = f.files.find(file => file.path === path); return { source: file.source, sha: file.blob }; },
+});
+
+test("explicit unpublished-target recovery verifies the live source, invalidates old plans and completes the new release", async () => {
+  const f = await fixture(), { plan: old } = await prepare(f), source = await loadCatalogState(f.store, from, { now: NOW });
+  const target = "8".repeat(40), gh = replacementSource(f, target), before = f.writes.length;
+  let checked;
+  const next = await prepare(f, { gh, target, replaceHeldTarget: to.baseline, token: "b".repeat(32),
+    fetcher: async (url, options) => { checked = { url, options }; return answer({ activation: source.activation, catalog: source.catalog }); } });
+  assert.equal(new URL(checked.url).searchParams.get("baseline"), from.baseline);
+  assert.equal(checked.options.credentials, "omit"); assert.equal(checked.options.redirect, "error");
+  assert.deepEqual(f.writes.slice(before), ["release.json"]);
+  assert.equal(next.plan.context.baseline, target); assert.equal(next.plan.expectedETag, null); assert.equal(next.plan.reuse, false);
+  assert.equal(next.plan.token, "b".repeat(32)); assert.notEqual(next.plan.releaseETag, old.releaseETag);
+  assert.equal((await loadCatalogState(f.store, from, { now: NOW })).etag, source.etag);
+  await assert.rejects(stage(f, old), /state changed/);
+  await assert.rejects(finishManualRelease({ store: f.store, plan: old, environment, now: NOW }), /state changed/);
+  // The same explicit request after a committed CAS simply resumes its new target, even if its
+  // original artifact write or acknowledgment was interrupted. It never fetches or fences again.
+  const retry = await prepare(f, { gh, target, replaceHeldTarget: to.baseline, token: "c".repeat(32), fetcher: async () => { throw new Error("unexpected source check"); } });
+  assert.equal(retry.plan.releaseETag, next.plan.releaseETag); assert.equal(retry.plan.token, next.plan.token);
+  await stageManualRelease({ gh, store: f.store, environment, plan: next.plan, portraits: portraits(next.plan.catalog), now: NOW });
+  const complete = await finishManualRelease({ store: f.store, environment, plan: next.plan, now: NOW, fetcher: async () => answer(next.plan) });
+  assert.equal(complete.state.context.baseline, target); assert.equal(complete.state.pending, null);
+});
+
+test("replacement refuses an incorrect live source and an already staged target while preserving the barrier", async () => {
+  const f = await fixture(), { plan } = await prepare(f), held = await readReleaseState(f.store, environment);
+  const target = "8".repeat(40), gh = replacementSource(f, target), before = f.writes.length;
+  await assert.rejects(prepare(f, { gh, target, replaceHeldTarget: to.baseline, token: "b".repeat(32),
+    fetcher: async () => answer(plan) }), /different catalog/);
+  assert.equal(f.writes.length, before); assert.equal((await readReleaseState(f.store, environment)).etag, held.etag);
+  await stage(f, plan);
+  const source = await loadCatalogState(f.store, from, { now: NOW }), count = f.writes.length;
+  await assert.rejects(prepare(f, { gh, target, replaceHeldTarget: to.baseline, token: "b".repeat(32),
+    fetcher: async () => answer({ activation: source.activation, catalog: source.catalog }) }), /already activated/);
+  assert.equal(f.writes.length, count); assert.equal((await readReleaseState(f.store, environment)).etag, held.etag);
+});
+
+test("resume and target replacement are mutually exclusive at both API and CLI boundaries", async () => {
+  await assert.rejects(prepareManualRelease({ environment, target: "8".repeat(40), resume: true, replaceHeldTarget: to.baseline }), /cannot be combined/);
+  await assert.rejects(runCatalogDeploy(["prepare", "--environment", environment, "--target", "8".repeat(40), "--output", "unused",
+    "--resume", "true", "--replace-held-target", to.baseline], {}), /cannot be combined/);
 });
 
 test("runtime verification retries only bounded transient statuses and never clears a held barrier on failure", async () => {

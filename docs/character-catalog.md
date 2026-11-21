@@ -207,6 +207,20 @@ completes the transition. Inspect a held transition using:
 node scripts/character-catalog-deploy.mjs status --environment staging
 ```
 
+If a staging build needs a code correction before its target catalog has been
+published, first confirm its workflow has finished. Dispatch the corrected
+revision with `catalog_preview=true` and `catalog_replace_held_sha` set to the
+failed target's exact SHA, leaving `catalog_resume_sha` empty. The existing
+environment lock must cover the entire replacement and deployment. The tooling
+checks that both target namespaces remain unpublished, the live Worker still
+serves the fenced source, and the replacement preserves all published
+characters. It conditionally changes only the pending target and token; the
+source fence and publication barrier remain intact. Old plan artifacts become
+invalid. Rendering, build, tests, retention checks and deployment then run
+normally for the corrected SHA. Once a target catalog has been published, use
+the exact-target resume path instead. Never run replacement concurrently with
+an earlier release.
+
 If a publisher won the race before the fence, the transition remains
 **unfenced**, so no catalog-aware deployment could have passed its admission
 check. Explicitly cancel that unfenced transition with the token and quoted
@@ -218,7 +232,8 @@ node scripts/character-catalog-deploy.mjs cancel-unfenced --environment staging 
 
 Cancellation first fences the latest accepted source, then clears only the
 matching unfenced transition. It refuses an already committed original fence
-or a fenced transition; those must resume. Never clear `release.json` by hand.
+or a fenced transition; those must resume or use the guarded unpublished-target
+replacement above. Never clear `release.json` by hand.
 
 ## Operator setup and rollout
 
