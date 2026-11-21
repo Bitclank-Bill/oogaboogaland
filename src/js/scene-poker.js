@@ -233,7 +233,16 @@
   const salonClamp = (p, r, margin) => {
     p.x = clamp(p.x, r.x - r.w / 2 + margin, r.x + r.w / 2 - margin);
     p.z = clamp(p.z, r.z - r.d / 2 + margin, r.z + r.d / 2 - margin);
-    p.y = clamp(p.y, r.y + 0.55, r.y + r.h - 0.3);
+    let ceiling = r.h - 0.3;
+    if (salon === 1) {
+      // Keep the camera inside the inscribed arch, including the lower folds at its sides.
+      const radius = r.w / 2 - 0.85;
+      p.x = clamp(p.x, r.x - radius + margin, r.x + radius - margin);
+      const dx = (p.x - r.x) / radius;
+      ceiling = (r.h - 0.77) * Math.sqrt(1 - dx * dx) - 0.22;
+      p.z = clamp(p.z, r.z - r.d / 2 + 0.4, r.z + r.d / 2 - 0.4);
+    }
+    p.y = clamp(p.y, r.y + 0.55, r.y + ceiling);
   };
   const nearDoor = () => {
     if (seated || !avatar || !salons) return -1;
@@ -877,7 +886,7 @@
     // Canvas 2D paints every face on the CPU, so it gets a lighter set of the same fittings.
     BL.pokerModels.setLite(ctx.renderer.kind === "canvas2d");
     room = BL.pokerModels.build(); S.addChild(root, room.root);
-    salons = BL.pokerSalons.build(ctx.renderer.kind === "canvas2d"); S.addChild(root, salons.root);
+    salons = BL.pokerSalons.build(ctx.renderer.kind === "canvas2d", room.hall.vaultDoor); S.addChild(root, salons.root);
     salons.targets.forEach((n, index) => { input.add(n, { kind: "salon", index }); targets.push(n); });
     cosmos = Themes.hang({ canvas: ctx.renderer.kind === "canvas2d", sparse: ctx.renderer.kind === "canvas2d" || ctx.renderer.quality === "low" });
     for (let i = 0; i < 10; i++) { input.add(room.tables[i].top, { kind: "poker", index: i }); targets.push(room.tables[i].top); }
@@ -1079,7 +1088,7 @@
     }
     for (let i = 0; i < 3; i++) {
       const o = (10 + i) * 8;
-      lights[o] = 0; lights[o + 1] = 6.15; lights[o + 2] = (i - 1) * 24; lights[o + 3] = theme.roomRange + 4 * ease;
+      lights[o] = 0; lights[o + 1] = BL.pokerModels.CHANDELIER_LIGHT_Y; lights[o + 2] = (i - 1) * 24; lights[o + 3] = theme.roomRange + 4 * ease;
       lights[o + 4] = theme.roomLight[0] + (2.5 - theme.roomLight[0]) * ease;
       lights[o + 5] = theme.roomLight[1] + (0.95 - theme.roomLight[1]) * ease;
       lights[o + 6] = theme.roomLight[2] + (0.18 - theme.roomLight[2]) * ease;
@@ -1107,6 +1116,7 @@
     renderOpts.lightCount = 13 + (extraLights.length + (colonnadeOn ? colonnadeLights.length + loungeLights.length + gameLights.length : 0)) / 8;
     if (salon >= 0) {
       const r = currentSalon(), ice = salon === 1;
+      if (ice) salons.glyph.rotation.y = (salons.glyph.rotation.y + dt * 0.6) % (Math.PI * 2);
       for (let k = 0; k < 2; k++) {
         const off = k * 8;
         lights[off] = r.x + (k ? 3 : -3); lights[off + 1] = r.y + 2.8; lights[off + 2] = r.z + (k ? 1 : -2);

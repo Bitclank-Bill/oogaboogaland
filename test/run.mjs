@@ -36665,12 +36665,18 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
       __ooga.advance(0.1, 1 / 30);
       route.push(P.salon);
     };
-    [1, 0, 8, 3, 1, 4, 2, 6].forEach(use);
+    [1, 0, 8, 3, 1].forEach(use);
+    const glyph = P.salons.glyph, before = glyph.rotation.y, core = BL.bifrostModels.coreGlyph().verts;
+    const same = glyph.geometry.verts.length === core.length && core.every((v,i) => Math.abs(v * 2.48 / 1.9 - glyph.geometry.verts[i]) < 1e-6);
+    __ooga.advance(0.5, 1/30);
+    const icyCore = P.salon === 1 && glyph.parent.visible && glyph.geometry.chrome > 0 && same && Math.abs(glyph.rotation.y - before - 0.3) < 1e-5;
+    [4, 2, 6].forEach(use);
     const game = __ooga.game;
     for (let i = game.state.emberDen.visits; i < 21; i++) game.recordDen("visit");
     [6, 7, 5].forEach(use);
-    return { route, saved: BL.game.create().state.emberDen };
+    return { route, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible };
   })()`);
+  record("poker rooms: the icy ₿IFRÖST core turns on its pedestal in Cold Storage and leaves the view on exit", route.icyCore && route.hidden);
   record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the roof holds until visit 21, and all routes return",
     route.route.join() === "-1,0,0,-1,1,-1,2,2,3,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
 } }] });
@@ -39435,18 +39441,17 @@ const pokerVaultChecks = (BL) => {
     }
     P.setLite(false);
     {
-      // Rule: the chandeliers hang from the ridge: each frame's top meets the ridge beam's underside over its middle, its
-      // foot is where it was, and the twelve crystal nodes on four meshes stand exactly where they did (y range of
-      // each mesh as before the vault, nodes at x 0 and z -24, 0 and 24).
+      // Rule: the chandeliers hang from the ridge: each frame's top meets the ridge beam's underside over its middle, its full-size crystal tiers rise halfway from the old crown to the ceiling.
       const room = rooms[0], g = P.geometry(), frames = room.fixtures.children.filter(n => n.geometry === g.chandelier);
       const fr = (() => { let lo = Infinity, hi = -Infinity, far = 0; const v = g.chandelier.verts; for (let i = 0; i < v.length; i += 3) { lo = Math.min(lo, v[i + 1]); if (v[i + 1] > hi) hi = v[i + 1]; if (v[i + 1] > 9.5) far = Math.max(far, Math.hypot(v[i], v[i + 2])); } return { lo, hi, far }; })();
       const ys = geo => { let lo = Infinity, hi = -Infinity; for (let i = 1; i < geo.verts.length; i += 3) { lo = Math.min(lo, geo.verts[i]); hi = Math.max(hi, geo.verts[i]); } return [+lo.toFixed(6), +hi.toFixed(6)]; };
       // Recorded from the crystals before the vault (wave 1's tree): each ring's mesh, then the drop.
       const WAS = [[5.5, 6.551549], [4.8, 5.851533], [4.1, 5.151542], [3.3, 6.6]];
-      const crystalsAt = room.sparkle.length === 12 && new Set(room.sparkle.map(n => n.geometry)).size === 4 && room.sparkle.every(n => n.position.x === 0 && n.position.y === 0 && [-24, 0, 24].includes(n.position.z)) &&
+      const lift = (V.hang(0) - 6.72) / 2;
+      const crystalsAt = room.sparkle.length === 12 && new Set(room.sparkle.map(n => n.geometry)).size === 4 && room.sparkle.every(n => n.position.x === 0 && Math.abs(n.position.y - lift) < 1e-6 && [-24, 0, 24].includes(n.position.z)) &&
         g.crystals.every((geo, i) => ys(geo).every((v, k) => Math.abs(v - WAS[i][k]) < 1e-6));
-      record("poker vault: the chandeliers hang from the ridge's underside and their crystals stand exactly where they did",
-        frames.length === 3 && frames.every(n => [-24, 0, 24].includes(n.position.z)) && Math.abs(fr.hi - V.hang(0)) < 0.02 && Math.abs(fr.lo - 5.11) < 0.05 && fr.far < 0.6 && crystalsAt,
+      record("poker vault: the full-size diamond tiers hang halfway closer to the ridge with the rose still attached",
+        frames.length === 3 && frames.every(n => [-24, 0, 24].includes(n.position.z) && Math.abs(n.position.y - lift) < 1e-6) && Math.abs(fr.hi + lift - V.hang(0)) < 0.02 && Math.abs(fr.lo - 5.11) < 0.05 && fr.far < 0.6 && crystalsAt,
         JSON.stringify({ frame: fr, crystals: g.crystals.map(ys) }));
       // Rule: each table lamp's cable is hung from the vault: a gold hanger stands from each cable end (y 8.8, z +-1.8
       // from the table) up to the purlin over the lamp row, in the room's shell.
@@ -39651,24 +39656,27 @@ const pokerGlazingChecks = (BL) => {
     }
     P.setLite(false);
     {
-      const room = rooms[0], env = room.root.children[0], g = P.geometry(), v = g.shell.verts;
-      // Rule: the signs float exactly where they stood: the BANANA POKER lettering and its welcome line at their places
-      // over the bar, the green field's corners where they were, the mirror's place unchanged, and nothing of the
-      // glazing in the mirror's opening or the ₿IFRÖST board's box.
-      const near = (x, y, z) => { for (let i = 0; i < v.length; i += 3) if (Math.abs(v[i] - x) < 1e-9 && Math.abs(v[i + 1] - y) < 1e-9 && Math.abs(v[i + 2] - z) < 1e-9) return true; return false; };
-      // The green field as it was built before the glass: every vertex of that bevelled box is still in the shell.
-      const was = BL.models.bevelBox({ w: 13, h: 3.2, d: 0.06, color: "#1d4234", offset: { x: 0, y: 6.4, z: -36.45 } }).verts;
+      const room = rooms[0], env = room.root.children[0], g = P.geometry();
+      // Measure the visible letter faces in the frame, independently of the font's advance.
+      const frame = env.children.find(n => n.geometry === g.vaultSign);
       const title = env.children.find(n => n.geometry === g.title.geometry), welcome = env.children.find(n => n.geometry === g.welcome.geometry);
-      let field = was.length > 0;
-      for (let i = 0; i < was.length && field; i += 3) field = near(was[i], was[i + 1], was[i + 2]);
+      const span = (n,axis) => {
+        const v=n.geometry.verts, offset=n.position[["x","y","z"][axis]];
+        let low=Infinity,high=-Infinity;
+        for(let i=axis;i<v.length;i+=3){ low=Math.min(low,v[i]+offset); high=Math.max(high,v[i]+offset); }
+        return [low,high];
+      };
+      const centred = n => Math.abs(span(n,0).reduce((a,b)=>a+b,0) / 2 - frame.position.x) < 1e-6;
+      const field = !!frame && !!title && !!welcome && centred(title) && centred(welcome) &&
+        Math.abs((span(title,1)[1] + span(welcome,1)[0]) / 2 - frame.position.y) < 1e-6 &&
+        span(title,0)[0] > span(frame,0)[0] + 0.4 && span(title,0)[1] < span(frame,0)[1] - 0.4;
       const BM = BL.bifrostModels, glz = trisUnder(room.glazing.root).flat();
       const inMirror = glz.filter(q => Math.abs(q[0]) < BM.WINDOW.halfW - 0.01 && q[1] < BM.WINDOW_TOP - 0.01 && q[2] > 34 && q[2] < 36.48);
       const boardY = BM.WINDOW_TOP + BM.FRAME.band + 1.15, inBoard = glz.filter(q => Math.abs(q[0]) < 1.1 && Math.abs(q[1] - boardY) < 0.37 && Math.abs(q[2] - 36.45) < 0.035);
-      const placed = !!title && !!welcome && title.position.x === -g.title.width / 2 && title.position.y === 6.4 && title.position.z === -36.15 &&
-        welcome.position.x === -g.welcome.width / 2 && welcome.position.y === 5.2 && welcome.position.z === -36.15 && field &&
+      const placed = field &&
         P.REAR_WALL_Z === 36.5 && Math.abs(P.PORTAL_Z - (36.5 - BM.MIRROR_Z - 0.05)) < 1e-12 && Math.abs(P.EXIT_Z - (P.PORTAL_Z + BM.MIRROR_Z)) < 1e-12 &&
         G.PORTAL_Z === P.PORTAL_Z && Math.abs(G.BOARD_Y - boardY) < 1e-12 && inMirror.length === 0 && inBoard.length === 0;
-      record("poker glazing: the signs and the mirror's place stand exactly where they did, and nothing of the glazing enters the mirror's opening or the board",
+      record("poker glazing: the frosted lettering is centred in its frame and the glazing clears the mirror and its board",
         placed, JSON.stringify({ field, inMirror: inMirror.length, inBoard: inBoard.length }));
       // Rule: the columns, statues, cage and bar stand where they did: nine marble columns a side at x +-23.8 every 8.5 m
       // from z -34, the kit's own column, eight statue slots as before, and the cage and bar boxes unchanged.

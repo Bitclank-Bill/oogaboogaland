@@ -183,11 +183,14 @@
   // A tiered brass frame for each of the three chandeliers: three rings joined by four slanted arms each to the one
   // above, the top ring's arms meeting a central stem at y 7.6, the stem from the bottom ring's cross up to the vault.
   const CRYSTAL_RINGS = [[2.1, 6.55, 24, 0.17], [1.45, 5.85, 16, 0.15], [0.8, 5.15, 10, 0.13]];
+  // Raise each complete fixture by half the former gap from the crown ring to the ridge.
+  const CHANDELIER_LIFT = (BL.pokerVault.hang(0) - (CRYSTAL_RINGS[0][1] + CRYSTAL_RINGS[0][3])) / 2;
+  const CHANDELIER_LIGHT_Y = 6.15 + CHANDELIER_LIFT;
   const chandelierFrame = () => {
     const ring = (r, y, h) => M.lathe({ segments: lite ? 16 : 48, profile: [[r + 0.08, y], [r + 0.08, y + h], [r - 0.08, y + h], [r - 0.08, y], [r + 0.08, y]], color: T.accent });
     const parts = CRYSTAL_RINGS.map(([r, y, , h]) => ring(r, y, h));
     // The stem rises to a turned knop, and from it a gold chain (a plain rod on the lite set) to a rose under the vault's ridge.
-    const top = BL.pokerVault.hang(0);
+    const top = BL.pokerVault.hang(0) - CHANDELIER_LIFT;
     parts.push(flat(1.76, 0.04, 0.04, T.accent, 0, 5.13), flat(0.04, 0.04, 1.76, T.accent, 0, 5.13));
     if (lite) parts.push(M.beam(0, 5.11, 0, 0, top - 0.1, 0, 0.07, T.accent), disk(0.3, top - 0.1, top, T.accent, 12));
     else parts.push(M.beam(0, 5.11, 0, 0, 9.2, 0, 0.07, T.accent), M.lathe({ segments: 12, color: T.accent, profile: [[0, 9.05], [0.09, 9.08], [0.13, 9.2], [0.09, 9.32], [0, 9.35]] }),
@@ -345,17 +348,7 @@
       const top = V.lampHang(p.x);
       shell.push(M.beam(p.x, 8.76, p.z + dz, p.x, top + 0.02, p.z + dz, 0.035, T.accent), flat(0.1, 0.05, 0.1, T.accent, p.x, top - 0.02, p.z + dz));
     }
-    // A deep green marble field, framed in gold, behind the bar end's lettering, so gold letters never sit on white stone.
-    // With the walls glass it floats where it was: a gold edge round its depth, a green back with a gold frame (it is
-    // seen from behind through the glass), and two fine gold rods up to the cornice.
-    shell.push(box(13, 3.2, 0.06, "#1d4234", 0, 6.4, -36.45), box(13.2, 0.08, 0.06, T.accent, 0, 8.04, -36.4), box(13.2, 0.08, 0.06, T.accent, 0, 4.76, -36.4),
-      box(0.08, 3.36, 0.06, T.accent, -6.6, 6.4, -36.4), box(0.08, 3.36, 0.06, T.accent, 6.6, 6.4, -36.4));
-    shell.push(flat(13.32, 3.36, 0.04, "#173a2c", 0, 6.4, -36.5),
-      flat(13.44, 0.06, 0.2, T.accent, 0, 8.11, -36.46), flat(13.44, 0.06, 0.2, T.accent, 0, 4.69, -36.46),
-      flat(0.06, 3.48, 0.2, T.accent, -6.69, 6.4, -36.46), flat(0.06, 3.48, 0.2, T.accent, 6.69, 6.4, -36.46));
-    for (const [w, h] of [[12.8, 2.96], [12.5, 2.66]]) shell.push(flat(w, 0.04, 0.02, T.accent, 0, 6.4 + h / 2, -36.53), flat(w, 0.04, 0.02, T.accent, 0, 6.4 - h / 2, -36.53),
-      flat(0.04, h, 0.02, T.accent, -w / 2, 6.4, -36.53), flat(0.04, h, 0.02, T.accent, w / 2, 6.4, -36.53));
-    for (const x of [-5.2, 5.2]) shell.push(M.beam(x, 8.12, -36.46, x, BL.pokerVault.SPRING + 0.02, -36.46, 0.026, T.accent), flat(0.09, 0.03, 0.09, T.accent, x, BL.pokerVault.SPRING - 0.015, -36.46));
+    for (const x of [-5.2, 5.2]) shell.push(M.beam(x, 7.99, -36.24, x, BL.pokerVault.SPRING + 0.02, -36.46, 0.026, T.accent), flat(0.09, 0.03, 0.09, T.accent, x, BL.pokerVault.SPRING - 0.015, -36.46));
     // Twin rods suspend a stepped brass and opal pendant above each felt.
     const shade = M.merge(
       M.lathe({ segments: lite ? 8 : 16, profile: [[0, 3.45], [0.54, 3.45], [0.54, 3.52], [0.43, 3.57], [0.43, 3.67], [0.26, 3.7], [0.23, 3.82], [0, 3.82]], color: GOLD }),
@@ -379,8 +372,9 @@
       base: pedestal(), stone: stoneTop(), rim: rail(), felt: disk(1, FELT_Y - 0.02, FELT_Y, T.felt), pinstripe: inlay(),
       back: BL.pokerCards.geometry(null), chip: disk(0.17, 0, 0.055, "#e2b43c"),
       button: disk(0.16, 0, 0.055, "#ece3c7"),
-      title: BL.poolModels.carve("GENESIS VAULT", { cell: 0.24, color: T.accent }),
-      welcome: BL.poolModels.carve("BLOCK 0   03 JAN 2009", { cell: 0.1, color: T.mineral, emissive: 0.1 }),
+      vaultSign: BL.pokerIce.sign(lite),
+      title: BL.pokerIce.line("GENESIS VAULT", 0.213, "#e0f4ff", lite),
+      welcome: BL.pokerIce.line("BLOCK 0 · 03 JAN 2009", 0.095, "#b1d6ed", lite),
       stool: stool(), sofa: sofa(), armchair: armchair(), lowTable: lowTable(), highTop: highTop(),
       // Floor tiles (the floor module's six veined white seeds and two dark ones for the border).
       tiles: BL.pokerFloor.tiles(lite),
@@ -516,11 +510,11 @@
     for (const side of [-1, 1]) for (let z = -34; z <= 34; z += 8.5) S.addChild(environment, node(geo.column, side * 23.8, 0, z));
     for (let f = 0; f < 3; f++) {
       const z = (f - 1) * 24;
-      S.addChild(fixtures, node(geo.chandelier, 0, 0, z));
-      for (let ring = 0; ring < 4; ring++) { const n = node(geo.crystals[ring], 0, 0, z); n.ring = ring; n.fixture = f; n.prism = n.geometry; n.amber = geo.amber[ring]; sparkle.push(n); S.addChild(fixtures, n); }
+      S.addChild(fixtures, node(geo.chandelier, 0, CHANDELIER_LIFT, z));
+      for (let ring = 0; ring < 4; ring++) { const n = node(geo.crystals[ring], 0, CHANDELIER_LIFT, z); n.ring = ring; n.fixture = f; n.prism = n.geometry; n.amber = geo.amber[ring]; sparkle.push(n); S.addChild(fixtures, n); }
       for (let k=0;k<(lite?4:7);k++) {
         const a=(k+f*0.27)*2*Math.PI/(lite?4:7);
-        const ray=node(geo.ray, 0.62*Math.cos(a),5.6,z+0.62*Math.sin(a));
+        const ray=node(geo.ray, 0.62*Math.cos(a),5.6 + CHANDELIER_LIFT,z+0.62*Math.sin(a));
         ray.rotation.y=-a; ray.rotation.z=-0.49-0.12*(k%3); ray.visible=false;
         rays.push(ray); S.addChild(fixtures,ray);
       }
@@ -544,10 +538,10 @@
     // The gaming tables and their staff, on the set this room is built on.
     const games = BL.pokerGames.build(GAMES, { lite, dress: { jacket: geo.jacket, sleeve: geo.sleeve, cuff: geo.cuff }, scale: DEALER_SCALE });
     S.addChild(environment, games.root);
-    const title = geo.title;
-    S.addChild(environment, node(title.geometry, -title.width / 2, 6.4, -36.15));
-    const welcome = geo.welcome;
-    S.addChild(environment, node(welcome.geometry, -welcome.width / 2, 5.2, -36.15));
+    const gap = 0.22, signY = 6.4;
+    S.addChild(environment, node(geo.vaultSign, 0, signY, -36.18),
+      node(geo.title.geometry, 0, signY + (geo.welcome.height + gap) / 2, -35.85),
+      node(geo.welcome.geometry, 0, signY - (geo.title.height + gap) / 2, -35.85));
     return { root, tables, fixtures, sparkle, rays, hall, statues, floor, vault, glazing, games };
   };
   // Banana Club's fittings as axis-aligned boxes (centre, half-extents) in room coordinates; the geometry is built from
@@ -729,5 +723,5 @@
     if (p.legL) p.legL.rotation.x = 0; if (p.legR) p.legR.rotation.x = 0;
     if (p.armL) p.armL.rotation.x = STAND_ARMS; if (p.armR) p.armR.rotation.x = STAND_ARMS;
   };
-  BL.pokerModels = { TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, sitPose, standPose };
+  BL.pokerModels = { CHANDELIER_LIGHT_Y, TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, sitPose, standPose };
 })();

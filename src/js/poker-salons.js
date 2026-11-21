@@ -57,23 +57,23 @@
       }
       solid(x, z, scale * 2, scale * 2);
     };
-    slab(0, -0.14, 0, r.w, 0.28, r.d, ice ? "#64869a" : "#2b2520");
-    for (let k = -1; k <= 1; k += 2) {
+    slab(0, -0.14, 0, r.w, 0.28, r.d, ice ? "#315267" : "#2b2520");
+    if (!ice) for (let k = -1; k <= 1; k += 2) {
       slab(k * (a - 0.32), 0.008, 0, 0.045, 0.012, r.d - 0.6, trim);
       slab(0, 0.008, k * (b - 0.32), r.w - 0.6, 0.012, 0.045, trim);
     }
-    if (!open) {
+    if (!open && !ice) {
       slab(0, r.h / 2, -b, r.w, r.h, 0.22, wall);
       slab(0, r.h / 2, b, r.w, r.h, 0.22, wall);
       for (const s of [-1, 1]) {
         slab(s * a, r.h / 2, 0, 0.22, r.h, r.d, wall);
         for (let z = -b + 1; z < b; z += 2.1) {
           slab(s * (a - 0.17), r.h / 2, z, 0.14, r.h - 0.2, 0.08, trim);
-          slab(s * (a - 0.26), 2.1, z, 0.2, ice ? 1.4 : 0.38, 0.2, ice ? ICE : IVORY, 0.85);
+          slab(s * (a - 0.26), 2.1, z, 0.2, 0.38, 0.2, IVORY, 0.85);
         }
       }
       slab(0, r.h + 0.08, 0, r.w, 0.16, r.d, wall);
-    } else {
+    } else if (open) {
       // Exposed balcony edge, slim brass posts and two continuous rails looking down to the hall.
       for (const sign of [-1, 1]) for (const y of [0.44, 1]) {
         slab(0, y, sign * b, r.w, 0.075, 0.09, trim); slab(sign * a, y, 0, 0.09, 0.075, r.d, trim);
@@ -116,33 +116,25 @@
       }
       parts.push(letters("CYPHERPUNK LOUNGE", 0.08, IVORY, 0, 3.2, -b + 0.17));
     } else if (ice) {
-      // A hardware wallet carved from ice, on a plinth with a recessed screen and two physical buttons.
-      cylinder(0, -1.2, [[0, 0], [1.65, 0], [1.45, 0.2], [1.15, 0.3], [1.15, 0.9], [0, 0.9]], ICE, 0.14);
-      slab(0, 1.45, -1.2, 2.75, 1.08, 0.59, "#81adcd", 0.22);
-      slab(-0.4, 1.48, -0.89, 1.32, 0.51, 0.045, "#193b51"); slab(-0.4, 1.48, -0.86, 0.77, 0.065, 0.04, ICE, 1);
-      for (const x of [0.55, 0.92]) slab(x, 1.5, -0.87, 0.19, 0.19, 0.08, IVORY);
-      // A brushed metal swivel cover and pin give the wallet a recognizable folding profile.
-      parts.push(M.moved(M.turnedZ(bevel(1.46, 0.49, 0.14, "#b4d8e5", 0.56, 0, 0, 0.08), 0.56), -1.01, 1.61, -0.74));
-      slab(-1, 1.62, -0.65, 0.14, 0.14, 0.045, "#426679");
-      for (const s of [-1, 1]) {
-        // Radial facets frame the display, with rows of numbered cold-storage drawers to either side.
-        for (let i = 0; i < 5; i++) {
-          const x = s * (0.24 + i * 0.52);
-          rail(s * 0.15, 0.19, -b + 0.2, x, 2.3 + 0.25 * (4 - i), -b + 0.2, 0.075, "#79a6bd");
+      // Drawer banks sit in shallow recesses in the far ice. Rime and inset metal catches articulate their faces.
+      for (const side of [-1, 1]) {
+        const x = side * 3.64, z = -b + 0.13;
+        parts.push(bevel(2.82,1.83,0.42,"#1d3545",x,1.29,z,0.09));
+        for (let row=0;row<3;row++) for (let col=0;col<3;col++) {
+          const dx=x+(col-1)*0.91, y=0.73+row*0.56;
+          parts.push(bevel(0.86,0.51,0.14,"#4a6479",dx,y,z+0.23,0.045));
+          slab(dx,y+0.045,z+0.32,0.30,0.045,0.075,ICE,0.36);
         }
-        for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
-          const x = s * (3.35 + col * 0.94), y = 0.72 + row * 0.61;
-          parts.push(bevel(0.89, 0.55, 0.18, "#58788b", x, y, -b + 0.2, 0.05));
-          slab(x, y + 0.05, -b + 0.32, 0.25, 0.04, 0.07, ICE, 0.3);
+        solid(x,z,2.83,0.75);
+        chair(side*4.15,-0.4,-side*1.55,"#aebfca");
+        // Bound the lower arch where it meets a walker's shoulder.
+        solid(side*(a-0.22),0,1.6,r.d);
+        for (let i=0;i<8;i++) {
+          const z=3.3-i*0.94, x=side*(1.22+1.08*Math.exp(-(z*z)/3));
+          slab(x,0.017,z,0.12,0.026,0.22,"#ec973c",0.74);
         }
       }
-      solid(0, -1.2, 3.3, 3.3);
-      for (const s of [-1, 1]) {
-        chair(s * 4.2, -1.2, -s * 1.55, "#ccd6d2");
-        for (let k = 0; k < 7; k++) cylinder(s * (1.6 + k % 3 * 0.45), -2.8 + k * 0.56,
-          [[0, r.h - 1.4 + k % 3 * 0.25], [0.24, r.h - 0.25], [0.28, r.h]], ICE, 0.5);
-      }
-      parts.push(letters("COLD STORAGE", 0.12, IVORY, 0, 3.55, -b + 0.18));
+      solid(0,0,3.18,3.18);
     } else if (id === 2) {
       for (const x of [-4.6, -2.9, -0.5, 1.2]) chair(x, 0.2, 0, "#52342b");
       slab(-3, 1.2, -2.65, 5.2, 2.4, 0.24, WALNUT);
@@ -166,13 +158,25 @@
       for (let i = 0; i < 3; i++) { const t = i * Math.PI * 2 / 3; parts.push(M.beam(Math.cos(t) * 0.58, 0, -3 + Math.sin(t) * 0.58, 0, 1.52, -3, 0.1, GOLD)); }
       parts.push(M.beam(-0.16, 1.33, -2.3, 0.23, 1.99, -4.06, 0.33, GOLD)); solid(0, -3, 1.2, 2.1);
     }
-    const built = { geometry: M.merge(...parts), solids }; cache.set(key, built); return built;
+    const built = { geometry: M.merge(...parts), solids };
+    if (ice) {
+      built.cavern = BL.pokerIce.cavern(r, lite);
+      built.glyph = BL.pokerIce.glyph(lite);
+    }
+    cache.set(key, built);
+    return built;
   };
   const origin = i => i < 0 ? { x: 0, y: 0, z: 0 } : ROOMS[i];
-  const build = lite => {
+  const build = (lite, vaultDoor) => {
+    let glyph;
     const root = S.createNode(), solids = [], targets = [], rooms = [];
     ROOMS.forEach((r, i) => {
-      const g = interior(i, lite); solids.push(g.solids); rooms.push(add(root, g.geometry, r.x, r.y, r.z));
+      const g = interior(i, lite), room = add(root, g.geometry, r.x, r.y, r.z);
+      rooms.push(room); solids.push(g.solids);
+      if (g.cavern) {
+        add(room, g.cavern);
+        glyph = add(room, g.glyph, 0, 2.22, 0);
+      }
     });
     // A glazed lift shaft at the far right links the three landings visibly from the tables.
     const lift = [], x = 17.4, z = -35.05;
@@ -184,12 +188,13 @@
     glazing.glassOpacity = 0.055; glazing.glassGrazing = 0.5; glazing.castShadow = false;
     add(root, M.merge(...lift)); add(root, glazing);
     DOORS.forEach(([from, to, x, z, , , label], i) => {
+      if (i === 1) { targets.push(vaultDoor); return; }
       const p = origin(from), book = i === 0;
       const parts = book ? [mesh(0.52, 0.68, 0.13, "#e5d7af", 0, 0, 0), letters("BTC", 0.03, LACQUER, 0, 0.17, -0.065)] :
         [mesh(1.9, 0.51, 0.12, LACQUER, 0, 0, 0), mesh(1.94, 0.045, 0.15, GOLD, 0, 0.27, 0),
          letters(label, Math.min(0.072, 0.44 / label.length), IVORY, 0, 0.09, -0.055)];
       // Return signs on the front wall face into their room.
-      const n = add(root, M.merge(...parts), p.x + x, p.y + (i === 8 ? 2.47 : i === 1 ? 2.99 : 1.55), p.z + z);
+      const n = add(root, M.merge(...parts), p.x + x, p.y + (i === 8 ? 2.47 : 1.55), p.z + z);
       if (i === 3 || i === 4) n.rotation.y = Math.PI;
       targets.push(n);
     });
@@ -199,7 +204,7 @@
       for (let i = 0; i < targets.length; i++) targets[i].visible = DOORS[i][0] === id;
     };
     show(-1);
-    return { root, solids, targets, show };
+    return { root, solids, targets, glyph, show };
   };
   // Test the whole walking segment against furniture expanded by the visitor's body radius.
   const clear = (set, r, ax, az, bx, bz, radius) => {

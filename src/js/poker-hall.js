@@ -6,7 +6,6 @@
   const cache = M.scopedMap();
   const box = (x, y, z, w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   const turn = (profile, color, segments, emissive = 0) => M.lathe({ profile, color, segments, emissive });
-  const ring = (r, tube, color, segments) => M.turnedX(M.torus(r, tube, color, 0.18, segments, 6), Math.PI / 2);
   const child = (root, geometry, x = 0, y = 0, z = 0) => {
     const n = S.createNode({ geometry, position: { x, y, z } });
     S.addChild(root, n);
@@ -72,40 +71,6 @@
       update(dt, t, opts);
       globe.rotation.y = (globe.rotation.y + dt * 0.05) % (2 * Math.PI);
     };
-  };
-
-  // A safe set flush against the back glazing, in the gap between the two back bars.
-  const safe = lite => {
-    const n = lite ? 16 : 32, parts = [box(0, 2.25, -0.15, 4.5, 4.5, 0.3, BLACK)];
-    const disk = turn([[0, 0], [2, 0], [2.1, 0.08], [2.1, 0.19], [1.97, 0.24], [0, 0.24]], BRASS, n);
-    parts.push(M.moved(M.turnedX(disk, Math.PI / 2), 0, 2.25, 0.015));
-    for (const [r, tube, z, color] of [[2.08, 0.08, 0.19, LIGHT], [1.72, 0.055, 0.27, BLACK], [0.83, 0.08, 0.4, LIGHT]]) parts.push(M.moved(ring(r, tube, color, n), 0, 2.25, z));
-    for (let i = 0; i < 12; i++) {
-      const a = i * Math.PI / 6, x = Math.cos(a), y = Math.sin(a);
-      parts.push(box(x * 1.88, 2.25 + y * 1.88, 0.29, 0.12, 0.12, 0.09, BLACK));
-      if (!(i & 1)) parts.push(M.beam(0, 2.25, 0.38, x * 0.83, 2.25 + y * 0.83, 0.38, 0.085, LIGHT));
-    }
-    for (const y of [1.25, 3.25]) parts.push(box(-1.87, y, 0.28, 0.52, 0.24, 0.26, LIGHT));
-    for (const side of [-1, 1]) {
-      // Fluted pylons step down toward the door. Fine engraved rays lead into the wheel.
-      for (let k = 0; k < 3; k++) {
-        const x = side * (2.35 + k * 0.23), h = 4.8 - 0.35 * k;
-        parts.push(box(x, h / 2, 0.04, 0.23, h, 0.34, k === 1 ? LIGHT : BRASS, 0.18));
-      }
-      for (let k = 0; k < 5; k++) {
-        const a = (0.18 + k * 0.075) * Math.PI;
-        parts.push(M.beam(side * Math.cos(a) * 1.56, 2.25 + Math.sin(a) * 1.56, 0.28,
-          side * Math.cos(a) * 1.1, 2.25 + Math.sin(a) * 1.1, 0.28, 0.045, LIGHT, 0.4));
-      }
-    }
-    const plaque = (text, y) => {
-      const g = BL.poolModels.carve(text, { cell: 0.031, color: "#f2d797", emissive: 0.45 });
-      parts.push(M.moved(g.geometry, -g.width / 2, y, 0.25));
-    };
-    parts.push(box(0, 0.56, 0.31, 4.36, 0.58, 0.08, BLACK));
-    plaque("THE TIMES 03/JAN/2009 CHANCELLOR ON", 0.76);
-    plaque("BRINK OF SECOND BAILOUT FOR BANKS", 0.53);
-    return M.merge(...parts);
   };
 
   // Water, reef and kelp are one static mesh. Tint each water tile by depth and distance
@@ -213,7 +178,7 @@
       quad(0, 0.72, bed); quad(0.72, 0.79, edge, 0.65);
     }
     channel.castShadow = false;
-    const g = { tank: aquariumWall(lite), whale: humpback(), base, bronze, block, safe: safe(lite), channel };
+    const g = { tank: aquariumWall(lite), whale: humpback(), base, bronze, block, safe: BL.pokerIce.door(lite), channel };
     cache.set(key, g); return g;
   };
   const build = lite => {
@@ -226,7 +191,7 @@
     bronze.scale.x = bronze.scale.z = 1.04;
     bronze.scale.y = 1.10;
     bronze.rotation.y = -0.72;
-    child(root, g.safe, 0, 0, -36.06);
+    const vaultDoor = child(root, g.safe, 0, 0, -35.8);
     const tank = child(root, g.tank, 10, 2.79, -35.55);
     // Compress the swimming circuit in depth to keep both animals inside the recessed window at the turns.
     const school = S.createNode({ position: { x: 0, y: 0, z: 0.52 } });
@@ -266,7 +231,7 @@
     };
     update(0, 0);
     const dispose = () => { while (root.children.length) S.removeChild(root, root.children[root.children.length - 1]); };
-    return { root, clock, update, dispose };
+    return { root, clock, vaultDoor, update, dispose };
   };
   BL.pokerHall = Object.freeze({ build, hangMoon });
 })();

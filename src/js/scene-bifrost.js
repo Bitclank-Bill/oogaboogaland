@@ -123,7 +123,7 @@
     const theme = BL.pokerThemes.club;
     BL.pokerThemes.light(POKER_LIGHT, renderer.kind);
     BL.pokerModels.TABLES.forEach((p, i) => POKER_LIGHT.lights.set([p.x, theme.tableY, p.z, theme.tableRange, ...theme.tableLight, 0], i * 8));
-    for (let i = 0; i < 3; i++) POKER_LIGHT.lights.set([0, 6.15, (i - 1) * 24, theme.roomRange, ...theme.roomLight, 0], (10 + i) * 8);
+    for (let i = 0; i < 3; i++) POKER_LIGHT.lights.set([0, BL.pokerModels.CHANDELIER_LIGHT_Y, (i - 1) * 24, theme.roomRange, ...theme.roomLight, 0], (10 + i) * 8);
     const extra = BL.pokerModels.CLUB_LIGHTS; POKER_LIGHT.lights.set(extra, 104); POKER_LIGHT.lightCount = 13 + extra.length / 8;
     return POKER_LIGHT;
   };

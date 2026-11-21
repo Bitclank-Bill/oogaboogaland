@@ -23,7 +23,7 @@ The local poker browser playthrough covers practice hands, the ₿IFRÖST return
 
 ## Exploring Banana Club
 
-Follow the stream of amber blocks past the Bitcoin-orange Charging Bull to the Genesis Vault. The west bar holds a copy of the whitepaper. Walk up and use the action button or select the book to find the Cypherpunk Lounge. Look by the fire for a founder’s pass, then take it to the vault to enter Cold Storage.
+Follow the stream of amber blocks past the Bitcoin-orange Charging Bull to the Genesis Vault. The west bar holds a copy of the whitepaper. Walk up and use the action button or select the book to find the Cypherpunk Lounge. Look by the fire for a founder’s pass, then take it to the layered ice door to enter Cold Storage. Inside the glacier cave, an ice carving of the ₿IFRÖST core glyph turns above a fractured plinth.
 
 The hourglass on the west side of the promenade shows the observed block height. Gold sand drains according to the time since the tip and the recent average block interval. When a new tip arrives, the height lifts, a two-tone chime sounds, and all three diamond chandeliers cast orange light for three seconds. Opening the room on an existing tip is quiet. The sound follows the room audio controls.
 
