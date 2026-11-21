@@ -1220,11 +1220,13 @@
   // On in through the hangar door's shield from the hangar: as far to its side and as far past it as the Ooga went
   // through the hangar's, facing out along the walkway, the view square behind it, and the walk on.
   const walkInHangar = (c) => {
+    walk.view = c.doorView;
     const G = BL.factoryWindow.GLIDE, at = BL.factoryWindow.arrival(HANGAR_WAY, clamp(c.side, -1.2, 1.2), clamp(c.past, 0, G.past), ARRIVE);
     pilot.navigate({ yaw: at.yaw, pitch: clamp(c.pitch, FOLLOW.pitch[0], IN_PITCH), dist: clamp(c.dist, FOLLOW.min, IN_VIEW), position: { x: at.x, y: LAYOUT.hangar.y, z: at.z }, framed: true });
     pilot.orbit.tDist = HANGAR_ARRIVAL.dist;
     const p = avatar.root.position;
     Object.assign(walk, { phase: HANGAR_ON, t: 0, x: p.x, z: p.z, through: false });
+    pilot.setExternalControl(true);
   };
   // The walk through the hangar's door, as the gate's (`walkStep`): down the door's middle, into the hangar with an
   // instant switch, or on from it to where an arrival stands.
@@ -1236,8 +1238,14 @@
     if (people.player !== avatar || moved > 1.2 || w.t > G.limit || !off && d.plane - past >= HANGAR_IN) {
       w.phase = 0;
       w.through = false;
-      w.settle = people.player === avatar;
+      w.settle = false;
       people.steer(0, 0, 0, 0, 0);
+      pilot.setExternalControl(false);
+      if (people.player === avatar) {
+        BL.factoryWindow.restoreDoorView(pilot, Math.atan2(off ? d.ox : -d.ox, off ? d.oz : -d.oz), w.view);
+        pilot.controls.takeMovement();
+      }
+      w.view = null;
       return;
     }
     w.x = p.x; w.z = p.z;
@@ -1257,19 +1265,25 @@
       people.steer(0, 0, 0, 0, 0);
       return;
     }
-    world.hangarCrossing = BL.factoryWindow.crossing(d, p, o);
+    world.hangarCrossing = { ...BL.factoryWindow.crossing(d, p, o), doorView: w.view };
     w.phase = 0;
     w.grab = true;
     people.steer(0, 0, 0, 0, 0);
     enterHangar(true);
     // A switch the director refuses (another under way) leaves the Ooga in the hall.
-    if (!leaving) { world.hangarCrossing = null; w.through = w.grab = false; }
+    if (!leaving) { world.hangarCrossing = null; w.through = w.grab = false; pilot.setExternalControl(false); BL.factoryWindow.restoreDoorView(pilot, Math.atan2(d.ox, d.oz), w.view); pilot.controls.takeMovement(); w.view = null; }
   };
   // The island could not be built for the way out (the director's `stay`): the Ooga walks again, and the gate waits for
   // it to step back out of the opening before it tries again. Kept from the hangar (its code could not be fetched), the
   // Ooga is the visitor's again, and the hangar's door waits the same way.
   const stay = () => {
-    if (toHangar) { toHangar = false; hangarHeld = true; pilot.setActive(true); }
+    pilot.setExternalControl(false);
+    if (toHangar) {
+      toHangar = false; hangarHeld = true; pilot.setActive(true);
+      BL.factoryWindow.restoreDoorView(pilot, Math.atan2(HANGAR_WAY.ox, HANGAR_WAY.oz), walk.view);
+      pilot.controls.takeMovement();
+    }
+    walk.view = null;
     leaving = false; exitHeld = true; walk.phase = 0; walk.through = walk.handing = walk.grab = false; walk.still = walk.hold = 0; world.factoryCrossing = world.hangarCrossing = null;
     eyes.reset();
   };
@@ -2306,7 +2320,9 @@
         pilot.controls.reset(); input.reset(); hud.tooltip.hide();
         eyes.enter(avatar, 0);
       } else if (!hangarHeld && driven === avatar && walkingToHangar(s, p, previousX, previousZ, dt)) {
+        walk.view = BL.factoryWindow.doorView(pilot, Math.atan2(HANGAR_WAY.ox, HANGAR_WAY.oz));
         Object.assign(walk, { phase: HANGAR_OFF, t: 0, x: p.x, z: p.z, through: false });
+        pilot.setExternalControl(true);
         pilot.controls.reset(); input.reset(); hud.tooltip.hide();
       } else if (!exitHeld && inOpening && p.z > HALL.front - 1.3) leaveCave();
       else if (!hangarHeld && throughHangar(s, p, driven.baseY)) enterHangar();
@@ -2493,6 +2509,7 @@
     return kept;
   };
   const leave = () => {
+    pilot.setExternalControl(false); walk.view = null;
     eyes.reset();
     eyes = null;
     // Capture once, before disposal: the island retains only this visit, never a union of earlier halls.

@@ -461,5 +461,67 @@
     };
     return { enter, arrive, letGo, view, reset, ahead: (walker) => EYE_AHEAD * walker.traits.height, get returnView() { return returnView; }, get focused() { return focused; }, get on() { return mode === IN_EYES; }, get there() { return mode === IN_EYES && glide >= 1; } };
   };
-  BL.factoryWindow = { create, relief, grab, still, crossing, arrival, eyes, stopPast, AXIS, DEPTH, TINT, GLIDE };
+  // Keep the body and view relative to travel through the doorway, not the
+  // temporary heading a guided walk gives the Ooga.
+  const doorView = (pilot, heading) => {
+    const actor = pilot.player, view = pilot.viewState();
+    if (!actor || !view) return null;
+    view.relYaw += actor.root.rotation.y - heading;
+    return { view, bodyYaw: actor.root.rotation.y - heading, focused: pilot.captureControl({}).focused };
+  };
+  const restoreDoorView = (pilot, heading, state, position = null) => {
+    const actor = pilot.player;
+    if (!actor || !state?.view) return;
+    const p = actor.root.position, view = { ...state.view }, yaw = heading + view.relYaw;
+    pilot.navigate({ position: position || { x: p.x, y: p.y - actor.baseY, z: p.z },
+      yaw: view.view === "first-person" ? yaw : heading + state.bodyYaw - Math.PI,
+      pitch: view.pitch, dist: view.distance, framed: true });
+    view.relYaw = yaw - actor.root.rotation.y;
+    pilot.adopt(view);
+    if (state.focused) pilot.focusAim();
+  };
+  // A short portal landing with the body and retained camera translated together.
+  // It also works backwards: no guide turn, camera snap, or synthetic held key.
+  const portalWalk = (pilot, crew) => {
+    const matrix = BL.math.mat4.create();
+    let walk = null;
+    const reset = (resume = false) => {
+      if (!walk) return;
+      const same = pilot.player === walk.actor, focused = walk.focused;
+      if (same) { crew.steer(0, 0); BL.crew.poseGait(walk.actor, BL.crew.GAIT.stand); }
+      walk = null;
+      pilot.setExternalControl(false);
+      if (same && resume) { if (focused) pilot.focusAim(); pilot.controls.takeMovement(); }
+    };
+    const begin = (from, to, heading, state, groundAt = null) => {
+      reset();
+      const actor = pilot.player;
+      if (!actor || !state) return;
+      restoreDoorView(pilot, heading, state, from);
+      const p = actor.root.position;
+      walk = { actor, x: p.x, z: p.z, y: p.y, lastX: p.x, lastZ: p.z, dx: to.x - p.x, dz: to.z - p.z,
+        heading: actor.root.rotation.y, back: Math.cos(state.bodyYaw) < 0, focused: state.focused, groundAt, duration: Math.max(0.85, Math.hypot(to.x - p.x, to.z - p.z) / 4.5), time: 0 };
+      pilot.setExternalControl(true);
+      crew.steer(0, 0);
+    };
+    const update = (dt) => {
+      if (!walk) return;
+      const w = walk, p = w.actor.root.position;
+      if (pilot.player !== w.actor || Math.hypot(p.x - w.lastX, p.z - w.lastZ) > 0.5 || Math.abs(p.y - w.y) > 1) { reset(true); return; }
+      w.time = Math.min(1, w.time + dt / w.duration);
+      const k = w.time * w.time * (3 - 2 * w.time), x = w.x + w.dx * k, z = w.z + w.dz * k;
+      BL.math.mat4.identity(matrix);
+      const y = w.groundAt ? w.groundAt(x, z) + w.actor.baseY : w.y;
+      if (!Number.isFinite(y)) { reset(true); return; }
+      matrix[12] = x - p.x; matrix[13] = y - p.y; matrix[14] = z - p.z;
+      p.x = w.lastX = x; p.y = w.y = y; p.z = w.lastZ = z;
+      w.actor.root.rotation.y = w.heading;
+      pilot.transformView(matrix, 0);
+      BL.crew.poseGait(w.actor, BL.crew.GAIT.walk, Math.hypot(w.dx, w.dz) * k * 4 * (w.back ? -1 : 1));
+      BL.crew.poseCloseWalk(w.actor, 0, w.back);
+      if (w.time === 1) reset(true);
+    };
+    return { begin, update, reset, get active() { return !!walk; } };
+  };
+  BL.factoryWindow = { create, relief, grab, still, crossing, arrival, eyes, stopPast, doorView, restoreDoorView, portalWalk, AXIS, DEPTH, TINT, GLIDE };
 })();

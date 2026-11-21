@@ -27404,7 +27404,7 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
   // The deck starts where the stone head ends, `HEAD.over` out past the rim along the islet's axis.
   const arch = await b.evaluate(`(() => { const B = window.__ooga, I = window.BL.bifrostIsle, a = B.crew.player, p = a.root.position, g = B.island.gate, s = B.bifrost.site.arrival, sp = I.spot(B.island); return { past: +(g.z - p.z).toFixed(2), onDeck: p.x * Math.sin(I.AXIS.bearing) - p.z * Math.cos(I.AXIS.bearing) > sp.rim + I.HEAD.over, feet: +(p.y - a.baseY).toFixed(2), deck: +s.y.toFixed(2) }; })()`);
   record("bifrost entrance: from the pass stairs the roster's widest Ooga walks through the arch out onto the bridge's deck", arch.onDeck && Math.abs(arch.feet - arch.deck) < 0.3, JSON.stringify(arch));
-  await b.evaluate(`(() => { const B = window.__ooga, p = B.bifrost.site.portal, sx = Math.sin(p.ry), sz = Math.cos(p.ry), x = p.x + sx * 0.9, z = p.z + sz * 0.9; B.pilot.navigate({ position: { x, y: p.floorY, z }, target: { x: x - sx * 6, y: p.floorY + 1, z: z - sz * 6 }, yaw: Math.atan2(sx, sz), pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__portal = [-sx, -sz]; })()`);
+  await b.evaluate(`(() => { const B = window.__ooga, p = B.bifrost.site.portal, sx = Math.sin(p.ry), sz = Math.cos(p.ry), x = p.x + sx * 0.9, z = p.z + sz * 0.9; B.pilot.navigate({ position: { x, y: p.floorY, z }, target: { x: x - sx * 6, y: p.floorY + 1, z: z - sz * 6 }, yaw: Math.atan2(sx, sz), pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__portal = [-sx, -sz]; window.__bifrostView = B.pilot.viewState(); })()`);
   const inKey = await b.evaluate(`window.__portal`);
   // Count the critical path at enter itself: later idle preview work must not be mistaken for a blocking load.
   await b.evaluate(`(() => {
@@ -27436,6 +27436,8 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
       arrived.scene === "bifrost" && arrived.ooga === "portlandhodl" && arrived.entered?.criticalLoads === 0
       && arrived.entered.enterLoads === 0 && !arrived.entered.pictured && arrived.entered.outside
       && arrived.entered.windows.length === 2 && arrived.entered.windows.every(w => !w.owned && w.faces > 0), JSON.stringify(arrived));
+    const view = await b.evaluate(`(() => { const B = __ooga; B.advance(2, 1 / 60); const a = B.pilot.player, p = a.root.position, z = p.z; B.advance(0.3, 1 / 60); return { actual: B.pilot.viewState(), expected: window.__bifrostView, x: p.x, z: p.z, field: BL.bifrostModels.ENTRY.field, eyeZ: B.camera.position.z, stopped: Math.abs(p.z - z) }; })()`);
+    record("bifrost entrance: walking from the field restores pitch, zoom and mode, and a released key stays released", view.actual.view === view.expected.view && Math.abs(view.actual.pitch - view.expected.pitch) < 0.02 && Math.abs(view.actual.distance - view.expected.distance) < 0.03 && view.z < view.field - 3 && view.eyeZ < view.field - 0.5 && view.stopped < 0.03, JSON.stringify(view));
     // Idle callbacks, deferred scripts and JPEG decode need real event-loop turns, rather than debug advance alone.
     const pictured = await untilPage(b, 'B.scene === "bifrost" && !B.transitioning && B.bifrost.scene.windows.filter(w => w.kind === "travel").every(w => w.picture.owned)', 15000);
     const previews = await b.evaluate(`(() => {
@@ -27490,8 +27492,14 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
   await b.evaluate(`(() => { const B = window.__ooga, E = window.BL.bifrostModels.ENTRY;
     if (B.scene !== "bifrost") throw new Error("Bifrost exit fixture did not enter its chamber");
     const cave = B.cavemen.get("portlandhodl"); if (B.pilot.player !== cave) B.pilot.possess(cave);
-    B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, target: { x: 0, y: 1, z: E.field + 4 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); })()`);
-  await walkToward(b, 0, 1, 0.8);
+    B.pilot.enterClose(true); B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, target: { x: 0, y: 1, z: E.field + 4 }, yaw: 0, pitch: -0.24, dist: 5, framed: true }); B.pilot.focusAim(); B.advance(0.5, 1 / 60); window.__bifrostExitView = B.pilot.viewState(); })()`);
+  await b.evaluate(`(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true })); __ooga.advance(0.8, 1 / 60); })()`);
+  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
+  const restored = await b.evaluate(`(() => { const B = __ooga; B.advance(1.1, 1 / 60); const a = B.pilot.player, p = a.root.position, door = B.bifrost.site.portal, sr = Math.sin(door.ry), cr = Math.cos(door.ry), x = p.x, z = p.z, view = B.pilot.viewState();
+    B.advance(0.25, 1 / 60); const moved = (p.x - x) * sr + (p.z - z) * cr;
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "s", code: "KeyS", bubbles: true })); B.advance(0.2, 1 / 60); const stopX = p.x, stopZ = p.z; B.advance(0.2, 1 / 60);
+    return { view, expected: window.__bifrostExitView, facing: Math.cos(a.root.rotation.y - door.ry), moved, stopped: Math.hypot(p.x - stopX, p.z - stopZ), focused: document.body.classList.contains("aim-cursor-focused") }; })()`);
+  record("bifrost exit: backing through keeps first-person facing and pitch, walks away backwards, and restores held S and mouse focus", restored.view.view === "first-person" && Math.abs(restored.view.pitch - restored.expected.pitch) < 0.02 && restored.facing < -0.95 && restored.moved > 0.2 && restored.stopped < 0.03 && restored.focused, JSON.stringify(restored));
   const back = await b.evaluate(`(() => { const B = window.__ooga; for (let i = 0; i < 240 && (B.transitioning || B.scene !== "hub"); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); const p = B.crew.player && B.crew.player.root.position, a = B.bifrost && B.bifrost.site.arrival; return { scene: B.scene, ooga: B.crew.player ? B.crew.player.traits.name : null, fromArrival: p && a ? +Math.hypot(p.x - a.x, p.z - a.z).toFixed(1) : null }; })()`);
   await tourGo(b, "bifrost");
   // Carried focus comes back as soft mouse-look (#421): the first Escape frees that cursor in the chamber, the next leaves.
@@ -27506,6 +27514,13 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
   await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
   const escaped = await b.evaluate(`({ scene: __ooga.scene, driving: __ooga.pilot.player?.traits.name || null })`);
   record("bifrost exit: walking back out through the field returns the same Ooga to the bridge's end; Escape leaves the chamber for the island still driving it", back.scene === "hub" && back.ooga === "portlandhodl" && back.fromArrival !== null && back.fromArrival < 4 && escaped.scene === "hub" && escaped.driving === "portlandhodl", JSON.stringify({ back, escaped }));
+  // An extreme orbit must not turn camera clearance into a walk across the hall.
+  await b.evaluate(`(() => { const B = __ooga, P = B.pilot, d = B.bifrost.site.portal, sr = Math.sin(d.ry), cr = Math.cos(d.ry);
+    if (P.aiming) P.modeAction("mode-toggle"); P.exitClose(); P.navigate({ position: { x: d.x + sr * 0.9, y: d.floorY, z: d.z + cr * 0.9 }, yaw: d.ry, pitch: 0.2, dist: 20, framed: true }); B.advance(0.4, 1 / 60);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(0.8, 1 / 60); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); })()`);
+  await untilPage(b, 'B.scene === "bifrost" && !B.transitioning', 15000);
+  const wide = await b.evaluate(`(() => { const B = __ooga; B.advance(3, 1 / 60); const a = B.pilot.player, p = a.root.position; return { z: p.z, feet: p.y - a.baseY, hall: BL.bifrostModels.HALL.r, field: BL.bifrostModels.ENTRY.field, view: B.pilot.viewState() }; })()`);
+  record("bifrost exit: a wide orbit returns through the field without guiding the Ooga out of the safe entrance corridor", wide.z > wide.hall && wide.z < wide.field - 2 && Math.abs(wide.feet) < 0.03 && wide.view.view === "orbit" && Math.abs(wide.view.distance - 20) < 0.03, JSON.stringify(wide));
 } };
 scene("lab", { label: "canvas bounds", steps: [{ name: "canvas bounds", why: "regression: distant Timechain views spent the watchdog shading complete offscreen objects; conservative rejection must preserve every visible pixel", run: async (b) => {
   const rows = await b.evaluate(`(() => {
@@ -27639,7 +27654,10 @@ const bifrostPoker = { name: "bifrost poker round trip", why: "playthrough: the 
     const out = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.navigate({ position: { x: 0, y: 0, z: 31 }, target: { x: 0, y: 1, z: 35 }, yaw: Math.PI, pitch: 0.15, dist: 4 }); B.advance(0.5, 1 / 60);
       const c = BL.scenes.poker.camera, fx = c.target.x - c.position.x, fz = c.target.z - c.position.z, l = Math.hypot(fx, fz), f = [fx / l, fz / l], r = [-f[1], f[0]];
       const score = { w: f[1], s: -f[1], d: -r[1], a: r[1] }; return Object.entries(score).sort((p, q) => q[1] - p[1])[0][0]; })()`);
-    await holdKey(b, out, 2.5);
+    // Stop at the scene handoff, not 2.5 seconds later: held movement is now
+    // resumed in the destination and would walk well past the landing by then.
+    await b.evaluate(`(() => { const B = __ooga, key = down => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "${out}", code: "Key${out.toUpperCase()}", bubbles: true }));
+      key(true); for (let i = 0; i < 180 && B.scene === "poker"; i++) B.advance(1 / 60, 1 / 60); key(false); })()`);
   }
   const back = await b.evaluate(`(() => { const B = window.__ooga; for (let i = 0; i < 60 && (B.transitioning || B.scene !== "bifrost"); i++) B.advance(1 / 30, 1 / 30); const d = B.scene === "bifrost" && B.bifrost, a = d && d.avatar, w = d && d.scene.windows.find((w) => w.row.scene === "poker"), p = a && a.root.position; return { scene: B.scene, ooga: a ? a.traits.name : null, along: p ? +(p.x * w.sn + p.z * w.c - window.BL.bifrostModels.HALL.r).toFixed(2) : null, across: p ? +(p.x * w.c - p.z * w.sn).toFixed(2) : null }; })()`);
   record("bifrost poker round trip: walking through the poker window takes the same Ooga straight into the poker room, without the fade, and the room's mirror brings it back into the chamber, standing before that window", there.scene === "poker" && there.ooga === "portlandhodl" && there.started >= 0 && there.steps <= 2 && back.scene === "bifrost" && back.ooga === "portlandhodl" && back.along > -3.5 && back.along < -2 && Math.abs(back.across) < 0.5, JSON.stringify({ there, back }));
@@ -33840,18 +33858,23 @@ const hangarWalking = { name: "hangar walking", why: "rule: W A S D walk the vis
 } };
 const hangarDoor = { name: "hangar door", why: "rule: the hangar's door walks the same Ooga through, out onto the Factory's landing and back in, on to where an arrival stands each side", run: async (b) => {
   // From the hangar's landing, walked out through its door.
-  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), D = B.hangar.layout.door; if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: D.x, y: D.y, z: D.z - 2.5 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), D = B.hangar.layout.door; if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: D.x, y: D.y, z: D.z - 2.5 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__hangarView = B.pilot.viewState(); })()`);
   await walkToward(b, 0, 1, 3);
   const out = await untilPage(b, 'B.scene === "factory" && !B.transitioning', 15000);
   // The walk carries it on from the door to where an arrival stands.
   const landed = await b.evaluate(`(() => { window.__ooga.advance(3, 1 / 60); const a = window.__ooga.pilot.player, L = BL.factoryModels.LAYOUT.hangarLanding, p = a && a.root.position;
     return a && { name: a.traits.name, x: +p.x.toFixed(2), z: +p.z.toFixed(2), feet: +(p.y - a.baseY).toFixed(2),
-      on: Math.abs(p.x - L.x) < L.w / 2 && Math.abs(p.z - L.z) < L.d / 2 && Math.abs(p.y - a.baseY - L.y) < 0.05, out: p.x - BL.factoryModels.LAYOUT.hangar.x }; })()`);
+      view: window.__ooga.pilot.viewState(), expected: window.__hangarView, on: Math.abs(p.x - L.x) < L.w / 2 && Math.abs(p.z - L.z) < L.d / 2 && Math.abs(p.y - a.baseY - L.y) < 0.05, out: p.x - BL.factoryModels.LAYOUT.hangar.x }; })()`);
+  record("hangar door: the Factory landing restores the saved camera mode, pitch and zoom", !!landed && landed.view.view === landed.expected.view && Math.abs(landed.view.pitch - landed.expected.pitch) < 0.02 && Math.abs(landed.view.distance - landed.expected.distance) < 0.03, JSON.stringify(landed));
   // And back in from where it stands, the door behind it.
-  await walkToward(b, -1, 0, 4);
+  await b.evaluate(`(() => { const B = __ooga, p = B.pilot.player.root.position, a = B.pilot.player;
+    B.pilot.enterClose(true); B.pilot.navigate({ position: { x: p.x, y: p.y - a.baseY, z: p.z }, yaw: Math.PI / 2, pitch: -0.28, dist: 4, framed: true }); B.pilot.focusAim(); B.advance(0.4, 1 / 60);
+    window.__hangarView = B.pilot.viewState(); window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(2, 1 / 60); })()`);
   const back = await untilPage(b, 'B.scene === "hangar" && !B.transitioning', 15000);
   const inside = await b.evaluate(`(() => { window.__ooga.advance(3, 1 / 60); const a = window.__ooga.pilot.player, D = __ooga.hangar.layout.door, p = a && a.root.position;
-    return a && { name: a.traits.name, in: +(D.z - p.z).toFixed(2), across: +(p.x - D.x).toFixed(2) }; })()`);
+    return a && { name: a.traits.name, view: __ooga.pilot.viewState(), expected: window.__hangarView, focused: document.body.classList.contains("aim-cursor-focused"), in: +(D.z - p.z).toFixed(2), across: +(p.x - D.x).toFixed(2) }; })()`);
+  const resumed = await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player, p = a.root.position, z = p.z; B.advance(0.35, 1 / 60); const moved = z - p.z; window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); B.advance(0.2, 1 / 60); const stop = p.z; B.advance(0.3, 1 / 60); return { moved, stopped: Math.abs(p.z - stop) }; })()`);
+  record("hangar door: first-person pitch and focus survive the return, held W resumes and its release stops movement", inside?.view.view === "first-person" && Math.abs(inside.view.pitch - inside.expected.pitch) < 0.02 && inside.focused && resumed.moved > 0.3 && resumed.stopped < 0.03, JSON.stringify({ inside, resumed }));
   record("hangar door: walking out through the door walks the same Ooga through onto the Factory's landing and on across it, and walking back in walks it through and on down the hangar's landing",
     out && !!landed && landed.name === "portlandhodl" && landed.on && landed.out > 2 && back && !!inside && inside.name === "portlandhodl" && inside.in > 3, JSON.stringify({ out, landed, back, inside }));
 } };
