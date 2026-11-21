@@ -134,49 +134,31 @@
       close() { if (ctx) ctx.close().catch(() => {}); ctx = null; }
     };
   })();
-  // NEW BLOCK's sound, once a block as the words appear, synthesized here like the portal's (nothing to credit) and
-  // played through the page's mute and its own row in the sound panel (`newblock`), held only while the room is
-  // open; a context only once the page has had a gesture, never in a test or a render (?nosim=1). Four candidates
-  // until one is chosen, `?blocksound=1`..`4` picking one (the bright chime the default): each is `(ctx, out, t)`
-  // scheduling one short, quiet sound from `t`, so the same voices can be rendered offline. `plays` counts the blocks
-  // it sounded for, heard or not.
+  // NEW BLOCK's sound, once a block as the words appear: one gentle ring of the Temple's bell (timechain-room-temple.js
+  // `VOICES.bell`: its partials, each with a twin a hair sharp so it shimmers, and the blow's thud), quieter and
+  // shorter than in the Temple. Played through the page's mute and its own row in the sound panel (`newblock`), held
+  // only while the room is open; a context only once the page has had a gesture, never in a test or a render
+  // (?nosim=1). `plays` counts the blocks it sounded for, heard or not.
   const blockSound = (() => {
-    const params = new URLSearchParams(location.search), SILENT = params.has("nosim");
-    const noise = (ctx, secs) => { const n = Math.floor(ctx.sampleRate * secs), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; const s = ctx.createBufferSource(); s.buffer = b; return s; };
-    // A struck bell: `parts` [ratio, level, seconds to die away] over `f`, each with a twin a hair sharp so it shimmers.
-    const bell = (ctx, out, f, t, peak, parts, beat = 0.6) => {
-      for (const [ratio, level, fade] of parts) for (const side of [-1, 1]) {
-        const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f * ratio + side * beat / 2; o.connect(g); g.connect(out);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * level / 2), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + fade);
-        o.start(t); o.stop(t + fade + 0.05);
+    const SILENT = (new URLSearchParams(location.search)).has("nosim"), LEVEL = 0.045, LONGEST = 6, THUD = 0.03;
+    const ring = (ctx, out, t) => {
+      const v = BL.timechainRoomKinds.temple.VOICES.bell;
+      for (const [ratio, level, fade] of v.parts) for (const side of [-1, 1]) {
+        const o = ctx.createOscillator(), g = ctx.createGain(), end = t + Math.min(fade, LONGEST);
+        o.frequency.value = v.f * ratio + side * v.beat / 2; o.connect(g); g.connect(out);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, LEVEL * level / 2), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, end);
+        o.start(t); o.stop(end + 0.05);
       }
+      const n = Math.floor(ctx.sampleRate * v.thud[3]), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      const s = ctx.createBufferSource(), band = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = buf; band.type = "bandpass"; band.frequency.value = v.thud[0]; band.Q.value = v.thud[1];
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(THUD * v.thud[2], t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + v.thud[3]);
+      s.connect(band); band.connect(g); g.connect(out); s.start(t); s.stop(t + v.thud[3] + 0.02);
     };
-    const air = (ctx, out, t, secs, f0, f1, peak, type = "bandpass") => {
-      const s = noise(ctx, secs), f = ctx.createBiquadFilter(), g = ctx.createGain();
-      f.type = type; f.Q.value = type === "bandpass" ? 1.4 : 0.7; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + secs);
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + secs * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + secs);
-      s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t + secs + 0.02);
-    };
-    const CHIME = [[1, 1, 1.5], [2, 0.32, 0.9], [3.01, 0.12, 0.5], [0.5, 0.18, 1.2]];
-    const OPTIONS = [
-      // 1, the bright chime: a breath of rising air, then two bell notes a fourth apart, rising (ding-dong).
-      (ctx, out, t) => { air(ctx, out, t, 0.45, 600, 3200, 0.012); bell(ctx, out, 987.77, t + 0.18, 0.07, CHIME); bell(ctx, out, 1318.51, t + 0.48, 0.065, CHIME); },
-      // 2, the Temple's bell (timechain-room-temple.js `VOICES.bell`): one gentle ring of its partials and blow.
-      (ctx, out, t) => { const v = BL.timechainRoomKinds.temple.VOICES.bell; bell(ctx, out, v.f, t, 0.045, v.parts.map(([r, l, fade]) => [r, l, Math.min(fade, 6)]), v.beat); air(ctx, out, t, 0.2, v.thud[0], v.thud[0] * 1.2, 0.03); },
-      // 3, coin and sparkle: a quick glittering run up, then a bright "ching" of two high rings over a hiss.
-      (ctx, out, t) => { [1046.5, 1318.51, 1567.98, 2093, 2637].forEach((f, i) => bell(ctx, out, f, t + i * 0.055, 0.035, [[1, 1, 0.35], [2, 0.2, 0.2]], 0)); bell(ctx, out, 2637, t + 0.33, 0.045, [[1, 1, 1.2], [1.5, 0.5, 0.9], [2.01, 0.3, 0.6]], 1.5); air(ctx, out, t + 0.31, 0.35, 9000, 5000, 0.01, "highpass"); },
-      // 4, the deep swell: a warm low rush rising for a second, then one chime over it.
-      (ctx, out, t) => {
-        air(ctx, out, t, 1.3, 140, 1800, 0.05, "lowpass");
-        const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.setValueAtTime(65.4, t); o.frequency.exponentialRampToValueAtTime(130.8, t + 1.15); o.connect(g); g.connect(out);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6); o.start(t); o.stop(t + 1.65);
-        bell(ctx, out, 1046.5, t + 1.05, 0.07, [[1, 1, 1.8], [2, 0.3, 1.1], [0.5, 0.25, 1.5], [3.01, 0.1, 0.6]]);
-      }
-    ];
-    const pick = Math.max(1, Math.min(OPTIONS.length, Math.floor(Number(params.get("blocksound")) || 1)));
     let ctx = null, channel = null, plays = 0, sounded = -1;
     return {
-      OPTIONS, get pick() { return pick; }, get plays() { return plays; },
+      get plays() { return plays; },
       enter() { sounded = -1; if (!channel) channel = BL.sound.channel("newblock"); },
       // Once for block `key`, never again for the same one.
       play(key) {
@@ -185,7 +167,7 @@
         if (SILENT || !channel || typeof AudioContext === "undefined" || BL.sound.muted) return;
         if (!ctx) { if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; try { ctx = new AudioContext(); } catch { return; } }
         if (ctx.state === "suspended") ctx.resume().catch(() => {});
-        OPTIONS[pick - 1](ctx, channel.node(ctx), ctx.currentTime + 0.02);
+        ring(ctx, channel.node(ctx), ctx.currentTime + 0.02);
       },
       leave() { if (ctx) ctx.close().catch(() => {}); ctx = null; if (channel) channel.release(); channel = null; }
     };
