@@ -8,6 +8,7 @@ import * as studio from "../src/studio-policy.js";
 import { deletePlayer, getPlayer } from "../src/db.js";
 import { equipmentHats } from "../src/equipment-hats.js";
 import { equipmentRoom } from "../src/equipment-room.js";
+import { equipmentWardrobe } from "../src/equipment-wardrobe.js";
 import { equipmentAccount, equipmentDatabase, readEquipment, writeEquipment } from "./equipment-fixture.mjs";
 
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -290,5 +291,23 @@ test("equipment Room: wake catches missed deletion cleanup and old unmarked sock
   const marked = (await h.join()).ws;
   await h.wake();
   assert.equal(marked.closed, null);
+  assert.deepEqual(h.errors, []);
+});
+
+test("equipment Room: what a player wears besides the hat reaches visible peers, survives a wake and an older page's hat save", async t => {
+  const h = await host(t), shirt = { item: equipmentWardrobe.slotItems("shirt")[0].id, version: equipmentWardrobe.slotItems("shirt")[0].version };
+  assert.equal((await h.save(1, { revision: 0, wardrobe: { shirt, shoes: NONE } })).status, 200);
+  const a = (await h.join()).ws, b = (await h.join(2)).ws;
+  assert.deepEqual(plain(frames(a).find(m => m.equipment).equipment.wardrobe), { shirt, shoes: NONE });
+  assert.deepEqual(plain(frames(b).find(m => m.kind === "snapshot").rows.find(r => r.id === 1).wardrobe), { shirt, shoes: NONE });
+  b.sent.length = 0;
+  await h.save(1, { revision: 1, selection: hat() });
+  assert.deepEqual(plain(frames(b).at(-1).wardrobe), { shirt, shoes: NONE }, "a hat save keeps the rest on the wire");
+  await h.save(1, { revision: 2, wardrobe: null });
+  assert.equal(frames(b).at(-1).wardrobe, null);
+  await h.save(1, { revision: 3, wardrobe: { shirt } });
+  await h.wake();
+  assert.deepEqual(plain(h.room.players.get(1).equipment.wardrobe), { shirt });
+  assert.deepEqual(plain(h.room.players.get(1).equipment.selection), hat());
   assert.deepEqual(h.errors, []);
 });
