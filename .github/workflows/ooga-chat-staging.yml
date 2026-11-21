@@ -13,14 +13,14 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ooga-chat-staging
-  cancel-in-progress: false
-
 jobs:
   deploy:
     # Only after the island's staging deploy of a push to rock succeeded, never after one run by hand.
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
+    # On the job, not the workflow, so a run this `if` skips never takes the slot or replaces a waiting deploy.
+    concurrency:
+      group: ooga-chat-staging
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
