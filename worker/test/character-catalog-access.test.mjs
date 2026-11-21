@@ -140,3 +140,46 @@ test("OAuth and existing sessions report catalog unavailability while logout rem
   assert.equal(DB.raw.prepare("SELECT count(*) AS n FROM sessions").get().n, 0);
   DB.raw.close();
 });
+
+test("public voice cleanup survives a catalog outage without bypassing account or request guards", async () => {
+  const catalog = loader(null), SITE = "https://island.test", DB = memoryD1(new URL("../migrations/", import.meta.url));
+  try {
+    await upsertPlayerFromGitHub(DB, { id: 101, login: "Alice" });
+    const token = await createSession(DB, 101, "fixture"), cookie = `${cookieNames(SITE).session}=${token}`;
+    const { worker } = routeFixture({ catalog }), forwarded = [], limited = [];
+    let allow = true;
+    const env = { SITE_ORIGIN: SITE, DB,
+      VOICE_LIMITER: { limit: async ({ key }) => { limited.push(key); return { success: allow }; } },
+      ROOM: { getByName: (name) => { assert.equal(name, "island"); return { fetch: async (request) => {
+        forwarded.push({ path: new URL(request.url).pathname, id: request.headers.get("x-player-id"),
+          connection: request.headers.get("x-room-token"), body: await request.text() });
+        return new Response(null, { status: 204 });
+      } }; } },
+    };
+    const request = (op, headers = {}, method = "POST", body = "{}") => new Request(`${SITE}/api/voice/${op}`, {
+      method, headers: { cookie, origin: SITE, "x-room-token": "current-connection", "x-player-id": "999", ...headers },
+      ...(method === "POST" ? { body } : {}),
+    });
+    for (const op of ["session", "publish", "pull", "ice", "leave/extra"])
+      assert.equal((await worker.fetch(request(op), env)).status, 503, `${op} still needs catalog authority`);
+    assert.equal(forwarded.length, 0);
+    const reads = catalog.reads;
+    for (const op of ["leave", "unpublish", "close"]) {
+      assert.equal((await worker.fetch(request(op), env)).status, 204);
+      assert.deepEqual(forwarded.at(-1), { path: `/voice/${op}`, id: "101", connection: "current-connection", body: "{}" });
+    }
+    assert.equal(catalog.reads, reads, "cleanup never waits for unavailable authority");
+    assert.deepEqual(limited, ["101", "101", "101"], "cleanup keeps the authenticated account's rate limit");
+    assert.equal((await worker.fetch(request("leave", { cookie: "" }), env)).status, 401);
+    assert.equal((await worker.fetch(request("leave", { origin: "https://other.test" }), env)).status, 403);
+    assert.equal((await worker.fetch(request("leave", {}, "GET"), env)).status, 405);
+    allow = false;
+    assert.equal((await worker.fetch(request("leave"), env)).status, 429);
+    allow = true;
+    assert.equal((await worker.fetch(request("leave", {}, "POST", "x".repeat(256 * 1024 + 1)), env)).status, 413);
+    DB.raw.prepare("UPDATE sessions SET expires_at = 0 WHERE player_id = 101").run();
+    assert.equal((await worker.fetch(request("leave"), env)).status, 401);
+    assert.equal(forwarded.length, 3, "refused cleanup requests never reach the Room");
+    assert.equal(catalog.reads, reads);
+  } finally { DB.raw.close(); }
+});
