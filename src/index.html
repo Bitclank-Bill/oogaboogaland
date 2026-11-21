@@ -414,14 +414,19 @@
       </div>
       <div class="studio-scroll" id="studio-scroll">
         <p class="studio-who" id="studio-who"></p>
-        <!-- The wardrobe (scene-studio.js `startWardrobe`): a row for each slot (equipment-wardrobe.js `SLOTS`), folded to
-             its name and what is worn there, which opens on its list and, for the hat and the mask, a size. -->
+        <!-- The wardrobe (scene-studio.js `startWardrobe`): a tile for each slot (equipment-wardrobe.js `SLOTS`) with its
+             mark, its name and what is worn there, and under the grid the chosen tile's editor: its list, who made the
+             piece and, for the hat and the mask, a size. -->
         <div class="studio-wardrobe" id="studio-wardrobe" aria-describedby="studio-hat-status">
           <p class="roster-sort-label studio-wardrobe-title">Wardrobe</p>
-          <div class="studio-slots" id="studio-slots"></div>
+          <div class="studio-slots" id="studio-slots" role="group" aria-label="Wardrobe slots"></div>
+          <div class="studio-editors" id="studio-editors"></div>
           <!-- Save and what it says stay in view at the panel's foot while the slots scroll past. -->
           <div class="studio-wardrobe-foot">
-            <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save my look</button>
+            <div class="studio-save-row">
+              <p class="studio-changes" hidden><span id="studio-changes"></span> · <button type="button" class="link" id="studio-discard">Reset</button></p>
+              <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save my look</button>
+            </div>
             <button type="button" class="foot-button" id="studio-hat-own" hidden>Show my Ooga</button>
             <p class="studio-note" id="studio-hat-status" role="status"></p>
           </div>

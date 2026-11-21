@@ -49806,12 +49806,12 @@ const equipmentAppChecks = async () => {
   };
   const choose = async (value, slot = "hat") => b.evaluate(`(() => {
     const value=${JSON.stringify(value)}, slot=${JSON.stringify(slot)}, selection=slot==='hat'&&value.includes('@')?{item:value.split('@')[0],version:value.split('@')[1]}:null;
-    const choice=selection?BL.equipmentHats.choiceFor(selection):null, row=document.querySelector('#studio-slots [data-slot="'+slot+'"]'), select=row.querySelector('select');
+    const choice=selection?BL.equipmentHats.choiceFor(selection):null, tile=document.querySelector('.studio-tile[data-slot="'+slot+'"]'), select=document.querySelector('.studio-editor[data-slot="'+slot+'"] select');
     const option=[...select.options].find(o=>choice?o.dataset.hatKey===choice.key:o.dataset.value===value);
     if(!option)throw new Error('Choice is missing: '+slot+' '+value);
-    row.open=true;select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));
+    tile.click();select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));
   })()`);
-  const chosen = (slot = "hat") => `document.querySelector('#studio-slots [data-slot="${slot}"] select').selectedOptions[0]`;
+  const chosen = (slot = "hat") => `document.querySelector('.studio-editor[data-slot="${slot}"] select').selectedOptions[0]`;
   const resize = async (size) => {
     await b.evaluate(`(() => { const input=document.getElementById('studio-hat-size');input.value=${size};input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
     await wait(`BL.characterEquipment.size(__ooga.studio.cave)===${size}`, "Hat size preview did not apply");
@@ -49834,18 +49834,18 @@ const equipmentAppChecks = async () => {
       return {shared:original.key===copy.key,one:options.filter(o=>o.dataset.hatKey===original.key).length===1,
         credits:row.title.includes('HatCopy')&&row.title.includes(BL.characters.get(${JSON.stringify(item.creator)})?.display||${JSON.stringify(item.creator)}),
         indented:depth(row)===-1&&depth(variant)>-1,nested:depth(nested)>depth(variant),
-        folded:[...document.querySelectorAll('#studio-slots details')].every(d=>!d.open)};
+        oneEditor:[...document.querySelectorAll('.studio-editor')].filter(e=>!e.hidden).length===1&&document.querySelectorAll('.studio-tile[aria-pressed=true]').length===1};
     })()`);
-    record("equipment catalog: identical hats share one credited choice, edited forks list indented under it, and every slot starts folded", Object.values(groups).every(Boolean), JSON.stringify(groups));
-    await b.evaluate("document.querySelector('#studio-hat > summary').focus()");
+    record("equipment catalog: identical hats share one credited choice, edited forks list indented under it, and one tile's editor shows at a time", Object.values(groups).every(Boolean), JSON.stringify(groups));
+    await b.evaluate("document.querySelector('.studio-tile[data-slot=hair]').click();document.getElementById('studio-hat').focus()");
     await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
     await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-    await wait("document.getElementById('studio-hat').open", "Keyboard did not open the hat's row");
+    await wait("document.getElementById('studio-hat').getAttribute('aria-pressed')==='true' && !document.getElementById('studio-editor-hat').hidden && document.getElementById('studio-editor-hair').hidden", "Keyboard did not choose the hat's tile");
     await choose(`${fork.item}@${fork.version}`);
     await wait(wearing(fork), "The dropdown did not preview the full immutable fork");
-    record("equipment catalog: the hat's row opens from the keyboard and its dropdown previews a full immutable variant without saving", writes.length === 0
+    record("equipment catalog: the hat's tile opens its editor from the keyboard and its dropdown previews a full immutable variant without saving", writes.length === 0
       && archiveReads.includes(fork.version) && archiveReads.includes(blueContent)
-      && await b.evaluate(`${chosen()}.dataset.hatKey===BL.equipmentHats.choiceFor(${JSON.stringify(fork)}).key && document.querySelector('#studio-hat .studio-slot-value').textContent.length>0`));
+      && await b.evaluate(`${chosen()}.dataset.hatKey===BL.equipmentHats.choiceFor(${JSON.stringify(fork)}).key && document.querySelector('#studio-hat .studio-tile-value').textContent.length>0`));
     await b.evaluate("window.__equipmentCave=__ooga.studio.cave;window.__equipmentRoot=__ooga.studio.cave.root");
     let previews = 0;
     for (const entry of equipmentHats.items) {
@@ -49935,8 +49935,15 @@ const equipmentAppChecks = async () => {
     await wait(dressed("__ooga.studio.cave", look), "Wardrobe preview did not dress the studio's Ooga");
     record("equipment wardrobe: each slot's dropdown previews its piece on the same body without saving", writes.length === beforeLook
       && await b.evaluate(`__ooga.studio.cave.root===__wardrobeBody && __ooga.studio.cave.parts.torso.geometry!==__wardrobeTorso
-        && ['shirt','weapon','shoes'].every(s=>document.querySelector('#studio-slots [data-slot="'+s+'"]').hasAttribute('data-changed'))
-        && document.querySelector('#studio-slots [data-slot=shoes] .studio-slot-value').textContent==='Barefoot'`));
+        && ['shirt','weapon','shoes'].every(s=>document.querySelector('.studio-tile[data-slot="'+s+'"]').hasAttribute('data-changed'))
+        && document.querySelector('.studio-tile[data-slot=shoes] .studio-tile-value').textContent==='Barefoot'
+        && document.getElementById('studio-changes').textContent==='3 changes' && !document.querySelector('.studio-changes').hidden`));
+    await b.evaluate("document.getElementById('studio-discard').click()");
+    await wait("BL.characterWardrobe.wearing(__ooga.studio.cave)===''", "Reset did not put the saved look back on");
+    record("equipment wardrobe: Reset drops every preview and puts the saved look back on without saving", writes.length === beforeLook
+      && await b.evaluate("document.querySelector('.studio-changes').hidden && !document.querySelector('.studio-tile[data-changed]') && __ooga.studio.cave.parts.torso.geometry===__wardrobeTorso"));
+    await choose(look.shirt.version, "shirt"); await choose(look.weapon.version, "weapon"); await choose("none", "shoes");
+    await wait(dressed("__ooga.studio.cave", look), "Wardrobe preview did not come back");
     const lookRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${lookRevision + 1}`, "Wardrobe save did not complete");
@@ -50031,7 +50038,7 @@ const equipmentAppChecks = async () => {
     b.close(); b = null;
     await open({ w: 390, h: 844, mobile: true });
     await b.evaluate("if(document.getElementById('studio-features').dataset.folded==='true')document.querySelector('.studio-features-edge').click()");
-    await wait("document.getElementById('studio-features').dataset.folded!=='true' && document.getElementById('studio-hat').getBoundingClientRect().right<=innerWidth", "Phone wardrobe did not unfold into view");
+    await wait("document.getElementById('studio-features').dataset.folded!=='true' && document.getElementById('studio-features').getBoundingClientRect().right<=innerWidth+1", "Phone wardrobe did not unfold into view");
     await choose(`${item.id}@${item.current}`); await wait(wearing(first), "Phone hat did not preview");
     const fit = await b.evaluate("['studio-hat','studio-hat-size','studio-hat-size-reset','studio-hat-save'].map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {id,visible:r.width>0&&r.height>0,left:r.left,right:r.right,top:r.top,bottom:r.bottom};})");
     record("equipment studio: phone selection and save controls fit the viewport", fit.every(r=>r.visible&&r.left>=0&&r.right<=390&&r.top>=0&&r.bottom<=844), JSON.stringify(fit));
@@ -50168,10 +50175,10 @@ const equipmentAppChecks = async () => {
       && saved.selection.item === fork.item && saved.declined === null && saved.size === 90 && pin === `${forkThird.item}@${forkThird.version}` && retainedPin);
     await choose(`${forkThird.item}@${forkThird.version}`); await wait(wearing(forkThird), "Saved historical fork could not be selected again");
     record("equipment catalog: a restored historical choice shows in its folded row on the phone with Save reachable", await b.evaluate(`(() => {
-      const hat=document.getElementById('studio-hat');hat.open=false;
-      const row=hat.querySelector('summary').getBoundingClientRect(),save=document.getElementById('studio-hat-save');
+      const hat=document.getElementById('studio-hat');
+      const row=hat.getBoundingClientRect(),save=document.getElementById('studio-hat-save');
       save.scrollIntoView({block:'nearest'});const s=save.getBoundingClientRect();
-      return ${chosen()}.dataset.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)}&&hat.querySelector('.studio-slot-value').textContent.includes('saved version')
+      return ${chosen()}.dataset.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)}&&hat.querySelector('.studio-tile-value').textContent.includes('saved version')
         &&row.left>=0&&row.right<=innerWidth&&s.top>=0&&s.bottom<=innerHeight;
     })()`));
     await b.screenshot(join(shots, "hat-variants-phone.png"));

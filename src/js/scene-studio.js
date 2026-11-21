@@ -554,7 +554,7 @@
   const startWardrobe = (signal) => {
     const $ = (id) => document.getElementById(id), equipment = BL.equipment, hats = BL.equipmentHats, W = BL.equipmentWardrobe;
     const view = wardrobe = { slots: $("studio-slots"), save: $("studio-hat-save"), own: $("studio-hat-own"), status: $("studio-hat-status"), link: $("studio-hat-link"),
-      selection: null, size: 100, worn: null, dirty: false, ticket: 0, stop: null };
+      editors: $("studio-editors"), changes: $("studio-changes"), discard: $("studio-discard"), selection: null, size: 100, worn: null, dirty: false, ticket: 0, stop: null, open: "hat" };
     const owns = () => BL.net.ownCharacter()?.handle.toLowerCase() === state.name.toLowerCase();
     const hatKey = (s) => s ? s.item === "none" ? "none" : `${s.item}@${s.version}` : "authored";
     const pieceKey = (c) => c ? c.item === "none" ? "none" : c.version : "original";
@@ -565,33 +565,75 @@
       return "By " + (names.length > 4 ? names.slice(0, 3).join(", ") + ` and ${names.length - 3} more` : names.join(", "));
     };
     const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text) node.textContent = text; return node; };
-    // One slot's row. Its options are kept as data beside the list: `{ label, creators, pick }`, where `pick` gives
-    // what choosing it wears (the hat's selection, or a slot's choice).
+    // Each slot's mark on its tile: a ten-by-ten pixel silhouette in the tile's own ink.
+    const ICONS = {
+      hat: ["...####...", "..######..", "..######..", "..######..", "..######..", "##########", "##########"],
+      hair: ["..######..", ".########.", "##########", "###....###", "##......##", "##......##", "##......##", "#........#"],
+      eyes: ["####..####", "#..#..#..#", "#.##..#.##", "####..####"],
+      glasses: ["####..####", "#..####..#", "#..#..#..#", "####..####"],
+      mask: ["..######..", ".#......#.", "#..#..#..#", "#.##..##.#", "#........#", ".#..##..#.", "..#.##.#..", "...####..."],
+      mouth: ["#........#", ".#......#.", "..######.."],
+      beard: ["#........#", "#........#", "##.####.##", "##########", "##########", ".########.", "..######..", "...####..."],
+      shirt: ["..##..##..", "###....###", "##########", "##########", "..######..", "..######..", "..######..", "..######.."],
+      gloves: ["....##....", "...####.#.", "...######.", "...#####..", "...####...", "..######..", "..######.."],
+      belt: ["####..####", "###.##.###", "###.##.###", "####..####"],
+      pants: ["##########", "##########", "####..####", "###....###", "###....###", "###....###", "###....###"],
+      shoes: ["..###.....", "..###.....", "..###.....", "..######..", ".########.", "##########", "##########"],
+      back: ["#........#", "##......##", "###.##.###", "##########", ".########.", ".###..###.", "..#....#.."],
+      weapon: ["......###.", ".....####.", "....####..", "...##.....", "..##......", ".##.......", "##........", "#........."]
+    };
+    const icon = (id) => {
+      const rows = ICONS[id], svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      let d = "";
+      const top = Math.floor((10 - rows.length) / 2);
+      rows.forEach((row, y) => { for (let x = 0; x < row.length;) { if (row[x] !== "#") { x++; continue; } let w = 0; while (row[x + w] === "#") w++; d += `M${x} ${y + top}h${w}v1h-${w}z`; x += w; } });
+      svg.setAttribute("viewBox", "0 0 10 10"); svg.setAttribute("aria-hidden", "true"); svg.classList.add("studio-tile-icon");
+      path.setAttribute("d", d); path.setAttribute("fill", "currentColor"); svg.append(path);
+      return svg;
+    };
+    // One slot: its tile in the grid (its mark, its name and what is worn there) and its editor under the grid, shown
+    // while the tile is chosen. Its options are kept as data beside the list: `{ label, creators, pick }`, where `pick`
+    // gives what choosing it wears (the hat's selection, or a slot's choice).
+    const editors = view.editors;
     const makeRow = (slot) => {
-      const details = element("details", "studio-slot slab"), summary = element("summary"), name = element("span", "studio-slot-name", slot.label), value = element("span", "studio-slot-value");
-      details.dataset.slot = slot.id;
-      if (slot.id === "hat") details.id = "studio-hat";
-      summary.append(name, value);
-      const body = element("div", "studio-slot-body"), select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note");
+      const tile = element("button", "studio-tile"), words = element("span", "studio-tile-words"), name = element("span", "studio-tile-name", slot.id === "weapon" ? "Weapon" : slot.label), value = element("span", "studio-tile-value");
+      tile.type = "button"; tile.dataset.slot = slot.id; tile.setAttribute("aria-pressed", "false"); tile.setAttribute("aria-controls", `studio-editor-${slot.id}`);
+      if (slot.id === "hat") tile.id = "studio-hat";
+      words.append(name, value); tile.append(icon(slot.id), words);
+      const body = element("div", "studio-editor"), heading = element("p", "studio-editor-name", slot.label), select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note");
+      body.id = `studio-editor-${slot.id}`; body.dataset.slot = slot.id; body.hidden = true;
       select.id = slot.id === "hat" ? "studio-hat-choices" : `studio-slot-${slot.id}`;
       select.setAttribute("aria-label", slot.label);
       note.hidden = true;
-      body.append(select, credit);
-      const row = { slot, details, value, select, credit, note, options: [], range: null, output: null, reset: null };
+      body.append(heading, select, credit);
+      const row = { slot, tile, details: tile, body, value, select, credit, note, options: [], range: null, output: null, reset: null };
       if (slot.sized) {
-        const id = slot.id === "hat" ? "studio-hat-size" : `studio-slot-${slot.id}-size`, label = element("label", "roster-sort-label studio-hat-size-label", `${slot.label} size `);
+        const id = slot.id === "hat" ? "studio-hat-size" : `studio-slot-${slot.id}-size`, line = element("div", "studio-size-line"), label = element("label", "roster-sort-label studio-hat-size-label", "Size ");
         label.htmlFor = id;
         row.output = element("output", null, "100%"); row.output.id = id + "-value"; row.output.htmlFor = id;
         label.append(row.output);
         row.range = element("input"); Object.assign(row.range, { type: "range", id, min: "80", max: "120", step: "1", value: "100", disabled: true });
         row.range.setAttribute("aria-valuetext", "100%");
-        row.reset = element("button", "foot-button", "Reset fitted size"); row.reset.type = "button"; row.reset.id = slot.id === "hat" ? "studio-hat-size-reset" : `studio-slot-${slot.id}-reset`; row.reset.disabled = true;
-        body.append(label, row.range, row.reset);
+        row.reset = element("button", "link", "Reset size"); row.reset.type = "button"; row.reset.id = slot.id === "hat" ? "studio-hat-size-reset" : `studio-slot-${slot.id}-reset`; row.reset.disabled = true;
+        row.reset.title = "Back to the reviewed fit, 100%";
+        line.append(label, row.reset);
+        body.append(line, row.range);
       }
       body.append(note);
-      details.append(summary, body);
-      view.slots.append(details);
+      view.slots.append(tile);
+      editors.append(body);
       return row;
+    };
+    // The chosen tile and the one editor it opens, across the grid under the chosen tile's row.
+    const choose = (row) => {
+      view.open = row.slot.id;
+      const last = rows[Math.min(rows.indexOf(row) | 1, rows.length - 1)].tile;
+      if (last.nextSibling !== editors) last.after(editors);
+      for (const other of rows) {
+        const on = other === row;
+        other.tile.setAttribute("aria-pressed", String(on));
+        other.body.hidden = !on;
+      }
     };
     const add = (row, label, creators, pick, depth = 0, extra = null) => {
       const option = element("option", null, (depth ? " ".repeat(depth) + "↳ " : "") + label);
@@ -607,6 +649,8 @@
       return entry;
     };
     const rows = W.SLOTS.map(makeRow), hatRow = rows[0];
+    for (const row of rows) row.tile.addEventListener("click", () => choose(row), { signal });
+    choose(rows.find((row) => row.slot.id === view.open) || hatRow);
     // The hat's list: the character's own, none, then each shared choice with its variants under it.
     add(hatRow, "Original character look", [], () => null);
     add(hatRow, "No hat", [], () => ({ item: "none", version: null }), 0, { selection: { item: "none", version: null } });
@@ -652,14 +696,17 @@
     };
     const supported = (row) => row === hatRow ? BL.characterEquipment.supports(cave) : BL.characterWardrobe.supports(cave, row.slot.id);
     const display = () => {
+      let changes = 0;
       for (const row of rows) {
         const worn = wornIn(row), entry = optionFor(row, worn) || keep(row, worn), base = savedIn(row);
         row.select.value = entry.option.value;
-        row.value.textContent = entry.label;
+        row.value.textContent = entry === row.options[0] ? "Original" : entry.label;
         row.credit.textContent = credits(entry.creators);
         const same = row === hatRow ? hatKey(worn) === hatKey(base) && (!worn || worn.item === "none" || view.size === equipment.state.record.size)
           : pieceKey(worn) === pieceKey(base) && (worn?.size || 100) === (base?.size || 100);
         row.details.toggleAttribute("data-changed", view.dirty && !same);
+        row.details.toggleAttribute("data-worn", !!worn);
+        if (view.dirty && !same) changes++;
         const ok = supported(row);
         row.details.toggleAttribute("data-unsupported", !ok);
         row.select.disabled = !ok;
@@ -676,6 +723,8 @@
           row.reset.disabled = row.range.disabled || size === 100;
         }
       }
+      view.changes.textContent = changes === 1 ? "1 change" : `${changes} changes`;
+      view.changes.parentElement.hidden = !changes;
     };
     const draw = async () => {
       const ticket = ++view.ticket, chosen = view.selection, size = view.size, worn = view.worn;
@@ -750,6 +799,8 @@
         && !signal.aborted && wardrobe === view && hatKey(view.selection) + W.key(view.worn) === submitted && view.size === size) { view.dirty = false; changed(); }
     }, { signal });
     view.own.addEventListener("click", () => { const own = BL.net.ownCharacter(); if (own) show(own.handle); }, { signal });
+    // Reset leaves the previews and puts the saved look back on.
+    view.discard.addEventListener("click", () => { if (!view.dirty) return; view.dirty = false; changed(); }, { signal });
     view.stop = equipment.subscribe(changed);
     changed();
   };
@@ -1295,7 +1346,7 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
-    if (wardrobe) { wardrobe.stop(); wardrobe.slots.replaceChildren(); wardrobe = null; }
+    if (wardrobe) { wardrobe.stop(); wardrobe.editors.replaceChildren(); wardrobe.slots.after(wardrobe.editors); wardrobe.slots.replaceChildren(); wardrobe = null; }
     window.clearInterval(watchTimer);
     watchTimer = 0;
     homeLink.title = homeTitle;
