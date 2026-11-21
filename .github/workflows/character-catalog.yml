@@ -30,10 +30,11 @@ permissions:
   pull-requests: read
 
 # The entire plan/render/publish transaction shares the manual code deployment's
-# environment lock. Scheduled recovery covers events replaced in the pending queue.
+# environment lock. Queue every request so catalog events cannot replace a manual deployment.
 concurrency:
   group: cloudflare-${{ inputs.environment || 'production' }}
   cancel-in-progress: false
+  queue: max
 
 env:
   CATALOG_ENVIRONMENT: ${{ inputs.environment || 'production' }}

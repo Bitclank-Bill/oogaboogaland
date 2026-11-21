@@ -14,10 +14,11 @@ permissions:
 concurrency:
   group: cloudflare-production
   cancel-in-progress: false
+  queue: max
 
 jobs:
   catalog:
-    if: github.ref == 'refs/heads/rock' && vars.CHARACTER_CATALOG_PRODUCTION_RUNTIME_ENABLED == 'true'
+    if: github.ref == 'refs/heads/rock' && (vars.CHARACTER_CATALOG_PRODUCTION_RUNTIME_ENABLED == 'true' || inputs.catalog_resume_sha != '')
     uses: ./.github/workflows/cloudflare-catalog-release.yml
     with:
       environment: production
@@ -25,7 +26,7 @@ jobs:
       resume: ${{ inputs.catalog_resume_sha != '' }}
     secrets: inherit
   deploy:
-    if: github.ref == 'refs/heads/rock' && vars.CHARACTER_CATALOG_PRODUCTION_RUNTIME_ENABLED != 'true'
+    if: github.ref == 'refs/heads/rock' && vars.CHARACTER_CATALOG_PRODUCTION_RUNTIME_ENABLED != 'true' && inputs.catalog_resume_sha == ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
