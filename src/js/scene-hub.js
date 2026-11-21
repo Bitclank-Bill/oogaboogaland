@@ -8276,8 +8276,10 @@
       // The doorway's walks steer the Ooga before the crew moves it.
       if (!cloudPlaying()) timechainIsland.gate.update(dt);
     }
-    // The island's world (island-world.js, behind `islandworld=1` for now) places the Oogas it follows before they move.
+    // The island's world (island-world.js, behind `islandworld=1` for now) places the Oogas it follows before they move;
+    // without it, the room's crew host decides whether they follow it or hold (npc-sync.js `prepare`).
     if (islandWorld && !cloudPlaying()) islandWorld.update(dt);
+    else if (!cloudPlaying()) npcSync.prepare();
     if (!cloudHopper?.held) crew.update(dt, elapsed);
     cloudHopper?.postUpdate();
     if (hammock) {
@@ -12067,7 +12069,9 @@
     npcSync = BL.npcSync.create({
       crew, fx, animationInterval,
       // The room's crew host runs another version: the crew holds still here rather than run a second copy.
-      onIncompatible: () => hud.toast("The island's crew host is on another version of Ooga Booga Land · the crew waits until every page reloads"),
+      onIncompatible: (reason) => hud.toast(reason === "catalog"
+        ? "The character catalog changed or is unavailable · reload to rejoin the shared crew"
+        : "The island's crew host is on another version of Ooga Booga Land · the crew waits until every page reloads"),
       onPlan: (cave, site) => clankers && clankers.plan(cave, site),
       onHit: (cave) => clankers && clankers.hit(cave),
       onModelChange: (cave) => {
