@@ -11917,6 +11917,25 @@
         const x = a.x + dx * t, z = a.z + dz * t, distance = (x - aimX) ** 2 + (z - aimZ) ** 2;
         if (distance < nearest) { nearest = distance; approach.x = x; approach.z = z; }
       }
+      // Level ground and room for a body `height` tall at (px, pz).
+      const bodyClear = (px, pz, height) => !(Math.abs(island.supportAt(px, pz, mouth.floorY, 0.05, ABYSS_FLOOR, PLAYER_RADIUS) - mouth.floorY) > 0.05)
+        && island.clearAt(px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, height)
+        && solids.segmentClear(px, mouth.floorY + 0.03, pz, px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, height);
+      // Either gun shoulder at (px, pz) clear to both sides of the usable doorway, not just a center-to-center ray that
+      // misses an obstructed muzzle.
+      const shotClear = (px, pz) => {
+        for (let shoulder = -1; shoulder <= 1; shoulder += 2) for (let edge = -1; edge <= 1; edge++) {
+          const ax = px + cr * shoulder * 0.65 - sr, az = pz - sr * shoulder * 0.65 - cr;
+          const bx = mouth.x + cr * edge * 1.65 + sr * 0.5, bz = mouth.z - sr * edge * 1.65 + cr * 0.5;
+          if (!shared.workShotClear(ax, mouth.floorY + 1.25, az, bx, mouth.floorY + 1.5, bz)) return false;
+        }
+        return true;
+      };
+      // The fan's places whose shots into the mouth are blocked, kept for the island's life: once the fan is full, a
+      // worker waiting for a place would otherwise test every one behind it again each frame (about 70 ms for a full
+      // fan). Fixed rock blocks them; game mode's ring comes and goes, so nothing is kept while it runs. A place kept
+      // blocked is only one fewer choice, and every round is still checked as it is fired.
+      const shotBlocked = [];
       return {
         repo: slot.repo,
         additionalRepo: slot.additionalRepo,
@@ -11937,24 +11956,14 @@
           out.x = mouth.x + cr * x + sr * z; out.y = mouth.floorY; out.z = mouth.z - sr * x + cr * z;
           return out;
         },
-        // Whether a body `height` tall may shoot from (px, pz): level ground, room to stand, and either gun shoulder
-        // clear to both sides of the usable doorway, not just a center-to-center ray that misses an obstructed muzzle.
-        placeClear: (px, pz, height) => {
-          if (Math.abs(island.supportAt(px, pz, mouth.floorY, 0.05, ABYSS_FLOOR, PLAYER_RADIUS) - mouth.floorY) > 0.05
-            || !island.clearAt(px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, height)
-            || !solids.segmentClear(px, mouth.floorY + 0.03, pz, px, mouth.floorY + 0.03, pz, PLAYER_RADIUS, height)) return false;
-          for (let shoulder = -1; shoulder <= 1; shoulder += 2) for (let edge = -1; edge <= 1; edge++) {
-            const ax = px + cr * shoulder * 0.65 - sr, az = pz - sr * shoulder * 0.65 - cr;
-            const bx = mouth.x + cr * edge * 1.65 + sr * 0.5, bz = mouth.z - sr * edge * 1.65 + cr * 0.5;
-            if (!shared.workShotClear(ax, mouth.floorY + 1.25, az, bx, mouth.floorY + 1.5, bz)) return false;
-          }
-          return true;
-        },
+        // Whether a body `height` tall may shoot from (px, pz).
+        placeClear: (px, pz, height) => bodyClear(px, pz, height) && shotClear(px, pz),
         position(cave, out, retry = false) {
           // Reserve the first free place in the fan.
           const count = crew.cavemen.size * 4 + 16;
           for (let attempt = 0; attempt < count; attempt++) {
             const place = (attempt + (retry ? cave.work.place + 1 : 0)) % count;
+            if (shotBlocked[place]) continue;
             const { x: px, z: pz } = this.placeAt(place, PLACE_AT);
             let occupied = crew.spotOccupied(cave, px, mouth.floorY, pz);
             for (let i = 0; !occupied && i < crew.list.length; i++) {
@@ -11965,7 +11974,8 @@
                 || shared.workSites[other.work.site]?.repo !== slot.repo) continue;
               if (Math.hypot(other.work.position.x - px, other.work.position.z - pz) < 0.9) { occupied = true; break; }
             }
-            if (occupied || !this.placeClear(px, pz, cave.traits.height)) continue;
+            if (occupied || !bodyClear(px, pz, cave.traits.height)) continue;
+            if (!shotClear(px, pz)) { if (!gameMode) shotBlocked[place] = true; continue; }
             out.x = px; out.y = mouth.floorY; out.z = pz;
             cave.work.place = place;
             return true;
