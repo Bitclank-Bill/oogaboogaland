@@ -430,13 +430,16 @@
       zoomTilt = false;
       zoomPitchVelocity = 0;
     };
-    let lockPending = false, lockCancelled = false, aimLocked = false, softAimFocused = false, externalControl = false, externalCombat = null, menuOpen = false, unlockedAt = -Infinity;
+    let lockPending = false, lockCancelled = false, aimLocked = false, softAimFocused = false, externalControl = false, externalCamera = false, externalCombat = null, menuOpen = false, unlockedAt = -Infinity;
     let savedPitch = 0, savedDist = 0, savedNear = camera.near, sightClear = null, cursorClear = null, aimSurface = null;
     const weaponViewReady = (cave) => active && !!cave && !cave.health.stunned && !restingView(cave) && (closeWanted || (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode);
     // Lying in a hammock keeps the view it was lain down in: combat's look and capture carry on, with the weapons parked
     // under the cloth (the crew refuses them on a seat) and a dot for a crosshair (`syncWeaponHud`).
     const lyingLook = (cave) => active && !!cave && !!cave.camp.seat?.lying && !crew.sleeping && !cave.health.stunned;
-    const restCombat = (cave) => lyingLook(cave) && cave.weapon.aiming;
+    // A swivel seat can keep combat's camera through the first-person/shoulder
+    // handoff without granting permission to equip or fire a weapon.
+    const seatCombatReady = (cave) => lyingLook(cave) || active && !!cave && !!cave.camp.seat?.combatView && !crew.sleeping && !cave.health.stunned;
+    const restCombat = (cave) => seatCombatReady(cave) && cave.weapon.aiming;
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + SHOULDER_LEVEL));
     // Level and downward aim lift the eye so the head sits below the
     // crosshair and the band beside it stays clear. Looking up sinks the body
@@ -582,10 +585,12 @@
       return true;
     };
     // Another playable actor shares the canvas and controls, but owns its own
-    // aim events and pointer lock until it hands the pilot control back.
-    const setExternalControl = (active, combat = null) => {
+    // aim events and pointer lock until it hands the pilot control back. A guided
+    // doorway can keep the native camera following while its input stays blocked.
+    const setExternalControl = (active, combat = null, followCamera = false) => {
       clearRightGesture();
       externalControl = !!active;
+      externalCamera = !!active && followCamera;
       externalCombat = active ? combat : null;
       aimLocked = false;
       unlockedAt = -Infinity;
@@ -1387,7 +1392,18 @@
       sleepCameraUp.x = sleepUp[0]; sleepCameraUp.y = sleepUp[1]; sleepCameraUp.z = sleepUp[2];
       camera.up = sleepCameraUp;
       camera.fov = carryFov; camera.near = savedNear;
-      if (!carrySelection && ctx.observeOrbit) ctx.observeOrbit(camera.position, dt);
+      if (ctx.observeOrbit) {
+        if (!carrySelection) ctx.observeOrbit(camera.position, dt);
+      } else if (!externalControl) {
+        // Restored carry views still belong inside the scene, including the
+        // stationary selection held just after arrival. Keep their look and
+        // requested zoom while moving both eye and target clear of the walls.
+        const x = camera.position.x, y = camera.position.y, z = camera.position.z;
+        clampCamera(camera.position, 0, undefined, false, dt);
+        camera.target.x += camera.position.x - x;
+        camera.target.y += camera.position.y - y;
+        camera.target.z += camera.position.z - z;
+      }
       setOverheadProjection(cave, carryStartOrtho * (1 - mix));
       camera.orthoHeight = carryStartScale * (1 - mix) + camera.orthoHeight * mix;
       syncHeadVisibility(cave);
@@ -2116,7 +2132,7 @@
         return true;
       }
       // A game's combat intent survives sleep/stuns; readiness still gates aiming and attacks.
-      if (!weaponViewReady(cave) && !lyingLook(cave) && !combatOnly) {
+      if (!weaponViewReady(cave) && !seatCombatReady(cave) && !combatOnly) {
         hud.hint(crew.sleeping ? "Wake this Ooga Booga before entering shooter mode" : "Stand up before entering shooter mode");
         return true;
       }
@@ -2216,7 +2232,8 @@
     };
     // The Ooga driven now in the view and mode `incoming` describes (as `captureControl` writes them), the shown camera
     // handing over to it: a possession's, or `adopt`'s for an Ooga already driven.
-    const takeView = (cave, incoming) => {
+    const takeView = (cave, incoming, blend = true) => {
+      if (!blend) handoff.cancel();
       centeredCarry = carrySelection = resumeSleepOverhead = false;
       const nextView = incoming.active ? incoming.view : "orbit";
       // Combat that was overhead, or would go there, comes in at the shoulder where this scene offers no overhead.
@@ -2285,7 +2302,7 @@
       syncWeaponHud();
       hud.tooltip.hide();
       syncModeHud();
-      handoff.begin(incoming);
+      if (blend) handoff.begin(incoming);
       targetWait = assistedTargetWait = 0;
       finishHandoffView(0);
     };
@@ -2301,9 +2318,10 @@
         side: shoulderSideTarget < 0 ? -1 : 1 };
     };
     // The Ooga driven now takes a view and mode `viewState` gave, blending from the view shown, without letting go of it.
+    // Scripted doorways pass blend=false when their own lens already animates the handoff.
     // First person keeps the look it has (where the Ooga faces now is what it looks at); the others take the kept look
     // from the Ooga's heading, pitch and zoom.
-    const adopt = (state) => {
+    const adopt = (state, blend = true) => {
       const cave = player();
       if (!cave || !state || !VIEWS.includes(state.view) || firstOnly) return false;
       const t = captureControl(controlTransition), feet = cave.root.position.y - cave.baseY;
@@ -2319,7 +2337,7 @@
       endCenteredCarry();
       unlockAim();
       headOrbit = exitAngleHold = closeCameraActive = entryRebase = entryOffsetActive = false;
-      takeView(cave, t);
+      takeView(cave, t, blend);
       requireCombat();
       return true;
     };
@@ -2348,7 +2366,7 @@
       if (ctx.jetpackStatus && cave.jetpackOwned) chosen.jet = !!cave.jet;
     };
     // The next `navigate`, in this same tick, keeps this look, pitch and zoom from the Ooga's new heading.
-    let arriving = null;
+    let arriving = null, arrivalMovement = false;
     // A scene's arrival with the visitor's own Ooga: possessed with the view and combat it last had where they carry, its
     // weapon back in hand where this scene allows (the primary when the rifle is not), and the next `navigate` keeping the
     // look, pitch and zoom. Nothing blends in from the old scene's camera, whose coordinates mean nothing here. Before
@@ -2379,12 +2397,14 @@
       // The jetpack this browser last wore, on the page's first arrival.
       if (c === saved && c.jet && !cave.jet && ctx.wearJetpack) ctx.wearJetpack(cave);
       arriving = arrivalKeep;
+      arrivalMovement = true;
       return true;
     };
     // Lifecycle only (a scene's teardown, a switch to another Ooga or a gorilla, an account that may no longer drive it):
     // the camera stays where it is, on a target of its own, until the next possession.
     const release = () => {
       if (firstOnly && player() && !disposed) return;
+      arrivalMovement = false;
       handoff.cancel();
       restoredPose = null;
       endCenteredCarry();
@@ -2706,6 +2726,7 @@
     const readInput = (dt) => {
       readPad();
       if (!active || externalControl || menuOpen) { if (!buttonsHeld) releaseTriggerButton(); return; }
+      if (arrivalMovement) { arrivalMovement = false; controls.takeMovement(); }
       syncAim();
       const a = controls.read();
       // Arrival easing keeps its label; only manual camera input fades it.
@@ -3033,7 +3054,7 @@
       eyeMotionValid = false;
     };
     const updateCamera = (dt) => {
-      if (externalControl) return;
+      if (externalControl && !externalCamera) return;
       if (closeWanted || shoulderView || armed()) frameLiftWanted = 0;
       frameLift = damp(frameLift, frameLiftWanted, 6, dt);
       if (Math.abs(frameLift - frameLiftWanted) < 1e-4) frameLift = frameLiftWanted;
@@ -3209,7 +3230,7 @@
       }
       viewPitch = orbit.pitch * (1 - flatten);
       const cp = Math.cos(viewPitch), sp = Math.sin(viewPitch);
-      const targetX = orbit.tx, targetY = orbit.ty - portrait * 0.6, targetZ = orbit.tz;
+      let targetX = orbit.tx, targetY = orbit.ty - portrait * 0.6, targetZ = orbit.tz;
       const orbitX = orbit.tx + Math.sin(orbit.yaw) * cp * orbit.dist;
       const orbitY = orbit.ty + sp * orbit.dist;
       const orbitZ = orbit.tz + Math.cos(orbit.yaw) * cp * orbit.dist;
@@ -3261,7 +3282,13 @@
         camera.position.y += dollyVelocity.y * carry;
         camera.position.z += dollyVelocity.z * carry;
       }
+      const unclampedX = camera.position.x, unclampedY = camera.position.y, unclampedZ = camera.position.z;
       if (!(lying && closeWanted && closeMix === 1)) clampCamera(camera.position, closeMix, eyeClearance, groundEasing, dt, groundReset, directCameraPosition, !cave && orbit.target === freeTarget, headOrbit && !closeWanted && (exitAngleHold || closeMix > 0));
+      // A portal wall may pass between the eye and its body while fading out.
+      // Translate the orbit's target equally instead of flipping across it.
+      if (ctx.preserveClampedLook) {
+        targetX += camera.position.x - unclampedX; targetY += camera.position.y - unclampedY; targetZ += camera.position.z - unclampedZ;
+      }
       const lookCp = Math.cos(orbit.pitch), lookSp = Math.sin(orbit.pitch);
       let lookX = camera.position.x - Math.sin(orbit.yaw) * lookCp * CLOSE_LOOK_DIST;
       let lookY = camera.position.y - lookSp * CLOSE_LOOK_DIST;
@@ -3352,7 +3379,7 @@
     const update = (dt) => {
       arriving = null;
       if (ctx.carry && player()) remember(player());
-      if (externalControl) return;
+      if (externalControl && !externalCamera) return;
       // Overhead where the scene no longer offers it (a hunt that ended, a view left lying down) comes down to the
       // shoulder, as a right-click there does. A held replay keeps its pose until it is resumed.
       if (birdsEye() && noOverhead() && !restoredPose) shooterView(true, null, null, true);
@@ -3998,7 +4025,7 @@
       if (cave) {
         if (!touch) rows.push(H.row(["shiftleft"], "Run"));
         rows.push(H.row(touch ? [] : [" "], hud.el.act.textContent.trim() || "Jump / use nearby object", touch ? "Action button" : ""));
-        if (!firstOnly && !ctx.combatOnly?.() && (weaponViewReady(cave) || lyingLook(cave))) add("view", "Toggle view control", "View button");
+        if (!firstOnly && !ctx.combatOnly?.() && (weaponViewReady(cave) || seatCombatReady(cave))) add("view", "Toggle view control", "View button");
         if (!touch && !firstOnly && armed()) rows.push(H.row([], "Zoom / aim", "Hold right mouse click"));
         if (!touch && armed() && shoulderView && !closeWanted) rows.push(H.row(["shiftright"], "Tap to swap shoulder · hold with A/D to peek"));
         if (!touch && birdsEye()) add("north", "Face north", "");

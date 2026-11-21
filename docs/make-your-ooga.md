@@ -207,6 +207,18 @@ body wears as bands of colour; `crown`, `skull`, `eyes` and `mark` build the hea
 blocks; `club`, `headgear` and `extras` add pieces; `model(k, wear)` builds what blocks
 cannot say and lifts it off the body with `BL.heroBody.trunk(slim)`.
 
+Put removable headwear in `dress.hat(k, v)` (hat voxels on the authored head grid)
+or `dress.hatNodes(k)` (hat nodes attached to `k.parts.head`). Keep hair, glasses,
+facial features and anatomy in their existing head hooks so taking a hat off
+preserves the character underneath. These hooks still belong in your one file.
+
+If your hat is already available in the shared wardrobe, submit changes only to
+your character file. Normal builds use the committed wearable archives; changes
+to your voice, body or hat do not require you to edit the shared catalog. Your
+authored Ooga changes with the reviewed character release. A maintainer separately
+reviews and publishes any shared hat update, retaining older wearable versions
+for players who keep them; see [Live character hats](character-equipment.md).
+
 The limits a maintainer cannot waive:
 
 - **One file, 32,768 bytes**, comments included. The check prints how full it is.
@@ -363,7 +375,8 @@ draft: the bot never reads a draft, so nothing happens to it, however long the p
   building or debugging. Mark it **ready for review** only after the work and authorized
   checks are complete, and record the validation and any remaining acceptance work in
   its description. Return it to draft for substantial new work; small review fixes can
-  stay ready. Batch related fixes before pushing. Commit as the player. Do not
+  stay ready. While it is draft, commit and push each round the player approves; once
+  it is ready, batch related fixes before pushing. Commit as the player. Do not
   force-push over commits the bot has read.
 - The bot reads the file as text and never runs it. It copies an accepted file into one of
   two standing bundle PRs, says which and why, and **closes your PR on purpose**: the
