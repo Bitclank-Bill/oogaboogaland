@@ -43832,7 +43832,10 @@ const browserDriverProof = async () => {
       }
     }
     const context = {
-      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => "9999\nsynthetic",
+      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => {
+        if (mode === "no-port" || mode === "late-port" && clock < 15000) throw new Error("Port not published");
+        return "9999\nsynthetic";
+      },
       rmSync: profile => removed.push(profile), writeFileSync() {}, tmpdir: () => "/tmp", join: (...parts) => parts.join("/"),
       process: { env: {}, once() {} }, setTimeout: timeout, clearTimeout: clear, queueMicrotask, WebSocket: Socket,
       AbortSignal: { timeout(ms) {
@@ -43844,14 +43847,15 @@ const browserDriverProof = async () => {
         requests.push({ url, bounded: !!opts?.signal });
         if (mode === "discovery-hang") return new Promise((resolve, reject) => opts?.signal?.once("abort", () => reject(new Error("synthetic abort"))));
         discovery++;
-        return { json: async () => mode === "missing-page" && discovery === 1 ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
+        return { json: async () => mode === "missing-page" && discovery === 1 || mode === "late-page" && clock < 15000
+          ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
       },
       Date: class extends Date { static now() { return clock; } }, console, Buffer
     };
     const script = source.replace(/^import .*;\n/gm, "").replace(/export const /g, "const ")
       + "\nthis.driver = { launch, acquire, release, dispose };";
     runInNewContext(script, context);
-    return { ...context.driver, children, sockets, timers, removed, requests,
+    return { ...context.driver, children, sockets, timers, removed, requests, now: () => clock,
       fire(ms) {
         const timer = [...timers].find(timer => timer.ms === ms && timer.active);
         if (!timer) throw new Error(`No timer ${ms}`);
@@ -43877,7 +43881,7 @@ const browserDriverProof = async () => {
     await flush();
     const before = new Set(f.timers);
     let error = null;
-    const expired = f.launch().catch(err => { error = err; });
+    const expired = f.launch({ startupMs: 30000 }).catch(err => { error = err; });
     const admission = [...f.timers].find(timer => !before.has(timer) && timer.ms === 10000 && timer.active);
     if (admission) { admission.active = false; f.timers.delete(admission); admission.fn(); }
     await flush();
@@ -43946,6 +43950,44 @@ const browserDriverProof = async () => {
     let browser = null, error = null;
     try { browser = await f.launch(); } catch (err) { error = err.message; }
     rows.push({ name: "wait for usable page", pass: !!browser && f.requests.length === 2, requests: f.requests.length, error });
+    await f.dispose();
+  }
+  for (const mode of ["late-port", "late-page"]) for (const startupMs of [undefined, 30000]) {
+    const f = fixture(mode);
+    let browser = null, error = null;
+    try { browser = await f.launch({ startupMs }); } catch (err) { error = err; }
+    const elapsed = f.now(), failed = !!error?.driver && error.message.includes("startup deadline")
+      && elapsed >= 10000 && elapsed < 12000 && f.children[0].kills.includes("SIGKILL") && f.removed.includes("synthetic-profile-1");
+    rows.push({ name: `${mode}: ${startupMs === undefined ? "default discovery stays at 10 s" : "cold discovery waits for a usable page"}`,
+      pass: startupMs === undefined ? !browser && failed : !!browser && !error && elapsed >= 15000 && elapsed < 30000 && f.children[0].kills.length === 0,
+      elapsed, error: error?.message });
+    await f.dispose();
+  }
+  {
+    const f = fixture("no-port");
+    let error = null;
+    try { await f.launch({ startupMs: 30000 }); } catch (err) { error = err; }
+    rows.push({ name: "cold discovery still expires and cleans up a process that never publishes a port", pass: !!error?.driver
+      && error.message.includes("startup deadline before publishing a DevTools port") && f.now() === 30000
+      && f.children[0].kills.includes("SIGKILL") && f.removed.includes("synthetic-profile-1") && f.sockets.length === 0 });
+    await f.dispose();
+  }
+  {
+    const f = fixture("setup-held");
+    let error = null;
+    const pending = f.launch({ startupMs: 30000 }).catch(err => { error = err; });
+    await flush(); f.fire(10000); await pending;
+    rows.push({ name: "cold discovery allowance does not extend DevTools setup commands", pass: !!error?.driver
+      && error.message.startsWith("Runtime.enable got no reply in 10 s") && f.children[0].kills.includes("SIGKILL")
+      && f.removed.includes("synthetic-profile-1") });
+    await f.dispose();
+  }
+  {
+    const f = fixture(), invalid = [9999, 60001, NaN, Infinity, 30000.5, null, "30000"];
+    let rejected = 0;
+    for (const startupMs of invalid) try { await f.launch({ startupMs }); } catch (err) { if (/startupMs/.test(err.message)) rejected++; }
+    rows.push({ name: "invalid discovery allowances reject before spawning or queueing", pass: rejected === invalid.length
+      && f.children.length === 0 && f.timers.size === 0 });
     await f.dispose();
   }
   {
@@ -46591,7 +46633,7 @@ const unitChecks = async () => {
   const rigDisposal = await raceRigDisposalProof();
   record("race rig disposal: pending and linked variants release owned shaders and programs exactly once without context-loss support", rigDisposal.every(r => !r.programs && !r.shaders && !r.duplicateDeletes && r.arraysCleared && r.aliasesReleased), JSON.stringify(rigDisposal));
   const driver = await browserDriverProof();
-  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 17 && driver.failures === 0, JSON.stringify(driver));
+  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 24 && driver.failures === 0, JSON.stringify(driver));
 
 const carriedRelease = carriedReleaseProof();
 record("gorilla release: insufficient upright headroom retains the grab; unaimed throws keep a forward 45-degree launch at either charge despite running momentum, while aimed throws retain their target and momentum", carriedRelease.valid, JSON.stringify(carriedRelease));
