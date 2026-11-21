@@ -205,7 +205,7 @@ void main() {
     return geo;
   };
   const create = (parent,moonRadius,canvas) => {
-    const radius=2*moonRadius,geo=M.geometry(),rect=bounds.map(n=>n*radius);
+    const radius=1.6*moonRadius,geo=M.geometry(),rect=bounds.map(n=>n*radius);
     const [x,y,w,h]=rect;
     M.face(geo,[[x,y],[x+w,y],[x+w,y+h],[x,y+h]].map(p=>M.pushVert(geo,...p,0)),"#ffffff",{emissive:1});
     geo.castShadow=false;geo.fogPierce=1;

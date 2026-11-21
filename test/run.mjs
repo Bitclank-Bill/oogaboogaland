@@ -36694,11 +36694,11 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     const accretion=P.cosmos.parts.still.children.find(n=>n.geometry?.imageSurface?.accretion).geometry.imageSurface;
     const beforeFlow=accretion.time;
     __ooga.advance(.15,1/30);
-    const sky=wide && donor && hole.radius===52 && hole.planetRadius===hole.radius/100 && accretion.time>beforeFlow;
+    const sky=wide && donor && hole.radius===41.6 && hole.planetRadius===hole.radius/100 && accretion.time>beforeFlow;
     lens.querySelector('[aria-label="Leave telescope"]').click();
     return { route, sky, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
   })()`);
-  record("poker sky: the double-Moon shadow and 1:100 donor advance on the scene clock and center in the eyepiece", route.sky);
+  record("poker sky: the 83.2 m shadow and 1:100 donor advance on the scene clock and center in the eyepiece", route.sky);
   record("poker terrace: use the telescope, aim, magnify, reacquire the moon and leave the eyepiece", route.scope);
   record("poker rooms: the icy ₿IFRÖST core turns on its pedestal in Cold Storage and leaves the view on exit", route.icyCore && route.hidden);
   record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the roof holds until visit 21, and all routes return",
