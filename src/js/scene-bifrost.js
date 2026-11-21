@@ -669,7 +669,7 @@
       // The visitor's view, combat and weapon come in from the last scene and go on to the next (pilot.js `carried`).
       carry: true,
       renderer, canvas, camera, hud, presets: PRESETS, landing: "entrance", pitch: PITCH, dist: DIST,
-      follow: FOLLOW, clampTarget, clampCamera, ceilingAt: () => HALL.wall + 2, coarse: COARSE, mayPossess,
+      follow: FOLLOW, clampTarget, clampCamera, preserveClampedLook: true, ceilingAt: () => HALL.wall + 2, coarse: COARSE, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: groundFor }
     });
     const tipFor = (hit) => {

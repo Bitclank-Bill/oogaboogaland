@@ -3219,7 +3219,7 @@
       }
       viewPitch = orbit.pitch * (1 - flatten);
       const cp = Math.cos(viewPitch), sp = Math.sin(viewPitch);
-      const targetX = orbit.tx, targetY = orbit.ty - portrait * 0.6, targetZ = orbit.tz;
+      let targetX = orbit.tx, targetY = orbit.ty - portrait * 0.6, targetZ = orbit.tz;
       const orbitX = orbit.tx + Math.sin(orbit.yaw) * cp * orbit.dist;
       const orbitY = orbit.ty + sp * orbit.dist;
       const orbitZ = orbit.tz + Math.cos(orbit.yaw) * cp * orbit.dist;
@@ -3271,7 +3271,13 @@
         camera.position.y += dollyVelocity.y * carry;
         camera.position.z += dollyVelocity.z * carry;
       }
+      const unclampedX = camera.position.x, unclampedY = camera.position.y, unclampedZ = camera.position.z;
       if (!(lying && closeWanted && closeMix === 1)) clampCamera(camera.position, closeMix, eyeClearance, groundEasing, dt, groundReset, directCameraPosition, !cave && orbit.target === freeTarget, headOrbit && !closeWanted && (exitAngleHold || closeMix > 0));
+      // A portal wall may pass between the eye and its body while fading out.
+      // Translate the orbit's target equally instead of flipping across it.
+      if (ctx.preserveClampedLook) {
+        targetX += camera.position.x - unclampedX; targetY += camera.position.y - unclampedY; targetZ += camera.position.z - unclampedZ;
+      }
       const lookCp = Math.cos(orbit.pitch), lookSp = Math.sin(orbit.pitch);
       let lookX = camera.position.x - Math.sin(orbit.yaw) * lookCp * CLOSE_LOOK_DIST;
       let lookY = camera.position.y - lookSp * CLOSE_LOOK_DIST;
