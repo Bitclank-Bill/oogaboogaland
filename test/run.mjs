@@ -27329,6 +27329,47 @@ const factoryFloor = { name: "factory floor", why: "regression: stairs landed ag
   record("factory floor: from the balcony the widest Ooga on the roster reaches both ends of every stair, every line's deck, each peer tunnel's shield, the switchboard, Kortik's deck, the right-wall platform with the rebalancer's operator lane and the treasury (walking the platform's length from the cooker's stair), the donation kiosk in the right wall, the watchtower, landing, galleries and the forge", r.missing.length === 0 && r.radius > 0.45 && r.cells > 20000, JSON.stringify(r));
 } };
 // The way in and out: from the island through the 2 o'clock mouth's shield, back out past the balcony, and Escape.
+// Sample the main rendered camera, never a portal photograph or reflection camera.
+// Checks arm this only after fixture relocation, and include the final control handoff.
+const doorCameraTrace = `(() => {
+  const B = __ooga, R = B.renderer;
+  if (window.__doorCameraTrace) { window.__doorCameraTrace.reset(); return; }
+  const render = R.render;
+  const T = window.__doorCameraTrace = { active: true, rows: [],
+    reset() { this.active = true; this.rows = []; },
+    sample(c = B.camera, fade = B.fade, place = B.scene) {
+      if (!this.active || !B.pilot?.player) return;
+      const p = B.pilot.player.root.position, dx = c.target.x - c.position.x, dy = c.target.y - c.position.y, dz = c.target.z - c.position.z;
+      this.rows.push({ place, fade, yaw: Math.atan2(dx, dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)), eye: [c.position.x - p.x, c.position.y - p.y, c.position.z - p.z] });
+    },
+    result() {
+      this.active = false;
+      let yaw = 0, pitch = 0, eye = 0, frames = 0;
+      for (let i = 1; i < this.rows.length; i++) {
+        const a = this.rows[i - 1], b = this.rows[i];
+        if (a.place !== b.place || Math.max(a.fade, b.fade) >= 0.95) continue;
+        frames++;
+        yaw = Math.max(yaw, Math.abs(Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw))));
+        pitch = Math.max(pitch, Math.abs(b.pitch - a.pitch));
+        eye = Math.max(eye, Math.hypot(...b.eye.map((v, j) => v - a.eye[j])));
+      }
+      return { frames, yaw, pitch, eye };
+    }
+  };
+  R.render = function(root, camera, ...args) {
+    const result = render.call(this, root, camera, ...args), S = BL.scenes[B.scene];
+    if (root === S?.root && camera === S.camera) T.sample(camera);
+    return result;
+  };
+})()`;
+const checkDoorCamera = async (b, name) => {
+  const r = await b.evaluate('__doorCameraTrace.result()');
+  const rows = await b.evaluate('__doorCameraTrace.rows');
+  const dir = join(root, 'untracked/room-transitions/checks'); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, name.replaceAll(' ', '-') + '.json'), JSON.stringify(rows));
+  record(name + ": every visible frame keeps a continuous camera through the walk and control handoff",
+    r.frames > 30 && r.yaw < 0.12 && r.pitch < 0.12 && r.eye < 0.75, JSON.stringify(r));
+};
 const factoryEntrance = { name: "factory entrance", why: "regression: flying above the mouth entered the factory and reaching its front wall away from the doorway exited; real doorway crossings must still keep the same Ooga", run: async (b) => {
   const above = await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), m = B.mouths.find((m) => m.id === "c2"), along = window.BL.factoryModels.SHIELD_Z - 0.1; if (B.crew.player !== a && B.crew.player?.npc !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * along, y: m.floorY + 20, z: m.z + Math.cos(m.ry) * along }, yaw: m.ry, pitch: 0.2, dist: 5 }); B.advance(1 / 60, 1 / 60); const d = B.pilot.player; return { scene: B.scene, transitioning: B.transitioning, height: d ? d.root.position.y - d.baseY - m.floorY : null }; })()`);
   record("factory entrance: flying above the shield stays on the island", above.scene === "hub" && !above.transitioning && above.height > 3, JSON.stringify(above));
@@ -27341,6 +27382,7 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   // the Ooga a step short of its own shield, seen from its own eyes, walking on. A forward key held through that walk
   // goes on walking when it is done, and the view is back behind the Ooga; a step back from there stays in the hall.
   const keys = `const toward = (dx, dz) => { const c = B.camera, fx = c.target.x - c.position.x, fz = c.target.z - c.position.z, l = Math.hypot(fx, fz), f = [fx / l, fz / l], r = [-f[1], f[0]]; const score = { w: f[0] * dx + f[1] * dz, s: -(f[0] * dx + f[1] * dz), d: -(r[0] * dx + r[1] * dz), a: r[0] * dx + r[1] * dz }; return Object.entries(score).sort((p, q) => q[1] - p[1])[0][0]; }; const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, code: "Key" + k.toUpperCase(), bubbles: true })); const shot = () => { const W = B.factory.walk, p = B.crew.player.root.position; return { phase: W.phase, still: +W.still.toFixed(2), z: +p.z.toFixed(2), camZ: +B.camera.position.z.toFixed(2) }; }; const crossing = async (id, sample) => { const end = performance.now() + 20000; let frames = 0; while (frames < 300 && performance.now() < end) { B.advance(1 / 60, 1 / 60); if (B.scene === id && !B.transitioning) return sample(); if (B.transitioning) await new Promise(r => setTimeout(r, 0)); else frames++; } return null; };`;
+  await b.evaluate(doorCameraTrace);
   const glideIn = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth; ${keys}
     const k = toward(-Math.sin(m.ry), -Math.cos(m.ry)); key(k, true);
     const first = await crossing("factory", shot);
@@ -27353,6 +27395,7 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   })()`);
   const first = glideIn.first, on = glideIn.on;
   const arrived = await b.evaluate(`(async () => { const B = window.__ooga, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "factory") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const a = B.crew.player, out = { scene: B.scene, ooga: a ? a.traits.name : null, unarmed: !!a && ${unarmedInPage("a")}, ammo: a && a.weapon.ammo, spares: a && a.weapon.parked.spareAmmo.join(","), z0: +a.root.position.z.toFixed(2) }; const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "s", code: "KeyS", bubbles: true })); key(true); B.advance(0.08, 1 / 60); key(false); B.advance(0.5, 1 / 60); out.back = { scene: B.scene, transitioning: B.transitioning, phase: B.factory.walk.phase, z: +a.root.position.z.toFixed(2) }; return out; })()`);
+  await checkDoorCamera(b, "factory entrance");
   const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, stop: window.BL.factoryWindow.stopPast(3, { view: "orbit", distance: 5, pitch: 0.2 }), shield: F.SHIELD_Z }; })()`);
   record("factory entrance: walking in, the view swoops into the Ooga's eyes and the hall takes over from that eye with no fade, the island's last frame dissolving off the hall's first: it comes on a step short of the hall's own shield and walks on far enough for the view handed back to clear it, a forward key held through the walk carries on walking when it ends, and a step back from there stays in the hall",
     !!first && first.phase === 1 && first.still >= 0.9 && first.z > F.gate - 0.5 && first.z < F.gate + 1 && Math.abs(first.camZ - first.z) < 0.5
@@ -27365,12 +27408,13 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   // Out through the gate's shield the same way, yielding for transition tasks only: the island has the Ooga at its own
   // shield under the hall's last frame, seen from its own eyes, and walks it on down the tunnel; a key pressed on the way
   // back toward the shield resumes when the guided walk finishes.
+  await b.evaluate(doorCameraTrace);
   const glideOut = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), along = (q) => +((q.x - m.x) * sr + (q.z - m.z) * cr).toFixed(2); ${keys}
     const k = toward(0, 1); key(k, true);
     const rim = await crossing("hub", () => ({ ooga: along(B.crew.player.root.position), view: along(B.camera.position) }));
     key(k, false); if (!rim) return { rim };
     // The pre-crossing view looked back into the hall: its restored W points inward,
-    // even while the temporary guided eye is looking outward.
+    // throughout the guided walk as well as after the handoff.
     const back = "w"; key(back, true);
     for (let i = 0; i < 240 && BL.scenes.hub.debug.factoryWalk.phase; i++) B.advance(1 / 60, 1 / 60);
     const after = along(B.crew.player.root.position); B.advance(0.08, 1 / 60); const held = along(B.crew.player.root.position);
@@ -27379,6 +27423,7 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   })()`);
   const rim = glideOut.rim, walkedOut = glideOut.walkedOut || {};
   const back = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "hub") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const p = B.crew.player && B.crew.player.root.position; return { scene: B.scene, ooga: B.crew.player ? B.crew.player.traits.name : null, fromMouth: p ? +Math.hypot(p.x - m.x, p.z - m.z).toFixed(1) : null, rifle: !!p && B.crew.player.weapon.equipped && !B.crew.player.weapon.primaryEquipped && B.crew.player.weapon.selectedSlot === 2, ammo: p && B.crew.player.weapon.ammo, spares: p && B.crew.player.weapon.spareAmmo.join(","), carry: !B.pilot.aiming && document.getElementById("weapon-reticle").hidden }; })()`);
+  await checkDoorCamera(b, "factory exit");
   record("factory entrance: walking out, the view swoops into the Ooga's eyes and the island takes over from that eye at its own shield under the hall's last frame, walking on down the tunnel, and a key held back toward the shield resumes when control returns",
     !!rim && rim.ooga > F.shield - 1 && rim.ooga < F.shield + 0.6 && Math.abs(rim.view - rim.ooga) < 0.5 && walkedOut.after > F.shield + 3 && walkedOut.held < walkedOut.after - 0.2 && walkedOut.heading > 0.99, JSON.stringify({ rim, walkedOut }));
   record("factory doorway: inside the hall the visitor has no weapon or weapon button while the selected rifle, rounds and spare magazines wait parked; all of them come back at the island, with carry chosen inside", arrived.unarmed && arrived.ammo === 23 && arrived.spares === "7,11" && back.rifle && back.ammo === 23 && back.spares === "7,11" && back.carry, JSON.stringify({ arrived, back }));
@@ -27425,6 +27470,7 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
     };
   })()`);
   try {
+    await b.evaluate(doorCameraTrace);
     await walkToward(b, inKey[0], inKey[1], 0.8);
     const arrived = await b.evaluate(`(() => {
       const B = __ooga;
@@ -27437,6 +27483,7 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
       && arrived.entered.enterLoads === 0 && !arrived.entered.pictured && arrived.entered.outside
       && arrived.entered.windows.length === 2 && arrived.entered.windows.every(w => !w.owned && w.faces > 0), JSON.stringify(arrived));
     const view = await b.evaluate(`(() => { const B = __ooga; B.advance(2, 1 / 60); const a = B.pilot.player, p = a.root.position, z = p.z; B.advance(0.3, 1 / 60); return { actual: B.pilot.viewState(), expected: window.__bifrostView, x: p.x, z: p.z, field: BL.bifrostModels.ENTRY.field, eyeZ: B.camera.position.z, stopped: Math.abs(p.z - z) }; })()`);
+    await checkDoorCamera(b, "bifrost entrance");
     record("bifrost entrance: walking from the field restores pitch, zoom and mode, and a released key stays released", view.actual.view === view.expected.view && Math.abs(view.actual.pitch - view.expected.pitch) < 0.02 && Math.abs(view.actual.distance - view.expected.distance) < 0.03 && view.z < view.field - 3 && view.eyeZ < view.field - 0.5 && view.stopped < 0.03, JSON.stringify(view));
     // Idle callbacks, deferred scripts and JPEG decode need real event-loop turns, rather than debug advance alone.
     const pictured = await untilPage(b, 'B.scene === "bifrost" && !B.transitioning && B.bifrost.scene.windows.filter(w => w.kind === "travel").every(w => w.picture.owned)', 15000);
@@ -27493,14 +27540,24 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
     if (B.scene !== "bifrost") throw new Error("Bifrost exit fixture did not enter its chamber");
     const cave = B.cavemen.get("portlandhodl"); if (B.pilot.player !== cave) B.pilot.possess(cave);
     B.pilot.enterClose(true); B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, target: { x: 0, y: 1, z: E.field + 4 }, yaw: 0, pitch: -0.24, dist: 5, framed: true }); B.pilot.focusAim(); B.advance(0.5, 1 / 60); window.__bifrostExitView = B.pilot.viewState(); })()`);
+  await b.evaluate(doorCameraTrace);
   await b.evaluate(`(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true })); __ooga.advance(0.8, 1 / 60); })()`);
   await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
   const restored = await b.evaluate(`(() => { const B = __ooga; B.advance(1.1, 1 / 60); const a = B.pilot.player, p = a.root.position, door = B.bifrost.site.portal, sr = Math.sin(door.ry), cr = Math.cos(door.ry), x = p.x, z = p.z, view = B.pilot.viewState();
     B.advance(0.25, 1 / 60); const moved = (p.x - x) * sr + (p.z - z) * cr;
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "s", code: "KeyS", bubbles: true })); B.advance(0.2, 1 / 60); const stopX = p.x, stopZ = p.z; B.advance(0.2, 1 / 60);
     return { view, expected: window.__bifrostExitView, facing: Math.cos(a.root.rotation.y - door.ry), moved, stopped: Math.hypot(p.x - stopX, p.z - stopZ), focused: document.body.classList.contains("aim-cursor-focused") }; })()`);
+  await checkDoorCamera(b, "bifrost exit");
   record("bifrost exit: backing through keeps first-person facing and pitch, walks away backwards, and restores held S and mouse focus", restored.view.view === "first-person" && Math.abs(restored.view.pitch - restored.expected.pitch) < 0.02 && restored.facing < -0.95 && restored.moved > 0.2 && restored.stopped < 0.03 && restored.focused, JSON.stringify(restored));
   const back = await b.evaluate(`(() => { const B = window.__ooga; for (let i = 0; i < 240 && (B.transitioning || B.scene !== "hub"); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); const p = B.crew.player && B.crew.player.root.position, a = B.bifrost && B.bifrost.site.arrival; return { scene: B.scene, ooga: B.crew.player ? B.crew.player.traits.name : null, fromArrival: p && a ? +Math.hypot(p.x - a.x, p.z - a.z).toFixed(1) : null }; })()`);
+  await tourGo(b, "bifrost");
+  await b.evaluate(`(() => { const B = __ooga, E = BL.bifrostModels.ENTRY; if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.pilot.exitClose();
+    B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, yaw: 0, pitch: -0.24, dist: 5, framed: true }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(doorCameraTrace);
+  await b.evaluate(`(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true })); __ooga.advance(1.4, 1 / 60); window.dispatchEvent(new KeyboardEvent("keyup", { key: "s", code: "KeyS", bubbles: true })); })()`);
+  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
+  await b.evaluate('__ooga.advance(2, 1 / 60)');
+  await checkDoorCamera(b, "bifrost carry exit");
   await tourGo(b, "bifrost");
   // Carried focus comes back as soft mouse-look (#421): the first Escape frees that cursor in the chamber, the next leaves.
   const focus = () => b.evaluate(`({ scene: __ooga.scene, focused: document.body.classList.contains("aim-cursor-focused") })`);
@@ -28070,6 +28127,7 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeDoorHandoff = { name: "arcade door handoff", why: "regression: the guided doorway reset pitch and zoom and suppressed keys still held when the walk finished", run: async (b) => {
+  await b.evaluate(doorCameraTrace);
   const rows = await b.evaluate(`(() => {
     const B = __ooga, P = B.pilot, W = B.arcade.doorWalk, a = P.player, H = BL.arcadeModels.HALL;
     const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, code: "Key" + k.toUpperCase(), bubbles: true }));
@@ -28084,6 +28142,7 @@ const arcadeDoorHandoff = { name: "arcade door handoff", why: "regression: the g
       // The far side of a real crossing has a level, temporary doorway view.
       P.navigate({ position: { x: 0, y: 0, z: H.front - 5 }, yaw: 0, pitch: 0, dist: 3, framed: true });
       W.arrive({ pitch: 0, dist: 3, view: saved, focused: false }, a, 0);
+      __doorCameraTrace.reset();
       key(held === "released" ? "w" : held, true);
       P.controls.reset();
       if (held === "released") key("w", false);
@@ -28093,10 +28152,13 @@ const arcadeDoorHandoff = { name: "arcade door handoff", why: "regression: the g
       B.advance(0.3, 1 / 60);
       const movement = Math.hypot(a.root.position.x - start.x, a.root.position.z - start.z);
       if (held !== "released") key(held, false);
-      rows.push({ view, held, saved, got, movement, idle: W.phase === "idle", headHidden, cleared });
+      B.advance(0.5, 1 / 60);
+      rows.push({ camera: __doorCameraTrace.result(), view, held, saved, got, movement, idle: W.phase === "idle", headHidden, cleared });
     }
     return rows;
   })()`);
+  record("arcade door handoff: normal-motion return lenses stay continuous for first-person and orbit with every held key",
+    rows.every(r => r.camera.frames > 30 && r.camera.yaw < 0.12 && r.camera.pitch < 0.12 && r.camera.eye < 0.75), JSON.stringify(rows.map(r => ({ view: r.view, held: r.held, ...r.camera }))));
   record("arcade door handoff: first-person and orbit recover their pitch and zoom, all held WASD keys resume, and released keys stay stopped",
     rows.every(r => r.idle && r.cleared && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
       && Math.abs(r.got.distance - r.saved.distance) < 0.01 && (r.held === "released" ? r.movement < 0.05 : r.movement > 0.2)), JSON.stringify(rows));
@@ -30602,17 +30664,26 @@ const sphereCrossing = { name: "timechain crossing", why: "playthrough: Enter wa
   await b.evaluate(sphereLog);
   await b.key(" ");
   await b.key("3");
+  await b.evaluate(doorCameraTrace);
   await b.key("Enter");
   const crossing = await untilPage(b, 'B.scene === "hub" && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "crossing"', 20000);
   const passage = await b.evaluate(`(() => { const ${sphereLocal}, G = T.gate; return { plug: T.site.plug.visible, popup: !!document.getElementById("sphere-keypad"), lens: G.debug.lens }; })()`);
   const inside = await untilPage(b, 'B.scene === "timechain" && !B.transitioning && B.timechain.guide.stage === null', 20000);
   const room = await b.evaluate(`(() => { const B = __ooga, D = B.timechain, a = B.pilot.player.root.position; B.advance(1.2, 1 / 60);
     return { room: D.room.id, mode: D.visit.mode, player: B.pilot.player.traits.name, view: B.pilot.mode, pitch: B.pilot.orbit.pitch, dist: B.pilot.orbit.dist, doors: D.doors.open, atArrival: Math.hypot(a.x - D.layout.arrival.x, a.z - D.layout.arrival.z), hash: location.hash, zone: BL.net.state.zone }; })()`);
+  await checkDoorCamera(b, "timechain entrance");
   await b.evaluate(`(() => { const B = __ooga, L = B.timechain.layout; B.pilot.navigate({ position: { x: L.exitButton.x + 0.6, y: 0, z: L.doorZ - 1 }, yaw: Math.PI, pitch: 0.05, dist: 4 }); B.advance(0.3, 1 / 60); })()`);
+  await b.evaluate(doorCameraTrace);
   await b.key(" ");
-  const out = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "idle"', 25000);
-  const back = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, G = T.gate, c = B.pilot.player; B.advance(1.2, 1 / 60);
-    return { player: c && c.traits.name, fromDoors: c ? local(c.root.position) - SP.THRESHOLD : null, doors: G.debug.open, plug: T.site.plug.visible, view: B.pilot.mode, pitch: B.pilot.orbit.pitch, dist: B.pilot.orbit.dist, hash: location.hash, head: c ? !c.parts.head.cameraHidden : null, zone: BL.net.state.zone }; })()`);
+  // The Canvas fallback now runs the full animation too; allow its slower draw loop
+  // to complete without changing the exit, camera, movement or equipment assertions.
+  const exitWait = await b.evaluate('new URLSearchParams(location.search).has("canvas2d") ? 40000 : 25000');
+  const out = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "idle"', exitWait);
+  const exitAtWait = await b.evaluate(`(() => { const B = __ooga, G = BL.scenes.hub.debug.timechainIsland.gate.debug;
+    return { scene: B.scene, state: G.state, t: G.t, frames: B.renderedFrames, longest: window.__handover.longest }; })()`);
+  const back = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, G = T.gate, c = B.pilot.player; const began = performance.now(); B.advance(1.2, 1 / 60);
+    return { advanceMs: Math.round(performance.now() - began), player: c && c.traits.name, fromDoors: c ? local(c.root.position) - SP.THRESHOLD : null, doors: G.debug.open, plug: T.site.plug.visible, view: B.pilot.mode, pitch: B.pilot.orbit.pitch, dist: B.pilot.orbit.dist, hash: location.hash, head: c ? !c.parts.head.cameraHidden : null, zone: BL.net.state.zone }; })()`);
+  await checkDoorCamera(b, "timechain exit");
   const seams = await b.evaluate(`(() => { const H = window.__handover; cancelAnimationFrame(H.raf); if (H.tasks) H.tasks.disconnect();
     return { swapIn: H.swapIn, swapOut: H.swapOut, far: H.far, farAt: H.farAt, frames: H.frames, fadeMax: H.fadeMax, longest: H.longest, policy: __ooga.hubPolicy }; })()`);
   record("timechain crossing: Enter opens the doors, lifts the plug for the traveler alone and swoops into its eyes as it walks in",
@@ -30620,7 +30691,7 @@ const sphereCrossing = { name: "timechain crossing", why: "playthrough: Enter wa
   record("timechain crossing: the same Ooga arrives in a solo Room 3 in the first person it had at the keypad, the doors close behind it and the address names the room",
     inside && room.room === 3 && room.mode === "solo" && room.player === "portlandhodl" && room.view === "first-person" && Math.abs(room.pitch - 0.1) < 0.01 && Math.abs(room.dist - 4) < 0.01 && room.doors === 0 && room.atArrival < 0.4 && room.hash === "#/sphere-3" && room.zone === "none", JSON.stringify(room));
   record("timechain crossing: Space at the Exit button walks it back out of the passage onto the bridge, the doors shut, the plug back and the view it had in the room kept, its head hidden only in first person",
-    out && back.player === "portlandhodl" && back.fromDoors > 1 && back.doors === 0 && back.plug && back.view === room.view && Math.abs(back.pitch - 0.05) < 0.01 && Math.abs(back.dist - 4) < 0.01 && back.hash === "#/sphere" && back.head === (back.view !== "first-person"), JSON.stringify({ back, room: room.view }));
+    out && back.player === "portlandhodl" && back.fromDoors > 1 && back.doors === 0 && back.plug && back.view === room.view && Math.abs(back.pitch - 0.05) < 0.01 && Math.abs(back.dist - 4) < 0.01 && back.hash === "#/sphere" && back.head === (back.view !== "first-person"), JSON.stringify({ out, exitAtWait, back, room: room.view }));
   // Under hubcache=release part of the island's rebuild still runs in the swap, so the walk-out fades over it rather than
   // freezing the room's last frame; the way in stays seamless.
   if (seams.policy === "keep") record("timechain crossing: from the keypad into the room and from the Exit button out to the bridge every frame is the Ooga's own eye, never faded to black, and each scene swap is the same view on both sides",
@@ -30796,7 +30867,7 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
 scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereBridgeKeypad, sphereAccount, trip("hub")] });
 // The released hub (phones under 8 GB): the walk-out rebuilds the hub behind the room's held frame.
 scene("hub", { label: "timechain doorway release", query: "solo=1&character=portlandhodl&view=timechain&pos=0&hubcache=release", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
-scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", steps: [sphereApproach, sphereCrossing] });
+scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
 const roomPage = (room, query = "") => `${src}?debug=1&nosim=1${clock(`character=portlandhodl&pos=0${query ? "&" + query : ""}`)}#/sphere-${room}`;
 const roomGo = (room) => `(() => { const B = window.__ooga; B.go("timechain", "${room}"); for (let i = 0; i < 150 && (B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== ${room}); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, room: B.timechain.room.id, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom, timers: s.timers, requests: s.requests }; })()`;
 const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out arrival gets a solo copy of its room with first-person, shoulder and orbit views, without weapons or a jetpack, its screens painted, and touches no network under nosim", run: async (b) => {
@@ -33859,21 +33930,24 @@ const hangarWalking = { name: "hangar walking", why: "rule: W A S D walk the vis
 const hangarDoor = { name: "hangar door", why: "rule: the hangar's door walks the same Ooga through, out onto the Factory's landing and back in, on to where an arrival stands each side", run: async (b) => {
   // From the hangar's landing, walked out through its door.
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), D = B.hangar.layout.door; if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: D.x, y: D.y, z: D.z - 2.5 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__hangarView = B.pilot.viewState(); })()`);
+  await b.evaluate(doorCameraTrace);
   await walkToward(b, 0, 1, 3);
   const out = await untilPage(b, 'B.scene === "factory" && !B.transitioning', 15000);
   // The walk carries it on from the door to where an arrival stands.
   const landed = await b.evaluate(`(() => { window.__ooga.advance(3, 1 / 60); const a = window.__ooga.pilot.player, L = BL.factoryModels.LAYOUT.hangarLanding, p = a && a.root.position;
     return a && { name: a.traits.name, x: +p.x.toFixed(2), z: +p.z.toFixed(2), feet: +(p.y - a.baseY).toFixed(2),
       view: window.__ooga.pilot.viewState(), expected: window.__hangarView, on: Math.abs(p.x - L.x) < L.w / 2 && Math.abs(p.z - L.z) < L.d / 2 && Math.abs(p.y - a.baseY - L.y) < 0.05, out: p.x - BL.factoryModels.LAYOUT.hangar.x }; })()`);
+  await checkDoorCamera(b, "hangar departure");
   record("hangar door: the Factory landing restores the saved camera mode, pitch and zoom", !!landed && landed.view.view === landed.expected.view && Math.abs(landed.view.pitch - landed.expected.pitch) < 0.02 && Math.abs(landed.view.distance - landed.expected.distance) < 0.03, JSON.stringify(landed));
   // And back in from where it stands, the door behind it.
   await b.evaluate(`(() => { const B = __ooga, p = B.pilot.player.root.position, a = B.pilot.player;
     B.pilot.enterClose(true); B.pilot.navigate({ position: { x: p.x, y: p.y - a.baseY, z: p.z }, yaw: Math.PI / 2, pitch: -0.28, dist: 4, framed: true }); B.pilot.focusAim(); B.advance(0.4, 1 / 60);
-    window.__hangarView = B.pilot.viewState(); window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(2, 1 / 60); })()`);
+    window.__hangarView = B.pilot.viewState(); __doorCameraTrace.reset(); window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(2, 1 / 60); })()`);
   const back = await untilPage(b, 'B.scene === "hangar" && !B.transitioning', 15000);
   const inside = await b.evaluate(`(() => { window.__ooga.advance(3, 1 / 60); const a = window.__ooga.pilot.player, D = __ooga.hangar.layout.door, p = a && a.root.position;
     return a && { name: a.traits.name, view: __ooga.pilot.viewState(), expected: window.__hangarView, focused: document.body.classList.contains("aim-cursor-focused"), in: +(D.z - p.z).toFixed(2), across: +(p.x - D.x).toFixed(2) }; })()`);
   const resumed = await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player, p = a.root.position, z = p.z; B.advance(0.35, 1 / 60); const moved = z - p.z; window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); B.advance(0.2, 1 / 60); const stop = p.z; B.advance(0.3, 1 / 60); return { moved, stopped: Math.abs(p.z - stop) }; })()`);
+  await checkDoorCamera(b, "hangar arrival");
   record("hangar door: first-person pitch and focus survive the return, held W resumes and its release stops movement", inside?.view.view === "first-person" && Math.abs(inside.view.pitch - inside.expected.pitch) < 0.02 && inside.focused && resumed.moved > 0.3 && resumed.stopped < 0.03, JSON.stringify({ inside, resumed }));
   record("hangar door: walking out through the door walks the same Ooga through onto the Factory's landing and on across it, and walking back in walks it through and on down the hangar's landing",
     out && !!landed && landed.name === "portlandhodl" && landed.on && landed.out > 2 && back && !!inside && inside.name === "portlandhodl" && inside.in > 3, JSON.stringify({ out, landed, back, inside }));
@@ -33903,7 +33977,7 @@ const hangarFire = { name: "hangar static fire", why: "playthrough: the static f
 } };
 scene("factory", { query: "character=portlandhodl", steps: [factoryWalking, factoryGreeter, factoryLadders, factoryRailingJump, factoryWeapons, factoryForward, factoryForge, factoryShields, factoryKortik, trip("factory")] });
 scene("factory", { label: "cooker", query: "character=portlandhodl", steps: [donation("factory", { stat: "cooker.out", seconds: 14, where: "the cooker sends its bananas up through the ceiling tube" }), donationDetails, factoryCooker, trip("factory")] });
-scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), steps: [factoryFloor, factoryEntrance] });
+scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), opts: { motion: true }, steps: [factoryFloor, factoryEntrance] });
 const hangarAnomalies = { name: "hangar anomalies", why: "rule: each of the Jet's engine anomalies plays through on its own without touching the visitor's controls, refuses the static fire's button meanwhile, spooks Kortik's Sis, and leaves the engines cold, the Jet exactly at rest and the hall's lights full; the lightning's jump sets a room on fire that its operator puts out, and the blackout takes every lamp, light strip and room in the hall and the crane's power with it", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = window.__ooga, a = B.cavemen.get("portlandhodl"), A = B.hangar.anomaly, F = B.hangar.fire, S = B.hangar.sis, sc = B.hangar.scene, jet = sc.jet, J = jet.position, L = B.hangar.layout.jet, RF = B.hangar.roomFire;
@@ -33972,7 +34046,7 @@ const hangarShuffleSafety = { name: "hangar shuffle safety", why: "rule: the Jet
     r.moving && r.approach.kind === null && r.approach.rest && r.hitch.moving && r.hitch.kind === null && r.hitch.rest && r.late.moving && r.late.kind === null && r.late.rest
       && r.held.kind === null && r.held.rest && r.rider.kind === null && r.rider.rest, JSON.stringify(r));
 } };
-scene("hangar", { query: "character=portlandhodl", steps: [hangarWalking, hangarDoor, hangarFire, hangarAnomalies, hangarShuffleSafety, trip("hangar")] });
+scene("hangar", { query: "character=portlandhodl", opts: { motion: true }, steps: [hangarWalking, hangarDoor, hangarFire, hangarAnomalies, hangarShuffleSafety, trip("hangar")] });
 scene("factory", { label: "canvas2d", query: "canvas2d=1&character=portlandhodl", steps: [factoryCanvas, factoryGreeter] });
 const caveDirectory = (mobile = false) => ({ name: "cave directory", why: "rule: browsing connected projects loads no external code, holds movement, closes safely and disposes on travel; external travel sends no OBL payload or referrer", run: async (b) => {
   const click = async selector => {
@@ -34041,7 +34115,7 @@ const caveDirectory = (mobile = false) => ({ name: "cave directory", why: "rule:
 } });
 scene("bifrost", { label: "cave directory", query: "solo=1&character=portlandhodl", steps: [caveDirectory()] });
 scene("bifrost", { label: "cave directory phone", query: "solo=1&character=portlandhodl", opts: PHONE_SIZE, steps: [caveDirectory(true)] });
-scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
+scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), opts: { motion: true }, steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
@@ -34579,7 +34653,7 @@ scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: 
   record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
 } }] });
 scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeRaidDoor, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadeBlockHall, arcadeHandrail, arcadePlay, trip("arcade")] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo, arcadeDoorHandoff] });
+scene("arcade", { query: "character=portlandhodl", opts: { motion: true }, steps: [arcadeSpectatorAmmo, arcadeDoorHandoff] });
 scene("arcade", { label: "ghost spectate follows", query: "character=portlandhodl", steps: [arcadeSpectateFollow] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeHuntGear] });
@@ -48695,9 +48769,10 @@ const warmDsbRoomResidents = async b => {
     r.batches === r.expected && r.geometries === r.expected + 2 && r.prepared && r.idempotent && r.unchanged, JSON.stringify(r));
 };
 const dsbDoorHandoff = { name: "dsb door handoff", why: "regression: building fades reset pitch, zoom and held movement", run: async b => {
+  await b.evaluate(doorCameraTrace);
   const rows = await b.evaluate(`(() => {
     const B = __ooga, P = B.pilot, I = B.dsb.interiors, d = I.registry.get("meme-factory"), rows = [];
-    const step = () => BL.scenes.dsb.update(1 / 60, 0);
+    const step = () => { BL.scenes.dsb.update(1 / 60, 0); __doorCameraTrace.sample(B.camera, I.fade, I.active?.id || "exterior"); };
     const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "s", code: "KeyS", bubbles: true }));
     for (const view of ["orbit", "first-person"]) for (const release of [false, true]) {
       if (P.aiming) P.modeAction("mode-toggle");
@@ -48705,17 +48780,22 @@ const dsbDoorHandoff = { name: "dsb door handoff", why: "regression: building fa
       for (const inside of [true, false]) {
         const point = inside ? d.entry : I.active.room.exit;
         P.navigate({ position: point, yaw: inside ? d.building.yaw : Math.PI, pitch: 0.31, dist: 5.3 });
+        for (let i = 0; i < 30; i++) step();
         const saved = P.viewState();
+        __doorCameraTrace.reset();
         const accepted = I.request(point);
         key(true); P.controls.reset(); if (release) key(false);
         for (let i = 0; i < 30 && I.transitioning; i++) step();
         const got = P.viewState(), axes = { ...P.controls.read() };
+        for (let i = 0; i < 30; i++) step();
         key(false);
-        rows.push({ view, release, inside, accepted, active: !!I.active, saved, got, y: axes.y });
+        rows.push({ camera: __doorCameraTrace.result(), view, release, inside, accepted, active: !!I.active, saved, got, y: axes.y });
       }
     }
     return rows;
   })()`);
+  record("DSB doors: camera settles behind the black fade with no visible arrival sweep",
+    rows.every(r => r.camera.frames > 30 && r.camera.yaw < 0.12 && r.camera.pitch < 0.12 && r.camera.eye < 0.75), JSON.stringify(rows.map(r => ({ view: r.view, inside: r.inside, ...r.camera }))));
   record("DSB doors: entry and exit preserve first-person/orbit pitch and zoom, resume held S, and do not revive released keys",
     rows.every(r => r.accepted && r.active === r.inside && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
       && Math.abs(r.got.distance - r.saved.distance) < 0.01 && r.y === (r.release ? 0 : -1)), JSON.stringify(rows));
@@ -48769,7 +48849,7 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
   await b.evaluate('delete window.__interiorCheck');
   record("DSB interior: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
 }};
-scene("dsb",{label:"door handoff",query:"&view=meme-factory",steps:[dsbDoorHandoff]});
+scene("dsb",{label:"door handoff",query:"&view=meme-factory",opts:{motion:true},steps:[dsbDoorHandoff]});
 scene("dsb",{label:"interior checkpoint",query:"&view=meme-factory&weather=storm&time=1200",steps:[dsbInteriorCheckpoint]});
 scene("dsb",{label:"interior checkpoint phone",query:"&view=meme-factory&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbInteriorCheckpoint]});
 

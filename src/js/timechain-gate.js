@@ -148,10 +148,12 @@
     };
 
     // Walks the Ooga as a held stick would, at a stroll.
-    const steerTo = (x, z) => {
+    const steerTo = (x, z, dt) => {
       const cave = crew.player, p = cave.root.position, dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz);
       if (d < 0.12) { crew.steer(0, 0, 0, 0, 0); return true; }
-      crew.steer(dx / d, dz / d, 0, 1, 0, WALK_SPEED);
+      // A slow frame must stop at the waypoint, not oscillate across its arrival radius.
+      const speed = Math.min(WALK_SPEED, d / (BL.pilot.WALK.speed * Math.max(dt, 1e-6)));
+      crew.steer(dx / d, dz / d, 0, 1, 0, speed);
       return false;
     };
     // Inside the ball at the passage's height, in the doorway's frame: nearer its middle than the plug, where only a
@@ -167,7 +169,7 @@
     const settleAtKeypad = (dt) => {
       const p = crew.player.root.position, dx = KEYPAD_STAND.x - p.x, dz = KEYPAD_STAND.z - p.z, d = Math.hypot(dx, dz);
       turnTo(facing(KEYPAD.x, KEYPAD.z), dt);
-      if (d > 0.1) crew.steer(dx / d, dz / d, 1, 0, 1, WALK_SPEED);
+      if (d > 0.1) crew.steer(dx / d, dz / d, 1, 0, 1, Math.min(WALK_SPEED, d / (BL.pilot.WALK.speed * Math.max(dt, 1e-6))));
       else crew.steer(0, 0, 0, 0, 0);
     };
     const hold = (on) => {
@@ -676,10 +678,10 @@
         const p = cave.root.position, x = localX(p.x, p.z), z = localZ(p.x, p.z);
         while (g.along < CURVE - 1 && Math.hypot(g.path[g.along * 2] - x, g.path[g.along * 2 + 1] - z) < 0.5) g.along++;
         const tx = g.path[g.along * 2], tz = g.path[g.along * 2 + 1];
-        steerTo(worldX(tx, tz), worldZ(tx, tz));
+        steerTo(worldX(tx, tz), worldZ(tx, tz), dt);
         if (localZ(camera.position.x, camera.position.z) <= g.handZ || g.t > WALK_LIMIT) handOff();
       } else if (g.state === "gone") {
-        if (cave) steerTo(PARK.x, PARK.z);
+        if (cave) steerTo(PARK.x, PARK.z, dt);
         // The room's scene takes over in the next frame; one that could not leaves the island running.
         if (g.t > 4) {
           world.sphereVisit = null;
@@ -696,7 +698,7 @@
       } else if (g.state === "leaving") {
         // The walk goes on once the doors are open enough and on while they close behind it.
         if (cave && (g.open > 0.55 || g.want === 0)) {
-          const out = steerTo(g.outX, g.outZ), z = localZ(cave.root.position.x, cave.root.position.z);
+          const out = steerTo(g.outX, g.outZ, dt), z = localZ(cave.root.position.x, cave.root.position.z);
           if (z > S.THRESHOLD + 1.2) { g.want = 0; site.plug.visible = true; }
           // Hold the eye through the walk and the doors closing; the ordinary island camera returns afterward.
           if (out && g.open === 0 || g.t > WALK_LIMIT) { site.plug.visible = true; finishLeaving(); }

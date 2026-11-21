@@ -1200,7 +1200,9 @@
       const p = avatar.root.position, dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz), o = pilot.orbit, k = Math.min(1, dt * TURN_RATE);
       o.pitch = o.tPitch = o.pitch + (pitch - o.pitch) * k;
       if (d < 0.12) { people.steer(0, 0, 0, 0, 0); return true; }
-      people.steer(dx / d, dz / d, 0, 1, 0, WALK_SPEED);
+      // Match the island guide: a long frame cannot step past the stopping point.
+      const speed = Math.min(WALK_SPEED, d / (pilotMod.WALK.speed * Math.max(dt, 1e-6)));
+      people.steer(dx / d, dz / d, 0, 1, 0, speed);
       const yaw = Math.atan2(-dx, -dz);
       o.yaw = o.tYaw = o.yaw + clamp(Math.atan2(Math.sin(yaw - o.yaw), Math.cos(yaw - o.yaw)) * k, -LOOK_SPEED * dt, LOOK_SPEED * dt);
       return false;
