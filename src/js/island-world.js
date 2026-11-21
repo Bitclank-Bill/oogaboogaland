@@ -33,7 +33,7 @@
     let link = null, sim = null, frame = null, activityIn = 0, live = false, refresh = false, refreshIn = 0, age = 0, unseeded = 0;
     // When each Ooga went to the local world, in its clock's ms (Infinity before): its rows before then are not its.
     const seededAt = new Float64Array(n).fill(Infinity);
-    const stats = { mode: "", frames: 0, followed: 0 };
+    const stats = { mode: "", frames: 0, followed: 0, refused: "" };
 
     // A frame's rows into the timeline at `t` (ms), in the slots the cast puts them.
     const take = (f, t) => {
@@ -47,9 +47,26 @@
       stats.frames++;
       live = true;
     };
+    // The cast in row order. The server sends it again every few seconds; only a changed one starts the timeline afresh,
+    // or every resend would stop the crew until the next frame.
     const cast = (names) => {
-      for (let i = 0; i < n; i++) slots[i] = i < names.length ? byName.get(names[i]) || null : null;
+      let changed = false;
+      for (let i = 0; i < n; i++) {
+        const cave = i < names.length ? byName.get(names[i]) || null : null;
+        if (slots[i] !== cave) { slots[i] = cave; changed = true; }
+      }
+      if (changed) { timeline.clear(); live = false; }
+    };
+    // The page's own world: signed out, not offered the game, or kicked from it. It starts from where the crew
+    // stands, as `activity` hands each Ooga over.
+    const startLocal = () => {
+      stats.mode = "local";
+      sim = SIM.create({ seed: (Math.random() * 0x100000000) >>> 0 });
+      sim.setCast(caves.slice(0, n).map((cave) => ({ name: cave.traits.name, maintainer: !!cave.traits.maintainer })));
+      frame = W.frame();
+      cast(caves.slice(0, n).map((cave) => cave.traits.name));
       timeline.clear(); live = false;
+      seededAt.fill(Infinity); unseeded = n; age = 0; activityIn = 0;
     };
 
     if (BL.gameNet && BL.gameNet.offers("island")) {
@@ -58,14 +75,7 @@
         state: (msg) => { if (msg.s && Array.isArray(msg.s.cast)) cast(msg.s.cast); },
         motion: (f) => { if (f.kind === SIM.KIND && slots.some(Boolean)) take(f, f.serverMs); }
       });
-    } else {
-      stats.mode = "local";
-      sim = SIM.create({ seed: (Math.random() * 0x100000000) >>> 0 });
-      sim.setCast(caves.slice(0, n).map((cave) => ({ name: cave.traits.name, maintainer: !!cave.traits.maintainer })));
-      unseeded = n;
-      frame = W.frame();
-      cast(caves.slice(0, n).map((cave) => cave.traits.name));
-    }
+    } else startLocal();
     // A local world's states and caves, as the page's own crew reads them (contributors.js `stateFor`, crew.js
     // `siteActive`, whose caves are the layout's in the same order), once a second. An Ooga the crew shows goes to the
     // world only once the crew has placed it, with where it stands (`place`), so the world takes it up from there
@@ -92,6 +102,9 @@
     };
     /** Once a frame, before the crew's update: the world's rows into each Ooga's `follow` and `worldState`. */
     const update = (dt) => {
+      // Kicked for good (another tab of this account took the world, or it is full): the page runs it itself from here,
+      // as it would signed out, rather than holding the crew where the last frame left it.
+      if (link && link.state === "refused") { stats.refused = link.refused; link.close(); link = null; startLocal(); }
       if (sim) {
         age += dt;
         // Every frame until each Ooga has gone to the world, then once a second.
