@@ -38,7 +38,10 @@ is unchanged and never stages the app.
 | `src/ooga-chat/ooga-chat-device.js` | `BL.oogaChatDevice`: the network, install help, a waiting update, the worker's registration and the M key |
 | `src/ooga-chat/service-worker.js` | the service worker, staged as `/sw.js` with its build and file list filled in |
 | `src/ooga-chat/ooga-chat-shell.js` | `BL.oogaChatShell`: the tabs and the views they keep |
-| `src/ooga-chat/ooga-chat-views.js` | `BL.oogaChatViews`: each tab's view, every one the island's own panel in its markup (#656): the Ooga Chat tab (sign-in, or the island's Ooga Chat panel: the zones, the roster and its footer), Bananas, Contributing Oogas, Online Oogas and The Commons, the island's account row at the foot of the last three, and the stand-in for a panel not built yet |
+| `src/ooga-chat/ooga-chat-chunks.js` | `BL.oogaChatChunks`: the deferred chunks (Size, below): `load(group)`, `ready(group, fn)`, `prefetch()` once the first view has painted, and `stale` once a chunk was found gone after a deploy |
+| `src/ooga-chat/ooga-chat-views.js` | `BL.oogaChatViews`: the Ooga Chat tab (sign-in, or the island's Ooga Chat panel: the zones, the roster and its footer), the stand-in for a tab whose chunk is on its way (`deferred`), the stand-in for a panel not built yet, and the kit the chunks' views build with. Every view is the island's own panel in its markup (#656) |
+| `src/ooga-chat/ooga-chat-bananas.js` | in the `bananas` chunk: the Bananas tab's view |
+| `src/ooga-chat/ooga-chat-panels.js` | in the `panels` chunk: Contributing Oogas, Online Oogas and The Commons, with the island's account row at their foot |
 | `src/ooga-chat/ooga-chat-http.js` | `BL.oogaChatHttp`: the production adapter |
 | `src/ooga-chat/ooga-chat-media.js` | `BL.oogaChatMedia`: voice (#654), one controller apart from the views: hearing the zone through the server's media operations and speaking from it (Voice, below) |
 | `src/ooga-chat/ooga-chat-faces.js` | `BL.oogaChatFaces`: the bundled fallback index for `art/ooga-faces.png`, by handle, with a default face. Generated with the sheet by `npm run ooga-chat:faces` (`scripts/ooga-chat-faces.mjs`, the island's own renderer in the suite's Chrome), never edited |
@@ -57,7 +60,7 @@ Shared with the island, one copy each:
 | `src/native.css` | the tokens, cave-sign lettering, panel title, status chip, stone slab and amber primary button, and the Bananas panel's styles. The island links it before `style.css`; `scripts/build.mjs` joins both into its one style block |
 | `src/style.css` (in part) | the island's own rules for its Ooga Chat panel and its circles, Contributing Oogas, Online Oogas, The Commons, the account row, the footer buttons and the help and link lines, taken by selector when the app builds (`ISLAND_RULES` in `scripts/ooga-chat.mjs`) and joined after `native.css`, so the panels look the same from one source |
 | `src/js/sign-glyphs.js` | `BL.signGlyphs`: the cave-sign alphabet (`SIGN_GLYPHS`, which `hub-models.js` re-exports) and its DOM lettering (`lettering`, `letter`), which `hud.js` uses |
-| `src/js/donations.js` | `BL.donations`: the donation event contract and real mode's socket and calls over the page's own `/donations/*`. The app turns its simulator off, calls `useOrigin` and subscribes once the bootstrap says `feed` is live (#656) |
+| `src/js/donations.js` | `BL.donations`: the donation event contract and real mode's socket and calls over the page's own `/donations/*`. The app turns its simulator off, calls `useOrigin` and subscribes once the bootstrap says `feed` is live (#656) and the Bananas chunk is here |
 | `src/js/banana-panel.js` | `BL.bananaPanel`: the Bananas panel's markup (`build`, ids only on the island's copy) and controller (`create`, filled from `donations.js`), which `hud.js` and the app's Bananas tab both run |
 | `src/js/audience-tiles.js` | The Ooga Chat roster's circles (`BL.audienceTiles`), the island's Ooga Chat panel's and this tab's alike: everyone in the zone as many to a row as fit at 76 px or more a column (six in a 600 px panel), scrolling in its slab, each tile kept by id and only its changed fields written |
 | `src/js/format-large.js`, `src/js/roster-panel.js`, `src/js/contributor-identities.js`, `src/js/activity-repos.js` | Contributing Oogas (#656): the island's own panel over `/api/chat/public/contributors` (#664), its contribution states and ages, Oogatron's reading normalized as the island normalizes it, and lazy faces supplied by `ooga-chat-portraits.js`: a revision-matched catalog atlas or bundled `art/ooga-faces.png` fallback, outside the first-load budget. Open stats strips repaint when the atlas changes. A contributor in The Commons sees whose Ooga is on the island now; a stale or unreadable reading says so under the list |
@@ -76,9 +79,18 @@ module reads nothing at load but `window.BL` and the document.
 `sign-glyphs.js`, `native-icons.js`, `donations.js`, `banana-panel.js`, `qr.js`, `banana-icon.js`, `jumbotron-font.js`, `factory-kiosk-core.js`,
 `factory-kiosk.js`, `donation-popup.js`, `chat-policy.js`, `emoji-data.js`, `reaction-policy.js`, `zone-map.js`, `commons-log.js`, `format-large.js`, `roster-panel.js`,
 `contributor-identities.js`, `activity-repos.js`, `audience-tiles.js`, `reaction-bar.js`, `voice-handoff.js`, `duel-listening.js`, `ooga-chat-config.js`, `ooga-chat-auth.js`, `ooga-chat-roster.js`, `ooga-chat-device.js`,
-`ooga-chat-shell.js`, `ooga-chat-views.js`,
-`ooga-chat-http.js`, `ooga-chat-media.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, `ooga-chat-faces.js`, `ooga-chat-portraits.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
-`fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app.
+`ooga-chat-shell.js`, `ooga-chat-chunks.js`, `ooga-chat-views.js`,
+`ooga-chat-http.js`, `ooga-chat-media.js`, `ooga-chat-donor.js`, `ooga-chat-commons.js`, `ooga-chat-faces.js`, `ooga-chat-portraits.js`, `ooga-chat-bananas.js`, `ooga-chat-panels.js`, then (fixture entry only) `ooga-chat-fixtures.js`, then `ooga-chat-app.js`. The build checks that
+`fixture.html` loads exactly `index.html`'s files plus the fixtures, just before the app, each in the same group.
+
+**Chunks.** A script tagged `data-defer="bananas"` or `data-defer="panels"` in both entries leaves the first load in a
+staged build. `bananas` is `donations.js`, `banana-panel.js`, Feed the Oogas (`qr.js` through `donation-popup.js`),
+`ooga-chat-donor.js` and `ooga-chat-bananas.js`; `panels` is `zone-map.js`, `commons-log.js`, `format-large.js`,
+`roster-panel.js`, `contributor-identities.js`, `activity-repos.js` and `ooga-chat-panels.js`. Each runs after the whole
+first load, so it may read any of it at load; nothing in the first load may read a chunk's modules at load (the app
+waits with `BL.oogaChatChunks.ready`, and a tab's view is `deferred` until its chunk is here). The Commons' model
+(`ooga-chat-commons.js`, with `chat-policy.js`) stays in the first load, since its socket is the app's. From source the
+tags change nothing: every module is on the page in order and `load` answers at once.
 
 **Adapter.** `{ kind, bootstrap(), session(boot), signIn(boot, provider), signOut(boot), audience(boot, handlers), commons(boot, handlers), media(boot), contributors(), dispose() }`. `bootstrap`
 resolves to a parsed bootstrap (below), never throws. `session` resolves to a parsed session or `null` for signed
@@ -521,7 +533,8 @@ The accounts are named samples with no picture, never real people. Fixtures are 
 | File | What it is |
 |---|---|
 | `index.html` | the entry, its build identity filled in |
-| `js/ooga-chat-<hash>.js`, `css/ooga-chat-<hash>.css` | every module and stylesheet in order, one file each |
+| `js/ooga-chat-<hash>.js`, `css/ooga-chat-<hash>.css` | every first-load module and every stylesheet in order, one file each; the script begins by naming the chunks (`BL.oogaChatScripts`) |
+| `js/ooga-chat-bananas-<hash>.js`, `js/ooga-chat-panels-<hash>.js` | each deferred group's modules in order, fetched when a tab needs them or once the first view has painted and the page is idle; shared by both entries and kept by the service worker with the rest of the shell |
 | `art/<name>-<hash>.<ext>` | each picture under `src/ooga-chat/art/` that a view shows (the build fails on an unshown one) |
 | `manifest.webmanifest` | the installable app's manifest (below), linked by `index.html` only |
 | `icons/ooga-chat-<size>[-maskable]-<hash>.png` | the mark at 192, 512 and 512 maskable, for the manifest |
@@ -530,7 +543,7 @@ The accounts are named samples with no picture, never real people. Fixtures are 
 | `fixture.html`, `js/ooga-chat-fixture-<hash>.js` | with `--fixtures` only |
 | `404.html` | sends any unknown address home, without script |
 | `_headers` | the policy and security headers on every path, `no-cache` on the entry, the worker and the manifest (with its media type), a year on every hashed file |
-| `build.json` | the build identity, the script list, every file's bytes and gzipped bytes, and the first-load total |
+| `build.json` | the build identity, the script list, each chunk's file, modules and gzipped bytes, every file's bytes and gzipped bytes, and the first-load total |
 
 It refuses to stage into the repository root, `src/`, `_site/`, `untracked/site/`, `cards/`, `worker/`, `scripts/`,
 `test/` or `docs/`, and into any non-empty folder without its own `build.json`, so the app and the island's artifacts
@@ -552,8 +565,17 @@ stylesheet 16.9 KB, sign-in picture 57.9 KB, Main Island's mark 3 KB): about 157
 alone was 71 KB, with sign-in 78 KB, with the space 88 KB). The manifest and icons are fetched by the browser when it
 considers installing, and the worker then keeps the same files once more in its cache, off the first paint. For comparison, the island's portable page is about
 39.7 MB (23 MB gzipped). The app loads no 3D engine, terrain, cabinets, replays or live feeds. `FIRST_LOAD_BUDGET` in
-the build (244 KB gzipped, raised from 224 KB to 236 KB for the voice client and the Commons' name field, then for each player's volume and mute, the optional duel muting and the voice handoffs of #766) fails a build that grows past it; raise it deliberately, with the reason, when a later issue
-adds weight.
+the build fails a build whose first load grows past it; raise it deliberately, with the reason, when a later issue
+adds weight. It was raised from 224 KB to 236 KB for the voice client and the Commons' name field, then to 244 KB for
+each player's volume and mute, the optional duel muting and the voice handoffs of #766, when the first load measured
+240.2 KB gzipped (script 149.3 KB). Every tab but Ooga Chat then moved into a chunk of its own (Chunks, above):
+`bananas` 42.3 KB and `panels` 25.7 KB gzipped, fetched once the first view has painted and the browser is idle (never
+under Save-Data, where a tab's first opening fetches its chunk and shows Opening… meanwhile). That took the first load
+to 176.6 KB (`index.html` 0.6 KB, script 85.7 KB, stylesheet 12.6 KB, sign-in picture 77.7 KB), and the budget down to
+180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. A chunk that cannot be fetched
+offers Try again; one gone after a deploy (a 404 to a HEAD, on a page the service worker does not keep) offers Reload.
+The next large piece is the emoji list (`emoji-data.js`, about 18 KB), which only the picker needs; deferring it means
+`reaction-policy.js` and `reaction-bar.js`, which the island shares, no longer reading it at load.
 
 ## Artwork
 
