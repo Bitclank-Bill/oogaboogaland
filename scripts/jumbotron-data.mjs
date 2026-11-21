@@ -85,8 +85,7 @@ writeFileSync(
 // Do not edit by hand.
 (() => {
   "use strict";
-  const scope = typeof window === "undefined" ? globalThis : window;
-  const BL = scope.BL = scope.BL || {};
+  const BL = window.BL = window.BL || {};
   BL.jumbotronData = ${JSON.stringify(snapshot)};
 })();
 `,

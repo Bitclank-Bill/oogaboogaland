@@ -20,7 +20,9 @@ import "../../../src/js/math.js";
 import "../../../src/js/npc-paths.js";
 import "../../../src/js/island-layout.js";
 import "../../../src/js/island-sim.js";
+import "./lend-window.js";
 import "../../../src/js/jumbotron-data.js";
+import "./return-window.js";
 import { oogatron, readContributorSnapshot } from "../contributor-policy.js";
 import CAST_ROWS from "../characters.gen.json" with { type: "json" };
 
