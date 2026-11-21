@@ -28048,6 +28048,37 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
     JSON.stringify(walk.rows));
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
+const arcadeDoorHandoff = { name: "arcade door handoff", why: "regression: the guided doorway reset pitch and zoom and suppressed keys still held when the walk finished", run: async (b) => {
+  const rows = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, W = B.arcade.doorWalk, a = P.player, H = BL.arcadeModels.HALL;
+    const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, code: "Key" + k.toUpperCase(), bubbles: true }));
+    const rows = [];
+    for (const view of ["orbit", "first-person"]) for (const held of ["w", "s", "a", "d", "released"]) {
+      W.reset();
+      if (P.aiming) P.modeAction("mode-toggle");
+      if (view === "first-person") P.enterClose(); else P.exitClose();
+      P.navigate({ position: { x: 0, y: 0, z: H.front - 5 }, yaw: 0, pitch: 0.31, dist: 6.2 });
+      B.advance(0.5, 1 / 60);
+      const saved = P.viewState();
+      // The far side of a real crossing has a level, temporary doorway view.
+      P.navigate({ position: { x: 0, y: 0, z: H.front - 5 }, yaw: 0, pitch: 0, dist: 3, framed: true });
+      W.arrive({ pitch: 0, dist: 3, view: saved, focused: false }, a, 0);
+      key(held === "released" ? "w" : held, true);
+      P.controls.reset();
+      if (held === "released") key("w", false);
+      for (let i = 0; i < 660 && W.phase !== "idle"; i++) B.advance(1 / 60, 1 / 60);
+      const got = P.viewState(), start = { ...a.root.position }, headHidden = !!a.parts.head.cameraHidden;
+      B.advance(0.3, 1 / 60);
+      const movement = Math.hypot(a.root.position.x - start.x, a.root.position.z - start.z);
+      if (held !== "released") key(held, false);
+      rows.push({ view, held, saved, got, movement, idle: W.phase === "idle", headHidden });
+    }
+    return rows;
+  })()`);
+  record("arcade door handoff: first-person and orbit recover their pitch and zoom, all held WASD keys resume, and released keys stay stopped",
+    rows.every(r => r.idle && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
+      && Math.abs(r.got.distance - r.saved.distance) < 0.01 && (r.held === "released" ? r.movement < 0.05 : r.movement > 0.2)), JSON.stringify(rows));
+} };
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
   await b.send("Page.bringToFront");
   // Arrived once a door walk, in the two scenes that have one, has handed the Ooga back.
@@ -28061,7 +28092,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
     const m = B.mouths?.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id), p = a.root.position;
     return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, locked: document.pointerLockElement === document.getElementById("scene"), held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
       primary: w.primaryOwned, secondary: w.secondaryOwned, gun: a.parts.gun.visible, club: a.parts.club.visible,
-      ammo: w.ammo, spare: (w.parked || w).spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist,
+      ammo: w.ammo, spare: (w.parked || w).spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist, pitch: o.pitch,
       along: m ? (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry) : null,
       across: m ? (p.x - m.x) * Math.cos(m.ry) - (p.z - m.z) * Math.sin(m.ry) : null,
       feet: p.y - a.baseY, floor: m?.floorY };
@@ -28106,6 +28137,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
   }
   record("arcade carry: entry captures combat mouse-look, an explicit release stays free, hall weapons cannot act, the arena hands out none before a hunt, and the outside loadout returns inside the mainland overhang",
     rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.combat && r.hall.locked === r.before.combat
+      && Math.abs(r.hall.pitch - r.before.pitch) < 0.01 && Math.abs(r.hall.dist - r.before.dist) < 0.01
       && !r.hall.held && !r.hall.gun && !r.hall.club && !r.hall.primary && !r.hall.secondary
       && !r.blocked.held && r.blocked.ammo === 11 && r.blocked.spare[0] === 4 && !r.blocked.unlimited
       && (r.mode === "carry" ? r.mouse < 0.001 : r.mouse > 0.001) && (!r.released || !r.released.focused && !r.released.locked)
@@ -34520,7 +34552,7 @@ scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: 
   record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
 } }] });
 scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeRaidDoor, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadeBlockHall, arcadeHandrail, arcadePlay, trip("arcade")] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
+scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo, arcadeDoorHandoff] });
 scene("arcade", { label: "ghost spectate follows", query: "character=portlandhodl", steps: [arcadeSpectateFollow] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeHuntGear] });
