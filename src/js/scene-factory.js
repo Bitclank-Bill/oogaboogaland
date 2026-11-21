@@ -52,8 +52,8 @@
   // The gate's shield stands at the balcony's back edge, where the island's tunnel's shield lands in the hall. Walking out,
   // the walk takes an Ooga no nearer the arrival's step than OUT_SLACK behind it, so a step back from there stays in the
   // hall. An Ooga walking in through the hangar's door comes on with the view no farther behind it than IN_VIEW and no
-  // higher than IN_PITCH, so the view starts in the doorway. WALK_STOP is how far past the gate a walk in ends.
-  const GATE_Z = HALL.front - 0.6, IN_VIEW = BL.factoryWindow.GLIDE.view + 0.8, IN_PITCH = BL.factoryWindow.GLIDE.pitch, OUT_SLACK = 1.2, WALK_STOP = BL.factoryWindow.stopPast(FOLLOW.min);
+  // higher than IN_PITCH, so the view starts in the doorway. Gate walks end far enough in to clear the saved view.
+  const GATE_Z = HALL.front - 0.6, IN_VIEW = BL.factoryWindow.GLIDE.view + 0.8, IN_PITCH = BL.factoryWindow.GLIDE.pitch, OUT_SLACK = 1.2;
   // Paired peer mirrors share their arch coordinates. A half turn carries an
   // incoming walk out of the other face, retaining height and distance crossed.
   const PEER_OPENING = { minX: -2.1, maxX: 2.1, floorY: 0.1, ceilingY: 4.65 }, PEER_PLANE = 0.45, PEER_TINT = [0.3, 0.72, 1];
@@ -1179,7 +1179,7 @@
     const w = walk, G = BL.factoryWindow.GLIDE, p = avatar.root.position, off = w.phase === WALK_OFF;
     w.t += dt;
     const moved = Math.hypot(p.x - w.x, p.z - w.z);
-    if (people.player !== avatar || moved > 1.2 || w.t > G.limit || !off && p.z <= GATE_Z - WALK_STOP) return walkLetGo();
+    if (people.player !== avatar || moved > 1.2 || w.t > G.limit || !off && p.z <= GATE_Z - BL.factoryWindow.stopPast(FOLLOW.min, eyes.returnView)) return walkLetGo();
     w.x = p.x; w.z = p.z;
     const dx = -p.x * 0.6, dz = off ? G.ahead : -G.ahead, d = Math.hypot(dx, dz);
     people.steer(dx / d, dz / d, 0, 1, 0, G.eyePace);

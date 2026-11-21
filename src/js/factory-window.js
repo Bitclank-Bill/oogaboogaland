@@ -380,7 +380,7 @@
   // eyes to the visitor's own. Runs (`view`) once the camera is final for the frame. Allocates nothing a frame.
   const EYES_S = 0.45, EYE_AHEAD = 0.16, LET_GO_PITCH = 0.12, ARRIVE = 2.4, CLEAR_BACK = 0.7;
   const CALM = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
-  const stopPast = (dist) => Math.max(ARRIVE, dist * Math.cos(LET_GO_PITCH) + CLEAR_BACK);
+  const stopPast = (dist, view = null) => Math.max(ARRIVE, (view && view.view !== "first-person" ? view.distance : dist) * Math.cos(view ? view.pitch : LET_GO_PITCH) + CLEAR_BACK);
   const eyes = (pilot, camera) => {
     const IN_EYES = 1, GOING_BACK = 2, from = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
     let mode = 0, cave = null, heading = 0, glide = 1, fromFov = 0, head = null, headWas = false, returnView = null, focused = false;
@@ -416,7 +416,7 @@
       pilot.setExternalControl(true);
     };
     const arrive = (walker, way, crossing = null) => {
-      returnView = crossing?.view || null; focused = !!crossing?.focused;
+      returnView = crossing?.view ? { ...crossing.view } : null; focused = !!crossing?.focused;
       cave = walker; heading = way; mode = IN_EYES; glide = 1; fromFov = 0;
       pilot.setExternalControl(true);
       hideHead(true);

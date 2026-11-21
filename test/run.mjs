@@ -27353,7 +27353,7 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   })()`);
   const first = glideIn.first, on = glideIn.on;
   const arrived = await b.evaluate(`(async () => { const B = window.__ooga, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "factory") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const a = B.crew.player, out = { scene: B.scene, ooga: a ? a.traits.name : null, unarmed: !!a && ${unarmedInPage("a")}, ammo: a && a.weapon.ammo, spares: a && a.weapon.parked.spareAmmo.join(","), z0: +a.root.position.z.toFixed(2) }; const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "s", code: "KeyS", bubbles: true })); key(true); B.advance(0.08, 1 / 60); key(false); B.advance(0.5, 1 / 60); out.back = { scene: B.scene, transitioning: B.transitioning, phase: B.factory.walk.phase, z: +a.root.position.z.toFixed(2) }; return out; })()`);
-  const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, stop: window.BL.factoryWindow.stopPast(3), shield: F.SHIELD_Z }; })()`);
+  const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, stop: window.BL.factoryWindow.stopPast(3, { view: "orbit", distance: 5, pitch: 0.2 }), shield: F.SHIELD_Z }; })()`);
   record("factory entrance: walking in, the view swoops into the Ooga's eyes and the hall takes over from that eye with no fade, the island's last frame dissolving off the hall's first: it comes on a step short of the hall's own shield and walks on far enough for the view handed back to clear it, a forward key held through the walk carries on walking when it ends, and a step back from there stays in the hall",
     !!first && first.phase === 1 && first.still >= 0.9 && first.z > F.gate - 0.5 && first.z < F.gate + 1 && Math.abs(first.camZ - first.z) < 0.5
       && !!on && Math.abs(on.z - (F.gate - F.stop)) < 0.4 && on.held < on.z - 0.3
@@ -28071,15 +28071,16 @@ const arcadeDoorHandoff = { name: "arcade door handoff", why: "regression: the g
       if (held === "released") key("w", false);
       for (let i = 0; i < 660 && W.phase !== "idle"; i++) B.advance(1 / 60, 1 / 60);
       const got = P.viewState(), start = { ...a.root.position }, headHidden = !!a.parts.head.cameraHidden;
+      const cleared = H.front - start.z >= (saved.view === "first-person" ? 2.4 : saved.distance * Math.cos(saved.pitch) + 0.65);
       B.advance(0.3, 1 / 60);
       const movement = Math.hypot(a.root.position.x - start.x, a.root.position.z - start.z);
       if (held !== "released") key(held, false);
-      rows.push({ view, held, saved, got, movement, idle: W.phase === "idle", headHidden });
+      rows.push({ view, held, saved, got, movement, idle: W.phase === "idle", headHidden, cleared });
     }
     return rows;
   })()`);
   record("arcade door handoff: first-person and orbit recover their pitch and zoom, all held WASD keys resume, and released keys stay stopped",
-    rows.every(r => r.idle && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
+    rows.every(r => r.idle && r.cleared && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
       && Math.abs(r.got.distance - r.saved.distance) < 0.01 && (r.held === "released" ? r.movement < 0.05 : r.movement > 0.2)), JSON.stringify(rows));
 } };
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {

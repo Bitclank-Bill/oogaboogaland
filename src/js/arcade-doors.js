@@ -208,7 +208,8 @@
     const arrive = (crossing, player, yaw) => {
       player.root.rotation.y = yaw + Math.PI;
       // Far enough on that the view handed back, at its nearest behind the Ooga, stands clear of the doors.
-      Object.assign(state, { t: 0, cave: player, yaw, heading: yaw + Math.PI, focused: !!crossing.focused, returnView: crossing.view || null, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
+      const kept = crossing.view, distance = kept && kept.view !== "first-person" ? kept.distance : followMin;
+      Object.assign(state, { t: 0, cave: player, yaw, heading: yaw + Math.PI, focused: !!crossing.focused, returnView: kept ? { ...kept } : null, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, distance * Math.cos(kept ? kept.pitch : LET_GO_PITCH) + CLEAR_BACK) });
       door.set(false);
       door.away(-sign);
       if (!crossing.shut) door.set(true);
