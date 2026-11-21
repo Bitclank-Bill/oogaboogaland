@@ -1,7 +1,7 @@
 // The Ember Den's crowd: its router, then the pool of members walking, watching, sitting and reacting. The router: a lattice of half-metre cells over the room, open where a body of
 // `PROBE` may stand on the floor `walkable` answers for, searched 8-way by A* (octile heuristic, no corner cutting,
 // typed arrays and a binary heap, as `scene-arcade.js`'s `findPath`) and pulled taut with `walkable` sweeps into at
-// most `WAYPOINTS` waypoints. `rebuild` reads the floor again after `pokerModels.setFloor`. Nothing allocates per route.
+// most `WAYPOINTS` waypoints. Nothing allocates per route.
 (() => {
   "use strict";
   const BL = window.BL, S = BL.scene;
@@ -97,55 +97,180 @@
     };
     // Whether a route can end exactly at (x, z): an open cell near it from which a walker's leg reaches it.
     const ends = (x, z) => { const c = nearOpen(x, z); return c >= 0 && walkable(cellX(c), cellZ(c), x, z, 0, 2, LEG); };
-    // The middle of the open cell nearest (x, z) within 1.5 m into `out`; false with none.
-    const snap = (x, z, out) => { const c = nearOpen(x, z); if (c < 0) return false; out.x = cellX(c); out.z = cellZ(c); return true; };
     rebuild();
-    return { rebuild, find, ends, snap, get cells() { return cells; } };
+    return { find, ends, get cells() { return cells; } };
+  };
+
+  // ---- cigar smoke ---------------------------------------------------------------------------------------------
+
+  // A smoker's cigar smoke: one fixed-capacity instanced batch of small grey-white puffs (`SMOKE_WISP` rising from the
+  // lit end without pause, and one more for each of the B's points), placed in the crowd root's frame from the cigar's tip every frame. Every
+  // `SMOKE_CYCLE` seconds the extra puffs leave the tip one after another over `SMOKE_EMIT`, rise as the wisp does and
+  // ease, slowly, onto the Bitcoin mark's shape `SMOKE_LIFT` over the tip (`smokeTargets`: the points of a square grid
+  // `SMOKE_GRID` apart, in the mark's own units, that lie on the faces of `pokerFloor.mark()`, so the B reads as a
+  // dot-matrix letter), hold there till `SMOKE_HOLD`, and drift apart and fade by
+  // `SMOKE_GONE`. Every length is in the smoker's own heights (the cigar node's scale), so the mark, about a head's
+  // size at `SMOKE_SCALE`, hangs just over the head, soft and see-through (`SMOKE_ALPHA`, its inner points `SMOKE_CORE`
+  // more), and holds about two seconds, long enough to catch. The renderer draws opacity as an ordered 4x4 dither by
+  // screen pixel, so overlapping puffs cover the same pixels and add nothing: the opacity itself sets how solid the B
+  // reads (0.18 kept 3 pixels in 16 and the B vanished; 0.5 drew it as a solid sign). The mark stands upright and turned square to the view (its right
+  // along the view's right), so it is never seen from behind and never mirrored. On the lite set (Canvas 2D) only the
+  // wisp rises. Nothing allocates.
+  const SMOKE_WISP = 12, SMOKE_GRID = 0.03, SMOKE_CYCLE = 10, SMOKE_EMIT0 = 3, SMOKE_EMIT = 1.8, SMOKE_FORM = 6, SMOKE_HOLD = 7.8, SMOKE_GONE = 9.6;
+  const WISP_LIFE = 2.6, WISP_RISE = 0.24, SMOKE_LIFT = 1.15, SMOKE_SCALE = 0.72, SMOKE_FAR = 30, SMOKE_ALPHA = 0.36, SMOKE_CORE = 0.12, WISP_ALPHA = 0.3;
+  // Each B puff is SMOKE_BLEND times the grid's spacing across (the particle is 0.05 units at scale 1), so neighbours run
+  // together into soft smoke rather than dots; while it holds, each drifts SMOKE_DRIFT of the smoker's height.
+  const SMOKE_BLEND = 1.3, SMOKE_PUFF = SMOKE_BLEND * SMOKE_GRID * SMOKE_SCALE / 0.05, SMOKE_DRIFT = 0.008;
+  const SMOKE_STRIDE = 20;
+  let targets = null, cores = null;
+  // 1 for a target point whose four grid neighbours are all on the mark (the strokes' inner points), else 0.
+  const smokeCores = () => {
+    if (cores) return cores;
+    const T = smokeTargets(), n = T.length / 2, out = new Float32Array(n), near = (u, v) => { for (let k = 0; k < n; k++) if (Math.abs(T[k * 2] - u) < 1e-4 && Math.abs(T[k * 2 + 1] - v) < 1e-4) return true; return false; };
+    for (let j = 0; j < n; j++) { const u = T[j * 2], v = T[j * 2 + 1]; out[j] = near(u - SMOKE_GRID, v) && near(u + SMOKE_GRID, v) && near(u, v - SMOKE_GRID) && near(u, v + SMOKE_GRID) ? 1 : 0; }
+    return (cores = out);
+  };
+  // The mark's points in its own (u, v), u to its right and v up (the floor's (x, z) is (u, -v)): a grid from its
+  // top left corner, row by row, each point kept when it lies on one of the mark's convex faces.
+  const smokeTargets = () => {
+    if (targets) return targets;
+    const geo = BL.pokerFloor.mark(), v = geo.verts, out = [];
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let i = 0; i < v.length; i += 3) { x0 = Math.min(x0, v[i]); x1 = Math.max(x1, v[i]); z0 = Math.min(z0, v[i + 2]); z1 = Math.max(z1, v[i + 2]); }
+    const onFace = (x, z) => geo.faces.some(f => {
+      let sign = 0;
+      for (let k = 0; k < f.i.length; k++) {
+        const a = f.i[k] * 3, b = f.i[(k + 1) % f.i.length] * 3, c = (v[b] - v[a]) * (z - v[a + 2]) - (v[b + 2] - v[a + 2]) * (x - v[a]);
+        if (Math.abs(c) < 1e-12) continue;
+        if (sign && Math.sign(c) !== sign) return false;
+        sign = Math.sign(c);
+      }
+      return true;
+    });
+    for (let z = z0 + SMOKE_GRID / 2; z < z1; z += SMOKE_GRID) for (let x = x0 + SMOKE_GRID / 2; x < x1; x += SMOKE_GRID) if (onFace(x, z)) out.push(x, -z);
+    return (targets = Float32Array.from(out));
+  };
+  // The tip, and one puff's place, size, spin and opacity handed to `put` (in a typed array, so no number is boxed).
+  const TIP = new Float64Array(3), PUFF = new Float64Array(6);
+  const smoke = ({ root, lite = false, seed = 0 }) => {
+    const target = lite ? null : smokeTargets(), core = lite ? null : smokeCores(), SMOKE_B = target ? target.length / 2 : 0, n = SMOKE_WISP + SMOKE_B, data = new Float32Array(n * SMOKE_STRIDE);
+    // A geometry of its own: the renderer keeps one record per geometry and draws one batch on it, so smokers sharing
+    // the cached particle drew only the last one collected and the rest never showed.
+    const geometry = BL.models.box({ w: 0.05, h: 0.05, d: 0.05, color: "#ebe8e3", emissive: 0.45 });
+    geometry.castShadow = false;
+    const node = S.createNode({ geometry, sightHidden: true, instanceData: data, instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
+    S.addChild(root, node);
+    const offset = (seed % 1000) / 1000 * SMOKE_CYCLE;
+    const state = new Float64Array(2);
+    const put = () => {
+      const x = PUFF[0], y = PUFF[1], z = PUFF[2], s = PUFF[3], spin = PUFF[4], alpha = PUFF[5];
+      const o = state[0]++ * SMOKE_STRIDE, c = Math.cos(spin) * s, sn = Math.sin(spin) * s;
+      data[o] = c; data[o + 1] = 0; data[o + 2] = -sn; data[o + 3] = 0;
+      data[o + 4] = 0; data[o + 5] = s; data[o + 6] = 0; data[o + 7] = 0;
+      data[o + 8] = sn; data[o + 9] = 0; data[o + 10] = c; data[o + 11] = 0;
+      data[o + 12] = x; data[o + 13] = y; data[o + 14] = z; data[o + 15] = 1;
+      data[o + 16] = 1; data[o + 17] = 0; data[o + 18] = -1 - alpha; data[o + 19] = 0;
+    };
+    const hide = () => { if (node.instanceCount) { node.instanceCount = 0; node.instanceVersion++; } };
+    // From the cigar's node (its tip `CIGAR_TIP` down its length) and the view `eye` ({ position, target }).
+    const update = (elapsed, cigarNode, eye) => {
+      const T = elapsed + offset, t = state[1] = T % SMOKE_CYCLE, w = cigarNode.world;
+      BL.math.mat4.transformPoint(TIP, w, 0, 0, BL.pokerCrowdModels.CIGAR_TIP);
+      const tx = TIP[0], ty = TIP[1], tz = TIP[2], h = Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+      if (eye && (eye.position.x - tx) ** 2 + (eye.position.z - tz) ** 2 > SMOKE_FAR * SMOKE_FAR) { hide(); return; }
+      state[0] = 0;
+      for (let i = 0; i < SMOKE_WISP; i++) {
+        const age = (T + i * WISP_LIFE / SMOKE_WISP) % WISP_LIFE, k = age / WISP_LIFE, ph = i * 2.39;
+        PUFF[0] = tx + Math.sin(age * 2.1 + ph) * 0.05 * k * h; PUFF[1] = ty + age * WISP_RISE * h; PUFF[2] = tz + Math.cos(age * 1.7 + ph) * 0.05 * k * h;
+        PUFF[3] = (0.6 + 1.1 * k) * h; PUFF[4] = age + ph; PUFF[5] = WISP_ALPHA * (1 - k) * Math.min(1, age * 5);
+        put();
+      }
+      if (target && t >= SMOKE_EMIT0 && t < SMOKE_GONE) {
+        // The mark's right along the view's right, upright.
+        const fx = eye ? eye.target.x - eye.position.x : 0, fz = eye ? eye.target.z - eye.position.z : -1, l = Math.sqrt(fx * fx + fz * fz);
+        const rx = l > 1e-4 ? -fz / l : 1, rz = l > 1e-4 ? fx / l : 0;
+        const cy = ty + SMOKE_LIFT * h, sway = 0.03 * h;
+        for (let j = 0; j < SMOKE_B; j++) {
+          const born = SMOKE_EMIT0 + j / SMOKE_B * SMOKE_EMIT;
+          if (t < born) continue;
+          const u = target[j * 2] * SMOKE_SCALE * h, v = target[j * 2 + 1] * SMOKE_SCALE * h, ph = j * 1.618;
+          const gx = tx + rx * u, gy = cy + v, gz = tz + rz * u;
+          // Written straight into `PUFF`: a double held in a `let` that branches assign is boxed.
+          const size = SMOKE_PUFF * h * (0.9 + 0.2 * ((j * 7) % 5) / 4);
+          const alpha = SMOKE_ALPHA + SMOKE_CORE * core[j];
+          PUFF[3] = size; PUFF[4] = ph + t * 0.4; PUFF[5] = alpha;
+          if (t < SMOKE_FORM) {
+            const a = (t - born) / (SMOKE_FORM - born), e = a * a * (3 - 2 * a), rise = (t - born) * WISP_RISE * h;
+            PUFF[0] = tx + (gx - tx) * e + Math.sin(t * 2 + ph) * sway * (1 - e); PUFF[1] = ty + rise + (gy - ty - rise) * e; PUFF[2] = tz + (gz - tz) * e + Math.cos(t * 2 + ph) * sway * (1 - e);
+            PUFF[5] = alpha * Math.min(1, (t - born) * 3) * (0.6 + 0.4 * e);
+          } else if (t < SMOKE_HOLD) {
+            PUFF[0] = gx + Math.sin(t * 1.3 + ph) * SMOKE_DRIFT * h; PUFF[1] = gy + Math.cos(t * 1.1 + ph) * SMOKE_DRIFT * h + (t - SMOKE_FORM) * 0.03 * h; PUFF[2] = gz + Math.cos(t * 0.9 + ph) * SMOKE_DRIFT * h;
+          } else {
+            const d = (t - SMOKE_HOLD) / (SMOKE_GONE - SMOKE_HOLD);
+            PUFF[0] = gx + (rx * u * 0.6 + Math.sin(ph) * 0.05 * h) * d; PUFF[1] = gy + (SMOKE_HOLD - SMOKE_FORM) * 0.03 * h + (v * 0.4 + 0.16 * h) * d; PUFF[2] = gz + (rz * u * 0.6 + Math.cos(ph) * 0.05 * h) * d;
+            PUFF[5] = alpha * (1 - d); PUFF[3] = size * (1 + d * 0.8);
+          }
+          put();
+        }
+      }
+      node.instanceCount = state[0]; node.instanceVersion++;
+    };
+    const dispose = () => { if (node.parent) S.removeChild(node.parent, node); };
+    // `t`: where in its cycle the last update stood.
+    return { node, update, hide, dispose, capacity: n, get t() { return state[1]; } };
   };
 
   // ---- the pool --------------------------------------------------------------------------------------------------
 
   // Walking pace (m/s) by type; staff walk at the gorilla's upright pace.
-  const SPEED = { highRoller: 0.9, businessman: 1.6, lady: 1.1, cane: 0.55, walker: 0.35, drunk: 0.7 };
-  const ITEM = { businessman: true, lady: true, cane: true, drunk: true };
-  const BUILD_EVERY = 0.15, TURN = 4, LOOK = 1.1, WAIT = 1.5, REACH = 0.6, ARRIVE = 0.35, STRIDE = 6.5, FULL = 16;
-  const WALKER_CYCLE = 1.6, WALKER_LIFT = 0.3, DRUNK_PERIOD = 2.3, DRUNK_SWAY = 0.35, TAU = Math.PI * 2;
-  // The cane stands upright on the floor with its arm at `CANE_PLANT` and tips `CANE_TIP` ahead as the arm swings back;
-  // the walker's lift raises its arms by `FRAME_LIFT` and the frame with them, up and forward.
-  const CANE_PLANT = -0.7, CANE_TIP = -0.65, FRAME_LIFT = 0.4, FRAME_UP = 0.06, FRAME_ON = 0.1;
-  const STEP = { bodyRadius: 0.3 }, CLEAR = { x: 0, z: 0 };
+  const SPEED = { highRoller: 0.9, businessman: 1.6, lady: 1.1, drunk: 0.7 };
+  const TURN = 4, LOOK = 1.1, WAIT = 1.5, REACH = 0.6, ARRIVE = 0.35, STRIDE = 6.5;
+  const DRUNK_PERIOD = 2.3, DRUNK_SWAY = 0.35, TAU = Math.PI * 2;
+  // The router serves pending routes in turn round the pool, at least one a frame and at most `ROUTES_MAX`, stopping
+  // once `ROUTE_BUDGET` ms have gone; members are built at least one a frame while `BUILD_BUDGET` ms allow.
+  const ROUTES_MAX = 6, ROUTE_BUDGET = 1.5, BUILD_BUDGET = 3;
+  // Giving way looks at the members in the 3 by 3 cells of `GRID` m round each walker, bucketed once a frame.
+  const GRID = 2, GX0 = -24, GZ0 = -36, GCOLS = 24, GROWS = 36;
+  const STEP = { bodyRadius: 0.3 };
   const ground = () => 0, turnTo = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
-  // Seats: the height sat on (the floor where a spot has no seat), the 0.4 s blend in and out, the bots' legs.
-  const SEAT_Y = { stool: 0.68, sofa: 0.4 }, FLOOR_SEAT = 0.1, SIT_LIFT = 0.06, SIT_BLEND = 0.4, SIT_LEGS = -1.35;
+  // Seats: the height sat on (the floor where a spot has no seat), the 0.4 s blend in and out, the bots' legs, how far
+  // a short skirt tips forward over the lap.
+  const SEAT_Y = { stool: 0.68, lounge: 0.4 }, FLOOR_SEAT = 0.1, SIT_LIFT = 0.06, SIT_BLEND = 0.4, SIT_LEGS = -1.35, SKIRT_SIT = -0.8;
   // Reactions and speech: tables read twice a second, a pot of 400 or more is big, two crowd bubbles at most.
   const POLL = 0.5, BIG_POT = 400, LEAN_IN = 0.2, CHEER = 1.2, GASP = 2, SAY = 2.4, TALK = 2.5, BUBBLES = 2;
+  const RETURN_LINE = "Who threw me out?";
   const GREET_R = 2.5, GREET_EVERY = 60, STAGGER = 1.2, STUMBLES = 3, ESCORT_SIT = 30, SERVE = 4, TRAIL = 1.6, TRAIL_GO = 2.4;
-  // Where a guest goes next, by weight; a kind the theme lacks falls to a stroll.
+  // The lounges' residents: a sip every `SIP_GAP` to twice that, taking `SIP` s (up, at the lips, down), the glass held
+  // at the lap between; the head turns to whoever speaks within `HEED_TALK` m, else whoever passes within `HEED_PASS`,
+  // looked for again every `HEED_EVERY` s, never more than `HEED_TURN` off the body's facing.
+  const SIP_GAP = 6, SIP = 2.6, SIP_REST = -0.75, SIP_UP = -2.25, HEED_TALK = 6, HEED_PASS = 3.5, HEED_EVERY = 0.5, HEED_TURN = 1;
+  // Where a guest goes next, by weight; a kind with no free place falls to a stroll.
   const dest = pairs => Object.freeze({ kinds: pairs.map(p => p[0]), weights: pairs.map(p => p[1]), sum: pairs.reduce((n, p) => n + p[1], 0) });
   const DEST = Object.freeze({
-    highRoller: dest([["rail", 5], ["stool", 2], ["stroll", 2], ["rope", 1]]),
-    businessman: dest([["cage", 3], ["rail", 3], ["stroll", 3], ["stool", 1]]),
-    lady: dest([["stool", 4], ["sofa", 2], ["rail", 2], ["stroll", 2]]),
-    cane: dest([["sofa", 3], ["rail", 2], ["stroll", 3]]),
-    walker: dest([["sofa", 3], ["rail", 2], ["stroll", 3]]),
-    drunk: dest([["stool", 3], ["rail", 2], ["stroll", 4]])
+    highRoller: dest([["rail", 5], ["stool", 2], ["stroll", 1], ["rope", 1], ["group", 3], ["glass", 2], ["bar", 2]]),
+    businessman: dest([["cage", 3], ["rail", 3], ["stroll", 2], ["stool", 1], ["group", 3], ["glass", 1], ["bar", 2]]),
+    lady: dest([["stool", 3], ["rail", 2], ["stroll", 1], ["group", 4], ["glass", 3], ["bar", 1]]),
+    drunk: dest([["stool", 3], ["rail", 2], ["stroll", 4], ["bar", 2]])
   });
   // The pit boss's post in the middle of the floor.
   const POST = Object.freeze({ kind: "post", x: 0, z: 0, yaw: 0, table: -1 });
-  const KINDS = ["rail", "stool", "sofa", "cage", "rope", "door", "stroll"];
+  const KINDS = ["rail", "stool", "cage", "rope", "door", "stroll", "group", "glass", "bar", "lounge"];
 
-  // `create` keeps a fixed pool of the day's sixteen (`castFor(day, 16)`), built one every `BUILD_EVERY` seconds and
-  // shown up to the cap: `castFor(day, n)` is a subset of that pool, so a cap change only parks or brings back
-  // members. A member walks a route from the router (one `find` a frame across the whole pool),
-  // gives way to `others()` and to members ahead of it in `TYPES`, and arrives `reached` or short of its target.
-  // Seats are reached by `approach(spot)` and a straight scripted move (`slideIn`, then `slideOut` the same way).
-  // What a member does there is its state: `watch` a table, the cage or a rope, `sit`, `rest` on the way, staff at a
-  // `post` or a `serve` stop, the drunk waiting for his `escort`. Its only view of a table is `publicState(table, out)`,
-  // read from the `out` it passed in: `pot`, `phase`, `hand`, `winner` and `allIn`, nothing else.
-  const create = ({ root, fx, walkable, spots, publicState, others, day, cap, onStep = null, visitor = null }) => {
+  // `create` keeps a fixed pool of everyone the day could put on the floor (`castFor(day, Infinity)`), built as the
+  // cap needs them and shown up to it: `castFor(day, n)` is a subset of that pool, so a cap change only parks or
+  // brings back members. A member walks a route from the router (a few `find`s a frame across the whole pool, inside
+  // a time budget), gives way to `others()` and to members ahead of it in `TYPES`, and arrives `reached` or short of
+  // its target. Seats are reached by `approach(spot)` and a straight scripted move (`slideIn`, then `slideOut` the
+  // same way). What a member does there is its state: `watch` a table, the cage, a rope or the view through the
+  // glass, `chat` in a group or at the bar, `sit`, staff at a `post` or a `serve` stop, the drunk waiting for his
+  // `escort`. Its only view of a table is `publicState(table, out)`, read from the `out` it passed in: `pot`, `phase`,
+  // `hand`, `winner` and `allIn`, nothing else. The lounges' seats (`lounge` spots) hold residents, outside the cap:
+  // one a seat (on the lite set the sofas' seats only), seated for good, sipping and watching the room. The smokers
+  // among the members (`traits.outfit.cigar`) each carry a `smoke` batch.
+  const create = ({ root, fx, walkable, spots, publicState, others, day, cap, onStep = null, visitor = null, lite = false }) => {
     const C = BL.pokerCrowdModels, M = BL.models, Cr = BL.crew, GAIT = Cr.GAIT, TYPES = C.TYPES, LINES = C.LINES, Mth = BL.math;
     const TABLE_N = BL.pokerModels.TABLES.length;
-    const paths = router(walkable), cast = C.castFor(day, FULL);
+    const paths = router(walkable), cast = C.castFor(day, Infinity);
     const members = cast.map((c, index) => {
       const wp = { x: 0, z: 0 }, rand = Mth.mulberry32(Mth.fnv1a(c.id) + day);
       return {
@@ -153,24 +278,41 @@
         root: null, parts: null, agent: null, x: 0, z: 0, yaw: 0, want: 0, speed: SPEED[c.type] || BL.agent.GAITS.upright.speed,
         state: "parked", on: false, clock: 0, phase: 0, step: 0, cycle: 0, route: new Float32Array(48), n: 0, i: 0,
         spot: null, tx: 0, tz: 0, pending: false, reached: false, stuck: 0, armRZ: 0, armLZ: 0, baseY: 0, bodyRadius: 0.4,
-        rest: new Float32Array(8), sway: 0, backX: 0, backZ: 0, frame: null, trailing: false,
+        rest: new Float32Array(8), sway: 0, backX: 0, backZ: 0, trailing: false, smoke: null, gesture: rand() * TAU,
         slide: { fromX: 0, fromZ: 0, toX: 0, toZ: 0, fromYaw: 0, toYaw: 0, t: 0, time: 0, next: "", seat: 0 },
         waypoint: [wp], gait: 0, gaitPhase: 0, gaitMix: 0, closeSide: 0, closeBack: false,
         // What it is about: `job` (serve, post, boss, and the escort's fetch, await, escort and escorted), the table it
         // watches and the hand it waits out, its escort partner, the seat's height, the waiter's loop of stops.
         job: "", table: -1, hand: -1, partner: null, seatY: 0, loop: 0, stops: [null, null, null, null],
         lean: 0, cheer: 0, gasp: 0, armUp: 0, handUp: 0, talk: 0, greet: 0, mutter: 12 + 13 * rand(),
-        // Walking time to the next rest (cane, walker) or stumble (drunk), the stumble under way and how many so far.
-        walked: 0, restAt: c.type === "drunk" ? 20 + 20 * rand() : 8 + 6 * rand(), stagger: 0, stumbles: 0
+        // Walking time to the drunk's next stumble, the stumble under way and how many so far.
+        walked: 0, restAt: 20 + 20 * rand(), stagger: 0, stumbles: 0
       };
     });
-    let strolls = null, capNow = -1, buildClock = 0, cursor = 0, routes = 0, bubbles = 0, pollClock = 0, railsBy = null;
+    // The residents: one record a lounge seat the floor offers (filled by `setSpots`), each a lounge cast member in turn.
+    const residents = [];
+    let strolls = null, capNow = -1, cursor = 0, routes = 0, bubbles = 0, pollClock = 0, railsBy = null, loungeSeats = null;
     const approaches = new Map(), byKind = {};
-    const stat = { crowd: 0, walking: 0, sitting: 0, crowdBubbles: 0, routes: 0 };
+    const stat = { crowd: 0, walking: 0, sitting: 0, crowdBubbles: 0, routes: 0, lounge: 0, smokers: 0, built: 0 };
     // What the crowd last read of each table, and the hand each reaction last fired for.
     const pots = new Float64Array(TABLE_N), hands = new Float64Array(TABLE_N).fill(-1), winners = new Int32Array(TABLE_N).fill(-1);
     const bigHand = new Float64Array(TABLE_N).fill(-1), allInHand = new Float64Array(TABLE_N).fill(-1), live = new Uint8Array(TABLE_N);
     const view = { pot: 0, phase: "waiting", hand: 0, winner: -1, allIn: false };
+    // The give-way grid: the first member in each cell and the next in the same cell, rebuilt at the top of `update`.
+    const cellHead = new Int16Array(GCOLS * GROWS), cellNext = new Int16Array(members.length);
+    const cellOf = (x, z) => {
+      const i = Math.min(GCOLS - 1, Math.max(0, Math.floor((x - GX0) / GRID))), j = Math.min(GROWS - 1, Math.max(0, Math.floor((z - GZ0) / GRID)));
+      return j * GCOLS + i;
+    };
+    const bucket = () => {
+      cellHead.fill(-1);
+      for (let k = 0; k < members.length; k++) {
+        const m = members[k];
+        if (!m.on || !m.root) continue;
+        const c = cellOf(m.x, m.z);
+        cellNext[k] = cellHead[c]; cellHead[c] = k;
+      }
+    };
 
     // ---- places ----
     const near = (x, z, px, pz, r) => (x - px) * (x - px) + (z - pz) * (z - pz) < r * r;
@@ -195,10 +337,10 @@
       for (let k = 0; k < list.length; k++) { const s = list[k], d = (s.x - x) ** 2 + (s.z - z) ** 2; if (d < bestD) { bestD = d; best = s; } }
       return best;
     };
-    // Where a route to a seat-like spot (stool, sofa, cage) ends: the spot when one can, else the nearest point round
-    // it, on rings a quarter metre apart out to 4 m, that a walker stands on and a route ends at. Worked out for every
-    // such spot whenever the spots change, so nothing a frame calls allocates or searches; any other spot is its own.
-    const SEATS = { stool: true, sofa: true, cage: true };
+    // Where a route to a seat-like spot (stool, cage) ends: the spot when one can, else the nearest point round it, on
+    // rings a quarter metre apart out to 4 m, that a walker stands on and a route ends at. Worked out for every such
+    // spot whenever the spots change, so nothing a frame calls allocates or searches; any other spot is its own.
+    const SEATS = { stool: true, cage: true };
     const findApproach = s => {
       const a = { x: s.x, z: s.z };
       if (walkable(s.x, s.z, s.x, s.z, 0, 2, LEG) && paths.ends(s.x, s.z)) return a;
@@ -215,12 +357,17 @@
       strolls = byKind.stroll;
       approaches.clear();
       for (const s of list) if (SEATS[s.kind]) approaches.set(s, findApproach(s));
-    };
-    setSpots(spots);
-    // The spot in `list` at the same place as `s` (a new floor's copy of it), or null.
-    const same = (list, s) => {
-      for (let k = 0; k < list.length; k++) { const o = list[k]; if (o.kind === s.kind && o.table === s.table && Math.abs(o.x - s.x) < 1e-6 && Math.abs(o.z - s.z) < 1e-6) return o; }
-      return null;
+      loungeSeats = lite ? byKind.lounge.filter(s => s.seat === "sofa") : byKind.lounge;
+      while (residents.length < loungeSeats.length) {
+        const c = C.LOUNGE[residents.length % C.LOUNGE.length], rand = Mth.mulberry32(Mth.fnv1a(c.id) + residents.length);
+        residents.push({ id: c.id, traits: c.traits, index: residents.length, root: null, parts: null, baseY: 0, armRZ: 0, armLZ: 0, spot: null,
+          sip: SIP_GAP * (0.3 + 1.7 * rand()), sipping: -1, heed: rand() * HEED_EVERY, look: 0, lookX: 0, lookZ: 0, looking: false, rand });
+      }
+      for (let k = 0; k < residents.length; k++) {
+        const r = residents[k];
+        r.spot = k < loungeSeats.length ? loungeSeats[k] : null;
+        if (r.root) seatResident(r);
+      }
     };
     const place = (m, x, z, yaw) => {
       m.x = x; m.z = z; m.yaw = m.want = yaw;
@@ -243,6 +390,17 @@
       if (d.arm) S.addChild(p.armR, S.createNode({ geometry: d.arm }));
       for (const arm of [p.armR, p.armL]) S.addChild(arm, S.createNode({ geometry: d.sleeve }));
     };
+    // A caveman's model with nothing of the island's kit showing: no rifle, snack or jetpack, the club only for an item.
+    const dressed = (who, traits) => {
+      const model = M.caveman(traits), p = model.parts;
+      who.root = model.root; who.parts = p; who.baseY = model.root.position.y;
+      who.armRZ = p.armR.rotation.z; who.armLZ = p.armL.rotation.z;
+      p.gun.visible = false;
+      if (p.snack) p.snack.visible = false;
+      if (p.jetpack) p.jetpack.visible = false;
+      if (p.jetFlame) p.jetFlame.visible = false;
+      p.club.visible = !!traits.outfit.item;
+    };
     const build = m => {
       const s = freeStroll(m);
       if (m.rig === "gorilla") {
@@ -250,27 +408,40 @@
         m.root = m.agent.root; m.parts = m.agent.parts;
         dressStaff(m);
       } else {
-        const model = M.caveman(m.traits), p = model.parts;
-        m.root = model.root; m.parts = p; m.baseY = model.root.position.y;
-        m.armRZ = p.armR.rotation.z; m.armLZ = p.armL.rotation.z;
-        p.gun.visible = false;
-        if (p.snack) p.snack.visible = false;
-        if (p.jetpack) p.jetpack.visible = false;
-        if (p.jetFlame) p.jetFlame.visible = false;
-        p.club.visible = !!ITEM[m.type];
-        if (m.type === "walker") m.frame = model.root.children.find(n => n.geometry === C.walkingFrame());
-        const r = m.rest;
+        dressed(m, m.traits);
+        const p = m.parts, r = m.rest;
         r[0] = p.torso.position.y; r[1] = p.torso.position.z; r[2] = p.head.position.y; r[3] = p.head.position.z;
         r[4] = p.armR.position.y; r[5] = p.armR.position.z; r[6] = p.armL.position.y; r[7] = p.armL.position.z;
+        if (p.cigar) m.smoke = smoke({ root, lite, seed: Mth.fnv1a(m.id) });
       }
       S.addChild(root, m.root);
       standAt(m, s);
+    };
+    // A resident sits in her seat for good: the legs forward, the hips at the seat, the skirt over the lap.
+    const seatResident = r => {
+      const s = r.spot;
+      r.root.visible = !!s;
+      if (!s) return;
+      const p = r.parts;
+      r.root.position.x = s.x; r.root.position.z = s.z; r.root.rotation.y = s.yaw;
+      r.root.position.y = SEAT_Y.lounge + SIT_LIFT;
+      p.legR.rotation.x = SIT_LEGS; p.legL.rotation.x = SIT_LEGS + 0.08;
+      p.legR.rotation.z = -0.04; p.legL.rotation.z = 0.04;
+      p.armL.rotation.x = -0.55; p.armR.rotation.x = SIP_REST;
+      p.armR.rotation.z = r.armRZ; p.armL.rotation.z = r.armLZ;
+      if (p.skirt) p.skirt.rotation.x = SKIRT_SIT;
+    };
+    const buildResident = r => {
+      dressed(r, r.traits);
+      S.addChild(root, r.root);
+      seatResident(r);
     };
     const park = m => {
       if (m.partner) cancelEscort(m);
       // Its bubble goes with it: a caveman's line is hushed, and the count is released at once.
       if (m.talk > 0) { m.talk = 0; bubbles--; stat.crowdBubbles = bubbles; if (!m.agent) fx.hush(m); }
       m.state = "parked"; m.pending = false; m.n = 0; m.spot = null; m.job = ""; m.table = -1; m.loop = 0; m.slide.seat = 0; m.stagger = 0;
+      if (m.smoke) m.smoke.hide();
       if (m.root) { m.root.visible = false; if (m.agent) m.agent.place(m.x, m.z, m.yaw); }
     };
     const setCap = n => {
@@ -285,13 +456,19 @@
         else if (m.root) { m.root.visible = true; standAt(m, freeStroll(m)); }
       }
     };
+    // Who is still to be built: the members on the floor first, then the residents.
+    const buildNext = () => {
+      for (let k = 0; k < members.length; k++) if (members[k].on && !members[k].root) { build(members[k]); return true; }
+      for (let k = 0; k < residents.length; k++) if (residents[k].spot && !residents[k].root) { buildResident(residents[k]); return true; }
+      return false;
+    };
 
     // ---- routes ----
-    // Ask for a route to (x, z) at `spot`; the router serves one request a frame, in turn round the pool.
+    // Ask for a route to (x, z) at `spot`; the router serves a few requests a frame, in turn round the pool.
     const send = (m, x, z, spot) => { m.tx = x; m.tz = z; m.spot = spot; m.pending = true; m.reached = false; };
     // To a spot: a seat-like one by its approach, any other to the spot itself.
     const go = (m, s) => { const a = approach(s); send(m, a.x, a.z, s); };
-    const plan = () => {
+    const planOne = () => {
       for (let k = 0; k < members.length; k++) {
         const m = members[(cursor + k) % members.length];
         if (!m.pending) continue;
@@ -301,8 +478,13 @@
         // No route: it goes somewhere else instead, letting go of an escort.
         if (m.n === 0) { if (m.partner) cancelEscort(m); m.spot = null; m.job = m.job === "boss" ? "" : m.job; idle(m, 0.5); }
         else { m.state = "walk"; if (m.agent) walkAgent(m); }
-        return;
+        return true;
       }
+      return false;
+    };
+    const plan = () => {
+      const t0 = performance.now();
+      for (let k = 0; k < ROUTES_MAX; k++) if (!planOne() || performance.now() - t0 > ROUTE_BUDGET) return;
     };
     // The next spot by the guest's weights, for the high roller the busiest table's rail.
     const guestSpot = m => {
@@ -321,7 +503,7 @@
     // The waiter's loop: the stool nearest it, then rail spots at three different tables, 4 s at each.
     const serveStop = m => {
       if (m.loop === 0) {
-        m.stops[0] = nearest(byKind.stool.length ? byKind.stool : strolls, m.x, m.z);
+        m.stops[0] = nearest(byKind.stool, m.x, m.z);
         let a = -1, b = -1;
         for (let k = 1; k < 4; k++) {
           let t = Math.floor(m.rand() * TABLE_N);
@@ -371,6 +553,8 @@
       else if (m.job === "boss") { m.table = s.table; settle(m, s.yaw, "watch", Infinity); }
       else if (m.job === "escorted" || SEAT_Y[s.kind] !== undefined) sitDown(m, s, m.job === "escorted" ? ESCORT_SIT : 15 + 25 * m.rand());
       else if (s.kind === "rail" || s.kind === "cage" || s.kind === "rope") { m.table = s.table; settle(m, s.yaw, "watch", s.kind === "cage" ? 5 + 4 * m.rand() : 6 + 14 * m.rand()); }
+      else if (s.kind === "glass") settle(m, s.yaw, "watch", 8 + 12 * m.rand());
+      else if (s.kind === "group" || s.kind === "bar") settle(m, s.yaw, "chat", s.kind === "group" ? 10 + 15 * m.rand() : 6 + 10 * m.rand());
       else idle(m, 2 + m.rand() * 4);
     };
     // Straight to (x, z) over `seconds`, eased, with no walkable test, then into state `next`: a seat's last gap.
@@ -391,23 +575,11 @@
       if (m.job === "escorted") { m.job = ""; m.stumbles = 0; if (m.partner) cancelEscort(m); }
       slideOut(m, SIT_BLEND, "idle"); m.slide.seat = -1;
     };
-    // Off a seat that is gone, or out of a theme's new fittings: onto the nearest open cell of the lattice.
-    const standClear = m => {
-      if (!paths.snap(m.x, m.z, CLEAR)) BL.pokerModels.nearestClear(m.x, m.z, LEG, CLEAR);
-      m.slide.seat = 0; place(m, CLEAR.x, CLEAR.z, m.yaw);
-      if (!m.agent) stand(m);
-    };
 
     // ---- the drunk's escort ----
-    // After his third stumble the nearest security comes over, walks him to a sofa (in a cave, the stroll spot
-    // furthest from him), and goes back to its post once he is on his way to the seat's end of the route. It comes up
-    // on his far side from that seat, so he never walks through it as they set off.
-    const escortTo = d => {
-      if (byKind.sofa.length) return nearest(byKind.sofa, d.x, d.z);
-      let to = null, far = -1;
-      for (let k = 0; k < strolls.length; k++) { const s = strolls[k], dd = (s.x - d.x) ** 2 + (s.z - d.z) ** 2; if (dd > far) { far = dd; to = s; } }
-      return to;
-    };
+    // After his third stumble the nearest security comes over, walks him to a bar stool to sober up, and goes back to its post once he is on his way to the seat's end of the route.
+    // It comes up on his far side from that seat, so he never walks through it as they set off.
+    const escortTo = d => nearest(byKind.stool, d.x, d.z);
     const startEscort = d => {
       let sec = null, best = Infinity;
       for (let k = 0; k < members.length; k++) {
@@ -446,13 +618,18 @@
       const rx = x - m.x, rz = z - m.z, t = rx * ux + rz * uz;
       return t > 0 && t <= LOOK + r && Math.abs(rx * uz - rz * ux) < r + m.bodyRadius;
     };
+    // The others' bodies, then the members bucketed in the 3 by 3 cells round m: `LOOK` plus two bodies' radii is
+    // under a cell, so nothing in its path stands further out.
     const blocked = (m, ux, uz) => {
       const bodies = others();
       for (let k = 0; k < bodies.length; k++) if (inPath(m, ux, uz, bodies[k].x, bodies[k].z, bodies[k].radius)) return true;
-      for (let k = 0; k < members.length; k++) {
-        const o = members[k];
-        if (o === m || o === m.partner || !o.on || !o.root || (o.rank > m.rank || o.rank === m.rank && o.index > m.index)) continue;
-        if (inPath(m, ux, uz, o.x, o.z, o.bodyRadius)) return true;
+      const ci = Math.min(GCOLS - 1, Math.max(0, Math.floor((m.x - GX0) / GRID))), cj = Math.min(GROWS - 1, Math.max(0, Math.floor((m.z - GZ0) / GRID)));
+      for (let j = Math.max(0, cj - 1); j <= Math.min(GROWS - 1, cj + 1); j++) for (let i = Math.max(0, ci - 1); i <= Math.min(GCOLS - 1, ci + 1); i++) {
+        for (let k = cellHead[j * GCOLS + i]; k >= 0; k = cellNext[k]) {
+          const o = members[k];
+          if (o === m || o === m.partner || !o.on || !o.root || (o.rank > m.rank || o.rank === m.rank && o.index > m.index)) continue;
+          if (inPath(m, ux, uz, o.x, o.z, o.bodyRadius)) return true;
+        }
       }
       return false;
     };
@@ -517,7 +694,8 @@
     };
     const roll = (m, angle) => { const p = m.parts; p.torso.poseLean = p.head.poseLean = p.armR.poseLean = p.armL.poseLean = angle; };
     // The type's style over the gait the crew posed, walking or standing, then the reactions: leaning in, both arms up
-    // for a cheer (settling back as the crew's does), the free hand to the head at an all in.
+    // for a cheer (settling back as the crew's does), the free hand to the head at an all in, and in a group or at the
+    // bar the free hand talking now and then.
     const style = (m, walking) => {
       const p = m.parts, ph = m.phase, swing = walking ? Math.sin(ph) : 0;
       let lean = 0, headX = 0;
@@ -530,21 +708,14 @@
       } else if (m.type === "lady") {
         p.legR.rotation.x *= 0.55; p.legL.rotation.x *= 0.55;
         m.root.rotation.z = 0.04 * swing;
-      } else if (m.type === "cane") {
-        lean = 0.45; headX = lean - 0.3;
-        // The item hangs from the right hand: the cane reaches furthest forward as the phase passes a whole turn, and
-        // there it stands upright on the floor; standing, it leans on it planted.
-        const arm = walking ? -0.35 - 0.35 * (0.5 + 0.5 * Math.cos(ph)) : CANE_PLANT;
-        p.armR.rotation.x = arm; p.club.rotation.x = CANE_TIP * (arm - CANE_PLANT) / 0.35 - arm;
-      } else if (m.type === "walker") {
-        const lift = walking && m.cycle < WALKER_LIFT ? Math.sin(m.cycle / WALKER_LIFT * Math.PI) : 0;
-        lean = 0.55; headX = lean - 0.35;
-        p.armR.rotation.x = p.armL.rotation.x = C.FRAME_ARM - FRAME_LIFT * lift;
-        m.frame.position.y = FRAME_UP * lift; m.frame.position.z = FRAME_ON * lift;
       } else if (m.type === "drunk") {
         const w = m.cycle * TAU / DRUNK_PERIOD;
         roll(m, (m.stagger > 0 ? 0.4 : 0.18) * Math.sin(w));
         p.head.rotation.z = 0.22 * Math.sin(w * 1.3 + 1); headX = 0.12;
+      }
+      if (!walking && m.state === "chat") {
+        const g = Math.max(0, Math.sin(m.gesture));
+        p.armL.rotation.x += -0.55 * g * g; headX -= 0.06 * g;
       }
       lean += m.lean;
       leanBody(m, lean);
@@ -556,30 +727,26 @@
         p.armL.rotation.x += (-2.7 - p.armL.rotation.x) * m.handUp;
         headX += 0.15 * m.handUp;
       }
-      // The drunk's glass stays upright whatever his arm does.
-      if (m.type === "drunk") p.club.rotation.x = -p.armR.rotation.x;
-      // A cane lifted in a cheer stays upright in the raised hand.
-      if (m.type === "cane") p.club.rotation.x += (-p.armR.rotation.x - p.club.rotation.x) * m.armUp;
+      // A glass stays upright whatever the arm holding it does.
+      if (m.traits.outfit.item === "glass" || m.traits.outfit.item === "martini") p.club.rotation.x = -p.armR.rotation.x;
       p.head.rotation.x = headX;
     };
     const stand = m => { Cr.poseGait(m, GAIT.stand); style(m, false); };
-    // Seated by k (0 standing, 1 sitting): the legs forward as the room's bots sit, the hips at the seat's height.
+    // Seated by k (0 standing, 1 sitting): the legs forward as the room's bots sit, the hips at the seat's height, a
+    // short skirt tipped over the lap.
     const sitPose = (m, k) => {
       const p = m.parts;
       p.legR.rotation.x += (SIT_LEGS - p.legR.rotation.x) * k; p.legL.rotation.x += (SIT_LEGS - p.legL.rotation.x) * k;
       m.root.position.y = m.baseY + (m.seatY + SIT_LIFT - m.baseY) * k;
-      // A walking frame stays on the floor in front of the seat.
-      if (m.frame) m.frame.position.y = m.baseY - m.root.position.y;
+      if (p.skirt) p.skirt.rotation.x = SKIRT_SIT * k;
     };
     const faceTo = (m, dt) => { m.yaw += Math.max(-TURN * dt, Math.min(TURN * dt, turnTo(m.yaw, m.want))); m.root.rotation.y = m.yaw; };
-    // A footfall: the lady's heels each step, the cane's tip every second step.
+    // A footfall: the ladies' heels each step.
     const stepped = m => {
       const k = Math.floor(m.phase / Math.PI);
       if (k === m.step) return;
       m.step = k;
-      if (!onStep) return;
-      if (m.type === "lady") onStep("heel", m.x, m.z);
-      else if (m.type === "cane" && k % 2 === 0) onStep("cane", m.x, m.z);
+      if (onStep && m.type === "lady") onStep("heel", m.x, m.z);
     };
 
     // ---- walking ----
@@ -587,14 +754,7 @@
       if (m.pending) { stand(m); return; }
       const tx = m.route[m.i * 2], tz = m.route[m.i * 2 + 1], d = Math.hypot(tx - m.x, tz - m.z);
       const ux = d > 1e-6 ? (tx - m.x) / d : Math.sin(m.yaw), uz = d > 1e-6 ? (tz - m.z) / d : Math.cos(m.yaw);
-      // The frame lifts, plants and shuffles on: it only moves over the shuffle.
-      let v = m.speed;
-      if (m.type === "walker") {
-        const was = m.cycle;
-        m.cycle = (m.cycle + dt) % WALKER_CYCLE;
-        if (was < WALKER_LIFT && m.cycle >= WALKER_LIFT && onStep) onStep("walker", m.x, m.z);
-        v = m.cycle < WALKER_LIFT ? 0 : m.speed * WALKER_CYCLE / (WALKER_CYCLE - WALKER_LIFT);
-      }
+      const v = m.speed;
       if (blocked(m, ux, uz)) { hold(m, dt); stand(m); return; }
       let step = v * dt, nx = m.x, nz = m.z, i = m.i;
       while (step > 0 && i < m.n) {
@@ -646,10 +806,10 @@
       if (p.x !== m.x || p.z !== m.z) m.stuck = 0;
       m.x = p.x; m.z = p.z; m.yaw = a.heading;
     };
-    // A caveman's walk, paused by a rest (cane, walker) or a stumble (drunk) every so often.
+    // A caveman's walk, paused by the drunk's stumble every so often.
     const walk = (m, dt) => {
       if (m.agent) { walkGorilla(m, dt); return; }
-      if (!m.pending && m.job === "") {
+      if (!m.pending && m.job === "" && m.type === "drunk") {
         if (m.stagger > 0) {
           m.stagger -= dt; m.cycle = (m.cycle + dt * 1.5) % DRUNK_PERIOD;
           stand(m);
@@ -657,10 +817,7 @@
           return;
         }
         m.walked += dt;
-        if (m.walked >= m.restAt && (m.type === "cane" || m.type === "walker")) {
-          m.walked = 0; m.restAt = 8 + 6 * m.rand(); m.state = "rest"; m.clock = 3 + 2 * m.rand(); stand(m); return;
-        }
-        if (m.walked >= m.restAt && m.type === "drunk") {
+        if (m.walked >= m.restAt) {
           m.walked = 0; m.restAt = 20 + 20 * m.rand(); m.stagger = STAGGER; m.stumbles++; stand(m); return;
         }
       }
@@ -678,25 +835,63 @@
     // Standing at its place: a caveman turns to face it and holds the pose, a gorilla stands as its agent does.
     const standing = (m, dt) => { if (m.agent) m.agent.update(dt); else { faceTo(m, dt); stand(m); } };
 
-    const update = (dt) => {
-      buildClock += dt;
-      if (buildClock >= BUILD_EVERY) {
-        for (let k = 0; k < members.length; k++) if (members[k].on && !members[k].root) { build(members[k]); buildClock = 0; break; }
-        if (buildClock >= BUILD_EVERY) buildClock = BUILD_EVERY;
+    // ---- the lounges ----
+    // Who a resident heeds: the nearest member talking within `HEED_TALK`, else the nearest walking within `HEED_PASS`,
+    // else the visitor within `HEED_PASS`; found through the give-way grid, the cells within `HEED_TALK`.
+    const heed = (r, vis) => {
+      const s = r.spot, ci = Math.floor((s.x - GX0) / GRID), cj = Math.floor((s.z - GZ0) / GRID), reach = Math.ceil(HEED_TALK / GRID);
+      let best = -1, bestD = Infinity, talking = false;
+      for (let j = Math.max(0, cj - reach); j <= Math.min(GROWS - 1, cj + reach); j++) for (let i = Math.max(0, ci - reach); i <= Math.min(GCOLS - 1, ci + reach); i++) {
+        for (let k = cellHead[j * GCOLS + i]; k >= 0; k = cellNext[k]) {
+          const o = members[k], d = (o.x - s.x) ** 2 + (o.z - s.z) ** 2, says = o.talk > 0;
+          if (says ? d > HEED_TALK * HEED_TALK : o.state !== "walk" || d > HEED_PASS * HEED_PASS) continue;
+          if (says && !talking || says === talking && d < bestD) { best = k; bestD = d; talking = says; }
+        }
       }
+      r.looking = true;
+      if (best >= 0) { r.lookX = members[best].x; r.lookZ = members[best].z; }
+      else if (vis && near(vis.x, vis.z, s.x, s.z, HEED_PASS)) { r.lookX = vis.x; r.lookZ = vis.z; }
+      else r.looking = false;
+    };
+    const resident = (r, dt, vis) => {
+      const p = r.parts, s = r.spot;
+      if ((r.heed -= dt) <= 0) { r.heed = HEED_EVERY; heed(r, vis); }
+      const want = r.looking ? Math.max(-HEED_TURN, Math.min(HEED_TURN, turnTo(s.yaw, Math.atan2(r.lookX - s.x, r.lookZ - s.z)))) : 0;
+      r.look = Mth.damp(r.look, want, 3, dt);
+      p.head.rotation.y = r.look;
+      // A sip: up over the first third, at the lips the middle, down the last; the head tips back as she drinks.
+      let up = 0;
+      if (r.sipping >= 0) {
+        r.sipping += dt;
+        const k = r.sipping / SIP;
+        up = k < 1 / 3 ? k * 3 : k < 2 / 3 ? 1 : Math.max(0, 3 - k * 3);
+        up = up * up * (3 - 2 * up);
+        if (k >= 1) { r.sipping = -1; r.sip = SIP_GAP * (1 + r.rand()); }
+      } else if ((r.sip -= dt) <= 0) r.sipping = 0;
+      p.armR.rotation.x = SIP_REST + (SIP_UP - SIP_REST) * up;
+      p.club.rotation.x = -p.armR.rotation.x + 0.5 * up * up;
+      p.head.rotation.x = -0.18 * up;
+    };
+
+    const update = (dt, elapsed = 0, eye = null) => {
+      const t0 = performance.now();
+      while (buildNext() && performance.now() - t0 < BUILD_BUDGET) { /* fill the room within the frame's budget */ }
+      bucket();
       // A bubble is up for its line's time, parked or not.
       for (let k = 0; k < members.length; k++) { const m = members[k]; if (m.talk > 0 && (m.talk -= dt) <= 0) { m.talk = 0; bubbles--; } }
       pollClock += dt;
       if (pollClock >= POLL) { pollClock = 0; poll(); }
       plan();
       const vis = visitor && visitor();
-      let crowd = 0, walking = 0, sitting = 0;
+      let crowd = 0, walking = 0, sitting = 0, smokers = 0, built = 0;
       for (let k = 0; k < members.length; k++) {
         const m = members[k];
+        if (m.root) built++;
         if (!m.on || !m.root) continue;
         crowd++;
         if (m.cheer > 0) m.cheer -= dt;
         if (m.gasp > 0) m.gasp -= dt;
+        m.gesture += dt * 1.4;
         m.armUp = Mth.damp(m.armUp, m.cheer > 0 ? 1 : 0, 10, dt); m.handUp = Mth.damp(m.handUp, m.gasp > 0 ? 1 : 0, 8, dt);
         m.lean = Mth.damp(m.lean, m.state === "watch" && bigLive(m.table) ? LEAN_IN : 0, 6, dt);
         if (m.greet > 0) m.greet -= dt;
@@ -719,53 +914,66 @@
           if (m.job === "boss" && (!live[m.table] || hands[m.table] !== m.hand || winners[m.table] >= 0)) { m.job = ""; next(m); }
           else if (m.clock <= 0 && !m.pending) next(m);
           standing(m, dt);
-        } else if (st === "post" || st === "serve") {
+        } else if (st === "post" || st === "serve" || st === "chat") {
           m.clock -= dt;
           if (m.clock <= 0 && !m.pending) next(m);
           standing(m, dt);
-        } else if (st === "rest") {
-          m.clock -= dt; stand(m);
-          if (m.clock <= 0) m.state = "walk";
         } else if (st === "escort") {
           if (m.job === "await") follow(m);
           if (m.agent) m.agent.update(dt); else stand(m);
         }
         // Whatever the agent's arms do, a waiter's right one holds the tray out level, however its chest leans.
         if (m.type === "waiter") m.parts.armR.rotation.x = C.TRAY_ARM - m.parts.armR.parent.rotation.x;
+        if (m.smoke) { S.updateWorld(m.root); m.smoke.update(elapsed, m.parts.cigar, eye); smokers++; }
+      }
+      let lounge = 0;
+      for (let k = 0; k < residents.length; k++) {
+        const r = residents[k];
+        if (!r.root || !r.spot) continue;
+        lounge++;
+        resident(r, dt, vis);
       }
       stat.crowd = crowd; stat.walking = walking; stat.sitting = sitting; stat.routes = routes; stat.crowdBubbles = bubbles;
-    };
-    // A new floor: the lattice is read again, a spot the new floor still has is kept as its copy, and a member whose
-    // spot is gone, or who stands inside the new fittings, steps to the nearest open cell and picks somewhere else.
-    const refloor = list => {
-      paths.rebuild(); setSpots(list);
-      for (let k = 0; k < members.length; k++) {
-        const m = members[k];
-        if (!m.on || !m.root) continue;
-        const had = m.spot !== null && m.spot !== POST;
-        if (had && !list.includes(m.spot)) m.spot = same(list, m.spot);
-        const lost = had && m.spot === null;
-        for (let i = 0; i < 4; i++) if (m.stops[i] && !(m.stops[i] = same(list, m.stops[i]))) m.loop = 0;
-        // A kept seat is sat inside its furniture, so only a member off a seat, or off a lost one, is moved clear.
-        const seated = m.state === "sit" || m.state === "slide";
-        if (lost && seated || (!seated || lost) && !walkable(m.x, m.z, m.x, m.z, 0, 2, LEG)) standClear(m);
-        if (lost) { if (m.partner) cancelEscort(m); if (m.job !== "boss") m.job = ""; idle(m, 0); }
-        else if (m.state === "walk" || m.state === "rest") { if (m.spot && m.spot !== POST) go(m, m.spot); else send(m, m.tx, m.tz, m.spot); }
-      }
+      stat.lounge = lounge; stat.smokers = smokers; stat.built = built;
     };
     const liveGeometry = set => { for (let k = 0; k < members.length; k++) if (members[k].agent) members[k].agent.liveGeometry(set); };
     const dispose = () => {
       for (let k = 0; k < members.length; k++) {
         const m = members[k];
         park(m);
+        if (m.smoke) { m.smoke.dispose(); m.smoke = null; }
         if (m.agent) m.agent.dispose();
         else if (m.root && m.root.parent) S.removeChild(m.root.parent, m.root);
         m.root = m.parts = m.agent = null; m.on = false;
       }
+      for (let k = 0; k < residents.length; k++) {
+        const r = residents[k];
+        if (r.root && r.root.parent) S.removeChild(r.root.parent, r.root);
+        r.root = r.parts = null;
+      }
     };
+    // A guest walks back in through the arrival mirror (Ask Ooga To Move's thrown-out guest come home): of the guests
+    // on the floor with nothing in hand (no escort, seat or job), the one farthest from `eye` stands at (x, z) facing
+    // `yaw`, a hand up to dust itself off and a word, then goes about its evening. Returns it, or null.
+    const returnGuest = (x, z, yaw, eye) => {
+      let best = null, bestD = -1;
+      for (let k = 0; k < members.length; k++) {
+        const m = members[k];
+        if (!m.on || !m.root || m.agent || m.partner || m.job || m.pending || m.type === "drunk" || (m.state !== "walk" && m.state !== "idle" && m.state !== "watch" && m.state !== "chat")) continue;
+        const d = eye ? (m.x - eye.x) ** 2 + (m.z - eye.z) ** 2 : k;
+        if (d > bestD) { bestD = d; best = m; }
+      }
+      if (!best) return null;
+      best.n = 0; best.spot = null; best.table = -1;
+      place(best, x, z, yaw); idle(best, 2.2);
+      best.gasp = GASP;
+      if (bubbles < BUBBLES && best.talk <= 0) { fx.say(best, RETURN_LINE, SAY); best.talk = TALK; bubbles++; }
+      return best;
+    };
+    setSpots(spots);
     setCap(cap);
-    return { update, setCap, refloor, liveGeometry, stats: () => stat, dispose, members, send, approach };
+    return { update, setCap, liveGeometry, stats: () => stat, dispose, members, residents, send, approach, returnGuest, find: paths.find };
   };
 
-  BL.pokerCrowd = { router, create };
+  BL.pokerCrowd = { router, create, smoke, smokeTargets, SMOKE: Object.freeze({ WISP: SMOKE_WISP, get B() { return smokeTargets().length / 2; }, GRID: SMOKE_GRID, CYCLE: SMOKE_CYCLE, FORM: SMOKE_FORM, HOLD: SMOKE_HOLD, GONE: SMOKE_GONE, SCALE: SMOKE_SCALE, LIFT: SMOKE_LIFT }) };
 })();

@@ -18,13 +18,28 @@
 // `WIN_HOLD` seconds and lets it back to the seated or free level on the context's clock (`stats.hands` counts the
 // marks). `stats` is one object updated in place, and `pools`, the voice pools by name, are live arrays for tests and
 // debugging to inspect. It honours the page-wide mute, opens no context while muted, and `dispose` closes it.
+//
+// The lounge's playlist: four recordings by Kevin MacLeod (CC BY 4.0, CREDITS.md), each its own deferred group,
+// `lounge-track-<key>` (lounge-track-*.js; each key listed in deferred.js's `PRESENT` too, or its fetch throws), the one
+// exception here to synthesized sound. Shuffled with no repeat until all four have played, a new round never opening on
+// the track just heard (ghost-audio.js's `advance` and `shuffle`). At most one decoded track is ever held (a decoded
+// track is 68 to 158 MB), so there is no crossfade between two recordings: a track fades in over `XFADE`, fades out
+// over its own reverb tail (`tail` plus `TAIL_PAD`) to its last sample, and is released; only then is the next decoded,
+// and it fades in. The synthesized music above is the fallback and fills every gap: it plays from the first gesture
+// until a track is ready, fades down as one comes in and up as one goes out, all on the context's clock, and carries
+// on for the visit when a track fails to decode (the browser cannot play the format) or every track fails to load (a
+// track that fails to load is skipped). The first track's group is
+// fetched at `create` (the room is entered), the next one's `PREFETCH` seconds before the current track ends; nothing
+// is decoded before the context opens. Each track plays through its own gain (its loudness `trim`) into the music bus,
+// so the ducks, the mute and the shared Music channel apply to it as to the synth. `nowPlaying` names the track
+// playing (null while the synth plays alone), `credits` holds the four attribution lines, `stats.playlist` the state.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   // The tone voices are fixed at init, never retyped: `BASS_TONES` triangles and the rest sines.
   const TONES = 10, BASS_TONES = 4, NOISES = 5, NOISE_SECONDS = 2;
-  // The room's own tone voices for the cues, on the room bus: `ROOM_SINES` sines and the rest triangles.
-  const ROOM_TONES = 4, ROOM_SINES = 2;
+  // The room's own tone voices for the cues, on the room bus: sines.
+  const ROOM_TONES = 2;
   // The two buses' levels under their channels.
   const MUSIC = 0.16, ROOM = 0.22;
   // The music's ducks, as factors of its level: `SEATED` in a table's panel, eased over `SEAT_EASE` seconds; `WON` for
@@ -43,9 +58,8 @@
   const CHIP_HZ = 5200, CHIP_DUR = 0.03, CHIP_GAP = 0.05, CHIP_LEVEL = 0.5;
   const GLASS_HZ = 2100, GLASS_TO = 1900, GLASS_DUR = 0.4, GLASS_CUT = 6000, GLASS_LEVEL = 0.22;
   const HEEL_HZ = 1800, HEEL_DUR = 0.035, HEEL_LEVEL = 0.4;
-  const CANE_HZ = 240, CANE_DUR = 0.06, CANE_CUT = 1500, CANE_LEVEL = 0.35, WALKER_GAP = 0.09, WALKER_LEVEL = 0.6;
   // Which pool each cue plays on.
-  const CUE_KINDS = Object.freeze({ chip: "noise", heel: "noise", glass: "sine", cane: "triangle", walker: "triangle" });
+  const CUE_KINDS = Object.freeze({ chip: "noise", heel: "noise", glass: "sine" });
   // The room's own cues: a chip at a random table every `CHIP_MIN` to `CHIP_MAX` seconds, a glass at a random bar wing
   // every `GLASS_MIN` to `GLASS_MAX`.
   const CHIP_MIN = 1.5, CHIP_MAX = 4, GLASS_MIN = 6, GLASS_MAX = 14;
@@ -86,11 +100,47 @@
   const PIANO_HZ = 1800, PIANO_DUR = 0.55, PIANO_LEVEL = 0.35, PIANO_UPPER = 0.25;
   const SWISH_HZ = 2400, SWISH_DUR = 0.22, SWISH_LEVEL = 0.1, TAP_HZ = 4200, TAP_DUR = 0.05, TAP_LEVEL = 0.16;
 
+  // The playlist. Each track's `trim` brings it to about -23 dBFS RMS (measured, a starting point for the ear) and its
+  // `tail` is its closing reverb in seconds. `TRACK_LEVEL` scales every trim against the synth under the one bus. A
+  // track starts `TRACK_LEAD` after it is ready, fades in over `XFADE` as the synth fades down over the same, and fades
+  // out over `tail + TAIL_PAD` to its end as the synth comes back up. The next group is fetched `PREFETCH` before the end.
+  const TRACK_LEVEL = 1, TRACK_LEAD = 0.1, XFADE = 3, TAIL_PAD = 1, PREFETCH = 20;
+  const MACLEOD = "Kevin MacLeod (incompetech.com)", LICENCE = "CC BY 4.0", LICENCE_URL = "https://creativecommons.org/licenses/by/4.0/";
+  const track = (key, title, trim, tail) => Object.freeze({ key, title, by: MACLEOD, licence: LICENCE, url: LICENCE_URL, trim, tail });
+  const TRACKS = Object.freeze([
+    track("lobby", "Lobby Time", 0.575, 3.6),
+    track("cool", "Cool Vibes", 2.38, 4.9),
+    track("venus", "Vibing Over Venus", 0.955, 2.4),
+    track("bossa", "Bossa Antigua", 1.03, 2.0),
+  ]);
+  // What `nowPlaying` returns, one frozen record a track.
+  const NOW = Object.freeze(TRACKS.map(t => Object.freeze({ key: t.key, title: t.title, by: t.by, licence: t.licence, url: t.url })));
+  // The attribution lines, as CREDITS.md and each track file's header give them.
+  const CREDITS = Object.freeze(TRACKS.map(t => `"${t.title}" ${t.by}\nLicensed under Creative Commons: By Attribution 4.0\n${t.url}`));
+  // The playlist's states: waiting for a track's bytes or the context, decoding it, playing it (fade-out included).
+  const WAIT = 0, DECODE = 1, PLAY = 2;
+  const bytesOf = (k) => BL.loungeMusic && BL.loungeMusic[TRACKS[k].key];
+  // ghost-audio.js's decode: the base64 into bytes, then the context's decoder, which sniffs the container.
+  const decode = (ctx, base64) => {
+    const raw = atob(base64), bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return ctx.decodeAudioData(bytes.buffer);
+  };
+
   const create = () => {
-    let ctx = null, buffer = null, music = null, room = null, ready = false, muted = BL.sound.muted, disposed = false;
+    let ctx = null, buffer = null, music = null, synth = null, fade = null, room = null, ready = false, muted = BL.sound.muted, disposed = false;
+    // The playlist: the order and where in it the next track stands (`slot`), the tracks failed this visit, the state,
+    // the track being fetched or played (-1 for none) and the one heard last, the one decoded buffer held and
+    // its source, the decode in flight (`token`), and the playing track's times on the context's clock. `trims` are
+    // the tracks' own gains, built at init.
+    const order = TRACKS.map((_, i) => i), failed = new Uint8Array(TRACKS.length), trims = [];
+    let slot = 0, state = WAIT, fetching = -1, playing = -1, heard = -1, held = null, source = null, token = 0;
+    let fadeAt = 0, endAt = 0, prefetchAt = 0, prefetched = false;
+    // `off`: a decode failed, so this browser cannot play the tracks' format and the playlist stops for the visit.
+    const playlist = { loaded: [], decoding: null, playing: null, failed: [], fallback: true, held: 0, played: 0, off: false };
     const musicChannel = BL.sound.channel("music"), roomChannel = BL.sound.channel("room");
-    const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], roomTriangles = [], bed = {};
-    let roomSineNext = 0, roomTriangleNext = 0;
+    const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], bed = {};
+    let roomSineNext = 0;
     // Whether the visitor is in a table's panel, and the context time a win's dip ends.
     let seated = false, winUntil = 0;
     let triangleNext = 0, sineNext = 0, noiseNext = 0, brushNext = 0;
@@ -99,13 +149,12 @@
     let song = SONGS[0], songIndex = 0, stepSeconds = 1, tuneSteps = 0, origin = 0, next = 0, timer = 0;
     let rngState = 0, rngChorus = -1, rngBar = -1;
     const draws = new Float64Array(4);
-    const stats = { open: false, contexts: 0, hands: 0, tones: 0, noises: 0, brushes: 0, song: null, bar: 0, step: 0, scheduled: 0, cues: 0, dropped: 0, busy: 0, steals: 0, roomTones: 0 };
+    const stats = { open: false, contexts: 0, hands: 0, tones: 0, noises: 0, brushes: 0, song: null, bar: 0, step: 0, scheduled: 0, cues: 0, dropped: 0, busy: 0, steals: 0, roomTones: 0, playlist };
     // Where the visitor hears from, copied from `update`'s `ear`; where the cue being placed sits from there (`AT`); the
     // bar's two wings and the tables, read once; and the countdowns to the bed's next level and the room's next cues.
     const EAR = { x: 0, z: 0, fx: 0, fz: 1 }, AT = { level: 0, pan: 0 };
     const tables = BL.pokerModels.TABLES, wings = BL.pokerModels.FURNITURE.filter(f => f.kind === "bar");
     const between = (lo, hi) => lo + Math.random() * (hi - lo);
-    let hasBar = true;
     let bedWait = 0, chipWait = between(CHIP_MIN, CHIP_MAX), glassWait = between(GLASS_MIN, GLASS_MAX);
 
     const gain = (value, to) => {
@@ -250,6 +299,7 @@
       timer = 0;
       if (!ready || muted || !document.hidden || ctx.state !== "running") return;
       sequence();
+      step();
       timer = setTimeout(hiddenTick, HIDDEN_TICK_MS);
     };
 
@@ -257,24 +307,28 @@
       ctx = new AudioContext();
       stats.contexts++;
       music = gain(musicLevel(0), musicChannel.node(ctx));
+      // The synth's level under the bus (1, or 0 while a track plays) and the playlist's fade, each track's trim into it.
+      synth = gain(1, music);
+      fade = gain(0, music);
+      for (let i = 0; i < TRACKS.length; i++) trims.push(gain(TRACKS[i].trim * TRACK_LEVEL, fade));
       room = gain(muted ? 0 : ROOM, roomChannel.node(ctx));
       buffer = ctx.createBuffer(1, ctx.sampleRate * NOISE_SECONDS, ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
       for (let i = 0; i < TONES; i++) {
-        const pan = panner(music), g = gain(0, pan), f = filter("lowpass", 4000, 0.7, g), bass = i < BASS_TONES;
+        const pan = panner(synth), g = gain(0, pan), f = filter("lowpass", 4000, 0.7, g), bass = i < BASS_TONES;
         (bass ? triangles : sines).push({ osc: osc(bass ? "triangle" : "sine", 220, f), filter: f, gain: g, pan, until: 0 });
       }
       for (let i = 0; i < ROOM_TONES; i++) {
-        const pan = panner(room), g = gain(0, pan), f = filter("lowpass", 4000, 0.7, g), sine = i < ROOM_SINES;
-        (sine ? roomSines : roomTriangles).push({ osc: osc(sine ? "sine" : "triangle", 220, f), filter: f, gain: g, pan, until: 0 });
+        const pan = panner(room), g = gain(0, pan), f = filter("lowpass", 4000, 0.7, g);
+        roomSines.push({ osc: osc("sine", 220, f), filter: f, gain: g, pan, until: 0 });
       }
       for (let i = 0; i < NOISES; i++) {
         const pan = panner(room), g = gain(0, pan), f = filter("bandpass", 1000, 1, g);
         noises.push({ src: hissOf(f), filter: f, gain: g, pan, until: 0 });
       }
       for (let i = 0; i < BRUSHES; i++) {
-        const pan = panner(music), g = gain(0, pan), f = filter("bandpass", SWISH_HZ, 1, g);
+        const pan = panner(synth), g = gain(0, pan), f = filter("bandpass", SWISH_HZ, 1, g);
         brushes.push({ src: hissOf(f), filter: f, gain: g, pan, until: 0 });
       }
       bed.level = gain(BED_FLOOR, room);
@@ -283,11 +337,132 @@
       bed.depth = gain(BED_DEPTH, bed.gain.gain);
       bed.wobble = osc("sine", BED_WOBBLE, bed.depth);
       stats.tones = triangles.length + sines.length;
-      stats.roomTones = roomSines.length + roomTriangles.length;
+      stats.roomTones = roomSines.length;
       stats.noises = noises.length;
       stats.brushes = brushes.length;
       startSong(0, ctx.currentTime + LEAD);
       stats.open = ready = true;
+      want();
+    };
+
+    // On to the next track, a new order once the list has been through, never opening on the one heard last.
+    const advance = () => {
+      if (++slot === order.length) shuffle(heard);
+    };
+    const shuffle = (last) => {
+      for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t; }
+      if (order.length > 1 && order[0] === last) { const t = order[0]; order[0] = order[1]; order[1] = t; }
+      slot = 0;
+    };
+    // The next track not failed this visit, moving `slot` past failed ones (`nextTrack`), or -1 when all have failed.
+    const nextTrack = () => {
+      for (let i = 0; i < 2 * order.length; i++) {
+        const k = order[slot];
+        if (!failed[k]) return k;
+        advance();
+      }
+      return -1;
+    };
+    const fail = (k) => {
+      if (failed[k]) return;
+      failed[k] = 1;
+      playlist.failed.push(TRACKS[k].key);
+    };
+    // A track's group has answered: its bytes are here, or the track has failed.
+    const arrived = (k) => {
+      if (!bytesOf(k)) fail(k);
+      else if (!playlist.loaded.includes(TRACKS[k].key)) playlist.loaded.push(TRACKS[k].key);
+      want();
+    };
+    // Asks for a track's group once (same-origin, or present already: the portable page answers null at once). A
+    // failed fetch (a network error) skips only that track for the visit.
+    const fetchTrack = (k) => {
+      if (fetching === k) return;
+      fetching = k;
+      const loading = BL.deferred.load(`lounge-track-${TRACKS[k].key}`);
+      if (loading === null) { fetching = -1; arrived(k); return; }
+      loading.then(() => { if (fetching === k) fetching = -1; if (!disposed) arrived(k); },
+        () => { if (fetching === k) fetching = -1; if (!disposed) { fail(k); want(); } });
+    };
+    // With nothing held or decoding: the next track's bytes fetched, or decoded once the context is open.
+    const want = () => {
+      if (disposed || playlist.off || state !== WAIT) return;
+      const k = nextTrack();
+      if (k < 0) return;
+      if (!bytesOf(k)) { fetchTrack(k); return; }
+      if (!ready) return;
+      state = DECODE;
+      playlist.decoding = TRACKS[k].key;
+      const mine = ++token;
+      // A decode that throws or rejects means this browser cannot play the format every track shares (no AAC): the
+      // playlist stops quietly for the visit, fetching nothing more, and the synth plays on. One that lands after
+      // `dispose`, or after another took its place, is dropped.
+      Promise.resolve(ctx).then(c => decode(c, bytesOf(k))).then((b) => {
+        if (disposed || mine !== token) return;
+        playlist.decoding = null;
+        held = b;
+        playlist.held = 1;
+        begin(k);
+      }, () => {
+        if (disposed || mine !== token) return;
+        playlist.decoding = null;
+        state = WAIT;
+        fail(k);
+        playlist.off = true;
+      });
+    };
+    // A gain's path for a track: `from` at `t0`, to `to` over XFADE, held to `fadeAt`, back to `from` at `end`.
+    const ramp = (p, now, from, to, t0, end) => {
+      p.cancelScheduledValues(now);
+      p.setValueAtTime(from, t0);
+      p.linearRampToValueAtTime(to, t0 + XFADE);
+      p.setValueAtTime(to, fadeAt);
+      p.linearRampToValueAtTime(from, end);
+    };
+    // The decoded track `k` plays from its top: up as the synth goes down, down over its tail as the synth comes back.
+    const begin = (k) => {
+      const now = ctx.currentTime, t0 = now + TRACK_LEAD, t = TRACKS[k];
+      endAt = t0 + held.duration;
+      fadeAt = Math.max(t0 + XFADE, endAt - t.tail - TAIL_PAD);
+      prefetchAt = endAt - PREFETCH;
+      prefetched = false;
+      source = ctx.createBufferSource();
+      source.buffer = held;
+      source.connect(trims[k]);
+      source.start(t0);
+      ramp(fade.gain, now, 0, 1, t0, endAt);
+      ramp(synth.gain, now, 1, 0, t0, endAt);
+      state = PLAY;
+      playing = heard = k;
+      playlist.playing = t.key;
+      playlist.played++;
+      playlist.fallback = false;
+      advance();
+    };
+    // The track has played out: its source and buffer let go, then the next is asked for.
+    const release = () => {
+      if (source) {
+        try { source.stop(); } catch { /* already ended */ }
+        source.disconnect();
+      }
+      source = held = null;
+      playlist.held = 0;
+      playing = -1;
+      playlist.playing = null;
+      playlist.fallback = true;
+      state = WAIT;
+      want();
+    };
+    // Once a frame (and on the hidden tick): the next group fetched near the end, the track let go at its end.
+    const step = () => {
+      if (state !== PLAY) return;
+      const now = ctx.currentTime;
+      if (!prefetched && !playlist.off && now >= prefetchAt) {
+        prefetched = true;
+        const k = nextTrack();
+        if (k >= 0 && !bytesOf(k)) fetchTrack(k);
+      }
+      if (now >= endAt) release();
     };
 
     // Only from a gesture the browser has already counted, so nothing warns in the console; a gesture also wakes a
@@ -388,35 +563,24 @@
       if (!ready || place(x, z) > CUE_FAR) { stats.dropped++; return; }
       const now = ctx.currentTime;
       const v = kind === "noise" ? free(noises, noiseNext = (noiseNext + 1) % NOISES, now)
-        : kind === "sine" ? free(roomSines, roomSineNext = (roomSineNext + 1) % ROOM_SINES, now)
-        : free(roomTriangles, roomTriangleNext = (roomTriangleNext + 1) % roomTriangles.length, now);
+        : free(roomSines, roomSineNext = (roomSineNext + 1) % ROOM_TONES, now);
       if (v === null) { stats.busy++; return; }
       if (kind === "noise") {
         const chip = name === "chip";
         v.filter.frequency.setValueAtTime(chip ? CHIP_HZ : HEEL_HZ, now);
         taps(v, chip ? 2 : 1, CHIP_GAP, chip ? CHIP_LEVEL : HEEL_LEVEL, chip ? CHIP_DUR : HEEL_DUR, now);
-      } else if (kind === "sine") {
+      } else {
         v.osc.frequency.setValueAtTime(GLASS_HZ, now);
         v.osc.frequency.exponentialRampToValueAtTime(GLASS_TO, now + GLASS_DUR);
         v.filter.frequency.setValueAtTime(GLASS_CUT, now);
         taps(v, 1, 0, GLASS_LEVEL, GLASS_DUR, now);
-      } else {
-        const walker = name === "walker";
-        v.osc.frequency.setValueAtTime(CANE_HZ, now);
-        v.filter.frequency.setValueAtTime(CANE_CUT, now);
-        taps(v, walker ? 2 : 1, WALKER_GAP, walker ? CANE_LEVEL * WALKER_LEVEL : CANE_LEVEL, CANE_DUR, now);
       }
     };
 
-    const setTheme = (id) => {
-      hasBar = id === "gatsby";
-      bedWait = 0;
-    };
-
-    // The bed follows the nearest table or, in Banana Club, the nearer edge of the bar.
+    // The bed follows the nearest table or the nearer edge of the bar.
     const bedLevel = () => {
       let d2 = Infinity;
-      if (hasBar) for (let i = 0; i < wings.length; i++) {
+      for (let i = 0; i < wings.length; i++) {
         const w = wings[i], dx = Math.max(0, Math.abs(EAR.x - w.x) - w.hx), dz = Math.max(0, Math.abs(EAR.z - w.z) - w.hz);
         d2 = Math.min(d2, dx * dx + dz * dz);
       }
@@ -432,6 +596,7 @@
       activate();
       if (!ready) return;
       sequence();
+      step();
       if ((bedWait -= dt) <= 0) {
         bedWait = BED_EVERY;
         bedLevel();
@@ -441,7 +606,7 @@
         const t = tables[Math.random() * tables.length | 0];
         cue("chip", t.x, t.z);
       }
-      if (hasBar && (glassWait -= dt) <= 0) {
+      if ((glassWait -= dt) <= 0) {
         glassWait = between(GLASS_MIN, GLASS_MAX);
         const w = wings[Math.random() * wings.length | 0];
         cue("glass", w.x + (Math.random() * 2 - 1) * w.hx, w.z);
@@ -488,17 +653,34 @@
       document.removeEventListener("visibilitychange", onVisibility);
       if (timer) clearTimeout(timer);
       timer = 0;
+      // The playlist stops: its source and buffer let go, a decode or fetch still in flight dropped when it lands.
+      token++;
+      if (source) {
+        try { source.stop(); } catch { /* already ended */ }
+        source.disconnect();
+      }
+      source = held = null;
+      trims.length = 0;
+      state = WAIT;
+      playing = fetching = -1;
+      playlist.held = 0;
+      playlist.decoding = playlist.playing = null;
+      playlist.fallback = true;
       if (ctx) ctx.close().catch(() => {});
-      ctx = buffer = music = room = null;
+      ctx = buffer = music = synth = fade = room = null;
       stats.open = ready = false;
-      triangles.length = sines.length = noises.length = brushes.length = roomSines.length = roomTriangles.length = 0;
+      triangles.length = sines.length = noises.length = brushes.length = roomSines.length = 0;
       for (const key of Object.keys(bed)) bed[key] = null;
     };
 
     // `pools`, the voice pools by name, live, for tests and debugging to inspect.
-    const pools = Object.freeze({ triangles, sines, noises, brushes, roomSines, roomTriangles });
-    return { update, cue, setTheme, setSeated, win, dispose, stats, pools };
+    const pools = Object.freeze({ triangles, sines, noises, brushes, roomSines });
+    // The playlist in a fresh order, its first track's group asked for now that the room is entered.
+    shuffle(-1);
+    want();
+    return { update, cue, setSeated, win, dispose, stats, pools, credits: CREDITS,
+      get nowPlaying() { return playing < 0 ? null : NOW[playing]; } };
   };
 
-  BL.pokerAudio = { create, SONGS, CHORDS, TONES, BASS_TONES, ROOM_TONES, NOISES, BRUSHES };
+  BL.pokerAudio = { create, SONGS, CHORDS, TONES, BASS_TONES, ROOM_TONES, NOISES, BRUSHES, TRACKS, CREDITS, TRACK_LEVEL, XFADE, TAIL_PAD, PREFETCH };
 })();

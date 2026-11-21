@@ -2,7 +2,7 @@
 
 This is working source for an experimental mental-poker service and client,
 not a cryptographic audit or production security certification. It extends the
-existing ten-table floor; five cave themes, suited gorilla dealers, nine seats
+existing ten-table floor; Banana Club's glass hall, suited gorilla dealers, nine seats
 per table and walkable spectator aisles remain. All chips are free, disposable
 play points. No rake, purchase, transfer, redemption, wallet, Spark integration
 or outside-settlement feature is included.

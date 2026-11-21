@@ -289,6 +289,15 @@
     names.set(index, geo);
     return geo;
   };
+  // A small plate with one word carved on it as the names are (the bar's "Music" plaque), cached by its text.
+  const MUSIC_PLATE = Object.freeze({ w: 0.42, h: 0.16, d: 0.035 });
+  const wordPlate = (text) => {
+    const key = "word:" + text;
+    if (names.has(key)) return names.get(key);
+    const geo = M.merge(K.plaque(MUSIC_PLATE), ...glyphs(text, NAME_CELL, NAME_PROUD, BRONZE, 0, MUSIC_PLATE.h / 2, MUSIC_PLATE.d + NAME_PROUD / 2));
+    names.set(key, geo);
+    return geo;
+  };
   const build = (lite) => {
     const root = S.createNode(), plaques = [];
     for (let i = 0; i < FIGURES.length; i++) {
@@ -365,5 +374,5 @@
   };
   const boardOf = () => board || (board = makeBoard());
 
-  BL.pokerStatues = Object.freeze({ FIGURES, SLOTS, PLINTH, build, board: boardOf, tip });
+  BL.pokerStatues = Object.freeze({ FIGURES, SLOTS, PLINTH, MUSIC_PLATE, build, board: boardOf, tip, wordPlate });
 })();
