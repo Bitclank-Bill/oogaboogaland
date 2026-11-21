@@ -11525,6 +11525,11 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   .dsb-active .dsb-context:not(.big-context):not(.ink-context-browse) { position: fixed; left: 50%; top: auto; bottom: max(145px,calc(env(safe-area-inset-bottom) + 132px)); transform: translateX(-50%); max-width: 180px; min-height: 44px; padding: 8px; white-space: normal; }
 }
 
+/* Short desktop windows still need a clear click path to the carried Ooga. */
+@media (pointer:fine) and (max-height:520px) {
+  .dsb-active .dsb-context:not(.big-context):not(.ink-context-browse) { bottom: 15vh; }
+}
+
 /* Stackchain's publication styling uses the existing shared viewport/focus shell. */
 .stackchain-menu { color: #eee2c9; background: #20272b; border: 1px solid #b08b52; border-radius: 8px; }
 .stackchain-menu header { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #282a29; border-bottom: 3px solid #a68149; }
