@@ -43180,7 +43180,7 @@ const playersColumnChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/native-icons.js"), "utf8"), context);
     Object.assign(window.BL, {
-      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, clouds: [] }, remotes,
+      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, linkApp: [], clouds: [] }, remotes,
         voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
       voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
@@ -45111,7 +45111,8 @@ const studioVoiceLifecycleProof = async () => {
   audience.voice.toggle();audience.voice.setPeers([],[],31);const audienceKeepsMute=audience.voice.stats.muted&&!audience.streams[0].track.enabled;
   audience.voice.toggle();audience.voice.setPeers([],[],0);const lastListenerLeaves=audience.voice.stats.alone&&!audience.streams[0].track.enabled;
   audience.voice.setPeers([],[],1);const listenerReturns=!audience.voice.stats.alone&&audience.streams[0].track.enabled&&audience.gum===1;
-  const invalidAudience=[-1,32,NaN,Infinity,"1"].every(value=>{audience.voice.setPeers([],[],value);return audience.voice.stats.alone&&!audience.streams[0].track.enabled;});
+  // A room's players and the linked partners in Ooga Chat together, up to its 64 links: 32 and over still count (Watchtower, #861).
+  const invalidAudience=[-1,1025,NaN,Infinity,"1"].every(value=>{audience.voice.setPeers([],[],value);return audience.voice.stats.alone&&!audience.streams[0].track.enabled;});
   audience.voice.stop();await audience.voice.enable();const audienceClearedOnStop=audience.voice.stats.alone&&!audience.streams[1].track.enabled;audience.voice.dispose();await drain();
   const late=fixture();late.deferPermission();const opening=late.voice.enable();late.voice.stop();const lateStream=late.makeStream();late.resolvePermission(lateStream);await opening;await drain();
   const permissionCancelled=lateStream.track.stops===1&&!late.voice.stats.publishing&&!late.voice.stats.enabled&&!late.calls.some(c=>c.op==="publish");late.voice.dispose();

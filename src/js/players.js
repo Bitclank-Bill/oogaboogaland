@@ -83,6 +83,20 @@
   // after its players: in the conversation without a body, so no mark, link, crosshair or distance. Anyone also on the
   // island, the visitor included, is listed once, as a player (cloud-panel.js decides who).
   const listenerRows = new Map();
+  // A gray row for someone in Ooga Chat, by their audience id; `account` is set while they are a linked partner.
+  const listenerRow = (key) => {
+    let row = listenerRows.get(key);
+    if (row) return row;
+    row = makeRow();
+    row.listener = true; row.account = 0; row.id = -Number(key.slice(key.indexOf(":") + 1));
+    row.li.dataset.id = String(row.id); row.li.dataset.listener = key; row.li.classList.add("players-listener");
+    const dot = row.li.querySelector(".roster-presence");
+    dot.dataset.online = "listener"; dot.title = "Listening in Ooga Chat"; dot.setAttribute("aria-label", "Listening in Ooga Chat");
+    row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
+    row.button.hidden = true;
+    listenerRows.set(key, row);
+    return row;
+  };
   const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : li.dataset.listener ? listenerRows.get(li.dataset.listener) : rows.get(Number(li.dataset.id));
   const makeRow = () => {
     const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
@@ -143,7 +157,8 @@
       group = { key, section, head, ul, seen: 0 };
       groups.set(key, group);
     }
-    const heading = Z.heading(key);
+    // Linked partners away from the island are listed under Ooga Chat, which is no zone of the game's.
+    const heading = key === "ooga-chat" ? "Ooga Chat" : Z.heading(key);
     if (group.head.textContent !== heading) group.head.textContent = heading;
     return group;
   };
@@ -183,7 +198,15 @@
       const key = row.cloud.startsWith("gh:") ? Number(row.cloud.slice(3)) : 0, out = !key || !V.inEarshot(key);
       if (row.faded !== out) { row.faded = out; row.voice.dataset.far = String(out); }
       paintMark(row, c.mic === "muted" ? "muted" : !out && V.speaking(key) ? "speaking" : "on", "", false, false, c.hand);
+      paintLink(row, key ? appLink(key) : "", row.name);
     }
+    for (const row of listenerRows.values()) paintLink(row, row.account ? appLink(row.account) : "", row.name);
+  };
+  // Someone in Ooga Chat shows the link only while linked or asked: only a player on the island can be asked.
+  const appLink = (id) => {
+    if (!net.state.voiceLinks) return "";
+    const state = net.voiceLink(id);
+    return state === "none" ? "" : state;
   };
   // A row's link, offered where the room keeps them (`state` empty hides it), painted again only when it or the name moves.
   const paintLink = (row, state, name) => {
@@ -359,19 +382,18 @@
     for (const [id, row] of cloudRows) if (row.seen !== pass) { row.li.remove(); cloudRows.delete(id); }
     const listening = BL.cloudPanel ? BL.cloudPanel.listeners() : null;
     if (listening) for (const l of listening) {
-      let row = listenerRows.get(l.id);
-      if (!row) {
-        row = makeRow();
-        row.listener = true; row.id = -Number(l.id.slice(l.id.indexOf(":") + 1));
-        row.li.dataset.id = String(row.id); row.li.dataset.listener = l.id; row.li.classList.add("players-listener");
-        const dot = row.li.querySelector(".roster-presence");
-        dot.dataset.online = "listener"; dot.title = "Listening in Ooga Chat"; dot.setAttribute("aria-label", "Listening in Ooga Chat");
-        row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
-        row.button.hidden = true;
-        listenerRows.set(l.id, row);
-      }
-      row.name = l.display; row.zone = "outside"; row.group = Z.groupOf("outside"); row.seen = pass;
+      const row = listenerRow(l.id);
+      row.name = l.display; row.zone = "outside"; row.group = Z.groupOf("outside"); row.seen = pass; row.account = 0;
       order.push(row);
+    }
+    // Linked partners in Ooga Chat (`net.state.linkApp`), who can hear this visitor wherever they stand: each listed with
+    // the link, under Main Island while listening there, else under Ooga Chat, and on its cloud while speaking.
+    for (const q of s.linkApp) {
+      const key = `gh:${q.id}`;
+      if (q.id === s.selfId || net.remotes.has(q.id) || cloudRows.has(key)) continue;
+      const row = listenerRow(key);
+      if (row.seen !== pass) { row.name = q.display; row.zone = "ooga-chat"; row.group = "ooga-chat"; row.seen = pass; order.push(row); }
+      row.account = q.id;
     }
     for (const [id, row] of listenerRows) if (row.seen !== pass) { row.li.remove(); listenerRows.delete(id); }
     Z.arrange(order, selfRow.group);
@@ -414,7 +436,8 @@
     const link = e.target.closest(".players-link");
     if (link) {
       link.blur();
-      net.toggleVoiceLink(Number(link.closest("li").dataset.id));
+      const li = link.closest("li"), key = li.dataset.cloud || li.dataset.listener || "";
+      net.toggleVoiceLink(key.startsWith("gh:") ? Number(key.slice(3)) : Number(li.dataset.id));
       return;
     }
     const voice = e.target.closest(".roster-voice");

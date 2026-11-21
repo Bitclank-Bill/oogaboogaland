@@ -1433,13 +1433,13 @@ export class Room extends DurableObject {
   saveAttachment(p) { p.ws.serializeAttachment(this.attachment(p)); }
 
   // The asker's own socket hears why (`refused`, `all`); the account's other sockets, its island player and its Ooga
-  // Chat members (room-commons.js), hear the same asks and links without it.
+  // Chat members (room-commons.js), hear the same asks and links without it. An island socket also hears `app`, its
+  // linked partners in Ooga Chat, who can hear it wherever it is, so Online Oogas shows each of them with the link.
   sendLinks(p, refused, all, n) {
-    const view = linkView(this.links, p.id);
-    this.send(p.ws, { t: "links", ...view, ...(refused ? { refused } : {}), ...(all ? { all, n } : {}) });
-    const q = this.players.get(p.id), plain = { t: "links", ...view };
-    if (q && q !== p) this.send(q.ws, plain);
-    commonsRoom.links(this, p.id, plain, p);
+    const view = linkView(this.links, p.id), app = audienceRoom.partners(this, p.id), q = this.players.get(p.id);
+    this.send(p.ws, { t: "links", ...view, ...(p.community ? {} : { app }), ...(refused ? { refused } : {}), ...(all ? { all, n } : {}) });
+    if (q && q !== p) this.send(q.ws, { t: "links", ...view, app });
+    commonsRoom.links(this, p.id, { t: "links", ...view }, p);
   }
   // Account `id`'s asks and links, to every socket it has here: on the island, in Ooga Chat, or both.
   tellLinks(id) {

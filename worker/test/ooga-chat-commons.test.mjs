@@ -155,7 +155,7 @@ test("a voice link shows and holds in both apps: a member sees its account's lin
   await h.send(app, { t: "link", to: 1, on: false });
   assert.deepEqual(links(app).wants, []);
   assert.deepEqual(links(mine).wants, [], "the island page of the same account follows");
-  assert.deepEqual(links(isle), { t: "links", wants: [2], linked: [] }, "amy's ask still stands, theirs to cancel");
+  assert.deepEqual(links(isle), { t: "links", wants: [2], linked: [], app: [] }, "amy's ask still stands, theirs to cancel");
   // A member can only ask an island player, as the island can.
   await h.send(app, { t: "link", to: 99, on: true });
   assert.deepEqual(links(app).wants, []);
@@ -308,7 +308,9 @@ test("a player row a Commons name made goes with the Ooga Chat account, while it
   const { getPlayer, upsertPlayerFromGitHub } = await import("../src/db.js");
   const db = memoryD1(new URL("../migrations/", import.meta.url));
   const contributorFor = Object.assign(async (login) => ["amy", "bea"].includes(login) ? { handle: login } : null, { fresh: () => true });
-  const env = { OOGA_CHAT_FEATURES: "bridge,commons", DB: db };
+  const forgot = [];
+  const env = { OOGA_CHAT_FEATURES: "bridge,commons", DB: db,
+    ROOM: { getByName: () => ({ communityRevoke: async () => ({ revoked: 0 }), forgetVoiceLinks: async (id) => { forgot.push(id); } }) } };
   const principal = (id, login) => ({ id: `pr_${login}`, provider: "github", providerUserId: String(id), login });
   const name = (p, display) => displayOps({ contributorFor }).display.run(env, { payload: { display }, principal: p });
   const revoke = (p, reason) => revokeOps.revoke.run(env, { payload: { reason }, principal: p });
@@ -318,12 +320,14 @@ test("a player row a Commons name made goes with the Ooga Chat account, while it
   assert.ok(await getPlayer(db, 1), "signing out keeps it");
   await revoke(principal(1, "amy"), "deleted");
   assert.equal(await getPlayer(db, 1), null, "deleting the Ooga Chat account removes it");
+  assert.deepEqual(forgot, [1], "and the voice links it asked for from Ooga Chat");
   // Signed in on the island first, or after: the island's own account, which Ooga Chat deletion leaves alone.
   await name(principal(2, "bea"), "Bea");
   await upsertPlayerFromGitHub(db, { id: 2, login: "bea", avatar_url: null });
   assert.equal((await getPlayer(db, 2)).display, "Bea");
   await revoke(principal(2, "bea"), "deleted");
   assert.equal((await getPlayer(db, 2)).display, "Bea", "an island account stays");
+  assert.deepEqual(forgot, [1], "with its own voice links, which only deleting the island account takes");
 });
 
 test("the edge's Commons name: only an eligible GitHub contributor's save from the app's own page reaches the island", async () => {

@@ -28,6 +28,7 @@ export const PART_ROWS = 100;
 const NAME = "audience";
 
 const selfOf = (p) => `gh:${p.id}`;
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const enabled = (room) => !!room.env && !!room.env.AUDIENCE && bridgeFeatures(room.env).bridge;
 // The outdoor handshake and Ooga Chat speakers heard on the island: the island's `outdoor` switch, which is its kill switch.
 const outdoorOn = (room) => enabled(room) && bridgeFeatures(room.env).outdoor;
@@ -128,10 +129,12 @@ export const audienceRoom = {
           // The microphone's publication, by reference, for Ooga Chat's listeners to pull (#666); a new one is a new gen.
           pub: p.voice.pub && p.voice.track ? { session: p.voice.pub, track: p.voice.track, gen: p.voice.gen || 0 } : null });
       // A voice link holds wherever the player stands: its partners hear it from Ooga Chat too, public or not, and
-      // nobody else does. The publication goes by reference, with the partners who may pull it.
-      const partners = inVoice && outdoorOn(room) && p.voice.pub && p.voice.track ? partnersOf(room, p.id) : [];
+      // nobody else does. The publication goes by reference, with the partners who may pull it; a player in voice
+      // without one is named too, so the Audience says which partners are there (`listeners`' `ears`) and the player
+      // sees each as a row of Online Oogas before any can hear it.
+      const partners = inVoice && outdoorOn(room) ? partnersOf(room, p.id) : [];
       if (partners.length) linked.push({ id: selfOf(p), to: partners.sort((a, b) => a - b).map((id) => `gh:${id}`),
-        pub: { session: p.voice.pub, track: p.voice.track, gen: p.voice.gen || 0 } });
+        pub: p.voice.pub && p.voice.track ? { session: p.voice.pub, track: p.voice.track, gen: p.voice.gen || 0 } : null });
     }
     speakers.sort((a, b) => (a.id < b.id ? -1 : 1));
     linked.sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -371,21 +374,37 @@ export const audienceRoom = {
   // `quiet`: from a `world` answer, which repeats the count unchanged far more often than it changes: tell only a change.
   listeners(room, counts, quiet = false) {
     const next = { main: Number.isSafeInteger(counts && counts.main) ? counts.main : 0, dsb: Number.isSafeInteger(counts && counts.dsb) ? counts.dsb : 0 };
-    // Linked partners in Ooga Chat hearing an island player wherever it is: they keep its microphone from being alone.
+    // Each island player's linked partners in Ooga Chat (`ears`, by the player's id): they hear it wherever it is, so
+    // they keep its microphone from being alone, and its Online Oogas lists each of them with the link (`links`' `app`).
     const ears = {};
-    if (counts && counts.ears && typeof counts.ears === "object") for (const [id, n] of Object.entries(counts.ears).slice(0, 64))
-      if (/^gh:[1-9][0-9]{0,19}$/.test(id) && Number.isSafeInteger(n) && n > 0 && n < 64) ears[id] = n;
+    if (counts && counts.ears && typeof counts.ears === "object") for (const [id, list] of Object.entries(counts.ears).slice(0, 64)) {
+      if (!/^gh:[1-9][0-9]{0,15}$/.test(id) || !Array.isArray(list)) continue;
+      const partners = [];
+      for (const q of list.slice(0, 64)) {
+        if (!q || typeof q.id !== "string" || !/^gh:[1-9][0-9]{0,15}$/.test(q.id) || typeof q.login !== "string" || !LOGIN.test(q.login)) continue;
+        const display = typeof q.display === "string" && q.display.length <= 50 && !/[\u0000-\u001f\u007f]/.test(q.display) && q.display.trim() ? q.display : q.login;
+        partners.push({ id: Number(q.id.slice(3)), login: q.login, display });
+      }
+      if (partners.length) ears[Number(id.slice(3))] = partners;
+    }
     const earsWere = JSON.stringify(room.audienceEars || {}), earsNow = JSON.stringify(ears);
     room.audienceEars = ears;
-    if (earsWere !== earsNow) room.updateVoice();
+    if (earsWere !== earsNow) {
+      for (const p of room.players.values()) {
+        const sig = JSON.stringify(ears[p.id] || []);
+        if (p.appLinks !== sig) { p.appLinks = sig; room.sendLinks(p); }
+      }
+      room.updateVoice();
+    }
     const was = room.audienceCounts;
     room.audienceCounts = next;
     if (quiet && was && was.main === next.main && was.dsb === next.dsb) return;
     for (const p of room.players.values()) if (isOpen(p)) audienceRoom.tellAudience(room, p);
   },
 
-  /** How many linked partners hear player `id` from Ooga Chat now (`listeners`' `ears`). */
-  ears: (room, id) => (room.audienceEars && room.audienceEars[`gh:${id}`]) || 0,
+  /** Player `id`'s linked partners in Ooga Chat now, `{ id, login, display }` each (`listeners`' `ears`), and how many. */
+  partners: (room, id) => (room.audienceEars && room.audienceEars[id]) || [],
+  ears: (room, id) => audienceRoom.partners(room, id).length,
 
   // A woken or redeployed Room: a grant the switch no longer allows is taken back, and every grant is checked again.
   restore(room) {

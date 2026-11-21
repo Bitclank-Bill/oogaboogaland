@@ -126,7 +126,7 @@ export const createMediaBroker = (aud) => {
     const out = new Map();
     if (!conn) return out;
     for (const l of aud.island.linked || []) {
-      if (l.id !== conn.id && l.to.includes(conn.id)) out.set(l.id, { session: l.pub.session, track: l.pub.track, gen: l.pub.gen || 0 });
+      if (l.pub && l.id !== conn.id && l.to.includes(conn.id)) out.set(l.id, { session: l.pub.session, track: l.pub.track, gen: l.pub.gen || 0 });
     }
     if (!conn.zone) return out;
     for (const s of aud.island.speakers) {
@@ -179,7 +179,7 @@ export const createMediaBroker = (aud) => {
     const now = new Map();
     for (const s of aud.island.speakers) if (s.pub && s.pub.session && s.pub.track) now.set(s.zone, `${now.get(s.zone) || ""}|${s.id}:${s.pub.gen || 0}`);
     // A linked publication is announced to its partners' connections alone, keyed by identity.
-    for (const l of aud.island.linked || []) for (const to of l.to) now.set(`@${to}`, `${now.get(`@${to}`) || ""}|${l.id}:${l.pub.gen || 0}`);
+    for (const l of aud.island.linked || []) if (l.pub) for (const to of l.to) now.set(`@${to}`, `${now.get(`@${to}`) || ""}|${l.id}:${l.pub.gen || 0}`);
     for (const c of aud.model.conns.values()) {
       if (!c.zone || !c.lease || c.lease.state !== "active") continue;
       const m = states.get(c.connId);

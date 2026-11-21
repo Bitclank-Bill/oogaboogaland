@@ -255,13 +255,16 @@ export class Audience extends DurableObject {
 
   // Speakers receive too, including while their microphone is opening. The island must not gate its microphone
   // as alone merely because everybody in Ooga Chat pressed Join Voice.
-  // `ears`: for each island player the Room listed as linked, how many of its partners are here to hear it.
+  // `ears`: for each island player the Room listed as linked, its partners here now, by name, so the island shows them.
   hearingCounts() {
     const main = this.model.counts("main"), dsb = this.model.counts("dsb"), ears = {};
     for (const l of this.island.linked) {
-      let n = 0;
-      for (const id of l.to) if (this.model.people.get(id)?.conns.size) n++;
-      if (n) ears[l.id] = n;
+      const here = [];
+      for (const id of l.to) {
+        const p = this.model.people.get(id);
+        if (p && p.conns.size) here.push({ id, login: p.info.login, display: p.info.display || p.info.login });
+      }
+      if (here.length) ears[l.id] = here;
     }
     const counts = { main: main.listeners + main.chatSpeakers, dsb: dsb.listeners + dsb.chatSpeakers };
     return Object.keys(ears).length ? { ...counts, ears } : counts;
@@ -680,11 +683,14 @@ export class Audience extends DurableObject {
       info: { provider: "github", login: String(s.login || "").slice(0, 39), display: String(s.display || s.login || "").slice(0, 50), character: s.character || null,
         contributions: this.contributionOf(s.login) },
     }));
-    // Linked publications, by reference too: never listed in a roster, pulled only by a partner's own connections.
+    // Linked island players and their partners; a publication by reference too, never listed in a roster and pulled
+    // only by a partner's own connections. One in voice without a publication is named so its partners here are told
+    // back (`hearingCounts`' `ears`).
     const links = (bridgeFeatures(this.env).outdoor && Array.isArray(linked) ? linked : []).slice(0, 64)
-      .filter((l) => l && ID.test(l.id) && Array.isArray(l.to) && l.pub && typeof l.pub.session === "string" && typeof l.pub.track === "string")
+      .filter((l) => l && ID.test(l.id) && Array.isArray(l.to))
       .map((l) => ({ id: l.id, to: l.to.slice(0, 64).filter((to) => typeof to === "string" && /^gh:[1-9][0-9]{0,19}$/.test(to) && to !== l.id),
-        pub: { session: l.pub.session.slice(0, 64), track: l.pub.track.slice(0, 64), gen: Number.isSafeInteger(l.pub.gen) ? l.pub.gen : 0 } }))
+        pub: l.pub && typeof l.pub.session === "string" && typeof l.pub.track === "string"
+          ? { session: l.pub.session.slice(0, 64), track: l.pub.track.slice(0, 64), gen: Number.isSafeInteger(l.pub.gen) ? l.pub.gen : 0 } : null }))
       .filter((l) => l.to.length);
     this.island = { seq, speakers: clean, active: active.slice(0, 64).filter((id) => ID.test(id)), linked: links };
     await this.ctx.storage.put("world", this.island);

@@ -484,8 +484,13 @@ other scene) is never discoverable or subscribable through Ooga Chat, and a vali
 outdoors cannot carry new private microphone samples to a subscription that was public. Launch waits on this.
 A voice link is the one carve-out, and only for the two accounts in it: the island tells the Audience each linked
 player's publication with its partners (`world`'s `linked`, by GitHub id), and only connections of a partner's own
-GitHub identity may pull it (`authorizedFor`), wherever the player stands; it is in no roster, no zone and no count,
-and goes the moment the link breaks, the player leaves voice or the `outdoor` switch is off. The other way, an island
+GitHub identity may pull it (`authorizedFor`), wherever the player stands; it is in no roster, zone or count of Ooga
+Chat's, and goes the moment the link breaks, the player leaves voice or the `outdoor` switch is off. The player always
+sees who can hear it: the Room names its partners for every player in voice, the Audience answers with those connected
+to it by name (`listeners`' `ears`), and the island player's `links` frame carries them as `app`, each a row of its
+Online Oogas with the link (under Ooga Chat, or Main Island while listening there, or on its cloud while speaking),
+whose click takes back that one ask. Deleting an Ooga Chat account the island never had takes the links it asked
+for from there (`forgetVoiceLinks`, as `DELETE /api/me` does for an island account). The other way, an island
 player hears a linked partner speaking from Ooga Chat wherever it stands (`addSources`), and a partner listening from
 Ooga Chat keeps the island microphone from being alone (`listeners`' `ears`). A link is the same ask in both apps: a
 contributor's Online Oogas in Ooga Chat shows it on each island player's row and asks or takes back through the Commons
