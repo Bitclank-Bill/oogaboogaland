@@ -38721,7 +38721,7 @@ const pokerMarbleHallChecks = (BL) => {
 
       // Rule: the ornate table stands at Ooga scale in height and plan: the felt's top at FELT_Y (0.78, 0.6 m under the
       // 1.38 built for a larger body), the felt TABLE_K (0.45) of its old 4.38 by 2.8 in plan, every piece inside the walk
-      // block (the old 4.85 by 3.25, now the rail's middle plus 0.19), the chairs where the seats hash pins them, and each
+      // block (the old 4.85 by 3.25, now the rail's middle plus 0.19), the chairs at their pinned positions and headings, and each
       // card and chip place on the old 6 by 4.2 ring times TABLE_K at its own chair's angle (each chair and its place
       // in the same ratio to their rings), so the felt's layout keeps its proportions.
       const club = P.build();
@@ -38734,16 +38734,27 @@ const pokerMarbleHallChecks = (BL) => {
           const v = n.geometry.verts;
           for (let i = 0; i < v.length; i += 3) { const x = v[i] * n.scale.x / P.WALK_A, z = v[i + 2] * n.scale.z / P.WALK_B; if (x * x + z * z > 1.0001) inside = false; }
         }
-        const seats = hashValue(P.SEATS.map(s => [s.x, s.z, s.yaw]).flat());
+        // Pin the intended layout to a micrometre/microradian, not to the engine's last bits of trig math.
+        const seats = P.SEATS.map(s => [s.x, s.z, s.yaw]);
+        const expectedSeats = [
+          [1.404721928, -1.677341997, -0.697174039], [2.499243349, -0.723417169, -1.289042185],
+          [2.514557962, 0.694391104, -1.840229862], [1.434589297, 1.663738343, -2.430019027],
+          [0, 1.9675, Math.PI],
+          [-1.434589297, 1.663738343, 2.430019027], [-2.514557962, 0.694391104, 1.840229862],
+          [-2.499243349, -0.723417169, 1.289042185], [-1.404721928, -1.677341997, 0.697174039],
+        ];
+        const seatsPinned = seats.length === expectedSeats.length && seats.every(([x, z, yaw], i) => {
+          const [wantX, wantZ, wantYaw] = expectedSeats[i], turn = yaw - wantYaw;
+          return Math.abs(x - wantX) < 1e-6 && Math.abs(z - wantZ) < 1e-6 && Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) < 1e-6;
+        });
         const chairsAt = club.tables.every(tb => tb.chairs.every((c, j) => c.position.x === P.SEATS[j].x && c.position.z === P.SEATS[j].z && c.position.y === 0 && c.rotation.y === P.SEATS[j].yaw && c.geometry === g.chair));
-        const places = hashValue(P.PLACES.map(s => [s.x, s.z]).flat());
         // Each place on the 6 by 4.2 ring times TABLE_K (unit radius at its angle), and its chair at the same angle.
         const onRing = P.PLACES.every(p => Math.abs((p.x / (6 * P.TABLE_K)) ** 2 + (p.z / (4.2 * P.TABLE_K)) ** 2 - 1) < 1e-9);
         const sameAngle = P.PLACES.every((p, j) => Math.abs(P.SEATS[j].x / p.x - P.SEATS[0].x / P.PLACES[0].x) < 1e-9 && Math.abs(P.SEATS[j].z / p.z - P.SEATS[0].z / P.PLACES[0].z) < 1e-9);
         table = Math.abs(ys(g.felt)[1] - P.FELT_Y) < 1e-9 && Math.abs(P.FELT_Y - 0.78) < 1e-9 && P.TABLE_K === 0.45 && Math.abs(t.felt.scale.x - 4.38 * 0.45) < 1e-12 && Math.abs(t.felt.scale.z - 2.8 * 0.45) < 1e-12 &&
           Math.abs(P.WALK_A - (P.RAIL_A + 0.19)) < 1e-12 && Math.abs(P.WALK_B - (P.RAIL_B + 0.19)) < 1e-12 && inside && chairsAt && onRing && sameAngle &&
-          seats === "268e7384" && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
-        tableDetail = JSON.stringify({ felt: ys(g.felt), seats, places, inside, chairsAt, onRing, sameAngle, walk: [P.WALK_A, P.WALK_B] });
+          seatsPinned && P.TABLES.length === 10 && club.tables[P.HIGH_ROLLER].pinstripe.geometry !== t.pinstripe.geometry;
+        tableDetail = JSON.stringify({ felt: ys(g.felt), seats, seatsPinned, inside, chairsAt, onRing, sameAngle, walk: [P.WALK_A, P.WALK_B] });
       } finally { for (const tb of club.tables) tb.agent.dispose(); }
       record("poker marble hall: the ornate table stands at Ooga scale, its felt at FELT_Y and TABLE_K of its old plan, its chairs on their ring and the felt's layout in proportion", table, tableDetail);
 
@@ -42797,8 +42808,9 @@ const pokerAudioChecks = (BL) => {
     return p;
   };
   const node = (extra) => { nodes++; return Object.assign({ connect(to) { this.to = to; if (to && to.destination) toDestination++; }, disconnect() {}, start() {}, stop() {} }, extra); };
+  let sampleRate = 800; // Keep unrelated fake audio buffers small.
   class Ctx {
-    constructor() { ctxs.push(this); this.currentTime = 0; this.state = "running"; this.sampleRate = 800; this.destination = { destination: true }; this.gains = []; }
+    constructor() { ctxs.push(this); this.currentTime = 0; this.state = "running"; this.sampleRate = sampleRate; this.destination = { destination: true }; this.gains = []; }
     createGain() { const g = node({}); g.gain = param(null, "gain", g); this.gains.push(g); return g; }
     createOscillator() { const o = node({ detune: param() }); let type = "sine"; Object.defineProperty(o, "type", { get: () => type, set: v => { type = v; typeSets++; } }); o.frequency = param(o, "freq", o); return o; }
     createBiquadFilter() { const f = node({ Q: param(), gain: param(), type: "lowpass" }); f.frequency = param(f); return f; }
@@ -43024,7 +43036,11 @@ const pokerAudioChecks = (BL) => {
   // The ducks, read from the music bus's own gain: the target in force at a moment, replayed from every call on it,
   // cancels included. Sitting dips it, a win dips it further for a moment and comes back to the seated level, a mute
   // and unmute while seated comes back seated too, and standing returns it to the free level.
-  const duckRun = fresh(), bus = duckRun.I.pools.triangles[0].pan.to.to, busCalls = [];
+  // This mock tests the filter in audible Hz, where the indoor cutoff must be above the outdoor target.
+  sampleRate = 48000;
+  const duckRun = fresh();
+  sampleRate = 800;
+  const bus = duckRun.I.pools.triangles[0].pan.to.to, busCalls = [];
   duckRun.I.update(0, away);
   watch = busCalls;
   const levelAt = t => {
@@ -43043,14 +43059,17 @@ const pokerAudioChecks = (BL) => {
   const lastEase = () => { const e = busCalls.filter(c => c.p === bus.gain && c.m === "setTargetAtTime").pop(); return e && { t: e.t, v: e.v, over: +(e.c * 3).toFixed(6) }; };
   const distance = bus.to, filter = distance.to, stereo = filter.to;
   duckRun.I.update(1, {x:32,z:0,fx:0,fz:1});
-  const railLevel = distance.gain.last, railPan = stereo.pan.last, railTone = filter.frequency.last;
+  const nearLevel = distance.gain.last, nearPan = stereo.pan.last, nearTone = filter.frequency.last;
   duckRun.I.update(1, {x:32,z:0,fx:0,fz:-1});
   const turnedPan = stereo.pan.last;
   duckRun.I.update(1, {x:48,z:12,fx:0,fz:1});
   const farLevel = distance.gain.last, farTone = filter.frequency.last;
   duckRun.I.update(1, {x:21,z:0,fx:1,fz:0});
+  const insideLevel = distance.gain.last, insidePan = stereo.pan.last, insideTone = filter.frequency.last;
   record("poker audio: the doorway attenuates and localizes both music sources on the terrace, reverses across the listener and restores the indoor mix",
-    stereo.to === channelNodes.music && railLevel === .25 && railPan > .8 && turnedPan < -.8 && farLevel > 0 && farLevel < railLevel && farTone > 0 && farTone < railTone && distance.gain.last === 1 && stereo.pan.last === 0);
+    stereo.to === channelNodes.music && nearLevel === .25 && nearPan > .8 && turnedPan < -.8 && Math.abs(nearTone - 1600) < 1e-6 &&
+    farLevel > 0 && farLevel < nearLevel && farTone > 0 && farTone < nearTone && insideLevel === 1 && insidePan === 0 && insideTone === 22000,
+    JSON.stringify({ nearLevel, nearPan, nearTone, turnedPan, farLevel, farTone, insideLevel, insidePan, insideTone }));
   const free = levelAt(duckNow());
   duckRun.I.setSeated(true);
   const seated = levelAt(duckNow()), sitEase = lastEase();
