@@ -12,7 +12,7 @@
       hairless: true,
       cleanShaven: true,
       noBrow: true,
-      noPupils: false,
+      noPupils: true,
       face: "none",
       height: 1.10,
       skin: "#e52b20",
