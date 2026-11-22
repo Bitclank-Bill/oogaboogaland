@@ -337,6 +337,7 @@
     if (cave.clubSlingProfile) cave.clubSlingProfile = clubSlingProfile(cave.parts.club.geometry);
     if (cave.meleePoints) cave.meleePoints = meleeExtremes(cave.parts.club.geometry);
     if (cave.clubTorsoBounds) cave.clubTorsoBounds = BL.scene.boundsOf(cave.parts.torso.geometry);
+    if (cave.bodyRadius !== undefined) { BL.scene.updateWorld(cave.root); cave.bodyRadius = bodyRadiusOf(cave); }
     if (cave.slingRoll !== undefined) cave.slingRoll = undefined;
     if (cave.pet?.ride) { cave.pet.ride.seat = hatSeatOf(cave); cave.pet.ride.stomach = stomachSeatOf(cave); }
   };

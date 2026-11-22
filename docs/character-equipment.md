@@ -77,8 +77,8 @@ while trying other hats.
 
 ## The wardrobe
 
-Beside the hat, an Ooga wears something in each of these slots, in the studio's
-order: hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
+Beside the hat, an Ooga wears a body and something in each of these slots, in the
+studio's order: body, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
 shoes, back (wings, capes and what else is built out past the trunk) and its
 primary weapon. `src/js/equipment-wardrobe.js` is the contract, shared unchanged
 by the page, the Worker and the authoring script: the slots (`SLOTS`), what a
@@ -117,6 +117,15 @@ need the stock head (no `skull`, `hat`, `crown`, `eyes`, `mark`, `refine` or
 `model` hook), a beard and a mouth the regular build's face, the body slots a
 body the character does not model, the mask a head it did not shape, and the
 weapon a hand without a nunchaku. The studio says so on the row.
+
+The body is the build an Ooga is drawn in: **Male** or **Female** (the regular and
+slim builds), each also **lean** (`hero-body.js` `SHAPES`: a narrower trunk and
+thinner limbs). It never changes height, hands, feet or the head, so nothing that
+stands, seats or aims an Ooga by its height has anything to follow; the swap also
+moves each part the new build stands differently (a female build's arms and legs)
+where the crew has not posed it away, and the crew measures the body's girth
+again. A female build's face takes no beard or mouth piece. Characters that model
+their own body keep it.
 
 Taking a piece off leaves the body's own shape bare: its blocks turn skin, a
 belt's turn the cloth over (or under) it, and only what was built out past the

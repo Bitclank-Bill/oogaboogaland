@@ -373,6 +373,45 @@
       chest: [5.45, 6.65, 2.56, 2.62], belt: [1.4, 2.7, 3.08, 2.14]
     }
   };
+  // Body shapes, either build drawn fuller or leaner (`traits.bodyShape`, which the wardrobe's Body slot sets): the
+  // trunk widens by `w` and deepens by `d` all over, and on top of that by its belly's factors round the middle and its
+  // chest's under the shoulders, eased between so no ledge shows; the neck keeps its own size. The arms and legs
+  // thicken by `arm` and `leg` and stand `armOut` and `legOut` units further from the middle. Height, hands, feet and
+  // the head never change, so nothing that stands, seats or aims an Ooga by its height has anything to follow.
+  const SHAPES = {
+    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.8, armOut: -0.75, legOut: -0.2 }
+  };
+  const shapedBuilds = new Map();
+  // A factor along the trunk's height: half the belly's at the hips, the belly's round the middle, the chest's under the
+  // shoulders, eased linearly between, and none over the shoulders (the neck).
+  const along = (y, belly, chest, top) => {
+    const pts = [[-0.4, 1 + (belly - 1) * 0.45], [3, belly], [5.2, (belly + chest) / 2], [Math.min(6.6, top - 0.6), chest], [top, chest], [top + 0.01, 1]];
+    if (y <= pts[0][0]) return pts[0][1];
+    for (let i = 1; i < pts.length; i++) if (y <= pts[i][0]) { const [y0, a] = pts[i - 1], [y1, b] = pts[i]; return a + (b - a) * (y - y0) / (y1 - y0); }
+    return 1;
+  };
+  const buildOf = (slim, shape) => {
+    const base = slim ? BUILD.slim : BUILD.regular, s = shape && SHAPES[shape];
+    if (!s) return base;
+    const key = (slim ? "slim:" : "regular:") + shape;
+    let B = shapedBuilds.get(key);
+    if (B) return B;
+    // A ring is [height, half width, half depth, corner cut, ...] with its middle's depth at [5]: each scales by the
+    // shape's factors at its height.
+    const top = base.shoulder, wAt = (y) => y > top ? 1 : s.w * along(y, s.bellyW, s.chestW, top), dAt = (y) => y > top ? 1 : s.d * along(y, s.bellyD, s.chestD, top);
+    const ring = (r) => { const wx = wAt(r[0]), dz = dAt(r[0]), out = r.slice(); out[1] *= wx; out[2] *= dz; out[3] *= Math.min(wx, dz); if (out[5]) out[5] *= dz; return out; };
+    const limb = (r, k) => { const out = r.slice(); out[1] *= k; out[2] *= k; out[3] *= k; return out; };
+    const waist = wAt(base.belt[0]), front = dAt(base.belt[0]), chestD = dAt((base.chest[0] + base.chest[1]) / 2);
+    B = { ...base, depthAt: dAt, torso: base.torso.map(ring), armX: base.armX + s.armOut, legX: (base.legX || 2.5) + s.legOut, thigh: base.thigh * s.leg,
+      arm: base.arm.map((r) => limb(r, s.arm)), forearm: base.forearm.map((r) => limb(r, s.arm)), leg: base.leg.map((r) => limb(r, s.leg)),
+      knee: base.knee && [base.knee[0], base.knee[1], base.knee[2] * s.leg, base.knee[3] * s.leg], ankle: [base.ankle[0], base.ankle[1] * s.leg, base.ankle[2] * s.leg],
+      wrist: [base.wrist[0], base.wrist[1] * s.arm, base.wrist[2] * s.arm],
+      skirt: [base.skirt[0] * waist, base.skirt[1] * front], belt: [base.belt[0], base.belt[1], base.belt[2] * waist, base.belt[3] * front],
+      chest: [base.chest[0], base.chest[1], base.chest[2] * chestD, base.chest[3] * chestD],
+      nipple: base.nipple && [base.nipple[0] * wAt(base.nipple[1]), base.nipple[1]] };
+    shapedBuilds.set(key, B);
+    return B;
+  };
   // Where the rig holds what a hand carries: in units under the shoulder, and ahead of it. A fist closes about
   // that point, so everything the game puts in a hand lands in it.
   const HAND_Y = 10, HAND_Z = 2.4;
@@ -454,7 +493,7 @@
   //   cuffs / anklets: { wrap, wrapDark, trim }; boot: { color, sole, detail }; pecs: the line between a bare chest's two
   //   halves and its nipples' colour; emblem(geo, z, y0, y1): what the chest's front carries
   const build = (k, o) => {
-    const u = k.u, B = o.slim ? BUILD.slim : BUILD.regular, skin = rgb(o.skin);
+    const u = k.u, B = buildOf(o.slim, k.traits.bodyShape), skin = rgb(o.skin);
     const torso = geometry(), spans = B.torso.length - 1, [cy0, cy1, cz0, cz1] = B.chest, chestZ = (y) => cz0 + (cz1 - cz0) * (y - cy0) / (cy1 - cy0);
     // `paint` has the body wear what a block map wore (see `wear`): { tone, torso, arm, forearm, leg }, each part a
     // { breaks, pick } for `paintedLoft`, and the limbs one for each side (right, then left).
@@ -471,7 +510,7 @@
       const [nx, ny] = B.nipple;
       for (const side of [-1, 1]) slab(torso, rect(nx * side - 0.22, nx * side + 0.22, ny - 0.2, ny + 0.2, chestZ(ny) - 0.02), FRONT, 0.07, 0.85, o.pecs);
     }
-    if (o.strap) strap(torso, o.strap);
+    if (o.strap) strap(torso, o.strap, B.depthAt);
     // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so
     // it is one piece with the trunk and not a thing laid over it. Its side shards lean out as far as the thighs do.
@@ -560,11 +599,12 @@
   const STRAP = { from: [2.4, 2.3], to: [-2.9, 8.35], half: 0.7, thick: 0.22, edge: 0.18,
     path: [[-0.45, 2.2, 0, 1], [0.35, 2.25, 0, 1], [4.9, 2.83, 0, 1], [6.6, 2.74, 0, 1], [7.6, 2.42, 0.45, 0.89], [8.12, 1.5, 0.85, 0.53], [8.2, 0, 1, 0],
       [8.12, -1.5, 0.85, -0.53], [7.6, -2.34, 0.45, -0.89], [6.6, -2.42, 0, -1], [0.35, -2.25, 0, -1], [-0.45, -2.2, 0, -1]] };
-  const strap = (geo, { color, edge, print }) => {
+  // `deep(y)` (a shaped build's, see SHAPES) moves each station out with the trunk's front or back at its height.
+  const strap = (geo, { color, edge, print }, deep = null) => {
     const [ax, ay] = STRAP.from, [bx, by] = STRAP.to, len = Math.hypot(bx - ax, by - ay), dx = (bx - ax) / len, dy = (by - ay) / len, nx = dy, ny = -dx;
     const across = [-STRAP.half, STRAP.edge - STRAP.half, STRAP.half - STRAP.edge, STRAP.half];
-    const rows = STRAP.path.map(([along, depth, oa, od]) => {
-      const ol = Math.hypot(oa, od), out = [dx * oa / ol, dy * oa / ol, od / ol], px = ax + dx * along, py = ay + dy * along;
+    const rows = STRAP.path.map(([along, z, oa, od]) => {
+      const ol = Math.hypot(oa, od), out = [dx * oa / ol, dy * oa / ol, od / ol], px = ax + dx * along, py = ay + dy * along, depth = deep ? z * deep(py) : z;
       return { out, inner: across.map((w) => [px + nx * w, py + ny * w, depth]), outer: across.map((w) => [px + nx * w + out[0] * STRAP.thick, py + ny * w + out[1] * STRAP.thick, depth + out[2] * STRAP.thick]) };
     });
     for (let i = 0; i + 1 < rows.length; i++) {
@@ -781,8 +821,8 @@
   // outside it from a point p on it, straight out from the surface whatever way that faces (`rough` only has to
   // point roughly outward). Cloth whose every corner is lifted stands that far off the body all over, corners
   // and ledges included.
-  const trunk = (slim) => {
-    const B = slim ? BUILD.slim : BUILD.regular, rings = B.torso, low = rings[0][0], belt = B.belt[0], top = B.shoulder;
+  const trunk = (slim, shape) => {
+    const B = buildOf(slim, shape), rings = B.torso, low = rings[0][0], belt = B.belt[0], top = B.shoulder;
     const at = (y, i) => {
       let n = 1;
       while (n < rings.length - 1 && rings[n][0] < y) n++;
@@ -832,7 +872,7 @@
   // hip and the chest becomes the belt, with a buckle where its front block differs; a bare chest gets its line and
   // nipples; and the loincloth's flaps become the skirt of shards.
   const wear = (k, { torso, armR, armL, legR, legL, palette, P, lit, loin, strap }) => {
-    const slim = !!k.traits.slim, B = slim ? BUILD.slim : BUILD.regular, skinKey = P.skin, skin = palette[skinKey];
+    const slim = !!k.traits.slim, B = buildOf(slim, k.traits.bodyShape), skinKey = P.skin, skin = palette[skinKey];
     const plain = (c) => c === undefined || c === P.skinDk ? skinKey : c;
     const tone = (c) => [palette[c === undefined ? skinKey : c], lit && lit[c] || 0];
     // Fur's authored spots are blocks of the spot colour among the fur: the fur is read as one flat colour, and the
@@ -943,5 +983,5 @@
     if (built) body.torso = merge(body.torso, built);
     return body;
   };
-  BL.heroBody = { wear, trunk, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
+  BL.heroBody = { wear, trunk, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
 })();

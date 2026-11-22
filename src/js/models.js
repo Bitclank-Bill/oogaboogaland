@@ -2035,7 +2035,7 @@
         // What a character stood on the front or the back of the authored trunk (three units out from its middle)
         // stands on the modelled trunk's own front or back at that height, so it lies on the surface.
         {
-          const surface = BL.heroBody.trunk(!!traits.slim);
+          const surface = BL.heroBody.trunk(!!traits.slim, traits.bodyShape);
           for (const laid of parts.torso.children) {
             const y = laid.position.y / u, z = laid.position.z / u;
             if (Math.abs(z) >= 2.5 && !laid.surface) laid.position.z = (z > 0 ? surface.front(y) + z - 3 : surface.back(y) + z + 3) * u;

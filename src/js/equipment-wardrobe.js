@@ -9,10 +9,12 @@
   const BL = globalThis.BL = globalThis.BL || {};
   const HASH = /^[a-f0-9]{64}$/, HEX = /^#[0-9a-f]{6}$/, LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
   const MAX_ITEMS = 1024, MAX_BYTES = 256 * 1024, MAX_CELLS = 4096, MAX_COLOURS = 64, MAX_VERTICES = 20000, MAX_FACES = 12000;
-  // In the order the studio lists them. `kind` says what a piece is; `none` names taking it off where an Ooga can go
+  // In the order the studio lists them. The body is the build an Ooga is drawn in, male or female and its shape
+  // (hero-body.js `SHAPES`), never its height. `kind` says what a piece is; `none` names taking it off where an Ooga can go
   // without one; `sized` slots save a size as the hat does; `head` slots draw on the stock head (hero-body.js `head`),
   // `body` slots on the authored blocks a body wears (`paint`), and the mask and weapon are meshes of their own.
   const SLOTS = Object.freeze([
+    ["body", "Body", "body", null, false, "frame"],
     ["hat", "Hat", "hat", "No hat", true, "hat"],
     ["hair", "Hair", "cells", "Bald", false, "head"],
     ["eyes", "Eyes", "traits", null, false, "head"],
@@ -127,6 +129,8 @@
           || !vector(node.scale, 4) || node.scale.some((n) => n <= 0)) fail();
         mesh(node.geometry, 8);
       }
+    } else if (slot.kind === "body") {
+      if (!own(content, ["format", "slot", "build"], ["shape"]) || !["regular", "slim"].includes(content.build) || content.shape !== undefined && content.shape !== "lean") fail();
     } else if (slot.kind === "weapon") {
       if (!own(content, ["format", "slot", "geometry", "rest", "carry", "axe"]) || !angles(content.rest) || !angles(content.carry) || typeof content.axe !== "boolean") fail();
       mesh(content.geometry, 8);

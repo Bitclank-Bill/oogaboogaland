@@ -12,11 +12,13 @@
   const stockHead = (dress) => !(dress.model || dress.skull || dress.hat || dress.crown || dress.eyes || dress.mark || dress.refine);
   // Whether this body can wear a slot's pieces: head pieces only on the stock head, a beard and a mouth only on the
   // regular build's face, a mask on any head the character did not shape itself, body pieces on a body it does not model.
-  const supports = (cave, id) => {
+  // `slim` is the build the body is (or is about to be) drawn in, a worn body's or its own.
+  const supports = (cave, id, slim = cave?.template?.traits.slim) => {
     const slot = W.SLOT.get(id), dress = own(cave);
     if (!slot || id === "hat" || !cave?.template || !cave.parts?.head) return false;
+    if (id === "body") return !dress.model;
     if (id === "mask") return !(dress.model || dress.skull);
-    if (slot.place === "head") return stockHead(dress) && (id !== "beard" && id !== "mouth" || !cave.traits.slim);
+    if (slot.place === "head") return stockHead(dress) && (id !== "beard" && id !== "mouth" || !slim);
     if (slot.place === "body") return !dress.model;
     return !cave.traits.nunchaku;
   };
@@ -41,14 +43,19 @@
   // What a saved wardrobe means for this body: the build's `wardrobe` trait and its key, and the mask apart. Null while
   // a piece it wears is not on this page yet.
   const resolve = (cave, value) => {
-    const head = {}, paint = [], keys = [], h = cave.traits.height;
-    let weapon = null, axe, mask = null;
+    const head = {}, paint = [], keys = [], h = cave.traits.height, state = worn.get(cave), base = (state ? state.base : cave.template).traits;
+    let weapon = null, axe, mask = null, body = null;
+    // The body first: what it is drawn as decides what else fits (a female build's face has no beard).
+    const bodyChoice = value && value.body && supports(cave, "body") ? value.body : null, bodyPiece = bodyChoice && W.content(bodyChoice.version);
+    if (bodyChoice && !bodyPiece) return null;
+    const slim = bodyPiece ? bodyPiece.build === "slim" : !!base.slim;
     for (const id of W.WORN) {
       const choice = value && value[id];
-      if (!choice || !supports(cave, id)) continue;
+      if (!choice || !supports(cave, id, slim)) continue;
       const piece = choice.item === "none" ? "none" : W.content(choice.version);
       if (!piece) return null;
       if (id === "mask") { mask = { piece, version: choice.version, size: choice.size || 100 }; continue; }
+      if (id === "body") { keys.push("body:" + choice.version); body = { slim: piece.build === "slim", bodyShape: piece.shape }; continue; }
       keys.push(id + ":" + (choice.version || "none"));
       const slot = W.SLOT.get(id);
       if (slot.place === "body") paint.push([id, piece]);
@@ -66,7 +73,7 @@
     if (Object.keys(head).length) traits.head = head;
     if (paint.length) traits.paint = paint;
     if (weapon) traits.weapon = weapon;
-    return { key: keys.join(","), traits, axe, mask, maskKey: mask ? (mask.version || "none") + "@" + mask.size : "" };
+    return { key: keys.join(","), traits, body, axe, mask, maskKey: mask ? (mask.version || "none") + "@" + mask.size : "" };
   };
   // Each node of a build, by the node of the character's first build it was made beside: two builds of one character
   // have the same nodes in the same places. Null where they do not.
@@ -91,6 +98,10 @@
     const from = state.current, base = state.base, mapFrom = mapping(base, from), mapTo = mapping(base, target);
     if (mapFrom === undefined || mapTo === undefined) return false;
     const closed = cave.parts.head.geometry === cave.headClosed;
+    // A part where the old build left it (or turned it) goes where the new one puts it: a female build's arms and legs
+    // stand closer in. One the crew has posed away keeps its pose, and the next pose reads the new build's measures.
+    const resting = (v, w) => v.x === w.x && v.y === w.y && v.z === w.z;
+    const follow = (v, w) => { v.x = w.x; v.y = w.y; v.z = w.z; };
     const visit = (node) => {
       const source = BL.models.templateNode(node);
       if (source) {
@@ -98,6 +109,11 @@
         if (a && b && a !== b) {
           if (node.geometry === a.geometry) node.geometry = b.geometry;
           else if (from.tint && node.geometry && from.tint.get(a.geometry) === node.geometry) node.geometry = target.tint?.get(b.geometry) || b.geometry;
+          if (node !== cave.root) {
+            if (resting(node.position, a.position)) follow(node.position, b.position);
+            if (resting(node.scale, a.scale)) follow(node.scale, b.scale);
+            if (resting(node.rotation, a.rotation)) follow(node.rotation, b.rotation);
+          }
         }
       }
       for (const child of node.children) visit(child);
@@ -110,6 +126,7 @@
     cave.tint = target.tint; cave.gunHeadBounds = target.gunHeadBounds;
     if (cave.skins.club.default === from.skins.club.default) cave.skins.club.default = target.skins.club.default;
     cave.clubRest = target.clubRest; cave.clubCarry = target.clubCarry;
+    cave.modelled = target.modelled; cave.elbow = target.elbow; cave.back = target.back; cave.armScale = target.armScale; cave.fist = target.fist;
     if (weaponChanged) for (const key of ["club", "forearmR"]) {
       const node = cave.parts[key], source = node && BL.models.templateNode(node), shown = source && at(mapTo, source);
       if (!shown) continue;
@@ -148,7 +165,7 @@
       if (r.key) {
         const fresh = BL.contributors.traitsFor(cave.traits.name);
         if (fresh.height !== state.base.traits.height || !!fresh.slim !== !!state.base.traits.slim) return false;
-        target = BL.models.templateFor({ ...fresh, wardrobe: r.traits, wardrobeKey: r.key, ...(r.axe === undefined ? null : { stoneAxe: r.axe }) });
+        target = BL.models.templateFor({ ...fresh, ...(r.body || null), wardrobe: r.traits, wardrobeKey: r.key, ...(r.axe === undefined ? null : { stoneAxe: r.axe }) });
       }
       const hat = BL.characterEquipment.detach(cave);
       const done = swap(cave, state, target);

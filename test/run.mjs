@@ -49944,6 +49944,16 @@ const equipmentAppChecks = async () => {
       && await b.evaluate("document.querySelector('.studio-changes').hidden && !document.querySelector('.studio-tile[data-changed]') && __ooga.studio.cave.parts.torso.geometry===__wardrobeTorso"));
     await choose(look.shirt.version, "shirt"); await choose(look.weapon.version, "weapon"); await choose("none", "shoes");
     await wait(dressed("__ooga.studio.cave", look), "Wardrobe preview did not come back");
+    // The body: a female build in place, its arms and girth following, and the Ooga's own back with Original.
+    const female = equipmentWardrobe.slotItems("body").find((row) => row.label === "Female");
+    await b.evaluate("window.__ownBody={elbow:__ooga.studio.cave.elbow,arm:__ooga.studio.cave.parts.armR.position.x,root:__ooga.studio.cave.root}");
+    await choose(female.version, "body");
+    await wait("__ooga.studio.cave.armScale===0.86", "The female build did not reach the studio's Ooga");
+    const built = await b.evaluate("__ooga.studio.cave.root===__ownBody.root && __ooga.studio.cave.parts.armR.position.x!==__ownBody.arm && !BL.characterWardrobe.supports(__ooga.studio.cave,'beard')");
+    await choose("original", "body");
+    await wait("__ooga.studio.cave.elbow===__ownBody.elbow", "Original did not give the Ooga its own build back");
+    record("equipment wardrobe: the body switches the build in place, a female face takes no beard, and Original gives the Ooga's own build back", built
+      && await b.evaluate("__ooga.studio.cave.parts.armR.position.x===__ownBody.arm && __ooga.studio.cave.armScale===1"));
     const lookRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${lookRevision + 1}`, "Wardrobe save did not complete");

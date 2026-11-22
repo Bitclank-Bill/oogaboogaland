@@ -39,7 +39,7 @@ test("wardrobe: a save names only known pieces of their own slot, none where a s
   assert.deepEqual(equipmentCommand({ revision: 0, wardrobe: { mask: { ...mask, size: 110 } } }).wardrobe.mask.size, 110);
   assert.deepEqual(equipmentCommand({ revision: 3, selection: hat(), size: 90, wardrobe: { shoes: NONE } }),
     { revision: 3, selection: hat(), size: 90, wardrobe: { shoes: NONE } });
-  for (const bad of [{ hat: hat() }, { shirt: weapon }, { shirt: { item: shirt.item, version: "f".repeat(64) } }, { eyes: NONE }, { pants: NONE },
+  for (const bad of [{ hat: hat() }, { body: NONE }, { body: { ...piece("body"), size: 110 } }, { shirt: weapon }, { shirt: { item: shirt.item, version: "f".repeat(64) } }, { eyes: NONE }, { pants: NONE },
     { shirt: { ...shirt, size: 110 } }, { mask: { ...mask, size: 79 } }, { mask: { ...NONE, size: 100 } }, { cape: shirt }, [shirt], "shirt"])
     assert.throws(() => equipmentCommand({ revision: 0, wardrobe: bad }), undefined, JSON.stringify(bad));
   assert.throws(() => equipmentCommand({ revision: 0, decline: "a".repeat(64), wardrobe: null }));

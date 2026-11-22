@@ -270,6 +270,11 @@ export const authorWardrobe = (base = root) => {
       if (!entry.creators.includes(creator)) entry.creators.push(creator);
     }
   }
+  // The bodies are the game's own builds and shapes, not anyone's design.
+  for (const [build, shape, label] of [["regular", null, "Male"], ["slim", null, "Female"], ["regular", "lean", "Male, lean"], ["slim", "lean", "Female, lean"]]) {
+    const content = { format: 1, slot: "body", build, ...(shape ? { shape } : null) }, text = check(content), version = sha(text);
+    found.set(version, { slot: "body", version, text, label, creators: [STOCK], stock: true });
+  }
   const catalogFile = join(directory, "catalog.json"), old = existsSync(catalogFile) ? JSON.parse(read(catalogFile)).items : [];
   const rows = [];
   for (const entry of found.values()) rows.push({ id: entry.slot + "-" + entry.version.slice(0, 16), slot: entry.slot, label: entry.label, creators: entry.creators, version: entry.version, stock: entry.stock });

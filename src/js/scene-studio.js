@@ -567,6 +567,7 @@
     const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text) node.textContent = text; return node; };
     // Each slot's mark on its tile: a ten-by-ten pixel silhouette in the tile's own ink.
     const ICONS = {
+      body: ["....##....", "....##....", "..######..", ".#.####.#.", ".#.####.#.", "...####...", "...#..#...", "..##..##.."],
       hat: ["...####...", "..######..", "..######..", "..######..", "..######..", "##########", "##########"],
       hair: ["..######..", ".########.", "##########", "###....###", "##......##", "##......##", "##......##", "#........#"],
       eyes: ["####..####", "#..#..#..#", "#.##..#.##", "####..####"],
@@ -648,7 +649,7 @@
       row.options.push(entry);
       return entry;
     };
-    const rows = W.SLOTS.map(makeRow), hatRow = rows[0];
+    const rows = W.SLOTS.map(makeRow), hatRow = rows.find((row) => row.slot.id === "hat");
     for (const row of rows) row.tile.addEventListener("click", () => choose(row), { signal });
     choose(rows.find((row) => row.slot.id === view.open) || hatRow);
     // The hat's list: the character's own, none, then each shared choice with its variants under it.
@@ -660,7 +661,7 @@
       for (const child of choice.children) family(child, depth + 1);
     };
     for (const choice of hats.groups()) family(choice, 0);
-    for (const row of rows.slice(1)) {
+    for (const row of rows.filter((row) => row !== hatRow)) {
       add(row, "Original look", [], () => null);
       if (row.slot.none) add(row, row.slot.none, [], () => ({ item: "none", version: null }));
       for (const item of W.slotItems(row.slot.id)) add(row, item.label, item.creators, () => ({ item: item.id, version: item.version }), 0, { item });

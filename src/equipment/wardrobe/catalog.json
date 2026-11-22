@@ -2,6 +2,42 @@
   "format": 1,
   "items": [
     {
+      "id": "body-d10ce9f6a0cdb4bb",
+      "slot": "body",
+      "label": "Female",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "d10ce9f6a0cdb4bb08ecb54a1db019925743b81633c12aee27891aa847d4fc2a"
+    },
+    {
+      "id": "body-985f320a26d5c8e1",
+      "slot": "body",
+      "label": "Female, lean",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "985f320a26d5c8e1863edd600fd361808019e9a7964fc01eaa950607b34b161e"
+    },
+    {
+      "id": "body-da1cea08219a3619",
+      "slot": "body",
+      "label": "Male",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "da1cea08219a3619477b2d0bf6d000c4c97d01a97586facf1c9e92da7e35e4dc"
+    },
+    {
+      "id": "body-9d0838d8a7786029",
+      "slot": "body",
+      "label": "Male, lean",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "9d0838d8a778602981412d2359d22f4766fc07c199199ce629e8ceb124527490"
+    },
+    {
       "id": "hair-e70e17f6143de228",
       "slot": "hair",
       "label": "Auburn long hair",
