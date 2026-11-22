@@ -177,9 +177,9 @@
   };
   // The belt's buckle: a gold plate with a raised rim, on the front plane at z; with `coin`, the coin's B on it.
   // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`), and a skirt hung under it.
-  // A male build's shin is drawn `SHIN` units longer, stretched between `SHIN_RAMP` (from under the knee, above any
-  // boot) and below it moved whole; `shin(y)` is how far a point of the leg at height y moves down.
-  const SHIN = 0.9, SHIN_BELOW = -3, SHIN_RAMP = [-4, -4.6], shin = (y) => y >= SHIN_RAMP[0] ? 0 : SHIN * Math.min(1, (SHIN_RAMP[0] - y) / (SHIN_RAMP[0] - SHIN_RAMP[1]));
+  // A male build's shin is drawn `SHIN` units longer, stretched between `SHIN_RAMP` (under the calf's thickest point,
+  // so the calf stays high under the knee) and below it moved whole; `shin(y)` is how far a point of the leg at height y moves down.
+  const SHIN = 0.9, SHIN_BELOW = -3, SHIN_RAMP = [-4, -4.8], shin = (y) => y >= SHIN_RAMP[0] ? 0 : SHIN * Math.min(1, (SHIN_RAMP[0] - y) / (SHIN_RAMP[0] - SHIN_RAMP[1]));
   const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SEAT = 0.6, SEAT_BAND = 0.22;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
@@ -326,8 +326,8 @@
     regular: {
       // `shoulder` is the height the trunk's clothes reach: over it is the neck.
       armX: 5.3, handScale: 1, shoulder: 8.45, skirt: [3.85, 2.3], thigh: 3.85,
-      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.4, 1.5, 0.45, 0, 0.08],
-        [-4.8, 1.6, 1.76, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
+      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-3.8, 1.64, 1.82, 0.45, 0, 0.06],
+        [-4.6, 1.5, 1.64, 0.45, 0, -0.03], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
       // The anklet stands clear of the calf above it and the instep below, so its wraps cover the ankle whole.
       knee: [-3.95, -2.85, 1, 2], ankle: [-5.05, 1.68, 1.84],
       // The foot is a block its whole length: as tall at the toes as a toe, its top rising from them to the instep,
