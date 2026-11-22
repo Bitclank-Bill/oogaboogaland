@@ -19,7 +19,8 @@ const setup = async (t) => {
 
 test("wardrobe: every slot but the hat lists pieces, each immutable data matching its hash", () => {
   const dir = new URL("../../src/equipment/wardrobe/", import.meta.url);
-  for (const id of equipmentWardrobe.WORN) assert.ok(equipmentWardrobe.slotItems(id).length > 0, `${id} has something to wear`);
+  for (const id of equipmentWardrobe.WORN) if (id !== "height") assert.ok(equipmentWardrobe.slotItems(id).length > 0, `${id} has something to wear`);
+  assert.equal(equipmentWardrobe.slotItems("height").length, 0, "a height is a number, never a piece");
   for (const row of equipmentWardrobe.items) {
     const text = readFileSync(new URL(row.version + ".json", dir), "utf8");
     assert.equal(createHash("sha256").update(text).digest("hex"), row.version);
@@ -43,6 +44,18 @@ test("wardrobe: a save names only known pieces of their own slot, none where a s
     { shirt: { ...shirt, size: 110 } }, { mask: { ...mask, size: 79 } }, { mask: { ...NONE, size: 100 } }, { cape: shirt }, [shirt], "shirt"])
     assert.throws(() => equipmentCommand({ revision: 0, wardrobe: bad }), undefined, JSON.stringify(bad));
   assert.throws(() => equipmentCommand({ revision: 0, decline: "a".repeat(64), wardrobe: null }));
+});
+
+test("wardrobe: the height takes any whole hundredth from 0.80 to 1.20 of the game's height, and nothing else", () => {
+  const tall = (height) => ({ item: "custom", version: null, height });
+  assert.deepEqual(equipmentCommand({ revision: 0, wardrobe: { height: tall(80) } }).wardrobe, { height: tall(80) });
+  assert.deepEqual(equipmentCommand({ revision: 0, wardrobe: { height: tall(120) } }).wardrobe, { height: tall(120) });
+  assert.equal(equipmentWardrobe.key({ height: tall(104) }), "height:104");
+  for (const bad of [tall(79), tall(121), tall(100.5), tall("100"), { ...tall(100), color: "#ffffff" }, { item: "custom", version: null, color: "#ffffff" },
+    { item: "none", version: null }, { ...piece("shirt") }, { ...tall(100), size: 100 }])
+    assert.throws(() => equipmentCommand({ revision: 0, wardrobe: { height: bad } }), undefined, JSON.stringify(bad));
+  assert.throws(() => equipmentCommand({ revision: 0, wardrobe: { skin: tall(100) } }));
+  assert.throws(() => equipmentWardrobe.validateContent({ format: 1, slot: "height", height: 100 }));
 });
 
 test("wardrobe: an Ooga's own colours also take a colour the player mixed, as a lower-case hex, and no other slot does", () => {

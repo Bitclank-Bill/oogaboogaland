@@ -340,6 +340,22 @@
     if (cave.bodyRadius !== undefined) { BL.scene.updateWorld(cave.root); cave.bodyRadius = bodyRadiusOf(cave); }
     if (cave.slingRoll !== undefined) cave.slingRoll = undefined;
     if (cave.pet?.ride) { cave.pet.ride.seat = hatSeatOf(cave); cave.pet.ride.stomach = stomachSeatOf(cave); }
+    // At a new height what the crew hung on the body at its old one stands where it would at this one.
+    const h = cave.traits.height;
+    if (cave.bodyHeight !== undefined) cave.bodyHeight = bodyHeightOf(cave);
+    const flash = cave.parts.gunFlash;
+    if (flash) { flash.position.y = GUN_MUZZLE_Y * h; flash.position.z = 0.695 * h; flash.scale.x = flash.scale.y = flash.scale.z = h; }
+    const birds = cave.stunBirds;
+    if (birds) {
+      birds.position.y = cave.headOffset + 0.42 * h;
+      birds.children.forEach((bird, i) => { const angle = i / 3 * Math.PI * 2; bird.position.x = Math.sin(angle) * 0.34 * h; bird.position.z = Math.cos(angle) * 0.34 * h; bird.scale.x = bird.scale.y = bird.scale.z = h; });
+    }
+    // A worn jetpack, the crew's or another player's copy (remote-players.js `presentationJet`), at its new height.
+    for (const jet of [cave.jet, cave.presentationJet]) {
+      if (!jet || jet.node === cave.parts.jetpack) continue;
+      jet.node.position.y = 0.06 * h + (jet === cave.jet ? cave.viewLift || 0 : 0); jet.node.position.z = -0.18 * h; jet.node.scale.x = jet.node.scale.y = jet.node.scale.z = h;
+      seatJetpack(cave, jet.node, jet.node.geometry, jet);
+    }
   };
   // Trots the pet `dt` along its loop (not under Calm) and stands `node` there: `m` is the head's matrix in the node's
   // parent frame, so the pet keeps to the hat through every turn and tilt of the head. Writes in place; allocates nothing.

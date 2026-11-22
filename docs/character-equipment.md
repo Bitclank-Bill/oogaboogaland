@@ -78,7 +78,7 @@ while trying other hats.
 ## The wardrobe
 
 Beside the hat, an Ooga wears a body and something in each of these slots, in the
-studio's order: body, skin, hair colour, eye colour, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
+studio's order: body, height, skin, hair colour, eye colour, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
 shoes, back (wings, capes and what else is built out past the trunk) and its
 primary weapon. `src/js/equipment-wardrobe.js` is the contract, shared unchanged
 by the page, the Worker and the authoring script: the slots (`SLOTS`), what a
@@ -130,8 +130,8 @@ the trunk and the arm's cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
-between them in what the thighs wear, so trousers read as one garment. It never changes height, hands, feet or the head, so
-nothing that stands, seats or aims an Ooga by its height has anything to follow.
+between them in what the thighs wear, so trousers read as one garment. A shape never changes height, hands, feet or the
+head; the height is its own slot (below).
 Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
 hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap
 also moves each part the new build stands differently (a female build's arms and
@@ -140,6 +140,17 @@ again. A female build's face takes no beard or mouth piece. A character that mod
 its own body keeps it unless its model has been reviewed in every build and shape
 (`character-wardrobe.js` `REVIEWED_BODIES`: w-s-bitcoin, whose body is the modelled
 body's own builder with its belt, skirt, cuffs and anklets).
+
+The height is a slider under the body's dropdown, read out in metres from the Ooga's
+feet to its crown: any whole hundredth of the game's height from 0.80 to 1.20
+(`equipment-wardrobe.js` `HEIGHT`; the cast's own heights run from 0.8 to 1.16),
+saved as `{ item: "custom", version: null, height: 80..120 }`, and the Ooga's own
+height is Original. The body is built again at that height, pieces and all, and
+stands on the same feet: the swap moves its hip (`baseY`), eyes (`headOffset`) and
+`traits.height`, and the crew measures again what it hung on the body (the gun's
+flash, the stun birds, a worn jetpack, its height and girth); another player's copy
+reads its hip and height from the body. Who models their own body keeps their
+height, as they keep their build.
 
 The colour slots take a swatch from a short palette, the character's own colour
 (the first swatch), or any colour from the wheel at the end of the swatches or typed

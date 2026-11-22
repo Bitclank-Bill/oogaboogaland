@@ -19,7 +19,7 @@
   const supports = (cave, id, slim = cave?.template?.traits.slim) => {
     const slot = W.SLOT.get(id), dress = own(cave);
     if (!slot || id === "hat" || !cave?.template || !cave.parts?.head) return false;
-    if (id === "body") return !dress.model || REVIEWED_BODIES.has(cave.traits.name.toLowerCase());
+    if (id === "body" || id === "height") return !dress.model || REVIEWED_BODIES.has(cave.traits.name.toLowerCase());
     // An Ooga's own colours, where its file does not paint its body itself; eyes only where it draws none of its own.
     if (id === "skin" || id === "hairColor") return !dress.model;
     if (id === "eyeColor") return !dress.model && !dress.eyes;
@@ -49,15 +49,18 @@
   // What a saved wardrobe means for this body: the build's `wardrobe` trait and its key, and the mask apart. Null while
   // a piece it wears is not on this page yet.
   const resolve = (cave, value) => {
-    const head = {}, paint = [], keys = [], h = cave.traits.height, state = worn.get(cave), base = (state ? state.base : cave.template).traits;
+    const head = {}, paint = [], keys = [], state = worn.get(cave), base = (state ? state.base : cave.template).traits;
     let weapon = null, axe, mask = null, body = null;
     // The body first: what it is drawn as decides what else fits (a female build's face has no beard).
     const bodyChoice = value && value.body && supports(cave, "body") ? value.body : null, bodyPiece = bodyChoice && W.content(bodyChoice.version);
     if (bodyChoice && !bodyPiece) return null;
     const slim = bodyPiece ? bodyPiece.build === "slim" : !!base.slim;
+    // A chosen height builds everything at that height, the pieces too.
+    const tall = value && value.height && supports(cave, "height") ? value.height.height : 0, h = tall ? tall / 100 : base.height;
     for (const id of W.WORN) {
       const choice = value && value[id];
       if (!choice || !supports(cave, id, slim)) continue;
+      if (id === "height") { keys.push("height:" + tall); body = { ...body, height: h }; continue; }
       const piece = choice.item === "none" ? "none" : choice.item === "custom" ? { color: choice.color } : W.content(choice.version);
       if (!piece) return null;
       if (id === "mask") { mask = { piece, version: choice.version, size: choice.size || 100 }; continue; }
@@ -140,6 +143,14 @@
     cave.headOpen = target.headOpen; cave.headClosed = target.headClosed;
     cave.parts.head.geometry = closed ? target.headClosed : target.headOpen;
     cave.template = target; cave.portraitHead = undefined;
+    // A new height: the body stands on the same feet, and what reads its height (its eyes, its seat, its hat) reads
+    // this one. The crew measures the rest again (crew.js `refreshBody`).
+    if (target.traits.height !== from.traits.height) {
+      const lift = target.root.position.y - from.root.position.y;
+      cave.traits.height = target.traits.height; cave.headOffset = target.headOffset;
+      cave.root.position.y += lift;
+      if (Number.isFinite(cave.baseY)) cave.baseY += lift;
+    }
     cave.tint = target.tint; cave.gunHeadBounds = target.gunHeadBounds;
     if (cave.skins.club.default === from.skins.club.default) cave.skins.club.default = target.skins.club.default;
     cave.clubRest = target.clubRest; cave.clubCarry = target.clubCarry;

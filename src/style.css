@@ -12556,6 +12556,7 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
 .studio-tile[data-unsupported] { opacity: 0.55; }
 /* The chosen tile's editor, across the slab under that tile's row: its name, its list, who made the piece and, for the
    hat and the mask, a size whose value reads as the pop-ups' values do. */
+.studio-editors[hidden] { display: none; }
 .studio-editors { grid-column: 1 / -1; padding: 8px; border: 1px solid rgba(216, 137, 43, 0.6); border-radius: 5px; background: rgba(0, 0, 0, 0.22); }
 .studio-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .studio-editor[hidden] { display: none; }
@@ -12575,6 +12576,7 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
 .studio-size-line .studio-hat-size-label { flex: 1 1 auto; }
 .studio-size-line .link { padding: 0; min-height: 0; font-size: 11px; }
 .studio-size-line .link:disabled { opacity: 0.4; cursor: default; }
+.studio-height-line input[type="range"] { flex: 1 1 auto; min-width: 0; }
 .studio-changes { color: var(--accent-text); font-size: 11px; white-space: nowrap; }
 .studio-changes .link { padding: 0; min-height: 0; font-size: 11px; }
 .studio-slot-credit { color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
