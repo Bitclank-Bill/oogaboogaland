@@ -640,7 +640,7 @@
       // It runs straight down a little first (`SEAT_BAND`), as a pair of shorts does, then slopes in.
       const foot = [f[1], f[2], f[3], 0, f[5] || 0], seat = [[low + 0.01, ...foot], [low - SEAT_BAND, ...foot], [low - SEAT, tx, tz, Math.min(0.6 * Math.min(tx, tz), Math.max(f[3], 0.8)), 0, 0]];
       // Over bare thighs it wears what the hips wear (shorts, a loincloth), so no skin shows over the garment's hem.
-      const bareLegs = !paint ? same(worn, skin) : same(paint.tone(paint.leg[0].pick(0, -0.6, 1))[0], skin);
+      const bareLegs = !paint ? same(worn, skin) : paint.leg[0].pick(0, -0.6, 1) === paint.skinKey;
       const at = (xn, zn) => bareLegs ? paint.torso.pick(xn, low + 0.05, zn) : paint.leg[0].pick(xn, -0.6, zn);
       if (paint) paintedLoft(torso, seat, [], (xn, y, zn) => at(xn, zn), paint.tone, skin, paint.print);
       else loft(torso, seat, bareLegs && o.torso && o.torso[0] || worn);
@@ -1141,7 +1141,7 @@
       }
     }
     const body = build(k, { skin, slim, belt, skirt, hem: !belt && slim, strap: across, pecs, sternum: !!pecs && bare(0), boot, hands: [arms[0].hand, arms[1].hand],
-      paint: { tone, print: { key: P.fur, color: palette[P.spot] }, torso: { breaks, pick: (xn, y, zn) => { const row = rowAt(y); return row < 0 ? skinKey : T(row, xn, zn); } },
+      paint: { tone, skinKey, print: { key: P.fur, color: palette[P.spot] }, torso: { breaks, pick: (xn, y, zn) => { const row = rowAt(y); return row < 0 ? skinKey : T(row, xn, zn); } },
         arm: arms.map((a) => a.arm), forearm: arms.map((a) => a.forearm), leg: legs.map((l) => l.leg) } });
     if (built) body.torso = merge(body.torso, built);
     return body;
