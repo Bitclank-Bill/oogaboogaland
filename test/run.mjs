@@ -4421,7 +4421,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "raid", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "equipment-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "poker-unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "equipment-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
@@ -36677,7 +36677,20 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
       __ooga.advance(0.1, 1 / 30);
       route.push(P.salon);
     };
-    [1, 0, 6, 3, 1].forEach(use);
+    use(1); use(0);
+    __ooga.advance(.38,1/30);
+    const shelf=P.salons.shelf, turning=shelf.hinge.rotation.y>0 && !shelf.ready && P.salon===-1;
+    D.pilot.action();
+    __ooga.advance(.8,1/30);
+    const entry=shelf.target.position, radius=D.pilot.player.bodyRadius;
+    const aisle=shelf.clear(entry.x,entry.z+2.6,entry.x,entry.z+1.0,radius);
+    const leaf=shelf.clear(entry.x,entry.z+1,entry.x+1.8,entry.z+1,radius);
+    const reveal=turning && shelf.ready && P.salon===-1 && aisle && !leaf;
+    use(0);
+    const visiblePass=P.salons.targets[6].visible;
+    use(6);
+    const collected=visiblePass && !P.salons.targets[6].visible;
+    [3, 1].forEach(use);
     const glyph = P.salons.glyph, before = glyph.rotation.y, core = BL.bifrostModels.coreGlyph().verts;
     const same = glyph.geometry.verts.length === core.length && core.every((v,i) => Math.abs(v * 2.48 / 1.9 - glyph.geometry.verts[i]) < 1e-6);
     __ooga.advance(0.5, 1/30);
@@ -36685,7 +36698,14 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     [4, 2].forEach(use);
     const game = __ooga.game;
     for (let i = game.state.emberDen.visits; i < 21; i++) game.recordDen("visit");
-    [2, 5].forEach(use);
+    use(2);
+    const roof=P.salons.roofScope.station;
+    D.pilot.navigate({position:{x:roof.x+1.2,z:roof.z,y:roof.y-1.62},yaw:0,pitch:.17,dist:3});
+    D.pilot.action(); __ooga.advance(.1,1/30);
+    const rooftop=document.querySelector(".den-eyepiece");
+    const roofOpened=rooftop.open && D.camera.position.y>17;
+    rooftop.querySelector('[aria-label="Leave telescope"]').click();
+    use(5);
     const scope = BL.pokerTerrace.station;
     D.pilot.navigate({position:{x:scope.x - 1.4,y:0,z:scope.z},yaw:0,pitch:.17,dist:3});
     D.pilot.action(); __ooga.advance(.1,1/30);
@@ -36708,13 +36728,27 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     __ooga.advance(.15,1/30);
     const sky=wide && donor && hole.radius===41.6 && hole.planetRadius===hole.radius/100 && accretion.time>beforeFlow;
     lens.querySelector('[aria-label="Leave telescope"]').click();
-    return { route, sky, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
+    return { route, sky, reveal, collected, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:roofOpened && opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
   })()`);
   record("poker sky: the 83.2 m shadow and 1:100 donor advance on the scene clock and center in the eyepiece", route.sky);
   record("poker terrace: use the telescope, aim, magnify, reacquire the moon and leave the eyepiece", route.scope);
   record("poker rooms: the icy ₿IFRÖST core turns on its pedestal in Cold Storage and leaves the view on exit", route.icyCore && route.hidden);
   record("poker rooms: whitepaper, founder's pass, vault and lift lead to their rooms, the roof holds until visit 21, and all routes return",
-    route.route.join() === "-1,0,0,-1,1,-1,-1,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
+    route.reveal && route.collected && route.route.join() === "-1,-1,0,0,-1,1,-1,-1,2,-1" && route.saved.visits === 21 && route.saved.lounge && route.saved.pass && !route.saved.bigWin, JSON.stringify(route));
+  const portrait=await b.evaluate(`(async()=>{
+    const D=BL.scenes.poker.debug, booth=BL.pokerClub.booth;
+    D.pilot.navigate({position:{x:booth.x+.85,y:0,z:booth.z+3.3},yaw:0,pitch:.17,dist:3});
+    const feet={...D.pilot.player.root.position};D.pilot.action();
+    const studio=document.querySelector(".den-portrait"),save=studio.querySelector("a");
+    if(!studio.open)return false;
+    studio.querySelector("button").click();
+    for(let i=0;!save.href && i<120;i++)await new Promise(r=>requestAnimationFrame(r));
+    const encoded=save.href.startsWith("blob:") && !save.hidden && save.download.endsWith(".png");
+    studio.querySelector("button:last-child").click();
+    const p=D.pilot.player.root.position;
+    return encoded && !studio.open && !save.href && Math.hypot(p.x-feet.x,p.z-feet.z)<.02;
+  })()`);
+  record("poker terrace: a moon portrait can be saved and leaving the camera restores the walker",portrait);
 } }] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);
@@ -39748,7 +39782,9 @@ const pokerGlazingChecks = (BL) => {
       // Re-pinned (the shrink in plan): the fifteen high-top cocktail tables are the crowd's furniture, not the glazing's.
       // Re-pinned (the gaming floor): the four roulette and craps tables are the gaming floor's walk blocks, not the
       // glazing's; the rest stay 24.
-      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === P.TABLES.length && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
+      const stage=BL.pokerBandstand.floor;
+      const hasStage=P.FURNITURE.filter(f=>f===stage).length===1 && !P.walkable(stage.x,stage.z,stage.x,stage.z,0,2,{bodyRadius:.4});
+      const quiet = hasStage && P.FURNITURE.filter(f => f!==stage && f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === P.TABLES.length && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
         P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
       const sconces = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).flame), cups = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).cup);
       const placedLights = sconces.length === 17 && sconces.every(n => Math.abs(n.position.y - G.SCONCE_Y) < 1e-9 && Math.abs(Math.abs(n.position.x) - (23.8 - 0.41)) < 1e-9) &&
@@ -49767,6 +49803,25 @@ const islandWorldProof = async () => {
       && S.sitesFor(sites, new Map(), true, at) === (1 << sites.length) - 1
   };
 };
+const pokerUnitChecks = async BL => {
+  pokerChecks(BL);
+  await pokerSmokeChecks(BL);
+  pokerMarbleChecks(BL);
+  pokerMarbleHallChecks(BL);
+  pokerFloorChecks(BL);
+  pokerVaultChecks(BL);
+  pokerGlazingChecks(BL);
+  pokerEveningChecks(BL);
+  pokerTellPropChecks(BL);
+  pokerPresenceChecks();
+  pokerEmoteChecks();
+  pokerCarryChecks(BL);
+  pokerSeatingChecks(BL);
+  pokerTellChecks();
+  pokerAudioChecks(BL);
+  await pokerPlaylistChecks(BL);
+  await pokerPortableChecks();
+};
 const unitChecks = async () => {
   await lecturePlayerChecks();
   dsbIslandWadingChecks();
@@ -49937,6 +49992,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   }
   process.off("unhandledRejection", rejected);
   const BL = globalThis.BL;
+  if (ARGS.includes("poker-unit")) { await pokerUnitChecks(BL); return; }
   if (ARGS.includes("cloud-hopper-controller")) { await cloudHopperFailureChecks(BL); return; }
   await tessCacheChecks(BL);
   variantCacheChecks(BL);
@@ -50064,23 +50120,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   if(ARGS.includes("ink-unit"))return;
   bigBitcoinChecks(BL);
   if(ARGS.includes("big-unit"))return;
-  pokerChecks(BL);
-  await pokerSmokeChecks(BL);
-  pokerMarbleChecks(BL);
-  pokerMarbleHallChecks(BL);
-  pokerFloorChecks(BL);
-  pokerVaultChecks(BL);
-  pokerGlazingChecks(BL);
-  pokerEveningChecks(BL);
-  pokerTellPropChecks(BL);
-  pokerPresenceChecks();
-  pokerEmoteChecks();
-  pokerCarryChecks(BL);
-  pokerSeatingChecks(BL);
-  pokerTellChecks();
-  pokerAudioChecks(BL);
-  await pokerPlaylistChecks(BL);
-  await pokerPortableChecks();
+  await pokerUnitChecks(BL);
   {
     // A roof lip may intersect the visual pose, but a blocked core rejects a mount.
     const solid = (_x, y, z) => y > 1 && z >= 0;

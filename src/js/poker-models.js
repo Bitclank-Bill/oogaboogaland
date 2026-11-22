@@ -531,6 +531,7 @@
   // off the cross aisles, the fountain's ring and the high-roller's ropes.
   const HIGH_TOPS = [...[-17, 17].flatMap(x => [24, 12, 0, -12].map(z => [x, z])), ...[-5.5, 5.5].flatMap(x => [24, 12, -12].map(z => [x, z])), [-5.5, -24]];
   const FURNITURE = Object.freeze([
+    BL.pokerBandstand.floor,
     { kind: "bar", x: -10, z: -35.3, hx: 8, hz: 0.9, solid: true }, { kind: "bar", x: 10, z: -35.3, hx: 8, hz: 0.9, solid: true },
     ...Object.keys(BL.pokerEraTables.names).map(key=>({kind:"eraSign",x:TABLES[key].x+SIGN_X,z:TABLES[key].z+SIGN_Z,hx:.78,hz:.75,solid:true})),
     {kind:"founderChair",x:TABLES[0].x-3.08,z:TABLES[0].z-2.76,hx:1.04,hz:.81,solid:true},
@@ -707,5 +708,5 @@
     if (p.legL) p.legL.rotation.x = 0; if (p.legR) p.legR.rotation.x = 0;
     if (p.armL) p.armL.rotation.x = STAND_ARMS; if (p.armR) p.armR.rotation.x = STAND_ARMS;
   };
-  BL.pokerModels = { CHANDELIER_LIGHT_Y, TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, sitPose, standPose };
+  BL.pokerModels = { CHANDELIER_LIGHT_Y, TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, crosses, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, sitPose, standPose };
 })();

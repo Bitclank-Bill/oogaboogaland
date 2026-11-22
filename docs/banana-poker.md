@@ -27,7 +27,11 @@ Follow the stream of amber blocks past the Bitcoin-orange Charging Bull to the G
 
 The hourglass on the west side of the promenade shows the observed block height. Gold sand drains according to the time since the tip and the recent average block interval. When a new tip arrives, the height lifts, a two-tone chime sounds, and all three diamond chandeliers cast orange light for three seconds. Opening the room on an existing tip is quiet. The sound follows the room audio controls.
 
-The east bar looks into the whale aquarium. Its lift leads to the spectator balcony and Gate 21. The rooftop opens on the twenty-first visit or when you win a share of a non-refund pot worth at least 100 play chips. That win also opens Cold Storage. Room discoveries and visit counts are saved in this browser. Use the marked return controls to get back to the gaming floor.
+Walk through the middle of the even-numbered table wall to reach the marble terrace. The brass telescope has controls for the Moon, black hole and Earth-like planet. At the portrait camera, use **Act**, take a picture and select **Save PNG**. Leaving the camera returns you to where you stood. The three plaques beside the booth rank settled player awards of at least 100 play chips observed by this browser. Returned bets are excluded. The board resets at 6 a.m. local time.
+
+Gate 21 at the east bar leads to the rooftop. The gate opens on the twenty-first visit or when you win a share of a non-refund pot worth at least 100 play chips. That win also opens Cold Storage. Upstairs, there is a fireside bar, a second telescope and a copy of the Wall of Fame. A hooded figure walks the rail at 9:21 p.m. local time. The marked return control leads back to the gaming floor.
+
+The vault-side jazz stage counts blocks until the next halving. The river, dome and Whale Watch aquarium also use recent transactions sampled by the existing mempool socket. A passing whale represents a transaction with at least 10 BTC in total outputs, including change. A new high in Kraken’s BTC/USD trading history brings up the hall lights and sounds a short fanfare. The first reading establishes a silent baseline.
 
 ## Play
 

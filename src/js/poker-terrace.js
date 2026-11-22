@@ -137,8 +137,7 @@
       p.push(M.moved(M.turnedZ(M.turnedX(M.torus(.34,.015,edge,.43,24,5),1.13),angle),x,2.92,z-.34));
     p.push(turned(x,2.54,z-.34,[[.14,0],[.05,.10],[.045,.24],[0,.27]],brass));
     for(const dx of [-1.8,1.8]) for(let i=0;i<3;i++) p.push(goblet(x+dx+i*.18,1.33,z+.27,8));
-    const title=BL.poolModels.carve("21 CLUB",{cell:.043,color:opal,emissive:.8});
-    p.push(M.moved(title.geometry,x-title.width/2,1.14,z+.37));
+
     for(let i=0;i<(lite?28:82);i++){
       const xx=x-3.1+(i*.618034%1)*6.2, yy=.2+(i*.3817%1)*.6;
       p.push(box(xx,yy,z+.47,.044+(i%3)*.012,.025,.014,i%2?"#e19b67":"#854e38",.23));
@@ -172,6 +171,7 @@
   // Reject a sweep through the wall beside the opening, including diagonal steps from the terrace.
   const clear = (ax,az,bx,bz,r) => {
     if(Math.max(ax,bx)<=23-r) return true;
+    for(const f of BL.pokerClub.fixtures) if(BL.pokerModels.crosses(ax,az,bx,bz,r,f)) return false;
     const opening=BL.pokerGlazing.OPEN-r;
     if(bx>outer(bz)-r || (bx>23-r && Math.abs(bz)>(bx<inner+r?opening:halfSpan-r))) return false;
     for(let i=0;i<2;i++){
@@ -277,6 +277,15 @@
       }
       p.push(star);
     }
+    const base=add(root,M.merge(...p));base.geometry.castShadow=false;
+    const scope=mount(station); S.addChild(root,scope.root);
+    return {root,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
+  };
+  const mount=station=>{
+    const root=S.createNode(), p=[];
+    const add=(parent,geometry,x=0,y=0,z=0)=>{
+      const n=S.createNode({geometry,position:{x,y,z}}); S.addChild(parent,n); return n;
+    };
     for(let i=0;i<3;i++){
       const a=i*tau/3;
       p.push(beam(station.x+.62*Math.cos(a),.07,station.z+.62*Math.sin(a),station.x,1.34,station.z,.106,brass));
@@ -288,12 +297,12 @@
       const a=i*tau/16,dx=Math.cos(a),dz=Math.sin(a);
       p.push(beam(station.x+dx*.25,1.14,station.z+dz*.25,station.x+dx*.31,1.14,station.z+dz*.31,.015,edge));
     }
-    const base=add(root,M.merge(...p));base.geometry.castShadow=false;
+    add(root,M.merge(...p),0,station.y-1.62,0);
     const yaw=add(root,null,station.x,station.y,station.z),pitch=add(yaw,null);
     const tube=M.merge(turned(0,0,0,[[0,-.68],[.066,-.68],[.066,-.49],[.10,-.45],[.12,-.30],[.13,.22],[.16,.28],[.16,.61],[.19,.64],[.19,.78],[0,.78]],brass,16,.25),
       turned(0,0,0,[[.17,.782],[.15,.793],[0,.793]],"#4399a5",16,.62));
     for(const y of [-.43,-.13,.23,.60]){const r=y>.2?.165:.134;const band=turned(0,0,0,[[r,y],[r+.007,y+.016],[r,y+.044]],dark,16);S.addChild(pitch,S.createNode({geometry:M.turnedX(band,Math.PI/2)}));}
-    const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target};
+    const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target,station};
   };
-  BL.pokerTerrace=Object.freeze({station,halfSpan,outer,clear,bar,roofBar,build});
+  BL.pokerTerrace=Object.freeze({station,halfSpan,outer,clear,bar,roofBar,mount,build});
 })();

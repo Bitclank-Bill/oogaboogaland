@@ -75,6 +75,8 @@
       state.inflow = inflow >= 0 ? inflow : 0;
       emit({
         type: "stats", count: info.size, vsize: info.bytes, totalFee: Math.round((Number(info.total_fee) || 0) * 1e8),
+        // A bounded sample already included in stats; its value is total outputs in satoshis.
+        recent: Array.isArray(data.transactions) ? data.transactions.slice(0,10) : null,
         inflow: state.inflow, fees: data.fees && typeof data.fees === "object" ? data.fees : null, da: data.da && typeof data.da === "object" ? data.da : null
       });
     }

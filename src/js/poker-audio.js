@@ -608,6 +608,17 @@
       stats.blockChimes++;
     };
 
+    const fanfare=()=>{
+      if(!ready)return;
+      const now=ctx.currentTime, stage=BL.pokerBandstand.floor;place(stage.x,stage.z);AT.level=.48+.52*AT.level;
+      for(let i=0;i<roomSines.length;i++){
+        const v=roomSines[i], mult=i?2:1;
+        v.osc.frequency.cancelScheduledValues(now);
+        v.filter.frequency.setValueAtTime(3300,now);
+        for(let k=0;k<3;k++)v.osc.frequency.setValueAtTime([293.66,369.99,440][k]*mult,now+k*.27);
+        taps(v,3,.27,i?.09:.19,.25,now,.035);
+      }
+    };
     // The bed follows the nearest table or the nearer edge of the bar.
     const bedLevel = () => {
       let d2 = Infinity;
@@ -731,7 +742,7 @@
     // Walking through the portal used a gesture in the previous scene. The room is built after that event;
     // waiting solely for a new keydown left returning or stationary visitors listening to silence.
     if (navigator.userActivation?.hasBeenActive) activate();
-    return { update, cue, blockChime, setSeated, win, dispose, stats, pools, credits: CREDITS,
+    return { update, cue, blockChime, fanfare, setSeated, win, dispose, stats, pools, credits: CREDITS,
       get nowPlaying() { return playing < 0 ? null : NOW[playing]; } };
   };
 

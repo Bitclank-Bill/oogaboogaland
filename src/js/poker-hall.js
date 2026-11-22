@@ -188,6 +188,7 @@
     const g = gallery(lite), root = S.createNode(), packets = [], count = lite ? 24 : 72;
     child(root, g.base);
     child(root, g.channel);
+    const bandstand = BL.pokerBandstand.build(root,lite);
     const clock = BL.pokerHourglass.build(lite);
     S.addChild(root, clock.root);
     const bronze = child(root, g.bronze, 0, 0.56, 0);
@@ -211,8 +212,47 @@
       n.rotation.y = Math.PI / 4;
       packets.push({ n, lane, phase: (i + random()) / count });
     }
+    // The resident pair stays in the tank. A passing third whale represents a sampled transaction
+    // with at least ten BTC in outputs. This includes change and is not an estimate of a payment.
+    const visitor=child(school,g.whale.body), fin=child(visitor,g.whale.tail,-1.42,.14,0);
+    visitor.visible=false;
+    const seen=new Set(), ids=new Array(64), streaks=[];
+    const streak=box(0,0,0,.042,.23,.042,"#ffe6ad",.82);streak.castShadow=false;
+    for(let i=0;i<(lite?6:14);i++){const n=child(root,streak);n.visible=false;streaks.push(n);}
+    let cursor=0,nextStar=0,whaleAge=12,peak=0;
+    const observe=rows=>{
+      for(let i=Math.min(rows.length,10)-1;i>=0;i--){
+        const tx=rows[i];
+        if(!tx || typeof tx.txid!=="string" || !/^[0-9a-f]{64}$/i.test(tx.txid) || seen.has(tx.txid) ||
+           !Number.isSafeInteger(tx.value) || tx.value<=0 || tx.value>21e14)continue;
+        seen.delete(ids[cursor]);ids[cursor]=tx.txid;seen.add(tx.txid);cursor=(cursor+1)%ids.length;
+        const seed=parseInt(tx.txid.slice(-8),16), s=streaks[nextStar];
+        nextStar=(nextStar+1)%streaks.length;
+        s.position.x=(seed%57)-28;s.position.z=(Math.floor(seed/57)%75)-37;
+        s.position.y=21+(seed%11);s.rotation.z=-.32;s.visible=true;
+        const p=packets[seed%count], size=.12+Math.min(.32,.037*Math.log1p(tx.value/1e5));
+        p.n.scale.x=p.n.scale.z=size;p.n.scale.y=size*.48;
+        if(tx.value>=1e9 && (whaleAge>=12 || tx.value>peak)){
+          peak=tx.value;whaleAge=0;
+          const scale=Math.min(1.56,.84+.22*Math.log10(tx.value/1e9));
+          visitor.scale.x=visitor.scale.y=visitor.scale.z=scale;
+        }
+      }
+    };
     let drift = 0;
-    const update = (dt, time) => {
+    const update = (dt, time, calm=false) => {
+      whaleAge=Math.min(12,whaleAge+dt);
+      visitor.visible=whaleAge<12;
+      if(visitor.visible){
+        const u=whaleAge/12;visitor.position.x=-7.8+15.6*u;
+        visitor.visible=Math.abs(visitor.position.x)<5.6-1.4*visitor.scale.x;
+        visitor.position.y=-.08+.19*Math.sin(u*6.28);visitor.position.z=1.42;
+        fin.rotation.z=calm?0:.22*Math.sin(time*1.7);
+      }
+      for(const s of streaks)if(s.visible){
+        s.position.x-=dt*.52;s.position.y-=dt*1.72;
+        if(s.position.y<16.8 || calm)s.visible=false;
+      }
       const chain = BL.chain.snapshot;
       for (let i = 0; i < whales.length; i++) {
         const n = whales[i], angle = time * (0.17 + 0.03 * i) + i * 2.6;
@@ -234,7 +274,7 @@
     };
     update(0, 0);
     const dispose = () => { while (root.children.length) S.removeChild(root, root.children[root.children.length - 1]); };
-    return { root, clock, vaultDoor, update, dispose };
+    return { root, clock, vaultDoor, bandstand, observe, update, dispose };
   };
-  BL.pokerHall = Object.freeze({ build, hangMoon });
+  BL.pokerHall = Object.freeze({ build, hangMoon, lunarSurface });
 })();

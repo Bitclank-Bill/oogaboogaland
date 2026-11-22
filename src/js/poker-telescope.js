@@ -3,8 +3,9 @@
   "use strict";
   const BL=window.BL, clamp=BL.math.clamp;
   const create = (camera,pilot,rig,moon,hole) => {
-    const at=BL.pokerTerrace.station, dialog=document.createElement("dialog");
-    dialog.className="den-eyepiece"; dialog.setAttribute("aria-label","Terrace telescope");
+    let at=rig.station;
+    const dialog=document.createElement("dialog");
+    dialog.className="den-eyepiece"; dialog.setAttribute("aria-label","Observatory telescope");
     const controls=document.createElement("div"), instructions=document.createElement("p"), readout=document.createElement("output");
     instructions.textContent="Drag or use the arrow keys to aim";
     controls.className="den-optics";controls.append(instructions);dialog.append(controls);document.body.append(dialog);
@@ -65,8 +66,9 @@
       }
       e.preventDefault();
     });
-    const open=()=>{
+    const open=(mount=rig)=>{
       if(dialog.open)return;
+      if(mount!==rig){rig=mount;at=rig.station;bearing();}
       saved={position:{...camera.position},target:{...camera.target},up:camera.up,fov:camera.fov,orthoMix:camera.orthoMix};
       pilot.setActive(false);dialog.showModal();pose();
     };

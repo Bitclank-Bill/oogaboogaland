@@ -275,6 +275,16 @@
       if (Math.abs(x) > 4.1 || roof > 4.12)
         parts.push(shard(x, roof + 0.12, z, 0.045 + random() * 0.13, -0.2 - random() * 0.55, 0.075 * (random() - 0.5), random));
     }
+    // Two frozen pendant crowns grow directly from the cave roof above the side seats.
+    for(const side of [-1,1]){
+      const x=side*3.35,z=-1.35;
+      parts.push(M.moved(M.torus(.58,.089,"#9cd9ec",.58,lite?12:24,5),x,3.62,z));
+      parts.push(shard(x,4.46,z,.17,-.88,.03,random));
+      for(let j=0;j<(lite?6:12);j++){
+        const a=j*TAU/(lite?6:12);
+        parts.push(shard(x+.55*Math.cos(a),3.68,z+.55*Math.sin(a),.088,-.29-.31*random(),.08*Math.sin(a),random));
+      }
+    }
     // Uneven laminae make a natural split stump. Each circumference changes independently.
     const pedestal = [],
       count = lite ? 14 : 28;
