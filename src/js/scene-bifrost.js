@@ -124,7 +124,15 @@
     BL.pokerThemes.light(POKER_LIGHT, renderer.kind);
     BL.pokerModels.TABLES.forEach((p, i) => POKER_LIGHT.lights.set([p.x, theme.tableY, p.z, theme.tableRange, ...theme.tableLight, 0], i * 8));
     for (let i = 0; i < 3; i++) POKER_LIGHT.lights.set([0, BL.pokerModels.CHANDELIER_LIGHT_Y, (i - 1) * 24, theme.roomRange, ...theme.roomLight, 0], (10 + i) * 8);
-    const extra = BL.pokerModels.CLUB_LIGHTS; POKER_LIGHT.lights.set(extra, 104); POKER_LIGHT.lightCount = 13 + extra.length / 8;
+    const room=BL.pokerModels, extra=room.CLUB_LIGHTS, lights=POKER_LIGHT.lights;
+    lights.set(extra,104);
+    let offset=104+extra.length;
+    if(renderer.kind==="webgl2" && renderer.quality==="high"){
+      for(const row of [room.COLONNADE,room.LOUNGE_LIGHTS,room.GAME_LIGHTS]){
+        lights.set(row,offset); offset+=row.length;
+      }
+    }
+    POKER_LIGHT.lightCount=offset/8;
     return POKER_LIGHT;
   };
   // The room's models and the cosmos over its glass vault, hung as the room hangs it but without the ship and at

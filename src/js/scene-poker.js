@@ -1138,6 +1138,7 @@
       && avatar.root.position.z + avatar.bodyRadius > BL.pokerModels.EXIT_Z && !leaving) leaveFloor();
     // All ten table lights fit the lowest renderer tier; selected table goes first.
     const near = selected, lights = renderOpts.lights;
+    terraceScope.updateService(elapsed,calm);
     room.updateInstruments(elapsed,calm,BL.chain.snapshot);
     const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, Date.now(), camera.position, audio.blockChime);
     const jubilee = room.hall.bandstand.update(dt,elapsed,calm,BL.chain.snapshot,Date.now());
@@ -1191,6 +1192,11 @@
         lights[off] = r.x + (k ? 3 : -3); lights[off + 1] = r.y + 2.8; lights[off + 2] = r.z + (k ? 1 : -2);
         lights[off + 3] = 9; lights[off + 4] = ice ? 0.7 : 1.55; lights[off + 5] = ice ? 1.15 : 1.08; lights[off + 6] = ice ? 1.65 : 0.67;
       }
+    }
+    // The bar's opal counter lamp lights the jacket, shaker and garnish up close.
+    if(salon<0 && Math.hypot(camera.position.x-BL.pokerTerrace.serviceX,camera.position.z+35)<8) {
+      lights[0]=BL.pokerTerrace.serviceX-.6; lights[1]=2.45; lights[2]=-34.0; lights[3]=4.5;
+      lights[4]=2.12; lights[5]=1.65; lights[6]=1.16;
     }
     const stage=BL.pokerBandstand.floor;
     if(salon<0 && Math.hypot(camera.position.x-stage.x,camera.position.z-stage.z)<10){

@@ -303,6 +303,9 @@
     const residents = [];
     let strolls = null, capNow = -1, cursor = 0, routes = 0, bubbles = 0, pollClock = 0, railsBy = null, loungeSeats = null;
     const approaches = new Map(), byKind = {};
+    let listener=null;
+    // Table talk carries to the next rail. A distant guest still reacts in the room.
+    const withinEarshot=m=>!listener || (m.x-listener.x)**2+(m.z-listener.z)**2+(1.5-(listener.y??1.5))**2<9**2;
     const stat = { crowd: 0, walking: 0, sitting: 0, crowdBubbles: 0, routes: 0, lounge: 0, smokers: 0, built: 0 };
     // What the crowd last read of each table, and the hand each reaction last fired for.
     const pots = new Float64Array(TABLE_N), hands = new Float64Array(TABLE_N).fill(-1), winners = new Int32Array(TABLE_N).fill(-1);
@@ -397,6 +400,9 @@
       const d = C.staffDress(m.type), p = m.parts;
       if (d.head) S.addChild(p.head, S.createNode({ geometry: d.head }));
       S.addChild(p.torso, S.createNode({ geometry: d.torso }));
+      if(d.drinks) m.drinks=d.drinks.map(geometry=>{
+        const glass=S.createNode({geometry}); glass.visible=false; S.addChild(p.armR,glass); return glass;
+      });
       if (d.arm) S.addChild(p.armR, S.createNode({ geometry: d.arm }));
       for (const arm of [p.armR, p.armL]) S.addChild(arm, S.createNode({ geometry: d.sleeve }));
     };
@@ -410,6 +416,37 @@
       if (p.jetpack) p.jetpack.visible = false;
       if (p.jetFlame) p.jetFlame.visible = false;
       p.club.visible = !!traits.outfit.item;
+    };
+    // Fill the quietest rail first, counting guests still walking to their places.
+    // Leave at least one rail position free for a player to approach the game.
+    const gameRails = new Int8Array(BL.pokerModels.GAMES.length);
+    const quietRail = m => {
+      gameRails.fill(0);
+      for (const other of members) if(other!==m && other.on && other.spot?.kind==="game") gameRails[other.spot.game]++;
+      const target=Math.min(4,Math.floor(capNow/8));
+      let best=null, count=target;
+      const spots=byKind.game, start=Math.floor(m.rand()*spots.length);
+      for(let i=0;i<spots.length;i++){
+        const s=spots[(start+i)%spots.length];
+        if(gameRails[s.game]<count && spotFree(s,m)){
+          best=s; count=gameRails[s.game]; if(!count) break;
+        }
+      }
+      return best;
+    };
+    const enterFloor=(m,s) => {
+      if(m.type==="waiter" && m.id==="waiter-1"){
+        const pickup=serveStop(m);
+        if(pickup){
+          standAt(m,pickup); m.job="serve"; m.loop=1;
+          settle(m,pickup.yaw,"serve",SERVE); return;
+        }
+      }
+      if(m.rig==="caveman"){
+        const rail=quietRail(m);
+        if(rail){ standAt(m,rail); m.game=rail.game; settle(m,rail.yaw,"watch",24+32*m.rand()); return; }
+      }
+      standAt(m,s);
     };
     const build = m => {
       const s = freeStroll(m);
@@ -425,7 +462,7 @@
         if (p.cigar) m.smoke = smoke({ root, lite, seed: Mth.fnv1a(m.id) });
       }
       S.addChild(root, m.root);
-      standAt(m, s);
+      enterFloor(m, s);
     };
     // A resident sits in her seat for good: the legs forward, the hips at the seat, the skirt over the lap.
     const seatResident = r => {
@@ -435,6 +472,7 @@
       const p = r.parts;
       r.root.position.x = s.x; r.root.position.z = s.z; r.root.rotation.y = s.yaw;
       r.root.position.y = SEAT_Y.lounge + sitLift(r);
+      BL.pokerModels.bendKnees(p,true);
       p.legR.rotation.x = SIT_LEGS; p.legL.rotation.x = SIT_LEGS + 0.08;
       p.legR.rotation.z = -0.04; p.legL.rotation.z = 0.04;
       p.armL.rotation.x = -0.55; p.armR.rotation.x = SIP_REST;
@@ -450,6 +488,8 @@
       if (m.partner) cancelEscort(m);
       // Its bubble goes with it: a caveman's line is hushed, and the count is released at once.
       if (m.talk > 0) { m.talk = 0; bubbles--; stat.crowdBubbles = bubbles; if (!m.agent) fx.hush(m); }
+      if(m.drinks) for(const glass of m.drinks) glass.visible=false;
+      if(m.parts && !m.agent) BL.pokerModels.bendKnees(m.parts,false);
       m.state = "parked"; m.pending = false; m.n = 0; m.spot = null; m.job = ""; m.table = -1; m.game = -1; m.loop = 0; m.slide.seat = 0; m.stagger = 0;
       if (m.smoke) m.smoke.hide();
       if (m.root) { m.root.visible = false; if (m.agent) m.agent.place(m.x, m.z, m.yaw); }
@@ -463,7 +503,7 @@
         if (want === m.on) continue;
         m.on = want;
         if (!want) park(m);
-        else if (m.root) { m.root.visible = true; standAt(m, freeStroll(m)); }
+        else if (m.root) { m.root.visible = true; enterFloor(m, freeStroll(m)); }
       }
     };
     // Who is still to be built: the members on the floor first, then the residents.
@@ -498,6 +538,8 @@
     };
     // The next spot by the guest's weights, for the high roller the busiest table's rail.
     const guestSpot = m => {
+      const rail=quietRail(m);
+      if(rail) return rail;
       const d = DEST[m.type];
       let r = m.rand() * d.sum, kind = "stroll";
       for (let k = 0; k < d.kinds.length; k++) { r -= d.weights[k]; if (r < 0) { kind = d.kinds[k]; break; } }
@@ -510,10 +552,11 @@
       if (!s && kind !== "stroll") s = freeIn(m, byKind[kind]);
       return s || freeStroll(m);
     };
-    // The waiter's loop: the stool nearest it, then rail spots at three different tables, 4 s at each.
+    // The waiter's loop: the Whale Watch pickup, then rail spots at three different tables, 4 s at each.
     const serveStop = m => {
       if (m.loop === 0) {
-        m.stops[0] = nearest(byKind.stool, m.x, m.z);
+        m.stops[0] = nearest(byKind.bar, BL.pokerTerrace.serviceX, -33.9) || nearest(byKind.stool, m.x, m.z);
+        if(!spotFree(m.stops[0],m)) return null;
         let a = -1, b = -1;
         for (let k = 1; k < 4; k++) {
           let t = Math.floor(m.rand() * TABLE_N);
@@ -523,9 +566,7 @@
           if (k === 1) a = t; else b = t;
         }
       }
-      const s = m.stops[m.loop];
-      m.loop = (m.loop + 1) % 4;
-      return s;
+      return m.stops[m.loop];
     };
     // Security's post: a free door or rope, else a stroll.
     const postSpot = m => {
@@ -545,7 +586,7 @@
         s = m.job === "boss" ? freeIn(m, railsBy[m.table]) || railsBy[m.table][0] || null : null;
         if (!s) { m.job = "post"; s = POST; }
       } else { m.job = ""; s = guestSpot(m); }
-      go(m, s);
+      if(s) go(m, s); else idle(m,2+m.rand());
     };
     // At the end of its route: `reached` when the route ended at the target, else it stopped short of it and goes on.
     const arrive = m => {
@@ -558,7 +599,10 @@
         idle(m, m.reached ? 2 + m.rand() * 4 : 0.5);
         return;
       }
-      if (m.job === "serve") settle(m, s.yaw, "serve", SERVE);
+      if (m.job === "serve") {
+        m.loop=(m.loop+1)%4;
+        settle(m, s.yaw, "serve", SERVE);
+      }
       else if (m.job === "post") settle(m, s.yaw, "post", m.type === "security" ? 60 + 30 * m.rand() : Infinity);
       else if (m.job === "boss") { m.table = s.table; settle(m, s.yaw, "watch", Infinity); }
       else if (m.job === "escorted" || SEAT_Y[s.kind] !== undefined) sitDown(m, s, m.job === "escorted" ? ESCORT_SIT : 15 + 25 * m.rand());
@@ -656,7 +700,7 @@
     // ---- speech and reactions ----
     // A line from the member's type, only while fewer than two crowd bubbles are up and its own is down.
     const sayLine = (m, line) => {
-      if (bubbles >= BUBBLES || m.talk > 0) return false;
+      if (bubbles >= BUBBLES || m.talk > 0 || !withinEarshot(m)) return false;
       if (m.agent) fx.sayAt(m.x, 2.1, m.z, line, SAY); else fx.say(m, line, SAY);
       m.talk = TALK; bubbles++;
       return true;
@@ -701,7 +745,7 @@
       let pick = null;
       for (let k = 0; k < members.length; k++) {
         const m = members[k];
-        if (!atGame(m, g) || m.talk > 0) continue;
+        if (!atGame(m, g) || m.talk > 0 || !withinEarshot(m)) continue;
         if (!pick || cheering && m.cheer > 0 && !(pick.cheer > 0)) pick = m;
       }
       return !!pick && sayLine(pick, line);
@@ -769,7 +813,11 @@
       }
       lean += m.lean;
       // At a gaming table, leaning on its rail, further in while the wheel slows or the dice fly.
-      if (!walking && m.game >= 0 && m.state === "watch") lean += GAME_LEAN + (m.gameLean > 0 ? GAME_IN : 0);
+      if (!walking && m.game >= 0 && m.state === "watch") {
+        const rest = .5 + .5*Math.sin(m.gesture*.4 + m.index);
+        lean += GAME_LEAN + .08*rest + (m.gameLean > 0 ? GAME_IN : 0);
+        p.armL.rotation.x -= .22 + .36*rest;
+      }
       leanBody(m, lean);
       if (m.betK > 0.01) p.armR.rotation.x += (BET_ARM - p.armR.rotation.x) * m.betK;
       if (m.shrugK > 0.01) { p.armR.rotation.z -= SHRUG * m.shrugK; p.armL.rotation.z += SHRUG * m.shrugK; p.armL.rotation.x += (-0.7 - p.armL.rotation.x) * m.shrugK; headX += 0.1 * m.shrugK; }
@@ -793,6 +841,7 @@
     // short skirt tipped over the lap.
     const sitPose = (m, k) => {
       const p = m.parts;
+      BL.pokerModels.bendKnees(p,k>=.55);
       p.legR.rotation.x += (SIT_LEGS - p.legR.rotation.x) * k; p.legL.rotation.x += (SIT_LEGS - p.legL.rotation.x) * k;
       m.root.position.y = m.baseY + (m.seatY - m.baseY) * k;
       if (p.skirt) p.skirt.rotation.x = SKIRT_SIT * k;
@@ -931,6 +980,7 @@
     };
 
     const update = (dt, elapsed = 0, eye = null) => {
+      listener=eye?.position || eye;
       const t0 = performance.now();
       while (buildNext() && performance.now() - t0 < BUILD_BUDGET) { /* fill the room within the frame's budget */ }
       bucket();
@@ -980,7 +1030,14 @@
           else if (m.clock <= 0 && !m.pending) next(m);
           standing(m, dt);
         } else if (st === "post" || st === "serve" || st === "chat") {
+          const handoff=st==="serve" && m.clock>SERVE-1;
           m.clock -= dt;
+          if(handoff && m.clock<=SERVE-1){
+            if(m.spot===m.stops[0]) {
+              for(const glass of m.drinks) glass.visible=true;
+            } else if(m.spot===m.stops[1]) m.drinks[0].visible=false;
+            else if(m.spot===m.stops[2]) m.drinks[1].visible=false;
+          }
           if (m.clock <= 0 && !m.pending) next(m);
           standing(m, dt);
         } else if (st === "escort") {

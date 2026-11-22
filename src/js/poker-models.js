@@ -13,10 +13,13 @@
   // faces the promenade; the shooter's end is toward the side aisle.
   const GAMES = Object.freeze([[2, 4, "roulette"], [3, 5, "craps"], [4, 6, "craps"], [5, 7, "roulette"]].map(([a, b, kind]) => {
     const x = TABLES[a].x, inward = x < 0;
-    return Object.freeze({ kind, x, z: (TABLES[a].z + TABLES[b].z) / 2, yaw: (kind === "roulette") === inward ? Math.PI : 0 });
+    const yaw = (kind === "roulette") === inward ? Math.PI : 0;
+    const kit = BL.pokerGames, extra = -kit.STAFF[kind].z + kit.STAFF_DEPTH - kit.FOOT[kind].hz;
+    // Centre the felt and the dealer together in the aisle between poker rows.
+    return Object.freeze({ kind, x, z: (TABLES[a].z + TABLES[b].z + Math.cos(yaw)*extra) / 2, yaw });
   }));
   // Every figure in the room is drawn at the game's scale 1: an Ooga of the roster's middle height (1.04) stands 1.625 m,
-  // its hip (the leg's pivot, the root) 0.455 m up, its one rigid leg swinging forward whole to sit. The tables and
+  // its hip (the leg's pivot, the root) 0.455 m up, the shin folding when the thigh swings forward to sit. The tables and
   // chairs are built for that body: the felt at FELT_Y and the padded rail's top at RAIL_TOP, the chair's seat at
   // SEAT_TOP. A seated figure's root stands at `sitY(height)`: SIT_HIP of its height over the seat, where its legs at
   // the sitting pose's -1.35 just clear the cushion back to the seat's front edge, so they overhang it like lower legs.
@@ -563,7 +566,10 @@
     })
   ].map(f => Object.freeze(f)));
   const HIGH_ROLLER = 9;
-  const solids = FURNITURE.filter(f => f.solid);
+  const solids = FURNITURE.filter(f => f.solid).concat(GAMES.map(g => {
+    const p = BL.pokerGames.STAFF[g.kind], c = Math.cos(g.yaw), s = Math.sin(g.yaw);
+    return { x: g.x + c*p.x + s*p.z, z: g.z - s*p.x + c*p.z, hx: .30, hz: BL.pokerGames.STAFF_DEPTH };
+  }));
   // The room is rebuilt per visit but this module lives for the page, so the scene puts lite back off in `leave`.
   const setLite = on => { lite = on; K.setLite(on); };
   const F = BL.pokerFountain;
@@ -671,10 +677,10 @@
     for (const f of FURNITURE) {
       const side = -Math.sign(f.x);
       if (f.kind === "bar") {
-        for (let k = -6; k <= 6; k += 3) add("stool", f.x + k, -34.6, Math.PI);
+        for (let k = -6; k <= 6; k += 3) add("stool", f.x + k, -34.70, Math.PI);
         for (let k = -4.5; k <= 4.5; k += 3) if (Math.abs(f.x + k) > 4) stand("bar", f.x + k, -33.9, Math.PI);
-      } else if (f.kind === "sofa") for (const dz of [-1.17, 0, 1.17]) list.push(Object.freeze({ kind: "lounge", x: f.x - side * 0.12, z: f.z + dz, yaw: side * Math.PI / 2, table: -1, seat: "sofa", side: -side }));
-      else if (f.kind === "armchair") list.push(Object.freeze({ kind: "lounge", x: f.x, z: f.z, yaw: f.yaw, table: -1, seat: "armchair", side: Math.sign(f.x) }));
+      } else if (f.kind === "sofa") for (const dz of [-1.17, 0, 1.17]) list.push(Object.freeze({ kind: "lounge", x: f.x + side * .065, z: f.z + dz, yaw: side * Math.PI / 2, table: -1, seat: "sofa", side: -side }));
+      else if (f.kind === "armchair") list.push(Object.freeze({ kind: "lounge", x: f.x+.185*Math.sin(f.yaw), z: f.z+.185*Math.cos(f.yaw), yaw: f.yaw, table: -1, seat: "armchair", side: Math.sign(f.x) }));
       else if (f.kind === "cage") add("cage", f.x + side * 1.6, f.z, -side * Math.PI / 2);
       else if (f.kind === "rope") add("rope", f.x + side, f.z, side * Math.PI / 2);
     }
@@ -698,15 +704,68 @@
   // The one sitting pose for a caveman at a table, the same for every figure: the legs forward over the chair and both
   // arms brought forward to the rail. `standPose` sets back exactly these four rotations to the crew's standing values.
   const SIT_LEGS = -1.35, SIT_ARMS = -0.9, STAND_ARMS = -0.2;
+  // Bend the calf in the leg's local space. Cutting crossing faces at the fold keeps
+  // the long voxel faces and their shorter neighbours joined along the kneecap.
+  const folded = new WeakMap(), straight = new WeakMap();
+  const foldedLeg = source => {
+    if (folded.has(source)) return folded.get(source);
+    const storage = BL.compactGeometry?.storageOf(source), verts = source.verts || storage?.verts;
+    if (!verts?.length) return source;
+    const out = M.geometry(), c = Math.cos(-SIT_LEGS), s = Math.sin(-SIT_LEGS);
+    let bottom = Infinity, top = -Infinity;
+    for (let i=1;i<verts.length;i+=3) { bottom=Math.min(bottom,verts[i]); top=Math.max(top,verts[i]); }
+    const knee=bottom+(top-bottom)*.40, band=(top-bottom)*.085;
+    const cuts=[knee-band,knee+band], raw=Array.from(verts), crossings=new Map();
+    const split=(indices,y) => {
+      const lower=[], upper=[];
+      let a=indices[indices.length-1];
+      for (const b of indices) {
+        const ay=raw[a*3+1], by=raw[b*3+1];
+        if ((ay<y && by>y)||(ay>y && by<y)) {
+          const key=Math.min(a,b)+"/"+Math.max(a,b)+"/"+y;
+          let n=crossings.get(key);
+          if (n===undefined) {
+            const f=(y-ay)/(by-ay); n=raw.length/3; crossings.set(key,n);
+            raw.push(raw[a*3]+f*(raw[b*3]-raw[a*3]),y,raw[a*3+2]+f*(raw[b*3+2]-raw[a*3+2]));
+          }
+          lower.push(n); upper.push(n);
+        }
+        if (by<=y) lower.push(b);
+        if (by>=y) upper.push(b);
+        a=b;
+      }
+      return [lower,upper].filter(poly=>poly.length>=3);
+    };
+    for(let j=0;j<(storage?.count ?? source.faces.length);j++) {
+      const f=storage ? BL.compactGeometry.copyFace(source,j) : source.faces[j];
+      let pieces=[Array.from(f.i)];
+      for(const cut of cuts) pieces=pieces.flatMap(poly=>poly.some(i=>raw[3*i+1]<cut)&&poly.some(i=>raw[3*i+1]>cut)?split(poly,cut):[poly]);
+      for(const i of pieces) out.faces.push({...f,i});
+    }
+    for(let i=0;i<raw.length;i+=3) {
+      const y=raw[i+1], z=raw[i+2], k=Math.max(0,Math.min(1,(knee+band-y)/(2*band)));
+      out.verts.push(raw[i],y+k*((c-1)*(y-knee)-s*z),z+k*(s*(y-knee)+(c-1)*z));
+    }
+    out.characterPart=true;
+    folded.set(source,out); straight.set(out,source); return out;
+  };
+  const bendLeg = (leg,on) => {
+    const g=leg?.geometry;
+    if(g && on && !straight.has(g)) leg.geometry=foldedLeg(g);
+    else if(g && !on && straight.has(g)) leg.geometry=straight.get(g);
+  };
+  const bendKnees = (p,on) => { bendLeg(p.legR,on); bendLeg(p.legL,on); };
   const sitPose = cave => {
     const p = cave.parts;
+    bendKnees(p,true);
     if (p.legL) p.legL.rotation.x = SIT_LEGS; if (p.legR) p.legR.rotation.x = SIT_LEGS;
     if (p.armL) p.armL.rotation.x = SIT_ARMS; if (p.armR) p.armR.rotation.x = SIT_ARMS;
   };
   const standPose = cave => {
     const p = cave.parts;
+    bendKnees(p,false);
     if (p.legL) p.legL.rotation.x = 0; if (p.legR) p.legR.rotation.x = 0;
     if (p.armL) p.armL.rotation.x = STAND_ARMS; if (p.armR) p.armR.rotation.x = STAND_ARMS;
   };
-  BL.pokerModels = { CHANDELIER_LIGHT_Y, TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, crosses, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, sitPose, standPose };
+  BL.pokerModels = { CHANDELIER_LIGHT_Y, TABLE_K, FELT_A, FELT_B, RAIL_A, RAIL_B, TOP_A, TOP_B, WALK_A, WALK_B, DEALER_Z, DEAL_FROM, DEAL_RUN, FELT_Y, RAIL_TOP, SEAT_TOP, SIT_HIP, DEALER_SCALE, sitY, PLACES, BEAD_Y, TABLES, GAMES, SEATS, REAR_WALL_Z, PORTAL_Z, EXIT_Z, FURNITURE, HIGH_ROLLER, geometry, card, build, walkable, crosses, setLite, nearestClear, CLUB_LIGHTS, COLONNADE, LOUNGE_LIGHTS, GAME_LIGHTS, spots, bendKnees, sitPose, standPose };
 })();

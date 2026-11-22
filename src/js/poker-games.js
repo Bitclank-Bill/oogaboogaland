@@ -26,6 +26,7 @@
   const FOOT = Object.freeze({ roulette: Object.freeze({ hx: ROULETTE.L / 2, hz: ROULETTE.W / 2 }), craps: Object.freeze({ hx: CRAPS.L / 2, hz: CRAPS.W / 2 }) });
   // Where the croupier and the stickman stand in their table's frame (facing +z, the table's middle), 0.42 m off the
   // edge as the guests are.
+  const STAFF_DEPTH = .24;
   const STAFF = Object.freeze({ roulette: Object.freeze({ x: ROULETTE.WHEEL_X, z: -(ROULETTE.W / 2 + 0.42) }), craps: Object.freeze({ x: CRAPS.STICKMAN_X, z: -(CRAPS.W / 2 + 0.42) }) });
   // The guests' places in the table's frame, 0.42 m off its edge and at least 1 m apart (the crowd counts a place
   // taken when anyone stands within 1 m of it): six round the roulette layout end, seven along the craps rails and
@@ -124,6 +125,52 @@
       };
       const rect = (g, x0, z0, x1, z1, y, hex, emissive = 0) => flat(g, [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], y, hex, emissive);
       const outline = (g, x0, z0, x1, z1, w, y, hex) => { rect(g, x0, z0, x1, z0 + w, y, hex); rect(g, x0, z1 - w, x1, z1, y, hex); rect(g, x0, z0 + w, x0 + w, z1 - w, y, hex); rect(g, x1 - w, z0 + w, x1, z1 - w, y, hex); };
+      // Canvas paints polygons by their centre depth. Cut the coloured fields into their backing
+      // instead of layering nearly coplanar quads that can trade places as the player walks around.
+      const inlay = (layers, aperture) => {
+        let tiles=[];
+        const bounds=pts=>[Math.min(...pts.map(p=>p[0])),Math.min(...pts.map(p=>p[1])),Math.max(...pts.map(p=>p[0])),Math.max(...pts.map(p=>p[1]))];
+        const cut=(poly,a,b,inside)=>{
+          const out=[], side=p=>(b[1]-a[1])*(p[0]-a[0])-(b[0]-a[0])*(p[1]-a[1]);
+          let p=poly[poly.length-1],d=side(p);
+          for(const q of poly){
+            const e=side(q);
+            if(d*e<0){const t=d/(d-e);out.push([p[0]+(q[0]-p[0])*t,p[1]+(q[1]-p[1])*t]);}
+            if(inside ? e>=0 : e<=0) out.push(q);
+            p=q; d=e;
+          }
+          return out;
+        };
+        const paint=(pts,face)=>{
+          const box=bounds(pts), next=[];
+          for(const tile of tiles){
+            const b=tile.bounds;
+            if(b[0]>=box[2] || b[2]<=box[0] || b[1]>=box[3] || b[3]<=box[1]){next.push(tile);continue;}
+            let part=tile.pts;
+            for(let i=0;i<pts.length && part.length>=3;i++){
+              const a=pts[i], c=pts[(i+1)%pts.length], outside=cut(part,a,c,false);
+              if(outside.length>=3) next.push({pts:outside,bounds:bounds(outside),face:tile.face});
+              part=cut(part,a,c,true);
+            }
+          }
+          if(face) next.push({pts,bounds:box,face});
+          tiles=next;
+        };
+        for(const f of layers.faces) paint(f.i.map(i=>[layers.verts[i*3],layers.verts[i*3+2]]),f);
+        if(aperture) paint(aperture,null);
+        const g=M.geometry(), y=layers.verts[1];
+        for(const t of tiles) M.face(g,t.pts.map(p=>M.pushVert(g,p[0],y,p[1])),t.face.color,{emissive:t.face.emissive});
+        return g;
+      };
+      // Drop an enclosed cabinet's hidden lids under the inlay. Its sides still occlude the far rail.
+      const cabinet=(...args)=>{
+        const g=flatBox(...args);
+        if(lite){
+          const top=args[1]/2+args[5];
+          g.faces=g.faces.filter(f=>!f.i.every(i=>Math.abs(g.verts[i*3+1]-top)<1e-8));
+        }
+        return g;
+      };
       // Numbers in the carved signs' 3x5 alphabet laid flat, readable from +z (their tops toward -z), each lit run of a
       // row one quad.
       const digits = (g, text, cx, cz, cell, y, hex) => {
@@ -155,13 +202,14 @@
       // the wheel's bowl. The rotor, ball, chips and marker are their own meshes.
       const R = ROULETTE, rl = [], hw = R.W / 2, hl = R.L / 2;
       for (const x of [-hl + 0.18, 0, hl - 0.18]) for (const z of [-hw + 0.16, hw - 0.16]) rl.push(leg(x, z));
-      rl.push(box(R.L, 0.2, R.W, WOOD, 0, 0.76, 0), flatBox(R.L + 0.004, 0.02, R.W + 0.004, GOLD, 0, 0.68, 0), flatBox(R.L, 0.02, R.W, WOOD, 0, 0.87, 0));
+      rl.push((lite?cabinet:box)(R.L, 0.2, R.W, WOOD, 0, 0.76, 0), cabinet(R.L + 0.004, 0.02, R.W + 0.004, GOLD, 0, 0.68, 0), cabinet(R.L, 0.02, R.W, WOOD, 0, 0.87, 0));
       for (const z of [-hw + 0.05, hw - 0.05]) rl.push(box(R.L, 0.04, 0.1, OXBLOOD, 0, R.RAIL_TOP - 0.02, z));
       for (const x of [-hl + 0.05, hl - 0.05]) rl.push(box(0.1, 0.04, R.W - 0.2, OXBLOOD, x, R.RAIL_TOP - 0.02, 0));
       rl.push(plate("ROULETTE", R.WHEEL_X, 0.79, hw, false), plate("ROULETTE", R.WHEEL_X, 0.79, -hw, true));
       const bowl = M.lathe({ segments: lite ? 16 : 36, color: DARK, profile: [[R.BOWL, R.TOP], [R.BOWL, 0.93], [0.41, 0.955], [0.38, 0.95], [0.36, 0.936], [R.ROTOR + 0.005, 0.925], [R.ROTOR, R.POCKET_Y - 0.01]] });
       rl.push(M.moved(bowl, R.WHEEL_X, 0, 0), M.moved(M.lathe({ segments: lite ? 16 : 36, color: GOLD, emissive: 0.2, profile: [[R.BOWL + 0.004, 0.925], [R.BOWL + 0.004, 0.935], [R.BOWL - 0.012, 0.938]] }), R.WHEEL_X, 0, 0));
       const layout = M.merge(), fy = R.TOP + 0.003, cy = fy + 0.002, ty = cy + 0.002;
+      if(lite) rect(layout,-hl,-hw,hl,hw,fy,WOOD);
       rect(layout, -0.58, -hw + 0.1, hl - 0.1, hw - 0.1, fy, T.felt);
       const colX = c => GRID.X0 + GRID.ZERO + c * GRID.COL, rowZ = r => GRID.Z0 + r * GRID.ROW, gap = 0.008;
       rect(layout, GRID.X0 + gap, rowZ(0) + gap, GRID.X0 + GRID.ZERO - gap, rowZ(3) - gap, cy, GREEN);
@@ -206,10 +254,10 @@
       // Craps' body: a walnut cabinet on a dark plinth, the tub's outer panels, the ledge with its chip groove, the
       // padded rail and its gold corner mounts, the sunk felt, its side walls and the diamond-studded end walls.
       const C = CRAPS, cl = [], studs = [], ch = C.W / 2, cx = C.L / 2, inX = cx - C.WALL, inZ = ch - C.WALL;
-      cl.push(flatBox(C.L - 0.34, 0.06, C.W - 0.34, K.SHADE, 0, 0.03, 0), box(C.L - 0.4, 0.58, C.W - 0.4, WOOD, 0, 0.35, 0), flatBox(C.L - 0.396, 0.02, C.W - 0.396, GOLD, 0, 0.075, 0));
+      cl.push(cabinet(C.L - 0.34, 0.06, C.W - 0.34, K.SHADE, 0, 0.03, 0), (lite?cabinet:box)(C.L - 0.4, 0.58, C.W - 0.4, WOOD, 0, 0.35, 0), cabinet(C.L - 0.396, 0.02, C.W - 0.396, GOLD, 0, 0.075, 0));
       for (const z of [-ch + 0.03, ch - 0.03]) cl.push(box(C.L, 0.27, 0.06, WOOD, 0, 0.755, z));
       for (const x of [-cx + 0.03, cx - 0.03]) cl.push(box(0.06, 0.27, C.W - 0.12, WOOD, x, 0.755, 0));
-      cl.push(flatBox(C.L - 0.08, 0.025, C.W - 0.08, WOOD, 0, 0.62, 0));
+      cl.push(cabinet(C.L - 0.08, 0.025, C.W - 0.08, WOOD, 0, 0.62, 0));
       // The ledge round the well, its inner strip the dark chip groove; the padded rail along the outer edge.
       for (const z of [-1, 1]) cl.push(flatBox(C.L, 0.02, C.WALL - 0.06, WOOD, 0, C.LEDGE - 0.01, z * (ch - 0.06 - (C.WALL - 0.06) / 2)), flatBox(C.L - 2 * C.WALL, 0.004, 0.06, "#120e0c", 0, C.LEDGE + 0.002, z * (inZ + 0.04)));
       for (const x of [-1, 1]) cl.push(flatBox(C.WALL - 0.06, 0.02, C.W - 0.12, WOOD, x * (cx - 0.06 - (C.WALL - 0.06) / 2), C.LEDGE - 0.01, 0));
@@ -221,7 +269,7 @@
         const x = -1.4 + k * (lite ? 0.9 : 0.35), stack = 1 + (k * 7 + (z > 0 ? 3 : 0)) % 4;
         cl.push(M.moved(M.lathe({ segments: lite ? 6 : 10, color: CHIP_COLORS[(k + (z > 0 ? 1 : 0)) % 3], profile: [[0, 0], [0.03, 0], [0.03, 0.011 * stack], [0, 0.011 * stack]] }), x, C.LEDGE + 0.004, z * (inZ + 0.04)));
       }
-      cl.push(flatBox(2 * inX, 0.02, 2 * inZ, T.felt, 0, C.FELT - 0.01, 0));
+      cl.push(cabinet(2 * inX, 0.02, 2 * inZ, T.felt, 0, C.FELT - 0.01, 0));
       for (const z of [-1, 1]) cl.push(flatBox(2 * inX, C.LEDGE - C.FELT, 0.02, "#24563f", 0, (C.LEDGE + C.FELT) / 2, z * (inZ + 0.01)));
       for (const x of [-1, 1]) {
         cl.push(flatBox(0.02, C.LEDGE - C.FELT, 2 * inZ, RUBBER, x * (inX + 0.01), (C.LEDGE + C.FELT) / 2, 0));
@@ -234,6 +282,7 @@
       // The layout in flat colour: per half a pass line along each long side, the field, the come box and the place
       // numbers; a proposition box in the middle.
       const lay = M.merge(), ly = C.FELT + 0.002, ly2 = ly + 0.002;
+      if(lite) rect(lay,-inX,-inZ,inX,inZ,ly,T.felt);
       for (const s of [-1, 1]) {
         const xa = s * 0.4, xb = s * (inX - 0.04), x0 = Math.min(xa, xb), x1 = Math.max(xa, xb);
         for (const q of [-1, 1]) { const z0 = q > 0 ? 0.45 : -0.55, z1 = z0 + 0.1; rect(lay, x0, z0, x1, z0 + 0.012, ly, WHITE_INK); rect(lay, x0, z1 - 0.012, x1, z1, ly, WHITE_INK); }
@@ -249,18 +298,22 @@
       outline(lay, -0.32, -0.45, 0.32, 0.32, 0.01, ly, WHITE_INK);
       for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) rect(lay, -0.26 + c * 0.18, -0.38 + r * 0.16, -0.12 + c * 0.18, -0.26 + r * 0.16, ly, (r + c) % 2 ? RED : "#e9e2cf");
       rect(lay, -0.26, -0.02, 0.26, 0.08, ly, RED);
-      const crapsBody = M.merge(...cl), crapsLayout = M.merge(lay, ...studs);
+      const crapsBody = M.merge(...cl), crapsLayout = M.merge(lite?inlay(lay):lay, ...studs);
       const die = M.die({ size: C.DIE });
       die.castShadow = false;
       const stick = M.merge(M.beam(0, 0, 0, 0, 0, C.STICK, 0.018, "#c9a26b"), M.beam(0, 0, C.STICK, -0.07, 0, C.STICK + 0.03, 0.016, "#c9a26b"), M.beam(-0.07, 0, C.STICK + 0.03, -0.09, 0, C.STICK - 0.03, 0.016, "#c9a26b"),
         M.beam(0, 0, -0.02, 0, 0, 0.2, 0.024, "#3b2519"));
       const puck = M.merge(M.lathe({ segments: lite ? 8 : 16, color: "#f4f0e6", profile: [[0, 0], [0.05, 0], [0.05, 0.016], [0, 0.016]] }),
         M.lathe({ segments: lite ? 8 : 16, color: BLACK, profile: [[0.04, 0.0165], [0.034, 0.0165]] }));
-      const built = { rouletteBody, rouletteLayout: layout, rotor: M.merge(...rotorParts), ball, chips, marker, crapsBody, crapsLayout, die, stick, puck };
+      const well=lite ? Array.from({length:16},(_,i)=>{
+        const a=i*2*Math.PI/16;return [R.WHEEL_X+R.BOWL*Math.cos(a),-R.BOWL*Math.sin(a)];
+      }) : null;
+      const rouletteLayout=lite?inlay(layout,well):layout;
+      const built = { rouletteBody, rouletteLayout, rotor: M.merge(...rotorParts), ball, chips, marker, crapsBody, crapsLayout, die, stick, puck };
       // The small moving pieces cast no shadow: on the felt or in the bowl it would not read, and each is a shadow pass.
       // Nor do the layouts (every cell, rule and glyph flat on the felt, and the craps walls' studs), their own meshes so
       // the shadow pass skips them; the bodies under them keep casting.
-      for (const g of [built.rotor, marker, stick, puck, layout, crapsLayout, ...chips]) g.castShadow = false;
+      for (const g of [built.rotor, marker, stick, puck, rouletteLayout, crapsLayout, ...chips]) g.castShadow = false;
       cache.set(key, built);
       return built;
     };
@@ -643,6 +696,6 @@
     return Object.freeze({ x: L.x + s.x * c + s.z * sn, z: L.z - s.x * sn + s.z * c, yaw: Math.atan2(fx, fz) + L.yaw, role: s.role });
   });
 
-  BL.pokerGames = Object.freeze({ ROULETTE, CRAPS, FOOT, STAFF, SPOTS, CYCLE, RT, CT, GAME, POCKETS, IS_RED, POCKET_ANGLE, CELL, NUMBERS, R_CHIPS, C_CHIPS, PATH, STEP, FAR, HEAR, LINES, TOOLTIP, WATCH_ONLY,
+  BL.pokerGames = Object.freeze({ ROULETTE, CRAPS, FOOT, STAFF, STAFF_DEPTH, SPOTS, CYCLE, RT, CT, GAME, POCKETS, IS_RED, POCKET_ANGLE, CELL, NUMBERS, R_CHIPS, C_CHIPS, PATH, STEP, FAR, HEAR, LINES, TOOLTIP, WATCH_ONLY,
     drawPocket, drawDice, crapsOutcome, spotsFor, build, geometry: (liteSet = false) => geo(liteSet) });
 })();

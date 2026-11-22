@@ -285,8 +285,8 @@ a larger body: the felt is 3.94 by 2.52 m, nine chairs stand 1.42 to 1.47 m
 apart round it with 2.8 m left for the dealer, and a card is 0.27 by 0.38 m and
 a chip 0.15 m across, sized to an Ooga's hands. The padded rail keeps its
 forearm-sized tube. The table view comes in with the table, so the felt fills it
-as before. A chair's seat is 0.47 m high and shallow (0.45 m usable),
-so a seated Ooga's straight legs reach past its front edge like lower legs; its
+as before. A chair's seat is 0.47 m high with 0.45 m of usable depth. A seated Ooga bends
+at the knees, with the thighs over the cushion and the calves below its front edge. The
 back pad meets the Ooga's back and its carved crest stands at 1.06 m, about a
 seated Ooga's shoulder. Each chair's front is about 0.15 m from the rail, so a
 seated Ooga is at the table. The table lamps hang 0.6 m lower than before, as
@@ -519,7 +519,8 @@ Guests walk to the table rails, the bar stools, places standing at the bar,
 conversation groups in the arrival band, by the fountain and down the
 promenade, places at the side glass looking out at the planets, the cashier
 cage and the ropes. They sit by a short slide, watch, talk and move on. The
-waiters make rounds of a stool and three tables, the pit boss keeps the middle
+waiters collect a Pizza Day Negroni and a HODL Old Fashioned at Whale Watch, deliver
+them at two rails, and visit a third table before returning. The pit boss keeps the middle
 of the floor, and security stands at the doors and ropes.
 
 The crowd reads only what every player sees of a table: its pot, phase, hand
@@ -547,13 +548,15 @@ about them reaches the poker tables or anything a player can win or lose.
 Hovering one says "Roulette · watch a spin" or "Craps · watch a throw"; a tap,
 or the act button within a step of one, says only that they are for watching.
 
-They stand in the banks' cross aisles either side of the middle row, midway
-between it and its neighbour (x ±11, z ±6), roulette and craps alternating
+Each gaming table and its dealer share a space centered between poker rows
+at x ±11, z ±6, with roulette and craps alternating
 corner to corner, each a walk block with 2.3 m and more of walkway round it to
 the poker tables' chairs. The cross aisles at z ±18 stay open. Each roulette
 wheel and each craps table's far wall faces the promenade. A lamp hangs over
 each from the same purlin as the poker tables' lamps, and on the top WebGL tier
-each lamp casts a light (31 lights there).
+each lamp casts a light, including in the ₿IFRÖST window picture. On arrival, guests
+spread across the four rails within the current crowd budget and leave an approach open.
+From the terrace, a floating bank of air-cooled mining rigs is visible low to the southeast.
 
 The tables are at an Ooga's scale. The roulette table is 3.2 by 1.3 m on six
 turned marble legs, its top at 0.88 m and its padded oxblood rail at 0.92 m (the

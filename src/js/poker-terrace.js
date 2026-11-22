@@ -109,6 +109,104 @@
     p.push(box(cx,signY,signZ,west?5:5.8,.55,.25,dark),M.moved(sign.geometry,cx-sign.width/2,signY+.14,signZ+.14));
     const g=M.merge(...p);cache.set(key,g);return g;
   };
+  // The blood-orange peel and basil distinguish the Negroni from the amber rye and cherry.
+  const serviceX=14.5;
+  const cocktail=(x,y,z,kind)=>{
+    const p=[turned(x,y,z,[[0,0],[.085,0],[.097,.02],[.097,.036],[0,.036]],
+      "#c9d7cb",10,.43),turned(x,y,z,[[.099,.037],[.103,.155],[.102,.182],[0,.182]],kind?"#c28532":"#ba3927",10,.58)];
+    const ice=M.turnedY(box(0,0,0,.079,.064,.079,"#dbe5cc",.52),.51);
+    p.push(M.moved(ice,x+.013,y+.183,z+.018));
+    if(kind) p.push(turned(x-.047,y+.19,z,[[0,0],[.031,.016],[.031,.046],[0,.058]],"#812835",8,.34),
+      beam(x-.049,y+.23,z,x-.08,y+.28,z-.015,.009,dark));
+    else {
+      for(let i=0;i<5;i++){
+        const a=i*.43,b=a+.43;
+        p.push(beam(x+.082*Math.cos(a),y+.244-i*.008,z+.082*Math.sin(a),x+.082*Math.cos(b),y+.236-i*.008,z+.082*Math.sin(b),.024,"#ff9e37"));
+      }
+      p.push(M.moved(M.turnedZ(box(0,0,0,.037,.076,.017,"#638858",.46),-.45),x-.053,y+.232,z));
+    }
+    return M.merge(...p);
+  };
+  const service=(root,add)=>{
+    const z=-35.77, agent=BL.agent.create({groundAt:()=>0,x:serviceX,z,managed:true,scale:.96});
+    agent.poseManaged(1,serviceX,0,z,0,0,false,true);
+    const p=agent.parts, d=BL.pokerCrowdModels.staffDress("waiter");
+    add(p.torso,d.torso); add(p.armL,d.sleeve); add(p.armR,d.sleeve);
+    p.armL.rotation.x=-.83; S.addChild(root,agent.root);
+    const silver="#c8d2c9";
+    const shaker=turned(0,0,0,[[0,0],[.071,0],[.105,.21],[.108,.265],[.071,.305],[.048,.33],[.05,.375],[0,.375]],silver,12,.55);
+    add(p.armR,M.moved(M.turnedX(shaker,.85),0,-.69,.10));
+    const lipZ=-34.67;
+    const pour=add(root,turned(0,0,0,[[.011,0],[.014,.27]],"#cf7137",6,.67),serviceX-.30,1.23,lipZ);
+    const spoon=add(root,M.merge(beam(0,0,0,.04,.27,0,.015,silver),
+      turned(.04,.27,0,[[0,0],[.021,.012],[0,.032]],brass,6,.5)),serviceX+.12,1.17,lipZ);
+    const counter=[lamp(serviceX-1.16,1.032,-35.10,.64),cocktail(serviceX-.30,1.032,lipZ,0),cocktail(serviceX+.12,1.032,lipZ,1)];
+    for(const [dx,name] of [[-.61,"PIZZA DAY NEGRONI"],[.64,"HODL OLD FASHIONED"]]){
+      const t=BL.poolModels.carve(name,{cell:.011,color:"#e8c38c",emissive:.45});
+      counter.push(box(serviceX+dx,1.095,-34.53,1.13,.143,.064,dark),
+        M.moved(t.geometry,serviceX+dx-t.width/2,1.12,-34.49));
+    }
+    add(root,M.merge(...counter));
+    return (elapsed,calm)=>{
+      const t=elapsed%10, mixing=!calm && elapsed%20>=10;
+      const shake=!calm && !mixing && t<4 ? Math.sin(t*14)*.18*Math.sin(Math.PI*t/4) : 0;
+      const tip=calm || mixing?0:Math.max(0,Math.min(1,t-4.5,8.5-t));
+      p.armR.rotation.x=-1.22+shake-.48*tip;
+      p.armR.rotation.z=.10+.28*tip; p.head.rotation.x=.09+.12*tip;
+      pour.visible=tip>.95;
+      spoon.rotation.y=mixing?t*3:0;
+      p.armL.rotation.x=mixing?-1.05+.08*Math.sin(t*3):-.83;
+      p.armL.rotation.z=mixing?.18+.07*Math.cos(t*3):.06;
+    };
+  };
+  // A bank of air-cooled miners on a rock shelf off the terrace's southern quarter.
+  // The roofline stays under the eyepiece's sky targets and the shelf sits beyond the rail.
+  const miningShelf=lite=>{
+    const p=[], housing="#343c45", shadow="#1f2933", rim="#696760";
+    const foundation=turned(0,-10,0,[[3,0],[10,1.9],[15,4.5],[18.8,7.6],[18.3,8.1],[0,8.1]],"#30323c",11,.17);
+    for(let i=0;i<foundation.verts.length;i+=3) foundation.verts[i+2]*=.34;
+    p.push(foundation);
+    for(let j=0;j<5;j++){
+      const x=(j-2)*6.3,z=(j%2)*1.25,h=2.15+(j%3)*.65,w=5.45,base=-2;
+      p.push(box(x,base+h/2,z,w,h,2.75,housing,.32),box(x,base+h,z,w+.22,.19,2.97,rim,.32),
+        box(x,base+.37,z+1.41,w-.18,.13,.15,copper,.50));
+      for(let f=-1;f<=1;f++){
+        const fx=x+f*1.63,fy=base+h*.60;
+        p.push(box(fx,fy,z+1.40,1.39,1.41,.13,shadow,.30),
+          M.moved(M.turnedX(ring(0,0,0,.52,.058,"#ba8653"),Math.PI/2),fx,fy,z+1.50));
+        for(let a=0;a<(lite?3:6);a++){
+          const angle=a*tau/(lite?3:6);
+          p.push(M.moved(M.turnedZ(box(.12,.19,0,.18,.42,.07,rim,.42),angle),fx,fy,z+1.49));
+        }
+        p.push(box(fx,base+.19,z+1.47,.77,.053,.06,"#faaa4d",.89));
+      }
+      const shaft=x+w*.36;
+      p.push(turned(shaft,base+h,z,[[.30,0],[.30,.9+j*.20],[.41,1+j*.20],[.41,1.15+j*.20],[0,1.15+j*.20]],shadow,8,.35),
+        box(x-w*.40,base+h+.17,z+1.02,.17,.28,.17,"#ff953f",.9));
+      if(j<4) p.push(beam(x+2.5,base+1,z,x+4,base+1,z+1.25*(j%2?-1:1),.23,rim));
+    }
+    // Cooler stacks, insulators and sagging feeder lines break up the distant roofline.
+    for(const x of [-11,0,11]){
+      p.push(beam(x,-1,-2.6,x,4.8,-2.6,.20,rim),beam(x-1.15,4.34,-2.6,x+1.15,4.34,-2.6,.13,copper));
+      for(const side of [-1,1]){
+        const xx=x+side*.87;
+        p.push(beam(x,3.45,-2.6,xx,4.34,-2.6,.085,rim),
+          turned(xx,4.34,-2.6,[[.12,0],[.16,.09],[.10,.12],[.14,.18],[.07,.29],[0,.30]],"#a3bbb4",6,.45));
+        if(x<11) for(let i=0;i<5;i++){
+          const u=i/5,v=(i+1)/5;
+          p.push(beam(xx+11*u,4.65-3.4*u*(1-u),-2.6,xx+11*v,4.65-3.4*v*(1-v),-2.6,.065,rim));
+        }
+      }
+    }
+    for(let i=0;i<5;i++){
+      const x=(i-2)*6.3,z=(i%2)*1.25;
+      p.push(box(x-2.26,-.73,z+1.43,.55,1.58,.06,shadow),
+        box(x-2.26,-.04,z+1.48,.62,.10,.12,opal,.8),
+        box(x,-1.83,z+1.91,5.72,.10,.67,rim,.44));
+      for(let k=0;k<3;k++)p.push(box(x+.72*k-.63,1.04+(i%3)*.65,z, .52,.20,.9,rim,.42));
+    }
+    const g=M.merge(...p);g.castShadow=false;return g;
+  };
   const roofBar = lite => {
     const p=[], x=-3.6,z=-4.8;
     p.push(box(x,.6,z,6.45,1.20,.92,copper),K.slab({w:6.65,h:.14,d:1.16,seed:81,color:"#44312e",offset:{x,y:1.26,z}}));
@@ -278,8 +376,10 @@
       p.push(star);
     }
     const base=add(root,M.merge(...p));base.geometry.castShadow=false;
+    const bank=add(root,miningShelf(lite),far+33,0,32); bank.rotation.y=-2.24;
+    const updateService=service(root,add);
     const scope=mount(station); S.addChild(root,scope.root);
-    return {root,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
+    return {root,updateService,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
   };
   const mount=station=>{
     const root=S.createNode(), p=[];
@@ -304,5 +404,5 @@
     for(const y of [-.43,-.13,.23,.60]){const r=y>.2?.165:.134;const band=turned(0,0,0,[[r,y],[r+.007,y+.016],[r,y+.044]],dark,16);S.addChild(pitch,S.createNode({geometry:M.turnedX(band,Math.PI/2)}));}
     const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target,station};
   };
-  BL.pokerTerrace=Object.freeze({station,halfSpan,outer,clear,bar,roofBar,mount,build});
+  BL.pokerTerrace=Object.freeze({station,halfSpan,outer,clear,serviceX,cocktail,bar,roofBar,mount,build});
 })();

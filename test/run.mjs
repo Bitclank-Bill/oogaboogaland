@@ -38857,8 +38857,10 @@ const pokerMarbleHallChecks = (BL) => {
               byKind("craps").every(t => t.dice.every(d => d.geometry === gg.die) && t.stick.geometry === gg.stick) && T.every(t => t.body.geometry === (t.kind === "roulette" ? gg.rouletteBody : gg.crapsBody));
             // Each where the room says, from its own tables: on a bank's line, midway between two neighbouring rows, its walk block in FURNITURE.
             const blocks = P.FURNITURE.filter(f => f.kind === "game");
-            const placed = T.every((t, i) => { const L = P.GAMES[i], f = blocks[i]; return t.root.position.x === L.x && t.root.position.z === L.z && t.root.rotation.y === L.yaw && P.TABLES.some(p => p.x === L.x) &&
-              P.TABLES.filter(p => p.x === L.x && Math.abs(p.z - L.z) === 6).length === 2 && f.x === L.x && f.z === L.z && f.solid && f.hx === Gm.FOOT[L.kind].hx && f.hz === Gm.FOOT[L.kind].hz && !P.walkable(L.x, L.z, L.x, L.z, 0, 2, { bodyRadius: 0.3 }); });
+            const placed = T.every((t, i) => { const L = P.GAMES[i], f = blocks[i], kit = Gm.STAFF[L.kind];
+              const centre = L.z + Math.cos(L.yaw)*(kit.z-Gm.STAFF_DEPTH+f.hz)/2;
+              return t.root.position.x === L.x && t.root.position.z === L.z && t.root.rotation.y === L.yaw && P.TABLES.some(p => p.x === L.x) &&
+              P.TABLES.filter(p => p.x === L.x && Math.abs(Math.abs(p.z - centre)-6) < 1e-6).length === 2 && f.x === L.x && f.z === L.z && f.solid && f.hx === Gm.FOOT[L.kind].hx && f.hz === Gm.FOOT[L.kind].hz && !P.walkable(L.x, L.z, L.x, L.z, 0, 2, { bodyRadius: 0.3 }); });
             const onGraph = games.root.parent === groom.root.children[0] && T.every(t => t.root.parent === games.root);
             // Rule (owner): two of each kind, the two of a kind on one set of meshes, each a walk block where the room places it.
             record("poker games: two roulette and two craps tables stand in the room, the two of a kind on shared meshes, each a walk block on a bank's line midway between two rows",
@@ -40028,7 +40030,12 @@ const pokerTellPropChecks = (BL) => {
     // sitY): between 0.45 and 0.15 m under the top of its head, where the eyes and brow are (the bead stood 0.275 m
     // under it before the resize, at 1.8 over a 0.905 hip; it now follows the hip down to the shorter chairs).
     const browTraits = BL.contributors.traitsFor("Bead Brow"); browTraits.height = 1.04;
-    const browCave = BL.models.caveman(browTraits); P.sitPose(browCave); browCave.root.position.y = P.sitY(1.04); S.updateWorld(browCave.root, null);
+    const browCave = BL.models.caveman(browTraits), leg=browCave.parts.legL, standingLeg=leg.geometry;
+    P.sitPose(browCave); const foldedLeg=leg.geometry;
+    P.standPose(browCave); const restored=leg.geometry===standingLeg && leg.rotation.x===0;
+    P.sitPose(browCave);
+    record("poker seats: the folded calf uses a shared pose mesh and standing restores the original leg", foldedLeg!==standingLeg && restored && leg.geometry===foldedLeg);
+    browCave.root.position.y = P.sitY(1.04); S.updateWorld(browCave.root, null);
     let headTop = -Infinity;
     S.traverseVisible(browCave.root, n => { const v = n.geometry && (n.geometry.verts || BL.compactGeometry?.storageOf(n.geometry)?.verts); if (!v) return; const m = n.world; for (let i = 0; i < v.length; i += 3) headTop = Math.max(headTop, m[1] * v[i] + m[5] * v[i + 1] + m[9] * v[i + 2] + m[13]); });
     const brow = P.SEATS.every((s, j) => {
@@ -40244,7 +40251,11 @@ const pokerChecks = (BL) => {
     // end and past each of its ends, beside its walk block, between it and the poker tables' chairs.
     const games = P.FURNITURE.filter(f => f.kind === "game");
     const gaming = games.length === 4 && games.every(f => [-1, 1].every(q => {
-      const z = f.z + q * (f.hz + 1.16), x = f.x + q * (f.hx + 1.16);
+      const g=P.GAMES[f.game], staff=BL.pokerGames.STAFF[g.kind], c=Math.cos(g.yaw);
+      const staffX=f.x+staff.x*c, staffZ=f.z+staff.z*c;
+      if(walk(staffX,staffZ,staffX,staffZ,0,2,a)) return false;
+      const extent=Math.max(f.hz,q*(staffZ-f.z)+BL.pokerGames.STAFF_DEPTH);
+      const z = f.z + q * (extent + 1.16), x = f.x + q * (f.hx + 1.16);
       return walk(f.x - f.hx - 0.6, z, f.x + f.hx + 0.6, z, 0, 2, across) && walk(x, f.z - f.hz - 0.6, x, f.z + f.hz + 0.6, 0, 2, across);
     }));
     const wide = ring(BL.pokerFountain) && aisles && gaming;

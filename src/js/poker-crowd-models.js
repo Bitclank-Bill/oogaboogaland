@@ -285,17 +285,16 @@
     if (dress) return dress;
     if (type === "waiter") {
       const hy = -HAND * Math.cos(TRAY_ARM) + 0.17, hz = -HAND * Math.sin(TRAY_ARM) + 0.12;
-      const glasses = [[-0.12, -0.02], [0.1, -0.08], [0.02, 0.1]].map(([x, z]) => M.moved(M.merge(
-        M.lathe({ segments: 8, profile: [[0, 0], [0.04, 0], [0.04, 0.09], [0, 0.09]], color: "#e2c25a" }),
-        M.lathe({ segments: 8, profile: [[0.042, 0.09], [0.042, 0.15], [0, 0.15]], color: "#d8eef2", emissive: 0.15 })), x, hy + 0.03, hz + z));
+      const drinks = [-.12,.12].map((x,kind)=>M.turnedX(BL.pokerTerrace.cocktail(x,hy+.03,hz,kind),-TRAY_ARM));
       dress = {
         head: null,
         // A white mess jacket with gold buttons over a black bow tie.
         torso: M.merge(box(0.9, 0.66, 0.64, "#1d1a1c", 0, 0.58), box(0.3, 0.52, 0.08, SHIRT, 0, 0.68, 0.34),
           box(0.06, 0.06, 0.04, "#d8b45a", 0, 0.38, 0.34), box(0.06, 0.06, 0.04, "#d8b45a", 0, 0.26, 0.34),
           box(0.24, 0.09, 0.08, BLACK, 0, 0.88, 0.4), box(0.08, 0.1, 0.1, BLACK, 0, 0.88, 0.42)),
-        // The tray flat on the hand, a little ahead of it, with three glasses of fizz on it.
-        arm: M.turnedX(M.merge(M.moved(M.lathe({ segments: 14, profile: [[0, 0], [0.3, 0], [0.3, 0.03], [0, 0.03]], color: "#c9ccd0" }), 0, hy, hz), ...glasses), -TRAY_ARM),
+        // The tray flat on the hand, a little ahead of it, with removable drinks for the service loop.
+        drinks,
+        arm: M.turnedX(M.moved(M.lathe({ segments: 14, profile: [[0, 0], [0.3, 0], [0.3, 0.03], [0, 0.03]], color: "#c9ccd0" }), 0, hy, hz), -TRAY_ARM),
         sleeve: M.merge(box(0.4, 0.62, 0.43, SHIRT, 0, -0.29, 0.025), box(0.41, 0.1, 0.44, "#dcd6c4", 0, -0.62, 0.025))
       };
     } else if (type === "pitBoss") {
