@@ -3,8 +3,14 @@
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene, K = BL.pokerMarble;
   const brass = "#b78b4e", edge = "#e4c594", dark = "#302223", copper = "#b9704a", leather = "#713536", opal = "#ffe5ae";
-  const station = Object.freeze({ x: 30.1, y: 1.62, z: -0.6 });
-  const outer = z => 32.2 - 0.25 * Math.max(0, Math.abs(z) - 3);
+  // Preserve the 8.5 m throat at the east bay. Scale the chamfered deck to ten times
+  // the old walk polygon's area, including that unchanged throat (floor plan in metres).
+  const inner=25, halfSpan=7*Math.sqrt(10), flatSpan=3*Math.sqrt(10);
+  const throatArea=(inner-23)*2*BL.pokerGlazing.OPEN;
+  const formerArea=throatArea+14*(32.2-inner)-4;
+  const far=inner+(10*formerArea-throatArea+.25*(halfSpan-flatSpan)**2)/(2*halfSpan);
+  const outer=z=>far-.25*Math.max(0,Math.abs(z)-flatSpan);
+  const station=Object.freeze({x:far-2.5,y:1.62,z:-.6});
   const box = (x,y,z,w,h,d,color,emissive=0) => M.box({ w,h,d,color,emissive,offset:{x,y,z} });
   const turned = (x,y,z,profile,color,n=10,emissive=0) => M.moved(M.lathe({profile,color,segments:n,emissive}),x,y,z);
   const beam = M.beam, tau = 2*Math.PI;
@@ -155,18 +161,21 @@
     }
     return M.merge(...p);
   };
-  const fixtures=[{x:station.x,z:station.z,r:.47}];
-  for(const s of [-1,1]){
-    fixtures.push({x:27.9,z:s*4.6,r:.48},{x:25.5,z:s*6.05,r:.51});
-    for(let i=0;i<7;i++){const a=.12+i*(Math.PI-.24)/6;fixtures.push({x:27.9+1.48*Math.cos(a),z:s*(4.6+1.48*Math.sin(a)),r:.52});}
+  const booths=[];
+  const fixtures=[{x:station.x,z:station.z,r:.55}];
+  for(const side of [-1,1]) for(const [x,offset] of [[30.6,9],[40,17.8],[far-5.7,8.4]]){
+    const z=side*offset, planterX=x-2.36, planterZ=z+side*1.60;
+    booths.push({x,z,side,planterX,planterZ});
+    fixtures.push({x,z,r:.50},{x:planterX,z:planterZ,r:.50});
+    for(let i=0;i<7;i++){const a=.12+i*(Math.PI-.24)/6;fixtures.push({x:x+1.48*Math.cos(a),z:z+side*1.48*Math.sin(a),r:.52});}
   }
   // Reject a sweep through the wall beside the opening, including diagonal steps from the terrace.
   const clear = (ax,az,bx,bz,r) => {
     if(Math.max(ax,bx)<=23-r) return true;
     const opening=BL.pokerGlazing.OPEN-r;
-    if(bx>outer(bz)-r || (bx>23-r && Math.abs(bz)>(bx<25+r?opening:7-r))) return false;
+    if(bx>outer(bz)-r || (bx>23-r && Math.abs(bz)>(bx<inner+r?opening:halfSpan-r))) return false;
     for(let i=0;i<2;i++){
-      const x=i?25+r:23-r;
+      const x=i?inner+r:23-r;
       if((ax-x)*(bx-x)<0 && Math.abs(az+(bz-az)*(x-ax)/(bx-ax))>opening) return false;
     }
     const dx=bx-ax,dz=bz-az,dd=dx*dx+dz*dz;
@@ -180,13 +189,30 @@
     const root=S.createNode(), p=[], glass=M.merge();
     const add=(parent,geometry,x=0,y=0,z=0)=>{const n=S.createNode({geometry,position:{x,y,z}});S.addChild(parent,n);n.glow=1;return n;};
     const floor=BL.pokerFloor.tiles(lite);
-    for(let row=0;row<7;row++) for(let col=0;col<5;col++){
-      const z=(row-3)*2, start=22.2+col*2, width=col===4?outer(z)-start:2, x=start+width/2;
-      const set=(row+col)%2?floor.border:floor.field;
-      const n=add(root,set[(row*3+col)%set.length],x,-.122,z);
-      n.scale.x=width/4;n.scale.z=.5;
+    // Reuse full-size casino marble. At the two chamfers only the outermost tile is tapered.
+    const rows=14, dz=2*halfSpan/rows, columns=Math.ceil((far-inner)/4);
+    const tileWidth=(outer(halfSpan)-inner)/(columns-1);
+    for(let row=0;row<rows;row++)for(let col=0;col<columns;col++){
+      const z0=-halfSpan+row*dz, z=z0+dz/2, x0=inner+col*tileWidth;
+      const set=(row+col)%2?floor.border:floor.field, tile=set[(row*3+col)%set.length];
+      if(col===columns-1){
+        const g=M.merge(tile),v=g.verts;
+        for(let k=0;k<v.length;k+=3){
+          const wz=z+v[k+2]*dz/4;
+          v[k]=x0+(v[k]/4+.5)*(outer(wz)-x0);
+          v[k+2]=wz;
+        }
+        add(root,g,0,-.112,0);
+      }else{
+        const n=add(root,tile,x0+tileWidth/2,-.112,z);n.scale.x=tileWidth/4;n.scale.z=dz/4;
+      }
     }
-    const apron=M.merge(), rim=[[22.2,-7],[outer(7),-7],[32.2,-3],[32.2,3],[outer(7),7],[22.2,7]];
+    // Continue the marble through the open bay, overlapping the indoor threshold.
+    for(const side of [-1,1]){
+      const n=add(root,floor.field[0],(22.2+inner)/2,-.122,side*BL.pokerGlazing.OPEN/2);
+      n.scale.x=(inner-22.2)/4;n.scale.z=BL.pokerGlazing.OPEN/4;
+    }
+    const apron=M.merge(),rim=[[inner,-halfSpan],[outer(halfSpan),-halfSpan],[far,-flatSpan],[far,flatSpan],[outer(halfSpan),halfSpan],[inner,halfSpan]];
     for(let i=0;i<rim.length;i++){
       const [x,z]=rim[i],[xx,zz]=rim[(i+1)%rim.length];
       const ids=[[x,.04,z],[xx,.04,zz],[xx,-.54,zz],[x,-.54,z]].map(q=>M.pushVert(apron,...q));
@@ -194,7 +220,12 @@
       p.push(beam(x,-.075,z,xx,-.075,zz,.065,brass));
     }
     p.push(apron);
-    const points=[[24.5,-7],[27.6,-7],[30.9,-7],[outer(-5),-5],[32.2,-3],[32.2,0],[32.2,3],[outer(5),5],[30.9,7],[27.6,7],[24.5,7]];
+    const perimeter=[[inner,-BL.pokerGlazing.OPEN],...rim,[inner,BL.pokerGlazing.OPEN]],points=[];
+    for(let i=0;i<perimeter.length-1;i++){
+      const [x,z]=perimeter[i],[xx,zz]=perimeter[i+1],n=Math.ceil(Math.hypot(xx-x,zz-z)/3.4);
+      for(let k=0;k<n;k++)points.push([x+(xx-x)*k/n,z+(zz-z)*k/n]);
+    }
+    points.push(perimeter[perimeter.length-1]);
     points.forEach(([x,z],i)=>{
       p.push(turned(x,.06,z,[[0,0],[.14,0],[.095,.10],[.055,.16],[.055,1.05],[.11,1.08],[.07,1.16],[0,1.18]],brass,lite?5:8,.3));
       if(i%2===1) p.push(terraceLamp(x,1.23,z));
@@ -210,17 +241,17 @@
       p.push(turned(24.4,.03,z,[[0,0],[.40,0],[.40,.18],[.30,.32],[.26,3.95],[.36,4.11],[.4,4.25],[0,4.25]],"#a18568",12,.20));
       for(let i=0;i<10;i++){const a=i*tau/10;p.push(beam(24.4+.26*Math.cos(a),.36,z+.26*Math.sin(a),24.4+.26*Math.cos(a),3.94,z+.26*Math.sin(a),.037,brass));}
       p.push(lamp(24.15,2.26,z-s*.22,.68));
-      const bz=s*4.6;
+    }
+    for(const {x:cx,z:bz,side:s,planterX:px,planterZ:pz} of booths){
       for(let i=0;i<7;i++){
-        const a=.12+i*(Math.PI-.24)/6, x=27.9+1.48*Math.cos(a),zz=bz+s*1.48*Math.sin(a);
+        const a=.12+i*(Math.PI-.24)/6, x=cx+1.48*Math.cos(a),zz=bz+s*1.48*Math.sin(a);
         const padded=(w,h,d,y,z,color)=>M.bevelBox({w,h,d,color,bevel:.064,offset:{x:0,y,z}});
         const cushion=M.merge(box(0,.28,0,.76,.35,.87,dark),box(0,.235,0,.78,.036,.89,edge),
           padded(.76,.19,.84,.50,0,leather),padded(.75,.72,.23,.83,.36,leather),
           box(0,1.19,.36,.74,.032,.20,brass),box(0,.87,.23,.028,.04,.018,brass));
         p.push(M.moved(M.turnedY(cushion,Math.atan2(Math.cos(a),s*Math.sin(a))),x,0,zz));
       }
-      p.push(turned(27.9,0,bz,[[0,.06],[.31,.06],[.29,.13],[.075,.20],[.075,.68],[.48,.70],[.5,.76],[0,.76]],brass),lamp(27.9,.76,bz,.33));
-      const px=25.5,pz=s*6.05;
+      p.push(turned(cx,0,bz,[[0,.06],[.31,.06],[.29,.13],[.075,.20],[.075,.68],[.48,.70],[.5,.76],[0,.76]],brass),lamp(cx,.76,bz,.33));
       p.push(turned(px,0,pz,[[0,.06],[.31,.06],[.45,.49],[.48,.53],[.47,.60],[0,.60]],copper));
       for(let i=0;i<(lite?8:17);i++){
         const a=i*2.40,len=.72+(i%4)*.15,h=.9+(i%3)*.24,leaf=M.merge();
@@ -233,6 +264,19 @@
     p.push(beam(24.4,4.26,-4.6,24.4,4.26,4.6,.22,brass));
     const ins=BL.poolModels.carve("TERRACE",{cell:.092,color:opal,emissive:.67});
     p.push(box(24.4,4.42,0,.27,.6,3.6,dark),M.moved(M.turnedY(M.moved(ins.geometry,-ins.width/2,0,0),-Math.PI/2),24.245,4.605,0));
+    // Brass compass in the marble marks the observation court from the threshold.
+    const court=station.x-3.8;
+    for(const r of [2.7,2.84,3.38])p.push(ring(court,.075,0,r,.023,brass));
+    for(let i=0;i<16;i++){
+      const a=i*tau/16,r=i%4===0?2.65:i%2===0?1.93:1.12, star=M.geometry();
+      const point=(along,across)=>[court+along*Math.cos(a)-across*Math.sin(a),.081,along*Math.sin(a)+across*Math.cos(a)];
+      for(const side of [-1,1]){
+        const vertices=[point(.17,0),point(.52,side*.23),point(r,0)];
+        if(side<0)vertices.reverse();
+        M.face(star,vertices.map(v=>M.pushVert(star,...v)),BL.math.hexToRgb(side>0?edge:copper),{emissive:.28});
+      }
+      p.push(star);
+    }
     for(let i=0;i<3;i++){
       const a=i*tau/3;
       p.push(beam(station.x+.62*Math.cos(a),.07,station.z+.62*Math.sin(a),station.x,1.34,station.z,.106,brass));
@@ -251,5 +295,5 @@
     for(const y of [-.43,-.13,.23,.60]){const r=y>.2?.165:.134;const band=turned(0,0,0,[[r,y],[r+.007,y+.016],[r,y+.044]],dark,16);S.addChild(pitch,S.createNode({geometry:M.turnedX(band,Math.PI/2)}));}
     const target=add(pitch,M.turnedX(tube,Math.PI/2));return {root,yaw,pitch,target};
   };
-  BL.pokerTerrace=Object.freeze({station,outer,clear,bar,roofBar,build});
+  BL.pokerTerrace=Object.freeze({station,halfSpan,outer,clear,bar,roofBar,build});
 })();

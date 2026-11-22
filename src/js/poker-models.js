@@ -49,6 +49,7 @@
     const x = Math.cos(a) * SEAT_A, z = Math.sin(a) * SEAT_B;
     return { x, z, yaw: Math.atan2(-x, -z) };
   });
+  const SIGN_X=3.15, SIGN_Z=-1.52, SIGN_YAW=-.76;
   const PLACES = Object.freeze(seatAngles.map(a => Object.freeze({ x: Math.cos(a) * 6 * TABLE_K, z: Math.sin(a) * 4.2 * TABLE_K })));
   // The dealer stands 0.43 m behind the rail's outer edge on the gap the chairs leave.
   const DEALER_Z = -(RAIL_B + 0.11 + 0.43);
@@ -263,9 +264,9 @@
   // A padded oxblood rail round the felt: a tube along an oval of RAIL_A by RAIL_B, 0.22 m across and 0.17 m high, out
   // on the top's edge (TOP_A by TOP_B) and clear of the felt (FELT_A by FELT_B), so the button, cards and chips lie
   // inside it. Built at room size, then divided by the rim node's scale (4.5 by 2.92 times TABLE_K).
-  const rail = () => {
+  const rail = (color = OXBLOOD) => {
     const A = RAIL_A, B = RAIL_B, SX = 4.5 * TABLE_K, SZ = 2.92 * TABLE_K, segments = lite ? 28 : 56, sides = lite ? 5 : 8, across = 0.11, high = 0.085, y = RAIL_TOP - high;
-    const geo = M.merge(), rgb = BL.math.hexToRgb(OXBLOOD), rows = [];
+    const geo = M.merge(), rgb = BL.math.hexToRgb(color), rows = [];
     for (let k = 0; k < segments; k++) {
       const t = k / segments * Math.PI * 2, c = Math.cos(t), s = Math.sin(t), l = Math.hypot(c / A, s / B), nx = c / A / l, nz = s / B / l, row = [];
       for (let j = 0; j < sides; j++) {
@@ -363,6 +364,11 @@
       plate: M.merge(box(3.4, 0.85, 0.04, "#1d4234", 0, -0.2, 0.08), box(3.48, 0.05, 0.05, T.accent, 0, 0.245, 0.09), box(3.48, 0.05, 0.05, T.accent, 0, -0.645, 0.09),
         box(0.05, 0.94, 0.05, T.accent, -1.74, -0.2, 0.09), box(0.05, 0.94, 0.05, T.accent, 1.74, -0.2, 0.09))
     };
+    built.eras = {};
+    for (const [key, felt, leather] of [[0,"#204335","#392725"],[4,"#394b33",OXBLOOD],[9,"#324049","#353038"]]) {
+      built.eras[key] = { felt:disk(1,FELT_Y-.02,FELT_Y,felt), rim:leather===OXBLOOD?built.rim:rail(leather),
+        art:BL.pokerEraTables.decoration(key,lite,built.chair), sign:BL.pokerEraTables.sign(key) };
+    }
     built.cashier.geometry.castShadow = false; built.plate.castShadow = false;
     // The evening hall's haze takes nothing off what glows: the crystals, the lanterns' lit glass and the cashier's
     // sign stay crisp down the hall.
@@ -438,9 +444,10 @@
     S.addChild(root, environment, fixtures);
     for (let i = 0; i < 10; i++) {
       const p = TABLES[i], group = S.createNode({ position: { x: p.x, y: 0, z: p.z } });
+      const era = geo.eras[i];
       const top = node(geo.stone); top.scale.x = TOP_A; top.scale.z = TOP_B;
-      const rim = node(geo.rim); rim.scale.x = 4.5 * TABLE_K; rim.scale.z = 2.92 * TABLE_K;
-      const felt = node(geo.felt); felt.scale.x = FELT_A; felt.scale.z = FELT_B;
+      const rim = node(era ? era.rim : geo.rim); rim.scale.x = 4.5 * TABLE_K; rim.scale.z = 2.92 * TABLE_K;
+      const felt = node(era ? era.felt : geo.felt); felt.scale.x = FELT_A; felt.scale.z = FELT_B;
       const pinstripe = node(i === HIGH_ROLLER ? geo.pinstripeGold : geo.pinstripe); pinstripe.scale.x = 4.02 * TABLE_K; pinstripe.scale.z = 2.44 * TABLE_K;
       const base = node(geo.base);
       S.addChild(group, base, top, rim, felt, pinstripe);
@@ -454,15 +461,22 @@
       // Deal left to right and print upright as seen from the gorilla's side of the table.
       const board = Array.from({ length: 5 }, (_, j) => { const n = onFelt(geo.back, (2 - j) * 0.72 * TABLE_K, FELT_Y + 0.03); n.rotation.y = Math.PI; n.visible = false; S.addChild(group, n); return n; });
       const button = onFelt(geo.button); S.addChild(group, button); button.visible = false;
-      const lettering = BL.poolModels.carve(`TABLE ${i + 1}`, { cell: 0.1, color: "#ffe1a0", emissive: 1 });
-      lettering.geometry.castShadow = false;
-      const label = S.createNode({ position: { x: 0, y: 2.95, z: 0 } });
-      label.scale.x = label.scale.y = label.scale.z = 0.7;
-      const text = node(lettering.geometry, -(lettering.width - 0.2) / 2);
-      text.glow = 1;
-      S.addChild(label, text); S.addChild(group, label);
-      // The name's plate behind it.
-      const plate = node(geo.plate); S.addChild(label, plate);
+      let label, plate;
+      if (era) {
+        label = node(era.sign,SIGN_X,0,SIGN_Z);
+        label.rotation.y = SIGN_YAW;
+        plate = label;
+        S.addChild(base,node(era.art));
+      } else {
+        const lettering = BL.poolModels.carve(`TABLE ${i+1}`, {cell:.1,color:"#ffe1a0",emissive:1});
+        lettering.geometry.castShadow = false;
+        label = S.createNode({position:{x:0,y:2.95,z:0}});
+        label.scale.x = label.scale.y = label.scale.z = .7;
+        const text = node(lettering.geometry,-(lettering.width-.2)/2);
+        text.glow=1;
+        plate=node(geo.plate); S.addChild(label,text,plate);
+      }
+      S.addChild(group,label);
       // The dealer, a gorilla at DEALER_SCALE: as tall as a standing Ooga guest, so it reads as staff beside the table, not over it.
       const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: DEALER_Z, managed: true, scale: DEALER_SCALE });
       agent.poseManaged(1, 0, 0, DEALER_Z, 0, 0, false, true);
@@ -471,7 +485,7 @@
       S.addChild(group, agent.root);
       const dealCard = onFelt(geo.back, 0, FELT_Y + 0.12, DEAL_FROM); dealCard.visible = false; S.addChild(group, dealCard);
       S.addChild(root, group);
-      const table = { root: group, base, top, rim, felt, pinstripe, chairs, chips, backs, board, button, label, plate, agent, dealCard,
+      const table = { root: group, base, top, rim, felt, pinstripe, chairs, chips, backs, board, button, label, plate, fixedSign:!!era, agent, dealCard,
         beads: SEATS.map(() => null), toss: null, push: null, actors: new Array(SEATS.length).fill(null), version: -1, pulse: 0 };
       tables.push(Object.assign(table, lite ? LITE_PROPS : tellProps(table, geo)));
     }
@@ -528,6 +542,8 @@
   const HIGH_TOPS = [...[-17, 17].flatMap(x => [24, 12, 0, -12].map(z => [x, z])), ...[-5.5, 5.5].flatMap(x => [24, 12, -12].map(z => [x, z])), [-5.5, -24]];
   const FURNITURE = Object.freeze([
     { kind: "bar", x: -10, z: -35.3, hx: 8, hz: 0.9, solid: true }, { kind: "bar", x: 10, z: -35.3, hx: 8, hz: 0.9, solid: true },
+    ...Object.keys(BL.pokerEraTables.names).map(key=>({kind:"eraSign",x:TABLES[key].x+SIGN_X,z:TABLES[key].z+SIGN_Z,hx:.78,hz:.75,solid:true})),
+    {kind:"founderChair",x:TABLES[0].x-3.08,z:TABLES[0].z-2.76,hx:1.04,hz:.81,solid:true},
     { kind: "cage", x: 22.4, z: 31, hx: 1.0, hz: 2.5, solid: true },
     { kind: "sofa", x: -22.6, z: -31, hx: 0.6, hz: 2.0, solid: true }, { kind: "sofa", x: 22.6, z: -31, hx: 0.6, hz: 2.0, solid: true },
     { kind: "lowTable", x: -20.6, z: -31, hx: 0.5, hz: 0.9, solid: true }, { kind: "lowTable", x: 20.6, z: -31, hx: 0.5, hz: 0.9, solid: true },
@@ -539,10 +555,9 @@
       { kind: "armchair", x: side * 19.05, z: -30.1, hx: 0.45, hz: 0.48, yaw: side * Math.PI / 2, solid: true },
       { kind: "armchair", x: side * 20.6, z: -33.35, hx: 0.48, hz: 0.45, yaw: 0, solid: true },
       { kind: "armchair", x: side * 20.6, z: -28.65, hx: 0.48, hz: 0.45, yaw: Math.PI, solid: true }]),
-    { kind: "ropePost", x: 5.0, z: -28.4, hx: 0.2, hz: 0.2, solid: true }, { kind: "ropePost", x: 5.0, z: -26.8, hx: 0.2, hz: 0.2, solid: true },
-    { kind: "ropePost", x: 5.0, z: -21.8, hx: 0.2, hz: 0.2, solid: true }, { kind: "ropePost", x: 5.0, z: -20.2, hx: 0.2, hz: 0.2, solid: true },
-    { kind: "rope", x: 5.0, z: -27.6, hx: 0.1, hz: 0.8, solid: true }, { kind: "rope", x: 5.0, z: -21.0, hx: 0.1, hz: 0.8, solid: true },
-    { kind: "highRoller", x: 11, z: -24, hx: 7.0, hz: 5.0, solid: false },
+    ...[-27.1,-25.1,-22.9,-20.9].map(z=>({kind:"ropePost", x:7.08, z, hx:.2,hz:.2,solid:true})),
+    ...[-26.1,-21.9].map(z=>({kind:"rope", x:7.08,z,hx:.1,hz:1,solid:true})),
+    { kind: "highRoller", x: 11, z: -24, hx: 4, hz: 4, solid: false },
     // High-top cocktail tables for the crowd beside the tables, fifteen down the two banks.
     ...HIGH_TOPS.map(([x, z]) => x === BL.pokerHourglass.X && z === BL.pokerHourglass.Z
       ? { kind: "hourglass", x, z, hx: BL.pokerHourglass.RADIUS, hz: BL.pokerHourglass.RADIUS, solid: true }
@@ -630,7 +645,9 @@
     TABLES.forEach((t, i) => {
       // Four lines out from the table's corners (the old layout's, times TABLE_K), a watcher at the first clear place on
       // each and a second ring a step further back behind the first.
-      for (const [ox, oz] of [[-3.4, -5.3], [3.4, -5.3], [-3.4, 5.3], [3.4, 5.3]].map(([x, z]) => [x * TABLE_K, z * TABLE_K])) {
+      // At Satoshi's table the two rear-left spectators stand between the dealer and the founder's chair.
+      const rearLeft = i === 0 ? -1.0 : -3.4;
+      for (const [ox, oz] of [[rearLeft, -5.3], [3.4, -5.3], [-3.4, 5.3], [3.4, 5.3]].map(([x, z]) => [x * TABLE_K, z * TABLE_K])) {
         const len = Math.hypot(ox, oz), ux = ox / len, uz = oz / len;
         let from = 0;
         for (let ring = 0; ring < 2; ring++) for (let d = from; d <= from + 1.5; d += 0.25) {

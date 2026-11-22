@@ -158,7 +158,7 @@
       box(0.05, 0.1, len + 0.1, GOLD, T.out + 0.02, T.top - 0.05, 0),
       box(pw, T.under - T.podium, T.podiumEnd * 2, SHADE, (T.podiumIn + T.podiumOut) / 2, (T.under + T.podium) / 2, 0),
       box(pw + 0.06, 0.05, T.podiumEnd * 2 + 0.06, GOLD, (T.podiumIn + T.podiumOut) / 2, T.under - 0.12, 0)];
-    if (east) for (const s of [-1, 1]) run(parts, lite, true, RAIL.x, s * 7, s * RAIL.z, 8, true);
+    if (east) for (const s of [-1, 1]) run(parts, lite, true, RAIL.x, s * BL.pokerTerrace.halfSpan, s * RAIL.z, 5, true);
     else run(parts, lite, true, RAIL.x, -RAIL.z, RAIL.z, RAIL.sideSegments, true);
     return noShadow(moonlit(M.merge(...parts)));
   });

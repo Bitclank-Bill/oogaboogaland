@@ -235,7 +235,7 @@
     }
     telescope.open();
   };
-  const eastLimit = (p, inside) => Math.abs(p.z) < BL.pokerGlazing.OPEN || p.x > 25 && Math.abs(p.z) < 7
+  const eastLimit = (p, inside) => Math.abs(p.z) < BL.pokerGlazing.OPEN || p.x > 25 && (Math.abs(p.z) <= BL.pokerTerrace.halfSpan || pilot?.player?.root.position.x > 25)
     ? BL.pokerTerrace.outer(p.z) - 0.2 : inside;
   const currentSalon = () => salon < 0 ? null : BL.pokerSalons.ROOMS[salon];
   const floorWalk = (ax, az, bx, bz, y, h, actor) => salon >= 0 && actor === avatar ?
@@ -296,7 +296,8 @@
     const x = p.x, y = p.y, z = p.z;
     // Stay inside the wall finishes and columns, with clearance for the camera's near plane.
     if (salon >= 0) { salonClamp(p, currentSalon(), 0.24); return p.x !== x || p.y !== y || p.z !== z; }
-    p.x = clamp(x, -23, eastLimit(p, 23)); p.z = clamp(z, -35.7, 35.7); p.y = clamp(y, 0.8, 8.5);
+    p.x = clamp(x, -23, eastLimit(p, 23)); const edge = p.x > 25 ? BL.pokerTerrace.halfSpan - .2 : 35.7;
+    p.z = clamp(z, -edge, edge); p.y = clamp(y, 0.8, 8.5);
     return p.x !== x || p.y !== y || p.z !== z;
   };
   const keepCameraInside = () => {
@@ -1099,7 +1100,7 @@
       const v = room.tables[i]; v.pulse = Math.max(0, v.pulse - dt);
       // Floating table names face the visitor and clear the overhead view with the fixtures.
       v.label.visible = room.fixtures.visible;
-      if (v.label.visible) v.label.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
+      if (v.label.visible && !v.fixedSign) v.label.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
       v.agent.parts.armL.rotation.x = -0.5 - Math.sin(v.pulse / 0.7 * Math.PI) * 0.75;
       v.agent.parts.armR.rotation.x = -0.45;
       v.dealCard.visible = v.pulse > 0 && snapshots[i].phase !== "waiting";

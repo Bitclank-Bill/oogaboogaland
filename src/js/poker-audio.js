@@ -633,8 +633,11 @@
         bedLevel();
         // Outdoors, both the recording and the synth reach the ear from the open bay.
         const dx = 24.42 - ear.x, dz = -ear.z, dist = Math.hypot(dx, dz);
-        const outside = Math.max(0, Math.min(1, -dx / 7));
-        const pan = dist > 0 ? outside * 0.9 * (-dx * ear.fz + dz * ear.fx) / dist : 0;
+        // Across the wider deck the recording continues to recede toward the doorway, including in either wing.
+        const reach = Math.max(0, Math.min(1, -dx / 2)) * dist;
+        const panMix = Math.min(1, reach / 7);
+        const outside = panMix + .4 * (1 - 1 / (1 + Math.max(0, reach - 8) / 12));
+        const pan = dist > 0 ? panMix * 0.9 * (-dx * ear.fz + dz * ear.fx) / dist : 0;
         if (Math.abs(outside - lastDistance) > 0.004 || outside !== lastDistance && (outside === 0 || outside === 1)) {
           doorGain.gain.setTargetAtTime(Math.pow(0.25, outside), ctx.currentTime, 0.09);
           const top = Math.min(22000, ctx.sampleRate * 0.49);

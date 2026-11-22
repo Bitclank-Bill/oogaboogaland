@@ -35997,6 +35997,8 @@ const pokerTellsStep = { name: "poker tells", why: "rule: every seated figure sh
         // the seat is released (the hand played out under the pending stand), another table is chosen and nothing turns.
         out.stood = { ok: false };
         if (toMyTurn()) {
+          // Let a preceding bot fold finish before isolating the visitor's shared card prop.
+          B.advance(T.TOSS_TIME + 1 / 30, 1 / 30);
           P.action("fold"); B.advance(0.15, 1 / 30);
           const tossing = { kind: P.tells.kind[k], arms: look(cave) };
           P.action("stand"); B.advance(1 / 30, 1 / 30);
@@ -39725,7 +39727,7 @@ const pokerGlazingChecks = (BL) => {
       // Re-pinned (the shrink in plan): the fifteen high-top cocktail tables are the crowd's furniture, not the glazing's.
       // Re-pinned (the gaming floor): the four roulette and craps tables are the gaming floor's walk blocks, not the
       // glazing's; the rest stay 24.
-      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game").length === 24 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
+      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === 3 && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
         P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
       const sconces = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).flame), cups = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).cup);
       const placedLights = sconces.length === 17 && sconces.every(n => Math.abs(n.position.y - G.SCONCE_Y) < 1e-9 && Math.abs(Math.abs(n.position.x) - (23.8 - 0.41)) < 1e-9) &&
@@ -40154,17 +40156,27 @@ const pokerChecks = (BL) => {
     record("poker public state: blind markers and contributions are exposed without private cards", hu.smallBlind === hu.dealer && hu.bigBlind === 1 && hu.seats[0].totalBet === 5 && hu.seats[1].totalBet === 10 && hu.seats[0].lastAction === "Small blind" && hu.seats.every(p => !p || p.cards.every(c => c === null)));
   }
   const walk = BL.pokerModels.walkable, actor = { bodyRadius: 0.65 };
+  {
+    const T=BL.pokerTerrace, h=T.halfSpan, r=.4;
+    // Measure the depth along the whole outer rail against the approved 1,138 m² footprint.
+    const step=2*h/512;
+    let area=4*BL.pokerGlazing.OPEN;
+    for(let sample=0;sample<512;sample++)area+=step*(T.outer(-h+(sample+.5)*step)-25);
+    const route=T.clear(22,0,45,0,r) && T.clear(36,0,36,20,r) && T.clear(36,20,36,-20,r);
+    const enclosed=!T.clear(36,20,36,h+1,r) && !T.clear(36,15,23,15,r) && !T.clear(36,0,T.outer(0)+1,0,r);
+    record("poker terrace: tenfold walk polygon, open promenade and both wings, contained at the outer rail and glass",Math.abs(area-1138)<.01 && route && enclosed && T.station.x>45,JSON.stringify({area,route,enclosed}));
+  }
   // Banana Club's fountain fills the middle of the main aisle, so wide spectators walk round it on either side, and its
   // statues stand at the row aisles' ends.
   const round = side => walk(0, 34, 0, 6, 0, 2, actor) && walk(0, 6, side * 3.6, 0, 0, 2, actor) && walk(side * 3.6, 0, 0, -6, 0, 2, actor) && walk(0, -6, 0, -34, 0, 2, actor);
-  record("poker floor: wide spectators can traverse the main aisle round the fountain and the row aisles; the pool, table and chair sweeps collide", !walk(0, 34, 0, -34, 0, 2, actor) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && walk(22, 0, 26, 0, 0, 2, actor) && !walk(22, 9, 26, 9, 0, 2, actor) && !walk(28, 0, 34, 0, 0, 2, actor));
+  record("poker floor: wide spectators can traverse the main aisle round the fountain and the row aisles; the pool, table and chair sweeps collide", !walk(0, 34, 0, -34, 0, 2, actor) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, actor) && !walk(-18, 24, -4, 24, 0, 2, actor) && walk(22, 0, 26, 0, 0, 2, actor) && !walk(22, 9, 26, 9, 0, 2, actor) && walk(28, 0, 34, 0, 0, 2, actor) && !walk(44, 2, BL.pokerTerrace.outer(2) + 1, 2, 0, 2, actor));
   {
     const P = BL.pokerModels, a = { bodyRadius: 0.65 }, out = { x: 0, z: 0 };
     // The fountain blocks the straight walk down the middle and the walk round it is open either side; the statues close
     // the row aisles' last metre by the wall.
     const club = !walk(0, 34, 0, -34, 0, 2, a) && round(1) && round(-1) && walk(-20.4, 18, 20.4, 18, 0, 2, a) && walk(-20.4, -18, 20.4, -18, 0, 2, a) && !walk(-21, 18, 21, 18, 0, 2, a) &&
       !walk(10, -33, 10, -34.8, 0, 2, a) && !walk(20, 31, 22.3, 31, 0, 2, a) && !walk(-19, -31, -22, -31, 0, 2, a) &&
-      walk(3.9, -30, 3.9, -18, 0, 2, a) && !walk(3.5, -27.6, 6.5, -27.6, 0, 2, { bodyRadius: 0.4 });
+      walk(3.9, -30, 3.9, -18, 0, 2, a) && !walk(6.1, -26.1, 8.0, -26.1, 0, 2, { bodyRadius: 0.4 }) && walk(6.1,-24,7.55,-24,0,2,{bodyRadius:.4});
     const moved = P.nearestClear(10, -35.3, a, out), kept = P.nearestClear(0, 29, a, { x: 0, z: 0 });
     const clear = Math.hypot(moved.x - 10, moved.z + 35.3) <= 4 && walk(moved.x, moved.z, moved.x, moved.z, 0, 2, a) && kept.x === 0 && kept.z === 29;
     // Every walkway beside the fountain and each statue is at least 2.3 m: a body 2.3 m across (radius 1.15) circles the
@@ -43024,9 +43036,11 @@ const pokerAudioChecks = (BL) => {
   const railLevel = distance.gain.last, railPan = stereo.pan.last, railTone = filter.frequency.last;
   duckRun.I.update(1, {x:32,z:0,fx:0,fz:-1});
   const turnedPan = stereo.pan.last;
+  duckRun.I.update(1, {x:48,z:12,fx:0,fz:1});
+  const farLevel = distance.gain.last, farTone = filter.frequency.last;
   duckRun.I.update(1, {x:21,z:0,fx:1,fz:0});
   record("poker audio: the doorway attenuates and localizes both music sources on the terrace, reverses across the listener and restores the indoor mix",
-    stereo.to === channelNodes.music && railLevel === .25 && railPan > .8 && turnedPan < -.8 && railTone > 0 && distance.gain.last === 1 && stereo.pan.last === 0);
+    stereo.to === channelNodes.music && railLevel === .25 && railPan > .8 && turnedPan < -.8 && farLevel > 0 && farLevel < railLevel && farTone > 0 && farTone < railTone && distance.gain.last === 1 && stereo.pan.last === 0);
   const free = levelAt(duckNow());
   duckRun.I.setSeated(true);
   const seated = levelAt(duckNow()), sitEase = lastEase();
