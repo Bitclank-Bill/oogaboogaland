@@ -49949,11 +49949,12 @@ const equipmentAppChecks = async () => {
     await b.evaluate("window.__ownBody={elbow:__ooga.studio.cave.elbow,arm:__ooga.studio.cave.parts.armR.position.x,root:__ooga.studio.cave.root}");
     await choose(female.version, "body");
     await wait("__ooga.studio.cave.armScale===0.86", "The female build did not reach the studio's Ooga");
-    const built = await b.evaluate("__ooga.studio.cave.root===__ownBody.root && __ooga.studio.cave.parts.armR.position.x!==__ownBody.arm && !BL.characterWardrobe.supports(__ooga.studio.cave,'beard')");
+    const built = await b.evaluate(`(() => { const cave=__ooga.studio.cave; return cave.root===__ownBody.root && cave.parts.armR.position.x!==__ownBody.arm && !BL.characterWardrobe.supports(cave,'beard')
+      && cave.sleepParts.armRX===cave.parts.armR.position.x && document.getElementById('studio-slot-beard').disabled; })()`);
     await choose("original", "body");
     await wait("__ooga.studio.cave.elbow===__ownBody.elbow", "Original did not give the Ooga its own build back");
-    record("equipment wardrobe: the body switches the build in place, a female face takes no beard, and Original gives the Ooga's own build back", built
-      && await b.evaluate("__ooga.studio.cave.parts.armR.position.x===__ownBody.arm && __ooga.studio.cave.armScale===1"));
+    record("equipment wardrobe: the body switches the build in place with its resting arms, a female face takes no beard (its editor says so at once), and Original gives the Ooga's own build back", built
+      && await b.evaluate("__ooga.studio.cave.parts.armR.position.x===__ownBody.arm && __ooga.studio.cave.sleepParts.armRX===__ownBody.arm && __ooga.studio.cave.armScale===1 && !document.getElementById('studio-slot-beard').disabled"));
     // An Ooga's own colours: a swatch under its part's editor puts the colour on the whole build, a typed hex any colour,
     // and Original takes it off.
     const ginger = equipmentWardrobe.slotItems("hairColor").find((row) => row.label === "Ginger");
@@ -49993,6 +49994,23 @@ const equipmentAppChecks = async () => {
     })()`);
     record("equipment wardrobe: a peer's message dresses their body in place, an unknown piece is their own look, and leaving undresses it",
       Object.values(peerLook).every(Boolean), JSON.stringify(peerLook));
+    const bouquet = equipmentWardrobe.slotItems("weapon").find((row) => row.label === "Bouquet");
+    const borrowed = await b.evaluate(`(() => {
+      const cave=BL.models.caveman(BL.contributors.traitsFor('itsLiran')),plate=cave.parts.club.children[0];
+      const own=!!plate&&plate.visible;
+      BL.characterWardrobe.apply(cave,{weapon:{item:${JSON.stringify(bouquet.id)},version:${JSON.stringify(bouquet.version)}}});
+      const hidden=!plate.visible;
+      BL.characterWardrobe.apply(cave,null);
+      const back=plate.visible;
+      // Builds in a worn wardrobe are kept for the 32 most recently asked for.
+      const t=BL.contributors.traitsFor('equipment-peer'),first=BL.models.templateFor({...t,wardrobeKey:'cap-0'});
+      for(let i=1;i<=32;i++)BL.models.templateFor({...t,wardrobeKey:'cap-'+i});
+      const recent=BL.models.templateFor({...t,wardrobeKey:'cap-32'})===BL.models.templateFor({...t,wardrobeKey:'cap-32'});
+      const evicted=BL.models.templateFor({...t,wardrobeKey:'cap-0'})!==first;
+      return {own,hidden,back,recent,evicted};
+    })()`);
+    record("equipment wardrobe: what a character hung on its own club stays off a borrowed weapon, and outfit builds are kept to the most recent 32",
+      Object.values(borrowed).every(Boolean), JSON.stringify(borrowed));
     await choose("original", "shirt"); await choose("original", "weapon"); await choose("original", "shoes");
     const clearRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");

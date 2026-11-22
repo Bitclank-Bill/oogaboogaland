@@ -51,7 +51,8 @@ test("wardrobe: an Ooga's own colours also take a colour the player mixed, as a 
     { revision: 0, wardrobe: { skin: custom("#a0522d"), eyeColor: custom("#12ab34") } });
   assert.equal(equipmentWardrobe.key({ hairColor: custom("#ffffff") }), "hairColor:#ffffff");
   for (const bad of [{ shirt: custom("#a0522d") }, { beard: custom("#a0522d") }, { skin: custom("#A0522D") }, { skin: custom("a0522d") }, { skin: custom("#a0522") },
-    { skin: { ...custom("#a0522d"), version: "x" } }, { skin: { ...custom("#a0522d"), size: 100 } }, { skin: { item: "custom", version: null } }])
+    { skin: { ...custom("#a0522d"), version: "x" } }, { skin: { ...custom("#a0522d"), size: 100 } }, { skin: { item: "custom", version: null } },
+    { skin: custom(["#a0522d"]) }, { skin: custom({ toString: () => "#a0522d" }) }])
     assert.throws(() => equipmentCommand({ revision: 0, wardrobe: bad }), undefined, JSON.stringify(bad));
 });
 

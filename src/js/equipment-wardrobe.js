@@ -114,7 +114,7 @@
       }
       if (slot.id === "mouth" && !Object.hasOwn(content.traits, "face")) fail();
     } else if (slot.kind === "colour") {
-      if (!own(content, ["format", "slot", "color"]) || !HEX.test(content.color)) fail();
+      if (!own(content, ["format", "slot", "color"]) || typeof content.color !== "string" || !HEX.test(content.color)) fail();
     } else if (slot.kind === "paint") {
       if (!own(content, ["format", "slot", "palette", "parts"], ["glow"]) || !plain(content.parts)) fail();
       colours(content.palette, content.glow);
@@ -167,7 +167,7 @@
     const slot = SLOT.get(slotId);
     if (!slot || slot.id === "hat" || !plain(value)) fail("Invalid wardrobe choice");
     if (value.item === "custom") {
-      if (slot.place !== "tone" || !own(value, ["item", "version", "color"]) || value.version !== null || !HEX.test(value.color)) fail("Invalid wardrobe choice");
+      if (slot.place !== "tone" || !own(value, ["item", "version", "color"]) || value.version !== null || typeof value.color !== "string" || !HEX.test(value.color)) fail("Invalid wardrobe choice");
       return Object.freeze({ item: "custom", version: null, color: value.color });
     }
     const keys = slot.sized ? ["size"] : [];

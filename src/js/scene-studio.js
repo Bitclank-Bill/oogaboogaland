@@ -824,6 +824,8 @@
         const dressed = BL.characterWardrobe.apply(cave, worn);
         if (!BL.characterEquipment.apply(cave, chosen, size)) view.status.textContent = "This character needs a hat fitting before it can wear this selection.";
         else if (!dressed) view.status.textContent = "These pieces could not be put on this Ooga. Try again.";
+        // What the editors allow follows the build now worn (a female face takes no beard).
+        display();
       } catch { if (!stale()) view.status.textContent = "This look could not be loaded. Try again."; }
     };
     const changed = () => {

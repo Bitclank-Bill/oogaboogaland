@@ -144,6 +144,16 @@
     if (cave.skins.club.default === from.skins.club.default) cave.skins.club.default = target.skins.club.default;
     cave.clubRest = target.clubRest; cave.clubCarry = target.clubCarry;
     cave.modelled = target.modelled; cave.elbow = target.elbow; cave.back = target.back; cave.armScale = target.armScale; cave.fist = target.fist;
+    // Where the crew puts the arms and head back after a pose (crew.js `sleepParts`): the new build's own places.
+    const shownOf = (key) => { const node = cave.parts[key], source = node && BL.models.templateNode(node); return source ? at(mapTo, source) : null; };
+    const rest = cave.sleepParts, armR = shownOf("armR"), armL = shownOf("armL"), head = shownOf("head");
+    if (rest && armR && armL && head) {
+      rest.armRX = armR.position.x; rest.armLX = armL.position.x;
+      rest.headX = head.position.x; rest.headY = head.position.y; rest.headZ = head.position.z;
+    }
+    // What the character's own hooks hung on its club shows only on its own club (models.js hides it off a worn weapon).
+    const club = cave.parts.club, clubSource = club && BL.models.templateNode(club), clubShown = clubSource && at(mapTo, clubSource);
+    if (clubShown) for (let i = 0; i < club.children.length; i++) club.children[i].visible = clubShown.children[i].visible;
     if (weaponChanged) for (const key of ["club", "forearmR"]) {
       const node = cave.parts[key], source = node && BL.models.templateNode(node), shown = source && at(mapTo, source);
       if (!shown) continue;

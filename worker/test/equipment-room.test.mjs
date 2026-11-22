@@ -81,6 +81,22 @@ test("equipment Room: hosted Studio save never takes over a socket; join, reconn
   assert.deepEqual(h.errors, []);
 });
 
+test("equipment Room: a fresh join whose equipment read fails is admitted in its own look and dressed by a later read", async t => {
+  const h = await host(t);
+  assert.equal((await h.save(1, { revision: 0, selection: hat(), size: 80 })).status, 200);
+  const prepare = h.db.prepare;
+  h.db.prepare = () => { throw new Error("D1 unavailable"); };
+  const { ws } = await h.join();
+  h.db.prepare = prepare;
+  assert.equal(ws.closed, null);
+  assert.equal(ws.sent.some(m => m.t === "kick"), false);
+  assert.ok(ws.sent.some(m => m.t === "welcome"));
+  assert.equal(h.room.players.get(1).ws, ws);
+  await h.room.equipmentFor(1, h.accounts[0].session.token_hash, null);
+  assert.equal(h.room.players.get(1).equipment.revision, 1);
+  assert.deepEqual(plain(h.room.players.get(1).equipment.selection), hat());
+});
+
 test("equipment Room: appearance is scoped to visibility, catches up on entry and leaves on exit", async t => {
   const h = await host(t), a = (await h.join()).ws, b = (await h.join(2)).ws, c = (await h.join(3)).ws;
   h.send(c, { t: "zone", name: "mine" });

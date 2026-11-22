@@ -1577,6 +1577,8 @@
     parts.nativeHeadgear = parts.head.children.slice(beforeGear);
     addChild(root, parts.legR, parts.legL, parts.torso, parts.armR, parts.armL, parts.head);
     if (dress.extras) dress.extras(k);
+    // What a character's own hooks hung on its club (itsLiran's plate) stays with its own club, off a worn weapon.
+    if (traits.wardrobe?.weapon) for (const child of parts.club.children) child.visible = false;
     // The refined body (see FINE): every authored part drawn again on the fine grid, after every hook. A character's
     // `refine(k, part, v, side)` hook may paint the fine maps before they bake: "head", "closed" and "portrait" (the
     // head's three faces), "torso", "arm", "fingers" and "leg" (with its side), in fine cells of the part's own frame,
@@ -2208,10 +2210,21 @@
   // Each clone's node is known by the template node it was copied from, so a worn wardrobe (character-wardrobe.js) can
   // find the same node in another build of the same character.
   const TEMPLATE_NODE = new WeakMap();
+  // Builds in a worn wardrobe are kept for the `WARDROBE_TEMPLATES` most recently asked for, the oldest let go first: a
+  // body still showing one keeps its own meshes, and once nothing does the renderer frees them at housekeeping. Asking
+  // again for one let go builds it again.
+  const WARDROBE_TEMPLATES = 32, wardrobeRecent = new Set();
   const templateFor = (traits) => {
     const key = traits.name + (traits.equipmentBare ? "\0bare-head" : "") + (traits.wardrobeKey ? "\0" + traits.wardrobeKey : "");
     let found = cavemen.get(key);
     if (!found) cavemen.set(key, found = buildCaveman(traits));
+    if (traits.wardrobeKey) {
+      wardrobeRecent.delete(key); wardrobeRecent.add(key);
+      for (const old of wardrobeRecent) {
+        if (wardrobeRecent.size <= WARDROBE_TEMPLATES) break;
+        wardrobeRecent.delete(old); cavemen.delete(old);
+      }
+    }
     return found;
   };
   const caveman = (traits) => {
