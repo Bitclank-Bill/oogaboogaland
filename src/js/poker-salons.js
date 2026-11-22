@@ -227,15 +227,13 @@
       coals.push(mesh(.12+(k%4)*.018,.069,.09,k%3?"#ac3a13":"#ffa13b",x,.45+(k%3)*.013,z+dz,k%3?.48:.88));
     }
     add(room,M.merge(...coals));
-    for(const side of [-1,1]) for(const spot of [-5.5,5.1]){
-      const strands=[];
-      for(let j=0;j<2;j++) for(let k=0;k<9;k++){
-        const a=k*.66+j,b=a+.66, w=.014+k*.002;
-        strands.push(M.beam(.08*Math.sin(a),k*.097,.045*Math.cos(a),.08*Math.sin(b),(k+1)*.097,.045*Math.cos(b),w,"#b29d91"));
-      }
-      const g=M.merge(...strands);g.glassOpacity=.17;g.glassGrazing=0;g.castShadow=false;
-      smoke.push(add(room,g,side*4.8+.24,.75,spot+.06));
+    const strands=[];
+    for(let j=0;j<2;j++) for(let k=0;k<9;k++){
+      const a=k*.66+j,b=a+.66, w=.014+k*.002;
+      strands.push(M.beam(.08*Math.sin(a),k*.097,.045*Math.cos(a),.08*Math.sin(b),(k+1)*.097,.045*Math.cos(b),w,"#b29d91"));
     }
+    const plume=M.merge(...strands);plume.glassOpacity=.17;plume.glassGrazing=0;plume.castShadow=false;
+    for(const side of [-1,1]) for(const spot of [-5.5,5.1]) smoke.push(add(room,plume,side*4.8+.24,.75,spot+.06));
     return (t,calm)=>{
       const pulse=calm?0:.09*Math.sin(t*6.1)+.046*Math.sin(t*11.7);
       if(room.visible){
@@ -311,6 +309,7 @@
     // The two closed rooms have opaque walls behind the bar. The rooftop is visible from outside.
     const show = id => {
       refreshGate();
+      rooms[2].visible = roofScope.root.visible = id !== 1;
       for (let i = 0; i < 2; i++) rooms[i].visible = i === id || i === 0 && id < 0 && shelf.opened;
       for (let i = 0; i < targets.length; i++) targets[i].visible = i === 0 ? id <= 0 : i !== 3 && DOORS[i][0] === id && (i !== 6 || !den.pass);
     };

@@ -122,8 +122,8 @@
       const lane = (i % 4 - 1.5) * 0.33, size = 0.1 + random() * 0.19;
       const n = child(root, g.block);
       n.scale.x = n.scale.z = size; n.scale.y = size * 0.48;
-      n.rotation.y = Math.PI / 4;
-      packets.push({ n, lane, phase: (i + random()) / count });
+      n.rotation.y = Math.PI / 4; n.position.y = 0.055;
+      packets.push({ n, lane, spread: Math.sign(lane) * 2.7, offset: 61 * ((i + random()) / count) });
     }
     const seen=new Set(), ids=new Array(64), streaks=[];
     const streak=box(0,0,0,.042,.23,.042,"#ffe6ad",.82);streak.castShadow=false;
@@ -145,7 +145,7 @@
       }
     };
     let drift = 0;
-    const update = (dt, time, calm=false) => {
+    const update = (dt, time, calm=false, floorVisible=true) => {
       aquarium.update(dt,time,calm);
       for(const s of streaks)if(s.visible){
         s.position.x-=dt*.52;s.position.y-=dt*1.72;
@@ -155,11 +155,12 @@
       const now = Date.now();
       const fresh = chain.socketAt > 0 && now - chain.socketAt < 90000;
       drift = (drift + dt * (fresh ? 1 + chain.gale * 2 : 0.65)) % 61;
+      if (!floorVisible) return;
       for (let i = 0; i < count; i++) {
-        const p = packets[i], z = 27 - (drift + 61 * p.phase) % 61;
+        const p = packets[i], z = 27 - (drift + p.offset) % 61;
         const split = Math.max(0, 1 - z * z / 28);
-        p.n.position.x = p.lane + Math.sign(p.lane) * 2.7 * split;
-        p.n.position.z = z; p.n.position.y = 0.055;
+        p.n.position.x = p.lane + p.spread * split;
+        p.n.position.z = z;
       }
     };
     update(0, 0);

@@ -91,9 +91,9 @@
     }
     return links;
   };
-  const clubFurniture = () => {
+  const clubFurniture = parts => {
     // The floor and its gold lines are `poker-floor.js`'s.
-    const parts = [], block = lite ? flat : box;
+    const block = lite ? flat : box;
     for (const f of FURNITURE) {
       if (f.kind === "bar") {
         parts.push(BL.pokerTerrace.bar(f.x, f.z, lite));
@@ -119,7 +119,6 @@
     // Deep red ropes between the outer pairs of posts leave the middle gap open.
     const posts = FURNITURE.filter(f => f.kind === "ropePost");
     for (let i = 0; i < posts.length; i += 2) parts.push(...cord(posts[i].x, posts[i].z, posts[i + 1].z, 0.77, 0.2, 0.025, ROPE));
-    return M.merge(...parts);
   };
   // The repeated pieces, each built about its own origin to stand at its box's centre; the sofa's back is at +x.
   // The bar stool's felt top at 0.62, a little under an Ooga's hip, below the 0.95 counter.
@@ -322,7 +321,8 @@
     scoped.use();
     const key = lite ? "gatsby-lite" : "gatsby";
     if (cache.has(key)) return cache.get(key);
-    const shell = [clubFurniture()];
+    const shell = [];
+    clubFurniture(shell);
     // The marble floor tiles, wall panels and columns are a few cached geometries placed as nodes in `build`; the walls
     // are `poker-glazing.js`'s glass and the roof `poker-vault.js`'s glass vault, both stood in `build`.
     // Each table lamp's cable hangs from the vault's purlin over its row on a slim gold rod at either end.
@@ -349,7 +349,7 @@
       box(0.1, 0.48, 0.09, "#e6b634", 0, 0.52, 0.42),
       box(0.18, 0.14, 0.1, "#f7d052", 0, 0.84, 0.42));
     const built = {
-      shell: M.merge(...shell), shade, chair: ornateChair(), jacket,
+      shell: K.staticMesh(M.merge(...shell)), shade, chair: ornateChair(), jacket,
       sleeve: box(0.4, 0.78, 0.43, "#292f33", 0, -0.29, 0.025),
       cuff: box(0.41, 0.12, 0.44, "#e6e1ce", 0, -0.73, 0.025),
       base: pedestal(), stone: stoneTop(), rim: rail(), felt: disk(1, FELT_Y - 0.02, FELT_Y, T.felt), pinstripe: inlay(),

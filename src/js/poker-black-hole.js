@@ -13,7 +13,7 @@
     [-1.09,-.10,.35,.37],[-1.15,-.45,.18,.36],[-.76,1.20,.20,.21],[-.05,.99,.065,.091]
   ];
   const continents=landforms.map(([x,y,w,h])=>
-    `coast=min(coast,length((uv-vec2(${x.toFixed(3)},${y.toFixed(3)}))/vec2(${w.toFixed(3)},${h.toFixed(3)})));`).join("\n");
+    `delta=(uv-vec2(${x.toFixed(3)},${y.toFixed(3)}))/vec2(${w.toFixed(3)},${h.toFixed(3)}); coast2=min(coast2,dot(delta,delta));`).join("\n");
   const fragment = `#version 300 es
 precision highp float;
 in vec2 vUv;
@@ -116,8 +116,9 @@ void main() {
     lon=atan(sin(lon),cos(lon));
     vec2 sphere=vec2(sin(lon)*cos(lat)+.37*sin(lat),cos(lon)*cos(lat)-.85*sin(lat));
     vec2 uv=vec2(lon,lat);
-    float coast=9.;
+    vec2 delta;float coast2=81.;
     ${continents}
+    float coast=sqrt(coast2);
     float relief=noise(sphere*17.)+.38*noise(sphere*45.);
     coast+=(relief-.66)*.28;
     float land=1.-smoothstep(.96,1.04,coast);
@@ -136,7 +137,17 @@ void main() {
 }`;
   // Canvas projects the same astronomical plate. Curves are painted only when that
   // renderer actually draws it; several visits never pay for a fallback bitmap.
-  const paint = (canvas, time, paths) => {
+  const streamOrbit = () => {
+    const samples=new Float64Array(71*3);
+    for(let j=0;j<=70;j++){
+      const u=j/70,arc=Math.sin(Math.PI*u);
+      samples[j*3]=donor[0]+2.03*u;
+      samples[j*3+1]=donor[1]*(1-u)-.19*u+.22*arc-.16*Math.sin(2*Math.PI*u);
+      samples[j*3+2]=.039*arc;
+    }
+    return samples;
+  };
+  const paint = (canvas, time, lanes, stream) => {
     const g=canvas.getContext("2d"), unit=canvas.width/bounds[2];
     g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,canvas.width,canvas.height);
     g.setTransform(unit,0,0,-unit,-bounds[0]*unit,(bounds[1]+bounds[3])*unit);g.rotate(slope);
@@ -154,23 +165,31 @@ void main() {
       const strokeScale=kind===1?3.7:kind===2?1.6:.49;
       for(let k=count;k>=0;k--){
         const u=k/count,r=1+spread*u,hot=.5+.5*Math.sin(k*2.21+.65*Math.sin(time*.09+k*.12));
-        const grad=g.createLinearGradient(-r,0,r,0);
-        grad.addColorStop(0,`rgba(255,${Math.round(122+103*hot)},${Math.round(23+121*hot)},${1-.84*u})`);
-        grad.addColorStop(1,`rgba(244,${Math.round(58+89*hot)},18,${.92-.84*u})`);
-        g.strokeStyle=grad;g.lineWidth=spread/count*strokeScale+.002;
-        if(paths){
-          let path=paths[kind][k];
-          if(!path){path=paths[kind][k]=new Path2D();orbit(path,r,kind);}
-          g.stroke(path);
-        }else{g.beginPath();orbit(g,r,kind);g.stroke();}
+        const green=Math.round(122+103*hot),blue=Math.round(23+121*hot),redEdge=Math.round(58+89*hot);
+        const tint=(green<<16)|(blue<<8)|redEdge;
+        let lane=lanes[kind][k];
+        if(!lane){
+          const path=typeof Path2D==="function"?new Path2D():null;
+          if(path)orbit(path,r,kind);
+          lane=lanes[kind][k]={path,tint:-1,gradient:null};
+        }
+        // The endpoints and alphas are fixed. Reuse the native gradient until a quantized colour actually changes.
+        if(tint!==lane.tint){
+          const grad=g.createLinearGradient(-r,0,r,0);
+          grad.addColorStop(0,`rgba(255,${green},${blue},${1-.84*u})`);
+          grad.addColorStop(1,`rgba(244,${redEdge},18,${.92-.84*u})`);
+          lane.gradient=grad;lane.tint=tint;
+        }
+        g.strokeStyle=lane.gradient;g.lineWidth=spread/count*strokeScale+.002;
+        if(lane.path)g.stroke(lane.path);
+        else{g.beginPath();orbit(g,r,kind);g.stroke();}
       }
     };
     bands(54,.48,1);bands(24,.17,2);
     for(let i=0;i<9;i++){
       g.beginPath();
       for(let j=0;j<=70;j++){
-        const u=j/70,x=donor[0]+2.03*u,y=donor[1]*(1-u)-.19*u+.22*Math.sin(Math.PI*u)-.16*Math.sin(2*Math.PI*u)
-          +.039*Math.sin(Math.PI*u)*Math.sin(14*u+i*.8-time*.08);
+        const at=j*3,x=stream[at],y=stream[at+1]+stream[at+2]*Math.sin(14*(j/70)+i*.8-time*.08);
         if(!j)g.moveTo(x,y);else g.lineTo(x,y);
       }
       g.strokeStyle=`rgba(83,233,151,${.36+.17*Math.sin(time*.25+i)})`;g.lineWidth=.006;g.stroke();
@@ -184,31 +203,36 @@ void main() {
     M.face(geo,[[-r,-r],[r,-r],[r,r],[-r,r]].map(p=>M.pushVert(geo,...p,0)),"#ffffff",{emissive:1});
     geo.castShadow=false;
     const cloud=[224,237,245], land=[57,140,66], sea=[14,66,131], air=[20,84,122];
-    const rowDistance=new Float64Array(landforms.length);
+    const rowForms=[],rowDistance=new Float64Array(landforms.length);
     let canvas,image,last=-Infinity;
     geo.imageSurface={rect:[-r,-r,2*r,2*r],blend:"alpha",cutout:true,time:0,fallback(){
       if(!canvas){canvas=document.createElement("canvas");canvas.width=canvas.height=96;image=canvas.getContext("2d").createImageData(96,96);}
       if(Math.abs(this.time-last)<1.)return canvas;
       last=this.time;
+      const turn=2*Math.PI,spin=(last*.019)%turn;
       for(let y=0;y<96;y++){
         const ny=(47.5-y)/48,lat=Math.asin(ny),latitudeWarp=8*Math.sin(lat*15),latitudeShade=Math.cos(21*lat);
-        for(let k=0;k<landforms.length;k++){
-          const form=landforms[k];
-          rowDistance[k]=((lat-form[1])/form[3])**2;
+        let count=0;
+        for(const form of landforms){
+          const dy2=((lat-form[1])/form[3])**2;
+          // The highest possible perturbed shoreline is 1.2. A shield beyond this latitude cannot cover a pixel.
+          if(dy2<1.2){rowDistance[count]=dy2;rowForms[count++]=form;}
         }
         for(let x=0;x<96;x++){
           const nx=(x-47.5)/48,d=nx*nx+ny*ny;
           if(d>=1)continue;
-          const nz=Math.sqrt(1-d),a=Math.atan2(nx,nz)+last*.019,lon=Math.atan2(Math.sin(a),Math.cos(a));
-          let coast=9;
-          for(let k=0;k<landforms.length;k++){
-            const form=landforms[k];
-            coast=Math.min(coast,((lon-form[0])/form[2])**2+rowDistance[k]);
-          }
-          const terrain=Math.sin(29*lon+latitudeWarp)*latitudeShade;
+          const nz=Math.sqrt(1-d),a=Math.atan2(nx,nz)+spin,lon=a>Math.PI?a-turn:a< -Math.PI?a+turn:a;
           const clouds=Math.sin(21*lat+2.6*Math.sin(5*lon+3*lat))+.65*Math.cos(13*lon-8*lat);
+          let color=cloud,terrain=0;
+          if(clouds<=1.04 && Math.abs(lat)<=1.24){
+            color=sea;
+            terrain=Math.sin(29*lon+latitudeWarp)*latitudeShade;
+            for(let k=0;k<count;k++){
+              const form=rowForms[k];
+              if(((lon-form[0])/form[2])**2+rowDistance[k]+.20*terrain<1){color=land;break;}
+            }
+          }
           const light=.26+.74*Math.max(0,nx*.73+ny*.40+nz*.55);
-          const color=clouds>1.04 || Math.abs(lat)>1.24 ? cloud : coast+.20*terrain<1 ? land : sea;
           const i=(96*y+x)*4;
           for(let c=0;c<3;c++)image.data[i+c]=(color[c]+(color===land?terrain*12:0))*light+(1-nz)**3*air[c];
           image.data[i+3]=255;
@@ -224,11 +248,11 @@ void main() {
     const [x,y,w,h]=rect;
     M.face(geo,[[x,y],[x+w,y],[x+w,y+h],[x,y+h]].map(p=>M.pushVert(geo,...p,0)),"#ffffff",{emissive:1});
     geo.castShadow=false;geo.fogPierce=1;
-    let bitmap,paths,last=-Infinity;
+    let bitmap,lanes,stream,last=-Infinity;
     const surface={rect,blend:"alpha",cutout:true,accretion:fragment,time:0,
       fallback(){
-        if(!bitmap){bitmap=document.createElement("canvas");bitmap.width=816;bitmap.height=396;paths=typeof Path2D==="function"?[[],[],[]]:null;}
-        if(Math.abs(this.time-last)>=.25){paint(bitmap,this.time,paths);last=this.time;}
+        if(!bitmap){bitmap=document.createElement("canvas");bitmap.width=816;bitmap.height=396;lanes=[[],[],[]];stream=streamOrbit();}
+        if(Math.abs(this.time-last)>=.25){paint(bitmap,this.time,lanes,stream);last=this.time;}
         return bitmap;
       }};
     geo.imageSurface=surface;

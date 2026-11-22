@@ -35,10 +35,8 @@
     for(let i=0;i<6;i++){const a=i*tau/6,dx=.16*Math.cos(a),dz=.16*Math.sin(a);p.push(beam(x+dx,y+.14,z+dz,x+dx,y+.45,z+dz,.034,brass));}
     return M.merge(...p);
   };
-  const cache = M.scopedMap();
   const bar = (cx,cz,lite) => {
-    const west = cx<0, key = "bar"+cx+lite;
-    if(cache.has(key)) return cache.get(key);
+    const west = cx<0;
     const p=[], z=cz-1.27, front=cz+1.29, n=lite?5:9;
     const wood = west ? "#53362c" : "#365353", inset = west ? "#32242b" : "#223b40";
     p.push(box(cx,.46,front-.22,15,.92,.7,wood),K.slab({w:15.3,h:.12,d:1.02,color:west?"#342a2a":"#344947",seed:103,veins:12,on:"top",offset:{x:cx,y:.96,z:front-.22}}));
@@ -114,7 +112,7 @@
     // Set the aquarium name on its front frame so the upper rim clears every letter at player eye height.
     const signZ=west?z+.04:cz+.18, signY=west?4.76:4.98;
     p.push(box(cx,signY,signZ,west?5:5.8,.55,.25,dark),M.moved(sign.geometry,cx-sign.width/2,signY+.14,signZ+.14));
-    const g=M.merge(...p);cache.set(key,g);return g;
+    return M.merge(...p);
   };
   // The blood-orange peel and basil distinguish the Negroni from the amber rye and cherry.
   const serviceX=13.35;

@@ -55,12 +55,13 @@
         const seam=Math.sin(u*Math.PI);
         const row=[at(BED,0),at(BED-1.2,.66*seam),at(BED-3-random()*1.1,1.25*seam),
           at(BED-6-random()*3,.54*seam),at(BED-14-random()*4,-2*seam),[48+(x-48)*.60,-49-random()*5,-85+(z+85)*.65]];
-        if(prev) for(let j=0;j<row.length-1;j++){
+        const ids=row.map(p=>M.pushVert(rock,...p));
+        if(prev) for(let j=0;j<ids.length-1;j++){
           const v=8*random(), c=[[48,72,76],[57,73,80],[32,48,58],[45,55,67],[30,36,50]][j];
-          face(rock,[row[j+1],row[j],prev[j]],c.map(t=>t+v),.49);
-          face(rock,[prev[j+1],row[j+1],prev[j]],c.map(t=>t+v+3),.46);
+          M.face(rock,[ids[j+1],ids[j],prev[j]],c.map(t=>Math.round(t+v)),{emissive:.49});
+          M.face(rock,[prev[j+1],ids[j+1],prev[j]],c.map(t=>Math.round(t+v+3)),{emissive:.46});
         }
-        prev=row;
+        prev=ids;
       }
       // Ocean colour grows darker with depth. These panels show the animals through the front glass.
       const back=i>=3 && i<outline.length-2;
@@ -95,8 +96,8 @@
             for(const t of [0,.04,.12,.32,.58,.83,1]){
               const reach=t===0?-.10:(.22+3.6*Math.sqrt(t))*spread;
               const p=h=>[a[0]+dx*h+nx*reach,TOP+.03-drop*t*t,a[1]+dz*h+nz*reach];
-              const row=[p(u),p(v)];
-              if(last)face(g,[row[0],row[1],last[1],last[0]],[111,185,215],.62+.11*spread);
+              const row=[M.pushVert(g,...p(u)),M.pushVert(g,...p(v))];
+              if(last)M.face(g,[row[0],row[1],last[1],last[0]],[111,185,215],{emissive:.62+.11*spread});
               last=row;
             }
           }
@@ -132,8 +133,8 @@
         let last;
         for(let k=0;k<5;k++){
           const t=k/4,xx=x+blade*.42+t*(blade-1)+Math.sin(t*5+i)*t*.8, yy=y+(4+h+blade*.68)*t,zz=z+.55*blade+t*.75;
-          const w=(.15+.12*Math.sin(t*3))*(1-t*.94),row=[[xx-w,yy,zz],[xx+w,yy,zz]];
-          if(last)face(reef,[last[0],last[1],row[1],row[0]],[29,94+i%19,89],.67);
+          const w=(.15+.12*Math.sin(t*3))*(1-t*.94),row=[M.pushVert(reef,xx-w,yy,zz),M.pushVert(reef,xx+w,yy,zz)];
+          if(last)M.face(reef,[last[0],last[1],row[1],row[0]],[29,94+i%19,89],{emissive:.67});
           last=row;
         }
       }
@@ -144,11 +145,11 @@
       for(let k=0;k<=8;k++){
         const t=k/8,xx=x+.19*Math.sin(phase+6*t)+.29*t,zz=z+.40*Math.sin(phase+4*t),yy=y+h*t;
         const w=(.06+.14*Math.sin(Math.PI*t))*(1-.77*t);
-        const row=[[xx-w,yy,zz],[xx,yy+.02,zz+.055],[xx+w,yy,zz]];
+        const row=[M.pushVert(reef,xx-w,yy,zz),M.pushVert(reef,xx,yy+.02,zz+.055),M.pushVert(reef,xx+w,yy,zz)];
         if(last)for(let q=0;q<2;q++){
           const f=[last[q],last[q+1],row[q+1],row[q]];
           const col=q?[38,109,98]:[48,136,112];
-          face(reef,f,col,.64);face(reef,f.reverse(),col,.64);
+          M.face(reef,f,col,{emissive:.64});M.face(reef,[row[q],row[q+1],last[q+1],last[q]],col,{emissive:.64});
         }
         last=row;
       }
@@ -242,7 +243,9 @@
       guest.body.scale.x=guest.body.scale.y=guest.body.scale.z=scale;
     };
     const update=(dt,time,calm)=>{
-      clock+=dt;
+      clock+=dt;age=Math.min(12,age+dt);
+      // Interior rooms hide the whole tank. Its poses are analytic on these clocks and resume on the first visible frame.
+      if(!root.visible)return;
       // Lightning brings the school to the surface on the minute. The swim course reaches the surface ten seconds later.
       const turn=Math.floor(clock/INTERVAL)-1,active=turn<0?-1:turn%residents.length;
       for(let i=0;i<residents.length;i++){
@@ -251,7 +254,7 @@
       }
       breach.update(clock-(turn+1)*INTERVAL-10,residents[active],calm);
       rays.position.x=calm?0:.38*Math.sin(time*.16);
-      age=Math.min(12,age+dt);guest.body.visible=age<12;
+      guest.body.visible=age<12;
       if(guest.body.visible){
         const u=age/12,s=Math.sin(Math.PI*u),c=Math.cos(Math.PI*u),p=guest.body.position;
         p.x=29+32*u;p.y=-14.8+4*s;p.z=-105+5*s;

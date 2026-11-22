@@ -477,15 +477,21 @@
 
     // Only from a gesture the browser has already counted, so nothing warns in the console; a gesture also wakes a
     // context the browser started suspended.
-    const activate = () => {
+    let resuming = null;
+    const wake = (event) => {
+      // An autoplay-blocked resume may stay pending. Let a real gesture unlock it while frames share the request.
+      if (ctx.state !== "suspended" || (resuming && !event?.isTrusted)) return;
+      const request = resuming = ctx.resume();
+      const settled = () => { if (resuming === request) resuming = null; };
+      request.then(settled, settled);
+    };
+    const activate = (event) => {
       if (disposed) return;
-      if (ready) {
-        if (ctx.state === "suspended") ctx.resume().catch(() => {});
-        return;
+      if (!ready) {
+        if (muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+        init();
       }
-      if (muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
-      init();
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      wake(event);
     };
     window.addEventListener("pointerdown", activate, true);
     window.addEventListener("pointerup", activate, true);
@@ -497,7 +503,7 @@
       hiddenTick();
     };
     const onVisibility = () => {
-      if (ready && !document.hidden && ctx.state === "suspended") ctx.resume().catch(() => {});
+      if (ready && !document.hidden) wake();
       rearm();
     };
     document.addEventListener("visibilitychange", onVisibility);

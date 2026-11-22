@@ -70,7 +70,7 @@
     // Brushed trumpet bell and visible valve buttons, facing out over the stage.
     p.push(M.moved(M.turnedX(turned(0,0,0,[[.025,0],[.025,.32],[.059,.47],[.15,.54],[.15,.56],[.125,.55],[.027,.43]],gold,16,.48),Math.PI/2),1.47,1.5,.04));
     for(let i=0;i<3;i++)p.push(box(1.47,1.51,.18+i*.055,.054,.16,.032,gold));
-    return M.merge(...p);
+    return BL.pokerMarble.staticMesh(M.merge(...p));
   });
   const build = (root,lite) => {
     const stage=part(root,scenery(),floor.x,0,floor.z);

@@ -344,10 +344,12 @@
       const i = Math.min(GCOLS - 1, Math.max(0, Math.floor((x - GX0) / GRID))), j = Math.min(GROWS - 1, Math.max(0, Math.floor((z - GZ0) / GRID)));
       return j * GCOLS + i;
     };
-    const bucket = () => {
+    const bucket = dt => {
       cellHead.fill(-1);
       for (let k = 0; k < members.length; k++) {
         const m = members[k];
+        // A line expires on the same clock, including while its speaker is parked.
+        if (m.talk > 0 && (m.talk -= dt) <= 0) { m.talk = 0; bubbles--; }
         if (!m.on || !m.root) continue;
         const c = cellOf(m.x, m.z);
         cellNext[k] = cellHead[c]; cellHead[c] = k;
@@ -542,7 +544,8 @@
 
     // ---- routes ----
     // Ask for a route to (x, z) at `spot`; the router serves a few requests a frame, in turn round the pool.
-    const send = (m, x, z, spot) => { m.tx = x; m.tz = z; m.spot = spot; m.pending = true; m.reached = false; };
+    let routesWaiting = false;
+    const send = (m, x, z, spot) => { routesWaiting = true; m.tx = x; m.tz = z; m.spot = spot; m.pending = true; m.reached = false; };
     // To a spot: a seat-like one by its approach, any other to the spot itself.
     const go = (m, s) => { const a = approach(s); send(m, a.x, a.z, s); };
     const planOne = () => {
@@ -557,9 +560,11 @@
         else { m.state = "walk"; if (m.agent) walkAgent(m); }
         return true;
       }
+      routesWaiting = false;
       return false;
     };
     const plan = () => {
+      if (!routesWaiting) return;
       const t0 = performance.now();
       for (let k = 0; k < ROUTES_MAX; k++) if (!planOne() || performance.now() - t0 > ROUTE_BUDGET) return;
     };
@@ -1012,9 +1017,7 @@
         const t0 = performance.now();
         do { buildPending = buildNext(); } while (buildPending && performance.now() - t0 < BUILD_BUDGET);
       }
-      bucket();
-      // A bubble is up for its line's time, parked or not.
-      for (let k = 0; k < members.length; k++) { const m = members[k]; if (m.talk > 0 && (m.talk -= dt) <= 0) { m.talk = 0; bubbles--; } }
+      bucket(dt);
       pollClock += dt;
       if (pollClock >= POLL) { pollClock = 0; poll(); }
       plan();

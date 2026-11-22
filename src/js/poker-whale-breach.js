@@ -3,8 +3,9 @@
   "use strict";
   const BL=window.BL, M=BL.models, S=BL.scene, TAU=Math.PI*2;
   const smooth=(a,b,t)=>{const u=Math.max(0,Math.min(1,(t-a)/(b-a)));return u*u*(3-2*u);};
+  const vertexRow=(g,points)=>points.map(p=>M.pushVert(g,...p));
   const patch=(g,a,b,c,d,color,glow)=>{
-    const ids=[a,b,c,d].map(p=>M.pushVert(g,...p));
+    const ids=[a,b,c,d];
     M.face(g,ids,color,{emissive:glow});M.face(g,ids.slice().reverse(),color,{emissive:glow});
   };
   const cache=M.scopedMap();
@@ -91,7 +92,7 @@
       if(prev)for(let k=0;k<6;k++){const j=(k+1)%6;M.face(fish,[prev[k],prev[j],row[j],row[k]],k===0||k===5?gold:orange,{emissive:.85});}
       prev=row;
     }
-    patch(fish,[-.20,.03,0],[-.37,.14,0],[-.35,-.12,0],[-.20,-.03,0],copper,.85);
+    patch(fish,...vertexRow(fish,[[-.20,.03,0],[-.37,.14,0],[-.35,-.12,0],[-.20,-.03,0]]),copper,.85);
     const foam=[201,239,234], pale=[127,207,217], blue=[51,139,161], deep=[27,101,129];
     // Thin fingers of water fly out of the impact ellipse; their tops break into independent droplets.
     const random=BL.math.mulberry32(70739),segments=lite?26:52;
@@ -99,7 +100,7 @@
     for(let i=0;i<=segments;i++){
       const a=i*TAU/segments,c=Math.cos(a),s=Math.sin(a);
       const high=.30+.55*Math.sin(a*7+.37)**2+.20*Math.cos(a*11),r=.87+.09*Math.cos(a*5);
-      const row=[[.54*c,-.06,.54*s],[r*c,.18,r*s],[(r+.10)*c,high*.70,(r+.10)*s],[(r+.22)*c,high,(r+.22)*s],[(r+.31)*c,high+.055,(r+.31)*s]];
+      const row=vertexRow(crown,[[.54*c,-.06,.54*s],[r*c,.18,r*s],[(r+.10)*c,high*.70,(r+.10)*s],[(r+.22)*c,high,(r+.22)*s],[(r+.31)*c,high+.055,(r+.31)*s]]);
       if(last){
         patch(crown,last[0],row[0],row[1],last[1],deep,.62);
         patch(crown,last[1],row[1],row[2],last[2],i%4===0?blue:pale,.73);
@@ -113,7 +114,7 @@
     for(let i=0;i<=segments;i++){
       const x=2*i/segments-1, k=Math.max(.015,1-x*x), crest=k*(.92+.08*Math.cos(17*x)), z=-1.2*x*x+.13*Math.sin(12*x);
       const row=[[-4.4,.015],[-2.4,crest*.30],[-.62,crest*.84],[-.16,crest],[.36,crest*.91],[.04,crest*.46],[.81,.015]]
-        .map(([d,y])=>[x,y,z+d]);
+        .map(([d,y])=>M.pushVert(wave,x,y,z+d));
       if(last)for(let j=0;j<row.length-1;j++)patch(wave,last[j],row[j],row[j+1],last[j+1],
         j===3?foam:j===2||j===4?pale:j===1?blue:deep,j===3?.89:.65);
       last=row;
@@ -125,14 +126,14 @@
       let last;
       // One end stays submerged while the other lifts the start of this same falling ribbon.
       for(const [z,y] of [[-3.6,-.035],[-2.4,.16],[-1.35,.54],[-.64,.88],[-.18,1.02],[.16*reach,1]]){
-        const row=[[u,y,z],[v,y,z+.08]];
+        const row=[M.pushVert(lip,u,y,z),M.pushVert(lip,v,y,z+.08)];
         if(last)patch(lip,last[0],last[1],row[1],row[0],i%5===2 && y>.8?pale:blue,.62);
         last=row;
       }
       last=null;
       for(const [out,down] of [[.16,0],[.54,.015],[.86,.075],[1.18,.30],[1.45,.66],[1.70,1]]){
         const z=out<0?out:out*reach, yy=-down*len;
-        const row=[[u,yy,z],[v,yy,z+.08]];
+        const row=[M.pushVert(pour,u,yy,z),M.pushVert(pour,v,yy,z+.08)];
         if(last)patch(pour,last[0],last[1],row[1],row[0],i%5===2?foam:i%3===1?pale:blue,.73);
         last=row;
       }
@@ -156,7 +157,9 @@
     for(let i=0;i<count;i++){
       const a=random()*TAU,r=Math.sqrt(random()),x=3.5*r*Math.cos(a),z=2.1*r*Math.sin(a);
       const depth=i%3===0?.055+random()*.09:.30+random()*.67;
-      fish.push({node:add(school,g.fish),x,z,depth,phase:a,size:1.0+.55*random(),delay:i/count*.26});
+      const delay=i/count*.26,heading=a-delay*.62,wag=a-delay*8;
+      fish.push({node:add(school,g.fish),x,z,depth,delay,heading,size:1.0+.55*random(),
+        sinHeading:Math.sin(heading),cosHeading:Math.cos(heading),sinWag:Math.sin(wag),cosWag:Math.cos(wag)});
     }
     for(let i=0;i<(lite?16:42);i++){
       const a=random()*TAU,v=3+random()*3.6;
@@ -189,21 +192,23 @@
         const b=w.body,s=b.scale.x,gape=w.jaw.rotation.z*.52;
         BL.math.quat.rotateVec(mouth,b.quaternion,(2.18+4.8*Math.cos(gape))*s,(-.10+4.8*Math.sin(gape))*s,0);
         const mx=b.position.x+mouth[0],my=b.position.y+mouth[1],mz=b.position.z+mouth[2];
+        // Every swimmer shares both frequencies. Rotate its baked phase by the school clock.
+        const heading=since*.62,sh=Math.sin(heading),ch=Math.cos(heading),sw=Math.sin(since*8),cw=Math.cos(since*8);
         for(const f of fish){
           const n=f.node,age=since-f.delay;
           n.visible=age>=0;
           if(!n.visible)continue;
           // Fish break the water at the contact point and spread into a shoal in the upper metre.
-          const fan=smooth(0,1.6,age),angle=f.phase+age*.62;
-          const x=feedX+f.x*(.09+.91*fan)+fan*1.1*Math.cos(angle);
-          const z=feedZ+f.z*(.09+.91*fan)+fan*.63*Math.sin(angle);
-          const y=top-f.depth*smooth(0,.8,age)-.045*fan*(1+Math.sin(angle*2));
+          const fan=smooth(0,1.6,age),sinAngle=f.sinHeading*ch+f.cosHeading*sh,cosAngle=f.cosHeading*ch-f.sinHeading*sh;
+          const x=feedX+f.x*(.09+.91*fan)+fan*1.1*cosAngle;
+          const z=feedZ+f.z*(.09+.91*fan)+fan*.63*sinAngle;
+          const y=top-f.depth*smooth(0,.8,age)-.045*fan*(1+2*sinAngle*cosAngle);
           n.scale.x=n.scale.y=n.scale.z=f.size*(.3+.7*smooth(0,.18,age));
           const into=t>-2?smooth(y-1.05,y+.08,my):0;
           n.visible=into<1;
           n.position.x=x+(mx-x)*into;n.position.z=z+(mz-z)*into;n.position.y=y+(my-y)*into;
-          n.rotation.y=-angle-Math.PI*.5+.12*Math.sin(age*8+f.phase);
-          n.rotation.z=.08*Math.cos(angle);
+          n.rotation.y=-f.heading-heading-Math.PI*.5+.12*(f.sinWag*cw+f.cosWag*sw);
+          n.rotation.z=.08*cosAngle;
         }
       }
       const hit=t-5.0, intensity=calm?.72:1;

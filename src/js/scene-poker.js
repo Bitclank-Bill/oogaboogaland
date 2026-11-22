@@ -337,6 +337,10 @@
       return;
     }
     salon = d[1]; salons.show(salon); const r = currentSalon();
+    // The vault is sealed in opaque ice and the camera stays inside its arch.
+    // Cull the exterior branches together while their tables and live events keep time.
+    room.root.visible = terraceScope.root.visible = cosmos.root.visible = mirror.glass.parent.visible = salon !== 1;
+    if (room.floor.gloss) room.floor.gloss.visible = salon !== 1;
     const position = { x: d[4] + (r ? r.x : 0), y: r ? r.y : 0, z: d[5] + (r ? r.z : 0) };
     pilot.navigate({ position, yaw: salon < 0 || i === 2 ? Math.PI : 0, pitch: 0.2, dist: 3 });
     keepCameraInside(); hud.setAreaLabel(r ? r.name : "Ember Den"); hud.toast(r ? r.name : "Ember Den");
@@ -1092,11 +1096,11 @@
     refresh(); cheers = true; setView(seatTable >= 0 && !pendingStand);
     // What the gaming tables reach in the room: the crowd for their guests' cues, the room's sound for theirs.
     gameCtx = { crowd: null, cue: (name, x, z) => { if (audio) audio.cue(name, x, z); } };
-    crowd = BL.pokerCrowd.create({ root, fx, walkable: BL.pokerModels.walkable, spots: BL.pokerModels.spots(), publicState,
+    crowd = BL.pokerCrowd.create({ root: room.root, fx, walkable: BL.pokerModels.walkable, spots: BL.pokerModels.spots(), publicState,
       others: () => crowdBodies, visitor: () => crowdBodies[0] === ownBody ? ownBody : null,
       day: Math.floor(Date.now() / 86400000), cap: crowdCap(), onStep, lite: renderer.kind === "canvas2d" });
     gameCtx.crowd = crowd;
-    seatSmokes = Array.from({ length: SEAT_SMOKES }, (_, i) => BL.pokerCrowd.smoke({ root, lite: renderer.kind === "canvas2d", seed: 7919 * (i + 1) }));
+    seatSmokes = Array.from({ length: SEAT_SMOKES }, (_, i) => BL.pokerCrowd.smoke({ root: room.root, lite: renderer.kind === "canvas2d", seed: 7919 * (i + 1) }));
     scene.root = root; scene.camera = camera; scene.input = input;
     scene.debug = { camera, pilot, hud, crew: people, cavemen: people.cavemen, controls: pilot.controls, poker: { session, room, salons, get salon() { return salon; }, action, select, snapshots, renderOpts, crowd, audio, cosmos, games: room.games, react: onReaction, get selected() { return selected; }, get carry() { return carry; }, get flyer() { return flyer; }, get walker() { return walker; }, get returns() { return returns; }, get reticle() { return reticle; }, get musicPlaque() { return musicPlaque; }, openCredits, npcAt,
       // The tells' state by chair and their public views by table, read only; `calm` stands in for the reduced-motion wish.
@@ -1202,7 +1206,7 @@
     // The gaming tables after the crowd, so their cues reach guests already posed this frame and their staff and dice
     // are drawn where this frame leaves them.
     room.games.update(dt, camera, gameCtx);
-    smokeSeats(elapsed);
+    if (room.root.visible) smokeSeats(elapsed);
     crowdTimer += dt;
     if (crowdTimer >= 1) { crowdTimer = 0; crowd.setCap(crowdCap()); }
     mirror.phase.update(dt, elapsed); mirror.body.update(dt); mirror.body.time = mirror.phase.ripples.time;
@@ -1210,8 +1214,10 @@
       && avatar.root.position.z + avatar.bodyRadius > BL.pokerModels.EXIT_Z && !leaving) leaveFloor();
     // All ten table lights fit the lowest renderer tier; selected table goes first.
     const near = selected, lights = renderOpts.lights;
-    terraceScope.updateService(elapsed,calm,salon<0?pilot.player:null,fx);
-    room.updateInstruments(elapsed,calm,BL.chain.snapshot);
+    if (room.root.visible) {
+      terraceScope.updateService(elapsed,calm,salon<0?pilot.player:null,fx);
+      room.updateInstruments(elapsed,calm,BL.chain.snapshot);
+    }
     const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, now, camera.position, audio.blockChime);
     const jubilee = room.hall.bandstand.update(dt,elapsed,calm,BL.chain.snapshot,now);
     const power = Math.min(1, left / 0.8), ease = power * power * (3 - 2 * power);
@@ -1241,7 +1247,7 @@
     }
     for (const n of room.rays) { n.visible = left > 0; n.smokeOpacity = ease; n.glow = ease; }
     room.hall.aquarium.root.visible = salon < 0 || salon === 2;
-    room.hall.update(dt, elapsed, calm);
+    room.hall.update(dt, elapsed, calm, room.root.visible);
     cosmos.update(dt, elapsed, renderOpts);
     hud.updateBoard(elapsed);
     renderOpts.lightCount = renderer.kind === "webgl2" && renderer.quality === "high" ? highLightCount : hallLightCount;
