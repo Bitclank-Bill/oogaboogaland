@@ -21,15 +21,6 @@
       "base": "8e3c0c03438c6900c87c06386c87046468cd0f73",
       "hash": "f81ea437e39a33f53e15a9506758cc5e4b9ad5f5d1b8099b357bc0a81999b5e7",
       "lane": "manual"
-    },
-    {
-      "pr": 877,
-      "head": "1015263b9a1ecb7af4722a3a6195394c50d388d8",
-      "author": "w-s-bitcoin",
-      "path": "src/characters/midy-machete.js",
-      "base": "9ff5b764e6f95f6be62a2b4b1f51ed8627ad2cb5",
-      "hash": "fa55c8a6e12c86f8c1b5808da5785f68a4fac4be4230f85dec53e04189bf69b9",
-      "lane": "manual"
     }
   ]
 }
