@@ -1119,10 +1119,20 @@
     race: ["#0d1a0d", BANANA, "#4a4a52", "#f2efe8", RED, "#8a5a34", "#3a8f2a", "#1b1b1e", "#2e6b20"],
     drop: ["#123a66", "#5ec8ff", "#f2efe8", "#c7dcef", RED, "#c68642", BANANA, "#1b1b1e", "#ff9c86"],
     orbit: ["#0a0820", "#b98cff", "#f2efe8", "#8a86c9", RED, "#7fe0ff", "#ffb02e", BANANA, "#5a5670"],
-    mine: ["#1a120a", "#ff9a3c", "#6b6b73", "#8e8e96", BANANA, "#a8703e", "#c9ced6", "#fff3a0", "#4a4a52"]
+    mine: ["#1a120a", "#ff9a3c", "#6b6b73", "#8e8e96", BANANA, "#a8703e", "#c9ced6", "#fff3a0", "#4a4a52"],
+    archery: ["#1a120a", "#ffb347", "#efe7d6", "#3d5a66", "#b5462f", "#c8b48a", "#e3b04b", "#6b4f35", "#2f4a38"]
   };
   // Each game's loop, drawn into the anim box a frame at a time: `f` runs 0 to FRAMES - 1 and the loop is seamless.
   const DRAW = {
+    // The range: one arrow crossing toward a layered target, in the existing cabinet pixel grid.
+    archery: (g, f) => {
+      rect(g, 0, ANIM_Y1, GRID_W, 1, 8);
+      rect(g, 29, 10, 9, 9, 2); rect(g, 30, 11, 7, 7, 3);
+      rect(g, 31, 12, 5, 5, 4); rect(g, 32, 13, 3, 3, 5); at(g, 33, 14, 6);
+      line(g, 30, 19, 29, ANIM_Y1, 7); line(g, 36, 19, 37, ANIM_Y1, 7);
+      const x = 4 + Math.round(f / (FRAMES - 1) * 27);
+      line(g, x - 4, 14, x, 14, 2); at(g, x - 1, 13, 2); at(g, x - 1, 15, 2);
+    },
     // The rally: the road rolls toward you, dashes and roadside palms streaming down, and the kart weaves.
     race: (g, f) => {
       rect(g, 0, ANIM_Y0, GRID_W, ANIM_Y1 - ANIM_Y0 + 1, 6);
@@ -1184,7 +1194,7 @@
   // side of a screen's title, each game's in its palette's cream.
   const pixelBone = (g, x, y, c) => { at(g, x, y, c); at(g, x + 3, y, c); rect(g, x, y + 1, 4, 1, c); at(g, x, y + 2, c); at(g, x + 3, y + 2, c); };
   const titleBones = (g, c) => { pixelBone(g, 0, 3, c); pixelBone(g, GRID_W - 4, 3, c); };
-  const BONE_INK = { "cloud-hopper": 2, race: 3, drop: 2, orbit: 2, mine: 7 };
+  const BONE_INK = { "cloud-hopper": 2, race: 3, drop: 2, orbit: 2, mine: 7, archery: 2 };
   // A game's loop, by its index in GAMES: the title across the top in the game's colour between two bones, then the
   // anim box.
   const attractFrames = variants((i) => {

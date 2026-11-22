@@ -27,6 +27,8 @@
   let camera = null;
   let sim = null;
   let paused = false;
+  let input = null;
+  let host = null;
   let aimUp = false;
   let aimDown = false;
   const targetNodes = [];
@@ -72,6 +74,7 @@
   };
 
   const enter = (ctx) => {
+    host = ctx;
     root = createNode();
     camera = createCamera({ fov: 50, near: 0.1, far: 80 });
     camera.position.x = 3.4;
@@ -107,38 +110,45 @@
     }
 
     sim = SIM.create({ seed: 7, mode: "range" });
+    SIM.reset(sim);
     sync();
 
-    ctx.onKey && ctx.onKey(handleKey);
+    input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks: {} });
+    // The director dispatches keydown only; the visit owns keyup and releases every held action on exit.
+    window.addEventListener("keyup", handleKey, { signal: ctx.signal });
+    window.addEventListener("blur", resetHeld, { signal: ctx.signal });
+    document.addEventListener("visibilitychange", resetHeld, { signal: ctx.signal });
     scene.root = root;
     scene.camera = camera;
+    scene.input = input;
+  };
+
+  const resetHeld = () => {
+    aimUp = aimDown = false;
+    if (sim) { sim.drawing = false; sim.power = sim.drawTime = 0; }
   };
 
   const handleKey = (e) => {
-    if (!sim) return;
+    if (!sim || e.metaKey || e.ctrlKey || e.altKey) return false;
+    if (e.target && (e.target.isContentEditable || e.target.closest("input, textarea, select, dialog, .sheet"))) return false;
     const down = e.type === "keydown";
-    if (e.code === "KeyP" && down) {
-      paused = !paused;
-      return;
-    }
-    if (e.code === "Enter" && down) {
-      if (sim.status === "clear" || sim.status === "over" || sim.status === "ready") {
-        startRound(sim.mode);
+    if (down && (e.code === "Enter" || e.code === "Space") && e.target?.closest("button, a[href], summary")) return false;
+    if (e.code === "Escape") {
+      if (down && !e.repeat) { resetHeld(); host.go("arcade"); }
+    } else if (e.code === "KeyP") {
+      if (down && !e.repeat) { paused = !paused; resetHeld(); }
+    } else if (e.code === "Enter") {
+      if (down && !e.repeat) {
+        if (paused) paused = false;
+        else if (sim.status !== "playing") startRound(sim.mode);
       }
-      return;
-    }
-    if (e.code === "ArrowUp" || e.code === "KeyW") {
-      aimUp = down;
-      return;
-    }
-    if (e.code === "ArrowDown" || e.code === "KeyS") {
-      aimDown = down;
-      return;
-    }
-    if (e.code === "Space" || e.code === "KeyJ") {
-      if (down) SIM.beginDraw(sim);
-      else SIM.release(sim);
-    }
+    } else if (e.code === "ArrowUp" || e.code === "KeyW") aimUp = down;
+    else if (e.code === "ArrowDown" || e.code === "KeyS") aimDown = down;
+    else if (e.code === "Space" || e.code === "KeyJ") {
+      if (!paused) { if (down) SIM.beginDraw(sim); else SIM.release(sim); }
+    } else return false;
+    e.preventDefault();
+    return true;
   };
 
   const update = (dt) => {
@@ -159,15 +169,19 @@
     for (const node of targetNodes) node.visible = false;
     for (const node of arrowNodes) node.visible = false;
     for (const node of enemyNodes) node.visible = false;
-    sim = null;
+    targetNodes.length = arrowNodes.length = enemyNodes.length = 0;
+    input.dispose();
+    input = host = sim = null;
     root = null;
     camera = null;
     scene.root = null;
     scene.camera = null;
+    scene.input = null;
   };
 
   const scene = {
     id: "archery",
+    padContext: "arcade",
     root: null,
     camera: null,
     input: null,
@@ -177,13 +191,19 @@
     overlay,
     leave,
     onKey: handleKey,
+    controlsHelpHold: resetHeld,
+    onDonation: (donation, counted = null) => {
+      host.game.recordDonation(donation, counted && counted.exact);
+      host.world.level = Math.min(BL.pile.MAX_BANANAS, host.world.level + (counted ? counted.exact : BL.game.bananasFor(donation.sats)));
+    },
     // The range's own keys; the cabinet's page reads these for the controls dialog.
-    controlsHelp: () => [
-      ["Aim", "\u2191 \u2193 or W / S"],
-      ["Draw and loose", "hold Space or J"],
-      ["Restart", "Enter"],
-      ["Pause", "P"],
-    ],
+    controlsHelp: () => ({ title: "Bow & Bone", rows: [
+      BL.controlsHelp.row(["arrowup", "arrowdown", "w", "s"], "Aim"),
+      BL.controlsHelp.row([" ", "j"], "Hold to draw; release to loose"),
+      BL.controlsHelp.row(["enter"], "Start / restart / resume"),
+      BL.controlsHelp.row(["p"], "Pause"),
+      BL.controlsHelp.row(["escape"], "Return to arcade"),
+    ] }),
     start: startRound,
     stats: () => (sim ? { mode: sim.mode, status: sim.status, score: sim.score, hits: sim.hits, shots: sim.shots } : null),
   };

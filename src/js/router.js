@@ -24,7 +24,8 @@
     // so a hash left by a trip home outranks the `?scene=` a disk page cannot drop. An unknown path or a
     // closed game lands home.
     const current = () => {
-      const raw = SERVED ? location.pathname : location.hash;
+      // /src/ is the local source preview, not an unknown island destination.
+      const raw = SERVED ? location.pathname.replace(/^\/src\/?$/, "/") : location.hash;
       const path = raw.replace(/^[#/]+|\/+$/g, "").toLowerCase();
       return path || (!SERVED && raw) ? byPath.get(path) || HOME : null;
     };

@@ -253,7 +253,7 @@
   const bestOf = (id) => {
     const s = game.state;
     if (id === "race") return "";
-    if (id === "cloud-hopper") return "PLAY!";
+    if (id === "cloud-hopper" || id === "archery") return "PLAY!";
     if (id in s.arcade) return s.arcade[id] ? `HI ${s.arcade[id]}` : "PLAY!";
     const best = s[id].best;
     return best ? `HI ${best.score}` : "PLAY!";
