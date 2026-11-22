@@ -740,7 +740,7 @@
       const q = queue(), a = q?.pose;
       rig.aims = null;
       if (a) {
-        rig.clearPath(4, 1); sharedIdle = false;
+        rig.clearPath(4, 1); rig.stop(); sharedIdle = false;
         const k = 1 - Math.exp(-dt * 16);
         position.x += (a[0] - position.x) * k; position.y += (a[1] - position.y) * k; position.z += (a[2] - position.z) * k;
         rig.mode = a[3]; rig.aim.x = a[4]; rig.aim.y = a[5]; rig.aim.z = a[6];
