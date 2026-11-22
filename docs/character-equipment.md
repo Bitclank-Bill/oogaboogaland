@@ -157,8 +157,9 @@ reads its hip and height from the body. A pet keeps the size its file built it a
 whatever height its Ooga is worn at: the swap leaves the pet's node alone and keeps it
 on the ground (the crew's `pet.lift` follows the hip).
 
-The Pet section, shown only for an Ooga with a pet (`parts.dog`), sizes it on its own:
-any whole per cent from 50 to 150 of its built size (`equipment-wardrobe.js` `PET`),
+The Pet section, shown only for an Ooga with a pet (`parts.dog`), sets the pet's own
+height, read out in metres: any whole per cent from 50 to 150 of the height its file
+builds it at (`equipment-wardrobe.js` `PET`),
 saved as `{ item: "custom", version: null, size: 50..150 }` and set as the pet node's
 scale (with its lying-down drop), so it builds nothing again.
 

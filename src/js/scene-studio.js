@@ -602,7 +602,7 @@
     const makeRow = (slot) => {
       // A colour and the height sit in another's editor; those and the pet show what they wear beside their heading.
       const colour = !!COLOUR_IN[slot.id], valued = colour || slot.id === "pet";
-      const body = element("div", colour ? "studio-editor studio-colour" : valued ? "studio-editor studio-valued" : "studio-editor"), heading = element("p", "studio-editor-name", slot.id === "skin" ? "Skin color" : slot.id === "pet" ? "Size" : slot.label);
+      const body = element("div", colour ? "studio-editor studio-colour" : valued ? "studio-editor studio-valued" : "studio-editor"), heading = element("p", "studio-editor-name", slot.id === "skin" ? "Skin color" : slot.id === "pet" ? "Height" : slot.label);
       const select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note"), value = valued ? element("span", "studio-colour-name") : null;
       body.id = `studio-editor-${slot.id}`; body.dataset.slot = slot.id; body.hidden = !colour;
       select.id = slot.id === "hat" ? "studio-hat-choices" : `studio-slot-${slot.id}`;
@@ -739,18 +739,28 @@
       hex.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); typed(); } }, { signal });
       row.select.before(box, mix);
     }
-    // The height and the pet's size: a slider each, its own value Original, a drag worn once it rests as the colour
-    // wheel's is. The height is in hundredths of the game's height (equipment-wardrobe.js `HEIGHT`), read out in metres
-    // from the feet to the crown (its head's top, a hat left out); the pet's in per cent of the size its file builds it
-    // (`PET`), never its Ooga's height.
+    // The Ooga's height and its pet's: a slider each, read out in metres, its own value Original, a drag worn once it
+    // rests as the colour wheel's is. The Ooga's is in hundredths of the game's height (equipment-wardrobe.js `HEIGHT`),
+    // from the feet to the crown (its head's top, a hat left out); the pet's in per cent of the height its file builds it
+    // at (`PET`), never its Ooga's.
     const crowns = new WeakMap(), crownOf = (t) => {
       if (!crowns.has(t)) crowns.set(t, (t.root.position.y + t.parts.head.position.y + BL.scene.boundsOf(t.headOpen).max[1]) / t.traits.height);
       return crowns.get(t);
     };
+    // The pet's height as its file built it, from its feet (the node's origin) to its top, legs and all: read off the
+    // build's own pet, which a worn size never scales.
+    let petHeight = NaN;
+    const petTall = () => {
+      if (Number.isNaN(petHeight)) {
+        const node = cave.template.parts.dog, top = (n) => Math.max(n.geometry ? BL.scene.boundsOf(n.geometry).max[1] : 0, ...n.children.map((c) => c.position.y + c.scale.y * top(c)));
+        petHeight = node ? top(node) * node.scale.y : 0;
+      }
+      return petHeight;
+    };
     const SLIDERS = {
       height: { field: "height", range: W.HEIGHT, label: "Height", own: () => Math.round(BL.contributors.traitsFor(state.name).height * 100),
         show: (v) => (crownOf(cave.template) * v / 100).toFixed(2) + " m" },
-      pet: { field: "size", range: W.PET, label: "Pet size", own: () => 100, show: (v) => v + "%" }
+      pet: { field: "size", range: W.PET, label: "Pet height", own: () => 100, show: (v) => (petTall() * v / 100).toFixed(2) + " m" }
     };
     for (const row of rows.filter((row) => SLIDERS[row.slot.id])) {
       const at = row.slider = SLIDERS[row.slot.id], id = row.slot.id, line = element("div", "studio-size-line studio-height-line"), range = element("input"), reset = element("button", "link", "Original");
