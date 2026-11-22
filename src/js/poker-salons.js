@@ -149,10 +149,26 @@
       for (const s of [-1, 1]) { fire(s * 4.3, 1, 0.86); chair(s * 6.3, 1.1, -s * 1.4, "#553e30"); chair(s * 4.3, 3.1, Math.PI, "#553e30"); }
       solid(0,-3,1.25,1.25); solid(0,6.96,5.48,.6);
     }
-    const built = { geometry: M.merge(...parts), solids };
+    const built = { geometry: BL.pokerMarble.staticMesh(M.merge(...parts)), solids };
     if (ice) {
-      built.cavern = BL.pokerIce.cavern(r, lite);
+      built.cavern = BL.pokerMarble.staticMesh(BL.pokerIce.cavern(r, lite));
       built.glyph = BL.pokerIce.glyph(lite);
+    }
+    if (id === 2) {
+      // Every other marble row repeats exactly. Bake each of the two patterns once.
+      const stone = BL.pokerFloor.tiles(lite);
+      built.paving = [0, 1].map(row => {
+        const tiles = [];
+        for (let col = 0; col < 9; col++) {
+          const set = (col + row) % 2 ? stone.border : stone.field, tile = M.merge(set[(col + 3 * row) % set.length]);
+          const v = tile.verts;
+          for (let i = 0; i < v.length; i += 3) {
+            v[i] = v[i] * .5 + (col - 4) * 2; v[i+1] *= .12; v[i+2] *= 1.875 / 4;
+          }
+          tiles.push(tile);
+        }
+        return BL.pokerMarble.staticMesh(M.merge(...tiles));
+      });
     }
     cache.set(key, built);
     return built;
@@ -164,6 +180,8 @@
     ROOMS.forEach((r, i) => {
       const g = interior(i, lite), room = add(root, g.geometry, r.x, r.y, r.z);
       rooms.push(room); solids.push(g.solids);
+      if (g.paving) for (let row = 0; row < 8; row++)
+        add(room, g.paving[row % 2], 0, -.013, (row - 3.5) * 1.875);
       if (i === 0) {
         add(room, mesh(r.w, r.h, .22, WALNUT, 0, r.h / 2, r.d / 2));
       }

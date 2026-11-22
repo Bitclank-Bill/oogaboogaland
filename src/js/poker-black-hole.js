@@ -136,18 +136,18 @@ void main() {
 }`;
   // Canvas projects the same astronomical plate. Curves are painted only when that
   // renderer actually draws it; several visits never pay for a fallback bitmap.
-  const paint = (canvas, time) => {
+  const paint = (canvas, time, paths) => {
     const g=canvas.getContext("2d"), unit=canvas.width/bounds[2];
     g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,canvas.width,canvas.height);
     g.setTransform(unit,0,0,-unit,-bounds[0]*unit,(bounds[1]+bounds[3])*unit);g.rotate(slope);
     g.fillStyle="#010102";g.beginPath();g.arc(0,0,1,0,Math.PI*2);g.fill();
-    const orbit=(r,kind)=>{
+    const orbit=(path,r,kind)=>{
       const disk=kind===0,upper=kind===1;
       for(let i=0;i<=64;i++){
         const a=(disk ? -Math.PI : upper ? 0 : Math.PI)+i*Math.PI/64;
         const x=Math.cos(a)*(upper?1+(r-1)*3.75:kind===2?1+(r-1)*1.6:r);
         const y=Math.sin(a)*r*(disk ? .135 : 1)/(disk?1:1+(upper ? .24 : .10)*x*x);
-        if(!i)g.moveTo(x,y);else g.lineTo(x,y);
+        if(!i)path.moveTo(x,y);else path.lineTo(x,y);
       }
     };
     const bands=(count,spread,kind)=>{
@@ -158,7 +158,11 @@ void main() {
         grad.addColorStop(0,`rgba(255,${Math.round(122+103*hot)},${Math.round(23+121*hot)},${1-.84*u})`);
         grad.addColorStop(1,`rgba(244,${Math.round(58+89*hot)},18,${.92-.84*u})`);
         g.strokeStyle=grad;g.lineWidth=spread/count*strokeScale+.002;
-        g.beginPath();orbit(r,kind);g.stroke();
+        if(paths){
+          let path=paths[kind][k];
+          if(!path){path=paths[kind][k]=new Path2D();orbit(path,r,kind);}
+          g.stroke(path);
+        }else{g.beginPath();orbit(g,r,kind);g.stroke();}
       }
     };
     bands(54,.48,1);bands(24,.17,2);
@@ -180,24 +184,35 @@ void main() {
     M.face(geo,[[-r,-r],[r,-r],[r,r],[-r,r]].map(p=>M.pushVert(geo,...p,0)),"#ffffff",{emissive:1});
     geo.castShadow=false;
     const cloud=[224,237,245], land=[57,140,66], sea=[14,66,131], air=[20,84,122];
+    const rowDistance=new Float64Array(landforms.length);
     let canvas,image,last=-Infinity;
     geo.imageSurface={rect:[-r,-r,2*r,2*r],blend:"alpha",cutout:true,time:0,fallback(){
       if(!canvas){canvas=document.createElement("canvas");canvas.width=canvas.height=96;image=canvas.getContext("2d").createImageData(96,96);}
       if(Math.abs(this.time-last)<1.)return canvas;
       last=this.time;
-      for(let y=0;y<96;y++)for(let x=0;x<96;x++){
-        const nx=(x-47.5)/48,ny=(47.5-y)/48,d=nx*nx+ny*ny;
-        if(d>=1)continue;
-        const nz=Math.sqrt(1-d),a=Math.atan2(nx,nz)+last*.019,lon=Math.atan2(Math.sin(a),Math.cos(a)),lat=Math.asin(ny);
-        let coast=9;
-        for(const [cx,cy,w,h] of landforms)coast=Math.min(coast,((lon-cx)/w)**2+((lat-cy)/h)**2);
-        const terrain=Math.sin(29*lon+8*Math.sin(lat*15))*Math.cos(21*lat);
-        const clouds=Math.sin(21*lat+2.6*Math.sin(5*lon+3*lat))+.65*Math.cos(13*lon-8*lat);
-        const light=.26+.74*Math.max(0,nx*.73+ny*.40+nz*.55);
-        const color=clouds>1.04 || Math.abs(lat)>1.24 ? cloud : coast+.20*terrain<1 ? land : sea;
-        const i=(96*y+x)*4;
-        for(let c=0;c<3;c++)image.data[i+c]=(color[c]+(color===land?terrain*12:0))*light+(1-nz)**3*air[c];
-        image.data[i+3]=255;
+      for(let y=0;y<96;y++){
+        const ny=(47.5-y)/48,lat=Math.asin(ny),latitudeWarp=8*Math.sin(lat*15),latitudeShade=Math.cos(21*lat);
+        for(let k=0;k<landforms.length;k++){
+          const form=landforms[k];
+          rowDistance[k]=((lat-form[1])/form[3])**2;
+        }
+        for(let x=0;x<96;x++){
+          const nx=(x-47.5)/48,d=nx*nx+ny*ny;
+          if(d>=1)continue;
+          const nz=Math.sqrt(1-d),a=Math.atan2(nx,nz)+last*.019,lon=Math.atan2(Math.sin(a),Math.cos(a));
+          let coast=9;
+          for(let k=0;k<landforms.length;k++){
+            const form=landforms[k];
+            coast=Math.min(coast,((lon-form[0])/form[2])**2+rowDistance[k]);
+          }
+          const terrain=Math.sin(29*lon+latitudeWarp)*latitudeShade;
+          const clouds=Math.sin(21*lat+2.6*Math.sin(5*lon+3*lat))+.65*Math.cos(13*lon-8*lat);
+          const light=.26+.74*Math.max(0,nx*.73+ny*.40+nz*.55);
+          const color=clouds>1.04 || Math.abs(lat)>1.24 ? cloud : coast+.20*terrain<1 ? land : sea;
+          const i=(96*y+x)*4;
+          for(let c=0;c<3;c++)image.data[i+c]=(color[c]+(color===land?terrain*12:0))*light+(1-nz)**3*air[c];
+          image.data[i+3]=255;
+        }
       }
       canvas.getContext("2d").putImageData(image,0,0);
       return canvas;
@@ -209,11 +224,11 @@ void main() {
     const [x,y,w,h]=rect;
     M.face(geo,[[x,y],[x+w,y],[x+w,y+h],[x,y+h]].map(p=>M.pushVert(geo,...p,0)),"#ffffff",{emissive:1});
     geo.castShadow=false;geo.fogPierce=1;
-    let bitmap,last=-Infinity;
+    let bitmap,paths,last=-Infinity;
     const surface={rect,blend:"alpha",cutout:true,accretion:fragment,time:0,
       fallback(){
-        if(!bitmap){bitmap=document.createElement("canvas");bitmap.width=816;bitmap.height=396;}
-        if(Math.abs(this.time-last)>=.25){paint(bitmap,this.time);last=this.time;}
+        if(!bitmap){bitmap=document.createElement("canvas");bitmap.width=816;bitmap.height=396;paths=typeof Path2D==="function"?[[],[],[]]:null;}
+        if(Math.abs(this.time-last)>=.25){paint(bitmap,this.time,paths);last=this.time;}
         return bitmap;
       }};
     geo.imageSurface=surface;

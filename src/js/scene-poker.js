@@ -184,8 +184,7 @@
     }
     for (let k = 0; k < SEAT_SMOKES; k++) {
       if (k >= found) { seatSmokes[k].hide(); seatSmoked[k] = null; continue; }
-      S.updateWorld(room.tables[seatSmokedT[k]].root);
-      seatSmokes[k].update(elapsed, seatSmoked[k].parts.cigar, camera);
+      seatSmokes[k].update(elapsed, seatSmoked[k].parts.cigar, camera, room.tables[seatSmokedT[k]].root);
     }
   };
   const NO_ACTORS = [], CLEAR = { x: 0, z: 0 };
@@ -193,7 +192,7 @@
   // Canvas 2D) and hung as the preset's `night.cosmos` says, on the scene's root. The camera reaches the stars (320 m
   // from the hall's middle).
   const FAR = 450;
-  let cosmos = null;
+  let cosmos = null, hallLightCount = 0, highLightCount = 0;
   // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the room
   // every frame, so signed-in players on the floor hear each other (voice needs a driven Ooga).
   const mayPossess = cave => BL.net.mayDrive(cave.traits.name, BL.contributors.stateFor(cave.contributor) === "working");
@@ -1030,6 +1029,15 @@
     while (faces.length < BL.pokerRules.SEATS) { const f = { key: "", cave: null, tag: null, paint: canvas => BL.hud.renderFaceIcon(canvas, f.cave, null, 96) }; faces.push(f); }
     panel = BL.pokerHud.create(action, select, faceFor, emote, hud, npcAt); panel.setDealer(room.tables[0].agent);
     Themes.light(renderOpts, renderer.kind);
+    // Only the first thirteen lights change with the action. Install the fixed lamps in tier order once per visit.
+    const models = BL.pokerModels, lights = renderOpts.lights;
+    let offset = 13 * 8;
+    lights.set(models.CLUB_LIGHTS, offset); offset += models.CLUB_LIGHTS.length;
+    hallLightCount = offset / 8;
+    for (const lamps of [models.COLONNADE, models.LOUNGE_LIGHTS, models.GAME_LIGHTS]) {
+      lights.set(lamps, offset); offset += lamps.length;
+    }
+    highLightCount = offset / 8;
     // The polished floor mirrors the room on WebGL: its gloss sheet stands on the scene's root, off the room's. The night
     // stands over the vault beside the room.
     if (room.floor.gloss && renderer.kind === "webgl2") S.addChild(root, room.floor.gloss);
@@ -1147,8 +1155,8 @@
     const near = selected, lights = renderOpts.lights;
     terraceScope.updateService(elapsed,calm);
     room.updateInstruments(elapsed,calm,BL.chain.snapshot);
-    const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, Date.now(), camera.position, audio.blockChime);
-    const jubilee = room.hall.bandstand.update(dt,elapsed,calm,BL.chain.snapshot,Date.now());
+    const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, now, camera.position, audio.blockChime);
+    const jubilee = room.hall.bandstand.update(dt,elapsed,calm,BL.chain.snapshot,now);
     const power = Math.min(1, left / 0.8), ease = power * power * (3 - 2 * power);
     for (let slot = 0; slot < 10; slot++) {
       const i = (near + slot) % 10, p = BL.pokerModels.TABLES[i], o = slot * 8;
@@ -1178,19 +1186,7 @@
     room.hall.update(dt, elapsed, calm);
     cosmos.update(dt, elapsed, renderOpts);
     hud.updateBoard(elapsed);
-    // The bar's, the cage's and the fountain's lights follow the room's thirteen, then the colonnade's (one before each
-    // statue), counted on the top tier alone: a tier keeping fewer would light some statues and not their neighbours.
-    const extraLights = BL.pokerModels.CLUB_LIGHTS, colonnadeLights = BL.pokerModels.COLONNADE;
-    for (let i = 0; i < extraLights.length; i++) lights[104 + i] = extraLights[i];
-    const colonnadeAt = 104 + extraLights.length, colonnadeOn = renderer.kind === "webgl2" && renderer.quality === "high";
-    for (let i = 0; i < colonnadeLights.length; i++) lights[colonnadeAt + i] = colonnadeLights[i];
-    // The lounges' two lamps' lights after the colonnade, on the top tier with it.
-    const loungeLights = BL.pokerModels.LOUNGE_LIGHTS, loungeAt = colonnadeAt + colonnadeLights.length;
-    for (let i = 0; i < loungeLights.length; i++) lights[loungeAt + i] = loungeLights[i];
-    // The gaming tables' four lamps' lights last, on the top tier with the colonnade's and the lounges'.
-    const gameLights = BL.pokerModels.GAME_LIGHTS, gameLightsAt = loungeAt + loungeLights.length;
-    for (let i = 0; i < gameLights.length; i++) lights[gameLightsAt + i] = gameLights[i];
-    renderOpts.lightCount = 13 + (extraLights.length + (colonnadeOn ? colonnadeLights.length + loungeLights.length + gameLights.length : 0)) / 8;
+    renderOpts.lightCount = renderer.kind === "webgl2" && renderer.quality === "high" ? highLightCount : hallLightCount;
     if (salon >= 0) {
       const r = currentSalon(), ice = salon === 1;
       if (ice) salons.glyph.rotation.y = (salons.glyph.rotation.y + dt * 0.6) % (Math.PI * 2);

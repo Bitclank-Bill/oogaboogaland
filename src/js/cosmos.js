@@ -537,13 +537,26 @@
       const at = (k, r) => { const t = k / SOFT_SIDES * TAU, c = Math.cos(t) * r, sn = Math.sin(t) * r; return [cx + u[0] * c + w[0] * sn, cy + u[1] * c + w[1] * sn, cz + u[2] * c + w[2] * sn]; };
       const color = hex(heart.color);
       BM.facing(out, Array.from({ length: SOFT_SIDES }, (_, k) => at(k, steps[0][1])), BM.blend(color, "#000000", steps[0][2]), heart.emissive, 0, 0, 0);
+      // Every strip shares its inner and outer rings. Keep the 2π seam vertex as built,
+      // including its rounding, so both renderers see the same face corners.
+      const heartIds = out.faces[out.faces.length - 1].i, first = out.verts.length / 3 - SOFT_SIDES;
+      const reverseStrip = heartIds[0] === first;
+      BL.models.pushVert(out, ...at(SOFT_SIDES, steps[0][1]));
+      let inner = first;
       for (let j = 1; j < steps.length; j++) {
-        const [s0, s1, dark] = steps[j], col = BM.blend(color, "#000000", dark);
-        for (let k = 0; k < SOFT_SIDES; k++) BM.facing(out, [at(k, s0), at(k + 1, s0), at(k + 1, s1), at(k, s1)], col, heart.emissive, 0, 0, 0);
+        const [, r, dark] = steps[j], col = BL.math.hexToRgb(BM.blend(color, "#000000", dark));
+        const outer = out.verts.length / 3;
+        for (let k = 0; k <= SOFT_SIDES; k++) BL.models.pushVert(out, ...at(k, r));
+        for (let k = 0; k < SOFT_SIDES; k++) {
+          const ids = [inner + k, inner + k + 1, outer + k + 1, outer + k];
+          BL.models.face(out, reverseStrip ? ids.reverse() : ids, col, { emissive: heart.emissive });
+        }
+        inner = outer;
       }
     }
     out.glass = geo.glass; out.fogPierce = geo.fogPierce;
     noShadow(out);
+    if (BL.compactGeometry?.enabled) BL.compactGeometry.pack(out, { immutable: true, renderOnly: true, precision: 64 });
     softened.set(geo, out);
     return out;
   };

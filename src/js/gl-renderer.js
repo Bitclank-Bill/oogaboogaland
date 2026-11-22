@@ -2011,6 +2011,13 @@ void main() {
     const records = new Map();
     // Refilled in place every frame (`activeCount` during collect), so its backing store is never dropped and regrown.
     const activeRecords = [];
+    // Keep collect order for translucent layers. Each camera and reflection can then visit only
+    // records that participate in its sparse material passes.
+    const glassRecords = [], blendRecords = [], lineRecords = [], stageRecords = [null, [], [], []];
+    const clearPassRecords = () => {
+      glassRecords.length = blendRecords.length = lineRecords.length = 0;
+      stageRecords[1].length = stageRecords[2].length = stageRecords[3].length = 0;
+    };
     let activeCount = 0;
     // scene.js's three ancestor-flag walks, memoised per render: the flags they read are set by scene updates and
     // stay frozen while a frame renders. Walking up to a cached ancestor serves every descendant of that chain. The
@@ -2599,6 +2606,7 @@ void main() {
       for (const rec of records.values()) deleteRecord(rec);
       records.clear();
       activeRecords.length = 0;
+      clearPassRecords();
       destroyInstanceStream();
     };
     const bindInstanceAttribs = (ibo, first = 0, setup = true) => {
@@ -3668,6 +3676,7 @@ void main() {
       destroyInstanceStream();
       records.clear();
       activeRecords.length = 0;
+      clearPassRecords();
       res.fbo = null;
       res.shadow = null;
       res.matrixTexture = null;
@@ -3880,12 +3889,7 @@ void main() {
       gl.useProgram(resume.prog);
     };
     const drawBlended = (cull) => {
-      let any = false;
-      for (let i = 0; i < activeRecords.length; i++) {
-        const g = activeRecords[i].geometry;
-        if (g.imageSurface && g.imageSurface.blend && activeRecords[i].count) { any = true; break; }
-      }
-      if (!any) return;
+      if (!blendRecords.length) return;
       gl.useProgram(programs.mesh.prog);
       gl.enable(gl.BLEND);
       gl.depthMask(false);
@@ -3900,14 +3904,11 @@ void main() {
     // each fragment shaded and none hidden by depth, and the full shader's Matrix tests are most of what a layer
     // costs.
     const drawGlass = (cull, plain = false) => {
-      let any = false;
-      for (let i = 0; i < activeRecords.length; i++) {
-        const rec = activeRecords[i], g = rec.geometry;
-        if (!g.glass || !rec.count) continue;
-        any = true;
-        if (plain && (!rec.mesh || !rec.mesh.plainGlass || rec.living && !rec.livingClear || g.matrixCave || g.portalSurface || g.lakeBody || g.imageSurface)) plain = false;
+      if (!glassRecords.length) return;
+      for (let i = 0; plain && i < glassRecords.length; i++) {
+        const rec = glassRecords[i], g = rec.geometry;
+        if (!rec.mesh || !rec.mesh.plainGlass || rec.living && !rec.livingClear || g.matrixCave || g.portalSurface || g.lakeBody || g.imageSurface) plain = false;
       }
-      if (!any) return;
       const name = plain ? "plain" : "mesh", mesh = programs[name];
       gl.useProgram(mesh.prog);
       gl.enable(gl.BLEND);
@@ -3973,7 +3974,8 @@ void main() {
     const drawParts = (kind, useProgram, excludeMirror = false, cull = false, matrixStage = 0) => {
       // The depth pre-pass's and the plain variant's programs take every per-draw setting the mesh program does.
       const meshPass = useProgram === "mesh" || useProgram === "depth" || useProgram === "plain";
-      const drawRecords = cameraFeedSource?.captureRecords || activeRecords;
+      const drawRecords = cameraFeedSource?.captureRecords || (kind === "line" ? lineRecords : stageRecords[matrixStage]
+        || (glassPass ? glassRecords : blendPass ? blendRecords : activeRecords));
       for (let i = 0; i < drawRecords.length; i++) {
         const rec = drawRecords[i], g = rec.geometry, program = programs[useProgram];
         if (g.architectFeedOnly && !cameraFeedRoom) continue;
@@ -4924,8 +4926,14 @@ void main() {
       }
       activeRecords.length = activeCount;
       viewInstances = captureOnlyInstances = 0;
+      clearPassRecords();
       for (let i = 0; i < activeRecords.length; i++) {
-        const rec = activeRecords[i];
+        const rec = activeRecords[i], g = rec.geometry;
+        if (rec.line) lineRecords.push(rec);
+        if (rec.count && g.glass) glassRecords.push(rec);
+        if (rec.count && g.imageSurface?.blend) blendRecords.push(rec);
+        const stage = g.matrixRevealBacking ? 1 : g.matrixGlyph ? 2 : g.glassOpacity ? 3 : 0;
+        if (stage) stageRecords[stage].push(rec);
         viewInstances += rec.viewCount; captureOnlyInstances += rec.count - rec.viewCount;
         if (rec.offscreen) culled += rec.drawCount; else drawn += rec.drawCount;
         if (rec.geometry.mirrorSource && !rec.offscreen) mirror.shards += rec.drawCount;

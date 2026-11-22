@@ -248,12 +248,6 @@
     for(const sy of [.14,1.17]) p.push(box(x,sy,z+.48,6.5,.044,.045,edge));
     p.push(beam(x-3.17,.21,z+.72,x+3.17,.21,z+.72,.065,brass));
     for(const rr of [1.52,1.62,2.15]) p.push(ring(1.5,.045,2,rr,.026,edge));
-    const stone=BL.pokerFloor.tiles(lite);
-    for(let i=0;i<9;i++) for(let j=0;j<8;j++){
-      const set=(i+j)%2?stone.border:stone.field, g=M.merge(set[(i+3*j)%set.length]);
-      for(let v=0;v<g.verts.length;v+=3){g.verts[v]*=.5;g.verts[v+1]*=.12;g.verts[v+2]*=1.875/4;}
-      p.push(M.moved(g,(i-4)*2,-.013,(j-3.5)*1.875));
-    }
     for(let i=0;i<8;i++) p.push(bottle(x-1.65+i*.44,1.33,z-.15,.32+(i%3)*.11,["#744128","#3b7166","#a57b4a"][i%3],lite?5:9));
     for(const sx of [-6,-4,-2]) p.push(turned(sx,0,-3.62,[[0,0],[.3,0],[.26,.06],[.065,.13],[.065,.68],[.29,.7]],brass),
       turned(sx,0,-3.62,[[.29,.7],[.33,.75],[.31,.85],[0,.87]],leather));
@@ -380,8 +374,8 @@
       }
       p.push(star);
     }
-    const base=add(root,M.merge(...p));base.geometry.castShadow=false;
-    const bank=add(root,miningShelf(lite),far+33,0,32); bank.rotation.y=-2.24;
+    const base=add(root,K.staticMesh(M.merge(...p)));base.geometry.castShadow=false;
+    const bank=add(root,K.staticMesh(miningShelf(lite)),far+33,0,32); bank.rotation.y=-2.24;
     const updateService=service(root,add);
     const scope=mount(station); S.addChild(root,scope.root);
     return {root,updateService,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};

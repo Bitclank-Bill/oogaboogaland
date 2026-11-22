@@ -514,11 +514,11 @@
     // mixed perspective/orthographic side planes are linear in view space.
     // Dynamic surfaces and Matrix receiver planes keep their existing path.
     const compactCursors = new WeakMap();
-    const readFace = (geometry, index) => {
-      if (!geometry.compactGeometry) return geometry.faces[index];
+    const faceCursor = (geometry) => {
+      if (!geometry.compactGeometry || !BL.compactGeometry.storageOf(geometry)) return null;
       let cursor = compactCursors.get(geometry);
       if (!cursor) { cursor = BL.compactGeometry.createCursor(geometry); compactCursors.set(geometry, cursor); }
-      return BL.compactGeometry.readFace(geometry, index, cursor);
+      return cursor;
     };
     const matrixReceiverCache = new WeakMap();
     const hasMatrixReceiver = (node) => {
@@ -529,8 +529,9 @@
       let entry = matrixReceiverCache.get(g);
       if (entry && entry.faces === g.faces) return entry.receiver;
       let receiver = false;
-      if (g.faces) for (let index = 0; index < g.faces.length; index++) {
-        const face = readFace(g, index);
+      const cursor = faceCursor(g);
+      for (let index = 0, count = g.faces?.length || 0; index < count; index++) {
+        const face = cursor ? BL.compactGeometry.readFace(g, index, cursor) : g.faces[index];
         if (face.matrixCave || face.matrixPermanentFallback || face.matrixLocalGlyphSurface || face.matrixWorldGlyphSurface || face.color?.[3] < 0) { receiver = true; break; }
       }
       matrixReceiverCache.set(g, { faces: g.faces, receiver });
@@ -602,13 +603,14 @@
       const clipMaximumY = Math.min(preserved ? Infinity : cutawayMaxY, node.geometry.clipMaxY ?? Infinity);
       let shardDrawn = false;
       if (faces) {
-        for (let index = 0; index < faces.length; index++) {
-          const face = readFace(node.geometry, index), idx = face.i;
-          const count = idx.length;
+        const cursor = faceCursor(node.geometry);
+        for (let index = 0, total = faces.length; index < total; index++) {
+          const face = cursor ? BL.compactGeometry.readFace(node.geometry, index, cursor) : faces[index];
+          const idx = cursor ? cursor.i.data : face.i, start = cursor ? cursor.i.start : 0, count = face.i.length;
           if (liquid) {
             // Portal faces are radial strips. Skip those beyond the reveal,
             // then trim only the crossing strip; the interior keeps its scale.
-            const a = idx[0] * 3, b = idx[1] * 3;
+            const a = idx[start] * 3, b = idx[start + 1] * 3;
             const ra=rectangular?Math.max(Math.abs(verts[a]),Math.abs(verts[a+2])):Math.hypot(verts[a],verts[a+2]);
             const rb=rectangular?Math.max(Math.abs(verts[b]),Math.abs(verts[b+2])):Math.hypot(verts[b],verts[b+2]);
             if (Math.min(ra,rb) >= node.portalReveal) continue;
@@ -616,10 +618,10 @@
           let centerX = 0, centerY = 0, centerZ = 0, liquidX = 0, liquidZ = 0;
           const variant = face.lake ? (waving ? 1 : 0) | (rising ? 2 : 0) : 0;
           for (let k = 0; k < count; k++) {
-            const b = idx[k] * 3;
+            const vertex = idx[start + k], b = vertex * 3;
             let slot = 0;
             if (cacheVerts) {
-              slot = (idx[k] << 2) | variant;
+              slot = (vertex << 2) | variant;
               if (slot * 3 + 3 > wCache.length) growVertexCache(slot + 1);
               if (wStamp[slot] === gen) {
                 const at = slot * 3;
@@ -843,7 +845,7 @@
               for (let k = 0; k < surfaceCount; k++) {
                 if (surface) mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
                 else if (cacheVerts) {
-                  const slot = (idx[k] << 2) | variant, at = slot * 3;
+                  const slot = (idx[start + k] << 2) | variant, at = slot * 3;
                   if (vStamp[slot] === gen) {
                     CLIP_IN[k * 3] = vCache[at]; CLIP_IN[k * 3 + 1] = vCache[at + 1]; CLIP_IN[k * 3 + 2] = vCache[at + 2];
                     continue;
@@ -886,7 +888,7 @@
                 rec.mirrorMinX = rec.mirrorMinY = Infinity;
                 rec.mirrorMaxX = rec.mirrorMaxY = -Infinity;
                 for (let k = 0; k < count; k++) {
-                  const at = idx[k] * 3;
+                  const at = idx[start + k] * 3;
                   rec.mirrorMinX = Math.min(rec.mirrorMinX, verts[at]); rec.mirrorMaxX = Math.max(rec.mirrorMaxX, verts[at]);
                   rec.mirrorMinY = Math.min(rec.mirrorMinY, verts[at + 1]); rec.mirrorMaxY = Math.max(rec.mirrorMaxY, verts[at + 1]);
                 }
@@ -929,12 +931,13 @@
                 k = lerp(Math.min(1, hemi + diffuse * 0.7 * directStrength), 1.1, Math.min(1, emissive));
               }
               k = lerp(k, 1.3, node.scorch > 0 ? 0 : node.highlight * 0.4);
-              const c = face.color;
-              const detail = 0.72 + (c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722) / 255 * scorch * 0.28;
+              const c = cursor ? cursor.color.data : face.color, colorStart = cursor ? cursor.color.start : 0;
+              const r = c[colorStart], g = c[colorStart + 1], b = c[colorStart + 2];
+              const detail = 0.72 + (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255 * scorch * 0.28;
               const heat = 255 * detail;
-              const cr = lerp(c[0] * scorch, heat, ember * 0.9);
-              const cg = lerp(c[1] * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
-              const cb = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
+              const cr = lerp(r * scorch, heat, ember * 0.9);
+              const cg = lerp(g * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
+              const cb = lerp(b * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
               const tip = node.tip > 1.5 ? 0 : node.tip || 0;
               const fog = (localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear))))
                 * (1 - (node.geometry.fogPierce || 0));

@@ -10,14 +10,30 @@
   const DI = [1, -1, 0, 0, 1, 1, -1, -1], DJ = [0, 0, 1, -1, 1, -1, 1, -1], DC = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
   const cellX = c => X0 + (c % GW + 0.5) * CELL, cellZ = c => Z0 + (Math.floor(c / GW) + 0.5) * CELL;
 
+  // Only the casino's permanent collision layout can share a grid across visits. Custom walkability
+  // functions used by callers may change between searches made with separate routers.
+  let hallGrid = null;
+  const gridFor = walkable => {
+    const permanent = walkable === BL.pokerModels?.walkable;
+    if (permanent && hallGrid) return hallGrid;
+    const open = new Uint8Array(GN);
+    let cells = 0;
+    for (let c = 0; c < GN; c++) {
+      const x = cellX(c), z = cellZ(c);
+      open[c] = walkable(x, z, x, z, 0, 2, PROBE) ? 1 : 0;
+      cells += open[c];
+    }
+    const grid = { open, cells };
+    if (permanent) hallGrid = grid;
+    return grid;
+  };
+
   const router = walkable => {
-    const open = new Uint8Array(GN), cost = new Float32Array(GN), from = new Int32Array(GN), seen = new Uint32Array(GN), done = new Uint32Array(GN);
-    const trail = new Int32Array(GN), heap = new Int32Array(GN * 3), f = new Float32Array(GN * 3);
-    let search = 0, heapN = 0, cells = 0;
-    const rebuild = () => {
-      cells = 0;
-      for (let c = 0; c < GN; c++) { const x = cellX(c), z = cellZ(c); open[c] = walkable(x, z, x, z, 0, 2, PROBE) ? 1 : 0; cells += open[c]; }
-    };
+    // The 13,064 cell indices fit in 16 bits. A search stamps discovered cells positive and closed cells negative.
+    const { open, cells } = gridFor(walkable);
+    const cost = new Float32Array(GN), from = new Int16Array(GN), mark = new Int32Array(GN);
+    const heap = new Uint16Array(GN * 3), f = new Float32Array(GN * 3);
+    let search = 0, heapN = 0;
     // The open cell nearest (x, z) within 1.5 m, or -1.
     const nearOpen = (x, z) => {
       const i0 = Math.floor((x - X0) / CELL), j0 = Math.floor((z - Z0) / CELL);
@@ -49,23 +65,24 @@
     };
     // A* from cell s to cell t; `from` then leads back from t to s.
     const findPath = (s, t) => {
+      if (search === 0x7fffffff) { mark.fill(0); search = 0; }
       const id = ++search, ti = t % GW, tj = Math.floor(t / GW), cap = heap.length - 8;
       heapN = 0;
-      seen[s] = id; cost[s] = 0; from[s] = -1;
+      mark[s] = id; cost[s] = 0; from[s] = -1;
       heapPush(s, 0);
       while (heapN > 0) {
         const c = heapPop();
-        if (done[c] === id) continue;
-        done[c] = id;
+        if (mark[c] === -id) continue;
+        mark[c] = -id;
         if (c === t) return true;
         const ci = c % GW, cj = Math.floor(c / GW);
         for (let k = 0; k < 8; k++) {
           const ni = ci + DI[k], nj = cj + DJ[k];
           if (ni < 0 || nj < 0 || ni >= GW || nj >= GH) continue;
           const nc = nj * GW + ni, g = cost[c] + DC[k];
-          if (done[nc] === id || (seen[nc] === id && cost[nc] <= g) || !open[nc]) continue;
+          if (mark[nc] === -id || (mark[nc] === id && cost[nc] <= g) || !open[nc]) continue;
           if (k >= 4 && (!open[cj * GW + ni] || !open[nj * GW + ci])) continue;
-          seen[nc] = id; cost[nc] = g; from[nc] = c;
+          mark[nc] = id; cost[nc] = g; from[nc] = c;
           const di = Math.abs(ni - ti), dj = Math.abs(nj - tj);
           if (heapN < cap) heapPush(nc, g + Math.max(di, dj) + (Math.SQRT2 - 1) * Math.min(di, dj));
         }
@@ -78,6 +95,8 @@
     const find = (ax, az, bx, bz, out) => {
       const s = nearOpen(ax, az), t = nearOpen(bx, bz);
       if (s < 0 || t < 0 || !findPath(s, t)) return 0;
+      // The search is finished, so the heap's cell storage can hold the route back to the start.
+      const trail = heap;
       let n = 0;
       for (let c = t; c !== -1; c = from[c]) trail[n++] = c;
       let w = 0, at = n - 1, px = ax, pz = az;
@@ -97,8 +116,7 @@
     };
     // Whether a route can end exactly at (x, z): an open cell near it from which a walker's leg reaches it.
     const ends = (x, z) => { const c = nearOpen(x, z); return c >= 0 && walkable(cellX(c), cellZ(c), x, z, 0, 2, LEG); };
-    rebuild();
-    return { find, ends, get cells() { return cells; } };
+    return { find, ends, cells };
   };
 
   // ---- cigar smoke ---------------------------------------------------------------------------------------------
@@ -152,6 +170,15 @@
   };
   // The tip, and one puff's place, size, spin and opacity handed to `put` (in a typed array, so no number is boxed).
   const TIP = new Float64Array(3), PUFF = new Float64Array(6);
+  // Smoke needs the current cigar transform before rendering. Update only its ancestors up to the
+  // same table or crowd root used for the pose, leaving sibling meshes to the renderer's pass.
+  const updateCigar = (node, poseRoot) => {
+    if (!node.visible || (node !== poseRoot && !updateCigar(node.parent, poseRoot))) return false;
+    S.updateLocal(node);
+    if (node === poseRoot) node.world.set(node.local);
+    else BL.math.mat4.multiply(node.world, node.parent.world, node.local);
+    return true;
+  };
   const smoke = ({ root, lite = false, seed = 0 }) => {
     const target = lite ? null : smokeTargets(), core = lite ? null : smokeCores(), SMOKE_B = target ? target.length / 2 : 0, n = SMOKE_WISP + SMOKE_B, data = new Float32Array(n * SMOKE_STRIDE);
     // A geometry of its own: the renderer keeps one record per geometry and draws one batch on it, so smokers sharing
@@ -160,20 +187,20 @@
     geometry.castShadow = false;
     const node = S.createNode({ geometry, sightHidden: true, instanceData: data, instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
     S.addChild(root, node);
+    // The upright puffs share a homogeneous row and tint. The other fixed components start at zero.
+    for (let i = 0; i < data.length; i += SMOKE_STRIDE) { data[i + 15] = 1; data[i + 16] = 1; }
     const offset = (seed % 1000) / 1000 * SMOKE_CYCLE;
     const state = new Float64Array(2);
     const put = () => {
       const x = PUFF[0], y = PUFF[1], z = PUFF[2], s = PUFF[3], spin = PUFF[4], alpha = PUFF[5];
       const o = state[0]++ * SMOKE_STRIDE, c = Math.cos(spin) * s, sn = Math.sin(spin) * s;
-      data[o] = c; data[o + 1] = 0; data[o + 2] = -sn; data[o + 3] = 0;
-      data[o + 4] = 0; data[o + 5] = s; data[o + 6] = 0; data[o + 7] = 0;
-      data[o + 8] = sn; data[o + 9] = 0; data[o + 10] = c; data[o + 11] = 0;
-      data[o + 12] = x; data[o + 13] = y; data[o + 14] = z; data[o + 15] = 1;
-      data[o + 16] = 1; data[o + 17] = 0; data[o + 18] = -1 - alpha; data[o + 19] = 0;
+      data[o] = c; data[o + 2] = -sn; data[o + 5] = s; data[o + 8] = sn; data[o + 10] = c;
+      data[o + 12] = x; data[o + 13] = y; data[o + 14] = z; data[o + 18] = -1 - alpha;
     };
     const hide = () => { if (node.instanceCount) { node.instanceCount = 0; node.instanceVersion++; } };
     // From the cigar's node (its tip `CIGAR_TIP` down its length) and the view `eye` ({ position, target }).
-    const update = (elapsed, cigarNode, eye) => {
+    const update = (elapsed, cigarNode, eye, poseRoot = null) => {
+      if (poseRoot && !updateCigar(cigarNode, poseRoot)) { hide(); return; }
       const T = elapsed + offset, t = state[1] = T % SMOKE_CYCLE, w = cigarNode.world;
       BL.math.mat4.transformPoint(TIP, w, 0, 0, BL.pokerCrowdModels.CIGAR_TIP);
       const tx = TIP[0], ty = TIP[1], tz = TIP[2], h = Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
@@ -192,7 +219,7 @@
         const cy = ty + SMOKE_LIFT * h, sway = 0.03 * h;
         for (let j = 0; j < SMOKE_B; j++) {
           const born = SMOKE_EMIT0 + j / SMOKE_B * SMOKE_EMIT;
-          if (t < born) continue;
+          if (t < born) break;
           const u = target[j * 2] * SMOKE_SCALE * h, v = target[j * 2 + 1] * SMOKE_SCALE * h, ph = j * 1.618;
           const gx = tx + rx * u, gy = cy + v, gz = tz + rz * u;
           // Written straight into `PUFF`: a double held in a `let` that branches assign is boxed.
@@ -301,7 +328,7 @@
     });
     // The residents: one record a lounge seat the floor offers (filled by `setSpots`), each a lounge cast member in turn.
     const residents = [];
-    let strolls = null, capNow = -1, cursor = 0, routes = 0, bubbles = 0, pollClock = 0, railsBy = null, loungeSeats = null;
+    let strolls = null, capNow = -1, buildPending = true, cursor = 0, routes = 0, bubbles = 0, pollClock = 0, railsBy = null, loungeSeats = null;
     const approaches = new Map(), byKind = {};
     let listener=null;
     // Table talk carries to the next rail. A distant guest still reacts in the room.
@@ -496,7 +523,7 @@
     };
     const setCap = n => {
       if (n === capNow) return;
-      capNow = n;
+      capNow = n; buildPending = true;
       const on = C.castFor(day, n);
       for (let k = 0; k < members.length; k++) {
         const m = members[k], want = on.includes(cast[k]);
@@ -959,11 +986,11 @@
       else if (vis && near(vis.x, vis.z, s.x, s.z, HEED_PASS)) { r.lookX = vis.x; r.lookZ = vis.z; }
       else r.looking = false;
     };
-    const resident = (r, dt, vis) => {
+    const resident = (r, dt, vis, lookMix) => {
       const p = r.parts, s = r.spot;
       if ((r.heed -= dt) <= 0) { r.heed = HEED_EVERY; heed(r, vis); }
       const want = r.looking ? Math.max(-HEED_TURN, Math.min(HEED_TURN, turnTo(s.yaw, Math.atan2(r.lookX - s.x, r.lookZ - s.z)))) : 0;
-      r.look = Mth.damp(r.look, want, 3, dt);
+      r.look = Mth.lerp(r.look, want, lookMix);
       p.head.rotation.y = r.look;
       // A sip: up over the first third, at the lips the middle, down the last; the head tips back as she drinks.
       let up = 0;
@@ -981,8 +1008,10 @@
 
     const update = (dt, elapsed = 0, eye = null) => {
       listener=eye?.position || eye;
-      const t0 = performance.now();
-      while (buildNext() && performance.now() - t0 < BUILD_BUDGET) { /* fill the room within the frame's budget */ }
+      if (buildPending) {
+        const t0 = performance.now();
+        do { buildPending = buildNext(); } while (buildPending && performance.now() - t0 < BUILD_BUDGET);
+      }
       bucket();
       // A bubble is up for its line's time, parked or not.
       for (let k = 0; k < members.length; k++) { const m = members[k]; if (m.talk > 0 && (m.talk -= dt) <= 0) { m.talk = 0; bubbles--; } }
@@ -990,6 +1019,9 @@
       if (pollClock >= POLL) { pollClock = 0; poll(); }
       plan();
       const vis = visitor && visitor();
+      // All guests share the same time step and gesture rates.
+      const cheerMix = Mth.damp(0, 1, 10, dt), handMix = Mth.damp(0, 1, 8, dt);
+      const leanMix = Mth.damp(0, 1, 6, dt), lookMix = Mth.damp(0, 1, 3, dt);
       let crowd = 0, walking = 0, sitting = 0, smokers = 0, built = 0;
       for (let k = 0; k < members.length; k++) {
         const m = members[k];
@@ -999,16 +1031,16 @@
         if (m.cheer > 0) m.cheer -= dt;
         if (m.gasp > 0) m.gasp -= dt;
         m.gesture += dt * 1.4;
-        m.armUp = Mth.damp(m.armUp, m.cheer > 0 ? 1 : 0, 10, dt); m.handUp = Mth.damp(m.handUp, m.gasp > 0 ? 1 : 0, 8, dt);
+        m.armUp = Mth.lerp(m.armUp, m.cheer > 0 ? 1 : 0, cheerMix); m.handUp = Mth.lerp(m.handUp, m.gasp > 0 ? 1 : 0, handMix);
         if (m.game >= 0 || m.betK > 0.001 || m.shrugK > 0.001 || m.shake > 0 || m.toss > 0) {
           if (m.gameLean > 0) m.gameLean -= dt;
           if (m.bet > 0) m.bet -= dt;
           if (m.shrug > 0) m.shrug -= dt;
           if (m.shake > 0) m.shake -= dt;
           if (m.toss > 0) m.toss -= dt;
-          m.betK = Mth.damp(m.betK, m.bet > 0 ? 1 : 0, 8, dt); m.shrugK = Mth.damp(m.shrugK, m.shrug > 0 ? 1 : 0, 8, dt);
+          m.betK = Mth.lerp(m.betK, m.bet > 0 ? 1 : 0, handMix); m.shrugK = Mth.lerp(m.shrugK, m.shrug > 0 ? 1 : 0, handMix);
         }
-        m.lean = Mth.damp(m.lean, m.state === "watch" && bigLive(m.table) ? LEAN_IN : 0, 6, dt);
+        m.lean = Mth.lerp(m.lean, m.state === "watch" && bigLive(m.table) ? LEAN_IN : 0, leanMix);
         if (m.greet > 0) m.greet -= dt;
         else if (vis && near(m.x, m.z, vis.x, vis.z, GREET_R) && speak(m)) m.greet = GREET_EVERY;
         if (m.type === "drunk" && (m.mutter -= dt) <= 0) { m.mutter = 12 + 13 * m.rand(); speak(m); }
@@ -1046,14 +1078,14 @@
         }
         // Whatever the agent's arms do, a waiter's right one holds the tray out level, however its chest leans.
         if (m.type === "waiter") m.parts.armR.rotation.x = C.TRAY_ARM - m.parts.armR.parent.rotation.x;
-        if (m.smoke) { S.updateWorld(m.root); m.smoke.update(elapsed, m.parts.cigar, eye); smokers++; }
+        if (m.smoke) { m.smoke.update(elapsed, m.parts.cigar, eye, m.root); smokers++; }
       }
       let lounge = 0;
       for (let k = 0; k < residents.length; k++) {
         const r = residents[k];
         if (!r.root || !r.spot) continue;
         lounge++;
-        resident(r, dt, vis);
+        resident(r, dt, vis, lookMix);
       }
       stat.crowd = crowd; stat.walking = walking; stat.sitting = sitting; stat.routes = routes; stat.crowdBubbles = bubbles;
       stat.lounge = lounge; stat.smokers = smokers; stat.built = built;

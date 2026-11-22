@@ -21,27 +21,30 @@
     const map = BL.pokerMoonMap, land = M.geometry();
     const cols = sparse ? 64 : 96, rows = cols / 2, radius = MOON_RADIUS;
     const samples = map.fallback;
+    const nibble = offset => {
+      const digit = samples.charCodeAt(offset);
+      return digit <= 57 ? digit - 48 : (digit | 32) - 87;
+    };
     const sample = (u, v, channel) => {
       const x = Math.floor(u * map.width) % map.width, y = Math.min(map.height - 1, Math.floor(v * map.height));
-      return parseInt(samples.slice((y * map.width + x) * 4 + channel * 2, (y * map.width + x) * 4 + channel * 2 + 2), 16);
+      const at = (y * map.width + x) * 4 + channel * 2;
+      return nibble(at) * 16 + nibble(at + 1);
     };
     land.normals = [];
-    const points = [];
     // The overlapping basins interrupt the silhouette as they turn toward the limb.
     for (let j = 0; j <= rows; j++) {
-      const v = j / rows, lat = Math.PI * (0.5 - v), row = [];
+      const v = j / rows, lat = Math.PI * (0.5 - v), cosLat = Math.cos(lat), y = Math.sin(lat);
       for (let i = 0; i < cols; i++) {
         const u = i / cols, lon = (u - 0.5) * Math.PI * 2;
         const r = radius - 1.6 * sample(u, v, 1) / 255;
-        const x = Math.sin(lon) * Math.cos(lat), y = Math.sin(lat), z = Math.cos(lon) * Math.cos(lat);
-        row.push(M.pushVert(land, x*r, y*r, z*r));
+        const x = Math.sin(lon) * cosLat, z = Math.cos(lon) * cosLat;
+        M.pushVert(land, x*r, y*r, z*r);
         land.normals.push(x, y, z);
       }
-      points.push(row);
     }
     for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-      const k = (i + 1) % cols, a = points[j], b = points[j+1];
-      const face = j === 0 ? [a[i], b[i], b[k]] : j === rows-1 ? [a[i], b[i], a[k]] : [a[i], b[i], b[k], a[k]];
+      const k = (i + 1) % cols, a = j*cols, b = a+cols;
+      const face = j === 0 ? [a+i, b+i, b+k] : j === rows-1 ? [a+i, b+i, a+k] : [a+i, b+i, b+k, a+k];
       const u = (i + 0.5) / cols, v = (j + 0.5) / rows;
       const tone = sample(u, v, 0);
       M.face(land, face, [tone, tone, Math.min(255, tone + 3)], { emissive: 0.76 });
@@ -52,6 +55,7 @@
       image.onload = () => { land.imageSurface = { canvas: image, version: 1, rect: [0,0,1,1], lunar: true, smooth: true }; };
       image.src = map.jpeg;
     }
+    BL.pokerMarble.staticMesh(land);
     cache.set(key, land); return land;
   };
   const hangMoon = (rig, sparse, canvas) => {
@@ -165,7 +169,7 @@
     if (cache.has(key)) return cache.get(key);
     const n = lite ? 16 : 32;
     const plinth = turn([[0, 0], [2.3, 0], [2.3, 0.14], [1.98, 0.24], [1.86, 0.49], [1.78, 0.56], [0, 0.56]], BLACK, n);
-    const bronze = BL.pokerBull.build(lite);
+    const bronze = BL.pokerMarble.staticMesh(BL.pokerBull.build(lite));
     const base = M.merge(plinth, turn([[1.88, 0.41], [1.91, 0.44], [1.9, 0.48], [1.86, 0.49]], BRASS, n));
     const block = box(0, 0, 0, 1, 1, 1, ORANGE, 0.8);
     block.castShadow = false;
@@ -181,7 +185,7 @@
       quad(0, 0.72, bed); quad(0.72, 0.79, edge, 0.65);
     }
     channel.castShadow = false;
-    const g = { tank: aquariumWall(lite), whale: humpback(), base, bronze, block, safe: BL.pokerIce.door(lite), channel };
+    const g = { tank: aquariumWall(lite), whale: humpback(), base, bronze, block, safe: BL.pokerMarble.staticMesh(BL.pokerIce.door(lite)), channel };
     cache.set(key, g); return g;
   };
   const build = lite => {

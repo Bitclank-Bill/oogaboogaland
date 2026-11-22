@@ -54,6 +54,8 @@
     // Seat centres anchor furniture and presence; hips sit forward so shins clear the piping.
     return { x, z, yaw, hipX:x+.17*Math.sin(yaw), hipZ:z+.17*Math.cos(yaw) };
   });
+  // Enclose the full chair ring and rail before testing the swept body against either.
+  const TABLE_HX = Math.max(WALK_A, SEAT_A + 0.53), TABLE_HZ = Math.max(WALK_B, SEAT_B + 0.53);
   const SIGN_X=3.15, SIGN_Z=-1.52, SIGN_YAW=-.76;
   const PLACES = Object.freeze(seatAngles.map(a => Object.freeze({ x: Math.cos(a) * 6 * TABLE_K, z: Math.sin(a) * 4.2 * TABLE_K })));
   // The dealer stands 0.43 m behind the rail's outer edge on the gap the chairs leave.
@@ -371,7 +373,7 @@
       [7,"#292d39","#201e28"],[8,"#1f5043","#3f4b38"],[9,"#324049","#353038"]
     ]) {
       built.eras[key] = { felt:disk(1,FELT_Y-.02,FELT_Y,felt), rim:leather===OXBLOOD?built.rim:rail(leather),
-        art:BL.pokerEraTables.decoration(key,lite,built.chair), sign:BL.pokerEraTables.sign(key) };
+        art:K.staticMesh(BL.pokerEraTables.decoration(key,lite,built.chair)), sign:K.staticMesh(BL.pokerEraTables.sign(key)) };
     }
     built.cashier.geometry.castShadow = false;
     // The evening hall's haze takes nothing off what glows: the crystals, the lanterns' lit glass and the cashier's
@@ -570,6 +572,14 @@
     const p = BL.pokerGames.STAFF[g.kind], c = Math.cos(g.yaw), s = Math.sin(g.yaw);
     return { x: g.x + c*p.x + s*p.z, z: g.z - s*p.x + c*p.z, hx: .30, hz: BL.pokerGames.STAFF_DEPTH };
   }));
+  // Most crowd queries are a single stride. Overlap the 6 m cells by 1 m so a short
+  // step across a seam still has every possible blocker in its starting cell's list.
+  const CELL = 6, PAD = 1, COLS = 8, ROWS = 12, GRID_X = -24, GRID_Z = -36;
+  const solidCells = Array.from({ length: COLS * ROWS }, (_, i) => {
+    const x = GRID_X + i % COLS * CELL, z = GRID_Z + Math.floor(i / COLS) * CELL;
+    return solids.filter(f => f.x + f.hx >= x - PAD && f.x - f.hx <= x + CELL + PAD &&
+      f.z + f.hz >= z - PAD && f.z - f.hz <= z + CELL + PAD);
+  });
   // The room is rebuilt per visit but this module lives for the page, so the scene puts lite back off in `leave`.
   const setLite = on => { lite = on; K.setLite(on); };
   const F = BL.pokerFountain;
@@ -591,21 +601,32 @@
     // Leave room to reach the glass, but never continue through the wall behind it.
     const rear = Math.abs(bx) < BL.bifrostModels.WINDOW.halfW - r ? REAR_WALL_Z - 0.01 : 35.5 - r;
     if (bx < -23 + r || !BL.pokerTerrace.clear(ax, az, bx, bz, r) || bz < -35.5 + r || bz > rear) return false;
+    const vx = bx - ax, vz = bz - az, dd = vx * vx + vz * vz, chairRadius2 = (r + 0.53) ** 2;
+    const rx = WALK_A + r, rz = WALK_B + r, dx = vx / rx, dz = vz / rz, d = dx * dx + dz * dz;
+    const left = Math.min(ax, bx) - r - TABLE_HX, right = Math.max(ax, bx) + r + TABLE_HX;
+    const near = Math.min(az, bz) - r - TABLE_HZ, far = Math.max(az, bz) + r + TABLE_HZ;
     // A swept ellipse catches a fast step through a table, not just its endpoint.
-    for (const t of TABLES) {
-      const rx = WALK_A + r, rz = WALK_B + r, x = (ax - t.x) / rx, z = (az - t.z) / rz;
-      const dx = (bx - ax) / rx, dz = (bz - az) / rz, d = dx * dx + dz * dz;
+    for (let i = 0; i < TABLES.length; i++) {
+      const t = TABLES[i];
+      if (t.x < left || t.x > right || t.z < near || t.z > far) continue;
+      const x = (ax - t.x) / rx, z = (az - t.z) / rz;
       const u = d ? Math.max(0, Math.min(1, -(x * dx + z * dz) / d)) : 0;
       if ((x + u * dx) ** 2 + (z + u * dz) ** 2 < 1) return false;
-      for (const s of SEATS) {
-        const sx = t.x + s.x, sz = t.z + s.z, vx = bx - ax, vz = bz - az, dd = vx * vx + vz * vz;
+      for (let j = 0; j < SEATS.length; j++) {
+        const s = SEATS[j];
+        const sx = t.x + s.x, sz = t.z + s.z;
         const k = dd ? Math.max(0, Math.min(1, ((sx - ax) * vx + (sz - az) * vz) / dd)) : 0;
-        if ((ax + k * vx - sx) ** 2 + (az + k * vz - sz) ** 2 < (r + 0.53) ** 2) return false;
+        if ((ax + k * vx - sx) ** 2 + (az + k * vz - sz) ** 2 < chairRadius2) return false;
       }
     }
-    for (let i = 0; i < solids.length; i++) if (crosses(ax, az, bx, bz, r, solids[i])) return false;
+    let blockers = solids;
+    if (Math.abs(vx) + r <= PAD && Math.abs(vz) + r <= PAD) {
+      const col = Math.floor((ax - GRID_X) / CELL), row = Math.floor((az - GRID_Z) / CELL);
+      if (col >= 0 && col < COLS && row >= 0 && row < ROWS) blockers = solidCells[row * COLS + col];
+    }
+    for (let i = 0; i < blockers.length; i++) if (crosses(ax, az, bx, bz, r, blockers[i])) return false;
     // The swept step must clear the Charging Bull’s plinth, including the walker’s own radius.
-    const vx = bx - ax, vz = bz - az, dd = vx * vx + vz * vz, k = dd ? Math.max(0, Math.min(1, ((F.X - ax) * vx + (F.Z - az) * vz) / dd)) : 0;
+    const k = dd ? Math.max(0, Math.min(1, ((F.X - ax) * vx + (F.Z - az) * vz) / dd)) : 0;
     return (ax + k * vx - F.X) ** 2 + (az + k * vz - F.Z) ** 2 >= (F.RADIUS + r) ** 2;
   };
   /** Writes into `out` the nearest point, on rings 0.5 m apart out to 4 m in sixteen directions, where a body may stand. */

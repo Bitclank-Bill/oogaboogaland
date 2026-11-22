@@ -127,6 +127,7 @@
   const bytesOf = (k) => BL.loungeMusic && BL.loungeMusic[TRACKS[k].key];
   // ghost-audio.js's decode: the base64 into bytes, then the context's decoder, which sniffs the container.
   const decode = (ctx, base64) => {
+    if (Uint8Array.fromBase64) return ctx.decodeAudioData(Uint8Array.fromBase64(base64).buffer);
     const raw = atob(base64), bytes = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     return ctx.decodeAudioData(bytes.buffer);
@@ -620,6 +621,7 @@
       }
     };
     // The bed follows the nearest table or the nearer edge of the bar.
+    let lastBedLevel = BED_FLOOR;
     const bedLevel = () => {
       let d2 = Infinity;
       for (let i = 0; i < wings.length; i++) {
@@ -630,7 +632,11 @@
         const dx = EAR.x - tables[i].x, dz = EAR.z - tables[i].z;
         d2 = Math.min(d2, dx * dx + dz * dz);
       }
-      bed.level.gain.setTargetAtTime(BED_FLOOR + BED_NEAR / (1 + d2 / (BED_REF * BED_REF)), ctx.currentTime, BED_EASE / 3);
+      const target = BED_FLOOR + BED_NEAR / (1 + d2 / (BED_REF * BED_REF));
+      if (target !== lastBedLevel) {
+        bed.level.gain.setTargetAtTime(target, ctx.currentTime, BED_EASE / 3);
+        lastBedLevel = target;
+      }
     };
 
     const update = (dt, ear) => {

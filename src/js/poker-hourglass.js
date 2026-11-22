@@ -246,6 +246,7 @@
       return g;
     });
     const parts = { base: M.merge(...stone), metal, glass, upper, lower, sandfall, ore: M.merge(...ore), luminous, digits };
+    for (const g of [parts.base, metal, glass, upper, lower, sandfall, parts.ore, luminous, ...digits]) BL.pokerMarble.staticMesh(g);
     cache.set(lite, parts);
     return parts;
   };

@@ -3,6 +3,10 @@
   "use strict";
   const BL = window.BL, M = BL.models, hexToRgb = BL.math.hexToRgb;
   const WHITE = "#ece8e1", VEIN = "#a29c94", SHADE = "#cbc4b8", GOLD = "#b8893b", CREAM = "#efe3c8", BRASS = "#b8924a";
+  // Finished render meshes keep their authored positions and face attributes in typed arrays.
+  // Call only after all carving, colouring and merges are complete.
+  const staticMesh = geometry => BL.compactGeometry
+    ? BL.compactGeometry.pack(geometry, { immutable: true, renderOnly: true, precision: 64 }) : geometry;
   const LIFT = 0.004;
   // `lite` (set by the scene from the renderer, before it builds) halves the veins and the turning.
   let lite = false;
@@ -75,5 +79,5 @@
   // A faintly glowing brass plate, bottom edge at y 0 and back at z 0, facing +z.
   const plaque = ({ w = 0.7, h = 0.34 } = {}) => once(["plaque", w, h].join(":"), () =>
     M.bevelBox({ w, h, d: 0.035, color: BRASS, emissive: 0.25, bevel: 0.012, offset: { y: h / 2, z: 0.0175 } }));
-  BL.pokerMarble = Object.freeze({ WHITE, VEIN, SHADE, GOLD, CREAM, BRASS, slab, column, plinth, plaque, setLite });
+  BL.pokerMarble = Object.freeze({ WHITE, VEIN, SHADE, GOLD, CREAM, BRASS, slab, column, plinth, plaque, setLite, staticMesh });
 })();

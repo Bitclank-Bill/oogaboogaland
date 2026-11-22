@@ -87,7 +87,8 @@
       clay(2.12, 0.82, 0.145 + side * 0.17, 0.11, 0.069, 0.073, -0.43, 0.024, true);
     }
     const g = M.geometry(),
-      cells = new Int32Array(field.length),
+      // A quad reads back at most one z plane and one row from its current surface cell.
+      cells = new Int32Array(plane + nx + 1),
       strides = [1, nx, plane];
     const corners = [0, 1, nx, nx + 1, plane, plane + 1, plane + nx, plane + nx + 1];
     for (let z = 0; z < nz - 1; z++)
@@ -95,7 +96,9 @@
         for (let x = 0; x < nx - 1; x++) {
           const i = x + y * nx + z * plane,
             inside = field[i] < 0;
-          if (corners.every(k => field[i + k] < 0 === inside)) continue;
+          let corner = 1;
+          while (corner < 8 && (field[i + corners[corner]] < 0) === inside) corner++;
+          if (corner === 8) continue;
           let px = 0,
             py = 0,
             pz = 0,
@@ -112,12 +115,12 @@
               pz += (k >> 2) + (a === 2 ? t : 0);
               hits++;
             }
-          cells[i] = M.pushVert(g, ox + (x + px / hits) * step, oy + (y + py / hits) * step, oz + (z + pz / hits) * step);
+          cells[i % cells.length] = M.pushVert(g, ox + (x + px / hits) * step, oy + (y + py / hits) * step, oz + (z + pz / hits) * step);
           for (let a = 0; a < 3; a++) {
             if (field[i + strides[a]] < 0 === inside) continue;
             const u = strides[(a + 1) % 3],
               v = strides[(a + 2) % 3];
-            const quad = [cells[i], cells[i - u], cells[i - u - v], cells[i - v]];
+            const quad = [cells[i % cells.length], cells[(i - u) % cells.length], cells[(i - u - v) % cells.length], cells[(i - v) % cells.length]];
             M.face(g, inside ? quad : quad.reverse(), ORANGE);
           }
         }
