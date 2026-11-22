@@ -547,9 +547,10 @@
         }
       }
     }
-    const end = rings.length - 1;
-    poly(geo, rings[0], base, [0, sections[0][0] - sections[1][0], 0]);
-    poly(geo, rings[end], base, [0, sections[end][0] - sections[end - 1][0], 0]);
+    // Each end is closed in what the part wears there (a sleeve's top over the shoulder), not bare skin.
+    const end = rings.length - 1, worn = (y) => { const key = pick(0, y, 1); return key === undefined ? base : tone(key)[0]; };
+    poly(geo, rings[0], worn(sections[0][0]), [0, sections[0][0] - sections[1][0], 0]);
+    poly(geo, rings[end], worn(sections[end][0]), [0, sections[end][0] - sections[end - 1][0], 0]);
     return geo;
   };
   // An authored block map, read a row at a time: the reader's (row, xn, zn) is the colour of the block that shows at
