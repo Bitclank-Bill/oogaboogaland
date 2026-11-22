@@ -161,10 +161,15 @@
   };
   const get = (id) => byId.get(id) || null;
   const has = (id, version) => typeof id === "string" && typeof version === "string" && byId.get(id)?.version === version;
-  // One saved choice for a slot: an item, or taking the slot's piece off. The character's own look is no entry at all.
+  // One saved choice for a slot: an item, or taking the slot's piece off, or for an Ooga's own colour (skin, hair or
+  // eyes) any colour the player mixed (`custom`, its `color` a lower-case hex). The character's own look is no entry at all.
   const choice = (slotId, value) => {
     const slot = SLOT.get(slotId);
     if (!slot || slot.id === "hat" || !plain(value)) fail("Invalid wardrobe choice");
+    if (value.item === "custom") {
+      if (slot.place !== "tone" || !own(value, ["item", "version", "color"]) || value.version !== null || !HEX.test(value.color)) fail("Invalid wardrobe choice");
+      return Object.freeze({ item: "custom", version: null, color: value.color });
+    }
     const keys = slot.sized ? ["size"] : [];
     if (!own(value, ["item", "version"], keys) || value.size !== undefined && !(Number.isInteger(value.size) && value.size >= 80 && value.size <= 120)) fail("Invalid wardrobe choice");
     if (value.item === "none") {
@@ -183,7 +188,7 @@
     for (const id of WORN) if (Object.hasOwn(value, id)) out[id] = choice(id, value[id]);
     return Object.keys(out).length ? Object.freeze(out) : null;
   };
-  const key = (value) => value ? WORN.filter((id) => value[id]).map((id) => id + ":" + (value[id].version || "none") + (value[id].size ? "@" + value[id].size : "")).join(",") : "";
+  const key = (value) => value ? WORN.filter((id) => value[id]).map((id) => id + ":" + (value[id].color || value[id].version || "none") + (value[id].size ? "@" + value[id].size : "")).join(",") : "";
   // Content the page holds (equipment-wardrobe-data.gen.js), checked against its hash once on arrival by the caller.
   const seed = (map) => {
     for (const [version, content] of Object.entries(map)) {

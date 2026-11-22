@@ -49806,7 +49806,7 @@ const equipmentAppChecks = async () => {
   };
   const choose = async (value, slot = "hat") => b.evaluate(`(() => {
     const value=${JSON.stringify(value)}, slot=${JSON.stringify(slot)}, selection=slot==='hat'&&value.includes('@')?{item:value.split('@')[0],version:value.split('@')[1]}:null;
-    const choice=selection?BL.equipmentHats.choiceFor(selection):null, tile=document.querySelector('.studio-tile[data-slot="'+slot+'"]'), select=document.querySelector('.studio-editor[data-slot="'+slot+'"] select');
+    const choice=selection?BL.equipmentHats.choiceFor(selection):null, host={skin:'body',hairColor:'hair',eyeColor:'eyes'}[slot]||slot, tile=document.querySelector('.studio-tile[data-slot="'+host+'"]'), select=document.querySelector('.studio-editor[data-slot="'+slot+'"] select');
     const option=[...select.options].find(o=>choice?o.dataset.hatKey===choice.key:o.dataset.value===value);
     if(!option)throw new Error('Choice is missing: '+slot+' '+value);
     tile.click();select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));
@@ -49834,7 +49834,7 @@ const equipmentAppChecks = async () => {
       return {shared:original.key===copy.key,one:options.filter(o=>o.dataset.hatKey===original.key).length===1,
         credits:row.title.includes('HatCopy')&&row.title.includes(BL.characters.get(${JSON.stringify(item.creator)})?.display||${JSON.stringify(item.creator)}),
         indented:depth(row)===-1&&depth(variant)>-1,nested:depth(nested)>depth(variant),
-        oneEditor:[...document.querySelectorAll('.studio-editor')].filter(e=>!e.hidden).length===1&&document.querySelectorAll('.studio-tile[aria-pressed=true]').length===1};
+        oneEditor:[...document.querySelectorAll('.studio-editors > .studio-editor')].filter(e=>!e.hidden).length===1&&document.querySelectorAll('.studio-tile[aria-pressed=true]').length===1};
     })()`);
     record("equipment catalog: identical hats share one credited choice, edited forks list indented under it, and one tile's editor shows at a time", Object.values(groups).every(Boolean), JSON.stringify(groups));
     await b.evaluate("document.querySelector('.studio-tile[data-slot=hair]').click();document.getElementById('studio-hat').focus()");
@@ -49843,9 +49843,9 @@ const equipmentAppChecks = async () => {
     await wait("document.getElementById('studio-hat').getAttribute('aria-pressed')==='true' && !document.getElementById('studio-editor-hat').hidden && document.getElementById('studio-editor-hair').hidden", "Keyboard did not choose the hat's tile");
     await choose(`${fork.item}@${fork.version}`);
     await wait(wearing(fork), "The dropdown did not preview the full immutable fork");
-    record("equipment catalog: the hat's tile opens its editor from the keyboard and its dropdown previews a full immutable variant without saving", writes.length === 0
+    record("equipment catalog: the hat's tile (its name alone) opens its editor from the keyboard and its dropdown previews a full immutable variant without saving", writes.length === 0
       && archiveReads.includes(fork.version) && archiveReads.includes(blueContent)
-      && await b.evaluate(`${chosen()}.dataset.hatKey===BL.equipmentHats.choiceFor(${JSON.stringify(fork)}).key && document.querySelector('#studio-hat .studio-tile-value').textContent.length>0`));
+      && await b.evaluate(`${chosen()}.dataset.hatKey===BL.equipmentHats.choiceFor(${JSON.stringify(fork)}).key && document.getElementById('studio-hat').textContent.trim()==='Hat' && document.getElementById('studio-hat-choices').selectedOptions[0].textContent.length>0`));
     await b.evaluate("window.__equipmentCave=__ooga.studio.cave;window.__equipmentRoot=__ooga.studio.cave.root");
     let previews = 0;
     for (const entry of equipmentHats.items) {
@@ -49936,7 +49936,7 @@ const equipmentAppChecks = async () => {
     record("equipment wardrobe: each slot's dropdown previews its piece on the same body without saving", writes.length === beforeLook
       && await b.evaluate(`__ooga.studio.cave.root===__wardrobeBody && __ooga.studio.cave.parts.torso.geometry!==__wardrobeTorso
         && ['shirt','weapon','shoes'].every(s=>document.querySelector('.studio-tile[data-slot="'+s+'"]').hasAttribute('data-changed'))
-        && document.querySelector('.studio-tile[data-slot=shoes] .studio-tile-value').textContent==='Barefoot'
+        && document.getElementById('studio-slot-shoes').selectedOptions[0].textContent==='Barefoot'
         && document.getElementById('studio-changes').textContent==='3 changes' && !document.querySelector('.studio-changes').hidden`));
     await b.evaluate("document.getElementById('studio-discard').click()");
     await wait("BL.characterWardrobe.wearing(__ooga.studio.cave)===''", "Reset did not put the saved look back on");
@@ -49954,16 +49954,20 @@ const equipmentAppChecks = async () => {
     await wait("__ooga.studio.cave.elbow===__ownBody.elbow", "Original did not give the Ooga its own build back");
     record("equipment wardrobe: the body switches the build in place, a female face takes no beard, and Original gives the Ooga's own build back", built
       && await b.evaluate("__ooga.studio.cave.parts.armR.position.x===__ownBody.arm && __ooga.studio.cave.armScale===1"));
-    // An Ooga's own colours: a swatch puts the colour on the whole build, and Original takes it off.
+    // An Ooga's own colours: a swatch under its part's editor puts the colour on the whole build, a typed hex any colour,
+    // and Original takes it off.
     const ginger = equipmentWardrobe.slotItems("hairColor").find((row) => row.label === "Ginger");
-    await b.evaluate(`(() => { document.querySelector('.studio-tile[data-slot=hairColor]').click();
+    await b.evaluate(`(() => { document.querySelector('.studio-tile[data-slot=hair]').click();
       const i=[...document.querySelector('.studio-editor[data-slot=hairColor] select').options].findIndex(o=>o.dataset.value===${JSON.stringify(ginger.version)});
       document.querySelectorAll('.studio-editor[data-slot=hairColor] .studio-swatch')[i].click(); })()`);
     await wait("__ooga.studio.cave.template.traits.hair==='#c4622a'", "The hair colour swatch did not dress the Ooga");
-    const toned = await b.evaluate("document.querySelector('.studio-editor[data-slot=hairColor] .studio-swatch[aria-pressed=true]')?.title==='Ginger' && document.querySelector('.studio-tile[data-slot=hairColor] .studio-tile-value').textContent==='Ginger'");
+    const toned = await b.evaluate("document.querySelector('.studio-editor[data-slot=hairColor] .studio-swatch[aria-pressed=true]')?.title==='Ginger' && document.querySelector('#studio-editor-hair #studio-editor-hairColor .studio-colour-name').textContent==='Ginger' && !document.querySelector('.studio-tile[data-slot=hairColor]') && document.querySelector('.studio-tile[data-slot=hair]').hasAttribute('data-changed')");
+    await b.evaluate("(() => { const hex=document.getElementById('studio-slot-hairColor-hex'); hex.focus(); hex.value='12AB34'; hex.dispatchEvent(new Event('change')); hex.blur(); })()");
+    await wait("__ooga.studio.cave.template.traits.hair==='#12ab34'", "A typed hex did not dress the Ooga");
+    const mixed = await b.evaluate("document.querySelector('#studio-editor-hairColor .studio-colour-name').textContent==='#12AB34' && document.querySelector('#studio-editor-hairColor .studio-wheel').getAttribute('aria-pressed')==='true'");
     await choose("original", "hairColor");
     await wait("__ooga.studio.cave.template.traits.hair!=='#c4622a'", "Original did not give the Ooga its own hair colour back");
-    record("equipment wardrobe: a colour swatch puts the Ooga's hair colour on its whole build and Original gives its own back", toned);
+    record("equipment wardrobe: the hair's editor holds its colour, whose swatch or typed hex puts it on the whole build, and Original gives its own back", toned && mixed);
     const lookRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${lookRevision + 1}`, "Wardrobe save did not complete");
@@ -50198,7 +50202,7 @@ const equipmentAppChecks = async () => {
       const hat=document.getElementById('studio-hat');
       const row=hat.getBoundingClientRect(),save=document.getElementById('studio-hat-save');
       save.scrollIntoView({block:'nearest'});const s=save.getBoundingClientRect();
-      return ${chosen()}.dataset.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)}&&hat.querySelector('.studio-tile-value').textContent.includes('saved version')
+      return ${chosen()}.dataset.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)}&&document.getElementById('studio-hat-choices').selectedOptions[0].textContent.includes('saved version')
         &&row.left>=0&&row.right<=innerWidth&&s.top>=0&&s.bottom<=innerHeight;
     })()`));
     await b.screenshot(join(shots, "hat-variants-phone.png"));

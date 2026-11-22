@@ -557,7 +557,7 @@
       editors: $("studio-editors"), changes: $("studio-changes"), discard: $("studio-discard"), selection: null, size: 100, worn: null, dirty: false, ticket: 0, stop: null, open: "hat" };
     const owns = () => BL.net.ownCharacter()?.handle.toLowerCase() === state.name.toLowerCase();
     const hatKey = (s) => s ? s.item === "none" ? "none" : `${s.item}@${s.version}` : "authored";
-    const pieceKey = (c) => c ? c.item === "none" ? "none" : c.version : "original";
+    const pieceKey = (c) => c ? c.item === "none" ? "none" : c.item === "custom" ? "custom:" + c.color : c.version : "original";
     const nameOf = (handle) => BL.characters.get(handle)?.display || handle;
     const credits = (creators) => {
       if (!creators.length) return "";
@@ -568,9 +568,6 @@
     // Each slot's mark on its tile: a ten-by-ten pixel silhouette in the tile's own ink.
     const ICONS = {
       body: ["....##....", "....##....", "..######..", ".#.####.#.", ".#.####.#.", "...####...", "...#..#...", "..##..##.."],
-      skin: [".########.", "##########", "##########", "##########", "##########", "##########", "##########", ".########."],
-      hairColor: ["..######..", ".########.", "##########", "###....###", "##......##", "##......##", "##......##", "#........#"],
-      eyeColor: ["####..####", "#..#..#..#", "#.##..#.##", "####..####"],
       hat: ["...####...", "..######..", "..######..", "..######..", "..######..", "##########", "##########"],
       hair: ["..######..", ".########.", "##########", "###....###", "##......##", "##......##", "##......##", "#........#"],
       eyes: ["####..####", "#..#..#..#", "#.##..#.##", "####..####"],
@@ -595,22 +592,31 @@
       path.setAttribute("d", d); path.setAttribute("fill", "currentColor"); svg.append(path);
       return svg;
     };
-    // One slot: its tile in the grid (its mark, its name and what is worn there) and its editor under the grid, shown
-    // while the tile is chosen. Its options are kept as data beside the list: `{ label, creators, pick }`, where `pick`
-    // gives what choosing it wears (the hat's selection, or a slot's choice).
-    const editors = view.editors;
+    // One slot: its tile in the grid (its mark and its name) and its editor under the grid, shown while the tile is
+    // chosen. A colour slot has no tile: its editor is part of another's (`COLOUR_IN`: the skin's under the body, the
+    // hair's and the eyes' under theirs), headed by what it wears. Its options are kept as data beside the list:
+    // `{ label, creators, pick }`, where `pick` gives what choosing it wears (the hat's selection, or a slot's choice).
+    const editors = view.editors, COLOUR_IN = { skin: "body", hairColor: "hair", eyeColor: "eyes" };
     const makeRow = (slot) => {
-      const tile = element("button", "studio-tile"), words = element("span", "studio-tile-words"), name = element("span", "studio-tile-name", slot.id === "weapon" ? "Weapon" : slot.label), value = element("span", "studio-tile-value");
-      tile.type = "button"; tile.dataset.slot = slot.id; tile.setAttribute("aria-pressed", "false"); tile.setAttribute("aria-controls", `studio-editor-${slot.id}`);
-      if (slot.id === "hat") tile.id = "studio-hat";
-      words.append(name, value); tile.append(icon(slot.id), words);
-      const body = element("div", "studio-editor"), heading = element("p", "studio-editor-name", slot.label), select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note");
-      body.id = `studio-editor-${slot.id}`; body.dataset.slot = slot.id; body.hidden = true;
+      const colour = !!COLOUR_IN[slot.id];
+      const body = element("div", colour ? "studio-editor studio-colour" : "studio-editor"), heading = element("p", "studio-editor-name", slot.id === "skin" ? "Skin color" : slot.label);
+      const select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note"), value = colour ? element("span", "studio-colour-name") : null;
+      body.id = `studio-editor-${slot.id}`; body.dataset.slot = slot.id; body.hidden = !colour;
       select.id = slot.id === "hat" ? "studio-hat-choices" : `studio-slot-${slot.id}`;
       select.setAttribute("aria-label", slot.label);
+      select.hidden = colour;
       note.hidden = true;
+      if (value) heading.append(value);
       body.append(heading, select, credit);
-      const row = { slot, tile, details: tile, body, value, select, credit, note, options: [], range: null, output: null, reset: null };
+      let tile = null;
+      if (!colour) {
+        tile = element("button", "studio-tile");
+        tile.type = "button"; tile.dataset.slot = slot.id; tile.setAttribute("aria-pressed", "false"); tile.setAttribute("aria-controls", `studio-editor-${slot.id}`);
+        if (slot.id === "hat") tile.id = "studio-hat";
+        tile.append(icon(slot.id), element("span", "studio-tile-name", slot.id === "weapon" ? "Weapon" : slot.label));
+        view.slots.append(tile);
+      }
+      const row = { slot, tile, details: tile || body, body, value, select, credit, note, options: [], range: null, output: null, reset: null };
       if (slot.sized) {
         const id = slot.id === "hat" ? "studio-hat-size" : `studio-slot-${slot.id}-size`, line = element("div", "studio-size-line"), label = element("label", "roster-sort-label studio-hat-size-label", "Size ");
         label.htmlFor = id;
@@ -624,16 +630,15 @@
         body.append(line, row.range);
       }
       body.append(note);
-      view.slots.append(tile);
       editors.append(body);
       return row;
     };
     // The chosen tile and the one editor it opens, across the grid under the chosen tile's row.
     const choose = (row) => {
       view.open = row.slot.id;
-      const last = rows[Math.min(rows.indexOf(row) | 1, rows.length - 1)].tile;
+      const last = tiled[Math.min(tiled.indexOf(row) | 1, tiled.length - 1)].tile;
       if (last.nextSibling !== editors) last.after(editors);
-      for (const other of rows) {
+      for (const other of tiled) {
         const on = other === row;
         other.tile.setAttribute("aria-pressed", String(on));
         other.body.hidden = !on;
@@ -652,9 +657,10 @@
       row.options.push(entry);
       return entry;
     };
-    const rows = W.SLOTS.map(makeRow), hatRow = rows.find((row) => row.slot.id === "hat");
-    for (const row of rows) row.tile.addEventListener("click", () => choose(row), { signal });
-    choose(rows.find((row) => row.slot.id === view.open) || hatRow);
+    const rows = W.SLOTS.map(makeRow), hatRow = rows.find((row) => row.slot.id === "hat"), tiled = rows.filter((row) => row.tile);
+    for (const row of rows) if (COLOUR_IN[row.slot.id]) { const host = rows.find((r) => r.slot.id === COLOUR_IN[row.slot.id]); host.body.insertBefore(row.body, host.note); }
+    for (const row of tiled) row.tile.addEventListener("click", () => choose(row), { signal });
+    choose(tiled.find((row) => row.slot.id === view.open) || hatRow);
     // The hat's list: the character's own, none, then each shared choice with its variants under it.
     add(hatRow, "Original character look", [], () => null);
     add(hatRow, "No hat", [], () => ({ item: "none", version: null }), 0, { selection: { item: "none", version: null } });
@@ -668,29 +674,64 @@
       add(row, "Original look", [], () => null);
       if (row.slot.none) add(row, row.slot.none, [], () => ({ item: "none", version: null }));
       for (const item of W.slotItems(row.slot.id)) add(row, item.label, item.creators, () => ({ item: item.id, version: item.version }), 0, { item });
+      // A colour the player mixed: the picker's, or one typed as a hex.
+      if (COLOUR_IN[row.slot.id]) row.custom = add(row, "Custom", [], () => ({ item: "custom", version: null, color: row.mixed }));
     }
     // The Ooga's own colours choose from swatches over the list: its own colour first, then the palette. Their colours
     // are the pieces' own, so they are painted once the pieces' chunk is here (equipment.js `loadWardrobe`).
     const TONES = { skin: "skin", hairColor: "hair", eyeColor: "eyeColor" }, OWN_EYES = "#f4f0e6";
     const ownTone = (id) => (cave.template?.traits || cave.traits)[TONES[id]] || (id === "eyeColor" ? OWN_EYES : "#888888");
-    const toneOf = (row, entry) => entry === row.options[0] ? ownTone(row.slot.id) : W.content(entry.item?.version)?.color || null;
+    const toneOf = (row, entry) => entry === row.options[0] ? ownTone(row.slot.id) : entry === row.custom ? view.worn?.[row.slot.id]?.color || row.mixed || null
+      : W.content(entry.item?.version)?.color || null;
     const swatched = rows.filter((row) => TONES[row.slot.id]);
+    // Wearing a mixed colour builds the Ooga again, so a drag across the picker is worn once it rests (`MIX_REST`).
+    const MIX_REST = 350, HEX_IN = /^#?([0-9a-f]{6})$/i;
+    const wearMixed = (row, hex) => {
+      row.mixed = hex;
+      if (view.worn?.[row.slot.id]?.color === hex) return;
+      row.select.value = row.custom.option.value; row.select.dispatchEvent(new Event("change"));
+    };
     for (const row of swatched) {
       const box = element("div", "studio-swatches");
       box.setAttribute("role", "group"); box.setAttribute("aria-label", `${row.slot.label} swatches`);
-      row.swatches = row.options.map((entry) => {
+      row.swatches = row.options.filter((entry) => entry !== row.custom).map((entry) => {
         const swatch = element("button", "studio-swatch");
         swatch.type = "button"; swatch.title = entry.label; swatch.setAttribute("aria-label", entry.label); swatch.setAttribute("aria-pressed", "false");
         if (entry === row.options[0]) swatch.dataset.own = "true";
+        swatch.entry = entry;
         swatch.addEventListener("click", () => { row.select.value = entry.option.value; row.select.dispatchEvent(new Event("change")); }, { signal });
         box.append(swatch);
         return swatch;
       });
-      row.select.before(box);
+      // The last cell is the colour wheel; the hex field under the grid says, and takes, the colour worn.
+      const wheel = element("input", "studio-swatch studio-wheel"), mix = element("label", "studio-hex"), hex = element("input");
+      Object.assign(wheel, { type: "color", value: "#888888", title: "Pick any color" });
+      wheel.setAttribute("aria-label", `Pick any ${row.slot.id === "skin" ? "skin color" : row.slot.label.toLowerCase()}`);
+      Object.assign(hex, { type: "text", maxLength: 7, spellcheck: false, autocomplete: "off", placeholder: "#rrggbb", id: `studio-slot-${row.slot.id}-hex` });
+      hex.setAttribute("aria-label", `${row.slot.id === "skin" ? "Skin color" : row.slot.label} hex`);
+      mix.append("Hex", hex);
+      box.append(wheel);
+      row.wheel = wheel; row.hex = hex;
+      let rest = 0;
+      const timers = () => { clearTimeout(rest); rest = 0; };
+      signal.addEventListener("abort", timers);
+      wheel.addEventListener("input", () => {
+        hex.value = wheel.value; wheel.dataset.mixed = "true"; wheel.style.backgroundColor = wheel.value;
+        timers(); rest = setTimeout(() => { rest = 0; wearMixed(row, wheel.value.toLowerCase()); }, MIX_REST);
+      }, { signal });
+      wheel.addEventListener("change", () => { timers(); wearMixed(row, wheel.value.toLowerCase()); }, { signal });
+      const typed = () => {
+        const m = HEX_IN.exec(hex.value.trim());
+        hex.toggleAttribute("aria-invalid", !m);
+        if (m) wearMixed(row, "#" + m[1].toLowerCase());
+      };
+      hex.addEventListener("change", typed, { signal });
+      hex.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); typed(); } }, { signal });
+      row.select.before(box, mix);
     }
     // Painted now where the pieces are already here (the portable page, a second visit), else once they arrive.
     const paintSwatches = () => {
-      for (const row of swatched) row.options.forEach((entry, i) => { const tone = toneOf(row, entry); if (tone) row.swatches[i].style.background = tone; });
+      for (const row of swatched) for (const swatch of row.swatches) { const tone = toneOf(row, swatch.entry); if (tone) swatch.style.background = tone; }
     };
     paintSwatches();
     const ready = equipment.loadWardrobe();
@@ -706,6 +747,7 @@
         return saved.get(row.slot.id + hatKey(worn)) || null;
       }
       if (!worn) return row.options[0];
+      if (worn.item === "custom") { row.mixed = worn.color; return row.custom; }
       return row.options.find((o) => worn.item === "none" ? !o.item && o.pick()?.item === "none" : o.item?.version === worn.version)
         || saved.get(row.slot.id + pieceKey(worn)) || null;
     };
@@ -730,14 +772,17 @@
       for (const row of rows) {
         const worn = wornIn(row), entry = optionFor(row, worn) || keep(row, worn), base = savedIn(row);
         row.select.value = entry.option.value;
-        row.value.textContent = entry === row.options[0] ? "Original" : entry.label;
-        // A body is the game's own build, credited to nobody.
         // A body or an Ooga's own colour is the game's, credited to nobody.
         row.credit.textContent = row.slot.id === "body" || row.swatches ? "" : credits(entry.creators);
         if (row.swatches) {
-          row.swatches.forEach((swatch, i) => swatch.setAttribute("aria-pressed", String(row.options[i] === entry)));
-          const tone = toneOf(row, entry);
-          row.tile.querySelector(".studio-tile-icon").style.color = tone || "";
+          const tone = toneOf(row, entry), mixed = entry === row.custom;
+          row.value.textContent = entry === row.options[0] ? "Original" : mixed ? tone.toUpperCase() : entry.label;
+          for (const swatch of row.swatches) swatch.setAttribute("aria-pressed", String(swatch.entry === entry));
+          row.wheel.setAttribute("aria-pressed", String(mixed));
+          row.wheel.toggleAttribute("data-mixed", mixed);
+          row.wheel.style.backgroundColor = mixed ? tone : "";
+          if (tone) row.wheel.value = tone;
+          if (document.activeElement !== row.hex) { row.hex.value = tone ? tone.toUpperCase() : ""; row.hex.removeAttribute("aria-invalid"); }
         }
         const same = row === hatRow ? hatKey(worn) === hatKey(base) && (!worn || worn.item === "none" || view.size === equipment.state.record.size)
           : pieceKey(worn) === pieceKey(base) && (worn?.size || 100) === (base?.size || 100);
@@ -747,7 +792,7 @@
         const ok = supported(row);
         row.details.toggleAttribute("data-unsupported", !ok);
         row.select.disabled = !ok;
-        if (row.swatches) for (const swatch of row.swatches) swatch.disabled = !ok;
+        if (row.swatches) for (const control of [...row.swatches, row.wheel, row.hex]) control.disabled = !ok;
         row.note.hidden = ok;
         if (!ok) row.note.textContent = row === hatRow ? "This character needs a hat fitting before it can wear shared hats."
           : `This Ooga's own design keeps its ${row.slot.label.toLowerCase()}.`;
@@ -760,6 +805,11 @@
           row.range.disabled = !ok || !worn || worn.item === "none";
           row.reset.disabled = row.range.disabled || size === 100;
         }
+      }
+      // A colour's change and wear show on the tile whose editor holds it.
+      for (const row of rows) if (COLOUR_IN[row.slot.id]) {
+        const host = rows.find((r) => r.slot.id === COLOUR_IN[row.slot.id]).tile;
+        for (const flag of ["data-changed", "data-worn"]) if (row.body.hasAttribute(flag)) host.setAttribute(flag, "");
       }
       view.changes.textContent = changes === 1 ? "1 change" : `${changes} changes`;
       view.changes.parentElement.hidden = !changes;

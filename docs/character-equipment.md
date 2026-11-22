@@ -96,9 +96,12 @@ later change makes a new item, and the old one stays registered, retired, for
 whoever wears it. There is no update offer for wardrobe pieces; choosing the
 piece again in the studio wears the current one.
 
-The studio shows a tile for each slot, two to a row: its pixel mark, its name and
-what is worn there. Choosing a tile opens its editor across the grid under that
-tile's row: a dropdown, who made the piece and, for the hat and the mask, a size.
+The studio shows a tile for each slot, two to a row: its pixel mark and its name,
+in the accent colour when something other than the Ooga's own is worn there.
+Choosing a tile opens its editor across the grid under that tile's row: a dropdown
+showing what is worn, who made the piece and, for the hat and the mask, a size. The
+colours have no tiles: the skin's is in the body's editor, the hair colour in the
+hair's and the eye colour in the eyes'.
 Each dropdown starts with **Original look** (the character's own) and, where an
 Ooga can go without one, the slot's none (**Bald**, **Clean-shaven**, **No shirt**,
 **Barefoot**…). The foot counts unsaved changes beside **Save my look**, which
@@ -123,8 +126,10 @@ The body is the build an Ooga is drawn in: **Male** or **Female** (the regular a
 slim builds), each also **lean** (a narrower trunk, thinner limbs) or **big-boned**
 (a bigger, softer frame: the waist filled out, the chest's step and the limbs'
 swells evened, sloped shoulders domed over the top (`dome`, extra rings between
-the trunk and the arm's cap), corners rounded off, no kneecap or chest line), the shapes
-in `hero-body.js` `SHAPES`. It never changes height, hands, feet or the head, so
+the trunk and the arm's cap), corners rounded off, no kneecap or line down the
+breastbone; its nipples stay, on the chest's flat face), the shapes in
+`hero-body.js` `SHAPES`. Every shape stands its legs so their outsides line up
+under the trunk's bottom, as the stock builds' do. It never changes height, hands, feet or the head, so
 nothing that stands, seats or aims an Ooga by its height has anything to follow.
 Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
 hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap
@@ -135,9 +140,11 @@ its own body keeps it unless its model has been reviewed in every build and shap
 (`character-wardrobe.js` `REVIEWED_BODIES`: w-s-bitcoin, whose body is the modelled
 body's own builder with its belt, skirt, cuffs and anklets).
 
-The colour slots take a swatch from a short palette, or the character's own colour
-(the first swatch): **Skin** and **Hair color** recolour whatever the body paints in
-the wearer's skin or hair, and **Eye color** gives a stock head an iris in that
+The colour slots take a swatch from a short palette, the character's own colour
+(the first swatch), or any colour from the wheel at the end of the swatches or typed
+as a hex (saved as `{ item: "custom", version: null, color: "#rrggbb" }`, lower
+case; only the skin, hair and eye colours take one). **Skin** and **Hair color**
+recolour whatever the body paints in the wearer's skin or hair, and **Eye color** gives a stock head an iris in that
 colour (a head the character shaped itself takes it as its eyes' colour). A
 character that models its own body keeps its skin and hair, and one with its own
 eyes hook keeps its eyes.

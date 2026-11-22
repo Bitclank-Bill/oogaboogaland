@@ -20,7 +20,7 @@
     for (const id of WARDROBE.WORN) if (Object.hasOwn(value, id)) { try { out[id] = WARDROBE.choice(id, value[id]); } catch { /* not this page's */ } }
     return Object.keys(out).length ? Object.freeze(out) : null;
   };
-  const wardrobeReady = (w) => !w || WARDROBE.WORN.every((id) => !w[id] || w[id].item === "none" || !!WARDROBE.content(w[id].version));
+  const wardrobeReady = (w) => !w || WARDROBE.WORN.every((id) => !w[id] || w[id].item === "none" || w[id].item === "custom" || !!WARDROBE.content(w[id].version));
   // The pieces' chunk, fetched once something worn needs it; a failure waits out the shared retry timer's steps.
   const loadWardrobe = () => {
     if (WARDROBE.seeded || wardrobeLoad || Date.now() < wardrobeRetryAt) return;

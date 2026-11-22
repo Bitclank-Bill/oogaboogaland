@@ -58,13 +58,13 @@
     for (const id of W.WORN) {
       const choice = value && value[id];
       if (!choice || !supports(cave, id, slim)) continue;
-      const piece = choice.item === "none" ? "none" : W.content(choice.version);
+      const piece = choice.item === "none" ? "none" : choice.item === "custom" ? { color: choice.color } : W.content(choice.version);
       if (!piece) return null;
       if (id === "mask") { mask = { piece, version: choice.version, size: choice.size || 100 }; continue; }
       if (id === "body") { keys.push("body:" + choice.version); body = { ...body, slim: piece.build === "slim", bodyShape: piece.shape }; continue; }
       // The Ooga's own colours are its traits: the whole build is drawn from them.
       if (id === "skin" || id === "hairColor" || id === "eyeColor") {
-        keys.push(id + ":" + choice.version);
+        keys.push(id + ":" + piece.color);
         // An eye colour on the stock head is an iris (hero-body.js `head`); a block head's eyes take it whole.
         if (id === "eyeColor" && stockHead(own(cave))) head.iris = piece.color;
         else body = { ...body, [id === "skin" ? "skin" : id === "hairColor" ? "hair" : "eyeColor"]: piece.color };

@@ -45,6 +45,16 @@ test("wardrobe: a save names only known pieces of their own slot, none where a s
   assert.throws(() => equipmentCommand({ revision: 0, decline: "a".repeat(64), wardrobe: null }));
 });
 
+test("wardrobe: an Ooga's own colours also take a colour the player mixed, as a lower-case hex, and no other slot does", () => {
+  const custom = (color) => ({ item: "custom", version: null, color });
+  assert.deepEqual(equipmentCommand({ revision: 0, wardrobe: { skin: custom("#a0522d"), eyeColor: custom("#12ab34") } }),
+    { revision: 0, wardrobe: { skin: custom("#a0522d"), eyeColor: custom("#12ab34") } });
+  assert.equal(equipmentWardrobe.key({ hairColor: custom("#ffffff") }), "hairColor:#ffffff");
+  for (const bad of [{ shirt: custom("#a0522d") }, { beard: custom("#a0522d") }, { skin: custom("#A0522D") }, { skin: custom("a0522d") }, { skin: custom("#a0522") },
+    { skin: { ...custom("#a0522d"), version: "x" } }, { skin: { ...custom("#a0522d"), size: 100 } }, { skin: { item: "custom", version: null } }])
+    assert.throws(() => equipmentCommand({ revision: 0, wardrobe: bad }), undefined, JSON.stringify(bad));
+});
+
 test("wardrobe: kept with the hat under one revision; a hat-only save from an older page keeps what else is worn", async (t) => {
   const { db, account } = await setup(t), token = account.session.token_hash, shirt = piece("shirt");
   const first = await writeEquipment(db, 1, token, { revision: 0, wardrobe: { shirt, beard: NONE } });
