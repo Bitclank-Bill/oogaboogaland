@@ -392,7 +392,7 @@
   // aims an Ooga by its height has anything to follow, and everything drawn on the body (clothes, belt, skirt, strap,
   // cuffs, boots) is drawn on these rings, so it fits them.
   const SHAPES = {
-    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75 },
+    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75, foot: 0.82 },
     // Big-boned: a bigger frame all over and softer, not fat.
     big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.08, thigh: 1.27, shin: 1.22, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
@@ -492,6 +492,9 @@
       arm, armDrop: (base.armDrop || 0) + (s.drop || 0), forearm: even(base.forearm).map((r) => { const out = limb(r, fore); if (s.dome) out[3] = cutOf(out); return out; }),
       leg, sternum: !soft,
       knee: base.knee && !soft ? [base.knee[0], base.knee[1], base.knee[2] * legAt(-3.4), base.knee[3] * legAt(-3.4)] : null,
+      // A shape's `foot` draws the regular build's feet that much smaller, across and along (a female build's are small
+      // already).
+      ...(s.foot && !slim ? { foot: base.foot.map((r) => { const o = r.slice(); o[1] *= s.foot; o[2] *= s.foot; o[3] *= s.foot; o[5] = (o[5] || 0) * s.foot; return o; }) } : null),
       ankle: [base.ankle[0], base.ankle[1] * shin, base.ankle[2] * shin], wrist: [base.wrist[0], base.wrist[1] * fore, base.wrist[2] * fore],
       skirt: [base.skirt[0] * waist, base.skirt[1] * depth], belt: [base.belt[0], base.belt[1], base.belt[2] * waist, base.belt[3] * depth],
       chest: [base.chest[0], base.chest[1], front(base.chest[0]), front(base.chest[1])],

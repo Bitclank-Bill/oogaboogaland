@@ -123,7 +123,7 @@ body the character does not model, the mask a head it did not shape, and the
 weapon a hand without a nunchaku. The studio says so on the row.
 
 The body is the build an Ooga is drawn in: **Male** or **Female** (the regular and
-slim builds), each also **lean** (a narrower trunk, thinner limbs) or **big-boned**
+slim builds), each also **lean** (a narrower trunk, thinner limbs, and on the male build smaller feet) or **big-boned**
 (a bigger, softer frame: the waist filled out, the chest's step and the limbs'
 swells evened, the forearm only a little thicker, sloped shoulders domed over the top (`dome`, extra rings between
 the trunk and the arm's cap), corners rounded off, no kneecap or line down the
