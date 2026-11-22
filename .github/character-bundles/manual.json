@@ -14,15 +14,6 @@
       "lane": "manual"
     },
     {
-      "pr": 877,
-      "head": "99a656a63a1305c0e63d42d2abe2b50d01c01496",
-      "author": "w-s-bitcoin",
-      "path": "src/characters/midy-machete.js",
-      "base": "9ff5b764e6f95f6be62a2b4b1f51ed8627ad2cb5",
-      "hash": "94dd02df8f988da33ed8ccd791ed82a488f5e3fd281c50d10712da37c8a5ed0a",
-      "lane": "manual"
-    },
-    {
       "pr": 860,
       "head": "4d93f039b2c966ae00899c6ad79cf41e3b52b46b",
       "author": "SVRNSociety",
