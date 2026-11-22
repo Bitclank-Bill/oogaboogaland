@@ -133,7 +133,7 @@
   // number as its seat in `arcade-cabinets.js` — that pairing is what the joystick and the play spot look up, and
   // the seat's own position formula puts it at this same x.
   const archery = { ...CABINETS[5], index: CABINETS.length, x: 6.75, y: MEZZ.y, z: CABINETS[4].z, turn: 0,
-    game: 5, retro: -1, scoreId: "archery-1", trim: "#ffb347", second: "#e8dcc0",
+    game: 5, retro: -1, scoreId: "archery-1", pictograph: "archery", trim: "#ffb347", second: "#e8dcc0",
     play: { x: 6.75, z: CABINETS[4].z + 1.25, facing: Math.PI } };
   CABINETS.push(archery);
   // Rally stands left of Invaders across the existing fire bowl at x -6.5, facing the same aisle.
@@ -825,6 +825,11 @@
   const zigzag = (n, ink) => Array.from({ length: n }, (_, k) => ["L", ink, (k - n / 2) * 0.9, k % 2 ? 0.45 : -0.45, (k + 1 - n / 2) * 0.9, k % 2 ? -0.45 : 0.45, 0.32]);
   const mirror = (ops) => ops.map(([kind, ink, ...a]) => kind === "L" ? [kind, ink, -a[0], a[1], -a[2], a[3], a[4]] : kind === "D" ? [kind, ink, -a[0], a[1], a[2]] : [kind, ink, a[0].map(([u, v]) => [-u, v])]);
   const PICTOS = {
+    // The bow and its string with a bone arrow crossing toward the target.
+    archery: [["L", 0, -0.6, -0.85, -0.25, -0.45, 0.1], ["L", 0, -0.25, -0.45, -0.1, 0, 0.1],
+      ["L", 0, -0.1, 0, -0.25, 0.45, 0.1], ["L", 0, -0.25, 0.45, -0.6, 0.85, 0.1],
+      ["L", 2, -0.6, -0.85, -0.6, 0.85, 0.04], ["L", 2, -0.85, 0, 0.8, 0, 0.07],
+      ["P", 1, [[0.8, 0], [0.53, 0.18], [0.53, -0.18]]]],
     // Each game: the rally's kart with its Ooga and flag, the drop's chute, the orbit's rocket among stars, the
     // mine's pick over nuggets.
     race: [["P", 0, [[-0.8, -0.3], [0.85, -0.3], [0.7, 0.1], [-0.6, 0.1]]], ["D", 1, -0.5, -0.45, 0.22], ["D", 1, 0.55, -0.45, 0.22], ["D", 2, 0.1, 0.62, 0.17],
