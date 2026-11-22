@@ -151,9 +151,10 @@
     cave.template = target; cave.portraitHead = undefined;
     // A new height: the body stands on the same feet, and what reads its height (its eyes, its seat, its hat) reads
     // this one. The crew measures the rest again (crew.js `refreshBody`).
-    if (target.traits.height !== from.traits.height) {
+    // (or a build with longer legs: a male one's shins, models.js `SHIN`)
+    if (target.traits.height !== from.traits.height || target.root.position.y !== from.root.position.y) {
       const lift = target.root.position.y - from.root.position.y;
-      cave.traits.height = target.traits.height; cave.headOffset = target.headOffset;
+      cave.traits.height = target.traits.height; cave.headOffset = target.headOffset; cave.hip = target.hip;
       cave.root.position.y += lift;
       if (Number.isFinite(cave.baseY)) cave.baseY += lift;
       // The pet stands on the ground, which its Ooga's hip is now `lift` further over (crew.js `attachPet`).

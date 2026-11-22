@@ -323,8 +323,8 @@
     regular: {
       // `shoulder` is the height the trunk's clothes reach: over it is the neck.
       armX: 5.3, handScale: 1, shoulder: 8.45, skirt: [3.85, 2.3], thigh: 3.85,
-      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.56, 1.7, 0.45, 0, 0.08],
-        [-4.8, 1.64, 1.84, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
+      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.5, 1.6, 0.45, 0, 0.08],
+        [-4.8, 1.55, 1.7, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
       // The anklet stands clear of the calf above it and the instep below, so its wraps cover the ankle whole.
       knee: [-3.95, -2.85, 1, 2], ankle: [-5.05, 1.68, 1.84],
       // The foot is a block its whole length: as tall at the toes as a toe, its top rising from them to the instep,

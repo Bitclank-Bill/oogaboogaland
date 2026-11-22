@@ -1681,7 +1681,7 @@
       // haft to where it rests on it. A remote copy has no `stick` and goes by its idle time.
       const move = w.stick === undefined ? clamp((w.axeIdle - AXE_STICK_DELAY) / AXE_STICK_BLEND, 0, 1) : w.stick, stick = ease.inOutQuad(move);
       // The shoulder's height over the ground, less what a body sitting on the ground is lowered by.
-      const elbow = cave.elbow, arm = parts.armR.rotation, shoulder = HIP * h - (cave.restLower || 0) + parts.armR.position.y;
+      const elbow = cave.elbow, arm = parts.armR.rotation, shoulder = (cave.hip || HIP * h) - (cave.restLower || 0) + parts.armR.position.y;
       // The elbow's distance from the shoulder, and how far behind straight down it hangs.
       const armK = cave.armScale, reach = Math.hypot(elbow.y, elbow.z) * armK, fore = elbow.length * armK, lean = Math.atan2(-elbow.z, -elbow.y);
       const pitch = lerp(STICK_HANG, Math.PI / 2, stick);

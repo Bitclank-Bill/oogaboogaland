@@ -973,6 +973,8 @@
   // cuff, a boot or a glove stays where its owner drew it, and whatever a hook built out past the plain part rides along.
   // Nothing here draws from `k.rand`: the body's own small variation and the cloth's weave are hashed from the grid.
   const FINE = 4, LEG_UNITS = 7, FOOT_UNITS = 1.5, TORSO_RISE = 1, LEGS_IN = 0.5;
+  // A male build's shins run `SHIN` units longer, stretched from just under the knee (`SHIN_FROM`) to the ankle (`SHIN_TO`).
+  const SHIN = 0.6, SHIN_FROM = -3.4, SHIN_TO = -5.3;
   // The refined body's proportions as shares of an Ooga's height, for what is set beside an Ooga before one is built:
   // the hip over the soles (a built Ooga's root stands there), and how much higher than authored the torso's top, the
   // head and the shoulders stand.
@@ -1340,6 +1342,8 @@
     const parts = {};
     // The hip's height over the soles: the refined body's longer legs (see FINE). Authored legs stay five units.
     const legH = LEG_UNITS * u;
+    // How much longer a male build's shins are drawn (see SHIN), which stands it taller.
+    let longer = 0;
     const root = createNode({ position: { x: 0, y: legH, z: 0 } });
     const eyeCells = [];
     // nose: the beard's nose jitter pair; lid: closed-eye colour; headEmissive: lit head indices
@@ -2094,6 +2098,22 @@
         fist = model.fist;
         parts.club.scale.x = parts.club.scale.y = parts.club.scale.z = 1 / armScale;
         modelled = true;
+        // A male build's shins are drawn `SHIN` units longer: the leg below the knee is drawn down that much further
+        // (easing in from the knee to the ankle, the foot moved whole), and the Ooga stands that much taller on it.
+        if (!traits.slim) {
+          const done = new Set();
+          for (const g of [model.leg, model.legL]) {
+            if (!g || done.has(g)) continue;
+            done.add(g);
+            for (let i = 1; i < g.verts.length; i += 3) {
+              const y = g.verts[i] / u;
+              if (y < SHIN_FROM) g.verts[i] -= SHIN * Math.min(1, (SHIN_FROM - y) / (SHIN_FROM - SHIN_TO)) * u;
+            }
+          }
+          longer = SHIN * u;
+          root.position.y += longer;
+          if (parts.dog && parts.dog.parent === root) parts.dog.position.y -= longer;
+        }
         for (const key of ["legR", "legL"]) {
           parts[key].geometry = key === "legL" && model.legL || model.leg;
           // What a character hung on a leg goes down the longer leg with it.
@@ -2224,7 +2244,7 @@
       }
       return face;
     };
-    return { root, parts, traits, modelled, elbow, back, armScale, fist, headOffset: 1.1 * h + legH + TORSO_RISE * u - 5 * u, headOpen, headClosed, get portraitHead() { return faceHead(); }, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
+    return { root, parts, traits, modelled, elbow, back, armScale, fist, hip: legH + longer, headOffset: 1.1 * h + legH + longer + TORSO_RISE * u - 5 * u, headOpen, headClosed, get portraitHead() { return faceHead(); }, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
   // Callers get fresh nodes over shared geometry: one build per contributor, GPU records survive a scene swap.
@@ -2273,7 +2293,7 @@
     const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
     // The face button's head is the template's, built when first read; a clone swapping colourways may set its own.
     let face;
-    return { root, parts, traits, modelled: template.modelled, elbow: template.elbow, back: template.back, armScale: template.armScale, fist: template.fist, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed,
+    return { root, parts, traits, modelled: template.modelled, elbow: template.elbow, back: template.back, armScale: template.armScale, fist: template.fist, hip: template.hip, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed,
       // `template` is the build this clone shows: its own, or the build a worn wardrobe swapped in (character-wardrobe.js).
       template, get portraitHead() { return face === undefined ? this.template.portraitHead : face; }, set portraitHead(geometry) { face = geometry; },
       skins, clubRest: template.clubRest, clubCarry: template.clubCarry, tint: template.tint, gunHeadBounds: template.gunHeadBounds,

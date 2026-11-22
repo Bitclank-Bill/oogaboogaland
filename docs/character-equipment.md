@@ -144,6 +144,11 @@ its whole leg smaller and the legs closer together (`THIGH_IN` inside the trunk'
 the build's own gap between the thighs), its feet keeping their length and narrowing only
 as far as they must not to meet (`FEET_GAP`).
 
+A male (regular) build's shins are drawn `SHIN` (0.6) units longer (`models.js`), stretched
+from under the knee to the ankle, so every male Ooga stands about 2% taller; its hip
+(`cave.hip`), eyes and root follow, and a body swap between builds moves the root so the
+feet stay on the ground.
+
 What a model merges onto the limbs it was handed (`wear()`: a boot's bands, a cuff, the
 legs of shorts) is fitted to the worn limb automatically (`heroBody.refit`): the surface
 of the limb its own build would have handed and of the worn one are read at each height,
