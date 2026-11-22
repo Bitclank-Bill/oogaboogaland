@@ -394,7 +394,7 @@
   const SHAPES = {
     lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75, foot: 0.82 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.08, thigh: 1.27, shin: 1.22, armOut: 0.62,
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.22, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
