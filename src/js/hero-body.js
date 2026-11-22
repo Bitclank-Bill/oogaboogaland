@@ -177,6 +177,9 @@
   };
   // The belt's buckle: a gold plate with a raised rim, on the front plane at z; with `coin`, the coin's B on it.
   // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`), and a skirt hung under it.
+  // A male build's shin is drawn `SHIN` units longer, stretched between `SHIN_RAMP` (from under the knee, above any
+  // boot) and below it moved whole; `shin(y)` is how far a point of the leg at height y moves down.
+  const SHIN = 0.9, SHIN_BELOW = -3, SHIN_RAMP = [-4, -4.6], shin = (y) => y >= SHIN_RAMP[0] ? 0 : SHIN * Math.min(1, (SHIN_RAMP[0] - y) / (SHIN_RAMP[0] - SHIN_RAMP[1]));
   const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SEAT = 0.6, SEAT_BAND = 0.22;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
@@ -687,6 +690,9 @@
         const [worn, lit] = paint ? paint.tone(paint.leg[side].pick(0, (B.knee[0] + B.knee[1]) / 2, 1)) : [o.legs || skin, 0];
         slab(g, rect(-B.knee[2], B.knee[2], B.knee[0], B.knee[1], B.knee[3] - 0.12, 0.3), FRONT, 0.3, 0.78, worn, shade(worn, 0.86), lit);
       }
+      // A male build's shin is longer (`SHIN`): the leg itself is drawn longer under the knee, and what is put on it
+      // below (a boot, its sole and foot, anklets, toes) goes down whole, never taller.
+      const shinFrom = g.verts.length, longer = slim ? 0 : SHIN;
       if (o.boot) {
         // A boot: a shaft up the shin, a sole, and a foot as blunt and tall at the toe as a bare one.
         const a = B.ankle, f = B.foot;
@@ -705,6 +711,7 @@
         for (const x of [-gap, 0, gap]) poly(g, [[x - line, -6.98, back(x - line) + 0.012], [x + line, -6.98, back(x + line) + 0.012], [x + line, -7 + B.toe, back(x + line) + 0.012], [x - line, -7 + B.toe, back(x - line) + 0.012]], shade(skin, 0.7), FRONT);
         if (o.anklets) cuff(g, B.ankle[0] + 0.3, B.ankle[1], B.ankle[2], o.anklets, 1, 0.62);
       }
+      if (longer) for (let i = 1; i < g.verts.length; i += 3) g.verts[i] -= i < shinFrom ? shin(g.verts[i]) : longer;
       return g;
     };
     // A painted body's left arm and leg are their own meshes only where they wear something the right ones do not. Bare
@@ -1173,7 +1180,7 @@
       return null;
     };
   };
-  const refit = (model, handed, own, u) => {
+  const refit = (model, handed, own, u, longer = 0) => {
     const done = new Set();
     for (const key of ["leg", "legL", "forearm", "forearmL", "arm", "armL"]) {
       const g = model[key], h = handed[key], o = own[key];
@@ -1182,8 +1189,13 @@
       const worn = profile(h, u), mine = profile(o, u), v = g.verts;
       // Inside the surface a point keeps its share of the way out; past it, its distance past it.
       const fit = (d, from, to) => Math.abs(d) < from ? d * to / from : Math.sign(d) * (Math.abs(d) - from + to);
+      const leg = key === "leg" || key === "legL";
       for (let i = h.verts.length; i < v.length; i += 3) {
-        const y = v[i + 1] / u, a = mine(y), b = worn(y);
+        // A detail drawn for its own build's leg below the knee (a boot's bands) goes down a longer shin whole, as the
+        // boot does (`shin`).
+        const y0 = v[i + 1] / u;
+        if (leg && longer && y0 < SHIN_BELOW) v[i + 1] -= longer * u;
+        const y = v[i + 1] / u, a = mine(y0), b = worn(y);
         if (!a || !b) continue;
         if (a[0] > 0.05) v[i] = fit(v[i] / u, a[0], b[0]) * u;
         const z = v[i + 2] / u, ma = (a[1] + a[2]) / 2, mb = (b[1] + b[2]) / 2, ha = (a[1] - a[2]) / 2, hb = (b[1] - b[2]) / 2;
@@ -1191,5 +1203,5 @@
       }
     }
   };
-  BL.heroBody = { wear, trunk, dressed, refit, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
+  BL.heroBody = { wear, trunk, dressed, refit, SHIN, shin, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
 })();

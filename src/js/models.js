@@ -973,8 +973,6 @@
   // cuff, a boot or a glove stays where its owner drew it, and whatever a hook built out past the plain part rides along.
   // Nothing here draws from `k.rand`: the body's own small variation and the cloth's weave are hashed from the grid.
   const FINE = 4, LEG_UNITS = 7, FOOT_UNITS = 1.5, TORSO_RISE = 1, LEGS_IN = 0.5;
-  // A male build's shins run `SHIN` units longer, stretched from just under the knee (`SHIN_FROM`) to the ankle (`SHIN_TO`).
-  const SHIN = 0.6, SHIN_FROM = -3.4, SHIN_TO = -5.3;
   // The refined body's proportions as shares of an Ooga's height, for what is set beside an Ooga before one is built:
   // the hip over the soles (a built Ooga's root stands there), and how much higher than authored the torso's top, the
   // head and the shoulders stand.
@@ -2008,7 +2006,7 @@
       // build's limbs: it is fitted to the worn build's (`heroBody.refit`).
       if (model && wore && rebuilt) {
         const mine = { ...traits, slim: ownSlim, bodyShape: undefined };
-        BL.heroBody.refit(model, wore, BL.heroBody.dressed(mine, () => BL.heroBody.wear({ ...k, traits: mine }, { ...authored, palette, P, loin: k.loin, strap: !ownSlim })), u);
+        BL.heroBody.refit(model, wore, BL.heroBody.dressed(mine, () => BL.heroBody.wear({ ...k, traits: mine }, { ...authored, palette, P, loin: k.loin, strap: !ownSlim })), u, traits.slim ? 0 : BL.heroBody.SHIN);
       }
       // One that draws no head of its own gets the modelled body's head too.
       if (model && !model.headOpen && !(dress.skull || dress.hat || dress.crown || dress.eyes || dress.mark || dress.refine)) Object.assign(model, BL.heroBody.head(k, { palette, P }));
@@ -2098,19 +2096,9 @@
         fist = model.fist;
         parts.club.scale.x = parts.club.scale.y = parts.club.scale.z = 1 / armScale;
         modelled = true;
-        // A male build's shins are drawn `SHIN` units longer: the leg below the knee is drawn down that much further
-        // (easing in from the knee to the ankle, the foot moved whole), and the Ooga stands that much taller on it.
+        // A male build's shins are drawn longer (hero-body.js `SHIN`), and the Ooga stands that much taller on them.
         if (!traits.slim) {
-          const done = new Set();
-          for (const g of [model.leg, model.legL]) {
-            if (!g || done.has(g)) continue;
-            done.add(g);
-            for (let i = 1; i < g.verts.length; i += 3) {
-              const y = g.verts[i] / u;
-              if (y < SHIN_FROM) g.verts[i] -= SHIN * Math.min(1, (SHIN_FROM - y) / (SHIN_FROM - SHIN_TO)) * u;
-            }
-          }
-          longer = SHIN * u;
+          longer = BL.heroBody.SHIN * u;
           root.position.y += longer;
           if (parts.dog && parts.dog.parent === root) parts.dog.position.y -= longer;
         }
