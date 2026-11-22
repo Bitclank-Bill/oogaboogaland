@@ -1995,7 +1995,7 @@
       // stays its authored blocks unless it models its own.
       if (STYLE === "R" && !dress.model) rewear = (colours) => BL.heroBody.wear(k, { ...authored, palette: colours, P, loin: k.loin, strap: !traits.slim });
       if (STYLE === "R" && dress.model) wearing = () => BL.heroBody.wear(k, { ...authored, palette, P, loin: k.loin, strap: !traits.slim });
-      const model = STYLE !== "R" ? null : dress.model ? dress.model(k, wearing) : worn = rewear(palette);
+      const model = STYLE !== "R" ? null : dress.model ? BL.heroBody.dressed(traits, () => dress.model(k, wearing)) : worn = rewear(palette);
       // One that draws no head of its own gets the modelled body's head too.
       if (model && !model.headOpen && !(dress.skull || dress.hat || dress.crown || dress.eyes || dress.mark || dress.refine)) Object.assign(model, BL.heroBody.head(k, { palette, P }));
       if (model) {

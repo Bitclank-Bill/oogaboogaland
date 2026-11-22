@@ -553,8 +553,9 @@
   //   cuffs / anklets: { wrap, wrapDark, trim }; boot: { color, sole, detail }; pecs: the line between a bare chest's two
   //   halves and its nipples' colour; emblem(geo, z, y0, y1): what the chest's front carries
   const build = (k, o) => {
-    // A body that names no build is drawn in the Ooga's own (a worn body's, `traits.slim`).
-    const slim = o.slim === undefined ? !!k.traits.slim : !!o.slim, u = k.u, B = buildOf(slim, k.traits.bodyShape), skin = rgb(o.skin);
+    // A body that names no build is drawn in the Ooga's own (a worn body's, `traits.slim`), and so is a character's own
+    // model (`dressing`), whose file names the build it was drawn in.
+    const slim = dressing ? dressing.slim : o.slim === undefined ? !!k.traits.slim : !!o.slim, u = k.u, B = buildOf(slim, k.traits.bodyShape), skin = rgb(o.skin);
     const torso = geometry(), spans = B.torso.length - 1, [cy0, cy1, cz0, cz1] = B.chest, chestZ = (y) => cz0 + (cz1 - cz0) * (y - cy0) / (cy1 - cy0);
     // `paint` has the body wear what a block map wore (see `wear`): { tone, torso, arm, forearm, leg }, each part a
     // { breaks, pick } for `paintedLoft`, and the limbs one for each side (right, then left).
@@ -893,7 +894,16 @@
   // outside it from a point p on it, straight out from the surface whatever way that faces (`rough` only has to
   // point roughly outward). Cloth whose every corner is lifted stands that far off the body all over, corners
   // and ledges included.
+  // While a character's own model is built (`dressing`, from models.js), its trunk is the body being built: a file names
+  // its own build (`trunk(true)`), which a worn body (the wardrobe's Body slot) may have changed.
+  let dressing = null;
+  const dressed = (traits, make) => {
+    const was = dressing;
+    dressing = { slim: !!traits.slim, shape: traits.bodyShape };
+    try { return make(); } finally { dressing = was; }
+  };
   const trunk = (slim, shape) => {
+    if (dressing) ({ slim, shape } = dressing);
     const B = buildOf(slim, shape), rings = B.torso, low = rings[0][0], belt = B.belt[0], top = B.shoulder;
     const at = (y, i) => {
       let n = 1;
@@ -1055,5 +1065,5 @@
     if (built) body.torso = merge(body.torso, built);
     return body;
   };
-  BL.heroBody = { wear, trunk, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
+  BL.heroBody = { wear, trunk, dressed, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
 })();

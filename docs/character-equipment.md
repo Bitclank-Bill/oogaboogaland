@@ -137,9 +137,13 @@ hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The 
 also moves each part the new build stands differently (a female build's arms and
 legs) where the crew has not posed it away, and the crew measures the body's girth
 again. A female build's face takes no beard or mouth piece. A character that models
-its own body keeps it unless its model has been reviewed in every build and shape
-(`character-wardrobe.js` `REVIEWED_BODIES`: w-s-bitcoin, whose body is the modelled
-body's own builder with its belt, skirt, cuffs and anklets).
+its own body keeps its build and height until its model has been reviewed in every
+build, shape and height (`character-wardrobe.js` `REVIEWED_BODIES`, all seven today).
+While a model is built, `hero-body.js` gives its `trunk()` and `build()` the build
+being worn (`dressed`), whatever build the file names, so a garment laid on the trunk
+(YellowBrokeIt's tank top, rules-without-rulers' straps, midy-machete's top) and a
+body built by hand (tiffanyvarty) follow it. A new character that models its body is
+added to the list once it has been drawn in every combination.
 
 The height is a slider under the body's dropdown, read out in metres from the Ooga's
 feet to its crown: any whole hundredth of the game's height from 0.80 to 1.20
@@ -149,8 +153,7 @@ height is Original. The body is built again at that height, pieces and all, and
 stands on the same feet: the swap moves its hip (`baseY`), eyes (`headOffset`) and
 `traits.height`, and the crew measures again what it hung on the body (the gun's
 flash, the stun birds, a worn jetpack, its height and girth); another player's copy
-reads its hip and height from the body. Who models their own body keeps their
-height, as they keep their build.
+reads its hip and height from the body.
 
 The colour slots take a swatch from a short palette, the character's own colour
 (the first swatch), or any colour from the wheel at the end of the swatches or typed
