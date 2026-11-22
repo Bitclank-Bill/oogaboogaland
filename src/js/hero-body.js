@@ -394,7 +394,7 @@
   const SHAPES = {
     lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75, foot: 0.82 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.06, armOut: 0.62,
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.06, slimThigh: 1.6, slimShin: 1.18, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
@@ -472,7 +472,7 @@
       return rings.map((r) => { const out = r.slice(); out[1] = mx + (r[1] - mx) * k; out[2] = mz + (r[2] - mz) * k; return out; });
     };
     const limb = (r, k) => { const out = r.slice(); out[1] *= k; out[2] *= k; out[3] *= k; return out; };
-    const upper = s.arm, fore = s.fore ?? s.arm, thigh = s.thigh ?? s.leg, shin = s.shin ?? s.leg;
+    const upper = s.arm, fore = s.fore ?? s.arm, thigh = (slim && s.slimThigh) || (s.thigh ?? s.leg), shin = (slim && s.slimShin) || (s.shin ?? s.leg);
     // Down the leg from the thigh's factor to the shin's, so the knee eases between them.
     const legAt = (y) => y >= -2 ? thigh : y <= -4 ? shin : thigh + (shin - thigh) * (-2 - y) / 2;
     const waist = wAt(base.belt[0]), depth = dAt(base.belt[0]);
@@ -634,11 +634,12 @@
       const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
       loft(torso, [[low + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
       // The seat: under its foot the trunk tapers in over `SEAT` to the tops of the thighs, so its underside slopes to
-      // the legs rather than standing square over them. It wears what the trunk wears at its foot.
+      // the legs rather than standing square over them. It wears what the thighs wear, so trousers carry on into it and
+      // shorts or a loincloth end at their own hem over it.
       const f = B.torso[0], tx = Math.min(f[1], lx + Math.max(B.leg[0][1], B.leg[1][1])), tz = Math.min(f[2], Math.max(B.leg[0][2], B.leg[1][2]));
       const seat = [[low + 0.01, f[1], f[2], f[3], 0, f[5] || 0], [low - SEAT, tx, tz, Math.min(0.6 * Math.min(tx, tz), Math.max(f[3], 0.8)), 0, 0]];
-      if (paint) paintedLoft(torso, seat, [], (xn, y, zn) => paint.torso.pick(xn, low + 0.05, zn), paint.tone, skin, paint.print);
-      else loft(torso, seat, o.torso && o.torso[0] || skin);
+      if (paint) paintedLoft(torso, seat, [], (xn, y, zn) => paint.leg[0].pick(xn, -0.6, zn), paint.tone, skin, paint.print);
+      else loft(torso, seat, worn);
     }
     // The skirt hangs from the hips under the belt. With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so
