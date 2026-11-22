@@ -2302,7 +2302,8 @@
         const worn = this.template.traits, key = traits.name + (worn.wardrobeKey ? "\0" + worn.wardrobeKey : "");
         let bare = bareHeads.get(key);
         if (!bare) {
-          const body = buildCaveman({ ...(worn.wardrobeKey ? worn : BL.contributors.traitsFor(traits.name)), equipmentBare: true });
+          // A fresh draw of the character's own hashes: the worn template's build has already spent its `rand`.
+          const fresh = BL.contributors.traitsFor(traits.name), body = buildCaveman({ ...(worn.wardrobeKey ? worn : fresh), rand: fresh.rand, equipmentBare: true });
           bare = { headOpen: body.headOpen, headClosed: body.headClosed, portraitHead: body.portraitHead };
           bareHeads.set(key, bare);
         }

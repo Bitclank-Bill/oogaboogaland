@@ -180,7 +180,7 @@
   // A male build's shin is drawn `SHIN` units longer, stretched between `SHIN_RAMP` (under the calf's thickest point,
   // so the calf stays high under the knee) and below it moved whole; `shin(y)` is how far a point of the leg at height y moves down.
   const SHIN = 0.9, SHIN_BELOW = -3, SHIN_RAMP = [-4, -4.8], shin = (y) => y >= SHIN_RAMP[0] ? 0 : SHIN * Math.min(1, (SHIN_RAMP[0] - y) / (SHIN_RAMP[0] - SHIN_RAMP[1]));
-  const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SEAT = 0.6, SEAT_BAND = 0.22;
+  const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SKIRT_CLEAR = 0.5, SEAT = 0.6, SEAT_BAND = 0.22;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
     slab(geo, rect(-0.85, 0.85, y - 0.62, y + 0.62, z + 0.4, 0.22), FRONT, 0.05, 1, goldDark);
@@ -656,8 +656,9 @@
     // it is one piece with the trunk and not a thing laid over it. Its side shards lean out as far as the thighs do.
     if (o.skirt) {
       // Under a belt it hangs from the trunk's own ring there, just inside the belt, so it lies flat on the hips.
-      // It clears the trunk below where it hangs too (a slim build's hips swell under the belt).
-      const hang = B.belt[0] + 0.15, clear = (ring) => { for (const r of B.torso) if (r[0] < hang) { ring[1] = Math.max(ring[1], r[1] + SKIRT_OUT); ring[2] = Math.max(ring[2], r[2] + Math.abs(r[5] || 0) + SKIRT_OUT); } return ring; };
+      // It clears the trunk just below where it hangs too (a slim build's hips swell under the belt), within the
+      // shards' top (`SKIRT_CLEAR`): further down their own lean carries them clear, and the trunk's foot is not met.
+      const hang = B.belt[0] + 0.15, clear = (ring) => { for (const r of B.torso) if (r[0] < hang && r[0] >= hang - SKIRT_CLEAR) { ring[1] = Math.max(ring[1], r[1] + SKIRT_OUT); ring[2] = Math.max(ring[2], r[2] + Math.abs(r[5] || 0) + SKIRT_OUT); } return ring; };
       const low = B.torso[0], ring = o.hem ? [low[0], low[1] + 0.01, low[2] + 0.01, low[3]] : clear(round(hang, SKIRT_OUT));
       fur(torso, ring, o.skirt, slim ? 1.05 : 1.25, 3, [Math.max(0, B.thigh + 0.05 - ring[1]), 0]);
     }

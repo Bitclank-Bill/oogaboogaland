@@ -776,7 +776,9 @@
       const wear = () => {
         const v = Number(range.value), worn = view.worn?.[id];
         row.mixed = v;
-        const own = Math.max(at.range.min, Math.min(at.range.max, at.own())), entry = v === own ? row.options[0] : row.custom;
+        // Only the Ooga's own height is Original: one outside the slider's range is never a slider position, so every
+        // position there is a custom height.
+        const entry = v === at.own() ? row.options[0] : row.custom;
         if (entry === row.custom ? worn?.[at.field] === v : !worn) return;
         row.select.value = entry.option.value; row.select.dispatchEvent(new Event("change"));
       };
