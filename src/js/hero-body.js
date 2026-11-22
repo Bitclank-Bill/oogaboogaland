@@ -176,8 +176,8 @@
     }
   };
   // The belt's buckle: a gold plate with a raised rim, on the front plane at z; with `coin`, the coin's B on it.
-  // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`).
-  const BELT_OUT = 0.24;
+  // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`), and a skirt hung under it.
+  const BELT_OUT = 0.12, SKIRT_OUT = 0.05;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
     slab(geo, rect(-0.85, 0.85, y - 0.62, y + 0.62, z + 0.4, 0.22), FRONT, 0.05, 1, goldDark);
@@ -591,15 +591,12 @@
     else loft(torso, B.torso, Array.from({ length: spans }, (_, i) => o.torso && o.torso[i] || skin));
     // The belt follows the trunk round the waist, `BELT_OUT` proud of it all the way, so it neither sinks into the
     // trunk where the trunk swells nor stands off it where the trunk draws in, on any build or shape.
-    // On a shape (the wardrobe's lean or big-boned body) the belt goes round the trunk's own rings instead of the build's
-    // box, so it neither sinks in where the shape swells nor stands off where it draws in; a build's own belt is as it was.
-    if (o.belt && !k.traits.bodyShape) {
-      loft(torso, [[B.belt[0], B.belt[2], B.belt[3], 0.62], [B.belt[1], B.belt[2], B.belt[3], 0.62]], o.belt.color);
-      if (o.belt.gold) buckle(torso, (B.belt[0] + B.belt[1]) / 2, B.belt[3], o.belt);
-    } else if (o.belt) {
-      const T = trunk(slim, k.traits.bodyShape), band = (y) => { const [hx, hz, cut, cz] = T.ring(y); return [y, hx + BELT_OUT, hz + BELT_OUT, cut + BELT_OUT * 0.4, 0, cz]; };
+    // The belt goes round the trunk's own rings, `BELT_OUT` proud of them all the way, so it sits snug at the waist on
+    // every build and shape, neither sinking in where the trunk swells nor standing off where it draws in.
+    const T = trunk(slim, k.traits.bodyShape), round = (y, out) => { const [hx, hz, cut, cz] = T.ring(y); return [y, hx + out, hz + out, cut + out * 0.4, 0, cz]; };
+    if (o.belt) {
       const mid = (B.belt[0] + B.belt[1]) / 2;
-      loft(torso, [band(B.belt[0]), band(mid), band(B.belt[1])], o.belt.color);
+      loft(torso, [round(B.belt[0], BELT_OUT), round(mid, BELT_OUT), round(B.belt[1], BELT_OUT)], o.belt.color);
       if (o.belt.gold) buckle(torso, mid, T.front(mid) + BELT_OUT, o.belt);
     }
     if (o.pecs && B.nipple) {
@@ -618,11 +615,12 @@
       const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
       loft(torso, [[low + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
     }
-    // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body
+    // The skirt hangs from the hips under the belt. With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so
     // it is one piece with the trunk and not a thing laid over it. Its side shards lean out as far as the thighs do.
     if (o.skirt) {
-      const low = B.torso[0], ring = o.hem ? [low[0], low[1] + 0.01, low[2] + 0.01, low[3]] : [B.belt[0] + 0.15, B.skirt[0], B.skirt[1], 0.62];
+      // Under a belt it hangs from the trunk's own ring there, just inside the belt, so it lies flat on the hips.
+      const low = B.torso[0], ring = o.hem ? [low[0], low[1] + 0.01, low[2] + 0.01, low[3]] : round(B.belt[0] + 0.15, SKIRT_OUT);
       fur(torso, ring, o.skirt, slim ? 1.05 : 1.25, 3, [Math.max(0, B.thigh + 0.05 - ring[1]), 0]);
     }
     if (o.emblem) o.emblem(torso, chestZ, cy0, cy1);
