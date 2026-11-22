@@ -1060,13 +1060,9 @@
   // turn in at.
   const CAP = { el: 68, px: 1024, rIn: 4.9, ring: 0.075 };
   // The ₿'s cell: a bevelled lit cube in Bitcoin orange (a cube with a brighter inset on every face).
-  // The ₿'s block at nine heats, from a dark ember to white-hot: the mark fills from dim to bright through each block
-  // interval by its blocks stepping up through them, each at its own moment (nine geometries, so nine records).
-  // The mark's tile: one unit square shared by every square of the mosaic (each node scaled to its own side), in
-  // three finishes the animator swaps between: white at rest, orange once its transaction has landed, hot for a
-  // landing's spark and a block's flash. A dark rim round a lit face, proud of it above and below.
+  // The ceiling block's tile (`DISC_TILE`): one unit square shared by every square of a colour (each node scaled to its
+  // own side), a dark rim round a lit face, proud of it above and below.
   const markTile = (color, e) => own(() => noShadow(BL.models.merge(box({ w: 1, h: 1, d: 1, color: "#15171d" }), box({ w: 0.93, h: 1.1, d: 0.93, color, emissive: e }))));
-  const MARK_TILE = { white: markTile("#dde2ea", 0.5), orange: markTile("#ee8a14", 0.78), hot: markTile("#ffc35c", 1) };
   const paintDome = (ctx, D, L) => {
     const e0 = ROOMS.edgeEl(L, 0) / DEG, B = BAND.at, perM = 1 / (L.R * DEG), x = D.x, y = D.y;
     D.sky(ctx, [[90, "#0a0b11"], [e0, C.ceiling]]);
@@ -1129,37 +1125,255 @@
   // The cap over the crown, flat, seen from below by a visitor facing the front: the band's end coming in from the
   // dome to the middle ring, and in it the room's mark, the ₿ in pixels, over the paper and the block.
   const SYMBOL = ["...#..#....", ".#######...", ".##....##..", ".##.....##.", ".##.....##.", ".##....##..", ".#######...", ".##.....##.", ".##......##", ".##......##", ".##.....##.", ".########..", "...#..#...."];
-  // The mark as a mosaic: squares of four sizes packed inside a pattern of rows, as a block explorer draws a
-  // block's transactions: each square one transaction, its side its size (under 200 vB, to 600, to 3,000, larger),
-  // many small and a few large. Each of the pattern's cells is four fine cells across; a square is 1, 2, 4 or 8 of
-  // them. Room-agnostic: any pattern, cell size and seed.
-  const markOf = (pattern, cell, seed) => {
-    const SUB = 4, rows = pattern.length, cols = pattern[0].length, f = cell / SUB, rr = P.rng(seed), taken = new Set(), squares = [];
-    const on = (c, r) => r >= 0 && r < rows && c >= 0 && c < cols && pattern[r][c] === "#" && !taken.has(r * cols + c);
-    const put = (fc, fr, n) => { const cells = []; for (let j = 0; j < n; j += SUB) for (let i = 0; i < n; i += SUB) cells.push(Math.floor((fr + j) / SUB) * cols + Math.floor((fc + i) / SUB)); squares.push({ x: (fc + n / 2 - cols * SUB / 2) * f, z: -(fr + n / 2 - rows * SUB / 2) * f, n, side: n * f, cells }); };
-    for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) if (on(c, r) && on(c + 1, r) && on(c, r + 1) && on(c + 1, r + 1) && rr() < 0.5) { for (const k of [r * cols + c, r * cols + c + 1, (r + 1) * cols + c, (r + 1) * cols + c + 1]) taken.add(k); put(c * SUB, r * SUB, 8); }
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      if (!on(c, r)) continue;
-      if (rr() < 0.16) { put(c * SUB, r * SUB, 4); continue; }
-      for (let q = 0; q < 4; q++) { const fc = c * SUB + (q % 2) * 2, fr = r * SUB + (q >> 1) * 2; if (rr() < 0.45) put(fc, fr, 2); else for (let t = 0; t < 4; t++) put(fc + (t % 2), fr + (t >> 1), 1); }
+  // ---------- the ceiling's block: the next block in the ₿, the waiting mempool round it ----------
+  // As a block explorer draws the next block: its transactions as squares, sized by their share of the block's space
+  // and coloured by fee rate on the room's own ramp (`DISC_RAMP`: slate, teal, cream, amber, orange, red, rose), packed
+  // into the ₿ from its foot up in fee order (the highest payers at the foot); once the ₿ is full the rest of the waiting
+  // mempool fills the disc round it as beads, nearest first, each `beadVB` of it, a moat of one unit clear of the ₿ and
+  // its rim left clear (`edge`). The ₿ is drawn afresh and larger (`DISC_SYMBOL`), two fine units to each of
+  // its cells; one unit is its share of a block (`block` vB over its units). A square is one or two units (small
+  // transactions gathered in fee order) or, for a large transaction alone, up to `maxSide`. Full, it holds and waits:
+  // nothing flashes until a block is found.
+  const DISC_SYMBOL = ["......#..#.......", ".....##..##......", ".....##..##......", "...########......", "...#########.....", "...##########....", "...###....###....", "...###....###....", "...####...###....", "...##########....", "...#########.....", "...#########.....", "...##########....", "...####...####...", "...###.....###...", "...###.....###...", "...####....###...", "...###########...", "...##########....", "...#########.....", ".....##..##......", ".....##..##......", "......#..#......."];
+  const DISC = { cell: 0.32, block: 1e6, maxSide: 5, thick: 0.14, gap: 0.03, beadLift: 0.08, edge: 0.25, steps: 12 };
+  DISC.fine = DISC.cell / 2; DISC.fc = DISC_SYMBOL[0].length * 2; DISC.fr = DISC_SYMBOL.length * 2;
+  // The ₿'s fine units (`inB`), and its foot's middle, where a found block falls from.
+  const DISC_IN = new Uint8Array(DISC.fc * DISC.fr);
+  DISC_SYMBOL.forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] === "#") for (let j = 0; j < 4; j++) DISC_IN[(r * 2 + (j >> 1)) * DISC.fc + c * 2 + (j & 1)] = 1; });
+  DISC.units = DISC_IN.reduce((a, b) => a + b, 0); DISC.unitVB = DISC.block / DISC.units;
+  const discX = (fc) => (fc - DISC.fc / 2) * DISC.fine, discZ = (fr) => -(fr - DISC.fr / 2) * DISC.fine;
+  DISC.foot = { x: 0, z: discZ(DISC.fr - 4) };
+  // The cap swells down out of the ceiling as one smooth satin surface (`DOME`), an orange ring round its rim (`bulge` at its
+  // middle, falling to nothing at the rim), with the ₿ sunk into it `depth` deep behind bevelled walls `bevel` wide; the
+  // transactions fill the recess's floor and the beads sit on the dome as small lights, dim until the queue reaches
+  // them. One mesh built once, its faces shaded for a light from in front and below (`light`) so the curve and the bevel
+  // read from the floor; Canvas 2D keeps the flat cap.
+  const DOME = { bulge: 0.9, depth: 0.34, bevel: 0.16, tone: [40, 46, 64], lift: 0.95, rim: 0.1, at: 0.25 };
+  DISC.thick = 0.08;
+  // The recess (0 outside the ₿, 1 a bevel's width inside its edge), from a distance field over a grid twice as fine.
+  const DOME_F = (() => {
+    const S = 4, W = DISC.fc * 2 + 2 * S, H = DISC.fr * 2 + 2 * S, d = new Float32Array(W * H).fill(0), step = DISC.fine / 2;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const fc = Math.floor((x - S) / 2), fr = Math.floor((y - S) / 2); d[y * W + x] = fc >= 0 && fr >= 0 && fc < DISC.fc && fr < DISC.fr && DISC_IN[fr * DISC.fc + fc] ? 1e9 : 0; }
+    // two chamfer passes: the distance inside the ₿ to its edge, in grid steps
+    for (let y = 1; y < H; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (d[i]) d[i] = Math.min(d[i], d[i - 1] + 1, d[i - W] + 1, d[i - W - 1] + 1.414, d[i - W + 1] + 1.414); }
+    for (let y = H - 2; y >= 0; y--) for (let x = W - 2; x > 0; x--) { const i = y * W + x; if (d[i]) d[i] = Math.min(d[i], d[i + 1] + 1, d[i + W] + 1, d[i + W + 1] + 1.414, d[i + W - 1] + 1.414); }
+    const x0 = discX(0) - S * step, z0 = discZ(0) + S * step;
+    return (x, z) => {
+      const gx = (x - x0) / step - 0.5, gy = (z0 - z) / step - 0.5, ix = Math.floor(gx), iy = Math.floor(gy);
+      if (ix < 0 || iy < 0 || ix >= W - 1 || iy >= H - 1) return 0;
+      const fx = gx - ix, fy = gy - iy, at = (a, b) => Math.min(1, d[b * W + a] * step / DOME.bevel);
+      const v = (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
+      return v * v * (3 - 2 * v);
+    };
+  })();
+  // The surface's height at (x, z), from the cap's plane (negative is down, toward the room).
+  const domeY = (x, z) => { const r = Math.min(1, Math.hypot(x, z) / (CAP.rIn - DOME.rim)); return -DOME.bulge * (1 - r * r) + DOME.depth * DOME_F(x, z); };
+  const domeFloor = (x, z) => { const r = Math.min(1, Math.hypot(x, z) / (CAP.rIn - DOME.rim)); return -DOME.bulge * (1 - r * r) + DOME.depth; };
+  const domeGeo = own(() => {
+    const g = RM.helpers.blank(), R = CAP.rIn - DOME.rim, rings = 64, sectors = 200, L0 = [0.25, -0.9, 0.36], ln = Math.hypot(...L0), Ld = L0.map((v) => v / ln);
+    const P = (i, k) => { const r = R * i / rings, a = TAU * k / sectors, x = r * Math.sin(a), z = -r * Math.cos(a); return [x, domeY(x, z), z]; };
+    for (let i = 0; i < rings; i++) for (let k = 0; k < sectors; k++) {
+      const a = P(i, k), b = P(i + 1, k), c = P(i + 1, k + 1), e = P(i, k + 1), pts = i === 0 ? [a, b, c] : [a, b, c, e];
+      // the face's normal (facing down, toward the room), and its tone under the light from in front and below
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; if (ny > 0) { nx = -nx; ny = -ny; nz = -nz; } const nl = Math.hypot(nx, ny, nz) || 1;
+      const lit = Math.max(0, (nx * Ld[0] + ny * Ld[1] + nz * Ld[2]) / nl), k2 = 0.42 + DOME.lift * lit * lit;
+      RM.helpers.face(g, pts, DOME.tone.map((v) => Math.min(255, Math.round(v * k2))), 0.04, [nx / nl, ny / nl, nz / nl]);
     }
-    return { squares, cols, rows, cell, w: cols * cell, h: rows * cell };
+    g.smooth = true;
+    return noShadow(g);
+  });
+  // The beads' places: a hex grid of `cell` pitch over the dome, clear of the ₿ by a unit, nearest the middle first. Each holds four units' worth of the queue.
+  DISC.beads = (() => {
+    const out = [], R = CAP.rIn - DISC.edge, n = Math.ceil(R / DISC.cell) + 1, near = (fc, fr) => { for (let j = -1; j <= 2; j++) for (let i = -1; i <= 2; i++) { const c = fc + i, r = fr + j; if (c >= 0 && r >= 0 && c < DISC.fc && r < DISC.fr && DISC_IN[r * DISC.fc + c]) return true; } return false; };
+    const at = (x, z) => { const fc = Math.round(x / DISC.fine + DISC.fc / 2) - 1, fr = Math.round(-z / DISC.fine + DISC.fr / 2) - 1; if (Math.hypot(x, z) <= R && !near(fc, fr)) out.push({ x, z, d: Math.hypot(x, z) }); };
+    const dz = DISC.cell * 0.866; for (let gy = -n * 2; gy <= n * 2; gy++) for (let gx = -n; gx <= n; gx++) at((gx + (gy & 1 ? 0.5 : 0)) * DISC.cell, gy * dz);
+    return out.sort((a, b) => a.d - b.d);
+  })();
+  DISC.beadVB = 4 * DISC.unitVB;
+  // The room's own fee ramp (log2 of the rate from 1 to 300 sat/vB over `steps` colours), the beads' the same but
+  // quieter, so the ₿ stays the brightest thing on the cap; a block's lock flashes its squares hot.
+  const DISC_STOPS = [[1, "#38496a"], [2, "#2f7fa0"], [4, "#2cc2d8"], [8, "#f0e2bd"], [16, "#ffb347"], [40, "#f7931a"], [100, "#e2462b"], [300, "#c02a6a"]];
+  const discRamp = (k, quiet) => {
+    const f = Math.pow(300, k / (DISC.steps - 1));
+    let i = 0; while (i < DISC_STOPS.length - 2 && f > DISC_STOPS[i + 1][0]) i++;
+    const [a, ca] = DISC_STOPS[i], [b, cb] = DISC_STOPS[i + 1], u = Math.min(1, Math.max(0, Math.log2(f / a) / Math.log2(b / a))), A = BL.math.hexToRgb(ca), Bc = BL.math.hexToRgb(cb);
+    const c = A.map((v, j) => v + (Bc[j] - v) * u), g = (c[0] + c[1] + c[2]) / 3;
+    const out = quiet ? c.map((v) => (v * 0.62 + g * 0.38) * 0.7) : c;
+    return "#" + out.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
   };
-  const MARK = markOf(SYMBOL, 0.5, 2009), MARK_GAP = 0.024, MARK_THICK = 0.14, MARK_PERIOD = 600;
-  // The square that falls on a block: one of the larger ones at the foot of the mark.
-  MARK.drop = MARK.squares.reduce((best, q, i) => { const d = Math.hypot(q.x - 0.5, q.z + 3) + (q.n < 2 ? 5 : 0); return d < best.d ? { i, d } : best; }, { i: 0, d: 1e9 }).i;
+  const discStep = (rate) => Math.max(0, Math.min(DISC.steps - 1, Math.round(Math.log(Math.max(1, rate)) / Math.log(300) * (DISC.steps - 1))));
+  const lighter = (hex, k) => "#" + BL.math.hexToRgb(hex).map((v) => Math.round(v + (255 - v) * k).toString(16).padStart(2, "0")).join("");
+  const glossTile = (color, e) => own(() => noShadow(BL.models.merge(box({ w: 1, h: 1, d: 1, color: "#101219" }), box({ w: 0.92, h: 1.08, d: 0.92, color, emissive: e }), box({ w: 0.56, h: 1.14, d: 0.56, color: lighter(color, 0.22), emissive: Math.min(1, e + 0.12) }))));
+  const DISC_TILE = Array.from({ length: DISC.steps }, (_, k) => glossTile(discRamp(k, false), 0.6 + 0.03 * k));
+  const DISC_BEAD = Array.from({ length: DISC.steps }, (_, k) => own(() => noShadow(RM.helpers.ballGeo(0.5, discRamp(k, true), 8, 0.3))));
+  const DISC_HOT = glossTile("#ffc35c", 1);
+  const DISC_DIM = own(() => noShadow(RM.helpers.ballGeo(0.5, "#12141d", 8, 0)));
+  // The ceiling block at play. Its data, best first: the next block's own transactions from mempool.space's socket
+  // (`BL.mempool.track`, only while this room is open), the projection's fee bands for it (`state.projected[0]`) while
+  // those are on their way, and with the feeds off a replay on the room's clock: transactions arriving at `ARRIVE` vB a
+  // second from the last block, the ₿ full in about two minutes and the disc by about eight, a block mined off the top
+  // of them on the ten-minute fallback. The queue's beads come from the projection's later blocks (live) or the replay's
+  // own leftovers. Laid out again at most once a second (`RELAYOUT`), as a block explorer batches its updates; every
+  // square and bead eases to its place in about a quarter second. A found block: through the ₿'s lock its squares flash
+  // hot in a wave from the middle; as the block falls they fall with it, and the beads nearest the ₿ draw in as the next
+  // block's squares. Everything is preallocated; a frame allocates nothing.
+  const DISC_ARRIVE = 4.4e6 / 560, DISC_RELAYOUT = 1, DISC_SETTLE = 12;
+  const discLife = (nodes, capY, flat) => {
+    const NB = DISC.beads.length, NU = DISC.units, sq = [], bd = [];
+    for (let i = 0; i < NU; i++) sq.push(nodes[`dsq${i}`]);
+    for (let i = 0; i < NB; i++) bd.push(nodes[`dbd${i}`]);
+    // Squares: where each is (x, z, side), where it is going, its colour step and whether it is falling.
+    const sx = new Float32Array(NU), sz = new Float32Array(NU), ss = new Float32Array(NU), tx = new Float32Array(NU), tz = new Float32Array(NU), ts = new Float32Array(NU);
+    const sStep = new Int8Array(NU).fill(-1), sLook = new Int8Array(NU).fill(-2), sy = new Float32Array(NU), sFall = new Uint8Array(NU);
+    const bStep = new Int8Array(NB).fill(-1), bLook = new Int8Array(NB).fill(-2), bs = new Float32Array(NB), bt = new Float32Array(NB);
+    // Items (transactions, or the replay's arrivals): fee rate and vsize, sorted highest rate first by index.
+    let cap = 16384, rate = new Float64Array(cap), vb = new Float64Array(cap), key = new Float64Array(cap), ids = new Uint32Array(cap), scratch = BL.math.sortScratch(cap), n = 0;
+    const push = (r, v) => {
+      if (n === cap) { cap *= 2; const r2 = new Float64Array(cap), v2 = new Float64Array(cap); r2.set(rate); v2.set(vb); rate = r2; vb = v2; key = new Float64Array(cap); ids = new Uint32Array(cap); scratch = BL.math.sortScratch(cap); }
+      rate[n] = r; vb[n] = v; n++;
+    };
+    // The replay's waiting transactions, kept between layouts; a found block takes the ₿'s off the top.
+    const PEND = 24000, pRate = new Float64Array(PEND), pVb = new Float64Array(PEND);
+    let pN = 0, pVB = 0, arriveAcc = 0, seed = 2009, mined = 0;
+    const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(TAU * rnd());
+    const arrive = (vbNow) => {
+      arriveAcc += vbNow;
+      while (arriveAcc > 0 && pN < PEND && pVB < (NU + NB * 4) * DISC.unitVB * 1.05) {
+        const v = Math.min(60000, Math.round(Math.exp(5.5 + 0.8 * gauss()))), r = rnd() < 0.9 ? 2.6 * Math.exp(0.55 * gauss()) : 2.6 * (3 - Math.log(rnd() + 1e-9) / 0.12);
+        pRate[pN] = r; pVb[pN] = v; pN++; pVB += v; arriveAcc -= v;
+      }
+      if (arriveAcc > 0) arriveAcc = 0;
+    };
+    // The layout's result: the ₿'s squares (count, and how many items they took) and the beads lit.
+    const occ = new Uint8Array(DISC.fc * DISC.fr);
+    let nSq = 0, nBd = 0, usedItems = 0, bVB = 0, medianRate = 0, txIn = 0, source = 3, relayAt = 0, fallAt = -1e9, refillAt = -1e9, seen = -1, first = true;
+    const fits = (c, r, s) => { for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) { const cc = c + i, rr = r - j, k = rr * DISC.fc + cc; if (cc >= DISC.fc || rr < 0 || !DISC_IN[k] || occ[k]) return false; } return true; };
+    const place = (side, r0) => {
+      for (let s = side; s >= 1; s--) for (let r = DISC.fr - 1; r >= 0; r--) for (let c = 0; c < DISC.fc; c++) if (fits(c, r, s)) {
+        for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) occ[(r - j) * DISC.fc + c + i] = 1;
+        const k = nSq++; tx[k] = discX(c + s / 2); tz[k] = discZ(r - s + 1 + s / 2); ts[k] = s * DISC.fine - DISC.gap; sStep[k] = discStep(r0);
+        return true;
+      }
+      return false;
+    };
+    const layout = (now) => {
+      n = 0;
+      const M = BL.mempool, st = M && M.state, on = st && st.enabled && st.connected;
+      if (on && st.next.size) { for (const v of st.next.values()) push(v[0], v[1]); source = 1; }
+      else if (on && st.projected && st.projected[0]) {
+        // The projection's fee bands: its seven percentiles across its vsize, a unit's worth at a time.
+        const b = st.projected[0], fr = b.feeRange || [b.medianFee || 1], m = Math.floor((b.blockVSize || 0) / (DISC.unitVB * 0.9));
+        for (let i = 0; i < m; i++) push(fr[Math.min(fr.length - 1, Math.floor((1 - i / m) * fr.length))], DISC.unitVB * 0.9);
+        source = 2;
+      } else { for (let i = 0; i < pN; i++) push(pRate[i], pVb[i]); source = 3; }
+      for (let i = 0; i < n; i++) { ids[i] = i; key[i] = -rate[i]; }
+      BL.math.sortByKey(ids, 0, n, key, 1, 0, scratch);
+      // Squares: a large transaction alone, small ones gathered into one or two units in fee order.
+      occ.fill(0); const was = nSq; nSq = 0; usedItems = 0; bVB = 0; txIn = 0;
+      let acc = 0, accFee = 0, accN = 0, side = 1, full = false, half = -1;
+      for (let k = 0; k < n && !full; k++) {
+        const id = ids[k], v = vb[id];
+        if (v >= 3.5 * DISC.unitVB) {
+          if (!place(Math.min(DISC.maxSide, Math.round(Math.sqrt(v / DISC.unitVB))), rate[id])) { full = true; break; }
+          bVB += v; txIn++; usedItems = k + 1; continue;
+        }
+        acc += v; accFee += rate[id] * v; accN++;
+        if (acc >= side * side * DISC.unitVB) {
+          if (!place(side, accFee / acc)) { full = true; break; }
+          bVB += acc; txIn += accN; usedItems = k + 1; acc = 0; accFee = 0; accN = 0; side = (nSq * 7919 % 100) < 16 ? 2 : 1;
+        }
+        if (half < 0 && bVB >= DISC.block / 2) half = rate[id];
+      }
+      if (!full && acc > 0 && place(1, accFee / acc)) { bVB += acc; txIn += accN; usedItems = n; }
+      medianRate = half > 0 ? half : nSq ? rate[ids[Math.floor(usedItems / 2)]] : 0;
+      // New squares slide in from the rim, or after a block from the beads nearest the ₿.
+      for (let k = was; k < nSq; k++) {
+        if (now - refillAt < 3 && k < nBd) { const b = DISC.beads[k]; sx[k] = b.x; sz[k] = b.z; ss[k] = 0.5 * DISC.cell; }
+        else { const a = ((k * 2654435761) >>> 0) / 4294967296 * TAU; sx[k] = CAP.rIn * Math.sin(a); sz[k] = -CAP.rIn * Math.cos(a); ss[k] = 0.05; }
+        sy[k] = 0; sFall[k] = 0;
+      }
+      for (let k = nSq; k < NU; k++) ts[k] = 0;
+      // Beads: the rest of the waiting mempool in bead-sized slices, nearest first.
+      nBd = 0;
+      if (source === 1 || source === 2) {
+        for (let p = 1; p < st.projected.length && nBd < NB; p++) {
+          const b = st.projected[p], fr = b.feeRange || [b.medianFee || 1], m = Math.floor((b.blockVSize || 0) / DISC.beadVB);
+          for (let i = 0; i < m && nBd < NB; i++) bStep[nBd++] = discStep(fr[Math.min(fr.length - 1, Math.floor((1 - i / m) * fr.length))]);
+        }
+      } else {
+        let a2 = 0;
+        for (let k = usedItems; k < n && nBd < NB; k++) { a2 += vb[ids[k]]; while (a2 >= DISC.beadVB && nBd < NB) { bStep[nBd++] = discStep(rate[ids[k]]); a2 -= DISC.beadVB; } }
+      }
+      for (let i = 0; i < NB; i++) bt[i] = DISC.cell * (i < nBd ? 0.56 : 0.5);
+    };
+    // A block found, at its fall: the ₿'s squares fall with it; the replay's are taken off its waiting list.
+    const found = (now) => {
+      fallAt = now; refillAt = now + 2.2;
+      for (let k = 0; k < nSq; k++) { sFall[k] = 1; sy[k] = 0; }
+      if (source === 3) {
+        // the taken items are the first `usedItems` in rate order: mark them, then close the gaps
+        for (let k = 0; k < usedItems; k++) key[ids[k]] = 1e30;
+        let w = 0; pVB = 0;
+        for (let i = 0; i < pN; i++) if (key[i] !== 1e30) { pRate[w] = pRate[i]; pVb[w] = pVb[i]; pVB += pVb[w]; w++; }
+        pN = w; mined++;
+      }
+      nSq = 0;
+    };
+    const M = BL.mempool;
+    if (M && M.track && M.state.enabled) M.track(true);
+    return {
+      get state() { return { source, squares: nSq, beads: nBd, fill: Math.min(1, bVB / DISC.block), queue: nBd / NB, median: medianRate, tx: txIn, mined }; },
+      update(now, dt, live, td) {
+        // the replay's arrivals, from the last block on (all of them since it on arrival), until everything is full
+        if (first && live) { first = false; seen = live.drops; arrive(DISC_ARRIVE * Math.max(0, now - live.lastBlockAt)); }
+        if (source === 3 || !(M && M.state.enabled)) arrive(DISC_ARRIVE * Math.min(dt, 0.25));
+        if (live && live.drops !== seen && td >= 0) { seen = live.drops; found(now); }
+        relayAt -= dt;
+        if (relayAt <= 0 && now >= refillAt) { layout(now); relayAt = DISC_RELAYOUT; }
+        const k = 1 - Math.exp(-dt * DISC_SETTLE), lock = td >= -2 && td < 0 ? (td + 2) / 2 : -1, reach = CAP.rIn * 0.8;
+        for (let i = 0; i < NU; i++) {
+          const node = sq[i];
+          if (sFall[i]) {
+            // falling with the block: down from the cap and in toward the foot, shrinking
+            const u = now - fallAt;
+            sy[i] = -u * u * 1.6; sx[i] += (DISC.foot.x - sx[i]) * Math.min(1, dt * 1.2); sz[i] += (DISC.foot.z - sz[i]) * Math.min(1, dt * 1.2); ss[i] *= Math.exp(-dt * 1.4);
+            if (u > 2.4) { sFall[i] = 0; ss[i] = 0; sy[i] = 0; }
+          } else { sx[i] += (tx[i] - sx[i]) * k; sz[i] += (tz[i] - sz[i]) * k; ss[i] += (ts[i] - ss[i]) * k; }
+          const s = ss[i] > 0.004 ? ss[i] : 0.001, hot = lock >= 0 && i < nSq && Math.hypot(tx[i], tz[i]) / reach <= lock, look = hot ? -1 : sStep[i] < 0 ? 0 : sStep[i];
+          if (look !== sLook[i]) { sLook[i] = look; node.geometry = look < 0 ? DISC_HOT() : DISC_TILE[look](); }
+          node.position.x = sx[i]; node.position.z = sz[i]; node.position.y = capY + sy[i] + (flat ? 0 : DOME.at + domeFloor(sx[i], sz[i]) - 0.045);
+          node.scale.x = node.scale.z = s; node.scale.y = s > 0.004 ? DISC.thick : 0.001;
+        }
+        for (let i = 0; i < NB; i++) {
+          bs[i] += (bt[i] - bs[i]) * k;
+          const node = bd[i], look = bStep[i] < 0 ? 0 : bStep[i];
+          const want = i >= nBd ? -1 : look;
+          if (want !== bLook[i] && bt[i] > 0) { bLook[i] = want; node.geometry = want < 0 ? DISC_DIM() : DISC_BEAD[want](); }
+          const sc = bs[i] * (0.9 + 0.1 * Math.sin(now * 0.7 + i * 2.39));
+          node.scale.x = node.scale.y = node.scale.z = sc > 0.004 ? sc : 0.001;
+        }
+      },
+      // For the suite: the replay's arrivals now, and an empty replay.
+      arrive: (v) => arrive(v), clear: () => { pN = 0; pVB = 0; relayAt = 0; },
+      dispose() { if (M && M.track) M.track(false); }
+    };
+  };
   const paintCap = (ctx) => {
     const N = CAP.px, rr = CAP.rIn + CAP.ring / 2, s = N / (2 * rr);
     ctx.fillStyle = C.ceiling; ctx.fillRect(0, 0, N, N);
-    ctx.fillStyle = "rgba(247,147,26,.1)"; ctx.beginPath(); ctx.arc(N / 2, N / 2, CAP.rIn * s, 0, TAU); ctx.fill();
-    ctx.strokeStyle = C.btc; ctx.lineWidth = CAP.ring * s; ctx.beginPath(); ctx.arc(N / 2, N / 2, CAP.rIn * s, 0, TAU); ctx.stroke();
+    const bg = ctx.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, CAP.rIn * s); bg.addColorStop(0, "#151826"); bg.addColorStop(1, "#0e1018");
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(N / 2, N / 2, CAP.rIn * s, 0, TAU); ctx.fill();
     ctx.save(); ctx.translate(N / 2, N / 2);
-    const halo = ctx.createRadialGradient(0, 0, 0.3 * s, 0, 0, 4.4 * s); halo.addColorStop(0, "rgba(247,147,26,.22)"); halo.addColorStop(1, "rgba(247,147,26,0)");
-    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, 4.4 * s, 0, TAU); ctx.fill();
-    // The ₿ itself stands in front of the cap as its mosaic (`btile` nodes); the cap keeps only its halo and ring.
-    // No dates on the mark: they live on the centre and on Block 0's plinth.
+    // No outline: a faint dark shadow just round the ₿ on the cap, so its squares stand off the beads.
+    const X = (fc) => discX(fc) * s, Y = (fr) => -discZ(fr) * s, m = 0.1 * s;
+    ctx.fillStyle = "rgba(4,5,9,.75)"; ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 0.3 * s;
+    DISC_SYMBOL.forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] === "#") ctx.fillRect(X(c * 2) - m, Y(r * 2) - m, X(c * 2 + 2) - X(c * 2) + 2 * m, Y(r * 2 + 2) - Y(r * 2) + 2 * m); });
+    ctx.shadowBlur = 0;
     ctx.restore();
   };
+
 
   // ---------- the door ----------
   // The museum's steel door in the room's own dress: a steel rim, the amber strip along the seam, a dark window, and
@@ -1381,11 +1595,12 @@
 
   // ---------- the block's height, in stars ----------
   // As a block drops, stars come out round the mark, drift together into BLOCK and the block's height in the island's
-  // pixel letters, a star to each lit pixel, and twinkle there until about six minutes after the block (`hold`), or
-  // the next block's height takes their place, then scatter again. The line bends a little round the
+  // pixel letters, a star to each lit pixel, and twinkle there until the next block is found: then they fade out slowly
+  // (`fade`) through its announcement and the new height gathers in their place. `hold` is only a cap for a feed that
+  // has stalled (an hour), after which they scatter. The line bends a little round the
   // mark's ring (`bend` the radius it bends on), `gap` of the ring's radius clear of it, on the front's side, so it
   // reads the right way up to a visitor facing the front as the mark does. Only a height the feed gave is written.
-  const HEIGHT = { stars: 260, pitch: 0.16, gap: 0.42, bend: 14, early: 1.2, gather: 2.2, hold: 355.4, scatter: 2.4 };
+  const HEIGHT = { stars: 260, pitch: 0.16, gap: 0.42, bend: 14, early: 1.2, gather: 2.2, hold: 3600, scatter: 2.4, fade: 3.5 };
 
   const floorPoc = (() => {
     // The path of the history road: the walk ring under the plinths in order, then in to the middle.
@@ -1589,12 +1804,11 @@
           if (d.t < 2.4) { const u = ease(d.t / 2.4), wx = wallR0 * Math.sin(d.az), wz = -wallR0 * Math.cos(d.az); n.position.x = d.x0 + (wx - d.x0) * u; n.position.z = d.z0 + (wz - d.z0) * u; n.position.y = M.mapY + 0.05 + (POC.roadY - M.mapY) * u; n.rotation.x = -HALF_PI; n.rotation.y = 0; setScale(n, d.size); }
           else if (d.t < 7.2) { const u = (d.t - 2.4) / 4.8, el = -1 * DEG + (capEl - 2 * DEG + 1 * DEG) * ease(u), q = ROOMS.onSphere(L, d.az, el, 0.985, q3); n.position.x = q.x; n.position.y = q.y; n.position.z = q.z; n.rotation.x = el * 0.9; n.rotation.y = -d.az; setScale(n, d.size * 3); }
           else if (d.t < 8.2) {
-            // Off the dome and in to the mark: the dot is a transaction now, the next square to turn is its own (and
-            // gives it its size); with none left to turn this minute it flies to the middle and only glints. It comes
-            // in behind the squares, never in front: its light over a square would colour one that has not turned.
-            if (d.tgt === -2) { const mk = BL.timechainGenesis.mark; d.tgt = mk ? mk.claim() : -1; const sq = d.tgt >= 0 ? MARK.squares[d.tgt] : null; d.tx = sq ? sq.x : 0; d.tz = sq ? sq.z : 0; if (sq) d.size = 0.5 + 0.26 * sq.n; }
+            // Off the dome and on to the cap: the dot is a transaction now, joining the waiting mempool at the disc's
+            // rim under it (the ceiling's block, `DISC`), and glints out there.
+            if (d.tgt === -2) { d.tgt = -1; d.tx = CAP.rIn * Math.sin(d.az); d.tz = -CAP.rIn * Math.cos(d.az); }
             const u = ease((d.t - 7.2) / 1.0), q = ROOMS.onSphere(L, d.az, capEl - 1 * DEG, 0.985, q3); n.position.x = q.x + (d.tx - q.x) * u; n.position.z = q.z + (d.tz - q.z) * u; n.position.y = q.y + (capY + 0.1 - q.y) * u; n.rotation.x = HALF_PI; n.rotation.y = 0; setScale(n, d.size * 3 * (1 - 0.7 * u)); }
-          else { d.on = false; setScale(n, 0.001); live.landed = now; const mk = BL.timechainGenesis.mark; if (mk && d.tgt >= 0) mk.light(d.tgt, now, true); }
+          else { d.on = false; setScale(n, 0.001); live.landed = now; }
         }
       };
       // ---- the markers: light trailing from cluster to cluster across the map, always ----
@@ -1664,7 +1878,7 @@
         // comes out under the glass at the chain's first place.
         if (block) {
           if (td >= 0 && td < 5) {
-            const d = ease(td / 5), g0 = chainAt(0, ch0), from = MARK.squares[MARK.drop], y = blockTop - (blockTop - blockFloor) * d, over = MID_TOP + HOLO.foot + HOLO.tall + 0.6;
+            const d = ease(td / 5), g0 = chainAt(0, ch0), from = DISC.foot, y = blockTop - (blockTop - blockFloor) * d, over = MID_TOP + HOLO.foot + HOLO.tall + 0.6;
             const off = y > over ? 1 - ease((blockTop - y) / (blockTop - over)) : 0, under = y < MID_TOP ? (MID_TOP - y) / (MID_TOP - blockFloor) : 0;
             block.position.x = from.x * off + g0[0] * under; block.position.z = from.z * off + g0[1] * under; block.position.y = y; block.rotation.y = now * 0.6; setScale(block, 1);
           }
@@ -1725,18 +1939,19 @@
     K.render({ sky: [0.52, 0.5, 0.48], ground: [0.22, 0.2, 0.18], ambientFloor: 0.42, bloomStrength: 0.8 });
     K.dome((ctx, D) => paintDome(ctx, D, L));
     // The cap stands well inside the dome, so Canvas 2D's face sort keeps it in front of the dome's own faces; its key
-    // never changes, so it is painted once.
-    K.live({ cap: true, el0: Math.acos((CAP.rIn + CAP.ring / 2) / (L.R * 0.97)) / DEG, inset: 0.97, w: CAP.px, h: CAP.px, id: "mark", tip: "Where the road led: the whitepaper and the genesis block · Open mempool.space ↗", key: () => "genesis", paint: (ctx) => paintCap(ctx) });
+    // never changes, so it is painted once. A press on it opens mempool.space.
+    K.live({ cap: true, el0: Math.acos((CAP.rIn + CAP.ring / 2) / (L.R * 0.97)) / DEG, inset: 0.97, w: CAP.px, h: CAP.px, id: "mark", tip: "The next block, forming (data: mempool.space) · Open mempool.space ↗", key: () => "genesis", paint: (ctx) => paintCap(ctx) });
     floorPoc.plan(K, L);
-    // The ₿ over the crown, a mosaic of squares (`MARK`): one tile geometry shared by every square, each a node the
-    // animator sizes, turns from white to orange as its transaction lands, flashes on a block and lets one fall.
-    { const capY = L.c + L.R * 0.97 * Math.sin(CAP.el * DEG) - 0.6, cell = MARK.cell;
-      MARK.squares.forEach((q, i) => K.node(`btile${i}`, MARK_TILE.white(), q.x, capY, q.z, { scale: 0.001 }));
-      // Behind each of the pattern's cells a soft orange glow that grows as the squares over it turn.
+    // The ceiling's block (`DISC`): a node for every unit the ₿ holds (no more squares than units) and for every bead's
+    // place, all made now and only moved, sized and recoloured as it plays.
+    { const capY = L.c + L.R * 0.97 * Math.sin(CAP.el * DEG) - 0.6;
+      for (let i = 0; i < DISC.units; i++) K.node(`dsq${i}`, DISC_TILE[0](), 0, capY, 0, { scale: 0.001 });
+      K.node("discDome", domeGeo(), 0, capY + DOME.at, 0, {});
+      K.node("discRim", (k) => { k.torus(CAP.rIn - DOME.rim, 0.035, C.btc, 0, 0, 0, { emissive: 1, glow: true, seg: 128 }); }, 0, capY + DOME.at, 0);
+      DISC.beads.forEach((b, i) => K.node(`dbd${i}`, DISC_DIM(), b.x, capY + DOME.at + domeY(b.x, b.z) - 0.035, b.z, { scale: DISC.cell * 0.5 }));
       // The stars the block's height is written in (`HEIGHT`): a pool of soft points, one geometry between them, a
       // metre under the mark's own height, where the dome's facets, which cut inside its curve, are still behind them.
       { const star = softDot("#ffc27a", 0.42, 0.22, 1, 1.3); for (let i = 0; i < HEIGHT.stars; i++) K.node(`hstar${i}`, star(), 0, capY - 1, 0, { rx: HALF_PI, glow: true, scale: 0.001 }); }
-      { const bGlow = softDot(C.btc, 1.0, 0.15, 0.5, 0.6); SYMBOL.forEach((row, ri) => [...row].forEach((ch, ci) => { if (ch !== "#") return; K.node(`bglow:${ci}:${ri}`, bGlow(), (ci - (row.length - 1) / 2) * cell, capY + 0.2, -(ri - (SYMBOL.length - 1) / 2) * cell, { rx: HALF_PI, glow: true, scale: 0.001 }); })); }
     }
     // The ring's cards: each plinth's entries side by side on its front (walk order left to right), as bands.
     const FRONT = RING - FACE, ringCards = [];
@@ -1901,18 +2116,9 @@
     const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000;
     const focus = PLINTHS.map((p, i) => ({ node: nodes[`focusRing${i}`], tick: nodes[`yearTick${i}`], ...spotOf(i), level: 0, lit: 0, boost: 0 })), genesisAt = PLINTHS.findIndex((p) => p.id === "genesis");
     const screen = BL.timechainGenesis.blockScreen;
-    // The mark's squares and the glow behind each of the pattern's cells. `mark` is what the stream's dots ask: the
-    // order the squares turn in (shuffled afresh for each block from the block's own time, so every visitor sees the
-    // same squares turn), how many have been handed to a dot (`next`), and `light`, a landing.
-    const tiles = MARK.squares.map((q, i) => ({ ...q, node: nodes[`btile${i}`], lit: false, at: -1e9, d: Math.hypot(q.x, q.z), seed: (i * 7919) % 97, look: "", sc: -1 })), reach = Math.max(...tiles.map((q) => q.d));
-    const glowOf = Array.from({ length: MARK.cols * MARK.rows }, (_, k) => nodes[`bglow:${k % MARK.cols}:${Math.floor(k / MARK.cols)}`] || null), litArea = new Float32Array(MARK.cols * MARK.rows);
-    const mark = { order: new Int32Array(tiles.length), next: 0, lit: 0, target: 0, block: NaN, count: tiles.length,
-      claim() { return this.next < this.target ? this.order[this.next++] : -1; },
-      light(i, at, spark) { const q = tiles[i]; if (!q || q.lit) return; q.lit = true; q.at = spark ? at : -1e9; this.lit++; for (let j = 0; j < q.cells.length; j++) litArea[q.cells[j]] += q.n * q.n / q.cells.length / 16; },
-      // The order is shuffled in place, in the one list the mark keeps; only the block's own generator is made anew.
-      reset(blockAt) { this.block = blockAt; this.next = 0; this.lit = 0; litArea.fill(0); for (let i = 0; i < tiles.length; i++) { tiles[i].lit = false; tiles[i].at = -1e9; } const rr = P.rng(Math.floor(blockAt) % 2147483647 || 1), o = this.order; for (let i = 0; i < o.length; i++) o[i] = i; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(rr() * (i + 1)), v = o[i]; o[i] = o[j]; o[j] = v; } }
-    };
-    BL.timechainGenesis.mark = mark;
+    // The ceiling's block (`discLife`): the next block in the ₿, the queue round it.
+    const disc = BL.timechainGenesis.disc = discLife(nodes, nodes.dsq0.position.y, drawnBy === "canvas2d");
+    if (nodes.discDome && drawnBy === "canvas2d") nodes.discDome.visible = false;
     let screenState = -2;
     // The hologram's figure, or on the Canvas 2D fallback the flat picture of it in its place.
     const spin = nodes.holoSpin, figure = nodes.holoFigure, sheets = [nodes.holoSheet0, nodes.holoSheet1], flat = drawnBy === "canvas2d";
@@ -1924,7 +2130,7 @@
     // The stars of the block's height: where each waits in the sky (`hx`, `hz`), where it
     // scatters to (`gx`, `gz`), its pixel of the line (`tx`, `tz`), when it sets out and how it twinkles.
     const FT = BL.jumbotron.text, NS = HEIGHT.stars;
-    const hs = { n: 0, c: 0, shown: 0, on: false, w: 0, zc: 0, node: Array.from({ length: NS }, (_, i) => nodes[`hstar${i}`]), tx: new Float32Array(NS), tz: new Float32Array(NS), hx: new Float32Array(NS), hz: new Float32Array(NS), gx: new Float32Array(NS), gz: new Float32Array(NS), lag: new Float32Array(NS), tw: new Float32Array(NS), ph: new Float32Array(NS), digits: new Uint8Array(12) };
+    const hs = { n: 0, c: 0, shown: 0, on: false, drop: NaN, fadeAt: -1, w: 0, zc: 0, node: Array.from({ length: NS }, (_, i) => nodes[`hstar${i}`]), tx: new Float32Array(NS), tz: new Float32Array(NS), hx: new Float32Array(NS), hz: new Float32Array(NS), gx: new Float32Array(NS), gz: new Float32Array(NS), lag: new Float32Array(NS), tw: new Float32Array(NS), ph: new Float32Array(NS), digits: new Uint8Array(12) };
     { const rr = P.rng(2009), R0 = CAP.rIn + 1, spot = (X, Z, i) => { const a = (rr() * 2 - 1) * 110 * DEG, r = R0 + rr() * (9.4 - R0); X[i] = r * Math.sin(a); Z[i] = -r * Math.cos(a); };
       for (let i = 0; i < NS; i++) { spot(hs.hx, hs.hz, i); spot(hs.gx, hs.gz, i); hs.lag[i] = rr() * 0.6; hs.tw[i] = 3 + rr() * 5; hs.ph[i] = rr() * TAU; } }
     const WORD = ["B", "L", "O", "C", "K"].map((ch) => FT.FONT[ch]), DIGIT = "0123456789".split("").map((ch) => FT.FONT[ch]), COMMA = FT.FONT[","];
@@ -2127,31 +2333,8 @@
         // The ₿ breathes (a 5 s swell, never a flash) with a faint hashing shimmer across its cells; at the show's
         // convergence every cell locks bright in a wave from the middle out and one cell drops away to become the
         // falling block, the ₿ re-forming it cell by cell afterwards.
-        { const live = BL.timechainGenesis.live, td = live ? now - live.dropAt : 1e9, blockAt = live ? live.lastBlockAt : 0;
-          // The fill is worked out here from the block's own time (the feed's side may not have run yet this frame).
-          const heat = !live ? 0.6 : td < 0 ? 1.3 : Math.max(0, Math.min(1.3, (now - blockAt) / MARK_PERIOD));
-          // White after a block. The share of squares turned follows the time since the block (half at five minutes,
-          // all at ten): each is turned by a dot of the stream landing on it, with a spark; squares the dots have not
-          // reached in time (a visitor arriving mid-interval, a quiet feed) turn without one. While a block is late the
-          // orange squares pulse brighter in turn. Two seconds before a drop every square flashes hot in a wave from
-          // the middle out; then one falls away, the mark is white again and re-forms the fallen square.
-          if (td >= 0 && mark.block !== blockAt) mark.reset(blockAt);
-          mark.target = Math.floor(Math.min(1, heat) * mark.count + 1e-6);
-          while (mark.next < mark.target - 8) mark.light(mark.order[mark.next++], now, false);
-          const breath = 0.95 + 0.05 * (0.5 + 0.5 * Math.sin(now / 5 * TAU)), lock = td >= -2 && td < 0 ? (td + 2) / 2 : -1, gone = td >= 0 && td < 9, reform = td >= 6 && td < 9 ? (td - 6) / 3 : -1, late = heat > 1.001;
-          for (let i = 0; i < tiles.length; i++) {
-            const q = tiles[i], n = q.node;
-            if (!n) continue;
-            const since = now - q.at, flash = lock >= 0 && q.d / reach <= lock;
-            const look = flash || since < 0.25 || (late && q.lit && Math.sin(now * 1.5 + q.seed * 0.7) > 0.72) ? "hot" : q.lit ? "orange" : "white";
-            if (look !== q.look) { q.look = look; n.geometry = MARK_TILE[look](); }
-            // A landing's spark swells from inside the square to its full size, never past it over its neighbours.
-            let sc = (q.side - MARK_GAP) * (flash ? 1.05 : since < 0.4 ? 1 - 0.3 * (1 - since / 0.4) : 1);
-            if (i === MARK.drop && gone) sc = reform >= 0 ? Math.max(0.001, sc * reform) : 0.001;
-            if (sc !== q.sc) { q.sc = sc; n.scale.x = n.scale.z = sc; n.scale.y = MARK_THICK; }
-          }
-          for (let k = 0; k < glowOf.length; k++) { const g = glowOf[k]; if (!g) continue; const gl = lock >= 0 ? 1.5 : (0.02 + 1.2 * Math.min(1, litArea[k])) * breath * (late ? 1.12 : 1); g.scale.x = g.scale.y = g.scale.z = Math.max(0.001, gl); }
-        }
+        // The ceiling's block, on the block's own clock (a found block's lock and fall are `td` from its drop).
+        { const live = BL.timechainGenesis.live; disc.update(now, Math.min(0.1, dt), live, live ? now - live.dropAt : 1e9); }
         // The hologram: it turns about its own middle and rides a little up and down, its sheets of light climb
         // through it one after the other, and every few seconds it jumps aside and blinks.
         spin.rotation.y = now / HOLO.turn * TAU; spin.position.y = MID_TOP + HOLO.foot + 0.035 * Math.sin(now * 0.7);
@@ -2164,11 +2347,18 @@
           n.position.y = passing ? at + 0.3 * i : -0.05 + u * (HOLO.tall + 0.1); n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, k);
         }
         if (!flat) { const tg = now % 5.7; figure.position.x = (tg < 0.07 ? 0.035 : tg < 0.14 ? -0.02 : 0) + ripple * 0.022 * Math.sin(now * 85); figure.position.z = figureZ + ripple * 0.022 * Math.cos(now * 67); figure.visible = tg < 0.14 || tg >= 0.19; }
-        // The block's height in stars: out in the sky as the mark locks, together as the block falls, held, scattered.
+        // The block's height in stars: out in the sky as the mark locks, together as the block falls, held until the next
+        // block, which fades them out slowly before its own gathers.
         { const live = BL.timechainGenesis.live, td = live ? now - live.dropAt : 1e9, T1 = HEIGHT.gather, T2 = T1 + HEIGHT.hold, T3 = T2 + HEIGHT.scatter;
-          if (live && live.height > 0 && td >= -HEIGHT.early && td < T3) {
+          if (hs.on && live && hs.drop !== live.drops) {
+            // a new block: the shown height fades where it stands
+            if (hs.fadeAt < 0) hs.fadeAt = now;
+            const k = 1 - unit((now - hs.fadeAt) / HEIGHT.fade);
+            for (let i = 0; i < hs.n; i++) { const n = hs.node[i]; if (n) n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, k * (0.82 + 0.3 * Math.sin(now * hs.tw[i] + hs.ph[i]))); }
+            if (k <= 0) { hs.on = false; hs.fadeAt = -1; hs.drop = NaN; hs.shown = 0; for (let i = 0; i < NS; i++) if (hs.node[i]) hs.node[i].scale.x = hs.node[i].scale.y = hs.node[i].scale.z = 0.001; }
+          } else if (live && live.height > 0 && td >= -HEIGHT.early && td < T3) {
             if (hs.shown !== live.height) { hs.shown = live.height; writeHeight(live.height); }
-            hs.on = true;
+            hs.on = true; hs.drop = live.drops;
             for (let i = 0; i < hs.n; i++) {
               const n = hs.node[i];
               if (!n) continue;
@@ -2178,7 +2368,7 @@
               sc *= 0.82 + 0.3 * Math.sin(now * hs.tw[i] + hs.ph[i]);
               n.position.x = x; n.position.z = z; n.scale.x = n.scale.y = n.scale.z = Math.max(0.001, sc);
             }
-          } else if (hs.on) { hs.on = false; for (let i = 0; i < hs.n; i++) if (hs.node[i]) hs.node[i].scale.x = hs.node[i].scale.y = hs.node[i].scale.z = 0.001; }
+          } else if (hs.on) { hs.on = false; hs.drop = NaN; for (let i = 0; i < hs.n; i++) if (hs.node[i]) hs.node[i].scale.x = hs.node[i].scale.y = hs.node[i].scale.z = 0.001; }
         }
         // Proximity focus and the walk-lit years: each plinth's ring rises within 3 m of the visitor; its year tick
         // lights within 2.5 m and fades over six seconds behind them (this viewer's own, not synced).
@@ -2269,7 +2459,7 @@
         look(owner.index);
         return true;
       },
-      dispose() { left = true; BL.modelViewer.close(); portal.dispose(); for (const k of ["portal", "portalSpot", "live", "mark", "floorPoc", "blockScreen", "readLarge", "readPaper", "readerClose", "readerTo", "look"]) delete BL.timechainGenesis[k]; if (dbg) delete dbg.genesis; if (poc && poc.dispose) poc.dispose(); gone.abort(); hud.closeReader(); hud.genesis.strip.removeAttribute("src"); readerEl = null; }
+      dispose() { left = true; BL.modelViewer.close(); portal.dispose(); disc.dispose(); for (const k of ["portal", "portalSpot", "live", "disc", "floorPoc", "blockScreen", "readLarge", "readPaper", "readerClose", "readerTo", "look"]) delete BL.timechainGenesis[k]; if (dbg) delete dbg.genesis; if (poc && poc.dispose) poc.dispose(); gone.abort(); hud.closeReader(); hud.genesis.strip.removeAttribute("src"); readerEl = null; }
     };
     portal.bind(self);
     return self;
