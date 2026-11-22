@@ -132,8 +132,16 @@ breastbone; its nipples stay, on the chest's flat face), the shapes in
 its thighs, however thick they are, and every body has a crotch under the trunk
 between them in what the thighs wear (over bare thighs, what the hips wear: shorts, a
 loincloth), so trousers and shorts read as one garment. midy-machete's shorts, drawn in
-her own file, take their legs' size from the build worn (`heroBody.buildOf`), so they
-cover the thighs of any body. A shape never changes height, hands, feet or the
+her own file, take their legs' size from the build worn (`heroBody.buildOf`) and flare
+over thighs wider than the hips, so they cover the thighs of any body.
+
+A file draws for its own build, so a worn build moves what it drew to the same place on
+the new one. `trunk()` lines a height up between the two by their hips, belt and
+shoulders (`from`, `to`, and `own`, the file's own build's trunk), so a garment drawn at
+heights read off its own body (midy's belt, the hem of her top) sits where it did. What a
+hook hung on the trunk (`models.js`, after the model) moves the same way, measured by
+where its mesh shows: up or down with the heights, out to the worn side (midy's bag),
+and out with the worn front, back or belt (SatsMason's pockets). A shape never changes height, hands, feet or the
 head; the height is its own slot (below).
 Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
 hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap

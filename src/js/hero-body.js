@@ -904,9 +904,20 @@
     dressing = { slim: !!traits.slim, shape: traits.bodyShape };
     try { return make(); } finally { dressing = was; }
   };
+  // `from(y)` takes a height on the build the file names (`own`, that build's trunk) to the same place on the build worn:
+  // its hips, belt and shoulders line up, and between them it is eased in proportion; `to(y)` goes back. A garment drawn
+  // at heights read off its own build (a belt, the top of shorts) stands in the same place on any body.
+  const landmarks = (B) => [B.torso[0][0], B.belt[0], B.belt[1], B.shoulder];
+  const between = (a, b, y) => {
+    let i = 1;
+    while (i < a.length - 1 && y > a[i]) i++;
+    return b[i - 1] + (y - a[i - 1]) * (b[i] - b[i - 1]) / (a[i] - a[i - 1]);
+  };
   const trunk = (slim, shape) => {
+    const named = { slim, shape }, worn = !!dressing;
     if (dressing) ({ slim, shape } = dressing);
     const B = buildOf(slim, shape), rings = B.torso, low = rings[0][0], belt = B.belt[0], top = B.shoulder;
+    const mine = landmarks(buildOf(named.slim, named.shape)), here = landmarks(B);
     const at = (y, i) => {
       let n = 1;
       while (n < rings.length - 1 && rings[n][0] < y) n++;
@@ -943,7 +954,12 @@
       }
       return q;
     };
-    return { low, belt, top, at, ring, heights: rings.map((r) => r[0]), front: (y) => at(y, 5) + at(y, 2), back: (y) => at(y, 5) - at(y, 2), side, face, over, clear, lift,
+    let own = null;
+    const was = () => { if (!own) { const d = dressing; dressing = null; try { own = trunk(named.slim, named.shape); } finally { dressing = d; } } return own; };
+    // How far the belt stands out past the trunk's front or back at a height (0 off the belt), for what is laid on it.
+    const beltOut = (y, way) => y < B.belt[0] || y > B.belt[1] ? 0 : Math.max(0, B.belt[3] - way * (at(y, 5) + way * at(y, 2)));
+    return { low, belt, top, at, ring, beltOut, heights: rings.map((r) => r[0]), from: (y) => between(mine, here, y), to: (y) => between(here, mine, y),
+      get own() { return worn ? was() : this; }, front: (y) => at(y, 5) + at(y, 2), back: (y) => at(y, 5) - at(y, 2), side, face, over, clear, lift,
       rise: (y) => y >= 8 ? top + y - 8 : y >= 3 ? belt + (y - 3) / 5 * (top - belt) : y >= 0 ? low + y / 3 * (belt - low) : low + y };
   };
   // A body for an Ooga that models none of its own: the regular or the slim build, wearing what its authored blocks

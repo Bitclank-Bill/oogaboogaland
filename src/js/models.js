@@ -2035,12 +2035,34 @@
           }
         }
         // What a character stood on the front or the back of the authored trunk (three units out from its middle)
-        // stands on the modelled trunk's own front or back at that height, so it lies on the surface.
+        // stands on the modelled trunk's own front or back at that height, so it lies on the surface. Worn on another
+        // build (the wardrobe's Body slot), what it hung on the trunk goes to the same place on that build: its height
+        // lined up by the hips, belt and shoulders (`trunk`'s `from`), and a piece at the side (midy-machete's bag) as
+        // far out from that build's side as it stood from its own.
         {
-          const surface = BL.heroBody.trunk(!!traits.slim, traits.bodyShape);
+          const ownSlim = traits.wardrobeKey ? BL.characters?.get(traits.name)?.look?.build === "slim" : !!traits.slim;
+          const surface = BL.heroBody.dressed(traits, () => BL.heroBody.trunk(ownSlim)), moved = ownSlim !== !!traits.slim || !!traits.bodyShape, mine = surface.own;
           for (const laid of parts.torso.children) {
-            const y = laid.position.y / u, z = laid.position.z / u;
-            if (Math.abs(z) >= 2.5 && !laid.surface) laid.position.z = (z > 0 ? surface.front(y) + z - 3 : surface.back(y) + z + 3) * u;
+            // Where a piece is: its node, or the middle of its mesh where the mesh was drawn away from the node (SatsMason's
+            // pockets), so it is moved by where it shows.
+            const box = laid.geometry && laid.geometry.verts.length ? BL.scene.boundsOf(laid.geometry) : null, mid = (i) => box ? (box.min[i] + box.max[i]) / 2 * [laid.scale.x, laid.scale.y, laid.scale.z][i] : 0;
+            const at = laid.position.y / u, y = moved ? surface.from(at) : at, x = laid.position.x / u, z = laid.position.z / u;
+            if (moved) {
+              const cA = at + mid(1) / u, cy = surface.from(cA), cx = x + mid(0) / u, cz = z + mid(2) / u;
+              laid.position.y += (cy - cA) * u;
+              // On the front or the back: within a little of its own build's front or back there.
+              const way = cz >= 0 ? 1 : -1, face = (S, h) => way > 0 ? S.front(h) : -S.back(h), onFace = way * cz >= face(mine, cA) - 0.6;
+              const out = Math.abs(cx) - mine.side(cA, cz);
+              if (!onFace && out > -0.5) laid.position.x += (Math.sign(cx) * (surface.side(cy, cz) + out) - cx) * u;
+              // One drawn out on the trunk's front or back in its mesh (the node left at the middle) stands as far past the
+              // worn build's front or back, belt and all, as it did past its own.
+              if (Math.abs(z) < 2.5 && onFace) laid.position.z += way * (face(surface, cy) + surface.beltOut(cy, way) - face(mine, cA) - mine.beltOut(cA, way)) * u;
+            }
+            if (Math.abs(z) >= 2.5 && !laid.surface) {
+              // On the belt, a piece stands as far out past the worn build's belt as it did past its own.
+              const way = Math.sign(z), belt = moved ? surface.beltOut(y, way) - mine.beltOut(at, way) : 0;
+              laid.position.z = (z > 0 ? surface.front(y) + z - 3 + belt : surface.back(y) + z + 3 - belt) * u;
+            }
           }
         }
         // At rest the right forearm comes up square to the club in its hand, which is gripped at the hand point. A
