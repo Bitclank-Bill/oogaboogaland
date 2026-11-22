@@ -1994,8 +1994,18 @@
       // character's own (`dress.model`), or the regular or slim build wearing what its authored blocks wore. Its head
       // stays its authored blocks unless it models its own.
       if (STYLE === "R" && !dress.model) rewear = (colours) => BL.heroBody.wear(k, { ...authored, palette: colours, P, loin: k.loin, strap: !traits.slim });
-      if (STYLE === "R" && dress.model) wearing = () => BL.heroBody.wear(k, { ...authored, palette, P, loin: k.loin, strap: !traits.slim });
+      // The build a character's file draws for (its own), which a worn body (the wardrobe's Body slot) may have changed.
+      const ownSlim = traits.wardrobeKey ? BL.characters?.get(traits.name)?.look?.build === "slim" : !!traits.slim, rebuilt = ownSlim !== !!traits.slim || !!traits.bodyShape;
+      let wore = null;
+      // A copy of what it was handed: a model may merge its own parts into that very object.
+      if (STYLE === "R" && dress.model) wearing = () => { const body = BL.heroBody.wear(k, { ...authored, palette, P, loin: k.loin, strap: !traits.slim }); wore = { ...body }; return body; };
       const model = STYLE !== "R" ? null : dress.model ? BL.heroBody.dressed(traits, () => dress.model(k, wearing)) : worn = rewear(palette);
+      // What its model added to the limbs it was handed (midy-machete's boots and shorts' legs) was drawn for its own
+      // build's limbs: it is fitted to the worn build's (`heroBody.refit`).
+      if (model && wore && rebuilt) {
+        const mine = { ...traits, slim: ownSlim, bodyShape: undefined };
+        BL.heroBody.refit(model, wore, BL.heroBody.dressed(mine, () => BL.heroBody.wear({ ...k, traits: mine }, { ...authored, palette, P, loin: k.loin, strap: !ownSlim })), u);
+      }
       // One that draws no head of its own gets the modelled body's head too.
       if (model && !model.headOpen && !(dress.skull || dress.hat || dress.crown || dress.eyes || dress.mark || dress.refine)) Object.assign(model, BL.heroBody.head(k, { palette, P }));
       if (model) {
@@ -2040,8 +2050,7 @@
         // lined up by the hips, belt and shoulders (`trunk`'s `from`), and a piece at the side (midy-machete's bag) as
         // far out from that build's side as it stood from its own.
         {
-          const ownSlim = traits.wardrobeKey ? BL.characters?.get(traits.name)?.look?.build === "slim" : !!traits.slim;
-          const surface = BL.heroBody.dressed(traits, () => BL.heroBody.trunk(ownSlim)), moved = ownSlim !== !!traits.slim || !!traits.bodyShape, mine = surface.own;
+          const surface = BL.heroBody.dressed(traits, () => BL.heroBody.trunk(ownSlim)), moved = rebuilt, mine = surface.own;
           for (const laid of parts.torso.children) {
             // Where a piece is: its node, or the middle of its mesh where the mesh was drawn away from the node (SatsMason's
             // pockets), so it is moved by where it shows.

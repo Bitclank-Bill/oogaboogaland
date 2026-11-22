@@ -176,6 +176,8 @@
     }
   };
   // The belt's buckle: a gold plate with a raised rim, on the front plane at z; with `coin`, the coin's B on it.
+  // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`).
+  const BELT_OUT = 0.24;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
     slab(geo, rect(-0.85, 0.85, y - 0.62, y + 0.62, z + 0.4, 0.22), FRONT, 0.05, 1, goldDark);
@@ -562,9 +564,13 @@
     const paint = o.paint;
     if (paint) paintedLoft(torso, B.torso, paint.torso.breaks, paint.torso.pick, paint.tone, skin, paint.print);
     else loft(torso, B.torso, Array.from({ length: spans }, (_, i) => o.torso && o.torso[i] || skin));
+    // The belt follows the trunk round the waist, `BELT_OUT` proud of it all the way, so it neither sinks into the
+    // trunk where the trunk swells nor stands off it where the trunk draws in, on any build or shape.
     if (o.belt) {
-      loft(torso, [[B.belt[0], B.belt[2], B.belt[3], 0.62], [B.belt[1], B.belt[2], B.belt[3], 0.62]], o.belt.color);
-      if (o.belt.gold) buckle(torso, (B.belt[0] + B.belt[1]) / 2, B.belt[3], o.belt);
+      const T = trunk(slim, k.traits.bodyShape), band = (y) => { const [hx, hz, cut, cz] = T.ring(y); return [y, hx + BELT_OUT, hz + BELT_OUT, cut + BELT_OUT * 0.4, 0, cz]; };
+      const mid = (B.belt[0] + B.belt[1]) / 2;
+      loft(torso, [band(B.belt[0]), band(mid), band(B.belt[1])], o.belt.color);
+      if (o.belt.gold) buckle(torso, mid, T.front(mid) + BELT_OUT, o.belt);
     }
     if (o.pecs && B.nipple) {
       // A faint line down the breastbone, and a nipple well out on each half.
@@ -573,15 +579,20 @@
       for (const side of [-1, 1]) slab(torso, rect(nx * side - 0.22, nx * side + 0.22, ny - 0.2, ny + 0.2, chestZ(ny) - 0.02), FRONT, 0.07, 0.85, o.pecs);
     }
     if (o.strap) strap(torso, o.strap, B.depthAt);
-    // The crotch: a wedge under the trunk between the tops of the thighs, in what the thighs wear, so trousers read as one
-    // garment and no slot of sky shows between the legs; over bare thighs, in what the hips wear (shorts, a loincloth). It stands well inside each thigh and behind their faces, so
-    // only the part between them shows, and narrows as it drops so a striding leg never uncovers its side.
+    // The pelvis: what joins the trunk to the legs. It comes out of the trunk under the belt and widens to the thighs'
+    // own width and depth at the trunk's foot (a build whose thighs stand wider than its hips no longer shows them poking
+    // out from under the trunk), wraps their tops, then closes between them as the crotch, so trousers read as one
+    // garment and no slot of sky shows between the legs. It is in what the thighs wear, or over bare thighs in what the
+    // hips wear (shorts, a loincloth). Its sides stand flush with the thighs' and it narrows inside them as it drops, so a
+    // striding leg never uncovers it.
     {
-      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8;
+      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0], thighZ = Math.max(B.leg[0][2], B.leg[1][2]);
+      const T = trunk(slim, k.traits.bodyShape), [hx, hz, cut, cz] = T.ring(B.belt[0]), wide = Math.max(low[1], B.thigh - 0.02), deepest = Math.max(low[2], thighZ);
       const bare = (c) => c[0] === skin[0] && c[1] === skin[1] && c[2] === skin[2];
       let [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
-      if (paint && bare(worn)) worn = paint.tone(paint.torso.pick(0, B.torso[0][0] + 0.1, 1))[0];
-      loft(torso, [[B.torso[0][0] + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
+      if (paint && bare(worn)) worn = paint.tone(paint.torso.pick(0, low[0] + 0.1, 1))[0];
+      loft(torso, [[B.belt[0], hx * 0.97, hz * 0.97, cut, 0, cz], [low[0], wide, deepest, Math.max(low[3], 0.5), 0, low[5] || 0],
+        [-1, wide - 0.04, deepest - 0.04, 0.5, 0, 0], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn, [false, true]);
     }
     // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so
@@ -957,7 +968,7 @@
     let own = null;
     const was = () => { if (!own) { const d = dressing; dressing = null; try { own = trunk(named.slim, named.shape); } finally { dressing = d; } } return own; };
     // How far the belt stands out past the trunk's front or back at a height (0 off the belt), for what is laid on it.
-    const beltOut = (y, way) => y < B.belt[0] || y > B.belt[1] ? 0 : Math.max(0, B.belt[3] - way * (at(y, 5) + way * at(y, 2)));
+    const beltOut = (y) => y < B.belt[0] || y > B.belt[1] ? 0 : BELT_OUT;
     return { low, belt, top, at, ring, beltOut, heights: rings.map((r) => r[0]), from: (y) => between(mine, here, y), to: (y) => between(here, mine, y),
       get own() { return worn ? was() : this; }, front: (y) => at(y, 5) + at(y, 2), back: (y) => at(y, 5) - at(y, 2), side, face, over, clear, lift,
       rise: (y) => y >= 8 ? top + y - 8 : y >= 3 ? belt + (y - 3) / 5 * (top - belt) : y >= 0 ? low + y / 3 * (belt - low) : low + y };
@@ -1083,5 +1094,50 @@
     if (built) body.torso = merge(body.torso, built);
     return body;
   };
-  BL.heroBody = { wear, trunk, dressed, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
+  // A character's model handed the worn build's limbs (`wear()`) and merged details of its own onto them (a boot's
+  // bands, a cuff, the legs of shorts) drawn for its own build's limbs. Everything past what it was handed is fitted to
+  // the worn limb as it was handed: at each height the limb's surface out to each side, front and back is read off the
+  // limb its own build would have handed (`own`) and the worn one, and a detail stands as far past the worn surface,
+  // in proportion, as it stood past its own. So a boot's details sit on any boot, however much wider its shaft is.
+  const STEP = 0.25;
+  // A face counts at every height it spans, so a tall shaft with corners only at its ends is read all the way down.
+  const profile = (g, u) => {
+    const v = g.verts, rows = new Map();
+    for (const f of g.faces) {
+      let y0 = Infinity, y1 = -Infinity, x = 0, zf = -Infinity, zb = Infinity;
+      for (const id of f.i) {
+        const y = v[id * 3 + 1] / u, z = v[id * 3 + 2] / u;
+        y0 = Math.min(y0, y); y1 = Math.max(y1, y); x = Math.max(x, Math.abs(v[id * 3]) / u); zf = Math.max(zf, z); zb = Math.min(zb, z);
+      }
+      for (let r = Math.round(y0 / STEP), end = Math.round(y1 / STEP); r <= end; r++) {
+        let p = rows.get(r);
+        if (!p) rows.set(r, p = [0, -Infinity, Infinity]);
+        if (x > p[0]) p[0] = x; if (zf > p[1]) p[1] = zf; if (zb < p[2]) p[2] = zb;
+      }
+    }
+    return (y) => {
+      const r = Math.round(y / STEP);
+      for (let d = 0; d < 6; d++) for (const k of d ? [r - d, r + d] : [r]) { const p = rows.get(k); if (p) return p; }
+      return null;
+    };
+  };
+  const refit = (model, handed, own, u) => {
+    const done = new Set();
+    for (const key of ["leg", "legL", "forearm", "forearmL", "arm", "armL"]) {
+      const g = model[key], h = handed[key], o = own[key];
+      if (!g || !h || !o || g === h || done.has(g) || g.verts.length <= h.verts.length) continue;
+      done.add(g);
+      const worn = profile(h, u), mine = profile(o, u), v = g.verts;
+      // Inside the surface a point keeps its share of the way out; past it, its distance past it.
+      const fit = (d, from, to) => Math.abs(d) < from ? d * to / from : Math.sign(d) * (Math.abs(d) - from + to);
+      for (let i = h.verts.length; i < v.length; i += 3) {
+        const y = v[i + 1] / u, a = mine(y), b = worn(y);
+        if (!a || !b) continue;
+        if (a[0] > 0.05) v[i] = fit(v[i] / u, a[0], b[0]) * u;
+        const z = v[i + 2] / u, ma = (a[1] + a[2]) / 2, mb = (b[1] + b[2]) / 2, ha = (a[1] - a[2]) / 2, hb = (b[1] - b[2]) / 2;
+        if (ha > 0.05) v[i + 2] = (mb + fit(z - ma, ha, hb)) * u;
+      }
+    }
+  };
+  BL.heroBody = { wear, trunk, dressed, refit, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
 })();
