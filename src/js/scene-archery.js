@@ -4,8 +4,8 @@
 // the arrows and the Legion are pools built once in `enter`, shown and hidden as the simulation needs them.
 //
 // Three rounds share one arrow. The sim owns which round is running and when it ends; the scene owns nothing
-// but what it looks like. Sound and the scoreboard are deliberately absent from this pass: both hang off host
-// modules whose contracts want reading first, and a silent, scoreless range still proves the flight.
+// but what it looks like. The cabinet HUD starts a round and exposes aim, draw, pause and return;
+// scores are shown for this round only, with no changes to shared scores or the host sound bus.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -29,6 +29,8 @@
   let paused = false;
   let input = null;
   let host = null;
+  let hud = null;
+  let overlayPaint = null;
   let aimUp = false;
   let aimDown = false;
   const targetNodes = [];
@@ -67,6 +69,7 @@
   };
 
   const startRound = (mode) => {
+    resetHeld();
     SIM.setMode(sim, mode);
     SIM.start(sim);
     paused = false;
@@ -114,6 +117,16 @@
     sync();
 
     input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks: {} });
+    overlayPaint = ctx.overlay.getContext("2d");
+    hud = BL.archeryHud.create({
+      sim, signal: ctx.signal, focus: () => ctx.canvas.focus({ preventScroll: true }), start: startRound,
+      resume: () => { paused = false; resetHeld(); },
+      pause: () => { paused = !paused; resetHeld(); }, exit: () => { resetHeld(); ctx.go("arcade"); },
+      aim: (dir, down) => { if (dir < 0) aimUp = down; else aimDown = down; },
+      draw: (down) => { if (!paused) { if (down) SIM.beginDraw(sim); else SIM.release(sim); } },
+      cancel: resetHeld,
+    });
+    hud.render(paused);
     // The director dispatches keydown only; the visit owns keyup and releases every held action on exit.
     window.addEventListener("keyup", handleKey, { signal: ctx.signal });
     window.addEventListener("blur", resetHeld, { signal: ctx.signal });
@@ -140,7 +153,7 @@
     } else if (e.code === "Enter") {
       if (down && !e.repeat) {
         if (paused) paused = false;
-        else if (sim.status !== "playing") startRound(sim.mode);
+        else if (sim.status !== "playing") startRound(hud.mode());
       }
     } else if (e.code === "ArrowUp" || e.code === "KeyW") aimUp = down;
     else if (e.code === "ArrowDown" || e.code === "KeyS") aimDown = down;
@@ -160,9 +173,15 @@
     sync();
   };
 
-  const overlay = () => {};
+  const overlay = () => {
+    overlayPaint.clearRect(0, 0, host.overlay.width, host.overlay.height);
+    hud.render(paused);
+  };
 
   const leave = () => {
+    resetHeld();
+    hud.dispose();
+    hud = overlayPaint = null;
     aimUp = false;
     aimDown = false;
     paused = false;
@@ -194,6 +213,7 @@
     camera: null,
     input: null,
     debug: null,
+    get cabinetMenu() { return !!sim && sim.status === "ready"; },
     enter,
     update,
     overlay,
