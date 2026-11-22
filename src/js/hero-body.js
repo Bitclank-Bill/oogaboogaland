@@ -322,7 +322,7 @@
   const BUILD = {
     regular: {
       // `shoulder` is the height the trunk's clothes reach: over it is the neck.
-      armX: 5.3, handScale: 1, shoulder: 8.45, skirt: [3.55, 2.22], thigh: 3.85,
+      armX: 5.3, handScale: 1, shoulder: 8.45, skirt: [3.85, 2.3], thigh: 3.85,
       leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.5, 1.6, 0.45, 0, 0.08],
         [-4.8, 1.55, 1.7, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
       // The anklet stands clear of the calf above it and the instep below, so its wraps cover the ankle whole.
@@ -342,10 +342,11 @@
       elbow: [-4.9, -0.9], sleeve: 4, wrist: [-2.75, 1.45, 1.5],
       // The chest is a raised section of the trunk itself: it steps out over the ribs in two eased facets, with its
       // front corners cut wide, and runs back to the collar.
-      torso: [[-0.4, 3.1, 2, 0.6], [1, 3.3, 2.15, 0.6], [2, 3.2, 2.1, 0.6], [4, 3.4, 2.15, 0.65], [5.15, 3.7, 2.25, 0.7], [5.4, 3.9, 2.38, 0.95, 0, 0.13],
+      // The trunk widens a little toward its foot, so the thighs meet its sides there rather than standing out past it.
+      torso: [[-0.4, 3.8, 2.15, 0.65], [1, 3.6, 2.15, 0.65], [2, 3.45, 2.15, 0.65], [4, 3.4, 2.15, 0.65], [5.15, 3.7, 2.25, 0.7], [5.4, 3.9, 2.38, 0.95, 0, 0.13],
         [5.72, 4.05, 2.47, 1.1, 0, 0.22], [7.05, 4.3, 2.48, 1.15, 0, 0.2], [7.85, 4.05, 2.35, 0.9, 0, 0.05], [8.45, 2.6, 2, 0.7], [9.05, 2, 1.7, 0.6]],
       nipple: [2.65, 6.15],
-      chest: [5.72, 7.05, 2.69, 2.68], belt: [0.72, 2.28, 3.62, 2.55]
+      chest: [5.72, 7.05, 2.69, 2.68], belt: [0.72, 2.28, 3.92, 2.55]
     },
     slim: {
       // Her legs stand close, with a narrow gap between them (`legX`, each leg's middle from the body's), and her
@@ -415,6 +416,7 @@
     const key = (slim ? "slim:" : "regular:") + (shape || "");
     if (tuckedBuilds.has(key)) return tuckedBuilds.get(key);
     const B = buildOfRaw(slim, shape), base = slim ? BUILD.slim : BUILD.regular;
+    if (!shape) { tuckedBuilds.set(key, B); return B; }
     const top = Math.max(B.leg[0][1], B.leg[1][1]), lx = B.legX || 2, target = B.torso[0][1] - THIGH_IN;
     const gap = (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]);
     let T = B;

@@ -132,12 +132,13 @@ breastbone; its nipples stay, on the chest's flat face), the shapes in
 its thighs, however thick they are, and every body has a crotch under the trunk
 between them in what the thighs wear, so trousers read as one garment; over bare thighs it
 is bare, so shorts end flat at their own hem. A build without a shape keeps its own
-belt and crotch exactly. Any build whose thighs would stand out past the trunk's foot
-(the regular male, and a thicker shape) draws its whole leg smaller and the legs closer
-together (`THIGH_IN` inside the trunk's sides, the build's own gap between the thighs),
-its feet keeping their length and narrowing only as far as they must not to meet
-(`FEET_GAP`), so the legs join the trunk under it and nothing overhangs under the waist.
-That change reaches every male Ooga's own look. On a shape a belt follows the trunk round the
+belt and crotch exactly. The regular (male) build's trunk widens a little toward its
+foot, so its thighs meet the trunk's sides there rather than standing out past it, its
+belt and skirt standing out as far past the wider hips as before; this reaches every male
+Ooga's own look. A shape whose thighs would still stand out past the trunk's foot draws
+its whole leg smaller and the legs closer together (`THIGH_IN` inside the trunk's sides,
+the build's own gap between the thighs), its feet keeping their length and narrowing only
+as far as they must not to meet (`FEET_GAP`). On a shape a belt follows the trunk round the
 waist a fixed `BELT_OUT` proud of it, so it neither sinks in where the shape swells nor
 stands off where it draws in.
 
