@@ -274,13 +274,7 @@
           const x0 = (c - 2.5) * pw, y1 = top - r * ph;
           H.poly(g, [on(x0, y1 - ph, 1, d), on(x0 + pw, y1 - ph, 1, d), on(x0 + pw, y1, 1, d), on(x0, y1, 1, d)], GOLD, [0, 0, 1]);
         });
-        const B = H.buildOf(!!k.traits.slim, k.traits.bodyShape), legAt = (y) => {
-          let n = 1;
-          while (n < B.leg.length - 1 && B.leg[n][0] > y) n++;
-          const a = B.leg[n - 1], b = B.leg[n], t = Math.max(0, Math.min(1, (a[0] - y) / (a[0] - b[0])));
-          return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t];
-        }, hem = (y, out, cut) => { const [x, z, c] = legAt(y); return [y, x + out, z + out, c + cut]; };
-        H.loft(g, [shell(S.low + 0.02, 0.015), [S.low - 0.24, B.torso[0][1], B.torso[0][2] * 1.53 / 1.9, 0.5, 0, -0.03]], SHORTS, [false, true]);
+        H.loft(g, [shell(S.low + 0.02, 0.015), [S.low - 0.24, 2.9, 1.53, 0.5, 0, -0.03]], SHORTS, [false, true]);
         const B0 = 1.2, B1 = 2.5, BY = (B0 + B1) / 2;
         H.loft(g, [shell(B0 - 0.02, 0), shell(B0, 0.1), shell(B1, 0.1), shell(B1 + 0.02, 0)], LEATHER, [false, false]);
         const z0 = S.face(0, B0, 1) * tuck(B0) + 0.1, lean = (S.face(0, B1, 1) * tuck(B1) + 0.1 - z0) / (B1 - B0), nl = Math.hypot(lean, 1), out = [0, -lean / nl, 1 / nl];
@@ -292,7 +286,7 @@
         const cuff = M.geometry(), bands = M.geometry();
         H.loft(cuff, [[-3.92, 0.84, 0.86, 0.3], [-3.76, 1.03, 1.05, 0.36], [-3.02, 1.07, 1.09, 0.36], [-2.86, 0.92, 0.95, 0.32]], [GOLD_DK, GOLD, GOLD_HI]);
         const band = "#2a242c";
-        H.loft(bands, [hem(0.1, 0.06, 0.02), hem(-0.96, 0.08, 0.02), hem(-1.02, 0.01, 0)], SHORTS, [false, false]);
+        H.loft(bands, [[0.1, 1.36, 1.46, 0.42], [-0.96, 1.38, 1.48, 0.42], [-1.02, 1.31, 1.41, 0.4]], SHORTS, [false, false]);
         H.loft(bands, [[-3.95, 1.2, 1.31, 0.38, 0, 0.05], [-3.25, 1.15, 1.26, 0.38, 0, 0.07]], BOOT);
         H.loft(bands, [[-4.5, 1.33, 1.43, 0.4], [-3.95, 1.33, 1.43, 0.4]], band);
         H.loft(bands, [[-5.55, 1.31, 1.45, 0.4, 0, -0.03], [-5.05, 1.31, 1.43, 0.4]], band);
