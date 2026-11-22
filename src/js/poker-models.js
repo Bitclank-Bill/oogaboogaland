@@ -50,7 +50,9 @@
   })();
   const SEATS = seatAngles.map(a => {
     const x = Math.cos(a) * SEAT_A, z = Math.sin(a) * SEAT_B;
-    return { x, z, yaw: Math.atan2(-x, -z) };
+    const yaw=Math.atan2(-x,-z);
+    // Seat centres anchor furniture and presence; hips sit forward so shins clear the piping.
+    return { x, z, yaw, hipX:x+.17*Math.sin(yaw), hipZ:z+.17*Math.cos(yaw) };
   });
   const SIGN_X=3.15, SIGN_Z=-1.52, SIGN_YAW=-.76;
   const PLACES = Object.freeze(seatAngles.map(a => Object.freeze({ x: Math.cos(a) * 6 * TABLE_K, z: Math.sin(a) * 4.2 * TABLE_K })));
@@ -300,10 +302,8 @@
   // The stone top under the felt, its underside bevelled up toward the edge (0.52 in the middle, 0.66 at the rim) so a
   // seated Ooga's feet, reaching just under the rail, pass below it.
   const stoneTop = () => M.lathe({ segments: 48, profile: [[0, 0.52], [0.88, 0.52], [1, 0.66], [1, FELT_Y - 0.06], [0, FELT_Y - 0.06]], color: T.stone[5] });
-  // A walnut chair for an Ooga, built about the seated figure's root (its hip, the chair's spot), its back at -z: turned
-  // legs, a seat of 0.75 by 0.56 with its oxblood cushion's top at SEAT_TOP and front edge 0.27 m before the hip (a
-  // shallow seat, so a seated Ooga's rigid legs overhang it like lower legs), the back pad's face 0.18 m behind the hip
-  // where the Ooga's back rests, a stepped carved crest to 1.06 (about a seated Ooga's shoulder) and gold finials.
+  // A walnut chair with turned legs, an oxblood cushion, a stepped crest and brass finials.
+  // Its back stands at -z and the front piping runs 0.27 m forward of the furniture centre.
   const ornateChair = () => {
     const block = lite ? flat : box, segments = lite ? 4 : 6, top = SEAT_TOP;
     const leg = (x, z) => M.moved(M.lathe({ segments, profile: [[0.04, 0], [0.03, 0.18], [0.045, top - 0.11]], color: T.wood }), x, 0, z);
@@ -702,7 +702,7 @@
   // the four fit the tier's 32 after the 27 before them.
   const GAME_LIGHTS = Float32Array.from(GAMES.flatMap(g => [g.x, 3.6, g.z, 7, 1.6, 1.2, 0.75, 0]));
   // The one sitting pose for a caveman at a table, the same for every figure: the legs forward over the chair and both
-  // arms brought forward to the rail. `standPose` sets back exactly these four rotations to the crew's standing values.
+  // arms brought forward to the rail. Standing restores the original leg meshes and the crew's resting rotations.
   const SIT_LEGS = -1.35, SIT_ARMS = -0.9, STAND_ARMS = -0.2;
   // Bend the calf in the leg's local space. Cutting crossing faces at the fold keeps
   // the long voxel faces and their shorter neighbours joined along the kneecap.

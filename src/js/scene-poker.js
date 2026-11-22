@@ -353,7 +353,7 @@
   };
   const sit = index => {
     const p = BL.pokerModels.TABLES[selected], s = BL.pokerModels.SEATS[index];
-    avatar.root.position.x = p.x + s.x; avatar.root.position.z = p.z + s.z;
+    avatar.root.position.x = p.x + s.hipX; avatar.root.position.z = p.z + s.hipZ;
     avatar.root.position.y = BL.pokerModels.sitY(avatar.traits.height); avatar.root.rotation.y = s.yaw;
     pilot.controls.reset(); pilot.setActive(false); seated = true; heroChair = index >= 0 ? selected * 9 + index : -1;
     document.body.dataset.pokerSeated = "true";
@@ -417,7 +417,7 @@
         resetChair(i * 9 + j);
         const actor = BL.models.caveman(traits);
         // At the game's scale 1, as every Ooga, its hip over the seat as the visitor's sits.
-        actor.root.position.x = slot.x; actor.root.position.z = slot.z; actor.root.position.y = BL.pokerModels.sitY(traits.height);
+        actor.root.position.x = slot.hipX; actor.root.position.z = slot.hipZ; actor.root.position.y = BL.pokerModels.sitY(traits.height);
         actor.root.rotation.y = slot.yaw;
         // A cast member's item stays in hand (its dress hides the club when it carries none).
         if (actor.parts.club && !bot && !figure) actor.parts.club.visible = false;
@@ -1003,8 +1003,15 @@
       if (state === 1) {
         BL.pokerModels.sitPose(cave);
         const k = BL.pokerPresence.seatAt(BL.pokerModels.TABLES, BL.pokerModels.SEATS, rec.x, rec.y, rec.z);
-        if (k >= 0) seatPose(cave, k, rec);
-      } else if (state === 2) cave.root.visible = false;
+        if (k >= 0) {
+          const table=BL.pokerModels.TABLES[Math.floor(k/9)], chair=BL.pokerModels.SEATS[k%9];
+          cave.root.position.x=table.x+chair.hipX; cave.root.position.z=table.z+chair.hipZ;
+          seatPose(cave,k,rec);
+        }
+      } else {
+        BL.pokerModels.bendKnees(cave.parts,false);
+        if(state===2) cave.root.visible=false;
+      }
     } });
     unsubscribeReactions = BL.net.subscribeReactions(onReaction);
     // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).

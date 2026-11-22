@@ -92,7 +92,7 @@
         p.push(terraceLamp(x,3.38,z+.40));
       }
     }
-    for(const side of [-1,1]){
+    for(const side of (west?[-1,1]:[-1])){
       const x=cx+side*3.15;
       for(let i=0;i<(lite?3:6);i++) p.push(goblet(x+i*.21,1.034,front-.02-(i%2)*.14,n));
       p.push(ring(x-1,1.06,front-.06,.20,.018));
@@ -110,7 +110,7 @@
     const g=M.merge(...p);cache.set(key,g);return g;
   };
   // The blood-orange peel and basil distinguish the Negroni from the amber rye and cherry.
-  const serviceX=14.5;
+  const serviceX=13.35;
   const cocktail=(x,y,z,kind)=>{
     const p=[turned(x,y,z,[[0,0],[.085,0],[.097,.02],[.097,.036],[0,.036]],
       "#c9d7cb",10,.43),turned(x,y,z,[[.099,.037],[.103,.155],[.102,.182],[0,.182]],kind?"#c28532":"#ba3927",10,.58)];
@@ -131,7 +131,10 @@
     const z=-35.77, agent=BL.agent.create({groundAt:()=>0,x:serviceX,z,managed:true,scale:.96});
     agent.poseManaged(1,serviceX,0,z,0,0,false,true);
     const p=agent.parts, d=BL.pokerCrowdModels.staffDress("waiter");
-    add(p.torso,d.torso); add(p.armL,d.sleeve); add(p.armR,d.sleeve);
+    add(p.torso,d.torso);
+    add(p.torso,M.merge(box(0,.32,.36,.65,.36,.058,"#925735",.23),
+      box(0,.53,.37,.68,.064,.065,brass,.33),beam(-.28,.91,.36,.14,.56,.38,.056,copper)));
+    add(p.armL,d.sleeve); add(p.armR,d.sleeve);
     p.armL.rotation.x=-.83; S.addChild(root,agent.root);
     const silver="#c8d2c9";
     const shaker=turned(0,0,0,[[0,0],[.071,0],[.105,.21],[.108,.265],[.071,.305],[.048,.33],[.05,.375],[0,.375]],silver,12,.55);
@@ -143,6 +146,8 @@
     const counter=[lamp(serviceX-1.16,1.032,-35.10,.64),cocktail(serviceX-.30,1.032,lipZ,0),cocktail(serviceX+.12,1.032,lipZ,1)];
     for(const [dx,name] of [[-.61,"PIZZA DAY NEGRONI"],[.64,"HODL OLD FASHIONED"]]){
       const t=BL.poolModels.carve(name,{cell:.011,color:"#e8c38c",emissive:.45});
+      // Carved wall letters have an 8 cm extrusion. These brass strips are flush with the nameplate.
+      for(let i=2;i<t.geometry.verts.length;i+=3) t.geometry.verts[i]*=.05;
       counter.push(box(serviceX+dx,1.095,-34.53,1.13,.143,.064,dark),
         M.moved(t.geometry,serviceX+dx-t.width/2,1.12,-34.49));
     }
