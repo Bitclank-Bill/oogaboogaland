@@ -1090,6 +1090,7 @@
       && avatar.root.position.z + avatar.bodyRadius > BL.pokerModels.EXIT_Z && !leaving) leaveFloor();
     // All ten table lights fit the lowest renderer tier; selected table goes first.
     const near = selected, lights = renderOpts.lights;
+    room.updateInstruments(elapsed,calm,BL.chain.snapshot);
     const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, Date.now(), camera.position, audio.blockChime);
     const power = Math.min(1, left / 0.8), ease = power * power * (3 - 2 * power);
     for (let slot = 0; slot < 10; slot++) {
@@ -1098,9 +1099,8 @@
       lights[o + 4] = theme.tableLight[0] + 0.20 * ease;
       lights[o + 5] = theme.tableLight[1] - 0.14 * ease; lights[o + 6] = theme.tableLight[2] - 0.2 * ease;
       const v = room.tables[i]; v.pulse = Math.max(0, v.pulse - dt);
-      // Floating table names face the visitor and clear the overhead view with the fixtures.
+      // The table signs clear the overhead view with the fixtures.
       v.label.visible = room.fixtures.visible;
-      if (v.label.visible && !v.fixedSign) v.label.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
       v.agent.parts.armL.rotation.x = -0.5 - Math.sin(v.pulse / 0.7 * Math.PI) * 0.75;
       v.agent.parts.armR.rotation.x = -0.45;
       v.dealCard.visible = v.pulse > 0 && snapshots[i].phase !== "waiting";

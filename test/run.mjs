@@ -35782,6 +35782,16 @@ const pokerGloss = { name: "poker gloss floor", why: "rule: the glass walls stan
   const rigs = `(() => { const BM = BL.bifrostModels, a = BM.sky(0).stars, z = BM.sky(1).stars, stack = [BL.scenes.poker.root]; let n = 0; while (stack.length) { const x = stack.pop(); if (x.geometry === a || x.geometry === z) n++; for (const c of x.children) stack.push(c); } return n; })()`;
   // Glazings on the graph (glass walls): the visit's glazing root reached from the scene's root, counted.
   const glazed = `(() => { const g = BL.scenes.poker.debug.poker.room.glazing.root, stack = [BL.scenes.poker.root]; let n = 0; while (stack.length) { const x = stack.pop(); if (x === g) n++; for (const c of x.children) stack.push(c); } return n; })()`;
+  // Drive the shared snapshot through normal scene frames, including a drained mempool and a missing observation.
+  const skyline = await b.evaluate(`(() => {
+    const room=BL.scenes.poker.debug.poker.room, snap=BL.chain.snapshot, glass=BL.pokerModels.geometry().instruments.glass;
+    const towers=room.tables[6].base.children.filter(n=>n.geometry===glass), stamp=snap.backlogAt, size=snap.vsize;
+    const observe=(at,vsize)=>{snap.backlogAt=at;snap.vsize=vsize;__ooga.advance(1/30,1/30);return towers.reduce((sum,n)=>sum+(n.visible?n.scale.y:0),0);};
+    try {return {count:towers.length,unknown:observe(0,12000000),quiet:observe(10,1000000),busy:observe(11,18000000),drained:observe(12,0)};}
+    finally {observe(stamp,size);}
+  })()`);
+  record("poker era tables: the Fee Market skyline rises and drains with the observed global backlog and stays dark without a reading",
+    skyline.count===9 && skyline.unknown===0 && skyline.quiet>0 && skyline.busy>skyline.quiet && skyline.drained===0,JSON.stringify(skyline));
   const here = await b.evaluate(`(() => {
     const B = __ooga, D = BL.scenes.poker.debug, P = D.poker, R = B.renderer, c = D.camera, count = () => ${count}, rigs = () => ${rigs}, glazed = () => ${glazed};
     B.advance(0.2, 1 / 30);
@@ -39727,7 +39737,7 @@ const pokerGlazingChecks = (BL) => {
       // Re-pinned (the shrink in plan): the fifteen high-top cocktail tables are the crowd's furniture, not the glazing's.
       // Re-pinned (the gaming floor): the four roulette and craps tables are the gaming floor's walk blocks, not the
       // glazing's; the rest stay 24.
-      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === 3 && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
+      const quiet = P.FURNITURE.filter(f => f.kind !== "armchair" && f.kind !== "highTop" && f.kind !== "hourglass" && f.kind !== "game" && f.kind !== "eraSign" && f.kind !== "founderChair").length === 24 && P.FURNITURE.filter(f=>f.kind==="eraSign" && f.solid).length === P.TABLES.length && P.FURNITURE.filter(f=>f.kind==="founderChair" && f.solid).length === 1 && P.FURNITURE.filter(f => f.kind === "game").length === 4 && P.FURNITURE.filter(f => f.kind === "highTop").length === 14 && P.FURNITURE.filter(f => f.kind === "hourglass" && f.hx === BL.pokerHourglass.RADIUS).length === 1 && P.FURNITURE.every(f => !/glaz|sill|terrace|rail|sconce|portal/.test(f.kind)) && P.CLUB_LIGHTS.length === 32 &&
         P.walkable(22.5, 0, 23.5, 0, 0, 2, { bodyRadius: 0.4 }) && !P.walkable(0, 35, 0, 37, 0, 2, { bodyRadius: 0.4 }) && room.glazing.root.parent === env;
       const sconces = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).flame), cups = nodesOf(room.glazing.root).filter(n => n.geometry === G.parts(false).cup);
       const placedLights = sconces.length === 17 && sconces.every(n => Math.abs(n.position.y - G.SCONCE_Y) < 1e-9 && Math.abs(Math.abs(n.position.x) - (23.8 - 0.41)) < 1e-9) &&

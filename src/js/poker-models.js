@@ -358,18 +358,19 @@
       tiles: BL.pokerFloor.tiles(lite),
       column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(), ray: chandelierRay(),
       pinstripeGold: M.lathe({ segments: 64, profile: [[1, FELT_Y + 0.005], [0.993, FELT_Y + 0.005]], color: "#f2cf6e", emissive: 0.45 }),
-      cashier: BL.poolModels.carve("CASHIER", { cell: 0.12, color: "#ffe1a0", emissive: 1 }),
-      // A dark green marble plate framed in gold behind each floating table name, wide enough for TABLE 10, so the light
-      // letters never read against white stone or the cream ceiling.
-      plate: M.merge(box(3.4, 0.85, 0.04, "#1d4234", 0, -0.2, 0.08), box(3.48, 0.05, 0.05, T.accent, 0, 0.245, 0.09), box(3.48, 0.05, 0.05, T.accent, 0, -0.645, 0.09),
-        box(0.05, 0.94, 0.05, T.accent, -1.74, -0.2, 0.09), box(0.05, 0.94, 0.05, T.accent, 1.74, -0.2, 0.09))
+      cashier: BL.poolModels.carve("CASHIER", { cell: 0.12, color: "#ffe1a0", emissive: 1 })
     };
-    built.eras = {};
-    for (const [key, felt, leather] of [[0,"#204335","#392725"],[4,"#394b33",OXBLOOD],[9,"#324049","#353038"]]) {
+    built.eras = [];
+    built.instruments = BL.pokerEraTables.instrumentKit();
+    for (const [key, felt, leather] of [
+      [0,"#204335","#392725"],[1,"#343933","#574538"],[2,"#173b5d","#29344b"],[3,"#484037","#42342d"],
+      [4,"#394b33",OXBLOOD],[5,"#5e3635","#5b3532"],[6,"#23484b","#574537"],
+      [7,"#292d39","#201e28"],[8,"#1f5043","#3f4b38"],[9,"#324049","#353038"]
+    ]) {
       built.eras[key] = { felt:disk(1,FELT_Y-.02,FELT_Y,felt), rim:leather===OXBLOOD?built.rim:rail(leather),
         art:BL.pokerEraTables.decoration(key,lite,built.chair), sign:BL.pokerEraTables.sign(key) };
     }
-    built.cashier.geometry.castShadow = false; built.plate.castShadow = false;
+    built.cashier.geometry.castShadow = false;
     // The evening hall's haze takes nothing off what glows: the crystals, the lanterns' lit glass and the cashier's
     // sign stay crisp down the hall.
     built.amber = built.crystals.map(amberCrystals);
@@ -446,8 +447,8 @@
       const p = TABLES[i], group = S.createNode({ position: { x: p.x, y: 0, z: p.z } });
       const era = geo.eras[i];
       const top = node(geo.stone); top.scale.x = TOP_A; top.scale.z = TOP_B;
-      const rim = node(era ? era.rim : geo.rim); rim.scale.x = 4.5 * TABLE_K; rim.scale.z = 2.92 * TABLE_K;
-      const felt = node(era ? era.felt : geo.felt); felt.scale.x = FELT_A; felt.scale.z = FELT_B;
+      const rim = node(era.rim); rim.scale.x = 4.5 * TABLE_K; rim.scale.z = 2.92 * TABLE_K;
+      const felt = node(era.felt); felt.scale.x = FELT_A; felt.scale.z = FELT_B;
       const pinstripe = node(i === HIGH_ROLLER ? geo.pinstripeGold : geo.pinstripe); pinstripe.scale.x = 4.02 * TABLE_K; pinstripe.scale.z = 2.44 * TABLE_K;
       const base = node(geo.base);
       S.addChild(group, base, top, rim, felt, pinstripe);
@@ -461,21 +462,9 @@
       // Deal left to right and print upright as seen from the gorilla's side of the table.
       const board = Array.from({ length: 5 }, (_, j) => { const n = onFelt(geo.back, (2 - j) * 0.72 * TABLE_K, FELT_Y + 0.03); n.rotation.y = Math.PI; n.visible = false; S.addChild(group, n); return n; });
       const button = onFelt(geo.button); S.addChild(group, button); button.visible = false;
-      let label, plate;
-      if (era) {
-        label = node(era.sign,SIGN_X,0,SIGN_Z);
-        label.rotation.y = SIGN_YAW;
-        plate = label;
-        S.addChild(base,node(era.art));
-      } else {
-        const lettering = BL.poolModels.carve(`TABLE ${i+1}`, {cell:.1,color:"#ffe1a0",emissive:1});
-        lettering.geometry.castShadow = false;
-        label = S.createNode({position:{x:0,y:2.95,z:0}});
-        label.scale.x = label.scale.y = label.scale.z = .7;
-        const text = node(lettering.geometry,-(lettering.width-.2)/2);
-        text.glow=1;
-        plate=node(geo.plate); S.addChild(label,text,plate);
-      }
+      const label = node(era.sign,SIGN_X,0,SIGN_Z);
+      label.rotation.y = SIGN_YAW;
+      S.addChild(base,node(era.art));
       S.addChild(group,label);
       // The dealer, a gorilla at DEALER_SCALE: as tall as a standing Ooga guest, so it reads as staff beside the table, not over it.
       const agent = BL.agent.create({ groundAt: () => 0, x: 0, z: DEALER_Z, managed: true, scale: DEALER_SCALE });
@@ -485,10 +474,11 @@
       S.addChild(group, agent.root);
       const dealCard = onFelt(geo.back, 0, FELT_Y + 0.12, DEAL_FROM); dealCard.visible = false; S.addChild(group, dealCard);
       S.addChild(root, group);
-      const table = { root: group, base, top, rim, felt, pinstripe, chairs, chips, backs, board, button, label, plate, fixedSign:!!era, agent, dealCard,
+      const table = { root: group, base, top, rim, felt, pinstripe, chairs, chips, backs, board, button, label, plate:label, agent, dealCard,
         beads: SEATS.map(() => null), toss: null, push: null, actors: new Array(SEATS.length).fill(null), version: -1, pulse: 0 };
       tables.push(Object.assign(table, lite ? LITE_PROPS : tellProps(table, geo)));
     }
+    const updateInstruments = BL.pokerEraTables.instruments(tables,geo.instruments);
     const sparkle = [], rays = [];
     // The fountain, statues, patterned marble floor, glass vault and glass walls, built once a room on the set `setLite`
     // chose; the hall animates only while its scene is active.
@@ -533,7 +523,7 @@
     S.addChild(environment, node(geo.vaultSign, 0, signY, -36.18),
       node(geo.title.geometry, 0, signY + (geo.welcome.height + gap) / 2, -35.85),
       node(geo.welcome.geometry, 0, signY - (geo.title.height + gap) / 2, -35.85));
-    return { root, tables, fixtures, sparkle, rays, hall, statues, floor, vault, glazing, games };
+    return { root, updateInstruments, tables, fixtures, sparkle, rays, hall, statues, floor, vault, glazing, games };
   };
   // Banana Club's fittings as axis-aligned boxes (centre, half-extents) in room coordinates; the geometry is built from
   // the same table. `solid` ones stop walkers, while the high-roller corner is only a mark round table 9.
