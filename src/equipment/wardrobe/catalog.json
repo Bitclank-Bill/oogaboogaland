@@ -2,6 +2,15 @@
   "format": 1,
   "items": [
     {
+      "id": "body-da1cea08219a3619",
+      "slot": "body",
+      "label": "Male",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "da1cea08219a3619477b2d0bf6d000c4c97d01a97586facf1c9e92da7e35e4dc"
+    },
+    {
       "id": "body-d10ce9f6a0cdb4bb",
       "slot": "body",
       "label": "Female",
@@ -11,13 +20,13 @@
       "version": "d10ce9f6a0cdb4bb08ecb54a1db019925743b81633c12aee27891aa847d4fc2a"
     },
     {
-      "id": "body-b3702bfab77d963a",
+      "id": "body-9d0838d8a7786029",
       "slot": "body",
-      "label": "Female, big-boned",
+      "label": "Male, lean",
       "creators": [
         "OogaBoogaX"
       ],
-      "version": "b3702bfab77d963a4f1104e896e324de27cab8abaece4f8f3adbf17f5c5fcc41"
+      "version": "9d0838d8a778602981412d2359d22f4766fc07c199199ce629e8ceb124527490"
     },
     {
       "id": "body-985f320a26d5c8e1",
@@ -29,15 +38,6 @@
       "version": "985f320a26d5c8e1863edd600fd361808019e9a7964fc01eaa950607b34b161e"
     },
     {
-      "id": "body-da1cea08219a3619",
-      "slot": "body",
-      "label": "Male",
-      "creators": [
-        "OogaBoogaX"
-      ],
-      "version": "da1cea08219a3619477b2d0bf6d000c4c97d01a97586facf1c9e92da7e35e4dc"
-    },
-    {
       "id": "body-5f80dcdc5358c6fb",
       "slot": "body",
       "label": "Male, big-boned",
@@ -47,13 +47,328 @@
       "version": "5f80dcdc5358c6fbdbf0e78cd3b144a6376ede64f97811fcf94e5eace432e91b"
     },
     {
-      "id": "body-9d0838d8a7786029",
+      "id": "body-b3702bfab77d963a",
       "slot": "body",
-      "label": "Male, lean",
+      "label": "Female, big-boned",
       "creators": [
         "OogaBoogaX"
       ],
-      "version": "9d0838d8a778602981412d2359d22f4766fc07c199199ce629e8ceb124527490"
+      "version": "b3702bfab77d963a4f1104e896e324de27cab8abaece4f8f3adbf17f5c5fcc41"
+    },
+    {
+      "id": "skin-127829b06def3348",
+      "slot": "skin",
+      "label": "Fair",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "127829b06def3348b68d197f3e9b0c707264eec428bad9b998edb1de9d041afe"
+    },
+    {
+      "id": "skin-464a284fedf94dc6",
+      "slot": "skin",
+      "label": "Light",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "464a284fedf94dc6791d4179b75aa5ff0993b92a17399a144639818c53f23d7b"
+    },
+    {
+      "id": "skin-07597f25bcad36c8",
+      "slot": "skin",
+      "label": "Peach",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "07597f25bcad36c8bcf2acb6cdd917fad5310005dbb379adf219fba4b10c75a9"
+    },
+    {
+      "id": "skin-2284f3a8ed1fd6eb",
+      "slot": "skin",
+      "label": "Tan",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "2284f3a8ed1fd6ebffac86010f8cdf69779f80fc100f03c0e3888bbfecf4bcd7"
+    },
+    {
+      "id": "skin-60f8e4296e6c458b",
+      "slot": "skin",
+      "label": "Warm",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "60f8e4296e6c458bf373c2c576373f87d4d2f4fa1644fef771a5f1e8a48ccb90"
+    },
+    {
+      "id": "skin-08583894d8eebec3",
+      "slot": "skin",
+      "label": "Golden brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "08583894d8eebec34652f29476c2bb0ed2915b1dc7e4ee20db91b46a0353fabd"
+    },
+    {
+      "id": "skin-c82a9e984f3ed3c1",
+      "slot": "skin",
+      "label": "Brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "c82a9e984f3ed3c190a00a2247dace93dab467fdc36abc6deb7b75eafe35909c"
+    },
+    {
+      "id": "skin-e7ae1961ae46c7c9",
+      "slot": "skin",
+      "label": "Chestnut",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "e7ae1961ae46c7c93e08c3c10f2ac0e86b38cf80dd6b74bb42f56a058bc50877"
+    },
+    {
+      "id": "skin-57fbdb738edb9565",
+      "slot": "skin",
+      "label": "Bronze",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "57fbdb738edb95656f89a79161b288c6f9c920657dbcc738b146c141f370183a"
+    },
+    {
+      "id": "skin-bff407537d995e69",
+      "slot": "skin",
+      "label": "Deep brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "bff407537d995e69f7bc0d64eb66c862b37c1d198bdce3162c6a56b86dba4107"
+    },
+    {
+      "id": "skin-26165e172c61173e",
+      "slot": "skin",
+      "label": "Dark",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "26165e172c61173e28ede29724b7732d98583d647d7cabc5353e1daa7c33254f"
+    },
+    {
+      "id": "hairColor-ddb947c131494f66",
+      "slot": "hairColor",
+      "label": "Black",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "ddb947c131494f66c105ea7dbacde9e0aec040eba68cde07e8b78b01e1611aaf"
+    },
+    {
+      "id": "hairColor-ac191ee137f7380d",
+      "slot": "hairColor",
+      "label": "Dark brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "ac191ee137f7380d3cf70d195d629af17f57b6e1b5cb8badd054ea3759737c21"
+    },
+    {
+      "id": "hairColor-e1ef50355ce1e188",
+      "slot": "hairColor",
+      "label": "Brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "e1ef50355ce1e18831dd121de3bdc9899a76a8a8e802502c0779206d2d6eaac1"
+    },
+    {
+      "id": "hairColor-39228f08209bea1c",
+      "slot": "hairColor",
+      "label": "Light brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "39228f08209bea1ce798313bc7469f0f7ddb24d71bd054e3488a59f0aff926bd"
+    },
+    {
+      "id": "hairColor-0cb9807f90e700d5",
+      "slot": "hairColor",
+      "label": "Chestnut",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "0cb9807f90e700d539e6eab76d4b4030c6b0d02a1bd658b8738b40194b9f31c5"
+    },
+    {
+      "id": "hairColor-ce0622bba3c8a3fe",
+      "slot": "hairColor",
+      "label": "Ginger",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "ce0622bba3c8a3fe12eb25e8cdaaf0125bab0dadcd805f8332446dc156be1adb"
+    },
+    {
+      "id": "hairColor-6db46a3652291d97",
+      "slot": "hairColor",
+      "label": "Blonde",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "6db46a3652291d97ad79c64e914f56b2609ea49e6a9b58113e715272cfc5c54b"
+    },
+    {
+      "id": "hairColor-b8c9c5c4f981b596",
+      "slot": "hairColor",
+      "label": "Platinum",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "b8c9c5c4f981b5962c64b3e08fe13e20986bdefc1be9a98acf85fea615d4f225"
+    },
+    {
+      "id": "hairColor-4fe2e6a873728cae",
+      "slot": "hairColor",
+      "label": "Grey",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "4fe2e6a873728caefc6ab9fa506afd807e84d69a6e5d81208c54f43f32827745"
+    },
+    {
+      "id": "hairColor-62257198de6452db",
+      "slot": "hairColor",
+      "label": "White",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "62257198de6452dbd229f3373ee76143f24f7e743acbae466a7a7b0f73fa0952"
+    },
+    {
+      "id": "hairColor-a72de487959097bd",
+      "slot": "hairColor",
+      "label": "Blue",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "a72de487959097bdaae5617f3667e43c374ad447ac7bdf982309f7c54b48551d"
+    },
+    {
+      "id": "hairColor-876630cb52f2a29b",
+      "slot": "hairColor",
+      "label": "Green",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "876630cb52f2a29b6de95a28e6d6404d4fb376a4e81584ecc295e2edc083ea54"
+    },
+    {
+      "id": "hairColor-bab8d58b6ae39aa4",
+      "slot": "hairColor",
+      "label": "Pink",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "bab8d58b6ae39aa4bb7698b0733063d020e66e975b1ab9b785be94096aceb433"
+    },
+    {
+      "id": "hairColor-460d69712caff17c",
+      "slot": "hairColor",
+      "label": "Purple",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "460d69712caff17cd8e212bc66f7c33c0ec98c532c63a032289ea9ecf346e240"
+    },
+    {
+      "id": "eyeColor-9e4bf16b3ad935c4",
+      "slot": "eyeColor",
+      "label": "Brown",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "9e4bf16b3ad935c4206ac274b34548afc800a1b77b58ad67a76bfff8f7fc0113"
+    },
+    {
+      "id": "eyeColor-1583f34f7a328de3",
+      "slot": "eyeColor",
+      "label": "Hazel",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "1583f34f7a328de3b5a652a1b816898afe57e131d747b25cef3bb36e3d8b0c96"
+    },
+    {
+      "id": "eyeColor-dc76cdfd332bdbe3",
+      "slot": "eyeColor",
+      "label": "Amber",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "dc76cdfd332bdbe3da98466a6e5a5324e0ec457bf75ccaa1de369a1835a0ab2a"
+    },
+    {
+      "id": "eyeColor-4f206b1ced469170",
+      "slot": "eyeColor",
+      "label": "Green",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "4f206b1ced4691706d85ad9948ff88a87449eb847c25a9a414e1253cae991fb8"
+    },
+    {
+      "id": "eyeColor-89cee4dc4dfc113b",
+      "slot": "eyeColor",
+      "label": "Blue",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "89cee4dc4dfc113b188b4cffa9b2cb62ee10fd694c5976e097f219d50ee10701"
+    },
+    {
+      "id": "eyeColor-6267527f79d02a2a",
+      "slot": "eyeColor",
+      "label": "Ice",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "6267527f79d02a2a97fab51c62f33ac2e41d2037ab71c4211acd9620d67771b7"
+    },
+    {
+      "id": "eyeColor-14bd66faf337f86e",
+      "slot": "eyeColor",
+      "label": "Grey",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "14bd66faf337f86e095e9e9f47168df3f7b8fdad143b2428152ad9a3f718d4f7"
+    },
+    {
+      "id": "eyeColor-33e7d3ab095cbe9e",
+      "slot": "eyeColor",
+      "label": "Violet",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "33e7d3ab095cbe9ea3f6be788c0fe9ded30cfd05ba047c851c26517aebedc59a"
+    },
+    {
+      "id": "eyeColor-5b95fb4a0924feb4",
+      "slot": "eyeColor",
+      "label": "Red",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "5b95fb4a0924feb430116bf382ab149f277e7047d7157bbedf939cbfb4db504c"
+    },
+    {
+      "id": "eyeColor-fae78fb2cee5d747",
+      "slot": "eyeColor",
+      "label": "Gold",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "fae78fb2cee5d7477442978367fcc50a5837b6f05e79f992d39464fc5a46c2d9"
     },
     {
       "id": "hair-e70e17f6143de228",
@@ -848,15 +1163,6 @@
       "version": "1c175c70f3572c8ba1ff416ee254e691b1e3f78b7d46b365ad58c7d6e7e722fb"
     },
     {
-      "id": "weapon-e9cdebf1add4e627",
-      "slot": "weapon",
-      "label": "Slim wooden club",
-      "creators": [
-        "OogaBoogaX"
-      ],
-      "version": "e9cdebf1add4e6271ae50f67d085bc7e8c1c24c08a1bec00e3984c718fab4d0c"
-    },
-    {
       "id": "weapon-0f59c2edb44fd308",
       "slot": "weapon",
       "label": "Wooden club",
@@ -864,6 +1170,15 @@
         "OogaBoogaX"
       ],
       "version": "0f59c2edb44fd308a21d8cb1dfa0e3c8a17a0a9e92262b9ea995ec76e2215389"
+    },
+    {
+      "id": "weapon-e9cdebf1add4e627",
+      "slot": "weapon",
+      "label": "Slim wooden club",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "e9cdebf1add4e6271ae50f67d085bc7e8c1c24c08a1bec00e3984c718fab4d0c"
     },
     {
       "id": "weapon-f5cdd21ab4c0de8c",

@@ -382,14 +382,16 @@
   // no line or nipples on a bare chest. `slope` narrows the trunk from the top of the chest to the shoulders (to that
   // share at the shoulders), so they fall to the arms rather than standing square, and `round` cuts the corners of the
   // trunk and of the shoulder's cap deeper; `cap` is the share of the arm's thickening its top two rings take, so the
-  // shoulder rounds over rather than standing as a block, and the arms hang `drop` units lower. Height, hands, feet and the head never change, so nothing that stands, seats or
+  // shoulder rounds over rather than standing as a block, and the arms hang `drop` units lower. `dome` draws the top of
+  // the trunk (from the chest up to the shoulders) and the top of each arm as domes, with rings of their own that
+  // curve over rather than one flat step, and cuts every limb's corners as deep as the trunk's. Height, hands, feet and the head never change, so nothing that stands, seats or
   // aims an Ooga by its height has anything to follow, and everything drawn on the body (clothes, belt, skirt, strap,
   // cuffs, boots) is drawn on these rings, so it fits them.
   const SHAPES = {
     lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.8, armOut: -0.75, legOut: -0.2 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.07, bellyD: 1.1, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.23, thigh: 1.27, shin: 1.22, armOut: 0.62, legOut: 0.38,
-      soft: 1, slope: 0.8, round: 1.6, cap: 0.3, drop: 0.35 }
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.23, thigh: 1.27, shin: 1.22, armOut: 0.62, legOut: 0.38,
+      soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
   // A factor along the trunk's height: half the belly's at the hips, the belly's round the middle, the chest's under the
@@ -412,7 +414,16 @@
     // A ring is [height, half width, half depth, corner cut, ...] with its middle's depth at [5]: each scales by the
     // shape's factors at its height, its middle's step forward (the chest's) eased by `soft`.
     const chestTop = base.chest[1], fall = (y) => !s.slope || y <= chestTop || y > top ? 1 : 1 + (s.slope - 1) * (y - chestTop) / (top - chestTop);
-    const cutOf = (r) => Math.min(r[3] * (s.round || 1), 0.9 * Math.min(r[1], r[2]));
+    // A ring's corner cut, deeper by `round` but never past a regular octagon's (0.6 of its narrower half).
+    const cutOf = (r) => Math.min(r[3] * (s.round || 1), Math.max(r[3], 0.6 * Math.min(r[1], r[2])));
+    // Rings curving over between ring `a` (wide) and ring `b` (narrow) as a dome: at each share `t` of the way, the
+    // width and depth fall from a's to b's along a quarter circle, so the outline rounds over instead of stepping.
+    const DOME = [0.35, 0.62, 0.82, 0.94];
+    const domed = (a, b) => DOME.map((t) => {
+      const out = a.map((v, i) => typeof v === "number" && typeof b[i] === "number" ? v + (b[i] - v) * t : v), k = Math.sqrt(1 - t * t);
+      out[1] = b[1] + (a[1] - b[1]) * k; out[2] = b[2] + (a[2] - b[2]) * k; out[3] = cutOf(out);
+      return out;
+    });
     const ring = (r) => {
       const wx = wAt(r[0]) * fall(r[0]), dz = dAt(r[0]), out = r.slice();
       out[1] *= wx; out[2] *= dz; out[3] *= Math.min(wx, dz);
@@ -431,9 +442,19 @@
     // Down the leg from the thigh's factor to the shin's, so the knee eases between them.
     const legAt = (y) => y >= -2 ? thigh : y <= -4 ? shin : thigh + (shin - thigh) * (-2 - y) / 2;
     const waist = wAt(base.belt[0]), front = dAt(base.belt[0]), chestD = dAt((base.chest[0] + base.chest[1]) / 2);
-    B = { ...base, depthAt: dAt, torso: base.torso.map(ring), armX: base.armX + s.armOut, legX: (base.legX || 2.5) + s.legOut, thigh: base.thigh * thigh,
-      arm: even(base.arm).map((r, i) => { const out = limb(r, i < 2 && s.cap !== undefined ? 1 + (upper - 1) * s.cap : upper); if (i < 3) out[3] = cutOf(out); return out; }),
-      armDrop: (base.armDrop || 0) + (s.drop || 0), forearm: even(base.forearm).map((r) => limb(r, fore)), leg: even(base.leg).map((r) => limb(r, legAt(r[0]))),
+    let torso = base.torso.map(ring), arm = even(base.arm).map((r, i) => { const out = limb(r, i < 2 && s.cap !== undefined ? 1 + (upper - 1) * s.cap : upper); if (i < 3 || s.dome) out[3] = cutOf(out); return out; });
+    let sleeve = base.sleeve;
+    if (s.dome) {
+      // The trunk's top: from the last ring under the shoulders to the shoulders' own.
+      const at = torso.findIndex((r) => r[0] >= top);
+      if (at > 0) torso = [...torso.slice(0, at), ...domed(torso[at - 1], torso[at]), ...torso.slice(at)];
+      // The arm's top: from its first full ring up to its cap (rings run from the shoulder down).
+      arm = [arm[0], ...domed(arm[1], arm[0]).reverse(), ...arm.slice(1)];
+      sleeve += DOME.length;
+    }
+    B = { ...base, depthAt: dAt, torso, sleeve, armX: base.armX + s.armOut, legX: (base.legX || 2.5) + s.legOut, thigh: base.thigh * thigh,
+      arm, armDrop: (base.armDrop || 0) + (s.drop || 0), forearm: even(base.forearm).map((r) => { const out = limb(r, fore); if (s.dome) out[3] = cutOf(out); return out; }),
+      leg: even(base.leg).map((r) => { const out = limb(r, legAt(r[0])); if (s.dome) out[3] = cutOf(out); return out; }),
       knee: base.knee && !soft ? [base.knee[0], base.knee[1], base.knee[2] * legAt(-3.4), base.knee[3] * legAt(-3.4)] : null,
       ankle: [base.ankle[0], base.ankle[1] * shin, base.ankle[2] * shin], wrist: [base.wrist[0], base.wrist[1] * fore, base.wrist[2] * fore],
       skirt: [base.skirt[0] * waist, base.skirt[1] * front], belt: [base.belt[0], base.belt[1], base.belt[2] * waist, base.belt[3] * front],
@@ -772,7 +793,9 @@
       if (W.glasses && W.glasses !== "none") lay(W.glasses);
     }
     const blocks = voxelGeometry(v, { unit: u, palette: colours, origin: { x: -3.5 * u, y: 0, z: -3 * u }, emissive: worn });
-    const white = t.eyeColor || "#f4f0e6", glow = t.eyeGlow || 0, nose = palette[P.nose], dark = "#2a1a14";
+    // A worn eye colour (`W.iris`) is an iris on the white of a plain eye, under its pupil; a character's own eyeColor
+    // colours the whole eye.
+    const iris = W?.iris || null, white = iris ? "#f4f0e6" : t.eyeColor || "#f4f0e6", glow = iris ? 0 : t.eyeGlow || 0, nose = palette[P.nose], dark = "#2a1a14";
     const blockFace = (shut) => {
       const g = geometry(), z = 3.001;
       for (const side of [-1, 1]) {
@@ -790,7 +813,8 @@
           continue;
         }
         slab(g, rect(ex0, ex1, ey0, ey1, z, 0.12 * es), F, 0.06, 1, white, shade(white, 0.88), glow);
-        if (t.noPupils) continue;
+        if (iris) { const [ix0, ix1] = X(1.3, 2.8); slab(g, rect(ax(ix0), ax(ix1), ay(2), ay(3.35), z + 0.03, 0.1 * es), F, 0.04, 1, iris, shade(iris, 0.8)); }
+        if (t.noPupils && !iris) continue;
         const [px0, px1] = X(1.55, 2.55), gx = (px0 + px1) / 2 + 0.2;
         slab(g, rect(ax(px0), ax(px1), ay(2.05), ay(3.05), z + 0.06, 0.1 * es), F, 0.05, 1, "#17110d");
         slab(g, rect(ax(gx), ax(gx + 0.28), ay(2.62), ay(2.9), z + 0.11), F, 0.03, 1, "#ffffff");
@@ -814,14 +838,14 @@
     // line over each, a broad nose and a mouth in her own skin's darker tones. Nothing on it is painted.
     const softFace = (shut) => {
       const g = loft(geometry(), [[0, 2.45, 2.4, 0.85, 0, 0.25], [1.2, 3.1, 3, 0.9], [4.6, 3.25, 3, 0.9], [6.3, 3, 2.8, 1], [7, 2, 1.9, 0.8]], skin), z = 3.005;
-      const iris = t.eyeColor || BROWN, lip = shade(skin, 0.74), lipDk = shade(skin, 0.6);
+      const irisColor = iris || t.eyeColor || BROWN, lip = shade(skin, 0.74), lipDk = shade(skin, 0.6);
       for (const side of [-1, 1]) {
         const X = (a, b) => [Math.min(a * side, b * side), Math.max(a * side, b * side)], cx = 1.6 * side;
         if (shut) slab(g, rect(cx - 0.72, cx + 0.72, 3.02, 3.18, z, 0.06), F, 0.04, 1, dark);
         else {
           slab(g, rect(cx - 0.72, cx + 0.72, 2.72, 3.56, z, 0.22), F, 0.04, 1, "#f4f0e6", "#d9d2c2", glow);
-          if (!t.noPupils) {
-            slab(g, rect(cx - 0.4, cx + 0.4, 2.74, 3.54, z + 0.04, 0.2), F, 0.03, 1, iris);
+          if (!t.noPupils || iris) {
+            slab(g, rect(cx - 0.4, cx + 0.4, 2.74, 3.54, z + 0.04, 0.2), F, 0.03, 1, irisColor);
             slab(g, rect(cx - 0.2, cx + 0.2, 2.94, 3.36, z + 0.07, 0.07), F, 0.02, 1, "#15100d");
             slab(g, rect(cx - 0.3, cx - 0.12, 3.3, 3.46, z + 0.09), F, 0.02, 1, "#ffffff");
           }

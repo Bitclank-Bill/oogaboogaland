@@ -276,12 +276,25 @@ export const authorWardrobe = (base = root) => {
     const content = { format: 1, slot: "body", build, ...(shape ? { shape } : null) }, text = check(content), version = sha(text);
     found.set(version, { slot: "body", version, text, label, creators: [STOCK], stock: true });
   }
+  // An Ooga's own colours, as swatches in this order.
+  const SWATCHES = {
+    skin: [["Fair", "#f6d2b8"], ["Light", "#f1c27d"], ["Peach", "#e8b48c"], ["Tan", "#d9a06b"], ["Warm", "#c98a5b"], ["Golden brown", "#b58057"], ["Brown", "#a9744c"],
+      ["Chestnut", "#8a5a3a"], ["Bronze", "#8d5524"], ["Deep brown", "#6b4226"], ["Dark", "#4a2c17"]],
+    hairColor: [["Black", "#151312"], ["Dark brown", "#2b1b10"], ["Brown", "#4a2c14"], ["Light brown", "#5c4425"], ["Chestnut", "#7a2e12"], ["Ginger", "#c4622a"],
+      ["Blonde", "#d8b860"], ["Platinum", "#ece0b8"], ["Grey", "#8b8279"], ["White", "#f2efe4"], ["Blue", "#3a6ad0"], ["Green", "#3a9a48"], ["Pink", "#e070a0"], ["Purple", "#7a3fa8"]],
+    eyeColor: [["Brown", "#5a3a1e"], ["Hazel", "#8a6a2a"], ["Amber", "#d08a20"], ["Green", "#3a9a48"], ["Blue", "#3a6ad0"], ["Ice", "#8fd0ff"], ["Grey", "#8b8279"],
+      ["Violet", "#a070e0"], ["Red", "#c42828"], ["Gold", "#e0a830"]]
+  };
+  for (const [slot, list] of Object.entries(SWATCHES)) for (const [label, color] of list) {
+    const text = check({ format: 1, slot, color }), version = sha(text);
+    found.set(version, { slot, version, text, label, creators: [STOCK], stock: true });
+  }
   const catalogFile = join(directory, "catalog.json"), old = existsSync(catalogFile) ? JSON.parse(read(catalogFile)).items : [];
   const rows = [];
   for (const entry of found.values()) rows.push({ id: entry.slot + "-" + entry.version.slice(0, 16), slot: entry.slot, label: entry.label, creators: entry.creators, version: entry.version, stock: entry.stock });
   for (const row of old) if (!found.has(row.version)) rows.push({ ...row, retired: true });
   const order = new Map(JSON.parse(vm.runInContext("JSON.stringify(BL.equipmentWardrobe.WORN)", context)).map((id, i) => [id, i]));
-  rows.sort((a, b) => order.get(a.slot) - order.get(b.slot) || (b.stock ? 1 : 0) - (a.stock ? 1 : 0) || a.label.localeCompare(b.label, "en"));
+  rows.sort((a, b) => order.get(a.slot) - order.get(b.slot) || (b.stock ? 1 : 0) - (a.stock ? 1 : 0) || (a.stock && b.stock ? 0 : a.label.localeCompare(b.label, "en")));
   // Two pieces under one name in a slot are told apart by who made them.
   const seen = new Map();
   for (const row of rows) { const k = row.slot + ":" + row.label; seen.set(k, (seen.get(k) || 0) + 1); }

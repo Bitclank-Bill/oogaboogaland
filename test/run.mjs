@@ -49954,6 +49954,16 @@ const equipmentAppChecks = async () => {
     await wait("__ooga.studio.cave.elbow===__ownBody.elbow", "Original did not give the Ooga its own build back");
     record("equipment wardrobe: the body switches the build in place, a female face takes no beard, and Original gives the Ooga's own build back", built
       && await b.evaluate("__ooga.studio.cave.parts.armR.position.x===__ownBody.arm && __ooga.studio.cave.armScale===1"));
+    // An Ooga's own colours: a swatch puts the colour on the whole build, and Original takes it off.
+    const ginger = equipmentWardrobe.slotItems("hairColor").find((row) => row.label === "Ginger");
+    await b.evaluate(`(() => { document.querySelector('.studio-tile[data-slot=hairColor]').click();
+      const i=[...document.querySelector('.studio-editor[data-slot=hairColor] select').options].findIndex(o=>o.dataset.value===${JSON.stringify(ginger.version)});
+      document.querySelectorAll('.studio-editor[data-slot=hairColor] .studio-swatch')[i].click(); })()`);
+    await wait("__ooga.studio.cave.template.traits.hair==='#c4622a'", "The hair colour swatch did not dress the Ooga");
+    const toned = await b.evaluate("document.querySelector('.studio-editor[data-slot=hairColor] .studio-swatch[aria-pressed=true]')?.title==='Ginger' && document.querySelector('.studio-tile[data-slot=hairColor] .studio-tile-value').textContent==='Ginger'");
+    await choose("original", "hairColor");
+    await wait("__ooga.studio.cave.template.traits.hair!=='#c4622a'", "Original did not give the Ooga its own hair colour back");
+    record("equipment wardrobe: a colour swatch puts the Ooga's hair colour on its whole build and Original gives its own back", toned);
     const lookRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${lookRevision + 1}`, "Wardrobe save did not complete");

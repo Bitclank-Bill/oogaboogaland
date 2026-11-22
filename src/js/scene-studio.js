@@ -568,6 +568,9 @@
     // Each slot's mark on its tile: a ten-by-ten pixel silhouette in the tile's own ink.
     const ICONS = {
       body: ["....##....", "....##....", "..######..", ".#.####.#.", ".#.####.#.", "...####...", "...#..#...", "..##..##.."],
+      skin: [".########.", "##########", "##########", "##########", "##########", "##########", "##########", ".########."],
+      hairColor: ["..######..", ".########.", "##########", "###....###", "##......##", "##......##", "##......##", "#........#"],
+      eyeColor: ["####..####", "#..#..#..#", "#.##..#.##", "####..####"],
       hat: ["...####...", "..######..", "..######..", "..######..", "..######..", "##########", "##########"],
       hair: ["..######..", ".########.", "##########", "###....###", "##......##", "##......##", "##......##", "#........#"],
       eyes: ["####..####", "#..#..#..#", "#.##..#.##", "####..####"],
@@ -666,6 +669,32 @@
       if (row.slot.none) add(row, row.slot.none, [], () => ({ item: "none", version: null }));
       for (const item of W.slotItems(row.slot.id)) add(row, item.label, item.creators, () => ({ item: item.id, version: item.version }), 0, { item });
     }
+    // The Ooga's own colours choose from swatches over the list: its own colour first, then the palette. Their colours
+    // are the pieces' own, so they are painted once the pieces' chunk is here (equipment.js `loadWardrobe`).
+    const TONES = { skin: "skin", hairColor: "hair", eyeColor: "eyeColor" }, OWN_EYES = "#f4f0e6";
+    const ownTone = (id) => (cave.template?.traits || cave.traits)[TONES[id]] || (id === "eyeColor" ? OWN_EYES : "#888888");
+    const toneOf = (row, entry) => entry === row.options[0] ? ownTone(row.slot.id) : W.content(entry.item?.version)?.color || null;
+    const swatched = rows.filter((row) => TONES[row.slot.id]);
+    for (const row of swatched) {
+      const box = element("div", "studio-swatches");
+      box.setAttribute("role", "group"); box.setAttribute("aria-label", `${row.slot.label} swatches`);
+      row.swatches = row.options.map((entry) => {
+        const swatch = element("button", "studio-swatch");
+        swatch.type = "button"; swatch.title = entry.label; swatch.setAttribute("aria-label", entry.label); swatch.setAttribute("aria-pressed", "false");
+        if (entry === row.options[0]) swatch.dataset.own = "true";
+        swatch.addEventListener("click", () => { row.select.value = entry.option.value; row.select.dispatchEvent(new Event("change")); }, { signal });
+        box.append(swatch);
+        return swatch;
+      });
+      row.select.before(box);
+    }
+    // Painted now where the pieces are already here (the portable page, a second visit), else once they arrive.
+    const paintSwatches = () => {
+      for (const row of swatched) row.options.forEach((entry, i) => { const tone = toneOf(row, entry); if (tone) row.swatches[i].style.background = tone; });
+    };
+    paintSwatches();
+    const ready = equipment.loadWardrobe();
+    if (ready) ready.then(() => { if (wardrobe === view && !signal.aborted) { paintSwatches(); display(); } }, () => {});
     // The option showing what a row wears: the hat's grouped choice for its pin, or a slot's item. A pin no longer
     // listed (an old hat version, a retired piece) gets an option of its own while it is saved or previewed.
     const optionFor = (row, worn) => {
@@ -703,7 +732,13 @@
         row.select.value = entry.option.value;
         row.value.textContent = entry === row.options[0] ? "Original" : entry.label;
         // A body is the game's own build, credited to nobody.
-        row.credit.textContent = row.slot.id === "body" ? "" : credits(entry.creators);
+        // A body or an Ooga's own colour is the game's, credited to nobody.
+        row.credit.textContent = row.slot.id === "body" || row.swatches ? "" : credits(entry.creators);
+        if (row.swatches) {
+          row.swatches.forEach((swatch, i) => swatch.setAttribute("aria-pressed", String(row.options[i] === entry)));
+          const tone = toneOf(row, entry);
+          row.tile.querySelector(".studio-tile-icon").style.color = tone || "";
+        }
         const same = row === hatRow ? hatKey(worn) === hatKey(base) && (!worn || worn.item === "none" || view.size === equipment.state.record.size)
           : pieceKey(worn) === pieceKey(base) && (worn?.size || 100) === (base?.size || 100);
         row.details.toggleAttribute("data-changed", view.dirty && !same);
@@ -712,6 +747,7 @@
         const ok = supported(row);
         row.details.toggleAttribute("data-unsupported", !ok);
         row.select.disabled = !ok;
+        if (row.swatches) for (const swatch of row.swatches) swatch.disabled = !ok;
         row.note.hidden = ok;
         if (!ok) row.note.textContent = row === hatRow ? "This character needs a hat fitting before it can wear shared hats."
           : `This Ooga's own design keeps its ${row.slot.label.toLowerCase()}.`;

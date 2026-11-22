@@ -78,7 +78,7 @@ while trying other hats.
 ## The wardrobe
 
 Beside the hat, an Ooga wears a body and something in each of these slots, in the
-studio's order: body, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
+studio's order: body, skin, hair colour, eye colour, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
 shoes, back (wings, capes and what else is built out past the trunk) and its
 primary weapon. `src/js/equipment-wardrobe.js` is the contract, shared unchanged
 by the page, the Worker and the authoring script: the slots (`SLOTS`), what a
@@ -88,7 +88,8 @@ piece is as data in each, which authored block belongs to which body slot
 A piece is data read from a character's own design, never a hook: blocks for the
 hair, the glasses and the body slots (in the character's own colours, or the
 wearer's skin, hair or fur by name), traits for the eyes and the mouth, a colour
-for the beard, and a mesh for the mask and the weapon. Identical pieces are one
+for the beard and for the skin, hair and eye colours, and a mesh for the mask and
+the weapon. Identical pieces are one
 item credited to everyone whose Ooga wears it, and the stock outfit's pieces are
 credited to the project. An item is named by its content's hash: a creator's
 later change makes a new item, and the old one stays registered, retired, for
@@ -121,7 +122,8 @@ weapon a hand without a nunchaku. The studio says so on the row.
 The body is the build an Ooga is drawn in: **Male** or **Female** (the regular and
 slim builds), each also **lean** (a narrower trunk, thinner limbs) or **big-boned**
 (a bigger, softer frame: the waist filled out, the chest's step and the limbs'
-swells evened, sloped and rounded shoulders, no kneecap or chest line), the shapes
+swells evened, sloped shoulders domed over the top (`dome`, extra rings between
+the trunk and the arm's cap), corners rounded off, no kneecap or chest line), the shapes
 in `hero-body.js` `SHAPES`. It never changes height, hands, feet or the head, so
 nothing that stands, seats or aims an Ooga by its height has anything to follow.
 Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
@@ -132,6 +134,13 @@ again. A female build's face takes no beard or mouth piece. A character that mod
 its own body keeps it unless its model has been reviewed in every build and shape
 (`character-wardrobe.js` `REVIEWED_BODIES`: w-s-bitcoin, whose body is the modelled
 body's own builder with its belt, skirt, cuffs and anklets).
+
+The colour slots take a swatch from a short palette, or the character's own colour
+(the first swatch): **Skin** and **Hair color** recolour whatever the body paints in
+the wearer's skin or hair, and **Eye color** gives a stock head an iris in that
+colour (a head the character shaped itself takes it as its eyes' colour). A
+character that models its own body keeps its skin and hair, and one with its own
+eyes hook keeps its eyes.
 
 Taking a piece off leaves the body's own shape bare: its blocks turn skin, a
 belt's turn the cloth over (or under) it, and only what was built out past the

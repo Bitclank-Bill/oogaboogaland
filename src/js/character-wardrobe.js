@@ -20,6 +20,9 @@
     const slot = W.SLOT.get(id), dress = own(cave);
     if (!slot || id === "hat" || !cave?.template || !cave.parts?.head) return false;
     if (id === "body") return !dress.model || REVIEWED_BODIES.has(cave.traits.name.toLowerCase());
+    // An Ooga's own colours, where its file does not paint its body itself; eyes only where it draws none of its own.
+    if (id === "skin" || id === "hairColor") return !dress.model;
+    if (id === "eyeColor") return !dress.model && !dress.eyes;
     if (id === "mask") return !(dress.model || dress.skull);
     if (slot.place === "head") return stockHead(dress) && (id !== "beard" && id !== "mouth" || !slim);
     if (slot.place === "body") return !dress.model;
@@ -58,7 +61,15 @@
       const piece = choice.item === "none" ? "none" : W.content(choice.version);
       if (!piece) return null;
       if (id === "mask") { mask = { piece, version: choice.version, size: choice.size || 100 }; continue; }
-      if (id === "body") { keys.push("body:" + choice.version); body = { slim: piece.build === "slim", bodyShape: piece.shape }; continue; }
+      if (id === "body") { keys.push("body:" + choice.version); body = { ...body, slim: piece.build === "slim", bodyShape: piece.shape }; continue; }
+      // The Ooga's own colours are its traits: the whole build is drawn from them.
+      if (id === "skin" || id === "hairColor" || id === "eyeColor") {
+        keys.push(id + ":" + choice.version);
+        // An eye colour on the stock head is an iris (hero-body.js `head`); a block head's eyes take it whole.
+        if (id === "eyeColor" && stockHead(own(cave))) head.iris = piece.color;
+        else body = { ...body, [id === "skin" ? "skin" : id === "hairColor" ? "hair" : "eyeColor"]: piece.color };
+        continue;
+      }
       keys.push(id + ":" + (choice.version || "none"));
       const slot = W.SLOT.get(id);
       if (slot.place === "body") paint.push([id, piece]);
@@ -72,6 +83,9 @@
       else if (id === "hair") head.hair = { ...piece, color: W.hexRgb(piece.color) };
       else head[id] = piece;
     }
+    // A chosen hair colour colours a worn hairstyle too, and a chosen eye colour worn eyes.
+    if (body?.hair && head.hair && head.hair !== "none") head.hair = { ...head.hair, color: W.hexRgb(body.hair) };
+    if (body?.eyeColor && head.eyes) head.eyes = { ...head.eyes, eyeColor: body.eyeColor };
     const traits = {};
     if (Object.keys(head).length) traits.head = head;
     if (paint.length) traits.paint = paint;
