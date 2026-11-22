@@ -50023,9 +50023,17 @@ const equipmentAppChecks = async () => {
       for(let i=1;i<=32;i++)BL.models.templateFor({...t,wardrobeKey:'cap-'+i});
       const recent=BL.models.templateFor({...t,wardrobeKey:'cap-32'})===BL.models.templateFor({...t,wardrobeKey:'cap-32'});
       const evicted=BL.models.templateFor({...t,wardrobeKey:'cap-0'})!==first;
-      return {own,hidden,back,recent,evicted};
+      // A pet keeps its file's size at any height its Ooga is worn at, and the Pet slot sizes it alone.
+      const bill=BL.models.caveman(BL.contributors.traitsFor('Bitcoin-Bill')),dog=bill.parts.dog,petGeo=dog.geometry,petScale=dog.scale.x;
+      BL.characterWardrobe.apply(bill,{height:{item:'custom',version:null,height:118}});
+      const petKept=dog.geometry===petGeo&&dog.scale.x===petScale&&bill.traits.height===1.18;
+      BL.characterWardrobe.apply(bill,{height:{item:'custom',version:null,height:118},pet:{item:'custom',version:null,size:150}});
+      const petSized=Math.abs(dog.scale.x-petScale*1.5)<1e-9&&dog.geometry===petGeo;
+      BL.characterWardrobe.apply(bill,null);
+      const petBack=dog.scale.x===petScale&&!BL.characterWardrobe.supports(cave,'pet')&&BL.characterWardrobe.supports(bill,'pet');
+      return {own,hidden,back,recent,evicted,petKept,petSized,petBack,noPetTile:!document.querySelector('.studio-tile[data-slot=pet]')};
     })()`);
-    record("equipment wardrobe: what a character hung on its own club stays off a borrowed weapon, and outfit builds are kept to the most recent 32",
+    record("equipment wardrobe: what a character hung on its own club stays off a borrowed weapon, outfit builds are kept to the most recent 32, and a pet keeps its size at any height and takes the Pet slot's alone",
       Object.values(borrowed).every(Boolean), JSON.stringify(borrowed));
     await choose("original", "shirt"); await choose("original", "weapon"); await choose("original", "shoes");
     const clearRevision = saved.revision;

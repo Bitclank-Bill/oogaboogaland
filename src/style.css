@@ -12585,7 +12585,7 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
    name and what is worn, then square swatches with its own first (a dashed ring), the chosen one ringed in amber, and
    last a colour wheel for any colour, which takes the colour worn once one is mixed. The hex field says and takes it. */
 .studio-colour { padding-top: 8px; border-top: 1px solid rgba(243, 239, 228, 0.12); }
-.studio-colour .studio-editor-name { display: flex; gap: 8px; align-items: baseline; }
+:is(.studio-colour, .studio-valued) .studio-editor-name { display: flex; gap: 8px; align-items: baseline; }
 .studio-colour-name { color: var(--accent-text); font-size: 11px; font-weight: 400; }
 .studio-wardrobe .studio-swatch.studio-wheel { -webkit-appearance: none; appearance: none; display: block;
   background: conic-gradient(#e2453c, #e8c13b, #5fbf4b, #3bb7d2, #4062d8, #b04bd0, #e2453c); }

@@ -17,6 +17,7 @@
   const SLOTS = Object.freeze([
     ["body", "Body", "body", null, false, "frame"],
     ["height", "Height", "height", null, false, "frame"],
+    ["pet", "Pet", "pet", null, false, "pet"],
     ["skin", "Skin", "colour", null, false, "tone"],
     ["hairColor", "Hair color", "colour", null, false, "tone"],
     ["eyeColor", "Eye color", "colour", null, false, "tone"],
@@ -38,6 +39,8 @@
   const SLOT = new Map(SLOTS.map((slot) => [slot.id, slot]));
   // How tall a player may make their Ooga, in hundredths of the game's height: the cast's own run from 0.8 to 1.16.
   const HEIGHT = Object.freeze({ min: 80, max: 120 });
+  // How big a player may make their Ooga's pet, in per cent of the size its file builds it: never its owner's height.
+  const PET = Object.freeze({ min: 50, max: 150 });
   // The slots this module keeps; the hat keeps its own registry and history.
   const WORN = Object.freeze(SLOTS.filter((slot) => slot.id !== "hat").map((slot) => slot.id));
   // The authored colours an Ooga's own palette names (models.js `P`): a piece in one of them takes the wearer's own.
@@ -167,10 +170,15 @@
   const has = (id, version) => typeof id === "string" && typeof version === "string" && byId.get(id)?.version === version;
   // One saved choice for a slot: an item, or taking the slot's piece off, or for an Ooga's own colour (skin, hair or
   // eyes) any colour the player mixed (`custom`, its `color` a lower-case hex), or for the height any height in `HEIGHT`
-  // (`custom`, its `height` in hundredths). The character's own look is no entry at all.
+  // (`custom`, its `height` in hundredths), or for the pet any size in `PET` (`custom`, its `size` in per cent). The
+  // character's own look is no entry at all.
   const choice = (slotId, value) => {
     const slot = SLOT.get(slotId);
     if (!slot || slot.id === "hat" || !plain(value)) fail("Invalid wardrobe choice");
+    if (value.item === "custom" && slot.kind === "pet") {
+      if (!own(value, ["item", "version", "size"]) || value.version !== null || !Number.isInteger(value.size) || value.size < PET.min || value.size > PET.max) fail("Invalid wardrobe choice");
+      return Object.freeze({ item: "custom", version: null, size: value.size });
+    }
     if (value.item === "custom" && slot.kind === "height") {
       if (!own(value, ["item", "version", "height"]) || value.version !== null || !Number.isInteger(value.height) || value.height < HEIGHT.min || value.height > HEIGHT.max) fail("Invalid wardrobe choice");
       return Object.freeze({ item: "custom", version: null, height: value.height });
@@ -237,7 +245,7 @@
     if (lit) authored.lit = lit;
   };
   const hexRgb = (hex) => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
-  BL.equipmentWardrobe = { SLOTS, SLOT, WORN, HEIGHT, TOKENS, TRAITS, PARTS, MAX_BYTES, regionOf, validateContent, register, get, has, choice, selection, key,
+  BL.equipmentWardrobe = { SLOTS, SLOT, WORN, HEIGHT, PET, TOKENS, TRAITS, PARTS, MAX_BYTES, regionOf, validateContent, register, get, has, choice, selection, key,
     seed, paint, encode, canonical, hexRgb, content: (version) => contents.get(version) || null, slotItems: (id) => bySlot.get(id) || Object.freeze([]),
     get items() { return items; }, get seeded() { return seeded; } };
 })();

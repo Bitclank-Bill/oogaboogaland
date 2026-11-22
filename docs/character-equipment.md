@@ -78,7 +78,7 @@ while trying other hats.
 ## The wardrobe
 
 Beside the hat, an Ooga wears a body and something in each of these slots, in the
-studio's order: body, height, skin, hair colour, eye colour, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
+studio's order: body, height, pet, skin, hair colour, eye colour, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
 shoes, back (wings, capes and what else is built out past the trunk) and its
 primary weapon. `src/js/equipment-wardrobe.js` is the contract, shared unchanged
 by the page, the Worker and the authoring script: the slots (`SLOTS`), what a
@@ -153,7 +153,14 @@ height is Original. The body is built again at that height, pieces and all, and
 stands on the same feet: the swap moves its hip (`baseY`), eyes (`headOffset`) and
 `traits.height`, and the crew measures again what it hung on the body (the gun's
 flash, the stun birds, a worn jetpack, its height and girth); another player's copy
-reads its hip and height from the body.
+reads its hip and height from the body. A pet keeps the size its file built it at,
+whatever height its Ooga is worn at: the swap leaves the pet's node alone and keeps it
+on the ground (the crew's `pet.lift` follows the hip).
+
+The Pet section, shown only for an Ooga with a pet (`parts.dog`), sizes it on its own:
+any whole per cent from 50 to 150 of its built size (`equipment-wardrobe.js` `PET`),
+saved as `{ item: "custom", version: null, size: 50..150 }` and set as the pet node's
+scale (with its lying-down drop), so it builds nothing again.
 
 The colour slots take a swatch from a short palette, the character's own colour
 (the first swatch), or any colour from the wheel at the end of the swatches or typed

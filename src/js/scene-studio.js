@@ -557,7 +557,7 @@
       editors: $("studio-editors"), changes: $("studio-changes"), discard: $("studio-discard"), selection: null, size: 100, worn: null, dirty: false, ticket: 0, stop: null, open: "hat" };
     const owns = () => BL.net.ownCharacter()?.handle.toLowerCase() === state.name.toLowerCase();
     const hatKey = (s) => s ? s.item === "none" ? "none" : `${s.item}@${s.version}` : "authored";
-    const pieceKey = (c) => c ? c.item === "none" ? "none" : c.item === "custom" ? "custom:" + (c.color || c.height) : c.version : "original";
+    const pieceKey = (c) => c ? c.item === "none" ? "none" : c.item === "custom" ? "custom:" + (c.color || c.height || c.size) : c.version : "original";
     const nameOf = (handle) => BL.characters.get(handle)?.display || handle;
     const credits = (creators) => {
       if (!creators.length) return "";
@@ -581,6 +581,7 @@
       pants: ["##########", "##########", "####..####", "###....###", "###....###", "###....###", "###....###"],
       shoes: ["..###.....", "..###.....", "..###.....", "..######..", ".########.", "##########", "##########"],
       back: ["#........#", "##......##", "###.##.###", "##########", ".########.", ".###..###.", "..#....#.."],
+      pet: ["..#....#..", ".###..###.", ".###..###.", "..#....#..", "...####...", "..######..", "..######..", "...####..."],
       weapon: ["......###.", ".....####.", "....####..", "...##.....", "..##......", ".##.......", "##........", "#........."]
     };
     const icon = (id) => {
@@ -599,13 +600,14 @@
     // `{ label, creators, pick }`, where `pick` gives what choosing it wears (the hat's selection, or a slot's choice).
     const editors = view.editors, COLOUR_IN = { height: "body", skin: "body", hairColor: "hair", eyeColor: "eyes" };
     const makeRow = (slot) => {
-      const colour = !!COLOUR_IN[slot.id];
-      const body = element("div", colour ? "studio-editor studio-colour" : "studio-editor"), heading = element("p", "studio-editor-name", slot.id === "skin" ? "Skin color" : slot.label);
-      const select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note"), value = colour ? element("span", "studio-colour-name") : null;
+      // A colour and the height sit in another's editor; those and the pet show what they wear beside their heading.
+      const colour = !!COLOUR_IN[slot.id], valued = colour || slot.id === "pet";
+      const body = element("div", colour ? "studio-editor studio-colour" : valued ? "studio-editor studio-valued" : "studio-editor"), heading = element("p", "studio-editor-name", slot.id === "skin" ? "Skin color" : slot.id === "pet" ? "Size" : slot.label);
+      const select = element("select"), credit = element("p", "studio-slot-credit"), note = element("p", "studio-note"), value = valued ? element("span", "studio-colour-name") : null;
       body.id = `studio-editor-${slot.id}`; body.dataset.slot = slot.id; body.hidden = !colour;
       select.id = slot.id === "hat" ? "studio-hat-choices" : `studio-slot-${slot.id}`;
       select.setAttribute("aria-label", slot.label);
-      select.hidden = colour;
+      select.hidden = valued;
       note.hidden = true;
       if (value) heading.append(value);
       body.append(heading, select, credit);
@@ -663,7 +665,8 @@
       row.options.push(entry);
       return entry;
     };
-    const rows = W.SLOTS.map(makeRow), hatRow = rows.find((row) => row.slot.id === "hat"), tiled = rows.filter((row) => row.tile);
+    // The Pet section only for an Ooga with a pet.
+    const rows = W.SLOTS.filter((slot) => slot.id !== "pet" || cave.parts.dog).map(makeRow), hatRow = rows.find((row) => row.slot.id === "hat"), tiled = rows.filter((row) => row.tile);
     for (const row of rows) if (COLOUR_IN[row.slot.id]) { const host = rows.find((r) => r.slot.id === COLOUR_IN[row.slot.id]); host.body.insertBefore(row.body, host.note); }
     for (const row of tiled) row.tile.addEventListener("click", () => choose(view.open === row.slot.id ? null : row), { signal });
     choose(tiled.find((row) => row.slot.id === view.open) || hatRow);
@@ -681,8 +684,8 @@
       if (row.slot.none) add(row, row.slot.none, [], () => ({ item: "none", version: null }));
       for (const item of W.slotItems(row.slot.id)) add(row, item.label, item.creators, () => ({ item: item.id, version: item.version }), 0, { item });
       // A colour the player mixed: the picker's, or one typed as a hex.
-      if (COLOUR_IN[row.slot.id]) row.custom = add(row, "Custom", [], () => row.slot.id === "height" ? { item: "custom", version: null, height: row.mixed }
-        : { item: "custom", version: null, color: row.mixed });
+      if (COLOUR_IN[row.slot.id] || row.slot.id === "pet") row.custom = add(row, "Custom", [], () => row.slot.id === "height" ? { item: "custom", version: null, height: row.mixed }
+        : row.slot.id === "pet" ? { item: "custom", version: null, size: row.mixed } : { item: "custom", version: null, color: row.mixed });
     }
     // The Ooga's own colours choose from swatches over the list: its own colour first, then the palette. Their colours
     // are the pieces' own, so they are painted once the pieces' chunk is here (equipment.js `loadWardrobe`).
@@ -736,21 +739,24 @@
       hex.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); typed(); } }, { signal });
       row.select.before(box, mix);
     }
-    // The height: a slider in hundredths of the game's height (equipment-wardrobe.js `HEIGHT`), read out in metres. The
-    // Ooga's own height is Original; a drag is worn once it rests, as the colour wheel's is.
-    const heightRow = rows.find((row) => row.slot.id === "height");
-    const ownHeight = () => Math.round(BL.contributors.traitsFor(state.name).height * 100);
-    // Feet to crown as the build stands (its head's top, a hat left out), at that share of the game's height.
+    // The height and the pet's size: a slider each, its own value Original, a drag worn once it rests as the colour
+    // wheel's is. The height is in hundredths of the game's height (equipment-wardrobe.js `HEIGHT`), read out in metres
+    // from the feet to the crown (its head's top, a hat left out); the pet's in per cent of the size its file builds it
+    // (`PET`), never its Ooga's height.
     const crowns = new WeakMap(), crownOf = (t) => {
       if (!crowns.has(t)) crowns.set(t, (t.root.position.y + t.parts.head.position.y + BL.scene.boundsOf(t.headOpen).max[1]) / t.traits.height);
       return crowns.get(t);
     };
-    const metres = (hundredths) => (crownOf(cave.template) * hundredths / 100).toFixed(2) + " m";
-    {
-      const row = heightRow, line = element("div", "studio-size-line studio-height-line"), range = element("input"), reset = element("button", "link", "Original");
-      Object.assign(range, { type: "range", id: "studio-slot-height-range", min: String(W.HEIGHT.min), max: String(W.HEIGHT.max), step: "1", value: "100" });
-      range.setAttribute("aria-label", "Height");
-      reset.type = "button"; reset.id = "studio-slot-height-reset";
+    const SLIDERS = {
+      height: { field: "height", range: W.HEIGHT, label: "Height", own: () => Math.round(BL.contributors.traitsFor(state.name).height * 100),
+        show: (v) => (crownOf(cave.template) * v / 100).toFixed(2) + " m" },
+      pet: { field: "size", range: W.PET, label: "Pet size", own: () => 100, show: (v) => v + "%" }
+    };
+    for (const row of rows.filter((row) => SLIDERS[row.slot.id])) {
+      const at = row.slider = SLIDERS[row.slot.id], id = row.slot.id, line = element("div", "studio-size-line studio-height-line"), range = element("input"), reset = element("button", "link", "Original");
+      Object.assign(range, { type: "range", id: `studio-slot-${id}-range`, min: String(at.range.min), max: String(at.range.max), step: "1", value: String(at.own()) });
+      range.setAttribute("aria-label", at.label);
+      reset.type = "button"; reset.id = `studio-slot-${id}-reset`;
       line.append(range, reset);
       row.select.before(line);
       row.tall = range; row.tallReset = reset;
@@ -758,16 +764,15 @@
       const timers = () => { clearTimeout(rest); rest = 0; };
       signal.addEventListener("abort", timers);
       const wear = () => {
-        const v = Number(range.value), own = ownHeight();
+        const v = Number(range.value), worn = view.worn?.[id];
         row.mixed = v;
-        const entry = v === own ? row.options[0] : row.custom;
-        if (entry === row.custom && view.worn?.height?.height === v) return;
-        if (entry === row.options[0] && !view.worn?.height) return;
+        const entry = v === at.own() ? row.options[0] : row.custom;
+        if (entry === row.custom ? worn?.[at.field] === v : !worn) return;
         row.select.value = entry.option.value; row.select.dispatchEvent(new Event("change"));
       };
-      range.addEventListener("input", () => { row.value.textContent = metres(Number(range.value)); range.setAttribute("aria-valuetext", row.value.textContent); timers(); rest = setTimeout(() => { rest = 0; wear(); }, MIX_REST); }, { signal });
+      range.addEventListener("input", () => { row.value.textContent = at.show(Number(range.value)); range.setAttribute("aria-valuetext", row.value.textContent); timers(); rest = setTimeout(() => { rest = 0; wear(); }, MIX_REST); }, { signal });
       range.addEventListener("change", () => { timers(); wear(); }, { signal });
-      reset.addEventListener("click", () => { timers(); range.value = String(ownHeight()); wear(); }, { signal });
+      reset.addEventListener("click", () => { timers(); range.value = String(at.own()); wear(); }, { signal });
     }
     // Painted now where the pieces are already here (the portable page, a second visit), else once they arrive.
     const paintSwatches = () => {
@@ -787,7 +792,7 @@
         return saved.get(row.slot.id + hatKey(worn)) || null;
       }
       if (!worn) return row.options[0];
-      if (worn.item === "custom") { row.mixed = worn.color || worn.height; return row.custom; }
+      if (worn.item === "custom") { row.mixed = worn.color || worn.height || worn.size; return row.custom; }
       return row.options.find((o) => worn.item === "none" ? !o.item && o.pick()?.item === "none" : o.item?.version === worn.version)
         || saved.get(row.slot.id + pieceKey(worn)) || null;
     };
@@ -814,10 +819,10 @@
         row.select.value = entry.option.value;
         // A body or an Ooga's own colour is the game's, credited to nobody.
         row.credit.textContent = row.slot.id === "body" || row.swatches ? "" : credits(entry.creators);
-        if (row === heightRow) {
-          const tall = entry === row.custom ? row.mixed : ownHeight();
+        if (row.slider) {
+          const tall = entry === row.custom ? row.mixed : row.slider.own();
           if (document.activeElement !== row.tall) row.tall.value = String(tall);
-          row.value.textContent = metres(tall);
+          row.value.textContent = row.slider.show(tall);
           row.tall.setAttribute("aria-valuetext", row.value.textContent);
           row.tallReset.disabled = entry !== row.custom;
         }
@@ -840,7 +845,7 @@
         row.details.toggleAttribute("data-unsupported", !ok);
         row.select.disabled = !ok;
         if (row.swatches) for (const control of [...row.swatches, row.wheel, row.hex]) control.disabled = !ok;
-        if (row === heightRow) { row.tall.disabled = !ok; if (!ok) row.tallReset.disabled = true; }
+        if (row.slider) { row.tall.disabled = !ok; if (!ok) row.tallReset.disabled = true; }
         row.note.hidden = ok;
         if (!ok) row.note.textContent = row === hatRow ? "This character needs a hat fitting before it can wear shared hats."
           : `This Ooga's own design keeps its ${row.slot.label.toLowerCase()}.`;
