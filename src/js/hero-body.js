@@ -574,11 +574,13 @@
     }
     if (o.strap) strap(torso, o.strap, B.depthAt);
     // The crotch: a wedge under the trunk between the tops of the thighs, in what the thighs wear, so trousers read as one
-    // garment and no slot of sky shows between the legs. It stands well inside each thigh and behind their faces, so
+    // garment and no slot of sky shows between the legs; over bare thighs, in what the hips wear (shorts, a loincloth). It stands well inside each thigh and behind their faces, so
     // only the part between them shows, and narrows as it drops so a striding leg never uncovers its side.
     {
       const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8;
-      const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
+      const bare = (c) => c[0] === skin[0] && c[1] === skin[1] && c[2] === skin[2];
+      let [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
+      if (paint && bare(worn)) worn = paint.tone(paint.torso.pick(0, B.torso[0][0] + 0.1, 1))[0];
       loft(torso, [[B.torso[0][0] + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
     }
     // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body

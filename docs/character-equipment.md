@@ -130,7 +130,10 @@ the trunk and the arm's cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
-between them in what the thighs wear, so trousers read as one garment. A shape never changes height, hands, feet or the
+between them in what the thighs wear (over bare thighs, what the hips wear: shorts, a
+loincloth), so trousers and shorts read as one garment. midy-machete's shorts, drawn in
+her own file, take their legs' size from the build worn (`heroBody.buildOf`), so they
+cover the thighs of any body. A shape never changes height, hands, feet or the
 head; the height is its own slot (below).
 Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
 hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap
