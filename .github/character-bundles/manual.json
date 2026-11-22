@@ -21,6 +21,15 @@
       "base": "9ff5b764e6f95f6be62a2b4b1f51ed8627ad2cb5",
       "hash": "94dd02df8f988da33ed8ccd791ed82a488f5e3fd281c50d10712da37c8a5ed0a",
       "lane": "manual"
+    },
+    {
+      "pr": 860,
+      "head": "4d93f039b2c966ae00899c6ad79cf41e3b52b46b",
+      "author": "SVRNSociety",
+      "path": "src/characters/SVRNSociety.js",
+      "base": "8e3c0c03438c6900c87c06386c87046468cd0f73",
+      "hash": "f81ea437e39a33f53e15a9506758cc5e4b9ad5f5d1b8099b357bc0a81999b5e7",
+      "lane": "manual"
     }
   ]
 }
