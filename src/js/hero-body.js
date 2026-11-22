@@ -586,7 +586,12 @@
     else loft(torso, B.torso, Array.from({ length: spans }, (_, i) => o.torso && o.torso[i] || skin));
     // The belt follows the trunk round the waist, `BELT_OUT` proud of it all the way, so it neither sinks into the
     // trunk where the trunk swells nor stands off it where the trunk draws in, on any build or shape.
-    if (o.belt) {
+    // On a shape (the wardrobe's lean or big-boned body) the belt goes round the trunk's own rings instead of the build's
+    // box, so it neither sinks in where the shape swells nor stands off where it draws in; a build's own belt is as it was.
+    if (o.belt && !k.traits.bodyShape) {
+      loft(torso, [[B.belt[0], B.belt[2], B.belt[3], 0.62], [B.belt[1], B.belt[2], B.belt[3], 0.62]], o.belt.color);
+      if (o.belt.gold) buckle(torso, (B.belt[0] + B.belt[1]) / 2, B.belt[3], o.belt);
+    } else if (o.belt) {
       const T = trunk(slim, k.traits.bodyShape), band = (y) => { const [hx, hz, cut, cz] = T.ring(y); return [y, hx + BELT_OUT, hz + BELT_OUT, cut + BELT_OUT * 0.4, 0, cz]; };
       const mid = (B.belt[0] + B.belt[1]) / 2;
       loft(torso, [band(B.belt[0]), band(mid), band(B.belt[1])], o.belt.color);
@@ -599,17 +604,14 @@
       for (const side of [-1, 1]) slab(torso, rect(nx * side - 0.22, nx * side + 0.22, ny - 0.2, ny + 0.2, chestZ(ny) - 0.02), FRONT, 0.07, 0.85, o.pecs);
     }
     if (o.strap) strap(torso, o.strap, B.depthAt);
-    // The crotch: the trunk runs straight down past its foot, at its own width and depth, then closes between the
-    // thighs, so the waist meets the legs flat and no slot of sky shows between them. It is in what the thighs wear, or
-    // over bare thighs in what the hips wear (shorts, a loincloth), so trousers and shorts read as one garment. It narrows
-    // inside the thighs as it drops, so a striding leg never uncovers it.
+    // The crotch: a wedge under the trunk between the tops of the thighs, in what the thighs wear, so trousers read as one
+    // garment and no slot of sky shows between the legs. It stands well inside each thigh and behind their faces, so
+    // only the part between them shows, and narrows as it drops so a striding leg never uncovers its side. Over bare
+    // thighs it is bare too, so shorts end flat at their own hem and nothing in their colour hangs below it.
     {
-      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0];
-      const bare = (c) => c[0] === skin[0] && c[1] === skin[1] && c[2] === skin[2];
-      let [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
-      if (paint && bare(worn)) worn = paint.tone(paint.torso.pick(0, low[0] + 0.1, 1))[0];
-      const ring = [low[1], low[2], low[3], 0, low[5] || 0];
-      loft(torso, [[low[0] + 0.3, low[1] - 0.01, low[2] - 0.01, low[3], 0, low[5] || 0], [low[0], ...ring], [-0.9, ...ring], [-1.7, lx * 0.4, deep * 0.62, 0.3]], worn, [false, true]);
+      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0][0];
+      const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
+      loft(torso, [[low + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
     }
     // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so

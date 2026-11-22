@@ -200,7 +200,7 @@
       model(k, wear) {
         const H = BL.heroBody, M = BL.models, u = k.u, body = wear(), S = H.trunk(true);
         const own = S.own, mine = (y) => y >= 2.6 ? 1 : (y < 1.2 ? 1.5 + (y + 0.4) / 1.6 * 0.25 : 1.75 - (y - 1.2) / 1.4 * 0.15) / own.ring(y)[1], tuck = (y) => mine(S.to(y));
-        for (let v = body.torso.verts, i = 0; i < v.length; i += 3) if (v[i + 2] > 0 && v[i + 1] / u >= S.low) v[i + 2] *= tuck(v[i + 1] / u);
+        for (let v = body.torso.verts, i = 0; i < v.length; i += 3) if (v[i + 2] > 0) v[i + 2] *= tuck(v[i + 1] / u);
         const hu = u * HEAD, hair = makeVox(), skin = makeVox(), low = (y) => y > 0 ? y - 1 : y, at = { x: -3.5 * hu, y: NECK * u, z: -3 * hu };
         const flesh = (x, y, z) => skin.fill(2 * x, 2 * x + 1, 2 * y, 2 * y + 1, 2 * z, 2 * z + 1, 0);
         const keeps = (x, y, z) => y && !((x < 0 || x > 6) && (y < 5 && z > 4 || y < 3 && (z > 1 || x < -2 || x > 8) || (y === 3 || y === 4) && (z === 2 || z === 3)));

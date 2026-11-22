@@ -130,15 +130,15 @@ the trunk and the arm's cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
-between them in what the thighs wear (over bare thighs, what the hips wear: shorts, a
-loincloth), so trousers and shorts read as one garment. The trunk runs straight down
-past its foot at its own width into that crotch, so the waist meets the legs flat. A
+between them in what the thighs wear, so trousers read as one garment; over bare thighs it
+is bare, so shorts end flat at their own hem. Every character's own look is unchanged by
+the wardrobe: a build without a shape keeps its own belt and crotch exactly. A
 shape whose thicker thighs would stand out past the trunk's foot draws their tops
 narrower and closer together (`THIGH_IN` inside the trunk's sides, the build's own gap
 between them), easing back to the shape's thickness by the knee, so the legs join the
-trunk under it rather than out past it. A belt follows the trunk round the waist a fixed
-`BELT_OUT` proud of it, so it neither sinks in where the trunk swells nor stands off where
-it draws in.
+trunk under it rather than out past it. On a shape a belt follows the trunk round the
+waist a fixed `BELT_OUT` proud of it, so it neither sinks in where the shape swells nor
+stands off where it draws in.
 
 What a model merges onto the limbs it was handed (`wear()`: a boot's bands, a cuff, the
 legs of shorts) is fitted to the worn limb automatically (`heroBody.refit`): the surface
