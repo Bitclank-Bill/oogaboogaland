@@ -94,7 +94,8 @@
     { id: "drop", scoreId: "drop-1", name: "Ooga Drop", title: "DROP", icon: "chute", light: [0.4, 0.8, 1] },
     { id: "orbit", scoreId: "orbit-1", name: "Ooga Orbit", title: "ORBIT", icon: "rocket", light: [0.7, 0.55, 1] },
     { id: "mine", scoreId: "mine-1", name: "Ooga Mine", title: "MINE", icon: "pick", light: [1, 0.6, 0.25] },
-    { id: "cloud-hopper", name: "Cloud Hopper", title: "CLOUD HOPPER", icon: "cloud", light: [0.4, 0.8, 1] }
+    { id: "cloud-hopper", name: "Cloud Hopper", title: "CLOUD HOPPER", icon: "cloud", light: [0.4, 0.8, 1] },
+    { id: "archery", scoreId: "archery-1", name: "Bow & Bone", title: "ARCHERY", icon: null, light: [0.9, 0.62, 0.3] }
   ];
   // The Ooga retro games (`retro-games.js`), one on each cabinet along the mezzanine, in the cabinets' order from the
   // fifth: scene id, name, and the marquee's words and badge. Each cabinet's trim is its screen's colour.
@@ -127,6 +128,14 @@
     const play = { x: x + Math.sin(turn) * 1.25, z: z + Math.cos(turn) * 1.25, facing: turn + Math.PI };
     return { index: i, scoreId: live ? GAMES[i].scoreId : RETRO[i - 4].scoreId, x, y, z, turn, game: live ? i : -1, retro: live ? -1 : i - 4, body, trim, second, art, stone: !!stone, play };
   });
+  // Bow & Bone, the archery cabinet: a ninth along the mezzanine at the end of the row, its timber cloned from its
+  // neighbour and its own game in the marquee. Pushed before the service cabinet below so its `index` is the same
+  // number as its seat in `arcade-cabinets.js` — that pairing is what the joystick and the play spot look up, and
+  // the seat's own position formula puts it at this same x.
+  const archery = { ...CABINETS[5], index: CABINETS.length, x: 6.75, y: MEZZ.y, z: CABINETS[4].z, turn: 0,
+    game: 5, retro: -1, scoreId: "archery-1", trim: "#ffb347", second: "#e8dcc0",
+    play: { x: 6.75, z: CABINETS[4].z + 1.25, facing: Math.PI } };
+  CABINETS.push(archery);
   // Rally stands left of Invaders across the existing fire bowl at x -6.5, facing the same aisle.
   // Cloud Hopper inherits Rally's exact stage frame and play spot; the other twelve positions stay authored.
   const rally = { ...CABINETS[0], index: CABINETS.length, x: -7.75, y: MEZZ.y, z: CABINETS[4].z, turn: 0, service: true,
