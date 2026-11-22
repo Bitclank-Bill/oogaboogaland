@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const BL = globalThis.BL = globalThis.BL || {};
-  const ids = ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"];
+  const ids = ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker", "archery"];
   const entries = ids.map((id, i) => {
     const a = (i - 1.5) * 0.265, turn = i < 4 ? -a : 0;
     const x = i < 4 ? 8 * Math.sin(a) : (i - 7.5) * 1.5;
