@@ -157,7 +157,7 @@
     let cutawayCloudY = 0, cutawayCloudMix = 0;
     const pool = [];
     let poolUsed = 0, suppressed = 0, rippleSurfaces = 0, rippleWaves = 0;
-    // The WebGL renderer's `stats.info`, in the same shape: here a call is one painted polygon, all in the main pass.
+    // The WebGL renderer's `stats.info`, in the same shape: here a call is one painted polygon, including an actor painted into a reflector.
     // Triangles, instances, GL calls and GPU time do not apply to Canvas 2D and stay null.
     const info = { calls: 0, triangles: null, instances: null, passes: {}, gl: null, gpuMs: null, gpuMsMean: null };
     for (const name of ["shadow", "capture", "main", "post"]) info.passes[name] = { calls: 0, triangles: null, instances: null };
@@ -229,9 +229,8 @@
     // Per-vertex transform memo inside one shadeNode call: welded geometry
     // (island, water, boxes) references each vertex once per face, and the
     // world and view stages round through Float32Array storage either way, so
-    // cached Float32Array copies are bit-identical to recomputing. Eight cache
-    // slots per vertex index cover the four lake variants (waves x charge
-    // rise); waterBody/liquid/projective nodes opt out entirely.
+    // cached Float32Array copies are bit-identical to recomputing. Each vertex
+    // needs one slot, or two when lake and ordinary faces deform differently.
     let wCache = new Float32Array(0), vCache = new Float32Array(0);
     let wStamp = new Int32Array(0), vStamp = new Int32Array(0), vertexGen = 0;
     const growVertexCache = (slots) => {
@@ -557,7 +556,8 @@
       }
       return outside !== 0;
     };
-    const shadeNode = (node) => {
+    const shadeNode = (node, reflectionClip = null) => {
+      const objectClip = reflectionClip || node.geometry.clipPlane;
       const opacity = (node.smokeOpacity === undefined ? 1 : node.smokeOpacity) * (node.geometry.glassOpacity || node.geometry.glass || 1) * (node.geometry.cutawayHide ? 1 - cutawayFade : 1);
       if (opacity === 0) return;
       if (node.mirrorRippleOnly && !node.mirrorRipples?.active && !node.mirrorBody?.contacts && !node.mirrorBody?.active) return;
@@ -576,13 +576,12 @@
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
       const liquid = !!node.geometry.portalSurface, rectangular = !!node.geometry.portalRect, projective = !!node.geometry.projective;
       const waterBody = node.geometry.lakeBody;
-      // Static-input vertices transform once per shadeNode call; lake faces
-      // key their cache slot by the two adjustments they may need.
       const gen = ++vertexGen;
       const cacheVerts = !waterBody && !liquid && !projective;
       const waving = !!node.geometry.lakeWaves;
       const riseParts = node.geometry.lakeCharge, riseCurve = node.geometry.lakeFlowCurve;
       const rising = !!(node.geometry.lakeChargeRise && riseParts && riseParts[1] > 0 && riseCurve);
+      const lakeBit = waving || rising ? 1 : 0;
       // Every voxel face in a glyph shares this instance plane and basis.
       const glyphLength = localMatrixGlyph ? Math.hypot(w[8], w[9], w[10]) : 1;
       const glyphNx = w[8] / glyphLength, glyphNy = w[9] / glyphLength, glyphNz = w[10] / glyphLength;
@@ -616,12 +615,12 @@
             if (Math.min(ra,rb) >= node.portalReveal) continue;
           }
           let centerX = 0, centerY = 0, centerZ = 0, liquidX = 0, liquidZ = 0;
-          const variant = face.lake ? (waving ? 1 : 0) | (rising ? 2 : 0) : 0;
+          const variant = face.lake ? lakeBit : 0;
           for (let k = 0; k < count; k++) {
             const vertex = idx[start + k], b = vertex * 3;
             let slot = 0;
             if (cacheVerts) {
-              slot = (vertex << 2) | variant;
+              slot = (vertex << lakeBit) | variant;
               if (slot * 3 + 3 > wCache.length) growVertexCache(slot + 1);
               if (wStamp[slot] === gen) {
                 const at = slot * 3;
@@ -809,7 +808,6 @@
               surface = destination;
               if (surfaceCount < 3) continue;
             }
-            const objectClip = node.geometry.clipPlane;
             if (objectClip) {
               if (!surface) {
                 surface = MIRROR_CLIP_IN;
@@ -845,7 +843,7 @@
               for (let k = 0; k < surfaceCount; k++) {
                 if (surface) mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
                 else if (cacheVerts) {
-                  const slot = (idx[start + k] << 2) | variant, at = slot * 3;
+                  const slot = (idx[start + k] << lakeBit) | variant, at = slot * 3;
                   if (vStamp[slot] === gen) {
                     CLIP_IN[k * 3] = vCache[at]; CLIP_IN[k * 3 + 1] = vCache[at + 1]; CLIP_IN[k * 3 + 2] = vCache[at + 2];
                     continue;
@@ -1088,7 +1086,6 @@
             divideW(V[0], w, verts[a], verts[a + 1], verts[a + 2]);
             divideW(V[1], w, verts[b], verts[b + 1], verts[b + 2]);
           }
-          const objectClip = node.geometry.clipPlane;
           if (objectClip) {
             const da = objectClip[0] * V[0][0] + objectClip[1] * V[0][1] + objectClip[2] * V[0][2] + objectClip[3];
             const db = objectClip[0] * V[1][0] + objectClip[1] * V[1][1] + objectClip[2] * V[1][2] + objectClip[3];
@@ -1560,6 +1557,70 @@
             }
           }
         }
+      }
+      ctx.globalAlpha = 1;
+    };
+    // The main pass keeps its sorted records in active. A visible looking glass can
+    // then reuse the keys and the unused end of the face pool for its posed actor.
+    const reserveSort = (count) => {
+      if (count <= sortCapacity) return;
+      sortCapacity = Math.max(256, sortCapacity);
+      while (sortCapacity < count) sortCapacity *= 2;
+      sortIds = new Uint32Array(sortCapacity); sortKeys = new Float64Array(sortCapacity); sortWork = sortScratch(sortCapacity);
+    };
+    const originalView = mat4.create(), actorReflection = mat4.create(), actorView = mat4.create();
+    const reflectedEye = { x: 0, y: 0, z: 0 }, actorPlane = new Float64Array(4);
+    let actorGlassFace = null;
+    const gatherReflectedPart = part => {
+      const g = part.geometry;
+      if (!g || g.meshRig || hiddenFromCutaway(part)) return;
+      const bounds = BL.scene.boundsOf(g), face = actorGlassFace;
+      mat4.multiply(actorView, view, part.world);
+      // Reject against this pane's screen bounds before shading detailed hair and gear.
+      let outside = 31;
+      for (let i = 0; i < 8 && outside; i++) {
+        const x = (i & 1 ? bounds.max : bounds.min)[0], y = (i & 2 ? bounds.max : bounds.min)[1], z = (i & 4 ? bounds.max : bounds.min)[2];
+        mat4.transformPoint(V[0], actorView, x, y, z);
+        const span = projectedDepth(-V[0][2]), px = V[0][0] * lastF, py = -V[0][1] * lastF;
+        outside &= (-V[0][2] < near - 0.001 ? 1 : 0)
+          | (px < (face.scrMinX - width / 2 - 2) * span ? 2 : 0) | (px > (face.scrMaxX - width / 2 + 2) * span ? 4 : 0)
+          | (py < (face.scrMinY - height / 2 - 2) * span ? 8 : 0) | (py > (face.scrMaxY - height / 2 + 2) * span ? 16 : 0);
+      }
+      if (!outside) shadeNode(part, actorPlane);
+    };
+    const drawReflectedActor = (node, face) => {
+      // Reflect the eye and its world-to-view transform. Shading stays in the
+      // real room, and the first-person head stays visible to the reflected eye.
+      const w = node.world, len = Math.hypot(w[8], w[9], w[10]);
+      if (!len) return;
+      const nx = w[8] / len, ny = w[9] / len, nz = w[10] / len;
+      const offset = nx * w[12] + ny * w[13] + nz * w[14], side = nx * eye.x + ny * eye.y + nz * eye.z - offset;
+      if (side <= 0) return;
+      actorPlane[0] = -nx; actorPlane[1] = -ny; actorPlane[2] = -nz; actorPlane[3] = offset;
+      actorReflection[0] = 1 - 2 * nx * nx; actorReflection[5] = 1 - 2 * ny * ny; actorReflection[10] = 1 - 2 * nz * nz;
+      actorReflection[1] = actorReflection[4] = -2 * nx * ny; actorReflection[2] = actorReflection[8] = -2 * nx * nz;
+      actorReflection[6] = actorReflection[9] = -2 * ny * nz;
+      actorReflection[12] = 2 * offset * nx; actorReflection[13] = 2 * offset * ny; actorReflection[14] = 2 * offset * nz;
+      reflectedEye.x = eye.x - 2 * side * nx; reflectedEye.y = eye.y - 2 * side * ny; reflectedEye.z = eye.z - 2 * side * nz;
+      const originalEye = eye, first = poolUsed;
+      originalView.set(view); mat4.multiply(view, originalView, actorReflection);
+      eye = reflectedEye; actorGlassFace = face;
+      traverseVisible(node.reflectedActor, gatherReflectedPart);
+      view.set(originalView); eye = originalEye; actorGlassFace = null;
+      const count = poolUsed - first;
+      poolUsed = first;
+      reserveSort(count);
+      for (let i = 0; i < count; i++) { sortIds[i] = i; sortKeys[i] = pool[first + i].depth; }
+      sortByKey(sortIds, 0, count, sortKeys, 1, 0, sortWork);
+      for (let i = 0; i < count; i++) {
+        const part = pool[first + sortIds[i]];
+        if (!part.line && (part.scrMaxX < face.scrMinX || part.scrMinX > face.scrMaxX || part.scrMaxY < face.scrMinY || part.scrMinY > face.scrMaxY)) continue;
+        ctx.globalAlpha = part.smokeOpacity;
+        ctx.beginPath(); ctx.moveTo(part.pts[0], part.pts[1]);
+        for (let k = 1; k < part.n; k++) ctx.lineTo(part.pts[k * 2], part.pts[k * 2 + 1]);
+        if (!part.line) { ctx.closePath(); ctx.fillStyle = part.style; ctx.fill(); }
+        ctx.strokeStyle = part.line && part.coreStyle || part.style; ctx.lineWidth = part.line ? 1.4 : 1; ctx.stroke();
+        info.calls++; info.passes.capture.calls++;
       }
       ctx.globalAlpha = 1;
     };
@@ -2054,11 +2115,7 @@
       if (!environmentCapture && mirrorNode && mirrorDebug.shardsDrawn) updateEnvironment(root, mirrorNode, camera, opts);
       active.length = poolUsed;
       // Reuse the face-pool high-water mark; equal depths keep gather order.
-      if (poolUsed > sortCapacity) {
-        sortCapacity = Math.max(256, sortCapacity);
-        while (sortCapacity < poolUsed) sortCapacity *= 2;
-        sortIds = new Uint32Array(sortCapacity); sortKeys = new Float64Array(sortCapacity); sortWork = sortScratch(sortCapacity);
-      }
+      reserveSort(poolUsed);
       for (let i = 0; i < poolUsed; i++) {
         const rec = pool[i];
         // A large backing polygon must precede its own voxel faces, even when its centre is nearer in an oblique view.
@@ -2074,6 +2131,7 @@
       sortByKey(sortIds, 0, poolUsed, sortKeys, 1, 0, sortWork);
       for (let i = 0; i < poolUsed; i++) active[i] = pool[sortIds[i]];
       info.calls = info.passes.main.calls = poolUsed;
+      info.passes.capture.calls = 0;
       matrixSampleStep = Math.max(1, Math.ceil(Math.sqrt(matrixArea / MATRIX_SAMPLE_BUDGET)));
       if (matrixArea) {
         let samples;
@@ -2262,6 +2320,7 @@
                 }
               }
             }
+            if (node.reflectedActor && !environmentCapture) drawReflectedActor(node, rec);
             if (node.mirrorShard) drawShardEnvironment(node, rec.smokeOpacity, minX, minY, maxX, maxY);
             else if (!node.mirrorRippleOnly) drawMirrorSheen(node, rec.smokeOpacity, maxY - minY);
             if (!rec.portal && !node.mirrorShard) {

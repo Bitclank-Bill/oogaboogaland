@@ -7,32 +7,6 @@
     TAU = Math.PI * 2;
   const palette = ["#254966", "#355e7c", "#487996", "#6596b0", "#86b4c7", "#b2d9e7", "#e1f4f8"];
   const chip = (w, h, d, x, y, z, color, bevel, emissive = 0.28) => M.bevelBox({ w, h, d, color, bevel, emissive, offset: { x, y, z } });
-  // The engine's three atlas faces sample XY, ZY and XZ. Turn the formation between projections.
-  const atlas = M.cached(() => {
-    const canvas = document.createElement("canvas"),
-      ctx = canvas.getContext("2d");
-    canvas.width = 3;
-    canvas.height = 1;
-    ctx.fillStyle = "#eceff1";
-    ctx.fillRect(0, 0, 3, 1);
-    const paper = { canvas, version: 0 },
-      image = new Image();
-    image.onload = () => {
-      const size = 640;
-      canvas.width = size * 3;
-      canvas.height = size;
-      for (let i = 0; i < 3; i++) {
-        ctx.save();
-        ctx.translate(size * (i + 0.5), size * 0.5);
-        ctx.rotate((i * Math.PI) / 2);
-        ctx.drawImage(image, -size / 2, -size / 2, size, size);
-        ctx.restore();
-      }
-      paper.version++;
-    };
-    image.src = BL.pokerIceMap;
-    return paper;
-  });
   const bounds = g => {
     const lo = [Infinity, Infinity, Infinity],
       hi = [-Infinity, -Infinity, -Infinity];
@@ -44,21 +18,12 @@
     }
     return { lo, hi };
   };
+  const glacier = BL.pokerMarble.mineralAtlas(() => BL.pokerIceMap, 640);
   const ice = (g, lite) => {
     g.chrome = 0.15;
     if (!lite && typeof CanvasRenderingContext2D !== "undefined") {
-      const { lo, hi } = bounds(g),
-        paper = atlas();
-      g.imageSurface = {
-        canvas: paper.canvas,
-        atlas: true,
-        atlasMin: lo,
-        atlasMax: hi,
-        rect: [0, 0, 1, 1],
-        get version() {
-          return paper.version;
-        }
-      };
+      const { lo, hi } = bounds(g);
+      glacier(g, lo, hi);
     }
     return g;
   };

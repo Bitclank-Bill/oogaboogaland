@@ -1,4 +1,4 @@
-// The Banana Club's marble kit: veined slabs, turned columns, stepped plinths and brass plaques, flat-coloured with no textures.
+// The Banana Club's marble kit: veined slabs, turned columns, stepped plinths, brass plaques and projected mineral photographs.
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, hexToRgb = BL.math.hexToRgb;
@@ -7,6 +7,40 @@
   // Call only after all carving, colouring and merges are complete.
   const staticMesh = geometry => BL.compactGeometry
     ? BL.compactGeometry.pack(geometry, { immutable: true, renderOnly: true, precision: 64 }) : geometry;
+  // Project a mineral photograph down the three local axes, turning the grain between faces.
+  const mineralAtlas = (source, size) => {
+    const atlas = M.cached(() => {
+      const canvas = document.createElement("canvas"),
+        ctx = canvas.getContext("2d");
+      canvas.width = 3;
+      canvas.height = 1;
+      ctx.fillStyle = "#eceff1";
+      ctx.fillRect(0, 0, 3, 1);
+      const paper = { canvas, version: 0 },
+        image = new Image();
+      image.onload = () => {
+        canvas.width = size * 3;
+        canvas.height = size;
+        for (let i = 0; i < 3; i++) {
+          ctx.save();
+          ctx.translate(size * (i + 0.5), size * 0.5);
+          ctx.rotate((i * Math.PI) / 2);
+          ctx.drawImage(image, -size / 2, -size / 2, size, size);
+          ctx.restore();
+        }
+        paper.version++;
+      };
+      image.src = source();
+      return paper;
+    });
+    return (geometry, min, max) => {
+      const paper = atlas();
+      geometry.imageSurface = {
+        canvas: paper.canvas, atlas: true, atlasMin: min, atlasMax: max, rect: [0, 0, 1, 1],
+        get version() { return paper.version; }
+      };
+    };
+  };
   const LIFT = 0.004;
   // `lite` (set by the scene from the renderer, before it builds) halves the veins and the turning.
   let lite = false;
@@ -79,5 +113,5 @@
   // A faintly glowing brass plate, bottom edge at y 0 and back at z 0, facing +z.
   const plaque = ({ w = 0.7, h = 0.34 } = {}) => once(["plaque", w, h].join(":"), () =>
     M.bevelBox({ w, h, d: 0.035, color: BRASS, emissive: 0.25, bevel: 0.012, offset: { y: h / 2, z: 0.0175 } }));
-  BL.pokerMarble = Object.freeze({ WHITE, VEIN, SHADE, GOLD, CREAM, BRASS, slab, column, plinth, plaque, setLite, staticMesh });
+  BL.pokerMarble = Object.freeze({ WHITE, VEIN, SHADE, GOLD, CREAM, BRASS, slab, column, plinth, plaque, setLite, staticMesh, mineralAtlas });
 })();

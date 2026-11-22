@@ -5031,11 +5031,11 @@ void main() {
           const node = reflectorNodes[i], t = reflectorTarget(node.geometry);
           t.area = reflectorArea(node, camera);
           if (t.area > bestArea) { bestArea = t.area; best = i; }
-          if (node.reflectionRevision !== undefined && node.reflectionRevision !== t.revision && t.area > changedArea) {
+          if ((node.geometry.reflectEveryFrame || node.reflectionRevision !== undefined && node.reflectionRevision !== t.revision) && t.area > changedArea) {
             changed = i; changedArea = t.area;
           }
         }
-        // Short authored changes (the Observatory's TV flashes) take the existing first slot,
+        // A live looking glass or a short authored change (the Observatory's TV flashes) takes the existing first slot,
         // even between low-tier cadence frames. Offscreen mirrors still cost nothing.
         if (changed >= 0) { best = changed; bestArea = changedArea; }
         const due = qualityName === "high" || reflectorFrame++ % settings.mirrorCadence === 0;

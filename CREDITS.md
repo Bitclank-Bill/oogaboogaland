@@ -32,3 +32,7 @@ The lunar surface uses the 2K LROC Wide Angle Camera color mosaic and the 4-pixe
 ## Ember Den Charging Bull
 
 The original in-game Charging Bull model takes its pose from Arturo Di Modica’s sculpture at Bowling Green. [The artist’s estate](https://arturodimodica.com/works/charging-bull/)
+
+## Whale Watch onyx
+
+The storm cloud uses Victor Slyotov’s 2006 photograph of polished agate onyx. The photographer permits reuse and derivatives with attribution. The game crops the specimen, reduces its resolution and grades its bands to black, silver and amber. [Original photograph and permission](https://commons.wikimedia.org/wiki/File:AgateOnyxSl-.jpg)

@@ -10,11 +10,13 @@
   };
   const cache=M.scopedMap();
   const feedX=42,feedZ=-50.5,cloudHeight=13;
+  const onyx = BL.pokerMarble.mineralAtlas(() => BL.pokerOnyxMap, 192);
   // Cut mineral bands follow each billow around to its underside, where the terrace sees them best.
   const stormGeometry=lite=>{
     const random=BL.math.mulberry32(9275),stone=M.geometry(),filaments=[[],[],[]],segments=lite?12:24;
+    const usePhoto=!lite && typeof CanvasRenderingContext2D!=="undefined";
     const layers=[-1,-.88,-.865,-.83,-.68,-.64,-.60,-.38,-.30,-.285,-.09,-.065,-.052,.12,.15,.19,.43,.52,.54,.71,.86,1];
-    const shades=[14,85,30,23,48,119,19,29,90,14,43,112,20,57,38,18,34,115,23,37,30];
+    const swatch=BL.pokerOnyxSwatch;
     let index=0;
     const billow=(x,y,z,w,h,d)=>{
       const seed=random()*TAU,fold=.13+random()*.10;
@@ -27,13 +29,23 @@
       for(let j=0;j<layers.length;j++){
         const row=[];
         for(let k=0;k<segments;k++)row.push(M.pushVert(stone,...point(k*TAU/segments,layers[j])));
+        // Sample the specimen around each billow on the texture-free tier; its raw colours
+        // are baked into faces once. The rotated billows expose different parts of the cut.
+        const latitude=j ? (layers[j-1]+layers[j])*.5 : -1;
+        const swatchRow=!usePhoto ? Math.min(swatch.height-1, Math.floor((.5-.5*Math.sin(latitude*Math.PI*.5))*swatch.height))*swatch.width : 0;
         if(prev)for(let k=0;k<segments;k++){
           const angle=(k+.5)*TAU/segments,next=(k+1)%segments;
           const glint=Math.max(0,Math.cos(angle-1.12+.24*layers[j]))**18;
-          const grain=shades[j-1]*(.72+.23*Math.cos(angle*2+seed)+.13*Math.sin(5*angle+layers[j]*4));
-          const v=Math.round(grain+glint*(10+12*(1+layers[j])));
-          const warm=(j===6 || j===18) && index%3===1;
-          M.face(stone,[prev[k],row[k],row[next],prev[next]],warm?[v+17,v+8,v]:[v,v+3,v+10],{emissive:.60});
+          const v=Math.round(122+15*layers[j]+17*Math.cos(angle+seed)+glint*(10+12*(1+layers[j])));
+          const color=[v,v+3,v+10];
+          if(!usePhoto){
+            const col=Math.floor((.5+.49*Math.sin(angle+seed))*swatch.width);
+            const rgb=swatch.palette[swatch.texels.charCodeAt(swatchRow+col)-65];
+            color[0]=Math.round(color[0]*(rgb>>16)/255);
+            color[1]=Math.round(color[1]*(rgb>>8&255)/255);
+            color[2]=Math.round(color[2]*(rgb&255)/255);
+          }
+          M.face(stone,[prev[k],row[k],row[next],prev[next]],color,{emissive:.60});
         }
         prev=row;
       }
@@ -56,6 +68,10 @@
     }
     billow(-2,4.4,-.7,4.7,3.6,3.5);billow(2.3,4,-1,4,2.9,3.2);
     stone.smooth=true;stone.chrome=.12;
+    if(usePhoto){
+      const bounds=S.boundsOf(stone);
+      onyx(stone,bounds.min,bounds.max);
+    }
     return {stone,arcs:filaments.map(parts=>M.merge(...parts))};
   };
   // The channel is anchored at the point of impact, with a thicker violet corona around its white core.

@@ -1037,6 +1037,7 @@
       cave.parts.club.visible = cave.parts.gun.visible = false;
     }
     pilot.bind(shared); avatar = people.cavemen.get(name);
+    room.statues.mirror.reflectedActor = avatar.root;
     avatar.root.position.x = 0; avatar.root.position.y = avatar.baseY; avatar.root.position.z = 29;
     avatar.root.rotation.y = Math.PI; pilot.possess(avatar);
     // A reload of this tab stands where the Ooga stood on the floor (visit-spot.js), while it can walk on from there.
@@ -1217,6 +1218,7 @@
     if (room.root.visible) {
       terraceScope.updateService(elapsed,calm,salon<0?pilot.player:null,fx);
       room.updateInstruments(elapsed,calm,BL.chain.snapshot);
+      room.statues.update(elapsed,calm);
     }
     const left = room.hall.clock.update(dt, elapsed, BL.chain.snapshot, now, camera.position, audio.blockChime);
     const jubilee = room.hall.bandstand.update(dt,elapsed,calm,BL.chain.snapshot,now);

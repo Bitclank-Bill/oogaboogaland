@@ -39152,7 +39152,7 @@ const pokerMarbleHallChecks = (BL) => {
     const ctx2d = { fillStyle: "", strokeStyle: "", lineWidth: 1, fillRect() {}, strokeRect() {} };
     const context = { window: { location: { search: "" } }, URLSearchParams, location: { search: "" }, console, performance,
       document: { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) } };
-    const sources = ["math", "scene", "compact-geometry", "models", "hero-body", "sign-glyphs", "jumbotron-font", "poker-marble", "poker-statues"];
+    const sources = ["math", "scene", "compact-geometry", "models", "hero-body", "sign-glyphs", "hub-models", "jumbotron-font", "poker-marble", "poker-statues"];
     const statueSource = readFileSync(join(root, "src/js/poker-statues.js"), "utf8");
     for (const name of sources) runInNewContext(name === "poker-statues" ? statueSource : readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
     const BL = context.window.BL, P = BL.pokerStatues, font = BL.jumbotronFont;
@@ -39163,7 +39163,7 @@ const pokerMarbleHallChecks = (BL) => {
       ["dai", "Wei Dai", "a coin marked b", ["B-money, 1998.", "It is the whitepaper's very first citation."]],
       ["szabo", "Nick Szabo", "a gold bar", ["Bit gold: designed 1998, published 2005.", "Chained proofs of work."]],
       ["finney", "Hal Finney", "a tablet marked 170", ["Reusable proofs of work, 2004.", "First to write back that the paper seemed promising.", "Received 10 bitcoin in block 170, 12 January 2009."]],
-      ["satoshi", "Satoshi Nakamoto", "a scroll", ["Signed the whitepaper under a pen name.", "Mined the genesis block on 3 January 2009.", "To this day, nobody knows who that is."]],
+      ["satoshi", "Satoshi Nakamoto", "a looking glass", ["Signed the whitepaper under a pen name.", "Mined the genesis block on 3 January 2009.", "To this day, nobody knows who that is."]],
       ["hanyecz", "Laszlo Hanyecz", "two pizza boxes", ["Paid 10,000 bitcoin for two pizzas in 2010.", "22 May is Bitcoin Pizza Day."]]
     ];
     // Rule: the placards are the plan's table word for word, in order, and nobody else is written about anywhere in the module.
@@ -39186,10 +39186,10 @@ const pokerMarbleHallChecks = (BL) => {
         && columns.every(([x, z]) => Math.hypot(s.x - x, s.z - z) >= 1.2) && Math.abs(s.x) + P.PLINTH.w / 2 <= 23;
     });
     record("poker statues: eight mirrored slots face the centre line, clear of every column and inside the walkable band", slotsOk);
-    // Rule: each statue is one geometry stood on its plinth, under 3.2 m in all, the eight differ, and all eight are one figure.
+    // Seven carved figures and a full-length looking glass share the gallery footprint.
     const names = new Set(), caveman = BL.models.caveman;
     BL.models.caveman = traits => { names.add(traits.name); return caveman(traits); };
-    let statuesOk = true, inFootprint = true, reach = 0, side = 0;
+    let statuesOk = true, mirrorOk = true, inFootprint = true, reach = 0, side = 0;
     try {
       for (const lite of [false, true]) {
         const built = P.build(lite), geos = [];
@@ -39202,9 +39202,22 @@ const pokerMarbleHallChecks = (BL) => {
           for (let k = 0; k < v.length; k += 3) if (Math.abs(v[k]) > P.PLINTH.side || v[k + 2] > P.PLINTH.reach || v[k + 2] < -P.PLINTH.w / 2) inFootprint = false;
           reach = Math.max(reach, ...Array.from({ length: v.length / 3 }, (_, k) => v[k * 3 + 2]));
           side = Math.max(side, ...Array.from({ length: v.length / 3 }, (_, k) => Math.abs(v[k * 3])));
-          statuesOk = statuesOk && group.children.length === 3 && statue.children.length === 0 && plinth.geometry && statue.position.y === P.PLINTH.h
-            && Math.abs(lo) < 1e-9 && statue.position.y + hi < 3.2 && group.position.x === s.x && group.position.z === s.z && group.rotation.y === s.yaw
+          statuesOk = statuesOk && group.children.length === 3 && plinth.geometry
+            && statue.position.y + hi < 3.2 && group.position.x === s.x && group.position.z === s.z && group.rotation.y === s.yaw
             && built.plaques[i].node === plaque && built.plaques[i].index === i && plaque.position.z > 0 && plaque.position.z <= P.PLINTH.w / 2 && Math.abs(plaqueX) < Math.abs(s.x);
+          if (i === 6) {
+            const glass = built.mirror, mesh = glass.geometry, marks = statue.children.filter(n => n.geometry?.matrixGlyph);
+            const bounds = BL.scene.boundsOf(mesh), front = Math.max(...Array.from(v).filter((_, i) => i % 3 === 2));
+            const low = statue.position.y + bounds.min[1], high = statue.position.y + bounds.max[1];
+            const trace = () => marks.map(n => [n.position.x,n.position.y].join()).join("|");
+            const original = trace(); built.update(.5,false); const flowing = trace(); built.update(.7,true); const still = trace(); built.update(1,true);
+            const originals = new Set(Array.from({length:8},(_,v)=>BL.hubModels.matrixGlyph(v)));
+            mirrorOk = mirrorOk && glass.parent === statue && mesh.reflector && mesh.reflectEveryFrame && glass.position.z > front && plaque.position.z >= BL.scene.boundsOf(plinth.geometry).max[2] - 1e-6 &&
+              mesh.faces.length === 1 && mesh.faces[0].i.length === 8 && mesh.verts.every((x,k) => k % 3 !== 2 || x === 0) &&
+              low <= .6 && high >= 2.5 && marks.length > 20 && marks.every(n => originals.has(n.geometry)) &&
+              marks.every(n => Math.abs(n.position.x)>.60 || Math.abs(n.position.y)>1.08 || Math.abs(n.position.x)+Math.abs(n.position.y)>.60+1.08-.145) &&
+              original !== flowing && still === original && trace() === still;
+          } else statuesOk = statuesOk && statue.children.length === 0 && statue.position.y === P.PLINTH.h && Math.abs(lo) < 1e-9;
           geos.push(statue.geometry);
         });
         const differ = geos.every((a, i) => geos.every((b, j) => i === j || a !== b && (a.verts.length !== b.verts.length || a.verts.some((x, k) => Math.abs(x - b.verts[k]) > 1e-6))));
@@ -39216,7 +39229,8 @@ const pokerMarbleHallChecks = (BL) => {
     const up = x => Math.ceil(x / 0.05 - 1e-9) * 0.05;
     record("poker statues: every statue's baked bounds lie inside the exported walk-block footprint, measured from the bakes and rounded up to 0.05 m",
       inFootprint && Math.abs(P.PLINTH.reach - up(reach)) < 1e-9 && Math.abs(P.PLINTH.side - up(side)) < 1e-9, JSON.stringify({ reach, side }));
-    record("poker statues: each is one geometry on its plinth under 3.2 m, all eight differ, cached, and every one is the same invented figure", statuesOk && names.size === 1 && !names.has(undefined));
+    record("poker statues: each of the seven figures is one cached geometry on its plinth under 3.2 m, with the same invented face", statuesOk && names.size === 1 && !names.has(undefined));
+    record("poker gallery: the seventh plinth holds a full-length live mirror inside a flowing border of original Hub glyphs that settles under reduced motion", mirrorOk);
     // Rule: each plaque carries its figure's name, first name over surname, in carved cells on the shared plate and inside it.
     let namesOk = true;
     {
