@@ -2004,6 +2004,17 @@
       const model = STYLE !== "R" ? null : dress.model ? BL.heroBody.dressed(traits, () => dress.model(k, wearing)) : worn = rewear(palette);
       // What its model added to the limbs it was handed (midy-machete's boots and shorts' legs) was drawn for its own
       // build's limbs: it is fitted to the worn build's (`heroBody.refit`).
+      // What a male model merged onto the legs it was handed below the knee (Heimdall's toe caps) goes down the longer
+      // shin with the boot (hero-body.js `SHIN`); a rebuilt body's `refit` does the same as it fits them.
+      if (model && wore && !rebuilt && !traits.slim) {
+        const done = new Set();
+        for (const key of ["leg", "legL"]) {
+          const g = model[key], h = wore[key];
+          if (!g || !h || g === h || done.has(g) || g.verts.length <= h.verts.length) continue;
+          done.add(g);
+          for (let i = h.verts.length + 1; i < g.verts.length; i += 3) if (g.verts[i] / u < BL.heroBody.SHIN_BELOW) g.verts[i] -= BL.heroBody.SHIN * u;
+        }
+      }
       if (model && wore && rebuilt) {
         const mine = { ...traits, slim: ownSlim, bodyShape: undefined };
         BL.heroBody.refit(model, wore, BL.heroBody.dressed(mine, () => BL.heroBody.wear({ ...k, traits: mine }, { ...authored, palette, P, loin: k.loin, strap: !ownSlim })), u, traits.slim ? 0 : BL.heroBody.SHIN);
@@ -2261,7 +2272,7 @@
       wardrobeRecent.delete(key); wardrobeRecent.add(key);
       for (const old of wardrobeRecent) {
         if (wardrobeRecent.size <= WARDROBE_TEMPLATES) break;
-        wardrobeRecent.delete(old); cavemen.delete(old);
+        wardrobeRecent.delete(old); cavemen.delete(old); bareHeads.delete(old.replace("\0bare-head", ""));
       }
     }
     return found;
@@ -2286,12 +2297,14 @@
       template, get portraitHead() { return face === undefined ? this.template.portraitHead : face; }, set portraitHead(geometry) { face = geometry; },
       skins, clubRest: template.clubRest, clubCarry: template.clubCarry, tint: template.tint, gunHeadBounds: template.gunHeadBounds,
       // Only the same character's approved builder runs here; borrowed hats are archived geometry, never hooks.
-      bareHead: () => {
-        let bare = bareHeads.get(traits.name);
+      // The bare head of the build this clone shows, a worn wardrobe's (its height, its hair) included.
+      bareHead() {
+        const worn = this.template.traits, key = traits.name + (worn.wardrobeKey ? "\0" + worn.wardrobeKey : "");
+        let bare = bareHeads.get(key);
         if (!bare) {
-          const body = buildCaveman({ ...BL.contributors.traitsFor(traits.name), equipmentBare: true });
+          const body = buildCaveman({ ...(worn.wardrobeKey ? worn : BL.contributors.traitsFor(traits.name)), equipmentBare: true });
           bare = { headOpen: body.headOpen, headClosed: body.headClosed, portraitHead: body.portraitHead };
-          bareHeads.set(traits.name, bare);
+          bareHeads.set(key, bare);
         }
         return bare;
       } };

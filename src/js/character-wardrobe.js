@@ -97,7 +97,7 @@
     if (weapon) traits.weapon = weapon;
     // The pet's size is its own, set on its node (`setPet`), so it builds nothing again.
     const pet = value && value.pet && supports(cave, "pet") ? value.pet.size : 0;
-    return { key: keys.join(","), traits, body, axe, mask, maskKey: mask ? (mask.version || "none") + "@" + mask.size : "", pet };
+    return { key: keys.join(","), traits, body, axe, mask, maskKey: mask ? (mask.version || "none") + "@" + mask.size + "@" + h : "", pet };
   };
   // Each node of a build, by the node of the character's first build it was made beside: two builds of one character
   // have the same nodes in the same places. Null where they do not.
@@ -154,7 +154,8 @@
     // (or a build with longer legs: a male one's shins, models.js `SHIN`)
     if (target.traits.height !== from.traits.height || target.root.position.y !== from.root.position.y) {
       const lift = target.root.position.y - from.root.position.y;
-      cave.traits.height = target.traits.height; cave.headOffset = target.headOffset; cave.hip = target.hip;
+      // Its own traits object: a first copy shares its build's, which must keep the character's own height.
+      cave.traits = { ...cave.traits, height: target.traits.height }; cave.headOffset = target.headOffset; cave.hip = target.hip;
       cave.root.position.y += lift;
       if (Number.isFinite(cave.baseY)) cave.baseY += lift;
       // The pet stands on the ground, which its Ooga's hip is now `lift` further over (crew.js `attachPet`).

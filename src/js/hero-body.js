@@ -503,7 +503,7 @@
     // The chest's front where the trunk's rings put it (`soft` eases its step forward) and the nipples on its flat face.
     const torsoAt = (y, f) => { const i = torso.findIndex((r) => r[0] >= y), a = torso[Math.max(0, i - 1)], b = torso[i]; const t = b[0] === a[0] ? 0 : (y - a[0]) / (b[0] - a[0]); return f(a) + (f(b) - f(a)) * t; };
     const front = (y) => torsoAt(y, (r) => r[2] + (r[5] || 0)), flat = base.nipple ? torsoAt(base.nipple[1], (r) => r[1] - r[3]) : 0;
-    B = { ...base, depthAt: dAt, torso, sleeve, armX: base.armX + s.armOut, legX, thigh: legX + Math.max(leg[0][1], leg[1][1]),
+    B = { ...base, depthAt: dAt, backAt, torso, sleeve, armX: base.armX + s.armOut, legX, thigh: legX + Math.max(leg[0][1], leg[1][1]),
       arm, armDrop: (base.armDrop || 0) + (s.drop || 0), forearm: even(base.forearm).map((r) => { const out = limb(r, fore); if (s.dome) out[3] = cutOf(out); return out; }),
       leg, sternum: !soft,
       knee: base.knee && !soft ? [base.knee[0], base.knee[1], base.knee[2] * legAt(-3.4), base.knee[3] * legAt(-3.4)] : null,
@@ -630,7 +630,7 @@
       const [nx, ny] = B.nipple;
       for (const side of [-1, 1]) slab(torso, rect(nx * side - 0.22, nx * side + 0.22, ny - 0.2, ny + 0.2, chestZ(ny) - 0.02), FRONT, 0.07, 0.85, o.pecs);
     }
-    if (o.strap) strap(torso, o.strap, B.depthAt);
+    if (o.strap) strap(torso, o.strap, B.depthAt, B.backAt);
     // The crotch: a wedge under the trunk between the tops of the thighs, in what the thighs wear, so trousers read as one
     // garment and no slot of sky shows between the legs. It stands well inside each thigh and behind their faces, so
     // only the part between them shows, and narrows as it drops so a striding leg never uncovers its side. Over bare
@@ -656,7 +656,9 @@
     // it is one piece with the trunk and not a thing laid over it. Its side shards lean out as far as the thighs do.
     if (o.skirt) {
       // Under a belt it hangs from the trunk's own ring there, just inside the belt, so it lies flat on the hips.
-      const low = B.torso[0], ring = o.hem ? [low[0], low[1] + 0.01, low[2] + 0.01, low[3]] : round(B.belt[0] + 0.15, SKIRT_OUT);
+      // It clears the trunk below where it hangs too (a slim build's hips swell under the belt).
+      const hang = B.belt[0] + 0.15, clear = (ring) => { for (const r of B.torso) if (r[0] < hang) { ring[1] = Math.max(ring[1], r[1] + SKIRT_OUT); ring[2] = Math.max(ring[2], r[2] + Math.abs(r[5] || 0) + SKIRT_OUT); } return ring; };
+      const low = B.torso[0], ring = o.hem ? [low[0], low[1] + 0.01, low[2] + 0.01, low[3]] : clear(round(hang, SKIRT_OUT));
       fur(torso, ring, o.skirt, slim ? 1.05 : 1.25, 3, [Math.max(0, B.thigh + 0.05 - ring[1]), 0]);
     }
     if (o.emblem) o.emblem(torso, chestZ, cy0, cy1);
@@ -745,11 +747,12 @@
     path: [[-0.45, 2.2, 0, 1], [0.35, 2.25, 0, 1], [4.9, 2.83, 0, 1], [6.6, 2.74, 0, 1], [7.6, 2.42, 0.45, 0.89], [8.12, 1.5, 0.85, 0.53], [8.2, 0, 1, 0],
       [8.12, -1.5, 0.85, -0.53], [7.6, -2.34, 0.45, -0.89], [6.6, -2.42, 0, -1], [0.35, -2.25, 0, -1], [-0.45, -2.2, 0, -1]] };
   // `deep(y)` (a shaped build's, see SHAPES) moves each station out with the trunk's front or back at its height.
-  const strap = (geo, { color, edge, print }, deep = null) => {
+  // `back(y)` the same for its stations on the back, which a shape keeps at its own depth (`buildOf`'s `backAt`).
+  const strap = (geo, { color, edge, print }, deep = null, back = deep) => {
     const [ax, ay] = STRAP.from, [bx, by] = STRAP.to, len = Math.hypot(bx - ax, by - ay), dx = (bx - ax) / len, dy = (by - ay) / len, nx = dy, ny = -dx;
     const across = [-STRAP.half, STRAP.edge - STRAP.half, STRAP.half - STRAP.edge, STRAP.half];
     const rows = STRAP.path.map(([along, z, oa, od]) => {
-      const ol = Math.hypot(oa, od), out = [dx * oa / ol, dy * oa / ol, od / ol], px = ax + dx * along, py = ay + dy * along, depth = deep ? z * deep(py) : z;
+      const ol = Math.hypot(oa, od), out = [dx * oa / ol, dy * oa / ol, od / ol], px = ax + dx * along, py = ay + dy * along, depth = deep ? z * (z < 0 ? back : deep)(py) : z;
       return { out, inner: across.map((w) => [px + nx * w, py + ny * w, depth]), outer: across.map((w) => [px + nx * w + out[0] * STRAP.thick, py + ny * w + out[1] * STRAP.thick, depth + out[2] * STRAP.thick]) };
     });
     for (let i = 0; i + 1 < rows.length; i++) {
@@ -1206,5 +1209,5 @@
       }
     }
   };
-  BL.heroBody = { wear, trunk, dressed, refit, SHIN, shin, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
+  BL.heroBody = { wear, trunk, dressed, refit, SHIN, SHIN_BELOW, shin, SHAPES, buildOf, head, club, nunchaku, poly, both, loft, slab, noseBlock, rect, fur, cuff, buckle, hand, build, shade, scaled, FRONT, BUILD, HAND: [HAND_Y, HAND_Z] };
 })();

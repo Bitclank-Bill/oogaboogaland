@@ -342,7 +342,8 @@
     if (cave.pet?.ride) { cave.pet.ride.seat = hatSeatOf(cave); cave.pet.ride.stomach = stomachSeatOf(cave); }
     // At a new height what the crew hung on the body at its old one stands where it would at this one.
     const h = cave.traits.height;
-    if (cave.bodyHeight !== undefined) cave.bodyHeight = bodyHeightOf(cave);
+    // Measured on the build at rest, feet at 0, so neither the ground under the body nor its pose counts.
+    if (cave.bodyHeight !== undefined) cave.bodyHeight = bodyHeightOf(cave.template);
     const flash = cave.parts.gunFlash;
     if (flash) { flash.position.y = GUN_MUZZLE_Y * h; flash.position.z = 0.695 * h; flash.scale.x = flash.scale.y = flash.scale.z = h; }
     const birds = cave.stunBirds;

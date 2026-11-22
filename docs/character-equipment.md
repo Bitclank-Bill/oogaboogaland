@@ -128,8 +128,7 @@ slim builds), each also **lean** (a narrower trunk, thinner limbs, and on the ma
 swells evened, the arms only a little thicker, sloped shoulders domed over the top (`dome`, extra rings between
 the trunk and the shoulder, and the arm topped by a round cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
-`hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
-its thighs, however thick they are, and every body has a crotch under the trunk
+`hero-body.js` `SHAPES`. Every body has a crotch under the trunk
 between them in what the thighs wear, so trousers read as one garment; over bare thighs it
 is bare, so shorts end flat at their own hem. Under its foot every trunk tapers in over
 `SEAT` to the tops of the thighs (straight down a little first, `SEAT_BAND`, then sloping in), in
@@ -139,10 +138,13 @@ crotch exactly. The regular (male) build's trunk widens a little toward its foot
 thighs meet the trunk's sides there rather than standing out past it; this reaches every
 male Ooga's own look. On every build and shape a belt goes round the trunk's own rings a
 snug `BELT_OUT` proud of them, and a skirt under it hangs from the trunk's ring there
-(`SKIRT_OUT`), so both lie flat on the hips. A shape whose thighs would still stand out past the trunk's foot draws
-its whole leg smaller and the legs closer together (`THIGH_IN` inside the trunk's sides,
-the build's own gap between the thighs), its feet keeping their length and narrowing only
-as far as they must not to meet (`FEET_GAP`).
+(`SKIRT_OUT`), so both lie flat on the hips. A shape fits its legs to the trunk's foot
+(`buildOf`): where its thighs would stand out past it, the whole leg is drawn smaller and the
+legs closer together (`THIGH_IN` inside the trunk's sides, the build's own gap between the
+thighs); a shape with a `legGap` (the big-boned male) draws its legs larger instead, `legGap`
+apart, until their outsides meet the trunk's sides. Either way the feet keep their length and
+narrow only as far as they must not to meet (`FEET_GAP`). The big-boned female's thighs are
+thicker (`slimThigh`) so her legs fill her waist.
 
 A male (regular) build's shins are drawn `SHIN` (0.9) units longer (`hero-body.js`): the
 leg is stretched between `SHIN_RAMP`, under the knee and above any boot, and what is put on

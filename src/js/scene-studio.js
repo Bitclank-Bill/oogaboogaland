@@ -748,11 +748,11 @@
       return crowns.get(t);
     };
     // The pet's height as its file built it, from its feet (the node's origin) to its top, legs and all: read off the
-    // build's own pet, which a worn size never scales.
+    // character's own build, which neither a worn size nor a worn height changes.
     let petHeight = NaN;
     const petTall = () => {
       if (Number.isNaN(petHeight)) {
-        const node = cave.template.parts.dog, top = (n) => Math.max(n.geometry ? BL.scene.boundsOf(n.geometry).max[1] : 0, ...n.children.map((c) => c.position.y + c.scale.y * top(c)));
+        const node = BL.models.templateFor(BL.contributors.traitsFor(state.name)).parts.dog, top = (n) => Math.max(n.geometry ? BL.scene.boundsOf(n.geometry).max[1] : 0, ...n.children.map((c) => c.position.y + c.scale.y * top(c)));
         petHeight = node ? top(node) * node.scale.y : 0;
       }
       return petHeight;
@@ -776,13 +776,14 @@
       const wear = () => {
         const v = Number(range.value), worn = view.worn?.[id];
         row.mixed = v;
-        const entry = v === at.own() ? row.options[0] : row.custom;
+        const own = Math.max(at.range.min, Math.min(at.range.max, at.own())), entry = v === own ? row.options[0] : row.custom;
         if (entry === row.custom ? worn?.[at.field] === v : !worn) return;
         row.select.value = entry.option.value; row.select.dispatchEvent(new Event("change"));
       };
       range.addEventListener("input", () => { row.value.textContent = at.show(Number(range.value)); range.setAttribute("aria-valuetext", row.value.textContent); timers(); rest = setTimeout(() => { rest = 0; wear(); }, MIX_REST); }, { signal });
       range.addEventListener("change", () => { timers(); wear(); }, { signal });
-      reset.addEventListener("click", () => { timers(); range.value = String(at.own()); wear(); }, { signal });
+      // Original takes the slot off, whatever the slider can show (an Ooga's own height may lie outside its range).
+      reset.addEventListener("click", () => { timers(); if (view.worn?.[id]) { row.select.value = row.options[0].option.value; row.select.dispatchEvent(new Event("change")); } }, { signal });
     }
     // Painted now where the pieces are already here (the portable page, a second visit), else once they arrive.
     const paintSwatches = () => {
