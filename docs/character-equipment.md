@@ -131,12 +131,13 @@ breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
 between them in what the thighs wear, so trousers read as one garment; over bare thighs it
-is bare, so shorts end flat at their own hem. Every character's own look is unchanged by
-the wardrobe: a build without a shape keeps its own belt and crotch exactly. A
-shape whose thicker thighs would stand out past the trunk's foot draws their tops
-narrower and closer together (`THIGH_IN` inside the trunk's sides, the build's own gap
-between them), easing back to the shape's thickness by the knee, so the legs join the
-trunk under it rather than out past it. On a shape a belt follows the trunk round the
+is bare, so shorts end flat at their own hem. A build without a shape keeps its own
+belt and crotch exactly. Any build whose thighs would stand out past the trunk's foot
+(the regular male, and a thicker shape) draws its whole leg smaller and the legs closer
+together (`THIGH_IN` inside the trunk's sides, the build's own gap between the thighs),
+its feet keeping their length and narrowing only as far as they must not to meet
+(`FEET_GAP`), so the legs join the trunk under it and nothing overhangs under the waist.
+That change reaches every male Ooga's own look. On a shape a belt follows the trunk round the
 waist a fixed `BELT_OUT` proud of it, so it neither sinks in where the shape swells nor
 stands off where it draws in.
 

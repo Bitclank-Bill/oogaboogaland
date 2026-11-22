@@ -405,22 +405,25 @@
     for (let i = 1; i < pts.length; i++) if (y <= pts[i][0]) { const [y0, a] = pts[i - 1], [y1, b] = pts[i]; return a + (b - a) * (y - y0) / (y1 - y0); }
     return neck;
   };
-  // A shape's legs keep under its trunk: where its thicker thighs would stand out past the trunk's foot, their tops
-  // are drawn narrower and closer together, keeping the build's own gap between them, so the outsides of the thighs
-  // meet the trunk's sides (`THIGH_IN` inside them) and the waist runs straight down into the legs. The narrowing eases
-  // out down the thigh (`THIGH_EASE`), so the knee and the shin keep the shape's thickness.
-  const THIGH_IN = 0.08, THIGH_EASE = [-1.6, -3.4], tuckedBuilds = new Map();
+  // Every build's legs keep under its trunk: where its thighs would stand out past the trunk's foot (the regular male's
+  // and a thicker shape's), the whole leg is drawn smaller and the legs closer together, keeping the build's own gap
+  // between the thighs, so the outsides of the thighs meet the trunk's sides (`THIGH_IN` inside them) and nothing
+  // overhangs under the waist. The feet keep their length and narrow only as far as they must not to meet
+  // (`FEET_GAP` between them).
+  const THIGH_IN = 0.08, FEET_GAP = 0.1, tuckedBuilds = new Map();
   const buildOf = (slim, shape) => {
-    const B = buildOfRaw(slim, shape);
-    if (!shape) return B;
-    const key = (slim ? "slim:" : "regular:") + shape;
+    const key = (slim ? "slim:" : "regular:") + (shape || "");
     if (tuckedBuilds.has(key)) return tuckedBuilds.get(key);
-    const base = slim ? BUILD.slim : BUILD.regular, top = Math.max(B.leg[0][1], B.leg[1][1]), lx = B.legX || 2;
-    const gap = (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]), target = B.torso[0][1] - THIGH_IN;
+    const B = buildOfRaw(slim, shape), base = slim ? BUILD.slim : BUILD.regular;
+    const top = Math.max(B.leg[0][1], B.leg[1][1]), lx = B.legX || 2, target = B.torso[0][1] - THIGH_IN;
+    const gap = (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]);
     let T = B;
     if (lx + top > target) {
-      const k = (target - gap) / 2 / top, [y0, y1] = THIGH_EASE, at = (y) => y >= y0 ? k : y <= y1 ? 1 : k + (1 - k) * (y0 - y) / (y0 - y1);
-      T = { ...B, legX: (target + gap) / 2, thigh: target, leg: B.leg.map((r) => { const o = r.slice(), f = at(r[0]); o[1] *= f; o[3] *= f; return o; }) };
+      const k = (target - gap) / 2 / top, L = (target + gap) / 2, ring = (r, f) => { const o = r.slice(); o[1] *= f; o[2] *= f; o[3] *= f; return o; };
+      const feet = Math.min(1, (L - FEET_GAP / 2) / Math.max(...B.foot.map((r) => r[1])));
+      T = { ...B, legX: L, thigh: target, leg: B.leg.map((r) => ring(r, k)), ankle: [B.ankle[0], B.ankle[1] * k, B.ankle[2] * k],
+        knee: B.knee && [B.knee[0], B.knee[1], B.knee[2] * k, B.knee[3] * k],
+        foot: B.foot.map((r) => { const o = r.slice(); o[1] *= feet; o[3] *= feet; return o; }) };
     }
     tuckedBuilds.set(key, T);
     return T;
