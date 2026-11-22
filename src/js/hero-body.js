@@ -177,7 +177,7 @@
   };
   // The belt's buckle: a gold plate with a raised rim, on the front plane at z; with `coin`, the coin's B on it.
   // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`), and a skirt hung under it.
-  const BELT_OUT = 0.12, SKIRT_OUT = 0.05;
+  const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SEAT = 0.55;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
     slab(geo, rect(-0.85, 0.85, y - 0.62, y + 0.62, z + 0.4, 0.22), FRONT, 0.05, 1, goldDark);
@@ -633,6 +633,12 @@
       const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0][0];
       const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
       loft(torso, [[low + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
+      // The seat: under its foot the trunk tapers in over `SEAT` to the tops of the thighs, so its underside slopes to
+      // the legs rather than standing square over them. It wears what the trunk wears at its foot.
+      const f = B.torso[0], tx = Math.min(f[1], lx + Math.max(B.leg[0][1], B.leg[1][1])), tz = Math.min(f[2], Math.max(B.leg[0][2], B.leg[1][2]));
+      const seat = [[low + 0.01, f[1], f[2], f[3], 0, f[5] || 0], [low - SEAT, tx, tz, Math.min(0.6 * Math.min(tx, tz), Math.max(f[3], 0.8)), 0, 0]];
+      if (paint) paintedLoft(torso, seat, [], (xn, y, zn) => paint.torso.pick(xn, low + 0.05, zn), paint.tone, skin, paint.print);
+      else loft(torso, seat, o.torso && o.torso[0] || skin);
     }
     // The skirt hangs from the hips under the belt. With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so

@@ -131,7 +131,9 @@ breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
 between them in what the thighs wear, so trousers read as one garment; over bare thighs it
-is bare, so shorts end flat at their own hem. A build without a shape keeps its own
+is bare, so shorts end flat at their own hem. Under its foot every trunk tapers in over
+`SEAT` to the tops of the thighs, in what it wears there, so the seat slopes to the legs
+rather than standing square over them; this reaches every Ooga's own look. A build without a shape keeps its own
 crotch exactly. The regular (male) build's trunk widens a little toward its foot, so its
 thighs meet the trunk's sides there rather than standing out past it; this reaches every
 male Ooga's own look. On every build and shape a belt goes round the trunk's own rings a
