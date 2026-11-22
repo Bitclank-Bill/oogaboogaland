@@ -702,7 +702,8 @@
         const worn = wornIn(row), entry = optionFor(row, worn) || keep(row, worn), base = savedIn(row);
         row.select.value = entry.option.value;
         row.value.textContent = entry === row.options[0] ? "Original" : entry.label;
-        row.credit.textContent = credits(entry.creators);
+        // A body is the game's own build, credited to nobody.
+        row.credit.textContent = row.slot.id === "body" ? "" : credits(entry.creators);
         const same = row === hatRow ? hatKey(worn) === hatKey(base) && (!worn || worn.item === "none" || view.size === equipment.state.record.size)
           : pieceKey(worn) === pieceKey(base) && (worn?.size || 100) === (base?.size || 100);
         row.details.toggleAttribute("data-changed", view.dirty && !same);
