@@ -199,7 +199,9 @@
         : { default: blockSword(k, ["#1d171c", "#dcd9d2", "#262024"]), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } },
       model(k, wear) {
         const H = BL.heroBody, M = BL.models, u = k.u, body = wear(), S = H.trunk(true);
-        const own = S.own, mine = (y) => y >= 2.6 ? 1 : (y < 1.2 ? 1.5 + (y + 0.4) / 1.6 * 0.25 : 1.75 - (y - 1.2) / 1.4 * 0.15) / own.ring(y)[1], tuck = (y) => mine(S.to(y));
+        const own = S.own, mine = (y) => y >= 2.6 ? 1 : (y < 1.2 ? 1.5 + (y + 0.4) / 1.6 * 0.25 : 1.75 - (y - 1.2) / 1.4 * 0.15) / own.ring(y)[1], worn = k.traits.bodyShape || !k.traits.slim, Bw = H.buildOf(!!k.traits.slim, k.traits.bodyShape);
+        const waist = S.from(2.6), hem = Math.min(1, (Bw.leg[0][2] + 0.05) / S.ring(S.low)[1]);
+        const tuck = (y) => !worn ? mine(y) : y >= waist ? 1 : 1 - (1 - hem) * Math.min(1, (waist - y) / (waist - S.low));
         for (let v = body.torso.verts, i = 0; i < v.length; i += 3) if (v[i + 2] > 0) v[i + 2] *= tuck(v[i + 1] / u);
         const hu = u * HEAD, hair = makeVox(), skin = makeVox(), low = (y) => y > 0 ? y - 1 : y, at = { x: -3.5 * hu, y: NECK * u, z: -3 * hu };
         const flesh = (x, y, z) => skin.fill(2 * x, 2 * x + 1, 2 * y, 2 * y + 1, 2 * z, 2 * z + 1, 0);
@@ -274,7 +276,7 @@
           const x0 = (c - 2.5) * pw, y1 = top - r * ph;
           H.poly(g, [on(x0, y1 - ph, 1, d), on(x0 + pw, y1 - ph, 1, d), on(x0 + pw, y1, 1, d), on(x0, y1, 1, d)], GOLD, [0, 0, 1]);
         });
-        const B = H.buildOf(!!k.traits.slim, k.traits.bodyShape);
+        const B = Bw;
         H.loft(g, [shell(S.low + 0.02, 0.015), k.traits.bodyShape || !k.traits.slim ? shell(S.low - 0.24, 0.015) : [S.low - 0.24, 2.9, 1.53, 0.5, 0, -0.03]], SHORTS, [false, true]);
         const B0 = S.from(1.2), B1 = S.from(2.5), BY = (B0 + B1) / 2;
         H.loft(g, [shell(B0 - 0.02, 0), shell(B0, 0.1), shell(B1, 0.1), shell(B1 + 0.02, 0)], LEATHER, [false, false]);
