@@ -242,13 +242,14 @@
   const portalAnimate = (nodes, built, ctx) => {
     const L = built.layout, s = portalSpot(L);
     const dots = PORTAL_DOTS.map((d) => ({ ...d, node: nodes[d.name], crack: d.kind.startsWith("crack") ? Number(d.kind.slice(5)) : -1 })).filter((d) => d.node), G = PORTAL_DOTS.swap, band = nodes.portalBand, swirl = [0, 1, 2].map((i) => nodes[`portalSwirl${i}`]), ledge = nodes.ledgePortal, halos = PORTAL_HALOS.map((h) => ({ ...h, node: nodes[h.name] })).filter((h) => h.node), pools = (PORTAL_HALOS.pools || []).map((h) => ({ ...h, node: nodes[h.name] })).filter((h) => h.node);
-    const saved = portalStore.read();
-    const st = { phase: "idle", riddles: [], current: 0, fragments: 0, wrong: 0, hint: "", nonce0: 0, need: 0, pos: 0, spin: 0, hash: "", finalHash: "", reveal: 0, draw: 0, pfx: 0, pfz: 1, away: false, solved: false, badge: typeof saved.badge === "string" && saved.badge.length <= 80 ? saved.badge : "", openK: 0, t: 0, swapped: false, seq: 0 };
+    const saved = portalStore.read(), savedBadge = typeof saved.badge === "string" && saved.badge.length <= 80 ? saved.badge : "";
+    const st = { phase: "idle", riddles: [], current: 0, fragments: 0, wrong: 0, hint: "", nonce0: 0, need: 0, pos: 0, spin: 0, hash: "", finalHash: "", reveal: 0, draw: 0, pfx: 0, pfz: 1, away: false, solved: false, badge: savedBadge, passed: saved.solved === true || !!savedBadge, quick: false, openK: 0, t: 0, swapped: false, seq: 0 };
     const plinthOf = (id) => PLINTHS.findIndex((p) => p.id === id);
     const pool = RIDDLES.filter((r) => plinthOf(r.id) >= 0);
-    // Only the badge is kept from one visit to the next, as a record: the door is blank wall and locked again for
-    // whoever comes back, by any way out and in.
-    const remember = () => portalStore.write({ badge: st.badge });
+    // Kept from one visit to the next, in this browser only: the badge and that the hunt was solved (a badge saved
+    // before the flag counts as solved). The door is blank wall and locked again for whoever comes back; one who has
+    // solved it finds the carving in orange and may go straight through (`quick`) or play the hunt again.
+    const remember = () => portalStore.write({ badge: st.badge, solved: st.passed });
     // ---- the panel (DOM): the prompt, the riddle, the header, the dial, the open door's line ----
     let panel = null, body = null, held = 0;
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -257,7 +258,7 @@
       if (panel) return;
       panel = ctx.hud.genesis.portal; body = ctx.hud.genesis.body;
       const listen = { signal: ctx.gone.signal };
-      panel.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("[data-gp]"); if (!b) return; const k = b.dataset.gp; if (k === "begin") begin(); else if (k === "reroll") reroll(); else if (k === "push") push(); }, listen);
+      panel.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("[data-gp]"); if (!b) return; const k = b.dataset.gp; if (k === "begin") begin(); else if (k === "quick") quick(); else if (k === "reroll") reroll(); else if (k === "push") push(); }, listen);
       panel.addEventListener("pointerdown", (e) => { const b = e.target.closest && e.target.closest("[data-gp='push']"); if (!b) return; e.preventDefault(); held = 1; }, listen);
       for (const ev of ["pointerup", "pointercancel", "pointerleave"]) panel.addEventListener(ev, () => { held = 0; }, listen);
     };
@@ -271,7 +272,12 @@
     const render = () => {
       ensurePanel();
       body.replaceChildren();
-      if (st.phase === "idle") {
+      if (st.phase === "idle" && st.passed) {
+        body.append(el("h3", null, "PROOF OF KNOWLEDGE"), el("p", null, "You have solved this door before. Go straight through to the Mining Museum, or play the hunt again with fresh riddles."));
+        if (st.badge) body.append(el("p", "gp-badge", st.badge));
+        const go = el("button", "gp-btn", "ENTER THE MINING MUSEUM"); go.type = "button"; go.dataset.gp = "quick"; body.append(go);
+        if (CAN_HASH) { const again = el("button", "gp-btn gp-quiet", "PLAY THE HUNT AGAIN"); again.type = "button"; again.dataset.gp = "begin"; body.append(again); }
+      } else if (st.phase === "idle") {
         body.append(el("h3", null, "TEST YOUR KNOWLEDGE"), el("p", null, "Proof of work required to enter. Five riddles, each answered at the right plinth, fill a block header; then mine its nonce and the door opens on the Mining Museum."));
         if (st.badge) body.append(el("p", "gp-badge", st.badge));
         if (CAN_HASH) { const b = el("button", "gp-btn", "BEGIN"); b.type = "button"; b.dataset.gp = "begin"; body.append(b); }
@@ -289,7 +295,7 @@
       } else if (st.phase === "found" || st.phase === "opening") {
         body.append(el("div", "gp-prog", "BLOCK FOUND"), headerTable(), el("div", "gp-hash gp-found", st.finalHash), el("p", null, "Proof of work done. The door is opening."));
       } else if (st.phase === "open") {
-        body.append(el("div", "gp-prog", "PROOF OF KNOWLEDGE"), el("p", null, "The way to the Mining Museum is open. Step up to the door and press ENTER to go through. It closes behind you: the door is blank wall again on your next visit."));
+        body.append(el("div", "gp-prog", "PROOF OF KNOWLEDGE"), el("p", null, "The way to the Mining Museum is open. Step up to the door and press ENTER to go through. It closes behind you; on your next visit this browser remembers, and you can go straight through or play the hunt again."));
         if (st.badge) body.append(el("p", "gp-badge", st.badge));
         const b = el("button", "gp-btn gp-quiet", "RE-ROLL THE RIDDLES"); b.type = "button"; b.dataset.gp = "reroll"; body.append(b);
       }
@@ -298,8 +304,11 @@
     const headerText = (nonce) => `${HEADER.map(([, v]) => v.split(" ")[0]).join("|")}|${nonce}`;
     // ---- the run ----
     const deal = () => { const idx = pool.map((_, i) => i); for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; } return idx.slice(0, PORTAL_RUN); };
-    const begin = () => { if (st.phase !== "idle" || !CAN_HASH) return; portalAudio.open(); st.phase = "riddles"; st.riddles = deal(); st.current = 0; st.fragments = 0; st.wrong = 0; st.hint = ""; render(); show(true); };
-    const reroll = () => { st.solved = false; st.openK = 0; st.swapped = false; for (const d of dots) d.node.geometry = G.dotG[d.tone](); for (const h of halos) h.node.geometry = G.haloG.accent(); for (const h of pools) h.node.geometry = G.poolG.accent(); if (band) band.geometry = G.band.accent(); st.phase = "idle"; remember(); begin(); };
+    const begin = () => { if (st.phase !== "idle" || !CAN_HASH) return; portalAudio.open(); if (st.swapped) unswap(); st.passed = false; st.phase = "riddles"; st.riddles = deal(); st.current = 0; st.fragments = 0; st.wrong = 0; st.hint = ""; render(); show(true); };
+    const unswap = () => { st.swapped = false; for (const d of dots) d.node.geometry = G.dotG[d.tone](); for (const h of halos) h.node.geometry = G.haloG.accent(); for (const h of pools) h.node.geometry = G.poolG.accent(); if (band) band.geometry = G.band.accent(); };
+    // Straight through for one who has solved it: the door opens as it does at the end of a run, and walks them in.
+    const quick = () => { if (st.phase !== "idle" || !st.passed) return; portalAudio.open(); st.quick = true; openDoor(); show(false); };
+    const reroll = () => { st.solved = false; st.openK = 0; unswap(); st.phase = "idle"; remember(); begin(); };
     let scanning = false, disposed = false;
     const prepareMine = async () => {
       scanning = true;
@@ -353,12 +362,13 @@
     // ---- what the interior asks ----
     let self = null;
     const ACTS = {
+      passed: { key: "portal-quick", label: "ENTER", hint: "Space · Enter the Mining Museum · solved before", tap: "Tap ENTER to go through", run: () => quick() },
       idle: { key: "portal-begin", label: "BEGIN", hint: "Space · Test your knowledge · proof of work required to enter", tap: "Tap BEGIN · proof of work required to enter", run: () => begin() },
       riddles: { key: "portal-riddles", label: "RIDDLES", hint: "Space · Show the riddle", tap: "Tap to show the riddle", run: () => { render(); show(true); } },
       mine: { key: "portal-mine", label: "MINE", hint: "Hold Space · Mine the block", tap: "Hold MINE to turn the nonce", run: () => { push(); if (!shown()) { render(); show(true); } } },
       open: { key: "portal-enter", label: "ENTER", hint: "Space · Enter the Mining Museum", tap: "Tap ENTER to go through", run: () => enter() }
     };
-    const doorAct = () => ACTS[st.phase] || null;
+    const doorAct = () => (st.phase === "idle" && st.passed ? ACTS.passed : ACTS[st.phase]) || null;
     const enter = () => { if (st.phase !== "open" || !self) return; const f = portalSpot(L, 0.95); self.portalGo = { x: f.x, z: f.z, room: ROOMS.ROOMS.find((room) => room.kind === "mining").id }; show(false); };
     // The visitor's facing, kept for the reveal; the door's act only once the drawing is complete and in front of it.
     const near = (x, z, fx, fz) => {
@@ -384,8 +394,8 @@
       if (st.phase === "idle" && shown() && (st.draw < 0.9 || d > PORTAL.prompt + 1.5)) show(false);
       if (st.phase === "mine") stepMine(dt, now);
       if (st.phase === "found" && (st.t += dt) > 1.2) openDoor();
-      if (st.phase === "opening") { st.t += dt; st.openK = ease(clamp01(st.t / PORTAL.open)); if (st.t > PORTAL.open + 0.4) { st.phase = "open"; st.solved = true; st.badge = `Proof of Knowledge · earned ${new Date().toISOString().slice(0, 10)}`; remember(); render(); } }
-      if (open && !st.swapped) { st.swapped = true; for (const q of dots) q.node.geometry = G.dotG.orange(); for (const h of halos) h.node.geometry = G.haloG.orange(); for (const h of pools) h.node.geometry = G.poolG.orange(); if (band) band.geometry = G.band.orange(); }
+      if (st.phase === "opening") { st.t += dt; st.openK = ease(clamp01(st.t / PORTAL.open)); if (st.t > PORTAL.open + 0.4) { st.phase = "open"; st.solved = true; if (st.quick) { st.quick = false; render(); enter(); } else { st.passed = true; st.badge = `Proof of Knowledge · earned ${new Date().toISOString().slice(0, 10)}`; remember(); render(); } } }
+      if ((open || st.passed && st.phase === "idle") && !st.swapped) { st.swapped = true; for (const q of dots) q.node.geometry = G.dotG.orange(); for (const h of halos) h.node.geometry = G.haloG.orange(); for (const h of pools) h.node.geometry = G.poolG.orange(); if (band) band.geometry = G.band.orange(); }
       const vis = st.draw, drawing = st.draw > 0 && st.draw < 1;
       const blaze = st.phase === "opening" ? 1 + 1.2 * Math.sin(Math.PI * clamp01(st.t / PORTAL.open)) : 1;
       // Away from the door nothing of it shows: its nodes are put away once and then left alone.
@@ -409,7 +419,7 @@
     // For the renders and the suite.
     BL.timechainGenesis.portal = {
       state: () => ({ ...st, riddles: st.riddles.map((i) => pool[i].id) }), begin, hit, enter, reroll, push,
-      force: (phase, fragments = 0) => { portalStore.write({}); st.hint = ""; st.draw = 1; if (phase === "idle") { st.phase = "idle"; st.fragments = 0; return render(); } st.phase = "riddles"; st.riddles = deal(); st.current = Math.min(fragments, PORTAL_RUN - 1); st.fragments = Math.min(fragments, PORTAL_RUN); if (phase === "riddles") { render(); return show(true); } st.nonce0 = 2083236000; st.need = 893; st.pos = phase === "mine" ? 480 : 893; st.hash = "0a7c…"; st.finalHash = "00d2a1f6c90e4b7a1c3e5f8092b4d6e7f1a2c3b4d5e6f70819a2b3c4d5e6f7a8"; st.fragments = PORTAL_RUN; if (phase === "mine") { st.phase = "mine"; st.spin = 1; render(); return show(true); } if (phase === "found") { st.phase = "found"; st.t = 0; render(); return show(true); } if (phase === "opening") { st.phase = "opening"; st.t = 0.8; st.openK = 0.5; render(); return show(true); } st.phase = "open"; st.openK = 1; st.solved = true; st.badge = "Proof of Knowledge · earned today"; render(); show(true); },
+      force: (phase, fragments = 0) => { st.hint = ""; st.draw = 1; st.quick = false; if (phase === "passed") { st.badge = "Proof of Knowledge · earned 2026-11-21"; st.passed = true; remember(); st.phase = "idle"; st.fragments = 0; render(); return show(true); } portalStore.write({}); st.passed = false; st.badge = ""; if (st.swapped) unswap(); if (phase === "idle") { st.phase = "idle"; st.fragments = 0; return render(); } st.phase = "riddles"; st.riddles = deal(); st.current = Math.min(fragments, PORTAL_RUN - 1); st.fragments = Math.min(fragments, PORTAL_RUN); if (phase === "riddles") { render(); return show(true); } st.nonce0 = 2083236000; st.need = 893; st.pos = phase === "mine" ? 480 : 893; st.hash = "0a7c…"; st.finalHash = "00d2a1f6c90e4b7a1c3e5f8092b4d6e7f1a2c3b4d5e6f70819a2b3c4d5e6f7a8"; st.fragments = PORTAL_RUN; if (phase === "mine") { st.phase = "mine"; st.spin = 1; render(); return show(true); } if (phase === "found") { st.phase = "found"; st.t = 0; render(); return show(true); } if (phase === "opening") { st.phase = "opening"; st.t = 0.8; st.openK = 0.5; render(); return show(true); } st.phase = "open"; st.openK = 1; st.solved = true; st.badge = "Proof of Knowledge · earned today"; render(); show(true); },
       reveal: (v) => { st.draw = st.reveal = v; }, pool: pool.map((r) => r.id), spot: s
     };
     return {

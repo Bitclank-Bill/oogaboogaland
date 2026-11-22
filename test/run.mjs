@@ -31273,6 +31273,31 @@ const timechainGlass = { name: "timechain glass", why: "rule: the Genesis Museum
 } };
 // The Genesis Museum's door into the Mining Museum, walked by a solo visitor, and the room left with its reader open and
 // with a block half mined.
+// The door remembers a solve in this browser: a first visit gets the hunt; one who has solved it (or holds a badge saved
+// before the flag) finds the carving in orange and may go straight through, or play the hunt again as a first visit.
+const timechainPass = { name: "timechain portal pass", why: "rule: the Genesis Museum's door lets one who has solved it through without the hunt, or deals it afresh on request", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const r = await b.evaluate(`(async () => {
+    const B = window.__ooga, G = BL.timechainGenesis, P = G.portal, body = document.getElementById("genesis-portal-body"), KEY = "ooga-genesis-portal", mining = BL.timechainRooms.ROOMS.find((room) => room.kind === "mining").id;
+    const look = () => { const s = P.state(); return { phase: s.phase, passed: s.passed, riddles: s.riddles.length, title: (body.querySelector("h3") || {}).textContent || "", buttons: [...body.querySelectorAll("[data-gp]")].map((e) => e.dataset.gp), orange: s.swapped }; };
+    P.force("idle"); B.advance(0.2, 1 / 30); const first = look();
+    P.force("passed"); B.advance(0.2, 1 / 30); const passed = look(), saved = JSON.parse(localStorage.getItem(KEY) || "{}");
+    body.querySelector("[data-gp='begin']").click(); B.advance(0.2, 1 / 30); const again = look();
+    P.force("passed"); B.advance(0.2, 1 / 30); body.querySelector("[data-gp='quick']").click();
+    for (let i = 0; i < 1500 && !(B.scene === "timechain" && B.timechain.room && B.timechain.room.id === mining && !B.transitioning); i++) B.advance(1 / 30, 1 / 30);
+    const through = !!B.timechain.room && B.timechain.room.id === mining;
+    // A badge saved before the solved flag counts as solved on the next visit.
+    localStorage.setItem(KEY, JSON.stringify({ badge: "Proof of Knowledge · earned 2026-11-01" }));
+    return { first, passed, saved, again, through };
+  })()`);
+  await b.evaluate(genesisGo);
+  const back = await b.evaluate(`(() => { const s = BL.timechainGenesis.portal.state(); BL.timechainGenesis.portal.force("idle"); return { passed: s.passed, phase: s.phase }; })()`);
+  record("timechain portal pass: no saved solve means the first-visit hunt; a saved solve offers the orange door straight through and the hunt again, which deals fresh riddles; a badge saved alone counts as solved",
+    r.first.phase === "idle" && !r.first.passed && r.first.title === "TEST YOUR KNOWLEDGE" && r.first.buttons.join() === "begin"
+      && r.passed.passed && r.passed.title === "PROOF OF KNOWLEDGE" && r.passed.buttons.join() === "quick,begin" && r.passed.orange && r.saved.solved === true && typeof r.saved.badge === "string"
+      && r.again.phase === "riddles" && r.again.riddles === 5 && !r.again.passed && !r.again.orange
+      && r.through && back.passed && back.phase === "idle", JSON.stringify({ ...r, back }));
+} };
 const timechainPortal = { name: "timechain portal", why: "contract: the Genesis Museum's door hands a solo visitor into the Mining Museum publishing nothing, and the room left with the reader open or a block half mined leaves nothing behind", run: async (b) => {
   await b.evaluate(genesisGo);
   const through = await b.evaluate(`(() => { const B = window.__ooga, N = BL.net, G = BL.timechainGenesis, zones = [], bodies = [], zone = N.setZone, body = N.setBody, mining = BL.timechainRooms.ROOMS.find(r => r.kind === "mining").id;
@@ -31399,7 +31424,9 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
 // the mark is read on the room's wall clock.
-scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainDisc, timechainMarkLink, timechainHologram, timechainGlass, timechainMined, timechainFirst, timechainPortal] });
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainDisc, timechainMarkLink, timechainHologram, timechainGlass, timechainMined, timechainFirst] });
+// The door's own checks in a session of their own, so neither session nears its two minutes.
+scene("timechain", { label: "genesis door", exclusive: true, url: roomPage(0), steps: [timechainPass, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 const timechainLectureScreens = {
   name: "timechain lecture screens", why: "regression: projected answers, screen focus, gestures, scrub holds, background sync and live popups follow the same lecture clock", run: async b => {
