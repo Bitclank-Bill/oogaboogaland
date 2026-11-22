@@ -377,7 +377,8 @@
   // trunk widens by `w` and deepens by `d` all over, and on top of that by its belly's factors round the middle and its
   // chest's under the shoulders, eased between so no ledge shows; the neck takes `neck`. The upper arms and forearms
   // thicken by `arm` and `fore` (`arm` for both when left out), the thighs and shins by `thigh` and `shin` (`leg` for
-  // both), and the arms and legs stand `armOut` and `legOut` units further from the middle. `soft` (0 to 1) takes the
+  // both), and the arms stand `armOut` units further from the middle. The legs keep the build's own gap between them, however thick
+  // they are, so they never splay apart or crowd together. `soft` (0 to 1) takes the
   // cut out of a body: the chest's step forward eased away, each limb's swells evened toward its middle, no kneecap and
   // no line down a bare chest's breastbone (its nipples stay). `slope` narrows the trunk from the top of the chest to the shoulders (to that
   // share at the shoulders), so they fall to the arms rather than standing square, and `round` cuts the corners of the
@@ -388,9 +389,9 @@
   // aims an Ooga by its height has anything to follow, and everything drawn on the body (clothes, belt, skirt, strap,
   // cuffs, boots) is drawn on these rings, so it fits them.
   const SHAPES = {
-    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.8, armOut: -0.75, legOut: -0.2 },
+    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.23, thigh: 1.27, shin: 1.22, armOut: 0.62, legOut: 0.66,
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.23, thigh: 1.27, shin: 1.22, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
@@ -452,9 +453,11 @@
       arm = [arm[0], ...domed(arm[1], arm[0]).reverse(), ...arm.slice(1)];
       sleeve += DOME.length;
     }
-    // A regular build's legs stand where the rig puts them, two units out (2.5 less `LEGS_IN` in models.js). The skirt's
-    // shards lean out to `thigh`, the outside of the thighs' top two rings.
-    const legX = (base.legX || 2) + s.legOut, leg = even(base.leg).map((r) => { const out = limb(r, legAt(r[0])); if (s.dome) out[3] = cutOf(out); return out; });
+    // A regular build's legs stand where the rig puts them, two units out (2.5 less `LEGS_IN` in models.js). A shape's
+    // stand as far apart at the inside of their thighs as the build's own (`gap`), and the skirt's shards lean out to
+    // `thigh`, the outside of the thighs' top two rings.
+    const leg = even(base.leg).map((r) => { const out = limb(r, legAt(r[0])); if (s.dome) out[3] = cutOf(out); return out; });
+    const thighTop = (rings) => Math.max(rings[0][1], rings[1][1]), gap = (base.legX || 2) - thighTop(base.leg), legX = gap + thighTop(leg);
     // The chest's front where the trunk's rings put it (`soft` eases its step forward) and the nipples on its flat face.
     const torsoAt = (y, f) => { const i = torso.findIndex((r) => r[0] >= y), a = torso[Math.max(0, i - 1)], b = torso[i]; const t = b[0] === a[0] ? 0 : (y - a[0]) / (b[0] - a[0]); return f(a) + (f(b) - f(a)) * t; };
     const front = (y) => torsoAt(y, (r) => r[2] + (r[5] || 0)), flat = base.nipple ? torsoAt(base.nipple[1], (r) => r[1] - r[3]) : 0;
@@ -569,6 +572,14 @@
       for (const side of [-1, 1]) slab(torso, rect(nx * side - 0.22, nx * side + 0.22, ny - 0.2, ny + 0.2, chestZ(ny) - 0.02), FRONT, 0.07, 0.85, o.pecs);
     }
     if (o.strap) strap(torso, o.strap, B.depthAt);
+    // The crotch: a wedge under the trunk between the tops of the thighs, in what the thighs wear, so trousers read as one
+    // garment and no slot of sky shows between the legs. It stands well inside each thigh and behind their faces, so
+    // only the part between them shows, and narrows as it drops so a striding leg never uncovers its side.
+    {
+      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8;
+      const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
+      loft(torso, [[B.torso[0][0] + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
+    }
     // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so
     // it is one piece with the trunk and not a thing laid over it. Its side shards lean out as far as the thighs do.

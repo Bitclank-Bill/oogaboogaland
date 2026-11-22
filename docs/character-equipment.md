@@ -128,8 +128,9 @@ slim builds), each also **lean** (a narrower trunk, thinner limbs) or **big-bone
 swells evened, sloped shoulders domed over the top (`dome`, extra rings between
 the trunk and the arm's cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
-`hero-body.js` `SHAPES`. Every shape stands its legs so their outsides line up
-under the trunk's bottom, as the stock builds' do. It never changes height, hands, feet or the head, so
+`hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
+its thighs, however thick they are, and every body has a crotch under the trunk
+between them in what the thighs wear, so trousers read as one garment. It never changes height, hands, feet or the head, so
 nothing that stands, seats or aims an Ooga by its height has anything to follow.
 Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
 hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap
