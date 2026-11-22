@@ -446,7 +446,7 @@
     const cutOf = (r) => Math.min(r[3] * (s.round || 1), Math.max(r[3], 0.6 * Math.min(r[1], r[2])));
     // Rings curving over between ring `a` (wide) and ring `b` (narrow) as a dome: at each share `t` of the way, the
     // width and depth fall from a's to b's along a quarter circle, so the outline rounds over instead of stepping.
-    const DOME = [0.35, 0.62, 0.82, 0.94];
+    const DOME = [0.35, 0.62, 0.82, 0.94], CAP_TOP = [0.3, 0.45];
     const domed = (a, b) => DOME.map((t) => {
       const out = a.map((v, i) => typeof v === "number" && typeof b[i] === "number" ? v + (b[i] - v) * t : v), k = Math.sqrt(1 - t * t);
       out[1] = b[1] + (a[1] - b[1]) * k; out[2] = b[2] + (a[2] - b[2]) * k; out[3] = cutOf(out);
@@ -476,9 +476,12 @@
       // The trunk's top: from the last ring under the shoulders to the shoulders' own.
       const at = torso.findIndex((r) => r[0] >= top);
       if (at > 0) torso = [...torso.slice(0, at), ...domed(torso[at - 1], torso[at]), ...torso.slice(at)];
-      // The arm's top: from its first full ring up to its cap (rings run from the shoulder down).
-      arm = [arm[0], ...domed(arm[1], arm[0]).reverse(), ...arm.slice(1)];
-      sleeve += DOME.length;
+      // The arm's top: a round cap, from the deltoid's widest ring up over a small ring `CAP_TOP` higher than the arm's
+      // own top, as a dome (rings run from the shoulder down), so the top of the shoulder is round rather than flat.
+      const a0 = arm[0], cap = [a0[0] + CAP_TOP[0], a0[1] * CAP_TOP[1], a0[2] * CAP_TOP[1], 0, ...a0.slice(4)];
+      cap[3] = cutOf(cap);
+      arm = [cap, ...domed(arm[2], cap).reverse(), ...arm.slice(2)];
+      sleeve += DOME.length - 1;
     }
     // A regular build's legs stand where the rig puts them, two units out (2.5 less `LEGS_IN` in models.js). A shape's
     // stand as far apart at the inside of their thighs as the build's own (`gap`), and the skirt's shards lean out to

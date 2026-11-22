@@ -126,7 +126,7 @@ The body is the build an Ooga is drawn in: **Male** or **Female** (the regular a
 slim builds), each also **lean** (a narrower trunk, thinner limbs, and on the male build smaller feet) or **big-boned**
 (a bigger, softer frame: the waist filled out, the chest's step and the limbs'
 swells evened, the arms only a little thicker, sloped shoulders domed over the top (`dome`, extra rings between
-the trunk and the arm's cap), corners rounded off, no kneecap or line down the
+the trunk and the shoulder, and the arm topped by a round cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
