@@ -421,9 +421,9 @@
     const gap = (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]);
     let T = B;
     if (lx + top > target) {
-      const k = (target - gap) / 2 / top, L = (target + gap) / 2, ring = (r, f) => { const o = r.slice(); o[1] *= f; o[2] *= f; o[3] *= f; return o; };
+      const k = (target - gap) / 2 / top, L = (target + gap) / 2, ring = (r, f) => { const o = r.slice(); o[1] *= f; o[3] *= f; return o; };
       const feet = Math.min(1, (L - FEET_GAP / 2) / Math.max(...B.foot.map((r) => r[1])));
-      T = { ...B, legX: L, thigh: target, leg: B.leg.map((r) => ring(r, k)), ankle: [B.ankle[0], B.ankle[1] * k, B.ankle[2] * k],
+      T = { ...B, legX: L, thigh: target, leg: B.leg.map((r) => ring(r, k)), ankle: [B.ankle[0], B.ankle[1] * k, B.ankle[2]],
         knee: B.knee && [B.knee[0], B.knee[1], B.knee[2] * k, B.knee[3] * k],
         foot: B.foot.map((r) => { const o = r.slice(); o[1] *= feet; o[3] *= feet; return o; }) };
     }
@@ -452,11 +452,17 @@
       out[1] = b[1] + (a[1] - b[1]) * k; out[2] = b[2] + (a[2] - b[2]) * k; out[3] = cutOf(out);
       return out;
     });
+    // The trunk's back keeps the build's own profile at the shape's overall depth (`d`), and under the belt eases to the
+    // thighs' own share of the build's depth (never deeper than `d`), so the seat meets the legs as the build's does
+    // rather than standing out over thinner ones; what the belly and chest add (`dAt` past `d`) goes on the front alone.
+    const seat = Math.min(s.d, s.thigh ?? s.leg), hips = base.torso[0][0];
+    const backAt = (y) => y > top ? neck : y >= base.belt[0] ? s.d : seat + (s.d - seat) * Math.max(0, (y - hips) / (base.belt[0] - hips));
     const ring = (r) => {
-      const wx = wAt(r[0]) * fall(r[0]), dz = dAt(r[0]), out = r.slice();
-      out[1] *= wx; out[2] *= dz; out[3] *= Math.min(wx, dz);
+      const wx = wAt(r[0]) * fall(r[0]), dz = dAt(r[0]), back = backAt(r[0]), out = r.slice();
+      out[1] *= wx; out[3] *= Math.min(wx, dz);
+      out[2] = r[2] * (back + dz) / 2;
       out[3] = cutOf(out);
-      if (out[5]) out[5] *= dz * (1 - 0.6 * soft);
+      out[5] = (out[5] ? out[5] * dz * (1 - 0.6 * soft) : 0) + r[2] * (dz - back) / 2;
       return out;
     };
     // A limb's rings evened toward its middle by `soft`, so its swells (a deltoid, a calf) ease out.
