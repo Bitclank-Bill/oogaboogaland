@@ -394,7 +394,7 @@
   const SHAPES = {
     lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75, foot: 0.82 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.22, armOut: 0.62,
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.06, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
@@ -498,7 +498,13 @@
       // A shape's `foot` draws the regular build's feet that much smaller, across and along (a female build's are small
       // already).
       ...(s.foot && !slim ? { foot: base.foot.map((r) => { const o = r.slice(); o[1] *= s.foot; o[2] *= s.foot; o[3] *= s.foot; o[5] = (o[5] || 0) * s.foot; return o; }) } : null),
-      ankle: [base.ankle[0], base.ankle[1] * shin, base.ankle[2] * shin], wrist: [base.wrist[0], base.wrist[1] * fore, base.wrist[2] * fore],
+      // An anklet or a boot's top stands as far past the shape's own ankle as the build's stands past its ankle, so it
+      // is snug on a thicker or thinner leg rather than scaled out with it.
+      ankle: (() => {
+        const at = (rings, y) => { let n = 1; while (n < rings.length - 1 && rings[n][0] > y) n++; const a = rings[n - 1], b = rings[n], t = Math.max(0, Math.min(1, (a[0] - y) / (a[0] - b[0]))); return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; };
+        const y = base.ankle[0], own = at(base.leg, y), worn = at(leg, y);
+        return [y, worn[0] + base.ankle[1] - own[0], worn[1] + base.ankle[2] - own[1]];
+      })(), wrist: [base.wrist[0], base.wrist[1] * fore, base.wrist[2] * fore],
       skirt: [base.skirt[0] * waist, base.skirt[1] * depth], belt: [base.belt[0], base.belt[1], base.belt[2] * waist, base.belt[3] * depth],
       chest: [base.chest[0], base.chest[1], front(base.chest[0]), front(base.chest[1])],
       nipple: base.nipple ? [Math.min(base.nipple[0] * wAt(base.nipple[1]), flat - 0.35), base.nipple[1]] : null };
