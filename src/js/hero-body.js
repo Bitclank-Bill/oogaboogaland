@@ -177,7 +177,7 @@
   };
   // The belt's buckle: a gold plate with a raised rim, on the front plane at z; with `coin`, the coin's B on it.
   // How far a belt stands proud of the trunk it goes round (`build`'s `o.belt`), and a skirt hung under it.
-  const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SEAT = 0.55;
+  const BELT_OUT = 0.12, SKIRT_OUT = 0.05, SEAT = 0.6, SEAT_BAND = 0.22;
   const buckle = (geo, y, z, { gold, goldDark, goldLight, coin }) => {
     slab(geo, rect(-1.2, 1.2, y - 0.95, y + 0.95, z, 0.35), FRONT, 0.4, 0.92, gold, goldDark);
     slab(geo, rect(-0.85, 0.85, y - 0.62, y + 0.62, z + 0.4, 0.22), FRONT, 0.05, 1, goldDark);
@@ -323,8 +323,8 @@
     regular: {
       // `shoulder` is the height the trunk's clothes reach: over it is the neck.
       armX: 5.3, handScale: 1, shoulder: 8.45, skirt: [3.85, 2.3], thigh: 3.85,
-      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.5, 1.6, 0.45, 0, 0.08],
-        [-4.8, 1.55, 1.7, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
+      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.56, 1.7, 0.45, 0, 0.08],
+        [-4.8, 1.64, 1.84, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
       // The anklet stands clear of the calf above it and the instep below, so its wraps cover the ankle whole.
       knee: [-3.95, -2.85, 1, 2], ankle: [-5.05, 1.68, 1.84],
       // The foot is a block its whole length: as tall at the toes as a toe, its top rising from them to the instep,
@@ -630,16 +630,20 @@
     // only the part between them shows, and narrows as it drops so a striding leg never uncovers its side. Over bare
     // thighs it is bare too, so shorts end flat at their own hem and nothing in their colour hangs below it.
     {
-      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0][0];
+      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0][0], same = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
       const [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
       loft(torso, [[low + 0.3, lx * 0.75, deep, 0.4], [-1, lx * 0.68, deep * 0.94, 0.4], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn);
       // The seat: under its foot the trunk tapers in over `SEAT` to the tops of the thighs, so its underside slopes to
       // the legs rather than standing square over them. It wears what the thighs wear, so trousers carry on into it and
       // shorts or a loincloth end at their own hem over it.
       const f = B.torso[0], tx = Math.min(f[1], lx + Math.max(B.leg[0][1], B.leg[1][1])), tz = Math.min(f[2], Math.max(B.leg[0][2], B.leg[1][2]));
-      const seat = [[low + 0.01, f[1], f[2], f[3], 0, f[5] || 0], [low - SEAT, tx, tz, Math.min(0.6 * Math.min(tx, tz), Math.max(f[3], 0.8)), 0, 0]];
-      if (paint) paintedLoft(torso, seat, [], (xn, y, zn) => paint.leg[0].pick(xn, -0.6, zn), paint.tone, skin, paint.print);
-      else loft(torso, seat, worn);
+      // It runs straight down a little first (`SEAT_BAND`), as a pair of shorts does, then slopes in.
+      const foot = [f[1], f[2], f[3], 0, f[5] || 0], seat = [[low + 0.01, ...foot], [low - SEAT_BAND, ...foot], [low - SEAT, tx, tz, Math.min(0.6 * Math.min(tx, tz), Math.max(f[3], 0.8)), 0, 0]];
+      // Over bare thighs it wears what the hips wear (shorts, a loincloth), so no skin shows over the garment's hem.
+      const bareLegs = !paint ? same(worn, skin) : same(paint.tone(paint.leg[0].pick(0, -0.6, 1))[0], skin);
+      const at = (xn, zn) => bareLegs ? paint.torso.pick(xn, low + 0.05, zn) : paint.leg[0].pick(xn, -0.6, zn);
+      if (paint) paintedLoft(torso, seat, [], (xn, y, zn) => at(xn, zn), paint.tone, skin, paint.print);
+      else loft(torso, seat, bareLegs && o.torso && o.torso[0] || worn);
     }
     // The skirt hangs from the hips under the belt. With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so
