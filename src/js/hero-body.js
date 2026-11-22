@@ -326,8 +326,8 @@
     regular: {
       // `shoulder` is the height the trunk's clothes reach: over it is the neck.
       armX: 5.3, handScale: 1, shoulder: 8.45, skirt: [3.85, 2.3], thigh: 3.85,
-      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.5, 1.6, 0.45, 0, 0.08],
-        [-4.8, 1.55, 1.7, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
+      leg: [[0, 1.75, 1.9, 0.5], [-1.6, 1.85, 2, 0.55, 0, 0.05], [-2.8, 1.65, 1.8, 0.5, 0, 0.1], [-3.4, 1.6, 1.8, 0.5, 0, 0.15], [-4, 1.4, 1.5, 0.45, 0, 0.08],
+        [-4.8, 1.6, 1.76, 0.45, 0, -0.05], [-5.6, 1.4, 1.5, 0.4], [-6.1, 1.35, 1.45, 0.4]],
       // The anklet stands clear of the calf above it and the instep below, so its wraps cover the ankle whole.
       knee: [-3.95, -2.85, 1, 2], ankle: [-5.05, 1.68, 1.84],
       // The foot is a block its whole length: as tall at the toes as a toe, its top rising from them to the instep,
@@ -397,7 +397,7 @@
   const SHAPES = {
     lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75, foot: 0.82 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.06, slimThigh: 1.6, slimShin: 1.18, armOut: 0.62,
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.08, fore: 1.08, thigh: 1.27, shin: 1.06, slimThigh: 1.6, slimShin: 1.18, legGap: 0.1, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
@@ -421,10 +421,13 @@
     const B = buildOfRaw(slim, shape), base = slim ? BUILD.slim : BUILD.regular;
     if (!shape) { tuckedBuilds.set(key, B); return B; }
     const top = Math.max(B.leg[0][1], B.leg[1][1]), lx = B.legX || 2, target = B.torso[0][1] - THIGH_IN;
-    const gap = (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]);
+    // A male shape with `legGap` fills its trunk's foot instead: its legs drawn larger until their outsides meet the
+    // trunk's sides, that close together (half the space between the thighs), and deeper with them.
+    const fill = !slim && SHAPES[shape].legGap !== undefined;
+    const gap = fill ? SHAPES[shape].legGap : (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]);
     let T = B;
-    if (lx + top > target) {
-      const k = (target - gap) / 2 / top, L = (target + gap) / 2, ring = (r, f) => { const o = r.slice(); o[1] *= f; o[3] *= f; return o; };
+    if (fill || lx + top > target) {
+      const k = (target - gap) / 2 / top, L = (target + gap) / 2, ring = (r, f) => { const o = r.slice(); o[1] *= f; if (f > 1) o[2] *= f; o[3] *= f; return o; };
       const feet = Math.min(1, (L - FEET_GAP / 2) / Math.max(...B.foot.map((r) => r[1])));
       T = { ...B, legX: L, thigh: target, leg: B.leg.map((r) => ring(r, k)), ankle: [B.ankle[0], B.ankle[1] * k, B.ankle[2]],
         knee: B.knee && [B.knee[0], B.knee[1], B.knee[2] * k, B.knee[3] * k],
