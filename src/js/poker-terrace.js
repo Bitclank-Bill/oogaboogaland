@@ -39,15 +39,22 @@
   const bar = (cx,cz,lite) => {
     const west = cx<0, key = "bar"+cx+lite;
     if(cache.has(key)) return cache.get(key);
-    const p=[], z=cz-.52, front=cz+.54, n=lite?5:9;
+    const p=[], z=cz-1.27, front=cz+1.29, n=lite?5:9;
     const wood = west ? "#53362c" : "#365353", inset = west ? "#32242b" : "#223b40";
     p.push(box(cx,.46,front-.22,15,.92,.7,wood),K.slab({w:15.3,h:.12,d:1.02,color:west?"#342a2a":"#344947",seed:103,veins:12,on:"top",offset:{x:cx,y:.96,z:front-.22}}));
     for(const y of [.12,.82,.94]) p.push(box(cx,y,front+.16,15.15,.035,.045,brass));
     p.push(beam(cx-7.44,.19,front+.41,cx+7.44,.19,front+.41,.054,brass));
     for(let i=0;i<15;i++){
       const x=cx-7+i;
+      // Bookmatched veneers reverse their grain at each join. Narrow highlights follow the pores.
+      const veneer=west?["#6c4432","#593829","#704b38"]:["#384b42","#3d5145","#324039"];
+      p.push(box(x,.47,front+.137,.96,.68,.023,veneer[i%3]));
+      for(let g=0;g<(lite?3:8);g++){
+        const y=.21+g*(lite?.19:.073), rise=.026+.024*Math.sin(i*3+g);
+        for(const side of [-1,1]) p.push(beam(x+side*.46,y+rise,front+.155,x+side*.025,y,front+.155,.012,g%3?wood:edge));
+      }
       if(west){
-        p.push(box(x,.47,front+.14,.89,.55,.045,inset));
+        p.push(box(x,.47,front+.146,.89,.55,.012,inset));
         for(const dx of [-.4,-.2,0,.2,.4]) p.push(box(x+dx,.47,front+.174,.025,.52,.03,wood));
       }else{
         for(let j=0;j<6;j++){
@@ -128,7 +135,7 @@
     return M.merge(...p);
   };
   const service=(root,add)=>{
-    const z=-35.77, agent=BL.agent.create({groundAt:()=>0,x:serviceX,z,managed:true,scale:.96});
+    const z=-34.82, agent=BL.agent.create({groundAt:()=>0,x:serviceX,z,managed:true,scale:.96});
     agent.poseManaged(1,serviceX,0,z,0,0,false,true);
     const p=agent.parts, d=BL.pokerCrowdModels.staffDress("waiter");
     add(p.torso,d.torso);
@@ -139,17 +146,17 @@
     const silver="#c8d2c9";
     const shaker=turned(0,0,0,[[0,0],[.071,0],[.105,.21],[.108,.265],[.071,.305],[.048,.33],[.05,.375],[0,.375]],silver,12,.55);
     add(p.armR,M.moved(M.turnedX(shaker,.85),0,-.69,.10));
-    const lipZ=-34.67;
+    const lipZ=-33.17;
     const pour=add(root,turned(0,0,0,[[.011,0],[.014,.27]],"#cf7137",6,.67),serviceX-.30,1.23,lipZ);
     const spoon=add(root,M.merge(beam(0,0,0,.04,.27,0,.015,silver),
       turned(.04,.27,0,[[0,0],[.021,.012],[0,.032]],brass,6,.5)),serviceX+.12,1.17,lipZ);
-    const counter=[lamp(serviceX-1.16,1.032,-35.10,.64),cocktail(serviceX-.30,1.032,lipZ,0),cocktail(serviceX+.12,1.032,lipZ,1)];
+    const counter=[lamp(serviceX-1.16,1.032,-33.60,.64),cocktail(serviceX-.30,1.032,lipZ,0),cocktail(serviceX+.12,1.032,lipZ,1)];
     for(const [dx,name] of [[-.61,"PIZZA DAY NEGRONI"],[.64,"HODL OLD FASHIONED"]]){
       const t=BL.poolModels.carve(name,{cell:.011,color:"#e8c38c",emissive:.45});
       // Carved wall letters have an 8 cm extrusion. These brass strips are flush with the nameplate.
       for(let i=2;i<t.geometry.verts.length;i+=3) t.geometry.verts[i]*=.05;
-      counter.push(box(serviceX+dx,1.095,-34.53,1.13,.143,.064,dark),
-        M.moved(t.geometry,serviceX+dx-t.width/2,1.12,-34.49));
+      counter.push(box(serviceX+dx,1.095,-33.03,1.13,.143,.064,dark),
+        M.moved(t.geometry,serviceX+dx-t.width/2,1.12,-32.99));
     }
     add(root,M.merge(...counter));
     return (elapsed,calm)=>{
@@ -282,6 +289,75 @@
     }
     return true;
   };
+  // Seated guests and roaming waiters use the crowd graph. These parties stay at their rail or bar.
+  const company=(root,lite)=>{
+    const models=BL.pokerCrowdModels, guests=models.CAST.filter(m=>m.rig==="caveman" && m.type==="businessman");
+    const cast=models.LOUNGE, parties=[], couples=[];
+    const person=(x,z,yaw,actor,role,phase)=>{
+      const body=M.caveman(actor.traits),p=body.parts;
+      for(const key of ["club","gun","snack","jetpack","jetFlame"]) if(p[key]) p[key].visible=false;
+      body.root.position.x=x;body.root.position.z=z;body.root.rotation.y=yaw;
+      p.head.rotation.x=role==="rail"?-.21:.02;
+      p.armR.rotation.x=role==="rail"?-.56:-.87;
+      S.addChild(root,body.root);
+      const guest={p,role,phase,x,z}; parties.push(guest);return guest;
+    };
+    for(const side of [-1,1]){
+      for(let j=0;j<(lite?1:2);j++){
+        const x=side*(6.9+j*6.05), z=-31.67+j*.18, beat=j*2.3+(side+1)*.8;
+        const first=person(x-.65,z,1.72,cast[(j+(side+1))%cast.length],"talk",beat);
+        const second=person(x+.65,z-.13,-1.78,guests[(j+(side+1))%guests.length],"talk",beat+Math.PI);
+        couples.push([first,second]);
+      }
+      for(let j=0;j<(lite?2:4);j++){
+        const z=side*(5.3+j*3.9);
+        person(outer(z)-.97-(j%2)*.36,z,Math.PI/2+side*(.16+j*.055),
+          j%2?guests[(j+(side+1))%guests.length]:cast[(j+(side+1))%cast.length],"rail",j*1.73+side);
+      }
+    }
+    person(-11.4,-34.81,.06,guests[0],"serve",2.12);
+    const lines=[["You saved me a seat?","Only if you stay for the next set."],
+      ["One more dance?","I thought you’d never ask."],["You know the pianist?","Only his favorite request."]];
+    let nextLine=0,partner=null,exchange=0;
+    const update=(t,calm,listener,fx)=>{
+      if(listener && fx && t>=nextLine){
+        const p=listener.root.position;
+        if(partner){
+          if(Math.hypot(p.x-partner.x,p.z-partner.z)<5)fx.sayAt(partner.x,1.88,partner.z,lines[exchange%lines.length][1],2.8);
+          partner=null;exchange++;nextLine=t+15;
+        }else{
+          nextLine=t+1.2;
+          for(const pair of couples){
+            const speaker=pair[0];
+            if(Math.hypot(p.x-speaker.x,p.z-speaker.z)>=4.6) continue;
+            fx.sayAt(speaker.x,1.88,speaker.z,lines[exchange%lines.length][0],2.5);
+            partner=pair[1];nextLine=t+3;break;
+          }
+        }
+      }
+      for(const guest of parties){
+        const {p,role,phase}=guest, turn=calm?0:Math.sin(t*(role==="rail"?.21:.79)+phase);
+        if(role==="rail"){
+          p.head.rotation.x=-.24+.09*turn;p.head.rotation.y=.19*turn;
+          p.armR.rotation.x=-.45-.97*Math.max(0,turn)**5;
+        }else{
+          p.head.rotation.z=.07*turn;p.head.rotation.y=.11*turn;
+          p.head.rotation.x=.055*turn;p.armR.rotation.x=-.58-.66*Math.max(0,turn);
+          p.armL.rotation.z=.12+.09*turn;
+        }
+      }
+    };
+    const clear=(ax,az,bx,bz,r)=>{
+      if(Math.max(ax,bx)<far-5 && Math.min(az,bz)>-30)return true;
+      const dx=bx-ax,dz=bz-az,dd=dx*dx+dz*dz,rr=(r+.29)**2;
+      for(const g of parties){
+        const x=ax-g.x,z=az-g.z,t=dd?Math.max(0,Math.min(1,-(x*dx+z*dz)/dd)):0;
+        if((x+t*dx)**2+(z+t*dz)**2<rr && (x*x+z*z>=rr || x*dx+z*dz<=0))return false;
+      }
+      return true;
+    };
+    return {update,clear};
+  };
   const build = lite => {
     const root=S.createNode(), p=[], glass=M.merge();
     const add=(parent,geometry,x=0,y=0,z=0)=>{const n=S.createNode({geometry,position:{x,y,z}});S.addChild(parent,n);n.glow=1;return n;};
@@ -376,9 +452,10 @@
     }
     const base=add(root,K.staticMesh(M.merge(...p)));base.geometry.castShadow=false;
     const bank=add(root,K.staticMesh(miningShelf(lite)),far+33,0,32); bank.rotation.y=-2.24;
-    const updateService=service(root,add);
+    const bartender=service(root,add), guests=company(root,lite);
+    const updateService=(t,calm,listener,fx)=>{bartender(t,calm);guests.update(t,calm,listener,fx);};
     const scope=mount(station); S.addChild(root,scope.root);
-    return {root,updateService,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
+    return {root,updateService,guestsClear:guests.clear,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
   };
   const mount=station=>{
     const root=S.createNode(), p=[];

@@ -30,6 +30,7 @@
   // (`AISLE_FRAME`), the panel two by two (`PANEL_FRAME`), whole tiles only.
   const CELL = 4, RUNNER_HALF = 3.65, END = 0.08, RUNS = [[6, 26], [-26, -6]];
   const AISLE = { x0: 18.4, x1: 21.0, z0: -26, z1: 26 }, RUG_AT = { x0: 19.4, x1: 23.2, z0: -33.4, z1: -28.6 }, AISLE_FRAME = 0.55, PANEL_FRAME = 0.3;
+  const loungeZ = side => side * (RUG_AT.z0 + RUG_AT.z1) / 2;
   const MEDALLIONS = Object.freeze([
     { x: 0, z: 0, r: 4.6, block: [-6, -6, 6, 6], points: 16, rIn: 2.3, ro: 3.85, tips: [3.85, 2.85, 3.3, 2.85], rings: [[3.85, 3.92, GOLD], [3.92, 4.42, NERO], [4.42, 4.6, GOLD]], seed: 81 },
     { x: 0, z: 29, r: 2.8, block: [-6, 26, 6, 34], points: 8, rIn: 0.32, ro: 2.3, tips: [2.3, 1.45], rings: [[2.3, 2.38, GOLD], [2.38, 2.68, NERO], [2.68, 2.8, GOLD]], seed: 82 },
@@ -41,7 +42,7 @@
   // lines stop at them). There is no cloth on the floor.
   const INLAYS = Object.freeze([
     [AISLE.x0, AISLE.z0, AISLE.x1, AISLE.z1], [-AISLE.x1, AISLE.z0, -AISLE.x0, AISLE.z1],
-    [RUG_AT.x0, RUG_AT.z0, RUG_AT.x1, RUG_AT.z1], [-RUG_AT.x1, RUG_AT.z0, -RUG_AT.x0, RUG_AT.z1]
+    [RUG_AT.x0, RUG_AT.z0, RUG_AT.x1, RUG_AT.z1], [-RUG_AT.x1, -RUG_AT.z1, -RUG_AT.x0, -RUG_AT.z0]
   ].map(c => Object.freeze(c)));
   const rgbs = new Map(), rgb = hex => { if (!rgbs.has(hex)) rgbs.set(hex, hexToRgb(hex)); return rgbs.get(hex); };
   // A flat polygon of [x, z] points at height y, wound to face up.
@@ -132,7 +133,8 @@
   // Which part of the floor a 4 m cell is (columns 0 to 12 from x -24, rows 0 to 18 from z -36).
   const kindOf = (col, row) => {
     const edgeCol = col === 0 || col === 12, aisleCol = col === 1 || col === 11;
-    if ((edgeCol || aisleCol) && (row === 1 || row === 2)) return "lounge";
+    const loungeRow = col < 2 ? 18 - row : row;
+    if ((edgeCol || aisleCol) && (loungeRow === 1 || loungeRow === 2)) return "lounge";
     if (edgeCol || row === 0 || row === 18) return "border";
     if (col >= 5 && col <= 7) return "band";
     if (aisleCol && row >= 3 && row <= 15) return "aisle";
@@ -283,7 +285,7 @@
       seed++;
       if (mx > RUG_AT.x0 && mx < RUG_AT.x1 && mz > RUG_AT.z0 && mz < RUG_AT.z1) continue;
       const dark = mx > 22, g = tile(x1 - x0 - 0.02, z1 - z0 - 0.02, seed, dark ? NERO : WHITE, dark ? VEINS.border : VEINS.field, lite ? 1 : 3, dark || lite ? BOLD : FINE);
-      parts.push(M.moved(M.merge(g), sx * mx, TILE_Y, mz));
+      parts.push(M.moved(M.merge(g), sx * mx, TILE_Y, sx * mz));
     }
     return M.merge(...parts);
   };
@@ -396,12 +398,12 @@
     put(p.lounge, 0, 0, 0);
     put(p.runner, 0, 0, 0); put(p.runner, 0, 0, 0, Math.PI);
     if (p.rosette) for (const [a, b] of RUNS) for (const [x, z] of tilesAlong(a, b)) put(p.rosette, x, 0, z);
-    const aisleX = (AISLE.x0 + AISLE.x1) / 2, aisleZ = (AISLE.z0 + AISLE.z1) / 2, panelX = (RUG_AT.x0 + RUG_AT.x1) / 2, panelZ = (RUG_AT.z0 + RUG_AT.z1) / 2;
+    const aisleX = (AISLE.x0 + AISLE.x1) / 2, aisleZ = (AISLE.z0 + AISLE.z1) / 2, panelX = (RUG_AT.x0 + RUG_AT.x1) / 2;
     for (const s of [-1, 1]) {
-      put(p.aisle, s * aisleX, 0, aisleZ, s < 0 ? Math.PI : 0); put(p.panel, s * panelX, 0, panelZ, s < 0 ? Math.PI : 0);
+      put(p.aisle, s * aisleX, 0, aisleZ, s < 0 ? Math.PI : 0); put(p.panel, s * panelX, 0, loungeZ(s), s < 0 ? Math.PI : 0);
       if (!p.rosette) continue;
       for (const [x, z] of inlayTiles(AISLE.x1 - AISLE.x0, AISLE.z1 - AISLE.z0, AISLE_FRAME)) put(p.rosette, s * aisleX + x, 0, aisleZ + z);
-      for (const [x, z] of inlayTiles(RUG_AT.x1 - RUG_AT.x0, RUG_AT.z1 - RUG_AT.z0, PANEL_FRAME)) put(p.rosette, s * panelX + x, 0, panelZ + z);
+      for (const [x, z] of inlayTiles(RUG_AT.x1 - RUG_AT.x0, RUG_AT.z1 - RUG_AT.z0, PANEL_FRAME)) put(p.rosette, s * panelX + x, 0, loungeZ(s) + z);
     }
     for (const g of p.medallions) medallions.push(put(g, 0, 0, 0));
     if (p.corners) put(p.corners, 0, 0, 0);
@@ -410,5 +412,5 @@
     const dispose = () => { while (root.children.length) S.removeChild(root, root.children[root.children.length - 1]); };
     return { root, gloss, medallions, dispose };
   };
-  BL.pokerFloor = Object.freeze({ GLOSS, Y, TOP, CLOTH, MEDALLIONS, INLAYS, STRIP, ORANGE, TILE, MARK, REACH, build, tiles, mark, rosette });
+  BL.pokerFloor = Object.freeze({ GLOSS, Y, TOP, CLOTH, MEDALLIONS, INLAYS, STRIP, ORANGE, TILE, MARK, REACH, loungeZ, build, tiles, mark, rosette });
 })();

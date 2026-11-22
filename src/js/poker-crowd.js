@@ -582,7 +582,7 @@
     // The waiter's loop: the Whale Watch pickup, then rail spots at three different tables, 4 s at each.
     const serveStop = m => {
       if (m.loop === 0) {
-        m.stops[0] = nearest(byKind.bar, BL.pokerTerrace.serviceX, -33.9) || nearest(byKind.stool, m.x, m.z);
+        m.stops[0] = nearest(byKind.bar, BL.pokerTerrace.serviceX, -31.95) || nearest(byKind.stool, m.x, m.z);
         if(!spotFree(m.stops[0],m)) return null;
         let a = -1, b = -1;
         for (let k = 1; k < 4; k++) {

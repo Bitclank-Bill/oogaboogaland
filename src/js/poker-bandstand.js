@@ -1,8 +1,8 @@
-// The vault-side jazz trio, its mainnet halving dial and the short shower over a winning table.
+// The west-wall jazz trio, its mainnet halving dial and the short shower over a winning table.
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene;
-  const floor = Object.freeze({kind:"bandstand", x:-7.4, z:-31.65, hx:2.43, hz:1.04, solid:true});
+  const floor = Object.freeze({kind:"bandstand", x:-22.85, z:0, hx:1.04, hz:2.43, solid:true});
   const gold="#deae65", ivory="#f8e6be", wood="#83472e", ebony="#29242a", velvet="#6f2432";
   const box = (x,y,z,w,h,d,color,emissive=.15) => M.box({w,h,d,color,emissive,offset:{x,y,z}});
   const turned = (x,y,z,profile,color,segments=12,e=.22) =>
@@ -37,6 +37,11 @@
       p.push(turned(s*1.89,.27,.77,[[0,0],[.16,0],[.12,.06],[.075,.14],[.10,.19],[0,.21]],gold),
         box(s*1.89,.49,.77,.13,.055,.104,ivory,.95));
     }
+    for(let j=-5;j<=5;j++){
+      const x=j*.42;
+      p.push(box(x,.12,1.043,.4,.16,.012,j%2?"#714530":"#845038"));
+      for(let k=0;k<3;k++) p.push(M.beam(x-.17,.071+k*.04,1.054,x+.16,.078+k*.04,1.054,.009,"#a56742"));
+    }
     // Narrow velvet pleats catch the footlights behind the brass dial.
     for(let i=-12;i<=12;i++){
       const x=i*.162;
@@ -69,6 +74,7 @@
   });
   const build = (root,lite) => {
     const stage=part(root,scenery(),floor.x,0,floor.z);
+    stage.rotation.y=Math.PI/2;
     const players=[part(stage,musician(-1.60,"#37504d",1.38)),part(stage,musician(0,ebony,1.06)),part(stage,musician(1.47,velvet,1.46))];
     const needle=part(stage,M.beam(0,-.065,0,0,.28,0,.024,ivory),0,2.52,-.56);
     const counter=BL.pokerClub.line(stage,0,3.19,2.6,19,-.74);

@@ -493,7 +493,7 @@
     for (const p of [...TABLES, ...GAMES]) S.addChild(fixtures, node(geo.shade, p.x, 0, p.z));
     S.addChild(environment, floor.root, vault.root, glazing.root);
     // A colonnade of round columns before the glass.
-    for (const side of [-1, 1]) for (let z = -34; z <= 34; z += 8.5) if (side < 0 || z !== 0) S.addChild(environment, node(geo.column, side * 23.8, 0, z));
+    for (const side of [-1, 1]) for (const z of BL.pokerGlazing.COLUMN_Z) if (side < 0 || z !== 0) S.addChild(environment, node(geo.column, BL.pokerGlazing.columnX(side,z), 0, z));
     for (let f = 0; f < 3; f++) {
       const z = (f - 1) * 24;
       S.addChild(fixtures, node(geo.chandelier, 0, CHANDELIER_LIFT, z));
@@ -506,7 +506,7 @@
       }
     }
     for (const f of FURNITURE) {
-      if (f.kind === "bar") for (let k = 0; k < 5; k++) S.addChild(environment, node(f.x < 0 ? geo.stool : geo.tealStool, f.x - 6 + k * 3, 0, f.z + f.hz - 0.22));
+      if (f.kind === "bar") for (let k = 0; k < 5; k++) S.addChild(environment, node(f.x < 0 ? geo.stool : geo.tealStool, f.x - 6 + k * 3, 0, f.z + f.hz + .32));
       else if (f.kind === "sofa") { const n = node(geo.sofa, f.x, 0, f.z); n.rotation.y = f.x < 0 ? Math.PI : 0; S.addChild(environment, n); }
       // Facing its `yaw`: the piece's front looks down -x, so it turns by a quarter more.
       else if (f.kind === "armchair") { const n = node(geo.armchair, f.x, 0, f.z); n.rotation.y = f.yaw + Math.PI / 2; S.addChild(environment, n); }
@@ -537,20 +537,23 @@
   const HIGH_TOPS = [...[-17, 17].flatMap(x => [24, 12, 0, -12].map(z => [x, z])), ...[-5.5, 5.5].flatMap(x => [24, 12, -12].map(z => [x, z])), [-5.5, -24]];
   const FURNITURE = Object.freeze([
     BL.pokerBandstand.floor,
-    { kind: "bar", x: -10, z: -35.3, hx: 8, hz: 0.9, solid: true }, { kind: "bar", x: 10, z: -35.3, hx: 8, hz: 0.9, solid: true },
+    { kind: "bar", x: -10, z: -34.55, hx: 8, hz: 1.65, solid: true }, { kind: "bar", x: 10, z: -34.55, hx: 8, hz: 1.65, solid: true },
     ...Object.keys(BL.pokerEraTables.names).map(key=>({kind:"eraSign",x:TABLES[key].x+SIGN_X,z:TABLES[key].z+SIGN_Z,hx:.78,hz:.75,solid:true})),
     {kind:"founderChair",x:TABLES[0].x-3.08,z:TABLES[0].z-2.76,hx:1.04,hz:.81,solid:true},
     { kind: "cage", x: 22.4, z: 31, hx: 1.0, hz: 2.5, solid: true },
-    { kind: "sofa", x: -22.6, z: -31, hx: 0.6, hz: 2.0, solid: true }, { kind: "sofa", x: 22.6, z: -31, hx: 0.6, hz: 2.0, solid: true },
-    { kind: "lowTable", x: -20.6, z: -31, hx: 0.5, hz: 0.9, solid: true }, { kind: "lowTable", x: 20.6, z: -31, hx: 0.5, hz: 0.9, solid: true },
-    { kind: "palm", x: -22.3, z: -28.6, hx: 0.35, hz: 0.35, solid: true }, { kind: "palm", x: 22.3, z: -28.6, hx: 0.35, hz: 0.35, solid: true },
-    // Each lounge's armchairs round its low table, facing in (`yaw` faces (sin, cos)): two across the table from the
-    // sofa and one at each end. Walk blocks like the sofa.
-    ...[-1, 1].flatMap(side => [
-      { kind: "armchair", x: side * 19.05, z: -31.9, hx: 0.45, hz: 0.48, yaw: side * Math.PI / 2, solid: true },
-      { kind: "armchair", x: side * 19.05, z: -30.1, hx: 0.45, hz: 0.48, yaw: side * Math.PI / 2, solid: true },
-      { kind: "armchair", x: side * 20.6, z: -33.35, hx: 0.48, hz: 0.45, yaw: 0, solid: true },
-      { kind: "armchair", x: side * 20.6, z: -28.65, hx: 0.48, hz: 0.45, yaw: Math.PI, solid: true }]),
+    // Keep the west corner beside the Bitcoin book open. Its party sits at the arrival end of the wall.
+    ...[-1, 1].flatMap(side => {
+      const z = BL.pokerFloor.loungeZ(side);
+      return [
+        { kind: "sofa", x: side * 22.6, z, hx: .6, hz: 2, solid: true },
+        { kind: "lowTable", x: side * 20.6, z, hx: .5, hz: .9, solid: true },
+        { kind: "palm", x: side * 22.3, z: z + side * 2.4, hx: .35, hz: .35, solid: true },
+        { kind: "armchair", x: side * 19.05, z: z - .9, hx: .45, hz: .48, yaw: side * Math.PI / 2, solid: true },
+        { kind: "armchair", x: side * 19.05, z: z + .9, hx: .45, hz: .48, yaw: side * Math.PI / 2, solid: true },
+        { kind: "armchair", x: side * 20.6, z: z - 2.35, hx: .48, hz: .45, yaw: 0, solid: true },
+        { kind: "armchair", x: side * 20.6, z: z + 2.35, hx: .48, hz: .45, yaw: Math.PI, solid: true }
+      ];
+    }),
     ...[-27.1,-25.1,-22.9,-20.9].map(z=>({kind:"ropePost", x:7.08, z, hx:.2,hz:.2,solid:true})),
     ...[-26.1,-21.9].map(z=>({kind:"rope", x:7.08,z,hx:.1,hz:1,solid:true})),
     { kind: "highRoller", x: 11, z: -24, hx: 4, hz: 4, solid: false },
@@ -676,7 +679,11 @@
     });
     // The side aisles' last strolls toward the bar stop short of the lounges (`OUT_OF_LOUNGE`), so nobody stands among
     // the armchairs in front of the women.
-    const aisle = (x, z) => x && OUT_OF_LOUNGE[z] !== undefined ? OUT_OF_LOUNGE[z] : z;
+    const aisle = (x, z) => {
+      // Reserve the west bookcase approach as well as the occupied seating bay.
+      if (x < 0 && z > 0) return -(OUT_OF_LOUNGE[-z] ?? -z);
+      return x ? OUT_OF_LOUNGE[z] ?? z : z;
+    };
     for (const z of STROLL_Z) for (const x of [-20, 0, 20]) stand("stroll", x, aisle(x, z), 0);
     for (const z of STROLL_MID) for (const x of [-20, 0, 20]) if (x || Math.abs(z) > 6) stand("stroll", x, aisle(x, z), 0);
     for (const x of [-3, 3]) stand("door", x, 33, Math.PI);
@@ -698,8 +705,8 @@
     for (const f of FURNITURE) {
       const side = -Math.sign(f.x);
       if (f.kind === "bar") {
-        for (let k = -6; k <= 6; k += 3) add("stool", f.x + k, -34.70, Math.PI);
-        for (let k = -4.5; k <= 4.5; k += 3) if (Math.abs(f.x + k) > 4) stand("bar", f.x + k, -33.9, Math.PI);
+        for (let k = -6; k <= 6; k += 3) add("stool", f.x + k, f.z + f.hz + .24, Math.PI);
+        for (let k = -4.5; k <= 4.5; k += 3) if (Math.abs(f.x + k) > 4) stand("bar", f.x + k, f.z + f.hz + .95, Math.PI);
       } else if (f.kind === "sofa") for (const dz of [-1.17, 0, 1.17]) list.push(Object.freeze({ kind: "lounge", x: f.x + side * .065, z: f.z + dz, yaw: side * Math.PI / 2, table: -1, seat: "sofa", side: -side }));
       else if (f.kind === "armchair") list.push(Object.freeze({ kind: "lounge", x: f.x+.185*Math.sin(f.yaw), z: f.z+.185*Math.cos(f.yaw), yaw: f.yaw, table: -1, seat: "armchair", side: Math.sign(f.x) }));
       else if (f.kind === "cage") add("cage", f.x + side * 1.6, f.z, -side * Math.PI / 2);

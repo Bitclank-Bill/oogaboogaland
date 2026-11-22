@@ -24,6 +24,8 @@
   // Members, metres: post (along the wall, then into it), mullion, transom height and depth.
   const POST = { w: 0.12, d: 0.16 }, MULLION = { w: 0.055, d: 0.1 }, TRANSOM = { h: 0.07, d: 0.12 }, LIGHT = 2.4;
   const COLUMN_X = 23.8, COLUMN_Z = Object.freeze(Array.from({ length: 9 }, (_, k) => -34 + k * 8.5)), SCONCE_Y = 3.2;
+  // Seat the stage pier on the outer half of the marble sill, behind the halving board.
+  const columnX = (side, z) => side < 0 && z === 0 ? -(SILL.inner + SILL.outer) / 2 - .08 : side * COLUMN_X;
   const GOLD = K.GOLD, PALE_GOLD = "#e0c27e", WHITE = K.WHITE, SHADE = K.SHADE, FLAME = "#ffd27a", WAX = "#f4ead6", GLOW = "#ffe2a8";
   // The terrace, its podium and the balustrade stand outside under the moon alone, where no lamp reaches: their faces
   // keep a little of their own colour (MOONLIT, an emissive share), so they read as a pale edge against the night; so
@@ -107,7 +109,8 @@
   // An end wall's frame, built at +z (a node turned half about y stands it at -z): sill and coping between the long
   // sides', a marble head over the glass from the cornice out to the glass, posts under the lunette's mullions (the
   // corners are the long sides'), mullions, the transom and the head rail.
-  const end = lite => once(lite ? "end-lite" : "end", () => {
+  const BOOK_X = 19.58, BOOK_HALF = 1.15; // local +x turns west on the bar end
+  const end = (lite, bookcase=false) => once("end:"+lite+":"+bookcase, () => {
     const z0 = SILL.endInner, z1 = SILL.endOuter, d = z1 - z0, mid = (z0 + z1) / 2, span = SILL.inner * 2, tall = HEAD - SILL_TOP, ym = (SILL_TOP + HEAD) / 2;
     const parts = [M.merge(K.slab({ w: span, h: SILL.body, d, seed: 52, veins: 8, offset: { x: 0, y: SILL.body / 2, z: mid } })),
       box(span, 0.09, d + 0.04, SHADE, 0, 0.045, mid),
@@ -119,11 +122,27 @@
       // The head: the cornice's line carried out over the glass, its top a hair under the cornice's.
       box(SIDE_X * 2 + 0.06, V.FOOT - 0.02 - HEAD, END_Z + 0.08 - WALL_Z, WHITE, 0, (HEAD + V.FOOT - 0.02) / 2, (END_Z + 0.08 + WALL_Z) / 2),
       box(SIDE_X * 2 + 0.08, 0.1, 0.08, GOLD, 0, HEAD + 0.05, END_Z + 0.08)];
+    if(bookcase){
+      const sill=M.merge(...parts.splice(0,6));
+      for(const [lo,hi] of [[-span/2,BOOK_X-BOOK_HALF],[BOOK_X+BOOK_HALF,span/2]]){
+        const g=M.merge(sill);
+        for(let i=0;i<g.verts.length;i+=3) g.verts[i]=g.verts[i]*(hi-lo)/span+(hi+lo)/2;
+        parts.push(g);
+      }
+    }
+    const tankLeft=-15.83,tankRight=10.6,tankHead=5.16;
+    const upright=(x,w,d)=>{
+      const bottom=bookcase && x>tankLeft && x<tankRight?tankHead:
+        bookcase && Math.abs(x-BOOK_X)<BOOK_HALF?TRANSOM_Y:SILL_TOP;
+      parts.push(box(w,HEAD-bottom,d,GOLD,x,(HEAD+bottom)/2,END_Z));
+    };
     const posts = endPosts(lite);
-    for (const x of posts.slice(1, -1)) parts.push(box(POST.w, tall, POST.d, GOLD, x, ym, END_Z));
+    for (const x of posts.slice(1, -1)) upright(x,POST.w,POST.d);
     for (const [a, b] of bays(posts)) {
-      if (!lite) for (const x of splits(a, b)) parts.push(box(MULLION.w, tall, MULLION.d, GOLD, x, ym, END_Z));
-      parts.push(box(b - a, TRANSOM.h, TRANSOM.d, GOLD, (a + b) / 2, TRANSOM_Y, END_Z));
+      if (!lite) for (const x of splits(a, b)) upright(x,MULLION.w,MULLION.d);
+      const transom=(lo,hi)=>{if(hi>lo)parts.push(box(hi-lo,TRANSOM.h,TRANSOM.d,GOLD,(lo+hi)/2,TRANSOM_Y,END_Z));};
+      if(bookcase){transom(a,Math.min(b,tankLeft));transom(Math.max(a,tankRight),b);}
+      else transom(a,b);
     }
     return noShadow(M.merge(...parts));
   });
@@ -163,13 +182,17 @@
     return noShadow(moonlit(M.merge(...parts)));
   });
   // What lies outside an end wall, built at +z, fitted between the long sides' pieces.
-  const terraceEnd = lite => once(lite ? "terrace-end-lite" : "terrace-end", () => {
+  const terraceEnd = (lite,bookcase=false) => once("terrace-end:"+lite+":"+bookcase, () => {
     const T = TERRACE, d = T.endOut - SILL.endOuter, pd = T.podiumEnd - (SILL.endInner - 0.1);
     const parts = [M.merge(K.slab({ w: SILL.outer * 2, h: T.top - T.under, d, seed: 62, veins: 10, on: "top", offset: { x: 0, y: (T.top + T.under) / 2, z: (SILL.endOuter + T.endOut) / 2 } })),
       box(T.out * 2 + 0.14, 0.1, 0.05, GOLD, 0, T.top - 0.05, T.endOut + 0.02),
       box(T.podiumIn * 2, T.under - T.podium, pd, SHADE, 0, (T.under + T.podium) / 2, T.podiumEnd - pd / 2),
       box(T.podiumIn * 2, 0.05, pd + 0.06, GOLD, 0, T.under - 0.12, T.podiumEnd - pd / 2 + 0.03)];
-    run(parts, lite, false, RAIL.z, -RAIL.x, RAIL.x, RAIL.endSegments, false);
+    if(bookcase){
+      run(parts,lite,false,RAIL.z,-RAIL.x,-15.83,3,false);
+      run(parts,lite,false,RAIL.z,10.6,BOOK_X-BOOK_HALF,2,false);
+      run(parts,lite,false,RAIL.z,BOOK_X+BOOK_HALF,RAIL.x,1,false);
+    }else run(parts, lite, false, RAIL.z, -RAIL.x, RAIL.x, RAIL.endSegments, false);
     return noShadow(moonlit(M.merge(...parts)));
   });
   // The marble abacus a column carries under the cornice: a gold bead on the capital, a veined block, a gold lip.
@@ -219,7 +242,7 @@
     return noShadow(geo);
   });
   // Every geometry of one set, for the room's record and the checks.
-  const parts = (lite = false) => ({ pane: pane(), paneLow: paneLow(), side: side(lite), eastSide: side(lite, true), eastTerrace: terraceSide(lite, true), end: end(lite), terraceSide: terraceSide(lite), terraceEnd: terraceEnd(lite), abacus: abacus(),
+  const parts = (lite = false) => ({ pane: pane(), paneLow: paneLow(), side: side(lite), eastSide: side(lite, true), eastTerrace: terraceSide(lite, true), end: end(lite), bookEnd:end(lite,true), bookTerrace:terraceEnd(lite,true), terraceSide: terraceSide(lite), terraceEnd: terraceEnd(lite), abacus: abacus(),
     sconce: lite ? null : sconce(), flame: lite ? null : flame(), cup: cup(), portal: portal(), shard: lite ? null : shard() });
   // The panes, one a bay and tier on every wall, in the order the glazing stands them (a pane's id is its place here):
   // the +x side's bays and tiers, the +z end's, then the -x side's and the -z end's. Each describes its glass for an
@@ -248,7 +271,12 @@
         const a = s > 0 && left === 0 ? OPEN : left, b = s > 0 && right === 0 ? -OPEN : right;
         for (const tier of [0, 1]) add(s > 0 ? "+x" : "-x", tier, s, a, b, true);
       }
-      for (const [a, b] of bays(endPosts(lite))) for (const tier of [0, 1]) add(s > 0 ? "+z" : "-z", tier, s, a, b, false);
+      for (const [a, b] of bays(endPosts(lite))) for (const tier of [0, 1]){
+        if(s<0 && !tier && b>BOOK_X-BOOK_HALF && a<BOOK_X+BOOK_HALF){
+          if(a<BOOK_X-BOOK_HALF) add("-z",tier,s,a,BOOK_X-BOOK_HALF,false);
+          if(b>BOOK_X+BOOK_HALF) add("-z",tier,s,BOOK_X+BOOK_HALF,b,false);
+        }else add(s>0?"+z":"-z",tier,s,a,b,false);
+      }
     }
     // Frozen only once all exist: by then every pane has the one map with its fields' final representations, so the
     // frozen panes share one map too and an aim's reads of them stay monomorphic and box nothing.
@@ -266,7 +294,7 @@
   const cylinder = (x, z, r, y0, y1) => blocker("cylinder", x, z, r, x - r, x + r, y0, y1, z - r, z + r);
   const slab = (x0, x1, y0, y1, z0, z1) => blocker("box", (x0 + x1) / 2, (z0 + z1) / 2, 0, x0, x1, y0, y1, z0, z1);
   const BLOCKERS = Object.freeze([
-    ...[-1, 1].flatMap(s => COLUMN_Z.filter(z => s < 0 || z !== 0).map(z => cylinder(s * COLUMN_X, z, COLUMN_BASE, 0, HEAD))),
+    ...[-1, 1].flatMap(s => COLUMN_Z.filter(z => s < 0 || z !== 0).map(z => cylinder(columnX(s,z), z, COLUMN_BASE, 0, HEAD))),
     slab(-OUTER - 0.3, OUTER + 0.3, 0, ARCH_TOP + 0.26, PORTAL_Z - BM.FRAME.courseFront - 0.15, SILL.endInner),
     slab(-6.75, 6.75, 4.6, 8.2, -36.6, -36.1)].map(b => Object.freeze(b)));
   const blockers = () => BLOCKERS;
@@ -297,7 +325,7 @@
     for (const s of [1, -1]) {
       const ry = s > 0 ? 0 : Math.PI;
       // The terrace's nodes glow, so its moonlit share shows.
-      put(s > 0 ? p.eastSide : p.side, 0, 0, 0, ry).glow = 1; put(s > 0 ? p.eastTerrace : p.terraceSide, 0, 0, 0, ry).glow = 1; put(p.end, 0, 0, 0, ry).glow = 1; put(p.terraceEnd, 0, 0, 0, ry).glow = 1;
+      put(s > 0 ? p.eastSide : p.side, 0, 0, 0, ry).glow = 1; put(s > 0 ? p.eastTerrace : p.terraceSide, 0, 0, 0, ry).glow = 1; put(s<0?p.bookEnd:p.end, 0, 0, 0, ry).glow = 1; put(s<0?p.bookTerrace:p.terraceEnd, 0, 0, 0, ry).glow = 1;
     }
     // The panes, one a bay and tier on every wall, all one geometry: the long sides facing -x / +x, the ends -z / +z.
     // The lower tier's panes glow their sheen; the lite set (Canvas 2D, which sorts its translucent faces by depth and
@@ -309,8 +337,9 @@
     });
     for (const s of [1, -1]) for (const z of COLUMN_Z) {
       if (s > 0 && z === 0) continue;
-      put(p.abacus, s * COLUMN_X, 0, z);
-      if (p.sconce) { const x = s * (COLUMN_X - 0.41), ry = s > 0 ? 0 : Math.PI; put(p.sconce, x, SCONCE_Y, z, ry); const f = put(p.flame, x, SCONCE_Y, z, ry); f.glow = 1; flames.push(f); }
+      const pier = columnX(s,z);
+      put(p.abacus, pier, 0, z);
+      if (p.sconce) { const x = pier - s * .41, ry = s > 0 ? 0 : Math.PI; put(p.sconce, x, SCONCE_Y, z, ry); const f = put(p.flame, x, SCONCE_Y, z, ry); f.glow = 1; flames.push(f); }
     }
     for (const [x, z] of CUPS) put(p.cup, x, 0, z).glow = 1;
     put(p.portal, 0, 0, 0);
@@ -402,6 +431,6 @@
     const dispose = () => { reset(); while (root.children.length) S.removeChild(root, root.children[root.children.length - 1]); };
     return { root, glass, flames, dispose, panes: () => list, blockers, shatter, update, intact, broken, shards: shardsOut, reset };
   };
-  BL.pokerGlazing = Object.freeze({ OPEN, SIDE_X, END_Z, SILL_TOP, HEAD, TRANSOM_Y, SILL, TERRACE, RAIL, COLUMN_X, COLUMN_Z, SCONCE_Y, CUPS, PORTAL_Z, BOARD_Y, BOARD_Z,
+  BL.pokerGlazing = Object.freeze({ OPEN, BOOK_X, BOOK_HALF, SIDE_X, END_Z, SILL_TOP, HEAD, TRANSOM_Y, SILL, TERRACE, RAIL, columnX, COLUMN_X, COLUMN_Z, SCONCE_Y, CUPS, PORTAL_Z, BOARD_Y, BOARD_Z,
     HEAL_AFTER, HEAL_TIME, SHARD_LIFE, SHARDS_PER, SHARD_CAP, MAX_BROKEN, sidePosts, endPosts, parts, panes, blockers, build });
 })();

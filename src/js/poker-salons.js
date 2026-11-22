@@ -4,19 +4,19 @@
   const BL = window.BL, M = BL.models, S = BL.scene;
   const GOLD = "#b8893b", LACQUER = "#191713", IVORY = "#efe6d2", WALNUT = "#3c271e", ICE = "#9cc9e3";
   const ROOMS = [
-    { name: "Cypherpunk Lounge", x: -13, z: -43, y: 0, w: 13, d: 11, h: 4.5 },
+    { name: "Cypherpunk Lounge", x: -BL.pokerGlazing.BOOK_X, z: -48.1, y: 0, w: 16.25, d: 17.6, h: 4.5 },
     { name: "Cold Storage", x: 1, z: -43, y: 0, w: 13, d: 11, h: 5 },
     { name: "21 Club", x: 10, z: -28, y: 17, w: 18, d: 15, h: 6 }
   ];
   // From, to, local x/z of the control, and local x/z where the player arrives. -1 is the main floor.
   const DOORS = [
-    [-1, 0, -19.58, -35.87, 0, 3.5, "Whitepaper"],
+    [-1, 0, ROOMS[0].x, -35.87, 0, 3.5, "Whitepaper"],
     [-1, 1, 0, -35.8, 0, 3.5, "Genesis Vault"],
     [-1, 2, 17.4, -34.25, 5.4, -3.4, "Gate 21"],
     [0, -1, 0, 5.1, -19.53, -34.0, "Back to the bar"],
     [1, -1, 0, 5.1, 0, -33, "Back to the hall"],
     [2, -1, 6.4, -4.6, 17.4, -32, "Gaming floor"],
-    [0, 0, 2.42, -4.94, 0, 0, "Founders pass"]
+    [0, 0, 2.42, -8.24, 0, 0, "Founders pass"]
   ];
   const mesh = (w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   const add = (parent, geometry, x = 0, y = 0, z = 0) => {
@@ -30,6 +30,7 @@
     const key = id + ":" + lite;
     if (cache.has(key)) return cache.get(key);
     const r = ROOMS[id], a = r.w / 2, b = r.d / 2, ice = id === 1, open = id >= 2;
+    const seats=[];
     const trim = ice ? "#7297ae" : GOLD, wall = ice ? "#263c4d" : LACQUER, parts = [], solids = [];
     const slab = (x, y, z, w, h, d, c, glow = 0) => parts.push(mesh(w, h, d, c, x, y, z, glow));
     const solid = (x, z, w, d) => solids.push({ x, z, w: w / 2, d: d / 2 });
@@ -48,7 +49,16 @@
         }
         parts.push(M.moved(M.turnedY(M.merge(...tuft),yaw),x,0,z));
       }
-      parts.push(M.moved(M.turnedY(seat, yaw), x, 0, z)); solid(x, z, 1.05, 1.05);
+      if(id===0){
+        const piping=[];
+        for(const s of [-1,1]) piping.push(M.beam(s*.42,.69,-.22,s*.42,.69,.30,.026,"#bb896a"));
+        for(let col=-2;col<=2;col++){
+          piping.push(mesh(.015,.55,.025,"#35252a",col*.143,.78,-.196));
+          for(const y of [.7,.89]) piping.push(mesh(.031,.031,.024,"#a77959",col*.143,y,-.18));
+        }
+        seats.push({x,z,yaw,geometry:M.merge(seat,...piping)});
+      }else parts.push(M.moved(M.turnedY(seat, yaw), x, 0, z));
+      solid(x, z, 1.05, 1.05);
     };
     const cylinder = (x, z, profile, c, glow = 0) => parts.push(M.moved(M.lathe({ profile, color: c, segments: lite ? 8 : 16, emissive: glow }), x, 0, z));
     const fire = (x, z, scale) => {
@@ -89,16 +99,43 @@
       }
     }
     if (id === 0) {
-      parts.push(BL.pokerSpeakeasy.interior(lite)); solid(0, 0, 3.26, 3.26);
+      const throat=DOORS[0][3]-(r.z+b), half=1.04;
+      for(const side of [-1,1]){
+        slab(side*(a+half)/2,r.h/2,b,a-half,r.h,.24,WALNUT);
+        slab(side*(half+.08),1.43,b+throat/2,.16,2.86,throat,WALNUT);
+        for(let j=0;j<4;j++) slab(side*half,1.4,b+j*.85,.055,2.75,.08,"#916241");
+      }
+      slab(0,(r.h+2.7)/2,b,2*half,r.h-2.7,.24,WALNUT);
+      slab(0,2.81,b+throat/2,2.4,.22,throat,WALNUT);
+      slab(0,.03,b+throat/2,2.22,.055,throat,"#4c352c");
+      parts.push(BL.pokerSpeakeasy.interior(lite,r.w,r.d)); solid(0, 0, 3.26, 3.26); solid(-a+.65,.26,.81,2.32);
       // Leather reading chairs and a fireplace flanked by shelves and cipher-print panels.
       slab(0, 1.05, -b + 0.34, 3.5, 2.1, 0.6, WALNUT); slab(0, 1, -b + 0.66, 2.22, 1.5, 0.1, LACQUER);
-      slab(0, 2.1, -b + 0.45, 3.85, 0.14, 0.84, GOLD); fire(0, -b + 0.95, 0.75);
-      // A woven diamond runner and a fluted surround lead the eye to the hearth.
-      slab(0, 0.017, 0.15, 3.45, 0.023, 6.8, "#52312d");
+      slab(0, 2.1, -b + 0.45, 3.85, 0.14, 0.84, GOLD); solid(0,-b+.92,3.58,1.66);
+      for(let i=-2;i<=2;i++) rail(i*.32-.18,.44,-b+.88,i*.32+.2,.52,-b+1.27,.16,"#523225");
+      // Random-length oak parquet blocks break the floor into alternating bands of grain.
+      for(let j=0;j<16;j++) for(let k=0;k<10;k++){
+        const x=(k-4.5)*1.53,z=(j-7.5)*1.02;
+        const color=["#543729","#473127","#60402f","#53382d"][(k*3+j*5+(j>>1))%4];
+        slab(x,.006,z,1.515,.012,1.003,color);
+        if(!lite) for(let g=-1;g<=1;g++)
+          rail(x-.7,.014,z+g*.21,x+.69,.014,z+g*.21+.045*Math.sin(k+j+g),.014,"#714d35");
+      }
+      for(const s of [-1,1]){
+        const x=s*4.8;
+        chair(x,-4.35,-s*1.86,"#733f39");chair(x,3.95,-s*.95,"#55383c");
+        for(const z of [-5.5,5.1]){
+          cylinder(x,z,[[0,0],[.36,0],[.24,.08],[.08,.14],[.07,.55],[.48,.60],[.50,.66],[0,.67]],"#674534");
+          solid(x,z,1,1);
+          cylinder(x+.16,z,[[0,.67],[.13,.67],[.14,.71],[.09,.73],[0,.69]],"#be976b");
+          rail(x+.05,.74,z,x+.25,.73,z+.07,.029,"#6d4432");
+          slab(x-.16,.70,z-.12,.26,.055,.34,"#773e3c");
+        }
+      }
+      // A chain of woven diamonds runs inside the bordered carpet toward the hearth.
       for (const side of [-1, 1]) {
-        slab(side * 1.59, 0.034, 0.15, 0.055, 0.012, 6.56, "#be9361");
         for (let i = 0; i < 3; i++) slab(side * (1.22 + i * 0.15), 1.02, -b + 0.69, 0.07, 1.78, 0.08, i === 1 ? GOLD : "#946744");
-        for (let z = -2.7; z < 2.9; z += 1.35) {
+        for (let z = -1.85; z < 1.0; z += 1.35) {
           rail(0, 0.04, z, side * 0.68, 0.04, z + 0.66, 0.045, "#ad815a");
           rail(side * 0.68, 0.04, z + 0.66, 0, 0.04, z + 1.32, 0.045, "#ad815a");
         }
@@ -149,7 +186,7 @@
       for (const s of [-1, 1]) { fire(s * 4.3, 1, 0.86); chair(s * 6.3, 1.1, -s * 1.4, "#553e30"); chair(s * 4.3, 3.1, Math.PI, "#553e30"); }
       solid(0,-3,1.25,1.25); solid(0,6.96,5.48,.6);
     }
-    const built = { geometry: BL.pokerMarble.staticMesh(M.merge(...parts)), solids };
+    const built = { seats, geometry: BL.pokerMarble.staticMesh(M.merge(...parts)), solids };
     if (ice) {
       built.cavern = BL.pokerMarble.staticMesh(BL.pokerIce.cavern(r, lite));
       built.glyph = BL.pokerIce.glyph(lite);
@@ -173,17 +210,61 @@
     cache.set(key, built);
     return built;
   };
+  const fireplace=(room,r,lite)=>{
+    const fire=[], smoke=[], z=-r.d/2+1.1;
+    for(let i=0;i<(lite?7:15);i++){
+      const phase=i*2.4, hot=i%3===0;
+      const flame=M.lathe({segments:6,profile:[[0,0],[.11,.04],[.14,.18],[.078,.37],[.043,.53],[0,.71]],
+        color:hot?"#ffd377":i%2?"#ec741f":"#cc4220",emissive:.98});
+      for(let v=0;v<flame.verts.length;v+=3){
+        const y=flame.verts[v+1];flame.verts[v]+=.28*y*Math.sin(phase+y*5);flame.verts[v+2]+=.115*y*Math.cos(phase+y*6);
+      }
+      fire.push(add(room,flame,.83*Math.sin(phase*.71),.43+.07*Math.cos(phase),z+Math.sin(phase)*.24+(hot?.15:0)));
+    }
+    const coals=[];
+    for(let k=0;k<37;k++){
+      const x=.86*Math.cos(k*2.4)*Math.sqrt((k+.5)/37),dz=.37*Math.sin(k*2.4)*Math.sqrt((k+.5)/37);
+      coals.push(mesh(.12+(k%4)*.018,.069,.09,k%3?"#ac3a13":"#ffa13b",x,.45+(k%3)*.013,z+dz,k%3?.48:.88));
+    }
+    add(room,M.merge(...coals));
+    for(const side of [-1,1]) for(const spot of [-5.5,5.1]){
+      const strands=[];
+      for(let j=0;j<2;j++) for(let k=0;k<9;k++){
+        const a=k*.66+j,b=a+.66, w=.014+k*.002;
+        strands.push(M.beam(.08*Math.sin(a),k*.097,.045*Math.cos(a),.08*Math.sin(b),(k+1)*.097,.045*Math.cos(b),w,"#b29d91"));
+      }
+      const g=M.merge(...strands);g.glassOpacity=.17;g.glassGrazing=0;g.castShadow=false;
+      smoke.push(add(room,g,side*4.8+.24,.75,spot+.06));
+    }
+    return (t,calm)=>{
+      const pulse=calm?0:.09*Math.sin(t*6.1)+.046*Math.sin(t*11.7);
+      if(room.visible){
+        for(let i=0;i<fire.length;i++){
+          const n=fire[i],p=i*2.4;
+          n.scale.y=.85+.26*Math.sin(p)+(calm?0:.24*Math.sin(t*5.1+p)+pulse);
+          n.rotation.z=.14*Math.sin(p+(calm?0:t*3));n.glow=.95+pulse;
+        }
+        for(let i=0;i<smoke.length;i++) smoke[i].rotation.y=i+(calm?0:t*.38);
+      }
+      return pulse;
+    };
+  };
   const origin = i => i < 0 ? { x: 0, y: 0, z: 0 } : ROOMS[i];
   const build = (lite, vaultDoor, den) => {
-    let glyph;
+    let glyph, hearth;
+    const chairs=[];
     const root = S.createNode(), solids = [], targets = [], rooms = [];
     ROOMS.forEach((r, i) => {
       const g = interior(i, lite), room = add(root, g.geometry, r.x, r.y, r.z);
       rooms.push(room); solids.push(g.solids);
       if (g.paving) for (let row = 0; row < 8; row++)
         add(room, g.paving[row % 2], 0, -.013, (row - 3.5) * 1.875);
-      if (i === 0) {
-        add(room, mesh(r.w, r.h, .22, WALNUT, 0, r.h / 2, r.d / 2));
+
+      if(i===0){
+        for(const seat of g.seats){
+          const chair=add(room,seat.geometry,seat.x,0,seat.z); chair.rotation.y=seat.yaw; chairs.push(chair);
+        }
+        hearth=fireplace(room,r,lite);
       }
       if (g.cavern) {
         add(room, g.cavern);
@@ -201,9 +282,10 @@
     add(root, M.merge(...lift)); add(root, glazing);
     const roof=ROOMS[2], roofScope=BL.pokerTerrace.mount({x:roof.x,y:roof.y+1.62,z:roof.z-3});
     S.addChild(root,roofScope.root);
-    const shelf = BL.pokerSpeakeasy.shelf(lite, rooms[0].geometry, DOORS[0][2], DOORS[0][3]);
+    const shelf = BL.pokerSpeakeasy.shelf(lite, DOORS[0][2], DOORS[0][3]);
     S.addChild(root, shelf.root);
     DOORS.forEach(([from, to, x, z, , , label], i) => {
+      if (i === 3) { targets.push(S.createNode()); return; }
       if (i === 1) { targets.push(vaultDoor); return; }
       if (i === 0) { targets.push(shelf.target); return; }
       const p = origin(from);
@@ -229,16 +311,16 @@
     // The two closed rooms have opaque walls behind the bar. The rooftop is visible from outside.
     const show = id => {
       refreshGate();
-      for (let i = 0; i < 2; i++) rooms[i].visible = i === id;
-      for (let i = 0; i < targets.length; i++) targets[i].visible = DOORS[i][0] === id && (i !== 6 || !den.pass);
+      for (let i = 0; i < 2; i++) rooms[i].visible = i === id || i === 0 && id < 0 && shelf.opened;
+      for (let i = 0; i < targets.length; i++) targets[i].visible = i === 0 ? id <= 0 : i !== 3 && DOORS[i][0] === id && (i !== 6 || !den.pass);
     };
     show(-1);
-    return { root, solids, targets, glyph, shelf, roofScope, roofWins, sighting, refreshGate, show };
+    return { root, solids, targets, chairs, hearth, glyph, shelf, roofScope, roofWins, sighting, refreshGate, show };
   };
   // Test the whole walking segment against furniture expanded by the visitor's body radius.
   const clear = (set, r, ax, az, bx, bz, radius) => {
     ax -= r.x; az -= r.z; bx -= r.x; bz -= r.z;
-    if (Math.abs(bx) > r.w / 2 - radius - 0.14 || Math.abs(bz) > r.d / 2 - radius - 0.14) return false;
+    if (Math.abs(bx) > r.w / 2 - radius - 0.14 || bz < -r.d / 2 + radius + .14 || r !== ROOMS[0] && bz > r.d / 2 - radius - .14) return false;
     for (const f of set) {
       const dx = bx - ax, dz = bz - az, w = f.w + radius, d = f.d + radius;
       if (Math.max(ax, bx) <= f.x - w || Math.min(ax, bx) >= f.x + w || Math.max(az, bz) <= f.z - d || Math.min(az, bz) >= f.z + d) continue;
@@ -246,5 +328,22 @@
     }
     return true;
   };
-  BL.pokerSalons = Object.freeze({ ROOMS, DOORS, build, clear });
+  // Clip the swept step to hall, narrow passage and lounge. A diagonal cannot cut either jamb.
+  const loungeWalk=(salons,ax,az,bx,bz,y,h,actor)=>{
+    const radius=actor.bodyRadius,r=ROOMS[0],hall=-35.5+radius,front=r.z+r.d/2-radius-.14;
+    if(!salons.shelf.clear(ax,az,bx,bz,radius)) return false;
+    if(Math.min(az,bz)>=hall) return BL.pokerModels.walkable(ax,az,bx,bz,y,h,actor);
+    if(!salons.shelf.opened) return false;
+    const slope=az===bz?0:(bx-ax)/(bz-az);
+    const low=Math.max(front,Math.min(az,bz)),high=Math.min(hall,Math.max(az,bz));
+    if(low<=high && (Math.abs((ax+slope*(low-az))-r.x)>1.02-radius || Math.abs((ax+slope*(high-az))-r.x)>1.02-radius ||
+      az===bz && Math.abs(bx-r.x)>1.02-radius)) return false;
+    if(Math.max(az,bz)>hall){
+      const x=ax+slope*(hall-az);
+      if(!BL.pokerModels.walkable(az>hall?ax:x,Math.max(az,hall),bz>hall?bx:x,Math.max(bz,hall),y,h,actor)) return false;
+    }
+    return Math.min(az,bz)>=front || clear(salons.solids[0],r,az>front?ax+slope*(front-az):ax,Math.min(front,az),
+      bz>front?ax+slope*(front-az):bx,Math.min(front,bz),radius);
+  };
+  BL.pokerSalons = Object.freeze({ ROOMS, DOORS, build, clear, loungeWalk });
 })();
