@@ -199,7 +199,7 @@
         : { default: blockSword(k, ["#1d171c", "#dcd9d2", "#262024"]), rest: { x: 0.95, z: 0 }, carry: { x: 0.95, z: 0 } },
       model(k, wear) {
         const H = BL.heroBody, M = BL.models, u = k.u, body = wear(), S = H.trunk(true);
-        const tuck = (y) => y >= 2.6 ? 1 : (y < 1.2 ? 1.5 + (y + 0.4) / 1.6 * 0.25 : 1.75 - (y - 1.2) / 1.4 * 0.15) / S.ring(y)[1];
+        const own = S.own, mine = (y) => y >= 2.6 ? 1 : (y < 1.2 ? 1.5 + (y + 0.4) / 1.6 * 0.25 : 1.75 - (y - 1.2) / 1.4 * 0.15) / own.ring(y)[1], tuck = (y) => mine(S.to(y));
         for (let v = body.torso.verts, i = 0; i < v.length; i += 3) if (v[i + 2] > 0) v[i + 2] *= tuck(v[i + 1] / u);
         const hu = u * HEAD, hair = makeVox(), skin = makeVox(), low = (y) => y > 0 ? y - 1 : y, at = { x: -3.5 * hu, y: NECK * u, z: -3 * hu };
         const flesh = (x, y, z) => skin.fill(2 * x, 2 * x + 1, 2 * y, 2 * y + 1, 2 * z, 2 * z + 1, 0);
@@ -260,7 +260,7 @@
         const on = (x, y, way, d = OFF) => S.lift([x, y, S.face(x, y, way)], [0, y >= 7.6 ? 0.5 : 0, way], d);
         const shell = (y, d = OFF) => { const [hx, hz, cut, cz] = S.ring(y), f = hz * tuck(y); return [y, hx + d, (f + hz) / 2 + d, cut + d * 0.5, 0, cz + (f - hz) / 2]; };
         H.loft(g, [7.74, 7.8, ...(foot ? [foot] : []), HIGH].map((y) => shell(y)), TOP, [false, false]);
-        H.loft(g, [shell(4.3, 0), shell(4.34), shell(4.75), shell(5.05), shell(5.28), shell(5.32, 0)], TOP, [false, false]);
+        H.loft(g, [shell(S.from(4.3), 0), shell(S.from(4.34)), shell(S.from(4.75)), shell(S.from(5.05)), shell(S.from(5.28)), shell(S.from(5.32), 0)], TOP, [false, false]);
         const flat = (y) => { const [hx, , cut] = S.ring(y); return Math.min(WIDE, hx - cut); };
         const end = foot || HIGH, f0 = S.ring(7.8), f1 = S.ring(end), w0 = f0[0] - f0[2], w1 = f1[0] - f1[2];
         const ROWS = [7.12, 7.25, 7.8, ...(w0 > WIDE && WIDE > w1 ? [7.8 + (w0 - WIDE) / (w0 - w1) * (end - 7.8)] : []), ...(foot ? [foot] : []), HIGH + 0.02], lift = OFF + 0.05;
@@ -269,13 +269,19 @@
           H.poly(g, [on(-a, y0, 1, lift), on(a, y0, 1, lift), on(b, y1, 1, lift), on(-b, y1, 1, lift)], SKIN, [0, 0.4, 1]);
           if (b < WIDE) for (const e of [-1, 1]) H.poly(g, [on(e * a, y0, 1, lift), on(e * WIDE, y0, 1, lift), on(e * WIDE, y1, 1, lift), on(e * b, y1, 1, lift)], SKIN, [e, 0.4, 1]);
         }
-        const pw = 0.26, ph = 0.232, top = 6.93, d = OFF + 0.04;
+        const pw = 0.26, ph = 0.232, top = S.from(6.93), d = OFF + 0.04;
         eachMark((c, r) => {
           const x0 = (c - 2.5) * pw, y1 = top - r * ph;
           H.poly(g, [on(x0, y1 - ph, 1, d), on(x0 + pw, y1 - ph, 1, d), on(x0 + pw, y1, 1, d), on(x0, y1, 1, d)], GOLD, [0, 0, 1]);
         });
-        H.loft(g, [shell(S.low + 0.02, 0.015), [S.low - 0.24, 2.9, 1.53, 0.5, 0, -0.03]], SHORTS, [false, true]);
-        const B0 = 1.2, B1 = 2.5, BY = (B0 + B1) / 2;
+        const B = H.buildOf(!!k.traits.slim, k.traits.bodyShape), legAt = (y) => {
+          let n = 1;
+          while (n < B.leg.length - 1 && B.leg[n][0] > y) n++;
+          const a = B.leg[n - 1], b = B.leg[n], t = Math.max(0, Math.min(1, (a[0] - y) / (a[0] - b[0])));
+          return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t];
+        }, hem = (y, out, cut) => { const [x, z, c] = legAt(y); return [y, x + out, z + out, c + cut]; };
+        H.loft(g, [shell(S.low + 0.02, 0.015), [S.low - 0.24, Math.max(B.torso[0][1], B.thigh + 0.06), B.torso[0][2] * 1.53 / 1.9, 0.5, 0, -0.03]], SHORTS, [false, true]);
+        const B0 = S.from(1.2), B1 = S.from(2.5), BY = (B0 + B1) / 2;
         H.loft(g, [shell(B0 - 0.02, 0), shell(B0, 0.1), shell(B1, 0.1), shell(B1 + 0.02, 0)], LEATHER, [false, false]);
         const z0 = S.face(0, B0, 1) * tuck(B0) + 0.1, lean = (S.face(0, B1, 1) * tuck(B1) + 0.1 - z0) / (B1 - B0), nl = Math.hypot(lean, 1), out = [0, -lean / nl, 1 / nl];
         const plate = (w, t, c, up, deep, keep, ...ink) => H.slab(g, H.rect(-w, w, BY - t, BY + t, 0, c).map(([x, y]) => [x, y + out[1] * up, z0 + (y - B0) * lean + out[2] * up]), out, deep, keep, ...ink);
@@ -286,7 +292,7 @@
         const cuff = M.geometry(), bands = M.geometry();
         H.loft(cuff, [[-3.92, 0.84, 0.86, 0.3], [-3.76, 1.03, 1.05, 0.36], [-3.02, 1.07, 1.09, 0.36], [-2.86, 0.92, 0.95, 0.32]], [GOLD_DK, GOLD, GOLD_HI]);
         const band = "#2a242c";
-        H.loft(bands, [[0.1, 1.36, 1.46, 0.42], [-0.96, 1.38, 1.48, 0.42], [-1.02, 1.31, 1.41, 0.4]], SHORTS, [false, false]);
+        H.loft(bands, [hem(0.1, 0.06, 0.02), hem(-0.96, 0.08, 0.02), hem(-1.02, 0.01, 0)], SHORTS, [false, false]);
         H.loft(bands, [[-3.95, 1.2, 1.31, 0.38, 0, 0.05], [-3.25, 1.15, 1.26, 0.38, 0, 0.07]], BOOT);
         H.loft(bands, [[-4.5, 1.33, 1.43, 0.4], [-3.95, 1.33, 1.43, 0.4]], band);
         H.loft(bands, [[-5.55, 1.31, 1.45, 0.4, 0, -0.03], [-5.05, 1.31, 1.43, 0.4]], band);
