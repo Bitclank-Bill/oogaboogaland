@@ -373,22 +373,32 @@
       chest: [5.45, 6.65, 2.56, 2.62], belt: [1.4, 2.7, 3.08, 2.14]
     }
   };
-  // Body shapes, either build drawn fuller or leaner (`traits.bodyShape`, which the wardrobe's Body slot sets): the
+  // Body shapes, either build drawn leaner or bigger (`traits.bodyShape`, which the wardrobe's Body slot sets). The
   // trunk widens by `w` and deepens by `d` all over, and on top of that by its belly's factors round the middle and its
-  // chest's under the shoulders, eased between so no ledge shows; the neck keeps its own size. The arms and legs
-  // thicken by `arm` and `leg` and stand `armOut` and `legOut` units further from the middle. Height, hands, feet and
-  // the head never change, so nothing that stands, seats or aims an Ooga by its height has anything to follow.
+  // chest's under the shoulders, eased between so no ledge shows; the neck takes `neck`. The upper arms and forearms
+  // thicken by `arm` and `fore` (`arm` for both when left out), the thighs and shins by `thigh` and `shin` (`leg` for
+  // both), and the arms and legs stand `armOut` and `legOut` units further from the middle. `soft` (0 to 1) takes the
+  // cut out of a body: the chest's step forward eased away, each limb's swells evened toward its middle, no kneecap and
+  // no line or nipples on a bare chest. `slope` narrows the trunk from the top of the chest to the shoulders (to that
+  // share at the shoulders), so they fall to the arms rather than standing square, and `round` cuts the corners of the
+  // trunk and of the shoulder's cap deeper; `cap` is the share of the arm's thickening its top two rings take, so the
+  // shoulder rounds over rather than standing as a block, and the arms hang `drop` units lower. Height, hands, feet and the head never change, so nothing that stands, seats or
+  // aims an Ooga by its height has anything to follow, and everything drawn on the body (clothes, belt, skirt, strap,
+  // cuffs, boots) is drawn on these rings, so it fits them.
   const SHAPES = {
-    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.8, armOut: -0.75, legOut: -0.2 }
+    lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.8, armOut: -0.75, legOut: -0.2 },
+    // Big-boned: a bigger frame all over and softer, not fat.
+    big: { w: 1.22, d: 1.2, bellyW: 1.07, bellyD: 1.1, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.23, thigh: 1.27, shin: 1.22, armOut: 0.62, legOut: 0.38,
+      soft: 1, slope: 0.8, round: 1.6, cap: 0.3, drop: 0.35 }
   };
   const shapedBuilds = new Map();
   // A factor along the trunk's height: half the belly's at the hips, the belly's round the middle, the chest's under the
-  // shoulders, eased linearly between, and none over the shoulders (the neck).
-  const along = (y, belly, chest, top) => {
-    const pts = [[-0.4, 1 + (belly - 1) * 0.45], [3, belly], [5.2, (belly + chest) / 2], [Math.min(6.6, top - 0.6), chest], [top, chest], [top + 0.01, 1]];
+  // shoulders, eased linearly between, and the neck's over the shoulders.
+  const along = (y, belly, chest, top, neck) => {
+    const pts = [[-0.4, 1 + (belly - 1) * 0.45], [3, belly], [5.2, (belly + chest) / 2], [Math.min(6.6, top - 0.6), chest], [top, chest], [top + 0.01, neck]];
     if (y <= pts[0][0]) return pts[0][1];
     for (let i = 1; i < pts.length; i++) if (y <= pts[i][0]) { const [y0, a] = pts[i - 1], [y1, b] = pts[i]; return a + (b - a) * (y - y0) / (y1 - y0); }
-    return 1;
+    return neck;
   };
   const buildOf = (slim, shape) => {
     const base = slim ? BUILD.slim : BUILD.regular, s = shape && SHAPES[shape];
@@ -396,19 +406,39 @@
     const key = (slim ? "slim:" : "regular:") + shape;
     let B = shapedBuilds.get(key);
     if (B) return B;
+    const top = base.shoulder, neck = s.neck ?? 1, soft = s.soft || 0;
+    const wAt = (y) => y > top ? neck : s.w * along(y, s.bellyW, s.chestW, top, neck);
+    const dAt = (y) => y > top ? neck : s.d * along(y, s.bellyD, s.chestD, top, neck);
     // A ring is [height, half width, half depth, corner cut, ...] with its middle's depth at [5]: each scales by the
-    // shape's factors at its height.
-    const top = base.shoulder, wAt = (y) => y > top ? 1 : s.w * along(y, s.bellyW, s.chestW, top), dAt = (y) => y > top ? 1 : s.d * along(y, s.bellyD, s.chestD, top);
-    const ring = (r) => { const wx = wAt(r[0]), dz = dAt(r[0]), out = r.slice(); out[1] *= wx; out[2] *= dz; out[3] *= Math.min(wx, dz); if (out[5]) out[5] *= dz; return out; };
+    // shape's factors at its height, its middle's step forward (the chest's) eased by `soft`.
+    const chestTop = base.chest[1], fall = (y) => !s.slope || y <= chestTop || y > top ? 1 : 1 + (s.slope - 1) * (y - chestTop) / (top - chestTop);
+    const cutOf = (r) => Math.min(r[3] * (s.round || 1), 0.9 * Math.min(r[1], r[2]));
+    const ring = (r) => {
+      const wx = wAt(r[0]) * fall(r[0]), dz = dAt(r[0]), out = r.slice();
+      out[1] *= wx; out[2] *= dz; out[3] *= Math.min(wx, dz);
+      out[3] = cutOf(out);
+      if (out[5]) out[5] *= dz * (1 - 0.6 * soft);
+      return out;
+    };
+    // A limb's rings evened toward its middle by `soft`, so its swells (a deltoid, a calf) ease out.
+    const even = (rings) => {
+      if (!soft) return rings;
+      const mx = rings.reduce((t, r) => t + r[1], 0) / rings.length, mz = rings.reduce((t, r) => t + r[2], 0) / rings.length, k = 1 - 0.5 * soft;
+      return rings.map((r) => { const out = r.slice(); out[1] = mx + (r[1] - mx) * k; out[2] = mz + (r[2] - mz) * k; return out; });
+    };
     const limb = (r, k) => { const out = r.slice(); out[1] *= k; out[2] *= k; out[3] *= k; return out; };
+    const upper = s.arm, fore = s.fore ?? s.arm, thigh = s.thigh ?? s.leg, shin = s.shin ?? s.leg;
+    // Down the leg from the thigh's factor to the shin's, so the knee eases between them.
+    const legAt = (y) => y >= -2 ? thigh : y <= -4 ? shin : thigh + (shin - thigh) * (-2 - y) / 2;
     const waist = wAt(base.belt[0]), front = dAt(base.belt[0]), chestD = dAt((base.chest[0] + base.chest[1]) / 2);
-    B = { ...base, depthAt: dAt, torso: base.torso.map(ring), armX: base.armX + s.armOut, legX: (base.legX || 2.5) + s.legOut, thigh: base.thigh * s.leg,
-      arm: base.arm.map((r) => limb(r, s.arm)), forearm: base.forearm.map((r) => limb(r, s.arm)), leg: base.leg.map((r) => limb(r, s.leg)),
-      knee: base.knee && [base.knee[0], base.knee[1], base.knee[2] * s.leg, base.knee[3] * s.leg], ankle: [base.ankle[0], base.ankle[1] * s.leg, base.ankle[2] * s.leg],
-      wrist: [base.wrist[0], base.wrist[1] * s.arm, base.wrist[2] * s.arm],
+    B = { ...base, depthAt: dAt, torso: base.torso.map(ring), armX: base.armX + s.armOut, legX: (base.legX || 2.5) + s.legOut, thigh: base.thigh * thigh,
+      arm: even(base.arm).map((r, i) => { const out = limb(r, i < 2 && s.cap !== undefined ? 1 + (upper - 1) * s.cap : upper); if (i < 3) out[3] = cutOf(out); return out; }),
+      armDrop: (base.armDrop || 0) + (s.drop || 0), forearm: even(base.forearm).map((r) => limb(r, fore)), leg: even(base.leg).map((r) => limb(r, legAt(r[0]))),
+      knee: base.knee && !soft ? [base.knee[0], base.knee[1], base.knee[2] * legAt(-3.4), base.knee[3] * legAt(-3.4)] : null,
+      ankle: [base.ankle[0], base.ankle[1] * shin, base.ankle[2] * shin], wrist: [base.wrist[0], base.wrist[1] * fore, base.wrist[2] * fore],
       skirt: [base.skirt[0] * waist, base.skirt[1] * front], belt: [base.belt[0], base.belt[1], base.belt[2] * waist, base.belt[3] * front],
       chest: [base.chest[0], base.chest[1], base.chest[2] * chestD, base.chest[3] * chestD],
-      nipple: base.nipple && [base.nipple[0] * wAt(base.nipple[1]), base.nipple[1]] };
+      nipple: base.nipple && !soft ? [base.nipple[0] * wAt(base.nipple[1]), base.nipple[1]] : null };
     shapedBuilds.set(key, B);
     return B;
   };
@@ -493,7 +523,8 @@
   //   cuffs / anklets: { wrap, wrapDark, trim }; boot: { color, sole, detail }; pecs: the line between a bare chest's two
   //   halves and its nipples' colour; emblem(geo, z, y0, y1): what the chest's front carries
   const build = (k, o) => {
-    const u = k.u, B = buildOf(o.slim, k.traits.bodyShape), skin = rgb(o.skin);
+    // A body that names no build is drawn in the Ooga's own (a worn body's, `traits.slim`).
+    const slim = o.slim === undefined ? !!k.traits.slim : !!o.slim, u = k.u, B = buildOf(slim, k.traits.bodyShape), skin = rgb(o.skin);
     const torso = geometry(), spans = B.torso.length - 1, [cy0, cy1, cz0, cz1] = B.chest, chestZ = (y) => cz0 + (cz1 - cz0) * (y - cy0) / (cy1 - cy0);
     // `paint` has the body wear what a block map wore (see `wear`): { tone, torso, arm, forearm, leg }, each part a
     // { breaks, pick } for `paintedLoft`, and the limbs one for each side (right, then left).
@@ -516,7 +547,7 @@
     // it is one piece with the trunk and not a thing laid over it. Its side shards lean out as far as the thighs do.
     if (o.skirt) {
       const low = B.torso[0], ring = o.hem ? [low[0], low[1] + 0.01, low[2] + 0.01, low[3]] : [B.belt[0] + 0.15, B.skirt[0], B.skirt[1], 0.62];
-      fur(torso, ring, o.skirt, o.slim ? 1.05 : 1.25, 3, [Math.max(0, B.thigh + 0.05 - ring[1]), 0]);
+      fur(torso, ring, o.skirt, slim ? 1.05 : 1.25, 3, [Math.max(0, B.thigh + 0.05 - ring[1]), 0]);
     }
     if (o.emblem) o.emblem(torso, chestZ, cy0, cy1);
     // An arm drawn at a scale is drawn that much thicker, so only its length changes.

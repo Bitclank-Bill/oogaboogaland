@@ -9,6 +9,9 @@
   const BL = window.BL, W = BL.equipmentWardrobe, { createNode, addChild, removeChild } = BL.scene;
   const worn = new WeakMap(), maps = new WeakMap(), weapons = new Map(), masks = new Map(), CACHE_MAX = 64;
   const own = (cave) => cave?.traits?.dress || {};
+  // A character that models its own body wears a body only once its model has been seen in every build and shape: its
+  // body built from the modelled body's own builder and its options (belt, skirt, cuffs), which follow the build.
+  const REVIEWED_BODIES = new Set(["w-s-bitcoin"]);
   const stockHead = (dress) => !(dress.model || dress.skull || dress.hat || dress.crown || dress.eyes || dress.mark || dress.refine);
   // Whether this body can wear a slot's pieces: head pieces only on the stock head, a beard and a mouth only on the
   // regular build's face, a mask on any head the character did not shape itself, body pieces on a body it does not model.
@@ -16,7 +19,7 @@
   const supports = (cave, id, slim = cave?.template?.traits.slim) => {
     const slot = W.SLOT.get(id), dress = own(cave);
     if (!slot || id === "hat" || !cave?.template || !cave.parts?.head) return false;
-    if (id === "body") return !dress.model;
+    if (id === "body") return !dress.model || REVIEWED_BODIES.has(cave.traits.name.toLowerCase());
     if (id === "mask") return !(dress.model || dress.skull);
     if (slot.place === "head") return stockHead(dress) && (id !== "beard" && id !== "mouth" || !slim);
     if (slot.place === "body") return !dress.model;

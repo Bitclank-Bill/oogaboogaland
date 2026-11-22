@@ -119,13 +119,19 @@ body the character does not model, the mask a head it did not shape, and the
 weapon a hand without a nunchaku. The studio says so on the row.
 
 The body is the build an Ooga is drawn in: **Male** or **Female** (the regular and
-slim builds), each also **lean** (`hero-body.js` `SHAPES`: a narrower trunk and
-thinner limbs). It never changes height, hands, feet or the head, so nothing that
-stands, seats or aims an Ooga by its height has anything to follow; the swap also
-moves each part the new build stands differently (a female build's arms and legs)
-where the crew has not posed it away, and the crew measures the body's girth
-again. A female build's face takes no beard or mouth piece. Characters that model
-their own body keep it.
+slim builds), each also **lean** (a narrower trunk, thinner limbs) or **big-boned**
+(a bigger, softer frame: the waist filled out, the chest's step and the limbs'
+swells evened, sloped and rounded shoulders, no kneecap or chest line), the shapes
+in `hero-body.js` `SHAPES`. It never changes height, hands, feet or the head, so
+nothing that stands, seats or aims an Ooga by its height has anything to follow.
+Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
+hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap
+also moves each part the new build stands differently (a female build's arms and
+legs) where the crew has not posed it away, and the crew measures the body's girth
+again. A female build's face takes no beard or mouth piece. A character that models
+its own body keeps it unless its model has been reviewed in every build and shape
+(`character-wardrobe.js` `REVIEWED_BODIES`: w-s-bitcoin, whose body is the modelled
+body's own builder with its belt, skirt, cuffs and anklets).
 
 Taking a piece off leaves the body's own shape bare: its blocks turn skin, a
 belt's turn the cloth over (or under) it, and only what was built out past the

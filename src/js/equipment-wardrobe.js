@@ -130,7 +130,7 @@
         mesh(node.geometry, 8);
       }
     } else if (slot.kind === "body") {
-      if (!own(content, ["format", "slot", "build"], ["shape"]) || !["regular", "slim"].includes(content.build) || content.shape !== undefined && content.shape !== "lean") fail();
+      if (!own(content, ["format", "slot", "build"], ["shape"]) || !["regular", "slim"].includes(content.build) || content.shape !== undefined && !["lean", "big"].includes(content.shape)) fail();
     } else if (slot.kind === "weapon") {
       if (!own(content, ["format", "slot", "geometry", "rest", "carry", "axe"]) || !angles(content.rest) || !angles(content.carry) || typeof content.axe !== "boolean") fail();
       mesh(content.geometry, 8);

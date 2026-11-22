@@ -11,6 +11,15 @@
       "version": "d10ce9f6a0cdb4bb08ecb54a1db019925743b81633c12aee27891aa847d4fc2a"
     },
     {
+      "id": "body-b3702bfab77d963a",
+      "slot": "body",
+      "label": "Female, big-boned",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "b3702bfab77d963a4f1104e896e324de27cab8abaece4f8f3adbf17f5c5fcc41"
+    },
+    {
       "id": "body-985f320a26d5c8e1",
       "slot": "body",
       "label": "Female, lean",
@@ -27,6 +36,15 @@
         "OogaBoogaX"
       ],
       "version": "da1cea08219a3619477b2d0bf6d000c4c97d01a97586facf1c9e92da7e35e4dc"
+    },
+    {
+      "id": "body-5f80dcdc5358c6fb",
+      "slot": "body",
+      "label": "Male, big-boned",
+      "creators": [
+        "OogaBoogaX"
+      ],
+      "version": "5f80dcdc5358c6fbdbf0e78cd3b144a6376ede64f97811fcf94e5eace432e91b"
     },
     {
       "id": "body-9d0838d8a7786029",
