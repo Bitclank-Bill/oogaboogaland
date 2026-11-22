@@ -9,7 +9,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { createNode, addChild } = BL.scene;
+  const { createNode, addChild, removeChild } = BL.scene;
   const { createCamera } = BL.scene;
   const { box } = BL.models;
   const { butt, arrow, legionnaire } = BL.archeryModels;
@@ -171,12 +171,20 @@
     for (const node of enemyNodes) node.visible = false;
     targetNodes.length = arrowNodes.length = enemyNodes.length = 0;
     input.dispose();
+    const targets = input.targetCount;
     input = host = sim = null;
-    root = null;
-    camera = null;
-    scene.root = null;
-    scene.camera = null;
+    while (root.children.length) removeChild(root, root.children[root.children.length - 1]);
+    // The director checks the departed graph and target count before entering the next scene.
     scene.input = null;
+    return { targets };
+  };
+
+  // The director calls this at every arrival before preparing GPU geometry. Keep the pooled art
+  // alive even while its nodes are hidden; all three pools belong to this visit.
+  const liveGeometry = (set) => {
+    for (const node of targetNodes) set.add(node.geometry);
+    for (const node of arrowNodes) set.add(node.geometry);
+    for (const node of enemyNodes) set.add(node.geometry);
   };
 
   const scene = {
@@ -190,6 +198,7 @@
     update,
     overlay,
     leave,
+    liveGeometry,
     onKey: handleKey,
     controlsHelpHold: resetHeld,
     onDonation: (donation, counted = null) => {
