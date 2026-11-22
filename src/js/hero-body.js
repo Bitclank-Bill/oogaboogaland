@@ -393,7 +393,7 @@
   const SHAPES = {
     lean: { w: 0.82, d: 0.84, bellyW: 0.95, bellyD: 0.95, chestW: 0.97, chestD: 0.97, arm: 0.76, leg: 0.72, armOut: -0.75 },
     // Big-boned: a bigger frame all over and softer, not fat.
-    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.23, thigh: 1.27, shin: 1.22, armOut: 0.62,
+    big: { w: 1.22, d: 1.2, bellyW: 1.1, bellyD: 1.14, chestW: 1, chestD: 1, neck: 1.15, arm: 1.27, fore: 1.08, thigh: 1.27, shin: 1.22, armOut: 0.62,
       soft: 1, slope: 0.8, round: 2.1, cap: 0.35, drop: 0.35, dome: true }
   };
   const shapedBuilds = new Map();
@@ -405,7 +405,27 @@
     for (let i = 1; i < pts.length; i++) if (y <= pts[i][0]) { const [y0, a] = pts[i - 1], [y1, b] = pts[i]; return a + (b - a) * (y - y0) / (y1 - y0); }
     return neck;
   };
+  // A shape's legs keep under its trunk: where its thicker thighs would stand out past the trunk's foot, their tops
+  // are drawn narrower and closer together, keeping the build's own gap between them, so the outsides of the thighs
+  // meet the trunk's sides (`THIGH_IN` inside them) and the waist runs straight down into the legs. The narrowing eases
+  // out down the thigh (`THIGH_EASE`), so the knee and the shin keep the shape's thickness.
+  const THIGH_IN = 0.08, THIGH_EASE = [-1.6, -3.4], tuckedBuilds = new Map();
   const buildOf = (slim, shape) => {
+    const B = buildOfRaw(slim, shape);
+    if (!shape) return B;
+    const key = (slim ? "slim:" : "regular:") + shape;
+    if (tuckedBuilds.has(key)) return tuckedBuilds.get(key);
+    const base = slim ? BUILD.slim : BUILD.regular, top = Math.max(B.leg[0][1], B.leg[1][1]), lx = B.legX || 2;
+    const gap = (base.legX || 2) - Math.max(base.leg[0][1], base.leg[1][1]), target = B.torso[0][1] - THIGH_IN;
+    let T = B;
+    if (lx + top > target) {
+      const k = (target - gap) / 2 / top, [y0, y1] = THIGH_EASE, at = (y) => y >= y0 ? k : y <= y1 ? 1 : k + (1 - k) * (y0 - y) / (y0 - y1);
+      T = { ...B, legX: (target + gap) / 2, thigh: target, leg: B.leg.map((r) => { const o = r.slice(), f = at(r[0]); o[1] *= f; o[3] *= f; return o; }) };
+    }
+    tuckedBuilds.set(key, T);
+    return T;
+  };
+  const buildOfRaw = (slim, shape) => {
     const base = slim ? BUILD.slim : BUILD.regular, s = shape && SHAPES[shape];
     if (!s) return base;
     const key = (slim ? "slim:" : "regular:") + shape;
@@ -579,20 +599,17 @@
       for (const side of [-1, 1]) slab(torso, rect(nx * side - 0.22, nx * side + 0.22, ny - 0.2, ny + 0.2, chestZ(ny) - 0.02), FRONT, 0.07, 0.85, o.pecs);
     }
     if (o.strap) strap(torso, o.strap, B.depthAt);
-    // The pelvis: what joins the trunk to the legs. It comes out of the trunk under the belt and widens to the thighs'
-    // own width and depth at the trunk's foot (a build whose thighs stand wider than its hips no longer shows them poking
-    // out from under the trunk), wraps their tops, then closes between them as the crotch, so trousers read as one
-    // garment and no slot of sky shows between the legs. It is in what the thighs wear, or over bare thighs in what the
-    // hips wear (shorts, a loincloth). Its sides stand flush with the thighs' and it narrows inside them as it drops, so a
-    // striding leg never uncovers it.
+    // The crotch: the trunk runs straight down past its foot, at its own width and depth, then closes between the
+    // thighs, so the waist meets the legs flat and no slot of sky shows between them. It is in what the thighs wear, or
+    // over bare thighs in what the hips wear (shorts, a loincloth), so trousers and shorts read as one garment. It narrows
+    // inside the thighs as it drops, so a striding leg never uncovers it.
     {
-      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0], thighZ = Math.max(B.leg[0][2], B.leg[1][2]);
-      const T = trunk(slim, k.traits.bodyShape), [hx, hz, cut, cz] = T.ring(B.belt[0]), wide = Math.max(low[1], B.thigh - 0.02), deepest = Math.max(low[2], thighZ);
+      const lx = B.legX || 2, deep = Math.min(B.leg[0][2], B.leg[1][2]) * 0.8, low = B.torso[0];
       const bare = (c) => c[0] === skin[0] && c[1] === skin[1] && c[2] === skin[2];
       let [worn] = paint ? paint.tone(paint.leg[0].pick(0, -0.6, 1)) : [o.legs || skin];
       if (paint && bare(worn)) worn = paint.tone(paint.torso.pick(0, low[0] + 0.1, 1))[0];
-      loft(torso, [[B.belt[0], hx * 0.97, hz * 0.97, cut, 0, cz], [low[0], wide, deepest, Math.max(low[3], 0.5), 0, low[5] || 0],
-        [-1, wide - 0.04, deepest - 0.04, 0.5, 0, 0], [-1.9, lx * 0.4, deep * 0.62, 0.3]], worn, [false, true]);
+      const ring = [low[1], low[2], low[3], 0, low[5] || 0];
+      loft(torso, [[low[0] + 0.3, low[1] - 0.01, low[2] - 0.01, low[3], 0, low[5] || 0], [low[0], ...ring], [-0.9, ...ring], [-1.7, lx * 0.4, deep * 0.62, 0.3]], worn, [false, true]);
     }
     // The skirt hangs from the hips under the belt (`B.skirt`: how wide and deep it is there). With `hem`, for a body
     // that wears no belt, it is the hem of what the trunk wears instead: it starts in the trunk's own bottom edge, so

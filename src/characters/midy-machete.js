@@ -275,7 +275,7 @@
           H.poly(g, [on(x0, y1 - ph, 1, d), on(x0 + pw, y1 - ph, 1, d), on(x0 + pw, y1, 1, d), on(x0, y1, 1, d)], GOLD, [0, 0, 1]);
         });
         const B = H.buildOf(!!k.traits.slim, k.traits.bodyShape);
-        H.loft(g, [shell(S.low + 0.02, 0.015), [S.low - 0.24, Math.max(B.torso[0][1], B.thigh + 0.06), B.torso[0][2] * 1.53 / 1.9, 0.5, 0, -0.03]], SHORTS, [false, true]);
+        H.loft(g, [shell(S.low + 0.02, 0.015), [S.low - 0.24, B.torso[0][1], B.torso[0][2] * 1.53 / 1.9, 0.5, 0, -0.03]], SHORTS, [false, true]);
         const B0 = S.from(1.2), B1 = S.from(2.5), BY = (B0 + B1) / 2;
         H.loft(g, [shell(B0 - 0.02, 0), shell(B0, 0.1), shell(B1, 0.1), shell(B1 + 0.02, 0)], LEATHER, [false, false]);
         const z0 = S.face(0, B0, 1) * tuck(B0) + 0.1, lean = (S.face(0, B1, 1) * tuck(B1) + 0.1 - z0) / (B1 - B0), nl = Math.hypot(lean, 1), out = [0, -lean / nl, 1 / nl];

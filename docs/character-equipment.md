@@ -125,16 +125,18 @@ weapon a hand without a nunchaku. The studio says so on the row.
 The body is the build an Ooga is drawn in: **Male** or **Female** (the regular and
 slim builds), each also **lean** (a narrower trunk, thinner limbs) or **big-boned**
 (a bigger, softer frame: the waist filled out, the chest's step and the limbs'
-swells evened, sloped shoulders domed over the top (`dome`, extra rings between
+swells evened, the forearm only a little thicker, sloped shoulders domed over the top (`dome`, extra rings between
 the trunk and the arm's cap), corners rounded off, no kneecap or line down the
 breastbone; its nipples stay, on the chest's flat face), the shapes in
 `hero-body.js` `SHAPES`. Every shape keeps the build's own gap between the tops of
 its thighs, however thick they are, and every body has a crotch under the trunk
 between them in what the thighs wear (over bare thighs, what the hips wear: shorts, a
-loincloth), so trousers and shorts read as one garment. That crotch is the bottom of a
-pelvis: it comes out of the trunk under the belt and widens to the thighs' own width and
-depth at the trunk's foot, so a build whose thighs stand wider than its hips never shows
-them poking out from under the trunk. A belt follows the trunk round the waist a fixed
+loincloth), so trousers and shorts read as one garment. The trunk runs straight down
+past its foot at its own width into that crotch, so the waist meets the legs flat. A
+shape whose thicker thighs would stand out past the trunk's foot draws their tops
+narrower and closer together (`THIGH_IN` inside the trunk's sides, the build's own gap
+between them), easing back to the shape's thickness by the knee, so the legs join the
+trunk under it rather than out past it. A belt follows the trunk round the waist a fixed
 `BELT_OUT` proud of it, so it neither sinks in where the trunk swells nor stands off where
 it draws in.
 
@@ -142,9 +144,8 @@ What a model merges onto the limbs it was handed (`wear()`: a boot's bands, a cu
 legs of shorts) is fitted to the worn limb automatically (`heroBody.refit`): the surface
 of the limb its own build would have handed and of the worn one are read at each height,
 and a detail keeps its share of the way out inside the surface and its distance past it
-outside, so midy-machete's boot bands stand on a male boot as on hers. midy-machete's shorts flare
-over thighs wider than the hips (`heroBody.buildOf`'s `thigh`), and their legs are fitted
-with her boots.
+outside, so midy-machete's boot bands stand on a male boot as on hers. midy-machete's shorts run
+straight down at the trunk's width, and their legs are fitted with her boots.
 
 A file draws for its own build, so a worn build moves what it drew to the same place on
 the new one. `trunk()` lines a height up between the two by their hips, belt and
