@@ -72,12 +72,12 @@ const positive = (value, fallback, max) => {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 && n <= max ? n : fallback;
 };
-// A hosted chat's speakers are its own setting (`CHAT_SPEAKERS`, CHAT_SPEAKERS_DEFAULT): none needs one of the zone's
+// A hosted chat's speakers are its own setting (`CHAT_SPEAKERS`, at most CHAT_SPEAKERS_DEFAULT, which a copy of a zone and its cloud seats are sized for): none needs one of the zone's
 // eight cloud seats, since a chat's clouds are its copy's (docs/ooga-chat-hosts.md).
 export const CHAT_SPEAKERS_DEFAULT = 32;
 export const limitsOf = (env, chat = false) => ({ ...DEFAULT_LIMITS,
   listeners: positive(env.AUDIENCE_LISTENERS, DEFAULT_LIMITS.listeners, 5000),
-  chatSpeakers: chat ? positive(env.CHAT_SPEAKERS, CHAT_SPEAKERS_DEFAULT, 64) : positive(env.AUDIENCE_SPEAKERS, DEFAULT_LIMITS.chatSpeakers, 64) });
+  chatSpeakers: chat ? positive(env.CHAT_SPEAKERS, CHAT_SPEAKERS_DEFAULT, CHAT_SPEAKERS_DEFAULT) : positive(env.AUDIENCE_SPEAKERS, DEFAULT_LIMITS.chatSpeakers, 64) });
 
 /** The principal ChatBridge handed on, checked again here: anything malformed is no connection. */
 export const readPrincipal = (raw, now = Date.now()) => {
