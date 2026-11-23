@@ -540,6 +540,92 @@ test("a word the island room missed is kept and sent again from the alarm", asyn
 
 
 
+test("a chat's copy: speakers alone may walk it, walkers' rows say so, the clouds seat the rest, and leaving the stage, removal and the end reach the copy", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const calls = [];
+  let copyUp = true;
+  const copy = { copyRevoke: async (id, reason) => calls.push(["revoke", id, reason]), copyEnd: async () => { if (!copyUp) throw new Error("copy away"); calls.push(["end"]); },
+    copyClouds: async (list) => calls.push(["clouds", list.map((c) => [c.id, c.seat, c.character])]) };
+  w.env.ROOM = { getByName: (name) => name.startsWith("chat:") ? copy : { chatVoice: async () => ({ ok: true }) } };
+  const { chat } = await startChat(w.env, host(1), { title: "Copy", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), zed = await connect(w, chat.id, 9);
+  const a = w.objects.get(chatName(chat.id)).a;
+  assert.deepEqual(await a.copyMember("gh:1"), { ok: false, reason: "not-speaker" }, "the host walks only once on stage");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await ask(amy, { type: "invite", id: "gh:2" }); await ask(bea, { type: "setRole", role: "speaker" });
+  await ask(amy, { type: "invite", id: "x:9" }); await ask(zed, { type: "setRole", role: "speaker" });
+  for (const p of [amy, bea, zed]) { const c = a.model.conns.get(p.connId); a.model.activate(p.connId, c.lease.generation); }
+  await a.flush();
+  const member = await a.copyMember("gh:1");
+  assert.equal(member.ok, true);
+  assert.deepEqual(member.clouds.map((c) => [c.id, c.seat]), [["gh:1", "main-cloud-1"], ["gh:2", "main-cloud-2"], ["x:9", "main-cloud-3"]], "every speaker on a cloud, a seat each");
+  assert.equal(member.clouds[2].character, "guest/x-p9", "an X account sits there as a default Ooga no login can be");
+  assert.equal(member.clouds[0].seatRevision, "cloud-seats-v2");
+  await a.walking(["gh:1"]);
+  await w.settle();
+  assert.equal(rowOf(bea, "gh:1").walking, true, "a walker's row says so");
+  assert.deepEqual(calls.at(-1), ["clouds", [["gh:2", "main-cloud-2", "bea"], ["x:9", "main-cloud-3", "guest/x-p9"]]], "a walker's cloud stands empty; the copy hears the rest");
+  assert.deepEqual(a.copyCheck(["gh:1", "gh:4"]), ["gh:4"], "the sweep's check names who may no longer walk");
+  await a.walking(["gh:1", "gh:2"]);
+  await ask(amy, { type: "demote", id: "gh:2" });
+  await w.settle();
+  assert.ok(calls.some((c) => c[0] === "revoke" && c[1] === 2 && c[2] === "stage"), "moved to listening, sent home");
+  await ask(amy, { type: "setRole", role: "listener" });
+  await w.settle();
+  assert.ok(calls.some((c) => c[0] === "revoke" && c[1] === 1), "leaving the stage on one's own word sends one home too");
+  // The end, with the copy away: owed, kept, and said again from the alarm until the copy takes it.
+  copyUp = false;
+  await ask(amy, { type: "end" });
+  await w.settle();
+  const { ctx } = w.objects.get(chatName(chat.id));
+  assert.equal(await ctx.storage.get("copyGone"), chat.id, "kept across a nap");
+  assert.ok(ctx.alarm && ctx.alarm <= now + 30000, "and the alarm will try again");
+  copyUp = true;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  assert.deepEqual(calls.at(-1), ["end"], "the end sends everyone home and the copy forgets itself");
+  assert.equal(await ctx.storage.get("copyGone"), undefined);
+});
+
+test("a DSB Land chat has no copy yet", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "DSB", zone: "dsb" });
+  const amy = await connect(w, chat.id, 1);
+  await ask(amy, { type: "setRole", role: "speaker" });
+  assert.deepEqual(await w.objects.get(chatName(chat.id)).a.copyMember("gh:1"), { ok: false, reason: "zone" });
+});
+
+
+
+test("the island view's feed: walkers' positions to those who asked, at most twice a second, nobody else's and nothing out of bounds", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "View", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a;
+  await a.walking(["gh:1"]);
+  assert.deepEqual(a.walk(1, [1], [1, 2, 3, 0.5]), { ok: true, sent: false }, "nobody asked: nothing sent");
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
+  now += 1000;
+  assert.deepEqual(a.walk(2, [1], [1.234, 2, -3.06, 0.512]), { ok: true, sent: true });
+  const frame = bea.ws.sent.filter((m) => m.type === "walk").at(-1);
+  assert.deepEqual(frame, { type: "walk", seq: 2, p: ["gh:1", 1.2, 2, -3.1, 0.51] });
+  assert.equal(amy.ws.sent.some((m) => m.type === "walk"), false, "only those who asked");
+  assert.equal(a.walk(3, [1], [1, 2, 3, 0]).sent, false, "half a second at the soonest");
+  now += 600;
+  assert.equal(a.walk(2, [1], [1, 2, 3, 0]).ok, false, "an older frame is dropped");
+  assert.equal(a.walk(4, [2], [1, 2, 3, 0]).ok, false, "a walker the chat does not know drops the frame");
+  assert.equal(a.walk(5, [1], [1e6, 2, 3, 0]).ok, false, "as does a value out of bounds");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: false }));
+  now += 600;
+  const before = cyd.ws.sent.length;
+  assert.equal(a.walk(6, [1], [1, 2, 3, 0]).sent, true);
+  assert.equal(cyd.ws.sent.length, before, "turned off, none come");
+});
+
 test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's frames, its land none in the list and the chat", async () => {
   now += START_GAP_MS;
   const w = await world();

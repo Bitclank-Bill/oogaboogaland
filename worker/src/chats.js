@@ -7,12 +7,13 @@
 //   GET  /api/chats/<id>/live       the chat's socket (audience protocol 2)
 //   POST /api/chats/<id>/media/<op> its media, as Ooga Chat's `/api/chat/media/<op>`
 //   GET  /api/chats/<id>            its preview: the chat, its stage and how many listen (chat-directory.js)
-// Off unless the island's `OOGA_CHAT_FEATURES` names `chats`.
+//   GET  /api/chats/<id>/world      a speaker's socket to the chat's copy of its zone (room-copy.js), as `/room` is
+// Off unless the island's `OOGA_CHAT_FEATURES` names `chats`; the copy also needs `copies`.
 
 import { chatName, CHAT_ID, DIRECTORY_NAME } from "./audience.js";
 import { previewChat, startChat } from "./chat-directory.js";
 import { bridgeFeatures } from "./chat-bridge-protocol.js";
-import { allowed, fromSite, getSessionFromRequest, json, readBody, text } from "./http.js";
+import { allowed, asPlayer, fromSite, getSessionFromRequest, json, readBody, serviceSession, text } from "./http.js";
 
 export const LIST_CACHE_S = 2;
 
@@ -26,6 +27,20 @@ const BODY_MAX = 512;
 const MEDIA_BODY_MAX = 256 * 1024;
 const MEDIA_OP = /^(ice|renegotiate|leave|receive\/(open|sync|close)|publish\/(open|offer|ready|close))$/;
 const SOCKET_HEADERS = ["upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"];
+
+// A speaker's socket to the chat's copy (`chat:<id>`, the island's Room in its copy mode): who the player is decided
+// here, as for `/room`, and whether they may walk it by the chat itself as the copy admits them.
+const copySocket = async (request, env, id) => {
+  if (!bridgeFeatures(env).copies || !env.ROOM) return json({ error: { code: "unavailable", retryable: true } }, 503);
+  if (request.headers.get("upgrade") !== "websocket") return text("Expected WebSocket", 426);
+  const found = await serviceSession(request, env);
+  if (found instanceof Response) return found;
+  if (!found) return text("Sign in first", 401);
+  if (!(await allowed(env.ROOM_LIMITER, `copy:${found.player.id}`))) return text("Too many reconnects", 429);
+  if (!CHAT_ID.test(id) || !(await env.CHATS.getByName(DIRECTORY_NAME).has(id))) return endedSocket();
+  return env.ROOM.getByName(chatName(id)).fetch(asPlayer(request, found,
+    env.EQUIPMENT_ENABLED === "1" ? { "x-player-equipment-session": found.session.token_hash } : null));
+};
 
 /** The island account as a chat's principal (audience.js `readPrincipal`). */
 export const islandPrincipal = (found) => ({
@@ -48,6 +63,7 @@ export const handleChats = async (request, env, url) => {
   const parts = url.pathname.split("/").slice(3);
   const id = parts[0] || "";
   if (request.method !== "GET" || id) { if (!fromSite(request, env.SITE_ORIGIN)) return text("Forbidden", 403); }
+  if (parts[1] === "world" && parts.length === 2 && request.method === "GET") return copySocket(request, env, id);
   let found;
   try { found = await getSessionFromRequest(request, env, true); } catch { return json({ error: { code: "unavailable", retryable: true } }, 503); }
   if (!found) return json({ error: { code: "auth_required" } }, 401);

@@ -25,7 +25,7 @@ import { decideCapability } from "./chat-capability.js";
 import { contributorForEnv } from "./contributor-access.js";
 import { oogatron, readContributorSnapshot } from "./contributor-policy.js";
 import { bridgeFeatures } from "./chat-bridge-protocol.js";
-import { SEAT_REVISION } from "./cloud-seats.js";
+import { COPY_REVISION, freeCopySeat, SEAT_REVISION } from "./cloud-seats.js";
 import "../../src/js/emoji-data.js";
 import "../../src/js/reaction-policy.js";
 import { CLEANUP_BACKLOG_MAX, createMediaBroker, MEDIA_BODY_MAX } from "./audience-media.js";
@@ -58,7 +58,13 @@ export const isChatLand = (land) => CHAT_LANDS.includes(land);
 export const rosterZone = (land) => (land === "dsb" ? "dsb" : "main");
 export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "cohostAnswer", "handover", "remove", "allow", "open", "end"]);
 const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
-export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1"];
+export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1", "walk-v1"];
+// The island view (docs/ooga-chat-hosts.md): walkers' positions relayed from the chat's copy to the connections that
+// asked for them (`{ type: "view", on }`), at most WALK_HZ a second, fewer as subscribers pass WALK_FANOUT frames a
+// second in all; a frame arriving sooner is dropped (the copy sends the next within half a second).
+export const WALK_HZ = 2;
+export const WALK_FANOUT = 2000;
+const BOUND_XZ = 400;
 // A transient reaction's life on every client (players.js shows the island's for the same time), and the limits on
 // sending them: per identity across its tabs (as the island's room has it) and per zone, which bounds any zone's fanout.
 export const REACTION_MS = 2600;
@@ -140,6 +146,11 @@ export class Audience extends DurableObject {
     // Words for the island room it has not yet taken (`tellIsland`), account -> { on, chat }: kept past the chat's end, so
     // a word lost as it ended still reaches the Room.
     this.islandWords = new Map();
+    // The chat's copy of its zone (room-copy.js): who walks it now, whether it was ever opened, and each speaker's cloud.
+    this.walkers = new Set();
+    this.copyOpened = false;
+    this.copySeats = new Map();
+    this.copyGone = null;
     // What the island room was last told of this chat's counts (`reportMembers`): its signature, when, the one-shot
     // timer for a burst's last change, the one report in flight, and the chat whose end it has not yet heard (`gone`,
     // stored, so the alarm says it again even after the chat is gone).
@@ -166,17 +177,25 @@ export class Audience extends DurableObject {
       if (chat) {
         this.chat = chat;
         this.roles = createRoles({ saved: await ctx.storage.get("roles") });
+        const copy = (await ctx.storage.get("copy")) || {};
+        this.walkers = new Set(copy.walkers || []);
+        this.copyOpened = copy.opened === true;
+        this.copySeats = new Map(copy.seats || []);
       }
       // An older save's words are a bare `on` for the chat it held.
       this.islandWords = new Map(((await ctx.storage.get("islandWords")) || []).map(([id, w]) => [id, typeof w === "boolean" ? { on: w, chat: chat && chat.id } : w])
         .filter(([, w]) => w && CHAT_ID.test(w.chat || "")));
       const gone = await ctx.storage.get("membersGone");
       this.members.gone = typeof gone === "string" && CHAT_ID.test(gone) ? gone : null;
+      // A copy whose end it has not yet heard (`copyEnd`), retried from the alarm even after the chat is gone.
+      const copyGone = await ctx.storage.get("copyGone");
+      this.copyGone = typeof copyGone === "string" && CHAT_ID.test(copyGone) ? copyGone : null;
       // The model reads these limits as it goes: a chat opened later raises them to a chat's own (`open`).
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
         standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat,
         reserved: () => this.roles ? this.roles.held(Date.now()) : [] });
+      if (this.chat) this.model.setWalking([...this.walkers]);
       this.island = (await ctx.storage.get("world")) || this.island;
       if (!Array.isArray(this.island.linked)) this.island = { ...this.island, linked: [] };
       this.watching = new Set((await ctx.storage.get("watch")) || []);
@@ -276,7 +295,7 @@ export class Audience extends DurableObject {
     if (!ws || !c) return;
     const p = this.model.people.get(c.id);
     ws.serializeAttachment({ conn: { connId: c.connId, id: c.id, principal: c.principal, providerUserId: c.providerUserId, zone: c.zone, lease: c.lease,
-      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt }, info: p.info });
+      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt, viewing: !!c.viewing }, info: p.info });
   }
 
   /** Commit what changed, store the revisions, and send every zone's delta to its clients and to a watching Room. */
@@ -351,6 +370,7 @@ export class Audience extends DurableObject {
    * over it. Nothing while the island's `cloud` switch is off.
    */
   clouds() {
+    if (this.chat) return this.chatClouds();
     if (!bridgeFeatures(this.env).cloud) return [];
     const out = [];
     for (const c of this.model.conns.values()) {
@@ -363,7 +383,16 @@ export class Audience extends DurableObject {
   }
 
   cloudsChanged() {
-    if (this.chat) return;
+    if (this.chat) {
+      // A chat's clouds are its copy's: told only while someone walks it (an empty copy is never woken), and
+      // `copyMember`'s answer carries them to the first who arrives.
+      const list = this.chatClouds(), sig = JSON.stringify(list);
+      if (!this.walkers.size) { this.cloudsSig = null; return; }
+      if (sig === this.cloudsSig) return;
+      this.cloudsSig = sig;
+      this.toCopy((copy) => copy.copyClouds(list));
+      return;
+    }
     const list = this.clouds(), sig = JSON.stringify(list);
     if (sig === this.cloudsSig || !this.env.ROOM) return;
     this.cloudsSig = sig;
@@ -377,6 +406,35 @@ export class Audience extends DurableObject {
       }
     });
     this.background(this.roomQueue);
+  }
+
+  /**
+   * A chat's clouds (docs/ooga-chat-hosts.md): every active speaker not walking the copy, a seat each of the copy's
+   * thirty-two, kept for the life of their lease (empty while they walk). An account with no Ooga of its own sits there
+   * as a default one hashed from its handle, under a name no login can have (`guest/<provider>-<login>`).
+   */
+  chatClouds() {
+    const speakers = new Map();
+    for (const c of this.model.conns.values()) if (c.lease && c.lease.state === "active") speakers.set(c.id, c);
+    let changed = false;
+    for (const id of [...this.copySeats.keys()]) if (!speakers.has(id)) { this.copySeats.delete(id); changed = true; }
+    const taken = new Set(this.copySeats.values());
+    for (const id of speakers.keys()) {
+      if (this.copySeats.has(id)) continue;
+      const seat = freeCopySeat(taken);
+      if (!seat) continue;
+      this.copySeats.set(id, seat); taken.add(seat); changed = true;
+    }
+    if (changed) this.background(this.keepCopy());
+    const out = [];
+    for (const [id, c] of speakers) {
+      const seat = this.copySeats.get(id);
+      if (!seat || this.walkers.has(id)) continue;
+      const p = this.model.people.get(id);
+      out.push({ id, character: c.lease.character || p.info.character || `guest/${p.info.provider}-${p.info.login}`.toLowerCase(), zone: c.zone, seat,
+        seatRevision: COPY_REVISION, lease: c.lease.generation, mic: c.mic, hand: c.hand || "", login: p.info.login, display: p.info.display || p.info.login });
+    }
+    return out.sort((a, b) => (a.seat < b.seat ? -1 : 1));
   }
 
   /** One reaction event to every Ooga Chat client in its zone, and to the Room when anything there shows it. */
@@ -469,7 +527,7 @@ export class Audience extends DurableObject {
     // Media cleanup retries even after every client has gone; a chat wakes for a lapsing invite or its held host.
     next = Math.min(next, this.media.nextCleanup());
     if (this.roles) next = Math.min(next, this.roles.nextAt(), this.model.quietUntil());
-    if (this.islandWords.size || this.members.gone) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
+    if (this.islandWords.size || this.members.gone || this.copyGone) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
     if (next === Infinity) return;
     const current = await this.ctx.storage.getAlarm();
     if (!current || current > next) await this.ctx.storage.setAlarm(next);
@@ -481,6 +539,7 @@ export class Audience extends DurableObject {
     if (this.model.expire(now).length) await this.saveQuiet();
     for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
     await this.sendGone();
+    await this.sendCopyGone();
     for (const c of [...this.model.conns.values()]) {
       if (c.authUntil <= now) { this.close(c.connId, CLOSE.auth, "auth_required"); continue; }
       if (c.lease && c.lease.state === "pending" && c.lease.until <= now) {
@@ -521,7 +580,8 @@ export class Audience extends DurableObject {
     this.background(this.media.retirePublication(connId));
     // A chat keeps a speaker's place on the stage a while unless they went back to listening themselves.
     const c = this.model.conns.get(connId);
-    if (this.roles && lease && c) this.stageLeft(c.id, reason === "listener");
+    // Gone to another chat's stage (`moved`) is the speaker's own word too: their place here goes.
+    if (this.roles && lease && c) this.stageLeft(c.id, reason === "listener" || reason === "moved");
   }
 
   /** Ooga Chat speakers' publications changed: the Room's island players with an open outdoor grant hear them. */
@@ -652,6 +712,8 @@ export class Audience extends DurableObject {
     if (msg.type === "join") return this.onJoin(c, msg);
     // A client that saw a revision gap asks again: counted, the one sign of a gap the server can see.
     if (msg.type === "resync") { if (c.zone && msg.zone === c.zone) { this.inspect.count("resync"); this.sendSnapshot(ws, c); } return; }
+    // The island view shown (or not): only a connection that asked hears walkers' positions.
+    if (msg.type === "view" && this.chat) { if (typeof msg.on === "boolean" && !!c.viewing !== msg.on) { c.viewing = msg.on; this.save(c.connId); } return; }
     if (msg.type === "setRole" || msg.type === "setMic" || msg.type === "reaction" || msg.type === "hand" || this.roles && CHAT_OPS.has(msg.type)) return this.onRequest(c, msg);
   }
 
@@ -806,7 +868,8 @@ export class Audience extends DurableObject {
     const c = this.model.conns.get(connId);
     if (!this.roles || !c) return you;
     const now = Date.now(), invite = this.roles.inviteUntil(c.id, now);
-    return { ...you, rank: this.roles.rankOf(c.id), request: this.roles.requestOf(c.id, now), ...(invite ? { inviteUntil: invite } : {}) };
+    return { ...you, rank: this.roles.rankOf(c.id), request: this.roles.requestOf(c.id, now), ...(invite ? { inviteUntil: invite } : {}),
+      ...(this.walkers.has(c.id) ? { walking: true } : {}) };
   }
 
   chatInfo() {
@@ -856,7 +919,105 @@ export class Audience extends DurableObject {
     if (ended.reinstated) this.cohostReinstated(id);
     if (this.chat && this.env.CHATS) this.background(this.env.CHATS.getByName(DIRECTORY_NAME).release(id, this.chat.id).catch(() => {}));
     this.tellIsland(id, false);
+    this.copyLeft(id);
   }
+
+  /** An account that may no longer walk the chat's copy is sent home from it (the copy's `copyRevoke`). */
+  copyLeft(id, reason = "stage") {
+    if (!this.walkers.has(id) || this.walksNow(id)) return;
+    this.toCopy((copy) => copy.copyRevoke(Number(id.slice(3)), reason));
+  }
+
+  /** Whether an identity may walk the copy now: a lease held now, or its place on the stage (chat-roles.js `mayWalk`). */
+  walksNow(id) {
+    const p = this.model.people.get(id);
+    const leased = !!p && [...p.conns.values()].some((c) => !!c.lease);
+    return !!this.roles && this.roles.mayWalk(id, Date.now(), leased);
+  }
+
+  /** A call on the chat's copy, in order with the others, only once the copy has been opened. */
+  toCopy(call) {
+    if (!this.chat || !this.env.ROOM || !this.copyOpened) return;
+    const copy = this.env.ROOM.getByName(chatName(this.chat.id));
+    this.roomQueue = this.roomQueue.then(() => call(copy)).catch(() => {});
+    this.background(this.roomQueue);
+  }
+
+  /** The chat's copy hears the chat ended (`copyEnd`); any answer settles it, only an unreachable copy is tried again. */
+  async sendCopyGone() {
+    const chat = this.copyGone;
+    if (!chat || !this.env.ROOM) return;
+    try { await this.env.ROOM.getByName(chatName(chat)).copyEnd(); } catch { return; }
+    if (this.copyGone !== chat) return;
+    this.copyGone = null;
+    await this.ctx.storage.delete("copyGone");
+  }
+
+  async keepCopy() {
+    await this.ctx.storage.put("copy", { walkers: [...this.walkers], opened: this.copyOpened, seats: [...this.copySeats] });
+  }
+
+  // --- the copy's calls (RPC, room-copy.js) ---
+
+  /**
+   * May GitHub account `id` walk this chat's copy of its zone? Speakers alone, Main Island alone for now. The answer
+   * carries the chat's zone and title and the clouds the copy shows, so its first page needs no second call.
+   */
+  async copyMember(id) {
+    if (!this.chat || !this.roles || this.roles.ended) return { ok: false, reason: "ended" };
+    if (this.chat.zone !== "main") return { ok: false, reason: "zone" };
+    if (typeof id !== "string" || !ID.test(id) || !this.walksNow(id)) return { ok: false, reason: "not-speaker" };
+    if (!this.copyOpened) { this.copyOpened = true; await this.keepCopy(); }
+    return { ok: true, zone: this.chat.zone, title: this.chat.title, clouds: this.clouds() };
+  }
+
+  /**
+   * Walkers' positions from the copy (`seq` rising, `ids` GitHub ids, `p` x, y, z and heading for each, in order), for the
+   * island view: one frame, built once, to every connection that asked for it, at a rate the fan-out budget allows. A
+   * walker the chat does not know, or a value out of bounds, drops the frame.
+   */
+  walk(seq, ids, p) {
+    if (!this.chat || !Number.isSafeInteger(seq) || seq <= (this.walkSeq || 0) || !Array.isArray(ids) || !Array.isArray(p) || p.length !== ids.length * 4 || ids.length > 64) return { ok: false };
+    let viewers = 0;
+    for (const c of this.model.conns.values()) if (c.viewing) viewers++;
+    const now = Date.now(), hz = Math.max(0.2, Math.min(WALK_HZ, WALK_FANOUT / Math.max(1, viewers)));
+    if (!viewers || now - (this.walkAt || 0) < 1000 / hz) return { ok: true, sent: false };
+    const out = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = `gh:${ids[i]}`, x = p[i * 4], y = p[i * 4 + 1], z = p[i * 4 + 2], yaw = p[i * 4 + 3];
+      if (!Number.isSafeInteger(ids[i]) || !this.walkers.has(id) || ![x, y, z, yaw].every(Number.isFinite) || Math.abs(x) > BOUND_XZ || Math.abs(z) > BOUND_XZ) return { ok: false };
+      out.push(id, Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(z * 10) / 10, Math.round(yaw * 100) / 100);
+    }
+    this.walkSeq = seq;
+    this.walkAt = now;
+    const text = JSON.stringify({ type: "walk", seq, p: out });
+    for (const c of this.model.conns.values()) {
+      if (!c.viewing) continue;
+      const ws = this.sockets.get(c.connId);
+      if (ws) this.send(ws, text);
+    }
+    this.inspect.count("walkFrames");
+    return { ok: true, sent: true };
+  }
+
+  /** Who walks the copy now (the copy's whole list, `gh:<id>`): their rows say so, and their clouds stand empty. */
+  async walking(ids) {
+    if (!this.chat || !Array.isArray(ids)) return { ok: false };
+    const next = ids.filter((id) => typeof id === "string" && /^gh:[1-9][0-9]{0,19}$/.test(id)).slice(0, 64);
+    this.walkers = new Set(next);
+    this.model.setWalking(next);
+    await this.keepCopy();
+    await this.flush();
+    this.cloudsChanged();
+    return { ok: true };
+  }
+
+  /** The copy's sweep: of those walking it, the ids that may no longer (a lapsed hold, a lost lease). */
+  copyCheck(ids) {
+    if (!Array.isArray(ids)) return [];
+    return ids.filter((id) => typeof id === "string" && !this.walksNow(id));
+  }
+
 
   /**
    * The island room hears a GitHub account took or left this chat's stage, so its island voice gives way (room.js). A
@@ -1074,6 +1235,7 @@ export class Audience extends DurableObject {
           this.unquiet(target);
           this.touchId(target);
           this.notify([target], { kind: "demoted", by: me });
+          this.copyLeft(target);
         }
         break;
       case "cohost":
@@ -1106,6 +1268,7 @@ export class Audience extends DurableObject {
         if (res.ok) {
           this.sendRemoved();
           this.notify([target], { kind: "removed", by: me });
+          this.copyLeft(target, "removed");
           for (const o of conns(target)) this.close(o.connId, CLOSE.removed, "removed");
           this.unquiet(target);
         }
@@ -1141,6 +1304,13 @@ export class Audience extends DurableObject {
     this.model.expire(Infinity);
     await this.flush();
     if (this.env.CHATS) await this.env.CHATS.getByName(DIRECTORY_NAME).end(this.chat.id).catch(() => {});
+    // Its copy sends everyone home and forgets itself: owed until it answers, kept and retried from the alarm.
+    await this.roomQueue;
+    if (this.copyOpened && this.env.ROOM) {
+      this.copyGone = this.chat.id;
+      await this.ctx.storage.put("copyGone", this.copyGone);
+      await this.sendCopyGone();
+    }
     // The speakers' last words to the island (their island voice free again) go now; any the Room did not take stay,
     // with the chat they name, and the alarm sends them again even after the chat is gone.
     for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
@@ -1155,7 +1325,7 @@ export class Audience extends DurableObject {
     }
     // Nothing else of an ended chat is kept: its title, host and every account id its roles named go (media cleanup's own
     // bookkeeping stays until it drains). Woken again, the object has no chat and refuses every socket as ended.
-    await this.ctx.storage.delete(["chat", "roles", "meta", "world", "watch", "sourcesSig", "cloudsSig", "quiet", ...(this.islandWords.size ? [] : ["islandWords"])]);
+    await this.ctx.storage.delete(["chat", "roles", "meta", "world", "watch", "sourcesSig", "cloudsSig", "copy", "quiet", ...(this.islandWords.size ? [] : ["islandWords"])]);
     await this.scheduleAlarm();
   }
 

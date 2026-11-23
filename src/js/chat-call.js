@@ -9,7 +9,7 @@
 // `{ t: "call", on }` (`net.setCall`), so other pages mark this player as in a chat. Leaving it, the chat ending or
 // removing them (4404, 4403), signing out or the room's chats going away ends the call.
 // `open(entry)`, `leave(kind)`, `request(type, fields)` (its id, 0 while the socket isn't open), `hear(fn)` (the chat's
-// notices and request answers), `subscribe(fn)` (anything changed), `list()`, `start(body)`, `preview(id)`, `identity()` (the visitor as
+// notices, request answers and the island view's `walk` frames), `subscribe(fn)` (anything changed), `list()`, `start(body)`, `preview(id)`, `identity()` (the visitor as
 // the views know them), and `state` in Ooga Chat's shape for the shared views: `room` (the chat, with the server's
 // `you`), `voice` (the controller's state), `audience` (`status`, `list`, `version`). `media` is the controller, for the
 // panel's footer and tiles. No timer but the open chat socket's ping and reconnect; nothing per frame.
@@ -154,6 +154,8 @@
     if (msg.type === "removed") { for (const fn of heard) fn(msg); return emit(); }
     if (msg.type === "you" || msg.type === "media") { m.heard(msg); return emit(); }
     if (msg.type === "reaction") return;
+    // The island view's walkers (chat-hosts.js, island-view.js), heard while it asked for them.
+    if (msg.type === "walk") { for (const fn of heard) fn(msg); return; }
     const result = roster.apply(msg);
     if (result === "gap") feed.resync(BL.chatHosts.rosterZone(chat.zone));
     if (result === "applied") {

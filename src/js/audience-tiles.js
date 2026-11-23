@@ -1,13 +1,14 @@
 // Ooga Chat's roster as circles, the island's (cloud-panel.js) and Ooga Chat's alike (#656): everyone in an outdoor zone,
 // as many to a row as fit at 76 px or more a column, in the order the caller hands them (speakers first), the whole list scrolling in its slab. A tile is a
 // portrait (a picture, or the native Ooga face when there is none or it fails, asked for once) carrying a speaker's
-// source ring (green from the island, purple from Ooga Chat) and, over its centre, a raised hand or a reaction; then
+// source ring (green from the island, purple from Ooga Chat; in a hosted chat green while the speaker walks the chat's
+// island with their Ooga, `walking`, else purple) and, over its centre, a raised hand or a reaction; then
 // the name on one line, cut short with its whole self in the title; then
 // the role, a speaker's voice mark first. Reads nothing at load but window.BL, so Ooga Chat shares it.
 // `create(list, { mic(id), menu(id, tile) })` takes the <ul>, what a press on a voice mark does and, optionally, on a
 // portrait or Enter or Space on a focused tile (a hosted chat's tile menu). Returns:
 //   draw(items, describe)  one pass in the list's order: `describe(item, tile)` writes each item into one scratch tile
-//                          ({ id, display, role, source, face, look, hand, self, micDisabled, micPressed, micWords, and
+//                          ({ id, display, role, source, walking, face, look, hand, self, micDisabled, micPressed, micWords, and
 //                          and a hosted chat's `rank` and `request` as `data-` attributes, `chat` saying "speaking",
 //                          and `reconnecting`: a dropped one's tile dimmed in its place, Reconnecting… for its role).
 //                          A tile's nodes are kept by id, only changed fields are written, a tile moves only when out
@@ -35,7 +36,7 @@
   };
   const create = (list, { mic = () => {}, menu = null } = {}) => {
     const tiles = new Map();
-    const tile = { id: "", display: "", role: "listener", source: "", face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "", chat: false, reconnecting: false };
+    const tile = { id: "", display: "", role: "listener", source: "", walking: false, face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "", chat: false, reconnecting: false };
     let mark = 0, current = null;
     const build = (id) => {
       const li = make("li", "cloud-tile"), face = make("span", "cloud-face"), portrait = make("span", "cloud-portrait");
@@ -83,7 +84,7 @@
       entry.portrait.replaceChildren(img);
     };
     const paint = (entry) => {
-      const t = tile, speaker = t.role === "speaker", source = speaker ? t.source : "";
+      const t = tile, speaker = t.role === "speaker", source = speaker ? t.walking ? "world" : t.source : "";
       if (entry.li.dataset.role !== t.role) entry.li.dataset.role = t.role;
       if (entry.li.dataset.source !== source) entry.li.dataset.source = source;
       set(entry.text, "textContent", t.display);
@@ -118,6 +119,7 @@
       const active = document.activeElement, held = active && active.parentElement === list ? active : null;
       let i = 0;
       for (const item of items) {
+        tile.walking = false;
         describe(item, tile);
         let entry = tiles.get(tile.id);
         if (!entry) tiles.set(tile.id, entry = build(tile.id));
@@ -135,6 +137,7 @@
     };
     const repaint = (describe) => {
       for (const entry of tiles.values()) if (entry.li.dataset.role === "speaker") {
+        tile.walking = false;
         describe(entry.item, tile);
         paint(entry);
       }

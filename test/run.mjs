@@ -17679,7 +17679,7 @@ const oogaChatAppChecks = async () => {
       preview: r.preview.preview.title === "Sample Oak's chat" && r.preview.preview.stage === "sample-oak,sample-fern,sample-reed" && /^4 listening · 2 waiting to speak$/.test(r.preview.preview.count)
         && !r.preview.preview.tag && r.preview.preview.inside && !r.cancelled.preview && r.cancelled.focus.startsWith("Sample Oak's chat"),
       joined: r.joined.space === "on" && r.joined.title === "Sample Oak's chat" && r.joined.foot.includes("Request to speak") && !r.joined.foot.includes("End chat") && r.joined.ranks === "host,cohost" && r.joined.asked === 2
-        && r.joined.names === "sample-oak,sample-fern,sample-reed,sample-wren,sample-kite,sample-lark,sample-heron,sample contributor" && r.joined.rings.split(",").every((x) => x === "chat") && /sample-fern, co-host, speaking, reconnecting/.test(r.joined.tiles),
+        && r.joined.names === "sample-oak,sample-fern,sample-reed,sample-wren,sample-kite,sample-lark,sample-heron,sample contributor" && r.joined.rings === "world,chat,world" && /sample-fern, co-host, speaking, reconnecting/.test(r.joined.tiles),
       openStage: r.openSpeaking.invite === 0 && r.openSpeaking.openTag === 1 && r.openSpeaking.captures === 1,
       offer: r.offer.offer === 1 && r.offer.offerHead === "The host invited you to co-host" && r.offer.focus === "Accept" && r.offer.offerInside
         && /\(you\), co-host, speaking/.test(r.cohosting.tiles) && r.cohosting.notice === "You're a co-host now",
@@ -17707,8 +17707,91 @@ const oogaChatAppChecks = async () => {
       ended: r.confirm.popInside && r.ended.space === "list" && r.ended.notice === "The chat ended" && !r.ended.rows.includes("sample-contributor's chat"),
       fits: Object.values(r).every((m) => typeof m !== "object" || !m.wide)
     }]));
-    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
+    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
       Object.values(hostedOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ hostedOk, hostedRuns }));
+
+    // The island view (island-view.js; docs/ooga-chat-hosts.md, "The island view"), at 1024 and 390: Sample Oak's chat
+    // has two speakers walking its island, so its strip shows the map with their faces, each ringed in green just where
+    // the baked matrix puts its walker; the chat's places come only while the strip can be seen (another tab stops them,
+    // coming back starts them again); leaving the chat takes the strip away. Live view's code and its WebGL context come
+    // only once it is turned on, the choice kept in this browser: a reload of the page opens the chat in Live view, and
+    // turning it off goes back to the map. Pictures of both go to untracked/island-view.
+    const ivShots = join(root, "untracked", "island-view");
+    mkdirSync(ivShots, { recursive: true });
+    const ivNow = (b) => b.evaluate(`(() => { const v = [...BL.islandView.open][0], stage = document.querySelector(".iv-stage"), strip = document.querySelector(".hc-room-strip");
+      const map = document.querySelector(".iv-map"), V = BL.islandViewData.main, live = stage?.dataset.live === "on";
+      const faces = [];
+      if (v && map && !strip.hidden && map.getBoundingClientRect().width > 0) {
+        const r = map.getBoundingClientRect(), k = map.width / r.width, fit = Math.min(r.width / V.w, r.height / V.h), ox = (r.width - V.w * fit) / 2, oy = (r.height - V.h * fit) / 2;
+        // Read from a copy made for reading, never the page's own canvas.
+        const copy = document.createElement("canvas"), g = copy.getContext("2d", { willReadFrequently: true });
+        copy.width = map.width; copy.height = map.height; g.drawImage(map, 0, 0);
+        for (const f of v.placed()) {
+          const p = BL.islandView.project(V, f.world.x, f.world.y, f.world.z, {}), x = live ? f.x : ox + p.x * fit, y = live ? f.y : oy + p.y * fit;
+          const d = g.getImageData(Math.max(0, Math.round((x - 18) * k)), Math.round(y * k), Math.round(36 * k), 1).data;
+          let green = 0;
+          for (let i = 0; i < d.length; i += 4) if (d[i + 1] > 150 && d[i] < 90 && d[i + 2] < 130) green++;
+          faces.push({ off: Math.round(Math.hypot(f.x - x, f.y - y) * 10) / 10, green });
+        }
+      }
+      const key = Object.keys(localStorage).find((name) => name.endsWith("island-live"));
+      return { shown: !!strip && !strip.hidden, live: stage?.dataset.live || "", seq: v ? v.walks.seq : 0, count: v ? v.walks.count : 0, faces, chunk: !!BL.islandViewLive, gl: __oc.gl,
+        stored: key ? localStorage.getItem(key) : null, note: document.querySelector(".iv-note")?.textContent || "", wide: document.documentElement.scrollWidth > innerWidth + 1,
+        inside: !!stage && (({ left, right }) => left >= 0 && right <= innerWidth + 1)(stage.getBoundingClientRect()) }; })()`);
+    const ivUntil = async (b, test, ms = 10000) => { let at; for (let t = 0; t < ms && !test(at = await ivNow(b)); t += 200) await b.sleep(200); return at; };
+    const joinOak = async (b) => {
+      await open(b, "chat", 1200);
+      await row(b, 0);
+      await waitFor(b, (s) => !!s.preview);
+      await pressText(b, "dialog.hc-preview button", "Join as listener");
+    };
+    const islandRuns = {};
+    for (const w of [1024, 390]) {
+      const run = islandRuns[w] = {};
+      b = await page(w, "state=contributor&roster=mixed&chats=on");
+      try {
+        await joinOak(b);
+        run.map = await ivUntil(b, (s) => s.shown && s.count === 2 && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
+        await b.screenshot(join(ivShots, `oc-map-${w}.png`));
+        // Another tab: no places come; back to the chat, they come again.
+        await open(b, "bananas", 1500);
+        const hidden = await ivNow(b);
+        await b.sleep(1500);
+        run.paused = { before: hidden.seq, after: (await ivNow(b)).seq };
+        await open(b, "chat", 300);
+        run.resumed = await ivUntil(b, (s) => s.seq > run.paused.after);
+        if (w === 1024) {
+          await click(b, ".iv-live");
+          run.live = await ivUntil(b, (s) => s.live === "on" && s.faces.length === 2, 20000);
+          await b.sleep(800);
+          await b.screenshot(join(ivShots, `oc-live-${w}.png`));
+          // Kept for this browser: the page again opens the chat in Live view; turned off, the map comes back.
+          await b.open(`${base}?state=contributor&roster=mixed&chats=on`);
+          for (let i = 0; i < 80 && !await b.evaluate("document.querySelectorAll('.oc-tab:not([hidden])').length > 0 && document.querySelector('#ooga-chat').dataset.mode !== 'loading'").catch(() => false); i++) await b.sleep(50);
+          await joinOak(b);
+          run.again = await ivUntil(b, (s) => s.live === "on", 20000);
+          await click(b, ".iv-live");
+          run.off = await ivUntil(b, (s) => s.live === "off" && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
+        } else {
+          await click(b, ".iv-live");
+          run.live = await ivUntil(b, (s) => s.live === "on" && s.faces.length === 2, 20000);
+          await b.sleep(800);
+          await b.screenshot(join(ivShots, `oc-live-${w}.png`));
+        }
+        await click(b, ".hc-leave");
+        run.left = await ivUntil(b, (s) => !s.shown);
+      } finally { b.close(); }
+    }
+    const islandOk = Object.fromEntries(Object.entries(islandRuns).map(([w, r]) => [w, {
+      map: r.map.shown && r.map.live === "off" && r.map.faces.length === 2 && r.map.faces.every((f) => f.off < 1 && f.green > 0) && !r.map.chunk && r.map.gl === 0
+        && r.map.note === "2 speakers are walking the chat's island" && r.map.inside && !r.map.wide,
+      paused: r.paused.before === r.paused.after && r.paused.after > 0, resumed: r.resumed.seq > r.paused.after,
+      live: r.live.live === "on" && r.live.chunk && r.live.gl === 1 && r.live.stored === "1" && r.live.faces.every((f) => f.green > 0) && !r.live.wide,
+      remembered: w !== "1024" || r.again.live === "on" && r.off.live === "off" && r.off.stored === "0" && r.off.faces.every((f) => f.off < 1 && f.green > 0),
+      left: !r.left.shown
+    }]));
+    record("Ooga Chat island view: a chat with speakers walking its island shows the map with each walker's face ringed where the baked matrix puts them; their places come only while the strip can be seen; Live view's code and WebGL context come only when it is turned on, kept for this browser and turned off again; leaving the chat takes the strip away; at 1024 and 390 pixels",
+      Object.values(islandOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ islandOk, islandRuns }));
   } finally {
     server.close();
     rmSync(out, { recursive: true, force: true });
@@ -29566,11 +29649,188 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
   record(`island hosted chats${phone ? " (390 px)" : ""}: the cloud tab lists the chats, previews one's stage before joining, starts one from the dialog with the Ooga's zone chosen, runs its queue, open stage and tile menu as host, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn), removes someone and lets them back, and ends it, with the Requests chip right of the zone tag and the roster in the chat's order; joining as a listener, as a speaker on a closed stage (asking, then the invite card) and on an open one (straight to speaking, then its host's co-host offer accepted onto the stage, back as the co-host leaves voice and accepted again), the room told of the call and every pop-up on screen and in the pad's layers`,
     Object.values(ok).every(Boolean), JSON.stringify({ ok, list, dialog, hosting, opened, queue, menu, preview: preview.preview, joined, requested, invited, speaking, openSpeaking, left, cohosted, cohostMenu, madeSpeaker, full, withdrawn, offer, cohosting, offerAgain, rejoined }));
 } });
+// Rule (docs/ooga-chat-hosts.md, "The island view"; island-view.js): on the island page too, a chat with speakers
+// walking its island shows the island view at the top of the chat, each walker's face ringed where the baked matrix puts
+// them; the chat's places come only while it can be seen (another tab stops them); Live view draws the island the hub
+// built on the strip's own canvas once turned on, kept for this browser, and off again goes back to the map.
+const hostedIslandView = (phone) => ({ name: phone ? "hosted chats island view phone" : "hosted chats island view", why: "rule: a chat's island view shows its walking speakers where they stand, asks for their places only while it can be seen, and opens Live view only on the visitor's word", run: async (b) => {
+  const shots = join(root, "untracked", "island-view"), w = phone ? 390 : 1280;
+  mkdirSync(shots, { recursive: true });
+  const now = () => b.evaluate(`(() => { const v = [...BL.islandView.open][0], stage = document.querySelector("#cloud-panel .iv-stage"), strip = document.querySelector("#cloud-panel .hc-room-strip");
+    const map = document.querySelector("#cloud-panel .iv-map"), V = BL.islandViewData.main, live = stage?.dataset.live === "on", faces = [];
+    if (v && map && strip && !strip.hidden && map.getBoundingClientRect().width > 0) {
+      const r = map.getBoundingClientRect(), k = map.width / r.width, fit = Math.min(r.width / V.w, r.height / V.h), ox = (r.width - V.w * fit) / 2, oy = (r.height - V.h * fit) / 2;
+      // Read from a copy made for reading, never the page's own canvas.
+      const copy = document.createElement("canvas"), g = copy.getContext("2d", { willReadFrequently: true });
+      copy.width = map.width; copy.height = map.height; g.drawImage(map, 0, 0);
+      for (const f of v.placed()) {
+        const p = BL.islandView.project(V, f.world.x, f.world.y, f.world.z, {}), x = live ? f.x : ox + p.x * fit, y = live ? f.y : oy + p.y * fit;
+        const d = g.getImageData(Math.max(0, Math.round((x - 18) * k)), Math.round(y * k), Math.round(36 * k), 1).data;
+        let green = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 1] > 150 && d[i] < 90 && d[i + 2] < 130) green++;
+        faces.push({ off: Math.round(Math.hypot(f.x - x, f.y - y) * 10) / 10, green });
+      }
+    }
+    return { shown: !!strip && !strip.hidden, live: stage?.dataset.live || "", seq: v ? v.walks.seq : 0, count: v ? v.walks.count : 0, faces, gl: !!document.querySelector("#cloud-panel .iv-gl"),
+      stored: localStorage.getItem("ooga-island-view-live"), wide: document.documentElement.scrollWidth > innerWidth + 1, room: BL.chatCall.room ? BL.chatCall.room.title : "" }; })()`);
+  const until = async (test, ms = 10000) => { let at; for (let t = 0; t < ms && !test(at = await now()); t += 200) await b.sleep(200); return at; };
+  if (await b.evaluate(`!!BL.chatCall.room`)) { await b.evaluate(`BL.chatCall.leave()`); await b.sleep(300); }
+  // The Ooga Chat tab, opened unless it shows already (a press on the open tab would fold the panel away).
+  if (!await b.evaluate(`BL.sheet.visible(document.getElementById("cloud-panel"))`)) await b.evaluate(`document.getElementById("cloud-tab").click()`);
+  await b.sleep(600);
+  await b.evaluate(`document.querySelectorAll(".hc-chat-row")[0].click()`);
+  await b.sleep(600);
+  await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
+  const map = await until((s) => s.shown && s.count === 2 && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
+  await b.screenshot(join(shots, `island-map-${w}.png`));
+  // Another tab (Contributing Oogas, there signed in or out): the chat's places stop; back to Ooga Chat, they come again.
+  await b.evaluate(`document.getElementById("sheet-toggle").click()`);
+  await b.sleep(400);
+  const hidden = (await now()).seq;
+  await b.sleep(1500);
+  const paused = (await now()).seq;
+  await b.evaluate(`document.getElementById("cloud-tab").click()`);
+  const resumed = await until((s) => s.seq > paused);
+  await b.evaluate(`document.querySelector("#cloud-panel .iv-live").click()`);
+  const live = await until((s) => s.live === "on" && s.faces.length === 2, 20000);
+  await b.sleep(800);
+  await b.screenshot(join(shots, `island-live-${w}.png`));
+  await b.evaluate(`document.querySelector("#cloud-panel .iv-live").click()`);
+  const off = await until((s) => s.live === "off" && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
+  // On again: a fresh canvas, since the last renderer gave its context up.
+  await b.evaluate(`document.querySelector("#cloud-panel .iv-live").click()`);
+  const again = await until((s) => s.live === "on" && s.gl && s.faces.length === 2, 20000);
+  await b.evaluate(`window.__ivLast = [...BL.islandView.open][0]`);
+  await b.evaluate(`document.querySelector(".hc-leave").click()`);
+  const left = await until((s) => !s.shown && !s.room);
+  await b.sleep(300);
+  // A view closed while it shows and draws stops drawing for good.
+  await b.evaluate(`window.__ivLone = BL.islandView.create({ picture: "", faceOf: () => "", storageKey: "ooga-island-view-check" });
+    document.body.append(__ivLone.node);
+    __ivLone.update({ rows: [{ id: "gh:1", display: "A", login: "a", walking: true }], talking: [], speaking: false, self: null, active: true })`);
+  await b.sleep(200);
+  const drewAlone = await b.evaluate(`__ivLone.drawing`);
+  await b.evaluate(`__ivLone.dispose()`);
+  await b.sleep(300);
+  const stopped = drewAlone && await b.evaluate(`!__ivLone.drawing && !window.__ivLast.drawing`);
+  await b.evaluate(`localStorage.setItem("ooga-island-view-live", "0")`);
+  const ok = { again: again.live === "on" && again.gl, stopped, map: map.shown && map.live === "off" && map.faces.every((f) => f.off < 1 && f.green > 0) && !map.gl && !map.wide,
+    paused: hidden === paused && paused > 0, resumed: resumed.seq > paused,
+    live: live.live === "on" && live.gl && live.stored === "1" && live.faces.every((f) => f.green > 0),
+    off: off.live === "off" && !off.gl && off.stored === "0" && off.faces.every((f) => f.off < 1 && f.green > 0), left: !left.shown };
+  record(`island hosted chats island view${phone ? " (390 px)" : ""}: a chat with speakers walking its island shows the map with each walker's face ringed where the baked matrix puts them, asks for their places only while it can be seen, draws Live view of the hub's own island on its own canvas once turned on, kept for this browser, and goes back to the map when turned off`,
+    Object.values(ok).every(Boolean), JSON.stringify({ ok, map, paused: [hidden, paused], resumed: resumed.seq, live, off }));
+} });
+// Rule (docs/ooga-chat-hosts.md, "Open for the second PR"; chat-copy.js): a speaker in a Main Island chat walks their
+// own Ooga to the chat's copy and back. The page is a file, which never connects by itself, so its own net.js is handed
+// an account and a fake socket here: Go there tells the island `travel`, closes it clean and opens the chat's
+// `/api/chats/<id>/world`; on the copy's welcome the Ooga stands beside the pile with every NPC and gorilla put away,
+// every open cave mouth sealed and the island's own Join voice out of sight; the copy's clouds seat its speakers a bench
+// at a time on clouds that never fly under the treetops; Leave, and a kick from the copy, bring it back to exactly the
+// spot it left with the island as it was. Saved to untracked/obl-copies.
+const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "hosted chat copy", why: "rule: a chat's speakers walk their own Oogas into the chat's copy of Main Island and back, the island's NPCs and doors put away while they are there", run: async (b) => {
+  const shots = join(root, "untracked", "obl-copies"), w = phone ? 390 : 1280;
+  mkdirSync(shots, { recursive: true });
+  await b.evaluate(`(() => {
+    const F = window.__copyFixture = { sockets: [] };
+    window.WebSocket = class { static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+      constructor(url) { this.url = url; this.readyState = 1; this.sent = []; F.sockets.push(this); } send(v) { this.sent.push(v); } close(code) { this.readyState = 3; this.closeCode = code; } };
+    F.welcome = (i, extra) => F.sockets[i] && F.sockets[i].onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), players: [], ...extra }) });
+    F.say = (i, msg) => F.sockets[i] && F.sockets[i].onmessage({ data: JSON.stringify(msg) });
+    BL.net.state.me = { id: 71, login: "w-s-bitcoin", display: "w-s-bitcoin" };
+    BL.net.state.backend = true;
+    BL.net.rejoin();
+    F.welcome(0, { features: ["call-v1", "travel-v1", "react-v1"] });
+  })()`);
+  const now = () => b.evaluate(`(() => { const g = document.querySelector(".hc-go"), H = BL.scenes.hub.debug, cave = __ooga.pilot.player, p = cave && cave.root.position;
+    const others = __ooga.crew.list.filter((c) => c !== __ooga.crew.player);
+    return { go: g && !g.hidden ? { text: g.textContent, disabled: g.disabled, title: g.title } : null, phase: BL.chatCopy.phase, chat: BL.chatCall.room ? BL.chatCall.room.id : "",
+      sockets: __copyFixture.sockets.map((s) => ({ url: s.url, closed: s.closeCode || 0, travel: s.sent.filter((m) => m === '{"t":"travel"}').length })),
+      on: H.copy.on, seals: H.copy.seals, at: p ? [p.x, p.y - cave.baseY, p.z] : null, shown: !!cave && cave.root.visible, npcs: others.filter((c) => c.root.visible).length,
+      gorillas: __ooga.clankers.list.filter((e) => e.root.visible).length, voice: !document.getElementById("account-voice").hidden, target: BL.net.state.target,
+      benches: H.copy.benches, treetop: H.copy.treetop, tess: H.tess.root.visible }; })()`);
+  const until = async (test, ms = 15000) => { let at; for (let t = 0; t < ms && !test(at = await now()); t += 150) await b.sleep(150); return at; };
+  const click = (selector) => b.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  await b.evaluate(`document.getElementById("cloud-tab").click()`);
+  await b.sleep(600);
+  await click(".hc-chats-head .foot-primary");
+  await b.sleep(300);
+  await click('.hc-start button[type="submit"]');
+  const ready = await until((s) => !!s.go && !s.go.disabled);
+  const fits = await b.evaluate(`(() => { const g = document.querySelector(".hc-go"); g.scrollIntoView({ block: "nearest" }); const r = g.getBoundingClientRect(), row = g.closest(".cloud-foot").getBoundingClientRect();
+    // On a phone, the footer's buttons (Unmute, Join Voice, Go there, End chat) on one row, its links over them.
+    const tops = [...document.querySelectorAll("#cloud-panel .cloud-foot .foot-button")].filter((e) => !e.hidden && e.offsetParent).map((e) => Math.round(e.getBoundingClientRect().top));
+    return r.width > 0 && r.left >= row.left - 1 && r.right <= row.right + 1 && r.right <= innerWidth + 1 && document.documentElement.scrollWidth <= innerWidth + 1
+      && (innerWidth >= 480 || tops.length >= 3 && new Set(tops).size === 1); })()`);
+  await b.sleep(200);
+  await b.screenshot(join(shots, `go-there-${w}.png`));
+  const home = ready.at, chat = ready.chat;
+  // The beams draw nothing under reduced motion, which the suite emulates: shown for these pictures alone.
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  await click(".hc-go");
+  await b.sleep(330);
+  await b.screenshot(join(shots, `beam-out-${w}.png`));
+  const gone = await until((s) => s.sockets.length === 2);
+  await b.evaluate(`__copyFixture.welcome(1, { features: ["call-v1", "copy-v1", "cloud-seats-v2", "react-v1"], copy: { chat: ${JSON.stringify(chat)}, zone: "main" } })`);
+  await b.sleep(300);
+  await b.screenshot(join(shots, `beam-in-${w}.png`));
+  const there = await until((s) => s.phase === "there");
+  await b.sleep(400);
+  await b.screenshot(join(shots, `copy-pile-${w}.png`));
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  // From the Ooga's own eyes, a sealed cave mouth, then the speakers on the copy's clouds.
+  await b.evaluate(`__ooga.pilot.enterClose()`);
+  const mouth = await b.evaluate(`(() => { const p = __ooga.pilot.player.root.position, ms = BL.scenes.hub.debug.copy.mouths();
+    return ms.find((m) => m.id === "c3") || ms[0]; })()`);
+  await b.evaluate(`BL.pilot.turnToward(${mouth.x}, ${mouth.floor + 1.5}, ${mouth.z})`);
+  await b.sleep(1600);
+  await b.screenshot(join(shots, `copy-sealed-${w}.png`));
+  // Every open mouth is a wall in the copy; open ground is not.
+  const barred = await b.evaluate(`(() => { const C = BL.scenes.hub.debug.copy;
+    return { mouths: C.mouths().map((m) => C.barred(m.x + m.sr * 3, m.z + m.cr * 3, m.x - m.sr, m.z - m.cr, m.floor)), open: C.barred(2, 1, 2.5, 1, 0) }; })()`);
+  // Seven speakers on the copy's clouds, one with no Ooga of their own: three benches, filled a bench at a time.
+  await b.evaluate(`(() => { const names = __ooga.crew.list.map((c) => c.traits.name).filter((n) => n !== "w-s-bitcoin").slice(0, 6);
+    const clouds = names.map((character, i) => ({ id: "gh:" + (1001 + i), character, zone: "main", seat: "main-cloud-" + (i + 1), seatRevision: "cloud-seats-v2", login: character, display: character, lease: 1, mic: "on" }));
+    clouds.push({ id: "x:5551", character: "guest/x-sample", zone: "main", seat: "main-cloud-7", seatRevision: "cloud-seats-v2", login: "sample", display: "Sample", lease: 1, mic: "on" });
+    __copyFixture.say(1, { t: "clouds", v: 1, revision: 1, clouds }); })()`);
+  await b.sleep(500);
+  const seated = await now();
+  const spot = await b.evaluate(`(() => { const o = { x: 0, y: 0, z: 0 }; return BL.scenes.hub.debug.copy.cloudSpot("x:5551", o) ? o : null; })()`);
+  if (spot) { await b.evaluate(`BL.pilot.turnToward(${spot.x}, ${spot.y + 1}, ${spot.z})`); await b.sleep(1600); }
+  await b.screenshot(join(shots, `copy-clouds-${w}.png`));
+  await b.evaluate(`__ooga.pilot.exitClose()`);
+  await click(".hc-go");
+  const back = await until((s) => s.phase === "idle" && s.sockets.length === 3);
+  await b.evaluate(`__copyFixture.welcome(2, { features: ["call-v1", "travel-v1", "react-v1"] })`);
+  await b.sleep(400);
+  await b.screenshot(join(shots, `home-${w}.png`));
+  // Again, sent home by the copy this time.
+  await until((s) => !!s.go && !s.go.disabled && s.go.text === "Go there");
+  await click(".hc-go");
+  await until((s) => s.sockets.length === 4);
+  await b.evaluate(`__copyFixture.welcome(3, { features: ["call-v1", "copy-v1", "react-v1"], copy: { chat: ${JSON.stringify(chat)}, zone: "main" } })`);
+  await until((s) => s.phase === "there");
+  await b.evaluate(`__copyFixture.say(3, { t: "kick", reason: "stage" })`);
+  const kicked = await until((s) => s.phase === "idle");
+  const near = (a, c) => !!a && !!c && Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]) < 0.05;
+  const ok = { ready: ready.go.text === "Go there" && ready.voice && ready.npcs > 0, fits,
+    went: gone.sockets[0].travel === 1 && gone.sockets[0].closed === 1000 && gone.sockets[1].url.endsWith(`/api/chats/${chat}/world`),
+    there: there.on && there.seals > 0 && there.npcs === 0 && there.gorillas === 0 && there.shown && !there.voice && !there.tess && ready.tess && Math.hypot(there.at[0], there.at[2]) < 9 && there.go.text === "Leave",
+    sealed: barred.mouths.length > 0 && barred.mouths.every(Boolean) && !barred.open,
+    clouds: seated.benches.length === 11 && seated.benches.slice(0, 3).every((c) => c.bench) && seated.benches.slice(3).every((c) => !c.bench)
+      && seated.benches.every((c) => c.bottom >= seated.treetop + 1.5 && c.radius === seated.benches[0].radius) && !!spot,
+    back: near(back.at, home) && !back.on && back.seals === 0 && back.npcs > 0 && back.tess && back.sockets[1].closed === 1000 && back.sockets[2].url.endsWith("/room") && back.target === null && back.benches.length === 0,
+    kicked: near(kicked.at, home) && !kicked.on && kicked.npcs > 0 && kicked.sockets.length === 5 && kicked.sockets[4].url.endsWith("/room") && kicked.sockets[3].closed === 1000 };
+  record(`hosted chat copy${phone ? " (390 px)" : ""}: Go there in a Main Island chat's footer tells the island it is travelling, closes it clean and opens the chat's copy; there the Ooga stands by the pile with the NPCs, gorillas, Tess and island Join voice gone and every cave mouth sealed; the copy's speakers sit a bench at a time on clouds above the treetops; Leave and a kick from the copy bring the Ooga back to exactly where it stood with the island as it was`,
+    Object.values(ok).every(Boolean), JSON.stringify({ ok, ready, gone: gone.sockets, there, barred, seated: seated.benches, treetop: seated.treetop, spot, back, kicked, home }));
+} });
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
 // Tess's island tour taken already, so her first-visit offer stands over nothing these screenshots show.
 const TESS_TOURED = `try { localStorage.setItem("ooga-tess-tour", "1"); } catch {}`;
-scene("hub", { label: "hosted chats", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { initScript: TESS_TOURED }, steps: [hostedChatsIsland(false)] });
-scene("hub", { label: "hosted chats phone", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { ...PHONE_SIZE, initScript: TESS_TOURED }, steps: [hostedChatsIsland(true)] });
+scene("hub", { label: "hosted chats", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { initScript: TESS_TOURED }, steps: [hostedChatsIsland(false), hostedIslandView(false)] });
+scene("hub", { label: "hosted chats phone", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { ...PHONE_SIZE, initScript: TESS_TOURED }, steps: [hostedChatsIsland(true), hostedIslandView(true)] });
+scene("hub", { label: "chat copy", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { initScript: TESS_TOURED }, steps: [hostedChatCopy(false)] });
+scene("hub", { label: "chat copy phone", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { ...PHONE_SIZE, initScript: TESS_TOURED }, steps: [hostedChatCopy(true)] });
 scene("hub", { label: "outdoor travel", query: "islandworld=0", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
 scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=0", steps: [{
   name: "walk-through totems: first-person overlap hides one carving and its effects, restores it on exit, and distant views keep all eye fires",
@@ -43414,6 +43674,51 @@ const audienceNetChecks = async BL => {
     !shut.sent && !shut.state && open.sent && !open.other && open.state && heard.join() === "snapshot" && frames.length === 1 && frames[0].t === "audience-view" && frames[0].v === 1 && frames[0].zone === "dsb" && !dropped,
     JSON.stringify({ shut, open, heard, frames, dropped }));
 };
+// Rule (docs/ooga-chat-hosts.md, "Open for the second PR"): a speaker's page goes to a chat's copy only from an island
+// that offers it, telling the island first and closing clean; the copy's welcome is taken only for the chat asked for;
+// any kick there takes the page home with its spot; the island's away list keeps travellers' Oogas; clouds there may
+// carry X accounts and default Oogas under a `guest/` name, never a slash anywhere else.
+const travelNetChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const at = (i) => f.sockets[i], message = (i, v) => at(i).onmessage({ data: JSON.stringify(v) });
+  const CHAT = "abcdefghij012345", home = { x: 3, y: 0, z: 4, yaw: 1, zone: "outside" }, pile = { x: 0, y: 0.4, z: 5, yaw: 0, zone: "outside" };
+  message(0, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [], away: [{ id: 9, character: "w-s-bitcoin" }] });
+  f.net.setBody("Tester");
+  const refused = f.net.travel({ chat: CHAT, home }, pile);
+  message(0, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "travel-v1"], players: [{ id: 5, login: "bea" }], away: [{ id: 9, character: "w-s-bitcoin" }, { id: 8, character: "bad/name" }] });
+  const island = { travel: f.net.state.travel, away: [...f.net.state.away].join() };
+  message(0, { t: "leave", id: 5, reason: "travel", character: "bea" });
+  message(0, { t: "away", id: 9, on: false });
+  const awayAfter = [...f.net.state.away].join();
+  const went = f.net.travel({ chat: CHAT, home }, pile);
+  const told = f.sent.filter((m) => m.t === "travel").length, closed = at(0).closeCode, url = at(1) && at(1).url;
+  message(1, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "copy-v1", "cloud-seats-v2"], copy: { chat: CHAT, zone: "main" }, players: [] });
+  const pose = f.sent.filter((m) => m.t === "pose").pop();
+  const there = { copy: f.net.state.copy && f.net.state.copy.chat, target: f.net.state.target, travel: f.net.state.travel, chats: f.net.state.chats, room: f.net.state.room, pose: pose && [pose.x, pose.z].join() };
+  message(1, { t: "clouds", v: 1, revision: 1, clouds: [
+    { id: "x:1234567890123456789", character: "guest/x-ann", zone: "main", seat: "main-cloud-32", login: "ann", display: "Ann" },
+    { id: "gh:77", character: "evil/../x", zone: "main", seat: "main-cloud-2" },
+    { id: "gh:78", character: "Tester", zone: "main", seat: "main-cloud-4", seatRevision: "cloud-seats-v2" }] });
+  const clouds = f.net.state.clouds.map((c) => `${c.id}:${c.character}:${c.seat}`).join();
+  const left = f.net.state.copyLeft;
+  message(1, { t: "kick", reason: "stage" });
+  const back = { url: at(2) && at(2).url, closed: at(1).closeCode, target: f.net.state.target, reason: f.net.state.copyReason, left: f.net.state.copyLeft - left, copy: f.net.state.copy };
+  message(2, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "travel-v1"], players: [] });
+  const homePose = f.sent.filter((m) => m.t === "pose").pop();
+  // A copy that never says it is one sends the page home at once.
+  f.net.travel({ chat: CHAT, home }, pile);
+  message(3, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [] });
+  const fake = { url: at(4) && at(4).url, reason: f.net.state.copyReason };
+  f.net.dispose();
+  const ok = { refused: !refused, island: island.travel && island.away === "9,w-s-bitcoin", away: awayAfter === "5,bea", went: went && told === 1 && closed === 1000 && url === `wss://fixture.invalid/api/chats/${CHAT}/world`,
+    there: there.copy === CHAT && there.target === CHAT && !there.travel && there.chats && there.room === "live" && there.pose === "0,5",
+    clouds: clouds === "x:1234567890123456789:guest/x-ann:main-cloud-32,gh:78:Tester:main-cloud-4",
+    back: back.url === "wss://fixture.invalid/room" && back.closed === 1000 && back.target === null && back.reason === "stage" && back.left === 1 && back.copy === null && homePose && homePose.x === 3 && homePose.z === 4,
+    fake: fake.url === "wss://fixture.invalid/room" && fake.reason === "not-copy" };
+  record("hosted chats travel wire: a page goes to a chat's copy only from an island whose welcome lists travel-v1, telling it `travel` and closing clean, arrives standing where it was sent, takes the copy's welcome only for its own chat, seats X accounts and default Oogas under `guest/` names alone, and goes home to the spot it left on a kick or a welcome that names no copy; the island's away list follows travellers, a leave and a release",
+    Object.values(ok).every(Boolean), JSON.stringify({ ok, island, awayAfter, there, clouds, back, fake }));
+};
 // Rule (docs/ooga-chat-hosts.md, call-v1): a page in a hosted chat's voice says so only to a room whose welcome lists
 // call-v1, says it again after a reconnect's welcome, and marks the players the room says are in one.
 const callNetChecks = async BL => {
@@ -46723,6 +47028,29 @@ const oogaChatChecks = async () => {
   record("Ooga Chat hosted chats: a tile's menu offers only what the viewer's rank allows over someone they outrank, never themselves, a co-host never the host or another co-host, and the host offers co-hosting while a slot is free (dimmed with its reason once all three are held), withdraws an offer or makes a co-host a speaker; the list keeps only entries in its contract, cleaned; a burst of requests is one line, a notice is said in words or not at all, the removed list keeps only rows in its contract, and a preview is read whole, its stage in the chat's order",
     Object.values(rules).every(Boolean), JSON.stringify(rules));
 
+  // The island view (island-view.js): the baked map's matrix puts a world point where the bake's capture put it (the
+  // island's middle near the picture's, north up, east right, height ignored by the straight-down camera), and a chat's
+  // `walk` frames are read whole or not at all: a walker eased from where they were shown, one gone from a frame let go,
+  // an older frame, a bad id, a bad number or a frame past the cap changing nothing.
+  const IV = load(["src/js/island-view-data.js", "src/js/island-view.js"], { window: {} });
+  const V = IV.islandViewData.main, at = (x, y, z) => { const o = IV.islandView.project(V, x, y, z, {}); return [Math.round(o.x * 10) / 10, Math.round(o.y * 10) / 10]; };
+  const mid = at(0, 0, 0), east = at(10, 0, 0), north = at(0, 0, -10), high = at(0, 30, 0);
+  const W = IV.islandView.walks(), place = (i, now) => { const o = IV.islandView.placeOf(W, i, now, {}); return [o.x, o.z].map((v) => Math.round(v * 100) / 100).join(); };
+  const frame = (seq, p) => IV.islandView.parseWalk({ type: "walk", seq, p }, W, seq);
+  const walked = {
+    map: V.w === 512 && V.h === 384 && V.matrix.length === 16 && Math.abs(mid[0] - V.w / 2) < 40 && Math.abs(mid[1] - V.h / 2) < 40
+      && east[0] > mid[0] && east[1] === mid[1] && north[1] < mid[1] && north[0] === mid[0] && high.join() === mid.join(),
+    first: frame(1000, ["gh:1", 2, 0, 3, 0.5, "gh:2", -4, 1, 6, 0]) && W.count === 2 && place(W.index.get("gh:1"), 1000) === "2,3",
+    eased: frame(1500, ["gh:1", 4, 0, 3, 0.5]) && W.count === 1 && !W.index.has("gh:2") && place(W.index.get("gh:1"), 1500) === "2,3"
+      && place(W.index.get("gh:1"), 1750) === "3,3" && place(W.index.get("gh:1"), 2500) === "4,3",
+    refused: [frame(1400, ["gh:3", 0, 0, 0, 0]), frame(1600, ["sample:3", 0, 0, 0, 0]), frame(1600, ["gh:3", 0, NaN, 0, 0]), frame(1600, ["gh:3", 5000, 0, 0, 0]),
+      frame(1600, ["gh:3", 0, 0]), frame(1600, Array.from({ length: IV.islandView.MAX + 1 }, (_, i) => [`gh:${i + 1}`, 0, 0, 0, 0]).flat()),
+      IV.islandView.parseWalk({ type: "walks", seq: 1600, p: [] }, W, 1600), IV.islandView.parseWalk({ type: "walk", seq: 1600.5, p: [] }, W, 1600)].every((ok) => !ok)
+      && W.seq === 1500 && W.count === 1
+  };
+  record("island view: the baked map's matrix puts the island's middle at the picture's, north up and east right, height making no difference; a chat's walk frames are read whole or not at all, each walker eased on from where they were shown, one gone from a frame let go, and an older frame, a bad id or number or one past the cap changing nothing",
+    Object.values(walked).every(Boolean), JSON.stringify({ walked, mid, east, north, high }));
+
   // The shell over a minimal DOM: views build on first visit, are kept across tab switches and updates, and dispose once.
   const node = (tag, doc) => {
     const el = { tagName: tag, ownerDocument: doc, children: [], parent: null, dataset: {}, attrs: {}, hidden: false, listeners: [], className: "", id: "", title: "", type: "", tabIndex: 0,
@@ -46771,7 +47099,9 @@ const oogaChatChecks = async () => {
   try {
     const manifest = B.build(staged), page = readFileSync(join(staged, "index.html"), "utf8"), headers = readFileSync(join(staged, "_headers"), "utf8");
     const script = manifest.files.find((file) => /^js\/ooga-chat-[0-9a-f]{16}\.js$/.test(file.path)), js = readFileSync(join(staged, script.path), "utf8");
-    const art = manifest.files.find((file) => file.path.startsWith("art/"));
+    // Every picture is named, hashed, by the first-load script or the chunk that shows it (the island view's map by the
+    // hosted chats' chunk, which alone loads it).
+    const arts = manifest.files.filter((file) => file.path.startsWith("art/")), chunkCode = Object.values(manifest.chunks).map((chunk) => readFileSync(join(staged, chunk.path), "utf8"));
     const refuses = (dir) => { try { B.build(dir); return false; } catch (error) { return /refusing|did not stage/.test(error.message); } };
     mkdirSync(join(out, "foreign")); writeFileSync(join(out, "foreign", "keep.txt"), "x");
     // stage.mjs's placeholder may be staged over, but not with anything else beside it or in place of its page.
@@ -46786,7 +47116,7 @@ const oogaChatChecks = async () => {
       island: !/glRenderer|BL\.scene\b|BL\.net\b(?!\?\.)|BL\.director|terrain/.test(js),
       noFixture: !js.includes("BL.oogaChatFixtures =") && !js.includes("sample-contributor") && !manifest.files.some((file) => file.path.includes("fixture")),
       page: (page.match(/<script /g) || []).length === 1 && (page.match(/<link rel="stylesheet"/g) || []).length === 1 && !/<style|<script>/.test(page) && page.includes(`content="${manifest.build}"`),
-      art: !!art && js.includes(`"/${art.path}"`),
+      art: arts.length > 1 && arts.some((art) => js.includes(`"/${art.path}"`)) && arts.every((art) => [js, ...chunkCode].some((code) => code.includes(`/${art.path}`))),
       policy: B.headersFor(headers, "/")["Content-Security-Policy"] === `${B.POLICY}; frame-ancestors 'none'` && B.headersFor(headers, `/${script.path}`)["Cache-Control"].includes("immutable")
         && B.headersFor(headers, "/index.html")["Cache-Control"] === "no-cache",
       fixtures: !!fixtureJs && readFileSync(join(staged, fixtureJs.path), "utf8").includes("BL.oogaChatFixtures =") && readFileSync(join(staged, "fixture.html"), "utf8").includes('data-adapter="fixture"'),
@@ -46808,6 +47138,8 @@ const oogaChatChecks = async () => {
       return pw === w && ph === h && x1 > x0 && (icon.purpose !== "maskable" || Math.max(...corners) <= pw * 0.4);
     };
     const swSource = readFileSync(join(staged, "sw.js"), "utf8"), shellList = JSON.parse(swSource.match(/const SHELL = (\[.*\]);/)[1]);
+    // An opt-in chunk (Live view's renderer) is fetched only on the visitor's word, so the shell never holds it.
+    const optIn = new Set(B.OPT_IN.map((group) => withFixtures.chunks[group].path));
     const installable = {
       manifest: appManifest.name === "Ooga Chat" && appManifest.id === "/" && appManifest.start_url === "/" && appManifest.scope === "/" && appManifest.display === "standalone"
         && appManifest.icons.length === 3 && appManifest.icons.some((icon) => icon.purpose === "maskable") && appManifest.icons.every(iconOk),
@@ -46819,11 +47151,12 @@ const oogaChatChecks = async () => {
         && readFileSync(join(staged, "favicon.ico")).readUInt16LE(4) === 2 && decode(readFileSync(join(staged, "apple-touch-icon.png"))).w === 180
         && readFileSync(join(staged, "apple-touch-icon.png")).equals(readFileSync(join(staged, "apple-touch-icon-precomposed.png"))),
       shell: swSource.includes(`const VERSION = "${withFixtures.build}";`) && shellList[0] === "/" && shellList.slice(1).every((path) => /^\/(js|css|art|icons)\/[\w.-]+-[0-9a-f]{16}\.[a-z]+$/.test(path))
-        && !shellList.some((path) => /fixture|api|auth|manifest|404/.test(path)) && shellList.length === withFixtures.files.filter((file) => /^(js|css|art|icons)\//.test(file.path) && !file.path.includes("fixture")).length + 1,
+        && !shellList.some((path) => /fixture|api|auth|manifest|404/.test(path)) && optIn.size === B.OPT_IN.length && ![...optIn].some((path) => shellList.includes(`/${path}`))
+        && shellList.length === withFixtures.files.filter((file) => /^(js|css|art|icons)\//.test(file.path) && !file.path.includes("fixture") && !optIn.has(file.path)).length + 1,
       headers: B.headersFor(headers, "/sw.js")["Cache-Control"] === "no-cache" && B.POLICY.includes("manifest-src 'self'") && B.POLICY.includes("worker-src 'self'")
         && B.headersFor(readFileSync(join(staged, "_headers"), "utf8"), "/manifest.webmanifest")["Content-Type"] === "application/manifest+json"
     };
-    record("Ooga Chat install: the manifest names the standalone app at /, its icons are the native cloud at their sizes with the maskable one inside the safe circle, only the production entry links it, the favicons are the island's set, and the worker's shell is this build's hashed public files and the page",
+    record("Ooga Chat install: the manifest names the standalone app at /, its icons are the native cloud at their sizes with the maskable one inside the safe circle, only the production entry links it, the favicons are the island's set, and the worker's shell is this build's hashed public files and the page, but an opt-in chunk",
       Object.values(installable).every(Boolean), JSON.stringify(installable));
 
     // The worker against stand-in caches and network: it keeps the shell, answers hashed files from the cache and the
@@ -47862,6 +48195,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await audienceChecks(BL);
   await audienceNetChecks(BL);
   await callNetChecks(BL);
+  await travelNetChecks(BL);
   await chatMembersNetChecks(BL);
   await cloudPanelChecks(BL);
   await privatePadChecks();

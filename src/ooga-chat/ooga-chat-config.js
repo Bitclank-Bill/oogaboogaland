@@ -100,7 +100,7 @@
   // `sweep` removes any other key under this adapter's prefix and any older unversioned `ooga-chat.` key (a saved
   // screen, role or speaker flag), so nothing saved can bring back a choice panel or a microphone. The one word a
   // speaker leaves is the tab's own, in session storage (`speaker`, ooga-chat-app.js): for the page that replaces it at once.
-  const STORED = ["tab", "zone", "recent-bar", "donor", "roster-sort"];
+  const STORED = ["tab", "zone", "recent-bar", "donor", "roster-sort", "island-live"];
   const prefixOf = (adapter) => `ooga-chat.${adapter === "fixture" ? "fixture." : ""}v1.`;
   const storageKey = (adapter, name) => `${prefixOf(adapter)}${name}`;
   const sweep = (storage, adapter) => {

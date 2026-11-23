@@ -102,7 +102,21 @@
 // `{ op: "placed" }` after each body, zone or crossing frame sent (counted in `state.placed`), which the room's own check
 // of an `enter` reads, so the bridge can ask again for an epoch refused before the room had them.
 // Without the feature both stay silent and the bridge keeps the page out of every public audience.
-// Exports sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, subscribeChatMembers, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// A hosted chat's copy of its zone (docs/ooga-chat-hosts.md, "Open for the second PR"; chat-copy.js): a room whose
+// welcome lists `travel-v1` (`state.travel`) lets a speaker walk their Ooga into the chat's own copy of Main Island.
+// `travel(target, spot)` moves this page's one socket: `target` `{ chat, home }` to the copy at
+// `/api/chats/<chat>/world`, null back to `/room`, `spot` (`{ x, y, z, yaw, zone }`, the feet) where the Ooga will stand
+// on arrival, which its first pose there says. Leaving the island it first tells the room `{ t: "travel" }`, so others
+// see a traveller go rather than drop; either way the old socket closes clean (1000) and island voice is left as it is
+// (a speaker in a chat has it paused already, `call`). No resume key ever crosses from one place to the other: the clean
+// close forgot it. The copy's welcome lists `copy-v1` with `copy: { chat, zone }` (`state.copy`); a kick there
+// (`stage`, `removed`, `chat-ended`, `not-speaker`, or a welcome that names no copy) takes the page back to the island
+// at `home` (`state.copyLeft` counts it, `state.copyReason` says why), and a hidden tab's pause and its rejoin keep to
+// the place it was in. `state.target` is the copy's chat id while there, or on the way. A player who travels is
+// `subscribePresence`'s `fn(rec, false, true)` as they go and `fn(rec, true, true)` back. The island says whose Oogas
+// are away in a copy (its welcome's `away`, a travel `leave`'s `character`, `{ t: "away", id, on: false }` and a
+// return's `join`): `state.away` (account id → character name), whose NPCs every page keeps as ghosts meanwhile.
+// Exports travel, sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, subscribeChatMembers, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
 // sendProps, sendPropInput, subscribeProps (the loose props' host frames and followers' inputs, prop-sync.js),
 // setMuted, setHealth, sendNpc, sendChat, sendPrivate, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
@@ -214,9 +228,11 @@
   // `clouds=` names characters to seat as samples (main-cloud-1 on), for review, which no socket replaces or clears.
   const cloudSubscribers = new Set(), NO_CLOUDS = Object.freeze([]), CLOUD_SEAT = /^(main|dsb)-cloud-[1-9][0-9]?$/;
   const cloudRecord = (raw) => {
-    if (!raw || typeof raw.id !== "string" || !/^(gh|sample):[1-9][0-9]{0,15}$/.test(raw.id)) return null;
+    if (!raw || typeof raw.id !== "string" || !/^(gh|x|sample):[1-9][0-9]{0,19}$/.test(raw.id)) return null;
     if (raw.zone !== "main" && raw.zone !== "dsb" || typeof raw.seat !== "string" || !CLOUD_SEAT.test(raw.seat) || !raw.seat.startsWith(`${raw.zone}-`)) return null;
-    if (typeof raw.character !== "string" || !/^[\w.-]{1,64}$/.test(raw.character)) return null;
+    // A speaker with no Ooga of their own sits as the default one hashed from `guest/<provider>-<login>`, a name no
+    // login can have, so it never borrows a contributor's file.
+    if (typeof raw.character !== "string" || !/^(?:[\w.-]{1,64}|guest\/[a-z]{1,8}-[\w.-]{1,39})$/.test(raw.character)) return null;
     const login = typeof raw.login === "string" && /^[\w.-]{1,39}$/.test(raw.login) ? raw.login : raw.character;
     const display = typeof raw.display === "string" && raw.display.trim() && raw.display.length <= 50 && !/[\u0000-\u001f\u007f]/.test(raw.display) ? raw.display.trim() : login;
     const P = BL.reactionPolicy, hand = typeof raw.hand === "string" && (P.HANDS.includes(raw.hand) || P.valid(raw.hand)) ? raw.hand : "";
@@ -274,6 +290,7 @@
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, hostEpoch: 0, props: false, npcVersion: 0, catalogRequired: false, catalogMatch: false, catalog: null, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
     voiceLinks: false, linkWants: new Set(), linked: new Set(), linkApp: Object.freeze([]), outdoorVoice: false, duel: false, placed: 0, audience: false, chats: false, call: false, clouds: NO_CLOUDS, chatMembers: new Map(), chatOnline: 0,
+    travel: false, copy: null, target: null, copyLeft: 0, copyReason: "", away: new Map(),
     // Voice on another device (voice-handoff.js): `voiceElsewhere` while the account speaks from Ooga Chat somewhere
     // else, as the room's welcome and its `voice-elsewhere` say; `voiceMoved` counts the times Ooga Chat took this
     // page's voice on the visitor's word there (`voice-moved`, which leaves voice here).
@@ -288,6 +305,17 @@
   } });
   if (cloudSeed) state.clouds = cloudSeed;
   const REACT_FEATURE = "react-v1", LINK_FEATURE = "vlink-v1", LINK_MAX = 64, OUTDOOR_FEATURE = "outdoor-voice-v1", CALL_FEATURE = "call-v1";
+  // A hosted chat's copy (`travel`): where this page's socket goes, null for the island, else `{ chat, home }`.
+  const TRAVEL_FEATURE = "travel-v1", COPY_FEATURE = "copy-v1", CHAT_ID = /^[\w-]{16}$/;
+  let target = null, travelling = false;
+  // A traveller's Ooga, by account, as the island names it.
+  const awayIn = (id, character) => { if (Number.isSafeInteger(id) && typeof character === "string" && /^[\w.-]{1,64}$/.test(character)) state.away.set(id, character); };
+  // A spot to stand at, checked: feet and heading, and the zone it is in.
+  const spotOf = (s) => s && [s.x, s.y, s.z, s.yaw].every(Number.isFinite)
+    ? Object.freeze({ x: s.x, y: s.y, z: s.z, yaw: s.yaw, zone: typeof s.zone === "string" && s.zone.length <= 64 ? s.zone : "outside" }) : null;
+  // The copy a welcome names, only the one this page asked for.
+  const copyOf = (msg) => Array.isArray(msg.features) && msg.features.includes(COPY_FEATURE) && msg.copy && target && msg.copy.chat === target.chat
+    && (msg.copy.zone === "main" || msg.copy.zone === "dsb") ? Object.freeze({ chat: msg.copy.chat, zone: msg.copy.zone }) : null;
   const linkIds = (list) => new Set(Array.isArray(list) ? list.filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, LINK_MAX) : []);
   // Linked partners in Ooga Chat (`links`' `app`), who can hear this page wherever it is: `{ id, login, display }` each.
   const LINK_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
@@ -436,7 +464,7 @@
     state.room = room;
     if (room !== "live") { cabinetSeats.clear(); cabinetSeat = null; state.cabinets = false; finishCabinetRequest("Connection to the arcade was lost"); }
     if (room !== "live") state.tessGuide = null;
-    if (room !== "live") state.chatUnicode = state.privateChat = state.audience = state.chats = false;
+    if (room !== "live") state.chatUnicode = state.privateChat = state.audience = state.chats = state.travel = false;
     if (room !== "live") { state.voiceLinks = false; state.linkWants.clear(); state.linked.clear(); state.linkApp = linkApp(null); peersHeard = []; gensHeard = null; }
     if (room !== "live") state.outdoorVoice = false;
     if (room !== "live") { chatMembersOn = false; if (state.chatMembers.size || state.chatOnline) { state.chatMembers.clear(); state.chatOnline = 0; chatMembersChanged(); } }
@@ -739,6 +767,11 @@
       state.audience = Array.isArray(msg.features) && msg.features.includes(BL.audience.FEATURE);
       // Hosted chats (docs/ooga-chat-hosts.md): the cloud tab lists them, and this page says when it is in one's voice.
       state.chats = Array.isArray(msg.features) && msg.features.includes(CALL_FEATURE);
+      // The island lets a speaker go to a chat's copy (`travel`); a copy says which chat's it is.
+      state.travel = !target && Array.isArray(msg.features) && msg.features.includes(TRAVEL_FEATURE);
+      state.copy = copyOf(msg);
+      state.away.clear();
+      if (!target && Array.isArray(msg.away)) for (const e of msg.away.slice(0, 64)) awayIn(e && e.id, e && e.character);
       // Each chat's title and counts, whole in the welcome where the room keeps them, then a chat at a time.
       chatMembersOn = Array.isArray(msg.features) && msg.features.includes(CHAT_SUMMARY_FEATURE);
       state.chatMembers.clear();
@@ -749,6 +782,8 @@
       if (state.chalk && !(Array.isArray(msg.features) && msg.features.includes(BL.chalkBoard.FEATURE))) { state.chalk = null; chalkEmit("board"); }
       remotes.clear();
       for (const p of msg.players) upsert(p);
+      // A socket for a copy that does not say it is one is no place to stay: back to the island.
+      if (target && !state.copy) { leaveCopy("not-copy"); return; }
       setRoom("live");
       traceConnection("welcome");
       const transit = transitOf(msg.transit);
@@ -790,14 +825,16 @@
       upsert(msg.p);
       setRoom("live");
       const rec = fresh && remotes.get(msg.p.id);
+      if (msg.p && state.away.delete(msg.p.id)) rosterChanged();
       if (rec && (diagnostic || connectionSubscribers.size)) traceConnection("peer-join", { id: rec.id });
-      if (rec) for (const fn of presenceSubscribers) fn(rec, true);
+      if (rec) for (const fn of presenceSubscribers) fn(rec, true, msg.travel === true || msg.p.travel === true);
     } else if (msg.t === "leave") {
       const rec = remotes.get(msg.id);
       if (rec && (diagnostic || connectionSubscribers.size)) traceConnection("peer-leave", { id: rec.id, reason: diagnosticReason(msg.reason) });
       remotes.delete(msg.id);
+      if (msg.reason === "travel" && !target) awayIn(msg.id, msg.character);
       setRoom("live");
-      if (rec) for (const fn of presenceSubscribers) fn(rec, false);
+      if (rec) for (const fn of presenceSubscribers) fn(rec, false, msg.reason === "travel");
     } else if (msg.t === "body") {
       const rec = remotes.get(msg.id);
       if (rec) {
@@ -882,6 +919,8 @@
       if (chatMembersOn && chatCount(msg.n) !== state.chatOnline) { state.chatOnline = chatCount(msg.n); chatMembersChanged(); }
     } else if (msg.t === "clouds") {
       if (msg.v === 1 && Array.isArray(msg.clouds)) setClouds(cloudList(msg.clouds));
+    } else if (msg.t === "away") {
+      if (msg.on === false && state.away.delete(msg.id)) rosterChanged();
     } else if (msg.t === "voice-elsewhere") {
       state.voiceElsewhere = msg.on === true;
       emit();
@@ -980,6 +1019,8 @@
       emit();
     } else if (msg.t === "kick") {
       if (diagnostic || connectionSubscribers.size) traceConnection("kick", { reason: diagnosticReason(msg.reason) });
+      // Sent home from a chat's copy (off the stage, removed, the chat over, not a speaker): back to the island.
+      if (target && msg.reason !== "stale" && msg.reason !== "replaced" && msg.reason !== "full" && msg.reason !== "revoked") { leaveCopy(msg.reason); return; }
       // Revoked access stops reconnecting; the operator may later restore access.
       if (msg.reason === "revoked") { state.me = null; state.hand = false; }
       // replaced and full stop here; stale reconnects like any drop.
@@ -998,15 +1039,20 @@
       if (inspectOn) ended = { why, code, clean, at: Date.now() };
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
       if (ws.readyState <= WebSocket.OPEN) {
-        // Closed only to open again at once: the room holds this page's record for the next socket.
-        const code = room === "connecting" ? CLOSE_RECONNECT : 1000;
+        // Closed only to open again at once: the room holds this page's record for the next socket. A move to or from a
+        // chat's copy closes clean.
+        const code = room === "connecting" && !travelling ? CLOSE_RECONNECT : 1000;
         if (inspectOn) ws.close(code, why);
         else ws.close(code);
       }
       ws = null;
     }
-    // Out of the room for good: nothing held to come back to.
-    if (room !== "connecting") resumeKey = "";
+    // Out of the room for good: nothing held to come back to. A move to another place keeps no key either.
+    if (room !== "connecting" || travelling) resumeKey = "";
+    state.copy = null;
+    state.away.clear();
+    // Out of every room for good (signed out, another tab, revoked, full), a chat's copy is left too: a rejoin is the island's.
+    if (target && room !== "connecting" && room !== "paused") { target = null; state.target = null; state.copyLeft++; state.copyReason = room; }
     remotes.clear();
     setClouds(NO_CLOUDS);
     state.voiceElsewhere = false;
@@ -1050,7 +1096,8 @@
     // A tab opened in the background has no visibility change to arm this.
     if (document.hidden && !hiddenTimer) armHidden();
     openingAt = performance.now();
-    ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/room${resumeKey ? "?resume=" + encodeURIComponent(resumeKey) : ""}`);
+    const path = target ? `/api/chats/${encodeURIComponent(target.chat)}/world` : "/room";
+    ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}${path}${resumeKey ? "?resume=" + encodeURIComponent(resumeKey) : ""}`);
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
     ws.onopen = () => {
@@ -1444,6 +1491,33 @@
     rosterChanged();
   };
 
+  // To a hosted chat's copy (`next` `{ chat, home }`) or back to the island (null), standing at `spot` on arrival: the
+  // island first hears `travel`, then the socket closes clean and the other place's opens at once. False when it can't
+  // go (signed out, not live on an island that offers it, already there).
+  const travel = (next, spot = null) => {
+    const chat = next && typeof next.chat === "string" && CHAT_ID.test(next.chat) ? next.chat : null;
+    if (!state.me || next && !chat || !next && !target) return false;
+    if (chat && (target || state.room !== "live" || !state.travel)) return false;
+    if (!target && ws && ws.readyState === WebSocket.OPEN) send('{"t":"travel"}');
+    target = chat ? { chat, home: spotOf(next.home) } : null;
+    state.target = chat;
+    const at = spotOf(spot);
+    if (at) { px = at.x; py = at.y; pz = at.z; pyaw = at.yaw; zone = state.zone = at.zone; }
+    travelling = true;
+    try { close("connecting", "travel"); } finally { travelling = false; }
+    window.clearTimeout(retryTimer);
+    retryTimer = 0; retry = 0; stopped = false;
+    connect();
+    return true;
+  };
+  // A copy that sent this page home, or never was one: back to the island where the visitor stood before.
+  const leaveCopy = (reason) => {
+    const home = target && target.home;
+    state.copyLeft++;
+    state.copyReason = typeof reason === "string" ? reason.slice(0, 32) : "";
+    travel(null, home);
+  };
+
   // This page's own microphone muted or not, for every other page's roster.
   const setMuted = (on) => {
     if (on === muted) return;
@@ -1793,5 +1867,5 @@
     diagnostic = null;
   };
 
-  BL.net = { sendProps, sendPropInput, subscribeProps, sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, subscribeChatMembers, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setCall, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { travel, sendProps, sendPropInput, subscribeProps, sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, subscribeChatMembers, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setCall, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

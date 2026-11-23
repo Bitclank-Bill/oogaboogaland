@@ -78,6 +78,8 @@ export const chatMembersRoom = {
   },
   /** The island's players or a chat's word changed: every page hears the number in chats when it moves. */
   players(room) {
+    // A chat's copy of the island (room-copy.js) has no Online Oogas of chats: only the island works this out.
+    if (room.copy) return;
     const n = online(room);
     if (n === room.chatOnline) return;
     room.chatOnline = n;

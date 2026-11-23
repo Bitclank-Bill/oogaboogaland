@@ -215,6 +215,8 @@ toast and the region.
   the island's own routes, and with `bridge` the bridge's. The edge's `FEATURES` names `chats` too
   (`effective(...).chats`, which also needs `listen`); its bootstrap then lists `features.chats`, `paths.chats`
   (`/api/chat/chats`) and audience protocol 2 in `protocols.audience`.
+  `copies`, with `chats`, turns on each Main Island chat's copy (`/api/chats/<id>/world`, `travel-v1`, Go there); it is
+  the island's alone, and both configs deploy it on with `chats`.
 
 ### Routes
 
@@ -335,6 +337,10 @@ Agreed 2026-11-23:
   stream and into the copy beside the banana pile; Leave beams it back to exactly where it stood, as does leaving the
   stage or the chat.
 - **Size:** up to 32 Oogas, the speaker cap, and the island room's own.
+- **Voice in a chat has no place in it.** Every speaker in a chat is heard at full by everyone in it, wherever their
+  Ooga stands in the copy: no level or crossing blending (voice-blend.js) and no hearing range, which stay the main
+  land's alone. A chat's voice is the chat's own media (Ooga Chat's controller, chat-call.js on the island), never the
+  island's voice.js; the copy carries no voice and ignores the island's `blend` frames.
 - **The copy's server** is the island's own `Room` class in a copy mode, one object a chat (`chat:<id>`), with
   everything island-only off (NPCs, games, chalk, the World Map's report, island voice, the text chat) and a check
   pinning what a copy offers. Only the chat's current speakers are admitted, and leaving the stage, removal or the end
@@ -343,6 +349,9 @@ Agreed 2026-11-23:
   sky) lands in a later PR; they work as voice chats meanwhile.
 - **The live island view** uses the game's own renderer and models, loaded only when someone turns Live view on.
 - **Ooga Chat's first-load limit** may rise to 256 KB gzipped.
+- **Cloud seats:** today's three-seat bench on 11 of the 18 clouds (33 seats for the 32 speakers), all on the high
+  track so none flies under the meadow, filled a bench at a time so a small chat looks like today's island; a cloud
+  with nobody on it shows no bench.
 - **Clouds:** every speaker not walking the copy sits on a cloud in it, a seat each, 32 seats: Ooga Chat's, and the
   island's whose Ooga is still on the main land. A speaker with no Ooga of their own (an X account, or a GitHub account
   with no character) sits there as a default Ooga hashed from their handle, under a name no login can have (as
@@ -358,3 +367,32 @@ texture at a capped rate and shown as a screen, of a reduced graph of the zone (
 interactions, as `observatory-bifrost.js` and its siblings build theirs) with the speakers' bodies stood from the poses
 the chat relays (`observatory-visitors.js`). It is drawn in the viewer's own browser: no player's page captures or
 uploads video. The first PR leaves room for it at the top of the chat panel.
+
+As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in `.hc-room-strip` in both apps):
+
+- **Asking for places.** A chat member's socket asks with `{ type: "view", on: true }` only while the strip shows (a row
+  with `walking`), the panel is shown and the page is visible, and says `on: false` as any of that ends; a new connection
+  asks again. Only then does the Audience send `{ type: "walk", seq, p: [id, x, y, z, yaw, …] }` (at most twice a second,
+  `walk-v1`), which reaches the views through the page's `hear` (ooga-chat-app.js, chat-call.js). A frame is read whole
+  or not at all (`parseWalk`); each walker is eased from where it was shown over the time between frames, and one missing
+  from a frame leaves. The copy relays places only after a snapshot, so a walker who has not moved since a viewer asked
+  shows once they next move.
+- **The map.** `scripts/island-view.mjs` (after `npm run build`) bakes it in the suite's Chrome: the built hub at midday
+  on day 80, its Oogas, gorillas, Tess and clouds left out, straight down through an orthographic camera over Main Island
+  and the lands round it, 512 x 384. It writes `src/ooga-chat/art/island-view-main.webp` (Ooga Chat's lazy art), the same
+  bytes as `src/js/island-view-art.js` (the island page's copy, served as a file under `art/` on a hosted page,
+  `PICTURE_MODULES`), and `src/js/island-view-data.js`, the capture camera's world-to-picture matrix (checked against the
+  renderer's own projection) and the hub's light at that hour. Faces are the roster's (`rowFace`), else the native Ooga
+  face; a talking walker's green ring pulses. The canvas draws a frame at a time only while the strip shows and can be
+  seen, and allocates nothing a frame.
+- **Live view.** A switch on the strip, off until chosen and kept in this browser (Ooga Chat's `island-live` key, the
+  island's `ooga-island-view-live`). `src/js/island-view-live.js` makes one renderer (gl-renderer.js, Low tier) on the
+  strip's own canvas, drawing the island's ground and the banana pile from a fixed camera south of it, a body for each
+  walker, under the baked light, at most six times a second; the faces stand over their heads on the 2D canvas above it.
+  Ooga Chat fetches it with the renderer, the models and the terrain as its own `live` chunk only when the switch is
+  turned on (never prefetched and never in the service worker's shell, `OPT_IN` in scripts/ooga-chat.mjs) and builds the
+  island in slices; the island page has the code and hands it the island the hub built (`hubScene.liveIsland`). Only the
+  main island's ground is drawn: the Mempool island, Merge Rock, the Timechain Sphere's islet and ₿IFRÖST's are not, so a
+  walker there stands over the sea in Live view (the map shows them all).
+- `?chats=on` (Ooga Chat's fixture) and `?debug=1&chats=fixture` (the island's) mark two of Sample Oak's chat's
+  speakers as walking and send their places twice a second while the view asks.

@@ -201,9 +201,10 @@
           }
           if (room && msg?.you && state.room === room) room.you = msg.you;
           if (room && msg?.chat) room.chat = msg.chat;
-          if (room && /^(notice|result|removed|chat)$/.test(msg?.type)) {
+          if (room && /^(notice|result|removed|chat|walk)$/.test(msg?.type)) {
             if (msg.kind === "muted" && state.voice.role === "speaker" && !state.voice.muted) media.mute();
             for (const fn of heardChat) fn(msg);
+            if (msg.type === "walk") return;
             if (msg.type !== "result") return set({});
           }
           if (msg && msg.type === "result") {

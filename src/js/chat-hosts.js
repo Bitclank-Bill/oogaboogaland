@@ -8,7 +8,11 @@
 // fields), hear(fn) }`; `joinVoice()` its Join Voice, called inside Start speaking's press; `faceOf(character)` a
 // portrait's address; `startZone()` the zone Start a chat chooses first; `toast(text)` the page's own announced toast,
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
-// whether Request to speak reads Speak now on an open stage. `update(state)` takes the page's state in Ooga Chat's
+// whether Request to speak reads Speak now on an open stage; `goThere`, the island's alone (chat-copy.js), `{ state(room),
+// press(), subscribe(fn) }`: the footer's Go there (Leave while on the chat's island), `state` its `{ label, words,
+// disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), island(), storageKey }`, the island view's
+// map picture, how the page brings Live view's code, the island it built already (the island page's) and where the
+// viewer's Live view choice is kept (island-view.js). `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
 // `preview(entry, from)` opens a chat's preview from elsewhere on the page (an entry as `parseList` gives it). It adds:
@@ -33,7 +37,10 @@
 //   participant (`actionsFor`);
 // - one polite live region (`.hc-chat-notice`, or the page's toast) for every notice and refused request, in words
 //   (`noticeText`), a burst of requests joined into one line at most every ASKED_MS, nothing said twice.
-// `.hc-room-strip`, empty and hidden, holds the roster's place for a later strip over it (a view of the chat's island).
+// - the island view (island-view.js) in `.hc-room-strip` over the roster, shown only while one of the chat's speakers
+//   walks its copy of the zone (a row's `walking`): the chat is asked for their places (`{ type: "view", on: true }`) only
+//   while it shows, the panel is shown and the page is visible, and told `on: false` as that ends; a new connection asks
+//   again. Its `walk` frames come through `chats.hear`.
 // Pop-ups (a tile's menu, the queue, a confirmation) are one wood-framed box, a sheet at the screen's foot under 400px;
 // the look is chat-hosts.css. The pure parts (`parseList`, `actionsFor`, `noticeText`, `joinNames`) need no document.
 (() => {
@@ -228,7 +235,7 @@
   };
 
   const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "none", toast = null, shown = () => !node.closest("[hidden]"),
-    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false }) => {
+    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null, islandView = null }) => {
     const listeners = new AbortController(), { signal } = listeners;
     let state = null, room = null, me = null, rank = "", people = [], timer = 0, shownTimer = 0, askedTimer = 0, askedAt = -Infinity;
     // `asked` the burst's ids, `askedNames` each one's name as it asked (they may have gone by the time it is said).
@@ -299,6 +306,7 @@
     // Read while the list shows, the panel is the visible tab and the page is visible; nothing runs otherwise.
     const watching = () => !document.hidden && !!state && !room && !!state.session && shown();
     const watch = () => {
+      syncView();
       if (!watching()) { clearInterval(timer); timer = 0; return; }
       if (!timer) { read(); timer = setInterval(() => read(), LIST_MS); }
     };
@@ -330,7 +338,7 @@
     const previewTiles = BL.audienceTiles.create(previewStage);
     const previewDescribe = (p, t) => {
       const speaker = p.role === "speaker", look = speaker ? p.muted ? "muted" : "on" : "";
-      t.id = p.id; t.display = p.display; t.role = p.role; t.source = "chat"; t.chat = true; t.self = p.id === me;
+      t.id = p.id; t.display = p.display; t.role = p.role; t.source = "chat"; t.chat = true; t.self = p.id === me; t.walking = p.role === "speaker" && !!p.walking;
       t.face = rowFace(p); t.hand = p.hand || ""; t.look = look; t.micPressed = false; t.micDisabled = true;
       t.micWords = speaker ? `${p.display}: ${p.muted ? "Muted their microphone" : "In voice"}` : ""; t.rank = p.rank || ""; t.request = ""; t.reconnecting = !!p.reconnecting;
     };
@@ -462,7 +470,12 @@
       paint();
     }, { signal });
     leave.addEventListener("click", () => chats.leave(), { signal });
-    foot.join.after(ask, end, leave);
+    // Go there: the speaker's own Ooga onto the chat's island and back (the island's page alone).
+    const goTo = button("foot-button hc-go", "Go there");
+    goTo.hidden = true;
+    if (goThere) goTo.addEventListener("click", (e) => { if (e.detail) goTo.blur(); goThere.press(); }, { signal });
+    const offGo = goThere ? goThere.subscribe(() => paint()) : () => {};
+    foot.join.after(goTo, ask, end, leave);
 
     // --- pop-ups: a tile's menu, the queue, a confirmation ---
     const pop = make("div", "hc-pop");
@@ -579,8 +592,9 @@
     requests.addEventListener("click", () => popKind === "queue" ? closePop() : openQueue(true), { signal });
     end.addEventListener("click", () => confirm(end, "End this chat for everyone?", "End chat", () => send("end")), { signal });
 
-    // What the chat says: notices, and answers to this page's own requests.
+    // What the chat says: notices, answers to this page's own requests, and the island view's walkers.
     const off = chats.hear((msg) => {
+      if (msg.type === "walk") { isle?.walk(msg); return; }
       if (msg.type === "result") {
         if (!mine.has(msg.requestId)) return;
         const after = mine.get(msg.requestId);
@@ -624,6 +638,14 @@
       attr(ask, "aria-pressed", String(you.request === "asked"));
       end.hidden = !r || you.rank !== "host";
       leave.hidden = !r;
+      const g = goThere && r ? goThere.state(r) : null;
+      goTo.hidden = !g;
+      if (g) {
+        set(goTo, "textContent", g.label);
+        set(goTo, "disabled", g.disabled);
+        set(goTo, "title", g.title);
+        attr(goTo, "aria-label", g.disabled && g.title ? `${g.words}: ${g.title}` : g.words);
+      }
       const manager = !!LEVEL[you.rank];
       requests.hidden = !r || !manager;
       if (manager) set(requests, "textContent", `Requests ${queue().length}`);
@@ -668,7 +690,7 @@
       state = next;
       const was = room;
       room = next.room && next.session ? next.room : null;
-      if (room !== was) { closePop(false); asked.length = 0; askedNames.clear(); clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; removed = []; autoSpeak = ""; autoFor = "invite"; offerAgain = false; offered = false; answering = 0; }
+      if (room !== was) { closePop(false); asked.length = 0; askedNames.clear(); clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; removed = []; autoSpeak = ""; autoFor = "invite"; offerAgain = false; offered = false; answering = 0; viewSent = null; }
       if (!was && room) { readAt = -Infinity; }
       me = next.session?.identity.participant || null;
       rank = room?.you?.rank || "";
@@ -687,6 +709,20 @@
       if (!room) drawList();
       watch();
     };
+    // The island view: shown while someone walks the chat's island, the walkers' places asked for only while it can be
+    // seen. `viewSent` is what this connection was last told (null: nothing yet, or a new connection).
+    const isle = islandView && BL.islandView ? BL.islandView.create({ picture: islandView.picture, faceOf: rowFace, loadLive: islandView.loadLive,
+      island: islandView.island, storageKey: islandView.storageKey }) : null;
+    let viewSent = null;
+    function syncView() {
+      if (!state) return;
+      const walkers = !!isle && !!room && people.some((p) => p.walking), want = walkers && shown() && !document.hidden;
+      set(strip, "hidden", !walkers);
+      if (isle) isle.update({ rows: room ? people : [], talking: state.voice.talking || [], speaking: !!state.voice.speaking, self: me, active: want });
+      if (!room || state.audience.status !== "live") { viewSent = null; return; }
+      if (viewSent === want || viewSent === null && !want) return;
+      if (chats.request("view", { on: want })) viewSent = want;
+    }
     let observing = false;
     const attach = () => {
       if (observing || !node.parentElement) return;
@@ -697,9 +733,10 @@
     // The Requests chip stands in the panel's title, right of the zone tag.
     const zoneTag = head.querySelector(".panel-chip");
     if (zoneTag) zoneTag.after(requests); else head.append(requests);
-    // Room for a strip over the roster (a later view of the chat's own island); empty and hidden for now.
+    // The strip over the roster: the island view, while someone walks the chat's island.
     const strip = make("div", "hc-room-strip");
     strip.hidden = true;
+    if (isle) strip.append(isle.node);
     space.parts.list.before(strip);
     node.append(starter.node, preview);
     space.parts.footRow.before(invite, offer);
@@ -714,8 +751,10 @@
       clearInterval(previewTimer);
       previewTiles.dispose();
       off();
+      offGo();
+      isle?.dispose();
       space.setMenu(null);
-      for (const el of [bar, dock, notice, list, strip, invite, offer, pop, ask, end, leave, requests, starter.node, preview]) el.remove();
+      for (const el of [bar, dock, notice, list, strip, invite, offer, pop, goTo, ask, end, leave, requests, starter.node, preview]) el.remove();
     };
     return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), preview: (entry, from = null) => showPreview(entry, from), dispose };
   };

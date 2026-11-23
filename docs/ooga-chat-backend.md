@@ -395,6 +395,12 @@ bridge reaches a chat only while the directory lists it (`x-chat-id`, else 404).
 the contributor rule below for speaking: anyone signed in, X included, may be invited; a GitHub account is still refused
 while banned or while another account holds its login.
 
+A Main Island chat also has its own copy of the zone, where its speakers walk their Oogas: the island's `Room` class
+run as `chat:<id>` (`worker/src/room-copy.js`), reached by the island page through `GET /api/chats/<id>/world` behind
+the island's `copies` switch, with the chat deciding who walks it. Clouds seat the chat's other speakers there, and the
+chat relays the walkers' places to connections that asked for the island view (`walk-v1`). Nothing from a copy reaches
+the real island; Ooga Chat's clients never connect to one.
+
 ## Media (#666)
 
 Ooga Chat's audio goes publisher to SFU to listener on the environment's one Realtime SFU app, the island's own, so a

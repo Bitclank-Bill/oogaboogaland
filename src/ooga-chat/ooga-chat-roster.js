@@ -6,7 +6,7 @@
 // gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies. A snapshot is the
 // server's whole list, so one at the revision already held applies too: after a reconnect it confirms the list. A
 // speaker's `hand` is its raised hand or pinned emoji (#668), "" when down; a listener has none. A hosted chat's row may
-// carry `reconnecting`, a `rank` (`rankSince`), a `request` (`asked`, `invited`, or `cohost` for an open co-host offer; `askedAt`), `since` and `via`, and is ordered by chat-hosts.js's `order`.
+// carry `reconnecting`, a `rank` (`rankSince`), a `request` (`asked`, `invited`, or `cohost` for an open co-host offer; `askedAt`), `since`, `via` and `walking` (on the chat's island), and is ordered by chat-hosts.js's `order`.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -26,6 +26,8 @@
       hand: raw.role === "speaker" && typeof raw.hand === "string" && raw.hand.length <= 16 && !/[\u0000-\u001f\u007f]/.test(raw.hand) ? raw.hand : "",
       rank: RANKS.includes(raw.rank) ? raw.rank : "", request: REQUESTS.includes(raw.request) ? raw.request : "", askedAt: raw.request && count(raw.askedAt) || 0,
       rankSince: count(raw.rankSince) || 0, since: count(raw.since) || 0, via: VIA.includes(raw.via) ? raw.via : "",
+      // A speaker walking the chat's island with their Ooga (its copy), ringed as one on the island is.
+      walking: raw.role === "speaker" && raw.walking === true,
       // A hosted chat's speaker, host or co-host whose connection dropped a while ago: their tile stands in place, dimmed.
       reconnecting: raw.reconnecting === true };
   };

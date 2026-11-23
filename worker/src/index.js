@@ -20,7 +20,7 @@ import { handleHighscores } from "./highscores.js";
 import { handleArcadePlays } from "./arcade-plays.js";
 import { handleCloudHopperReplays } from "./cloud-hopper-replays.js";
 import { pruneCloudHopperReplays } from "./cloud-hopper-replay-store.js";
-import { allowed, fromSite, getSessionForRemoval, getSessionFromRequest, readBody, text } from "./http.js";
+import { allowed, asPlayer, fromSite, getSessionForRemoval, readBody, serviceSession, text } from "./http.js";
 import { handlePoker } from "./poker.js";
 import { handleTess, pruneTess } from "./tess.js";
 import { handleWorld, handleWorldLive } from "./world.js";
@@ -43,27 +43,6 @@ export { Audience } from "./audience.js";
 export { ChatDirectory } from "./chat-directory.js";
 
 const ROOM_NAME = "island";
-
-// A temporary catalog outage must not tell a reconnecting client that its account was signed out.
-const serviceSession = async (request, env) => {
-  try { return await getSessionFromRequest(request, env, true); }
-  catch (error) {
-    return error.code === "character_unavailable"
-      ? text("Characters temporarily unavailable", 503, { "retry-after": "15" }) : null;
-  }
-};
-
-// The request passed on to a socket's object, with the player as the session says and nothing a client sent of its own.
-const asPlayer = (request, found, extra = null) => {
-  const headers = new Headers(request.headers);
-  for (const name of [...headers.keys()]) if (name.startsWith("x-player-") || name === "x-game-name") headers.delete(name);
-  headers.set("x-player-id", String(found.player.id));
-  headers.set("x-player-login", found.player.login);
-  headers.set("x-player-display", found.player.display || found.player.login);
-  headers.set("x-player-contributor", "1");
-  if (extra) for (const [name, value] of Object.entries(extra)) headers.set(name, value);
-  return new Request(request, { headers });
-};
 
 // Identity is decided here, once, from the session; the room trusts only the headers set below.
 const handleRoom = async (request, env, ctx) => {

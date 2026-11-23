@@ -28,7 +28,15 @@ const app = join(root, "src", "ooga-chat");
 export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/donations.js", "../js/banana-panel.js", "../js/qr.js", "../js/banana-icon.js",
   "../js/jumbotron-font.js", "../js/factory-kiosk-core.js", "../js/factory-kiosk.js", "../js/donation-popup.js", "../js/chat-policy.js", "../js/emoji-data.js", "../js/reaction-policy.js",
   "../js/zone-map.js", "../js/commons-log.js", "../js/format-large.js", "../js/roster-panel.js", "../js/contributor-identities.js", "../js/activity-repos.js",
-  "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js", "../js/chat-hosts.js"];
+  "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js", "../js/chat-hosts.js",
+  // The island view (island-view.js, with the hosted chats), and its opt-in Live view: the game's own renderer and the
+  // island's ground (OPT_IN, fetched only when a viewer turns it on).
+  "../js/island-view-data.js", "../js/island-view.js", "../js/math.js", "../js/daylight.js", "../js/scene.js", "../js/compact-geometry.js",
+  "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js", "../js/convex.js",
+  "../js/terrain.js", "../js/island-view-live.js"];
+// Deferred groups a visit fetches only on the visitor's word, never ahead of it: kept out of the idle prefetch
+// (ooga-chat-chunks.js) and the service worker's shell, so an install never downloads them either.
+export const OPT_IN = ["live"];
 // What a first visit may cost over the wire (index.html, the first-load script, the stylesheet and the art it shows),
 // gzipped, never the deferred chunks. The
 // staged foundation measured about 91 KB, most of it the sign-in picture. The original picture at Retina size (about
@@ -63,8 +71,9 @@ export const ISLAND_RULES = [".roster", ".players-", ".chat-", ".section-head", 
   ".help", ".link", ".account", ".foot-button", ".foot-primary", ".cloud-status", ".panel > .cloud-roster", ".cloud-tile",
   ".cloud-face", ".cloud-portrait", ".cloud-react", ".cloud-hand", ".cloud-pop", ".cloud-name", ".cloud-role",
   ".cloud-mic", ".cloud-foot", ".cloud-mute", ".cloud-voice", ".reaction", ".panel-foot", ".voice-handoff"];
-// Pictures the app loads only when they are wanted, never on a first visit: the face sheet, when a stats strip opens.
-export const LAZY_ART = ["ooga-faces.png"];
+// Pictures the app loads only when they are wanted, never on a first visit: the face sheet, when a stats strip opens, and
+// the island view's map, when a chat's speaker walks its island.
+export const LAZY_ART = ["ooga-faces.png", "island-view-main.webp"];
 // Smaller copies of a picture in a view's srcset, which a visit loads in place of the full one: the first load counts
 // only the full one, the most a visit can fetch.
 export const ALTERNATE_ART = ["sign-in-island-520.webp", "sign-in-island-680.webp"];
@@ -324,8 +333,10 @@ export const build = (out, { fixtures = false } = {}) => {
   write("manifest.webmanifest", `${JSON.stringify({ id: "/", name: APP.name, short_name: APP.name, description: APP.description, start_url: "/", scope: "/",
     display: "standalone", background_color: APP.theme, theme_color: APP.theme,
     icons: icons.map((icon) => ({ src: icon.path, sizes: `${icon.size}x${icon.size}`, type: "image/png", purpose: icon.purpose })) }, null, 2)}\n`);
-  // The worker's shell: the page and every hashed file of this build, never the fixture entry, the manifest or the 404.
-  const shell = ["/", ...files.filter((path) => /^(js|css|art|icons)\//.test(path)).sort().map((path) => `/${path}`)];
+  // The worker's shell: the page and every hashed file of this build, never the fixture entry, the manifest, the 404 or
+  // an opt-in chunk.
+  const optIn = new Set(OPT_IN.map((group) => scripts[group]).filter(Boolean));
+  const shell = ["/", ...files.filter((path) => /^(js|css|art|icons)\//.test(path) && !optIn.has(`/${path}`)).sort().map((path) => `/${path}`)];
   const worker = read("service-worker.js").replace('const VERSION = "dev";', `const VERSION = ${JSON.stringify(buildId)};`).replace("const SHELL = [];", `const SHELL = ${JSON.stringify(shell)};`);
   if (!worker.includes(buildId) || worker.includes("const SHELL = [];")) throw new Error("ooga-chat: the service worker did not stage");
   write("sw.js", worker);

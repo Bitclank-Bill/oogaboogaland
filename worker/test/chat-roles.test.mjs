@@ -204,6 +204,22 @@ test("an open stage: the host's alone, it approves everyone waiting as it opens 
   assert.equal(createRoles({ saved: r.save() }).open, false);
 });
 
+test("who may walk a chat's copy: speakers alone, a dropped one held as on the stage, never removed or after the end", () => {
+  const r = createRoles({ host: H, now: 0 });
+  assert.equal(r.mayWalk(H, 0), false, "a host who has not taken the stage walks nowhere yet");
+  assert.equal(r.granted(H, 0).changed, true, "a host's lease is a place on the stage too");
+  assert.equal(r.mayWalk(H, 10), true);
+  r.leaseEnded(H, false, 100);
+  assert.equal(r.mayWalk(H, 100 + STAGE_HOLD_MS - 1), true, "held through a dropped socket");
+  assert.equal(r.mayWalk(H, 100 + STAGE_HOLD_MS), false);
+  assert.equal(r.mayWalk(L, 0), false, "a listener never walks");
+  assert.equal(r.mayWalk(L, 0, true), true, "a lease held now is enough");
+  r.remove(H, L, 0);
+  assert.equal(r.mayWalk(L, 0, true), false, "never once removed");
+  r.end(H);
+  assert.equal(r.mayWalk(H, 0, true), false, "nor after the end");
+});
+
 test("co-hosting is offered: an offer holds a slot, accepting makes a co-host, leaving the stage brings the offer back, and the host can withdraw or make a co-host a speaker", () => {
   const r = createRoles({ host: H, now: 0 });
   assert.deepEqual(r.setCohost(H, C, true, 1), { ok: true, changed: true, offered: true });
