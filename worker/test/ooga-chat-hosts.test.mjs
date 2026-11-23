@@ -363,4 +363,74 @@ test("rows say how long each has held their place and which app they came from, 
   assert.equal(row("gh:1").since, now, "a speaker since they took the stage");
 });
 
+
+
+test("one voice an account with the island: a chat tells the island room when a GitHub account takes and leaves its stage", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const told = [];
+  w.env.ROOM = { getByName: () => ({ chatVoice: async (id, chat, on) => { told.push([id, chat, on]); return { ok: true }; } }) };
+  const { chat } = await startChat(w.env, host(1), { title: "Island", zone: "main" });
+  const amy = await connect(w, chat.id, 1), zed = await connect(w, chat.id, 9);
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await w.settle();
+  assert.deepEqual(told, [[1, chat.id, true]], "the island hears the account took the stage");
+  await ask(amy, { type: "invite", id: "x:9" });
+  await ask(zed, { type: "setRole", role: "speaker" });
+  await w.settle();
+  assert.equal(told.length, 1, "an X account has no island voice to end");
+  await ask(amy, { type: "setRole", role: "listener" });
+  await w.settle();
+  assert.deepEqual(told.at(-1), [1, chat.id, false], "and that it left it");
+});
+
+
+
+test("the island room: an account on a chat's stage leaves island voice, shows in a call everywhere, and taking voice back ends the chat's lease", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { runInNewContext } = await import("node:vm");
+  const protocol = await import("../src/protocol.js");
+  const studio = await import("../src/studio-policy.js");
+  const { getPlayer } = await import("../src/db.js");
+  const source = readFileSync(new URL("../src/room.js", import.meta.url), "utf8").replace(/import\s+[\s\S]*?from\s+"[^"]+";/g, "")
+    .replace("export class Room", "class Room") + "\nglobalThis.Room = Room;";
+  const context = { ...protocol, ...studio, getPlayer, DurableObject: class {}, WebSocketRequestResponsePair: class {}, sfuClient: () => null, CAST_ROWS: [], Date, Map, Set, Response, Promise };
+  runInNewContext(source, context);
+  context.Room.prototype.inspect = protocol.inspectReporter(null, {}, "Room", () => "", () => null);
+  context.Room.prototype.world = protocol.worldReporter(null, {}, () => null);
+  context.Room.prototype.catalog = protocol.roomCatalog.create({}, [], protocol.castIndex);
+  const room = Object.create(context.Room.prototype);
+  const stored = new Map(), yielded = [];
+  room.ctx = { storage: { put: async (k, v) => { stored.set(k, v); } }, waitUntil: (task) => task };
+  room.env = { OOGA_CHAT_FEATURES: "chats", AUDIENCE: { getByName: (name) => ({ yieldVoice: async (id) => { yielded.push([name, id]); } }) } };
+  room.sockets = new Map(); room.players = new Map(); room.chatBuckets = new Map(); room.pinTries = new Map(); room.chat = protocol.chatLog(); room.chatVoices = new Map();
+  room.studio = studio.studioState(0);
+  room.clearVoice = async (p) => { p.voice.track = null; p.voice.pub = null; };
+  room.updateVoice = () => {};
+  const join = (id) => {
+    const ws = { sent: [], deserializeAttachment: () => ({ id }), serializeAttachment() {}, send: (text) => ws.sent.push(JSON.parse(text)) };
+    const p = room.record(ws, { id, login: `p${id}`, display: `P${id}`, contributor: true, body: `p${id}`, x: 0, y: 0, z: 0, yaw: 0 });
+    room.players.set(id, p);
+    return { ws, p };
+  };
+  const amy = join(1), bea = join(2);
+  amy.p.voice.track = "mic"; amy.p.voice.pub = "s1";
+  assert.equal((await room.chatVoice(1, "AAAAAAAAAAAAAAAA", true)).ok, true);
+  assert.equal(protocol.inVoice(amy.p), false, "island voice ended");
+  assert.ok(amy.ws.sent.some((m) => m.t === "voice-moved"));
+  assert.ok(amy.ws.sent.some((m) => m.t === "voice-elsewhere" && m.on === true), "her page can offer Switch here");
+  assert.ok(bea.ws.sent.some((m) => m.t === "call" && m.id === 1 && m.on === true), "everyone sees her in a call");
+  assert.equal(room.view(amy.p).call, true);
+  assert.equal(JSON.stringify(stored.get("chatVoices")), '[[1,"AAAAAAAAAAAAAAAA"]]', "kept across a nap");
+  amy.p.voice.track = "mic";
+  room.voiceState(amy.p);
+  await Promise.resolve();
+  assert.deepEqual(yielded, [["chat:AAAAAAAAAAAAAAAA", "gh:1"]], "taking island voice back ends the chat's lease");
+  assert.equal(room.view(amy.p).call, undefined);
+  assert.equal((await room.chatVoice(1, "AAAAAAAAAAAAAAAA", false)).ok, true, "the chat's own word after is harmless");
+  await room.chatVoice(1, "BBBBBBBBBBBBBBBB", true);
+  await room.chatVoice(1, "CCCCCCCCCCCCCCCC", false);
+  assert.equal(room.chatVoices.get(1), "BBBBBBBBBBBBBBBB", "a stale chat never clears a newer one");
+});
+
 test.after(() => { Date.now = realNow; });

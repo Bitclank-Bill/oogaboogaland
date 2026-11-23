@@ -772,10 +772,19 @@ export class Audience extends DurableObject {
   stageLeft(id, voluntary) {
     if (this.roles.leaseEnded(id, voluntary, Date.now()).changed) this.background(this.rolesChanged());
     if (this.chat && this.env.CHATS) this.background(this.env.CHATS.getByName(DIRECTORY_NAME).release(id, this.chat.id).catch(() => {}));
+    this.tellIsland(id, false);
+  }
+
+  /** The island room hears a GitHub account took or left this chat's stage, so its island voice gives way (room.js). */
+  tellIsland(id, on) {
+    if (!this.chat || !this.env.ROOM || !id.startsWith("gh:")) return;
+    const account = Number(id.slice(3)), chat = this.chat.id;
+    this.background(Promise.resolve().then(() => this.env.ROOM.getByName("island").chatVoice(account, chat, on)).catch(() => {}));
   }
 
   /** One voice an account across every chat: taking the stage here ends its lease in the chat it last spoke in. */
   claimVoice(id) {
+    this.tellIsland(id, true);
     if (!this.env.CHATS) return;
     const here = this.chat.id;
     this.background((async () => {

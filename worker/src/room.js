@@ -78,6 +78,8 @@ export class Room extends DurableObject {
     this.world = worldReporter(ctx, env, () => this.worldView());
     this.flushDue = 0;
     this.players = new Map();
+    // Accounts on a hosted chat's stage (docs/ooga-chat-hosts.md), GitHub id -> chat id: their island voice gives way.
+    this.chatVoices = new Map();
     // Each player socket to its record, so a message finds its sender without reading the socket's attachment. Rebuilt
     // from the sockets on every wake, as `players` is; a record leaves both together (`drop`).
     this.sockets = new Map();
@@ -163,6 +165,9 @@ export class Room extends DurableObject {
         this.cleanupJobs = jobs || [];
       });
       // Ooga Chat's speakers the island's open outdoor grants hear (#666), as the Audience last sent them.
+      await this.restoring("chatVoices", (stored) => {
+        this.chatVoices = new Map((Array.isArray(stored) ? stored : []).filter((e) => Array.isArray(e) && Number.isSafeInteger(e[0]) && typeof e[1] === "string"));
+      }, () => { this.chatVoices = new Map(); });
       await this.restoring("chatSources", (sources) => { this.chatSources = audienceRoom.cleanSources(sources); },
         () => { this.chatSources = []; });
       // The clouds Ooga Chat speakers sit on (#668), as the Audience last sent them, at their revision.
@@ -299,7 +304,7 @@ export class Room extends DurableObject {
 
   view(p) {
     return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK,
-      ...(p.call ? { call: true } : {}) };
+      ...(this.inCall(p) ? { call: true } : {}) };
   }
 
   // Every message the room sends goes through here, players' and Ooga Chat members' alike, so the inspector's `out` and
@@ -717,7 +722,7 @@ export class Room extends DurableObject {
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
     this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, ...callFeatures(this.env), PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
       // The account speaks from Ooga Chat on another device: this page's own voice waits for the visitor's word.
-      ...(audienceRoom.elsewhere(this, p.id) ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}) });
+      ...(audienceRoom.elsewhere(this, p.id) || this.onChatStage(p.id) && !p.call ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}) });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
     this.sendCabinets(server);
@@ -1016,7 +1021,7 @@ export class Room extends DurableObject {
       // In a hosted chat's voice (docs/ooga-chat-hosts.md): the page has paused its island voice; others show the mark.
       if (!callOn(this.env) || msg.on === !!p.call) return;
       p.call = msg.on;
-      this.broadcast({ t: "call", id: p.id, on: p.call }, p.ws);
+      this.broadcast({ t: "call", id: p.id, on: this.inCall(p) }, p.ws);
     } else if (msg.t === "chat") {
       // Nothing in the attachment changes.
       return this.say(p, msg.text, msg.clientId);
@@ -1652,6 +1657,47 @@ export class Room extends DurableObject {
   voiceState(p) {
     this.broadcast({ t: "vstate", id: p.id, voice: inVoice(p), muted: p.muted }, p.ws);
     audienceRoom.world(this);
+    // Back in island voice while a chat holds the account's stage (Switch here): the chat gives it up.
+    if (inVoice(p) && this.onChatStage(p.id)) {
+      const chat = this.chatVoices.get(p.id);
+      this.chatVoices.delete(p.id);
+      this.keepChatVoices();
+      if (this.env && this.env.AUDIENCE) this.later(Promise.resolve().then(() => this.env.AUDIENCE.getByName(`chat:${chat}`).yieldVoice(`gh:${p.id}`)).catch(() => {}));
+      this.broadcast({ t: "call", id: p.id, on: this.inCall(p) });
+    }
+  }
+
+  /** In a hosted chat: this page said so (`call`), or the account holds a chat's stage from another device. */
+  inCall(p) { return !!p.call || this.onChatStage(p.id); }
+  onChatStage(id) { return !!this.chatVoices && this.chatVoices.has(id); }
+  keepChatVoices() { this.later(this.ctx.storage.put("chatVoices", [...this.chatVoices])); }
+  later(task) { if (this.ctx.waitUntil) this.ctx.waitUntil(task); else task.catch(() => {}); }
+
+  /**
+   * A hosted chat says GitHub account `id` took (`on`) or left its stage (docs/ooga-chat-hosts.md). One voice an account:
+   * its island voice ends as Ooga Chat's took it (`voice-moved`), every page shows its Ooga in a call, and its own page
+   * hears that its voice is elsewhere (`voice-elsewhere`), whose Switch here takes it back (`voiceState`).
+   */
+  async chatVoice(id, chat, on) {
+    if (!Number.isSafeInteger(id) || typeof chat !== "string" || !callOn(this.env)) return { ok: false };
+    if (on) this.chatVoices.set(id, chat);
+    else if (this.chatVoices.get(id) === chat) this.chatVoices.delete(id);
+    else return { ok: true };
+    this.keepChatVoices();
+    const p = this.players.get(id);
+    if (!p) return { ok: true };
+    if (on && inVoice(p)) {
+      await this.clearVoice(p);
+      p.muted = false;
+      this.saveAttachment(p);
+      this.send(p.ws, { t: "voice-moved" });
+      this.broadcast({ t: "vstate", id: p.id, voice: false, muted: false }, p.ws);
+      this.updateVoice();
+    }
+    // A page that is itself in the chat has paused its own voice already: it needs no Switch here.
+    if (!p.call) this.send(p.ws, { t: "voice-elsewhere", on });
+    this.broadcast({ t: "call", id: p.id, on: this.inCall(p) });
+    return { ok: true };
   }
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.

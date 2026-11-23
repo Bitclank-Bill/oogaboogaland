@@ -82,7 +82,12 @@ tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
 modules, so the two apps never drift. Joining a chat by voice there is like taking a call: the island's proximity voice
 pauses until the visitor leaves the chat, and their Ooga carries an "in a chat" mark so nearby players know why they
 can't hear them (the room's `call-v1`: the page sends `{ t: "call", on }`, every page hears `call { id, on }`
-and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players, not chat members. In the second PR the list also offers **Go
+and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players, not chat members.
+The same holds across devices: a chat tells the island room when a GitHub account takes or leaves its stage
+(`chatVoice`, kept in the room's storage as `chatVoices`). The room ends that account's island voice (`voice-moved`,
+whose toast says Ooga Chat took it), marks its Ooga in a call on every page, and tells its island page its voice is
+elsewhere (`voice-elsewhere`, unless that page is itself in the chat), whose Switch here takes it back: island voice
+going live while a chat holds the stage ends the lease there (`yieldVoice`), so one account has one voice either way. In the second PR the list also offers **Go
 there**, which takes the visitor's Ooga into the chat's copy of its zone.
 
 **Clouds belong to the copies.** OC speakers are never seen or heard over the real island any more: a chat's speakers
