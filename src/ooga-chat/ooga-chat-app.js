@@ -200,7 +200,8 @@
             return;
           }
           if (room && msg?.you && state.room === room) room.you = msg.you;
-          if (room && /^(notice|result|removed)$/.test(msg?.type)) {
+          if (room && msg?.chat) room.chat = msg.chat;
+          if (room && /^(notice|result|removed|chat)$/.test(msg?.type)) {
             if (msg.kind === "muted" && state.voice.role === "speaker" && !state.voice.muted) media.mute();
             for (const fn of heardChat) fn(msg);
             if (msg.type !== "result") return set({});
@@ -371,7 +372,7 @@
         } },
       contributors: () => adapter.contributors(),
       reactions: { bars, onPop(fn) { pops.add(fn); return () => pops.delete(fn); } },
-      chats: { list: () => adapter.chats(state.boot), start: (body) => adapter.startChat(state.boot, body), open: enterRoom, leave: () => leaveRoom(),
+      chats: { call: (name, ...a) => adapter[name](state.boot, ...a), open: enterRoom, leave: () => leaveRoom(),
         request: (type, fields) => feed && state.room ? feed.request(type, fields) : 0, hear(fn) { heardChat.add(fn); return () => heardChat.delete(fn); } } };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
       try { localStorage.setItem(tabKey, id); } catch { /* Storage may be unavailable. */ }

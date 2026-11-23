@@ -61,7 +61,9 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   to listening with no request.
 - **Decline:** the request goes; the person may ask again after 60 s. Cancel takes a request back at any time.
 - One request an identity a chat; the queue holds at most 50 a chat (a full queue refuses, retryable).
-- **Open stage**: the host (alone) can switch it on in the chat's bar. While it is on, every request is approved the
+- **Open stage**: the host (alone) can switch it on at the top of the Requests pop-up ("Open stage: anyone who asks may
+  speak"); everyone sees an Open stage tag beside the chat's title while it is on, and on the island Request to speak
+  reads Speak now. While it is on, every request is approved the
   moment it is made, as an invite, and switching it on approves everyone waiting. Removed accounts stay out and the
   speaker cap still holds.
 - **Preview and joining as either**: a chat in the Chats list opens a preview pop-up of its stage (the host, co-hosts

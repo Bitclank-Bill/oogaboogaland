@@ -81,7 +81,7 @@
     const speaking = row.self ? voice.stats.speaking : !!key && voice.inEarshot(key) && voice.speaking(key);
     const look = !speaker ? "" : muted ? "muted" : speaking ? "speaking" : "on";
     const blocked = speaker && !row.self && voice.mutedLocally(row.login);
-    t.id = id; t.display = row.display; t.role = row.role; t.source = row.source || ""; t.self = row.self; t.rank = t.request = t.via = "";
+    t.id = id; t.display = row.display; t.role = row.role; t.source = row.source || ""; t.self = row.self; t.rank = t.request = ""; t.chat = false;
     t.face = row.character && BL.characters.get(row.character) ? faceUrl(row.character) : key ? `/api/avatar/${key}` : "";
     t.look = look; t.hand = row.hand; t.micPressed = blocked;
     // The visitor's own button works their microphone, so only while they are in voice.
@@ -96,11 +96,11 @@
     const muted = own ? m.muted : p.muted;
     const look = !speaker ? "" : muted ? "muted" : (own ? m.speaking : m.talking.includes(p.id)) ? "speaking" : "on";
     const blocked = speaker && !self && calls.media.mutedLocally(p.id);
-    t.id = p.id; t.display = p.display; t.role = p.role; t.source = speaker ? p.source === "world" ? "world" : "chat" : ""; t.self = self;
+    t.id = p.id; t.display = p.display; t.role = p.role; t.source = speaker ? "chat" : ""; t.self = self;
     t.face = p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "";
     t.look = look; t.hand = p.hand || ""; t.micPressed = blocked; t.micDisabled = self && !own;
     t.micWords = speaker ? `${p.display}: ${BL.hud.voiceWords(look, self, blocked, p.login)}` : "";
-    t.rank = p.rank || ""; t.request = p.request || ""; t.via = p.via || "";
+    t.rank = p.rank || ""; t.request = p.request || ""; t.chat = true;
   };
   let menu = null;
   const tiles = BL.audienceTiles.create(list, { menu: (...a) => menu?.(...a), mic(id) {
@@ -260,8 +260,11 @@
       chatMode = on;
       tiles.clear();
       chatDrawn = drawnVersion = -1;
-      if (on) hosts = BL.chatHosts.create({ node: panel, head: panel.querySelector(".panel-title"), space: spaceOf(), chats: { list: calls.list, start: calls.start, open: calls.open, leave: () => calls.leave(), request: calls.request, hear: calls.hear },
-        joinVoice: () => calls.media.join(), faceOf: (c) => BL.characters.get(c) ? faceUrl(c) : "", startZone, toast: (text) => BL.hud.toast(text), shown: () => showing });
+      if (on) hosts = BL.chatHosts.create({ node: panel, head: panel.querySelector(".panel-title"), space: spaceOf(), chats: { list: calls.list, start: calls.start, preview: calls.preview, open: calls.open, leave: () => calls.leave(), request: calls.request, hear: calls.hear },
+        joinVoice: () => calls.media.join(), faceOf: (c) => BL.characters.get(c) ? faceUrl(c) : "", startZone, toast: (text) => BL.hud.toast(text), shown: () => showing,
+        // A preview's portraits as this panel draws a chat's: the Ooga, else the GitHub picture, never Ooga Chat's paths.
+        rowFace: (p) => p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "",
+        speakNow: true });
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;

@@ -302,13 +302,12 @@
         return { ok: false, error: "Name could not be saved. Try again." };
       }
     };
-    const chats = (...a) => BL.oogaChatHosts.chats(ask, json, ...a), startChat = (...a) => BL.oogaChatHosts.startChat(ask, json, ...a);
     const dispose = () => {
       disposed = true;
       for (const controller of pending) controller.abort();
       pending.clear();
     };
-    return { kind: "http", bootstrap, session, signIn, signOut, audience, commons, commonsName, media, chats, startChat, contributors, dispose, get pending() { return pending.size; } };
+    return { kind: "http", bootstrap, session, signIn, signOut, audience, commons, commonsName, media, ...Object.fromEntries(["chats", "startChat", "chatPreview"].map((n) => [n, (...a) => BL.oogaChatHosts[n](ask, json, ...a)])), contributors, dispose, get pending() { return pending.size; } };
   };
   BL.oogaChatHttp = { create, TIMEOUT_MS, MEDIA_PATH };
 })();

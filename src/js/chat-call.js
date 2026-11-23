@@ -9,7 +9,7 @@
 // `{ t: "call", on }` (`net.setCall`), so other pages mark this player as in a chat. Leaving it, the chat ending or
 // removing them (4404, 4403), signing out or the room's chats going away ends the call.
 // `open(entry)`, `leave(kind)`, `request(type, fields)` (its id, 0 while the socket isn't open), `hear(fn)` (the chat's
-// notices and request answers), `subscribe(fn)` (anything changed), `list()`, `start(body)`, `identity()` (the visitor as
+// notices and request answers), `subscribe(fn)` (anything changed), `list()`, `start(body)`, `preview(id)`, `identity()` (the visitor as
 // the views know them), and `state` in Ooga Chat's shape for the shared views: `room` (the chat, with the server's
 // `you`), `voice` (the controller's state), `audience` (`status`, `list`, `version`). `media` is the controller, for the
 // panel's footer and tiles. No timer but the open chat socket's ping and reconnect; nothing per frame.
@@ -41,6 +41,8 @@
   // review fixture can stand in for it.
   const island = {
     chats: async () => { const r = await ask(PATH); return { chats: r.ok && Array.isArray(r.data?.chats) ? r.data.chats : null }; },
+    // A chat's preview, or the refusal (`ended` once it is gone), `{}` unanswered.
+    chatPreview: async (boot, id) => { const r = await ask(`${PATH}/${encodeURIComponent(id)}`); return r.ok ? r.data || {} : r.data?.error || {}; },
     startChat: async (boot, body) => { const r = await ask(PATH, { method: "POST", body: JSON.stringify(body) }); return r.ok && r.data?.chat?.id ? { chat: r.data.chat } : r.data?.error || {}; },
     media: (boot, chat) => ({ async call(op, body) {
       const r = await ask(`${PATH}/${chat}/media/${op}`, { method: "POST", body: JSON.stringify(body) }, MEDIA_TIMEOUT_MS);
@@ -130,6 +132,7 @@
   };
   const list = () => transport() ? transport().chats(boot()) : Promise.resolve({ chats: null });
   const start = (body) => transport() ? transport().startChat(boot(), body) : Promise.resolve({});
+  const preview = (id) => transport() ? transport().chatPreview(boot(), id) : Promise.resolve({});
   const request = (type, fields = {}) => room && feed ? feed.request(type, fields) : 0;
   const setStatus = (next) => { status = next; controller().status(next); emit(); };
   // What the chat says, as Ooga Chat's app hears it (ooga-chat-app.js): the visitor's standing, notices and answers to
@@ -138,6 +141,9 @@
     if (room !== chat || !msg || typeof msg !== "object") return;
     const m = controller();
     if (msg.you && typeof msg.you === "object") chat.you = msg.you;
+    // The chat's own word (its host, co-hosts and open stage): on the snapshot, and again whenever it changes.
+    if (msg.chat && typeof msg.chat === "object") chat.chat = msg.chat;
+    if (msg.type === "chat") return emit();
     if (msg.type === "notice") {
       if (msg.kind === "muted" && m.state.role === "speaker" && !m.state.muted) m.mute();
       for (const fn of heard) fn(msg);
@@ -205,7 +211,7 @@
   // deferred.js loads after this file: the fixture is fetched once the page's scripts have all run.
   if (fixture) addEventListener("DOMContentLoaded", () => fixtureAdapter().catch(() => {}), { once: true });
   BL.chatCall = {
-    open, leave, request, list, start, identity, available, fixture,
+    open, leave, request, list, start, preview, identity, available, fixture,
     hear(fn) { heard.add(fn); return () => heard.delete(fn); },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     get media() { return controller(); },

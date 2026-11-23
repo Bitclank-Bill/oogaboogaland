@@ -39,7 +39,7 @@
 .cloud-tile[data-rank="cohost"] .cloud-face::after { content: "Co"; left: 50%; bottom: -8px; translate: -50% 0; }
 .cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before { content: "\1F399\FE0F"; top: -5px; right: -7px; z-index: 1; font-size: 9px; background: var(--accent); }
 .cloud-tile[data-request="invited"] .cloud-face::before { background: #22c55e; }
-.hc-pop, .hc-start {
+.hc-pop, .hc-start, .hc-preview {
   border: 3px solid var(--wood-edge); border-radius: var(--radius); background: var(--planks); color: var(--paper);
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
 }
@@ -49,7 +49,7 @@
 .hc-pop-head { margin: 0; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
 .hc-pop-note { margin: 0; font-size: 11px; color: rgba(243, 239, 228, 0.78); }
 .hc-start { width: 420px; max-width: calc(100vw - 32px); padding: 14px 16px 16px; font: inherit; }
-.hc-start::backdrop { background: rgba(0, 0, 0, 0.6); }
+.hc-start::backdrop, .hc-preview::backdrop { background: rgba(0, 0, 0, 0.6); }
 .hc-start h2 { margin: 0 0 10px; font-size: 14px; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
 .hc-start-label { display: grid; gap: 4px; font-size: 11px; }
 .hc-start-title {
@@ -70,11 +70,25 @@
   .hc-pop { left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); top: auto; width: auto; max-width: none; }
   .hc-pop .foot-button, .hc-invite .foot-button, .hc-start .foot-button { min-height: 44px; }
 }
-/* A chat listener's dot before "Listener", the roster's online dot's size: green listening on the island, purple in Ooga
-   Chat (audience-tiles.js `data-via`). A speaker's ring follows `via` too, through the tile's source. */
-.cloud-tile[data-role="listener"]:is([data-via="island"], [data-via="app"]) .cloud-role::before {
-  content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.35);
-}
-.cloud-tile[data-role="listener"][data-via="app"] .cloud-role::before { background: #b18aff; }
 /* The Requests pop-up's Removed section, under the requests. */
 .hc-pop-section { margin: 6px 0 0; color: rgba(243, 239, 228, 0.5); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+/* A chat's preview (chat-hosts.js): its title with the zone and Open stage tags, its stage in the chat's circles to look at
+   only, how many listen and wait, and the two ways in. */
+.hc-preview { width: 460px; max-width: calc(100vw - 32px); padding: 14px 16px 16px; font: inherit; }
+.hc-preview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 10px; }
+.hc-preview-head h2 { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 14px; overflow-wrap: anywhere; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
+.hc-preview-stage {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); align-content: start; gap: 10px 4px;
+  max-height: min(40vh, 320px); min-height: 92px; margin: 0; padding: 6px 4px; overflow-y: auto; list-style: none;
+}
+.hc-preview-count { margin: 0; font-size: 11px; color: rgba(243, 239, 228, 0.78); }
+.hc-preview .cloud-mic { cursor: default; }
+/* The Open stage tag, and the host's switch for it in the Requests pop-up. */
+.hc-open-tag { color: #bfeccb; border-color: rgba(34, 197, 94, 0.38); }
+.hc-open-tag[hidden] { display: none; }
+.hc-open-switch { display: flex; align-items: center; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(243, 239, 228, 0.1); font-size: 11px; cursor: pointer; }
+.hc-open-switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+@media (max-width: 399px) {
+  .hc-preview .foot-button { min-height: 44px; }
+  .hc-open-switch input { width: 22px; height: 22px; }
+}

@@ -52,7 +52,8 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
 // with the voice links and listeners in Online Oogas (#861) and each chunk's guard against running twice. Hosted chats
 // (docs/ooga-chat-hosts.md) put their views and look in a chunk of their own, `hosts`, with its own stylesheet, and only
 // their glue in the first load (the adapter's routes, the roster's ranks, the chosen chat, the tile menu's hook): 156.0 KB.
-export const FIRST_LOAD_BUDGET = 156 * 1024;
+// On 2026-11-23 the maintainer raised the budget to 256 KB for hosted chats, the first load then about 155.9 KB.
+export const FIRST_LOAD_BUDGET = 256 * 1024;
 // The island's own rules for the panels the app shows as the island does (src/style.css), taken by selector each time
 // the app builds, so the two look the same from one source: every rule whose selectors begin with one of ISLAND_RULES
 // (a rule's other selectors, another panel's, left behind), in an @media, @supports or @container block too, and every

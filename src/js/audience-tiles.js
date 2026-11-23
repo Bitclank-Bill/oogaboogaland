@@ -8,7 +8,7 @@
 // portrait or Enter or Space on a focused tile (a hosted chat's tile menu). Returns:
 //   draw(items, describe)  one pass in the list's order: `describe(item, tile)` writes each item into one scratch tile
 //                          ({ id, display, role, source, face, look, hand, self, micDisabled, micPressed, micWords, and
-//                          and a hosted chat's `rank`, `request` and `via` as `data-` attributes).
+//                          and a hosted chat's `rank` and `request` as `data-` attributes, `chat` saying "speaking").
 //                          A tile's nodes are kept by id, only changed fields are written, a tile moves only when out
 //                          of place, and one whose item has gone is dropped with its picture cancelled
 //   repaint(describe)      the speakers' tiles again, from the items they were drawn from (a microphone's state changes
@@ -34,7 +34,7 @@
   };
   const create = (list, { mic = () => {}, menu = null } = {}) => {
     const tiles = new Map();
-    const tile = { id: "", display: "", role: "listener", source: "", face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "", via: "" };
+    const tile = { id: "", display: "", role: "listener", source: "", face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "", chat: false };
     let mark = 0, current = null;
     const build = (id) => {
       const li = make("li", "cloud-tile"), face = make("span", "cloud-face"), portrait = make("span", "cloud-portrait");
@@ -82,9 +82,8 @@
       entry.portrait.replaceChildren(img);
     };
     const paint = (entry) => {
-      const t = tile, speaker = t.role === "speaker", source = speaker ? t.via ? t.via === "island" ? "world" : "chat" : t.source : "";
+      const t = tile, speaker = t.role === "speaker", source = speaker ? t.source : "";
       if (entry.li.dataset.role !== t.role) entry.li.dataset.role = t.role;
-      if ((entry.li.dataset.via || "") !== t.via) entry.li.dataset.via = t.via;
       if (entry.li.dataset.source !== source) entry.li.dataset.source = source;
       set(entry.text, "textContent", t.display);
       set(entry.text, "title", t.display);
@@ -102,7 +101,7 @@
       }
       if ((entry.li.dataset.rank || "") !== t.rank) entry.li.dataset.rank = t.rank;
       if ((entry.li.dataset.request || "") !== t.request) entry.li.dataset.request = t.request;
-      const where = speaker ? source === "world" ? "speaking from the island" : "speaking from Ooga Chat" : t.via ? t.via === "island" ? "listening on the island" : "listening in Ooga Chat" : "listening";
+      const where = speaker ? t.chat ? "speaking" : source === "world" ? "speaking from the island" : "speaking from Ooga Chat" : "listening";
       attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}${t.rank ? `, ${t.rank === "cohost" ? "co-host" : t.rank}` : ""}, ${where}${speaker && t.look === "muted" ? ", muted" : ""}${t.request ? `, ${t.request} to speak` : ""}`);
     };
     const drop = (id, entry) => {

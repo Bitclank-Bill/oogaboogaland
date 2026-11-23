@@ -218,6 +218,8 @@
       { host: "gh:9001", cohosts: ["gh:9002"], queue: [["gh:9004", now() - 30000], ["gh:9005", now() - 10000]], invites: [["gh:9006", now() + 60000]] });
       room("fixtureChatDune1", "Building DSB Land", "dsb", 120000, [member(11, "sample-dune", "speaker", { via: "island", since: ago(110) }),
         member(12, "sample-gull", "listener", { via: "app", since: ago(60) })], { host: "gh:9011" });
+      // Its stage is open: a request there is approved the moment it is made.
+      rooms.get("fixtureChatDune1").open = true;
     }
     const level = (r, id) => id === r.host ? 2 : r.cohosts.has(id) ? 1 : 0;
     const invitedUntil = (r, id) => (r.invites.get(id) || 0) > now() ? r.invites.get(id) : 0;
@@ -231,9 +233,19 @@
     const listing = () => [...rooms.values()].filter((r) => !r.ended).map((r) => {
       const host = r.cast.find((p) => p.id === r.host) || { login: account?.identity.login || "sample-host", display: account?.identity.display };
       const speakers = r.cast.filter((p) => p.role === "speaker").length + [...r.feeds].filter((f) => f.speaking()).length;
-      return { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: { login: host.login, display: host.display || host.login, character: null }, speakers, listeners: r.cast.length + r.feeds.size - speakers };
+      return { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: { login: host.login, display: host.display || host.login, character: null }, speakers, listeners: r.cast.length + r.feeds.size - speakers, open: !!r.open };
     }).sort((a, b) => b.speakers + b.listeners - a.speakers - a.listeners || b.startedAt - a.startedAt);
     const chats = async () => ({ chats: listing() });
+    const chatInfo = (r) => ({ id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: r.host, cohosts: [...r.cohosts.keys()], open: !!r.open });
+    // A chat's preview from its own state: its stage (the host, co-hosts and speakers), how many listen and wait; a chat
+    // gone answers as the server's 404 does.
+    const chatPreview = async (boot, id) => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const r = rooms.get(id);
+      if (!r || r.ended) return { code: "ended", retryable: false };
+      const rows = r.cast.map((p) => standing(r, p)), stage = rows.filter((p) => p.rank || p.role === "speaker").map(({ request: _q, askedAt: _a, ...p }) => p);
+      return { chat: chatInfo(r), stage, listeners: rows.length - stage.length + r.feeds.size, requests: r.queue.size };
+    };
     let started = 0;
     const startChat = async (boot, { title, zone }) => {
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -344,6 +356,15 @@
         r.cast = r.cast.map((q) => q.id === id ? row : q);
         delta([standing(r, row)]);
       });
+      // An invite an open stage gives: the visitor hears it, and a sample takes it up.
+      const openInvite = (id, by) => {
+        r.queue.delete(id);
+        r.invites.set(id, now() + 60000);
+        touch(id);
+        if (id !== self()[0]?.id) return takeUp(id);
+        notice({ kind: "invited", by, until: r.invites.get(id), open: true });
+        after(0, () => message({ type: "you", zone, you: you() }));
+      };
       // A request in a chat (docs/ooga-chat-hosts.md, Requests), checked as chat-roles.js checks it.
       const chatOp = (type, fields) => {
         const me = self()[0]?.id, target = fields.id, mine = level(r, me), row = people.find((p) => p.id === target);
@@ -353,6 +374,8 @@
           if (lease || mayLease(r, me)) return no("already_allowed");
           const until = r.cooldown.get(me) || 0;
           if (until > now()) return no("cooldown", { retryAfter: Math.ceil((until - now()) / 1000) });
+          // An open stage approves it at once: an invite, said with `open`, and nothing for the hosts to answer.
+          if (r.open) { openInvite(me, r.host); return { ok: true }; }
           r.queue.set(me, now());
           touch(me);
           if (r.sample) after(1500, () => {
@@ -367,6 +390,16 @@
         }
         if (type === "cancel") { r.queue.delete(me); touch(me); return { ok: true }; }
         if (type === "decline") { r.invites.delete(me); touch(me); return { ok: true }; }
+        // The host's open stage: switching it on approves everyone waiting, and everyone hears the chat's new word.
+        if (type === "open") {
+          if (mine !== 2) return no("not_host");
+          if (r.open !== (fields.on === true)) {
+            r.open = fields.on === true;
+            if (r.open) for (const id of [...r.queue.keys()]) openInvite(id, me);
+            message({ type: "chat", chat: chatInfo(r) });
+          }
+          return { ok: true };
+        }
         if (type === "end") {
           if (mine !== 2) return no("not_host");
           after(50, () => ended("ended"));
@@ -443,7 +476,7 @@
           revision = 0;
           people = [...r.cast, ...self()].map((p) => standing(r, p));
           message({ type: "snapshot", zone, epoch, revision, participants: people, you: you(), connection,
-            chat: { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: r.host, cohosts: [...r.cohosts.keys()] } });
+            chat: chatInfo(r) });
           if (level(r, self()[0]?.id)) removedList();
           // A chat the visitor started fills up: one sample listening from the island, then two who ask to speak, one
           // from each app, a moment apart.
@@ -659,7 +692,7 @@
       resolve({ ok: true, display: clean });
     }, 300));
     const contributors = async () => state === "unavailable" ? null : PUBLIC(now());
-    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, commonsName, media, chats, startChat, rtc, contributors, dispose, pending: 0, demo };
+    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, commonsName, media, chats, startChat, chatPreview, rtc, contributors, dispose, pending: 0, demo };
   };
   BL.oogaChatFixtures = { create, STATES, ROSTERS, VOICES, CHATS, rtc: null };
 })();

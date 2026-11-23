@@ -526,7 +526,8 @@ deployment that doesn't let anyone speak) and `elsewhere` (the account's voice i
 until the visitor takes it with the prompt's Switch here). `BL.oogaChatFixtures.rtc.stats` counts captures, live tracks and playing
 elements for the checks.
 `&chats=on` offers hosted chats ([ooga-chat-hosts.md](ooga-chat-hosts.md)) from an in-memory directory: two sample
-chats (one with a host, a co-host, a muted speaker, two requests and an invite out), the roles' rules on a chat's feed,
+chats (one with a host, a co-host, a muted speaker, two requests and an invite out; the other with an open stage), their
+previews from the same state, the roles' rules on a chat's feed (the host's open stage and Allow back among them),
 and sample hosts that answer as a host would: a request is approved 1.5 s after it is made, and a microphone opened
 there is muted by its host 2.5 s later. A chat the visitor starts fills with two samples who ask to speak; one invited
 takes the stage a second later; End chat ends it.
@@ -587,7 +588,7 @@ to 176.6 KB (`index.html` 0.6 KB, script 85.7 KB, stylesheet 12.6 KB, sign-in pi
 42.1 KB on most phones and 1x screens, Artwork below), and the budget down to 180 KB, just above it, so a tab's code cannot slip back into the first load unnoticed. The emoji bar and its picker
 with the whole emoji list (`emoji`, 24.4 KB), wanted only signed in, followed once `reaction-policy.js` read the list
 when first asked rather than at load (the island and the Worker load it first anyway): the first load came to 153.3 KB
-(script 62.4 KB), 154.1 KB with the voice links and listeners in Online Oogas (#861), and the budget is 156 KB. A chunk that cannot be fetched offers Try again; one gone after a deploy (a 404
+(script 62.4 KB), 154.1 KB with the voice links and listeners in Online Oogas (#861), about 155.9 KB with hosted chats' glue (their views in the `hosts` chunk), and the budget is 256 KB, raised by the maintainer on 2026-11-23. A chunk that cannot be fetched offers Try again; one gone after a deploy (a 404
 to a HEAD, on a page the service worker does not keep) offers Reload.
 
 ## Artwork
