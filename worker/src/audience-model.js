@@ -34,7 +34,7 @@ const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation
   && a.mic === b.mic && a.hand === b.hand && a.speaking === b.speaking && a.display === b.display && a.login === b.login
   && a.avatar === b.avatar && a.character === b.character && a.contributions === b.contributions
   && a.rank === b.rank && a.request === b.request && a.askedAt === b.askedAt && a.rankSince === b.rankSince
-  && a.since === b.since && a.via === b.via;
+  && a.since === b.since && a.via === b.via && a.walking === b.walking;
 
 // A hosted chat (docs/ooga-chat-hosts.md) hands in its roles: `standing(id)` is a row's `{ rank, request, askedAt }`
 // (the host's or a co-host's rank, an open request or invite, when it was asked), and `may(conn)` whether a connection's
@@ -47,6 +47,8 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
   // id -> { info, world, active, conns: Map<connId, conn>, gen, source: { zone: last visible source key } }
   const people = new Map();
   const conns = new Map();
+  // Speakers walking a chat's copy of its zone, as the copy says (docs/ooga-chat-hosts.md): their rows say so.
+  const walkers = new Set();
   const touched = new Set();
   const touch = (id, zone) => touched.add(`${zone}|${id}`);
 
@@ -80,6 +82,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     contributions: base.source === "world" && Number.isSafeInteger(p.info.contributions) ? p.info.contributions : null,
     ...base, ...standing(p.id),
     // Which app an Ooga Chat source listens or speaks from: the island's page (an `ob_` principal) or Ooga Chat's.
+    ...(base.role === "speaker" && walkers.has(p.id) ? { walking: true } : {}),
     via: base.via || base.source === "world" ? base.via || "island" : [...p.conns.values()].some((c) => c.zone === zone && typeof c.principal === "string" && c.principal.startsWith("ob_")) ? "island" : "app",
   });
 
@@ -279,6 +282,16 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     return ended;
   };
 
+  /** The copy's word on who walks it now: every row whose mark changes is touched. */
+  const setWalking = (ids) => {
+    const next = new Set(ids.filter((id) => ID.test(id)));
+    for (const id of new Set([...walkers, ...next])) {
+      if (walkers.has(id) === next.has(id)) continue;
+      if (next.has(id)) walkers.add(id); else walkers.delete(id);
+      for (const zone of ZONES) if (zones[zone].rows.has(id)) touch(id, zone);
+    }
+  };
+
   const setInfo = (id, info) => {
     const p = people.get(id);
     if (!p) return;
@@ -306,7 +319,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
 
   return {
     get epoch() { return epoch; }, zones, people, conns,
-    connect, join, disconnect, requestSpeaker, activate, endLease, setMic, setHand, setWorld, setInfo, seatsTaken,
+    connect, join, disconnect, requestSpeaker, activate, endLease, setMic, setHand, setWorld, setInfo, seatsTaken, setWalking, walkers,
     commit, snapshot, counts, youOf, touch,
     revs: () => Object.fromEntries(ZONES.map((zone) => [zone, zones[zone].rev])),
   };
@@ -320,7 +333,7 @@ export const appRow = (row, self = null) => ({
   login: row.login, display: row.display, face: row.avatar, contributions: row.contributions, muted: row.mic === "muted",
   provider: row.provider, character: row.character, mic: row.mic, speaking: row.speaking, hand: row.hand,
   ...(row.rank ? { rank: row.rank } : {}), ...(row.request ? { request: row.request, askedAt: row.askedAt } : {}),
-  ...(row.rankSince ? { rankSince: row.rankSince } : {}), ...(row.since ? { since: row.since } : {}), ...(row.via ? { via: row.via } : {}),
+  ...(row.walking ? { walking: true } : {}), ...(row.rankSince ? { rankSince: row.rankSince } : {}), ...(row.since ? { since: row.since } : {}), ...(row.via ? { via: row.via } : {}),
   ...(self === row.id ? { self: true } : {}),
 });
 

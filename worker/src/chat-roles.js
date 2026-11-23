@@ -50,6 +50,12 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   const invited = (id, now) => (state.invites.get(id) || 0) > now;
   const staged = (id, now) => state.stage.has(id) && (state.stage.get(id) === null || state.stage.get(id) > now);
 
+  /**
+   * Whether an identity may walk the chat's copy of its zone (docs/ooga-chat-hosts.md): speakers alone, so a lease it
+   * holds now (`leased`) or its place on the stage, held through a dropped socket; never once removed or ended.
+   */
+  const mayWalk = (id, now, leased = false) => !state.ended && !state.removed.has(id) && (leased || staged(id, now));
+
   /** Whether an identity may hold a speaker lease now: a rank, a live invite, or its place on the stage. */
   const mayLease = (id, now) => !state.ended && !state.removed.has(id) && (level(id) > 0 || invited(id, now) || staged(id, now));
 
@@ -126,7 +132,8 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   /** A lease was granted: an invite becomes a place on the stage, held while the lease lives. */
   const granted = (id, now) => {
     if (!mayLease(id, now)) return refuse("not_allowed");
-    if (level(id) > 0) return SAME;
+    // A host or co-host takes a place on the stage too, so a copy of the zone keeps them through a dropped socket.
+    if (level(id) > 0) { const had = state.stage.get(id) === null; state.stage.set(id, null); return had ? SAME : OK; }
     state.invites.delete(id);
     state.queue.delete(id);
     state.stage.set(id, null);
@@ -265,7 +272,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   return {
     get host() { return state.host; }, get ended() { return state.ended; }, get open() { return state.open; }, setOpen, get hostAway() { return state.hostAway; },
     get cohosts() { return [...state.cohosts.keys()]; },
-    rankOf, manages, rankSince: (id) => state.cohosts.get(id) || 0, allowBack, removedList, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
+    rankOf, manages, mayWalk, onStage: (id, now) => staged(id, now), rankSince: (id) => state.cohosts.get(id) || 0, allowBack, removedList, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
     isRemoved: (id) => state.removed.has(id), askedAt: (id) => state.queue.get(id) || 0,
     ask, cancel, invite, answer, decline, granted, leaseEnded, demote, mute, setCohost, handover, remove, end, presence, tick, nextAt, queue, save,
   };
