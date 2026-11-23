@@ -32,9 +32,15 @@ export const isZone = (zone) => ZONES.includes(zone);
 
 const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation && a.role === b.role && a.source === b.source
   && a.mic === b.mic && a.hand === b.hand && a.speaking === b.speaking && a.display === b.display && a.login === b.login
-  && a.avatar === b.avatar && a.character === b.character && a.contributions === b.contributions;
+  && a.avatar === b.avatar && a.character === b.character && a.contributions === b.contributions
+  && a.rank === b.rank && a.request === b.request && a.askedAt === b.askedAt;
 
-export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now } = {}) => {
+// A hosted chat (docs/ooga-chat-hosts.md) hands in its roles: `standing(id)` is a row's `{ rank, request, askedAt }`
+// (the host's or a co-host's rank, an open request or invite, when it was asked), and `may(conn)` whether a connection's
+// identity may take a speaker lease now, in place of the capability the connection arrived with.
+const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0 });
+export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now, standing = () => NO_STANDING,
+  may = (c) => !!c.eligible } = {}) => {
   const zones = Object.fromEntries(ZONES.map((zone) => [zone, { rev: revs && Number.isSafeInteger(revs[zone]) ? revs[zone] : 0, rows: new Map() }]));
   // id -> { info, world, active, conns: Map<connId, conn>, gen, source: { zone: last visible source key } }
   const people = new Map();
@@ -66,7 +72,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     id: p.id, generation, provider: p.info.provider, login: p.info.login, display: p.info.display || p.info.login,
     avatar: base.source === "chat" ? p.info.avatar || null : null,
     contributions: base.source === "world" && Number.isSafeInteger(p.info.contributions) ? p.info.contributions : null,
-    ...base,
+    ...base, ...standing(p.id),
   });
 
   const commit = () => {
@@ -128,7 +134,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
       if (conns.size >= limits.connections) return refuse("audience_full");
       if (p.conns.size >= limits.connectionsPerIdentity) return refuse("too_many_connections");
     }
-    const c = { connId: conn.connId, id: conn.id, zone: null, lease: null, mic: "muted", hand: "", speaking: false, ...conn };
+    const c = { connId: conn.connId, id: conn.id, zone: null, lease: null, mic: "muted", hand: "", speaking: false, forced: false, ...conn };
     p.conns.set(c.connId, c);
     conns.set(c.connId, c);
     if (c.zone) touch(c.id, c.zone);
@@ -148,7 +154,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     c.zone = zone;
     // A real change of zone starts the new one as a listener, muted, with no hand and no lease.
     const lease = c.lease;
-    c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false;
+    c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false; c.forced = false;
     touch(c.id, zone);
     return { ok: true, changed: true, endedLease: lease };
   };
@@ -203,7 +209,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     const c = conns.get(connId);
     if (!c || !c.lease || generation !== null && c.lease.generation !== generation) return null;
     const lease = c.lease;
-    c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false;
+    c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false; c.forced = false;
     if (c.zone) touch(c.id, c.zone);
     return lease;
   };
@@ -219,14 +225,17 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     return { ok: true, changed: true };
   };
 
-  const setMic = (connId, muted) => {
+  // `forced`: a host muted them (chat-roles.js), and their voice is not pulled until they unmute it themselves.
+  const setMic = (connId, muted, forced = false) => {
     const c = conns.get(connId);
     if (!c || !c.lease || c.lease.state !== "active") return refuse("capability_required");
     const mic = muted ? "muted" : "on";
-    if (c.mic === mic) return { ok: true, changed: false };
+    const wasForced = c.forced;
+    c.forced = muted ? wasForced || forced : false;
+    if (c.mic === mic) return { ok: true, changed: false, released: wasForced && !c.forced };
     c.mic = mic;
     touch(c.id, c.zone);
-    return { ok: true, changed: true };
+    return { ok: true, changed: true, released: wasForced && !c.forced };
   };
 
   // --- the island's sources ---
@@ -272,12 +281,12 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     if (!c) return { id: null, speak: "none" };
     const p = people.get(c.id);
     const speak = c.lease ? (c.lease.state === "active" ? "active" : "pending")
-      : c.eligible && !p.active && !p.world ? "eligible" : c.eligible ? "denied" : "none";
+      : may(c) && !p.active && !p.world ? "eligible" : may(c) ? "denied" : "none";
     // The lease's generation names it in the media calls (#666, #654): only this connection's own page hears it.
     if (c.lease) return { id: c.id, speak, lease: c.lease.generation };
     // Where the identity's voice is while it is not here: the island's, or another of its Ooga Chat connections', which
     // an eligible connection may take on the visitor's word (`setRole` with `takeover`).
-    const elsewhere = !c.eligible ? "" : p.active || p.world ? "island" : heldElsewhere(c) ? "app" : "";
+    const elsewhere = !may(c) ? "" : p.active || p.world ? "island" : heldElsewhere(c) ? "app" : "";
     return elsewhere ? { id: c.id, speak, elsewhere } : { id: c.id, speak };
   };
   const heldElsewhere = (c) => {
@@ -300,6 +309,7 @@ export const appRow = (row, self = null) => ({
   id: row.id, generation: row.generation, source: row.source === "world" ? "world" : "app", role: row.role,
   login: row.login, display: row.display, face: row.avatar, contributions: row.contributions, muted: row.mic === "muted",
   provider: row.provider, character: row.character, mic: row.mic, speaking: row.speaking, hand: row.hand,
+  ...(row.rank ? { rank: row.rank } : {}), ...(row.request ? { request: row.request, askedAt: row.askedAt } : {}),
   ...(self === row.id ? { self: true } : {}),
 });
 
@@ -310,6 +320,8 @@ export const islandRow = (row, self = null) => {
   if (row.character && row.source === "world") out.character = row.character;
   if (row.avatar) out.avatar = row.avatar;
   if (row.contributions !== null) out.contributions = row.contributions;
+  if (row.rank) out.rank = row.rank;
+  if (row.request) { out.request = row.request; out.askedAt = row.askedAt; }
   if (self === row.id) out.self = true;
   return out;
 };

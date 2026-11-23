@@ -133,7 +133,8 @@ export const createMediaBroker = (aud) => {
       if (s.zone === conn.zone && s.id !== conn.id && s.pub && s.pub.session && s.pub.track && !out.has(s.id)) out.set(s.id, { session: s.pub.session, track: s.pub.track, gen: s.pub.gen || 0 });
     }
     for (const c of aud.model.conns.values()) {
-      if (c.zone !== conn.zone || c.id === conn.id || !c.lease || c.lease.state !== "active") continue;
+      // A speaker a host muted is not heard until they unmute themselves (docs/ooga-chat-hosts.md).
+      if (c.zone !== conn.zone || c.id === conn.id || !c.lease || c.lease.state !== "active" || c.forced) continue;
       const m = states.get(c.connId);
       // Source kind is part of the generation: the Room and Audience clocks can issue the same number on handoff.
       if (m && m.pub && m.track && !out.has(c.id)) out.set(c.id, { session: m.pub, track: m.track, gen: -m.gen - 1 });
@@ -181,7 +182,7 @@ export const createMediaBroker = (aud) => {
     // A linked publication is announced to its partners' connections alone, keyed by identity.
     for (const l of aud.island.linked || []) if (l.pub) for (const to of l.to) now.set(`@${to}`, `${now.get(`@${to}`) || ""}|${l.id}:${l.pub.gen || 0}`);
     for (const c of aud.model.conns.values()) {
-      if (!c.zone || !c.lease || c.lease.state !== "active") continue;
+      if (!c.zone || !c.lease || c.lease.state !== "active" || c.forced) continue;
       const m = states.get(c.connId);
       if (m && m.pub && m.track) now.set(c.zone, `${now.get(c.zone) || ""}|${c.id}:${-m.gen - 1}`);
     }

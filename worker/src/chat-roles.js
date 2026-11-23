@@ -235,7 +235,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     get host() { return state.host; }, get ended() { return state.ended; }, get hostAway() { return state.hostAway; },
     get cohosts() { return [...state.cohosts.keys()]; },
     rankOf, manages, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
-    isRemoved: (id) => state.removed.has(id),
+    isRemoved: (id) => state.removed.has(id), askedAt: (id) => state.queue.get(id) || 0,
     ask, cancel, invite, answer, decline, granted, leaseEnded, demote, mute, setCohost, handover, remove, end, presence, tick, nextAt, queue, save,
   };
 };
