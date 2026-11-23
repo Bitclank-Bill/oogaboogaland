@@ -223,3 +223,11 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
 
 How a chat's copy of its zone is hosted (an instance of the island's room for each chat, or a lighter one), what of the
 island's world it carries (NPCs, the pile, games), how a player crosses into it and back, and its clouds.
+
+**The island view** (agreed 2026-11-22, built in the second PR): at the top of a chat, for every OC speaker and listener
+tuned into it, a zoomed-out view of the chat's copy of its zone, shown only while at least one of the chat's speakers
+is walking the copy with their Ooga. By default a drawn map: a baked overhead picture of the zone with each such
+speaker's Ooga face where they stand, pulsing while they talk, from positions the chat relays a couple of times a second.
+Speakers alone are drawn, never listeners. An opt-in **Live view**, off by default and remembered per viewer, draws the
+same moment in 3D with the game's own renderer from far out, in the viewer's own browser and from the same relayed
+positions: no player's page captures or uploads video. The first PR leaves room for it at the top of the chat panel.
