@@ -17497,12 +17497,12 @@ const oogaChatAppChecks = async () => {
     // starts a chat from the dialog (title prefilled, zone cards chosen by arrows), approves a request from the queue,
     // mutes the new speaker from their tile's menu and ends the chat, which leaves the list. Nothing leaves the screen.
     const chatNow = (b) => b.evaluate(`(() => { const q = (s) => document.querySelector(s), shown = (s) => [...document.querySelectorAll(s)].filter((e) => !e.hidden && e.offsetParent);
-      const pop = q(".oc-pop"), r = pop && !pop.hidden ? pop.getBoundingClientRect() : null;
-      return { space: q(".oc-chat").dataset.space, rows: shown(".oc-chat-row").map((e) => e.querySelector(".oc-chat-row-title").textContent), start: shown(".oc-chats-head .foot-primary").length,
-        title: q(".oc-room-title")?.textContent || "", chip: shown(".oc-requests").map((e) => e.textContent).join(), foot: shown(".cloud-foot-actions > *").map((e) => e.textContent).join(),
-        invite: shown(".oc-invite").length, focus: document.activeElement?.textContent || "", notice: q(".oc-chat-notice")?.textContent || "",
+      const pop = q(".hc-pop"), r = pop && !pop.hidden ? pop.getBoundingClientRect() : null;
+      return { space: q(".oc-chat").dataset.space, rows: shown(".hc-chat-row").map((e) => e.querySelector(".hc-chat-row-title").textContent), start: shown(".hc-chats-head .foot-primary").length,
+        title: q(".hc-room-title")?.textContent || "", chip: shown(".hc-requests").map((e) => e.textContent).join(), foot: shown(".cloud-foot-actions > *").map((e) => e.textContent).join(),
+        invite: shown(".hc-invite").length, focus: document.activeElement?.textContent || "", notice: q(".hc-chat-notice")?.textContent || "",
         ranks: [...document.querySelectorAll(".cloud-tile[data-rank]")].map((t) => t.dataset.rank).filter(Boolean).join(), asked: document.querySelectorAll('.cloud-tile[data-request="asked"]').length,
-        menu: [...document.querySelectorAll('.oc-pop [role="menuitem"]')].map((e) => e.textContent).join(), queue: [...document.querySelectorAll(".oc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
+        menu: [...document.querySelectorAll('.hc-pop [role="menuitem"]')].map((e) => e.textContent).join(), queue: [...document.querySelectorAll(".hc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
         popInside: !r || r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1, wide: document.documentElement.scrollWidth > innerWidth + 1,
         captures: BL.oogaChatFixtures.rtc.stats.captures, tiles: [...document.querySelectorAll(".cloud-tile")].map((t) => t.getAttribute("aria-label")).join(" | ") }; })()`);
     const click = (b, selector) => b.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -17514,61 +17514,61 @@ const oogaChatAppChecks = async () => {
         await open(b, "chat", 1200);
         run.list = await chatNow(b);
         await b.screenshot(join(shots, `chats-list-listener-${w}.png`));
-        await click(b, ".oc-chat-row");
+        await click(b, ".hc-chat-row");
         await b.sleep(1200);
         run.joined = await chatNow(b);
-        await click(b, ".oc-ask");
+        await click(b, ".hc-ask");
         await b.sleep(400);
         run.requested = await chatNow(b);
         await b.sleep(1600);
         run.invited = await chatNow(b);
         await b.screenshot(join(shots, `chats-invite-${w}.png`));
-        await click(b, ".oc-invite .foot-primary");
+        await click(b, ".hc-invite .foot-primary");
         await b.sleep(1500);
         run.speaking = await chatNow(b);
         await click(b, ".cloud-mute");
         await b.sleep(3200);
         run.hostMuted = await chatNow(b);
         await b.screenshot(join(shots, `chats-muted-${w}.png`));
-        await click(b, ".oc-leave");
+        await click(b, ".hc-leave");
         await b.sleep(500);
         run.left = await chatNow(b);
       } finally { b.close(); }
       b = await page(w, "state=contributor&roster=mixed&chats=on");
       try {
         await open(b, "chat", 1200);
-        await click(b, ".oc-chats-head .foot-primary");
+        await click(b, ".hc-chats-head .foot-primary");
         await b.sleep(300);
-        run.dialog = await b.evaluate(`({ open: document.querySelector("dialog.oc-start").open, title: document.querySelector(".oc-start-title").value,
-          zones: [...document.querySelectorAll(".oc-zone-card")].map((c) => c.dataset.zone + ":" + c.getAttribute("aria-checked")).join() })`);
+        run.dialog = await b.evaluate(`({ open: document.querySelector("dialog.hc-start").open, title: document.querySelector(".hc-start-title").value,
+          zones: [...document.querySelectorAll(".hc-zone-card")].map((c) => c.dataset.zone + ":" + c.getAttribute("aria-checked")).join() })`);
         await b.screenshot(join(shots, `chats-start-${w}.png`));
-        await b.evaluate(`document.querySelector('.oc-zone-card[aria-checked="true"]').focus()`);
+        await b.evaluate(`document.querySelector('.hc-zone-card[aria-checked="true"]').focus()`);
         await b.key("ArrowRight");
         await b.sleep(100);
-        run.arrowed = await b.evaluate(`[...document.querySelectorAll(".oc-zone-card")].map((c) => c.dataset.zone + ":" + c.getAttribute("aria-checked")).join()`);
+        run.arrowed = await b.evaluate(`[...document.querySelectorAll(".hc-zone-card")].map((c) => c.dataset.zone + ":" + c.getAttribute("aria-checked")).join()`);
         await b.key("ArrowLeft");
-        await click(b, '.oc-start button[type="submit"]');
+        await click(b, '.hc-start button[type="submit"]');
         // The fixture's two samples join and ask about 2 and 3.2 s after the chat opens.
         for (let t = 0; t < 8000 && (await chatNow(b)).chip !== "Requests 2"; t += 200) await b.sleep(200);
         run.hosting = await chatNow(b);
-        await click(b, ".oc-requests");
+        await click(b, ".hc-requests");
         await b.sleep(300);
         run.queue = await chatNow(b);
         await b.screenshot(join(shots, `chats-queue-${w}.png`));
-        await click(b, ".oc-queue-row .foot-button");
+        await click(b, ".hc-queue-row .foot-button");
         await b.sleep(1600);
         run.approved = await chatNow(b);
         await b.evaluate(`[...document.querySelectorAll(".cloud-tile")].find((t) => /pebble/.test(t.getAttribute("aria-label"))).querySelector(".cloud-face").click()`);
         await b.sleep(300);
         run.menu = await chatNow(b);
         await b.screenshot(join(shots, `chats-menu-${w}.png`));
-        await b.evaluate(`[...document.querySelectorAll('.oc-pop [role="menuitem"]')].find((e) => e.textContent === "Mute").click()`);
+        await b.evaluate(`[...document.querySelectorAll('.hc-pop [role="menuitem"]')].find((e) => e.textContent === "Mute").click()`);
         await b.sleep(500);
         run.muted = await chatNow(b);
-        await click(b, ".oc-end");
+        await click(b, ".hc-end");
         await b.sleep(300);
         run.confirm = await chatNow(b);
-        await click(b, ".oc-pop .foot-primary");
+        await click(b, ".hc-pop .foot-primary");
         await b.sleep(1500);
         run.ended = await chatNow(b);
         await b.screenshot(join(shots, `chats-ended-${w}.png`));
@@ -29282,7 +29282,77 @@ scene("hub", { label: "island layout", query: "pos=0&net=0", steps: [{
 
 // No other session's cast holds the default local Ooga or a server-vouched contributor: both join the roster before
 // the crew is built, as on a real arrival.
+// Rule (docs/ooga-chat-hosts.md, OBL): the island's cloud tab with hosted chats, on Ooga Chat's fixture adapter
+// (`chats=fixture`), through the views both apps share (chat-hosts.js): the list in place of Main Island's roster, Start
+// a chat choosing the zone the Ooga stands in, a host's queue and tile menu, End chat, and a listener's request taken up
+// through the invite card. While the visitor is in a chat the room is told (`call`) and the Ooga carries the in-a-chat
+// mark; leaving ends it. Every pop-up stays on screen and joins the pad's menu layers. Saved to untracked/obl-chats.
+const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone" : "hosted chats island", why: "rule: the island's Ooga Chat tab lists hosted chats and runs them as a call through the views Ooga Chat shares, so a host can run a chat and a listener can be brought on stage from the island", run: async (b) => {
+  const shots = join(root, "untracked", "obl-chats"), w = phone ? 390 : 1280;
+  mkdirSync(shots, { recursive: true });
+  const now = () => b.evaluate(`(() => { const q = (s) => document.querySelector(s), shown = (s) => [...document.querySelectorAll(s)].filter((e) => !e.hidden && e.offsetParent);
+    const pop = q(".hc-pop"), r = pop && !pop.hidden ? pop.getBoundingClientRect() : null;
+    return { space: q("#cloud-panel").dataset.space || "", rows: shown(".hc-chat-row").length, title: q(".hc-room-title")?.textContent || "", chip: shown(".hc-requests").map((e) => e.textContent).join(),
+      foot: shown("#cloud-panel .cloud-foot-actions > *").map((e) => e.textContent).join(), invite: shown(".hc-invite").length, focus: (document.activeElement?.textContent || "").trim().slice(0, 40),
+      menu: [...document.querySelectorAll('.hc-pop [role="menuitem"]')].map((e) => e.textContent).join(), queue: [...document.querySelectorAll(".hc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
+      popInside: !r || r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1, layer: !!(BL.padFocus && BL.padFocus.open()), call: BL.net.state.call,
+      toast: q("#toast")?.textContent || "", tiles: [...document.querySelectorAll("#cloud-roster .cloud-tile")].map((t) => t.getAttribute("aria-label")).join(" | "), wide: document.documentElement.scrollWidth > innerWidth + 1 }; })()`);
+  const click = (selector) => b.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const until = async (test, ms = 8000) => { let at; for (let t = 0; t < ms && !test(at = await now()); t += 200) await b.sleep(200); return at; };
+  await b.evaluate(`document.getElementById("cloud-tab").click()`);
+  const list = await until((s) => s.rows === 2);
+  await b.screenshot(join(shots, `list-${w}.png`));
+  await click(".hc-chats-head .foot-primary");
+  await b.sleep(300);
+  const dialog = await b.evaluate(`({ open: document.querySelector("dialog.hc-start").open, title: document.querySelector(".hc-start-title").value, layer: BL.padFocus.open(),
+    zones: [...document.querySelectorAll(".hc-zone-card")].map((c) => c.dataset.zone + ":" + c.getAttribute("aria-checked")).join() })`);
+  await b.screenshot(join(shots, `start-${w}.png`));
+  await click('.hc-start button[type="submit"]');
+  const hosting = await until((s) => s.chip === "Requests 2");
+  await click(".hc-requests");
+  await b.sleep(300);
+  const queue = await now();
+  await b.screenshot(join(shots, `host-queue-${w}.png`));
+  await click(".hc-queue-row .foot-button");
+  await until((s) => /sample-pebble, speaking/.test(s.tiles));
+  await b.evaluate(`[...document.querySelectorAll("#cloud-roster .cloud-tile")].find((t) => /pebble/.test(t.getAttribute("aria-label"))).querySelector(".cloud-face").click()`);
+  await b.sleep(300);
+  const menu = await now();
+  await b.screenshot(join(shots, `tile-menu-${w}.png`));
+  await b.evaluate(`[...document.querySelectorAll('.hc-pop [role="menuitem"]')].find((e) => e.textContent === "Mute").click()`);
+  const muted = await until((s) => /sample-pebble, speaking from Ooga Chat, muted/.test(s.tiles));
+  // The in-a-chat mark over the visitor's own Ooga, beside the panel.
+  await b.screenshot(join(shots, `in-a-chat-${w}.png`));
+  await click(".hc-end");
+  await b.sleep(300);
+  await click(".hc-pop .foot-primary");
+  const ended = await until((s) => s.space === "list" && s.rows === 2);
+  await click(".hc-chat-row");
+  const joined = await until((s) => s.space === "on" && s.tiles.length > 0);
+  await click(".hc-ask");
+  const invited = await until((s) => s.invite === 1);
+  await b.screenshot(join(shots, `invite-${w}.png`));
+  await click(".hc-invite .foot-primary");
+  const speaking = await until((s) => s.foot.includes("Leave Voice"));
+  await click(".hc-leave");
+  const left = await until((s) => s.space === "list");
+  const ok = { list: list.space === "list" && list.rows === 2 && !list.call,
+    dialog: dialog.open && dialog.title.endsWith("'s chat") && dialog.zones === "main:true,dsb:false" && dialog.layer,
+    hosting: hosting.space === "on" && hosting.call && hosting.foot.includes("End chat") && /asked to speak/.test(hosting.toast),
+    queue: queue.queue === "Approve sample-pebble,Decline sample-pebble,Approve sample-otter,Decline sample-otter" && queue.popInside && queue.layer,
+    menu: menu.menu === "Mute,Move to listener,Make co-host,Remove from chat" && menu.popInside, muted: /muted/.test(muted.tiles),
+    ended: ended.space === "list" && !ended.call && ended.toast === "The chat ended",
+    joined: joined.title === "Sample Oak's chat" && joined.foot.includes("Request to speak") && /co-host/.test(joined.tiles),
+    invited: invited.invite === 1 && invited.focus === "Start speaking", speaking: speaking.invite === 0 && speaking.call,
+    left: left.space === "list" && !left.call, fits: [list, hosting, queue, menu, invited].every((s) => !s.wide) };
+  record(`island hosted chats${phone ? " (390 px)" : ""}: the cloud tab lists the chats, starts one from the dialog with the Ooga's zone chosen, runs its queue and tile menu as host and ends it, and takes a listener's request through the invite card onto the stage, the room told of the call and every pop-up on screen and in the pad's layers`,
+    Object.values(ok).every(Boolean), JSON.stringify({ ok, list, dialog, hosting, queue, menu, invited, speaking, left }));
+} });
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
+// Tess's island tour taken already, so her first-visit offer stands over nothing these screenshots show.
+const TESS_TOURED = `try { localStorage.setItem("ooga-tess-tour", "1"); } catch {}`;
+scene("hub", { label: "hosted chats", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { initScript: TESS_TOURED }, steps: [hostedChatsIsland(false)] });
+scene("hub", { label: "hosted chats phone", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { ...PHONE_SIZE, initScript: TESS_TOURED }, steps: [hostedChatsIsland(true)] });
 scene("hub", { label: "outdoor travel", query: "islandworld=0", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
 scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=0", steps: [{
   name: "walk-through totems: first-person overlap hides one carving and its effects, restores it on exit, and distant views keep all eye fires",
@@ -43004,6 +43074,29 @@ const audienceNetChecks = async BL => {
     !shut.sent && !shut.state && open.sent && !open.other && open.state && heard.join() === "snapshot" && frames.length === 1 && frames[0].t === "audience-view" && frames[0].v === 1 && frames[0].zone === "dsb" && !dropped,
     JSON.stringify({ shut, open, heard, frames, dropped }));
 };
+// Rule (docs/ooga-chat-hosts.md, call-v1): a page in a hosted chat's voice says so only to a room whose welcome lists
+// call-v1, says it again after a reconnect's welcome, and marks the players the room says are in one.
+const callNetChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) }), calls = () => f.sent.filter(m => m.t === "call").map(m => m.on).join();
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: [], players: [{ id: 5, login: "bea", call: true }] });
+  f.net.setCall(true);
+  const shut = { gate: f.net.state.chats, sent: calls(), mark: f.net.remotes.get(5).call };
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [{ id: 5, login: "bea", call: true }, { id: 6, login: "cy" }] });
+  const open = { gate: f.net.state.chats, sent: calls(), bea: f.net.remotes.get(5).call, cy: f.net.remotes.get(6).call };
+  message({ t: "call", id: 6, on: true });
+  message({ t: "call", id: 5, on: false });
+  const heard = [f.net.remotes.get(5).call, f.net.remotes.get(6).call].join();
+  f.net.setCall(false);
+  const ended = calls();
+  ws.onclose({ code: 1006, reason: "", wasClean: false });
+  const dropped = f.net.state.chats;
+  f.net.dispose();
+  record("hosted chats call wire: a page in a chat's voice says so only to a room whose welcome lists call-v1, says it again in a reconnect's welcome, marks the players the room names in one and follows their calls, and a dropped room shuts the gate",
+    !shut.gate && shut.sent === "" && shut.mark && open.gate && open.sent === "true" && open.bea && !open.cy && heard === "false,true" && ended === "true,false" && !dropped,
+    JSON.stringify({ shut, open, heard, ended, dropped }));
+};
 // Rule (#660, #656): Ooga Chat's panel on a DOM stand-in, through its own handlers: it asks for the visitor's own zone,
 // draws the whole of a long roster as tiles (audience-tiles.js) for its slab to scroll, keeps each tile's nodes by id
 // across a delta, touches only what changed, drops removed tiles with their pictures, sends nothing for the zone already chosen, gates Join Voice and the
@@ -43040,7 +43133,9 @@ const cloudPanelChecks = async BL => {
     voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
     hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {}, showAccount() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
-    nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible },
+    nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible, watchViews() {}, attending: () => false, setBadge() {} },
+    // Hosted chats off (no call-v1): the panel keeps Main Island's roster.
+    chatCall: { available: () => false, room: null, subscribe: () => () => {}, hear: () => () => {}, identity: () => null },
     reactions: { mount: (host, options) => { gate = options.handAllowed; }, refresh: () => refreshes.push(gate()) } } };
   const document = { getElementById: $, createElement: el, querySelector: () => el("svg"), addEventListener() {}, removeEventListener() {} };
   runInNewContext(["src/js/audience-tiles.js", "src/js/cloud-panel.js"].map(file => readFileSync(join(root, file), "utf8")).join("\n"), { window, document, getComputedStyle: () => ({ gridTemplateColumns: "1fr 1fr 1fr 1fr" }), location: { search: "" }, URLSearchParams, MutationObserver: class { constructor(fn) { observers.push(fn); } observe() {} disconnect() {} } });
@@ -46198,7 +46293,7 @@ const oogaChatChecks = async () => {
 
   // Hosted chats' rules on the page (ooga-chat-hosts.js): a tile's menu offers only what the viewer outranks, never on
   // themselves; the list keeps only entries in its contract; a burst of requests is one line.
-  const H = load(["src/ooga-chat/ooga-chat-config.js", "src/ooga-chat/ooga-chat-hosts.js"], { window: {}, URLSearchParams }).oogaChatHosts;
+  const H = load(["src/js/chat-hosts.js"], { window: {}, URLSearchParams }).chatHosts;
   const offers = (viewer, row) => H.actionsFor(viewer, { display: "x", ...row }).map((a) => a.on === undefined ? a.type : `${a.type}:${a.on}`).join();
   const host = { id: "gh:1", rank: "host" }, cohost = { id: "gh:2", rank: "cohost" };
   const listEntry = (extra) => ({ id: "abcdefghijklmnop", title: "Sample", zone: "main", host: { login: "sample-oak" }, speakers: 2, listeners: 3, ...extra });
@@ -47356,6 +47451,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await chatClientChecks();
   await audienceChecks(BL);
   await audienceNetChecks(BL);
+  await callNetChecks(BL);
   await cloudPanelChecks(BL);
   await privatePadChecks();
   await playersColumnChecks();

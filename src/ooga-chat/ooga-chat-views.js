@@ -437,7 +437,8 @@
       else actions.joinVoice();
     }, { signal });
     out.addEventListener("click", () => actions.signOut(), { signal });
-    const node = make("div", "cloud-foot", name, make("span", "cloud-foot-actions", mute, join, out), muteWhy, joinWhy);
+    const footActions = make("span", "cloud-foot-actions", mute, join, out);
+    const node = make("div", "cloud-foot", name, footActions, muteWhy, joinWhy);
     const update = (state) => {
       set(out, "textContent", state.busy === "signout" ? "Signing out…" : "Sign out");
       set(out, "disabled", !!state.busy);
@@ -463,7 +464,7 @@
     const dispose = () => listeners.abort();
     // Where focus lands on signing in: the first of the footer's buttons that can be pressed.
     const focus = () => [mute, join, out].find((el) => !el.disabled && !el.hidden).focus();
-    return { node, update, focus, dispose, parts: { mute, join, actions: node.querySelector(".cloud-foot-actions") } };
+    return { node, update, focus, dispose, parts: { mute, join, actions: footActions } };
   };
   // Under the frame: install help the browser actually offers (its own prompt, or Safari's Share menu), and a waiting
   // update, which never reloads by itself and waits while the visitor speaks.

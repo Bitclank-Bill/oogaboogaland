@@ -20,6 +20,13 @@
 // Sign out, all through the island's own voice session (voice.js), never a second one.
 // Under `?debug=1&audience=fixture` the panel shows a generated roster of named samples for review, sending
 // nothing. Exports available, dispose, stats.
+// Hosted chats (docs/ooga-chat-hosts.md): where the room's welcome lists `call-v1` (chat-call.js `available`, or
+// `?debug=1&chats=fixture` for review) the tab lists the live chats in place of Main Island's roster and asks the room
+// for no view: Ooga Chat's own views (chat-hosts.js) over this panel (`data-space`: "list", then "on" in a chat), the
+// chat's roster in the same circles with its ranks and requests, a press on a portrait opening the tile's menu, and the
+// footer working the chat's voice (chat-call.js) instead of the island's. Start a chat chooses the zone the visitor's
+// Ooga stands in first. A request to speak while the panel is not attended counts on the tab (`sheet.setBadge`); every
+// notice is said once, as a toast (`hud.toast`). The emoji bar is the island's room's, so it is not offered in a chat.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -30,6 +37,9 @@
   const footName = $("cloud-foot-name"), mute = $("cloud-mute"), voiceButton = $("cloud-voice"), logout = $("cloud-logout");
   const params = new URLSearchParams(location.search);
   const fixture = params.get("debug") === "1" && params.get("audience") === "fixture";
+  const calls = BL.chatCall;
+  // Hosted chats on (a chat already open stays through the room's reconnect), and the chat chosen (none while the list shows).
+  const chatsOn = () => calls.available() || !!calls.room, inChat = () => !!calls.room;
   const subs = [];
   const set = (el, key, value) => { if (el[key] !== value) el[key] = value; };
   const attr = (el, key, value) => { if (el.getAttribute(key) !== value) el.setAttribute(key, value); };
@@ -37,7 +47,7 @@
   // The one zone the panel shows for now.
   const ZONE = "main";
   const model = A.create({ send: (type, fields) => !fixture && net.sendAudience(type, fields) });
-  const available = () => fixture || !!net.state.me && net.state.audience;
+  const available = () => fixture || chatsOn() || !!net.state.me && net.state.audience;
 
   // Named samples, never real people, for reviewing the panel at scale: four world speakers, two Ooga Chat speakers,
   // the visitor and three hundred listeners.
@@ -78,7 +88,27 @@
     t.micDisabled = row.self && !voice.stats.enabled && !voice.stats.returning;
     t.micWords = speaker ? `${row.display}: ${BL.hud.voiceWords(look, row.self, blocked, row.login)}` : "";
   };
-  const tiles = BL.audienceTiles.create(list, { mic(id) {
+  // A hosted chat's row (Ooga Chat's roster, ooga-chat-roster.js) as the tiles draw it, from the chat's own voice: an
+  // island account's portrait is its Ooga, or its GitHub picture; never Ooga Chat's own picture paths.
+  const myId = () => { const me = calls.identity(); return me ? me.participant : null; };
+  const chatDescribe = (p, t) => {
+    const m = calls.state.voice, speaker = p.role === "speaker", self = p.id === myId(), own = self && m.role === "speaker";
+    const muted = own ? m.muted : p.muted;
+    const look = !speaker ? "" : muted ? "muted" : (own ? m.speaking : m.talking.includes(p.id)) ? "speaking" : "on";
+    const blocked = speaker && !self && calls.media.mutedLocally(p.id);
+    t.id = p.id; t.display = p.display; t.role = p.role; t.source = speaker ? p.source === "world" ? "world" : "chat" : ""; t.self = self;
+    t.face = p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "";
+    t.look = look; t.hand = p.hand || ""; t.micPressed = blocked; t.micDisabled = self && !own;
+    t.micWords = speaker ? `${p.display}: ${BL.hud.voiceWords(look, self, blocked, p.login)}` : "";
+    t.rank = p.rank || ""; t.request = p.request || "";
+  };
+  let menu = null;
+  const tiles = BL.audienceTiles.create(list, { menu: (...a) => menu?.(...a), mic(id) {
+    if (inChat()) {
+      const m = calls.media;
+      if (id === myId()) m.mute(); else m.muteLocal(id, !m.mutedLocally(id));
+      return paintChat();
+    }
     const row = model.rows.get(id);
     if (!row) return;
     if (row.self) { if (voice.stats.returning) voice.toggle(); else voice.setMuted(!voice.stats.muted); }
@@ -100,6 +130,7 @@
     set(retry, "hidden", s !== "connecting" && s !== "stale" && s !== "unavailable");
   };
   const render = () => {
+    if (chatsOn()) return paintChat();
     paintStatus();
     if (handGate !== model.canHand()) { handGate = model.canHand(); BL.reactions.refresh(); }
     // Tiles the room dropped (or a sign-out forgot) leave at once, their pictures cancelled, shown or not.
@@ -116,6 +147,7 @@
   const reason = !support.secure ? "Voice needs a secure page" : !support.webrtc ? "This browser has no WebRTC" : !support.mic ? "This browser has no microphone" : "";
   let footerState = null;
   const paintFooter = () => {
+    if (chatsOn()) return paintChat();
     const me = net.state.me, self = model.self();
     set(footName, "textContent", me ? me.display || me.login : "");
     const dot = self && self.role === "speaker" && self.source === "chat" ? "chat" : "";
@@ -136,6 +168,7 @@
     const was = showing;
     showing = BL.sheet.visible(panel);
     if (showing && !was) { drawnVersion = -1; render(); paintFooter(); }
+    if (showing !== was && chatsOn()) paintChat();
   };
   const watch = new MutationObserver(updateShowing);
   watch.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
@@ -170,7 +203,8 @@
     const s = net.state;
     if (s.logoutEpoch !== logoutEpoch) { logoutEpoch = s.logoutEpoch; model.reset("off"); listenersChanged(); }
     if (!fixture) {
-      const now = available() && s.room === "live";
+      // Hosted chats replace Main Island's relay roster: no view is asked for.
+      const now = available() && s.room === "live" && !chatsOn();
       if (now && !ready) { if (!model.setDesired(ZONE)) model.ask(); }
       else if (!now && ready) { model.reset(s.me ? s.room === "connecting" ? "connecting" : "unavailable" : "off"); listenersChanged(); }
       ready = now;
@@ -197,26 +231,92 @@
   retry.addEventListener("click", () => { model.retry(); render(); });
   mute.addEventListener("click", (e) => {
     if (e.detail) mute.blur();
+    if (inChat()) return calls.media.mute();
     if (voice.stats.returning) voice.toggle();
     else voice.setMuted(!voice.stats.muted);
   });
   voiceButton.addEventListener("click", (e) => {
     if (e.detail) voiceButton.blur();
+    if (inChat()) return calls.state.voice.role === "speaker" ? calls.media.leave() : calls.media.join();
     if (footerState.voice.action === "leave") voice.leave();
     else if (!footerState.voice.disabled) voice.toggle();
   });
   logout.addEventListener("click", () => net.logout());
   BL.reactions.mount($("cloud-reactions"), { handAllowed: () => model.canHand() });
 
+  // --- hosted chats ---
+  const zoneChip = $("cloud-zone");
+  // The panel as the shared views take it (chat-hosts.js `create`), found once hosted chats first come on.
+  const spaceOf = () => ({ parts: { list, footRow: panel.querySelector(".panel-foot"), foot: { join: voiceButton, mute, actions: panel.querySelector(".cloud-foot-actions") } },
+    setMenu(fn) { menu = fn; } });
+  let hosts = null, chatMode = false, chatDrawn = -1, unread = 0;
+  const STATUS_CHAT = { connecting: "Joining the chat…", reconnecting: "Reconnecting… this list may be out of date.", full: "This chat is full right now. Trying again soon.",
+    stale: "This page is older than the chat. Reload to keep listening." };
+  // The zone the visitor's Ooga stands in, for Start a chat: DSB Land's places, else Main Island.
+  const startZone = () => BL.zoneMap.landOf(net.state.zone || "outside") === "DSB Land" ? "dsb" : "main";
+  const paintChat = () => {
+    const on = chatsOn();
+    if (on !== chatMode) {
+      chatMode = on;
+      tiles.clear();
+      chatDrawn = drawnVersion = -1;
+      if (on) hosts = BL.chatHosts.create({ node: panel, head: panel.querySelector(".panel-title"), space: spaceOf(), chats: { list: calls.list, start: calls.start, open: calls.open, leave: () => calls.leave(), request: calls.request, hear: calls.hear },
+        joinVoice: () => calls.media.join(), faceOf: (c) => BL.characters.get(c) ? faceUrl(c) : "", startZone, toast: (text) => BL.hud.toast(text), shown: () => showing });
+      else {
+        hosts?.dispose(); hosts = null;
+        delete panel.dataset.space;
+        for (const el of [voiceButton, mute]) el.hidden = false;
+        set(zoneChip, "textContent", A.ZONE_NAMES[ZONE]);
+        account();
+        return;
+      }
+    }
+    if (!on) return;
+    const s = calls.state, room = s.room, v = s.voice, me = calls.identity();
+    panel.dataset.space = room ? "on" : "list";
+    set(zoneChip, "textContent", room ? A.ZONE_NAMES[room.zone] : "");
+    hosts.update({ session: me ? { identity: me } : null, room, voice: v, device: { online: navigator.onLine !== false }, audience: s.audience });
+    // The status line: the chat's socket, then what voice last said, then an empty chat.
+    const words = !room ? "" : STATUS_CHAT[s.audience.status] || (s.audience.status === "live" && !s.audience.list.length ? "Nobody is here yet." : v.notice || "");
+    set(statusText, "textContent", words);
+    set(status, "hidden", !words);
+    set(retry, "hidden", true);
+    // The footer: the chat's voice, as Ooga Chat's footer works it (ooga-chat-views.js `cloudFoot`).
+    set(footName, "textContent", me ? me.display : "");
+    const speaker = v.role === "speaker", source = speaker ? "chat" : "";
+    if (footName.dataset.source !== source) footName.dataset.source = source;
+    set(mute, "disabled", !speaker || v.busy);
+    set(mute, "textContent", speaker && !v.muted ? "Mute" : "Unmute");
+    attr(mute, "aria-pressed", String(speaker && v.muted));
+    const look = speaker && !mute.disabled ? v.muted ? "muted" : "live" : "";
+    if (mute.dataset.mic !== look) mute.dataset.mic = look;
+    set(voiceButton, "textContent", speaker ? "Leave Voice" : v.phase === "leaving" ? "Leaving…" : v.busy ? "Joining…" : "Join Voice");
+    set(voiceButton, "disabled", !speaker && (v.busy || room?.you?.speak !== "eligible"));
+    set(voiceButton, "title", "");
+    set(logout, "hidden", !net.state.me);
+    if (!showing) { if (chatDrawn !== s.audience.version) tiles.prune((id) => s.audience.list.some((p) => p.id === id)); return; }
+    if (chatDrawn !== s.audience.version) { chatDrawn = s.audience.version; tiles.draw(s.audience.list, chatDescribe); }
+    else tiles.repaint(chatDescribe);
+  };
+  subs.push(calls.subscribe(paintChat));
+  // A request to speak counts on the tab while the panel is not attended; opening the tab reads it.
+  subs.push(calls.hear((msg) => {
+    if (msg.type !== "notice" || msg.kind !== "asked" || BL.sheet.attending(panel)) return;
+    BL.sheet.setBadge("cloud", ++unread);
+  }));
+  BL.sheet.watchViews(panel, () => { if (unread) { unread = 0; BL.sheet.setBadge("cloud", 0); } });
+
   if (fixture) { model.setDesired(ZONE); model.apply(sample(model.desired)); }
   updateShowing();
   account();
+  paintChat();
 
   const dispose = () => {
     for (const off of subs) off();
     subs.length = 0;
     watch.disconnect();
     document.removeEventListener("sheetchange", onSheet);
+    hosts?.dispose();
     tiles.dispose();
     model.reset("off");
   };

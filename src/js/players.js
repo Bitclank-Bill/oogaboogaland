@@ -102,7 +102,7 @@
     const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
     const voice = document.createElement("button"), look = document.createElement("button"), distance = document.createElement("span");
-    const link = document.createElement("button");
+    const link = document.createElement("button"), call = document.createElement("span");
     const note = document.createElement("span"), id = `players-name-${++serial}`;
     const toggle = document.createElement("button"), volume = document.createElement("div"), volumeLabel = document.createElement("label");
     const slider = document.createElement("input"), value = document.createElement("output");
@@ -133,13 +133,16 @@
     voice.className = "roster-voice"; voice.type = "button"; voice.hidden = true; voice.setAttribute("aria-describedby", id); voice.append(BL.hud.voiceIcon.cloneNode(true));
     // A voice link, offered where the room keeps them; never on the visitor's own row.
     link.className = "players-link"; link.type = "button"; link.hidden = true; link.append(linkIcon.cloneNode(true));
-    marks.append(voice, link);
+    // In a hosted chat's voice (call-v1): the island voice paused, so a cloud where the voice mark would be.
+    call.className = "call-mark"; call.hidden = true; call.setAttribute("role", "img"); call.setAttribute("aria-label", "In a chat"); call.title = "In a chat";
+    call.append(BL.nativeIcons.svg("cloud"));
+    marks.append(call, voice, link);
     look.className = "players-look"; look.type = "button"; look.setAttribute("aria-describedby", id); look.append(crosshair.cloneNode(true));
     distance.className = "players-distance"; distance.append("");
     note.className = "players-note"; note.textContent = ", last known location"; note.hidden = true;
     distance.append(note);
     li.append(dots, name, mark, marks, look, distance, volume);
-    return { li, label, toggle, volume, slider, value, duel, host, voice, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
+    return { li, label, toggle, volume, slider, value, duel, host, voice, call, callOn: false, link, linkShown: "", linkName: "", mark, hand, handShown: "", react, reacting: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
       aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false, faded: false };
   };
   const selfRow = makeRow();
@@ -179,12 +182,14 @@
     if (!showing || stale) return;
     const s = net.state, voice = BL.voice.stats, inVoice = voice.enabled || voice.returning;
     paintMark(selfRow, inVoice ? voice.muted ? "muted" : voice.speaking ? "speaking" : "on" : "", "", inVoice, s.hostId === s.selfId, s.hand ? (s.handEmoji || BL.reactionPolicy.HANDS[s.handTone]) : "");
+    paintCall(selfRow, !!s.call);
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
       // A player out of voice shows no mic at all.
       const look = rec.voice ? rec.muted ? "muted" : !row.faded && BL.voice.speaking(rec.id) ? "speaking" : "on" : "";
       paintMark(row, look, rec.login, false, rec.id === s.hostId, rec.hand ? (rec.handEmoji || BL.reactionPolicy.HANDS[rec.handTone]) : "");
+      paintCall(row, !!rec.call);
       paintLink(row, s.voiceLinks ? net.voiceLink(rec.id) : "", rec.display);
       const level = V.volumeOf(row.id), words = `${Math.round(level * 100)}%`;
       if (row.slider.value !== String(level * 100)) row.slider.value = String(level * 100);
@@ -218,6 +223,7 @@
     row.link.setAttribute("aria-pressed", String(state !== "none"));
     row.link.title = words; row.link.setAttribute("aria-label", words);
   };
+  const paintCall = (row, on) => { if (row.callOn !== on) { row.callOn = on; row.call.hidden = !on; } };
   const paintMark = (row, look, login, self, host, hand = "") => {
     if (row.handShown !== hand) {
       row.handShown = hand; row.hand.textContent = hand; row.hand.hidden = !hand;

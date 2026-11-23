@@ -1776,6 +1776,12 @@ body[data-active-scene="block"] .mode-hud {
   cursor: pointer;
 }
 .players-link[hidden] { display: none; }
+/* In a hosted chat's voice (players.js `call`, call-v1): Ooga Chat's purple cloud where the voice mark would stand. */
+.call-mark { display: inline-flex; }
+/* The island's emoji bar is its room's, so a hosted chat's panel (cloud-panel.js `data-space`) offers none. */
+#cloud-panel[data-space] #cloud-reactions { display: none; }
+.call-mark[hidden] { display: none; }
+.call-mark svg { width: 12px; height: 12px; shape-rendering: crispEdges; }
 .players-link svg { width: 11px; height: 11px; shape-rendering: crispEdges; }
 .players-link:hover, .players-link:focus-visible { color: #fff; outline: none; }
 .players-link:focus-visible { box-shadow: 0 0 0 2px var(--accent); }

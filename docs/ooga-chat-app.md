@@ -42,7 +42,7 @@ is unchanged and never stages the app.
 | `src/ooga-chat/ooga-chat-views.js` | `BL.oogaChatViews`: the Ooga Chat tab (sign-in, or the island's Ooga Chat panel: the zones, the roster and its footer), the stand-in for a tab whose chunk is on its way (`deferred`), the stand-in for a panel not built yet, and the kit the chunks' views build with. Every view is the island's own panel in its markup (#656) |
 | `src/ooga-chat/ooga-chat-bananas.js` | in the `bananas` chunk: the Bananas tab's view |
 | `src/ooga-chat/ooga-chat-panels.js` | in the `panels` chunk: Contributing Oogas, Online Oogas and The Commons, with the island's account row at their foot |
-| `src/ooga-chat/ooga-chat-hosts.js`, `src/ooga-chat/ooga-chat-hosts.css` | the `hosts` chunk, with its own stylesheet: hosted chats ([ooga-chat-hosts.md](ooga-chat-hosts.md)) where the bootstrap lists `features.chats`: the Chats list, the Start a chat dialog, and in a chat its bar, Requests chip and queue, invite card, tile menu, the footer's Request to speak, End chat and Leave, and one polite notice line |
+| `src/js/chat-hosts.js`, `src/chat-hosts.css`, `src/ooga-chat/ooga-chat-hosts.js` | the `hosts` chunk, with its own stylesheet: hosted chats ([ooga-chat-hosts.md](ooga-chat-hosts.md)) where the bootstrap lists `features.chats`. The views and their look are shared with the island's cloud tab (`chat-hosts.js`, `chat-hosts.css`): the Chats list, the Start a chat dialog, and in a chat its bar, Requests chip and queue, invite card, tile menu, the footer's Request to speak, End chat and Leave, and one polite notice line. `ooga-chat-hosts.js` hands them the app's chats, voice and face sheet and links the stylesheet |
 | `src/ooga-chat/ooga-chat-http.js` | `BL.oogaChatHttp`: the production adapter |
 | `src/ooga-chat/ooga-chat-media.js` | `BL.oogaChatMedia`: voice (#654), one controller apart from the views: hearing the zone through the server's media operations and speaking from it (Voice, below) |
 | `src/ooga-chat/ooga-chat-faces.js` | `BL.oogaChatFaces`: the bundled fallback index for `art/ooga-faces.png`, by handle, with a default face. Generated with the sheet by `npm run ooga-chat:faces` (`scripts/ooga-chat-faces.mjs`, the island's own renderer in the suite's Chrome), never edited |
@@ -88,8 +88,8 @@ module reads nothing at load but `window.BL` and the document.
 leaves the first load in a staged build. `bananas` is `donations.js`, `banana-panel.js`, Feed the Oogas (`qr.js` through `donation-popup.js`),
 `ooga-chat-donor.js` and `ooga-chat-bananas.js`; `panels` is `zone-map.js`, `commons-log.js`, `format-large.js`,
 `roster-panel.js`, `contributor-identities.js`, `activity-repos.js` and `ooga-chat-panels.js`; `emoji` is
-`ooga-chat-hosts.js` is `hosts`, hosted chats, asked for once a signed-in account's service offers them; a stylesheet
-tagged the same way (`ooga-chat-hosts.css`) is staged as that group's own `css/ooga-chat-<group>-<hash>.css`, named in
+`chat-hosts.js` and `ooga-chat-hosts.js` are `hosts`, hosted chats, asked for once a signed-in account's service offers them; a stylesheet
+tagged the same way (`../chat-hosts.css`) is staged as that group's own `css/ooga-chat-<group>-<hash>.css`, named in
 `BL.oogaChatScripts` as `<group>.css`, and linked by the group's code as it runs. `emoji` is
 `emoji-data.js` and `reaction-bar.js`, the emoji bar and its picker over the whole list, which only a signed-in visitor
 sees, so the app asks for it as soon as an account is signed in (until then a view's bar waits, its slot hidden, and a
