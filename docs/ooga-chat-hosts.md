@@ -144,8 +144,14 @@ welcome carries every chat's list (`chatMembers`) and each change goes to every 
 `{ t: "chat-members", chat, title, members, more }`, an empty `members` when it ends. The page (`net.js`
 `state.chatMembers`, checked and frozen, emptied with the socket) lists in In Ooga Chat each person once (speaking over
 listening), never the visitor, an island player or one of Main Island's listeners, in gray by name alone ("Speaking
-in" or "Listening in" and the chat's title only in the dot's tooltip), with no mark, link, crosshair or distance (`players.js`, from `cloud-panel.js`
-`inChats`), and every "N online" on the island counts them.
+in" or "Listening in" and the chat's title in the dot's tooltip), with no mark, link, crosshair or distance (`players.js`, from `cloud-panel.js`
+`inChats`), and every "N online" on the island counts them. The name opens a strip as a player's does: "Speaking in" or
+"Listening in" and the chat's title, and **Join chat**, or "You're in this chat" where the visitor is. Join chat
+(`cloud-panel.js` `join`) asks the live list (`/api/chats`) for the chat's zone, says **That chat has ended** if it is
+no longer listed, and otherwise shows the Ooga Chat tab and opens the chat there as a listener. A visitor already in
+another chat is asked first, **Change chats?** (a modal dialog: "You're in <title>. Leave it and join <title>?", with
+what leaving costs them: a host's 2-minute hold before the chat passes to a co-host or ends, or a speaker's or co-host's
+place on the stage, kept a minute), **Switch chats** leaving that chat and opening this one, **Stay** changing nothing.
 
 **Clouds belong to the copies.** OC speakers are never seen or heard over the real island any more: a chat's speakers
 sit on clouds only inside that chat's own copy of its zone (the second PR), one seat each, however many chats share a

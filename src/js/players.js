@@ -36,7 +36,8 @@
 // spoken too, one utterance at a time: names that arrive while one plays wait and are said together after it, and the
 // Read joins aloud checkbox alone controls it, independently of environment sound. Speech starts from the box, a gesture.
 // In Ooga Chat (chat-members-v1, docs/ooga-chat-hosts.md): everyone in a hosted chat who is not on the island, the
-// last group, after every zone's, each in gray with the chat they are in and whether they speak or listen there.
+// last group, after every zone's, each in gray, the name opening the chat they are in, whether they speak or listen
+// there, and Join chat, which opens it in the Ooga Chat tab (cloud-panel.js `join`).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -101,7 +102,9 @@
   };
   // Everyone in a hosted chat and not on the island (cloud-panel.js `inChats`, from the room's `chat-members`), in gray as
   // a listener is, under In Ooga Chat, a group of its own after every zone's: the name alone, which chat and whether
-  // they speak or listen there only in the dot's tooltip. No mark, link, crosshair or distance.
+  // they speak or listen there in the dot's tooltip. No mark, link, crosshair or distance. The name opens a strip as a
+  // player's does: "Speaking in" or "Listening in" and the chat's title, and Join chat (cloud-panel.js `join`), or "You're
+  // in this chat" where the visitor is.
   const IN_CHATS = "in-ooga-chat", chatRows = new Map(), chatOrder = [];
   const chatRow = (key) => {
     let row = chatRows.get(key);
@@ -112,9 +115,15 @@
     const dot = row.li.querySelector(".roster-presence");
     dot.dataset.online = "listener";
     row.dot = dot;
-    row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
     row.button.hidden = true;
-    row.whereShown = "";
+    const where = document.createElement("span"), how = document.createElement("span"), title = document.createElement("strong");
+    const join = document.createElement("button"), here = document.createElement("span");
+    where.className = "inchat-where"; where.id = `${row.volume.id}-where`; where.append(how, " ", title);
+    join.type = "button"; join.className = "foot-button foot-primary inchat-join"; join.textContent = "Join chat"; join.setAttribute("aria-describedby", where.id);
+    here.className = "inchat-here"; here.textContent = "You're in this chat"; here.hidden = true;
+    row.volume.classList.add("inchat-strip");
+    row.volume.replaceChildren(where, join, here);
+    Object.assign(row, { how, title, join, here, chat: "", whereShown: "" });
     chatRows.set(key, row);
     return row;
   };
@@ -428,9 +437,14 @@
     chatOrder.length = 0;
     if (BL.cloudPanel) for (const m of BL.cloudPanel.inChats()) {
       if (cloudRows.has(m.id) || listenerRows.has(m.id)) continue;
-      const row = chatRow(m.id), where = `${m.role === "speaker" ? "Speaking" : "Listening"} in ${m.title || "a chat"}`;
-      row.name = m.display; row.zone = ""; row.group = IN_CHATS; row.seen = pass;
-      if (row.whereShown !== where) { row.whereShown = where; row.dot.title = where; row.dot.setAttribute("aria-label", where); }
+      const row = chatRow(m.id), how = `${m.role === "speaker" ? "Speaking" : "Listening"} in`, title = m.title || "a chat", where = `${how} ${title}`;
+      row.name = m.display; row.zone = ""; row.group = IN_CHATS; row.seen = pass; row.chat = m.chat;
+      if (row.whereShown !== where) {
+        row.whereShown = where; row.dot.title = where; row.dot.setAttribute("aria-label", where);
+        row.how.textContent = how; row.title.textContent = title;
+      }
+      const here = !!BL.chatCall && BL.chatCall.room?.id === m.chat;
+      if (row.join.hidden !== here) { row.join.hidden = here; row.here.hidden = !here; }
       chatOrder.push(row);
     }
     for (const [id, row] of chatRows) if (row.seen !== pass) { row.li.remove(); chatRows.delete(id); }
@@ -498,6 +512,12 @@
         toggle.setAttribute("aria-expanded", String(open)); row.volume.hidden = !open;
         row.duel.hidden = !(open && BL.duel && BL.duel.offered(row.id));
       }
+      return;
+    }
+    const join = e.target.closest(".inchat-join");
+    if (join) {
+      const row = rowOf(join.closest("li"));
+      if (row && row.chat && BL.cloudPanel) BL.cloudPanel.join(row.chat, join);
       return;
     }
     const duel = e.target.closest(".players-duel");

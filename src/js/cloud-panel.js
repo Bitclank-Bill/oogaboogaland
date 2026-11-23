@@ -19,7 +19,7 @@
 // under the roster, the footer under it: the visitor's name, Mute or Unmute (always there), Join or Leave Voice and
 // Sign out, all through the island's own voice session (voice.js), never a second one.
 // Under `?debug=1&audience=fixture` the panel shows a generated roster of named samples for review, sending
-// nothing. Exports available, dispose, stats.
+// nothing. Exports available, dispose, listeners, inChats, join (below), online, stats.
 // Hosted chats (docs/ooga-chat-hosts.md): where the room's welcome lists `call-v1` (chat-call.js `available`, or
 // `?debug=1&chats=fixture` for review) the tab lists the live chats in place of Main Island's roster and asks the room
 // for no view: Ooga Chat's own views (chat-hosts.js) over this panel (`data-space`: "list", then "on" in a chat), the
@@ -191,21 +191,22 @@
   };
   // Who is in a hosted chat and not on the island (net.js `state.chatMembers`), for Online Oogas' In Ooga Chat group and
   // every "N online": each person once (speaking over listening, then the first chat named), never the visitor, anyone
-  // on the island or anyone already one of Main Island's listeners. `{ id, login, display, role, title }` each.
+  // on the island or anyone already one of Main Island's listeners. `{ id, login, display, role, chat, title }` each,
+  // `chat` the chat's id.
   const inChats = () => {
     const s = net.state, out = [], seen = new Map();
     if (s.room !== "live" || !s.chatMembers || !s.chatMembers.size) return out;
     let heard = null;
-    for (const [, chat] of s.chatMembers) {
+    for (const [key, chat] of s.chatMembers) {
       for (const m of chat.members) {
         const gh = m.id.startsWith("gh:") ? Number(m.id.slice(3)) : 0;
         if (gh && (gh === s.selfId || net.remotes.has(gh))) continue;
         const at = seen.get(m.id);
-        if (at !== undefined) { if (m.role === "speaker" && out[at].role !== "speaker") out[at] = { id: m.id, login: m.login, display: m.display, role: m.role, title: chat.title }; continue; }
+        if (at !== undefined) { if (m.role === "speaker" && out[at].role !== "speaker") out[at] = { id: m.id, login: m.login, display: m.display, role: m.role, chat: key, title: chat.title }; continue; }
         if (!heard) { heard = new Set(); for (const l of listeners()) heard.add(l.id); }
         if (heard.has(m.id)) continue;
         seen.set(m.id, out.length);
-        out.push({ id: m.id, login: m.login, display: m.display, role: m.role, title: chat.title });
+        out.push({ id: m.id, login: m.login, display: m.display, role: m.role, chat: key, title: chat.title });
       }
     }
     return out;
@@ -336,6 +337,94 @@
   }));
   BL.sheet.watchViews(panel, () => { if (unread) { unread = 0; BL.sheet.setBadge("cloud", 0); } });
 
+  // --- a chat joined from Online Oogas' In Ooga Chat (players.js) ---
+  // `join(id, from)`: the chat as the live list has it now (one no longer listed is said to have ended), the Ooga Chat
+  // tab shown and the chat opened in it as a listener. A visitor in another chat is asked first (`Change chats?`, a
+  // modal dialog, focus back on `from` as it closes): Switch chats leaves that one and opens this, Stay changes nothing.
+  // The rows say which chat the visitor is in, so they are drawn again when that changes.
+  let roomShown = null;
+  subs.push(calls.subscribe(() => {
+    const id = calls.room ? calls.room.id : null;
+    if (id !== roomShown) { roomShown = id; if (BL.players) BL.players.refresh(); }
+  }));
+  const showPanel = () => { if (!BL.sheet.visible(panel)) BL.sheet.tabFor(panel)?.click(); };
+  let switcher = null, joining = 0;
+  // Made the first time it is wanted: a wood-framed modal, its words on a stone slab, Switch chats the amber action.
+  const switchDialog = () => {
+    if (switcher) return switcher;
+    const make = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text) el.textContent = text; return el; };
+    const dialog = make("dialog", "modal hosted-switch"), head = make("div", "panel-head"), heading = make("h2", "", "Change chats?");
+    const close = make("button", "modal-close"), slab = make("div", "slab hosted-switch-slab"), body = make("p", "hosted-switch-text"), note = make("p", "hosted-switch-note");
+    const go = make("div", "hosted-switch-go"), stay = make("button", "foot-button", "Stay"), change = make("button", "foot-button foot-primary", "Switch chats");
+    heading.id = "hosted-switch-head";
+    dialog.setAttribute("aria-labelledby", heading.id);
+    body.id = "hosted-switch-text";
+    dialog.setAttribute("aria-describedby", body.id);
+    close.type = stay.type = change.type = "button";
+    close.setAttribute("aria-label", "Close");
+    close.textContent = "×";
+    change.autofocus = true;
+    head.append(heading, close);
+    go.append(stay, change);
+    slab.append(body, note, go);
+    dialog.append(head, slab);
+    document.body.append(dialog);
+    const self = switcher = { dialog, body, note, change, from: null, run: null };
+    // Every way out gives the focus back to the Join chat pressed at once; the close event only for any other way.
+    const shut = () => {
+      self.run = null;
+      if (dialog.open) dialog.close();
+      const to = self.from;
+      self.from = null;
+      if (to && to.isConnected) to.focus();
+    };
+    stay.addEventListener("click", shut);
+    close.addEventListener("click", shut);
+    change.addEventListener("click", () => { const run = self.run; shut(); run?.(); });
+    // Escape closes it from the keyboard and from a pad's B (pad-focus.js) alike.
+    dialog.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); shut(); } });
+    // A press outside the frame closes it; one inside the frame's own padding does not.
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      const r = dialog.getBoundingClientRect();
+      if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) shut();
+    });
+    // A close event comes a task after its close, so one that lands after the dialog opened again is not for it.
+    dialog.addEventListener("close", () => { if (!dialog.open) shut(); });
+    return switcher;
+  };
+  // What leaving the chat the visitor is in costs them, in words: a host's hold, a place on its stage, or nothing.
+  const leaving = () => {
+    const rank = calls.room?.you?.rank || "", speaker = calls.state.voice.role === "speaker";
+    if (rank === "host") return "You host it: it waits 2 minutes for you, then passes to a co-host, or ends if there is none.";
+    if (rank === "cohost") return "You're a co-host on its stage: your place and role are kept a minute, then given up.";
+    if (speaker) return "You're on its stage: your place is kept a minute, then given up.";
+    return "";
+  };
+  const join = async (id, from = null) => {
+    if (!calls.available()) return;
+    const ticket = ++joining;
+    if (calls.room && calls.room.id === id) return showPanel();
+    const answer = await calls.list();
+    if (ticket !== joining) return;
+    if (!answer || !Array.isArray(answer.chats)) return BL.hud.toast("The chats can't be reached right now. Try again.");
+    const entry = (BL.chatHosts.parseList(answer.chats) || []).find((c) => c.id === id);
+    if (!entry) return BL.hud.toast("That chat has ended");
+    const open = () => {
+      if (calls.room && calls.room.id !== entry.id) calls.leave();
+      calls.open(entry);
+      showPanel();
+    };
+    if (!calls.room || calls.room.id === entry.id) return open();
+    const s = switchDialog();
+    s.body.textContent = `You're in ${calls.room.title}. Leave it and join ${entry.title}?`;
+    s.note.textContent = leaving();
+    s.from = from;
+    s.run = open;
+    if (!s.dialog.open) s.dialog.showModal();
+    s.change.focus();
+  };
+
   if (fixture) { model.setDesired(ZONE); model.apply(sample(model.desired)); }
   updateShowing();
   account();
@@ -347,6 +436,7 @@
     watch.disconnect();
     document.removeEventListener("sheetchange", onSheet);
     hosts?.dispose();
+    if (switcher) { switcher.from = null; switcher.dialog.close(); switcher.dialog.remove(); switcher = null; }
     tiles.dispose();
     model.reset("off");
   };
@@ -355,6 +445,7 @@
     dispose,
     listeners,
     inChats,
+    join,
     // Who is online, as every "N online" on the island says it: the room's players, Main Island's listeners and everyone
     // in a hosted chat who is neither.
     online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length + inChats().length : 0),
