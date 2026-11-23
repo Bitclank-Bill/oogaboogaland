@@ -48,7 +48,13 @@ export const ISLAND_RETRY_MS = 30 * 1000;
 export const chatName = (id) => `chat:${id}`;
 export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "open", "end"]);
 const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
-export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1"];
+export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1", "walk-v1"];
+// The island view (docs/ooga-chat-hosts.md): walkers' positions relayed from the chat's copy to the connections that
+// asked for them (`{ type: "view", on }`), at most WALK_HZ a second, fewer as subscribers pass WALK_FANOUT frames a
+// second in all; a frame arriving sooner is dropped (the copy sends the next within half a second).
+export const WALK_HZ = 2;
+export const WALK_FANOUT = 2000;
+const BOUND_XZ = 400;
 // A transient reaction's life on every client (players.js shows the island's for the same time), and the limits on
 // sending them: per identity across its tabs (as the island's room has it) and per zone, which bounds any zone's fanout.
 export const REACTION_MS = 2600;
@@ -263,7 +269,7 @@ export class Audience extends DurableObject {
     if (!ws || !c) return;
     const p = this.model.people.get(c.id);
     ws.serializeAttachment({ conn: { connId: c.connId, id: c.id, principal: c.principal, providerUserId: c.providerUserId, zone: c.zone, lease: c.lease,
-      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt }, info: p.info });
+      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt, viewing: !!c.viewing }, info: p.info });
   }
 
   /** Commit what changed, store the revisions, and send every zone's delta to its clients and to a watching Room. */
@@ -665,6 +671,8 @@ export class Audience extends DurableObject {
     if (msg.type === "join") return this.onJoin(c, msg);
     // A client that saw a revision gap asks again: counted, the one sign of a gap the server can see.
     if (msg.type === "resync") { if (c.zone && msg.zone === c.zone) { this.inspect.count("resync"); this.sendSnapshot(ws, c); } return; }
+    // The island view shown (or not): only a connection that asked hears walkers' positions.
+    if (msg.type === "view" && this.chat) { if (typeof msg.on === "boolean" && !!c.viewing !== msg.on) { c.viewing = msg.on; this.save(c.connId); } return; }
     if (msg.type === "setRole" || msg.type === "setMic" || msg.type === "reaction" || msg.type === "hand" || this.roles && CHAT_OPS.has(msg.type)) return this.onRequest(c, msg);
   }
 
@@ -903,6 +911,35 @@ export class Audience extends DurableObject {
     if (typeof id !== "string" || !ID.test(id) || !this.walksNow(id)) return { ok: false, reason: "not-speaker" };
     if (!this.copyOpened) { this.copyOpened = true; await this.keepCopy(); }
     return { ok: true, zone: this.chat.zone, title: this.chat.title, clouds: this.clouds() };
+  }
+
+  /**
+   * Walkers' positions from the copy (`seq` rising, `ids` GitHub ids, `p` x, y, z and heading for each, in order), for the
+   * island view: one frame, built once, to every connection that asked for it, at a rate the fan-out budget allows. A
+   * walker the chat does not know, or a value out of bounds, drops the frame.
+   */
+  walk(seq, ids, p) {
+    if (!this.chat || !Number.isSafeInteger(seq) || seq <= (this.walkSeq || 0) || !Array.isArray(ids) || !Array.isArray(p) || p.length !== ids.length * 4 || ids.length > 64) return { ok: false };
+    let viewers = 0;
+    for (const c of this.model.conns.values()) if (c.viewing) viewers++;
+    const now = Date.now(), hz = Math.max(0.2, Math.min(WALK_HZ, WALK_FANOUT / Math.max(1, viewers)));
+    if (!viewers || now - (this.walkAt || 0) < 1000 / hz) return { ok: true, sent: false };
+    const out = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = `gh:${ids[i]}`, x = p[i * 4], y = p[i * 4 + 1], z = p[i * 4 + 2], yaw = p[i * 4 + 3];
+      if (!Number.isSafeInteger(ids[i]) || !this.walkers.has(id) || ![x, y, z, yaw].every(Number.isFinite) || Math.abs(x) > BOUND_XZ || Math.abs(z) > BOUND_XZ) return { ok: false };
+      out.push(id, Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(z * 10) / 10, Math.round(yaw * 100) / 100);
+    }
+    this.walkSeq = seq;
+    this.walkAt = now;
+    const text = JSON.stringify({ type: "walk", seq, p: out });
+    for (const c of this.model.conns.values()) {
+      if (!c.viewing) continue;
+      const ws = this.sockets.get(c.connId);
+      if (ws) this.send(ws, text);
+    }
+    this.inspect.count("walkFrames");
+    return { ok: true, sent: true };
   }
 
   /** Who walks the copy now (the copy's whole list, `gh:<id>`): their rows say so, and their clouds stand empty. */

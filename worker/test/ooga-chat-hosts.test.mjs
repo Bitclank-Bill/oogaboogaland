@@ -572,4 +572,33 @@ test("a DSB Land chat has no copy yet", async () => {
   assert.deepEqual(await w.objects.get(chatName(chat.id)).a.copyMember("gh:1"), { ok: false, reason: "zone" });
 });
 
+
+
+test("the island view's feed: walkers' positions to those who asked, at most twice a second, nobody else's and nothing out of bounds", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "View", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a;
+  await a.walking(["gh:1"]);
+  assert.deepEqual(a.walk(1, [1], [1, 2, 3, 0.5]), { ok: true, sent: false }, "nobody asked: nothing sent");
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
+  now += 1000;
+  assert.deepEqual(a.walk(2, [1], [1.234, 2, -3.06, 0.512]), { ok: true, sent: true });
+  const frame = bea.ws.sent.filter((m) => m.type === "walk").at(-1);
+  assert.deepEqual(frame, { type: "walk", seq: 2, p: ["gh:1", 1.2, 2, -3.1, 0.51] });
+  assert.equal(amy.ws.sent.some((m) => m.type === "walk"), false, "only those who asked");
+  assert.equal(a.walk(3, [1], [1, 2, 3, 0]).sent, false, "half a second at the soonest");
+  now += 600;
+  assert.equal(a.walk(2, [1], [1, 2, 3, 0]).ok, false, "an older frame is dropped");
+  assert.equal(a.walk(4, [2], [1, 2, 3, 0]).ok, false, "a walker the chat does not know drops the frame");
+  assert.equal(a.walk(5, [1], [1e6, 2, 3, 0]).ok, false, "as does a value out of bounds");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: false }));
+  now += 600;
+  const before = cyd.ws.sent.length;
+  assert.equal(a.walk(6, [1], [1, 2, 3, 0]).sent, true);
+  assert.equal(cyd.ws.sent.length, before, "turned off, none come");
+});
+
 test.after(() => { Date.now = realNow; });
