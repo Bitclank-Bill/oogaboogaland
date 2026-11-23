@@ -239,8 +239,17 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
 
 ## Open for the second PR
 
-How a chat's copy of its zone is hosted (an instance of the island's room for each chat, or a lighter one), what of the
-island's world it carries (NPCs, the pile, games), how a player crosses into it and back, and its clouds.
+Agreed 2026-11-23:
+
+- **What a copy carries:** the zone's open air as it is (scenery, the banana pile, the clouds), the chat's members'
+  Oogas, nothing else: no NPC crew or gorillas, cave mouths and doors sealed, no games.
+- **Who goes:** speakers alone (the host, co-hosts and invited speakers) who are signed into the island with an Ooga.
+  Listeners stay where they are and listen.
+- **Getting there and back:** Go there in the chat beams the Ooga out of the main world in the island's green glyph
+  stream and into the copy beside the banana pile; Leave beams it back to exactly where it stood, as does leaving the
+  stage or the chat.
+- **Size:** up to 32 Oogas, the speaker cap, and the island room's own.
+- **Clouds:** a chat's Ooga Chat speakers sit on clouds in its copy, a seat each, 32 seats.
 
 **The island view** (agreed 2026-11-22, built in the second PR): at the top of a chat, for every OC speaker and listener
 tuned into it, a zoomed-out view of the chat's copy of its zone, shown only while at least one of the chat's speakers
