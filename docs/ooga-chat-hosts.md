@@ -143,8 +143,8 @@ Pages hear it only where the welcome lists `chat-members-v1` (on with the `chats
 welcome carries every chat's list (`chatMembers`) and each change goes to every page as
 `{ t: "chat-members", chat, title, members, more }`, an empty `members` when it ends. The page (`net.js`
 `state.chatMembers`, checked and frozen, emptied with the socket) lists in In Ooga Chat each person once (speaking over
-listening), never the visitor, an island player or one of Main Island's listeners, in gray with "Speaking in" or
-"Listening in" and the chat's title, with no mark, link, crosshair or distance (`players.js`, from `cloud-panel.js`
+listening), never the visitor, an island player or one of Main Island's listeners, in gray by name alone ("Speaking
+in" or "Listening in" and the chat's title only in the dot's tooltip), with no mark, link, crosshair or distance (`players.js`, from `cloud-panel.js`
 `inChats`), and every "N online" on the island counts them.
 
 **Clouds belong to the copies.** OC speakers are never seen or heard over the real island any more: a chat's speakers
