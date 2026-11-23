@@ -39,9 +39,9 @@ import {
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
-  LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
+  callFeatures, callOn, LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
-  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, worldReporter, audienceRoom, commonsRoom, roomCatalog, equipmentRoom, sessionGone, cleanupPass,
+  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, worldReporter, audienceRoom, commonsRoom, chatMembersRoom, roomCatalog, equipmentRoom, sessionGone, cleanupPass,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
 import { getPlayer } from "./db.js";
@@ -78,6 +78,10 @@ export class Room extends DurableObject {
     this.world = worldReporter(ctx, env, () => this.worldView());
     this.flushDue = 0;
     this.players = new Map();
+    // Accounts on a hosted chat's stage (docs/ooga-chat-hosts.md), GitHub id -> chat id: their island voice gives way.
+    this.chatVoices = new Map();
+    // Each live hosted chat's title and counts, as the chat last said (room-chat-members.js), for every page's Online Oogas.
+    this.chatRosters = new Map();
     // Each player socket to its record, so a message finds its sender without reading the socket's attachment. Rebuilt
     // from the sockets on every wake, as `players` is; a record leaves both together (`drop`).
     this.sockets = new Map();
@@ -163,6 +167,10 @@ export class Room extends DurableObject {
         this.cleanupJobs = jobs || [];
       });
       // Ooga Chat's speakers the island's open outdoor grants hear (#666), as the Audience last sent them.
+      await this.restoring("chatVoices", (stored) => {
+        this.chatVoices = new Map((Array.isArray(stored) ? stored : []).filter((e) => Array.isArray(e) && Number.isSafeInteger(e[0]) && typeof e[1] === "string"));
+      }, () => { this.chatVoices = new Map(); });
+      await this.restoring("chatMembers", (stored) => chatMembersRoom.restore(this, stored), () => { this.chatRosters = new Map(); });
       await this.restoring("chatSources", (sources) => { this.chatSources = audienceRoom.cleanSources(sources); },
         () => { this.chatSources = []; });
       // The clouds Ooga Chat speakers sit on (#668), as the Audience last sent them, at their revision.
@@ -294,11 +302,12 @@ export class Room extends DurableObject {
 
   attachment(p) {
     const equipment = this.env?.EQUIPMENT_ENABLED === "1" ? { equipment: p.equipment || null, equipmentSession: p.equipmentSession || null } : {};
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, ...(p.catalogRoster ? { catalogRoster: p.catalogRoster } : {}), visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...equipment, ...duel.saved(p) };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: p.voice, muted: p.muted, call: !!p.call, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, ...(p.catalogRoster ? { catalogRoster: p.catalogRoster } : {}), visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...equipment, ...duel.saved(p) };
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK,
+      ...(this.inCall(p) ? { call: true } : {}) };
   }
 
   // Every message the room sends goes through here, players' and Ooga Chat members' alike, so the inspector's `out` and
@@ -702,6 +711,7 @@ export class Room extends DurableObject {
     if (this.inspect.on) this.inspect.event("join", p, { replaced: !!older });
     this.welcome(p, false);
     this.broadcast({ t: "join", p: this.view(p) }, server);
+    chatMembersRoom.players(this);
     if (this.env.EQUIPMENT_ENABLED === "1") equipmentRoom.changed(this, p);
     this.sendStudio(p);
     this.updateVoice();
@@ -714,9 +724,9 @@ export class Room extends DurableObject {
     const server = p.ws, others = [];
     const catalog = this.catalog.metadata();
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, ...callFeatures(this.env), ...chatMembersRoom.features(this), PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
       // The account speaks from Ooga Chat on another device: this page's own voice waits for the visitor's word.
-      ...(audienceRoom.elsewhere(this, p.id) ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}) });
+      ...(audienceRoom.elsewhere(this, p.id) || this.onChatStage(p.id) && !p.call ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}), ...chatMembersRoom.welcome(this) });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
     this.sendCabinets(server);
@@ -1011,6 +1021,11 @@ export class Room extends DurableObject {
       if (msg.on === p.muted) return;
       p.muted = msg.on;
       this.voiceState(p);
+    } else if (msg.t === "call") {
+      // In a hosted chat's voice (docs/ooga-chat-hosts.md): the page has paused its island voice; others show the mark.
+      if (!callOn(this.env) || msg.on === !!p.call) return;
+      p.call = msg.on;
+      this.broadcast({ t: "call", id: p.id, on: this.inCall(p) }, p.ws);
     } else if (msg.t === "chat") {
       // Nothing in the attachment changes.
       return this.say(p, msg.text, msg.clientId);
@@ -1217,7 +1232,7 @@ export class Room extends DurableObject {
       if (held) held.passes.set(p.id, Date.now() + PIN_PASS_MS);
       this.freeEmptyRoom(lockedIn);
     });
-    step("leave", () => this.broadcast({ t: "leave", id: p.id, reason }));
+    step("leave", () => { this.broadcast({ t: "leave", id: p.id, reason }); chatMembersRoom.players(this); });
     step("host", () => this.electHost());
     step("voices", () => this.updateVoice());
     if (!this.players.size && this.flushTimer) {
@@ -1646,7 +1661,61 @@ export class Room extends DurableObject {
   voiceState(p) {
     this.broadcast({ t: "vstate", id: p.id, voice: inVoice(p), muted: p.muted }, p.ws);
     audienceRoom.world(this);
+    // Back in island voice while a chat holds the account's stage (Switch here): the chat gives it up.
+    if (inVoice(p) && this.onChatStage(p.id)) this.later(this.takeVoiceBack(p));
   }
+
+  /**
+   * Back in island voice while a chat holds the account's stage (Switch here): the chat gives it up, and only once it
+   * has is the account's entry dropped, so a call that fails is tried again by the sweep.
+   */
+  async takeVoiceBack(p) {
+    const chat = this.chatVoices.get(p.id);
+    if (!chat || !this.env || !this.env.AUDIENCE) return;
+    try { await this.env.AUDIENCE.getByName(`chat:${chat}`).yieldVoice(`gh:${p.id}`); } catch { return; }
+    if (this.chatVoices.get(p.id) !== chat) return;
+    this.chatVoices.delete(p.id);
+    this.keepChatVoices();
+    if (this.players.get(p.id) !== p) return;
+    if (!audienceRoom.elsewhere(this, p.id)) this.send(p.ws, { t: "voice-elsewhere", on: false });
+    this.broadcast({ t: "call", id: p.id, on: this.inCall(p) });
+  }
+
+  /** In a hosted chat: this page said so (`call`), or the account holds a chat's stage from another device. */
+  inCall(p) { return !!p.call || this.onChatStage(p.id); }
+  onChatStage(id) { return !!this.chatVoices && this.chatVoices.has(id); }
+  keepChatVoices() { this.later(this.ctx.storage.put("chatVoices", [...this.chatVoices])); }
+  later(task) { if (this.ctx.waitUntil) this.ctx.waitUntil(task); else task.catch(() => {}); }
+
+  /**
+   * A hosted chat says GitHub account `id` took (`on`) or left its stage (docs/ooga-chat-hosts.md). One voice an account:
+   * its island voice ends as Ooga Chat's took it (`voice-moved`), every page shows its Ooga in a call, and its own page
+   * hears that its voice is elsewhere (`voice-elsewhere`), whose Switch here takes it back (`voiceState`).
+   */
+  async chatVoice(id, chat, on) {
+    if (!Number.isSafeInteger(id) || typeof chat !== "string" || !callOn(this.env)) return { ok: false };
+    if (on) this.chatVoices.set(id, chat);
+    else if (this.chatVoices.get(id) === chat) this.chatVoices.delete(id);
+    else return { ok: true };
+    this.keepChatVoices();
+    const p = this.players.get(id);
+    if (!p) return { ok: true };
+    if (on && inVoice(p)) {
+      await this.clearVoice(p);
+      p.muted = false;
+      this.saveAttachment(p);
+      this.send(p.ws, { t: "voice-moved" });
+      this.broadcast({ t: "vstate", id: p.id, voice: false, muted: false }, p.ws);
+      this.updateVoice();
+    }
+    // A page that is itself in the chat has paused its own voice already: it needs no Switch here.
+    if (!p.call) this.send(p.ws, { t: "voice-elsewhere", on });
+    this.broadcast({ t: "call", id: p.id, on: this.inCall(p) });
+    return { ok: true };
+  }
+
+  // A hosted chat's members now (audience.js `reportMembers`), an empty list as it ends: every page's Online Oogas hears.
+  chatMembers(chat, title, speakers, listeners, ids) { return chatMembersRoom.update(this, chat, title, speakers, listeners, ids); }
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }
@@ -2363,6 +2432,8 @@ export class Room extends DurableObject {
     tessQueue.sweep(this);
     // Ooga Chat's audience told again what it missed, and grants still closing asked about again (#667).
     await audienceRoom.retry(this);
+    // A chat that did not give an account's voice back when its island voice went live is asked again.
+    if (this.chatVoices) for (const p of [...this.players.values()]) if (inVoice(p) && this.onChatStage(p.id)) await this.takeVoiceBack(p);
     const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;
     this.expireDoors(now);
@@ -2389,6 +2460,8 @@ export class Room extends DurableObject {
         if (!p.held && now - this.heardAt(p) > STALE_MS) this.evict(p, "stale");
       }
       await commonsRoom.sweep(this, now, (login, id) => !cast || !!ownedBody(cast, login, true, id), STALE_MS);
+      // A chat that ended without its last word reaching here leaves every page's Online Oogas.
+      if (this.players.size) await chatMembersRoom.sweep(this);
     }
     // Cleanup retries run on every wake, not only at sweep time, and last: a pass is bounded (`cleanupPass`), and the
     // sweep's account and stale checks never wait behind an SFU slow to answer.

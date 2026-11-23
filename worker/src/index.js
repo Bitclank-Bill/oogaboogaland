@@ -11,6 +11,7 @@ import { handleCharacterCatalog } from "./character-catalog-http.js";
 import { handleCharacterPortrait } from "./character-portraits.js";
 import { handleConnectionReports, pruneConnectionReports } from "./connection-reports.js";
 import { handleApi } from "./api.js";
+import { handleChats } from "./chats.js";
 import { handleEquipment, handleEquipmentCatalog, handleEquipmentHat, handleWardrobeCatalog } from "./equipment.js";
 import { handleAuth } from "./auth.js";
 import { purgeExpiredSessions } from "./db.js";
@@ -38,6 +39,8 @@ export { WorldWatch } from "./world-watch.js";
 export { ChatBridge } from "./chat-bridge.js";
 // Ooga Chat's audience (#665): both outdoor zones' listeners and speakers, apart from the Room's 32 players.
 export { Audience } from "./audience.js";
+// Hosted chats (docs/ooga-chat-hosts.md): the directory of live chats; each chat is an Audience object of its own.
+export { ChatDirectory } from "./chat-directory.js";
 
 const ROOM_NAME = "island";
 
@@ -145,6 +148,7 @@ export default {
     if (url.pathname.startsWith("/api/characters/portraits/")) return handleCharacterPortrait(request, env);
     if (url.pathname === "/api/world") return handleWorld(request, env, ctx);
     if (url.pathname === "/api/world/live") return handleWorldLive(request, env);
+    if (url.pathname === "/api/chats" || url.pathname.startsWith("/api/chats/")) return handleChats(request, env, url);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
     if (url.pathname === "/room") return handleRoom(request, env, ctx);
     if (url.pathname.startsWith("/game/")) return handleGame(request, env, url, ctx);

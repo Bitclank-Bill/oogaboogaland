@@ -1,6 +1,7 @@
 // The code a staged Ooga Chat fetches only once a tab needs it, as the island's deferred.js does for its scenes:
 // `bananas` (the Bananas tab and Feed the Oogas, with donations.js), `panels` (Contributing Oogas, Online Oogas and
-// The Commons) and `emoji` (the emoji bar and its picker with the whole emoji list, wanted only signed in). index.html tags their modules `data-defer="<group>"`; scripts/ooga-chat.mjs stages each group as
+// The Commons), `emoji` (the emoji bar and its picker with the whole emoji list, wanted only signed in) and `hosts`
+// (hosted chats, ooga-chat-hosts.js). index.html tags their modules `data-defer="<group>"`; scripts/ooga-chat.mjs stages each group as
 // js/ooga-chat-<group>-<hash>.js and names the files here (`BL.oogaChatScripts`, written at the head of the first-load
 // script). From source the modules are on the page already, so `load` finds them present and answers null at once.
 // Otherwise it adds one same-origin script (the policy's 'self'), bounded by TIMEOUT_MS; a failure rejects and is
@@ -16,7 +17,8 @@
   const BL = window.BL = window.BL || {};
   const TIMEOUT_MS = 20000;
   // How each group shows it has arrived: the view its last module registers.
-  const PRESENT = { bananas: () => !!BL.oogaChatViews?.bananas, panels: () => !!BL.oogaChatViews?.online, emoji: () => !!BL.reactionBar };
+  const PRESENT = { bananas: () => !!BL.oogaChatViews?.bananas, panels: () => !!BL.oogaChatViews?.online, emoji: () => !!BL.reactionBar,
+    hosts: () => !!BL.oogaChatHosts };
   const loading = new Map(), attempts = new Map(), waiting = new Map();
   let stale = false;
   const arrived = (group) => {

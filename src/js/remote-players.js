@@ -82,8 +82,11 @@
   const SPEAKER = [0, 3, 2, 3, 2, 2, 1, 5, 3, 1, 1, 7];
   const WAVES = [5, 3, 1, 3, 7, 2, 1, 5];
   const CROSS = [5, 3, 1, 1, 7, 3, 1, 1, 6, 4, 1, 1, 5, 5, 1, 1, 7, 5, 1, 1];
-  const runs = (ctx, cells, x, y) => {
-    for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i], y + cells[i + 1], cells[i + 2], cells[i + 3]);
+  // A player in a hosted chat's voice (net.js `call`, call-v1): a small purple cloud where the speaker would stand, since
+  // their island voice is paused; the visitor's own, three times the size, beside the top of their own head.
+  const CALL = [3, 0, 3, 1, 1, 1, 6, 1, 0, 2, 8, 1, 0, 3, 9, 1, 1, 4, 7, 1];
+  const runs = (ctx, cells, x, y, k = 1) => {
+    for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i] * k, y + cells[i + 1] * k, cells[i + 2] * k, cells[i + 3] * k);
   };
 
   // The zones the hub itself reports, which share its coordinates: the main world (voice-blend.js), and the cave
@@ -768,15 +771,22 @@
         lifted = speaker;
         if (lifted) lifted.speechLift = HAND_ROOM;
       }
-      if (!bodies.size && selfReactT <= 0 && !ownHand) return;
+      const ownCall = !!(net.state && net.state.call);
+      if (!bodies.size && selfReactT <= 0 && !ownHand && !ownCall) return;
       ctx.save();
-      if (selfReactT > 0 || ownHand) {
+      if (selfReactT > 0 || ownHand || ownCall) {
         const rig = own && (own.parts ? own : own.gorilla);
         headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
         if (rig && rig.parts && rig.parts.head && rig.root.visible) projectHead(rig.parts.head, project);
         if (headTop !== Infinity) {
           const x = Math.round((headMinX + headMaxX) / 2), y = Math.round(headTop);
           if (selfReactT > 0 || ownHand) drawReaction(ctx, x, y, selfReact, selfReactT, ownHand);
+          if (ownCall) {
+            ctx.fillStyle = NAME_STROKE;
+            runs(ctx, CALL, x + 11, y - 25, 3);
+            ctx.fillStyle = CLOUD_DOT;
+            runs(ctx, CALL, x + 10, y - 27, 3);
+          }
         }
       }
       if (!nameFont) {
@@ -850,6 +860,11 @@
           ctx.fillRect(left, top, BAR_W, BAR_H);
           ctx.fillStyle = rec.ko ? BAR_KO : BAR_FILL;
           ctx.fillRect(left, top, Math.round(BAR_W * Math.max(0, Math.min(100, rec.hp)) / 100), BAR_H);
+        }
+        if (!entry.cloud && rec.call) {
+          ctx.fillStyle = CLOUD_DOT;
+          runs(ctx, CALL, Math.round(textX + entry.labelW + ICON_GAP), Math.round(lineMid - 2.5));
+          continue;
         }
         // A cloud speaker is always in voice; the room says only whether their microphone is muted.
         if (!entry.cloud && !rec.voice) continue;
