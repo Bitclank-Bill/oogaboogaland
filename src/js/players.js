@@ -440,7 +440,8 @@
       const row = chatRow(m.id), how = `${m.role === "speaker" ? "Speaking" : "Listening"} in`, title = m.title || "a chat", where = `${how} ${title}`;
       row.name = m.display; row.zone = ""; row.group = IN_CHATS; row.seen = pass; row.chat = m.chat;
       if (row.whereShown !== where) {
-        row.whereShown = where; row.dot.title = where; row.dot.setAttribute("aria-label", where);
+        // Purple for a speaker in Ooga Chat, as on the roster; green for a listener, online.
+        row.whereShown = where; row.dot.title = where; row.dot.setAttribute("aria-label", where); row.dot.dataset.online = m.role === "speaker" ? "cloud" : "true";
         row.how.textContent = how; row.title.textContent = title;
       }
       const here = !!BL.chatCall && BL.chatCall.room?.id === m.chat;

@@ -393,14 +393,8 @@
     dialog.addEventListener("close", () => { if (!dialog.open) shut(); });
     return switcher;
   };
-  // What leaving the chat the visitor is in costs them, in words: a host's hold, a place on its stage, or nothing.
-  const leaving = () => {
-    const rank = calls.room?.you?.rank || "", speaker = calls.state.voice.role === "speaker";
-    if (rank === "host") return "You host it: it waits 2 minutes for you, then passes to a co-host, or ends if there is none.";
-    if (rank === "cohost") return "You're a co-host on its stage: your place and role are kept a minute, then given up.";
-    if (speaker) return "You're on its stage: your place is kept a minute, then given up.";
-    return "";
-  };
+  // What leaving the chat the visitor is in costs them, said only to its host: their chat waits for them, then moves on.
+  const leaving = () => calls.room?.you?.rank === "host" ? "You host it: it waits 2 minutes for you, then passes to a co-host, or ends if there is none." : "";
   const join = async (id, from = null) => {
     if (!calls.available()) return;
     const ticket = ++joining;

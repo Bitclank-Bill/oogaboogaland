@@ -37091,7 +37091,7 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
     const last = groups.at(-1), rows = last && last.querySelector("h3").textContent === "In Ooga Chat" ? [...last.querySelectorAll("li")] : [];
     const inside = (e) => { const r = e.getBoundingClientRect(), p = panel.getBoundingClientRect(); return r.width > 0 && r.left >= p.left - 1 && r.right <= p.right + 1; };
     return { headings: groups.map((g) => g.querySelector("h3").textContent), rows: rows.map((li) => li.querySelector(".roster-label").textContent + "=" + li.querySelector(".roster-presence").title), lines: rows.every((li) => li.getBoundingClientRect().height < 40 && !li.querySelector(".players-where")),
-      gray: rows.every((li) => li.classList.contains("players-listener") && li.querySelector(".roster-presence").dataset.online === "listener" && li.querySelector(".players-look").hidden && li.querySelector(".roster-voice").hidden && li.querySelector(".players-link").hidden),
+      gray: rows.every((li) => li.classList.contains("players-listener") && li.querySelector(".roster-presence").dataset.online === (/^Speaking/.test(li.querySelector(".roster-presence").title) ? "cloud" : "true") && li.querySelector(".players-look").hidden && li.querySelector(".roster-voice").hidden && li.querySelector(".players-link").hidden),
       chip: document.getElementById("players-count").textContent, fits: rows.every((li) => inside(li)),
       wide: panel.scrollWidth > panel.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1 };
   })()`);
