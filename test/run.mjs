@@ -36821,111 +36821,123 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
       && after.late.phase === "idle" && after.late.sent.map((m) => m.op + m.to).join() === "end3" && after.late.after === "idle" && after.late.locks[3] === "open",
     JSON.stringify({ endedLocks: after.endedLocks, cyAsked: after.cyAsked, cancelled: after.cancelled, late: after.late }));
 } };
-// Rule (docs/ooga-chat-hosts.md, Who the island sees in chats): Online Oogas lists everyone in a hosted chat who is not on
-// the island under In Ooga Chat, the last group, each once with the chat they are in and whether they speak or listen,
-// counted in "N online" and gone with their chat; saved to untracked/in-ooga-chat at 1280 and 390 pixels.
-const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in ooga chat", why: "rule: with the old public conversation gone, the island lists who is in each hosted chat, so mainland players see them one by one", run: async b => {
+// Rule (docs/ooga-chat-hosts.md, Who the island sees in chats): Online Oogas ends with In Ooga Chat, one button a live
+// hosted chat, busiest first, its title and how many speak and listen, the visitor's own marked; a press opens the chat's
+// preview, whose Join as listener opens it in the Ooga Chat tab (Change chats? first from another chat), and "N online"
+// adds each chat's Ooga Chat app count; saved to untracked/in-ooga-chat at 1280 and 390 pixels, the group and a preview.
+const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in ooga chat", why: "rule: with the old public conversation gone, the island lists each hosted chat with how many are in it, and any of them opens its preview to join", run: async b => {
   const shots = join(root, "untracked", "in-ooga-chat");
   mkdirSync(shots, { recursive: true });
+  const w = phone ? 390 : 1280;
   await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "players" });
   await b.evaluate(`(async () => {
     const W = window.__inChats = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [] };
-    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "tester", display: "Tester" } }) })
-      : String(url) === "/auth/logout" ? Promise.resolve({ ok: true }) : W.fetch(url, options);
+    const json = (status, data) => Promise.resolve({ ok: status < 400, status, headers: { get: () => "application/json" }, json: async () => data });
+    const entry = (id, title, zone, speakers, listeners) => ({ id, title, zone, startedAt: 1, host: { login: "cyd", display: "Cyd" }, speakers, listeners, open: id === "AAAAAAAAAAAAAAAA" });
+    // X accounts on the stage, whose portraits are the native Ooga face: no picture is fetched from the page's origin.
+    const stage = [{ id: "x:3", generation: 1, source: "app", role: "speaker", login: "cyd", display: "Cyd", rank: "host" }, { id: "x:5", generation: 1, source: "app", role: "speaker", login: "zoe", display: "Zoe", muted: true },
+      { id: "x:1001", generation: 1, source: "app", role: "speaker", login: "xena", display: "Xena" }];
+    window.fetch = (url, options) => { const u = String(url);
+      if (u === "/api/me") return json(200, { player: { id: 71, login: "tester", display: "Tester" } });
+      if (u === "/auth/logout") return Promise.resolve({ ok: true });
+      if (u === "/api/chats") return json(200, { chats: [entry("AAAAAAAAAAAAAAAA", "Lightning dev call", "main", 3, 12), entry("BBBBBBBBBBBBBBBB", "Routing fees, channel liquidity and the rebalancer at work", "dsb", 1, 1),
+        entry("CCCCCCCCCCCCCCCC", "Quiet room", "none", 0, 4), entry("DDDDDDDDDDDDDDDD", "Bitcoin office hours", "main", 3, 12)] });
+      if (u.startsWith("/api/chats/") && u.length === 27) return json(200, { chat: { id: u.slice(-16), open: u.endsWith("AAAAAAAAAAAAAAAA") }, stage: u.endsWith("AAAAAAAAAAAAAAAA") ? stage : stage.slice(0, 1), listeners: 12, requests: 1 });
+      if (u.startsWith("/api/chats/")) return json(404, { error: { code: "not_found" } });
+      return W.fetch(url, options); };
     window.WebSocket = class { static OPEN = 1; constructor(url) { this.url = String(url); this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } addEventListener() {} };
     BL.net.state.started = true; BL.net.state.resolved = false; await BL.net.recheck();
     W.room = m => W.sockets.filter((s) => !s.url.includes("/api/chats/")).at(-1).onmessage({ data: JSON.stringify(m) });
-    const m = (n, name, role) => ({ id: n > 1000 ? "x:" + n : "gh:" + n, login: name.toLowerCase(), display: name, role });
-    W.room({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-members-v1"],
+    const sum = (chat, title, speakers, listeners, app) => ({ chat, title, speakers, listeners, app });
+    W.room({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-summary-v1"],
       players: [{ id: 2, login: "bea", display: "Bea", zone: "outside", x: 2, y: 0, z: 3, yaw: 0 }],
-      chatMembers: [{ chat: "AAAAAAAAAAAAAAAA", title: "Lightning dev call", members: [m(71, "Tester", "listener"), m(2, "Bea", "speaker"), m(5, "Zoe", "listener"), m(3, "Cyd", "speaker"), m(1001, "Xena", "listener")], more: 0 },
-        { chat: "BBBBBBBBBBBBBBBB", title: "Routing fees, channel liquidity and the rebalancer at work", members: [m(5, "Zoe", "speaker"), m(4, "Dot", "listener")], more: 0 }] });
+      chatSummaries: [sum("BBBBBBBBBBBBBBBB", "Routing fees, channel liquidity and the rebalancer at work", 1, 1, 2), sum("AAAAAAAAAAAAAAAA", "Lightning dev call", 3, 12, 13),
+        sum("CCCCCCCCCCCCCCCC", "Quiet room", 0, 4, 4), sum("DDDDDDDDDDDDDDDD", "Bitcoin office hours", 3, 12, 0)] });
+    W.rowOf = (title) => [...document.querySelectorAll("#players-list .players-chat-open")].find((e) => e.querySelector(".players-chat-title").textContent === title);
+    W.toPlayers = () => { const p = document.getElementById("players-panel"); if (!BL.sheet.visible(p)) BL.sheet.tabFor(p).click(); };
   })()`);
+  await b.sleep(200);
   const look = () => b.evaluate(`(() => {
     const panel = document.getElementById("players-panel"), groups = [...document.querySelectorAll("#players-list .players-group")];
-    const last = groups.at(-1), rows = last && last.querySelector("h3").textContent === "In Ooga Chat" ? [...last.querySelectorAll("li")] : [];
+    const last = groups.at(-1), chats = last && last.querySelector("h3").textContent === "In Ooga Chat" ? [...last.querySelectorAll(".players-chat-open")] : [];
     const inside = (e) => { const r = e.getBoundingClientRect(), p = panel.getBoundingClientRect(); return r.width > 0 && r.left >= p.left - 1 && r.right <= p.right + 1; };
-    return { headings: groups.map((g) => g.querySelector("h3").textContent), rows: rows.map((li) => li.querySelector(".roster-label").textContent + "=" + li.querySelector(".roster-presence").title), lines: rows.every((li) => li.getBoundingClientRect().height < 40 && !li.querySelector(".players-where")),
-      gray: rows.every((li) => li.classList.contains("players-listener") && li.querySelector(".roster-presence").dataset.online === (/^Speaking/.test(li.querySelector(".roster-presence").title) ? "cloud" : "true") && li.querySelector(".players-look").hidden && li.querySelector(".roster-voice").hidden && li.querySelector(".players-link").hidden),
-      chip: document.getElementById("players-count").textContent, fits: rows.every((li) => inside(li)),
+    return { headings: groups.map((g) => g.querySelector("h3").textContent),
+      rows: chats.map((e) => e.querySelector(".players-chat-title").textContent + "=" + e.querySelector(".players-chat-counts").textContent + (e.querySelector(".players-chat-here").hidden ? "" : "=here")),
+      buttons: chats.every((e) => e.tagName === "BUTTON" && e.type === "button"), fits: chats.every(inside), whole: chats.every((e) => e.scrollWidth <= e.clientWidth + 1 && getComputedStyle(e.querySelector(".players-chat-title")).textOverflow !== "ellipsis"),
+      chip: document.getElementById("players-count").textContent, online: BL.cloudPanel.online(),
       wide: panel.scrollWidth > panel.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1 };
   })()`);
   await b.evaluate(`document.querySelector("#players-list .players-group:last-child")?.scrollIntoView({ block: "end" })`);
   const first = await look();
-  await b.screenshot(join(shots, `in-ooga-chat-${phone ? 390 : 1280}.png`));
-  // A name opens its strip: the chat and how they are in it, and Join chat, which opens that chat in the Ooga Chat tab
-  // (the live list asked first, here a fake one); while in it, the strip says so. Joining another asks Change chats?
-  // (Stay keeps the chat, Switch chats changes it), and a chat no longer listed is said to have ended.
-  const w = phone ? 390 : 1280;
-  await b.evaluate(`(() => { const W = __inChats, real = window.fetch;
-    const entry = (id, title, zone) => ({ id, title, zone, startedAt: 1, host: { login: "cyd", display: "Cyd" }, speakers: 1, listeners: 2, open: false });
-    window.fetch = (url, options) => String(url) === "/api/chats" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" },
-        json: async () => ({ chats: [entry("AAAAAAAAAAAAAAAA", "Lightning dev call", "main"), entry("BBBBBBBBBBBBBBBB", "Routing fees, channel liquidity and the rebalancer at work", "dsb")] }) })
-      : String(url).startsWith("/api/chats/") ? Promise.resolve({ ok: false, status: 404, headers: { get: () => "application/json" }, json: async () => ({ error: { code: "not_found" } }) }) : real(url, options);
-    W.rowOf = (name) => [...document.querySelectorAll("#players-list li.players-chat")].find((li) => li.querySelector(".roster-label").textContent === name);
-    W.toPlayers = () => { const p = document.getElementById("players-panel"); if (!BL.sheet.visible(p)) BL.sheet.tabFor(p).click(); }; })()`);
-  const strip = (who) => b.evaluate(`(() => { const li = __inChats.rowOf(${JSON.stringify(who)}), s = li && li.querySelector(".inchat-strip"), panel = document.getElementById("players-panel");
-    const p = panel.getBoundingClientRect(), r = s && !s.hidden ? s.getBoundingClientRect() : null, join = li && li.querySelector(".inchat-join"), here = li && li.querySelector(".inchat-here");
-    return { expanded: li?.querySelector(".players-name-toggle").getAttribute("aria-expanded"), shown: !!r, where: li?.querySelector(".inchat-where").textContent,
-      join: !!join && !join.hidden && !!join.offsetParent, here: !!here && !here.hidden && !!here.offsetParent,
-      inside: !r || r.left >= p.left - 1 && r.right <= p.right + 1, wide: panel.scrollWidth > panel.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1 }; })()`);
+  await b.screenshot(join(shots, `in-ooga-chat-${w}.png`));
+  // A chat pressed: its preview, with its stage, the Open stage tag and its counts.
+  const pop = () => b.evaluate(`(() => { const d = document.querySelector("dialog.hc-preview"), r = d && d.open ? d.getBoundingClientRect() : null;
+    return r ? { title: d.querySelector("h2").textContent, open: !d.querySelector(".hc-open-tag").hidden, stage: d.querySelectorAll(".hc-preview-stage > *").length, count: d.querySelector(".hc-preview-count").textContent,
+      join: [...d.querySelectorAll("button")].map((e) => e.textContent).filter((t) => /^Join/.test(t)).join(), focus: document.activeElement?.textContent || "",
+      inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1, shown: r.width > 0 && r.height > 0 } : null; })()`);
+  const untilPop = async (test) => { let at; for (let t = 0; t < 4000 && !test(at = await pop()); t += 100) await b.sleep(100); return at; };
   const room = () => b.evaluate(`(() => { const d = document.querySelector("dialog.hosted-switch"), r = d && d.open ? d.getBoundingClientRect() : null;
-    return { room: BL.chatCall.room?.id || "", cloud: BL.sheet.visible(document.getElementById("cloud-panel")), title: document.querySelector("#cloud-panel .hc-room-title")?.textContent || "",
-      toast: document.getElementById("toast")?.textContent || "", ask: r ? { head: d.querySelector("h2").textContent, text: d.querySelector(".hosted-switch-text").textContent, note: d.querySelector(".hosted-switch-note").textContent,
-        focus: document.activeElement?.textContent || "", layer: !!(BL.padFocus && BL.padFocus.open()), inside: r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 } : null,
-      focus: document.activeElement?.classList.contains("inchat-join") ? document.activeElement.closest("li").querySelector(".roster-label").textContent : "" }; })()`);
+    return { room: BL.chatCall.room?.id || "", cloud: BL.sheet.visible(document.getElementById("cloud-panel")), players: BL.sheet.visible(document.getElementById("players-panel")), title: document.querySelector("#cloud-panel .hc-room-title")?.textContent || "",
+      toast: document.getElementById("toast")?.textContent || "", preview: !!document.querySelector("dialog.hc-preview")?.open, ask: r ? { head: d.querySelector("h2").textContent, text: d.querySelector(".hosted-switch-text").textContent, note: d.querySelector(".hosted-switch-note").textContent,
+        focus: document.activeElement?.textContent || "", inside: r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 } : null,
+      focus: document.activeElement?.classList.contains("players-chat-open") ? document.activeElement.querySelector(".players-chat-title").textContent : "" }; })()`);
   const untilRoom = async (test) => { let at; for (let t = 0; t < 4000 && !test(at = await room()); t += 100) await b.sleep(100); return at; };
-  await b.evaluate(`__inChats.rowOf("Cyd").querySelector(".players-name-toggle").click()`);
-  await b.evaluate(`__inChats.rowOf("Cyd").scrollIntoView({ block: "center" })`);
-  const opened = await strip("Cyd");
-  await b.screenshot(join(shots, `in-ooga-chat-row-${w}.png`));
-  await b.evaluate(`__inChats.rowOf("Cyd").querySelector(".inchat-join").click()`);
+  await b.evaluate(`__inChats.rowOf("Lightning dev call").click()`);
+  const previewed = await untilPop((p) => p && p.stage === 3);
+  await b.screenshot(join(shots, `in-ooga-chat-preview-${w}.png`));
+  await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
   const joined = await untilRoom((r) => r.room === "AAAAAAAAAAAAAAAA" && r.cloud && r.title === "Lightning dev call");
   await b.evaluate(`__inChats.toPlayers()`);
   await b.sleep(200);
-  const inside = await strip("Cyd");
-  // In the dev call as its host: Zoe's chat asks first, Stay keeps the call and gives Join chat the focus back.
-  await b.evaluate(`(() => { BL.chatCall.room.you = { rank: "host" }; const li = __inChats.rowOf("Zoe"); li.querySelector(".players-name-toggle").click(); li.querySelector(".inchat-join").click(); })()`);
+  const marked = await look();
+  // The chat the visitor is in: only the Ooga Chat tab.
+  await b.evaluate(`__inChats.rowOf("Lightning dev call").click()`);
+  const again = await untilRoom((r) => r.cloud);
+  await b.sleep(300);
+  const againPop = await pop();
+  // As its host, the routing chat's Join as listener asks first: Stay keeps the call and gives the row the focus back,
+  // Switch chats moves.
+  await b.evaluate(`(() => { __inChats.toPlayers(); BL.chatCall.room.you = { rank: "host" }; __inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click(); })()`);
+  await untilPop((p) => p && p.title === "Routing fees, channel liquidity and the rebalancer at work");
+  await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
   const asked = await untilRoom((r) => !!r.ask);
-  await b.screenshot(join(shots, `in-ooga-chat-switch-${w}.png`));
   await b.evaluate(`[...document.querySelectorAll("dialog.hosted-switch button")].find((e) => e.textContent === "Stay").click()`);
   const stayed = await room();
-  await b.evaluate(`__inChats.rowOf("Zoe").querySelector(".inchat-join").click()`);
-  await untilRoom((r) => !!r.ask);
-  await b.key("Escape");
-  const escaped = await room();
-  await b.evaluate(`__inChats.rowOf("Zoe").querySelector(".inchat-join").click()`);
+  await b.evaluate(`__inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click()`);
+  await untilPop((p) => p && p.title === "Routing fees, channel liquidity and the rebalancer at work");
+  await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
   await untilRoom((r) => !!r.ask);
   await b.evaluate(`document.querySelector("dialog.hosted-switch .foot-primary").click()`);
   const switched = await untilRoom((r) => r.room === "BBBBBBBBBBBBBBBB" && r.cloud && r.title === "Routing fees, channel liquidity and the rebalancer at work");
-  // A chat the list no longer has: said to have ended, and nothing changes.
-  await b.evaluate(`(() => { __inChats.toPlayers(); __inChats.room({ t: "chat-members", chat: "CCCCCCCCCCCCCCCC", title: "Gone already", members: [{ id: "gh:8", login: "fay", display: "Fay", role: "listener" }], more: 0 }); })()`);
+  // A chat the live list no longer has: said to have ended, and nothing changes.
+  await b.evaluate(`(() => { __inChats.toPlayers(); __inChats.room({ t: "chat-summary", chat: "EEEEEEEEEEEEEEEE", title: "Gone already", speakers: 1, listeners: 0, app: 1 }); })()`);
   await b.sleep(200);
-  await b.evaluate(`(() => { const li = __inChats.rowOf("Fay"); li.querySelector(".players-name-toggle").click(); li.querySelector(".inchat-join").click(); })()`);
+  await b.evaluate(`__inChats.rowOf("Gone already").click()`);
   const gone = await untilRoom((r) => /That chat has ended/.test(r.toast));
-  await b.evaluate(`(() => { __inChats.room({ t: "chat-members", chat: "CCCCCCCCCCCCCCCC", title: "", members: [], more: 0 }); BL.chatCall.leave(); __inChats.toPlayers(); })()`);
+  await b.evaluate(`(() => { __inChats.room({ t: "chat-summary", chat: "EEEEEEEEEEEEEEEE", title: "", speakers: 0, listeners: 0, app: 0 }); BL.chatCall.leave(); __inChats.toPlayers(); })()`);
   await b.sleep(200);
-  record(`in ooga chat${phone ? " (390 px)" : ""}: a name in In Ooga Chat opens a strip with the chat they are in and Join chat, which opens that chat in the Ooga Chat tab and then reads "You're in this chat"; joining another asks Change chats? (with a host's hold in words, focus on Switch chats, on screen and in the pad's layers): Stay or Escape keeps the chat and gives Join chat the focus back, Switch chats moves to the new one, and a chat no longer listed is said to have ended; nothing wider than the panel`,
-    opened.expanded === "true" && opened.shown && opened.where === "Speaking in Lightning dev call" && opened.join && !opened.here && opened.inside && !opened.wide
-      && joined.room === "AAAAAAAAAAAAAAAA" && joined.cloud && inside.here && !inside.join
+  record(`in ooga chat${phone ? " (390 px)" : ""}: a chat pressed in In Ooga Chat opens its preview (its stage, the Open stage tag, its counts, Join as listener focused, on screen) over Online Oogas; Join as listener opens it in the Ooga Chat tab and its row then reads "You're in this chat", and pressing it again only shows that tab; from another chat a preview's Join asks Change chats? (with a host's hold in words): Stay keeps the chat and gives the row the focus back, Switch chats moves; a chat no longer listed is said to have ended`,
+    previewed?.title === "Lightning dev call" && previewed.open && previewed.stage === 3 && previewed.count === "12 listening · 1 waiting to speak" && previewed.join === "Join as speaker,Join as listener" && previewed.focus === "Join as listener" && previewed.inside && previewed.shown
+      && joined.room === "AAAAAAAAAAAAAAAA" && joined.cloud && !joined.preview && marked.rows.includes("Lightning dev call=3 speaking · 12 listening=here")
+      && again.room === "AAAAAAAAAAAAAAAA" && again.cloud && !againPop
       && asked.ask?.head === "Change chats?" && asked.ask.text === "You're in Lightning dev call. Leave it and join Routing fees, channel liquidity and the rebalancer at work?"
-      && /^You host it: it waits 2 minutes for you/.test(asked.ask.note) && asked.ask.focus === "Switch chats" && asked.ask.layer && asked.ask.inside
-      && !stayed.ask && stayed.room === "AAAAAAAAAAAAAAAA" && stayed.focus === "Zoe" && !escaped.ask && escaped.room === "AAAAAAAAAAAAAAAA" && escaped.focus === "Zoe"
-      && switched.room === "BBBBBBBBBBBBBBBB" && switched.cloud && gone.room === "BBBBBBBBBBBBBBBB" && /That chat has ended/.test(gone.toast),
-    JSON.stringify({ opened, joined, inside, asked, stayed, escaped, switched, gone }));
-  // Zoe leaves the dev call, a newcomer listens there, and the long-titled chat ends.
-  await b.evaluate(`(() => { const W = __inChats;
-    W.room({ t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "Lightning dev call", members: [{ id: "gh:3", login: "cyd", display: "Cyd", role: "speaker" }, { id: "gh:6", login: "eve", display: "Eve", role: "listener" }], more: 0 });
-    W.room({ t: "chat-members", chat: "BBBBBBBBBBBBBBBB", title: "", members: [], more: 0 }); })()`);
+      && /^You host it: it waits 2 minutes for you/.test(asked.ask.note) && asked.ask.focus === "Switch chats" && asked.ask.inside
+      && !stayed.ask && stayed.room === "AAAAAAAAAAAAAAAA" && stayed.focus === "Routing fees, channel liquidity and the rebalancer at work"
+      && switched.room === "BBBBBBBBBBBBBBBB" && switched.cloud && gone.room === "BBBBBBBBBBBBBBBB" && /That chat has ended/.test(gone.toast) && !gone.preview,
+    JSON.stringify({ previewed, joined, marked, again, againPop, asked, stayed, switched, gone }));
+  // The counts follow each chat's word, and the group goes with the last chat.
+  await b.evaluate(`__inChats.room({ t: "chat-summary", chat: "CCCCCCCCCCCCCCCC", title: "Quiet room", speakers: 1, listeners: 40, app: 41 })`);
+  await b.sleep(100);
   const changed = await look();
-  await b.evaluate(`__inChats.room({ t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "", members: [], more: 0 })`);
+  await b.evaluate(`(() => { for (const c of ["AAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBB", "CCCCCCCCCCCCCCCC", "DDDDDDDDDDDDDDDD"]) __inChats.room({ t: "chat-summary", chat: c, title: "", speakers: 0, listeners: 0, app: 0 }); })()`);
+  await b.sleep(100);
   const ended = await look();
   await b.evaluate(`(() => { const W = __inChats; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
-  record(`in ooga chat${phone ? " (390 px)" : ""}: Online Oogas ends with In Ooga Chat, listing once each person in a hosted chat who is not on the island (never the visitor or an island player, speaking over listening), by name alone and in gray (the chat they speak or listen in only in the dot's tooltip), counted in "N online", following each chat's changes and gone with the last chat; nothing clipped or wider than the panel`,
+  record(`in ooga chat${phone ? " (390 px)" : ""}: Online Oogas ends with In Ooga Chat, one button a live hosted chat, busiest first then by title, its whole title and its counts under it (a count of nobody left out), "N online" adding each chat's Ooga Chat app count, following each chat's changes and gone with the last chat; nothing clipped or wider than the panel`,
     first.headings.at(-1) === "In Ooga Chat" && first.headings.filter((h) => h === "In Ooga Chat").length === 1
-      && first.rows.join("|") === "Cyd=Speaking in Lightning dev call|Dot=Listening in Routing fees, channel liquidity and the rebalancer at work|Xena=Listening in Lightning dev call|Zoe=Speaking in Routing fees, channel liquidity and the rebalancer at work"
-      && first.gray && first.lines && first.chip === "6 online" && first.fits && !first.wide
-      && changed.headings.at(-1) === "In Ooga Chat" && changed.rows.join("|") === "Cyd=Speaking in Lightning dev call|Eve=Listening in Lightning dev call" && changed.chip === "4 online"
+      && first.rows.join("|") === "Bitcoin office hours=3 speaking · 12 listening|Lightning dev call=3 speaking · 12 listening|Quiet room=4 listening|Routing fees, channel liquidity and the rebalancer at work=1 speaking · 1 listening"
+      && first.buttons && first.fits && first.whole && !first.wide && first.chip === "21 online" && first.online === 21
+      && changed.rows[0] === "Quiet room=1 speaking · 40 listening" && changed.chip === "58 online"
       && !ended.headings.includes("In Ooga Chat") && ended.chip === "2 online",
     JSON.stringify({ first, changed, ended }));
 } });
@@ -43425,35 +43437,33 @@ const callNetChecks = async BL => {
     !shut.gate && shut.sent === "" && shut.mark && open.gate && open.sent === "true" && open.bea && !open.cy && heard === "false,true" && ended === "true,false" && !dropped,
     JSON.stringify({ shut, open, heard, ended, dropped }));
 };
-// Rule (docs/ooga-chat-hosts.md, chat-members-v1): who is in each hosted chat reaches the page only where welcome lists
-// the feature, whole in the welcome and then a chat at a time, each member checked; an empty list drops the chat, and a
+// Rule (docs/ooga-chat-hosts.md, chat-summary-v1): each hosted chat's title and counts reach the page only where welcome
+// lists the feature, whole in the welcome and then a chat at a time, each checked; nobody in it drops the chat, and a
 // dropped room forgets them all.
 const chatMembersNetChecks = async BL => {
   const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
   let told = 0; f.net.subscribeChatMembers(() => told++);
   await f.net.start();
   const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) }), A = "AAAAAAAAAAAAAAAA", B = "BBBBBBBBBBBBBBBB";
-  const kept = () => [...f.net.state.chatMembers].map(([chat, c]) => `${chat.slice(0, 1)}:${c.title}:${c.members.map(m => `${m.id}/${m.display}/${m.role}`).join("+")}:${c.more}`).join("|");
-  const amy = { id: "gh:1", login: "amy", display: "Amy", role: "speaker" };
-  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [], chatMembers: [{ chat: A, title: "Dev", members: [amy], more: 0 }] });
-  message({ t: "chat-members", chat: A, title: "Dev", members: [amy], more: 0 });
+  const kept = () => [...f.net.state.chatMembers].map(([chat, c]) => `${chat.slice(0, 1)}:${c.title}:${c.speakers}/${c.listeners}/${c.app}:${Object.keys(c).join()}`).join("|");
+  const dev = { chat: A, title: "Dev", speakers: 2, listeners: 5, app: 4 };
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [], chatSummaries: [dev] });
+  message({ t: "chat-summary", ...dev });
   const shut = kept();
-  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-members-v1"], players: [], chatMembers: [{ chat: A, title: "Dev", members: [amy], more: 0 }, { chat: "short", members: [amy] }] });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-summary-v1"], players: [], chatSummaries: [dev, { chat: "short", speakers: 1 }] });
   const welcomed = kept();
-  message({ t: "chat-members", chat: B, title: "Crowd\u0007", members: [{ id: "x:9", login: "zed", display: "", role: "host" }, { id: "bad", login: "x" }, { id: "x:9", login: "zed" }, { id: "gh:2", login: "b e a" }], more: 3 });
-  const added = kept(), frozen = Object.isFrozen(f.net.state.chatMembers.get(B)) && Object.isFrozen(f.net.state.chatMembers.get(B).members[0]);
-  message({ t: "chat-members", chat: A, title: "", members: [], more: 0 });
+  message({ t: "chat-summary", chat: B, title: "Crowd\u0007", speakers: -1, listeners: 2.5e6, app: 9e9, members: [{ id: "gh:1", login: "amy" }] });
+  const added = kept(), frozen = Object.isFrozen(f.net.state.chatMembers.get(B));
+  message({ t: "chat-summary", chat: A, title: "", speakers: 0, listeners: 0, app: 0 });
   const dropped = kept();
-  const crowd = Array.from({ length: 105 }, (_, i) => ({ id: `gh:${100 + i}`, login: `m${i}`, display: `M${i}`, role: "listener" }));
-  message({ t: "chat-members", chat: A, title: "Big", members: crowd, more: 2 });
-  const big = f.net.state.chatMembers.get(A), capped = [big.members.length, big.more].join();
   const before = told;
   ws.onclose({ code: 1006, reason: "", wasClean: false });
   const lost = { size: f.net.state.chatMembers.size, told: told > before };
   f.net.dispose();
-  record("hosted chats members wire: who is in each chat reaches the page only where welcome lists chat-members-v1, whole in the welcome and then a chat at a time, every member checked (an id once, a missing name its login, an unknown role a listener) and frozen, at most a hundred a chat with the rest counted; an empty list drops the chat and a dropped room forgets them all",
-    shut === "" && welcomed === "A:Dev:gh:1/Amy/speaker:0" && added === "A:Dev:gh:1/Amy/speaker:0|B::x:9/zed/listener:3" && frozen && dropped === "B::x:9/zed/listener:3" && capped === "100,7" && lost.size === 0 && lost.told,
-    JSON.stringify({ shut, welcomed, added, frozen, dropped, capped, lost }));
+  record("hosted chats summary wire: each chat's title and counts reach the page only where welcome lists chat-summary-v1, whole in the welcome and then a chat at a time, every value checked (a count a whole number up to a million, `app` never over everyone there, nothing but the title and three counts kept) and frozen; nobody in it drops the chat and a dropped room forgets them all",
+    shut === "" && welcomed === "A:Dev:2/5/4:title,speakers,listeners,app" && added === "A:Dev:2/5/4:title,speakers,listeners,app|B::0/1000000/1000000:title,speakers,listeners,app" && frozen
+      && dropped === "B::0/1000000/1000000:title,speakers,listeners,app" && lost.size === 0 && lost.told,
+    JSON.stringify({ shut, welcomed, added, frozen, dropped, lost }));
 };
 // Rule (#660, #656): Ooga Chat's panel on a DOM stand-in, through its own handlers: it asks for the visitor's own zone,
 // draws the whole of a long roster as tiles (audience-tiles.js) for its slab to scroll, keeps each tile's nodes by id
@@ -43736,7 +43746,7 @@ const playersColumnChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/native-icons.js"), "utf8"), context);
     Object.assign(window.BL, {
-      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, linkApp: [], clouds: [] }, remotes,
+      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, linkApp: [], clouds: [], chatMembers: new Map() }, remotes,
         voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
       voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },

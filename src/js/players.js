@@ -35,9 +35,8 @@
 // return within REJOIN_QUIET takes that leave's line and count back (`sheet.unnote`). With "Read joins aloud" ticked (this browser's choice, in localStorage) the names are
 // spoken too, one utterance at a time: names that arrive while one plays wait and are said together after it, and the
 // Read joins aloud checkbox alone controls it, independently of environment sound. Speech starts from the box, a gesture.
-// In Ooga Chat (chat-members-v1, docs/ooga-chat-hosts.md): everyone in a hosted chat who is not on the island, the
-// last group, after every zone's, each in gray, the name opening the chat they are in, whether they speak or listen
-// there, and Join chat, which opens it in the Ooga Chat tab (cloud-panel.js `join`).
+// In Ooga Chat (chat-summary-v1, docs/ooga-chat-hosts.md): the last group, after every zone's: each live hosted chat
+// with how many speak and listen in it, a press opening its preview with the way in (cloud-panel.js `preview`).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -100,34 +99,28 @@
     listenerRows.set(key, row);
     return row;
   };
-  // Everyone in a hosted chat and not on the island (cloud-panel.js `inChats`, from the room's `chat-members`), in gray as
-  // a listener is, under In Ooga Chat, a group of its own after every zone's: the name alone, which chat and whether
-  // they speak or listen there in the dot's tooltip. No mark, link, crosshair or distance. The name opens a strip as a
-  // player's does: "Speaking in" or "Listening in" and the chat's title, and Join chat (cloud-panel.js `join`), or "You're
-  // in this chat" where the visitor is.
-  const IN_CHATS = "in-ooga-chat", chatRows = new Map(), chatOrder = [];
-  const chatRow = (key) => {
-    let row = chatRows.get(key);
+  // In Ooga Chat: each live hosted chat (net.js `state.chatMembers`, the room's word), a group of its own after every
+  // zone's: one button a chat, its title (wrapping, never cut short) and its counts under it ("3 speaking · 12 listening",
+  // a count of nobody left out), "You're in this chat" on the one the visitor is in; busiest first, then by title. A press
+  // opens the chat's preview (cloud-panel.js `preview`), whose Join as listener or Join as speaker opens it in the Ooga
+  // Chat tab; the chat the visitor is in only shows that tab.
+  const IN_CHATS = "in-ooga-chat", chatRows = new Map(), chatOrder = [], COLLATE = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  const chatRow = (id) => {
+    let row = chatRows.get(id);
     if (row) return row;
-    row = makeRow();
-    row.listener = true; row.id = -Number(key.slice(key.indexOf(":") + 1));
-    row.li.dataset.id = String(row.id); row.li.dataset.chat = key; row.li.classList.add("players-listener", "players-chat");
-    const dot = row.li.querySelector(".roster-presence");
-    dot.dataset.online = "listener";
-    row.dot = dot;
-    row.button.hidden = true;
-    const where = document.createElement("span"), how = document.createElement("span"), title = document.createElement("strong");
-    const join = document.createElement("button"), here = document.createElement("span");
-    where.className = "inchat-where"; where.id = `${row.volume.id}-where`; where.append(how, " ", title);
-    join.type = "button"; join.className = "foot-button foot-primary inchat-join"; join.textContent = "Join chat"; join.setAttribute("aria-describedby", where.id);
-    here.className = "inchat-here"; here.textContent = "You're in this chat"; here.hidden = true;
-    row.volume.classList.add("inchat-strip");
-    row.volume.replaceChildren(where, join, here);
-    Object.assign(row, { how, title, join, here, chat: "", whereShown: "" });
-    chatRows.set(key, row);
+    const li = document.createElement("li"), button = document.createElement("button"), title = document.createElement("span");
+    const counts = document.createElement("span"), here = document.createElement("span");
+    li.className = "players-chat";
+    button.type = "button"; button.className = "players-chat-open"; button.dataset.chat = id;
+    title.className = "players-chat-title"; counts.className = "players-chat-counts";
+    here.className = "players-chat-here"; here.textContent = "You're in this chat"; here.hidden = true;
+    button.append(title, counts, here); li.append(button);
+    row = { li, title, counts, here, name: "", busy: 0, seen: 0, shown: "" };
+    chatRows.set(id, row);
     return row;
   };
-  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : li.dataset.listener ? listenerRows.get(li.dataset.listener) : li.dataset.chat ? chatRows.get(li.dataset.chat) : rows.get(Number(li.dataset.id));
+  const chatCounts = (c) => [c.speakers ? `${c.speakers} speaking` : "", c.listeners ? `${c.listeners} listening` : ""].filter(Boolean).join(" · ");
+  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : li.dataset.listener ? listenerRows.get(li.dataset.listener) : rows.get(Number(li.dataset.id));
   const makeRow = () => {
     const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
@@ -434,25 +427,7 @@
       row.account = q.id;
     }
     for (const [id, row] of listenerRows) if (row.seen !== pass) { row.li.remove(); listenerRows.delete(id); }
-    chatOrder.length = 0;
-    if (BL.cloudPanel) for (const m of BL.cloudPanel.inChats()) {
-      if (cloudRows.has(m.id) || listenerRows.has(m.id)) continue;
-      const row = chatRow(m.id), how = `${m.role === "speaker" ? "Speaking" : "Listening"} in`, title = m.title || "a chat", where = `${how} ${title}`;
-      row.name = m.display; row.zone = ""; row.group = IN_CHATS; row.seen = pass; row.chat = m.chat;
-      if (row.whereShown !== where) {
-        // Purple for a speaker in Ooga Chat, as on the roster; green for a listener, online.
-        row.whereShown = where; row.dot.title = where; row.dot.setAttribute("aria-label", where); row.dot.dataset.online = m.role === "speaker" ? "cloud" : "true";
-        row.how.textContent = how; row.title.textContent = title;
-      }
-      const here = !!BL.chatCall && BL.chatCall.room?.id === m.chat;
-      if (row.join.hidden !== here) { row.join.hidden = here; row.here.hidden = !here; }
-      chatOrder.push(row);
-    }
-    for (const [id, row] of chatRows) if (row.seen !== pass) { row.li.remove(); chatRows.delete(id); }
     Z.arrange(order, selfRow.group);
-    // In Ooga Chat comes last, after every zone's group, its people by name.
-    Z.arrange(chatOrder, IN_CHATS);
-    for (const row of chatOrder) order.push(row);
     let group = null, groupIndex = 0, rowIndex = 0;
     for (const row of order) {
       if (!group || group.key !== row.group) {
@@ -465,6 +440,26 @@
       rowIndex++;
       if (row.label.textContent !== row.name) { row.label.textContent = row.name; row.label.title = row.name; }
       if (!row.self) row.slider.setAttribute("aria-label", `Volume for ${row.name}`);
+    }
+    // In Ooga Chat comes last, after every zone's group.
+    chatOrder.length = 0;
+    const inChat = BL.chatCall && BL.chatCall.room ? BL.chatCall.room.id : "";
+    for (const [id, c] of s.chatMembers) {
+      const row = chatRow(id), here = id === inChat, shown = `${c.title}\n${chatCounts(c)}\n${here}`;
+      row.name = c.title || "Untitled chat"; row.busy = c.speakers + c.listeners; row.seen = pass;
+      if (row.shown !== shown) {
+        row.shown = shown;
+        row.title.textContent = row.name; row.counts.textContent = chatCounts(c); row.here.hidden = !here;
+      }
+      chatOrder.push(row);
+    }
+    for (const [id, row] of chatRows) if (row.seen !== pass) { row.li.remove(); chatRows.delete(id); }
+    if (chatOrder.length) {
+      chatOrder.sort((a, b) => b.busy - a.busy || COLLATE.compare(a.name, b.name));
+      const chats = groupFor(IN_CHATS);
+      chats.seen = pass;
+      if (list.children[groupIndex] !== chats.section) list.insertBefore(chats.section, list.children[groupIndex] || null);
+      chatOrder.forEach((row, i) => { if (chats.ul.children[i] !== row.li) chats.ul.insertBefore(row.li, chats.ul.children[i] || null); });
     }
     for (const [key, entry] of groups) if (entry.seen !== pass) { entry.section.remove(); groups.delete(key); }
     measure();
@@ -515,10 +510,10 @@
       }
       return;
     }
-    const join = e.target.closest(".inchat-join");
-    if (join) {
-      const row = rowOf(join.closest("li"));
-      if (row && row.chat && BL.cloudPanel) BL.cloudPanel.join(row.chat, join);
+    // A chat in In Ooga Chat: its preview, the focus coming back here as it closes.
+    const chat = e.target.closest(".players-chat-open");
+    if (chat) {
+      if (BL.cloudPanel) BL.cloudPanel.preview(chat.dataset.chat, chat);
       return;
     }
     const duel = e.target.closest(".players-duel");

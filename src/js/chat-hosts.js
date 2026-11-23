@@ -10,7 +10,8 @@
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
 // whether Request to speak reads Speak now on an open stage. `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
-// `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order). It adds:
+// `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
+// `preview(entry, from)` opens a chat's preview from elsewhere on the page (an entry as `parseList` gives it). It adds:
 // - the Chats list (shown while no chat is chosen): the live chats as the server orders them, busiest first, a list of
 //   buttons, each its title, zone, host and counts; read when shown and every LIST_MS at most while it stays shown and
 //   the page is visible (no timer otherwise). A chat pressed opens its preview, a modal pop-up: its title, zone and an
@@ -346,8 +347,10 @@
       previewTiles.draw(shown.stage, previewDescribe);
       set(previewCount, "textContent", `${shown.listeners} listening · ${shown.requests} waiting to speak`);
     };
-    // Read when it opens and every PREVIEW_MS while it stays open; nothing runs once it closes.
+    // Read when it opens and every PREVIEW_MS while it stays open; nothing runs once it closes. Opened from elsewhere on
+    // the page (the island's Online Oogas, `preview`) while the panel is hidden, it stands in the page's body until it closes.
     const showPreview = (entry, from) => {
+      if (!node.offsetParent && preview.parentNode !== node.ownerDocument.body) node.ownerDocument.body.append(preview);
       previewing = entry;
       previewFrom = from;
       set(previewTitle, "textContent", entry.title);
@@ -361,7 +364,10 @@
       previewTimer = setInterval(readPreview, PREVIEW_MS);
       readPreview();
     };
+    // A close event comes a task after its close, so one that lands after the preview opened again is not for it.
     preview.addEventListener("close", () => {
+      if (preview.open) return;
+      if (preview.parentNode !== node) node.append(preview);
       clearInterval(previewTimer);
       previewTimer = 0;
       previewing = null;
@@ -711,7 +717,7 @@
       space.setMenu(null);
       for (const el of [bar, dock, notice, list, strip, invite, offer, pop, ask, end, leave, requests, starter.node, preview]) el.remove();
     };
-    return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), dispose };
+    return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), preview: (entry, from = null) => showPreview(entry, from), dispose };
   };
   BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS, COHOST_SLOTS };
 })();

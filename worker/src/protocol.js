@@ -91,9 +91,11 @@ import "../../src/js/reaction-policy.js";
 //                                            them (a host with none sends nothing); binary NPC frames from them
 //                 call { id, on }            a player went into or out of a hosted chat's voice (call-v1); welcome and
 //                                            join carry `call: true` on a player who is in one
-//                 chat-members { chat, title, members, more }  a hosted chat's members now, each { id, login, display,
-//                                            role }, at most 100 and the rest counted; none as it ends (chat-members-v1,
-//                                            room-chat-members.js); welcome carries every chat's as `chatMembers`
+//                 chat-summary { chat, title, speakers, listeners, app }  a hosted chat's title and counts now: how
+//                                            many speak, how many listen, and how many of them are there through
+//                                            Ooga Chat's app rather than the island; all zero as it ends
+//                                            (chat-summary-v1, room-chat-members.js); welcome carries every chat's as
+//                                            `chatSummaries`
 //                 vstate { id, voice, muted }  a player's microphone went live or off, or they muted it; welcome
 //                                            and join carry the same two fields on every player, and hp and ko
 //                 hp { id, v, ko }           a player's driven Ooga's health changed

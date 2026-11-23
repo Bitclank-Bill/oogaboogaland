@@ -1938,16 +1938,33 @@ body[data-active-scene="block"] .mode-hud {
 
 .players-volume[hidden] { display: none; }
 
-/* In Ooga Chat's strip (players.js): the chat and how they are in it, wrapping, then Join chat or the visitor's own
-   "You're in this chat". */
-.inchat-strip { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
-.inchat-where { min-width: 0; color: rgba(243, 239, 228, 0.78); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
-.inchat-where strong { color: var(--paper); }
-.inchat-join { justify-self: end; }
-.inchat-here { justify-self: end; color: var(--accent-text); font-size: 11px; font-weight: 700; white-space: nowrap; }
-.inchat-join[hidden], .inchat-here[hidden] { display: none; }
+/* In Ooga Chat (players.js): a button a chat, its title wrapping and its counts under it. */
+.players-rows li.players-chat { display: block; padding: 0; }
+.players-chat-open {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--paper);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.players-chat-open:hover, .players-chat-open.virtual-hover { background: rgba(255, 255, 255, 0.05); }
+.players-chat-open:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.players-chat-title { font-size: 12px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.players-chat-counts { color: rgba(243, 239, 228, 0.78); font-size: 11px; }
+.players-chat-here { color: var(--accent-text); font-size: 11px; font-weight: 700; }
+.players-chat-here[hidden] { display: none; }
+@media (pointer: coarse) {
+  .players-chat-open { min-height: 44px; }
+}
 
-/* Change chats? (cloud-panel.js `join`): the question on a slab, Stay and the amber Switch chats under it. */
+/* Change chats? (cloud-panel.js `openChat`): the question on a slab, Stay and the amber Switch chats under it. */
 .hosted-switch { width: 360px; }
 .hosted-switch-slab { display: grid; gap: 8px; padding: 12px; }
 .hosted-switch-text { margin: 0; font-size: 12px; line-height: 1.45; color: rgba(243, 239, 228, 0.88); overflow-wrap: anywhere; }
