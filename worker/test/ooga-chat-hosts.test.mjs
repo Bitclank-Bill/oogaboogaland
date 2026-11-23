@@ -523,4 +523,53 @@ test("a word the island room missed is kept and sent again from the alarm", asyn
   assert.equal(a.islandWords.size, 0);
 });
 
+
+
+test("a chat's copy: speakers alone may walk it, walkers' rows say so, the clouds seat the rest, and leaving the stage, removal and the end reach the copy", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const calls = [];
+  const copy = { copyRevoke: async (id, reason) => calls.push(["revoke", id, reason]), copyEnd: async () => calls.push(["end"]),
+    copyClouds: async (list) => calls.push(["clouds", list.map((c) => [c.id, c.seat, c.character])]) };
+  w.env.ROOM = { getByName: (name) => name.startsWith("chat:") ? copy : { chatVoice: async () => ({ ok: true }) } };
+  const { chat } = await startChat(w.env, host(1), { title: "Copy", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), zed = await connect(w, chat.id, 9);
+  const a = w.objects.get(chatName(chat.id)).a;
+  assert.deepEqual(await a.copyMember("gh:1"), { ok: false, reason: "not-speaker" }, "the host walks only once on stage");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await ask(amy, { type: "invite", id: "gh:2" }); await ask(bea, { type: "setRole", role: "speaker" });
+  await ask(amy, { type: "invite", id: "x:9" }); await ask(zed, { type: "setRole", role: "speaker" });
+  for (const p of [amy, bea, zed]) { const c = a.model.conns.get(p.connId); a.model.activate(p.connId, c.lease.generation); }
+  await a.flush();
+  const member = await a.copyMember("gh:1");
+  assert.equal(member.ok, true);
+  assert.deepEqual(member.clouds.map((c) => [c.id, c.seat]), [["gh:1", "main-cloud-1"], ["gh:2", "main-cloud-2"], ["x:9", "main-cloud-3"]], "every speaker on a cloud, a seat each");
+  assert.equal(member.clouds[2].character, "guest/x-p9", "an X account sits there as a default Ooga no login can be");
+  assert.equal(member.clouds[0].seatRevision, "cloud-seats-v2");
+  await a.walking(["gh:1"]);
+  await w.settle();
+  assert.equal(rowOf(bea, "gh:1").walking, true, "a walker's row says so");
+  assert.deepEqual(calls.at(-1), ["clouds", [["gh:2", "main-cloud-2", "bea"], ["x:9", "main-cloud-3", "guest/x-p9"]]], "a walker's cloud stands empty; the copy hears the rest");
+  assert.deepEqual(a.copyCheck(["gh:1", "gh:4"]), ["gh:4"], "the sweep's check names who may no longer walk");
+  await a.walking(["gh:1", "gh:2"]);
+  await ask(amy, { type: "demote", id: "gh:2" });
+  await w.settle();
+  assert.ok(calls.some((c) => c[0] === "revoke" && c[1] === 2 && c[2] === "stage"), "moved to listening, sent home");
+  await ask(amy, { type: "setRole", role: "listener" });
+  await w.settle();
+  assert.ok(calls.some((c) => c[0] === "revoke" && c[1] === 1), "leaving the stage on one's own word sends one home too");
+  await ask(amy, { type: "end" });
+  await w.settle();
+  assert.deepEqual(calls.at(-1), ["end"], "the end sends everyone home and the copy forgets itself");
+});
+
+test("a DSB Land chat has no copy yet", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "DSB", zone: "dsb" });
+  const amy = await connect(w, chat.id, 1);
+  await ask(amy, { type: "setRole", role: "speaker" });
+  assert.deepEqual(await w.objects.get(chatName(chat.id)).a.copyMember("gh:1"), { ok: false, reason: "zone" });
+});
+
 test.after(() => { Date.now = realNow; });
