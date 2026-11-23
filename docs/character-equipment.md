@@ -233,7 +233,7 @@ does without running any character's code, and opens or refreshes one PR from
 `automation/equipment-pieces` listing the new, retired and renamed pieces. A maintainer
 reviews the pieces in the studio, gives any generic name ("X's shirt") a reviewed one in
 `labels.json` on that branch, and merges. While the PR is open the next run keeps the names
-changed on the branch and takes every other name from rock (`--labels`). With nothing new the
+added, changed or taken away on the branch and takes every other name from rock (`--labels`). With nothing new the
 open PR closes.
 
 Hats are never published there. Each reviewed hat is built on its own, and any that draws

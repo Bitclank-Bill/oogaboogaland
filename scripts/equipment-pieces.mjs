@@ -5,7 +5,8 @@
 //                    sandbox) and the hats' source check, and writes the report to <dir> (report.md, report.json).
 //   --labels <base> <branch>
 //                    merges the names a maintainer gave on the open PR's branch into rock's labels.json: a name the
-//                    branch changed since <base> (its labels where it was cut) wins, every other entry stays rock's.
+//                    branch added, changed or took away since <base> (its labels where it was cut) wins, every other
+//                    entry stays rock's.
 //   --apply <from>   copies the authored wardrobe data from <from> (a copy of src/equipment/wardrobe) over the checkout,
 //                    data files only, and checks it as every build does, without running any character's code.
 // Hats are only reported: publishing one advances a version its wearers are offered, so a maintainer decides.
@@ -85,7 +86,11 @@ const author = (out) => {
 const mergeLabels = (baseFile, branchFile) => {
   const file = join(wardrobe, "labels.json"), rock = existsSync(file) ? checkLabels(JSON.parse(read(file))) : {};
   const base = checkLabels(JSON.parse(read(baseFile))), branch = checkLabels(JSON.parse(read(branchFile)));
-  for (const [key, label] of Object.entries(branch)) if (base[key] !== label) rock[key] = label;
+  // A name added, changed or taken away on the branch since it was cut is the maintainer's; every other entry is rock's.
+  for (const key of new Set([...Object.keys(base), ...Object.keys(branch)])) {
+    if (base[key] === branch[key]) continue;
+    if (Object.hasOwn(branch, key)) rock[key] = branch[key]; else delete rock[key];
+  }
   writeFileSync(file, JSON.stringify(checkLabels(rock), null, 2) + "\n");
   return { labels: Object.keys(rock).length };
 };
