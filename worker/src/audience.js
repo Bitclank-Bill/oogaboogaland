@@ -74,7 +74,7 @@ const positive = (value, fallback, max) => {
 };
 // A hosted chat's speakers are its own setting (`CHAT_SPEAKERS`, CHAT_SPEAKERS_DEFAULT): none needs one of the zone's
 // eight cloud seats, since a chat's clouds are its copy's (docs/ooga-chat-hosts.md).
-export const CHAT_SPEAKERS_DEFAULT = 16;
+export const CHAT_SPEAKERS_DEFAULT = 32;
 export const limitsOf = (env, chat = false) => ({ ...DEFAULT_LIMITS,
   listeners: positive(env.AUDIENCE_LISTENERS, DEFAULT_LIMITS.listeners, 5000),
   chatSpeakers: chat ? positive(env.CHAT_SPEAKERS, CHAT_SPEAKERS_DEFAULT, 64) : positive(env.AUDIENCE_SPEAKERS, DEFAULT_LIMITS.chatSpeakers, 64) });

@@ -295,12 +295,12 @@ test("the island's call mark: a page says it is in a chat's voice, only as a boo
   assert.deepEqual(callFeatures({ OOGA_CHAT_FEATURES: "bridge" }), []);
 });
 
-test("a chat seats sixteen speakers by default, none of whom needs one of the zone's eight cloud seats", async () => {
+test("a chat seats thirty-two speakers by default, none of whom needs one of the zone's eight cloud seats", async () => {
   now += START_GAP_MS;
   const w = await world();
   const { chat } = await startChat(w.env, host(1), { title: "Big stage", zone: "main" });
   const amy = await connect(w, chat.id, 1);
-  assert.equal(amy.ws.sent.find((m) => m.type === "snapshot").limits.chatSpeakers, 16);
+  assert.equal(amy.ws.sent.find((m) => m.type === "snapshot").limits.chatSpeakers, 32);
   const people = [amy];
   for (let n = 20; n < 31; n++) {
     const p = await connect(w, chat.id, n);

@@ -37,8 +37,9 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   the rule that let someone speak until now), checked again by the island when the chat starts. One live chat a host.
 - **Who may request:** anyone signed in, GitHub or X. Eligibility no longer decides speaking: a host does. An X
   speaker, or any speaker without an Ooga, gets no cloud in the second PR's copy (clouds carry GitHub ids).
-- **Speakers** count the host and co-hosts: at most 16 a chat (`CHAT_SPEAKERS`, a setting up to 64; every listener
-  receives one voice per speaker, about 32 kb/s each, much less while muted), at most 500 listeners
+- **Speakers** count the host and co-hosts: at most 32 a chat (`CHAT_SPEAKERS`, a setting up to 64; every listener
+  receives one voice per speaker, about 32 kb/s each while they talk, much less while muted, and the media server sends
+  speakers × listeners streams, about 16,000 at 32 to 500), at most 500 listeners
   (`AUDIENCE_LISTENERS`). No speaker needs a cloud seat: a chat's clouds are its copy's, a seat each, in the second PR. Roles are an identity's (`gh:<id>`, `x:<id>`), never a tab's: every tab of an account shows
   the same role, and one account holds one voice lease across every chat (joining another chat's stage leaves the
   first's).
