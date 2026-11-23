@@ -1938,6 +1938,26 @@ body[data-active-scene="block"] .mode-hud {
 
 .players-volume[hidden] { display: none; }
 
+/* In Ooga Chat's strip (players.js): the chat and how they are in it, wrapping, then Join chat or the visitor's own
+   "You're in this chat". */
+.inchat-strip { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; }
+.inchat-where { min-width: 0; color: rgba(243, 239, 228, 0.78); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.inchat-where strong { color: var(--paper); }
+.inchat-join { justify-self: end; }
+.inchat-here { justify-self: end; color: var(--accent-text); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.inchat-join[hidden], .inchat-here[hidden] { display: none; }
+
+/* Change chats? (cloud-panel.js `join`): the question on a slab, Stay and the amber Switch chats under it. */
+.hosted-switch { width: 360px; }
+.hosted-switch-slab { display: grid; gap: 8px; padding: 12px; }
+.hosted-switch-text { margin: 0; font-size: 12px; line-height: 1.45; color: rgba(243, 239, 228, 0.88); overflow-wrap: anywhere; }
+.hosted-switch-note { margin: 0; font-size: 11px; line-height: 1.4; color: rgba(243, 239, 228, 0.7); }
+.hosted-switch-note:empty { display: none; }
+.hosted-switch-go { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+@media (max-width: 399px) {
+  .hosted-switch-go .foot-button { min-height: 44px; flex: 1 1 auto; }
+}
+
 .players-volume-range {
   width: 100%;
   min-width: 0;
