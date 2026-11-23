@@ -117,26 +117,92 @@ toast and the region.
 - **One Durable Object a chat.** The `Audience` class, today one object named `audience` for both zones, becomes one
   object a chat, named `chat:<id>` (`<id>` a random 16-character token). It keeps its sockets, roster model, leases,
   media broker, reactions and limits, and gains the roles, the queue and invites. The `audience` singleton goes unused.
-- **One directory.** A new class `ChatDirectory` (migration `v6`), one object named `chats`: the live chats (id, title,
-  zone, host, counts), at most 20 at once, one a host. A chat tells it when it starts and ends, and its counts at most
-  every 2 s while they change. `GET /api/chat/chats` (OC's edge, through the bridge) and `GET /api/chats` (the island
-  Worker) read it through a 2 s edge cache.
-- **Reaching a chat.** OC's socket stays `/api/chat/audience?chat=<id>` through ChatBridge; the island page opens its
-  own socket to the same object, `/api/chats/<id>/live`, from its island session. Both carry the same principal shape
-  (`readPrincipal`), so roles and limits are one code path. Media stays the chat's own broker
-  (`/api/chat/media/<op>`, and `/api/chats/<id>/media/<op>` from the island), never the island's voice.
-- **Protocol** (audience protocol 2, gated by `chats-v1` in the bootstrap and the island's welcome):
-  - page: `start { title, zone }` (directory), `join { chat }`, `request`, `cancel`, `invite { id }`,
-    `answer { id, approve }`, `accept`, `refuse`, `mute { id }`, `demote { id }`, `cohost { id, on }`,
-    `handover { id }`, `remove { id }`, `end`; each with a `requestId`, answered by `result`, refused with a code
-    (`not_host`, `not_allowed`, `queue_full`, `cooldown`, `speaker_capacity`, `removed`, `ended`, `rate_limited`).
-  - server: the snapshot and deltas carry each row's `role` (`host`, `cohost`, `speaker`, `listener`) and `request`
-    (`""`, `asked`, `invited`); `you` carries the visitor's role, request and invite expiry; `requests` (host and
-    co-hosts only) lists the queue; `notice { kind, by, id }` carries the events above; `ended`.
-  - Every message is checked whole at the boundary; an unknown field or a bad id is a refusal, never a guess.
-- **Pure model.** The rules live in `audience-model.js` (or a sibling `chat-roles.js`), pure and allocation-light,
-  with `node --test` checks for every rule in this file: who may do what to whom, the caps, the queue, invites,
-  cooldowns, the host hold and succession, removal, one lease an identity.
+- **One directory.** A new class `ChatDirectory` (`worker/src/chat-directory.js`, migration `v6`, binding `CHATS`),
+  one object named `chats`: the live chats (id, title, zone, host, counts), at most 20 at once (`CHATS_MAX`), one a
+  host, a start a host every 5 minutes (`START_GAP_MS`). A chat tells it its counts and host whenever they change
+  (`update`) and when it ends (`end`). It also keeps which chat each account last took the stage in (`claim`,
+  `release`): taking the stage in another chat ends the lease in that one (`yieldVoice`), so one account has one
+  voice. It runs no timer.
+- **Switches.** The island's `OOGA_CHAT_FEATURES` names `chats` (`bridgeFeatures(env).chats`): by itself it turns on
+  the island's own routes, and with `bridge` the bridge's. The edge's `FEATURES` names `chats` too
+  (`effective(...).chats`, which also needs `listen`); its bootstrap then lists `features.chats`, `paths.chats`
+  (`/api/chat/chats`) and audience protocol 2 in `protocols.audience`.
+
+### Routes
+
+| | Ooga Chat (edge, `worker/chat/src/chats.js`) | The island (`worker/src/chats.js`) |
+|---|---|---|
+| live chats | `GET /api/chat/chats` → `{ chats }` | `GET /api/chats` → `{ chats }` |
+| start one | `POST /api/chat/chats` `{ title, zone }` → `201 { chat }` | `POST /api/chats` `{ title, zone }` → `201 { chat }` |
+| a chat's socket | `GET /api/chat/audience?chat=<id>` | `GET /api/chats/<id>/live` |
+| its media | `POST /api/chat/media/<op>?chat=<id>` | `POST /api/chats/<id>/media/<op>` |
+
+Both need a session. A list entry is `{ id, title, zone, host: { login, display, character }, startedAt, speakers,
+listeners }`, never an account id, busiest first then newest; the island's is read through a 2 s edge cache. Starting
+one needs a GitHub account the island's contributor rule calls eligible (every island account is); refusals are
+`bad_title` (the island's chat policy, at most 60 characters), `zone_unavailable`, `already_hosting` (409),
+`rate_limited` and `chats_full` (with `retryAfter`), `capability_required` (403). A chat id is 16 characters of
+base64url. A socket or media call for a chat the directory doesn't list never reaches an object: the edge closes the
+socket with 4404 and the island answers 404. The island hands a chat its own principal, `ob_<GitHub id>`, with the
+account's Ooga, and no avatar (an Ooga Chat avatar is that origin's alone; the island draws the Ooga's face).
+
+### The chat's socket (audience protocol 2)
+
+Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differences.
+
+- **Join** is `{ "type": "join", "protocol": 2 }`. The zone is the chat's own; a `zone` naming another is refused
+  (`error`, `zone_unavailable`). Protocol 1 on a chat closes it with 4426.
+- **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts }` (the host's and co-hosts' participant
+  ids).
+- **Rows** carry `rank` (`host` or `cohost`, absent for everyone else) and, while one is open, `request` (`asked` or
+  `invited`) with `askedAt` (ms; the queue's order, oldest first). A host's or co-host's rank does not make them a
+  speaker: `role` is still `speaker` only under an active lease.
+- **You** adds `rank` (`host`, `cohost` or `""`), `request` (`asked`, `invited` or `""`) and, while invited,
+  `inviteUntil` (ms). `speak` is `eligible` exactly when the visitor may take a lease now (a rank, a live invite, or a
+  place on the stage), so the app's Join Voice flow is unchanged: Start speaking on the invite card is Join Voice.
+- **Requests**, each `{ type, requestId, ... }` answered by `{ type: "result", requestId, ok, error?: { code,
+  retryable, retryAfter? }, you }`:
+
+  | type | fields | who |
+  |---|---|---|
+  | `ask` | | a listener: Request to speak |
+  | `cancel` | | the asker: Cancel |
+  | `decline` | | the invited: Not now |
+  | `invite` | `id` | a host or co-host, to anyone they outrank who isn't on the stage |
+  | `answer` | `id`, `approve` (boolean) | a host or co-host, to an open request: approve is an invite |
+  | `mute` | `id` | a host or co-host, to a speaker they outrank |
+  | `demote` | `id` | Move to listener, the same |
+  | `cohost` | `id`, `on` (boolean) | the host alone |
+  | `handover` | `id` (a co-host) | the host alone |
+  | `remove` | `id` | a host or co-host, to anyone they outrank |
+  | `end` | | the host alone |
+
+  `setRole`, `setMic`, `reaction` and `hand` are protocol 1's. Refusal codes: `not_host`, `not_allowed`,
+  `already_allowed`, `not_asked`, `not_speaking`, `cooldown`, `rate_limited`, `queue_full`, `cohosts_full`, `removed`,
+  `ended`, `malformed`; `setRole` speaker without leave is `not_allowed`. A speaker a host muted may unmute themselves
+  with `setMic`; until then their voice is not pulled by anyone.
+- **Notices**, `{ type: "notice", kind, id?, by?, until?, reason? }`, to whom they concern:
+
+  | kind | to | means |
+  |---|---|---|
+  | `asked` | hosts and co-hosts | `id` asked to speak |
+  | `not_now` | hosts and co-hosts | `id` turned an invite down |
+  | `invited` | the invited | `by` invited them; good `until` |
+  | `declined` | the asker | `by` declined their request |
+  | `expired` | the invited | their invite lapsed |
+  | `muted` | the speaker | `by` muted them: the page mutes its microphone |
+  | `demoted` | the speaker | `by` moved them to listening (their lease has ended) |
+  | `cohost`, `uncohost` | that person | `by` made or unmade them a co-host |
+  | `host` | everyone | `id` is the host now (`by` the old host on a handover) |
+  | `removed` | that person | `by` removed them; the socket then closes with 4403 |
+  | `ended` | everyone | the chat ended (`reason` `ended` or `host_left`); every socket then closes with 4404 |
+
+- **Close codes** add 4403 (removed: don't reconnect, back to the list) and 4404 (ended or unknown: back to the list).
+
+- **Pure model.** The rules live in `worker/src/chat-roles.js`, pure and allocation-light
+  (`worker/test/chat-roles.test.mjs`), and the objects are checked through a fake host
+  (`worker/test/ooga-chat-hosts.test.mjs`): every rule in this file (who may do what to whom, the caps, the queue, invites,
+  cooldowns, the host hold and succession, removal, one lease an identity).
 - **No idle timers.** A chat's alarm is set only for the earliest of a held host's 2 minutes, an invite's 60 s, a
   pending lease or a re-authentication; an empty chat with nothing pending sets none and hibernates. Roles, queue,
   invites and removals are stored (they are small), and the sockets' attachments carry each connection, so a woken
