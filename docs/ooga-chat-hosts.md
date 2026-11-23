@@ -61,6 +61,13 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   to listening with no request.
 - **Decline:** the request goes; the person may ask again after 60 s. Cancel takes a request back at any time.
 - One request an identity a chat; the queue holds at most 50 a chat (a full queue refuses, retryable).
+- **Open stage**: the host (alone) can switch it on in the chat's bar. While it is on, every request is approved the
+  moment it is made, as an invite, and switching it on approves everyone waiting. Removed accounts stay out and the
+  speaker cap still holds.
+- **Preview and joining as either**: a chat in the Chats list opens a preview pop-up of its stage (the host, co-hosts
+  and speakers, as the chat orders them), how many listen and wait, and whether its stage is open, with **Join as
+  listener** and **Join as speaker**. Joining as a speaker joins and asks at once; on an open stage that press goes
+  straight on to Start speaking (it is the person's own press), and otherwise they wait in the queue as any asker.
 
 ## The host leaving
 
@@ -149,12 +156,14 @@ toast and the region.
 | | Ooga Chat (edge, `worker/chat/src/chats.js`) | The island (`worker/src/chats.js`) |
 |---|---|---|
 | live chats | `GET /api/chat/chats` → `{ chats }` | `GET /api/chats` → `{ chats }` |
+| a chat's preview | `GET /api/chat/chats?chat=<id>` | `GET /api/chats/<id>` |
 | start one | `POST /api/chat/chats` `{ title, zone }` → `201 { chat }` | `POST /api/chats` `{ title, zone }` → `201 { chat }` |
 | a chat's socket | `GET /api/chat/audience?chat=<id>` | `GET /api/chats/<id>/live` |
 | its media | `POST /api/chat/media/<op>?chat=<id>` | `POST /api/chats/<id>/media/<op>` |
 
 Both need a session. A list entry is `{ id, title, zone, host: { login, display, character }, startedAt, speakers,
-listeners }`, never an account id, busiest first then newest; the island's is read through a 2 s edge cache. Starting
+listeners, open }`, never an account id, busiest first then newest; a preview is `{ chat, stage, listeners, requests }`,
+`stage` the host, co-hosts and speakers as rows (no request or `self`); the island's is read through a 2 s edge cache. Starting
 one needs a GitHub account the island's contributor rule calls eligible (every island account is); refusals are
 `bad_title` (the island's chat policy, at most 60 characters), `zone_unavailable`, `already_hosting` (409),
 `rate_limited` and `chats_full` (with `retryAfter`), `capability_required` (403). A chat id is 16 characters of
@@ -168,8 +177,9 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
 
 - **Join** is `{ "type": "join", "protocol": 2 }`. The zone is the chat's own; a `zone` naming another is refused
   (`error`, `zone_unavailable`). Protocol 1 on a chat closes it with 4426.
-- **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts }` (the host's and co-hosts' participant
-  ids).
+- **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts, open }` (the host's and co-hosts' participant
+  ids, and whether the stage is open); `{ type: "chat", chat }` sends it again to everyone whenever the host, co-hosts or
+  the open stage change. An `invited` notice from an open stage carries `open: true`.
 - **Rows** carry `rank` (`host` or `cohost`, absent for everyone else) with `rankSince` (ms, when a co-host was made
   one) and, while one is open, `request` (`asked` or `invited`) with `askedAt` (ms; the queue's order, oldest first).
   `since` (ms) is when a speaker took the stage, or when a listener's earliest connection joined; `via` is `island` or
@@ -199,6 +209,7 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   | `handover` | `id` (a co-host) | the host alone |
   | `remove` | `id` | a host or co-host, to anyone they outrank |
   | `allow` | `id` | a host or co-host, to someone removed: Allow back |
+  | `open` | `on` (boolean) | the host alone: an open stage |
   | `end` | | the host alone |
 
   `setRole`, `setMic`, `reaction` and `hand` are protocol 1's. Refusal codes: `not_host`, `not_allowed`,

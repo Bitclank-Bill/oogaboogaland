@@ -75,6 +75,7 @@ export class ChatDirectory extends DurableObject {
     const info = hostInfo(entry.host);
     if (info) c.hostInfo = info;
     if (typeof entry.hostId === "string" && ID.test(entry.hostId)) c.host = entry.hostId;
+    c.open = entry.open === true;
     await this.keep();
     return { ok: true };
   }
@@ -91,7 +92,7 @@ export class ChatDirectory extends DurableObject {
   /** Every live chat, the busiest first, then the newest: what the Chats list shows. Never a host's account id. */
   list() {
     return [...this.chats.values()].sort((a, b) => b.speakers + b.listeners - a.speakers - a.listeners || b.startedAt - a.startedAt)
-      .map(({ id, title, zone, hostInfo: host, startedAt, speakers, listeners }) => ({ id, title, zone, host, startedAt, speakers, listeners }));
+      .map(({ id, title, zone, hostInfo: host, startedAt, speakers, listeners, open }) => ({ id, title, zone, host, startedAt, speakers, listeners, open: open === true }));
   }
 
   /** An account takes the stage in `chat`: the chat it last spoke in, if another, to end its lease there. */
@@ -132,6 +133,12 @@ export const startChat = async (env, host, body) => {
   try { opened = await env.AUDIENCE.getByName(chatName(id)).open({ id, title, zone: body.zone, host: host.id, hostInfo: info }); } catch { opened = null; }
   if (!opened || !opened.ok) { await directory.end(id); return refuse("unavailable", { retryable: true }); }
   return { ok: true, chat: { id, title, zone: body.zone } };
+};
+
+/** A chat's preview (audience.js `preview`), only for a chat the directory lists, so no id makes an object. */
+export const previewChat = async (env, id) => {
+  if (!env.CHATS || !env.AUDIENCE || !CHAT_ID.test(id) || !(await env.CHATS.getByName(DIRECTORY_NAME).has(id))) return null;
+  try { return await env.AUDIENCE.getByName(chatName(id)).preview(); } catch { return null; }
 };
 
 /** A principal's access ends: every live chat closes or narrows its sockets, as the old public object does. */

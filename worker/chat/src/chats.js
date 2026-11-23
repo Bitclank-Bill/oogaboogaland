@@ -1,4 +1,5 @@
-// Hosted chats from Ooga Chat's page (docs/ooga-chat-hosts.md): `GET /api/chat/chats`, the live chats, and
+// Hosted chats from Ooga Chat's page (docs/ooga-chat-hosts.md): `GET /api/chat/chats`, the live chats (with `?chat=<id>`,
+// that chat's preview: its stage and how many listen), and
 // `POST /api/chat/chats` `{ title, zone }`, starting one, both for a signed-in principal and both over the private bridge
 // (`chats`, `startChat`, worker/src/chat-bridge.js), which decides who may start one. A chat's socket and media are the
 // audience's own routes with `?chat=<id>` (audience.js, media.js); `chatParam` reads it.
@@ -27,6 +28,13 @@ export const handleChats = async (request, env, deps) => {
   let found;
   try { found = await readSession(request, env); } catch { return refusal("unavailable", 503, { retryable: true, retryAfter: 5 }); }
   if (!found) return refusal("auth_required", 401);
+  if (request.method === "GET" && new URL(request.url).searchParams.has("chat")) {
+    const id = chatParam(new URL(request.url));
+    if (!id) return refusal("ended", 404);
+    const reply = await bridgeCall(env, "chatPreview", { id }, assertion(found.principal));
+    if (reply.ok && reply.result && reply.result.chat) return json(reply.result);
+    return reply.ok || reply.error.code === "ended" ? refusal("ended", 404) : refusal("unavailable", 503, { retryable: true, retryAfter: 5 });
+  }
   if (request.method === "GET") {
     const reply = await bridgeCall(env, "chats", {}, assertion(found.principal));
     return reply.ok && Array.isArray(reply.result.chats) ? json({ chats: reply.result.chats }) : refusal("unavailable", 503, { retryable: true, retryAfter: 5 });

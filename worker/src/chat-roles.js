@@ -8,6 +8,7 @@
 // ended without their word (a dropped socket, a failed microphone), so a speaker who comes straight back needs no
 // second invite. Going back to listening on their own word, or a host's, gives the place up. Someone removed stays out
 // until a host or co-host allows them back (`allowBack`), which lets them in again as a listener and nothing more.
+// An open stage (`setOpen`, the host's alone) approves every request the moment it is made: an ask is an invite.
 // Times are the caller's clock (`now`), so the checks run without one; nothing here sets a timer. `nextAt` is the
 // earliest moment something changes by itself (an invite lapsing, the held host's two minutes), for the object's alarm.
 
@@ -23,12 +24,13 @@ export const ID = /^(gh|x):[1-9][0-9]{0,19}$/;
 const refuse = (code, extra = {}) => ({ ok: false, code, ...extra });
 const OK = Object.freeze({ ok: true, changed: true });
 const SAME = Object.freeze({ ok: true, changed: false });
+const INVITED = Object.freeze({ ok: true, changed: true, invited: true });
 
 export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   let state;
   if (saved) {
     state = {
-      host: saved.host, ended: saved.ended === true, hostAway: Number(saved.hostAway) || 0,
+      host: saved.host, ended: saved.ended === true, hostAway: Number(saved.hostAway) || 0, open: saved.open === true,
       cohosts: new Map(saved.cohosts || []), queue: new Map(saved.queue || []), invites: new Map(saved.invites || []),
       cooldown: new Map(saved.cooldown || []), lastAsk: new Map(saved.lastAsk || []), stage: new Map(saved.stage || []),
       // A removal keeps when it happened and the name to list it by; an older save's bare ids read as unnamed.
@@ -37,7 +39,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   } else {
     if (!ID.test(host)) throw new Error("a chat needs a host");
     // The host must connect within the hold, as if they had just dropped.
-    state = { host, ended: false, hostAway: now + HOST_HOLD_MS, cohosts: new Map(), queue: new Map(), invites: new Map(),
+    state = { host, ended: false, open: false, hostAway: now + HOST_HOLD_MS, cohosts: new Map(), queue: new Map(), invites: new Map(),
       cooldown: new Map(), lastAsk: new Map(), stage: new Map(), removed: new Map() };
   }
 
@@ -74,10 +76,23 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     if (until > now) return refuse("cooldown", { retryable: true, retryAfter: Math.ceil((until - now) / 1000) });
     const last = state.lastAsk.get(id) || 0;
     if (last && now - last < ASK_GAP_MS) return refuse("rate_limited", { retryable: true, retryAfter: Math.ceil((last + ASK_GAP_MS - now) / 1000) });
+    // An open stage approves at once.
+    if (state.open) { state.lastAsk.set(id, now); state.invites.set(id, now + INVITE_MS); return INVITED; }
     if (state.queue.size >= QUEUE_MAX) return refuse("queue_full", { retryable: true });
-    state.queue.set(id, now);
     state.lastAsk.set(id, now);
+    state.queue.set(id, now);
     return OK;
+  };
+
+  /** The host opens or closes the stage. Opening it approves everyone waiting: `invited` names them. */
+  const setOpen = (actor, on, now) => {
+    if (state.ended) return refuse("ended");
+    if (actor !== state.host) return refuse("not_host");
+    if (state.open === on) return { ok: true, changed: false, invited: [] };
+    state.open = on;
+    const invited = [];
+    if (on) for (const id of [...state.queue.keys()]) { state.queue.delete(id); state.invites.set(id, now + INVITE_MS); invited.push(id); }
+    return { ok: true, changed: true, invited };
   };
 
   const cancel = (id) => state.queue.delete(id) ? OK : SAME;
@@ -243,12 +258,12 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   const queue = () => [...state.queue].sort((a, b) => a[1] - b[1]).map(([id, at]) => ({ id, at }));
 
   const save = () => ({
-    host: state.host, ended: state.ended, hostAway: state.hostAway, cohosts: [...state.cohosts], queue: [...state.queue],
+    host: state.host, ended: state.ended, open: state.open, hostAway: state.hostAway, cohosts: [...state.cohosts], queue: [...state.queue],
     invites: [...state.invites], cooldown: [...state.cooldown], lastAsk: [...state.lastAsk], stage: [...state.stage], removed: [...state.removed],
   });
 
   return {
-    get host() { return state.host; }, get ended() { return state.ended; }, get hostAway() { return state.hostAway; },
+    get host() { return state.host; }, get ended() { return state.ended; }, get open() { return state.open; }, setOpen, get hostAway() { return state.hostAway; },
     get cohosts() { return [...state.cohosts.keys()]; },
     rankOf, manages, rankSince: (id) => state.cohosts.get(id) || 0, allowBack, removedList, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
     isRemoved: (id) => state.removed.has(id), askedAt: (id) => state.queue.get(id) || 0,

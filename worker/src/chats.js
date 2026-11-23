@@ -6,10 +6,11 @@
 //   POST /api/chats                 start one: `{ title, zone }`
 //   GET  /api/chats/<id>/live       the chat's socket (audience protocol 2)
 //   POST /api/chats/<id>/media/<op> its media, as Ooga Chat's `/api/chat/media/<op>`
+//   GET  /api/chats/<id>            its preview: the chat, its stage and how many listen (chat-directory.js)
 // Off unless the island's `OOGA_CHAT_FEATURES` names `chats`.
 
 import { chatName, CHAT_ID, DIRECTORY_NAME } from "./audience.js";
-import { startChat } from "./chat-directory.js";
+import { previewChat, startChat } from "./chat-directory.js";
 import { bridgeFeatures } from "./chat-bridge-protocol.js";
 import { allowed, fromSite, getSessionFromRequest, json, readBody, text } from "./http.js";
 
@@ -53,6 +54,10 @@ export const handleChats = async (request, env, url) => {
     const res = await startChat(env, { id: `gh:${found.player.id}`, login: found.player.login, display: found.player.display, character: found.character ? found.character.handle : null }, body);
     if (res.ok) return json({ chat: res.chat }, 201);
     return json({ error: { code: res.code, retryable: !!res.retryable, ...(res.retryAfter ? { retryAfter: res.retryAfter } : {}) } }, res.code === "already_hosting" ? 409 : res.retryable ? 429 : 400);
+  }
+  if (parts.length === 1 && request.method === "GET") {
+    const preview = await previewChat(env, id);
+    return preview ? json(preview) : json({ error: { code: "ended" } }, 404);
   }
   if (!CHAT_ID.test(id) || !(await env.CHATS.getByName(DIRECTORY_NAME).has(id))) return json({ error: { code: "ended" } }, 404);
   const headers = new Headers({ "x-audience-principal": JSON.stringify(islandPrincipal(found)) });

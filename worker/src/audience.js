@@ -44,7 +44,7 @@ export const CHAT_PROTOCOL = 2;
 export const CHAT_ID = /^[A-Za-z0-9_-]{16}$/;
 export const CHAT_TITLE_MAX = 60;
 export const chatName = (id) => `chat:${id}`;
-export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "end"]);
+export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "open", "end"]);
 const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
 export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1"];
 // A transient reaction's life on every client (players.js shows the island's for the same time), and the limits on
@@ -756,7 +756,28 @@ export class Audience extends DurableObject {
 
   chatInfo() {
     const { id, title, zone, startedAt } = this.chat;
-    return { id, title, zone, startedAt, host: this.roles.host, cohosts: this.roles.cohosts };
+    return { id, title, zone, startedAt, host: this.roles.host, cohosts: this.roles.cohosts, open: this.roles.open };
+  }
+
+  /** The chat's own word changed (its host, co-hosts, an open stage): everyone in it hears `{ type: "chat", chat }`. */
+  sendChatInfo() {
+    const text = JSON.stringify({ type: "chat", chat: this.chatInfo() });
+    for (const c of this.model.conns.values()) { const ws = this.sockets.get(c.connId); if (ws && c.zone) this.send(ws, text); }
+  }
+
+  /**
+   * What the Chats list's preview shows before anyone joins: the chat, its stage (the host, co-hosts and speakers, in the
+   * chat's own order) and how many listen and wait. Public to anyone signed in, as the chat itself is; never a socket.
+   */
+  preview() {
+    if (!this.chat || this.roles.ended) return null;
+    const snap = this.model.snapshot(this.chat.zone), stage = [];
+    let listeners = 0;
+    for (const row of snap.rows) {
+      if (row.rank || row.role === "speaker") { const r = appRow(row); delete r.request; delete r.askedAt; stage.push(r); }
+      else listeners++;
+    }
+    return { chat: this.chatInfo(), stage, listeners, requests: this.roles.queue().length };
   }
 
   present(id) { const p = this.model.people.get(id); return !!p && p.conns.size > 0; }
@@ -844,14 +865,23 @@ export class Audience extends DurableObject {
     const R = this.roles, me = c.id, now = Date.now();
     const target = typeof msg.id === "string" && ID.test(msg.id) ? msg.id : null;
     if (TARGETED.has(msg.type) && !target) return { ok: false, code: "malformed" };
-    if ((msg.type === "answer" || msg.type === "cohost") && typeof (msg.type === "answer" ? msg.approve : msg.on) !== "boolean") return { ok: false, code: "malformed" };
+    if ((msg.type === "answer" || msg.type === "cohost" || msg.type === "open") && typeof (msg.type === "answer" ? msg.approve : msg.on) !== "boolean") return { ok: false, code: "malformed" };
     const conns = (id) => { const p = this.model.people.get(id); return p ? [...p.conns.values()] : []; };
     const speaking = (id) => conns(id).some((o) => o.lease && o.lease.state === "active");
     let res;
     switch (msg.type) {
       case "ask":
         res = R.ask(me, now, conns(me).some((o) => o.lease));
-        if (res.ok && res.changed) { this.touchId(me); this.notify(this.managers(), { kind: "asked", id: me }); }
+        // On an open stage an ask is approved at once: the asker is invited, and hosts hear nothing to answer.
+        if (res.ok && res.invited) { this.touchId(me); this.notify([me], { kind: "invited", by: R.host, until: R.inviteUntil(me, now), open: true }); this.tellYouId(me); }
+        else if (res.ok && res.changed) { this.touchId(me); this.notify(this.managers(), { kind: "asked", id: me }); }
+        break;
+      case "open":
+        res = R.setOpen(me, msg.on, now);
+        if (res.ok && res.changed) {
+          for (const id of res.invited) { this.touchId(id); this.notify([id], { kind: "invited", by: me, until: R.inviteUntil(id, now), open: true }); this.tellYouId(id); }
+          this.sendChatInfo();
+        }
         break;
       case "cancel": res = R.cancel(me); if (res.changed) this.touchId(me); break;
       case "decline": res = R.decline(me); if (res.changed) { this.touchId(me); this.notify(this.managers(), { kind: "not_now", id: me }); } break;
@@ -890,11 +920,11 @@ export class Audience extends DurableObject {
         break;
       case "cohost":
         res = R.setCohost(me, target, msg.on, now);
-        if (res.ok && res.changed) { this.touchId(target); this.notify([target], { kind: msg.on ? "cohost" : "uncohost", by: me }); this.tellYouId(target); this.sendRemoved([target]); }
+        if (res.ok && res.changed) { this.touchId(target); this.notify([target], { kind: msg.on ? "cohost" : "uncohost", by: me }); this.tellYouId(target); this.sendRemoved([target]); this.sendChatInfo(); }
         break;
       case "handover":
         res = R.handover(me, target, now);
-        if (res.ok) { this.touchId(me); this.touchId(target); this.notify(null, { kind: "host", id: target, by: me }); this.tellYouId(me); this.tellYouId(target); this.sendRemoved([target]); }
+        if (res.ok) { this.touchId(me); this.touchId(target); this.notify(null, { kind: "host", id: target, by: me }); this.tellYouId(me); this.tellYouId(target); this.sendRemoved([target]); this.sendChatInfo(); }
         break;
       case "remove":
         res = R.remove(me, target, now, this.model.people.get(target)?.info);
@@ -922,7 +952,7 @@ export class Audience extends DurableObject {
   async rolesTick(now) {
     const t = this.roles.tick(now, (id) => this.present(id));
     for (const id of t.expired) { this.touchId(id); this.tellYouId(id); this.notify([id], { kind: "expired" }); }
-    if (t.host) { this.touchId(t.host); this.notify(null, { kind: "host", id: t.host }); this.tellYouId(t.host); this.sendRemoved([t.host]); }
+    if (t.host) { this.touchId(t.host); this.notify(null, { kind: "host", id: t.host }); this.tellYouId(t.host); this.sendRemoved([t.host]); this.sendChatInfo(); }
     if (t.expired.length || t.host || t.ended) await this.rolesChanged();
     if (t.ended) await this.endChat("host_left");
   }
@@ -940,7 +970,7 @@ export class Audience extends DurableObject {
     if (!this.chat || !this.env.CHATS || this.roles.ended) return;
     const counts = this.model.counts(this.chat.zone), host = this.model.people.get(this.roles.host);
     if (host) this.chat.hostInfo = { login: host.info.login, display: host.info.display || host.info.login, character: host.info.character || null };
-    const entry = { speakers: counts.chatSpeakers, listeners: counts.listeners, host: this.chat.hostInfo, hostId: this.roles.host };
+    const entry = { speakers: counts.chatSpeakers, listeners: counts.listeners, host: this.chat.hostInfo, hostId: this.roles.host, open: this.roles.open };
     const sig = JSON.stringify(entry);
     if (sig === this.listedSig) return;
     this.listedSig = sig;

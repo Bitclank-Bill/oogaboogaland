@@ -433,4 +433,32 @@ test("the island room: an account on a chat's stage leaves island voice, shows i
   assert.equal(room.chatVoices.get(1), "BBBBBBBBBBBBBBBB", "a stale chat never clears a newer one");
 });
 
+
+
+test("the preview: a chat's stage and counts, before joining; an open stage invites an asker at once and everyone hears it opened", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Preview", zone: "main" });
+  const amy = await connect(w, chat.id, 1), cyd = await connect(w, chat.id, 3);
+  await connect(w, chat.id, 4);
+  await ask(cyd, { type: "ask" });
+  const { previewChat } = await import("../src/chat-directory.js");
+  const look = await previewChat(w.env, chat.id);
+  assert.deepEqual({ title: look.chat.title, open: look.chat.open, stage: look.stage.map((r) => [r.id, r.rank]), listeners: look.listeners, requests: look.requests },
+    { title: "Preview", open: false, stage: [["gh:1", "host"]], listeners: 2, requests: 1 });
+  assert.equal(look.stage.some((r) => "self" in r), false);
+  assert.equal(await previewChat(w.env, "AAAAAAAAAAAAAAAA"), null, "an unknown chat makes no object");
+  assert.equal((await ask(cyd, { type: "open", on: true })).error.code, "not_host");
+  assert.equal((await ask(amy, { type: "open", on: true })).ok, true);
+  assert.deepEqual(cyd.ws.sent.filter((m) => m.type === "chat").at(-1).chat.open, true, "everyone hears the stage opened");
+  assert.equal(notices(cyd, "invited").at(-1).open, true, "the waiting asker is approved");
+  assert.equal(you(cyd).speak, "eligible");
+  const dot = { a: cyd.a, ws: [...cyd.a.sockets.values()].at(-1) };
+  assert.equal((await ask(dot, { type: "ask" })).ok, true);
+  assert.equal(notices(dot, "invited").length, 1, "an ask on an open stage is an invite");
+  assert.equal(notices(amy, "asked").length, 1, "and asks no host");
+  await w.settle();
+  assert.equal(w.directory.list()[0].open, true, "the list shows an open stage");
+});
+
 test.after(() => { Date.now = realNow; });

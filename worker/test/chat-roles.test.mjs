@@ -166,3 +166,23 @@ test("allowed back: a host or co-host lets someone removed in again as a listene
   assert.equal(old.isRemoved(M), true, "a save from before names read as unnamed removals");
   assert.equal(old.allowBack(H, M).ok, true);
 });
+
+test("an open stage: the host's alone, it approves everyone waiting as it opens and every ask after at once", () => {
+  const r = createRoles({ host: H, now: 0 });
+  r.setCohost(H, C, true, 0);
+  r.ask(L, 0); r.ask(M, 0);
+  assert.equal(r.setOpen(C, true, 1).code, "not_host", "a co-host never opens the stage");
+  const opened = r.setOpen(H, true, 1);
+  assert.deepEqual(opened.invited.sort(), [M, L].sort(), "everyone waiting is approved");
+  assert.equal(r.open, true);
+  assert.deepEqual(r.queue(), []);
+  assert.equal(r.requestOf(L, 1), "invited");
+  const ask = r.ask(D, 5);
+  assert.deepEqual([ask.ok, ask.invited], [true, true], "an ask is an invite");
+  assert.equal(r.mayLease(D, 5), true);
+  r.remove(H, "gh:7", 6);
+  assert.equal(r.ask("gh:7", 6).code, "removed", "removed stays removed");
+  assert.equal(r.setOpen(H, false, 7).changed, true);
+  assert.equal(r.ask("gh:8", 7).invited, undefined, "closed again, an ask waits for a host");
+  assert.equal(createRoles({ saved: r.save() }).open, false);
+});

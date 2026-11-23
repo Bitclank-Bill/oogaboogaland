@@ -25,7 +25,7 @@ import { publicOps } from "./chat-public.js";
 import { displayOps } from "./chat-display.js";
 import { deleteChatOnlyPlayer, getPlayer } from "./db.js";
 import { AUDIENCE_NAME, chatName, CHAT_ID, DIRECTORY_NAME } from "./audience.js";
-import { revokeChats, startChat } from "./chat-directory.js";
+import { previewChat, revokeChats, startChat } from "./chat-directory.js";
 import { decideCapability } from "./chat-capability.js";
 import { listChats } from "./chats.js";
 
@@ -98,6 +98,14 @@ export const chatOps = ({ contributorForEnv: lookup }) => ({
     if (!bridgeFeatures(env).chats || !env.CHATS) throw new BridgeRefusal("unavailable", true);
     if (!envelope.principal) throw new BridgeRefusal("auth_required");
     return { chats: await listChats(env) };
+  } },
+  chatPreview: { run: async (env, envelope) => {
+    if (!bridgeFeatures(env).chats || !env.CHATS) throw new BridgeRefusal("unavailable", true);
+    if (!envelope.principal) throw new BridgeRefusal("auth_required");
+    const id = envelope.payload && envelope.payload.id;
+    const preview = typeof id === "string" ? await previewChat(env, id) : null;
+    if (!preview) throw new BridgeRefusal("ended");
+    return preview;
   } },
   startChat: { run: async (env, envelope) => {
     if (!bridgeFeatures(env).chats || !env.CHATS) throw new BridgeRefusal("unavailable", true);
