@@ -1025,12 +1025,20 @@ export class Audience extends DurableObject {
    * speak and listen, and how many of them through Ooga Chat's app (`via`), whom the island's "N online" adds. No names.
    */
   summaryOf() {
+    return { title: this.chat.title, ...this.tally() };
+  }
+
+  /**
+   * Who speaks and who listens, as everyone sees the chat: its host and co-hosts are speakers whether or not they are on
+   * the stage now (as its preview shows them), everyone else by their row; `app`, those here through Ooga Chat's app.
+   */
+  tally() {
     let speakers = 0, listeners = 0, app = 0;
     for (const r of this.model.zones[this.zoneOf()].rows.values()) {
-      if (r.role === "speaker") speakers++; else listeners++;
+      if (r.rank || r.role === "speaker") speakers++; else listeners++;
       if (r.via === "app") app++;
     }
-    return { title: this.chat.title, speakers, listeners, app };
+    return { speakers, listeners, app };
   }
 
   /**
@@ -1299,9 +1307,9 @@ export class Audience extends DurableObject {
   /** What the directory lists of this chat, sent whenever it differs from what it was last told. */
   listed() {
     if (!this.chat || !this.env.CHATS || this.roles.ended) return;
-    const counts = this.model.counts(this.zoneOf()), host = this.model.people.get(this.roles.host);
+    const counts = this.tally(), host = this.model.people.get(this.roles.host);
     if (host) this.chat.hostInfo = { login: host.info.login, display: host.info.display || host.info.login, character: host.info.character || null };
-    const entry = { speakers: counts.chatSpeakers, listeners: counts.listeners, host: this.chat.hostInfo, hostId: this.roles.host, open: this.roles.open };
+    const entry = { speakers: counts.speakers, listeners: counts.listeners, host: this.chat.hostInfo, hostId: this.roles.host, open: this.roles.open };
     const sig = JSON.stringify(entry);
     if (sig === this.listedSig) return;
     this.listedSig = sig;
