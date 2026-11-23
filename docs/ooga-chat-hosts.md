@@ -37,6 +37,13 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   that press (refused, they stay host with no microphone, and Join Voice asks again). A co-host joins the stage only by
   pressing Join Voice. A host's tile is labelled **Host** and a co-host's **Co-host** in place of Speaker or Listener,
   with no separate badge; the microphone mark still shows whether one on stage is speaking or muted.
+- **Co-hosting is offered.** Make co-host sends the person an offer, which holds one of the three slots (co-hosts and
+  open offers together; the host cannot offer more while all three are held). Accepting makes them a co-host and puts
+  them on stage at once (their Accept is the press the microphone is asked for on); Not now frees the slot. A co-host
+  who leaves voice is a listener again with the offer back, their slot kept; one who drops and does not return within
+  the stage's hold gets the same if still in the chat, and frees the slot if gone. The host may withdraw an offer, or
+  make a co-host a plain speaker who stays on stage. Leaving the chat frees an offer's slot. A row with an offer has
+  `request: "cohost"`.
 - **Who may start a chat:** a GitHub account the island's contributor policy calls `eligible` (`chat-capability.js`,
   the rule that let someone speak until now), checked again by the island when the chat starts. One live chat a host.
 - **Who may request:** anyone signed in, GitHub or X. Eligibility no longer decides speaking: a host does. An X
@@ -59,7 +66,10 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 - The host and co-hosts see a **Requests N** chip in the chat's title; it opens the queue in the panel's own flow under
   the chat's bar (pushing the roster down, never covering it, and scrolling itself in a short panel), oldest first, each row with
   Approve and Decline. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
-  Invite to speak, Mute, Move to listener, Make co-host, Remove co-host, Remove from chat.
+  Invite to speak, Mute, Move to listener, Make co-host (dimmed with "All 3 co-host slots are taken" while every slot is
+  held), Withdraw co-host invitation, Make speaker (a co-host on stage; Make listener off it), Make host, Remove from chat.
+  A tile holding an offer carries a star badge and reads "invited to co-host". The person offered gets a card, **The
+  host invited you to co-host** (**You left the stage. Rejoin as co-host?** when it came back), with Accept and Not now.
 - **Approve, or invite** a listener directly: the listener gets an invite card, **A host invited you to speak**, with
   Start speaking and Not now. Start speaking asks for the microphone (inside the press, as Safari needs) and puts them
   on stage muted. Nobody is put on stage without their own press. An invite lapses after 60 s, and the person goes back
@@ -125,7 +135,9 @@ in the second PR inside each chat's copy.
 | declined | the requester | the footer goes back to Request to speak; a quiet note "Your request wasn't accepted" |
 | muted by a host | the speaker | a toast "A host muted you" |
 | moved to listening | the speaker | a toast "A host moved you to listening" |
-| made or no longer co-host | that person | a toast; the role badge on their tile |
+| offered co-hosting | that person | the co-host card, focused |
+| accepted or turned down co-hosting | hosts and co-hosts; the host | "bea is co-host now"; "bea said not now to co-hosting" |
+| offer withdrawn, or co-host taken back | that person | "The host withdrew the co-host invitation"; "You're no longer a co-host" |
 | host handed over | everyone | the badge moves; a toast for the new host |
 | removed from the chat | that person | "A host removed you from this chat", back to the list |
 | the chat ended | everyone in it | "The chat ended", back to the list |
@@ -187,7 +199,8 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
 - **Join** is `{ "type": "join", "protocol": 2 }`. A chat with no land (`chat.zone` `none`) keeps its roster in the
   `main` zone, which is the zone its frames name. The zone is the chat's own; a `zone` naming another is refused
   (`error`, `zone_unavailable`). Protocol 1 on a chat closes it with 4426.
-- **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts, open }` (the host's and co-hosts' participant
+- **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts, offers, open }` (`offers`: who holds an
+  open co-host offer) (the host's and co-hosts' participant
   ids, and whether the stage is open); `{ type: "chat", chat }` sends it again to everyone whenever the host, co-hosts or
   the open stage change. An `invited` notice from an open stage carries `open: true`.
 - **Rows** carry `rank` (`host` or `cohost`, absent for everyone else) with `rankSince` (ms, when a co-host was made
@@ -216,7 +229,8 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   | `answer` | `id`, `approve` (boolean) | a host or co-host, to an open request: approve is an invite |
   | `mute` | `id` | a host or co-host, to a speaker they outrank |
   | `demote` | `id` | Move to listener, the same |
-  | `cohost` | `id`, `on` (boolean) | the host alone |
+  | `cohost` | `id`, `on` (boolean) | the host alone: on offers co-hosting; off withdraws an offer, or makes a co-host a plain speaker |
+  | `cohostAnswer` | `accept` (boolean) | the person offered co-hosting: Accept (a co-host, on stage at once) or Not now |
   | `handover` | `id` (a co-host) | the host alone |
   | `remove` | `id` | a host or co-host, to anyone they outrank |
   | `allow` | `id` | a host or co-host, to someone removed: Allow back |
@@ -238,7 +252,11 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   | `expired` | the invited | their invite lapsed |
   | `muted` | the speaker | `by` muted them: the page mutes its microphone |
   | `demoted` | the speaker | `by` moved them to listening (their lease has ended) |
-  | `cohost`, `uncohost` | that person | `by` made or unmade them a co-host |
+  | `cohost_offer` | that person | `by` offered them co-hosting (`again` when it came back as they left the stage) |
+  | `cohost_retracted` | that person | `by` withdrew the offer |
+  | `cohost` | hosts and co-hosts | `id` accepted and is a co-host |
+  | `cohost_declined` | the host | `id` turned the offer down |
+  | `uncohost` | that person | `by` made them a plain speaker |
   | `host` | everyone | `id` is the host now (`by` the old host on a handover) |
   | `removed` | that person | `by` removed them; the socket then closes with 4403 |
   | `ended` | everyone | the chat ended (`reason` `ended` or `host_left`); every socket then closes with 4404 |

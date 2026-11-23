@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { createRoles, COHOSTS_MAX, QUEUE_MAX, INVITE_MS, DECLINE_MS, ASK_GAP_MS, HOST_HOLD_MS, STAGE_HOLD_MS } from "../src/chat-roles.js";
 
 const H = "gh:1", C = "gh:2", D = "gh:3", L = "x:9", M = "gh:4";
+// A co-host as the host makes one: an offer, accepted.
+const co = (r, id, now) => { const offered = r.setCohost(H, id, true, now); return offered.ok ? r.answerCohost(id, true, now) : offered; };
 
 test("the host may speak; a listener may not until a host invites them, and an invite lapses", () => {
   const r = createRoles({ host: H, now: 0 });
@@ -63,9 +65,9 @@ test("approving is an invite; a granted lease puts them on the stage until they 
 
 test("ranks: the host makes up to three co-hosts; a co-host manages listeners but never the host or another co-host", () => {
   const r = createRoles({ host: H, now: 0 });
-  assert.equal(r.setCohost(H, C, true, 1).ok, true);
+  assert.equal(co(r, C, 1).ok, true);
   assert.equal(r.setCohost(C, D, true, 2).code, "not_host", "only the host makes co-hosts");
-  for (let i = 0; i < COHOSTS_MAX - 1; i++) r.setCohost(H, `gh:${50 + i}`, true, 3 + i);
+  for (let i = 0; i < COHOSTS_MAX - 1; i++) co(r, `gh:${50 + i}`, 3 + i);
   assert.equal(r.setCohost(H, D, true, 9).code, "cohosts_full");
   assert.equal(r.mayLease(C, 0), true, "a co-host may speak");
   assert.equal(r.invite(C, L, 10).ok, true, "a co-host invites");
@@ -82,7 +84,7 @@ test("ranks: the host makes up to three co-hosts; a co-host manages listeners bu
 
 test("removed: every role and request goes, and they stay out until the chat ends", () => {
   const r = createRoles({ host: H, now: 0 });
-  r.setCohost(H, C, true, 0);
+  co(r, C, 0);
   r.ask(L, 0);
   assert.equal(r.remove(C, L).ok, true);
   assert.equal(r.isRemoved(L), true);
@@ -99,8 +101,8 @@ test("the host's hold: two minutes to come back, then the longest-serving co-hos
   assert.equal(r.nextAt(), HOST_HOLD_MS, "the host must connect within the hold");
   r.presence(H, true, 10);
   assert.equal(r.nextAt(), Infinity, "nothing to wake for");
-  r.setCohost(H, C, true, 100);
-  r.setCohost(H, D, true, 200);
+  co(r, C, 100);
+  co(r, D, 200);
   r.presence(H, false, 1000);
   assert.equal(r.tick(1000 + HOST_HOLD_MS - 1).host, null);
   r.presence(H, true, 1500);
@@ -123,7 +125,7 @@ test("the host's hold: two minutes to come back, then the longest-serving co-hos
 test("handover: the host passes the chat to a co-host and becomes one; End chat is the host's alone", () => {
   const r = createRoles({ host: H, now: 0 });
   assert.equal(r.handover(H, C, 1).code, "not_allowed", "only to a co-host");
-  r.setCohost(H, C, true, 1);
+  co(r, C, 1);
   assert.equal(r.handover(H, C, 2).ok, true);
   assert.equal(r.rankOf(C), "host");
   assert.equal(r.rankOf(H), "cohost");
@@ -135,7 +137,7 @@ test("handover: the host passes the chat to a co-host and becomes one; End chat 
 test("a save restores the same chat, Maps and all", () => {
   const r = createRoles({ host: H, now: 0 });
   r.presence(H, true, 0);
-  r.setCohost(H, C, true, 1);
+  co(r, C, 1);
   r.ask(L, 2);
   r.invite(H, M, 3);
   r.answer(H, L, false, 4);
@@ -150,7 +152,7 @@ test("a save restores the same chat, Maps and all", () => {
 
 test("allowed back: a host or co-host lets someone removed in again as a listener, with nothing else restored", () => {
   const r = createRoles({ host: H, now: 0 });
-  r.setCohost(H, C, true, 0);
+  co(r, C, 0);
   r.ask(L, 0);
   r.remove(C, L, 5, { login: "zed", display: "Zed" });
   assert.deepEqual(r.removedList(), [{ id: L, at: 5, login: "zed", display: "Zed" }]);
@@ -169,7 +171,7 @@ test("allowed back: a host or co-host lets someone removed in again as a listene
 
 test("an open stage: the host's alone, it approves everyone waiting as it opens and every ask after at once", () => {
   const r = createRoles({ host: H, now: 0 });
-  r.setCohost(H, C, true, 0);
+  co(r, C, 0);
   r.ask(L, 0); r.ask(M, 0);
   assert.equal(r.setOpen(C, true, 1).code, "not_host", "a co-host never opens the stage");
   const opened = r.setOpen(H, true, 1);
@@ -201,4 +203,42 @@ test("who may walk a chat's copy: speakers alone, a dropped one held as on the s
   assert.equal(r.mayWalk(L, 0, true), false, "never once removed");
   r.end(H);
   assert.equal(r.mayWalk(H, 0, true), false, "nor after the end");
+});
+
+test("co-hosting is offered: an offer holds a slot, accepting makes a co-host, leaving the stage brings the offer back, and the host can withdraw or make a co-host a speaker", () => {
+  const r = createRoles({ host: H, now: 0 });
+  assert.deepEqual(r.setCohost(H, C, true, 1), { ok: true, changed: true, offered: true });
+  assert.equal(r.rankOf(C), "", "an offer is no rank yet");
+  assert.equal(r.requestOf(C, 1), "cohost");
+  assert.equal(r.mayLease(C, 1), false);
+  r.setCohost(H, D, true, 2); r.setCohost(H, M, true, 3);
+  assert.equal(r.setCohost(H, L, true, 4).code, "cohosts_full", "three slots, offers included");
+  assert.deepEqual(r.setCohost(H, M, false, 5), { ok: true, changed: true, retracted: true }, "the host withdraws an offer");
+  assert.equal(r.setCohost(H, L, true, 6).ok, true, "its slot is free again");
+  assert.equal(r.answerCohost(D, false, 7).ok, true, "Not now frees the slot too");
+  assert.equal(r.answerCohost(D, true, 7).code, "not_offered");
+  assert.equal(r.answerCohost(C, true, 8).ok, true);
+  assert.equal(r.rankOf(C), "cohost");
+  assert.equal(r.mayLease(C, 8), true, "a co-host takes the stage at once");
+  r.granted(C, 9);
+  assert.deepEqual(r.leaseEnded(C, true, 10), { ok: true, changed: true, reinstated: true }, "leaving voice: a listener with the offer back");
+  assert.deepEqual([r.rankOf(C), r.requestOf(C, 10)], ["", "cohost"]);
+  assert.equal(r.setCohost(H, M, true, 11).ok, true, "one slot left: C's offer and L's hold two");
+  assert.equal(r.setCohost(H, D, true, 12).code, "cohosts_full");
+  r.answerCohost(C, true, 13); r.granted(C, 13);
+  assert.deepEqual(r.setCohost(H, C, false, 14), { ok: true, changed: true, demoted: true }, "the host makes a co-host a plain speaker");
+  assert.deepEqual([r.rankOf(C), r.mayLease(C, 14)], ["", true], "who keeps the stage");
+  assert.equal(r.dropOffer(L).changed, true, "gone from the chat, an offer frees its slot");
+});
+
+test("a co-host whose place lapses: still here, a listener with the offer back; gone, the slot frees", () => {
+  const r = createRoles({ host: H, now: 0 });
+  co(r, C, 0); co(r, D, 0);
+  r.granted(C, 0); r.granted(D, 0);
+  r.leaseEnded(C, false, 100); r.leaseEnded(D, false, 100);
+  assert.equal(r.rankOf(C), "cohost", "a drop is held first");
+  const t = r.tick(100 + STAGE_HOLD_MS, (id) => id === C);
+  assert.deepEqual(t.reinstated.sort(), [C, D].sort());
+  assert.deepEqual([r.rankOf(C), r.requestOf(C, 0)], ["", "cohost"], "still here: the offer back");
+  assert.deepEqual([r.rankOf(D), r.requestOf(D, 0)], ["", ""], "gone: the slot is free");
 });

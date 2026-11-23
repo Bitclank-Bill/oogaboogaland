@@ -6,12 +6,12 @@
 // gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies. A snapshot is the
 // server's whole list, so one at the revision already held applies too: after a reconnect it confirms the list. A
 // speaker's `hand` is its raised hand or pinned emoji (#668), "" when down; a listener has none. A hosted chat's row may
-// carry a `rank` (`rankSince`), a `request` (`askedAt`), `since`, `via` and `walking` (on the chat's island), and is ordered by chat-hosts.js's `order`.
+// carry a `rank` (`rankSince`), a `request` (`asked`, `invited`, or `cohost` for an open co-host offer; `askedAt`), `since`, `via` and `walking` (on the chat's island), and is ordered by chat-hosts.js's `order`.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { pathOk, clean, ZONES } = BL.oogaChatConfig;
-  const SOURCES = ["world", "app"], ROLES = ["speaker", "listener"], RANKS = ["host", "cohost"], REQUESTS = ["asked", "invited"], VIA = ["island", "app"];
+  const SOURCES = ["world", "app"], ROLES = ["speaker", "listener"], RANKS = ["host", "cohost"], REQUESTS = ["asked", "invited", "cohost"], VIA = ["island", "app"];
   const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
   // One participant, or null when anything in it is out of the contract.
   const parseParticipant = (raw) => {

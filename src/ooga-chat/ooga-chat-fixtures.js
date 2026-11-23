@@ -24,8 +24,10 @@
 // two sample chats, one with a host, a co-host, a speaker, two requests waiting and an invite out, and the roles' rules
 // on a feed opened for a chat (who outranks whom, the queue, invites, the stage, mute, removal, the end). Its sample hosts
 // answer as a host would, so a review sees every state: the visitor's request is approved 1.5 s after it is made, and a
-// microphone the visitor opens there is muted by the host 2.5 s later. A chat the visitor starts is theirs: two samples
-// join and ask to speak, a sample invited takes the stage a second later, and End chat ends it. Two of Sample Oak's
+// microphone the visitor opens there is muted by the host 2.5 s later; on the open stage of Building DSB Land its host
+// offers the visitor co-hosting 2.5 s after they first take it. A chat the visitor starts is theirs: two samples join and
+// ask to speak, a third listens, a sample invited takes the stage a second later, a co-host offer is accepted by Sample
+// Pebble, turned down by Sample Otter and left open by the rest, and End chat ends it. Two of Sample Oak's
 // speakers walk the chat's island, so its island view shows: asked for (`view`), their places come twice a second. Off (the default), the
 // fixture offers no chats and behaves as before.
 (() => {
@@ -208,7 +210,7 @@
     // The directory: each chat's roles as chat-roles.js keeps them, its members, and the feeds open on it.
     const rooms = new Map();
     const room = (id, title, zone, ago, cast, roles = {}) => rooms.set(id, { id, title, zone, startedAt: now() - ago, cast, host: roles.host, cohosts: new Map((roles.cohosts || []).map((c) => [c, now() - 500000])),
-      queue: new Map(roles.queue || []), invites: new Map(roles.invites || []), stage: new Set(), removed: new Set(), removedInfo: new Map(), cooldown: new Map(), ended: false, sample: true, feeds: new Set() });
+      queue: new Map(roles.queue || []), invites: new Map(roles.invites || []), offers: new Map(), stage: new Set(), removed: new Set(), removedInfo: new Map(), cooldown: new Map(), ended: false, sample: true, feeds: new Set() });
     if (offered === "on") {
       // Listening and speaking from both apps (`via`), each here or on the stage since a different moment (`since`).
       const ago = (s) => now() - s * 1000;
@@ -225,7 +227,7 @@
     const level = (r, id) => id === r.host ? 2 : r.cohosts.has(id) ? 1 : 0;
     const invitedUntil = (r, id) => (r.invites.get(id) || 0) > now() ? r.invites.get(id) : 0;
     const mayLease = (r, id) => !r.ended && !r.removed.has(id) && (level(r, id) > 0 || !!invitedUntil(r, id) || r.stage.has(id));
-    const requestOf = (r, id) => invitedUntil(r, id) ? "invited" : r.queue.has(id) ? "asked" : "";
+    const requestOf = (r, id) => r.offers.has(id) ? "cohost" : invitedUntil(r, id) ? "invited" : r.queue.has(id) ? "asked" : "";
     // A row as the chat draws it: its rank and open request.
     const standing = (r, p) => {
       const { rank: _r, request: _q, askedAt: _a, ...row } = p, rank = level(r, p.id), request = requestOf(r, p.id);
@@ -237,7 +239,10 @@
       return { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: { login: host.login, display: host.display || host.login, character: null }, speakers, listeners: r.cast.length + r.feeds.size - speakers, open: !!r.open };
     }).sort((a, b) => b.speakers + b.listeners - a.speakers - a.listeners || b.startedAt - a.startedAt);
     const chats = async () => ({ chats: listing() });
-    const chatInfo = (r) => ({ id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: r.host, cohosts: [...r.cohosts.keys()], open: !!r.open });
+    const chatInfo = (r) => ({ id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: r.host, cohosts: [...r.cohosts.keys()], offers: [...r.offers.keys()], open: !!r.open });
+    // How a sample answers a co-host offer, a moment after it is made: Sample Pebble accepts, Sample Otter says not now,
+    // and everyone else leaves it open, so a host sees every state (docs/ooga-chat-hosts.md, Roles).
+    const COHOST_ANSWERS = { "sample-pebble": true, "sample-otter": false };
     // A chat's preview from its own state: its stage (the host, co-hosts and speakers), how many listen and wait; a chat
     // gone answers as the server's 404 does.
     const chatPreview = async (boot, id) => {
@@ -285,7 +290,7 @@
     const audience = (boot, { message, status }, chat = null) => {
       const r = chat ? rooms.get(chat) : null;
       let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false, requests = 0;
-      let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0, activeAt = 0;
+      let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0, activeAt = 0, offeredHere = false;
       // The island view (`view`): while this connection asks, the chat's walkers' places twice a second, as the copy
       // relays them (audience.js `walk`), each walking a ring round the island's middle.
       let viewing = false, walkSeq = 0, chain = false;
@@ -324,9 +329,14 @@
         if (!lease) return;
         const was = active;
         lease = 0; active = false; mic = "muted";
-        if (r && voluntary) r.stage.delete(self()[0]?.id);
-        if (was) delta([ownRow()]);
+        const id = self()[0]?.id;
+        if (r && voluntary) r.stage.delete(id);
+        // A co-host leaving the stage on their own word is a listener with the offer back, their slot kept.
+        const reinstated = !!r && voluntary && r.cohosts.has(id);
+        if (reinstated) { r.cohosts.delete(id); r.offers.set(id, now()); }
+        if (was || reinstated) delta([ownRow()]);
         message({ type: "you", zone, you: you() });
+        if (reinstated) { notice({ kind: "cohost_offer", again: true }); message({ type: "chat", chat: chatInfo(r) }); }
       };
       const timers = new Set();
       const after = (ms, fn) => { const id = setTimeout(() => { timers.delete(id); if (!closed) fn(); }, ms); timers.add(id); };
@@ -405,6 +415,16 @@
         }
         if (type === "cancel") { r.queue.delete(me); touch(me); return { ok: true }; }
         if (type === "decline") { r.invites.delete(me); touch(me); return { ok: true }; }
+        // The visitor answers a co-host offer: Accept makes them a co-host, free to take the stage; Not now frees the slot.
+        if (type === "cohostAnswer") {
+          if (!r.offers.delete(me)) return no("not_offered");
+          if (fields.accept === true) { r.cohosts.set(me, now()); r.queue.delete(me); r.invites.delete(me); }
+          touch(me);
+          if (fields.accept === true) { notice({ kind: "cohost", id: me }); removedList(); }
+          message({ type: "chat", chat: chatInfo(r) });
+          after(0, () => message({ type: "you", zone, you: you() }));
+          return { ok: true };
+        }
         // The host's open stage: switching it on approves everyone waiting, and everyone hears the chat's new word.
         if (type === "open") {
           if (mine !== 2) return no("not_host");
@@ -457,10 +477,26 @@
             delta([standing(r, { ...row, role: "listener", muted: undefined, since: now() })]);
             return { ok: true };
           case "cohost":
+            // On offers co-hosting (co-hosts and open offers share three slots); off withdraws an offer, or makes a
+            // co-host a plain speaker who keeps the stage. A sample answers its offer a moment later (`COHOST_ANSWERS`).
             if (mine !== 2) return no("not_host");
-            if (fields.on && r.cohosts.size >= 3) return no("cohosts_full");
-            if (fields.on) { r.cohosts.set(target, now()); r.queue.delete(target); r.invites.delete(target); } else r.cohosts.delete(target);
+            if (!fields.on) {
+              if (!r.offers.delete(target) && !r.cohosts.delete(target)) return { ok: true };
+            } else {
+              if (r.cohosts.has(target) || r.offers.has(target)) return { ok: true };
+              if (r.cohosts.size + r.offers.size >= 3) return no("cohosts_full");
+              r.offers.set(target, now());
+              const answer = COHOST_ANSWERS[row.login];
+              if (answer !== undefined) after(1000, () => {
+                if (!r.offers.delete(target)) return;
+                if (answer) { r.cohosts.set(target, now()); r.queue.delete(target); r.invites.delete(target); }
+                touch(target);
+                notice(answer ? { kind: "cohost", id: target } : { kind: "cohost_declined", id: target });
+                message({ type: "chat", chat: chatInfo(r) });
+              });
+            }
             touch(target);
+            message({ type: "chat", chat: chatInfo(r) });
             return { ok: true };
           case "handover":
             if (mine !== 2 || !r.cohosts.has(target)) return no("not_allowed");
@@ -472,7 +508,7 @@
             after(0, () => message({ type: "you", zone, you: you() }));
             return { ok: true };
           case "remove":
-            r.queue.delete(target); r.invites.delete(target); r.cohosts.delete(target); r.removed.add(target);
+            r.queue.delete(target); r.invites.delete(target); r.cohosts.delete(target); r.offers.delete(target); r.removed.add(target);
             r.removedInfo.set(target, { id: target, at: now(), login: row.login, display: row.display, row });
             r.cast = r.cast.filter((p) => p.id !== target);
             delta([], [{ id: target, generation: row.generation }]);
@@ -495,8 +531,8 @@
             chat: chatInfo(r) });
           if (level(r, self()[0]?.id)) removedList();
           // A chat the visitor started fills up: one sample listening from the island, then two who ask to speak, one
-          // from each app, a moment apart.
-          if (!r.sample && !r.cast.length) [[23, "sample-heron", "island", false, 1000], [21, "sample-pebble", "app", true, 2000], [22, "sample-otter", "island", true, 3200]]
+          // from each app, a moment apart, and later one more listening from Ooga Chat (a fourth to offer co-hosting to).
+          if (!r.sample && !r.cast.length) [[23, "sample-heron", "island", false, 1000], [21, "sample-pebble", "app", true, 2000], [22, "sample-otter", "island", true, 3200], [24, "sample-moss", "app", false, 5500]]
             .forEach(([n, login, via, asks, at]) => after(at, () => {
               const p = member(n, login, "listener", { via, since: now() });
               r.cast = [...r.cast, p];
@@ -544,9 +580,22 @@
         lease: (generation) => !!lease && lease === generation,
         ready() {
           active = true; mic = "muted"; activeAt = now();
-          if (r) { const id = self()[0]?.id; r.invites.delete(id); r.queue.delete(id); r.stage.add(id); }
+          const id = self()[0]?.id;
+          if (r) { r.invites.delete(id); r.queue.delete(id); r.stage.add(id); }
           delta([ownRow()]);
           message({ type: "you", zone, you: you() });
+          // A sample chat's open stage: its host offers the visitor co-hosting a moment after they first take it.
+          if (r && r.sample && r.open && !offeredHere && !level(r, id) && !r.offers.has(id)) {
+            offeredHere = true;
+            after(2500, () => {
+              if (!active || level(r, id) || r.offers.has(id) || r.cohosts.size + r.offers.size >= 3) return;
+              r.offers.set(id, now());
+              delta([ownRow()]);
+              message({ type: "you", zone, you: you() });
+              notice({ kind: "cohost_offer", by: r.host });
+              message({ type: "chat", chat: chatInfo(r) });
+            });
+          }
         },
         endLease
       };
@@ -622,6 +671,8 @@
           clear();
           feeds.delete(feed);
           r?.feeds.delete(feed);
+          // Leaving the chat frees an open offer's slot.
+          if (r && account) r.offers.delete(self()[0]?.id);
           links.delete(connection);
         },
         // The chat ended: the notice, then the socket closes as 4404 does.

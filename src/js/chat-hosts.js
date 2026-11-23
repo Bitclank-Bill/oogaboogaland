@@ -30,7 +30,8 @@
 //   Request to speak (Requested · Cancel; `speakNow`, the island's, reads Speak now on an open stage) where a listener
 //   read Join Voice, End chat for its host, Leave for everyone; an Open stage tag beside the title, and in the Requests
 //   pop-up the host's switch for it (`open`);
-//   the invite card, focused as it opens, Start speaking being Join Voice inside its press; and a tile's menu, opened by
+//   the invite card, focused as it opens, Start speaking being Join Voice inside its press; the co-host offer card
+//   (Accept, then Join Voice off stage; Not now), again when a co-host left the stage; and a tile's menu, opened by
 //   a press on its portrait or Enter or Space on the focused tile, offering what the viewer's rank allows over that
 //   participant (`actionsFor`);
 // - one polite live region (`.hc-chat-notice`, or the page's toast) for every notice and refused request, in words
@@ -85,6 +86,8 @@
   };
   const LIST_MS = 10000, PREVIEW_MS = 5000, ASKED_MS = 5000, SHOWN_MS = 6000, TITLE_MAX = 60;
   const LEVEL = { host: 2, cohost: 1 };
+  // Co-hosts and open co-host offers share these slots (docs/ooga-chat-hosts.md, Roles).
+  const COHOST_SLOTS = 3, SLOTS_FULL = "All 3 co-host slots are taken";
   const count = (n) => Number.isSafeInteger(n) && n >= 0 ? n : 0;
   // One list entry as the server sends it (worker/src/chat-directory.js `list`), or null.
   const parseEntry = (raw) => {
@@ -103,17 +106,20 @@
     return { open: raw.chat.open === true, stage: order(rows), listeners: count(raw.listeners), requests: count(raw.requests) };
   };
   const parseList = (raw) => Array.isArray(raw) ? raw.slice(0, 50).map(parseEntry).filter(Boolean) : null;
-  // What the viewer (`{ id, rank }`) may do to a participant row: only over someone they outrank, never themselves.
+  // What the viewer (`{ id, rank, slots }`, `slots` the co-hosts and open offers the chat holds) may do to a participant
+  // row: only over someone they outrank, never themselves. The host offers co-hosting (an item `disabled` with its
+  // `reason` while every slot is held), withdraws an offer, or makes a co-host a plain speaker (a plain listener if off stage).
   const actionsFor = (viewer, row) => {
     const mine = LEVEL[viewer.rank] || 0, theirs = LEVEL[row.rank] || 0, out = [];
     if (!row || row.id === viewer.id || !mine || mine <= theirs) return out;
     const speaker = row.role === "speaker";
-    if (!speaker && row.request !== "invited") out.push({ type: "invite", label: "Invite to speak" });
+    if (!speaker && row.request !== "invited" && row.request !== "cohost") out.push({ type: "invite", label: "Invite to speak" });
     if (speaker && !row.muted) out.push({ type: "mute", label: "Mute" });
     if (speaker) out.push({ type: "demote", label: "Move to listener" });
     if (viewer.rank === "host") {
-      out.push(row.rank === "cohost" ? { type: "cohost", on: false, label: "Remove co-host" } : { type: "cohost", on: true, label: "Make co-host" });
-      if (row.rank === "cohost") out.push({ type: "handover", label: "Make host" });
+      if (row.rank === "cohost") out.push({ type: "cohost", on: false, label: speaker ? "Make speaker" : "Make listener" }, { type: "handover", label: "Make host" });
+      else if (row.request === "cohost") out.push({ type: "cohost", on: false, label: "Withdraw co-host invitation" });
+      else out.push({ type: "cohost", on: true, label: "Make co-host", ...(viewer.slots >= COHOST_SLOTS ? { disabled: true, reason: SLOTS_FULL } : {}) });
     }
     out.push({ type: "remove", label: "Remove from chat", confirm: `Remove ${row.display} from this chat? They can't come back until it ends.` });
     return out;
@@ -138,14 +144,16 @@
     expired: () => "The invite to speak lapsed",
     muted: () => "A host muted you",
     demoted: () => "A host moved you to listening",
-    cohost: () => "You're a co-host now",
+    cohost: () => n.id === me ? "You're a co-host now" : `${nameOf(n.id)} is co-host now`,
+    cohost_declined: () => `${nameOf(n.id)} said not now to co-hosting`,
+    cohost_retracted: () => "The host withdrew the co-host invitation",
     uncohost: () => "You're no longer a co-host",
     host: () => n.id === me ? "You're the host now" : `${nameOf(n.id)} is the host now`,
     removed: () => "A host removed you from this chat",
     ended: () => "The chat ended"
   })[n.kind]?.() || "";
   const REFUSED = { cooldown: (s) => `You can ask again in ${s || 60} s`, rate_limited: (s) => s ? `Wait ${s} s, then try again` : "Wait a moment, then try again",
-    queue_full: () => "Too many people are asking. Try again soon.", cohosts_full: () => "This chat has 3 co-hosts already", not_asked: () => "That request is gone",
+    queue_full: () => "Too many people are asking. Try again soon.", cohosts_full: () => SLOTS_FULL, not_offered: () => "That invitation has gone", not_asked: () => "That request is gone",
     not_speaking: () => "They aren't speaking now", already_allowed: () => "You may speak already: Join Voice", ended: () => "The chat ended",
     not_host: () => "Only a host can do that", not_allowed: () => "You can't do that here", not_removed: () => "They can join already" };
   const STARTS = { bad_title: () => "Give it a title of 1–60 characters.", zone_unavailable: () => "That place isn't open for chats.",
@@ -409,15 +417,43 @@
     startSpeaking.addEventListener("click", () => joinVoice(), { signal });
     notNow.addEventListener("click", () => send("decline"), { signal });
     invite.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); send("decline"); } }, { signal });
+    // The co-host offer card, while the visitor holds an offer (`you.request` "cohost"), on stage or not; `again` when it
+    // came back as they left the stage. Accept makes them a co-host and, off stage, goes straight on to Join Voice once the
+    // server says they may (`autoSpeak`, as an open stage's invite does); a microphone that fails leaves them co-host,
+    // and Join Voice asks again. Not now frees the slot.
+    const offerHead = make("strong", ""), offerNote = make("span", "hc-invite-note"), accept = button("foot-button foot-primary", "Accept"), offerNotNow = button("foot-button", "Not now");
+    offerHead.id = "hc-offer-head";
+    const offer = make("div", "slab hc-invite hc-offer", offerHead, offerNote, make("span", "hc-invite-go", accept, offerNotNow));
+    Object.assign(offer, { hidden: true, tabIndex: -1 });
+    offer.setAttribute("role", "dialog");
+    offer.setAttribute("aria-labelledby", offerHead.id);
+    let offerShown = false, offerAgain = false, offered = false, answering = 0;
+    const answerOffer = (yes) => {
+      if (answering) return;
+      const onStage = state.voice.role === "speaker" || state.voice.busy;
+      answering = send("cohostAnswer", { accept: yes }, (msg) => {
+        answering = 0;
+        if (!msg.ok && autoFor === "cohost") autoSpeak = "";
+        paint();
+      });
+      if (!answering) return;
+      if (yes && !onStage) { autoSpeak = "invited"; autoFor = "cohost"; autoTries = 0; }
+      paint();
+    };
+    accept.addEventListener("click", () => answerOffer(true), { signal });
+    offerNotNow.addEventListener("click", () => answerOffer(false), { signal });
+    offer.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); answerOffer(false); } }, { signal });
     const foot = space.parts.foot;
     const ask = button("foot-button cloud-voice hc-ask", "Request to speak"), end = button("foot-button hc-end", "End chat"), leave = button("link hc-leave", "Leave");
     let asking = 0;
     // A request to speak the visitor pressed for: on an open stage its invite goes straight on to Start speaking
     // (`autoSpeak`: "asked" until the invite, "starting" as voice is joined, "joining" while it is, "done" after), and
     // the invite card shows only if that join could not start.
-    let autoSpeak = "", autoTries = 0;
+    // `autoFor`: what it waits on, an open stage's invite ("invite") or an accepted co-host offer ("cohost").
+    let autoSpeak = "", autoTries = 0, autoFor = "invite";
     const askToSpeak = () => {
       autoSpeak = "asked";
+      autoFor = "invite";
       autoTries = 0;
       return send("ask", {}, () => { asking = 0; paint(); });
     };
@@ -441,7 +477,7 @@
     // The Requests panel opens in the panel's own flow, under the chat's bar, so it moves the roster down rather than
     // covering it; a tile's menu and a confirmation float by what opened them.
     const dock = make("div", "hc-dock");
-    let anchor = null, popKind = "";
+    let anchor = null, popKind = "", whys = 0;
     const closePop = (refocus = true) => {
       if (pop.hidden) return;
       pop.hidden = true;
@@ -472,8 +508,17 @@
         const el = button(`foot-button${item.primary ? " foot-primary" : ""}`, item.label);
         if (role === "menu") el.setAttribute("role", "menuitem");
         if (item.name) el.setAttribute("aria-label", item.name);
-        el.addEventListener("click", item.run);
         slab.append(el);
+        // Not open to the viewer now: kept in the menu, focusable, with the reason under it.
+        if (item.disabled) {
+          const why = make("p", "hc-pop-note hc-pop-why", item.reason);
+          why.id = `hc-why-${++whys}`;
+          el.setAttribute("aria-disabled", "true");
+          el.setAttribute("aria-describedby", why.id);
+          slab.append(why);
+          continue;
+        }
+        el.addEventListener("click", item.run);
       }
       pop.replaceChildren(slab);
       const docked = kind === "queue";
@@ -498,9 +543,10 @@
     const menu = (id, tile) => {
       const row = people.find((p) => p.id === id);
       if (!room || !row) return;
-      const items = actionsFor({ id: me, rank }, row);
+      const chat = room.chat || {}, slots = (Array.isArray(chat.cohosts) ? chat.cohosts.length : 0) + (Array.isArray(chat.offers) ? chat.offers.length : 0);
+      const items = actionsFor({ id: me, rank, slots }, row);
       if (!items.length) return;
-      openPop(`menu:${id}`, tile, row.display, items.map((a) => ({ label: a.label, run: () => {
+      openPop(`menu:${id}`, tile, row.display, items.map((a) => ({ label: a.label, disabled: a.disabled, reason: a.reason, run: () => {
         const fields = { id, ...(a.on === undefined ? {} : { on: a.on }) };
         if (a.confirm) return confirm(tile, a.confirm, a.label, () => send(a.type, fields));
         closePop();
@@ -557,6 +603,8 @@
       }
       // An invite from an open stage to a request the visitor pressed for: voice is joined as soon as `you` says it may.
       if (msg.kind === "invited" && msg.open && autoSpeak === "asked") { autoSpeak = "invited"; return paint(); }
+      // A co-host offer: the card says so; `again` when it came back as they left the stage.
+      if (msg.kind === "cohost_offer") { offerAgain = msg.again === true; return paint(); }
       if (msg.kind === "asked") {
         if (!asked.includes(msg.id)) asked.push(msg.id);
         if (people.some((p) => p.id === msg.id)) askedNames.set(msg.id, nameOf(msg.id));
@@ -601,7 +649,9 @@
       // The invite card, while invited, until its time runs out (the server says so too).
       set(startSpeaking, "disabled", state.voice.busy || you.speak !== "eligible");
       const invited = !!r && you.request === "invited" && !speaker && (you.inviteUntil || Infinity) > Date.now();
-      if (autoSpeak === "invited" && invited && you.speak === "eligible") {
+      // What an automatic join waits on: an open stage's invite, or the co-hosting just accepted off stage.
+      const waited = autoFor === "cohost" ? you.rank === "cohost" && !speaker : invited;
+      if (autoSpeak === "invited" && waited && you.speak === "eligible") {
         autoSpeak = "starting";
         // After this paint: joining voice paints again on its own. A join that could not start yet (the voice controller
         // hears `you` a moment after the request's answer) is tried again on the next paint, a few times at most.
@@ -618,12 +668,23 @@
       if (invited && you.inviteUntil) inviteTimer = setTimeout(paint, you.inviteUntil - Date.now() + 50);
       if (!invite.hidden && !inviteShown) (startSpeaking.disabled ? invite : startSpeaking).focus();
       inviteShown = !invite.hidden;
+      // The co-host offer card, while the offer stands.
+      const holding = !!r && you.request === "cohost";
+      if (offered && !holding) offerAgain = false;
+      offered = holding;
+      offer.hidden = !holding;
+      set(offerHead, "textContent", offerAgain ? "You left the stage. Rejoin as co-host?" : "The host invited you to co-host");
+      set(offerNote, "textContent", speaker ? "Co-hosts help run the stage. You keep your place on it." : "Co-hosts help run the stage. You'll join it muted.");
+      set(accept, "disabled", !!answering || !state.device.online);
+      set(offerNotNow, "disabled", !!answering);
+      if (!offer.hidden && !offerShown) (accept.disabled ? offer : accept).focus();
+      offerShown = !offer.hidden;
     };
     const update = (next) => {
       state = next;
       const was = room;
       room = next.room && next.session ? next.room : null;
-      if (room !== was) { closePop(false); asked.length = 0; askedNames.clear(); clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; removed = []; autoSpeak = ""; viewSent = null; }
+      if (room !== was) { closePop(false); asked.length = 0; askedNames.clear(); clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; removed = []; autoSpeak = ""; autoFor = "invite"; offerAgain = false; offered = false; answering = 0; viewSent = null; }
       if (!was && room) { readAt = -Infinity; }
       me = next.session?.identity.participant || null;
       rank = room?.you?.rank || "";
@@ -672,7 +733,7 @@
     if (isle) strip.append(isle.node);
     space.parts.list.before(strip);
     node.append(starter.node, preview);
-    space.parts.footRow.before(invite);
+    space.parts.footRow.before(invite, offer);
     node.append(pop);
     const dispose = () => {
       listeners.abort();
@@ -687,9 +748,9 @@
       offGo();
       isle?.dispose();
       space.setMenu(null);
-      for (const el of [bar, dock, notice, list, strip, invite, pop, goTo, ask, end, leave, requests, starter.node, preview]) el.remove();
+      for (const el of [bar, dock, notice, list, strip, invite, offer, pop, goTo, ask, end, leave, requests, starter.node, preview]) el.remove();
     };
     return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), dispose };
   };
-  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS };
+  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS, COHOST_SLOTS };
 })();

@@ -104,7 +104,7 @@
       if ((entry.li.dataset.rank || "") !== t.rank) entry.li.dataset.rank = t.rank;
       if ((entry.li.dataset.request || "") !== t.request) entry.li.dataset.request = t.request;
       const where = speaker ? t.chat ? "speaking" : source === "world" ? "speaking from the island" : "speaking from Ooga Chat" : "listening";
-      attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}${t.rank ? `, ${t.rank === "cohost" ? "co-host" : t.rank}` : ""}, ${where}${speaker && t.look === "muted" ? ", muted" : ""}${t.request ? `, ${t.request} to speak` : ""}`);
+      attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}${t.rank ? `, ${t.rank === "cohost" ? "co-host" : t.rank}` : ""}, ${where}${speaker && t.look === "muted" ? ", muted" : ""}${t.request === "cohost" ? ", invited to co-host" : t.request ? `, ${t.request} to speak` : ""}`);
     };
     const drop = (id, entry) => {
       cancel(entry);

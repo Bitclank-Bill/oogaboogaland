@@ -173,6 +173,8 @@ test("a host mutes a speaker: muted for everyone and not pulled until they unmut
   const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), dot = await connect(w, chat.id, 4);
   assert.equal((await ask(amy, { type: "mute", id: "gh:2" })).error.code, "not_speaking");
   assert.equal((await ask(amy, { type: "cohost", id: "gh:2", on: true })).ok, true);
+  assert.equal(you(bea).request, "cohost", "an offer, until they accept");
+  assert.equal((await ask(bea, { type: "cohostAnswer", accept: true })).ok, true);
   assert.equal(you(bea).rank, "cohost");
   assert.equal(notices(bea, "cohost").length, 1);
   assert.equal((await ask(bea, { type: "remove", id: "gh:1" })).error.code, "not_allowed");
@@ -216,6 +218,7 @@ test("the host's hold: two minutes, then a co-host takes over; with none the cha
   const { chat } = await startChat(w.env, host(1), { title: "Hold", zone: "main" });
   const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
   await ask(amy, { type: "cohost", id: "gh:2", on: true });
+  await ask(bea, { type: "cohostAnswer", accept: true });
   const { a, ctx } = w.objects.get(chatName(chat.id));
   await a.webSocketClose(amy.ws);
   await w.settle();
@@ -326,6 +329,7 @@ test("allow back: the removed list reaches hosts and co-hosts alone, and an allo
   assert.equal(cyd.ws.sent.some((m) => m.type === "removed"), false, "a listener never sees who was removed");
   assert.equal((await ask(cyd, { type: "allow", id: "x:9" })).error.code, "not_host");
   await ask(amy, { type: "cohost", id: "gh:3", on: true });
+  await ask(cyd, { type: "cohostAnswer", accept: true });
   assert.equal(cyd.ws.sent.filter((m) => m.type === "removed").at(-1).list.length, 1, "a new co-host is told who is removed");
   assert.equal((await ask(cyd, { type: "allow", id: "x:9" })).ok, true);
   assert.deepEqual(amy.ws.sent.filter((m) => m.type === "removed").at(-1).list, []);
@@ -344,6 +348,7 @@ test("rows say how long each has held their place and which app they came from, 
   const cyd = await connect(w, chat.id, 3);
   now += 1000;
   await ask(amy, { type: "cohost", id: "gh:3", on: true });
+  await ask(cyd, { type: "cohostAnswer", accept: true });
   const a = w.env.AUDIENCE.getByName(chatName(chat.id));
   const islandIn = await a.fetch(new Request(`https://audience.invalid/connect?chat=${chat.id}`, { headers: { upgrade: "websocket",
     "x-audience-principal": JSON.stringify({ ...who(4), principal: "ob_4", avatar: null }) } }));
@@ -613,6 +618,32 @@ test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's 
   await ask(amy, { type: "setRole", role: "speaker" });
   assert.equal((await ask(amy, { type: "setRole", role: "speaker" })).ok, true, "people speak as in any chat");
   assert.equal((await startChat(w.env, host(2), { title: "Moon", zone: "moon" })).code, "zone_unavailable");
+});
+
+
+
+test("a co-host offer through the chat: the person hears it, accepting puts them on stage, Leave Voice brings the offer back", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  Object.assign(w.env, { REALTIME_APP_ID: "app", REALTIME_SECRET: "secret" });
+  const { chat } = await startChat(w.env, host(1), { title: "Offer", zone: "main" });
+  const amy = await connect(w, chat.id, 1), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a;
+  await ask(amy, { type: "cohost", id: "gh:3", on: true });
+  assert.equal(notices(cyd, "cohost_offer").length, 1);
+  assert.deepEqual(cyd.ws.sent.filter((m) => m.type === "chat").at(-1).chat.offers, ["gh:3"], "everyone's chat says who holds an offer");
+  assert.equal((await ask(cyd, { type: "cohostAnswer", accept: "yes" })).error.code, "malformed");
+  assert.equal((await ask(cyd, { type: "cohostAnswer", accept: true })).ok, true);
+  assert.equal(notices(amy, "cohost").at(-1).id, "gh:3", "the host hears it accepted");
+  assert.equal(you(cyd).speak, "eligible", "a co-host may take the stage at once");
+  assert.equal((await ask(cyd, { type: "setRole", role: "speaker" })).ok, true);
+  await a.mediaRequest("publish/close", new Request("https://audience.invalid/media/publish/close", { method: "POST",
+    headers: { "x-audience-principal": JSON.stringify(who(3)) }, body: JSON.stringify({ connection: cyd.connId }) }));
+  await w.settle();
+  assert.deepEqual([you(cyd).rank, you(cyd).request], ["", "cohost"], "Leave Voice: a listener with the offer back");
+  assert.ok(notices(cyd, "cohost_offer").at(-1).again, "and told so");
+  await ask(amy, { type: "cohost", id: "gh:3", on: false });
+  assert.equal(notices(cyd, "cohost_retracted").length, 1, "the host withdraws it");
 });
 
 test.after(() => { Date.now = realNow; });
