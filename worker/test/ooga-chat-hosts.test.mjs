@@ -707,7 +707,7 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   const amy = await connect(w, chat.id, 1);
   await w.settle();
   const { a, ctx } = w.objects.get(chatName(chat.id));
-  assert.deepEqual(reports, [{ chat: chat.id, title: "Members", speakers: 0, listeners: 1, app: 1, args: 5 }], "the first change goes at once, five plain values");
+  assert.deepEqual(reports, [{ chat: chat.id, title: "Members", speakers: 1, listeners: 0, app: 1, args: 5 }], "the first change goes at once, five plain values: the host speaks, on stage or not");
   await connect(w, chat.id, 3);
   await connect(w, chat.id, 9);
   // Dot joins from the island's page (its `ob_` principal): counted, but not as Ooga Chat's.
@@ -718,12 +718,13 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   // The timer's turn, without waiting for it.
   const fire = async () => { clearTimeout(a.members.timer); a.members.timer = 0; now += MEMBERS_GAP_MS; a.reportMembers(); await w.settle(); };
   await fire();
-  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "Members", speakers: 0, listeners: 4, app: 3, args: 5 }, "the whole burst in one report, the island's own not in `app`");
+  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "Members", speakers: 1, listeners: 3, app: 3, args: 5 }, "the whole burst in one report, the island's own not in `app`");
+  assert.deepEqual([w.directory.list().find((c) => c.id === chat.id).speakers, w.directory.list().find((c) => c.id === chat.id).listeners], [1, 3], "the Chats list counts the same way");
   await ask(amy, { type: "setRole", role: "speaker" });
   await speakerOn(w, chat.id, amy);
   await w.settle();
   await fire();
-  assert.deepEqual([reports.at(-1).speakers, reports.at(-1).listeners, reports.at(-1).app], [1, 3, 3], "a speaker counted as speaking");
+  assert.deepEqual([reports.at(-1).speakers, reports.at(-1).listeners, reports.at(-1).app], [1, 3, 3], "the host taking the stage changes no count");
   const told = reports.length;
   // A microphone muted changes no count: nothing is sent.
   await ask(amy, { type: "setMic", muted: true });
