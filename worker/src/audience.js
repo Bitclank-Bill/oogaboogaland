@@ -51,7 +51,7 @@ export const chatName = (id) => `chat:${id}`;
 export const CHAT_LANDS = ["main", "dsb", "none"];
 export const isChatLand = (land) => CHAT_LANDS.includes(land);
 export const rosterZone = (land) => (land === "dsb" ? "dsb" : "main");
-export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "open", "end"]);
+export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "cohostAnswer", "handover", "remove", "allow", "open", "end"]);
 const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
 export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1"];
 // A transient reaction's life on every client (players.js shows the island's for the same time), and the limits on
@@ -536,7 +536,10 @@ export class Audience extends DurableObject {
       if (!this.present(c.id)) {
         // Gone altogether: their request goes (hosts could not answer it), and a host's hold starts.
         const cancelled = this.roles.cancel(c.id).changed, away = this.roles.presence(c.id, false, Date.now()).changed;
-        if (cancelled || away) this.background(this.rolesChanged());
+        // Gone from the chat, an open co-host offer frees its slot.
+        const freed = this.roles.dropOffer(c.id).changed;
+        if (freed) this.sendChatInfo();
+        if (cancelled || away || freed) this.background(this.rolesChanged());
       }
     }
     this.sockets.delete(connId);
@@ -780,7 +783,7 @@ export class Audience extends DurableObject {
 
   chatInfo() {
     const { id, title, zone, startedAt } = this.chat;
-    return { id, title, zone, startedAt, host: this.roles.host, cohosts: this.roles.cohosts, open: this.roles.open };
+    return { id, title, zone, startedAt, host: this.roles.host, cohosts: this.roles.cohosts, offers: this.roles.offers, open: this.roles.open };
   }
 
   /** The chat's own word changed (its host, co-hosts, an open stage): everyone in it hears `{ type: "chat", chat }`. */
@@ -817,7 +820,10 @@ export class Audience extends DurableObject {
 
   /** A lease ended: the speaker's place on the stage goes, or is held, and their voice is free for another chat. */
   stageLeft(id, voluntary) {
-    if (this.roles.leaseEnded(id, voluntary, Date.now()).changed) this.background(this.rolesChanged());
+    const ended = this.roles.leaseEnded(id, voluntary, Date.now());
+    if (ended.changed) this.background(this.rolesChanged());
+    // A co-host who left the stage is a listener with the offer back (their slot kept): they and everyone hear so.
+    if (ended.reinstated) this.cohostReinstated(id);
     if (this.chat && this.env.CHATS) this.background(this.env.CHATS.getByName(DIRECTORY_NAME).release(id, this.chat.id).catch(() => {}));
     this.tellIsland(id, false);
   }
@@ -880,6 +886,13 @@ export class Audience extends DurableObject {
 
   managers() { const R = this.roles; return [R.host, ...R.cohosts]; }
 
+  cohostReinstated(id) {
+    this.touchId(id);
+    this.tellYouId(id);
+    if (this.roles.offers.includes(id)) this.notify([id], { kind: "cohost_offer", again: true });
+    this.sendChatInfo();
+  }
+
   /**
    * Who is removed, for hosts and co-hosts alone (`{ type: "removed", list: [{ id, at, login, display }] }`, earliest
    * first): the list Allow back works from, since a removed person has no row. `ids`: only these (a new manager).
@@ -905,6 +918,7 @@ export class Audience extends DurableObject {
     const target = typeof msg.id === "string" && ID.test(msg.id) ? msg.id : null;
     if (TARGETED.has(msg.type) && !target) return { ok: false, code: "malformed" };
     if ((msg.type === "answer" || msg.type === "cohost" || msg.type === "open") && typeof (msg.type === "answer" ? msg.approve : msg.on) !== "boolean") return { ok: false, code: "malformed" };
+    if (msg.type === "cohostAnswer" && typeof msg.accept !== "boolean") return { ok: false, code: "malformed" };
     const conns = (id) => { const p = this.model.people.get(id); return p ? [...p.conns.values()] : []; };
     const speaking = (id) => conns(id).some((o) => o.lease && o.lease.state === "active");
     let res;
@@ -958,8 +972,25 @@ export class Audience extends DurableObject {
         }
         break;
       case "cohost":
+        // On: an offer the person answers. Off: an offer withdrawn, or a co-host made a plain speaker.
         res = R.setCohost(me, target, msg.on, now);
-        if (res.ok && res.changed) { this.touchId(target); this.notify([target], { kind: msg.on ? "cohost" : "uncohost", by: me }); this.tellYouId(target); this.sendRemoved([target]); this.sendChatInfo(); }
+        if (res.ok && res.changed) {
+          this.touchId(target);
+          this.notify([target], { kind: res.offered ? "cohost_offer" : res.retracted ? "cohost_retracted" : "uncohost", by: me });
+          this.tellYouId(target);
+          this.sendChatInfo();
+        }
+        break;
+      case "cohostAnswer":
+        // Accepting makes them a co-host, free to take the stage at once (their page joins voice on that press).
+        res = R.answerCohost(me, msg.accept, now);
+        if (res.ok) {
+          this.touchId(me);
+          this.tellYouId(me);
+          if (msg.accept) { this.notify(this.managers(), { kind: "cohost", id: me }); this.sendRemoved([me]); }
+          else this.notify([R.host], { kind: "cohost_declined", id: me });
+          this.sendChatInfo();
+        }
         break;
       case "handover":
         res = R.handover(me, target, now);
@@ -992,7 +1023,8 @@ export class Audience extends DurableObject {
     const t = this.roles.tick(now, (id) => this.present(id));
     for (const id of t.expired) { this.touchId(id); this.tellYouId(id); this.notify([id], { kind: "expired" }); }
     if (t.host) { this.touchId(t.host); this.notify(null, { kind: "host", id: t.host }); this.tellYouId(t.host); this.sendRemoved([t.host]); this.sendChatInfo(); }
-    if (t.expired.length || t.host || t.ended) await this.rolesChanged();
+    for (const id of t.reinstated) this.cohostReinstated(id);
+    if (t.expired.length || t.host || t.ended || t.reinstated.length) await this.rolesChanged();
     if (t.ended) await this.endChat("host_left");
   }
 
