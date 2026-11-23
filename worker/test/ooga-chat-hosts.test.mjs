@@ -544,7 +544,8 @@ test("a chat's copy: speakers alone may walk it, walkers' rows say so, the cloud
   now += START_GAP_MS;
   const w = await world();
   const calls = [];
-  const copy = { copyRevoke: async (id, reason) => calls.push(["revoke", id, reason]), copyEnd: async () => calls.push(["end"]),
+  let copyUp = true;
+  const copy = { copyRevoke: async (id, reason) => calls.push(["revoke", id, reason]), copyEnd: async () => { if (!copyUp) throw new Error("copy away"); calls.push(["end"]); },
     copyClouds: async (list) => calls.push(["clouds", list.map((c) => [c.id, c.seat, c.character])]) };
   w.env.ROOM = { getByName: (name) => name.startsWith("chat:") ? copy : { chatVoice: async () => ({ ok: true }) } };
   const { chat } = await startChat(w.env, host(1), { title: "Copy", zone: "main" });
@@ -573,9 +574,18 @@ test("a chat's copy: speakers alone may walk it, walkers' rows say so, the cloud
   await ask(amy, { type: "setRole", role: "listener" });
   await w.settle();
   assert.ok(calls.some((c) => c[0] === "revoke" && c[1] === 1), "leaving the stage on one's own word sends one home too");
+  // The end, with the copy away: owed, kept, and said again from the alarm until the copy takes it.
+  copyUp = false;
   await ask(amy, { type: "end" });
   await w.settle();
+  const { ctx } = w.objects.get(chatName(chat.id));
+  assert.equal(await ctx.storage.get("copyGone"), chat.id, "kept across a nap");
+  assert.ok(ctx.alarm && ctx.alarm <= now + 30000, "and the alarm will try again");
+  copyUp = true;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
   assert.deepEqual(calls.at(-1), ["end"], "the end sends everyone home and the copy forgets itself");
+  assert.equal(await ctx.storage.get("copyGone"), undefined);
 });
 
 test("a DSB Land chat has no copy yet", async () => {

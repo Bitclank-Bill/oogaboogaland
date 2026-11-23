@@ -174,8 +174,15 @@ export const copyRoom = {
     copyRoom.keepAway(room);
     return entry;
   },
-  /** Seats kept for travellers other than account `id`. */
-  awayOthers: (room, id) => (room.away ? room.away.size - (room.away.has(id) ? 1 : 0) : 0),
+  /**
+   * Seats kept for travellers other than account `id`. Seats past their time are let go first: the sweep that otherwise
+   * does it runs only while players are here, so an empty island would go on counting them.
+   */
+  awayOthers(room, id) {
+    if (!room.away) return 0;
+    copyRoom.sweepAway(room, Date.now());
+    return room.away.size - (room.away.has(id) ? 1 : 0);
+  },
   // The account is back on the island: its kept seat goes. True when it had one.
   returned(room, id) {
     if (!room.away || !room.away.delete(id)) return false;

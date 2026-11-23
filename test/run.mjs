@@ -29697,9 +29697,24 @@ const hostedIslandView = (phone) => ({ name: phone ? "hosted chats island view p
   await b.screenshot(join(shots, `island-live-${w}.png`));
   await b.evaluate(`document.querySelector("#cloud-panel .iv-live").click()`);
   const off = await until((s) => s.live === "off" && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
+  // On again: a fresh canvas, since the last renderer gave its context up.
+  await b.evaluate(`document.querySelector("#cloud-panel .iv-live").click()`);
+  const again = await until((s) => s.live === "on" && s.gl && s.faces.length === 2, 20000);
+  await b.evaluate(`window.__ivLast = [...BL.islandView.open][0]`);
   await b.evaluate(`document.querySelector(".hc-leave").click()`);
   const left = await until((s) => !s.shown && !s.room);
-  const ok = { map: map.shown && map.live === "off" && map.faces.every((f) => f.off < 1 && f.green > 0) && !map.gl && !map.wide,
+  await b.sleep(300);
+  // A view closed while it shows and draws stops drawing for good.
+  await b.evaluate(`window.__ivLone = BL.islandView.create({ picture: "", faceOf: () => "", storageKey: "ooga-island-view-check" });
+    document.body.append(__ivLone.node);
+    __ivLone.update({ rows: [{ id: "gh:1", display: "A", login: "a", walking: true }], talking: [], speaking: false, self: null, active: true })`);
+  await b.sleep(200);
+  const drewAlone = await b.evaluate(`__ivLone.drawing`);
+  await b.evaluate(`__ivLone.dispose()`);
+  await b.sleep(300);
+  const stopped = drewAlone && await b.evaluate(`!__ivLone.drawing && !window.__ivLast.drawing`);
+  await b.evaluate(`localStorage.setItem("ooga-island-view-live", "0")`);
+  const ok = { again: again.live === "on" && again.gl, stopped, map: map.shown && map.live === "off" && map.faces.every((f) => f.off < 1 && f.green > 0) && !map.gl && !map.wide,
     paused: hidden === paused && paused > 0, resumed: resumed.seq > paused,
     live: live.live === "on" && live.gl && live.stored === "1" && live.faces.every((f) => f.green > 0),
     off: off.live === "off" && !off.gl && off.stored === "0" && off.faces.every((f) => f.off < 1 && f.green > 0), left: !left.shown };

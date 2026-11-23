@@ -224,9 +224,9 @@
     };
     const draw = () => { if (!raf) raf = requestAnimationFrame(frame); };
     const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; };
-    // Live view: the renderer's code fetched only now, then one renderer on the strip's own canvas.
-    const glCanvas = document.createElement("canvas");
-    glCanvas.className = "iv-gl";
+    // Live view: the renderer's code fetched only now, then one renderer on a canvas of its own, new each time Live view
+    // starts (a renderer's dispose gives its context up for good, so a canvas is never reused).
+    let glCanvas = null;
     const setLive = (on) => {
       liveWant = on;
       try { localStorage.setItem(storageKey, on ? "1" : "0"); } catch { /* Storage may be unavailable. */ }
@@ -243,6 +243,8 @@
       const mine = ++liveTry;
       Promise.resolve(loadLive()).then(() => BL.islandViewLive.prepare(island)).then((ground) => {
         if (mine !== liveTry || !liveWant || !shown) { liveState = "off"; return paint(); }
+        glCanvas = document.createElement("canvas");
+        glCanvas.className = "iv-gl";
         stage.prepend(glCanvas);
         live = BL.islandViewLive.create(glCanvas, { ground, data: view });
         liveState = "on";
@@ -258,10 +260,10 @@
     const endLive = () => {
       liveTry++;
       if (live) { live.dispose(); live = null; }
-      glCanvas.remove();
+      if (glCanvas) { glCanvas.remove(); glCanvas = null; }
       if (liveState !== "failed" || !liveWant) liveState = "off";
       paint();
-      draw();
+      if (shown && active) draw();
     };
     const paint = () => {
       node.hidden = !shown;
@@ -309,7 +311,7 @@
       }
       return out;
     };
-    const self = { node, update, walk, placed, dispose() { stop(); endLive(); sizes?.disconnect(); faces.clear(); node.remove(); open.delete(self); },
+    const self = { node, update, walk, placed, dispose() { shown = active = false; stop(); endLive(); sizes?.disconnect(); faces.clear(); node.remove(); open.delete(self); },
       get live() { return liveState; }, get walks() { return state; }, get drawing() { return !!raf; } };
     open.add(self);
     return self;

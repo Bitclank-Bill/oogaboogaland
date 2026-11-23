@@ -154,6 +154,7 @@ export class Audience extends DurableObject {
     this.walkers = new Set();
     this.copyOpened = false;
     this.copySeats = new Map();
+    this.copyGone = null;
     // What the island room was last told of this chat's counts (`reportMembers`): its signature, when, the one-shot
     // timer for a burst's last change, the one report in flight, and the chat whose end it has not yet heard (`gone`,
     // stored, so the alarm says it again even after the chat is gone).
@@ -190,6 +191,9 @@ export class Audience extends DurableObject {
         .filter(([, w]) => w && CHAT_ID.test(w.chat || "")));
       const gone = await ctx.storage.get("membersGone");
       this.members.gone = typeof gone === "string" && CHAT_ID.test(gone) ? gone : null;
+      // A copy whose end it has not yet heard (`copyEnd`), retried from the alarm even after the chat is gone.
+      const copyGone = await ctx.storage.get("copyGone");
+      this.copyGone = typeof copyGone === "string" && CHAT_ID.test(copyGone) ? copyGone : null;
       // The model reads these limits as it goes: a chat opened later raises them to a chat's own (`open`).
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
@@ -527,7 +531,7 @@ export class Audience extends DurableObject {
     // Media cleanup retries even after every client has gone; a chat wakes for a lapsing invite or its held host.
     next = Math.min(next, this.media.nextCleanup());
     if (this.roles) next = Math.min(next, this.roles.nextAt(), this.model.quietUntil());
-    if (this.islandWords.size || this.members.gone) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
+    if (this.islandWords.size || this.members.gone || this.copyGone) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
     if (next === Infinity) return;
     const current = await this.ctx.storage.getAlarm();
     if (!current || current > next) await this.ctx.storage.setAlarm(next);
@@ -539,6 +543,7 @@ export class Audience extends DurableObject {
     if (this.model.expire(now).length) await this.saveQuiet();
     for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
     await this.sendGone();
+    await this.sendCopyGone();
     for (const c of [...this.model.conns.values()]) {
       if (c.authUntil <= now) { this.close(c.connId, CLOSE.auth, "auth_required"); continue; }
       if (c.lease && c.lease.state === "pending" && c.lease.until <= now) {
@@ -940,6 +945,16 @@ export class Audience extends DurableObject {
     this.background(this.roomQueue);
   }
 
+  /** The chat's copy hears the chat ended (`copyEnd`); any answer settles it, only an unreachable copy is tried again. */
+  async sendCopyGone() {
+    const chat = this.copyGone;
+    if (!chat || !this.env.ROOM) return;
+    try { await this.env.ROOM.getByName(chatName(chat)).copyEnd(); } catch { return; }
+    if (this.copyGone !== chat) return;
+    this.copyGone = null;
+    await this.ctx.storage.delete("copyGone");
+  }
+
   async keepCopy() {
     await this.ctx.storage.put("copy", { walkers: [...this.walkers], opened: this.copyOpened, seats: [...this.copySeats] });
   }
@@ -1290,9 +1305,13 @@ export class Audience extends DurableObject {
     this.model.expire(Infinity);
     await this.flush();
     if (this.env.CHATS) await this.env.CHATS.getByName(DIRECTORY_NAME).end(this.chat.id).catch(() => {});
-    // Its copy sends everyone home and forgets itself.
-    this.toCopy((copy) => copy.copyEnd());
+    // Its copy sends everyone home and forgets itself: owed until it answers, kept and retried from the alarm.
     await this.roomQueue;
+    if (this.copyOpened && this.env.ROOM) {
+      this.copyGone = this.chat.id;
+      await this.ctx.storage.put("copyGone", this.copyGone);
+      await this.sendCopyGone();
+    }
     // The speakers' last words to the island (their island voice free again) go now; any the Room did not take stay,
     // with the chat they name, and the alarm sends them again even after the chat is gone.
     for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);

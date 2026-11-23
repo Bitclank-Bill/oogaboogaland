@@ -321,6 +321,10 @@ test("the island keeps a traveller's seat: its leave says so, its return beams i
   r.away.set(7, { chat: null, at: Date.now() - AWAY_MS - 1, character: "player7" });
   copyRoom.sweepAway(r, Date.now());
   assert.deepEqual(heard(b, "away").at(-1), { t: "away", id: 7, on: false });
+  // A seat past its time never fills the island, even with no sweep since: the admission lets it go first.
+  r.away.set(8, { chat: null, at: Date.now() - AWAY_MS - 1, character: "player8" });
+  assert.equal(copyRoom.awayOthers(r, 99), 0, "an expired seat is let go at the check");
+  assert.deepEqual(heard(b, "away").at(-1), { t: "away", id: 8, on: false });
   // Copies off: a travel message changes nothing.
   const off = host("island", { OOGA_CHAT_FEATURES: "chats" }), o = off.room(), x = await off.join(o, 4), y = await off.join(o, 5);
   say(o, x, { t: "travel" });
