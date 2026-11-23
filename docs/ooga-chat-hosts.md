@@ -59,12 +59,14 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   of any length, with no new approval. Only **Move to listener** or **Remove from chat** takes that away: then they
   request again (`cleared` in chat-roles.js; the speaker cap still holds).
 - **A short drop shows nobody anything.** When a speaker's, co-host's or host's last connection to the chat drops,
-  everyone keeps seeing their tile exactly as it was for 20 s (`QUIET_MS`, a quiet hold), and their place on the stage
-  counts against the speaker cap so nobody takes it. Back within that and speaking again (Ooga Chat does it by itself),
-  their tile carries on where it stood in the order; still gone after it, the roster shows them gone. Their place on the
-  stage and a co-host's rank are held 2 minutes, the host's role 2 minutes too. A microphone that only publishes again
-  after a failed connection (`publish/close` with `recover`) keeps the place, rank and tile the same way; Leave Voice is
-  the speaker's own word and gives the place (and a co-host's rank) up.
+  everyone keeps seeing their tile exactly as it was for 5 s (`QUIET_MS`). Past that it stays in its place, dimmed, with
+  **Reconnecting…** for its role and no microphone mark, for as long as their place is held: a minute on the stage
+  (`STAGE_HOLD_MS`, a co-host's rank too), the host's 2-minute hold for the host, or until a host or co-host moves them
+  to listener or removes them. Their place counts against the speaker cap all the while, so the stage never reshuffles.
+  Back and speaking again (Ooga Chat does it by itself), their tile carries on where it stood; still gone when the hold
+  ends, the roster shows them gone. A microphone that only publishes again after a failed connection (`publish/close`
+  with `recover`) keeps the place, rank and tile the same way; Leave Voice is the speaker's own word and gives the place
+  (and a co-host's rank) up.
 - **Mute:** a host or co-host can mute a speaker; only the speaker can unmute themselves (X Spaces' rule). Move to
   listener ends their lease. Remove from chat closes every connection of that account to the chat and keeps it out of
   that chat until a host or co-host allows them back or it ends. **Allow back** (from the Removed list in the
@@ -281,7 +283,7 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   (`worker/test/ooga-chat-hosts.test.mjs`): every rule in this file (who may do what to whom, the caps, the queue, invites,
   cooldowns, the host hold and succession, removal, one lease an identity).
 - **No idle timers.** A chat's alarm is set only for the earliest of a held host's 2 minutes, a held place on the stage,
-  a quiet hold's 20 s, an invite's 60 s, a pending lease, a re-authentication, or a word the island room has yet to take
+  a quiet hold's 5 s and its end, an invite's 60 s, a pending lease, a re-authentication, or a word the island room has yet to take
   (kept and retried even after the chat ends, the one thing an ended chat keeps until it is delivered); an empty chat with nothing pending sets none and hibernates. Roles, queue,
   invites and removals are stored (they are small), and the sockets' attachments carry each connection, so a woken
   chat carries on at the same revision.

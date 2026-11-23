@@ -30,7 +30,7 @@ import "../../src/js/emoji-data.js";
 import "../../src/js/reaction-policy.js";
 import { CLEANUP_BACKLOG_MAX, createMediaBroker, MEDIA_BODY_MAX } from "./audience-media.js";
 import { inspectReporter } from "./inspect-report.js";
-import { createRoles } from "./chat-roles.js";
+import { createRoles, HOST_HOLD_MS, STAGE_HOLD_MS } from "./chat-roles.js";
 // The one directory of live chats (chat-directory.js), named here so neither file imports the other.
 export const DIRECTORY_NAME = "chats";
 const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0, rankSince: 0 });
@@ -45,8 +45,9 @@ export const CHAT_ID = /^[A-Za-z0-9_-]{16}$/;
 export const CHAT_TITLE_MAX = 60;
 // How soon a word the island room missed (a chat's stage taken or left) is sent again.
 export const ISLAND_RETRY_MS = 30 * 1000;
-// A chat speaker's, host's or co-host's drop shorter than this shows nobody anything (audience-model.js, quiet hold).
-export const QUIET_MS = 20 * 1000;
+// A chat speaker's, host's or co-host's drop shorter than this shows nobody anything; longer, their tile shows them
+// reconnecting, in place, while their place is held (audience-model.js, quiet hold).
+export const QUIET_MS = 5 * 1000;
 export const chatName = (id) => `chat:${id}`;
 // A chat's land: a zone it is held in (`main`, `dsb`), or `none`, Ooga Chat voice alone, with no copy, clouds or Go
 // there. A land-less chat's roster lives in the model's `main` zone, which is what its socket's frames name.
@@ -167,7 +168,7 @@ export class Audience extends DurableObject {
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
         standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat,
-        reserved: () => this.roles ? this.roles.held(Date.now()) : [] });
+        reserved: () => this.roles ? this.roles.held(Date.now()) : [], quietMs: QUIET_MS });
       this.island = (await ctx.storage.get("world")) || this.island;
       if (!Array.isArray(this.island.linked)) this.island = { ...this.island, linked: [] };
       this.watching = new Set((await ctx.storage.get("watch")) || []);
@@ -543,7 +544,8 @@ export class Audience extends DurableObject {
   drop(connId, quiet = false) {
     const was = this.model.conns.get(connId), R = this.roles;
     const hold = quiet && was && R && !R.ended && !R.isRemoved(was.id) && (was.lease && was.lease.state === "active" || !!R.rankOf(was.id));
-    const c = this.model.disconnect(connId, hold ? Date.now() + QUIET_MS : 0);
+    // Reconnecting for as long as their place is held: a minute on the stage, the host's role its own hold.
+    const now = Date.now(), c = this.model.disconnect(connId, hold ? { quietUntil: now + QUIET_MS, until: now + (R.host === was.id ? HOST_HOLD_MS : STAGE_HOLD_MS) } : null);
     if (hold) this.background(this.saveQuiet());
     if (c && this.roles) {
       if (c.lease) this.stageLeft(c.id, false);

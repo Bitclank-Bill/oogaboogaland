@@ -26,7 +26,7 @@ globalThis.WebSocketRequestResponsePair = class {};
 
 const { Audience, CHAT_PROTOCOL, QUIET_MS, chatName } = await import("../src/audience.js");
 const { ChatDirectory, startChat, chatTitle, CHATS_MAX, START_GAP_MS } = await import("../src/chat-directory.js");
-const { HOST_HOLD_MS, INVITE_MS } = await import("../src/chat-roles.js");
+const { HOST_HOLD_MS, INVITE_MS, STAGE_HOLD_MS } = await import("../src/chat-roles.js");
 const { bridgeFetch } = await import("../src/chat-bridge.js");
 const { BRIDGE_VERSION } = await import("../src/chat-bridge-protocol.js");
 
@@ -229,7 +229,7 @@ test("the host's hold: two minutes, then a co-host takes over; with none the cha
   await ctx.storage.setAlarm(null);
   await a.alarm();
   await w.settle();
-  assert.equal(rowOf(bea, "gh:1"), undefined, "past the quiet hold, they are gone from the roster");
+  assert.deepEqual([rowOf(bea, "gh:1").rank, rowOf(bea, "gh:1").reconnecting], ["host", true], "past the quiet moments: reconnecting, in place");
   assert.equal(ctx.alarm, left + HOST_HOLD_MS, "then for the host's hold");
   now = left + HOST_HOLD_MS;
   await ctx.storage.setAlarm(null);
@@ -611,11 +611,21 @@ test("a short drop shows nobody anything: the speaker's tile stands, their place
   await a.webSocketClose(back.ws);
   await w.settle();
   assert.equal(rowOf(amy, "gh:2").role, "speaker");
+  now = left + QUIET_MS - 1;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  assert.equal(rowOf(amy, "gh:2").reconnecting, undefined, "nothing for the first moments");
   now = left + QUIET_MS;
   await ctx.storage.setAlarm(null);
   await a.alarm();
   await w.settle();
-  assert.equal(rowOf(amy, "gh:2"), undefined, "gone from the roster past the quiet hold");
+  assert.deepEqual([rowOf(amy, "gh:2").role, rowOf(amy, "gh:2").reconnecting, rowOf(amy, "gh:2").since], ["speaker", true, since], "then reconnecting, in place");
+  assert.equal(ctx.alarm, left + STAGE_HOLD_MS);
+  now = left + STAGE_HOLD_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(rowOf(amy, "gh:2"), undefined, "gone from the roster once their place lapses");
   now += HOST_HOLD_MS;
   const later = await connect(w, chat.id, 2);
   assert.equal(you(later).speak, "eligible", "once let on, they come back without asking");

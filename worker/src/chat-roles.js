@@ -25,7 +25,7 @@ export const INVITE_MS = 60 * 1000;
 export const DECLINE_MS = 60 * 1000;
 export const ASK_GAP_MS = 10 * 1000;
 export const HOST_HOLD_MS = 2 * 60 * 1000;
-export const STAGE_HOLD_MS = 2 * 60 * 1000;
+export const STAGE_HOLD_MS = 60 * 1000;
 export const ID = /^(gh|x):[1-9][0-9]{0,19}$/;
 
 const refuse = (code, extra = {}) => ({ ok: false, code, ...extra });

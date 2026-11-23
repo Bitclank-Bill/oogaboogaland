@@ -214,7 +214,7 @@
       // Listening and speaking from both apps (`via`), each here or on the stage since a different moment (`since`).
       const ago = (s) => now() - s * 1000;
       room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker", { via: "island", since: ago(590) }),
-        member(2, "sample-fern", "speaker", { via: "app", since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, since: ago(300) }),
+        member(2, "sample-fern", "speaker", { via: "app", since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, reconnecting: true, since: ago(300) }),
         member(4, "sample-wren", "listener", { via: "island", since: ago(500) }), member(5, "sample-kite", "listener", { via: "app", since: ago(200) }),
         member(6, "sample-lark", "listener", { via: "app", since: ago(100) }), member(7, "sample-heron", "listener", { via: "island", since: ago(550) })],
       { host: "gh:9001", cohosts: ["gh:9002"], queue: [["gh:9004", now() - 30000], ["gh:9005", now() - 10000]], invites: [["gh:9006", now() + 60000]] });

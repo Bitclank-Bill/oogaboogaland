@@ -331,7 +331,7 @@
       const speaker = p.role === "speaker", look = speaker ? p.muted ? "muted" : "on" : "";
       t.id = p.id; t.display = p.display; t.role = p.role; t.source = "chat"; t.chat = true; t.self = p.id === me;
       t.face = rowFace(p); t.hand = p.hand || ""; t.look = look; t.micPressed = false; t.micDisabled = true;
-      t.micWords = speaker ? `${p.display}: ${p.muted ? "Muted their microphone" : "In voice"}` : ""; t.rank = p.rank || ""; t.request = "";
+      t.micWords = speaker ? `${p.display}: ${p.muted ? "Muted their microphone" : "In voice"}` : ""; t.rank = p.rank || ""; t.request = ""; t.reconnecting = !!p.reconnecting;
     };
     let previewing = null, previewFrom = null, previewTimer = 0, wantSpeak = "";
     const readPreview = async () => {
