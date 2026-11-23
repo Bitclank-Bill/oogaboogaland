@@ -41,7 +41,7 @@ import {
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
   callFeatures, callOn, LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
-  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, worldReporter, audienceRoom, commonsRoom, roomCatalog, equipmentRoom, sessionGone, cleanupPass,
+  BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, worldReporter, audienceRoom, commonsRoom, chatMembersRoom, roomCatalog, equipmentRoom, sessionGone, cleanupPass,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
 import { getPlayer } from "./db.js";
@@ -80,6 +80,8 @@ export class Room extends DurableObject {
     this.players = new Map();
     // Accounts on a hosted chat's stage (docs/ooga-chat-hosts.md), GitHub id -> chat id: their island voice gives way.
     this.chatVoices = new Map();
+    // Each live hosted chat's members, as the chat last said (room-chat-members.js), for every page's Online Oogas.
+    this.chatRosters = new Map();
     // Each player socket to its record, so a message finds its sender without reading the socket's attachment. Rebuilt
     // from the sockets on every wake, as `players` is; a record leaves both together (`drop`).
     this.sockets = new Map();
@@ -168,6 +170,7 @@ export class Room extends DurableObject {
       await this.restoring("chatVoices", (stored) => {
         this.chatVoices = new Map((Array.isArray(stored) ? stored : []).filter((e) => Array.isArray(e) && Number.isSafeInteger(e[0]) && typeof e[1] === "string"));
       }, () => { this.chatVoices = new Map(); });
+      await this.restoring("chatMembers", (stored) => chatMembersRoom.restore(this, stored), () => { this.chatRosters = new Map(); });
       await this.restoring("chatSources", (sources) => { this.chatSources = audienceRoom.cleanSources(sources); },
         () => { this.chatSources = []; });
       // The clouds Ooga Chat speakers sit on (#668), as the Audience last sent them, at their revision.
@@ -720,9 +723,9 @@ export class Room extends DurableObject {
     const server = p.ws, others = [];
     const catalog = this.catalog.metadata();
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, ...callFeatures(this.env), PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, ...callFeatures(this.env), ...chatMembersRoom.features(this), PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
       // The account speaks from Ooga Chat on another device: this page's own voice waits for the visitor's word.
-      ...(audienceRoom.elsewhere(this, p.id) || this.onChatStage(p.id) && !p.call ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}) });
+      ...(audienceRoom.elsewhere(this, p.id) || this.onChatStage(p.id) && !p.call ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}), ...chatMembersRoom.welcome(this) });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
     this.sendCabinets(server);
@@ -1710,6 +1713,9 @@ export class Room extends DurableObject {
     return { ok: true };
   }
 
+  // A hosted chat's members now (audience.js `reportMembers`), an empty list as it ends: every page's Online Oogas hears.
+  chatMembers(chat, title, members, more) { return chatMembersRoom.update(this, chat, title, members, more); }
+
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }
   audienceSources(list) { return audienceRoom.sources(this, list); }
@@ -2453,6 +2459,8 @@ export class Room extends DurableObject {
         if (!p.held && now - this.heardAt(p) > STALE_MS) this.evict(p, "stale");
       }
       await commonsRoom.sweep(this, now, (login, id) => !cast || !!ownedBody(cast, login, true, id), STALE_MS);
+      // A chat that ended without its last word reaching here leaves every page's Online Oogas.
+      if (this.players.size) await chatMembersRoom.sweep(this);
     }
     // Cleanup retries run on every wake, not only at sweep time, and last: a pass is bounded (`cleanupPass`), and the
     // sweep's account and stale checks never wait behind an SFU slow to answer.

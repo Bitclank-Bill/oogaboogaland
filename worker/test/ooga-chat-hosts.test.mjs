@@ -694,3 +694,137 @@ test("a chat ending while the island room is away still frees its speakers' isla
   assert.deepEqual(told, [[1, chat.id, false]]);
   assert.equal(a.islandWords.size, 0);
 });
+
+test("the island's Online Oogas: a chat reports its members as they change, at most every 2 s, and its end's empty list is kept until the Room takes it", async () => {
+  now += START_GAP_MS;
+  const { MEMBERS_GAP_MS } = await import("../src/audience.js");
+  const w = await world();
+  let up = true;
+  const reports = [];
+  w.env.ROOM = { getByName: () => ({ chatVoice: async () => ({ ok: true }),
+    chatMembers: async (chat, title, members, more) => { if (!up) throw new Error("room away"); reports.push({ chat, title, members: members.map((m) => `${m.id}:${m.display}:${m.role}`).join(), more }); return { ok: true }; } }) };
+  const { chat } = await startChat(w.env, host(1), { title: "Members", zone: "main" });
+  const amy = await connect(w, chat.id, 1);
+  await w.settle();
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  assert.deepEqual(reports, [{ chat: chat.id, title: "Members", members: "gh:1:P1:listener", more: 0 }], "the first change goes at once");
+  await connect(w, chat.id, 3);
+  await connect(w, chat.id, 9);
+  await w.settle();
+  assert.equal(reports.length, 1, "a burst waits out the gap");
+  assert.ok(a.members.timer, "with one timer for its last change");
+  // The timer's turn, without waiting for it.
+  const fire = async () => { clearTimeout(a.members.timer); a.members.timer = 0; now += MEMBERS_GAP_MS; a.reportMembers(); await w.settle(); };
+  await fire();
+  assert.equal(reports.at(-1).members, "gh:1:P1:listener,gh:3:P3:listener,x:9:P9:listener", "the whole burst in one report");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await speakerOn(w, chat.id, amy);
+  await w.settle();
+  await fire();
+  assert.equal(reports.at(-1).members, "gh:1:P1:speaker,gh:3:P3:listener,x:9:P9:listener", "a speaker first, as speaking");
+  const told = reports.length;
+  now += MEMBERS_GAP_MS;
+  a.reportMembers();
+  await w.settle();
+  assert.equal(reports.length, told, "nothing while the list is what the Room was told");
+  // A report the Room misses goes again with the next change.
+  up = false;
+  await connect(w, chat.id, 4);
+  await w.settle();
+  if (a.members.timer) await fire();
+  assert.equal(a.members.failed, true);
+  up = true;
+  now += MEMBERS_GAP_MS;
+  await a.flush();
+  await w.settle();
+  assert.match(reports.at(-1).members, /gh:4:P4:listener/, "the missed report is sent again");
+  // The end, with the Room away: the empty list is kept and the alarm says it again.
+  up = false;
+  await ask(amy, { type: "end" });
+  await w.settle();
+  assert.equal(a.members.gone, chat.id);
+  assert.equal(await ctx.storage.get("membersGone"), chat.id, "kept across a nap");
+  assert.ok(ctx.alarm && ctx.alarm <= now + 30000, "and the alarm will try again");
+  up = true;
+  await a.alarm();
+  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "", members: "", more: 0 }, "the Room hears the chat is over");
+  assert.equal(a.members.gone, null);
+  assert.equal(await ctx.storage.get("membersGone"), undefined);
+});
+
+test("the island room keeps each chat's members for Online Oogas: stored, in the welcome only with the feature, every change broadcast, gone on an empty list, kept over a wake, and dropped at the sweep once the directory no longer lists the chat", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { runInNewContext } = await import("node:vm");
+  const protocol = await import("../src/protocol.js");
+  const studio = await import("../src/studio-policy.js");
+  const { getPlayer } = await import("../src/db.js");
+  const source = readFileSync(new URL("../src/room.js", import.meta.url), "utf8").replace(/import\s+[\s\S]*?from\s+"[^"]+";/g, "")
+    .replace("export class Room", "class Room") + "\nglobalThis.Room = Room;";
+  const context = { ...protocol, ...studio, getPlayer, DurableObject: class {}, WebSocketRequestResponsePair: class {}, sfuClient: () => null, CAST_ROWS: [], Date, Map, Set, Response, Promise };
+  runInNewContext(source, context);
+  context.Room.prototype.inspect = protocol.inspectReporter(null, {}, "Room", () => "", () => null);
+  context.Room.prototype.world = protocol.worldReporter(null, {}, () => null);
+  context.Room.prototype.catalog = protocol.roomCatalog.create({}, [], protocol.castIndex);
+  const { chatMembersRoom, MEMBERS_MAX } = await import("../src/room-chat-members.js");
+  const stored = new Map();
+  let listed = ["AAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBB"], readable = true;
+  const make = (features) => {
+    const room = Object.create(context.Room.prototype);
+    room.ctx = { storage: { put: async (k, v) => { stored.set(k, structuredClone(v)); } }, waitUntil: (task) => task };
+    room.env = { OOGA_CHAT_FEATURES: features, CHATS: { getByName: () => ({ list: async () => { if (!readable) throw new Error("away"); return listed.map((id) => ({ id })); } }) } };
+    room.sockets = new Map(); room.players = new Map(); room.chatBuckets = new Map(); room.pinTries = new Map(); room.chat = protocol.chatLog(); room.chatVoices = new Map(); room.chatRosters = new Map();
+    room.studio = studio.studioState(0);
+    return room;
+  };
+  const room = make("chats");
+  const join = (id) => {
+    const ws = { sent: [], deserializeAttachment: () => ({ id }), serializeAttachment() {}, send: (text) => ws.sent.push(JSON.parse(text)) };
+    const p = room.record(ws, { id, login: `p${id}`, display: `P${id}`, contributor: true, body: `p${id}`, x: 0, y: 0, z: 0, yaw: 0 });
+    room.players.set(id, p);
+    return { ws, p };
+  };
+  const bea = join(2);
+  const heard = () => bea.ws.sent.filter((m) => m.t === "chat-members");
+  const crowd = Array.from({ length: MEMBERS_MAX + 3 }, (_, i) => ({ id: `gh:${100 + i}`, login: `m${i}`, display: `M${i}`, role: "listener" }));
+  assert.equal((await room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", [{ id: "gh:1", login: "amy", display: "Amy", role: "speaker", extra: "no" }, { id: "bad", login: "x" }, { id: "x:9", login: "zed", display: "\u0007", role: "host" }], 0)).ok, true);
+  assert.deepEqual(heard().at(-1), { t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "Dev call",
+    members: [{ id: "gh:1", login: "amy", display: "Amy", role: "speaker" }, { id: "x:9", login: "zed", display: "zed", role: "listener" }], more: 0 }, "every page hears it, each member cleaned");
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd", crowd, 5);
+  assert.deepEqual([heard().at(-1).members.length, heard().at(-1).more], [MEMBERS_MAX, 8], "at most a hundred, the rest counted");
+  const count = heard().length;
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd", crowd, 5);
+  assert.equal(heard().length, count, "the same list again tells nobody");
+  assert.equal((await room.chatMembers("not a chat", "", [], 0)).ok, false);
+  assert.equal(stored.get("chatMembers").length, 2, "kept in storage");
+  // The welcome carries every chat's members, only with the feature.
+  assert.ok(protocol.chatMembersRoom === chatMembersRoom || protocol.chatMembersRoom.FEATURE === chatMembersRoom.FEATURE);
+  assert.deepEqual(chatMembersRoom.features(room), ["chat-members-v1"]);
+  room.chalk = protocol.CHALK.board(); room.loopEpoch = 0; room.roomLocks = new Map(); room.links = new Map(); room.cabinetSeats = new Map();
+  room.welcome(bea.p, false);
+  const welcome = bea.ws.sent.findLast((m) => m.t === "welcome");
+  assert.ok(welcome.features.includes("chat-members-v1") && welcome.features.includes("call-v1"), "the feature beside call-v1");
+  assert.deepEqual(welcome.chatMembers.map((c) => [c.chat, c.title, c.members.length, c.more]), [["AAAAAAAAAAAAAAAA", "Dev call", 2, 0], ["BBBBBBBBBBBBBBBB", "Crowd", MEMBERS_MAX, 8]], "a page's welcome carries every chat's members");
+  assert.deepEqual(chatMembersRoom.welcome(room).chatMembers.map((c) => [c.chat, c.members.length]), [["AAAAAAAAAAAAAAAA", 2], ["BBBBBBBBBBBBBBBB", MEMBERS_MAX]]);
+  const off = make("");
+  chatMembersRoom.restore(off, stored.get("chatMembers"));
+  assert.deepEqual([chatMembersRoom.features(off), chatMembersRoom.welcome(off)], [[], {}], "with the chats switch off, no feature and nothing in the welcome");
+  // A wake: the stored lists come back as they were.
+  const woke = make("chats");
+  chatMembersRoom.restore(woke, structuredClone(stored.get("chatMembers")));
+  assert.deepEqual([...woke.chatRosters.keys()], ["AAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBB"]);
+  assert.equal(woke.chatRosters.get("AAAAAAAAAAAAAAAA").members[0].display, "Amy");
+  // An empty list drops the chat, and every page hears it.
+  await room.chatMembers("AAAAAAAAAAAAAAAA", "", [], 0);
+  assert.deepEqual(heard().at(-1), { t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "", members: [], more: 0 });
+  assert.equal(room.chatRosters.has("AAAAAAAAAAAAAAAA"), false);
+  assert.deepEqual(stored.get("chatMembers").map(([id]) => id), ["BBBBBBBBBBBBBBBB"]);
+  // The sweep drops a chat the directory no longer lists, and never one it could not read.
+  listed = [];
+  readable = false;
+  await chatMembersRoom.sweep(room);
+  assert.equal(room.chatRosters.has("BBBBBBBBBBBBBBBB"), true, "a directory that can't be read drops nothing");
+  readable = true;
+  await chatMembersRoom.sweep(room);
+  assert.equal(room.chatRosters.size, 0);
+  assert.deepEqual(heard().at(-1), { t: "chat-members", chat: "BBBBBBBBBBBBBBBB", title: "", members: [], more: 0 });
+});

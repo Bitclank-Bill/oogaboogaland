@@ -189,6 +189,27 @@
     }
     return out;
   };
+  // Who is in a hosted chat and not on the island (net.js `state.chatMembers`), for Online Oogas' In Ooga Chat group and
+  // every "N online": each person once (speaking over listening, then the first chat named), never the visitor, anyone
+  // on the island or anyone already one of Main Island's listeners. `{ id, login, display, role, title }` each.
+  const inChats = () => {
+    const s = net.state, out = [], seen = new Map();
+    if (s.room !== "live" || !s.chatMembers || !s.chatMembers.size) return out;
+    let heard = null;
+    for (const [, chat] of s.chatMembers) {
+      for (const m of chat.members) {
+        const gh = m.id.startsWith("gh:") ? Number(m.id.slice(3)) : 0;
+        if (gh && (gh === s.selfId || net.remotes.has(gh))) continue;
+        const at = seen.get(m.id);
+        if (at !== undefined) { if (m.role === "speaker" && out[at].role !== "speaker") out[at] = { id: m.id, login: m.login, display: m.display, role: m.role, title: chat.title }; continue; }
+        if (!heard) { heard = new Set(); for (const l of listeners()) heard.add(l.id); }
+        if (heard.has(m.id)) continue;
+        seen.set(m.id, out.length);
+        out.push({ id: m.id, login: m.login, display: m.display, role: m.role, title: chat.title });
+      }
+    }
+    return out;
+  };
   // The roster changed: every place that lists or counts its listeners hears it.
   const listenersChanged = () => {
     if (BL.players) BL.players.refresh();
@@ -217,6 +238,8 @@
     tiles.pop(msg.id, msg.e);
   };
   subs.push(net.subscribe(account));
+  // Who is in a chat changed: Online Oogas and every "N online" hear it, as for Main Island's listeners.
+  subs.push(net.subscribeChatMembers(listenersChanged));
   subs.push(net.subscribeAudience((msg) => {
     if (msg.kind === "react") pop(msg);
     else if (model.apply(msg) !== "ignored") { render(); paintFooter(); listenersChanged(); }
@@ -327,8 +350,10 @@
     available,
     dispose,
     listeners,
-    // Who is online, as every "N online" on the island says it: the room's players and Main Island's listeners.
-    online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length : 0),
+    inChats,
+    // Who is online, as every "N online" on the island says it: the room's players, Main Island's listeners and everyone
+    // in a hosted chat who is neither.
+    online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length + inChats().length : 0),
     get stats() { return { rows: model.rows.size, drawn: list.childElementCount, cached: tiles.count, status: model.status, zone: model.zone, desired: model.desired, showing }; }
   };
 })();

@@ -45,6 +45,10 @@ export const CHAT_ID = /^[A-Za-z0-9_-]{16}$/;
 export const CHAT_TITLE_MAX = 60;
 // How soon a word the island room missed (a chat's stage taken or left) is sent again.
 export const ISLAND_RETRY_MS = 30 * 1000;
+// A chat's members as the island's Online Oogas shows them (`reportMembers`): at most this many a report, the rest
+// counted, and reports at least MEMBERS_GAP_MS apart.
+export const MEMBERS_MAX = 100;
+export const MEMBERS_GAP_MS = 2000;
 // A chat speaker's, host's or co-host's drop shorter than this shows nobody anything; longer, their tile shows them
 // reconnecting, in place, while their place is held (audience-model.js, quiet hold).
 export const QUIET_MS = 5 * 1000;
@@ -138,6 +142,10 @@ export class Audience extends DurableObject {
     // Words for the island room it has not yet taken (`tellIsland`), account -> { on, chat }: kept past the chat's end, so
     // a word lost as it ended still reaches the Room.
     this.islandWords = new Map();
+    // What the island room was last told of this chat's members (`reportMembers`): its signature, when, the one-shot
+    // timer for a burst's last change, the one report in flight, and the chat whose end it has not yet heard (`gone`,
+    // stored, so the alarm says it again even after the chat is gone).
+    this.members = { sent: "", at: 0, timer: 0, busy: false, due: false, failed: false, queue: Promise.resolve(), gone: null };
     this.sfuFails = [];
     this.sfuOkAt = 0;
     this.media = createMediaBroker(this);
@@ -164,6 +172,8 @@ export class Audience extends DurableObject {
       // An older save's words are a bare `on` for the chat it held.
       this.islandWords = new Map(((await ctx.storage.get("islandWords")) || []).map(([id, w]) => [id, typeof w === "boolean" ? { on: w, chat: chat && chat.id } : w])
         .filter(([, w]) => w && CHAT_ID.test(w.chat || "")));
+      const gone = await ctx.storage.get("membersGone");
+      this.members.gone = typeof gone === "string" && CHAT_ID.test(gone) ? gone : null;
       // The model reads these limits as it goes: a chat opened later raises them to a chat's own (`open`).
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
@@ -276,6 +286,7 @@ export class Audience extends DurableObject {
     this.tellElsewhere();
     const deltas = this.model.commit();
     if (this.chat) this.listed();
+    if (this.chat && (deltas.length || this.members.failed)) this.reportMembers();
     if (!deltas.length) return deltas;
     await this.ctx.storage.put("meta", { epoch: this.model.epoch, revs: this.model.revs() });
     for (const delta of deltas) {
@@ -458,7 +469,7 @@ export class Audience extends DurableObject {
     // Media cleanup retries even after every client has gone; a chat wakes for a lapsing invite or its held host.
     next = Math.min(next, this.media.nextCleanup());
     if (this.roles) next = Math.min(next, this.roles.nextAt(), this.model.quietUntil());
-    if (this.islandWords.size) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
+    if (this.islandWords.size || this.members.gone) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
     if (next === Infinity) return;
     const current = await this.ctx.storage.getAlarm();
     if (!current || current > next) await this.ctx.storage.setAlarm(next);
@@ -469,6 +480,7 @@ export class Audience extends DurableObject {
     if (this.roles && !this.roles.ended) await this.rolesTick(now);
     if (this.model.expire(now).length) await this.saveQuiet();
     for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
+    await this.sendGone();
     for (const c of [...this.model.conns.values()]) {
       if (c.authUntil <= now) { this.close(c.connId, CLOSE.auth, "auth_required"); continue; }
       if (c.lease && c.lease.state === "pending" && c.lease.until <= now) {
@@ -864,6 +876,50 @@ export class Audience extends DurableObject {
     if (!told) await this.scheduleAlarm();
   }
 
+  /**
+   * This chat's members for the island's Online Oogas: everyone with a row here, a quiet hold's too, speakers first, at
+   * most MEMBERS_MAX and the rest counted.
+   */
+  membersOf() {
+    const rows = [...this.model.zones[this.zoneOf()].rows.values()];
+    rows.sort((a, b) => (a.role === "speaker" ? 0 : 1) - (b.role === "speaker" ? 0 : 1));
+    const members = rows.slice(0, MEMBERS_MAX).map((r) => ({ id: r.id, login: r.login, display: r.display, role: r.role === "speaker" ? "speaker" : "listener" }));
+    return { title: this.chat.title, members, more: rows.length - members.length };
+  }
+
+  /**
+   * The island room hears who is in this chat as that changes (room-chat-members.js): one report in flight, at least
+   * MEMBERS_GAP_MS apart, a one-shot timer sending a burst's last change, and nothing while the list is what it was told.
+   * A report that fails is sent again with the next change; the end's empty list is `sendGone`'s.
+   */
+  reportMembers() {
+    const M = this.members;
+    if (!this.chat || !this.roles || this.roles.ended || !this.env.ROOM) return;
+    M.due = true;
+    if (M.timer || M.busy) return;
+    const wait = M.at + MEMBERS_GAP_MS - Date.now();
+    if (wait > 0) { M.timer = setTimeout(() => { M.timer = 0; this.reportMembers(); }, wait); return; }
+    M.due = false;
+    const report = this.membersOf(), sig = JSON.stringify(report), id = this.chat.id;
+    if (sig === M.sent) { M.failed = false; return; }
+    M.at = Date.now(); M.busy = true;
+    M.queue = M.queue.then(() => this.env.ROOM.getByName("island").chatMembers(id, report.title, report.members, report.more))
+      .then(() => { M.sent = sig; M.failed = false; }, () => { M.failed = true; })
+      .then(() => { M.busy = false; if (M.due) this.reportMembers(); });
+    this.background(M.queue);
+  }
+
+  /** The chat ended: the island room drops its members. Not taken, the word is kept and the alarm sends it again. */
+  async sendGone() {
+    const chat = this.members.gone;
+    if (!chat || !this.env.ROOM) return;
+    let told = false;
+    try { told = (await this.env.ROOM.getByName("island").chatMembers(chat, "", [], 0)).ok === true; } catch { told = false; }
+    if (!told || this.members.gone !== chat) return;
+    this.members.gone = null;
+    await this.ctx.storage.delete("membersGone");
+  }
+
   /** The quiet holds as they stand, stored so a wake keeps the rows clients hold. */
   async saveQuiet() {
     const list = this.model.quietList();
@@ -1074,6 +1130,15 @@ export class Audience extends DurableObject {
     // The speakers' last words to the island (their island voice free again) go now; any the Room did not take stay,
     // with the chat they name, and the alarm sends them again even after the chat is gone.
     for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
+    // The island's Online Oogas drop its members, after any report still on its way; kept until the Room takes it.
+    const M = this.members;
+    if (M.timer) { clearTimeout(M.timer); M.timer = 0; }
+    if (this.env.ROOM) {
+      M.gone = this.chat.id;
+      await this.ctx.storage.put("membersGone", M.gone);
+      await M.queue;
+      await this.sendGone();
+    }
     // Nothing else of an ended chat is kept: its title, host and every account id its roles named go (media cleanup's own
     // bookkeeping stays until it drains). Woken again, the object has no chat and refuses every socket as ended.
     await this.ctx.storage.delete(["chat", "roles", "meta", "world", "watch", "sourcesSig", "cloudsSig", "quiet", ...(this.islandWords.size ? [] : ["islandWords"])]);

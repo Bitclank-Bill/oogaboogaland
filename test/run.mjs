@@ -36821,7 +36821,58 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
       && after.late.phase === "idle" && after.late.sent.map((m) => m.op + m.to).join() === "end3" && after.late.after === "idle" && after.late.locks[3] === "open",
     JSON.stringify({ endedLocks: after.endedLocks, cyAsked: after.cyAsked, cancelled: after.cancelled, late: after.late }));
 } };
+// Rule (docs/ooga-chat-hosts.md, Who the island sees in chats): Online Oogas lists everyone in a hosted chat who is not on
+// the island under In Ooga Chat, the last group, each once with the chat they are in and whether they speak or listen,
+// counted in "N online" and gone with their chat; saved to untracked/in-ooga-chat at 1280 and 390 pixels.
+const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in ooga chat", why: "rule: with the old public conversation gone, the island lists who is in each hosted chat, so mainland players see them one by one", run: async b => {
+  const shots = join(root, "untracked", "in-ooga-chat");
+  mkdirSync(shots, { recursive: true });
+  await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "players" });
+  await b.evaluate(`(async () => {
+    const W = window.__inChats = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [] };
+    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "tester", display: "Tester" } }) })
+      : String(url) === "/auth/logout" ? Promise.resolve({ ok: true }) : W.fetch(url, options);
+    window.WebSocket = class { static OPEN = 1; constructor() { this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } };
+    BL.net.state.started = true; BL.net.state.resolved = false; await BL.net.recheck();
+    W.room = m => W.sockets.at(-1).onmessage({ data: JSON.stringify(m) });
+    const m = (n, name, role) => ({ id: n > 1000 ? "x:" + n : "gh:" + n, login: name.toLowerCase(), display: name, role });
+    W.room({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-members-v1"],
+      players: [{ id: 2, login: "bea", display: "Bea", zone: "outside", x: 2, y: 0, z: 3, yaw: 0 }],
+      chatMembers: [{ chat: "AAAAAAAAAAAAAAAA", title: "Lightning dev call", members: [m(71, "Tester", "listener"), m(2, "Bea", "speaker"), m(5, "Zoe", "listener"), m(3, "Cyd", "speaker"), m(1001, "Xena", "listener")], more: 0 },
+        { chat: "BBBBBBBBBBBBBBBB", title: "Routing fees, channel liquidity and the rebalancer at work", members: [m(5, "Zoe", "speaker"), m(4, "Dot", "listener")], more: 0 }] });
+  })()`);
+  const look = () => b.evaluate(`(() => {
+    const panel = document.getElementById("players-panel"), groups = [...document.querySelectorAll("#players-list .players-group")];
+    const last = groups.at(-1), rows = last && last.querySelector("h3").textContent === "In Ooga Chat" ? [...last.querySelectorAll("li")] : [];
+    const inside = (e) => { const r = e.getBoundingClientRect(), p = panel.getBoundingClientRect(); return r.width > 0 && r.left >= p.left - 1 && r.right <= p.right + 1; };
+    return { headings: groups.map((g) => g.querySelector("h3").textContent), rows: rows.map((li) => li.querySelector(".roster-label").textContent + "=" + li.querySelector(".players-where").textContent),
+      gray: rows.every((li) => li.classList.contains("players-listener") && li.querySelector(".roster-presence").dataset.online === "listener" && li.querySelector(".players-look").hidden && li.querySelector(".roster-voice").hidden && li.querySelector(".players-link").hidden),
+      chip: document.getElementById("players-count").textContent, fits: rows.every((li) => inside(li) && inside(li.querySelector(".players-where")) && li.querySelector(".players-where").scrollWidth <= li.querySelector(".players-where").clientWidth + 1),
+      wraps: rows.some((li) => li.querySelector(".players-where").getClientRects().length && li.querySelector(".players-where").getBoundingClientRect().height > 20),
+      wide: panel.scrollWidth > panel.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1 };
+  })()`);
+  await b.evaluate(`document.querySelector("#players-list .players-group:last-child")?.scrollIntoView({ block: "end" })`);
+  const first = await look();
+  await b.screenshot(join(shots, `in-ooga-chat-${phone ? 390 : 1280}.png`));
+  // Zoe leaves the dev call, a newcomer listens there, and the long-titled chat ends.
+  await b.evaluate(`(() => { const W = __inChats;
+    W.room({ t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "Lightning dev call", members: [{ id: "gh:3", login: "cyd", display: "Cyd", role: "speaker" }, { id: "gh:6", login: "eve", display: "Eve", role: "listener" }], more: 0 });
+    W.room({ t: "chat-members", chat: "BBBBBBBBBBBBBBBB", title: "", members: [], more: 0 }); })()`);
+  const changed = await look();
+  await b.evaluate(`__inChats.room({ t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "", members: [], more: 0 })`);
+  const ended = await look();
+  await b.evaluate(`(() => { const W = __inChats; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
+  record(`in ooga chat${phone ? " (390 px)" : ""}: Online Oogas ends with In Ooga Chat, listing once each person in a hosted chat who is not on the island (never the visitor or an island player, speaking over listening), by name and in gray with the chat they speak or listen in, counted in "N online", following each chat's changes and gone with the last chat; nothing clipped or wider than the panel`,
+    first.headings.at(-1) === "In Ooga Chat" && first.headings.filter((h) => h === "In Ooga Chat").length === 1
+      && first.rows.join("|") === "Cyd=Speaking in Lightning dev call|Dot=Listening in Routing fees, channel liquidity and the rebalancer at work|Xena=Listening in Lightning dev call|Zoe=Speaking in Routing fees, channel liquidity and the rebalancer at work"
+      && first.gray && first.chip === "6 online" && first.fits && (first.wraps || !phone) && !first.wide
+      && changed.headings.at(-1) === "In Ooga Chat" && changed.rows.join("|") === "Cyd=Speaking in Lightning dev call|Eve=Listening in Lightning dev call" && changed.chip === "4 online"
+      && !ended.headings.includes("In Ooga Chat") && ended.chip === "2 online",
+    JSON.stringify({ first, changed, ended }));
+} });
 scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
+scene("hub", { label: "in ooga chat", query: "pos=0", steps: [hubInOogaChat(false)] });
+scene("hub", { label: "in ooga chat phone", query: "pos=0", opts: PHONE_SIZE, steps: [hubInOogaChat(true)] });
 scene("hub", { label: "private chat", query: "pos=0", steps: [hubPrivateChat] });
 scene("hub", { label: "player preferences", query: "pos=0", steps: [hubPlayerPreferences] });
 scene("hub", { label: "player preferences", query: "pos=0", opts: PHONE_SIZE, steps: [hubPlayerPreferences] });
@@ -43315,6 +43366,36 @@ const callNetChecks = async BL => {
     !shut.gate && shut.sent === "" && shut.mark && open.gate && open.sent === "true" && open.bea && !open.cy && heard === "false,true" && ended === "true,false" && !dropped,
     JSON.stringify({ shut, open, heard, ended, dropped }));
 };
+// Rule (docs/ooga-chat-hosts.md, chat-members-v1): who is in each hosted chat reaches the page only where welcome lists
+// the feature, whole in the welcome and then a chat at a time, each member checked; an empty list drops the chat, and a
+// dropped room forgets them all.
+const chatMembersNetChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  let told = 0; f.net.subscribeChatMembers(() => told++);
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) }), A = "AAAAAAAAAAAAAAAA", B = "BBBBBBBBBBBBBBBB";
+  const kept = () => [...f.net.state.chatMembers].map(([chat, c]) => `${chat.slice(0, 1)}:${c.title}:${c.members.map(m => `${m.id}/${m.display}/${m.role}`).join("+")}:${c.more}`).join("|");
+  const amy = { id: "gh:1", login: "amy", display: "Amy", role: "speaker" };
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [], chatMembers: [{ chat: A, title: "Dev", members: [amy], more: 0 }] });
+  message({ t: "chat-members", chat: A, title: "Dev", members: [amy], more: 0 });
+  const shut = kept();
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-members-v1"], players: [], chatMembers: [{ chat: A, title: "Dev", members: [amy], more: 0 }, { chat: "short", members: [amy] }] });
+  const welcomed = kept();
+  message({ t: "chat-members", chat: B, title: "Crowd\u0007", members: [{ id: "x:9", login: "zed", display: "", role: "host" }, { id: "bad", login: "x" }, { id: "x:9", login: "zed" }, { id: "gh:2", login: "b e a" }], more: 3 });
+  const added = kept(), frozen = Object.isFrozen(f.net.state.chatMembers.get(B)) && Object.isFrozen(f.net.state.chatMembers.get(B).members[0]);
+  message({ t: "chat-members", chat: A, title: "", members: [], more: 0 });
+  const dropped = kept();
+  const crowd = Array.from({ length: 105 }, (_, i) => ({ id: `gh:${100 + i}`, login: `m${i}`, display: `M${i}`, role: "listener" }));
+  message({ t: "chat-members", chat: A, title: "Big", members: crowd, more: 2 });
+  const big = f.net.state.chatMembers.get(A), capped = [big.members.length, big.more].join();
+  const before = told;
+  ws.onclose({ code: 1006, reason: "", wasClean: false });
+  const lost = { size: f.net.state.chatMembers.size, told: told > before };
+  f.net.dispose();
+  record("hosted chats members wire: who is in each chat reaches the page only where welcome lists chat-members-v1, whole in the welcome and then a chat at a time, every member checked (an id once, a missing name its login, an unknown role a listener) and frozen, at most a hundred a chat with the rest counted; an empty list drops the chat and a dropped room forgets them all",
+    shut === "" && welcomed === "A:Dev:gh:1/Amy/speaker:0" && added === "A:Dev:gh:1/Amy/speaker:0|B::x:9/zed/listener:3" && frozen && dropped === "B::x:9/zed/listener:3" && capped === "100,7" && lost.size === 0 && lost.told,
+    JSON.stringify({ shut, welcomed, added, frozen, dropped, capped, lost }));
+};
 // Rule (#660, #656): Ooga Chat's panel on a DOM stand-in, through its own handlers: it asks for the visitor's own zone,
 // draws the whole of a long roster as tiles (audience-tiles.js) for its slab to scroll, keeps each tile's nodes by id
 // across a delta, touches only what changed, drops removed tiles with their pictures, sends nothing for the zone already chosen, gates Join Voice and the
@@ -43342,12 +43423,12 @@ const cloudPanelChecks = async BL => {
   const list = $("cloud-roster"); panel.append(list);
   const unsubs = [], sent = [], refreshes = [];
   const state = { me: { id: 1, login: "tester", display: "Tester" }, room: "live", audience: true, zone: "dsb-transit", logoutEpoch: 0 };
-  const subs = { net: [], audience: [], voice: [], reactions: [] }, sub = (k) => fn => { subs[k].push(fn); return () => unsubs.push(k); };
+  const subs = { net: [], audience: [], voice: [], reactions: [], chatMembers: [] }, sub = (k) => fn => { subs[k].push(fn); return () => unsubs.push(k); };
   const stats = { enabled: false, joining: false, returning: false, publishing: false, muted: false }, local = new Set();
   let gate = null, visible = true;
   const observers = [];
   const window = { BL: { audience: BL.audience, reactionPolicy: BL.reactionPolicy,
-    net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
+    net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), subscribeChatMembers: sub("chatMembers"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
     voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
     hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {}, showAccount() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
@@ -43405,7 +43486,7 @@ const cloudPanelChecks = async BL => {
   record("Ooga Chat panel: asks for Main Island wherever the visitor's Ooga stands, draws the whole of a long roster as tiles, keeps each tile's nodes through a delta, drops removed tiles and their pictures, asks for no picture the island cannot serve, asks again when the room comes back, gates Join Voice and the hand on the room's word, shows a gap with a Retry that asks afresh (joining too), draws the roster again after a hidden reconnect, and forgets everything on sign-out",
     asked === "audience-view:main" && drawn.rows === 303 && drawn.cached === 303 && drawn.order === "w1,c1,tester"
       && ring === "world" && listenerMic && pending && delta && eligible && localMute && removed && noPicture && again && joinRetry && stale && staleRetry
-      && dropped && rejoined && signedOut && unsubs.length === 4,
+      && dropped && rejoined && signedOut && unsubs.length === 5,
     JSON.stringify({ asked, drawn, ring, listenerMic, pending, delta, eligible, localMute, removed, noPicture, again, joinRetry, stale, staleRetry, dropped, rejoinAsk, rejoined, signedOut, unsubs }));
 };
 const chatClientChecks = async () => {
@@ -47708,6 +47789,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await audienceChecks(BL);
   await audienceNetChecks(BL);
   await callNetChecks(BL);
+  await chatMembersNetChecks(BL);
   await cloudPanelChecks(BL);
   await privatePadChecks();
   await playersColumnChecks();

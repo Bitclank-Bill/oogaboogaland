@@ -35,6 +35,8 @@
 // return within REJOIN_QUIET takes that leave's line and count back (`sheet.unnote`). With "Read joins aloud" ticked (this browser's choice, in localStorage) the names are
 // spoken too, one utterance at a time: names that arrive while one plays wait and are said together after it, and the
 // Read joins aloud checkbox alone controls it, independently of environment sound. Speech starts from the box, a gesture.
+// In Ooga Chat (chat-members-v1, docs/ooga-chat-hosts.md): everyone in a hosted chat who is not on the island, the
+// last group, after every zone's, each in gray with the chat they are in and whether they speak or listen there.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -97,7 +99,26 @@
     listenerRows.set(key, row);
     return row;
   };
-  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : li.dataset.listener ? listenerRows.get(li.dataset.listener) : rows.get(Number(li.dataset.id));
+  // Everyone in a hosted chat and not on the island (cloud-panel.js `inChats`, from the room's `chat-members`), in gray as
+  // a listener is, under In Ooga Chat, a group of its own after every zone's: the name, and under it which chat and
+  // whether they speak or listen there. No mark, link, crosshair or distance.
+  const IN_CHATS = "in-ooga-chat", chatRows = new Map(), chatOrder = [];
+  const chatRow = (key) => {
+    let row = chatRows.get(key);
+    if (row) return row;
+    row = makeRow();
+    row.listener = true; row.id = -Number(key.slice(key.indexOf(":") + 1));
+    row.li.dataset.id = String(row.id); row.li.dataset.chat = key; row.li.classList.add("players-listener", "players-chat");
+    const dot = row.li.querySelector(".roster-presence");
+    dot.dataset.online = "listener"; dot.title = "In Ooga Chat"; dot.setAttribute("aria-label", "In Ooga Chat");
+    row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
+    row.button.hidden = true;
+    row.where = document.createElement("span"); row.where.className = "players-where"; row.whereShown = "";
+    row.li.append(row.where);
+    chatRows.set(key, row);
+    return row;
+  };
+  const rowOf = (li) => li.dataset.cloud ? cloudRows.get(li.dataset.cloud) : li.dataset.listener ? listenerRows.get(li.dataset.listener) : li.dataset.chat ? chatRows.get(li.dataset.chat) : rows.get(Number(li.dataset.id));
   const makeRow = () => {
     const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
@@ -161,7 +182,7 @@
       groups.set(key, group);
     }
     // Linked partners away from the island are listed under Ooga Chat, which is no zone of the game's.
-    const heading = key === "ooga-chat" ? "Ooga Chat" : Z.heading(key);
+    const heading = key === "ooga-chat" ? "Ooga Chat" : key === IN_CHATS ? "In Ooga Chat" : Z.heading(key);
     if (group.head.textContent !== heading) group.head.textContent = heading;
     return group;
   };
@@ -172,6 +193,8 @@
     cloudRows.clear();
     for (const row of listenerRows.values()) row.li.remove();
     listenerRows.clear();
+    for (const row of chatRows.values()) row.li.remove();
+    chatRows.clear();
     selfRow.li.remove();
     for (const group of groups.values()) group.section.remove();
     groups.clear();
@@ -402,7 +425,19 @@
       row.account = q.id;
     }
     for (const [id, row] of listenerRows) if (row.seen !== pass) { row.li.remove(); listenerRows.delete(id); }
+    chatOrder.length = 0;
+    if (BL.cloudPanel) for (const m of BL.cloudPanel.inChats()) {
+      if (cloudRows.has(m.id) || listenerRows.has(m.id)) continue;
+      const row = chatRow(m.id), where = `${m.role === "speaker" ? "Speaking" : "Listening"} in ${m.title || "a chat"}`;
+      row.name = m.display; row.zone = ""; row.group = IN_CHATS; row.seen = pass;
+      if (row.whereShown !== where) { row.whereShown = where; row.where.textContent = where; }
+      chatOrder.push(row);
+    }
+    for (const [id, row] of chatRows) if (row.seen !== pass) { row.li.remove(); chatRows.delete(id); }
     Z.arrange(order, selfRow.group);
+    // In Ooga Chat comes last, after every zone's group, its people by name.
+    Z.arrange(chatOrder, IN_CHATS);
+    for (const row of chatOrder) order.push(row);
     let group = null, groupIndex = 0, rowIndex = 0;
     for (const row of order) {
       if (!group || group.key !== row.group) {
@@ -604,5 +639,5 @@
     cloudSpot = fn;
     measure();
   };
-  BL.players = { setDoors, setCloudSpot, refresh: () => render(), get stats() { return { showing, rows: rows.size, clouds: cloudRows.size, listeners: listenerRows.size, groups: groups.size, unread, speakOn }; } };
+  BL.players = { setDoors, setCloudSpot, refresh: () => render(), get stats() { return { showing, rows: rows.size, clouds: cloudRows.size, listeners: listenerRows.size, chats: chatRows.size, groups: groups.size, unread, speakOn }; } };
 })();
