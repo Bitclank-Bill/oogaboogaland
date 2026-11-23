@@ -17639,7 +17639,7 @@ const oogaChatAppChecks = async () => {
       speaking: r.speaking.invite === 0 && r.speaking.captures === 2 && r.speaking.foot.includes("Leave Voice") && r.speaking.foot.startsWith("Unmute"),
       hostMuted: r.hostMuted.foot.startsWith("Unmute") && r.hostMuted.notice === "A host muted you",
       left: r.left.space === "list",
-      dialog: r.dialog.open && r.dialog.title === "sample-contributor's chat" && r.dialog.zones === "main:true,dsb:false,none:false" && r.arrowed === "main:false,dsb:true,none:false",
+      dialog: r.dialog.open && r.dialog.title === "sample-contributor's chat" && r.dialog.zones === "none:true,main:false,dsb:false" && r.arrowed === "none:false,main:true,dsb:false",
       hosting: r.hosting.title === "sample-contributor's chat" && r.hosting.foot.includes("End chat") && r.hosting.chip === "Requests 2" && /asked to speak/.test(r.hosting.notice)
         && r.hosting.chipBeside && r.hosting.names === "sample-contributor,sample-pebble,sample-otter,sample-heron",
       opened: r.opened.openSwitch && r.opened.openTag === 1 && /sample-otter, speaking/.test(r.opened.tiles),
@@ -29447,7 +29447,7 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
   await click(".hc-leave");
   const left = await until((s) => s.space === "list");
   const ok = { list: list.space === "list" && list.rows === 2 && !list.call,
-    dialog: dialog.open && dialog.title.endsWith("'s chat") && dialog.zones === "main:true,dsb:false,none:false" && dialog.layer,
+    dialog: dialog.open && dialog.title.endsWith("'s chat") && dialog.zones === "none:false,main:true,dsb:false" && dialog.layer,
     hosting: hosting.space === "on" && hosting.call && hosting.foot.includes("End chat") && /asked to speak/.test(hosting.toast) && hosting.chipBeside
       && hosting.names === "sample-contributor,sample-pebble,sample-otter,sample-heron",
     opened: opened.openSwitch && opened.openTag === 1 && /sample-otter, speaking/.test(opened.tiles),
