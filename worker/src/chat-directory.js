@@ -8,8 +8,8 @@
 // START_GAP_MS), then the chat's own object opened. A chat that cannot open is taken back out of the list.
 
 import { DurableObject } from "cloudflare:workers";
-import { CHAT_ID, CHAT_TITLE_MAX, chatName, DIRECTORY_NAME } from "./audience.js";
-import { ID, isZone } from "./audience-model.js";
+import { CHAT_ID, CHAT_TITLE_MAX, chatName, DIRECTORY_NAME, isChatLand } from "./audience.js";
+import { ID } from "./audience-model.js";
 import "../../src/js/chat-policy.js";
 
 export const CHATS_MAX = 20;
@@ -52,7 +52,7 @@ export class ChatDirectory extends DurableObject {
 
   /** Room for a new chat: `{ id, title, zone, host, hostInfo }`, already checked by `startChat`. */
   async start(entry, now = Date.now()) {
-    if (!entry || !CHAT_ID.test(entry.id) || !isZone(entry.zone) || !ID.test(entry.host) || typeof entry.title !== "string") return refuse("malformed");
+    if (!entry || !CHAT_ID.test(entry.id) || !isChatLand(entry.zone) || !ID.test(entry.host) || typeof entry.title !== "string") return refuse("malformed");
     const info = hostInfo(entry.hostInfo);
     if (!info) return refuse("malformed");
     for (const c of this.chats.values()) if (c.host === entry.host) return refuse("already_hosting");
@@ -123,7 +123,8 @@ export const startChat = async (env, host, body) => {
   if (!env.CHATS || !env.AUDIENCE) return refuse("unavailable", { retryable: true });
   const title = body && chatTitle(body.title);
   if (!title) return refuse("bad_title");
-  if (!body || !isZone(body.zone)) return refuse("zone_unavailable");
+  // `none`: a chat with no land, Ooga Chat voice alone.
+  if (!body || !isChatLand(body.zone)) return refuse("zone_unavailable");
   const id = newChatId();
   const info = { login: host.login, display: host.display || host.login, character: host.character || null };
   const directory = env.CHATS.getByName(DIRECTORY_NAME);

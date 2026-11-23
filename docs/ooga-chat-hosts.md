@@ -81,8 +81,9 @@ at any time. When a chat ends, everyone in it sees **The chat ended**, its voice
 
 **OC** (`src/ooga-chat/`): the Ooga Chat tab opens on the **Chats** list (title, zone tag, the host's portrait, how
 many speak and listen), with **Start a chat** for a contributor: one dialog with a title (prefilled "<name>'s chat",
-editable, at most 60 characters, checked by the island's chat policy) and two picture cards to choose the zone, Main
-Island (chosen first) and DSB Land, then Start chat (the one amber action) or Cancel. The island's panel opens the
+editable, at most 60 characters, checked by the island's chat policy) and three picture cards to choose the land, Main
+Island (chosen first), DSB Land, and **Voice only**, a chat with no land (zone `none`: Ooga Chat voice alone, never a
+copy, clouds or Go there), then Start chat (the one amber action) or Cancel. The island's panel opens the
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
 the footer) with a Back to chats control, the Requests chip for a host or co-host (in the panel's top right corner,
 to the right of the zone tag), a role badge on host and co-host
@@ -158,6 +159,7 @@ toast and the region.
 | | Ooga Chat (edge, `worker/chat/src/chats.js`) | The island (`worker/src/chats.js`) |
 |---|---|---|
 | live chats | `GET /api/chat/chats` → `{ chats }` | `GET /api/chats` → `{ chats }` |
+| (zones) | `main`, `dsb`, or `none` for a chat with no land | the same |
 | a chat's preview | `GET /api/chat/chats?chat=<id>` | `GET /api/chats/<id>` |
 | start one | `POST /api/chat/chats` `{ title, zone }` → `201 { chat }` | `POST /api/chats` `{ title, zone }` → `201 { chat }` |
 | a chat's socket | `GET /api/chat/audience?chat=<id>` | `GET /api/chats/<id>/live` |
@@ -177,7 +179,8 @@ account's Ooga, and no avatar (an Ooga Chat avatar is that origin's alone; the i
 
 Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differences.
 
-- **Join** is `{ "type": "join", "protocol": 2 }`. The zone is the chat's own; a `zone` naming another is refused
+- **Join** is `{ "type": "join", "protocol": 2 }`. A chat with no land (`chat.zone` `none`) keeps its roster in the
+  `main` zone, which is the zone its frames name. The zone is the chat's own; a `zone` naming another is refused
   (`error`, `zone_unavailable`). Protocol 1 on a chat closes it with 4426.
 - **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts, open }` (the host's and co-hosts' participant
   ids, and whether the stage is open); `{ type: "chat", chat }` sends it again to everyone whenever the host, co-hosts or

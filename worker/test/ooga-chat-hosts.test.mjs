@@ -523,4 +523,20 @@ test("a word the island room missed is kept and sent again from the alarm", asyn
   assert.equal(a.islandWords.size, 0);
 });
 
+
+
+test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's frames, its land none in the list and the chat", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Just talk", zone: "none" });
+  assert.equal(chat.zone, "none");
+  assert.equal(w.directory.list().find((c) => c.id === chat.id).zone, "none");
+  const amy = await connect(w, chat.id, 1);
+  const snap = amy.ws.sent.find((m) => m.type === "snapshot");
+  assert.deepEqual([snap.zone, snap.chat.zone], ["main", "none"], "the frames name the roster's zone; the chat names its land");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  assert.equal((await ask(amy, { type: "setRole", role: "speaker" })).ok, true, "people speak as in any chat");
+  assert.equal((await startChat(w.env, host(2), { title: "Moon", zone: "moon" })).code, "zone_unavailable");
+});
+
 test.after(() => { Date.now = realNow; });
