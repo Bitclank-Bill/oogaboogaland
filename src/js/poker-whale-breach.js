@@ -94,8 +94,6 @@
     return {core:M.merge(...core),halo:glow};
   };
   // Phase zero brings the drifting storm over the feeding site once per minute.
-  const cloudX=phase=>feedX+13*Math.sin(phase);
-  const cloudZ=phase=>feedZ-10*(1-Math.cos(phase));
   const geometry=lite=>{
     if(cache.has(lite))return cache.get(lite);
     const fish=M.geometry(), crown=M.geometry(), wave=M.geometry(), lip=M.geometry(), pour=M.geometry();
@@ -157,15 +155,16 @@
     const drop=M.lathe({profile:[[0,-.4],[.15,-.12],[.12,.19],[0,.4]],segments:5,color:"#daefeb",emissive:.83});
     const pack=g=>{g.castShadow=false;g.fogPierce=.55;return BL.pokerMarble.staticMesh(g);};
     crown.glassOpacity=.78;wave.glassOpacity=.83;lip.glassOpacity=.80;pour.glassOpacity=.77;
+    if(!lite){for(const f of pour.faces)f.water="codefall";pour.glass=.91;delete pour.glassOpacity;}
     const storm=stormGeometry(lite),bolt=boltGeometry();
     const kit={cloud:pack(storm.stone),arcs:storm.arcs.map(pack),bolt:pack(bolt.core),halo:pack(bolt.halo),ripple:pack(M.torus(1,.042,"#b3e5e6",.81,16,4)),fish:pack(fish),crown:pack(crown),wave:pack(wave),lip:pack(lip),pour:pack(pour),drop:pack(drop)};
     cache.set(lite,kit);return kit;
   };
-  const build=(parent,lite,top,lipZ,weirX,width)=>{
+  const build=(parent,lite,top,weirX,width)=>{
     const g=geometry(lite),random=BL.math.mulberry32(4971);
     const add=(p,geo=null)=>{const n=S.createNode({geometry:geo});S.addChild(p,n);return n;};
-    const school=add(parent), spray=add(parent), crown=add(parent,g.crown), crest=add(parent,g.wave), lip=add(parent,g.lip), spill=add(parent,g.pour);
-    const cloud=add(parent,g.cloud),arcs=g.arcs.map(geo=>add(cloud,geo)),bolt=add(parent),ring=add(parent,g.ripple);
+    const event=add(parent),school=add(event),spray=add(event),crown=add(event,g.crown),crest=add(event,g.wave),lip=add(event,g.lip),spill=add(event,g.pour);
+    const cloud=add(parent,g.cloud),arcs=g.arcs.map(geo=>add(cloud,geo)),bolt=add(event),ring=add(event,g.ripple);
     add(bolt,g.bolt);add(bolt,g.halo);
     bolt.position.x=ring.position.x=feedX;bolt.position.y=top;ring.position.y=top+.10;bolt.position.z=ring.position.z=feedZ;
     const fish=[],drops=[],mouth=new Float64Array(3);
@@ -181,9 +180,10 @@
       const a=random()*TAU,v=3+random()*3.6;
       drops.push({n:add(spray,g.drop),vx:Math.cos(a)*v,vy:7+random()*6,vz:Math.sin(a)*v,delay:.21*random(),size:.6+random()});
     }
-    const update=(t,w,calm)=>{
+    const update=(t,w,calm,stormX,stormZ,lipZ)=>{
       const since=t+10,phase=since*TAU/60;
-      cloud.position.x=cloudX(phase);cloud.position.z=cloudZ(phase);
+      event.position.x=w?w.offsetX:0;event.position.z=w?w.offsetZ:0;
+      cloud.position.x=feedX+stormX;cloud.position.z=feedZ+stormZ;
       cloud.position.y=top+cloudHeight+.35*Math.sin(phase);
       const charging=since>=57.8 && since<60;
       for(let i=0;i<arcs.length;i++){
@@ -207,7 +207,7 @@
       if(school.visible){
         const b=w.body,s=b.scale.x,gape=w.jaw.rotation.z*.52;
         BL.math.quat.rotateVec(mouth,b.quaternion,(2.18+4.8*Math.cos(gape))*s,(-.10+4.8*Math.sin(gape))*s,0);
-        const mx=b.position.x+mouth[0],my=b.position.y+mouth[1],mz=b.position.z+mouth[2];
+        const mx=b.position.x-w.offsetX+mouth[0],my=b.position.y+mouth[1],mz=b.position.z-w.offsetZ+mouth[2];
         // Every swimmer shares both frequencies. Rotate its baked phase by the school clock.
         const heading=since*.62,sh=Math.sin(heading),ch=Math.cos(heading),sw=Math.sin(since*8),cw=Math.cos(since*8);
         for(const f of fish){
@@ -227,7 +227,7 @@
           n.rotation.z=.08*cosAngle;
         }
       }
-      const hit=t-5.0, intensity=calm?.72:1;
+      const hit=t-5.0, intensity=calm?.72:1, direction=lipZ>-50?1:-1;
       crown.visible=!!w && hit>=0 && hit<2.65;
       spray.visible=crown.visible && !calm;
       if(crown.visible){
@@ -247,16 +247,16 @@
       if(crest.visible){
         const u=Math.min(1,(hit-.18)/3.45), swell=smooth(.18,1.15,hit)*(1-smooth(3.65,5.4,hit));
         crest.position.x=50.8+(weirX-50.8)*u;crest.position.y=top+.10;crest.position.z=-50+(lipZ+50)*u;
-        crest.scale.x=3+(width*.73-3)*u;crest.scale.z=.55+.64*u;
+        crest.scale.x=3+(width*.73-3)*u;crest.scale.z=direction*(.55+.64*u);
         crest.scale.y=.02+(2.0+3.4*u*u)*swell*intensity;crest.smokeOpacity=1-smooth(4.4,5.4,hit);
       }
       spill.visible=!!w && hit>=3.34 && hit<13.5;
       lip.visible=spill.visible;
       if(spill.visible){
         const strength=smooth(3.34,4.12,hit)*(1-smooth(6.0,13.5,hit));
-        spill.position.x=weirX;spill.position.z=lipZ+.10;
+        spill.position.x=weirX;spill.position.z=lipZ+.10*direction;
         spill.position.y=top+.08+strength*3.7*intensity;
-        spill.scale.x=width*(.50+.36*strength);spill.scale.z=.95+strength*2.05*intensity;
+        spill.scale.x=width*(.50+.36*strength);spill.scale.z=direction*(.95+strength*2.05*intensity);
         lip.position.x=spill.position.x;lip.position.y=top+.08;lip.position.z=spill.position.z;
         lip.scale.x=spill.scale.x;lip.scale.z=spill.scale.z;lip.scale.y=Math.max(.001,strength*3.7*intensity);
         lip.smokeOpacity=strength;

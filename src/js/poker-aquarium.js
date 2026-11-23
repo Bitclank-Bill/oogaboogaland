@@ -2,14 +2,19 @@
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene;
-  const TOP = 6.8, BED = -19.2;
-  // The recessed front bay crosses the full width of Cold Storage behind its back wall.
-  // Its glass return keeps a westward sightline from the bar while leaving the cave dry.
-  const vault=BL.pokerSalons.ROOMS[1], eastReturn=vault.x+vault.w/2+1.2;
-  const westBay=vault.x-vault.w/2-5.1, bayFront=vault.z-vault.d/2-3;
-  const outline = [[eastReturn,-39],[72,-39],[86,-53],[86,-114],[74,-133],[-12,-133],[-23,-119],
-    [-23,-69],[westBay,-57],[westBay,bayFront],[eastReturn,bayFront]];
-  const frontSpill=[.72,.89]; // Shared waterline span for the steady waterfall and a breach surge.
+  const TOP=BL.pokerFloor.TOP, BED=TOP-26, G=BL.pokerGlazing;
+  const rear=-G.END_Z, west=-G.SIDE_X, outerWest=west-1800, outerRear=rear-90, outerEast=G.SIDE_X+3*(82-G.SIDE_X);
+  const [lounge,vault]=BL.pokerSalons.ROOMS;
+  // The two dry rooms interrupt the inner shore. The first five edges face open space:
+  // terrace-side spillway, east end, rear cliff, band-side cliff and the return at the far end of the hall.
+  const innerShore=room=>{
+    const half=room.w/2+.65;
+    return [[room.x-half,rear],[room.x-half,room.z-room.d/2-.65],
+      [room.x+half,room.z-room.d/2-.65],[room.x+half,rear]];
+  };
+  const outline=[[G.SIDE_X,rear],[outerEast,rear],[outerEast,outerRear],[outerWest,outerRear],
+    [outerWest,G.END_Z],[west,G.END_Z],[west,rear],...innerShore(lounge),...innerShore(vault)];
+  const spillX=54, spillWidth=12;
   const cache = M.scopedMap();
   const face = (g, pts, color, glow) => M.face(g, pts.map(p => M.pushVert(g,...p)), color.map(Math.round), {emissive:glow});
   const add = (root, geometry, x=0, y=0, z=0) => {
@@ -23,166 +28,152 @@
     return g;
   };
   const scenery=lite=>{
-    const rock=M.geometry(), reef=M.geometry(), frame=[], panes=M.geometry(), surface=M.geometry(), underside=M.geometry();
-    // The splayed viewing port brings seawater right up to the bar; the outside wall clears Cold Storage.
-    const port=-35.81, front=-39, left=4.06,right=15.94,base=1.04,head=5.16;
-    const near=[[left,base,port],[right,base,port],[right,head,port],[left,head,port]];
-    const far=[[eastReturn,BED,front],[24,BED,front],[24,TOP,front],[eastReturn,TOP,front]];
-    for(let j=0;j<4;j++){
-      const k=(j+1)%4;
-      face(j===3?panes:reef,[near[j],near[k],far[k],far[j]],j===0?[25,72,82]:j===2?[44,120,134]:[24,83,98],.72);
-      // Carry the visible lintel and sill to the far side of the vault. The pier stands at the outer end.
-      const x0=j===0||j===3?westBay:near[j][0], x1=k===0||k===3?westBay:near[k][0];
-      frame.push(M.beam(x0,near[j][1],port,x1,near[k][1],port,.21,"#413f39",.40),
-        M.beam(x0,near[j][1],port+.096,x1,near[k][1],port+.096,.048,"#b8a076",.60));
+    const reef=M.geometry(), surface=M.geometry(), roomWater=M.geometry(), falls=M.geometry();
+    const random=BL.math.mulberry32(60138);
+    // Slice the concave footprint between successive shoreline corners. Each strip is wholly wet
+    // or dry, so the return has no diagonal crossing the hall, the bookcase passage or the ice cave.
+    const levels=[...new Set(outline.map(p=>p[1]))].sort((a,b)=>a-b), patches=[];
+    for(let k=1;k<levels.length;k++){
+      const back=levels[k-1],front=levels[k],mid=(back+front)/2,cuts=[];
+      for(let i=0;i<outline.length;i++){
+        const a=outline[i],b=outline[(i+1)%outline.length];
+        if((a[1]>mid)!==(b[1]>mid))cuts.push(a[0]);
+      }
+      cuts.sort((a,b)=>a-b);
+      for(let j=0;j<cuts.length;j+=2){
+        const left=cuts[j],right=cuts[j+1];
+        patches.push({left,right,back,front,area:(right-left)*(front-back)});
+        // Short faces keep the Canvas painter's depth local to the whale passing underneath.
+        const cols=Math.ceil((right-left)/(right-left>600?(lite?64:44):right-left>150?(lite?26:16):9)),rows=Math.ceil((front-back)/9);
+        for(let ix=0;ix<cols;ix++)for(let iz=0;iz<rows;iz++){
+          const x=left+(right-left)*ix/cols,xx=left+(right-left)*(ix+1)/cols;
+          const z=back+(front-back)*iz/rows,zz=back+(front-back)*(iz+1)/rows;
+          const quad=y=>[[x,y,z],[x,y,zz],[xx,y,zz],[xx,y,z]];
+          face(surface,quad(TOP),[29,91,103],.50);
+          face(reef,quad(BED),[24,71,83],.60);
+        }
+      }
     }
-    const falls=[], random=BL.math.mulberry32(60138);
-    const water=(g,alpha,flow)=>{
-      // The WebGL water material has moving ripples and downward spray; Canvas animates the lake material.
-      for(const f of g.faces) {if(lite) f.lake=true; else f.water=true;}
-      g.castShadow=false;g.glass=alpha;g.twoSided=true;
-      if(flow) g.lakeFlow=Float32Array.from(flow);
-      return g;
+    // The two rooms are staged behind these windows and have their own dry floors.
+    // From outside, water and a submerged bed continue over their projected footprints.
+    // This branch disappears with the aquarium when the visitor enters either room.
+    for(const room of [lounge,vault]){
+      const shore=innerShore(room),left=shore[0][0],right=shore[2][0],back=shore[1][1];
+      for(let x=left;x<right;x+=4)for(let z=back;z<rear;z+=4){
+        const xx=Math.min(right,x+4),zz=Math.min(rear,z+4);
+        const quad=y=>[[x,y,z],[x,y,zz],[xx,y,zz],[xx,y,z]];
+        face(roomWater,quad(TOP),[29,91,103],.50);
+        face(reef,quad(BED),[24,71,83],.60);
+      }
+    }
+    // Scatter only inside wet rectangles, weighted by area. Reeds can use an inset from the glass.
+    const totalArea=patches.reduce((sum,r)=>sum+r.area,0);
+    const bedPoint=()=>{
+      let area=random()*totalArea,r=patches[0];
+      for(const patch of patches){r=patch;if((area-=r.area)<=0)break;}
+      const dx=Math.min(2,(r.right-r.left)/3),dz=Math.min(2,(r.front-r.back)/3);
+      return [r.left+dx+random()*(r.right-r.left-2*dx),r.back+dz+random()*(r.front-r.back-2*dz)];
     };
-    // The basin rests in a tapered, stratified basalt shelf. Only the near and east faces are glazed.
+    // Each outer corner shares a mitre with the following sheet. Near the top the roll is continuous;
+    // farther down the curtain separates into translucent streams against open sky.
+    const normal=i=>{
+      const a=outline[i],b=outline[(i+1)%outline.length],n=Math.hypot(b[0]-a[0],b[1]-a[1]);
+      return [(a[1]-b[1])/n,(b[0]-a[0])/n];
+    };
     for(let i=0;i<outline.length;i++){
-      const a=outline[i], b=outline[(i+1)%outline.length], dx=b[0]-a[0], dz=b[1]-a[1], len=Math.hypot(dx,dz);
-      const nx=-dz/len,nz=dx/len,n=Math.ceil(len/(lite?6:3.4));
-      let prev;
-      for(let k=0;k<=n;k++){
-        const u=k/n,x=a[0]+dx*u,z=a[1]+dz*u;
-        const at=(y,inset)=>[x+nx*inset,y,z+nz*inset];
-        const seam=Math.sin(u*Math.PI);
-        const row=[at(BED,0),at(BED-1.2,.66*seam),at(BED-3-random()*1.1,1.25*seam),
-          at(BED-6-random()*3,.54*seam),at(BED-14-random()*4,-2*seam),[48+(x-48)*.60,-49-random()*5,-85+(z+85)*.65]];
-        const ids=row.map(p=>M.pushVert(rock,...p));
-        if(prev) for(let j=0;j<ids.length-1;j++){
-          const v=8*random(), c=[[48,72,76],[57,73,80],[32,48,58],[45,55,67],[30,36,50]][j];
-          M.face(rock,[ids[j+1],ids[j],prev[j]],c.map(t=>Math.round(t+v)),{emissive:.49});
-          M.face(rock,[prev[j+1],ids[j+1],prev[j]],c.map(t=>Math.round(t+v+3)),{emissive:.46});
+      const a=outline[i],b=outline[(i+1)%outline.length],dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz);
+      const [nx,nz]=normal(i), exposed=i<5, n=Math.ceil(len/(len>600?(lite?32:18):len>180?(lite?12:6):(lite?3.1:1.6)));
+      if(!exposed)continue;
+      const first=i>0?normal(i-1):[0,0],last=i<4?normal(i+1):[0,0];
+      let prevWater;
+      for(let j=0;j<=n;j++){
+        const u=j/n,x=a[0]+dx*u,z=a[1]+dz*u;
+        const edgeX=nx+(j===0?first[0]:j===n?last[0]:0),edgeZ=nz+(j===0?first[1]:j===n?last[1]:0);
+        const at=(out,y)=>[x+edgeX*out,y,z+edgeZ*out];
+        const waterRow=[at(0,TOP),at(.27,TOP-.055),at(.65,TOP-.43),at(1.05,TOP-1.8),at(1.36,TOP-6.2)];
+        if(!lite)waterRow.push(at(1.62,TOP-24),at(1.78,TOP-150));
+        const vertices=waterRow.map(p=>M.pushVert(falls,...p));
+        if(prevWater)for(let k=1;k<vertices.length;k++){
+          const c=k===1?[169,221,216]:j%7===0?[124,200,207]:[75,158,181];
+          M.face(falls,[prevWater[k-1],prevWater[k],vertices[k],vertices[k-1]],c,{emissive:k===1?.78:.64});
         }
-        prev=ids;
-      }
-      // Ocean colour grows darker with depth. These panels show the animals through the front glass.
-      const back=i>=3 && i<outline.length-2;
-      const wall=back?reef:panes, cols=back?n:1;
-      for(let j=0;j<cols;j++) for(let k=0;k<(back?10:4);k++){
-        const v=k/(back?10:4),w=(k+1)/(back?10:4);
-        const pt=(u,h)=>[a[0]+dx*u,BED+26*h,a[1]+dz*u];
-        const sun=back?Math.max(0,Math.sin(j*.79-k*.41)*Math.cos(j*.26+k*.29)):0;
-        const start=i===0?(24-a[0])/dx:j/cols;
-        const quad=[pt(start,v),pt((j+1)/cols,v),pt((j+1)/cols,w),pt(start,w)];
-        face(wall,back?quad.reverse():quad,
-          [10+v*10+sun*13,34+v*67+sun*29,53+v*82+sun*29],.77);
-      }
-      if(!back && i<outline.length-2){
-        for(let j=0;j<=n;j+=lite?3:5){
-          const x=a[0]+dx*j/n,z=a[1]+dz*j/n;
-          if(i===0 && x<24)continue;
-          frame.push(M.beam(x,BED,z,x,TOP,z,.105,"#497781",.54));
-        }
-      }
-      frame.push(M.beam(a[0],TOP-.09,a[1],b[0],TOP-.09,b[1],.19,"#a5dfdb",.84),
-        M.beam(a[0],BED,a[1],b[0],BED,b[1],.52,"#637d7b",.47));
-      // Overflow weirs on the exposed lip bow outward to clear the shelf. Individual ribbons taper to spray.
-      if(i<=3){
-        const runs=i===0?[[.34,.42],frontSpill]:i===1?[[.08,.87]]:i===2?[[.13,.36],[.57,.79]]:[[.12,.70]];
-        const g=M.geometry();
-        for(const [lo,hi] of runs){
-          const strips=Math.ceil((hi-lo)*len/(lite?1.5:.72));
-          for(let s=0;s<strips;s++){
-            const u=lo+(hi-lo)*s/strips,v=lo+(hi-lo)*(s+.99)/strips, spread=.88+random()*.23,drop=49+random()*7;
-            let last;
-            for(const t of [0,.04,.12,.32,.58,.83,1]){
-              const reach=t===0?-.10:(.22+3.6*Math.sqrt(t))*spread;
-              const p=h=>[a[0]+dx*h+nx*reach,TOP+.03-drop*t*t,a[1]+dz*h+nz*reach];
-              const row=[M.pushVert(g,...p(u)),M.pushVert(g,...p(v))];
-              if(last)M.face(g,[row[0],row[1],last[1],last[0]],[111,185,215],{emissive:.62+.11*spread});
-              last=row;
-            }
-          }
-        }
-        falls.push(water(g,.48,[dx/len*.45,0,dz/len*.45,0,0,-.32,0,0]));
+        prevWater=vertices;
       }
     }
-    // A triangle fan matches the clipped corners of the actual waterline.
-    for(let i=0;i<outline.length;i++){
-      const a=outline[i],b=outline[(i+1)%outline.length];
-      const lid=[[48,TOP,-85],[a[0],TOP,a[1]],[b[0],TOP,b[1]]];
-      face(surface,lid,[92,177,203],.58);face(surface,lid.reverse(),[69,143,172],.49);
-      // Tint the sky through the waterline while transmitting the lightning channel down to its point of contact.
-      face(underside,[[48,TOP+.045,-85],[b[0],TOP+.045,b[1]],[a[0],TOP+.045,a[1]]],[34,103,124],.68);
-      face(reef,[[48,BED,-85],[a[0],BED,a[1]],[b[0],BED,b[1]]],[30,76,85],.61);
+    for(const [g,alpha] of [[surface,.53],[roomWater,.53],[falls,.72]]){
+      for(const f of g.faces) f.water=g===falls?(lite?true:"codefall"):"moonlit";
+      g.glass=alpha;g.twoSided=true;g.castShadow=false;
     }
-    // A shallow header above the dry vault joins the two waterlines. The swimming depth starts behind its back wall.
-    const header=[[westBay,TOP,front],[eastReturn,TOP,front],[eastReturn,TOP,bayFront],[westBay,TOP,bayFront]];
-    face(surface,header,[89,169,186],.57);face(surface,header.slice().reverse(),[69,143,172],.49);
-    face(underside,header.map(([x,y,z])=>[x,y+.045,z]).reverse(),[34,103,124],.68);
-    face(reef,[[westBay,head,port],[eastReturn,head,port],[eastReturn,TOP,front],[westBay,TOP,front]],
-      [39,104,121],.64);
-    frame.push(M.beam(westBay,TOP,front,eastReturn,TOP,front,.15,"#a5dfdb",.84));
+    // Keep the basin walls together, but cull the detailed bed by region. From the bar
+    // most kelp is outside the view, and from the terrace the western ledge is behind the eye.
+    const beds=Array.from({length:5},()=>({plants:M.geometry(),stones:[]}));
     for(let i=0;i<(lite?36:75);i++){
-      const z=-45-random()*75, west=z<bayFront-7?-9:12;
-      const x=west+random()*(70-west),y=BED-.42,h=1+random()*2.9;
+      const [x,z]=bedPoint(),y=BED-.42,h=1+random()*2.9;
       // Low outcrops on the sandy bed and ribbon kelp with a visible midrib.
       const r=M.lathe({segments:6,profile:[[0,0],[1,0],[.85,h*.55],[.4,h],[0,h*.93]],color:i%2?"#345b63":"#42666a",emissive:.57});
       const wide=1.4+random()*2.1;
       for(let j=0;j<r.verts.length;j+=3){r.verts[j]=x+r.verts[j]*wide;r.verts[j+1]+=y;r.verts[j+2]=z+r.verts[j+2]*wide*.71;}
-      frame.push(r);
+      const bed=beds[(x>=west?1:0)+(z<rear?2:0)],plants=bed.plants;
+      bed.stones.push(r);
       for(let blade=0;blade<3;blade++){
         let last;
         for(let k=0;k<5;k++){
           const t=k/4,xx=x+blade*.42+t*(blade-1)+Math.sin(t*5+i)*t*.8, yy=y+(4+h+blade*.68)*t,zz=z+.55*blade+t*.75;
-          const w=(.15+.12*Math.sin(t*3))*(1-t*.94),row=[M.pushVert(reef,xx-w,yy,zz),M.pushVert(reef,xx+w,yy,zz)];
-          if(last)M.face(reef,[last[0],last[1],row[1],row[0]],[29,94+i%19,89],{emissive:.67});
+          const w=(.15+.12*Math.sin(t*3))*(1-t*.94),row=[M.pushVert(plants,xx-w,yy,zz),M.pushVert(plants,xx+w,yy,zz)];
+          if(last)M.face(plants,[last[0],last[1],row[1],row[0]],[29,94+i%19,89],{emissive:.67});
           last=row;
         }
       }
     }
-    // A basalt ledge follows the west reveal into the tank. The kelp is rooted on that ledge, at eye level from the bar.
-    const kelp=(x,y,z,h,phase)=>{
+    // Kelp on a submerged basalt ledge can be seen through the band-side water.
+    const ledge=beds[4],kelp=(x,y,z,h,phase)=>{
       let last;
       for(let k=0;k<=8;k++){
         const t=k/8,xx=x+.19*Math.sin(phase+6*t)+.29*t,zz=z+.40*Math.sin(phase+4*t),yy=y+h*t;
         const w=(.06+.14*Math.sin(Math.PI*t))*(1-.77*t);
-        const row=[M.pushVert(reef,xx-w,yy,zz),M.pushVert(reef,xx,yy+.02,zz+.055),M.pushVert(reef,xx+w,yy,zz)];
+        const row=[M.pushVert(ledge.plants,xx-w,yy,zz),M.pushVert(ledge.plants,xx,yy+.02,zz+.055),M.pushVert(ledge.plants,xx+w,yy,zz)];
         if(last)for(let q=0;q<2;q++){
           const f=[last[q],last[q+1],row[q+1],row[q]];
           const col=q?[38,109,98]:[48,136,112];
-          M.face(reef,f,col,{emissive:.64});M.face(reef,[row[q],row[q+1],last[q+1],last[q]],col,{emissive:.64});
+          M.face(ledge.plants,f,col,{emissive:.64});M.face(ledge.plants,[row[q],row[q+1],last[q+1],last[q]],col,{emissive:.64});
         }
         last=row;
       }
     };
     for(let i=0;i<(lite?18:38);i++){
-      const z=bayFront-1-random()*25, x=westBay+.6+random()*3.9,y=-1.9-random()*2.1;
-      frame.push(pebble(x,y,z,1.1+random(),.6+random(),.8+random(),"#385c61"));
+      const z=rear+2+random()*(G.END_Z-rear-4), x=west-5-random()*3.9,y=TOP-6-random()*2.1;
+      ledge.stones.push(pebble(x,y,z,1.1+random(),.6+random(),.8+random(),"#385c61"));
       for(let j=0;j<3;j++)kelp(x+j*.28,y+.77,z+.18*j,1.3+random()*3.2,i*.91+j);
     }
     // Submerged mineral seams pick up the moving surface light at the narrow western end.
     const shafts=M.geometry();
     for(let i=0;i<(lite?24:52);i++){
-      const z=-40-random()*84,west=z<bayFront-5?westBay:eastReturn;
-      const x=west+random()*(80-west),h=7+random()*13,r=.20+random()*.80;
+      const [x,z]=bedPoint(),h=7+random()*13,r=.20+random()*.80;
       face(shafts,[[x-r,TOP-.2,z],[x+r,TOP-.2,z],[x+3+r*2,TOP-h,z-2],[x+3-r*2,TOP-h,z-2]],
         [99,177,179],.83);
     }
     shafts.glassOpacity=.048;shafts.glassGrazing=0;shafts.castShadow=false;
-    underside.glass=.55;underside.castShadow=false;
-    panes.glassOpacity=.18;panes.twoSided=true;
-    const stone=M.merge(rock,...frame);stone.castShadow=false;reef.castShadow=false;panes.castShadow=false;
+    // Most of the distant bed vanishes into the dark water. Leave just a wash of
+    // colour under the solid reef outcrops so its perimeter cannot outline the falls.
+    reef.glassOpacity=.13;reef.glassGrazing=0;reef.castShadow=false;
     const pack=g=>{g.fogPierce=.76;return BL.pokerMarble.staticMesh(g);};
-    return {shafts:pack(shafts),stone:pack(stone),reef:pack(reef),underside:pack(underside),panes:pack(panes),surface:pack(water(surface,.16)),falls:falls.map(pack),whale:BL.pokerBlueWhale.geometry(lite)};
+    const bedMeshes=beds.map(bed=>{
+      const mesh=M.merge(...bed.stones,bed.plants);mesh.castShadow=false;return pack(mesh);
+    });
+    const whale=BL.pokerBlueWhale.geometry(lite);
+    return {bedMeshes,shafts:pack(shafts),reef:pack(reef),surface:pack(surface),roomWater:pack(roomWater),falls:pack(falls),whale,offshoreWhale:lite?whale:BL.pokerBlueWhale.geometry(true)};
   };
 
   // One circuit per resident per three minutes. Timestamps keep the lunge, flight and return
   // continuous with ordinary swimming. The opening leg passes the bar and the return clears the dry vault.
   const PERIOD=180, INTERVAL=60;
-  const course=[[0,21,.8,-54],[11,37,1,-52],[24,51,-3,-64],[36,42,-7,-71],[47,29,-11,-62],
-    [52,28,-11,-55.2],[56,32,-9.2,-52.5],[58.5,35.9,-6.45,-51.4],[60,38.2,-1.75,-50.9],
-    [61.7,41.6,7.9,-50.3],[63.1,45.2,12.6,-50],[64,47.8,11,-49.9],[65.1,50.9,7,-50],
-    [66.2,53.1,.5,-50.3],[68.5,57,-5,-51.4],[76,66,-7,-60],[90,73,-8,-78],[110,57,-6,-109],
-    [126,30,-4,-111],[139,4,-2.4,-93],[150,-6,-1.3,-76],[157,0,-.7,-66],[165,12,-.3,-65],[174,17,.5,-60]];
+  // This circuit fits the rear basin. Offshore pods follow the same lunge at their own feeding sites.
+  const course=[[0,29,-6,-52],[11,37,-5.8,-52],[24,55,-9.8,-55],[36,47,-13.8,-58],[47,29,-17.8,-53],
+    [52,28,-17.8,-53],[56,32,-16,-52.5],[58.5,35.9,-13.25,-51.4],[60,38.2,-8.55,-50.9],
+    [61.7,41.6,1.1,-50.3],[63.1,45.2,5.8,-50],[64,47.8,4.2,-49.9],[65.1,50.9,.2,-50],
+    [66.2,53.1,-6.3,-50.3],[68.5,57,-11.8,-51.4],[76,66,-13.8,-53],[85,67,-14.8,-53.5],
+    [95,58,-13,-56],[110,47,-11,-57],[127,36,-10,-55],[143,30,-7,-52],
+    [153,32,-11,-51.5],[165,38,-9,-51],[174,31,-7,-53]];
   // Hermite velocities are in metres per second, including across the loop seam.
   const tangents=course.map((p,i)=>{
     const a=course[(i+course.length-1)%course.length],b=course[(i+1)%course.length];
@@ -198,7 +189,7 @@
     for(let axis=0;axis<3;axis++){
       const start=a[axis+1],delta=b[axis+1]-start,va=tangents[i][axis]*duration,vb=tangents[j][axis]*duration;
       const h=3*delta-2*va-vb,k=va+vb-2*delta,value=start+u*(va+u*(h+u*k));
-      if(axis===0)p.x=value;else if(axis===1)p.y=value;else p.z=value;
+      if(axis===0)p.x=value;else if(axis===1)p.y=TOP+value;else p.z=value;
       vel[axis]=(va+u*(2*h+3*u*k))/duration;
       const acceleration=(2*h+6*u*k)/(duration*duration);
       if(axis===0)ax=acceleration;else if(axis===2)az=acceleration;
@@ -207,11 +198,12 @@
     const smooth=BL.pokerWhaleBreach.smooth;
     if(!turn && phase>=52 && phase<76){
       const u=(phase-52)/24;
-      p.y=-11+4*smooth(0,1,u);vel[1]=u*(1-u);
+      p.y=TOP-17.8+4*smooth(0,1,u);vel[1]=u*(1-u);
     }
     const cruise=1-smooth(45,52,phase)*(1-smooth(70,82,phase));
     p.y+=cruise*(w.lane*.64+.10*Math.sin(time*.94));
-    p.z+=cruise*w.lane*1.65;
+    p.z+=cruise*w.lane*.65;
+    p.x+=w.offsetX;p.z+=w.offsetZ;
     const horizontal=Math.hypot(vel[0],vel[2]);
     const tilt=Math.atan2(vel[1],horizontal);
     const turnBank=Math.atan2(vel[0]*az-vel[2]*ax,Math.max(.2,horizontal)*2.4);
@@ -222,18 +214,67 @@
     const bank=.072*Math.sin(time*.17)+cruise*.30*turnBank+w.side*1.40*flop;
     BL.pokerBlueWhale.pose(w,time,Math.atan2(-vel[2],vel[0]),tilt*(1-.93*flop),bank,gape,effort*(1-.9*airborne),calm);
   };
+  // Canvas shares one lazily painted tile across the perimeter. Its height is in
+  // metres so the streams accelerate down past the same depth bands as the GL sheet.
+  const canvasTails=root=>{
+    const width=32,height=144,g=M.geometry(),random=BL.math.mulberry32(33015);
+    const chars="0123456789ABCDEF",smooth=BL.pokerWhaleBreach.smooth;
+    const lanes=Array.from({length:32},()=>({speed:1.7+1.9*random(),phase:64*random(),end:74+72*random(),
+      letters:Array.from({length:64},()=>chars[Math.floor(random()*chars.length)]).join("")}));
+    let bitmap,ctx,last=-Infinity,time=0;
+    M.face(g,[[0,0],[width,0],[width,-height],[0,-height]].map(([x,y])=>M.pushVert(g,x,y,0)),[76,160,176],{emissive:.7});
+    g.castShadow=false;g.twoSided=true;
+    g.imageSurface={rect:[0,-height,width,height],blend:"alpha",cutout:true,fallback(){
+      if(!bitmap){
+        bitmap=document.createElement("canvas");bitmap.width=256;bitmap.height=height*8;
+        ctx=bitmap.getContext("2d");ctx.font="bold 8px monospace";ctx.textBaseline="top";
+      }
+      if(Math.abs(time-last)<.12)return bitmap;
+      last=time;ctx.clearRect(0,0,bitmap.width,bitmap.height);
+      for(let i=0;i<lanes.length;i++){
+        const lane=lanes[i],phase=lane.phase+time*lane.speed;
+        const water=ctx.createLinearGradient(0,0,0,184+(lane.phase%18)*8);
+        water.addColorStop(0,"rgba(73,157,174,.93)");water.addColorStop(1,"rgba(58,145,167,0)");
+        ctx.fillStyle=water;ctx.fillRect(i*8,0,8,360);
+        for(let row=-Math.ceil(phase);row<lane.end-phase;row++){
+          const y=row+phase,d=y+6.2,train=((row%24)+24)%24;
+          const alpha=smooth(5,24,d)*(1-smooth(28,lane.end,d))*smooth(1,6,train)*(1-smooth(18,19,train));
+          if(alpha<=.006)continue;
+          ctx.globalAlpha=alpha;ctx.fillStyle=train>14?"#8edce2":"#50a7b9";
+          ctx.fillText(lane.letters[row&63],i*8+1,y*8);ctx.globalAlpha=1;
+        }
+      }
+      return bitmap;
+    }};
+    for(let i=0;i<5;i++){
+      const a=outline[i],b=outline[i+1],dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz);
+      const tx=dx/len,tz=dz/len,steps=Math.ceil(len/width),join=1.36;
+      const start=i===0?0:-join,span=len+(i===4?0:join)-start;
+      for(let j=0;j<steps;j++){
+        const along=start+span*j/steps;
+        const tile=add(root,g,a[0]+tx*along-tz*join,TOP-6.2,a[1]+tz*along+tx*join);
+        tile.rotation.y=-Math.atan2(dz,dx);tile.scale.x=span/(steps*width);
+      }
+    }
+    return dt=>{time+=dt;};
+  };
   const build=lite=>{
     if(!cache.has(lite))cache.set(lite,scenery(lite));
     const g=cache.get(lite),root=S.createNode();
-    for(const geom of [g.stone,g.reef,g.panes,g.underside,g.surface,...g.falls])add(root,geom);
+    for(const geom of [g.reef,...g.bedMeshes,g.surface,g.roomWater,g.falls])add(root,geom);
+    const tails=lite?canvasTails(root):null;
     const rays=add(root,g.shafts);
-    // Approximately 23 m, 21 m and 16 m nose to fluke in the same coordinates as the Oogas.
-    const residents=[1.43,1.32,1.01].map((scale,i)=>{
-      const w=BL.pokerBlueWhale.build(root,g.whale,scale);w.side=i===1?-1:1;w.lane=i-1;return w;
+    // Offsets from the bar feeding site, ordered as one outward and returning storm track.
+    // Each resident swims locally while the single school, wave and waterfall surge follow the cloud.
+    const sites=[[0,0],[-115,3],[-110,70],[-265,71],[-430,69],[-595,65],
+      [-550,8],[-417,4],[-288,7],[-151,4],[0,0],[0,0]];
+    const sizes=[1.43,1.32,1.01];
+    const residents=sites.map(([x,z],i)=>{
+      const w=BL.pokerBlueWhale.build(root,x < -200?g.offshoreWhale:g.whale,sizes[i%3]);
+      w.offsetX=x;w.offsetZ=x && z<40?z-60:z;w.spillZ=x===0?rear:z>40?G.END_Z:outerRear;w.lane=i%3-1;w.side=i%2?-1:1;
+      return w;
     });
-    const frontWidth=outline[1][0]-outline[0][0];
-    const weirX=outline[0][0]+frontWidth*(frontSpill[0]+frontSpill[1])/2;
-    const breach=BL.pokerWhaleBreach.build(root,lite,TOP,outline[0][1],weirX,frontWidth*(frontSpill[1]-frontSpill[0]));
+    const breach=BL.pokerWhaleBreach.build(root,lite,TOP,spillX,spillWidth);
     const guest=BL.pokerBlueWhale.build(root,g.whale,.87);guest.body.visible=false;
     let age=12,peak=0,clock=0;
     const visit=value=>{
@@ -246,22 +287,29 @@
       clock+=dt;age=Math.min(12,age+dt);
       // Interior rooms hide the whole tank. Its poses are analytic on these clocks and resume on the first visible frame.
       if(!root.visible)return;
+      if(tails && !calm)tails(dt);
       // Lightning brings the school to the surface on the minute. The swim course reaches the surface ten seconds later.
       const turn=Math.floor(clock/INTERVAL)-1,active=turn<0?-1:turn%residents.length;
       for(let i=0;i<residents.length;i++){
-        const phase=(clock+PERIOD-10-i*INTERVAL)%PERIOD;
+        const phase=(clock+PERIOD-10-i%3*INTERVAL)%PERIOD;
         swim(residents[i],phase,clock+i*2.4,i===active,calm);
       }
-      breach.update(clock-(turn+1)*INTERVAL-10,residents[active],calm);
+      const since=clock-(turn+1)*INTERVAL,u=since/INTERVAL,blend=u*u*(3-2*u);
+      const from=turn<0?residents[1]:residents[active],to=residents[(turn+1)%residents.length];
+      const wind=Math.sin(Math.PI*u)**2;
+      const x=from.offsetX+(to.offsetX-from.offsetX)*blend+wind*3*Math.sin(2*Math.PI*u);
+      const z=from.offsetZ+(to.offsetZ-from.offsetZ)*blend-wind*8;
+      const w=residents[active];
+      breach.update(since-10,w,calm,x,z,w?w.spillZ-w.offsetZ:rear);
       rays.position.x=calm?0:.38*Math.sin(time*.16);
       guest.body.visible=age<12;
       if(guest.body.visible){
         const u=age/12,s=Math.sin(Math.PI*u),c=Math.cos(Math.PI*u),p=guest.body.position;
-        p.x=29+32*u;p.y=-14.8+4*s;p.z=-105+5*s;
-        BL.pokerBlueWhale.pose(guest,time+.4,-Math.atan2(5*Math.PI*c,32),Math.atan2(4*Math.PI*c,32),.12*s,0,.8,calm);
+        p.x=29+32*u;p.y=TOP-21.6+4*s;p.z=-60+3*s;
+        BL.pokerBlueWhale.pose(guest,time+.4,-Math.atan2(3*Math.PI*c,32),Math.atan2(4*Math.PI*c,32),.12*s,0,.8,calm);
       }
     };
-    update(0,0,false);return {root,visit,update,residents,breach};
+    update(0,0,false);return {root,visit,update,residents,breach,get impactAge(){return clock<INTERVAL?Infinity:clock%INTERVAL-15;}};
   };
   BL.pokerAquarium=Object.freeze({build});
 })();

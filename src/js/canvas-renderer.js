@@ -196,12 +196,18 @@
       matrixStreams[offset + 4] = matrixHash(stream + 73) * sequence * 0.13;
       matrixStreams[offset + 5] = 0.58 + matrixHash(stream + 101) * 0.36;
     }
-    const acquire = (vertices = 16) => {
+    // Most projected faces are triangles or quads. A fifth vertex covers a near-clipped quad.
+    // Pool their coordinates in pages so a crowded floor does not retain a buffer per face.
+    const FACE_COORDS = 10, FACES_PER_PAGE = 512;
+    let coordinatePage;
+    const acquire = (vertices = 2) => {
       if (poolUsed === pool.length) {
-        pool.push({ pts: new Float32Array(32), n: 0, depth: 0, depthOffset: false, style: "", coreStyle: "", line: false, lineGlow: 0, smokeOpacity: 1, mirror: false, mirrorNode: null, imageNode: null, imageA: 0, imageB: 0, imageC: 0, imageD: 0, canvasR: 1, canvasG: 1, canvasB: 1, canvasAddR: 0, canvasAddG: 0, canvasAddB: 0, mirrorMinX: 0, mirrorMaxX: 0, mirrorMinY: 0, mirrorMaxY: 0, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPermanentOnly: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0, scrMinX: 0, scrMinY: 0, scrMaxX: 0, scrMaxY: 0 });
+        const start = (pool.length % FACES_PER_PAGE) * FACE_COORDS;
+        if (!start) coordinatePage = new Float32Array(FACES_PER_PAGE * FACE_COORDS);
+        pool.push({ pts: coordinatePage.subarray(start, start + FACE_COORDS), n: 0, depth: 0, depthOffset: false, style: "", coreStyle: "", line: false, lineGlow: 0, smokeOpacity: 1, mirror: false, mirrorNode: null, imageNode: null, imageA: 0, imageB: 0, imageC: 0, imageD: 0, canvasR: 1, canvasG: 1, canvasB: 1, canvasAddR: 0, canvasAddG: 0, canvasAddB: 0, mirrorMinX: 0, mirrorMaxX: 0, mirrorMinY: 0, mirrorMaxY: 0, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPermanentOnly: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0, scrMinX: 0, scrMinY: 0, scrMaxX: 0, scrMaxY: 0 });
       }
       const rec = pool[poolUsed++];
-      if (rec.pts.length < vertices * 2) rec.pts = new Float32Array(CLIP_VERTICES * 2);
+      if (rec.pts.length < vertices * 2) rec.pts = new Float32Array(Math.min(CLIP_VERTICES * 2, Math.max(vertices * 2, rec.pts.length * 2)));
       return rec;
     };
     // Six cave planes, height limits, eight five-plane cut prisms and the
@@ -231,13 +237,14 @@
     // world and view stages round through Float32Array storage either way, so
     // cached Float32Array copies are bit-identical to recomputing. Each vertex
     // needs one slot, or two when lake and ordinary faces deform differently.
-    let wCache = new Float32Array(0), vCache = new Float32Array(0);
+    let wCache = new Float32Array(0), vCache = new Float32Array(0), screenCache = new Float32Array(0);
     let wStamp = new Int32Array(0), vStamp = new Int32Array(0), vertexGen = 0;
     const growVertexCache = (slots) => {
       let capacity = Math.max(4096, wStamp.length);
       while (capacity < slots) capacity *= 2;
       const wNext = new Float32Array(capacity * 3), vNext = new Float32Array(capacity * 3);
       const wsNext = new Int32Array(capacity), vsNext = new Int32Array(capacity);
+      const projected = new Float32Array(capacity * 2); projected.set(screenCache); screenCache = projected;
       wNext.set(wCache); vNext.set(vCache); wsNext.set(wStamp); vsNext.set(vStamp);
       wCache = wNext; vCache = vNext; wStamp = wsNext; vStamp = vsNext;
     };
@@ -536,12 +543,13 @@
       matrixReceiverCache.set(g, { faces: g.faces, receiver });
       return receiver;
     };
-    const outsideView = (node) => {
+    const canCullBox = (node) => {
       const g = node.geometry, w = node.world;
       if (w[3] || w[7] || w[11] || w[15] !== 1) return false;
       if (matrixActive || matrixPermanentCave && hasMatrixReceiver(node) || g.matrixGlyph || g.matrixLocalGlyphSurface || g.clipPlane || g.clipSlab || g.clipSlab2 || g.clipMinY !== undefined || g.clipMaxY !== undefined || cutawayRegionCount || cutawayMaxY < Infinity || g.projective || g.portalSurface || g.lakeBody || g.lakeWaves || g.lakeChargeRise || node.matrixCloud || node.mirror || node.mirrorPortal || node.mirrorShard || node.mirrorRippleOnly || g.reflector) return false;
-      const b = BL.scene.boundsOf(g);
-      const margin = g.lines?.length ? 8 : 3;
+      return true;
+    };
+    const boxOutsideView = (w, b, margin) => {
       let outside = 31;
       for (let corner = 0; corner < 8 && outside; corner++) {
         const x = b[corner & 1 ? "max" : "min"][0], y = b[corner & 2 ? "max" : "min"][1], z = b[corner & 4 ? "max" : "min"][2];
@@ -555,6 +563,30 @@
         outside &= (depth < near - epsilon ? 1 : 0) | (vx < -hx - epsilon ? 2 : 0) | (vx > hx + epsilon ? 4 : 0) | (vy < -hy - epsilon ? 8 : 0) | (vy > hy + epsilon ? 16 : 0);
       }
       return outside !== 0;
+    };
+    const outsideView = node => canCullBox(node) && boxOutsideView(node.world, BL.scene.boundsOf(node.geometry), node.geometry.lines?.length ? 8 : 3);
+    // The terrace and hall each merge hundreds of props into a single mesh.
+    // Adjacent faces in these immutable meshes still belong to nearby pieces.
+    // Their small bounds reject whole offscreen runs without reordering faces.
+    const FACE_BLOCK = 32, blockBounds = new WeakMap();
+    const boundsForBlocks = packed => {
+      let blocks = blockBounds.get(packed);
+      if (blocks) return blocks;
+      blocks = [];
+      const { indices, offsets, positions } = packed;
+      for (let i = 0; i < packed.count; i += FACE_BLOCK) {
+        const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+        const end = offsets[Math.min(i + FACE_BLOCK, packed.count)];
+        for (let j = offsets[i]; j < end; j++) {
+          const at = indices[j] * 3;
+          for (let k = 0; k < 3; k++) {
+            min[k] = Math.min(min[k], positions[at+k]); max[k] = Math.max(max[k], positions[at+k]);
+          }
+        }
+        blocks.push({ min, max });
+      }
+      blockBounds.set(packed, blocks);
+      return blocks;
     };
     const shadeNode = (node, reflectionClip = null) => {
       const objectClip = reflectionClip || node.geometry.clipPlane;
@@ -603,7 +635,10 @@
       let shardDrawn = false;
       if (faces) {
         const cursor = faceCursor(node.geometry);
+        const packed = cursor && node.geometry.compactGeometry;
+        const blocks = packed && packed.count >= 256 && canCullBox(node) ? boundsForBlocks(packed) : null;
         for (let index = 0, total = faces.length; index < total; index++) {
+          if (blocks && !(index % FACE_BLOCK) && boxOutsideView(w, blocks[index / FACE_BLOCK], 3)) { index += FACE_BLOCK - 1; continue; }
           const face = cursor ? BL.compactGeometry.readFace(node.geometry, index, cursor) : faces[index];
           const idx = cursor ? cursor.i.data : face.i, start = cursor ? cursor.i.start : 0, count = face.i.length;
           if (liquid) {
@@ -840,35 +875,52 @@
             if (selective) beginCutaway(surface, surfaceCount);
             for (let piece = 0; selective ? nextCutaway() : piece < 1; piece++) {
               if (selective) { surface = cutawaySurface; surfaceCount = cutawayCount; }
-              for (let k = 0; k < surfaceCount; k++) {
-                if (surface) mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
-                else if (cacheVerts) {
-                  const slot = (idx[start + k] << lakeBit) | variant, at = slot * 3;
-                  if (vStamp[slot] === gen) {
-                    CLIP_IN[k * 3] = vCache[at]; CLIP_IN[k * 3 + 1] = vCache[at + 1]; CLIP_IN[k * 3 + 2] = vCache[at + 2];
-                    continue;
+              // Cache screen coordinates alongside the view-space point. Most
+              // faces share vertices and never touch a clipping plane.
+              const clipDepth = mirrorFace ? 1e-7 : near;
+              let direct = !surface && cacheVerts;
+              if (direct) {
+                let inside = 0;
+                for (let k = 0; k < count; k++) {
+                  const slot = (idx[start+k] << lakeBit) | variant, at = slot*3;
+                  if (vStamp[slot] !== gen) {
+                    mat4.transformPoint(V[k], view, wCache[at], wCache[at+1], wCache[at+2]);
+                    const vx=V[k][0], vy=V[k][1], vz=V[k][2];
+                    vCache[at]=vx; vCache[at+1]=vy; vCache[at+2]=vz; vStamp[slot]=gen;
+                    if (vz <= -clipDepth) {
+                      const scale = f / projectedDepth(-vz);
+                      screenCache[slot*2] = width/2 + vx*scale;
+                      screenCache[slot*2+1] = height/2 - vy*scale;
+                    }
                   }
-                  mat4.transformPoint(V[k], view, V[k][0], V[k][1], V[k][2]);
-                  vStamp[slot] = gen;
-                  vCache[at] = V[k][0]; vCache[at + 1] = V[k][1]; vCache[at + 2] = V[k][2];
-                } else mat4.transformPoint(V[k], view, V[k][0], V[k][1], V[k][2]);
-                CLIP_IN[k * 3] = V[k][0];
-                CLIP_IN[k * 3 + 1] = V[k][1];
-                CLIP_IN[k * 3 + 2] = V[k][2];
+                  if (vCache[at+2] <= -clipDepth) inside++;
+                }
+                if (!inside) continue;
+                direct = inside === count;
+                if (!direct) for (let k=0; k<count; k++) {
+                  const at=((idx[start+k]<<lakeBit)|variant)*3;
+                  CLIP_IN[k*3]=vCache[at]; CLIP_IN[k*3+1]=vCache[at+1]; CLIP_IN[k*3+2]=vCache[at+2];
+                }
+              } else for (let k=0; k<surfaceCount; k++) {
+                if (surface) mat4.transformPoint(V[k], view, surface[k*3], surface[k*3+1], surface[k*3+2]);
+                else mat4.transformPoint(V[k], view, V[k][0], V[k][1], V[k][2]);
+                CLIP_IN[k*3]=V[k][0]; CLIP_IN[k*3+1]=V[k][1]; CLIP_IN[k*3+2]=V[k][2];
               }
-              // A just-closed doorway must cover the view inside the near plane: mirrorFace clips at 1e-7, real depth kept.
-              const clipped = clipNear(CLIP_IN, surfaceCount, mirrorFace ? 1e-7 : near, CLIP_OUT);
+              const clipped = direct ? count : clipNear(CLIP_IN, surfaceCount, clipDepth, CLIP_OUT);
               if (clipped < 3) continue;
               const rec = acquire(clipped);
               let zsum = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-              for (let k = 0; k < clipped; k++) {
-                const cz = CLIP_OUT[k * 3 + 2];
-                const scale = f / projectedDepth(-cz);
-                rec.pts[k * 2] = width / 2 + CLIP_OUT[k * 3] * scale;
-                rec.pts[k * 2 + 1] = height / 2 - CLIP_OUT[k * 3 + 1] * scale;
-                minX = Math.min(minX, rec.pts[k * 2]); maxX = Math.max(maxX, rec.pts[k * 2]);
-                minY = Math.min(minY, rec.pts[k * 2 + 1]); maxY = Math.max(maxY, rec.pts[k * 2 + 1]);
-                zsum += cz;
+              for (let k=0; k<clipped; k++) {
+                if (direct) {
+                  const slot = (idx[start+k] << lakeBit) | variant;
+                  rec.pts[k*2] = screenCache[slot*2]; rec.pts[k*2+1] = screenCache[slot*2+1]; zsum += vCache[slot*3+2];
+                } else {
+                  const cz = CLIP_OUT[k*3+2], scale = f / projectedDepth(-cz);
+                  rec.pts[k*2] = width/2 + CLIP_OUT[k*3]*scale;
+                  rec.pts[k*2+1] = height/2 - CLIP_OUT[k*3+1]*scale; zsum += cz;
+                }
+                minX = Math.min(minX, rec.pts[k*2]); maxX = Math.max(maxX, rec.pts[k*2]);
+                minY = Math.min(minY, rec.pts[k*2+1]); maxY = Math.max(maxY, rec.pts[k*2+1]);
               }
               rec.n = clipped;
               rec.depth = zsum / clipped - (node.depthBias || 0);
@@ -981,7 +1033,12 @@
                   rec.canvasAddB = lerp(fogRgb[2], rec.canvasAddB, visibility);
                 }
               }
-              if (face.lake) {
+              if (face.water === "moonlit") {
+                const range=Math.hypot(eye.x-centerX,eye.z-centerZ);
+                const swell=(.5+.5*Math.sin(centerX*.24-centerZ*.17+waterTime*.54)) / (1+range*.027);
+                red=25+17*swell; green=54+26*swell; blue=65+27*swell;
+                rec.smokeOpacity=Math.min(.98,opacity+.44*range/(range+8));
+              } else if (face.lake) {
                 // Match the WebGL waterfall palette and rectangular cells, including displaced wave lighting.
                 const flow = node.geometry.lakeFlow, curve = node.geometry.lakeFlowCurve;
                 let coordX = flow ? centerX * flow[0] + centerY * flow[1] + centerZ * flow[2] + flow[3] : centerX;

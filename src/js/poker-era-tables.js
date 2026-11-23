@@ -7,7 +7,7 @@
   const disc=(x,y,z,r,h,color,n=16,emissive=.18)=>M.moved(M.lathe({segments:n,profile:[[0,0],[r,0],[r,h],[0,h]],color,emissive}),x,y,z);
   const polygon=(g,points,color,emissive=.1)=>M.face(g,points.map(p=>M.pushVert(g,...p)),BL.math.hexToRgb(color),{emissive});
   const text=(value,cell,x,y,z,color=ivory,emissive=.88,depth=.08)=>{
-    const g=BL.poolModels.carve(value,{cell,color,emissive}).geometry;
+    const g=BL.poolModels.carve(value,{ joined:true,cell,color,emissive}).geometry;
     if(depth!==.08)for(let i=2;i<g.verts.length;i+=3)g.verts[i]*=depth/.08;
     if(value.includes(".") && !BL.hubModels.SIGN_GLYPHS["."]){
       const dot=box(8*cell+.5*cell,-4*cell,.16,cell,cell,.08,ivory,.88);

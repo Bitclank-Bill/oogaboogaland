@@ -35,7 +35,8 @@
     for(let i=0;i<6;i++){const a=i*tau/6,dx=.16*Math.cos(a),dz=.16*Math.sin(a);p.push(beam(x+dx,y+.14,z+dz,x+dx,y+.45,z+dz,.034,brass));}
     return M.merge(...p);
   };
-  const bar = (cx,cz,lite) => {
+  const bar = (cx,cz,lite,sectionsOnly=false) => {
+    const sections=[];
     const west = cx<0;
     const p=[], z=cz-1.27, front=cz+1.29, n=lite?5:9;
     const wood = west ? "#53362c" : "#365353", inset = west ? "#32242b" : "#223b40";
@@ -62,7 +63,11 @@
       }
       if(i%3===0) p.push(beam(x,.2,front+.15,x,.19,front+.41,.04,brass));
     }
+    // Keep the long counter separate from the dense bottle alcoves so a side view
+    // can cull each bank of glassware at its own bounds.
+    sections.push(K.staticMesh(M.merge(...p)));p.length=0;
     const bays=west?[-4.8,0,4.8]:[-6.65,6.65], rad=west?2.28:.76;
+    sections.push(K.staticMesh(BL.pokerIce.shelfIce(cx,bays,rad,z,lite)));
     for(const offset of bays){
       const x=cx+offset;
       p.push(box(x,2.3,z-.19,rad*2+.18,4.55,.38,inset));
@@ -87,6 +92,23 @@
         const glass=M.turnedZ(goblet(0,0,0,n),Math.PI);
         p.push(M.moved(glass,x+i*.32,3.78,z+.24));
       }
+      sections.push(K.staticMesh(M.merge(...p)));p.length=0;
+    }
+    if(!west){
+      // A continuous low bottle rail between the two tall cabinets, behind the bartender's lane.
+      const span=2*(6.65-rad), y=.99;
+      p.push(box(cx,y-.07,z+.11,span,.14,.46,wood),box(cx,y-.047,z+.348,span,.037,.029,brass));
+      for(const dx of [-5.3,-2.65,0,2.65,5.3]){
+        p.push(box(cx+dx,y*.45,z+.06,.11,y*.90,.18,inset),
+          beam(cx+dx,.64,z-.04,cx+dx,y-.08,z+.28,.055,brass));
+      }
+      const glass=["#976442","#386854","#a57238","#587d87","#714839"];
+      const count=lite?23:31;
+      for(let i=0;i<count;i++){
+        const u=(i+.55)/count, h=.29+.042*((i*7)%6);
+        p.push(bottle(cx+(u-.5)*(span-.30),y,z+.12+.055*Math.sin(i*3.7),h,glass[i%glass.length],n));
+      }
+      sections.push(K.staticMesh(M.merge(...p)));p.length=0;
     }
     for(const dx of (west?[-4.8,0,4.8]:[-6.65,6.65])){
       const x=cx+dx;
@@ -108,11 +130,8 @@
         turned(x+.14,1.05,front-.22,[[0,0],[.10,0],[.145,.30],[.085,.335],[.06,.42],[0,.43]],"#c1b6a2",n,.23));
     }
     if(west) p.push(lamp(-14.05,1.025,front-.12,.64));
-    const sign=BL.poolModels.carve(west?"WHITEPAPER":"WHALE WATCH",{cell:.074,color:opal,emissive:.58});
-    // Set the aquarium name on its front frame so the upper rim clears every letter at player eye height.
-    const signZ=west?z+.04:cz+.18, signY=west?4.76:4.98;
-    p.push(box(cx,signY,signZ,west?5:5.8,.55,.25,dark),M.moved(sign.geometry,cx-sign.width/2,signY+.14,signZ+.14));
-    return M.merge(...p);
+    sections.push(K.staticMesh(M.merge(...p)));
+    return sectionsOnly ? sections : M.merge(...sections);
   };
   // The blood-orange peel and basil distinguish the Negroni from the amber rye and cherry.
   const serviceX=13.35;
@@ -150,7 +169,7 @@
       turned(.04,.27,0,[[0,0],[.021,.012],[0,.032]],brass,6,.5)),serviceX+.12,1.17,lipZ);
     const counter=[lamp(serviceX-1.16,1.032,-33.60,.64),cocktail(serviceX-.30,1.032,lipZ,0),cocktail(serviceX+.12,1.032,lipZ,1)];
     for(const [dx,name] of [[-.61,"PIZZA DAY NEGRONI"],[.64,"HODL OLD FASHIONED"]]){
-      const t=BL.poolModels.carve(name,{cell:.011,color:"#e8c38c",emissive:.45});
+      const t=BL.poolModels.carve(name,{ joined:true,cell:.011,color:"#e8c38c",emissive:.45});
       // Carved wall letters have an 8 cm extrusion. These brass strips are flush with the nameplate.
       for(let i=2;i<t.geometry.verts.length;i+=3) t.geometry.verts[i]*=.05;
       counter.push(box(serviceX+dx,1.095,-33.03,1.13,.143,.064,dark),
@@ -169,53 +188,208 @@
       p.armL.rotation.z=mixing?.18+.07*Math.cos(t*3):.06;
     };
   };
-  // A bank of air-cooled miners on a rock shelf off the terrace's southern quarter.
-  // The roofline stays under the eyepiece's sky targets and the shelf sits beyond the rail.
-  const miningShelf=lite=>{
-    const p=[], housing="#343c45", shadow="#1f2933", rim="#696760";
-    const foundation=turned(0,-10,0,[[3,0],[10,1.9],[15,4.5],[18.8,7.6],[18.3,8.1],[0,8.1]],"#30323c",11,.17);
-    for(let i=0;i<foundation.verts.length;i+=3) foundation.verts[i+2]*=.34;
-    p.push(foundation);
+  // Five steam-driven mining engines share castings. The rotor, eccentric and slider of
+  // each engine follow one crank angle. The same exhaust strokes feed its stack.
+  const pressureRamp=value=>{
+    const u=Math.max(0,Math.min(1,value));
+    return u*u*(3-2*u);
+  };
+  const valveOpens=5.5, valveSeconds=4.2;
+  const ventLevel=age=>pressureRamp((age-valveOpens)/.45)*(1-pressureRamp((age-valveOpens-valveSeconds+.8)/.8));
+  const miningShelf=(parent,add,lite)=>{
+    const iron="#34454c", steel="#728381", bronze="#b68147", gold="#ebba76", soot="#232e34";
+    const pack=g=>{g.fogPierce=.83;g.castShadow=false;return K.staticMesh(g);};
+    const mount=(g,x,y,z)=>add(bank,pack(g),x,y,z);
+    const plate=(x,y,z,r,thick,color)=>M.moved(M.turnedX(turned(0,0,0,
+      [[0,0],[r,0],[r,thick],[0,thick]],color,lite?10:18,.65),Math.PI/2),x,y,z);
+    const hoop=(x,y,z,r,thick,color)=>M.moved(M.turnedX(M.torus(r,thick,color,.64,lite?14:24,5),Math.PI/2),x,y,z);
+    const bank=add(parent,null,far+33,0,32);bank.rotation.y=-2.24;
+    mount(BL.pokerIce.floe(lite),0,0,0);
+    const deck=[box(0,-1.84,.6,31.9,.28,5.05,iron,.47)];
+    for(let x=-15;x<=15;x+=2.5){
+      deck.push(beam(x,-2.9,-.3,x,-1.99,2.66,.17,bronze),
+        box(x,-1.14,2.94,.07,1.15,.07,bronze,.58));
+    }
+    for(const y of [-1.05,-.62])deck.push(beam(-15,y,2.94,15,y,2.94,.075,gold));
+    // The common receiver feeds all five boilers. Its level tube is on the terrace face,
+    // where the enamel backing, gauge marks and meniscus read against the dark casings.
+    const glassX=-3.14,glassY=.30,glassZ=2.44,travel=2.22;
+    deck.push(beam(-14,-.24,glassZ,14,-.24,glassZ,.17,copper),
+      beam(glassX,-.24,glassZ,glassX,glassY,glassZ,.19,bronze),
+      box(glassX,glassY+travel/2,glassZ,.66,travel,.16,"#213c41",.44));
+    for(const side of [-1,1])deck.push(beam(glassX+side*.32,glassY,glassZ+.09,glassX+side*.32,glassY+travel,glassZ+.09,.07,gold));
+    for(let k=1;k<10;k++)deck.push(box(glassX+.20,glassY+k*travel/10,glassZ+.125,k%2?.08:.15,.027,.032,gold,.84));
+    for(const y of [glassY,glassY+travel])deck.push(turned(glassX,y-.085,glassZ+.10,[[.29,0],[.34,.045],[.34,.14],[.27,.19]],bronze,12,.64));
+    mount(M.merge(...deck),0,0,0);
+    const liquid=mount(turned(0,0,0,[[.155,0],[.155,1],[0,1]],"#54c7bd",12,.89),glassX,glassY,glassZ+.12);
+    const meniscus=mount(turned(0,0,0,[[.156,0],[.16,.047],[.13,.063],[0,.063]],"#c6fff0",12,1),glassX,glassY,glassZ+.12);
+    const wheel=[hoop(0,0,.09,.70,.092,gold),hoop(0,0,.035,.59,.039,copper),
+      plate(0,0,.09,.19,.15,bronze),plate(.42,0,.23,.10,.07,steel)];
+    for(let i=0;i<8;i++){
+      const a=i*tau/8,dx=Math.cos(a),dy=Math.sin(a);
+      wheel.push(beam(.15*dx,.15*dy,.12,.64*dx-.095*dy,.64*dy+.095*dx,.12,.10,bronze));
+    }
+    const flywheel=pack(M.merge(...wheel)), blades=[plate(0,0,0,.16,.11,gold)];
+    for(let i=0;i<6;i++){
+      const blade=M.turnedZ(box(.10,.29,.02,.21,.46,.09,steel,.64),-.47);
+      blades.push(M.turnedZ(blade,i*tau/6));
+    }
+    const fan=pack(M.merge(...blades)),rod=pack(M.merge(box(0,0,0,1.27,.085,.09,gold,.64),
+      plate(-.635,0,.035,.10,.075,bronze),plate(.635,0,.035,.10,.075,bronze)));
+    const slipper=pack(box(0,0,0,.30,.23,.18,steel,.64));
+    const needle=pack(M.merge(box(0,.103,0,.024,.20,.015,soot,.65),plate(0,0,0,.033,.023,bronze)));
+    // A single soft density map for the entire bank. Feathered lobes overlap as they
+    // rise. Both renderers reuse the same bitmap, including in the single-file build.
+    const steam=M.geometry();
+    M.face(steam,[[-1,-1],[1,-1],[1,1],[-1,1]].map(([x,y])=>M.pushVert(steam,x,y,0)),
+      [207,218,216],{emissive:.65});
+    let steamImage;
+    steam.imageSurface={rect:[-1,-1,2,2],blend:"alpha",cutout:true,fallback(){
+      if(steamImage)return steamImage;
+      steamImage=document.createElement("canvas");steamImage.width=steamImage.height=96;
+      const ctx=steamImage.getContext("2d"),rand=BL.math.mulberry32(9481);
+      for(let k=0;k<56;k++){
+        const a=rand()*tau,r=Math.sqrt(rand()),x=46+24*r*Math.cos(a)+6*Math.sin(2*a),
+          y=50+27*r*Math.sin(a),size=7+rand()*12;
+        const g=ctx.createRadialGradient(x,y,0,x,y,size);
+        g.addColorStop(0,y<50?"rgba(214,224,215,.42)":"rgba(153,172,177,.35)");
+        g.addColorStop(.47,"rgba(174,191,192,.21)");g.addColorStop(1,"rgba(155,172,179,0)");
+        ctx.fillStyle=g;ctx.fillRect(x-size,y-size,2*size,2*size);
+      }
+      return steamImage;
+    }};
+    const vapour=pack(steam),engines=[],sources=[];
     for(let j=0;j<5;j++){
-      const x=(j-2)*6.3,z=(j%2)*1.25,h=2.15+(j%3)*.65,w=5.45,base=-2;
-      p.push(box(x,base+h/2,z,w,h,2.75,housing,.32),box(x,base+h,z,w+.22,.19,2.97,rim,.32),
-        box(x,base+.37,z+1.41,w-.18,.13,.15,copper,.50));
-      for(let f=-1;f<=1;f++){
-        const fx=x+f*1.63,fy=base+h*.60;
-        p.push(box(fx,fy,z+1.40,1.39,1.41,.13,shadow,.30),
-          M.moved(M.turnedX(ring(0,0,0,.52,.058,"#ba8653"),Math.PI/2),fx,fy,z+1.50));
-        for(let a=0;a<(lite?3:6);a++){
-          const angle=a*tau/(lite?3:6);
-          p.push(M.moved(M.turnedZ(box(.12,.19,0,.18,.42,.07,rim,.42),angle),fx,fy,z+1.49));
-        }
-        p.push(box(fx,base+.19,z+1.47,.77,.053,.06,"#faaa4d",.89));
+      const x=(j-2)*6.3,z=(j%2)*.78,foot=-1.69,h=2.48+(j%3)*.45,roof=foot+h;
+      const wall=z+1.34,axisY=foot+1.08,axisX=x-.41,stackX=x+1.74,stackZ=z-.34;
+      const stackH=2.65+[.38,.95,.22,.70,0][j],mouthY=roof+stackH;
+      const p=[box(x,foot+h*.5,z,5.48,h,2.67,iron,.49),
+        box(x,foot+.12,z,5.64,.22,2.88,bronze,.54),box(x,roof,z,5.62,.16,2.93,bronze,.60),
+        box(x,roof-.18,wall,5.41,.07,.10,gold,.60),box(x,axisY,wall+.03,2.62,1.72,.14,soot,.49)];
+      // Slotted heat exchangers and bolted fan guards keep the hashboards recognizable.
+      for(const dx of [1.04,2.12]){
+        p.push(plate(x+dx,axisY,wall+.04,.51,.12,soot),hoop(x+dx,axisY,wall+.25,.52,.052,gold));
+        for(const sign of [-1,1])p.push(beam(x+dx-.34,axisY+sign*.34,wall+.28,x+dx+.34,axisY-sign*.34,wall+.28,.025,bronze));
       }
-      const shaft=x+w*.36;
-      p.push(turned(shaft,base+h,z,[[.30,0],[.30,.9+j*.20],[.41,1+j*.20],[.41,1.15+j*.20],[0,1.15+j*.20]],shadow,8,.35),
-        box(x-w*.40,base+h+.17,z+1.02,.17,.28,.17,"#ff953f",.9));
-      if(j<4) p.push(beam(x+2.5,base+1,z,x+4,base+1,z+1.25*(j%2?-1:1),.23,rim));
+      for(let k=0;k<(lite?6:12);k++){
+        const xx=x-1.12+k*(lite?.24:.12);
+        p.push(box(xx,roof+.28,z+.53,.052,.49,1.19,steel,.54));
+      }
+      // A jacketed boiler across the roof, with copper bands, a steam main and flanged uptake.
+      p.push(M.moved(M.turnedZ(turned(0,0,0,[[0,-1.72],[.35,-1.69],[.52,-1.47],[.52,1.47],
+        [.35,1.69],[0,1.72]],j%2?"#836449":"#86614a",lite?10:16,.61),Math.PI/2),x-.28,roof+.68,z-.47));
+      for(const dx of [-1.67,-.82,.15,1.12]){
+        p.push(M.moved(M.turnedZ(M.torus(.526,.052,gold,.63,16,5),Math.PI/2),x+dx,roof+.68,z-.47));
+      }
+      p.push(turned(stackX,roof,stackZ,[[.61,0],[.63,.22],[.40,.4],[.36,stackH-.48],[.49,stackH-.39],
+        [.53,stackH-.09],[.51,stackH],[.34,stackH],[.33,stackH-.38],[0,stackH-.4]],soot,lite?10:18,.56),
+        beam(x-2.38,roof+.67,z-.45,x-2.38,axisY,z-.45,.21,copper),
+        beam(x-2.38,axisY,z-.45,x-2.38,axisY,wall+.18,.21,copper));
+      for(const dy of [.31,.85,stackH-.48,stackH-.10]){
+        const r=dy>stackH-.52?.505:.407;
+        p.push(turned(stackX,roof+dy,stackZ,[[r,0],[r+.021,.04],[r,.09]],gold,12,.63));
+      }
+      for(const dx of [-2.57,.45,2.55]){
+        p.push(box(x+dx,foot+h*.53,wall+.04,.12,h-.25,.13,bronze,.60));
+        for(let k=0;k<4;k++)p.push(plate(x+dx,foot+.38+k*(h-.62)/3,wall+.11,.052,.04,gold));
+      }
+      // Inspection dial, fire grate, brass cylinder and a slide bed on the audience face.
+      const dialX=x+1.12,dialY=roof-.44;
+      p.push(plate(dialX,dialY,wall+.045,.258,.12,bronze),plate(dialX,dialY,wall+.17,.208,.016,"#e4d5ac"),
+        box(x-2.13,axisY,wall+.27,.58,.46,.37,copper,.64),box(x-2.13,axisY,wall+.48,.60,.10,.045,gold,.66),
+        box(axisX-1.33,axisY-.20,wall+.34,1.23,.09,.22,bronze,.58),
+        box(x-1.93,foot+.39,wall+.09,1.22,.37,.10,"#e77536",.90));
+      for(let i=0;i<6;i++)p.push(box(x-2.46+.21*i,foot+.39,wall+.16,.09,.39,.07,soot,.38));
+      for(let k=0;k<7;k++){
+        const a=k*Math.PI/4-.75*Math.PI;
+        p.push(beam(dialX+.15*Math.sin(a),dialY+.15*Math.cos(a),wall+.194,
+          dialX+.194*Math.sin(a),dialY+.194*Math.cos(a),wall+.194,.015,soot));
+      }
+      // The arched maker's panel carries a sight glass, upper steam lines and a relief
+      // valve. Their fittings stand proud of the jacket so they catch the terrace light.
+      const panelY=roof-.52, faceZ=wall+.20;
+      p.push(box(x-1.22,panelY,wall+.06,2.30,.64,.10,"#2e625f",.53),
+        box(x-1.22,panelY-.34,wall+.14,2.36,.055,.045,gold,.61));
+      for(const side of [-1,1])for(let k=0;k<3;k++){
+        const xx=x-1.22+side*(.32+k*.34);
+        p.push(beam(xx,panelY-.20,faceZ,xx+side*.20,panelY+.14,faceZ,.061,bronze));
+      }
+      p.push(hoop(x-1.22,panelY,faceZ+.02,.235,.040,gold),
+        plate(x-1.22,panelY,faceZ,.145,.055,"#b76335"));
+      const gaugeX=x+2.14;
+      p.push(box(gaugeX,roof-.58,wall+.15,.29,.68,.06,soot,.44),
+        box(gaugeX,roof-.59,faceZ,.088,.48,.056,"#91cfbb",.84));
+      for(const y of [roof-.87,roof-.30])p.push(box(gaugeX,y,faceZ,.30,.085,.11,bronze,.68));
+      // Steam from the receiver feeds the exhaust manifold through a swan-neck pipe.
+      const pipe=[[x-.55,roof+1.11],[x-.55,roof+1.57],[x-.39,roof+1.72],
+        [x+1.43,roof+1.72],[stackX,roof+1.51]];
+      for(let i=1;i<pipe.length;i++)p.push(beam(pipe[i-1][0],pipe[i-1][1],stackZ,
+        pipe[i][0],pipe[i][1],stackZ,.18,copper));
+      for(const dx of [.05,.82])p.push(box(x+dx,roof+1.72,stackZ,.095,.28,.28,gold,.62));
+      const valveX=x-1.43,valveY=roof+1.43;
+      p.push(turned(valveX,roof+1.03,z-.25,[[.13,0],[.13,.20],[.06,.23],[.06,.42]],bronze,8,.62),
+        hoop(valveX,valveY,z-.18,.27,.055,"#bf6143"),
+        beam(valveX-.24,valveY,z-.18,valveX+.24,valveY,z-.18,.047,bronze));
+      // Main air compressor has a taller twin-fluted cap and two reinforcing stays.
+      if(j===2){
+        for(const dx of [-.48,.48])p.push(beam(stackX+dx,roof+.55,stackZ,stackX+dx*1.55,mouthY-.27,stackZ,.09,copper));
+        p.push(turned(stackX,mouthY-.36,stackZ,[[.56,0],[.64,.11],[.64,.16],[.53,.23]],bronze,16,.64));
+      }
+      if(j<4)p.push(beam(x+2.68,foot+.7,z,x+3.63,foot+.7,z+(j%2?-.78:.78),.32,copper));
+      mount(M.merge(...p),0,0,0);
+      const driven=add(bank,flywheel,axisX,axisY,wall+.20);
+      const fans=[add(bank,fan,x+1.04,axisY,wall+.18),add(bank,fan,x+2.12,axisY,wall+.18)];
+      const link=add(bank,rod,0,0,wall+.53),slide=add(bank,slipper,0,axisY,wall+.47);
+      const gauge=add(bank,needle,dialX,dialY,wall+.20),puffs=[];
+      for(let k=0;k<(lite?4:8);k++)puffs.push(add(bank,vapour));
+      const yaw=bank.rotation.y;
+      sources.push({x:bank.position.x+axisX*Math.cos(yaw)+wall*Math.sin(yaw),
+        z:bank.position.z-axisX*Math.sin(yaw)+wall*Math.cos(yaw),speed:2.9+j*.19,phase:j*1.62});
+      engines.push({axisX,axisY,stackX,stackZ,mouthY,driven,fans,link,slide,gauge,puffs});
     }
-    // Cooler stacks, insulators and sagging feeder lines break up the distant roofline.
-    for(const x of [-11,0,11]){
-      p.push(beam(x,-1,-2.6,x,4.8,-2.6,.20,rim),beam(x-1.15,4.34,-2.6,x+1.15,4.34,-2.6,.13,copper));
-      for(const side of [-1,1]){
-        const xx=x+side*.87;
-        p.push(beam(x,3.45,-2.6,xx,4.34,-2.6,.085,rim),
-          turned(xx,4.34,-2.6,[[.12,0],[.16,.09],[.10,.12],[.14,.18],[.07,.29],[0,.30]],"#a3bbb4",6,.45));
-        if(x<11) for(let i=0;i<5;i++){
-          const u=i/5,v=(i+1)/5;
-          p.push(beam(xx+11*u,4.65-3.4*u*(1-u),-2.6,xx+11*v,4.65-3.4*v*(1-v),-2.6,.065,rim));
+    const release=Array.from({length:lite?10:21},()=>{const n=add(bank,vapour);n.visible=false;return n;});
+    const update=(time,calm,age)=>{
+      const drain=1-pressureRamp((age-valveOpens-1.2)/5.6);
+      const fill=pressureRamp(age/1.45)*drain;
+      liquid.scale.y=travel*(.19+.74*fill);
+      meniscus.position.y=glassY+liquid.scale.y;
+      for(let j=0;j<engines.length;j++){
+        const e=engines[j],t=calm?0:time,a=t*sources[j].speed+sources[j].phase;
+        e.driven.rotation.z=a;e.fans[0].rotation.z=-a*2.3;e.fans[1].rotation.z=a*2.7+.81;
+        const dx=.42*Math.cos(a),dy=.42*Math.sin(a),run=Math.sqrt(1.27**2-dy**2);
+        e.slide.position.x=e.axisX+dx-run;
+        e.link.position.x=e.slide.position.x+run*.5;e.link.position.y=e.axisY+dy*.5;
+        e.link.rotation.z=Math.atan2(dy,run);
+        const pressure=pressureRamp((age-.92-j*.82)/.82)*drain;
+        e.gauge.rotation.z=.72+.12*Math.sin(a-.45)-2.52*pressure;
+        for(let k=0;k<e.puffs.length;k++){
+          const n=e.puffs[k],u=((a/Math.PI+k)/e.puffs.length+j*.31)%1;
+          const curl=Math.sin(u*5.7-j)*u,wide=.54+1.95*u;
+          n.position.x=e.stackX+u*u*2.5+curl*.46;
+          n.position.z=e.stackZ+u*u*.63+u*.24*Math.cos(u*7+j);
+          n.position.y=e.mouthY+.04+u*(4.5+j*.16);
+          n.scale.x=wide*(1+.37*u);n.scale.y=wide*.95;n.scale.z=wide;
+          n.rotation.z=.30*Math.sin(u*3.7+j)+.75*k;
+          n.smokeOpacity=Math.min(1,u*18)*(1-u)**.90;
         }
       }
-    }
-    for(let i=0;i<5;i++){
-      const x=(i-2)*6.3,z=(i%2)*1.25;
-      p.push(box(x-2.26,-.73,z+1.43,.55,1.58,.06,shadow),
-        box(x-2.26,-.04,z+1.48,.62,.10,.12,opal,.8),
-        box(x,-1.83,z+1.91,5.72,.10,.67,rim,.44));
-      for(let k=0;k<3;k++)p.push(box(x+.72*k-.63,1.04+(i%3)*.65,z, .52,.20,.9,rim,.42));
-    }
-    const g=M.merge(...p);g.castShadow=false;return g;
+      // One finite discharge. Each parcel leaves the final stack at its own time,
+      // then drifts and thins independently after the valve has shut.
+      const last=engines[engines.length-1];
+      for(let k=0;k<release.length;k++){
+        const n=release[k],born=valveOpens+k*valveSeconds/release.length,u=(age-born)/3.9;
+        n.visible=u>=0 && u<1;
+        if(!n.visible)continue;
+        const bend=calm?0:.28*Math.sin(7*u+.53*k)*u;
+        n.position.x=last.stackX+4.5*u*u+bend;
+        n.position.z=last.stackZ+.92*u*u;
+        n.position.y=last.mouthY+.12+9.8*u-1.6*u*u;
+        n.scale.x= .56+2.3*u;n.scale.y=.84+2.5*u;
+        n.rotation.z=.71*k+.24*u;
+        n.smokeOpacity=pressureRamp(u*16)*(1-u*u)*.95;
+      }
+    };
+    return {update,sources,ventLevel};
   };
   const roofBar = lite => {
     const p=[], x=-3.6,z=-4.8;
@@ -359,6 +533,10 @@
   const build = lite => {
     const root=S.createNode(), p=[], glass=M.merge();
     const add=(parent,geometry,x=0,y=0,z=0)=>{const n=S.createNode({geometry,position:{x,y,z}});S.addChild(parent,n);n.glow=1;return n;};
+    // Short stretches of railing and each booth have small independent view bounds.
+    const install = () => {
+      const g=K.staticMesh(M.merge(...p));g.castShadow=false;add(root,g);p.length=0;
+    };
     const floor=BL.pokerFloor.tiles(lite);
     // Reuse full-size casino marble. At the two chamfers only the outermost tile is tapered.
     const rows=14, dz=2*halfSpan/rows, columns=Math.ceil((far-inner)/4);
@@ -390,7 +568,7 @@
       M.face(apron,ids,BL.math.hexToRgb("#654d40"));
       p.push(beam(x,-.075,z,xx,-.075,zz,.065,brass));
     }
-    p.push(apron);
+    p.push(apron);install();
     const perimeter=[[inner,-BL.pokerGlazing.OPEN],...rim,[inner,BL.pokerGlazing.OPEN]],points=[];
     for(let i=0;i<perimeter.length-1;i++){
       const [x,z]=perimeter[i],[xx,zz]=perimeter[i+1],n=Math.ceil(Math.hypot(xx-x,zz-z)/3.4);
@@ -405,6 +583,7 @@
       for (const level of [.22,.97]) p.push(beam(x,level,z,xx,level,zz,.025,brass));
       const ids=[[x,.19,z],[xx,.19,zz],[xx,1.03,zz],[x,1.03,z]].map(v=>M.pushVert(glass,...v));
       M.face(glass,ids,BL.math.hexToRgb("#8ba8aa"));M.face(glass,ids.slice().reverse(),BL.math.hexToRgb("#8ba8aa"));
+      if(i%5===0 || i===points.length-1)install();
     });
     glass.glassOpacity=.10;glass.glassGrazing=.42;glass.castShadow=false;add(root,glass);
     for(const s of [-1,1]){
@@ -413,6 +592,7 @@
       for(let i=0;i<10;i++){const a=i*tau/10;p.push(beam(24.4+.26*Math.cos(a),.36,z+.26*Math.sin(a),24.4+.26*Math.cos(a),3.94,z+.26*Math.sin(a),.037,brass));}
       p.push(lamp(24.15,2.26,z-s*.22,.68));
     }
+    install();
     for(const {x:cx,z:bz,side:s,planterX:px,planterZ:pz} of booths){
       for(let i=0;i<7;i++){
         const a=.12+i*(Math.PI-.24)/6, x=cx+1.48*Math.cos(a),zz=bz+s*1.48*Math.sin(a);
@@ -431,11 +611,13 @@
         for(let j=0;j<4;j++)M.face(leaf,[v[4],v[j],v[(j+1)%4]],BL.math.hexToRgb(j%2?"#345545":"#587057"),{emissive:.22,doubleSided:true});
         p.push(M.moved(M.turnedY(leaf,a),px,0,pz));
       }
+      install();
     }
     p.push(beam(24.4,4.26,-4.6,24.4,4.26,4.6,.22,brass));
-    const ins=BL.poolModels.carve("TERRACE",{cell:.092,color:opal,emissive:.67});
+    const ins=BL.poolModels.carve("TERRACE",{ joined:true,cell:.092,color:opal,emissive:.67});
     p.push(box(24.4,4.42,0,.27,.6,3.6,dark),M.moved(M.turnedY(M.moved(ins.geometry,-ins.width/2,0,0),-Math.PI/2),24.245,4.605,0));
     // Brass compass in the marble marks the observation court from the threshold.
+    install();
     const court=station.x-3.8;
     for(const r of [2.7,2.84,3.38])p.push(ring(court,.075,0,r,.023,brass));
     for(let i=0;i<16;i++){
@@ -448,12 +630,12 @@
       }
       p.push(star);
     }
-    const base=add(root,K.staticMesh(M.merge(...p)));base.geometry.castShadow=false;
-    const bank=add(root,K.staticMesh(miningShelf(lite)),far+33,0,32); bank.rotation.y=-2.24;
+    install();
+    const engines=miningShelf(root,add,lite);
     const bartender=service(root,add), guests=company(root,lite);
-    const updateService=(t,calm,listener,fx)=>{bartender(t,calm);guests.update(t,calm,listener,fx);};
+    const updateService=(t,calm,listener,fx,pressureAge=Infinity)=>{bartender(t,calm);guests.update(t,calm,listener,fx);engines.update(t,calm,pressureAge);};
     const scope=mount(station); S.addChild(root,scope.root);
-    return {root,updateService,guestsClear:guests.clear,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
+    return {root,engines,updateService,guestsClear:guests.clear,yaw:scope.yaw,pitch:scope.pitch,target:scope.target,station};
   };
   const mount=station=>{
     const root=S.createNode(), p=[];

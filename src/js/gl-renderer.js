@@ -67,9 +67,10 @@
     for (const name of ["texImage2D", "texSubImage2D", "texImage3D", "texSubImage3D"]) count("texUploads", name);
     for (const name of Object.getOwnPropertyNames(WebGL2RenderingContext.prototype)) if (/^uniform(\d|Matrix)/.test(name)) count("uniforms", name);
     const bufferData = gl.bufferData, bufferSubData = gl.bufferSubData;
-    gl.bufferData = function (target, data) {
+    gl.bufferData = function (target, data, usage, srcOffset, length) {
       live.bufferData++;
-      live.uploadBytes += typeof data === "number" ? data : data ? data.byteLength : 0;
+      const bytes = data?.BYTES_PER_ELEMENT || 1;
+      live.uploadBytes += typeof data === "number" ? data : length ? length * bytes : data ? data.byteLength - (srcOffset || 0) * bytes : 0;
       return bufferData.apply(gl, arguments);
     };
     gl.bufferSubData = function (target, offset, data, srcOffset, length) {
@@ -711,25 +712,28 @@ float matrixGlyphAt(vec3 n, float flow, out float glow, out float tip, out float
 }
 float shadowAt(vec3 p, float bias) {
   if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
-  float s = 0.0;
-  for (int x = -1; x <= 1; x++) {
-    for (int y = -1; y <= 1; y++) {
-      s += texture(uShadow, vec3(p.xy + vec2(float(x), float(y)) * uShadowTexel, p.z - bias));
-    }
-  }
-  return s / 9.0;
+  // Nine adjacent bilinear depth comparisons form four texel weights per axis:
+  // 1-f, 1, 1, f. Combine each adjacent pair in hardware, with the same 3x3 footprint.
+  vec2 f = fract(p.xy / uShadowTexel - 0.5);
+  vec2 lo = p.xy + (1.0 / (2.0 - f) - 1.0 - f) * uShadowTexel;
+  vec2 hi = p.xy + (1.0 + f / (1.0 + f) - f) * uShadowTexel;
+  vec2 weight = (1.0 + f) / 3.0;
+  float depth = p.z - bias;
+  return mix(mix(texture(uShadow, vec3(lo, depth)), texture(uShadow, vec3(hi.x, lo.y, depth)), weight.x),
+             mix(texture(uShadow, vec3(lo.x, hi.y, depth)), texture(uShadow, vec3(hi, depth)), weight.x), weight.y);
 }
 vec3 lightFactorAt(vec3 n) {
   float lam = dot(n, uLightDir);
   float ndl = max(max(lam, 0.0), uDiffuseFloor);
   vec3 sp = (uProjective > 0.5 ? vShadow.xyz / vShadow.w : vShadow.xyz) * 0.5 + 0.5;
   float bias = max(uShadowBias * (1.0 - ndl), uShadowBias * 0.32);
-  float sh = shadowAt(sp, bias);
   vec3 factor = max(mix(uGround, uSky, n.y * 0.5 + 0.5), vec3(uAmbientFloor));
   // Cartoon sun: part Lambert, part a soft two-tone ramp, so every side that sees the sun reads as one bright
   // coat of paint and the terminator rolls off rather than grading each face its own shade.
   float toon = max(mix(ndl, smoothstep(-0.05, 0.45, lam), 0.45), uDiffuseFloor);
-  float lit = mix(1.0, max(sh, uShadowFloor), uShadowStrength);
+  float lit = 1.0;
+  if (uShadowStrength != 0.0 && uShadowFloor != 1.0 && uDirectStrength != 0.0 && toon != 0.0)
+    lit = mix(1.0, max(shadowAt(sp, bias), uShadowFloor), uShadowStrength);
   factor += uSun * toon * uDirectStrength * lit;
   // Painted shadows: what the sun misses takes a cool violet fill instead of only going dark.
   factor += vec3(0.05, 0.04, 0.11) * uDirectStrength * (1.0 - lit * toon);
@@ -737,8 +741,9 @@ vec3 lightFactorAt(vec3 n) {
     if (i >= uLightCount) break;
     vec4 lp = uLights[i * 2];
     vec3 ld = lp.xyz - vWorld;
-    float dist = length(ld);
-    if (dist >= lp.w) continue;
+    float d2 = dot(ld, ld);
+    if (lp.w <= 0.0 || d2 >= lp.w * lp.w) continue;
+    float dist = sqrt(d2);
     float a = clamp(1.0 - dist / lp.w, 0.0, 1.0);
     if (uLights[i * 2 + 1].a > 0.5) a = 0.72 * (1.0 - smoothstep(0.2, 1.0, dist / lp.w));
     else a *= a;
@@ -828,6 +833,28 @@ float vnoise(vec2 p) {
 }
 // Water: level faces ripple under two drifting noise fields, steep faces fall in streaks; both reflect the sky
 // by Fresnel and glint in the sun, and the brightest crests reach the bloom.
+// Offshore swells catch the moon in a broken path. Filter slopes smaller than a pixel
+// at grazing angles to keep kilometre-long water quiet at the horizon.
+vec3 moonlitWater(out vec3 bright) {
+  vec2 p=vWorld.xz, footprint=fwidth(p);
+  float t=uWindTime, sweep=sin(dot(p,vec2(.17,.28))-.64*t);
+  float longWave=cos(dot(p,vec2(.29,-.14))+.55*t+.65*sweep);
+  float chop=cos(dot(p,vec2(.54,1.12))-.92*t+.8*longWave);
+  float fine=1.0-smoothstep(.2,2.6,max(footprint.x,footprint.y));
+  float swell=1.0-smoothstep(2.0,16.0,max(footprint.x,footprint.y));
+  vec3 n=normalize(vec3(swell*(.10*longWave+.05*sweep)+fine*.052*chop,1.0,
+      swell*(.07*sweep-.065*longWave)+fine*.11*chop));
+  vec3 eye=normalize(uEye-vWorld),h=normalize(eye+uLightDir);
+  float fres=pow(1.0-clamp(dot(n,eye),0.0,1.0),3.0);
+  float glint=pow(max(dot(n,h),0.0),170.0)*swell;
+  vec3 body=vec3(.065,.26,.285)*(.91+.09*longWave*swell);
+  float crest=smoothstep(.55,.98,.5+.5*cos(dot(p,vec2(.48,1.35))+.67*t
+    +3.4*vnoise(p*.31+vec2(t*.065,0.0))+1.4*sweep));
+  vec3 reflected=vec3(.105,.195,.225)+vec3(.055,.095,.105)*swell*(.5+.5*longWave)
+    +vec3(.08,.16,.17)*fine*crest;
+  bright=vec3(.30,.38,.42)*glint;
+  return mix(body,reflected,fres)+vec3(.53,.69,.74)*glint;
+}
 vec3 waterShade(vec3 lit, vec3 n, out vec3 bright) {
   float t = uWindTime;
   bool fall = abs(n.y) < 0.6;
@@ -843,6 +870,49 @@ vec3 waterShade(vec3 lit, vec3 n, out vec3 bright) {
   col += uSun * glint * 2.0 + vec3(0.85, 0.95, 1.0) * foam * (fall ? 0.55 : 0.2);
   bright = uSun * glint * 1.2 + vec3(foam * (fall ? 0.15 : 0.05));
   return col;
+}
+// The casino spillway frays along its rivulets. Sample the same type as the mirror
+// in world metres, so adjoining faces and the whale's moving surge agree.
+vec3 codefall(vec3 lit, vec3 n, out vec3 bright, out float alpha) {
+  float depth = max(0.0, -vWorld.y);
+  float across = (vWorld.x + vWorld.z) / 1.05;
+  across += .15 * smoothstep(8.,45.,depth) * sin(across*.31+depth*.1-uWindTime*.27);
+  int col = int(floor(across));
+  float seed = matrixHash(col), speed = mix(1.7, 3.6, matrixHash(col + 43));
+  float row = depth / 1.35 - uWindTime * speed + seed * 59.0;
+  float channel = vnoise(vec2(across*.21, depth*.043));
+  float wet = 1.0 - smoothstep(5.0 + channel * 6.0, 28.0 + channel * 13.0, depth);
+  float end = 73.0 + 75.0 * matrixHash(col + 19);
+  float reach = 1.0 - smoothstep(28.0, end, depth);
+  float phase = mod(row, 18.0 + floor(seed * 14.0));
+  float train = smoothstep(1.0, 6.0, phase) * (1.0 - smoothstep(17.0, 19.5, phase));
+  float tip = smoothstep(13.0, 18.0, phase);
+  vec2 grid = vec2(fract(across) * 6.0, fract(row) * 8.0);
+  int glyph = int(8.0 * matrixHash(col * 73 + int(floor(row)) * 151));
+  // Filter across neighbouring ink pixels before the glyph becomes subpixel.
+  // Keep the empty row between letters even when looking straight down the sheet.
+  vec2 footprint = max(fwidth(vec2(across, depth / 1.35))*vec2(6.,8.),vec2(.04));
+  vec2 cell = floor(grid-.5), blend = clamp((fract(grid-.5)-.5)/min(footprint,vec2(1.0))+.5,0.,1.);
+  ivec2 at = ivec2(glyph*6,0) + ivec2(0,6- int(cell.y));
+  int x0=clamp(int(cell.x),0,5),x1=clamp(int(cell.x)+1,0,5);
+  float upper = mix(texelFetch(uMatrixGlyphTex,ivec2(at.x+x0,clamp(at.y,0,6)),0).r,
+                    texelFetch(uMatrixGlyphTex,ivec2(at.x+x1,clamp(at.y,0,6)),0).r,blend.x);
+  float lower = mix(texelFetch(uMatrixGlyphTex,ivec2(at.x+x0,clamp(at.y-1,0,6)),0).r,
+                    texelFetch(uMatrixGlyphTex,ivec2(at.x+x1,clamp(at.y-1,0,6)),0).r,blend.x);
+  float ink = mix(upper,lower,blend.y)*smoothstep(.0,.12,fract(row))*(1.0-smoothstep(.81,1.,fract(row)));
+  float resolve = 1.0-smoothstep(1.6,5.0,max(footprint.x,footprint.y));
+  float filament = .13*(1.0-smoothstep(.12,.46,abs(fract(across)-.5)));
+  ink = mix(filament,ink,resolve);
+  float code = ink * train * reach * smoothstep(5.0, 24.0, depth);
+  vec3 glyphColor = mix(vec3(.15,.53,.65),vec3(.48,.88,.91),tip);
+  float sheet = wet * (.85 + .11 * channel);
+  alpha = sheet + (1.0-sheet)*code;
+  if (alpha < .004) discard;
+  vec3 water=vec3(0.0);
+  bright=vec3(0.0);
+  if(sheet>.001) water=waterShade(lit,n,bright);
+  bright = (bright * sheet + glyphColor * code * .15) / max(alpha,.01);
+  return (water * sheet + glyphColor * code * (1.0-sheet)) / alpha;
 }
 ${BL.dsbWater.shader}
 // The pool uses the waterfall's luminous blue blocks and small square foam flecks.
@@ -1150,12 +1220,14 @@ void main() {
   col = mix(col, vec3(0.84, 1.0, 0.89), tip * 0.88);
   vec3 surfaceBright = vec3(0.0);
   float nl = dot(vLocalNormal, vLocalNormal);
-  float lakeAlpha = 1.0;
+  float lakeAlpha = 1.0, fallAlpha = 1.0;
 #ifdef PLAIN
   const bool lake = false;
 #else
   bool lake = nl > 30.0 && nl < 42.0;
-  if (nl > 45.0 && nl < 55.0) col = dsbWaterShade(surfaceBright);
+  if (nl > 58.0 && nl < 70.0) col = moonlitWater(surfaceBright);
+  else if (nl > 55.0 && nl < 58.0) col = codefall(col, n, surfaceBright, fallAlpha);
+  else if (nl > 45.0 && nl < 55.0) col = dsbWaterShade(surfaceBright);
   else if (lake) col = lakeShade(col, surfaceBright, lakeAlpha);
   else if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
@@ -1210,6 +1282,7 @@ void main() {
     normalColor = mix(uFog, normalColor, visibility);
     normalBright *= visibility;
   }
+  glassAlpha *= fallAlpha;
   oColor = vec4(mix(normalColor, matrixColorResult, front), glassAlpha);
   oBright = vec4(mix(normalBright, matrixBrightResult, front), glassAlpha);
 }`;
@@ -1962,6 +2035,7 @@ void main() {
     const MIRROR_CLIP = new Float32Array(4);
     const MIRROR_RECT = new Float32Array(4);
     const curveView = mat4.create(), curveReflection = mat4.create();
+    const planarCorners = new Float64Array(16);
     const curvePlanes = new Float64Array(20), curveA = new Float64Array(30), curveB = new Float64Array(30);
     const REFLECTOR_CENTER = new Float32Array(3), REFLECTOR_NORMAL = new Float32Array(3);
     const mirrorView = mat4.create();
@@ -2066,9 +2140,9 @@ void main() {
     // turns, one a frame, so a scene pays two reflection passes at most; one waiting its turn shows its last capture.
     // A reflector needs a geometry of its own, which keys its capture. `reflectorPass` is the record a capture leaves
     // out (null in the eye's pass, which draws every reflector itself).
-    // Changing ordinary records share six upload regions: world and beforeView poses can each consume one.
-    // Stable records keep their own buffer, so a stationary prop never joins the per-frame copy.
-    const instanceStream = { buffer: null, data: null, capacity: 0, slot: 0, trimFrame: -1, trimSince: -1 };
+    // A single streamed upload per pose; a replacement store keeps in-flight draws alive
+    // while stable offsets let the same VAOs read consecutive poses.
+    const instanceStream = { buffer: null, data: null, capacity: 0, bytes: 0, trimFrame: -1, trimSince: -1 };
     const reflectorNodes = [], reflectorTargets = new Map();
     let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossClock = 0;
     let reducedCapture = false, cameraFeedCapture = false, cameraFeedRoom = false, cameraFeedSource = null, cameraFeedTurn = 0;
@@ -2313,7 +2387,8 @@ void main() {
     };
     // Reflectors use the tier's square mirror size; camera screens use a fixed rectangular target.
     const ensureReflectorTarget = (t) => {
-      const size = t.fixedWidth || settings.mirror, targetHeight = t.fixedHeight || size;
+      const size = t.fixedWidth || (t.record?.geometry.gloss ? Math.ceil(settings.mirror * GLOSS_CAPTURE.size) : settings.mirror);
+      const targetHeight = t.fixedHeight || size;
       if (t.fb && t.size === size && !t.refreshContent) return;
       t.refreshContent = false;
       if (t.fb) {
@@ -2575,7 +2650,7 @@ void main() {
     const destroyInstanceStream = () => {
       if (instanceStream.buffer) gl.deleteBuffer(instanceStream.buffer);
       instanceStream.buffer = instanceStream.data = null;
-      instanceStream.capacity = instanceStream.slot = 0;
+      instanceStream.capacity = instanceStream.bytes = 0;
       instanceStream.trimFrame = instanceStream.trimSince = -1;
     };
     const deleteRecord = (rec) => {
@@ -2647,35 +2722,31 @@ void main() {
         } else stream.trimSince = -1;
       }
       if (!need && !trim) return;
-      if (stream.capacity < need || trim) {
-        // Replacing storage also invalidates unchanged records already flushed for the world pose this frame.
-        need = total;
-        for (let i = 0; i < activeRecords.length; i++) if (activeRecords[i].streaming) activeRecords[i].streamFrame = -1;
-        stream.capacity = trim ? Math.max(minimum, Math.ceil(total * 1.25 / INSTANCE_FLOATS) * INSTANCE_FLOATS) : Math.max(need, stream.capacity * 2, minimum);
+      if (stream.capacity < total || trim) {
+        stream.capacity = trim ? Math.max(minimum, Math.ceil(total * 1.25 / INSTANCE_FLOATS) * INSTANCE_FLOATS) : Math.max(total, stream.capacity * 2, minimum);
         stream.trimSince = -1;
         stream.data = new Float32Array(stream.capacity);
         if (!stream.buffer) stream.buffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, stream.buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, stream.capacity * 4 * 6, gl.STREAM_DRAW);
-        stream.slot = 0;
       }
-      const offset = stream.slot * stream.capacity;
       let written = 0;
       for (let i = 0; i < activeRecords.length; i++) {
         const rec = activeRecords[i];
-        if (!rec.streaming || rec.streamFrame === shadowFrame) continue;
+        if (!rec.streaming) continue;
         const count = rec.count * INSTANCE_FLOATS, source = rec.batch ? rec.batch.instanceData : rec.data;
         // Borrow batch storage only during this copy; no alias survives a frame or overwrites the caller's array.
         // Copy only live floats without allocating a subarray view for every record.
         for (let k = 0; k < count; k++) stream.data[written + k] = source[k];
-        rec.streamFirst = (offset + written) / INSTANCE_FLOATS;
+        rec.streamFirst = written / INSTANCE_FLOATS;
         written += count;
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, stream.buffer);
-      gl.bufferSubData(gl.ARRAY_BUFFER, offset * 4, stream.data, 0, need);
+      // bufferData with a live source span replaces storage in one call. A second pose
+      // includes unchanged streaming records too: their VAOs must see the complete new store.
+      gl.bufferData(gl.ARRAY_BUFFER, stream.data, gl.STREAM_DRAW, 0, written);
+      stream.bytes = written * 4;
       for (let i = 0; i < activeRecords.length; i++) {
         const rec = activeRecords[i];
-        if (!rec.streaming || rec.streamFrame === shadowFrame) continue;
+        if (!rec.streaming) continue;
         const first = rec.streamFirst;
         rec.streamFrame = shadowFrame;
         if (shadowFrame - rec.instanceChanged >= SHADOW_SETTLE) {
@@ -2693,7 +2764,6 @@ void main() {
           bindRecordInstances(rec, rec.ibo);
         } else bindRecordInstances(rec, stream.buffer, first);
       }
-      stream.slot = (stream.slot + 1) % 6;
     };
     // `layout` holds [location, size, type, normalized, byte offset] for each attribute of a `stride`-byte vertex. With
     // `indices` the part is drawn through them, and its `count` and every range drawn from it count indices.
@@ -2818,7 +2888,7 @@ void main() {
         ny /= len;
         nz /= len;
         // Water, lava, roads and transparent lake water: three, four, five and six times over.
-        const surface = f.water === "aegean" ? 7 : f.lake ? 6 : f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
+        const surface = f.water === "codefall" ? 7.5 : f.water === "moonlit" ? 8 : f.water === "aegean" ? 7 : f.lake ? 6 : f.water === "lava" ? 4 : f.water ? 3 : f.road ? 5 : 0;
         if (surface) {
           nx *= surface;
           ny *= surface;
@@ -2961,6 +3031,17 @@ void main() {
         if (planes[i] * x + planes[i + 1] * y + planes[i + 2] * z + planes[i + 3] < -r) return false;
       }
       return true;
+    };
+    // A light contributes only inside its radius. Compact the tier's chosen lights for
+    // each camera independently: a lamp behind the visitor can still light the mirror.
+    const viewLights = new Float32Array(POINT_LIGHT_CAPACITY * 8);
+    const lightsInView = (source, count, planes) => {
+      let next = 0;
+      for (let i = 0; i < count * 8; i += 8) {
+        if (!sphereInFrustum(source[i], source[i+1], source[i+2], source[i+3] + CULL_MARGIN, planes)) continue;
+        for (let k = 0; k < 8; k++) viewLights[next++] = source[i+k];
+      }
+      return next / 8;
     };
     // Camera, shadow and mirror passes test the same world sphere: collect computes it once into the record's
     // `spheres` (x, y, z, r at four times the node's slot, moved with it). Never onto the node: a float field read
@@ -3368,9 +3449,42 @@ void main() {
       out.y = point.y - 2 * d * normal[1];
       out.z = point.z - 2 * d * normal[2];
     };
+    // The floor often straddles the eye. Clip its enclosing planar rectangle to the near plane:
+    // corners behind the camera cannot project the reflected ceiling onto an invisible strip of floor.
+    const glossRect = (node, vp, bounds) => {
+      const m = curveView, q = planarCorners, lo = bounds.min, hi = bounds.max;
+      mat4.multiply(m, vp, node.world);
+      for (let k = 0; k < 4; k++) {
+        const x = k === 1 || k === 2 ? hi[0] : lo[0], y = k < 2 ? lo[1] : hi[1];
+        for (let j = 0; j < 4; j++) q[k * 4 + j] = m[j] * x + m[4+j] * y + m[8+j] * lo[2] + m[12+j];
+      }
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (let at = 0, prev = 12; at < 16; prev = at, at += 4) {
+        const dist = q[at+2] + q[at+3], prevDist = q[prev+2] + q[prev+3];
+        if (dist >= 0) {
+          const x = q[at] / q[at+3], y = q[at+1] / q[at+3];
+          minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+        if ((dist >= 0) !== (prevDist >= 0)) {
+          const t = prevDist / (prevDist - dist), w = q[prev+3] + (q[at+3] - q[prev+3]) * t;
+          const x = (q[prev] + (q[at] - q[prev]) * t) / w, y = (q[prev+1] + (q[at+1] - q[prev+1]) * t) / w;
+          minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+        }
+      }
+      if (minX === Infinity) return false;
+      MIRROR_RECT[0] = minX; MIRROR_RECT[1] = minY; MIRROR_RECT[2] = maxX; MIRROR_RECT[3] = maxY;
+      return true;
+    };
     // NDC bounds of the mirror's vertices under a view-projection; false when none lie in front.
     const mirrorRect = (node, vp) => {
-      const verts = (node.mirrorCaptureGeometry || node.geometry).verts, world = node.world;
+      const aperture = node.mirrorCaptureGeometry || node.geometry;
+      if (node.geometry.gloss && !node.geometry.reflectorCurved) {
+        const bounds = boundsOf(aperture);
+        if (bounds.min[2] === bounds.max[2]) return glossRect(node, vp, bounds);
+      }
+      const verts = aperture.verts, world = node.world;
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, behind = false;
       for (let i = 0; i < verts.length; i += 3) {
         mat4.transformPoint(MIRROR_POINT, world, verts[i], verts[i + 1], verts[i + 2]);
@@ -3818,10 +3932,10 @@ void main() {
     };
     const drawImageSurface = (rec, count, cameraPass, resume) => {
       if (rec.geometry.imageSurface.accretion) { drawAccretion(rec, count, cameraPass, resume); return; }
-      const surface = rec.geometry.imageSurface, image = surface.asset.load(), p = programs.image;
+      const surface = rec.geometry.imageSurface, image = surface.asset ? surface.asset.load() : surface.fallback(), p = programs.image;
       const dynamic = surface.dynamic === true;
       let ready = dynamic ? image.readyState >= 2 && !image.seeking && image.videoWidth > 0 && image.videoHeight > 0
-        && image.videoWidth <= 1280 && image.videoHeight <= 720 : image.complete && image.naturalWidth;
+        && image.videoWidth <= 1280 && image.videoHeight <= 720 : surface.asset ? image.complete && image.naturalWidth : image.width && image.height;
       const source = dynamic ? image.currentSrc || image.src : "";
       if (dynamic && rec.imageBlocked && (rec.imageBlocked !== image || rec.imageBlockedSource !== source)) {
         rec.imageBlocked = null; rec.imageBlockedSource = ""; surface.mediaErrorCode = "";
@@ -3953,22 +4067,23 @@ void main() {
         || cameraFeedRoom && rec.geometry.architectRoom) && sphereInFrustum(x, y, z, radius + CULL_MARGIN, MIRROR_FRUSTUM);
     };
     const drawCaptureRuns = (part, rec, first, count, instances) => {
+      let shifted = false;
       try {
         let start = -1;
         for (let i = 0; i <= instances; i++) {
           const visible = i < instances && captureInstanceVisible(rec, i);
           if (visible && start < 0) start = i;
           if (!visible && start >= 0) {
-            bindInstanceAttribs(rec.instanceBuffer, rec.instanceFirst + start, false);
-            countDraw(count, i - start);
-            // Indexed parts arrive with the open GPU-packing PR; CPU geometry and uploads remain unchanged here.
-            if (part.index) gl.drawElementsInstanced(gl.TRIANGLES, count, part.index, first * part.indexSize, i - start);
-            else gl.drawArraysInstanced(gl.TRIANGLES, first, count, i - start);
+            if (start) {
+              bindInstanceAttribs(rec.instanceBuffer, rec.instanceFirst + start, false);
+              shifted = true;
+            }
+            drawPart(part, first, count, i - start);
             start = -1;
           }
         }
       } finally {
-        bindInstanceAttribs(rec.instanceBuffer, rec.instanceFirst, false);
+        if (shifted) bindInstanceAttribs(rec.instanceBuffer, rec.instanceFirst, false);
       }
     };
     const drawParts = (kind, useProgram, excludeMirror = false, cull = false, matrixStage = 0) => {
@@ -4286,8 +4401,9 @@ void main() {
       gl.uniform1i(pg.mesh.u.uShadow, 0);
       bindMatrixTexture(pg.mesh);
       // The shader breaks on uLightCount, so lights past it are dead traffic.
-      if (lightCount) gl.uniform4fv(pg.mesh.u.uLights, lights, 0, lightCount * 8);
-      gl.uniform1i(pg.mesh.u.uLightCount, lightCount);
+      const captureLights = lightsInView(lights, lightCount, MIRROR_FRUSTUM);
+      if (captureLights) gl.uniform4fv(pg.mesh.u.uLights, viewLights, 0, captureLights * 8);
+      gl.uniform1i(pg.mesh.u.uLightCount, captureLights);
       gl.uniform4fv(pg.mesh.u.uSpotLight, spotUniform(spotLight));
       gl.uniform3fv(pg.mesh.u.uFog, fog);
       gl.uniform2f(pg.mesh.u.uFogRange, fogNear, fogFar);
@@ -5156,6 +5272,7 @@ void main() {
       // With no Matrix wave running, meshes the mirror cave's standing Matrix cannot reach (no cave or glyph faces, no
       // cave of their own, no living instances) and with no special water shade through the plain variant: the mesh
       // shader with all of that compiled out. Both take the frame's settings, the full one last.
+      const mainLights = lightsInView(lights, nLights, FRUSTUM);
       const plainFrame = !rigMode && !(matrix && matrix.active > 0);
       for (let k = plainFrame ? 0 : 1; k < 2; k++) {
         const mp = k ? pg.mesh : pg.plain;
@@ -5179,8 +5296,8 @@ void main() {
         gl.bindTexture(gl.TEXTURE_2D, sh.tex);
         gl.uniform1i(mp.u.uShadow, 0);
         bindMatrixTexture(mp);
-        if (nLights) gl.uniform4fv(mp.u.uLights, lights, 0, nLights * 8);
-        gl.uniform1i(mp.u.uLightCount, nLights);
+        if (mainLights) gl.uniform4fv(mp.u.uLights, viewLights, 0, mainLights * 8);
+        gl.uniform1i(mp.u.uLightCount, mainLights);
         gl.uniform4fv(mp.u.uSpotLight, spotUniform(spotLight));
         gl.uniform3fv(mp.u.uFog, fogColor);
         gl.uniform2f(mp.u.uFogRange, fogA, fogB);
@@ -5462,7 +5579,7 @@ void main() {
       get stats() {
         let shadowFinite = true;
         for (let i = 0; i < 16; i++) if (!Number.isFinite(lightViewProj[i])) shadowFinite = false;
-        return { instanceStreamCPUBytes: instanceStream.data ? instanceStream.data.byteLength : 0, instanceStreamGPUBytes: instanceStream.buffer ? instanceStream.capacity * 4 * 6 : 0, waterTextures: dsbGPU?2:0, records: records.size, active: activeRecords.length, viewInstances, captureOnlyInstances, mirrorResources: mirrorDebug.resources, imageTextures, rippleBodyTextures, shadowResources: res.shadow ? 4 : 0, shadowSize: res.shadow ? res.shadow.size : 0, shadowPassCount, shadowFinite, shadowDraws, shadowStatic: shadowStaticValid ? shadowBakedCount : 0, shadowStaticRebuilds, culled, drawn, suppressed, smallCulled, rippleSurfaces, rippleWaves, info };
+        return { instanceStreamCPUBytes: instanceStream.data ? instanceStream.data.byteLength : 0, instanceStreamGPUBytes: instanceStream.bytes, waterTextures: dsbGPU?2:0, records: records.size, active: activeRecords.length, viewInstances, captureOnlyInstances, mirrorResources: mirrorDebug.resources, imageTextures, rippleBodyTextures, shadowResources: res.shadow ? 4 : 0, shadowSize: res.shadow ? res.shadow.size : 0, shadowPassCount, shadowFinite, shadowDraws, shadowStatic: shadowStaticValid ? shadowBakedCount : 0, shadowStaticRebuilds, culled, drawn, suppressed, smallCulled, rippleSurfaces, rippleWaves, info };
       },
       get mirror() {
         return mirrorDebug;

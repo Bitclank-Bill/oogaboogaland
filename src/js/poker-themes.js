@@ -58,6 +58,10 @@
   const hang = ({ sparse, canvas = false, scale = club.night.cosmos.scale, ship = true }) => {
     const c = club.night.cosmos, rig = BL.cosmos.create({ sparse, scale, tilt: c.tilt, ship, below: !!c.below });
     BL.cosmos.place(rig, c.place);
+    // The glass pavilion looks straight across the water through both halves of the star field.
+    // The galaxy's concentric painted discs would stand out against this long, level horizon.
+    rig.parts.band.visible=false;
+    if(rig.parts.low)rig.parts.low.band.visible=false;
     if (c.soft) BL.cosmos.soften(rig);
     for (const key in c.grow) { const n = rig.parts.planets.find(p => p.key === key).node; n.scale.x = n.scale.y = n.scale.z = c.grow[key]; }
     BL.pokerHall.hangMoon(rig, sparse, canvas);

@@ -187,7 +187,7 @@
       };
       // A gold name plate for an apron face at z (its letters facing +z, or -z when `back`), centred on x.
       const plate = (word, x, y, z, back) => {
-        const carved = BL.poolModels.carve(word, { cell: 0.014, color: GOLD, emissive: 0.4 }), g = carved.geometry, v = g.verts, w = carved.width;
+        const carved = BL.poolModels.carve(word, { joined:true, cell: 0.014, color: GOLD, emissive: 0.4 }), g = carved.geometry, v = g.verts, w = carved.width;
         for (let i = 0; i < v.length; i += 3) { v[i] -= w / 2 - 0.014; v[i + 2] = (v[i + 2] - 0.16) * 0.15 + 0.008; }
         const backing = flatBox(w + 0.04, 0.1, 0.008, "#1d4234", 0, -0.028, 0);
         const both = M.merge(backing, g);

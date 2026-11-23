@@ -158,7 +158,7 @@
     frame.push(band(waist, 0.027, 0.007, EDGE));
     for (const side of [-1, 1]) {
       const plate = M.box({ w: 0.39, h: 0.105, d: 0.023, color: SLATE });
-      const title = BL.poolModels.carve("BLOCK TIME", { cell: 0.0088, color: EDGE, emissive: 0.45 });
+      const title = BL.poolModels.carve("BLOCK TIME", { joined:true, cell: 0.0088, color: EDGE, emissive: 0.45 });
       const lettering = title.geometry;
       for (let i = 2; i < lettering.verts.length; i += 3) lettering.verts[i] = (lettering.verts[i] - 0.16) * 0.13 + 0.017;
       const badge = M.merge(plate, M.moved(lettering, -title.width / 2 + 0.007, 0.019, 0));

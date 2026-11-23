@@ -130,19 +130,15 @@
         parts.push(g);
       }
     }
-    const tankLeft=-15.83,tankRight=10.6,tankHead=5.16;
     const upright=(x,w,d)=>{
-      const bottom=bookcase && x>tankLeft && x<tankRight?tankHead:
-        bookcase && Math.abs(x-BOOK_X)<BOOK_HALF?TRANSOM_Y:SILL_TOP;
+      const bottom=bookcase && Math.abs(x-BOOK_X)<BOOK_HALF?TRANSOM_Y:SILL_TOP;
       parts.push(box(w,HEAD-bottom,d,GOLD,x,(HEAD+bottom)/2,END_Z));
     };
     const posts = endPosts(lite);
     for (const x of posts.slice(1, -1)) upright(x,POST.w,POST.d);
     for (const [a, b] of bays(posts)) {
       if (!lite) for (const x of splits(a, b)) upright(x,MULLION.w,MULLION.d);
-      const transom=(lo,hi)=>{if(hi>lo)parts.push(box(hi-lo,TRANSOM.h,TRANSOM.d,GOLD,(lo+hi)/2,TRANSOM_Y,END_Z));};
-      if(bookcase){transom(a,Math.min(b,tankLeft));transom(Math.max(a,tankRight),b);}
-      else transom(a,b);
+      parts.push(box(b-a,TRANSOM.h,TRANSOM.d,GOLD,(a+b)/2,TRANSOM_Y,END_Z));
     }
     return noShadow(M.merge(...parts));
   });

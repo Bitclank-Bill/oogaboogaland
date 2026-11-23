@@ -1,4 +1,4 @@
-// Cabinet at the Whitepaper Bar and the joinery, copper prints and cipher table behind it.
+// Cabinet at the Whitepaper Bar and the joinery and cipher table behind it.
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene;
@@ -10,30 +10,8 @@
   const mark = (x,y,z,h) => M.moved(BL.factoryModels.smoothBitcoin(h,.024,copper,.55),x,y,z);
   const lamp = (x,y,z) => M.merge(
     turned(x,y,z,[[0,0],[.19,0],[.2,.045],[.09,.09],[.038,.16],[.038,.43],[.09,.47]],brass,8),
-    turned(x,y,z,[[.29,.46],[.29,.50],[.14,.71],[.054,.73],[0,.75]],ivory,8,.88),
+    turned(x,y,z,[[.29,.46],[.29,.50],[.14,.71],[.054,.73],[0,.75]],ivory,8,.23),
     turned(x,y,z,[[.296,.46],[.296,.49]],brass,8,.24));
-  // Copperplate silhouettes. Each horizontal ink stroke is a single face on its plate.
-  const portraits = [
-    ["    xxxx    ","   xxxxxxx  ","  xxooooox  ","  xoooooox  ","  xoxxoxxx  ","  oooxooxo  ","   ooxoox   ","   oooxxo   ","    oooo    ","   xxooox   ","  xxxooxxx  "," xxxxxxxxxx "],
-    ["    oooo    ","   oooooo   ","  xoooooox  ","  xoooooox  ","  oxoooxxo  ","  ooooxoox  ","   ooooox   ","   ooxxxo   ","    oooo    ","   oxooxo   ","  oxooxxxo  "," xxxoxxoxxx "],
-    ["    xxxx    ","  xxxxxxxx  ","  xxooooox  ","  xxooooox  ","  xxoxxxoxo ","  xooxoooxo ","  xxoooxox  ","  xxooooox  ","  xxxoooxx  ","   xxooxx   ","  oxoooxxo  "," xoxxxxxxxx "]
-  ];
-  const print = (index,x,y,z,yaw) => {
-    const strokes = M.geometry(), size=.072;
-    portraits[index].forEach((row,j) => {
-      for (let i=0;i<row.length;) {
-        const start=i, c=row[i++]; while(i<row.length && row[i]===c) i++;
-        if(c===" ") continue;
-        const l=(start-6)*size, r=(i-6)*size, t=(6-j)*size, b=t-size*.89;
-        M.face(strokes,[[l,b],[r,b],[r,t],[l,t]].map(([u,v])=>M.pushVert(strokes,u,v,.093)),
-          BL.math.hexToRgb(c==="o"?"#e6ae77":"#603628"),{emissive:.32});
-      }
-    });
-    const frame=M.merge(box(0,0,0,1.16,1.32,.12,brass),box(0,0,.067,1.03,1.19,.032,"#b87c50",.23),
-      strokes,box(0,-.53,.089,.31,.028,.015,brass),box(0,.74,.14,.56,.07,.29,brass),
-      box(0,.702,.19,.46,.013,.14,ivory,.9));
-    return M.moved(M.turnedY(frame,yaw),x,y,z);
-  };
   const table = lite => {
     const parts=[], ring=(profile,color)=>parts.push(turned(0,0,0,profile,color,8));
     ring([[0,.05],[.78,.05],[.8,.12],[.60,.19],[.43,.23],[.40,.64],[1.46,.73]],walnut);
@@ -60,48 +38,37 @@
     }
     return M.merge(...parts);
   };
+  const bookBay = width => (width/2+3.85*1.5/2)/2;
+  const engravingTiles=M.scopedMap();
+  const engraving=(left,bottom,right,top,plain=false)=>{
+    const key=[left,bottom,right,top,plain].join(":");
+    if(engravingTiles.has(key))return engravingTiles.get(key);
+    const g=M.geometry();
+    const corners=[[left,bottom],[right,bottom],[right,top],[left,top]];
+    M.face(g,corners.map(([x,y])=>M.pushVert(g,x,y,0)),[232,233,234],{emissive:.055});
+    g.castShadow=false;
+    if(typeof CanvasRenderingContext2D!=="undefined")g.imageSurface=BL.pokerDamaskMap.marble(plain);
+    else g.faces[0].color=BL.math.hexToRgb("#b5b6b7");
+    engravingTiles.set(key,g);return g;
+  };
+  const rugSize=Object.freeze({w:6.42,d:5.64,z:.13,top:.035});
   const interior = (lite,w,d) => {
-    const parts=[table(lite)], a=w/2, wallZ=-d/2, k=BL.pokerMarble;
-    // Panel mouldings, a chair rail and warm copper stitching catch the practical lamps.
-    parts.push(box(0,2.24,wallZ+.115,w-.08,4.45,.04,"#29453b",.24));
+    const parts=[table(lite)], a=w/2, wallZ=-d/2;
     for(const side of [-1,1]){
-      for(let j=0;j<8;j++){
-        const z=wallZ+1.1+j*2.2;
-        parts.push(box(side*(a-.14),2.87,z,.055,2.99,2.04,"#335146",.27),
-          box(side*(a-.18),.71,z,.09,1.15,2.02,walnut),box(side*(a-.24),.70,z,.04,.91,1.78,"#674236"));
-      }
-      // Quarter-sawn panels, stepped picture frames and scalloped velvet acoustic lining.
-      for(let j=0;j<8;j++){
-        const z=wallZ+(j+.5)*d/8;
-        for(let k=0;k<(lite?3:7);k++){
-          const zz=z+(k/(lite?2:6)-.5)*1.66;
-          parts.push(M.beam(side*(a-.27),.25,zz,side*(a-.27),1.16,zz+.047*Math.sin(k+j),.015,k%3?"#593a2b":"#875736"));
-        }
-        for(let k=-3;k<=3;k++) parts.push(box(side*(a-.23-.033*Math.cos(k)),2.74,z+k*.25,.091,2.53,.21,k%2?"#493138":"#55343b"));
-      }
-      for(const y of [.15,1.34,4.21])parts.push(box(side*(a-.26),y,0,.13,.076,.99*d,brass,.16));
-      parts.push(box(side*4.19,1.39,wallZ+.17,4.0,2.76,.07,"#372729"));
+      for(const y of [.15,1.34])parts.push(box(side*(a-.19),y,0,.14,.075,d-.24,"#a5a5a4",.14));
+      parts.push(box(side*bookBay(w),1.39,wallZ+.17,4.0,2.76,.07,"#372729"));
     }
     // Staggered firebricks, a coal bed and a low grate inset into the marble surround.
-    const bricks=["#5c3730","#7b4735","#61372e","#704239"];
-    for(let j=0;j<6;j++) for(let i=0;i<5;i++){
-      const x=-.85+i*.39+(j%2)*.11;
-      parts.push(box(x,.43+j*.205,wallZ+.76,.375,.19,.065,bricks[(i+j*3)%4],.26));
+    const bricks=["#54413a","#655146","#59453d","#5f4b40"];
+    for(let row=0;row<12;row++)for(let i=0;i<(row%2?8:7);i++){
+      const left=Math.max(-1.66,-1.66+(i-(row%2)*.5)*.475);
+      const right=Math.min(1.66,-1.66+(i+1-(row%2)*.5)*.475);
+      parts.push(box((left+right)/2,.43+row*.217,wallZ+.76,right-left-.014,.205,.065,bricks[(i+row*3)%4],.22));
     }
-    parts.push(box(0,.35,wallZ+1,2.05,.14,.85,ink));
-    for(let i=0;i<6;i++)parts.push(M.beam(-.84+i*.33,.37,wallZ+1.40,-.84+i*.33,.61,wallZ+.81,.042,brass));
-    for(const s of [-1,1]){
-      parts.push(k.slab({w:.48,h:1.66,d:.42,color:"#40383a",seed:70+s,veins:6,offset:{x:s*1.36,y:1.03,z:wallZ+.66}}),
-        lamp(s*1.41,2.22,wallZ+.57),print(s<0?0:1,s*4.29,3.63,wallZ+.22,0));
-      for(let j=0;j<3;j++) parts.push(print((j+(s<0?0:1))%3,s*(a-.32),2.45,-2.9+j*2.65,-s*Math.PI/2));
-    }
-    parts.push(k.slab({w:3.85,h:.15,d:1,color:"#41373b",seed:84,veins:9,offset:{x:0,y:2.14,z:wallZ+.49}}),
-      box(0,3.18,wallZ+.15,1.63,1.65,.13,brass),box(0,3.18,wallZ+.24,1.52,1.54,.09,ink),
-      mark(0,3.18,wallZ+.33,.59));
-    for(let i=0;i<24;i++){
-      const a=i*Math.PI/12,c=Math.cos(a),s=Math.sin(a),r=.64/Math.max(Math.abs(c),Math.abs(s));
-      parts.push(M.beam(.37*c,3.18+.37*s,wallZ+.31,r*c,3.18+r*s,wallZ+.31,.023,copper));
-    }
+    parts.push(box(0,1.48,wallZ+.67,3.42,2.64,.09,"#443731",.12));
+    parts.push(box(0,.35,wallZ+1,3.15,.14,.85,ink));
+    for(let i=-4;i<=4;i++)parts.push(M.beam(i*.32,.37,wallZ+1.40,i*.32,.61,wallZ+.81,.042,brass));
+    for(const s of [-1,1])parts.push(lamp(s*2.41,3.29,wallZ+.98));
     // Walnut radiogram with a linen speaker grille, illuminated tuning scale and an LP on the platter.
     const hiFi=[box(0,.78,0,2.22,.84,.72,walnut),box(0,1.23,0,2.32,.09,.81,burl),
       box(-.39,.76,.37,1.22,.58,.04,"#977653"),box(.66,.88,.37,.68,.24,.04,ink),
@@ -114,9 +81,9 @@
       turned(-.38,1.307,0,[[.01,0],[.093,0],[.093,.011],[0,.011]],"#975d43",16),
       M.beam(.06,1.37,-.18,-.21,1.33,.10,.025,brass));
     for(let j=0;j<6;j++)hiFi.push(box(.62+j*.06,1.5,-.1,.045,.43,.42,bindings[j%5]));
-    parts.push(M.moved(M.turnedY(M.merge(...hiFi),Math.PI/2),-a+.65,0,.26));
+    for(const s of [-1,1])parts.push(M.moved(M.turnedY(M.merge(...hiFi),-s*Math.PI/2),s*(a-.65),0,.26));
     // A two-tone sunburst carpet sits beneath the card table, with a woven border and short fringe.
-    const rug=box(0,.024,.13,6.42,.022,5.64,"#532b32");
+    const rug=box(0,rugSize.top-.011,rugSize.z,rugSize.w,.022,rugSize.d,"#532b32");
     parts.push(rug);
     for(const sign of [-1,1]){
       for(const inset of [.09,.18]){
@@ -132,8 +99,6 @@
           M.beam(xx,.041,zz-sign*.19,xx+.16,.041,zz,.028,"#a57a55"));
       }
     }
-    for(const x of [-4.3,-2.15,0,2.15,4.3]) parts.push(box(x,4.43,0,.12,.13,d,burl));
-    for(const z of [-3.7,-1.4,.9,3.2]) parts.push(box(0,4.42,z,w,.15,.14,walnut));
     return M.merge(...parts);
   };
   const passCase = () => M.merge(
@@ -172,6 +137,9 @@
     for(const y of [.68,1.92]){
       leaf.push(box(-half,y,-.201,1.76,1.05,.038,burl),box(-half,y,-.226,1.61,.90,.02,"#3e4538"));
     }
+    // A brass push bar on the lounge face moves with the swinging leaf.
+    leaf.push(box(-half,1.17,-.268,1.42,.072,.058,brass,.24));
+    for(const s of [-1,1])leaf.push(box(-half+s*.65,1.17,-.239,.085,.115,.055,brass));
     for(const side of [-w+.045,-.045]) leaf.push(box(side,h/2,.04,.085,h,.36,burl));
     for(let row=0;row<4;row++){
       const y=.17+row*.59, count=lite?7:10, step=(w-.23)/count;
@@ -199,37 +167,82 @@
     const book=add(hinge,M.merge(box(0,0,0,step*.94,.49,.34,"#e9dcb9",.43),mark(0,0,.186,.126)),
       -w+.12+(column+.5)*step,1.64,.12);
     let progress=0, opening=false;
+    const swing=t=>{
+      const v=Math.max(0,(t-.15)/.85);
+      return 1.61*v*v*(3-2*v);
+    };
+    // Include the gilt book as it tips out beyond the front edge of its shelf.
+    const bookFront=t=>{
+      const pull=Math.min(1,t/.24),tilt=.26*pull;
+      return .12+.115*pull+.245*Math.sin(tilt)+.21*Math.cos(tilt);
+    };
+    const leafBox={x:-half,z:-.031,hx:half,hz:.266};
+    const bookBox={x:book.position.x,z:0,hx:step*.47,hz:0};
     const pose=()=>{
-      const u=Math.min(1,progress/.24), v=Math.max(0,(progress-.15)/.85);
+      const u=Math.min(1,progress/.24),v=Math.max(0,(progress-.15)/.85);
       book.rotation.x=u*.26;book.position.z=.12+.115*u;
-      hinge.rotation.y=1.61*v*v*(3-2*v);
-      spill.visible=v>.02; spill.scale.x=Math.max(.01,v); spill.scale.z=Math.max(.01,v);
-
+      hinge.rotation.y=swing(progress);
+      spill.visible=v>.02;spill.scale.x=spill.scale.z=Math.max(.01,v);
     };
     pose();
-    const leafBox={x:-half,z:0,hx:half,hz:.23};
+    const clearAt=(angle,front,ax,az,bx,bz,r)=>{
+      const c=Math.cos(angle),s=Math.sin(angle);
+      const dx=ax-x-half,dz=az-z-.07,ex=bx-x-half,ez=bz-z-.07;
+      const a=dx*c-dz*s,b=dx*s+dz*c,e=ex*c-ez*s,f=ex*s+ez*c;
+      bookBox.z=bookBox.hz=front/2;
+      const crosses=BL.pokerModels.crosses;
+      return !crosses(a,b,e,f,r,leafBox) && !crosses(a,b,e,f,r,bookBox);
+    };
     const clear=(ax,az,bx,bz,r)=>{
-      if (Math.min(az,bz)>z+w+.5+r || Math.min(ax,bx)>x+half+.5+r || Math.max(ax,bx)<x-half-.5-r) return true;
-      const c=Math.cos(hinge.rotation.y), s=Math.sin(hinge.rotation.y);
-      const dx=ax-x-half, dz=az-z-.07, ex=bx-x-half, ez=bz-z-.07;
-      const a=dx*c-dz*s, b=dx*s+dz*c, e=ex*c-ez*s, f=ex*s+ez*c;
-      if (!BL.pokerModels.crosses(a,b,e,f,r,leafBox)) return true;
-      // If the shelf swung into the player, allow their next step out of its sweep.
-      const gap=(u,v)=>Math.hypot(Math.max(-w-u,0,u),Math.max(0,Math.abs(v)-leafBox.hz));
-      return gap(a,b)<r && gap(e,f)>gap(a,b);
+      if(Math.min(az,bz)>z+w+.7+r || Math.min(ax,bx)>x+half+.7+r || Math.max(ax,bx)<x-half-.7-r)return true;
+      return clearAt(hinge.rotation.y,bookFront(progress),ax,az,bx,bz,r);
+    };
+    const advance=(dt,actor,walkable)=>{
+      const next=Math.min(1,progress+dt/.98),angle=swing(next);
+      if(actor){
+        const p=actor.root.position,r=actor.bodyRadius;
+        const mid=(angle+hinge.rotation.y)/2;
+        // Every point on the rotating, body-expanded boxes stays within this
+        // distance of its midpoint pose throughout the step, including the tip.
+        const pad=(w+.55+2*r)*(angle-hinge.rotation.y)/2;
+        const front=bookFront(next),sweptRadius=r+pad;
+        if(!clearAt(mid,front,p.x,p.z,p.x,p.z,sweptRadius)){
+          const c=Math.cos(mid),s=Math.sin(mid);
+          const side=(p.x-x-half)*s+(p.z-z-.07)*c>=0?1:-1;
+          const stride=5*dt,feet=p.y-actor.baseY;
+          const dodge=(dx,dz)=>{
+            const bx=p.x+dx*stride,bz=p.z+dz*stride;
+            if(!walkable(p.x,p.z,bx,bz,feet,actor.bodyHeight,actor))return false;
+            p.x=bx;p.z=bz;return true;
+          };
+          // Step back into the aisle first, or slide along the face when the
+          // jamb blocks that route. The leaf holds until the body has cleared.
+          if(!dodge(0,side) && !dodge(side*s,side*c))dodge(-c,s);
+          if(!clearAt(mid,front,p.x,p.z,p.x,p.z,sweptRadius))return;
+        }
+      }
+      progress=next;pose();opening=progress<1;
     };
     const pickRay=ray=>{
-      if (ray.dz>=0 || opening || progress>0) return Infinity;
+      if (!ray.dz || opening || progress>0) return Infinity;
+      if (ray.dz>0) {
+        const t=(z+.07-.297-ray.oz)/ray.dz;
+        const u=ray.ox+t*ray.dx-x, y=ray.oy+t*ray.dy;
+        return t>=0 && Math.abs(u)<half && y>.04 && y<h ? t : Infinity;
+      }
       const t=(z+.21-ray.oz)/ray.dz;
       if (t<0 || Math.abs(ray.ox+t*ray.dx-x-half-book.position.x)>step*.55+.08) return Infinity;
       const y=ray.oy+t*ray.dy;
       return Math.abs(y-book.position.y)<.32 ? t : Infinity;
     };
     return {root,target,hinge,pickRay,clear,open(){if (opening || progress===1) return false; opening=true; return true;},get opened(){return opening || progress>0;},get ready(){return progress===1;},
-      update(dt){
-        if(opening){ progress=Math.min(1,progress+dt/.98); pose(); opening=progress<1; }
-
+      update(dt,actor,walkable){
+        // Check moving geometry before publishing each pose, even on a long frame.
+        while(opening && dt>0){
+          const step=Math.min(dt,1/60);
+          advance(step,actor,walkable);dt-=step;
+        }
       }};
   };
-  BL.pokerSpeakeasy=Object.freeze({interior,passCase,passCard,shelf});
+  BL.pokerSpeakeasy=Object.freeze({interior,rugSize,bookBay,engraving,passCase,passCard,shelf});
 })();

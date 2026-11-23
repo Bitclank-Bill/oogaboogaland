@@ -36682,13 +36682,18 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     const book=P.salons.targets[0].position, feet=D.pilot.player.root.position;
     D.pilot.navigate({position:{x:book.x,y:0,z:-23},yaw:0,pitch:.17,dist:3});
     window.dispatchEvent(new KeyboardEvent("keydown",{key:"w",code:"KeyW"}));
-    for(let i=0;i<240 && feet.z>book.z+1.9;i++) __ooga.advance(1/30,1/30);
+    for(let i=0;i<240 && feet.z>book.z+1.10;i++) __ooga.advance(1/30,1/30);
     window.dispatchEvent(new KeyboardEvent("keyup",{key:"w",code:"KeyW"}));__ooga.advance(.1,1/30);
     const approached=Math.hypot(feet.x-book.x,feet.z-book.z)<2.1;
-    D.pilot.action();__ooga.advance(.1,1/30);route.push(P.salon);
-    __ooga.advance(.38,1/30);
-    const shelf=P.salons.shelf, turning=shelf.hinge.rotation.y>0 && !shelf.ready && P.salon===-1;
-    __ooga.advance(.8,1/30);
+    const shelf=P.salons.shelf,startZ=feet.z;
+    D.pilot.action();route.push(P.salon);
+    let turning=false,separated=true;
+    for(let i=0;i<120 && !shelf.ready;i++){
+      __ooga.advance(1/60,1/60);
+      turning ||= shelf.hinge.rotation.y>0 && !shelf.ready && P.salon===-1;
+      separated &&= shelf.clear(feet.x,feet.z,feet.x,feet.z,D.pilot.player.bodyRadius);
+    }
+    const dodged=separated && feet.z>startZ+.20;
     const entry=shelf.target.position, radius=D.pilot.player.bodyRadius;
     const aisle=shelf.clear(entry.x,entry.z+2.6,entry.x,entry.z+1.0,radius);
     const leaf=shelf.clear(entry.x,entry.z+1,entry.x+1.8,entry.z+1,radius);
@@ -36705,6 +36710,16 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     D.pilot.navigate({position:{x:r.x+c.position.x+1.12,y:0,z:r.z+c.position.z},yaw:0,pitch:.17,dist:2});
     D.pilot.action();__ooga.advance(.2,1/30);
     const sitting=Math.abs(walker.root.position.x-r.x-c.position.x)<.01 && Math.abs(walker.root.position.y-(.545+BL.pokerModels.SIT_HIP*walker.traits.height))<.02;
+    const deck=P.salons.heirlooms.items[0].node,cam=D.camera;
+    const oldEye={...cam.position},oldTarget={...cam.target};
+    Object.assign(cam.position,{x:feet.x+.16*Math.sin(c.rotation.y),y:feet.y-walker.baseY+walker.headOffset*.95+walker.viewLift,z:feet.z+.16*Math.cos(c.rotation.y)});
+    Object.assign(cam.target,{x:r.x+deck.position.x,y:deck.position.y+.16,z:r.z+deck.position.z});
+    const size=__ooga.renderer.size;
+    BL.scene.updateWorld(BL.scenes.poker.root);
+    const hit=BL.scenes.poker.input.pick(size.width/2,size.height/2,null,true);
+    const seatedPick=hit?.node===deck;
+    const pickInfo=[hit?.owner.kind,hit?.owner.prop?.title,size,feet,cam.position,c.position,deck.world[12],deck.world[14],cam.orthoMix];
+    Object.assign(cam.position,oldEye);Object.assign(cam.target,oldTarget);
     D.pilot.action();__ooga.advance(.2,1/30);
     const stood=Math.abs(walker.root.position.x-r.x-c.position.x-1.12)<.02;
     const visiblePass=P.salons.targets[6].visible;
@@ -36749,8 +36764,30 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     __ooga.advance(.15,1/30);
     const sky=wide && donor && hole.radius===41.6 && hole.planetRadius===hole.radius/100 && accretion.time>beforeFlow;
     lens.querySelector('[aria-label="Leave telescope"]').click();
-    return { route, sky, reveal, reached, sitting, stood, collected, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:roofOpened && opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
+    return { route, sky, reveal, dodged, reached, sitting, seatedPick, pickInfo, stood, collected, saved: BL.game.create().state.emberDen, icyCore, hidden: !glyph.parent.visible, scope:roofOpened && opened && moved && zoomed && centered && !lens.open && D.camera.fov>fov };
   })()`);
+  const obstructed=await b.evaluate(`(()=>{
+    const d=BL.pokerSalons.DOORS[0],shelf=BL.pokerSpeakeasy.shelf(true,d[2],d[3]),r=.48;
+    const p={x:d[2]-.42,y:0,z:d[3]+1.12},actor={root:{position:p},baseY:0,bodyRadius:r,bodyHeight:2};
+    shelf.open();
+    shelf.update(.85,actor,()=>false);
+    const held=shelf.hinge.rotation.y;
+    shelf.update(.85,actor,()=>false);
+    if(held<=0 || shelf.hinge.rotation.y!==held || !shelf.clear(p.x,p.z,p.x,p.z,r))return false;
+    // Remove the obstruction and retry with long frames. Independently measure
+    // the circular body against the oriented bookcase at each resulting pose.
+    const canStep=(ax,az,bx,bz)=>shelf.clear(ax,az,bx,bz,r);
+    for(let i=0;i<20 && !shelf.ready;i++){
+      shelf.update(.18,actor,canStep);
+      const a=shelf.hinge.rotation.y,x=p.x-d[2]-1.02,z=p.z-d[3]-.07;
+      const u=x*Math.cos(a)-z*Math.sin(a),v=x*Math.sin(a)+z*Math.cos(a);
+      if(Math.hypot(Math.max(-2.04-u,0,u),Math.max(0,Math.abs(v+.005)-.24))<r-1e-6)return false;
+    }
+    return shelf.ready && p.z>d[3]+1.12;
+  })()`);
+  record("poker lounge: the fireside chair lets the seated player select the turntable",route.seatedPick,JSON.stringify(route.pickInfo));
+  record("poker bookcase: a blocked dodge holds the moving leaf clear and the swing resumes once there is room",obstructed);
+  record("poker bookcase: the Ooga steps clear through the whole swing and can walk through the open doorway",route.dodged && route.reveal && route.reached,JSON.stringify(route));
   record("poker sky: the 83.2 m shadow and 1:100 donor advance on the scene clock and center in the eyepiece", route.sky);
   record("poker terrace: use the telescope, aim, magnify, reacquire the moon and leave the eyepiece", route.scope);
   record("poker rooms: the icy ₿IFRÖST core turns on its pedestal in Cold Storage and leaves the view on exit", route.icyCore && route.hidden);
@@ -38628,6 +38665,31 @@ const factoryChecks = (BL) => {
 const pokerMarbleChecks = (BL) => {
   const K = BL.pokerMarble, faces = g => BL.compactGeometry?.storageOf(g)?.count ?? g.faces.length;
   const ys = g => { let lo = Infinity, hi = -Infinity; for (let i = 1; i < g.verts.length; i += 3) { lo = Math.min(lo, g.verts[i]); hi = Math.max(hi, g.verts[i]); } return [lo, hi]; };
+  // Joined relief lettering retains every exposed cell and its winding, including variable-width glyphs.
+  let relief = true, oldFaces = 0, newFaces = 0;
+  for (const ch of Object.keys(BL.hubModels.SIGN_GLYPHS).filter(ch => ch === ch.toUpperCase())) {
+    const glyph = BL.hubModels.SIGN_GLYPHS[ch], width = 3 / glyph[0].length;
+    const plain = BL.poolModels.carve(ch, {cell: 1}), solid = BL.poolModels.carve(ch, {cell: 1, joined: true});
+    relief &&= plain.width === solid.width && !!plain.geometry === !!solid.geometry;
+    if (!solid.geometry) continue;
+    oldFaces += plain.geometry.faces.length; newFaces += solid.geometry.faces.length;
+    const v = solid.geometry.verts, ink = (col,row) => glyph[row]?.[col] === "1";
+    const inside = (x,y,z) => z > .12 && z < .20 && ink(Math.floor((x+.5)/width), Math.floor(.5-y));
+    let expectedArea = 0, area = 0;
+    for (let j = 0; j < glyph.length; j++) for (let i = 0; i < glyph[j].length; i++) if (ink(i,j)) {
+      expectedArea += 2*width + .08*((!ink(i-1,j))+(!ink(i+1,j))) + .08*width*((!ink(i,j-1))+(!ink(i,j+1)));
+    }
+    for (const f of solid.geometry.faces) {
+      const [a,b,c,d] = f.i.map(i => v.slice(3*i,3*i+3)), ab=b.map((q,k)=>q-a[k]), ad=d.map((q,k)=>q-a[k]);
+      const n=[ab[1]*ad[2]-ab[2]*ad[1],ab[2]*ad[0]-ab[0]*ad[2],ab[0]*ad[1]-ab[1]*ad[0]], length=Math.hypot(...n);
+      area+=length;
+      // An off-centre point avoids sampling exactly between two cells on a run.
+      const point=a.map((q,k)=>q+ab[k]*.43+ad[k]*.37), sample=sign=>inside(...point.map((q,k)=>q+sign*n[k]*1e-5/length));
+      relief &&= length>0 && sample(-1) && !sample(1) && f.emissive === plain.geometry.faces[0].emissive;
+    }
+    relief &&= Math.abs(area-expectedArea)<1e-8;
+  }
+  record("poker lettering: joined strokes keep the original glyph boundaries, depth and outward faces", relief && newFaces < oldFaces);
   // Rule: the vein layout is the seed's alone, so two builds of one seed (here a second one moved by its offset) lie the same.
   const a = K.slab({ w: 2, h: 0.2, d: 4, seed: 7 }), b = K.slab({ w: 2, h: 0.2, d: 4, seed: 7, offset: { x: 1 } }), c = K.slab({ w: 2, h: 0.2, d: 4, seed: 8 });
   let same = a !== b && a.verts.length === b.verts.length && faces(a) === faces(b) && K.slab({ w: 2, h: 0.2, d: 4, seed: 7 }) === a;
@@ -38834,10 +38896,10 @@ const pokerMarbleHallChecks = (BL) => {
         const cardSize = span2(t0.board[0].geometry, t0.board[0].scale.x), chipSize = span2(t0.chips[0].geometry, t0.chips[0].scale.x);
         const pitch = P.SEATS.slice(1).map((s, j) => Math.hypot(s.x - P.SEATS[j].x, s.z - P.SEATS[j].z));
         // Read the broad countertop face itself, clear of the bottles, reading lamp and tools resting on it.
-        const bar = P.FURNITURE.find(f => f.kind === "bar"), sv = vertsOf(g.shell);
+        const bar = P.FURNITURE.find(f => f.kind === "bar");
         let counter = -Infinity;
-        for (const f of g.shell.faces) {
-          const v = f.i.map(i => [sv[3*i],sv[3*i+1],sv[3*i+2]]);
+        for (const section of g.bars) for (const f of section.faces) {
+          const sv = vertsOf(section), v = f.i.map(i => [sv[3*i],sv[3*i+1],sv[3*i+2]]);
           if (!v.every(q => Math.abs(q[0]-bar.x)<bar.hx && Math.abs(q[2]-bar.z)<bar.hz && Math.abs(q[1]-v[0][1])<1e-6)) continue;
           if (Math.max(...v.map(q=>q[0]))-Math.min(...v.map(q=>q[0]))>14 && Math.max(...v.map(q=>q[2]))-Math.min(...v.map(q=>q[2]))>.8) counter=Math.max(counter,v[0][1]);
         }
@@ -39789,7 +39851,7 @@ const pokerGlazingChecks = (BL) => {
       const room = rooms[0], env = room.root.children[0], g = P.geometry();
       // Measure the visible letter faces in the frame, independently of the font's advance.
       const frame = env.children.find(n => n.geometry === g.vaultSign);
-      const title = env.children.find(n => n.geometry === g.title.geometry), welcome = env.children.find(n => n.geometry === g.welcome.geometry);
+      const title = env.children.find(n => n.geometry === g.title.geometry);
       const span = (n,axis) => {
         const v=n.geometry.verts, offset=n.position[["x","y","z"][axis]];
         let low=Infinity,high=-Infinity;
@@ -39797,8 +39859,8 @@ const pokerGlazingChecks = (BL) => {
         return [low,high];
       };
       const centred = n => Math.abs(span(n,0).reduce((a,b)=>a+b,0) / 2 - frame.position.x) < 1e-6;
-      const field = !!frame && !!title && !!welcome && centred(title) && centred(welcome) &&
-        Math.abs((span(title,1)[1] + span(welcome,1)[0]) / 2 - frame.position.y) < 1e-6 &&
+      const field = !!frame && !!title && centred(title) &&
+        Math.abs((span(title,1)[1] + span(title,1)[0]) / 2 - frame.position.y) < 1e-6 &&
         span(title,0)[0] > span(frame,0)[0] + 0.4 && span(title,0)[1] < span(frame,0)[1] - 0.4;
       const BM = BL.bifrostModels, glz = trisUnder(room.glazing.root).flat();
       const inMirror = glz.filter(q => Math.abs(q[0]) < BM.WINDOW.halfW - 0.01 && q[1] < BM.WINDOW_TOP - 0.01 && q[2] > 34 && q[2] < 36.48);
@@ -46887,7 +46949,10 @@ const raceRigChecks = async () => {
     // The Ember Den adds spherical mapping to the lunar atlas and tinted metal to the chrome material.
     // Both are selected only by the new surfaces. Ordinary vertex and shadow paths retain their pinned bytes.
     // A signed lunar slope map now lights the interior walls of the recessed craters.
-    "f92f07c1f516fe59a2970f5995083a475985580349488fbbfd8aa6b7af5b783e",
+    // Four bilinear depth comparisons now reconstruct the same 3x3 shadow filter.
+    // Ember Den infinity-pool faces select the filtered moonlit water material.
+    // The falling sheets share the Matrix glyph atlas and attenuate their own glass alpha.
+    "64782959a9a65126e6338b805f2cdf760c45955279dfca41f4a779beeea88748",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
@@ -47002,6 +47067,14 @@ const visibilitySourceBakeProof = () => {
     const firstFace=C.readFace(packed,0,cursor);
     check(firstFace.metadata===metadata && firstFace.matrixCave===2 && firstFace.emissive===.9 && firstFace.color.length===4 && firstFace.color[3]===-1,'Compact material metadata changed');
     check(C.readFace(packed,1,cursor)===firstFace && cursor.visibility===false && cursor.water===true && cursor.color[0]===255,'Compact face cursor lost reuse or tags');
+    for (const limit of [255,256,65535,65536]) {
+      const face={i:[0,1,limit],color:[3,4,5]},faces=Array(Math.floor(limit/3)).fill(face);
+      if(limit%3)faces.push({i:[limit],color:face.color});
+      const g={verts:new Float32Array((limit+1)*3),faces};
+      C.pack(g,{immutable:true,renderOnly:true});
+      const d=C.storageOf(g), tail=C.copyFace(g,faces.length-1);
+      check(d.offsets[faces.length]===limit && tail.i[tail.i.length-1]===limit,'Compact face or terminal offset wrapped at '+limit);
+    }
     const packedAlias={...packed,matrixSourceGeometry:packed};
     check(meshOf(packedAlias)===actual && data.legacy.size===0,'Compact source alias materialized legacy faces or failed to share');
     const borrowed={...packed,verts:original.verts,faces:original.faces};
@@ -49862,38 +49935,56 @@ const islandWorldProof = async () => {
 // A full circuit must actually take a whale into the water behind the Genesis Vault.
 const pokerAquariumChecks = BL => {
   const vault = BL.pokerSalons.ROOMS[1], west = vault.x - vault.w / 2, east = vault.x + vault.w / 2;
+  const top=BL.pokerFloor.TOP, westWall=-BL.pokerGlazing.SIDE_X, rear=-BL.pokerGlazing.END_Z;
   for (const lite of [false, true]) {
     const tank = BL.pokerAquarium.build(lite);
     const residents = tank.residents.map(w => w.body), {cloud, arcs, bolt, ring, school, crown, crest, spill} = tank.breach;
+    const surface=tank.root.children.find(n=>n.geometry && BL.scene.boundsOf(n.geometry).min[1]===top &&
+      BL.scene.boundsOf(n.geometry).max[1]===top);
+    const cells=surface ? surface.geometry.faces.map(f=>{
+      const v=surface.geometry.verts,x=Array.from(f.i,i=>v[i*3]),z=Array.from(f.i,i=>v[i*3+2]);
+      return [Math.min(...x),Math.max(...x),Math.min(...z),Math.max(...z)];
+    }) : [];
+    const wet=(x,z)=>cells.some(c=>x>=c[0] && x<=c[1] && z>=c[2] && z<=c[3]);
+    const lounge=BL.pokerSalons.ROOMS[0];
+    record("Whale Watch: pool meets the marble, wraps the bookshelf, extends 1800 m from the band wall and 90 m behind the bar, and clears the rooms",
+      wet(westWall-1,rear+1) && [-35,0,35].every(z=>wet(westWall-1799.99,z) && !wet(westWall-1800.01,z)) &&
+      wet(1,rear-89.99) && !wet(1,rear-90.01) && wet(197,rear-1) && !wet(198,rear-1) && !wet(westWall+1,0) &&
+      !wet(lounge.x,lounge.z) && !wet(vault.x,vault.z));
     let sequence = true, previous = 0, liveFish = 0, fed = 0;
-    let pastWest = false, clear = true;
+    let pastWest = false, clear = true, cloudX=cloud.position.x, cloudZ=cloud.position.z;
+    const strikes=new Set();
     const point = [0, 0, 0];
-    for (let time = 0; time <= 270; time += .25) {
+    for (let time = 0; time <= 60*(residents.length+1)+30; time += .25) {
       tank.update(time - previous, time, false); previous = time;
+      sequence &&= Math.hypot(cloud.position.x-cloudX,cloud.position.z-cloudZ)<1.2;
+      cloudX=cloud.position.x;cloudZ=cloud.position.z;
       const turn = Math.floor(time / 60) - 1, since = time - 60 * (turn + 1);
       if (since === 59.75) sequence &&= arcs.some(arc => arc.visible) && !bolt.visible && !school.visible;
-      if (turn < 0) sequence &&= residents.every(n => n.position.y < 6.8) && !school.visible && !spill.visible;
+      if (turn < 0) sequence &&= residents.every(n => n.position.y < top) && !school.visible && !spill.visible;
       if (turn >= 0) {
         const whale = tank.residents[turn % residents.length], others = tank.residents.filter(w => w !== whale);
         const fish = school.visible ? school.children.filter(n => n.visible) : [];
-        if (since === 0) sequence &&= cloud.scale.x === 1 && cloud.scale.y === 1 && cloud.scale.z === 1 &&
+        if(since===0)strikes.add(Math.round(cloudX));
+        if (since === 0) sequence &&= Math.hypot(cloudX-bolt.position.x-whale.offsetX,cloudZ-bolt.position.z-whale.offsetZ)<.01 && cloud.scale.x === 1 && cloud.scale.y === 1 && cloud.scale.z === 1 &&
           bolt.visible && ring.visible && arcs.every(arc => !arc.visible) && fish.length === 1 &&
           Math.abs(fish[0].position.y - bolt.position.y) < .01 &&
           Math.hypot(fish[0].position.x - bolt.position.x, fish[0].position.z - bolt.position.z) < .4;
         if (since === .5) sequence &&= !bolt.visible && ring.visible && fish.length === school.children.length &&
           fish.every(n => n.position.y <= bolt.position.y && Math.hypot(n.position.x - bolt.position.x, n.position.z - bolt.position.z) < 2);
-        if (since === 2.5) sequence &&= !ring.visible && fish.every(n => n.position.y < 6.8 && n.position.y > 5.7);
+        if (since === 2.5) sequence &&= !ring.visible && fish.every(n => n.position.y < top && n.position.y > top-1.1);
         if (since === 6) sequence &&= fish.length === school.children.length && whale.jaw.rotation.z < -.25 &&
-          fish.every(n => n.position.y > 5.7 && n.position.y < 6.8) && fish.some(n => n.position.y > 6.6);
+          fish.every(n => n.position.y > top-1.1 && n.position.y < top) && fish.some(n => n.position.y > top-.2);
         if (since >= 7 && since < 12 && fish.length < liveFish) {
           sequence &&= since >= 9 && since <= 11.25 && whale.jaw.rotation.z < -.20 && others.every(w => w.jaw.rotation.z === 0);
           fed += liveFish - fish.length;
         }
         liveFish = fish.length;
-        if (since === 13) sequence &&= !school.visible && whale.body.position.y > 10 && whale.jaw.rotation.z === 0 && others.every(w => w.body.position.y < 6.8);
+        if (since === 13) sequence &&= !school.visible && whale.body.position.y > top+3.2 && whale.jaw.rotation.z === 0 && others.every(w => w.body.position.y < top);
         if (since === 16) sequence &&= crown.visible && crown.scale.y > 7 && crest.visible && !spill.visible;
         if (since === 18.75) sequence &&= crest.visible && crest.scale.y > 4 && spill.visible;
-        if (since === 22) sequence &&= !crest.visible && spill.visible && spill.scale.y > 30;
+        if (since === 22) sequence &&= !crest.visible && spill.visible && spill.scale.y > 30 &&
+          Math.abs(spill.position.z+whale.offsetZ-whale.spillZ-Math.sign(whale.spillZ+50-whale.offsetZ)*.10)<.01;
         if (since === 29) sequence &&= !school.visible && !crown.visible && !spill.visible;
       }
       if (time % 2) continue;
@@ -49905,6 +49996,9 @@ const pokerAquariumChecks = BL => {
           const v = part.geometry.verts;
           for (let k = 0; k < v.length; k += 3) {
             BL.math.mat4.transformPoint(point, part.world, v[k], v[k + 1], v[k + 2]);
+            if (point[0]<westWall-1800 || point[0]>BL.pokerGlazing.SIDE_X+3*(82-BL.pokerGlazing.SIDE_X) || point[2]<rear-90 || point[2]>-rear ||
+                (point[0]>westWall && point[2]>rear) || (Math.abs(point[0]-lounge.x)<lounge.w/2+.65 &&
+                point[2]>lounge.z-lounge.d/2-.65 && point[2]<rear)) clear=false;
             if (point[0] >= west - 1 && point[0] <= east + 1 &&
                 point[2] >= vault.z - vault.d / 2 - 1 && point[2] <= vault.z + vault.d / 2 + 1) clear = false;
           }
@@ -49913,8 +50007,8 @@ const pokerAquariumChecks = BL => {
     }
     record("Whale Watch: residents swim past the far side of the vault and clear its dry chamber (" +
       (lite ? "lite" : "full") + ")", residents.length >= 2 && pastWest && clear);
-    record("Whale Watch: three residents take turns feeding, breaching and overtopping the weir each minute (" +
-      (lite ? "lite" : "full") + ")", residents.length === 3 && sequence && fed === 4 * school.children.length);
+    record("Whale Watch: one continuous storm track brings each resident a feeding, breach and spill on its minute (" +
+      (lite ? "lite" : "full") + ")", residents.length === 12 && sequence && Math.min(...strikes)<westWall-500 && strikes.size>=9 && fed === (residents.length+1)*school.children.length);
   }
 };
 const pokerUnitChecks = async BL => {

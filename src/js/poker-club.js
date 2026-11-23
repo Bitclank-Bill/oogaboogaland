@@ -10,7 +10,7 @@
     const n=S.createNode({geometry,position:{x,y,z}}); S.addChild(root,n); return n;
   };
   const word=(value,cell,x,y,z,color=opal)=>{
-    const text=BL.poolModels.carve(value,{cell,color,emissive:.78});
+    const text=BL.poolModels.carve(value,{ joined:true,cell,color,emissive:.78});
     return M.moved(text.geometry,x-text.width/2+cell/2,y+2*cell,z-.16);
   };
   const beam=M.beam;

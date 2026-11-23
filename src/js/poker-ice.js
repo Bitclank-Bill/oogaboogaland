@@ -113,17 +113,48 @@
         );
       }
     }
-    // The Genesis coinbase headline is cut into the foot of the door.
-    for (const [words, y] of [["THE TIMES 03/JAN/2009 CHANCELLOR ON", 1.03], ["BRINK OF SECOND BAILOUT FOR BANKS", 0.83]]) {
-      const cut = line(words, 0.027, palette[5], true);
-      parts.push(M.moved(cut.geometry, 0, y, 0.46));
+    // A minting die around the handwheel. The lower lines run left to right with
+    // their crowns toward the hub, just as on the reverse of a coin.
+    parts.push(wheel([[0.95, 0.422], [0.98, 0.448], [1.57, 0.448], [1.6, 0.422]], "#263d49"));
+    for (const radius of [0.97, 1.59]) parts.push(wheel([
+      [radius - 0.017, 0.446], [radius, 0.47], [radius + 0.017, 0.446]
+    ], "#d1ab74", 0.48));
+    const legend = (words, cell, radius, up, color) => {
+      const g = line(words, cell, color, true).geometry, v = g.verts;
+      for (let i = 0; i < v.length; i += 3) {
+        const angle = v[i] / radius, r = radius + up * v[i + 1];
+        v[i] = r * Math.sin(angle);
+        v[i + 1] = cy + up * r * Math.cos(angle);
+        v[i + 2] = 0.449 + 0.3 * v[i + 2];
+      }
+      parts.push(g);
+    };
+    legend("GENESIS BLOCK", 0.07, 1.31, 1, "#fff0c9");
+    legend("THE TIMES 03/JAN/2009 CHANCELLOR ON", 0.026, 1.13, -1, "#e7f4ef");
+    legend("BRINK OF SECOND BAILOUT FOR BANKS", 0.034, 1.43, -1, "#e7f4ef");
+    // The die's two lozenge stops separate the legends at three and nine o'clock.
+    for (const side of [-1, 1]) {
+      const mark = M.prism([[0, -0.065], [0.11, 0], [0, 0.065], [-0.11, 0]], 0.026, "#dab987", 0.52);
+      parts.push(M.moved(mark, side * 1.38, cy, 0.47));
     }
-    for (const y of [1.2, 3.3]) parts.push(chip(0.53, 0.19, 0.28, -1.94, y, 0.37, "#ae8967", 0.055));
+    parts.push(wheel([[0.12, 0.721], [0.145, 0.747], [0.178, 0.747], [0.195, 0.72]], "#caab7e", 0.43));
+    // Pinned bronze straps bridge the ice and the jamb. The alternating collars leave
+    // a dark joint between each knuckle and a polished lip at either end of the pin.
+    for (const y of [1.2, 3.3]) {
+      parts.push(chip(0.66, 0.19, 0.23, -1.99, y, 0.37, "#89684e", 0.055));
+      for (const dy of [-0.122, 0, 0.122]) {
+        const collar = M.lathe({ segments: lite ? 8 : 16, profile: [
+          [0.079, -0.054], [0.091, -0.042], [0.091, 0.04], [0.079, 0.053]
+        ], color: dy === 0 ? "#947352" : "#b59a74" });
+        parts.push(M.moved(collar, -2.19, y + dy, 0.49));
+      }
+      for (const dy of [-0.19, 0.19]) parts.push(chip(0.17, 0.044, 0.17, -2.19, y + dy, 0.49, "#d6b781", 0.016));
+    }
     return ice(M.merge(...parts), lite);
   };
   // Centre the visible carving, including the date's separator, using ink bounds rather than the font's trailing advance.
   const line = (text, cell, color, lite) => {
-    let { geometry } = BL.poolModels.carve(text, { cell, color, emissive: 0.69 });
+    let { geometry } = BL.poolModels.carve(text, { joined:true, cell, color, emissive: 0.69 });
     if (text.includes("·") && !BL.hubModels.SIGN_GLYPHS["·"]) {
       let advance = 0;
       for (const ch of text.slice(0, text.indexOf("·"))) advance += ch === " " ? 2.4 : 4;
@@ -132,6 +163,73 @@
     const { lo, hi } = bounds(geometry);
     M.moved(geometry, -(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]);
     return { geometry: ice(geometry, lite), width: hi[0] - lo[0], height: hi[1] - lo[1] };
+  };
+  // A seam has an uneven spine and two exposed fracture planes. Its crystals grow
+  // from the spine, leaving the open part of an arch and the sign face clear.
+  const rimeSeam=(parts,path,width,random)=>{
+    const g=M.geometry();let last;
+    for(let i=0;i<path.length;i++){
+      const [x,y,z]=path[i],a=path[Math.max(0,i-1)],b=path[Math.min(path.length-1,i+1)];
+      const dx=b[0]-a[0],dy=b[1]-a[1],radius=width*(.74+.48*random()),scale=radius/(Math.hypot(dx,dy)||1);
+      const nx=-dy*scale,ny=dx*scale,offset=(random()-.5)*.46;
+      const row=[M.pushVert(g,x+nx,y+ny,z),M.pushVert(g,x+nx*offset,y+ny*offset,z+radius*.84),
+        M.pushVert(g,x-nx,y-ny,z)];
+      if(last)for(let k=0;k<2;k++){
+        const tone=2+k+Math.floor(random()*2);
+        M.face(g,[last[k],last[k+1],row[k+1]],rgb(palette[tone]),{emissive:.36});
+        M.face(g,[last[k],row[k+1],row[k]],rgb(palette[tone+1]),{emissive:.38});
+      }
+      last=row;
+    }
+    parts.push(g);
+  };
+  const spray=(parts,x,y,z,angle,length,radius,random)=>{
+    const prism=shard(0,0,0,radius,length,length*(random()-.5)*.36,random);
+    parts.push(M.moved(M.turnedZ(prism,angle),x,y,z));
+  };
+  const shelfIce=(cx,bays,rad,z,lite)=>{
+    const parts=[],random=BL.math.mulberry32(cx<0?21903:51732);
+    for(const offset of bays){
+      const x=cx+offset,front=z+.29,path=[];
+      // From the foot of one jamb, over the elliptical arch, down the other jamb.
+      for(let i=0;i<6;i++)path.push([x-rad,.12+i*.557,front]);
+      const steps=lite?10:21;
+      for(let i=0;i<=steps;i++){
+        const a=Math.PI*(1-i/steps);
+        path.push([x+rad*Math.cos(a),3.46+.96*Math.sin(a),front]);
+      }
+      for(let i=5;i>=0;i--)path.push([x+rad,.12+i*.557,front]);
+      rimeSeam(parts,path,rad<1?.09:.13,random);
+      // The cap curls over the arch. Long pendant teeth hang at its shoulders,
+      // with short upright blades between them above the racks of stemware.
+      const cap=[],n=Math.ceil(rad*(lite?4:8));
+      for(let j=0;j<=n;j++){
+        const u=j/n,xx=x+(2*u-1)*(rad+.07),shoulder=Math.abs(2*u-1);
+        cap.push([xx,4.55+.04*Math.sin(8*u+offset),z+.06]);
+        const length=.12+random()*(.18+.52*shoulder*shoulder);
+        spray(parts,xx,4.55,z+.09,(random()-.5)*.68,length,.085+.15*length,random);
+        if(j%2===0 || shoulder>.72)spray(parts,xx,4.54,z+.13,Math.PI+(random()-.5)*.32,
+          .12+shoulder*shoulder*.85+random()*.1,.085+.07*shoulder,random);
+      }
+      rimeSeam(parts,cap,.11,random);
+      for(const side of [-1,1]){
+        for(let y=.34+random()*.16;y<3.56;y+=.31+random()*(lite?.50:.28)){
+          const length=.18+random()*.47;
+          spray(parts,x+side*(rad+.025),y,front,Math.PI+side*(.25+random()*.47),length,.06+length*.10,random);
+        }
+      }
+    }
+    if(cx>0){
+      // On the low rail only the nosing and underside freeze, below the bottles.
+      const half=bays[1]-rad,path=[];
+      for(let i=0;i<=20;i++){
+        const x=cx-half+2*half*i/20;
+        path.push([x,.94+.017*Math.sin(i*1.2),z+.36]);
+        if(i%3===0)spray(parts,x,.93,z+.34,Math.PI+.15*(random()-.5),.07+random()*.15,.046,random);
+      }
+      rimeSeam(parts,path,.042,random);
+    }
+    return ice(M.merge(...parts),lite);
   };
   const sign = lite => {
     const parts = [],
@@ -154,6 +252,30 @@
         for (let i = 0; i < 3; i++)
           parts.push(shard(side * (6.18 + i * 0.08), up * (1.34 - 0.13 * i), 0.075, 0.09, up * (0.24 + 0.05 * i), side * 0.11, random));
       }
+    // Overlapping fans follow the entire rim, with deeper growth at the
+    // corners and scattered upright, oblique and hanging tips between them.
+    for(const up of [-1,1]){
+      const path=[],groups=lite?16:31;
+      for(let j=0;j<=groups;j++){
+        const u=j/groups,x=(2*u-1)*6.36,corner=Math.abs(2*u-1)**3;
+        const y=up*(1.50+.04*Math.sin(j*1.7)),z=.22+.065*random();
+        path.push([x,y,z]);
+        for(let k=0;k<(lite?1:2)+(corner>.55?1:0);k++){
+          const length=.19+.49*random()+.41*corner,radius=.10+length*.14;
+          spray(parts,x+(random()-.5)*.22,y,z+.04*random(),(up>0?0:Math.PI)+(random()-.5)*1.65,length,radius,random);
+        }
+      }
+      rimeSeam(parts,path,.18,random);
+    }
+    for(const side of [-1,1]){
+      const path=[];
+      for(let j=0,n=lite?5:10;j<=n;j++){
+        const y=(2*j/n-1)*1.49,x=side*(6.33+.035*Math.sin(4*y));
+        path.push([x,y,.23]);
+        spray(parts,x,y,.24,-side*(.75+.95*random()),.27+.49*random(),.12+.10*random(),random);
+      }
+      rimeSeam(parts,path,.17,random);
+    }
     return ice(M.merge(...parts), lite);
   };
   const cavern = (r, lite) => {
@@ -281,5 +403,33 @@
     return ice(M.merge(...parts), lite);
   };
   const glyph = lite => ice(BL.factoryModels.smoothBitcoin(2.48, (2.48 * 0.32) / 1.9, "#9cd7eb", 0.49), lite);
-  BL.pokerIce = Object.freeze({ door, sign, line, cavern, glyph });
+  // A calved glacier with a snow lip, compressed blue bands and hanging splinters.
+  // Keep the industrial deck on a separate mesh so only the ice samples the vault atlas.
+  const floe = lite => {
+    const g=M.geometry(), parts=[g], random=BL.math.mulberry32(17294), n=lite?28:54;
+    const profile=[[.10,-10.9],[.40,-9.7],[.69,-7.3],[.90,-5.65],[.96,-4.2],[1,-3.15],[1,-2.33],[.97,-1.93]];
+    const spur=Array.from({length:n},()=>random()-.5);
+    let last=[];
+    for(let j=0;j<profile.length;j++){
+      const [radius,y]=profile[j], row=[];
+      for(let i=0;i<n;i++){
+        const angle=i*TAU/n, r=radius*(1+.10*spur[i]+.016*Math.sin(i*3+j));
+        row.push(M.pushVert(g,19.5*r*Math.cos(angle),y+(j===7?.09:.54)*spur[(i+j)%n],6.2*r*Math.sin(angle)));
+      }
+      if(j)for(let i=0;i<n;i++){
+        const next=(i+1)%n, shade=[0,1,2,3,2,4,4,5][j];
+        M.face(g,[last[i],row[i],row[next]],rgb(palette[Math.min(6,shade+(spur[i]>.26?1:0))]),{emissive:.47});
+        M.face(g,[last[i],row[next],last[next]],rgb(palette[Math.max(0,shade-(spur[next]<0?1:0))]),{emissive:.43});
+      }
+      if(j===profile.length-1)M.face(g,row.slice().reverse(),rgb(palette[6]),{emissive:.55});
+      if(j===0)M.face(g,row,rgb(palette[1]),{emissive:.37});
+      last=row;
+    }
+    for(let k=0;k<(lite?16:37);k++){
+      const a=(k+.5)*TAU/(lite?16:37);
+      parts.push(shard(19.1*Math.cos(a),-2.20,6.1*Math.sin(a),.22+.46*random(),-1.4-2.8*random(),.46*Math.cos(a),random));
+    }
+    return ice(M.merge(...parts),lite);
+  };
+  BL.pokerIce = Object.freeze({ door, sign, line, cavern, glyph, floe, shelfIce });
 })();

@@ -133,7 +133,7 @@
     return ctx.decodeAudioData(bytes.buffer);
   };
 
-  const create = () => {
+  const create = (engineBank = null) => {
     let ctx = null, buffer = null, music = null, synth = null, fade = null, room = null, ready = false, muted = BL.sound.muted, disposed = false;
     // The playlist: the order and where in it the next track stands (`slot`), the tracks failed this visit, the state,
     // the track being fetched or played (-1 for none) and the one heard last, the one decoded buffer held and
@@ -147,6 +147,48 @@
     let doorGain, doorFilter, doorPan, lastDistance = -1, lastPan = -2;
     const musicChannel = BL.sound.channel("music"), roomChannel = BL.sound.channel("room");
     const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], bed = {};
+    const motors = [];
+    let exhaust = null;
+    // A two-second crank revolution shared by all five motors. The slow beat carries
+    // indoors. A dry bearing knock on each dead centre and steam after the stroke
+    // emerge as the listener approaches. Harmonics meet at the loop boundary.
+    const startEngines = time => {
+      const length = Math.round(ctx.sampleRate * 2), loop = ctx.createBuffer(1, length, ctx.sampleRate);
+      const samples = loop.getChannelData(0), noise = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) {
+        const f = i / length, turn = f * Math.PI * 2, stroke = (f * 2) % 1;
+        const ring = Math.exp(-stroke * 37), valve = Math.max(0, Math.sin(Math.PI * (stroke - .13) / .42));
+        const knock = ring * (Math.sin(137 * turn) + .42 * Math.sin(369 * turn));
+        const steam = stroke < .55 ? noise[i % noise.length] * valve * valve : 0;
+        samples[i] = .25 * Math.sin(109 * turn) * (.65 + .35 * Math.cos(2 * turn))
+          + .13 * Math.sin(218 * turn) + .38 * knock + .32 * steam;
+      }
+      for (const source of engineBank.sources) {
+        const pan = panner(room), volume = gain(0, pan), tone = filter("lowpass", 400, .7, volume);
+        const src = ctx.createBufferSource();
+        src.buffer = loop; src.loop = true;
+        src.playbackRate.value = source.speed / Math.PI;
+        src.connect(tone);
+        src.start(ctx.currentTime, ((source.speed * time + source.phase) / Math.PI) % 2);
+        motors.push({ source, pan, volume, tone, src });
+      }
+      const finalMotor = motors[motors.length - 1];
+      exhaust = gain(0, finalMotor.tone);
+      hissOf(filter("bandpass", 1380, .68, exhaust));
+    };
+    const spatialEngines = (time, age, ear) => {
+      if (!motors.length) startEngines(time);
+      const outside = Math.max(0, Math.min(1, (ear.x - 24) / 7));
+      const now = ctx.currentTime;
+      for (const motor of motors) {
+        const distance = place(motor.source.x, motor.source.z);
+        const near = 1 / (1 + (distance / 38) ** 2);
+        motor.pan.pan.setTargetAtTime(AT.pan, now, .06);
+        motor.volume.gain.setTargetAtTime((.085 + .63 * outside) * near, now, .08);
+        motor.tone.frequency.setTargetAtTime(180 + (180 + outside * 6100) * near, now, .08);
+      }
+      exhaust.gain.setTargetAtTime(engineBank.ventLevel(age) * 1.6, now, .07);
+    };
     let roomSineNext = 0;
     // Whether the visitor is in a table's panel, and the context time a win's dip ends.
     let seated = false, winUntil = 0;
@@ -503,7 +545,10 @@
       hiddenTick();
     };
     const onVisibility = () => {
-      if (ready && !document.hidden) wake();
+      if (ready && !document.hidden) { wake(); bedWait = 0; }
+      if (ready && document.hidden) {
+        for (const motor of motors) motor.volume.gain.setTargetAtTime(0, ctx.currentTime, .05);
+      }
       rearm();
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -645,7 +690,7 @@
       }
     };
 
-    const update = (dt, ear) => {
+    const update = (dt, ear, time = 0, pressureAge = Infinity) => {
       EAR.x = ear.x; EAR.z = ear.z; EAR.fx = ear.fx; EAR.fz = ear.fz;
       activate();
       if (!ready) return;
@@ -654,6 +699,7 @@
       if ((bedWait -= dt) <= 0) {
         bedWait = BED_EVERY;
         bedLevel();
+        if (engineBank && !document.hidden) spatialEngines(time, pressureAge, ear);
         // Outdoors, both the recording and the synth reach the ear from the open bay.
         const dx = 24.42 - ear.x, dz = -ear.z, dist = Math.hypot(dx, dz);
         // Across the wider deck the recording continues to recede toward the doorway, including in either wing.
@@ -737,6 +783,8 @@
       playlist.held = 0;
       playlist.decoding = playlist.playing = null;
       playlist.fallback = true;
+      for (const motor of motors) { motor.src.stop(); motor.src.disconnect(); }
+      motors.length = 0; exhaust = null;
       if (ctx) ctx.close().catch(() => {});
       ctx = buffer = music = synth = fade = room = null;
       stats.open = ready = false;

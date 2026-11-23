@@ -24,7 +24,7 @@
   // that has said nothing for this long is half-open and is dropped rather than trusted.
   const STALL_MS = 20000;
   const subscribers = new Set();
-  const state = { enabled: false, hidden: false, connected: false, attempts: 0, stats: 0, blocks: 0, height: 0, nextFee: 0, projectedBlocks: 0, inflow: 0, messages: 0, bytes: 0, lastKeys: "", lastAt: 0 };
+  const state = { enabled: false, hidden: false, connected: false, attempts: 0, stats: 0, blocks: 0, height: 0, tipHash: "", nextFee: 0, projectedBlocks: 0, inflow: 0, messages: 0, bytes: 0, lastKeys: "", lastAt: 0 };
   let socket = null, timer = 0, watch = 0, backoff = BACKOFF_MIN;
 
   const emit = (event) => {
@@ -32,9 +32,12 @@
     else if (event.type === "block") state.blocks++;
     for (const fn of subscribers) fn(event);
   };
+  const hashOf = b => typeof b.id === "string" && /^[0-9a-f]{64}$/.test(b.id) ? b.id : "";
   const block = (b) => {
+    if (b && b.height === state.height && hashOf(b)) state.tipHash = b.id;
     if (!b || !(b.height > state.height)) return;
     state.height = b.height;
+    state.tipHash = hashOf(b);
     emit({ type: "block", height: b.height, txCount: b.tx_count || 0 });
   };
   const onMessage = (text) => {
@@ -54,10 +57,10 @@
     state.lastKeys = Object.keys(data).join(", ");
     // The tip list arrives once per connection and only seeds the height; a later, taller one is news.
     if (Array.isArray(data.blocks)) {
-      let top = 0;
-      for (const b of data.blocks) if (b && b.height > top) top = b.height;
-      if (state.height === 0) state.height = top;
-      else if (top > state.height) block({ height: top });
+      let top = null;
+      for (const b of data.blocks) if (b && b.height > (top ? top.height : 0)) top = b;
+      if (top && state.height === 0) { state.height = top.height; state.tipHash = hashOf(top); }
+      else if (top) block(top);
     }
     if (data.block) block(data.block);
     // The projection is the fee pressure: the next block's median sat/vB, zero for an empty mempool.
@@ -153,6 +156,7 @@
       return;
     }
     state.height = 0;
+    state.tipHash = "";
     backoff = BACKOFF_MIN;
     connect();
   };

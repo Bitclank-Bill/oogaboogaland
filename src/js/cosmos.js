@@ -566,7 +566,7 @@
     if (s.sparse) return;
     const parts = rig.parts, nodes = [[parts.band, SOFT_BAND], ...parts.halos.map((n) => [n, SOFT_HALO])];
     if (parts.low) nodes.push([parts.low.band, SOFT_BAND], ...parts.low.halos.map((n) => [n, SOFT_HALO]));
-    for (const [node, steps] of nodes) node.geometry = softCopy(node.geometry, steps);
+    for (const [node, steps] of nodes) if (node.visible) node.geometry = softCopy(node.geometry, steps);
   };
 
   BL.cosmos = { create, place, soften, SKY_TURN, SHIP, PLANETS };

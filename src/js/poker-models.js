@@ -91,12 +91,12 @@
     }
     return links;
   };
-  const clubFurniture = parts => {
+  const clubFurniture = (parts, bars) => {
     // The floor and its gold lines are `poker-floor.js`'s.
     const block = lite ? flat : box;
     for (const f of FURNITURE) {
       if (f.kind === "bar") {
-        parts.push(BL.pokerTerrace.bar(f.x, f.z, lite));
+        bars.push(...BL.pokerTerrace.bar(f.x, f.z, lite, true));
       } else if (f.kind === "cage") {
         // The cashier's booth: a marble counter facing the room under a brass grille with a teller's gap, marble sides and
         // a cream canopy. The valance stays oxblood, so the lit CASHIER sign in front of it reads against dark.
@@ -302,7 +302,7 @@
   };
   // The stone top under the felt, its underside bevelled up toward the edge (0.52 in the middle, 0.66 at the rim) so a
   // seated Ooga's feet, reaching just under the rail, pass below it.
-  const stoneTop = () => M.lathe({ segments: 48, profile: [[0, 0.52], [0.88, 0.52], [1, 0.66], [1, FELT_Y - 0.06], [0, FELT_Y - 0.06]], color: T.stone[5] });
+  const stoneTop = (color=T.stone[5],innerCap=0) => M.lathe({ segments: 48, profile: [[0, 0.52], [0.88, 0.52], [1, 0.66], [1, FELT_Y - 0.06], [innerCap, FELT_Y - 0.06]], color });
   // A walnut chair with turned legs, an oxblood cushion, a stepped crest and brass finials.
   // Its back stands at -z and the front piping runs 0.27 m forward of the furniture centre.
   const ornateChair = () => {
@@ -321,8 +321,8 @@
     scoped.use();
     const key = lite ? "gatsby-lite" : "gatsby";
     if (cache.has(key)) return cache.get(key);
-    const shell = [];
-    clubFurniture(shell);
+    const shell = [], bars = [];
+    clubFurniture(shell,bars);
     // The marble floor tiles, wall panels and columns are a few cached geometries placed as nodes in `build`; the walls
     // are `poker-glazing.js`'s glass and the roof `poker-vault.js`'s glass vault, both stood in `build`.
     // Each table lamp's cable hangs from the vault's purlin over its row on a slim gold rod at either end.
@@ -349,7 +349,7 @@
       box(0.1, 0.48, 0.09, "#e6b634", 0, 0.52, 0.42),
       box(0.18, 0.14, 0.1, "#f7d052", 0, 0.84, 0.42));
     const built = {
-      shell: K.staticMesh(M.merge(...shell)), shade, chair: ornateChair(), jacket,
+      shell: K.staticMesh(M.merge(...shell)), bars, shade, chair: ornateChair(), jacket,
       sleeve: box(0.4, 0.78, 0.43, "#292f33", 0, -0.29, 0.025),
       cuff: box(0.41, 0.12, 0.44, "#e6e1ce", 0, -0.73, 0.025),
       base: pedestal(), stone: stoneTop(), rim: rail(), felt: disk(1, FELT_Y - 0.02, FELT_Y, T.felt), pinstripe: inlay(),
@@ -357,24 +357,32 @@
       button: disk(0.16, 0, 0.055, "#ece3c7"),
       vaultSign: BL.pokerIce.sign(lite),
       title: BL.pokerIce.line("GENESIS VAULT", 0.213, "#e0f4ff", lite),
-      welcome: BL.pokerIce.line("BLOCK 0 · 03 JAN 2009", 0.095, "#b1d6ed", lite),
       stool: stool(), tealStool: stool("#28615c"), sofa: sofa(), armchair: armchair(), lowTable: lowTable(), highTop: highTop(),
       // Floor tiles (the floor module's six veined white seeds and two dark ones for the border).
       tiles: BL.pokerFloor.tiles(lite),
       column: K.column({ h: 8.8 }), palm: palm(), post: ropePost(), chandelier: chandelierFrame(), crystals: crystals(), ray: chandelierRay(),
       pinstripeGold: M.lathe({ segments: 64, profile: [[1, FELT_Y + 0.005], [0.993, FELT_Y + 0.005]], color: "#f2cf6e", emissive: 0.45 }),
-      cashier: BL.poolModels.carve("CASHIER", { cell: 0.12, color: "#ffe1a0", emissive: 1 })
+      cashier: BL.poolModels.carve("CASHIER", { joined:true, cell: 0.12, color: "#ffe1a0", emissive: 1 })
     };
     built.eras = [];
     built.instruments = BL.pokerEraTables.instrumentKit();
     for (const [key, felt, leather] of [
-      [0,"#204335","#392725"],[1,"#343933","#574538"],[2,"#173b5d","#29344b"],[3,"#484037","#42342d"],
+      [0,"#315442","#833639"],[1,"#343933","#574538"],[2,"#173b5d","#29344b"],[3,"#484037","#42342d"],
       [4,"#394b33",OXBLOOD],[5,"#5e3635","#5b3532"],[6,"#23484b","#574537"],
       [7,"#292d39","#201e28"],[8,"#1f5043","#3f4b38"],[9,"#324049","#353038"]
     ]) {
+      let art=BL.pokerEraTables.decoration(key,lite,built.chair), sign=BL.pokerEraTables.sign(key);
+      if(key===0){
+        art=M.merge(art,BL.pokerSatoshi.table(seatAngles,RAIL_A,RAIL_B,lite));
+        sign=M.merge(sign,BL.pokerSatoshi.signTrim());
+      }
       built.eras[key] = { felt:disk(1,FELT_Y-.02,FELT_Y,felt), rim:leather===OXBLOOD?built.rim:rail(leather),
-        art:K.staticMesh(BL.pokerEraTables.decoration(key,lite,built.chair)), sign:K.staticMesh(BL.pokerEraTables.sign(key)) };
+        art:K.staticMesh(art), sign:K.staticMesh(sign) };
     }
+    const founder=built.eras[0];
+    founder.felt=BL.pokerSatoshi.felt(founder.felt,lite,FELT_Y,"#315442");
+    founder.top=stoneTop("#74452d",lite ? .81 : 0);
+    built.satoshiBay=BL.pokerSatoshi.bay(lite);
     built.cashier.geometry.castShadow = false;
     // The evening hall's haze takes nothing off what glows: the crystals, the lanterns' lit glass and the cashier's
     // sign stay crisp down the hall.
@@ -451,9 +459,10 @@
     for (let i = 0; i < 10; i++) {
       const p = TABLES[i], group = S.createNode({ position: { x: p.x, y: 0, z: p.z } });
       const era = geo.eras[i];
-      const top = node(geo.stone); top.scale.x = TOP_A; top.scale.z = TOP_B;
+      const top = node(era.top || geo.stone); top.scale.x = TOP_A; top.scale.z = TOP_B;
       const rim = node(era.rim); rim.scale.x = 4.5 * TABLE_K; rim.scale.z = 2.92 * TABLE_K;
       const felt = node(era.felt); felt.scale.x = FELT_A; felt.scale.z = FELT_B;
+      if(lite && i===0){ top.depthBias=.52; felt.depthBias=.19; }
       const pinstripe = node(i === HIGH_ROLLER ? geo.pinstripeGold : geo.pinstripe); pinstripe.scale.x = 4.02 * TABLE_K; pinstripe.scale.z = 2.44 * TABLE_K;
       const base = node(geo.base);
       S.addChild(group, base, top, rim, felt, pinstripe);
@@ -489,7 +498,10 @@
     // chose; the hall animates only while its scene is active.
     const hall = BL.pokerHall.build(lite), statues = BL.pokerStatues.build(lite), floor = BL.pokerFloor.build(lite), vault = BL.pokerVault.build(lite);
     const glazing = BL.pokerGlazing.build(lite);
-    S.addChild(environment, node(geo.shell));
+    const satoshiBay=node(geo.satoshiBay,-BL.pokerGlazing.SIDE_X+.34,0,21.25);
+    satoshiBay.glow=1;
+    S.addChild(environment, node(geo.shell),satoshiBay);
+    for(const section of geo.bars) S.addChild(environment,node(section));
     for (const p of [...TABLES, ...GAMES]) S.addChild(fixtures, node(geo.shade, p.x, 0, p.z));
     S.addChild(environment, floor.root, vault.root, glazing.root);
     // A colonnade of round columns before the glass.
@@ -524,10 +536,9 @@
     // The gaming tables and their staff, on the set this room is built on.
     const games = BL.pokerGames.build(GAMES, { lite, dress: { jacket: geo.jacket, sleeve: geo.sleeve, cuff: geo.cuff }, scale: DEALER_SCALE });
     S.addChild(environment, games.root);
-    const gap = 0.22, signY = 6.4;
+    const signY = 6.4;
     S.addChild(environment, node(geo.vaultSign, 0, signY, -36.18),
-      node(geo.title.geometry, 0, signY + (geo.welcome.height + gap) / 2, -35.85),
-      node(geo.welcome.geometry, 0, signY - (geo.title.height + gap) / 2, -35.85));
+      node(geo.title.geometry, 0, signY, -35.85));
     return { root, updateInstruments, tables, fixtures, sparkle, rays, hall, statues, floor, vault, glazing, games };
   };
   // Banana Club's fittings as axis-aligned boxes (centre, half-extents) in room coordinates; the geometry is built from

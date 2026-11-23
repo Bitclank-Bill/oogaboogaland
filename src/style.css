@@ -13973,3 +13973,61 @@ body:has(.den-eyepiece[open]) #stage > :not(#scene) { visibility: hidden; }
 .den-portrait::backdrop { background: transparent; }
 .den-portrait a:not([hidden]) { display: inline-flex; align-items: center; min-height: 40px; padding: 0 .7em; color: #ffdea0; }
 body:has(.den-portrait[open]) #stage > :not(#scene) { visibility: hidden; }
+
+body:has(.lounge-heirloom[open]) #stage > :not(#scene) { visibility: hidden; }
+.lounge-heirloom { max-height: 80vh; overflow: auto; }
+.lounge-heirloom > :is(button, select, input, label) { display: block; margin: .6em 0; }
+.lounge-heirloom :is(button, select, input) { max-width: 100%; font: inherit; }
+.lounge-heirloom button { padding: .45em .8em; cursor: pointer; }
+.lounge-heirloom label input { display: block; margin-top: .4em; }
+@media (min-width: 900px) {
+  .lounge-heirloom { margin-right: 1.5rem; }
+}
+
+/* A continuous illustration above two typeset pages. Keep the controls in reach
+   when enlarged text or the final letter needs more height than the screen. */
+.lounge-heirloom:has(.jones-reader) {
+  box-sizing: border-box; inset: 0; margin: auto; width: 100%; height: 100dvh; max-width: none;
+  max-height: none; padding: 0; overflow: hidden; background: transparent; box-shadow: none; border: 0;
+}
+.lounge-heirloom:has(.jones-reader)::backdrop { background: rgba(13,10,8,.82); }
+.lounge-heirloom:has(.jones-reader) > :is(h2,button) { display: none; }
+.jones-reader {
+  --book-actions-bottom: calc(max(48px,var(--act-inset) - var(--home-chrome)) + var(--safe-bottom));
+  position: relative; height: 100%; display: grid; box-sizing: border-box;
+  grid-template-rows: minmax(0,1fr) auto; gap: 8px; padding: 12px 2vw var(--book-actions-bottom);
+}
+.jones-stage { display: flex; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; min-height: 0; }
+.jones-cover, .jones-spread { box-sizing: border-box; margin: auto; flex: none; border-radius: 3px; overflow: hidden; }
+.jones-cover { height: min(96vw,100%); aspect-ratio: 1; background: #94431c; }
+.jones-cover canvas, .jones-art { display: block; width: 100%; height: auto; }
+.jones-spread { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); position: relative; width: min(100%, 150dvh); text-align: left; background: #f6ead2; }
+.jones-spread::after { content: ""; pointer-events: none; position: absolute; inset: 0 auto 0 50%; width: 12px; transform: translateX(-50%); background: linear-gradient(90deg,transparent,#46342629 48%,#fff5d62b 52%,transparent); }
+.jones-spread > .jones-art { grid-column: 1 / -1; }
+.jones-page { box-sizing: border-box; padding: clamp(14px,2.2vw,29px); align-content: center; background: #f7eedb; }
+.jones-page p { font: clamp(18px,1.62vw,23px)/1.42 Georgia,serif; margin: 0; color: #30281e; white-space: pre-line; }
+.jones-page p + p { margin-top: .73em; }
+.jones-letter .jones-page:first-child { padding: clamp(16px,2.3vw,32px); }
+.jones-letter .jones-page p { font-size: clamp(17px,1.34vw,21px); }
+.jones-letter p:first-child, .jones-letter p:last-child { font-style: italic; font-size: 1.2em; }
+.jones-letter p:first-child, .jones-letter p:last-child { font-family: "Snell Roundhand","Segoe Print",Georgia,serif; }
+.jones-fold { position: absolute; top: 0; bottom: 0; left: 39%; width: 22%; background: linear-gradient(90deg,transparent,#60492444,#fff4d733,transparent); pointer-events: none; }
+.jones-letter p:nth-last-child(2) { color: #20483f; margin: 1.25em 0; }
+.jones-letter .jones-page:last-child { display: grid; align-content: center; padding: 0; background: #172f32; }
+.jones-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0; }
+.lounge-heirloom .jones-nav button { min-height: 44px; padding: 0 16px; font: inherit; font-weight: 600; }
+.jones-nav button:disabled { opacity: .45; cursor: default; }
+.lounge-heirloom .jones-return { position: absolute; top: max(10px,env(safe-area-inset-top)); right: max(10px,env(safe-area-inset-right)); width: 42px; height: 42px; margin: 0; padding: 0; background-color: #39291d; }
+.jones-location { min-width: 6em; color: var(--paper); text-align: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .jones-reader:has(.jones-spread) { padding-top: calc(54px + env(safe-area-inset-top)); }
+  .jones-page { padding: 12px; }
+  .jones-page p { font-size: 17px; }
+  .jones-letter { display: block; }
+  .jones-letter::after { display: none; }
+  .jones-letter .jones-page:first-child { padding: 21px; }
+  .jones-letter .jones-page p { font-size: 18px; }
+  .jones-nav { gap: 2px; }
+  .jones-location { min-width: 5.4em; font-size: 14px; }
+  .jones-reader button { font-size: 14px; }
+}
