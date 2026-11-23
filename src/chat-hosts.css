@@ -28,15 +28,12 @@
 .hc-invite strong { color: var(--accent-text); font-size: 12px; }
 .hc-invite-go, .hc-start-go { display: flex; flex-wrap: wrap; gap: 8px; }
 .panel[data-space="on"] .cloud-face { cursor: pointer; }
-/* A host's or co-host's badge under the portrait, and a microphone over it for an open request (audience-tiles.js
-   `data-rank`, `data-request`). */
-.cloud-tile:is([data-rank="host"], [data-rank="cohost"]) .cloud-face::after,
+/* A microphone over the portrait for an open request (audience-tiles.js `data-request`); a host's or co-host's rank is
+   the label under the name, not a badge. */
 .cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before {
   position: absolute; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid var(--wood-edge);
   border-radius: 8px; background: var(--plank); color: var(--paper); font-size: 8px; font-weight: 700; letter-spacing: 0.04em; line-height: 1;
 }
-.cloud-tile[data-rank="host"] .cloud-face::after { content: "Host"; left: 50%; bottom: -8px; translate: -50% 0; }
-.cloud-tile[data-rank="cohost"] .cloud-face::after { content: "Co"; left: 50%; bottom: -8px; translate: -50% 0; }
 .cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before { content: "\1F399\FE0F"; top: -5px; right: -7px; z-index: 1; font-size: 9px; background: var(--accent); }
 .cloud-tile[data-request="invited"] .cloud-face::before { background: #22c55e; }
 .hc-pop, .hc-start, .hc-preview {
