@@ -270,7 +270,9 @@ Agreed 2026-11-23:
 - **The live island view** uses the game's own renderer and models, loaded only when someone turns Live view on.
 - **Ooga Chat's first-load limit** may rise to 256 KB gzipped.
 - **Clouds:** every speaker not walking the copy sits on a cloud in it, a seat each, 32 seats: Ooga Chat's, and the
-  island's whose Ooga is still on the main land. A speaker with no Ooga (an X account) has no cloud.
+  island's whose Ooga is still on the main land. A speaker with no Ooga of their own (an X account, or a GitHub account
+  with no character) sits there as a default Ooga hashed from their handle, under a name no login can have (as
+  `kortik/factory` is), so it never borrows a real contributor's look; their ring is purple as every cloud speaker's is.
 
 **The island view** (agreed 2026-11-22, built in the second PR): at the top of a chat, for every OC speaker and listener
 tuned into it, a zoomed-out view of the chat's copy of its zone, shown only while at least one of the chat's speakers
