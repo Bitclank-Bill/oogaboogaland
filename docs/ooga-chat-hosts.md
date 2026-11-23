@@ -66,7 +66,10 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 - The host and co-hosts see a **Requests N** chip in the chat's title; it opens the queue in the panel's own flow under
   the chat's bar (pushing the roster down, never covering it, and scrolling itself in a short panel), oldest first, each row with
   Approve and Decline. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
-  Invite to speak, Mute, Move to listener, Make co-host, Remove co-host, Remove from chat.
+  Invite to speak, Mute, Move to listener, Make co-host (dimmed with "All 3 co-host slots are taken" while every slot is
+  held), Withdraw co-host invitation, Make speaker (a co-host on stage; Make listener off it), Make host, Remove from chat.
+  A tile holding an offer carries a star badge and reads "invited to co-host". The person offered gets a card, **The
+  host invited you to co-host** (**You left the stage. Rejoin as co-host?** when it came back), with Accept and Not now.
 - **Approve, or invite** a listener directly: the listener gets an invite card, **A host invited you to speak**, with
   Start speaking and Not now. Start speaking asks for the microphone (inside the press, as Safari needs) and puts them
   on stage muted. Nobody is put on stage without their own press. An invite lapses after 60 s, and the person goes back
@@ -132,7 +135,9 @@ in the second PR inside each chat's copy.
 | declined | the requester | the footer goes back to Request to speak; a quiet note "Your request wasn't accepted" |
 | muted by a host | the speaker | a toast "A host muted you" |
 | moved to listening | the speaker | a toast "A host moved you to listening" |
-| made or no longer co-host | that person | a toast; the role badge on their tile |
+| offered co-hosting | that person | the co-host card, focused |
+| accepted or turned down co-hosting | hosts and co-hosts; the host | "bea is co-host now"; "bea said not now to co-hosting" |
+| offer withdrawn, or co-host taken back | that person | "The host withdrew the co-host invitation"; "You're no longer a co-host" |
 | host handed over | everyone | the badge moves; a toast for the new host |
 | removed from the chat | that person | "A host removed you from this chat", back to the list |
 | the chat ended | everyone in it | "The chat ended", back to the list |
