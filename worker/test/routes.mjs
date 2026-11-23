@@ -43,7 +43,7 @@ anthropic = class { constructor() { throw new Error("Unexpected Claude call"); }
     catalogFor: () => catalog || ({ read: async () => ({ revision: "fixture", generation: 0, rows: cast }), fresh: () => true }),
     createOwnedCharacterLookup: (rows) => createOwnedCharacterLookup(rows, lookup) }, ["contributorFor", "contributorForEnv", "contributorDecision"]);
   const http = load("http", { ...cookies, ...db, ...access, oogatron }, ["json", "text", "redirect", "fromSite", "safeNext",
-    "clientIp", "allowed", "sessionToken", "getSessionFromRequest", "getSessionForRemoval", "readBody"]);
+    "clientIp", "allowed", "sessionToken", "getSessionFromRequest", "getSessionForRemoval", "readBody", "serviceSession", "asPlayer"]);
   const auth = load("auth", { ...cookies, ...crypto, ...db, ...http, ...access, oogatron, revokeChats, fetch: fetcher }, ["handleAuth"]);
   const api = load("api", { ...cookies, ...db, ...http, ...equipmentModel, turnConfigured, GAME_KINDS, revokeChats }, ["handleApi"]);
   const equipment = load("equipment", { ...http, ...crypto, ...equipmentModel, equipmentHatArchive, equipmentHats, equipmentWardrobe }, ["handleEquipment", "handleEquipmentCatalog", "handleEquipmentHat", "handleWardrobeCatalog", "createEquipmentHandler"]);

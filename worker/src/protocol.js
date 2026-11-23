@@ -13,6 +13,8 @@ import { audienceRoom, overhearing } from "./room-audience.js";
 export { audienceRoom, overhearing };
 import { commonsRoom } from "./room-commons.js";
 export { commonsRoom };
+// A hosted chat's copy of its zone, and the island's side of a trip there (room-copy.js).
+export { copyRoom, COPY_FEATURE, COPY_MESSAGES } from "./room-copy.js";
 export { roomCatalog } from "./room-catalog.js";
 export { equipmentRoom } from "./equipment-room.js";
 // The island's bridge switches, for the Room's `call-v1` (hosted chats, docs/ooga-chat-hosts.md).
