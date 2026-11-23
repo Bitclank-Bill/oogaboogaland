@@ -711,6 +711,7 @@ export class Room extends DurableObject {
     if (this.inspect.on) this.inspect.event("join", p, { replaced: !!older });
     this.welcome(p, false);
     this.broadcast({ t: "join", p: this.view(p) }, server);
+    chatMembersRoom.players(this);
     if (this.env.EQUIPMENT_ENABLED === "1") equipmentRoom.changed(this, p);
     this.sendStudio(p);
     this.updateVoice();
@@ -1231,7 +1232,7 @@ export class Room extends DurableObject {
       if (held) held.passes.set(p.id, Date.now() + PIN_PASS_MS);
       this.freeEmptyRoom(lockedIn);
     });
-    step("leave", () => this.broadcast({ t: "leave", id: p.id, reason }));
+    step("leave", () => { this.broadcast({ t: "leave", id: p.id, reason }); chatMembersRoom.players(this); });
     step("host", () => this.electHost());
     step("voices", () => this.updateVoice());
     if (!this.players.size && this.flushTimer) {
@@ -1714,7 +1715,7 @@ export class Room extends DurableObject {
   }
 
   // A hosted chat's members now (audience.js `reportMembers`), an empty list as it ends: every page's Online Oogas hears.
-  chatMembers(chat, title, speakers, listeners, app) { return chatMembersRoom.update(this, chat, title, speakers, listeners, app); }
+  chatMembers(chat, title, speakers, listeners, ids) { return chatMembersRoom.update(this, chat, title, speakers, listeners, ids); }
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }

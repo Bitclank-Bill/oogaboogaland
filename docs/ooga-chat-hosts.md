@@ -131,25 +131,27 @@ going live while a chat holds the stage ends the lease there (`yieldVoice`), so 
 there**, which takes the visitor's Ooga into the chat's copy of its zone.
 
 **Who the island sees in chats.** Each chat tells the island room its title and counts as they change (the Room's RPC
-`chatMembers(chat, title, speakers, listeners, app)`, from `reportMembers` in `audience.js`, `summaryOf`): how many of
+`chatMembers(chat, title, speakers, listeners, ids)`, from `reportMembers` in `audience.js`, `summaryOf`): how many of
 its rows, a quiet hold's included, speak (its host and co-hosts always, on the stage or not, as its preview and the
-Chats list count them; `tally`) and how many listen, and how many of them are there through Ooga Chat's app
-(`app`: a row whose connections are none of them the island page's own `ob_` principal, `via` "app"), never an id or a
-name. A report goes at most every 2 s a chat, one in flight, a one-shot timer sending a burst's last change and nothing
+Chats list count them; `tally`) and how many listen, and which accounts are there through Ooga Chat's app by id
+(`ids`, at most 500: a row whose connections are none of them the island page's own `ob_` principal, `via` "app"), never
+a name. A report goes at most every 2 s a chat, one in flight, a one-shot timer sending a burst's last change and nothing
 while the counts are what the room was told; a report that fails goes again with the next change. As the chat ends it
 sends zeros, kept in its storage (`membersGone`) and sent again from its alarm until the room takes them. The room
-(`room-chat-members.js`) keeps each chat's title and counts, and nothing else, in memory and in storage (`chatMembers`,
+(`room-chat-members.js`) keeps each chat's title, counts and app ids, and nothing else, in memory and in storage (`chatMembers`,
 so a hibernation wake keeps them; an entry stored with names by an earlier version keeps only its counts), replaces
 them on each report and drops the chat when nobody is in it, and at the sweep it already runs while players are
 connected drops any chat the directory no longer lists, adding no timer. Pages hear it only where the welcome lists
 `chat-summary-v1` (on with the `chats` switch, beside `call-v1`): the welcome carries every chat's (`chatSummaries`)
-and each change goes to every page as `{ t: "chat-summary", chat, title, speakers, listeners, app }`, all zero when it
-ends. The page (`net.js` `state.chatMembers`, chat id to a frozen `{ title, speakers, listeners, app }`, emptied with
-the socket) lists in In Ooga Chat one button a chat (`players.js`): its title, whole and wrapping, and its counts under
+and each change goes to every page as `{ t: "chat-summary", chat, title, speakers, listeners }`, all zero when it
+ends; no page ever gets an id. The room also works out one number, how many are in chats through the app and not on the
+island, each account once however many chats it is in, again whenever a chat reports or a player joins or leaves, and
+sends it when it moves (`{ t: "chat-online", n }`, the welcome's `chatOnline`). The page (`net.js` `state.chatMembers`,
+chat id to a frozen `{ title, speakers, listeners }`, and `state.chatOnline`, emptied with the socket) lists in In Ooga Chat one button a chat (`players.js`): its title, whole and wrapping, and its counts under
 it ("3 speaking · 12 listening", a count of nobody left out: "1 speaking" while nobody listens; a chat always has its
 host as a speaker), "You're in
-this chat" on the one the visitor is in, busiest first and then by title. Every "N online" on the island adds each
-chat's `app` count (`cloud-panel.js` `inChats`), its own players in a chat being counted already. A chat pressed
+this chat" on the one the visitor is in, busiest first and then by title. Every "N online" on the island adds the room's
+number (`cloud-panel.js` `inChats`), so nobody is counted twice. A chat pressed
 (`cloud-panel.js` `preview`) asks the live list (`/api/chats`), says **That chat has ended** if it is no longer listed,
 and otherwise opens the chat's preview, the same pop-up the Chats list opens (`chat-hosts.js` `preview`, standing in
 the page's body while the Ooga Chat tab is hidden): its stage, its counts, the Open stage tag, **Join as listener** and

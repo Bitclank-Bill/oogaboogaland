@@ -189,14 +189,9 @@
     }
     return out;
   };
-  // How many are in hosted chats through Ooga Chat's app (net.js `state.chatMembers`' `app`), for every "N online": the
-  // island's own in a chat are its players already.
-  const inChats = () => {
-    const s = net.state;
-    let n = 0;
-    if (s.room === "live" && s.chatMembers) for (const chat of s.chatMembers.values()) n += chat.app;
-    return n;
-  };
+  // How many are in hosted chats through Ooga Chat's app and not on the island, each once (the room's `state.chatOnline`),
+  // for every "N online": the island's own in a chat are its players already.
+  const inChats = () => (net.state.room === "live" ? net.state.chatOnline || 0 : 0);
   // The roster changed: every place that lists or counts its listeners hears it.
   const listenersChanged = () => {
     if (BL.players) BL.players.refresh();
