@@ -21,6 +21,7 @@
 .hc-chats-status { margin: 0; color: rgba(243, 239, 228, 0.7); font-size: 11px; }
 .hc-chats-status .link[hidden] { display: none; }
 .hc-room-bar { flex: none; font-size: 12px; font-weight: 700; color: var(--paper); }
+.hc-dock { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 .hc-chat-notice { flex: none; margin: 0; color: var(--accent-text); font-size: 11px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
 .hc-chat-notice:empty { display: none; }
 .hc-invite { display: grid; flex: none; gap: 6px; padding: 10px 12px; color: var(--paper); font-size: 11px; }
@@ -120,3 +121,8 @@
   .panel[data-space="on"] .cloud-foot .foot-button { order: 2; flex: 1 1 auto; min-width: 0; padding: 0 6px; letter-spacing: 0.04em; }
   .panel[data-space="on"] .cloud-foot > :not(.cloud-foot-name, .cloud-foot-actions) { order: 3; }
 }
+
+/* The Requests panel in the panel's flow under the chat's bar (chat-hosts.js `dock`): it pushes the roster down, never
+   covers it, and scrolls itself when long. Placed last so it wins over the floating pop-up's phone sheet. */
+.hc-pop.hc-docked { position: static; z-index: auto; width: auto; max-width: none; margin: 6px 0 0; padding: 0; inset: auto; }
+.hc-pop.hc-docked .hc-pop-slab { max-height: min(40vh, 320px); overflow-y: auto; }

@@ -56,7 +56,8 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 
 - A listener's footer reads **Request to speak** where it read Join Voice; pressed, it reads **Requested · Cancel**.
   A requester's tile carries a small microphone badge. The raised hand keeps its meaning for speakers only.
-- The host and co-hosts see a **Requests N** chip in the chat's title; it opens the queue, oldest first, each row with
+- The host and co-hosts see a **Requests N** chip in the chat's title; it opens the queue in the panel's own flow under
+  the chat's bar (pushing the roster down, never covering it, and scrolling itself in a short panel), oldest first, each row with
   Approve and Decline. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
   Invite to speak, Mute, Move to listener, Make co-host, Remove co-host, Remove from chat.
 - **Approve, or invite** a listener directly: the listener gets an invite card, **A host invited you to speak**, with
