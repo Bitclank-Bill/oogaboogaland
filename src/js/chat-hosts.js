@@ -8,7 +8,9 @@
 // fields), hear(fn) }`; `joinVoice()` its Join Voice, called inside Start speaking's press; `faceOf(character)` a
 // portrait's address; `startZone()` the zone Start a chat chooses first; `toast(text)` the page's own announced toast,
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
-// whether Request to speak reads Speak now on an open stage. `update(state)` takes the page's state in Ooga Chat's
+// whether Request to speak reads Speak now on an open stage; `goThere`, the island's alone (chat-copy.js), `{ state(room),
+// press(), subscribe(fn) }`: the footer's Go there (Leave while on the chat's island), `state` its `{ label, words,
+// disabled, title }` or null for none. `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order). It adds:
 // - the Chats list (shown while no chat is chosen): the live chats as the server orders them, busiest first, a list of
@@ -217,7 +219,7 @@
   };
 
   const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "main", toast = null, shown = () => !node.closest("[hidden]"),
-    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false }) => {
+    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null }) => {
     const listeners = new AbortController(), { signal } = listeners;
     let state = null, room = null, me = null, rank = "", people = [], timer = 0, shownTimer = 0, askedTimer = 0, askedAt = -Infinity;
     // `asked` the burst's ids, `askedNames` each one's name as it asked (they may have gone by the time it is said).
@@ -317,7 +319,7 @@
     const previewTiles = BL.audienceTiles.create(previewStage);
     const previewDescribe = (p, t) => {
       const speaker = p.role === "speaker", look = speaker ? p.muted ? "muted" : "on" : "";
-      t.id = p.id; t.display = p.display; t.role = p.role; t.source = "chat"; t.chat = true; t.self = p.id === me;
+      t.id = p.id; t.display = p.display; t.role = p.role; t.source = "chat"; t.chat = true; t.self = p.id === me; t.walking = p.role === "speaker" && !!p.walking;
       t.face = rowFace(p); t.hand = p.hand || ""; t.look = look; t.micPressed = false; t.micDisabled = true;
       t.micWords = speaker ? `${p.display}: ${p.muted ? "Muted their microphone" : "In voice"}` : ""; t.rank = p.rank || ""; t.request = "";
     };
@@ -416,7 +418,12 @@
       paint();
     }, { signal });
     leave.addEventListener("click", () => chats.leave(), { signal });
-    foot.join.after(ask, end, leave);
+    // Go there: the speaker's own Ooga onto the chat's island and back (the island's page alone).
+    const goTo = button("foot-button hc-go", "Go there");
+    goTo.hidden = true;
+    if (goThere) goTo.addEventListener("click", (e) => { if (e.detail) goTo.blur(); goThere.press(); }, { signal });
+    const offGo = goThere ? goThere.subscribe(() => paint()) : () => {};
+    foot.join.after(goTo, ask, end, leave);
 
     // --- pop-ups: a tile's menu, the queue, a confirmation ---
     const pop = make("div", "hc-pop");
@@ -559,6 +566,14 @@
       attr(ask, "aria-pressed", String(you.request === "asked"));
       end.hidden = !r || you.rank !== "host";
       leave.hidden = !r;
+      const g = goThere && r ? goThere.state(r) : null;
+      goTo.hidden = !g;
+      if (g) {
+        set(goTo, "textContent", g.label);
+        set(goTo, "disabled", g.disabled);
+        set(goTo, "title", g.title);
+        attr(goTo, "aria-label", g.disabled && g.title ? `${g.words}: ${g.title}` : g.words);
+      }
       const manager = !!LEVEL[you.rank];
       requests.hidden = !r || !manager;
       if (manager) set(requests, "textContent", `Requests ${queue().length}`);
@@ -636,8 +651,9 @@
       clearInterval(previewTimer);
       previewTiles.dispose();
       off();
+      offGo();
       space.setMenu(null);
-      for (const el of [bar, notice, list, strip, invite, pop, ask, end, leave, requests, starter.node, preview]) el.remove();
+      for (const el of [bar, notice, list, strip, invite, pop, goTo, ask, end, leave, requests, starter.node, preview]) el.remove();
     };
     return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), dispose };
   };

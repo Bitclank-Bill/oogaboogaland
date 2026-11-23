@@ -29465,11 +29465,113 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
   record(`island hosted chats${phone ? " (390 px)" : ""}: the cloud tab lists the chats, previews one's stage before joining, starts one from the dialog with the Ooga's zone chosen, runs its queue, open stage and tile menu as host, removes someone and lets them back, and ends it, with the Requests chip right of the zone tag and the roster in the chat's order; joining as a listener, as a speaker on a closed stage (asking, then the invite card) and on an open one (straight to speaking), the room told of the call and every pop-up on screen and in the pad's layers`,
     Object.values(ok).every(Boolean), JSON.stringify({ ok, list, dialog, hosting, opened, queue, menu, preview: preview.preview, joined, requested, invited, speaking, openSpeaking, left }));
 } });
+// Rule (docs/ooga-chat-hosts.md, "Open for the second PR"; chat-copy.js): a speaker in a Main Island chat walks their
+// own Ooga to the chat's copy and back. The page is a file, which never connects by itself, so its own net.js is handed
+// an account and a fake socket here: Go there tells the island `travel`, closes it clean and opens the chat's
+// `/api/chats/<id>/world`; on the copy's welcome the Ooga stands beside the pile with every NPC and gorilla put away,
+// every open cave mouth sealed and the island's own Join voice out of sight; the copy's clouds seat its speakers a bench
+// at a time on clouds that never fly under the treetops; Leave, and a kick from the copy, bring it back to exactly the
+// spot it left with the island as it was. Saved to untracked/obl-copies.
+const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "hosted chat copy", why: "rule: a chat's speakers walk their own Oogas into the chat's copy of Main Island and back, the island's NPCs and doors put away while they are there", run: async (b) => {
+  const shots = join(root, "untracked", "obl-copies"), w = phone ? 390 : 1280;
+  mkdirSync(shots, { recursive: true });
+  await b.evaluate(`(() => {
+    const F = window.__copyFixture = { sockets: [] };
+    window.WebSocket = class { static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+      constructor(url) { this.url = url; this.readyState = 1; this.sent = []; F.sockets.push(this); } send(v) { this.sent.push(v); } close(code) { this.readyState = 3; this.closeCode = code; } };
+    F.welcome = (i, extra) => F.sockets[i] && F.sockets[i].onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), players: [], ...extra }) });
+    F.say = (i, msg) => F.sockets[i] && F.sockets[i].onmessage({ data: JSON.stringify(msg) });
+    BL.net.state.me = { id: 71, login: "w-s-bitcoin", display: "w-s-bitcoin" };
+    BL.net.state.backend = true;
+    BL.net.rejoin();
+    F.welcome(0, { features: ["call-v1", "travel-v1", "react-v1"] });
+  })()`);
+  const now = () => b.evaluate(`(() => { const g = document.querySelector(".hc-go"), H = BL.scenes.hub.debug, cave = __ooga.pilot.player, p = cave && cave.root.position;
+    const others = __ooga.crew.list.filter((c) => c !== __ooga.crew.player);
+    return { go: g && !g.hidden ? { text: g.textContent, disabled: g.disabled, title: g.title } : null, phase: BL.chatCopy.phase, chat: BL.chatCall.room ? BL.chatCall.room.id : "",
+      sockets: __copyFixture.sockets.map((s) => ({ url: s.url, closed: s.closeCode || 0, travel: s.sent.filter((m) => m === '{"t":"travel"}').length })),
+      on: H.copy.on, seals: H.copy.seals, at: p ? [p.x, p.y - cave.baseY, p.z] : null, shown: !!cave && cave.root.visible, npcs: others.filter((c) => c.root.visible).length,
+      gorillas: __ooga.clankers.list.filter((e) => e.root.visible).length, voice: !document.getElementById("account-voice").hidden, target: BL.net.state.target,
+      benches: H.copy.benches, treetop: H.copy.treetop }; })()`);
+  const until = async (test, ms = 15000) => { let at; for (let t = 0; t < ms && !test(at = await now()); t += 150) await b.sleep(150); return at; };
+  const click = (selector) => b.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  await b.evaluate(`document.getElementById("cloud-tab").click()`);
+  await b.sleep(600);
+  await click(".hc-chats-head .foot-primary");
+  await b.sleep(300);
+  await click('.hc-start button[type="submit"]');
+  const ready = await until((s) => !!s.go && !s.go.disabled);
+  const fits = await b.evaluate(`(() => { const g = document.querySelector(".hc-go"); g.scrollIntoView({ block: "nearest" }); const r = g.getBoundingClientRect(), row = g.parentElement.getBoundingClientRect();
+    return r.width > 0 && r.left >= row.left - 1 && r.right <= row.right + 1 && r.right <= innerWidth + 1 && document.documentElement.scrollWidth <= innerWidth + 1; })()`);
+  await b.sleep(200);
+  await b.screenshot(join(shots, `go-there-${w}.png`));
+  const home = ready.at, chat = ready.chat;
+  // The beams draw nothing under reduced motion, which the suite emulates: shown for these pictures alone.
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  await click(".hc-go");
+  await b.sleep(330);
+  await b.screenshot(join(shots, `beam-out-${w}.png`));
+  const gone = await until((s) => s.sockets.length === 2);
+  await b.evaluate(`__copyFixture.welcome(1, { features: ["call-v1", "copy-v1", "cloud-seats-v2", "react-v1"], copy: { chat: ${JSON.stringify(chat)}, zone: "main" } })`);
+  await b.sleep(300);
+  await b.screenshot(join(shots, `beam-in-${w}.png`));
+  const there = await until((s) => s.phase === "there");
+  await b.sleep(400);
+  await b.screenshot(join(shots, `copy-pile-${w}.png`));
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  // From the Ooga's own eyes, a sealed cave mouth, then the speakers on the copy's clouds.
+  await b.evaluate(`__ooga.pilot.enterClose()`);
+  const mouth = await b.evaluate(`(() => { const p = __ooga.pilot.player.root.position, ms = BL.scenes.hub.debug.copy.mouths();
+    return ms.find((m) => m.id === "c3") || ms[0]; })()`);
+  await b.evaluate(`BL.pilot.turnToward(${mouth.x}, ${mouth.floor + 1.5}, ${mouth.z})`);
+  await b.sleep(1600);
+  await b.screenshot(join(shots, `copy-sealed-${w}.png`));
+  // Every open mouth is a wall in the copy; open ground is not.
+  const barred = await b.evaluate(`(() => { const C = BL.scenes.hub.debug.copy;
+    return { mouths: C.mouths().map((m) => C.barred(m.x + m.sr * 3, m.z + m.cr * 3, m.x - m.sr, m.z - m.cr, m.floor)), open: C.barred(2, 1, 2.5, 1, 0) }; })()`);
+  // Seven speakers on the copy's clouds, one with no Ooga of their own: three benches, filled a bench at a time.
+  await b.evaluate(`(() => { const names = __ooga.crew.list.map((c) => c.traits.name).filter((n) => n !== "w-s-bitcoin").slice(0, 6);
+    const clouds = names.map((character, i) => ({ id: "gh:" + (1001 + i), character, zone: "main", seat: "main-cloud-" + (i + 1), seatRevision: "cloud-seats-v2", login: character, display: character, lease: 1, mic: "on" }));
+    clouds.push({ id: "x:5551", character: "guest/x-sample", zone: "main", seat: "main-cloud-7", seatRevision: "cloud-seats-v2", login: "sample", display: "Sample", lease: 1, mic: "on" });
+    __copyFixture.say(1, { t: "clouds", v: 1, revision: 1, clouds }); })()`);
+  await b.sleep(500);
+  const seated = await now();
+  const spot = await b.evaluate(`(() => { const o = { x: 0, y: 0, z: 0 }; return BL.scenes.hub.debug.copy.cloudSpot("x:5551", o) ? o : null; })()`);
+  if (spot) { await b.evaluate(`BL.pilot.turnToward(${spot.x}, ${spot.y + 1}, ${spot.z})`); await b.sleep(1600); }
+  await b.screenshot(join(shots, `copy-clouds-${w}.png`));
+  await b.evaluate(`__ooga.pilot.exitClose()`);
+  await click(".hc-go");
+  const back = await until((s) => s.phase === "idle" && s.sockets.length === 3);
+  await b.evaluate(`__copyFixture.welcome(2, { features: ["call-v1", "travel-v1", "react-v1"] })`);
+  await b.sleep(400);
+  await b.screenshot(join(shots, `home-${w}.png`));
+  // Again, sent home by the copy this time.
+  await until((s) => !!s.go && !s.go.disabled && s.go.text === "Go there");
+  await click(".hc-go");
+  await until((s) => s.sockets.length === 4);
+  await b.evaluate(`__copyFixture.welcome(3, { features: ["call-v1", "copy-v1", "react-v1"], copy: { chat: ${JSON.stringify(chat)}, zone: "main" } })`);
+  await until((s) => s.phase === "there");
+  await b.evaluate(`__copyFixture.say(3, { t: "kick", reason: "stage" })`);
+  const kicked = await until((s) => s.phase === "idle");
+  const near = (a, c) => !!a && !!c && Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]) < 0.05;
+  const ok = { ready: ready.go.text === "Go there" && ready.voice && ready.npcs > 0, fits,
+    went: gone.sockets[0].travel === 1 && gone.sockets[0].closed === 1000 && gone.sockets[1].url.endsWith(`/api/chats/${chat}/world`),
+    there: there.on && there.seals > 0 && there.npcs === 0 && there.gorillas === 0 && there.shown && !there.voice && Math.hypot(there.at[0], there.at[2]) < 9 && there.go.text === "Leave",
+    sealed: barred.mouths.length > 0 && barred.mouths.every(Boolean) && !barred.open,
+    clouds: seated.benches.length === 11 && seated.benches.slice(0, 3).every((c) => c.bench) && seated.benches.slice(3).every((c) => !c.bench)
+      && seated.benches.every((c) => c.bottom >= seated.treetop + 1.5 && c.radius === seated.benches[0].radius) && !!spot,
+    back: near(back.at, home) && !back.on && back.seals === 0 && back.npcs > 0 && back.sockets[1].closed === 1000 && back.sockets[2].url.endsWith("/room") && back.target === null && back.benches.length === 0,
+    kicked: near(kicked.at, home) && !kicked.on && kicked.npcs > 0 && kicked.sockets.length === 5 && kicked.sockets[4].url.endsWith("/room") && kicked.sockets[3].closed === 1000 };
+  record(`hosted chat copy${phone ? " (390 px)" : ""}: Go there in a Main Island chat's footer tells the island it is travelling, closes it clean and opens the chat's copy; there the Ooga stands by the pile with the NPCs, gorillas and island Join voice gone and every cave mouth sealed; the copy's speakers sit a bench at a time on clouds above the treetops; Leave and a kick from the copy bring the Ooga back to exactly where it stood with the island as it was`,
+    Object.values(ok).every(Boolean), JSON.stringify({ ok, ready, gone: gone.sockets, there, barred, seated: seated.benches, treetop: seated.treetop, spot, back, kicked, home }));
+} });
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
 // Tess's island tour taken already, so her first-visit offer stands over nothing these screenshots show.
 const TESS_TOURED = `try { localStorage.setItem("ooga-tess-tour", "1"); } catch {}`;
 scene("hub", { label: "hosted chats", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { initScript: TESS_TOURED }, steps: [hostedChatsIsland(false)] });
 scene("hub", { label: "hosted chats phone", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { ...PHONE_SIZE, initScript: TESS_TOURED }, steps: [hostedChatsIsland(true)] });
+scene("hub", { label: "chat copy", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { initScript: TESS_TOURED }, steps: [hostedChatCopy(false)] });
+scene("hub", { label: "chat copy phone", query: "chats=fixture&character=w-s-bitcoin&pos=0", opts: { ...PHONE_SIZE, initScript: TESS_TOURED }, steps: [hostedChatCopy(true)] });
 scene("hub", { label: "outdoor travel", query: "islandworld=0", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
 scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=0", steps: [{
   name: "walk-through totems: first-person overlap hides one carving and its effects, restores it on exit, and distant views keep all eye fires",
@@ -43191,6 +43293,51 @@ const audienceNetChecks = async BL => {
     !shut.sent && !shut.state && open.sent && !open.other && open.state && heard.join() === "snapshot" && frames.length === 1 && frames[0].t === "audience-view" && frames[0].v === 1 && frames[0].zone === "dsb" && !dropped,
     JSON.stringify({ shut, open, heard, frames, dropped }));
 };
+// Rule (docs/ooga-chat-hosts.md, "Open for the second PR"): a speaker's page goes to a chat's copy only from an island
+// that offers it, telling the island first and closing clean; the copy's welcome is taken only for the chat asked for;
+// any kick there takes the page home with its spot; the island's away list keeps travellers' Oogas; clouds there may
+// carry X accounts and default Oogas under a `guest/` name, never a slash anywhere else.
+const travelNetChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const at = (i) => f.sockets[i], message = (i, v) => at(i).onmessage({ data: JSON.stringify(v) });
+  const CHAT = "abcdefghij012345", home = { x: 3, y: 0, z: 4, yaw: 1, zone: "outside" }, pile = { x: 0, y: 0.4, z: 5, yaw: 0, zone: "outside" };
+  message(0, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [], away: [{ id: 9, character: "w-s-bitcoin" }] });
+  f.net.setBody("Tester");
+  const refused = f.net.travel({ chat: CHAT, home }, pile);
+  message(0, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "travel-v1"], players: [{ id: 5, login: "bea" }], away: [{ id: 9, character: "w-s-bitcoin" }, { id: 8, character: "bad/name" }] });
+  const island = { travel: f.net.state.travel, away: [...f.net.state.away].join() };
+  message(0, { t: "leave", id: 5, reason: "travel", character: "bea" });
+  message(0, { t: "away", id: 9, on: false });
+  const awayAfter = [...f.net.state.away].join();
+  const went = f.net.travel({ chat: CHAT, home }, pile);
+  const told = f.sent.filter((m) => m.t === "travel").length, closed = at(0).closeCode, url = at(1) && at(1).url;
+  message(1, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "copy-v1", "cloud-seats-v2"], copy: { chat: CHAT, zone: "main" }, players: [] });
+  const pose = f.sent.filter((m) => m.t === "pose").pop();
+  const there = { copy: f.net.state.copy && f.net.state.copy.chat, target: f.net.state.target, travel: f.net.state.travel, chats: f.net.state.chats, room: f.net.state.room, pose: pose && [pose.x, pose.z].join() };
+  message(1, { t: "clouds", v: 1, revision: 1, clouds: [
+    { id: "x:1234567890123456789", character: "guest/x-ann", zone: "main", seat: "main-cloud-32", login: "ann", display: "Ann" },
+    { id: "gh:77", character: "evil/../x", zone: "main", seat: "main-cloud-2" },
+    { id: "gh:78", character: "Tester", zone: "main", seat: "main-cloud-4", seatRevision: "cloud-seats-v2" }] });
+  const clouds = f.net.state.clouds.map((c) => `${c.id}:${c.character}:${c.seat}`).join();
+  const left = f.net.state.copyLeft;
+  message(1, { t: "kick", reason: "stage" });
+  const back = { url: at(2) && at(2).url, closed: at(1).closeCode, target: f.net.state.target, reason: f.net.state.copyReason, left: f.net.state.copyLeft - left, copy: f.net.state.copy };
+  message(2, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "travel-v1"], players: [] });
+  const homePose = f.sent.filter((m) => m.t === "pose").pop();
+  // A copy that never says it is one sends the page home at once.
+  f.net.travel({ chat: CHAT, home }, pile);
+  message(3, { t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1"], players: [] });
+  const fake = { url: at(4) && at(4).url, reason: f.net.state.copyReason };
+  f.net.dispose();
+  const ok = { refused: !refused, island: island.travel && island.away === "9,w-s-bitcoin", away: awayAfter === "5,bea", went: went && told === 1 && closed === 1000 && url === `wss://fixture.invalid/api/chats/${CHAT}/world`,
+    there: there.copy === CHAT && there.target === CHAT && !there.travel && there.chats && there.room === "live" && there.pose === "0,5",
+    clouds: clouds === "x:1234567890123456789:guest/x-ann:main-cloud-32,gh:78:Tester:main-cloud-4",
+    back: back.url === "wss://fixture.invalid/room" && back.closed === 1000 && back.target === null && back.reason === "stage" && back.left === 1 && back.copy === null && homePose && homePose.x === 3 && homePose.z === 4,
+    fake: fake.url === "wss://fixture.invalid/room" && fake.reason === "not-copy" };
+  record("hosted chats travel wire: a page goes to a chat's copy only from an island whose welcome lists travel-v1, telling it `travel` and closing clean, arrives standing where it was sent, takes the copy's welcome only for its own chat, seats X accounts and default Oogas under `guest/` names alone, and goes home to the spot it left on a kick or a welcome that names no copy; the island's away list follows travellers, a leave and a release",
+    Object.values(ok).every(Boolean), JSON.stringify({ ok, island, awayAfter, there, clouds, back, fake }));
+};
 // Rule (docs/ooga-chat-hosts.md, call-v1): a page in a hosted chat's voice says so only to a room whose welcome lists
 // call-v1, says it again after a reconnect's welcome, and marks the players the room says are in one.
 const callNetChecks = async BL => {
@@ -47593,6 +47740,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await audienceChecks(BL);
   await audienceNetChecks(BL);
   await callNetChecks(BL);
+  await travelNetChecks(BL);
   await cloudPanelChecks(BL);
   await privatePadChecks();
   await playersColumnChecks();

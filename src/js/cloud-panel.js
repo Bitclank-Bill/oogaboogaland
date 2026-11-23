@@ -100,7 +100,7 @@
     t.face = p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "";
     t.look = look; t.hand = p.hand || ""; t.micPressed = blocked; t.micDisabled = self && !own;
     t.micWords = speaker ? `${p.display}: ${BL.hud.voiceWords(look, self, blocked, p.login)}` : "";
-    t.rank = p.rank || ""; t.request = p.request || ""; t.chat = true;
+    t.rank = p.rank || ""; t.request = p.request || ""; t.chat = true; t.walking = speaker && !!p.walking;
   };
   let menu = null;
   const tiles = BL.audienceTiles.create(list, { menu: (...a) => menu?.(...a), mic(id) {
@@ -264,7 +264,9 @@
         joinVoice: () => calls.media.join(), faceOf: (c) => BL.characters.get(c) ? faceUrl(c) : "", startZone, toast: (text) => BL.hud.toast(text), shown: () => showing,
         // A preview's portraits as this panel draws a chat's: the Ooga, else the GitHub picture, never Ooga Chat's paths.
         rowFace: (p) => p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "",
-        speakNow: true });
+        speakNow: true,
+        // Go there: the speaker's own Ooga onto the chat's island (chat-copy.js), the island's page alone.
+        goThere: { state: (room) => BL.chatCopy.button(room), press: () => BL.chatCopy.toggle(), subscribe: BL.chatCopy.subscribe } });
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;

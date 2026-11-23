@@ -6,7 +6,7 @@
 // gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies. A snapshot is the
 // server's whole list, so one at the revision already held applies too: after a reconnect it confirms the list. A
 // speaker's `hand` is its raised hand or pinned emoji (#668), "" when down; a listener has none. A hosted chat's row may
-// carry a `rank` (`rankSince`), a `request` (`askedAt`), `since` and `via`, and is ordered by chat-hosts.js's `order`.
+// carry a `rank` (`rankSince`), a `request` (`askedAt`), `since`, `via` and `walking` (on the chat's island), and is ordered by chat-hosts.js's `order`.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -25,7 +25,9 @@
       character: typeof raw.character === "string" && /^[\w.-]{1,64}$/.test(raw.character) ? raw.character : null, contributions: raw.source === "world" ? count(raw.contributions) : null, muted: raw.muted === true,
       hand: raw.role === "speaker" && typeof raw.hand === "string" && raw.hand.length <= 16 && !/[\u0000-\u001f\u007f]/.test(raw.hand) ? raw.hand : "",
       rank: RANKS.includes(raw.rank) ? raw.rank : "", request: REQUESTS.includes(raw.request) ? raw.request : "", askedAt: raw.request && count(raw.askedAt) || 0,
-      rankSince: count(raw.rankSince) || 0, since: count(raw.since) || 0, via: VIA.includes(raw.via) ? raw.via : "" };
+      rankSince: count(raw.rankSince) || 0, since: count(raw.since) || 0, via: VIA.includes(raw.via) ? raw.via : "",
+      // A speaker walking the chat's island with their Ooga (its copy), ringed as one on the island is.
+      walking: raw.role === "speaker" && raw.walking === true };
   };
   const nameKey = (p) => p.login.toLowerCase();
   const byName = (a, b) => nameKey(a) < nameKey(b) ? -1 : nameKey(a) > nameKey(b) ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
