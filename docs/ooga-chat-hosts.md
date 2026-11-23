@@ -266,6 +266,10 @@ Agreed 2026-11-23:
   stream and into the copy beside the banana pile; Leave beams it back to exactly where it stood, as does leaving the
   stage or the chat.
 - **Size:** up to 32 Oogas, the speaker cap, and the island room's own.
+- **Voice in a chat has no place in it.** Every speaker in a chat is heard at full by everyone in it, wherever their
+  Ooga stands in the copy: no level or crossing blending (voice-blend.js) and no hearing range, which stay the main
+  land's alone. A chat's voice is the chat's own media (Ooga Chat's controller, chat-call.js on the island), never the
+  island's voice.js; the copy carries no voice and ignores the island's `blend` frames.
 - **The copy's server** is the island's own `Room` class in a copy mode, one object a chat (`chat:<id>`), with
   everything island-only off (NPCs, games, chalk, the World Map's report, island voice, the text chat) and a check
   pinning what a copy offers. Only the chat's current speakers are admitted, and leaving the stage, removal or the end
