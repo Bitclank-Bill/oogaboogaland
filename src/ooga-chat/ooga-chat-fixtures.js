@@ -25,7 +25,8 @@
 // on a feed opened for a chat (who outranks whom, the queue, invites, the stage, mute, removal, the end). Its sample hosts
 // answer as a host would, so a review sees every state: the visitor's request is approved 1.5 s after it is made, and a
 // microphone the visitor opens there is muted by the host 2.5 s later. A chat the visitor starts is theirs: two samples
-// join and ask to speak, a sample invited takes the stage a second later, and End chat ends it. Off (the default), the
+// join and ask to speak, a sample invited takes the stage a second later, and End chat ends it. Two of Sample Oak's
+// speakers walk the chat's island, so its island view shows: asked for (`view`), their places come twice a second. Off (the default), the
 // fixture offers no chats and behaves as before.
 (() => {
   "use strict";
@@ -211,8 +212,8 @@
     if (offered === "on") {
       // Listening and speaking from both apps (`via`), each here or on the stage since a different moment (`since`).
       const ago = (s) => now() - s * 1000;
-      room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker", { via: "island", since: ago(590) }),
-        member(2, "sample-fern", "speaker", { via: "app", since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, since: ago(300) }),
+      room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker", { via: "island", since: ago(590), walking: true }),
+        member(2, "sample-fern", "speaker", { via: "app", since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, since: ago(300), walking: true }),
         member(4, "sample-wren", "listener", { via: "island", since: ago(500) }), member(5, "sample-kite", "listener", { via: "app", since: ago(200) }),
         member(6, "sample-lark", "listener", { via: "app", since: ago(100) }), member(7, "sample-heron", "listener", { via: "island", since: ago(550) })],
       { host: "gh:9001", cohosts: ["gh:9002"], queue: [["gh:9004", now() - 30000], ["gh:9005", now() - 10000]], invites: [["gh:9006", now() + 60000]] });
@@ -285,6 +286,20 @@
       const r = chat ? rooms.get(chat) : null;
       let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false, requests = 0;
       let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0, activeAt = 0;
+      // The island view (`view`): while this connection asks, the chat's walkers' places twice a second, as the copy
+      // relays them (audience.js `walk`), each walking a ring round the island's middle.
+      let viewing = false, walkSeq = 0, chain = false;
+      const walkFrame = () => {
+        if (!viewing || !r) { chain = false; return; }
+        const p = [], t = now() / 1000;
+        r.cast.filter((w) => w.walking && w.role === "speaker").forEach((w, i) => {
+          const a = (t * (0.3 - i * 0.12) + i * 2.4) % (Math.PI * 2), reach = 8 + i * 10;
+          p.push(w.id, Math.round(Math.cos(a) * reach * 10) / 10, 0.4, Math.round(Math.sin(a) * reach * 10) / 10, Math.round(-a * 100) / 100);
+        });
+        walkSeq = Math.max(now(), walkSeq + 1);
+        if (p.length) message({ type: "walk", seq: walkSeq, p });
+        after(500, walkFrame);
+      };
       const joinedAt = now();
       const held = new Map();
       const contributor = () => !!account && account.identity.provider === "github" && account.eligibility.state === "eligible";
@@ -468,6 +483,7 @@
       };
       const join = () => {
         clear();
+        viewing = chain = false;
         status("connecting");
         if (roster === "full") return after(500, () => status("full"));
         if (r) return after(500, () => {
@@ -582,6 +598,12 @@
                 notice({ kind: "muted", by: r.host });
               });
               return message({ type: "result", requestId, ok: true, you: you() });
+            }
+            // The island view asked for or let go: no answer, as the server gives none.
+            if (type === "view") {
+              viewing = !!r && fields.on === true;
+              if (viewing && !chain) { chain = true; walkFrame(); }
+              return;
             }
             if (r && !["setRole", "setMic", "reaction", "hand"].includes(type)) return message({ type: "result", requestId, ...chatOp(type, fields), you: you() });
             if (type === "reaction" && me) {

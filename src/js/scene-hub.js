@@ -410,10 +410,15 @@
       clankers.setAway(true);
       npcStatusBeams?.clear();
       if (islandWorld) { islandWorld.dispose(); islandWorld = null; }
+      // Tess belongs to the island, not the chat's copy: put away (her offer and any tour ended) until the trip ends.
+      islandGuide.suspend();
+      islandGuide.root.visible = false;
       copyMask();
     } else {
       for (const [node, visible] of copyHidden) node.visible = visible;
       copyHidden.clear();
+      islandGuide.root.visible = true;
+      islandGuide.resume();
       clankers.setAway(gameMode);
       crew.refreshStates(true);
       if (!islandWorld) startIslandWorld();
@@ -6910,7 +6915,7 @@
     const o = hit.owner;
     switch (o.kind) {
       case "tess":
-        islandGuide.tap();
+        if (!copyOn) islandGuide.tap();
         break;
       case "caveman":
         crew.pokeCave(o.cave);
@@ -8567,7 +8572,7 @@
     if (!cloudPlaying()) timechainIsland.gate.view(dt);
     if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
-    if (!cloudHopper?.active && !architectCave?.active && !architectCave?.arriving) islandGuide.update(dt, elapsed);
+    if (!cloudHopper?.active && !architectCave?.active && !architectCave?.arriving && !copyOn) islandGuide.update(dt, elapsed);
     if (architectCave) {
       architectCave.update(dt); RENDER_OPTS.cameraFeeds = architectCave.active ? architectCave.renderFeeds : null;
       ARCHITECT_OPTS.viewRoots = architectCave.viewRoots;
@@ -13245,6 +13250,8 @@
     return false;
   };
   hubScene.beginCoaching = () => islandGuide.escape();
+  // The island the hub built, for the island view's Live view (island-view-live.js), which draws its ground again.
+  Object.defineProperty(hubScene, "liveIsland", { get: () => island || null });
   Object.defineProperty(hubScene, "coachingReady", { get: () => islandGuide?.coachingReady && !gameMode });
   Object.defineProperty(hubScene, "navigationReady", { get: () => !!islandGuide && !islandGuide.holding && !cloudHopper?.active && !factoryDeparting && !bifrostDeparting && !timechainIsland?.gate.busy });
   hubScene.controlsHelpHold = on => { clankerPlay?.cancelInput(); if (on) clankerPlay?.freeCursor(); cloudHopper?.controlsHelpHold(on); pilot.controls.reset(); pilot.setMenuOpen(on, false); };
