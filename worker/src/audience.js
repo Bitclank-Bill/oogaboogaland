@@ -45,6 +45,8 @@ export const CHAT_ID = /^[A-Za-z0-9_-]{16}$/;
 export const CHAT_TITLE_MAX = 60;
 // How soon a word the island room missed (a chat's stage taken or left) is sent again.
 export const ISLAND_RETRY_MS = 30 * 1000;
+// A chat speaker's, host's or co-host's drop shorter than this shows nobody anything (audience-model.js, quiet hold).
+export const QUIET_MS = 20 * 1000;
 export const chatName = (id) => `chat:${id}`;
 // A chat's land: a zone it is held in (`main`, `dsb`), or `none`, Ooga Chat voice alone, with no copy, clouds or Go
 // there. A land-less chat's roster lives in the model's `main` zone, which is what its socket's frames name.
@@ -132,7 +134,8 @@ export class Audience extends DurableObject {
     this.chat = null;
     this.roles = null;
     this.listedSig = "";
-    // Words for the island room it has not yet taken (`tellIsland`), account -> on stage.
+    // Words for the island room it has not yet taken (`tellIsland`), account -> { on, chat }: kept past the chat's end, so
+    // a word lost as it ended still reaches the Room.
     this.islandWords = new Map();
     this.sfuFails = [];
     this.sfuOkAt = 0;
@@ -156,12 +159,15 @@ export class Audience extends DurableObject {
       if (chat) {
         this.chat = chat;
         this.roles = createRoles({ saved: await ctx.storage.get("roles") });
-        this.islandWords = new Map((await ctx.storage.get("islandWords")) || []);
       }
+      // An older save's words are a bare `on` for the chat it held.
+      this.islandWords = new Map(((await ctx.storage.get("islandWords")) || []).map(([id, w]) => [id, typeof w === "boolean" ? { on: w, chat: chat && chat.id } : w])
+        .filter(([, w]) => w && CHAT_ID.test(w.chat || "")));
       // The model reads these limits as it goes: a chat opened later raises them to a chat's own (`open`).
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
-        standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat });
+        standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat,
+        reserved: () => this.roles ? this.roles.held(Date.now()) : [] });
       this.island = (await ctx.storage.get("world")) || this.island;
       if (!Array.isArray(this.island.linked)) this.island = { ...this.island, linked: [] };
       this.watching = new Set((await ctx.storage.get("watch")) || []);
@@ -175,6 +181,8 @@ export class Audience extends DurableObject {
         if (this.model.connect(a.conn, a.info, true).ok) this.sockets.set(a.conn.connId, ws);
       }
       for (const c of this.model.conns.values()) if (c.lease) this.holders.set(c.id, c.connId);
+      // Quiet holds of a chat, as they stood when the object last stopped: their rows are what clients hold.
+      if (this.chat) this.model.restoreQuiet((await ctx.storage.get("quiet")) || []);
       this.model.setWorld(this.island.speakers, this.island.active);
       this.model.commit();
       for (const zone of ZONES) this.model.zones[zone].rev = meta.revs && Number.isSafeInteger(meta.revs[zone]) ? meta.revs[zone] : 0;
@@ -448,7 +456,7 @@ export class Audience extends DurableObject {
     }
     // Media cleanup retries even after every client has gone; a chat wakes for a lapsing invite or its held host.
     next = Math.min(next, this.media.nextCleanup());
-    if (this.roles) next = Math.min(next, this.roles.nextAt());
+    if (this.roles) next = Math.min(next, this.roles.nextAt(), this.model.quietUntil());
     if (this.islandWords.size) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
     if (next === Infinity) return;
     const current = await this.ctx.storage.getAlarm();
@@ -458,7 +466,8 @@ export class Audience extends DurableObject {
   async alarm() {
     const now = Date.now();
     if (this.roles && !this.roles.ended) await this.rolesTick(now);
-    for (const [id, on] of [...this.islandWords]) await this.sendIsland(id, on);
+    if (this.model.expire(now).length) await this.saveQuiet();
+    for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
     for (const c of [...this.model.conns.values()]) {
       if (c.authUntil <= now) { this.close(c.connId, CLOSE.auth, "auth_required"); continue; }
       if (c.lease && c.lease.state === "pending" && c.lease.until <= now) {
@@ -525,12 +534,17 @@ export class Audience extends DurableObject {
     this.inspect.count(code === CLOSE.auth ? "closeAuth" : code === CLOSE.full ? "closeFull" : code === CLOSE.protocol ? "closeProtocol" : code === CLOSE.off ? "closeOff"
       // A connection its own page replaced is a socket that went, not a bad one.
       : code === CLOSE.replaced ? "gone" : "closeBad");
-    this.drop(connId);
+    // A page back from a dropped socket replacing its old one: what everyone sees stands while it speaks again.
+    this.drop(connId, code === CLOSE.replaced);
     if (ws) { try { ws.serializeAttachment(null); ws.close(code, reason); } catch { /* already closed */ } }
   }
 
-  drop(connId) {
-    const c = this.model.disconnect(connId);
+  /** A connection goes. `quiet`: it dropped rather than left, so a chat speaker's or manager's row stands a while. */
+  drop(connId, quiet = false) {
+    const was = this.model.conns.get(connId), R = this.roles;
+    const hold = quiet && was && R && !R.ended && !R.isRemoved(was.id) && (was.lease && was.lease.state === "active" || !!R.rankOf(was.id));
+    const c = this.model.disconnect(connId, hold ? Date.now() + QUIET_MS : 0);
+    if (hold) this.background(this.saveQuiet());
     if (c && this.roles) {
       if (c.lease) this.stageLeft(c.id, false);
       if (!this.present(c.id)) {
@@ -753,7 +767,7 @@ export class Audience extends DurableObject {
     const connId = a && a.conn && a.conn.connId;
     if (!connId || this.sockets.get(connId) !== ws) return;
     this.inspect.count("gone");
-    this.drop(connId);
+    this.drop(connId, true);
     await this.flush();
     // A host who left starts the hold, which only the alarm can end.
     await this.scheduleAlarm();
@@ -834,18 +848,35 @@ export class Audience extends DurableObject {
    */
   tellIsland(id, on) {
     if (!this.chat || !this.env.ROOM || !id.startsWith("gh:")) return;
-    this.islandWords.set(id, on);
-    this.background(this.sendIsland(id, on));
+    const word = { on, chat: this.chat.id };
+    this.islandWords.set(id, word);
+    this.background(this.sendIsland(id, word));
   }
 
-  async sendIsland(id, on) {
-    const chat = this.chat && this.chat.id;
-    if (!chat) return;
+  async sendIsland(id, word) {
+    if (!word || !word.chat || !this.env.ROOM) return;
     let told = false;
-    try { told = (await this.env.ROOM.getByName("island").chatVoice(Number(id.slice(3)), chat, on)).ok === true; } catch { told = false; }
-    if (told && this.islandWords.get(id) === on) this.islandWords.delete(id);
+    try { told = (await this.env.ROOM.getByName("island").chatVoice(Number(id.slice(3)), word.chat, word.on)).ok === true; } catch { told = false; }
+    if (told && this.islandWords.get(id) === word) this.islandWords.delete(id);
     await this.ctx.storage.put("islandWords", [...this.islandWords]);
     if (!told) await this.scheduleAlarm();
+  }
+
+  /** The quiet holds as they stand, stored so a wake keeps the rows clients hold. */
+  async saveQuiet() {
+    const list = this.model.quietList();
+    if (list.length) await this.ctx.storage.put("quiet", list);
+    else await this.ctx.storage.delete("quiet");
+  }
+
+  /** A speaker publishing again after a failure: their row stands while they do (`publish/close` with `recover`). */
+  holdQuiet(connId) {
+    if (this.roles && !this.roles.ended && this.model.hold(connId, Date.now() + QUIET_MS)) this.background(this.saveQuiet());
+  }
+
+  /** Someone held quietly whom a host moved, removed, or another chat took: their row shows what is true now. */
+  unquiet(id) {
+    if (this.model.expire(0, id).length) this.background(this.saveQuiet());
   }
 
   /** One voice an account across every chat: taking the stage here ends its lease in the chat it last spoke in. */
@@ -861,8 +892,9 @@ export class Audience extends DurableObject {
 
   /** Another chat took this account's voice: its lease here ends, as a move. */
   async yieldVoice(id) {
+    this.unquiet(id);
     const p = this.model.people.get(id);
-    if (!p) return { ok: true };
+    if (!p) { await this.flush(); return { ok: true }; }
     for (const c of [...p.conns.values()]) {
       if (!c.lease) continue;
       const lease = this.model.endLease(c.connId);
@@ -967,6 +999,7 @@ export class Audience extends DurableObject {
             this.leaseEnded(o.connId, lease, "demoted");
             this.tellYou(o.connId, "demoted");
           }
+          this.unquiet(target);
           this.touchId(target);
           this.notify([target], { kind: "demoted", by: me });
         }
@@ -1002,6 +1035,7 @@ export class Audience extends DurableObject {
           this.sendRemoved();
           this.notify([target], { kind: "removed", by: me });
           for (const o of conns(target)) this.close(o.connId, CLOSE.removed, "removed");
+          this.unquiet(target);
         }
         break;
       case "allow":
@@ -1032,11 +1066,16 @@ export class Audience extends DurableObject {
   async endChat(reason) {
     this.notify(null, { kind: "ended", reason });
     for (const connId of [...this.sockets.keys()]) this.close(connId, CLOSE.ended, "ended");
+    this.model.expire(Infinity);
     await this.flush();
     if (this.env.CHATS) await this.env.CHATS.getByName(DIRECTORY_NAME).end(this.chat.id).catch(() => {});
-    // Nothing of an ended chat is kept: its title, host and every account id its roles named go (media cleanup's own
+    // The speakers' last words to the island (their island voice free again) go now; any the Room did not take stay,
+    // with the chat they name, and the alarm sends them again even after the chat is gone.
+    for (const [id, w] of [...this.islandWords]) await this.sendIsland(id, w);
+    // Nothing else of an ended chat is kept: its title, host and every account id its roles named go (media cleanup's own
     // bookkeeping stays until it drains). Woken again, the object has no chat and refuses every socket as ended.
-    await this.ctx.storage.delete(["chat", "roles", "meta", "world", "watch", "sourcesSig", "cloudsSig", "islandWords"]);
+    await this.ctx.storage.delete(["chat", "roles", "meta", "world", "watch", "sourcesSig", "cloudsSig", "quiet", ...(this.islandWords.size ? [] : ["islandWords"])]);
+    await this.scheduleAlarm();
   }
 
   /** What the directory lists of this chat, sent whenever it differs from what it was last told. */
@@ -1174,6 +1213,8 @@ export class Audience extends DurableObject {
       } else this.close(c.connId, CLOSE.auth, reason === "deleted" ? "account_deleted" : "signed_out");
     }
     await this.flush();
+    // A host signed out starts the hold, which only the alarm ends.
+    if (revoked) await this.scheduleAlarm();
     return { revoked };
   }
 

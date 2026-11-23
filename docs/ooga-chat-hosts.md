@@ -30,7 +30,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 |---|---|---|
 | Host | the contributor who started the chat; one a chat | everything a co-host may, plus make and remove co-hosts, hand the chat over to a co-host, end the chat |
 | Co-host | up to 3, made by the host from the chat's speakers or listeners | approve and decline requests, invite a listener, mute a speaker, move a speaker to listening, remove a listener or speaker from the chat; never touch the host or another co-host, never end the chat |
-| Speaker | approved by a host or co-host | speak, mute and unmute themselves, raise the hand, go back to listening |
+| Speaker | approved by a host or co-host, and remembered for the chat (below) | speak, mute and unmute themselves, raise the hand, go back to listening and return with Join Voice |
 | Listener | anyone signed in who joined (GitHub or X) | listen, react, request to speak |
 
 - **The host is on stage from the start**, muted, as in X Spaces: Start chat opens their microphone on the strength of
@@ -54,6 +54,17 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   (`AUDIENCE_LISTENERS`). No speaker needs a cloud seat: a chat's clouds are its copy's, a seat each, in the second PR. Roles are an identity's (`gh:<id>`, `x:<id>`), never a tab's: every tab of an account shows
   the same role, and one account holds one voice lease across every chat (joining another chat's stage leaves the
   first's).
+- **Once approved, remembered.** Anyone a host or co-host let on the stage (an approved request, an invite, an open
+  stage, co-hosting) may take it again with Join Voice for the rest of the chat, after going back to listening or a drop
+  of any length, with no new approval. Only **Move to listener** or **Remove from chat** takes that away: then they
+  request again (`cleared` in chat-roles.js; the speaker cap still holds).
+- **A short drop shows nobody anything.** When a speaker's, co-host's or host's last connection to the chat drops,
+  everyone keeps seeing their tile exactly as it was for 20 s (`QUIET_MS`, a quiet hold), and their place on the stage
+  counts against the speaker cap so nobody takes it. Back within that and speaking again (Ooga Chat does it by itself),
+  their tile carries on where it stood in the order; still gone after it, the roster shows them gone. Their place on the
+  stage and a co-host's rank are held 2 minutes, the host's role 2 minutes too. A microphone that only publishes again
+  after a failed connection (`publish/close` with `recover`) keeps the place, rank and tile the same way; Leave Voice is
+  the speaker's own word and gives the place (and a co-host's rank) up.
 - **Mute:** a host or co-host can mute a speaker; only the speaker can unmute themselves (X Spaces' rule). Move to
   listener ends their lease. Remove from chat closes every connection of that account to the chat and keeps it out of
   that chat until a host or co-host allows them back or it ends. **Allow back** (from the Removed list in the
@@ -269,8 +280,9 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   (`worker/test/chat-roles.test.mjs`), and the objects are checked through a fake host
   (`worker/test/ooga-chat-hosts.test.mjs`): every rule in this file (who may do what to whom, the caps, the queue, invites,
   cooldowns, the host hold and succession, removal, one lease an identity).
-- **No idle timers.** A chat's alarm is set only for the earliest of a held host's 2 minutes, an invite's 60 s, a
-  pending lease or a re-authentication; an empty chat with nothing pending sets none and hibernates. Roles, queue,
+- **No idle timers.** A chat's alarm is set only for the earliest of a held host's 2 minutes, a held place on the stage,
+  a quiet hold's 20 s, an invite's 60 s, a pending lease, a re-authentication, or a word the island room has yet to take
+  (kept and retried even after the chat ends, the one thing an ended chat keeps until it is delivered); an empty chat with nothing pending sets none and hibernates. Roles, queue,
   invites and removals are stored (they are small), and the sockets' attachments carry each connection, so a woken
   chat carries on at the same revision.
 - **Limits.** Control actions share the socket's existing bucket (10 a second, burst 20); a request at most once every

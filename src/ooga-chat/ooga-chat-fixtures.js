@@ -315,8 +315,8 @@
         const was = active;
         lease = 0; active = false; mic = "muted";
         const id = self()[0]?.id;
-        if (r && voluntary) r.stage.delete(id);
-        // A co-host leaving the stage on their own word is a listener with the offer back, their slot kept.
+        // Once let on the stage they keep their way back to it (`stage`, the server's `cleared`) until a host moves them
+        // off or removes them. A co-host leaving the stage on their own word is a listener with the offer back, their slot kept.
         const reinstated = !!r && voluntary && r.cohosts.has(id);
         if (reinstated) { r.cohosts.delete(id); r.offers.set(id, now()); }
         if (was || reinstated) delta([ownRow()]);
@@ -493,7 +493,7 @@
             after(0, () => message({ type: "you", zone, you: you() }));
             return { ok: true };
           case "remove":
-            r.queue.delete(target); r.invites.delete(target); r.cohosts.delete(target); r.offers.delete(target); r.removed.add(target);
+            r.queue.delete(target); r.invites.delete(target); r.stage.delete(target); r.cohosts.delete(target); r.offers.delete(target); r.removed.add(target);
             r.removedInfo.set(target, { id: target, at: now(), login: row.login, display: row.display, row });
             r.cast = r.cast.filter((p) => p.id !== target);
             delta([], [{ id: target, generation: row.generation }]);

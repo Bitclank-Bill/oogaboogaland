@@ -155,7 +155,7 @@
     if (msg.type === "you" || msg.type === "media") { m.heard(msg); return emit(); }
     if (msg.type === "reaction") return;
     const result = roster.apply(msg);
-    if (result === "gap") feed.resync(chat.zone);
+    if (result === "gap") feed.resync(BL.chatHosts.rosterZone(chat.zone));
     if (result === "applied") {
       listed++;
       setStatus("live");
@@ -172,7 +172,8 @@
     roster.expect(BL.chatHosts.rosterZone(entry.zone));
     listed++;
     m.identify(identity()?.participant || null);
-    m.zone(entry.zone);
+    // A Voice only chat's frames name the `main` zone: voice follows the roster's zone, never the land.
+    m.zone(BL.chatHosts.rosterZone(entry.zone));
     net.setCall(true);
     feed = transport().audience(boot(), { message: message(chat), status(next) {
       if (room !== chat) return;
