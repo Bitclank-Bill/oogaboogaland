@@ -37090,10 +37090,9 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
     const panel = document.getElementById("players-panel"), groups = [...document.querySelectorAll("#players-list .players-group")];
     const last = groups.at(-1), rows = last && last.querySelector("h3").textContent === "In Ooga Chat" ? [...last.querySelectorAll("li")] : [];
     const inside = (e) => { const r = e.getBoundingClientRect(), p = panel.getBoundingClientRect(); return r.width > 0 && r.left >= p.left - 1 && r.right <= p.right + 1; };
-    return { headings: groups.map((g) => g.querySelector("h3").textContent), rows: rows.map((li) => li.querySelector(".roster-label").textContent + "=" + li.querySelector(".players-where").textContent),
+    return { headings: groups.map((g) => g.querySelector("h3").textContent), rows: rows.map((li) => li.querySelector(".roster-label").textContent + "=" + li.querySelector(".roster-presence").title), lines: rows.every((li) => li.getBoundingClientRect().height < 40 && !li.querySelector(".players-where")),
       gray: rows.every((li) => li.classList.contains("players-listener") && li.querySelector(".roster-presence").dataset.online === "listener" && li.querySelector(".players-look").hidden && li.querySelector(".roster-voice").hidden && li.querySelector(".players-link").hidden),
-      chip: document.getElementById("players-count").textContent, fits: rows.every((li) => inside(li) && inside(li.querySelector(".players-where")) && li.querySelector(".players-where").scrollWidth <= li.querySelector(".players-where").clientWidth + 1),
-      wraps: rows.some((li) => li.querySelector(".players-where").getClientRects().length && li.querySelector(".players-where").getBoundingClientRect().height > 20),
+      chip: document.getElementById("players-count").textContent, fits: rows.every((li) => inside(li)),
       wide: panel.scrollWidth > panel.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1 };
   })()`);
   await b.evaluate(`document.querySelector("#players-list .players-group:last-child")?.scrollIntoView({ block: "end" })`);
@@ -37107,10 +37106,10 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
   await b.evaluate(`__inChats.room({ t: "chat-members", chat: "AAAAAAAAAAAAAAAA", title: "", members: [], more: 0 })`);
   const ended = await look();
   await b.evaluate(`(() => { const W = __inChats; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
-  record(`in ooga chat${phone ? " (390 px)" : ""}: Online Oogas ends with In Ooga Chat, listing once each person in a hosted chat who is not on the island (never the visitor or an island player, speaking over listening), by name and in gray with the chat they speak or listen in, counted in "N online", following each chat's changes and gone with the last chat; nothing clipped or wider than the panel`,
+  record(`in ooga chat${phone ? " (390 px)" : ""}: Online Oogas ends with In Ooga Chat, listing once each person in a hosted chat who is not on the island (never the visitor or an island player, speaking over listening), by name alone and in gray (the chat they speak or listen in only in the dot's tooltip), counted in "N online", following each chat's changes and gone with the last chat; nothing clipped or wider than the panel`,
     first.headings.at(-1) === "In Ooga Chat" && first.headings.filter((h) => h === "In Ooga Chat").length === 1
       && first.rows.join("|") === "Cyd=Speaking in Lightning dev call|Dot=Listening in Routing fees, channel liquidity and the rebalancer at work|Xena=Listening in Lightning dev call|Zoe=Speaking in Routing fees, channel liquidity and the rebalancer at work"
-      && first.gray && first.chip === "6 online" && first.fits && (first.wraps || !phone) && !first.wide
+      && first.gray && first.lines && first.chip === "6 online" && first.fits && !first.wide
       && changed.headings.at(-1) === "In Ooga Chat" && changed.rows.join("|") === "Cyd=Speaking in Lightning dev call|Eve=Listening in Lightning dev call" && changed.chip === "4 online"
       && !ended.headings.includes("In Ooga Chat") && ended.chip === "2 online",
     JSON.stringify({ first, changed, ended }));

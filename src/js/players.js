@@ -100,8 +100,8 @@
     return row;
   };
   // Everyone in a hosted chat and not on the island (cloud-panel.js `inChats`, from the room's `chat-members`), in gray as
-  // a listener is, under In Ooga Chat, a group of its own after every zone's: the name, and under it which chat and
-  // whether they speak or listen there. No mark, link, crosshair or distance.
+  // a listener is, under In Ooga Chat, a group of its own after every zone's: the name alone, which chat and whether
+  // they speak or listen there only in the dot's tooltip. No mark, link, crosshair or distance.
   const IN_CHATS = "in-ooga-chat", chatRows = new Map(), chatOrder = [];
   const chatRow = (key) => {
     let row = chatRows.get(key);
@@ -110,11 +110,11 @@
     row.listener = true; row.id = -Number(key.slice(key.indexOf(":") + 1));
     row.li.dataset.id = String(row.id); row.li.dataset.chat = key; row.li.classList.add("players-listener", "players-chat");
     const dot = row.li.querySelector(".roster-presence");
-    dot.dataset.online = "listener"; dot.title = "In Ooga Chat"; dot.setAttribute("aria-label", "In Ooga Chat");
+    dot.dataset.online = "listener";
+    row.dot = dot;
     row.toggle.disabled = true; row.toggle.removeAttribute("aria-expanded"); row.toggle.removeAttribute("aria-controls");
     row.button.hidden = true;
-    row.where = document.createElement("span"); row.where.className = "players-where"; row.whereShown = "";
-    row.li.append(row.where);
+    row.whereShown = "";
     chatRows.set(key, row);
     return row;
   };
@@ -430,7 +430,7 @@
       if (cloudRows.has(m.id) || listenerRows.has(m.id)) continue;
       const row = chatRow(m.id), where = `${m.role === "speaker" ? "Speaking" : "Listening"} in ${m.title || "a chat"}`;
       row.name = m.display; row.zone = ""; row.group = IN_CHATS; row.seen = pass;
-      if (row.whereShown !== where) { row.whereShown = where; row.where.textContent = where; }
+      if (row.whereShown !== where) { row.whereShown = where; row.dot.title = where; row.dot.setAttribute("aria-label", where); }
       chatOrder.push(row);
     }
     for (const [id, row] of chatRows) if (row.seen !== pass) { row.li.remove(); chatRows.delete(id); }
