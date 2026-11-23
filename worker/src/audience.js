@@ -47,13 +47,9 @@ export const CHAT_TITLE_MAX = 60;
 export const ISLAND_RETRY_MS = 30 * 1000;
 // A chat as the island's Online Oogas shows it (`reportMembers`): its title and counts, reports at least MEMBERS_GAP_MS apart.
 export const MEMBERS_GAP_MS = 2000;
-// At most this many of a chat's app accounts go to the island room with its counts.
-export const MEMBERS_IDS = 500;
 // A chat speaker's, host's or co-host's drop shorter than this shows nobody anything; longer, their tile shows them
 // reconnecting, in place, while their place is held (audience-model.js, quiet hold).
 export const QUIET_MS = 5 * 1000;
-// How long a speaker back in the chat has to take the stage again before a quiet hold lets their row show what is true.
-export const RETURN_MS = 15 * 1000;
 export const chatName = (id) => `chat:${id}`;
 // A chat's land: a zone it is held in (`main`, `dsb`), or `none`, Ooga Chat voice alone, with no copy, clouds or Go
 // there. A land-less chat's roster lives in the model's `main` zone, which is what its socket's frames name.
@@ -198,7 +194,7 @@ export class Audience extends DurableObject {
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
         standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat,
-        reserved: () => this.roles ? this.roles.held(Date.now()) : [], returnMs: RETURN_MS });
+        reserved: () => this.roles ? this.roles.held(Date.now()) : [] });
       if (this.chat) this.model.setWalking([...this.walkers]);
       this.island = (await ctx.storage.get("world")) || this.island;
       if (!Array.isArray(this.island.linked)) this.island = { ...this.island, linked: [] };
@@ -915,6 +911,8 @@ export class Audience extends DurableObject {
 
   /** A lease ended: the speaker's place on the stage goes, or is held, and their voice is free for another chat. */
   stageLeft(id, voluntary) {
+    // Going back to listening on their own word: a quiet hold of their row ends with the place it stood for.
+    if (voluntary) this.unquiet(id);
     const ended = this.roles.leaseEnded(id, voluntary, Date.now());
     if (ended.changed) this.background(this.rolesChanged());
     // A co-host who left the stage is a listener with the offer back (their slot kept): they and everyone hear so.
@@ -1047,8 +1045,9 @@ export class Audience extends DurableObject {
    */
   summaryOf() {
     const { speakers, listeners } = this.tally(), ids = [];
-    // The accounts here through Ooga Chat's app, for the island's "N online" (each once there, players left out).
-    for (const r of this.model.zones[this.zoneOf()].rows.values()) if (r.via === "app" && ids.length < MEMBERS_IDS) ids.push(r.id);
+    // Every account here through Ooga Chat's app, for the island's "N online" (each once there, players left out); as many
+    // as the chat's own limits let in.
+    for (const r of this.model.zones[this.zoneOf()].rows.values()) if (r.via === "app") ids.push(r.id);
     return { title: this.chat.title, speakers, listeners, ids };
   }
 

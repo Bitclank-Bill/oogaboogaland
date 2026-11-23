@@ -134,7 +134,7 @@ there**, which takes the visitor's Ooga into the chat's copy of its zone.
 `chatMembers(chat, title, speakers, listeners, ids)`, from `reportMembers` in `audience.js`, `summaryOf`): how many of
 its rows, a quiet hold's included, speak (its host and co-hosts always, on the stage or not, as its preview and the
 Chats list count them; `tally`) and how many listen, and which accounts are there through Ooga Chat's app by id
-(`ids`, at most 500: a row whose connections are none of them the island page's own `ob_` principal, `via` "app"), never
+(`ids`, every one the chat's limits let in: a row whose connections are none of them the island page's own `ob_` principal, `via` "app"), never
 a name. A report goes at most every 2 s a chat, one in flight, a one-shot timer sending a burst's last change and nothing
 while the counts are what the room was told; a report that fails goes again with the next change. As the chat ends it
 sends zeros, kept in its storage (`membersGone`) and sent again from its alarm until the room takes them. The room
