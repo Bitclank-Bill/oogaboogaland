@@ -169,8 +169,9 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   `since` (ms) is when a speaker took the stage, or when a listener's earliest connection joined; `via` is `island` or
   `app`, the app they listen or speak from (an island page's `ob_` principal, else Ooga Chat).
 - **Order** in a chat, in both apps: the host first, then co-hosts, the longest-serving first (`rankSince`), then
-  speakers, the longest on stage first (`since`), then listeners, the longest here first (`since`); ties by name, then
-  id. A speaker's ring and a listener's dot beside "Listener" are green for the island and purple for Ooga Chat
+  speakers, the longest on stage first (`since`), then listeners with an open request, the longest-lived request first
+  (`askedAt`; an invited listener at the head of the rest), then the other listeners, the longest here first (`since`);
+  ties by name, then id. A speaker's ring and a listener's dot beside "Listener" are green for the island and purple for Ooga Chat
   (`via`), and the tile's accessible name says where they listen from. A host's or co-host's rank does not make them a
   speaker: `role` is still `speaker` only under an active lease.
 - **You** adds `rank` (`host`, `cohost` or `""`), `request` (`asked`, `invited` or `""`) and, while invited,
