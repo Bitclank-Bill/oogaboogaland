@@ -39,7 +39,7 @@ import {
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
-  LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
+  callFeatures, callOn, LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
   BLEND, BLEND_HZ, seenTogether, inspectReporter, INSPECT_FEATURE, worldReporter, audienceRoom, commonsRoom, roomCatalog, equipmentRoom, sessionGone, cleanupPass,
 } from "./protocol.js";
@@ -294,11 +294,12 @@ export class Room extends DurableObject {
 
   attachment(p) {
     const equipment = this.env?.EQUIPMENT_ENABLED === "1" ? { equipment: p.equipment || null, equipmentSession: p.equipmentSession || null } : {};
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, ...(p.catalogRoster ? { catalogRoster: p.catalogRoster } : {}), visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...equipment, ...duel.saved(p) };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, block: p.block || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, resumeKey: p.resumeKey, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: p.voice, muted: p.muted, call: !!p.call, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, props: !!p.props, ...(p.catalogRoster ? { catalogRoster: p.catalogRoster } : {}), visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm, audienceZone: p.audienceZone || null, outdoor: p.outdoor || null, ...equipment, ...duel.saved(p) };
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, d: p.d, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK,
+      ...(p.call ? { call: true } : {}) };
   }
 
   // Every message the room sends goes through here, players' and Ooga Chat members' alike, so the inspector's `out` and
@@ -714,7 +715,7 @@ export class Room extends DurableObject {
     const server = p.ws, others = [];
     const catalog = this.catalog.metadata();
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, resume: p.resumeKey, ...(resumed ? { resumed: true } : {}), tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, locks: this.lockedRooms(), features: [PROP_FEATURE, tessQueue.FEATURE, CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, DANCE_FEATURE, CHAT_FEATURE, ...callFeatures(this.env), PM_FEATURE, CHALK_FEATURE, "hockey-v4", BLOCK.FEATURE, duel.FEATURE, REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE, ...audienceRoom.features(this), ...(this.env?.EQUIPMENT_ENABLED === "1" ? ["equipment-v1"] : []), ...(this.catalog.enabled ? ["character-catalog-v1"] : []), ...(this.inspect.on ? [INSPECT_FEATURE] : [])],
       // The account speaks from Ooga Chat on another device: this page's own voice waits for the visitor's word.
       ...(audienceRoom.elsewhere(this, p.id) ? { voiceElsewhere: true } : {}), ...(catalog ? { catalog } : {}) });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
@@ -1011,6 +1012,11 @@ export class Room extends DurableObject {
       if (msg.on === p.muted) return;
       p.muted = msg.on;
       this.voiceState(p);
+    } else if (msg.t === "call") {
+      // In a hosted chat's voice (docs/ooga-chat-hosts.md): the page has paused its island voice; others show the mark.
+      if (!callOn(this.env) || msg.on === !!p.call) return;
+      p.call = msg.on;
+      this.broadcast({ t: "call", id: p.id, on: p.call }, p.ws);
     } else if (msg.t === "chat") {
       // Nothing in the attachment changes.
       return this.say(p, msg.text, msg.clientId);

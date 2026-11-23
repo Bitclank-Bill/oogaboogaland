@@ -286,3 +286,11 @@ test("the bridge reaches a chat only while the directory lists it", async () => 
 });
 
 test.after(() => { Date.now = realNow; });
+
+test("the island's call mark: a page says it is in a chat's voice, only as a boolean, and the room offers it only with chats on", async () => {
+  const { parseClientMessage, callFeatures } = await import("../src/protocol.js");
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "call", on: true })), { t: "call", on: true });
+  assert.equal(parseClientMessage(JSON.stringify({ t: "call", on: "yes" })), null);
+  assert.deepEqual(callFeatures({ OOGA_CHAT_FEATURES: "chats" }), ["call-v1"]);
+  assert.deepEqual(callFeatures({ OOGA_CHAT_FEATURES: "bridge" }), []);
+});
