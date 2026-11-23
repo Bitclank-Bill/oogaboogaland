@@ -17679,7 +17679,7 @@ const oogaChatAppChecks = async () => {
       preview: r.preview.preview.title === "Sample Oak's chat" && r.preview.preview.stage === "sample-oak,sample-fern,sample-reed" && /^4 listening · 2 waiting to speak$/.test(r.preview.preview.count)
         && !r.preview.preview.tag && r.preview.preview.inside && !r.cancelled.preview && r.cancelled.focus.startsWith("Sample Oak's chat"),
       joined: r.joined.space === "on" && r.joined.title === "Sample Oak's chat" && r.joined.foot.includes("Request to speak") && !r.joined.foot.includes("End chat") && r.joined.ranks === "host,cohost" && r.joined.asked === 2
-        && r.joined.names === "sample-oak,sample-fern,sample-reed,sample-wren,sample-kite,sample-lark,sample-heron,sample contributor" && r.joined.rings.split(",").every((x) => x === "chat") && /sample-reed, speaking, reconnecting/.test(r.joined.tiles),
+        && r.joined.names === "sample-oak,sample-fern,sample-reed,sample-wren,sample-kite,sample-lark,sample-heron,sample contributor" && r.joined.rings.split(",").every((x) => x === "chat") && /sample-fern, co-host, speaking, reconnecting/.test(r.joined.tiles),
       openStage: r.openSpeaking.invite === 0 && r.openSpeaking.openTag === 1 && r.openSpeaking.captures === 1,
       offer: r.offer.offer === 1 && r.offer.offerHead === "The host invited you to co-host" && r.offer.focus === "Accept" && r.offer.offerInside
         && /\(you\), co-host, speaking/.test(r.cohosting.tiles) && r.cohosting.notice === "You're a co-host now",
@@ -29554,7 +29554,7 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
     preview: preview.preview.title === "Sample Oak's chat" && preview.preview.stage === "sample-oak,sample-fern,sample-reed" && /4 listening · 2 waiting to speak/.test(preview.preview.count)
       && preview.preview.inside && !preview.preview.tag && preview.layer && !cancelled.preview && cancelled.focus.startsWith("Sample Oak's chat"),
     joined: joined.title === "Sample Oak's chat" && joined.foot.includes("Request to speak") && /co-host/.test(joined.tiles)
-      && joined.names === "sample-oak,sample-fern,sample-reed,sample-wren,sample-kite,sample-lark,sample-heron,sample-contributor" && /sample-wren, listening(,| \|)/.test(joined.tiles) && /sample-reed, speaking, reconnecting/.test(joined.tiles),
+      && joined.names === "sample-oak,sample-fern,sample-reed,sample-wren,sample-kite,sample-lark,sample-heron,sample-contributor" && /sample-wren, listening(,| \|)/.test(joined.tiles) && /sample-fern, co-host, speaking, reconnecting/.test(joined.tiles),
     requested: requested.space === "on" && requested.invite === 0, invited: invited.invite === 1 && invited.focus === "Start speaking", speaking: speaking.invite === 0 && speaking.call,
     openStage: openSpeaking.invite === 0 && openSpeaking.openTag === 1 && openSpeaking.foot.includes("Speak") === false,
     cohosting: /sample-pebble, co-host, speaking/.test(cohosted.tiles) && cohostMenu.menu === "Move to listener,Make speaker,Make host,Remove from chat"
