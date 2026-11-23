@@ -1658,13 +1658,23 @@ export class Room extends DurableObject {
     this.broadcast({ t: "vstate", id: p.id, voice: inVoice(p), muted: p.muted }, p.ws);
     audienceRoom.world(this);
     // Back in island voice while a chat holds the account's stage (Switch here): the chat gives it up.
-    if (inVoice(p) && this.onChatStage(p.id)) {
-      const chat = this.chatVoices.get(p.id);
-      this.chatVoices.delete(p.id);
-      this.keepChatVoices();
-      if (this.env && this.env.AUDIENCE) this.later(Promise.resolve().then(() => this.env.AUDIENCE.getByName(`chat:${chat}`).yieldVoice(`gh:${p.id}`)).catch(() => {}));
-      this.broadcast({ t: "call", id: p.id, on: this.inCall(p) });
-    }
+    if (inVoice(p) && this.onChatStage(p.id)) this.later(this.takeVoiceBack(p));
+  }
+
+  /**
+   * Back in island voice while a chat holds the account's stage (Switch here): the chat gives it up, and only once it
+   * has is the account's entry dropped, so a call that fails is tried again by the sweep.
+   */
+  async takeVoiceBack(p) {
+    const chat = this.chatVoices.get(p.id);
+    if (!chat || !this.env || !this.env.AUDIENCE) return;
+    try { await this.env.AUDIENCE.getByName(`chat:${chat}`).yieldVoice(`gh:${p.id}`); } catch { return; }
+    if (this.chatVoices.get(p.id) !== chat) return;
+    this.chatVoices.delete(p.id);
+    this.keepChatVoices();
+    if (this.players.get(p.id) !== p) return;
+    if (!audienceRoom.elsewhere(this, p.id)) this.send(p.ws, { t: "voice-elsewhere", on: false });
+    this.broadcast({ t: "call", id: p.id, on: this.inCall(p) });
   }
 
   /** In a hosted chat: this page said so (`call`), or the account holds a chat's stage from another device. */
@@ -2415,6 +2425,8 @@ export class Room extends DurableObject {
     tessQueue.sweep(this);
     // Ooga Chat's audience told again what it missed, and grants still closing asked about again (#667).
     await audienceRoom.retry(this);
+    // A chat that did not give an account's voice back when its island voice went live is asked again.
+    if (this.chatVoices) for (const p of [...this.players.values()]) if (inVoice(p) && this.onChatStage(p.id)) await this.takeVoiceBack(p);
     const now = Date.now();
     const sweepDue = !this.sweepAt || now >= this.sweepAt;
     this.expireDoors(now);

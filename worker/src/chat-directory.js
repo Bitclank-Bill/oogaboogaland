@@ -141,12 +141,4 @@ export const previewChat = async (env, id) => {
   try { return await env.AUDIENCE.getByName(chatName(id)).preview(); } catch { return null; }
 };
 
-/** A principal's access ends: every live chat closes or narrows its sockets, as the old public object does. */
-export const revokeChats = async (env, principal, reason) => {
-  if (!env.CHATS || !env.AUDIENCE) return 0;
-  let revoked = 0;
-  for (const id of await env.CHATS.getByName(DIRECTORY_NAME).ids()) {
-    try { revoked += (await env.AUDIENCE.getByName(chatName(id)).revoke(principal, reason)).revoked; } catch { /* that chat says so next time */ }
-  }
-  return revoked;
-};
+export { revokeChats } from "./chat-revoke.js";

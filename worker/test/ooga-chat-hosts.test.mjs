@@ -40,7 +40,7 @@ const fakeCtx = () => {
   return {
     storage: { get: async (key) => structuredClone(storage.get(key)),
       put: async (key, value) => { if (typeof key === "object") for (const [k, v] of Object.entries(key)) storage.set(k, structuredClone(v)); else storage.set(key, structuredClone(value)); },
-      delete: async (key) => storage.delete(key),
+      delete: async (key) => Array.isArray(key) ? key.filter((k) => storage.delete(k)).length : storage.delete(key),
       list: async ({ prefix }) => new Map([...storage].filter(([key]) => key.startsWith(prefix)).map(([key, value]) => [key, structuredClone(value)])),
       getAlarm: async () => alarm, setAlarm: async (at) => { alarm = at; } },
     setWebSocketAutoResponse() {}, waitUntil: (task) => tasks.push(task),
@@ -219,8 +219,7 @@ test("the host's hold: two minutes, then a co-host takes over; with none the cha
   const { a, ctx } = w.objects.get(chatName(chat.id));
   await a.webSocketClose(amy.ws);
   await w.settle();
-  await a.scheduleAlarm();
-  assert.equal(ctx.alarm, now + HOST_HOLD_MS);
+  assert.equal(ctx.alarm, now + HOST_HOLD_MS, "the host's leaving sets the alarm itself");
   now += HOST_HOLD_MS;
   await a.alarm();
   assert.deepEqual(notices(bea, "host").map((n) => n.id), ["gh:2"]);
@@ -423,10 +422,16 @@ test("the island room: an account on a chat's stage leaves island voice, shows i
   assert.equal(room.view(amy.p).call, true);
   assert.equal(JSON.stringify(stored.get("chatVoices")), '[[1,"AAAAAAAAAAAAAAAA"]]', "kept across a nap");
   amy.p.voice.track = "mic";
+  let refuse = true;
+  room.env.AUDIENCE = { getByName: (name) => ({ yieldVoice: async (id) => { if (refuse) throw new Error("unreachable"); yielded.push([name, id]); } }) };
   room.voiceState(amy.p);
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(room.chatVoices.get(1), "AAAAAAAAAAAAAAAA", "a chat that could not be reached keeps the entry, to be asked again");
+  refuse = false;
+  await room.takeVoiceBack(amy.p);
   assert.deepEqual(yielded, [["chat:AAAAAAAAAAAAAAAA", "gh:1"]], "taking island voice back ends the chat's lease");
   assert.equal(room.view(amy.p).call, undefined);
+  assert.ok(amy.ws.sent.some((m) => m.t === "voice-elsewhere" && m.on === false), "and her page hears its voice is here again");
   assert.equal((await room.chatVoice(1, "AAAAAAAAAAAAAAAA", false)).ok, true, "the chat's own word after is harmless");
   await room.chatVoice(1, "BBBBBBBBBBBBBBBB", true);
   await room.chatVoice(1, "CCCCCCCCCCCCCCCC", false);
@@ -459,6 +464,63 @@ test("the preview: a chat's stage and counts, before joining; an open stage invi
   assert.equal(notices(amy, "asked").length, 1, "and asks no host");
   await w.settle();
   assert.equal(w.directory.list()[0].open, true, "the list shows an open stage");
+});
+
+
+
+test("leave is asked again after the waits; a ban that can't be read refuses; Leave Voice gives the stage up; leaving drops a request; an ended chat keeps nothing", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  Object.assign(w.env, { REALTIME_APP_ID: "app", REALTIME_SECRET: "secret" });
+  const { chat } = await startChat(w.env, host(1), { title: "Fixes", zone: "main" });
+  const amy = await connect(w, chat.id, 1), cyd = await connect(w, chat.id, 3), dot = await connect(w, chat.id, 4);
+  const a = w.objects.get(chatName(chat.id)).a;
+  // An invite that lapses while the island is asked about the account is no lease.
+  await ask(amy, { type: "invite", id: "gh:3" });
+  const contributorFor = a.contributorFor;
+  a.contributorFor = Object.assign(async (login) => { now += INVITE_MS; return contributorFor(login); }, { fresh: () => true });
+  assert.equal((await ask(cyd, { type: "setRole", role: "speaker" })).error.code, "not_allowed");
+  a.contributorFor = contributorFor;
+  // A ban that could not be read refuses, even in a chat.
+  a.env.DB = { prepare: () => ({ bind: () => ({ first: async () => { throw new Error("d1 down"); } }) }) };
+  await ask(amy, { type: "invite", id: "gh:3" });
+  const refused = await ask(cyd, { type: "setRole", role: "speaker" });
+  assert.deepEqual([refused.error.code, refused.error.retryable], ["capability_unavailable", true]);
+  delete a.env.DB;
+  // Leave Voice (publish/close) gives the place on the stage up.
+  assert.equal((await ask(cyd, { type: "setRole", role: "speaker" })).ok, true);
+  assert.equal(a.roles.mayLease("gh:3", now), true);
+  const res = await a.mediaRequest("publish/close", new Request("https://audience.invalid/media/publish/close", { method: "POST",
+    headers: { "x-audience-principal": JSON.stringify(who(3)) }, body: JSON.stringify({ connection: cyd.connId }) }));
+  assert.equal(res.status, 200);
+  assert.equal(a.roles.mayLease("gh:3", now), false, "going back to listening on their own word gives the place up");
+  // A listener who leaves takes their request with them.
+  await ask(dot, { type: "ask" });
+  assert.deepEqual(a.roles.queue().map((q) => q.id), ["gh:4"]);
+  await a.webSocketClose(dot.ws);
+  assert.deepEqual(a.roles.queue(), []);
+  // An ended chat keeps nothing but media cleanup's bookkeeping.
+  await ask(amy, { type: "end" });
+  for (const key of ["chat", "roles", "meta"]) assert.equal(await w.objects.get(chatName(chat.id)).ctx.storage.get(key), undefined, key);
+});
+
+test("a word the island room missed is kept and sent again from the alarm", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  let up = false;
+  const told = [];
+  w.env.ROOM = { getByName: () => ({ chatVoice: async (id, chat, on) => { if (!up) throw new Error("room away"); told.push([id, on]); return { ok: true }; } }) };
+  const { chat } = await startChat(w.env, host(1), { title: "Retry", zone: "main" });
+  const amy = await connect(w, chat.id, 1);
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await w.settle();
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  assert.deepEqual([...a.islandWords], [["gh:1", true]], "kept");
+  assert.ok(ctx.alarm <= now + 30000, "and the alarm will try again");
+  up = true;
+  await a.alarm();
+  assert.deepEqual(told, [[1, true]]);
+  assert.equal(a.islandWords.size, 0);
 });
 
 test.after(() => { Date.now = realNow; });

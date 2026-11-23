@@ -358,6 +358,8 @@ export const createMediaBroker = (aud) => {
     }
     if (op === "publish/close") {
       const lease = aud.model.endLease(conn.connId);
+      // Leave Voice, on the speaker's own word: a hosted chat's place on the stage goes with it.
+      if (lease && aud.roles) aud.stageLeft(conn.id, true);
       await retirePublication(conn.connId);
       aud.save(conn.connId);
       await aud.flush();
@@ -365,7 +367,8 @@ export const createMediaBroker = (aud) => {
       return answer({ ok: true });
     }
     if (op === "leave") {
-      aud.model.endLease(conn.connId);
+      const lease = aud.model.endLease(conn.connId);
+      if (lease && aud.roles) aud.stageLeft(conn.id, true);
       await releaseAll(conn.connId);
       aud.save(conn.connId);
       await aud.flush();

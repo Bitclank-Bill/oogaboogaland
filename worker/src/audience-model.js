@@ -66,7 +66,8 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     let listener = 0;
     for (const c of p.conns.values()) {
       if (c.zone !== zone) continue;
-      if (c.lease && c.lease.state === "active") return { role: "speaker", source: "chat", mic: c.mic, hand: c.hand || "", speaking: !!c.speaking, character: c.lease.character || p.info.character || null, since: c.lease.since || 0 };
+      if (c.lease && c.lease.state === "active") return { role: "speaker", source: "chat", mic: c.mic, hand: c.hand || "", speaking: !!c.speaking, character: c.lease.character || p.info.character || null, since: c.lease.since || 0,
+        via: typeof c.principal === "string" && c.principal.startsWith("ob_") ? "island" : "app" };
       const at = c.joinedAt || 1;
       listener = listener ? Math.min(listener, at) : at;
     }
@@ -79,7 +80,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     contributions: base.source === "world" && Number.isSafeInteger(p.info.contributions) ? p.info.contributions : null,
     ...base, ...standing(p.id),
     // Which app an Ooga Chat source listens or speaks from: the island's page (an `ob_` principal) or Ooga Chat's.
-    via: base.source === "world" ? "island" : [...p.conns.values()].some((c) => c.zone === zone && typeof c.principal === "string" && c.principal.startsWith("ob_")) ? "island" : "app",
+    via: base.via || base.source === "world" ? base.via || "island" : [...p.conns.values()].some((c) => c.zone === zone && typeof c.principal === "string" && c.principal.startsWith("ob_")) ? "island" : "app",
   });
 
   const commit = () => {

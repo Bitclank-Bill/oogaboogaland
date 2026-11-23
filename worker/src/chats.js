@@ -15,6 +15,13 @@ import { bridgeFeatures } from "./chat-bridge-protocol.js";
 import { allowed, fromSite, getSessionFromRequest, json, readBody, text } from "./http.js";
 
 export const LIST_CACHE_S = 2;
+
+const endedSocket = () => {
+  const [client, server] = Object.values(new WebSocketPair());
+  server.accept();
+  server.close(4404, "ended");
+  return new Response(null, { status: 101, webSocket: client });
+};
 const BODY_MAX = 512;
 const MEDIA_BODY_MAX = 256 * 1024;
 const MEDIA_OP = /^(ice|renegotiate|leave|receive\/(open|sync|close)|publish\/(open|offer|ready|close))$/;
@@ -59,7 +66,11 @@ export const handleChats = async (request, env, url) => {
     const preview = await previewChat(env, id);
     return preview ? json(preview) : json({ error: { code: "ended" } }, 404);
   }
-  if (!CHAT_ID.test(id) || !(await env.CHATS.getByName(DIRECTORY_NAME).has(id))) return json({ error: { code: "ended" } }, 404);
+  if (!CHAT_ID.test(id) || !(await env.CHATS.getByName(DIRECTORY_NAME).has(id))) {
+    // A socket for a chat that has ended is a socket that says so (4404), not an HTTP 404 the browser reads as a drop.
+    if (parts[1] === "live" && request.headers.get("upgrade") === "websocket") return endedSocket();
+    return json({ error: { code: "ended" } }, 404);
+  }
   const headers = new Headers({ "x-audience-principal": JSON.stringify(islandPrincipal(found)) });
   const stub = env.AUDIENCE.getByName(chatName(id));
   if (parts[1] === "live" && parts.length === 2) {

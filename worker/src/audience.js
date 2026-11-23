@@ -43,6 +43,8 @@ export const AUDIENCE_PROTOCOL = 1;
 export const CHAT_PROTOCOL = 2;
 export const CHAT_ID = /^[A-Za-z0-9_-]{16}$/;
 export const CHAT_TITLE_MAX = 60;
+// How soon a word the island room missed (a chat's stage taken or left) is sent again.
+export const ISLAND_RETRY_MS = 30 * 1000;
 export const chatName = (id) => `chat:${id}`;
 export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "open", "end"]);
 const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
@@ -125,6 +127,8 @@ export class Audience extends DurableObject {
     this.chat = null;
     this.roles = null;
     this.listedSig = "";
+    // Words for the island room it has not yet taken (`tellIsland`), account -> on stage.
+    this.islandWords = new Map();
     this.sfuFails = [];
     this.sfuOkAt = 0;
     this.media = createMediaBroker(this);
@@ -144,7 +148,11 @@ export class Audience extends DurableObject {
       let meta = await ctx.storage.get("meta");
       if (!meta) { meta = { epoch: Date.now(), revs: null }; await ctx.storage.put("meta", meta); }
       const chat = await ctx.storage.get("chat");
-      if (chat) { this.chat = chat; this.roles = createRoles({ saved: await ctx.storage.get("roles") }); }
+      if (chat) {
+        this.chat = chat;
+        this.roles = createRoles({ saved: await ctx.storage.get("roles") });
+        this.islandWords = new Map((await ctx.storage.get("islandWords")) || []);
+      }
       // The model reads these limits as it goes: a chat opened later raises them to a chat's own (`open`).
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
@@ -436,6 +444,7 @@ export class Audience extends DurableObject {
     // Media cleanup retries even after every client has gone; a chat wakes for a lapsing invite or its held host.
     next = Math.min(next, this.media.nextCleanup());
     if (this.roles) next = Math.min(next, this.roles.nextAt());
+    if (this.islandWords.size) next = Math.min(next, Date.now() + ISLAND_RETRY_MS);
     if (next === Infinity) return;
     const current = await this.ctx.storage.getAlarm();
     if (!current || current > next) await this.ctx.storage.setAlarm(next);
@@ -444,6 +453,7 @@ export class Audience extends DurableObject {
   async alarm() {
     const now = Date.now();
     if (this.roles && !this.roles.ended) await this.rolesTick(now);
+    for (const [id, on] of [...this.islandWords]) await this.sendIsland(id, on);
     for (const c of [...this.model.conns.values()]) {
       if (c.authUntil <= now) { this.close(c.connId, CLOSE.auth, "auth_required"); continue; }
       if (c.lease && c.lease.state === "pending" && c.lease.until <= now) {
@@ -518,7 +528,11 @@ export class Audience extends DurableObject {
     const c = this.model.disconnect(connId);
     if (c && this.roles) {
       if (c.lease) this.stageLeft(c.id, false);
-      if (!this.present(c.id) && this.roles.presence(c.id, false, Date.now()).changed) this.background(this.rolesChanged());
+      if (!this.present(c.id)) {
+        // Gone altogether: their request goes (hosts could not answer it), and a host's hold starts.
+        const cancelled = this.roles.cancel(c.id).changed, away = this.roles.presence(c.id, false, Date.now()).changed;
+        if (cancelled || away) this.background(this.rolesChanged());
+      }
     }
     this.sockets.delete(connId);
     this.replies.delete(connId);
@@ -685,7 +699,8 @@ export class Audience extends DurableObject {
       } catch { answer = { state: "unknown" }; }
     }
     if (this.model.conns.get(c.connId) !== c || c.zone !== zone) return { ok: false, code: "stale_epoch" };
-    if (chat && (answer.state === "unknown" || answer.state === "ineligible" && answer.reason === "not-contributor")) answer = { state: "eligible", character: null };
+    // In a chat only the contributor rule is waived: a ban, a collision, or a ban that could not be read still refuses.
+    if (chat && (answer.state === "unknown" && answer.reason !== "ban-unread" || answer.state === "ineligible" && answer.reason === "not-contributor")) answer = { state: "eligible", character: null };
     if (answer.state !== "eligible") {
       if (answer.state === "ineligible") c.eligible = false;
       return { ok: false, code: answer.state === "unknown" ? "capability_unavailable" : "capability_required", retryable: answer.state === "unknown" };
@@ -711,6 +726,8 @@ export class Audience extends DurableObject {
       this.leaseEnded(o.connId, lease, "moved");
       this.tellYou(o.connId, "moved");
     }
+    // Leave is asked again after every wait above: an invite may have lapsed, or a host moved them, meanwhile.
+    if (chat && !this.roles.mayLease(c.id, Date.now())) return { ok: false, code: "not_allowed" };
     const granted = this.model.requestSpeaker(c.connId, { eligible: true, generation: this.nextGeneration(), until: Date.now() + PENDING_MS,
       character: typeof answer.character === "string" ? answer.character : null });
     if (chat && granted.ok && granted.changed) {
@@ -730,6 +747,8 @@ export class Audience extends DurableObject {
     this.inspect.count("gone");
     this.drop(connId);
     await this.flush();
+    // A host who left starts the hold, which only the alarm can end.
+    await this.scheduleAlarm();
     this.inspect.tick();
   }
 
@@ -796,11 +815,24 @@ export class Audience extends DurableObject {
     this.tellIsland(id, false);
   }
 
-  /** The island room hears a GitHub account took or left this chat's stage, so its island voice gives way (room.js). */
+  /**
+   * The island room hears a GitHub account took or left this chat's stage, so its island voice gives way (room.js). A
+   * word the Room did not take is kept (`islandWords`, stored) and sent again from the alarm until it does.
+   */
   tellIsland(id, on) {
     if (!this.chat || !this.env.ROOM || !id.startsWith("gh:")) return;
-    const account = Number(id.slice(3)), chat = this.chat.id;
-    this.background(Promise.resolve().then(() => this.env.ROOM.getByName("island").chatVoice(account, chat, on)).catch(() => {}));
+    this.islandWords.set(id, on);
+    this.background(this.sendIsland(id, on));
+  }
+
+  async sendIsland(id, on) {
+    const chat = this.chat && this.chat.id;
+    if (!chat) return;
+    let told = false;
+    try { told = (await this.env.ROOM.getByName("island").chatVoice(Number(id.slice(3)), chat, on)).ok === true; } catch { told = false; }
+    if (told && this.islandWords.get(id) === on) this.islandWords.delete(id);
+    await this.ctx.storage.put("islandWords", [...this.islandWords]);
+    if (!told) await this.scheduleAlarm();
   }
 
   /** One voice an account across every chat: taking the stage here ends its lease in the chat it last spoke in. */
@@ -963,6 +995,9 @@ export class Audience extends DurableObject {
     for (const connId of [...this.sockets.keys()]) this.close(connId, CLOSE.ended, "ended");
     await this.flush();
     if (this.env.CHATS) await this.env.CHATS.getByName(DIRECTORY_NAME).end(this.chat.id).catch(() => {});
+    // Nothing of an ended chat is kept: its title, host and every account id its roles named go (media cleanup's own
+    // bookkeeping stays until it drains). Woken again, the object has no chat and refuses every socket as ended.
+    await this.ctx.storage.delete(["chat", "roles", "meta", "world", "watch", "sourcesSig", "cloudsSig", "islandWords"]);
   }
 
   /** What the directory lists of this chat, sent whenever it differs from what it was last told. */
