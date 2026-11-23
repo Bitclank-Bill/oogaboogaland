@@ -76,7 +76,8 @@ tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
 modules, so the two apps never drift. Joining a chat by voice there is like taking a call: the island's proximity voice
 pauses until the visitor leaves the chat, and their Ooga carries an "in a chat" mark so nearby players know why they
-can't hear them. Online Oogas lists island players, not chat members. In the second PR the list also offers **Go
+can't hear them (the room's `call-v1`: the page sends `{ t: "call", on }`, every page hears `call { id, on }`
+and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players, not chat members. In the second PR the list also offers **Go
 there**, which takes the visitor's Ooga into the chat's copy of its zone.
 
 **Switched off by the first PR, deleted later:** the outdoor voice bridge (`outdoor-voice.js`, the Room's
