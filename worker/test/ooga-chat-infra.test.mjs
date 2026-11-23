@@ -202,8 +202,8 @@ test("the configs keep staging and production apart, and the edge apart from the
     assert.equal(chat.vars.ENVIRONMENT, env);
     assert.equal(isle.vars.ENVIRONMENT, env, "the bridge refuses an edge from another environment");
     // Each environment turns its switches on in the runbook's order, and only known ones.
-    for (const flag of chat.vars.FEATURES.split(",").filter(Boolean)) assert.ok(["github", "x", "listen", "speak", "feed", "commons", "cloud"].includes(flag), `${env} ${flag}`);
-    for (const flag of isle.vars.OOGA_CHAT_FEATURES.split(",").filter(Boolean)) assert.ok(["bridge", "outdoor", "cloud", "commons", "commons-send"].includes(flag), `${env} ${flag}`);
+    for (const flag of chat.vars.FEATURES.split(",").filter(Boolean)) assert.ok(["github", "x", "listen", "speak", "feed", "commons", "cloud", "chats"].includes(flag), `${env} ${flag}`);
+    for (const flag of isle.vars.OOGA_CHAT_FEATURES.split(",").filter(Boolean)) assert.ok(["bridge", "outdoor", "cloud", "commons", "commons-send", "chats"].includes(flag), `${env} ${flag}`);
     for (const path of ["/api/*", "/auth/*", "/donations/*"]) assert.ok(chat.assets.run_worker_first.includes(path), path);
     const obl = chat.services.find((s) => s.binding === "OBL"), pay = chat.services.find((s) => s.binding === "DONATIONS");
     assert.deepEqual(obl, { binding: "OBL", service: isle.name, entrypoint: "ChatBridge" });
