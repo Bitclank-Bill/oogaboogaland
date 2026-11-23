@@ -81,7 +81,7 @@
     const speaking = row.self ? voice.stats.speaking : !!key && voice.inEarshot(key) && voice.speaking(key);
     const look = !speaker ? "" : muted ? "muted" : speaking ? "speaking" : "on";
     const blocked = speaker && !row.self && voice.mutedLocally(row.login);
-    t.id = id; t.display = row.display; t.role = row.role; t.source = row.source || ""; t.self = row.self;
+    t.id = id; t.display = row.display; t.role = row.role; t.source = row.source || ""; t.self = row.self; t.rank = t.request = t.via = "";
     t.face = row.character && BL.characters.get(row.character) ? faceUrl(row.character) : key ? `/api/avatar/${key}` : "";
     t.look = look; t.hand = row.hand; t.micPressed = blocked;
     // The visitor's own button works their microphone, so only while they are in voice.
@@ -100,7 +100,7 @@
     t.face = p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "";
     t.look = look; t.hand = p.hand || ""; t.micPressed = blocked; t.micDisabled = self && !own;
     t.micWords = speaker ? `${p.display}: ${BL.hud.voiceWords(look, self, blocked, p.login)}` : "";
-    t.rank = p.rank || ""; t.request = p.request || "";
+    t.rank = p.rank || ""; t.request = p.request || ""; t.via = p.via || "";
   };
   let menu = null;
   const tiles = BL.audienceTiles.create(list, { menu: (...a) => menu?.(...a), mic(id) {

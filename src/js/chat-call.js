@@ -144,6 +144,8 @@
       return emit();
     }
     if (msg.type === "result") { m.heard(msg); for (const fn of heard) fn(msg); return emit(); }
+    // Who its hosts removed, for a host or co-host's Allow back (chat-hosts.js).
+    if (msg.type === "removed") { for (const fn of heard) fn(msg); return emit(); }
     if (msg.type === "you" || msg.type === "media") { m.heard(msg); return emit(); }
     if (msg.type === "reaction") return;
     const result = roster.apply(msg);

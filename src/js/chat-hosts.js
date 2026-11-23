@@ -14,7 +14,8 @@
 //   the page is visible (no timer otherwise); Start a chat for a GitHub account, one dialog (`startDialog`): a title
 //   prefilled "<name>'s chat", two picture cards for the zone (`startZone()` chosen first), Start chat and Cancel, with
 //   the server's refusal in words;
-// - in a chat: Back to chats, its title and, for a host or co-host, the Requests chip and its queue; the footer's
+// - in a chat: Back to chats and its title; for a host or co-host the Requests chip, in the panel's title left of the
+//   zone tag, and its pop-up: the queue, then who was removed with Allow back (`allow`, the server's `removed` list); the footer's
 //   Request to speak (Requested · Cancel) where a listener read Join Voice, End chat for its host, Leave for everyone;
 //   the invite card, focused as it opens, Start speaking being Join Voice inside its press; and a tile's menu, opened by
 //   a press on its portrait or Enter or Space on the focused tile, offering what the viewer's rank allows over that
@@ -90,6 +91,18 @@
     out.push({ type: "remove", label: "Remove from chat", confirm: `Remove ${row.display} from this chat? They can't come back until it ends.` });
     return out;
   };
+  // The server's list of who its hosts removed, `{ id, at, login, display }` each, earliest first; anything else dropped.
+  const parseRemoved = (raw) => Array.isArray(raw) ? raw.slice(0, 500).filter((r) => r && typeof r.id === "string" && /^(gh|x):[1-9][0-9]{0,19}$/.test(r.id)
+    && typeof r.login === "string" && /^[\w.-]{1,39}$/.test(r.login)).map((r) => ({ id: r.id, at: count(r.at), login: r.login, display: clean(r.display, 50) || r.login })) : [];
+  // A chat's order (docs/ooga-chat-hosts.md), which the roster asks for (ooga-chat-roster.js `list`): the host, then
+  // co-hosts by how long they have been one (`rankSince`), speakers by how long they have been on the stage (`since`),
+  // listeners with an open request by how long it has waited (`askedAt`; an invite keeps its request's place), an invited
+  // listener with no request's time, then the other listeners by how long they have been here (`since`); ties by name,
+  // then id. Only a change to one of these moves a tile.
+  const GROUP = (p) => p.rank === "host" ? 0 : p.rank === "cohost" ? 1 : p.role === "speaker" ? 2 : p.request && p.askedAt ? 3 : p.request === "invited" ? 4 : 5;
+  const AT = [() => 0, (p) => p.rankSince, (p) => p.since, (p) => p.askedAt, (p) => p.since, (p) => p.since];
+  const order = (participants) => [...participants].map((p) => [GROUP(p), p]).sort(([ga, a], [gb, b]) => ga - gb || AT[ga](a) - AT[ga](b)
+    || (a.login.toLowerCase() < b.login.toLowerCase() ? -1 : a.login.toLowerCase() > b.login.toLowerCase() ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map(([, p]) => p);
   const joinNames = (names) => names.length === 1 ? `${names[0]} asked to speak` : `${names[0]} and ${names.length - 1} other${names.length > 2 ? "s" : ""} asked to speak`;
   // A notice in words, for whoever it concerns (`me` the visitor's id, `nameOf(id)` a participant's name); "" says nothing.
   const noticeText = (n, me, nameOf) => ({
@@ -107,7 +120,7 @@
   const REFUSED = { cooldown: (s) => `You can ask again in ${s || 60} s`, rate_limited: (s) => s ? `Wait ${s} s, then try again` : "Wait a moment, then try again",
     queue_full: () => "Too many people are asking. Try again soon.", cohosts_full: () => "This chat has 3 co-hosts already", not_asked: () => "That request is gone",
     not_speaking: () => "They aren't speaking now", already_allowed: () => "You may speak already: Join Voice", ended: () => "The chat ended",
-    not_host: () => "Only a host can do that", not_allowed: () => "You can't do that here" };
+    not_host: () => "Only a host can do that", not_allowed: () => "You can't do that here", not_removed: () => "They can join already" };
   const STARTS = { bad_title: () => "Give it a title of 1–60 characters.", zone_unavailable: () => "That place isn't open for chats.",
     already_hosting: () => "You're hosting a chat already.", rate_limited: (s) => `You started one a moment ago. Try again in ${s || 300} s.`,
     chats_full: () => "Every chat spot is taken. Try again soon.", capability_required: () => "Starting a chat is for Team Ooga Booga contributors.",
@@ -188,7 +201,8 @@
   const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "main", toast = null, shown = () => !node.closest("[hidden]") }) => {
     const listeners = new AbortController(), { signal } = listeners;
     let state = null, room = null, me = null, rank = "", people = [], timer = 0, shownTimer = 0, askedTimer = 0, askedAt = -Infinity;
-    const asked = [], said = new Map(), mine = new Map();
+    // `asked` the burst's ids, `askedNames` each one's name as it asked (they may have gone by the time it is said).
+    const asked = [], askedNames = new Map(), said = new Map(), mine = new Map();
     const nameOf = (id) => people.find((p) => p.id === id)?.display || "Someone";
 
     // --- the one live region ---
@@ -208,7 +222,8 @@
       askedTimer = 0;
       if (!asked.length) return;
       askedAt = Date.now();
-      say(joinNames(asked.splice(0).map(nameOf)));
+      say(joinNames(asked.splice(0).map((id) => askedNames.get(id) || nameOf(id))));
+      askedNames.clear();
     };
 
     // --- the Chats list ---
@@ -273,7 +288,7 @@
     // --- in a chat: its bar, the invite card and the footer's own buttons ---
     const back = button("link hc-room-back", "Back to chats"), roomTitle = make("span", "hc-room-title"), requests = button("panel-chip hc-requests", "");
     back.addEventListener("click", () => chats.leave(), { signal });
-    const bar = make("div", "hc-room-bar", back, roomTitle, requests);
+    const bar = make("div", "hc-room-bar", back, roomTitle);
     const inviteHead = make("strong", "", "A host invited you to speak"), startSpeaking = button("foot-button foot-primary", "Start speaking"), notNow = button("foot-button", "Not now");
     inviteHead.id = "hc-invite-head";
     const invite = make("div", "slab hc-invite", inviteHead, make("span", "hc-invite-note", "You'll join muted. Unmute when you're ready."), make("span", "hc-invite-go", startSpeaking, notNow));
@@ -368,14 +383,22 @@
     };
     space.setMenu(menu);
     const queue = () => people.filter((p) => p.request === "asked").sort((a, b) => a.askedAt - b.askedAt);
-    let queued = "";
+    // Who its hosts removed, for a host or co-host (the server's `removed` list, earliest first): Allow back lets them in.
+    let removed = [], queued = "";
     // Drawn again only when who waits changes; the focus moves only on opening, or when the row that held it went.
     const openQueue = (opening = true) => {
-      const waiting = queue(), now = waiting.map((p) => `${p.id} ${p.display}`).join();
+      const waiting = queue(), now = [...waiting, ...removed].map((p) => `${p.id} ${p.display}`).join();
       if (!opening && now === queued) return;
       queued = now;
       const held = !opening && pop.contains(document.activeElement);
-      openPop("queue", requests, "Requests to speak", waiting.length ? waiting.map((p) => {
+      const back = removed.length ? [{ node: make("p", "hc-pop-section", "Removed") }, ...removed.map((p) => {
+        const allow = button("foot-button", "Allow back"), name = make("span", "hc-queue-name", p.display);
+        allow.setAttribute("aria-label", `Allow ${p.display} back`);
+        allow.addEventListener("click", () => send("allow", { id: p.id }, (msg) => { if (msg.ok) say(`${p.display} can join again`); }));
+        name.title = p.display;
+        return { node: make("div", "hc-queue-row", name, allow) };
+      })] : [];
+      openPop("queue", requests, "Requests to speak", [...waiting.length ? waiting.map((p) => {
         // Stone, every row alike: a queue of many has no one amber action.
         const approve = button("foot-button", "Approve"), decline = button("foot-button", "Decline");
         approve.setAttribute("aria-label", `Approve ${p.display}`);
@@ -385,7 +408,7 @@
         const name = make("span", "hc-queue-name", p.display);
         name.title = p.display;
         return { node: make("div", "hc-queue-row", name, approve, decline) };
-      }) : [{ node: make("p", "hc-pop-note", "No requests right now.") }], "dialog", opening);
+      }) : [{ node: make("p", "hc-pop-note", "No requests right now.") }], ...back], "dialog", opening);
       if (held && !pop.contains(document.activeElement)) (pop.querySelector("button") || requests).focus();
     };
     requests.addEventListener("click", () => popKind === "queue" ? closePop() : openQueue(true), { signal });
@@ -398,11 +421,16 @@
         const after = mine.get(msg.requestId);
         mine.delete(msg.requestId);
         if (!msg.ok) say((REFUSED[msg.error?.code] || (() => "That didn't work. Try again."))(msg.error?.retryAfter));
-        after?.();
+        after?.(msg);
         return;
+      }
+      if (msg.type === "removed") {
+        removed = parseRemoved(msg.list);
+        return paint();
       }
       if (msg.kind === "asked") {
         if (!asked.includes(msg.id)) asked.push(msg.id);
+        if (people.some((p) => p.id === msg.id)) askedNames.set(msg.id, nameOf(msg.id));
         if (!askedTimer) askedTimer = setTimeout(flushAsked, Math.max(0, askedAt + ASKED_MS - Date.now()));
         return;
       }
@@ -443,7 +471,7 @@
       state = next;
       const was = room;
       room = next.room && next.session ? next.room : null;
-      if (room !== was) { closePop(false); asked.length = 0; clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; }
+      if (room !== was) { closePop(false); asked.length = 0; askedNames.clear(); clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; removed = []; }
       if (!was && room) { readAt = -Infinity; }
       me = next.session?.identity.participant || null;
       rank = room?.you?.rank || "";
@@ -463,6 +491,9 @@
       observer.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
     };
     head.after(bar, notice, list);
+    // The Requests chip stands in the panel's title, left of the zone tag.
+    const zoneTag = head.querySelector(".panel-chip");
+    if (zoneTag) zoneTag.before(requests); else head.append(requests);
     // Room for a strip over the roster (a later view of the chat's own island); empty and hidden for now.
     const strip = make("div", "hc-room-strip");
     strip.hidden = true;
@@ -479,9 +510,9 @@
       clearTimeout(inviteTimer);
       off();
       space.setMenu(null);
-      for (const el of [bar, notice, list, strip, invite, pop, ask, end, leave, starter.node]) el.remove();
+      for (const el of [bar, notice, list, strip, invite, pop, ask, end, leave, requests, starter.node]) el.remove();
     };
     return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), dispose };
   };
-  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS };
+  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, order, parseRemoved, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS };
 })();

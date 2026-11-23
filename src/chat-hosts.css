@@ -70,3 +70,11 @@
   .hc-pop { left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); top: auto; width: auto; max-width: none; }
   .hc-pop .foot-button, .hc-invite .foot-button, .hc-start .foot-button { min-height: 44px; }
 }
+/* A chat listener's dot before "Listener", the roster's online dot's size: green listening on the island, purple in Ooga
+   Chat (audience-tiles.js `data-via`). A speaker's ring follows `via` too, through the tile's source. */
+.cloud-tile[data-role="listener"]:is([data-via="island"], [data-via="app"]) .cloud-role::before {
+  content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.cloud-tile[data-role="listener"][data-via="app"] .cloud-role::before { background: #b18aff; }
+/* The Requests pop-up's Removed section, under the requests. */
+.hc-pop-section { margin: 6px 0 0; color: rgba(243, 239, 228, 0.5); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }

@@ -344,7 +344,7 @@
       // (`talking`).
       const speaker = p.role === "speaker", you = p.id === self;
       t.id = p.id; t.display = p.display; t.role = p.role; t.source = !speaker ? "" : p.source === "world" ? "world" : "chat";
-      t.face = p.face || sheetFace(p.character); t.hand = p.hand || ""; t.self = you; t.rank = p.rank || ""; t.request = p.request || "";
+      t.face = p.face || sheetFace(p.character); t.hand = p.hand || ""; t.self = you; t.rank = p.rank || ""; t.request = p.request || ""; t.via = p.via || "";
       describeMic(ctx, p, you, t);
     };
     let menu = null;

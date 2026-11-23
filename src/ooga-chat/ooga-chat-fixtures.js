@@ -206,13 +206,18 @@
     if (!CHATS.includes(offered)) throw new Error(`Unknown fixture chats "${offered}" (${CHATS.join(", ")})`);
     // The directory: each chat's roles as chat-roles.js keeps them, its members, and the feeds open on it.
     const rooms = new Map();
-    const room = (id, title, zone, ago, cast, roles = {}) => rooms.set(id, { id, title, zone, startedAt: now() - ago, cast, host: roles.host, cohosts: new Map((roles.cohosts || []).map((c) => [c, 0])),
-      queue: new Map(roles.queue || []), invites: new Map(roles.invites || []), stage: new Set(), removed: new Set(), cooldown: new Map(), ended: false, sample: true, feeds: new Set() });
+    const room = (id, title, zone, ago, cast, roles = {}) => rooms.set(id, { id, title, zone, startedAt: now() - ago, cast, host: roles.host, cohosts: new Map((roles.cohosts || []).map((c) => [c, now() - 500000])),
+      queue: new Map(roles.queue || []), invites: new Map(roles.invites || []), stage: new Set(), removed: new Set(), removedInfo: new Map(), cooldown: new Map(), ended: false, sample: true, feeds: new Set() });
     if (offered === "on") {
-      room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker"), member(2, "sample-fern", "speaker"), member(3, "sample-reed", "speaker", { muted: true }),
-        member(4, "sample-wren", "listener"), member(5, "sample-kite", "listener"), member(6, "sample-lark", "listener"), member(7, "sample-heron", "listener")],
+      // Listening and speaking from both apps (`via`), each here or on the stage since a different moment (`since`).
+      const ago = (s) => now() - s * 1000;
+      room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker", { via: "island", since: ago(590) }),
+        member(2, "sample-fern", "speaker", { via: "app", since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, since: ago(300) }),
+        member(4, "sample-wren", "listener", { via: "island", since: ago(500) }), member(5, "sample-kite", "listener", { via: "app", since: ago(200) }),
+        member(6, "sample-lark", "listener", { via: "app", since: ago(100) }), member(7, "sample-heron", "listener", { via: "island", since: ago(550) })],
       { host: "gh:9001", cohosts: ["gh:9002"], queue: [["gh:9004", now() - 30000], ["gh:9005", now() - 10000]], invites: [["gh:9006", now() + 60000]] });
-      room("fixtureChatDune1", "Building DSB Land", "dsb", 120000, [member(11, "sample-dune", "speaker"), member(12, "sample-gull", "listener")], { host: "gh:9011" });
+      room("fixtureChatDune1", "Building DSB Land", "dsb", 120000, [member(11, "sample-dune", "speaker", { via: "island", since: ago(110) }),
+        member(12, "sample-gull", "listener", { via: "app", since: ago(60) })], { host: "gh:9011" });
     }
     const level = (r, id) => id === r.host ? 2 : r.cohosts.has(id) ? 1 : 0;
     const invitedUntil = (r, id) => (r.invites.get(id) || 0) > now() ? r.invites.get(id) : 0;
@@ -221,7 +226,7 @@
     // A row as the chat draws it: its rank and open request.
     const standing = (r, p) => {
       const { rank: _r, request: _q, askedAt: _a, ...row } = p, rank = level(r, p.id), request = requestOf(r, p.id);
-      return { ...row, ...(rank ? { rank: rank === 2 ? "host" : "cohost" } : {}), ...(request ? { request, ...(request === "asked" ? { askedAt: r.queue.get(p.id) } : {}) } : {}) };
+      return { ...row, ...(rank ? { rank: rank === 2 ? "host" : "cohost", ...(rank === 1 ? { rankSince: r.cohosts.get(p.id) } : {}) } : {}), ...(request ? { request, ...(request === "asked" ? { askedAt: r.queue.get(p.id) } : {}) } : {}) };
     };
     const listing = () => [...rooms.values()].filter((r) => !r.ended).map((r) => {
       const host = r.cast.find((p) => p.id === r.host) || { login: account?.identity.login || "sample-host", display: account?.identity.display };
@@ -267,7 +272,8 @@
     const audience = (boot, { message, status }, chat = null) => {
       const r = chat ? rooms.get(chat) : null;
       let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false, requests = 0;
-      let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0;
+      let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0, activeAt = 0;
+      const joinedAt = now();
       const held = new Map();
       const contributor = () => !!account && account.identity.provider === "github" && account.eligibility.state === "eligible";
       // `?voice=elsewhere`: the island holds the account's voice until the visitor takes it.
@@ -284,7 +290,7 @@
       };
       // The visitor's row as the server would draw it: a muted app speaker once its microphone is up.
       const ownRow = () => {
-        const mine = self()[0], row = mine && (active ? { ...mine, role: "speaker", source: "app", muted: mic === "muted" } : mine);
+        const mine = self()[0], row = mine && (active ? { ...mine, role: "speaker", source: "app", muted: mic === "muted", ...(r ? { since: activeAt } : {}) } : mine);
         return row && r ? standing(r, row) : row;
       };
       const endLease = (voluntary = true) => {
@@ -309,7 +315,7 @@
       const self = () => {
         const who = account && parseSession(account, now());
         const id = who && `${who.identity.provider === "github" ? "gh" : "x"}:${who.identity.providerUserId}`;
-        return who ? [person("self", "app", "listener", who.identity.login, { id, display: who.identity.display })] : [];
+        return who ? [person("self", "app", "listener", who.identity.login, { id, display: who.identity.display, ...(r ? { via: "app", since: joinedAt } : {}) })] : [];
       };
       const script = () => after(4000, () => {
         const visitor = person("listener-visitor", "app", "listener", "sample-visitor");
@@ -319,6 +325,8 @@
           () => delta([], [{ id: visitor.id, generation: 1 }])][step++ % 4]();
         script();
       });
+      // Who was removed, to a host or co-host (the server's `removed` list, earliest first).
+      const removedList = () => message({ type: "removed", list: [...r.removedInfo.values()].map(({ id, at, login, display }) => ({ id, at, login, display })) });
       // In a chat: a member's row redrawn with their standing; a notice to the visitor; and the chat's end.
       const touch = (...ids) => delta(ids.map((id) => id === self()[0]?.id ? ownRow() : people.find((p) => p.id === id)).filter(Boolean).map((p) => standing(r, p)));
       const notice = (fields) => message({ type: "notice", ...fields });
@@ -332,7 +340,7 @@
         if (!p || !invitedUntil(r, id)) return;
         r.invites.delete(id);
         r.stage.add(id);
-        const row = { ...p, role: "speaker", muted: false };
+        const row = { ...p, role: "speaker", muted: false, since: now() };
         r.cast = r.cast.map((q) => q.id === id ? row : q);
         delta([standing(r, row)]);
       });
@@ -365,6 +373,20 @@
           return { ok: true };
         }
         if (!mine) return no("not_host");
+        // Allow back: someone removed may come in again, as a listener; a sample comes back a moment later.
+        if (type === "allow") {
+          const info = r.removedInfo.get(target);
+          if (!info) return no("not_removed");
+          r.removed.delete(target);
+          r.removedInfo.delete(target);
+          removedList();
+          after(1000, () => {
+            const back = { ...info.row, role: "listener", muted: undefined, since: now() };
+            r.cast = [...r.cast, back];
+            delta([standing(r, back)]);
+          });
+          return { ok: true };
+        }
         if (!row || target === me || mine <= level(r, target)) return no("not_allowed");
         switch (type) {
           case "invite":
@@ -383,8 +405,8 @@
             return { ok: true };
           case "demote":
             r.stage.delete(target);
-            r.cast = r.cast.map((p) => p.id === target ? { ...p, role: "listener", muted: undefined } : p);
-            delta([standing(r, { ...row, role: "listener", muted: undefined })]);
+            r.cast = r.cast.map((p) => p.id === target ? { ...p, role: "listener", muted: undefined, since: now() } : p);
+            delta([standing(r, { ...row, role: "listener", muted: undefined, since: now() })]);
             return { ok: true };
           case "cohost":
             if (mine !== 2) return no("not_host");
@@ -403,8 +425,10 @@
             return { ok: true };
           case "remove":
             r.queue.delete(target); r.invites.delete(target); r.cohosts.delete(target); r.removed.add(target);
+            r.removedInfo.set(target, { id: target, at: now(), login: row.login, display: row.display, row });
             r.cast = r.cast.filter((p) => p.id !== target);
             delta([], [{ id: target, generation: row.generation }]);
+            removedList();
             return { ok: true };
           default: return no("malformed");
         }
@@ -420,14 +444,17 @@
           people = [...r.cast, ...self()].map((p) => standing(r, p));
           message({ type: "snapshot", zone, epoch, revision, participants: people, you: you(), connection,
             chat: { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: r.host, cohosts: [...r.cohosts.keys()] } });
-          // A chat the visitor started fills up: two samples join and ask to speak, a moment apart.
-          if (!r.sample && !r.cast.length) [[21, "sample-pebble"], [22, "sample-otter"]].forEach(([n, login], i) => after(2000 + i * 1200, () => {
-            const p = member(n, login, "listener");
-            r.cast = [...r.cast, p];
-            r.queue.set(p.id, now());
-            delta([standing(r, p)]);
-            notice({ kind: "asked", id: p.id });
-          }));
+          if (level(r, self()[0]?.id)) removedList();
+          // A chat the visitor started fills up: one sample listening from the island, then two who ask to speak, one
+          // from each app, a moment apart.
+          if (!r.sample && !r.cast.length) [[23, "sample-heron", "island", false, 1000], [21, "sample-pebble", "app", true, 2000], [22, "sample-otter", "island", true, 3200]]
+            .forEach(([n, login, via, asks, at]) => after(at, () => {
+              const p = member(n, login, "listener", { via, since: now() });
+              r.cast = [...r.cast, p];
+              if (asks) r.queue.set(p.id, now());
+              delta([standing(r, p)]);
+              if (asks) notice({ kind: "asked", id: p.id });
+            }));
         });
         after(500, () => {
           epoch++;
@@ -467,7 +494,7 @@
         },
         lease: (generation) => !!lease && lease === generation,
         ready() {
-          active = true; mic = "muted";
+          active = true; mic = "muted"; activeAt = now();
           if (r) { const id = self()[0]?.id; r.invites.delete(id); r.queue.delete(id); r.stage.add(id); }
           delta([ownRow()]);
           message({ type: "you", zone, you: you() });

@@ -302,11 +302,7 @@
         return { ok: false, error: "Name could not be saved. Try again." };
       }
     };
-    // Hosted chats: `{ chats }` (null unread), and starting one, `{ chat }` or the refusal's `{ code, retryable, retryAfter }`.
-    const chatsCall = (boot, init) => ask(boot.paths.chats, { ...init, headers: { "content-type": "application/json", accept: "application/json" } }, TIMEOUT_MS, json)
-      .then(({ response, data }) => response.ok ? data : data?.error || {}, () => ({}));
-    const chats = async (boot) => { const data = await chatsCall(boot); return { chats: Array.isArray(data?.chats) ? data.chats : null }; };
-    const startChat = async (boot, body) => { const data = await chatsCall(boot, { method: "POST", body: JSON.stringify(body) }); return data?.chat?.id ? { chat: data.chat } : data; };
+    const chats = (...a) => BL.oogaChatHosts.chats(ask, json, ...a), startChat = (...a) => BL.oogaChatHosts.startChat(ask, json, ...a);
     const dispose = () => {
       disposed = true;
       for (const controller of pending) controller.abort();

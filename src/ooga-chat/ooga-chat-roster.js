@@ -6,12 +6,12 @@
 // gap, and the caller asks for a fresh snapshot. A delta is checked whole before any of it applies. A snapshot is the
 // server's whole list, so one at the revision already held applies too: after a reconnect it confirms the list. A
 // speaker's `hand` is its raised hand or pinned emoji (#668), "" when down; a listener has none. A hosted chat's row may
-// carry a `rank` and a `request` with `askedAt`, which move nobody; its snapshot's `chat` is kept.
+// carry a `rank` (`rankSince`), a `request` (`askedAt`), `since` and `via`, and is ordered by chat-hosts.js's `order`.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { pathOk, clean, ZONES } = BL.oogaChatConfig;
-  const SOURCES = ["world", "app"], ROLES = ["speaker", "listener"], RANKS = ["host", "cohost"], REQUESTS = ["asked", "invited"];
+  const SOURCES = ["world", "app"], ROLES = ["speaker", "listener"], RANKS = ["host", "cohost"], REQUESTS = ["asked", "invited"], VIA = ["island", "app"];
   const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
   // One participant, or null when anything in it is out of the contract.
   const parseParticipant = (raw) => {
@@ -24,7 +24,8 @@
       // where there is no picture of their own.
       character: typeof raw.character === "string" && /^[\w.-]{1,64}$/.test(raw.character) ? raw.character : null, contributions: raw.source === "world" ? count(raw.contributions) : null, muted: raw.muted === true,
       hand: raw.role === "speaker" && typeof raw.hand === "string" && raw.hand.length <= 16 && !/[\u0000-\u001f\u007f]/.test(raw.hand) ? raw.hand : "",
-      rank: RANKS.includes(raw.rank) ? raw.rank : "", request: REQUESTS.includes(raw.request) ? raw.request : "", askedAt: raw.request === "asked" && count(raw.askedAt) || 0 };
+      rank: RANKS.includes(raw.rank) ? raw.rank : "", request: REQUESTS.includes(raw.request) ? raw.request : "", askedAt: raw.request && count(raw.askedAt) || 0,
+      rankSince: count(raw.rankSince) || 0, since: count(raw.since) || 0, via: VIA.includes(raw.via) ? raw.via : "" };
   };
   const nameKey = (p) => p.login.toLowerCase();
   const byName = (a, b) => nameKey(a) < nameKey(b) ? -1 : nameKey(a) > nameKey(b) ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
@@ -100,7 +101,7 @@
       revision = msg.revision;
       return "applied";
     };
-    return { expect, apply, list: (self) => order(people.values(), self), get: (id) => people.get(id) || null,
+    return { expect, apply, list: (self) => (chat && BL.chatHosts ? BL.chatHosts.order : order)(people.values(), self), get: (id) => people.get(id) || null,
       get zone() { return zone; }, get chat() { return chat; }, get epoch() { return epoch; }, get revision() { return revision; }, get size() { return people.size; }, get ready() { return epoch >= 0; } };
   };
   BL.oogaChatRoster = { create, order, parseParticipant, SOURCES, ROLES };

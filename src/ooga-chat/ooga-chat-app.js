@@ -150,7 +150,6 @@
     // Voice is pressed while it is. A voice that goes elsewhere later is the visitor's own doing and asks nothing.
     // Switch here joins with `takeover`, inside its click; Not now changes nothing.
     let handoffChecked = false;
-    // In a hosted chat its hosts decide who speaks: the server's `you`, which the voice controller reads.
     const mayJoin = () => !!state.room || gates(state, Date.now()).joinVoice;
     const handoff = BL.voiceHandoff.build({ onSwitch: () => { if (media.available && mayJoin()) media.join({ takeover: true }); } });
     document.body.append(handoff.node);
@@ -200,12 +199,11 @@
               for (const fn of pops) fn(msg.participantId, msg.emoji);
             return;
           }
-          // A chat's notices and answers go to `ctx.chats.hear`; a host's mute mutes here.
           if (room && msg?.you && state.room === room) room.you = msg.you;
-          if (room && (msg?.type === "notice" || msg?.type === "result")) {
-            if (msg.type === "notice" && msg.kind === "muted" && state.voice.role === "speaker" && !state.voice.muted) media.mute();
+          if (room && /^(notice|result|removed)$/.test(msg?.type)) {
+            if (msg.kind === "muted" && state.voice.role === "speaker" && !state.voice.muted) media.mute();
             for (const fn of heardChat) fn(msg);
-            if (msg.type === "notice") return set({});
+            if (msg.type !== "result") return set({});
           }
           if (msg && msg.type === "result") {
             media.heard(msg);
@@ -373,7 +371,6 @@
         } },
       contributors: () => adapter.contributors(),
       reactions: { bars, onPop(fn) { pops.add(fn); return () => pops.delete(fn); } },
-      // Hosted chats, for ooga-chat-hosts.js.
       chats: { list: () => adapter.chats(state.boot), start: (body) => adapter.startChat(state.boot, body), open: enterRoom, leave: () => leaveRoom(),
         request: (type, fields) => feed && state.room ? feed.request(type, fields) : 0, hear(fn) { heardChat.add(fn); return () => heardChat.delete(fn); } } };
     shell = BL.oogaChatShell.create({ root, ctx, selected: back ? "chat" : remembered, onSelect(id) {
