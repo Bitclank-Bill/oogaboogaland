@@ -169,7 +169,7 @@
     const m = controller();
     if (voice.stats.enabled || voice.stats.joining || voice.stats.returning) { resumeVoice = true; voice.stop(); }
     const chat = room = { id: entry.id, title: entry.title, zone: entry.zone, you: null };
-    roster.expect(entry.zone);
+    roster.expect(BL.chatHosts.rosterZone(entry.zone));
     listed++;
     m.identify(identity()?.participant || null);
     m.zone(entry.zone);

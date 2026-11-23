@@ -147,7 +147,7 @@
       // out keeps the space's footer, which says so, until the server confirms.
       signedOut.hidden = !!who || mode === "loading" || live && auth === "checking";
       node.dataset.space = who ? chats && !state.room ? "list" : "on" : busy === "signout" ? "foot" : "off";
-      set(head.chip, "textContent", who ? ZONE_NAMES[state.zone] : "");
+      set(head.chip, "textContent", who ? state.room && BL.chatHosts ? BL.chatHosts.ZONE_NAMES[state.room.zone] || "" : ZONE_NAMES[state.zone] : "");
       let words = STATUS[mode] || "";
       if (live && auth === "checking") words = "Checking your sign-in…";
       if (chats && !hosts) words = "Opening chats…";

@@ -49,8 +49,10 @@
   const attr = (el, key, value) => { if (el.getAttribute(key) !== value) el.setAttribute(key, value); };
   // Text a person chose, without control or direction-override characters, bounded (ooga-chat-config.js `clean`).
   const clean = (text, max) => typeof text === "string" ? text.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, max) : "";
-  const ZONES = ["main", "dsb"];
-  const ZONE_NAMES = { main: "Main Island", dsb: "DSB Land" };
+  // A chat's land: `none` is Ooga Chat voice alone, whose roster's frames name the `main` zone (`rosterZone`).
+  const ZONES = ["main", "dsb", "none"];
+  const ZONE_NAMES = { main: "Main Island", dsb: "DSB Land", none: "Voice only" };
+  const rosterZone = (land) => (land === "dsb" ? "dsb" : "main");
   // Main Island's mark for the zone cards, drawn as DSB Land's is (native-icons.js `dsb`): a floating isle on the sea,
   // its grass, a cave mouth, a palm and the banana pile. Kept here, in the deferred chunk, off the first load.
   const MAIN_ISLAND = [
@@ -160,7 +162,7 @@
     cards.setAttribute("role", "radiogroup");
     cards.setAttribute("aria-label", "Where");
     const zones = Object.entries(ZONE_NAMES).map(([value, words]) => {
-      const card = tap("hc-zone-card", make("span", "hc-zone-art", value === "main" ? mainIsland() : BL.nativeIcons.svg("dsb")), make("span", "hc-zone-name", words));
+      const card = tap("hc-zone-card", make("span", "hc-zone-art", value === "main" ? mainIsland() : BL.nativeIcons.svg(value === "dsb" ? "dsb" : "cloud")), make("span", "hc-zone-name", words));
       card.setAttribute("role", "radio");
       card.dataset.zone = value;
       cards.append(card);
@@ -639,5 +641,5 @@
     };
     return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), dispose };
   };
-  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS };
+  BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS };
 })();

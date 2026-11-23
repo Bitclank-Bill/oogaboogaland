@@ -251,7 +251,7 @@
     // A chat chosen from the list, or left (`kind` says why: ended, removed, or null for Leave).
     const enterRoom = (entry) => {
       if (!state.session || state.room?.id === entry.id) return;
-      state = { ...state, room: { id: entry.id, title: entry.title, zone: entry.zone, principal: state.session.identity.principal, you: null }, zone: entry.zone };
+      state = { ...state, room: { id: entry.id, title: entry.title, zone: entry.zone, principal: state.session.identity.principal, you: null }, zone: BL.chatHosts.rosterZone(entry.zone) };
       listen();
       set({});
     };
