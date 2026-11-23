@@ -83,7 +83,7 @@ editable, at most 60 characters, checked by the island's chat policy) and two pi
 Island (chosen first) and DSB Land, then Start chat (the one amber action) or Cancel. The island's panel opens the
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
 the footer) with a Back to chats control, the Requests chip for a host or co-host (in the panel's top right corner,
-beside the zone tag), a role badge on host and co-host
+to the right of the zone tag), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
@@ -187,8 +187,8 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
 - **Order** in a chat, in both apps: the host first, then co-hosts, the longest-serving first (`rankSince`), then
   speakers, the longest on stage first (`since`), then listeners with an open request, the longest-lived request first
   (`askedAt`; an invited listener at the head of the rest), then the other listeners, the longest here first (`since`);
-  ties by name, then id. A speaker's ring and a listener's dot beside "Listener" are green for the island and purple for Ooga Chat
-  (`via`), and the tile's accessible name says where they listen from. A host's or co-host's rank does not make them a
+  ties by name, then id. A speaker's ring is green from the island and purple from Ooga Chat (`via`), and the tile's
+  accessible name says where they speak from. Listeners carry no mark of their app: none of them goes into a copy. A host's or co-host's rank does not make them a
   speaker: `role` is still `speaker` only under an active lease.
 - **You** adds `rank` (`host`, `cohost` or `""`), `request` (`asked`, `invited` or `""`) and, while invited,
   `inviteUntil` (ms). `speak` is `eligible` exactly when the visitor may take a lease now (a rank, a live invite, or a
