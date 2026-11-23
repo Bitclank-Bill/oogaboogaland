@@ -33,12 +33,13 @@ export const isZone = (zone) => ZONES.includes(zone);
 const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation && a.role === b.role && a.source === b.source
   && a.mic === b.mic && a.hand === b.hand && a.speaking === b.speaking && a.display === b.display && a.login === b.login
   && a.avatar === b.avatar && a.character === b.character && a.contributions === b.contributions
-  && a.rank === b.rank && a.request === b.request && a.askedAt === b.askedAt;
+  && a.rank === b.rank && a.request === b.request && a.askedAt === b.askedAt && a.rankSince === b.rankSince
+  && a.since === b.since && a.via === b.via;
 
 // A hosted chat (docs/ooga-chat-hosts.md) hands in its roles: `standing(id)` is a row's `{ rank, request, askedAt }`
 // (the host's or a co-host's rank, an open request or invite, when it was asked), and `may(conn)` whether a connection's
 // identity may take a speaker lease now, in place of the capability the connection arrived with.
-const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0 });
+const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0, rankSince: 0 });
 // `seats()` false: a speaker takes no cloud seat (a hosted chat, whose clouds are its own copy's, docs/ooga-chat-hosts.md).
 export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now, standing = () => NO_STANDING,
   may = (c) => !!c.eligible, seats = () => true } = {}) => {
@@ -59,14 +60,17 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
 
   // The row a person shows in a zone now, before its generation is decided.
   const visible = (p, zone) => {
-    if (p.world && p.world.zone === zone) return { role: "speaker", source: "world", mic: p.world.mic, hand: p.world.hand || "", speaking: !!p.world.speaking, character: p.world.character || null };
-    let listener = false;
+    if (p.world && p.world.zone === zone) return { role: "speaker", source: "world", mic: p.world.mic, hand: p.world.hand || "", speaking: !!p.world.speaking, character: p.world.character || null, since: 0 };
+    // `since`: when they took the stage, or for a listener when their earliest connection here joined, so a roster can
+    // put the longest-running first; both ride the connections' attachments, so a wake keeps them.
+    let listener = 0;
     for (const c of p.conns.values()) {
       if (c.zone !== zone) continue;
-      if (c.lease && c.lease.state === "active") return { role: "speaker", source: "chat", mic: c.mic, hand: c.hand || "", speaking: !!c.speaking, character: c.lease.character || p.info.character || null };
-      listener = true;
+      if (c.lease && c.lease.state === "active") return { role: "speaker", source: "chat", mic: c.mic, hand: c.hand || "", speaking: !!c.speaking, character: c.lease.character || p.info.character || null, since: c.lease.since || 0 };
+      const at = c.joinedAt || 1;
+      listener = listener ? Math.min(listener, at) : at;
     }
-    return listener ? { role: "listener", source: "chat", mic: "off", hand: "", speaking: false, character: null } : null;
+    return listener ? { role: "listener", source: "chat", mic: "off", hand: "", speaking: false, character: null, since: listener } : null;
   };
 
   const rowOf = (p, zone, base, generation) => ({
@@ -74,6 +78,8 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     avatar: base.source === "chat" ? p.info.avatar || null : null,
     contributions: base.source === "world" && Number.isSafeInteger(p.info.contributions) ? p.info.contributions : null,
     ...base, ...standing(p.id),
+    // Which app an Ooga Chat source listens or speaks from: the island's page (an `ob_` principal) or Ooga Chat's.
+    via: base.source === "world" ? "island" : [...p.conns.values()].some((c) => c.zone === zone && typeof c.principal === "string" && c.principal.startsWith("ob_")) ? "island" : "app",
   });
 
   const commit = () => {
@@ -153,6 +159,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     if (!elsewhere && counts(zone).listeners >= limits.listeners) return refuse("audience_full");
     if (c.zone) touch(c.id, c.zone);
     c.zone = zone;
+    c.joinedAt = clock();
     // A real change of zone starts the new one as a listener, muted, with no hand and no lease.
     const lease = c.lease;
     c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false; c.forced = false;
@@ -200,7 +207,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     const seated = seats();
     const seat = seated ? freeSeat(c.zone, seatsTaken(c.zone)) : null;
     if (seated && !seat) return refuse("speaker_capacity", { retryable: true });
-    c.lease = { state: "active", generation, seat, character: c.lease.character || null };
+    c.lease = { state: "active", generation, seat, character: c.lease.character || null, since: clock() };
     c.mic = "muted";
     touch(c.id, c.zone);
     return { ok: true, changed: true };
@@ -312,6 +319,7 @@ export const appRow = (row, self = null) => ({
   login: row.login, display: row.display, face: row.avatar, contributions: row.contributions, muted: row.mic === "muted",
   provider: row.provider, character: row.character, mic: row.mic, speaking: row.speaking, hand: row.hand,
   ...(row.rank ? { rank: row.rank } : {}), ...(row.request ? { request: row.request, askedAt: row.askedAt } : {}),
+  ...(row.rankSince ? { rankSince: row.rankSince } : {}), ...(row.since ? { since: row.since } : {}), ...(row.via ? { via: row.via } : {}),
   ...(self === row.id ? { self: true } : {}),
 });
 

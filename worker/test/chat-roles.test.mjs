@@ -147,3 +147,22 @@ test("a save restores the same chat, Maps and all", () => {
   assert.equal(back.ask(L, ASK_GAP_MS + 4).code, "cooldown");
   assert.equal(back.isRemoved(D), true);
 });
+
+test("allowed back: a host or co-host lets someone removed in again as a listener, with nothing else restored", () => {
+  const r = createRoles({ host: H, now: 0 });
+  r.setCohost(H, C, true, 0);
+  r.ask(L, 0);
+  r.remove(C, L, 5, { login: "zed", display: "Zed" });
+  assert.deepEqual(r.removedList(), [{ id: L, at: 5, login: "zed", display: "Zed" }]);
+  assert.equal(r.allowBack(L, L).code, "not_host", "nobody lets themselves back");
+  assert.equal(r.allowBack(C, L).ok, true, "a co-host may");
+  assert.equal(r.isRemoved(L), false);
+  assert.deepEqual(r.removedList(), []);
+  assert.equal(r.allowBack(H, L).code, "not_removed");
+  assert.equal(r.mayLease(L, 10), false, "back as a listener, not a speaker");
+  assert.equal(r.requestOf(L, 10), "", "their old request is gone");
+  assert.equal(r.ask(L, 10).ok, true, "and they may ask again");
+  const old = createRoles({ saved: { host: H, removed: [M] } });
+  assert.equal(old.isRemoved(M), true, "a save from before names read as unnamed removals");
+  assert.equal(old.allowBack(H, M).ok, true);
+});

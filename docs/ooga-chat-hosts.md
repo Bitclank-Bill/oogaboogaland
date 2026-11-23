@@ -44,7 +44,8 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   first's).
 - **Mute:** a host or co-host can mute a speaker; only the speaker can unmute themselves (X Spaces' rule). Move to
   listener ends their lease. Remove from chat closes every connection of that account to the chat and keeps it out of
-  that chat until it ends.
+  that chat until a host or co-host allows them back or it ends. **Allow back** (from the Removed list in the
+  Requests pop-up) lets them join again as a listener only: no request, invite, rank or place on the stage returns.
 
 ## Requests
 
@@ -73,7 +74,8 @@ many speak and listen), with **Start a chat** for a contributor: one dialog with
 editable, at most 60 characters, checked by the island's chat policy) and two picture cards to choose the zone, Main
 Island (chosen first) and DSB Land, then Start chat (the one amber action) or Cancel. The island's panel opens the
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
-the footer) with a Back to chats control, the Requests chip for a host or co-host, a role badge on host and co-host
+the footer) with a Back to chats control, the Requests chip for a host or co-host (in the panel's top right corner,
+beside the zone tag), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
@@ -162,8 +164,14 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   (`error`, `zone_unavailable`). Protocol 1 on a chat closes it with 4426.
 - **Snapshot** carries `chat: { id, title, zone, startedAt, host, cohosts }` (the host's and co-hosts' participant
   ids).
-- **Rows** carry `rank` (`host` or `cohost`, absent for everyone else) and, while one is open, `request` (`asked` or
-  `invited`) with `askedAt` (ms; the queue's order, oldest first). A host's or co-host's rank does not make them a
+- **Rows** carry `rank` (`host` or `cohost`, absent for everyone else) with `rankSince` (ms, when a co-host was made
+  one) and, while one is open, `request` (`asked` or `invited`) with `askedAt` (ms; the queue's order, oldest first).
+  `since` (ms) is when a speaker took the stage, or when a listener's earliest connection joined; `via` is `island` or
+  `app`, the app they listen or speak from (an island page's `ob_` principal, else Ooga Chat).
+- **Order** in a chat, in both apps: the host first, then co-hosts, the longest-serving first (`rankSince`), then
+  speakers, the longest on stage first (`since`), then listeners, the longest here first (`since`); ties by name, then
+  id. A speaker's ring and a listener's dot beside "Listener" are green for the island and purple for Ooga Chat
+  (`via`), and the tile's accessible name says where they listen from. A host's or co-host's rank does not make them a
   speaker: `role` is still `speaker` only under an active lease.
 - **You** adds `rank` (`host`, `cohost` or `""`), `request` (`asked`, `invited` or `""`) and, while invited,
   `inviteUntil` (ms). `speak` is `eligible` exactly when the visitor may take a lease now (a rank, a live invite, or a
@@ -183,6 +191,7 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   | `cohost` | `id`, `on` (boolean) | the host alone |
   | `handover` | `id` (a co-host) | the host alone |
   | `remove` | `id` | a host or co-host, to anyone they outrank |
+  | `allow` | `id` | a host or co-host, to someone removed: Allow back |
   | `end` | | the host alone |
 
   `setRole`, `setMic`, `reaction` and `hand` are protocol 1's. Refusal codes: `not_host`, `not_allowed`,
@@ -205,6 +214,8 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   | `removed` | that person | `by` removed them; the socket then closes with 4403 |
   | `ended` | everyone | the chat ended (`reason` `ended` or `host_left`); every socket then closes with 4404 |
 
+- **Removed list**, `{ type: "removed", list: [{ id, at, login, display }] }`, earliest first, to hosts and co-hosts
+  alone: after their snapshot, whenever it changes, and to anyone who becomes host or co-host. Refusal `not_removed`.
 - **Close codes** add 4403 (removed: don't reconnect, back to the list) and 4404 (ended or unknown: back to the list).
 
 - **Pure model.** The rules live in `worker/src/chat-roles.js`, pure and allocation-light

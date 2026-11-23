@@ -6,7 +6,8 @@
 // rank than theirs, so a co-host never touches the host or another co-host. Speaking needs a rank, a live invite, or a
 // place on the stage, which an accepted invite gives for the life of the speaker's lease and STAGE_HOLD_MS after one that
 // ended without their word (a dropped socket, a failed microphone), so a speaker who comes straight back needs no
-// second invite. Going back to listening on their own word, or a host's, gives the place up.
+// second invite. Going back to listening on their own word, or a host's, gives the place up. Someone removed stays out
+// until a host or co-host allows them back (`allowBack`), which lets them in again as a listener and nothing more.
 // Times are the caller's clock (`now`), so the checks run without one; nothing here sets a timer. `nextAt` is the
 // earliest moment something changes by itself (an invite lapsing, the held host's two minutes), for the object's alarm.
 
@@ -30,13 +31,14 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
       host: saved.host, ended: saved.ended === true, hostAway: Number(saved.hostAway) || 0,
       cohosts: new Map(saved.cohosts || []), queue: new Map(saved.queue || []), invites: new Map(saved.invites || []),
       cooldown: new Map(saved.cooldown || []), lastAsk: new Map(saved.lastAsk || []), stage: new Map(saved.stage || []),
-      removed: new Set(saved.removed || []),
+      // A removal keeps when it happened and the name to list it by; an older save's bare ids read as unnamed.
+      removed: new Map((saved.removed || []).map((r) => typeof r === "string" ? [r, { at: 0, login: "", display: "" }] : r)),
     };
   } else {
     if (!ID.test(host)) throw new Error("a chat needs a host");
     // The host must connect within the hold, as if they had just dropped.
     state = { host, ended: false, hostAway: now + HOST_HOLD_MS, cohosts: new Map(), queue: new Map(), invites: new Map(),
-      cooldown: new Map(), lastAsk: new Map(), stage: new Map(), removed: new Set() };
+      cooldown: new Map(), lastAsk: new Map(), stage: new Map(), removed: new Map() };
   }
 
   const rankOf = (id) => id === state.host ? "host" : state.cohosts.has(id) ? "cohost" : "";
@@ -161,17 +163,31 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     return OK;
   };
 
-  /** Removed from the chat: every role and request goes, and they stay out until it ends. The caller closes them. */
-  const remove = (actor, target) => {
+  /**
+   * Removed from the chat: every role and request goes, and they stay out until a host or co-host allows them back or
+   * the chat ends. `info` is the name to list them by (`{ login, display }`). The caller closes them.
+   */
+  const remove = (actor, target, now = 0, info = null) => {
     const bad = guard(actor, target);
     if (bad) return bad;
     clear(target);
     state.cohosts.delete(target);
     state.cooldown.delete(target);
     state.lastAsk.delete(target);
-    state.removed.add(target);
+    state.removed.set(target, { at: now, login: info && typeof info.login === "string" ? info.login : "", display: info && typeof info.display === "string" ? info.display : "" });
     return OK;
   };
+
+  /** A host or co-host lets someone removed back in: they may join again, as a listener, with nothing else restored. */
+  const allowBack = (actor, target) => {
+    if (state.ended) return refuse("ended");
+    if (!manages(actor)) return refuse("not_host");
+    if (!ID.test(target)) return refuse("malformed");
+    return state.removed.delete(target) ? OK : refuse("not_removed");
+  };
+
+  /** Everyone removed, the earliest first, for hosts and co-hosts. */
+  const removedList = () => [...state.removed].sort((a, b) => a[1].at - b[1].at).map(([id, r]) => ({ id, at: r.at, login: r.login, display: r.display }));
 
   const end = (actor) => {
     if (state.ended) return SAME;
@@ -234,7 +250,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   return {
     get host() { return state.host; }, get ended() { return state.ended; }, get hostAway() { return state.hostAway; },
     get cohosts() { return [...state.cohosts.keys()]; },
-    rankOf, manages, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
+    rankOf, manages, rankSince: (id) => state.cohosts.get(id) || 0, allowBack, removedList, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
     isRemoved: (id) => state.removed.has(id), askedAt: (id) => state.queue.get(id) || 0,
     ask, cancel, invite, answer, decline, granted, leaseEnded, demote, mute, setCohost, handover, remove, end, presence, tick, nextAt, queue, save,
   };

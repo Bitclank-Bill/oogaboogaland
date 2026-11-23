@@ -33,7 +33,7 @@ import { inspectReporter } from "./inspect-report.js";
 import { createRoles } from "./chat-roles.js";
 // The one directory of live chats (chat-directory.js), named here so neither file imports the other.
 export const DIRECTORY_NAME = "chats";
-const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0 });
+const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0, rankSince: 0 });
 
 export const AUDIENCE_NAME = "audience";
 export const AUDIENCE_PROTOCOL = 1;
@@ -44,8 +44,8 @@ export const CHAT_PROTOCOL = 2;
 export const CHAT_ID = /^[A-Za-z0-9_-]{16}$/;
 export const CHAT_TITLE_MAX = 60;
 export const chatName = (id) => `chat:${id}`;
-export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "end"]);
-const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove"]);
+export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "end"]);
+const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
 export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1"];
 // A transient reaction's life on every client (players.js shows the island's for the same time), and the limits on
 // sending them: per identity across its tabs (as the island's room has it) and per zone, which bounds any zone's fanout.
@@ -246,7 +246,7 @@ export class Audience extends DurableObject {
     if (!ws || !c) return;
     const p = this.model.people.get(c.id);
     ws.serializeAttachment({ conn: { connId: c.connId, id: c.id, principal: c.principal, providerUserId: c.providerUserId, zone: c.zone, lease: c.lease,
-      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced }, info: p.info });
+      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt }, info: p.info });
   }
 
   /** Commit what changed, store the revisions, and send every zone's delta to its clients and to a watching Room. */
@@ -628,6 +628,7 @@ export class Audience extends DurableObject {
   /** A zone's snapshot to one connection, its size counted for the owner (the largest frame the audience sends). */
   sendSnapshot(ws, c) {
     const text = JSON.stringify(this.snapshotFor(c));
+    if (this.roles && this.roles.manages(c.id)) this.send(ws, { type: "removed", list: this.roles.removedList() });
     this.inspect.count("snapshots");
     this.inspect.count("snapshotBytes", text.length);
     this.inspect.peak("snapshotBytesMax", text.length);
@@ -739,7 +740,7 @@ export class Audience extends DurableObject {
     const R = this.roles;
     if (!R) return NO_STANDING;
     const request = R.requestOf(id, Date.now());
-    return { rank: R.rankOf(id), request, askedAt: request === "asked" ? R.askedAt(id) : 0 };
+    return { rank: R.rankOf(id), request, askedAt: request === "asked" ? R.askedAt(id) : 0, rankSince: R.rankSince(id) };
   }
 
   mayOf(c) { return this.roles ? this.roles.mayLease(c.id, Date.now()) : !!c.eligible; }
@@ -810,6 +811,25 @@ export class Audience extends DurableObject {
 
   managers() { const R = this.roles; return [R.host, ...R.cohosts]; }
 
+  /**
+   * Who is removed, for hosts and co-hosts alone (`{ type: "removed", list: [{ id, at, login, display }] }`, earliest
+   * first): the list Allow back works from, since a removed person has no row. `ids`: only these (a new manager).
+   */
+  sendRemoved(ids = null) {
+    if (!this.roles) return;
+    const managers = this.managers().filter((id) => !ids || ids.includes(id));
+    this.notifyRaw(managers, { type: "removed", list: this.roles.removedList() });
+  }
+
+  notifyRaw(ids, msg) {
+    const text = JSON.stringify(msg);
+    for (const c of this.model.conns.values()) {
+      if (!ids.includes(c.id)) continue;
+      const ws = this.sockets.get(c.connId);
+      if (ws) this.send(ws, text);
+    }
+  }
+
   /** A host's or a listener's message in a chat (CHAT_OPS), checked whole: an unknown or malformed one is refused. */
   async chatOp(c, msg) {
     const R = this.roles, me = c.id, now = Date.now();
@@ -861,18 +881,23 @@ export class Audience extends DurableObject {
         break;
       case "cohost":
         res = R.setCohost(me, target, msg.on, now);
-        if (res.ok && res.changed) { this.touchId(target); this.notify([target], { kind: msg.on ? "cohost" : "uncohost", by: me }); this.tellYouId(target); }
+        if (res.ok && res.changed) { this.touchId(target); this.notify([target], { kind: msg.on ? "cohost" : "uncohost", by: me }); this.tellYouId(target); this.sendRemoved([target]); }
         break;
       case "handover":
         res = R.handover(me, target, now);
-        if (res.ok) { this.touchId(me); this.touchId(target); this.notify(null, { kind: "host", id: target, by: me }); this.tellYouId(me); this.tellYouId(target); }
+        if (res.ok) { this.touchId(me); this.touchId(target); this.notify(null, { kind: "host", id: target, by: me }); this.tellYouId(me); this.tellYouId(target); this.sendRemoved([target]); }
         break;
       case "remove":
-        res = R.remove(me, target);
+        res = R.remove(me, target, now, this.model.people.get(target)?.info);
         if (res.ok) {
+          this.sendRemoved();
           this.notify([target], { kind: "removed", by: me });
           for (const o of conns(target)) this.close(o.connId, CLOSE.removed, "removed");
         }
+        break;
+      case "allow":
+        res = R.allowBack(me, target);
+        if (res.ok) this.sendRemoved();
         break;
       case "end":
         res = R.end(me);
@@ -888,7 +913,7 @@ export class Audience extends DurableObject {
   async rolesTick(now) {
     const t = this.roles.tick(now, (id) => this.present(id));
     for (const id of t.expired) { this.touchId(id); this.tellYouId(id); this.notify([id], { kind: "expired" }); }
-    if (t.host) { this.touchId(t.host); this.notify(null, { kind: "host", id: t.host }); this.tellYouId(t.host); }
+    if (t.host) { this.touchId(t.host); this.notify(null, { kind: "host", id: t.host }); this.tellYouId(t.host); this.sendRemoved([t.host]); }
     if (t.expired.length || t.host || t.ended) await this.rolesChanged();
     if (t.ended) await this.endChat("host_left");
   }

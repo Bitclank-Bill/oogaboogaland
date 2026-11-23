@@ -285,7 +285,7 @@ test("the bridge reaches a chat only while the directory lists it", async () => 
   assert.equal((await bridgeFetch({ ...w.env, OOGA_CHAT_FEATURES: "bridge" }, req(chat.id))).status, 503, "chats switched off");
 });
 
-test.after(() => { Date.now = realNow; });
+
 
 test("the island's call mark: a page says it is in a chat's voice, only as a boolean, and the room offers it only with chats on", async () => {
   const { parseClientMessage, callFeatures } = await import("../src/protocol.js");
@@ -315,3 +315,52 @@ test("a chat seats sixteen speakers by default, none of whom needs one of the zo
     assert.equal(c.lease.seat, null, "no cloud seat over the real island");
   }
 });
+
+test("allow back: the removed list reaches hosts and co-hosts alone, and an allowed account joins again as a listener", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Allow", zone: "main" });
+  const amy = await connect(w, chat.id, 1), cyd = await connect(w, chat.id, 3), zed = await connect(w, chat.id, 9);
+  await ask(amy, { type: "remove", id: "x:9" });
+  const list = amy.ws.sent.filter((m) => m.type === "removed").at(-1).list;
+  assert.deepEqual(list.map((r) => [r.id, r.login]), [["x:9", "p9"]]);
+  assert.equal(cyd.ws.sent.some((m) => m.type === "removed"), false, "a listener never sees who was removed");
+  assert.equal((await ask(cyd, { type: "allow", id: "x:9" })).error.code, "not_host");
+  await ask(amy, { type: "cohost", id: "gh:3", on: true });
+  assert.equal(cyd.ws.sent.filter((m) => m.type === "removed").at(-1).list.length, 1, "a new co-host is told who is removed");
+  assert.equal((await ask(cyd, { type: "allow", id: "x:9" })).ok, true);
+  assert.deepEqual(amy.ws.sent.filter((m) => m.type === "removed").at(-1).list, []);
+  const back = await connect(w, chat.id, 9);
+  assert.ok(back.connId, "allowed back in");
+  assert.deepEqual([you(back).speak, you(back).request, rowOf(amy, "x:9").role], ["none", "", "listener"]);
+  assert.equal(zed.ws.closed.code, 4403);
+});
+
+test("rows say how long each has held their place and which app they came from, so a roster can put the longest first", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Order", zone: "main" });
+  const amy = await connect(w, chat.id, 1);
+  now += 1000;
+  const cyd = await connect(w, chat.id, 3);
+  now += 1000;
+  await ask(amy, { type: "cohost", id: "gh:3", on: true });
+  const a = w.env.AUDIENCE.getByName(chatName(chat.id));
+  const islandIn = await a.fetch(new Request(`https://audience.invalid/connect?chat=${chat.id}`, { headers: { upgrade: "websocket",
+    "x-audience-principal": JSON.stringify({ ...who(4), principal: "ob_4", avatar: null }) } }));
+  assert.equal(islandIn.status, 101);
+  const ws = [...a.sockets.values()].at(-1);
+  await a.webSocketMessage(ws, JSON.stringify({ type: "join", protocol: CHAT_PROTOCOL }));
+  const row = (id) => rowOf(amy, id);
+  assert.ok(row("gh:1").since < row("gh:3").since, "joined earlier, listed earlier");
+  assert.equal(row("gh:3").rankSince, now, "a co-host since they were made one");
+  assert.deepEqual([row("gh:1").via, row("gh:4").via], ["app", "island"], "an island page's connection is the island's");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  const c = amy.a.model.conns.get(amy.connId);
+  now += 1000;
+  amy.a.model.activate(amy.connId, c.lease.generation);
+  await amy.a.flush();
+  assert.equal(row("gh:1").since, now, "a speaker since they took the stage");
+});
+
+test.after(() => { Date.now = realNow; });
