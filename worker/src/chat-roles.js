@@ -6,7 +6,9 @@
 // rank than theirs, so a co-host never touches the host or another co-host. Speaking needs a rank, a live invite, or a
 // place on the stage, which an accepted invite gives for the life of the speaker's lease and STAGE_HOLD_MS after one that
 // ended without their word (a dropped socket, a failed microphone), so a speaker who comes straight back needs no
-// second invite. Going back to listening on their own word, or a host's, gives the place up. Someone removed stays out
+// second invite. Going back to listening on their own word, or a host's, gives the place up. Anyone once let on the
+// stage is remembered (`cleared`) and takes it again with no new approval, until a host or co-host moves them to
+// listening or removes them. Someone removed stays out
 // until a host or co-host allows them back (`allowBack`), which lets them in again as a listener and nothing more.
 // An open stage (`setOpen`, the host's alone) approves every request the moment it is made: an ask is an invite.
 // Co-hosting is offered, not given: the host's `setCohost` makes an offer (`offers`), which the person accepts or turns
@@ -14,7 +16,8 @@
 // co-host who leaves the stage on their own word (or whose place lapses while they are still here) is a listener with
 // the offer back, so their slot stays theirs; the host may withdraw an offer, or make a co-host a plain speaker.
 // Times are the caller's clock (`now`), so the checks run without one; nothing here sets a timer. `nextAt` is the
-// earliest moment something changes by itself (an invite lapsing, the held host's two minutes), for the object's alarm.
+// earliest moment something changes by itself (an invite lapsing, a held place lapsing, the held host's two minutes),
+// for the object's alarm.
 
 export const COHOSTS_MAX = 3;
 export const QUEUE_MAX = 50;
@@ -38,14 +41,14 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
       cohosts: new Map(saved.cohosts || []), queue: new Map(saved.queue || []), invites: new Map(saved.invites || []),
       cooldown: new Map(saved.cooldown || []), lastAsk: new Map(saved.lastAsk || []), stage: new Map(saved.stage || []),
       // A removal keeps when it happened and the name to list it by; an older save's bare ids read as unnamed.
-      offers: new Map(saved.offers || []),
+      offers: new Map(saved.offers || []), cleared: new Map(saved.cleared || []),
       removed: new Map((saved.removed || []).map((r) => typeof r === "string" ? [r, { at: 0, login: "", display: "" }] : r)),
     };
   } else {
     if (!ID.test(host)) throw new Error("a chat needs a host");
     // The host must connect within the hold, as if they had just dropped.
     state = { host, ended: false, open: false, hostAway: now + HOST_HOLD_MS, cohosts: new Map(), queue: new Map(), invites: new Map(),
-      cooldown: new Map(), lastAsk: new Map(), stage: new Map(), offers: new Map(), removed: new Map() };
+      cooldown: new Map(), lastAsk: new Map(), stage: new Map(), offers: new Map(), cleared: new Map(), removed: new Map() };
   }
 
   const rankOf = (id) => id === state.host ? "host" : state.cohosts.has(id) ? "cohost" : "";
@@ -61,8 +64,8 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
    */
   const mayWalk = (id, now, leased = false) => !state.ended && !state.removed.has(id) && (leased || staged(id, now));
 
-  /** Whether an identity may hold a speaker lease now: a rank, a live invite, or its place on the stage. */
-  const mayLease = (id, now) => !state.ended && !state.removed.has(id) && (level(id) > 0 || invited(id, now) || staged(id, now));
+  /** Whether an identity may hold a speaker lease now: a rank, a live invite, its place on the stage, or once let on it. */
+  const mayLease = (id, now) => !state.ended && !state.removed.has(id) && (level(id) > 0 || invited(id, now) || staged(id, now) || state.cleared.has(id));
 
   /** `asked`, `invited` or "": what the roster shows of someone's request. */
   const requestOf = (id, now) => state.offers.has(id) ? "cohost" : invited(id, now) ? "invited" : state.queue.has(id) ? "asked" : "";
@@ -74,14 +77,14 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     if (target === actor || !outranks(actor, target)) return refuse("not_allowed");
     return null;
   };
-  // Everything an identity holds but a rank goes with it.
-  const clear = (id) => { state.queue.delete(id); state.invites.delete(id); state.stage.delete(id); };
+  // Everything an identity holds but a rank goes with it, the stage it was let on included.
+  const clear = (id) => { state.queue.delete(id); state.invites.delete(id); state.stage.delete(id); state.cleared.delete(id); };
 
   /** A listener asks to speak. `speaking`: they already hold a lease. */
   const ask = (id, now, speaking = false) => {
     if (state.ended) return refuse("ended");
     if (state.removed.has(id)) return refuse("removed");
-    if (speaking || level(id) > 0 || invited(id, now) || staged(id, now)) return refuse("already_allowed");
+    if (speaking || level(id) > 0 || invited(id, now) || staged(id, now) || state.cleared.has(id)) return refuse("already_allowed");
     if (state.queue.has(id)) return SAME;
     const until = state.cooldown.get(id) || 0;
     if (until > now) return refuse("cooldown", { retryable: true, retryAfter: Math.ceil((until - now) / 1000) });
@@ -113,7 +116,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     const bad = guard(actor, target);
     if (bad) return bad;
     if (state.removed.has(target)) return refuse("removed");
-    if (staged(target, now)) return refuse("already_allowed");
+    if (staged(target, now) || state.cleared.has(target)) return refuse("already_allowed");
     state.queue.delete(target);
     state.cooldown.delete(target);
     state.invites.set(target, now + INVITE_MS);
@@ -134,9 +137,10 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
   /** The invited person says Not now. */
   const decline = (id) => state.invites.delete(id) ? OK : SAME;
 
-  /** A lease was granted: an invite becomes a place on the stage, held while the lease lives. */
+  /** A lease was granted: an invite becomes a place on the stage, held while the lease lives, and remembered. */
   const granted = (id, now) => {
     if (!mayLease(id, now)) return refuse("not_allowed");
+    if (!state.cleared.has(id)) state.cleared.set(id, now);
     // A host or co-host takes a place on the stage too, so a dropped one is held (and a copy of the zone keeps them), and a
     // co-host's lapse is seen (`tick`).
     if (level(id) > 0) { const had = state.stage.get(id) === null; state.stage.set(id, null); return had ? SAME : OK; }
@@ -159,7 +163,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     return OK;
   };
 
-  /** Move to listener: the target's place on the stage and any invite go. The caller ends the lease. */
+  /** Move to listener: the target's place on the stage, any invite and their clearance go. The caller ends the lease. */
   const demote = (actor, target) => {
     const bad = guard(actor, target);
     if (bad) return bad;
@@ -290,20 +294,24 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     return out;
   };
 
-  /** The earliest moment the clock changes something visible: an invite lapsing or the held host's hold. */
+  /** The earliest moment the clock changes something: an invite lapsing, a held place lapsing, or the held host's hold. */
   const nextAt = () => {
     if (state.ended) return Infinity;
     let next = state.hostAway || Infinity;
     for (const until of state.invites.values()) next = Math.min(next, until);
+    for (const until of state.stage.values()) if (until !== null) next = Math.min(next, until);
     return next;
   };
+
+  /** Who holds a place on the stage with no lease now (a drop being waited out): the speaker cap keeps it for them. */
+  const held = (now) => { const out = []; for (const [id, until] of state.stage) if (until !== null && until > now) out.push(id); return out; };
 
   /** The queue, oldest first, for hosts and co-hosts. */
   const queue = () => [...state.queue].sort((a, b) => a[1] - b[1]).map(([id, at]) => ({ id, at }));
 
   const save = () => ({
     host: state.host, ended: state.ended, open: state.open, hostAway: state.hostAway, cohosts: [...state.cohosts], offers: [...state.offers], queue: [...state.queue],
-    invites: [...state.invites], cooldown: [...state.cooldown], lastAsk: [...state.lastAsk], stage: [...state.stage], removed: [...state.removed],
+    invites: [...state.invites], cooldown: [...state.cooldown], lastAsk: [...state.lastAsk], stage: [...state.stage], cleared: [...state.cleared], removed: [...state.removed],
   });
 
   return {
@@ -311,7 +319,7 @@ export const createRoles = ({ host, now = 0, saved = null } = {}) => {
     get cohosts() { return [...state.cohosts.keys()]; }, get offers() { return [...state.offers.keys()]; },
     answerCohost, dropOffer,
     rankOf, manages, mayWalk, onStage: (id, now) => staged(id, now), rankSince: (id) => state.cohosts.get(id) || 0, allowBack, removedList, outranks, mayLease, requestOf, inviteUntil: (id, now) => invited(id, now) ? state.invites.get(id) : 0,
-    isRemoved: (id) => state.removed.has(id), askedAt: (id) => state.queue.get(id) || 0,
+    isRemoved: (id) => state.removed.has(id), isCleared: (id) => state.cleared.has(id), askedAt: (id) => state.queue.get(id) || 0, held,
     ask, cancel, invite, answer, decline, granted, leaseEnded, demote, mute, setCohost, handover, remove, end, presence, tick, nextAt, queue, save,
   };
 };

@@ -45,8 +45,9 @@ test("requests: one an identity, oldest first, a gap between asks, a cooldown af
   assert.deepEqual(full.ask("gh:999", 0), { ok: false, code: "queue_full", retryable: true });
 });
 
-test("approving is an invite; a granted lease puts them on the stage until they leave on their own word", () => {
+test("approving is an invite; a granted lease puts them on the stage, and once let on they come back without asking until moved off or removed", () => {
   const r = createRoles({ host: H, now: 0 });
+  r.presence(H, true, 0);
   r.ask(L, 0);
   assert.equal(r.answer(H, L, true, 10).ok, true);
   assert.equal(r.requestOf(L, 10), "invited");
@@ -54,13 +55,27 @@ test("approving is an invite; a granted lease puts them on the stage until they 
   assert.equal(r.requestOf(L, 20), "", "a speaker has no request");
   assert.equal(r.mayLease(L, 20 + INVITE_MS * 10), true, "the stage lasts while the lease does");
   r.leaseEnded(L, false, 1000);
-  assert.equal(r.mayLease(L, 1000 + STAGE_HOLD_MS - 1), true, "a dropped speaker comes back without a second invite");
-  assert.equal(r.mayLease(L, 1000 + STAGE_HOLD_MS), false);
-  r.invite(H, L, 5000); r.granted(L, 5000);
+  assert.deepEqual(r.held(1000 + STAGE_HOLD_MS - 1), [L], "a dropped speaker's place is held for the cap");
+  assert.equal(r.nextAt(), 1000 + STAGE_HOLD_MS, "the alarm wakes for a held place");
+  r.tick(1000 + STAGE_HOLD_MS);
+  assert.deepEqual(r.held(1000 + STAGE_HOLD_MS), []);
+  assert.equal(r.mayLease(L, 1000 + STAGE_HOLD_MS), true, "remembered after the hold, too");
+  r.granted(L, 5000);
   r.leaseEnded(L, true, 6000);
-  assert.equal(r.mayLease(L, 6000), false, "going back to listening gives the place up");
+  assert.equal(r.mayLease(L, 6000), true, "leaving on their own word: Join Voice brings them back with no approval");
+  assert.equal(r.ask(L, 6000).code, "already_allowed");
+  assert.equal(r.invite(H, L, 6000).code, "already_allowed");
+  assert.equal(r.demote(H, L).ok, true);
+  assert.equal(r.mayLease(L, 6000), false, "moved to listener: they ask again");
+  r.invite(H, L, 7000); r.granted(L, 7000);
+  r.remove(H, L, 8000); r.allowBack(H, L);
+  assert.equal(r.mayLease(L, 8000), false, "removed and let back: a listener, nothing restored");
   assert.equal(r.granted(M, 0).code, "not_allowed", "no lease without leave");
   assert.equal(r.decline(L).changed, false);
+  const saved = createRoles({ saved: JSON.parse(JSON.stringify(r.save())) });
+  r.invite(H, L, 9000); r.granted(L, 9000);
+  assert.equal(createRoles({ saved: JSON.parse(JSON.stringify(r.save())) }).isCleared(L), true, "stored with the roles");
+  assert.equal(saved.isCleared(L), false);
 });
 
 test("ranks: the host makes up to three co-hosts; a co-host manages listeners but never the host or another co-host", () => {

@@ -24,7 +24,7 @@ const socket = () => ({
 globalThis.WebSocketPair = class { constructor() { const client = socket(), server = socket(); const close = server.close; server.close = (code, reason) => { close.call(server, code, reason); client.close(code, reason); }; this[0] = client; this[1] = server; } };
 globalThis.WebSocketRequestResponsePair = class {};
 
-const { Audience, CHAT_PROTOCOL, chatName } = await import("../src/audience.js");
+const { Audience, CHAT_PROTOCOL, QUIET_MS, chatName } = await import("../src/audience.js");
 const { ChatDirectory, startChat, chatTitle, CHATS_MAX, START_GAP_MS } = await import("../src/chat-directory.js");
 const { HOST_HOLD_MS, INVITE_MS } = await import("../src/chat-roles.js");
 const { bridgeFetch } = await import("../src/chat-bridge.js");
@@ -220,10 +220,19 @@ test("the host's hold: two minutes, then a co-host takes over; with none the cha
   await ask(amy, { type: "cohost", id: "gh:2", on: true });
   await ask(bea, { type: "cohostAnswer", accept: true });
   const { a, ctx } = w.objects.get(chatName(chat.id));
+  const left = now;
   await a.webSocketClose(amy.ws);
   await w.settle();
-  assert.equal(ctx.alarm, now + HOST_HOLD_MS, "the host's leaving sets the alarm itself");
-  now += HOST_HOLD_MS;
+  assert.equal(ctx.alarm, left + QUIET_MS, "the host's leaving sets the alarm itself: first for the quiet hold");
+  assert.equal(rowOf(bea, "gh:1").rank, "host", "a host's drop shows nobody anything yet");
+  now = left + QUIET_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(rowOf(bea, "gh:1"), undefined, "past the quiet hold, they are gone from the roster");
+  assert.equal(ctx.alarm, left + HOST_HOLD_MS, "then for the host's hold");
+  now = left + HOST_HOLD_MS;
+  await ctx.storage.setAlarm(null);
   await a.alarm();
   assert.deepEqual(notices(bea, "host").map((n) => n.id), ["gh:2"]);
   assert.equal(you(bea).rank, "host");
@@ -498,7 +507,8 @@ test("leave is asked again after the waits; a ban that can't be read refuses; Le
   const res = await a.mediaRequest("publish/close", new Request("https://audience.invalid/media/publish/close", { method: "POST",
     headers: { "x-audience-principal": JSON.stringify(who(3)) }, body: JSON.stringify({ connection: cyd.connId }) }));
   assert.equal(res.status, 200);
-  assert.equal(a.roles.mayLease("gh:3", now), false, "going back to listening on their own word gives the place up");
+  assert.equal(new Map(a.roles.save().stage).has("gh:3"), false, "going back to listening on their own word gives the place up");
+  assert.equal(a.roles.mayLease("gh:3", now), true, "but, once let on, they come back with Join Voice and no approval");
   // A listener who leaves takes their request with them.
   await ask(dot, { type: "ask" });
   assert.deepEqual(a.roles.queue().map((q) => q.id), ["gh:4"]);
@@ -520,7 +530,7 @@ test("a word the island room missed is kept and sent again from the alarm", asyn
   await ask(amy, { type: "setRole", role: "speaker" });
   await w.settle();
   const { a, ctx } = w.objects.get(chatName(chat.id));
-  assert.deepEqual([...a.islandWords], [["gh:1", true]], "kept");
+  assert.deepEqual([...a.islandWords], [["gh:1", { on: true, chat: chat.id }]], "kept, with the chat it names");
   assert.ok(ctx.alarm <= now + 30000, "and the alarm will try again");
   up = true;
   await a.alarm();
@@ -647,3 +657,106 @@ test("a co-host offer through the chat: the person hears it, accepting puts them
 });
 
 test.after(() => { Date.now = realNow; });
+
+test("a short drop shows nobody anything: the speaker's tile stands, their place is kept for the cap, and back on stage they keep their place in the order", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Quiet", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  await ask(amy, { type: "invite", id: "gh:2" });
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  const since = rowOf(amy, "gh:2").since;
+  const naming = () => amy.ws.sent.filter((m) => m.type === "delta" && [...m.upsert, ...m.remove].some((r) => r.id === "gh:2")).length;
+  const before = naming();
+  now += 1000;
+  await a.webSocketClose(bea.ws);
+  await w.settle();
+  assert.equal(naming(), before, "nothing about them reaches anyone");
+  assert.equal(rowOf(amy, "gh:2").role, "speaker");
+  assert.equal(a.model.counts("main").chatSpeakers, 1, "their place counts against the speaker cap");
+  now += 5000;
+  const back = await connect(w, chat.id, 2);
+  assert.equal(naming(), before, "back as a listener first: still nothing shows");
+  assert.equal((await ask(back, { type: "setRole", role: "speaker" })).ok, true, "and on stage again with no approval");
+  await speakerOn(w, chat.id, back);
+  assert.equal(rowOf(amy, "gh:2").since, since, "where they stood in the order");
+  // A drop that lasts: the roster says so once the quiet hold passes, and Join Voice still needs no approval.
+  const left = now;
+  await a.webSocketClose(back.ws);
+  await w.settle();
+  assert.equal(rowOf(amy, "gh:2").role, "speaker");
+  now = left + QUIET_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(rowOf(amy, "gh:2"), undefined, "gone from the roster past the quiet hold");
+  now += HOST_HOLD_MS;
+  const later = await connect(w, chat.id, 2);
+  assert.equal(you(later).speak, "eligible", "once let on, they come back without asking");
+  // Moved to listening by a host: they ask again.
+  assert.equal((await ask(later, { type: "setRole", role: "speaker" })).ok, true);
+  await ask(amy, { type: "demote", id: "gh:2" });
+  assert.equal(you(later).speak, "none", "Request to speak again");
+});
+
+test("a microphone publishing again keeps a co-host's rank and tile; Leave Voice gives them up for the offer card", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  Object.assign(w.env, { REALTIME_APP_ID: "app", REALTIME_SECRET: "secret" });
+  const { chat } = await startChat(w.env, host(1), { title: "Recover", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  const a = w.objects.get(chatName(chat.id)).a;
+  await ask(amy, { type: "cohost", id: "gh:2", on: true });
+  await ask(bea, { type: "cohostAnswer", accept: true });
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  const offers = notices(bea, "cohost_offer").length;
+  const close = (body) => a.mediaRequest("publish/close", new Request("https://audience.invalid/media/publish/close", { method: "POST",
+    headers: { "x-audience-principal": JSON.stringify(who(2)) }, body: JSON.stringify({ connection: bea.connId, ...body }) }));
+  assert.equal((await close({ recover: true })).status, 200);
+  await w.settle();
+  assert.equal(a.roles.rankOf("gh:2"), "cohost", "publishing again is not leaving");
+  assert.equal(notices(bea, "cohost_offer").length, offers, "no offer card");
+  assert.deepEqual([rowOf(amy, "gh:2").role, rowOf(amy, "gh:2").rank], ["speaker", "cohost"], "and the tile stands meanwhile");
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  assert.equal((await close({})).status, 200);
+  assert.equal(a.roles.rankOf("gh:2"), "");
+  assert.equal(notices(bea, "cohost_offer").at(-1).again, true, "Leave Voice: a listener with the offer back");
+});
+
+test("a host signed out everywhere starts the hold, and the alarm is set for it", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Signed out", zone: "main" });
+  await connect(w, chat.id, 1);
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  await ctx.storage.setAlarm(null);
+  assert.equal((await a.revoke({ id: who(1).principal }, "logout-all")).revoked, 1);
+  assert.equal(ctx.alarm, now + HOST_HOLD_MS);
+});
+
+test("a chat ending while the island room is away still frees its speakers' island voice, from the alarm", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  let up = false;
+  const told = [];
+  w.env.ROOM = { getByName: () => ({ chatVoice: async (id, chat, on) => { if (!up) throw new Error("room away"); told.push([id, chat, on]); return { ok: true }; } }) };
+  const { chat } = await startChat(w.env, host(1), { title: "Away", zone: "main" });
+  const amy = await connect(w, chat.id, 1);
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await speakerOn(w, chat.id, amy);
+  await ask(amy, { type: "end" });
+  await w.settle();
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  assert.deepEqual([...a.islandWords], [["gh:1", { on: false, chat: chat.id }]], "the last word is kept");
+  assert.equal(await ctx.storage.get("chat"), undefined, "nothing else of the chat");
+  assert.ok((await ctx.storage.get("islandWords")).length);
+  up = true;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  assert.deepEqual(told, [[1, chat.id, false]]);
+  assert.equal(a.islandWords.size, 0);
+});
