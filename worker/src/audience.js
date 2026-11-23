@@ -72,9 +72,12 @@ const positive = (value, fallback, max) => {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 && n <= max ? n : fallback;
 };
-export const limitsOf = (env) => ({ ...DEFAULT_LIMITS,
+// A hosted chat's speakers are its own setting (`CHAT_SPEAKERS`, CHAT_SPEAKERS_DEFAULT): none needs one of the zone's
+// eight cloud seats, since a chat's clouds are its copy's (docs/ooga-chat-hosts.md).
+export const CHAT_SPEAKERS_DEFAULT = 16;
+export const limitsOf = (env, chat = false) => ({ ...DEFAULT_LIMITS,
   listeners: positive(env.AUDIENCE_LISTENERS, DEFAULT_LIMITS.listeners, 5000),
-  chatSpeakers: positive(env.AUDIENCE_SPEAKERS, DEFAULT_LIMITS.chatSpeakers, 64) });
+  chatSpeakers: chat ? positive(env.CHAT_SPEAKERS, CHAT_SPEAKERS_DEFAULT, 64) : positive(env.AUDIENCE_SPEAKERS, DEFAULT_LIMITS.chatSpeakers, 64) });
 
 /** The principal ChatBridge handed on, checked again here: anything malformed is no connection. */
 export const readPrincipal = (raw, now = Date.now()) => {
@@ -142,8 +145,10 @@ export class Audience extends DurableObject {
       if (!meta) { meta = { epoch: Date.now(), revs: null }; await ctx.storage.put("meta", meta); }
       const chat = await ctx.storage.get("chat");
       if (chat) { this.chat = chat; this.roles = createRoles({ saved: await ctx.storage.get("roles") }); }
-      this.model = createAudience({ epoch: meta.epoch, limits: limitsOf(env), revs: meta.revs,
-        standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c) });
+      // The model reads these limits as it goes: a chat opened later raises them to a chat's own (`open`).
+      this.limits = limitsOf(env, !!chat);
+      this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
+        standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat });
       this.island = (await ctx.storage.get("world")) || this.island;
       if (!Array.isArray(this.island.linked)) this.island = { ...this.island, linked: [] };
       this.watching = new Set((await ctx.storage.get("watch")) || []);
@@ -223,7 +228,7 @@ export class Audience extends DurableObject {
       zones[zone] = { listeners: counts.listeners, chatSpeakers: counts.chatSpeakers, worldSpeakers: this.island.speakers.filter((s) => s.zone === zone).length,
         rows: this.model.zones[zone].rows.size, rev: this.model.zones[zone].rev };
     }
-    const limits = limitsOf(this.env);
+    const limits = this.limits;
     return { status: this.sockets.size ? "serving" : "idle", sockets: this.sockets.size, connections: this.model.conns.size, zones,
       limits: { listeners: limits.listeners, chatSpeakers: limits.chatSpeakers, connections: limits.connections },
       flags: bridgeFeatures(this.env), cleanup: this.media.backlog(), media: this.readiness(), panels: this.watching.size };
@@ -400,7 +405,7 @@ export class Audience extends DurableObject {
   snapshotFor(c) {
     const snap = this.model.snapshot(c.zone);
     return { type: "snapshot", zone: c.zone, epoch: snap.epoch, revision: snap.rev, participants: snap.rows.map((row) => appRow(row, c.id)),
-      ...(this.chat ? { chat: this.chatInfo() } : {}), you: this.youFor(c.connId), connection: c.connId, limits: { listeners: limitsOf(this.env).listeners, chatSpeakers: limitsOf(this.env).chatSpeakers },
+      ...(this.chat ? { chat: this.chatInfo() } : {}), you: this.youFor(c.connId), connection: c.connId, limits: { listeners: this.limits.listeners, chatSpeakers: this.limits.chatSpeakers },
       features: AUDIENCE_FEATURES };
   }
 
@@ -923,6 +928,7 @@ export class Audience extends DurableObject {
     this.chat = { id: meta.id, title: meta.title, zone: meta.zone, startedAt: now,
       hostInfo: { login: meta.hostInfo.login.slice(0, 39), display: String(meta.hostInfo.display || meta.hostInfo.login).slice(0, 50), character: meta.hostInfo.character || null } };
     this.roles = createRoles({ host: meta.host, now });
+    Object.assign(this.limits, limitsOf(this.env, true));
     await this.ctx.storage.put({ chat: this.chat, roles: this.roles.save() });
     await this.scheduleAlarm();
     return { ok: true };

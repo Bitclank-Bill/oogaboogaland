@@ -294,3 +294,24 @@ test("the island's call mark: a page says it is in a chat's voice, only as a boo
   assert.deepEqual(callFeatures({ OOGA_CHAT_FEATURES: "chats" }), ["call-v1"]);
   assert.deepEqual(callFeatures({ OOGA_CHAT_FEATURES: "bridge" }), []);
 });
+
+test("a chat seats sixteen speakers by default, none of whom needs one of the zone's eight cloud seats", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Big stage", zone: "main" });
+  const amy = await connect(w, chat.id, 1);
+  assert.equal(amy.ws.sent.find((m) => m.type === "snapshot").limits.chatSpeakers, 16);
+  const people = [amy];
+  for (let n = 20; n < 31; n++) {
+    const p = await connect(w, chat.id, n);
+    await ask(amy, { type: "invite", id: idOf(n) });
+    people.push(p);
+  }
+  await ask(amy, { type: "setRole", role: "speaker" });
+  for (const p of people.slice(1)) await ask(p, { type: "setRole", role: "speaker" });
+  for (const p of people) {
+    const c = p.a.model.conns.get(p.connId);
+    assert.equal(p.a.model.activate(p.connId, c.lease.generation).ok, true, "a ninth speaker and beyond still speaks");
+    assert.equal(c.lease.seat, null, "no cloud seat over the real island");
+  }
+});

@@ -37,8 +37,9 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   the rule that let someone speak until now), checked again by the island when the chat starts. One live chat a host.
 - **Who may request:** anyone signed in, GitHub or X. Eligibility no longer decides speaking: a host does. An X
   speaker, or any speaker without an Ooga, gets no cloud in the second PR's copy (clouds carry GitHub ids).
-- **Speakers** count the host and co-hosts: at most 8 a chat (`AUDIENCE_SPEAKERS`), at most 500 listeners
-  (`AUDIENCE_LISTENERS`). Roles are an identity's (`gh:<id>`, `x:<id>`), never a tab's: every tab of an account shows
+- **Speakers** count the host and co-hosts: at most 16 a chat (`CHAT_SPEAKERS`, a setting up to 64; every listener
+  receives one voice per speaker, about 32 kb/s each, much less while muted), at most 500 listeners
+  (`AUDIENCE_LISTENERS`). No speaker needs a cloud seat: a chat's clouds are its copy's, a seat each, in the second PR. Roles are an identity's (`gh:<id>`, `x:<id>`), never a tab's: every tab of an account shows
   the same role, and one account holds one voice lease across every chat (joining another chat's stage leaves the
   first's).
 - **Mute:** a host or co-host can mute a speaker; only the speaker can unmute themselves (X Spaces' rule). Move to
@@ -68,8 +69,10 @@ at any time. When a chat ends, everyone in it sees **The chat ended**, its voice
 ## Where each control lives
 
 **OC** (`src/ooga-chat/`): the Ooga Chat tab opens on the **Chats** list (title, zone tag, the host's portrait, how
-many speak and listen), with **Start a chat** for a contributor (a title of at most 60 characters, checked by the
-island's chat policy, and the zone). A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
+many speak and listen), with **Start a chat** for a contributor: one dialog with a title (prefilled "<name>'s chat",
+editable, at most 60 characters, checked by the island's chat policy) and two picture cards to choose the zone, Main
+Island (chosen first) and DSB Land, then Start chat (the one amber action) or Cancel. The island's panel opens the
+same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
 the footer) with a Back to chats control, the Requests chip for a host or co-host, a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
 
@@ -79,6 +82,10 @@ pauses until the visitor leaves the chat, and their Ooga carries an "in a chat" 
 can't hear them (the room's `call-v1`: the page sends `{ t: "call", on }`, every page hears `call { id, on }`
 and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players, not chat members. In the second PR the list also offers **Go
 there**, which takes the visitor's Ooga into the chat's copy of its zone.
+
+**Clouds belong to the copies.** OC speakers are never seen or heard over the real island any more: a chat's speakers
+sit on clouds only inside that chat's own copy of its zone (the second PR), one seat each, however many chats share a
+zone.
 
 **Switched off by the first PR, deleted later:** the outdoor voice bridge (`outdoor-voice.js`, the Room's
 `outdoor-voice-v1`, `outdoor-policy.js`, the island's overhearing) and the clouds over the real island

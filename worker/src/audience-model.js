@@ -39,8 +39,9 @@ const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation
 // (the host's or a co-host's rank, an open request or invite, when it was asked), and `may(conn)` whether a connection's
 // identity may take a speaker lease now, in place of the capability the connection arrived with.
 const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0 });
+// `seats()` false: a speaker takes no cloud seat (a hosted chat, whose clouds are its own copy's, docs/ooga-chat-hosts.md).
 export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now, standing = () => NO_STANDING,
-  may = (c) => !!c.eligible } = {}) => {
+  may = (c) => !!c.eligible, seats = () => true } = {}) => {
   const zones = Object.fromEntries(ZONES.map((zone) => [zone, { rev: revs && Number.isSafeInteger(revs[zone]) ? revs[zone] : 0, rows: new Map() }]));
   // id -> { info, world, active, conns: Map<connId, conn>, gen, source: { zone: last visible source key } }
   const people = new Map();
@@ -196,8 +197,9 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     const c = conns.get(connId);
     if (!c || !c.lease || c.lease.generation !== generation) return refuse("stale_epoch");
     if (c.lease.state === "active") return { ok: true, changed: false };
-    const seat = freeSeat(c.zone, seatsTaken(c.zone));
-    if (!seat) return refuse("speaker_capacity", { retryable: true });
+    const seated = seats();
+    const seat = seated ? freeSeat(c.zone, seatsTaken(c.zone)) : null;
+    if (seated && !seat) return refuse("speaker_capacity", { retryable: true });
     c.lease = { state: "active", generation, seat, character: c.lease.character || null };
     c.mic = "muted";
     touch(c.id, c.zone);
