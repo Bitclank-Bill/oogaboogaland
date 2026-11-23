@@ -257,35 +257,24 @@
     state.clouds = list;
     for (const fn of cloudSubscribers) fn(list);
   };
-  // Who is in each hosted chat (chat-members-v1, docs/ooga-chat-hosts.md, Who the island sees in chats): the room's
-  // `chat-members` frames and its welcome's `chatMembers`, each checked here and kept on `state.chatMembers`, chat id ->
-  // frozen `{ title, members, more }`, each member frozen `{ id, login, display, role }` ("speaker" or "listener"), an
-  // id once a chat; at most CHATS_KEPT chats and MEMBERS_KEPT members a chat (the rest counted in `more`), emptied with
-  // the socket. `subscribeChatMembers` hears each change; Online Oogas lists, and every "N online" counts, those of them
-  // not on the island (cloud-panel.js `inChats`).
-  const CHAT_MEMBERS_FEATURE = "chat-members-v1", CHAT_KEY = /^[A-Za-z0-9_-]{16}$/, MEMBER_ID = /^(gh|x):[1-9][0-9]{0,19}$/;
-  const CHATS_KEPT = 32, MEMBERS_KEPT = 100, CHAT_CONTROL = /[\u0000-\u001f\u007f]/;
+  // Each hosted chat as Online Oogas lists it (chat-summary-v1, docs/ooga-chat-hosts.md, Who the island sees in chats):
+  // the room's `chat-summary` frames and its welcome's `chatSummaries`, each checked here and kept on
+  // `state.chatMembers`, chat id -> frozen `{ title, speakers, listeners, app }` (how many speak, how many listen, how many
+  // of them through Ooga Chat's app, whom every "N online" adds); at most CHATS_KEPT chats, a chat with nobody in it
+  // dropped, emptied with the socket. `subscribeChatMembers` hears each change.
+  const CHAT_SUMMARY_FEATURE = "chat-summary-v1", CHAT_KEY = /^[A-Za-z0-9_-]{16}$/;
+  const CHATS_KEPT = 32, CHAT_COUNT_MAX = 1e6, CHAT_CONTROL = /[\u0000-\u001f\u007f]/;
   const chatMemberSubscribers = new Set();
   let chatMembersOn = false;
   const chatText = (v, max) => (typeof v === "string" && v.trim() && v.length <= max && !CHAT_CONTROL.test(v) ? v.trim() : "");
-  const chatMember = (raw) => {
-    if (!raw || typeof raw.id !== "string" || !MEMBER_ID.test(raw.id) || typeof raw.login !== "string" || !/^[\w.-]{1,39}$/.test(raw.login)) return null;
-    return Object.freeze({ id: raw.id, login: raw.login, display: chatText(raw.display, 50) || raw.login, role: raw.role === "speaker" ? "speaker" : "listener" });
-  };
-  // One chat's word: its members now, or none (it ended). True when what is kept changed.
+  const chatCount = (n) => (Number.isSafeInteger(n) && n > 0 ? Math.min(n, CHAT_COUNT_MAX) : 0);
+  // One chat's word: its title and counts now, or none (it ended). True when what is kept changed.
   const readChatMembers = (msg) => {
     if (!msg || typeof msg.chat !== "string" || !CHAT_KEY.test(msg.chat)) return false;
-    const members = [], seen = new Set();
-    let more = Number.isSafeInteger(msg.more) && msg.more > 0 ? msg.more : 0;
-    for (const raw of Array.isArray(msg.members) ? msg.members.slice(0, MEMBERS_KEPT * 2) : []) {
-      const m = chatMember(raw);
-      if (!m || seen.has(m.id)) continue;
-      seen.add(m.id);
-      if (members.length < MEMBERS_KEPT) members.push(m); else more++;
-    }
-    if (!members.length) return state.chatMembers.delete(msg.chat);
+    const speakers = chatCount(msg.speakers), listeners = chatCount(msg.listeners);
+    if (!speakers && !listeners) return state.chatMembers.delete(msg.chat);
     if (!state.chatMembers.has(msg.chat) && state.chatMembers.size >= CHATS_KEPT) return false;
-    state.chatMembers.set(msg.chat, Object.freeze({ title: chatText(msg.title, 60), members: Object.freeze(members), more }));
+    state.chatMembers.set(msg.chat, Object.freeze({ title: chatText(msg.title, 60), speakers, listeners, app: Math.min(chatCount(msg.app), speakers + listeners) }));
     return true;
   };
   const chatMembersChanged = () => {
@@ -782,10 +771,10 @@
       state.copy = copyOf(msg);
       state.away.clear();
       if (!target && Array.isArray(msg.away)) for (const e of msg.away.slice(0, 64)) awayIn(e && e.id, e && e.character);
-      // Who is in each chat, whole in the welcome where the room keeps them, then a chat at a time (`chat-members`).
-      chatMembersOn = Array.isArray(msg.features) && msg.features.includes(CHAT_MEMBERS_FEATURE);
+      // Each chat's title and counts, whole in the welcome where the room keeps them, then a chat at a time.
+      chatMembersOn = Array.isArray(msg.features) && msg.features.includes(CHAT_SUMMARY_FEATURE);
       state.chatMembers.clear();
-      if (chatMembersOn && Array.isArray(msg.chatMembers)) for (const m of msg.chatMembers.slice(0, CHATS_KEPT)) readChatMembers(m);
+      if (chatMembersOn && Array.isArray(msg.chatSummaries)) for (const m of msg.chatSummaries.slice(0, CHATS_KEPT)) readChatMembers(m);
       chatMembersChanged();
       // A room that keeps the chalkboard sends it next (chalk-board); an older one leaves the page its own board.
       if (state.chalk && !(Array.isArray(msg.features) && msg.features.includes(BL.chalkBoard.FEATURE))) { state.chalk = null; chalkEmit("board"); }
@@ -922,7 +911,7 @@
       if (state.duel && typeof msg.op === "string") for (const fn of duelSubscribers) fn(msg);
     } else if (msg.t === "audience") {
       if (state.audience) for (const fn of audienceSubscribers) fn(msg);
-    } else if (msg.t === "chat-members") {
+    } else if (msg.t === "chat-summary") {
       if (chatMembersOn && readChatMembers(msg)) chatMembersChanged();
     } else if (msg.t === "clouds") {
       if (msg.v === 1 && Array.isArray(msg.clouds)) setClouds(cloudList(msg.clouds));
@@ -1749,7 +1738,7 @@
     audienceSubscribers.add(fn);
     return () => audienceSubscribers.delete(fn);
   };
-  // `fn(map)` on each change of `state.chatMembers` (chat-members-v1).
+  // `fn(map)` on each change of `state.chatMembers` (chat-summary-v1).
   const subscribeChatMembers = (fn) => {
     chatMemberSubscribers.add(fn);
     return () => chatMemberSubscribers.delete(fn);

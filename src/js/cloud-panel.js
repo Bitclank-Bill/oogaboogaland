@@ -19,7 +19,7 @@
 // under the roster, the footer under it: the visitor's name, Mute or Unmute (always there), Join or Leave Voice and
 // Sign out, all through the island's own voice session (voice.js), never a second one.
 // Under `?debug=1&audience=fixture` the panel shows a generated roster of named samples for review, sending
-// nothing. Exports available, dispose, listeners, inChats, join (below), online, stats.
+// nothing. Exports available, dispose, listeners, inChats, preview (below), online, stats.
 // Hosted chats (docs/ooga-chat-hosts.md): where the room's welcome lists `call-v1` (chat-call.js `available`, or
 // `?debug=1&chats=fixture` for review) the tab lists the live chats in place of Main Island's roster and asks the room
 // for no view: Ooga Chat's own views (chat-hosts.js) over this panel (`data-space`: "list", then "on" in a chat), the
@@ -189,27 +189,13 @@
     }
     return out;
   };
-  // Who is in a hosted chat and not on the island (net.js `state.chatMembers`), for Online Oogas' In Ooga Chat group and
-  // every "N online": each person once (speaking over listening, then the first chat named), never the visitor, anyone
-  // on the island or anyone already one of Main Island's listeners. `{ id, login, display, role, chat, title }` each,
-  // `chat` the chat's id.
+  // How many are in hosted chats through Ooga Chat's app (net.js `state.chatMembers`' `app`), for every "N online": the
+  // island's own in a chat are its players already.
   const inChats = () => {
-    const s = net.state, out = [], seen = new Map();
-    if (s.room !== "live" || !s.chatMembers || !s.chatMembers.size) return out;
-    let heard = null;
-    for (const [key, chat] of s.chatMembers) {
-      for (const m of chat.members) {
-        const gh = m.id.startsWith("gh:") ? Number(m.id.slice(3)) : 0;
-        if (gh && (gh === s.selfId || net.remotes.has(gh))) continue;
-        const at = seen.get(m.id);
-        if (at !== undefined) { if (m.role === "speaker" && out[at].role !== "speaker") out[at] = { id: m.id, login: m.login, display: m.display, role: m.role, chat: key, title: chat.title }; continue; }
-        if (!heard) { heard = new Set(); for (const l of listeners()) heard.add(l.id); }
-        if (heard.has(m.id)) continue;
-        seen.set(m.id, out.length);
-        out.push({ id: m.id, login: m.login, display: m.display, role: m.role, chat: key, title: chat.title });
-      }
-    }
-    return out;
+    const s = net.state;
+    let n = 0;
+    if (s.room === "live" && s.chatMembers) for (const chat of s.chatMembers.values()) n += chat.app;
+    return n;
   };
   // The roster changed: every place that lists or counts its listeners hears it.
   const listenersChanged = () => {
@@ -284,7 +270,7 @@
       chatMode = on;
       tiles.clear();
       chatDrawn = drawnVersion = -1;
-      if (on) hosts = BL.chatHosts.create({ node: panel, head: panel.querySelector(".panel-title"), space: spaceOf(), chats: { list: calls.list, start: calls.start, preview: calls.preview, open: calls.open, leave: () => calls.leave(), request: calls.request, hear: calls.hear },
+      if (on) hosts = BL.chatHosts.create({ node: panel, head: panel.querySelector(".panel-title"), space: spaceOf(), chats: { list: calls.list, start: calls.start, preview: calls.preview, open: (entry) => openChat(entry), leave: () => calls.leave(), request: calls.request, hear: calls.hear },
         joinVoice: () => calls.media.join(), faceOf: (c) => BL.characters.get(c) ? faceUrl(c) : "", startZone, toast: (text) => BL.hud.toast(text), shown: () => showing,
         // A preview's portraits as this panel draws a chat's: the Ooga, else the GitHub picture, never Ooga Chat's paths.
         rowFace: (p) => p.character && BL.characters.get(p.character) ? faceUrl(p.character) : !calls.fixture && /^gh:\d+$/.test(p.id) ? `/api/avatar/${p.id.slice(3)}` : "",
@@ -337,11 +323,12 @@
   }));
   BL.sheet.watchViews(panel, () => { if (unread) { unread = 0; BL.sheet.setBadge("cloud", 0); } });
 
-  // --- a chat joined from Online Oogas' In Ooga Chat (players.js) ---
-  // `join(id, from)`: the chat as the live list has it now (one no longer listed is said to have ended), the Ooga Chat
-  // tab shown and the chat opened in it as a listener. A visitor in another chat is asked first (`Change chats?`, a
-  // modal dialog, focus back on `from` as it closes): Switch chats leaves that one and opens this, Stay changes nothing.
-  // The rows say which chat the visitor is in, so they are drawn again when that changes.
+  // --- a chat previewed from Online Oogas' In Ooga Chat (players.js) ---
+  // `preview(id, from)`: the chat as the live list has it now (one no longer listed is said to have ended) in the chat's
+  // preview (chat-hosts.js), whose Join as listener or Join as speaker opens it here (`openChat`) and shows the Ooga Chat
+  // tab; the chat the visitor is in already only shows the tab. A visitor in another chat is asked first (`Change
+  // chats?`, a modal dialog, focus back on `from` as it closes): Switch chats leaves that one and opens this, Stay
+  // changes nothing. The rows say which chat the visitor is in, so they are drawn again when that changes.
   let roomShown = null;
   subs.push(calls.subscribe(() => {
     const id = calls.room ? calls.room.id : null;
@@ -370,7 +357,7 @@
     dialog.append(head, slab);
     document.body.append(dialog);
     const self = switcher = { dialog, body, note, change, from: null, run: null };
-    // Every way out gives the focus back to the Join chat pressed at once; the close event only for any other way.
+    // Every way out gives the focus back to the chat row pressed at once; the close event only for any other way.
     const shut = () => {
       self.run = null;
       if (dialog.open) dialog.close();
@@ -395,7 +382,8 @@
   };
   // What leaving the chat the visitor is in costs them, said only to its host: their chat waits for them, then moves on.
   const leaving = () => calls.room?.you?.rank === "host" ? "You host it: it waits 2 minutes for you, then passes to a co-host, or ends if there is none." : "";
-  const join = async (id, from = null) => {
+  let opener = null;
+  const preview = async (id, from = null) => {
     if (!calls.available()) return;
     const ticket = ++joining;
     if (calls.room && calls.room.id === id) return showPanel();
@@ -404,6 +392,15 @@
     if (!answer || !Array.isArray(answer.chats)) return BL.hud.toast("The chats can't be reached right now. Try again.");
     const entry = (BL.chatHosts.parseList(answer.chats) || []).find((c) => c.id === id);
     if (!entry) return BL.hud.toast("That chat has ended");
+    paintChat();
+    if (!hosts) return;
+    opener = from;
+    hosts.preview(entry, from);
+  };
+  // A chat chosen in a preview, from the Ooga Chat tab's list or Online Oogas'.
+  const openChat = (entry) => {
+    const from = opener;
+    opener = null;
     const open = () => {
       if (calls.room && calls.room.id !== entry.id) calls.leave();
       calls.open(entry);
@@ -413,7 +410,7 @@
     const s = switchDialog();
     s.body.textContent = `You're in ${calls.room.title}. Leave it and join ${entry.title}?`;
     s.note.textContent = leaving();
-    s.from = from;
+    s.from = from && from.isConnected ? from : null;
     s.run = open;
     if (!s.dialog.open) s.dialog.showModal();
     s.change.focus();
@@ -439,10 +436,10 @@
     dispose,
     listeners,
     inChats,
-    join,
+    preview,
     // Who is online, as every "N online" on the island says it: the room's players, Main Island's listeners and everyone
-    // in a hosted chat who is neither.
-    online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length + inChats().length : 0),
+    // in a hosted chat through Ooga Chat's app.
+    online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length + inChats() : 0),
     get stats() { return { rows: model.rows.size, drawn: list.childElementCount, cached: tiles.count, status: model.status, zone: model.zone, desired: model.desired, showing }; }
   };
 })();

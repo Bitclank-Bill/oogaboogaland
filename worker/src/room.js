@@ -87,7 +87,7 @@ export class Room extends DurableObject {
     this.chatVoices = new Map();
     // Travellers in a chat's copy, GitHub id -> { chat, at, character }: their seats kept (room-copy.js).
     this.away = new Map();
-    // Each live hosted chat's members, as the chat last said (room-chat-members.js), for every page's Online Oogas.
+    // Each live hosted chat's title and counts, as the chat last said (room-chat-members.js), for every page's Online Oogas.
     this.chatRosters = new Map();
     // Each player socket to its record, so a message finds its sender without reading the socket's attachment. Rebuilt
     // from the sockets on every wake, as `players` is; a record leaves both together (`drop`).
@@ -1794,7 +1794,7 @@ export class Room extends DurableObject {
   copyClouds(list) { return this.copy ? copyRoom.clouds(this, list) : null; }
 
   // A hosted chat's members now (audience.js `reportMembers`), an empty list as it ends: every page's Online Oogas hears.
-  chatMembers(chat, title, members, more) { return chatMembersRoom.update(this, chat, title, members, more); }
+  chatMembers(chat, title, speakers, listeners, app) { return chatMembersRoom.update(this, chat, title, speakers, listeners, app); }
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }
