@@ -425,6 +425,9 @@
     // --- pop-ups: a tile's menu, the queue, a confirmation ---
     const pop = make("div", "hc-pop");
     pop.hidden = true;
+    // The Requests panel opens in the panel's own flow, under the chat's bar, so it moves the roster down rather than
+    // covering it; a tile's menu and a confirmation float by what opened them.
+    const dock = make("div", "hc-dock");
     let anchor = null, popKind = "";
     const closePop = (refocus = true) => {
       if (pop.hidden) return;
@@ -436,7 +439,7 @@
       if (refocus && to && to.isConnected) to.focus();
     };
     const place = () => {
-      if (pop.hidden || !anchor) return;
+      if (pop.hidden || !anchor || pop.parentNode === dock) return;
       if (matchMedia("(max-width: 399px)").matches) { pop.style.removeProperty("top"); pop.style.removeProperty("left"); return; }
       const a = anchor.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
       pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, a.left + a.width / 2 - w / 2))}px`;
@@ -460,6 +463,10 @@
         slab.append(el);
       }
       pop.replaceChildren(slab);
+      const docked = kind === "queue";
+      pop.classList.toggle("hc-docked", docked);
+      if (docked && pop.parentNode !== dock) dock.append(pop);
+      else if (!docked && pop.parentNode !== node) node.append(pop);
       pop.hidden = false;
       place();
       if (focus) pop.querySelector("button")?.focus();
@@ -619,7 +626,7 @@
       observing = true;
       observer.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
     };
-    head.after(bar, notice, list);
+    head.after(bar, dock, notice, list);
     // The Requests chip stands in the panel's title, right of the zone tag.
     const zoneTag = head.querySelector(".panel-chip");
     if (zoneTag) zoneTag.after(requests); else head.append(requests);
@@ -641,7 +648,7 @@
       previewTiles.dispose();
       off();
       space.setMenu(null);
-      for (const el of [bar, notice, list, strip, invite, pop, ask, end, leave, requests, starter.node, preview]) el.remove();
+      for (const el of [bar, dock, notice, list, strip, invite, pop, ask, end, leave, requests, starter.node, preview]) el.remove();
     };
     return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), dispose };
   };
