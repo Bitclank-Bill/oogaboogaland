@@ -1,0 +1,71 @@
+/* Hosted chats (ooga-chat-hosts.js, docs/ooga-chat-hosts.md), staged with their chunk (scripts/ooga-chat.mjs): the list
+   before a chat is chosen, then the chat's bar, invite card, badges, pop-ups and the Start a chat dialog. Under 400px the
+   pop-ups are sheets at the foot of the screen with 44px controls. */
+.oc-chat[data-space="list"] > :is(.cloud-status, .cloud-roster, .oc-volume, .oc-invite, .oc-room-strip),
+.oc-chat[data-space="list"] .oc-chat-foot > .reactions,
+.oc-chat[data-space="list"] > .panel-title > .panel-chip,
+.oc-chats[hidden], .oc-room-bar[hidden], .oc-invite[hidden], .oc-pop[hidden] { display: none; }
+.oc-chats { display: grid; align-content: start; gap: 10px; }
+.oc-chats-head, .oc-room-bar, .oc-queue-row { display: flex; align-items: center; gap: 8px; }
+.oc-chats-head .section-head, .oc-room-title, .oc-queue-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.oc-chats-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.oc-chat-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid rgba(243, 239, 228, 0.12);
+  border-radius: 6px; background: rgba(0, 0, 0, 0.2); color: var(--paper); font: inherit; text-align: left; cursor: pointer;
+}
+.oc-chat-row:hover, .oc-chat-row:focus-visible { border-color: var(--accent); outline: none; }
+.oc-chat-row > .cloud-portrait { --face: 36px; flex: none; width: 36px; height: 36px; }
+.oc-chat-row-text { display: grid; flex: 1; min-width: 0; gap: 2px; font-size: 11px; color: rgba(243, 239, 228, 0.78); }
+.oc-chat-row-title { color: var(--paper); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.oc-chats-status { margin: 0; color: rgba(243, 239, 228, 0.7); font-size: 11px; }
+.oc-chats-status .link[hidden] { display: none; }
+.oc-room-bar { flex: none; font-size: 12px; font-weight: 700; color: var(--paper); }
+.oc-chat-notice { flex: none; margin: 0; color: var(--accent-text); font-size: 11px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+.oc-chat-notice:empty { display: none; }
+.oc-invite { display: grid; flex: none; gap: 6px; padding: 10px 12px; color: var(--paper); font-size: 11px; }
+.oc-invite:focus { outline: none; }
+.oc-invite strong { color: var(--accent-text); font-size: 12px; }
+.oc-invite-go, .oc-start-go { display: flex; flex-wrap: wrap; gap: 8px; }
+.oc-chat[data-space="on"] .cloud-face { cursor: pointer; }
+/* A host's or co-host's badge under the portrait, and a microphone over it for an open request (audience-tiles.js
+   `data-rank`, `data-request`). */
+.cloud-tile:is([data-rank="host"], [data-rank="cohost"]) .cloud-face::after,
+.cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before {
+  position: absolute; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid var(--wood-edge);
+  border-radius: 8px; background: var(--plank); color: var(--paper); font-size: 8px; font-weight: 700; letter-spacing: 0.04em; line-height: 1;
+}
+.cloud-tile[data-rank="host"] .cloud-face::after { content: "Host"; left: 50%; bottom: -8px; translate: -50% 0; }
+.cloud-tile[data-rank="cohost"] .cloud-face::after { content: "Co"; left: 50%; bottom: -8px; translate: -50% 0; }
+.cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before { content: "\1F399\FE0F"; top: -5px; right: -7px; z-index: 1; font-size: 9px; background: var(--accent); }
+.cloud-tile[data-request="invited"] .cloud-face::before { background: #22c55e; }
+.oc-pop, .oc-start {
+  border: 3px solid var(--wood-edge); border-radius: var(--radius); background: var(--planks); color: var(--paper);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.oc-pop { position: fixed; z-index: 980; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 8px; }
+.oc-pop-slab, .oc-start-slab { display: grid; gap: 6px; padding: 10px; }
+.oc-pop-slab > .foot-button, .oc-queue-row .foot-button { min-height: 32px; }
+.oc-pop-head { margin: 0; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.oc-pop-note { margin: 0; font-size: 11px; color: rgba(243, 239, 228, 0.78); }
+.oc-start { width: 420px; max-width: calc(100vw - 32px); padding: 14px 16px 16px; font: inherit; }
+.oc-start::backdrop { background: rgba(0, 0, 0, 0.6); }
+.oc-start h2 { margin: 0 0 10px; font-size: 14px; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
+.oc-start-label { display: grid; gap: 4px; font-size: 11px; }
+.oc-start-title {
+  padding: 8px; border: 2px solid var(--stone-dk); border-radius: 6px; background: rgba(0, 0, 0, 0.3); color: var(--paper); font: inherit; font-size: 16px;
+}
+.oc-start-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.oc-zone-card {
+  display: grid; justify-items: center; gap: 6px; padding: 12px 8px; border: 2px solid var(--stone-dk); border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25); color: var(--paper); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.oc-zone-card[aria-checked="true"] { border-color: var(--accent); background: rgba(216, 137, 43, 0.14); }
+.oc-zone-card:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.oc-zone-art svg { display: block; width: auto; height: 44px; shape-rendering: crispEdges; }
+.oc-start-why { margin: 0; color: #ffb4a6; font-size: 11px; }
+.oc-start-why:empty { display: none; }
+.oc-start-go { justify-content: flex-end; }
+@media (max-width: 399px) {
+  .oc-pop { left: 8px; right: 8px; bottom: calc(8px + var(--safe-bottom)); top: auto; width: auto; max-width: none; }
+  .oc-pop .foot-button, .oc-invite .foot-button, .oc-start .foot-button { min-height: 44px; }
+}

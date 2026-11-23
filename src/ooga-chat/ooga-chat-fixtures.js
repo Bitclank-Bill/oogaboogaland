@@ -20,6 +20,13 @@
 // gesture, as a browser's autoplay rule does; `refused` refuses the lease (the zone's speakers are full); `off` is a
 // deployment that doesn't let anyone speak; `elsewhere` finds the account's voice on the island, on another device, until
 // the visitor takes it (`setRole` with `takeover`, the voice switch prompt's answer). `BL.oogaChatFixtures.rtc` is the last fake's record, for the checks.
+// `?chats=on` offers hosted chats (docs/ooga-chat-hosts.md) from an in-memory directory (`CHATS`, `chats`, `startChat`):
+// two sample chats, one with a host, a co-host, a speaker, two requests waiting and an invite out, and the roles' rules
+// on a feed opened for a chat (who outranks whom, the queue, invites, the stage, mute, removal, the end). Its sample hosts
+// answer as a host would, so a review sees every state: the visitor's request is approved 1.5 s after it is made, and a
+// microphone the visitor opens there is muted by the host 2.5 s later. A chat the visitor starts is theirs: two samples
+// join and ask to speak, a sample invited takes the stage a second later, and End chat ends it. Off (the default), the
+// fixture offers no chats and behaves as before.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -27,9 +34,9 @@
   const STATES = ["signed-out", "listener", "contributor", "ineligible", "unknown", "revoked", "provider-disabled", "expiring", "signout-fails",
     "demo-payment", "real-payment", "unavailable"];
   const protocols = Object.fromEntries(Object.entries(PROTOCOLS).map(([name, version]) => [name, [version]]));
-  const answer = (feed, x, speak) => ({ version: BOOTSTRAP_VERSION, protocols,
-    features: { github: true, x, voice: true, speak, feed, commons: true },
-    paths: { session: "/fixture/session", logout: "/fixture/logout", audience: "/fixture/audience", login: { github: "/fixture/login/github", x: "/fixture/login/x" } } });
+  const answer = (feed, x, speak, chats) => ({ version: BOOTSTRAP_VERSION, protocols: chats ? { ...protocols, audience: [...protocols.audience, 2] } : protocols,
+    features: { github: true, x, voice: true, speak, feed, commons: true, chats },
+    paths: { session: "/fixture/session", logout: "/fixture/logout", audience: "/fixture/audience", login: { github: "/fixture/login/github", x: "/fixture/login/x" }, ...(chats ? { chats: "/fixture/chats" } : {}) } });
   const github = (n, login, state, capabilities = {}) => ({ identity: { principal: `fixture:github:${n}`, participant: `gh:${n}`, provider: "github", providerUserId: String(n), login, display: login },
     capabilities, eligibility: { state } });
   const ACCOUNTS = {
@@ -44,6 +51,9 @@
   const SIGNED_IN = { listener: "listener", contributor: "contributor", ineligible: "ineligible", unknown: "unknown", revoked: "revoked", expiring: "contributor", "signout-fails": "contributor" };
   const ROSTERS = ["mixed", "empty", "crowd", "reconnecting", "reauth", "full", "none"];
   const VOICES = ["ok", "denied", "blocked", "refused", "off", "elsewhere"];
+  const CHATS = ["off", "on"];
+  // Hosted chats' sample members, keyed as the server keys an account.
+  const member = (n, login, role, extra = {}) => ({ id: `gh:${9000 + n}`, generation: 1, source: "app", role, login, display: login, muted: role === "speaker" ? false : undefined, ...extra });
   const person = (id, source, role, login, extra = {}) => ({ id: `fixture:${id}`, generation: 1, source, role, login, display: login, ...extra });
   const CAST = {
     main: [
@@ -187,15 +197,58 @@
     BL.oogaChatFixtures.rtc = rtc;
     return rtc;
   };
-  const create = ({ state = "signed-out", roster = "mixed", voice = "ok", now = () => Date.now() } = {}) => {
+  // `chats` defaults to the page's own `?chats=`, so the app needs no word of it.
+  const pageChats = () => typeof location === "object" && new URLSearchParams(location.search).get("chats") || "off";
+  const create = ({ state = "signed-out", roster = "mixed", voice = "ok", chats: offered = pageChats(), now = () => Date.now() } = {}) => {
     if (!STATES.includes(state)) throw new Error(`Unknown fixture state "${state}" (${STATES.join(", ")})`);
     if (!ROSTERS.includes(roster)) throw new Error(`Unknown fixture roster "${roster}" (${ROSTERS.join(", ")})`);
     if (!VOICES.includes(voice)) throw new Error(`Unknown fixture voice "${voice}" (${VOICES.join(", ")})`);
+    if (!CHATS.includes(offered)) throw new Error(`Unknown fixture chats "${offered}" (${CHATS.join(", ")})`);
+    // The directory: each chat's roles as chat-roles.js keeps them, its members, and the feeds open on it.
+    const rooms = new Map();
+    const room = (id, title, zone, ago, cast, roles = {}) => rooms.set(id, { id, title, zone, startedAt: now() - ago, cast, host: roles.host, cohosts: new Map((roles.cohosts || []).map((c) => [c, 0])),
+      queue: new Map(roles.queue || []), invites: new Map(roles.invites || []), stage: new Set(), removed: new Set(), cooldown: new Map(), ended: false, sample: true, feeds: new Set() });
+    if (offered === "on") {
+      room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker"), member(2, "sample-fern", "speaker"), member(3, "sample-reed", "speaker", { muted: true }),
+        member(4, "sample-wren", "listener"), member(5, "sample-kite", "listener"), member(6, "sample-lark", "listener"), member(7, "sample-heron", "listener")],
+      { host: "gh:9001", cohosts: ["gh:9002"], queue: [["gh:9004", now() - 30000], ["gh:9005", now() - 10000]], invites: [["gh:9006", now() + 60000]] });
+      room("fixtureChatDune1", "Building DSB Land", "dsb", 120000, [member(11, "sample-dune", "speaker"), member(12, "sample-gull", "listener")], { host: "gh:9011" });
+    }
+    const level = (r, id) => id === r.host ? 2 : r.cohosts.has(id) ? 1 : 0;
+    const invitedUntil = (r, id) => (r.invites.get(id) || 0) > now() ? r.invites.get(id) : 0;
+    const mayLease = (r, id) => !r.ended && !r.removed.has(id) && (level(r, id) > 0 || !!invitedUntil(r, id) || r.stage.has(id));
+    const requestOf = (r, id) => invitedUntil(r, id) ? "invited" : r.queue.has(id) ? "asked" : "";
+    // A row as the chat draws it: its rank and open request.
+    const standing = (r, p) => {
+      const { rank: _r, request: _q, askedAt: _a, ...row } = p, rank = level(r, p.id), request = requestOf(r, p.id);
+      return { ...row, ...(rank ? { rank: rank === 2 ? "host" : "cohost" } : {}), ...(request ? { request, ...(request === "asked" ? { askedAt: r.queue.get(p.id) } : {}) } : {}) };
+    };
+    const listing = () => [...rooms.values()].filter((r) => !r.ended).map((r) => {
+      const host = r.cast.find((p) => p.id === r.host) || { login: account?.identity.login || "sample-host", display: account?.identity.display };
+      const speakers = r.cast.filter((p) => p.role === "speaker").length + [...r.feeds].filter((f) => f.speaking()).length;
+      return { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: { login: host.login, display: host.display || host.login, character: null }, speakers, listeners: r.cast.length + r.feeds.size - speakers };
+    }).sort((a, b) => b.speakers + b.listeners - a.speakers - a.listeners || b.startedAt - a.startedAt);
+    const chats = async () => ({ chats: listing() });
+    let started = 0;
+    const startChat = async (boot, { title, zone }) => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const who = account && parseSession(account, now()), id = who && `gh:${who.identity.providerUserId}`;
+      if (!who) return { code: "auth_required", retryable: false, retryAfter: 0 };
+      if (who.identity.provider !== "github" || who.eligibility.state !== "eligible") return { code: "capability_required", retryable: false, retryAfter: 0 };
+      const text = String(title).trim();
+      if (!text || text.length > 60) return { code: "bad_title", retryable: false, retryAfter: 0 };
+      if (!BL.oogaChatConfig.ZONES.includes(zone)) return { code: "zone_unavailable", retryable: false, retryAfter: 0 };
+      if ([...rooms.values()].some((r) => !r.ended && r.host === id)) return { code: "already_hosting", retryable: false, retryAfter: 0 };
+      const chat = `fixtureStarted${String(++started).padStart(2, "0")}`;
+      room(chat, text, zone, 0, [], { host: id });
+      rooms.get(chat).sample = false;
+      return { chat: { id: chat, title: text, zone } };
+    };
     const expiresAt = state === "expiring" ? now() + 20000 : null;
     const asked = (name) => name && { ...ACCOUNTS[name], expiresAt };
     let account = asked(SIGNED_IN[state]), disposed = false;
     const bootstrap = async () => state === "unavailable" ? { ok: false, mode: "unavailable", reason: "fixture" }
-      : parseBootstrap(answer(state === "demo-payment" ? "demo" : state === "real-payment", state !== "provider-disabled", voice !== "off"), null, { fixture: true });
+      : parseBootstrap(answer(state === "demo-payment" ? "demo" : state === "real-payment", state !== "provider-disabled", voice !== "off", offered === "on"), null, { fixture: true });
     const session = async () => disposed || !account ? null : parseSession(account, now());
     const signIn = (boot, provider) => {
       account = asked(provider === "x" ? "listener" : ["ineligible", "unknown", "revoked"].includes(state) ? state : "contributor");
@@ -211,7 +264,8 @@
     // the fake broker (`media`) reads and changes by that connection.
     const feeds = new Set(), links = new Map();
     let opened = 0, connections = 0, generations = 0;
-    const audience = (boot, { message, status }) => {
+    const audience = (boot, { message, status }, chat = null) => {
+      const r = chat ? rooms.get(chat) : null;
       let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false, requests = 0;
       let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0;
       const held = new Map();
@@ -220,18 +274,24 @@
       let elsewhere = voice === "elsewhere";
       const you = () => {
         const id = self()[0]?.id || null;
+        if (r) {
+          const until = invitedUntil(r, id), rank = level(r, id);
+          return { id, speak: lease ? active ? "active" : "pending" : mayLease(r, id) ? "eligible" : "none", ...(lease ? { lease } : {}),
+            rank: rank === 2 ? "host" : rank ? "cohost" : "", request: requestOf(r, id), ...(until ? { inviteUntil: until } : {}) };
+        }
         if (lease) return { id, speak: active ? "active" : "pending", lease };
         return contributor() && elsewhere ? { id, speak: "denied", elsewhere: "island" } : { id, speak: contributor() ? "eligible" : "none" };
       };
       // The visitor's row as the server would draw it: a muted app speaker once its microphone is up.
       const ownRow = () => {
-        const mine = self()[0];
-        return mine && (active ? { ...mine, role: "speaker", source: "app", muted: mic === "muted" } : mine);
+        const mine = self()[0], row = mine && (active ? { ...mine, role: "speaker", source: "app", muted: mic === "muted" } : mine);
+        return row && r ? standing(r, row) : row;
       };
-      const endLease = () => {
+      const endLease = (voluntary = true) => {
         if (!lease) return;
         const was = active;
         lease = 0; active = false; mic = "muted";
+        if (r && voluntary) r.stage.delete(self()[0]?.id);
         if (was) delta([ownRow()]);
         message({ type: "you", zone, you: you() });
       };
@@ -259,10 +319,116 @@
           () => delta([], [{ id: visitor.id, generation: 1 }])][step++ % 4]();
         script();
       });
+      // In a chat: a member's row redrawn with their standing; a notice to the visitor; and the chat's end.
+      const touch = (...ids) => delta(ids.map((id) => id === self()[0]?.id ? ownRow() : people.find((p) => p.id === id)).filter(Boolean).map((p) => standing(r, p)));
+      const notice = (fields) => message({ type: "notice", ...fields });
+      const ended = (reason = "ended") => {
+        r.ended = true;
+        for (const f of [...r.feeds]) f.end(reason);
+      };
+      // A sample member takes up an invite a moment later, unmuted, as a person would.
+      const takeUp = (id) => after(1000, () => {
+        const p = people.find((q) => q.id === id);
+        if (!p || !invitedUntil(r, id)) return;
+        r.invites.delete(id);
+        r.stage.add(id);
+        const row = { ...p, role: "speaker", muted: false };
+        r.cast = r.cast.map((q) => q.id === id ? row : q);
+        delta([standing(r, row)]);
+      });
+      // A request in a chat (docs/ooga-chat-hosts.md, Requests), checked as chat-roles.js checks it.
+      const chatOp = (type, fields) => {
+        const me = self()[0]?.id, target = fields.id, mine = level(r, me), row = people.find((p) => p.id === target);
+        const no = (code, extra = {}) => ({ ok: false, error: { code, retryable: !!extra.retryAfter, ...extra } });
+        if (r.ended) return no("ended");
+        if (type === "ask") {
+          if (lease || mayLease(r, me)) return no("already_allowed");
+          const until = r.cooldown.get(me) || 0;
+          if (until > now()) return no("cooldown", { retryAfter: Math.ceil((until - now()) / 1000) });
+          r.queue.set(me, now());
+          touch(me);
+          if (r.sample) after(1500, () => {
+            if (!r.queue.has(me)) return;
+            r.queue.delete(me);
+            r.invites.set(me, now() + 60000);
+            touch(me);
+            notice({ kind: "invited", by: r.host, until: r.invites.get(me) });
+            message({ type: "you", zone, you: you() });
+          });
+          return { ok: true };
+        }
+        if (type === "cancel") { r.queue.delete(me); touch(me); return { ok: true }; }
+        if (type === "decline") { r.invites.delete(me); touch(me); return { ok: true }; }
+        if (type === "end") {
+          if (mine !== 2) return no("not_host");
+          after(50, () => ended("ended"));
+          return { ok: true };
+        }
+        if (!mine) return no("not_host");
+        if (!row || target === me || mine <= level(r, target)) return no("not_allowed");
+        switch (type) {
+          case "invite":
+          case "answer":
+            if (type === "answer" && !r.queue.has(target)) return no("not_asked");
+            r.queue.delete(target);
+            if (type === "answer" && !fields.approve) { r.cooldown.set(target, now() + 60000); touch(target); return { ok: true }; }
+            r.invites.set(target, now() + 60000);
+            touch(target);
+            takeUp(target);
+            return { ok: true };
+          case "mute":
+            if (row.role !== "speaker") return no("not_speaking");
+            r.cast = r.cast.map((p) => p.id === target ? { ...p, muted: true } : p);
+            delta([standing(r, { ...row, muted: true })]);
+            return { ok: true };
+          case "demote":
+            r.stage.delete(target);
+            r.cast = r.cast.map((p) => p.id === target ? { ...p, role: "listener", muted: undefined } : p);
+            delta([standing(r, { ...row, role: "listener", muted: undefined })]);
+            return { ok: true };
+          case "cohost":
+            if (mine !== 2) return no("not_host");
+            if (fields.on && r.cohosts.size >= 3) return no("cohosts_full");
+            if (fields.on) { r.cohosts.set(target, now()); r.queue.delete(target); r.invites.delete(target); } else r.cohosts.delete(target);
+            touch(target);
+            return { ok: true };
+          case "handover":
+            if (mine !== 2 || !r.cohosts.has(target)) return no("not_allowed");
+            r.cohosts.delete(target);
+            r.host = target;
+            r.cohosts.set(me, now());
+            touch(me, target);
+            notice({ kind: "host", id: target, by: me });
+            after(0, () => message({ type: "you", zone, you: you() }));
+            return { ok: true };
+          case "remove":
+            r.queue.delete(target); r.invites.delete(target); r.cohosts.delete(target); r.removed.add(target);
+            r.cast = r.cast.filter((p) => p.id !== target);
+            delta([], [{ id: target, generation: row.generation }]);
+            return { ok: true };
+          default: return no("malformed");
+        }
+      };
       const join = () => {
         clear();
         status("connecting");
         if (roster === "full") return after(500, () => status("full"));
+        if (r) return after(500, () => {
+          if (r.ended) return feed.end("ended");
+          epoch++;
+          revision = 0;
+          people = [...r.cast, ...self()].map((p) => standing(r, p));
+          message({ type: "snapshot", zone, epoch, revision, participants: people, you: you(), connection,
+            chat: { id: r.id, title: r.title, zone: r.zone, startedAt: r.startedAt, host: r.host, cohosts: [...r.cohosts.keys()] } });
+          // A chat the visitor started fills up: two samples join and ask to speak, a moment apart.
+          if (!r.sample && !r.cast.length) [[21, "sample-pebble"], [22, "sample-otter"]].forEach(([n, login], i) => after(2000 + i * 1200, () => {
+            const p = member(n, login, "listener");
+            r.cast = [...r.cast, p];
+            r.queue.set(p.id, now());
+            delta([standing(r, p)]);
+            notice({ kind: "asked", id: p.id });
+          }));
+        });
         after(500, () => {
           epoch++;
           revision = 0;
@@ -302,6 +468,7 @@
         lease: (generation) => !!lease && lease === generation,
         ready() {
           active = true; mic = "muted";
+          if (r) { const id = self()[0]?.id; r.invites.delete(id); r.queue.delete(id); r.stage.add(id); }
           delta([ownRow()]);
           message({ type: "you", zone, you: you() });
         },
@@ -336,7 +503,7 @@
             // state, and back to listening.
             if (type === "setRole") {
               if (fields.role === "listener") { endLease(); return message({ type: "result", requestId, ok: true, you: you() }); }
-              if (!contributor()) return message({ type: "result", requestId, ok: false, error: { code: "capability_required", retryable: false }, you: you() });
+              if (r ? !mayLease(r, self()[0]?.id) : !contributor()) return message({ type: "result", requestId, ok: false, error: { code: r ? "not_allowed" : "capability_required", retryable: false }, you: you() });
               if (voice === "refused") return message({ type: "result", requestId, ok: false, error: { code: "speaker_capacity", retryable: true }, you: you() });
               if (elsewhere && fields.takeover !== true) return message({ type: "result", requestId, ok: false, error: { code: "source_in_use", retryable: false }, you: you() });
               elsewhere = false;
@@ -347,8 +514,16 @@
               if (!active) return message({ type: "result", requestId, ok: false, error: { code: "capability_required", retryable: false }, you: you() });
               mic = fields.muted ? "muted" : "on";
               delta([ownRow()]);
+              // A sample host mutes a microphone opened in their chat a moment later, as a host may.
+              if (r && r.sample && mic === "on") after(2500, () => {
+                if (!active || mic !== "on") return;
+                mic = "muted";
+                delta([ownRow()]);
+                notice({ kind: "muted", by: r.host });
+              });
               return message({ type: "result", requestId, ok: true, you: you() });
             }
+            if (r && !["setRole", "setMic", "reaction", "hand"].includes(type)) return message({ type: "result", requestId, ...chatOp(type, fields), you: you() });
             if (type === "reaction" && me) {
               const at = now();
               message({ type: "reaction", eventId: `fixture-${requestId}`, participantId: me.id, zone, epoch, emoji: fields.emoji, at, expiresAt: at + 2600 });
@@ -364,9 +539,25 @@
           closed = true;
           clear();
           feeds.delete(feed);
+          r?.feeds.delete(feed);
           links.delete(connection);
-        }
+        },
+        // The chat ended: the notice, then the socket closes as 4404 does.
+        end(reason) {
+          if (closed) return;
+          message({ type: "notice", kind: "ended", reason });
+          clear();
+          closed = true;
+          r?.feeds.delete(feed);
+          links.delete(connection);
+          setTimeout(() => status("ended"), 50);
+        },
+        speaking: () => active
       };
+      if (r) {
+        if (r.ended) { setTimeout(() => status("ended"), 50); return { zone() {}, resync() {}, request: () => 0, wake() {}, dispose() {} }; }
+        r.feeds.add(feed);
+      }
       if (roster === "none") {
         status("unavailable");
         return { zone() {}, resync() {}, request: () => 0, dispose() {} };
@@ -441,7 +632,7 @@
       resolve({ ok: true, display: clean });
     }, 300));
     const contributors = async () => state === "unavailable" ? null : PUBLIC(now());
-    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, commonsName, media, rtc, contributors, dispose, pending: 0, demo };
+    return { kind: "fixture", state, bootstrap, session, signIn, signOut, audience, commons, commonsName, media, chats, startChat, rtc, contributors, dispose, pending: 0, demo };
   };
-  BL.oogaChatFixtures = { create, STATES, ROSTERS, VOICES, rtc: null };
+  BL.oogaChatFixtures = { create, STATES, ROSTERS, VOICES, CHATS, rtc: null };
 })();

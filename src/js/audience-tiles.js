@@ -4,9 +4,11 @@
 // source ring (green from the island, purple from Ooga Chat) and, over its centre, a raised hand or a reaction; then
 // the name on one line, cut short with its whole self in the title; then
 // the role, a speaker's voice mark first. Reads nothing at load but window.BL, so Ooga Chat shares it.
-// `create(list, { mic(id) })` takes the <ul> and what a press on a voice mark does, and returns:
+// `create(list, { mic(id), menu(id, tile) })` takes the <ul>, what a press on a voice mark does and, optionally, on a
+// portrait or Enter or Space on a focused tile (a hosted chat's tile menu). Returns:
 //   draw(items, describe)  one pass in the list's order: `describe(item, tile)` writes each item into one scratch tile
-//                          ({ id, display, role, source, face, look, hand, self, micDisabled, micPressed, micWords }).
+//                          ({ id, display, role, source, face, look, hand, self, micDisabled, micPressed, micWords, and
+//                          a hosted chat's optional `rank` and `request`, as `data-rank` and `data-request`).
 //                          A tile's nodes are kept by id, only changed fields are written, a tile moves only when out
 //                          of place, and one whose item has gone is dropped with its picture cancelled
 //   repaint(describe)      the speakers' tiles again, from the items they were drawn from (a microphone's state changes
@@ -30,9 +32,9 @@
     if (className) el.className = className;
     return el;
   };
-  const create = (list, { mic = () => {} } = {}) => {
+  const create = (list, { mic = () => {}, menu = null } = {}) => {
     const tiles = new Map();
-    const tile = { id: "", display: "", role: "listener", source: "", face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "" };
+    const tile = { id: "", display: "", role: "listener", source: "", face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "" };
     let mark = 0, current = null;
     const build = (id) => {
       const li = make("li", "cloud-tile"), face = make("span", "cloud-face"), portrait = make("span", "cloud-portrait");
@@ -97,8 +99,10 @@
         attr(entry.voice, "aria-label", t.micWords);
         set(entry.voice, "title", t.micWords);
       }
+      if ((entry.li.dataset.rank || "") !== t.rank) entry.li.dataset.rank = t.rank;
+      if ((entry.li.dataset.request || "") !== t.request) entry.li.dataset.request = t.request;
       const where = speaker ? source === "world" ? "speaking from the island" : "speaking from Ooga Chat" : "listening";
-      attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}, ${where}${speaker && t.look === "muted" ? ", muted" : ""}`);
+      attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}${t.rank ? `, ${t.rank === "cohost" ? "co-host" : t.rank}` : ""}, ${where}${speaker && t.look === "muted" ? ", muted" : ""}${t.request ? `, ${t.request} to speak` : ""}`);
     };
     const drop = (id, entry) => {
       cancel(entry);
@@ -155,6 +159,7 @@
     const onKey = (event) => {
       const from = event.target;
       if (from.parentElement !== list) return;
+      if (menu && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); return menu(from.dataset.id, from); }
       const items = list.children, at = Array.prototype.indexOf.call(items, from);
       const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : event.key === "ArrowUp" ? -columns() : event.key === "ArrowDown" ? columns() : 0;
       const to = step ? items[Math.max(0, Math.min(items.length - 1, at + step))] : event.key === "Home" ? items[0] : event.key === "End" ? items[items.length - 1] : null;
@@ -171,6 +176,8 @@
     const onClick = (event) => {
       const button = event.target.closest(".cloud-mic"), li = button && button.closest(".cloud-tile");
       if (li && !button.disabled) mic(li.dataset.id);
+      const face = menu && event.target.closest(".cloud-face");
+      if (face && list.contains(face)) menu(face.parentElement.dataset.id, face.parentElement);
     };
     list.addEventListener("click", onClick);
     list.addEventListener("keydown", onKey);
