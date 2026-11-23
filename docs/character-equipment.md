@@ -221,6 +221,25 @@ the committed pieces against their hashes and writes `equipment-wardrobe.gen.js`
 (the pieces, about 0.7 MB, in their own deferred `wardrobe` chunk, fetched the
 first time a body on the page wears one, in the studio the first one previewed).
 
+### The equipment pipeline
+
+New pieces reach the studio through `.github/workflows/equipment-pieces.yml`, which runs
+after every push to `rock` that touches a character file or the equipment data (and by hand).
+Its first job runs `node scripts/equipment-pieces.mjs --author`: the wardrobe's authoring
+above, in the sandbox, with a read-only token and no secrets, plus the hats' source check.
+Its second job takes only the authored data (`--apply`: piece files named by their hash, the
+catalog and `labels.json`; an existing piece is never replaced), checks it as every build
+does without running any character's code, and opens or refreshes one PR from
+`automation/equipment-pieces` listing the new, retired and renamed pieces. A maintainer
+reviews the pieces in the studio, gives any generic name ("X's shirt") a reviewed one in
+`labels.json` on that branch (the next run keeps it), and merges. With nothing new the
+open PR closes.
+
+Hats are only reported there, never published: a hat hook that draws something new, and a
+character with a hat hook no reviewed definition names. Publishing a hat offers its wearers
+an update, so a maintainer decides, as under "Updating an authored hat" below, and a new hat
+must pass the apple fitting check in `worker/test/equipment-hats.test.mjs` first.
+
 The wardrobe is kept in `player_equipment.wardrobe` (migration
 `0014_player_wardrobe.sql`), checked JSON under the hat's revision, so a save of
 either is one compare-and-swap. `PUT /api/equipment` takes `wardrobe` beside any
