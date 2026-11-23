@@ -47,9 +47,13 @@ export const CHAT_TITLE_MAX = 60;
 export const ISLAND_RETRY_MS = 30 * 1000;
 // A chat as the island's Online Oogas shows it (`reportMembers`): its title and counts, reports at least MEMBERS_GAP_MS apart.
 export const MEMBERS_GAP_MS = 2000;
+// At most this many of a chat's app accounts go to the island room with its counts.
+export const MEMBERS_IDS = 500;
 // A chat speaker's, host's or co-host's drop shorter than this shows nobody anything; longer, their tile shows them
 // reconnecting, in place, while their place is held (audience-model.js, quiet hold).
 export const QUIET_MS = 5 * 1000;
+// How long a speaker back in the chat has to take the stage again before a quiet hold lets their row show what is true.
+export const RETURN_MS = 15 * 1000;
 export const chatName = (id) => `chat:${id}`;
 // A chat's land: a zone it is held in (`main`, `dsb`), or `none`, Ooga Chat voice alone, with no copy, clouds or Go
 // there. A land-less chat's roster lives in the model's `main` zone, which is what its socket's frames name.
@@ -190,7 +194,7 @@ export class Audience extends DurableObject {
       this.limits = limitsOf(env, !!chat);
       this.model = createAudience({ epoch: meta.epoch, limits: this.limits, revs: meta.revs,
         standing: (id) => this.standingOf(id), may: (c) => this.mayOf(c), seats: () => !this.chat,
-        reserved: () => this.roles ? this.roles.held(Date.now()) : [], quietMs: QUIET_MS });
+        reserved: () => this.roles ? this.roles.held(Date.now()) : [], returnMs: RETURN_MS });
       if (this.chat) this.model.setWalking([...this.walkers]);
       this.island = (await ctx.storage.get("world")) || this.island;
       if (!Array.isArray(this.island.linked)) this.island = { ...this.island, linked: [] };
@@ -298,6 +302,8 @@ export class Audience extends DurableObject {
   async flush() {
     this.tellElsewhere();
     const deltas = this.model.commit();
+    // A quiet hold a return to the stage ended goes from storage too, or a wake would bring the old row back.
+    if (this.model.quietChanged()) await this.saveQuiet();
     if (this.chat) this.listed();
     if (this.chat && (deltas.length || this.members.failed)) this.reportMembers();
     if (!deltas.length) return deltas;
@@ -1025,20 +1031,20 @@ export class Audience extends DurableObject {
    * speak and listen, and how many of them through Ooga Chat's app (`via`), whom the island's "N online" adds. No names.
    */
   summaryOf() {
-    return { title: this.chat.title, ...this.tally() };
+    const { speakers, listeners } = this.tally(), ids = [];
+    // The accounts here through Ooga Chat's app, for the island's "N online" (each once there, players left out).
+    for (const r of this.model.zones[this.zoneOf()].rows.values()) if (r.via === "app" && ids.length < MEMBERS_IDS) ids.push(r.id);
+    return { title: this.chat.title, speakers, listeners, ids };
   }
 
   /**
    * Who speaks and who listens, as everyone sees the chat: its host and co-hosts are speakers whether or not they are on
-   * the stage now (as its preview shows them), everyone else by their row; `app`, those here through Ooga Chat's app.
+   * the stage now (as its preview shows them), everyone else by their row.
    */
   tally() {
-    let speakers = 0, listeners = 0, app = 0;
-    for (const r of this.model.zones[this.zoneOf()].rows.values()) {
-      if (r.rank || r.role === "speaker") speakers++; else listeners++;
-      if (r.via === "app") app++;
-    }
-    return { speakers, listeners, app };
+    let speakers = 0, listeners = 0;
+    for (const r of this.model.zones[this.zoneOf()].rows.values()) if (r.rank || r.role === "speaker") speakers++; else listeners++;
+    return { speakers, listeners };
   }
 
   /**
@@ -1057,7 +1063,7 @@ export class Audience extends DurableObject {
     const report = this.summaryOf(), sig = JSON.stringify(report), id = this.chat.id;
     if (sig === M.sent) { M.failed = false; return; }
     M.at = Date.now(); M.busy = true;
-    M.queue = M.queue.then(() => this.env.ROOM.getByName("island").chatMembers(id, report.title, report.speakers, report.listeners, report.app))
+    M.queue = M.queue.then(() => this.env.ROOM.getByName("island").chatMembers(id, report.title, report.speakers, report.listeners, report.ids))
       .then(() => { M.sent = sig; M.failed = false; }, () => { M.failed = true; })
       .then(() => { M.busy = false; if (M.due) this.reportMembers(); });
     this.background(M.queue);
@@ -1068,7 +1074,7 @@ export class Audience extends DurableObject {
     const chat = this.members.gone;
     if (!chat || !this.env.ROOM) return;
     let told = false;
-    try { told = (await this.env.ROOM.getByName("island").chatMembers(chat, "", 0, 0, 0)).ok === true; } catch { told = false; }
+    try { told = (await this.env.ROOM.getByName("island").chatMembers(chat, "", 0, 0, [])).ok === true; } catch { told = false; }
     if (!told || this.members.gone !== chat) return;
     this.members.gone = null;
     await this.ctx.storage.delete("membersGone");
@@ -1083,7 +1089,8 @@ export class Audience extends DurableObject {
 
   /** A speaker publishing again after a failure: their row stands while they do (`publish/close` with `recover`). */
   holdQuiet(connId) {
-    if (this.roles && !this.roles.ended && this.model.hold(connId, Date.now() + QUIET_MS)) this.background(this.saveQuiet());
+    // As long as their place on the stage is held: a slow recovery never shows them as a listener or moves their tile.
+    if (this.roles && !this.roles.ended && this.model.hold(connId, Date.now() + STAGE_HOLD_MS)) this.background(this.saveQuiet());
   }
 
   /** Someone held quietly whom a host moved, removed, or another chat took: their row shows what is true now. */

@@ -737,6 +737,7 @@ export class Room extends DurableObject {
     this.welcome(p, false);
     // Back from a chat's copy: other pages beam the Ooga in.
     this.broadcast({ t: "join", p: this.view(p), ...(returning ? { travel: true } : {}) }, server);
+    chatMembersRoom.players(this);
     if (this.env.EQUIPMENT_ENABLED === "1") equipmentRoom.changed(this, p);
     if (this.copy) copyRoom.walking(this);
     else this.sendStudio(p);
@@ -1285,7 +1286,7 @@ export class Room extends DurableObject {
       this.freeEmptyRoom(lockedIn);
     });
     // Gone to a chat's copy: other pages beam that Ooga out and keep its NPC hidden.
-    step("leave", () => this.broadcast({ t: "leave", id: p.id, reason, ...(away ? { character: away.character } : {}) }));
+    step("leave", () => { this.broadcast({ t: "leave", id: p.id, reason, ...(away ? { character: away.character } : {}) }); chatMembersRoom.players(this); });
     step("host", () => this.electHost());
     step("voices", () => this.updateVoice());
     if (!this.players.size && this.flushTimer) {
@@ -1794,7 +1795,7 @@ export class Room extends DurableObject {
   copyClouds(list) { return this.copy ? copyRoom.clouds(this, list) : null; }
 
   // A hosted chat's members now (audience.js `reportMembers`), an empty list as it ends: every page's Online Oogas hears.
-  chatMembers(chat, title, speakers, listeners, app) { return chatMembersRoom.update(this, chat, title, speakers, listeners, app); }
+  chatMembers(chat, title, speakers, listeners, ids) { return chatMembersRoom.update(this, chat, title, speakers, listeners, ids); }
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }

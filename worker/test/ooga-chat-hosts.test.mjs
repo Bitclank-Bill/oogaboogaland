@@ -682,6 +682,8 @@ test("a short drop shows nobody anything: the speaker's tile stands, their place
   assert.equal((await ask(back, { type: "setRole", role: "speaker" })).ok, true, "and on stage again with no approval");
   await speakerOn(w, chat.id, back);
   assert.equal(rowOf(amy, "gh:2").since, since, "where they stood in the order");
+  await w.settle();
+  assert.equal(await ctx.storage.get("quiet"), undefined, "and the hold it ended is gone from storage, so a wake can't bring it back");
   // A drop that lasts: the roster says so once the quiet hold passes, and Join Voice still needs no approval.
   const left = now;
   await a.webSocketClose(back.ws);
@@ -730,6 +732,12 @@ test("a microphone publishing again keeps a co-host's rank and tile; Leave Voice
   assert.equal(a.roles.rankOf("gh:2"), "cohost", "publishing again is not leaving");
   assert.equal(notices(bea, "cohost_offer").length, offers, "no offer card");
   assert.deepEqual([rowOf(amy, "gh:2").role, rowOf(amy, "gh:2").rank], ["speaker", "cohost"], "and the tile stands meanwhile");
+  const { ctx } = w.objects.get(chatName(chat.id));
+  now += QUIET_MS * 4;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(rowOf(amy, "gh:2").role, "speaker", "a slow recovery is still a speaker in place");
   assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
   await speakerOn(w, chat.id, bea);
   assert.equal((await close({})).status, 200);
@@ -775,10 +783,10 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   now += START_GAP_MS;
   const { MEMBERS_GAP_MS } = await import("../src/audience.js");
   const w = await world();
-  let up = true;
+  let up = true, lastIds = null;
   const reports = [];
   w.env.ROOM = { getByName: () => ({ chatVoice: async () => ({ ok: true }),
-    chatMembers: async (...args) => { if (!up) throw new Error("room away"); const [chat, title, speakers, listeners, app] = args; reports.push({ chat, title, speakers, listeners, app, args: args.length }); return { ok: true }; } }) };
+    chatMembers: async (...args) => { if (!up) throw new Error("room away"); const [chat, title, speakers, listeners, ids] = args; reports.push({ chat, title, speakers, listeners, app: Array.isArray(ids) ? ids.length : -1, args: args.length }); lastIds = ids; return { ok: true }; } }) };
   const { chat } = await startChat(w.env, host(1), { title: "Members", zone: "main" });
   const amy = await connect(w, chat.id, 1);
   await w.settle();
@@ -795,6 +803,7 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   const fire = async () => { clearTimeout(a.members.timer); a.members.timer = 0; now += MEMBERS_GAP_MS; a.reportMembers(); await w.settle(); };
   await fire();
   assert.deepEqual(reports.at(-1), { chat: chat.id, title: "Members", speakers: 1, listeners: 3, app: 3, args: 5 }, "the whole burst in one report, the island's own not in `app`");
+  assert.deepEqual([...lastIds].sort(), ["gh:1", "gh:3", "x:9"], "the app's accounts by id, for the Room to count each once; never a name");
   assert.deepEqual([w.directory.list().find((c) => c.id === chat.id).speakers, w.directory.list().find((c) => c.id === chat.id).listeners], [1, 3], "the Chats list counts the same way");
   await ask(amy, { type: "setRole", role: "speaker" });
   await speakerOn(w, chat.id, amy);
@@ -830,6 +839,7 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   up = true;
   await a.alarm();
   assert.deepEqual(reports.at(-1), { chat: chat.id, title: "", speakers: 0, listeners: 0, app: 0, args: 5 }, "the Room hears the chat is over");
+  assert.deepEqual(lastIds, []);
   assert.equal(a.members.gone, null);
   assert.equal(await ctx.storage.get("membersGone"), undefined);
 });
@@ -868,17 +878,26 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   };
   const bea = join(2);
   const heard = () => bea.ws.sent.filter((m) => m.t === "chat-summary");
-  assert.equal((await room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 3, 12, 20)).ok, true);
-  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "AAAAAAAAAAAAAAAA", title: "Dev call", speakers: 3, listeners: 12, app: 15 },
-    "every page hears it, `app` never more than everyone there");
-  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd\u0007", -1, 2.5e6, "x");
-  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "BBBBBBBBBBBBBBBB", title: "", speakers: 0, listeners: 1e6, app: 0 }, "each value checked");
+  const online = () => bea.ws.sent.filter((m) => m.t === "chat-online").map((m) => m.n);
+  assert.equal((await room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 3, 12, ["gh:5", "gh:2", "x:9", "gh:5", "Amy"])).ok, true);
+  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "AAAAAAAAAAAAAAAA", title: "Dev call", speakers: 3, listeners: 12 }, "every page hears its title and counts, never an id");
+  assert.deepEqual(online(), [2], "one number for N online: each app account once, the island's own player (Bea) left out, nothing that is not an id");
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd\u0007", -1, 2.5e6, ["x:9", "gh:7"]);
+  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "BBBBBBBBBBBBBBBB", title: "", speakers: 0, listeners: 1e6 }, "each value checked");
+  assert.deepEqual(online(), [2, 3], "an account in two chats counted once");
   const count = heard().length;
-  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd\u0007", -1, 2.5e6, "x");
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd\u0007", -1, 2.5e6, ["x:9", "gh:7"]);
   assert.equal(heard().length, count, "the same again tells nobody");
-  assert.equal((await room.chatMembers("not a chat", "", 0, 0, 0)).ok, false);
-  assert.deepEqual(stored.get("chatMembers").map(([id, e]) => [id, Object.keys(e).sort().join()]), [["AAAAAAAAAAAAAAAA", "app,listeners,speakers,title"], ["BBBBBBBBBBBBBBBB", "app,listeners,speakers,title"]],
-    "kept in storage: a title and counts, no names");
+  const gh5 = join(5);
+  chatMembersRoom.players(room);
+  assert.deepEqual(online().at(-1), 2, "one of them come to the island is a player, no longer counted twice");
+  room.players.delete(5);
+  chatMembersRoom.players(room);
+  assert.deepEqual(online().at(-1), 3);
+  void gh5;
+  assert.equal((await room.chatMembers("not a chat", "", 0, 0, [])).ok, false);
+  assert.deepEqual(stored.get("chatMembers").map(([id, e]) => [id, Object.keys(e).sort().join()]), [["AAAAAAAAAAAAAAAA", "ids,listeners,speakers,title"], ["BBBBBBBBBBBBBBBB", "ids,listeners,speakers,title"]],
+    "kept in storage: a title, counts and the app's account ids, no names");
   // The welcome carries every chat's, only with the feature.
   assert.ok(protocol.chatMembersRoom === chatMembersRoom || protocol.chatMembersRoom.FEATURE === chatMembersRoom.FEATURE);
   assert.deepEqual(chatMembersRoom.features(room), ["chat-summary-v1"]);
@@ -886,7 +905,8 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   room.welcome(bea.p, false);
   const welcome = bea.ws.sent.findLast((m) => m.t === "welcome");
   assert.ok(welcome.features.includes("chat-summary-v1") && welcome.features.includes("call-v1"), "the feature beside call-v1");
-  assert.deepEqual(welcome.chatSummaries.map((c) => [c.chat, c.title, c.speakers, c.listeners, c.app]), [["AAAAAAAAAAAAAAAA", "Dev call", 3, 12, 15], ["BBBBBBBBBBBBBBBB", "", 0, 1e6, 0]], "a page's welcome carries every chat's");
+  assert.deepEqual(welcome.chatSummaries.map((c) => [c.chat, c.title, c.speakers, c.listeners, c.app]), [["AAAAAAAAAAAAAAAA", "Dev call", 3, 12, undefined], ["BBBBBBBBBBBBBBBB", "", 0, 1e6, undefined]], "a page's welcome carries every chat's");
+  assert.equal(welcome.chatOnline, 3, "and the number in chats");
   const off = make("");
   chatMembersRoom.restore(off, stored.get("chatMembers"));
   assert.deepEqual([chatMembersRoom.features(off), chatMembersRoom.welcome(off)], [[], {}], "with the chats switch off, no feature and nothing in the welcome");
@@ -895,11 +915,12 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   chatMembersRoom.restore(woke, [...structuredClone(stored.get("chatMembers")),
     ["CCCCCCCCCCCCCCCC", { title: "Old", members: [{ id: "gh:1", login: "amy", display: "Amy", role: "speaker" }, { id: "x:9", login: "zed", display: "Zed", role: "listener" }], more: 3 }]]);
   assert.deepEqual([...woke.chatRosters.keys()], ["AAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBB", "CCCCCCCCCCCCCCCC"]);
-  assert.deepEqual(woke.chatRosters.get("CCCCCCCCCCCCCCCC"), { title: "Old", speakers: 1, listeners: 4, app: 0 }, "an older entry's names are let go");
+  assert.deepEqual(woke.chatRosters.get("CCCCCCCCCCCCCCCC"), { title: "Old", speakers: 1, listeners: 4, ids: [] }, "an older entry's names are let go");
   assert.ok(CHATS_KEPT >= 2);
   // Nobody in it drops the chat, and every page hears it.
-  await room.chatMembers("AAAAAAAAAAAAAAAA", "", 0, 0, 0);
-  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "AAAAAAAAAAAAAAAA", title: "", speakers: 0, listeners: 0, app: 0 });
+  await room.chatMembers("AAAAAAAAAAAAAAAA", "", 0, 0, []);
+  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "AAAAAAAAAAAAAAAA", title: "", speakers: 0, listeners: 0 });
+  assert.equal(online().at(-1), 2, "its accounts no longer counted");
   assert.equal(room.chatRosters.has("AAAAAAAAAAAAAAAA"), false);
   assert.deepEqual(stored.get("chatMembers").map(([id]) => id), ["BBBBBBBBBBBBBBBB"]);
   // The sweep drops a chat the directory no longer lists, and never one it could not read.
@@ -910,7 +931,8 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   readable = true;
   await chatMembersRoom.sweep(room);
   assert.equal(room.chatRosters.size, 0);
-  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "BBBBBBBBBBBBBBBB", title: "", speakers: 0, listeners: 0, app: 0 });
+  assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "BBBBBBBBBBBBBBBB", title: "", speakers: 0, listeners: 0 });
+  assert.equal(online().at(-1), 0);
 });
 
 

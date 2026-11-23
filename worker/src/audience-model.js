@@ -19,7 +19,7 @@
 // A quiet hold (a hosted chat's, `disconnect` with `quiet`): a speaker, host or co-host whose last connection in the zone
 // drops keeps the row they had, in its place, until the hold ends (`expire`): unchanged for its first moments
 // (`quietUntil`), so a drop of a few seconds shows nobody anything, then marked `reconnecting` (shown dimmed) until
-// `until`, when the row shows what is true. Back in the zone, the mark goes and the hold lasts at most `quietMs` more
+// `until`, when the row shows what is true. Back in the zone, the mark goes and the hold lasts at most `returnMs` more
 // while they take the stage again; speaking again, the row carries on where it stood (its `since` kept). A held speaker
 // counts against the speaker cap, as does every identity `reserved()` names (a place on the stage a chat holds).
 
@@ -48,7 +48,7 @@ const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation
 const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0, rankSince: 0 });
 // `seats()` false: a speaker takes no cloud seat (a hosted chat, whose clouds are its own copy's, docs/ooga-chat-hosts.md).
 export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now, standing = () => NO_STANDING,
-  may = (c) => !!c.eligible, seats = () => true, reserved = () => [], quietMs = 5000 } = {}) => {
+  may = (c) => !!c.eligible, seats = () => true, reserved = () => [], returnMs = 15000 } = {}) => {
   const zones = Object.fromEntries(ZONES.map((zone) => [zone, { rev: revs && Number.isSafeInteger(revs[zone]) ? revs[zone] : 0, rows: new Map() }]));
   // id -> { info, world, active, conns: Map<connId, conn>, gen, source: { zone: last visible source key } }
   const people = new Map();
@@ -56,6 +56,8 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
   // Speakers walking a chat's copy of its zone, as the copy says (docs/ooga-chat-hosts.md): their rows say so.
   const walkers = new Set();
   const touched = new Set();
+  // A quiet hold ended by a return to the stage, which the caller's store has yet to forget (`quietChanged`).
+  let quietDirty = false;
   const touch = (id, zone) => touched.add(`${zone}|${id}`);
 
   const person = (id, info) => {
@@ -182,7 +184,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     const lease = c.lease;
     c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false; c.forced = false;
     // Back where a quiet hold stands for them: no longer reconnecting, and a short while to take the stage again.
-    if (p.held && p.held.zone === zone) { p.held.until = Math.min(p.held.until, clock() + quietMs); p.held.quietUntil = Math.min(p.held.quietUntil, p.held.until); }
+    if (p.held && p.held.zone === zone) { p.held.until = Math.min(p.held.until, clock() + returnMs); p.held.quietUntil = Math.min(p.held.quietUntil, p.held.until); }
     touch(c.id, zone);
     return { ok: true, changed: true, endedLease: lease };
   };
@@ -273,11 +275,12 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     if (seated && !seat) return refuse("speaker_capacity", { retryable: true });
     // Back from a quiet hold: the row carries on where it stood, its place in the order kept.
     const p = people.get(c.id), back = p.held && p.held.zone === c.zone && p.held.base.role === "speaker" ? p.held.base.since : 0;
-    if (p.held && p.held.zone === c.zone) p.held = null;
+    const unheld = !!p.held && p.held.zone === c.zone;
+    if (unheld) { p.held = null; quietDirty = true; }
     c.lease = { state: "active", generation, seat, character: c.lease.character || null, since: back || clock() };
     c.mic = "muted";
     touch(c.id, c.zone);
-    return { ok: true, changed: true };
+    return { ok: true, changed: true, unheld };
   };
 
   /** Back to listening (Leave Voice, a lost microphone, an expiry, a revocation): the lease, hand and mic go. */
@@ -382,6 +385,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
 
   return {
     get epoch() { return epoch; }, zones, people, conns,
+    quietChanged: () => { const was = quietDirty; quietDirty = false; return was; },
     connect, join, disconnect, hold, expire, quietUntil, quietList, restoreQuiet, requestSpeaker, activate, endLease, setMic, setHand, setWorld, setInfo, seatsTaken, setWalking, walkers,
     commit, snapshot, counts, youOf, touch,
     revs: () => Object.fromEntries(ZONES.map((zone) => [zone, zones[zone].rev])),
