@@ -4421,7 +4421,7 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "studio", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "raid", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "ooga-chat-app", "character-catalog-app", "equipment-app", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
@@ -4431,7 +4431,7 @@ const BROWSER_ONLY = ARGS.includes("--browser-only");
 if (BROWSER_ONLY && (!PICKED.length || FULL || ARGS.some(arg => arg !== "--browser-only" && !SCENES.includes(arg)))) {
   throw new Error("--browser-only requires named scenes and cannot be combined with full, unit, perf or dedicated checks");
 }
-const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app"].includes(ARGS[0]));
+const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade", "ooga-chat-app", "character-catalog-app", "equipment-app"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -5149,7 +5149,7 @@ const hudNoticeChecks = async () => {
 const characterChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
-  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
+  const BL = context.window.BL, all = BL.characters.all(), hooks = ["torso", "club", "gear", "skull", "crown", "hat", "hatNodes", "eyes", "mark", "hatY", "headgear", "extras", "tint", "refine", "model"], mirrorGeometries = new Set();
   // `hatY` placed the loot crates' swag hats; nothing calls it now, and a file that still defines it builds the same.
   const collect = node => {
     if (node.geometry) mirrorGeometries.add(node.geometry);
@@ -17297,6 +17297,8 @@ const oogaChatAppChecks = async () => {
     try {
       const seen = await tabs(b);
       for (const tab of seen) await open(b, tab, tab === "roster" ? 1200 : 300);
+      // Compare the same visible view: Listen owns a portrait refresh interval only while its tab shows.
+      await open(b, "chat", 300);
       const warm = await b.evaluate(`(() => { for (const v of document.querySelectorAll(".oc-view")) v.firstElementChild.__kept = true;
         return { nodes: document.querySelectorAll("*").length, intervals: __oc.intervals.size }; })()`);
       for (let round = 0; round < 6; round++) for (const tab of seen) await open(b, tab, 60);
@@ -19930,7 +19932,14 @@ const bananaListsHold = (s) => s.visible && s.rows === s.donors && s.rows > 5 &&
 const FOOT_SPACE = (selector) => `(() => {
   const el = document.querySelector(${JSON.stringify(selector)}), panel = el.closest(".panel"), body = el.closest(".sheet-body");
   panel.scrollTop = panel.scrollHeight; body.scrollTop = body.scrollHeight;
-  let prev = el.previousElementSibling; while (prev && !prev.getClientRects().length) prev = prev.previousElementSibling;
+  let anchor = el, prev = null;
+  // Account actions now share a footer wrapper. Find the preceding visible
+  // content outside that wrapper when its earlier children are hidden.
+  while (anchor && anchor !== panel && !prev) {
+    prev = anchor.previousElementSibling;
+    while (prev && !prev.getClientRects().length) prev = prev.previousElementSibling;
+    anchor = anchor.parentElement;
+  }
   const r = el.getBoundingClientRect(), b = body.getBoundingClientRect(), inside = b.bottom - parseFloat(getComputedStyle(body).borderBottomWidth);
   // The suite's screens have no safe-area inset, so a docked drawer's inset adds nothing here.
   const above = r.top - prev.getBoundingClientRect().bottom, below = inside - r.bottom;
@@ -20213,7 +20222,7 @@ if (!ONLY || onlyMatches(signedInArrival.name)) tasks.push({ name: "hub signed-i
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   try {
     // Sign-in returns to the bare page; a `view=` and a saved login view must not put the owner back below.
-    for (const mode of ["working", "chilling", "sleeping", "away"]) await fold(`http://127.0.0.1:${server.address().port}/?debug=1&view=basement&mempool=0&chain=0&oogatron=0&totems=0&hour=12&day=80`,
+    for (const mode of ["working", "chilling", "sleeping", "away"]) await fold(`http://127.0.0.1:${server.address().port}/?debug=1&view=basement&mempool=0&chain=0&oogatron=0&totems=0&islandworld=0&hour=12&day=80`,
       [[signedInArrival.name, signedInArrival.run]], { initScript: `(${signedInArrivalWire.toString()})(${JSON.stringify(mode)})` });
     await fold(`http://127.0.0.1:${server.address().port}/sphere-3?debug=1&mempool=0&chain=0&oogatron=0&totems=0&hour=12&day=80`,
       [[signedInRouted.name, signedInRouted.run]], { initScript: `(${signedInArrivalWire.toString()})("sleeping", false)` });
@@ -21117,7 +21126,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
   const read = () => b.evaluate(`(() => { const s = document.getElementById("sheet"); return {
     scene: __ooga.scene, open: s.dataset.open, hidden: s.hidden, painted: getComputedStyle(s).display !== "none",
     tab: s.querySelector('[aria-selected="true"]')?.dataset.tab || null,
-    panels: document.querySelectorAll(".sheet").length, content: document.querySelectorAll(".sheet [data-panel]").length,
+    panels: document.querySelectorAll(".sheet").length, content: [...document.querySelectorAll(".sheet [data-panel]")].map(p => p.dataset.panel).sort().join(","),
     saved: JSON.parse(localStorage.getItem("oogaboogaland.sheet.v1")), subscriptions: __panelTravel.live.size
   }; })()`);
   const listeners = async () => {
@@ -21125,6 +21134,8 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
     return JSON.parse(r.result.result.value);
   };
   await b.evaluate(`(() => {
+    // End the one-visit Controls coach before comparing persistent listeners.
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     const live = new Set(), subscribe = BL.net.subscribe;
     window.__panelTravel = { live, subscribe, me: BL.net.state.me, backend: BL.net.state.backend };
     BL.net.subscribe = fn => { const off = subscribe(fn); live.add(fn); return () => { live.delete(fn); off(); }; };
@@ -21138,6 +21149,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
   const rounds = [];
   try {
     await tourGo(b, "hub");
+    await b.evaluate('document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))');
     let state = await read();
     record("shared panel: Chat selected in Arcade stays open on mainland", state.open === "true" && state.tab === "chat" && state.painted, JSON.stringify(state));
     await tourGo(b, "arcade");
@@ -21152,7 +21164,7 @@ const sharedPanelTravel = { name: "shared panel travel", why: "regression: Arcad
       await b.evaluate('__ooga.hud.selectTab("bananas")');
       const metrics = await b.evaluate(`(() => { const costs = []; for (let i = 0; i < 24; i++) { const t = performance.now(); __ooga.advance(1 / 60, 1 / 60); costs.push(performance.now() - t); } costs.sort((a,b)=>a-b); return { median: costs[12], p95: costs[22], dom: document.getElementsByTagName("*").length }; })()`);
       rounds.push({ subscriptions: state.subscriptions, listeners: await listeners(), metrics });
-      record("shared panel: ordinary environments preserve the " + (pass ? "closed" : "open") + " choice and one content owner", rows.every(r => r.scene && r.painted && !r.hidden && r.open === String(!pass) && r.saved.tab === "bananas" && r.panels === 1 && r.content === 4), JSON.stringify(rows));
+      record("shared panel: ordinary environments preserve the " + (pass ? "closed" : "open") + " choice and one content owner", rows.every(r => r.scene && r.painted && !r.hidden && r.open === String(!pass) && r.saved.tab === "bananas" && r.panels === 1 && r.content === "bananas,chat,cloud,players,roster"), JSON.stringify(rows));
     }
     record("shared panel: repeated travel keeps net subscriptions, DOM and event listeners bounded", rounds[0].subscriptions === rounds[1].subscriptions && rounds[0].metrics.dom === rounds[1].metrics.dom && JSON.stringify(rounds[0].listeners) === JSON.stringify(rounds[1].listeners), JSON.stringify(rounds));
     await b.evaluate('__ooga.hud.selectTab("bananas"); __ooga.hud.foldPanels()');
@@ -23959,10 +23971,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       singles = !room.layoutPending && nine.every(p => p.size === 1 && p.node.geometry === p.normal);
       isolated = panels.every((p, i) => nine.includes(p) || p.node.geometry === before[i]);
       stage(0); // Reassemble the same nine tiles, leaving all other groups in place.
-      room.update(0);
       const group = panels.find(p => p.next?.size === 3).next.group;
       const joining = panels.filter(p => p.next?.group === group), outgoing = joining.map(p => p.node.geometry);
       const arrivals = joining.map(p => p.delay).sort((a, b) => a - b);
+      // Capture the group before its zero-delay first tile is replaced.
+      room.update(0);
       room.update((arrivals[0] + arrivals[1]) / 2);
       partialNeighbors &&= neighborsValid();
       mergeOne = joining.filter(p => !p.next).length === 1
@@ -24000,11 +24013,15 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     if (room.layoutPending) { room.update(0); room.update(BL.architectCave.FACE_SWEEP); }
 
     const armHidden = actor.parts.armR.cameraHidden;
-    // A stationary third-person click, with no hover or pointermove first, reaches the scene's tap hook.
+    // A stationary right click on a visible screen reaches the scene's face-view hook.
     const canvas = document.getElementById("scene"), rect = canvas.getBoundingClientRect();
-    const pointer = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0,
-      clientX: rect.left + rect.width * 0.7, clientY: rect.top + rect.height * 0.6 };
-    canvas.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, buttons: 1 }));
+    BL.scene.updateWorld(room.group, room.group.parent.world);
+    const screenPoint = () => room.panels.map(p => B.project(p.node.world[12], p.node.world[13], p.node.world[14], {}))
+      .find(p => p && p.x > rect.width * 0.2 && p.x < rect.width * 0.8 && p.y > rect.height * 0.25 && p.y < rect.height * 0.65);
+    const screen = screenPoint();
+    const pointer = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 2,
+      clientX: screen.x, clientY: screen.y };
+    canvas.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, buttons: 2 }));
     canvas.dispatchEvent(new PointerEvent("pointerup", { ...pointer, buttons: 0 }));
     room.update(0.05);
     const clicked = room.penButton.position.y < 0.18;
@@ -24057,10 +24074,25 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
     B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
     room.update(0.01); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
     const heldFace = room.broadcast === "face";
-    room.toggleView(); room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
-    const restored = room.broadcast === "feeds";
+    const backPanel = room.panels.find(p => p.col === 24 && p.row === 6);
+    B.pilot.turnToward(backPanel.node.world[12], backPanel.node.world[13], backPanel.node.world[14]); B.advance(0.8, 1 / 60);
+    const backScreen = screenPoint(), toggledBack = room.toggleView(backScreen.x, backScreen.y);
+    room.update(0);
+    // Feeds may have rotated while the face was held. Let the renderer supply
+    // their replacement images before advancing the return sweep.
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    room.update(0); room.update(BL.architectCave.FACE_SWEEP + 0.01); room.update(120);
+    const restored = toggledBack && room.broadcast === "feeds";
     const stand = B.crew.standPlayer(actor); room.update(0);
     const released = !room.pen.parent && !room.toggleView() && actor.parts.fingersR.geometry === originalHand && actor.parts.armR.cameraHidden === armHidden;
+    for (let i = 0; i < 256 && !room.cameras.warm(); i++) {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      B.renderer.render(BL.scenes.hub.root, B.camera, B.renderOpts);
+    }
+    if (room.layoutPending) { room.update(0); room.update(BL.architectCave.FACE_SWEEP); }
     room.update(room.faceWait - 0.5);
     const automatic = room.cameras.portrait.forceCapture;
     room.travel(true); B.advance(1.1, 1 / 60);
@@ -24097,6 +24129,10 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       for (let i = 0; i < 60 && !room.active; i++) B.advance(1 / 60, 1 / 60);
       const facing = room.active && angle(B.pilot.orbit.yaw, Math.PI + 0.2)
         && Math.abs(B.pilot.orbit.pitch - pitch) < 0.02 && Math.abs(B.pilot.orbit.dist - distance) < 0.02 && B.pilot.view === view;
+      // Physical crossings now walk from the glass to the landing. Keep S held
+      // through that animation, then measure movement after control is returned.
+      for (let i = 0; i < 180 && room.arriving; i++) B.advance(1 / 60, 1 / 60);
+      const arrived = !room.arriving;
       const z = B.pilot.player.root.position.z;
       B.advance(0.12, 1 / 60); key("keyup");
       const departingMirror = room.active && B.pilot.player.root.position.z < z - 0.2;
@@ -24105,14 +24141,15 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       B.advance(1.1, 1 / 60); key("keydown");
       for (let i = 0; i < 60 && room.active; i++) B.advance(1 / 60, 1 / 60);
       const returned = !room.active && angle(B.pilot.orbit.yaw, m.ry + 0.2) && B.pilot.view === view;
+      for (let i = 0; i < 180 && room.arriving; i++) B.advance(1 / 60, 1 / 60);
       const p = B.pilot.player.root.position, along = () => (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry), before = along();
       B.advance(0.12, 1 / 60); key("keyup");
-      results.push({ close, facing, departingMirror, returned, departingIslandMirror: along() > before + 0.2 });
+      results.push({ close, facing, arrived, departingMirror, returned, arrivedIsland: !room.arriving, departingIslandMirror: along() > before + 0.2 });
     }
     return results;
   })()`);
   record("hub mirror: backward crossings preserve first/third-person view and keep held S walking away in both directions",
-    backward.every(r => r.facing && r.departingMirror && r.returned && r.departingIslandMirror), JSON.stringify(backward));
+    backward.every(r => r.facing && r.arrived && r.departingMirror && r.returned && r.arrivedIsland && r.departingIslandMirror), JSON.stringify(backward));
   const curvedExit = await b.evaluate(`(() => {
     const B = __ooga, room = BL.scenes.hub.architect, results = [];
     for (const x of [0, 1.8, -1.8]) {
@@ -26180,6 +26217,80 @@ const sharedCameraRendering = { name: "shared camera rendering", why: "rule: gam
     && state.filter(r => r.fallback).every(r => r.error < 0.002) && settled.every(r => r.aligned < 0.001 && r.parallel < 1e-6), JSON.stringify(state));
   record("shared camera rendering: rendered near and far objects follow projected positions, including a batch outside the old perspective frustum", samples.every(r => r.pixels[0]?.[0] > r.pixels[0]?.[1] + 40 && r.pixels[1]?.[2] > r.pixels[1]?.[1] + 40
     && (!r.pixels[2] || r.pixels[2][0] > r.pixels[2][1] + 40 && r.pixels[2][2] > r.pixels[2][1] + 40)) && settled.every(r => r.pixels[2]), JSON.stringify(samples.map(({ kind, mix, pixels }) => ({ kind, mix, pixels }))));
+  const overlays = await b.evaluate(`(async () => {
+    const S = BL.scene, rows = [], originalURL = location.href;
+    const camera = S.createCamera({ fov: 40, near: 0.1, far: 80 });
+    const opts = { bloomStrength: 0, shadowStrength: 0, ambientFloor: 1, directStrength: 0 };
+    const panel = (color, half = 1, z = 0, depthOffset = false) => ({
+      verts: [-half, -half, z, half, -half, z, half, half, z, -half, half, z],
+      faces: [{ i: [0, 1, 2, 3], color }], lines: [], depthOffset
+    });
+    try {
+      // Force both GPU paths even on hardware which normally omits the prepass.
+      for (const mode of ["0", "1", "canvas", "icon"]) {
+        const element = document.createElement("canvas");
+        element.style.cssText = "position:fixed;left:-1000px;top:0;width:256px;height:256px";
+        document.body.appendChild(element);
+        let renderer;
+        try {
+          const url = new URL(originalURL); url.searchParams.set("debug", "1"); url.searchParams.set("prepass", mode);
+          history.replaceState(null, "", url);
+          const fallback = mode === "canvas" || mode === "icon";
+          if (fallback) element.getContext("2d", { willReadFrequently: true });
+          renderer = mode === "icon" ? BL.iconRenderer.createRenderer(element, { width: 256, height: 256 })
+            : mode === "canvas" ? BL.canvasRenderer.createRenderer(element, { width: 256, height: 256 })
+            : BL.glRenderer.createRenderer(element, { quality: "low" });
+          if (!fallback) renderer.resize();
+          history.replaceState(null, "", originalURL);
+          const gl = fallback ? null : element.getContext("webgl2"), view = BL.math.mat4.create(), pointInView = new Float32Array(3);
+          const sample = (x, z = 0) => {
+            let point;
+            if (mode === "icon") {
+              BL.math.mat4.lookAt(view, camera.position, camera.target, { x: 0, y: 1, z: 0 });
+              BL.math.mat4.transformPoint(pointInView, view, x, 0, z);
+              const f = 128 / Math.tan(camera.fov / 2);
+              point = { x: 128 + pointInView[0] * f / -pointInView[2], y: 128 - pointInView[1] * f / -pointInView[2] };
+            } else point = renderer.project(x, 0, z, {});
+            const size = renderer.size || { width: 256, height: 256 };
+            const px = Math.floor(point.x * element.width / size.width), py = Math.floor(point.y * element.height / size.height);
+            if (!gl) return Array.from(element.getContext("2d").getImageData(px, py, 1, 1).data);
+            const pixel = new Uint8Array(4); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.readPixels(px, element.height - 1 - py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel); return Array.from(pixel);
+          };
+          for (const reverse of [false, true]) {
+            const root = S.createNode(), blue = panel([0, 0, 255]), red = panel([255, 0, 0], 1, 0, true), green = panel([0, 255, 0], 0.25, 0.15);
+            const backing = S.createNode({ geometry: blue }), overlay = S.createNode({ geometry: red }), foreground = S.createNode({ geometry: green });
+            S.addChild(root, ...(reverse ? [overlay, backing, foreground] : [backing, overlay, foreground]));
+            try {
+              for (const [side, lift] of [[0, 0], [0.4, 0.25], [-0.5, 0.4]]) for (const distance of [4, 12]) {
+                Object.assign(camera.position, { x: side * distance, y: lift * distance, z: distance });
+                Object.assign(camera.target, { x: 0, y: 0, z: 0 });
+                overlay.visible = true;
+                const deadline = performance.now() + 10000;
+                while (!renderer.render(root, camera, opts) && gl && !renderer.ready) {
+                  if (renderer.failure || performance.now() > deadline) throw new Error("Overlay renderer did not initialize: " + renderer.failure);
+                  await new Promise(resolve => setTimeout(resolve, 10));
+                }
+                const pixels = [sample(-0.6), sample(0, 0.15), sample(0.6)];
+                const clean = !gl || !gl.isEnabled(gl.POLYGON_OFFSET_FILL) && gl.getError() === gl.NO_ERROR;
+                // The next frame has only ordinary surfaces: the prior overlay cannot leave biased state behind.
+                overlay.visible = false; renderer.render(root, camera, opts);
+                const ordinary = [sample(-0.6), sample(0, 0.15), sample(0.6)];
+                rows.push({ mode, reverse, side, lift, distance, pixels, ordinary,
+                  clean: clean && (!gl || !gl.isEnabled(gl.POLYGON_OFFSET_FILL) && gl.getError() === gl.NO_ERROR) });
+              }
+            } finally { for (const geometry of [blue, red, green]) renderer.releaseGeometry?.(geometry); }
+          }
+        } finally { renderer?.dispose(); element.remove(); history.replaceState(null, "", originalURL); }
+      }
+      return rows;
+    } finally { history.replaceState(null, "", originalURL); }
+  })()`);
+  const dominates = (pixel, channel) => pixel && pixel[channel] > 60 && pixel.every((value, i) => i === channel || i === 3 || pixel[channel] > value + 40);
+  record("shared camera rendering: coplanar depth-offset surfaces win both gather orders at varied angles and zooms in WebGL with and without a prepass and in Canvas", overlays.length === 48
+    && overlays.every(row => dominates(row.pixels[0], 0) && dominates(row.pixels[2], 0)), JSON.stringify(overlays));
+  record("shared camera rendering: ordinary foreground surfaces occlude depth-offset overlays and subsequent ordinary draws inherit no offset state", overlays.every(row => row.clean
+    && dominates(row.pixels[1], 1) && dominates(row.ordinary[0], 2) && dominates(row.ordinary[1], 1) && dominates(row.ordinary[2], 2)), JSON.stringify(overlays));
   const culling = await b.evaluate(`(() => {
     const B = __ooga, S = BL.scene, R = B.renderer, root = S.createNode(), rows = [];
     const camera = S.createCamera({ near: 0.1, far: 80, orthoHeight: 10, orthoMix: 1 });
@@ -27329,6 +27440,47 @@ const factoryFloor = { name: "factory floor", why: "regression: stairs landed ag
   record("factory floor: from the balcony the widest Ooga on the roster reaches both ends of every stair, every line's deck, each peer tunnel's shield, the switchboard, Kortik's deck, the right-wall platform with the rebalancer's operator lane and the treasury (walking the platform's length from the cooker's stair), the donation kiosk in the right wall, the watchtower, landing, galleries and the forge", r.missing.length === 0 && r.radius > 0.45 && r.cells > 20000, JSON.stringify(r));
 } };
 // The way in and out: from the island through the 2 o'clock mouth's shield, back out past the balcony, and Escape.
+// Sample the main rendered camera, never a portal photograph or reflection camera.
+// Checks arm this only after fixture relocation, and include the final control handoff.
+const doorCameraTrace = `(() => {
+  const B = __ooga, R = B.renderer;
+  if (window.__doorCameraTrace) { window.__doorCameraTrace.reset(); return; }
+  const render = R.render;
+  const T = window.__doorCameraTrace = { active: true, rows: [],
+    reset() { this.active = true; this.rows = []; },
+    sample(c = B.camera, fade = B.fade, place = B.scene) {
+      if (!this.active || !B.pilot?.player) return;
+      const p = B.pilot.player.root.position, dx = c.target.x - c.position.x, dy = c.target.y - c.position.y, dz = c.target.z - c.position.z;
+      this.rows.push({ place, fade, yaw: Math.atan2(dx, dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)), eye: [c.position.x - p.x, c.position.y - p.y, c.position.z - p.z] });
+    },
+    result() {
+      this.active = false;
+      let yaw = 0, pitch = 0, eye = 0, frames = 0;
+      for (let i = 1; i < this.rows.length; i++) {
+        const a = this.rows[i - 1], b = this.rows[i];
+        if (a.place !== b.place || Math.max(a.fade, b.fade) >= 0.95) continue;
+        frames++;
+        yaw = Math.max(yaw, Math.abs(Math.atan2(Math.sin(b.yaw - a.yaw), Math.cos(b.yaw - a.yaw))));
+        pitch = Math.max(pitch, Math.abs(b.pitch - a.pitch));
+        eye = Math.max(eye, Math.hypot(...b.eye.map((v, j) => v - a.eye[j])));
+      }
+      return { frames, yaw, pitch, eye };
+    }
+  };
+  R.render = function(root, camera, ...args) {
+    const result = render.call(this, root, camera, ...args), S = BL.scenes[B.scene];
+    if (root === S?.root && camera === S.camera) T.sample(camera);
+    return result;
+  };
+})()`;
+const checkDoorCamera = async (b, name) => {
+  const r = await b.evaluate('__doorCameraTrace.result()');
+  const rows = await b.evaluate('__doorCameraTrace.rows');
+  const dir = join(root, 'untracked/room-transitions/checks'); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, name.replaceAll(' ', '-') + '.json'), JSON.stringify(rows));
+  record(name + ": every visible frame keeps a continuous camera through the walk and control handoff",
+    r.frames > 30 && r.yaw < 0.12 && r.pitch < 0.12 && r.eye < 0.75, JSON.stringify(r));
+};
 const factoryEntrance = { name: "factory entrance", why: "regression: flying above the mouth entered the factory and reaching its front wall away from the doorway exited; real doorway crossings must still keep the same Ooga", run: async (b) => {
   const above = await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), m = B.mouths.find((m) => m.id === "c2"), along = window.BL.factoryModels.SHIELD_Z - 0.1; if (B.crew.player !== a && B.crew.player?.npc !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * along, y: m.floorY + 20, z: m.z + Math.cos(m.ry) * along }, yaw: m.ry, pitch: 0.2, dist: 5 }); B.advance(1 / 60, 1 / 60); const d = B.pilot.player; return { scene: B.scene, transitioning: B.transitioning, height: d ? d.root.position.y - d.baseY - m.floorY : null }; })()`);
   record("factory entrance: flying above the shield stays on the island", above.scene === "hub" && !above.transitioning && above.height > 3, JSON.stringify(above));
@@ -27341,43 +27493,50 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   // the Ooga a step short of its own shield, seen from its own eyes, walking on. A forward key held through that walk
   // goes on walking when it is done, and the view is back behind the Ooga; a step back from there stays in the hall.
   const keys = `const toward = (dx, dz) => { const c = B.camera, fx = c.target.x - c.position.x, fz = c.target.z - c.position.z, l = Math.hypot(fx, fz), f = [fx / l, fz / l], r = [-f[1], f[0]]; const score = { w: f[0] * dx + f[1] * dz, s: -(f[0] * dx + f[1] * dz), d: -(r[0] * dx + r[1] * dz), a: r[0] * dx + r[1] * dz }; return Object.entries(score).sort((p, q) => q[1] - p[1])[0][0]; }; const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, code: "Key" + k.toUpperCase(), bubbles: true })); const shot = () => { const W = B.factory.walk, p = B.crew.player.root.position; return { phase: W.phase, still: +W.still.toFixed(2), z: +p.z.toFixed(2), camZ: +B.camera.position.z.toFixed(2) }; }; const crossing = async (id, sample) => { const end = performance.now() + 20000; let frames = 0; while (frames < 300 && performance.now() < end) { B.advance(1 / 60, 1 / 60); if (B.scene === id && !B.transitioning) return sample(); if (B.transitioning) await new Promise(r => setTimeout(r, 0)); else frames++; } return null; };`;
+  await b.evaluate(doorCameraTrace);
   const glideIn = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth; ${keys}
     const k = toward(-Math.sin(m.ry), -Math.cos(m.ry)); key(k, true);
     const first = await crossing("factory", shot);
     key(k, false); if (!first) return { first };
     const on2 = toward(0, -1); key(on2, true); let on = null;
     for (let i = 0; i < 240 && !on; i++) { B.advance(1 / 60, 1 / 60); if (!B.factory.walk.phase) on = shot(); }
-    if (on) { B.advance(0.3, 1 / 60); on.held = +B.crew.player.root.position.z.toFixed(2); }
+    if (on) { on.view = B.pilot.viewState(); B.advance(0.3, 1 / 60); on.held = +B.crew.player.root.position.z.toFixed(2); }
     key(on2, false); B.advance(0.8, 1 / 60);
     return { first, on };
   })()`);
   const first = glideIn.first, on = glideIn.on;
   const arrived = await b.evaluate(`(async () => { const B = window.__ooga, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "factory") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const a = B.crew.player, out = { scene: B.scene, ooga: a ? a.traits.name : null, unarmed: !!a && ${unarmedInPage("a")}, ammo: a && a.weapon.ammo, spares: a && a.weapon.parked.spareAmmo.join(","), z0: +a.root.position.z.toFixed(2) }; const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "s", code: "KeyS", bubbles: true })); key(true); B.advance(0.08, 1 / 60); key(false); B.advance(0.5, 1 / 60); out.back = { scene: B.scene, transitioning: B.transitioning, phase: B.factory.walk.phase, z: +a.root.position.z.toFixed(2) }; return out; })()`);
-  const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, stop: window.BL.factoryWindow.stopPast(3), shield: F.SHIELD_Z }; })()`);
+  await checkDoorCamera(b, "factory entrance");
+  const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, stop: window.BL.factoryWindow.stopPast(3, { view: "orbit", distance: 5, pitch: 0.2 }), shield: F.SHIELD_Z }; })()`);
   record("factory entrance: walking in, the view swoops into the Ooga's eyes and the hall takes over from that eye with no fade, the island's last frame dissolving off the hall's first: it comes on a step short of the hall's own shield and walks on far enough for the view handed back to clear it, a forward key held through the walk carries on walking when it ends, and a step back from there stays in the hall",
     !!first && first.phase === 1 && first.still >= 0.9 && first.z > F.gate - 0.5 && first.z < F.gate + 1 && Math.abs(first.camZ - first.z) < 0.5
       && !!on && Math.abs(on.z - (F.gate - F.stop)) < 0.4 && on.held < on.z - 0.3
+      && Math.abs(on.view.pitch - 0.2) < 0.01 && Math.abs(on.view.distance - 5) < 0.01
       && arrived.back.scene === "factory" && !arrived.back.transitioning && arrived.back.phase === 0 && arrived.back.z > arrived.z0 + 0.2, JSON.stringify({ first, on, back: arrived.back, z0: arrived.z0, F }));
   const outside = await b.evaluate(`(() => { const B = window.__ooga, e = window.BL.factoryModels.LAYOUT.entrance, rows = []; for (const [name, x, y] of [["beside", 10, e.y], ["below", 0, 0], ["above", 0, e.y + 12]]) { if (B.scene !== "factory" || B.transitioning) break; B.pilot.navigate({ position: { x, y, z: 29 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(1 / 60, 1 / 60); rows.push({ name, scene: B.scene, transitioning: B.transitioning }); } return rows; })()`);
   record("factory entrance: positions beside, below and above the exit doorway stay in the factory", outside.length === 3 && outside.every((r) => r.scene === "factory" && !r.transitioning), JSON.stringify(outside));
   await b.evaluate(`(() => { const B = window.__ooga, a = B.crew.player, e = window.BL.factoryModels.LAYOUT.entrance; B.pilot.navigate({ position: { x: 0, y: e.y, z: e.z + 2.2 }, yaw: 0, pitch: 0.2, dist: 5 }); if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(0.5, 1 / 60); })()`);
   // Out through the gate's shield the same way, yielding for transition tasks only: the island has the Ooga at its own
   // shield under the hall's last frame, seen from its own eyes, and walks it on down the tunnel; a key pressed on the way
-  // that now means back in carries it no further until it is let go.
+  // back toward the shield resumes when the guided walk finishes.
+  await b.evaluate(doorCameraTrace);
   const glideOut = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), along = (q) => +((q.x - m.x) * sr + (q.z - m.z) * cr).toFixed(2); ${keys}
     const k = toward(0, 1); key(k, true);
     const rim = await crossing("hub", () => ({ ooga: along(B.crew.player.root.position), view: along(B.camera.position) }));
     key(k, false); if (!rim) return { rim };
-    const back = toward(-sr, -cr); key(back, true); let last = along(B.crew.player.root.position);
-    for (let i = 0; i < 240; i++) { B.advance(1 / 60, 1 / 60); const now = along(B.crew.player.root.position); if (i > 10 && Math.abs(now - last) < 1e-4) break; last = now; }
-    const after = along(B.crew.player.root.position); B.advance(0.3, 1 / 60); const held = along(B.crew.player.root.position);
+    // The pre-crossing view looked back into the hall: its restored W points inward,
+    // throughout the guided walk as well as after the handoff.
+    const back = "w"; key(back, true);
+    for (let i = 0; i < 240 && BL.scenes.hub.debug.factoryWalk.phase; i++) B.advance(1 / 60, 1 / 60);
+    const after = along(B.crew.player.root.position); B.advance(0.08, 1 / 60); const held = along(B.crew.player.root.position);
     key(back, false); B.advance(0.5, 1 / 60);
-    return { rim, walkedOut: { after, held } };
+    return { rim, walkedOut: { after, held, heading: Math.cos(B.pilot.orbit.yaw - m.ry) } };
   })()`);
   const rim = glideOut.rim, walkedOut = glideOut.walkedOut || {};
   const back = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "hub") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const p = B.crew.player && B.crew.player.root.position; return { scene: B.scene, ooga: B.crew.player ? B.crew.player.traits.name : null, fromMouth: p ? +Math.hypot(p.x - m.x, p.z - m.z).toFixed(1) : null, rifle: !!p && B.crew.player.weapon.equipped && !B.crew.player.weapon.primaryEquipped && B.crew.player.weapon.selectedSlot === 2, ammo: p && B.crew.player.weapon.ammo, spares: p && B.crew.player.weapon.spareAmmo.join(","), carry: !B.pilot.aiming && document.getElementById("weapon-reticle").hidden }; })()`);
-  record("factory entrance: walking out, the view swoops into the Ooga's eyes and the island takes over from that eye at its own shield under the hall's last frame, walking on down the tunnel, and a key pressed on the way back toward the shield carries it no further until let go",
-    !!rim && rim.ooga > F.shield - 1 && rim.ooga < F.shield + 0.6 && Math.abs(rim.view - rim.ooga) < 0.5 && walkedOut.after > F.shield + 3 && Math.abs(walkedOut.held - walkedOut.after) < 0.05, JSON.stringify({ rim, walkedOut }));
+  await checkDoorCamera(b, "factory exit");
+  record("factory entrance: walking out, the view swoops into the Ooga's eyes and the island takes over from that eye at its own shield under the hall's last frame, walking on down the tunnel, and a key held back toward the shield resumes when control returns",
+    !!rim && rim.ooga > F.shield - 1 && rim.ooga < F.shield + 0.6 && Math.abs(rim.view - rim.ooga) < 0.5 && walkedOut.after > F.shield + 3 && walkedOut.held < walkedOut.after - 0.2 && walkedOut.heading > 0.99, JSON.stringify({ rim, walkedOut }));
   record("factory doorway: inside the hall the visitor has no weapon or weapon button while the selected rifle, rounds and spare magazines wait parked; all of them come back at the island, with carry chosen inside", arrived.unarmed && arrived.ammo === 23 && arrived.spares === "7,11" && back.rifle && back.ammo === 23 && back.spares === "7,11" && back.carry, JSON.stringify({ arrived, back }));
   await tourGo(b, "factory");
   await b.key("Escape");
@@ -27401,7 +27560,7 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
   // The deck starts where the stone head ends, `HEAD.over` out past the rim along the islet's axis.
   const arch = await b.evaluate(`(() => { const B = window.__ooga, I = window.BL.bifrostIsle, a = B.crew.player, p = a.root.position, g = B.island.gate, s = B.bifrost.site.arrival, sp = I.spot(B.island); return { past: +(g.z - p.z).toFixed(2), onDeck: p.x * Math.sin(I.AXIS.bearing) - p.z * Math.cos(I.AXIS.bearing) > sp.rim + I.HEAD.over, feet: +(p.y - a.baseY).toFixed(2), deck: +s.y.toFixed(2) }; })()`);
   record("bifrost entrance: from the pass stairs the roster's widest Ooga walks through the arch out onto the bridge's deck", arch.onDeck && Math.abs(arch.feet - arch.deck) < 0.3, JSON.stringify(arch));
-  await b.evaluate(`(() => { const B = window.__ooga, p = B.bifrost.site.portal, sx = Math.sin(p.ry), sz = Math.cos(p.ry), x = p.x + sx * 0.9, z = p.z + sz * 0.9; B.pilot.navigate({ position: { x, y: p.floorY, z }, target: { x: x - sx * 6, y: p.floorY + 1, z: z - sz * 6 }, yaw: Math.atan2(sx, sz), pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__portal = [-sx, -sz]; })()`);
+  await b.evaluate(`(() => { const B = window.__ooga, p = B.bifrost.site.portal, sx = Math.sin(p.ry), sz = Math.cos(p.ry), x = p.x + sx * 0.9, z = p.z + sz * 0.9; B.pilot.navigate({ position: { x, y: p.floorY, z }, target: { x: x - sx * 6, y: p.floorY + 1, z: z - sz * 6 }, yaw: Math.atan2(sx, sz), pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__portal = [-sx, -sz]; window.__bifrostView = B.pilot.viewState(); })()`);
   const inKey = await b.evaluate(`window.__portal`);
   // Count the critical path at enter itself: later idle preview work must not be mistaken for a blocking load.
   await b.evaluate(`(() => {
@@ -27422,6 +27581,7 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
     };
   })()`);
   try {
+    await b.evaluate(doorCameraTrace);
     await walkToward(b, inKey[0], inKey[1], 0.8);
     const arrived = await b.evaluate(`(() => {
       const B = __ooga;
@@ -27433,6 +27593,9 @@ const bifrostEntrance = { name: "bifrost entrance", why: "playthrough: an Ooga w
       arrived.scene === "bifrost" && arrived.ooga === "portlandhodl" && arrived.entered?.criticalLoads === 0
       && arrived.entered.enterLoads === 0 && !arrived.entered.pictured && arrived.entered.outside
       && arrived.entered.windows.length === 2 && arrived.entered.windows.every(w => !w.owned && w.faces > 0), JSON.stringify(arrived));
+    const view = await b.evaluate(`(() => { const B = __ooga; B.advance(2, 1 / 60); const a = B.pilot.player, p = a.root.position, z = p.z; B.advance(0.3, 1 / 60); return { actual: B.pilot.viewState(), expected: window.__bifrostView, x: p.x, z: p.z, field: BL.bifrostModels.ENTRY.field, eyeZ: B.camera.position.z, stopped: Math.abs(p.z - z) }; })()`);
+    await checkDoorCamera(b, "bifrost entrance");
+    record("bifrost entrance: walking from the field restores pitch, zoom and mode, and a released key stays released", view.actual.view === view.expected.view && Math.abs(view.actual.pitch - view.expected.pitch) < 0.02 && Math.abs(view.actual.distance - view.expected.distance) < 0.03 && view.z < view.field - 3 && view.eyeZ < view.field - 0.5 && view.stopped < 0.03, JSON.stringify(view));
     // Idle callbacks, deferred scripts and JPEG decode need real event-loop turns, rather than debug advance alone.
     const pictured = await untilPage(b, 'B.scene === "bifrost" && !B.transitioning && B.bifrost.scene.windows.filter(w => w.kind === "travel").every(w => w.picture.owned)', 15000);
     const previews = await b.evaluate(`(() => {
@@ -27487,9 +27650,25 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
   await b.evaluate(`(() => { const B = window.__ooga, E = window.BL.bifrostModels.ENTRY;
     if (B.scene !== "bifrost") throw new Error("Bifrost exit fixture did not enter its chamber");
     const cave = B.cavemen.get("portlandhodl"); if (B.pilot.player !== cave) B.pilot.possess(cave);
-    B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, target: { x: 0, y: 1, z: E.field + 4 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); })()`);
-  await walkToward(b, 0, 1, 0.8);
+    B.pilot.enterClose(true); B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, target: { x: 0, y: 1, z: E.field + 4 }, yaw: 0, pitch: -0.24, dist: 5, framed: true }); B.pilot.focusAim(); B.advance(0.5, 1 / 60); window.__bifrostExitView = B.pilot.viewState(); })()`);
+  await b.evaluate(doorCameraTrace);
+  await b.evaluate(`(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true })); __ooga.advance(0.8, 1 / 60); })()`);
+  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
+  const restored = await b.evaluate(`(() => { const B = __ooga; B.advance(1.1, 1 / 60); const a = B.pilot.player, p = a.root.position, door = B.bifrost.site.portal, sr = Math.sin(door.ry), cr = Math.cos(door.ry), x = p.x, z = p.z, view = B.pilot.viewState();
+    B.advance(0.25, 1 / 60); const moved = (p.x - x) * sr + (p.z - z) * cr;
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "s", code: "KeyS", bubbles: true })); B.advance(0.2, 1 / 60); const stopX = p.x, stopZ = p.z; B.advance(0.2, 1 / 60);
+    return { view, expected: window.__bifrostExitView, facing: Math.cos(a.root.rotation.y - door.ry), moved, stopped: Math.hypot(p.x - stopX, p.z - stopZ), focused: document.body.classList.contains("aim-cursor-focused") }; })()`);
+  await checkDoorCamera(b, "bifrost exit");
+  record("bifrost exit: backing through keeps first-person facing and pitch, walks away backwards, and restores held S and mouse focus", restored.view.view === "first-person" && Math.abs(restored.view.pitch - restored.expected.pitch) < 0.02 && restored.facing < -0.95 && restored.moved > 0.2 && restored.stopped < 0.03 && restored.focused, JSON.stringify(restored));
   const back = await b.evaluate(`(() => { const B = window.__ooga; for (let i = 0; i < 240 && (B.transitioning || B.scene !== "hub"); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); const p = B.crew.player && B.crew.player.root.position, a = B.bifrost && B.bifrost.site.arrival; return { scene: B.scene, ooga: B.crew.player ? B.crew.player.traits.name : null, fromArrival: p && a ? +Math.hypot(p.x - a.x, p.z - a.z).toFixed(1) : null }; })()`);
+  await tourGo(b, "bifrost");
+  await b.evaluate(`(() => { const B = __ooga, E = BL.bifrostModels.ENTRY; if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.pilot.exitClose();
+    B.pilot.navigate({ position: { x: 0, y: 0, z: E.field - 2.2 }, yaw: 0, pitch: -0.24, dist: 5, framed: true }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(doorCameraTrace);
+  await b.evaluate(`(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", code: "KeyS", bubbles: true })); __ooga.advance(1.4, 1 / 60); window.dispatchEvent(new KeyboardEvent("keyup", { key: "s", code: "KeyS", bubbles: true })); })()`);
+  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
+  await b.evaluate('__ooga.advance(2, 1 / 60)');
+  await checkDoorCamera(b, "bifrost carry exit");
   await tourGo(b, "bifrost");
   // Carried focus comes back as soft mouse-look (#421): the first Escape frees that cursor in the chamber, the next leaves.
   const focus = () => b.evaluate(`({ scene: __ooga.scene, focused: document.body.classList.contains("aim-cursor-focused") })`);
@@ -27503,6 +27682,19 @@ const bifrostExit = { name: "bifrost exit", why: "playthrough: walking back out 
   await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
   const escaped = await b.evaluate(`({ scene: __ooga.scene, driving: __ooga.pilot.player?.traits.name || null })`);
   record("bifrost exit: walking back out through the field returns the same Ooga to the bridge's end; Escape leaves the chamber for the island still driving it", back.scene === "hub" && back.ooga === "portlandhodl" && back.fromArrival !== null && back.fromArrival < 4 && escaped.scene === "hub" && escaped.driving === "portlandhodl", JSON.stringify({ back, escaped }));
+  // An extreme orbit must not turn camera clearance into a walk across the hall.
+  await b.evaluate(`(() => { const B = __ooga, P = B.pilot, d = B.bifrost.site.portal, sr = Math.sin(d.ry), cr = Math.cos(d.ry);
+    if (P.aiming) P.modeAction("mode-toggle"); P.exitClose(); P.navigate({ position: { x: d.x + sr * 0.9, y: d.floorY, z: d.z + cr * 0.9 }, yaw: d.ry, pitch: 0.2, dist: 20, framed: true }); B.advance(0.4, 1 / 60);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(0.8, 1 / 60); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); })()`);
+  await untilPage(b, 'B.scene === "bifrost" && !B.transitioning', 15000);
+  const wide = await b.evaluate(`(() => { const B = __ooga; B.advance(3, 1 / 60); const a = B.pilot.player, p = a.root.position, E = BL.bifrostModels.ENTRY;
+    const eye = () => ({ ...B.camera.position }); const stationary = eye(), z = p.z;
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(.2, 1 / 60);
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); const walking = eye();
+    return { stationary, walking, z, feet: p.y - a.baseY, hall: BL.bifrostModels.HALL.r, field: E.field, halfW: E.halfW, view: B.pilot.viewState() }; })()`);
+  record("bifrost exit: a wide orbit returns through the field without guiding the Ooga out of the safe entrance corridor", wide.z > wide.hall && wide.z < wide.field - 2 && Math.abs(wide.feet) < 0.03 && wide.view.view === "orbit" && Math.abs(wide.view.distance - 20) < 0.03, JSON.stringify(wide));
+  record("bifrost arrival: the restored wide orbit keeps its eye inside the entry field after handoff, at rest and walking",
+    [wide.stationary, wide.walking].every(p => p.z <= wide.field - .3 + 1e-6 && Math.abs(p.x) <= wide.halfW - .4 + 1e-6 && p.y >= .5), JSON.stringify(wide));
 } };
 scene("lab", { label: "canvas bounds", steps: [{ name: "canvas bounds", why: "regression: distant Timechain views spent the watchdog shading complete offscreen objects; conservative rejection must preserve every visible pixel", run: async (b) => {
   const rows = await b.evaluate(`(() => {
@@ -27636,7 +27828,10 @@ const bifrostPoker = { name: "bifrost poker round trip", why: "playthrough: the 
     const out = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.navigate({ position: { x: 0, y: 0, z: 31 }, target: { x: 0, y: 1, z: 35 }, yaw: Math.PI, pitch: 0.15, dist: 4 }); B.advance(0.5, 1 / 60);
       const c = BL.scenes.poker.camera, fx = c.target.x - c.position.x, fz = c.target.z - c.position.z, l = Math.hypot(fx, fz), f = [fx / l, fz / l], r = [-f[1], f[0]];
       const score = { w: f[1], s: -f[1], d: -r[1], a: r[1] }; return Object.entries(score).sort((p, q) => q[1] - p[1])[0][0]; })()`);
-    await holdKey(b, out, 2.5);
+    // Stop at the scene handoff, not 2.5 seconds later: held movement is now
+    // resumed in the destination and would walk well past the landing by then.
+    await b.evaluate(`(() => { const B = __ooga, key = down => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "${out}", code: "Key${out.toUpperCase()}", bubbles: true }));
+      key(true); for (let i = 0; i < 180 && B.scene === "poker"; i++) B.advance(1 / 60, 1 / 60); key(false); })()`);
   }
   const back = await b.evaluate(`(() => { const B = window.__ooga; for (let i = 0; i < 60 && (B.transitioning || B.scene !== "bifrost"); i++) B.advance(1 / 30, 1 / 30); const d = B.scene === "bifrost" && B.bifrost, a = d && d.avatar, w = d && d.scene.windows.find((w) => w.row.scene === "poker"), p = a && a.root.position; return { scene: B.scene, ooga: a ? a.traits.name : null, along: p ? +(p.x * w.sn + p.z * w.c - window.BL.bifrostModels.HALL.r).toFixed(2) : null, across: p ? +(p.x * w.c - p.z * w.sn).toFixed(2) : null }; })()`);
   record("bifrost poker round trip: walking through the poker window takes the same Ooga straight into the poker room, without the fade, and the room's mirror brings it back into the chamber, standing before that window", there.scene === "poker" && there.ooga === "portlandhodl" && there.started >= 0 && there.steps <= 2 && back.scene === "bifrost" && back.ooga === "portlandhodl" && back.along > -3.5 && back.along < -2 && Math.abs(back.across) < 0.5, JSON.stringify({ there, back }));
@@ -28048,6 +28243,43 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
     JSON.stringify(walk.rows));
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
+const arcadeDoorHandoff = { name: "arcade door handoff", why: "regression: the guided doorway reset pitch and zoom and suppressed keys still held when the walk finished", run: async (b) => {
+  await b.evaluate(doorCameraTrace);
+  const rows = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, W = B.arcade.doorWalk, a = P.player, H = BL.arcadeModels.HALL;
+    const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, code: "Key" + k.toUpperCase(), bubbles: true }));
+    const rows = [];
+    for (const view of ["orbit", "first-person"]) for (const held of ["w", "s", "a", "d", "released"]) {
+      W.reset();
+      if (P.aiming) P.modeAction("mode-toggle");
+      if (view === "first-person") P.enterClose(); else P.exitClose();
+      P.navigate({ position: { x: 0, y: 0, z: H.front - 5 }, yaw: 0, pitch: 0.31, dist: 6.2 });
+      B.advance(0.5, 1 / 60);
+      const saved = P.viewState();
+      // The far side of a real crossing has a level, temporary doorway view.
+      P.navigate({ position: { x: 0, y: 0, z: H.front - 5 }, yaw: 0, pitch: 0, dist: 3, framed: true });
+      W.arrive({ pitch: 0, dist: 3, view: saved, focused: false }, a, 0);
+      __doorCameraTrace.reset();
+      key(held === "released" ? "w" : held, true);
+      P.controls.reset();
+      if (held === "released") key("w", false);
+      for (let i = 0; i < 660 && W.phase !== "idle"; i++) B.advance(1 / 60, 1 / 60);
+      const got = P.viewState(), start = { ...a.root.position }, headHidden = !!a.parts.head.cameraHidden;
+      const cleared = H.front - start.z >= (saved.view === "first-person" ? 2.4 : saved.distance * Math.cos(saved.pitch) + 0.65);
+      B.advance(0.3, 1 / 60);
+      const movement = Math.hypot(a.root.position.x - start.x, a.root.position.z - start.z);
+      if (held !== "released") key(held, false);
+      B.advance(0.5, 1 / 60);
+      rows.push({ camera: __doorCameraTrace.result(), view, held, saved, got, movement, idle: W.phase === "idle", headHidden, cleared });
+    }
+    return rows;
+  })()`);
+  record("arcade door handoff: normal-motion return lenses stay continuous for first-person and orbit with every held key",
+    rows.every(r => r.camera.frames > 30 && r.camera.yaw < 0.12 && r.camera.pitch < 0.12 && r.camera.eye < 0.75), JSON.stringify(rows.map(r => ({ view: r.view, held: r.held, ...r.camera }))));
+  record("arcade door handoff: first-person and orbit recover their pitch and zoom, all held WASD keys resume, and released keys stay stopped",
+    rows.every(r => r.idle && r.cleared && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
+      && Math.abs(r.got.distance - r.saved.distance) < 0.01 && (r.held === "released" ? r.movement < 0.05 : r.movement > 0.2)), JSON.stringify(rows));
+} };
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
   await b.send("Page.bringToFront");
   // Arrived once a door walk, in the two scenes that have one, has handed the Ooga back.
@@ -28061,7 +28293,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
     const m = B.mouths?.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id), p = a.root.position;
     return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, locked: document.pointerLockElement === document.getElementById("scene"), held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
       primary: w.primaryOwned, secondary: w.secondaryOwned, gun: a.parts.gun.visible, club: a.parts.club.visible,
-      ammo: w.ammo, spare: (w.parked || w).spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist,
+      ammo: w.ammo, spare: (w.parked || w).spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist, pitch: o.pitch,
       along: m ? (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry) : null,
       across: m ? (p.x - m.x) * Math.cos(m.ry) - (p.z - m.z) * Math.sin(m.ry) : null,
       feet: p.y - a.baseY, floor: m?.floorY };
@@ -28106,6 +28338,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
   }
   record("arcade carry: entry captures combat mouse-look, an explicit release stays free, hall weapons cannot act, the arena hands out none before a hunt, and the outside loadout returns inside the mainland overhang",
     rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.combat && r.hall.locked === r.before.combat
+      && Math.abs(r.hall.pitch - r.before.pitch) < 0.01 && Math.abs(r.hall.dist - r.before.dist) < 0.01
       && !r.hall.held && !r.hall.gun && !r.hall.club && !r.hall.primary && !r.hall.secondary
       && !r.blocked.held && r.blocked.ammo === 11 && r.blocked.spare[0] === 4 && !r.blocked.unlimited
       && (r.mode === "carry" ? r.mouse < 0.001 : r.mouse > 0.001) && (!r.released || !r.released.focused && !r.released.locked)
@@ -28926,10 +29159,28 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
       && animation.host.ooga >= 58 && animation.host.gorilla >= 58 && animation.network && animation.controlled >= 58, JSON.stringify(animation));
 } };
 scene("hub", { label: "distant effects", query: "pos=0", steps: [hubDistantEffects] });
+// The server's island world runs on tables baked from the hub (scripts/island-layout.mjs): they must be the hub's own.
+scene("hub", { label: "island layout", query: "pos=0&net=0", steps: [{
+  name: "island layout", why: "rule: the server's island world runs on the hub's own fire seats, spots, work places and paths, so its Oogas stand where a page's would", run: async (b) => {
+    const same = await b.evaluate(`JSON.stringify(BL.scenes.hub.debug.routineLayout()) === JSON.stringify(BL.islandLayout)`);
+    record("island layout: src/js/island-layout.js matches the hub it was baked from (run node scripts/island-layout.mjs when it does not)", same);
+  }
+}, {
+  name: "island world on", why: "rule: the island world runs on every visit, so every Ooga the crew shows working or chilling is the world's", run: async (b) => {
+    const r = JSON.parse(await b.evaluate(`(async () => {
+      const B = __ooga, w = BL.scenes.hub.debug.islandWorld;
+      for (let i = 0; i < 90; i++) B.advance(1 / 30, 1 / 30);
+      const shown = B.crew.list.filter(c => !c.avatar && c.root.visible && (c.state === "working" || c.state === "chilling"));
+      return JSON.stringify({ mode: w && w.stats.mode, followed: w ? w.stats.followed : 0, shown: shown.length, unfollowed: shown.filter(c => !c.follow).map(c => c.traits.name) });
+    })()`));
+    record("island world on: with no flag the hub runs the island world, which follows every Ooga it shows working or chilling", r.mode === "local" && r.shown > 0 && r.followed === r.shown && !r.unfollowed.length, JSON.stringify(r));
+  }
+}] });
+
 // No other session's cast holds the default local Ooga or a server-vouched contributor: both join the roster before
 // the crew is built, as on a real arrival.
 scene("hub", { label: "guest likeness", query: "pos=0", opts: { initScript: GUEST_LIKENESS_INIT }, steps: [hubGuestLikeness] });
-scene("hub", { label: "outdoor travel", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
+scene("hub", { label: "outdoor travel", query: "islandworld=0", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
 scene("hub", { label: "walk-through totems", query: "pos=0&totemglow=1&repospin=0", steps: [{
   name: "walk-through totems: first-person overlap hides one carving and its effects, restores it on exit, and distant views keep all eye fires",
   why: "regression: solid totems blocked walkers, the eye could enter their carving, and distance extinguished their effects",
@@ -29221,14 +29472,21 @@ scene("hub", { label: "Merge Rock", query: "hour=0&pos=0", steps: [{
       JSON.stringify(result));
   }
 }] });
-scene("hub", { opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${hubSleepWire.toString()})()` } : {}, steps: [hubArrival, { name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hudVisit, hubKeptDelivery, hubMapNavigation, hubRainforestSteps, hubRoutes, hubFall, hubGrounding, hubCloudCamera, hubCloudFraming, hubKeypadRedirect, trip("hub"), factoryActivityRouting, hubLiveWake, hubSeparateBodies] });
+scene("hub", { opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${hubSleepWire.toString()})()` } : {}, steps: [hubArrival, { name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hudVisit, hubKeptDelivery, hubMapNavigation, hubRainforestSteps, hubRoutes, hubGrounding, hubCloudCamera, hubCloudFraming, hubKeypadRedirect, trip("hub")] });
+// These steps set Oogas' states or activity by hand and expect the crew to show them at once: the page crew's own
+// routine, which runs with `islandworld=0` (and in tabs from before the island world), not the world's.
+scene("hub", { label: "crew by hand", query: "islandworld=0", steps: [hubSeparateBodies, hubFall, trip("hub"), factoryActivityRouting, hubLiveWake] });
 // The same ownership contract exercises complete destruction on memory-limited devices.
 // A released hub's return enters in slices (`enterSteps`), one at boot or with no slicing in one go (`enter`): the same
 // statements in the same order, so the island it builds, its targets, rock guides and outline registry must be equal.
 // The Oogas are left out: where each one stands draws on the crew's unseeded choices.
 const hubSlicedReturn = { name: "hub sliced return", why: "rule: a released hub rebuilt in slices behind the fade is the same island, with the same pick targets, rock guides and outlines, as one rebuilt at once", run: async (b) => {
   await b.evaluate(`(() => {
-    const H = BL.scenes.hub, steps = H.enterSteps, enter = H.enter, S = window.__sliced = { digests: [], restore: () => { H.enterSteps = steps; H.enter = enter; } };
+    const H = BL.scenes.hub, steps = H.enterSteps, enter = H.enter, serverNow = BL.net.serverNow;
+    const S = window.__sliced = { digests: [], restore: () => { H.enterSteps = steps; H.enter = enter; BL.net.serverNow = serverNow; } };
+    // Cloud positions follow the shared wall clock. Compare both builds at the
+    // same instant while retaining their geometry and transforms in the digest.
+    const stamp = serverNow(); BL.net.serverNow = () => stamp;
     const digest = (slices) => {
       const D = H.debug, top = H.root, skip = new Set(), geo = new Map();
       for (const c of D.cavemen.values()) skip.add(c.root);
@@ -29541,7 +29799,7 @@ const hubHandBack = { name: "hub host hand-back", why: "regression: a work index
   })()`);
   record("hub host hand-back: Oogas handed back mid-route with their index off either end walk on without a throw", r.workers > 0 && r.threw === null && r.after === 0, JSON.stringify(r));
 } };
-scene("hub", { label: "host hand-back", query: "status=clankin", steps: [hubHandBack] });
+scene("hub", { label: "host hand-back", query: "status=clankin&islandworld=0", steps: [hubHandBack] });
 // A per-frame throw stops the picture while the panels and voice go on: the director reports it once and offers Reload.
 const frameFailure = { name: "frame failure", why: "regression: an exception in per-frame code froze the picture silently, with no way out but a reload nobody was told to do", run: async (b) => {
   const r = await b.evaluate(`(async () => {
@@ -29655,7 +29913,7 @@ scene("hub", { label: "black loading", query: "hubcache=keep", steps: [{ name: "
     rows.length === 4 && rows.every(row => row.frames > 100 && row.arcs === 0 && row.black === row.frames
       && row.fade === (row.label.startsWith("instant") ? 0 : 1)), JSON.stringify(rows));
 } }] });
-scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf", steps: [{ name: "work movement cave trips", why: "regression: cave traffic aimed through obstacles, started backwards detours and got trapped behind players by short lane hints", run: workCaveTrips }] });
+scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf&islandworld=0", steps: [{ name: "work movement cave trips", why: "regression: cave traffic aimed through obstacles, started backwards detours and got trapped behind players by short lane hints", run: workCaveTrips }] });
 scene("hub", { label: "hammock", query: "solo=1&character=portlandhodl&pos=0", steps: [hubHammockEntry, hubHammockGetUp, hubHammockRopes, hubHammockEnds, hubHammock, hubHammockCamera, hubHammockRemoval] });
 scene("hub", { label: "pet rides", opts: !ONLY || onlyMatches(hubPetRides.name) ? { initScript: `(${petOptInWire.toString()})()` } : {}, query: "character=Bitcoin-Bill&jetpack=1&pos=0", steps: [hubPetOptIn, hubPetRides] });
 scene("hub", { label: "hammock exit", query: "solo=1&character=portlandhodl&pos=0&hubcache=release", steps: [hubHammockExit, trip("hub")] });
@@ -30001,14 +30259,17 @@ const partyRadioChecks = async () => {
 // chairs keep human size while the architecture scales and the table grows to seat 4, 8 and 12.
 const timechainRoomChecks = async () => {
   const context = { window: { BL: {} } };
+  runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
   runInNewContext(await readFile(new URL("../src/js/timechain-rooms.js", import.meta.url), "utf8"), context);
+  const pilotSource = await readFile(new URL("../src/js/pilot.js", import.meta.url), "utf8");
+  const pilotMod = { WALK: runInNewContext(pilotSource.match(/^  const WALK = .*;$/m)[0] + "\nWALK") };
   const R = context.window.BL.timechainRooms;
-  const good = [0, 1, 7, "0", "5", "7"].every(v => R.parse(v) === Number(v));
-  const bad = [8, 9, "8", "9", 10, 3.5, -1, "03", "3a", " 3", "", "sphere-3", null, undefined, NaN, {}, [3]].every(v => R.parse(v) === null);
+  const good = [0, 1, 7, 8, "0", "5", "7", "8"].every(v => R.parse(v) === Number(v));
+  const bad = [9, "9", 10, 3.5, -1, "03", "3a", " 3", "", "sphere-3", null, undefined, NaN, {}, [3]].every(v => R.parse(v) === null);
   const zones = R.ROOMS.map(r => r.zone), kinds = R.ROOMS.map(r => r.kind).join();
-  record("timechain rooms: only 0–7 resolve to rooms (8 and 9 are empty), each its own kind and undotted zone, and only the Conference Room locks",
+  record("timechain rooms: only 0–8 resolve to rooms (9 is empty), each its own kind and undotted zone, and only the Conference Room locks",
     good && bad && new Set(zones).size === 10 && zones.every((z, i) => z === `sphere-${i}` && !z.includes(".")) && R.get(0).name === "Conference Room" && R.get("7").kind === "planetarium"
-      && kinds === "conference,lecture,mining,temple,workout,theater,party,planetarium,," && R.OPEN.join() === "0,1,2,3,4,5,6,7" && R.LOCKABLE.join() === "0" && R.get(8) === null && R.get(12) === null
+      && kinds === "conference,lecture,mining,temple,workout,theater,party,planetarium,genesis," && R.OPEN.join() === "0,1,2,3,4,5,6,7,8" && R.LOCKABLE.join() === "0" && R.get(8).kind === "genesis" && R.get(9) === null && R.get(12) === null
       && R.ROOMS.every(r => r.empty || !!R.layout(r.id).lockPad === r.lockable), JSON.stringify({ good, bad, zones, kinds }));
   const rows = R.ROOMS.filter(r => !r.empty).map(({ id }) => {
     const L = R.layout(id), along = (a) => [+(L.doorZ - a.z).toFixed(9), a.x];
@@ -30061,6 +30322,29 @@ const timechainRoomChecks = async () => {
   }
   record("timechain recovery: a rejected guided departure returns inside facing the room before closing doors and releasing control, while ordinary departures keep their pose",
     recovery.every(row => row.restored && row.recovered), JSON.stringify(recovery));
+  // A kind's own way into another room (the Genesis Museum's door into the Mining Museum), on the production methods:
+  // the hand-over the keypad makes, and one the director refuses.
+  const handing = `${methods}\n${interior.slice(interior.indexOf("    const handOffTo ="), interior.indexOf("    const stay ="))}`;
+  const mining = R.ROOMS.find(r => r.kind === "mining").id, handed = [];
+  for (const shared of [false, true]) for (const goes of [true, false]) {
+    const from = R.ROOMS.find(r => r.kind === "genesis"), zones = [], bodies = [], calls = [], guide = { stage: "out", portal: { x: 0, z: 0, room: mining } };
+    let went = null;
+    const fixture = {
+      L: R.layout(from.id), shared, guide, doors: { want: 0 }, room: from, ROOMS: R, world: { sphereExit: null, sphereVisit: null }, leaving: false, guided: true, COARSE: false,
+      avatar: { traits: { name: "tester" } }, visit: { mode: shared ? "shared" : "solo", login: shared ? "tester" : null, jetpack: null },
+      BL: { net: { setZone: zone => zones.push(zone), setBody: body => bodies.push(body) } }, hud: { hint() {} },
+      go: (scene, place) => { went = `${scene},${place}`; return goes; },
+      people: { steer() { calls.push("stop"); } },
+      pilot: { navigate() { calls.push("arrive"); }, setActive() { calls.push("active"); }, viewState: () => ({}) }
+    };
+    runInNewContext(`${handing}\nhandOffTo(${mining});`, fixture);
+    const next = fixture.world.sphereVisit;
+    handed.push({ shared, goes, went, zones: zones.join(), body: bodies.length === 1 && bodies[0] === null,
+      visit: goes ? !!next && next.room === mining && next.mode === fixture.visit.mode && next.guided === true : next === null,
+      stayed: goes || !calls.includes("arrive") && guide.stage === null && guide.portal === null && !fixture.leaving });
+  }
+  record("timechain portal: a room's own way into another hands over as the keypad does (no body and zone none, the next visit in this one's mode and guided, so the room beyond sets its own zone), and one that cannot go leaves the visitor where they stand with their zone back",
+    handed.every(h => h.went === `timechain,${mining}` && h.body && h.visit && h.stayed && h.zones === (h.goes ? "none" : h.shared ? "none,sphere-8" : "none")), JSON.stringify(handed));
   // Regression: under a dome that widens over the floor a jump carried a body out past where it could stand, and it
   // came down held by the wall. Space at the Exit button then walked nowhere, ran out both of the walk's limits and
   // handed the island an eye still inside the room, which stood the Ooga in the ball off the passage and left it there.
@@ -30085,8 +30369,8 @@ const timechainRoomChecks = async () => {
     const guide = { stage: "toDoor", t: 0, hold: 0 }, doors = { open: 0, want: 0 }, at = { x: from.x, y: 0, z: from.z };
     let push = null;
     const fixture = {
-      L, guide, doors, exitEye, visit: {}, avatar: { root: { position: at, rotation: { y: 0 } } }, camera: { position: at },
-      people: { steer(x, z, _, power) { push = power ? [x, z] : null; } },
+      L, guide, doors, exitEye, pilotMod, clamp: context.window.BL.math.clamp, visit: {}, avatar: { root: { position: at, rotation: { y: 0 } } }, camera: { position: at },
+      people: { steer(x, z, _, power, jump, speed = 1) { push = power ? [x * speed, z * speed] : null; } },
       pilot: { orbit: { yaw: 0, tYaw: 0, pitch: 0, tPitch: 0 }, navigate(to) { at.x = to.position.x; at.z = to.position.z; }, setActive() {}, adopt() {} },
       handOff: (signedOut = false, pose = null) => hand.push({ posed: !!pose, short: +(exitEye - at.z).toFixed(2) }), exitPose: () => ({})
     };
@@ -30094,7 +30378,7 @@ const timechainRoomChecks = async () => {
     for (let t = 0; t < 40 && guide.stage !== "out"; t += 1 / 30) {
       fixture.step(1 / 30);
       const stuck = hold === "wall" ? at.x === from.x && at.z === from.z : hold === "doorway" && push && at.z + push[1] * 0.05 > L.doorZ - 0.5;
-      if (push && !stuck) { at.x += push[0] * 0.05; at.z += push[1] * 0.05; }
+      if (push && !stuck) { at.x += push[0] * pilotMod.WALK.speed / 30; at.z += push[1] * pilotMod.WALK.speed / 30; }
       doors.open = doors.want;
     }
     walkOuts.push({ id, hold, stage: guide.stage, hand });
@@ -30107,14 +30391,15 @@ const timechainRoomChecks = async () => {
   for (const name of ["math", "scene", "models", "terrain", "sign-glyphs", "hub-models", "timechain-rooms", "deferred", "timechain-models", "timechain-gate"])
     runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), gateContext);
   const GB = gateContext.window.BL, SPOTS = GB.timechainModels.SPOTS;
+  GB.pilot = pilotMod;
   GB.net = { state: { doorway: false, room: null, lockedRooms: {} }, subscribeDoor: () => () => {}, cancelDoor() {}, doneDoor() {}, serverNow: () => 0 };
   const walkBack = (held, pose, others = null) => {
     const at = { x: 0, y: 0, z: 0 }, cave = { root: { position: at, rotation: { y: 0 } }, baseY: 0, headOffset: 1.5, viewLift: 0, traits: { name: "tester", height: 1.6 }, parts: { head: {} } };
     let push = null;
     const site = { plug: { visible: true }, choose() {}, lock() {}, pinMode() {}, setDoors() {}, say() {}, tick() {}, directory: {}, keys: [] };
     const gate = GB.timechainGate.create({
-      site, place: { x: 0, y: 0, z: 0, ry: 0 }, crew: { player: cave, steer(x, z, _, power) { push = power ? [x, z] : null; }, thrust() {} },
-      pilot: { navigate(to) { at.x = to.position.x; at.y = to.position.y; at.z = to.position.z; }, setExternalControl() {}, showAct() {}, adopt() {}, eyeFov: () => 1 },
+      site, place: { x: 0, y: 0, z: 0, ry: 0 }, crew: { player: cave, steer(x, z, _, power, jump, speed = 1) { push = power ? [x * speed, z * speed] : null; }, thrust() {} },
+      pilot: { navigate(to) { at.x = to.position.x; at.y = to.position.y; at.z = to.position.z; }, setExternalControl() {}, showAct() {}, adopt() {}, eyeFov: () => 1, controls: { takeMovement() {} } },
       hud: { hint() {}, el: { act: {} } }, camera: { position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 1 }, fov: 1 }, renderer: {}, canvas: {}, world: {}, go: () => true, equipJetpack: () => false, keep: () => null,
       others: () => others || []
     });
@@ -30123,7 +30408,7 @@ const timechainRoomChecks = async () => {
     let t = 0;
     for (; t < 20 && gate.busy; t += 1 / 30) {
       gate.update(1 / 30);
-      if (push && !held) { at.x += push[0] * 0.08; at.z += push[1] * 0.08; }
+      if (push && !held) { at.x += push[0] * pilotMod.WALK.speed / 30; at.z += push[1] * pilotMod.WALK.speed / 30; }
       gate.view(1 / 30);
     }
     gate.update(1 / 30);
@@ -30544,29 +30829,38 @@ const sphereKeypad = { name: "timechain keypad", why: "rule: the keypad chooses 
 } };
 const sphereCrossing = { name: "timechain crossing", why: "playthrough: Enter walks the same Ooga through the doors into its room in first person, and Space at the Exit button walks it back out onto the bridge", run: async (b) => {
   // In first person at the keypad, which the room keeps, so the walk out starts from the eyes too.
-  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} B.pilot.enterClose(); B.advance(0.3, 1 / 60); })()`);
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} B.pilot.enterClose(); ${sphereStand("0.7", "13.8")} })()`);
   await b.evaluate(sphereLog);
   await b.key(" ");
   await b.key("3");
+  await b.evaluate(doorCameraTrace);
   await b.key("Enter");
   const crossing = await untilPage(b, 'B.scene === "hub" && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "crossing"', 20000);
   const passage = await b.evaluate(`(() => { const ${sphereLocal}, G = T.gate; return { plug: T.site.plug.visible, popup: !!document.getElementById("sphere-keypad"), lens: G.debug.lens }; })()`);
   const inside = await untilPage(b, 'B.scene === "timechain" && !B.transitioning && B.timechain.guide.stage === null', 20000);
   const room = await b.evaluate(`(() => { const B = __ooga, D = B.timechain, a = B.pilot.player.root.position; B.advance(1.2, 1 / 60);
-    return { room: D.room.id, mode: D.visit.mode, player: B.pilot.player.traits.name, view: B.pilot.mode, doors: D.doors.open, atArrival: Math.hypot(a.x - D.layout.arrival.x, a.z - D.layout.arrival.z), hash: location.hash, zone: BL.net.state.zone }; })()`);
+    return { room: D.room.id, mode: D.visit.mode, player: B.pilot.player.traits.name, view: B.pilot.mode, pitch: B.pilot.orbit.pitch, dist: B.pilot.orbit.dist, doors: D.doors.open, atArrival: Math.hypot(a.x - D.layout.arrival.x, a.z - D.layout.arrival.z), hash: location.hash, zone: BL.net.state.zone }; })()`);
+  await checkDoorCamera(b, "timechain entrance");
   await b.evaluate(`(() => { const B = __ooga, L = B.timechain.layout; B.pilot.navigate({ position: { x: L.exitButton.x + 0.6, y: 0, z: L.doorZ - 1 }, yaw: Math.PI, pitch: 0.05, dist: 4 }); B.advance(0.3, 1 / 60); })()`);
+  await b.evaluate(doorCameraTrace);
   await b.key(" ");
-  const out = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "idle"', 25000);
-  const back = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, G = T.gate, c = B.pilot.player; B.advance(1.2, 1 / 60);
-    return { player: c && c.traits.name, fromDoors: c ? local(c.root.position) - SP.THRESHOLD : null, doors: G.debug.open, plug: T.site.plug.visible, view: B.pilot.mode, hash: location.hash, head: c ? !c.parts.head.cameraHidden : null, zone: BL.net.state.zone }; })()`);
+  // The Canvas fallback now runs the full animation too; allow its slower draw loop
+  // to complete without changing the exit, camera, movement or equipment assertions.
+  const exitWait = await b.evaluate('new URLSearchParams(location.search).has("canvas2d") ? 40000 : 25000');
+  const out = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "idle"', exitWait);
+  const exitAtWait = await b.evaluate(`(() => { const B = __ooga, G = BL.scenes.hub.debug.timechainIsland.gate.debug;
+    return { scene: B.scene, state: G.state, t: G.t, frames: B.renderedFrames, longest: window.__handover.longest }; })()`);
+  const back = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, G = T.gate, c = B.pilot.player; const began = performance.now(); B.advance(1.2, 1 / 60);
+    return { advanceMs: Math.round(performance.now() - began), player: c && c.traits.name, fromDoors: c ? local(c.root.position) - SP.THRESHOLD : null, doors: G.debug.open, plug: T.site.plug.visible, view: B.pilot.mode, pitch: B.pilot.orbit.pitch, dist: B.pilot.orbit.dist, hash: location.hash, head: c ? !c.parts.head.cameraHidden : null, zone: BL.net.state.zone }; })()`);
+  await checkDoorCamera(b, "timechain exit");
   const seams = await b.evaluate(`(() => { const H = window.__handover; cancelAnimationFrame(H.raf); if (H.tasks) H.tasks.disconnect();
     return { swapIn: H.swapIn, swapOut: H.swapOut, far: H.far, farAt: H.farAt, frames: H.frames, fadeMax: H.fadeMax, longest: H.longest, policy: __ooga.hubPolicy }; })()`);
   record("timechain crossing: Enter opens the doors, lifts the plug for the traveler alone and swoops into its eyes as it walks in",
     crossing && !passage.plug && !passage.popup && passage.lens === "eyes", JSON.stringify({ crossing, passage }));
   record("timechain crossing: the same Ooga arrives in a solo Room 3 in the first person it had at the keypad, the doors close behind it and the address names the room",
-    inside && room.room === 3 && room.mode === "solo" && room.player === "portlandhodl" && room.view === "first-person" && room.doors === 0 && room.atArrival < 0.4 && room.hash === "#/sphere-3" && room.zone === "none", JSON.stringify(room));
+    inside && room.room === 3 && room.mode === "solo" && room.player === "portlandhodl" && room.view === "first-person" && Math.abs(room.pitch - 0.1) < 0.01 && Math.abs(room.dist - 4) < 0.01 && room.doors === 0 && room.atArrival < 0.4 && room.hash === "#/sphere-3" && room.zone === "none", JSON.stringify(room));
   record("timechain crossing: Space at the Exit button walks it back out of the passage onto the bridge, the doors shut, the plug back and the view it had in the room kept, its head hidden only in first person",
-    out && back.player === "portlandhodl" && back.fromDoors > 1 && back.doors === 0 && back.plug && back.view === room.view && back.hash === "#/sphere" && back.head === (back.view !== "first-person"), JSON.stringify({ back, room: room.view }));
+    out && back.player === "portlandhodl" && back.fromDoors > 1 && back.doors === 0 && back.plug && back.view === room.view && Math.abs(back.pitch - 0.05) < 0.01 && Math.abs(back.dist - 4) < 0.01 && back.hash === "#/sphere" && back.head === (back.view !== "first-person"), JSON.stringify({ out, exitAtWait, back, room: room.view }));
   // Under hubcache=release part of the island's rebuild still runs in the swap, so the walk-out fades over it rather than
   // freezing the room's last frame; the way in stays seamless.
   if (seams.policy === "keep") record("timechain crossing: from the keypad into the room and from the Exit button out to the bridge every frame is the Ooga's own eye, never faded to black, and each scene swap is the same view on both sides",
@@ -30601,9 +30895,9 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   };
   const read = `(() => { const B = __ooga, ${sphereLocal}, G = T.gate, a = B.pilot.player, p = a.root.position, cap = (k) => T.site.keys.find(x => x.key === k).node.geometry.faces[0].color.join();
     return { state: G.debug.state, remote: G.remote, busy: G.busy, selection: G.debug.selection, lens: G.debug.lens, along: +local(p).toFixed(2), act: !document.getElementById("act").hidden,
-      eight: cap("8"), three: cap("3"), five: cap("5"), board: document.getElementById("board-modal").open, caption: document.getElementById("board-caption").textContent }; })()`;
+      nine: cap("9"), three: cap("3"), five: cap("5"), board: document.getElementById("board-modal").open, caption: document.getElementById("board-caption").textContent }; })()`;
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "19")} })()`);
-  await clickKey("8");
+  await clickKey("9");
   const empty = await b.evaluate(read);
   await clickKey("3");
   const chosen = await b.evaluate(read);
@@ -30616,7 +30910,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   const listed = await b.evaluate(read);
   await clickRow(5);
   const unlisted = await b.evaluate(read);
-  await clickRow(8);
+  await clickRow(9);
   const emptyRow = await b.evaluate(read);
   await b.key("3");
   await b.evaluate(`__ooga.advance(0.2, 1 / 60)`);
@@ -30624,7 +30918,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   await b.key("Escape");
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.4", "24")} B.advance(0.2, 1 / 60); })()`);
   const walkedOff = await b.evaluate(read);
-  // Regression: the empty rooms' 8 and 9 are a PIN's digits like any other, drawn plain while the keypad asks for one.
+  // Regression: the empty number 9 is a PIN's digit like any other, drawn plain while the keypad asks for one.
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; window.__lockedWas = BL.net.state.lockedRooms[0]; BL.net.state.lockedRooms[0] = 1; ${sphereStand("0.4", "19")} })()`);
   await clickKey("0");
   // Regression: the directory reopened while the keypad asks for the PIN chooses nothing and types no digit.
@@ -30633,7 +30927,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   await b.key("5");
   const pinDirectory = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
   await b.key("Escape");
-  await clickKey("8");
+  await clickKey("9");
   const pin = await b.evaluate(`(() => { const r = ${read}, G = BL.scenes.hub.debug.timechainIsland.gate.debug; return { ...r, pin: G.pin }; })()`);
   await clickKey("back");
   await clickKey("back");
@@ -30658,7 +30952,7 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
   await untilPage(b, 'window.__eyeGap.done', 25000);
   const out = await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}, a = B.pilot.player, p = a.root.position; return { ...window.__eyeGap, view: B.pilot.mode, along: +local(p).toFixed(2), state: T.gate.debug.state }; })()`);
   record("timechain bridge keypad: from the bridge's near half an empty number does nothing, a room's number is chosen with the Ooga and view still the player's, and walking off lets it go",
-    empty.state === "idle" && empty.eight === "34,30,27" && chosen.state === "keypad" && chosen.remote && !chosen.busy && chosen.selection === 3 && chosen.lens === null && chosen.act && Math.abs(chosen.along - 19) < 0.2
+    empty.state === "idle" && empty.nine === "34,30,27" && chosen.state === "keypad" && chosen.remote && !chosen.busy && chosen.selection === 3 && chosen.lens === null && chosen.act && Math.abs(chosen.along - 19) < 0.2
       && walkedOff.state === "idle" && walkedOff.selection === -1, JSON.stringify({ empty, chosen, walkedOff }));
   record("timechain bridge keypad: the chosen number clicked again clears it, and the directory's rows choose and clear the keypad's button the same way",
     unchosen.state === "keypad" && unchosen.remote && unchosen.selection === -1 && unchosen.three === "58,52,48"
@@ -30666,14 +30960,32 @@ const sphereBridgeKeypad = { name: "timechain bridge keypad", why: "rule: the ke
       && unlisted.board && unlisted.selection === -1 && unlisted.five === "58,52,48" && !unlisted.caption.startsWith("Room")
       && emptyRow.selection === -1 && typed.board && typed.selection === 3 && typed.three === "247,147,26",
     JSON.stringify({ unchosen, listed, unlisted, emptyRow, typed, clicks }));
-  record("timechain bridge keypad: while it asks for a locked room's PIN the empty rooms' 8 and 9 are digits like any other, drawn plain, and greyed out again after",
-    pin.state === "pin" && pin.pin === "8" && pin.eight === "58,52,48" && unpinned.state !== "pin" && unpinned.eight === "34,30,27", JSON.stringify({ pin, unpinned }));
+  record("timechain bridge keypad: while it asks for a locked room's PIN the empty number 9 is a digit like any other, drawn plain, and greyed out again after",
+    pin.state === "pin" && pin.pin === "9" && pin.nine === "58,52,48" && unpinned.state !== "pin" && unpinned.nine === "34,30,27", JSON.stringify({ pin, unpinned }));
   record("timechain bridge keypad: the directory reopened during a locked room's PIN chooses nothing, types no digit, and says to enter the PIN on the keypad",
     pinDirectory.board && pinDirectory.state === "pin" && pinDirectory.pin === "" && pinDirectory.caption.includes("PIN"), JSON.stringify(pinDirectory));
   record("timechain bridge keypad: Enter clicked from the bridge glides into the Ooga's eyes where it stands and walks the same Ooga into the chosen room",
     !entering.remote && entering.lens === "eyes" && entering.along > 16 && inside && room.room === 3 && room.player === "portlandhodl", JSON.stringify({ entering, room }));
   record("timechain bridge keypad: walked back out in first person the view stays in the Ooga's head to the end and after",
     out.done && out.frames > 60 && out.worst < 0.45 && out.view === "first-person" && out.state === "idle" && out.along > 17, JSON.stringify(out));
+} };
+// Walked in and back out in combat, the pilot's camera at the shoulder hid the head while the doorway still held it
+// hidden, and put it back hidden for good.
+const sphereCombatHead = { name: "timechain combat head", why: "regression: an Ooga that crossed the Sphere's doorway in combat came back out with its head hidden from the camera for good", run: async (b) => {
+  await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} B.pilot.exitClose(false); B.advance(0.3, 1 / 60); if (!B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(0.6, 1 / 60); })()`);
+  const before = await b.evaluate(`({ aiming: __ooga.pilot.aiming, view: __ooga.pilot.mode })`);
+  await b.key(" ");
+  await b.key("3");
+  await b.key("Enter");
+  const inside = await untilPage(b, 'B.scene === "timechain" && !B.transitioning && B.timechain.guide.stage === null', 20000);
+  await b.evaluate(`(() => { const B = __ooga, L = B.timechain.layout; B.advance(1.2, 1 / 60); B.pilot.navigate({ position: { x: L.exitButton.x + 0.6, y: 0, z: L.doorZ - 1 }, yaw: Math.PI, pitch: 0.05, dist: 4 }); B.advance(0.3, 1 / 60); })()`);
+  await b.key(" ");
+  const out = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.timechainIsland.gate.debug.state === "idle"', 25000);
+  const read = `({ aiming: __ooga.pilot.aiming, view: __ooga.pilot.mode, hidden: __ooga.pilot.player.parts.head.cameraHidden })`;
+  const back = await b.evaluate(`(() => { __ooga.advance(1.2, 1 / 60); return ${read}; })()`);
+  const carried = await b.evaluate(`(() => { const B = __ooga; if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(1.5, 1 / 60); return ${read}; })()`);
+  record("timechain combat head: walked through the doorway in combat and back out, the Ooga's head shows at the shoulder and after leaving combat",
+    before.aiming && before.view === "shoulder" && inside && out && back.view !== "first-person" && !back.hidden && !carried.aiming && carried.view !== "first-person" && !carried.hidden, JSON.stringify({ before, back, carried }));
 } };
 const sphereAccount = { name: "timechain account", why: "regression: account Retry must keep the owned Ooga at the keypad; an unanswered account still offers a solo visit without guessing", run: async (b) => {
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; BL.net.state.resolved = false; ${sphereStand("0.7", "13.8")} })()`);
@@ -30694,7 +31006,9 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
   // Snapshot inside the fetch and its account notification so no simulated movement hides a teleport.
   await b.evaluate(`(() => {
     const B = __ooga, cave = B.pilot.player, ${sphereLocal};
-    const W = window.__sphereAccount = { fetch: window.fetch, WebSocket: window.WebSocket, state: { ...BL.net.state }, calls: 0, before: null, after: null };
+    // npcHold is derived from the account/catalogue fields, not writable account state.
+    const { npcHold, ...state } = BL.net.state;
+    const W = window.__sphereAccount = { fetch: window.fetch, WebSocket: window.WebSocket, state, calls: 0, before: null, after: null };
     const read = () => ({ selected: B.pilot.player === cave, body: [cave.root.position.x, cave.root.position.y, cave.root.position.z],
       eye: [B.camera.position.x, B.camera.position.y, B.camera.position.z], target: [B.camera.target.x, B.camera.target.y, B.camera.target.z],
       mode: B.pilot.mode, lens: T.gate.debug.lens, held: B.pilot.travelRefusal() === "Finish the current interaction before travelling" });
@@ -30739,10 +31053,10 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
       && retry.before.selected && retry.after.selected && retry.before.held && retry.after.held && retry.before.mode === retry.after.mode && retry.after.lens === "eyes"
       && released.state === "idle" && released.selected === "portlandhodl" && released.refusal === null && released.near < 2, JSON.stringify({ retry, released }));
 } };
-scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereBridgeKeypad, sphereAccount, trip("hub")] });
+scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereCombatHead, sphereBridgeKeypad, sphereAccount, trip("hub")] });
 // The released hub (phones under 8 GB): the walk-out rebuilds the hub behind the room's held frame.
 scene("hub", { label: "timechain doorway release", query: "solo=1&character=portlandhodl&view=timechain&pos=0&hubcache=release", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
-scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", steps: [sphereApproach, sphereCrossing] });
+scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
 const roomPage = (room, query = "") => `${src}?debug=1&nosim=1${clock(`character=portlandhodl&pos=0${query ? "&" + query : ""}`)}#/sphere-${room}`;
 const roomGo = (room) => `(() => { const B = window.__ooga; B.go("timechain", "${room}"); for (let i = 0; i < 150 && (B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== ${room}); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, room: B.timechain.room.id, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom, timers: s.timers, requests: s.requests }; })()`;
 const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out arrival gets a solo copy of its room with first-person, shoulder and orbit views, without weapons or a jetpack, its screens painted, and touches no network under nosim", run: async (b) => {
@@ -30832,9 +31146,9 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
   })()`);
   record("timechain room: the controls reference omits intercepted R/F while retaining available movement controls", pitch.every(n => n === 0) && reference.open && reference.driven && !reference.keys.some(k => ["r", "f"].includes(k)) && reference.keys.includes("w") && !reference.text.includes("Tilt the view"), JSON.stringify({ pitch, reference }));
 } };
-const timechainRooms = { name: "timechain rooms", why: "rule: every room 0–7 builds its own kind around the same doorway, arrival and Exit button, only the Conference Room has a lock, the camera stays inside every sphere, and the raked halls walk down to the front", run: async (b) => {
+const timechainRooms = { name: "timechain rooms", why: "rule: every room 0–8 builds its own kind around the same doorway, arrival and Exit button, only the Conference Room has a lock, the camera stays inside every sphere, and the raked halls walk down to the front", run: async (b) => {
   const rows = [], bounds = [], walks = [];
-  for (const room of [7, 1, 2, 3, 4, 5, 6, 0]) {
+  for (const room of [7, 1, 2, 3, 4, 5, 6, 8, 0]) {
     await b.evaluate(roomGo(room));
     rows.push(await b.evaluate(`(() => { const B = __ooga, D = B.timechain, L = D.layout, a = B.pilot.player.root.position, w = B.pilot.player;
       return { room: D.room.id, kind: D.room.kind, radius: L.R, door: L.door.halfW, arrivalGap: +(L.doorZ - L.arrival.z).toFixed(6), at: +Math.hypot(a.x - L.arrival.x, a.z - L.arrival.z).toFixed(3),
@@ -30872,8 +31186,8 @@ const timechainRooms = { name: "timechain rooms", why: "rule: every room 0–7 b
     }
   }
   const same = (k) => rows.every(r => JSON.stringify(r[k]) === JSON.stringify(rows[0][k]));
-  record("timechain rooms: rooms 0–7 each build their own kind around the same doorway, arrival, Exit button and Ooga, solo and first person, each at its own address, with seats but in the Block Party and the Mining Museum, and only the Conference Room locks",
-    rows.map(r => r.kind).join() === "planetarium,lecture,mining,temple,workout,theater,party,conference" && rows.every(r => r.at < 0.4 && r.mode === "solo" && r.view === "first-person" && r.hash === "#/sphere-" + r.room && (r.seats > 0) === (r.kind !== "party" && r.kind !== "mining") && r.lock === (r.room === 0))
+  record("timechain rooms: rooms 0–8 each build their own kind around the same doorway, arrival, Exit button and Ooga, solo and first person, each at its own address, with seats but in the Block Party and the Mining Museum, and only the Conference Room locks",
+    rows.map(r => r.kind).join() === "planetarium,lecture,mining,temple,workout,theater,party,genesis,conference" && rows.every(r => r.at < 0.4 && r.mode === "solo" && r.view === "first-person" && r.hash === "#/sphere-" + r.room && (r.seats > 0) === (r.kind !== "party" && r.kind !== "mining") && r.lock === (r.room === 0))
       && ["door", "arrivalGap", "button", "height"].every(same), JSON.stringify(rows));
   record("timechain rooms: the final camera stays inside the sphere, the closed doors, the floor and the dome in every view and transition, in the smallest, the tallest raked and the conference room",
     bounds.every(r => r.frames >= 840 && r.outside === 0 && ["first-person", "shoulder", "orbit"].every(mode => r.modes.includes(mode))), JSON.stringify(bounds));
@@ -30916,23 +31230,157 @@ const timechainTrip = { name: "timechain round trip", why: "contract: a room lef
     laps.every(l => l.scene === "timechain" && l.room === 0 && l.timers === 0 && l.requests === 0) && grew.length === 0 && donated.scene === "timechain" && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25,
     JSON.stringify({ grew, donated, first: laps[0], second: laps[1] }));
 } };
+// The Genesis Museum's door into the Mining Museum, walked by a solo visitor, and the room left with its reader open and
+// with a block half mined.
+const timechainPortal = { name: "timechain portal", why: "contract: the Genesis Museum's door hands a solo visitor into the Mining Museum publishing nothing, and the room left with the reader open or a block half mined leaves nothing behind", run: async (b) => {
+  await b.evaluate(roomGo(8));
+  const through = await b.evaluate(`(() => { const B = window.__ooga, N = BL.net, G = BL.timechainGenesis, zones = [], bodies = [], zone = N.setZone, body = N.setBody, mining = BL.timechainRooms.ROOMS.find(r => r.kind === "mining").id;
+    N.setZone = (z) => { zones.push(z); return zone(z); }; N.setBody = (v) => { bodies.push(v); return body(v); };
+    G.portal.force("open"); G.portal.enter();
+    for (let i = 0; i < 1500 && !(B.scene === "timechain" && B.timechain.room.id === mining && !B.transitioning); i++) B.advance(1 / 30, 1 / 30);
+    B.advance(0.5, 1 / 30); N.setZone = zone; N.setBody = body;
+    return { room: B.timechain.room.id, mining, zones, bodies, panel: !document.getElementById("genesis-portal").hidden, rows: document.getElementById("genesis-portal-body").childElementCount, kept: ["portal", "live", "mark", "floorPoc", "readLarge"].filter(k => k in G) }; })()`);
+  const left = [], back = [];
+  for (const how of ["reader", "mine"]) {
+    await b.evaluate(roomGo(8));
+    await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis, P = G.portal;
+      if ("${how}" === "reader") G.readLarge(3);
+      else { P.force("riddles", 4); P.hit(G.PLINTHS.findIndex(p => p.id === P.state().riddles[4])); }
+      B.advance(0.2, 1 / 30); })()`);
+    await tourGo(b, "hub");
+    await new Promise(done => setTimeout(done, 1200));
+    left.push(await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis; B.advance(0.5, 1 / 30);
+      return { how: "${how}", scene: B.scene, reader: document.getElementById("wp-reader").open, strip: document.getElementById("wp-reader-strip").hasAttribute("src"), panel: !document.getElementById("genesis-portal").hidden, rows: document.getElementById("genesis-portal-body").childElementCount, kept: ["portal", "live", "mark", "floorPoc", "readLarge"].filter(k => k in G) }; })()`));
+    // Back in the room: the leave contract's counts, as the round trip reads them.
+    back.push(await b.evaluate(roomGo(8)));
+  }
+  record("timechain portal: the door walks a solo visitor into the Mining Museum with no zone or body published, and the room left with its reader open or a block half mined leaves no panel, reader, handle, timer or request behind",
+    through.room === through.mining && through.zones.length > 0 && through.zones.every(z => z === "none") && through.bodies.every(v => v === null) && !through.panel && through.rows === 0 && through.kept.length === 0
+      && left.every(l => l.scene === "hub" && !l.reader && !l.strip && !l.panel && l.rows === 0 && l.kept.length === 0)
+      && back.every(l => l.room === 8 && l.timers === 0 && l.requests === 0) && back[1].dom <= back[0].dom * 1.02 + 4 && back[1].nodes <= back[0].nodes * 1.02 + 4, JSON.stringify({ through, left, back }));
+} };
+// The hologram over the middle plinth is the way to the paper: a click on the figure and Space in front of it each
+// open the pop-up at the paper with its first page in the window (not a model), the pop-up's button opens the large
+// reader, and the piece before the paper is Satoshi's, the statue to turn beside its sources.
+const timechainHologram = { name: "timechain hologram", why: "contract: the hologram on the middle plinth opens the whitepaper's pop-up, showing the paper's page, by a click and by Space; the pop-up leads to the reader and stands next to Satoshi's piece", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const at = await b.evaluate(`(() => { const B = window.__ooga; B.pilot.navigate({ position: { x: 0, y: 0, z: 3 }, yaw: 0, pitch: -0.3, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30); const w = B.timechain.built.nodes.holoSpin.world, p = B.renderer.project(w[12], w[13] + 1.1, w[14]); return { x: p.x, y: p.y }; })()`);
+  // Whether the pop-up alone stands open on the paper's page (the pages may still be on their way), closed again for
+  // the next press.
+  const popup = `(async () => { const B = window.__ooga, m = document.getElementById("model-modal"); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const open = m.open && !document.getElementById("wp-reader").open && document.getElementById("model-canvas").classList.contains("model-page") && /Peer-to-Peer/.test(document.getElementById("model-name").textContent); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return open; })()`;
+  await b.click(at.x, at.y);
+  const click = await b.evaluate(popup);
+  await b.key(" ");
+  const space = await b.evaluate(popup);
+  const reader = await b.evaluate(`(async () => { const B = window.__ooga, G = BL.timechainGenesis, m = document.getElementById("model-modal"); G.readPaper(); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } const button = [...m.querySelectorAll("button")].find(e => /READ THE WHITEPAPER/.test(e.textContent)); if (button) button.click(); B.advance(0.3, 1 / 30); const open = document.getElementById("wp-reader").open; G.readerClose(); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return !!button && open; })()`);
+  const satoshi = await b.evaluate(`(async () => { const B = window.__ooga, G = BL.timechainGenesis, m = document.getElementById("model-modal"); G.readPaper(); for (let i = 0; i < 60 && !m.open; i++) { B.advance(0.1, 1 / 30); await new Promise(r => setTimeout(r, 50)); } document.getElementById("model-prev").click(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const links = [...document.getElementById("model-links").querySelectorAll("a")].map(a => a.href); const ok = document.getElementById("model-name").textContent === "Satoshi Nakamoto" && !document.getElementById("model-canvas").classList.contains("model-page") && BL.modelViewer.stats.drawn > 1000 && links.length === 5 && links.every(h => /^https:[^?#]+$/.test(h)) && /Picozzi/.test(document.getElementById("model-stats").textContent); BL.modelViewer.close(); B.advance(0.3, 1 / 30); return ok; })()`);
+  record("timechain hologram: a click on the figure over the middle plinth and Space in front of it each open the pop-up at the whitepaper showing its page, its button opens the reader, and the piece before it shows Satoshi's statue with its credit and five plain links",
+    click && space && reader && satoshi, JSON.stringify({ click, space, reader, satoshi }));
+} };
+// Up close a ring plinth trades its piece for the first version built for it, the plaque's band saying so; a few
+// metres back the piece is there again, and no other plinth has changed.
+const timechainFirst = { name: "timechain first version", why: "rule: up close a plinth shows its first version and its FIRST VERSION word in place of its piece, and stepping back brings the piece back, no other plinth changed", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const r = await b.evaluate(`(() => { const B = window.__ooga, G = BL.timechainGenesis, N = B.timechain.built.nodes, i = G.PLINTHS.findIndex((p) => p.id === "egold"), s = G.spotOf(i), len = Math.hypot(s.x, s.z);
+    const at = (d) => { B.pilot.navigate({ position: { x: s.x - s.x / len * d, y: 0, z: s.z - s.z / len * d }, yaw: Math.atan2(-s.x, -s.z), pitch: 0.1, dist: 0.6 }); B.pilot.enterClose(); B.advance(1.5, 1 / 30); };
+    const read = () => ({ first: N["galleryFirst" + i].visible && N["galleryFirst" + i].scale.x > 0.99, piece: N["galleryPiece" + i].visible && N["galleryPieceGlass" + i].visible, tag: N["firstTag" + i].visible, others: G.PLINTHS.filter((_, j) => j !== i && (N["galleryFirst" + j].visible || N["firstTag" + j].visible)).length });
+    at(2.5); const near = read(); at(5); const back = read(); window.__firstHeld = N["galleryFirst" + i].geometry; return { near, back, builds: [...G.firstBuilds] }; })()`);
+  record("timechain first version: up close a ring plinth shows the first version built for it with FIRST VERSION on its plaque's band, and a few metres back today's piece is there again, no other plinth changed",
+    r.near.first && !r.near.piece && r.near.tag && r.near.others === 0 && !r.back.first && r.back.piece && !r.back.tag && r.back.others === 0, JSON.stringify(r));
+  // Entering the room again from inside the Sphere builds no first version again; leaving the Sphere lets every one go
+  // with the director's release of its scope (the room keeps none of its own), so the next visit builds each afresh.
+  const builds = () => b.evaluate(`[...BL.timechainGenesis.firstBuilds]`);
+  await b.evaluate(genesisGo);
+  const again = await builds();
+  await b.evaluate(`(async () => { const B = window.__ooga, t0 = performance.now(); B.go("lab"); while ((B.transitioning || B.scene !== "lab") && performance.now() - t0 < 60000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`);
+  await b.evaluate(genesisGo);
+  const after = await builds(), fresh = await b.evaluate(`(() => { const i = BL.timechainGenesis.PLINTHS.findIndex((p) => p.id === "egold"), fresh = window.__ooga.timechain.built.nodes["galleryFirst" + i].geometry !== window.__firstHeld; delete window.__firstHeld; return fresh; })()`);
+  record("timechain first version: entering the room again inside the Sphere builds no first version again, and leaving the Sphere releases all 26 with its scope, so the next visit builds each afresh",
+    again.every((n, k) => n === r.builds[k]) && after.every((n, k) => n === r.builds[k] + 1) && fresh, JSON.stringify({ first: r.builds, again, after, fresh }));
+} };
+// The ₿ over the crown leads to the site whose feed it draws: a press on it (window.open stubbed) opens mempool.space
+// in a new tab with no opener and no referrer, and its tip says so.
+const timechainMarkLink = { name: "timechain mark link", why: "rule: a press on the ₿ over the crown opens mempool.space in a new tab, with no handle back to the page and no referrer", run: async (b) => {
+  await b.evaluate(genesisGo);
+  const at = await b.evaluate(`(() => { const B = window.__ooga, live = B.timechain.built.live.find((l) => l.spec.id === "mark"), v = live.node.geometry.verts;
+    window.__markOpened = []; window.__markOpen = window.open; window.open = (...args) => { window.__markOpened.push(args); return null; };
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 7 }, yaw: 0, pitch: -1.0, dist: 0.6 }); B.pilot.enterClose(); B.advance(1, 1 / 30);
+    let x = 0, y = 0, z = 0; for (let i = 0; i < v.length; i += 3) { x += v[i]; y += v[i + 1]; z += v[i + 2]; } const n = v.length / 3, m = live.node.world; x /= n; y /= n; z /= n;
+    const p = B.renderer.project(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]); return { x: p.x, y: p.y, tip: live.spec.tip }; })()`);
+  await b.click(at.x, at.y);
+  const r = await b.evaluate(`(() => { window.__ooga.advance(0.2, 1 / 30); const opened = window.__markOpened; window.open = window.__markOpen; delete window.__markOpen; delete window.__markOpened; return { opened }; })()`);
+  record("timechain mark link: a press on the ₿ over the crown opens mempool.space in a new tab with noopener and noreferrer, and its tip offers it",
+    r.opened.length === 1 && r.opened[0][0] === "https://mempool.space" && r.opened[0][1] === "_blank" && /noopener/.test(r.opened[0][2]) && /noreferrer/.test(r.opened[0][2]) && /mempool\.space/.test(at.tip), JSON.stringify({ at, ...r }));
+} };
+// Into the Genesis Museum, waiting across frames: its own code may still be on its way at a first arrival.
+const genesisGo = `(async () => { const B = window.__ooga, t0 = performance.now(); B.go("timechain", "8"); while ((B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== 8) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); B.housekeep(); })()`;
+const timechainMark = { name: "timechain mark", why: "regression: the stream's dots ended their flight in front of the mark's squares and a landing's spark swelled over its neighbours, so squares no dot had reached flashed yellow", run: async (b) => {
+  await untilPage(b, 'B.scene === "timechain" && B.timechain && !B.transitioning', 20000);
+  await b.evaluate(genesisGo);
+  // A minute after a block, the room on its own wall clock: most squares white, some turned, dots arriving. Every drawn
+  // frame is read in the task that drew it: each white square's middle pixel, where the dots are, how big a square is.
+  const r = await b.evaluate(`(async () => {
+    const B = window.__ooga, G = BL.timechainGenesis, N = B.timechain.built.nodes, R = B.renderer, c = document.getElementById("scene"), was = R.quality;
+    const clock = () => (BL.net && typeof BL.net.serverNow === "function" ? BL.net.serverNow() : Date.now()) / 1000, pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    G.live.lastBlockAt = clock() - 60; R.setQuality("high");
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 3.4 }, yaw: 0, pitch: -1.28, dist: 4 }); B.pilot.enterClose(); B.advance(0.3, 1 / 30);
+    // The dots at the mark's own height and over it (others cross the floor and climb the dome under the same spot).
+    const dots = Object.keys(N).filter((key) => key.startsWith("pocStream")).map((key) => N[key]), plane = N.btile0.position.y, top = plane + 0.07;
+    const over = () => dots.filter((n) => n.scale.x > 0.01 && Math.abs(n.position.x) < 3.1 && Math.abs(n.position.z) < 3.6 && Math.abs(n.position.y - plane) < 1.2);
+    // Two seconds for the mark to settle into that minute, and on until dots are arriving.
+    for (const t0 = performance.now(); (performance.now() - t0 < 2000 || !over().length) && performance.now() - t0 < 15000;) { R.setQuality("high"); B.advance(1 / 30, 1 / 30); await pause(30); }
+    const t = document.createElement("canvas"); t.width = c.width; t.height = c.height;
+    const x = t.getContext("2d", { willReadFrequently: true }), k = c.width / c.clientWidth, o = {}, at = [], seen = [], rest = [];
+    for (let i = 0; i < G.mark.count; i++) { const n = N["btile" + i], p = R.project(n.position.x, n.position.y - 0.08, n.position.z, o); at.push(p ? [Math.round(p.x * k), Math.round(p.y * k)] : null); seen.push([]); rest.push(0); }
+    const xs = at.filter(Boolean).map((p) => p[0]), ys = at.filter(Boolean).map((p) => p[1]), x0 = Math.min(...xs) - 2, y0 = Math.min(...ys) - 2, w = Math.max(...xs) - x0 + 3, h = Math.max(...ys) - y0 + 3;
+    let frames = 0, dotsOver = 0, inFront = 0, swollen = 0; const lit0 = G.mark.lit;
+    for (const t0 = performance.now(); frames < 100 && performance.now() - t0 < 30000;) {
+      await pause(30); R.setQuality("high"); B.advance(1 / 30, 1 / 30);
+      // Not while a block drops: its wave, its fall and the square it takes are another matter.
+      const td = clock() - G.live.dropAt; if (td > -3 && td < 12) continue;
+      x.drawImage(c, 0, 0); frames++;
+      const d = x.getImageData(x0, y0, w, h).data, near = over(); dotsOver += near.length;
+      for (const n of near) if (n.position.y < top) inFront++;
+      for (let i = 0; i < at.length; i++) {
+        const n = N["btile" + i], g = n.geometry, white = g.faces[g.faces.length - 1].color[2] === 234;
+        if (white) rest[i] = n.scale.x; else if (rest[i] && n.scale.x > rest[i] * 1.001) swollen++;
+        if (!white || !at[i]) continue;
+        const q = ((at[i][1] - y0) * w + at[i][0] - x0) * 4; seen[i].push(d[q], d[q + 1], d[q + 2]);
+      }
+    }
+    R.setQuality(was);
+    // Each square against its own middle colour over the frames it stayed white.
+    let worst = 0, squares = 0;
+    for (const s of seen) {
+      const m = s.length / 3; if (m < 10) continue; squares++;
+      for (let ch = 0; ch < 3; ch++) { const v = []; for (let j = 0; j < m; j++) v.push(s[j * 3 + ch]); const mid = v.slice().sort((p, q) => p - q)[m >> 1]; for (const q of v) worst = Math.max(worst, Math.abs(q - mid)); }
+    }
+    return { kind: R.kind, frames, squares, turned: G.mark.lit - lit0, dotsOver, inFront, swollen, worst };
+  })()`);
+  record("timechain mark: between landings every white square of the mark keeps its colour, no dot of the stream comes in front of the squares and no landing's spark grows past its own square",
+    r.frames >= 60 && r.squares > 200 && r.dotsOver > 0 && r.turned > 0 && r.inFront === 0 && r.swollen === 0 && r.worst <= 16, JSON.stringify(r));
+} };
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
   record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 1 && r.view === "first-person", JSON.stringify(r));
 } };
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
+// The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
+// the mark is read on the room's wall clock.
+scene("timechain", { label: "genesis", exclusive: true, url: roomPage(0), steps: [timechainMark, timechainMarkLink, timechainHologram, timechainFirst, timechainPortal] });
 scene("timechain", { label: "canvas2d", url: roomPage(1, "canvas2d=1"), steps: [timechainCanvas] });
 const timechainLectureScreens = {
   name: "timechain lecture screens", why: "regression: projected answers, screen focus, gestures, scrub holds, background sync and live popups follow the same lecture clock", run: async b => {
   const check = (ok, message, detail) => record(`lecture screen: ${message}`, ok, detail);
   // The idle catalogue must accept the same real pointer in carry and combat, before any timeline exists.
   await b.evaluate(`window.catalogueTest = {
-    point(i) {
+    point(i, turn = false) {
       const B=__ooga, M=B.timechain.motion, D=M.screens().outline, r=M.catalogueRows[i], deg=Math.PI/180;
       const x=(r.x+r.w*.5)/D.w, y=(r.y+r.h*.5)/D.h;
       const el=Math.asin(Math.sin(D.el1*deg)-y*(Math.sin(D.el1*deg)-Math.sin(D.el0*deg)));
       const p=BL.timechainRooms.onSphere(B.timechain.layout,(D.az0+x*(D.az1-D.az0))*deg,el,.994);
+      if (turn) { B.pilot.turnToward(p.x,p.y,p.z); B.advance(1,1/60); }
       return B.project(p.x,p.y,p.z);
     }
   }`);
@@ -30950,7 +31398,9 @@ const timechainLectureScreens = {
     for (const i of [1, 7, 0]) {
       // A preceding physical click can capture mouse-look. Release it before testing the free pointer again.
       await b.evaluate('__ooga.pilot.freeCursor()'); await b.sleep(60);
-      const pt=await b.evaluate(`catalogueTest.point(${i})`);
+      // The two columns wrap around the dome; turn to the chosen row before
+      // sending a physical pointer, so the second column is inside the viewport.
+      const pt=await b.evaluate(`catalogueTest.point(${i}, true)`);
       await b.mouse('mouseMoved',pt.x,pt.y,{button:'none'});
       await b.evaluate('__ooga.advance(.1,1/60)');
       check(await b.evaluate(`__ooga.timechain.motion.catalogueHover===${i}`), `idle catalogue hover in ${combat ? 'combat' : 'carry'}, lecture ${i+1}`, JSON.stringify({pt, actual:await b.evaluate('__ooga.timechain.motion.catalogueHover')}));
@@ -31385,7 +31835,7 @@ scene("timechain", {
   steps: [timechainLectureAudio]
 });
 
-scene("hub", { label: "chilling", query: "status=chillin&pos=0",
+scene("hub", { label: "chilling", query: "status=chillin&pos=0&islandworld=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.
   opts: { initScript: `Math.random = (() => { let a = 3; return () => { let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })();` },
   steps: [{ name: "chilling Ooga placement", why: "regression: chilling Oogas must load in separate campfire rings when the inner ring fills, and 2140data must not spin his nunchaku as a permanent idle stance", run: async (b) => {
@@ -31661,7 +32111,7 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
       return at({ x: m.x + Math.sin(m.ry) * along, y: m.floorY, z: m.z + Math.cos(m.ry) * along }, 0.5);
     });
     out.air = at({ x: 53.7, y: 8, z: -31 }, 0.5);
-    // Inside the Sphere's shell, down its passage short of the curtain, and Merge Rock, which has no public scope yet.
+    // Inside the Sphere's shell, down its passage short of the curtain, and Merge Rock, which is Main Island.
     // Only a crossing's Ooga stands behind the doors (timechain-gate.js puts one left there on the bridge), so the
     // passage is read from the hub's own shell test and reason at that spot rather than by parking an Ooga in it.
     const passage = BL.timechainModels.PASSAGE.curtain + 0.5, px = T.worldX(0, passage), pz = T.worldZ(0, passage);
@@ -31675,12 +32125,12 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
   record("voice levels: the bridges and the air off the edge are the land between, the cave entrances the island, and none of them is a crossing",
     lands.every((land) => !r[land].home.to && r[land].home.zone === "outside" && !r[land].bridge.to && r[land].bridge.zone === "between" && !r[land].land.to && r[land].land.zone === land)
       && r.mouth.zone === "outside" && r.air.zone === "between" && !r.air.to, JSON.stringify(r));
-  // The outdoor scope (outdoor-scope.js) goes by entrances, not the panels' zone names: the lab's room reads `outside`
-  // as a zone but is a cave, and the Sphere's passage is the way into its rooms.
-  record("outdoor scope: the island, its apron, bridges, air and the three bridged lands' tops are Main Island, while a cave's room, the Sphere's passage and Merge Rock are not",
+  // The outdoor scope (outdoor-scope.js): a cave's entrance on the island (the lab's room reads `outside`) is the
+  // island's surface, while the Sphere's passage is the way into its rooms.
+  record("outdoor scope: the island, its apron, a cave's entrance, bridges, air, Merge Rock and the three bridged lands' tops are Main Island, while the Sphere's passage is not",
     lands.every((land) => r[land].home.scope === "main" && r[land].bridge.scope === "main" && r[land].land.scope === "main")
-      && r.apron.scope === "main" && r.air.scope === "main" && r.mouth.scope === null && r.mouth.reason === "interior"
-      && r.passage.scope === null && r.passage.reason === "interior" && (!r.repos || r.repos.scope === null && r.repos.reason === "unscoped"), JSON.stringify(r));
+      && r.apron.scope === "main" && r.air.scope === "main" && r.mouth.scope === "main" && r.mouth.reason === "outdoor"
+      && r.passage.scope === null && r.passage.reason === "interior" && (!r.repos || r.repos.scope === "main"), JSON.stringify(r));
   record("outdoor scope: covered cave approaches before the Arcade doors and Factory shield stay in Main Island",
     r.canopies.every((p) => p.zone === "outside" && p.scope === "main"), JSON.stringify(r.canopies));
   // Levels: by height off the island's edge, and down HQ's ramps, its basement's and the rainforest's descent.
@@ -31738,7 +32188,7 @@ const hubVoiceLevels = { name: "voice levels", why: "rule: in the main world the
 scene("hub", { label: "player stacking", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubChalkboardEraser, hubVoiceLevels] });
 // A fresh page, as the phone run has: after the steps above, the peer tooltip this check measures can read as hidden.
 scene("hub", { label: "live nameplates", query: "ooga=portlandhodl:clank:lab,obl,lf&solo=1&character=portlandhodl&pos=0", steps: [hubNameplates] });
-scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
+scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin&islandworld=0", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, e = C.list[0], owner = e.owner, m = B.headquarters.entropyLab.mouth;
     const site = B.crew.workSites.findIndex(site => site.mouth === m), sx = Math.sin(m.ry), sz = Math.cos(m.ry);
@@ -31886,7 +32336,7 @@ scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhod
     state.entered && !state.retreated && !state.queued && state.inside && state.phase === "work"
     && state.station === -1 && state.settled && !state.lateRecoveries, JSON.stringify(state));
 } }] });
-scene("hub", { label: "lab work rotation", query: "status=clankin", steps: [hubWorkingArrival, { name: "lab work rotation", why: "regression: interior waiting bodies blocked equipment, permanent claims left coworkers idle, and rear departures held the doorway before reaching it", run: async (b) => {
+scene("hub", { label: "lab work rotation", query: "status=clankin&islandworld=0", steps: [hubWorkingArrival, { name: "lab work rotation", why: "regression: interior waiting bodies blocked equipment, permanent claims left coworkers idle, and rear departures held the doorway before reaching it", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, lab = B.headquarters.entropyLab, m = lab.mouth, group = C.list.slice(0, 2);
     B.pilot.release(true); C.release();
@@ -32422,7 +32872,7 @@ scene("hub", { label: "gorilla lab carry jump", exclusive: true, query: "charact
       && state.smashUnchanged,
     JSON.stringify(state));
 } }].map(gameCombat) });
-scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1", steps: [{ name: "gorilla prop traversal", why: "regression: a box lost its supporting contact before the collision body cleared its side, low props interrupted the gallop, and a stale motion envelope trapped gorillas beneath trees", run: async (b) => {
+scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1&islandworld=0", steps: [{ name: "gorilla prop traversal", why: "regression: a box lost its supporting contact before the collision body cleared its side, low props interrupted the gallop, and a stale motion envelope trapped gorillas beneath trees", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, S = BL.scene, root = BL.scenes.hub.root, C = B.clankers, npc = C.list.find(e => e.owner.traits.name === "portlandhodl"), solids = B.headquarters.solids.props;
     // \`e\` is the gorilla in hand: the driven body while one is taken (clankers.js separateBodies builds it where the NPC
@@ -33804,18 +34254,26 @@ const hangarWalking = { name: "hangar walking", why: "rule: W A S D walk the vis
 } };
 const hangarDoor = { name: "hangar door", why: "rule: the hangar's door walks the same Ooga through, out onto the Factory's landing and back in, on to where an arrival stands each side", run: async (b) => {
   // From the hangar's landing, walked out through its door.
-  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), D = B.hangar.layout.door; if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: D.x, y: D.y, z: D.z - 2.5 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), D = B.hangar.layout.door; if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: D.x, y: D.y, z: D.z - 2.5 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); window.__hangarView = B.pilot.viewState(); })()`);
+  await b.evaluate(doorCameraTrace);
   await walkToward(b, 0, 1, 3);
   const out = await untilPage(b, 'B.scene === "factory" && !B.transitioning', 15000);
   // The walk carries it on from the door to where an arrival stands.
   const landed = await b.evaluate(`(() => { window.__ooga.advance(3, 1 / 60); const a = window.__ooga.pilot.player, L = BL.factoryModels.LAYOUT.hangarLanding, p = a && a.root.position;
     return a && { name: a.traits.name, x: +p.x.toFixed(2), z: +p.z.toFixed(2), feet: +(p.y - a.baseY).toFixed(2),
-      on: Math.abs(p.x - L.x) < L.w / 2 && Math.abs(p.z - L.z) < L.d / 2 && Math.abs(p.y - a.baseY - L.y) < 0.05, out: p.x - BL.factoryModels.LAYOUT.hangar.x }; })()`);
+      view: window.__ooga.pilot.viewState(), expected: window.__hangarView, on: Math.abs(p.x - L.x) < L.w / 2 && Math.abs(p.z - L.z) < L.d / 2 && Math.abs(p.y - a.baseY - L.y) < 0.05, out: p.x - BL.factoryModels.LAYOUT.hangar.x }; })()`);
+  await checkDoorCamera(b, "hangar departure");
+  record("hangar door: the Factory landing restores the saved camera mode, pitch and zoom", !!landed && landed.view.view === landed.expected.view && Math.abs(landed.view.pitch - landed.expected.pitch) < 0.02 && Math.abs(landed.view.distance - landed.expected.distance) < 0.03, JSON.stringify(landed));
   // And back in from where it stands, the door behind it.
-  await walkToward(b, -1, 0, 4);
+  await b.evaluate(`(() => { const B = __ooga, p = B.pilot.player.root.position, a = B.pilot.player;
+    B.pilot.enterClose(true); B.pilot.navigate({ position: { x: p.x, y: p.y - a.baseY, z: p.z }, yaw: Math.PI / 2, pitch: -0.28, dist: 4, framed: true }); B.pilot.focusAim(); B.advance(0.4, 1 / 60);
+    window.__hangarView = B.pilot.viewState(); __doorCameraTrace.reset(); window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", bubbles: true })); B.advance(2, 1 / 60); })()`);
   const back = await untilPage(b, 'B.scene === "hangar" && !B.transitioning', 15000);
   const inside = await b.evaluate(`(() => { window.__ooga.advance(3, 1 / 60); const a = window.__ooga.pilot.player, D = __ooga.hangar.layout.door, p = a && a.root.position;
-    return a && { name: a.traits.name, in: +(D.z - p.z).toFixed(2), across: +(p.x - D.x).toFixed(2) }; })()`);
+    return a && { name: a.traits.name, view: __ooga.pilot.viewState(), expected: window.__hangarView, focused: document.body.classList.contains("aim-cursor-focused"), in: +(D.z - p.z).toFixed(2), across: +(p.x - D.x).toFixed(2) }; })()`);
+  const resumed = await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player, p = a.root.position, z = p.z; B.advance(0.35, 1 / 60); const moved = z - p.z; window.dispatchEvent(new KeyboardEvent("keyup", { key: "w", code: "KeyW", bubbles: true })); B.advance(0.2, 1 / 60); const stop = p.z; B.advance(0.3, 1 / 60); return { moved, stopped: Math.abs(p.z - stop) }; })()`);
+  await checkDoorCamera(b, "hangar arrival");
+  record("hangar door: first-person pitch and focus survive the return, held W resumes and its release stops movement", inside?.view.view === "first-person" && Math.abs(inside.view.pitch - inside.expected.pitch) < 0.02 && inside.focused && resumed.moved > 0.3 && resumed.stopped < 0.03, JSON.stringify({ inside, resumed }));
   record("hangar door: walking out through the door walks the same Ooga through onto the Factory's landing and on across it, and walking back in walks it through and on down the hangar's landing",
     out && !!landed && landed.name === "portlandhodl" && landed.on && landed.out > 2 && back && !!inside && inside.name === "portlandhodl" && inside.in > 3, JSON.stringify({ out, landed, back, inside }));
 } };
@@ -33844,7 +34302,7 @@ const hangarFire = { name: "hangar static fire", why: "playthrough: the static f
 } };
 scene("factory", { query: "character=portlandhodl", steps: [factoryWalking, factoryGreeter, factoryLadders, factoryRailingJump, factoryWeapons, factoryForward, factoryForge, factoryShields, factoryKortik, trip("factory")] });
 scene("factory", { label: "cooker", query: "character=portlandhodl", steps: [donation("factory", { stat: "cooker.out", seconds: 14, where: "the cooker sends its bananas up through the ceiling tube" }), donationDetails, factoryCooker, trip("factory")] });
-scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), steps: [factoryFloor, factoryEntrance] });
+scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), opts: { motion: true }, steps: [factoryFloor, factoryEntrance] });
 const hangarAnomalies = { name: "hangar anomalies", why: "rule: each of the Jet's engine anomalies plays through on its own without touching the visitor's controls, refuses the static fire's button meanwhile, spooks Kortik's Sis, and leaves the engines cold, the Jet exactly at rest and the hall's lights full; the lightning's jump sets a room on fire that its operator puts out, and the blackout takes every lamp, light strip and room in the hall and the crane's power with it", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = window.__ooga, a = B.cavemen.get("portlandhodl"), A = B.hangar.anomaly, F = B.hangar.fire, S = B.hangar.sis, sc = B.hangar.scene, jet = sc.jet, J = jet.position, L = B.hangar.layout.jet, RF = B.hangar.roomFire;
@@ -33913,7 +34371,7 @@ const hangarShuffleSafety = { name: "hangar shuffle safety", why: "rule: the Jet
     r.moving && r.approach.kind === null && r.approach.rest && r.hitch.moving && r.hitch.kind === null && r.hitch.rest && r.late.moving && r.late.kind === null && r.late.rest
       && r.held.kind === null && r.held.rest && r.rider.kind === null && r.rider.rest, JSON.stringify(r));
 } };
-scene("hangar", { query: "character=portlandhodl", steps: [hangarWalking, hangarDoor, hangarFire, hangarAnomalies, hangarShuffleSafety, trip("hangar")] });
+scene("hangar", { query: "character=portlandhodl", opts: { motion: true }, steps: [hangarWalking, hangarDoor, hangarFire, hangarAnomalies, hangarShuffleSafety, trip("hangar")] });
 scene("factory", { label: "canvas2d", query: "canvas2d=1&character=portlandhodl", steps: [factoryCanvas, factoryGreeter] });
 const caveDirectory = (mobile = false) => ({ name: "cave directory", why: "rule: browsing connected projects loads no external code, holds movement, closes safely and disposes on travel; external travel sends no OBL payload or referrer", run: async (b) => {
   const click = async selector => {
@@ -33982,7 +34440,7 @@ const caveDirectory = (mobile = false) => ({ name: "cave directory", why: "rule:
 } });
 scene("bifrost", { label: "cave directory", query: "solo=1&character=portlandhodl", steps: [caveDirectory()] });
 scene("bifrost", { label: "cave directory phone", query: "solo=1&character=portlandhodl", opts: PHONE_SIZE, steps: [caveDirectory(true)] });
-scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
+scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), opts: { motion: true }, steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
@@ -34520,7 +34978,7 @@ scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: 
   record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
 } }] });
 scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeRaidDoor, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadeBlockHall, arcadeHandrail, arcadePlay, trip("arcade")] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
+scene("arcade", { query: "character=portlandhodl", opts: { motion: true }, steps: [arcadeSpectatorAmmo, arcadeDoorHandoff] });
 scene("arcade", { label: "ghost spectate follows", query: "character=portlandhodl", steps: [arcadeSpectateFollow] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeHuntGear] });
@@ -36840,6 +37298,8 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   // Compare the same roster and work sites even when an activity expires during the soak.
   // Only classification uses this instant; scene animation and the Factory feed keep their clocks.
   await b.evaluate(`(() => {
+    // The transient Controls coach expires independently of scene travel.
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     const C = BL.contributors, at = Date.now(), stateFor = C.stateFor, hasRecentActivity = C.hasRecentActivity;
     C.stateFor = contributor => stateFor(contributor, at);
     C.hasRecentActivity = (contributor, repo) => hasRecentActivity(contributor, repo, at);
@@ -36853,6 +37313,7 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   // replacing any resource. Subsequent growth is still measured by the same bounds. Cloud Hopper's cabinet now stands in
   // Ooga Arcade (cloud-hopper.js \`arcade\`), so the hub holds none of its screen frames: \`frames\` reports that.
   const warmHubGeometry = () => b.evaluate(`(() => {
+    document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     const B = __ooga, H = BL.scenes.hub, characters = new Set(), foliage = new Set(), frames = H.debug.cloudHopper?.cabinet.frames || [];
     const visit = node => {
       if (node.geometry?.characterPart) characters.add(node.geometry);
@@ -36860,6 +37321,9 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
       if (lods?.owner === node.geometry) foliage.add(node.geometry).add(lods.medium).add(lods.far);
       for (const child of node.children) visit(child);
     };
+    // Reconcile dead records before the baseline, just as the minute timer
+    // will during a long soak; replaced meshes are not retained scene owners.
+    B.housekeep();
     visit(H.root);
     for (const cave of H.debug.crew.list) {
       if (cave.headOpen) characters.add(cave.headOpen);
@@ -36912,17 +37376,19 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
         expected = meta.node_count * fields.length;
         chunk = header.slice(match.index + match[0].length); header = "";
       }
-      for (let i = 0; i < chunk.length; i++) {
-        const ch = chunk[i];
-        if (ch >= "0" && ch <= "9") { token += ch; continue; }
-        if (token) {
-          const value = Number(token), field = values++ % fields.length;
-          if (field === iType) type = value;
-          if (field === iSize) { total += value; if (type === code) compiled += value; }
-          token = "";
-        }
-        if (ch === "]") { done = true; break; }
+      // Parse bounded numeric chunks natively instead of concatenating every
+      // digit in JavaScript. A large scene can contain millions of heap records;
+      // retain only the incomplete number across chunks, never the whole snapshot.
+      const end = chunk.indexOf("]"), last = end >= 0 ? end : chunk.lastIndexOf(",");
+      if (last < 0) { token += chunk; return; }
+      const numbers = JSON.parse("[" + token + chunk.slice(0, last) + "]");
+      token = end >= 0 ? "" : chunk.slice(last + 1);
+      for (const value of numbers) {
+        const field = values++ % fields.length;
+        if (field === iType) type = value;
+        if (field === iSize) { total += value; if (type === code) compiled += value; }
       }
+      if (end >= 0) done = true;
     });
     try { await b.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }); }
     finally { b.on("HeapProfiler.addHeapSnapshotChunk", null); }
@@ -37356,7 +37822,15 @@ const pokerMarbleHallChecks = (BL) => {
         }
       } finally { room.setTheme("gatsby"); for (const tb of room.tables) tb.agent.dispose(); }
       // Recorded from rock at 45e02fd4, the tree before the marble hall: theme record, built geometry, light array, built room.
-      const BEFORE = {
+      // The same pre-marble builder at 45e02fd4 on macOS/arm64 produces these
+      // exact float-bit hashes. Keep an exact baseline per platform rather than
+      // rounding geometry or accepting a tolerance for every vertex.
+      const BEFORE = process.platform === "darwin" && process.arch === "arm64" ? {
+        crystal: "f66ee59a:d32a764:117697cd:984b4ec0",
+        ember: "3d2a6db1:55476287:117697cd:74fe9bfb",
+        jungle: "4b98f2e:50a27997:117697cd:ff3634b",
+        moonstone: "21fcded:6e6d0200:117697cd:e5934591"
+      } : {
         crystal: "f66ee59a:f650e3cd:117697cd:9c34b100",
         ember: "3d2a6db1:e1d70253:117697cd:7671f6d5",
         jungle: "4b98f2e:b42da904:117697cd:a25ef873",
@@ -42463,7 +42937,7 @@ const cloudPanelChecks = async BL => {
   const window = { BL: { audience: BL.audience, reactionPolicy: BL.reactionPolicy,
     net: { state, subscribe: sub("net"), subscribeAudience: sub("audience"), subscribeReactions: sub("reactions"), sendAudience: (type, fields) => { sent.push({ type, ...fields }); return true; }, logout() {} },
     voice: { stats, support: () => ({ secure: true, webrtc: true, mic: true }), subscribe: sub("voice"), mutedLocally: login => local.has(login), muteLocal: (login, on) => on ? local.add(login) : local.delete(login), setMuted() {}, toggle() {}, leave() {}, speaking: () => false, inEarshot: () => true },
-    hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {} },
+    hud: { voiceIcon: el("svg"), voiceWords: (look, self) => `${look}${self ? " (you)" : ""}`, renderFaceIcon() {}, showAccount() {} },
     models: { caveman: () => ({}) }, contributors: { traitsFor: () => ({}) }, characters: { get: name => name === "ooga" ? {} : null },
     nativeIcons: { svg: () => el("svg"), voice: () => el("svg") }, sheet: { visible: () => visible },
     reactions: { mount: (host, options) => { gate = options.handAllowed; }, refresh: () => refreshes.push(gate()) } } };
@@ -42706,8 +43180,9 @@ const playersColumnChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/routes.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/zone-map.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
+    runInNewContext(await readFile(join(root, "src/js/native-icons.js"), "utf8"), context);
     Object.assign(window.BL, {
-      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, clouds: [] }, remotes,
+      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false, linkApp: [], clouds: [] }, remotes,
         voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {}, subscribeAudience() {}, subscribeClouds() {}, subscribeDuel() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
       voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, mutedByDuel: () => false, duel() {}, setMuteDuels() {}, volumeOf: () => 1, setVolume() {}, setRadius() {} },
@@ -43480,7 +43955,11 @@ const raceRigChecks = async () => {
     // (to edd7c63c); both uniforms are 0 for every other geometry.
     // Observatory quality fades add uCanvasPrevious and uCanvasBlend (to a5600e80).
     // uCanvasBlend stays 0 outside a transitioning camera feed; ordinary output is unchanged.
-    "a5600e80e22eaa8b0c5f7bd50a087bf2165bc07401f73f41abea2cdf1aa59496",
+    // The Genesis Museum's hologram is some forty see-through layers of faces that are all their own light: such a
+    // face (emissive 1) now skips the scene's lighting, whose result was mixed away to nothing for it already (to
+    // e85db243 with the Block Party's uGlassGrazing and the Observatory's uniforms; 30c97593 without them); every
+    // other face is shaded as before.
+    "e85db2430f47dcf971ddda871bae804084ab6e724855c673c999a1f9431c888e",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
@@ -43732,7 +44211,10 @@ const browserDriverProof = async () => {
       }
     }
     const context = {
-      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => "9999\nsynthetic",
+      spawn, mkdtempSync: () => `synthetic-profile-${++serial}`, readFileSync: () => {
+        if (mode === "no-port" || mode === "late-port" && clock < 15000) throw new Error("Port not published");
+        return "9999\nsynthetic";
+      },
       rmSync: profile => removed.push(profile), writeFileSync() {}, tmpdir: () => "/tmp", join: (...parts) => parts.join("/"),
       process: { env: {}, once() {} }, setTimeout: timeout, clearTimeout: clear, queueMicrotask, WebSocket: Socket,
       AbortSignal: { timeout(ms) {
@@ -43744,14 +44226,15 @@ const browserDriverProof = async () => {
         requests.push({ url, bounded: !!opts?.signal });
         if (mode === "discovery-hang") return new Promise((resolve, reject) => opts?.signal?.once("abort", () => reject(new Error("synthetic abort"))));
         discovery++;
-        return { json: async () => mode === "missing-page" && discovery === 1 ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
+        return { json: async () => mode === "missing-page" && discovery === 1 || mode === "late-page" && clock < 15000
+          ? [] : [{ type: "page", webSocketDebuggerUrl: "ws://synthetic/page" }] };
       },
       Date: class extends Date { static now() { return clock; } }, console, Buffer
     };
     const script = source.replace(/^import .*;\n/gm, "").replace(/export const /g, "const ")
       + "\nthis.driver = { launch, acquire, release, dispose };";
     runInNewContext(script, context);
-    return { ...context.driver, children, sockets, timers, removed, requests,
+    return { ...context.driver, children, sockets, timers, removed, requests, now: () => clock,
       fire(ms) {
         const timer = [...timers].find(timer => timer.ms === ms && timer.active);
         if (!timer) throw new Error(`No timer ${ms}`);
@@ -43777,7 +44260,7 @@ const browserDriverProof = async () => {
     await flush();
     const before = new Set(f.timers);
     let error = null;
-    const expired = f.launch().catch(err => { error = err; });
+    const expired = f.launch({ startupMs: 30000 }).catch(err => { error = err; });
     const admission = [...f.timers].find(timer => !before.has(timer) && timer.ms === 10000 && timer.active);
     if (admission) { admission.active = false; f.timers.delete(admission); admission.fn(); }
     await flush();
@@ -43846,6 +44329,44 @@ const browserDriverProof = async () => {
     let browser = null, error = null;
     try { browser = await f.launch(); } catch (err) { error = err.message; }
     rows.push({ name: "wait for usable page", pass: !!browser && f.requests.length === 2, requests: f.requests.length, error });
+    await f.dispose();
+  }
+  for (const mode of ["late-port", "late-page"]) for (const startupMs of [undefined, 30000]) {
+    const f = fixture(mode);
+    let browser = null, error = null;
+    try { browser = await f.launch({ startupMs }); } catch (err) { error = err; }
+    const elapsed = f.now(), failed = !!error?.driver && error.message.includes("startup deadline")
+      && elapsed >= 10000 && elapsed < 12000 && f.children[0].kills.includes("SIGKILL") && f.removed.includes("synthetic-profile-1");
+    rows.push({ name: `${mode}: ${startupMs === undefined ? "default discovery stays at 10 s" : "cold discovery waits for a usable page"}`,
+      pass: startupMs === undefined ? !browser && failed : !!browser && !error && elapsed >= 15000 && elapsed < 30000 && f.children[0].kills.length === 0,
+      elapsed, error: error?.message });
+    await f.dispose();
+  }
+  {
+    const f = fixture("no-port");
+    let error = null;
+    try { await f.launch({ startupMs: 30000 }); } catch (err) { error = err; }
+    rows.push({ name: "cold discovery still expires and cleans up a process that never publishes a port", pass: !!error?.driver
+      && error.message.includes("startup deadline before publishing a DevTools port") && f.now() === 30000
+      && f.children[0].kills.includes("SIGKILL") && f.removed.includes("synthetic-profile-1") && f.sockets.length === 0 });
+    await f.dispose();
+  }
+  {
+    const f = fixture("setup-held");
+    let error = null;
+    const pending = f.launch({ startupMs: 30000 }).catch(err => { error = err; });
+    await flush(); f.fire(10000); await pending;
+    rows.push({ name: "cold discovery allowance does not extend DevTools setup commands", pass: !!error?.driver
+      && error.message.startsWith("Runtime.enable got no reply in 10 s") && f.children[0].kills.includes("SIGKILL")
+      && f.removed.includes("synthetic-profile-1") });
+    await f.dispose();
+  }
+  {
+    const f = fixture(), invalid = [9999, 60001, NaN, Infinity, 30000.5, null, "30000"];
+    let rejected = 0;
+    for (const startupMs of invalid) try { await f.launch({ startupMs }); } catch (err) { if (/startupMs/.test(err.message)) rejected++; }
+    rows.push({ name: "invalid discovery allowances reject before spawning or queueing", pass: rejected === invalid.length
+      && f.children.length === 0 && f.timers.size === 0 });
     await f.dispose();
   }
   {
@@ -44592,7 +45113,8 @@ const studioVoiceLifecycleProof = async () => {
   audience.voice.toggle();audience.voice.setPeers([],[],31);const audienceKeepsMute=audience.voice.stats.muted&&!audience.streams[0].track.enabled;
   audience.voice.toggle();audience.voice.setPeers([],[],0);const lastListenerLeaves=audience.voice.stats.alone&&!audience.streams[0].track.enabled;
   audience.voice.setPeers([],[],1);const listenerReturns=!audience.voice.stats.alone&&audience.streams[0].track.enabled&&audience.gum===1;
-  const invalidAudience=[-1,32,NaN,Infinity,"1"].every(value=>{audience.voice.setPeers([],[],value);return audience.voice.stats.alone&&!audience.streams[0].track.enabled;});
+  // A room's players and the linked partners in Ooga Chat together, up to its 64 links: 32 and over still count (Watchtower, #861).
+  const invalidAudience=[-1,1025,NaN,Infinity,"1"].every(value=>{audience.voice.setPeers([],[],value);return audience.voice.stats.alone&&!audience.streams[0].track.enabled;});
   audience.voice.stop();await audience.voice.enable();const audienceClearedOnStop=audience.voice.stats.alone&&!audience.streams[1].track.enabled;audience.voice.dispose();await drain();
   const late=fixture();late.deferPermission();const opening=late.voice.enable();late.voice.stop();const lateStream=late.makeStream();late.resolvePermission(lateStream);await opening;await drain();
   const permissionCancelled=lateStream.track.stops===1&&!late.voice.stats.publishing&&!late.voice.stats.enabled&&!late.calls.some(c=>c.op==="publish");late.voice.dispose();
@@ -45234,18 +45756,17 @@ const outdoorScopeChecks = () => {
   runInNewContext(readFileSync(join(root, "src/js/zone-map.js"), "utf8"), context);
   const hub = (zone, inside = false, descending = false) => O.hubReason(zone, inside, descending);
   const policy = {
-    outdoors: ["outside", "between", "sphere", "rainforest", "bifrost"].every((zone) => hub(zone) === "outdoor"),
+    outdoors: ["outside", "between", "sphere", "rainforest", "bifrost", "repos"].every((zone) => hub(zone) === "outdoor"),
     entrances: ["outside", "sphere", "rainforest", "bifrost"].every((zone) => hub(zone, true) === "interior"),
     under: ["rainforest-under", "hq", "hq-basement"].every((zone) => hub(zone) === "descending") && hub("outside", false, true) === "descending"
       && hub("sphere", false, true) === "descending" && hub("between", false, true) === "descending" && hub("outside", true, true) === "interior",
-    unscoped: hub("repos") === "unscoped",
     // Grouped with the island by the panels (zone-map.js), but never public by that.
     grouped: ["lab", "bca", "factory", "arcade", "mirror", "cave-3"].every((zone) => Z.zoneMap.groupOf(zone) === "outside" && hub(zone) === "unknown"),
     elsewhere: ["", "none", "scene-transition", "lab.hall", "bifrost.chamber", "sphere-0", "sphere-1", "dsb-outside", "block-frenzy"].every((zone) => hub(zone) === "unknown"),
     dsb: O.dsbReason(false, false, false) === "outdoor" && O.dsbReason(true, false, false) === "transit" && O.dsbReason(false, true, false) === "entering"
       && O.dsbReason(false, true, true) === "entering" && O.dsbReason(false, false, true) === "interior"
   };
-  record("outdoor scope policy: only the island's outdoors, bridges and air and the Sphere's, rainforest's and Bifrost's tops are Main Island; cave and shell interiors, any descent, Merge Rock, the panels' island groupings and every other zone are not; DSB Land is outdoors only with no room, no fade and no arrival under way",
+  record("outdoor scope policy: only the island's outdoors (its cave entrances in its zone), bridges and air and the Sphere's, rainforest's and Bifrost's tops are Main Island, with Merge Rock; the Sphere's shell, any descent, the panels' island groupings and every other zone are not; DSB Land is outdoors only with no room, no fade and no arrival under way",
     Object.values(policy).every(Boolean), JSON.stringify(policy));
   // A transport's acknowledgements against moves, backtracking, resets and a lost transport.
   const T = O.create(), S = T.state, heard = [];
@@ -46338,6 +46859,78 @@ const lecturePlayerChecks = async () => {
   }
 };
 
+// The island's world (island-sim.js over island-layout.js), as the server and a signed-out page run it, with no page:
+// the same seed gives the same world; workers go round the caves they are active at in turn, shoot from a place in
+// that cave's fan and eat their magazine back at the reload fan round the pile; chillers idle on distinct spots clear
+// of the pile's ring and every working cave's zone; sleepers and the away are not shown; and its windows and caves
+// read as a page's crew reads them (roster-panel.js `stateAt`, contributors.js `hasRecentActivity`).
+const islandWorldProof = async () => {
+  const context = { window: { BL: {} }, crypto: globalThis.crypto };
+  for (const file of ["math.js", "npc-paths.js", "roster-panel.js", "island-layout.js", "island-sim.js", "game-wire.js"])
+    runInNewContext(await readFile(join(root, "src/js", file), "utf8"), context);
+  const BLx = context.window.BL, S = BLx.islandSim, L = BLx.islandLayout, ACT = S.ACT;
+  const cast = Array.from({ length: 40 }, (_, i) => ({ name: `ooga${i}` }));
+  const world = (seed) => {
+    const sim = S.create({ seed });
+    sim.setCast(cast);
+    cast.forEach((c, i) => sim.setActivity(c.name, S.STATES[i % 4], i % 4 === 0 ? 0b0101 : 0));
+    return sim;
+  };
+  const rows = (sim) => { const f = BLx.gameWire.frame(); sim.motion(f, 0); return Array.from(f.rows.subarray(0, f.count * 8)).join(","); };
+  const a = world(5), b = world(5);
+  const visited = new Map(), shotFrom = [], reloadAt = [];
+  let idleClear = true, spotsDistinct = true, hiddenOk = true;
+  for (let step = 0; step < 20 * 600; step++) {
+    a.step(S.STEP); b.step(S.STEP);
+    const keys = new Set();
+    for (const o of a.oogas) {
+      if (o.state >= 2 && o.visible) hiddenOk = false;
+      if (o.state === 0 && o.act === ACT.FIRE) {
+        if (!visited.has(o.name)) visited.set(o.name, []);
+        const seen = visited.get(o.name);
+        if (seen.at(-1) !== o.site) seen.push(o.site);
+        const place = L.sites[o.site].places.find((p) => Math.hypot(p[1] - o.p.x, p[2] - o.p.z) < 1e-6);
+        shotFrom.push(!!place);
+      }
+      if (o.state === 0 && o.act === ACT.RELOAD) reloadAt.push(Math.abs(Math.hypot(o.p.x, o.p.z) - a.ring.loading) < 1e-6);
+      if (o.state === 1 && o.mode === 1) {
+        const key = `${o.table}:${o.spot}`;
+        if (keys.has(key)) spotsDistinct = false;
+        keys.add(key);
+        if (Math.hypot(o.p.x, o.p.z) < a.ring.outer + 1.5) idleClear = false;
+      }
+    }
+  }
+  const rounds = [...visited.values()];
+  const panel = BLx.rosterPanel, at = 1.7e12, H = 3600e3;
+  const ages = [-1, 0, 30e3, H - 1, H, 5 * H, 24 * H - 1, 24 * H, 29 * 24 * H, 30 * 24 * H, 30 * 24 * H + 1, 400 * 24 * H];
+  const sites = L.sites, index = (pred) => sites.findIndex(pred);
+  const lab = index((s) => s.repo === "oogaboogax/entropylab"), fallback = index((s) => s.fallback);
+  // A world started beside a crew that has placed its Oogas takes each up where it stands, once (island-world.js).
+  const seat = L.seats[0], placed = S.create({ seed: 3 });
+  placed.setCast(cast.slice(0, 3));
+  placed.place("ooga0", 7, 3, 1); placed.place("ooga1", seat[0] + 0.1, seat[1], 0); placed.place("ooga2", 7, -3, 0);
+  placed.setActivity("ooga0", "working", 0b0101); placed.setActivity("ooga1", "chilling", 0); placed.setActivity("ooga2", "sleeping", 0);
+  placed.step(S.STEP);
+  const [w, c, z] = placed.oogas, worker = w.visible && w.p.x === 7 && w.p.z === 3 && w.heading === 1;
+  const seated = c.p.x === seat[0] + 0.1 && c.p.z === seat[1] && c.table === 0 && c.spot === 0 && c.act === ACT.SIT;
+  placed.setActivity("ooga2", "working", 0b0101); placed.step(S.STEP);
+  return {
+    startsPlaced: worker, startsSeated: seated, startsOnce: !z.start && Math.hypot(z.p.x - 7, z.p.z + 3) > 0.5,
+    deterministic: rows(a) === rows(b) && rows(a) !== rows(world(6)),
+    pileTable: L.pile.length > 4 && L.pile.every(([count, radius]) => { const p = S.create(); p.setBananas(count); return Math.abs(p.platform - radius) < 1e-9; }),
+    roundRobin: rounds.length > 0 && rounds.every((r) => r.every((site) => site === 0 || site === 2)),
+    bothCaves: rounds.some((r) => r.length >= 3),
+    shotFromFan: shotFrom.length > 0 && shotFrom.every(Boolean),
+    reloadOnRing: reloadAt.length > 0 && reloadAt.every(Boolean),
+    idleClear, spotsDistinct, hiddenOk,
+    windows: ages.every((age) => S.STATES[S.stateAt(age < 0 ? 0 : at - age, at)] === panel.stateAt(age < 0 ? 0 : at - age, at)),
+    caves: S.sitesFor(sites, new Map([["oogaboogax/entropylab", at - 60e3]]), false, at) === 1 << lab
+      && S.sitesFor(sites, new Map([["oogaboogax/entropylab", at - 2 * H]]), false, at) === 0
+      && S.sitesFor(sites, new Map([["oogaboogax/elsewhere", at - 60e3]]), false, at) === 1 << fallback
+      && S.sitesFor(sites, new Map(), true, at) === (1 << sites.length) - 1
+  };
+};
 const unitChecks = async () => {
   await lecturePlayerChecks();
   dsbIslandWadingChecks();
@@ -46396,6 +46989,9 @@ const unitChecks = async () => {
   const fixedRoutine = await fixedRoutineProof();
   record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; a walker between spoke samples, or a goal between them, is never sent back to a sample behind it or past the goal; a passive return leg keeps its reserved pile slot on the planned path while an ordinary one keeps the direct pile approach; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects; a passive gorilla's walk to its Ooga's pile slot goes straight over the pile while its work travel to a cave walks straight from another cave or the meadow, even when its origin is reset mid-walk, on terrain, still handing wall steps to the climber",
     Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
+  const islandWorld = await islandWorldProof();
+  record("island world: one seed, one world; workers go round their active caves in turn, shoot from a place in the cave's fan and eat back at the reload fan, chillers idle on spots of their own clear of the pile's ring, sleepers and the away are not shown, its pile from a banana count is the hub's, its windows and caves read as a page's crew reads them, and a world started beside a placed crew takes each Ooga up where it stands, once",
+    Object.values(islandWorld).every(Boolean), JSON.stringify(islandWorld));
   const passiveWeapons = await passiveWeaponTargetProof();
   record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",
     Object.values(passiveWeapons).every(Boolean), JSON.stringify(passiveWeapons));
@@ -46416,7 +47012,7 @@ const unitChecks = async () => {
   const rigDisposal = await raceRigDisposalProof();
   record("race rig disposal: pending and linked variants release owned shaders and programs exactly once without context-loss support", rigDisposal.every(r => !r.programs && !r.shaders && !r.duplicateDeletes && r.arraysCleared && r.aliasesReleased), JSON.stringify(rigDisposal));
   const driver = await browserDriverProof();
-  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 17 && driver.failures === 0, JSON.stringify(driver));
+  record("browser driver: broken transports retire every pending command and owned child, discovery is bounded, and pool ownership remains exclusive", driver.cases === 24 && driver.failures === 0, JSON.stringify(driver));
 
 const carriedRelease = carriedReleaseProof();
 record("gorilla release: insufficient upright headroom retains the grab; unaimed throws keep a forward 45-degree launch at either charge despite running momentum, while aimed throws retain their target and momentum", carriedRelease.valid, JSON.stringify(carriedRelease));
@@ -47260,7 +47856,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         // A follower plays frames back DELAY behind their arrival; a frame's events replay once playback reaches it.
         const reach = () => sync.update(BL.npcSync.DELAY + 0.05);
         sync = BL.npcSync.create(options); sync.update(0.3); reach();
-        const rejected = sync.frames === 0 && plans === 0 && crew.list.every(c => !c.puppet);
+        const rejected = sync.frames === 0 && plans === 0 && sync.incompatible && crew.list.every(c => c.puppet);
         sync.dispose();
         crew.workSites = [{ mouth: { id: "c11" } }, { mouth: { id: "c10" } }];
         sync = BL.npcSync.create(options); sync.update(0.3);
@@ -47269,7 +47865,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const accepted = waiting && sync.frames === 1 && plans === 1 && oldest.puppet;
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
-        const cleared = sync.frames === 1 && plans === 1 && crew.list.every(c => !c.puppet);
+        const cleared = sync.frames === 1 && plans === 1 && sync.incompatible && crew.list.every(c => c.puppet);
         BL.net.npcFrame = matchingFrame; BL.net.state.npcVersion++;
         sync.update(0.3); reach();
         const resumed = sync.frames === 2 && plans === 2 && oldest.puppet;
@@ -47278,7 +47874,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const releasedHost = sync.frames === 2 && plans === 2 && crew.list.every(c => !c.puppet);
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
-        const rejectedHost = sync.frames === 2 && plans === 2 && crew.list.every(c => !c.puppet);
+        const rejectedHost = sync.frames === 2 && plans === 2 && sync.incompatible && crew.list.every(c => c.puppet);
         // A cached host frame still contains the old sleeping poses when an
         // owner arrives. Local control and remote ownership must win immediately.
         sync.dispose();
@@ -47294,7 +47890,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         const remote = !next.puppet && next.remoteControlled && !next.root.visible && next.state === "away" && !next.bedroll;
         sync.dispose(); crew.release();
         next.override = nextOverride; next.remoteControlled = false; crew.refreshStates(true);
-        record("NPC sync: matching site order accepts poses and events; incompatible catalogs and host changes release stale poses",
+        record("NPC sync: matching site order accepts poses and events; incompatible catalogs hold puppets and host changes release stale poses",
           accepted && rejected && cleared && resumed && releasedHost && rejectedHost && owned && remote,
           JSON.stringify({ accepted, rejected, cleared, resumed, releasedHost, rejectedHost, owned, remote }));
         // Regression (#498): an Ooga asleep on this page carries its crew's sleepRotation on the root. An upright
@@ -48235,8 +48831,9 @@ scene("dsb",{label:"wallets door",query:"&interior=free-wallets&weather=clear&ti
   await b.click(self.sx,self.sy);const walked=await walletsUntil(b,"!__ooga.dsb.walletWalk");
   const atFeet=await b.evaluate('(()=>{const D=__ooga.dsb,d=D.wallets.list()[0],a=D.avatar,p=a.root.position;return {state:d.state,off:Math.hypot(d.x-p.x,d.z-p.z),dy:Math.abs(d.y-(p.y-a.baseY))};})()');
   record("Wallets browser: out of VAC 2's door, a real click on the carrying Ooga sets its device down at its feet",!self.inside&&self.pick==="caveman"&&walked&&atFeet.state==="dropped"&&atFeet.off<.6&&atFeet.dy<.05,JSON.stringify({self,atFeet}));
-  // Down the beach in front of the door, a point well below the stoop the Ooga stands on.
-  await b.evaluate('(()=>{const D=__ooga.dsb;D.wallets.cool();D.takeWallet(1);})()');await walletsStep(b,6);
+  // Doorway travel preserves the view. Turn toward the beach before choosing a
+  // visible drop point below the stoop, as a visitor looking down to place it would.
+  await b.evaluate('(()=>{const B=__ooga,D=B.dsb,p=D.avatar.root.position;B.pilot.navigate({position:{x:p.x,y:p.y-D.avatar.baseY,z:p.z},yaw:B.pilot.orbit.yaw+Math.PI,pitch:.45,dist:5});D.wallets.cool();D.takeWallet(1);})()');await walletsStep(b,36);
   const spot=await b.evaluate(`(()=>{const D=__ooga.dsb,p=D.avatar.root.position,feet=p.y-D.avatar.baseY,W=innerWidth,H=innerHeight;
     for(const r of [2.5,3.5,4.5])for(let k=0;k<16;k++){const a=k*Math.PI/8,x=p.x+Math.sin(a)*r,z=p.z+Math.cos(a)*r,y=D.groundAt(x,z),s=__ooga.project(x,y,z,{});
       if(!s||s.x<12||s.x>W-12||s.y<12||s.y>H-12||document.elementFromPoint(s.x,s.y)?.tagName!=="CANVAS"||BL.scenes.dsb.input.pick(s.x,s.y)||feet-y<.4||!D.land.clearAt(x,z,.7))continue;
@@ -48373,7 +48970,9 @@ scene("dsb",{label:"shoreline checkpoint piers",query:"&view=water-pier-west&wea
     record("DSB pier browser "+x+": reverse input returns ashore",back.z<38.2&&back.depth===0,JSON.stringify(back));visits.push({x,end,back});
   }
   const state=await b.evaluate(`(${shorelineState.toString()})()`);
-  record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===136&&state.readbacks===0,JSON.stringify(state));
+  // Island-wide wading changed the extracted coastline: 24 impulses, 41 swash,
+  // 33 contacts, 30 streaks and 5 impact patches, still one fixed pool per visit.
+  record("DSB pier browser: revised sea shader and supported harbor retain healthy WebGL and bounded effects",shorelineHealthy(state)&&state.nodes===133&&state.readbacks===0,JSON.stringify(state));
   b.shorelineHealthy=shorelineHealthy(state)&&output.getStore().results.every(r=>r.ok);b.shorelineSoftware=/SwiftShader|llvmpipe|software/i.test(state.gpu);
   const evidence=join(root,"untracked/water-review");mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,"pier-state.json"),JSON.stringify({visits,state,logs:b.logs},null,2));
 }}]});
@@ -48637,6 +49236,48 @@ const warmDsbRoomResidents = async b => {
   record("DSB room residency: the finite rescue batches, muzzle flash and banana warm once without changing visibility, counts or instance storage",
     r.batches === r.expected && r.geometries === r.expected + 2 && r.prepared && r.idempotent && r.unchanged, JSON.stringify(r));
 };
+const dsbDoorHandoff = { name: "dsb door handoff", why: "regression: building fades reset pitch, zoom and held movement", run: async b => {
+  await b.evaluate(doorCameraTrace);
+  const rows = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, I = B.dsb.interiors, d = I.registry.get("meme-factory"), rows = [];
+    const step = () => { BL.scenes.dsb.update(1 / 60, 0); __doorCameraTrace.sample(B.camera, I.fade, I.active?.id || "exterior"); };
+    const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "s", code: "KeyS", bubbles: true }));
+    for (const view of ["orbit", "first-person"]) for (const release of [false, true]) {
+      if (P.aiming) P.modeAction("mode-toggle");
+      if (view === "first-person") P.enterClose(); else P.exitClose();
+      for (const inside of [true, false]) {
+        const point = inside ? d.entry : I.active.room.exit;
+        P.navigate({ position: point, yaw: inside ? d.building.yaw : Math.PI, pitch: 0.22, dist: 7 });
+        for (let i = 0; i < 30; i++) step();
+        const saved = P.viewState();
+        __doorCameraTrace.reset();
+        const accepted = I.request(point);
+        key(true); P.controls.reset(); if (release) key(false);
+        for (let i = 0; i < 30 && I.transitioning; i++) step();
+        const got = P.viewState(), axes = { ...P.controls.read() };
+        const cameraInside = () => {
+          if (!I.active) return true;
+          const p = B.camera.position, b = I.active.room.bounds;
+          return p.x >= b.minX + .2 - 1e-6 && p.x <= b.maxX - .2 + 1e-6
+            && p.z >= b.minZ + .2 - 1e-6 && p.z <= b.maxZ - .2 + 1e-6
+            && p.y >= I.active.room.groundAt(p.x, p.z) + .74 - 1e-6 && p.y <= I.active.room.ceiling - .7 + 1e-6;
+        };
+        let contained = cameraInside();
+        for (let i = 0; i < 30; i++) { step(); contained = cameraInside() && contained; }
+        key(false);
+        rows.push({ contained, camera: __doorCameraTrace.result(), view, release, inside, accepted, active: !!I.active, saved, got, y: axes.y });
+      }
+    }
+    return rows;
+  })()`);
+  record("DSB doors: camera settles behind the black fade with no visible arrival sweep",
+    rows.every(r => r.camera.frames > 30 && r.camera.yaw < 0.12 && r.camera.pitch < 0.12 && r.camera.eye < 0.75), JSON.stringify(rows.map(r => ({ view: r.view, inside: r.inside, ...r.camera }))));
+  record("DSB doors: restored first-person and orbit eyes stay inside the room after handoff, at rest and walking",
+    rows.every(r => r.contained), JSON.stringify(rows));
+  record("DSB doors: entry and exit preserve first-person/orbit pitch and zoom, resume held S, and do not revive released keys",
+    rows.every(r => r.accepted && r.active === r.inside && r.got.view === r.saved.view && Math.abs(r.got.pitch - r.saved.pitch) < 0.01
+      && Math.abs(r.got.distance - r.saved.distance) < 0.01 && r.y === (r.release ? 0 : -1)), JSON.stringify(rows));
+} };
 const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a real door isolates its room and returns the same player to current exterior weather without accumulating resources", run: async b => {
   const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
   const tap=async()=>{
@@ -48686,6 +49327,7 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
   await b.evaluate('delete window.__interiorCheck');
   record("DSB interior: runtime console remains clean",b.logs.length===0,b.logs.join(" | "));
 }};
+scene("dsb",{label:"door handoff",query:"&view=meme-factory",opts:{motion:true},steps:[dsbDoorHandoff]});
 scene("dsb",{label:"interior checkpoint",query:"&view=meme-factory&weather=storm&time=1200",steps:[dsbInteriorCheckpoint]});
 scene("dsb",{label:"interior checkpoint phone",query:"&view=meme-factory&weather=storm&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbInteriorCheckpoint]});
 
@@ -48936,8 +49578,13 @@ function inspectDSBIslandPage() {
       accessible++;if(w<.99)errors.push(i+" access");
       const sx=x+near.nx*7,sz=z+near.nz*7;
       if(L.heightAt(sx,sz)>=C.LEVEL)errors.push(i+" dry shelf");
-      const px=x+near.nx*8,pz=z+near.nz*8,dx=x+near.nx*23,dz=z+near.nz*23;
-      if(!L.walkable(px,pz,dx,dz,L.heightAt(px,pz),D.avatar.bodyHeight,D.avatar))stops++;
+      const px=x+near.nx*8,pz=z+near.nz*8;
+      // Concave stretches have a wider shelf: locate actual water deeper than
+      // this Ooga can wade, rather than assuming every coast reaches it at 23 m.
+      let distance=8;
+      while(distance<50&&C.LEVEL-L.heightAt(x+near.nx*distance,z+near.nz*distance)<=C.maxDepth(D.avatar))distance++;
+      const dx=x+near.nx*distance,dz=z+near.nz*distance;
+      if(distance<50&&!L.walkable(px,pz,dx,dz,L.heightAt(px,pz),D.avatar.bodyHeight,D.avatar))stops++;
       else errors.push(i+" deep");
     }
   }
@@ -49015,6 +49662,749 @@ const dsbIntegrationCheckpoint={name:"dsb integration checkpoint",why:"contract:
 scene("dsb",{label:"integration checkpoint",query:"&weather=clear&time=1200",steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 scene("dsb",{label:"integration checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbIslandShorelineStep,dsbIntegrationCheckpoint]});
 
+// Explicit account/API fixtures exercise the real hosted wardrobe and model consumers. They are not live
+// staging authentication or a substitute for two different signed-in people observing the actual Room.
+const equipmentAppChecks = async () => {
+  const { equipmentHats, equipmentHatArchive } = await import("../worker/src/equipment-hats.js");
+  const { equipmentWardrobe } = await import("../worker/src/equipment-wardrobe.js");
+  const temporary = mkdtempSync(join(tmpdir(), "equipment-app-")), staged = join(temporary, "site");
+  const build = spawnSync(process.execPath, [join(root, "scripts/site.mjs"), staged, "--audio-assets", "--image-assets", "--worker-page", "--page-assets"], {
+    cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: "", CHARACTER_CATALOG_ENGINE: "", CHARACTER_CATALOG_ENVIRONMENT: "" }
+  });
+  if (build.status !== 0) { rmSync(temporary, { recursive: true, force: true }); throw new Error("Equipment acceptance build failed: " + build.stderr); }
+  const item = equipmentHats.items[0], helmetItem = equipmentHats.items.find(row => row.id === "johnstackton21m-helmet");
+  const helmet = { item: helmetItem.id, version: helmetItem.current }, archives = new Map(), archiveReads = [], writes = [];
+  const shots = join(root, "untracked", "equipment"), network = { accounts: 0, equipment: 0, saves: 0, archives: 0 };
+  for (const entry of equipmentHats.items) for (const version of entry.versions) {
+    const text = equipmentHatArchive(version), archive = JSON.parse(text); archives.set(version, text);
+    if (archive.format === 2) archives.set(archive.content, equipmentHatArchive(archive.content));
+  }
+  const fullContent = (archive) => archive.format === 1 ? equipmentHats.contentOf(archive) : JSON.parse(archives.get(archive.content));
+  const variant = (color) => {
+    const archive = JSON.parse(archives.get(item.current)), content = fullContent(archive);
+    for (const node of content.nodes) for (const face of node.geometry.faces) face.color = color;
+    if (archive.format === 2) {
+      const text = equipmentHats.encode(content), hash = createHash("sha256").update(text).digest("hex");
+      archives.set(hash, text); archive.content = hash;
+    }
+    equipmentHats.validate(archive, item.id);
+    const json = equipmentHats.encode(archive), version = createHash("sha256").update(json).digest("hex");
+    archives.set(version, json); return version;
+  };
+  const second = variant([35, 190, 90]), third = variant([190, 45, 170]);
+  const retryVersion = variant([90, 130, 210]), cancelledVersion = variant([210, 130, 90]), pendingVersion = variant([130, 210, 90]);
+  // Publish a bounded catalog fixture through the same generated-register boundary as a reviewed build.
+  // Geometry/revision bytes still use the real validators, hashes, HTTP loader, UI and account save path.
+  const fixtureItems = [], fixtureRevisions = {}, fixtureCurrent = new Map();
+  const immutable = (value) => {
+    const text = equipmentHats.encode(value), version = createHash("sha256").update(text).digest("hex");
+    archives.set(version, text); return version;
+  };
+  const content = (color) => {
+    const value = fullContent(JSON.parse(archives.get(item.current)));
+    if (color) for (const node of value.nodes) for (const face of node.geometry.faces) face.color = color;
+    equipmentHats.validateContent(value); return immutable(value);
+  };
+  const originalContent = content(), blueContent = content([40, 100, 210]);
+  const published = (id, hash, parent) => {
+    const archive = { format: 2, item: id, content: hash, profile: equipmentHats.get(item.id).profile, parent };
+    equipmentHats.validate(archive, id);
+    const version = immutable(archive);
+    fixtureRevisions[version] = { item: id, content: hash, profile: archive.profile, parent };
+    return { item: id, version };
+  };
+  const fixtureItem = (id, label, creator, hash, parent) => {
+    const selection = published(id, hash, parent);
+    fixtureItems.push({ id, label, creator, current: selection.version, versions: [selection.version], parent });
+    fixtureCurrent.set(id, selection.version); return selection;
+  };
+  const duplicate = fixtureItem("equipment-copy", "Shared straw hat", "HatCopy", originalContent, { item: item.id, version: item.current });
+  const fork = fixtureItem("equipment-blue", "Blue straw hat", "HatBlue", blueContent, { item: item.id, version: item.current });
+  const forkCopy = fixtureItem("equipment-blue-copy", "Shared blue hat", "HatBlueCopy", blueContent, { item: item.id, version: item.current });
+  const nested = fixtureItem("equipment-purple", "Purple straw hat", "HatPurple", content([170, 60, 190]), fork);
+  const forkSecond = published(fork.item, content([45, 170, 190]), { item: item.id, version: item.current });
+  const forkThird = published(fork.item, content([220, 100, 40]), { item: item.id, version: item.current });
+  const mainFile = readdirSync(join(staged, "js")).find(name => /^main-[a-f0-9]+\.js$/.test(name));
+  const mainPath = join(staged, "js", mainFile), main = readFileSync(mainPath, "utf8"), registry = "globalThis.BL.equipmentHats.register(";
+  if (!main.includes(registry)) throw new Error("Equipment fixture registry boundary is missing");
+  const augment = `(() => {const hats=globalThis.BL.equipmentHats,register=hats.register;
+    hats.register=(rows,revisions)=>register([...rows,...${JSON.stringify(fixtureItems)}],{...revisions,...${JSON.stringify(Object.fromEntries(fixtureItems.map(row => [row.current, fixtureRevisions[row.current]])))}});})();\n`;
+  writeFileSync(mainPath, main.replace(registry, augment + registry));
+  let current = item.current, saved = { selection: null, size: 100, revision: 0, declined: null, update: null, wardrobe: null };
+  let heldArchive = null, archiveGate = null, releaseArchive = null;
+  const account = { id: 71, login: "equipment-preview", display: "Equipment preview" }, at = Math.floor(Date.now() / 1000) - 3600;
+  const answer = () => {
+    const latest = saved.selection?.item === item.id ? current : fixtureCurrent.get(saved.selection?.item);
+    return { ...saved, update: latest && saved.selection.version !== latest && saved.declined !== latest
+      ? { item: saved.selection.item, version: latest } : null };
+  };
+  const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
+  const server = createServer(async (req, res) => {
+    const path = new URL(req.url, "http://localhost").pathname;
+    const json = (status, value) => { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify(value)); };
+    if (path === "/api/me") { network.accounts++; return json(200, { player: account, equipment: true, donations: false, tess: false,
+      character: { handle: account.login, joined: at, lastCommit: at } }); }
+    if (path === "/api/equipment") {
+      if (req.method === "GET") { network.equipment++; return json(200, { equipment: answer() }); }
+      network.saves++;
+      let body = ""; for await (const chunk of req) body += chunk;
+      const command = JSON.parse(body); writes.push(command);
+      if (command.revision !== saved.revision) return json(409, { error: "conflict", equipment: answer() });
+      saved = { selection: Object.hasOwn(command, "selection") ? command.selection : saved.selection,
+        size: command.size ?? saved.size, revision: saved.revision + 1, declined: command.decline || null, update: null,
+        wardrobe: Object.hasOwn(command, "wardrobe") ? command.wardrobe : saved.wardrobe ?? null };
+      return json(200, { equipment: answer() });
+    }
+    const version = /^\/api\/equipment\/hats\/([a-f0-9]{64})\.json$/.exec(path)?.[1];
+    if (version) {
+      network.archives++;
+      archiveReads.push(version);
+      if (!archives.has(version)) return json(404, { error: "not found" });
+      if (version === heldArchive) await archiveGate;
+      res.writeHead(200, { "content-type": "application/json" }); res.end(archives.get(version)); return;
+    }
+    const file = resolve(staged, `.${path === "/" ? "/index.html" : path}`);
+    let body = null;
+    if (file.startsWith(staged + sep)) try { body = readFileSync(file); } catch { /* fixture 404 */ }
+    res.writeHead(body ? 200 : 404, { "content-type": types[extname(file)] || "application/octet-stream" }); res.end(body || "");
+  });
+  await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const address = `${origin}/?debug=1&scene=studio&character=${account.login}&hour=12&day=80&welcome=0&pos=0`;
+  let b;
+  const wait = async (expression, reason, ms = 15000) => {
+    const deadline = Date.now() + ms;
+    while (!await b.evaluate(expression).catch(() => false)) {
+      if (Date.now() > deadline) throw new Error(reason + ": " + b.logs.join(" | "));
+      await b.sleep(30);
+    }
+  };
+  const open = async (options = {}) => {
+    b = await launch(options);
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const actual = window.fetch.bind(window); window.__equipmentFixture = { sockets: [], sent: [], archives: [], failures: {} };
+      window.fetch = (input, options) => {
+        const url = new URL(typeof input === "string" ? input : input.url, location.href);
+        if (url.pathname.startsWith('/api/equipment/hats/')) {
+          __equipmentFixture.archives.push(url.pathname);
+          if (__equipmentFixture.failures[url.pathname] > 0) {
+            __equipmentFixture.failures[url.pathname]--;
+            return Promise.reject(new TypeError('Fixture connection temporarily unavailable'));
+          }
+        }
+        if (url.origin === location.origin && (!url.pathname.startsWith("/api/") || url.pathname === "/api/me" || url.pathname.startsWith("/api/equipment"))) return actual(input, options);
+        return Promise.resolve(Response.json({}));
+      };
+      window.WebSocket = class extends EventTarget {
+        static CONNECTING=0;static OPEN=1;static CLOSING=2;static CLOSED=3;
+        constructor(url) { super(); this.url=String(url);this.readyState=1;__equipmentFixture.sockets.push(this);
+          queueMicrotask(()=>{this.onopen?.();if(this.url.includes('/room'))this.onmessage?.({data:JSON.stringify({t:'welcome',you:{id:71},players:[],now:Date.now(),features:['equipment-v1']})});}); }
+        send(data) { __equipmentFixture.sent.push(data); }
+        close() { this.readyState=3; }
+      };
+    })();` });
+    await b.open(address); await untilReady(b, 30000);
+    await wait("BL.equipment?.state.supported && BL.net.ownCharacter()?.handle==='equipment-preview' && !!document.getElementById('studio-hat')", "Hosted wardrobe did not initialize");
+  };
+  const choose = async (value, slot = "hat") => b.evaluate(`(() => {
+    const value=${JSON.stringify(value)}, slot=${JSON.stringify(slot)}, selection=slot==='hat'&&value.includes('@')?{item:value.split('@')[0],version:value.split('@')[1]}:null;
+    const choice=selection?BL.equipmentHats.choiceFor(selection):null, host={skin:'body',hairColor:'hair',eyeColor:'eyes'}[slot]||slot, tile=document.querySelector('.studio-tile[data-slot="'+host+'"]'), select=document.querySelector('.studio-editor[data-slot="'+slot+'"] select');
+    const option=[...select.options].find(o=>choice?o.dataset.hatKey===choice.key:o.dataset.value===value);
+    if(!option)throw new Error('Choice is missing: '+slot+' '+value);
+    if(tile.getAttribute('aria-pressed')!=='true')tile.click();select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
+  const chosen = (slot = "hat") => `document.querySelector('.studio-editor[data-slot="${slot}"] select').selectedOptions[0]`;
+  const resize = async (size) => {
+    await b.evaluate(`(() => { const input=document.getElementById('studio-hat-size');input.value=${size};input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+    await wait(`BL.characterEquipment.size(__ooga.studio.cave)===${size}`, "Hat size preview did not apply");
+  };
+  const wearing = (selection) => `JSON.stringify(BL.characterEquipment.selection(__ooga.studio.cave))===${JSON.stringify(JSON.stringify(selection))}`;
+  const save = async (selection) => {
+    const previous = saved.revision;
+    await b.evaluate("document.getElementById('studio-hat-save').click()");
+    await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${previous + 1}`, "Wardrobe save did not complete");
+    await wait(wearing(selection), "Saved appearance was not applied");
+  };
+  try {
+    await open({ w: 1000, h: 760 });
+    const groups = await b.evaluate(`(() => {
+      const hats=BL.equipmentHats,original=hats.choiceFor({item:${JSON.stringify(item.id)},version:${JSON.stringify(item.current)}}),
+        copy=hats.choiceFor(${JSON.stringify(duplicate)}),fork=hats.choiceFor(${JSON.stringify(fork)}),child=hats.choiceFor(${JSON.stringify(nested)});
+      const options=[...document.getElementById('studio-hat-choices').options],row=options.find(o=>o.dataset.hatKey===original.key),
+        variant=options.find(o=>o.dataset.hatKey===fork.key),nested=options.find(o=>o.dataset.hatKey===child.key);
+      const depth=(o)=>o.textContent.indexOf('\u21b3');
+      return {shared:original.key===copy.key,one:options.filter(o=>o.dataset.hatKey===original.key).length===1,
+        credits:row.title.includes('HatCopy')&&row.title.includes(BL.characters.get(${JSON.stringify(item.creator)})?.display||${JSON.stringify(item.creator)}),
+        indented:depth(row)===-1&&depth(variant)>-1,nested:depth(nested)>depth(variant),
+        oneEditor:[...document.querySelectorAll('.studio-editors > .studio-editor')].filter(e=>!e.hidden).length===1&&document.querySelectorAll('.studio-tile[aria-pressed=true]').length===1};
+    })()`);
+    record("equipment catalog: identical hats share one credited choice, edited forks list indented under it, and one tile's editor shows at a time", Object.values(groups).every(Boolean), JSON.stringify(groups));
+    const toggles = await b.evaluate(`(() => { const tile=(id)=>document.querySelector('.studio-tile[data-slot='+id+']'), open=()=>[...document.querySelectorAll('.studio-editors > .studio-editor')].filter(e=>!e.hidden).map(e=>e.dataset.slot).join();
+      if(tile('hat').getAttribute('aria-pressed')!=='true')tile('hat').click(); const first=open();
+      tile('shirt').click(); const switched=open(); tile('shirt').click(); const closed=open(), box=document.getElementById('studio-editors').hidden;
+      return first==='hat'&&switched==='shirt'&&closed===''&&box&&!document.querySelector('.studio-tile[aria-pressed=true]'); })()`);
+    record("equipment wardrobe: one section opens at a time, another closes the first, and the open one closes again", toggles);
+    await b.evaluate("document.querySelector('.studio-tile[data-slot=hair]').click();document.getElementById('studio-hat').focus()");
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+    await wait("document.getElementById('studio-hat').getAttribute('aria-pressed')==='true' && !document.getElementById('studio-editor-hat').hidden && document.getElementById('studio-editor-hair').hidden", "Keyboard did not choose the hat's tile");
+    await choose(`${fork.item}@${fork.version}`);
+    await wait(wearing(fork), "The dropdown did not preview the full immutable fork");
+    record("equipment catalog: the hat's tile (its name alone) opens its editor from the keyboard and its dropdown previews a full immutable variant without saving", writes.length === 0
+      && archiveReads.includes(fork.version) && archiveReads.includes(blueContent)
+      && await b.evaluate(`${chosen()}.dataset.hatKey===BL.equipmentHats.choiceFor(${JSON.stringify(fork)}).key && document.getElementById('studio-hat').textContent.trim()==='Hat' && document.getElementById('studio-hat-choices').selectedOptions[0].textContent.length>0`));
+    await b.evaluate("window.__equipmentCave=__ooga.studio.cave;window.__equipmentRoot=__ooga.studio.cave.root");
+    let previews = 0;
+    for (const entry of equipmentHats.items) {
+      const selection = { item: entry.id, version: entry.current };
+      await choose(`${entry.id}@${entry.current}`); await wait(wearing(selection), "Hat preview did not appear"); previews++;
+    }
+    record("equipment studio: every registered hat previews on the same wearer without saving or opening a Room socket", previews === equipmentHats.items.length && writes.length === 0
+      && await b.evaluate("__ooga.studio.cave===__equipmentCave && __ooga.studio.cave.root===__equipmentRoot && !__equipmentFixture.sockets.some(s=>s.url.includes('/room'))"));
+    const first = { item: item.id, version: item.current };
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "Straw hat preview did not appear");
+    await b.evaluate("window.__sizedHat=__ooga.studio.cave.equipmentHatNode");
+    await resize(120);
+    const previewSize = await b.evaluate("__ooga.studio.cave.equipmentHatNode===__sizedHat && document.getElementById('studio-hat-size-value').textContent.includes('120')");
+    await b.evaluate("document.getElementById('studio-hat-size-reset').click()");
+    await wait("BL.characterEquipment.size(__ooga.studio.cave)===100", "Reset did not restore the fitted size");
+    record("equipment studio: size and Reset preview in place without saving or changing the catalog version", previewSize && writes.length === 0
+      && await b.evaluate("__ooga.studio.cave.equipmentHatNode===__sizedHat && document.getElementById('studio-hat-size').value==='100'"));
+    await resize(110); await save(first);
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(first), "Reload lost the saved hat");
+    record("equipment studio: the real save control persists its immutable version and personal size across a new page", saved.revision === 1 && saved.selection.version === item.current && saved.size === 110
+      && await b.evaluate("!document.getElementById('studio-hat-save').disabled && BL.equipment.state.record.revision===1 && BL.characterEquipment.size(__ooga.studio.cave)===110 && document.getElementById('studio-hat-size').value==='110'"));
+    current = second;
+    await b.evaluate("BL.equipment.refresh()");
+    await wait("!document.getElementById('equipment-update').hidden", "Creator update was not offered");
+    record("equipment creator update: a newer immutable version offers a choice without replacing the worn geometry", await b.evaluate(wearing(first)) && saved.selection.version === item.current);
+    heldArchive = second; archiveGate = new Promise(resolve => { releaseArchive = resolve; });
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    await wait(`__equipmentFixture.archives.includes('/api/equipment/hats/${second}.json')`, "Accept did not start loading the offered archive");
+    await b.evaluate("document.getElementById('equipment-decline').click()");
+    await wait("!BL.equipment.state.busy && document.getElementById('equipment-update').hidden", "Keep my version did not complete");
+    releaseArchive(); heldArchive = null;
+    await wait(`BL.equipmentHats.loaded(${JSON.stringify(item.id)},${JSON.stringify(second)})`, "Delayed archive did not finish loading");
+    record("equipment creator update: a slow Accept cannot overwrite a later Keep choice", saved.selection.version === item.current && saved.declined === second && saved.size === 110
+      && writes.at(-1).decline === second && await b.evaluate(wearing(first)));
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(first), "Declined version did not survive reload");
+    record("equipment creator update: Keep retains the previous version and size and suppresses that offer after reload", saved.selection.version === item.current && saved.declined === second && saved.size === 110
+      && await b.evaluate("document.getElementById('equipment-update').hidden && BL.characterEquipment.size(__ooga.studio.cave)===110"));
+    current = third;
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "A later update was incorrectly suppressed");
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    const accepted = { item: item.id, version: third };
+    await wait(`!BL.equipment.state.busy && BL.equipment.state.record.selection?.version===${JSON.stringify(third)}`, "Accept did not save the offered version");
+    await wait(wearing(accepted), "Accepted version did not reach the existing wearer");
+    record("equipment creator update: Accept saves the new immutable version while retaining personal size", saved.selection.version === third && saved.declined === null && saved.size === 110
+      && archiveReads.includes(third) && writes.at(-1).selection.version === third && await b.evaluate("document.getElementById('equipment-update').hidden && BL.characterEquipment.size(__ooga.studio.cave)===110"));
+    mkdirSync(shots, { recursive: true }); await b.screenshot(join(shots, "studio.png"));
+    const live = await b.evaluate(`(() => {
+      const own=BL.models.caveman(BL.contributors.traitsFor('equipment-preview'));
+      const peer=BL.models.caveman(BL.contributors.traitsFor('equipment-peer'));
+      const originals=[own,peer].map(c=>({root:c.root,parts:c.parts,arm:c.parts.armR,head:c.parts.head,body:c.parts.torso.geometry}));
+      own.root.position.x=3;peer.root.position.z=7;peer.parts.armR.rotation.x=.6;
+      const oldSelection=${JSON.stringify(first)},newSelection=${JSON.stringify(accepted)};
+      BL.equipment.applyLocal(own);
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:1,selection:oldSelection}]});
+      BL.equipment.applyRemote(peer,72);
+      const oldNode=peer.equipmentHatNode,oldGeometry=oldNode.children[0].geometry,legacy=BL.characterEquipment.size(peer)===100;
+      BL.equipment.receive({t:'equipment',id:72,revision:2,selection:oldSelection,size:80});BL.equipment.applyRemote(peer,72);
+      const resized=peer.equipmentHatNode===oldNode&&BL.characterEquipment.size(peer)===80&&BL.characterEquipment.size(own)===110;
+      BL.equipment.receive({t:'equipment',id:72,revision:3,selection:newSelection,size:120});BL.equipment.applyRemote(peer,72);
+      const node=peer.equipmentHatNode,geometry=node.children[0].geometry,childCount=peer.parts.head.children.length;
+      const changed=geometry!==oldGeometry&&JSON.stringify(geometry.faces[0].color)!==JSON.stringify(oldGeometry.faces[0].color);
+      for(let i=0;i<20;i++)BL.equipment.applyRemote(peer,72);
+      const reused=peer.equipmentHatNode===node&&peer.parts.head.children.length===childCount&&own.equipmentHatNode.children[0].geometry===geometry;
+      BL.equipment.receive({t:'equipment',id:72,revision:1,selection:{item:'none',version:null},size:80});BL.equipment.applyRemote(peer,72);
+      BL.equipment.receive({t:'equipment',id:72,revision:4,selection:newSelection,size:1000});BL.equipment.applyRemote(peer,72);
+      const stale=BL.characterEquipment.selection(peer).version===newSelection.version&&BL.characterEquipment.size(peer)===120;
+      BL.equipment.receive({t:'equipment',kind:'remove',ids:[72]});BL.equipment.applyRemote(peer,72);
+      const removed=BL.characterEquipment.selection(peer)===null;
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:3,selection:newSelection,size:120}]});BL.equipment.applyRemote(peer,72);
+      const arrived=BL.characterEquipment.selection(peer).version===newSelection.version&&BL.characterEquipment.size(peer)===120;
+      const retained=[own,peer].every((c,i)=>c.root===originals[i].root&&c.parts===originals[i].parts&&c.parts.armR===originals[i].arm
+        &&c.parts.head===originals[i].head&&c.parts.torso.geometry===originals[i].body)&&own.root.position.x===3&&peer.root.position.z===7&&peer.parts.armR.rotation.x===.6;
+      BL.equipment.clear(own);BL.equipment.clear(peer);
+      return {changed,reused,resized,legacy,stale,removed,arrived,retained,clean:!own.equipmentHatNode&&!peer.equipmentHatNode};
+    })()`);
+    record("equipment live messages: size-only updates reuse the attachment, old messages default to fitted size and stale or invalid updates are ignored", live.resized&&live.legacy&&live.stale, JSON.stringify(live));
+    record("equipment live messages: own and remote bodies retain pose and gameplay nodes and share immutable geometry", live.changed&&live.reused&&live.retained, JSON.stringify(live));
+    record("equipment live messages: leaving visibility clears borrowed geometry and a fresh arrival snapshot restores the saved version", live.removed&&live.arrived&&live.clean, JSON.stringify(live));
+    // The wardrobe beside the hat: a slot's dropdown previews its piece on the same body, Save sends the whole look with
+    // the hat, a new page brings it back, and another player's message dresses their body and leaving undresses it.
+    const piece = (slot, n = 0) => { const row = equipmentWardrobe.slotItems(slot)[n]; return { item: row.id, version: row.version }; };
+    const look = { shirt: piece("shirt", 2), weapon: piece("weapon", 2), shoes: { item: "none", version: null } };
+    const dressed = (who, value) => `BL.characterWardrobe.wearing(${who}).startsWith(${JSON.stringify(equipmentWardrobe.key(value))}+"|")`;
+    await b.evaluate("window.__wardrobeBody=__ooga.studio.cave.root;window.__wardrobeTorso=__ooga.studio.cave.parts.torso.geometry");
+    const beforeLook = writes.length;
+    await choose(look.shirt.version, "shirt"); await choose(look.weapon.version, "weapon"); await choose("none", "shoes");
+    await wait(dressed("__ooga.studio.cave", look), "Wardrobe preview did not dress the studio's Ooga");
+    record("equipment wardrobe: each slot's dropdown previews its piece on the same body without saving", writes.length === beforeLook
+      && await b.evaluate(`__ooga.studio.cave.root===__wardrobeBody && __ooga.studio.cave.parts.torso.geometry!==__wardrobeTorso
+        && ['shirt','weapon','shoes'].every(s=>document.querySelector('.studio-tile[data-slot="'+s+'"]').hasAttribute('data-changed'))
+        && document.getElementById('studio-slot-shoes').selectedOptions[0].textContent==='Barefoot'
+        && document.getElementById('studio-changes').textContent==='3 changes' && !document.querySelector('.studio-changes').hidden`));
+    await b.evaluate("document.getElementById('studio-discard').click()");
+    await wait("BL.characterWardrobe.wearing(__ooga.studio.cave)===''", "Reset did not put the saved look back on");
+    record("equipment wardrobe: Reset drops every preview and puts the saved look back on without saving", writes.length === beforeLook
+      && await b.evaluate("document.querySelector('.studio-changes').hidden && !document.querySelector('.studio-tile[data-changed]') && __ooga.studio.cave.parts.torso.geometry===__wardrobeTorso"));
+    await choose(look.shirt.version, "shirt"); await choose(look.weapon.version, "weapon"); await choose("none", "shoes");
+    await wait(dressed("__ooga.studio.cave", look), "Wardrobe preview did not come back");
+    // The body: a female build in place, its arms and girth following, and the Ooga's own back with Original.
+    const female = equipmentWardrobe.slotItems("body").find((row) => row.label === "Female");
+    await b.evaluate("window.__ownBody={elbow:__ooga.studio.cave.elbow,arm:__ooga.studio.cave.parts.armR.position.x,root:__ooga.studio.cave.root}");
+    await choose(female.version, "body");
+    await wait("__ooga.studio.cave.armScale===0.86", "The female build did not reach the studio's Ooga");
+    const built = await b.evaluate(`(() => { const cave=__ooga.studio.cave; return cave.root===__ownBody.root && cave.parts.armR.position.x!==__ownBody.arm && !BL.characterWardrobe.supports(cave,'beard')
+      && cave.sleepParts.armRX===cave.parts.armR.position.x && document.getElementById('studio-slot-beard').disabled; })()`);
+    await choose("original", "body");
+    await wait("__ooga.studio.cave.elbow===__ownBody.elbow", "Original did not give the Ooga its own build back");
+    record("equipment wardrobe: the body switches the build in place with its resting arms, a female face takes no beard (its editor says so at once), and Original gives the Ooga's own build back", built
+      && await b.evaluate("__ooga.studio.cave.parts.armR.position.x===__ownBody.arm && __ooga.studio.cave.sleepParts.armRX===__ownBody.arm && __ooga.studio.cave.armScale===1 && !document.getElementById('studio-slot-beard').disabled"));
+    // The height: the slider builds the body at that height on the same feet, its eyes with it, and Original gives its own back.
+    await b.evaluate("window.__ownHeight={h:__ooga.studio.cave.traits.height,feet:__ooga.studio.cave.root.position.y-__ooga.studio.cave.baseY,eye:__ooga.studio.cave.headOffset}");
+    await b.evaluate("(() => { const t=document.querySelector('.studio-tile[data-slot=body]'); if(t.getAttribute('aria-pressed')!=='true')t.click(); const r=document.getElementById('studio-slot-height-range'); r.value='117'; r.dispatchEvent(new Event('change')); })()");
+    await wait("__ooga.studio.cave.traits.height===1.17", "The height did not reach the studio's Ooga");
+    const grown = await b.evaluate(`(() => { const cave=__ooga.studio.cave; return Math.abs(cave.root.position.y-cave.baseY-__ownHeight.feet)<1e-9 && cave.headOffset>__ownHeight.eye
+      && Math.abs(cave.baseY-cave.template.root.position.y)<1e-9 && /^1\\.\\d\\d m$/.test(document.querySelector('#studio-editor-height .studio-colour-name').textContent)
+      && document.querySelector('.studio-tile[data-slot=body]').hasAttribute('data-changed') && !document.querySelector('.studio-tile[data-slot=height]'); })()`);
+    await b.evaluate("document.getElementById('studio-slot-height-reset').click()");
+    await wait("__ooga.studio.cave.traits.height===__ownHeight.h", "Original did not give the Ooga its own height back");
+    record("equipment wardrobe: the height slider in the body's editor builds the Ooga at that height on the same feet, and Original gives its own back", grown
+      && await b.evaluate("__ooga.studio.cave.headOffset===__ownHeight.eye && !BL.equipment.state.busy"));
+    // An Ooga's own colours: a swatch under its part's editor puts the colour on the whole build, a typed hex any colour,
+    // and Original takes it off.
+    const ginger = equipmentWardrobe.slotItems("hairColor").find((row) => row.label === "Ginger");
+    await b.evaluate(`(() => { const t=document.querySelector('.studio-tile[data-slot=hair]'); if(t.getAttribute('aria-pressed')!=='true')t.click();
+      const i=[...document.querySelector('.studio-editor[data-slot=hairColor] select').options].findIndex(o=>o.dataset.value===${JSON.stringify(ginger.version)});
+      document.querySelectorAll('.studio-editor[data-slot=hairColor] .studio-swatch')[i].click(); })()`);
+    await wait("__ooga.studio.cave.template.traits.hair==='#c4622a'", "The hair colour swatch did not dress the Ooga");
+    const toned = await b.evaluate("document.querySelector('.studio-editor[data-slot=hairColor] .studio-swatch[aria-pressed=true]')?.title==='Ginger' && document.querySelector('#studio-editor-hair #studio-editor-hairColor .studio-colour-name').textContent==='Ginger' && !document.querySelector('.studio-tile[data-slot=hairColor]') && document.querySelector('.studio-tile[data-slot=hair]').hasAttribute('data-changed')");
+    await b.evaluate("(() => { const hex=document.getElementById('studio-slot-hairColor-hex'); hex.focus(); hex.value='12AB34'; hex.dispatchEvent(new Event('change')); hex.blur(); })()");
+    await wait("__ooga.studio.cave.template.traits.hair==='#12ab34'", "A typed hex did not dress the Ooga");
+    const mixed = await b.evaluate("document.querySelector('#studio-editor-hairColor .studio-colour-name').textContent==='#12AB34' && document.querySelector('#studio-editor-hairColor .studio-wheel').getAttribute('aria-pressed')==='true'");
+    await choose("original", "hairColor");
+    await wait("__ooga.studio.cave.template.traits.hair!=='#c4622a'", "Original did not give the Ooga its own hair colour back");
+    record("equipment wardrobe: the hair's editor holds its colour, whose swatch or typed hex puts it on the whole build, and Original gives its own back", toned && mixed);
+    const lookRevision = saved.revision;
+    await b.evaluate("document.getElementById('studio-hat-save').click()");
+    await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${lookRevision + 1}`, "Wardrobe save did not complete");
+    record("equipment wardrobe: Save sends the whole look beside the unchanged hat", JSON.stringify(writes.at(-1).wardrobe) === JSON.stringify(look)
+      && writes.at(-1).selection?.version === accepted.version && JSON.stringify(saved.wardrobe) === JSON.stringify(look), JSON.stringify(writes.at(-1)));
+    await b.open(address); await untilReady(b, 30000);
+    await wait(dressed("__ooga.studio.cave", look) + " && " + wearing(accepted), "Reload lost the saved look");
+    record("equipment wardrobe: a new page wears the saved look, hat and all, and shows each row's choice", await b.evaluate(
+      `${chosen("shirt")}.dataset.value===${JSON.stringify(look.shirt.version)} && ${chosen("shoes")}.dataset.value==='none' && !document.querySelector('#studio-slots [data-changed]')`));
+    const peerLook = await b.evaluate(`(async () => {
+      const peer=BL.models.caveman(BL.contributors.traitsFor('equipment-peer')),root=peer.root,torso=peer.parts.torso.geometry,club=peer.parts.club.geometry;
+      const look=${JSON.stringify(look)};
+      BL.equipment.receive({t:'equipment',id:76,revision:1,selection:null,wardrobe:look});
+      BL.equipment.applyRemote(peer,76);
+      const worn=${dressed("peer", look)}&&peer.parts.torso.geometry!==torso&&peer.parts.club.geometry!==club&&peer.root===root,weapon=peer.parts.club.geometry;
+      BL.equipment.receive({t:'equipment',id:76,revision:2,selection:null,wardrobe:{shirt:look.shirt,bogus:look.weapon,weapon:{item:'weapon-unknown',version:'${"0".repeat(64)}'}}});
+      BL.equipment.applyRemote(peer,76);
+      const lenient=${dressed("peer", { shirt: look.shirt })}&&peer.parts.club.geometry!==weapon&&peer.parts.club.geometry.faces.length===club.faces.length;
+      BL.equipment.receive({t:'equipment',kind:'remove',ids:[76]});BL.equipment.applyRemote(peer,76);
+      const gone=BL.characterWardrobe.wearing(peer)===''&&peer.parts.torso.geometry===torso&&peer.parts.club.geometry===club;
+      BL.equipment.clear(peer);
+      return {worn,lenient,gone};
+    })()`);
+    record("equipment wardrobe: a peer's message dresses their body in place, an unknown piece is their own look, and leaving undresses it",
+      Object.values(peerLook).every(Boolean), JSON.stringify(peerLook));
+    const bouquet = equipmentWardrobe.slotItems("weapon").find((row) => row.label === "Bouquet");
+    const borrowed = await b.evaluate(`(() => {
+      const cave=BL.models.caveman(BL.contributors.traitsFor('itsLiran')),plate=cave.parts.club.children[0];
+      const own=!!plate&&plate.visible;
+      BL.characterWardrobe.apply(cave,{weapon:{item:${JSON.stringify(bouquet.id)},version:${JSON.stringify(bouquet.version)}}});
+      const hidden=!plate.visible;
+      BL.characterWardrobe.apply(cave,null);
+      const back=plate.visible;
+      // Builds in a worn wardrobe are kept for the 32 most recently asked for.
+      const t=BL.contributors.traitsFor('equipment-peer'),first=BL.models.templateFor({...t,wardrobeKey:'cap-0'});
+      for(let i=1;i<=32;i++)BL.models.templateFor({...t,wardrobeKey:'cap-'+i});
+      const recent=BL.models.templateFor({...t,wardrobeKey:'cap-32'})===BL.models.templateFor({...t,wardrobeKey:'cap-32'});
+      const evicted=BL.models.templateFor({...t,wardrobeKey:'cap-0'})!==first;
+      // A pet keeps its file's size at any height its Ooga is worn at, and the Pet slot sizes it alone.
+      const bill=BL.models.caveman(BL.contributors.traitsFor('Bitcoin-Bill')),dog=bill.parts.dog,petGeo=dog.geometry,petScale=dog.scale.x;
+      BL.characterWardrobe.apply(bill,{height:{item:'custom',version:null,height:118}});
+      const petKept=dog.geometry===petGeo&&dog.scale.x===petScale&&bill.traits.height===1.18;
+      BL.characterWardrobe.apply(bill,{height:{item:'custom',version:null,height:118},pet:{item:'custom',version:null,size:150}});
+      const petSized=Math.abs(dog.scale.x-petScale*1.5)<1e-9&&dog.geometry===petGeo;
+      BL.characterWardrobe.apply(bill,null);
+      const petBack=dog.scale.x===petScale&&!BL.characterWardrobe.supports(cave,'pet')&&BL.characterWardrobe.supports(bill,'pet');
+      return {own,hidden,back,recent,evicted,petKept,petSized,petBack,noPetTile:!document.querySelector('.studio-tile[data-slot=pet]')};
+    })()`);
+    record("equipment wardrobe: what a character hung on its own club stays off a borrowed weapon, outfit builds are kept to the most recent 32, and a pet keeps its size at any height and takes the Pet slot's alone",
+      Object.values(borrowed).every(Boolean), JSON.stringify(borrowed));
+    await choose("original", "shirt"); await choose("original", "weapon"); await choose("original", "shoes");
+    const clearRevision = saved.revision;
+    await b.evaluate("document.getElementById('studio-hat-save').click()");
+    await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${clearRevision + 1}`, "Clearing the wardrobe did not save");
+    record("equipment wardrobe: a signed-in account row links to the studio on the player's own Ooga from the site's root", await b.evaluate(
+      "(() => { const a=document.getElementById('account-look'), u=new URL(a.href); return !a.hidden && u.pathname==='/' && u.searchParams.get('scene')==='studio' && u.searchParams.get('character')==='equipment-preview'; })()"));
+    record("equipment wardrobe: Original everywhere saves no wardrobe and gives the body its own look back", writes.at(-1).wardrobe === null && saved.wardrobe === null
+      && await b.evaluate("BL.characterWardrobe.wearing(__ooga.studio.cave)===''"));
+    record("equipment studio: ordinary save, reload and creator-update flows have a clean console", b.logs.length === 0, b.logs.join("\n"));
+    const conflictLog = b.logs.length;
+    // Another tab wins the revision before this page saves. The response is authoritative; the fixture never
+    // rewrites the client record or bypasses the actual HTTP/CAS-error path.
+    saved = { selection: { item: "none", version: null }, size: 80, revision: saved.revision + 1, declined: null, update: null };
+    await choose(`${item.id}@${item.current}`); await b.evaluate("document.getElementById('studio-hat-save').click()");
+    await wait("!BL.equipment.state.busy && !!BL.equipment.state.error", "Conflicting save did not report the concurrent change");
+    record("equipment studio: a stale save adopts the authoritative choice and reports the conflict without overwriting it", saved.selection.item === "none"
+      && await b.evaluate(`BL.equipment.state.record.revision===${saved.revision} && BL.equipment.state.record.selection.item==='none' && BL.equipment.state.record.size===80 && /another tab/.test(document.getElementById('studio-hat-status').textContent)`));
+    const conflictLogs = b.logs.slice(conflictLog);
+    record("equipment studio: an intentional HTTP conflict produces only its expected browser resource error", conflictLogs.length <= 1
+      && conflictLogs.every(line=>line === "[log.error] Failed to load resource: the server responded with a status of 409 (Conflict)"), conflictLogs.join("\n"));
+    // The intentional HTTP rejection is checked above. Every later normal flow starts a fresh log window.
+    b.logs.length = 0;
+    await choose("none"); await save({ item: "none", version: null });
+    await choose("authored"); await save(null);
+    record("equipment studio: no hat and original appearance are distinct saved choices with sizing disabled", writes.at(-2).selection.item === "none" && writes.at(-1).selection === null && saved.selection === null
+      && await b.evaluate("document.getElementById('studio-hat-size').disabled && document.getElementById('studio-hat-size-reset').disabled"));
+    // A fresh document avoids the independently recorded Studio leave/input-target defect. This check concerns
+    // the authored attachment's reversible appearance, not that existing scene-transition contract.
+    await b.open(address.replace(`character=${account.login}`, `character=${encodeURIComponent(item.creator)}`));
+    await untilReady(b, 30000);
+    await wait("__ooga.studio.cave.parts.nativeHat?.length>0", "Authored hat fixture has no native attachment");
+    await b.evaluate("window.__nativeHat=__ooga.studio.cave.parts.nativeHat.map(n=>({node:n,visible:n.visible}));window.__nativeBody=__ooga.studio.cave.root");
+    await choose("none"); await wait(wearing({ item: "none", version: null }), "No hat did not apply to the authored hat");
+    const hidden = await b.evaluate("__nativeHat.every(v=>v.node.visible===false) && __ooga.studio.cave.root===__nativeBody");
+    await choose("authored"); await wait(wearing(null), "Original hat did not return");
+    record("equipment studio: no hat hides only the authored attachment and Original restores it without replacing the body", hidden
+      && await b.evaluate("__nativeHat.every(v=>v.node.visible===v.visible) && __ooga.studio.cave.root===__nativeBody && document.getElementById('studio-hat-save').disabled"));
+    await b.open(address.replace(`character=${account.login}`, "character=w-s-bitcoin")); await untilReady(b, 30000);
+    let applePreviews = 0;
+    await b.evaluate("window.__appleCave=__ooga.studio.cave;window.__appleHead=__ooga.studio.cave.headOpen");
+    for (const hat of equipmentHats.items) {
+      const selection = { item: hat.id, version: hat.current };
+      await choose(`${hat.id}@${hat.current}`); await wait(wearing(selection), "The apple fitting did not accept " + hat.id);
+      if (await b.evaluate("__ooga.studio.cave===__appleCave && !!__ooga.studio.cave.equipmentHatNode && document.getElementById('studio-hat-save').disabled")) applePreviews++;
+    }
+    await choose("authored"); await wait(wearing(null), "The apple's original appearance did not return");
+    record("equipment studio: every hat previews on the apple without saving, and Original restores its head", applePreviews === equipmentHats.items.length && saved.selection === null
+      && await b.evaluate("__ooga.studio.state.name==='w-s-bitcoin' && __ooga.studio.cave.headOpen===__appleHead && !__ooga.studio.cave.equipmentHatNode"));
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "The apple straw preview did not return");
+    await b.screenshot(join(shots, "apple-hat.png"));
+    const beforeMinimum = writes.length;
+    await choose(`${helmet.item}@${helmet.version}`); await wait(wearing(helmet), "The apple space helmet did not preview");
+    await b.evaluate("window.__minimumHat=__ooga.studio.cave.equipmentHatNode");
+    await resize(120);
+    await b.evaluate("(() => { const input=document.getElementById('studio-hat-size');input.value='80';input.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await wait("BL.characterEquipment.size(__ooga.studio.cave)===100", "The apple helmet minimum did not apply");
+    record("equipment studio: the apple space helmet has an honest minimum and clamps previews without saving or replacing its attachment", writes.length === beforeMinimum
+      && await b.evaluate("document.getElementById('studio-hat-size').min==='100' && document.getElementById('studio-hat-size').max==='120' && document.getElementById('studio-hat-size').value==='100' && document.getElementById('studio-hat-size-value').textContent.includes('100') && document.getElementById('studio-hat-status').textContent.includes('Minimum hat size for this Ooga: 100%') && __ooga.studio.cave.equipmentHatNode===__minimumHat"));
+    await choose(`${item.id}@${item.current}`); await resize(80);
+    const otherHatMinimum = await b.evaluate("document.getElementById('studio-hat-size').min==='80'");
+    // Change recipient with a fresh document, preserving the existing Studio teardown failure in its own check.
+    await b.open(address); await untilReady(b, 30000);
+    await choose(`${helmet.item}@${helmet.version}`); await resize(80);
+    record("equipment studio: changing the hat or recipient restores the full size range without saving", otherHatMinimum && writes.length === beforeMinimum
+      && await b.evaluate("__ooga.studio.state.name==='equipment-preview' && document.getElementById('studio-hat-size').min==='80' && BL.characterEquipment.size(__ooga.studio.cave)===80"));
+    record("equipment studio: desktop acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
+    b.close(); b = null;
+    await open({ w: 390, h: 844, mobile: true });
+    await b.evaluate("if(document.getElementById('studio-features').dataset.folded==='true')document.querySelector('.studio-features-edge').click()");
+    await wait("document.getElementById('studio-features').dataset.folded!=='true' && document.getElementById('studio-features').getBoundingClientRect().right<=innerWidth+1", "Phone wardrobe did not unfold into view");
+    await choose(`${item.id}@${item.current}`); await wait(wearing(first), "Phone hat did not preview");
+    const fit = await b.evaluate("['studio-hat','studio-hat-size','studio-hat-size-reset','studio-hat-save'].map(id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {id,visible:r.width>0&&r.height>0,left:r.left,right:r.right,top:r.top,bottom:r.bottom};})");
+    record("equipment studio: phone selection and save controls fit the viewport", fit.every(r=>r.visible&&r.left>=0&&r.right<=390&&r.top>=0&&r.bottom<=844), JSON.stringify(fit));
+    await resize(80); await save(first);
+    await b.open(address); await untilReady(b, 30000); await wait("BL.characterEquipment.size(__ooga.studio.cave)===80", "Phone reload lost the personal hat size");
+    record("equipment studio: phone controls save size through the same account API and retain it after reload with a clean console", saved.selection.version === item.current && saved.size === 80 && b.logs.length === 0, b.logs.join("\n"));
+    // An old server/record may still supply an unsafe percentage. Exercise the real response adoption and
+    // controls without silently fixing the fixture's saved value before the wearer presses Save.
+    account.login = "w-s-bitcoin"; account.display = "Apple preview";
+    saved = { selection: helmet, size: 80, revision: saved.revision + 1, declined: null, update: null };
+    const appleAddress = new URL(address); appleAddress.searchParams.set("character", account.login);
+    const beforeLegacy = writes.length;
+    await b.open(appleAddress.href); await untilReady(b, 30000);
+    await wait(wearing(helmet) + " && BL.characterEquipment.size(__ooga.studio.cave)===100", "Legacy apple helmet did not load at its safe size");
+    record("equipment studio: a legacy undersized apple helmet displays and renders the safe size without an automatic write", saved.size === 80 && writes.length === beforeLegacy
+      && await b.evaluate("BL.net.ownCharacter().handle==='w-s-bitcoin' && !document.getElementById('studio-hat-save').disabled && document.getElementById('studio-hat-size').min==='100' && document.getElementById('studio-hat-size').value==='100' && document.getElementById('studio-hat-size-value').textContent.includes('100')"));
+    await save(helmet);
+    await b.open(appleAddress.href); await untilReady(b, 30000);
+    await wait(wearing(helmet) + " && BL.characterEquipment.size(__ooga.studio.cave)===100", "Safe apple helmet size did not survive reload");
+    record("equipment studio: Save persists the displayed safe minimum and reload keeps it", saved.size === 100 && writes.at(-1).size === 100
+      && writes.at(-1).selection.item === helmet.item && await b.evaluate("document.getElementById('studio-hat-size').value==='100'"));
+    await b.screenshot(join(shots, "apple-helmet-minimum.png"));
+    const minimumLive = await b.evaluate(`(() => {
+      const own=BL.models.caveman(BL.contributors.traitsFor('w-s-bitcoin')),peer=BL.models.caveman(BL.contributors.traitsFor('w-s-bitcoin'));
+      const selection=${JSON.stringify(helmet)},render=BL.characterEquipment,roots=[own.root,peer.root],heads=[own.parts.head,peer.parts.head];
+      own.root.position.x=3;peer.root.position.z=7;
+      BL.equipment.applyLocal(own);
+      BL.equipment.receive({t:'equipment',kind:'snapshot',rows:[{id:72,revision:1,selection,size:80}]});BL.equipment.applyRemote(peer,72);
+      const nodes=[own.equipmentHatNode,peer.equipmentHatNode],snapshot=render.size(peer)===100;
+      BL.equipment.receive({t:'equipment',id:71,revision:BL.equipment.state.record.revision+1,selection,size:80});BL.equipment.applyLocal(own);
+      BL.equipment.receive({t:'equipment',id:72,revision:2,selection,size:99});BL.equipment.applyRemote(peer,72);
+      const guarded=render.size(own)===100&&render.size(peer)===100&&own.equipmentHatNode===nodes[0]&&peer.equipmentHatNode===nodes[1];
+      BL.equipment.receive({t:'equipment',id:72,revision:3,selection,size:120});BL.equipment.applyRemote(peer,72);
+      const larger=render.size(peer)===120&&peer.equipmentHatNode===nodes[1];
+      BL.equipment.receive({t:'equipment',id:72,revision:4,selection,size:80});BL.equipment.applyRemote(peer,72);
+      const smaller=render.size(peer)===100&&peer.equipmentHatNode===nodes[1];
+      const retained=own.root===roots[0]&&peer.root===roots[1]&&own.parts.head===heads[0]&&peer.parts.head===heads[1]&&own.root.position.x===3&&peer.root.position.z===7;
+      BL.equipment.clear(own);BL.equipment.clear(peer);
+      return {snapshot,guarded,larger,smaller,retained,clean:!own.equipmentHatNode&&!peer.equipmentHatNode};
+    })()`);
+    record("equipment live messages: legacy own and peer sizes cannot shrink the apple helmet below its safe fit, while larger updates reuse the body and attachment",
+      Object.values(minimumLive).every(Boolean), JSON.stringify(minimumLive));
+    // A real loader rejection used to be cached as a successful application forever. Only the first
+    // two fetches fail here; recovery must install the immutable bytes with no new appearance message.
+    const retryPath = `/api/equipment/hats/${retryVersion}.json`, cancelledPath = `/api/equipment/hats/${cancelledVersion}.json`;
+    await b.evaluate(`(() => {
+      const E=BL.equipment, own=BL.models.caveman(BL.contributors.traitsFor('w-s-bitcoin')),
+        peer=BL.models.caveman(BL.contributors.traitsFor('equipment-peer')),selection={item:${JSON.stringify(item.id)},version:${JSON.stringify(retryVersion)}};
+      __equipmentFixture.failures[${JSON.stringify(retryPath)}]=2;
+      window.__equipmentRetry={own,peer,previous:E.state.record,frames:0,running:true};
+      own.root.position.x=3;peer.root.position.z=7;
+      E.receive({t:'equipment',id:71,revision:E.state.record.revision+1,selection,size:110});
+      // Peer72 above already reached revision4. Use a new identity so this revision1
+      // snapshot exercises loading rather than the client's required stale-row rejection.
+      E.receive({t:'equipment',kind:'snapshot',rows:[{id:75,revision:1,selection,size:90}]});
+      const frame=()=>{if(!__equipmentRetry.running)return;E.applyLocal(own);E.applyRemote(peer,75);__equipmentRetry.frames++;requestAnimationFrame(frame);};frame();
+      for(let i=0;i<200;i++){E.applyLocal(own);E.applyRemote(peer,75);}
+    })()`);
+    try {
+      await wait(`BL.characterEquipment.selection(__equipmentRetry.own)?.version===${JSON.stringify(retryVersion)} && BL.characterEquipment.selection(__equipmentRetry.peer)?.version===${JSON.stringify(retryVersion)}`,
+        "Transient hat failures never recovered without another appearance message", 15000);
+    } catch (error) {
+      const detail = await b.evaluate(`({own:BL.characterEquipment.selection(__equipmentRetry.own),peer:BL.characterEquipment.selection(__equipmentRetry.peer),
+        attempts:__equipmentFixture.archives.filter(path=>path===${JSON.stringify(retryPath)}).length,frames:__equipmentRetry.frames,hidden:document.hidden,
+        loaded:BL.equipmentHats.loaded(${JSON.stringify(item.id)},${JSON.stringify(retryVersion)})})`);
+      throw new Error(error.message + " " + JSON.stringify(detail));
+    }
+    record("equipment downloads: repeated transient failures recover unchanged own and peer choices through shared bounded retries", await b.evaluate(`(() => {
+      const p=__equipmentRetry,render=BL.characterEquipment;p.running=false;
+      const counts=__equipmentFixture.archives.filter(path=>path===${JSON.stringify(retryPath)}).length;
+      const ok=counts===3&&p.frames>1&&render.size(p.own)===110&&render.size(p.peer)===90
+        &&p.own.root.position.x===3&&p.peer.root.position.z===7&&p.own.equipmentHatNode.children[0].geometry===p.peer.equipmentHatNode.children[0].geometry;
+      BL.equipment.clear(p.own);BL.equipment.clear(p.peer);return ok;
+    })()`));
+    await b.evaluate(`(() => {
+      const E=BL.equipment,selection={item:${JSON.stringify(item.id)},version:${JSON.stringify(cancelledVersion)}};
+      __equipmentFixture.failures[${JSON.stringify(cancelledPath)}]=10;
+      __equipmentRetry.cancelled=BL.models.caveman(BL.contributors.traitsFor('equipment-peer'));
+      E.receive({t:'equipment',id:73,revision:1,selection,size:100});E.applyRemote(__equipmentRetry.cancelled,73);
+    })()`);
+    await wait(`__equipmentFixture.archives.filter(path=>path===${JSON.stringify(cancelledPath)}).length===1`, "Cancelled hat fixture did not attempt its first read");
+    await b.evaluate("BL.equipment.receive({t:'equipment',kind:'remove',ids:[73]});BL.equipment.clear(__equipmentRetry.cancelled)");
+    // A successful old in-flight read may still fill the shared immutable cache; it must not
+    // restore a cleared wearer or replace a newer selection captured while that read waited.
+    heldArchive = pendingVersion; archiveGate = new Promise(resolve => { releaseArchive = resolve; });
+    await b.evaluate(`(() => {
+      const E=BL.equipment,selection={item:${JSON.stringify(item.id)},version:${JSON.stringify(pendingVersion)}};
+      E.receive({t:'equipment',id:74,revision:1,selection,size:100});E.applyRemote(__equipmentRetry.cancelled,74);
+    })()`);
+    await wait(`__equipmentFixture.archives.includes('/api/equipment/hats/${pendingVersion}.json')`, "Superseded hat fixture did not start loading");
+    await b.evaluate("BL.equipment.receive({t:'equipment',id:74,revision:2,selection:{item:'none',version:null},size:100});BL.equipment.applyRemote(__equipmentRetry.cancelled,74);BL.equipment.clear(__equipmentRetry.cancelled)");
+    releaseArchive(); heldArchive = null;
+    await wait(`BL.equipmentHats.loaded(${JSON.stringify(item.id)},${JSON.stringify(pendingVersion)})`, "Superseded immutable read did not finish");
+    await b.sleep(1200);
+    record("equipment downloads: removing a wearer cancels retries and late geometry cannot restore cleared or superseded choices", await b.evaluate(`(() => {
+      const E=BL.equipment,p=__equipmentRetry;
+      const ok=__equipmentFixture.archives.filter(path=>path===${JSON.stringify(cancelledPath)}).length===1
+        &&!p.cancelled.equipmentHatNode&&BL.characterEquipment.selection(p.cancelled)===null;
+      E.receive({t:'equipment',kind:'remove',ids:[74,75]});
+      E.receive({t:'equipment',id:71,revision:E.state.record.revision+1,selection:p.previous.selection,size:p.previous.size});
+      E.clear(p.own);E.clear(p.peer);E.clear(p.cancelled);return ok;
+    })()`));
+    record("equipment studio: safe-minimum acceptance has a clean console", b.logs.length === 0, b.logs.join("\n"));
+    // A separately authored identical hat keeps its own update stream when represented by the shared row.
+    account.login = "equipment-preview"; account.display = "Equipment preview";
+    saved = { selection: duplicate, size: 115, revision: saved.revision + 1, declined: null, update: null };
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(duplicate), "Shared hat lost its saved item identity");
+    const beforeAlias = writes.length;
+    await choose(`${item.id}@${item.current}`); await save(duplicate);
+    record("equipment catalog: selecting a deduplicated row keeps the saved creator identity and personal size", writes.length === beforeAlias + 1
+      && writes.at(-1).selection.item === duplicate.item && saved.size === 115 && saved.update === null);
+    // Updating the original must never offer its version to a fork or a copied item's wearer.
+    current = second;
+    await b.evaluate("BL.equipment.refresh()");
+    record("equipment catalog: an original creator update cannot change or notify another item's wearer", await b.evaluate(wearing(duplicate) + " && document.getElementById('equipment-update').hidden"));
+    saved = { selection: fork, size: 90, revision: saved.revision + 1, declined: null, update: null };
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(fork), "Saved fork did not reload");
+    record("equipment catalog: a saved variant reopens on its own choice with its own version and size", await b.evaluate(`${chosen()}.dataset.hatKey===BL.equipmentHats.choiceFor(${JSON.stringify(fork)}).key && BL.characterEquipment.size(__ooga.studio.cave)===90 && document.getElementById('equipment-update').hidden`));
+    fixtureCurrent.set(fork.item, forkSecond.version);
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "Fork update was not offered");
+    await b.evaluate("document.getElementById('equipment-decline').click()");
+    await wait("!BL.equipment.state.busy && document.getElementById('equipment-update').hidden", "Fork Keep did not complete");
+    await b.open(address); await untilReady(b, 30000); await wait(wearing(fork), "Keep lost the fork's old version");
+    record("equipment catalog: Keep pins a fork's prior full version and suppresses its declined update after reconnect", saved.selection.version === fork.version
+      && saved.declined === forkSecond.version && saved.size === 90 && await b.evaluate("document.getElementById('equipment-update').hidden"));
+    fixtureCurrent.set(fork.item, forkThird.version);
+    await b.evaluate("BL.equipment.refresh()"); await wait("!document.getElementById('equipment-update').hidden", "Later fork update was not offered");
+    await b.evaluate("document.getElementById('equipment-accept').click()");
+    await wait(wearing(forkThird) + " && !BL.equipment.state.busy", "Fork Accept did not install its full version");
+    const pin = await b.evaluate(`${chosen()}.dataset.value`);
+    await choose("none");
+    const retainedPin = await b.evaluate(`[...document.getElementById('studio-hat-choices').options].some(o=>o.dataset.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)})`);
+    record("equipment catalog: Accept advances only the fork and its historical saved row remains available while previewing", saved.selection.version === forkThird.version
+      && saved.selection.item === fork.item && saved.declined === null && saved.size === 90 && pin === `${forkThird.item}@${forkThird.version}` && retainedPin);
+    await choose(`${forkThird.item}@${forkThird.version}`); await wait(wearing(forkThird), "Saved historical fork could not be selected again");
+    record("equipment catalog: a restored historical choice shows in its folded row on the phone with Save reachable", await b.evaluate(`(() => {
+      const hat=document.getElementById('studio-hat');
+      const row=hat.getBoundingClientRect(),save=document.getElementById('studio-hat-save');
+      save.scrollIntoView({block:'nearest'});const s=save.getBoundingClientRect();
+      return ${chosen()}.dataset.value===${JSON.stringify(`${forkThird.item}@${forkThird.version}`)}&&document.getElementById('studio-hat-choices').selectedOptions[0].textContent.includes('saved version')
+        &&row.left>=0&&row.right<=innerWidth&&s.top>=0&&s.bottom<=innerHeight;
+    })()`));
+    await b.screenshot(join(shots, "hat-variants-phone.png"));
+    record("equipment catalog: duplicate and fork save/update checks keep a clean console", b.logs.length === 0, b.logs.join("\n"));
+    writeFileSync(join(shots, "acceptance.json"), JSON.stringify({ fixture: true, network, versions: [item.current, second, third], screenshots: ["studio.png", "apple-hat.png", "apple-helmet-minimum.png", "hat-variants-phone.png"] }, null, 2) + "\n");
+  } finally {
+    releaseArchive?.();
+    if (b) b.close(); await dispose(); await new Promise(done=>server.close(done)); rmSync(temporary, { recursive: true, force: true });
+  }
+};
+
+// A real hosted build fetches an independent catalog before any contributor/model consumer initializes. This
+// dedicated check keeps that network boundary active; only unrelated feeds are fixtures, never nosim or net=0.
+const characterCatalogAppChecks = async () => {
+  const { catalogBaseline } = await import("../scripts/character-catalog-build.mjs");
+  const { seedCatalog } = await import("../scripts/character-catalog.mjs");
+  const { safeCharacterSource } = await import("../scripts/character-safety.mjs");
+  const { createPortraitManifest } = await import("../worker/src/character-portraits-format.js");
+  const chatBuild = await import("../scripts/ooga-chat.mjs");
+  const temporary = mkdtempSync(join(tmpdir(), "catalog-app-")), staged = join(temporary, "site"), shots = join(root, "untracked", "character-catalog");
+  const chatSite = join(temporary, "chat");
+  const baseline = "1".repeat(40), engine = "island-character-data-v1", environment = "staging";
+  const build = spawnSync(process.execPath, [join(root, "scripts/site.mjs"), staged, "--audio-assets", "--image-assets", "--worker-page", "--page-assets"], {
+    cwd: root, encoding: "utf8", env: { ...process.env, CHARACTER_CATALOG_BASELINE: baseline, CHARACTER_CATALOG_ENGINE: engine, CHARACTER_CATALOG_ENVIRONMENT: environment }
+  });
+  if (build.status !== 0) { rmSync(temporary, { recursive: true, force: true }); throw new Error("Catalog acceptance site build failed: " + build.stderr); }
+  chatBuild.build(chatSite, { fixtures: true });
+  const sources = catalogBaseline(root).map(({ path, kind, blob }) => ({ path, kind, blob, source: readFileSync(join(root, path), "utf8") }));
+  const at = Math.floor(Date.now() / 1000) - 7200;
+  const snapshot = (hair) => {
+    const source = safeCharacterSource({ handle: "CatalogPreview", joined: at, lastCommit: at, look: { hair, skin: "#a9744c", eyeColor: "#55ffaa", build: "slim" } });
+    const blob = createHash("sha1").update(`blob ${Buffer.byteLength(source)}\0${source}`).digest("hex");
+    return seedCatalog({ environment, engine, baseline, sources: [...sources, { path: "src/characters/CatalogPreview.js", kind: "data", blob, source }] });
+  };
+  let active = snapshot("#22cc88"), generation = 1, hold = true, catalogReads = 0, portraitPng = null, portraits = null, servingChat = false;
+  const portraitReads = [];
+  const pending = [], types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
+  const answer = (res) => { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); res.end(JSON.stringify({ revision: active.digest, generation, catalog: active.catalog })); };
+  const server = createServer((req, res) => {
+    const path = new URL(req.url, "http://localhost").pathname;
+    if (path === "/api/characters/catalog") { catalogReads++; if (hold) pending.push(res); else answer(res); return; }
+    if (path === "/api/chat/public/contributors") {
+      const now = Date.now(), cast = active.catalog.entries.map((entry) => ({ handle: entry.identity.handle, github: entry.identity.github,
+        display: null, joinedAt: (entry.row?.joined || at) * 1000, lastCommitAt: (entry.row?.lastCommit || at) * 1000 }));
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify({ schema: 1, revision: active.digest, catalogRevision: active.digest, catalogGeneration: generation,
+        cast, portraits, sources: { cast: { state: "ok" }, stats: { state: "ok", generatedAt: now } },
+        stats: { meta: { org: "OogaBoogaX", schema_version: 3, generated_at: new Date(now).toISOString() },
+          contributors: [{ login: "CatalogPreview", last_seen_at: new Date(at * 1000).toISOString() }] } })); return;
+    }
+    if (portraits && path === `/api/chat/public/portraits/${active.digest}/${portraits.image}.png`) {
+      portraitReads.push(path); res.writeHead(200, { "content-type": "image/png" }); res.end(portraitPng); return;
+    }
+    const directory = servingChat ? chatSite : staged;
+    const file = resolve(directory, `.${path === "/" ? "/index.html" : path.replace(/^\/chat\//, "/")}`);
+    let body = null;
+    if (file.startsWith(directory + sep)) try { body = readFileSync(file); } catch { /* fixture 404 */ }
+    res.writeHead(body ? 200 : 404, { "content-type": types[extname(file)] || "application/octet-stream" }); res.end(body || "");
+  });
+  await new Promise((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  let b;
+  try {
+    b = await launch({ w: 1000, h: 760 });
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      const actual = window.fetch.bind(window);
+      window.fetch = (input, options) => {
+        const url = new URL(typeof input === "string" ? input : input.url, location.href);
+        if (url.origin === location.origin && !url.pathname.startsWith("/api/") || url.origin === location.origin && url.pathname === "/api/characters/catalog") return actual(input, options);
+        return Promise.resolve(Response.json(url.pathname === "/api/me" ? { player: null, donations: false, tess: false } : {}));
+      };
+      window.WebSocket = class extends EventTarget { static CONNECTING=0;static OPEN=1;static CLOSING=2;static CLOSED=3;readyState=3;send(){}close(){} };
+    })();` });
+    const address = `${origin}/?debug=1&scene=lab&solo=1&character=CatalogPreview&status=chillin&hour=12&day=80&welcome=0&pos=0`;
+    await b.open(address);
+    let deadline = Date.now() + 15000;
+    while (!pending.length && Date.now() < deadline) await b.sleep(20);
+    const before = await b.evaluate("({requested:!!BL.characterCatalog,compiled:!!BL.characters.get('midy-machete'),contributors:!!BL.contributors,scene:!!window.__ooga})");
+    record("character catalog page: a real hosted fetch holds contributor and model consumers behind the embedded registry", pending.length === 1 && before.requested && before.compiled && !before.contributors && !before.scene, JSON.stringify(before));
+    hold = false; for (const reply of pending.splice(0)) answer(reply);
+    await untilReady(b, 30000);
+    const view = await b.evaluate(`(() => { const c = BL.characters.get("CatalogPreview"), traits = BL.contributors.traitsFor("CatalogPreview");
+      return { status: BL.characterCatalog.current.status, revision: BL.characterCatalog.current.revision, roster: BL.characterCatalog.current.roster,
+        hair: c?.look.hair, contributor: BL.contributors.roster.some(row=>row.name==="CatalogPreview"), model: !!BL.models.caveman(traits).root,
+        scene: __ooga.scene, csp: document.querySelector('[http-equiv="Content-Security-Policy"]').content,
+        disabled: new URLSearchParams(location.search).has("nosim") || new URLSearchParams(location.search).get("net")==="0" }; })()`);
+    record("character catalog page: accepted data builds its contributor and real WebGL model under strict same-origin script policy", view.status === "ready" && view.revision === active.digest && /^[a-f0-9]{64}$/.test(view.roster)
+      && view.hair === "#22cc88" && view.contributor && view.model && view.scene === "lab" && !view.disabled
+      && view.csp.includes("script-src 'self'") && !/unsafe-inline|unsafe-eval/.test(view.csp), JSON.stringify(view));
+    mkdirSync(shots, { recursive: true });
+    await b.evaluate(`(() => { const card=document.createElement("div"), canvas=document.createElement("canvas"),title=document.createElement("div");
+      card.style.cssText="position:fixed;z-index:99999;right:20px;top:80px;padding:20px;background:#161b20;border:1px solid #ffd257;color:#ffd257;font:18px system-ui;text-align:center";
+      title.textContent="CatalogPreview · published data fixture"; card.append(title,canvas);document.body.append(card);
+      BL.hud.renderFaceIcon(canvas,BL.models.caveman(BL.contributors.traitsFor("CatalogPreview")),null,240); })()`);
+    await b.screenshot(join(shots, "catalog-preview.png"));
+    const atlas = () => b.evaluate(`(() => { const names=BL.characters.all().map(c=>c.handle).sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1).concat("ooga chat");
+      const sheet=document.createElement("canvas");sheet.width=640;sheet.height=Math.ceil(names.length/8)*80;const g=sheet.getContext("2d");
+      names.forEach((name,i)=>{const c=document.createElement("canvas");BL.hud.renderFaceIcon(c,BL.models.caveman(BL.contributors.traitsFor(name)),null,80);g.drawImage(c,i%8*80,Math.floor(i/8)*80);});
+      return sheet.toDataURL("image/png"); })()`);
+    const firstPortraitPng = Buffer.from((await atlas()).split(",")[1], "base64");
+    const first = active.digest; active = snapshot("#aa3355"); generation++;
+    await b.evaluate("BL.characterCatalog.start(()=>{})");
+    record("character catalog page: a running page pins its appearance when the endpoint advances", catalogReads === 1 && await b.evaluate(`BL.characterCatalog.current.revision===${JSON.stringify(first)}&&BL.characters.get('CatalogPreview').look.hair==='#22cc88'`));
+    await b.open(address); deadline = Date.now() + 30000;
+    while (!await b.evaluate(`window.BL?.characterCatalog?.current.revision===${JSON.stringify(active.digest)}`).catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Refreshed catalog page did not adopt the next revision");
+      await b.sleep(40);
+    }
+    await untilReady(b, 30000);
+    record("character catalog page: refreshing adopts the new appearance with the same NPC roster signature", catalogReads === 2 && await b.evaluate(`BL.characters.get('CatalogPreview').look.hair==='#aa3355'&&BL.characterCatalog.current.roster===${JSON.stringify(view.roster)}`));
+    // The exact accepted models produce the image served to Chat. Its new contributor cannot appear in Chat's
+    // bundled atlas, so a successfully loaded face here crosses both the public JSON and immutable image routes.
+    const image = await atlas();
+    portraitPng = Buffer.from(image.split(",")[1], "base64");
+    portraits = createPortraitManifest(active.catalog, active.digest, createHash("sha256").update(portraitPng).digest("hex"));
+    record("character catalog page: both real hosted boots have clean consoles", b.logs.length === 0, b.logs.join("\n"));
+    b.close(); servingChat = true; b = await launch({ w: 1000, h: 760 });
+    await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `window.BL={};window.__portraitGL=0;
+      { const get=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(type,...args){if(/webgl/i.test(type))__portraitGL++;return get.call(this,type,...args);}; }
+      Object.defineProperty(BL,"oogaChatFixtures",{configurable:true,set(fixtures){const create=fixtures.create;
+        fixtures.create=(...args)=>{const original=create(...args),http=BL.oogaChatHttp.create();return {...original,contributors:http.contributors,dispose(){original.dispose();http.dispose();}};};
+        Object.defineProperty(BL,"oogaChatFixtures",{value:fixtures,writable:true,configurable:true});}});` });
+    await b.open(`${origin}/fixture.html?state=signed-out`); deadline = Date.now() + 15000;
+    while (!await b.evaluate("!!document.querySelector('#oc-tab-roster')").catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Catalog Chat fixture did not start: " + b.logs.join(" | ")); await b.sleep(40);
+    }
+    await b.evaluate("document.querySelector('#oc-tab-roster').click()");
+    while (!await b.evaluate("!!document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"]')").catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Catalog Chat roster did not load"); await b.sleep(40);
+    }
+    await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-name').click()");
+    while (!await b.evaluate("!!BL.oogaChatPortraits.canvas('CatalogPreview')").catch(() => false)) {
+      if (Date.now() > deadline) throw new Error("Catalog Chat portrait did not load"); await b.sleep(40);
+    }
+    const chat = await b.evaluate("({revision:BL.oogaChatPortraits.revision,gl:__portraitGL,face:!!document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face'),width:BL.oogaChatPortraits.canvas('CatalogPreview').width})");
+    record("character catalog Chat: the real public adapter paints a newly published face from its same-origin immutable atlas without a 3D engine",
+      chat.revision === active.digest && chat.gl === 0 && chat.face && chat.width === 80
+      && portraitReads.includes(`/api/chat/public/portraits/${active.digest}/${portraits.image}.png`) && b.logs.length === 0, JSON.stringify({ chat, portraitReads, logs: b.logs }));
+    const faceBefore = await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face').toDataURL()");
+    active = snapshot("#22cc88"); generation++; portraitPng = firstPortraitPng;
+    portraits = createPortraitManifest(active.catalog, active.digest, createHash("sha256").update(portraitPng).digest("hex"));
+    await b.evaluate("BL.oogaChatHttp.create().contributors().then(()=>true)"); deadline = Date.now() + 10000;
+    while (!await b.evaluate(`(() => { const face=document.querySelector('.oc-roster li[data-name="CatalogPreview"] .roster-stats-face');
+      return BL.oogaChatPortraits.revision===${JSON.stringify(active.digest)}&&!!BL.oogaChatPortraits.canvas('CatalogPreview')
+        &&!!face&&face.toDataURL()!==${JSON.stringify(faceBefore)}; })()`)) {
+      if (Date.now() > deadline) throw new Error("Updated Chat portrait did not load"); await b.sleep(40);
+    }
+    const faceAfter = await b.evaluate("document.querySelector('.oc-roster li[data-name=\"CatalogPreview\"] .roster-stats-face').toDataURL()");
+    record("character catalog Chat: an already open contributor strip replaces its cached crop after a later activation", faceAfter !== faceBefore
+      && portraitReads.includes(`/api/chat/public/portraits/${active.digest}/${portraits.image}.png`) && b.logs.length === 0, JSON.stringify({ portraitReads, logs: b.logs }));
+    await b.screenshot(join(shots, "catalog-chat.png"));
+  } finally {
+    for (const reply of pending) reply.end();
+    if (b) b.close(); await dispose();
+    await new Promise((done) => server.close(done)); rmSync(temporary, { recursive: true, force: true });
+  }
+};
+
 const runTasks = async () => {
   const picked = tasks.filter((t) => (t.perf ? PERF : PICKED.includes(t.scene)));
   if (ONLY && (PICKED.length || PERF) && !picked.length) throw new Error(`No requested scene checks match ONLY=${ONLY}`);
@@ -49045,6 +50435,8 @@ if (ARGS.includes("cloud-hopper-arcade")) {
 }
 if (ARGS.includes("cloud-hopper-record")) { await highscoreClientChecks(); await cloudHopperRecordChecks(); }
 if (ARGS.includes("ooga-chat-app")) { await oogaChatAppChecks(); await dispose(); }
+if (ARGS.includes("character-catalog-app")) { await characterCatalogAppChecks(); await dispose(); }
+if (ARGS.includes("equipment-app")) { await equipmentAppChecks(); await dispose(); }
 // The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (UNIT || ARGS.includes("cloud-hopper-controller")) await unitChecks();
 if (PROTOCOL) await pokerProtocolChecks();

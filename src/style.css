@@ -1551,6 +1551,13 @@ body[data-active-scene="block"] .mode-hud {
   box-shadow: 0 0 5px rgba(177, 138, 255, 0.6);
 }
 
+/* An Ooga Chat listener on Main Island (players.js, and Ooga Chat's Online Oogas): in gray, dot and name. */
+.roster-presence[data-online="listener"] {
+  background: var(--faint);
+  box-shadow: none;
+}
+.players-listener .roster-label { color: var(--muted); }
+
 /* The name, on one line and cut short with an ellipsis where it would not fit, filling its cell: a button, with no
    caret, that opens the row onto a darker strip under it (the contributor's stats here, a player's volume in Online
    Oogas). */
@@ -5848,6 +5855,32 @@ body.tess-touring #joy-look {
 }
 
 .model-info .board-link { text-align: left; }
+
+/* The Genesis Museum's own colours (Abyss Aurora), as the Ember Den keeps its own: cream words on near-black panels,
+   a soft teal-blue for what can be pressed, gold for where a visitor stands in a run, Bitcoin's orange for the block. */
+.genesis-portal, .wp-reader, .model-modal {
+  --gn-text: #efe6d2; --gn-gold: #ffd66b; --gn-hint: #ffb04d; --gn-btc: #f7931a; --gn-teal: #3db8cc; --gn-teal-text: #9be4ef; --gn-paper: #15120f;
+  --gn-panel: color-mix(in srgb, var(--bg) 82%, transparent); --gn-wash: color-mix(in srgb, var(--fg) 7%, transparent); --gn-line: color-mix(in srgb, var(--fg) 18%, transparent);
+}
+/* The Genesis room's pop-ups (`theme: "genesis"`): every block of words on a dark, slightly translucent panel of its
+   own, so the cream type reads against the planks (body text on the panel is about 14:1 against it, well over AA's
+   4.5:1); links on a panel too. */
+.model-modal.model-genesis .model-info > .model-kicker,
+.model-modal.model-genesis .model-info > .model-name,
+.model-modal.model-genesis .model-info > .model-text,
+.model-modal.model-genesis .model-info > .board-note,
+.model-modal.model-genesis .model-info > .board-links {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--gn-panel);
+}
+.model-modal.model-genesis .model-info > .model-kicker { padding-bottom: 2px; border-radius: 8px 8px 0 0; margin-bottom: 0; }
+.model-modal.model-genesis .model-info > .model-name { border-radius: 0 0 8px 8px; padding-top: 2px; }
+.model-modal.model-genesis .model-info > .board-links { display: grid; gap: 6px; }
+.model-modal.model-genesis .model-stats:empty { display: none; }
+.model-modal.model-genesis .model-info > .board-links .board-link { background: var(--gn-wash); border-radius: 6px; padding: 4px 8px; }
+.model-modal.model-genesis .model-canvas.model-page { background: var(--gn-paper); cursor: default; touch-action: auto; aspect-ratio: 17 / 22; max-height: min(58vh, 560px); width: auto; max-width: 100%; margin: 0 auto; display: block; }
 
 @media (max-width: 720px) {
   .model-body { grid-template-columns: minmax(0, 1fr); gap: 10px; }
@@ -11525,6 +11558,11 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   .dsb-active .dsb-context:not(.big-context):not(.ink-context-browse) { position: fixed; left: 50%; top: auto; bottom: max(145px,calc(env(safe-area-inset-bottom) + 132px)); transform: translateX(-50%); max-width: 180px; min-height: 44px; padding: 8px; white-space: normal; }
 }
 
+/* Short desktop windows still need a clear click path to the carried Ooga. */
+@media (pointer:fine) and (max-height:520px) {
+  .dsb-active .dsb-context:not(.big-context):not(.ink-context-browse) { bottom: 15vh; }
+}
+
 /* Stackchain's publication styling uses the existing shared viewport/focus shell. */
 .stackchain-menu { color: #eee2c9; background: #20272b; border: 1px solid #b08b52; border-radius: 8px; }
 .stackchain-menu header { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #282a29; border-bottom: 3px solid #a68149; }
@@ -12330,6 +12368,21 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   }
 }
 
+/* Short portrait phones need the tally below the sticks, not over the look pad. */
+@media (pointer: coarse) and (max-width: 520px) and (min-height: 481px) and (max-height: 640px) {
+  .block-tally {
+    top: auto;
+    bottom: calc(16px + var(--safe-bottom));
+    left: calc(12px + var(--safe-left));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    min-height: 44px;
+    text-align: center;
+    align-content: center;
+  }
+  .block-tally span { grid-row: 1; }
+  .block-tally b { grid-row: 2; text-align: center; }
+}
+
 /* On a wide screen Block Frenzy's board sits on the left, leaving the right for the Ooga on show, with its name
    under it. */
 @media (min-width: 760px) {
@@ -12482,6 +12535,103 @@ body[data-active-scene] #environment-sound { display: flex; align-items: center;
   gap: 5px;
 }
 .studio-side button { flex: 0 0 auto; padding: 0 10px; }
+.studio-wardrobe { display: grid; gap: 7px; margin: 12px 0; }
+/* The wardrobe follows the pop-ups' text standard (AGENTS.md, A pop-up or menu): its words stand on stone, never on the
+   planks. The tiles and the open editor share one slab; a tile reads as its slot's name alone (12px, paper at 0.88), in
+   the light accent when something other than the Ooga's own is worn there, and what is worn shows in its editor. The
+   chosen tile is ringed in amber and a tile changed since the last save carries a dot. */
+.studio-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 5px; background: var(--slab-dark);
+  border: 2px solid var(--stone-dk); border-radius: 9px 7px 10px 8px; box-shadow: var(--tablet-shadow); }
+.studio-wardrobe .studio-tile { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 6px 7px; border: 1px solid rgba(243, 239, 228, 0.07);
+  border-radius: 5px; background: rgba(0, 0, 0, 0.16); color: var(--paper); font: inherit; text-align: left; cursor: pointer; }
+.studio-tile:hover { background: rgba(243, 239, 228, 0.06); }
+.studio-tile[aria-pressed="true"] { border-color: var(--accent); background: rgba(216, 137, 43, 0.14); box-shadow: inset 0 0 0 1px var(--accent); }
+.studio-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-tile-icon { flex: 0 0 18px; width: 18px; height: 18px; color: rgba(243, 239, 228, 0.62); shape-rendering: crispEdges; }
+.studio-tile[data-worn] .studio-tile-icon { color: var(--accent-text); }
+.studio-tile-name { min-width: 0; color: rgba(243, 239, 228, 0.88); font-size: 12px; line-height: 1.2; white-space: nowrap; }
+.studio-tile[data-worn] .studio-tile-name { color: var(--accent-text); }
+.studio-tile { position: relative; }
+.studio-tile[data-changed]::after { content: ""; position: absolute; top: 5px; left: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.studio-tile[data-unsupported] { opacity: 0.55; }
+/* The chosen tile's editor, across the slab under that tile's row: its name, its list, who made the piece and, for the
+   hat and the mask, a size whose value reads as the pop-ups' values do. */
+.studio-editors[hidden] { display: none; }
+.studio-editors { grid-column: 1 / -1; padding: 8px; border: 1px solid rgba(216, 137, 43, 0.6); border-radius: 5px; background: rgba(0, 0, 0, 0.22); }
+.studio-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.studio-editor[hidden] { display: none; }
+.studio-editor-name { margin: 0; color: rgba(243, 239, 228, 0.88); font-size: 12px; font-weight: 700; }
+.studio-editor .studio-slot-credit { color: rgba(243, 239, 228, 0.78); font-size: 11px; }
+.studio-editor .studio-note { color: rgba(243, 239, 228, 0.62); font-size: 11px; }
+.studio-editor .studio-hat-size-label { color: rgba(243, 239, 228, 0.88); font-size: 12px; letter-spacing: 0; text-transform: none; }
+.studio-editor .studio-hat-size-label output { font-family: var(--mono); font-size: 11px; color: var(--accent-text); }
+.studio-editor select { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 0 8px; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28); color: var(--paper); font: inherit; font-size: 12px; cursor: pointer; }
+.studio-editor select:disabled { opacity: 0.55; cursor: default; }
+.studio-editor select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-save-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; }
+.studio-save-row .studio-changes { flex: 1 0 auto; margin: 0; }
+.studio-save-row .foot-button { flex: 0 0 auto; }
+.studio-size-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.studio-size-line .studio-hat-size-label { flex: 1 1 auto; }
+.studio-size-line .link { padding: 0; min-height: 0; font-size: 11px; }
+.studio-size-line .link:disabled { opacity: 0.4; cursor: default; }
+.studio-height-line input[type="range"] { flex: 1 1 auto; min-width: 0; }
+.studio-changes { color: var(--accent-text); font-size: 11px; white-space: nowrap; }
+.studio-changes .link { padding: 0; min-height: 0; font-size: 11px; }
+.studio-slot-credit { color: rgba(243, 239, 228, 0.65); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.studio-slot-credit:empty { display: none; }
+/* An Ooga's own colours, each under the editor of what it colours (the skin's under the body's): a rule over it, its
+   name and what is worn, then square swatches with its own first (a dashed ring), the chosen one ringed in amber, and
+   last a colour wheel for any colour, which takes the colour worn once one is mixed. The hex field says and takes it. */
+.studio-colour { padding-top: 8px; border-top: 1px solid rgba(243, 239, 228, 0.12); }
+:is(.studio-colour, .studio-valued) .studio-editor-name { display: flex; gap: 8px; align-items: baseline; }
+.studio-colour-name { color: var(--accent-text); font-size: 11px; font-weight: 400; }
+.studio-wardrobe .studio-swatch.studio-wheel { -webkit-appearance: none; appearance: none; display: block;
+  background: conic-gradient(#e2453c, #e8c13b, #5fbf4b, #3bb7d2, #4062d8, #b04bd0, #e2453c); }
+.studio-wheel::-webkit-color-swatch-wrapper { padding: 0; }
+.studio-wheel::-webkit-color-swatch { border: 0; opacity: 0; }
+.studio-wheel::-moz-color-swatch { border: 0; opacity: 0; }
+.studio-hex { display: flex; align-items: center; gap: 8px; color: rgba(243, 239, 228, 0.88); font-size: 12px; }
+.studio-hex input { flex: 1 1 0; width: 0; min-width: 0; min-height: 36px; box-sizing: border-box; padding: 0 8px; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28); color: var(--paper); font-family: var(--mono); font-size: 12px; text-transform: uppercase; }
+.studio-hex input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-hex input[aria-invalid] { border-color: #e2453c; }
+.studio-hex input:disabled { opacity: 0.55; }
+.studio-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 5px; }
+.studio-wardrobe .studio-swatch { width: 100%; min-width: 0; min-height: 0; height: auto; aspect-ratio: 1; padding: 0; border: 2px solid rgba(0, 0, 0, 0.55); border-radius: 5px; background: #555; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(243, 239, 228, 0.2); }
+.studio-swatch[data-own] { border-style: dashed; border-color: rgba(243, 239, 228, 0.6); }
+.studio-swatch[aria-pressed="true"] { border: 2px solid var(--accent); box-shadow: inset 0 0 0 2px var(--slab-dark); }
+.studio-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-swatch:disabled { opacity: 0.4; cursor: default; }
+@media (pointer: coarse) {
+  .studio-swatches { grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+  /* A tile's words keep its whole width a phone gives it: a smaller mark, closer in. */
+  .studio-wardrobe .studio-tile { gap: 5px; padding: 6px 5px; }
+  .studio-tile-icon { flex-basis: 14px; width: 14px; height: 14px; }
+}
+/* The foot pinned under the slots is a stone slab of its own: a copy of the planks could never line its seams up with
+   the panel's behind it as the slots scroll, so it would read as a broken board. Its text stands on the stone. */
+.studio-wardrobe-foot { position: sticky; bottom: 0; z-index: 1; display: grid; gap: 6px; margin-top: 2px; padding: 8px; background: var(--slab-dark);
+  border: 2px solid var(--stone-dk); border-radius: 9px 7px 10px 8px; box-shadow: var(--tablet-shadow); }
+.studio-wardrobe .studio-wardrobe-foot .studio-note { padding: 0; background: none; color: rgba(243, 239, 228, 0.62); font-size: 11px; }
+.studio-wardrobe .studio-wardrobe-foot .studio-note:empty { display: none; }
+.studio-wardrobe :is(input[type="range"], summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio-hat-size-label { display: flex; justify-content: space-between; gap: 8px; }
+.studio-hat-size-label output { color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.studio-wardrobe input[type="range"] { width: 100%; min-width: 0; height: 44px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.studio-wardrobe input[type="range"]:disabled { opacity: 0.5; cursor: default; }
+.studio-wardrobe button { white-space: normal; min-height: 44px; padding: 6px 10px; font-size: 11px; }
+.studio-wardrobe p { margin: 0; }
+.studio-wardrobe a { color: var(--accent-text); line-height: 1.5; }
+.studio-wardrobe .studio-note { line-height: 1.4; }
+.equipment-update { position: absolute; z-index: 50; top: calc(var(--banner-controls-bottom, 68px) + 12px); left: 50%; transform: translateX(-50%); width: min(360px, calc(100vw - 24px)); box-sizing: border-box; padding: 12px; border: 2px solid var(--wood-edge); border-radius: var(--radius); color: var(--paper); background: var(--planks); box-shadow: 0 4px 12px #0008; }
+.equipment-update p { margin: 0 0 8px; }
+.equipment-update div { display: flex; gap: 8px; flex-wrap: wrap; }
+.equipment-update button { flex: 1 1 auto; min-height: 44px; padding: 6px 10px; font-size: 11px; white-space: normal; }
+.studio-wardrobe .foot-primary:disabled,
+.equipment-update .foot-primary:disabled { background: linear-gradient(#e2a04a, var(--accent)); }
+.equipment-update [role="status"]:empty { display: none; }
 /* Its quick pick of every Ooga, in the banner where the controls button stands elsewhere, in the equipment buttons' look. */
 .studio-pick {
   position: absolute;
@@ -12574,6 +12724,7 @@ body[data-active-scene="studio"] :is(.world-clock, .world-block) { visibility: h
 .studio-note[data-state="bad"] { color: #ffb08a; }
 /* Its text sits on a dark inset, so the planks' seams never run through a line. */
 .studio-file,
+.studio-wardrobe .studio-note,
 #studio-groups .studio-list { padding: 6px 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.62); }
 .studio-list { margin: 0; padding: 0; list-style: none; }
 .studio-list li { display: flex; flex-direction: column; gap: 1px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
@@ -13773,3 +13924,63 @@ body[data-active-scene] #cave-directory-button { min-height: 44px; }
 .duel-flash[hidden], .duel-count[hidden], .duel-result[hidden] { display: none; }
 .players-duel { grid-column: 1 / -1; justify-self: start; margin-top: 6px; }
 .players-duel[hidden] { display: none; }
+/* The Genesis room's portal panel: the prompt at the door, the riddle, the block header filling in, the nonce
+   dial and the open door's line, on the same dark panels as the room's pop-ups; a sheet at the foot on a phone. */
+.genesis-portal {
+  position: fixed; right: 16px; top: 84px; z-index: 40; width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 10px 12px 12px; border-radius: 12px; background: var(--gn-panel); color: var(--gn-text); font-family: var(--mono);
+  font-size: 13px; line-height: 1.4; border: 1px solid var(--gn-line); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); backdrop-filter: blur(4px);
+}
+.genesis-portal[hidden] { display: none; }
+.genesis-portal .gp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.genesis-portal .gp-kicker { font-size: 10px; letter-spacing: 0.12em; opacity: 0.7; }
+.genesis-portal .gp-x { background: none; border: 0; color: inherit; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; opacity: 0.6; padding: 0 2px; }
+.genesis-portal .gp-x:hover { opacity: 1; }
+.genesis-portal h3 { margin: 4px 0 6px; font-size: 15px; letter-spacing: 0.08em; }
+.genesis-portal p { margin: 0 0 8px; }
+.genesis-portal .gp-prog { font-size: 11px; letter-spacing: 0.1em; color: var(--gn-gold); margin-bottom: 6px; }
+.genesis-portal .gp-q { white-space: pre-line; font-size: 15px; line-height: 1.45; padding: 8px 10px; border-left: 3px solid var(--gn-gold); background: var(--gn-wash); border-radius: 0 8px 8px 0; }
+.genesis-portal .gp-how, .genesis-portal .gp-badge { font-size: 11px; opacity: 0.75; }
+.genesis-portal .gp-hint { color: var(--gn-hint); }
+.genesis-portal .gp-header { width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0 8px; table-layout: fixed; }
+.genesis-portal .gp-header th { text-align: left; width: 88px; font-weight: normal; letter-spacing: 0.08em; opacity: 0.7; padding: 2px 6px 2px 0; vertical-align: top; }
+.genesis-portal .gp-header td { padding: 2px 0; word-break: break-all; }
+.genesis-portal .gp-header .gp-dim td { opacity: 0.35; }
+.genesis-portal .gp-header .gp-mined td { color: var(--gn-teal-text); }
+.genesis-portal .gp-header .gp-live td { color: var(--gn-gold); }
+.genesis-portal .gp-dial { padding: 8px 10px; border-radius: 8px; background: var(--gn-wash); margin-bottom: 8px; }
+.genesis-portal .gp-hash { font-size: 11px; word-break: break-all; color: var(--gn-gold); min-height: 2.8em; }
+.genesis-portal .gp-hash.gp-found { color: var(--gn-btc); }
+.genesis-portal .gp-zeros { font-size: 11px; opacity: 0.75; margin: 4px 0 8px; }
+.genesis-portal .gp-btn { display: block; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--gn-line); background: var(--gn-btc); color: var(--ink); font: inherit; font-size: 13px; letter-spacing: 0.1em; cursor: pointer; touch-action: none; user-select: none; }
+.genesis-portal .gp-btn:hover { filter: brightness(1.08); }
+.genesis-portal .gp-btn.gp-quiet { background: var(--gn-wash); color: inherit; }
+@media (max-width: 720px) {
+  .genesis-portal { right: 8px; left: 8px; top: auto; bottom: 96px; width: auto; max-height: 46vh; overflow: auto; }
+}
+
+/* The whitepaper's large reader (the Genesis room): the nine pages as one strip filling the height, scrolled smoothly,
+   a page indicator, zoom, the bitcoin.org link; adapted from stacktoshi's monolith reader (#354, removed in #539). At
+   the phone's width the page fills the width. */
+.model-modal .model-actions { display: flex; gap: 8px; margin: 8px 0 2px; }
+.model-modal .model-actions[hidden], .model-modal .board-nav[hidden] { display: none; }
+.model-modal .model-button { flex: 1; display: block; box-sizing: border-box; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-align: center; text-decoration: none; cursor: pointer; padding: 10px 12px; border: 1px solid var(--gn-line); border-radius: 8px; background: var(--gn-btc); color: var(--ink); }
+.model-modal .model-button:hover { filter: brightness(1.1); }
+.model-modal .model-canvas.model-page.model-page-link { cursor: zoom-in; }
+.wp-reader { box-sizing: border-box; width: min(calc(100vw - 24px), 880px); height: calc(100dvh - 20px); max-width: none; max-height: none; margin: auto; padding: 0; border: 0; background: transparent; color: var(--gn-text); font-family: var(--mono); overflow: visible; }
+.wp-reader[open] { display: flex; flex-direction: column; gap: 8px; }
+.wp-reader::backdrop { background: color-mix(in srgb, var(--bg) 84%, transparent); }
+.wp-reader .wpr-panel { position: relative; flex: 1; min-height: 0; border-radius: 18px; overflow: hidden; background: var(--gn-paper); box-shadow: 0 0 0 1px var(--gn-line), 0 24px 80px rgba(0, 0, 0, 0.7); }
+.wp-reader .wpr-view { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab; outline: none; }
+.wp-reader .wpr-view.wpr-held { cursor: grabbing; }
+.wp-reader .wpr-strip { display: block; max-width: none; height: auto; transform-origin: 0 0; will-change: transform; user-select: none; -webkit-user-drag: none; }
+.wp-reader .wpr-thumb { position: absolute; top: 0; right: 4px; width: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.55); opacity: 0; transition: opacity 0.35s; pointer-events: none; }
+.wp-reader .wpr-view.wpr-moving .wpr-thumb { opacity: 1; transition-duration: 0.08s; }
+.wp-reader .wpr-close { position: absolute; top: 10px; right: 14px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--gn-line); background: var(--gn-panel); color: inherit; font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+.wp-reader .wpr-close:hover { background: var(--gn-wash); }
+.wp-reader .wpr-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; font-size: 11px; letter-spacing: 0.06em; }
+.wp-reader .wpr-page { color: var(--gn-gold); letter-spacing: 0.1em; white-space: nowrap; }
+.wp-reader .wpr-credit { opacity: 0.7; white-space: nowrap; }
+.wp-reader .wpr-site { color: var(--gn-teal-text); }
+.wp-reader .wpr-about { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--gn-teal); background: var(--gn-panel); color: var(--gn-teal-text); font: inherit; font-size: 11px; letter-spacing: 0.08em; cursor: pointer; white-space: nowrap; }
+.wp-reader .wpr-about:hover { background: color-mix(in srgb, var(--gn-teal) 18%, transparent); }

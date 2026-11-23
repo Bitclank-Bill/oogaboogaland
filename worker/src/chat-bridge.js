@@ -18,12 +18,13 @@ import { BRIDGE_ENVIRONMENTS, BRIDGE_VERSION, BridgeRefusal, ENVELOPE_MAX, ERROR
 
 export { BridgeRefusal, FEATURES, bridgeFeatures };
 import { capabilityOps } from "./chat-capability.js";
-import { contributorFor } from "./contributor-access.js";
+import { contributorForEnv } from "./contributor-access.js";
+import { catalogFor } from "./character-catalog.js";
+import { handleCharacterPortrait, portraitsFor } from "./character-portraits.js";
 import { publicOps } from "./chat-public.js";
 import { displayOps } from "./chat-display.js";
-import { deleteChatOnlyPlayer } from "./db.js";
+import { deleteChatOnlyPlayer, getPlayer } from "./db.js";
 import { AUDIENCE_NAME } from "./audience.js";
-import CAST_ROWS from "./characters.gen.json" with { type: "json" };
 
 const refuse = (code, retryable = false, extra = {}) => ({ ok: false, error: { code, retryable, ...extra } });
 
@@ -67,8 +68,13 @@ export const revokeOps = {
       // The Commons is a GitHub contributor's alone: its sockets close too (#670).
       const github = p.provider === "github" && /^[1-9][0-9]{0,15}$/.test(String(p.providerUserId)) ? Number(p.providerUserId) : 0;
       const commons = github && env.ROOM ? await env.ROOM.getByName("island").communityRevoke(github, reason).catch(() => ({ revoked: 0 })) : { revoked: 0 };
-      // An Ooga Chat account deleted takes back the player row its Commons name made, while it never signed in here.
-      if (github && reason === "deleted" && env.DB) await deleteChatOnlyPlayer(env.DB, github);
+      // An Ooga Chat account deleted takes back the player row its Commons name made, while it never signed in here, and
+      // the voice links it asked for from Ooga Chat (as `DELETE /api/me` takes an island account's): an account the
+      // island still has keeps its own. One that cannot be reached now must not undo the deletion.
+      if (github && reason === "deleted" && env.DB) {
+        await deleteChatOnlyPlayer(env.DB, github);
+        if (env.ROOM && !(await getPlayer(env.DB, github))) await Promise.resolve().then(() => env.ROOM.getByName("island").forgetVoiceLinks(github)).catch(() => {});
+      }
       return { revoked: audience.revoked + commons.revoked };
     },
   },
@@ -80,8 +86,8 @@ export const readinessOps = {
   readiness: { run: async (env) => env.AUDIENCE ? env.AUDIENCE.getByName(AUDIENCE_NAME).readiness() : { sfu: "off", cleanup: "ok" } },
 };
 
-export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorFor }), ...publicOps({ cast: CAST_ROWS }), ...revokeOps, ...readinessOps,
-  ...displayOps({ contributorFor }) };
+export const OPS = { ...BASE_OPS, ...capabilityOps({ contributorForEnv }), ...publicOps({ catalogFor, portraitsFor }), ...revokeOps, ...readinessOps,
+  ...displayOps({ contributorForEnv }) };
 
 const SOCKET_HEADERS = ["upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions"];
 /**
@@ -111,6 +117,10 @@ export const commonsFetch = async (env, request) => {
 
 export const bridgeFetch = async (env, request) => {
   const url = new URL(request.url);
+  if (url.pathname.startsWith("/portraits/")) {
+    if (request.headers.get("x-ooga-chat-environment") !== env.ENVIRONMENT) return new Response("Forbidden", { status: 403 });
+    return handleCharacterPortrait(request, env, "/api/characters" + url.pathname);
+  }
   const media = url.pathname.startsWith("/media/") ? url.pathname.slice(7) : null;
   if (url.pathname === "/commons") return commonsFetch(env, request);
   if (url.pathname !== "/audience" && !(media && MEDIA_OP.test(media))) return new Response("Not found", { status: 404 });

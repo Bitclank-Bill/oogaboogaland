@@ -414,6 +414,24 @@
       </div>
       <div class="studio-scroll" id="studio-scroll">
         <p class="studio-who" id="studio-who"></p>
+        <!-- The wardrobe (scene-studio.js `startWardrobe`): a tile for each slot (equipment-wardrobe.js `SLOTS`) with its
+             mark and its name, and under the grid the chosen tile's editor: its list, who made the piece, for the hat
+             and the mask a size, and under the body, the hair and the eyes their colours. -->
+        <div class="studio-wardrobe" id="studio-wardrobe" aria-describedby="studio-hat-status">
+          <div class="studio-slots" id="studio-slots" role="group" aria-label="Wardrobe slots"></div>
+          <div class="studio-editors" id="studio-editors"></div>
+          <!-- Save and what it says stay in view at the panel's foot while the slots scroll past. -->
+          <div class="studio-wardrobe-foot">
+            <div class="studio-save-row">
+              <p class="studio-changes" hidden><span id="studio-changes"></span> · <button type="button" class="link" id="studio-discard">Reset</button></p>
+              <button type="button" class="foot-button foot-primary" id="studio-hat-save" aria-describedby="studio-hat-status">Save my look</button>
+            </div>
+            <button type="button" class="foot-button" id="studio-hat-own" hidden>Show my Ooga</button>
+            <p class="studio-note" id="studio-hat-status" role="status"></p>
+          </div>
+          <a class="link" href="/auth/login?next=%2F%3Fscene%3Dstudio" id="studio-hat-signin" hidden>Sign in with GitHub to save</a>
+          <a class="link" href="/?scene=studio" id="studio-hat-link" hidden>Open the hosted studio to save</a>
+        </div>
         <h3 class="section-head">File</h3>
         <div class="studio-file">
           <div class="studio-bar" id="studio-size-bar"><span id="studio-size-fill"></span></div>
@@ -425,6 +443,13 @@
       </div>
     </section>
     <button type="button" class="panel-edge panel-edge-right studio-features-edge" data-fold="studio-features" data-scene="studio" hidden>This Ooga</button>
+
+    <section id="equipment-update" class="equipment-update" aria-label="Hat update" hidden>
+      <p id="equipment-update-text"></p>
+      <div><button type="button" class="foot-button foot-primary" id="equipment-accept">Accept update</button>
+      <button type="button" class="foot-button" id="equipment-decline">Keep my version</button></div>
+      <p id="equipment-update-status" role="status"></p>
+    </section>
 
     <aside class="sheet" id="sheet" data-open="false" data-dock="side" data-paired="false">
       <nav class="sheet-panels" role="tablist" aria-label="Island panels">
@@ -472,6 +497,7 @@
               <button type="button" class="foot-button account-mute" data-action="account-mute" id="account-mute" aria-pressed="false" data-mic="" disabled hidden>Unmute</button>
               <button type="button" class="foot-button account-voice" data-action="account-voice" id="account-voice" hidden>Join voice</button>
               <button type="button" class="foot-button account-leave" data-action="account-voice-leave" id="account-voice-leave" hidden>Leave voice</button>
+              <a class="link" id="account-look" href="/?scene=studio" title="Choose what your Ooga wears: a hat, hair, clothes and more" hidden>My look</a>
               <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
             </span>
           </div>
@@ -2257,6 +2283,17 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
         </div>
       </div>
     </dialog>
+    <aside class="genesis-portal" id="genesis-portal" aria-label="Proof of Knowledge" hidden>
+      <div class="gp-head"><span class="gp-kicker">MINING MUSEUM · PROOF OF KNOWLEDGE</span><button type="button" class="gp-x" data-action="genesis-portal-close" aria-label="Hide">&times;</button></div>
+      <div class="gp-body" id="genesis-portal-body"></div>
+    </aside>
+    <dialog class="wp-reader" id="wp-reader" aria-label="The Bitcoin whitepaper">
+      <div class="wpr-panel">
+        <div class="wpr-view" id="wp-reader-view" tabindex="0" aria-label="The pages: drag, swipe or scroll to read"><img class="wpr-strip" id="wp-reader-strip" alt="The whitepaper's nine pages, one below the other" draggable="false"><i class="wpr-thumb" id="wp-reader-thumb"></i></div>
+        <button type="button" class="wpr-close" data-action="reader-close" aria-label="Close the reader">&times;</button>
+      </div>
+      <div class="wpr-foot"><button type="button" class="wpr-about" id="wp-reader-about">ABOUT THIS PAPER</button><b class="wpr-page" id="wp-reader-page">PAGE 1 / 9</b><span class="wpr-credit">Source: bitcoin.org · MIT licence · <a class="wpr-site" href="https://bitcoin.org/en/bitcoin-paper" target="_blank" rel="noopener noreferrer">Read it on bitcoin.org</a></span></div>
+    </dialog>
     <dialog class="modal" id="sphere-exit" aria-labelledby="sphere-exit-title" aria-describedby="sphere-exit-note">
       <div class="panel-head">
         <h2 id="sphere-exit-title">Leave this room?</h2>
@@ -2488,10 +2525,20 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/object-guides.js"></script>
   <script src="js/sight-guides.js"></script>
   <script src="js/caves.js"></script>
+  <script src="js/character-catalog-schema.js"></script>
   <script src="js/characters.js"></script>
   <script src="js/characters.gen.js"></script>
+  <script src="js/character-catalog.js"></script>
   <script src="js/roster-panel.js"></script>
   <script src="js/contributors.js"></script>
+  <script src="js/equipment-hats.js"></script>
+  <script src="js/equipment-hats.gen.js"></script>
+  <script src="js/character-equipment.js"></script>
+  <script src="js/equipment-hat-data.gen.js"></script>
+  <script src="js/equipment-wardrobe.js"></script>
+  <script src="js/equipment-wardrobe.gen.js"></script>
+  <script src="js/character-wardrobe.js"></script>
+  <script src="js/equipment-wardrobe-data.gen.js" data-defer="wardrobe"></script>
   <script src="js/donations.js"></script>
   <script src="js/donation-rate.js"></script>
   <script src="js/mempool.js"></script>
@@ -2532,6 +2579,7 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/duel-rules.js"></script>
   <script src="js/duel-listening.js"></script>
   <script src="js/net.js"></script>
+  <script src="js/equipment.js"></script>
   <script src="js/game-net.js"></script>
   <script src="js/highscores.js"></script>
   <script src="js/cloud-hopper-replays.js"></script>
@@ -2555,6 +2603,8 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>
   <script src="js/npc-paths.js"></script>
+  <script src="js/island-layout.js"></script>
+  <script src="js/island-sim.js"></script>
   <script src="js/pile.js"></script>
   <script src="js/pile-guides.js"></script>
   <script src="js/banana-cover.js"></script>
@@ -2585,6 +2635,7 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/remote-players.js"></script>
   <script src="js/duel.js"></script>
   <script src="js/npc-sync.js"></script>
+  <script src="js/island-world.js"></script>
   <script src="js/prop-sync.js"></script>
   <script src="js/footsteps.js"></script>
   <script src="js/pet-reactions.js"></script>
@@ -2834,6 +2885,11 @@ When it is sent, tell me what happens next and when I can sign in at oogabooga.l
   <script src="js/timechain-room-lecture.js" data-defer="timechain"></script>
   <script src="js/timechain-room-theater.js" data-defer="timechain"></script>
   <script src="js/timechain-interior.js" data-defer="timechain"></script>
+  <script src="js/whitepaper-pages.js" data-defer="timechain-genesis"></script>
+  <script src="js/timechain-genesis-first.js" data-defer="timechain-genesis"></script>
+  <script src="js/timechain-genesis-map.js" data-defer="timechain-genesis"></script>
+  <script src="js/timechain-genesis-models.js" data-defer="timechain-genesis"></script>
+  <script src="js/timechain-room-genesis.js" data-defer="timechain-genesis"></script>
   <script src="js/lecture-btc-01.js" data-defer="lecture-btc-a"></script>
   <script src="js/lecture-btc-01.timing.js" data-defer="lecture-btc-a"></script>
   <script src="js/lecture-btc-02.js" data-defer="lecture-btc-b"></script>

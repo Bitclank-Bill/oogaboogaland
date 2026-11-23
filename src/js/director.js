@@ -703,6 +703,13 @@
     // eaten since it arrived, in whole bananas.
     if (pileFeed.at) world.level = Math.min(pileMod.MAX_BANANAS, Math.max(0, Math.floor(pileFeed.bananas - pileFeed.eatPerHour * (performance.now() - pileFeed.at) / 36e5)));
     if (!panelHolds) active.update(sceneDt, sceneTime);
+    // The island and DSB Land report their own outdoor scope; any other scene is out of it, unless a cave cabinet's
+    // seat holds the body on the island's surface for its game.
+    if (active.id !== "hub" && active.id !== "dsb") {
+      const reason = window.BL.outdoorScope.seatReason("scene");
+      window.BL.outdoorScope.report(reason === "outdoor" ? "main" : null, reason);
+    }
+    if (active.id !== "studio") BL.equipment.applyLocal(active.debug?.pilot?.player || active.debug?.crew?.player);
     showZoneLine();
     cabinetView.update(dt, active, !!openIntro() || !!active.cabinetMenu, !!transition);
     if (POSITION_DEBUG && active.id !== "hub" && elapsed >= positionDebugNext) {
@@ -1003,7 +1010,7 @@
   })();
   const housekeepTimer = window.setInterval(housekeep, 6e4);
   // EntropyLab currently lives in its island cave; retain the isolated scene for debug checks only.
-  // The character studio (scene-studio.js) is a debug page too.
+  // The character studio also opens directly for same-origin wardrobe saves.
   // The bare address goes back to the place the visitor last stood in this browser (visit-spot.js), as its own route
   // would: a Timechain room by its number, any other scene as a whole. The island stands its Ooga at its own spot.
   const resumeRoute = () => {
@@ -1014,7 +1021,7 @@
   };
   const routed = router.current() || resumeRoute();
   const requestedScene = (routed && routed.scene) || params.get("scene") || (WIP !== "1" ? WIP : null);
-  const sceneId = requestedScene === "race" && !RALLY_TEST ? "arcade" : (requestedScene === "lab" || requestedScene === "studio") && !DEBUG ? null : requestedScene;
+  const sceneId = requestedScene === "race" && !RALLY_TEST ? "arcade" : requestedScene === "lab" && !DEBUG ? null : requestedScene;
   // Building the first scene holds the main thread with nothing painted yet.
   // Run boot from a task after the first frame so the leaf curtain is on screen, not the previous page.
   let destroyed = false;
