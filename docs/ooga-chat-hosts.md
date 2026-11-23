@@ -271,6 +271,9 @@ Agreed 2026-11-23:
   sky) lands in a later PR; they work as voice chats meanwhile.
 - **The live island view** uses the game's own renderer and models, loaded only when someone turns Live view on.
 - **Ooga Chat's first-load limit** may rise to 256 KB gzipped.
+- **Cloud seats:** today's three-seat bench on 11 of the 18 clouds (33 seats for the 32 speakers), all on the high
+  track so none flies under the meadow, filled a bench at a time so a small chat looks like today's island; a cloud
+  with nobody on it shows no bench.
 - **Clouds:** every speaker not walking the copy sits on a cloud in it, a seat each, 32 seats: Ooga Chat's, and the
   island's whose Ooga is still on the main land. A speaker with no Ooga of their own (an X account, or a GitHub account
   with no character) sits there as a default Ooga hashed from their handle, under a name no login can have (as
