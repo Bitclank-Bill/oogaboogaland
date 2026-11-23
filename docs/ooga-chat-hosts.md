@@ -187,8 +187,9 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
 - **Order** in a chat, in both apps: the host first, then co-hosts, the longest-serving first (`rankSince`), then
   speakers, the longest on stage first (`since`), then listeners with an open request, the longest-lived request first
   (`askedAt`; an invited listener at the head of the rest), then the other listeners, the longest here first (`since`);
-  ties by name, then id. A speaker's ring is green from the island and purple from Ooga Chat (`via`), and the tile's
-  accessible name says where they speak from. Listeners carry no mark of their app: none of them goes into a copy. A host's or co-host's rank does not make them a
+  ties by name, then id. A speaker's ring says where their Ooga is in the chat's world: green while it walks the chat's
+  copy of the zone (the second PR), purple while they sit on a cloud, whichever app they speak from. Until the copies
+  exist every chat speaker is purple. Listeners carry no mark. `via` stays in the rows for the server's own use. A host's or co-host's rank does not make them a
   speaker: `role` is still `speaker` only under an active lease.
 - **You** adds `rank` (`host`, `cohost` or `""`), `request` (`asked`, `invited` or `""`) and, while invited,
   `inviteUntil` (ms). `speak` is `eligible` exactly when the visitor may take a lease now (a rank, a live invite, or a
@@ -260,7 +261,8 @@ Agreed 2026-11-23:
   stream and into the copy beside the banana pile; Leave beams it back to exactly where it stood, as does leaving the
   stage or the chat.
 - **Size:** up to 32 Oogas, the speaker cap, and the island room's own.
-- **Clouds:** a chat's Ooga Chat speakers sit on clouds in its copy, a seat each, 32 seats.
+- **Clouds:** every speaker not walking the copy sits on a cloud in it, a seat each, 32 seats: Ooga Chat's, and the
+  island's whose Ooga is still on the main land. A speaker with no Ooga (an X account) has no cloud.
 
 **The island view** (agreed 2026-11-22, built in the second PR): at the top of a chat, for every OC speaker and listener
 tuned into it, a zoomed-out view of the chat's copy of its zone, shown only while at least one of the chat's speakers
