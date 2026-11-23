@@ -81,8 +81,8 @@ at any time. When a chat ends, everyone in it sees **The chat ended**, its voice
 
 **OC** (`src/ooga-chat/`): the Ooga Chat tab opens on the **Chats** list (title, zone tag, the host's portrait, how
 many speak and listen), with **Start a chat** for a contributor: one dialog with a title (prefilled "<name>'s chat",
-editable, at most 60 characters, checked by the island's chat policy) and three picture cards to choose the land, Main
-Island (chosen first), DSB Land, and **Voice only**, a chat with no land (zone `none`: Ooga Chat voice alone, never a
+editable, at most 60 characters, checked by the island's chat policy) and three picture cards to choose the land: **Voice
+only** first (chosen first in Ooga Chat), Main Island and DSB Land. Voice only is a chat with no land (zone `none`: Ooga Chat voice alone, never a
 copy, clouds or Go there), then Start chat (the one amber action) or Cancel. The island's panel opens the
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
 the footer) with a Back to chats control, the Requests chip for a host or co-host (in the panel's top right corner,

@@ -21,7 +21,7 @@
 //   listener (the amber one) or Join as speaker, which asks once the chat's snapshot is here: on an open stage the
 //   invite that answers it goes straight on to Join Voice (the visitor's own press), the invite card showing only if that
 //   could not start; Start a chat for a GitHub account, one dialog (`startDialog`): a title
-//   prefilled "<name>'s chat", two picture cards for the zone (`startZone()` chosen first), Start chat and Cancel, with
+//   prefilled "<name>'s chat", three picture cards for the land, Voice only first (`startZone()` chosen first), Start chat and Cancel, with
 //   the server's refusal in words;
 // - in a chat: Back to chats and its title; for a host or co-host the Requests chip, in the panel's title right of the
 //   zone tag, and its pop-up: the queue, then who was removed with Allow back (`allow`, the server's `removed` list); the footer's
@@ -52,8 +52,10 @@
   // Text a person chose, without control or direction-override characters, bounded (ooga-chat-config.js `clean`).
   const clean = (text, max) => typeof text === "string" ? text.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, max) : "";
   // A chat's land: `none` is Ooga Chat voice alone, whose roster's frames name the `main` zone (`rosterZone`).
-  const ZONES = ["main", "dsb", "none"];
-  const ZONE_NAMES = { main: "Main Island", dsb: "DSB Land", none: "Voice only" };
+  // Voice only first, as the maintainer asked: the card Start a chat lists first, and chosen first where the page has
+  // no land of its own to offer (Ooga Chat); the island chooses the land its Ooga stands in.
+  const ZONES = ["none", "main", "dsb"];
+  const ZONE_NAMES = { none: "Voice only", main: "Main Island", dsb: "DSB Land" };
   const rosterZone = (land) => (land === "dsb" ? "dsb" : "main");
   // Main Island's mark for the zone cards, drawn as DSB Land's is (native-icons.js `dsb`): a floating isle on the sea,
   // its grass, a cave mouth, a palm and the banana pile. Kept here, in the deferred chunk, off the first load.
@@ -154,7 +156,7 @@
     el.type = "button";
     return el;
   };
-  const startDialog = ({ zone: first = "main", submit }) => {
+  const startDialog = ({ zone: first = "none", submit }) => {
     const dialog = make("dialog", "hc-start"), heading = make("h2", "", "Start a chat");
     heading.id = "hc-start-head";
     dialog.setAttribute("aria-labelledby", heading.id);
@@ -218,7 +220,7 @@
     return { node: dialog, open, close: () => dialog.close(), get zone() { return zone; } };
   };
 
-  const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "main", toast = null, shown = () => !node.closest("[hidden]"),
+  const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "none", toast = null, shown = () => !node.closest("[hidden]"),
     rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null }) => {
     const listeners = new AbortController(), { signal } = listeners;
     let state = null, room = null, me = null, rank = "", people = [], timer = 0, shownTimer = 0, askedTimer = 0, askedAt = -Infinity;
