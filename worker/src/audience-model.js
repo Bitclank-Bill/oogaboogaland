@@ -19,8 +19,8 @@
 // A quiet hold (a hosted chat's, `disconnect` with `quiet`): a speaker, host or co-host whose last connection in the zone
 // drops keeps the row they had, in its place, until the hold ends (`expire`): unchanged for its first moments
 // (`quietUntil`), so a drop of a few seconds shows nobody anything, then marked `reconnecting` (shown dimmed) until
-// `until`, when the row shows what is true. Back in the zone, the mark goes and the hold lasts at most `returnMs` more
-// while they take the stage again; speaking again, the row carries on where it stood (its `since` kept). A held speaker
+// `until`, when the row shows what is true. Back in the zone, the mark goes and the hold stands while their place on the
+// stage is held (the caller ends it sooner when they go back to listening on their own word); speaking again, the row carries on where it stood (its `since` kept). A held speaker
 // counts against the speaker cap, as does every identity `reserved()` names (a place on the stage a chat holds).
 
 import { freeSeat } from "./cloud-seats.js";
@@ -48,7 +48,7 @@ const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation
 const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0, rankSince: 0 });
 // `seats()` false: a speaker takes no cloud seat (a hosted chat, whose clouds are its own copy's, docs/ooga-chat-hosts.md).
 export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now, standing = () => NO_STANDING,
-  may = (c) => !!c.eligible, seats = () => true, reserved = () => [], returnMs = 15000 } = {}) => {
+  may = (c) => !!c.eligible, seats = () => true, reserved = () => [] } = {}) => {
   const zones = Object.fromEntries(ZONES.map((zone) => [zone, { rev: revs && Number.isSafeInteger(revs[zone]) ? revs[zone] : 0, rows: new Map() }]));
   // id -> { info, world, active, conns: Map<connId, conn>, gen, source: { zone: last visible source key } }
   const people = new Map();
@@ -180,8 +180,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     // A real change of zone starts the new one as a listener, muted, with no hand and no lease.
     const lease = c.lease;
     c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false; c.forced = false;
-    // Back where a quiet hold stands for them: no longer reconnecting, and a short while to take the stage again.
-    if (p.held && p.held.zone === zone) { p.held.until = Math.min(p.held.until, clock() + returnMs); p.held.quietUntil = Math.min(p.held.quietUntil, p.held.until); }
+    // Back where a quiet hold stands for them, their row loses its reconnecting mark (`visible`) and stands on.
     touch(c.id, zone);
     return { ok: true, changed: true, endedLease: lease };
   };

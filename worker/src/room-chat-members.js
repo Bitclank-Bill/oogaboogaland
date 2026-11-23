@@ -18,7 +18,8 @@ export const CHAT_SUMMARY_FEATURE = "chat-summary-v1";
 export const CHATS_KEPT = 32;
 const COUNT_MAX = 1e6;
 const CHAT = /^[A-Za-z0-9_-]{16}$/, CONTROL = /[\u0000-\u001f\u007f]/;
-const TITLE_MAX = 60, IDS_MAX = 500, IDENTITY = /^(gh|x):[1-9][0-9]{0,19}$/;
+// A chat's people at most: its listeners (`AUDIENCE_LISTENERS`, at most 5000) and its speakers (at most 32).
+const TITLE_MAX = 60, IDS_MAX = 5032, IDENTITY = /^(gh|x):[1-9][0-9]{0,19}$/;
 const on = (room) => bridgeFeatures(room.env || {}).chats;
 const count = (n) => (Number.isSafeInteger(n) && n > 0 ? Math.min(n, COUNT_MAX) : 0);
 
@@ -54,7 +55,9 @@ export const chatMembersRoom = {
         : entry(kept.title, kept.speakers, kept.listeners, kept.ids);
       if (e) room.chatRosters.set(raw[0], e);
     }
-    room.chatOnline = online(room);
+    // Not worked out here: the woken Room's players come back after this, so the next change works it out afresh and
+    // tells every page (`players`), and a welcome always works it out as it goes.
+    room.chatOnline = undefined;
   },
   keep(room) { room.later(room.ctx.storage.put("chatMembers", [...room.chatRosters])); },
   /** A chat's word: its title and counts now, replacing what was kept; nobody in it drops it. Every page hears a change. */
@@ -76,7 +79,7 @@ export const chatMembersRoom = {
   /** The island's players or a chat's word changed: every page hears the number in chats when it moves. */
   players(room) {
     const n = online(room);
-    if (n === (room.chatOnline || 0)) return;
+    if (n === room.chatOnline) return;
     room.chatOnline = n;
     if (on(room)) room.broadcast({ t: "chat-online", n });
   },

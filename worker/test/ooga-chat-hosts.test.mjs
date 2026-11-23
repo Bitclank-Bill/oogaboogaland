@@ -603,6 +603,11 @@ test("a short drop shows nobody anything: the speaker's tile stands, their place
   now += 5000;
   const back = await connect(w, chat.id, 2);
   assert.equal(naming(), before, "back as a listener first: still nothing shows");
+  now += 25000;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.deepEqual([rowOf(amy, "gh:2").role, rowOf(amy, "gh:2").reconnecting], ["speaker", undefined], "a slow way back to the stage still stands in place, not reconnecting");
   assert.equal((await ask(back, { type: "setRole", role: "speaker" })).ok, true, "and on stage again with no approval");
   await speakerOn(w, chat.id, back);
   assert.equal(rowOf(amy, "gh:2").since, since, "where they stood in the order");
@@ -857,6 +862,18 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   assert.equal(room.chatRosters.size, 0);
   assert.deepEqual(heard().at(-1), { t: "chat-summary", chat: "BBBBBBBBBBBBBBBB", title: "", speakers: 0, listeners: 0 });
   assert.equal(online().at(-1), 0);
+  // A big chat: every app account counts, past 500.
+  const many = Array.from({ length: 600 }, (_, i) => `x:${i + 1}`);
+  await room.chatMembers("CCCCCCCCCCCCCCCC", "Big", 1, 599, many);
+  assert.equal(online().at(-1), 600);
+  // After a wake the number is worked out afresh at the next change, never from before the players came back.
+  const later = make("chats");
+  chatMembersRoom.restore(later, structuredClone(stored.get("chatMembers")));
+  later.players.set(77, {});
+  const sent = [];
+  later.broadcast = (m) => sent.push(m);
+  chatMembersRoom.players(later);
+  assert.deepEqual(sent, [{ t: "chat-online", n: 600 }], "the first change after a wake tells every page");
 });
 
 
