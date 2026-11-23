@@ -55,7 +55,7 @@
 .hc-start-title {
   padding: 8px; border: 2px solid var(--stone-dk); border-radius: 6px; background: rgba(0, 0, 0, 0.3); color: var(--paper); font: inherit; font-size: 16px;
 }
-.hc-start-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hc-start-zones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .hc-zone-card {
   display: grid; justify-items: center; gap: 6px; padding: 12px 8px; border: 2px solid var(--stone-dk); border-radius: 8px;
   background: rgba(0, 0, 0, 0.25); color: var(--paper); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;

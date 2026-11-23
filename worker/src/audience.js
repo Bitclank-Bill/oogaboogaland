@@ -46,6 +46,11 @@ export const CHAT_TITLE_MAX = 60;
 // How soon a word the island room missed (a chat's stage taken or left) is sent again.
 export const ISLAND_RETRY_MS = 30 * 1000;
 export const chatName = (id) => `chat:${id}`;
+// A chat's land: a zone it is held in (`main`, `dsb`), or `none`, Ooga Chat voice alone, with no copy, clouds or Go
+// there. A land-less chat's roster lives in the model's `main` zone, which is what its socket's frames name.
+export const CHAT_LANDS = ["main", "dsb", "none"];
+export const isChatLand = (land) => CHAT_LANDS.includes(land);
+export const rosterZone = (land) => (land === "dsb" ? "dsb" : "main");
 export const CHAT_OPS = new Set(["ask", "cancel", "invite", "answer", "decline", "mute", "demote", "cohost", "handover", "remove", "allow", "open", "end"]);
 const TARGETED = new Set(["invite", "answer", "mute", "demote", "cohost", "handover", "remove", "allow"]);
 export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1", "walk-v1"];
@@ -680,8 +685,8 @@ export class Audience extends DurableObject {
     // A chat speaks protocol 2 and has one zone, its own; the old public object, protocol 1 and either zone.
     const protocol = this.chat ? CHAT_PROTOCOL : AUDIENCE_PROTOCOL;
     if (this.chat ? msg.protocol !== protocol : msg.protocol !== undefined && msg.protocol !== protocol) { this.close(c.connId, CLOSE.protocol, "protocol_unsupported"); return; }
-    if (this.chat && msg.zone !== undefined && msg.zone !== this.chat.zone) { this.send(this.sockets.get(c.connId), { type: "error", code: "zone_unavailable" }); return; }
-    const r = this.model.join(c.connId, this.chat ? this.chat.zone : msg.zone);
+    if (this.chat && msg.zone !== undefined && msg.zone !== this.chat.zone && msg.zone !== this.zoneOf()) { this.send(this.sockets.get(c.connId), { type: "error", code: "zone_unavailable" }); return; }
+    const r = this.model.join(c.connId, this.chat ? this.zoneOf() : msg.zone);
     if (!r.ok) {
       if (r.code === "audience_full") this.close(c.connId, CLOSE.full, "audience_full");
       else this.send(this.sockets.get(c.connId), { type: "error", code: r.code });
@@ -848,7 +853,7 @@ export class Audience extends DurableObject {
    */
   preview() {
     if (!this.chat || this.roles.ended) return null;
-    const snap = this.model.snapshot(this.chat.zone), stage = [];
+    const snap = this.model.snapshot(this.zoneOf()), stage = [];
     let listeners = 0;
     for (const row of snap.rows) {
       if (row.rank || row.role === "speaker") { const r = appRow(row); delete r.request; delete r.askedAt; stage.push(r); }
@@ -858,7 +863,9 @@ export class Audience extends DurableObject {
   }
 
   present(id) { const p = this.model.people.get(id); return !!p && p.conns.size > 0; }
-  touchId(id) { if (this.chat && this.model.people.has(id)) this.model.touch(id, this.chat.zone); }
+  touchId(id) { if (this.chat && this.model.people.has(id)) this.model.touch(id, this.zoneOf()); }
+  /** The model zone a chat's roster lives in (`rosterZone`). */
+  zoneOf() { return rosterZone(this.chat.zone); }
   tellYouId(id, reason = "") { const p = this.model.people.get(id); if (p) for (const connId of p.conns.keys()) this.tellYou(connId, reason); }
 
   async rolesChanged() {
@@ -1154,7 +1161,7 @@ export class Audience extends DurableObject {
   /** What the directory lists of this chat, sent whenever it differs from what it was last told. */
   listed() {
     if (!this.chat || !this.env.CHATS || this.roles.ended) return;
-    const counts = this.model.counts(this.chat.zone), host = this.model.people.get(this.roles.host);
+    const counts = this.model.counts(this.zoneOf()), host = this.model.people.get(this.roles.host);
     if (host) this.chat.hostInfo = { login: host.info.login, display: host.info.display || host.info.login, character: host.info.character || null };
     const entry = { speakers: counts.chatSpeakers, listeners: counts.listeners, host: this.chat.hostInfo, hostId: this.roles.host, open: this.roles.open };
     const sig = JSON.stringify(entry);
@@ -1172,7 +1179,7 @@ export class Audience extends DurableObject {
    */
   async open(meta) {
     if (this.chat) return { ok: !!meta && this.chat.id === meta.id };
-    if (!meta || !CHAT_ID.test(meta.id) || typeof meta.title !== "string" || meta.title.length > CHAT_TITLE_MAX || !isZone(meta.zone) || !ID.test(meta.host)
+    if (!meta || !CHAT_ID.test(meta.id) || typeof meta.title !== "string" || meta.title.length > CHAT_TITLE_MAX || !isChatLand(meta.zone) || !ID.test(meta.host)
       || !meta.hostInfo || typeof meta.hostInfo.login !== "string") return { ok: false };
     const now = Date.now();
     this.chat = { id: meta.id, title: meta.title, zone: meta.zone, startedAt: now,

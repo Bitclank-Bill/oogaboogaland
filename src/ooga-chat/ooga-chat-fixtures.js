@@ -254,7 +254,7 @@
       if (who.identity.provider !== "github" || who.eligibility.state !== "eligible") return { code: "capability_required", retryable: false, retryAfter: 0 };
       const text = String(title).trim();
       if (!text || text.length > 60) return { code: "bad_title", retryable: false, retryAfter: 0 };
-      if (!BL.oogaChatConfig.ZONES.includes(zone)) return { code: "zone_unavailable", retryable: false, retryAfter: 0 };
+      if (![...BL.oogaChatConfig.ZONES, "none"].includes(zone)) return { code: "zone_unavailable", retryable: false, retryAfter: 0 };
       if ([...rooms.values()].some((r) => !r.ended && r.host === id)) return { code: "already_hosting", retryable: false, retryAfter: 0 };
       const chat = `fixtureStarted${String(++started).padStart(2, "0")}`;
       room(chat, text, zone, 0, [], { host: id });
