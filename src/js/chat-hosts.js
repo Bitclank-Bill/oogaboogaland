@@ -308,7 +308,9 @@
       if (listeners.signal.aborted) return "";
       if (!answer.chat) return (STARTS[answer.code] || (() => "The chat couldn't start. Try again."))(answer.retryAfter);
       const entry = parseEntry({ ...answer.chat, host: { login: state.session.identity.login } });
-      if (entry) chats.open(entry);
+      // The host is on stage from the start, muted, as in X Spaces: once the snapshot is here they speak (`update`),
+      // the microphone asked for on the strength of this Start chat press.
+      if (entry) { wantSpeak = entry.id; chats.open(entry); }
       return "";
     } });
     startOpen.addEventListener("click", () => starter.open(state.session.identity.display, startZone()), { signal });

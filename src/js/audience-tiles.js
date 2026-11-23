@@ -88,7 +88,8 @@
       if (entry.li.dataset.source !== source) entry.li.dataset.source = source;
       set(entry.text, "textContent", t.display);
       set(entry.text, "title", t.display);
-      set(entry.word, "textContent", speaker ? "Speaker" : "Listener");
+      // A host's or co-host's rank is its label, on stage or not (docs/ooga-chat-hosts.md); everyone else's, their role.
+      set(entry.word, "textContent", t.rank === "host" ? "Host" : t.rank === "cohost" ? "Co-host" : speaker ? "Speaker" : "Listener");
       picture(entry, t.face);
       set(entry.hand, "textContent", t.hand);
       set(entry.hand, "title", t.hand ? `${t.display} has ${t.hand} up` : "");

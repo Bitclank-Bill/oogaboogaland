@@ -33,6 +33,10 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 | Speaker | approved by a host or co-host | speak, mute and unmute themselves, raise the hand, go back to listening |
 | Listener | anyone signed in who joined (GitHub or X) | listen, react, request to speak |
 
+- **The host is on stage from the start**, muted, as in X Spaces: Start chat opens their microphone on the strength of
+  that press (refused, they stay host with no microphone, and Join Voice asks again). A co-host joins the stage only by
+  pressing Join Voice. A host's tile is labelled **Host** and a co-host's **Co-host** in place of Speaker or Listener,
+  with no separate badge; the microphone mark still shows whether one on stage is speaking or muted.
 - **Who may start a chat:** a GitHub account the island's contributor policy calls `eligible` (`chat-capability.js`,
   the rule that let someone speak until now), checked again by the island when the chat starts. One live chat a host.
 - **Who may request:** anyone signed in, GitHub or X. Eligibility no longer decides speaking: a host does. An X
