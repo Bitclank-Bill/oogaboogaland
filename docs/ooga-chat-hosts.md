@@ -201,6 +201,8 @@ toast and the region.
   the island's own routes, and with `bridge` the bridge's. The edge's `FEATURES` names `chats` too
   (`effective(...).chats`, which also needs `listen`); its bootstrap then lists `features.chats`, `paths.chats`
   (`/api/chat/chats`) and audience protocol 2 in `protocols.audience`.
+  `copies`, with `chats`, turns on each Main Island chat's copy (`/api/chats/<id>/world`, `travel-v1`, Go there); it is
+  the island's alone, and both configs deploy it on with `chats`.
 
 ### Routes
 
