@@ -9,7 +9,8 @@
 // portrait or Enter or Space on a focused tile (a hosted chat's tile menu). Returns:
 //   draw(items, describe)  one pass in the list's order: `describe(item, tile)` writes each item into one scratch tile
 //                          ({ id, display, role, source, walking, face, look, hand, self, micDisabled, micPressed, micWords, and
-//                          and a hosted chat's `rank` and `request` as `data-` attributes, `chat` saying "speaking").
+//                          and a hosted chat's `rank` and `request` as `data-` attributes, `chat` saying "speaking",
+//                          and `reconnecting`: a dropped one's tile dimmed in its place, Reconnecting… for its role).
 //                          A tile's nodes are kept by id, only changed fields are written, a tile moves only when out
 //                          of place, and one whose item has gone is dropped with its picture cancelled
 //   repaint(describe)      the speakers' tiles again, from the items they were drawn from (a microphone's state changes
@@ -35,7 +36,7 @@
   };
   const create = (list, { mic = () => {}, menu = null } = {}) => {
     const tiles = new Map();
-    const tile = { id: "", display: "", role: "listener", source: "", walking: false, face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "", chat: false };
+    const tile = { id: "", display: "", role: "listener", source: "", walking: false, face: "", look: "", hand: "", self: false, micDisabled: true, micPressed: false, micWords: "", rank: "", request: "", chat: false, reconnecting: false };
     let mark = 0, current = null;
     const build = (id) => {
       const li = make("li", "cloud-tile"), face = make("span", "cloud-face"), portrait = make("span", "cloud-portrait");
@@ -89,11 +90,12 @@
       set(entry.text, "textContent", t.display);
       set(entry.text, "title", t.display);
       // A host's or co-host's rank is its label, on stage or not (docs/ooga-chat-hosts.md); everyone else's, their role.
-      set(entry.word, "textContent", t.rank === "host" ? "Host" : t.rank === "cohost" ? "Co-host" : speaker ? "Speaker" : "Listener");
+      set(entry.word, "textContent", t.reconnecting ? "Reconnecting…" : t.rank === "host" ? "Host" : t.rank === "cohost" ? "Co-host" : speaker ? "Speaker" : "Listener");
+      if ((entry.li.dataset.reconnecting || "") !== (t.reconnecting ? "true" : "")) { if (t.reconnecting) entry.li.dataset.reconnecting = "true"; else delete entry.li.dataset.reconnecting; }
       picture(entry, t.face);
       set(entry.hand, "textContent", t.hand);
       set(entry.hand, "title", t.hand ? `${t.display} has ${t.hand} up` : "");
-      set(entry.voice, "hidden", !speaker);
+      set(entry.voice, "hidden", !speaker || t.reconnecting);
       if (speaker) {
         if (entry.voice.dataset.voice !== t.look) entry.voice.dataset.voice = t.look;
         attr(entry.voice, "aria-pressed", String(t.micPressed));
@@ -104,7 +106,7 @@
       if ((entry.li.dataset.rank || "") !== t.rank) entry.li.dataset.rank = t.rank;
       if ((entry.li.dataset.request || "") !== t.request) entry.li.dataset.request = t.request;
       const where = speaker ? t.chat ? "speaking" : source === "world" ? "speaking from the island" : "speaking from Ooga Chat" : "listening";
-      attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}${t.rank ? `, ${t.rank === "cohost" ? "co-host" : t.rank}` : ""}, ${where}${speaker && t.look === "muted" ? ", muted" : ""}${t.request === "cohost" ? ", invited to co-host" : t.request ? `, ${t.request} to speak` : ""}`);
+      attr(entry.li, "aria-label", `${t.display}${t.self ? " (you)" : ""}${t.rank ? `, ${t.rank === "cohost" ? "co-host" : t.rank}` : ""}, ${where}${t.reconnecting ? ", reconnecting" : speaker && t.look === "muted" ? ", muted" : ""}${t.request === "cohost" ? ", invited to co-host" : t.request ? `, ${t.request} to speak` : ""}`);
     };
     const drop = (id, entry) => {
       cancel(entry);

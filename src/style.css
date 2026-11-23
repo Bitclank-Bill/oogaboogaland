@@ -1886,6 +1886,17 @@ body[data-active-scene="block"] .mode-hud {
 
 .players-rows li > * { grid-row: 1; }
 .players-rows li > .players-volume { grid-row: 2; }
+/* Someone in a hosted chat (players.js, In Ooga Chat): which chat, and whether they speak or listen there, under the
+   name; a chat's title wraps rather than being cut short. */
+.players-rows li > .players-where {
+  grid-row: 2;
+  grid-column: 2 / -1;
+  margin: 1px 0 0 -7px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
 .players-rows .roster-dots { grid-column: 1; }
 .players-rows .roster-marks { display: contents; }
 .players-rows .players-link { grid-column: 4; grid-row: 1; justify-self: center; }

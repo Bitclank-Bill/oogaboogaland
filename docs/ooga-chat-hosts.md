@@ -59,12 +59,14 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   of any length, with no new approval. Only **Move to listener** or **Remove from chat** takes that away: then they
   request again (`cleared` in chat-roles.js; the speaker cap still holds).
 - **A short drop shows nobody anything.** When a speaker's, co-host's or host's last connection to the chat drops,
-  everyone keeps seeing their tile exactly as it was for 20 s (`QUIET_MS`, a quiet hold), and their place on the stage
-  counts against the speaker cap so nobody takes it. Back within that and speaking again (Ooga Chat does it by itself),
-  their tile carries on where it stood in the order; still gone after it, the roster shows them gone. Their place on the
-  stage and a co-host's rank are held 2 minutes, the host's role 2 minutes too. A microphone that only publishes again
-  after a failed connection (`publish/close` with `recover`) keeps the place, rank and tile the same way; Leave Voice is
-  the speaker's own word and gives the place (and a co-host's rank) up.
+  everyone keeps seeing their tile exactly as it was for 5 s (`QUIET_MS`). Past that it stays in its place, dimmed, with
+  **Reconnecting…** for its role and no microphone mark, for as long as their place is held: a minute on the stage
+  (`STAGE_HOLD_MS`, a co-host's rank too), the host's 2-minute hold for the host, or until a host or co-host moves them
+  to listener or removes them. Their place counts against the speaker cap all the while, so the stage never reshuffles.
+  Back and speaking again (Ooga Chat does it by itself), their tile carries on where it stood; still gone when the hold
+  ends, the roster shows them gone. A microphone that only publishes again after a failed connection (`publish/close`
+  with `recover`) keeps the place, rank and tile the same way; Leave Voice is the speaker's own word and gives the place
+  (and a co-host's rank) up.
 - **Mute:** a host or co-host can mute a speaker; only the speaker can unmute themselves (X Spaces' rule). Move to
   listener ends their lease. Remove from chat closes every connection of that account to the chat and keeps it out of
   that chat until a host or co-host allows them back or it ends. **Allow back** (from the Removed list in the
@@ -119,13 +121,31 @@ tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
 modules, so the two apps never drift. Joining a chat by voice there is like taking a call: the island's proximity voice
 pauses until the visitor leaves the chat, and their Ooga carries an "in a chat" mark so nearby players know why they
 can't hear them (the room's `call-v1`: the page sends `{ t: "call", on }`, every page hears `call { id, on }`
-and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players, not chat members.
+and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players by zone, and after
+every zone's group, **In Ooga Chat**: everyone in a hosted chat who is not on the island (below).
 The same holds across devices: a chat tells the island room when a GitHub account takes or leaves its stage
 (`chatVoice`, kept in the room's storage as `chatVoices`). The room ends that account's island voice (`voice-moved`,
 whose toast says Ooga Chat took it), marks its Ooga in a call on every page, and tells its island page its voice is
 elsewhere (`voice-elsewhere`, unless that page is itself in the chat), whose Switch here takes it back: island voice
 going live while a chat holds the stage ends the lease there (`yieldVoice`), so one account has one voice either way. In the second PR the list also offers **Go
 there**, which takes the visitor's Ooga into the chat's copy of its zone.
+
+**Who the island sees in chats.** Each chat tells the island room who is in it as that changes (the Room's RPC
+`chatMembers(chat, title, members, more)`, from `reportMembers` in `audience.js`): everyone with a row in the chat, a
+quiet hold's included, as `{ id: "gh:<n>" | "x:<n>", login, display, role: "speaker" | "listener" }`, speakers first, at
+most 100 and the rest counted in `more`. A report goes at most every 2 s a chat, one in flight, a one-shot timer sending
+a burst's last change and nothing while the list is what the room was told; a report that fails goes again with the
+next change. As the chat ends it sends an empty list, kept in its storage (`membersGone`) and sent again from its alarm
+until the room takes it. The room (`room-chat-members.js`) keeps each chat's list in memory and in storage
+(`chatMembers`, so a hibernation wake keeps them), replaces it on each report and drops it on an empty one, and at the
+sweep it already runs while players are connected drops any chat the directory no longer lists, adding no timer.
+Pages hear it only where the welcome lists `chat-members-v1` (on with the `chats` switch, beside `call-v1`): the
+welcome carries every chat's list (`chatMembers`) and each change goes to every page as
+`{ t: "chat-members", chat, title, members, more }`, an empty `members` when it ends. The page (`net.js`
+`state.chatMembers`, checked and frozen, emptied with the socket) lists in In Ooga Chat each person once (speaking over
+listening), never the visitor, an island player or one of Main Island's listeners, in gray with "Speaking in" or
+"Listening in" and the chat's title, with no mark, link, crosshair or distance (`players.js`, from `cloud-panel.js`
+`inChats`), and every "N online" on the island counts them.
 
 **Clouds belong to the copies.** OC speakers are never seen or heard over the real island any more: a chat's speakers
 sit on clouds only inside that chat's own copy of its zone (the second PR), one seat each, however many chats share a
@@ -281,7 +301,7 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   (`worker/test/ooga-chat-hosts.test.mjs`): every rule in this file (who may do what to whom, the caps, the queue, invites,
   cooldowns, the host hold and succession, removal, one lease an identity).
 - **No idle timers.** A chat's alarm is set only for the earliest of a held host's 2 minutes, a held place on the stage,
-  a quiet hold's 20 s, an invite's 60 s, a pending lease, a re-authentication, or a word the island room has yet to take
+  a quiet hold's 5 s and its end, an invite's 60 s, a pending lease, a re-authentication, or a word the island room has yet to take
   (kept and retried even after the chat ends, the one thing an ended chat keeps until it is delivered); an empty chat with nothing pending sets none and hibernates. Roles, queue,
   invites and removals are stored (they are small), and the sockets' attachments carry each connection, so a woken
   chat carries on at the same revision.

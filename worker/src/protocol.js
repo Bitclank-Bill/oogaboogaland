@@ -15,6 +15,7 @@ import { commonsRoom } from "./room-commons.js";
 export { commonsRoom };
 // A hosted chat's copy of its zone, and the island's side of a trip there (room-copy.js).
 export { copyRoom, COPY_FEATURE, COPY_MESSAGES } from "./room-copy.js";
+export { chatMembersRoom } from "./room-chat-members.js";
 export { roomCatalog } from "./room-catalog.js";
 export { equipmentRoom } from "./equipment-room.js";
 // The island's bridge switches, for the Room's `call-v1` (hosted chats, docs/ooga-chat-hosts.md).
@@ -94,6 +95,9 @@ import "../../src/js/reaction-policy.js";
 //                                            them (a host with none sends nothing); binary NPC frames from them
 //                 call { id, on }            a player went into or out of a hosted chat's voice (call-v1); welcome and
 //                                            join carry `call: true` on a player who is in one
+//                 chat-members { chat, title, members, more }  a hosted chat's members now, each { id, login, display,
+//                                            role }, at most 100 and the rest counted; none as it ends (chat-members-v1,
+//                                            room-chat-members.js); welcome carries every chat's as `chatMembers`
 //                 vstate { id, voice, muted }  a player's microphone went live or off, or they muted it; welcome
 //                                            and join carry the same two fields on every player, and hp and ko
 //                 hp { id, v, ko }           a player's driven Ooga's health changed

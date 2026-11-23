@@ -17,10 +17,11 @@
 // the island reports the identity in its own voice (`active`), whose source always wins: the island's arrival ends a
 // chat lease first.
 // A quiet hold (a hosted chat's, `disconnect` with `quiet`): a speaker, host or co-host whose last connection in the zone
-// drops keeps the row they had, unchanged, until `quiet` passes (`expire`), so a drop of a few seconds shows nobody
-// anything. A return that speaks again carries on where the row was (its `since` kept); one that does not shows once the
-// hold passes. A held speaker counts against the speaker cap, as does every identity `reserved()` names (a place on the
-// stage a chat holds through a longer drop).
+// drops keeps the row they had, in its place, until the hold ends (`expire`): unchanged for its first moments
+// (`quietUntil`), so a drop of a few seconds shows nobody anything, then marked `reconnecting` (shown dimmed) until
+// `until`, when the row shows what is true. Back in the zone, the mark goes and the hold lasts at most `quietMs` more
+// while they take the stage again; speaking again, the row carries on where it stood (its `since` kept). A held speaker
+// counts against the speaker cap, as does every identity `reserved()` names (a place on the stage a chat holds).
 
 import { freeSeat } from "./cloud-seats.js";
 
@@ -39,7 +40,7 @@ const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation
   && a.mic === b.mic && a.hand === b.hand && a.speaking === b.speaking && a.display === b.display && a.login === b.login
   && a.avatar === b.avatar && a.character === b.character && a.contributions === b.contributions
   && a.rank === b.rank && a.request === b.request && a.askedAt === b.askedAt && a.rankSince === b.rankSince
-  && a.since === b.since && a.via === b.via && a.walking === b.walking;
+  && a.since === b.since && a.via === b.via && a.walking === b.walking && !!a.reconnecting === !!b.reconnecting;
 
 // A hosted chat (docs/ooga-chat-hosts.md) hands in its roles: `standing(id)` is a row's `{ rank, request, askedAt }`
 // (the host's or a co-host's rank, an open request or invite, when it was asked), and `may(conn)` whether a connection's
@@ -47,7 +48,7 @@ const sameRow = (a, b) => a === b || !!a && !!b && a.generation === b.generation
 const NO_STANDING = Object.freeze({ rank: "", request: "", askedAt: 0, rankSince: 0 });
 // `seats()` false: a speaker takes no cloud seat (a hosted chat, whose clouds are its own copy's, docs/ooga-chat-hosts.md).
 export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, revs = null, clock = Date.now, standing = () => NO_STANDING,
-  may = (c) => !!c.eligible, seats = () => true, reserved = () => [] } = {}) => {
+  may = (c) => !!c.eligible, seats = () => true, reserved = () => [], quietMs = 5000 } = {}) => {
   const zones = Object.fromEntries(ZONES.map((zone) => [zone, { rev: revs && Number.isSafeInteger(revs[zone]) ? revs[zone] : 0, rows: new Map() }]));
   // id -> { info, world, active, conns: Map<connId, conn>, gen, source: { zone: last visible source key } }
   const people = new Map();
@@ -68,7 +69,8 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
   // The row a person shows in a zone now, before its generation is decided: a quiet hold's until they speak again here.
   const visible = (p, zone) => {
     const live = shown(p, zone), h = p.held;
-    return !h || h.zone !== zone || live && live.role === "speaker" ? live : h.base;
+    if (!h || h.zone !== zone || live && live.role === "speaker") return live;
+    return !live && clock() >= h.quietUntil ? { ...h.base, reconnecting: true } : h.base;
   };
   const shown = (p, zone) => {
     if (p.world && p.world.zone === zone) return { role: "speaker", source: "world", mic: p.world.mic, hand: p.world.hand || "", speaking: !!p.world.speaking, character: p.world.character || null, since: 0 };
@@ -179,20 +181,22 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     // A real change of zone starts the new one as a listener, muted, with no hand and no lease.
     const lease = c.lease;
     c.lease = null; c.mic = "muted"; c.hand = ""; c.speaking = false; c.forced = false;
+    // Back where a quiet hold stands for them: no longer reconnecting, and a short while to take the stage again.
+    if (p.held && p.held.zone === zone) { p.held.until = Math.min(p.held.until, clock() + quietMs); p.held.quietUntil = Math.min(p.held.quietUntil, p.held.until); }
     touch(c.id, zone);
     return { ok: true, changed: true, endedLease: lease };
   };
 
-  // `quiet`: when a quiet hold ends, for someone whose row should stand unchanged meanwhile (a chat's speaker or manager);
-  // only their last connection in the zone holds it, and a speaker's row is held over another connection's listener row.
-  const disconnect = (connId, quiet = 0) => {
+  // `quiet` (`{ quietUntil, until }`): a quiet hold for someone whose row should stand meanwhile (a chat's speaker or
+  // manager); only their last connection in the zone holds it, and a speaker's row is held over another's listener row.
+  const disconnect = (connId, quiet = null) => {
     const c = conns.get(connId);
     if (!c) return null;
     const p = people.get(c.id);
     if (quiet && c.zone) {
       const base = visible(p, c.zone);
       const others = [...p.conns.values()].some((o) => o !== c && o.zone === c.zone && (o.lease || base && base.role !== "speaker"));
-      if (base && !others) p.held = { zone: c.zone, until: quiet, base: { ...base, speaking: false } };
+      if (base && !others) p.held = { zone: c.zone, quietUntil: quiet.quietUntil, until: quiet.until, marked: false, base: { ...base, speaking: false, reconnecting: false } };
     }
     conns.delete(connId);
     p.conns.delete(connId);
@@ -206,18 +210,21 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     if (!c || !c.zone || !c.lease || c.lease.state !== "active") return false;
     const p = people.get(c.id), base = visible(p, c.zone);
     if (!base || base.role !== "speaker") return false;
-    p.held = { zone: c.zone, until, base: { ...base, speaking: false } };
+    p.held = { zone: c.zone, quietUntil: until, until, marked: false, base: { ...base, speaking: false, reconnecting: false } };
     return true;
   };
 
-  /** Quiet holds whose time has come (or one identity's, `id`, at once): their rows show what is true now. */
+  /**
+   * Quiet holds whose time has come: past their first moments they show as reconnecting, past their end what is true
+   * now. `id` ends that identity's at once. Returns the identities whose rows changed.
+   */
   const expire = (now, id = null) => {
     const out = [];
     for (const p of people.values()) {
-      if (!p.held || (id ? p.id !== id : p.held.until > now)) continue;
-      touch(p.id, p.held.zone);
-      p.held = null;
-      out.push(p.id);
+      const h = p.held;
+      if (!h || id && p.id !== id) continue;
+      if (id || h.until <= now) { p.held = null; touch(p.id, h.zone); out.push(p.id); }
+      else if (!h.marked && h.quietUntil <= now) { h.marked = true; touch(p.id, h.zone); out.push(p.id); }
     }
     return out;
   };
@@ -232,7 +239,7 @@ export const createAudience = ({ epoch = Date.now(), limits = DEFAULT_LIMITS, re
     }
   };
   /** The earliest quiet hold's end. */
-  const quietUntil = () => { let next = Infinity; for (const p of people.values()) if (p.held) next = Math.min(next, p.held.until); return next; };
+  const quietUntil = () => { let next = Infinity; for (const p of people.values()) if (p.held) next = Math.min(next, p.held.marked ? p.held.until : p.held.quietUntil); return next; };
 
   /** Ask to speak: `capability` is the island's answer, checked by the caller just before. */
   const requestSpeaker = (connId, { eligible, generation, until, character = null }) => {
@@ -390,6 +397,7 @@ export const appRow = (row, self = null) => ({
   provider: row.provider, character: row.character, mic: row.mic, speaking: row.speaking, hand: row.hand,
   ...(row.rank ? { rank: row.rank } : {}), ...(row.request ? { request: row.request, askedAt: row.askedAt } : {}),
   ...(row.walking ? { walking: true } : {}), ...(row.rankSince ? { rankSince: row.rankSince } : {}), ...(row.since ? { since: row.since } : {}), ...(row.via ? { via: row.via } : {}),
+  ...(row.reconnecting ? { reconnecting: true } : {}),
   ...(self === row.id ? { self: true } : {}),
 });
 

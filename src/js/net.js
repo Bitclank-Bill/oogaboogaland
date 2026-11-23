@@ -116,7 +116,7 @@
 // `subscribePresence`'s `fn(rec, false, true)` as they go and `fn(rec, true, true)` back. The island says whose Oogas
 // are away in a copy (its welcome's `away`, a travel `leave`'s `character`, `{ t: "away", id, on: false }` and a
 // return's `join`): `state.away` (account id → character name), whose NPCs every page keeps as ghosts meanwhile.
-// Exports travel, sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// Exports travel, sendDuel, subscribeDuel, voiceLink, toggleVoiceLink, linkEveryone, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, subscribeChatMembers, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
 // sendProps, sendPropInput, subscribeProps (the loose props' host frames and followers' inputs, prop-sync.js),
 // setMuted, setHealth, sendNpc, sendChat, sendPrivate, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
@@ -257,6 +257,40 @@
     state.clouds = list;
     for (const fn of cloudSubscribers) fn(list);
   };
+  // Who is in each hosted chat (chat-members-v1, docs/ooga-chat-hosts.md, Who the island sees in chats): the room's
+  // `chat-members` frames and its welcome's `chatMembers`, each checked here and kept on `state.chatMembers`, chat id ->
+  // frozen `{ title, members, more }`, each member frozen `{ id, login, display, role }` ("speaker" or "listener"), an
+  // id once a chat; at most CHATS_KEPT chats and MEMBERS_KEPT members a chat (the rest counted in `more`), emptied with
+  // the socket. `subscribeChatMembers` hears each change; Online Oogas lists, and every "N online" counts, those of them
+  // not on the island (cloud-panel.js `inChats`).
+  const CHAT_MEMBERS_FEATURE = "chat-members-v1", CHAT_KEY = /^[A-Za-z0-9_-]{16}$/, MEMBER_ID = /^(gh|x):[1-9][0-9]{0,19}$/;
+  const CHATS_KEPT = 32, MEMBERS_KEPT = 100, CHAT_CONTROL = /[\u0000-\u001f\u007f]/;
+  const chatMemberSubscribers = new Set();
+  let chatMembersOn = false;
+  const chatText = (v, max) => (typeof v === "string" && v.trim() && v.length <= max && !CHAT_CONTROL.test(v) ? v.trim() : "");
+  const chatMember = (raw) => {
+    if (!raw || typeof raw.id !== "string" || !MEMBER_ID.test(raw.id) || typeof raw.login !== "string" || !/^[\w.-]{1,39}$/.test(raw.login)) return null;
+    return Object.freeze({ id: raw.id, login: raw.login, display: chatText(raw.display, 50) || raw.login, role: raw.role === "speaker" ? "speaker" : "listener" });
+  };
+  // One chat's word: its members now, or none (it ended). True when what is kept changed.
+  const readChatMembers = (msg) => {
+    if (!msg || typeof msg.chat !== "string" || !CHAT_KEY.test(msg.chat)) return false;
+    const members = [], seen = new Set();
+    let more = Number.isSafeInteger(msg.more) && msg.more > 0 ? msg.more : 0;
+    for (const raw of Array.isArray(msg.members) ? msg.members.slice(0, MEMBERS_KEPT * 2) : []) {
+      const m = chatMember(raw);
+      if (!m || seen.has(m.id)) continue;
+      seen.add(m.id);
+      if (members.length < MEMBERS_KEPT) members.push(m); else more++;
+    }
+    if (!members.length) return state.chatMembers.delete(msg.chat);
+    if (!state.chatMembers.has(msg.chat) && state.chatMembers.size >= CHATS_KEPT) return false;
+    state.chatMembers.set(msg.chat, Object.freeze({ title: chatText(msg.title, 60), members: Object.freeze(members), more }));
+    return true;
+  };
+  const chatMembersChanged = () => {
+    for (const fn of chatMemberSubscribers) fn(state.chatMembers);
+  };
   const remotes = new Map();
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
@@ -265,7 +299,7 @@
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, hostEpoch: 0, props: false, npcVersion: 0, catalogRequired: false, catalogMatch: false, catalog: null, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
-    voiceLinks: false, linkWants: new Set(), linked: new Set(), linkApp: Object.freeze([]), outdoorVoice: false, duel: false, placed: 0, audience: false, chats: false, call: false, clouds: NO_CLOUDS,
+    voiceLinks: false, linkWants: new Set(), linked: new Set(), linkApp: Object.freeze([]), outdoorVoice: false, duel: false, placed: 0, audience: false, chats: false, call: false, clouds: NO_CLOUDS, chatMembers: new Map(),
     travel: false, copy: null, target: null, copyLeft: 0, copyReason: "", away: new Map(),
     // Voice on another device (voice-handoff.js): `voiceElsewhere` while the account speaks from Ooga Chat somewhere
     // else, as the room's welcome and its `voice-elsewhere` say; `voiceMoved` counts the times Ooga Chat took this
@@ -443,6 +477,7 @@
     if (room !== "live") state.chatUnicode = state.privateChat = state.audience = state.chats = state.travel = false;
     if (room !== "live") { state.voiceLinks = false; state.linkWants.clear(); state.linked.clear(); state.linkApp = linkApp(null); peersHeard = []; gensHeard = null; }
     if (room !== "live") state.outdoorVoice = false;
+    if (room !== "live") { chatMembersOn = false; if (state.chatMembers.size) { state.chatMembers.clear(); chatMembersChanged(); } }
     if (lost) privateHeard({ op: "lost" });
     if (lost) outdoorHeard({ op: "lost" });
     if (room !== "live") { hockeyTables.fill(null); hockeyEmit({ k: "lost" }); state.hockey = false; }
@@ -747,6 +782,11 @@
       state.copy = copyOf(msg);
       state.away.clear();
       if (!target && Array.isArray(msg.away)) for (const e of msg.away.slice(0, 64)) awayIn(e && e.id, e && e.character);
+      // Who is in each chat, whole in the welcome where the room keeps them, then a chat at a time (`chat-members`).
+      chatMembersOn = Array.isArray(msg.features) && msg.features.includes(CHAT_MEMBERS_FEATURE);
+      state.chatMembers.clear();
+      if (chatMembersOn && Array.isArray(msg.chatMembers)) for (const m of msg.chatMembers.slice(0, CHATS_KEPT)) readChatMembers(m);
+      chatMembersChanged();
       // A room that keeps the chalkboard sends it next (chalk-board); an older one leaves the page its own board.
       if (state.chalk && !(Array.isArray(msg.features) && msg.features.includes(BL.chalkBoard.FEATURE))) { state.chalk = null; chalkEmit("board"); }
       remotes.clear();
@@ -882,6 +922,8 @@
       if (state.duel && typeof msg.op === "string") for (const fn of duelSubscribers) fn(msg);
     } else if (msg.t === "audience") {
       if (state.audience) for (const fn of audienceSubscribers) fn(msg);
+    } else if (msg.t === "chat-members") {
+      if (chatMembersOn && readChatMembers(msg)) chatMembersChanged();
     } else if (msg.t === "clouds") {
       if (msg.v === 1 && Array.isArray(msg.clouds)) setClouds(cloudList(msg.clouds));
     } else if (msg.t === "away") {
@@ -1707,6 +1749,11 @@
     audienceSubscribers.add(fn);
     return () => audienceSubscribers.delete(fn);
   };
+  // `fn(map)` on each change of `state.chatMembers` (chat-members-v1).
+  const subscribeChatMembers = (fn) => {
+    chatMemberSubscribers.add(fn);
+    return () => chatMemberSubscribers.delete(fn);
+  };
   // `fn(list)` on each change of `state.clouds` (#659).
   const subscribeClouds = (fn) => {
     cloudSubscribers.add(fn);
@@ -1820,12 +1867,12 @@
     chalkSubscribers.clear();
     walletSubscribers.clear();
     outdoorSubscribers.clear();
-    shotSubscribers.clear(); swingSubscribers.clear(); reactSubscribers.clear(); audienceSubscribers.clear(); cloudSubscribers.clear();
+    shotSubscribers.clear(); swingSubscribers.clear(); reactSubscribers.clear(); audienceSubscribers.clear(); cloudSubscribers.clear(); chatMemberSubscribers.clear();
     presenceSubscribers.clear();
     doorSubscribers.clear();
     close("off");
     diagnostic = null;
   };
 
-  BL.net = { travel, sendProps, sendPropInput, subscribeProps, sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setCall, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { travel, sendProps, sendPropInput, subscribeProps, sendDuel, subscribeDuel, sendTess, connectionDiagnostics, subscribeConnection, lockRoom, unlockRoom, tryRoomPin, voiceLink, toggleVoiceLink, linkEveryone, cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeBf, subscribeBfFrame, sendBf, sendBfInput, sendBfFrame, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeAudience, subscribeClouds, subscribeChatMembers, sendAudience, subscribePrivate, subscribeChalk, subscribeWallets, sendOutdoor, subscribeOutdoor, OUTDOOR_FEATURE, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, probe, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setCall, setHealth, sendNpc, sendChat, sendPrivate, sendReaction, subscribeReactions, setHand, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
