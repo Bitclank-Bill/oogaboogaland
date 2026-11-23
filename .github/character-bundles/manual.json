@@ -1,17 +1,7 @@
 {
   "version": 1,
   "lane": "manual",
-  "openedOn": "2026-11-22",
-  "round": "3173d12e29f90410eca95f31e018c4635f6d0e83",
-  "entries": [
-    {
-      "pr": 860,
-      "head": "4d93f039b2c966ae00899c6ad79cf41e3b52b46b",
-      "author": "SVRNSociety",
-      "path": "src/characters/SVRNSociety.js",
-      "base": "8e3c0c03438c6900c87c06386c87046468cd0f73",
-      "hash": "f81ea437e39a33f53e15a9506758cc5e4b9ad5f5d1b8099b357bc0a81999b5e7",
-      "lane": "manual"
-    }
-  ]
+  "openedOn": "2026-11-23",
+  "round": "7890535f95062629875a7536e317ae6c1183528c",
+  "entries": []
 }
