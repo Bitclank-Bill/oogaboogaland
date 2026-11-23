@@ -261,6 +261,14 @@ Agreed 2026-11-23:
   stream and into the copy beside the banana pile; Leave beams it back to exactly where it stood, as does leaving the
   stage or the chat.
 - **Size:** up to 32 Oogas, the speaker cap, and the island room's own.
+- **The copy's server** is the island's own `Room` class in a copy mode, one object a chat (`chat:<id>`), with
+  everything island-only off (NPCs, games, chalk, the World Map's report, island voice, the text chat) and a check
+  pinning what a copy offers. Only the chat's current speakers are admitted, and leaving the stage, removal or the end
+  sends them home.
+- **Main Island first:** Go there is off for DSB Land chats until DSB Land's copy (an arrival spot and clouds in its
+  sky) lands in a later PR; they work as voice chats meanwhile.
+- **The live island view** uses the game's own renderer and models, loaded only when someone turns Live view on.
+- **Ooga Chat's first-load limit** may rise to 256 KB gzipped.
 - **Clouds:** every speaker not walking the copy sits on a cloud in it, a seat each, 32 seats: Ooga Chat's, and the
   island's whose Ooga is still on the main land. A speaker with no Ooga (an X account) has no cloud.
 
