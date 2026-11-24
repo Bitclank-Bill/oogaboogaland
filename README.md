@@ -172,6 +172,8 @@ npm run build
 
 Writes `oogaboogaland.html`, one self-contained page with the content policy pinned to its hashes. CI commits it back after each merge to `rock`. The old GitHub Pages address, https://oogaboogax.github.io/oogaboogaland/, now redirects to https://oogabooga.land/.
 
+For a smaller offline download, `npm run build:offline` also writes `untracked/offline/oogaboogaland-core.html` and `untracked/offline/lounge.roompack`. The core runs on its own. To visit the lounge behind the casino bookcase, choose the matching pack at the door once per session. The regular `oogaboogaland.html` includes the same artwork and needs no pack.
+
 Two Cloudflare Workers serve the same site with GitHub sign-in, the shared island and voice: https://oogaboogaland-staging.wickedsmartbitcoin.workers.dev and https://oogabooga.land (production) deploy through GitHub Actions, staging on every merge to `rock` and production by hand; `docs/cloudflare-setup.md` covers the setup and local development with `wrangler dev`, and `docs/auth-and-presence.md` the sign-in flow.
 
 ### Deploying to Cloudflare

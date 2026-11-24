@@ -109,7 +109,7 @@
   // An end wall's frame, built at +z (a node turned half about y stands it at -z): sill and coping between the long
   // sides', a marble head over the glass from the cornice out to the glass, posts under the lunette's mullions (the
   // corners are the long sides'), mullions, the transom and the head rail.
-  const BOOK_X = 19.58, BOOK_HALF = 1.15; // local +x turns west on the bar end
+  const BOOK_X = 19.58, BOOK_HALF = BL.pokerLoungeDoor.half; // local +x turns west on the bar end
   const end = (lite, bookcase=false) => once("end:"+lite+":"+bookcase, () => {
     const z0 = SILL.endInner, z1 = SILL.endOuter, d = z1 - z0, mid = (z0 + z1) / 2, span = SILL.inner * 2, tall = HEAD - SILL_TOP, ym = (SILL_TOP + HEAD) / 2;
     const parts = [M.merge(K.slab({ w: span, h: SILL.body, d, seed: 52, veins: 8, offset: { x: 0, y: SILL.body / 2, z: mid } })),
@@ -131,14 +131,17 @@
       }
     }
     const upright=(x,w,d)=>{
-      const bottom=bookcase && Math.abs(x-BOOK_X)<BOOK_HALF?TRANSOM_Y:SILL_TOP;
+      const bottom=bookcase && Math.abs(x-BOOK_X)<BOOK_HALF?BL.pokerLoungeDoor.crown(x-BOOK_X):SILL_TOP;
       parts.push(box(w,HEAD-bottom,d,GOLD,x,(HEAD+bottom)/2,END_Z));
     };
     const posts = endPosts(lite);
     for (const x of posts.slice(1, -1)) upright(x,POST.w,POST.d);
     for (const [a, b] of bays(posts)) {
       if (!lite) for (const x of splits(a, b)) upright(x,MULLION.w,MULLION.d);
-      parts.push(box(b-a,TRANSOM.h,TRANSOM.d,GOLD,(a+b)/2,TRANSOM_Y,END_Z));
+      if(bookcase && a<BOOK_X+BOOK_HALF && b>BOOK_X-BOOK_HALF){
+        for(const [lo,hi] of [[a,BOOK_X-BOOK_HALF],[BOOK_X+BOOK_HALF,b]])
+          if(hi>lo)parts.push(box(hi-lo,TRANSOM.h,TRANSOM.d,GOLD,(lo+hi)/2,TRANSOM_Y,END_Z));
+      }else parts.push(box(b-a,TRANSOM.h,TRANSOM.d,GOLD,(a+b)/2,TRANSOM_Y,END_Z));
     }
     return noShadow(M.merge(...parts));
   });
@@ -268,7 +271,7 @@
         for (const tier of [0, 1]) add(s > 0 ? "+x" : "-x", tier, s, a, b, true);
       }
       for (const [a, b] of bays(endPosts(lite))) for (const tier of [0, 1]){
-        if(s<0 && !tier && b>BOOK_X-BOOK_HALF && a<BOOK_X+BOOK_HALF){
+        if(s<0 && b>BOOK_X-BOOK_HALF && a<BOOK_X+BOOK_HALF){
           if(a<BOOK_X-BOOK_HALF) add("-z",tier,s,a,BOOK_X-BOOK_HALF,false);
           if(b>BOOK_X+BOOK_HALF) add("-z",tier,s,BOOK_X+BOOK_HALF,b,false);
         }else add(s>0?"+z":"-z",tier,s,a,b,false);
@@ -289,9 +292,12 @@
   const blocker = (kind, x, z, r, x0, x1, y0, y1, z0, z1) => ({ kind, x, z, r, x0, x1, y0, y1, z0, z1 });
   const cylinder = (x, z, r, y0, y1) => blocker("cylinder", x, z, r, x - r, x + r, y0, y1, z - r, z + r);
   const slab = (x0, x1, y0, y1, z0, z1) => blocker("box", (x0 + x1) / 2, (z0 + z1) / 2, 0, x0, x1, y0, y1, z0, z1);
+  const barGlass=Object.freeze({left:-V.HALF_SPAN,right:-2,z:-36.24});
   const BLOCKERS = Object.freeze([
     ...[-1, 1].flatMap(s => COLUMN_Z.filter(z => s < 0 || z !== 0).map(z => cylinder(columnX(s,z), z, COLUMN_BASE, 0, HEAD))),
     slab(-OUTER - 0.3, OUTER + 0.3, 0, ARCH_TOP + 0.26, PORTAL_Z - BM.FRAME.courseFront - 0.15, SILL.endInner),
+    slab(barGlass.left,-BOOK_X-BOOK_HALF,0,HEAD,barGlass.z-.02,barGlass.z+.02),
+    slab(-BOOK_X+BOOK_HALF,barGlass.right,0,HEAD,barGlass.z-.02,barGlass.z+.02),
     slab(-6.75, 6.75, 4.6, 8.2, -36.6, -36.1)].map(b => Object.freeze(b)));
   const blockers = () => BLOCKERS;
   // A shattered pane: it vanishes into SHARDS_PER shards flying outward and tumbling (SHARD_LIFE), the bay stands open
@@ -427,6 +433,6 @@
     const dispose = () => { reset(); while (root.children.length) S.removeChild(root, root.children[root.children.length - 1]); };
     return { root, glass, flames, dispose, panes: () => list, blockers, shatter, update, intact, broken, shards: shardsOut, reset };
   };
-  BL.pokerGlazing = Object.freeze({ OPEN, BOOK_X, BOOK_HALF, SIDE_X, END_Z, SILL_TOP, HEAD, TRANSOM_Y, SILL, TERRACE, RAIL, columnX, COLUMN_X, COLUMN_Z, SCONCE_Y, CUPS, PORTAL_Z, BOARD_Y, BOARD_Z,
+  BL.pokerGlazing = Object.freeze({ barGlass, OPEN, BOOK_X, BOOK_HALF, SIDE_X, END_Z, SILL_TOP, HEAD, TRANSOM_Y, SILL, TERRACE, RAIL, columnX, COLUMN_X, COLUMN_Z, SCONCE_Y, CUPS, PORTAL_Z, BOARD_Y, BOARD_Z,
     HEAL_AFTER, HEAL_TIME, SHARD_LIFE, SHARDS_PER, SHARD_CAP, MAX_BROKEN, sidePosts, endPosts, parts, panes, blockers, build });
 })();

@@ -2,8 +2,8 @@
 (() => {
   "use strict";
   const BL=window.BL,M=BL.models;
-  const stone="#bbbcb7", edge="#d4d5c9", recess="#727974", high="#e5e3d8";
-  const mineral=BL.pokerMarble.mineralAtlas(()=>BL.pokerHearthMap,640);
+  const stone="#fffefa", edge="#ffffff", recess="#d4d1c9", high="#ffffff";
+  const mineral=BL.pokerMarble.mineralAtlas(()=>BL.pokerHearthMap,640,true);
   const crest=(color=stone,emissive=.10)=>{
     const g=M.geometry(),unit=.0091,loops=BL.pokerDamaskMap.contours;
     const edges=[],levels=new Set();
@@ -69,7 +69,7 @@
     }
     return g;
   };
-  const emblemY=5.71;
+  const emblemY=5.71, crownY=13.5;
   const bitcoinPanel=()=>{
     // One continuous silhouette, with a wider lower bowl and two open counters.
     const outer=[[-.78,.94],[-.40,.94],[-.40,1.27],[-.22,1.27],[-.22,.94],[-.015,.94],[-.015,1.27],[.165,1.27],[.165,.94]];
@@ -232,7 +232,7 @@
       }
     }
     steps(7.98,4.68,.60,molding);
-    // The narrower flue meets the real ceiling, with a recessed lancet on its face.
+    // A recessed lancet and stepped cornice finish the exposed marble chimney breast.
     const flueBase=8.275,flueH=height-flueBase;
     slab(0,flueBase+flueH/2,.38,3.15,flueH,.53);
     for(const s of [-1,1]){
@@ -240,78 +240,117 @@
       rod([s*.90,flueBase+.31,.68],[s*.90,height-1.67,.68],.066,edge);
       rod([s*.90,height-1.67,.68],[0,height-.53,.68],.066,edge);
     }
+    steps(height-.295,3.15,.40,molding);
     const g=M.merge(...parts);g.twoSided=true;
+    // The carved surround is one pale stone, including the raised Bitcoin face.
+    for(const f of g.faces)f.emissive+=.14;
     if(typeof Image!=="undefined")mineral(g,[-2.9,0,-2.9],[2.9,height,2.9]);
     return g;
   };
   const fire=lite=>{
-    const w=lite?128:192,h=lite?100:150,geometry=M.geometry();
-    M.face(geometry,[[-1.48,0],[1.48,0],[1.48,2.12],[-1.48,2.12]].map(([x,y])=>M.pushVert(geometry,x,y,0)),
-      [255,249,234],{emissive:1});
-    geometry.castShadow=false;
+    // Wrap the moving flame fronts around tapered volumes. Each grows from a
+    // different gap in the fuel so the near tongues can pass in front of the far ones.
+    const tau=2*Math.PI,sides=lite?20:36,rows=lite?9:14,height=2.12;
+    const plume=(x,z,rx,rz,scaleY,phase)=>{
+      const g=M.geometry();
+      let previous;
+      for(let i=0;i<=rows;i++){
+        const v=i/rows,radius=(.76+.39*(1-Math.exp(-13*v)))*(1-.80*v);
+        const ring=[];
+        for(let j=0;j<=sides;j++){
+          const a=(j/sides-.5)*tau,r=radius*(1+.09*Math.cos(3*a+phase+3*v))+.14*v*Math.sin(a+phase);
+          ring.push(M.pushVert(g,r*Math.sin(a),height*v,1-r*Math.cos(a)));
+        }
+        if(previous)for(let j=0;j<sides;j++)M.face(g,[previous[j],ring[j],ring[j+1],previous[j+1]],[255,249,232],{emissive:1});
+        previous=ring;
+      }
+      g.smooth=true;g.twoSided=true;g.castShadow=false;
+      return {geometry:g,x,z,rx,rz,scaleY,phase};
+    };
+    const plumes=[plume(.18,1.14,.77,.19,1,0),plume(-.63,1.25,.65,.23,.82,2.3),plume(.56,1.35,.69,.18,.67,4.8)];
     // The face and both counters mask this flame bed. Its depth exposes less of the
     // bright core from a grazing view, just as a cut channel in stone would.
     const behind=M.geometry();
     M.face(behind,[[-1.3,-1.5],[1.3,-1.5],[1.3,1.5],[-1.3,1.5]].map(([x,y])=>M.pushVert(behind,x,y,0)),
       [255,228,201],{emissive:1});
     behind.castShadow=false;
-    if(typeof CanvasRenderingContext2D==="undefined")return {geometry,behind,update(){}};
-    const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
-    const ctx=canvas.getContext("2d"),surface=geometry.imageSurface={canvas,rect:[-1.48,0,2.96,2.12],version:0,smooth:true,background:[162,49,9]};
+    if(typeof CanvasRenderingContext2D==="undefined")return {plumes,behind,update:()=>0};
+    // Reuse the noise tile and interpolation scratch across all three plumes.
+    const w=lite?80:128,h=lite?96:144,field=new Float32Array(w),tips=new Float32Array(5);
+    const noiseColumn=new Uint8Array(w),noiseFraction=new Float32Array(w);
+    for(const p of plumes){
+      const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+      p.ctx=canvas.getContext("2d");p.pixels=p.ctx.createImageData(w,h);
+      p.geometry.imageSurface={canvas,rect:[-Math.PI,0,tau,height],curve:[1,0,0],version:0,
+        smooth:true,tessellated:true,cutout:true,blend:"alpha",softVolume:true,background:[214,47,5]};
+    }
     const bed=document.createElement("canvas");bed.width=80;bed.height=96;
     const embers=bed.getContext("2d"),glow=embers.createLinearGradient(0,0,14,96);
     glow.addColorStop(0,"#772608");glow.addColorStop(.48,"#a83b0c");glow.addColorStop(1,"#e16c19");
-    behind.imageSurface={canvas:bed,rect:[-1.3,-1.5,2.6,3],smooth:true,get version(){return surface.version;}};
-    const pixels=ctx.createImageData(w,h),bytes=pixels.data;
-    const field=new Float32Array(w),tips=new Float32Array(5);
-    const rate=lite?16:24,tau=Math.PI*2;
+    behind.imageSurface={canvas:bed,rect:[-1.3,-1.5,2.6,3],smooth:true,version:0};
+    const rate=lite?16:24;
     // Advect fine eddies up through the slower plumes rising from the log bed.
     const eddies=new Float32Array(128*128);
     for(let y=0;y<128;y++)for(let x=0;x<128;x++){
       const u=x*tau/128,v=y*tau/128;
       eddies[y*128+x]=.50*Math.sin(3*u+v+1.3*Math.sin(2*v-u))+.30*Math.sin(7*u-3*v+.9*Math.cos(3*u+v))+.20*Math.sin(13*u+5*v);
     }
-    let last=-1;
-    const update=time=>{
-      const frame=Math.floor(time*rate);
-      if(frame===last)return;
-      last=frame;
-      const t=frame/rate,drift=Math.floor(t*8.7),rise=Math.floor(t*51.3);
-      for(let j=0;j<tips.length;j++)tips[j]=.56-.077*Math.abs(j-2)+.11*Math.sin(2.8*t+1.83*j)+.067*Math.sin(5.43*t-1.13*j);
+    const paint=(p,time)=>{
+      const t=time+p.phase,drift=t*8.7,rise=t*51.3;
+      for(let x=0;x<w;x++){
+        const u=(x+.5)*128/w+drift,col=Math.floor(u);
+        noiseColumn[x]=col&127;noiseFraction[x]=u-col;
+      }
+      const bytes=p.pixels.data;
+      let activity=0;
+      for(let j=0;j<tips.length;j++){
+        const flicker=.12*Math.sin(2.8*t+1.83*j)+.075*Math.sin(5.43*t-1.13*j);
+        tips[j]=.64+.09*Math.cos(1.9*j+p.phase)+flicker;
+        activity+=flicker;
+      }
       for(let y=0;y<h;y++){
-        const v=(h-1-y)/h,grain=((y+rise)&127)*128;
+        const v=1-(y+.5)/h,noiseY=(y+.5)*100/h+rise,row=Math.floor(noiseY);
+        const base=Math.min(1,v/.085),baseFade=base*base*(3-2*base);
+        const upper=(row&127)*128,lower=((row+1)&127)*128,fy=noiseY-row;
         field.fill(-1);
-        for(let j=0;j<5;j++){
-          const a=v/Math.max(.17,tips[j]);
-          const cx=(.205+j*.148)+v*(.085*Math.sin(3.17*t-10*v+j*1.57)+.032*Math.sin(5.53*t-16*v+j));
-          const radius=(.090+.027*Math.sin(2.67*t+j))*Math.pow(Math.max(0,1-a),.85)-Math.max(0,a-1)*.20;
-          const span=radius+.041;
-          const left=Math.max(0,Math.floor((cx-span)*w)),right=Math.min(w,Math.ceil((cx+span)*w));
-          for(let x=left;x<right;x++)field[x]=Math.max(field[x],radius-Math.abs((x+.5)/w-cx));
+        for(let j=0;j<tips.length;j++){
+          const a=v/tips[j],cx=(j+.5)/tips.length+v*(.07*Math.sin(3.17*t-10*v+j*1.57)+.025*Math.sin(5.53*t-16*v+j));
+          const radius=(.13+.02*Math.sin(2.67*t+j))*Math.pow(Math.max(0,1-a),.78)-Math.max(0,a-1)*.24;
+          const span=radius+.072;
+          for(let x=Math.floor((cx-span)*w);x<Math.ceil((cx+span)*w);x++){
+            const k=(x+w)%w;
+            field[k]=Math.max(field[k],radius-Math.abs((x+.5)/w-cx));
+          }
         }
         for(let x=0;x<w;x++){
-          const i=y*w+x,noise=eddies[grain+((x+drift)&127)],f=field[x]+noise*(.012+.026*v);
-          const q=i*4;
-          if(f<=0){bytes[q+3]=0;continue;}
-          const heat=Math.min(1, Math.max(0,f*17+.15*(1-v)+.11*noise));
-          bytes[q]=224+31*heat;bytes[q+1]=46+166*Math.pow(heat,.76);
-          bytes[q+2]=4+99*heat*heat;bytes[q+3]=Math.min(255,f*w*550);
+          const col=noiseColumn[x],next=(col+1)&127,fx=noiseFraction[x];
+          const top=eddies[upper+col]+fx*(eddies[upper+next]-eddies[upper+col]);
+          const bottom=eddies[lower+col]+fx*(eddies[lower+next]-eddies[lower+col]);
+          const noise=top+fy*(bottom-top),f=field[x]+noise*(.018+.035*v);
+          const q=(y*w+x)*4;
+          // Feather on both sides of the contour. Express the band in plume
+          // coordinates so its width stays consistent across quality tiers.
+          const coverage=Math.min(1,(f+.014)/.038);
+          if(coverage<=0){bytes[q+3]=0;continue;}
+          const heat=Math.min(1,Math.max(0,f*6.3+.12*(1-v)+.20*noise));
+          bytes[q]=217+38*heat;bytes[q+1]=47+188*heat;
+          bytes[q+2]=5+141*heat*heat*heat;bytes[q+3]=255*baseFade*coverage*coverage*(3-2*coverage);
         }
       }
-      ctx.putImageData(pixels,0,0);
-      for(let k=0;k<6;k++){
-        const life=(t*(k%2?.29:.24)+k*.371)%1;
-        const x=w*(.5+.29*Math.sin(k*12.9)+life*.041*Math.sin(t*1.67+k));
-        const y=h*(.93-life*(.44+.25*Math.cos(k*2)));
-        ctx.globalAlpha=Math.sin(Math.PI*life)*.72;
-        ctx.fillStyle=k%2?"#fb983b":"#f47727";ctx.fillRect(x,y,1,1.6);
-      }
-      ctx.globalAlpha=1;
-      embers.fillStyle=glow;embers.fillRect(0,0,bed.width,bed.height);
-      embers.drawImage(canvas,w*.15,h*.37,w*.70,h*.61,0,0,bed.width,bed.height);
-      surface.version++;
+      p.ctx.putImageData(p.pixels,0,0);p.geometry.imageSurface.version++;
+      return activity/tips.length;
     };
-    update(0);return {geometry,behind,update};
+    let last=-1,pulse=0;
+    const update=time=>{
+      const frame=Math.floor(time*rate);
+      if(frame===last)return pulse;
+      last=frame;pulse=0;
+      for(const p of plumes)pulse+=paint(p,frame/rate);
+      embers.fillStyle=glow;embers.fillRect(0,0,bed.width,bed.height);
+      embers.drawImage(plumes[0].geometry.imageSurface.canvas,w*.15,h*.37,w*.70,h*.61,0,0,bed.width,bed.height);
+      behind.imageSurface.version++;return pulse;
+    };
+    update(0);return {plumes,behind,update};
   };
-  BL.pokerHearth=Object.freeze({surround,fire,crest,emblemY});
+  BL.pokerHearth=Object.freeze({surround,fire,crest,emblemY,crownY});
 })();

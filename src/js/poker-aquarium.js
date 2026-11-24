@@ -12,8 +12,12 @@
     return [[room.x-half,rear],[room.x-half,room.z-room.d/2-.65],
       [room.x+half,room.z-room.d/2-.65],[room.x+half,rear]];
   };
+  const bookShore=innerShore(lounge),iceShore=innerShore(vault);
+  // The enlarged lounge extends behind the vault. Their overlapping dry areas
+  // form one stepped shoreline and share just one exterior water surface.
   const outline=[[G.SIDE_X,rear],[outerEast,rear],[outerEast,outerRear],[outerWest,outerRear],
-    [outerWest,G.END_Z],[west,G.END_Z],[west,rear],...innerShore(lounge),...innerShore(vault)];
+    [outerWest,G.END_Z],[west,G.END_Z],[west,rear],...bookShore.slice(0,3),
+    [bookShore[2][0],iceShore[1][1]],iceShore[2],iceShore[3]];
   const spillX=54, spillWidth=12;
   const cache = M.scopedMap();
   const face = (g, pts, color, glow) => M.face(g, pts.map(p => M.pushVert(g,...p)), color.map(Math.round), {emissive:glow});
@@ -57,8 +61,8 @@
     // The two rooms are staged behind these windows and have their own dry floors.
     // From outside, water and a submerged bed continue over their projected footprints.
     // This branch disappears with the aquarium when the visitor enters either room.
-    for(const room of [lounge,vault]){
-      const shore=innerShore(room),left=shore[0][0],right=shore[2][0],back=shore[1][1];
+    for(const shore of [bookShore,iceShore]){
+      const left=shore===iceShore?bookShore[2][0]:shore[0][0],right=shore[2][0],back=shore[1][1];
       for(let x=left;x<right;x+=4)for(let z=back;z<rear;z+=4){
         const xx=Math.min(right,x+4),zz=Math.min(rear,z+4);
         const quad=y=>[[x,y,z],[x,y,zz],[xx,y,zz],[xx,y,z]];

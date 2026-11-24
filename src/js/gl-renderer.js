@@ -230,6 +230,7 @@ uniform vec4 uVoxel;
 flat out vec4 vVoxel;
 uniform mat4 uViewProj;
 uniform mat4 uLightViewProj;
+uniform float uCanvasSurface;
 ${VIEW_DIRECTION_GLSL}
 uniform float uWindTime;
 uniform float uSway;
@@ -309,6 +310,7 @@ void main() {
     w.y += abs(swing) * uSwing * 0.15;
   }
   vNormal = normalize(mat3(m) * aNormal);
+  if (uCanvasSurface > 2.5) vNormal = normalize(transpose(inverse(mat3(m))) * aNormal);
   if (waterBody) {
     // Differentiate along the surface, then account for the model's nonuniform stretch.
     // The original normal still carries the material marker into the fragment shader.
@@ -1068,6 +1070,7 @@ void main() {
 #endif
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
+  float canvasAlpha = 1.0;
   if (uCanvasSurface > 0.5) {
     // Spherical lunar reflectance. Crater floors and rims share the same fixed sunlight as the rest of the globe.
     if (uCanvasCurve.x < 0.0) {
@@ -1087,7 +1090,11 @@ void main() {
       oBright = vec4(0.0,0.0,0.0,1.0);
       return;
     }
-    base *= canvasColor().rgb;
+    vec4 pigment = canvasColor();
+    base *= pigment.rgb;
+    if (uCanvasSurface > 1.5) canvasAlpha = pigment.a;
+    // The optical path through a flame vanishes at the tangent to its shell.
+    if (uCanvasSurface > 2.5) canvasAlpha *= smoothstep(0.05, 0.93, abs(dot(n, normalize(viewTowardEye(vWorld)))));
   }
   // Mode 5 keeps its own palette in the Matrix; clouds are mode 4.
   float nativeMode = step(4.5, vParams.z);
@@ -1282,7 +1289,7 @@ void main() {
     normalColor = mix(uFog, normalColor, visibility);
     normalBright *= visibility;
   }
-  glassAlpha *= fallAlpha;
+  glassAlpha *= fallAlpha * canvasAlpha;
   oColor = vec4(mix(normalColor, matrixColorResult, front), glassAlpha);
   oBright = vec4(mix(normalBright, matrixBrightResult, front), glassAlpha);
 }`;
@@ -1418,6 +1425,12 @@ layout(location=6) in vec4 aM3;
 layout(location=7) in vec4 aParams;
 uniform mat4 uViewProj;
 uniform vec4 uRect;
+#ifdef LEADED_GLASS
+layout(location=1) in vec3 aNormal;
+out vec3 vGlassNormal;
+out vec3 vGlassTangent;
+out vec3 vGlassDown;
+#endif
 out vec2 vUv;
 out vec3 vWorld;
 flat out float vOpacity;
@@ -1427,6 +1440,14 @@ void main() {
   vUv.y = 1.0 - vUv.y;
   vec4 world = mat4(aM0, aM1, aM2, aM3) * vec4(aPos, 1.0);
   vWorld = world.xyz;
+#ifdef LEADED_GLASS
+  vec3 normal=normalize(mat3(aM0.xyz,aM1.xyz,aM2.xyz)*aNormal);
+  vec3 along=aM0.xyz-normal*dot(aM0.xyz,normal);
+  vGlassTangent=normalize(along);
+  vGlassDown=normalize(cross(normal,vGlassTangent));
+  vGlassDown*=dot(vGlassDown,aM1.xyz)>0.0?-1.0:1.0;
+  vGlassNormal=normal;
+#endif
   gl_Position = uViewProj * world;
 }`;
   const IMAGE_FS = `#version 300 es
@@ -1442,6 +1463,85 @@ uniform bool uBlend;
 uniform float uBright;
 uniform float uDim;
 uniform float uClipMaxY;
+#ifdef LEADED_GLASS
+in vec3 vGlassTangent;
+in vec3 vGlassDown;
+in vec3 vGlassNormal;
+uniform sampler2D uReliefMap;
+uniform vec3 uEye, uFire;
+uniform float uSkyGain, uTime;
+vec4 leadedGlass(vec4 pane) {
+  vec4 material = texture(uReliefMap,vUv);
+  vec3 eye=normalize(uEye-vWorld), n=vGlassNormal;
+  n*=dot(n,eye)<0.0?-1.0:1.0;
+  n=normalize(n+.48*((material.r-.502)*vGlassTangent+(material.g-.502)*vGlassDown));
+  vec3 reflected=reflect(-eye,n), fire=uFire-vWorld;
+  float grazing=pow(1.0-clamp(dot(n,eye),0.0,1.0),3.0);
+  float sky=smoothstep(.05,.85,reflected.y);
+  float glint=pow(max(dot(reflected,normalize(vec3(.57,.73,-.38))),0.0),34.0);
+  float flame=pow(max(dot(reflected,normalize(fire)),0.0),12.0)
+    /(1.0+.018*dot(fire,fire))*(.90+.07*sin(4.1*uTime)+.03*sin(7.3*uTime));
+  float lead=material.b;
+  vec3 glass=pane.rgb*(uSkyGain*(.91+.19*material.a));
+  vec3 metal=vec3(.103,.105,.106)+vec3(.12*sky+.28*glint);
+  glass=mix(glass,metal,lead*.84);
+  glass+=vec3(.75,.84,.94)*(.19*grazing*(.28+.72*sky)+.17*glint)
+        +vec3(1.0,.37,.09)*flame*.72;
+  return vec4(glass,uBlend?mix(pane.a,max(.74,pane.a),grazing):pane.a);
+}
+#endif
+#ifdef RELIEF_PICTURE
+// This atlas holds a north-up orthophoto on the left and its measured surface
+// heights on the right. Trace from the highest roof down towards the ground.
+uniform vec2 uNadir;
+uniform vec4 uRect;
+// The logo is fixed at the aperture origin. Its light lands directly below it
+// at the survey centre. In an oblique view these project to different pixels.
+vec3 illuminateRelief(vec3 photo, vec2 uv, vec2 hit, float depth) {
+  vec2 source = vec2(-uRect.x, uRect.w + uRect.y) / uRect.zw;
+  vec2 ground = vec2(.5);
+  vec2 sourceRadius = vec2(.80, 1.23) / uRect.zw;
+  vec2 bound = max(sourceRadius, vec2(.032));
+  if (any(lessThan(uv, min(source, ground) - bound)) ||
+      any(greaterThan(uv, max(source, ground) + bound))) return photo;
+  // Brighten the sampled surface so the roof and street detail reads through the pool.
+  float pool = 1.0 - smoothstep(0.0, .032, distance(hit, ground));
+  float light = .34 * pool;
+  for (int i = 0; i < 16; i++) {
+    float t = depth * (float(i) + .5) / 16.0;
+    vec2 delta = (uv - mix(source, ground, t)) / mix(sourceRadius, vec2(.020), t);
+    light += .018 * depth * (1.0 - smoothstep(0.0, 1.0, length(delta)));
+  }
+  return mix(photo, vec3(1.), light);
+}
+vec4 reliefPicture(vec2 uv) {
+  vec2 travel = (uNadir - uv) * (280.0 / 12876.0);
+  vec2 dx = dFdx(uv), dy = dFdy(uv);
+  if (max(length(dx), length(dy)) > .012) {
+    vec3 distant = textureGrad(uImage, uv * vec2(.75,1.), dx * vec2(.75,1.), dy * vec2(.75,1.)).rgb;
+    return vec4(illuminateRelief(mix(distant, vec3(.59,.69,.73), .09), uv, uv, 1.0), 1.0);
+  }
+  float above = 1.0, below = 0.0;
+  for (int i = 1; i <= 32; i++) {
+    float z = 1.0 - float(i) / 32.0;
+    vec2 at = clamp(uv + travel * z, .001, .999);
+    float elevation = textureLod(uImage, vec2(.75 + .25 * at.x, at.y), 0.0).r;
+    if (elevation >= z) { below = z; break; }
+    above = z;
+  }
+  for (int i = 0; i < 4; i++) {
+    float z = (above + below) * .5;
+    vec2 at = clamp(uv + travel * z, .001, .999);
+    if (textureLod(uImage, vec2(.75 + .25 * at.x, at.y), 0.0).r >= z) below = z;
+    else above = z;
+  }
+  vec2 hit = clamp(uv + travel * below, .001, .999);
+  vec2 photoScale = vec2(.75, 1.0);
+  vec3 photo = textureGrad(uImage, hit * photoScale, dx * photoScale, dy * photoScale).rgb;
+  photo = mix(photo, vec3(.59,.69,.73), .10 * (1.0 - below));
+  return vec4(illuminateRelief(photo, uv, hit, 1.0 - below * (280.0 / 12876.0)), 1.0);
+}
+#endif
 ${CUTAWAY_GLSL}
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
@@ -1451,7 +1551,14 @@ void main() {
   // either way times the node's opacity, in the same ordered coverage a see-through node uses. An ordinary picture is
   // an opaque screen.
   if (uCutout && (!uReady || !inside)) discard;
+#ifdef RELIEF_PICTURE
+  vec4 texel = uReady ? reliefPicture(vUv) : vec4(.30, .41, .40, 1.0);
+#else
   vec4 texel = uReady && inside ? texture(uImage, vUv) : vec4(0.0, 0.0, 0.0, 1.0);
+#endif
+#ifdef LEADED_GLASS
+  texel=leadedGlass(texel);
+#endif
   // A blended picture (drawn after everything opaque, depth read but not written) is truly see-through.
   if (uBlend) {
     if (cutaway(vWorld)) discard;
@@ -2129,7 +2236,7 @@ void main() {
     // PROTOTYPE: a scene at sea level can switch off the hub's dropped haze horizon (`hazeDrop: 0`).
     let skyHaze=1;
     const canvasSurfaces = new WeakMap();
-    let pictureDim = 1;
+    let pictureDim = 1, pictureEye = null, pictureTime = 0;
     let canvasSurfaceSerial = 0;
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
     const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, width: 0, height: 0, renderWidth: 0, renderHeight: 0, capturedWidth: 0, capturedHeight: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, readable: false, bodyTex: null, bodyState: null, bodyVersion: -1, shards: 0, query: null, queryPending: false, occluded: false, frame: 0, cadence: 1 };
@@ -2670,6 +2777,7 @@ void main() {
       }
       gl.deleteBuffer(rec.ibo);
       if (rec.imageTexture) { gl.deleteTexture(rec.imageTexture); imageTextures--; rec.imageTexture = null; }
+      if (rec.glazingTexture) { gl.deleteTexture(rec.glazingTexture); imageTextures--; }
       rec.imageElement = null; rec.imageBlocked = null;
       if (rec.rippleBodyTexture) { gl.deleteTexture(rec.rippleBodyTexture); rippleBodyTextures--; rec.rippleBodyTexture = null; }
       rec.rippleBodyState = null;
@@ -3778,6 +3886,7 @@ void main() {
     };
     const onLost = (e) => {
       e.preventDefault();
+      res.projectionSets=projectionImage=res.projectionTexture=null;
       lost = true;
       lostFrames = 0;
       destroyInstanceStream();
@@ -3805,6 +3914,88 @@ void main() {
     const onResize = () => resize();
     window.addEventListener("resize", onResize);
     if (window.visualViewport) window.visualViewport.addEventListener("resize", onResize);
+    let projection=null, projectionImage=null;
+    // Only the illuminated room requests these programs. The ordinary shaders and
+    // depth pass stay byte-identical, including the high-throughput race rig.
+    const projectedPrograms=(parent,rig)=>{
+      const sets=res.projectionSets || (res.projectionSets=new Map());
+      if(!sets.has(parent)){
+        let fs=(rig?MESH_FS:ORDINARY_MESH_FS).replace("uniform float uDiffuseFloor;",`uniform sampler2D uCharacterProjection;
+uniform int uReceiveProjection;
+uniform vec4 uProjectionOrigin, uProjectionShape, uProjectionHearth, uProjectionVault;
+uniform vec3 uProjectionDirection;
+uniform float uDiffuseFloor;`)
+          .replace("  vec3 lit = base * lightFactor;",`  vec3 leafSheen = vec3(0.0);
+  if (uReceiveProjection != 0) {
+    // The visible blade normal follows the wind-deformed triangle, including its folded tip.
+    if (uReceiveProjection == 2) {
+      vec3 bent = cross(dFdx(vWorld),dFdy(vWorld));
+      if (dot(bent,bent)>1e-12) n = normalize(bent);
+    }
+    // Trace this animated surface point back to the actual glass in world space.
+    ivec2 atlasSize = textureSize(uCharacterProjection,0);
+    float slots = float(atlasSize.x / atlasSize.y);
+    vec2 roofUV = 0.5 + (vWorld.xz-uProjectionVault.xy)/uProjectionVault.zw;
+    if (min(roofUV.x,roofUV.y)>=0.0 && max(roofUV.x,roofUV.y)<=1.0) {
+      vec3 skyGlass = texture(uCharacterProjection,vec2((slots-1.0+roofUV.x)/slots,roofUV.y)).rgb;
+      lightFactor += skyGlass * (0.60 * max(n.y,0.0));
+    }
+    float distanceToGlass = (uProjectionOrigin.x - vWorld.x) * uProjectionShape.w;
+    vec3 hit = vWorld + distanceToGlass * uProjectionDirection;
+    float bay = floor((hit.z - uProjectionOrigin.z) / uProjectionOrigin.w + 0.5);
+    float u = 0.5 + uProjectionShape.z * (hit.z - uProjectionOrigin.z - bay * uProjectionOrigin.w) / uProjectionShape.x;
+    float v = 1.0 - (hit.y - uProjectionOrigin.y) / uProjectionShape.y;
+    float hearthDistance = (uProjectionHearth.y - vWorld.z) / uProjectionDirection.z;
+    bool onHearth = hearthDistance > 0.0 && hearthDistance < distanceToGlass;
+    if (onHearth) {
+      hit = vWorld + hearthDistance * uProjectionDirection;
+      u = 0.5 + (hit.x - uProjectionHearth.x) / uProjectionHearth.z;
+      v = 1.0 - (hit.y - 0.02) / uProjectionHearth.w;
+      bay = slots-2.0;
+    }
+    if (distanceToGlass > 0.0 && bay >= 0.0 && (bay < slots-2.0 || onHearth) && min(u,v) >= 0.0 && max(u,v) <= 1.0) {
+      float path = onHearth ? hearthDistance : distanceToGlass;
+      float lod = clamp(log2(max(1.0,path*.33)),0.0,3.0);
+      vec2 margin = vec2(exp2(ceil(lod))*.5/float(atlasSize.y));
+      vec2 sampleUV=clamp(vec2(u,v),margin,1.0-margin);
+      vec3 transmission = textureLod(uCharacterProjection,vec2((bay+sampleUV.x)/slots,sampleUV.y),lod).rgb;
+      float incidence = dot(n,uProjectionDirection);
+      if (uReceiveProjection == 2) {
+        // Thin leaves transmit some light from the back. The waxy surface
+        // returns a broader, lightly coloured highlight as it tips toward the eye.
+        vec3 halfVector = uProjectionDirection + normalize(viewTowardEye(vWorld));
+        float facing = max(dot(n,halfVector)*inversesqrt(max(dot(halfVector,halfVector),1e-8)),0.0);
+        leafSheen = transmission * (.21 * pow(facing,12.0) * max(incidence,0.0));
+        incidence = max(incidence,-.38*incidence);
+      }
+      lightFactor += transmission * (1.36 * max(incidence,0.0));
+    }
+  }
+  vec3 lit = base * lightFactor + leafSheen;`);
+        if(gl.getExtension("OES_shader_multisample_interpolation"))fs=fs.replace("#version 300 es","#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION");
+        const uniforms=MESH_UNIFORMS.concat(["uCharacterProjection","uReceiveProjection","uProjectionOrigin","uProjectionShape","uProjectionHearth","uProjectionVault","uProjectionDirection"]);
+        const vs=rig?MESH_VS:ORDINARY_MESH_VS,mesh=compile(vs,fs,uniforms);
+        const plain=compile(vs,fs.replace("#version 300 es","#version 300 es\n#define PLAIN"),uniforms);
+        sets.set(parent,{...parent,mesh,plain});
+      }
+      const set=sets.get(parent);
+      if(!set.projectionReady){
+        if(parallel && (!gl.getProgramParameter(set.mesh.prog,parallel.COMPLETION_STATUS_KHR) ||
+            !gl.getProgramParameter(set.plain.prog,parallel.COMPLETION_STATUS_KHR)))return parent;
+        finishProgram(set.mesh);finishProgram(set.plain);set.projectionReady=true;
+      }
+      return set;
+    };
+    const bindProjection=program=>{
+      // Unit ten stays distinct from the comparison sampler even in scenes without glass.
+      if(!projection || !program.u.uCharacterProjection)return;
+      gl.uniform1i(program.u.uCharacterProjection,10);
+      gl.uniform4fv(program.u.uProjectionOrigin,projection.origin);
+      gl.uniform4fv(program.u.uProjectionShape,projection.shape);
+      gl.uniform4fv(program.u.uProjectionHearth,projection.hearth);
+      gl.uniform4fv(program.u.uProjectionVault,projection.vault);
+      gl.uniform3fv(program.u.uProjectionDirection,projection.direction);
+    };
     let imageTextures = 0, rippleBodyTextures = 0;
     const applyViewDirection = (program, projection, cameraView) => {
       const depth = projection[15];
@@ -3867,7 +4058,7 @@ void main() {
       let identity = canvas ? canvasSurfaces.get(surface) : 0;
       if (canvas && !identity) { identity = ++canvasSurfaceSerial; canvasSurfaces.set(surface, identity); }
       if (program.canvasSurfaceId !== identity || canvas && program.canvasSurfaceVersion !== version) {
-        gl.uniform1f(program.u.uCanvasSurface, canvas ? 1 : 0);
+        gl.uniform1f(program.u.uCanvasSurface, canvas ? (surface.softVolume ? 3 : surface.blend ? 2 : 1) : 0);
         gl.uniform1f(program.u.uCanvasFeed, feedReady ? 1 : 0);
         // Keep only a number: an idle depth program must never retain a departed scene's canvas.
         program.canvasSurfaceId = identity;
@@ -3932,7 +4123,24 @@ void main() {
     };
     const drawImageSurface = (rec, count, cameraPass, resume) => {
       if (rec.geometry.imageSurface.accretion) { drawAccretion(rec, count, cameraPass, resume); return; }
-      const surface = rec.geometry.imageSurface, image = surface.asset ? surface.asset.load() : surface.fallback(), p = programs.image;
+      const surface = rec.geometry.imageSurface, image = surface.canvas || (surface.asset ? surface.asset.load() : surface.fallback());
+      let p = programs.image;
+      if (surface.glazing) {
+        if (!res.programs.glazingImage) {
+          const define = "#version 300 es\n#define LEADED_GLASS";
+          const glazed = compile(IMAGE_VS.replace("#version 300 es",define), IMAGE_FS.replace("#version 300 es",define), p.sourceUniforms.concat("uReliefMap","uEye","uFire","uSkyGain","uTime"));
+          finishProgram(glazed); res.programs.glazingImage = glazed;
+        }
+        p = res.programs.glazingImage;
+      }
+      if (surface.nadir) {
+        if (!res.programs.reliefImage) {
+          const relief = compile(IMAGE_VS, IMAGE_FS.replace("#version 300 es", "#version 300 es\n#define RELIEF_PICTURE"), p.sourceUniforms.concat("uNadir"));
+          finishProgram(relief);
+          res.programs.reliefImage = relief;
+        }
+        p = res.programs.reliefImage;
+      }
       const dynamic = surface.dynamic === true;
       let ready = dynamic ? image.readyState >= 2 && !image.seeking && image.videoWidth > 0 && image.videoHeight > 0
         && image.videoWidth <= 1280 && image.videoHeight <= 720 : surface.asset ? image.complete && image.naturalWidth : image.width && image.height;
@@ -3947,7 +4155,16 @@ void main() {
           rec.imageTexture = gl.createTexture();
           imageTextures++;
           gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+          let upload = image;
+          if (surface.nadir) {
+            const limit = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+            if (image.width > limit) {
+              upload = document.createElement("canvas");
+              upload.width = limit; upload.height = Math.round(image.height * limit / image.width);
+              upload.getContext("2d").drawImage(image, 0, 0, upload.width, upload.height);
+            }
+          }
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, upload);
           if (dynamic) {
             rec.imageElement = image;
             rec.imageTime = image.currentTime;
@@ -3986,6 +4203,25 @@ void main() {
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uViewProj, false, cameraPass ? viewProj : mirrorViewProj);
       gl.uniform4fv(p.u.uRect, surface.rect);
+      if (surface.glazing) {
+        const material = surface.glazing, eye = cameraPass ? pictureEye : mirrorEye;
+        gl.activeTexture(gl.TEXTURE11);
+        if (!rec.glazingTexture) {
+          const map = material.map;
+          rec.glazingTexture = gl.createTexture(); imageTextures++;
+          gl.bindTexture(gl.TEXTURE_2D,rec.glazingTexture);
+          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,map.w,map.h,0,gl.RGBA,gl.UNSIGNED_BYTE,map.bytes);
+          gl.generateMipmap(gl.TEXTURE_2D);
+          gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        } else gl.bindTexture(gl.TEXTURE_2D,rec.glazingTexture);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform1i(p.u.uReliefMap,11); gl.uniform3f(p.u.uEye,eye.x,eye.y,eye.z);
+        gl.uniform3fv(p.u.uFire,material.fire); gl.uniform1f(p.u.uSkyGain,material.sky);
+        gl.uniform1f(p.u.uTime,pictureTime);
+      }
+      if (surface.nadir) gl.uniform2fv(p.u.uNadir, surface.nadir);
       gl.uniform1i(p.u.uImage, 6);
       gl.uniform1i(p.u.uReady, rec.imageTexture && (!dynamic || ready) ? 1 : 0);
       gl.uniform1i(p.u.uCutout, surface.cutout ? 1 : 0);
@@ -4134,6 +4370,10 @@ void main() {
         const stage = kind === "mesh" && meshPass ? g.matrixRevealBacking ? 1 : g.matrixGlyph ? 2 : g.glassOpacity ? 3 : 0 : 0;
         if (stage !== matrixStage) continue;
         applyCutaway(program, g);
+        if(meshPass && program.u.uReceiveProjection){
+          const receives=projection ? (g.receiveProjection===true ? 2 : (g.receiveProjection==="matte" || g.characterPart || g.meshRig ? 1 : 0)) : 0;
+          if(program.receivesProjection!==receives){gl.uniform1i(program.u.uReceiveProjection,receives);program.receivesProjection=receives;}
+        }
         const pierce = g.fogPierce || 0;
         if (pierce !== program.fogPierce && program.u.uFogPierce) {
           gl.uniform1f(program.u.uFogPierce, pierce);
@@ -4174,7 +4414,8 @@ void main() {
           continue;
         }
         if (kind === "mesh" && meshPass) {
-          if (g.imageSurface && !g.imageSurface.canvas && !g.imageSurface.atlas) { drawImageSurface(rec, n, cull, program); continue; }
+          if (g.imageSurface && (g.imageSurface.glazing || !g.imageSurface.canvas && !g.imageSurface.atlas)) { drawImageSurface(rec, n, cull, program); continue; }
+          if (blendPass) gl.blendFunc(gl.SRC_ALPHA, g.imageSurface.blend === "add" ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
           bindCanvasSurface(rec, program);
           const mesh = program, glyph = stage === 1 ? 3 : stage === 2 ? 1 : g.matrixLocalGlyphSurface ? 2 : 0, cave = g.matrixCave || 0;
           if (glyph !== mesh.matrixGlyph) {
@@ -4399,6 +4640,7 @@ void main() {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, sh.tex);
       gl.uniform1i(pg.mesh.u.uShadow, 0);
+      bindProjection(pg.mesh);
       bindMatrixTexture(pg.mesh);
       // The shader breaks on uLightCount, so lights past it are dead traffic.
       const captureLights = lightsInView(lights, lightCount, MIRROR_FRUSTUM);
@@ -4736,7 +4978,27 @@ void main() {
       // A context usually comes back within moments. Still gone after this many visible frames, the director's fallback takes over.
       if (lost && ++lostFrames > LOST_FRAMES && !failure) failure = new Error("WebGL context lost and not restored");
       if (lost || !pollPrograms()) return false;
+      projection=opts.characterProjection || null;
+      if(projection || res.projectionTexture){
+        gl.activeTexture(gl.TEXTURE10);
+        if(projection){
+          if(!res.projectionTexture)res.projectionTexture=gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D,res.projectionTexture);
+          if(projectionImage!==projection.map){
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,projection.map);
+            gl.generateMipmap(gl.TEXTURE_2D);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+            projectionImage=projection.map;
+          }
+        }else{gl.deleteTexture(res.projectionTexture);res.projectionTexture=projectionImage=null;}
+        gl.activeTexture(gl.TEXTURE0);
+      }
       collectNear = camera.near;
+      pictureEye = camera.position;
+      pictureTime = Number.isFinite(opts.windTime) ? opts.windTime : performance.now() * .001;
       pictureDim = opts.pictureDim === undefined ? 1 : opts.pictureDim;
       // The scene's ancestor flags (matrix modes, camera/cutaway hides) were settled by the scene's update.
       memoFrame++;
@@ -4807,6 +5069,7 @@ void main() {
       if(dsbGPU)dsbGPU.bind(programs.mesh);
       const fogColor = fog || NO_FOG, fogA = fog ? fogNear : FOG_OFF, fogB = fog ? fogFar : FOG_OFF + 1;
       // `windTime` holds the sway where it stands (seconds; a scene's GAME MODE); otherwise the wind runs on the clock.
+      if(projection)programs=projectedPrograms(programs,rigMode);
       const windTime = Number.isFinite(opts.windTime) ? opts.windTime : performance.now() * 0.001 % 3600;
       gl.useProgram(programs.plain.prog);
       gl.uniform1f(programs.plain.u.uWindTime, windTime);
@@ -5295,6 +5558,7 @@ void main() {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, sh.tex);
         gl.uniform1i(mp.u.uShadow, 0);
+        bindProjection(mp);
         bindMatrixTexture(mp);
         if (mainLights) gl.uniform4fv(mp.u.uLights, viewLights, 0, mainLights * 8);
         gl.uniform1i(mp.u.uLightCount, mainLights);
@@ -5477,6 +5741,14 @@ void main() {
       canvas.removeEventListener("webglcontextrestored", onRestored);
       window.removeEventListener("resize", onResize);
       if (window.visualViewport) window.visualViewport.removeEventListener("resize", onResize);
+      if(res.projectionSets){
+        for(const set of res.projectionSets.values())for(const p of [set.mesh,set.plain]){
+          for(const shader of p.shaders)gl.deleteShader(shader);
+          gl.deleteProgram(p.prog);
+        }
+        res.projectionSets.clear();
+      }
+      if(res.projectionTexture){gl.deleteTexture(res.projectionTexture);res.projectionTexture=null;}
       destroyRecords();
       for (const geometry of [...reflectorTargets.keys()]) destroyReflector(geometry);
       destroyMirror();

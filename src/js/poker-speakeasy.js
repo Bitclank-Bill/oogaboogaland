@@ -2,61 +2,27 @@
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene;
-  const walnut = "#563529", burl = "#774b36", brass = "#bd894d", copper = "#dd975c";
-  const ink = "#28201f", leather = "#733937", green = "#234c41", ivory = "#ffdc97";
+  const brass = "#bd894d", copper = "#dd975c";
+  const ink = "#28201f";
   const box = (x,y,z,w,h,d,color,emissive=0) => M.box({w,h,d,color,emissive,offset:{x,y,z}});
-  const turned = (x,y,z,profile,color,segments,emissive=0) =>
-    M.moved(M.lathe({profile,color,segments,emissive}),x,y,z);
   const mark = (x,y,z,h) => M.moved(BL.factoryModels.smoothBitcoin(h,.024,copper,.55),x,y,z);
-  const lamp = (x,y,z) => M.merge(
-    turned(x,y,z,[[0,0],[.19,0],[.2,.045],[.09,.09],[.038,.16],[.038,.43],[.09,.47]],brass,8),
-    turned(x,y,z,[[.29,.46],[.29,.50],[.14,.71],[.054,.73],[0,.75]],ivory,8,.23),
-    turned(x,y,z,[[.296,.46],[.296,.49]],brass,8,.24));
-  const table = lite => {
-    const parts=[], ring=(profile,color)=>parts.push(turned(0,0,0,profile,color,8));
-    ring([[0,.05],[.78,.05],[.8,.12],[.60,.19],[.43,.23],[.40,.64],[1.46,.73]],walnut);
-    ring([[1.46,.69],[1.65,.73],[1.65,.78],[0,.78]],brass);
-    ring([[1.64,.77],[1.69,.82],[1.66,.89],[1.58,.92],[1.44,.90],[1.41,.854]],leather);
-    ring([[0,.84],[1.425,.84],[1.425,.863],[0,.863]],green);
-    for(const radius of [.34,.55,.62,1.3]) parts.push(M.moved(M.torus(radius,.009,brass,.33,32,4),0,.869,0));
-    const glyph=BL.factoryModels.smoothBitcoin(.38,.014,brass,.36);
-    parts.push(M.moved(M.turnedX(glyph,-Math.PI/2),0,.878,0));
-    for(let i=0;i<32;i++){
-      const a=i*Math.PI/16, x=Math.cos(a),z=Math.sin(a), outer=i%4?.58:.615;
-      parts.push(M.beam(.555*x,.875,.555*z,outer*x,.875,outer*z,.013,copper));
-    }
-    for(let i=0;i<8;i++){
-      const a=i*Math.PI/4, b=a+Math.PI/4;
-      for(let j=1;j<=(lite?3:6);j++){
-        const f=j/(lite?4:7), x=(1-f)*Math.cos(a)+f*Math.cos(b), z=(1-f)*Math.sin(a)+f*Math.sin(b);
-        parts.push(M.beam(1.55*x,.916,1.55*z,1.55*x+.041*(Math.cos(b)-Math.cos(a)),.916,1.55*z+.041*(Math.sin(b)-Math.sin(a)),.012,"#d4ab86"));
-      }
-    }
-    for(const [x,z,count] of [[-.79,.49,4],[-.65,.54,2],[.83,-.53,3]]) for(let i=0;i<count;i++){
-      const y=.867+.027*i;
-      parts.push(turned(x,y,z,[[0,0],[.077,0],[.077,.022],[.061,.026],[0,.026]],i%2?ivory:copper,8,.24));
-    }
-    return M.merge(...parts);
-  };
-  const bookBay = width => (width/2+3.85*1.5/2)/2;
-  const engravingTiles=M.scopedMap();
-  const engraving=(left,bottom,right,top,plain=false)=>{
-    const key=[left,bottom,right,top,plain].join(":");
-    if(engravingTiles.has(key))return engravingTiles.get(key);
+  const wallTiles=M.scopedMap();
+  const wallTile=(left,bottom,right,top)=>{
+    const key=[left,bottom,right,top].join(":");
+    if(wallTiles.has(key))return wallTiles.get(key);
     const g=M.geometry();
     const corners=[[left,bottom],[right,bottom],[right,top],[left,top]];
-    M.face(g,corners.map(([x,y])=>M.pushVert(g,x,y,0)),[232,233,234],{emissive:.055});
+    M.face(g,corners.map(([x,y])=>M.pushVert(g,x,y,0)),[255,255,253],{emissive:.38});
     g.castShadow=false;
-    if(typeof CanvasRenderingContext2D!=="undefined")g.imageSurface=BL.pokerDamaskMap.marble(plain);
-    else g.faces[0].color=BL.math.hexToRgb("#b5b6b7");
-    engravingTiles.set(key,g);return g;
+    if(typeof CanvasRenderingContext2D!=="undefined")g.imageSurface=BL.pokerDamaskMap.marble();
+    else g.faces[0].color=BL.math.hexToRgb("#fafaf7");
+    wallTiles.set(key,g);return g;
   };
-  const rugSize=Object.freeze({w:6.42,d:5.64,z:.13,top:.035});
   const interior = (lite,w,d) => {
-    const parts=[table(lite)], a=w/2, wallZ=-d/2;
+    const parts=[], a=w/2, wallZ=-d/2;
     for(const side of [-1,1]){
-      for(const y of [.15,1.34])parts.push(box(side*(a-.19),y,0,.14,.075,d-.24,"#a5a5a4",.14));
-      parts.push(box(side*bookBay(w),1.39,wallZ+.17,4.0,2.76,.07,"#372729"));
+      for(const y of [.15,1.34])parts.push(box(side*(a-.19),y,0,.14,.075,d-.24,"#f3f2ed",.25));
+
     }
     // Staggered firebricks, a coal bed and a low grate inset into the marble surround.
     const bricks=["#54413a","#655146","#59453d","#5f4b40"];
@@ -68,89 +34,59 @@
     parts.push(box(0,1.48,wallZ+.67,3.42,2.64,.09,"#443731",.12));
     parts.push(box(0,.35,wallZ+1,3.15,.14,.85,ink));
     for(let i=-4;i<=4;i++)parts.push(M.beam(i*.32,.37,wallZ+1.40,i*.32,.61,wallZ+.81,.042,brass));
-    for(const s of [-1,1])parts.push(lamp(s*2.41,3.29,wallZ+.98));
-    // Walnut radiogram with a linen speaker grille, illuminated tuning scale and an LP on the platter.
-    const hiFi=[box(0,.78,0,2.22,.84,.72,walnut),box(0,1.23,0,2.32,.09,.81,burl),
-      box(-.39,.76,.37,1.22,.58,.04,"#977653"),box(.66,.88,.37,.68,.24,.04,ink),
-      box(.65,.87,.396,.56,.082,.012,"#b18d57",.26)];
-    for(const s of [-1,1])for(const e of [-1,1]) hiFi.push(M.beam(s*.98,.05,e*.32,s*.87,.43,e*.22,.071,burl));
-    for(let k=0;k<18;k++)hiFi.push(box(-.95+k*.066,.76,.399,.024,.54,.02,"#51372b"));
-    for(let k=0;k<12;k++)hiFi.push(box(.4+k*.043,.88,.413,.009,k%3?.032:.059,.012,ivory,.26));
-    for(const dx of [.48,.84])hiFi.push(M.moved(M.turnedX(turned(0,0,0,[[.058,0],[.067,.028],[.049,.043],[0,.043]],brass,10),Math.PI/2),dx,.63,.38));
-    hiFi.push(turned(-.38,1.28,0,[[0,0],[.32,0],[.32,.024],[0,.024]],ink,24),
-      turned(-.38,1.307,0,[[.01,0],[.093,0],[.093,.011],[0,.011]],"#975d43",16),
-      M.beam(.06,1.37,-.18,-.21,1.33,.10,.025,brass));
-    for(let j=0;j<6;j++)hiFi.push(box(.62+j*.06,1.5,-.1,.045,.43,.42,bindings[j%5]));
-    for(const s of [-1,1])parts.push(M.moved(M.turnedY(M.merge(...hiFi),-s*Math.PI/2),s*(a-.65),0,.26));
-    // A two-tone sunburst carpet sits beneath the card table, with a woven border and short fringe.
-    const rug=box(0,rugSize.top-.011,rugSize.z,rugSize.w,.022,rugSize.d,"#532b32");
-    parts.push(rug);
-    for(const sign of [-1,1]){
-      for(const inset of [.09,.18]){
-        parts.push(box(sign*(3.21-inset),.039,.13,.025,.009,5.5,brass),box(0,.039,.13+sign*(2.82-inset),6.22,.009,.025,brass));
-      }
-      for(let j=0;j<(lite?23:57);j++){
-        const xx=(j/(lite?22:56)-.5)*6.3;
-        parts.push(box(xx,.027,.13+sign*2.86,.026,.015,.11,"#947657"));
-      }
-      for(let k=-7;k<=7;k++){
-        const xx=k*.39,zz=.13+sign*2.49;
-        parts.push(M.beam(xx-.16,.041,zz,xx,.041,zz-sign*.19,.028,"#a57a55"),
-          M.beam(xx,.041,zz-sign*.19,xx+.16,.041,zz,.028,"#a57a55"));
-      }
-    }
     return M.merge(...parts);
   };
-  const passCase = () => M.merge(
-    box(0,0,-.11,1.03,1.11,.28,walnut),box(0,0,.04,.93,.99,.04,"#233e37",.27),
-    box(0,-.51,.17,1.04,.09,.43,brass),box(0,.51,.17,1.04,.10,.44,brass),
-    box(0,.448,.19,.49,.02,.18,ivory,.94),box(0,-.29,.23,.48,.09,.19,ink),
-    ...[-1,1].map(s=>box(s*.49,0,.33,.032,.97,.032,brass)));
   const passCard = () => M.merge(box(0,0,0,.44,.29,.045,copper,.44),box(0,0,.025,.38,.232,.01,"#624232",.38),
     mark(0,0,.053,.17),...[-1,1].map(s=>box(s*.165,0,.039,.018,.16,.01,brass,.5)));
   const add = (parent,geometry,x=0,y=0,z=0) => {
     const n=S.createNode({geometry,position:{x,y,z}});S.addChild(parent,n);return n;
   };
   const bindings=["#633e30","#285048","#693e42","#9a7953","#373136"];
+  const marble=BL.pokerMarble.mineralAtlas(()=>BL.pokerHearthMap,512,true);
   const shelf = (lite, x, z) => {
-    const frameParts=[],leaf=[],w=2.04,h=2.64,half=w/2;
+    const arch=BL.pokerLoungeDoor,half=arch.half,w=2*half,pivot=1.02;
+    const shell=[],books=[],stone="#eee7d8",shadow="#918677";
+    const finish=g=>{
+      if(typeof Image!=="undefined")marble(g,[-half,0,-.3],[half,arch.crown(0),.3]);
+      return g;
+    };
+    const root=S.createNode(),target=add(root,finish(M.turnedY(arch.surround(),Math.PI)),x,0,z);
+    // An offset pivot keeps the heavy case balanced and the swing clear of the bar counter.
+    const hinge=add(target,null,pivot,0,.07);
+    const lip=.055,count=lite?12:18,step=(w-.24)/count,column=Math.floor(count*.6);
+    const bookX=-half+.12+(column+.5)*step;
     for(const s of [-1,1]){
-      frameParts.push(box(s*1.83,1.43,-.13,1.55,2.86,.30,walnut),box(s*1.81,1.40,.034,1.35,2.51,.036,"#30443b"),
-        box(s*1.81,1.40,.066,1.18,2.34,.02,"#364c40"),box(s*(half+.05),h/2,.02,.12,h+.13,.28,burl),
-        box(s*(half+.087),h/2,.16,.03,h+.13,.035,brass),box(s*2.58,1.4,-.61,.14,2.9,1.48,walnut));
-    }
-    frameParts.push(box(0,h+.16,-.12,5.28,.32,.61,walnut),box(0,h+.04,.16,5.28,.04,.06,brass),
-      box(0,.04,-.53,5.24,.08,1.25,walnut),box(0,2.79,-.64,5.24,.15,1.44,walnut));
-    for(const side of [-1,1]){
-      for(const height of [.31,1.16,2.17]){
-        const center=side*1.82;
-        for(const edge of [-1,1]){
-          frameParts.push(box(center+edge*.59,height+.27,.092,.032,.55,.024,burl),
-            box(center,height+.27+edge*.27,.091,1.19,.034,.024,burl));
-        }
-        for(let k=-3;k<=3;k++) frameParts.push(M.beam(center+k*.14,height+.04,.083,center+k*.14+.024,height+.48,.083,.011,"#54624c"));
+      for(let i=0;i<arch.course;i++){
+        const a=arch.point(s,i),b=arch.point(s,i+1);
+        shell.push(arch.prism([[a[0],.02],[b[0],.02],b,a],-.19,.16,"#aaa398"));
+        shell.push(M.beam(a[0],a[1],.08,b[0],b[1],.08,.095,stone));
       }
+      shell.push(box(s*(half-lip),arch.spring/2,.03,.10,arch.spring,.34,stone));
     }
-    for(const y of [.35,1.32,2.29]) frameParts.push(turned(half+.012,y,.17,[[.041,0],[.053,.025],[.046,.18],[.053,.2],[0,.22]],brass,8));
-    const root=S.createNode(), target=add(root,M.merge(...frameParts),x,0,z);
-    leaf.push(box(-half,h/2,-.10,w,h,.18,walnut));
-    for(const y of [.68,1.92]){
-      leaf.push(box(-half,y,-.201,1.76,1.05,.038,burl),box(-half,y,-.226,1.61,.90,.02,"#3e4538"));
-    }
-    // A brass push bar on the lounge face moves with the swinging leaf.
-    leaf.push(box(-half,1.17,-.268,1.42,.072,.058,brass,.24));
-    for(const s of [-1,1])leaf.push(box(-half+s*.65,1.17,-.239,.085,.115,.055,brass));
-    for(const side of [-w+.045,-.045]) leaf.push(box(side,h/2,.04,.085,h,.36,burl));
-    for(let row=0;row<4;row++){
-      const y=.17+row*.59, count=lite?7:10, step=(w-.23)/count;
-      leaf.push(box(-half,y,.03,w-.1,.075,.37,burl),box(-half,y+.018,.22,w-.12,.02,.018,brass));
+    const spanAt=y=>{
+      for(let i=1;i<=arch.course;i++){
+        const a=arch.point(1,i-1),b=arch.point(1,i);
+        if(y<=b[1])return a[0]+(b[0]-a[0])*Math.max(0,(y-a[1])/(b[1]-a[1]));
+      }
+      return 0;
+    };
+    for(let row=0;row<9;row++){
+      const y=.20+row*.67,span=spanAt(y+.07)-.055;
+      shell.push(M.bevelBox({w:2*span,h:.10,d:.41,bevel:.017,color:stone,offset:{x:0,y,z:.02}}),
+        box(0,y-.053,.16,2*span-.05,.028,.065,shadow));
+      books.push(box(0,y+.009,.230,2*span-.055,.014,.012,brass,.16));
       for(let j=0;j<count;j++){
-        if(row===2 && j===Math.floor(count*.6)) continue;
-        const bx=-w+.12+(j+.5)*step,bh=.32+(j*3+row*2)%5*.04;
-        leaf.push(box(bx,y+.04+bh/2,.055,step*.91,bh,.28,bindings[(j+2*row)%5]),
-          box(bx,y+.09,.199,step*.72,.017,.012,brass,.22));
+        const bx=-half+.12+(j+.5)*step,bh=.31+(j*3+row*2)%6*.048,bw=step*(.72+(j%3)*.065);
+        if(Math.abs(bx)+bw/2>spanAt(y+bh+.06)-.08 || row===2 && j===column)continue;
+        books.push(box(bx,y+.05+bh/2,.057,bw,bh,.28,bindings[(j+2*row)%5]));
+        for(const band of [.10,bh+.006])books.push(box(bx,y+band,.201,bw*.84,.016,.013,brass,.12));
       }
+      for(const s of [-1,1])shell.push(M.beam(s*(span-.09),y-.15,-.016,s*(span-.09),y-.045,.16,.065,stone));
     }
+    add(hinge,finish(M.merge(...shell)),-pivot,0,0);
+    add(hinge,M.merge(...books),-pivot,0,0);
+    const book=add(hinge,M.merge(box(0,0,0,step*.94,.49,.34,"#e9dcb9",.43),mark(0,0,.186,.126)),
+      bookX-pivot,.20+2*.67+.05+.245,.12);
     const spillGeo=M.geometry();
     // A translucent taper admits the marble grain through the wash. Grow it with the leaf.
     for(let i=0;i<5;i++){
@@ -162,11 +98,7 @@
     }
     spillGeo.glassOpacity=.15; spillGeo.glassGrazing=0; spillGeo.castShadow=false;
     const spill=add(target,spillGeo,-.18,0,.11);
-    const hinge=add(target,M.merge(...leaf),half,0,.07);
-    const step=(w-.23)/(lite?7:10), column=Math.floor((lite?7:10)*.6);
-    const book=add(hinge,M.merge(box(0,0,0,step*.94,.49,.34,"#e9dcb9",.43),mark(0,0,.186,.126)),
-      -w+.12+(column+.5)*step,1.64,.12);
-    let progress=0, opening=false;
+    let progress=0, opening=false, closing=false;
     const swing=t=>{
       const v=Math.max(0,(t-.15)/.85);
       return 1.61*v*v*(3-2*v);
@@ -176,7 +108,7 @@
       const pull=Math.min(1,t/.24),tilt=.26*pull;
       return .12+.115*pull+.245*Math.sin(tilt)+.21*Math.cos(tilt);
     };
-    const leafBox={x:-half,z:-.031,hx:half,hz:.266};
+    const leafBox={x:-pivot,z:-.031,hx:half,hz:.27};
     const bookBox={x:book.position.x,z:0,hx:step*.47,hz:0};
     const pose=()=>{
       const u=Math.min(1,progress/.24),v=Math.max(0,(progress-.15)/.85);
@@ -187,7 +119,7 @@
     pose();
     const clearAt=(angle,front,ax,az,bx,bz,r)=>{
       const c=Math.cos(angle),s=Math.sin(angle);
-      const dx=ax-x-half,dz=az-z-.07,ex=bx-x-half,ez=bz-z-.07;
+      const dx=ax-x-pivot,dz=az-z-.07,ex=bx-x-pivot,ez=bz-z-.07;
       const a=dx*c-dz*s,b=dx*s+dz*c,e=ex*c-ez*s,f=ex*s+ez*c;
       bookBox.z=bookBox.hz=front/2;
       const crosses=BL.pokerModels.crosses;
@@ -208,7 +140,7 @@
         const front=bookFront(next),sweptRadius=r+pad;
         if(!clearAt(mid,front,p.x,p.z,p.x,p.z,sweptRadius)){
           const c=Math.cos(mid),s=Math.sin(mid);
-          const side=(p.x-x-half)*s+(p.z-z-.07)*c>=0?1:-1;
+          const side=(p.x-x-pivot)*s+(p.z-z-.07)*c>=0?1:-1;
           const stride=5*dt,feet=p.y-actor.baseY;
           const dodge=(dx,dz)=>{
             const bx=p.x+dx*stride,bz=p.z+dz*stride;
@@ -228,15 +160,29 @@
       if (ray.dz>0) {
         const t=(z+.07-.297-ray.oz)/ray.dz;
         const u=ray.ox+t*ray.dx-x, y=ray.oy+t*ray.dy;
-        return t>=0 && Math.abs(u)<half && y>.04 && y<h ? t : Infinity;
+        return t>=0 && Math.abs(u)<half && y>.04 && y<arch.crown(u) ? t : Infinity;
       }
       const t=(z+.21-ray.oz)/ray.dz;
-      if (t<0 || Math.abs(ray.ox+t*ray.dx-x-half-book.position.x)>step*.55+.08) return Infinity;
+      if (t<0 || Math.abs(ray.ox+t*ray.dx-x-pivot-book.position.x)>step*.55+.08) return Infinity;
       const y=ray.oy+t*ray.dy;
       return Math.abs(y-book.position.y)<.32 ? t : Infinity;
     };
-    return {root,target,hinge,pickRay,clear,open(){if (opening || progress===1) return false; opening=true; return true;},get opened(){return opening || progress>0;},get ready(){return progress===1;},
+    return {root,target,hinge,pickRay,clear,open(){if (opening || progress===1) return false; closing=false;opening=true; return true;},get opened(){return opening || progress>0;},get ready(){return progress===1;},
       update(dt,actor,walkable){
+        // Measure clearance from the whole passage, including the bookcase swing on
+        // the casino side. A returning Ooga reverses the leaves before reaching either sill.
+        if(progress>0 && !actor){opening=false;closing=true;}
+        if(actor && progress>0){
+          const p=actor.root.position,door=BL.pokerSalons.ROOMS[0];
+          const dx=Math.max(0,Math.abs(p.x-x)-half);
+          const dz=Math.max(door.z+door.d/2-p.z,p.z-(z+pivot+half),0);
+          const separation=Math.hypot(dx,dz)-actor.bodyRadius;
+          if(separation>=3.2){opening=false;closing=true;}
+          else if(closing && separation<1.8){closing=false;opening=true;}
+        }
+        if(closing){
+          progress=Math.max(0,progress-dt/.98);closing=progress>0;pose();return;
+        }
         // Check moving geometry before publishing each pose, even on a long frame.
         while(opening && dt>0){
           const step=Math.min(dt,1/60);
@@ -244,5 +190,5 @@
         }
       }};
   };
-  BL.pokerSpeakeasy=Object.freeze({interior,rugSize,bookBay,engraving,passCase,passCard,shelf});
+  BL.pokerSpeakeasy=Object.freeze({interior,wallTile,passCard,shelf});
 })();

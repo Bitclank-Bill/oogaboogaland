@@ -9266,6 +9266,8 @@ body[data-active-scene="dsb"] #destination-hud:disabled { opacity: 1; cursor: de
 }
 
 /* While a game's title card is up its board and panels wait behind it, and come back when it closes. */
+body[data-lounge-exterior] #overlay,
+body[data-lounge-exterior] #poker-panel,
 .race:has(> [data-intro]:not([hidden])) .garage,
 .race:has(> [data-intro]:not([hidden])) .panel-edge,
 #poker:has(> [data-intro]:not([hidden])) .poker-panel,
@@ -13984,50 +13986,47 @@ body:has(.lounge-heirloom[open]) #stage > :not(#scene) { visibility: hidden; }
   .lounge-heirloom { margin-right: 1.5rem; }
 }
 
-/* A continuous illustration above two typeset pages. Keep the controls in reach
-   when enlarged text or the final letter needs more height than the screen. */
+.lounge-heirloom:has(.lounge-landscape) { width: min(94vw, 1080px); max-width: 94vw; margin: auto; }
+.lounge-landscape { display: block; width: 100%; height: auto; max-height: 58dvh; object-fit: contain; }
+
+/* Measure the book in the space left after the controls and device safe areas. */
 .lounge-heirloom:has(.jones-reader) {
   box-sizing: border-box; inset: 0; margin: auto; width: 100%; height: 100dvh; max-width: none;
-  max-height: none; padding: 0; overflow: hidden; background: transparent; box-shadow: none; border: 0;
+  max-height: none; padding: 0; overflow: clip; background: transparent; box-shadow: none; border: 0;
 }
 .lounge-heirloom:has(.jones-reader)::backdrop { background: rgba(13,10,8,.82); }
 .lounge-heirloom:has(.jones-reader) > :is(h2,button) { display: none; }
 .jones-reader {
-  --book-actions-bottom: calc(max(48px,var(--act-inset) - var(--home-chrome)) + var(--safe-bottom));
-  position: relative; height: 100%; display: grid; box-sizing: border-box;
-  grid-template-rows: minmax(0,1fr) auto; gap: 8px; padding: 12px 2vw var(--book-actions-bottom);
+  height: 100%; display: grid; box-sizing: border-box; grid-template: minmax(0,1fr) auto / minmax(0,1fr);
+  gap: min(8px,1dvh); padding: max(4px,env(safe-area-inset-top)) max(6px,env(safe-area-inset-right))
+    max(5px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left));
 }
-.jones-stage { display: flex; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; min-height: 0; }
-.jones-cover, .jones-spread { box-sizing: border-box; margin: auto; flex: none; border-radius: 3px; overflow: hidden; }
-.jones-cover { height: min(96vw,100%); aspect-ratio: 1; background: #94431c; }
-.jones-cover canvas, .jones-art { display: block; width: 100%; height: auto; }
-.jones-spread { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); position: relative; width: min(100%, 150dvh); text-align: left; background: #f6ead2; }
+.jones-stage { min-width: 0; min-height: 0; container-type: size; display: grid; place-items: center; grid-template: minmax(0,1fr) / minmax(0,1fr); }
+.jones-cover, .jones-spread { box-sizing: border-box; border-radius: 3px; overflow: clip; }
+.jones-cover { width: min(100cqw,100cqh); aspect-ratio: 1; background: #94431c; }
+.jones-cover canvas { display: block; width: 100%; height: 100%; }
+.jones-spread { --type: 18px; --art-limit: 46cqh; font: var(--type)/1.31 Georgia,serif; width: min(100cqw,180cqh);
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); position: relative; text-align: left; background: #f7eedb; }
 .jones-spread::after { content: ""; pointer-events: none; position: absolute; inset: 0 auto 0 50%; width: 12px; transform: translateX(-50%); background: linear-gradient(90deg,transparent,#46342629 48%,#fff5d62b 52%,transparent); }
+.jones-art { display: block; width: 100%; height: auto; max-height: var(--art-limit); object-fit: contain; }
 .jones-spread > .jones-art { grid-column: 1 / -1; }
-.jones-page { box-sizing: border-box; padding: clamp(14px,2.2vw,29px); align-content: center; background: #f7eedb; }
-.jones-page p { font: clamp(18px,1.62vw,23px)/1.42 Georgia,serif; margin: 0; color: #30281e; white-space: pre-line; }
-.jones-page p + p { margin-top: .73em; }
-.jones-letter .jones-page:first-child { padding: clamp(16px,2.3vw,32px); }
-.jones-letter .jones-page p { font-size: clamp(17px,1.34vw,21px); }
-.jones-letter p:first-child, .jones-letter p:last-child { font-style: italic; font-size: 1.2em; }
-.jones-letter p:first-child, .jones-letter p:last-child { font-family: "Snell Roundhand","Segoe Print",Georgia,serif; }
+.jones-page { min-width: 0; box-sizing: border-box; padding: .68em .92em; align-content: center; }
+.jones-page p { font: inherit; margin: 0; color: #30281e; white-space: pre-line; overflow-wrap: anywhere; }
+.jones-page p + p { margin-top: .45em; }
+.jones-letter { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); }
+.jones-letter::after { left: 52.38%; }
+.jones-letter p:first-child, .jones-letter p:last-child { font-family: "Snell Roundhand","Segoe Print",Georgia,serif; font-style: italic; }
+.jones-letter p:nth-last-child(2) { color: #20483f; }
+.jones-letter .jones-page:last-child { align-content: center; padding: 0; }
 .jones-fold { position: absolute; top: 0; bottom: 0; left: 39%; width: 22%; background: linear-gradient(90deg,transparent,#60492444,#fff4d733,transparent); pointer-events: none; }
-.jones-letter p:nth-last-child(2) { color: #20483f; margin: 1.25em 0; }
-.jones-letter .jones-page:last-child { display: grid; align-content: center; padding: 0; background: #172f32; }
-.jones-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0; }
-.lounge-heirloom .jones-nav button { min-height: 44px; padding: 0 16px; font: inherit; font-weight: 600; }
+.jones-nav { display: flex; align-items: center; justify-content: center; gap: clamp(3px,1.4vw,14px); margin: 0; }
+.lounge-heirloom .jones-nav button { min-height: 44px; margin: 0; padding: 0 clamp(4px,2vw,16px); font: inherit; font-weight: 600; }
 .jones-nav button:disabled { opacity: .45; cursor: default; }
-.lounge-heirloom .jones-return { position: absolute; top: max(10px,env(safe-area-inset-top)); right: max(10px,env(safe-area-inset-right)); width: 42px; height: 42px; margin: 0; padding: 0; background-color: #39291d; }
-.jones-location { min-width: 6em; color: var(--paper); text-align: center; font-variant-numeric: tabular-nums; }
-@media (max-width: 600px) {
-  .jones-reader:has(.jones-spread) { padding-top: calc(54px + env(safe-area-inset-top)); }
-  .jones-page { padding: 12px; }
-  .jones-page p { font-size: 17px; }
-  .jones-letter { display: block; }
+.jones-location { color: var(--paper); text-align: center; font-variant-numeric: tabular-nums; }
+.lounge-heirloom .jones-return { width: 44px; height: 44px; padding: 0; }
+@media (max-width: 600px) { .jones-nav { font-size: clamp(11px,3.4vw,15px); } }
+@container (max-height: 450px) { .jones-spread { width: 100cqw; } }
+@container (max-aspect-ratio: 4/5) {
+  .jones-letter { grid-template-columns: minmax(0,1fr); }
   .jones-letter::after { display: none; }
-  .jones-letter .jones-page:first-child { padding: 21px; }
-  .jones-letter .jones-page p { font-size: 18px; }
-  .jones-nav { gap: 2px; }
-  .jones-location { min-width: 5.4em; font-size: 14px; }
-  .jones-reader button { font-size: 14px; }
 }

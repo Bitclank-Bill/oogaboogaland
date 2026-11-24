@@ -61,10 +61,10 @@
   // The gaming tables' cues (poker-games.js), on the same noise voices: the ball's rattle round the wheel and its drop
   // into a pocket, the dice on the felt, and the crowd's roar and murmur round a table, each `[band Hz, taps, gap, length,
   // level, attack]`, all well under the chips' level, so they sit low under the music.
-  const GAME_CUES = Object.freeze({ rattle: [3400, 3, 0.07, 0.025, 0.2, 0.002], drop: [2600, 2, 0.05, 0.03, 0.28, 0.002], dice: [1500, 2, 0.04, 0.04, 0.28, 0.002],
+  const GAME_CUES = Object.freeze({ wood: [1050, 1, 0, 0.055, 0.34, 0.002], rattle: [3400, 3, 0.07, 0.025, 0.2, 0.002], drop: [2600, 2, 0.05, 0.03, 0.28, 0.002], dice: [1500, 2, 0.04, 0.04, 0.28, 0.002],
     roar: [750, 1, 0, 0.7, 0.12, 0.08], murmur: [480, 1, 0, 0.8, 0.07, 0.15] });
   // Which pool each cue plays on.
-  const CUE_KINDS = Object.freeze({ chip: "noise", heel: "noise", glass: "sine", rattle: "noise", drop: "noise", dice: "noise", roar: "noise", murmur: "noise" });
+  const CUE_KINDS = Object.freeze({ wood: "noise", chip: "noise", heel: "noise", glass: "sine", bird: "sine", rattle: "noise", drop: "noise", dice: "noise", roar: "noise", murmur: "noise" });
   // The room's own cues: a chip at a random table every `CHIP_MIN` to `CHIP_MAX` seconds, a glass at a random bar wing
   // every `GLASS_MIN` to `GLASS_MAX`.
   const CHIP_MIN = 1.5, CHIP_MAX = 4, GLASS_MIN = 6, GLASS_MAX = 14;
@@ -149,6 +149,45 @@
     const triangles = [], sines = [], noises = [], brushes = [], roomSines = [], bed = {};
     const motors = [];
     let exhaust = null;
+    let wingBuffer=null,flutter=null,nextFlutter=0;
+    const stopFlutter=()=>{
+      if(!flutter)return;
+      const {src,volume,pan}=flutter;
+      flutter=null;nextFlutter=0;
+      volume.gain.setTargetAtTime(0,ctx.currentTime,.018);
+      src.onended=()=>{src.disconnect();volume.disconnect();pan.disconnect();};
+      src.stop(ctx.currentTime+.10);
+    };
+    const wingbeats=(bird,origin,earY)=>{
+      if(!ready || muted || document.hidden || !bird?.wingHz){stopFlutter();return;}
+      const now=ctx.currentTime;
+      if(now<nextFlutter)return;
+      nextFlutter=now+.05;
+      const p=bird.position,flat=place(origin.x+p.x,origin.z+p.z);
+      const distance=Math.hypot(flat,origin.y+p.y-earY);
+      if(distance>=3.4){stopFlutter();return;}
+      if(!flutter){
+        if(!wingBuffer){
+          // One seamless second of downstrokes and softer upstrokes. A little
+          // filtered air on each stroke gives the close pass its feathery edge.
+          wingBuffer=ctx.createBuffer(1,16000,16000);
+          const out=wingBuffer.getChannelData(0),noise=buffer.getChannelData(0);
+          let air=0;
+          for(let i=0;i<out.length;i++){
+            const phase=2*Math.PI*47*i/out.length,c=Math.cos(phase);
+            const stroke=Math.max(0,c)**5+.42*Math.max(0,-c)**7;
+            air+=.24*(noise[i%noise.length]-air);
+            out[i]=.30*Math.sin(phase)+.15*Math.sin(2*phase)+stroke*(.24*Math.sin(5*phase)+air*.8);
+          }
+        }
+        const pan=panner(room),volume=gain(0,pan),src=ctx.createBufferSource();
+        src.buffer=wingBuffer;src.loop=true;src.connect(volume);src.start();
+        flutter={pan,volume,src};
+      }
+      flutter.src.playbackRate.setTargetAtTime(bird.wingHz/47,now,.035);
+      flutter.pan.pan.setTargetAtTime(AT.pan,now,.05);
+      flutter.volume.gain.setTargetAtTime(.82*(1-distance/3.4)**2,now,.045);
+    };
     // A two-second crank revolution shared by all five motors. The slow beat carries
     // indoors. A dry bearing knock on each dead centre and steam after the stroke
     // emerge as the listener approaches. Harmonics meet at the loop boundary.
@@ -547,6 +586,7 @@
     const onVisibility = () => {
       if (ready && !document.hidden) { wake(); bedWait = 0; }
       if (ready && document.hidden) {
+        stopFlutter();
         for (const motor of motors) motor.volume.gain.setTargetAtTime(0, ctx.currentTime, .05);
       }
       rearm();
@@ -632,6 +672,17 @@
       if (game) {
         v.filter.frequency.setValueAtTime(game[0], now);
         taps(v, game[1], game[2], game[4], game[3], now, game[5]);
+      } else if (name === "bird") {
+        const pitch=between(1920,2590),gap=between(.13,.18),dur=between(.074,.11);
+        const count=Math.random()<.55?2:1;
+        v.filter.frequency.setValueAtTime(5600,now);
+        for(let i=0;i<count;i++){
+          const t=now+i*gap;
+          v.osc.frequency.setValueAtTime(pitch*(i?1.28:.89),t);
+          v.osc.frequency.exponentialRampToValueAtTime(pitch*(i?1.41:1.57),t+dur*.41);
+          v.osc.frequency.exponentialRampToValueAtTime(pitch*(i?.80:1.13),t+dur);
+        }
+        taps(v,count,gap,.19,dur,now,.012);
       } else if (kind === "noise") {
         const chip = name === "chip";
         v.filter.frequency.setValueAtTime(chip ? CHIP_HZ : HEEL_HZ, now);
@@ -784,6 +835,7 @@
       playlist.decoding = playlist.playing = null;
       playlist.fallback = true;
       for (const motor of motors) { motor.src.stop(); motor.src.disconnect(); }
+      stopFlutter();wingBuffer=null;
       motors.length = 0; exhaust = null;
       if (ctx) ctx.close().catch(() => {});
       ctx = buffer = music = synth = fade = room = null;
@@ -802,7 +854,7 @@
     // Walking through the portal used a gesture in the previous scene. The room is built after that event;
     // waiting solely for a new keydown left returning or stationary visitors listening to silence.
     if (navigator.userActivation?.hasBeenActive) activate();
-    return { update, cue, blockChime, fanfare, setSeated, win, dispose, stats, pools, credits: CREDITS,
+    return { update, cue, wingbeats, blockChime, fanfare, setSeated, win, dispose, stats, pools, credits: CREDITS,
       get nowPlaying() { return playing < 0 ? null : NOW[playing]; } };
   };
 

@@ -33,7 +33,7 @@
   // Only scene implementation groups depend on a base group, and the Timechain rooms on the Block Party's radio, which
   // the keypad outside loads alone to start it early; no base group depends on a scene shell. The Lightning Jet
   // Hangar, walked into from the Factory and left back into it, builds on the Factory's scene group.
-  const SCENE_BASE = { "arcade-scene": "arcade", "carnival-scene": "arcade", "raid-scene": "arcade", "drop-scene": "drop", "race-scene": "race", "mine-scene": "mine", "orbit-scene": "orbit", "hangar-scene": "factory-scene", timechain: "party-radio", "timechain-genesis": "timechain" };
+  const SCENE_BASE = { "poker-scene": "poker", "arcade-scene": "arcade", "carnival-scene": "arcade", "raid-scene": "arcade", "drop-scene": "drop", "race-scene": "race", "mine-scene": "mine", "orbit-scene": "orbit", "hangar-scene": "factory-scene", timechain: "party-radio", "timechain-genesis": "timechain" };
   const loading = new Map(), attempts = new Map();
   let stale = false, staleHandler = null;
   // A file that answers 404 is gone for good: the site was deployed since this page loaded.

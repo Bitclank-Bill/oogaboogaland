@@ -8,13 +8,13 @@
   const staticMesh = geometry => BL.compactGeometry
     ? BL.compactGeometry.pack(geometry, { immutable: true, renderOnly: true, precision: 64 }) : geometry;
   // Project a mineral photograph down the three local axes, turning the grain between faces.
-  const mineralAtlas = (source, size) => {
+  const mineralAtlas = (source, size, whiteGround = false) => {
     const atlas = M.cached(() => {
       const canvas = document.createElement("canvas"),
         ctx = canvas.getContext("2d");
       canvas.width = 3;
       canvas.height = 1;
-      ctx.fillStyle = "#eceff1";
+      ctx.fillStyle = whiteGround ? "#fffefa" : "#eceff1";
       ctx.fillRect(0, 0, 3, 1);
       const paper = { canvas, version: 0 },
         image = new Image();
@@ -27,6 +27,10 @@
           ctx.rotate((i * Math.PI) / 2);
           ctx.drawImage(image, -size / 2, -size / 2, size, size);
           ctx.restore();
+        }
+        if (whiteGround) {
+          ctx.fillStyle = "rgba(255,255,253,.83)";
+          ctx.fillRect(0, 0, canvas.width, size);
         }
         paper.version++;
       };

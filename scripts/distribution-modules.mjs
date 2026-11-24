@@ -94,7 +94,8 @@ export function externalizePage(html, out, block, data = []) {
 // under `img-src 'self' data:`. Each becomes art/<module>-<sha256>.<ext> holding the same bytes, so a bundle or the
 // page carries only the address, and the picture is fetched only when a menu or a title card shows it.
 export const PICTURE_MODULES = ["js/without-rulers-data.js", "js/stackchain-art.js", "js/proof-of-ink-data.js", "js/meme-factory-data.js",
-  "js/cloud-hopper-art.js", "js/poker-timeline-art.js",
+  "js/cloud-hopper-art.js", "js/poker-story-art.js", "js/poker-timeline-art.js", "js/poker-minneapolis-art.js", "js/poker-desert-throw-art.js", "js/poker-family-glass-art.js",
+  "js/poker-moon-map.js", "js/poker-ice-map.js", "js/poker-hearth-map.js",
   "js/ghost-herald-data.js", // HALLOWEEN: the herald's views; goes with the ghost hunt.
 ];
 export function externalizePictures(src, text, out) {

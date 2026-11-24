@@ -4,7 +4,7 @@
   const BL = window.BL, M = BL.models, S = BL.scene;
   const GOLD = "#b8893b", LACQUER = "#191713", IVORY = "#efe6d2", WALNUT = "#3c271e", ICE = "#9cc9e3";
   const ROOMS = [
-    { name: "Cypherpunk Lounge", x: -BL.pokerGlazing.BOOK_X, z: -48.1, y: 0, w: 16.25, d: 17.6, h: 13.5 },
+    { name: "Cypherpunk Lounge", x: -BL.pokerGlazing.BOOK_X, z: -56.9, y: 0, w: 32.5, d: 35.2, h: 27 },
     { name: "Cold Storage", x: 1, z: -43, y: 0, w: 13, d: 11, h: 5 },
     { name: "21 Club", x: 10, z: -28, y: 17, w: 18, d: 15, h: 6 }
   ];
@@ -16,7 +16,7 @@
     [0, -1, 0, 5.1, -19.53, -34.0, "Back to the bar"],
     [1, -1, 0, 5.1, 0, -33, "Back to the hall"],
     [2, -1, 6.4, -4.6, 17.4, -32, "Gaming floor"],
-    [0, 0, BL.pokerSpeakeasy.bookBay(ROOMS[0].w), -8.04, 0, 0, "Founders pass"]
+    [0, 0, .035, BL.pokerLoungeStone.tableZ(ROOMS[0])-.43, 0, 0, "Founders pass"]
   ];
   const mesh = (w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   const add = (parent, geometry, x = 0, y = 0, z = 0) => {
@@ -37,10 +37,6 @@
     const bevel = (w, h, d, color, x, y, z, radius) => M.bevelBox({ w, h, d, color, bevel: radius, offset: { x, y, z } });
     const rail = (x, y, z, xx, yy, zz, width, color) => parts.push(M.beam(x, y, z, xx, yy, zz, width, color));
     const chair = (x, z, yaw, c) => {
-      if(id===0){
-        seats.push({x,z,yaw,geometry:BL.pokerLoungeStone.chair()});
-        solid(x,z,1.05,1.05);return;
-      }
       const seat = M.merge(bevel(0.96, 0.22, 0.88, WALNUT, 0, 0.24, 0, 0.05),
         bevel(0.79, 0.21, 0.69, c, 0, 0.44, 0.07, 0.08), bevel(0.89, 0.8, 0.24, c, 0, 0.71, -0.33, 0.09),
         bevel(0.13, 0.28, 0.7, c, -0.43, 0.54, 0.02, 0.05), bevel(0.13, 0.28, 0.7, c, 0.43, 0.54, 0.02, 0.05),
@@ -68,8 +64,8 @@
       }
       solid(x, z, scale * 2, scale * 2);
     };
-    slab(0, -0.14, 0, r.w, 0.28, r.d, ice ? "#315267" : "#2b2520");
-    if (!ice) for (let k = -1; k <= 1; k += 2) {
+    slab(0, -0.14, 0, r.w, 0.28, r.d, ice ? "#315267" : open ? "#2b2520" : "#354c32");
+    if (open) for (let k = -1; k <= 1; k += 2) {
       slab(k * (a - 0.32), 0.008, 0, 0.045, 0.012, r.d - 0.6, trim);
       slab(0, 0.008, k * (b - 0.32), r.w - 0.6, 0.012, 0.045, trim);
     }
@@ -80,7 +76,7 @@
         slab(s * a, r.h / 2, 0, 0.22, r.h, r.d, wall);
 
       }
-      slab(0, r.h + 0.08, 0, r.w, 0.16, r.d, wall);
+      // The lounge vault opens between its marble ribs onto the casino sky.
     } else if (open) {
       // Exposed balcony edge, slim brass posts and two continuous rails looking down to the hall.
       for (const sign of [-1, 1]) for (const y of [0.44, 1]) {
@@ -92,72 +88,40 @@
       }
     }
     if (id === 0) {
-      const throat=DOORS[0][3]-(r.z+b), half=1.04;
+      const {half,crown}=BL.pokerLoungeDoor,top=crown(0);
+      for(const side of [-1,1])slab(side*(a+half)/2,r.h/2,b,a-half,r.h,.24,WALNUT);
+      slab(0,(r.h+top)/2,b,2*half,r.h-top,.24,WALNUT);
+      const firstFitting=parts.length, halfDepth=r.d/4;
+      parts.push(BL.pokerSpeakeasy.interior(lite,r.w/2,r.d/2));
       for(const side of [-1,1]){
-        slab(side*(a+half)/2,r.h/2,b,a-half,r.h,.24,WALNUT);
-        slab(side*(half+.08),1.43,b+throat/2,.16,2.86,throat,WALNUT);
-        for(let j=0;j<4;j++) slab(side*half,1.4,b+j*.85,.055,2.75,.08,"#916241");
+        for(let j=0;j<=BL.pokerCathedral.bayCount;j++){
+          const {x,z}=BL.pokerCathedral.pier(r,side,j);
+          solid(x,z,1.7,1.7);
+        }
+        for(let j=0;j<BL.pokerCathedral.bayCount;j++){
+          const shrine=BL.pokerCathedral.shrineAt(r,side,j);
+          solid(shrine.x,shrine.z,2*shrine.w,2*shrine.d);
+        }
       }
-      slab(0,(r.h+2.7)/2,b,2*half,r.h-2.7,.24,WALNUT);
-      slab(0,2.81,b+throat/2,2.4,.22,throat,WALNUT);
-      slab(0,.03,b+throat/2,2.22,.055,throat,"#4c352c");
-      parts.push(BL.pokerSpeakeasy.interior(lite,r.w,r.d)); solid(0, 0, 3.26, 3.26);
-      for(const side of [-1,1]){
-        solid(side*(a-.65),.26,.81,2.32);
-        for(let j=0;j<=3;j++)solid(side*(a-.37),(2*j-3)*(r.d-.66)/6,.85,.85);
+      solid(0,-b+1.76,11.55,3.32);
+      // Split wood lies across the sloping grate, with a third log bridging the two.
+      parts.push(BL.hubModels.log(-1.16,.54,-halfDepth+1.38,.84,.72,-halfDepth+1.04,.14,"#392922"),
+        BL.hubModels.log(-.87,.67,-halfDepth+1.03,1.17,.53,-halfDepth+1.41,.13,"#493027"),
+        BL.hubModels.log(-.55,.81,-halfDepth+1.06,.75,.76,-halfDepth+1.39,.105,"#372823"));
+      const lounge=BL.pokerLoungeStone;
+      lounge.sectional(seats,solid,r);
+      for (let i=-3; i<=3; i++) rail(i*.39,.23,-halfDepth+1.54,i*.39,.53,-halfDepth+1.53,.038,GOLD);
+      rail(-1.25,.50,-halfDepth+1.53,1.25,.50,-halfDepth+1.53,.038,GOLD);
+      // The hearth and surrounding architectural fittings follow the enlarged room.
+      for(let i=firstFitting;i<parts.length;i++){
+        const verts=parts[i].verts;
+        for(let j=0;j<verts.length;j++)verts[j]*=2;
       }
-      // Leather reading chairs and a fireplace flanked by shelves and carved wall figures.
-      solid(0,-b+.88,5.775,1.66);
       for(const s of [-1,1]){
-        rail(-1.23,.54,-b+1.05+s*.15,1.21,.60,-b+1.05-s*.16,.20,"#41302b");
-        for(let i=-4;i<=4;i++)rail(i*.25-.07,.64,-b+1.07+s*.12,i*.25+.06,.70,-b+1.04+s*.12,.024,"#ba582b");
+        const x=s*lounge.sideTableX,z=lounge.sideTableZ(r);
+        parts.push(M.moved(M.merge(BL.pokerCathedral.pedestal()),x,0,z));
+        solid(x,z,.98,.91);
       }
-      for(const s of [-1,1]){
-        const x=s*4.8;
-        chair(x,-4.35,-s*1.86,"#733f39");chair(x,3.95,-s*.95,"#55383c");
-        for(const z of [-5.5,5.1]){
-          cylinder(x,z,[[0,0],[.36,0],[.24,.08],[.08,.14],[.07,.55],[.48,.60],[.50,.66],[0,.67]],"#674534");
-          solid(x,z,1,1);
-          if(z<0)continue; // The fireside tables hold the record player and picture book.
-          cylinder(x+s*.16,z,[[0,.67],[.13,.67],[.14,.71],[.09,.73],[0,.69]],"#be976b");
-          rail(x+s*.05,.74,z,x+s*.25,.73,z+.07,.029,"#6d4432");
-          slab(x-s*.16,.70,z-.12,.26,.055,.34,"#773e3c");
-        }
-      }
-      // A chain of woven diamonds runs inside the bordered carpet toward the hearth.
-      for (const side of [-1, 1]) {
-        for (let z = -1.85; z < 1.0; z += 1.35) {
-          rail(0, 0.04, z, side * 0.68, 0.04, z + 0.66, 0.045, "#ad815a");
-          rail(side * 0.68, 0.04, z + 0.66, 0, 0.04, z + 1.32, 0.045, "#ad815a");
-        }
-      }
-      for (let i=-3; i<=3; i++) rail(i*.39,.23,-b+1.54,i*.39,.53,-b+1.53,.038,GOLD);
-      rail(-1.25,.50,-b+1.53,1.25,.50,-b+1.53,.038,GOLD);
-      const bay=BL.pokerSpeakeasy.bookBay(r.w);
-      for (const s of [-1, 1]) {
-        for (const end of [-1, 1]) slab(s * bay + end * 1.72, 1.45, -b + 0.23, 0.14, 2.86, 0.54, WALNUT);
-        slab(s * bay, 2.9, -b + 0.23, 3.69, 0.16, 0.56, WALNUT);
-        for (let row = 0; row < 3; row++) {
-          const y = 0.78 + row * 0.65;
-          if(row===0)slab(s*bay,y,-b+.24,3.4,.08,.46,GOLD);
-          else for(const sign of [-1,1])slab(s*bay+sign*1.15,y,-b+.24,1.10,.08,.46,GOLD);
-          for (let j = 0; j < (lite ? 7 : 13); j++) {
-            const h = 0.23 + (j * 7 % 6) * 0.045;
-            const x=s*(bay-1.48+j*(lite ? .44 : .235)), thick=lite ? .29 : .205;
-            if(row>0 && Math.abs(x-s*bay)<.63)continue;
-            slab(x,y+h/2+.04,-b+.26,thick,h,.32,["#835343","#315749","#95724a","#51393a"][(j+row)%4]);
-            slab(x,y+.13,-b+.424,thick*.76,.019,.013,GOLD,.25);
-          }
-        }
-        chair(s * 2.18, -0.7, -s * 1.28, "#55353c");
-        chair(s * 1.52, 1.93, -s * 2.52, "#55353c");
-      }
-      for(const sign of [-1,1])parts.push(M.moved(BL.pokerSpeakeasy.passCase(),sign*bay,1.70,DOORS[6][3]));
-      // The companion vitrine holds a brass pocket watch and its winding crown.
-      const watch=M.turnedX(M.lathe({profile:[[0,0],[.18,0],[.19,.026],[.16,.05],[0,.05]],color:GOLD,segments:24}),Math.PI/2);
-      parts.push(M.moved(watch,-bay,1.67,DOORS[6][3]+.22));
-      rail(-bay,1.67,DOORS[6][3]+.28,-bay+.075,1.73,DOORS[6][3]+.28,.018,LACQUER);
-      rail(-bay,1.67,DOORS[6][3]+.28,-bay-.035,1.79,DOORS[6][3]+.28,.012,LACQUER);
     } else if (ice) {
       // Drawer banks sit in shallow recesses in the far ice. Rime and inset metal catches articulate their faces.
       for (const side of [-1, 1]) {
@@ -210,81 +174,104 @@
     return built;
   };
   const fireplace=(room,r,lite)=>{
-    const smoke=[], z=-r.d/2+1.1;
-    add(room,BL.pokerHearth.surround(r.h,lite),0,0,-r.d/2);
+    const hearth=S.createNode({position:{x:0,y:0,z:-r.d/2},scale:{x:2,y:2,z:2}});
+    S.addChild(room,hearth);
+    const z=1.1;
+    add(hearth,BL.pokerHearth.surround(BL.pokerHearth.crownY,lite),0,0,0);
     const fire=BL.pokerHearth.fire(lite);
-    add(room,fire.geometry,0,.45,z+.12);
-    add(room,fire.behind,0,BL.pokerHearth.emblemY,-r.d/2+.86);
+    for(const p of fire.plumes){
+      const node=add(hearth,p.geometry,p.x,.52,p.z+p.rz);
+      node.scale.x=p.rx;node.scale.y=p.scaleY;node.scale.z=p.rz;
+      node.rotation.y=Math.PI;
+    }
+    add(hearth,fire.behind,0,BL.pokerHearth.emblemY,.86);
     const coals=[];
     for(let k=0;k<37;k++){
       const x=1.29*Math.cos(k*2.4)*Math.sqrt((k+.5)/37),dz=.37*Math.sin(k*2.4)*Math.sqrt((k+.5)/37);
       coals.push(mesh(.12+(k%4)*.018,.069,.09,k%3?"#ac3a13":"#ffa13b",x,.45+(k%3)*.013,z+dz,k%3?.48:.88));
     }
-    add(room,M.merge(...coals));
-    const strands=[];
-    for(let j=0;j<2;j++) for(let k=0;k<9;k++){
-      const a=k*.66+j,b=a+.66, w=.014+k*.002;
-      strands.push(M.beam(.08*Math.sin(a),k*.097,.045*Math.cos(a),.08*Math.sin(b),(k+1)*.097,.045*Math.cos(b),w,"#b29d91"));
-    }
-    const plume=M.merge(...strands);plume.glassOpacity=.17;plume.glassGrazing=0;plume.castShadow=false;
-    smoke.push(add(room,plume,5.04,.75,5.16));
+    add(hearth,M.merge(...coals));
+    const spark=mesh(.016,.034,.016,"#ffba58",0,0,0,1),sparks=[];
+    spark.castShadow=false;
+    for(let i=0;i<(lite?4:8);i++)sparks.push(add(hearth,spark));
     return (t,calm)=>{
-      const pulse=calm?0:.09*Math.sin(t*6.1)+.046*Math.sin(t*11.7);
-      if(room.visible){
-        fire.update(calm?0:t);
-        for(let i=0;i<smoke.length;i++) smoke[i].rotation.y=i+(calm?0:t*.38);
+      if(!room.visible)return 0;
+      for(let i=0;i<sparks.length;i++){
+        const n=sparks[i],life=(t*(.32+.035*(i%3))+i*.371)%1;
+        n.visible=!calm && life>.04 && life<.95;
+        if(!n.visible)continue;
+        n.position.x=.82*Math.sin(i*12.9)+life*.12*Math.sin(t*1.67+i);
+        n.position.y=.74+life*(.98+.40*Math.cos(i*2));
+        n.position.z=1.25+.17*Math.cos(i*2.4)+.10*life*Math.sin(t+i);
+        n.scale.x=n.scale.y=n.scale.z=Math.sin(Math.PI*life);
       }
-      return pulse;
+      return fire.update(calm?0:t);
     };
   };
   const origin = i => i < 0 ? { x: 0, y: 0, z: 0 } : ROOMS[i];
-  const build = (lite, vaultDoor, den) => {
-    let glyph, hearth, heirlooms;
+  const build = (lite, vaultDoor, den, onLoungeReady) => {
+    let glyph, hearth, heirlooms, entry, wind, landscapes, exterior;
+    const glasswork={};
     const chairs=[],windowLight=S.createNode();
-    windowLight.lights=new Float32Array(6*8);
+    windowLight.lights=new Float32Array(2*BL.pokerCathedral.bayCount*8);
     const root = S.createNode(), solids = [], targets = [], rooms = [];
+    // The bookcase hides a whole second scene. Build it once on approach, or immediately for a room spawn.
+    const lighting=new AbortController();
+    const buildLounge=function* (slice){
+      const r=ROOMS[0],room=rooms[0],g=interior(0,lite);
+      room.geometry=g.geometry;solids[0]=g.solids;
+      entry=BL.pokerLoungeDoor.build(room,r,DOORS[0][3]-r.z-r.d/2);
+      S.addChild(room,windowLight);
+      if(!g.lawn)g.lawn=yield* BL.pokerLoungeGrass.buildSteps(r,lite,g.solids,slice);
+      const meadow=BL.pokerLoungeGrass.install(room,r,g.lawn,lite);
+      yield* BL.buildTasks.pause(slice);
+      const {windows,rect}=BL.pokerLoungeStone.outfit(room,r,lite);
+      glasswork.windows=windows;
+      wind=(time,calm,tier)=>{meadow(time,calm,tier);heirlooms.sway(time,calm);};
+      // Crop the bookmatched marble at the edges of each wall.
+      const pitch=3.64;
+      const wall=(cx,cz,yaw,left,right,base,top,halfSpan)=>{
+        // Keep a full panel on the centerline.
+        // Door openings crop this same grid, so their jambs match on both sides.
+        const columns=2*Math.round(halfSpan/pitch-.5)+1;
+        const width=2*halfSpan/columns;
+        const dx=Math.cos(yaw),dz=-Math.sin(yaw);
+        for(let j=Math.floor(base/pitch);j<Math.ceil(top/pitch);j++){
+          const v=j*pitch;
+          for(let i=Math.floor(left/width+.5);i<Math.ceil(right/width+.5);i++){
+            const u=(i-.5)*width;
+            const paper=BL.pokerSpeakeasy.wallTile(Math.max(0,(left-u)/width),Math.max(0,(base-v)/pitch),
+              Math.min(1,(right-u)/width),Math.min(1,(top-v)/pitch));
+            const tile=add(room,paper,cx+dx*u,v,cz+dz*u);
+            tile.rotation.y=yaw;tile.scale.x=width;tile.scale.y=pitch;
+          }
+        }
+      };
+      const a=r.w/2,b=r.d/2,top=r.h-.12;
+      for(const side of [-1,1])wall(side*(a-.15),0,-side*Math.PI/2,.14-b,b-.14,.02,top,b-.14);
+      for(const seat of g.seats){
+        const chair=add(room,seat.geometry,seat.x,0,seat.z); chair.rotation.y=seat.yaw; chair.chaiseExtension=seat.extension; chairs.push(chair);
+      }
+      yield* BL.buildTasks.pause(slice);
+      hearth=fireplace(room,r,lite);
+      const {table,toys,blanket}=BL.pokerLoungeStone.firesideTable(room,r);
+      yield* BL.buildTasks.pause(slice);
+      heirlooms=yield* BL.pokerLoungeHeirlooms.createSteps(room,r,lite,g.solids,blanket,slice);
+      const occluders=chairs.concat(table,toys,heirlooms.treeOccluders,heirlooms.items.filter(prop=>prop.footprint).map(prop=>prop.node));
+      landscapes=BL.pokerTimelineGlass.install(room,r,windowLight,windows,rect,occluders,lite,g.lawn.ground,lighting.signal,glasswork);
+      gather(room);
+      onLoungeReady?.(heirlooms,landscapes,chairs,entry);
+    };
+    const lounge=BL.doorReady.create({code:"poker",scope:"poker",steps:buildLounge});
     ROOMS.forEach((r, i) => {
+      if(i===0){
+        rooms.push(add(root,null,r.x,r.y,r.z));solids.push([]);return;
+      }
       const g = interior(i, lite), room = add(root, g.geometry, r.x, r.y, r.z);
       rooms.push(room); solids.push(g.solids);
       if (g.paving) for (let row = 0; row < 8; row++)
         add(room, g.paving[row % 2], 0, -.013, (row - 3.5) * 1.875);
 
-      if(i===0){
-        S.addChild(room,windowLight);
-        const ornaments=BL.pokerLoungeStone.outfit(room,r,lite,windowLight,g.seats);
-        // One world-space grid per wall. At corners and around the door, trim
-        // the stone tile while keeping the size and spacing of the etching.
-        const pitch=1.82;
-        const wall=(cx,cz,yaw,left,right,base,top)=>{
-          const dx=Math.cos(yaw),dz=-Math.sin(yaw);
-          for(let j=Math.floor(base/pitch);j<Math.ceil(top/pitch);j++){
-            const v=j*pitch;
-            for(let i=Math.floor(left/pitch+.5);i<Math.ceil(right/pitch+.5);i++){
-              const u=(i-.5)*pitch;
-              // Leave the marble bare behind each raised carving so a second
-              // etched silhouette cannot show through its open spaces.
-              const midX=cx+dx*i*pitch,midZ=cz+dz*i*pitch,midY=v+pitch/2;
-              const plain=ornaments.some(({position:p})=>Math.abs(p.x-midX)<pitch/2 &&
-                Math.abs(p.z-midZ)<pitch/2 && Math.abs(p.y-midY)<pitch/2);
-              const paper=BL.pokerSpeakeasy.engraving(Math.max(0,(left-u)/pitch),Math.max(0,(base-v)/pitch),
-                Math.min(1,(right-u)/pitch),Math.min(1,(top-v)/pitch),plain);
-              const tile=add(room,paper,cx+dx*u,v,cz+dz*u);
-              tile.rotation.y=yaw;tile.scale.x=tile.scale.y=pitch;
-            }
-          }
-        };
-        const a=r.w/2,b=r.d/2,top=r.h-.12;
-        wall(0,-b+.145,0,.12-a,a-.12,.02,top);
-        for(const side of [-1,1])wall(side*(a-.15),0,-side*Math.PI/2,.14-b,b-.14,.02,top);
-        wall(0,b-.14,Math.PI,.12-a,-1.04,.02,2.70);
-        wall(0,b-.14,Math.PI,1.04,a-.12,.02,2.70);
-        wall(0,b-.14,Math.PI,.12-a,a-.12,2.70,top);
-        for(const seat of g.seats){
-          const chair=add(room,seat.geometry,seat.x,0,seat.z); chair.rotation.y=seat.yaw; chairs.push(chair);
-        }
-        hearth=fireplace(room,r,lite);
-        heirlooms=BL.pokerLoungeHeirlooms.create(room,r);
-      }
       if (g.cavern) {
         add(room, g.cavern);
         glyph = add(room, g.glyph, 0, 2.22, 0);
@@ -303,14 +290,16 @@
     S.addChild(root,roofScope.root);
     const shelf = BL.pokerSpeakeasy.shelf(lite, DOORS[0][2], DOORS[0][3]);
     S.addChild(root, shelf.root);
+    const facade=BL.pokerTimelineGlass.facade(root,DOORS[0][2],lite);
     DOORS.forEach(([from, to, x, z, , , label], i) => {
       if (i === 3) { targets.push(S.createNode()); return; }
       if (i === 1) { targets.push(vaultDoor); return; }
       if (i === 0) { targets.push(shelf.target); return; }
       const p = origin(from);
       if (i === 6) {
-        const card = add(root, BL.pokerSpeakeasy.passCard(), p.x + x, 1.57, p.z + z + .24);
-        card.rotation.x = -.16; targets.push(card); return;
+        const card = add(root, BL.pokerSpeakeasy.passCard(), p.x + x, .539, p.z + z);
+        card.rotation.x=-Math.PI/2;card.rotation.y=.20;
+        targets.push(card); return;
       }
       const parts = [mesh(1.9, 0.51, 0.12, LACQUER, 0, 0, 0), mesh(1.94, 0.045, 0.15, GOLD, 0, 0.27, 0),
         letters(label, Math.min(0.072, 0.44 / label.length), IVORY, 0, 0.09, -0.055)];
@@ -330,7 +319,9 @@
     // The two closed rooms have opaque walls behind the bar. The rooftop is visible from outside.
     const show = id => {
       refreshGate();
+      if((id===0 || shelf.opened) && !BL.offlineLoungePack && !lounge.ready)lounge.step(Infinity);
       windowLight.visible=id===0;
+      facade.visible=id<=0;
       rooms[2].visible = roofScope.root.visible = id !== 1;
       for (let i = 0; i < 2; i++) rooms[i].visible = i === id || i === 0 && id < 0 && shelf.opened;
       for (let i = 0; i < targets.length; i++) targets[i].visible = i === 0 ? id <= 0 : i !== 3 && DOORS[i][0] === id && (i !== 6 || !den.pass);
@@ -339,9 +330,14 @@
     // between the jambs. Adjacent casino windows continue to look out onto the ocean.
     const surfaces=new Set(),left=new Float32Array(4),right=new Float32Array(4),lintel=new Float32Array(4);
     const gather=n=>{if(n.geometry)surfaces.add(n.geometry);for(const child of n.children)gather(child);};
-    gather(rooms[0]);
+    const approach=(position,id)=>{
+      if(heirlooms || id!==-1 || BL.offlineLoungePack)return;
+      const door=DOORS[0],dx=position.x-door[2],dz=position.z-door[3];
+      if(dx*dx+dz*dz<64 && Math.abs(position.y)<6)lounge.step(4);
+    };
     let clipped=false;
     const portalView=(eye,id)=>{
+      if(rooms[0].visible)heirlooms?.view(eye);
       const door=DOORS[0], dz=eye.z-door[3], outside=id<0 && shelf.opened && dz>.001;
       if(outside!==clipped){
         for(const g of surfaces){g.clipSlab=outside?left:null;g.clipSlab2=outside?right:null;g.clipPlane=outside?lintel:null;}
@@ -349,16 +345,19 @@
       }
       if(!outside)return;
       const jamb=(plane,side)=>{
-        const x=door[2]+side*1.04, dx=x-eye.x, scale=side/(128*Math.hypot(dx,dz));
+        const x=door[2]+side*BL.pokerLoungeDoor.half, dx=x-eye.x, scale=side/(128*Math.hypot(dx,dz));
         plane[0]=dz*scale;plane[2]=dx*scale;
         plane[3]=1-plane[0]*x-plane[2]*door[3];
       };
       jamb(left,-1);jamb(right,1);
-      const slope=(2.73-eye.y)/dz;
+      const slope=(BL.pokerLoungeDoor.crown(0)-eye.y)/dz;
       lintel[1]=1;lintel[2]=slope;lintel[3]=-eye.y-slope*eye.z;
     };
     show(-1);
-    return { root, solids, targets, chairs, hearth, heirlooms, windowLights:windowLight.lights, portalView, glyph, shelf, roofScope, roofWins, sighting, refreshGate, show };
+    const dispose=()=>{lighting.abort();lounge.reset();heirlooms?.dispose();};
+    const exteriorView=()=>exterior ??= BL.pokerLoungeExterior.build(ROOMS[0],glasswork,entry,lite);
+    return { root, solids, targets, chairs, approach, dispose, exteriorView, get hearth(){return hearth;}, get wind(){return wind;},
+      get heirlooms(){return heirlooms;}, get landscapes(){return landscapes;}, get entry(){return entry;}, get projector(){return windowLight.projector;}, windowLights:windowLight.lights, portalView, glyph, shelf, roofScope, roofWins, sighting, refreshGate, show };
   };
   // Test the whole walking segment against furniture expanded by the visitor's body radius.
   const clear = (set, r, ax, az, bx, bz, radius) => {
@@ -379,8 +378,16 @@
     if(!salons.shelf.opened && Math.max(az,bz)>=hall) return false;
     const slope=az===bz?0:(bx-ax)/(bz-az);
     const low=Math.max(front,Math.min(az,bz)),high=Math.min(hall,Math.max(az,bz));
-    if(low<=high && (Math.abs((ax+slope*(low-az))-r.x)>1.02-radius || Math.abs((ax+slope*(high-az))-r.x)>1.02-radius ||
-      az===bz && Math.abs(bx-r.x)>1.02-radius)) return false;
+    if(low<=high){
+      const fits=x=>Math.abs(x-r.x)<=BL.pokerLoungeDoor.half-radius;
+      if(!fits(ax+slope*(low-az)) || !fits(ax+slope*(high-az)) || az===bz && !fits(bx))return false;
+      const plane=r.z+r.d/2+.085,near=Math.max(low,plane-radius-.14),far=Math.min(high,plane+radius+.14);
+      if(near<=far){
+        const limit=salons.entry.gap-radius;
+        if(Math.abs(ax+slope*(near-az)-r.x)>limit || Math.abs(ax+slope*(far-az)-r.x)>limit ||
+          az===bz && Math.abs(bx-r.x)>limit)return false;
+      }
+    }
     if(Math.max(az,bz)>hall){
       const x=ax+slope*(hall-az);
       if(!BL.pokerModels.walkable(az>hall?ax:x,Math.max(az,hall),bz>hall?bx:x,Math.max(bz,hall),y,h,actor)) return false;

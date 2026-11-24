@@ -1,4 +1,4 @@
-// The original Hot Pixel Group artwork shared by the hearth and lounge wall finishes.
+// The original Hot Pixel Group artwork used for the arch crests and floor glass.
 (() => {
   "use strict";
   const BL=window.BL;
@@ -76,37 +76,13 @@
   ];
   const points=logoContours.flat(), xs=points.map(p=>p[0]), ys=points.map(p=>p[1]);
   const cx=(Math.min(...xs)+Math.max(...xs))/2,cy=(Math.min(...ys)+Math.max(...ys))/2;
-  // Both finishes use the same upright, centred curves, in source pixels.
+  // Upright, centred curves in source pixels.
   const contours=logoContours.map(ring=>ring.map(([x,y])=>[x-cx,cy-y]));
-  const finishes=BL.models.cached(()=>{
+  const marble=BL.models.cached(()=>{
     const size=512,canvas=document.createElement("canvas");
     canvas.width=canvas.height=size;
-    const ctx=canvas.getContext("2d",{willReadFrequently:true}),surface={canvas,version:0,rect:[0,0,1,1],smooth:true};
-    const bareCanvas=document.createElement("canvas");bareCanvas.width=bareCanvas.height=size;
-    const bareCtx=bareCanvas.getContext("2d"),bare={...surface,canvas:bareCanvas};
-    // Opposite lips catch different amounts of light. Modulate the underlying
-    // mineral grain so its veins run straight through the shallow incision.
-    const mask=document.createElement("canvas");mask.width=mask.height=size;
-    const pen=mask.getContext("2d");
-    pen.translate(size/2,size/2);pen.scale(.86,-.86);
-    pen.beginPath();
-    for(const ring of contours){
-      pen.moveTo(...ring[0]);
-      for(let i=1;i<ring.length;i++)pen.lineTo(...ring[i]);
-      pen.closePath();
-    }
-    pen.fill("evenodd");
-    const ink=pen.getImageData(0,0,size,size).data;
-    const engrave=()=>{
-      bareCtx.drawImage(canvas,0,0);bare.version++;
-      const image=ctx.getImageData(0,0,size,size),data=image.data,lip=(size+1)*4;
-      for(let i=lip;i<data.length-lip;i+=4){
-        const gain=1+(.31*(ink[i-lip+3]-ink[i+lip+3])-.12*ink[i+3])/255;
-        for(let c=0;c<3;c++)data[i+c]*=gain;
-      }
-      ctx.putImageData(image,0,0);surface.version++;
-    };
-    ctx.fillStyle="#b5b6b7";ctx.fillRect(0,0,size,size);engrave();
+    const ctx=canvas.getContext("2d"),surface={canvas,version:0,rect:[0,0,1,1],smooth:true};
+    ctx.fillStyle="#fffefa";ctx.fillRect(0,0,size,size);
     const source=new Image();
     source.onload=()=>{
       // Bookmatch the photographed stone so the vein meets itself at every seam.
@@ -114,11 +90,12 @@
         ctx.save();ctx.translate(size/2,size/2);ctx.scale(x,y);
         ctx.drawImage(source,0,0,size/2,size/2);ctx.restore();
       }
-      engrave();
+      // Keep the bookmatched veins visible through the milky white ground.
+      ctx.fillStyle="rgba(255,255,253,.84)";ctx.fillRect(0,0,size,size);
+      surface.version++;
     };
     source.src=BL.pokerHearthMap;
-    return {etched:surface,bare};
+    return surface;
   });
-  const marble=plain=>plain?finishes().bare:finishes().etched;
   BL.pokerDamaskMap=Object.freeze({contours,marble});
 })();

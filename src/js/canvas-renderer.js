@@ -443,7 +443,7 @@
     let waterTime = 0;
     const waterWave = new Float64Array(3), waterBodyPoint = new Float64Array(3);
     let pointLights = null, pointLightCount = 0;
-    let spotLight = null, blacklight = null;
+    let spotLight = null, blacklight = null, characterProjection = null;
     const spotEnergy = (x, y, z, nx, ny, nz) => {
       if (!spotLight || spotLight[3] <= 0) return 0;
       const dx = x - spotLight[0], dy = y - spotLight[1], dz = z - spotLight[2], dist = Math.hypot(dx, dy, dz);
@@ -993,6 +993,30 @@
                 * (1 - (node.geometry.fogPierce || 0));
               const beam = localMatrixGlyph ? 0 : spotEnergy(centerX, centerY, centerZ, nx, ny, nz) * (1 - Math.min(1, emissive));
               let pointR = 0, pointG = 0, pointB = 0;
+              if (characterProjection && (node.geometry.characterPart || node.geometry.receiveProjection)) {
+                const {origin,shape,direction,map,pixels,hearth,vault}=characterProjection;
+                const wallPanes=map.width/map.height-2;
+                const dist=(origin[0]-centerX)*shape[3], along=centerZ+dist*direction[2]-origin[2];
+                let bay=Math.round(along/origin[3]), u=.5+shape[2]*(along-bay*origin[3])/shape[0];
+                let v=1-(centerY+dist*direction[1]-origin[1])/shape[1];
+                const roofU=.5+(centerX-vault[0])/vault[2],roofV=.5+(centerZ-vault[1])/vault[3];
+                if(ny>0 && roofU>=0 && roofU<1 && roofV>=0 && roofV<1){
+                  const w=map.height,at=4*(Math.floor(roofV*w)*map.width+(wallPanes+1)*w+Math.floor(roofU*w));
+                  const gain=.60*ny*(1-Math.min(1,emissive))/255;
+                  pointR+=pixels[at]*gain;pointG+=pixels[at+1]*gain;pointB+=pixels[at+2]*gain;
+                }
+                const hearthDist=(hearth[1]-centerZ)/direction[2];
+                const onHearth=hearthDist>0 && hearthDist<dist;
+                if(onHearth){
+                  bay=wallPanes;u=.5+(centerX+hearthDist*direction[0]-hearth[0])/hearth[2];
+                  v=1-(centerY+hearthDist*direction[1]-.02)/hearth[3];
+                }
+                if(dist>0 && bay>=0 && (bay<wallPanes || onHearth) && u>=0 && u<1 && v>=0 && v<1){
+                  const w=map.height,at=4*(Math.floor(v*w)*map.width+bay*w+Math.floor(u*w));
+                  const gain=1.36*Math.max(0,nx*direction[0]+ny*direction[1]+nz*direction[2])*(1-Math.min(1,emissive))/255;
+                  pointR+=pixels[at]*gain;pointG+=pixels[at+1]*gain;pointB+=pixels[at+2]*gain;
+                }
+              }
               if (!localMatrixGlyph) for (let i = 0; i < pointLightCount; i++) {
                 const o = i * 8, dx = pointLights[o] - centerX, dy = pointLights[o + 1] - centerY, dz = pointLights[o + 2] - centerZ;
                 const radius = pointLights[o + 3], distance2 = dx * dx + dy * dy + dz * dz;
@@ -1962,7 +1986,7 @@
     const drawCanvasSurface = (node, rec) => {
       const surface = node.geometry.imageSurface, source = surface.canvas, sw = surface.width || source.width, sh = surface.height || source.height;
       if (!sw || !sh) return;
-      const coverage = canvasMask(surface), shaded = canvasShades.get(node.geometry, rec, coverage);
+      const coverage = surface.blend ? source : canvasMask(surface), shaded = canvasShades.get(node.geometry, rec, coverage);
       mat4.multiply(imageView, view, node.world);
       const v = node.geometry.verts, a = rec.imageA * 3, b = rec.imageB * 3, c = rec.imageC * 3, d = rec.imageD * 3;
       const m = imageView, rect = surface.rect, curve = surface.curve;
@@ -2090,6 +2114,7 @@
         cutawayPlanes[at + 19] = s * x + c * z - region.halfDepth;
       }
       const { light = DEFAULT_LIGHT, directStrength: strength = 1, ambientFloor: ambient = 0.3, diffuseFloor: diffuse = 0, clear = null, sky = DEFAULT_SKY, ground = DEFAULT_GROUND, horizon = null, zenith = null, fog = null, fogNear: near0 = 0, fogFar: far0 = 0, matrix = null } = opts;
+      characterProjection = opts.characterProjection || null;
       spotLight = opts.spotLight || null;
       blacklight = opts.blacklight || null;
       matrixActive = matrix ? matrix.active : 0;

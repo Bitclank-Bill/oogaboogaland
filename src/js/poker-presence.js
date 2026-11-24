@@ -4,12 +4,9 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  // A seated Ooga's root stands at `pokerModels.sitY(height)`, so the soles it sends (root less its leg, 7/16 of its
-  // height) sit at 0.47 - 0.2825 height: 0.176 at the middle height 1.04, 0.24 to 0.10 over the roster's 0.8 to 1.3.
-  // CHAIR_Y is about that middle, and BAND takes every height from 0.67 to 1.38 while staying clear of the floor
-  // (CHAIR_Y > BAND), where everyone walks; nothing walks at a chair's spot, inside the table's walk block. Copied, not
-  // read, so this loads bare.
-  const CHAIR_Y = 0.18, RADIUS = 0.5, BAND = 0.1, R2 = RADIUS * RADIUS;
+  // Remote poses send the hip height less the standing leg length. On the current chairs the longest
+  // shins put the soles at 0.030 m. Allow for pose rounding, keeping feet on the floor outside the range.
+  const MIN_CHAIR_Y = 0.02, CHAIR_Y = 0.18, RADIUS = 0.5, BAND = 0.1, R2 = RADIUS * RADIUS;
   // For one release, a page from before the Ooga-scale chairs still reads as seated: it sends soles at OLD_CHAIR_Y on
   // its own chair ring, 6 by 4.2 m round the same tables at the old even angles, and chair s there is chair s here.
   // This page sends only the new height. Remove both with the next release.
@@ -20,8 +17,8 @@
   }));
   // `table * seats.length + seat` for a position on a chair's spot at chair height, or -1.
   const seatAt = (tables, seats, x, y, z) => {
-    if (Math.abs(y - CHAIR_Y) > BAND) {
-      if (Math.abs(y - OLD_CHAIR_Y) > BAND) return -1;
+    if (!(y >= MIN_CHAIR_Y && y <= CHAIR_Y + BAND)) {
+      if (!(Math.abs(y - OLD_CHAIR_Y) <= BAND)) return -1;
       seats = OLD_SEATS;
     }
     for (let t = 0; t < tables.length; t++) {

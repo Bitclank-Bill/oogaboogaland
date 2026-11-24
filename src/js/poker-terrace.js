@@ -70,7 +70,7 @@
     sections.push(K.staticMesh(BL.pokerIce.shelfIce(cx,bays,rad,z,lite)));
     for(const offset of bays){
       const x=cx+offset;
-      p.push(box(x,2.3,z-.19,rad*2+.18,4.55,.38,inset));
+      if(!west)p.push(box(x,2.3,z-.19,rad*2+.18,4.55,.38,inset));
       for(const side of [-1,1]){
         const dx=x+side*rad;
         p.push(box(dx,1.82,z+.04,.15,3.64,.33,brass));

@@ -85,16 +85,50 @@
     const previous=make(nav,"button","","‹ Previous");
     const status=make(nav,"output","jones-location");status.setAttribute("aria-live","polite");
     const next=make(nav,"button","","Next ›");
-    const putDown=make(reader,"button","modal-close jones-return","×");
+    const putDown=make(nav,"button","modal-close jones-return","×");
     putDown.setAttribute("aria-label","Close book");
+    let upcoming=null,upcomingKey="";
     const art=(parent,key,alt)=>{
-      const img=make(parent,"img","jones-art");img.alt=alt;img.src=BL.pokerStoryArt[key];
+      const img=key===upcomingKey?upcoming:new Image();
+      img.className="jones-art";img.alt=alt;img.onload=img.onerror=fit;
+      if(img!==upcoming)img.src=BL.pokerStoryArt[key];
+      parent.append(img);
     };
     const page=(parent,number,text)=>{
       const leaf=make(parent,"section","jones-page");leaf.setAttribute("aria-label","Page "+number);
       if(text)for(const paragraph of text.split("\n\n"))make(leaf,"p","",paragraph);
       return leaf;
     };
+    // Keep the largest type that leaves room for the whole illustration.
+    // Measure the browser's own wrapping, including the letter's paragraph breaks.
+    const fit=()=>{
+      const leaf=stage.querySelector(".jones-spread"),height=stage.clientHeight;
+      if(!leaf || !height || !stage.clientWidth)return;
+      const letter=leaf.classList.contains("jones-letter"),pages=leaf.querySelectorAll(".jones-page");
+      const stacked=letter && pages[1].offsetTop>pages[0].offsetTop;
+      const available=height-1;
+      leaf.style.setProperty("--art-limit",(letter && !stacked?available:available*(letter ? .24 : .34))+"px");
+      const fits=size=>{
+        leaf.style.setProperty("--type",size+"px");
+        return leaf.getBoundingClientRect().height<=available;
+      };
+      let hi=letter?23:26,lo=0;
+      if(fits(hi))lo=hi;
+      else while(hi-lo>.125){
+        const mid=(lo+hi)/2;
+        if(fits(mid))lo=mid;else hi=mid;
+      }
+      leaf.style.setProperty("--type",lo+"px");
+      if(!letter || stacked){
+        const textHeight=Math.max(pages[0].getBoundingClientRect().height,
+          letter?0:pages[1].getBoundingClientRect().height);
+        leaf.style.setProperty("--art-limit",Math.max(1,available-Math.ceil(textHeight))+"px");
+      }
+    };
+    const sizeWatcher=new ResizeObserver(fit);
+    sizeWatcher.observe(stage);
+    dialog.addEventListener("close",()=>sizeWatcher.disconnect(),{once:true});
+    document.fonts?.ready.then(fit);
     let index=0;
     const paint=()=>{
       stage.replaceChildren();
@@ -111,7 +145,10 @@
           page(leaf,index*2-1,s.left);art(page(leaf,index*2),s.art,s.alt);
         }
       }
-      stage.scrollTop=0;
+      upcomingKey=spreads[index]?.art || "";
+      upcoming=upcomingKey?new Image():null;
+      if(upcoming){upcoming.fetchPriority="low";upcoming.src=BL.pokerStoryArt[upcomingKey];}
+      fit();
       status.textContent=index===0?"Front cover":"Pages "+(2*index-1)+"–"+(2*index);
       previous.disabled=index===0;next.disabled=index===spreads.length;
     };

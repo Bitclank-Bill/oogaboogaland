@@ -102,3 +102,8 @@ const kb = (n) => `${(n / 1024).toFixed(0)} KB`;
 const sizes = sources.map((src) => [src, read(src).trim().length]).sort((a, b) => b[1] - a[1]);
 for (const [src, bytes] of sizes.slice(0, 8)) console.log(`  ${kb(bytes).padStart(9)}  ${src}`);
 console.log(`built ${out} (${kb(html.length)}, gzip ${kb(gzipSync(html).length)}, ${sources.length} scripts, js ${kb(js.length)}, css ${kb(css.length)})`);
+
+if (process.argv.includes("--offline-core")) {
+  const { writeOfflineCore } = await import("./offline-lounge.mjs");
+  writeOfflineCore(root, html, js, block);
+}
