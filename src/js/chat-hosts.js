@@ -556,14 +556,21 @@
     addEventListener("resize", place, { signal });
     // The chat's co-hosts here, longest-serving first (the chat's own order).
     const cohostsOf = () => people.filter((p) => p.rank === "cohost");
+    let leaveAway = "";
     // A host's way out: they choose the co-host who hosts next, the chat is handed over (the server's `handover`), and
     // only once that is done do they leave. With no co-host there is no way out but End chat.
-    const leaveAsHost = (at) => {
-      const next = cohostsOf();
-      if (!next.length) return;
-      openPop("leave", at, "Choose who hosts the chat after you leave.", [...next.map((p, i) => ({ label: `Make ${p.display} host and leave`, primary: i === 0,
-        run: () => { closePop(); send("handover", { id: p.id }, (msg) => { if (msg && msg.ok) chats.leave(); }); } })),
-      { label: "Cancel", run: () => closePop() }], "dialog");
+    // A co-host whose connection dropped is listed but not offered: handed the chat, they would leave it without a host
+    // there until they came back. Connected co-hosts come first; with none, waiting or End chat is the way out.
+    const leaveAsHost = (at, focus = true) => {
+      const all = cohostsOf();
+      if (!all.length) return;
+      const next = [...all.filter((p) => !p.reconnecting), ...all.filter((p) => p.reconnecting)], any = !next[0].reconnecting;
+      leaveAway = all.map((p) => p.id + (p.reconnecting ? "~" : "")).join();
+      openPop("leave", at, any ? "Choose who hosts the chat after you leave."
+        : next.length === 1 ? `${next[0].display} is reconnecting. Wait for them to come back, or end the chat.` : "Your co-hosts are reconnecting. Wait for one to come back, or end the chat.",
+        [...next.map((p, i) => ({ label: `Make ${p.display} host and leave`, primary: any && i === 0, disabled: !!p.reconnecting, reason: "Reconnecting…",
+          run: () => { closePop(); send("handover", { id: p.id }, (msg) => { if (msg && msg.ok) chats.leave(); }); } })),
+        { label: "Cancel", cancel: true, run: () => closePop() }], "dialog", focus);
     };
     const confirm = (at, words, label, run, danger = false) => openPop("confirm", at, words, [{ label, primary: true, danger, run: () => { closePop(); run(); } }, { label: "Cancel", run: () => closePop() }], "dialog");
     const menu = (id, tile) => {
@@ -666,6 +673,8 @@
       leave.hidden = !r || stuck;
       back.hidden = stuck;
       if (popKind === "leave" && (!hosting || stuck)) closePop(false);
+      // The picker follows its co-hosts: one reconnecting, back or gone is offered or not as it stands now.
+      else if (popKind === "leave" && cohostsOf().map((p) => p.id + (p.reconnecting ? "~" : "")).join() !== leaveAway) leaveAsHost(anchor, false);
       const g = goThere && r ? goThere.state(r) : null;
       goTo.hidden = !g;
       if (g) {

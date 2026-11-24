@@ -118,9 +118,13 @@ to the right of the zone tag), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave chat.
 
 A host steps down only by handing the chat over or ending it. While hosting they stay on the stage (Mute, no Leave
-Voice). Leave chat, and Back to chats, open **Choose who hosts the chat after you leave**: one button a co-host, "Make
-<name> host and leave", the longest-serving amber, and Cancel; the chat is handed over (`handover`) and only then left.
-With no co-host neither Leave chat nor Back to chats shows, and End chat is the way out. A host's dropped connection
+Voice, in the chat's footer and in Ooga Chat's account rows alike), and the island's own Join voice, which otherwise
+leaves a chat for the island's voice, only says so in a toast. Leave chat, and Back to chats, open **Choose who hosts
+the chat after you leave**: one button a co-host, "Make <name> host and leave", connected co-hosts first, the
+longest-serving of them amber, and Cancel; the chat is handed over (`handover`) and only then left. A co-host whose
+connection dropped stays listed but dimmed, "Reconnecting…" under it, since handed the chat they would leave it with no
+host there; the picker follows them as they drop or come back, and with every co-host reconnecting it says to wait for
+them or end the chat. With no co-host neither Leave chat nor Back to chats shows, and End chat is the way out. A host's dropped connection
 still waits two minutes and passes to a co-host, as below.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared

@@ -87,7 +87,8 @@
       set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
       attr(mute, "aria-pressed", String(speaker && state.voice.muted));
       micLook(mute, !mute.disabled && speaker, state.voice.muted);
-      set(voice, "hidden", false);
+      // A host stays on the stage while hosting, as the Ooga Chat tab's footer has it (chat-hosts.js): Mute, never Leave voice.
+      set(voice, "hidden", speaker && state.room?.you?.rank === "host");
       set(voice, "textContent", speaker ? "Leave voice" : join.words || "Join voice");
       set(voice, "disabled", speaker ? !!state.busy : join.disabled);
       const why = speaker ? "" : join.why;
