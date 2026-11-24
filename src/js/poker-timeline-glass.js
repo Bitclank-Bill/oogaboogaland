@@ -212,7 +212,7 @@
   // Broad overhead sky casts a softer, vertical image than the low moon.
   // Use the same transmission map on moving bodies and on the fixed paving.
   const ceilingTransmission=(tile,r)=>{
-    const size=192,filter=canvas(size,size),ctx=filter.getContext("2d");
+    const size=192,filter=canvas(size,size),ctx=filter.getContext("2d",{willReadFrequently:true});
     if(!tile)return filter;
     ctx.filter="blur(1.1px)";ctx.drawImage(tile,0,0,size,size);ctx.filter="none";
     filterTransmission(ctx,size);
@@ -279,7 +279,7 @@
       c.drawImage(landscape,column*slice,row*strip,slice,strip,0,landscapeTop*h,w,(1-landscapeTop)*h);
       c.fillStyle="#473829";c.fillRect(0,landscapeTop*h,w,.005*h);
     }
-    const size=192,filter=canvas(size,size),ctx=filter.getContext("2d");
+    const size=192,filter=canvas(size,size),ctx=filter.getContext("2d",{willReadFrequently:true});
     const [left,sill,width,height]=rect,top=sill+height;
     ctx.beginPath();
     for(const {i:ids} of glass.faces){

@@ -31,11 +31,12 @@
     }
     return M.merge(...p);
   });
-  const sheet=(w,h,cw,ch,paint,e=.6)=>{
+  // `read` keeps a canvas the code reads back more than once on the CPU (willReadFrequently).
+  const sheet=(w,h,cw,ch,paint,e=.6,read=false)=>{
     const g=M.panel({w,h,tilesX:1,tilesY:1,color:"#ffffff",emissive:e});
     if(typeof CanvasRenderingContext2D==="undefined")return g;
     const canvas=document.createElement("canvas");canvas.width=cw;canvas.height=ch;
-    paint(canvas.getContext("2d"),cw,ch);g.castShadow=false;
+    paint(canvas.getContext("2d",{willReadFrequently:read}),cw,ch);g.castShadow=false;
     g.imageSurface={canvas,rect:[-w/2,-h/2,w,h],smooth:true,version:1};
     return g;
   };
@@ -140,9 +141,9 @@
     for(let i=0;i<64;i++)M.face(g,[v,rim[i],rim[(i+1)%64]],[255,255,255],{emissive:e});
     g.castShadow=false;return g;
   };
-  const circle=(radius,pixels,paint,e)=>{
+  const circle=(radius,pixels,paint,e,read)=>{
     const g=disk(radius,e);
-    g.imageSurface=sheet(2*radius,2*radius,pixels,pixels,paint,e).imageSurface;return g;
+    g.imageSurface=sheet(2*radius,2*radius,pixels,pixels,paint,e,read).imageSurface;return g;
   };
   const ring=(c,r,color,w)=>{c.beginPath();c.arc(0,0,r,0,tau);c.strokeStyle=color;c.lineWidth=w;c.stroke();};
   // Two offset whorls of ray florets enclose the seed head. Split each petal
@@ -333,7 +334,7 @@
       c.setTransform(1,0,0,1,0,0);
       c.shadowColor="rgba(234,251,235,.32)";c.shadowBlur=size*.006;
       c.drawImage(stamp,size/2-cx,size/2-cy);
-    },.55);
+    },.55,true);
     if(g.imageSurface){
       const {canvas,rect}=g.imageSurface;
       g.imageSurface={rect,fallback:()=>canvas,cutout:true,soft:true,blend:"alpha",bright:.18};
