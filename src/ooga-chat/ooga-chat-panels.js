@@ -70,7 +70,9 @@
         return;
       }
       set(name, "textContent", who.identity.display);
-      const speaker = state.voice.role === "speaker", allowed = gates(state, Date.now()), join = joining(state, allowed, media);
+      // In a chat the chat decides who may speak, as the Ooga Chat tab's footer asks it (ooga-chat-views.js `cloudFoot`).
+      const speaker = state.voice.role === "speaker", allowed = state.room ? { joinVoice: state.room.you?.speak === "eligible" || !!state.voice.elsewhere, why: null } : gates(state, Date.now());
+      const join = joining(state, allowed, media);
       // With hosted chats, voice is a chat's: outside one there is nothing to join or unmute here, as in the Ooga Chat tab.
       if (state.boot.features.chats && !state.room && !speaker) {
         set(mute, "hidden", true);
