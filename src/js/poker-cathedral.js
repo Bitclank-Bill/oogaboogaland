@@ -505,6 +505,8 @@
       }
     }
     yield* BL.buildTasks.pause(slice);
+    // The desert garden behind the trees; its solids go in before the check, which holds them clear of the shrines.
+    yield* BL.pokerDesertGarden.plantSteps(room,r,add,lite,items,solids,slice);
     checkLayout(items,solids,r);
     const fittings=BL.scene.createNode({scale:{x:2,y:2,z:2}});
     BL.scene.addChild(room,fittings);

@@ -83,7 +83,7 @@
     for(const cell of order){
       const x=((cell%nx+.08+.84*rand())/nx-.5)*(r.w-.6),z=((Math.floor(cell/nx)+.08+.84*rand())/nz-.5)*(r.d-.6);
       if(x*x+z*z<radius*radius || Math.abs(x)<rug.rugWidth/2+margin && Math.abs(z-rug.rugZ(r))<rug.rugDepth/2+margin)continue;
-      if(solids.some(s=>Math.abs(s.x-x)<s.w+.16 && Math.abs(s.z-z)<s.d+.16))continue;
+      if(solids.some(s=>Math.abs(s.x-x)<s.w+.16 && Math.abs(s.z-z)<s.d+.16) || BL.pokerDesertGarden.inBed(r,x,z))continue;
       const facing=rand()*tau,s=.79+.42*rand(),c=Math.cos(facing)*s,sn=Math.sin(facing)*s,o=count++*20;
       data[o]=c;data[o+2]=-sn;data[o+5]=.76+.45*rand();data[o+8]=sn;data[o+10]=c;
       data[o+12]=r.x+x;data[o+13]=r.y+soilY;data[o+14]=r.z+z;data[o+15]=data[o+16]=1;
