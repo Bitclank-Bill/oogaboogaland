@@ -30,7 +30,7 @@
     const listeners = new AbortController(), { signal } = listeners;
     const login = button("oc-provider oc-account-signin", PROVIDERS.github[0]);
     login.dataset.provider = "github";
-    login.title = "Contributors can sign in with GitHub to speak from a cloud.";
+    login.title = "Sign in with GitHub to see who is on the island and talk in The Commons.";
     login.addEventListener("click", () => actions.signIn("github"), { signal });
     const name = make("span", "account-name"), room = make("span", "account-room");
     const mute = button("foot-button account-mute", "Unmute"), voice = button("foot-button account-voice", "Join voice"), out = button("link", "Sign out");
@@ -61,7 +61,7 @@
       set(out, "textContent", signing ? "Signing out…" : "Sign out");
       set(out, "disabled", !!state.busy);
       const here = !!who && state.commons.status === "live" && !!model.state.you;
-      set(room, "textContent", here ? `${onlineCount(model, state.audience)} online` : "");
+      set(room, "textContent", here ? `${onlineCount(model, publicOf(state))} online` : "");
       set(room, "hidden", !here);
       if (node.dataset.live !== String(here)) node.dataset.live = String(here);
       if (!who) {
@@ -112,6 +112,9 @@
     "signed-out": "Checking your sign-in…",
     "read-only": "Reading only: sending lines from Ooga Chat isn't open yet."
   };
+  // The public conversation's audience, or null with hosted chats on: then `state.audience` is the chat the visitor is
+  // in, whose people are no land's (a voice-only chat's too), so they are neither listed as Main Island nor counted.
+  const publicOf = (state) => state.boot.features.chats ? null : state.audience;
   // Main Island's listeners here, but the member and anyone also on the island, who are counted and listed once.
   const appListeners = (model, audience) => {
     if (!audience || audience.zone !== "main") return [];
@@ -376,10 +379,10 @@
       showName();
       const socket = state.commons.status, live = socket === "live" && !!model.state.you;
       const words = live && !model.state.send ? COMMONS_WORDS["read-only"] : COMMONS_WORDS[socket] || "";
-      const count = onlineCount(model, state.audience), key = `${socket}|${live}|${model.state.send}|${model.state.you?.login}|${count}`;
+      const count = onlineCount(model, publicOf(state)), key = `${socket}|${live}|${model.state.send}|${model.state.you?.login}|${count}`;
       if (key === shown) return;
       shown = key;
-      chip.textContent = commonsChip(socket, model, state.audience);
+      chip.textContent = commonsChip(socket, model, publicOf(state));
       chip.dataset.tone = live ? "live" : socket === "closed" ? "closed" : "idle";
       conversation.setLive({ live: live && model.state.send, me: model.state.you?.login || "", words });
     };
@@ -534,8 +537,8 @@
       muteDuels.disabled = !state.session;
       if (state.audience.version !== heard) {
         heard = state.audience.version;
-        cloud = appSpeakers(state.audience.list);
-        audience = state.audience;
+        audience = publicOf(state);
+        cloud = audience ? appSpeakers(audience.list) : [];
         me = state.session ? state.session.identity.participant : "";
         draw();
         paint();

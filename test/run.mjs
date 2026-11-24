@@ -29319,7 +29319,7 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
     const initial = list.map((c, i) => {
       const bounds = BL.scene.boundsOf(c.node.geometry);
       const halfLength = Math.max(Math.abs(bounds.min[0]), Math.abs(bounds.max[0])), halfDepth = Math.max(Math.abs(bounds.min[2]), Math.abs(bounds.max[2]));
-      return { cloud: c, speaker: [3, 10, 14].includes(i), node: c.node, geometry: c.node.geometry, radius: Math.hypot(c.node.position.x, c.node.position.z), track: c.radius,
+      return { cloud: c, speaker: false, node: c.node, geometry: c.node.geometry, radius: Math.hypot(c.node.position.x, c.node.position.z), track: c.radius,
         y: c.node.position.y, speed: c.speed, x: c.node.position.x, z: c.node.position.z, turn: 0, low: bounds.min[1], high: bounds.max[1],
         minY: c.node.position.y, maxY: c.node.position.y, maxVerticalSpeed: 0, reach: Math.hypot(halfLength, halfDepth),
         inner: c.radius - halfDepth, outer: Math.hypot(c.radius + halfDepth, halfLength) };
@@ -29380,7 +29380,7 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
     out.laps = Math.min(...initial.map(c => c.turn / (Math.PI * 2)));
     out.rings = [36, 40].map(radius => {
       const ring = initial.filter(c => c.track === radius && !c.speaker);
-      return { radius, minHeight: Math.min(...ring.map(c => c.minY)), maxHeight: Math.max(...ring.map(c => c.maxY)),
+      return { radius, count: ring.length, minHeight: Math.min(...ring.map(c => c.minY)), maxHeight: Math.max(...ring.map(c => c.maxY)),
         maxVerticalSpeed: Math.max(...ring.map(c => c.maxVerticalSpeed)),
         eachCloudDips: ring.every(c => c.minY < (radius === 36 ? -3.9 : 2.1)),
         eachCloudRises: ring.every(c => c.maxY > (radius === 36 ? 1.9 : 10.9)) };
@@ -29406,13 +29406,12 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
     } finally { P.release(true); P.goPreset("pile"); B.advance(0.1, 1 / 60); }
     return out;
   })()`);
-  record("hub distant effects: all 18 decorative clouds keep size, orbit and spacing for two full laps, keep the three speaker clouds above the rooftop trees, rising half their lane's swing, and the other clouds in their inner -4..2m and outer 2..11m height bands, stay horizontal and tangent, and never become collision surfaces", clouds.initialized && clouds.persistent && clouds.decorative && clouds.horizontal && clouds.tangent
+  record("hub distant effects: all 18 decorative clouds keep size, orbit and spacing for two full laps, carry no benches (speakers sit only in a hosted chat's copy), every cloud in its inner -4..2m or outer 2..11m height band, stay horizontal and tangent, and never become collision surfaces", clouds.initialized && clouds.persistent && clouds.decorative && clouds.horizontal && clouds.tangent
     && clouds.seconds > 145 && clouds.laps >= 2 && clouds.radialDrift < 1e-8
     && clouds.rings.length === 2 && clouds.rings.every(ring => ring.eachCloudDips && ring.eachCloudRises
       && ring.minHeight >= (ring.radius === 36 ? -4 : 2) && ring.maxHeight <= (ring.radius === 36 ? 2 : 11)
       && ring.maxVerticalSpeed <= (ring.radius === 36 ? 0.2 : 0.25))
-    && clouds.speakers.length === 3 && clouds.speakers.every(c => c.minBottom >= clouds.treetop + 2 && c.maxBottom <= clouds.treetop + (c.track === 36 ? 5 : 6.5)
-      && c.rise > (c.track === 36 ? 2.9 : 4.4) && c.rise <= (c.track === 36 ? 3 : 4.5) + 1e-6 && c.maxVerticalSpeed <= (c.track === 36 ? 0.1 : 0.125))
+    && clouds.speakers.length === 0 && clouds.rings.every(ring => ring.count === 9)
     && clouds.maxTravelExcess < 1e-7 && clouds.minGap > 0 && clouds.spacingDrift < 1e-8
     && clouds.cutaway?.selected && clouds.cutaway.view === "shoulder" && clouds.cutaway.combat && !clouds.cutaway.active && clouds.cutaway.mix === 0 && clouds.cutaway.heights
     && state.horizon.every(row => row.clouds.length === 18 && row.clouds.every(c => c.visible && c.moving)), JSON.stringify(clouds));
