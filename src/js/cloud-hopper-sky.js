@@ -344,7 +344,7 @@
   // made (at least LAGOON_SLICE ms each time, and a few milliseconds a frame in a run, if it is not done by then), so opening the level never stalls on
   // it: until it is done the disc shows the open sea's blue and the swell is not shown.
   const LAGOON_RAMP = [[0, [8, 46, 104]], [0.16, [12, 74, 140]], [0.3, [22, 128, 180]], [0.42, [40, 196, 210]], [0.56, [88, 224, 216]], [0.74, [170, 244, 232]], [0.79, [200, 246, 236]], [0.82, [244, 242, 224]], [1, [252, 249, 236]]];
-  const WAVE_SIZE = 512, LAGOON_SLICE = 8, LAGOON_FRAME = 5;
+  const WAVE_SIZE = 512, LAGOON_SLICE = 8, LAGOON_FRAME = 8, LAGOON_ROWS = 48, LAGOON_FADE = 1.2;
   let lagoonJob = null;
   const lagoonStart = () => {
     if (lagoonJob || typeof document === "undefined") return lagoonJob;
@@ -357,7 +357,7 @@
     for (const b of bars) features.push([b.x, b.y, b.l, b.w, b.a, 0.75, 1.2, 0.5, 0]);
     for (const at of atolls) features.push([at.x, at.y, at.r * at.stretch * 2.6, at.r * 2.6, at.a, 0.7, 1.3, 0.6, 0]);
     for (const at of atolls) features.push([at.x, at.y, at.r * at.stretch, at.r, at.a, at.ring ? 0.98 : 0.97, 0.45, 0.9, at.ring ? 0.5 : 0]);
-    lagoonJob = { n, canvas, g, h: new Float32Array(n * n), img: null, features, phase: 0, row: 0, done: false, waves: [null, null], waveImg: null, rand: mulberry32(99), ms: 0, longest: 0 };
+    lagoonJob = { n, canvas, g, h: new Float32Array(n * n), img: null, features, phase: 0, row: 0, sub: 0, done: false, waves: [null, null], waveImg: null, rand: mulberry32(99), ms: 0, longest: 0 };
     // Each idle moment paints while the browser has time to spare, and at least LAGOON_SLICE even when it has none (a
     // busy page's idle calls come by their timeout with nothing to spare, which would otherwise never finish it).
     const idle = (deadline) => { const until = performance.now() + LAGOON_SLICE; lagoonStep(() => deadline.timeRemaining() > 2 || performance.now() < until); if (!lagoonJob.done) requestIdleCallback(idle, { timeout: 250 }); };
@@ -377,17 +377,20 @@
         const y = J.row; for (let x = 0; x < n; x++) h[y * n + x] = 0.06 + 0.08 * N(x / n * 6, y / n * 6, 3);
         if (++J.row === n) { J.phase = 1; J.row = 0; }
       } else if (J.phase === 1) {
-        // The shoals, sandbars, halos and islands, one at a time.
+        // The shoals, sandbars, halos and islands, one at a time, LAGOON_ROWS rows of one at a time.
         const [cx, cy, rx, ry, a, amp, sharp, warp, inner] = J.features[J.row];
         const toPx = (v) => (v * 0.5 + 0.5) * n, R = Math.max(rx, ry) * n * 0.5 * 1.8, ca = Math.cos(a), sa = Math.sin(a);
         const x0 = Math.max(0, Math.floor(toPx(cx) - R)), x1 = Math.min(n - 1, Math.ceil(toPx(cx) + R)), y0 = Math.max(0, Math.floor(toPx(cy) - R)), y1 = Math.min(n - 1, Math.ceil(toPx(cy) + R));
-        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const from = y0 + J.sub, to = Math.min(y1, from + LAGOON_ROWS - 1);
+        for (let y = from; y <= to; y++) for (let x = x0; x <= x1; x++) {
           const u = x / n * 2 - 1 - cx, v = y / n * 2 - 1 - cy, lu = (u * ca + v * sa) / rx, lv = (-u * sa + v * ca) / ry;
           const d = Math.hypot(lu, lv) * (1 + warp * (N(x / n * 40 + cx * 9, y / n * 40 + cy * 7, 3) - 0.5));
           let k = Math.pow(Math.max(0, 1 - d), sharp);
           if (inner) k -= inner * Math.pow(Math.max(0, 1 - d / 0.62), 2);
           const i = y * n + x; h[i] = Math.max(h[i], h[i] + amp * k * (1 - h[i]));
         }
+        if (to < y1) { J.sub += LAGOON_ROWS; continue; }
+        J.sub = 0;
         if (++J.row === J.features.length) { J.phase = 2; J.row = 0; J.img = J.g.createImageData(n, n); }
       } else if (J.phase === 2) {
         // Colour, a row at a time.
@@ -435,6 +438,19 @@
     return J.done;
   };
   const lagoonInk = [0, 0, 0];
+  // Until the lagoon is painted, a plain veil of its deep blue in its place, fading out at the same rim, so the sea
+  // every level shares is never what shows under the course.
+  const lagoonVeil = M.cached(() => {
+    const m = 128, canvas = document.createElement("canvas"); canvas.width = canvas.height = m;
+    const g = canvas.getContext("2d"), fill = g.createRadialGradient(m / 2, m / 2, 0, m / 2, m / 2, m / 2);
+    fill.addColorStop(0, "rgba(16,92,160,1)"); fill.addColorStop(0.52, "rgba(14,84,150,1)"); fill.addColorStop(0.92, "rgba(14,84,150,0)"); fill.addColorStop(1, "rgba(14,84,150,0)");
+    g.fillStyle = fill; g.fillRect(0, 0, m, m);
+    Object.assign(canvas, { complete: true, naturalWidth: m, naturalHeight: m });
+    const geo = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" });
+    geo.imageSurface = { asset: { width: m, height: m, load: () => canvas }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "alpha", bright: 0 };
+    geo.castShadow = false; geo.cutawayPreserve = true;
+    return geo;
+  });
   // The lagoon laid on the sea: a picture blended over it, see-through where it fades out at its rim.
   const lagoonDisc = M.cached(() => {
     const g = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" }), canvas = lagoonStart().canvas;
@@ -1644,16 +1660,21 @@
       // down the course the eye has come (halfway, about where the world turns over, is RIFT_STAGES - 2), never back.
       if (LAGOON && !lite) {
         // Centred under the course's middle, just over the sea, laid flat (the panel's plan turned to the world's).
-        const disc = node(lagoonDisc(), cx, seaY + 0.4, cz, LAGOON_SPAN); disc.rotation.x = -Math.PI / 2;
+        const job = lagoonStart(), veil = node(lagoonVeil(), cx, seaY + 0.3, cz, LAGOON_SPAN), disc = node(lagoonDisc(), cx, seaY + 0.4, cz, LAGOON_SPAN);
+        veil.rotation.x = disc.rotation.x = -Math.PI / 2;
         node(lagoonIslands(), cx, seaY + 0.4, cz);
-        const job = lagoonStart(), waves = [0, 1].map((v) => { const w = node(null, cx, seaY + 1.2 + v * 0.3, cz, LAGOON_SPAN); w.rotation.x = -Math.PI / 2; w.visible = false; return w; });
-        let budget = 0;
+        const waves = [0, 1].map((v) => { const w = node(null, cx, seaY + 1.2 + v * 0.3, cz, LAGOON_SPAN); w.rotation.x = -Math.PI / 2; w.visible = false; return w; });
+        // Painted already (a replay, a level after another): shown at once. Otherwise the veil until it is, then the
+        // lagoon fading in over it over LAGOON_FADE seconds and the veil gone.
+        let budget = 0, shown = job.done ? 1 : 0;
+        veil.visible = shown < 1; disc.smokeOpacity = shown;
         const more = () => performance.now() < budget;
-        movers.push((time) => {
+        movers.push((time, dt) => {
           // Not painted yet: a few milliseconds of it this frame; the swell shown once it is.
           if (!job.done) { budget = performance.now() + 3; if (!lagoonStep(more)) return; }
+          if (shown < 1) { shown = Math.min(1, shown + dt / LAGOON_FADE); disc.smokeOpacity = shown; veil.visible = shown < 1; }
           if (!waves[0].geometry) for (let v = 0; v < 2; v++) { waves[v].geometry = job.waves[v]; waves[v].visible = true; }
-          waves[0].smokeOpacity = 0.55 + 0.45 * Math.sin(time * 0.5); waves[1].smokeOpacity = 0.55 - 0.45 * Math.sin(time * 0.5 + 0.8);
+          waves[0].smokeOpacity = (0.55 + 0.45 * Math.sin(time * 0.5)) * shown; waves[1].smokeOpacity = (0.55 - 0.45 * Math.sin(time * 0.5 + 0.8)) * shown;
         });
         reached(cx, seaY, cz, LAGOON_SPAN / 2);
       }
@@ -1691,7 +1712,9 @@
         const warm = [...squeezed.map(([n]) => n.geometry), ...stars.map((n) => n.geometry), ...line.slice(0, 4).map((f) => f.n.geometry), ...pictures.map((q) => q.n.geometry)];
         let warmed = 0, shown = 0;
         // The band's height eases toward where the run has come to (a hop on never shows as a jump), never back.
-        movers.push((time, dt) => {
+        // Where the lagoon's rim lies (its picture fades out from about here), for the line on the water's side.
+        const RIM = LAGOON_SPAN * 0.33, inv = new Float64Array(16), eye = new Float64Array(3), M4 = BL.math.mat4;
+        movers.push((time, dt, camera) => {
           for (let n = 0; n < 3 && warmed < warm.length && renderer?.prepareGeometry; n++) if (renderer.prepareGeometry(warm[warmed]) !== false) warmed++; else break;
           const want = bandAt(runProgress);
           if (want > shown) shown = dt > 0 ? shown + (want - shown) * Math.min(1, dt * 1.2) : want;
@@ -1703,14 +1726,32 @@
           for (let i = 0; i < squeezed.length; i++) { squeezed[i][0].scale.z = squeezed[i][1] * squeeze; squeezed[i][0].smokeOpacity = solid; }
           for (let i = 0; i < STAR_BINS; i++) stars[i].visible = h >= (i + 1) / STAR_BINS * BAND_FULL;
           for (let i = 0; i < pictures.length; i++) { const q = pictures[i], k = Math.min(1, (h - q.need) / 0.03); q.n.visible = k > 0; q.n.smokeOpacity = Math.max(0, k); }
-          // The line on the edges where they stand now, as tall as the band allows, fading in from a hairline.
+          // The line on the edges where they stand now, as tall as the band allows, fading in from a hairline. On the
+          // water's side the lagoon lies nearer than the band, so where it hides the band's edge from the eye the line is
+          // laid on the lagoon's rim instead, square to the eye and as big to it, so it is always on the boundary seen.
           const tall = Math.max(0.03, Math.min(0.16, h * 0.8)) * R, fade = Math.min(1, h / BAND_SOLID);
+          const lagoon = LAGOON && scenery.world && camera?.position;
+          if (lagoon) { M4.invert(inv, scenery.world); M4.transformPoint(eye, inv, camera.position.x, camera.position.y, camera.position.z); }
           for (let i = 0; i < line.length; i++) {
-            const f = line[i], el = f.up ? h * waverUp(f.az) : -h * waverDown(f.az), c = Math.cos(el);
+            const f = line[i], el = f.up ? h * waverUp(f.az) : -h * waverDown(f.az), c = Math.cos(el), shimmer = 0.88 + 0.12 * Math.sin(time * 0.6 + f.ph);
             p[0] = c * Math.cos(f.az); p[1] = c * Math.sin(f.az); p[2] = Math.sin(el);
-            f.n.visible = true; at(p, 0.985, f.n.position); face(f.n, p);
+            f.n.visible = true; f.n.smokeOpacity = fade;
+            if (!f.up && lagoon) {
+              // How high the band's edge and the lagoon's rim each stand to the eye, that way round.
+              const ex = cx + p[0] * R * 0.985 - eye[0], ey = oy + p[2] * R * 0.985 - eye[1], ez = cz - p[1] * R * 0.985 - eye[2];
+              const rx = cx + Math.cos(f.az) * RIM - eye[0], ry = seaY + 0.4 - eye[1], rz = cz - Math.sin(f.az) * RIM - eye[2];
+              const edgeD = Math.hypot(ex, ez), rimD = Math.hypot(rx, rz);
+              if (Math.atan2(ey, edgeD) < Math.atan2(ry, rimD)) {
+                const far = Math.hypot(rx, ry, rz) / Math.hypot(ex, ey, ez), q = f.n;
+                q.position.x = cx + Math.cos(f.az) * RIM; q.position.y = seaY + 0.4 + 0.1 * tall * far; q.position.z = cz - Math.sin(f.az) * RIM;
+                q.rotation.y = Math.atan2(-rx, -rz); q.rotation.x = -Math.atan2(-ry, rimD); q.rotation.z = 0;
+                q.scale.x = wide * far; q.scale.y = tall * far * shimmer;
+                continue;
+              }
+            }
+            at(p, 0.985, f.n.position); face(f.n, p);
             f.n.position.y += (f.up ? 0.1 : -0.1) * tall * c;
-            f.n.rotation.z = f.up ? Math.PI : 0; f.n.scale.x = wide; f.n.scale.y = tall * (0.88 + 0.12 * Math.sin(time * 0.6 + f.ph)); f.n.smokeOpacity = fade;
+            f.n.rotation.z = f.up ? Math.PI : 0; f.n.scale.x = wide; f.n.scale.y = tall * shimmer;
           }
         });
       }
