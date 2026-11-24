@@ -17672,6 +17672,13 @@ const oogaChatAppChecks = async () => {
         await b.sleep(1500);
         run.ended = await chatNow(b);
         await b.screenshot(join(shots, `chats-ended-${w}.png`));
+        // Signing out with a chat's preview open: the preview closes, the list and its chats go, and the sign-in shows.
+        await row(b, 0);
+        await b.sleep(300);
+        await pressText(b, ".oc-chat .cloud-foot .link", "Sign out");
+        await waitFor(b, (s) => s.space === "off");
+        await b.sleep(300);
+        run.signedOut = { ...await chatNow(b), list: await b.evaluate(`(() => { const l = document.querySelector(".hc-chats"); return { hidden: !l || l.hidden || !l.offsetParent, kept: document.querySelectorAll(".hc-chat-row").length, signin: !document.querySelector(".oc-signin").hidden }; })()`) };
       } finally { b.close(); }
     }
     const hostedOk = Object.fromEntries(Object.entries(hostedRuns).map(([w, r]) => [w, {
@@ -17705,9 +17712,10 @@ const oogaChatAppChecks = async () => {
       allowBack: r.removed.allow === "Allow sample-otter back" && !/otter/.test(r.removed.tiles) && r.removed.popInside && r.allowed.notice === "sample-otter can join again"
         && r.allowed.allow === "" && /sample-otter, listening/.test(r.back.tiles),
       ended: r.confirm.popInside && r.ended.space === "list" && r.ended.notice === "The chat ended" && !r.ended.rows.includes("sample-contributor's chat"),
+      signedOut: r.signedOut.space === "off" && !r.signedOut.preview && r.signedOut.rows.length === 0 && r.signedOut.list.hidden && r.signedOut.list.kept === 0 && r.signedOut.list.signin,
       fits: Object.values(r).every((m) => typeof m !== "object" || !m.wide)
     }]));
-    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
+    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
       Object.values(hostedOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ hostedOk, hostedRuns }));
 
     // The island view (island-view.js; docs/ooga-chat-hosts.md, "The island view"), at 1024 and 390: Sample Oak's chat

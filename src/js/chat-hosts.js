@@ -16,7 +16,8 @@
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
 // `preview(entry, from)` opens a chat's preview from elsewhere on the page (an entry as `parseList` gives it). It adds:
-// - the Chats list (shown while no chat is chosen): the live chats as the server orders them, busiest first, a list of
+// - the Chats list (shown while signed in and no chat is chosen; signing out also closes a preview or Start a chat and
+//   forgets the chats read): the live chats as the server orders them, busiest first, a list of
 //   buttons, each its title, zone, host and counts; read when shown and every LIST_MS at most while it stays shown and
 //   the page is visible (no timer otherwise). A chat pressed opens its preview, a modal pop-up: its title, zone and an
 //   Open stage tag, its stage as the chat's circles (`rowFace(row)` their portraits) to look at only, and how many listen
@@ -295,7 +296,8 @@
       readAt = Date.now();
       const answer = await chats.list().catch(() => ({ chats: null }));
       reading = false;
-      if (listeners.signal.aborted) return;
+      // Signed out while it was asked: the answer was for the account that left, so it is not kept.
+      if (listeners.signal.aborted || !state?.session) return;
       const parsed = parseList(answer.chats);
       if (parsed) entries = parsed;
       again.hidden = !!parsed;
@@ -690,6 +692,12 @@
       state = next;
       const was = room;
       room = next.room && next.session ? next.room : null;
+      // Signed out: the list, a preview and Start a chat go with the account, and the chats it was shown are forgotten.
+      if (!next.session) {
+        entries = null; readAt = -Infinity;
+        starter.close();
+        if (preview.open) { previewFrom = null; preview.close(); }
+      }
       if (room !== was) { closePop(false); asked.length = 0; askedNames.clear(); clearTimeout(askedTimer); askedTimer = 0; mine.clear(); asking = 0; removed = []; autoSpeak = ""; autoFor = "invite"; offerAgain = false; offered = false; answering = 0; viewSent = null; }
       if (!was && room) { readAt = -Infinity; }
       me = next.session?.identity.participant || null;
@@ -704,7 +712,7 @@
       set(roomTitle, "textContent", room ? room.title : "");
       set(roomTitle, "title", room ? room.title : "");
       bar.hidden = !room;
-      list.hidden = !!room;
+      list.hidden = !!room || !next.session;
       paint();
       if (!room) drawList();
       watch();
