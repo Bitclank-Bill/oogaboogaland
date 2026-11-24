@@ -767,14 +767,18 @@ Checked in Node, in the global tier:
 - **No deploy.** Nothing in this plan merges or deploys. Staging verification of migration
   0004 goes through the existing **Deploy Cloudflare staging** workflow when you choose.
 
-## 10. Level 5: Storm's Eye (added later)
+## 10. Level 5: Flipside (added later)
 
-Storm's Eye is the storm's eye at sunrise (06:36, a light `storm` greying of 0.35, no haze of its own) under its
-eyewall: a slowly turning ring of Amber Spires' towers and banks in storm-slate inks, gold where they face the sun, with
-lightning deep in the wall. It keeps the rules of sections 2.4 to 2.8 and steps each count a little past Thunderhead's
+Flipside is the storm's eye at sunrise (06:36, a light `storm` greying of 0.35, no haze of its own) over a Caribbean
+lagoon: turquoise shallows, white-sand atolls with palms, reefs and a soft swell, fading into the sea that hazes into
+the sky. Space opens on its horizon as the run goes on, a thin line by the flip and a broad band behind the island at
+the finish, joined to the water and the sky by a glowing line like an aurora, with stars, a spiral galaxy and a nebula
+in it; four fun blimps drift far off, lightning strikes far round the eye, and at the finish the island's lanterns are
+lit and four blimps with searchlights come in over it, one lighting the banana pile. Its landings drop a little more
+than the first cut's (`slope` 0.38) in gently uneven steps (`terraces`). It keeps the rules of sections 2.4 to 2.8 and steps each count a little past Thunderhead's
 (shares are means over eight seeds):
 
-| | Thunderhead | Storm's Eye |
+| | Thunderhead | Flipside |
 |---|---|---|
 | Route | 973.8 m | 1,382.8 m (the same 42% growth) |
 | Clouds (main, side) | 121 (78, 43) | 118 (104, 12, and 2 portal clouds) |
@@ -808,10 +812,8 @@ course's axis over 2.2 s, the clouds turning over with them, and they stay: the 
 the pile. The island does not: it and everything on it are drawn the right way up to the rider, where they are, so
 the run is finished on it as on every level, with the clouds and the sky under it. The rider never
 turns: gravity stays down the screen and the controls stay as they are. It goes on over the course as it was going,
-its speed and whatever is held untouched, so it steers all through the roll; only its height is taken, for the
-roll's first 0.6 s, while it is lowered 8 m, down through the cloud it stood on, wearing the jetpack from the roll's
-start. Then it is let go, the world still rolling: the next landing is a short lift above it and the one after is
-below it, so the stretch runs downhill as it does upright. Each cloud rolls over where it is, round the same axis through its own middle, so upside down its flat underside
+its speed and whatever is held untouched, so it steers all through the roll; for the roll's first 0.45 s the clouds
+right round it stop holding it, and it simply falls. Each cloud rolls over where it is, round the same axis through its own middle, so upside down its flat underside
 is up, level with the top it had, its puffs hang under it, and that underside is what the rider lands, stands and
 bounces on (a boost cloud's arrows show there too). Every cloud's place, height and footprint are unchanged, so every
 jump, fade, hook throw, gust and tornado plays as it does upright. The sky's roll is the view's alone and the run's
@@ -819,21 +821,21 @@ physics are untouched; everything that hangs from the scene's root (the island, 
 back to match, by the root's own place and rotation, which the run writes while the world is turned and puts back as
 it ends, and what reads the view (the hook's aim, the overlay) reads the run's own. The storm's scenery is held
 against that, so it rolls with the sky. What does not hang from a node stays with the sky: the shared effects layer's
-sparks and dust, and the island's lamp light. The rider is
-let go with the jetpack worn and just the fuel to climb back onto the same course (what the pack burns lifting it to
-0.5 m over the height it was lowered from with thrust 0.3 s late, plus 15%: about 29% of a tank for the 8 m; a rider
-holding more keeps its own), and a fall of 30 m before landing
-puts it back once, at rest, under where the roll began (30 m further under the course where the rider is than a roll
-lowers one: the course falls away, so a rider flying on under it is not falling). The pack goes back as it was at the
-first landing, so the jump and the air jump are the rider's again; a second fall from that climb, and any fall after that
-landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down
+sparks and dust, and the island's lamp light. Then a gust of
+wind lifts it, on the roll's own time, never on how far it has fallen: 0.45 s in, at once if it is in the air or moving
+at all, or if it stands on a cloud the moment it leaves it before 1.2 s (if it never does, there is no gust that turn).
+It is thrown up and on to the nearest landing ahead that will still be there when it lands, never the one it is over, the
+same for every rider, a pack and fuel left as they were; never more than one gust a turn. A fall of 30 m before landing
+puts it back once, at rest, under where the roll began, and lifts it again (30 m further under the course where the
+rider is than the roll left it: the course falls away, so a rider flying on under it is not falling); a second fall,
+and any fall after that landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down
 (their instanced batches are turned back with the run as they are written). It never strikes during a warp, nor for 1.5 s after one, nor on a rider
 already fallen more than 8 m under the course (it turns once the rider is back), so the rider is never let go
-further under the course than the fuel climbs.
+further under the course than the gust lifts.
 
 **Two portal clouds** are a shortcut worth catching: bright gold, about three times as fast as any other cloud and on
 a clock far shorter than a fading cloud's, sweeping across the jump between two landings. They never react to the
-rider. A touch throws the rider about 50 m on, in a half-second streak of violet sparkles the view glides after, onto
+rider. A touch throws the rider about 50 m on, in a half-second streak of soft violet sparkles the view glides after, onto
 its own landing, with the speed it went in with: a white landing that never fades, 38 to 66 m on, the same one
 all through a run. No tornado ever stands by a portal's throw. The course marks a calm stretch from 90 m past that
 landing to 90 m before the portal, and a tornado whose spot falls on a landing in one brews over the nearest landing

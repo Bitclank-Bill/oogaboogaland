@@ -216,10 +216,17 @@
   const relight = (node, dark) => { node.geometry = cloudMesh(node.mesh[0], node.mesh[1], dark); };
   // Both of a cloud's meshes, its day and its night fill, for readying the swap between them ahead of it.
   const alternates = (node, each) => { each(cloudMesh(node.mesh[0], node.mesh[1], false)); each(cloudMesh(node.mesh[0], node.mesh[1], true)); };
-  // A sparkle of a portal's warp: a small violet gem, glowing.
+  // A sparkle of a portal's warp: a soft violet glow round a white-hot middle, added as light on a square the run
+  // turns to the eye (solid gems read as stray blocks hanging in the air).
   const sparkle = M.cached(() => {
-    const geometry = M.merge(M.box({ w: 0.5, h: 0.5, d: 0.5, color: "#a35cff", emissive: 1 }), M.box({ w: 0.24, h: 0.8, d: 0.24, color: "#e3ccff", emissive: 1 }));
-    geometry.castShadow = false; geometry.fogPierce = 0.6;
+    const canvas = document.createElement("canvas"); canvas.width = canvas.height = 64;
+    const paint = canvas.getContext("2d"), glow = paint.createRadialGradient(32, 32, 0, 32, 32, 31);
+    glow.addColorStop(0, "rgba(255,248,255,1)"); glow.addColorStop(0.18, "rgba(227,204,255,0.85)"); glow.addColorStop(0.45, "rgba(163,92,255,0.35)"); glow.addColorStop(1, "rgba(163,92,255,0)");
+    paint.fillStyle = glow; paint.fillRect(0, 0, 64, 64);
+    const image = new Image(); image.src = canvas.toDataURL("image/png");
+    const geometry = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" });
+    geometry.castShadow = false; geometry.cutawayPreserve = true;
+    geometry.imageSurface = { asset: { width: 64, height: 64, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 1.4 };
     return geometry;
   });
   const boostTexture = M.cached(() => {

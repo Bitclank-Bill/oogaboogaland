@@ -256,6 +256,427 @@
     g.castShadow = false;
     return g;
   });
+  // Fun blimps far off round Flipside, about ten metres nose to tail at unit scale down -x, each one merged mesh in
+  // its own livery with a little gondola, and a shared propeller turned on its own node. No text, no branding.
+  // 0 candy stripes, 1 polka dots, 2 a fish, 3 a striped tail.
+  const BLIMP_PROFILE = [[0.01, -5], [0.9, -4.7], [1.6, -3.8], [2, -2.4], [2.1, -0.8], [2, 1], [1.7, 2.6], [1.1, 4], [0.5, 4.8], [0.01, 5]];
+  const farBlimp = M.variants((v) => {
+    const inks = [["#e8433a", "#fbf6ee"], ["#2bb5b8", "#ffd84a", "#ff7aa8"], ["#ff8a2a", "#fff2dc", "#1b1b1e"], ["#8f5bd8", "#ffd84a"]][v].map(hexToRgb);
+    const SEG = 14, body = M.lathe({ profile: BLIMP_PROFILE, segments: SEG, color: "#ffffff" });
+    body.faces.forEach((f, i) => {
+      const ring = Math.floor(i / SEG), seg = i % SEG;
+      f.color = v === 0 ? inks[ring % 2] : v === 1 ? ((ring * 3 + seg * 2) % 7 === 0 ? inks[1 + (seg % 2)] : inks[0])
+        : v === 2 ? (seg >= 5 && seg <= 9 ? inks[1] : (ring + seg) % 4 === 0 && ring > 2 ? hexToRgb("#e86a1a") : inks[0]) : (ring >= 6 ? inks[ring % 2] : inks[0]);
+      f.emissive = 0.06;
+    });
+    M.turnedZ(body, -Math.PI / 2);
+    const parts = [body];
+    // Fins: four little tail fins, or for the fish a big forked tail and side fins and two eyes.
+    if (v === 2) {
+      const tail = M.prism([[0, 0], [2.8, 2.4], [3.4, 2.2], [1.6, 0], [3.4, -2.2], [2.8, -2.4]], 0.3, "#e86a1a"); M.moved(tail, 4.4, 0, 0);
+      const fins = [1, -1].map((s) => { const f = M.prism([[0, 0], [1.4, 0.3], [1.8, -0.6], [0.5, -0.9]], 0.2, "#e86a1a"); M.turnedX(f, s * Math.PI / 2); M.moved(f, -0.5, -0.8, s * 1.9); return f; });
+      const eyes = [1, -1].map((s) => M.merge(M.box({ w: 0.7, h: 0.7, d: 0.2, color: "#fff2dc", offset: { x: -3.6, y: 0.5, z: s * 1.25 } }), M.box({ w: 0.36, h: 0.36, d: 0.24, color: "#1b1b1e", offset: { x: -3.7, y: 0.5, z: s * 1.3 } })));
+      parts.push(tail, ...fins, ...eyes);
+    } else for (let k = 0; k < 4; k++) {
+      const stripes = v === 3, fin = M.prism([[0, 0], [2.2, 0], [2.8, 1.8], [1.2, 1.8]], 0.18, stripes ? "#ffd84a" : v === 0 ? "#e8433a" : "#ffd84a");
+      if (stripes) fin.faces.forEach((f, i) => { if (i % 2) f.color = hexToRgb("#8f5bd8"); });
+      M.moved(fin, 2.6, 1.0, 0); M.turnedX(fin, k / 4 * Math.PI * 2 + Math.PI / 4); parts.push(fin);
+    }
+    // The gondola and its struts.
+    parts.push(M.box({ w: 2.2, h: 0.7, d: 0.9, color: v === 1 ? "#ff7aa8" : "#ffd84a", offset: { x: -0.4, y: -2.55 } }),
+      M.box({ w: 1.8, h: 0.25, d: 0.95, color: "#7fe0ff", emissive: 0.5, offset: { x: -0.4, y: -2.4 } }),
+      M.box({ w: 0.12, h: 0.5, d: 0.12, color: "#555", offset: { x: -1, y: -2.05 } }), M.box({ w: 0.12, h: 0.5, d: 0.12, color: "#555", offset: { x: 0.2, y: -2.05 } }));
+    const g = M.merge(...parts);
+    g.castShadow = false; g.fogPierce = 0.6;
+    return g;
+  });
+  const farProp = M.cached(() => { const g = M.merge(M.box({ w: 0.1, h: 1.6, d: 0.25, color: "#444" }), M.box({ w: 0.1, h: 0.25, d: 1.6, color: "#444" }), M.box({ w: 0.25, h: 0.3, d: 0.3, color: "#ffd84a" })); g.castShadow = false; return g; });
+  // Flipside's sky: space opening as a band along the horizon, between the sky and the water, all the way round
+  // (`?ch5rift=0` leaves the old eyewall towers instead). For nearly a third of the course there is none; then it
+  // grows on one eased curve, a thin line by the flip; the world turns over with the band on the horizon (it turns
+  // with the sky, the water now overhead and the sky below), and it goes on widening both ways, eating into the water
+  // and the sky, until at the finish a broad band of space lies behind the island with both still showing beyond it.
+  // Drawn the way the Genesis Museum's ceiling is: calm deep navy, crisp small stars spread evenly, a few soft glows;
+  // and where it meets the water and the sky, a glowing fusion line like a mixed aurora. All of it is built once at
+  // load, in the frame of a unit dome over the eye (local z up), scaled up to the sky:
+  //   - the band is one mesh between its two gently wavering edges, with see-through rings out from each edge so it
+  //     melds, built at full height and squeezed toward the horizon to the height the run has come to;
+  //   - the fusion line is soft added light strung along both edges, following them as they move;
+  //   - the stars are diamonds of three sizes and tints, in meshes by how tall the band must be to take them in;
+  //   - a spiral galaxy, a nebula band, a Milky Way and smaller glows are soft added pictures, each fading in once
+  //     the band holds the whole of it.
+  // The band's height eases on as the run comes down, never back; nothing is built or allocated after load.
+  // ---- Flipside's lagoon (`?ch5lagoon=0` turns it off, for the plain sea) --------------------------------------
+  // The sea far under the course as a Caribbean lagoon: a great disc laid just over the sea, painted once, deep blue
+  // with broad turquoise shallows over white sand, darker reef lines and coral heads where the shallows drop away,
+  // white-sand atolls ringing bright aqua lagoons with green tops, and sandbars; over the nearer atolls low voxel
+  // islands of sand with palms, merged into one mesh. Both hang from the turning sky, so after the flip they are
+  // overhead, upside down. Built once at load; nothing moves.
+  const LAGOON = (() => { try { return new URLSearchParams(location.search).get("ch5lagoon") !== "0"; } catch { return true; } })();
+  const LAGOON_SIZE = 2048, LAGOON_SPAN = 9000;
+  // Smooth value noise over the plan, for the lagoon's shapes and colours.
+  const lagoonNoise = (() => {
+    const P = new Float32Array(256 * 256), r = mulberry32(2718);
+    for (let i = 0; i < P.length; i++) P[i] = r();
+    const at = (x, y) => P[((y & 255) << 8) | (x & 255)];
+    const v = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const a = at(xi, yi), b = at(xi + 1, yi), c = at(xi, yi + 1), d = at(xi + 1, yi + 1); return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy; };
+    return (x, y, oct = 4) => { let sum = 0, amp = 0.5, f = 1, norm = 0; for (let o = 0; o < oct; o++) { sum += amp * v(x * f, y * f); norm += amp; f *= 2.03; amp *= 0.5; } return sum / norm; };
+  })();
+  // Where the shoals, atolls, cays and sandbars lie, in the disc's plan (-1 to 1), with their sizes.
+  const lagoonPlan = M.cached(() => {
+    const r = mulberry32(1492), atolls = [], shoals = [], bars = [];
+    for (let i = 0; i < 16; i++) { const near = i < 9; shoals.push({ x: (r() - 0.5) * (near ? 0.4 : 0.9), y: (r() - 0.5) * (near ? 0.4 : 0.9), rx: 0.06 + r() * 0.08, ry: 0.045 + r() * 0.06, a: r() * Math.PI }); }
+    for (const sh of shoals) for (let k = 0, n = 1 + Math.floor(r() * 4); k < n; k++) {
+      const a = r() * TAU, d = Math.sqrt(r()) * 0.75;
+      atolls.push({ x: sh.x + Math.cos(a) * sh.rx * d, y: sh.y + Math.sin(a) * sh.ry * d, r: 0.004 + r() * r() * 0.014, ring: r() < 0.45, green: r() < 0.5, stretch: 1 + r() * 1.6, a: r() * Math.PI, seed: Math.floor(r() * 1e6) });
+    }
+    for (let i = 0; i < 16; i++) atolls.push({ x: (r() - 0.5) * 0.8, y: (r() - 0.5) * 0.8, r: 0.003 + r() * 0.005, ring: false, green: r() < 0.5, stretch: 1 + r() * 2, a: r() * Math.PI, seed: Math.floor(r() * 1e6) });
+    for (let i = 0; i < 22; i++) { const sh = shoals[i % shoals.length]; bars.push({ x: sh.x + (r() - 0.5) * sh.rx, y: sh.y + (r() - 0.5) * sh.ry, l: 0.012 + r() * 0.03, w: 0.002 + r() * 0.0025, a: r() * Math.PI }); }
+    return { atolls, shoals, bars };
+  });
+  // Height over the sea bed, 0 deep to 1 dry sand: shoals as broad warped swells, atolls and cays as sharper ones
+  // (each on a softer halo; a ring atoll with its lagoon scooped out), sandbars as long thin ones; then coloured from
+  // it, deep blue through turquoise and pale aqua to white sand with green tops, reefs as soft broken darker patches
+  // in the mid shallows, soft broken surf on their edge, a gentle tint drifting over the whole, a very faint scatter of
+  // sun glints on the deep; and the swell, soft pale curving lines (the contours of warped noise, so never straight)
+  // only where the water is deep, in two layers. Painted a piece at a time in idle moments from when the scenery is
+  // made (at least LAGOON_SLICE ms each time, and a few milliseconds a frame in a run, if it is not done by then), so opening the level never stalls on
+  // it: until it is done the disc shows the open sea's blue and the swell is not shown.
+  const LAGOON_RAMP = [[0, [8, 46, 104]], [0.16, [12, 74, 140]], [0.3, [22, 128, 180]], [0.42, [40, 196, 210]], [0.56, [88, 224, 216]], [0.74, [170, 244, 232]], [0.79, [200, 246, 236]], [0.82, [244, 242, 224]], [1, [252, 249, 236]]];
+  const WAVE_SIZE = 512, LAGOON_SLICE = 8, LAGOON_FRAME = 5;
+  let lagoonJob = null;
+  const lagoonStart = () => {
+    if (lagoonJob || typeof document === "undefined") return lagoonJob;
+    const n = LAGOON_SIZE, canvas = document.createElement("canvas"); canvas.width = canvas.height = n;
+    const g = canvas.getContext("2d");
+    // The renderer takes the picture once it says it is loaded: not until it is painted.
+    Object.assign(canvas, { complete: false, naturalWidth: n, naturalHeight: n });
+    const { atolls, shoals, bars } = lagoonPlan(), features = [];
+    for (const sh of shoals) features.push([sh.x, sh.y, sh.rx, sh.ry, sh.a, 0.68, 1.1, 0.9, 0]);
+    for (const b of bars) features.push([b.x, b.y, b.l, b.w, b.a, 0.75, 1.2, 0.5, 0]);
+    for (const at of atolls) features.push([at.x, at.y, at.r * at.stretch * 2.6, at.r * 2.6, at.a, 0.7, 1.3, 0.6, 0]);
+    for (const at of atolls) features.push([at.x, at.y, at.r * at.stretch, at.r, at.a, at.ring ? 0.98 : 0.97, 0.45, 0.9, at.ring ? 0.5 : 0]);
+    lagoonJob = { n, canvas, g, h: new Float32Array(n * n), img: null, features, phase: 0, row: 0, done: false, waves: [null, null], waveImg: null, rand: mulberry32(99), ms: 0, longest: 0 };
+    // Each idle moment paints while the browser has time to spare, and at least LAGOON_SLICE even when it has none (a
+    // busy page's idle calls come by their timeout with nothing to spare, which would otherwise never finish it).
+    const idle = (deadline) => { const until = performance.now() + LAGOON_SLICE; lagoonStep(() => deadline.timeRemaining() > 2 || performance.now() < until); if (!lagoonJob.done) requestIdleCallback(idle, { timeout: 250 }); };
+    if (typeof requestIdleCallback === "function") requestIdleCallback(idle, { timeout: 250 });
+    // And LAGOON_FRAME ms of each frame as well, from now until it is done: a busy page has few idle moments, and the
+    // level should have its lagoon by the time a player has walked to the cabinet and picked it.
+    const frame = () => { const until = performance.now() + LAGOON_FRAME; lagoonStep(() => performance.now() < until); if (!lagoonJob.done) requestAnimationFrame(frame); };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(frame);
+    return lagoonJob;
+  };
+  // One piece of the painting at a time while `more()` says there is time.
+  const lagoonStep = (more) => {
+    const J = lagoonJob, n = J.n, h = J.h, N = lagoonNoise, began = performance.now();
+    while (!J.done && more()) {
+      if (J.phase === 0) {
+        // The sea bed's own gentle swells, a row at a time.
+        const y = J.row; for (let x = 0; x < n; x++) h[y * n + x] = 0.06 + 0.08 * N(x / n * 6, y / n * 6, 3);
+        if (++J.row === n) { J.phase = 1; J.row = 0; }
+      } else if (J.phase === 1) {
+        // The shoals, sandbars, halos and islands, one at a time.
+        const [cx, cy, rx, ry, a, amp, sharp, warp, inner] = J.features[J.row];
+        const toPx = (v) => (v * 0.5 + 0.5) * n, R = Math.max(rx, ry) * n * 0.5 * 1.8, ca = Math.cos(a), sa = Math.sin(a);
+        const x0 = Math.max(0, Math.floor(toPx(cx) - R)), x1 = Math.min(n - 1, Math.ceil(toPx(cx) + R)), y0 = Math.max(0, Math.floor(toPx(cy) - R)), y1 = Math.min(n - 1, Math.ceil(toPx(cy) + R));
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+          const u = x / n * 2 - 1 - cx, v = y / n * 2 - 1 - cy, lu = (u * ca + v * sa) / rx, lv = (-u * sa + v * ca) / ry;
+          const d = Math.hypot(lu, lv) * (1 + warp * (N(x / n * 40 + cx * 9, y / n * 40 + cy * 7, 3) - 0.5));
+          let k = Math.pow(Math.max(0, 1 - d), sharp);
+          if (inner) k -= inner * Math.pow(Math.max(0, 1 - d / 0.62), 2);
+          const i = y * n + x; h[i] = Math.max(h[i], h[i] + amp * k * (1 - h[i]));
+        }
+        if (++J.row === J.features.length) { J.phase = 2; J.row = 0; J.img = J.g.createImageData(n, n); }
+      } else if (J.phase === 2) {
+        // Colour, a row at a time.
+        const px = J.img.data, y = J.row, v = y / n, o = lagoonInk;
+        for (let x = 0; x < n; x++) {
+          const i = y * n + x, u = x / n, t = h[i];
+          let j = 0; while (j < LAGOON_RAMP.length - 2 && t > LAGOON_RAMP[j + 1][0]) j++;
+          const [t0, ca] = LAGOON_RAMP[j], [t1, cb] = LAGOON_RAMP[j + 1], f = Math.max(0, Math.min(1, (t - t0) / (t1 - t0)));
+          o[0] = ca[0] + (cb[0] - ca[0]) * f; o[1] = ca[1] + (cb[1] - ca[1]) * f; o[2] = ca[2] + (cb[2] - ca[2]) * f;
+          const drift = N(u * 3 + 5, v * 3 + 2, 3) - 0.5; o[1] += drift * 18 * (1 - t); o[2] -= drift * 10 * (1 - t);
+          const reefBand = Math.max(0, 1 - Math.abs(t - 0.4) / 0.14), reef = reefBand > 0 ? Math.max(0, N(u * 90, v * 90, 3) - 0.48) * 3.2 * reefBand : 0;
+          if (reef > 0) { const k = 1 - Math.min(0.45, reef * 0.5); o[0] *= k; o[1] *= k * 0.96; o[2] *= k * 0.9; }
+          const near = Math.abs(t - 0.36) < 0.035, surf = near ? (1 - Math.abs(t - 0.36) / 0.035) * Math.max(0, N(u * 140 + 3, v * 140, 3) - 0.42) * 2.4 : 0;
+          if (surf > 0) { const k = Math.min(0.7, surf); o[0] += (245 - o[0]) * k; o[1] += (250 - o[1]) * k; o[2] += (252 - o[2]) * k; }
+          if (t > 0.9 && N(u * 160, v * 160, 2) > 0.56) { const k = Math.min(1, (t - 0.9) / 0.05); o[0] += (52 - o[0]) * k; o[1] += (128 - o[1]) * k; o[2] += (58 - o[2]) * k; }
+          if (t < 0.3 && J.rand() < 0.0006) { o[0] += 60; o[1] += 60; o[2] += 50; }
+          // Its outer reaches fade to nothing, so beyond them the sea every level shares (hazing into the sky as
+          // on Floating Isles) carries on with no edge between them.
+          const rim = Math.max(0, Math.min(1, (0.46 - Math.hypot(u - 0.5, v - 0.5)) / 0.2)), a = rim * rim * (3 - 2 * rim);
+          px[i * 4] = o[0]; px[i * 4 + 1] = o[1]; px[i * 4 + 2] = o[2]; px[i * 4 + 3] = a * 255;
+        }
+        if (++J.row === n) { J.g.putImageData(J.img, 0, 0); J.img = null; J.phase = 3; J.row = 0; J.waveImg = J.g.createImageData(WAVE_SIZE, WAVE_SIZE); }
+      } else {
+        // The swell's two layers, a row at a time each.
+        const w = J.phase - 3, m = WAVE_SIZE, F = n / m, px = J.waveImg.data, y = J.row, wv0 = y / m;
+        for (let x = 0; x < m; x++) {
+          const u = x / m, t = h[Math.floor(y * F) * n + Math.floor(x * F)], rim = Math.max(0, Math.min(1, (0.45 - Math.hypot(u - 0.5, wv0 - 0.5)) / 0.15)), open = Math.max(0, Math.min(1, (0.3 - t) / 0.08)) * rim, i = (y * m + x) * 4;
+          let k = 0;
+          if (open > 0) { const wv = N(u * 26 + w * 7 + N(u * 6, wv0 * 6, 2) * 3, wv0 * 26 + w * 3, 3) * 9, band = 1 - Math.abs(2 * (wv - Math.floor(wv)) - 1); k = Math.pow(band, 12) * Math.max(0, N(u * 40 + w * 9, wv0 * 40, 3) - 0.38) * 2.6 * open; }
+          px[i] = px[i + 1] = px[i + 2] = 255; px[i + 3] = Math.min(255, k * 70);
+        }
+        if (++J.row === m) {
+          const c = document.createElement("canvas"); c.width = c.height = m; c.getContext("2d").putImageData(J.waveImg, 0, 0);
+          // The canvas itself is the picture (encoding it to an image would hold up a frame): it says it is loaded.
+          const geo = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" }), image = Object.assign(c, { complete: true, naturalWidth: m, naturalHeight: m });
+          geo.castShadow = false; geo.cutawayPreserve = true;
+          geo.imageSurface = { asset: { width: m, height: m, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 1.2 };
+          J.waves[w] = geo; J.row = 0;
+          if (++J.phase === 5) { J.waveImg = null; J.h = null; J.done = true; J.doneAt = performance.now(); J.canvas.complete = true; }
+        }
+      }
+    }
+    // How long the painting has taken in all, and the longest it held one turn, for the tests.
+    const took = performance.now() - began; J.ms += took; J.longest = Math.max(J.longest, took);
+    return J.done;
+  };
+  const lagoonInk = [0, 0, 0];
+  // The lagoon laid on the sea: a picture blended over it, see-through where it fades out at its rim.
+  const lagoonDisc = M.cached(() => {
+    const g = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" }), canvas = lagoonStart().canvas;
+    g.imageSurface = { asset: { width: LAGOON_SIZE, height: LAGOON_SIZE, load: () => canvas }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "alpha", bright: 0 };
+    g.castShadow = false; g.cutawayPreserve = true;
+    return g;
+  });
+  // The nearer atolls' islands: sand blocks round a ring (or a heap for a cay), a few palms; one mesh in metres.
+  const lagoonIslands = M.cached(() => {
+    const parts = [], { atolls } = lagoonPlan(), half = LAGOON_SPAN / 2;
+    for (const at of atolls) {
+      if (Math.hypot(at.x, at.y) > 0.3 || at.r < 0.003) continue;
+      const q = mulberry32(at.seed + 7), x = at.x * half, z = -at.y * half, rad = at.r * half * 0.8, n = at.ring ? 16 : 6;
+      for (let k = 0; k < n; k++) {
+        const a = k / n * TAU + q() * 0.3, d = at.ring ? rad * 0.82 : q() * rad * 0.45, w = rad * (at.ring ? 0.28 : 0.5);
+        const ox = Math.cos(a) * d * at.stretch, oz = Math.sin(a) * d, ca = Math.cos(at.a), sa = Math.sin(at.a), bx = x + ox * ca - oz * sa, bz = z - (ox * sa + oz * ca);
+        parts.push(M.box({ w, h: 0.8 + q() * 1.2, d: w * (0.6 + q() * 0.5), color: q() < 0.5 ? "#f3ead0" : "#e8dcb8", offset: { x: bx, y: 0.4, z: bz } }));
+        if (at.green && q() < 0.5) {
+          const hh = 6 + q() * 5;
+          parts.push(M.box({ w: 0.7, h: hh, d: 0.7, color: "#8a6a44", offset: { x: bx, y: hh / 2 + 0.8, z: bz } }));
+          for (let f = 0; f < 4; f++) { const fa = f / 4 * TAU + q(); parts.push(M.box({ w: 4.5, h: 0.4, d: 1.4, color: f % 2 ? "#2f8a3e" : "#3fa24c", offset: { x: bx + Math.cos(fa) * 2, y: hh + 0.8, z: bz + Math.sin(fa) * 2 } })); }
+        }
+      }
+    }
+    const g = M.merge(...parts); g.castShadow = false; g.fogPierce = 0.3;
+    return g;
+  });
+  const RIFT = (() => { try { return new URLSearchParams(location.search).get("ch5rift") !== "0"; } catch { return true; } })();
+  // The stages the band's geometry is reckoned in; it is built as the last.
+  const RIFT_STAGES = 16;
+  // The band's full height (radians over and under the horizon, before its edges' waver), as at the finish; its
+  // geometry is built at that height and drawn squeezed toward the horizon to the height the run has come to.
+  // `bandHalf(k)` is the full band's own (k the last stage) for what is built from it.
+  const BAND_FULL = 0.334, bandHalf = () => BAND_FULL;
+  // How tall the band stands `t` of the way down the course: nothing until BAND_FROM, then easing in to a thin line by
+  // the flip (half way), and from there widening as the run goes on to its full height at the finish.
+  // BAND_SOLID: how tall it stands by the time it is fully drawn, faint below that.
+  const BAND_SOLID = 0.05, BAND_FROM = 0.3, BAND_FLIP = 0.024;
+  const bandAt = (t) => t <= BAND_FROM ? 0 : t <= 0.5 ? BAND_FLIP * ((t - BAND_FROM) / (0.5 - BAND_FROM)) ** 2 : BAND_FLIP + Math.min(1, (t - 0.5) / 0.5) ** 1.15 * (BAND_FULL - BAND_FLIP);
+  // Each edge wavers gently round the horizon, the upper and the lower each its own way.
+  const waverUp = (a) => 1 + 0.16 * Math.sin(3 * a + 1.1) + 0.08 * Math.sin(5 * a + 2.3) + 0.04 * Math.sin(9 * a + 0.4);
+  const waverDown = (a) => 1 + 0.15 * Math.sin(3 * a + 4.0) + 0.09 * Math.sin(4 * a + 0.7) + 0.04 * Math.sin(8 * a + 2.9);
+  const bandTop = (k, a) => bandHalf(k) * waverUp(a), bandBottom = (k, a) => -bandHalf(k) * waverDown(a);
+  const bandPoint = (el, az, out) => { const c = Math.cos(el); out[0] = c * Math.cos(az); out[1] = c * Math.sin(az); out[2] = Math.sin(el); return out; };
+  // How tall the band must stand for a direction (`el` over the horizon, `az` round it) to lie `margin` inside it.
+  const bandNeeds = (el, az, margin) => (Math.abs(el) + margin) / (el >= 0 ? waverUp(az) : waverDown(az));
+  const AZ = 128, SPACE_IN = [5, 7, 16], SPACE_OUT = [12, 16, 38];
+  // The meld out from each edge: see-through rings, each a little wider, from deep violet through the fusion line's
+  // own tints, so their stack thins smoothly to nothing on the water's side and the sky's.
+  const SEAM_INKS = [[30, 18, 60], [70, 40, 120], [60, 120, 150], [110, 90, 170], [120, 150, 200]];
+  const SEAM = SEAM_INKS.map((c, j) => [...c, (j + 1) / SEAM_INKS.length]);
+  const bandRing = (g, k, edge, sign, from, to, color) => {
+    const p = [0, 0, 0], a = [], b = [];
+    for (let i = 0; i < AZ; i++) {
+      const az = i / AZ * TAU, e = edge(k, az);
+      bandPoint(e - sign * from, az, p); a.push(M.pushVert(g, p[0], p[1], p[2]));
+      bandPoint(e + sign * to, az, p); b.push(M.pushVert(g, p[0], p[1], p[2]));
+    }
+    for (let i = 0; i < AZ; i++) {
+      const q = [a[i], b[i], b[(i + 1) % AZ], a[(i + 1) % AZ]];
+      M.face(g, q, color, { emissive: 1 }); M.face(g, [...q].reverse(), color, { emissive: 1 });
+    }
+  };
+  const riftCap = M.variants((k) => {
+    const g = M.geometry(), ROWS = 6, rows = [], p = [0, 0, 0];
+    for (let j = 0; j <= ROWS; j++) {
+      const row = [];
+      for (let i = 0; i < AZ; i++) { const az = i / AZ * TAU, lo = bandBottom(k, az), hi = bandTop(k, az); bandPoint(lo + (hi - lo) * j / ROWS, az, p); row.push(M.pushVert(g, p[0], p[1], p[2])); }
+      rows.push(row);
+    }
+    for (let j = 0; j < ROWS; j++) {
+      const t = Math.abs((j + 0.5) / ROWS - 0.5) * 2, color = SPACE_IN.map((v, c) => Math.round(v + (SPACE_OUT[c] - v) * t * t));
+      for (let i = 0; i < AZ; i++) {
+        const q = [rows[j][i], rows[j + 1][i], rows[j + 1][(i + 1) % AZ], rows[j][(i + 1) % AZ]];
+        M.face(g, q, color, { emissive: 1 }); M.face(g, [...q].reverse(), color, { emissive: 1 });
+      }
+    }
+    g.castShadow = false; g.fogPierce = 0.85;
+    return g;
+  });
+  // The meld's rings at stage k, both edges, ring j: as wide as the band is tall allows, within limits.
+  const riftSeam = M.variants((key) => {
+    const [k, j] = key, g = M.geometry(), [r, gg, b, t] = SEAM[j], wide = Math.max(0.012, Math.min(0.09, bandHalf(k) * 0.4)) * t;
+    bandRing(g, k, bandTop, 1, 0.006, wide, [r, gg, b]); bandRing(g, k, bandBottom, -1, 0.006, wide, [r, gg, b]);
+    g.castShadow = false; g.fogPierce = 0.85; g.glass = 0.14;
+    return g;
+  });
+  // The stars, spread evenly (a jittered grid over the dome), each given to the first stage that takes it in.
+  const STAR_INKS = [[235, 238, 245], [190, 214, 255], [255, 226, 180]], STAR_SIZES = [0.0014, 0.0021, 0.0032];
+  // The stars, spread evenly (a jittered grid round the horizon), in STAR_BINS meshes by how tall the band must
+  // stand to take each in, each mesh shown once it is that tall.
+  const STAR_BINS = 48;
+  const riftStars = M.cached(() => {
+    const r = mulberry32(2009), groups = Array.from({ length: STAR_BINS }, () => M.geometry()), p = [0, 0, 0];
+    const BANDS = 26, low = -Math.sin(0.46), high = Math.sin(0.46);
+    for (let b = 0; b < BANDS; b++) {
+      const across = 320;
+      for (let c = 0; c < across; c++) {
+        const z = low + (b + r()) / BANDS * (high - low), h = Math.sqrt(1 - z * z), az = (c + r()) / across * TAU;
+        p[0] = Math.cos(az) * h; p[1] = Math.sin(az) * h; p[2] = z;
+        const need = bandNeeds(Math.asin(z), az, 0.006);
+        if (need > BAND_FULL) continue;
+        const pick = r(), size = STAR_SIZES[pick < 0.72 ? 0 : pick < 0.95 ? 1 : 2] * (0.85 + r() * 0.3), ink = STAR_INKS[r() < 0.7 ? 0 : r() < 0.6 ? 1 : 2], lit = 0.75 + r() * 0.25;
+        const color = ink.map((v) => Math.round(v * lit)), g = groups[Math.min(STAR_BINS - 1, Math.floor(need / BAND_FULL * STAR_BINS))];
+        // A diamond in the dome's surface, just inside the band's mesh.
+        const ex = [-p[1] / h, p[0] / h, 0], ey = [p[1] * ex[2] - p[2] * ex[1], p[2] * ex[0] - p[0] * ex[2], p[0] * ex[1] - p[1] * ex[0]], R = 0.99;
+        const v = [[1, 0], [0, 1], [-1, 0], [0, -1]].map(([a, bb]) => M.pushVert(g, p[0] * R + (ex[0] * a + ey[0] * bb) * size, p[1] * R + (ex[1] * a + ey[1] * bb) * size, p[2] * R + (ex[2] * a + ey[2] * bb) * size));
+        M.face(g, v, color, { emissive: 1 }); M.face(g, [...v].reverse(), color, { emissive: 1 });
+      }
+    }
+    for (const g of groups) { g.castShadow = false; g.fogPierce = 0.9; }
+    return groups;
+  });
+  // The soft pictures: a canvas painted once, laid on a square the renderer adds as light.
+  const softPicture = (w, h, paint) => {
+    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    paint(ctx, w, h);
+    // Faded to nothing well inside its square, whatever was painted: no edge of the picture ever shows, at any slant.
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.shadowBlur = 0; ctx.globalCompositeOperation = "destination-in";
+    ctx.translate(w / 2, h / 2); ctx.scale(w / 2, h / 2);
+    const fade = ctx.createRadialGradient(0, 0, 0, 0, 0, 1); fade.addColorStop(0, "rgba(0,0,0,1)"); fade.addColorStop(0.55, "rgba(0,0,0,1)"); fade.addColorStop(0.95, "rgba(0,0,0,0)");
+    ctx.fillStyle = fade; ctx.fillRect(-1, -1, 2, 2);
+    const image = new Image(); image.src = canvas.toDataURL("image/png");
+    const g = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" });
+    g.castShadow = false; g.cutawayPreserve = true; g.fogPierce = 0.9;
+    g.imageSurface = { asset: { width: w, height: h, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 2.4 };
+    return g;
+  };
+  const blob = (ctx, x, y, r, rgb, a) => { const gr = ctx.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(0.5, `rgba(${rgb},${a * 0.4})`); gr.addColorStop(1, `rgba(${rgb},0)`); ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2); };
+  const RIFT_GLOWS = M.cached(() => ({
+    // A spiral galaxy, near face-on: a cream-white core, layered arms of pale blue-grey wound out from it with dark
+    // lanes left between the layers, pink knots along them, and (the big one) a small gold companion off one arm's end,
+    // joined to it by a faint trail. `v` 0 is the big one, 1 a tiny far one.
+    spiral: M.variants((v) => softPicture(256, 256, (ctx) => {
+      const r = mulberry32(51 + v);
+      ctx.translate(128, 128); ctx.scale(v ? 0.6 : 0.82, v ? 0.35 : 0.68); ctx.rotate(0.5);
+      for (let layer = 0; layer < 2; layer++) for (let arm = 0; arm < 2; arm++) for (let t = 0; t < 1; t += 0.015) {
+        const a = arm * Math.PI + t * 3.2 * Math.PI + layer * 0.22, rr = 10 + t * (v ? 100 : 82);
+        blob(ctx, Math.cos(a) * rr, Math.sin(a) * rr, (layer ? 10 : 16) - t * 6, layer ? "205,215,235" : "160,180,215", (layer ? 0.1 : 0.12) * (1 - t * 0.7));
+      }
+      if (!v) {
+        for (let i = 0; i < 26; i++) { const arm = i % 2, t = 0.25 + r() * 0.6, a = arm * Math.PI + t * 3.2 * Math.PI + 0.1, rr = 10 + t * 82; blob(ctx, Math.cos(a) * rr, Math.sin(a) * rr, 3 + r() * 2, "255,140,190", 0.7); }
+        // The companion and its trail.
+        for (let t = 0; t < 1; t += 0.05) { const a = 3.2 * Math.PI + t * 0.6, rr = 92 + t * 18; blob(ctx, Math.cos(a) * rr, Math.sin(a) * rr, 7, "220,200,170", 0.06); }
+        const ca = 3.2 * Math.PI + 0.6; blob(ctx, Math.cos(ca) * 112, Math.sin(ca) * 112, 16, "255,205,130", 0.5); blob(ctx, Math.cos(ca) * 112, Math.sin(ca) * 112, 5, "255,240,210", 0.9);
+      }
+      blob(ctx, 0, 0, 40, "255,235,200", 0.6); blob(ctx, 0, 0, 14, "255,250,238", 1);
+    })),
+    // A soft violet and magenta glow with a warm orange rim along its lower side, to sit behind part of the band.
+    glow: M.cached(() => softPicture(256, 256, (ctx) => {
+      blob(ctx, 128, 120, 118, "130,60,180", 0.3); blob(ctx, 140, 112, 70, "210,70,170", 0.28);
+      for (let i = 0; i < 9; i++) { const a = 0.35 + i / 8 * 2.4; blob(ctx, 128 + Math.cos(a) * 82, 120 + Math.sin(a) * 70, 26, "255,150,70", 0.16); }
+    })),
+    // A compact cluster of young stars: a dozen bright points close together over a faint pale glow.
+    cluster: M.cached(() => softPicture(128, 128, (ctx) => {
+      const r = mulberry32(88); blob(ctx, 64, 64, 50, "190,210,255", 0.2);
+      for (let i = 0; i < 16; i++) { const a = r() * TAU, d = r() ** 1.6 * 34; blob(ctx, 64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 4 + r() * 4, "235,242,255", 1); }
+    })),
+    // A small magenta glow.
+    knot: M.cached(() => softPicture(64, 64, (ctx) => { blob(ctx, 32, 32, 30, "230,80,190", 0.4); blob(ctx, 32, 32, 9, "255,170,220", 0.6); })),
+    // The nebula band: a gentle S of soft magenta and violet glow, combed through with thin filaments of pink, magenta
+    // and violet, a few pale gold and white highlights along its spine. Smooth strokes only.
+    band: M.cached(() => softPicture(1024, 256, (ctx, W, H) => {
+      const r = mulberry32(1974), spine = (x) => H / 2 + Math.sin(x / W * TAU * 0.9 + 0.6) * H * 0.16;
+      // Cool on the left (cyan-blue and magenta), shading to warm glowing orange and amber on the right.
+      const COOL = ["90,180,240", "210,70,190", "150,90,230"], WARM = ["255,150,60", "255,190,90", "230,90,150"];
+      for (let i = 0; i < 30; i++) { const x = 140 + i / 29 * (W - 280), fade = Math.sin(i / 29 * Math.PI), set = i < 15 ? COOL : WARM; blob(ctx, x, spine(x) + (r() - 0.5) * 30, 50 + r() * 40, set[i % 3], 0.12 * fade); }
+      const INKS = ["120,200,255", "220,80,200", "170,110,240", "255,140,190", "255,160,70", "255,200,110"];
+      ctx.lineCap = "round";
+      for (let i = 0; i < 46; i++) {
+        const off = (r() - 0.5) * 70, x0 = 60 + r() * W * 0.5, x1 = Math.min(W - 60, x0 + W * (0.25 + r() * 0.4)), mid = (x0 + x1) / 2 / W, ink = INKS[Math.min(5, Math.floor(mid * 4 + r() * 2.5))], bend = (r() - 0.5) * 60;
+        ctx.strokeStyle = `rgba(${ink},${0.06 + r() * 0.12})`; ctx.lineWidth = 1.5 + r() * 4; ctx.shadowColor = `rgba(${ink},0.5)`; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.moveTo(x0, spine(x0) + off);
+        ctx.quadraticCurveTo((x0 + x1) / 2, spine((x0 + x1) / 2) + off + bend, Math.min(W - 20, x1), spine(Math.min(W - 20, x1)) + off * 0.6); ctx.stroke();
+      }
+      // A bright rim along the warm clouds' upper edge, as if lit from behind.
+      ctx.strokeStyle = "rgba(255,210,140,0.35)"; ctx.lineWidth = 2.5; ctx.shadowColor = "rgba(255,170,80,0.9)"; ctx.shadowBlur = 14;
+      ctx.beginPath(); for (let x = W * 0.58; x < W * 0.92; x += 8) { const y = spine(x) - 34 - Math.sin(x / 37) * 8; if (x === W * 0.58) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke();
+      for (let i = 0; i < 12; i++) {
+        const x = 160 + r() * (W - 320), y = spine(x) + (r() - 0.5) * 24, l = 30 + r() * 60, ink = i % 3 ? "255,215,150" : "255,250,240";
+        ctx.strokeStyle = `rgba(${ink},${0.25 + r() * 0.2})`; ctx.lineWidth = 1 + r() * 1.5; ctx.shadowColor = `rgba(${ink},0.8)`; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.moveTo(x - l / 2, spine(x - l / 2) + y - spine(x)); ctx.quadraticCurveTo(x, y + (r() - 0.5) * 10, x + l / 2, spine(x + l / 2) + y - spine(x)); ctx.stroke();
+      }
+    })),
+    // The Milky Way: a long soft band of very fine stars round a creamy core, two dark lanes left along it.
+    milky: M.cached(() => softPicture(1024, 192, (ctx, W, H) => {
+      const r = mulberry32(250);
+      for (let i = 0; i < 40; i++) { const x = 20 + i / 39 * (W - 40), f = Math.sin(i / 39 * Math.PI); blob(ctx, x, H / 2 + (r() - 0.5) * 16, 60 + r() * 20, "150,160,200", 0.07 * f); blob(ctx, x, H / 2, 30, "255,235,200", 0.07 * f * f); }
+      ctx.fillStyle = "rgba(240,240,255,0.55)";
+      for (let i = 0; i < 2600; i++) { const x = r() * W, f = Math.sin(x / W * Math.PI), y = H / 2 + (r() + r() + r() - 1.5) * H * 0.38; const lane = Math.abs(y - H / 2 - 10 - Math.sin(x / 90) * 6) < 5 || Math.abs(y - H / 2 + 18 - Math.sin(x / 130) * 5) < 3; if (!lane && r() < f) ctx.fillRect(x, y, 1.5, 1.5); }
+      ctx.globalCompositeOperation = "destination-out"; ctx.lineWidth = 6; ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      for (const [dy, per, amp] of [[10, 90, 6], [-18, 130, 5]]) { ctx.beginPath(); for (let x = W * 0.15; x < W * 0.85; x += 6) { const y = H / 2 + dy + Math.sin(x / per) * amp; if (x === W * 0.15) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); }
+      ctx.globalCompositeOperation = "source-over";
+    })),
+    // A dwarf galaxy: a small fuzzy cloud of pale light, a little lumpy.
+    dwarf: M.variants((v) => softPicture(128, 128, (ctx) => { const r = mulberry32(61 + v); for (let i = 0; i < 7; i++) blob(ctx, 64 + (r() - 0.5) * 40, 64 + (r() - 0.5) * 26, 24 + r() * 14, "215,220,240", 0.16); blob(ctx, 60, 62, 12, "240,240,255", 0.3); })),
+    // A stretch of the fusion line, the glow where space meets the water or the sky, as a mixed aurora: a bright line
+    // across at 60% down, its tint shifting along it between two of pink, green, purple and blue, glowing off both
+    // ways, and soft curtain streaks rising from it into the space (up the picture).
+    fusion: M.variants((v) => softPicture(256, 256, (ctx, W, H) => {
+      const INKS = [[255, 110, 200], [90, 255, 160], [170, 110, 255], [90, 170, 255]], A = INKS[v % 4], B = INKS[(v + 1) % 4], r = mulberry32(300 + v), line = H * 0.6;
+      const ink = (x) => { const t = x / W; return A.map((c, i) => Math.round(c + (B[i] - c) * t)).join(","); };
+      for (let x = 0; x < W; x += 4) {
+        const g = ctx.createLinearGradient(0, line - 70, 0, line + 50), c = ink(x);
+        g.addColorStop(0, `rgba(${c},0)`); g.addColorStop(0.6, `rgba(${c},0.32)`); g.addColorStop(0.7, `rgba(255,255,255,0.55)`); g.addColorStop(0.78, `rgba(${c},0.3)`); g.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = g; ctx.fillRect(x, line - 70, 4, 120);
+      }
+      for (let i = 0; i < 26; i++) {
+        const x = 10 + r() * (W - 20), tall = 40 + r() * 100, c = ink(x), g = ctx.createLinearGradient(0, line, 0, line - tall);
+        g.addColorStop(0, `rgba(${c},${0.25 + r() * 0.2})`); g.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = g; ctx.fillRect(x, line - tall, 2 + r() * 4, tall);
+      }
+    })),
+    // A brighter star with a soft halo, white or pale gold; `v` 2 and 3 with four thin diffraction spikes too.
+    halo: M.variants((v) => softPicture(128, 128, (ctx) => {
+      blob(ctx, 64, 64, 40, v % 2 ? "255,220,170" : "200,220,255", 0.32); blob(ctx, 64, 64, 8, "255,255,255", 1);
+      if (v >= 2) for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const g = ctx.createLinearGradient(64 - dx * 62, 64 - dy * 62, 64 + dx * 62, 64 + dy * 62);
+        g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.5, "rgba(255,255,255,0.85)"); g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g; ctx.fillRect(dx ? 2 : 63, dy ? 2 : 63, dx ? 124 : 2, dy ? 124 : 2);
+      }
+    })),
+  }));
+  // Where they lie on the band: round from the way ahead (radians), over (+) or under (-) the horizon, size (dome
+  // radii), and the picture. Each shows from the first stage whose band holds it whole: the nebula band along the
+  // horizon ahead first, the spiral galaxy and the Milky Way as the band nears its full height.
+  const RIFT_PICTURES = [
+    { az: 0.85, el: -0.06, size: 0.12, tilt: 0.22, wide: 5, pic: (G) => G.milky() },
+    { az: 0.3, el: -0.02, size: 0.18, tilt: 0, pic: (G) => G.glow() },
+    { az: 0.18, el: 0.01, size: 0.12, tilt: 0.04, wide: 3.6, pic: (G) => G.band() },
+    { az: -0.32, el: 0.1, size: 0.14, tilt: -0.3, pic: (G) => G.spiral(0) },
+    { az: -0.8, el: -0.13, size: 0.05, tilt: 0.3, pic: (G) => G.dwarf(0) },
+    { az: -0.7, el: -0.19, size: 0.035, tilt: -0.4, pic: (G) => G.dwarf(1) },
+    { az: 1.5, el: 0.08, size: 0.025, tilt: 0.8, pic: (G) => G.spiral(1) },
+    { az: -1.4, el: -0.05, size: 0.022, tilt: -0.5, pic: (G) => G.spiral(1) },
+    { az: 0.6, el: 0.14, size: 0.045, tilt: 0, pic: (G) => G.cluster() },
+    { az: -0.1, el: -0.1, size: 0.035, tilt: 0, pic: (G) => G.knot() },
+    { az: 1.2, el: 0.04, size: 0.03, tilt: 0, pic: (G) => G.knot() },
+    // Brighter stars with halos, some with spikes.
+    ...[[0.05, 0.07], [0.45, -0.12], [-0.55, 0.05], [1.0, -0.15], [-1.1, 0.12], [1.8, 0.02], [-1.8, -0.08], [2.6, 0.06], [-2.5, -0.03]].map(([az, el], i) => ({ az, el, size: (i % 3 === 0 ? 0.04 : 0.024), tilt: 0.2, pic: (G) => G.halo(i % 3 === 0 ? 2 + (i % 2) : i % 2) })),
+  ];
   // A double rainbow: seven bands round a unit arc. Its local x runs down from the crown to the feet, so the beam's
   // fade, full at the crown, dissolves the feet; y runs across it. The bright one stands nearer the island and the
   // greater one beyond it is fainter with its colours turned round, red inside, as a real double rainbow's are.
@@ -692,12 +1113,14 @@
     const lite = renderer?.kind === "canvas2d";
     const scenery = createNode({ visible: false, sightHidden: true });
     addChild(root, scenery);
+    // Flipside's lagoon starts painting in idle moments now, well before its level is opened.
+    if (LAGOON && !lite) lagoonStart();
     // What moves, set by `build`: each a function of the scenery's clock, the frame's dt and the camera.
     const movers = [];
     // The two balloons and their passengers, built once and stood again on each Floating Isles run.
     const balloons = [];
     // `flash` is the storm's lightning this frame, 0 to 1, which the hub lifts the sky by.
-    let time = 0, reach = 0, flash = 0;
+    let time = 0, reach = 0, flash = 0, runProgress = 0;
     const node = (geometry, x, y, z, s = 1, parent = scenery) => {
       const n = createNode({ geometry, position: { x, y, z }, scale: { x: s, y: s, z: s }, sightHidden: true });
       addChild(parent, n);
@@ -1190,15 +1613,106 @@
         n.matrixCloud = true; ring.push({ n, a, r });
         return n;
       };
-      for (let k = 0; k < TOWERS; k++) {
+      for (let k = 0; k < (RIFT && !lite ? 0 : TOWERS); k++) {
         const a = (k + 0.2 + rand() * 0.6) / TOWERS * TAU, r = R + rand() * 120, s = 2.3 + rand() * 0.7;
         stand(spire(k % 3, sunX, sunZ, EYEWALL), a, r, seaY + 10 + rand() * 15, s);
         reached(cx + Math.cos(a) * r, seaY + 560, cz + Math.sin(a) * r, 230 * s);
       }
       // A bank across the eye from the sun shows the rider its sunlit face.
-      for (let k = 0; k < BANKS; k++) {
+      for (let k = 0; k < (RIFT && !lite ? 0 : BANKS); k++) {
         const a = (k + rand()) / BANKS * TAU, r = R - 40 + rand() * 100, s = 2 + rand() * 0.6, warm = Math.cos(a) * sunX + Math.sin(a) * sunZ < -0.2;
         stand(bank((warm ? 4 : 6) + (k % 2)), a, r, seaY + 4 + rand() * 20, s).rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
+      }
+      // Four fun blimps drifting far off to either side of the course (330 to 470 m from its
+      // middle, two forward and two back), turning round the eye with it and bobbing, their propellers spinning; they turn over with
+      // the world at the flip, as all its scenery does. Their places come from a stream of their own, so the eyewall's
+      // are as they were.
+      if (!lite) {
+        const own = mulberry32(SEED ^ 0x5bd1e995), blimps = [];
+        for (let k = 0; k < 4; k++) {
+          const a = route.ahead + (k % 2 ? 1 : -1) * (Math.PI / 2 + (k < 2 ? -0.45 : 0.45)) + (own() - 0.5) * 0.2, r = 330 + own() * 140, y = seaY + 190 + own() * 140, s = 5.5 + own() * 1.5;
+          const n = node(farBlimp(k), cx + Math.cos(a) * r, y, cz + Math.sin(a) * r, s);
+          // Flying round the eye, broadside to it, one way or the other.
+          n.rotation.y = Math.atan2(Math.cos(a), -Math.sin(a)) + (k % 2 ? Math.PI : 0);
+          const prop = node(farProp(), 5.05, 0, 0, 1, n);
+          ring.push({ n, a, r }); blimps.push({ n, prop, y, ph: own() * TAU });
+          reached(n.position.x, y, n.position.z, 12 * s);
+        }
+        movers.push((time) => { for (const b of blimps) { b.n.position.y = b.y + Math.sin(time * 0.3 + b.ph) * 3; b.prop.rotation.x = time * 8; } });
+      }
+      // The rift: its seed a little ahead of the zenith toward the way down the course, its stage stepped on by how far
+      // down the course the eye has come (halfway, about where the world turns over, is RIFT_STAGES - 2), never back.
+      if (LAGOON && !lite) {
+        // Centred under the course's middle, just over the sea, laid flat (the panel's plan turned to the world's).
+        const disc = node(lagoonDisc(), cx, seaY + 0.4, cz, LAGOON_SPAN); disc.rotation.x = -Math.PI / 2;
+        node(lagoonIslands(), cx, seaY + 0.4, cz);
+        const job = lagoonStart(), waves = [0, 1].map((v) => { const w = node(null, cx, seaY + 1.2 + v * 0.3, cz, LAGOON_SPAN); w.rotation.x = -Math.PI / 2; w.visible = false; return w; });
+        let budget = 0;
+        const more = () => performance.now() < budget;
+        movers.push((time) => {
+          // Not painted yet: a few milliseconds of it this frame; the swell shown once it is.
+          if (!job.done) { budget = performance.now() + 3; if (!lagoonStep(more)) return; }
+          if (!waves[0].geometry) for (let v = 0; v < 2; v++) { waves[v].geometry = job.waves[v]; waves[v].visible = true; }
+          waves[0].smokeOpacity = 0.55 + 0.45 * Math.sin(time * 0.5); waves[1].smokeOpacity = 0.55 - 0.45 * Math.sin(time * 0.5 + 0.8);
+        });
+        reached(cx, seaY, cz, LAGOON_SPAN / 2);
+      }
+      if (RIFT && !lite) {
+        // Laid on the sky upright (local z up, local -y the world's +z), the way ahead at local azimuth `ahead`.
+        const ahead = -route.ahead, R = 6500, oy = seaY - 200, UP = -Math.PI / 2, G = RIFT_GLOWS(), p = [0, 0, 0], LAST = RIFT_STAGES - 1;
+        const at = (q, k, out) => { out.x = cx + q[0] * R * k; out.y = oy + q[2] * R * k; out.z = cz - q[1] * R * k; };
+        const face = (n, q) => { const dx = -q[0], dy = -q[2], dz = q[1]; n.rotation.y = Math.atan2(dx, dz); n.rotation.x = -Math.atan2(dy, Math.hypot(dx, dz)); };
+        // The band and its meld, built at full height and squeezed toward the horizon (their local z) to the height
+        // the run has come to; the stars in their bins, each shown once the band is tall enough to hold it.
+        const squeezed = [], hold = createNode({ visible: false, sightHidden: true }); addChild(scenery, hold);
+        { const cap = node(riftCap(LAST), cx, oy, cz, R, hold); cap.rotation.x = UP; squeezed.push([cap, R]); }
+        for (let j = 0; j < SEAM.length; j++) { const k = R * (0.996 - j * 0.0002), n = node(riftSeam([LAST, j]), cx, oy, cz, k, hold); n.rotation.x = UP; squeezed.push([n, k]); }
+        const stars = riftStars().map((g) => { const n = node(g, cx, oy, cz, R); n.rotation.x = UP; n.visible = false; return n; });
+        // The fusion line: LINE pictures along each edge, overlapping, following the edges as the band grows; the
+        // streaks rise into the space, so the upper edge's are turned over. Each shimmers a little, on its own phase.
+        const LINE = 32, line = [];
+        for (let e = 0; e < 2; e++) for (let i = 0; i < LINE; i++) {
+          const n = node(G.fusion((i + e * 2) % 4), cx, oy, cz, 1); n.visible = false; line.push({ n, az: (i + (e ? 0.5 : 0)) / LINE * TAU, up: e === 0, ph: i * 1.7 + e * 0.9 });
+        }
+        const wide = TAU / LINE * 1.5 * R;
+        // The soft pictures, each square to the eye at the dome's middle, fading in once the band holds it whole.
+        const pictures = [];
+        for (const d of RIFT_PICTURES) {
+          const az = ahead + d.az, half = d.size * 0.5 * (Math.abs(Math.sin(d.tilt)) * (d.wide || 1) + Math.abs(Math.cos(d.tilt)));
+          const need = bandNeeds(d.el, az, half + 0.015);
+          if (need > BAND_FULL) continue;
+          bandPoint(d.el, az, p);
+          const n = node(d.pic(G), 0, 0, 0, d.size * R); at(p, 0.98, n.position); face(n, p);
+          n.scale.x = d.size * R * (d.wide || 1); n.rotation.z = d.tilt; n.visible = false; pictures.push({ n, need });
+        }
+        reached(cx, seaY + R, cz, R);
+        // Every mesh and picture handed to the renderer ahead, a few a frame, so none is built or uploaded as it comes
+        // on (a hitch then would hold up the run's own clock, the flip's gust with it).
+        const warm = [...squeezed.map(([n]) => n.geometry), ...stars.map((n) => n.geometry), ...line.slice(0, 4).map((f) => f.n.geometry), ...pictures.map((q) => q.n.geometry)];
+        let warmed = 0, shown = 0;
+        // The band's height eases toward where the run has come to (a hop on never shows as a jump), never back.
+        movers.push((time, dt) => {
+          for (let n = 0; n < 3 && warmed < warm.length && renderer?.prepareGeometry; n++) if (renderer.prepareGeometry(warm[warmed]) !== false) warmed++; else break;
+          const want = bandAt(runProgress);
+          if (want > shown) shown = dt > 0 ? shown + (want - shown) * Math.min(1, dt * 1.2) : want;
+          const h = shown, on = h > 0.0015;
+          hold.visible = on;
+          if (!on) return;
+          // Faint at first and coming up to full as it grows (BAND_SOLID), so it never shows at once as a whole ring.
+          const squeeze = h / BAND_FULL, solid = Math.min(1, h / BAND_SOLID);
+          for (let i = 0; i < squeezed.length; i++) { squeezed[i][0].scale.z = squeezed[i][1] * squeeze; squeezed[i][0].smokeOpacity = solid; }
+          for (let i = 0; i < STAR_BINS; i++) stars[i].visible = h >= (i + 1) / STAR_BINS * BAND_FULL;
+          for (let i = 0; i < pictures.length; i++) { const q = pictures[i], k = Math.min(1, (h - q.need) / 0.03); q.n.visible = k > 0; q.n.smokeOpacity = Math.max(0, k); }
+          // The line on the edges where they stand now, as tall as the band allows, fading in from a hairline.
+          const tall = Math.max(0.03, Math.min(0.16, h * 0.8)) * R, fade = Math.min(1, h / BAND_SOLID);
+          for (let i = 0; i < line.length; i++) {
+            const f = line[i], el = f.up ? h * waverUp(f.az) : -h * waverDown(f.az), c = Math.cos(el);
+            p[0] = c * Math.cos(f.az); p[1] = c * Math.sin(f.az); p[2] = Math.sin(el);
+            f.n.visible = true; at(p, 0.985, f.n.position); face(f.n, p);
+            f.n.position.y += (f.up ? 0.1 : -0.1) * tall * c;
+            f.n.rotation.z = f.up ? Math.PI : 0; f.n.scale.x = wide; f.n.scale.y = tall * (0.88 + 0.12 * Math.sin(time * 0.6 + f.ph)); f.n.smokeOpacity = fade;
+          }
+        });
       }
       const bolts = [node(bolt(0), 0, 0, 0), node(bolt(1), 0, 0, 0)];
       for (const b of bolts) b.visible = false;
@@ -1227,7 +1741,9 @@
     // Lays `level`'s scenery round a course from `start` down to `finish` and returns how far it reaches from the
     // start, for the camera's far plane.
     const build = (level, course, start, finish) => {
-      clear();
+      // Every run starts at the start: what grows with the run (Flipside's band) must not take up the last run's
+      // progress as the new run's movers first run.
+      clear(); runProgress = 0; time = 0;
       const kind = level.sky?.scenery;
       if (!kind) return 0;
       const sx = start.x - finish.x, sz = start.z - finish.z, length = Math.hypot(sx, sz), nx = sx / length, nz = sz / length;
@@ -1243,9 +1759,10 @@
       scenery.visible = true;
       return reach;
     };
-    const update = (dt, camera) => {
+    // `progress`, how far down the course the rider has come (0 at the start, 1 at the finish), for what grows with it.
+    const update = (dt, camera, progress = 0) => {
       if (!scenery.visible) return;
-      time += dt;
+      time += dt; runProgress = progress;
       for (let i = 0; i < movers.length; i++) movers[i](time, dt, camera);
     };
     const clear = () => {
@@ -1255,5 +1772,5 @@
     const dispose = () => { clear(); removeChild(root, scenery); };
     return { build, update, clear, dispose, get flash() { return flash; } };
   };
-  BL.cloudHopperSky = { DAY, create, grade, flash: flashSky, bolt };
+  BL.cloudHopperSky = { DAY, create, grade, flash: flashSky, bolt, farBlimp, get lagoon() { return lagoonJob && { done: lagoonJob.done, ms: lagoonJob.ms, longest: lagoonJob.longest, doneAt: lagoonJob.doneAt || 0 }; } };
 })();

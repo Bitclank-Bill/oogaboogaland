@@ -77,7 +77,9 @@
   // holds the sampled fields that weather and the Mempool shelter then shade in place later in the frame,
   // so a reused sample restores them before those run; every other sampled field simply holds.
   const DAY_RESAMPLE_HOUR = 6e-4, DAY_RESAMPLE_DAY = DAY_RESAMPLE_HOUR / 24, DAY_RESAMPLE_MS = DAY_RESAMPLE_HOUR * 3600000;
-  const DAY_STASH = { directStrength: 0, ambientFloor: 0, clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), direct: new Float32Array(3) };
+  // FINISH_FILL: Flipside's warm fill for its island once the world has turned.
+  const FINISH_FILL = [1, 0.86, 0.66];
+  const DAY_STASH = { directStrength: 0, ambientFloor: 0, diffuseFloor: 0, torch: 0, lampFactor: 0, clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), direct: new Float32Array(3) };
   const RENDER_OPTS = {
     clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), sun: new Float32Array(3), direct: new Float32Array(3),
     light: { x: 0.55, y: 0.78, z: -0.25 }, sunDirection: { x: 0, y: 1, z: 0 }, moon: { x: 0, y: 1, z: 0 }, moonSun: { x: 0, y: -1, z: 0 }, celestialPole: { x: 0, y: Math.sin(20 * DEG), z: -Math.cos(20 * DEG) }, starMatrix: new Float32Array(9),
@@ -1234,7 +1236,8 @@
     const pickupReserved = Math.min(cloudHopper?.pickupLightsWanted() || 0, 2, tierLimit);
     const limit = tierLimit - pickupReserved;
     const phaseNow = daylight.phaseAt(skyHour);
-    const lanternsOn = phaseNow === "dusk" || phaseNow === "night" || phaseNow === "midnight";
+    // Flipside's finish, once its world has turned over, lights the island's lanterns whatever the hour.
+    const lanternsOn = phaseNow === "dusk" || phaseNow === "night" || phaseNow === "midnight" || (cloudPlaying() && !!cloudHopper.finishLights && cloudHopper.turns > 0);
     const coilLamp = coilCharge && coilCharge.lamp, coilActive = !!coilLamp && coilCharge.level > 0.02;
     // The pits' lights follow their flames: the plaza lamp's gain and the HQ hearth's colour pulse with the flicker.
     const plazaRig = firePitRig, hearthRig = headquarters && headquarters.hearth && headquarters.hearth.rig;
@@ -8325,14 +8328,16 @@
       } else daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
       sampledSky = fixedSky;
       sampledHour = hour; sampledDay = clock.dayOfYear; sampledLatitude = islandLatitude; sampledContinuousDay = clock.continuousDay; sampledUtcMs = clock.utcMs;
-      DAY_STASH.directStrength = RENDER_OPTS.directStrength; DAY_STASH.ambientFloor = RENDER_OPTS.ambientFloor;
+      DAY_STASH.directStrength = RENDER_OPTS.directStrength; DAY_STASH.ambientFloor = RENDER_OPTS.ambientFloor; DAY_STASH.diffuseFloor = RENDER_OPTS.diffuseFloor;
+      DAY_STASH.torch = RENDER_OPTS.torch; DAY_STASH.lampFactor = RENDER_OPTS.lampFactor;
       for (let i = 0; i < 3; i++) {
         DAY_STASH.clear[i] = RENDER_OPTS.clear[i]; DAY_STASH.horizon[i] = RENDER_OPTS.horizon[i]; DAY_STASH.zenith[i] = RENDER_OPTS.zenith[i];
         DAY_STASH.sky[i] = RENDER_OPTS.sky[i]; DAY_STASH.ground[i] = RENDER_OPTS.ground[i]; DAY_STASH.direct[i] = RENDER_OPTS.direct[i];
       }
     } else {
       // Weather and the shelter below shade the sampled colours in place; a held sample restores them.
-      RENDER_OPTS.directStrength = DAY_STASH.directStrength; RENDER_OPTS.ambientFloor = DAY_STASH.ambientFloor;
+      RENDER_OPTS.directStrength = DAY_STASH.directStrength; RENDER_OPTS.ambientFloor = DAY_STASH.ambientFloor; RENDER_OPTS.diffuseFloor = DAY_STASH.diffuseFloor;
+      RENDER_OPTS.torch = DAY_STASH.torch; RENDER_OPTS.lampFactor = DAY_STASH.lampFactor;
       for (let i = 0; i < 3; i++) {
         RENDER_OPTS.clear[i] = DAY_STASH.clear[i]; RENDER_OPTS.horizon[i] = DAY_STASH.horizon[i]; RENDER_OPTS.zenith[i] = DAY_STASH.zenith[i];
         RENDER_OPTS.sky[i] = DAY_STASH.sky[i]; RENDER_OPTS.ground[i] = DAY_STASH.ground[i]; RENDER_OPTS.direct[i] = DAY_STASH.direct[i];
@@ -8356,6 +8361,16 @@
       RENDER_OPTS.fog = RENDER_OPTS.horizon;
       RENDER_OPTS.fogNear = fixedSky?.fog ? fixedSky.fog[0] : 900; RENDER_OPTS.fogFar = fixedSky?.fog ? fixedSky.fog[1] : 2000;
       if (cloudHopper.flash > 0) BL.cloudHopperSky.flash(RENDER_OPTS, cloudHopper.flash);
+      // Flipside: once its world has turned over, the island's own torches and lamps lit (its lanterns with them, in
+      // the lamp choice) and its ambient light lifted a little, so the finish reads.
+      const lit = cloudHopper.finishLights;
+      // The island's own light (sky and ground fill, never the sky itself) warmed and lifted, so its colours read
+      // full rather than dim under the turned world.
+      if (lit && cloudHopper.turns > 0) {
+        RENDER_OPTS.ambientFloor = Math.max(RENDER_OPTS.ambientFloor, 0.5); RENDER_OPTS.diffuseFloor = Math.max(RENDER_OPTS.diffuseFloor, 0.3);
+        for (let i = 0; i < 3; i++) { const warm = FINISH_FILL[i]; RENDER_OPTS.sky[i] += (warm - RENDER_OPTS.sky[i]) * 0.35; RENDER_OPTS.ground[i] += (warm * 0.8 - RENDER_OPTS.ground[i]) * 0.35; }
+        if (lit === 1) { RENDER_OPTS.torch = Math.max(RENDER_OPTS.torch, 99); RENDER_OPTS.lampFactor = Math.max(RENDER_OPTS.lampFactor, 1.6); }
+      }
     } else if (gameMode) RENDER_OPTS.clouds = 0;
     else weather.update(dt, RENDER_OPTS, poolShade);
     if (poolShade > 0) {
@@ -12821,7 +12836,9 @@
       cabinet: () => ctx.cabinet.active,
       park: () => navigate("arcade", false, false), onExit: () => { if (cloudYard) { world.arcadeYard = cloudYard; cloudYard = null; go("hub", "cloud-hopper-return"); } else go("arcade", "cloud-hopper-return"); },
       crew, pilot, hud, renderer, camera, game, seaY: SEA_Y,
-      move: cloudMove, mode: cloudMode, pileSurface: cloudPileSurface, mainlandRadius: island.radius,
+      move: cloudMove, mode: cloudMode, pileSurface: cloudPileSurface, mainlandRadius: island.radius, groundAt: (x, z) => island.surfaceAt(x, z),
+      // Flipside's banana spot: the pile itself lit warm by it, `k` from 0 (off) to 1.
+      pileGlow: (k) => { if (cloudPile) cloudPile.glow = k; if (cloudFinishFruit) cloudFinishFruit.glow = k; },
       finish: () => ({ x: 0, y: ALTAR_HEIGHT + 2, z: 0 }),
       pileTop: () => pile.shown > 0 ? pile.core.position.y + pile.core.scale.y * pileTopY : ALTAR_HEIGHT + 0.23,
       refusal: () => gameMode ? "Finish the island event before playing Cloud Hopper"

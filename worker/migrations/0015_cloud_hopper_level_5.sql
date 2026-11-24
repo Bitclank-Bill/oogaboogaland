@@ -1,4 +1,4 @@
--- Cloud Hopper's fifth level, Storm's Eye, gets its own attributed board. Levels 1-4 keep their rows untouched.
+-- Cloud Hopper's fifth level, Flipside, gets its own attributed board. Levels 1-4 keep their rows untouched.
 -- A CHECK can't be altered in place, so the three tables that listed the four boards are rebuilt row for row with a
 -- check any level's board passes (`cloud-hopper-l1` to `l9`), and their indexes and triggers are made again as they
 -- stood. Dropping a table drops its own triggers; the players trigger that reads `cloud_hopper_runs` is dropped first

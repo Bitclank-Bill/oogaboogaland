@@ -9,7 +9,7 @@
   const LIFT_SECONDS = 6, LIFT_VIEW_SECONDS = 1.5, SETTLE_SECONDS = 1, DOCK_LENGTH = 4;
   const START_VIEW = { height: 6, distance: 18 };
   const BOOST_SPEED = 28, BOOST_RISE = 4, BOUNCE_RISE = 12, LAUNCH_CLEARANCE = 0.04;
-  const RECOVERY_GRACE_SECONDS = 0.75, DOCK_MUSIC_LEVEL = 0.28, WARNING_THIN = 0.32, TAU = Math.PI * 2;
+  const GUST_WAIT = 1.2, RECOVERY_GRACE_SECONDS = 0.75, DOCK_MUSIC_LEVEL = 0.28, WARNING_THIN = 0.32, TAU = Math.PI * 2;
   // Power-ups (plan 3): X-ray's seconds and how far it reads clouds (further in a hazy level), and the sky feather's lift.
   // A guide card introduces each, bounce clouds and tornadoes the first time a browser session plays a level that has it.
   const XRAY_SECONDS = 30, XRAY_RADIUS = 60, XRAY_HAZE_RADIUS = 120, UPDRAFT_RISE = 13;
@@ -48,8 +48,10 @@
   // while the island stays the right way up to the rider, to be landed on and the run won on it. The rider goes on as it was going, its speed and the controls held untouched, so it steers all through
   // the roll. As the world turns the clouds stop holding it for FALL_SECONDS (`lowering`): it simply falls, by the
   // crew's own gravity and its own speed, nothing of it held or moved by the run. Then, the world still rolling, a
-  // burst of updraft wind under it throws it back up (`windLift`): the same for every rider, pack or none, a pack and fuel it holds left as they
-  // were. The lift is aimed at the nearest landing ahead that will still be solid when it gets there (`liftTarget`):
+  // burst of updraft wind under it throws it back up (`windLift`), on the roll's own time: at once if it is in the air
+  // or moving at all, or, if it stands on a cloud, the moment it leaves it before GUST_WAIT, and not at all that turn
+  // if it never does. The same for every rider, pack or none, a pack and fuel it holds left as they were. The lift is
+  // aimed at the nearest landing ahead, never the one it is over, that will still be solid when it gets there (`liftTarget`):
   // up to LIFT_OVER over that cloud's top (higher only when it is too far to reach at LIFT_SPEED otherwise), and
   // forward at a steady speed just far enough to come down on its middle where its swing will have it, with no hands on the controls; no further, so it never
   // carries a rider on down the course. The rider then steers and lands it itself. One that falls CLIMB_FALL
@@ -145,7 +147,7 @@
     const trueEye = { x: 0, y: 0, z: 0 }, trueTarget = { x: 0, y: 0, z: 0 };
     // Where the roll stands (`rolled`), and where it will stand as this frame is drawn (`drawnTurn`).
     const rolled = { turn: 0, x: 0, y: 0, z: 0 }, drawnTurn = { turn: 0, x: 0, y: 0, z: 0 };
-    let turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, viewTurned = false, trueUp = null, nightSky = false;
+    let gustWait = false, turnWall = 0, turn = 0, turns = 0, turning = -1, turnFrom = 0, lowering = false, climbing = false, rescued = false, viewTurned = false, trueUp = null, nightSky = false;
     // A portal's warp: the seconds into it (-1 none) from `warpFrom` to the landing `warpTo`, where it comes out
     // (`warpAt`), the speed carried through, the seconds into its puff (-1 none), the portal that flashed and when,
     // and until when no tornado takes the rider.
@@ -239,7 +241,7 @@
       restoreView();
       if (warping >= 0 && actor) actor.root.visible = true;
       if (turn !== 0 && cloudNodes.length) relight(false);
-      turn = turns = 0; turning = -1; lowering = climbing = rescued = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
+      turn = turns = 0; turning = -1; lowering = climbing = rescued = gustWait = false; warping = puffing = flashed = -1; warpTo = null; safeUntil = 0;
       readyPortal = readyFlip = -1; readyTo = null;
       holdGame(); audio.turned(false);
       for (const spark of sparks) spark.visible = false;
@@ -276,27 +278,35 @@
     // are, and the view stays the player's own to look round with.
     const beginTurn = (level) => {
       const p = actor.root.position;
-      turning = 0; turnFrom = turn; lowering = true; climbing = rescued = false;
+      turning = 0; turnFrom = turn; lowering = true; climbing = rescued = gustWait = false; turnWall = raceNow();
       Object.assign(turnHeld, p); Object.assign(checkpoint, p);
       checkpoint.y = Math.min(p.y, Math.max(p.y - TURN_DROP, level + actor.baseY - TURN_DROP, ctx.seaY + actor.baseY + CLIMB_FALL + 10));
       if (turn === 0) Object.assign(turnPivot, p);
       if (hookHeld && hookAt !== HAND) letGo();
       hookDown = false;
+      // Whatever the way in (a rider set down near it never passed the warm-up), everything the roll and the gust
+      // show is readied now, FALL_SECONDS before the gust, not as it comes.
+      if (readyFlip !== turns) { readyFlip = turns; warmRun(); }
       audio.turnOver(); audio.turned(turn === 0);
     };
-    // The landing the wind lift aims at, from the rider's feet `feet` at (x, z): the nearest in plan of those not
-    // behind it down the course (none further from the finish than it, by more than its own reach) that are within
-    // LIFT_REACH and will be solid from when the lift brings the rider down on them to a second after; the nearest
-    // that shows at all if none is. Into `liftAim`: the cloud, where its middle will be then, and the flight's time.
+    // The landing the wind lift aims at, from the rider's feet `feet` at (x, z), never the one it is over: the nearest
+    // in plan of those not behind it down the course (none further from the finish than it, by more than its own
+    // reach) that are within LIFT_REACH and will be solid from when the lift brings the rider down on them to a second
+    // after; the nearest not behind it that shows at all if none is. Into `liftAim`: the cloud, where its middle will
+    // be then, and the flight's time.
     const liftAim = { cloud: null, x: 0, z: 0, top: 0, t: 0, vy: 0 };
     const liftTarget = (x, z, feet) => {
       const g = BL.pilot.WALK.gravity, end = course.landings[course.landings.length - 1], out = Math.hypot(x - end.x, z - end.z);
       let best = null, near = Infinity, any = null, anyNear = Infinity;
       for (const c of course.landings) {
         if (!c.active) continue;
-        const d = Math.hypot(c.x - x, c.z - z);
-        if (d < anyNear) { anyNear = d; any = c; }
-        if (d > LIFT_REACH || Math.hypot(c.x - end.x, c.z - end.z) > out + Math.max(c.rx, c.rz)) continue;
+        const d = Math.hypot(c.x - x, c.z - z), behind = Math.hypot(c.x - end.x, c.z - end.z) > out + Math.max(c.rx, c.rz);
+        // Never the cloud the rider is over (one that has hardly fallen from where it stood as the world turned): the
+        // gust always carries it on to the next.
+        if (d < Math.max(c.rx, c.rz) + 1) continue;
+        // The fallback is the nearest not behind the rider, so the wind never throws it back up the course.
+        if (!behind && d < anyNear) { anyNear = d; any = c; }
+        if (d > LIFT_REACH || behind) continue;
         const apex = Math.max(feet + LIFT_UP, c.top + LIFT_OVER), t = Math.sqrt(2 * (apex - feet) / g) + Math.sqrt(2 * (apex - c.top) / g);
         if (!course.steadyAt(c, seconds + t) || !course.steadyAt(c, seconds + t + 1)) continue;
         if (d < near) { near = d; best = c; }
@@ -335,7 +345,13 @@
     const startClimb = (again) => {
       const p = actor.root.position, leap = actor.leap;
       if (again) { Object.assign(p, checkpoint); leap.vx = leap.vz = 0; actor.hop = 1; }
-      else actor.hop = Math.max(actor.hop, 1e-3);
+      else {
+        // A rider that has hardly dropped is still inside the cloud it stood on, which holds again now the fall is
+        // over: the gust lifts it from that cloud's top, so landing on it never takes the throw away.
+        const feet = p.y - actor.baseY, top = course.supportAt(p.x, p.z, feet, 3);
+        if (Number.isFinite(top) && top > feet) p.y = top + actor.baseY + 0.05;
+        actor.hop = Math.max(actor.hop, 0.05);
+      }
       actor.hopV = 0; actor.jumps = 1; leap.land = 0;
       climbing = true; unrecoverableAt = -1; safeUntil = seconds + WARP_SAFE;
       windLift();
@@ -353,18 +369,25 @@
     // Each frame of a roll, after the crew moved: the world turns on, and FALL_SECONDS in, the rider having fallen
     // meanwhile by itself (nothing of it held or moved by the run), the gust catches it. Whether the rider is still
     // falling, so the run's other work on it (the wind's and a tornado's push, pickups, portals) waits for the gust,
-    // as it waited through the old lowering. Under reduced motion the world is over at once.
+    // as it waited through the old lowering. Under reduced motion the world is over at once. The gust comes FALL_SECONDS
+    // in by the run's clock or by the race's own, whichever is first, so a slow frame as the world starts to turn (the
+    // run's steps are capped) never holds the rider falling longer than that.
     const turnStep = () => {
       turning += stepTime;
       const over = rollAt(turning, rolled), falling = lowering;
       turn = rolled.turn; turnAbout.x = rolled.x; turnAbout.y = rolled.y; turnAbout.z = rolled.z;
-      if (lowering && turning >= FALL_SECONDS - 1e-9) {
-        lowering = false; startClimb(false);
+      // FALL_SECONDS in (by the run's clock or the race's, whichever is first): a rider in the air or moving up or
+      // down at all is lifted at once; one standing on a cloud is watched until GUST_WAIT, lifted the moment it leaves
+      // the cloud, and if it never does the gust is called off for that turn. Never more than one gust a turn.
+      const since = Math.max(turning, (raceNow() - turnWall) / 1000), aloft = actor.hop > 1e-3 || Math.abs(actor.hopV) > 1e-6;
+      if (lowering && since >= FALL_SECONDS - 1e-9) { lowering = false; gustWait = true; }
+      if (gustWait && aloft) {
+        gustWait = false; startClimb(false);
         hud.toast("The world turned over · the wind lifts you · steer onto a cloud");
-      }
+      } else if (gustWait && since >= GUST_WAIT) gustWait = false;
       if (falling) seconds = (raceNow() - startedAt) / 1000, overlay.update(seconds);
       holdGame();
-      if (!over) return falling;
+      if (!over || gustWait) return falling;
       turning = -1; turns++;
       if (turnFrom === 0) relight(true);
       else relight(false);
@@ -393,7 +416,7 @@
     const warmEach = (geometry) => { if (geometry && ctx.renderer.prepareGeometry && !ctx.renderer.prepareGeometry(geometry)) warmOk = false; };
     const warmRun = () => {
       warmOk = true;
-      warmEach(sparks[0].geometry); warmEach(BL.hubModels.jetpack()); warmEach(BL.hubModels.jetFlame());
+      warmEach(sparks[0].geometry); warmEach(liftStreak); warmEach(BL.hubModels.jetpack()); warmEach(BL.hubModels.jetFlame());
       warmEach(BL.cloudHopperModels.cloudMesh(0, "normal", false)); warmEach(BL.cloudHopperModels.cloudMesh(0, "normal", true));
       for (const node of cloudNodes) BL.cloudHopperModels.alternates(node, warmEach);
       for (const surface of underNodes) if (surface) warmEach(surface.geometry);
@@ -425,6 +448,11 @@
     // The trail: the Ooga's body is a cluster of sparkles where it is, the rest strung out behind it for WARP_TRAIL
     // metres (no further back than where it went in), smaller and looser toward the tail. The view follows the unseen
     // Ooga, so the whole trail shows ahead of it.
+    // A sparkle's square turned square to the eye.
+    const faceEye = (n) => {
+      const e = eye(), dx = e.x - n.position.x, dy = e.y - n.position.y, dz = e.z - n.position.z;
+      n.rotation.y = Math.atan2(dx, dz); n.rotation.x = -Math.atan2(dy, Math.hypot(dx, dz));
+    };
     const trail = () => {
       const p = actor.root.position, mid = actor.bodyHeight * 0.4;
       const gone = Math.hypot(p.x - warpFrom.x, p.y - warpFrom.y, p.z - warpFrom.z), span = Math.hypot(warpAt.x - warpFrom.x, warpAt.y - warpFrom.y, warpAt.z - warpFrom.z) || 1;
@@ -434,7 +462,7 @@
         spark.position.x = p.x - (warpAt.x - warpFrom.x) * back + scatter[i * 3] * loose;
         spark.position.y = p.y + mid - (warpAt.y - warpFrom.y) * back + scatter[i * 3 + 1] * loose;
         spark.position.z = p.z - (warpAt.z - warpFrom.z) * back + scatter[i * 3 + 2] * loose;
-        spark.scale.x = spark.scale.y = spark.scale.z = 0.6 - 0.45 * tail; spark.rotation.y = displayTime * 9 + i;
+        spark.scale.x = spark.scale.y = spark.scale.z = 1.3 - 0.9 * tail; faceEye(spark);
       }
     };
     const puff = (dt) => {
@@ -444,7 +472,7 @@
         const spark = sparks[i];
         spark.visible = t < 1;
         spark.position.x = warpAt.x + scatter[i * 3] * out; spark.position.y = warpAt.y + mid + scatter[i * 3 + 1] * out * 0.6; spark.position.z = warpAt.z + scatter[i * 3 + 2] * out;
-        spark.scale.x = spark.scale.y = spark.scale.z = size;
+        spark.scale.x = spark.scale.y = spark.scale.z = size * 2.4; faceEye(spark);
       }
       if (t >= 1) puffing = -1;
     };
@@ -474,11 +502,13 @@
       actor.leap.vx = warpSpeed.x * keep; actor.leap.vz = warpSpeed.z * keep; actor.leap.land = 0;
       actor.hop = WARP_OVER; actor.hopV = 0; actor.jumps = 1; actor.root.visible = true;
       warping = -1; warpTo = null; puffing = 0; safeUntil = seconds + WARP_SAFE;
+      // The trail goes the frame the rider comes out; the puff takes over from the next.
+      for (const spark of sparks) spark.visible = false;
       launchContacts.fill(0); unrecoverableAt = -1;
     };
     const from = { x: 0, y: 0, z: 0 }, carry = { x: 0, y: 0, z: 0 };
     const liftGoal = { x: 0, y: 0, z: 0 }, ghostStart = { x: 0, y: 0, z: 0 };
-    const targetScreen = { x: 0, y: 0, depth: 0 };
+    const targetScreen = { x: 0, y: 0, depth: 0 }, goalShown = { x: 0, y: 0, z: 0 };
     let rideView = "shoulder", keepCarry = false, intoCombat = false;
     // The run's own start in combat, which the hub's `combatOnly` lets through while the ride holds the controls; a hook
     // picked up (`force`) brings combat too, since the mouse throws it only there.
@@ -1173,7 +1203,12 @@
       }
       if (hookHeld && (phase === "ready" || phase === "running")) updateHook(dt);
       whirlOoga();
-      scenery.update(dt, camera);
+      // How far down the course the rider has come, for the scenery that grows with it (Flipside's rift): only while it
+      // races, so the lift up from the island never counts.
+      let progress = 0;
+      if (phase === "running" && actor && course) { const a = actor.root.position, end = course.landings[course.landings.length - 1];
+        progress = Math.max(0, Math.min(1, 1 - Math.hypot(a.x - end.x, a.z - end.z) / (Math.hypot(start.x - end.x, start.z - end.z) || 1))); }
+      scenery.update(dt, camera, progress);
       if (phase === "lifting") {
         age += dt;
         const t = Math.min(1, age / LIFT_SECONDS), k = t * t * (3 - 2 * t), p = platform.position;
@@ -1237,8 +1272,117 @@
       actor.leap.land = 0; actor.leap.thrown = actor.leap.rageThrown = false;
       audio.jump();
     };
+    // ---- Flipside's finish lights ------------------------------------------------------------------------------
+    // After the flip the island is lit from under and reads dark. The island's own lamps are lit and its ambient light
+    // lifted (the hub does it, by `finishLights`), its lanterns with them; and four of the fun blimps wait out beyond
+    // the island from the start, drifting slowly in over it as the rider nears, each on its own slow path, each with a
+    // stage searchlight under it that comes on, the first held on the banana pile and the others sweeping smoothly
+    // over their own parts of the island: a narrow round
+    // cone (SPOT.spread across), warm gold at the lens cooling to blue-white and fading as it falls, a soft glow at the
+    // lens and a bright pool where it lands. The paths are seeded, so every run is the same. Decoration only:
+    // emissive meshes, see-through beams and added light, no lights that cast shadows; all built once, nothing
+    // allocated a frame. Level 5 only.
+    const FINISH_NEAR = 150, FINISH_WAIT = 240, FINISH_HOVER = 70, SPOT = { spread: 0.07, glass: 0.32, pool: 2.6, lens: 2.2 }, BLIMPS = 4;
+    const finishLit = { holder: null, blimps: [], inv: new Float64Array(16), eye: new Float64Array(3) };
+    // A cone along local +x from its lens (x 0) to the floor (x 1), its bands warm to cool; the renderer fades a light
+    // beam along +x, so it is brightest at the lens.
+    const spotCone = () => {
+      const M = BL.models, g = M.geometry(), SIDES = 16, AT = [0, 0.3, 0.65, 1], INKS = [[255, 214, 140], [250, 236, 205], [214, 228, 255]], rows = [];
+      for (const x of AT) { const r = 0.012 + x * SPOT.spread, row = []; for (let i = 0; i < SIDES; i++) { const a = i / SIDES * TAU; row.push(M.pushVert(g, x, Math.cos(a) * r, Math.sin(a) * r)); } rows.push(row); }
+      for (let j = 0; j < AT.length - 1; j++) for (let i = 0; i < SIDES; i++) {
+        const q = [rows[j][i], rows[j + 1][i], rows[j + 1][(i + 1) % SIDES], rows[j][(i + 1) % SIDES]];
+        M.face(g, q, INKS[j], { emissive: 1 }); M.face(g, [...q].reverse(), INKS[j], { emissive: 1 });
+      }
+      g.glass = SPOT.glass; g.lightBeam = 1.12; g.castShadow = false;
+      return g;
+    };
+    // Added light on a square, from a radial paint: the lens glow and the pool.
+    const softLight = (stops, ring) => {
+      const canvas = document.createElement("canvas"); canvas.width = canvas.height = 128;
+      const paint = canvas.getContext("2d"), gr = paint.createRadialGradient(64, 64, 0, 64, 64, 62);
+      for (const [at, rgba] of stops) gr.addColorStop(at, rgba);
+      paint.fillStyle = gr; paint.fillRect(0, 0, 128, 128);
+      if (ring) { paint.strokeStyle = ring; paint.lineWidth = 3; paint.shadowColor = ring; paint.shadowBlur = 6; paint.beginPath(); paint.arc(64, 64, 44, 0, TAU); paint.stroke(); }
+      const image = new Image(); image.src = canvas.toDataURL("image/png");
+      const g = BL.models.panel({ tilesX: 1, tilesY: 1, color: "#000000" });
+      g.castShadow = false; g.cutawayPreserve = true;
+      g.imageSurface = { asset: { width: 128, height: 128, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 1.6 };
+      return g;
+    };
+    const buildFinishLights = () => {
+      if (finishLit.holder || !BL.models?.panel || !BL.cloudHopperSky.farBlimp) return;
+      const h = finishLit.holder = createNode({ sightHidden: true, visible: false });
+      addChild(root, h);
+      const cone = spotCone(), lens = softLight([[0, "rgba(255,250,235,1)"], [0.2, "rgba(255,215,140,0.75)"], [0.55, "rgba(255,190,110,0.18)"], [1, "rgba(255,180,100,0)"]]);
+      const pool = softLight([[0, "rgba(255,248,230,0.7)"], [0.35, "rgba(250,240,215,0.42)"], [0.65, "rgba(235,236,250,0.14)"], [1, "rgba(220,230,255,0)"]]);
+      const rand = BL.math.mulberry32(5150), roam = Math.min(34, (ctx.mainlandRadius || 60) * 0.45);
+      for (let k = 0; k < BLIMPS; k++) {
+        const b = createNode({ geometry: BL.cloudHopperSky.farBlimp(k % 4), sightHidden: true, scale: { x: 1.6, y: 1.6, z: 1.6 } });
+        const c = createNode({ geometry: cone, sightHidden: true, visible: false }), l = createNode({ geometry: lens, sightHidden: true, visible: false, scale: { x: SPOT.lens, y: SPOT.lens, z: SPOT.lens } });
+        const p = createNode({ geometry: pool, sightHidden: true, visible: false, rotation: { x: -Math.PI / 2, y: 0, z: 0 } });
+        addChild(h, b, c, l, p);
+        // Where it hovers (round the island, a quarter turn apart), the slow drift about there, and the sweep of its
+        // spot over its own part of the island: each two sines of its own rates and phases.
+        const a = (k + 0.15 + rand() * 0.2) / BLIMPS * TAU, r = 18 + rand() * 8;
+        finishLit.blimps.push({ b, c, l, p, k, hx: Math.cos(a) * r, hz: Math.sin(a) * r, hy: 28 + rand() * 9, out: 25 + rand() * 20, back: 55 + rand() * 25,
+          drift: [0.05 + rand() * 0.05, 0.04 + rand() * 0.05, rand() * TAU, rand() * TAU],
+          // The first keeps its spot on the banana pile, swaying a little round it; the others roam.
+          sweep: k === 0 ? [0, 0, 0.8, 0.3, 0.23, 0, 1.3] : [Math.cos(a) * roam * 0.45, Math.sin(a) * roam * 0.45, roam * (0.35 + rand() * 0.2), 0.11 + rand() * 0.07, 0.08 + rand() * 0.07, rand() * TAU, rand() * TAU] });
+      }
+    };
+    const updateFinishLights = () => {
+      if (!finishLit.holder) return;
+      const on = level.id === 5 && (phase === "running" || phase === "won") && !!actor;
+      finishLit.holder.visible = on;
+      if (!on) { if (ctx.pileGlow) ctx.pileGlow(0); return; }
+      const t = displayTime, gx = liftGoal.x, gz = liftGoal.z, base = ctx.pileTop() - 0.4;
+      finishLit.holder.position.x = gx; finishLit.holder.position.y = base; finishLit.holder.position.z = gz;
+      // In over the island as the rider nears: from far off to hovering over it as it comes from FINISH_NEAR to two
+      // thirds of that; then the spots come on over the next stretch.
+      // Waiting beyond the island from the start, on its far side from the way the course comes in (so none is ever
+      // behind the rider), and drifting slowly in over it as the rider comes from FINISH_WAIT to FINISH_HOVER away.
+      const a = actor.root.position, d = Math.hypot(a.x - gx, a.z - gz), arrive = Math.max(0, Math.min(1, (FINISH_WAIT - d) / (FINISH_WAIT - FINISH_HOVER)));
+      const away = Math.hypot(start.x - gx, start.z - gz) || 1, ux = (gx - start.x) / away, uz = (gz - start.z) / away;
+      const lamp = Math.max(0, Math.min(1, (FINISH_NEAR * 0.75 - d) / (FINISH_NEAR / 4))), ease = arrive * arrive * (3 - 2 * arrive), lit = lamp * lamp * (3 - 2 * lamp);
+      // The eye in the holder's frame (last frame's), so a beam the camera comes into hides rather than fill the view.
+      const M4 = BL.math.mat4, inv = finishLit.inv, eye = finishLit.eye;
+      M4.invert(inv, finishLit.holder.world); M4.transformPoint(eye, inv, camera.position.x, camera.position.y, camera.position.z);
+      for (const bl of finishLit.blimps) {
+        const [w1, w2, p1, p2] = bl.drift, b = bl.b;
+        const hx = bl.hx + Math.sin(t * w1 + p1) * 5, hz = bl.hz + Math.sin(t * w2 + p2) * 5;
+        const r = Math.hypot(bl.hx, bl.hz) || 1, wx = bl.hx + bl.hx / r * bl.out + ux * bl.back, wz = bl.hz + bl.hz / r * bl.out + uz * bl.back;
+        b.visible = true;
+        b.position.x = wx + (hx - wx) * ease; b.position.z = wz + (hz - wz) * ease;
+        b.position.y = bl.hy + (1 - ease) * 8 + Math.sin(t * 0.4 + bl.k) * 0.8;
+        // Side on to the island while it waits, then turning with its drift once over it.
+        b.rotation.y = Math.atan2(wz, -wx) * (1 - ease) + Math.atan2(-Math.cos(t * w1 + p1) * w1, Math.cos(t * w2 + p2) * w2) * ease;
+        const show = lit > 0.01;
+        bl.c.visible = bl.l.visible = bl.p.visible = show;
+        if (!show) continue;
+        // Where its spot lands now, on the ground there; the cone from the lens under the gondola to it.
+        const [cx, cz, roam, s1, s2, q1, q2] = bl.sweep, tx = cx + Math.sin(t * s1 + q1) * roam, tz = cz + Math.sin(t * s2 + q2) * roam;
+        // The banana spot's pool lies on the ground under the pile, which hides its middle: the pile itself is what it
+        // lights (`pileGlow`), the pool only a warm glow round its foot.
+        const ground = (ctx.groundAt ? ctx.groundAt(gx + tx, gz + tz) : base) - base + 0.15;
+        if (bl.k === 0 && ctx.pileGlow) ctx.pileGlow(0.45 * lit);
+        const lx = b.position.x, ly = b.position.y - 3.6, lz = b.position.z;
+        const dx = tx - lx, dy = ground - ly, dz = tz - lz, flat = Math.hypot(dx, dz), len = Math.hypot(flat, dy);
+        bl.c.position.x = bl.l.position.x = lx; bl.c.position.y = bl.l.position.y = ly; bl.c.position.z = bl.l.position.z = lz;
+        bl.c.rotation.y = Math.atan2(-dz, dx); bl.c.rotation.z = Math.atan2(dy, flat);
+        bl.c.scale.x = len; bl.c.scale.y = bl.c.scale.z = len * lit;
+        // How near the eye is to the beam's axis, along its length: within NEAR of it the cone is hidden.
+        const ex = eye[0] - lx, ey = eye[1] - ly, ez = eye[2] - lz, along = Math.max(0, Math.min(len, (ex * dx + ey * dy + ez * dz) / (len || 1)));
+        bl.c.visible = Math.hypot(ex - dx / (len || 1) * along, ey - dy / (len || 1) * along, ez - dz / (len || 1) * along) > 2.5 + along * SPOT.spread;
+        // The lens glow faces down the beam; the pool lies on the ground, as wide as the cone there.
+        bl.l.rotation.y = Math.atan2(dx, dz); bl.l.rotation.x = -Math.atan2(dy, flat) + Math.PI;
+        bl.l.scale.x = bl.l.scale.y = bl.l.scale.z = SPOT.lens * (0.4 + 0.6 * lit);
+        bl.p.position.x = tx; bl.p.position.y = ground; bl.p.position.z = tz;
+        bl.p.scale.x = bl.p.scale.y = bl.p.scale.z = Math.max(SPOT.pool, len * SPOT.spread * 2.2) * (bl.k === 0 ? 1.8 : 1) * lit;
+      }
+    };
     const postUpdate = () => {
       // Swept up by a tornado, the Ooga spins round over its top behind the DQ card too, until a replay or exit.
+      if (level.id === 5) { buildFinishLights(); updateFinishLights(); }
       if (swept >= 0) { sweepStep(); return; }
       if (turning >= 0 && phase === "running" && turnStep()) return;
       if (warping >= 0 && phase === "running") { warpStep(); return; }
@@ -1660,8 +1804,10 @@
       }
       if (phase !== "lifting" && phase !== "ready" && phase !== "running") return;
       // Keep the finish readable from the clouds, anchored to the live pile
-      // rather than the course's fixed camera-framing point.
-      const point = ctx.renderer.project(liftGoal.x, ctx.pileTop() + 0.35, liftGoal.z, targetScreen);
+      // rather than the course's fixed camera-framing point, where it is drawn (turned with the island once the world
+      // has turned over).
+      shown(liftGoal.x, ctx.pileTop() + 0.35, liftGoal.z, goalShown);
+      const point = ctx.renderer.project(goalShown.x, goalShown.y, goalShown.z, targetScreen);
       const size = ctx.renderer.size;
       if (!point || point.x < 0 || point.x > size.width || point.y < 0 || point.y > size.height) return;
       const x = Math.round(point.x), y = Math.round(point.y);
@@ -1686,6 +1832,7 @@
       c2.restore();
     };
     const dispose = () => {
+      if (finishLit.holder) removeChild(root, finishLit.holder);
       cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); for (const t of tornadoes) t.dispose(); gust.dispose();
       audio.dispose();
       document.removeEventListener("visibilitychange", onVisibility);
@@ -1776,6 +1923,10 @@
       // Flipside's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
       get turn() { return turn; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
+      // Flipside lights its finish: 1 asks the hub to light the island's own lamps and lanterns once the world has turned.
+      get finishLights() { return level.id === 5 ? 1 : 0; },
+      // Where the banana pile stands, for debugging.
+      get goal() { return liftGoal; },
       // Where a rescued fall from the gust is put back, for the tests.
       get checkpoint() { return checkpoint; },
       // The wind lift's last aim: the landing, where its middle was to be as the rider came down, and the flight's time.
