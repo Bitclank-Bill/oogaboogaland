@@ -366,8 +366,8 @@
     }
     throw Error("No desert plant "+kind);
   };
-  // Every plant (never a rock) grows at twice the size of the species models; spacing and solids follow the size.
-  const GROWTH=2;
+  // Every plant (never a rock) grows at 1.6 times the size of the species models; spacing and solids follow the size.
+  const GROWTH=1.6;
   const BLOCKING=new Set(["saguaro","organ","ocotillo","yucca","pear","pearPurple","agave0","agave1"]);
   const layout=(r,side,lite,avoid)=>{
     const rand=BL.math.mulberry32(side>0?4421:9133),W=r.w/2,L=r.d/2-1.0,trees=treesOf(r),C=BL.pokerCathedral,placed=[];
