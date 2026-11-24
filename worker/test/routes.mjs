@@ -18,6 +18,8 @@ import * as cpuModel from "../src/cpu-model.js";
 import { PAGE } from "../src/inspect-page.js";
 import * as equipmentModel from "../src/equipment-model.js";
 import { equipmentHatArchive, equipmentHats } from "../src/equipment-hats.js";
+import { equipmentWardrobe } from "../src/equipment-wardrobe.js";
+import { revokeChats } from "../src/chat-revoke.js";
 
 const load = (name, dependencies, exports) => {
   const url = new URL(`../src/${name}.js`, import.meta.url);
@@ -41,10 +43,10 @@ anthropic = class { constructor() { throw new Error("Unexpected Claude call"); }
     catalogFor: () => catalog || ({ read: async () => ({ revision: "fixture", generation: 0, rows: cast }), fresh: () => true }),
     createOwnedCharacterLookup: (rows) => createOwnedCharacterLookup(rows, lookup) }, ["contributorFor", "contributorForEnv", "contributorDecision"]);
   const http = load("http", { ...cookies, ...db, ...access, oogatron }, ["json", "text", "redirect", "fromSite", "safeNext",
-    "clientIp", "allowed", "sessionToken", "getSessionFromRequest", "getSessionForRemoval", "readBody"]);
-  const auth = load("auth", { ...cookies, ...crypto, ...db, ...http, ...access, oogatron, fetch: fetcher }, ["handleAuth"]);
-  const api = load("api", { ...cookies, ...db, ...http, ...equipmentModel, turnConfigured, GAME_KINDS }, ["handleApi"]);
-  const equipment = load("equipment", { ...http, ...crypto, ...equipmentModel, equipmentHatArchive, equipmentHats }, ["handleEquipment", "handleEquipmentCatalog", "handleEquipmentHat", "createEquipmentHandler"]);
+    "clientIp", "allowed", "sessionToken", "getSessionFromRequest", "getSessionForRemoval", "readBody", "serviceSession", "asPlayer"]);
+  const auth = load("auth", { ...cookies, ...crypto, ...db, ...http, ...access, oogatron, revokeChats, fetch: fetcher }, ["handleAuth"]);
+  const api = load("api", { ...cookies, ...db, ...http, ...equipmentModel, turnConfigured, GAME_KINDS, revokeChats }, ["handleApi"]);
+  const equipment = load("equipment", { ...http, ...crypto, ...equipmentModel, equipmentHatArchive, equipmentHats, equipmentWardrobe }, ["handleEquipment", "handleEquipmentCatalog", "handleEquipmentHat", "handleWardrobeCatalog", "createEquipmentHandler"]);
   const donations = load("donations", http, ["handleDonations"]);
   const tess = load("tess", { ...http, Anthropic: anthropic, FACTS: facts, RULES }, ["handleTess", "pruneTess", "ask", "RESERVE"]);
   const replayStore = load("cloud-hopper-replay-store", {}, ["winnerSQL", "liveSQL", "winnerReplay", "pruneCloudHopperReplays"]);

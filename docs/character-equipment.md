@@ -1,12 +1,13 @@
-# Live character hats
+# Character equipment: hats and the wardrobe
 
-Implementation issue: [#839](https://github.com/OogaBoogaX/oogaboogaland/issues/839).
+Implementation issues: [#839](https://github.com/OogaBoogaX/oogaboogaland/issues/839) (hats) and
+[#868](https://github.com/OogaBoogaX/oogaboogaland/pull/868) (the wardrobe beside them).
 
-This first equipment flow lets a player try the existing contributor hats in
-the character studio and save one for their own account. Hats are freely
-available. The HQ store and purchases will use the same equipment path later.
-This work builds on the independent character catalog stack and starts on
-staging; it does not enable production.
+A signed-in player tries what the contributors' Oogas wear in the character
+studio and saves a look for their own Ooga: a hat, and a piece for every other
+slot (see [The wardrobe](#the-wardrobe)). Everything is freely available. The HQ
+store and purchases will use the same equipment path later. Staging and
+production both enable it.
 
 ## Content and ownership
 
@@ -66,12 +67,190 @@ nothing changed. New clients can load either archive format. An older client
 that cannot load the new format keeps its old selection; refresh the page before
 accepting a newly published format-2 version.
 
-The Studio uses one credited radio row for identical current choices. Its original
-row stays selectable above a native **Variants** disclosure; forks can have their
-own nested variants. Restoring a saved variant opens its ancestors. Selecting a
-shared row preserves an already-saved member's exact item/version and update
-stream. A saved historical version stays available while trying other hats.
-The bounded, scrollable list leaves sizing and Save controls reachable on phones.
+The Studio lists the hat in the hat tile's editor beside every other slot (see [The
+wardrobe](#the-wardrobe)): one dropdown option for identical current choices, its
+creators in the option's tooltip and under the dropdown, and each fork as an
+indented option under its original, a fork's own forks indented again. Selecting
+a shared option preserves an already-saved member's exact item/version and update
+stream. A saved historical version stays available, as an option of its own,
+while trying other hats.
+
+## The wardrobe
+
+Beside the hat, an Ooga wears a body and something in each of these slots, in the
+studio's order: body, height, pet, skin, hair colour, eye colour, hair, eyes, glasses, mask, mouth, beard, shirt, gloves, belt, pants,
+shoes, back (wings, capes and what else is built out past the trunk) and its
+primary weapon. `src/js/equipment-wardrobe.js` is the contract, shared unchanged
+by the page, the Worker and the authoring script: the slots (`SLOTS`), what a
+piece is as data in each, which authored block belongs to which body slot
+(`regionOf`), and a saved wardrobe's shape.
+
+A piece is data read from a character's own design, never a hook: blocks for the
+hair, the glasses and the body slots (in the character's own colours, or the
+wearer's skin, hair or fur by name), traits for the eyes and the mouth, a colour
+for the beard and for the skin, hair and eye colours, and a mesh for the mask and
+the weapon. Identical pieces are one
+item credited to everyone whose Ooga wears it, and the stock outfit's pieces are
+credited to the project. An item is named by its content's hash: a creator's
+later change makes a new item, and the old one stays registered, retired, for
+whoever wears it. There is no update offer for wardrobe pieces; choosing the
+piece again in the studio wears the current one.
+
+The studio shows a tile for each slot, two to a row: its pixel mark and its name,
+in the accent colour when something other than the Ooga's own is worn there.
+Choosing a tile opens its editor across the grid under that tile's row: a dropdown
+showing what is worn, who made the piece and, for the hat and the mask, a size. The
+colours have no tiles: the skin's is in the body's editor, the hair colour in the
+hair's and the eye colour in the eyes'.
+Each dropdown starts with **Original look** (the character's own) and, where an
+Ooga can go without one, the slot's none (**Bald**, **Clean-shaven**, **No shirt**,
+**Barefoot**…). The foot counts unsaved changes beside **Save my look**, which
+saves the hat and the whole wardrobe at once, and its **Reset** puts the saved look
+back on. The signed-in account row's **My look** opens the studio on the player's own Ooga.
+
+The body wears the pieces by building its character again with them as data
+(`models.js` `templateFor`, keyed by what is worn) and giving each of its nodes the
+geometry of the same node in that build (`src/js/character-wardrobe.js`): the
+character's own hooks run as ever, nobody else's do, and nodes, poses, gear,
+controls and companions keep their identities. A build takes a few milliseconds
+and is cached. A mask is a node of its own on the head, as a hat is, and the
+hat is lifted off while the head changes under it and put back on.
+
+Where a character shaped a part itself, that slot keeps its look: the head slots
+need the stock head (no `skull`, `hat`, `crown`, `eyes`, `mark`, `refine` or
+`model` hook), a beard and a mouth the regular build's face, the body slots a
+body the character does not model, the mask a head it did not shape, and the
+weapon a hand without a nunchaku. The studio says so on the row.
+
+The body is the build an Ooga is drawn in: **Male** or **Female** (the regular and
+slim builds), each also **lean** (a narrower trunk, thinner limbs, and on the male build smaller feet) or **big-boned**
+(a bigger, softer frame: the waist filled out, the chest's step and the limbs'
+swells evened, the arms only a little thicker, sloped shoulders domed over the top (`dome`, extra rings between
+the trunk and the shoulder, and the arm topped by a round cap), corners rounded off, no kneecap or line down the
+breastbone; its nipples stay, on the chest's flat face), the shapes in
+`hero-body.js` `SHAPES`. Every body has a crotch under the trunk
+between them in what the thighs wear, so trousers read as one garment; over bare thighs it
+is bare, so shorts end flat at their own hem. Under its foot every trunk tapers in over
+`SEAT` to the tops of the thighs (straight down a little first, `SEAT_BAND`, then sloping in), in
+what the thighs wear, or over bare thighs what the hips wear, so the seat slopes to the legs
+rather than standing square over them; this reaches every Ooga's own look. A build without a shape keeps its own
+crotch exactly. The regular (male) build's trunk widens a little toward its foot, so its
+thighs meet the trunk's sides there rather than standing out past it; this reaches every
+male Ooga's own look. On every build and shape a belt goes round the trunk's own rings a
+snug `BELT_OUT` proud of them, and a skirt under it hangs from the trunk's ring there
+(`SKIRT_OUT`), so both lie flat on the hips. A shape fits its legs to the trunk's foot
+(`buildOf`): where its thighs would stand out past it, the whole leg is drawn smaller and the
+legs closer together (`THIGH_IN` inside the trunk's sides, the build's own gap between the
+thighs); a shape with a `legGap` (the big-boned male) draws its legs larger instead, `legGap`
+apart, until their outsides meet the trunk's sides. Either way the feet keep their length and
+narrow only as far as they must not to meet (`FEET_GAP`). The big-boned female's thighs are
+thicker (`slimThigh`) so her legs fill her waist.
+
+A male (regular) build's shins are drawn `SHIN` (0.9) units longer (`hero-body.js`): the
+leg is stretched between `SHIN_RAMP`, under the knee and above any boot, and what is put on
+the leg below (a boot, its foot, anklets, toes, a model's boot bands) goes down whole, never
+taller. Every male Ooga stands about 3.5% taller; its hip
+(`cave.hip`), eyes and root follow, and a body swap between builds moves the root so the
+feet stay on the ground.
+
+What a model merges onto the limbs it was handed (`wear()`: a boot's bands, a cuff, the
+legs of shorts) is fitted to the worn limb automatically (`heroBody.refit`): the surface
+of the limb its own build would have handed and of the worn one are read at each height,
+and a detail keeps its share of the way out inside the surface and its distance past it
+outside, so midy-machete's boot bands stand on a male boot as on hers. midy-machete's shorts run
+straight down at the trunk's width, and their legs are fitted with her boots.
+
+A file draws for its own build, so a worn build moves what it drew to the same place on
+the new one. `trunk()` lines a height up between the two by their hips, belt and
+shoulders (`from`, `to`, and `own`, the file's own build's trunk), so a garment drawn at
+heights read off its own body (midy's belt, the hem of her top) sits where it did. What a
+hook hung on the trunk (`models.js`, after the model) moves the same way, measured by
+where its mesh shows: up or down with the heights, out to the worn side (midy's bag),
+and out with the worn front, back or belt (SatsMason's pockets). A shape never changes height, hands, feet or the
+head; the height is its own slot (below).
+Everything drawn on the body (worn pieces, belt, skirt, strap, cuffs, boots, what a
+hook laid on the trunk) is drawn on the shape's own rings, so it fits them. The swap
+also moves each part the new build stands differently (a female build's arms and
+legs) where the crew has not posed it away, and the crew measures the body's girth
+again. A female build's face takes no beard or mouth piece. A character that models
+its own body keeps its build and height until its model has been reviewed in every
+build, shape and height (`character-wardrobe.js` `REVIEWED_BODIES`, all seven today).
+While a model is built, `hero-body.js` gives its `trunk()` and `build()` the build
+being worn (`dressed`), whatever build the file names, so a garment laid on the trunk
+(YellowBrokeIt's tank top, rules-without-rulers' straps, midy-machete's top) and a
+body built by hand (tiffanyvarty) follow it. A new character that models its body is
+added to the list once it has been drawn in every combination.
+
+The height is a slider under the body's dropdown, read out in metres from the Ooga's
+feet to its crown: any whole hundredth of the game's height from 0.80 to 1.20
+(`equipment-wardrobe.js` `HEIGHT`; the cast's own heights run from 0.8 to 1.16),
+saved as `{ item: "custom", version: null, height: 80..120 }`, and the Ooga's own
+height is Original. The body is built again at that height, pieces and all, and
+stands on the same feet: the swap moves its hip (`baseY`), eyes (`headOffset`) and
+`traits.height`, and the crew measures again what it hung on the body (the gun's
+flash, the stun birds, a worn jetpack, its height and girth); another player's copy
+reads its hip and height from the body. A pet keeps the size its file built it at,
+whatever height its Ooga is worn at: the swap leaves the pet's node alone and keeps it
+on the ground (the crew's `pet.lift` follows the hip).
+
+The Pet section, shown only for an Ooga with a pet (`parts.dog`), sets the pet's own
+height, read out in metres: any whole per cent from 50 to 150 of the height its file
+builds it at (`equipment-wardrobe.js` `PET`),
+saved as `{ item: "custom", version: null, size: 50..150 }` and set as the pet node's
+scale (with its lying-down drop), so it builds nothing again.
+
+The colour slots take a swatch from a short palette, the character's own colour
+(the first swatch), or any colour from the wheel at the end of the swatches or typed
+as a hex (saved as `{ item: "custom", version: null, color: "#rrggbb" }`, lower
+case; only the skin, hair and eye colours take one). **Skin** and **Hair color**
+recolour whatever the body paints in the wearer's skin or hair, and **Eye color** gives a stock head an iris in that
+colour (a head the character shaped itself takes it as its eyes' colour). A
+character that models its own body keeps its skin and hair, and one with its own
+eyes hook keeps its eyes.
+
+Taking a piece off leaves the body's own shape bare: its blocks turn skin, a
+belt's turn the cloth over (or under) it, and only what was built out past the
+trunk goes, so a row never reads another slot's blocks.
+
+`scripts/equipment-wardrobe.mjs --author` (maintainer only) runs the character
+files in a sandbox, as the hat's script does, and writes each piece under
+`src/equipment/wardrobe/<hash>.json` with `catalog.json`; `labels.json` holds the
+reviewed names of pieces whose generated name says too little. Every build checks
+the committed pieces against their hashes and writes `equipment-wardrobe.gen.js`
+(the registry, in the page and the Worker) and `equipment-wardrobe-data.gen.js`
+(the pieces, about 0.7 MB, in their own deferred `wardrobe` chunk, fetched the
+first time a body on the page wears one, in the studio the first one previewed).
+
+### The equipment pipeline
+
+New pieces reach the studio through `.github/workflows/equipment-pieces.yml`, which runs
+after every push to `rock` that touches a character file or the equipment data (and by hand).
+Its first job runs `node scripts/equipment-pieces.mjs --author`: the wardrobe's authoring
+above, in the sandbox, with a read-only token and no secrets, plus the hats' source check.
+Its second job takes only the authored data (`--apply`: piece files named by their hash, the
+catalog and `labels.json`; an existing piece is never replaced), checks it as every build
+does without running any character's code, and opens or refreshes one PR from
+`automation/equipment-pieces` listing the new, retired and renamed pieces. A maintainer
+reviews the pieces in the studio, gives any generic name ("X's shirt") a reviewed one in
+`labels.json` on that branch, and merges. While the PR is open the next run keeps the names
+added, changed or taken away on the branch and takes every other name from rock (`--labels`). With nothing new the
+open PR closes.
+
+Hats are never published there. Each reviewed hat is built on its own, and any that draws
+something new, no longer builds, or a character's hat hook no reviewed definition names is
+listed in one issue, "Equipment: hats waiting on a maintainer" (and in the PR when there is
+one), which closes by itself once no hat is waiting. Publishing a hat offers its wearers
+an update, so a maintainer decides, as under "Updating an authored hat" below, and a new hat
+must pass the apple fitting check in `worker/test/equipment-hats.test.mjs` first.
+
+The wardrobe is kept in `player_equipment.wardrobe` (migration
+`0014_player_wardrobe.sql`), checked JSON under the hat's revision, so a save of
+either is one compare-and-swap. `PUT /api/equipment` takes `wardrobe` beside any
+hat change or alone (null wears the character's own look); an older page's
+hat-only save keeps it. Equipment messages and snapshots carry it. A page that
+does not know an item treats its slot as the character's own look rather than
+refusing the rest. `/api/equipment/wardrobe/catalog` lists every piece ever
+published, and the release preflight refuses a target missing one.
 
 ## Updating an authored hat
 
@@ -96,7 +275,8 @@ node scripts/equipment-hats.mjs --check-sources
 This read-only command loads the allowlisted character files and extracts their
 hat geometry using the current model helpers. Its JSON lists `sourceChanged`
 (whole-file provenance differs) separately from `geometryChanged` (extracted
-geometry differs from the published current version). Only geometry drift gives
+geometry differs from the published current version) and `failed` (a listed
+creator's file no longer builds its hat). Only geometry drift or a failed build gives
 exit status 1; an unrelated character edit can change provenance without changing
 a hat. Normal builds and contributor CI do not run this source-executing check.
 The `sources` hashes in `catalog.json` record the files used at the last explicit
@@ -150,8 +330,8 @@ including mutually visible main-world zones. Arrivals and reconnects receive
 current state, and stale updates cannot replace newer equipment. Pose handling
 performs no equipment storage reads.
 
-Open the hosted studio at `/?scene=studio`, sign in, select a hat and press
-**Save hat for my Ooga**. **Hat size** normally previews 80–120% of the reviewed fitting;
+Open the hosted studio at `/?scene=studio` (or **My look** in the account row),
+sign in, open the hat's row, choose a hat and press **Save my look**. **Hat size** normally previews 80–120% of the reviewed fitting;
 **Reset fitted size** returns to 100%. Both remain previews until Save. The
 percentage scales the hat uniformly around its fitting point (the center for
 the space helmet), reusing the attachment and geometry. A different hat starts
@@ -202,7 +382,7 @@ Migration `0013_player_equipment_size.sql` adds the validated size, defaulting
 existing choices to 100. An older Worker can still update the other columns.
 There is no purchase history or paid inventory in this iteration.
 
-Staging sets `EQUIPMENT_ENABLED=1`; production keeps it `0`. The staging workflow
+Staging and production set `EQUIPMENT_ENABLED=1`. The staging workflow
 has an explicit `catalog_preview` dispatch option so this draft can use the
 catalog-aware handoff without changing repository-wide automatic release flags.
 Turning equipment off hides account saving and live updates while keeping stored

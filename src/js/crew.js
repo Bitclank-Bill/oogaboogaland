@@ -256,8 +256,11 @@
   const RIDE_HEAD = math.quat.create(), RIDE_TURN = math.quat.create(), RIDE_SPIN = math.quat.create(), RIDE_MATRIX = math.mat4.create();
   const hatSeatOf = (cave) => {
     const head = cave.parts.head, dog = cave.parts.dog, equipment = BL.characterEquipment;
-    const selected = equipment?.selection(cave), key = !selected ? "authored" : selected.item === "none" ? "none"
+    const selected = equipment?.selection(cave);
+    let key = !selected ? "authored" : selected.item === "none" ? "none"
       : selected.item + ":" + selected.version + ":" + equipment.size(cave);
+    const wardrobe = BL.characterWardrobe?.wearing(cave);
+    if (wardrobe) key += "|" + wardrobe;
     let seats = HAT_SEATS.get(cave.headOpen);
     if (!seats) HAT_SEATS.set(cave.headOpen, seats = new Map());
     let seat = seats.get(key);
@@ -329,6 +332,32 @@
   // Equipment changes are events, not frame work. Keep the pet's loop phase, quaternion and leap state while
   // measuring the newly visible headwear; clones with the same version and size share the bounded cached seat.
   const refreshHatRide = (cave) => { if (cave.pet?.ride) cave.pet.ride.seat = hatSeatOf(cave); };
+  // A worn wardrobe (character-wardrobe.js) gave this body new geometry: what was measured from the old is measured again.
+  const refreshBody = (cave) => {
+    if (cave.clubSlingProfile) cave.clubSlingProfile = clubSlingProfile(cave.parts.club.geometry);
+    if (cave.meleePoints) cave.meleePoints = meleeExtremes(cave.parts.club.geometry);
+    if (cave.clubTorsoBounds) cave.clubTorsoBounds = BL.scene.boundsOf(cave.parts.torso.geometry);
+    if (cave.bodyRadius !== undefined) { BL.scene.updateWorld(cave.root); cave.bodyRadius = bodyRadiusOf(cave); }
+    if (cave.slingRoll !== undefined) cave.slingRoll = undefined;
+    if (cave.pet?.ride) { cave.pet.ride.seat = hatSeatOf(cave); cave.pet.ride.stomach = stomachSeatOf(cave); }
+    // At a new height what the crew hung on the body at its old one stands where it would at this one.
+    const h = cave.traits.height;
+    // Measured on the build at rest, feet at 0, so neither the ground under the body nor its pose counts.
+    if (cave.bodyHeight !== undefined) cave.bodyHeight = bodyHeightOf(cave.template);
+    const flash = cave.parts.gunFlash;
+    if (flash) { flash.position.y = GUN_MUZZLE_Y * h; flash.position.z = 0.695 * h; flash.scale.x = flash.scale.y = flash.scale.z = h; }
+    const birds = cave.stunBirds;
+    if (birds) {
+      birds.position.y = cave.headOffset + 0.42 * h;
+      birds.children.forEach((bird, i) => { const angle = i / 3 * Math.PI * 2; bird.position.x = Math.sin(angle) * 0.34 * h; bird.position.z = Math.cos(angle) * 0.34 * h; bird.scale.x = bird.scale.y = bird.scale.z = h; });
+    }
+    // A worn jetpack, the crew's or another player's copy (remote-players.js `presentationJet`), at its new height.
+    for (const jet of [cave.jet, cave.presentationJet]) {
+      if (!jet || jet.node === cave.parts.jetpack) continue;
+      jet.node.position.y = 0.06 * h + (jet === cave.jet ? cave.viewLift || 0 : 0); jet.node.position.z = -0.18 * h; jet.node.scale.x = jet.node.scale.y = jet.node.scale.z = h;
+      seatJetpack(cave, jet.node, jet.node.geometry, jet);
+    }
+  };
   // Trots the pet `dt` along its loop (not under Calm) and stands `node` there: `m` is the head's matrix in the node's
   // parent frame, so the pet keeps to the hat through every turn and tilt of the head. Writes in place; allocates nothing.
   const poseHatRide = (ride, node, m, dt) => {
@@ -1653,7 +1682,7 @@
       // haft to where it rests on it. A remote copy has no `stick` and goes by its idle time.
       const move = w.stick === undefined ? clamp((w.axeIdle - AXE_STICK_DELAY) / AXE_STICK_BLEND, 0, 1) : w.stick, stick = ease.inOutQuad(move);
       // The shoulder's height over the ground, less what a body sitting on the ground is lowered by.
-      const elbow = cave.elbow, arm = parts.armR.rotation, shoulder = HIP * h - (cave.restLower || 0) + parts.armR.position.y;
+      const elbow = cave.elbow, arm = parts.armR.rotation, shoulder = (cave.hip || HIP * h) - (cave.restLower || 0) + parts.armR.position.y;
       // The elbow's distance from the shoulder, and how far behind straight down it hangs.
       const armK = cave.armScale, reach = Math.hypot(elbow.y, elbow.z) * armK, fore = elbow.length * armK, lean = Math.atan2(-elbow.z, -elbow.y);
       const pitch = lerp(STICK_HANG, Math.PI / 2, stick);
@@ -8298,5 +8327,5 @@
       }
     };
   };
-  BL.crew = { create, createPets, hatRide, refreshHatRide, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, poseGroundSit, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, createPets, hatRide, refreshHatRide, refreshBody, poseHatRide, poseStomachRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, VISUAL_BODY, GAIT, poseGait, poseCloseWalk, poseGroundSit, seatJetpack, jetSparks, preparePresentation, poseEquipment, poseReload, reachArm, strikeTime, bodyHeightOf, bodyRadiusOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, COMPANION_FOLLOW, QUAD_GAIT, poseQuadruped, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_PUFF, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();
