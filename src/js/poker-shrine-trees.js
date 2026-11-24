@@ -5,7 +5,8 @@
   const bark=["#624a37","#70553e","#795e47","#83684c","#8d7052","#977956"].map(c=>BL.math.hexToRgb(c));
   const lining=["#6e4328","#513021","#301e18","#251916","#4e2819"].map(c=>BL.math.hexToRgb(c));
   const ember=["#99552d","#be6833","#b95826","#a34c22"].map(c=>BL.math.hexToRgb(c));
-  const leafTones=["#974522","#b45123","#ca6127","#df732a","#ee8a35","#f4a247","#f9b969"].map(c=>BL.math.hexToRgb(c));
+  // Shades of Bitcoin orange (#f7931a): darkened toward the inner leaves, tinted toward the sunlit tips.
+  const leafTones=["#995b10","#b76d13","#d78017","#f7931a","#f8a23a","#f9b15a","#fac07a"].map(c=>BL.math.hexToRgb(c));
   const relicY=.425, plaqueY=.21, trunkGirth=1.65, branchGrowth=1.5;
   // The bole uses a shared three-way bark atlas. Short broken ridges stand proud of the darker fissures.
   const barkAtlas=M.cached(()=>{
