@@ -27,7 +27,7 @@
     // Each lecture of the Lecture Hall's course, a group of its own (lecture-btc.js names them a to n).
     ...Object.fromEntries([..."abcdefghijklmn"].map((k, i) => [`lecture-btc-${k}`, () => !!(BL.lectures && BL.lectures.get(`btc-${String(i + 1).padStart(2, "0")}`))])),
     // HALLOWEEN: the arcade's ghost hunt, and each track of its playlist.
-    halloween: () => !!BL.halloween, ...Object.fromEntries(["boss", "colt", "martial", "nightmare", "synthed", "nr"].map((k) => [`halloween-track-${k}`, () => !!(BL.ghostMusic && BL.ghostMusic[k])])),
+    halloween: () => !!BL.halloween, "chats-fixture": () => !!BL.oogaChatFixtures, ...Object.fromEntries(["boss", "colt", "martial", "nightmare", "synthed", "nr"].map((k) => [`halloween-track-${k}`, () => !!(BL.ghostMusic && BL.ghostMusic[k])])),
     // The Ember Den's lounge playlist, a group a track (poker-audio.js fetches each as it comes up).
     ...Object.fromEntries(["lobby", "cool", "venus", "bossa"].map((k) => [`lounge-track-${k}`, () => !!(BL.loungeMusic && BL.loungeMusic[k])])) };
   // Only scene implementation groups depend on a base group, and the Timechain rooms on the Block Party's radio, which
