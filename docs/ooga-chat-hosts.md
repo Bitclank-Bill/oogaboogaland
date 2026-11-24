@@ -156,7 +156,7 @@ connected drops any chat the directory no longer lists, adding no timer. Pages h
 and each change goes to every page as `{ t: "chat-summary", chat, title, speakers, listeners }`, all zero when it
 ends; no page ever gets an id. The room also works out one number, how many are in chats through the app and not on the
 island, each account once however many chats it is in, again whenever a chat reports or a player joins or leaves, and
-sends it when it moves (`{ t: "chat-online", n }`, the welcome's `chatOnline`). The page (`net.js` `state.chatMembers`,
+sends it when it moves (`{ t: "chat-online", n }`, the welcome's `chatOnline`; relayed to an Ooga Chat member with `mine`, the welcome's `chatMine`, whether its own account is among the number, never anyone's id). The page (`net.js` `state.chatMembers`,
 chat id to a frozen `{ title, speakers, listeners }`, and `state.chatOnline`, emptied with the socket) lists in In Ooga Chat one button a chat (`players.js`): its title, whole and wrapping, and its counts under
 it ("3 speaking · 12 listening", a count of nobody left out: "1 speaking" while nobody listens; a chat always has its
 host as a speaker), "You're in

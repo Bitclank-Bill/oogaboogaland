@@ -51,7 +51,7 @@
     const update = (state) => {
       last = state;
       const live = state.mode === "live", who = live && state.session, signing = state.busy === "signout";
-      set(login, "hidden", !!who || signing || !live || !state.boot.features.github);
+      set(login, "hidden", !!who || signing || !live || !state.boot?.features.github);
       set(login, "disabled", !!state.busy || !state.device.online || state.auth === "checking");
       set(login, "textContent", state.busy === "github" ? PROVIDERS.github[1] : PROVIDERS.github[0]);
       attr(login, "aria-busy", String(state.busy === "github"));
@@ -75,7 +75,7 @@
       const join = joining(state, allowed, media);
       // With hosted chats, voice is a chat's, as in the Ooga Chat tab: outside one, or in one without leave to speak (asked
       // for there), nothing to join; Unmute only for a speaker.
-      const chats = !!state.boot.features.chats;
+      const chats = !!state.boot?.features.chats;
       if (chats && !speaker && !(state.room && allowed.joinVoice)) {
         set(mute, "hidden", true);
         set(voice, "hidden", true);
@@ -117,12 +117,12 @@
   };
   // With hosted chats on and no chat joined, reactions have nowhere to go: the panel's emoji bar stands down (ooga-chat.css).
   const outOfChat = (node, state) => {
-    const out = !!state.boot.features.chats && !state.room;
+    const out = !!state.boot?.features.chats && !state.room;
     if (out !== (node.dataset.chat === "none")) { if (out) node.dataset.chat = "none"; else delete node.dataset.chat; }
   };
   // The public conversation's audience, or null with hosted chats on: then `state.audience` is the chat the visitor is
   // in, whose people are no land's (a voice-only chat's too), so they are neither listed as Main Island nor counted.
-  const publicOf = (state) => state.boot.features.chats ? null : state.audience;
+  const publicOf = (state) => state.boot?.features.chats ? null : state.audience;
   // Main Island's listeners here, but the member and anyone also on the island, who are counted and listed once.
   const appListeners = (model, audience) => {
     if (!audience || audience.zone !== "main") return [];
@@ -131,11 +131,12 @@
       && !(a.id.startsWith("gh:") && model.state.players.has(Number(a.id.slice(3)))));
   };
   // Everyone online for a member: the island's players, everyone in hosted chats through Ooga Chat and not on the island
-  // (the Room's one number, as the island counts them; the member among them while in a chat), the member, who is online
-  // here in Ooga Chat even while in no chat and their Ooga not on the island (the Room lists only the island's players,
-  // worker/src/room-commons.js), and the public conversation's Main Island listeners where it still runs.
+  // (the Room's one number, as the island counts them; the member among them while any of their pages is in a chat,
+  // `chatMine`), the member, who is online here in Ooga Chat even while in no chat and their Ooga not on the island (the
+  // Room lists only the island's players, worker/src/room-commons.js), and the public conversation's Main Island
+  // listeners where it still runs.
   const onlineCount = (model, audience, inChat = false) => model.state.players.size + model.state.chatOnline
-    + (model.state.you && !model.state.players.has(model.state.you.id) && !inChat ? 1 : 0) + appListeners(model, audience).length;
+    + (model.state.you && !model.state.players.has(model.state.you.id) && !inChat && !model.state.chatMine ? 1 : 0) + appListeners(model, audience).length;
   const commonsChip = (status, model, audience, inChat) => status === "live" ? `${onlineCount(model, audience, inChat)} online` : status === "closed" ? "Closed" : "Offline";
   // Ooga Chat's own speakers in the audience's list: the ones on clouds, purple wherever a panel marks them.
   const appSpeakers = (list) => list.filter((p) => p.role === "speaker" && p.source === "app");

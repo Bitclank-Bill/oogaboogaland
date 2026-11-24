@@ -228,6 +228,19 @@ test("a woken Room keeps its members as members, never as players", async () => 
   assert.deepEqual(lines(isle).map((l) => [l.login, l.text]), [["bea", "still here"]]);
 });
 
+test("after a wake, an account at its limit still makes room from its own silent sockets", async () => {
+  // With only members here the Room hibernates between frames: the page coming back is what wakes it, and its dead
+  // sockets must not look heard from at that wake.
+  const { SILENT_MS } = await import("../src/room-commons.js");
+  const accepted = [], start = 1_800_000_000_000;
+  const first = await harness({ accepted, start });
+  const pages = [await first.member(4, "dee"), await first.member(4, "dee"), await first.member(4, "dee")];
+  const woken = await harness({ accepted, start: start + SILENT_MS + 5000 });
+  const back = await woken.member(4, "dee");
+  assert.equal(back.ws.closed, null, "the page back after a phone slept gets in");
+  assert.ok(pages.every((p) => p.ws.closed && p.ws.closed.code === 4000), "its silent sockets went");
+});
+
 test("rolled out reading first: without `commons-send` a member reads the conversation and its lines are refused, draft kept", async () => {
   const h = await harness({ features: "bridge,commons,cloud" });
   const isle = await h.player(1, "amy");
@@ -387,7 +400,13 @@ test("a member hears how many are in hosted chats through Ooga Chat, as the isla
   const { ws: first } = await h.member(4, "dee");
   assert.equal(first.sent[0].chatOnline, undefined, "no chats, no number");
   await h.room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 2, 3, ["x:9", "gh:7"]);
-  assert.deepEqual(first.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2 });
+  assert.deepEqual(first.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2, mine: false });
   const { ws: next } = await h.member(5, "eve");
-  assert.equal(next.sent[0].chatOnline, 2, "a member's welcome carries it");
+  assert.deepEqual([next.sent[0].chatOnline, next.sent[0].chatMine], [2, false], "a member's welcome carries it");
+  // Another page of dee's in a chat: dee is among the number, so dee's pages count them once; nobody's id goes out.
+  await h.room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 2, 3, ["x:9", "gh:4"]);
+  assert.deepEqual(first.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2, mine: true }, "the same total, now with dee among it");
+  assert.deepEqual(next.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2, mine: false });
+  const { ws: again } = await h.member(4, "dee");
+  assert.equal(again.sent[0].chatMine, true);
 });

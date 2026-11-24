@@ -23383,6 +23383,18 @@ const hubNameplates = { name: "live nameplates", why: "rule: names over live pla
     && near(row.live.textWidth, row.npc.textWidth, 0.5) && near(row.live.width, row.npc.width) && near(row.live.height, row.npc.height)
     && near(row.live.left, row.npc.left) && near(row.live.top, row.npc.top) && near(row.live.textX, row.npc.textX) && near(row.live.baseline, row.npc.baseline)
     && (row.npc.barLeft === null || near(row.live.barLeft, row.npc.barLeft) && near(row.live.barTop, row.npc.barTop) && row.live.barWidth === row.npc.barWidth);
+  // Plates that would overlap stack over one another (a bench's seated speakers), under one another when the view's top
+  // leaves no room over, and never off the view's top or foot.
+  const stacked = await b.evaluate(`(() => {
+    const S = BL.remotePlayers.stack, put = (boxes) => { const a = new Float64Array(boxes.length * 4); boxes.forEach((p, i) => a.set(p, i * 4)); return a; };
+    const mid = S(put([[100, 300, 200, 326]]), 1, 120, 300, 100, 26, 800);
+    const top = S(put([[100, 8, 200, 34]]), 1, 120, 8, 100, 26, 800);
+    const three = S(put([[100, 8, 200, 34], [100, 36, 200, 62]]), 2, 120, 8, 100, 26, 800);
+    const foot = S(put([[100, 8, 200, 34]]), 1, 120, 8, 100, 26, 40);
+    return { mid, top, three, foot };
+  })()`);
+  record("live nameplates: a plate that would overlap one already drawn stands over it, under it when the view's top leaves no room, and never off the view",
+    stacked.mid === 272 && stacked.top === 36 && stacked.three === 64 && stacked.foot === 8, JSON.stringify(stacked));
   const edgeRow = rows.find(row => row.label === "edge"), healthRow = rows.find(row => row.label === "health");
   record("live nameplates: a live player's name over an Ooga and over a gorilla has the NPC name tooltip's font, size and box, its name painted on the tooltip text's left edge and baseline, its health bar where the tooltip's health row sits, and both kept inside the view at its edge",
     rows.length === 4 && rows.every(matches) && edgeRow.live.left === 8 && edgeRow.npc.left === 8 && healthRow.live.height > rows[0].live.height,

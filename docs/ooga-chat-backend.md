@@ -695,7 +695,9 @@ A socket kept open across a hibernation misses nothing and gets no second welcom
 **Access ends.** Signing out, deleting the account or losing eligibility (the edge's `revoke`, #663) closes every member
 socket of that account at once (`communityRevoke`); the Room's minute sweep closes one past its hourly re-authentication
 deadline (`authUntil`, never past the session's own), no longer a contributor, banned, or silent past `STALE_MS` with its
-auto-answered pings. A Room wake restores members from their attachments as members, never as players.
+auto-answered pings. A Room wake restores members from their attachments as members, never as players, each heard from
+when the Room last heard it (`heard` in the attachment, written again at most every 30 s of frames), never at the wake,
+so a page coming back to a hibernated Room still finds its dead sockets silent.
 
 **Bounds and cost.** At most 128 members a Room and 3 an account (`COMMUNITY_MAX`, `COMMUNITY_PER_ACCOUNT`); the next is
 closed 4429, after the account's own members silent past `SILENT_MS` (75 s: a page pings every 30 s, a hidden tab's

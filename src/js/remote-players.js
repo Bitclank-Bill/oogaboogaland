@@ -60,6 +60,22 @@
   // With health the tooltip grows a second grid row: the row gap, then the 4-pixel bar with -2 and +1 margins.
   const BAR_W = 72, BAR_H = 4, BAR_ROW = DOT_GAP - 2, HEALTH_ROW = DOT_GAP + BAR_H - 2 + 1, ICON_GAP = 4;
   const NAME_BOX = Math.round(NAME_PAD_Y * 2 + NAME_LINE), NAME_BOX_HEALTH = Math.round(NAME_PAD_Y * 2 + NAME_LINE + HEALTH_ROW);
+  // Where a plate's top stands among those already drawn (`placed`, `n` boxes of left, top, right, bottom): over any it
+  // would overlap, a plate's height and a little more at a time; with no room left over it at the view's top, under it
+  // instead; and never past the view's top or foot, so every plate stays on screen. Allocates nothing.
+  const stack = (placed, n, left, top, boxW, boxH, viewH) => {
+    for (let again = true, tries = 0, down = false; again && tries < 8; tries++) {
+      again = false;
+      for (let i = 0; i < n; i++) {
+        const o = i * 4;
+        if (!(left < placed[o + 2] && left + boxW > placed[o] && top < placed[o + 3] && top + boxH > placed[o + 1])) continue;
+        if (!down && placed[o + 1] - boxH - 2 < EDGE) down = true;
+        top = Math.round(down ? placed[o + 3] + 2 : placed[o + 1] - boxH - 2);
+        again = true;
+      }
+    }
+    return Math.max(EDGE, Math.min(Math.max(EDGE, viewH - boxH - EDGE), top));
+  };
   // The font, and where its baseline falls in the name's line as the tooltip's CSS lays it out: read once.
   let nameFont = "", nameBaseline = 0;
   const NAME_STROKE = "rgba(20, 14, 8, 0.85)", NAME_FILL = "#f3efe4", BAR_TRACK = "rgba(0, 0, 0, 0.55)", ONLINE = "#22c55e", CLOUD_DOT = "#b18aff";
@@ -910,14 +926,7 @@
         const mid = (headMinX + headMaxX) / 2;
         const left = Math.round(Math.max(EDGE, Math.min(viewW - boxW - EDGE, mid - boxW / 2)));
         let top = Math.round(Math.max(EDGE, headTop - NAME_BOTTOM - boxH));
-        // Over any plate already drawn it would overlap, a plate's height and a little more at a time.
-        for (let again = true, tries = 0; again && tries < 8; tries++) {
-          again = false;
-          for (let i = 0; i < placedN; i++) {
-            const o = i * 4;
-            if (left < placed[o + 2] && left + boxW > placed[o] && top < placed[o + 3] && top + boxH > placed[o + 1]) { top = Math.round(placed[o + 1] - boxH - 2); again = true; }
-          }
-        }
+        top = stack(placed, placedN, left, top, boxW, boxH, viewH);
         if (placedN < PLATES) { const o = placedN++ * 4; placed[o] = left; placed[o + 1] = top; placed[o + 2] = left + boxW; placed[o + 3] = top + boxH; }
         // Speech stands over the plate wherever it went.
         entry.cave.speechLift += Math.max(0, Math.round(headTop - NAME_BOTTOM - boxH) - top);
@@ -1058,5 +1067,5 @@
 
   const nameplate = (id) => activePool ? activePool.nameplate(id) : null;
   const body = (id) => activePool ? activePool.body(id) : null;
-  BL.remotePlayers = { create, nameplate, body, joystick, onIsland, sameZone, MAX, BODY_HEIGHT };
+  BL.remotePlayers = { create, nameplate, body, joystick, onIsland, sameZone, stack, MAX, BODY_HEIGHT };
 })();
