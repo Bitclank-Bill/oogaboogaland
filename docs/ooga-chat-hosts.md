@@ -115,7 +115,13 @@ copy, clouds or Go there), then Start chat (the one amber action) or Cancel. The
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
 the footer) with a Back to chats control, the Requests chip for a host or co-host (in the panel's top right corner,
 to the right of the zone tag), a role badge on host and co-host
-tiles, and the footer's Request to speak or, for a host, End chat beside Leave.
+tiles, and the footer's Request to speak or, for a host, End chat beside Leave chat.
+
+A host steps down only by handing the chat over or ending it. While hosting they stay on the stage (Mute, no Leave
+Voice). Leave chat, and Back to chats, open **Choose who hosts the chat after you leave**: one button a co-host, "Make
+<name> host and leave", the longest-serving amber, and Cancel; the chat is handed over (`handover`) and only then left.
+With no co-host neither Leave chat nor Back to chats shows, and End chat is the way out. A host's dropped connection
+still waits two minutes and passes to a co-host, as below.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
 modules, so the two apps never drift. Joining a chat by voice there is like taking a call: the island's proximity voice
@@ -157,9 +163,9 @@ and otherwise opens the chat's preview, the same pop-up the Chats list opens (`c
 the page's body while the Ooga Chat tab is hidden): its stage, its counts, the Open stage tag, **Join as listener** and
 **Ask to speak** (**Join as speaker** on an open stage), either of which shows the Ooga Chat tab and opens the chat there. The chat the visitor is in
 already only shows the tab. A visitor already in another chat is asked first, **Change chats?** (a modal dialog:
-"You're in <title>. Leave it and join <title>?", with what leaving costs them, said only to the chat's host: its 2-minute
-hold before the chat passes to a co-host or ends), **Switch chats** leaving that chat and opening this one, **Stay**
-changing nothing and giving the chat's row the focus back.
+"You're in <title>. Leave it and join <title>?"), **Switch chats** leaving that chat and opening this one, **Stay**
+changing nothing and giving the chat's row the focus back. Its host is told instead to hand the chat over with Leave
+chat, or end it, first, and offered only Stay.
 
 **Clouds belong to the copies.** OC speakers are never seen or heard over the real island any more: a chat's speakers
 sit on clouds only inside that chat's own copy of its zone (the second PR), one seat each, however many chats share a
@@ -334,7 +340,7 @@ Agreed 2026-11-23:
 - **Who goes:** speakers alone (the host, co-hosts and invited speakers) who are signed into the island with an Ooga.
   Listeners stay where they are and listen.
 - **Getting there and back:** Go there in the chat beams the Ooga out of the main world in the island's green glyph
-  stream and into the copy beside the banana pile; Leave beams it back to exactly where it stood, as does leaving the
+  stream and into the copy beside the banana pile; Go back beams it back to exactly where it stood, as does leaving the
   stage or the chat.
 - **Size:** up to 32 Oogas, the speaker cap, and the island room's own.
 - **Voice in a chat has no place in it.** Every speaker in a chat is heard at full by everyone in it, wherever their

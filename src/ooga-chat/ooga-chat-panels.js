@@ -61,7 +61,7 @@
       set(out, "textContent", signing ? "Signing out…" : "Sign out");
       set(out, "disabled", !!state.busy);
       const here = !!who && state.commons.status === "live" && !!model.state.you;
-      set(room, "textContent", here ? `${onlineCount(model, publicOf(state))} online` : "");
+      set(room, "textContent", here ? `${onlineCount(model, publicOf(state), !!state.room)} online` : "");
       set(room, "hidden", !here);
       if (node.dataset.live !== String(here)) node.dataset.live = String(here);
       if (!who) {
@@ -129,12 +129,13 @@
     return audience.list.filter((a) => a.role === "listener" && a.id !== you
       && !(a.id.startsWith("gh:") && model.state.players.has(Number(a.id.slice(3)))));
   };
-  // Everyone online for a member: the island's players, the member, who is online here in Ooga Chat even while their
-  // Ooga is not on the island (the Room lists only the island's players, worker/src/room-commons.js), and Main Island's
-  // listeners, as the island counts them.
-  const onlineCount = (model, audience) => model.state.players.size + (model.state.you && !model.state.players.has(model.state.you.id) ? 1 : 0)
-    + appListeners(model, audience).length;
-  const commonsChip = (status, model, audience) => status === "live" ? `${onlineCount(model, audience)} online` : status === "closed" ? "Closed" : "Offline";
+  // Everyone online for a member: the island's players, everyone in hosted chats through Ooga Chat and not on the island
+  // (the Room's one number, as the island counts them; the member among them while in a chat), the member, who is online
+  // here in Ooga Chat even while in no chat and their Ooga not on the island (the Room lists only the island's players,
+  // worker/src/room-commons.js), and the public conversation's Main Island listeners where it still runs.
+  const onlineCount = (model, audience, inChat = false) => model.state.players.size + model.state.chatOnline
+    + (model.state.you && !model.state.players.has(model.state.you.id) && !inChat ? 1 : 0) + appListeners(model, audience).length;
+  const commonsChip = (status, model, audience, inChat) => status === "live" ? `${onlineCount(model, audience, inChat)} online` : status === "closed" ? "Closed" : "Offline";
   // Ooga Chat's own speakers in the audience's list: the ones on clouds, purple wherever a panel marks them.
   const appSpeakers = (list) => list.filter((p) => p.role === "speaker" && p.source === "app");
   // Shown again when its tab is opened, as a view hidden by the shell is not told.
@@ -387,10 +388,10 @@
       showName();
       const socket = state.commons.status, live = socket === "live" && !!model.state.you;
       const words = live && !model.state.send ? COMMONS_WORDS["read-only"] : COMMONS_WORDS[socket] || "";
-      const count = onlineCount(model, publicOf(state)), key = `${socket}|${live}|${model.state.send}|${model.state.you?.login}|${count}`;
+      const count = onlineCount(model, publicOf(state), !!state.room), key = `${socket}|${live}|${model.state.send}|${model.state.you?.login}|${count}`;
       if (key === shown) return;
       shown = key;
-      chip.textContent = commonsChip(socket, model, publicOf(state));
+      chip.textContent = commonsChip(socket, model, publicOf(state), !!state.room);
       chip.dataset.tone = live ? "live" : socket === "closed" ? "closed" : "idle";
       conversation.setLive({ live: live && model.state.send, me: model.state.you?.login || "", words });
     };
@@ -526,12 +527,12 @@
         (heldSlider ? next?.control?.slider : next?.toggle)?.focus({ preventScroll: true });
       }
     };
-    let status = "off", cloud = [], audience = null, me = "", heard = -1, voice = null;
+    let status = "off", cloud = [], audience = null, me = "", heard = -1, voice = null, inChat = false;
     const off = model.subscribe((kind) => { if (kind === "players" || kind === "welcome") { draw(); paint(); } });
     const watch = onShown(node, draw);
     const paint = () => {
       const live = status === "live" && !!model.state.you;
-      chip.textContent = commonsChip(status, model, audience);
+      chip.textContent = commonsChip(status, model, audience, inChat);
       chip.dataset.tone = live ? "live" : status === "closed" ? "closed" : "idle";
       note.textContent = live ? "" : COMMONS_WORDS[status] || "";
       note.hidden = !note.textContent;
@@ -542,6 +543,7 @@
       watch();
       account.update(state);
       outOfChat(node, state);
+      if (!!state.room !== inChat) { inChat = !!state.room; paint(); }
       muteDuels.checked = state.voice.muteDuels;
       muteDuels.disabled = !state.session;
       if (state.audience.version !== heard) {

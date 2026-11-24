@@ -18,6 +18,7 @@ import { bridgeFeatures } from "./chat-bridge-protocol.js";
 import { getPlayer } from "./db.js";
 import { audienceRoom } from "./room-audience.js";
 import { duel } from "./duel.js";
+import { chatMembersRoom } from "./room-chat-members.js";
 
 export const COMMONS_V = 1;
 export const COMMONS_FEATURE = "commons-v1";
@@ -28,7 +29,9 @@ export const REAUTH_MS = 60 * 60 * 1000;
 // is a page gone without closing (a phone asleep, a network change), which the next sweep would take, up to four
 // minutes on while nobody plays.
 export const SILENT_MS = 75000;
-const RELAYED = new Set(["join", "leave", "body", "zone", "vstate", "hand", "chat", "clouds"]);
+// `chat-online` is how many are in hosted chats through Ooga Chat and not on the island, the one number every "N online"
+// adds (room-chat-members.js), so a member's counts agree with the island's.
+const RELAYED = new Set(["join", "leave", "body", "zone", "vstate", "hand", "chat", "clouds", "chat-online"]);
 const CLOSE = { stale: 4000, bad: 4400, auth: 4401, full: 4429 };
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
@@ -101,6 +104,7 @@ export const commonsRoom = {
       you: { id: m.id, login: m.login, display: m.display }, players: [...room.players.values()].map(presenceOf),
       duels: [...room.duels.values()].map((d) => ({ id: d.id, a: d.a, b: d.b })),
       ...(typeof room.linkViewOf === "function" ? { links: room.linkViewOf(m.id) } : {}),
+      ...(Number.isSafeInteger(chatMembersRoom.welcome(room).chatOnline) ? { chatOnline: chatMembersRoom.welcome(room).chatOnline } : {}),
       features: [globalThis.BL.chatPolicy.FEATURE, COMMONS_FEATURE] });
     room.send(server, { t: "chat-history", messages: room.chat.list() });
     audienceRoom.welcome(room, m);

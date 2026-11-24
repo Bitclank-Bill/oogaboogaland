@@ -98,7 +98,8 @@
       return [provider, el];
     }));
     // Its words follow the service: with hosted chats anyone signed in may ask to speak and contributors start chats.
-    const lede = make("p", "oc-lede"), noteText = make("span", ""), foot = make("p", "oc-foot");
+    const ledeOne = make("span", ""), ledeTwo = make("span", ""), lede = make("p", "oc-lede", ledeOne, make("br"), ledeTwo);
+    const noteText = make("span", ""), foot = make("p", "oc-foot");
     const signedOut = make("div", "slab oc-slab oc-signin",
       art, lede,
       make("div", "oc-providers", providers.github, providers.x),
@@ -107,7 +108,8 @@
     const sayWelcome = (chats) => {
       if (wordsFor === chats) return;
       wordsFor = chats;
-      lede.replaceChildren(...(chats ? ["Voice chats from the island.", make("br"), "Join one and ask to speak."] : ["Listen to the island.", make("br"), "Speak from the clouds."]));
+      ledeOne.textContent = chats ? "Voice chats from the island." : "Listen to the island.";
+      ledeTwo.textContent = chats ? "Join one and ask to speak." : "Speak from the clouds.";
       noteText.textContent = chats ? "Anyone signed in can ask to speak. Team Ooga Booga contributors signed in with GitHub can also start a chat."
         : "Team Ooga Booga contributors signed in with GitHub can also speak from a cloud.";
       foot.textContent = chats ? "" : "X accounts join as listeners.";

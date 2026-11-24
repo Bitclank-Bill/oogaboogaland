@@ -17515,7 +17515,8 @@ const oogaChatAppChecks = async () => {
         allow: [...document.querySelectorAll(".hc-pop .hc-queue-row button")].filter((e) => /^Allow/.test(e.getAttribute("aria-label"))).map((e) => e.getAttribute("aria-label")).join(),
         offer: shown(".hc-offer").length, offerHead: q(".hc-offer strong")?.textContent || "", offerInside: (({ left, right, top, bottom }) => left >= 0 && right <= innerWidth + 1 && top >= 0 && bottom <= innerHeight + 1)(q(".hc-offer")?.getBoundingClientRect() || {}),
         disabled: [...document.querySelectorAll('.hc-pop [role="menuitem"][aria-disabled="true"]')].map((e) => e.textContent).join(), why: q(".hc-pop .hc-pop-why")?.textContent || "",
-        accountVoice: [...document.querySelectorAll(".oc-panel .account :is(.account-mute, .account-voice)")].filter((e) => !e.hidden).length }; })()`);
+        accountVoice: [...document.querySelectorAll(".oc-panel .account :is(.account-mute, .account-voice)")].filter((e) => !e.hidden).length,
+        leaveShown: shown(".hc-leave").length, backShown: shown(".hc-room-back").length }; })()`);
     const click = (b, selector) => b.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const cohostShots = join(root, "untracked", "cohost-offers");
     mkdirSync(cohostShots, { recursive: true });
@@ -17645,6 +17646,13 @@ const oogaChatAppChecks = async () => {
         run.full = await chatNow(b);
         await b.screenshot(join(cohostShots, `oc-host-menu-full-${w}.png`));
         await b.evaluate(`document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+        // With co-hosts the host's Leave chat hands the chat over first: one choice a co-host, then Cancel.
+        await click(b, ".hc-leave");
+        await b.sleep(300);
+        run.hostLeave = await b.evaluate(`[...document.querySelectorAll(".hc-pop button")].map((e) => e.textContent)`);
+        await b.screenshot(join(cohostShots, `oc-host-leave-${w}.png`));
+        await pressText(b, ".hc-pop button", "Cancel");
+        await b.sleep(200);
         await tileMenu(b, "sample-heron");
         run.heronMenu = await chatNow(b);
         await pick(b, "Withdraw co-host invitation");
@@ -17703,6 +17711,8 @@ const oogaChatAppChecks = async () => {
       hostMuted: r.hostMuted.foot.startsWith("Unmute") && r.hostMuted.notice === "A host muted you",
       left: r.left.space === "list",
       dialog: r.dialog.open && r.dialog.title === "sample-contributor's chat" && r.dialog.zones === "none:true,main:false,dsb:false" && r.arrowed === "none:false,main:true,dsb:false",
+      hostRules: r.hosting.leaveShown === 0 && r.hosting.backShown === 0 && !r.hosting.foot.includes("Leave Voice") && r.full.leaveShown === 1
+        && r.hostLeave.length >= 2 && r.hostLeave.slice(0, -1).every((t) => /^Make .+ host and leave$/.test(t)) && r.hostLeave.at(-1) === "Cancel",
       hosting: r.hosting.title === "sample-contributor's chat" && r.hosting.foot.includes("End chat") && r.hosting.chip === "Requests 2" && /asked to speak/.test(r.hosting.notice)
         && r.hosting.chipBeside && r.hosting.names === "sample-contributor,sample-pebble,sample-otter,sample-heron",
       opened: r.opened.openSwitch && r.opened.openTag === 1 && /sample-otter, speaking/.test(r.opened.tiles),
@@ -17720,7 +17730,7 @@ const oogaChatAppChecks = async () => {
       signedOut: r.signedOut.space === "off" && !r.signedOut.preview && r.signedOut.rows.length === 0 && r.signedOut.list.hidden && r.signedOut.list.kept === 0 && r.signedOut.list.signin,
       fits: Object.values(r).every((m) => typeof m !== "object" || !m.wide)
     }]));
-    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none, and the other panels' account rows offer Unmute and Join voice only once in a chat; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
+    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none, and the other panels' account rows offer Unmute and Join voice only once in a chat; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog (as its host, no Leave Voice, and no Leave chat or Back to chats until a co-host can take the chat over, then Leave chat choosing who), approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
       Object.values(hostedOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ hostedOk, hostedRuns }));
 
     // The island view (island-view.js; docs/ooga-chat-hosts.md, "The island view"), at 1024 and 390: Sample Oak's chat
@@ -37167,18 +37177,19 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
   const again = await untilRoom((r) => r.cloud);
   await b.sleep(300);
   const againPop = await pop();
-  // As its host, the routing chat's Join as listener asks first: Stay keeps the call and gives the row the focus back,
-  // Switch chats moves.
+  // As its host, the routing chat's Join as listener is held: hand the chat over or end it first, with only Stay, which
+  // keeps the call and gives the row the focus back. As anyone else, Switch chats moves.
   await b.evaluate(`(() => { __inChats.toPlayers(); BL.chatCall.room.you = { rank: "host" }; __inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click(); })()`);
   await untilPop((p) => p && p.title === "Routing fees, channel liquidity and the rebalancer at work");
   await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
   const asked = await untilRoom((r) => !!r.ask);
   await b.evaluate(`[...document.querySelectorAll("dialog.hosted-switch button")].find((e) => e.textContent === "Stay").click()`);
   const stayed = await room();
-  await b.evaluate(`__inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click()`);
+  const switchShown = await b.evaluate(`!document.querySelector("dialog.hosted-switch .foot-primary").hidden`);
+  await b.evaluate(`(() => { BL.chatCall.room.you = { rank: "" }; __inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click(); })()`);
   await untilPop((p) => p && p.title === "Routing fees, channel liquidity and the rebalancer at work");
   await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
-  await untilRoom((r) => !!r.ask);
+  const listenerAsk = await untilRoom((r) => !!r.ask);
   await b.evaluate(`document.querySelector("dialog.hosted-switch .foot-primary").click()`);
   const switched = await untilRoom((r) => r.room === "BBBBBBBBBBBBBBBB" && r.cloud && r.title === "Routing fees, channel liquidity and the rebalancer at work");
   // A chat the live list no longer has: said to have ended, and nothing changes.
@@ -37188,15 +37199,16 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
   const gone = await untilRoom((r) => /That chat has ended/.test(r.toast));
   await b.evaluate(`(() => { __inChats.room({ t: "chat-summary", chat: "EEEEEEEEEEEEEEEE", title: "", speakers: 0, listeners: 0, app: 0 }); BL.chatCall.leave(); __inChats.toPlayers(); })()`);
   await b.sleep(200);
-  record(`in ooga chat${phone ? " (390 px)" : ""}: a chat pressed in In Ooga Chat opens its preview (its stage, the Open stage tag, its counts, Join as listener focused, on screen) over Online Oogas; Join as listener opens it in the Ooga Chat tab and its row then reads "You're in this chat", and pressing it again only shows that tab; from another chat a preview's Join asks Change chats? (with a host's hold in words): Stay keeps the chat and gives the row the focus back, Switch chats moves; a chat no longer listed is said to have ended`,
+  record(`in ooga chat${phone ? " (390 px)" : ""}: a chat pressed in In Ooga Chat opens its preview (its stage, the Open stage tag, its counts, Join as listener focused, on screen) over Online Oogas; Join as listener opens it in the Ooga Chat tab and its row then reads "You're in this chat", and pressing it again only shows that tab; from another chat a preview's Join asks Change chats?: its host is told to hand the chat over or end it first, with only Stay, which keeps the chat and gives the row the focus back, and anyone else gets Switch chats, which moves; a chat no longer listed is said to have ended`,
     previewed?.title === "Lightning dev call" && previewed.open && previewed.stage === 3 && previewed.count === "12 listening · 1 waiting to speak" && previewed.join === "Join as speaker,Join as listener" && previewed.focus === "Join as listener" && previewed.inside && previewed.shown
       && joined.room === "AAAAAAAAAAAAAAAA" && joined.cloud && !joined.preview && marked.rows.includes("Lightning dev call=3 speaking · 12 listening=here")
       && again.room === "AAAAAAAAAAAAAAAA" && again.cloud && !againPop
-      && asked.ask?.head === "Change chats?" && asked.ask.text === "You're in Lightning dev call. Leave it and join Routing fees, channel liquidity and the rebalancer at work?"
-      && /^You host it: it waits 2 minutes for you/.test(asked.ask.note) && asked.ask.focus === "Switch chats" && asked.ask.inside
+      && asked.ask?.head === "Change chats?" && asked.ask.text === "You host Lightning dev call. Before joining Routing fees, channel liquidity and the rebalancer at work, hand it to a co-host with Leave chat, or end it."
+      && asked.ask.note === "" && asked.ask.focus === "Stay" && asked.ask.inside && !switchShown
+      && listenerAsk.ask?.text === "You're in Lightning dev call. Leave it and join Routing fees, channel liquidity and the rebalancer at work?" && listenerAsk.ask.focus === "Switch chats"
       && !stayed.ask && stayed.room === "AAAAAAAAAAAAAAAA" && stayed.focus === "Routing fees, channel liquidity and the rebalancer at work"
       && switched.room === "BBBBBBBBBBBBBBBB" && switched.cloud && gone.room === "BBBBBBBBBBBBBBBB" && /That chat has ended/.test(gone.toast) && !gone.preview,
-    JSON.stringify({ previewed, joined, marked, again, againPop, asked, stayed, switched, gone }));
+    JSON.stringify({ previewed, joined, marked, again, againPop, asked, switchShown, listenerAsk, stayed, switched, gone }));
   // The counts follow each chat's word, and the group goes with the last chat.
   await b.evaluate(`(() => { __inChats.room({ t: "chat-summary", chat: "CCCCCCCCCCCCCCCC", title: "Quiet room", speakers: 1, listeners: 40 }); __inChats.room({ t: "chat-online", n: 56 }); })()`);
   await b.sleep(100);

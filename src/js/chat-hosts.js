@@ -406,7 +406,9 @@
     // --- in a chat: its bar, the invite card and the footer's own buttons ---
     const back = button("link hc-room-back", "Back to chats"), roomTitle = make("span", "hc-room-title"), requests = button("panel-chip hc-requests", "");
     const openTag = make("span", "panel-chip hc-open-tag", "Open stage");
-    back.addEventListener("click", () => chats.leave(), { signal });
+    // Leaving, for everyone but the host, who hands the chat over first (`leaveAsHost`).
+    const goOut = (at) => rank === "host" ? leaveAsHost(at) : chats.leave();
+    back.addEventListener("click", () => goOut(back), { signal });
     const bar = make("div", "hc-room-bar", back, roomTitle, openTag);
     // The host's switch, in the Requests pop-up: an open stage approves every request the moment it is made.
     const openSwitch = make("input"), openLabel = make("label", "hc-open-switch", openSwitch, make("span", "", "Open stage: anyone who asks may speak"));
@@ -475,7 +477,7 @@
       else asking = askToSpeak();
       paint();
     }, { signal });
-    leave.addEventListener("click", () => chats.leave(), { signal });
+    leave.addEventListener("click", () => goOut(leave), { signal });
     // Go there: the speaker's own Ooga onto the chat's island and back (the island's page alone).
     const goTo = button("foot-button hc-go", "Go there");
     goTo.hidden = true;
@@ -552,6 +554,17 @@
     }, { signal });
     document.addEventListener("pointerdown", (event) => { if (!pop.hidden && !pop.contains(event.target) && !anchor?.contains(event.target)) closePop(false); }, { signal, capture: true });
     addEventListener("resize", place, { signal });
+    // The chat's co-hosts here, longest-serving first (the chat's own order).
+    const cohostsOf = () => people.filter((p) => p.rank === "cohost");
+    // A host's way out: they choose the co-host who hosts next, the chat is handed over (the server's `handover`), and
+    // only once that is done do they leave. With no co-host there is no way out but End chat.
+    const leaveAsHost = (at) => {
+      const next = cohostsOf();
+      if (!next.length) return;
+      openPop("leave", at, "Choose who hosts the chat after you leave.", [...next.map((p, i) => ({ label: `Make ${p.display} host and leave`, primary: i === 0,
+        run: () => { closePop(); send("handover", { id: p.id }, (msg) => { if (msg && msg.ok) chats.leave(); }); } })),
+      { label: "Cancel", run: () => closePop() }], "dialog");
+    };
     const confirm = (at, words, label, run, danger = false) => openPop("confirm", at, words, [{ label, primary: true, danger, run: () => { closePop(); run(); } }, { label: "Cancel", run: () => closePop() }], "dialog");
     const menu = (id, tile) => {
       const row = people.find((p) => p.id === id);
@@ -634,7 +647,10 @@
     const paint = () => {
       const r = room, you = r?.you || {}, speaker = state.voice.role === "speaker" || state.voice.busy;
       const may = you.speak === "eligible" || you.speak === "pending" || you.speak === "active" || !!state.voice.elsewhere;
-      foot.join.hidden = !r || !speaker && !may;
+      // The host stays on the stage while hosting (Mute instead of Leave Voice): a host and co-hosts always count as
+      // speakers, and handing the chat over or ending it is how a host steps down.
+      const hosting = you.rank === "host";
+      foot.join.hidden = !r || !speaker && !may || hosting && state.voice.role === "speaker";
       // A listener who may not speak has no microphone to unmute: the button shows for a speaker or one who may join.
       foot.mute.hidden = !r || !speaker && !may;
       ask.hidden = !r || speaker || may;
@@ -645,7 +661,11 @@
       set(ask, "disabled", !!asking || !state.device.online);
       attr(ask, "aria-pressed", String(you.request === "asked"));
       end.hidden = !r || you.rank !== "host";
-      leave.hidden = !r;
+      // A host leaves only by handing the chat to a co-host (`leaveAsHost`); with none, End chat is the way out.
+      const stuck = hosting && !cohostsOf().length;
+      leave.hidden = !r || stuck;
+      back.hidden = stuck;
+      if (popKind === "leave" && (!hosting || stuck)) closePop(false);
       const g = goThere && r ? goThere.state(r) : null;
       goTo.hidden = !g;
       if (g) {

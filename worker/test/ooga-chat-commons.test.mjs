@@ -381,3 +381,13 @@ test("the edge's Commons name: only an eligible GitHub contributor's save from t
   forgetHello();
   assert.equal((await save(amy, { display: "Amy" }, { e: { ...env, FEATURES: "github" } })).status, 503, "the Commons off");
 });
+
+test("a member hears how many are in hosted chats through Ooga Chat, as the island's pages do", async () => {
+  const h = await harness({ features: "bridge,commons,commons-send,chats" });
+  const { ws: first } = await h.member(4, "dee");
+  assert.equal(first.sent[0].chatOnline, undefined, "no chats, no number");
+  await h.room.chatMembers("AAAAAAAAAAAAAAAA", "Dev call", 2, 3, ["x:9", "gh:7"]);
+  assert.deepEqual(first.sent.filter((m) => m.t === "chat-online").at(-1), { t: "chat-online", n: 2 });
+  const { ws: next } = await h.member(5, "eve");
+  assert.equal(next.sent[0].chatOnline, 2, "a member's welcome carries it");
+});
