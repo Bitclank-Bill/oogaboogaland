@@ -1228,7 +1228,7 @@
   // square and bead eases to its place in about a quarter second. A found block: through the ₿'s lock its squares flash
   // hot in a wave from the middle; as the block falls they fall with it, and the beads nearest the ₿ draw in as the next
   // block's squares. Everything is preallocated; a frame allocates nothing.
-  const DISC_ARRIVE = 4.4e6 / 560, DISC_RELAYOUT = 1, DISC_SETTLE = 12;
+  const DISC_ARRIVE = 4.4e6 / 560, DISC_RELAYOUT = 1, DISC_SETTLE = 12, NO_PROJECTION = [];
   const discLife = (nodes, capY, flat) => {
     const NB = DISC.beads.length, NU = DISC.units, sq = [], bd = [];
     for (let i = 0; i < NU; i++) sq.push(nodes[`dsq${i}`]);
@@ -1320,8 +1320,10 @@
       // Beads: the rest of the waiting mempool in bead-sized slices, nearest first.
       nBd = 0;
       if (source === 1 || source === 2) {
-        for (let p = 1; p < st.projected.length && nBd < NB; p++) {
-          const b = st.projected[p], fr = b.feeRange || [b.medianFee || 1], m = Math.floor((b.blockVSize || 0) / DISC.beadVB);
+        // A snapshot of the next block can come before the first projection: until it does, nothing is queued.
+        const proj = st.projected || NO_PROJECTION;
+        for (let p = 1; p < proj.length && nBd < NB; p++) {
+          const b = proj[p], fr = b.feeRange || [b.medianFee || 1], m = Math.floor((b.blockVSize || 0) / DISC.beadVB);
           for (let i = 0; i < m && nBd < NB; i++) bStep[nBd++] = discStep(fr[Math.min(fr.length - 1, Math.floor((1 - i / m) * fr.length))]);
         }
       } else {

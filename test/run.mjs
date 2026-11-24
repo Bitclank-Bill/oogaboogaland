@@ -32063,10 +32063,18 @@ const timechainDisc = { name: "timechain block disc", why: "rule: the Genesis Mu
     P.drop(0); P.live.dropAt = clock(); B.advance(1 / 30, 1 / 30);
     const fallen = D.state; await settle(3600);
     const after = D.state;
-    return { empty: { squares: empty.squares, fill: +empty.fill.toFixed(3), beads: empty.beads }, early, fills, full: { fill: full.fill, beads: full.beads, queue: +full.queue.toFixed(2) }, flips, trickle: { landed: trickle.landed - trickle0.landed, timedOut: trickle.timedOut - trickle0.timedOut }, dots: { landed: dots.landed - before.landed, beads: dots.beadLands - before.beadLands, timedOut: dots.timedOut - before.timedOut }, fallen: fallen.squares, after: { fill: after.fill, beads: after.beads, mined: after.mined } };
+    // The live feed's next block before any projection (its snapshot can come first): the squares, an empty queue.
+    const st = BL.mempool.state, was = { enabled: st.enabled, connected: st.connected, projected: st.projected };
+    st.enabled = st.connected = true; st.projected = null; st.next.clear();
+    for (let i = 0; i < 600; i++) st.next.set("t" + i, [1 + (i % 40), 250 + (i % 7) * 60]);
+    const snap = await settle(1200);
+    st.next.clear(); Object.assign(st, was); await settle(1200);
+    const unprojected = { source: snap.source, squares: snap.squares, beads: snap.beads };
+    return { empty: { squares: empty.squares, fill: +empty.fill.toFixed(3), beads: empty.beads }, early, fills, full: { fill: full.fill, beads: full.beads, queue: +full.queue.toFixed(2) }, flips, trickle: { landed: trickle.landed - trickle0.landed, timedOut: trickle.timedOut - trickle0.timedOut }, dots: { landed: dots.landed - before.landed, beads: dots.beadLands - before.beadLands, timedOut: dots.timedOut - before.timedOut }, fallen: fallen.squares, after: { fill: after.fill, beads: after.beads, mined: after.mined }, unprojected };
   })()`);
-  record("timechain block disc: the ceiling's ₿ fills before its queue, the stream's dots land on its new squares (and on beads when none wait), it holds without flashing when full, and on a block its squares go and the queue refills it",
-    r.empty.fill < 0.05 && r.empty.beads === 0 && r.early === 0 && r.full.fill >= 0.97 && r.full.beads > 0 && r.flips === 0 && r.trickle.landed > 0 && r.dots.beads > 0 && r.fallen === 0 && r.after.fill >= 0.97 && r.after.beads < r.full.beads && r.after.mined >= 1, JSON.stringify(r));
+  record("timechain block disc: the ceiling's ₿ fills before its queue, the stream's dots land on its new squares (and on beads when none wait), it holds without flashing when full, on a block its squares go and the queue refills it, and the live next block before any projection lays its squares with nothing queued",
+    r.empty.fill < 0.05 && r.empty.beads === 0 && r.early === 0 && r.full.fill >= 0.97 && r.full.beads > 0 && r.flips === 0 && r.trickle.landed > 0 && r.dots.beads > 0 && r.fallen === 0 && r.after.fill >= 0.97 && r.after.beads < r.full.beads && r.after.mined >= 1
+      && r.unprojected.source === 1 && r.unprojected.squares > 0 && r.unprojected.beads === 0, JSON.stringify(r));
 } };
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D, and a glass floor keeps no reflection there", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
