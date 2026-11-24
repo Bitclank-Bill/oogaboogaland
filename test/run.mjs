@@ -32049,10 +32049,10 @@ const timechainDisc = { name: "timechain block disc", why: "rule: the Genesis Mu
     let early = 0;
     for (let i = 0; i < 7; i++) { D.arrive(5e5); const s = await settle(1150); fills.push([+s.fill.toFixed(2), s.beads]); if (s.beads > 0 && s.fill < 0.97) early++; }
     const full = D.state;
-    // Full and waiting: thirty frames with no square already showing changing its finish (nothing flashes; a square
-    // still waiting for its dot may pop in meanwhile, with its landing's flash).
-    const sq = Object.keys(N).filter((k) => k.startsWith("dsq")).map((k) => N[k]), looks = sq.map((n) => n.geometry), shown = sq.map((n) => n.scale.x > 0.01);
-    let flips = 0; for (let f = 0; f < 30; f++) { B.advance(1 / 30, 1 / 30); for (let i = 0; i < sq.length; i++) if (shown[i] && sq[i].geometry !== looks[i]) { flips++; looks[i] = sq[i].geometry; } }
+    // Full and waiting: thirty frames with no square already showing flashing hot (a square still waiting for its dot
+    // may pop in with its landing's flash, and the template's colours shift as arrivals re-sort it; neither is a flash).
+    const sq = Object.keys(N).filter((k) => k.startsWith("dsq")).map((k) => N[k]), shown = sq.map((n) => n.scale.x > 0.01), hot = D.hot();
+    let flips = 0; for (let f = 0; f < 30; f++) { B.advance(1 / 30, 1 / 30); for (let i = 0; i < sq.length; i++) if (shown[i] && sq[i].geometry === hot) flips++; }
     // Full, no square waits, so the stream's dots land on beads; from an empty ₿ again a trickle of arrivals gives each
     // layout a few new squares, which wait for the dots and pop in as they land (the stream is well under way by now).
     const before = D.state; await settle(4000); const dots = D.state;

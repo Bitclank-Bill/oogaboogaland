@@ -1390,7 +1390,8 @@
         const b = beadTurn++ % nBd, p = DISC.beads[b]; out.x = p.x; out.z = p.z; out.y = flat ? DISC.beadLift : DOME.at + domeY(p.x, p.z) - 0.05; return -3 - b;
       },
       land(code, now) { if (code >= 0) { if (sWait[code] > 0) release(code, now, true); } else if (code <= -3) { bPulse[-3 - code] = now; beadLands++; } },
-      // For the suite: the replay's arrivals now, and an empty replay.
+      // For the suite: the replay's arrivals now, an empty replay, and the finish a flashing square takes.
+      hot: () => DISC_HOT(),
       arrive: (v) => arrive(v), clear: () => { pN = 0; pVB = 0; relayAt = 0; },
       dispose() { if (M && M.track) M.track(false); }
     };
