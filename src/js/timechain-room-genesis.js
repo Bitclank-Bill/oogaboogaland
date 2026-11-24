@@ -1167,11 +1167,13 @@
     // two chamfer passes: the distance inside the ₿ to its edge, in grid steps
     for (let y = 1; y < H; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x; if (d[i]) d[i] = Math.min(d[i], d[i - 1] + 1, d[i - W] + 1, d[i - W - 1] + 1.414, d[i - W + 1] + 1.414); }
     for (let y = H - 2; y >= 0; y--) for (let x = W - 2; x > 0; x--) { const i = y * W + x; if (d[i]) d[i] = Math.min(d[i], d[i + 1] + 1, d[i + W] + 1, d[i + W + 1] + 1.414, d[i + W - 1] + 1.414); }
-    const x0 = discX(0) - S * step, z0 = discZ(0) + S * step;
+    const x0 = discX(0) - S * step, z0 = discZ(0) + S * step, k = step / DOME.bevel;
+    // The depth at a grid point, 0 to 1; defined once, so a frame's samples (a crossing dot, a landing) make nothing.
+    const at = (a, b) => Math.min(1, d[b * W + a] * k);
     return (x, z) => {
       const gx = (x - x0) / step - 0.5, gy = (z0 - z) / step - 0.5, ix = Math.floor(gx), iy = Math.floor(gy);
       if (ix < 0 || iy < 0 || ix >= W - 1 || iy >= H - 1) return 0;
-      const fx = gx - ix, fy = gy - iy, at = (a, b) => Math.min(1, d[b * W + a] * step / DOME.bevel);
+      const fx = gx - ix, fy = gy - iy;
       const v = (at(ix, iy) * (1 - fx) + at(ix + 1, iy) * fx) * (1 - fy) + (at(ix, iy + 1) * (1 - fx) + at(ix + 1, iy + 1) * fx) * fy;
       return v * v * (3 - 2 * v);
     };
