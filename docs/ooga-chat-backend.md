@@ -663,8 +663,9 @@ NPC frame, SFU id, private-conversation frame, reaction over a body, other game 
 }` (its own asks by account id, and those asked back), and every change reaches each of the account's sockets, island
 and Ooga Chat alike, as `{ t: "links", wants, linked }` (the asking socket alone also hears `refused`, `all` and `n`). A
 member may send `{ t: "link", to, on }`, the island's own frame, through the Room's `linkMessage`: the same rate bucket,
-limits and storage, an island player its only target. Online Oogas in Ooga Chat draws it on each island player's row,
-and lists Main Island's Ooga Chat listeners after its players in gray; every "N online" in both apps counts them, anyone
+limits and storage, an island player its only target. Online Oogas in Ooga Chat no longer draws it: with hosted chats
+Ooga Chat's voice is a chat's, which a link never reaches (the island's `outdoor` switch, which carried linked voices, is
+off), so the frames stay for the old bridge's cleanup and the links are the island's own. Online Oogas there lists Main Island's Ooga Chat listeners after its players in gray; every "N online" in both apps counts them, anyone
 also on the island once.
 
 **The contract names (#670), over the island's own frames.** No second chat format: `communitySnapshot` is the welcome,

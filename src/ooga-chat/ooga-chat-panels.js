@@ -391,9 +391,9 @@
   // Online Oogas: everyone on the island now, grouped by where they are (zone-map.js, as the island's tab groups them),
   // with their raised hand and whether they are in voice, and the member's own row first: in their island group while
   // their Ooga is there, else under Ooga Chat. Presence without positions: no distance or crosshair, which are the
-  // island's alone. The voice link is the island's own, the same asks in both apps: an island player's row shows it
-  // and a click asks or takes back the ask through the Commons (`link`). Main Island's Ooga Chat listeners follow its
-  // players in gray. Mic marks and Volume share the audience's local listening choices.
+  // island's alone. No voice link: Ooga Chat's voice is a hosted chat's, which a link never reaches (the island's
+  // `outdoor` route that carried linked voices is off), so the links stay the island's own. Main Island's Ooga Chat
+  // listeners follow its players in gray. Mic marks and Volume share the audience's local listening choices.
   const online = (ctx) => {
     const { model } = ctx.commons;
     const APP = "ooga-chat";
@@ -468,22 +468,6 @@
       mics.push({ el: voice, p: participant, self: r.self, key, control, toggle });
       paintMic(ctx, voice, participant, r.self);
       const marks = make("span", "roster-marks", voice);
-      // The island's voice link, on an island player's row but the member's own, where the Room keeps them.
-      const links = model.state.links;
-      if (links && !r.self && !r.cloud) {
-        const state = links.linked.has(p.id) ? "linked" : links.wants.has(p.id) ? "asked" : "none", words = BL.nativeIcons.LINK_WORDS[state](p.display);
-        const link = make("button", "players-link", BL.nativeIcons.link());
-        link.type = "button";
-        link.dataset.link = state;
-        link.setAttribute("aria-pressed", String(state !== "none"));
-        attr(link, "aria-label", words);
-        link.title = words;
-        link.addEventListener("click", (event) => {
-          if (event.detail) link.blur();
-          ctx.commons.send({ t: "link", to: p.id, on: state === "none" });
-        });
-        marks.append(link);
-      }
       const li = make("li", "", dots, make("span", "players-name", toggle || label), make("span", "players-mark", raised), marks);
       if (control) li.append(control.node);
       if (r.self) li.dataset.self = "true";
@@ -530,7 +514,7 @@
       }
     };
     let status = "off", cloud = [], audience = null, me = "", heard = -1, voice = null;
-    const off = model.subscribe((kind) => { if (kind === "players" || kind === "welcome" || kind === "links") { draw(); paint(); } });
+    const off = model.subscribe((kind) => { if (kind === "players" || kind === "welcome") { draw(); paint(); } });
     const watch = onShown(node, draw);
     const paint = () => {
       const live = status === "live" && !!model.state.you;
