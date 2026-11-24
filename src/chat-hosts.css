@@ -161,3 +161,11 @@
   .panel[data-space="on"] > .cloud-roster { min-height: 116px; }
   .panel[data-space="on"] .iv-stage { max-height: 132px; }
 }
+/* The pop-ups' buttons by what they do, as every pop-up's are: the one amber action, red for what removes someone or
+   ends the chat, stone for the rest (Cancel, Not now, Decline, a tile menu's other choices). The tile menu's Cancel
+   stands apart at its foot. */
+:is(.hc-pop, .hc-start, .hc-preview, .hc-invite) .foot-button:not(.foot-primary, .hc-danger) { background: var(--stone); }
+:is(.hc-pop, .hc-start, .hc-preview, .hc-invite) .foot-button:not(.foot-primary, .hc-danger):is(:hover, :focus-visible):not(:disabled, [aria-disabled="true"]) { background: var(--stone-lt); }
+.hc-danger { background: linear-gradient(#ef6a55, var(--danger)); color: #fff; }
+.hc-danger:is(:hover, :focus-visible) { background: linear-gradient(#f5806d, #ef5a44); }
+.hc-pop-cancel { margin-top: 4px; }

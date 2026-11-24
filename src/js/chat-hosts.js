@@ -506,7 +506,8 @@
       pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, a.left + a.width / 2 - w / 2))}px`;
       pop.style.top = `${a.bottom + h + 8 > innerHeight ? Math.max(8, a.top - h - 6) : a.bottom + 6}px`;
     };
-    // `items`: `{ label, run, primary }`; `heading` names it, `role` menu or dialog.
+    // `items`: `{ label, run, primary, danger, cancel }` (danger: red, for what removes or ends; cancel: the menu's own way
+    // out, at its foot); `heading` names it, `role` menu or dialog.
     const openPop = (kind, at, heading, items, role = "menu", focus = true) => {
       closePop(false);
       anchor = at;
@@ -517,7 +518,7 @@
       slab.append(make("p", "hc-pop-head", heading));
       for (const item of items) {
         if (item.node) { slab.append(item.node); continue; }
-        const el = button(`foot-button${item.primary ? " foot-primary" : ""}`, item.label);
+        const el = button(`foot-button${item.primary ? " foot-primary" : ""}${item.danger ? " hc-danger" : ""}${item.cancel ? " hc-pop-cancel" : ""}`, item.label);
         if (role === "menu") el.setAttribute("role", "menuitem");
         if (item.name) el.setAttribute("aria-label", item.name);
         slab.append(el);
@@ -551,19 +552,19 @@
     }, { signal });
     document.addEventListener("pointerdown", (event) => { if (!pop.hidden && !pop.contains(event.target) && !anchor?.contains(event.target)) closePop(false); }, { signal, capture: true });
     addEventListener("resize", place, { signal });
-    const confirm = (at, words, label, run) => openPop("confirm", at, words, [{ label, primary: true, run: () => { closePop(); run(); } }, { label: "Cancel", run: () => closePop() }], "dialog");
+    const confirm = (at, words, label, run, danger = false) => openPop("confirm", at, words, [{ label, primary: true, danger, run: () => { closePop(); run(); } }, { label: "Cancel", run: () => closePop() }], "dialog");
     const menu = (id, tile) => {
       const row = people.find((p) => p.id === id);
       if (!room || !row) return;
       const chat = room.chat || {}, slots = (Array.isArray(chat.cohosts) ? chat.cohosts.length : 0) + (Array.isArray(chat.offers) ? chat.offers.length : 0);
       const items = actionsFor({ id: me, rank, slots }, row);
       if (!items.length) return;
-      openPop(`menu:${id}`, tile, row.display, items.map((a) => ({ label: a.label, disabled: a.disabled, reason: a.reason, run: () => {
+      openPop(`menu:${id}`, tile, row.display, [...items.map((a) => ({ label: a.label, disabled: a.disabled, reason: a.reason, danger: a.type === "remove", run: () => {
         const fields = { id, ...(a.on === undefined ? {} : { on: a.on }) };
-        if (a.confirm) return confirm(tile, a.confirm, a.label, () => send(a.type, fields));
+        if (a.confirm) return confirm(tile, a.confirm, a.label, () => send(a.type, fields), a.type === "remove");
         closePop();
         send(a.type, fields);
-      } })));
+      } })), { label: "Cancel", cancel: true, run: () => closePop() }]);
     };
     space.setMenu(menu);
     const queue = () => people.filter((p) => p.request === "asked").sort((a, b) => a.askedAt - b.askedAt);
@@ -596,7 +597,7 @@
       if (held && !pop.contains(document.activeElement)) (pop.querySelector("button") || requests).focus();
     };
     requests.addEventListener("click", () => popKind === "queue" ? closePop() : openQueue(true), { signal });
-    end.addEventListener("click", () => confirm(end, "End this chat for everyone?", "End chat", () => send("end")), { signal });
+    end.addEventListener("click", () => confirm(end, "End this chat for everyone?", "End chat", () => send("end"), true), { signal });
 
     // What the chat says: notices, answers to this page's own requests, and the island view's walkers.
     const off = chats.hear((msg) => {

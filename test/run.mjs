@@ -17502,7 +17502,7 @@ const oogaChatAppChecks = async () => {
         title: q(".hc-room-title")?.textContent || "", chip: shown(".hc-requests").map((e) => e.textContent).join(), foot: shown(".cloud-foot-actions > *").map((e) => e.textContent).join(),
         invite: shown(".hc-invite").length, focus: document.activeElement?.textContent || "", notice: q(".hc-chat-notice")?.textContent || "",
         ranks: [...document.querySelectorAll(".cloud-tile[data-rank]")].map((t) => t.dataset.rank).filter(Boolean).join(), asked: document.querySelectorAll('.cloud-tile[data-request="asked"]').length,
-        menu: [...document.querySelectorAll('.hc-pop [role="menuitem"]')].map((e) => e.textContent).join(), queue: [...document.querySelectorAll(".hc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
+        menu: [...document.querySelectorAll('.hc-pop [role="menuitem"]:not(.hc-pop-cancel)')].map((e) => e.textContent).join(), cancel: !!document.querySelector(".hc-pop .hc-pop-cancel"), queue: [...document.querySelectorAll(".hc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
         popInside: !r || r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1, wide: document.documentElement.scrollWidth > innerWidth + 1,
         captures: BL.oogaChatFixtures.rtc.stats.captures, tiles: [...document.querySelectorAll(".cloud-tile")].map((t) => t.getAttribute("aria-label")).join(" | "),
         names: [...document.querySelectorAll(".cloud-tile .cloud-name-text")].map((t) => t.textContent).join(),
@@ -17708,7 +17708,7 @@ const oogaChatAppChecks = async () => {
       opened: r.opened.openSwitch && r.opened.openTag === 1 && /sample-otter, speaking/.test(r.opened.tiles),
       queue: r.queue.queue === "Approve sample-pebble,Decline sample-pebble,Approve sample-otter,Decline sample-otter" && r.queue.popInside,
       approved: /sample-pebble, speaking/.test(r.approved.tiles) && r.approved.chip === "Requests 1",
-      menu: r.menu.menu === "Mute,Move to listener,Make co-host,Remove from chat" && r.menu.popInside,
+      menu: r.menu.menu === "Mute,Move to listener,Make co-host,Remove from chat" && r.menu.cancel && r.menu.popInside,
       muted: /sample-pebble, speaking, muted/.test(r.muted.tiles),
       cohosting: /sample-pebble, co-host, speaking/.test(r.cohosted.tiles) && r.cohostMenu.menu === "Move to listener,Make speaker,Make host,Remove from chat"
         && /sample-pebble, speaking/.test(r.madeSpeaker.tiles) && !/sample-pebble, co-host/.test(r.madeSpeaker.tiles),
@@ -29505,7 +29505,7 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
     const pop = q(".hc-pop"), r = pop && !pop.hidden ? pop.getBoundingClientRect() : null, d = q("dialog.hc-preview"), dr = d && d.open ? d.getBoundingClientRect() : null;
     return { space: q("#cloud-panel").dataset.space || "", rows: shown(".hc-chat-row").length, title: q(".hc-room-title")?.textContent || "", chip: shown(".hc-requests").map((e) => e.textContent).join(),
       foot: shown("#cloud-panel .cloud-foot-actions > *").map((e) => e.textContent).join(), invite: shown(".hc-invite").length, focus: (document.activeElement?.textContent || "").trim().slice(0, 40),
-      menu: [...document.querySelectorAll('.hc-pop [role="menuitem"]')].map((e) => e.textContent).join(), queue: [...document.querySelectorAll(".hc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
+      menu: [...document.querySelectorAll('.hc-pop [role="menuitem"]:not(.hc-pop-cancel)')].map((e) => e.textContent).join(), cancel: !!document.querySelector(".hc-pop .hc-pop-cancel"), queue: [...document.querySelectorAll(".hc-queue-row button")].map((e) => e.getAttribute("aria-label")).join(),
       popInside: !r || r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1, layer: !!(BL.padFocus && BL.padFocus.open()), call: BL.net.state.call,
       toast: q("#toast")?.textContent || "", tiles: [...document.querySelectorAll("#cloud-roster .cloud-tile")].map((t) => t.getAttribute("aria-label")).join(" | "), wide: document.documentElement.scrollWidth > innerWidth + 1,
       names: [...document.querySelectorAll("#cloud-roster .cloud-name-text")].map((t) => t.textContent).join(),
