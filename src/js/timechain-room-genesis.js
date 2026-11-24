@@ -1235,6 +1235,9 @@
     const NB = DISC.beads.length, NU = DISC.units, sq = [], bd = [];
     for (let i = 0; i < NU; i++) sq.push(nodes[`dsq${i}`]);
     for (let i = 0; i < NB; i++) bd.push(nodes[`dbd${i}`]);
+    // Without the dome (Canvas 2D) the beads lie on the cap's own plane, where the stream's dots land on them (`claim`);
+    // the plan stood them on the dome's curve.
+    if (flat) for (let i = 0; i < NB; i++) bd[i].position.y = capY + DISC.beadLift;
     // Squares: where each is (x, z, side), where it is going, its colour step and whether it is falling.
     const sx = new Float32Array(NU), sz = new Float32Array(NU), ss = new Float32Array(NU), tx = new Float32Array(NU), tz = new Float32Array(NU), ts = new Float32Array(NU);
     const sStep = new Int8Array(NU).fill(-1), sLook = new Int8Array(NU).fill(-2), sy = new Float32Array(NU), sFall = new Uint8Array(NU);

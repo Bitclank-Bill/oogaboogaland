@@ -32083,9 +32083,11 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
   // The Genesis Museum's glass floor: its sheen is WebGL's alone, so on Canvas 2D no reflector of the room is shown.
   await b.evaluate(genesisGo);
   const g = await b.evaluate(`(() => { const B = window.__ooga, N = B.timechain.built.nodes, shown = Object.keys(N).filter((k) => N[k].geometry && N[k].geometry.reflector && N[k].visible);
-    return { kind: B.renderer.kind, room: B.timechain.room.id, sheen: !!N.glassSheen, shown }; })()`);
-  record("timechain canvas2d: the Genesis Museum builds its glass floor's sheen and shows no reflector of it on Canvas 2D",
-    g.kind === "canvas2d" && g.room === 8 && g.sheen && g.shown.length === 0, JSON.stringify(g));
+    // With no dome drawn the ceiling's beads lie level on the cap's plane, a hand's breadth behind its squares.
+    const beads = Object.keys(N).filter((k) => k.startsWith("dbd")).map((k) => N[k].position.y), capY = N.dsq0.position.y;
+    return { kind: B.renderer.kind, room: B.timechain.room.id, sheen: !!N.glassSheen, shown, dome: !!N.discDome && N.discDome.visible, beads: beads.length, offCap: beads.filter((y) => Math.abs(y - capY - 0.08) > 1e-4).length }; })()`);
+  record("timechain canvas2d: the Genesis Museum builds its glass floor's sheen and shows no reflector of it on Canvas 2D, and its ceiling keeps the flat cap with the beads on its plane",
+    g.kind === "canvas2d" && g.room === 8 && g.sheen && g.shown.length === 0 && !g.dome && g.beads > 0 && g.offCap === 0, JSON.stringify(g));
 } };
 scene("timechain", { url: roomPage(0), steps: [timechainRoom, timechainRooms, timechainWallJump, timechainTrip] });
 // The Genesis Museum's own checks in a session of their own, run by itself: the rooms' session keeps its time, and
