@@ -24,11 +24,20 @@ export const COMMONS_FEATURE = "commons-v1";
 export const COMMUNITY_MAX = 128;
 export const COMMUNITY_PER_ACCOUNT = 3;
 export const REAUTH_MS = 60 * 60 * 1000;
+// A member's page pings every 30 s, and a hidden tab's timers may run only once a minute: one silent longer than this
+// is a page gone without closing (a phone asleep, a network change), which the next sweep would take, up to four
+// minutes on while nobody plays.
+export const SILENT_MS = 75000;
 const RELAYED = new Set(["join", "leave", "body", "zone", "vstate", "hand", "chat", "clouds"]);
 const CLOSE = { stale: 4000, bad: 4400, auth: 4401, full: 4429 };
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 const members = (room) => room.community || (room.community = new Map());
+// When a member was last heard: its own frame, or the ping the runtime answered for it without waking the Room.
+const heardAt = (room, m) => {
+  const pinged = room.ctx.getWebSocketAutoResponseTimestamp(m.ws);
+  return Math.max(m.seenAt, pinged ? pinged.getTime() : 0);
+};
 // The Room's chat memory's life: set on the first member touch after the Room was built (a wake or a restart builds a
 // new one with an empty ring), so a reconnecting app that sees a new epoch knows lines it missed are gone, not quiet.
 const epochOf = (room, now) => room.communityEpoch || (room.communityEpoch = now);
@@ -74,6 +83,11 @@ export const commonsRoom = {
     const all = members(room);
     let mine = 0;
     for (const m of all.values()) if (m.id === who.id) mine++;
+    // At its limit, an account's own sockets gone silent make room now rather than at the sweep, so pages that went away
+    // without closing never keep the account's next page out.
+    if (mine >= COMMUNITY_PER_ACCOUNT) {
+      for (const m of [...all.values()]) if (m.id === who.id && now - heardAt(room, m) > SILENT_MS) { commonsRoom.close(room, m, CLOSE.stale, "stale"); mine--; }
+    }
     if (all.size >= COMMUNITY_MAX || mine >= COMMUNITY_PER_ACCOUNT) {
       server.close(CLOSE.full, "full");
       return new Response(null, { status: 101, webSocket: client });
@@ -170,8 +184,7 @@ export const commonsRoom = {
   async sweep(room, now, ownedBody, staleMs) {
     for (const m of [...members(room).values()]) {
       if (m.authUntil <= now || !ownedBody(m.login, m.id)) { commonsRoom.close(room, m, CLOSE.auth, "auth_required"); continue; }
-      const pinged = room.ctx.getWebSocketAutoResponseTimestamp(m.ws);
-      if (now - Math.max(m.seenAt, pinged ? pinged.getTime() : 0) > staleMs) { commonsRoom.close(room, m, CLOSE.stale, "stale"); continue; }
+      if (now - heardAt(room, m) > staleMs) { commonsRoom.close(room, m, CLOSE.stale, "stale"); continue; }
       if (room.env && room.env.DB) {
         let row;
         try { row = await getPlayer(room.env.DB, m.id); } catch { continue; }

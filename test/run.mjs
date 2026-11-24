@@ -17514,7 +17514,8 @@ const oogaChatAppChecks = async () => {
           inside: (({ left, right, top, bottom }) => left >= 0 && right <= innerWidth + 1 && top >= 0 && bottom <= innerHeight + 1)(q("dialog.hc-preview").getBoundingClientRect()) } : null,
         allow: [...document.querySelectorAll(".hc-pop .hc-queue-row button")].filter((e) => /^Allow/.test(e.getAttribute("aria-label"))).map((e) => e.getAttribute("aria-label")).join(),
         offer: shown(".hc-offer").length, offerHead: q(".hc-offer strong")?.textContent || "", offerInside: (({ left, right, top, bottom }) => left >= 0 && right <= innerWidth + 1 && top >= 0 && bottom <= innerHeight + 1)(q(".hc-offer")?.getBoundingClientRect() || {}),
-        disabled: [...document.querySelectorAll('.hc-pop [role="menuitem"][aria-disabled="true"]')].map((e) => e.textContent).join(), why: q(".hc-pop .hc-pop-why")?.textContent || "" }; })()`);
+        disabled: [...document.querySelectorAll('.hc-pop [role="menuitem"][aria-disabled="true"]')].map((e) => e.textContent).join(), why: q(".hc-pop .hc-pop-why")?.textContent || "",
+        accountVoice: [...document.querySelectorAll(".oc-panel .account :is(.account-mute, .account-voice)")].filter((e) => !e.hidden).length }; })()`);
     const click = (b, selector) => b.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const cohostShots = join(root, "untracked", "cohost-offers");
     mkdirSync(cohostShots, { recursive: true });
@@ -17584,7 +17585,10 @@ const oogaChatAppChecks = async () => {
       } finally { b.close(); }
       b = await page(w, "state=contributor&roster=mixed&chats=on");
       try {
+        // The Commons built (a contributor tab is made as it is first opened), its account row is measured in and out of a chat.
+        await open(b, "commons", 900);
         await open(b, "chat", 1200);
+        run.contributorList = await chatNow(b);
         await click(b, ".hc-chats-head .foot-primary");
         await b.sleep(300);
         run.dialog = await b.evaluate(`({ open: document.querySelector("dialog.hc-start").open, title: document.querySelector(".hc-start-title").value,
@@ -17683,6 +17687,7 @@ const oogaChatAppChecks = async () => {
     }
     const hostedOk = Object.fromEntries(Object.entries(hostedRuns).map(([w, r]) => [w, {
       list: r.list.space === "list" && r.list.rows.join() === "Sample Oak's chat,Building DSB Land" && r.list.start === 0,
+      accountVoice: r.contributorList.space === "list" && r.contributorList.accountVoice === 0 && r.hosting.accountVoice > 0,
       preview: r.preview.preview.title === "Sample Oak's chat" && r.preview.preview.stage === "sample-oak,sample-fern,sample-reed" && /^4 listening · 2 waiting to speak$/.test(r.preview.preview.count)
         && !r.preview.preview.tag && r.preview.preview.inside && !r.cancelled.preview && r.cancelled.focus.startsWith("Sample Oak's chat"),
       joined: r.joined.space === "on" && r.joined.title === "Sample Oak's chat" && r.joined.foot.includes("Request to speak") && !r.joined.foot.includes("End chat") && r.joined.ranks === "host,cohost" && r.joined.asked === 2
@@ -17715,7 +17720,7 @@ const oogaChatAppChecks = async () => {
       signedOut: r.signedOut.space === "off" && !r.signedOut.preview && r.signedOut.rows.length === 0 && r.signedOut.list.hidden && r.signedOut.list.kept === 0 && r.signedOut.list.signin,
       fits: Object.values(r).every((m) => typeof m !== "object" || !m.wide)
     }]));
-    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
+    record("Ooga Chat page hosted chats: signing in lists the live chats and joins none, and the other panels' account rows offer Unmute and Join voice only once in a chat; a listener's request is approved, its invite card takes the focus and Start speaking lands muted, and a host's mute mutes them and says so; a chat's preview shows its stage before joining, and joining as a speaker asks on a closed stage and speaks at once on an open one; a contributor starts a chat from the dialog, approves a request from the queue, opens the stage (approving the one still waiting), mutes a speaker from their tile's menu, offers co-hosting (accepted, made a speaker, the three slots filled so Make co-host is dimmed with its reason, an offer withdrawn, one turned down), removes someone and lets them back, and ends the chat; signing out closes an open preview and takes the list and its chats away; a co-host offer's card is accepted onto the stage, comes back as the co-host leaves voice and is accepted again; the roster runs host, co-hosts, speakers, requests, then listeners, every chat speaker ringed as on a cloud but those walking the chat's island, and the Requests chip stands right of the zone tag; at 1024 and 390 pixels with every pop-up on screen",
       Object.values(hostedOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ hostedOk, hostedRuns }));
 
     // The island view (island-view.js; docs/ooga-chat-hosts.md, "The island view"), at 1024 and 390: Sample Oak's chat

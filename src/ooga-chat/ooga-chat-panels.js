@@ -23,9 +23,9 @@
   const playerVoice = (p) => ({ id: `gh:${p.id}`, display: p.display, role: p.voice ? "speaker" : "listener", muted: p.muted });
   // The account row the island keeps at the foot of Contributing Oogas, Online Oogas and The Commons (hud.js
   // `showAccount`): while signed out, the sign-in screen's own Continue with GitHub (the design's sign-in button, in
-  // place of the island's Contributor sign-in), else the name (a green dot while The Commons is live, with how many are
-  // on the island), and as the cloud tab's footer: the microphone, shown and off until speaking, Join voice (Leave voice
-  // once speaking) and Sign out.
+  // place of the island's Contributor sign-in), else the name (Ooga Chat's purple dot, with how many are on the island
+  // while The Commons is live), and as the cloud tab's footer: the microphone, shown and off until speaking, Join voice
+  // (Leave voice once speaking) and Sign out; with hosted chats, the microphone and Join voice only while in a chat.
   const accountRow = ({ actions, media, commons: { model } }) => {
     const listeners = new AbortController(), { signal } = listeners;
     const login = button("oc-provider oc-account-signin", PROVIDERS.github[0]);
@@ -71,6 +71,13 @@
       }
       set(name, "textContent", who.identity.display);
       const speaker = state.voice.role === "speaker", allowed = gates(state, Date.now()), join = joining(state, allowed, media);
+      // With hosted chats, voice is a chat's: outside one there is nothing to join or unmute here, as in the Ooga Chat tab.
+      if (state.boot.features.chats && !state.room && !speaker) {
+        set(mute, "hidden", true);
+        set(voice, "hidden", true);
+        set(voiceWhy, "textContent", "");
+        return;
+      }
       set(mute, "hidden", false);
       set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
       set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
@@ -169,6 +176,8 @@
     const stampOf = (c) => c.lastContributionAt || c.lastCommitAt;
     const online = (row) => {
       if (speakers.has(row.contributor.login)) return "cloud";
+      // The visitor is online here, in Ooga Chat: their own dot is its purple.
+      if (town.state.you && row.contributor.login === town.state.you.login.toLowerCase()) return "app";
       for (const p of town.state.players.values()) if (p.login.toLowerCase() === row.contributor.login) return true;
       return false;
     };
@@ -417,9 +426,10 @@
     // the crosshair and the distance, which only the island offers. An Ooga Chat speaker's dot is purple.
     const row = (r) => {
       const p = r.p, dots = make("span", "roster-dots"), presence = make("span", "roster-presence"), host = make("span", "roster-host");
-      presence.dataset.online = r.cloud ? "cloud" : "true";
+      // The visitor's own row is Ooga Chat's purple too: they are here, in Ooga Chat.
+      presence.dataset.online = r.cloud || r.self ? "cloud" : "true";
       presence.setAttribute("role", "img");
-      presence.setAttribute("aria-label", r.cloud ? "Speaking from Ooga Chat" : "Online");
+      presence.setAttribute("aria-label", r.cloud ? "Speaking from Ooga Chat" : r.self ? "Online in Ooga Chat" : "Online");
       presence.title = presence.getAttribute("aria-label");
       host.hidden = true;
       dots.append(presence, host);

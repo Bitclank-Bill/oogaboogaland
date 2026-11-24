@@ -697,7 +697,9 @@ deadline (`authUntil`, never past the session's own), no longer a contributor, b
 auto-answered pings. A Room wake restores members from their attachments as members, never as players.
 
 **Bounds and cost.** At most 128 members a Room and 3 an account (`COMMUNITY_MAX`, `COMMUNITY_PER_ACCOUNT`); the next is
-closed 4429. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
+closed 4429, after the account's own members silent past `SILENT_MS` (75 s: a page pings every 30 s, a hidden tab's
+timers may run once a minute) are closed as stale, so pages gone without closing (a phone asleep, a network change)
+never keep the account's next page out until the sweep. A member holds no player slot (`MAX_PLAYERS` is the island's alone), voice or NPC follower count. While any
 member is connected the Room keeps its once-a-minute sweep, as it does for a player, and nothing else: a member is
 relayed only what the Room already broadcasts. With the island's `commons` switch off nobody new connects; members
 already in leave at their next sweep or reconnect.

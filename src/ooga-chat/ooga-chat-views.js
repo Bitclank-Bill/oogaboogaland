@@ -411,7 +411,7 @@
     };
     return { nodes: [heard, list, volumeBox, footRow], update, focus, dispose, parts: { list, footRow, foot: foot.parts }, setMenu(fn) { menu = fn; } };
   };
-  // The Ooga Chat panel's footer, the island's: the visitor's name (a purple dot only while speaking from Ooga Chat), the
+  // The Ooga Chat panel's footer, the island's: the visitor's name (Ooga Chat's purple dot while signed in), the
   // fixed-width microphone, always first and off for a listener, Join Voice for a listener the server allows to speak
   // (Leave Voice for a speaker), and Sign out. A disabled button says why on itself. The voice state is the seam's
   // (`state.voice`); nothing here opens a microphone.
@@ -446,7 +446,7 @@
       if (!who) return;
       set(name, "textContent", who.identity.display);
       const speaker = state.voice.role === "speaker", allowed = state.room ? { joinVoice: state.room.you?.speak === "eligible" || !!state.voice.elsewhere, why: null } : gates(state, Date.now());
-      const source = speaker ? "chat" : "";
+      const source = "chat";
       if (name.dataset.source !== source) name.dataset.source = source;
       set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
       set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");

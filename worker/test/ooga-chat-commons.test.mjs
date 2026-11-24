@@ -187,6 +187,15 @@ test("access ends: signing out or losing eligibility closes the account's member
   const a = await h.member(4, "dee"), b = await h.member(4, "dee"), c = await h.member(4, "dee"), d = await h.member(4, "dee");
   assert.equal([a, b, c].every((m) => m.ws.closed === null), true);
   assert.equal(d.ws.closed.code, 4429);
+  // At the limit, the account's own pages that went away without closing make room at once, not at the next sweep:
+  // one silent past SILENT_MS goes, one heard from lately stays.
+  const { SILENT_MS } = await import("../src/room-commons.js");
+  h.advance(SILENT_MS - 1000);
+  await h.send(b.ws, { t: "chat", text: "still here", clientId: "b1" });
+  h.advance(2000);
+  const e = await h.member(4, "dee");
+  assert.deepEqual([a.ws.closed && a.ws.closed.code, b.ws.closed, c.ws.closed && c.ws.closed.code, e.ws.closed], [4000, null, 4000, null],
+    "a page back after a phone slept gets in, its dead sockets gone");
 });
 
 test("with only members here the sweep runs every four minutes, and a player arriving brings it back to one a minute", async () => {
