@@ -31398,17 +31398,24 @@ const timechainDisc = { name: "timechain block disc", why: "rule: the Genesis Mu
     let early = 0;
     for (let i = 0; i < 7; i++) { D.arrive(5e5); const s = await settle(1150); fills.push([+s.fill.toFixed(2), s.beads]); if (s.beads > 0 && s.fill < 0.97) early++; }
     const full = D.state;
-    // Full and waiting: thirty frames with no square changing its finish (nothing flashes).
-    const sq = Object.keys(N).filter((k) => k.startsWith("dsq")).map((k) => N[k]), looks = sq.map((n) => n.geometry);
-    let flips = 0; for (let f = 0; f < 30; f++) { B.advance(1 / 30, 1 / 30); for (let i = 0; i < sq.length; i++) if (sq[i].geometry !== looks[i]) { flips++; looks[i] = sq[i].geometry; } }
+    // Full and waiting: thirty frames with no square already showing changing its finish (nothing flashes; a square
+    // still waiting for its dot may pop in meanwhile, with its landing's flash).
+    const sq = Object.keys(N).filter((k) => k.startsWith("dsq")).map((k) => N[k]), looks = sq.map((n) => n.geometry), shown = sq.map((n) => n.scale.x > 0.01);
+    let flips = 0; for (let f = 0; f < 30; f++) { B.advance(1 / 30, 1 / 30); for (let i = 0; i < sq.length; i++) if (shown[i] && sq[i].geometry !== looks[i]) { flips++; looks[i] = sq[i].geometry; } }
+    // Full, no square waits, so the stream's dots land on beads; from an empty ₿ again a trickle of arrivals gives each
+    // layout a few new squares, which wait for the dots and pop in as they land (the stream is well under way by now).
+    const before = D.state; await settle(4000); const dots = D.state;
+    D.clear(); await settle(1200); D.arrive(1.5e4); await settle(1150);
+    const trickle0 = D.state; for (let i = 0; i < 4; i++) { D.arrive(1.5e4); await settle(1150); } await settle(2500); const trickle = D.state;
+    D.arrive(3.6e6); await settle(1200);
     // A block found now: its fall, then the refill.
     P.drop(0); P.live.dropAt = clock(); B.advance(1 / 30, 1 / 30);
     const fallen = D.state; await settle(3600);
     const after = D.state;
-    return { empty: { squares: empty.squares, fill: +empty.fill.toFixed(3), beads: empty.beads }, early, fills, full: { fill: full.fill, beads: full.beads, queue: +full.queue.toFixed(2) }, flips, fallen: fallen.squares, after: { fill: after.fill, beads: after.beads, mined: after.mined } };
+    return { empty: { squares: empty.squares, fill: +empty.fill.toFixed(3), beads: empty.beads }, early, fills, full: { fill: full.fill, beads: full.beads, queue: +full.queue.toFixed(2) }, flips, trickle: { landed: trickle.landed - trickle0.landed, timedOut: trickle.timedOut - trickle0.timedOut }, dots: { landed: dots.landed - before.landed, beads: dots.beadLands - before.beadLands, timedOut: dots.timedOut - before.timedOut }, fallen: fallen.squares, after: { fill: after.fill, beads: after.beads, mined: after.mined } };
   })()`);
-  record("timechain block disc: the ceiling's ₿ fills before its queue, holds without flashing when full, and on a block its squares go and the queue refills it",
-    r.empty.fill < 0.05 && r.empty.beads === 0 && r.early === 0 && r.full.fill >= 0.97 && r.full.beads > 0 && r.flips === 0 && r.fallen === 0 && r.after.fill >= 0.97 && r.after.beads < r.full.beads && r.after.mined >= 1, JSON.stringify(r));
+  record("timechain block disc: the ceiling's ₿ fills before its queue, the stream's dots land on its new squares (and on beads when none wait), it holds without flashing when full, and on a block its squares go and the queue refills it",
+    r.empty.fill < 0.05 && r.empty.beads === 0 && r.early === 0 && r.full.fill >= 0.97 && r.full.beads > 0 && r.flips === 0 && r.trickle.landed > 0 && r.dots.beads > 0 && r.fallen === 0 && r.after.fill >= 0.97 && r.after.beads < r.full.beads && r.after.mined >= 1, JSON.stringify(r));
 } };
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D, and a glass floor keeps no reflection there", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);

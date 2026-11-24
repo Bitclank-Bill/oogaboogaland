@@ -1237,6 +1237,14 @@
     const sx = new Float32Array(NU), sz = new Float32Array(NU), ss = new Float32Array(NU), tx = new Float32Array(NU), tz = new Float32Array(NU), ts = new Float32Array(NU);
     const sStep = new Int8Array(NU).fill(-1), sLook = new Int8Array(NU).fill(-2), sy = new Float32Array(NU), sFall = new Uint8Array(NU);
     const bStep = new Int8Array(NB).fill(-1), bLook = new Int8Array(NB).fill(-2), bs = new Float32Array(NB), bt = new Float32Array(NB);
+    // The stream's dots (`claim`, `land`): a square new at a layout waits, unseen, for a dot to fly in and land on it
+    // and pops in as it does (`sWait` since when, `sSpark` its landing's flash), or on its own after `WAIT_MAX`; a dot
+    // with no square waiting lands on a lit bead, which swells a moment (`bPulse`). The waiting squares are a ring of
+    // indices (`waitQ`); a large batch (a first fill, a block's refill) does not wait. Times are the room's clock in
+    // seconds since 1970, so they are kept in doubles.
+    const WAIT_MAX = 4, WAIT_BATCH = 24, sWait = new Float64Array(NU), sSpark = new Float64Array(NU).fill(-1e9), bPulse = new Float64Array(NB).fill(-1e9), waitQ = new Int32Array(NU);
+    let waitHead = 0, waitTail = 0, beadTurn = 0, landed = 0, timedOut = 0, beadLands = 0;
+    const release = (i, now, dot) => { sWait[i] = 0; sSpark[i] = now; ss[i] = ts[i] * 0.35; if (dot) landed++; else timedOut++; };
     // Items (transactions, or the replay's arrivals): fee rate and vsize, sorted highest rate first by index.
     let cap = 16384, rate = new Float64Array(cap), vb = new Float64Array(cap), key = new Float64Array(cap), ids = new Uint32Array(cap), scratch = BL.math.sortScratch(cap), n = 0;
     const push = (r, v) => {
@@ -1298,12 +1306,16 @@
       }
       if (!full && acc > 0 && place(1, accFee / acc)) { bVB += acc; txIn += accN; usedItems = n; }
       medianRate = half > 0 ? half : nSq ? rate[ids[Math.floor(usedItems / 2)]] : 0;
-      // New squares slide in from the rim, or after a block from the beads nearest the ₿.
+      // New squares: a few at a time wait in place for the stream's dots; a large batch slides in from the rim, or after
+      // a block from the beads nearest the ₿.
+      const wait = was > 0 && nSq - was <= WAIT_BATCH && now - refillAt >= 3;
       for (let k = was; k < nSq; k++) {
-        if (now - refillAt < 3 && k < nBd) { const b = DISC.beads[k]; sx[k] = b.x; sz[k] = b.z; ss[k] = 0.5 * DISC.cell; }
-        else { const a = ((k * 2654435761) >>> 0) / 4294967296 * TAU; sx[k] = CAP.rIn * Math.sin(a); sz[k] = -CAP.rIn * Math.cos(a); ss[k] = 0.05; }
+        if (wait) { sx[k] = tx[k]; sz[k] = tz[k]; ss[k] = 0; sWait[k] = now; waitQ[waitTail] = k; waitTail = (waitTail + 1) % NU; }
+        else if (now - refillAt < 3 && k < nBd) { const b = DISC.beads[k]; sx[k] = b.x; sz[k] = b.z; ss[k] = 0.5 * DISC.cell; sWait[k] = 0; }
+        else { const a = ((k * 2654435761) >>> 0) / 4294967296 * TAU; sx[k] = CAP.rIn * Math.sin(a); sz[k] = -CAP.rIn * Math.cos(a); ss[k] = 0.05; sWait[k] = 0; }
         sy[k] = 0; sFall[k] = 0;
       }
+      for (let k = nSq; k < NU; k++) sWait[k] = 0;
       for (let k = nSq; k < NU; k++) ts[k] = 0;
       // Beads: the rest of the waiting mempool in bead-sized slices, nearest first.
       nBd = 0;
@@ -1321,7 +1333,8 @@
     // A block found, at its fall: the ₿'s squares fall with it; the replay's are taken off its waiting list.
     const found = (now) => {
       fallAt = now; refillAt = now + 2.2;
-      for (let k = 0; k < nSq; k++) { sFall[k] = 1; sy[k] = 0; }
+      for (let k = 0; k < nSq; k++) { sFall[k] = 1; sy[k] = 0; sWait[k] = 0; }
+      waitHead = waitTail = 0;
       if (source === 3) {
         // the taken items are the first `usedItems` in rate order: mark them, then close the gaps
         for (let k = 0; k < usedItems; k++) key[ids[k]] = 1e30;
@@ -1334,7 +1347,7 @@
     const M = BL.mempool;
     if (M && M.track && M.state.enabled) M.track(true);
     return {
-      get state() { return { source, squares: nSq, beads: nBd, fill: Math.min(1, bVB / DISC.block), queue: nBd / NB, median: medianRate, tx: txIn, mined }; },
+      get state() { return { source, squares: nSq, beads: nBd, fill: Math.min(1, bVB / DISC.block), queue: nBd / NB, median: medianRate, tx: txIn, mined, landed, timedOut, beadLands }; },
       update(now, dt, live, td) {
         // the replay's arrivals, from the last block on (all of them since it on arrival), until everything is full
         if (first && live) { first = false; seen = live.drops; arrive(DISC_ARRIVE * Math.max(0, now - live.lastBlockAt)); }
@@ -1350,8 +1363,9 @@
             const u = now - fallAt;
             sy[i] = -u * u * 1.6; sx[i] += (DISC.foot.x - sx[i]) * Math.min(1, dt * 1.2); sz[i] += (DISC.foot.z - sz[i]) * Math.min(1, dt * 1.2); ss[i] *= Math.exp(-dt * 1.4);
             if (u > 2.4) { sFall[i] = 0; ss[i] = 0; sy[i] = 0; }
-          } else { sx[i] += (tx[i] - sx[i]) * k; sz[i] += (tz[i] - sz[i]) * k; ss[i] += (ts[i] - ss[i]) * k; }
-          const s = ss[i] > 0.004 ? ss[i] : 0.001, hot = lock >= 0 && i < nSq && Math.hypot(tx[i], tz[i]) / reach <= lock, look = hot ? -1 : sStep[i] < 0 ? 0 : sStep[i];
+          } else if (sWait[i] > 0) { sx[i] = tx[i]; sz[i] = tz[i]; ss[i] = 0; if (now - sWait[i] > WAIT_MAX) release(i, now, false); }
+          else { sx[i] += (tx[i] - sx[i]) * k; sz[i] += (tz[i] - sz[i]) * k; ss[i] += (ts[i] - ss[i]) * k; }
+          const s = ss[i] > 0.004 ? ss[i] : 0.001, hot = lock >= 0 && i < nSq && Math.hypot(tx[i], tz[i]) / reach <= lock || now - sSpark[i] < 0.25, look = hot ? -1 : sStep[i] < 0 ? 0 : sStep[i];
           if (look !== sLook[i]) { sLook[i] = look; node.geometry = look < 0 ? DISC_HOT() : DISC_TILE[look](); }
           node.position.x = sx[i]; node.position.z = sz[i]; node.position.y = capY + sy[i] + (flat ? 0 : DOME.at + domeFloor(sx[i], sz[i]) - 0.045);
           node.scale.x = node.scale.z = s; node.scale.y = s > 0.004 ? DISC.thick : 0.001;
@@ -1361,10 +1375,21 @@
           const node = bd[i], look = bStep[i] < 0 ? 0 : bStep[i];
           const want = i >= nBd ? -1 : look;
           if (want !== bLook[i] && bt[i] > 0) { bLook[i] = want; node.geometry = want < 0 ? DISC_DIM() : DISC_BEAD[want](); }
-          const sc = bs[i] * (0.9 + 0.1 * Math.sin(now * 0.7 + i * 2.39));
+          const sc = bs[i] * (0.9 + 0.1 * Math.sin(now * 0.7 + i * 2.39)) * (1 + 0.5 * Math.max(0, 1 - (now - bPulse[i]) / 0.5));
           node.scale.x = node.scale.y = node.scale.z = sc > 0.004 ? sc : 0.001;
         }
       },
+      // A dot of the stream asks where to land: a waiting square (its index), else a lit bead (-3 less its index), else
+      // nowhere (-1); its place goes into `out` (x, z and the height it lands at, `y` from the cap's own plane).
+      claim(out) {
+        while (waitHead !== waitTail) {
+          const k = waitQ[waitHead]; waitHead = (waitHead + 1) % NU;
+          if (sWait[k] > 0 && k < nSq) { out.x = tx[k]; out.z = tz[k]; out.y = flat ? 0 : DOME.at + domeFloor(tx[k], tz[k]) - 0.05; return k; }
+        }
+        if (!nBd) return -1;
+        const b = beadTurn++ % nBd, p = DISC.beads[b]; out.x = p.x; out.z = p.z; out.y = flat ? DISC.beadLift : DOME.at + domeY(p.x, p.z) - 0.05; return -3 - b;
+      },
+      land(code, now) { if (code >= 0) { if (sWait[code] > 0) release(code, now, true); } else if (code <= -3) { bPulse[-3 - code] = now; beadLands++; } },
       // For the suite: the replay's arrivals now, and an empty replay.
       arrive: (v) => arrive(v), clear: () => { pN = 0; pVB = 0; relayAt = 0; },
       dispose() { if (M && M.track) M.track(false); }
@@ -1797,7 +1822,10 @@
       const nearest = (x, z) => { let b = 0, bd = Infinity; for (let i = 0; i < clusters.length; i++) { const d = Math.hypot(clusters[i].x - x, clusters[i].z - z); if (d < bd) { bd = d; b = i; } } return b; };
       const crossed = (t, tick, phase = 0) => lastT >= 0 && Math.floor((t - phase) / tick) !== Math.floor((lastT - phase) / tick) && t > lastT;
       // ---- the stream: dots born at the clusters, across the map, up the wall, over the dome, into the ₿ ----
-      const stream = streamN.map((node) => ({ node, on: false, t: 0, az: 0, x0: 0, z0: 0, size: 1 }));
+      const stream = streamN.map((node) => ({ node, on: false, t: 0, az: 0, x0: 0, z0: 0, size: 1, tgt: -2, tx: 0, tz: 0, ty: 0 }));
+      // Where a dot lands, written by the ceiling's block (`claim`) so the flight allocates nothing; whether the dome is
+      // drawn (Canvas 2D keeps the flat cap).
+      const landAt = { x: 0, y: 0, z: 0 }, domed = drawnBy !== "canvas2d", domeR = CAP.rIn - DOME.rim;
       let spawnAcc = 0;
       const wallR0 = ROOMS.radiusAt(L, 0) - 0.5;
       const stepStream = (dt, now) => {
@@ -1814,11 +1842,14 @@
           if (d.t < 2.4) { const u = ease(d.t / 2.4), wx = wallR0 * Math.sin(d.az), wz = -wallR0 * Math.cos(d.az); n.position.x = d.x0 + (wx - d.x0) * u; n.position.z = d.z0 + (wz - d.z0) * u; n.position.y = M.mapY + 0.05 + (POC.roadY - M.mapY) * u; n.rotation.x = -HALF_PI; n.rotation.y = 0; setScale(n, d.size); }
           else if (d.t < 7.2) { const u = (d.t - 2.4) / 4.8, el = -1 * DEG + (capEl - 2 * DEG + 1 * DEG) * ease(u), q = ROOMS.onSphere(L, d.az, el, 0.985, q3); n.position.x = q.x; n.position.y = q.y; n.position.z = q.z; n.rotation.x = el * 0.9; n.rotation.y = -d.az; setScale(n, d.size * 3); }
           else if (d.t < 8.2) {
-            // Off the dome and on to the cap: the dot is a transaction now, joining the waiting mempool at the disc's
-            // rim under it (the ceiling's block, `DISC`), and glints out there.
-            if (d.tgt === -2) { d.tgt = -1; d.tx = CAP.rIn * Math.sin(d.az); d.tz = -CAP.rIn * Math.cos(d.az); }
-            const u = ease((d.t - 7.2) / 1.0), q = ROOMS.onSphere(L, d.az, capEl - 1 * DEG, 0.985, q3); n.position.x = q.x + (d.tx - q.x) * u; n.position.z = q.z + (d.tz - q.z) * u; n.position.y = q.y + (capY + 0.1 - q.y) * u; n.rotation.x = HALF_PI; n.rotation.y = 0; setScale(n, d.size * 3 * (1 - 0.7 * u)); }
-          else { d.on = false; setScale(n, 0.001); live.landed = now; }
+            // Off the dome's wall and on to the ceiling's block (`DISC`): the dot is a transaction now and flies to the
+            // place it asks for (`claim`), the next new square in the sunken ₿, else a lit bead, else the rim; it glides
+            // along the dome's underside, never through it, and dips into the recess at the end.
+            if (d.tgt === -2) { const dk = BL.timechainGenesis.disc; d.tgt = dk ? dk.claim(landAt) : -1; if (d.tgt === -1) { landAt.x = CAP.rIn * Math.sin(d.az); landAt.z = -CAP.rIn * Math.cos(d.az); landAt.y = 0.1; } d.tx = landAt.x; d.tz = landAt.z; d.ty = landAt.y; }
+            const u = ease((d.t - 7.2) / 1.0), q = ROOMS.onSphere(L, d.az, capEl - 1 * DEG, 0.985, q3); n.position.x = q.x + (d.tx - q.x) * u; n.position.z = q.z + (d.tz - q.z) * u; let y = q.y + (capY + d.ty - q.y) * u;
+              if (domed && Math.hypot(n.position.x, n.position.z) < domeR) y = Math.min(y, capY + DOME.at + domeY(n.position.x, n.position.z) - 0.06);
+              n.position.y = y; n.rotation.x = HALF_PI; n.rotation.y = 0; setScale(n, d.size * 3 * (1 - 0.7 * u)); }
+          else { d.on = false; setScale(n, 0.001); live.landed = now; const dk = BL.timechainGenesis.disc; if (dk && d.tgt !== -1) dk.land(d.tgt, now); }
         }
       };
       // ---- the markers: light trailing from cluster to cluster across the map, always ----
