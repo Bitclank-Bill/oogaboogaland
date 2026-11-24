@@ -21,6 +21,15 @@
       "base": null,
       "hash": "1d589db0b7831aa06a5bc043db7f82be4e40cb1ef9efe4f16a0128e502b90378",
       "lane": "manual"
+    },
+    {
+      "pr": 896,
+      "head": "cd448e6a608cd83efdfa03ea0eda7d0b9218da7a",
+      "author": "amlozano1",
+      "path": "src/characters/amlozano1.js",
+      "base": null,
+      "hash": "eaa082d019437337b2fd27aa0d079b174db3dba843368e2996b67ee0477279f9",
+      "lane": "manual"
     }
   ]
 }
