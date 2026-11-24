@@ -61,7 +61,7 @@ notification path; clients fetch coherent replay metadata after a score-only roo
 
 ## Bounded storage and deployment
 
-Migration `0006_cloud_hopper_replays.sql` adds a pointer slot a level (four; `0012_cloud_hopper_level_5.sql` rebuilds
+Migration `0006_cloud_hopper_replays.sql` adds a pointer slot a level (four; `0015_cloud_hopper_level_5.sql` rebuilds
 the registry and pointers with every row kept so Level 5's fits), an object registry capped in SQL at 128 rows
 (including current/staged/retired objects), and at most 256 active run tickets. At 12 MiB maximum this caps
 registered object storage at 1.5 GiB; normal recordings are smaller. Each winner stays while current. The existing

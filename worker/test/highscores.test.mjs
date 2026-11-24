@@ -15,7 +15,7 @@ const { createHighscoreHandler, createPlaysHandler, readPlays, countPlay } = rou
 const database = (runs = true, cabinets = true, guard = runs && cabinets, level5 = guard) => {
   const sql = new DatabaseSync(":memory:");
   sql.exec("PRAGMA foreign_keys = ON");
-  for (const name of ["0001_init.sql", "0002_tess.sql", "0003_highscores.sql", "0004_highscore_notifications.sql", "0005_cloud_hopper_levels.sql", "0006_cloud_hopper_replays.sql", ...(runs ? ["0007_cloud_hopper_runs.sql"] : []), ...(cabinets ? ["0008_cabinet_runs.sql"] : []), ...(guard ? ["0009_identity_collision_guard.sql"] : []), "0010_cabinet_plays.sql", ...(level5 ? ["0012_cloud_hopper_level_5.sql"] : [])]) {
+  for (const name of ["0001_init.sql", "0002_tess.sql", "0003_highscores.sql", "0004_highscore_notifications.sql", "0005_cloud_hopper_levels.sql", "0006_cloud_hopper_replays.sql", ...(runs ? ["0007_cloud_hopper_runs.sql"] : []), ...(cabinets ? ["0008_cabinet_runs.sql"] : []), ...(guard ? ["0009_identity_collision_guard.sql"] : []), "0010_cabinet_plays.sql", ...(level5 ? ["0015_cloud_hopper_level_5.sql"] : [])]) {
     sql.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"));
   }
   const statement = (query, args = []) => {
@@ -712,7 +712,7 @@ test("Level 5's migration keeps every Level 1-4 run, replay and pointer, its tri
   const snapshot = () => tables.map(table => DB.sql.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all());
   const schema = () => DB.sql.prepare("SELECT type, name, tbl_name FROM sqlite_schema WHERE type IN ('index','trigger') AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
   const before = snapshot(), shape = schema();
-  DB.sql.exec(readFileSync(new URL("../migrations/0012_cloud_hopper_level_5.sql", import.meta.url), "utf8"));
+  DB.sql.exec(readFileSync(new URL("../migrations/0015_cloud_hopper_level_5.sql", import.meta.url), "utf8"));
   const after = snapshot();
   assert.deepEqual(after.slice(1), before.slice(1));
   assert.deepEqual(after[0].filter(row => row.game_id !== "cloud-hopper-l5"), before[0]);

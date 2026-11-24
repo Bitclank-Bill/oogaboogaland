@@ -848,5 +848,5 @@ a second from touching a portal has its landing found already, and one about a s
 roll's meshes readied again, so the frame either starts on only starts it. A rider that turns away drops the landing
 found; nothing of the course changes.
 
-Its board is `cloud-hopper-l5`, from migration `0012_cloud_hopper_level_5.sql`. Its score is "Sunbreak Rush", whose
+Its board is `cloud-hopper-l5`, from migration `0015_cloud_hopper_level_5.sql`. Its score is "Sunbreak Rush", whose
 melody drops an octave while the world is upside down.

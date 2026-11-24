@@ -17,7 +17,7 @@ them. Every duplicate has its own record.
 
 | Game | IDs / records | Comparison |
 |---|---|---|
-| Cloud Hopper | One board per level, `cloud-hopper-l1` to `cloud-hopper-l5` (each its own game and machine; Level 5's from migration `0012_cloud_hopper_level_5.sql`); fastest distinct runs, with repeated GitHub usernames allowed in the top ten | Lowest completion time, integer milliseconds; levels never compared |
+| Cloud Hopper | One board per level, `cloud-hopper-l1` to `cloud-hopper-l5` (each its own game and machine; Level 5's from migration `0015_cloud_hopper_level_5.sql`); fastest distinct runs, with repeated GitHub usernames allowed in the top ten | Lowest completion time, integer milliseconds; levels never compared |
 | Cloud Hopper, before levels | `cloud-hopper` / `cloud-hopper-1`, retired: read, never written | As above |
 | Ooga Rally | One cabinet; `race-1-{bay,gorge,peak}[-m]-{lap,race}` | Lowest time, integer milliseconds; each track, mirror and metric separate |
 | Ooga Drop | `drop-1` | Highest eligible landing score |
