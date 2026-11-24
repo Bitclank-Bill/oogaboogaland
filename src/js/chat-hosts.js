@@ -9,7 +9,7 @@
 // portrait's address; `startZone()` the zone Start a chat chooses first; `toast(text)` the page's own announced toast,
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
 // whether Request to speak reads Speak now on an open stage; `goThere`, the island's alone (chat-copy.js), `{ state(room),
-// press(), subscribe(fn) }`: the footer's Go there (Leave while on the chat's island), `state` its `{ label, words,
+// press(), subscribe(fn) }`: the footer's Go there (Go back while on the chat's island), `state` its `{ label, words,
 // disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), island(), storageKey }`, the island view's
 // map picture, how the page brings Live view's code, the island it built already (the island page's) and where the
 // viewer's Live view choice is kept (island-view.js). `update(state)` takes the page's state in Ooga Chat's
@@ -22,7 +22,7 @@
 //   the page is visible (no timer otherwise). A chat pressed opens its preview, a modal pop-up: its title, zone and an
 //   Open stage tag, its stage as the chat's circles (`rowFace(row)` their portraits) to look at only, and how many listen
 //   and wait, read as it opens and every PREVIEW_MS while it stays open; a chat gone closes it, saying so. Join as
-//   listener (the amber one) or Join as speaker, which asks once the chat's snapshot is here: on an open stage the
+//   listener (the amber one) or Ask to speak (Join as speaker on an open stage), which asks once the chat's snapshot is here: on an open stage the
 //   invite that answers it goes straight on to Join Voice (the visitor's own press), the invite card showing only if that
 //   could not start; Start a chat for a GitHub account, one dialog (`startDialog`): a title
 //   prefilled "<name>'s chat", three picture cards for the land, Voice only first (`startZone()` chosen first), Start chat and Cancel, with
@@ -30,7 +30,8 @@
 // - in a chat: Back to chats and its title; for a host or co-host the Requests chip, in the panel's title right of the
 //   zone tag, and its pop-up: the queue, then who was removed with Allow back (`allow`, the server's `removed` list); the footer's
 //   Request to speak (Requested · Cancel; `speakNow`, the island's, reads Speak now on an open stage) where a listener
-//   read Join Voice, End chat for its host, Leave for everyone; an Open stage tag beside the title, and in the Requests
+//   read Join Voice, End chat for its host, Leave chat for everyone (Sign out waits in the other tabs while in a chat); Unmute only for a
+//   speaker or one who may speak; the Requests chip without a count while none wait; an Open stage tag beside the title, and in the Requests
 //   pop-up the host's switch for it (`open`);
 //   the invite card, focused as it opens, Start speaking being Join Voice inside its press; the co-host offer card
 //   (Accept, then Join Voice off stage; Not now), again when a co-host left the stage; and a tile's menu, opened by
@@ -333,7 +334,7 @@
     preview.setAttribute("aria-labelledby", previewTitle.id);
     const previewStage = make("ul", "cloud-roster hc-preview-stage"), previewCount = make("p", "hc-preview-count");
     previewStage.setAttribute("aria-label", "On the stage");
-    const joinListener = button("foot-button foot-primary", "Join as listener"), joinSpeaker = button("foot-button", "Join as speaker"), previewCancel = button("foot-button", "Cancel");
+    const joinListener = button("foot-button foot-primary", "Join as listener"), joinSpeaker = button("foot-button hc-join-speaker", "Ask to speak"), previewCancel = button("foot-button", "Cancel");
     preview.append(make("div", "hc-preview-head", previewTitle, previewZone, previewOpen),
       make("div", "slab hc-start-slab", previewStage, previewCount, make("div", "hc-start-go", previewCancel, joinSpeaker, joinListener)));
     // The stage drawn as the chat draws it, to look at only: no menu, no volume, no microphone to press.
@@ -354,6 +355,7 @@
       const shown = parsePreview(answer);
       if (!shown) return;
       previewOpen.hidden = !shown.open;
+      set(joinSpeaker, "textContent", shown.open ? "Join as speaker" : "Ask to speak");
       previewTiles.draw(shown.stage, previewDescribe);
       set(previewCount, "textContent", `${shown.listeners} listening · ${shown.requests} waiting to speak`);
     };
@@ -366,6 +368,8 @@
       set(previewTitle, "textContent", entry.title);
       set(previewZone, "textContent", ZONE_NAMES[entry.zone]);
       previewOpen.hidden = !entry.open;
+      // On an open stage joining as a speaker speaks at once; otherwise it joins and asks.
+      set(joinSpeaker, "textContent", entry.open ? "Join as speaker" : "Ask to speak");
       previewTiles.clear();
       set(previewCount, "textContent", `${entry.listeners} listening`);
       preview.showModal();
@@ -452,7 +456,7 @@
     offerNotNow.addEventListener("click", () => answerOffer(false), { signal });
     offer.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); answerOffer(false); } }, { signal });
     const foot = space.parts.foot;
-    const ask = button("foot-button cloud-voice hc-ask", "Request to speak"), end = button("foot-button hc-end", "End chat"), leave = button("link hc-leave", "Leave");
+    const ask = button("foot-button cloud-voice hc-ask", "Request to speak"), end = button("foot-button hc-end", "End chat"), leave = button("link hc-leave", "Leave chat");
     let asking = 0;
     // A request to speak the visitor pressed for: on an open stage its invite goes straight on to Start speaking
     // (`autoSpeak`: "asked" until the invite, "starting" as voice is joined, "joining" while it is, "done" after), and
@@ -630,7 +634,8 @@
       const r = room, you = r?.you || {}, speaker = state.voice.role === "speaker" || state.voice.busy;
       const may = you.speak === "eligible" || you.speak === "pending" || you.speak === "active" || !!state.voice.elsewhere;
       foot.join.hidden = !r || !speaker && !may;
-      foot.mute.hidden = !r;
+      // A listener who may not speak has no microphone to unmute: the button shows for a speaker or one who may join.
+      foot.mute.hidden = !r || !speaker && !may;
       ask.hidden = !r || speaker || may;
       const open = !!r?.chat?.open;
       set(ask, "textContent", you.request === "asked" ? "Requested · Cancel" : speakNow && open ? "Speak now" : "Request to speak");
@@ -650,7 +655,7 @@
       }
       const manager = !!LEVEL[you.rank];
       requests.hidden = !r || !manager;
-      if (manager) set(requests, "textContent", `Requests ${queue().length}`);
+      if (manager) { const n = queue().length; set(requests, "textContent", n ? `Requests ${n}` : "Requests"); }
       if (!manager && popKind === "queue") closePop(false);
       if (popKind === "queue") openQueue(false);
       if (popKind.startsWith("menu:") && !people.some((p) => p.id === popKind.slice(5))) closePop(false);

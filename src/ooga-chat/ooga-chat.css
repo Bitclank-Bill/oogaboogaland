@@ -338,3 +338,6 @@ body {
   .oc-tab-face { padding: 6px 11px 4px; }
   .oc-slab { padding: 14px 16px; }
 }
+/* With hosted chats on and no chat joined, the other tabs' emoji bars stand down: reactions belong to a chat
+   (ooga-chat-panels.js `outOfChat`). */
+.oc-panel[data-chat="none"] > .panel-foot > .reactions { display: none; }

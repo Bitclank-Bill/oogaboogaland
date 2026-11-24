@@ -17550,7 +17550,7 @@ const oogaChatAppChecks = async () => {
         // Join as speaker on an open stage: straight on to speaking, with no card.
         await row(b, 1);
         await waitFor(b, (s) => !!s.preview && s.preview.tag);
-        await pressText(b, "dialog.hc-preview button", "Join as speaker");
+        await click(b, "dialog.hc-preview .hc-join-speaker");
         run.openSpeaking = await waitFor(b, (s) => s.foot.includes("Leave Voice"));
         await b.screenshot(join(shots, `chats-open-tag-${w}.png`));
         // Its host offers co-hosting: the card, Accept (a co-host on stage), Leave Voice (the card again), Accept again.
@@ -17568,7 +17568,7 @@ const oogaChatAppChecks = async () => {
         // Join as speaker on a closed stage: the request goes in and the host's invite card answers it.
         await row(b, 0);
         await waitFor(b, (s) => !!s.preview);
-        await pressText(b, "dialog.hc-preview button", "Join as speaker");
+        await click(b, "dialog.hc-preview .hc-join-speaker");
         run.requested = await waitFor(b, (s) => s.foot.includes("Requested · Cancel"));
         run.invited = await waitFor(b, (s) => s.invite === 1);
         await b.screenshot(join(shots, `chats-invite-${w}.png`));
@@ -29611,7 +29611,7 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
   // Join as speaker on a closed stage: the request goes in, the host's invite card takes it on.
   await row(0);
   await until((s) => !!s.preview);
-  await press("dialog.hc-preview button", "Join as speaker");
+  await click("dialog.hc-preview .hc-join-speaker");
   const requested = await until((s) => s.foot.includes("Requested · Cancel"));
   const invited = await until((s) => s.invite === 1);
   await b.screenshot(join(shots, `invite-${w}.png`));
@@ -29622,7 +29622,7 @@ const hostedChatsIsland = (phone) => ({ name: phone ? "hosted chats island phone
   // Join as speaker on an open stage: straight on to speaking, no card; the Open stage tag beside the title.
   await row(1);
   await until((s) => !!s.preview && s.preview.tag);
-  await press("dialog.hc-preview button", "Join as speaker");
+  await click("dialog.hc-preview .hc-join-speaker");
   const openSpeaking = await until((s) => s.foot.includes("Leave Voice"));
   await b.screenshot(join(shots, `open-tag-${w}.png`));
   // Its host offers co-hosting: the card, Accept (a co-host on stage), Leave Voice (the card again), Accept again.
@@ -29827,7 +29827,7 @@ const hostedChatCopy = (phone) => ({ name: phone ? "hosted chat copy phone" : "h
   const near = (a, c) => !!a && !!c && Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]) < 0.05;
   const ok = { ready: ready.go.text === "Go there" && ready.voice && ready.npcs > 0, fits,
     went: gone.sockets[0].travel === 1 && gone.sockets[0].closed === 1000 && gone.sockets[1].url.endsWith(`/api/chats/${chat}/world`),
-    there: there.on && there.seals > 0 && there.npcs === 0 && there.gorillas === 0 && there.shown && !there.voice && !there.tess && ready.tess && Math.hypot(there.at[0], there.at[2]) < 9 && there.go.text === "Leave",
+    there: there.on && there.seals > 0 && there.npcs === 0 && there.gorillas === 0 && there.shown && !there.voice && !there.tess && ready.tess && Math.hypot(there.at[0], there.at[2]) < 9 && there.go.text === "Go back",
     sealed: barred.mouths.length > 0 && barred.mouths.every(Boolean) && !barred.open,
     clouds: seated.benches.length === 11 && seated.benches.slice(0, 3).every((c) => c.bench) && seated.benches.slice(3).every((c) => !c.bench)
       && seated.benches.every((c) => c.bottom >= seated.treetop + 1.5 && c.radius === seated.benches[0].radius) && !!spot,

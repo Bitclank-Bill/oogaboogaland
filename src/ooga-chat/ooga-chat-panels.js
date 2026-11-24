@@ -73,14 +73,16 @@
       // In a chat the chat decides who may speak, as the Ooga Chat tab's footer asks it (ooga-chat-views.js `cloudFoot`).
       const speaker = state.voice.role === "speaker", allowed = state.room ? { joinVoice: state.room.you?.speak === "eligible" || !!state.voice.elsewhere, why: null } : gates(state, Date.now());
       const join = joining(state, allowed, media);
-      // With hosted chats, voice is a chat's: outside one there is nothing to join or unmute here, as in the Ooga Chat tab.
-      if (state.boot.features.chats && !state.room && !speaker) {
+      // With hosted chats, voice is a chat's, as in the Ooga Chat tab: outside one, or in one without leave to speak (asked
+      // for there), nothing to join; Unmute only for a speaker.
+      const chats = !!state.boot.features.chats;
+      if (chats && !speaker && !(state.room && allowed.joinVoice)) {
         set(mute, "hidden", true);
         set(voice, "hidden", true);
         set(voiceWhy, "textContent", "");
         return;
       }
-      set(mute, "hidden", false);
+      set(mute, "hidden", chats && !speaker);
       set(mute, "disabled", !speaker || !!state.busy || state.voice.busy);
       set(mute, "textContent", speaker && !state.voice.muted ? "Mute" : "Unmute");
       attr(mute, "aria-pressed", String(speaker && state.voice.muted));
@@ -111,6 +113,11 @@
     refused: "The Commons is for Team Ooga Booga contributors.",
     "signed-out": "Checking your sign-in…",
     "read-only": "Reading only: sending lines from Ooga Chat isn't open yet."
+  };
+  // With hosted chats on and no chat joined, reactions have nowhere to go: the panel's emoji bar stands down (ooga-chat.css).
+  const outOfChat = (node, state) => {
+    const out = !!state.boot.features.chats && !state.room;
+    if (out !== (node.dataset.chat === "none")) { if (out) node.dataset.chat = "none"; else delete node.dataset.chat; }
   };
   // The public conversation's audience, or null with hosted chats on: then `state.audience` is the chat the visitor is
   // in, whose people are no land's (a voice-only chat's too), so they are neither listed as Main Island nor counted.
@@ -257,6 +264,7 @@
     const update = (state) => {
       watch();
       account.update(state);
+      outOfChat(node, state);
       me = state.session?.identity.participant || "";
       if (state.audience.version !== heard) {
         heard = state.audience.version;
@@ -533,6 +541,7 @@
     const update = (state) => {
       watch();
       account.update(state);
+      outOfChat(node, state);
       muteDuels.checked = state.voice.muteDuels;
       muteDuels.disabled = !state.session;
       if (state.audience.version !== heard) {

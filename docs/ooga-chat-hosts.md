@@ -96,7 +96,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   speaker cap still holds.
 - **Preview and joining as either**: a chat in the Chats list opens a preview pop-up of its stage (the host, co-hosts
   and speakers, as the chat orders them), how many listen and wait, and whether its stage is open, with **Join as
-  listener** and **Join as speaker**. Joining as a speaker joins and asks at once; on an open stage that press goes
+  listener** and **Ask to speak** (**Join as speaker** on an open stage). Asking joins and asks at once; on an open stage that press goes
   straight on to Start speaking (it is the person's own press), and otherwise they wait in the queue as any asker.
 
 ## The host leaving
@@ -155,7 +155,7 @@ number (`cloud-panel.js` `inChats`), so nobody is counted twice. A chat pressed
 (`cloud-panel.js` `preview`) asks the live list (`/api/chats`), says **That chat has ended** if it is no longer listed,
 and otherwise opens the chat's preview, the same pop-up the Chats list opens (`chat-hosts.js` `preview`, standing in
 the page's body while the Ooga Chat tab is hidden): its stage, its counts, the Open stage tag, **Join as listener** and
-**Join as speaker**, either of which shows the Ooga Chat tab and opens the chat there. The chat the visitor is in
+**Ask to speak** (**Join as speaker** on an open stage), either of which shows the Ooga Chat tab and opens the chat there. The chat the visitor is in
 already only shows the tab. A visitor already in another chat is asked first, **Change chats?** (a modal dialog:
 "You're in <title>. Leave it and join <title>?", with what leaving costs them, said only to the chat's host: its 2-minute
 hold before the chat passes to a co-host or ends), **Switch chats** leaving that chat and opening this one, **Stay**
