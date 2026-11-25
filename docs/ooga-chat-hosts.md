@@ -79,7 +79,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 - The host and co-hosts see a **Requests N** chip in the chat's title; it opens the queue in the panel's own flow under
   the chat's bar (pushing the roster down, never covering it, and scrolling itself in a short panel), oldest first, each row with
   Approve and Decline. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
-  Invite to speak, Mute, Move to listener, Make co-host (dimmed with "All 3 co-host slots are taken" while every slot is
+  Invite to speak (Approve request to speak and Decline request for someone who asked), Mute, Move to listener, Make co-host (dimmed with "All 3 co-host slots are taken" while every slot is
   held), Withdraw co-host invitation, Make speaker (a co-host on stage; Make listener off it), Make host, Remove from chat.
   A tile holding an offer carries a star badge and reads "invited to co-host". The person offered gets a card, **The
   host invited you to co-host** (**You left the stage. Rejoin as co-host?** when it came back), with Accept and Not now.

@@ -47204,7 +47204,8 @@ const oogaChatChecks = async () => {
       && offers(host, { id: "gh:5", role: "listener" }) === "invite,cohost:true,remove" && offers(host, host) === "",
     cohost: offers(cohost, { id: "gh:1", rank: "host", role: "speaker" }) === "" && offers(cohost, { id: "gh:3", rank: "cohost", role: "listener" }) === ""
       && offers(cohost, { id: "gh:5", role: "speaker", muted: true }) === "demote,remove" && offers(cohost, { id: "gh:5", role: "listener", request: "invited" }) === "remove"
-      && offers(cohost, { id: "gh:5", role: "listener", request: "asked" }) === "invite,remove",
+      && offers(cohost, { id: "gh:5", role: "listener", request: "asked" }) === "answer,answer,remove"
+      && H.actionsFor(cohost, { id: "gh:5", role: "listener", request: "asked", display: "x" }).map((a) => `${a.approve}/${a.label}`).slice(0, 2).join() === "true/Approve request to speak,false/Decline request",
     nobody: offers({ id: "gh:5", rank: "" }, { id: "gh:6", role: "listener" }) === "",
     // Co-hosting is offered: Make co-host while a slot is free, dimmed with its reason once co-hosts and offers hold all
     // three; Withdraw for an open offer (no invite to speak over it); Make speaker for a co-host on stage, Make listener off it.

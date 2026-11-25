@@ -117,7 +117,9 @@
     const mine = LEVEL[viewer.rank] || 0, theirs = LEVEL[row.rank] || 0, out = [];
     if (!row || row.id === viewer.id || !mine || mine <= theirs) return out;
     const speaker = row.role === "speaker";
-    if (!speaker && row.request !== "invited" && row.request !== "cohost") out.push({ type: "invite", label: "Invite to speak" });
+    // Someone who asked is answered, as the Requests list answers them; anyone else is invited.
+    if (!speaker && row.request === "asked") out.push({ type: "answer", approve: true, label: "Approve request to speak" }, { type: "answer", approve: false, label: "Decline request" });
+    else if (!speaker && row.request !== "invited" && row.request !== "cohost") out.push({ type: "invite", label: "Invite to speak" });
     if (speaker && !row.muted) out.push({ type: "mute", label: "Mute" });
     if (speaker) out.push({ type: "demote", label: "Move to listener" });
     if (viewer.rank === "host") {
@@ -599,7 +601,7 @@
       const items = actionsFor({ id: me, rank, slots }, row);
       if (!items.length) return;
       openPop(`menu:${id}`, tile, row.display, [...items.map((a) => ({ label: a.label, disabled: a.disabled, reason: a.reason, danger: a.type === "remove", run: () => {
-        const fields = { id, ...(a.on === undefined ? {} : { on: a.on }) };
+        const fields = { id, ...(a.on === undefined ? {} : { on: a.on }), ...(a.approve === undefined ? {} : { approve: a.approve }) };
         if (a.confirm) return confirm(tile, a.confirm, a.label, () => send(a.type, fields), a.type === "remove");
         closePop();
         send(a.type, fields);
