@@ -357,7 +357,8 @@
     let previewing = null, previewFrom = null, previewTimer = 0, wantSpeak = "";
     // The visitor's own chat (its host is this account): never previewed or joined as a listener, only gone back to, on
     // the stage, inside the press that chose it (`rejoin`). Roles belong to the account, so the chat still knows them.
-    const hosting = (entry) => !!state?.session && entry.host.login.toLowerCase() === state.session.identity.login.toLowerCase();
+    // Only a GitHub account hosts (the list names the host by login alone), so an X handle that spells the same is not them.
+    const hosting = (entry) => state?.session?.identity.provider === "github" && entry.host.login.toLowerCase() === state.session.identity.login.toLowerCase();
     const rejoin = (entry) => { wantSpeak = entry.id; chats.open(entry); };
     const readPreview = async () => {
       const entry = previewing;

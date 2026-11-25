@@ -171,9 +171,14 @@
     // build, and its walk's phase from the ground it has covered.
     const slots = [];
     for (let i = 0; i < SLOTS; i++) slots.push({ name: "", cave: null, hip: 0, phase: 0, pet: 0, x: 0, z: 0, look: undefined, held: -1, jet: null, worn: false, armLZ: 0, armRZ: 0 });
+    // An Ooga let go of (another name in its slot or perch) or dressed anew leaves meshes nothing draws: the next
+    // render gives the GPU back everything that is neither under the root nor baked (`released`).
+    let released = false;
+    const KEEP = new Set();
+    const gather = (node) => { if (node.geometry) KEEP.add(node.geometry); for (const child of node.children) gather(child); };
     const ooga = (slot, name) => {
       if (slot.cave && slot.name === name) return slot.cave;
-      if (slot.cave) removeChild(root, slot.cave.root);
+      if (slot.cave) { removeChild(root, slot.cave.root); released = true; }
       slot.name = name;
       slot.cave = BL.models.caveman(BL.characters.traitsFor(name));
       slot.hip = slot.cave.root.position.y;
@@ -203,6 +208,7 @@
       if (BL.characterEquipment) BL.characterEquipment.apply(cave, hat, size);
       slot.hip += cave.root.position.y - before;
       slot.held = -1;
+      released = true;
       self.moved = true;
     };
     // What it has out (a look's `w`: 1 its primary, 2 the gun; none, as it is built, its primary in hand): the primary
@@ -381,7 +387,7 @@
       // The speakers on the clouds (island-view.js's checked `clouds` list: `{ id, character, seat }`): each keeps the
       // Ooga it sat as while its name stays; one gone frees its perch.
       seat(list) {
-        for (const perch of perches) if (perch.cave && !list.some((c) => c.id === perch.id && c.character === perch.name)) { removeChild(root, perch.cave.root); perch.cave = null; perch.id = perch.name = ""; perch.seat = -1; }
+        for (const perch of perches) if (perch.cave && !list.some((c) => c.id === perch.id && c.character === perch.name)) { removeChild(root, perch.cave.root); released = true; perch.cave = null; perch.id = perch.name = ""; perch.seat = -1; }
         for (const c of list) {
           let perch = perches.find((p) => p.cave && p.id === c.id);
           if (!perch) {
@@ -405,6 +411,13 @@
         for (let i = 0; i < fires.length; i++) { const rig = fires[i]; rig.time += dt; rig.update(dt, rig.time); }
         lightLamps();
         updateWorld(root);
+        if (released) {
+          released = false;
+          KEEP.clear();
+          for (const layer of baked.geometries) for (const g of layer) KEEP.add(g);
+          gather(root);
+          renderer.releaseUnused(KEEP);
+        }
         self.moved = false;
         return renderer.render(root, camera, opts);
       },

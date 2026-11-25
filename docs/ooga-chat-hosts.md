@@ -419,7 +419,8 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   `{ mic }`) on a connection of the same account, once and in time, and then, with no card, takes the voice with
   `join({ takeover })`, opens the microphone if it was open there (the chat's word, not the address's) and walks the Ooga
   in once nothing stands in the way (chat-copy.js `goSoon`). A browser that holds sound until a tap plays the chat on the
-  first tap or key (ooga-chat-media.js `blocked`). Without a ticket (a listener, an older chat, no answer within 2.5 s)
+  first tap or key (ooga-chat-media.js `blocked`). A ticket whose answer does not come within six seconds, or whose
+  socket drops or reconnects meanwhile, is spent all the same, and the card asks instead (`REDEEM_MS`). Without a ticket (a listener, an older chat, no answer within 2.5 s)
   or with one the chat refuses, the link is one anyone could post, so it never speaks by itself: a visitor who may speak
   there is asked first (voice-handoff.js's card, "Speak from here?", saying whether the microphone will be on), and only
   Switch here, a press on the island page, takes the voice (inside the press, the gesture a microphone needs), unmuting
@@ -478,7 +479,12 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   sun, moon, stars, the sea and the painted clouds of the copy's clear air, its haze), the hub's lamps and torches
   flickering up over the dusk ramp in their order (each lamp's mode, glow and light baked with it) and the nearest to the
   camera's target taking the tier's point lights at night (32 on High, 20 on Medium), the meadow's fire pit burning (the
-  island's voxel flame, blaze.js, in the `live` chunk), the trees, bushes and lawn in the wind. The copy's eighteen
+  island's voxel flame, blaze.js, in the `live` chunk), the trees, bushes and lawn in the wind. Its Oogas are the cast
+  as the island has it now: before the first is built, Ooga Chat asks its edge for the island's published character
+  catalog (`/api/chat/public/characters/catalog`, the island's `/api/characters/catalog` passed through the bridge's
+  `/catalog`), checks it as the island does and applies it to the bundled cast against the baseline its build bundled
+  (`BL.oogaChatCharacterBaseline`, ooga-chat-catalog.js); anything amiss keeps the bundled cast. An Ooga let go of or
+  dressed anew gives its meshes back to the GPU on the next frame. The copy's eighteen
   clouds go round on their tracks as the copy deals them (eleven bench clouds on the high track, the rest low, swinging
   between the bridges; `cloudAt` is the hub's `placeCloud`, which the bake checks to the hair at three moments), by the
   chat's clock (`clouds` frames), and each speaker not walking sits on their seat, three to a bench cloud: their own Ooga

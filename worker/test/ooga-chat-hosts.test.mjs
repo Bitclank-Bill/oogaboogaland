@@ -1195,3 +1195,12 @@ test("the island room keeps each chat's title, counts and app accounts for Onlin
 });
 
 
+
+test("the bridge's /catalog: only Ooga Chat's edge of the same environment, answered as the island's own catalog route", async () => {
+  const env = { ENVIRONMENT: "staging" };
+  assert.equal((await bridgeFetch(env, new Request("https://chat-bridge.invalid/catalog"))).status, 403, "no environment header");
+  assert.equal((await bridgeFetch(env, new Request("https://chat-bridge.invalid/catalog", { headers: { "x-ooga-chat-environment": "production" } }))).status, 403);
+  const off = await bridgeFetch(env, new Request("https://chat-bridge.invalid/catalog", { headers: { "x-ooga-chat-environment": "staging" } }));
+  assert.equal(off.status, 404, "no catalog bound: the island's own catalog_disabled");
+  assert.equal((await off.json()).error, "catalog_disabled");
+});

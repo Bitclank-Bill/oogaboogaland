@@ -33,10 +33,11 @@
   const create = (ctx, { node, head, space }) => {
     const c = ctx.chats, chats = { list: () => c.call("chats"), start: (body) => c.call("startChat", body), preview: (id) => c.call("chatPreview", id),
       open: c.open, leave: c.leave, request: c.request, hear: c.hear };
-    // The island view's map is the app's own lazy picture; its 3D view the `live` chunk, fetched only for a viewer it is
+    // The island view's map is the app's own lazy picture; its 3D view the `live` chunk (and the island's published
+    // character catalog, ooga-chat-catalog.js, before any Ooga is built), fetched only for a viewer it is
     // offered to: for now a signed-in GitHub contributor (the server's word, `gates`); other GitHub accounts and X get
     // the map, and the Audience holds their walk rate to the map's.
-    const islandView = { picture: "art/island-view-main.webp", loadLive: () => BL.oogaChatChunks.load("live"), scenery: BL.oogaChatScenery || "art", fullscreen: true,
+    const islandView = { picture: "art/island-view-main.webp", loadLive: () => BL.oogaChatChunks.load("live").then(() => BL.oogaChatCatalog.apply()), scenery: BL.oogaChatScenery || "art", fullscreen: true,
       liveAllowed: () => !!last && last.mode === "live" && BL.oogaChatAuth.gates(last, Date.now()).contributor };
     // Go there: the chat on the island, in this same tab. A speaker on the stage asks the chat for a one-time ticket
     // (`handoff`, TICKET_MS at most) and the island's page, given it in the address's fragment, takes the voice and the

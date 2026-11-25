@@ -12,7 +12,8 @@
 // notices, request answers, reactions and the island view's `walk` and `looks` frames), `subscribe(fn)` (anything changed), `list()`, `start(body)`, `preview(id)`, `identity()` (the visitor as
 // the views know them), and `state` in Ooga Chat's shape for the shared views: `room` (the chat, with the server's
 // `you`), `voice` (the controller's state), `audience` (`status`, `list`, `version`). `media` is the controller, for the
-// panel's footer and tiles. No timer but the open chat socket's ping and reconnect; nothing per frame.
+// panel's footer and tiles. No timer but the open chat socket's ping and reconnect, and one wait on a Go there ticket's
+// answer (REDEEM_MS); nothing per frame.
 // Go there from Ooga Chat (docs/ooga-chat-hosts.md): a page opened, in Ooga Chat's own tab, as
 // `?chat=<id>&mic=<0|1>#handoff=<ticket>` (ooga-chat-hosts.js) takes the address's parts out at once and keeps the wish
 // in sessionStorage (`ooga-chat-arrive`, ARRIVE_MS), so a sign-in on the way keeps it; once signed in and the room is
@@ -234,7 +235,8 @@
   // else the card, until it is answered), "redeem" (waiting on the chat's word on the ticket),
   // "voice" (take the voice, after Switch here), "mic" (open the microphone as it was), "go" (walk into the chat's
   // island), then gone.
-  const ARRIVE_KEY = "ooga-chat-arrive", ARRIVE_MS = 5 * 60 * 1000, JOIN_TRIES = 3;
+  // REDEEM_MS: how long the chat's word on a ticket is waited for before the card asks instead.
+  const ARRIVE_KEY = "ooga-chat-arrive", ARRIVE_MS = 5 * 60 * 1000, JOIN_TRIES = 3, REDEEM_MS = 6000;
   let arrival = null, arriving = false, joinTries = 0, signInSaid = false, card = null;
   // The card, made the first time it is wanted, in voice-handoff.js's look with this arrival's words.
   const askVoice = () => {
@@ -314,12 +316,23 @@
       if (arrival.ticket) {
         const asked = request("redeem", { ticket: arrival.ticket });
         arrival.ticket = "";
-        if (asked) { arrival.step = "redeem"; arrival.asked = asked; return; }
+        if (asked) {
+          arrival.step = "redeem"; arrival.asked = asked; arrival.redeemAt = Date.now(); arrival.over = status;
+          // The one bounded wait: no answer in time (a socket that dropped took it, and the ticket is spent), the card.
+          setTimeout(arrive, REDEEM_MS + 50);
+          return;
+        }
       }
       if (!card || !card.shown) askVoice();
       return;
     }
-    if (arrival.step === "redeem") return;
+    // Waiting on the chat's word: a socket that dropped or reconnected meanwhile, or no answer in time, falls back to
+    // the card, since the ticket is spent either way.
+    if (arrival.step === "redeem") {
+      if (status === arrival.over && Date.now() - arrival.redeemAt < REDEEM_MS) return;
+      arrival.step = "ask"; arrival.asked = 0;
+      return arrive();
+    }
     if (arrival.step === "voice") {
       if (!you) return;
       if (v.role === "speaker" && !v.busy) { arrival.step = "mic"; return arrive(); }
