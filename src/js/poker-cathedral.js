@@ -449,9 +449,55 @@
     M.face(g,ids,pink,{emissive:.35});M.face(g,ids.slice().reverse(),pink,{emissive:.35});
     g.castShadow=false;return g;
   });
+  // With her light the cherry's wood turns bright white: a pale shell a hair outside each wood mesh (pushed out along
+  // its averaged normals), drawn as glass whose alpha `update` raises with the light, so the bark fades to white.
+  const SHELL_PUSH=.006;
+  const whiteShell=g=>{
+    const v=g.verts,count=g.faces.length,n=new Float64Array(v.length),out=M.geometry();
+    for(let k=0;k<count;k++){
+      const id=g.faces[k].i,m=id.length;
+      let nx=0,ny=0,nz=0;
+      for(let j=0;j<m;j++){
+        const a=3*id[j],b=3*id[(j+1)%m];
+        nx+=(v[a+1]-v[b+1])*(v[a+2]+v[b+2]);ny+=(v[a+2]-v[b+2])*(v[a]+v[b]);nz+=(v[a]-v[b])*(v[a+1]+v[b+1]);
+      }
+      for(let j=0;j<m;j++){const a=3*id[j];n[a]+=nx;n[a+1]+=ny;n[a+2]+=nz;}
+    }
+    for(let i=0;i<v.length;i+=3){
+      const l=Math.hypot(n[i],n[i+1],n[i+2])||1;
+      out.verts.push(v[i]+n[i]/l*SHELL_PUSH,v[i+1]+n[i+1]/l*SHELL_PUSH,v[i+2]+n[i+2]/l*SHELL_PUSH);
+    }
+    const white=[255,253,247];
+    for(let k=0;k<count;k++)M.face(out,Array.from(g.faces[k].i),white,{emissive:.55});
+    out.smooth=true;out.glass=.01;out.castShadow=false;
+    if(g.sway)out.sway=g.sway;
+    return out;
+  };
+  // Her light's shaft: three crossed ribbons along local +x, from the rose's sun to the cherry's foot. The beam shader
+  // fades each from x=0 toward `lightBeam`; `update` sets the glass by the light.
+  const SHAFT_GLASS=.32;
+  const shaftGeometry=length=>{
+    const g=M.geometry(),gold=[255,222,150];
+    for(let plane=0;plane<3;plane++){
+      const a=plane*Math.PI/3,cy=Math.cos(a),cz=Math.sin(a),pairs=[];
+      for(const [t,w] of [[0,.42],[.25,.68],[.6,1.08],[1,1.5]]){
+        pairs.push([-1,1].map(s=>M.pushVert(g,t*length,s*w*cy,s*w*cz)));
+      }
+      for(let i=1;i<pairs.length;i++){const p=pairs[i-1],q=pairs[i];M.face(g,[p[0],p[1],q[1],q[0]],gold,{emissive:1});}
+    }
+    g.glass=.01;g.lightBeam=length*4;g.castShadow=false;g.twoSided=true;
+    return g;
+  };
+  // Where the shaft lands: a soft pool of gold, added over the floor.
+  const shaftPool=M.cached(()=>circle(2.3,256,(c,w)=>{
+    const h=c.createRadialGradient(w/2,w/2,0,w/2,w/2,w/2);
+    h.addColorStop(0,"rgba(255,226,150,.75)");h.addColorStop(.45,"rgba(255,206,120,.35)");h.addColorStop(1,"rgba(255,180,80,0)");
+    c.fillStyle=h;c.fillRect(0,0,w,w);
+  },1));
   const installSteps=function* (room,r,{item,add},lite,items,solids,slice){
     const relics=[],hollows=[],canopies=[],treeOccluders=[],candles=[],dust=[],runes=[],birdPairs=[];
-    let blossom=null,blossomFrom=null;
+    let blossom=null,blossomFrom=null,cherryAt=null;
+    const whitened=[];
     const hollowLights=new Float32Array(bayCount*2*8);
     // At matching windows keep the relic with its event. Other bays hold its cultural context.
     const shrineOrder=[1,2,0,3,7,6,5,4];
@@ -468,7 +514,11 @@
       shrine.scale.x=shrine.scale.y=shrine.scale.z=shrineScale;
       shrine.rotation.y=-side*Math.PI/2;
       const perches=tree.perches.map(p=>({x:pos.x-side*p.z*shrineScale,y:p.y*shrineScale,z:pos.z+side*p.x*shrineScale}));
-      if(bay===CHERRY_BAY)blossomFrom=perches;
+      if(bay===CHERRY_BAY){
+        blossomFrom=perches;cherryAt=pos;
+        for(const g of [tree.trunk,tree.roots])whitened.push(add(shrine,whiteShell(g)));
+        yield* BL.buildTasks.pause(slice);
+      }
       birdPairs.push(BL.pokerParadiseBirds.pair(room,r,perches,side,bay));
       hollows.push(add(shrine,tree.cavity));
       // Floor transmission bakes from room-local transforms, including the open spaces between limbs.
@@ -478,6 +528,7 @@
         treeOccluders.push(node);
         canopies.push(node);
         if(bay===CHERRY_BAY && g===tree.leaves)blossom=node;
+        if(bay===CHERRY_BAY && g===tree.wood)whitened.push(add(node,whiteShell(g)));
       }
       add(shrine,tree.roots);
       add(shrine,tree.deep);
@@ -512,6 +563,18 @@
     const haloGlass=roseHalo();
     if(haloGlass.imageSurface)Object.assign(haloGlass.imageSurface,{blend:"add",soft:true,cutout:true});
     const halo=add(fittings,haloGlass,sunAt.x,roseY+sunAt.y,rear+.99);halo.visible=false;
+    // The shaft runs from the sun on the glass (room-local, the fittings doubled) to the floor at the cherry's foot.
+    const from={x:2*sunAt.x,y:2*(roseY+sunAt.y),z:2*(rear+1.04)},to={x:cherryAt.x+2.7,y:BL.pokerFloor.Y,z:cherryAt.z};
+    const dx=to.x-from.x,dy=to.y-from.y,dz=to.z-from.z,length=Math.hypot(dx,dy,dz);
+    const shaft=add(room,shaftGeometry(length),from.x,from.y,from.z);
+    // Turn local +x onto the shaft: about x cross d, by the angle between them.
+    const across=Math.hypot(dz,dy);
+    shaft.quaternion=BL.math.quat.fromAxisAngle(BL.math.quat.create(),0,-dz/across,dy/across,Math.acos(dx/length));
+    shaft.visible=false;
+    const pool=shaftPool();
+    if(pool.imageSurface)Object.assign(pool.imageSurface,{blend:"add",soft:true,cutout:true});
+    const poolNode=add(room,pool,to.x,to.y+.012,to.z);poolNode.rotation.x=-Math.PI/2;poolNode.visible=false;
+    for(const n of whitened)n.visible=false;
     for(const [radius,width,color] of [[1.548,.032,"#635545"],[1.57,.072,white],[1.68,.048,shade]]){
       add(fittings,M.turnedX(M.torus(radius,width,color,.42,64,8),Math.PI/2),0,roseY,rear+1.04);
     }
@@ -582,6 +645,11 @@
       sun.glow=.8+1.2*light;sun.scale.x=sun.scale.y=1+.18*light;
       halo.visible=light>.01;halo.glow=light;halo.scale.x=halo.scale.y=.6+.4*light;
       if(blossom)blossom.glow=1+.35*light;
+      // Her light pours down to the cherry and whitens its wood; all of it hidden while the light is out.
+      const lit=light>.01;
+      shaft.visible=poolNode.visible=lit;
+      shaft.geometry.glass=Math.max(.001,SHAFT_GLASS*light);poolNode.glow=light;
+      for(let i=0;i<whitened.length;i++){const n=whitened[i];n.visible=lit;n.geometry.glass=Math.max(.001,Math.min(1,light*1.15));}
       // Petals fall faster and more of them show while her light is up.
       if(!calm){
         petalTime+=dt;
