@@ -17834,6 +17834,11 @@ const oogaChatAppChecks = async () => {
         run.resumed = await ivUntil(b, (s) => s.seq > run.paused.after);
         await click(b, ".hc-leave");
         run.left = await ivUntil(b, (s) => !s.shown);
+        // Back into a chat on the same page: the 3D view comes again from the chunk already here.
+        if (w === 1024) {
+          await joinOak(b);
+          run.again = await ivUntil(b, (s) => s.shown && s.live === "on" && s.mode === "3d", 20000);
+        }
       } finally { b.close(); }
     }
     // A GitHub account that is no contributor gets the map on a device that could carry 3D: the 3D view is the
@@ -17853,7 +17858,8 @@ const oogaChatAppChecks = async () => {
       full: r.fullOn.full && r.fullOn.hosted && r.fullOn.stageW > 500 && r.fullOn.ocLeft > r.fullOn.stageW - 20 && !r.fullOn.wide
         && !r.fullOff.full && !r.fullOff.hosted && r.fullOff.shown && r.fullOff.inside,
       fold: r.folded.stageHidden && r.folded.seq === r.folded.before && r.folded.strip === 0 && r.folded.saved === "1" && r.unfolded.seq > r.folded.seq && r.unfolded.live === "on",
-      paused: r.paused.before === r.paused.after && r.paused.after > 0, resumed: r.resumed.seq > r.paused.after, left: !r.left.shown
+      paused: r.paused.before === r.paused.after && r.paused.after > 0, resumed: r.resumed.seq > r.paused.after, left: !r.left.shown,
+      again: r.again.mode === "3d" && r.again.live === "on"
     } : {
       map: r.map.shown && r.map.live === "flat" && r.map.mode === "flat" && r.map.faces.length === 2 && r.map.faces.every((f) => f.off < 1 && f.green > 0) && !r.map.chunk && r.map.gl === 0
         && /^2 speakers are walking the chat's island( · \d+ on the clouds)?$/.test(r.map.note) && r.map.inside && !r.map.wide,

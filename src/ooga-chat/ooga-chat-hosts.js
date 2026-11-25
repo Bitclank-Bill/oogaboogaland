@@ -37,7 +37,7 @@
     // character catalog, ooga-chat-catalog.js, before any Ooga is built), fetched only for a viewer it is
     // offered to: for now a signed-in GitHub contributor (the server's word, `gates`); other GitHub accounts and X get
     // the map, and the Audience holds their walk rate to the map's.
-    const islandView = { picture: "art/island-view-main.webp", loadLive: () => BL.oogaChatChunks.load("live").then(() => BL.oogaChatCatalog.apply()), scenery: BL.oogaChatScenery || "art", fullscreen: true,
+    const islandView = { picture: "art/island-view-main.webp", loadLive: () => Promise.resolve(BL.oogaChatChunks.load("live")).then(() => BL.oogaChatCatalog.apply()), scenery: BL.oogaChatScenery || "art", fullscreen: true,
       liveAllowed: () => !!last && last.mode === "live" && BL.oogaChatAuth.gates(last, Date.now()).contributor };
     // Go there: the chat on the island, in this same tab. A speaker on the stage asks the chat for a one-time ticket
     // (`handoff`, TICKET_MS at most) and the island's page, given it in the address's fragment, takes the voice and the
