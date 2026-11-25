@@ -6,46 +6,46 @@
     {
       art:"s1",alt:"Wide-eyed baby Jones watches Dad write by lamplight. Dad has a bald head, a square jaw and close stubble. Tiny shoes sit beside his letter.",
       left:"Hi, Jones. You found it!",
-      right:"You were only a few months old when we started creating this world. A world within the “real world” you are now starting to make sense of and by the time you are my age, one you will understand far better than I ever could."
+      right:"When you were a tiny baby, my friends and I started building this world. It’s a little world inside the big, real one you are just starting to explore. One day, you’ll understand it even better than I do."
     },
     {
       art:"s2",alt:"At his keyboard, Dad builds a tool for planning ahead. A family looks at its savings and a calendar together.",
-      left:"A little background about your dad:\n\nI started a company called Hot Pixel Group in 2011. I have helped build many companies, a lot of apps and websites for other companies, and provided jobs and opportunities for countless people.",
-      right:"I was able to do all that because I taught myself to write code at a time when humans had to write it and I could communicate the value of it to others that didn’t understand it. Character-by-character, word-by-word. No one showed me how to be an engineer. Everything I have worked on began with a blinking cursor."
+      left:"Here’s a little bit about your dad.\n\nBefore you were born, I started a company called Hot Pixel Group. We made apps and websites, and we helped lots of people find good work.",
+      right:"I taught myself to write code, one letter at a time. Nobody showed me how. Every big thing I ever made started the same way: with a little blinking line on an empty screen."
     },
     {
       art:"s3",alt:"Dad listens at the edge of a busy square. A lamp and a jumble of objects cast a funny monster’s shadow.",
-      left:"My Bitcoin journey began in Minneapolis. I bought a little in 2016. In 2017 and 2018 I paid more attention and bought more but was so busy with my work I didn’t take the time to really study it.",
-      right:"And because of that, I gave up on it. It’s easy to imagine a monster when all you see is a shadow."
+      left:"I first heard about Bitcoin in a city called Minneapolis. I bought a tiny bit. But I was very busy, and I never really took the time to learn about it.",
+      right:"So it seemed a little scary, and I gave up on it.\n\nCan you see the monster? Look closer. It’s only a shadow."
     },
     {
       art:"s4",alt:"Dad’s team sketches an app. A lamp reveals the objects behind the monster. Distant neighbors open matching rulebooks.",
-      left:"But in 2019, I really started researching and “going down the rabbit hole” as they say. Here’s what I found:",
-      right:"Computers on the internet follow rules so they can talk to each other. Bitcoin has rules, too. Bitcoin’s rules are enforced by “nodes”. All around the world, people can run their own nodes and verify that everyone is playing by the same rules. This keeps everyone fair and honest. Bitcoin was becoming much more interesting to me."
+      left:"Then one day, I decided to really learn. I read and read and read. Here’s what I found out:",
+      right:"Bitcoin is like a game that people all over the world play together. Everyone has the same rulebook, and lots of computers check every move, so nobody can cheat. That keeps it fair for everyone.\n\nSee? With the lamp on, the monster is just a pile of things."
     },
     {
       art:"s5",alt:"Neighbors wave across a quiet street. Dad turns from a rising chart to the people beyond his window.",
-      left:"Then the COVID pandemic hit. It made people sick, businesses closed, and people were scared and had to stay home. As the pandemic continued, a lot of new money was created and the stock market went up a lot. I watched what that meant for my friends and the world.",
-      right:"Your mom and I owned property and stocks and we could easily work from home. The value of our home and stocks skyrocketed because of all the money printing. But some of our friends didn’t have those things and the dollar was collapsing. They could work just as hard and still fall behind. That is deeply unfair, Jones."
+      left:"Then a sickness came, and almost everyone had to stay home for a long time. To help, lots and lots of new money was made.",
+      right:"Our home and savings grew, so Mom and I were okay. But some of our friends worked just as hard and still fell behind, because each of their dollars bought a little less. That isn’t fair, Jones."
     },
     {
       art:"s6",alt:"Three copper coins lie on the counter on both market days. The second basket holds less. Across the river, a toy boat passes from its maker to a new owner.",
-      left:"That was when Bitcoin stood apart from everything else for me. Bitcoin is digital money that people cannot choose to make more of out of thin air. Bitcoin must be created and earned fairly. And because there is a supply cap of 21 million Bitcoin, its value cannot be inflated away.",
-      right:"People have a choice: fiat money or Bitcoin. I have dedicated years to educating people on that choice and will likely continue that journey for the rest of my life."
+      left:"That’s when Bitcoin really mattered to me. Bitcoin is money that lives on computers, and nobody can make more of it whenever they want. There will only ever be 21 million, like a deck that always has the same number of cards.",
+      right:"Look at the baskets. The same three coins buy less the second time, because someone made more coins. Bitcoin can’t shrink like that.\n\nI’ve spent years helping people learn about it, and I hope I always will."
     },
     {
       art:"s7",alt:"Neighbors pull chairs beside an empty lockbox. At a lamplit table Dad and his friends experiment with dice, tiles, and locks.",
-      left:"So how did this book get here?\n\nIn the summer of 2026, some people lost their Bitcoin because computers could guess the secret words that protect their Bitcoin.",
-      right:"I found some people trying to help them just like me. EntropyLab was created to teach people why the secret to a wallet has to be so hard to guess."
+      left:"So how did this book get here?\n\nIn the summer of 2026, some people lost their Bitcoin. The secret words that kept it safe were too easy for computers to guess.",
+      right:"Some friends and I wanted to help. We made EntropyLab to show everyone why secret words have to be super hard to guess, like rolling dice again and again."
     },
     {
       art:"s8",alt:"The friends’ drawn paths become floating islands and caves. Behind a bookcase is Jones’s marble lounge, its flame carving above the fire.",
-      left:"But what if you could also walk around a world based on Bitcoin and learn more about it interactively? Those friends and I built Ooga Booga Land so people from anywhere could come and play games, talk, and discover something about Bitcoin for themselves.",
-      right:"I helped build this world with good people who believe in Bitcoin. We are working to create a better world for people like you, Jones. And this room where you found this book?\n\nI built it for you."
+      left:"Then we wondered: what if you could walk around inside a world all about Bitcoin? So my friends and I built Ooga Booga Land, where anyone can come to play games, talk and learn.",
+      right:"We’re building it to make the world a little better for kids like you, Jones. And this room, where you found this book?\n\nI built it just for you."
     },
     {
       art:"s9",alt:"A younger Ooga points to the bridge in the book. Jones bends close to see. Beside them a lantern tilts, and on the far bank friends leave room on a plan for the next bridge.",
-      left:"You are capable of building the world that you want to see. Keep building bridges, Jones.\n\nWe love you."
+      left:"You can build the world you want to see. Keep building bridges, Jones.\n\nWe love you."
     }
   ];
   const make=(parent,tag,cls,text)=>{
