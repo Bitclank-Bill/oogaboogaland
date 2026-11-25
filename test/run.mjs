@@ -32120,7 +32120,9 @@ const timechainDisc = { name: "timechain block disc", why: "rule: the Genesis Mu
     const st = BL.mempool.state, was = { enabled: st.enabled, connected: st.connected, projected: st.projected };
     st.enabled = st.connected = true; st.projected = null; st.next.clear();
     for (let i = 0; i < 600; i++) st.next.set("t" + i, [1 + (i % 40), 250 + (i % 7) * 60]);
-    const snap = await settle(1200);
+    // The next layout takes it up (at most a second on, however busy the page): wait for it rather than a fixed time.
+    for (const t0 = performance.now(); D.state.source !== 1 && performance.now() - t0 < 8000;) { B.advance(1 / 30, 1 / 30); await new Promise((done) => setTimeout(done, 30)); }
+    const snap = D.state;
     st.next.clear(); Object.assign(st, was); await settle(1200);
     const unprojected = { source: snap.source, squares: snap.squares, beads: snap.beads };
     return { empty: { squares: empty.squares, fill: +empty.fill.toFixed(3), beads: empty.beads }, early, fills, full: { fill: full.fill, beads: full.beads, queue: +full.queue.toFixed(2) }, flips, trickle: { landed: trickle.landed - trickle0.landed, timedOut: trickle.timedOut - trickle0.timedOut }, dots: { landed: dots.landed - before.landed, beads: dots.beadLands - before.beadLands, timedOut: dots.timedOut - before.timedOut }, fallen: fallen.squares, after: { fill: after.fill, beads: after.beads, mined: after.mined }, unprojected };
