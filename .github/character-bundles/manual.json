@@ -5,15 +5,6 @@
   "round": "7890535f95062629875a7536e317ae6c1183528c",
   "entries": [
     {
-      "pr": 887,
-      "head": "85cd7f36f932797c2f59ad7347f710138c130a02",
-      "author": "Global-DSB",
-      "path": "src/characters/Global-DSB.js",
-      "base": "8f8491565c9df3315fe5369cbcc5af219fb55fb1",
-      "hash": "95871ddfef65ce4b0285fed7c0d3cc567dc2cbbe10513df960d716da80f3478e",
-      "lane": "manual"
-    },
-    {
       "pr": 894,
       "head": "44333c524a487b6ae9fafc3ab6de69fe9117ae31",
       "author": "getfoxy",
