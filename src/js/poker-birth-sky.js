@@ -172,7 +172,11 @@
   const sunOn = radius => ({ x: (sunAt[0] - MID) / MID * radius, y: (MID - sunAt[1]) / MID * radius, r: 36 / MID * radius });
   // The light, 0 to 1 by the time of day: a gentle glow always, swelling through the half hour before noon, full for
   // that minute, easing back over the half hour after.
+  // `?debug=1&herlight=1` holds it full all day, to look at it outside that hour.
+  const params = typeof location === "undefined" ? null : new URLSearchParams(location.search);
+  const HELD = !!params && params.get("debug") === "1" && params.get("herlight") === "1";
   const light = ms => {
+    if (HELD) return 1;
     const t = ((ms - NOON) % DAY + DAY) % DAY, before = DAY - t, ease = u => u * u * (3 - 2 * u);
     if (t < 60000) return 1;
     if (t < 60000 + 1800000) return ease(1 - (t - 60000) / 1800000);
