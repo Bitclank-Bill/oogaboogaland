@@ -90,8 +90,26 @@
     g.imageSurface={canvas,rect:[-w/2,-w/2,w,w],smooth:true,version:1};return g;
   });
   const plank=(x,y,z,w,h,d,color)=>M.bevelBox({w,h,d,color,bevel:.004,offset:{x,y,z}});
+  // The bridge stands on Mom's bank and Dad's: each pier has its word burned into both faces in the carved signs'
+  // alphabet, one dark run a row a quad standing a hair proud of the wood, so it reads from either side.
+  const burn=(word,x,y,face)=>{
+    const G=BL.hubModels.SIGN_GLYPHS,cell=.0085,width=(word.length*4-1)*cell,parts=[];
+    for(let i=0;i<word.length;i++){
+      const glyph=G[word[i]],sx=3/glyph[0].length;
+      for(let r=0;r<5;r++)for(let c=0;c<glyph[r].length;c++){
+        if(glyph[r][c]!=="1" || c>0 && glyph[r][c-1]==="1")continue;
+        let e=c;while(e<glyph[r].length-1 && glyph[r][e+1]==="1")e++;
+        const x0=-width/2+(i*4+c*sx)*cell,w=(e-c+1)*sx*cell;
+        parts.push(M.box({w,h:cell,d:.002,color:"#4e321f",offset:{x:x0+w/2,y:(2-r)*cell,z:0}}));
+      }
+    }
+    const letters=M.merge(...parts);
+    if(face<0)M.turnedY(letters,Math.PI);
+    return M.moved(letters,x,y,face*.0855);
+  };
   const piers=M.cached(()=>M.merge(...[-1,1].flatMap(s=>[
-    plank(s*.23,.065,0,.11,.13,.17,"#ba8d58"),plank(s*.23,.015,0,.146,.03,.195,"#9c7048")
+    plank(s*.23,.065,0,.11,.13,.17,"#ba8d58"),plank(s*.23,.015,0,.146,.03,.195,"#9c7048"),
+    ...[-1,1].map(face=>burn(s<0?"MOM":"DAD",s*.23,.078,face))
   ])));
   const span=M.cached(()=>{
     const p=[],height=x=>.013+.066*(1-(x/.265)**2);
