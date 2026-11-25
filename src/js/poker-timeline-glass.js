@@ -109,7 +109,7 @@
     c.clearRect(-2.89,0,5.78,3.30);c.clearRect(-2.53,3.30,5.06,4.98);
     c.clearRect(-1.58,8.275,3.16,BL.pokerHearth.crownY-8.275);
     c.globalCompositeOperation="destination-out";c.beginPath();c.arc(0,10.33,1.70,0,2*Math.PI);c.fill();
-    const flower=BL.pokerCathedral.sunflowerGlass().imageSurface?.canvas;
+    const flower=BL.pokerCathedral.roseGlass().imageSurface?.canvas;
     if(flower){
       c.globalCompositeOperation="source-over";c.translate(0,10.33);c.scale(1,-1);
       c.beginPath();c.arc(0,0,1.55,0,2*Math.PI);c.clip();c.drawImage(flower,-1.55,-1.55,3.1,3.1);

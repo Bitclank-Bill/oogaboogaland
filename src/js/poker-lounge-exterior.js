@@ -185,7 +185,7 @@
         // in front of the handoff at the same width and height as seen inside.
         const chimney=add(shell,BL.pokerHearth.surround(BL.pokerHearth.crownY,lite),0,0,-b-.1);
         chimney.scale.x=chimney.scale.y=chimney.scale.z=2;chimney.rotation.y=Math.PI;
-        const rose=add(shell,C.sunflowerGlass(),0,20.66,-b-2.02);
+        const rose=add(shell,C.roseGlass(),0,20.66,-b-2.02);
         rose.rotation.y=Math.PI;rose.scale.x=rose.scale.y=2;
       }else{
         const doorway=add(shell,null,0,0,2*b+.45);doorway.rotation.y=Math.PI;

@@ -146,41 +146,22 @@
     g.imageSurface=sheet(2*radius,2*radius,pixels,pixels,paint,e,read).imageSurface;return g;
   };
   const ring=(c,r,color,w)=>{c.beginPath();c.arc(0,0,r,0,tau);c.strokeStyle=color;c.lineWidth=w;c.stroke();};
-  // Two offset whorls of ray florets enclose the seed head. Split each petal
-  // along its vein so adjacent panes pick up different shades of orange.
-  const sunflower=c=>{
-    c.translate(256,256);
-    const field=c.createRadialGradient(0,0,85,0,0,250);
-    field.addColorStop(0,"#71300d");field.addColorStop(1,"#321e15");
-    c.fillStyle=field;c.fillRect(-256,-256,512,512);
-    const random=BL.math.mulberry32(21108),lead="#653716";
-    const petals=(count,base,length,width,offset,colors)=>{
-      for(let i=0;i<count;i++){
-        c.save();c.rotate(offset+tau*i/count);
-        const reach=length*(.96+.04*random()),lean=(random()-.5)*12;
-        const tip=-base-reach,belly=-base-reach*.50;
-        for(const side of [-1,1]){
-          c.beginPath();c.moveTo(0,-base);
-          c.bezierCurveTo(side*width,belly+reach*.18,side*width+lean,belly-reach*.14,lean,tip);
-          c.quadraticCurveTo(lean*.3+2,belly,0,-base);c.closePath();
-          const glass=c.createLinearGradient(0,-base,lean,tip);
-          glass.addColorStop(0,colors[0]);glass.addColorStop(.53,colors[side<0?1:2]);glass.addColorStop(1,colors[3]);
-          c.fillStyle=glass;c.fill();c.strokeStyle=lead;c.lineWidth=1.6;c.stroke();
-        }
-        c.restore();
-      }
-    };
-    petals(26,57,178,23,0,["#85320d","#c65a0e","#e8750c","#ffa725"]);
-    petals(26,63,143,18,Math.PI/26,["#a04407","#f7931a","#ffb13b","#ffce66"]);
-    c.beginPath();c.arc(0,0,75,0,tau);c.fillStyle="#73350d";c.fill();
-    for(let i=0;i<260;i++){
-      const r=74*Math.sqrt((i+.5)/260),angle=i*Math.PI*(3-Math.sqrt(5));
-      c.save();c.rotate(angle);c.fillStyle=["#b95b13","#db7820","#e99631","#98430c"][i%4];
-      c.beginPath();c.ellipse(r,0,3,2.4,.56,0,tau);c.fill();c.restore();
-    }
-    ring(c,76,"#81400c",3);ring(c,241,"#c6873b",5);
-  };
-  const sunflowerGlass=M.cached(()=>circle(1.55,512,sunflower,.76));
+  // The rose over the hearth is the sky the morning Jones was born (poker-birth-sky.js), the sun in it his mom's light.
+  const ROSE_RADIUS=1.55;
+  const roseGlass=M.cached(()=>BL.pokerBirthSky.window(ROSE_RADIUS));
+  // Her light: a gold boss over the window's sun, swelling each day at the minute Jones was born (`update`).
+  const roseSun=M.cached(()=>{
+    const r=BL.pokerBirthSky.sunOn(ROSE_RADIUS).r*1.08,g=M.geometry(),centre=M.pushVert(g,0,0,0),edge=[];
+    for(let i=0;i<32;i++)edge.push(M.pushVert(g,r*Math.cos(i*tau/32),r*Math.sin(i*tau/32),0));
+    for(let i=0;i<32;i++)M.face(g,[centre,edge[i],edge[(i+1)%32]],[255,232,160],{emissive:1});
+    g.castShadow=false;return g;
+  });
+  // The swell's halo: warm light blooming round the sun, added over the glass, shown only while her light rises.
+  const roseHalo=M.cached(()=>circle(BL.pokerBirthSky.sunOn(ROSE_RADIUS).r*3.4,256,(c,w)=>{
+    const h=c.createRadialGradient(w/2,w/2,0,w/2,w/2,w/2);
+    h.addColorStop(0,"rgba(255,236,170,.95)");h.addColorStop(.3,"rgba(255,206,110,.55)");h.addColorStop(1,"rgba(255,170,60,0)");
+    c.fillStyle=h;c.fillRect(0,0,w,w);
+  },1));
   // Four roundels read clockwise from the hearth. All dimensions below are in
   // the glazier's 512-unit cartoon; the floor uses a higher-resolution impression.
   const studioRadius=4.60;
@@ -511,9 +492,13 @@
     const fittings=BL.scene.createNode({scale:{x:2,y:2,z:2}});
     BL.scene.addChild(room,fittings);
     const rear=-r.d/4,roseY=10.33;
-    const flower=sunflowerGlass();
+    const flower=roseGlass();
     yield* BL.pokerGlassMaterial.fitSteps(flower.imageSurface,"flower",slice);
     add(fittings,flower,0,roseY,rear+.96);
+    const sunAt=BL.pokerBirthSky.sunOn(ROSE_RADIUS),sun=add(fittings,roseSun(),sunAt.x,roseY+sunAt.y,rear+.975);
+    const haloGlass=roseHalo();
+    if(haloGlass.imageSurface)Object.assign(haloGlass.imageSurface,{blend:"add",soft:true,cutout:true});
+    const halo=add(fittings,haloGlass,sunAt.x,roseY+sunAt.y,rear+.99);halo.visible=false;
     for(const [radius,width,color] of [[1.548,.032,"#635545"],[1.57,.072,white],[1.68,.048,shade]]){
       add(fittings,M.turnedX(M.torus(radius,width,color,.42,64,8),Math.PI/2),0,roseY,rear+1.04);
     }
@@ -569,6 +554,9 @@
     let displayBay=1,birdRest=9;
     return {block,view,sway,hollowLights,treeOccluders,update(dt,calm,quality,audio){
       if(document.hidden || !room.visible)return;
+      const light=BL.pokerBirthSky.light(Date.now());
+      sun.glow=.8+1.2*light;sun.scale.x=sun.scale.y=1+.18*light;
+      halo.visible=light>.01;halo.glow=light;halo.scale.x=halo.scale.y=.6+.4*light;
       if(!calm){
         birdRest-=dt;
         if(birdRest<=0 && birdPairs[displayBay](dt,audio)){
@@ -599,5 +587,5 @@
       if(tier==="high")for(let i=0;i<dust.length;i++)dust[i].position.y=2.4+(i%5)*.39+.18*Math.sin(time*.44+i);
     }};
   };
-  BL.pokerCathedral={studioRadius,sunflowerGlass,engrave,bayCount,bayWidth,bayCenter,pier,shrineAt,pedestal,installSteps};
+  BL.pokerCathedral={studioRadius,roseGlass,engrave,bayCount,bayWidth,bayCenter,pier,shrineAt,pedestal,installSteps};
 })();
