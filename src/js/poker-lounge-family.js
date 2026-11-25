@@ -135,6 +135,7 @@
     };
     pose(0);prop.extraTarget=arch;prop.reach=1.05;
     prop.use=land=>{if(age<1)return false;from=to;to=1-to;age=0;onLand=land;return true;};
+    prop.built=()=>to===1;
     return (dt,calm,silent=false)=>{
       if(age>=1)return;
       age=calm?1:Math.min(1,age+dt/.94);

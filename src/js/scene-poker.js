@@ -269,6 +269,25 @@
   };
   const sectionalReach=1.9,seatedReach=1.55;
   let loungeChair=null,bridgeTime=0,bridgeHeight=0;
+  // The stained glass room names what Action will do on the act button, never over the cursor: the same order as
+  // `useNear` tries it. Null hands the button back to the pilot's own label.
+  let actPrompt=false;
+  const loungeAct=()=>{
+    if(salon!==0 || !pilot.player || exterior || salons.heirlooms?.modal || carry.phase!==IDLE || scripted())return null;
+    if(loungeChair)return loungeChair.node.chaiseExtension?"LIE DOWN":"STAND UP!";
+    if(onChaise())return null;
+    const p=avatar.root.position,pass=salons.targets[6];
+    if(pass.visible && Math.abs(p.x-pass.position.x)<.62 && Math.abs(p.z-pass.position.z)<1.65)return "TAKE PASS";
+    const prop=salons.heirlooms.near(p,1.80);
+    if(prop)return prop.use?(prop.built()?"TAKE APART":"BUILD"):"LOOK";
+    const chair=chairNear();
+    if(chair)return fromFoot(chair)?"LIE DOWN":"SIT";
+    const door=nearDoor();
+    if(door===0)return BL.offlineLoungePack?"CHOOSE ART":"OPEN DOORS";
+    if(door===3)return "TO THE BAR";
+    if(door===6)return "TAKE PASS";
+    return null;
+  };
   const finishBridgePose=()=>{
     if(!bridgeTime)return;
     avatar.root.position.y=bridgeHeight;avatar.root.rotation.x=0;
@@ -1101,7 +1120,7 @@
         if(!exterior)return pilot.hooks.onOrbit(dx,dy);
         exteriorYaw-=dx*.004;exteriorPitch=clamp(exteriorPitch+dy*.003,-.31,1.08);
       },
-      onHover: (hit, p) => { if(exterior)return; if((hit?.owner.kind==="heirloom" || hit?.owner.kind==="landscape") && salon===0) hud.tooltip.show(hit.owner.prop.title,p.x,p.y); else if(hit?.owner.kind==="loungeChair" && salon===0) hud.tooltip.show(seatAction(hit.owner.chair),p.x,p.y); else if (hit?.owner.kind === "portrait") hud.tooltip.show("Take a moon portrait",p.x,p.y); else if (hit?.owner.kind === "telescope") hud.tooltip.show("Look through the telescope", p.x, p.y); else if (hit?.owner.kind === "salon" && doorAvailable(hit.owner.index)) hud.tooltip.show(doorHint(hit.owner.index), p.x, p.y); else if (salon >= 0) hud.tooltip.hide(); else if (hit?.owner.kind === "poker") hud.tooltip.show(`Table ${hit.owner.index + 1} · select to play or watch`, p.x, p.y); else if (hit?.owner.kind === "placard") hud.tooltip.show(BL.pokerStatues.tip(hit.owner.index), p.x, p.y); else if (hit?.owner.kind === "music") hud.tooltip.show("Lounge music · select for credits", p.x, p.y); else if (hit?.owner.kind === "game") hud.tooltip.show(BL.pokerGames.TOOLTIP[BL.pokerModels.GAMES[hit.owner.index].kind], p.x, p.y); else hud.tooltip.hide(); },
+      onHover: (hit, p) => { if(exterior)return; if(salon===0){hud.tooltip.hide();return;} if (hit?.owner.kind === "portrait") hud.tooltip.show("Take a moon portrait",p.x,p.y); else if (hit?.owner.kind === "telescope") hud.tooltip.show("Look through the telescope", p.x, p.y); else if (hit?.owner.kind === "salon" && doorAvailable(hit.owner.index)) hud.tooltip.show(doorHint(hit.owner.index), p.x, p.y); else if (salon >= 0) hud.tooltip.hide(); else if (hit?.owner.kind === "poker") hud.tooltip.show(`Table ${hit.owner.index + 1} · select to play or watch`, p.x, p.y); else if (hit?.owner.kind === "placard") hud.tooltip.show(BL.pokerStatues.tip(hit.owner.index), p.x, p.y); else if (hit?.owner.kind === "music") hud.tooltip.show("Lounge music · select for credits", p.x, p.y); else if (hit?.owner.kind === "game") hud.tooltip.show(BL.pokerGames.TOOLTIP[BL.pokerModels.GAMES[hit.owner.index].kind], p.x, p.y); else hud.tooltip.hide(); },
       onTap: hit => { if(exterior)return; if(hit?.owner.kind==="landscape" && salon===0) salons.heirlooms.open(hit.owner.prop,pilot); else if(hit?.owner.kind==="heirloom") useHeirloom(hit.owner.prop); else if(hit?.owner.kind==="loungeChair") sitLounge(hit.owner.chair); else if(hit?.owner.kind === "portrait") usePhoto(); else if (hit?.owner.kind === "telescope") useScope(); else if (hit?.owner.kind === "salon") useDoor(hit.owner.index); else if (salon >= 0) return; else if (hit?.owner.kind === "poker") select(hit.owner.index); else if (hit?.owner.kind === "placard") openPlacard(hit.owner.index); else if (hit?.owner.kind === "music") openCredits(); else if (hit?.owner.kind === "poker-exit") leaveFloor(); else if (hit?.owner.kind === "game") hud.toast(BL.pokerGames.WATCH_ONLY); }
     });
     hud.setDestinations(Object.keys(VIEW_NAMES), VIEW_NAMES);
@@ -1575,6 +1594,9 @@
     else if (session.live || !session.paused) { tellsOn = true; for (let i = 0; i < 10; i++) stepTells(i, dt); }
     const seconds = session.live ? session.live.deadline === null ? -1 : Math.max(0, Math.ceil((session.live.deadline - BL.net.serverNow()) / 1000)) : Math.ceil(nextHand[selected]);
     if (shownCountdown !== seconds) { shownCountdown = seconds; panel.countdown(seconds, session.autoDeal[selected]); }
+    const act=loungeAct();
+    if(act){hud.setAct(act);actPrompt=true;}
+    else if(actPrompt){actPrompt=false;pilot.showAct();}
     S.stepTweens(dt); fx.update(dt, elapsed);
   };
   const extra = (c, project) => remotes.drawNames(c, project);
