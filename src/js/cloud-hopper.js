@@ -59,6 +59,9 @@
   // is lifted again, once, from rest TURN_DROP under where the roll began; from then on, as after that first
   // landing, a fall is lost as any other is. It changes nothing of the course.
   const TURN_SECONDS = 2.2, TURN_HOLD = 0.6, TURN_DROP = 8, CLIMB_FALL = 30, FALL_SECONDS = 0.45;
+  // How far further the turned-over sky is tilted round the level axis across the course, so that ahead of the rider
+  // its far edges (the sea's, the space band's seams) sit lower in the view (rad; negative is down ahead).
+  const TILT = -8 * Math.PI / 180;
   // The wind lift: how far over the target cloud's top its arc peaks, how far off a cloud may be to aim at, how long
   // its wind shows round the rider, its fastest speed across, and the least it lifts a rider over where it caught it
   // (so it is always a lift, even over a cloud below).
@@ -169,33 +172,52 @@
       out.z = about.z + pz * c + ax * py * n + az * along;
       return out;
     };
+    // Once the world has turned over, the sky (and everything that rolls with it: the sea, the lagoon, the space band)
+    // is turned on a further TILT round the level axis across the course, so that ahead of the rider it all sits that
+    // much lower in the view; it grows with the roll and is none upright. `tip` turns a point by `angle` round that
+    // axis through `about`; `view` takes a point of the run to where the turned view draws it (`t` the roll), and
+    // `unview` takes it back. The run itself, held turned back by the same, shows just where it did.
+    const tip = (x, y, z, angle, about, out) => {
+      const kx = -turnAxis.z, kz = turnAxis.x, c = Math.cos(angle), n = Math.sin(angle);
+      const px = x - about.x, py = y - about.y, pz = z - about.z, along = (kx * px + kz * pz) * (1 - c);
+      out.x = about.x + px * c - kz * py * n + kx * along;
+      out.y = about.y + py * c + (kz * px - kx * pz) * n;
+      out.z = about.z + pz * c + kx * py * n + kz * along;
+      return out;
+    };
+    const tiltOf = (t) => TILT * Math.min(1, Math.abs(t) / Math.PI);
+    const view = (x, y, z, t, about, out) => { spin(x, y, z, -t, about, out); return tip(out.x, out.y, out.z, -tiltOf(t), about, out); };
+    const unview = (x, y, z, t, about, out) => { tip(x, y, z, tiltOf(t), about, out); return spin(out.x, out.y, out.z, t, about, out); };
     // A tornado's slabs and spray and a gust's streaks are batches, and a batch's matrices are the world's own to
     // the renderer, whatever node it hangs from: the holder's turn back never reaches them. So while the world is
     // turned each is turned back here as it is written, by the turn this frame will be drawn with, and a tornado
     // shows where it takes a rider and the wind where it blows. Nothing is made.
     const placeBatch = (node) => {
       if (drawnTurn.turn === 0) return;
-      const d = node.instanceData, angle = -drawnTurn.turn;
+      const d = node.instanceData, t = drawnTurn.turn;
       for (let o = 0, end = node.instanceCount * 20; o < end; o += 20) {
         if (d[o] === 0 && d[o + 1] === 0 && d[o + 2] === 0 && d[o + 5] === 0) continue;
-        for (let c = o; c < o + 12; c += 4) { spin(d[c], d[c + 1], d[c + 2], angle, ORIGIN, spun); d[c] = spun.x; d[c + 1] = spun.y; d[c + 2] = spun.z; }
-        spin(d[o + 12], d[o + 13], d[o + 14], angle, drawnTurn, spun); d[o + 12] = spun.x; d[o + 13] = spun.y; d[o + 14] = spun.z;
+        for (let c = o; c < o + 12; c += 4) { view(d[c], d[c + 1], d[c + 2], t, ORIGIN, spun); d[c] = spun.x; d[c + 1] = spun.y; d[c + 2] = spun.z; }
+        view(d[o + 12], d[o + 13], d[o + 14], t, drawnTurn, spun); d[o + 12] = spun.x; d[o + 13] = spun.y; d[o + 14] = spun.z;
       }
     };
     // The scene's root turned back by the world's roll, so the island and the run show where the view had them
     // before the roll, and the storm's scenery held against it. Upright, the root is as the scene made it.
     const holdGame = () => {
-      const half = Math.sin(-turn / 2);
+      // The roll's turn back (round the course's axis) and then the tilt's (round the level axis across it), as one.
+      const rs = Math.sin(-turn / 2), rc = Math.cos(turn / 2), ts = Math.sin(-tiltOf(turn) / 2), tc = Math.cos(tiltOf(turn) / 2);
+      const ax = turnAxis.x * rs, az = turnAxis.z * rs, kx = -turnAxis.z * ts, kz = turnAxis.x * ts;
+      const qx = tc * ax + kx * rc, qy = kz * ax - kx * az, qz = tc * az + kz * rc, qw = tc * rc - kx * ax - kz * az;
       if (turn === 0) { root.quaternion = null; root.position.x = root.position.y = root.position.z = 0; }
       else {
         const q = root.quaternion || (root.quaternion = worldTurn);
-        q[0] = turnAxis.x * half; q[1] = 0; q[2] = turnAxis.z * half; q[3] = Math.cos(turn / 2);
-        spin(0, 0, 0, -turn, turnAbout, spun);
+        q[0] = qx; q[1] = qy; q[2] = qz; q[3] = qw;
+        view(0, 0, 0, turn, turnAbout, spun);
         root.position.x = spun.x; root.position.y = spun.y; root.position.z = spun.z;
       }
       const s = skyRoot.quaternion;
-      s[0] = -turnAxis.x * half; s[1] = 0; s[2] = -turnAxis.z * half; s[3] = Math.cos(turn / 2);
-      spin(0, 0, 0, turn, turnAbout, spun);
+      s[0] = -qx; s[1] = -qy; s[2] = -qz; s[3] = qw;
+      unview(0, 0, 0, turn, turnAbout, spun);
       skyRoot.position.x = spun.x; skyRoot.position.y = spun.y; skyRoot.position.z = spun.z;
       turnClouds();
     };
@@ -226,7 +248,7 @@
       for (const node of cloudNodes) turnCloud(node, ax, az, w);
     };
     // Where a point of the run shows in the turned world, for the overlay and the lights.
-    const shown = (x, y, z, out) => turn === 0 ? (out.x = x, out.y = y, out.z = z, out) : spin(x, y, z, -turn, turnAbout, out);
+    const shown = (x, y, z, out) => turn === 0 ? (out.x = x, out.y = y, out.z = z, out) : view(x, y, z, turn, turnAbout, out);
     // The clouds, lit from under while the world is upside down, take the night fill then.
     const relight = (under) => {
       const dark = nightSky || under;
@@ -254,9 +276,9 @@
     const turnView = () => {
       if (turn === 0 || !active()) return;
       Object.assign(trueEye, camera.position); Object.assign(trueTarget, camera.target); trueUp = camera.up; viewTurned = true;
-      spin(trueEye.x, trueEye.y, trueEye.z, -turn, turnAbout, camera.position);
-      spin(trueTarget.x, trueTarget.y, trueTarget.z, -turn, turnAbout, camera.target);
-      camera.up = spin(trueUp?.x || 0, trueUp ? trueUp.y : 1, trueUp?.z || 0, -turn, ORIGIN, turnedUp);
+      view(trueEye.x, trueEye.y, trueEye.z, turn, turnAbout, camera.position);
+      view(trueTarget.x, trueTarget.y, trueTarget.z, turn, turnAbout, camera.target);
+      camera.up = view(trueUp?.x || 0, trueUp ? trueUp.y : 1, trueUp?.z || 0, turn, ORIGIN, turnedUp);
     };
     // The view the run itself works in, whether or not the roll has turned the camera yet this frame.
     const eye = () => viewTurned ? trueEye : camera.position;
@@ -265,7 +287,7 @@
       const size = ctx.renderer.size;
       ctx.renderer.ray(size.width / 2, size.height / 2, camera, out);
       if (turn === 0) return out;
-      spin(out.dx, out.dy, out.dz, turn, ORIGIN, spun); out.dx = spun.x; out.dy = spun.y; out.dz = spun.z;
+      unview(out.dx, out.dy, out.dz, turn, ORIGIN, spun); out.dx = spun.x; out.dy = spun.y; out.dz = spun.z;
       const from = eye(); out.ox = from.x; out.oy = from.y; out.oz = from.z;
       return out;
     };
@@ -1960,7 +1982,7 @@
       // Aurora Heights' gust and how fast it slides a planted Ooga, for debugging.
       get gust() { return gust; }, get slide() { return Math.hypot(slideX, slideZ); },
       // Flipside's roll: how far the world has turned (radians), whether it is turning, and a climb under way.
-      get turn() { return turn; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
+      get turn() { return turn; }, get tilt() { return tiltOf(turn); }, get turnAxis() { return turnAxis; }, get turning() { return turning >= 0; }, get lowering() { return lowering; }, get climbing() { return climbing; }, get rescued() { return rescued; },
       get turns() { return turns; }, get warping() { return warping >= 0; },
       // Flipside lights its finish: 1 asks the hub to light the island's own lamps and lanterns once the world has turned.
       get finishLights() { return level.id === 5 ? 1 : 0; },

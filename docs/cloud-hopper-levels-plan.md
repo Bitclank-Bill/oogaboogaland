@@ -831,7 +831,8 @@ with or without them, so no cloud is ever only for one way up and nothing has to
 place is seeded with the course in a stretch round its halfway mark (`flips`: 40–60% of the way down, 277 m long).
 Every attempt draws a fresh course seed, so the place is somewhere else every time and cannot be learned, and a
 replay's recorded seed gives it back exactly. As the rider reaches it the sky and the sea roll half a turn round the
-course's axis over 2.2 s, the clouds turning over with them, and they stay: the sea overhead and the sky below, to
+course's axis over 2.2 s, the clouds turning over with them, and tip a further 8° down ahead (so the seam where space
+meets the sky's clouds comes down toward the island's level in the default view), and they stay: the sea overhead and the sky below, to
 the pile. The island does not: it and everything on it are drawn the right way up to the rider, where they are, so
 the run is finished on it as on every level, with the clouds and the sky under it. The rider never
 turns: gravity stays down the screen and the controls stay as they are. It goes on over the course as it was going,

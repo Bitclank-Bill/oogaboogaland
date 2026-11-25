@@ -6269,7 +6269,12 @@ const cloudHopperFailureChecks = async engine => {
     // (its own turn and the scene root's turn back cancel) and its middle stays put. `over` true: its underside's middle
     // is at its top's height, facing up, and its top's a cloud's depth under. `over` false: as it was built.
     // `over` null (part way through a roll) checks only the first two.
-    const cloudsShow = (clouds, over) => { matrices(); const holder = turnOf(flipper.gameRoot.world);
+    // The run's holder without the turned-over sky's further tilt (round the level axis across the course), which
+    // turns the sky and the run alike and so leaves every cloud as it shows against the run.
+    const untilt = (r) => { const a = flipper.tilt, kx = -flipper.turnAxis.z, kz = flipper.turnAxis.x, c = Math.cos(a), n = Math.sin(a);
+      return [0, 3, 6].flatMap(o => { const x = r[o], y = r[o + 1], z = r[o + 2], along = (kx * x + kz * z) * (1 - c);
+        return [x * c - kz * y * n + kx * along, y * c + (kz * x - kx * z) * n, z * c + kx * y * n + kz * along]; }); };
+    const cloudsShow = (clouds, over) => { matrices(); const holder = untilt(turnOf(flipper.gameRoot.world));
       return clouds.length === flipper.course.clouds.length && clouds.every(({ c, n, r, top, under }) => {
         const now = turnOf(n.local), t = n.position, at = (q) => { const v = turnBy(now, q); return [v[0] + t.x, v[1] + t.y, v[2] + t.z]; }, high = c.y + c.lift;
         const near = (a, x, y, z) => Math.abs(a[0] - x) < 1e-3 && Math.abs(a[1] - y) < 1e-3 && Math.abs(a[2] - z) < 1e-3;
@@ -6464,7 +6469,7 @@ const cloudHopperFailureChecks = async engine => {
           flips++;
           const over = flips % 2 === 1;
           rows[`flip ${flips}`] &&= !flipper.turning && flipper.turns === flips && Math.abs(flipper.turn - (over ? Math.PI : 0)) < 1e-9 && flipper.climbing && packOf() === pack0
-            && let_go.y === before.y && actor.root.parent === home && actor.pet.node.parent === home && (over ? camera.up.y < -0.999 && !!rootNode.quaternion && Math.abs(rootNode.quaternion[3]) < 1e-9 : !rootNode.quaternion) && flipper.phase === "running";
+            && let_go.y === before.y && actor.root.parent === home && actor.pet.node.parent === home && (over ? camera.up.y < -0.98 && !!rootNode.quaternion && Math.abs(rootNode.quaternion[3]) < 1e-9 : !rootNode.quaternion) && flipper.phase === "running";
           // After it every cloud is over: its underside up at the height its top had the first time, as built the second.
           rows[`flip ${flips}`] &&= cloudsShow(built, over);
           if (extras && flips === 1) {
@@ -6491,7 +6496,7 @@ const cloudHopperFailureChecks = async engine => {
       Object.assign(actor.root.position, { x: 0, y: 2 + actor.baseY, z: 0 }); actor.hop = actor.hopV = 0; step(1 / 60);
       rows.held = held && checked > 60; rows.flips = flips === 1 && flipper.turns === 1; rows.warps = warps === take.length && kept; rows.ready = ready;
       // Won with the world still turned over: the island's root drawn turned back with the run, to the end.
-      rows.won = flipper.phase === "won" && Math.abs(flipper.turn - Math.PI) < 1e-9 && actor.root.parent === home && !!rootNode.quaternion && camera.up.y < -0.999;
+      rows.won = flipper.phase === "won" && Math.abs(flipper.turn - Math.PI) < 1e-9 && actor.root.parent === home && !!rootNode.quaternion && camera.up.y < -0.98;
       return rows;
     };
     const all = {};
