@@ -146,17 +146,17 @@
     g.imageSurface=sheet(2*radius,2*radius,pixels,pixels,paint,e,read).imageSurface;return g;
   };
   const ring=(c,r,color,w)=>{c.beginPath();c.arc(0,0,r,0,tau);c.strokeStyle=color;c.lineWidth=w;c.stroke();};
-  // The rose over the hearth is the sky the morning Jones was born (poker-birth-sky.js), the sun in it his mom's light.
+  // The rose over the hearth is the birth sky (poker-birth-sky.js), its sun carrying the light.
   const ROSE_RADIUS=1.55;
   const roseGlass=M.cached(()=>BL.pokerBirthSky.window(ROSE_RADIUS));
-  // Her light: a gold boss over the window's sun, swelling each day at the minute Jones was born (`update`).
+  // The light: a gold boss over the window's sun, swelling each day at the minute of the birth (`update`).
   const roseSun=M.cached(()=>{
     const r=BL.pokerBirthSky.sunOn(ROSE_RADIUS).r*1.08,g=M.geometry(),centre=M.pushVert(g,0,0,0),edge=[];
     for(let i=0;i<32;i++)edge.push(M.pushVert(g,r*Math.cos(i*tau/32),r*Math.sin(i*tau/32),0));
     for(let i=0;i<32;i++)M.face(g,[centre,edge[i],edge[(i+1)%32]],[255,232,160],{emissive:1});
     g.castShadow=false;return g;
   });
-  // The swell's halo: warm light blooming round the sun, added over the glass, shown only while her light rises.
+  // The swell's halo: warm light blooming round the sun, added over the glass, shown only while the light rises.
   const roseHalo=M.cached(()=>circle(BL.pokerBirthSky.sunOn(ROSE_RADIUS).r*3.4,256,(c,w)=>{
     const h=c.createRadialGradient(w/2,w/2,0,w/2,w/2,w/2);
     h.addColorStop(0,"rgba(255,236,170,.95)");h.addColorStop(.3,"rgba(255,206,110,.55)");h.addColorStop(1,"rgba(255,170,60,0)");
@@ -439,9 +439,8 @@
       }))throw Error("Cathedral shrine blocks a passage or heirloom");
     }
   };
-  // The shrine tree behind the fireside record is a cherry, for Traverse City, the cherry capital where Jones's mom
-  // grew up: blossom pinks for the orange, petals drifting from its limbs, and its blossom brightest with her light
-  // (poker-birth-sky.js), at the minute Jones was born.
+  // The shrine tree behind the fireside record is a cherry, for Traverse City, the cherry capital: blossom pinks for
+  // the orange, petals drifting from its limbs, and its blossom brightest with the birth-sky light (poker-birth-sky.js).
   const CHERRY_BAY=3,PETALS=22;
   const BLOSSOM=["#b84f7a","#d06a92","#e588ab","#f2a5c2","#f8bfd3","#fbd5e2","#ffe9f0"].map(c=>BL.math.hexToRgb(c));
   const petal=M.cached(()=>{
@@ -449,7 +448,7 @@
     M.face(g,ids,pink,{emissive:.35});M.face(g,ids.slice().reverse(),pink,{emissive:.35});
     g.castShadow=false;return g;
   });
-  // With her light the cherry's wood turns bright white: a pale shell a hair outside each wood mesh (pushed out along
+  // With the light the cherry's wood turns bright white: a pale shell a hair outside each wood mesh (pushed out along
   // its averaged normals), drawn as glass whose alpha `update` raises with the light, so the bark fades to white.
   const SHELL_PUSH=.006;
   const whiteShell=g=>{
@@ -473,7 +472,7 @@
     if(g.sway)out.sway=g.sway;
     return out;
   };
-  // Her light's shaft: three crossed ribbons along local +x, from the rose's sun to the cherry's foot. The beam shader
+  // The light's shaft: three crossed ribbons along local +x, from the rose's sun to the cherry's foot. The beam shader
   // fades each from x=0 toward `lightBeam`; `update` sets the glass by the light.
   const SHAFT_GLASS=.32;
   const shaftGeometry=length=>{
@@ -645,12 +644,12 @@
       sun.glow=.8+1.2*light;sun.scale.x=sun.scale.y=1+.18*light;
       halo.visible=light>.01;halo.glow=light;halo.scale.x=halo.scale.y=.6+.4*light;
       if(blossom)blossom.glow=1+.35*light;
-      // Her light pours down to the cherry and whitens its wood; all of it hidden while the light is out.
+      // The light pours down to the cherry and whitens its wood; all of it hidden while the light is out.
       const lit=light>.01;
       shaft.visible=poolNode.visible=lit;
       shaft.geometry.glass=Math.max(.001,SHAFT_GLASS*light);poolNode.glow=light;
       for(let i=0;i<whitened.length;i++){const n=whitened[i];n.visible=lit;n.geometry.glass=Math.max(.001,Math.min(1,light*1.15));}
-      // Petals fall faster and more of them show while her light is up.
+      // Petals fall faster and more of them show while the light is up.
       if(!calm){
         petalTime+=dt;
         const showing=Math.round(PETALS*(.45+.55*light)),fall=.32+.22*light;

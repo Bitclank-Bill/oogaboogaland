@@ -150,11 +150,11 @@
     c.strokeStyle="#67513d";c.lineWidth=5;c.beginPath();c.moveTo(94,227);c.quadraticCurveTo(167,179,246,210);c.stroke();
     for(let i=0;i<8;i++){const x=97+i*20,y=225-23*Math.sin(i*Math.PI/7)-2*i;c.fillRect(x,y-14,3,17);}
     c.lineWidth=2;c.beginPath();c.moveTo(95,211);c.quadraticCurveTo(167,163,246,194);c.stroke();
-    c.fillStyle="#493f35";c.font="italic 29px Georgia, serif";c.textAlign="center";c.fillText("Pendleton, from Dad",192,326);
+    c.fillStyle="#493f35";c.font="italic 29px Georgia, serif";c.textAlign="center";c.fillText("Pendleton",192,326);
     g.imageSurface={canvas,rect:[-w/2,-w/2,w,w],smooth:true,version:1};return g;
   });
-  // Traverse City, from Mom: a little Great Lakes lighthouse on a stone plinth, white with red bands, its lantern
-  // turning. The lamp is her light, as the rose window's sun is: it swells each day at the minute Jones was born.
+  // Traverse City: a little Great Lakes lighthouse on a stone plinth, white with red bands, its lantern turning. The
+  // lamp swells with the birth-sky light each day, as the rose window's sun does.
   const LIGHT_Y=.505;
   const lighthouse=M.cached(()=>{
     const turn=(profile,color,emissive=0)=>M.lathe({profile,segments:28,color,emissive});
@@ -219,28 +219,11 @@
     g.smooth=true;g.castShadow=false;return g;
   });
   const dish=M.cached(()=>M.lathe({profile:[[0,0],[.12,0],[.16,.012],[.175,.045],[.165,.05],[.15,.022],[0,.018]],segments:36,color:"#3f6f8c"}));
-  const stoneNote=["Petoskey stones, from Grand Traverse Bay, where Mom grew up.",
+  const stoneNote=["Petoskey stones, from Grand Traverse Bay.",
     "Dry, they look like plain grey pebbles. Wet them, and you can see tiny six-sided corals that lived in a warm sea here long, long ago, before there were any people at all."];
   const plank=(x,y,z,w,h,d,color)=>M.bevelBox({w,h,d,color,bevel:.004,offset:{x,y,z}});
-  // The bridge stands on Mom's bank and Dad's: each pier has its word burned into both faces in the carved signs'
-  // alphabet, one dark run a row a quad standing a hair proud of the wood, so it reads from either side.
-  const burn=(word,x,y,face)=>{
-    const G=BL.hubModels.SIGN_GLYPHS,cell=.0085,width=(word.length*4-1)*cell,parts=[];
-    for(let i=0;i<word.length;i++){
-      const glyph=G[word[i]],sx=3/glyph[0].length;
-      for(let r=0;r<5;r++)for(let c=0;c<glyph[r].length;c++){
-        if(glyph[r][c]!=="1" || c>0 && glyph[r][c-1]==="1")continue;
-        let e=c;while(e<glyph[r].length-1 && glyph[r][e+1]==="1")e++;
-        const x0=-width/2+(i*4+c*sx)*cell,w=(e-c+1)*sx*cell;
-        parts.push(M.box({w,h:cell,d:.002,color:"#4e321f",offset:{x:x0+w/2,y:(2-r)*cell,z:0}}));
-      }
-    }
-    const letters=M.merge(...parts);
-    if(face<0)M.turnedY(letters,Math.PI);
-    return M.moved(letters,x,y,face*.0855);
-  };
-  // Her larkspur inlaid on the outer face of Mom's pier, the face toward her bank: a leaning stem, two leaves, and
-  // florets in her violets shrinking up the spike.
+  // Larkspur inlaid on the outer face of the left pier: a leaning stem, two leaves, and violet florets shrinking up
+  // the spike.
   const sprig=()=>{
     const x=-.23-.0555,parts=[M.beam(x,.034,.012,x,.122,-.006,.0045,"#5f8a4e"),
       M.beam(x,.046,.010,x,.066,.034,.004,"#6f9a5a"),M.beam(x,.052,.009,x,.070,-.020,.004,"#6f9a5a")];
@@ -253,8 +236,7 @@
     return M.merge(...parts);
   };
   const piers=M.cached(()=>M.merge(...[-1,1].flatMap(s=>[
-    plank(s*.23,.065,0,.11,.13,.17,"#ba8d58"),plank(s*.23,.015,0,.146,.03,.195,"#9c7048"),
-    ...[-1,1].map(face=>burn(s<0?"MOM":"DAD",s*.23,.078,face))
+    plank(s*.23,.065,0,.11,.13,.17,"#ba8d58"),plank(s*.23,.015,0,.146,.03,.195,"#9c7048")
   ]),sprig()));
   const span=M.cached(()=>{
     const p=[],height=x=>.013+.066*(1-(x/.265)**2);
@@ -308,7 +290,7 @@
     const stoneProp=items[items.length-1];
     stoneProp.actLabel=()=>wet<.5?"WET THE STONES":null;
     stoneProp.act=()=>{if(wet>=.5)return null;wetFor=24;return "The stones come alive: tiny six-sided corals, millions of years old.";};
-    const x=-.78,z=seat-3.32,feet=item("Jones’s wooden bridge",piers(),x,.037,z,null);
+    const x=-.78,z=seat-3.32,feet=item("The wooden bridge",piers(),x,.037,z,null);
     const prop=items[items.length-1],arch=add(feet,span()),shade=add(feet,bridgeShade(),0,.002,.29);
     shade.rotation.x=-Math.PI/2;shade.rotation.z=Math.PI;
     let from=0,to=0,age=1,onLand=null;

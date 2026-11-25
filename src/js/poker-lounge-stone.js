@@ -110,7 +110,7 @@
       const a=i*2*Math.PI/3,c=Math.cos(a),s=Math.sin(a);
       parts.push(M.beam(.64*c,.032,.64*s,-.24*c,.436,-.24*s,.075,wood));
     }
-    // A shallow two-tone stoneware bowl and Jones's wooden ring rattle.
+    // A shallow two-tone stoneware bowl and a wooden ring rattle.
     turn(.21,.479,-.08,[[0,0],[.10,0],[.175,.071],[.184,.092],[.171,.093],[.145,.065],[.09,.021],[0,.021]],"#ded3b6",32);
     parts.push(M.moved(M.torus(.071,.013,"#c99759",0,24,8),-.27,.495,.12),
       M.beam(-.32,.495,.072,-.43,.498,-.04,.030,"#be854c"));

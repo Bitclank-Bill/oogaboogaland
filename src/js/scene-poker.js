@@ -368,7 +368,7 @@
     finishBridgePose();salons.heirlooms.open(prop,pilot);
   };
   const useLoungeItem=()=>{
-    // The pass first: it goes once taken, and Jones's bridge reaches over its side of the table.
+    // The pass first: it goes once taken, and the wooden bridge reaches over its side of the table.
     const p=avatar.root.position,pass=salons.targets[6];
     if(pass.visible && Math.abs(p.x-pass.position.x)<.62 && Math.abs(p.z-pass.position.z)<1.65){useDoor(6);return true;}
     const prop=salons.heirlooms.near(p,1.80);

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const BL=window.BL;
-  const tracks=["A1 · A greeting","A2 · Someone who gave me a chance","A3 · A question for you","B1 · Your answer","Pendleton, from Dad"];
+  const tracks=["A1 · A greeting","A2 · Someone who gave me a chance","A3 · A question for you","B1 · Your answer","Pendleton"];
   const storage=(key,file)=>new Promise((resolve,reject)=>{
     const request=indexedDB.open("ember-den-record",1);
     request.onupgradeneeded=()=>request.result.createObjectStore("cuts");
