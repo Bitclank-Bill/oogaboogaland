@@ -837,9 +837,9 @@ wind lifts it, on the roll's own time, never on how far it has fallen: 0.45 s in
 at all, or if it stands on a cloud the moment it leaves it before 1.2 s (if it never does, there is no gust that turn).
 It is thrown up and on to the nearest landing ahead that will still be there when it lands, never the one it is over, the
 same for every rider, a pack and fuel left as they were; never more than one gust a turn. The wind carries it
-there whatever it does on the way: none of the level's own gusts pushes it while it climbs, and its speed across is set
-afresh each moment for where that landing will be as it comes down, so steering or an air jump moves it about on the way
-but never off it. A fall of 30 m before landing
+onto a landing whatever it does on the way, and never back up the course: none of the level's own gusts pushes it while
+it climbs, and each moment it lands the rider's own move (the throw plus its steering) on the landing ahead that move
+fits best, so hands off it comes down where the lift aimed and steering picks a nearer, further or side one. A fall of 30 m before landing
 puts it back once, at rest, under where the roll began, and lifts it again (30 m further under the course where the
 rider is than the roll left it: the course falls away, so a rider flying on under it is not falling); a second fall,
 and any fall after that landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down

@@ -63,8 +63,8 @@
   // its wind shows round the rider, its fastest speed across, and the least it lifts a rider over where it caught it
   // (so it is always a lift, even over a cloud below).
   const LIFT_OVER = 1.6, LIFT_REACH = 36, LIFT_SHOW = 1, LIFT_SPEED = 14, LIFT_UP = 1.2;
-  // The updraft stops steering the rider onto its landing this long (s) before it comes down, so the last stretch is
-  // the flight it has.
+  // The updraft stops steering the rider onto a landing this long (s) before it comes down there, so the last stretch
+  // is the flight it has.
   const LIFT_HOME = 0.1;
   // A portal cloud throws the rider that touches it on down the course: over WARP_SECONDS the Ooga, unseen, streaks
   // to a landing as SPARKS violet sparkles trailing WARP_TRAIL metres, the view gliding after it, and comes out WARP_EDGE inside the
@@ -298,6 +298,9 @@
     // after; the nearest not behind it that shows at all if none is. Into `liftAim`: the cloud, where its middle will
     // be then, and the flight's time.
     const liftAim = { cloud: null, x: 0, z: 0, top: 0, t: 0, vy: 0 };
+    // The climb's last frame: where the rider was and the throw's speed across then, so the next frame can tell how
+    // much of its move was the rider's own steering (`ok` once there is a frame to compare with).
+    const liftLast = { x: 0, z: 0, vx: 0, vz: 0, dt: 0, ok: false };
     const liftTarget = (x, z, feet) => {
       const g = BL.pilot.WALK.gravity, end = course.landings[course.landings.length - 1], out = Math.hypot(x - end.x, z - end.z);
       let best = null, near = Infinity, any = null, anyNear = Infinity;
@@ -338,6 +341,7 @@
       const p = actor.root.position, leap = actor.leap, aim = liftTarget(p.x, p.z, p.y - actor.baseY);
       lifts++;
       liftAt = displayTime; audio.liftGust();
+      liftLast.ok = false;
       if (!aim) { liftAim.cloud = null; return; }
       // Thrown, as the wind carries it: no drag on its speed across, which is held on the landing each frame till it
       // lands (see the run's step), which ends the throw.
@@ -1169,17 +1173,33 @@
         overlay.setGust(gust.state, gust.pushX * -fz + gust.pushZ * fx > 0);
         audio.gust(gust.strength);
       }
-      // The flip's updraft carries the rider to its landing whatever it does on the way: its speed across is set afresh
-      // each frame for where the landing's middle (`liftAim`'s cloud) will be as it comes down, from where the rider is
-      // now and as long as it will take to come down to that top from its height and speed now (so an air jump only
-      // lengthens the flight); steering moves it about on the way (the controls stay its own) but never off the landing.
+      // The flip's updraft carries the rider onto a landing whatever it does on the way, and never back up the course.
+      // Each frame it takes the rider's own move since the last (the throw's speed plus whatever it steered) and lands
+      // it on the landing ahead that move fits best: for each solid landing not behind, how long the rider will take
+      // to come down to its top from its height and fall now (so an air jump only lengthens the flight), where its
+      // middle will be then, and the speed across that gets there, no faster than LIFT_SPEED and never back toward the
+      // start. Hands off, that is the landing the lift aimed at; steering picks a nearer or further one or one to the
+      // side, and the throw's speed is set so that throw and steering together arrive (`liftAim` follows the choice).
       if (climbing && actor.leap.thrown && liftAim.cloud && phase === "running") {
-        const g = BL.pilot.WALK.gravity, over = feet - liftAim.top, vy = actor.hopV;
-        const left = vy * vy + 2 * g * over > 0 ? (vy + Math.sqrt(vy * vy + 2 * g * over)) / g : 0;
-        if (left > LIFT_HOME) {
-          const c = liftAim.cloud, off = course.offsetAt(c, seconds + left);
-          actor.leap.vx = (c.baseX + c.moveX * off - p.x) / left; actor.leap.vz = (c.baseZ + c.moveZ * off - p.z) / left;
+        const leap = actor.leap, g = BL.pilot.WALK.gravity, vy = actor.hopV;
+        let mx = leap.vx, mz = leap.vz, sx = 0, sz = 0;
+        if (liftLast.ok && liftLast.dt > 0) { mx = (p.x - liftLast.x) / liftLast.dt; mz = (p.z - liftLast.z) / liftLast.dt; sx = mx - liftLast.vx; sz = mz - liftLast.vz; }
+        const fx = liftGoal.x - p.x, fz = liftGoal.z - p.z, fl = Math.hypot(fx, fz) || 1;
+        let best = null, score = Infinity, bx = 0, bz = 0;
+        for (const c of course.landings) {
+          if (!c.active || c.top > feet) continue;
+          const left = (vy + Math.sqrt(vy * vy + 2 * g * (feet - c.top))) / g;
+          if (left <= LIFT_HOME || !course.steadyAt(c, seconds + left)) continue;
+          const off = course.offsetAt(c, seconds + left), rx = (c.baseX + c.moveX * off - p.x) / left, rz = (c.baseZ + c.moveZ * off - p.z) / left;
+          if (Math.hypot(rx, rz) > LIFT_SPEED || rx * fx + rz * fz < 0) continue;
+          const miss = Math.hypot(rx - mx, rz - mz);
+          if (miss < score) { score = miss; best = c; bx = rx; bz = rz; }
         }
+        if (best) {
+          const left = (vy + Math.sqrt(vy * vy + 2 * g * (feet - best.top))) / g;
+          liftAim.cloud = best; liftAim.top = best.top; liftAim.x = p.x + bx * left; liftAim.z = p.z + bz * left; leap.vx = bx - sx; leap.vz = bz - sz;
+        }
+        liftLast.x = p.x; liftLast.z = p.z; liftLast.vx = leap.vx; liftLast.vz = leap.vz; liftLast.dt = dt; liftLast.ok = true;
       }
       if (puffing >= 0) puff(dt);
       course.update(dt, phase === "running" ? (raceNow() - startedAt) / 1000 : undefined);
