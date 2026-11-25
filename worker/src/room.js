@@ -1369,8 +1369,8 @@ export class Room extends DurableObject {
     if (rests.length) state.rs = rests;
     if (dances.length) state.ds = dances;
     this.broadcast(state);
-    // The chat's island view hears where its walkers stand (room-copy.js).
-    if (this.copy) copyRoom.walked(this);
+    // The chat's island view hears where its walkers stand and, when it changes, how they look (room-copy.js).
+    if (this.copy) { copyRoom.walked(this); copyRoom.looked(this); }
   }
 
   // A line from a player, named by the session's login and display name; over the rate its sender is told.
@@ -1795,7 +1795,7 @@ export class Room extends DurableObject {
   copyClouds(list) { return this.copy ? copyRoom.clouds(this, list) : null; }
 
   // A hosted chat's members now (audience.js `reportMembers`), an empty list as it ends: every page's Online Oogas hears.
-  chatMembers(chat, title, speakers, listeners, ids) { return chatMembersRoom.update(this, chat, title, speakers, listeners, ids); }
+  chatMembers(chat, title, speakers, listeners, ids, people) { return chatMembersRoom.update(this, chat, title, speakers, listeners, ids, people); }
 
   // Ooga Chat's audience (audience.js) sends each change of a zone a panel here watches, and its speakers' publications.
   audienceDelta(delta) { audienceRoom.delta(this, delta); }

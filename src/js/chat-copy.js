@@ -14,7 +14,9 @@
 // Hooks: `refusal()` (the hub's own words, or ""), `spot()` (where the Ooga stands: feet, heading, zone), `hold(on)`,
 // `beam(progress, incoming)` (progress < 0 ends it), `show(on)`, `enter()` (returns the arrival spot) and `exit(home)`
 // (null when the hub is going away and only has to put things back).
-// `attach`, `detach`, `update`, `go(chat)`, `leave()`, `toggle()`, `button(room)` (the footer's `{ label, words,
+// `goSoon(chat)` goes there as soon as it may, within SOON_S (a chat brought over from Ooga Chat, chat-call.js), saying
+// why not if it never may.
+// `attach`, `detach`, `update`, `go(chat)`, `goSoon(chat)`, `leave()`, `toggle()`, `button(room)` (the footer's `{ label, words,
 // disabled, title }`, or null for no button), `refusal(room)`, `subscribe(fn)`, `phase`, `active`, `chat` and `stats`.
 // Nothing runs but `update` while attached; no timers.
 (() => {
@@ -22,9 +24,10 @@
   const BL = window.BL = window.BL || {};
   // How long each beam runs, how long the copy has to answer before the Ooga comes home, and how often the button's
   // refusal is read again while idle.
-  const BEAM_S = 0.6, WAIT_S = 12, REFUSAL_S = 0.25;
+  const BEAM_S = 0.6, WAIT_S = 12, REFUSAL_S = 0.25, SOON_S = 30;
   const SPEAKING = ["eligible", "pending", "active"];
   const subs = new Set();
+  let soon = null, soonLeft = 0;
   let hooks = null, phase = "idle", chat = null, home = null, clock = 0, why = "", recheck = 0, version = 0, lastLeft = 0, said = "";
   const emit = () => { version++; for (const fn of subs) fn(); };
   const setPhase = (next) => { phase = next; clock = 0; emit(); };
@@ -47,13 +50,14 @@
     if (!hooks) return "Go there from Main Island";
     return hooks.refusal() || "";
   };
-  // The footer's button: Go there, or Leave while in the copy (greyed while a beam runs), for a speaker in a Main
+  // The footer's button: Go there, or Go back while in the copy (Going…, greyed, while a beam runs), for a speaker in a Main
   // Island chat on the island page.
   const button = (room) => {
     if (!room || room.zone !== "main" || !active() && !speaker(room)) return null;
     if (active()) {
       const busy = phase !== "there";
-      return { label: "Leave", words: "Leave the chat's island", disabled: busy, title: busy ? "On the way…" : "Back to where your Ooga stood" };
+      // "Go back", never "Leave": the chat's own Leave chat stands beside it and means leaving the chat.
+      return { label: busy ? "Going…" : "Go back", words: "Go back from the chat's island", disabled: busy, title: busy ? "On the way…" : "Back to where your Ooga stood" };
     }
     const refused = refusal(room);
     return { label: "Go there", words: "Go to the chat's island", disabled: !!refused, title: refused || "Walk your Ooga into the chat's own island" };
@@ -102,9 +106,16 @@
     clock += Math.min(dt, 0.1);
     // The button's words follow the hub's own refusals a few times a second, told only when they change.
     if (phase === "idle") {
+      if (soon) soonLeft -= Math.min(dt, 0.1);
       if ((recheck -= dt) > 0) return;
       recheck = REFUSAL_S;
       const next = refusal(room);
+      // A chat brought over from Ooga Chat: in as soon as nothing stands in the way, as a speaker in that chat.
+      if (soon) {
+        if (!room || room.id !== soon) { soon = null; }
+        else if (!next && speaker(room)) { const id = soon; soon = null; go(id); return; }
+        else if (soonLeft <= 0) { soon = null; toast(next || "Join the stage to go to the chat's island"); }
+      }
       if (next !== why) { why = next; emit(); }
       return;
     }
@@ -142,6 +153,7 @@
     }
   };
   const attach = (next) => { hooks = next; recheck = 0; emit(); };
+  const goSoon = (id) => { if (active()) return; soon = id; soonLeft = SOON_S; recheck = 0; };
   // The hub going away ends a trip where it stands, without a beam: the socket goes home and the hub puts back what it
   // put away.
   const detach = () => {
@@ -161,11 +173,11 @@
     emit();
   };
   BL.chatCopy = {
-    attach, detach, update, go, leave: () => leave(), toggle, button, refusal,
+    attach, detach, update, go, goSoon, leave: () => leave(), toggle, button, refusal,
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     get phase() { return phase; },
     get active() { return active(); },
     get chat() { return chat; },
-    get stats() { return { phase, chat, home, attached: !!hooks, version }; }
+    get stats() { return { phase, chat, home, attached: !!hooks, version, soon }; }
   };
 })();

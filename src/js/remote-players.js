@@ -32,7 +32,7 @@
 // A hosted chat's copy (chat-copy.js, net.js `travel`): a player who goes to one beams out of the island in its green
 // glyph stream (sleep-beam.js), its body kept for the beam after the room lets it go (`leave` with `reason: "travel"`),
 // and one coming back beams in (a `join` with `travel`); while away its Ooga's NPC is a ghost (`net.state.away`), as a
-// cloud speaker's is. In a copy nobody's in-a-chat mark is drawn: everyone there is in the chat.
+// cloud speaker's is. A player in a hosted chat's voice carries no mark of it.
 // One pool per scene visit: `create` in enter, `dispose` in leave, before the crew's.
 (() => {
   "use strict";
@@ -60,6 +60,22 @@
   // With health the tooltip grows a second grid row: the row gap, then the 4-pixel bar with -2 and +1 margins.
   const BAR_W = 72, BAR_H = 4, BAR_ROW = DOT_GAP - 2, HEALTH_ROW = DOT_GAP + BAR_H - 2 + 1, ICON_GAP = 4;
   const NAME_BOX = Math.round(NAME_PAD_Y * 2 + NAME_LINE), NAME_BOX_HEALTH = Math.round(NAME_PAD_Y * 2 + NAME_LINE + HEALTH_ROW);
+  // Where a plate's top stands among those already drawn (`placed`, `n` boxes of left, top, right, bottom): over any it
+  // would overlap, a plate's height and a little more at a time; with no room left over it at the view's top, under it
+  // instead; and never past the view's top or foot, so every plate stays on screen. Allocates nothing.
+  const stack = (placed, n, left, top, boxW, boxH, viewH) => {
+    for (let again = true, tries = 0, down = false; again && tries < 8; tries++) {
+      again = false;
+      for (let i = 0; i < n; i++) {
+        const o = i * 4;
+        if (!(left < placed[o + 2] && left + boxW > placed[o] && top < placed[o + 3] && top + boxH > placed[o + 1])) continue;
+        if (!down && placed[o + 1] - boxH - 2 < EDGE) down = true;
+        top = Math.round(down ? placed[o + 3] + 2 : placed[o + 1] - boxH - 2);
+        again = true;
+      }
+    }
+    return Math.max(EDGE, Math.min(Math.max(EDGE, viewH - boxH - EDGE), top));
+  };
   // The font, and where its baseline falls in the name's line as the tooltip's CSS lays it out: read once.
   let nameFont = "", nameBaseline = 0;
   const NAME_STROKE = "rgba(20, 14, 8, 0.85)", NAME_FILL = "#f3efe4", BAR_TRACK = "rgba(0, 0, 0, 0.55)", ONLINE = "#22c55e", CLOUD_DOT = "#b18aff";
@@ -88,9 +104,6 @@
   const SPEAKER = [0, 3, 2, 3, 2, 2, 1, 5, 3, 1, 1, 7];
   const WAVES = [5, 3, 1, 3, 7, 2, 1, 5];
   const CROSS = [5, 3, 1, 1, 7, 3, 1, 1, 6, 4, 1, 1, 5, 5, 1, 1, 7, 5, 1, 1];
-  // A player in a hosted chat's voice (net.js `call`, call-v1): a small purple cloud where the speaker would stand, since
-  // their island voice is paused; the visitor's own, three times the size, beside the top of their own head.
-  const CALL = [3, 0, 3, 1, 1, 1, 6, 1, 0, 2, 8, 1, 0, 3, 9, 1, 1, 4, 7, 1];
   const runs = (ctx, cells, x, y, k = 1) => {
     for (let i = 0; i < cells.length; i += 4) ctx.fillRect(x + cells[i] * k, y + cells[i + 1] * k, cells[i + 2] * k, cells[i + 3] * k);
   };
@@ -773,6 +786,10 @@
     // The head's top on screen and its middle across, from the corners of every visible mesh under the head as the
     // last frame drew them, through the scene's `project` (which may refuse a hidden point); false when none projects.
     let headMinX = Infinity, headMaxX = -Infinity, headTop = Infinity;
+    // The plates laid out this frame (left, top, right, bottom each), so a plate that would overlap one already drawn
+    // stands over it instead (seated speakers side by side on a bench), at most PLATES of them.
+    const PLATES = 64, placed = new Float64Array(PLATES * 4);
+    let placedN = 0;
     const projectHead = (node, project) => {
       if (!node.visible) return;
       if (node.geometry) {
@@ -840,22 +857,15 @@
         lifted = speaker;
         if (lifted) lifted.speechLift = HAND_ROOM;
       }
-      const ownCall = !!(net.state && net.state.call && !net.state.copy);
-      if (!bodies.size && selfReactT <= 0 && !ownHand && !ownCall) return;
+      if (!bodies.size && selfReactT <= 0 && !ownHand) return;
       ctx.save();
-      if (selfReactT > 0 || ownHand || ownCall) {
+      if (selfReactT > 0 || ownHand) {
         const rig = own && (own.parts ? own : own.gorilla);
         headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
         if (rig && rig.parts && rig.parts.head && rig.root.visible) projectHead(rig.parts.head, project);
         if (headTop !== Infinity) {
           const x = Math.round((headMinX + headMaxX) / 2), y = Math.round(headTop);
-          if (selfReactT > 0 || ownHand) drawReaction(ctx, x, y, selfReact, selfReactT, ownHand);
-          if (ownCall) {
-            ctx.fillStyle = NAME_STROKE;
-            runs(ctx, CALL, x + 11, y - 25, 3);
-            ctx.fillStyle = CLOUD_DOT;
-            runs(ctx, CALL, x + 10, y - 27, 3);
-          }
+          drawReaction(ctx, x, y, selfReact, selfReactT, ownHand);
         }
       }
       if (!nameFont) {
@@ -880,7 +890,8 @@
       ctx.textBaseline = "alphabetic";
       ctx.lineWidth = 3;
       ctx.lineJoin = "round";
-      const boxH = showHealth ? NAME_BOX_HEALTH : NAME_BOX, exact = fx && fx.projectRaw || project, viewW = window.innerWidth;
+      const boxH = showHealth ? NAME_BOX_HEALTH : NAME_BOX, exact = fx && fx.projectRaw || project, viewW = window.innerWidth, viewH = window.innerHeight;
+      placedN = 0;
       for (const entry of bodies.values()) {
         // Until laid out again, a body has no plate to report.
         entry.plateLeft = NaN;
@@ -892,6 +903,9 @@
         headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
         anchorHead(entry.cave.parts.head, exact);
         if (headTop === Infinity) continue;
+        // A speaker seated on a cloud whose head is wholly out of the view has no plate: clamped to the edge, a bench's
+        // names would float there in a stack over nobody. (A walking player's plate keeps to the edge, as an NPC's does.)
+        if (entry.cloud && (headMaxX < 0 || headMinX > viewW || headTop > viewH)) continue;
         // Over the box as over an NPC's name tooltip (hud.js speechSpace), and over a raised hand.
         entry.cave.speechLift = boxH + SPEECH_GAP + (rec.hand ? HAND_ROOM : 0);
         // Measured once a name: measureText allocates.
@@ -901,7 +915,12 @@
         const inner = Math.max(DOT_D + DOT_GAP + entry.labelW, showHealth ? BAR_W : 0), boxW = Math.round(NAME_PAD_X * 2 + inner);
         const mid = (headMinX + headMaxX) / 2;
         const left = Math.round(Math.max(EDGE, Math.min(viewW - boxW - EDGE, mid - boxW / 2)));
-        const top = Math.round(Math.max(EDGE, headTop - NAME_BOTTOM - boxH)), line = top + NAME_PAD_Y;
+        let top = Math.round(Math.max(EDGE, headTop - NAME_BOTTOM - boxH));
+        top = stack(placed, placedN, left, top, boxW, boxH, viewH);
+        if (placedN < PLATES) { const o = placedN++ * 4; placed[o] = left; placed[o + 1] = top; placed[o + 2] = left + boxW; placed[o + 3] = top + boxH; }
+        // Speech stands over the plate wherever it went.
+        entry.cave.speechLift += Math.max(0, Math.round(headTop - NAME_BOTTOM - boxH) - top);
+        const line = top + NAME_PAD_Y;
         const textX = left + NAME_PAD_X + DOT_D + DOT_GAP, lineMid = line + NAME_LINE / 2;
         entry.screenX = mid; entry.plateLeft = left; entry.plateTop = top; entry.plateW = boxW; entry.plateH = boxH;
         entry.plateTextX = textX; entry.plateBaseline = line + nameBaseline;
@@ -930,11 +949,8 @@
           ctx.fillStyle = rec.ko ? BAR_KO : BAR_FILL;
           ctx.fillRect(left, top, Math.round(BAR_W * Math.max(0, Math.min(100, rec.hp)) / 100), BAR_H);
         }
-        if (!entry.cloud && rec.call && !(net.state && net.state.copy)) {
-          ctx.fillStyle = CLOUD_DOT;
-          runs(ctx, CALL, Math.round(textX + entry.labelW + ICON_GAP), Math.round(lineMid - 2.5));
-          continue;
-        }
+        // A player in a hosted chat's voice (net.js `call`) has their island voice paused: no mark.
+        if (!entry.cloud && rec.call && !(net.state && net.state.copy)) continue;
         // A cloud speaker is always in voice; the room says only whether their microphone is muted.
         if (!entry.cloud && !rec.voice) continue;
         const muted = entry.cloud ? rec.mic === "muted" : rec.muted;
@@ -1038,5 +1054,5 @@
 
   const nameplate = (id) => activePool ? activePool.nameplate(id) : null;
   const body = (id) => activePool ? activePool.body(id) : null;
-  BL.remotePlayers = { create, nameplate, body, joystick, onIsland, sameZone, MAX, BODY_HEIGHT };
+  BL.remotePlayers = { create, nameplate, body, joystick, onIsland, sameZone, stack, MAX, BODY_HEIGHT };
 })();

@@ -24,7 +24,7 @@ const socket = () => ({
 globalThis.WebSocketPair = class { constructor() { const client = socket(), server = socket(); const close = server.close; server.close = (code, reason) => { close.call(server, code, reason); client.close(code, reason); }; this[0] = client; this[1] = server; } };
 globalThis.WebSocketRequestResponsePair = class {};
 
-const { Audience, CHAT_PROTOCOL, QUIET_MS, chatName } = await import("../src/audience.js");
+const { Audience, CHAT_PROTOCOL, QUIET_MS, SILENT_MS, SWEEP_MS, LATE_MS, CLOSE, HANDOFF_MS, chatName } = await import("../src/audience.js");
 const { ChatDirectory, startChat, chatTitle, CHATS_MAX, START_GAP_MS } = await import("../src/chat-directory.js");
 const { HOST_HOLD_MS, INVITE_MS, STAGE_HOLD_MS } = await import("../src/chat-roles.js");
 const { bridgeFetch } = await import("../src/chat-bridge.js");
@@ -47,6 +47,8 @@ const fakeCtx = () => {
     blockConcurrencyWhile(fn) { this.ready = fn(); return this.ready; },
     acceptWebSocket: (ws, tags) => { ws.tags = tags; sockets.push(ws); },
     getWebSockets: () => sockets.filter((ws) => ws.readyState <= 2),
+    // Every open page pings as the clock runs (the runtime answers for the object), unless a check stops one (`silentAt`).
+    getWebSocketAutoResponseTimestamp: (ws) => ws.readyState === 1 ? new Date(ws.silentAt ?? now) : null,
     tasks, get alarm() { return alarm; },
   };
 };
@@ -166,6 +168,32 @@ const speakerOn = async (w, chat, p) => {
   await p.a.flush();
 };
 
+test("Go there's ticket: only a speaker on the stage gets one, and only another connection of the same account hands it back, once, in time, saying whether the microphone was open", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Handoff", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), dot = await connect(w, chat.id, 4);
+  assert.equal((await ask(amy, { type: "handoff" })).error.code, "not_speaking", "not on the stage yet");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await speakerOn(w, chat, amy);
+  assert.equal((await ask(dot, { type: "handoff" })).error.code, "not_speaking", "a listener gets none");
+  const first = (await ask(amy, { type: "handoff" })).ticket;
+  assert.match(first, /^[A-Za-z0-9_-]{22}$/);
+  assert.equal((await ask(bea, { type: "redeem", ticket: first })).error.code, "handoff_invalid", "another account's page gets nothing");
+  const island = await connect(w, chat.id, 1);
+  assert.equal((await ask(island, { type: "redeem", ticket: first })).error.code, "handoff_invalid", "a ticket tried by anyone else is gone");
+  const ticket = (await ask(amy, { type: "handoff" })).ticket;
+  const again = (await ask(amy, { type: "handoff" })).ticket;
+  assert.equal((await ask(island, { type: "redeem", ticket })).error.code, "handoff_invalid", "a fresh ticket replaces the account's last");
+  const good = await ask(island, { type: "redeem", ticket: again });
+  assert.deepEqual([good.ok, good.mic], [true, true], "the island's page of the same account: the microphone was open");
+  assert.equal((await ask(island, { type: "redeem", ticket: again })).error.code, "handoff_invalid", "once");
+  const late = (await ask(amy, { type: "handoff" })).ticket;
+  now += HANDOFF_MS;
+  assert.equal((await ask(island, { type: "redeem", ticket: late })).error.code, "handoff_invalid", "too late");
+  assert.equal((await ask(island, { type: "redeem", ticket: "nope" })).error.code, "malformed");
+});
+
 test("a host mutes a speaker: muted for everyone and not pulled until they unmute themselves; a co-host never touches the host", async () => {
   now += START_GAP_MS;
   const w = await world();
@@ -230,7 +258,7 @@ test("the host's hold: two minutes, then a co-host takes over; with none the cha
   await a.alarm();
   await w.settle();
   assert.deepEqual([rowOf(bea, "gh:1").rank, rowOf(bea, "gh:1").reconnecting], ["host", true], "past the quiet moments: reconnecting, in place");
-  assert.equal(ctx.alarm, left + HOST_HOLD_MS, "then for the host's hold");
+  assert.equal(ctx.alarm, left + QUIET_MS + SWEEP_MS, "then every SWEEP_MS while someone holds the stage, to look for a silent connection");
   now = left + HOST_HOLD_MS;
   await ctx.storage.setAlarm(null);
   await a.alarm();
@@ -245,6 +273,122 @@ test("the host's hold: two minutes, then a co-host takes over; with none the cha
   assert.equal(w.directory.has(chat.id), false, "an ended chat leaves the list");
   const late = await connect(w, chat.id, 3);
   assert.equal(late.ws.closed.code, 4404);
+});
+
+test("a host gone silent (airplane mode: no close, no pings): found by the alarm's sweep, and the hold counts from the last ping", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Silent", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  await ask(amy, { type: "cohost", id: "gh:2", on: true });
+  await ask(bea, { type: "cohostAnswer", accept: true });
+  await w.settle();
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  assert.ok(ctx.alarm <= now + SWEEP_MS, "someone on the stage: the alarm looks every SWEEP_MS");
+  const quiet = now;
+  amy.ws.silentAt = quiet;
+  // The sweeps before SILENT_MS change nothing; the first one past it closes the host's socket as silent.
+  for (let t = SWEEP_MS; t < SILENT_MS; t += SWEEP_MS) {
+    now = quiet + t;
+    await ctx.storage.setAlarm(null);
+    await a.alarm();
+    await w.settle();
+    assert.equal(amy.ws.closed, null, "not yet silent long enough");
+  }
+  now = quiet + SILENT_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(amy.ws.closed.code, CLOSE.silent);
+  assert.deepEqual([rowOf(bea, "gh:1").rank, rowOf(bea, "gh:1").reconnecting], ["host", true], "reconnecting at once: the quiet moments counted from the last ping");
+  // Two minutes after the last ping, not after the sweep found it, the co-host hosts.
+  now = quiet + HOST_HOLD_MS - 1;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  assert.equal(you(bea).rank, "cohost", "not before the two minutes");
+  now = quiet + HOST_HOLD_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.deepEqual(notices(bea, "host").map((n) => n.id), ["gh:2"]);
+  assert.equal(you(bea).rank, "host");
+});
+
+test("a drop the runtime reports late counts from the last ping too; one reported at once counts from then", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Late", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  await ask(amy, { type: "cohost", id: "gh:2", on: true });
+  await ask(bea, { type: "cohostAnswer", accept: true });
+  await w.settle();
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  const quiet = now;
+  amy.ws.silentAt = quiet;
+  // The runtime notices the dead connection 30 s later, before the sweep would have.
+  now = quiet + LATE_MS + 10000;
+  await a.webSocketClose(amy.ws);
+  await w.settle();
+  now = quiet + HOST_HOLD_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(you(bea).rank, "host", "two minutes from the last ping");
+  // A clean close counts from the moment it came: the old host back, made a co-host by the new one, who then leaves.
+  const cyd = await connect(w, chat.id, 1);
+  await ask(bea, { type: "cohost", id: "gh:1", on: true });
+  await ask(cyd, { type: "cohostAnswer", accept: true });
+  await w.settle();
+  assert.equal(you(cyd).rank, "cohost");
+  const left = now;
+  await a.webSocketClose(bea.ws);
+  await w.settle();
+  now = left + HOST_HOLD_MS - 1;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  assert.equal(you(cyd).rank, "cohost", "a close reported at once holds the full two minutes");
+});
+
+test("Go there from Ooga Chat: the same account taking its own voice to the island's page keeps a co-host's rank and the stage", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Handoff", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  const a = w.objects.get(chatName(chat.id)).a;
+  await ask(amy, { type: "cohost", id: "gh:2", on: true });
+  await ask(bea, { type: "cohostAnswer", accept: true });
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  const offers = notices(bea, "cohost_offer").length;
+  // Bea's island page (its `ob_` principal) takes her voice on her word.
+  const island = await connect(w, chat.id, 2, { principal: "ob_2" });
+  const taken = await ask(island, { type: "setRole", role: "speaker", takeover: true });
+  await w.settle();
+  assert.equal(taken.ok, true);
+  assert.equal(a.roles.rankOf("gh:2"), "cohost", "still a co-host");
+  assert.equal(notices(bea, "cohost_offer").length, offers, "no offer card: she did not leave the stage");
+  assert.ok(bea.ws.sent.some((m) => m.type === "you" && m.reason === "moved"), "Ooga Chat's page hears its voice moved");
+  assert.equal(a.model.conns.get(island.connId).lease.state, "pending", "the island page holds the lease");
+});
+
+test("a speaker found silent holds their place on the stage from the last ping, not from when the sweep found them", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Held", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  await ask(amy, { type: "invite", id: "gh:2" });
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  const quiet = now;
+  bea.ws.silentAt = quiet;
+  now = quiet + SILENT_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(bea.ws.closed.code, CLOSE.silent);
+  assert.deepEqual(a.roles.held(quiet + STAGE_HOLD_MS - 1), ["gh:2"], "held until a minute after the last ping");
+  assert.deepEqual(a.roles.held(quiet + STAGE_HOLD_MS), [], "and no longer");
 });
 
 test("End chat: everyone hears it, every socket closes, and the list forgets it", async () => {
@@ -599,18 +743,18 @@ test("a DSB Land chat has no copy yet", async () => {
 
 
 
-test("the island view's feed: walkers' positions to those who asked, at most twice a second, nobody else's and nothing out of bounds", async () => {
+test("the island view's feed: walkers' positions to those who asked, twice a second unless they ask for more, nobody else's and nothing out of bounds", async () => {
   now += START_GAP_MS;
   const w = await world();
   const { chat } = await startChat(w.env, host(1), { title: "View", zone: "main" });
   const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
   const a = w.objects.get(chatName(chat.id)).a;
   await a.walking(["gh:1"]);
-  assert.deepEqual(a.walk(1, [1], [1, 2, 3, 0.5]), { ok: true, sent: false }, "nobody asked: nothing sent");
+  assert.deepEqual(a.walk(1, [1], [1, 2, 3, 0.5]), { ok: true, sent: false, ms: 500 }, "nobody asked: nothing sent");
   await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
   await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
   now += 1000;
-  assert.deepEqual(a.walk(2, [1], [1.234, 2, -3.06, 0.512]), { ok: true, sent: true });
+  assert.deepEqual(a.walk(2, [1], [1.234, 2, -3.06, 0.512]), { ok: true, sent: true, ms: 500 }, "the copy told to report twice a second");
   const frame = bea.ws.sent.filter((m) => m.type === "walk").at(-1);
   assert.deepEqual(frame, { type: "walk", seq: 2, p: ["gh:1", 1.2, 2, -3.1, 0.51] });
   assert.equal(amy.ws.sent.some((m) => m.type === "walk"), false, "only those who asked");
@@ -624,6 +768,78 @@ test("the island view's feed: walkers' positions to those who asked, at most twi
   const before = cyd.ws.sent.length;
   assert.equal(a.walk(6, [1], [1, 2, 3, 0]).sent, true);
   assert.equal(cyd.ws.sent.length, before, "turned off, none come");
+  // Both ask for six a second: Bea, a contributor (the 3D view's), gets them; Cyd, who is not, is held to two. Each is
+  // sent at their own rate, and the copy is told to report six times.
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true, hz: 6 }));
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 6 }));
+  const got = (p) => p.ws.sent.filter((m) => m.type === "walk").length, [b0, c0] = [got(bea), got(cyd)];
+  let seq = 10, ms = 0;
+  for (let k = 0; k < 6; k++) { now += 167; ms = a.walk(seq++, [1], [1, 2, 3, 0]).ms; }
+  assert.equal(ms, 167, "the copy reports as often as the fastest viewer is sent to");
+  assert.deepEqual([got(bea) - b0, got(cyd) - c0], [6, 2], "a second: six frames to Bea, two to Cyd, who is no contributor");
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true, hz: 60 }));
+  now += 167;
+  assert.equal(a.walk(seq++, [1], [1, 2, 3, 0]).ms, 500, "a rate it does not offer is two a second");
+});
+
+test("the island view's looks: to viewers alone, on change, the last to a viewer starting, kept across a nap, and nothing malformed", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Looks", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a, looksOf = (p) => p.ws.sent.filter((m) => m.type === "looks");
+  await a.walking(["gh:1"]);
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
+  assert.equal(looksOf(bea).length, 0, "nothing said yet: nothing to start with");
+  const hat = { item: "bc1gui-green-beanie", version: "5fdd8f47b975be5461f88b2bb9464ad08a106a50064e2d783751ef96101aa86c" };
+  const look = { "gh:1": { e: { selection: hat, size: 110, wardrobe: { pet: { item: "custom", version: null, size: 120 } } }, w: 2, j: 1 } };
+  assert.deepEqual(await a.looks(5, look), { ok: true });
+  assert.deepEqual(looksOf(bea).at(-1), { type: "looks", looks: look }, "a viewer hears them");
+  assert.equal(looksOf(amy).length + looksOf(cyd).length, 0, "only those viewing");
+  assert.deepEqual(await a.looks(6, look), { ok: true });
+  assert.equal(looksOf(bea).length, 1, "unchanged: nothing sent");
+  assert.equal((await a.looks(6, { "gh:1": {} })).ok, false, "an older call is dropped");
+  for (const bad of [{ "gh:1": { w: 3 } }, { "gh:1": { e: { selection: { item: "Bad Hat", version: null } } } }, { "gh:1": { e: { size: 200 } } }, { "x:1": {} },
+    { "gh:1": { e: { wardrobe: { shirt: { item: "shirt-1", version: "nothex" } } } } }, { "gh:1": { owner: 1 } }, { "gh:1": { e: { wardrobe: { shirt: { item: "x".repeat(5000) } } } } }])
+    assert.equal((await a.looks(7, bad)).ok, false, `malformed: ${JSON.stringify(bad).slice(0, 60)}`);
+  assert.equal(looksOf(bea).length, 1, "and none relayed");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
+  assert.deepEqual(looksOf(cyd), [{ type: "looks", looks: look }], "a viewer starting hears the last");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 4 }));
+  assert.equal(looksOf(cyd).length, 1, "a rate change is no new start");
+  assert.deepEqual(await a.looks(8, {}), { ok: true });
+  assert.deepEqual(looksOf(bea).at(-1), { type: "looks", looks: {} }, "nobody walking: nobody to dress");
+  await a.looks(9, look);
+  const { ctx } = w.objects.get(chatName(chat.id)), again = new Audience(ctx, w.env);
+  await ctx.ready;
+  assert.equal(again.looksText, JSON.stringify(look), "kept across a nap");
+});
+
+test("the island view's clouds: who sits where to viewers alone, on change, whether or not anyone walks, with the server's clock, and to a viewer starting", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Clouds", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a, cloudsOf = (p) => p.ws.sent.filter((m) => m.type === "clouds");
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
+  assert.deepEqual(cloudsOf(bea), [{ type: "clouds", at: now, clouds: [] }], "a viewer starting hears who sits there now: nobody yet");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  a.model.activate(amy.connId, a.model.conns.get(amy.connId).lease.generation);
+  await a.flush();
+  assert.deepEqual(cloudsOf(bea).at(-1).clouds, [{ id: "gh:1", character: "amy", seat: "main-cloud-1" }], "a speaker on the stage sits on a cloud, with nobody walking");
+  assert.equal(cloudsOf(amy).length + cloudsOf(cyd).length, 0, "only those viewing");
+  const told = cloudsOf(bea).length;
+  await ask(amy, { type: "setMic", muted: false });
+  await a.flush();
+  assert.equal(cloudsOf(bea).length, told, "a microphone changes nothing the view draws: nothing sent");
+  await a.walking(["gh:1"]);
+  assert.deepEqual(cloudsOf(bea).at(-1).clouds, [], "walking the copy, off the cloud");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
+  assert.deepEqual(cloudsOf(cyd), [{ type: "clouds", at: now, clouds: [] }], "a viewer starting hears the list as it stands");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 4 }));
+  assert.equal(cloudsOf(cyd).length, 1, "a rate change is no new start");
+  await a.walking([]);
+  assert.equal(cloudsOf(cyd).at(-1).clouds[0].seat, "main-cloud-1", "back from the copy, the same seat");
 });
 
 test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's frames, its land none in the list and the chat", async () => {
@@ -713,7 +929,7 @@ test("a short drop shows nobody anything: the speaker's tile stands, their place
   await a.alarm();
   await w.settle();
   assert.deepEqual([rowOf(amy, "gh:2").role, rowOf(amy, "gh:2").reconnecting, rowOf(amy, "gh:2").since], ["speaker", true, since], "then reconnecting, in place");
-  assert.equal(ctx.alarm, left + STAGE_HOLD_MS);
+  assert.equal(ctx.alarm, Math.min(left + STAGE_HOLD_MS, now + SWEEP_MS), "for the held place, or sooner for the host's sweep");
   now = left + STAGE_HOLD_MS;
   await ctx.storage.setAlarm(null);
   await a.alarm();
@@ -794,19 +1010,19 @@ test("a chat ending while the island room is away still frees its speakers' isla
   assert.equal(a.islandWords.size, 0);
 });
 
-test("the island's Online Oogas: a chat reports its title and counts (speaking, listening, and through Ooga Chat's app) as they change, at most every 2 s, never a name, and its end's zeros are kept until the Room takes them", async () => {
+test("the island's Online Oogas: a chat reports its title and counts (speaking, listening, and who through Ooga Chat's app, by name) as they change, at most every 2 s, and its end's zeros are kept until the Room takes them", async () => {
   now += START_GAP_MS;
   const { MEMBERS_GAP_MS } = await import("../src/audience.js");
   const w = await world();
-  let up = true, lastIds = null;
+  let up = true, lastIds = null, lastPeople = null;
   const reports = [];
   w.env.ROOM = { getByName: () => ({ chatVoice: async () => ({ ok: true }),
-    chatMembers: async (...args) => { if (!up) throw new Error("room away"); const [chat, title, speakers, listeners, ids] = args; reports.push({ chat, title, speakers, listeners, app: Array.isArray(ids) ? ids.length : -1, args: args.length }); lastIds = ids; return { ok: true }; } }) };
+    chatMembers: async (...args) => { if (!up) throw new Error("room away"); const [chat, title, speakers, listeners, ids, people] = args; reports.push({ chat, title, speakers, listeners, app: Array.isArray(ids) ? ids.length : -1, args: args.length }); lastIds = ids; lastPeople = people; return { ok: true }; } }) };
   const { chat } = await startChat(w.env, host(1), { title: "Members", zone: "main" });
   const amy = await connect(w, chat.id, 1);
   await w.settle();
   const { a, ctx } = w.objects.get(chatName(chat.id));
-  assert.deepEqual(reports, [{ chat: chat.id, title: "Members", speakers: 1, listeners: 0, app: 1, args: 5 }], "the first change goes at once, five plain values: the host speaks, on stage or not");
+  assert.deepEqual(reports, [{ chat: chat.id, title: "Members", speakers: 1, listeners: 0, app: 1, args: 6 }], "the first change goes at once, six plain values: the host speaks, on stage or not");
   await connect(w, chat.id, 3);
   await connect(w, chat.id, 9);
   // Dot joins from the island's page (its `ob_` principal): counted, but not as Ooga Chat's.
@@ -817,8 +1033,10 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   // The timer's turn, without waiting for it.
   const fire = async () => { clearTimeout(a.members.timer); a.members.timer = 0; now += MEMBERS_GAP_MS; a.reportMembers(); await w.settle(); };
   await fire();
-  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "Members", speakers: 1, listeners: 3, app: 3, args: 5 }, "the whole burst in one report, the island's own not in `app`");
-  assert.deepEqual([...lastIds].sort(), ["gh:1", "gh:3", "x:9"], "the app's accounts by id, for the Room to count each once; never a name");
+  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "Members", speakers: 1, listeners: 3, app: 3, args: 6 }, "the whole burst in one report, the island's own not in `app`");
+  assert.deepEqual([...lastIds].sort(), ["gh:1", "gh:3", "x:9"], "the app's accounts by id, for the Room to count each once");
+  assert.deepEqual(lastPeople.map((p) => [p.id, p.login, p.display, p.speaking]), [["gh:1", "amy", "P1", true], ["gh:3", "cyd", "P3", false], ["x:9", "p9", "P9", false]],
+    "and by name for Online Oogas, speakers first; the island page's own account (Dot) is not among them");
   assert.deepEqual([w.directory.list().find((c) => c.id === chat.id).speakers, w.directory.list().find((c) => c.id === chat.id).listeners], [1, 3], "the Chats list counts the same way");
   await ask(amy, { type: "setRole", role: "speaker" });
   await speakerOn(w, chat.id, amy);
@@ -853,14 +1071,15 @@ test("the island's Online Oogas: a chat reports its title and counts (speaking, 
   assert.ok(ctx.alarm && ctx.alarm <= now + 30000, "and the alarm will try again");
   up = true;
   await a.alarm();
-  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "", speakers: 0, listeners: 0, app: 0, args: 5 }, "the Room hears the chat is over");
+  assert.deepEqual(reports.at(-1), { chat: chat.id, title: "", speakers: 0, listeners: 0, app: 0, args: 6 }, "the Room hears the chat is over");
   assert.deepEqual(lastIds, []);
+  assert.deepEqual(lastPeople, []);
   assert.equal(a.members.gone, null);
   assert.equal(await ctx.storage.get("membersGone"), undefined);
 });
 
 
-test("the island room keeps each chat's title and counts for Online Oogas, never a name: stored, in the welcome only with the feature, every change broadcast, gone with nobody in it, kept over a wake, and dropped at the sweep once the directory no longer lists the chat", async () => {
+test("the island room keeps each chat's title, counts and app accounts for Online Oogas: stored, in the welcome only with the feature, every change broadcast, gone with nobody in it, kept over a wake, and dropped at the sweep once the directory no longer lists the chat", async () => {
   const { readFileSync } = await import("node:fs");
   const { runInNewContext } = await import("node:vm");
   const protocol = await import("../src/protocol.js");
@@ -911,8 +1130,21 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   assert.deepEqual(online().at(-1), 3);
   void gh5;
   assert.equal((await room.chatMembers("not a chat", "", 0, 0, [])).ok, false);
-  assert.deepEqual(stored.get("chatMembers").map(([id, e]) => [id, Object.keys(e).sort().join()]), [["AAAAAAAAAAAAAAAA", "ids,listeners,speakers,title"], ["BBBBBBBBBBBBBBBB", "ids,listeners,speakers,title"]],
-    "kept in storage: a title, counts and the app's account ids, no names");
+  assert.deepEqual(stored.get("chatMembers").map(([id, e]) => [id, Object.keys(e).sort().join()]), [["AAAAAAAAAAAAAAAA", "ids,listeners,people,speakers,title"], ["BBBBBBBBBBBBBBBB", "ids,listeners,people,speakers,title"]],
+    "kept in storage: a title, counts, the app's account ids and their names");
+  // Who they are, for Online Oogas: each app account once across chats, speaking if anywhere, the island's players left
+  // out, anything malformed dropped, by name.
+  const people = () => bea.ws.sent.filter((m) => m.t === "chat-people").map((m) => m.people);
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd", 1, 2, ["x:9", "gh:7", "gh:2"], [{ id: "x:9", login: "zed", display: "Zed", speaking: false },
+    { id: "gh:7", login: "gus", display: "Gus\u0007", speaking: true }, { id: "gh:2", login: "p2", display: "P2" }, { id: "gh:8", login: "nobody", display: "Not in ids" }, { id: "Amy", login: "amy" }]);
+  assert.deepEqual(people().at(-1), [{ id: "gh:7", login: "gus", display: "gus", speaking: true }, { id: "x:9", login: "zed", display: "Zed", speaking: false }],
+    "by name, a name with a control character shown as the login, nobody outside the chat's ids, the island's own player (Bea) left out");
+  const shown = people().length;
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd", 1, 2, ["x:9", "gh:7", "gh:2"], [{ id: "x:9", login: "zed", display: "Zed" }, { id: "gh:7", login: "gus", display: "Gus\u0007", speaking: true }]);
+  assert.equal(people().length, shown, "the same list again tells nobody");
+  assert.deepEqual(chatMembersRoom.welcome(room).chatPeople.map((p) => p.id), ["gh:7", "x:9"], "and the welcome carries it");
+  await room.chatMembers("BBBBBBBBBBBBBBBB", "Crowd\u0007", -1, 2.5e6, ["x:9", "gh:7"]);
+  assert.deepEqual(people().at(-1), [], "a chat whose report names nobody lists nobody");
   // The welcome carries every chat's, only with the feature.
   assert.ok(protocol.chatMembersRoom === chatMembersRoom || protocol.chatMembersRoom.FEATURE === chatMembersRoom.FEATURE);
   assert.deepEqual(chatMembersRoom.features(room), ["chat-summary-v1"]);
@@ -930,7 +1162,7 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
   chatMembersRoom.restore(woke, [...structuredClone(stored.get("chatMembers")),
     ["CCCCCCCCCCCCCCCC", { title: "Old", members: [{ id: "gh:1", login: "amy", display: "Amy", role: "speaker" }, { id: "x:9", login: "zed", display: "Zed", role: "listener" }], more: 3 }]]);
   assert.deepEqual([...woke.chatRosters.keys()], ["AAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBB", "CCCCCCCCCCCCCCCC"]);
-  assert.deepEqual(woke.chatRosters.get("CCCCCCCCCCCCCCCC"), { title: "Old", speakers: 1, listeners: 4, ids: [] }, "an older entry's names are let go");
+  assert.deepEqual(woke.chatRosters.get("CCCCCCCCCCCCCCCC"), { title: "Old", speakers: 1, listeners: 4, ids: [], people: [] }, "an older entry's names are let go");
   assert.ok(CHATS_KEPT >= 2);
   // Nobody in it drops the chat, and every page hears it.
   await room.chatMembers("AAAAAAAAAAAAAAAA", "", 0, 0, []);
@@ -963,3 +1195,12 @@ test("the island room keeps each chat's title and counts for Online Oogas, never
 });
 
 
+
+test("the bridge's /catalog: only Ooga Chat's edge of the same environment, answered as the island's own catalog route", async () => {
+  const env = { ENVIRONMENT: "staging" };
+  assert.equal((await bridgeFetch(env, new Request("https://chat-bridge.invalid/catalog"))).status, 403, "no environment header");
+  assert.equal((await bridgeFetch(env, new Request("https://chat-bridge.invalid/catalog", { headers: { "x-ooga-chat-environment": "production" } }))).status, 403);
+  const off = await bridgeFetch(env, new Request("https://chat-bridge.invalid/catalog", { headers: { "x-ooga-chat-environment": "staging" } }));
+  assert.equal(off.status, 404, "no catalog bound: the island's own catalog_disabled");
+  assert.equal((await off.json()).error, "catalog_disabled");
+});

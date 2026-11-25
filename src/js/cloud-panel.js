@@ -26,7 +26,10 @@
 // chat's roster in the same circles with its ranks and requests, a press on a portrait opening the tile's menu, and the
 // footer working the chat's voice (chat-call.js) instead of the island's. Start a chat chooses the zone the visitor's
 // Ooga stands in first. A request to speak while the panel is not attended counts on the tab (`sheet.setBadge`); every
-// notice is said once, as a toast (`hud.toast`). The emoji bar is the island's room's, so it is not offered in a chat.
+// notice is said once, as a toast (`hud.toast`). In a chat the island room's emoji bar gives way to the chat's own
+// (`#cloud-chat-reactions`, reaction-bar.js over the chat's socket, as Ooga Chat's footer has it): a tap sends a
+// reaction to everyone in the chat, the right slot raises the visitor's hand (a speaker's alone), and every reaction the
+// chat sends pops over that participant's circle.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -273,7 +276,8 @@
         // Go there: the speaker's own Ooga onto the chat's island (chat-copy.js), the island's page alone.
         goThere: { state: (room) => BL.chatCopy.button(room), press: () => BL.chatCopy.toggle(), subscribe: BL.chatCopy.subscribe },
         // The island view: the page's own copy of the map, Live view on the renderer the page has, over the island the hub built.
-        islandView: { picture: BL.islandViewArt.main, loadLive: () => null, island: () => BL.scenes.hub?.liveIsland || null, storageKey: "ooga-island-view-live" } });
+        // The island view: the page's own copy of the map. The island page is the island already, so it keeps the flat view.
+        islandView: { picture: BL.islandViewArt.main } });
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;
@@ -311,6 +315,48 @@
     else tiles.repaint(chatDescribe);
   };
   subs.push(calls.subscribe(paintChat));
+  // The chat's emoji bar: its connection is the chat's socket, in the shape reaction-bar.js takes.
+  const chatBarHost = $("cloud-chat-reactions");
+  const linkSubs = new Set();
+  let handRequest = 0;
+  const chatLink = { state: { me: null, reactions: false, room: "off", hand: false, handTone: 0, handEmoji: "", customHand: true },
+    sendReaction: (emoji) => calls.request("reaction", { emoji }) > 0,
+    setHand(on, tone, emoji) {
+      handRequest = calls.request("hand", { on, tone, ...(emoji ? { emoji } : {}) });
+      if (!handRequest) return false;
+      Object.assign(chatLink.state, { hand: on, handTone: tone, handEmoji: on ? emoji || "" : "" });
+      for (const fn of linkSubs) fn(chatLink.state);
+      return true;
+    },
+    subscribe(fn) { linkSubs.add(fn); return () => linkSubs.delete(fn); } };
+  // Follows the chat: shown in one, working while its socket is live, the hand the visitor's own row's as the chat keeps it.
+  const syncLink = (force = false) => {
+    const st = chatLink.state, me = calls.identity(), s = calls.state, in_ = !!s.room && !!me;
+    const own = in_ ? s.audience.list.find((p) => p.id === me.participant) : null, hand = own ? own.hand || "" : "";
+    const next = { me: in_ ? me : null, reactions: in_, room: in_ ? s.audience.status : "off", hand: !!hand, handEmoji: hand };
+    if (!force && st.me === next.me && st.reactions === next.reactions && st.room === next.room && (handRequest || st.hand === next.hand && st.handEmoji === next.handEmoji)) return;
+    Object.assign(st, handRequest ? { me: next.me, reactions: next.reactions, room: next.room } : next);
+    for (const fn of linkSubs) fn(st);
+  };
+  // Made the first time a chat is open: a page with chats off never builds it.
+  let chatBars = null, barRole = "";
+  subs.push(calls.subscribe(() => {
+    if (!calls.room && !chatBars) return;
+    if (!chatBars) {
+      chatBars = BL.reactionBar.create(chatLink);
+      chatBars.mount(chatBarHost, { handAllowed: () => calls.state.voice.role === "speaker" });
+    }
+    syncLink();
+    const role = calls.state.voice.role;
+    if (role !== barRole) { barRole = role; chatBars.refresh(); }
+  }));
+  subs.push(calls.hear((msg) => {
+    // The hand's own answer: the visitor's row decides from here, whatever was shown meanwhile.
+    if (msg.type === "result" && msg.requestId === handRequest) { handRequest = 0; syncLink(true); return; }
+    const room = calls.room;
+    if (msg.type !== "reaction" || !room || !showing || msg.zone !== BL.chatHosts.rosterZone(room.zone) || typeof msg.participantId !== "string" || !BL.reactionPolicy.valid(msg.emoji)) return;
+    tiles.pop(msg.participantId, msg.emoji);
+  }));
   // A request to speak counts on the tab while the panel is not attended; opening the tab reads it.
   subs.push(calls.hear((msg) => {
     if (msg.type !== "notice" || msg.kind !== "asked" || BL.sheet.attending(panel)) return;
@@ -351,7 +397,7 @@
     slab.append(body, note, go);
     dialog.append(head, slab);
     document.body.append(dialog);
-    const self = switcher = { dialog, body, note, change, from: null, run: null };
+    const self = switcher = { dialog, body, note, change, stay, from: null, run: null };
     // Every way out gives the focus back to the chat row pressed at once; the close event only for any other way.
     const shut = () => {
       self.run = null;
@@ -375,8 +421,8 @@
     dialog.addEventListener("close", () => { if (!dialog.open) shut(); });
     return switcher;
   };
-  // What leaving the chat the visitor is in costs them, said only to its host: their chat waits for them, then moves on.
-  const leaving = () => calls.room?.you?.rank === "host" ? "You host it: it waits 2 minutes for you, then passes to a co-host, or ends if there is none." : "";
+  // A host can't simply switch: they hand the chat to a co-host as they leave it (Leave chat), or end it, first.
+  const hostingNow = () => calls.room?.you?.rank === "host";
   let opener = null;
   const preview = async (id, from = null) => {
     if (!calls.available()) return;
@@ -402,13 +448,15 @@
       showPanel();
     };
     if (!calls.room || calls.room.id === entry.id) return open();
-    const s = switchDialog();
-    s.body.textContent = `You're in ${calls.room.title}. Leave it and join ${entry.title}?`;
-    s.note.textContent = leaving();
+    const s = switchDialog(), host = hostingNow();
+    s.body.textContent = host ? `You host ${calls.room.title}. Before joining ${entry.title}, hand it to a co-host with Leave chat, or end it.`
+      : `You're in ${calls.room.title}. Leave it and join ${entry.title}?`;
+    s.note.textContent = "";
+    s.change.hidden = host;
     s.from = from && from.isConnected ? from : null;
-    s.run = open;
+    s.run = host ? null : open;
     if (!s.dialog.open) s.dialog.showModal();
-    s.change.focus();
+    (host ? s.stay : s.change).focus();
   };
 
   if (fixture) { model.setDesired(ZONE); model.apply(sample(model.desired)); }
@@ -424,6 +472,7 @@
     hosts?.dispose();
     if (switcher) { switcher.from = null; switcher.dialog.close(); switcher.dialog.remove(); switcher = null; }
     tiles.dispose();
+    linkSubs.clear();
     model.reset("off");
   };
   BL.cloudPanel = {
