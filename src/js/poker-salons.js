@@ -88,9 +88,11 @@
       }
     }
     if (id === 0) {
-      const {half,crown}=BL.pokerLoungeDoor,top=crown(0);
-      for(const side of [-1,1])slab(side*(a+half)/2,r.h/2,b,a-half,r.h,.24,WALNUT);
-      slab(0,(r.h+top)/2,b,2*half,r.h-top,.24,WALNUT);
+      // The entrance wall stops BACK past the doorway's line, so its end faces lie inside the jamb blocks: ending on the
+      // line itself, they shared the blocks' inner faces and flickered black down both jambs.
+      const {half,crown}=BL.pokerLoungeDoor,top=crown(0),BACK=.03,edge=half+BACK;
+      for(const side of [-1,1])slab(side*(a+edge)/2,r.h/2,b,a-edge,r.h,.24,WALNUT);
+      slab(0,(r.h+top)/2,b,2*edge,r.h-top,.24,WALNUT);
       const firstFitting=parts.length, halfDepth=r.d/4;
       parts.push(BL.pokerSpeakeasy.interior(lite,r.w/2,r.d/2));
       for(const side of [-1,1]){
