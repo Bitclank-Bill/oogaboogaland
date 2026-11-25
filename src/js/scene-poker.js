@@ -275,7 +275,7 @@
   // or "<heirloom> · Space: look". Written on a change only; `actTitle` names the heirloom the label is about.
   let actPrompt=false,actShown="",actTitle="";
   const ACT_WORDS={"SIT":"sit","LIE DOWN":"lie down","STAND UP!":"stand up","TAKE PASS":"take the founder’s pass","LOOK":"look",
-    "BUILD":"build","TAKE APART":"take apart","CHOOSE ART":"choose the art","OPEN DOORS":"open the doors","TO THE BAR":"back to the bar"};
+    "BUILD":"build","TAKE APART":"take apart","WET THE STONES":"wet the stones","CHOOSE ART":"choose the art","OPEN DOORS":"open the doors","TO THE BAR":"back to the bar"};
   const showLoungeAct=act=>{
     const key=act?act+actTitle:"";
     if(key===actShown)return;
@@ -293,7 +293,7 @@
     const p=avatar.root.position,pass=salons.targets[6];
     if(pass.visible && Math.abs(p.x-pass.position.x)<.62 && Math.abs(p.z-pass.position.z)<1.65)return "TAKE PASS";
     const prop=salons.heirlooms.near(p,1.80);
-    if(prop){actTitle=prop.title;return prop.use?(prop.built()?"TAKE APART":"BUILD"):"LOOK";}
+    if(prop){actTitle=prop.title;return prop.actLabel?.()||(prop.use?(prop.built()?"TAKE APART":"BUILD"):"LOOK");}
     const chair=chairNear();
     if(chair)return fromFoot(chair)?"LIE DOWN":"SIT";
     const door=nearDoor();
@@ -355,6 +355,9 @@
     if(!pilot.player || salon!==0 || !prop)return;
     if(!heirloomInReach(prop)){hud.toast("Step closer to the "+prop.title.toLowerCase());return;}
     pilot.controls.reset();
+    // A keepsake with its own action (`act`) says what happened; with nothing to do it is read instead.
+    const said=prop.act?.();
+    if(said){hud.toast(said);return;}
     if(prop.use){
       const r=currentSalon(),p=avatar.root.position,x=r.x+prop.node.position.x,z=r.z+prop.node.position.z;
       if(!prop.use(fitted=>{

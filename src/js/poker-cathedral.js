@@ -439,8 +439,19 @@
       }))throw Error("Cathedral shrine blocks a passage or heirloom");
     }
   };
+  // The shrine tree behind the fireside record is a cherry, for Traverse City, the cherry capital where Jones's mom
+  // grew up: blossom pinks for the orange, petals drifting from its limbs, and its blossom brightest with her light
+  // (poker-birth-sky.js), at the minute Jones was born.
+  const CHERRY_BAY=3,PETALS=22;
+  const BLOSSOM=["#b84f7a","#d06a92","#e588ab","#f2a5c2","#f8bfd3","#fbd5e2","#ffe9f0"].map(c=>BL.math.hexToRgb(c));
+  const petal=M.cached(()=>{
+    const g=M.geometry(),ids=[[0,0,0],[.05,.02,.01],[.085,0,0],[.05,-.02,.01]].map(p=>M.pushVert(g,...p)),pink=[247,196,212];
+    M.face(g,ids,pink,{emissive:.35});M.face(g,ids.slice().reverse(),pink,{emissive:.35});
+    g.castShadow=false;return g;
+  });
   const installSteps=function* (room,r,{item,add},lite,items,solids,slice){
     const relics=[],hollows=[],canopies=[],treeOccluders=[],candles=[],dust=[],runes=[],birdPairs=[];
+    let blossom=null,blossomFrom=null;
     const hollowLights=new Float32Array(bayCount*2*8);
     // At matching windows keep the relic with its event. Other bays hold its cultural context.
     const shrineOrder=[1,2,0,3,7,6,5,4];
@@ -452,11 +463,12 @@
       const tree=yield* BL.pokerShrineTrees.createSteps(bay,lite,{
         left:(r.d/2+side*pos.z-.52)/shrineScale,right:(r.d/2-side*pos.z-.52)/shrineScale,
         back:(r.w/2-Math.abs(pos.x)-.52)/shrineScale
-      },slice);
+      },slice,bay===CHERRY_BAY?BLOSSOM:undefined);
       const shrine=item(title,tree.trunk,pos.x,0,pos.z,ui=>{ui.element("p",line);ui.element("p",card);},pos);
       shrine.scale.x=shrine.scale.y=shrine.scale.z=shrineScale;
       shrine.rotation.y=-side*Math.PI/2;
       const perches=tree.perches.map(p=>({x:pos.x-side*p.z*shrineScale,y:p.y*shrineScale,z:pos.z+side*p.x*shrineScale}));
+      if(bay===CHERRY_BAY)blossomFrom=perches;
       birdPairs.push(BL.pokerParadiseBirds.pair(room,r,perches,side,bay));
       hollows.push(add(shrine,tree.cavity));
       // Floor transmission bakes from room-local transforms, including the open spaces between limbs.
@@ -465,6 +477,7 @@
         node.rotation.y=shrine.rotation.y;node.scale.x=node.scale.y=node.scale.z=shrineScale;
         treeOccluders.push(node);
         canopies.push(node);
+        if(bay===CHERRY_BAY && g===tree.leaves)blossom=node;
       }
       add(shrine,tree.roots);
       add(shrine,tree.deep);
@@ -541,6 +554,17 @@
         }
       }
     }
+    // The cherry's falling petals: a fixed pool, each dropping from one of its limbs with a flutter and starting again.
+    const petals=[],drift=new Float32Array(PETALS),petalRandom=BL.math.mulberry32(70626);
+    const dropFrom=(i,anywhere)=>{
+      const n=petals[i];
+      const p=blossomFrom[Math.floor(petalRandom()*blossomFrom.length)];
+      n.position.x=p.x+(petalRandom()-.5)*2.4;n.position.z=p.z+(petalRandom()-.5)*2.4;
+      n.position.y=anywhere?.3+petalRandom()*(p.y-.3):p.y+(petalRandom()-.5)*.6;
+      drift[i]=petalRandom()*tau;
+    };
+    if(blossomFrom?.length)for(let i=0;i<PETALS;i++){petals.push(add(room,petal()));dropFrom(i,true);}
+    let petalTime=0;
     const sway=(elapsed,calm)=>{
       if(!lite)return;
       for(const node of canopies){
@@ -557,6 +581,20 @@
       const light=BL.pokerBirthSky.light(Date.now());
       sun.glow=.8+1.2*light;sun.scale.x=sun.scale.y=1+.18*light;
       halo.visible=light>.01;halo.glow=light;halo.scale.x=halo.scale.y=.6+.4*light;
+      if(blossom)blossom.glow=1+.35*light;
+      // Petals fall faster and more of them show while her light is up.
+      if(!calm){
+        petalTime+=dt;
+        const showing=Math.round(PETALS*(.45+.55*light)),fall=.32+.22*light;
+        for(let i=0;i<petals.length;i++){
+          const n=petals[i];n.visible=i<showing;
+          if(!n.visible)continue;
+          const d=drift[i];
+          n.position.y-=dt*fall;n.position.x+=dt*.18*Math.sin(petalTime*1.3+d);n.position.z+=dt*.14*Math.cos(petalTime*1.1+d);
+          n.rotation.x=petalTime*2.1+d;n.rotation.y=petalTime*1.4+d*1.7;
+          if(n.position.y<.04)dropFrom(i,false);
+        }
+      }
       if(!calm){
         birdRest-=dt;
         if(birdRest<=0 && birdPairs[displayBay](dt,audio)){

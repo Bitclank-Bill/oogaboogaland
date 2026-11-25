@@ -44,7 +44,8 @@
     }
     parts.push(g);
   };
-  const createSteps=function* (index,lite,limits,slice){
+  // `tones` replaces the Bitcoin-orange leaves for one tree (the cherry by the lighthouse, in blossom pinks).
+  const createSteps=function* (index,lite,limits,slice,tones=leafTones){
     const rand=BL.math.mulberry32(0x6e6f7400+index*571),phase=rand()*tau,lean=(rand()-.5)*.065;
     const trunk=M.geometry(),cavity=M.geometry(),leaves=M.geometry(),limbs=[],underground=[];
     leaves.sway=.018;
@@ -235,7 +236,7 @@
           const left=offset(belly,angle-pi/2,w,.005),right=offset(belly,angle+pi/2,w,-.005);
           const ids=[base,right,blade,left].map(p=>M.pushVert(leaves,p.x,p.y,p.z));
           const band=Math.min(6,Math.max(1,Math.floor(light+twigRand()*3)));
-          M.face(leaves,ids,leafTones[band],{emissive:.30});M.face(leaves,ids.slice().reverse(),leafTones[band-1],{emissive:.24});
+          M.face(leaves,ids,tones[band],{emissive:.30});M.face(leaves,ids.slice().reverse(),tones[band-1],{emissive:.24});
         }
       }
     };

@@ -113,6 +113,56 @@
   const lens=M.cached(()=>M.merge(...[-1,1].map(s=>M.box({w:.006,h:.034,d:.026,color:"#fff6d0",emissive:1,offset:{x:s*.034,y:0,z:0}}))));
   const note=["I grew up by Grand Traverse Bay, where lighthouses keep watch so the boats can always find their way home.",
     "Wherever you go, Jones, I’ll keep a light on for you.","Love, Mom"];
+  // Petoskey stones from Grand Traverse Bay in a glazed dish before the lighthouse. Dry they are plain grey pebbles;
+  // wet them and the six-sided fossil coral shows, then they dry back. One canvas paints both at `wet` 0 to 1.
+  const STONES=[[-.062,.036,.052,.040],[.048,.052,.046,.036],[.058,-.040,.050,.041],[-.040,-.052,.044,.036],[.0,.0,.040,.034]];
+  const STONE_R=.13,STONE_PX=256,WET_STEPS=16;
+  const stoneCanvas=()=>{const c=document.createElement("canvas");c.width=c.height=STONE_PX;return c;};
+  const paintStones=(c,wet)=>{
+    const ctx=c.getContext("2d"),px=v=>(v/STONE_R*.5+.5)*STONE_PX,rand=BL.math.mulberry32(4471);
+    ctx.fillStyle="#8a8478";ctx.fillRect(0,0,STONE_PX,STONE_PX);
+    const mix=(a,b)=>a.map((v,i)=>Math.round(v+(b[i]-v)*wet));
+    for(const [x,y,rx,ry] of STONES){
+      const cx=px(x),cy=px(-y),ex=rx/STONE_R*.5*STONE_PX,ey=ry/STONE_R*.5*STONE_PX;
+      ctx.save();ctx.beginPath();ctx.ellipse(cx,cy,ex,ey,0,0,2*Math.PI);ctx.clip();
+      const base=mix([190,184,172],[120,112,98]);ctx.fillStyle=`rgb(${base})`;ctx.fillRect(cx-ex,cy-ey,2*ex,2*ey);
+      for(let i=0;i<40;i++){const g=mix([205,199,188],[132,124,110]);ctx.fillStyle=`rgba(${g},.5)`;ctx.beginPath();
+        ctx.arc(cx+(rand()-.5)*2*ex,cy+(rand()-.5)*2*ey,1+rand()*3,0,2*Math.PI);ctx.fill();}
+      if(wet>0){
+        // The corallites: six-sided cells with pale walls, a dark eye and fine rays out to the walls.
+        ctx.globalAlpha=wet;const cell=7.5,h=cell*Math.sqrt(3);
+        for(let row=-6;row<=6;row++)for(let col=-6;col<=6;col++){
+          const hx=cx+col*cell*1.5,hy=cy+row*h+(col%2?h/2:0);
+          if(Math.hypot((hx-cx)/ex,(hy-cy)/ey)>1.15)continue;
+          ctx.beginPath();for(let k=0;k<6;k++){const a=k*Math.PI/3;ctx.lineTo(hx+cell*Math.cos(a),hy+cell*Math.sin(a));}
+          ctx.closePath();ctx.fillStyle="#6e6556";ctx.fill();ctx.strokeStyle="#d9ccb1";ctx.lineWidth=1.4;ctx.stroke();
+          ctx.strokeStyle="rgba(214,201,176,.55)";ctx.lineWidth=.6;
+          for(let k=0;k<6;k++){const a=k*Math.PI/3+Math.PI/6;ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(hx+cell*.8*Math.cos(a),hy+cell*.8*Math.sin(a));ctx.stroke();}
+          ctx.fillStyle="#2f2a24";ctx.beginPath();ctx.arc(hx,hy,cell*.26,0,2*Math.PI);ctx.fill();
+        }
+        // The water's gloss along the top of each stone.
+        ctx.globalAlpha=.35*wet;ctx.fillStyle="#ffffff";ctx.beginPath();ctx.ellipse(cx-ex*.25,cy-ey*.35,ex*.45,ey*.16,-.3,0,2*Math.PI);ctx.fill();
+        ctx.globalAlpha=1;
+      }
+      ctx.restore();
+    }
+  };
+  const stones=M.cached(()=>{
+    const g=M.geometry(),white=[255,255,255];
+    for(const [x,y,rx,ry] of STONES){
+      const rings=6,sides=18,top=Math.min(rx,ry)*.55,ids=[];
+      for(let i=0;i<=rings;i++){
+        const phi=i/rings*Math.PI/2,row=[];
+        for(let j=0;j<sides;j++){const t=j/sides*2*Math.PI;row.push(M.pushVert(g,x+rx*Math.sin(phi)*Math.cos(t),y+ry*Math.sin(phi)*Math.sin(t),top*Math.cos(phi)));}
+        ids.push(row);
+      }
+      for(let i=0;i<rings;i++)for(let j=0;j<sides;j++){const k=(j+1)%sides;M.face(g,[ids[i][j],ids[i+1][j],ids[i+1][k],ids[i][k]],white,{emissive:.12});}
+    }
+    g.smooth=true;g.castShadow=false;return g;
+  });
+  const dish=M.cached(()=>M.lathe({profile:[[0,0],[.12,0],[.16,.012],[.175,.045],[.165,.05],[.15,.022],[0,.018]],segments:36,color:"#3f6f8c"}));
+  const stoneNote=["Petoskey stones, from Grand Traverse Bay, where Mom grew up.",
+    "Dry, they look like plain grey pebbles. Wet them, and you can see tiny six-sided corals that lived in a warm sea here long, long ago, before there were any people at all."];
   const plank=(x,y,z,w,h,d,color)=>M.bevelBox({w,h,d,color,bevel:.004,offset:{x,y,z}});
   // The bridge stands on Mom's bank and Dad's: each pier has its word burned into both faces in the carved signs'
   // alphabet, one dark run a row a quad standing a hair proud of the wood, so it reads from either side.
@@ -184,6 +234,23 @@
       ui=>{for(const line of note)ui.element("p",line);});
     tower.scale.x=tower.scale.y=tower.scale.z=1.5;
     const beacon=add(tower,lamp(),0,LIGHT_Y,0),flash=add(tower,lens(),0,LIGHT_Y,0);
+    // The stones wet on Action and dry back after a while; once wet, Action reads them (`act`, `actLabel`).
+    const bowl=item("Petoskey stones",dish(),-BL.pokerLoungeStone.sideTableX-1.02,.037,BL.pokerLoungeStone.sideTableZ(r)+.58,
+      ui=>{for(const line of stoneNote)ui.element("p",line);});
+    const stoneGeo=stones(),pebbles=add(bowl,stoneGeo,0,.02,0);pebbles.rotation.x=-Math.PI/2;
+    let wet=0,wetFor=0,shownWet=-1;
+    const stoneCanvasEl=typeof document==="undefined"?null:stoneCanvas();
+    const showWet=()=>{
+      const step=Math.round(wet*WET_STEPS);
+      if(!stoneCanvasEl || step===shownWet)return;
+      shownWet=step;paintStones(stoneCanvasEl,step/WET_STEPS);
+      if(!stoneGeo.imageSurface)stoneGeo.imageSurface={canvas:stoneCanvasEl,rect:[-STONE_R,-STONE_R,2*STONE_R,2*STONE_R],smooth:true,version:1};
+      else stoneGeo.imageSurface.version++;
+    };
+    showWet();
+    const stoneProp=items[items.length-1];
+    stoneProp.actLabel=()=>wet<.5?"WET THE STONES":null;
+    stoneProp.act=()=>{if(wet>=.5)return null;wetFor=24;return "The stones come alive: tiny six-sided corals, millions of years old.";};
     const x=-.78,z=seat-3.32,feet=item("Jones’s wooden bridge",piers(),x,.037,z,null);
     const prop=items[items.length-1],arch=add(feet,span()),shade=add(feet,bridgeShade(),0,.002,.29);
     shade.rotation.x=-Math.PI/2;shade.rotation.z=Math.PI;
@@ -201,6 +268,10 @@
         const light=BL.pokerBirthSky.light(Date.now());
         sweep=(sweep+dt*(.7+.5*light))%tau;flash.rotation.y=sweep;
         beacon.glow=flash.glow=.8+1.2*light;beacon.scale.x=beacon.scale.y=beacon.scale.z=1+.25*light;
+        // Wetting takes a moment to soak in; drying takes longer.
+        if(wetFor>0){wetFor-=dt;wet=Math.min(1,wet+dt/.6);}
+        else if(wet>0)wet=Math.max(0,wet-dt/20);
+        showWet();
       }
       if(age>=1)return;
       age=calm?1:Math.min(1,age+dt/.94);
