@@ -770,7 +770,7 @@ Checked in Node, in the global tier:
 ## 10. Level 5: Flipside (added later)
 
 Flipside is the storm's eye at sunrise (06:36, a light `storm` greying of 0.35, no haze of its own) over a Caribbean
-lagoon: turquoise shallows, white-sand atolls with palms, reefs and a soft swell, fading into the sea that hazes into
+lagoon: turquoise shallows, white-sand atolls with green tops and palms, reefs and a soft swell, fading into the sea that hazes into
 the sky. Space opens on its horizon as the run goes on, a thin line by the flip and a broad band behind the island at
 the finish, joined to the water and the sky by a glowing line like an aurora, with stars, a spiral galaxy and a nebula
 in it; four fun blimps drift far off, lightning strikes far round the eye, and at the finish the island's lanterns are
@@ -792,6 +792,7 @@ than the first cut's (`slope` 0.38) in gently uneven steps (`terraces`). It keep
 | Lane, speed | 5-8 m, 0.9-1.5 m/s | 5.3-8.5 m, 0.95-1.6 m/s |
 | `reach` | 0.8 | 0.9 |
 | Gusts, tornadoes | 0, 3 | 2 (each 2 s and 60% of Aurora Heights' push), 3 |
+| Grappling hooks | 2, 10-60% of the way | 3: one early, one before the flip, one after it |
 | Last jump to the island | about 9 m | about 9 m |
 
 48% permanent is the fewest 2.5's checks allow at these gaps with so few side landings, even at `reach` 0.9.
@@ -800,6 +801,16 @@ The wind is lighter than Aurora Heights' (two gusts, each blowing 2 s for 3 and 
 the fading and the tornadoes carry the level. The last jump is every level's: one plain jump from the final landing,
 12 m off the coast, with no air jump, jetpack or hook needed. The grappling hook is for clouds alone, as on every
 level; it does not bite the island.
+
+Its three grappling hooks are Thunderhead's pickup and hook, laid where they help (the layout's `hookAt`, a stretch of
+the main landings for each: 5-17%, 25-37% and 64-76% of the way, widened a little where no landing in it will do):
+each on the plain landing in its stretch, free of any other pickup, before the widest jump (one that never fades
+first, as a pickup on a fading landing falls with it; 557 of 600 under 200 seeds), never on a portal's jump or any landing up to the one it throws
+to, and never within 40 m of the flip's place, so the first two are always before it and the third after it. As on
+Thunderhead a hook held is kept until a throw misses, and another is taken only with none held, so the later ones are
+spares. No tornado is brewed within 90 m of a hook not yet taken (the course's `keepClear`, which the tornadoes treat as
+they treat a portal's calm stretch); under 200 seeds the nearest a tornado's reach comes to one is 68 m (without that, a
+tornado stood over one), and every tornado still comes.
 
 Two things are new, and neither is part of the course: it is one path from start to finish whose clouds are the same
 with or without them, so no cloud is ever only for one way up and nothing has to be touched to go on.
@@ -825,7 +836,10 @@ sparks and dust, and the island's lamp light. Then a gust of
 wind lifts it, on the roll's own time, never on how far it has fallen: 0.45 s in, at once if it is in the air or moving
 at all, or if it stands on a cloud the moment it leaves it before 1.2 s (if it never does, there is no gust that turn).
 It is thrown up and on to the nearest landing ahead that will still be there when it lands, never the one it is over, the
-same for every rider, a pack and fuel left as they were; never more than one gust a turn. A fall of 30 m before landing
+same for every rider, a pack and fuel left as they were; never more than one gust a turn. The wind carries it
+there whatever it does on the way: none of the level's own gusts pushes it while it climbs, and its speed across is set
+afresh each moment for where that landing will be as it comes down, so steering or an air jump moves it about on the way
+but never off it. A fall of 30 m before landing
 puts it back once, at rest, under where the roll began, and lifts it again (30 m further under the course where the
 rider is than the roll left it: the course falls away, so a rider flying on under it is not falling); a second fall,
 and any fall after that landing, is lost as it is upright. A tornado and the wind are drawn where they act while the world is upside down

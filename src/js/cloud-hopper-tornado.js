@@ -125,7 +125,7 @@
     const spots = [], mains = [];
     let total = 1, goalX = 0, goalZ = 0;
     const away = (px, pz) => Math.hypot(goalX - px, goalZ - pz);
-    let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0, calm = null;
+    let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0, calm = null, hooks = null, hookCalm = 0;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
     let girth = THIN, power = WEAK, seen = 1, seenNear = Infinity, seenFar = Infinity;
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
@@ -180,7 +180,7 @@
       }
       // A course's calm stretches (a portal's throw, cloud-hopper-course.js), if it has any: one that would brew over
       // a landing in one brews over the nearest landing outside them all instead, ahead of the rider as before.
-      if (calm && !outside(best)) {
+      if ((calm || hooks) && !outside(best)) {
         const from = away(best.x, best.z);
         best = null;
         for (const c of mains) { const d = away(c.x, c.z); if (d <= ahead && d >= LAST * total && outside(c) && (!best || Math.abs(d - from) < Math.abs(away(best.x, best.z) - from))) best = c; }
@@ -191,8 +191,14 @@
       begin(best.x + sx * spot.off, best.top, best.z + sz * spot.off, dx / l, dz / l, drift, best.x, best.z);
       return true;
     };
-    // Whether a landing stands outside every calm stretch of the course.
-    const outside = (c) => { const d = away(c.x, c.z); for (const stretch of calm) if (d >= stretch[0] && d <= stretch[1]) return false; return true; };
+    // Whether a landing stands outside every calm stretch of the course and, on a course that keeps them clear (its
+    // `keepClear`, Flipside's hooks), more than its `keepBy` metres along the course from every one not yet taken.
+    const outside = (c) => {
+      const d = away(c.x, c.z);
+      if (calm) for (const stretch of calm) if (d >= stretch[0] && d <= stretch[1]) return false;
+      if (hooks) for (const p of hooks) if (p.active && Math.abs(d - away(p.x, p.z)) < hookCalm) return false;
+      return true;
+    };
     // How much nearer the goal the rider is than the tornado (m).
     const passed = (x, z) => away(ax, az) - away(x, z);
     // Each frame of a run: (x, z) the rider's feet across the course, `finish` the final cloud, `whirl` the course's,
@@ -294,6 +300,7 @@
       seenNear = haze ? haze[1] + SEEN[0] : Infinity; seenFar = haze ? haze[1] + SEEN[1] : Infinity;
       goalX = finish.x; goalZ = finish.z; total = 1;
       calm = course.calm && course.calm.length ? course.calm : null;
+      hooks = course.keepClear && course.keepClear.length ? course.keepClear : null; hookCalm = course.keepBy || 0;
       let last = 0;
       for (const c of course.clouds) if (c.main) { mains.push(c); last = Math.max(last, c.arrival); total = Math.max(total, away(c.x, c.z)); }
       for (const centre of SPOTS) {
@@ -304,7 +311,7 @@
       }
       // A course with calm stretches (a portal's throw): a spot over a landing in one moves to the nearest landing
       // outside them all that is clear of the finish and APART from the other spots, or is left out.
-      if (calm) for (const spot of spots) {
+      if (calm || hooks) for (const spot of spots) {
         if (outside(spot.landing)) continue;
         const from = away(spot.landing.x, spot.landing.z);
         let best = null;

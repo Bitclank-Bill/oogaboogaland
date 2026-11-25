@@ -52,7 +52,12 @@
   const LAYOUT = Object.freeze({ step: 11.5, main: Object.freeze([2.7, 0.9, 1.9, 0.7]), side: Object.freeze([2.8, 0.7, 2.1, 0.5]),
     turn: 40, sway: 7, lane: Object.freeze([5, 3]), speed: Object.freeze([0.9, 0.6]), sides: Infinity, sideMax: 24,
     offset: Object.freeze([22, 12]), boost: 0.22, bounce: 0.16, bounceMax: Infinity, twoPacks: 0.45, xray: 0, updraft: 0, hook: 0,
-    flips: Object.freeze([]), portals: 0 });
+    hookAt: null, flips: Object.freeze([]), portals: 0 });
+  // A course whose layout gives `hookAt` ([from, to] shares of the main landings, one stretch for each of its hooks)
+  // lays each hook in its own stretch, on the landing there before the widest jump, never on a portal's jump or any
+  // landing up to the one it throws to, nor within HOOK_FLIP metres of a place the world turns over, so each is
+  // plainly before or after it; and no tornado is brewed within HOOK_CALM metres of a hook until it is taken.
+  const HOOK_FLIP = 40, HOOK_CALM = 90;
   // Where along the main landings each power-up kind is spread: [first, span] as shares of the course.
   const STRETCH = Object.freeze({ xray: Object.freeze([0.12, 0.6]), updraft: Object.freeze([0.35, 0.45]), hook: Object.freeze([0.1, 0.5]) });
   const cycleRandom = (seed, cycle, salt) => {
@@ -505,16 +510,35 @@
     // X-ray, Updraft and grappling hook pickups, each kind spread over its own stretch of the main landings, on plain
     // clouds no pickup holds, clear of the first and last three, from their own stream so nothing above moves.
     const powerRand = mulberry32(seed ^ 0x6a09e667);
+    function placePickup(kind, cloud) {
+      pickups.push({ index: pickups.length, kind, cloud, x: cloud.x, y: cloud.top + PICKUP_LIFT, z: cloud.z, vy: 0, active: true, collected: false, falling: false });
+    }
+    // A hook's landing in its [from, to] stretch, `wider` that share more either side (see HOOK_FLIP): the free one
+    // there before the widest jump, one that never fades if any does, or null.
+    function hookLanding([from, to], wider, free) {
+      const thrown = portals.filter(q => q.to).map(q => [q.gap - 1, landings.indexOf(q.to)]);
+      let best = null, widest = -Infinity;
+      for (let i = Math.round((from - wider) * (count - 1)); i <= Math.round((to + wider) * (count - 1)); i++) {
+        const c = landings[i], next = landings[i + 1];
+        if (!next || !free(i) || thrown.some(([a, b]) => i >= a && i <= b)
+          || flips.some(f => Math.abs(outAlong(c.baseX, c.baseZ) - f.line) < HOOK_FLIP)) continue;
+        // A landing that never fades first (a pickup on a fading one falls with it as it first goes), then the widest jump.
+        const jump = Math.hypot(next.baseX - c.baseX, next.baseZ - c.baseZ) - Math.min(c.rx, c.rz) - Math.min(next.rx, next.rz) + (c.life === PERMANENT ? 1000 : 0);
+        if (jump > widest) { widest = jump; best = c; }
+      }
+      return best;
+    }
+    const free = (i) => i >= 3 && i <= count - 4 && landings[i].kind === "normal" && !pickups.some(p => p.cloud === landings[i]);
     for (const kind of ["xray", "updraft", "hook"]) for (let k = 0, n = layout[kind]; k < n; k++) {
       const [first, span] = STRETCH[kind], want = Math.round((first + span * (k + 0.3 + powerRand() * 0.4) / n) * (count - 1));
       let cloud = null;
+      if (kind === "hook" && layout.hookAt) for (let wider = 0; wider < 4 && !cloud; wider++) cloud = hookLanding(layout.hookAt[k], wider * 0.03, free);
+      if (cloud) { placePickup(kind, cloud); continue; }
       for (let d = 0; d < count && !cloud; d++) for (let side = 0; side < 2 && !cloud; side++) {
-        const i = side ? want - d : want + d, c = landings[i];
-        if (i < 3 || i > count - 4 || c.kind !== "normal" || pickups.some(p => p.cloud === c)) continue;
-        cloud = c;
+        const i = side ? want - d : want + d;
+        if (free(i)) cloud = landings[i];
       }
-      if (cloud) pickups.push({ index: pickups.length, kind, cloud, x: cloud.x, y: cloud.top + PICKUP_LIFT, z: cloud.z,
-        vy: 0, active: true, collected: false, falling: false });
+      if (cloud) placePickup(kind, cloud);
     }
 
     // ---- the clock ----------------------------------------------------------------------------------------------
@@ -797,7 +821,8 @@
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, calm, due, toFlip, warpTo };
+      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt, landings, flips, portals, calm, due, toFlip, warpTo,
+      keepClear: layout.hookAt ? pickups.filter(p => p.kind === "hook") : [], keepBy: HOOK_CALM };
   };
   BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
     PERMANENT, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING, PORTAL, WARP, CALM };

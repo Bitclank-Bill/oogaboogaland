@@ -63,6 +63,9 @@
   // its wind shows round the rider, its fastest speed across, and the least it lifts a rider over where it caught it
   // (so it is always a lift, even over a cloud below).
   const LIFT_OVER = 1.6, LIFT_REACH = 36, LIFT_SHOW = 1, LIFT_SPEED = 14, LIFT_UP = 1.2;
+  // The updraft stops steering the rider onto its landing this long (s) before it comes down, so the last stretch is
+  // the flight it has.
+  const LIFT_HOME = 0.1;
   // A portal cloud throws the rider that touches it on down the course: over WARP_SECONDS the Ooga, unseen, streaks
   // to a landing as SPARKS violet sparkles trailing WARP_TRAIL metres, the view gliding after it, and comes out WARP_EDGE inside the
   // landing's near side and WARP_OVER above it, with the speed it went in with (no more than carries it across the
@@ -335,8 +338,9 @@
       const p = actor.root.position, leap = actor.leap, aim = liftTarget(p.x, p.z, p.y - actor.baseY);
       lifts++;
       liftAt = displayTime; audio.liftGust();
-      if (!aim) return;
-      // Thrown, as the wind carries it: its speed across holds (no drag) until it lands, which ends the throw.
+      if (!aim) { liftAim.cloud = null; return; }
+      // Thrown, as the wind carries it: no drag on its speed across, which is held on the landing each frame till it
+      // lands (see the run's step), which ends the throw.
       actor.hopV = aim.vy; leap.thrown = true;
       leap.vx = (aim.x - p.x) / aim.t; leap.vz = (aim.z - p.z) / aim.t;
     };
@@ -1143,7 +1147,9 @@
       // airborne Ooga across the course and sliding one planted on a cloud, which leaves it at the slide's speed.
       if (phase === "running" && level.layout.gusts) {
         const was = gust.state;
-        gust.update(dt, p.x, p.z, camera.position, camera.target);
+        // Read against the run's own view (its warning's side is the view's right as the player sees it, the world
+        // turned over or not).
+        gust.update(dt, p.x, p.z, eye(), viewTurned ? trueTarget : camera.target);
         if (was === "calm" && gust.state === "warning") audio.gustWarn();
         // (A level's own lighter wind pushes by its layout's `gustPush` of that.)
         const push = swept < 0 ? gust.strength * (level.layout.gustPush ?? 1) : 0;
@@ -1152,8 +1158,9 @@
           slideX += (gust.pushX * GUST_SLIDE * push - slideX) * k; slideZ += (gust.pushZ * GUST_SLIDE * push - slideZ) * k;
           p.x += slideX * dt; p.z += slideZ * dt;
         } else {
-          // Not while it falls into the flip: the gust is still to come.
-          if (actor.hop > 0 && !lowering) {
+          // Not while it falls into the flip, nor while the flip's updraft carries it to its landing: it would push the
+          // rider off the landing the updraft aims at.
+          if (actor.hop > 0 && !lowering && !climbing) {
             actor.leap.vx += slideX + gust.pushX * GUST_PUSH * push * dt; actor.leap.vz += slideZ + gust.pushZ * GUST_PUSH * push * dt;
           }
           slideX = slideZ = 0;
@@ -1161,6 +1168,18 @@
         const fx = camera.target.x - camera.position.x, fz = camera.target.z - camera.position.z;
         overlay.setGust(gust.state, gust.pushX * -fz + gust.pushZ * fx > 0);
         audio.gust(gust.strength);
+      }
+      // The flip's updraft carries the rider to its landing whatever it does on the way: its speed across is set afresh
+      // each frame for where the landing's middle (`liftAim`'s cloud) will be as it comes down, from where the rider is
+      // now and as long as it will take to come down to that top from its height and speed now (so an air jump only
+      // lengthens the flight); steering moves it about on the way (the controls stay its own) but never off the landing.
+      if (climbing && actor.leap.thrown && liftAim.cloud && phase === "running") {
+        const g = BL.pilot.WALK.gravity, over = feet - liftAim.top, vy = actor.hopV;
+        const left = vy * vy + 2 * g * over > 0 ? (vy + Math.sqrt(vy * vy + 2 * g * over)) / g : 0;
+        if (left > LIFT_HOME) {
+          const c = liftAim.cloud, off = course.offsetAt(c, seconds + left);
+          actor.leap.vx = (c.baseX + c.moveX * off - p.x) / left; actor.leap.vz = (c.baseZ + c.moveZ * off - p.z) / left;
+        }
       }
       if (puffing >= 0) puff(dt);
       course.update(dt, phase === "running" ? (raceNow() - startedAt) / 1000 : undefined);

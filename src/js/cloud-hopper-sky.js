@@ -309,9 +309,8 @@
   // ---- Flipside's lagoon (`?ch5lagoon=0` turns it off, for the plain sea) --------------------------------------
   // The sea far under the course as a Caribbean lagoon: a great disc laid just over the sea, painted once, deep blue
   // with broad turquoise shallows over white sand, darker reef lines and coral heads where the shallows drop away,
-  // white-sand atolls ringing bright aqua lagoons with green tops, and sandbars; over the nearer atolls low voxel
-  // islands of sand with palms, merged into one mesh. Both hang from the turning sky, so after the flip they are
-  // overhead, upside down. Built once at load; nothing moves.
+  // white-sand atolls ringing bright aqua lagoons with green tops, and sandbars. It hangs from the turning sky, so after
+  // the flip it is overhead, upside down. Built once at load; nothing moves.
   const LAGOON = (() => { try { return new URLSearchParams(location.search).get("ch5lagoon") !== "0"; } catch { return true; } })();
   const LAGOON_SIZE = 2048, LAGOON_SPAN = 9000;
   // Smooth value noise over the plan, for the lagoon's shapes and colours.
@@ -458,20 +457,21 @@
     g.castShadow = false; g.cutawayPreserve = true;
     return g;
   });
-  // The nearer atolls' islands: sand blocks round a ring (or a heap for a cay), a few palms; one mesh in metres.
-  const lagoonIslands = M.cached(() => {
+  // Palms on the nearer atolls' painted sand, a few to an island that is green; one mesh in metres. (The same draws as
+  // ever pick where, so each stands where it always has.)
+  const lagoonPalms = M.cached(() => {
     const parts = [], { atolls } = lagoonPlan(), half = LAGOON_SPAN / 2;
     for (const at of atolls) {
       if (Math.hypot(at.x, at.y) > 0.3 || at.r < 0.003) continue;
       const q = mulberry32(at.seed + 7), x = at.x * half, z = -at.y * half, rad = at.r * half * 0.8, n = at.ring ? 16 : 6;
       for (let k = 0; k < n; k++) {
-        const a = k / n * TAU + q() * 0.3, d = at.ring ? rad * 0.82 : q() * rad * 0.45, w = rad * (at.ring ? 0.28 : 0.5);
+        const a = k / n * TAU + q() * 0.3, d = at.ring ? rad * 0.82 : q() * rad * 0.45;
         const ox = Math.cos(a) * d * at.stretch, oz = Math.sin(a) * d, ca = Math.cos(at.a), sa = Math.sin(at.a), bx = x + ox * ca - oz * sa, bz = z - (ox * sa + oz * ca);
-        parts.push(M.box({ w, h: 0.8 + q() * 1.2, d: w * (0.6 + q() * 0.5), color: q() < 0.5 ? "#f3ead0" : "#e8dcb8", offset: { x: bx, y: 0.4, z: bz } }));
+        q(); q(); q();
         if (at.green && q() < 0.5) {
           const hh = 6 + q() * 5;
-          parts.push(M.box({ w: 0.7, h: hh, d: 0.7, color: "#8a6a44", offset: { x: bx, y: hh / 2 + 0.8, z: bz } }));
-          for (let f = 0; f < 4; f++) { const fa = f / 4 * TAU + q(); parts.push(M.box({ w: 4.5, h: 0.4, d: 1.4, color: f % 2 ? "#2f8a3e" : "#3fa24c", offset: { x: bx + Math.cos(fa) * 2, y: hh + 0.8, z: bz + Math.sin(fa) * 2 } })); }
+          parts.push(M.box({ w: 0.7, h: hh, d: 0.7, color: "#8a6a44", offset: { x: bx, y: hh / 2, z: bz } }));
+          for (let f = 0; f < 4; f++) { const fa = f / 4 * TAU + q(); parts.push(M.box({ w: 4.5, h: 0.4, d: 1.4, color: f % 2 ? "#2f8a3e" : "#3fa24c", offset: { x: bx + Math.cos(fa) * 2, y: hh, z: bz + Math.sin(fa) * 2 } })); }
         }
       }
     }
@@ -1662,7 +1662,7 @@
         // Centred under the course's middle, just over the sea, laid flat (the panel's plan turned to the world's).
         const job = lagoonStart(), veil = node(lagoonVeil(), cx, seaY + 0.3, cz, LAGOON_SPAN), disc = node(lagoonDisc(), cx, seaY + 0.4, cz, LAGOON_SPAN);
         veil.rotation.x = disc.rotation.x = -Math.PI / 2;
-        node(lagoonIslands(), cx, seaY + 0.4, cz);
+        node(lagoonPalms(), cx, seaY + 0.4, cz);
         const waves = [0, 1].map((v) => { const w = node(null, cx, seaY + 1.2 + v * 0.3, cz, LAGOON_SPAN); w.rotation.x = -Math.PI / 2; w.visible = false; return w; });
         // Painted already (a replay, a level after another): shown at once. Otherwise the veil until it is, then the
         // lagoon fading in over it over LAGOON_FADE seconds and the veil gone.
