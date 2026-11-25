@@ -312,7 +312,7 @@
   // white-sand atolls ringing bright aqua lagoons with green tops, and sandbars. It hangs from the turning sky, so after
   // the flip it is overhead, upside down. Built once at load; nothing moves.
   const LAGOON = (() => { try { return new URLSearchParams(location.search).get("ch5lagoon") !== "0"; } catch { return true; } })();
-  const LAGOON_SIZE = 2048, LAGOON_SPAN = 9000;
+  const LAGOON_SIZE = 2048, LAGOON_SPAN = 9000, LAGOON_DEPTH = 256;
   // Smooth value noise over the plan, for the lagoon's shapes and colours.
   const lagoonNoise = (() => {
     const P = new Float32Array(256 * 256), r = mulberry32(2718);
@@ -428,7 +428,12 @@
           geo.castShadow = false; geo.cutawayPreserve = true;
           geo.imageSurface = { asset: { width: m, height: m, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 1.2 };
           J.waves[w] = geo; J.row = 0;
-          if (++J.phase === 5) { J.waveImg = null; J.h = null; J.done = true; J.doneAt = performance.now(); J.canvas.complete = true; }
+          if (++J.phase === 5) {
+            // A coarse copy of the height field (`depth`, LAGOON_DEPTH square, 0-255) kept for the sharks in the water.
+            const d = J.depth = new Uint8Array(LAGOON_DEPTH * LAGOON_DEPTH), step = n / LAGOON_DEPTH;
+            for (let r = 0; r < LAGOON_DEPTH; r++) for (let c = 0; c < LAGOON_DEPTH; c++) d[r * LAGOON_DEPTH + c] = Math.min(255, Math.max(0, J.h[Math.floor((r + 0.5) * step) * n + Math.floor((c + 0.5) * step)] * 255));
+            J.waveImg = null; J.h = null; J.done = true; J.doneAt = performance.now(); J.canvas.complete = true;
+          }
         }
       }
     }
@@ -478,40 +483,95 @@
     const g = M.merge(...parts); g.castShadow = false; g.fogPierce = 0.3;
     return g;
   });
-  // ---- Flipside's whale sharks (`?ch5sharks=0` leaves them out) -------------------------------------------------
-  // Great low-poly whale sharks swimming in the air, in a band well under the course and well over the lagoon: looked
-  // down on gliding over the turquoise before the flip, drifting overhead between the rider and the sea after it (they
-  // hang from the turning sky, so they stay the right way up to the sea). Dark blue-grey dappled white, broad flat head
-  // at +x to a tall tail on its own node, which sways. One body mesh and one tail mesh for all of them, built once;
-  // nothing allocated a frame. `SHARK`: how many, how many times the 42 m model each is drawn (`size`), how fast they
-  // swim (m/s), the least they keep under any cloud near their loop and over the sea (m), their loops' half-sizes
-  // along and across the course and how far off to one side of it they lie (m, [least, range]).
-  const SHARKS = (() => { try { return new URLSearchParams(location.search).get("ch5sharks") !== "0"; } catch { return true; } })();
-  const SHARK = Object.freeze({ count: 4, size: 1.8, speed: 4, under: 45, over: 60, along: [150, 70], across: [60, 40], side: [60, 120] });
-  const sharkBody = M.cached(() => {
-    const parts = [], skin = "#3b5a72", dark = "#2e4a60", spot = "#cfe0e6", r = mulberry32(4471);
-    // Along +x, head at +x: the broad flat head, then the body tapering to the tail stock ([x, width, height, length]).
-    const SEGS = [[16, 9, 2.2, 8], [8, 9.5, 2.6, 7], [0, 8.6, 2.7, 9], [-9, 6.4, 2.3, 9], [-17, 3.6, 1.7, 7], [-23, 1.8, 1.1, 5]];
-    for (const [x, w, h, len] of SEGS) parts.push(M.box({ w: len, h, d: w, color: skin, offset: { x, y: h / 2, z: 0 } }));
-    // The mouth's dark line across the front, the pectoral fins out to the sides, a low dorsal fin.
-    parts.push(M.box({ w: 0.6, h: 0.5, d: 7.5, color: "#1d3142", offset: { x: 20.1, y: 0.9, z: 0 } }));
-    for (const side of [-1, 1]) parts.push(M.box({ w: 6, h: 0.5, d: 7, color: dark, offset: { x: 4, y: 0.5, z: side * 7.5 } }));
-    parts.push(M.box({ w: 5, h: 3.2, d: 0.8, color: dark, offset: { x: -6, y: 4, z: 0 } }));
-    // White spots over its back in loose rows, each on the segment it lies over.
-    for (let i = 0; i < 44; i++) {
-      const x = -20 + r() * 38, z0 = r() * 2 - 1, seg = SEGS.find(([sx, , , len]) => Math.abs(x - sx) <= len / 2) || SEGS[2];
-      parts.push(M.box({ w: 0.9, h: 0.2, d: 0.9, color: spot, offset: { x, y: seg[2] + 0.05, z: z0 * (seg[1] / 2 - 0.6) } }));
+  // ---- Flipside's whale sharks (`?ch5sharks=air`, `water` or `0`; both by default) --------------------------------
+  // Great low-poly whale sharks, as the real fish is built: a broad flat blunt head with the wide straight mouth right at
+  // its front and small eyes at its sides, three ridges down each flank, a big first dorsal fin and a small second,
+  // long stiff swept pectorals and a tall crescent tail whose upper lobe is the longer; dark blue-grey above with the
+  // white checkerboard of spots between pale stripes, and a pale belly. Each is a chain of nodes (head, trunk, two rear
+  // sections, tail, two pectorals) so a smooth wave runs down the body to the tail as it swims and its pectorals stir.
+  // Some swim in the air, in a band well under the course and well over the lagoon: looked down on gliding over the
+  // turquoise before the flip, drifting overhead between the rider and the sea after it. Some swim in the lagoon,
+  // squashed flat just over its picture and under its swell, their colours taken toward the water's. All hang from the
+  // turning sky, so after the flip they stay the right way up to the sea. One mesh for each part in each colouring,
+  // shared by every shark; nothing allocated a frame. `SHARK`: how many in the air and in the water, how many times
+  // the 42 m model each is drawn (`size`, `waterSize`), how fast they swim (m/s), how flat a water shark lies
+  // (`flat`), the least an air shark keeps under any cloud near its loop and over the sea (m), its loop's half-sizes
+  // along and across the course and how far off to one side of it it lies (m, [least, range]).
+  const SHARKS = (() => { try { const v = new URLSearchParams(location.search).get("ch5sharks"); return v === "0" ? "" : v === "air" || v === "water" ? v : "both"; } catch { return "both"; } })();
+  const SHARK = Object.freeze({ air: 4, water: 3, size: 1.8, waterSize: 1.5, speed: 4, waterSpeed: 3, flat: 0.1, under: 45, over: 60,
+    along: [150, 70], across: [60, 40], side: [60, 120] });
+  // The colourings: [back, flank ridges, belly, spots and stripes, mouth and eyes, fins], in the air and in the water.
+  const SHARK_INK = [["#3b5a72", "#2c475c", "#d3dde2", "#eef3f4", "#121e28", "#33506a"], ["#2a6f86", "#24627a", "#7fbcc6", "#a9dde0", "#174a5c", "#286a82"]];
+  // One section of the body along +x from `x0` to `x1` (its node's own frame), `w` wide and `h` tall, pale belly under
+  // a dark back, a ridge high, mid and low down each flank and along the back, spotted between stripes across it.
+  const sharkSection = (parts, ink, x0, x1, w, h, spots) => {
+    const len = x1 - x0, mid = (x0 + x1) / 2, belly = h * 0.38;
+    parts.push(M.box({ w: len, h: belly, d: w * 0.92, color: ink[2], offset: { x: mid, y: belly / 2, z: 0 } }));
+    parts.push(M.box({ w: len, h: h - belly, d: w, color: ink[0], offset: { x: mid, y: belly + (h - belly) / 2, z: 0 } }));
+    for (const side of [-1, 1]) for (const k of [0.45, 0.68, 0.9]) parts.push(M.box({ w: len, h: 0.22, d: 0.22, color: ink[1], offset: { x: mid, y: h * k, z: side * (w / 2 + 0.06) } }));
+    parts.push(M.box({ w: len, h: 0.2, d: 0.3, color: ink[1], offset: { x: mid, y: h + 0.1, z: 0 } }));
+    if (!spots) return;
+    // Pale stripes across the back every `spots` metres and a row of spots between each pair: the checkerboard.
+    for (let x = x0 + spots / 2; x < x1 - 0.2; x += spots) {
+      parts.push(M.box({ w: 0.22, h: 0.06, d: w * 0.82, color: ink[3], offset: { x, y: h + 0.03, z: 0 } }));
+      const across = Math.max(2, Math.floor(w / 1.5));
+      for (let j = 0; j < across; j++) parts.push(M.box({ w: 0.42, h: 0.06, d: 0.42, color: ink[3], offset: { x: x + spots / 2, y: h + 0.03, z: (j - (across - 1) / 2) * (w * 0.8 / across) } }));
+    }
+  };
+  // The parts, by colouring (0 air, 1 water): 0 head, 1 trunk, 2 front rear section, 3 back rear section, 4 tail,
+  // 5 left and 6 right pectoral.
+  const sharkPart = M.variants((key) => {
+    const ink = SHARK_INK[key / 7 | 0], part = key % 7, parts = [];
+    if (part === 0) {
+      // The head: broad, flat and blunt, its wide straight mouth across the very front, small eyes at the sides.
+      sharkSection(parts, ink, 0, 6.5, 10, 2.3, 1.1);
+      parts.push(M.box({ w: 2.5, h: 1.8, d: 9.4, color: ink[0], offset: { x: 7.75, y: 0.9 + 0.3, z: 0 } }), M.box({ w: 2.5, h: 0.6, d: 9.2, color: ink[2], offset: { x: 7.75, y: 0.3, z: 0 } }));
+      parts.push(M.box({ w: 0.3, h: 0.32, d: 8.6, color: ink[4], offset: { x: 9.05, y: 0.72, z: 0 } }));
+      for (const side of [-1, 1]) parts.push(M.box({ w: 0.5, h: 0.45, d: 0.2, color: ink[4], offset: { x: 6.8, y: 1.45, z: side * 4.95 } }));
+    } else if (part === 1) {
+      // The trunk, broadest just behind the head, with the big first dorsal fin swept back.
+      sharkSection(parts, ink, 2, 10, 9.8, 2.8, 2.2); sharkSection(parts, ink, -6, 2, 8.8, 2.7, 2.2);
+      parts.push(M.box({ w: 5, h: 1.3, d: 0.7, color: ink[5], offset: { x: 0.5, y: 3.4, z: 0 } }), M.box({ w: 3.4, h: 1.3, d: 0.6, color: ink[5], offset: { x: -0.4, y: 4.6, z: 0 } }),
+        M.box({ w: 2, h: 1.2, d: 0.5, color: ink[5], offset: { x: -1.4, y: 5.8, z: 0 } }));
+    } else if (part === 2) {
+      // Tapering behind, with the small second dorsal.
+      sharkSection(parts, ink, -4.5, 0, 7.6, 2.4, 2.2); sharkSection(parts, ink, -9, -4.5, 5.6, 2, 2.2);
+      parts.push(M.box({ w: 1.8, h: 1, d: 0.45, color: ink[5], offset: { x: -6.2, y: 2.5, z: 0 } }));
+    } else if (part === 3) {
+      // The tail stock.
+      sharkSection(parts, ink, -3.5, 0, 3.8, 1.6, 0); sharkSection(parts, ink, -7, -3.5, 2.2, 1.2, 0);
+    } else if (part === 4) {
+      // The tall crescent tail, its upper lobe the longer, each lobe swept back.
+      parts.push(M.box({ w: 2, h: 1.2, d: 1, color: ink[0], offset: { x: -1, y: 0.8, z: 0 } }));
+      parts.push(M.moved(M.turnedZ(M.box({ w: 1.6, h: 10, d: 0.6, color: ink[5], offset: { x: 0, y: 5, z: 0 } }), 0.6), -2, 1.2, 0));
+      parts.push(M.moved(M.turnedZ(M.box({ w: 1.4, h: 5.5, d: 0.6, color: ink[5], offset: { x: 0, y: -2.75, z: 0 } }), -0.6), -2, 0.6, 0));
+    } else {
+      // A long, stiff pectoral, swept back as it reaches out (left: -z, right: +z).
+      const side = part === 5 ? -1 : 1;
+      parts.push(M.box({ w: 3.2, h: 0.4, d: 3, color: ink[5], offset: { x: 0, y: 0, z: side * 1.5 } }), M.box({ w: 2.6, h: 0.35, d: 3, color: ink[5], offset: { x: -1.2, y: 0, z: side * 4.3 } }),
+        M.box({ w: 1.8, h: 0.3, d: 2.6, color: ink[5], offset: { x: -2.5, y: 0, z: side * 6.9 } }));
     }
     const g = M.merge(...parts); g.castShadow = false;
     return g;
   });
-  // The tail: a tall crescent fin standing up from the stock, at the body's end (its node's origin).
-  const sharkTail = M.cached(() => {
-    const g = M.merge(M.box({ w: 3.5, h: 1.2, d: 1.2, color: "#3b5a72", offset: { x: -1.5, y: 0.8, z: 0 } }),
-      M.box({ w: 2.2, h: 10, d: 0.8, color: "#2e4a60", offset: { x: -4, y: 4.5, z: 0 } }), M.box({ w: 3, h: 3.5, d: 0.8, color: "#2e4a60", offset: { x: -5.5, y: 9, z: 0 } }));
-    g.castShadow = false;
-    return g;
-  });
+  // One shark's nodes under `parent` at (x, y, z), in colouring `ink`, drawn `size` times its model and `flat` as tall.
+  const sharkNodes = (node, parent, ink, x, y, z, size, flat) => {
+    const k = ink * 7, root = node(sharkPart(k + 1), x, y, z, size, parent);
+    root.scale.y = size * flat;
+    const head = node(sharkPart(k), 10, 0, 0, 1, root), rear = node(sharkPart(k + 2), -6, 0, 0, 1, root), stock = node(sharkPart(k + 3), -9, 0.2, 0, 1, rear);
+    const tail = node(sharkPart(k + 4), -7, 0, 0, 1, stock), finL = node(sharkPart(k + 5), 5, 0.8, -4.4, 1, root), finR = node(sharkPart(k + 6), 5, 0.8, 4.4, 1, root);
+    return { root, head, rear, stock, tail, finL, finR };
+  };
+  // Swims shark `q` along its loop at `time`: its place and heading, the wave down its body and its pectorals' stir.
+  const swim = (q, time, speed) => {
+    const a = q.ph + q.spin * time * speed / ((q.rx + q.rz) * 0.5), ex = Math.cos(a) * q.rx, ez = Math.sin(a) * q.rz;
+    const n = q.n, w = time * 1.3 + q.ph;
+    n.root.position.x = q.ox + ex * q.ct - ez * q.st; n.root.position.z = q.oz + ex * q.st + ez * q.ct; n.root.position.y = q.y + Math.sin(time * 0.15 + q.ph) * q.bob;
+    const dx = -Math.sin(a) * q.rx * q.spin, dz = Math.cos(a) * q.rz * q.spin, vx = dx * q.ct - dz * q.st, vz = dx * q.st + dz * q.ct;
+    n.root.rotation.y = Math.atan2(-vz, vx) - Math.sin(w) * 0.03;
+    n.head.rotation.y = Math.sin(w + 0.8) * 0.04; n.rear.rotation.y = Math.sin(w - 0.7) * 0.08; n.stock.rotation.y = Math.sin(w - 1.5) * 0.14; n.tail.rotation.y = Math.sin(w - 2.3) * 0.26;
+    n.finL.rotation.x = Math.sin(w * 0.5) * 0.06; n.finR.rotation.x = -Math.sin(w * 0.5) * 0.06;
+  };
   const RIFT = (() => { try { return new URLSearchParams(location.search).get("ch5rift") !== "0"; } catch { return true; } })();
   // The stages the band's geometry is reckoned in; it is built as the last.
   const RIFT_STAGES = 16;
@@ -1711,35 +1771,53 @@
           waves[0].smokeOpacity = (0.55 + 0.45 * Math.sin(time * 0.5)) * shown; waves[1].smokeOpacity = (0.55 - 0.45 * Math.sin(time * 0.5 + 0.8)) * shown;
         });
         reached(cx, seaY, cz, LAGOON_SPAN / 2);
+        if (SHARKS === "both" || SHARKS === "water") {
+          // Sharks in the lagoon: squashed flat between its picture and its swell, so the swell plays over them, on loops
+          // found in the painted water itself once it is painted (never over its white sand or green atolls: every
+          // point of a loop where the painting is still water, short of its sand), each passing under the course.
+          // The search runs a few hundred loops a frame after the painting, and the sharks show as the lagoon does.
+          const half = LAGOON_SPAN / 2, D = LAGOON_DEPTH, WET = 0.72 * 255, own = mulberry32(SEED ^ 0x68e31da4), water = [];
+          const ax = route.start.x - cx, az = route.start.z - cz, bx = route.finish.x - cx, bz = route.finish.z - cz, abx = bx - ax, abz = bz - az, ab = abx * abx + abz * abz;
+          const wet = (x, z) => { const px = x / half, py = -z / half; if (px * px + py * py > 0.3) return false;
+            const c = Math.floor((px + 1) / 2 * D), r = Math.floor((py + 1) / 2 * D); return job.depth[r * D + c] < WET; };
+          const under = (x, z) => { const t = Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / ab)); return Math.hypot(x - ax - abx * t, z - az - abz * t) < 60; };
+          let tries = 0;
+          const seek = () => {
+            for (let k = 0; k < 300 && tries < 9000 && water.length < SHARK.water; k++, tries++) {
+              const ox = (own() - 0.5) * 1600, oz = (own() - 0.5) * 1600, rx = 150 + own() * 250, rz = 60 + own() * 120, tilt = own() * Math.PI, ct = Math.cos(tilt), st = Math.sin(tilt);
+              let ok = !water.some(q => Math.hypot(q.ox - ox, q.oz - oz) < 300), near = false;
+              for (let s = 0; s < 48 && ok; s++) { const a = s / 48 * TAU, ex = Math.cos(a) * rx, ez = Math.sin(a) * rz, x = ox + ex * ct - ez * st, z = oz + ex * st + ez * ct; ok = wet(x, z); near ||= under(x, z); }
+              if (!ok || !near) continue;
+              const q = { n: sharkNodes(node, scenery, 1, cx + ox, seaY + 0.55, cz + oz, SHARK.waterSize, SHARK.flat), ox: cx + ox, oz: cz + oz, rx, rz, ct, st, spin: own() < 0.5 ? 1 : -1, ph: own() * TAU, y: seaY + 0.55, bob: 0 };
+              q.n.root.visible = false; water.push(q);
+            }
+          };
+          movers.push((time) => {
+            if (!job.done) return;
+            if (water.length < SHARK.water && tries < 9000) seek();
+            for (let k = 0; k < water.length; k++) { water[k].n.root.visible = shown > 0.5; swim(water[k], time, SHARK.waterSpeed); }
+          });
+        }
       }
-      if (SHARKS && !lite) {
-        // Each shark's loop lies under its own stretch of the course, off to one side, its half-lengths and
-        // tilt drawn from a stream of their own (`own`), so nothing else moves: so high that it keeps SHARK.under metres under
-        // every landing within reach of its loop (so it never touches the course nor stands between the rider and the
-        // landings ahead, which are never that far under it) and SHARK.over over the sea, or it is left out.
+      if ((SHARKS === "both" || SHARKS === "air") && !lite) {
+        // Each air shark's loop lies under its own stretch of the course, off to one side, its half-lengths and tilt
+        // drawn from a stream of their own (`own`), so nothing else moves: so high that it keeps SHARK.under metres
+        // under every cloud within reach of its loop (so it never touches the course nor stands between the rider and
+        // the clouds ahead, which are never that far under it) and SHARK.over over the sea, or it is left out.
         const L = course.landings, n = L.length, sharks = [], own = mulberry32(SEED ^ 0x2545f491);
-        for (let k = 0; k < SHARK.count; k++) {
-          const i = Math.min(n - 1, Math.floor(n * (0.12 + 0.7 * (k + 0.5) / SHARK.count))), c = L[i], j = Math.min(n - 1, i + 1);
+        for (let k = 0; k < SHARK.air; k++) {
+          const i = Math.min(n - 1, Math.floor(n * (0.12 + 0.7 * (k + 0.5) / SHARK.air))), c = L[i], j = Math.min(n - 1, i + 1);
           const dx = L[j].x - c.x, dz = L[j].z - c.z, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
           const rx = SHARK.along[0] + own() * SHARK.along[1], rz = SHARK.across[0] + own() * SHARK.across[1], side = (own() < 0.5 ? -1 : 1) * (SHARK.side[0] + own() * SHARK.side[1]);
           const ox = c.x - uz * side, oz = c.z + ux * side, tilt = Math.atan2(uz, ux) + (own() - 0.5) * 0.3, reachOut = Math.max(rx, rz) + 21 * SHARK.size + 40;
           let low = Infinity;
           for (const l of course.clouds) if (Math.hypot(l.x - ox, l.z - oz) < reachOut) low = Math.min(low, l.top);
-          const y = low - SHARK.under - 5 * SHARK.size;
+          const y = low - SHARK.under - 5 * SHARK.size, spin = own() < 0.5 ? 1 : -1, ph = own() * TAU;
           if (!Number.isFinite(low) || y < seaY + SHARK.over) continue;
-          const b = node(sharkBody(), ox, y, oz, SHARK.size), t = node(sharkTail(), -25, 0, 0, 1, b);
-          sharks.push({ b, t, ox, oz, rx, rz, ct: Math.cos(tilt), st: Math.sin(tilt), spin: own() < 0.5 ? 1 : -1, ph: own() * TAU, y });
+          sharks.push({ n: sharkNodes(node, scenery, 0, ox, y, oz, SHARK.size, 1), ox, oz, rx, rz, ct: Math.cos(tilt), st: Math.sin(tilt), spin, ph, y, bob: 3 });
           reached(ox, y, oz, Math.max(rx, rz) + 40);
         }
-        movers.push((time) => {
-          for (let k = 0; k < sharks.length; k++) {
-            const q = sharks[k], a = q.ph + q.spin * time * SHARK.speed / ((q.rx + q.rz) * 0.5), ex = Math.cos(a) * q.rx, ez = Math.sin(a) * q.rz;
-            q.b.position.x = q.ox + ex * q.ct - ez * q.st; q.b.position.z = q.oz + ex * q.st + ez * q.ct;
-            q.b.position.y = q.y + Math.sin(time * 0.15 + q.ph) * 3;
-            const ex2 = -Math.sin(a) * q.rx * q.spin, ez2 = Math.cos(a) * q.rz * q.spin, vx = ex2 * q.ct - ez2 * q.st, vz = ex2 * q.st + ez2 * q.ct;
-            q.b.rotation.y = Math.atan2(-vz, vx) + Math.sin(time * 0.8 + q.ph) * 0.04; q.t.rotation.y = Math.sin(time * 1.2 + q.ph) * 0.35;
-          }
-        });
+        movers.push((time) => { for (let k = 0; k < sharks.length; k++) swim(sharks[k], time, SHARK.speed); });
       }
       if (RIFT && !lite) {
         // Laid on the sky upright (local z up, local -y the world's +z), the way ahead at local azimuth `ahead`.

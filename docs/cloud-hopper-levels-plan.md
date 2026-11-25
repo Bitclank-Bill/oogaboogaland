@@ -802,11 +802,17 @@ the fading and the tornadoes carry the level. The last jump is every level's: on
 12 m off the coast, with no air jump, jetpack or hook needed. The grappling hook is for clouds alone, as on every
 level; it does not bite the island.
 
-Four gigantic whale sharks (about 76 m long, dark blue-grey dappled white) swim slow loops in the air over the lagoon,
-each under its own stretch of the course and off to one side, its tail tip more than 30 m under every cloud near it and 60 m over the
-sea: looked down on gliding over the turquoise before the flip, drifting overhead between the rider and the sea after it
-(they turn with the sky, so they stay the right way up to the sea). They touch nothing and never stand between the
-rider and a cloud. `?ch5sharks=0` leaves them out.
+Whale sharks swim over and in the lagoon, built as the real fish is: a broad flat blunt head with the wide mouth at
+its very front and small eyes at its sides, three ridges down each flank, a big first and a small second dorsal fin,
+long swept pectorals and a tall crescent tail whose upper lobe is the longer, dark blue-grey above with the white
+checkerboard of spots and stripes and a pale belly; a slow wave runs down each body to its tail and its pectorals stir.
+Four (about 76 m long) swim slow loops in the air, each under its own stretch of the course and off to one side, its
+tail tip more than 30 m under every cloud near it and 60 m over the sea: looked down on gliding over the turquoise
+before the flip, drifting overhead between the rider and the sea after it. Three (about 63 m) swim in the lagoon
+itself, flat just over its picture and under its swell, tinted toward the water, on loops kept to its painted water
+(never over its sand or atolls) that pass under the course. All turn with the sky, so they stay the right way up to
+the sea. They touch nothing and never stand between the rider and a cloud. `?ch5sharks=air`, `water` or `0` keeps
+only those in the air, only those in the water, or none.
 
 Its three grappling hooks are Thunderhead's pickup and hook, laid where they help (the layout's `hookAt`, a stretch of
 the main landings for each: 5-17%, 25-37% and 64-76% of the way, widened a little where no landing in it will do):
