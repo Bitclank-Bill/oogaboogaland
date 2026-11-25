@@ -3,7 +3,8 @@
 
   const BL = window.BL;
   const { geometry, makeVox, merge } = BL.models;
-  const { loft, poly, rect, scaled, slab, FRONT } = BL.heroBody;
+  let loft, poly, rect, scaled, slab, FRONT;
+  const hero = () => ({ loft, poly, rect, scaled, slab, FRONT } = BL.heroBody);
   const midnight = "#182a40";
   const steel = "#284b70";
   const blue = "#396c9a";
@@ -187,6 +188,7 @@
         v.set(3, 0, 7, k.color("#211916"));
       },
       model(k, wear) {
+        hero();
         const body = wear();
         body.torso = merge(body.torso, chestArmor(BL.heroBody.trunk(k.traits.slim), k.u));
         body.arm = merge(body.arm, pauldron(-1, k.u));
@@ -194,6 +196,7 @@
         return body;
       },
       club(k) {
+        hero();
         const hammer = geometry();
         loft(hammer, [[-1.18, 0.47, 0.44, 0.15], [-0.85, 0.54, 0.49, 0.16],
           [-0.54, 0.38, 0.35, 0.12], [3.8, 0.38, 0.35, 0.12],
