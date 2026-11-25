@@ -478,6 +478,40 @@
     const g = M.merge(...parts); g.castShadow = false; g.fogPierce = 0.3;
     return g;
   });
+  // ---- Flipside's whale sharks (`?ch5sharks=0` leaves them out) -------------------------------------------------
+  // Great low-poly whale sharks swimming in the air, in a band well under the course and well over the lagoon: looked
+  // down on gliding over the turquoise before the flip, drifting overhead between the rider and the sea after it (they
+  // hang from the turning sky, so they stay the right way up to the sea). Dark blue-grey dappled white, broad flat head
+  // at +x to a tall tail on its own node, which sways. One body mesh and one tail mesh for all of them, built once;
+  // nothing allocated a frame. `SHARK`: how many, how many times the 42 m model each is drawn (`size`), how fast they
+  // swim (m/s), the least they keep under any cloud near their loop and over the sea (m), their loops' half-sizes
+  // along and across the course and how far off to one side of it they lie (m, [least, range]).
+  const SHARKS = (() => { try { return new URLSearchParams(location.search).get("ch5sharks") !== "0"; } catch { return true; } })();
+  const SHARK = Object.freeze({ count: 4, size: 1.8, speed: 4, under: 45, over: 60, along: [150, 70], across: [60, 40], side: [60, 120] });
+  const sharkBody = M.cached(() => {
+    const parts = [], skin = "#3b5a72", dark = "#2e4a60", spot = "#cfe0e6", r = mulberry32(4471);
+    // Along +x, head at +x: the broad flat head, then the body tapering to the tail stock ([x, width, height, length]).
+    const SEGS = [[16, 9, 2.2, 8], [8, 9.5, 2.6, 7], [0, 8.6, 2.7, 9], [-9, 6.4, 2.3, 9], [-17, 3.6, 1.7, 7], [-23, 1.8, 1.1, 5]];
+    for (const [x, w, h, len] of SEGS) parts.push(M.box({ w: len, h, d: w, color: skin, offset: { x, y: h / 2, z: 0 } }));
+    // The mouth's dark line across the front, the pectoral fins out to the sides, a low dorsal fin.
+    parts.push(M.box({ w: 0.6, h: 0.5, d: 7.5, color: "#1d3142", offset: { x: 20.1, y: 0.9, z: 0 } }));
+    for (const side of [-1, 1]) parts.push(M.box({ w: 6, h: 0.5, d: 7, color: dark, offset: { x: 4, y: 0.5, z: side * 7.5 } }));
+    parts.push(M.box({ w: 5, h: 3.2, d: 0.8, color: dark, offset: { x: -6, y: 4, z: 0 } }));
+    // White spots over its back in loose rows, each on the segment it lies over.
+    for (let i = 0; i < 44; i++) {
+      const x = -20 + r() * 38, z0 = r() * 2 - 1, seg = SEGS.find(([sx, , , len]) => Math.abs(x - sx) <= len / 2) || SEGS[2];
+      parts.push(M.box({ w: 0.9, h: 0.2, d: 0.9, color: spot, offset: { x, y: seg[2] + 0.05, z: z0 * (seg[1] / 2 - 0.6) } }));
+    }
+    const g = M.merge(...parts); g.castShadow = false;
+    return g;
+  });
+  // The tail: a tall crescent fin standing up from the stock, at the body's end (its node's origin).
+  const sharkTail = M.cached(() => {
+    const g = M.merge(M.box({ w: 3.5, h: 1.2, d: 1.2, color: "#3b5a72", offset: { x: -1.5, y: 0.8, z: 0 } }),
+      M.box({ w: 2.2, h: 10, d: 0.8, color: "#2e4a60", offset: { x: -4, y: 4.5, z: 0 } }), M.box({ w: 3, h: 3.5, d: 0.8, color: "#2e4a60", offset: { x: -5.5, y: 9, z: 0 } }));
+    g.castShadow = false;
+    return g;
+  });
   const RIFT = (() => { try { return new URLSearchParams(location.search).get("ch5rift") !== "0"; } catch { return true; } })();
   // The stages the band's geometry is reckoned in; it is built as the last.
   const RIFT_STAGES = 16;
@@ -1677,6 +1711,35 @@
           waves[0].smokeOpacity = (0.55 + 0.45 * Math.sin(time * 0.5)) * shown; waves[1].smokeOpacity = (0.55 - 0.45 * Math.sin(time * 0.5 + 0.8)) * shown;
         });
         reached(cx, seaY, cz, LAGOON_SPAN / 2);
+      }
+      if (SHARKS && !lite) {
+        // Each shark's loop lies under its own stretch of the course, off to one side, its half-lengths and
+        // tilt drawn from a stream of their own (`own`), so nothing else moves: so high that it keeps SHARK.under metres under
+        // every landing within reach of its loop (so it never touches the course nor stands between the rider and the
+        // landings ahead, which are never that far under it) and SHARK.over over the sea, or it is left out.
+        const L = course.landings, n = L.length, sharks = [], own = mulberry32(SEED ^ 0x2545f491);
+        for (let k = 0; k < SHARK.count; k++) {
+          const i = Math.min(n - 1, Math.floor(n * (0.12 + 0.7 * (k + 0.5) / SHARK.count))), c = L[i], j = Math.min(n - 1, i + 1);
+          const dx = L[j].x - c.x, dz = L[j].z - c.z, dl = Math.hypot(dx, dz) || 1, ux = dx / dl, uz = dz / dl;
+          const rx = SHARK.along[0] + own() * SHARK.along[1], rz = SHARK.across[0] + own() * SHARK.across[1], side = (own() < 0.5 ? -1 : 1) * (SHARK.side[0] + own() * SHARK.side[1]);
+          const ox = c.x - uz * side, oz = c.z + ux * side, tilt = Math.atan2(uz, ux) + (own() - 0.5) * 0.3, reachOut = Math.max(rx, rz) + 21 * SHARK.size + 40;
+          let low = Infinity;
+          for (const l of course.clouds) if (Math.hypot(l.x - ox, l.z - oz) < reachOut) low = Math.min(low, l.top);
+          const y = low - SHARK.under - 5 * SHARK.size;
+          if (!Number.isFinite(low) || y < seaY + SHARK.over) continue;
+          const b = node(sharkBody(), ox, y, oz, SHARK.size), t = node(sharkTail(), -25, 0, 0, 1, b);
+          sharks.push({ b, t, ox, oz, rx, rz, ct: Math.cos(tilt), st: Math.sin(tilt), spin: own() < 0.5 ? 1 : -1, ph: own() * TAU, y });
+          reached(ox, y, oz, Math.max(rx, rz) + 40);
+        }
+        movers.push((time) => {
+          for (let k = 0; k < sharks.length; k++) {
+            const q = sharks[k], a = q.ph + q.spin * time * SHARK.speed / ((q.rx + q.rz) * 0.5), ex = Math.cos(a) * q.rx, ez = Math.sin(a) * q.rz;
+            q.b.position.x = q.ox + ex * q.ct - ez * q.st; q.b.position.z = q.oz + ex * q.st + ez * q.ct;
+            q.b.position.y = q.y + Math.sin(time * 0.15 + q.ph) * 3;
+            const ex2 = -Math.sin(a) * q.rx * q.spin, ez2 = Math.cos(a) * q.rz * q.spin, vx = ex2 * q.ct - ez2 * q.st, vz = ex2 * q.st + ez2 * q.ct;
+            q.b.rotation.y = Math.atan2(-vz, vx) + Math.sin(time * 0.8 + q.ph) * 0.04; q.t.rotation.y = Math.sin(time * 1.2 + q.ph) * 0.35;
+          }
+        });
       }
       if (RIFT && !lite) {
         // Laid on the sky upright (local z up, local -y the world's +z), the way ahead at local azimuth `ahead`.

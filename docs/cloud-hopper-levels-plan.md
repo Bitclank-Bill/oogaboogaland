@@ -802,6 +802,12 @@ the fading and the tornadoes carry the level. The last jump is every level's: on
 12 m off the coast, with no air jump, jetpack or hook needed. The grappling hook is for clouds alone, as on every
 level; it does not bite the island.
 
+Four gigantic whale sharks (about 76 m long, dark blue-grey dappled white) swim slow loops in the air over the lagoon,
+each under its own stretch of the course and off to one side, its tail tip more than 30 m under every cloud near it and 60 m over the
+sea: looked down on gliding over the turquoise before the flip, drifting overhead between the rider and the sea after it
+(they turn with the sky, so they stay the right way up to the sea). They touch nothing and never stand between the
+rider and a cloud. `?ch5sharks=0` leaves them out.
+
 Its three grappling hooks are Thunderhead's pickup and hook, laid where they help (the layout's `hookAt`, a stretch of
 the main landings for each: 5-17%, 25-37% and 64-76% of the way, widened a little where no landing in it will do):
 each on the plain landing in its stretch, free of any other pickup, before the widest jump (one that never fades
