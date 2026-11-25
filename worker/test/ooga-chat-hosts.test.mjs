@@ -815,6 +815,33 @@ test("the island view's looks: to viewers alone, on change, the last to a viewer
   assert.equal(again.looksText, JSON.stringify(look), "kept across a nap");
 });
 
+test("the island view's clouds: who sits where to viewers alone, on change, whether or not anyone walks, with the server's clock, and to a viewer starting", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Clouds", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a, cloudsOf = (p) => p.ws.sent.filter((m) => m.type === "clouds");
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
+  assert.deepEqual(cloudsOf(bea), [{ type: "clouds", at: now, clouds: [] }], "a viewer starting hears who sits there now: nobody yet");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  a.model.activate(amy.connId, a.model.conns.get(amy.connId).lease.generation);
+  await a.flush();
+  assert.deepEqual(cloudsOf(bea).at(-1).clouds, [{ id: "gh:1", character: "amy", seat: "main-cloud-1" }], "a speaker on the stage sits on a cloud, with nobody walking");
+  assert.equal(cloudsOf(amy).length + cloudsOf(cyd).length, 0, "only those viewing");
+  const told = cloudsOf(bea).length;
+  await ask(amy, { type: "setMic", muted: false });
+  await a.flush();
+  assert.equal(cloudsOf(bea).length, told, "a microphone changes nothing the view draws: nothing sent");
+  await a.walking(["gh:1"]);
+  assert.deepEqual(cloudsOf(bea).at(-1).clouds, [], "walking the copy, off the cloud");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
+  assert.deepEqual(cloudsOf(cyd), [{ type: "clouds", at: now, clouds: [] }], "a viewer starting hears the list as it stands");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 4 }));
+  assert.equal(cloudsOf(cyd).length, 1, "a rate change is no new start");
+  await a.walking([]);
+  assert.equal(cloudsOf(cyd).at(-1).clouds[0].seat, "main-cloud-1", "back from the copy, the same seat");
+});
+
 test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's frames, its land none in the list and the chat", async () => {
   now += START_GAP_MS;
   const w = await world();

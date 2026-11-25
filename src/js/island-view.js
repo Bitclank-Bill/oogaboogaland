@@ -5,21 +5,24 @@
 // island-view-data.js) with each walker's Ooga face, or where the page offers it (`loadLive`, Ooga Chat's) to a viewer
 // it allows (`liveAllowed`: Ooga Chat's, a GitHub contributor; asked again on every update) and the device can carry it (WebGL2, enough memory and cores, no data saver or connection it reports as slow), the 3D view (island-view-live.js) over the
 // baked scenery at the tier the viewer's connection allows (island-scene.js), the picture showing while it loads and
-// staying if it can't. In 3D the viewer turns the island with a drag, pans with a two-finger drag, a right or Shift
-// drag, zooms with the wheel or a pinch, and Reset view puts it back. It draws only while shown and active and
-// something changed (the camera, a walker, the size), at the rate the device keeps up with (`interval`, from how long
-// a frame takes, a sixtieth of a second at best), and asks the chat for walkers' places a few times a second more for
-// a viewer whose connection and device can take it (`hz`: 2, 4 or 6). Full screen (`fullscreen`, Ooga Chat's) moves the
+// staying if it can't, the speakers not walking it sitting on the copy's clouds (`clouds`). In 3D the viewer turns the
+// island with a drag, pans with a two-finger drag, a right or Shift drag, zooms with the wheel or a pinch, and Reset
+// view puts it back. It draws only while shown and active: the map when something changed (a walker, the size), the 3D
+// view as its tier's `tick` says too (every frame on the full tier, its sky, clouds, wind and fires alive), each at the
+// rate the device keeps up with (`interval`, from how long a frame takes, a sixtieth of a second at best), and asks the
+// chat for walkers' places a few times a second more for a viewer whose connection and device can take it (`hz`: 2, 4
+// or 6). Full screen (`fullscreen`, Ooga Chat's) moves the
 // view into a layer over the page, the chat's panel beside it (or under it on a tall narrow screen), in the browser's
 // own full screen where it has one. Its fold button (`fold`, stood in the chat's title by the page; `onFold`, `folded`) folds the
 // view away, this browser's choice (localStorage `ooga-island-view-folded`): nothing drawn and no places asked for until
 // it is opened again. Who walks there and who sits on the clouds is a line for screen readers (`.iv-note`). Reads nothing at load but window.BL.
 // `create({ picture, faceOf(row), loadLive(), liveAllowed(), scenery, fullscreen })` returns `{ node, stage, update({
-// place, rows, talking, speaking, self, active }), walk(msg), looks(msg), hz, mode, dispose() }`: `place` whether the chat has an
+// place, rows, talking, speaking, self, active }), walk(msg), looks(msg), clouds(msg), hz, mode, dispose() }`: `place` whether the chat has an
 // island to show, `rows` the chat's roster rows (the walkers are those with `walking`), `talking` the ids heard
 // speaking and `speaking` the visitor's own meter, `self` the visitor's id, `active` whether the strip can be seen now.
-// `looks` takes a `looks` frame (audience.js): how each walker looks, which the 3D view dresses their Ooga in.
-// `parseWalk(msg, walks, now)` and `project(view, x, y, z, out)` are pure.
+// `looks` takes a `looks` frame (audience.js): how each walker looks, which the 3D view dresses their Ooga in; `clouds`
+// a `clouds` frame: who sits on which of the copy's clouds, and the chat's clock (`at`), which the 3D view moves the
+// clouds by. `parseWalk(msg, walks, now)`, `parseClouds(msg)` and `project(view, x, y, z, out)` are pure.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -85,6 +88,20 @@
     return true;
   };
 
+  // One `clouds` frame (`{ type: "clouds", at, clouds: [{ id, character, seat }, …] }`, audience.js): the speakers on
+  // the copy's clouds, each with the Ooga they sit as and their seat (main-cloud-1 to 32), or null for anything that is
+  // not one.
+  const CLOUD_ID = /^(gh|x):[1-9][0-9]{0,19}$/, CHARACTER = /^[a-z0-9][a-z0-9._/-]{0,99}$/i, SEAT = /^main-cloud-([1-9]|[12][0-9]|3[0-2])$/;
+  const parseClouds = (msg) => {
+    if (!msg || msg.type !== "clouds" || !Number.isFinite(msg.at) || !Array.isArray(msg.clouds) || msg.clouds.length > MAX) return null;
+    const out = [];
+    for (const c of msg.clouds) {
+      if (!c || typeof c !== "object" || typeof c.id !== "string" || !CLOUD_ID.test(c.id) || typeof c.character !== "string" || !CHARACTER.test(c.character)
+        || typeof c.seat !== "string" || !SEAT.test(c.seat)) return null;
+      out.push({ id: c.id, character: c.character, seat: c.seat });
+    }
+    return { at: msg.at, clouds: out };
+  };
   // Every island view on the page, for the checks (`BL.islandView.open`).
   const open = new Set();
   // Whether this device can carry the 3D view: WebGL2, and nothing that says it is short of memory, cores or data.
@@ -200,7 +217,10 @@
     // Asked again on every update, so a viewer who stops being allowed it (signing out) goes back to the picture.
     const wants3d = () => !!loadLive && liveAllowed() && capable();
     let rows = [], walking = 0, shown = false, active = false, raf = 0, live = null, mode = "flat", tier = "", hz = 2, width = 0, height = 0, dpr = 1;
-    let last = 0, cost = FRAME_MIN, dirty = true;
+    let last = 0, cost = FRAME_MIN, dirty = true, timer = 0;
+    // The speakers on the copy's clouds (`clouds`), and the chat's clock less this page's (ms): the latest frames' best
+    // guess, the largest, since a frame's time on the way only makes the chat's clock look behind.
+    let perched = [], offset = 0, offsetKnown = false;
     const changed = () => { dirty = true; if (shown && active) draw(); };
     // The canvas follows the strip's size, read only when the strip changes size or shows (never in a frame, where
     // reading it would allocate).
@@ -222,9 +242,9 @@
     const frame = (now) => {
       raf = 0;
       if (!shown || !active) return;
-      const moving = state.count > 0;
-      if (!dirty && !moving && !(live && live.moved)) return;
-      const interval = Math.min(FRAME_MAX, Math.max(FRAME_MIN, cost * 1.5));
+      const moving = state.count > 0, lively = !!live && live.tick < 1000;
+      if (!dirty && !moving && !lively && !(live && live.moved)) return;
+      const interval = Math.min(FRAME_MAX, Math.max(FRAME_MIN, cost * 1.5, lively ? live.tick : 0));
       if (now - last < interval - 1) { raf = requestAnimationFrame(frame); return; }
       last = now;
       dirty = false;
@@ -285,11 +305,12 @@
         g.restore();
       }
       cost = cost * 0.8 + (performance.now() - started) * 0.2;
-      // Walkers keep it drawing; a still island waits for the next change.
-      if (moving || dirty || live && live.moved) raf = requestAnimationFrame(frame);
+      // Walkers and a lively 3D view keep it drawing; a still island waits for the next change, or the 3D view's tick.
+      if (moving || dirty || lively || live && live.moved) raf = requestAnimationFrame(frame);
+      else if (live) { clearTimeout(timer); timer = setTimeout(() => { timer = 0; changed(); }, live.tick); }
     };
     const draw = () => { if (!raf) raf = requestAnimationFrame(frame); };
-    const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; };
+    const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; clearTimeout(timer); timer = 0; };
     // The 3D view: its code and the scenery fetched once, for a device that can carry it; the picture shows meanwhile.
     // A renderer's dispose gives its context up for good, so a canvas is never reused.
     let glCanvas = null, liveTry = 0;
@@ -305,7 +326,9 @@
         stage.prepend(glCanvas);
         tier = baked.tier;
         hz = tier === "full" ? 6 : tier === "lite" ? 4 : 2;
-        live = BL.islandViewLive.create(glCanvas, { scenery: baked, data: view, quality: tier === "full" ? "high" : tier === "lite" ? "medium" : "low" });
+        live = BL.islandViewLive.create(glCanvas, { scenery: baked, data: view, tier, quality: tier === "full" ? "high" : tier === "lite" ? "medium" : "low" });
+        live.offset = offset;
+        live.seat(perched);
         mode = "3d";
         cost = FRAME_MIN;
         paint();
@@ -470,6 +493,18 @@
       changed();
       return true;
     };
+    // A `clouds` frame: who sits where, and the chat's clock for the clouds' places.
+    const clouds = (msg) => {
+      const read = parseClouds(msg);
+      if (!read) return false;
+      const guess = read.at - Date.now();
+      offset = offsetKnown ? Math.max(offset, guess) : guess;
+      offsetKnown = true;
+      perched = read.clouds;
+      if (live) { live.offset = offset; live.seat(perched); }
+      changed();
+      return true;
+    };
     // Where each walker's face stands on the strip now, in CSS pixels (the checks', made on call).
     const placed = () => {
       const now = performance.now(), out = [];
@@ -482,7 +517,7 @@
       }
       return out;
     };
-    const self = { node, stage, fold, update, walk, looks, placed, get folded() { return folded; },
+    const self = { node, stage, fold, update, walk, looks, clouds, placed, get folded() { return folded; }, get perched() { return perched; },
       dispose() {
         setFull(false); shown = active = false; stop(); endLive(); sizes?.disconnect(); faces.clear();
         document.removeEventListener("fullscreenchange", onFullChange); document.removeEventListener("keydown", onKey);
@@ -491,9 +526,9 @@
       // The walkers' places a second this view asks the chat for: more for a viewer whose tier says they can take it.
       get hz() { return live ? hz : 2; },
       get mode() { return mode; }, get tier() { return tier; }, get full() { return isFull; }, get live() { return live; },
-      get walks() { return state; }, get drawing() { return !!raf; }, get interval() { return Math.min(FRAME_MAX, Math.max(FRAME_MIN, cost * 1.5)); } };
+      get walks() { return state; }, get drawing() { return !!raf; }, get interval() { return Math.min(FRAME_MAX, Math.max(FRAME_MIN, cost * 1.5, live && live.tick < 1000 ? live.tick : 0)); } };
     open.add(self);
     return self;
   };
-  BL.islandView = { create, parseWalk, project, walks, placeOf, capable, MAX, open };
+  BL.islandView = { create, parseWalk, parseClouds, project, walks, placeOf, capable, MAX, open };
 })();

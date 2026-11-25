@@ -344,8 +344,8 @@
   // every cave mouth but HQ's ramps, which stay open down to HQ and its basement, is sealed with the stone face a dark
   // mouth wears (`copyBarred`, through `crossesSealedCave`); the doors that change scene refuse with SEALED. Only the
   // main island stands: the Mempool island, Merge Rock, the Timechain Sphere's islet and ₿IFRÖST's islet go with their
-  // bridges, Heimdall, the Oogatron, the OBL cave's mirror, the signs over the sealed mouths, the islets out at sea and the
-  // gulls and sails round the island (`copyOffMap`, hidden
+  // bridges, Heimdall, the Oogatron, the OBL cave's mirror, the signs over the sealed mouths, every cave's banners, the islets
+  // out at sea and the gulls and sails round the island (`copyOffMap`, hidden
   // in `copyMask`, so they neither draw nor stand anywhere to walk on or bump into: a walker off a bridgehead falls to
   // the water and comes back by the pile), their lamps take no light (`copyOff`), and none of them runs: the Mempool
   // island's weather, water, wildlife and paintings, Merge Rock's turn, glow and idle carving, the Sphere's doorway,
@@ -991,11 +991,13 @@
   // released with the visit's other targets. `toWorld` maps a piece's set coordinates to the island, or null to
   // leave it out (the furniture inside a mouth belongs to the cave, not the facade).
   const PICK_GEOMETRY = { verts: [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], faces: [], lines: [] };
-  const addPieceTargets = (picks, toWorld) => {
+  // `copyOff`: targets a chat's copy hides with what they stand for (`copyOffMap`).
+  const addPieceTargets = (picks, toWorld, copyOff = false) => {
     for (let i = 0; i < picks.length; i += 6) {
       const at = toWorld(picks[i + 2], picks[i + 3], picks[i + 4], picks[i]);
       if (!at) continue;
       const node = createNode({ position: at, geometry: PICK_GEOMETRY });
+      if (copyOff) copyOffMap.push(node);
       BL.scene.updateWorld(node);
       addTarget(node, { kind: "piece", piece: picks[i], variant: picks[i + 1], node, x: at.x, y: at.y, z: at.z, next: 0, weaponType: "none" }, { radius: Math.max(0.35, picks[i + 5]) });
     }
@@ -1529,14 +1531,15 @@
     if (baked) return baked;
     const theme = THEMES[slot.theme];
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry);
-    const set = BL.dressing.set(), ground = [], rig = {};
+    // The banners are a set of their own, so a chat's copy can take them down (`dressMouth`).
+    const set = BL.dressing.set(), flags = BL.dressing.set(), ground = [], rig = {};
     // Floor props stay on the apron; banners stand on the raised rock shoulders behind the lamps.
-    const stand = (kind, lx, lz, turns = 0, variant = 0, lift = 0) => {
+    const stand = (kind, lx, lz, turns = 0, variant = 0, lift = 0, into = set) => {
       const x = m.x + cr * lx + sr * lz, z = m.z - sr * lx + cr * lz;
       if ((kind === "barrel" || kind === "bench") && island.overlapsStairs(x, z, 1.7)) return;
       const y = island.surfaceAt(x, z) - m.floorY;
       if (Math.abs(y) > 0.9 && kind !== "banner") return;
-      set.put(kind, lx, y + lift, lz, turns, variant, LOOSE_PIECES.has(kind));
+      into.put(kind, lx, y + lift, lz, turns, variant, LOOSE_PIECES.has(kind));
       // The coil and its gauge charge on a loop of their own (`coilCharge`).
       if (kind === "coil" || kind === "gauge") rig[kind] = [lx, y + lift, lz, turns];
       if (!lift) ground.push(lx, lz);
@@ -1549,7 +1552,7 @@
     }
     for (const [side, variant] of theme.banners || []) {
       checkCaveBanner(m, side);
-      stand("banner", side * CAVE_BANNER_X, CAVE_BANNER_Z, 0, variant);
+      stand("banner", side * CAVE_BANNER_X, CAVE_BANNER_Z, 0, variant, 0, flags);
     }
     const [lamp, variant, at] = theme.string;
     set.cable(-3.05, 3.42, CAVE_LIGHT_Z, 3.05, 3.42, CAVE_LIGHT_Z, 0.3, at || [0.1, 0.24, 0.38, 0.5, 0.62, 0.76, 0.9], lamp, variant);
@@ -1565,7 +1568,7 @@
       set.cable(ax, y, az, ax, y, bz, 0.15, lamps, lamp, theme.glass);
       set.cable(bx, y, az, bx, y, bz, 0.15, lamps, lamp, theme.glass);
     }
-    baked = { ...set.build(), ground, rig };
+    baked = { ...set.build(), ground, rig, banners: theme.banners && theme.banners.length ? flags.build() : null };
     byIsland.set(slot.id, baked);
     return baked;
   };
@@ -1764,7 +1767,16 @@
     addDressing(baked, group, m.x, m.floorY + 2.4, m.z, `${slot.id}:dressing`, false);
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry), g = baked.ground, lit = baked.lights;
     for (let i = 0; i < lit.length; i += 4) dressingLights.push(m.x + cr * lit[i] + sr * lit[i + 2], m.floorY + lit[i + 1], m.z - sr * lit[i] + cr * lit[i + 2], lit[i + 3]);
-    addPieceTargets(baked.picks, (lx, ly, lz, kind) => lz < 0.3 && kind !== "banner" ? null : { x: m.x + cr * lx + sr * lz, y: m.floorY + ly, z: m.z - sr * lx + cr * lz });
+    const toWorld = (lx, ly, lz, kind) => lz < 0.3 && kind !== "banner" ? null : { x: m.x + cr * lx + sr * lz, y: m.floorY + ly, z: m.z - sr * lx + cr * lz };
+    addPieceTargets(baked.picks, toWorld);
+    // The banners, which a chat's copy takes down with their lights and pick targets.
+    if (baked.banners) {
+      const from = group.children.length, lit = lamps.length;
+      addDressing(baked.banners, group, m.x, m.floorY + 2.4, m.z, `${slot.id}:banners`, false);
+      for (let i = from; i < group.children.length; i++) copyOffMap.push(group.children[i]);
+      for (let i = lit; i < lamps.length; i++) lamps[i].copyOff = true;
+      addPieceTargets(baked.banners.picks, toWorld, true);
+    }
     for (const piece of baked.loose) addLoosePiece(piece, m);
     if (baked.rig.coil) buildCoilCharge(group, baked.rig, m);
     if (slot.theme === "lab") placeChalkboard(m, group);
@@ -12711,7 +12723,12 @@
         // cloud speaker's seat.
         copy: { get on() { return copyOn; }, barred: (fromX, fromZ, toX, toZ, y) => crossesSealedCave(fromX, fromZ, toX, toZ, y), get seals() { return copySealNodes.length; },
           get planes() { return copyPlanes.length; }, get benches() { return copyBenches.map((c) => ({ y: c.node.position.y, bottom: c.node.position.y + BL.scene.boundsOf(c.bench).min[1], bench: c.node.geometry === c.bench, radius: c.radius })); },
-          get treetop() { return cloudTreetop; }, cloudSpot: cloudSpotOf, mouths: () => CAMERA_OPENINGS.filter((e) => !e.blocked).map((e) => ({ id: e.id, x: e.mouth.x, z: e.mouth.z, floor: e.mouth.floorY, sr: e.sr, cr: e.cr, headquarters: !!e.headquarters })) },
+          get treetop() { return cloudTreetop; }, cloudSpot: cloudSpotOf,
+          // What the island view's scenery bake (scripts/island-scene.mjs) carries to Ooga Chat's 3D view: the lamps and
+          // fires it lights by the clock, the lawn, and the clouds as the copy deals them, with their clock and seats.
+          get lamps() { return lamps; }, get fires() { return fireRigs; }, get lawn() { return lawn && lawn.node; },
+          sky: () => ({ clouds, benches: copyBenches, epoch: CLOUD_EPOCH, crossings: CLOUD_CROSSINGS, swing: CLOUD_SWING, seats: thirdsOf }),
+          setClouds: (t) => setClouds(t), mouths: () => CAMERA_OPENINGS.filter((e) => !e.blocked).map((e) => ({ id: e.id, x: e.mouth.x, z: e.mouth.z, floor: e.mouth.floorY, sr: e.sr, cr: e.cr, headquarters: !!e.headquarters })) },
         get shown() {
           return pile.shown;
         },

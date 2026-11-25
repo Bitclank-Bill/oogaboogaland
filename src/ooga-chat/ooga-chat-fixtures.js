@@ -296,12 +296,15 @@
       // The island view (`view`): while this connection asks, the chat's walkers' places twice a second, as the copy
       // relays them (audience.js `walk`), each walking a ring round the island's middle, and how they look as it starts
       // (`looks`): the first in a hat, a shirt and glasses with the gun out, the second (a character with a pet) with its
-      // primary in hand, a jetpack on and its pet grown a size.
+      // primary in hand, a jetpack on and its pet grown a size; and who sits on the clouds (`clouds`): every speaker not
+      // walking, a seat each in the cast's order, with the fixture's clock.
       let viewing = false, walkSeq = 0, chain = false;
       const LOOKS = [{ e: { selection: { item: "rules-without-rulers-top-hat", version: "9ceae44a88cc91185ed244425aeb90ee564a503b36087aff09c01bc7a890d68d" }, size: 100,
         wardrobe: { shirt: { item: "shirt-be0817bd97baa6cc", version: "be0817bd97baa6cc33b6ad9939e31e175e99de170de5783bc3fea9ccce6f42c4" },
           glasses: { item: "glasses-bdc859d93a8e48e7", version: "bdc859d93a8e48e77d1f09fd9148b80de68f852b828dfd4641eae2f56d32ddbb" } } }, w: 2 },
       { e: { selection: null, size: 100, wardrobe: { pet: { item: "custom", version: null, size: 130 } } }, w: 1, j: 1 }];
+      const cloudsFrame = () => ({ type: "clouds", at: now(), clouds: r.cast.filter((w) => !w.walking && w.role === "speaker")
+        .map((w, i) => ({ id: w.id, character: w.character || w.login, seat: `main-cloud-${i + 1}` })) });
       const looksFrame = () => ({ type: "looks", looks: Object.fromEntries(r.cast.filter((w) => w.walking && w.role === "speaker").map((w, i) => [w.id, LOOKS[i % LOOKS.length]])) });
       const walkFrame = () => {
         if (!viewing || !r) { chain = false; return; }
@@ -661,7 +664,7 @@
             if (type === "view") {
               const began = !!r && fields.on === true && !viewing;
               viewing = !!r && fields.on === true;
-              if (began) message(looksFrame());
+              if (began) { message(looksFrame()); if (r.zone === "main") message(cloudsFrame()); }
               if (viewing && !chain) { chain = true; walkFrame(); }
               return;
             }

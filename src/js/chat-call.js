@@ -172,8 +172,8 @@
     if (msg.type === "you" || msg.type === "media") { m.heard(msg); return emit(); }
     // A reaction over a participant's circle (cloud-panel.js), the visitor's own included.
     if (msg.type === "reaction") { for (const fn of heard) fn(msg); return; }
-    // The island view's walkers and how they look (chat-hosts.js, island-view.js), heard while it asked for them.
-    if (msg.type === "walk" || msg.type === "looks") { for (const fn of heard) fn(msg); return; }
+    // The island view's walkers, how they look and who sits on the clouds (chat-hosts.js, island-view.js), heard while it asked for them.
+    if (msg.type === "walk" || msg.type === "looks" || msg.type === "clouds") { for (const fn of heard) fn(msg); return; }
     const result = roster.apply(msg);
     if (result === "gap") feed.resync(BL.chatHosts.rosterZone(chat.zone));
     if (result === "applied") {

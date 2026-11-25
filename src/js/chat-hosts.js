@@ -41,9 +41,10 @@
 //   (`noticeText`), a burst of requests joined into one line at most every ASKED_MS, nothing said twice.
 // - the island view (island-view.js) in `.hc-room-strip` over the roster, in every Main Island chat: the island standing
 //   still, and each speaker walking the chat's copy of it (a row's `walking`) where they stand, with Go there over it.
-//   The chat is asked for walkers' places (`{ type: "view", on: true }`) only while someone walks, the panel is shown
-//   and the page is visible, and told `on: false` as that ends; a new connection asks again. Its `walk` frames come
-//   through `chats.hear`, and how the walkers look (`looks` frames, whenever that changes) the same way.
+//   The chat is asked for walkers' places (`{ type: "view", on: true }`) only while it has a speaker (walking it or on a
+//   cloud over it), the view is open, the panel is shown and the page is visible, and told `on: false` as that ends; a
+//   new connection asks again. Its `walk` frames come through `chats.hear`, and how the walkers look (`looks`) and who
+//   sits on the clouds (`clouds`), whenever either changes, the same way.
 // Pop-ups (a tile's menu, the queue, a confirmation) are one wood-framed box, a sheet at the screen's foot under 400px;
 // the look is chat-hosts.css. The pure parts (`parseList`, `actionsFor`, `noticeText`, `joinNames`) need no document.
 (() => {
@@ -644,6 +645,7 @@
     const off = chats.hear((msg) => {
       if (msg.type === "walk") { isle?.walk(msg); return; }
       if (msg.type === "looks") { isle?.looks(msg); return; }
+      if (msg.type === "clouds") { isle?.clouds(msg); return; }
       if (msg.type === "result") {
         if (!mine.has(msg.requestId)) return;
         const after = mine.get(msg.requestId);
@@ -774,8 +776,8 @@
       if (!room) drawList();
       watch();
     };
-    // The island view: in every Main Island chat, the walkers' places asked for only while someone walks and it can be
-    // seen, at the rate the view says this viewer can take (`hz`). `viewSent` is what this connection was last told
+    // The island view: in every Main Island chat, the walkers' places and the clouds' sitters asked for only while it
+    // has a speaker and can be seen, at the rate the view says this viewer can take (`hz`). `viewSent` is what this connection was last told
     // ("on:hz", "off", or null: nothing yet, or a new connection).
     const isle = islandView && BL.islandView ? BL.islandView.create({ picture: islandView.picture, faceOf: rowFace, loadLive: islandView.loadLive || null,
       liveAllowed: islandView.liveAllowed, scenery: islandView.scenery, fullscreen: !!islandView.fullscreen, onFold: () => syncView() }) : null;
@@ -784,7 +786,7 @@
       if (!state) return;
       // Every Main Island chat shows its island, standing still until someone walks it; only walkers' places are asked for.
       const place = !!isle && !!room && room.zone === "main", seen = place && shown() && !document.hidden && !isle.folded;
-      const want = seen && people.some((p) => p.walking);
+      const want = seen && people.some((p) => p.walking || p.role === "speaker");
       set(strip, "hidden", !place);
       if (isle) set(isle.fold, "hidden", !place);
       if (isle) isle.update({ place, rows: room ? people : [], talking: state.voice.talking || [], speaking: !!state.voice.speaking, self: me, active: seen });
@@ -805,7 +807,7 @@
     if (zoneTag) zoneTag.after(requests); else head.append(requests);
     // The island view's fold button stands after them, in every Main Island chat.
     if (isle) { isle.fold.hidden = true; requests.after(isle.fold); }
-    // The strip over the roster: the island view, while someone walks the chat's island.
+    // The strip over the roster: the island view, in every Main Island chat.
     const strip = make("div", "hc-room-strip");
     strip.hidden = true;
     if (isle) { strip.append(isle.node); isle.stage.append(goTo); }

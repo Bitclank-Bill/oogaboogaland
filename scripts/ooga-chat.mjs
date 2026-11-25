@@ -36,7 +36,7 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
   // it); and what a walker's look may still need, each fetched only once one wears it: the hats' geometry (`hats`), the
   // wardrobe's pieces (`wardrobe`) and the island's props for a jetpack (`gear`).
   "../js/island-view-data.js", "../js/island-view.js", "../js/math.js", "../js/daylight.js", "../js/scene.js", "../js/compact-geometry.js",
-  "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js",
+  "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js", "../js/blaze.js",
   "../js/hero-body.js", "../js/characters.js", "../js/characters.gen.js", "../js/island-scene.js", "../js/equipment-hats.js",
   "../js/equipment-hats.gen.js", "../js/character-equipment.js", "../js/equipment-wardrobe.js", "../js/equipment-wardrobe.gen.js",
   "../js/character-wardrobe.js", "../js/island-view-live.js", "../js/equipment-hat-data.gen.js", "../js/equipment-wardrobe-data.gen.js",

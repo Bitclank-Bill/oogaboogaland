@@ -86,6 +86,11 @@ export const WALK_FANOUT = 2000;
 export const WALK_RATES = Object.freeze([2, 4, 6]);
 export const WALK_HZ_MAX = 6;
 const BOUND_XZ = 400;
+// Who sits on the copy's clouds, for the island view (`{ type: "clouds", at, clouds: [{ id, character, seat }] }`): each
+// active speaker not walking it, the Ooga they sit as and their seat, with the server's clock (`at`, ms) the view moves
+// the clouds by, as the copy does; sent to every connection viewing whenever the list changes, whether or not anyone
+// walks, and to a viewer as it starts (`cloudsFrame`).
+const cloudsView = (list) => JSON.stringify(list.map((c) => ({ id: c.id, character: c.character, seat: c.seat })));
 // How the walkers look (`looks`): an entry each, at most LOOKS_MAX characters of them all.
 export const LOOKS_MAX = 64 * 1024;
 const lookPlain = (v) => !!v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype;
@@ -193,6 +198,8 @@ export class Audience extends DurableObject {
     // How each walker looks, as the copy last said (`looks`), kept as the text sent to viewers.
     this.looksText = "";
     this.lookSeq = 0;
+    // Who sits on the copy's clouds, as viewers were last told (`clouds`); null: not worked out since a wake.
+    this.cloudsText = null;
     // What the island room was last told of this chat's counts (`reportMembers`): its signature, when, the one-shot
     // timer for a burst's last change, the one report in flight, and the chat whose end it has not yet heard (`gone`,
     // stored, so the alarm says it again even after the chat is gone).
@@ -429,8 +436,10 @@ export class Audience extends DurableObject {
   cloudsChanged() {
     if (this.chat) {
       // A chat's clouds are its copy's: told only while someone walks it (an empty copy is never woken), and
-      // `copyMember`'s answer carries them to the first who arrives.
+      // `copyMember`'s answer carries them to the first who arrives. Its island view's viewers hear them whenever they
+      // change, walked or not.
       const list = this.chatClouds(), sig = JSON.stringify(list);
+      this.viewClouds(list);
       if (!this.walkers.size) { this.cloudsSig = null; return; }
       if (sig === this.cloudsSig) return;
       this.cloudsSig = sig;
@@ -450,6 +459,26 @@ export class Audience extends DurableObject {
       }
     });
     this.background(this.roomQueue);
+  }
+
+  /** The `clouds` frame for the island view: the list (worked out now if it has not been since a wake) and the clock. */
+  cloudsFrame() {
+    if (this.cloudsText === null) this.cloudsText = cloudsView(this.chatClouds());
+    return `{"type":"clouds","at":${Date.now()},"clouds":${this.cloudsText}}`;
+  }
+
+  /** Who sits on the clouds to every connection viewing a Main Island chat's view, when that changed. */
+  viewClouds(list) {
+    if (this.chat.zone !== "main") return;
+    const text = cloudsView(list);
+    if (text === this.cloudsText) return;
+    this.cloudsText = text;
+    let frame = null;
+    for (const c of this.model.conns.values()) {
+      if (!c.viewing) continue;
+      const ws = this.sockets.get(c.connId);
+      if (ws) this.send(ws, frame ||= this.cloudsFrame());
+    }
   }
 
   /**
@@ -776,8 +805,10 @@ export class Audience extends DurableObject {
       const hz = msg.on && c.eligible && WALK_RATES.includes(msg.hz) ? msg.hz : WALK_HZ;
       const began = msg.on && !c.viewing;
       if (!!c.viewing !== msg.on || (c.viewHz || WALK_HZ) !== hz) { c.viewing = msg.on; c.viewHz = hz; this.save(c.connId); }
-      // A viewer starting hears how the walkers look now; a change comes as it happens (`looks`).
+      // A viewer starting hears how the walkers look now and who sits on the clouds; a change comes as it happens
+      // (`looks`, `clouds`).
       if (began && this.looksText) this.send(ws, `{"type":"looks","looks":${this.looksText}}`);
+      if (began && this.chat.zone === "main") this.send(ws, this.cloudsFrame());
       return;
     }
     if (msg.type === "setRole" || msg.type === "setMic" || msg.type === "reaction" || msg.type === "hand" || this.roles && CHAT_OPS.has(msg.type)

@@ -360,7 +360,8 @@ Agreed 2026-11-23:
 
 - **What a copy carries:** the main island's open air as it is (scenery, the banana pile, the clouds), HQ and its
   basement down its open ramps, and the chat's members' Oogas, nothing else: no NPC crew or gorillas, every other cave
-  mouth and door sealed in stone (the OBL cave's mirror, the signs over the sealed mouths, the Oogatron, the islets at sea and the gulls and sails taken down),
+  mouth and door sealed in stone (the OBL cave's mirror, the signs over the sealed mouths, every cave's banners, the
+  Oogatron, the islets at sea and the gulls and sails taken down),
   no games, and none of the other islands or their bridges (the Mempool island, Merge Rock, the Timechain Sphere's islet,
   ₿IFRÖST's islet), so a walker off a bridgehead falls to the water and comes back beside the pile.
 - **Who goes:** speakers alone (the host, co-hosts and invited speakers) who are signed into the island with an Ooga.
@@ -429,8 +430,8 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   the roster taking its place, and brings it back, this browser's choice (localStorage `ooga-island-view-folded`);
   folded, nothing is drawn, the 3D view is not fetched and no places are asked for. Open, the view meets the roster with
   no gap.
-- **Asking for places.** A chat member's socket asks with `{ type: "view", on: true, hz }` only while someone walks (a
-  row with `walking`), the strip shows, the panel is shown and the page is visible and the view is not folded, and says `on: false` as any of that
+- **Asking for places.** A chat member's socket asks with `{ type: "view", on: true, hz }` only while the chat has a
+  speaker (walking the copy, a row with `walking`, or sitting on its clouds), the strip shows, the panel is shown and the page is visible and the view is not folded, and says `on: false` as any of that
   ends; a new connection asks again. `hz` is how many places a second the viewer can take (`WALK_RATES`: 2, or 4 and 6
   for a 3D view whose scenery tier is `lite` or `full`, island-view.js `hz`; the Audience holds anyone but a GitHub
   contributor, its `eligible`, to 2, as it does one whose standing is revoked). Only then does the Audience send `{ type:
@@ -449,6 +450,15 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   Audience checks its shape and size (`LOOKS_MAX`), keeps the last (stored, so a woken chat still has it) and sends
   `{ type: "looks", looks }` whole to every connection viewing when it changes, and to a viewer as it starts viewing
   (`view` on). A page checks each piece against its own catalogs as it puts it on; one it does not know is left off.
+- **Who sits on the clouds.** The Audience also sends `{ type: "clouds", at, clouds: [{ id, character, seat }, …] }` to
+  every connection viewing a Main Island chat whenever the list changes (a speaker joins or leaves the stage, starts or
+  stops walking), whether or not anyone walks the copy, and to a viewer as it starts (`cloudsFrame`, `viewClouds`): each
+  active speaker not walking, the Ooga they sit as (the copy's `chatClouds`: their character, or a default one hashed
+  from a name no login can have) and their seat (main-cloud-1 to 32, the copy's), with `at` its own clock in
+  milliseconds. A page reads it whole or not at all (`parseClouds`) and keeps the chat's clock less its own (the largest
+  guess, since time on the way only makes the chat look behind), which the 3D view moves the clouds by, so they stand
+  where the copy shows them on the island at that moment (both run on the Worker's clock: the copy's page through
+  net.js `serverNow`).
 - **One view, chosen by the device** (`BL.islandView.capable`, once a page, never toggled): the 3D view where the page
   offers it (Ooga Chat) to a viewer it is offered to (`liveAllowed`: for now a signed-in GitHub contributor, the
   server's word through `BL.oogaChatAuth.gates`, asked again on every update; another GitHub account or an X account
@@ -463,7 +473,18 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   renderer's own projection) and the hub's light at that hour. Faces are the roster's (`rowFace`), else the native Ooga
   face; a talking walker's green ring pulses.
 - **The 3D view.** `src/js/island-view-live.js` makes one renderer (gl-renderer.js) on the strip's own canvas, drawing the
-  island as a chat's copy shows it from the baked scenery (`src/js/island-scene.js`), each walker as their own Ooga
+  island as a chat's copy shows it from the baked scenery (`src/js/island-scene.js`), as it stands now under the
+  viewer's own sky: the hub's solar clock (daylight.js, the viewer's local hour and day, as the island's page reads them;
+  sun, moon, stars, the sea and the painted clouds of the copy's clear air, its haze), the hub's lamps and torches
+  flickering up over the dusk ramp in their order (each lamp's mode, glow and light baked with it) and the nearest to the
+  camera's target taking the tier's point lights at night (32 on High, 20 on Medium), the meadow's fire pit burning (the
+  island's voxel flame, blaze.js, in the `live` chunk), the trees, bushes and lawn in the wind. The copy's eighteen
+  clouds go round on their tracks as the copy deals them (eleven bench clouds on the high track, the rest low, swinging
+  between the bridges; `cloudAt` is the hub's `placeCloud`, which the bake checks to the hair at three moments), by the
+  chat's clock (`clouds` frames), and each speaker not walking sits on their seat, three to a bench cloud: their own Ooga
+  (characters.js `traitsFor` of the character the chat names) sitting as a cloud speaker sits on the island (legs out
+  before it, the fists down on the cloud, empty-handed, its pet away), facing the pile over the seat's purple glow, the
+  bench standing only while someone sits on it. Each walker as their own Ooga
   (models.js `caveman` over characters.js `traitsFor`, as the island builds it), swinging its limbs as it walks, its
   pet (a character's own `parts.dog`) beside it moving its legs in the companions' gait (models.js `poseQuadruped`),
   under the baked light. Each is dressed from the chat's `looks` as other players see it: its hat and wardrobe (the pet's
@@ -473,22 +494,32 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   geometry (`hats`, about 103 KB), the wardrobe's pieces (`wardrobe`, about 115 KB) and the island's props for a jetpack
   (`gear`, about 36 KB) are chunks of their own, each fetched only once a walker first wears something that needs it
   (`OPT_IN`, never prefetched). It does not pose a weapon as the island's crew does (no slung weapons, aiming, recoil
-  or reloads), walk the pet at its heel or fly it, or light the jetpack's flame. The faces stand over their heads on the
+  or reloads), walk the pet at its heel or fly it, or light the jetpack's flame; a walker's gait is its own simple swing
+  (the crew's `poseGait` needs crew.js), a seated speaker is not dressed (the chat's `looks` are the walkers'), and the
+  banana pile stands as baked (Ooga Chat does not follow the pile's level, and pile.js needs the island's terrain). The faces stand over their heads on the
   2D canvas above it, and the map shows while it loads (or stays if it can't). A drag turns the island, a two-finger, right or Shift drag pans it, the wheel or a pinch zooms, held to the
   island and above the sea, and Reset view puts it back. `scripts/island-scene.mjs` (after `npm run build`) bakes the
   scenery from the built hub in copy mode: every node still drawn but pictures, glass, clipped and projected surfaces,
-  lines, clouds, birds, boats, characters and anything buried (HQ, its basement, the caves' insides), sorted into layers
-  (`base`: the ground and the pile; `props`; `trees` and `trees-medium`, the trees whole and at their medium detail;
-  `details`, what is under a metre across). Each layer keeps the hub's own models, each once with its normals, smooth
-  shading, block detail and shadow casting, and every place one stands, so the renderer draws them as the island does
-  (a model's copies one instanced draw), gzipped into `src/ooga-chat/art/island-scene-<layer>.bin.gz`. Ooga Chat stages them
+  lines, birds, boats, characters, a fire's flame (kept as where it burns) and anything buried (HQ, its basement, the
+  caves' insides), sorted into layers (`base`: the ground, the pile and the paths, their 25,000-odd tiles baked as one
+  road mesh already cut to their outline as the renderer cuts each tile, full tiles merged along their rows; `sky`: the
+  copy's clouds plain and benched, each bench's seats and the glow under each, and the deal, with no places; `props`;
+  `grass`, the lawn's 300 tufts; `trees` and `trees-medium`, the trees whole and at their medium detail; `details`, what
+  is under a metre across; any instanced batch that holds still over a second and a half, the altar's rings, a place an
+  instance). Each layer keeps the hub's own models, each once with its normals, smooth shading, block detail, shadow
+  casting and wind (sway and swing), and every place one stands, so the renderer draws them as the island does (a
+  model's copies one instanced draw), and as its meta (JSON after the places) the hub's lamps whose glow stands in it
+  (in `props` too those that only light: a fire's, a dressing light's), any other place's glow that is not 1 (the road's
+  256, every neighbour set), the fires and the clouds' deal; gzipped into `src/ooga-chat/art/island-scene-<layer>.bin.gz`. Ooga Chat stages them
   under `scene/<hash>/` (scripts/ooga-chat.mjs, cached immutable, never in the service worker's shell). A viewer fetches
   the base layer first, and its speed with the device's memory sets the tier (`tierFor`): `full` (8 Mb/s and 8 GB: every
-  layer, trees whole, about 2.6 MB in all, drawn at the renderer's High tier), `lite` (2 Mb/s and 4 GB: props and the
-  medium trees, Medium tier) or `base` (the ground and the pile alone, about 1.3 MB, Low tier).
-  It draws only while the strip shows and can be seen and something changed (the camera, a walker, the size), as often
-  as the device keeps up (a sixtieth of a second at best, a sixth at worst, from how long its frames take), and nothing
-  while the island stands still. Ooga Chat fetches it with the renderer as its own `live` chunk only for a device it is
+  layer, trees whole, about 2.65 MB in all, drawn at the renderer's High tier), `lite` (2 Mb/s and 4 GB: props, the lawn
+  and the medium trees, about 2.59 MB, Medium tier) or `base` (the ground, the pile, the paths and the clouds alone,
+  about 1.33 MB, Low tier, with no lamps or fire).
+  It draws only while the strip shows and can be seen: on the full tier every frame (its sky, clouds, wind and fire
+  alive), on lite thirty times a second, on base every five seconds and whenever something changed (the camera, a
+  walker, the size), each as often as the device keeps up (a sixtieth of a second at best, a sixth at worst, from how
+  long its frames take). `live.pin({ hour, day, time })` pins its clock for a check. Ooga Chat fetches it with the renderer as its own `live` chunk only for a device it is
   chosen for (never prefetched and never in the service worker's shell, `OPT_IN`).
 - **Full screen** (Ooga Chat): a button on the view lays it over the page in a layer of its own with the app's column
   beside it (under it on a screen taller than it is wide), in the browser's own full screen where there is one; the
@@ -496,4 +527,5 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
 - `?chats=on` (Ooga Chat's fixture) and `?debug=1&chats=fixture` (the island's) mark two of Sample Oak's chat's
   speakers as walking and send their places twice a second while the view asks, and how they look as it starts: Sample
   Oak in a top hat, a shirt and glasses with the gun out, Sample Reed as a character with a pet (a lion cub, grown a
-  size), its primary in hand and a jetpack on.
+  size), its primary in hand and a jetpack on; and who sits on the clouds: Sample Fern, the speaker not walking, on
+  main-cloud-1.
