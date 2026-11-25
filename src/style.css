@@ -14056,13 +14056,31 @@ body:has(.lounge-heirloom[open]) #stage > :not(#scene) { visibility: hidden; }
 .jones-art { display: block; width: 100%; height: auto; max-height: var(--art-limit); object-fit: contain; }
 .jones-spread > .jones-art { grid-column: 1 / -1; }
 .jones-page { min-width: 0; box-sizing: border-box; padding: .68em .92em; align-content: center; }
-.jones-page p { font: inherit; margin: 0; color: #30281e; white-space: pre-line; overflow-wrap: anywhere; }
+.jones-page p { font: inherit; margin: 0; color: #30281e; white-space: pre-line; }
 .jones-page p + p { margin-top: .45em; }
 .jones-letter { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); }
 .jones-letter::after { left: 52.38%; }
 .jones-letter p:first-child, .jones-letter p:last-child { font-family: "Snell Roundhand","Segoe Print",Georgia,serif; font-style: italic; }
 .jones-letter p:nth-last-child(2) { color: #20483f; }
 .jones-letter .jones-page:last-child { align-content: center; padding: 0; }
+/* A full spread: the painting edge to edge, each page's words printed onto it on a paper wash that fades into the
+   paint. The script picks each block's band and sets --wash to the least that holds 7:1 under it; the ink multiplies
+   into the wash as print does. */
+.jones-spread.jones-full { display: block; aspect-ratio: 2; width: min(100cqw,200cqh); isolation: isolate; }
+.jones-full > .jones-art { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; object-fit: cover; }
+.jones-full .jones-page { position: absolute; z-index: 0; left: 5%; right: 55%; width: fit-content; margin-inline: auto; padding: .5em .7em; }
+.jones-full .jones-page + .jones-page { left: 55%; right: 5%; }
+.jones-full .jones-page[data-band="top"] { top: 6%; }
+.jones-full .jones-page[data-band="bottom"] { bottom: 6%; }
+.jones-full .jones-page::before { content: ""; position: absolute; z-index: -1; inset: -1.6em -2em; border-radius: 2em;
+  background: rgb(247 238 219 / var(--wash,.92));
+  -webkit-mask: linear-gradient(90deg,transparent,#000 2em,#000 calc(100% - 2em),transparent),
+    linear-gradient(transparent,#000 1.6em,#000 calc(100% - 1.6em),transparent);
+  -webkit-mask-composite: source-in;
+  mask: linear-gradient(90deg,transparent,#000 2em,#000 calc(100% - 2em),transparent),
+    linear-gradient(transparent,#000 1.6em,#000 calc(100% - 1.6em),transparent);
+  mask-composite: intersect; }
+.jones-full .jones-page p { color: #2b2219; mix-blend-mode: multiply; text-wrap: pretty; }
 .jones-fold { position: absolute; top: 0; bottom: 0; left: 39%; width: 22%; background: linear-gradient(90deg,transparent,#60492444,#fff4d733,transparent); pointer-events: none; }
 .jones-nav { display: flex; align-items: center; justify-content: center; gap: clamp(3px,1.4vw,14px); margin: 0; }
 .lounge-heirloom .jones-nav button { min-height: 44px; margin: 0; padding: 0 clamp(4px,2vw,16px); font: inherit; font-weight: 600; }

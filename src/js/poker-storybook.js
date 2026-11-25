@@ -85,6 +85,56 @@
     });
     return jacket;
   };
+  // Contrast for words printed on the paintings. INK and PAPER are the stylesheet's `.jones-full` colours; the ink
+  // multiplies into the wash, so it only darkens and the plain ink is the worst case. CONTRAST is WCAG AAA.
+  const INK=[43,34,25],PAPER=[247,238,219],CONTRAST=7,BAND=.44,MIN_TYPE=14,WASH_FLOOR=.32,SAMPLE_W=216,SAMPLE_H=108;
+  const toLinear=v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;};
+  const LINEAR=Float64Array.from({length:256},(_,v)=>toLinear(v));
+  // Whole channel values read from the table; the wash's blends fall between them and are worked out exactly.
+  const linear=v=>Number.isInteger(v)?LINEAR[v]:toLinear(v);
+  const luminance=(r,g,b)=>.2126*linear(r)+.7152*linear(g)+.0722*linear(b);
+  const needed=CONTRAST*(luminance(...INK)+.05)-.05;
+  // Each painting read once at a small size: its colours, and how busy each point is (the luminance gradient).
+  const samples=new Map();
+  const sampleOf=img=>{
+    if(!img || !img.complete || !img.naturalWidth)return null;
+    if(samples.has(img.src))return samples.get(img.src);
+    // Each cell keeps its darkest pixel, not the average: averaging would wash out the paint's thin dark outlines.
+    const w=img.naturalWidth,h=img.naturalHeight,canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+    const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0);
+    const full=ctx.getImageData(0,0,w,h).data,rgb=new Uint8ClampedArray(4*SAMPLE_W*SAMPLE_H),
+      lum=new Float32Array(SAMPLE_W*SAMPLE_H).fill(2),busy=new Float32Array(SAMPLE_W*SAMPLE_H);
+    for(let y=0;y<h;y++){
+      const cy=Math.min(SAMPLE_H-1,Math.floor(y*SAMPLE_H/h));
+      for(let x=0;x<w;x++){
+        const j=4*(y*w+x),l=luminance(full[j],full[j+1],full[j+2]),c=cy*SAMPLE_W+Math.min(SAMPLE_W-1,Math.floor(x*SAMPLE_W/w));
+        if(l<lum[c]){lum[c]=l;rgb[4*c]=full[j];rgb[4*c+1]=full[j+1];rgb[4*c+2]=full[j+2];}
+      }
+    }
+    for(let y=1;y<SAMPLE_H-1;y++)for(let x=1;x<SAMPLE_W-1;x++){
+      const i=y*SAMPLE_W+x;busy[i]=Math.abs(lum[i+1]-lum[i-1])+Math.abs(lum[i+SAMPLE_W]-lum[i-SAMPLE_W]);
+    }
+    const grid={rgb,busy};samples.set(img.src,grid);return grid;
+  };
+  // The least wash over the box (fractions of the spread) that lifts every pixel under it to the contrast, and the
+  // box's mean busyness, so the calmer band wins when both need the same wash.
+  const washFor=(grid,x0,y0,x1,y1)=>{
+    const ax=Math.max(0,Math.floor(x0*SAMPLE_W)),bx=Math.min(SAMPLE_W,Math.ceil(x1*SAMPLE_W)),
+      ay=Math.max(0,Math.floor(y0*SAMPLE_H)),by=Math.min(SAMPLE_H,Math.ceil(y1*SAMPLE_H));
+    const clears=a=>{
+      for(let y=ay;y<by;y++)for(let x=ax;x<bx;x++){
+        const i=4*(y*SAMPLE_W+x),d=grid.rgb;
+        if(luminance(a*PAPER[0]+(1-a)*d[i],a*PAPER[1]+(1-a)*d[i+1],a*PAPER[2]+(1-a)*d[i+2])<needed)return false;
+      }
+      return true;
+    };
+    let lo=0,hi=1;
+    if(!clears(lo))for(let k=0;k<9;k++){const mid=(lo+hi)/2;if(clears(mid))hi=mid;else lo=mid;}
+    else hi=0;
+    let sum=0,n=0;
+    for(let y=ay;y<by;y++)for(let x=ax;x<bx;x++){sum+=grid.busy[y*SAMPLE_W+x];n++;}
+    return {wash:hi,busy:n?Math.min(1,sum/n/.25):0};
+  };
   const read=ui=>{
     const reader=ui.element("section");reader.className="jones-reader";
     const dialog=reader.closest("dialog"),stage=make(reader,"div","jones-stage");
@@ -107,18 +157,66 @@
       if(text)for(const paragraph of text.split("\n\n"))make(leaf,"p","",paragraph);
       return leaf;
     };
+    // A full spread prints its words onto the painting, each page's block in the calmer of its top and bottom bands,
+    // on a paper wash only as strong as the darkest pixel under the words needs for 7:1 against the ink. Where the
+    // words would print too small to read, the spread stacks: the painting over plain paper.
+    const overlay=leaf=>{
+      leaf.classList.remove("jones-stacked");leaf.classList.add("jones-full");
+      const pages=leaf.querySelectorAll(".jones-page"),img=leaf.querySelector(".jones-art"),band=leaf.clientHeight*BAND;
+      if(!band)return false;
+      for(const page of pages)page.dataset.band="bottom";
+      const fits=size=>{
+        leaf.style.setProperty("--type",size+"px");
+        for(const page of pages)if(page.offsetHeight>band)return false;
+        for(const p of leaf.querySelectorAll(".jones-page p"))if(p.scrollWidth>p.clientWidth)return false;
+        return true;
+      };
+      if(!fits(MIN_TYPE))return false;
+      let hi=26,lo=MIN_TYPE;
+      if(fits(hi))lo=hi;
+      else while(hi-lo>.125){
+        const mid=(lo+hi)/2;
+        if(fits(mid))lo=mid;else hi=mid;
+      }
+      leaf.style.setProperty("--type",lo+"px");
+      const grid=sampleOf(img),frame=leaf.getBoundingClientRect();
+      for(const page of pages){
+        let best=null;
+        for(const where of ["top","bottom"]){
+          page.dataset.band=where;
+          const box=page.getBoundingClientRect(),
+            x0=(box.left-frame.left)/frame.width,y0=(box.top-frame.top)/frame.height,
+            x1=(box.right-frame.left)/frame.width,y1=(box.bottom-frame.top)/frame.height,
+            read=grid?washFor(grid,x0,y0,x1,y1):{wash:.92,busy:where==="top"?1:0},
+            score=read.wash+.6*read.busy;
+          if(!best || score<best.score)best={where,wash:read.wash,score};
+        }
+        page.dataset.band=best.where;
+        page.style.setProperty("--wash",Math.max(WASH_FLOOR,best.wash).toFixed(3));
+      }
+      return true;
+    };
     // Keep the largest type that leaves room for the whole illustration.
     // Measure the browser's own wrapping, including the letter's paragraph breaks.
     const fit=()=>{
       const leaf=stage.querySelector(".jones-spread"),height=stage.clientHeight;
       if(!leaf || !height || !stage.clientWidth)return;
-      const letter=leaf.classList.contains("jones-letter"),pages=leaf.querySelectorAll(".jones-page");
+      const letter=leaf.classList.contains("jones-letter");
+      if(!letter){
+        if(overlay(leaf))return;
+        leaf.classList.remove("jones-full");leaf.classList.add("jones-stacked");
+        for(const page of leaf.querySelectorAll(".jones-page")){page.removeAttribute("data-band");page.style.removeProperty("--wash");}
+      }
+      const pages=leaf.querySelectorAll(".jones-page");
       const stacked=letter && pages[1].offsetTop>pages[0].offsetTop;
       const available=height-1;
       leaf.style.setProperty("--art-limit",(letter && !stacked?available:available*(letter ? .24 : .34))+"px");
+      // Words never break: the type shrinks until the longest word fits its page.
       const fits=size=>{
         leaf.style.setProperty("--type",size+"px");
-        return leaf.getBoundingClientRect().height<=available;
+        if(leaf.getBoundingClientRect().height>available)return false;
+        for(const p of leaf.querySelectorAll(".jones-page p"))if(p.scrollWidth>p.clientWidth)return false;
+        return true;
       };
       let hi=letter?23:26,lo=0;
       if(fits(hi))lo=hi;
@@ -147,6 +245,7 @@
       }else{
         const s=spreads[index-1],leaf=make(stage,"article","jones-spread");
         if(s.right){
+          leaf.classList.add("jones-full");
           art(leaf,s.art,s.alt);page(leaf,index*2-1,s.left);page(leaf,index*2,s.right);
         }else{
           leaf.classList.add("jones-letter");
