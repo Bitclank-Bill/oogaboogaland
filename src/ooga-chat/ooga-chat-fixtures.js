@@ -215,7 +215,7 @@
       // Listening and speaking from both apps (`via`), each here or on the stage since a different moment (`since`).
       const ago = (s) => now() - s * 1000;
       room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker", { via: "island", since: ago(590), walking: true }),
-        member(2, "sample-fern", "speaker", { via: "app", reconnecting: true, since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, since: ago(300), walking: true }),
+        member(2, "sample-fern", "speaker", { via: "app", reconnecting: true, since: ago(400) }), member(3, "sample-reed", "speaker", { via: "island", muted: true, since: ago(300), walking: true, character: "timechainb" }),
         member(4, "sample-wren", "listener", { via: "island", since: ago(500) }), member(5, "sample-kite", "listener", { via: "app", since: ago(200) }),
         member(6, "sample-lark", "listener", { via: "app", since: ago(100) }), member(7, "sample-heron", "listener", { via: "island", since: ago(550) })],
       { host: "gh:9001", cohosts: ["gh:9002"], queue: [["gh:9004", now() - 30000], ["gh:9005", now() - 10000]], invites: [["gh:9006", now() + 60000]] });
@@ -292,8 +292,15 @@
       let zone = null, epoch = 0, revision = 0, people = [], step = 0, closed = false, requests = 0;
       let connection = `fixture-conn-${++connections}`, lease = 0, active = false, mic = "muted", mids = 0, activeAt = 0, offeredHere = false;
       // The island view (`view`): while this connection asks, the chat's walkers' places twice a second, as the copy
-      // relays them (audience.js `walk`), each walking a ring round the island's middle.
+      // relays them (audience.js `walk`), each walking a ring round the island's middle, and how they look as it starts
+      // (`looks`): the first in a hat, a shirt and glasses with the gun out, the second (a character with a pet) with its
+      // primary in hand, a jetpack on and its pet grown a size.
       let viewing = false, walkSeq = 0, chain = false;
+      const LOOKS = [{ e: { selection: { item: "rules-without-rulers-top-hat", version: "9ceae44a88cc91185ed244425aeb90ee564a503b36087aff09c01bc7a890d68d" }, size: 100,
+        wardrobe: { shirt: { item: "shirt-be0817bd97baa6cc", version: "be0817bd97baa6cc33b6ad9939e31e175e99de170de5783bc3fea9ccce6f42c4" },
+          glasses: { item: "glasses-bdc859d93a8e48e7", version: "bdc859d93a8e48e77d1f09fd9148b80de68f852b828dfd4641eae2f56d32ddbb" } } }, w: 2 },
+      { e: { selection: null, size: 100, wardrobe: { pet: { item: "custom", version: null, size: 130 } } }, w: 1, j: 1 }];
+      const looksFrame = () => ({ type: "looks", looks: Object.fromEntries(r.cast.filter((w) => w.walking && w.role === "speaker").map((w, i) => [w.id, LOOKS[i % LOOKS.length]])) });
       const walkFrame = () => {
         if (!viewing || !r) { chain = false; return; }
         const p = [], t = now() / 1000;
@@ -650,10 +657,14 @@
             }
             // The island view asked for or let go: no answer, as the server gives none.
             if (type === "view") {
+              const began = !!r && fields.on === true && !viewing;
               viewing = !!r && fields.on === true;
+              if (began) message(looksFrame());
               if (viewing && !chain) { chain = true; walkFrame(); }
               return;
             }
+            // Go there's ticket: a sample one, for a speaker on the stage, as the server mints it.
+            if (type === "handoff") return message({ type: "result", requestId, ...(active ? { ok: true, ticket: "fixtureHandoffTicket00" } : { ok: false, error: { code: "not_speaking", retryable: false } }), you: you() });
             if (r && !["setRole", "setMic", "reaction", "hand"].includes(type)) return message({ type: "result", requestId, ...chatOp(type, fields), you: you() });
             if (type === "reaction" && me) {
               const at = now();

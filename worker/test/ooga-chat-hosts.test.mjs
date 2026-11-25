@@ -24,7 +24,7 @@ const socket = () => ({
 globalThis.WebSocketPair = class { constructor() { const client = socket(), server = socket(); const close = server.close; server.close = (code, reason) => { close.call(server, code, reason); client.close(code, reason); }; this[0] = client; this[1] = server; } };
 globalThis.WebSocketRequestResponsePair = class {};
 
-const { Audience, CHAT_PROTOCOL, QUIET_MS, SILENT_MS, SWEEP_MS, LATE_MS, CLOSE, chatName } = await import("../src/audience.js");
+const { Audience, CHAT_PROTOCOL, QUIET_MS, SILENT_MS, SWEEP_MS, LATE_MS, CLOSE, HANDOFF_MS, chatName } = await import("../src/audience.js");
 const { ChatDirectory, startChat, chatTitle, CHATS_MAX, START_GAP_MS } = await import("../src/chat-directory.js");
 const { HOST_HOLD_MS, INVITE_MS, STAGE_HOLD_MS } = await import("../src/chat-roles.js");
 const { bridgeFetch } = await import("../src/chat-bridge.js");
@@ -167,6 +167,32 @@ const speakerOn = async (w, chat, p) => {
   p.a.save(p.connId);
   await p.a.flush();
 };
+
+test("Go there's ticket: only a speaker on the stage gets one, and only another connection of the same account hands it back, once, in time, saying whether the microphone was open", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Handoff", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), dot = await connect(w, chat.id, 4);
+  assert.equal((await ask(amy, { type: "handoff" })).error.code, "not_speaking", "not on the stage yet");
+  await ask(amy, { type: "setRole", role: "speaker" });
+  await speakerOn(w, chat, amy);
+  assert.equal((await ask(dot, { type: "handoff" })).error.code, "not_speaking", "a listener gets none");
+  const first = (await ask(amy, { type: "handoff" })).ticket;
+  assert.match(first, /^[A-Za-z0-9_-]{22}$/);
+  assert.equal((await ask(bea, { type: "redeem", ticket: first })).error.code, "handoff_invalid", "another account's page gets nothing");
+  const island = await connect(w, chat.id, 1);
+  assert.equal((await ask(island, { type: "redeem", ticket: first })).error.code, "handoff_invalid", "a ticket tried by anyone else is gone");
+  const ticket = (await ask(amy, { type: "handoff" })).ticket;
+  const again = (await ask(amy, { type: "handoff" })).ticket;
+  assert.equal((await ask(island, { type: "redeem", ticket })).error.code, "handoff_invalid", "a fresh ticket replaces the account's last");
+  const good = await ask(island, { type: "redeem", ticket: again });
+  assert.deepEqual([good.ok, good.mic], [true, true], "the island's page of the same account: the microphone was open");
+  assert.equal((await ask(island, { type: "redeem", ticket: again })).error.code, "handoff_invalid", "once");
+  const late = (await ask(amy, { type: "handoff" })).ticket;
+  now += HANDOFF_MS;
+  assert.equal((await ask(island, { type: "redeem", ticket: late })).error.code, "handoff_invalid", "too late");
+  assert.equal((await ask(island, { type: "redeem", ticket: "nope" })).error.code, "malformed");
+});
 
 test("a host mutes a speaker: muted for everyone and not pulled until they unmute themselves; a co-host never touches the host", async () => {
   now += START_GAP_MS;
@@ -742,16 +768,51 @@ test("the island view's feed: walkers' positions to those who asked, twice a sec
   const before = cyd.ws.sent.length;
   assert.equal(a.walk(6, [1], [1, 2, 3, 0]).sent, true);
   assert.equal(cyd.ws.sent.length, before, "turned off, none come");
-  // Cyd asks for six a second, Bea keeps two: each is sent at their own rate, and the copy is told to report six times.
+  // Both ask for six a second: Bea, a contributor (the 3D view's), gets them; Cyd, who is not, is held to two. Each is
+  // sent at their own rate, and the copy is told to report six times.
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true, hz: 6 }));
   await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 6 }));
   const got = (p) => p.ws.sent.filter((m) => m.type === "walk").length, [b0, c0] = [got(bea), got(cyd)];
   let seq = 10, ms = 0;
   for (let k = 0; k < 6; k++) { now += 167; ms = a.walk(seq++, [1], [1, 2, 3, 0]).ms; }
   assert.equal(ms, 167, "the copy reports as often as the fastest viewer is sent to");
-  assert.deepEqual([got(bea) - b0, got(cyd) - c0], [2, 6], "a second: two frames to Bea, six to Cyd");
-  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 60 }));
+  assert.deepEqual([got(bea) - b0, got(cyd) - c0], [6, 2], "a second: six frames to Bea, two to Cyd, who is no contributor");
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true, hz: 60 }));
   now += 167;
   assert.equal(a.walk(seq++, [1], [1, 2, 3, 0]).ms, 500, "a rate it does not offer is two a second");
+});
+
+test("the island view's looks: to viewers alone, on change, the last to a viewer starting, kept across a nap, and nothing malformed", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Looks", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
+  const a = w.objects.get(chatName(chat.id)).a, looksOf = (p) => p.ws.sent.filter((m) => m.type === "looks");
+  await a.walking(["gh:1"]);
+  await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
+  assert.equal(looksOf(bea).length, 0, "nothing said yet: nothing to start with");
+  const hat = { item: "bc1gui-green-beanie", version: "5fdd8f47b975be5461f88b2bb9464ad08a106a50064e2d783751ef96101aa86c" };
+  const look = { "gh:1": { e: { selection: hat, size: 110, wardrobe: { pet: { item: "custom", version: null, size: 120 } } }, w: 2, j: 1 } };
+  assert.deepEqual(await a.looks(5, look), { ok: true });
+  assert.deepEqual(looksOf(bea).at(-1), { type: "looks", looks: look }, "a viewer hears them");
+  assert.equal(looksOf(amy).length + looksOf(cyd).length, 0, "only those viewing");
+  assert.deepEqual(await a.looks(6, look), { ok: true });
+  assert.equal(looksOf(bea).length, 1, "unchanged: nothing sent");
+  assert.equal((await a.looks(6, { "gh:1": {} })).ok, false, "an older call is dropped");
+  for (const bad of [{ "gh:1": { w: 3 } }, { "gh:1": { e: { selection: { item: "Bad Hat", version: null } } } }, { "gh:1": { e: { size: 200 } } }, { "x:1": {} },
+    { "gh:1": { e: { wardrobe: { shirt: { item: "shirt-1", version: "nothex" } } } } }, { "gh:1": { owner: 1 } }, { "gh:1": { e: { wardrobe: { shirt: { item: "x".repeat(5000) } } } } }])
+    assert.equal((await a.looks(7, bad)).ok, false, `malformed: ${JSON.stringify(bad).slice(0, 60)}`);
+  assert.equal(looksOf(bea).length, 1, "and none relayed");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
+  assert.deepEqual(looksOf(cyd), [{ type: "looks", looks: look }], "a viewer starting hears the last");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 4 }));
+  assert.equal(looksOf(cyd).length, 1, "a rate change is no new start");
+  assert.deepEqual(await a.looks(8, {}), { ok: true });
+  assert.deepEqual(looksOf(bea).at(-1), { type: "looks", looks: {} }, "nobody walking: nobody to dress");
+  await a.looks(9, look);
+  const { ctx } = w.objects.get(chatName(chat.id)), again = new Audience(ctx, w.env);
+  await ctx.ready;
+  assert.equal(again.looksText, JSON.stringify(look), "kept across a nap");
 });
 
 test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's frames, its land none in the list and the chat", async () => {

@@ -31,14 +31,19 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
   "../js/zone-map.js", "../js/commons-log.js", "../js/format-large.js", "../js/roster-panel.js", "../js/contributor-identities.js", "../js/activity-repos.js",
   "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js", "../js/chat-hosts.js",
   // The island view (island-view.js, with the hosted chats), and its 3D view: the game's own renderer, its models and the
-  // cast to build each speaker's Ooga from, and the baked scenery's reader (OPT_IN, fetched only for a device that can
-  // carry it).
+  // cast to build each speaker's Ooga from, what dresses it as the island does (the hat and wardrobe catalogs and the
+  // modules that put them on a body), and the baked scenery's reader (OPT_IN, fetched only for a device that can carry
+  // it); and what a walker's look may still need, each fetched only once one wears it: the hats' geometry (`hats`), the
+  // wardrobe's pieces (`wardrobe`) and the island's props for a jetpack (`gear`).
   "../js/island-view-data.js", "../js/island-view.js", "../js/math.js", "../js/daylight.js", "../js/scene.js", "../js/compact-geometry.js",
   "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js",
-  "../js/hero-body.js", "../js/characters.js", "../js/characters.gen.js", "../js/island-scene.js", "../js/island-view-live.js"];
+  "../js/hero-body.js", "../js/characters.js", "../js/characters.gen.js", "../js/island-scene.js", "../js/equipment-hats.js",
+  "../js/equipment-hats.gen.js", "../js/character-equipment.js", "../js/equipment-wardrobe.js", "../js/equipment-wardrobe.gen.js",
+  "../js/character-wardrobe.js", "../js/island-view-live.js", "../js/equipment-hat-data.gen.js", "../js/equipment-wardrobe-data.gen.js",
+  "../js/hub-models.js"];
 // Deferred groups a visit fetches only on the visitor's word, never ahead of it: kept out of the idle prefetch
 // (ooga-chat-chunks.js) and the service worker's shell, so an install never downloads them either.
-export const OPT_IN = ["live"];
+export const OPT_IN = ["live", "hats", "wardrobe", "gear"];
 // What a first visit may cost over the wire (index.html, the first-load script, the stylesheet and the art it shows),
 // gzipped, never the deferred chunks. The
 // staged foundation measured about 91 KB, most of it the sign-in picture. The original picture at Retina size (about

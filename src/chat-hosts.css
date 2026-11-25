@@ -102,13 +102,31 @@
   .hc-open-switch input { width: 22px; height: 22px; }
 }
 /* The island view (island-view.js) over a Main Island chat's roster: the flat map or the 3D view under the same faces,
-   Reset view and the full screen button (its usual icon) in its upper corners and Go there in its lower left, and one line saying who walks there.
-   In a short panel (the island's sheet) the view gives way first, down to a stage 96px tall over its line, so one row of
+   Reset view and the full screen button (its usual icon) in its upper corners and Go there in its lower left.
+   In a short panel (the island's sheet) the view gives way first, down to a stage 96px tall, so one row of
    the roster, the emoji bar and the footer stay in sight; the picture keeps its shape, letterboxed in the stage. */
-.hc-room-strip { flex: 0 1 auto; min-height: 118px; display: flex; flex-direction: column; }
+.hc-room-strip { flex: 0 1 auto; min-height: 96px; display: flex; flex-direction: column; }
 .hc-room-strip[hidden], .iv[hidden] { display: none; }
 .iv { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; gap: 4px; }
-.iv-note { flex: none; }
+/* The fold button in the chat's title, a framed island lit while the view is open: folded, the strip is gone and the
+   roster takes its place. The view meets the roster with no gap (the panel's own 10px is taken back) and no line between:
+   who walks there is said to screen readers alone. */
+.iv-fold {
+  flex: none; display: grid; place-items: center; width: 28px; height: 24px; padding: 0; border: 1px solid rgba(243, 239, 228, 0.25);
+  border-radius: 6px; background: transparent; color: rgba(243, 239, 228, 0.6); cursor: pointer;
+}
+.iv-fold[hidden] { display: none; }
+.iv-fold[aria-pressed="true"] { color: var(--accent-text); border-color: rgba(216, 137, 43, 0.5); }
+.iv-fold svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+.iv-fold:hover { background: rgba(243, 239, 228, 0.08); }
+.iv-fold:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.iv-stage[hidden] { display: none; }
+.hc-room-strip:has(> .iv[data-folded="true"]) { display: none; }
+.hc-room-strip { margin-bottom: -10px; }
+.hc-room-strip .iv-stage { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.hc-room-strip:not([hidden]):not(:has(> .iv[data-folded="true"])) + .cloud-roster { border-top-left-radius: 0; border-top-right-radius: 0; }
+.iv-note { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (pointer: coarse) { .iv-fold { width: 40px; height: 32px; } }
 .panel[data-space="on"] > .cloud-roster { min-height: 104px; }
 .iv-stage {
   position: relative; flex: 0 1 auto; width: 100%; aspect-ratio: 4 / 3; min-height: 96px; max-height: 200px; overflow: hidden;
@@ -132,7 +150,6 @@
 /* Go there over the island, in its lower left corner. */
 .iv-stage > .hc-go { position: absolute; left: 6px; bottom: 6px; min-height: 28px; padding: 0 10px; font-size: 11px; }
 .iv-stage > .hc-go[hidden] { display: none; }
-.iv-note { margin: 0; color: var(--accent-text); font-size: 11px; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); overflow-wrap: anywhere; }
 @media (max-width: 399px) { .iv-reset, .iv-full-button, .iv-stage > .hc-go { min-height: 44px; } .iv-full-button { width: 44px; } .iv-stage { max-height: 180px; } }
 /* Full screen (island-view.js `fullscreen`): the view in a layer over the page, its panel's empty strip folded away, and
    the page's own panel placed beside it by the page (Ooga Chat's ooga-chat.css). A screen taller than it is wide puts

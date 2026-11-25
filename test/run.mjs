@@ -17812,6 +17812,15 @@ const oogaChatAppChecks = async () => {
           await click(b, ".iv-full-button");
           await b.sleep(400);
           run.fullOff = await ivNow(b);
+          // The title's fold button folds the view away: no places come, the strip is gone; again, and they come back.
+          await click(b, ".iv-fold");
+          await b.sleep(400);
+          const foldedAt = await ivNow(b);
+          await b.sleep(1500);
+          run.folded = { ...(await ivNow(b)), before: foldedAt.seq, stageHidden: await b.evaluate(`document.querySelector(".iv-stage").hidden`),
+            strip: await b.evaluate(`Math.round(document.querySelector(".hc-room-strip").getBoundingClientRect().height)`), saved: await b.evaluate(`localStorage.getItem("ooga-island-view-folded")`) };
+          await click(b, ".iv-fold");
+          run.unfolded = await ivUntil(b, (s) => s.seq > run.folded.seq && s.live === "on");
         } else {
           run.map = await ivUntil(b, (s) => s.shown && s.count === 2 && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
           await b.screenshot(join(ivShots, `oc-map-${w}.png`));
@@ -17827,20 +17836,32 @@ const oogaChatAppChecks = async () => {
         run.left = await ivUntil(b, (s) => !s.shown);
       } finally { b.close(); }
     }
+    // A GitHub account that is no contributor gets the map on a device that could carry 3D: the 3D view is the
+    // contributors' alone for now, and its code is never fetched.
+    let listenerMap;
+    b = await page(1024, "state=listener&roster=mixed&chats=on");
+    try {
+      await joinOak(b);
+      listenerMap = await ivUntil(b, (s) => s.shown && s.count === 2 && s.faces.length === 2 && s.faces.every((f) => f.green > 0));
+      await b.sleep(1500);
+      listenerMap = await ivNow(b);
+    } finally { b.close(); }
     const islandOk = Object.fromEntries(Object.entries(islandRuns).map(([w, r]) => [w, w === "1024" ? {
       threeD: r.map.shown && r.map.live === "on" && r.map.mode === "3d" && r.map.chunk && r.map.gl >= 1 && ["full", "lite", "base"].includes(r.map.tier) && r.map.hz >= 2
         && r.map.faces.every((f) => f.green > 0) && r.map.inside && !r.map.wide,
       zoom: r.zoomed.distance < r.zoomed.from && r.zoomed.reset && r.home.home && !r.home.reset,
       full: r.fullOn.full && r.fullOn.hosted && r.fullOn.stageW > 500 && r.fullOn.ocLeft > r.fullOn.stageW - 20 && !r.fullOn.wide
         && !r.fullOff.full && !r.fullOff.hosted && r.fullOff.shown && r.fullOff.inside,
+      fold: r.folded.stageHidden && r.folded.seq === r.folded.before && r.folded.strip === 0 && r.folded.saved === "1" && r.unfolded.seq > r.folded.seq && r.unfolded.live === "on",
       paused: r.paused.before === r.paused.after && r.paused.after > 0, resumed: r.resumed.seq > r.paused.after, left: !r.left.shown
     } : {
       map: r.map.shown && r.map.live === "flat" && r.map.mode === "flat" && r.map.faces.length === 2 && r.map.faces.every((f) => f.off < 1 && f.green > 0) && !r.map.chunk && r.map.gl === 0
-        && r.map.note === "2 speakers are walking the chat's island" && r.map.inside && !r.map.wide,
+        && /^2 speakers are walking the chat's island( · \d+ on the clouds)?$/.test(r.map.note) && r.map.inside && !r.map.wide,
       paused: r.paused.before === r.paused.after && r.paused.after > 0, resumed: r.resumed.seq > r.paused.after, left: !r.left.shown
     }]));
-    record("Ooga Chat island view: a chat with speakers walking its island shows each walker's face ringed over them; their places come only while the strip can be seen; one view chosen by the device: 3D over the baked scenery where it can carry it (zoom, Reset view, Full screen with the app's column beside it), else the flat map with no 3D code fetched; leaving the chat takes the strip away; at 1024 and 390 pixels",
-      Object.values(islandOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ islandOk, islandRuns }));
+    islandOk.listener = { map: listenerMap.shown && listenerMap.mode === "flat" && listenerMap.live === "flat" && !listenerMap.chunk && listenerMap.gl === 0 && listenerMap.hz === 2 && listenerMap.faces.length === 2 };
+    record("Ooga Chat island view: a chat with speakers walking its island shows each walker's face ringed over them; their places come only while the strip can be seen; one view chosen by the device: 3D over the baked scenery where it can carry it (zoom, Reset view, Full screen with the app's column beside it, a fold button in the chat's title folding it away), else the flat map with no 3D code fetched; a GitHub account that is no contributor keeps the map; leaving the chat takes the strip away; at 1024 and 390 pixels",
+      Object.values(islandOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ islandOk, islandRuns, listenerMap }));
   } finally {
     server.close();
     rmSync(out, { recursive: true, force: true });

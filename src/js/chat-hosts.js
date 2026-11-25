@@ -10,7 +10,7 @@
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
 // whether Request to speak reads Speak now on an open stage; `goThere`, `{ state(room), press(), subscribe(fn) }`: Go
 // there on the island view (the island's: its Ooga onto the chat's island, Go back while there, chat-copy.js; Ooga
-// Chat's: the chat opened on the island, ooga-chat-hosts.js), `state` its `{ label, words, disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), scenery, fullscreen }`, the island view's
+// Chat's: the chat opened on the island, ooga-chat-hosts.js), `state` its `{ label, words, disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), liveAllowed(), scenery, fullscreen }`, the island view's
 // map picture, how the page brings the 3D view's code (none: the flat view alone, as the island page has it), where its
 // baked scenery is served and whether it offers full screen (island-view.js). `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
@@ -43,7 +43,7 @@
 //   still, and each speaker walking the chat's copy of it (a row's `walking`) where they stand, with Go there over it.
 //   The chat is asked for walkers' places (`{ type: "view", on: true }`) only while someone walks, the panel is shown
 //   and the page is visible, and told `on: false` as that ends; a new connection asks again. Its `walk` frames come
-//   through `chats.hear`.
+//   through `chats.hear`, and how the walkers look (`looks` frames, whenever that changes) the same way.
 // Pop-ups (a tile's menu, the queue, a confirmation) are one wood-framed box, a sheet at the screen's foot under 400px;
 // the look is chat-hosts.css. The pure parts (`parseList`, `actionsFor`, `noticeText`, `joinNames`) need no document.
 (() => {
@@ -289,6 +289,8 @@
           make("span", "hc-chat-row-host", `Hosted by ${c.host.display}`), make("span", "hc-chat-row-count", `${c.speakers} speaking · ${c.listeners} listening`)),
         make("span", "panel-chip", ZONE_NAMES[c.zone]));
         pick.addEventListener("click", () => showPreview(c, pick));
+        // A row drawn again while its preview is open (a portrait arriving) is where Cancel hands the focus back.
+        if (previewing && previewing.id === c.id && previewFrom && rows.contains(previewFrom)) previewFrom = pick;
         return make("li", "", pick);
       }));
       set(listNote, "textContent", entries.length ? "" : github ? "Nobody is chatting right now. Start one and others can join." : "Nobody is chatting right now. A contributor can start one; you can join and ask to speak.");
@@ -625,6 +627,7 @@
     // What the chat says: notices, answers to this page's own requests, and the island view's walkers.
     const off = chats.hear((msg) => {
       if (msg.type === "walk") { isle?.walk(msg); return; }
+      if (msg.type === "looks") { isle?.looks(msg); return; }
       if (msg.type === "result") {
         if (!mine.has(msg.requestId)) return;
         const after = mine.get(msg.requestId);
@@ -759,14 +762,15 @@
     // seen, at the rate the view says this viewer can take (`hz`). `viewSent` is what this connection was last told
     // ("on:hz", "off", or null: nothing yet, or a new connection).
     const isle = islandView && BL.islandView ? BL.islandView.create({ picture: islandView.picture, faceOf: rowFace, loadLive: islandView.loadLive || null,
-      scenery: islandView.scenery, fullscreen: !!islandView.fullscreen }) : null;
+      liveAllowed: islandView.liveAllowed, scenery: islandView.scenery, fullscreen: !!islandView.fullscreen, onFold: () => syncView() }) : null;
     let viewSent = null;
     function syncView() {
       if (!state) return;
       // Every Main Island chat shows its island, standing still until someone walks it; only walkers' places are asked for.
-      const place = !!isle && !!room && room.zone === "main", seen = place && shown() && !document.hidden;
+      const place = !!isle && !!room && room.zone === "main", seen = place && shown() && !document.hidden && !isle.folded;
       const want = seen && people.some((p) => p.walking);
       set(strip, "hidden", !place);
+      if (isle) set(isle.fold, "hidden", !place);
       if (isle) isle.update({ place, rows: room ? people : [], talking: state.voice.talking || [], speaking: !!state.voice.speaking, self: me, active: seen });
       if (!room || state.audience.status !== "live") { viewSent = null; return; }
       const hz = isle ? isle.hz : 2, told = want ? `on:${hz}` : "off";
@@ -783,6 +787,8 @@
     // The Requests chip stands in the panel's title, right of the zone tag.
     const zoneTag = head.querySelector(".panel-chip");
     if (zoneTag) zoneTag.after(requests); else head.append(requests);
+    // The island view's fold button stands after them, in every Main Island chat.
+    if (isle) { isle.fold.hidden = true; requests.after(isle.fold); }
     // The strip over the roster: the island view, while someone walks the chat's island.
     const strip = make("div", "hc-room-strip");
     strip.hidden = true;

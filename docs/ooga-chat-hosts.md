@@ -358,7 +358,7 @@ Agreed 2026-11-23:
 
 - **What a copy carries:** the main island's open air as it is (scenery, the banana pile, the clouds), HQ and its
   basement down its open ramps, and the chat's members' Oogas, nothing else: no NPC crew or gorillas, every other cave
-  mouth and door sealed in stone (the OBL cave's mirror, the signs over the sealed mouths and the Oogatron taken down),
+  mouth and door sealed in stone (the OBL cave's mirror, the signs over the sealed mouths, the Oogatron, the islets at sea and the gulls and sails taken down),
   no games, and none of the other islands or their bridges (the Mempool island, Merge Rock, the Timechain Sphere's islet,
   ₿IFRÖST's islet), so a walker off a bridgehead falls to the water and comes back beside the pile.
 - **Who goes:** speakers alone (the host, co-hosts and invited speakers) who are signed into the island with an Ooga.
@@ -402,33 +402,55 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
 
 - **The strip** shows in every Main Island chat (none in a Voice only or DSB Land chat, which have no picture yet). While
   nobody walks the chat's island it is the island standing still, drawn once and again only when its size or picture
-  changes, with "Nobody is on the chat's island right now" under it. In a short panel (the island's sheet) it gives way
-  first, down to a 96px stage, so a row of the roster, the emoji bar and the footer stay in sight.
+  changes. A line for screen readers alone says who walks it and who sits on the clouds over it (every speaker not walking it: "Bea is
+  on a cloud over the island"), or that the chat waits for its speakers. In a short panel (the island's sheet) it gives
+  way first, down to a 96px stage, so a row of the roster, the emoji bar and the footer stay in sight.
 - **Go there**, in the stage's lower left corner, for a speaker (`goThere`): on the island the Ooga onto the chat's island
-  and back (chat-copy.js); in Ooga Chat, for a GitHub account, the same chat opened on the island in a new tab
-  (`ooga-chat-hosts.js`; the bootstrap's `island`, the edge's `ISLAND_ORIGIN`): `/?chat=<id>&mic=<0|1>`. The island page
-  (`chat-call.js`) takes the two parameters out of the address at once, keeps the wish in sessionStorage
-  (`ooga-chat-arrive`, five minutes) through a sign-in and opens the chat, listening. Anyone could post such a link, so it
-  never speaks by itself: a visitor who may speak there is asked first (voice-handoff.js's card, "Speak from here?",
-  saying whether the microphone will be on), and only Switch here, a press on the island page, takes the account's voice
-  from Ooga Chat with `join({ takeover })` (inside the press, the gesture a microphone needs), unmutes when the address
-  said it was open there, and walks the Ooga in once nothing stands in the way (chat-copy.js `goSoon`). Not now leaves
-  the voice in Ooga Chat and the visitor listening. The Audience takes that move as a `handoff`: the account's place on
-  the stage, and a co-host's rank, stay with it. Ooga Chat keeps speaking until the island has the voice, so nothing is
-  lost while the island loads, then steps out of the chat ("Your chat moved to Ooga Booga Land") so the two never both
-  play it. The host is still the host: roles belong to the account.
+  and back (chat-copy.js); in Ooga Chat, for a GitHub account, the same chat opened on the island in the same tab
+  (`ooga-chat-hosts.js`; the bootstrap's `island`, the edge's `ISLAND_ORIGIN`): `/?chat=<id>&mic=<0|1>#handoff=<ticket>`.
+  A speaker on the stage first asks the chat for a ticket (`{ type: "handoff" }`, answered `{ ticket }`): the Audience
+  mints one for that account alone, keeps it a minute (`HANDOFF_MS`) with whether the microphone was open, and a fresh
+  one replaces the last. The ticket rides in the fragment, which no server or log sees. The island page (`chat-call.js`)
+  takes the address's parts out at once, keeps the wish in sessionStorage (`ooga-chat-arrive`, five minutes) through a
+  sign-in and opens the chat, listening; with a ticket it hands it back (`{ type: "redeem", ticket }`, answered
+  `{ mic }`) on a connection of the same account, once and in time, and then, with no card, takes the voice with
+  `join({ takeover })`, opens the microphone if it was open there (the chat's word, not the address's) and walks the Ooga
+  in once nothing stands in the way (chat-copy.js `goSoon`). A browser that holds sound until a tap plays the chat on the
+  first tap or key (ooga-chat-media.js `blocked`). Without a ticket (a listener, an older chat, no answer within 2.5 s)
+  or with one the chat refuses, the link is one anyone could post, so it never speaks by itself: a visitor who may speak
+  there is asked first (voice-handoff.js's card, "Speak from here?", saying whether the microphone will be on), and only
+  Switch here, a press on the island page, takes the voice (inside the press, the gesture a microphone needs), unmuting
+  when the address said it was open there. Not now leaves the visitor listening. The Audience takes the move as a
+  `handoff`: the account's place on the stage, and a co-host's rank, stay with it. The host is still the host: roles
+  belong to the account.
+- **Folding it away.** A button in the chat's title (a framed island, lit while the view is open) folds the view away,
+  the roster taking its place, and brings it back, this browser's choice (localStorage `ooga-island-view-folded`);
+  folded, nothing is drawn, the 3D view is not fetched and no places are asked for. Open, the view meets the roster with
+  no gap.
 - **Asking for places.** A chat member's socket asks with `{ type: "view", on: true, hz }` only while someone walks (a
-  row with `walking`), the strip shows, the panel is shown and the page is visible, and says `on: false` as any of that
+  row with `walking`), the strip shows, the panel is shown and the page is visible and the view is not folded, and says `on: false` as any of that
   ends; a new connection asks again. `hz` is how many places a second the viewer can take (`WALK_RATES`: 2, or 4 and 6
-  for a 3D view whose scenery tier is `lite` or `full`, island-view.js `hz`). Only then does the Audience send `{ type:
+  for a 3D view whose scenery tier is `lite` or `full`, island-view.js `hz`; the Audience holds anyone but a GitHub
+  contributor, its `eligible`, to 2, as it does one whose standing is revoked). Only then does the Audience send `{ type:
   "walk", seq, p: [id, x, y, z, yaw, …] }` (`walk-v1`), to each viewer at its own rate, every rate scaled down together
   past the chat's fan-out budget (`WALK_FANOUT` frames a second); its answer to the copy's `walk` says how often to
   report (`ms`, the fastest viewer's), which the copy keeps within 160 to 500 ms (room-copy.js `WALK_MS_MIN`, `WALK_MS`).
   A frame is read whole or not at all (`parseWalk`); each walker is eased from where it was shown over the time between
   frames, and one missing from a frame leaves. The copy relays places only after a snapshot, so a walker who has not
   moved since a viewer asked shows once they next move.
+- **How they look.** The copy also tells the chat how each walker looks, only when that changes (an arrival or
+  departure, an equipment save, a pose that changes what is in hand or on the back), one call in flight
+  (room-copy.js `looked`): `looks(seq, looks)`, an entry a walker (`gh:<id>`) of their saved equipment's appearance
+  (`e`: the hat's `selection` and `size` and the `wardrobe`, what the island's room relays to other players, never the
+  record's revision, declined updates or anything else) and what they have out (`w`: 1 the primary in hand, 2 the gun,
+  from crew.js `weaponFlags`' hand alone, never the rounds or the aim; `j`: 1 a jetpack worn, never its flame). The
+  Audience checks its shape and size (`LOOKS_MAX`), keeps the last (stored, so a woken chat still has it) and sends
+  `{ type: "looks", looks }` whole to every connection viewing when it changes, and to a viewer as it starts viewing
+  (`view` on). A page checks each piece against its own catalogs as it puts it on; one it does not know is left off.
 - **One view, chosen by the device** (`BL.islandView.capable`, once a page, never toggled): the 3D view where the page
-  offers it (Ooga Chat) and the device can carry it (WebGL2, `DecompressionStream`, no data saver or reduced data, and no
+  offers it (Ooga Chat) to a viewer it is offered to (`liveAllowed`: for now a signed-in GitHub contributor, the
+  server's word through `BL.oogaChatAuth.gates`, asked again on every update; another GitHub account or an X account
+  gets the map) and the device can carry it (WebGL2, `DecompressionStream`, no data saver or reduced data, and no
   report of under 4 GB of memory or 4 cores), else the flat map. The island page keeps the flat map: it is the island
   already.
 - **The map.** `scripts/island-view.mjs` (after `npm run build`) bakes it in the suite's Chrome: the built hub at midday
@@ -440,9 +462,17 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   face; a talking walker's green ring pulses.
 - **The 3D view.** `src/js/island-view-live.js` makes one renderer (gl-renderer.js) on the strip's own canvas, drawing the
   island as a chat's copy shows it from the baked scenery (`src/js/island-scene.js`), each walker as their own Ooga
-  (models.js `caveman` over characters.js `traitsFor`, as the island builds it, worn wardrobe aside), swinging its
-  limbs as it walks, under the baked light; the faces stand over their heads on the 2D canvas above it, and the map shows while it loads (or stays if
-  it can't). A drag turns the island, a two-finger, right or Shift drag pans it, the wheel or a pinch zooms, held to the
+  (models.js `caveman` over characters.js `traitsFor`, as the island builds it), swinging its limbs as it walks, its
+  pet (a character's own `parts.dog`) beside it moving its legs in the companions' gait (models.js `poseQuadruped`),
+  under the baked light. Each is dressed from the chat's `looks` as other players see it: its hat and wardrobe (the pet's
+  size among it) put on by the island's own character-equipment.js and character-wardrobe.js, its primary in its hand or
+  the gun held before it with both arms raised to it, and a jetpack on its back (its own, or the island's from
+  hub-models.js). The live chunk carries the hat and wardrobe catalogs and those modules (about 32 KB gzipped); the hats'
+  geometry (`hats`, about 103 KB), the wardrobe's pieces (`wardrobe`, about 115 KB) and the island's props for a jetpack
+  (`gear`, about 36 KB) are chunks of their own, each fetched only once a walker first wears something that needs it
+  (`OPT_IN`, never prefetched). It does not pose a weapon as the island's crew does (no slung weapons, aiming, recoil
+  or reloads), walk the pet at its heel or fly it, or light the jetpack's flame. The faces stand over their heads on the
+  2D canvas above it, and the map shows while it loads (or stays if it can't). A drag turns the island, a two-finger, right or Shift drag pans it, the wheel or a pinch zooms, held to the
   island and above the sea, and Reset view puts it back. `scripts/island-scene.mjs` (after `npm run build`) bakes the
   scenery from the built hub in copy mode: every node still drawn but pictures, glass, clipped and projected surfaces,
   lines, clouds, birds, boats, characters and anything buried (HQ, its basement, the caves' insides), sorted into layers
@@ -462,4 +492,6 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   beside it (under it on a screen taller than it is wide), in the browser's own full screen where there is one; the
   button again, or Escape, puts it back in the strip.
 - `?chats=on` (Ooga Chat's fixture) and `?debug=1&chats=fixture` (the island's) mark two of Sample Oak's chat's
-  speakers as walking and send their places twice a second while the view asks.
+  speakers as walking and send their places twice a second while the view asks, and how they look as it starts: Sample
+  Oak in a top hat, a shirt and glasses with the gun out, Sample Reed as a character with a pet (a lion cub, grown a
+  size), its primary in hand and a jetpack on.

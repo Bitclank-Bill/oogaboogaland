@@ -344,11 +344,12 @@
   // every cave mouth but HQ's ramps, which stay open down to HQ and its basement, is sealed with the stone face a dark
   // mouth wears (`copyBarred`, through `crossesSealedCave`); the doors that change scene refuse with SEALED. Only the
   // main island stands: the Mempool island, Merge Rock, the Timechain Sphere's islet and ₿IFRÖST's islet go with their
-  // bridges, Heimdall, the Oogatron, the OBL cave's mirror and the signs over the sealed mouths (`copyOffMap`, hidden
+  // bridges, Heimdall, the Oogatron, the OBL cave's mirror, the signs over the sealed mouths, the islets out at sea and the
+  // gulls and sails round the island (`copyOffMap`, hidden
   // in `copyMask`, so they neither draw nor stand anywhere to walk on or bump into: a walker off a bridgehead falls to
   // the water and comes back by the pile), their lamps take no light (`copyOff`), and none of them runs: the Mempool
   // island's weather, water, wildlife and paintings, Merge Rock's turn, glow and idle carving, the Sphere's doorway,
-  // ₿IFRÖST's field, window and Heimdall, the Oogatron's repaints and the mirror's ripples all rest until the trip
+  // ₿IFRÖST's field, window and Heimdall, the Oogatron's repaints, the mirror's ripples and the gulls and sails all rest until the trip
   // ends, their meshes kept on the GPU for the way back. The visitor's own Ooga beams out and in through `copyBeam`
   // (sleep-beam.js) and, between, stands hidden (`copySelfHidden`).
   let copyOn = false, copyBeam = null, copySelfHidden = false;
@@ -2305,6 +2306,8 @@
     for (const node of [gulls.node, shore.node, ...boats.nodes]) {
       addChild(root, node);
       placed.push(node);
+      // A chat's copy is Main Island alone: no gulls or sails, which belong to the island's own sea.
+      copyOffMap.push(node);
     }
     life = { gulls, shore, boats };
   };
@@ -8325,7 +8328,7 @@
       }
     }
     if (lawn && lawn.version !== island.path.version) layLawn();
-    if (life && !architectCave?.active) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
+    if (life && !architectCave?.active && !copyOn) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
     now = elapsed;
     hour = clock.read();
     // A Cloud Hopper run flies under its level's own fixed sky, sampled once as it begins; the clock's hour still

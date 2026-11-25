@@ -2,8 +2,8 @@
 // of a Main Island chat (chat-hosts.js's `.hc-room-strip`), the island as a chat's copy of it shows it (Main Island
 // alone), standing still until a speaker walks the copy, each who does shown where they stand. One view, chosen once a
 // page by the device (`capable`), never toggled: the flat bird's-eye picture (scripts/island-view.mjs, its matrix
-// island-view-data.js) with each walker's Ooga face, or where the page offers it (`loadLive`, Ooga Chat's) and the
-// device can carry it (WebGL2, enough memory and cores, no data saver or connection it reports as slow), the 3D view (island-view-live.js) over the
+// island-view-data.js) with each walker's Ooga face, or where the page offers it (`loadLive`, Ooga Chat's) to a viewer
+// it allows (`liveAllowed`: Ooga Chat's, a GitHub contributor; asked again on every update) and the device can carry it (WebGL2, enough memory and cores, no data saver or connection it reports as slow), the 3D view (island-view-live.js) over the
 // baked scenery at the tier the viewer's connection allows (island-scene.js), the picture showing while it loads and
 // staying if it can't. In 3D the viewer turns the island with a drag, pans with a two-finger drag, a right or Shift
 // drag, zooms with the wheel or a pinch, and Reset view puts it back. It draws only while shown and active and
@@ -11,11 +11,14 @@
 // a frame takes, a sixtieth of a second at best), and asks the chat for walkers' places a few times a second more for
 // a viewer whose connection and device can take it (`hz`: 2, 4 or 6). Full screen (`fullscreen`, Ooga Chat's) moves the
 // view into a layer over the page, the chat's panel beside it (or under it on a tall narrow screen), in the browser's
-// own full screen where it has one. Reads nothing at load but window.BL.
-// `create({ picture, faceOf(row), loadLive(), scenery, fullscreen })` returns `{ node, stage, update({
-// place, rows, talking, speaking, self, active }), walk(msg), hz, mode, dispose() }`: `place` whether the chat has an
+// own full screen where it has one. Its fold button (`fold`, stood in the chat's title by the page; `onFold`, `folded`) folds the
+// view away, this browser's choice (localStorage `ooga-island-view-folded`): nothing drawn and no places asked for until
+// it is opened again. Who walks there and who sits on the clouds is a line for screen readers (`.iv-note`). Reads nothing at load but window.BL.
+// `create({ picture, faceOf(row), loadLive(), liveAllowed(), scenery, fullscreen })` returns `{ node, stage, update({
+// place, rows, talking, speaking, self, active }), walk(msg), looks(msg), hz, mode, dispose() }`: `place` whether the chat has an
 // island to show, `rows` the chat's roster rows (the walkers are those with `walking`), `talking` the ids heard
 // speaking and `speaking` the visitor's own meter, `self` the visitor's id, `active` whether the strip can be seen now.
+// `looks` takes a `looks` frame (audience.js): how each walker looks, which the 3D view dresses their Ooga in.
 // `parseWalk(msg, walks, now)` and `project(view, x, y, z, out)` are pure.
 (() => {
   "use strict";
@@ -102,7 +105,11 @@
   const FRAME_MIN = 1000 / 60, FRAME_MAX = 1000 / 6;
   // The full screen button's marks: corners out (to enter) and in (to leave).
   const FULL_IN = "M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4", FULL_OUT = "M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4";
-  const create = ({ picture, faceOf, loadLive = null, scenery = "art", fullscreen = false }) => {
+  // The fold button's mark, a framed island (a picture's frame over hills), lit while the view is open. Folded is this
+  // browser's choice.
+  const FOLD_MARK = "M1.5 3h13v10h-13zM2 12l4-4.5 3 3 2-2 3.5 3.5", FOLD_KEY = "ooga-island-view-folded";
+  const foldedSaved = () => { try { return localStorage.getItem(FOLD_KEY) === "1"; } catch { return false; } };
+  const create = ({ picture, faceOf, loadLive = null, liveAllowed = () => true, scenery = "art", fullscreen = false, onFold = null }) => {
     const view = BL.islandViewData.main, state = walks();
     const node = document.createElement("div"), stage = document.createElement("div"), map = document.createElement("canvas");
     const reset = document.createElement("button"), full = document.createElement("button"), note = document.createElement("p");
@@ -124,6 +131,18 @@
     full.append(icon);
     note.className = "iv-note";
     note.setAttribute("aria-live", "polite");
+    // Fold (`fold`, which the page stands where it likes: the chat's title): the view folds away and the roster takes its
+    // place; nothing is drawn or asked for meanwhile. The line saying who is there is for screen readers alone.
+    const fold = document.createElement("button");
+    const foldIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg"), foldMark = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    fold.type = "button";
+    fold.className = "iv-fold";
+    foldIcon.setAttribute("viewBox", "0 0 16 16");
+    foldIcon.setAttribute("aria-hidden", "true");
+    foldMark.setAttribute("d", FOLD_MARK);
+    foldIcon.append(foldMark);
+    fold.append(foldIcon);
+    let folded = foldedSaved();
     stage.append(map, reset, full);
     node.append(stage, note);
     const g = map.getContext("2d");
@@ -157,6 +176,8 @@
     const faces = new Map();
     // Each walker's Ooga for the 3D view: the character the chat names for them, else their login (hashed, as the island does).
     const names = new Map();
+    // And how each looks, as the chat last said (`looks`): an entry a walker, kept whole until the next frame.
+    let looked = new Map();
     // A walker with no picture of their own shows the native Ooga face, as the roster's tiles do.
     let plain = null;
     if (BL.nativeIcons && typeof XMLSerializer === "function") {
@@ -176,7 +197,8 @@
       return f;
     };
     // `mode`: "flat" (the picture), "loading" (the picture while the 3D view comes), "3d", or "flat" again if it failed.
-    const wants3d = !!loadLive && capable();
+    // Asked again on every update, so a viewer who stops being allowed it (signing out) goes back to the picture.
+    const wants3d = () => !!loadLive && liveAllowed() && capable();
     let rows = [], walking = 0, shown = false, active = false, raf = 0, live = null, mode = "flat", tier = "", hz = 2, width = 0, height = 0, dpr = 1;
     let last = 0, cost = FRAME_MIN, dirty = true;
     const changed = () => { dirty = true; if (shown && active) draw(); };
@@ -213,7 +235,7 @@
         for (let i = 0; i < MAX; i++) {
           if (state.ids[i] === null) { live.place(i, 0, 0, 0, 0, false); continue; }
           placeOf(state, i, now, NOW);
-          live.place(i, NOW.x, NOW.y, NOW.z, NOW.yaw, true, names.get(state.ids[i]) || "");
+          live.place(i, NOW.x, NOW.y, NOW.z, NOW.yaw, true, names.get(state.ids[i]) || "", looked.get(state.ids[i]) || null);
         }
         live.render();
       } else {
@@ -272,7 +294,7 @@
     // A renderer's dispose gives its context up for good, so a canvas is never reused.
     let glCanvas = null, liveTry = 0;
     const startLive = () => {
-      if (!wants3d || live || mode === "loading" || mode === "failed" || !shown) return;
+      if (!wants3d() || live || mode === "loading" || mode === "failed" || !shown) return;
       mode = "loading";
       paint();
       const mine = ++liveTry;
@@ -300,6 +322,8 @@
       if (live) { live.dispose(); live = null; }
       if (glCanvas) { glCanvas.remove(); glCanvas = null; }
       if (mode !== "failed") mode = "flat";
+      tier = "";
+      hz = 2;
     };
     // --- turning, panning and zooming the 3D view ---
     const pointers = new Map();
@@ -373,17 +397,35 @@
     full.addEventListener("click", (e) => { if (e.detail) full.blur(); setFull(!isFull); });
     const onFullChange = () => { if (browserFull && !document.fullscreenElement) { browserFull = false; setFull(false); } };
     const onKey = (e) => { if (e.key === "Escape" && isFull && !e.defaultPrevented) setFull(false); };
+    fold.addEventListener("click", (e) => {
+      if (e.detail) fold.blur();
+      folded = !folded;
+      try { if (folded) localStorage.setItem(FOLD_KEY, "1"); else localStorage.removeItem(FOLD_KEY); } catch { /* kept for this page alone */ }
+      if (folded) setFull(false);
+      paint();
+      // The page says again whether the view is seen (and asks for places or stops), which redraws it.
+      if (onFold) onFold(folded); else changed();
+    });
     document.addEventListener("fullscreenchange", onFullChange);
     document.addEventListener("keydown", onKey);
     const paint = () => {
       node.hidden = !shown;
+      stage.hidden = folded;
+      node.dataset.folded = String(folded);
+      const fwords = folded ? "Show the island view" : "Hide the island view";
+      if (fold.title !== fwords) { fold.title = fwords; fold.setAttribute("aria-label", fwords); }
+      fold.setAttribute("aria-pressed", String(!folded));
       stage.dataset.live = mode === "3d" ? "on" : mode;
       const words = isFull ? "Exit full screen" : "Full screen";
       if (full.title !== words) { full.title = words; full.setAttribute("aria-label", words); }
       mark.setAttribute("d", isFull ? FULL_OUT : FULL_IN);
       full.setAttribute("aria-pressed", String(isFull));
       const names = rows.filter((row) => row.walking).map((row) => row.display || row.login);
-      const where = !names.length ? "Nobody is on the chat's island right now" : names.length === 1 ? `${names[0]} is walking the chat's island` : `${names.length} speakers are walking the chat's island`;
+      // A speaker not walking the island sits on a cloud over it (the copy's clouds, docs/ooga-chat-hosts.md).
+      const aloft = rows.filter((row) => row.role === "speaker" && !row.walking).map((row) => row.display || row.login);
+      const walked = names.length === 1 ? `${names[0]} is walking the chat's island` : `${names.length} speakers are walking the chat's island`;
+      const clouds = aloft.length === 1 ? `${aloft[0]} is on a cloud over the island` : `${aloft.length} speakers are on the clouds over the island`;
+      const where = names.length && aloft.length ? `${walked} · ${aloft.length} on the clouds` : names.length ? walked : aloft.length ? clouds : "Waiting for the chat's speakers";
       map.setAttribute("aria-label", names.length ? `Map of the chat's island: ${names.join(", ")}` : "Map of the chat's island");
       const text = mode === "loading" ? `${where} · the 3D view is loading…` : where;
       if (note.textContent !== text) note.textContent = text;
@@ -402,8 +444,10 @@
       if (show && !pictureAsked) { pictureAsked = true; image.src = picture; }
       const was = shown;
       shown = show;
-      active = !!next.active;
+      // Folded, nothing is drawn: the page stops asking for places too (it reads `folded`).
+      active = !!next.active && !folded;
       if (!shown && was) { setFull(false); endLive(); }
+      else if ((live || mode === "loading") && !liveAllowed()) { setFull(false); endLive(); }
       // Nobody walking (or the strip gone): the next walk starts afresh, its first frame placing every walker where they
       // stand, and no face is left behind from the last.
       if ((!shown || !walking) && state.count) {
@@ -415,6 +459,17 @@
       if (shown && active) { resize(); startLive(); changed(); } else stop();
     };
     const walk = (msg) => { const took = parseWalk(msg, state, performance.now()); if (took && shown && active) draw(); return took; };
+    // A `looks` frame (`{ type: "looks", looks: { "gh:<id>": { e, w, j } } }`): each entry checked by the 3D view as it
+    // dresses an Ooga (island-view-live.js `dress`), the frame only for its shape here.
+    const looks = (msg) => {
+      const all = msg && msg.looks;
+      if (!all || typeof all !== "object" || Array.isArray(all)) return false;
+      const next = new Map();
+      for (const [id, look] of Object.entries(all)) if (ID.test(id) && look && typeof look === "object" && !Array.isArray(look) && next.size < MAX) next.set(id, look);
+      looked = next;
+      changed();
+      return true;
+    };
     // Where each walker's face stands on the strip now, in CSS pixels (the checks', made on call).
     const placed = () => {
       const now = performance.now(), out = [];
@@ -427,7 +482,7 @@
       }
       return out;
     };
-    const self = { node, stage, update, walk, placed,
+    const self = { node, stage, fold, update, walk, looks, placed, get folded() { return folded; },
       dispose() {
         setFull(false); shown = active = false; stop(); endLive(); sizes?.disconnect(); faces.clear();
         document.removeEventListener("fullscreenchange", onFullChange); document.removeEventListener("keydown", onKey);
