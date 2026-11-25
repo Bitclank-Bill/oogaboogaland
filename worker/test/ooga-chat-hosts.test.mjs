@@ -323,6 +323,48 @@ test("a drop the runtime reports late counts from the last ping too; one reporte
   assert.equal(you(cyd).rank, "cohost", "a close reported at once holds the full two minutes");
 });
 
+test("Go there from Ooga Chat: the same account taking its own voice to the island's page keeps a co-host's rank and the stage", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Handoff", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  const a = w.objects.get(chatName(chat.id)).a;
+  await ask(amy, { type: "cohost", id: "gh:2", on: true });
+  await ask(bea, { type: "cohostAnswer", accept: true });
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  const offers = notices(bea, "cohost_offer").length;
+  // Bea's island page (its `ob_` principal) takes her voice on her word.
+  const island = await connect(w, chat.id, 2, { principal: "ob_2" });
+  const taken = await ask(island, { type: "setRole", role: "speaker", takeover: true });
+  await w.settle();
+  assert.equal(taken.ok, true);
+  assert.equal(a.roles.rankOf("gh:2"), "cohost", "still a co-host");
+  assert.equal(notices(bea, "cohost_offer").length, offers, "no offer card: she did not leave the stage");
+  assert.ok(bea.ws.sent.some((m) => m.type === "you" && m.reason === "moved"), "Ooga Chat's page hears its voice moved");
+  assert.equal(a.model.conns.get(island.connId).lease.state, "pending", "the island page holds the lease");
+});
+
+test("a speaker found silent holds their place on the stage from the last ping, not from when the sweep found them", async () => {
+  now += START_GAP_MS;
+  const w = await world();
+  const { chat } = await startChat(w.env, host(1), { title: "Held", zone: "main" });
+  const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2);
+  const { a, ctx } = w.objects.get(chatName(chat.id));
+  await ask(amy, { type: "invite", id: "gh:2" });
+  assert.equal((await ask(bea, { type: "setRole", role: "speaker" })).ok, true);
+  await speakerOn(w, chat.id, bea);
+  const quiet = now;
+  bea.ws.silentAt = quiet;
+  now = quiet + SILENT_MS;
+  await ctx.storage.setAlarm(null);
+  await a.alarm();
+  await w.settle();
+  assert.equal(bea.ws.closed.code, CLOSE.silent);
+  assert.deepEqual(a.roles.held(quiet + STAGE_HOLD_MS - 1), ["gh:2"], "held until a minute after the last ping");
+  assert.deepEqual(a.roles.held(quiet + STAGE_HOLD_MS), [], "and no longer");
+});
+
 test("End chat: everyone hears it, every socket closes, and the list forgets it", async () => {
   now += START_GAP_MS;
   const w = await world();

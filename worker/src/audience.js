@@ -594,7 +594,12 @@ export class Audience extends DurableObject {
     // A chat keeps a speaker's place on the stage a while unless they went back to listening themselves.
     const c = this.model.conns.get(connId);
     // Gone to another chat's stage (`moved`) is the speaker's own word too: their place here goes.
-    if (this.roles && lease && c) this.stageLeft(c.id, reason === "listener" || reason === "moved");
+    if (!this.roles || !lease || !c) return;
+    // The same account taking its own voice to another of its connections in this chat (`handoff`: Switch here, Go there
+    // from Ooga Chat): its place, and a co-host's rank, stay with it; the place is held as for a drop until the new
+    // lease, granted at once, takes it. Its island and directory words are the new lease's to say.
+    if (reason === "handoff") { if (this.roles.leaseEnded(c.id, false, Date.now()).changed) this.background(this.rolesChanged()); return; }
+    this.stageLeft(c.id, reason === "listener" || reason === "moved");
   }
 
   /** Ooga Chat speakers' publications changed: the Room's island players with an open outdoor grant hear them. */
@@ -636,7 +641,7 @@ export class Audience extends DurableObject {
     const now = since, c = this.model.disconnect(connId, hold ? { quietUntil: now + QUIET_MS, until: now + (R.host === was.id ? HOST_HOLD_MS : STAGE_HOLD_MS) } : null);
     if (hold) this.background(this.saveQuiet());
     if (c && this.roles) {
-      if (c.lease) this.stageLeft(c.id, false);
+      if (c.lease) this.stageLeft(c.id, false, now);
       if (!this.present(c.id)) {
         // Gone altogether: their request goes (hosts could not answer it), and a host's hold starts.
         const cancelled = this.roles.cancel(c.id).changed, away = this.roles.presence(c.id, false, now).changed;
@@ -840,7 +845,7 @@ export class Audience extends DurableObject {
       if (!takeover) { this.close(o.connId, CLOSE.replaced, "replaced"); continue; }
       const lease = this.model.endLease(o.connId);
       this.save(o.connId);
-      this.leaseEnded(o.connId, lease, "moved");
+      this.leaseEnded(o.connId, lease, "handoff");
       this.tellYou(o.connId, "moved");
     }
     // Leave is asked again after every wait above: an invite may have lapsed, or a host moved them, meanwhile.
@@ -957,10 +962,11 @@ export class Audience extends DurableObject {
   }
 
   /** A lease ended: the speaker's place on the stage goes, or is held, and their voice is free for another chat. */
-  stageLeft(id, voluntary) {
+  stageLeft(id, voluntary, at = Date.now()) {
     // Going back to listening on their own word: a quiet hold of their row ends with the place it stood for.
     if (voluntary) this.unquiet(id);
-    const ended = this.roles.leaseEnded(id, voluntary, Date.now());
+    // A place held for a drop counts from when it went (`at`, the last ping for a drop noticed late).
+    const ended = this.roles.leaseEnded(id, voluntary, at);
     if (ended.changed) this.background(this.rolesChanged());
     // A co-host who left the stage is a listener with the offer back (their slot kept): they and everyone hear so.
     if (ended.reinstated) this.cohostReinstated(id);

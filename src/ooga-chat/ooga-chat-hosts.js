@@ -35,14 +35,15 @@
       open: c.open, leave: c.leave, request: c.request, hear: c.hear };
     // The island view's map is the app's own lazy picture; its Live view the `live` chunk, fetched only when turned on.
     const islandView = { picture: "art/island-view-main.webp", loadLive: () => BL.oogaChatChunks.load("live"), storageKey: ctx.storageKey("island-live") };
-    // Go there: the chat on the island. `handing` is the chat sent there, until the island has its voice or a minute passes.
+    // Go there: the chat on the island. `handing` is the chat sent there, until the island has its voice (once its
+    // visitor presses Switch here) or HAND_MS passes, as long as the island keeps the wish; GOING_MS of it reads Going….
     let last = null, handing = null;
-    const SPEAKING = ["eligible", "pending", "active"], HAND_MS = 60000;
+    const SPEAKING = ["eligible", "pending", "active"], HAND_MS = 5 * 60 * 1000, GOING_MS = 8000;
     const goThere = {
       state(room) {
         const v = last && last.voice;
         if (!v || room.zone !== "main" || !(v.role === "speaker" || v.busy || SPEAKING.includes(room.you?.speak))) return null;
-        if (handing && handing.id === room.id && Date.now() - handing.at < HAND_MS) return { label: "Going…", words: "Opening this chat on the island", disabled: true, title: "Opening on Ooga Booga Land…" };
+        if (handing && handing.id === room.id && Date.now() - handing.at < GOING_MS) return { label: "Going…", words: "Opening this chat on the island", disabled: true, title: "Opening on Ooga Booga Land…" };
         const why = !ctx.island() ? "The island can't be reached from here" : last.session?.identity.provider !== "github" ? "Going to the island needs a GitHub account" : "";
         return { label: "Go there", words: "Open this chat on the island", disabled: !!why, title: why || "Take your voice and your Ooga to this chat's island on Ooga Booga Land" };
       },
@@ -56,6 +57,7 @@
         // Inside the press, so the browser lets it open; the island has no hold on this page.
         window.open(url.href, "_blank", "noopener");
         view.update(last);
+        setTimeout(() => { if (last) view.update(last); }, GOING_MS + 50);
       },
       subscribe: () => () => {}
     };

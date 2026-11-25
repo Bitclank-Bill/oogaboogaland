@@ -405,12 +405,15 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   and back (chat-copy.js); in Ooga Chat, for a GitHub account, the same chat opened on the island in a new tab
   (`ooga-chat-hosts.js`; the bootstrap's `island`, the edge's `ISLAND_ORIGIN`): `/?chat=<id>&mic=<0|1>`. The island page
   (`chat-call.js`) takes the two parameters out of the address at once, keeps the wish in sessionStorage
-  (`ooga-chat-arrive`, five minutes) through a sign-in, opens the chat, takes the account's voice from Ooga Chat with
-  `join({ takeover })`, unmutes when the microphone was open there, and walks the Ooga in once nothing stands in the way
-  (chat-copy.js `goSoon`). Ooga Chat keeps speaking until the island has the voice, so nothing is lost while the island
-  loads, then steps out of the chat ("Your chat moved to Ooga Booga Land") so the two never both play it. The host is still
-  the host: roles belong to the account. The island asks the browser for the microphone itself; where the browser wants a
-  press for that, the voice stays in Ooga Chat and Join Voice takes it.
+  (`ooga-chat-arrive`, five minutes) through a sign-in and opens the chat, listening. Anyone could post such a link, so it
+  never speaks by itself: a visitor who may speak there is asked first (voice-handoff.js's card, "Speak from here?",
+  saying whether the microphone will be on), and only Switch here, a press on the island page, takes the account's voice
+  from Ooga Chat with `join({ takeover })` (inside the press, the gesture a microphone needs), unmutes when the address
+  said it was open there, and walks the Ooga in once nothing stands in the way (chat-copy.js `goSoon`). Not now leaves
+  the voice in Ooga Chat and the visitor listening. The Audience takes that move as a `handoff`: the account's place on
+  the stage, and a co-host's rank, stay with it. Ooga Chat keeps speaking until the island has the voice, so nothing is
+  lost while the island loads, then steps out of the chat ("Your chat moved to Ooga Booga Land") so the two never both
+  play it. The host is still the host: roles belong to the account.
 - **Asking for places.** A chat member's socket asks with `{ type: "view", on: true }` only while someone walks (a row
   with `walking`), the strip shows, the panel is shown and the page is visible, and says `on: false` as any of that ends; a new connection
   asks again. Only then does the Audience send `{ type: "walk", seq, p: [id, x, y, z, yaw, …] }` (at most twice a second,

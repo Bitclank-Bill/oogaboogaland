@@ -15,10 +15,13 @@
 // panel's footer and tiles. No timer but the open chat socket's ping and reconnect; nothing per frame.
 // Go there from Ooga Chat (docs/ooga-chat-hosts.md): a page opened as `?chat=<id>&mic=<0|1>` (ooga-chat-hosts.js) takes
 // the address's two parameters out at once and keeps the wish in sessionStorage (`ooga-chat-arrive`, ARRIVE_MS), so a
-// sign-in on the way keeps it; once signed in and the room is live it opens that chat, takes the account's voice from
-// Ooga Chat (`join({ takeover })`, which ends the lease there), unmutes when the microphone was open there, and walks the
-// Ooga into the chat's island (chat-copy.js `goSoon`). A host is still the host: roles belong to the account. A chat no
-// longer listed says so; one the visitor may only listen in is listened to. `arrival` says where it stands.
+// sign-in on the way keeps it; once signed in and the room is live it opens that chat, listening. A link anyone could
+// post, so it never speaks by itself: for a visitor who may speak there it asks first (voice-handoff.js's card, "Speak
+// from here?"), and only Switch here, a press on this page, takes the account's voice from Ooga Chat (`join({ takeover
+// })`, inside the press), unmutes when the address said the microphone was open there (the card says so), and walks
+// the Ooga into the chat's island (chat-copy.js `goSoon`). Not now leaves the voice where it is and the visitor
+// listening. A host is still the host: roles belong to the account. A chat no longer listed says so; one the visitor may
+// only listen in is listened to. `arrival` says where it stands.
 // Under `?debug=1&chats=fixture` it runs on Ooga Chat's fixture adapter (ooga-chat-fixtures.js, a deferred group the
 // page fetches then): sample chats, a contributor's account and fake WebRTC, nothing sent anywhere, for review.
 (() => {
@@ -224,10 +227,28 @@
     if (available() !== gate) { gate = available(); emit(); }
   });
   // --- Go there from Ooga Chat ---
-  // `arrival`: `{ id, mic, at, step }`, step "open" (find the chat and open it), "voice" (take the voice), "mic" (open the
-  // microphone as it was), "go" (walk into the chat's island), then gone.
+  // `arrival`: `{ id, mic, at, step }`, step "open" (find the chat and open it), "ask" (the card, until it is answered),
+  // "voice" (take the voice, after Switch here), "mic" (open the microphone as it was), "go" (walk into the chat's
+  // island), then gone.
   const ARRIVE_KEY = "ooga-chat-arrive", ARRIVE_MS = 5 * 60 * 1000, JOIN_TRIES = 3;
-  let arrival = null, arriving = false, joinTries = 0, signInSaid = false;
+  let arrival = null, arriving = false, joinTries = 0, signInSaid = false, card = null;
+  // The card, made the first time it is wanted, in voice-handoff.js's look with this arrival's words.
+  const askVoice = () => {
+    if (!card) {
+      card = BL.voiceHandoff.build({ onSwitch: () => {
+        if (!arrival || arrival.step !== "ask" || !room || room.id !== arrival.id) return;
+        arrival.step = "voice";
+        joinTries = 1;
+        // Inside the press: the gesture a microphone needs.
+        controller().join({ takeover: !!(room.you && room.you.elsewhere) });
+      }, onDismiss: () => arrived() });
+      document.body.append(card.node);
+    }
+    card.node.querySelector(".voice-handoff-title").textContent = "Speak from here?";
+    card.node.querySelector(".voice-handoff-body").textContent = `Your voice in ${room.title} is in Ooga Chat. Switch it here and walk your Ooga onto the chat's island?`
+      + (arrival.mic ? " Your microphone will be on, as it was there." : " You'll stay muted.") + " Ooga Chat stops speaking.";
+    card.open();
+  };
   {
     const id = params.get("chat");
     if (id && /^[A-Za-z0-9_-]{16}$/.test(id)) {
@@ -247,6 +268,7 @@
   }
   const arrived = (words = "") => {
     arrival = null;
+    card?.close();
     try { sessionStorage.removeItem(ARRIVE_KEY); } catch { /* none kept */ }
     if (words && BL.hud) BL.hud.toast(words);
   };
@@ -260,7 +282,7 @@
     }
     if (!available()) return;
     if (arrival.step === "open") {
-      if (room && room.id === arrival.id) { arrival.step = "voice"; return arrive(); }
+      if (room && room.id === arrival.id) { arrival.step = "ask"; return arrive(); }
       arriving = true;
       list().then((answer) => {
         arriving = false;
@@ -270,19 +292,26 @@
         if (!entry) return arrived("That chat has ended");
         open(entry);
         if (BL.cloudPanel) BL.cloudPanel.preview(entry.id);
-        arrival.step = "voice";
+        arrival.step = "ask";
         arrive();
       });
       return;
     }
     if (!room || room.id !== arrival.id) return arrived();
     const m = controller(), v = m.state, you = room.you;
+    if (arrival.step === "ask") {
+      // Until the chat's voice is connected here, Switch here could not start.
+      if (!you || v.busy || v.phase === "off" || v.phase === "connecting") return;
+      // Not on the stage there: listening here is all there is.
+      if (you.speak !== "eligible" && !you.elsewhere) return arrived();
+      if (!card || !card.shown) askVoice();
+      return;
+    }
     if (arrival.step === "voice") {
       if (!you) return;
       if (v.role === "speaker" && !v.busy) { arrival.step = "mic"; return arrive(); }
-      // Until the chat's voice is connected here, a join could not start.
       if (v.busy || v.phase === "off" || v.phase === "connecting") return;
-      // Not on the stage there: listening here is all there is.
+      // A join that could not start (the press's first try is counted already) is tried again a few times.
       if (you.speak !== "eligible" && !you.elsewhere) return arrived();
       if (++joinTries > JOIN_TRIES) return arrived(v.notice || "");
       m.join({ takeover: !!you.elsewhere });
@@ -290,8 +319,10 @@
     }
     if (arrival.step === "mic") {
       if (v.busy) return;
-      if (arrival.mic && v.role === "speaker" && v.muted) m.mute();
+      // The step moves on first: unmuting tells every subscriber, this one included, at once.
       arrival.step = "go";
+      if (arrival.mic && v.role === "speaker" && v.muted) m.mute();
+      if (!arrival || arrival.step !== "go") return;
     }
     if (arrival.step === "go") {
       const id = arrival.id;
