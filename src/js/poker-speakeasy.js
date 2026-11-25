@@ -85,7 +85,11 @@
     }
     add(hinge,finish(M.merge(...shell)),-pivot,0,0);
     add(hinge,M.merge(...books),-pivot,0,0);
-    const book=add(hinge,M.merge(box(0,0,0,step*.94,.49,.34,"#e9dcb9",.43),mark(0,0,.186,.126)),
+    // The book that opens the case is dressed like its neighbours, a shade more orange with a faint ₿, so only a
+    // careful eye picks it out.
+    const book=add(hinge,M.merge(box(0,0,0,step*.94,.49,.34,"#7b4527"),
+      ...[-.145,.251].map(y=>box(0,y,.174,step*.79,.016,.013,brass,.12)),
+      M.moved(BL.factoryModels.smoothBitcoin(.11,.024,"#9a6238",.05),0,0,.186)),
       bookX-pivot,.20+2*.67+.05+.245,.12);
     const spillGeo=M.geometry();
     // A translucent taper admits the marble grain through the wash. Grow it with the leaf.
