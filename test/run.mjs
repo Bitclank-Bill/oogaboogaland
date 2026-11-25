@@ -37479,36 +37479,6 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     return encoded && !studio.open && !save.href && Math.hypot(p.x-feet.x,p.z-feet.z)<.02;
   })()`);
   record("poker terrace: a moon portrait can be saved and leaving the camera restores the walker",portrait);
-  try {
-    for(const [width,height] of [[320,568],[844,390],[1280,720]]){
-      await b.send("Emulation.setDeviceMetricsOverride",{width,height,deviceScaleFactor:1,mobile:width<900});
-      const clipped=await b.evaluate(`(async()=>{
-        const D=BL.scenes.poker.debug,H=D.poker.salons.heirlooms;
-        H.open(H.items.find(prop=>prop.title===BL.pokerStorybook.title),D.pilot);
-        const dialog=document.querySelector(".lounge-heirloom[open]"),stage=dialog.querySelector(".jones-stage");
-        const [prev,next,close]=dialog.querySelectorAll("nav button");
-        await BL.pokerStorybook.binding();
-        for(let page=0;page<=9;page++){
-          const img=stage.querySelector("img");
-          if(img)await img.decode();
-          await new Promise(resolve=>requestAnimationFrame(resolve));
-          const bounds=stage.getBoundingClientRect();
-          const inside=(el,b)=>{
-            const v=el.getBoundingClientRect();
-            return v.width>0 && v.height>0 && v.top>=b.top-1 && v.bottom<=b.bottom+1 && v.left>=b.left-1 && v.right<=b.right+1;
-          };
-          const viewport={left:0,top:0,right:innerWidth,bottom:innerHeight};
-          if(!Array.from(stage.querySelectorAll("article,p,img,canvas")).every(el=>inside(el,bounds)) ||
-              ![stage,prev,next,close].every(el=>inside(el,viewport)))return page;
-          if(page<9)next.click();
-        }
-        for(let i=0;i<9;i++)prev.click();
-        return stage.querySelector(".jones-cover") && prev.disabled ? -1 : 10;
-      })()`);
-      record("poker lounge: Jones's whole book fits at "+width+"×"+height,clipped===-1,"spread "+clipped);
-      await b.evaluate(`document.querySelector(".lounge-heirloom[open]").close()`);
-    }
-  } finally {await b.send("Emulation.clearDeviceMetricsOverride");}
 } }] });
 scene("poker", { label: "canvas2d", query: "canvas2d=1", steps: [{ name: "poker canvas2d", why: "rule: the floor and table controls work on the fallback renderer", run: async b => {
   await b.evaluate(`document.querySelector('[data-intro="poker"] .game-intro-go').click()`);

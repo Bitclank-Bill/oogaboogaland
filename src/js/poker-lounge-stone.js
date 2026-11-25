@@ -96,7 +96,7 @@
       const image=new Image();
       image.onload=()=>{
         canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
-        ctx.drawImage(image,0,0);BL.pokerLoungeFamily.stitch(ctx,canvas.width,canvas.height);surface.version++;
+        ctx.drawImage(image,0,0);BL.pokerLoungeFamily.patches(ctx,canvas.width,canvas.height);surface.version++;
       };
       image.src=BL.pokerDesertThrowArt;
     }

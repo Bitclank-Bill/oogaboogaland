@@ -19,8 +19,7 @@ function offerLoungePack(entries, size, digest) {
       reader.readAsDataURL(file.slice(start, end, "image/webp"));
     })));
     entries.forEach(([key], i) => {
-      if (key in BL.pokerStoryArt) BL.pokerStoryArt[key] = urls[i];
-      else BL[key] = urls[i];
+      BL[key] = urls[i];
     });
     delete BL.offlineLoungePack;
   }
@@ -62,14 +61,14 @@ function offerLoungePack(entries, size, digest) {
 export function writeOfflineCore(root, html, js, block) {
   const parts = [], entries = [];
   let core = js, size = 0;
-  for (const module of ["story", "timeline", "family-glass", "desert-throw", "minneapolis"]) {
+  for (const module of ["timeline", "family-glass", "desert-throw", "minneapolis"]) {
     const source = block(`js/poker-${module}-art.js`);
     const before = entries.length;
-    const stripped = source.replace(/(window\.BL\.(\w+)\s*=\s*|"(\w+)":\s*)"data:image\/webp;base64,([^"]+)"/g,
-      (match, prefix, globalKey, bookKey, encoded) => {
+    const stripped = source.replace(/(window\.BL\.(\w+)\s*=\s*)"data:image\/webp;base64,([^"]+)"/g,
+      (match, prefix, globalKey, encoded) => {
         if (globalKey === "satoshiGlassArt") return match;
         const image = Buffer.from(encoded, "base64");
-        entries.push([globalKey || bookKey, size, size + image.length]);
+        entries.push([globalKey, size, size + image.length]);
         size += image.length;parts.push(image);
         return prefix + '""';
       });

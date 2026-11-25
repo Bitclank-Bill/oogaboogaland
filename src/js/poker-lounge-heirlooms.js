@@ -25,8 +25,7 @@
     const arm=add(deck,M.merge(disc(0,0,0,.029,.065,brass),M.beam(0,.065,0,-.03,.05,.25,.017,brass,.48),
       box(-.03,.043,.25,.034,.026,.04,ink)),.18,.168,-.16);
     const kit={item,add,box,disc,walnut,brass,paper,ink};
-    const book=BL.pokerFieldBook.build(kit,r);
-    const updateBridge=BL.pokerLoungeFamily.install(room,r,kit,items,blanket,record);
+    const updateBridge=BL.pokerLoungeFamily.install(room,r,kit,items,blanket);
     const updateCats=BL.pokerLoungeCats.create(room,r);
     const updateBird=BL.pokerLoungeHummingbird.create(room,r);
     let cathedral;
@@ -47,7 +46,6 @@
       if(document.pointerLockElement)document.exitPointerLock();dialog.showModal();
     };
     const restore=()=>{
-      if(active?.node===book.node)book.close();
       active=null;record.hide();
       if(visitor){visitor.setActive(true);visitor=null;}
     };

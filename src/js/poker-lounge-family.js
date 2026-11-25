@@ -62,17 +62,77 @@
     const x=gardenX,z=gardenZ(seat),bloom=i=>[x+stems[i][0]+.176,.036+stems[i][2]-.22-.048,z+stems[i][1]+.040];
     return [bloom(0),[x-.03,.93,z+.47],bloom(2),[x+.30,.90,z+.43],[x+perch[0],.036+perch[1]+.041,z+perch[2]]];
   };
-  // Dad's places, then Mom's, sewn on one label with a row of stitches between them.
-  const dad=["I was born in Minneapolis.","I was a boy in Pendleton.","And in Scottsdale, I became your dad."];
-  const mom=["I grew up in Traverse City, by the bay.","And in Scottsdale, I became your mom."];
-  const stitch=(ctx,w,h)=>{
-    ctx.save();ctx.scale(w/1000,h/1200);ctx.translate(239,10);ctx.rotate(Math.PI/2);
-    ctx.fillStyle="#dfd2b6";ctx.fillRect(0,0,450,184);
-    ctx.strokeStyle="#8d7857";ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.strokeRect(6,6,438,172);
-    ctx.beginPath();ctx.moveTo(60,112);ctx.lineTo(390,112);ctx.stroke();
-    ctx.font="italic 23px Georgia, serif";ctx.fillStyle="#403729";ctx.textAlign="center";
-    dad.forEach((s,i)=>ctx.fillText(s,225,38+i*28,422));
-    ctx.fillStyle="#4b3a5e";mom.forEach((s,i)=>ctx.fillText(s,225,138+i*28,422));ctx.restore();
+  // Leather patches sewn along the throw, one for each state: its outline in tooled leather, saddle-stitched round
+  // the edge, its postal code stamped in. Outlines are simplified [longitude, latitude] rings, the code going on the
+  // first; Michigan has two, its peninsulas.
+  const STATES=[
+    ["MN","Minnesota",[[[-97.24,49],[-95.15,49],[-95.15,49.38],[-94.82,49.3],[-94.6,48.72],[-93.8,48.52],[-93,48.62],
+      [-92,48.35],[-91,48.2],[-90,48.1],[-89.5,48],[-90.6,47.6],[-91.5,47.1],[-92.1,46.75],[-92.3,46.7],[-92.3,46.08],
+      [-92.9,45.6],[-92.75,45],[-92.8,44.75],[-92.3,44.55],[-91.3,43.95],[-91.22,43.5],[-96.45,43.5],[-96.45,45.3],
+      [-96.85,45.6],[-96.55,46],[-96.8,47],[-97,48]]]],
+    ["MI","Michigan",[[[-86.82,41.76],[-84.8,41.7],[-83.45,41.73],[-83.1,42.05],[-82.5,42.6],[-82.4,43],[-82.5,43.6],
+      [-82.9,44.07],[-83.5,43.9],[-83.9,43.65],[-83.8,44],[-83.3,44.3],[-83.3,44.9],[-83.4,45.05],[-84,45.5],[-84.7,45.78],
+      [-85.05,45.65],[-85.4,45.2],[-85.55,44.75],[-85.65,45.1],[-86.1,44.95],[-86.25,44.5],[-86.5,44],[-86.4,43.2],
+      [-86.25,42.4],[-86.6,42]],
+      [[-90.42,46.57],[-89.6,46.8],[-88.6,47.25],[-87.9,47.45],[-88.3,47],[-88,46.85],[-87.4,46.5],[-86.6,46.45],
+      [-85.6,46.75],[-85,46.75],[-84.6,46.45],[-84.1,46.5],[-83.6,46.1],[-84,45.97],[-84.7,45.9],[-85.5,46.1],[-86.3,45.9],
+      [-86.6,45.7],[-87,45.75],[-87.6,45.1],[-87.8,45.35],[-88.1,45.8],[-88.7,46],[-89.1,46.1],[-90.1,46.33]]]],
+    ["OR","Oregon",[[[-124.05,46.25],[-123.2,46.15],[-122.8,45.9],[-122.25,45.55],[-121.2,45.6],[-120,45.75],[-119,45.95],
+      [-116.92,46],[-116.5,45.6],[-116.75,45],[-117.2,44.3],[-116.9,44.1],[-117.03,43.8],[-117.03,42],[-124.2,42],
+      [-124.55,42.8],[-124.1,43.7],[-123.95,45]]]],
+    ["CA","California",[[[-124.2,42],[-120,42],[-120,39],[-114.63,35],[-114.6,34.3],[-114.4,34.1],[-114.7,33.4],[-114.5,33],
+      [-114.72,32.72],[-117.12,32.53],[-117.25,33],[-118,33.7],[-118.5,34],[-119.2,34.15],[-120.6,34.55],[-120.65,35.2],
+      [-121.9,36.3],[-121.95,36.95],[-122.5,37.5],[-122.5,37.8],[-123,38],[-123.7,38.95],[-123.85,39.8],[-124.4,40.4],
+      [-124.1,41]]]],
+    ["WA","Washington",[[[-124.7,48.4],[-123.1,48.15],[-122.75,49],[-117.03,49],[-117.03,46.42],[-116.92,46],[-119,46],
+      [-120.9,45.65],[-122.2,45.6],[-122.8,45.9],[-123.2,46.15],[-123.9,46.25],[-124.05,46.6],[-124.1,47],[-124.4,47.8]]]],
+    ["AZ","Arizona",[[[-114.05,37],[-109.05,37],[-109.05,31.33],[-111.07,31.33],[-114.81,32.49],[-114.72,32.72],[-114.5,33],
+      [-114.7,33.4],[-114.4,34.1],[-114.6,34.3],[-114.63,35],[-114.6,35.6],[-114.74,36],[-114.3,36.1],[-114.05,36.2]]]]];
+  const LEATHER=["#9b5f34","#7d4a2b","#b07a4a","#8a5532","#a66b3d","#6f4126"];
+  // Two rows of three across the sky of the throw's picture (a 1000 by 1200 frame), north up with it, clear of the
+  // moon and the horse.
+  const PATCH_AT=[26,22],PATCH_SIZE=152,PATCH_STEP=[176,176];
+  const patches=(ctx,w,h)=>{
+    const seed=BL.math.mulberry32(512);
+    ctx.save();ctx.scale(w/1000,h/1200);ctx.translate(...PATCH_AT);
+    STATES.forEach(([code,,rings],k)=>{
+      const cx=PATCH_STEP[0]*(k%3+.5),cy=PATCH_STEP[1]*(Math.floor(k/3)+.5);
+      let lat=0,n=0;
+      for(const ring of rings)for(const p of ring){lat+=p[1];n++;}
+      const squeeze=Math.cos(lat/n*Math.PI/180),flat=rings.map(ring=>ring.map(([lo,la])=>[lo*squeeze,-la]));
+      const box=pts=>pts.reduce((b,[x,y])=>[Math.min(b[0],x),Math.min(b[1],y),Math.max(b[2],x),Math.max(b[3],y)],[1e9,1e9,-1e9,-1e9]);
+      const all=box(flat.flat()),scale=PATCH_SIZE/Math.max(all[2]-all[0],all[3]-all[1]);
+      const pts=flat.map(ring=>ring.map(([x,y])=>[cx+(x-(all[0]+all[2])/2)*scale,cy+(y-(all[1]+all[3])/2)*scale]));
+      const trace=(shrink=0)=>{
+        ctx.beginPath();
+        for(const ring of pts){
+          const b=box(ring),mx=(b[0]+b[2])/2,my=(b[1]+b[3])/2,f=1-shrink/Math.max(b[2]-b[0],b[3]-b[1]);
+          ring.forEach(([x,y],i)=>ctx[i?"lineTo":"moveTo"](mx+(x-mx)*f,my+(y-my)*f));ctx.closePath();
+        }
+      };
+      // Sewn on and standing a little proud of the weave.
+      ctx.save();ctx.shadowColor="rgba(20,12,6,.45)";ctx.shadowBlur=7;ctx.shadowOffsetX=2;ctx.shadowOffsetY=3;
+      trace();ctx.fillStyle="#3a2213";ctx.fill();ctx.restore();
+      const grad=ctx.createLinearGradient(cx-80,cy-80,cx+80,cy+80);
+      grad.addColorStop(0,"#d7a26a");grad.addColorStop(.35,LEATHER[k]);grad.addColorStop(1,"#4e2d18");
+      ctx.save();trace(4);ctx.fillStyle=grad;ctx.fill();ctx.clip();
+      for(let i=0;i<260;i++){
+        ctx.fillStyle=seed()<.5?"rgba(50,26,12,.22)":"rgba(240,200,150,.12)";
+        ctx.fillRect(cx-90+seed()*180,cy-90+seed()*180,1.5+seed()*2,1.2+seed());
+      }
+      ctx.restore();
+      ctx.save();trace(15);ctx.setLineDash([6,5]);ctx.lineWidth=2.4;ctx.lineCap="round";ctx.strokeStyle="#eadbb8";ctx.stroke();ctx.restore();
+      // The code sits on the first ring's centroid by area.
+      let area=0,tx=0,ty=0;
+      pts[0].forEach(([x0,y0],i,ring)=>{
+        const [x1,y1]=ring[(i+1)%ring.length],cross=x0*y1-x1*y0;area+=cross;tx+=(x0+x1)*cross;ty+=(y0+y1)*cross;
+      });
+      tx/=3*area;ty/=3*area;
+      ctx.font="bold 32px Georgia, serif";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillStyle="rgba(255,226,180,.38)";ctx.fillText(code,tx+1.5,ty+2);
+      ctx.fillStyle="#3c2112";ctx.fillText(code,tx,ty);
+    });
+    ctx.restore();
   };
   const sleeve=M.cached(()=>{
     const w=.32,g=M.panel({w,h:w,tilesX:1,tilesY:1,color:"#ddcaa0"});
@@ -111,8 +171,6 @@
   });
   const lamp=M.cached(()=>M.lathe({profile:[[0,-.03],[.026,-.022],[.03,0],[.026,.022],[0,.03]],segments:16,color:"#ffe6a0",emissive:1}));
   const lens=M.cached(()=>M.merge(...[-1,1].map(s=>M.box({w:.006,h:.034,d:.026,color:"#fff6d0",emissive:1,offset:{x:s*.034,y:0,z:0}}))));
-  const note=["I grew up by Grand Traverse Bay, where lighthouses keep watch so the boats can always find their way home.",
-    "Wherever you go, Jones, I’ll keep a light on for you.","Love, Mom"];
   // Petoskey stones from Grand Traverse Bay in a glazed dish before the lighthouse. Dry they are plain grey pebbles;
   // wet them and the six-sided fossil coral shows, then they dry back. One canvas paints both at `wet` 0 to 1.
   const STONES=[[-.062,.036,.052,.040],[.048,.052,.046,.036],[.058,-.040,.050,.041],[-.040,-.052,.044,.036],[.0,.0,.040,.034]];
@@ -222,16 +280,15 @@
     c.lineTo(217,172);c.lineTo(184,172);c.lineTo(184,111);c.quadraticCurveTo(120,71,56,111);c.lineTo(56,172);c.fill();
     g.imageSurface={canvas,rect:[-w/2,-h/2,w,h],smooth:true,blend:"alpha",soft:true,version:1};g.castShadow=false;return g;
   });
-  const install=(room,r,kit,items,blanket,record)=>{
+  const install=(room,r,kit,items,blanket)=>{
     const {add,item}=kit,seat=BL.pokerLoungeStone.seatZ(r);
     add(room,garden(),gardenX,.036,gardenZ(seat));
-    const jacket=item("Pendleton, from Dad",sleeve(),-BL.pokerLoungeStone.sideTableX-.22,
-      BL.pokerLoungeStone.sideTableTop+.167,BL.pokerLoungeStone.sideTableZ(r)-.29,record.open);
+    const jacket=add(room,sleeve(),-BL.pokerLoungeStone.sideTableX-.22,
+      BL.pokerLoungeStone.sideTableTop+.167,BL.pokerLoungeStone.sideTableZ(r)-.29);
     jacket.rotation.x=-.19;jacket.rotation.y=.16;
-    items.push({title:"The sewn blanket label",node:blanket,anchor:blanket.parent.position,reach:.76,
-      open:ui=>{ui.element("p",dad.join(" "));ui.element("p",mom.join(" "));}});
-    const tower=item("Traverse City, from Mom",lighthouse(),-BL.pokerLoungeStone.sideTableX-1.02,.037,BL.pokerLoungeStone.sideTableZ(r)+.12,
-      ui=>{for(const line of note)ui.element("p",line);});
+    items.push({title:"The leather state patches",node:blanket,anchor:blanket.parent.position,reach:.76,
+      open:ui=>ui.element("p",STATES.map(s=>s[1]).join(", ")+".")});
+    const tower=add(room,lighthouse(),-BL.pokerLoungeStone.sideTableX-1.02,.037,BL.pokerLoungeStone.sideTableZ(r)+.12);
     tower.scale.x=tower.scale.y=tower.scale.z=1.5;
     const beacon=add(tower,lamp(),0,LIGHT_Y,0),flash=add(tower,lens(),0,LIGHT_Y,0);
     // The stones wet on Action and dry back after a while; once wet, Action reads them (`act`, `actLabel`).
@@ -279,5 +336,5 @@
       if(age===1){if(!silent)onLand(to);onLand=null;}
     };
   };
-  BL.pokerLoungeFamily={install,stitch,flightStops,gardenX,gardenZ};
+  BL.pokerLoungeFamily={install,patches,flightStops,gardenX,gardenZ};
 })();
