@@ -39,12 +39,11 @@
     }));
     return wallImages.get(art);
   };
-  // Unfold one painting from the end wall onto the underside of the casino vault.
-  // Each roof column starts at the exact image row where its wall column ends.
+  // The bar end from the floor to the vault, round the bookcase's arch: plain casino glass like every other wall. It
+  // closes the hall overhead and the slot between the arch and the hall's panes behind it.
   const facade=(parent,bookX,lite)=>{
     const root=S.createNode();S.addChild(parent,root);
     const vault=BL.pokerVault,door=BL.pokerLoungeDoor,{left,right,z}=BL.pokerGlazing.barGlass;
-    const width=right-left,height=22.5,depth=6.1;
     const joins=vault.JOINS[lite?"lite":"full"].map(a=>[-vault.RADIUS*Math.sin(a),vault.CENTRE_Y+vault.RADIUS*Math.cos(a)-.18]);
     const top=x=>{
       for(let i=1;i<joins.length;i++){
@@ -53,46 +52,18 @@
       }
       return joins[joins.length-1][1];
     };
-    const reach=x=>2.2+(depth-2.2)*Math.sin(2*Math.PI*(x-left)/width)**2;
     const cuts=[left,right,...joins.map(p=>p[0])];
-    for(let i=1;i<48;i++)cuts.push(left+width*i/48);
     for(let i=0;i<=door.course;i++)for(const side of [-1,1])cuts.push(bookX+door.point(side,i)[0]);
     const xs=cuts.filter(x=>x>=left && x<=right).sort((a,b)=>a-b);
-    const wall=M.geometry(),roof=M.geometry(),trim=[];
-    const panel=(g,points)=>M.face(g,points.map(([x,y,z])=>M.pushVert(g,x,y,z)),[255,255,255],{emissive:.53});
+    const wall=M.geometry(),tint=vault.GLAZE.color.match(/\w\w/g).map(h=>parseInt(h,16));
     for(let i=1;i<xs.length;i++){
       const a=xs[i-1],b=xs[i];if(b-a<.00001)continue;
       const opening=Math.abs((a+b)/2-bookX)<door.half;
       const base=x=>opening?door.crown(x-bookX):.015;
-      const ya=top(a),yb=top(b),da=reach(a),db=reach(b);
-      panel(wall,[[a,base(a),0],[b,base(b),0],[b,yb,0],[a,ya,0]]);
-      panel(roof,[[a,0,-ya],[b,0,-yb],[b,db,-yb],[a,da,-ya]]);
-      trim.push(M.beam(a,ya-.03,z+da,b,yb-.03,z+db,.067,"#b68a48"));
+      M.face(wall,[[a,base(a)],[b,base(b)],[b,top(b)],[a,top(a)]].map(([x,y])=>M.pushVert(wall,x,y,0)),tint);
     }
-    // Keep the arch glazed during image decode and if the painting cannot load.
-    const backing=canvas(1,1),ink=backing.getContext("2d");
-    ink.fillStyle="#253957";ink.fillRect(0,0,1,1);
-    const addPane=(g,angle,rise)=>{
-      g.castShadow=false;
-      g.imageSurface={canvas:backing,rect:[left,0,width,rise],smooth:true,tessellated:true,version:1};
-      S.addChild(root,S.createNode({geometry:g,position:{x:0,y:0,z},rotation:{x:angle,y:0,z:0}}));
-    };
-    addPane(wall,0,height);addPane(roof,Math.PI/2,depth);
-    S.addChild(root,S.createNode({geometry:M.merge(...trim)}));
-    if(typeof Image==="undefined")return root;
-    wallTile(BL.satoshiGlassArt).then(tile=>{
-      if(!tile)return;
-      const fold=canvas(tile.width,Math.ceil(tile.height*depth/height)),ctx=fold.getContext("2d");
-      for(let i=0;i<fold.width;i++){
-        const y=top(left+width*(i+.5)/fold.width);
-        ctx.drawImage(tile,i,tile.height*(1-(y+depth)/height),1,tile.height*depth/height,i,0,1,fold.height);
-      }
-      for(const [g,image] of [[wall,tile],[roof,fold]]){
-        g.imageSurface.canvas=image;
-        g.imageSurface.version++;
-        BL.pokerGlassMaterial.fit(g.imageSurface,"facade");
-      }
-    });
+    vault.glaze(wall,vault.GLAZE.wall);
+    S.addChild(root,S.createNode({geometry:wall,position:{x:0,y:0,z}}));
     return root;
   };
   const wallGlass=(room,r,entrance,surfaces)=>{

@@ -5,7 +5,6 @@
   const BL = window.BL, S = BL.scene, Themes = BL.pokerThemes;
   const presets = { entrance: { yaw: 0, pitch: 0.48, dist: 18, target: { x: 0, y: 1, z: 17 } } };
   const VIEW_NAMES = { entrance: "Overview" };
-  const COARSE_POINTER = matchMedia("(pointer: coarse)").matches;
   let tableView = false;
   const renderOpts = { clear: [0.1, 0.12, 0.09], sky: [0.62, 0.57, 0.45], ground: [0.31, 0.36, 0.27],
     direct: [0.88, 0.77, 0.58], directStrength: 0.38, ambientFloor: 0.48, sun: { x: 0.2, y: 1, z: 0.3 },
@@ -281,9 +280,10 @@
     const key=act?act+actTitle:"";
     if(key===actShown)return;
     actShown=key;
-    if(!act){actPrompt=false;pilot.showAct();if(!COARSE_POINTER)hud.hideHint();return;}
+    const coarse=matchMedia("(pointer: coarse)").matches;
+    if(!act){actPrompt=false;pilot.showAct();if(!coarse)hud.hideHint();return;}
     actPrompt=true;hud.setAct(act);
-    if(!COARSE_POINTER)hud.hint(actTitle?`${actTitle} · Space: ${ACT_WORDS[act]}`:`Space: ${ACT_WORDS[act]}`,600000);
+    if(!coarse)hud.hint(actTitle?`${actTitle} · Space: ${ACT_WORDS[act]}`:`Space: ${ACT_WORDS[act]}`,600000);
   };
   const loungeAct=()=>{
     actTitle="";
