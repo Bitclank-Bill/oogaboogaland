@@ -62,13 +62,17 @@
     const x=gardenX,z=gardenZ(seat),bloom=i=>[x+stems[i][0]+.176,.036+stems[i][2]-.22-.048,z+stems[i][1]+.040];
     return [bloom(0),[x-.03,.93,z+.47],bloom(2),[x+.30,.90,z+.43],[x+perch[0],.036+perch[1]+.041,z+perch[2]]];
   };
-  const lines=["I was born in Minneapolis.","I was a boy in Pendleton.","And in Scottsdale, I became your dad."];
+  // Dad's places, then Mom's, sewn on one label with a row of stitches between them.
+  const dad=["I was born in Minneapolis.","I was a boy in Pendleton.","And in Scottsdale, I became your dad."];
+  const mom=["I grew up in Traverse City, by the bay.","And in Scottsdale, I became your mom."];
   const stitch=(ctx,w,h)=>{
-    ctx.save();ctx.scale(w/1000,h/1200);ctx.translate(183,10);ctx.rotate(Math.PI/2);
-    ctx.fillStyle="#dfd2b6";ctx.fillRect(0,0,450,128);
-    ctx.strokeStyle="#8d7857";ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.strokeRect(6,6,438,116);
+    ctx.save();ctx.scale(w/1000,h/1200);ctx.translate(239,10);ctx.rotate(Math.PI/2);
+    ctx.fillStyle="#dfd2b6";ctx.fillRect(0,0,450,184);
+    ctx.strokeStyle="#8d7857";ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.strokeRect(6,6,438,172);
+    ctx.beginPath();ctx.moveTo(60,112);ctx.lineTo(390,112);ctx.stroke();
     ctx.font="italic 23px Georgia, serif";ctx.fillStyle="#403729";ctx.textAlign="center";
-    lines.forEach((s,i)=>ctx.fillText(s,225,40+i*28,422));ctx.restore();
+    dad.forEach((s,i)=>ctx.fillText(s,225,38+i*28,422));
+    ctx.fillStyle="#4b3a5e";mom.forEach((s,i)=>ctx.fillText(s,225,138+i*28,422));ctx.restore();
   };
   const sleeve=M.cached(()=>{
     const w=.32,g=M.panel({w,h:w,tilesX:1,tilesY:1,color:"#ddcaa0"});
@@ -89,6 +93,26 @@
     c.fillStyle="#493f35";c.font="italic 29px Georgia, serif";c.textAlign="center";c.fillText("Pendleton, from Dad",192,326);
     g.imageSurface={canvas,rect:[-w/2,-w/2,w,w],smooth:true,version:1};return g;
   });
+  // Traverse City, from Mom: a little Great Lakes lighthouse on a stone plinth, white with red bands, its lantern
+  // turning. The lamp is her light, as the rose window's sun is: it swells each day at the minute Jones was born.
+  const LIGHT_Y=.505;
+  const lighthouse=M.cached(()=>{
+    const turn=(profile,color,emissive=0)=>M.lathe({profile,segments:28,color,emissive});
+    const tower=(y0,y1,color)=>{const r=y=>.085-(y-.06)*.06;return turn([[0,y0],[r(y0),y0],[r(y1),y1],[0,y1]],color);};
+    const parts=[turn([[0,0],[.14,0],[.14,.04],[.125,.06],[0,.06]],"#8f8a82"),
+      tower(.06,.17,"#f1ece2"),tower(.17,.21,"#b8322a"),tower(.21,.33,"#f1ece2"),tower(.33,.37,"#b8322a"),tower(.37,.46,"#f1ece2"),
+      turn([[0,.46],[.084,.46],[.084,.472],[0,.472]],"#2d2a2c"),
+      turn([[0,.540],[.066,.540],[0,.598]],"#b8322a"),turn([[0,.596],[.008,.6],[.006,.614],[0,.618]],"#2d2a2c")];
+    for(let i=0;i<6;i++){const a=i*Math.PI/3;parts.push(M.beam(.048*Math.cos(a),.472,.048*Math.sin(a),.048*Math.cos(a),.54,.048*Math.sin(a),.006,"#2d2a2c"));}
+    for(let i=0;i<12;i++){const a=i*Math.PI/6;parts.push(M.beam(.08*Math.cos(a),.472,.08*Math.sin(a),.08*Math.cos(a),.494,.08*Math.sin(a),.004,"#2d2a2c"));}
+    parts.push(M.box({w:.034,h:.06,d:.01,color:"#5a3e2c",offset:{x:0,y:.09,z:.081}}),
+      M.box({w:.016,h:.024,d:.008,color:"#3a4a5a",offset:{x:0,y:.27,z:.072}}),M.box({w:.016,h:.024,d:.008,color:"#3a4a5a",offset:{x:0,y:.41,z:.066}}));
+    return M.merge(...parts);
+  });
+  const lamp=M.cached(()=>M.lathe({profile:[[0,-.03],[.026,-.022],[.03,0],[.026,.022],[0,.03]],segments:16,color:"#ffe6a0",emissive:1}));
+  const lens=M.cached(()=>M.merge(...[-1,1].map(s=>M.box({w:.006,h:.034,d:.026,color:"#fff6d0",emissive:1,offset:{x:s*.034,y:0,z:0}}))));
+  const note=["I grew up by Grand Traverse Bay, where lighthouses keep watch so the boats can always find their way home.",
+    "Wherever you go, Jones, I’ll keep a light on for you.","Love, Mom"];
   const plank=(x,y,z,w,h,d,color)=>M.bevelBox({w,h,d,color,bevel:.004,offset:{x,y,z}});
   // The bridge stands on Mom's bank and Dad's: each pier has its word burned into both faces in the carved signs'
   // alphabet, one dark run a row a quad standing a hair proud of the wood, so it reads from either side.
@@ -107,10 +131,23 @@
     if(face<0)M.turnedY(letters,Math.PI);
     return M.moved(letters,x,y,face*.0855);
   };
+  // Her larkspur inlaid on the outer face of Mom's pier, the face toward her bank: a leaning stem, two leaves, and
+  // florets in her violets shrinking up the spike.
+  const sprig=()=>{
+    const x=-.23-.0555,parts=[M.beam(x,.034,.012,x,.122,-.006,.0045,"#5f8a4e"),
+      M.beam(x,.046,.010,x,.066,.034,.004,"#6f9a5a"),M.beam(x,.052,.009,x,.070,-.020,.004,"#6f9a5a")];
+    const violets=["#9a7fe0","#b9a0f0","#8a6fd8","#c9adf5","#a58be8"];
+    for(let f=0;f<6;f++){
+      const t=f/5,y=.068+t*.052,z=.0075-t*.012,size=.0135-f*.0013;
+      for(const side of [-1,1])parts.push(M.box({w:.002,h:size*.8,d:size*.7,color:violets[(f+(side>0?1:0))%5],emissive:.3,offset:{x,y,z:z+side*size*.42}}));
+      parts.push(M.box({w:.0024,h:size*.34,d:size*.34,color:"#efe6ff",emissive:.3,offset:{x,y,z}}));
+    }
+    return M.merge(...parts);
+  };
   const piers=M.cached(()=>M.merge(...[-1,1].flatMap(s=>[
     plank(s*.23,.065,0,.11,.13,.17,"#ba8d58"),plank(s*.23,.015,0,.146,.03,.195,"#9c7048"),
     ...[-1,1].map(face=>burn(s<0?"MOM":"DAD",s*.23,.078,face))
-  ])));
+  ]),sprig()));
   const span=M.cached(()=>{
     const p=[],height=x=>.013+.066*(1-(x/.265)**2);
     for(let i=0;i<12;i++){
@@ -142,7 +179,11 @@
       BL.pokerLoungeStone.sideTableTop+.167,BL.pokerLoungeStone.sideTableZ(r)-.29,record.open);
     jacket.rotation.x=-.19;jacket.rotation.y=.16;
     items.push({title:"The sewn blanket label",node:blanket,anchor:blanket.parent.position,reach:.76,
-      open:ui=>ui.element("p",lines.join(" "))});
+      open:ui=>{ui.element("p",dad.join(" "));ui.element("p",mom.join(" "));}});
+    const tower=item("Traverse City, from Mom",lighthouse(),-BL.pokerLoungeStone.sideTableX-1.02,.037,BL.pokerLoungeStone.sideTableZ(r)+.12,
+      ui=>{for(const line of note)ui.element("p",line);});
+    tower.scale.x=tower.scale.y=tower.scale.z=1.5;
+    const beacon=add(tower,lamp(),0,LIGHT_Y,0),flash=add(tower,lens(),0,LIGHT_Y,0);
     const x=-.78,z=seat-3.32,feet=item("Jones’s wooden bridge",piers(),x,.037,z,null);
     const prop=items[items.length-1],arch=add(feet,span()),shade=add(feet,bridgeShade(),0,.002,.29);
     shade.rotation.x=-Math.PI/2;shade.rotation.z=Math.PI;
@@ -154,7 +195,13 @@
     pose(0);prop.extraTarget=arch;prop.reach=1.05;
     prop.use=land=>{if(age<1)return false;from=to;to=1-to;age=0;onLand=land;return true;};
     prop.built=()=>to===1;
+    let sweep=0;
     return (dt,calm,silent=false)=>{
+      if(!calm){
+        const light=BL.pokerBirthSky.light(Date.now());
+        sweep=(sweep+dt*(.7+.5*light))%tau;flash.rotation.y=sweep;
+        beacon.glow=flash.glow=.8+1.2*light;beacon.scale.x=beacon.scale.y=beacon.scale.z=1+.25*light;
+      }
       if(age>=1)return;
       age=calm?1:Math.min(1,age+dt/.94);
       const t=age*age*(3-2*age);pose(from+(to-from)*t);

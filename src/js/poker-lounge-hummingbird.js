@@ -81,7 +81,11 @@
       ...BL.pokerLoungeFamily.flightStops(seat),[-3,2.12,seat-1.95],[-x,7,-z],[-x,r.h*.53,-2],[0,r.h*.79,1],
       [x,r.h*.49,5],[x,5,z],[1.5,2.5,z],[-x,6,z],[-4,2.9,1.8],
       [1.9,1.8,seat-2.1],[2.65,1.64,seat-2.45],[x,8,-z],[1,r.h*.69,-z],[3,3.1,.1]];
-    let index=0,age=0,flight=false,duration=3.8,time=0,beat=0;
+    // The larkspur, Jones's mom's flower, is the bird's favourite stop: stops 3 to 7 are its blooms, the air between
+    // them and the perch on its stem. When her light rises each morning (poker-birth-sky.js) a bird elsewhere flies
+    // straight to the first bloom (`detour`) and works the plant from there, once a day.
+    const BLOOM=3,LAST=7;
+    let index=0,age=0,flight=false,duration=3.8,time=0,beat=0,detour=-1,visited=false;
     const rand=BL.math.mulberry32(8271);
     const p=bird.position;[p.x,p.y,p.z]=stops[0];bird.rotation.y=Math.PI*.67;
     for(const wing of wings)wing.rotation.y=.35;
@@ -89,7 +93,13 @@
       update.wingHz=0;
       if(calm||document.hidden||!room.visible)return;
       time+=dt;age+=dt;
-      const a=stops[index],b=stops[(index+1)%stops.length],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2];
+      const light=BL.pokerBirthSky.light(Date.now());
+      if(light===0)visited=false;
+      else if(!visited && !flight){
+        visited=true;
+        if(index<BLOOM-1 || index>LAST)detour=BLOOM;
+      }
+      const a=stops[index],b=stops[detour>=0?detour:(index+1)%stops.length],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2];
       const t=Math.min(1,age/duration),u=flight?t*t*(3-2*t):0,arc=4*u*(1-u);
       const feed=!flight && (index===3 || index===5),perched=!flight && index===7;
       const wander=perched?0:feed?.14:flight?arc:1;
@@ -113,7 +123,7 @@
       }
       if(t===1){
         age=0;
-        if(flight){index=(index+1)%stops.length;duration=1.2+rand()*2.8;}
+        if(flight){index=detour>=0?detour:(index+1)%stops.length;detour=-1;duration=1.2+rand()*2.8;}
         else duration=Math.max(.48,Math.hypot(dx,dy,dz)/(4.6+rand()*1.8));
         flight=!flight;
       }
