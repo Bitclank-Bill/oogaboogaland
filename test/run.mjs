@@ -37426,7 +37426,7 @@ scene("poker", { label: "salons", query: "character=portlandhodl", steps: [{ nam
     const hole=P.cosmos.parts.blackHole, pointsAt=p=>Math.abs(forward()-Math.atan2(p.x-scope.x,p.z-scope.z))<1e-6;
     lens.querySelector('[aria-label="Center on the black hole"]').click();
     const wide=pointsAt(hole.center) && D.camera.fov>fov;
-    lens.querySelector('[aria-label="Center on the Earth-like planet"]').click();
+    lens.querySelector('[aria-label="Center on Earth"]').click();
     const donor=pointsAt(hole.planet) && D.camera.fov<fov/4;
     const accretion=P.cosmos.parts.still.children.find(n=>n.geometry?.imageSurface?.accretion).geometry.imageSurface;
     const beforeFlow=accretion.time;

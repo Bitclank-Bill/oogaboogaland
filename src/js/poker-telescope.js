@@ -37,7 +37,7 @@
     button("−","Zoom out",()=>magnify(zoom/1.4));controls.append(readout);button("+","Zoom in",()=>magnify(zoom*1.4));
     button("Find Moon","Center on the Moon",()=>{bearing();pose();});
     button("Black hole","Center on the black hole",()=>{bearing(hole.center);magnify(1);});
-    button("Earth-like planet","Center on the Earth-like planet",()=>{bearing(hole.planet);magnify(48);});
+    button("Earth","Center on Earth",()=>{bearing(hole.planet);magnify(48);});
     button("Leave","Leave telescope",close);
     const aim=(dx,dy)=>{yaw-=dx;elevation=clamp(elevation+dy,-.12,Math.PI/2-.01);pose();};
     dialog.addEventListener("pointerdown",e=>{
