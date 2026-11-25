@@ -29524,6 +29524,33 @@ scene("hub", { label: "island layout", query: "pos=0&net=0", steps: [{
     })()`));
     record("island world on: with no flag the hub runs the island world, which follows every Ooga it shows working or chilling", r.mode === "local" && r.shown > 0 && r.followed === r.shown && !r.unfollowed.length, JSON.stringify(r));
   }
+}, {
+  name: "island world far sitters", why: "regression: a followed Ooga sitting on a seat was stood up every frame and sat again only on its throttled pose frames, so seen from far off it flickered between sitting and standing", run: async (b) => {
+    const r = JSON.parse(await b.evaluate(`(async () => {
+      const B = __ooga, P = B.pilot, FOLLOW_SIT = 2, now = Date.now();
+      // Every Ooga but the maintainers has contributed two hours ago: chilling, so the world seats some of them.
+      for (const c of B.crew.list) if (!c.avatar && !c.contributor.maintainer) c.contributor.lastContributionAt = now - 2 * 3600e3;
+      const sitting = () => B.crew.list.filter(c => c.follow && c.follow.act === FOLLOW_SIT && c.state === "chilling" && c.root.visible && !c.hop);
+      for (let i = 0; i < 40 && !sitting().length; i++) B.advance(0.5, 1 / 30);
+      P.release(true);
+      P.navigate({ position: { x: 503, y: 303, z: 504 }, target: { x: 500, y: 300, z: 500 }, yaw: 0, pitch: 0.2, dist: 5 });
+      B.advance(1, 1 / 60);
+      let frames = 0, standing = 0, throttled = 0;
+      for (let i = 0; i < 120; i++) {
+        const before = new Set(sitting());
+        B.advance(1 / 60, 1 / 60);
+        for (const c of sitting()) {
+          if (!before.has(c)) continue;
+          frames++;
+          if (!c.animation.due) throttled++;
+          if (Math.abs(c.parts.legR.rotation.x + Math.PI / 2) > 1e-6) standing++;
+        }
+      }
+      P.goPreset("pile"); B.advance(0.1, 1 / 60);
+      return JSON.stringify({ sitters: sitting().length, frames, throttled, standing });
+    })()`));
+    record("island world far sitters: an Ooga the island world seats keeps its legs bent on every frame while its pose is throttled far away", r.frames > 60 && r.throttled > r.frames / 2 && r.standing === 0, JSON.stringify(r));
+  }
 }] });
 
 // No other session's cast holds the default local Ooga or a server-vouched contributor: both join the roster before
