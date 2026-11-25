@@ -5,6 +5,7 @@
   const BL = window.BL, S = BL.scene, Themes = BL.pokerThemes;
   const presets = { entrance: { yaw: 0, pitch: 0.48, dist: 18, target: { x: 0, y: 1, z: 17 } } };
   const VIEW_NAMES = { entrance: "Overview" };
+  const COARSE_POINTER = matchMedia("(pointer: coarse)").matches;
   let tableView = false;
   const renderOpts = { clear: [0.1, 0.12, 0.09], sky: [0.62, 0.57, 0.45], ground: [0.31, 0.36, 0.27],
     direct: [0.88, 0.77, 0.58], directStrength: 0.38, ambientFloor: 0.48, sun: { x: 0.2, y: 1, z: 0.3 },
@@ -271,15 +272,28 @@
   let loungeChair=null,bridgeTime=0,bridgeHeight=0;
   // The stained glass room names what Action will do on the act button, never over the cursor: the same order as
   // `useNear` tries it. Null hands the button back to the pilot's own label.
-  let actPrompt=false;
+  // The act button shows only with touch sticks, so a desktop visitor reads the same action as a line: "Space: sit",
+  // or "<heirloom> · Space: look". Written on a change only; `actTitle` names the heirloom the label is about.
+  let actPrompt=false,actShown="",actTitle="";
+  const ACT_WORDS={"SIT":"sit","LIE DOWN":"lie down","STAND UP!":"stand up","TAKE PASS":"take the founder’s pass","LOOK":"look",
+    "BUILD":"build","TAKE APART":"take apart","CHOOSE ART":"choose the art","OPEN DOORS":"open the doors","TO THE BAR":"back to the bar"};
+  const showLoungeAct=act=>{
+    const key=act?act+actTitle:"";
+    if(key===actShown)return;
+    actShown=key;
+    if(!act){actPrompt=false;pilot.showAct();if(!COARSE_POINTER)hud.hideHint();return;}
+    actPrompt=true;hud.setAct(act);
+    if(!COARSE_POINTER)hud.hint(actTitle?`${actTitle} · Space: ${ACT_WORDS[act]}`:`Space: ${ACT_WORDS[act]}`,600000);
+  };
   const loungeAct=()=>{
+    actTitle="";
     if(salon!==0 || !pilot.player || exterior || salons.heirlooms?.modal || carry.phase!==IDLE || scripted())return null;
     if(loungeChair)return loungeChair.node.chaiseExtension?"LIE DOWN":"STAND UP!";
     if(onChaise())return null;
     const p=avatar.root.position,pass=salons.targets[6];
     if(pass.visible && Math.abs(p.x-pass.position.x)<.62 && Math.abs(p.z-pass.position.z)<1.65)return "TAKE PASS";
     const prop=salons.heirlooms.near(p,1.80);
-    if(prop)return prop.use?(prop.built()?"TAKE APART":"BUILD"):"LOOK";
+    if(prop){actTitle=prop.title;return prop.use?(prop.built()?"TAKE APART":"BUILD"):"LOOK";}
     const chair=chairNear();
     if(chair)return fromFoot(chair)?"LIE DOWN":"SIT";
     const door=nearDoor();
@@ -1595,8 +1609,7 @@
     const seconds = session.live ? session.live.deadline === null ? -1 : Math.max(0, Math.ceil((session.live.deadline - BL.net.serverNow()) / 1000)) : Math.ceil(nextHand[selected]);
     if (shownCountdown !== seconds) { shownCountdown = seconds; panel.countdown(seconds, session.autoDeal[selected]); }
     const act=loungeAct();
-    if(act){hud.setAct(act);actPrompt=true;}
-    else if(actPrompt){actPrompt=false;pilot.showAct();}
+    if(act||actPrompt)showLoungeAct(act);
     S.stepTweens(dt); fx.update(dt, elapsed);
   };
   const extra = (c, project) => remotes.drawNames(c, project);
@@ -1635,7 +1648,7 @@
     scene.input = scene.debug = null;
     hud = panel = pilot = fx = people = avatar = room = mirror = input = session = game = world = go = cosmos = null;
     carry = flyer = walker = returns = cleared = blockers = reticle = star = musicPlaque = shownTrack = null; quickWait = -1;
-    salons = null; salon = -1; loungeChair=null;
+    salons = null; salon = -1; loungeChair=null; actPrompt=false; actShown=""; actTitle="";
     snapshots.fill(null);
     owner = lastOwner = lastBody = presenceInput = null;
     emoteBy = emoteEmoji = emoteTime = emoteCount = gestureKind = gestureT = shownChair = shownCount = null; heroChair = -1;

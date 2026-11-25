@@ -203,12 +203,15 @@
     };
     el.addEventListener("click", onClick); el.addEventListener("input", onInput); el.addEventListener("change", onChange);
     const setFocused = value => {
+      // Focus goes back to the table's row only when leaving a table view; on arrival it stays with the page, or Space
+      // would press the row instead of the act key.
+      const leaving = focused && !value;
       focused = !!value; focus.hidden = !focused; lobby.hidden = edge.hidden = focused;
       // The emote menu goes with the table view, however it was left (Walk the floor from the keyboard presses nothing outside it).
       if (!focused) closeEmoteMenu();
       el.dataset.tableView = String(focused);
       if (focused) { document.body.dataset.pokerTableView = "true"; by("title").focus({ preventScroll: true }); }
-      else { document.body.removeAttribute("data-poker-table-view"); lobby.removeAttribute("data-folded"); if (lastIndex >= 0) rows[lastIndex].b.focus({ preventScroll: true }); }
+      else { document.body.removeAttribute("data-poker-table-view"); lobby.removeAttribute("data-folded"); if (leaving && lastIndex >= 0) rows[lastIndex].b.focus({ preventScroll: true }); }
     };
     const update = (index, snapshots, viewer, pendingStand, isPaused, autoDeal) => {
       const previous = snapshot, switched = index !== lastIndex;
