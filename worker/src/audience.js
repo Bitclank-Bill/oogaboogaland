@@ -72,6 +72,11 @@ export const AUDIENCE_FEATURES = ["roles-v1", "reactions-v1", "hand-emoji-v1", "
 // second in all; a frame arriving sooner is dropped (the copy sends the next within half a second).
 export const WALK_HZ = 2;
 export const WALK_FANOUT = 2000;
+// A viewer whose connection and device can take more asks for up to WALK_HZ_MAX a second (`{ type: "view", on, hz }`,
+// one of WALK_RATES); each viewer is sent at its own rate, all of them scaled down together past WALK_FANOUT frames a
+// second, and the copy is told how often to report (`walk`'s `ms`) by the fastest viewer it has.
+export const WALK_RATES = Object.freeze([2, 4, 6]);
+export const WALK_HZ_MAX = 6;
 const BOUND_XZ = 400;
 // A transient reaction's life on every client (players.js shows the island's for the same time), and the limits on
 // sending them: per identity across its tabs (as the island's room has it) and per zone, which bounds any zone's fanout.
@@ -305,7 +310,7 @@ export class Audience extends DurableObject {
     if (!ws || !c) return;
     const p = this.model.people.get(c.id);
     ws.serializeAttachment({ conn: { connId: c.connId, id: c.id, principal: c.principal, providerUserId: c.providerUserId, zone: c.zone, lease: c.lease,
-      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt, viewing: !!c.viewing }, info: p.info });
+      mic: c.mic, hand: c.hand, eligible: c.eligible, authUntil: c.authUntil, forced: c.forced, joinedAt: c.joinedAt, viewing: !!c.viewing, viewHz: c.viewHz || WALK_HZ }, info: p.info });
   }
 
   /** Commit what changed, store the revisions, and send every zone's delta to its clients and to a watching Room. */
@@ -737,7 +742,12 @@ export class Audience extends DurableObject {
     // A client that saw a revision gap asks again: counted, the one sign of a gap the server can see.
     if (msg.type === "resync") { if (c.zone && msg.zone === c.zone) { this.inspect.count("resync"); this.sendSnapshot(ws, c); } return; }
     // The island view shown (or not): only a connection that asked hears walkers' positions.
-    if (msg.type === "view" && this.chat) { if (typeof msg.on === "boolean" && !!c.viewing !== msg.on) { c.viewing = msg.on; this.save(c.connId); } return; }
+    if (msg.type === "view" && this.chat) {
+      if (typeof msg.on !== "boolean") return;
+      const hz = msg.on && WALK_RATES.includes(msg.hz) ? msg.hz : WALK_HZ;
+      if (!!c.viewing !== msg.on || (c.viewHz || WALK_HZ) !== hz) { c.viewing = msg.on; c.viewHz = hz; this.save(c.connId); }
+      return;
+    }
     if (msg.type === "setRole" || msg.type === "setMic" || msg.type === "reaction" || msg.type === "hand" || this.roles && CHAT_OPS.has(msg.type)) return this.onRequest(c, msg);
   }
 
@@ -1026,15 +1036,19 @@ export class Audience extends DurableObject {
 
   /**
    * Walkers' positions from the copy (`seq` rising, `ids` GitHub ids, `p` x, y, z and heading for each, in order), for the
-   * island view: one frame, built once, to every connection that asked for it, at a rate the fan-out budget allows. A
-   * walker the chat does not know, or a value out of bounds, drops the frame.
+   * island view: one frame, built once, to each connection that asked for it as often as it asked (`viewHz`), every
+   * rate scaled down together past the fan-out budget. A walker the chat does not know, or a value out of bounds, drops
+   * the frame. The answer's `ms` is how often the copy should report: as often as the fastest viewer is sent to.
    */
   walk(seq, ids, p) {
     if (!this.chat || !Number.isSafeInteger(seq) || seq <= (this.walkSeq || 0) || !Array.isArray(ids) || !Array.isArray(p) || p.length !== ids.length * 4 || ids.length > 64) return { ok: false };
-    let viewers = 0;
-    for (const c of this.model.conns.values()) if (c.viewing) viewers++;
-    const now = Date.now(), hz = Math.max(0.2, Math.min(WALK_HZ, WALK_FANOUT / Math.max(1, viewers)));
-    if (!viewers || now - (this.walkAt || 0) < 1000 / hz) return { ok: true, sent: false };
+    let asked = 0, fastest = 0;
+    for (const c of this.model.conns.values()) if (c.viewing) { const hz = c.viewHz || WALK_HZ; asked += hz; fastest = Math.max(fastest, hz); }
+    const now = Date.now(), scale = Math.min(1, WALK_FANOUT / Math.max(1, asked));
+    const ms = fastest ? Math.round(1000 / Math.max(0.2, fastest * scale)) : 1000 / WALK_HZ;
+    let due = false;
+    for (const c of this.model.conns.values()) if (c.viewing && now - (c.walkSent || 0) >= 1000 / Math.max(0.2, (c.viewHz || WALK_HZ) * scale) - 20) { due = true; break; }
+    if (!asked || !due) return { ok: true, sent: false, ms };
     const out = [];
     for (let i = 0; i < ids.length; i++) {
       const id = `gh:${ids[i]}`, x = p[i * 4], y = p[i * 4 + 1], z = p[i * 4 + 2], yaw = p[i * 4 + 3];
@@ -1042,15 +1056,15 @@ export class Audience extends DurableObject {
       out.push(id, Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(z * 10) / 10, Math.round(yaw * 100) / 100);
     }
     this.walkSeq = seq;
-    this.walkAt = now;
     const text = JSON.stringify({ type: "walk", seq, p: out });
     for (const c of this.model.conns.values()) {
-      if (!c.viewing) continue;
+      if (!c.viewing || now - (c.walkSent || 0) < 1000 / Math.max(0.2, (c.viewHz || WALK_HZ) * scale) - 20) continue;
+      c.walkSent = now;
       const ws = this.sockets.get(c.connId);
       if (ws) this.send(ws, text);
+      this.inspect.count("walkFrames");
     }
-    this.inspect.count("walkFrames");
-    return { ok: true, sent: true };
+    return { ok: true, sent: true, ms };
   }
 
   /** Who walks the copy now (the copy's whole list, `gh:<id>`): their rows say so, and their clouds stand empty. */

@@ -34,7 +34,7 @@
     const c = ctx.chats, chats = { list: () => c.call("chats"), start: (body) => c.call("startChat", body), preview: (id) => c.call("chatPreview", id),
       open: c.open, leave: c.leave, request: c.request, hear: c.hear };
     // The island view's map is the app's own lazy picture; its Live view the `live` chunk, fetched only when turned on.
-    const islandView = { picture: "art/island-view-main.webp", loadLive: () => BL.oogaChatChunks.load("live"), storageKey: ctx.storageKey("island-live") };
+    const islandView = { picture: "art/island-view-main.webp", loadLive: () => BL.oogaChatChunks.load("live"), scenery: BL.oogaChatScenery || "art", fullscreen: true };
     // Go there: the chat on the island. `handing` is the chat sent there, until the island has its voice (once its
     // visitor presses Switch here) or HAND_MS passes, as long as the island keeps the wish; GOING_MS of it reads Going….
     let last = null, handing = null;

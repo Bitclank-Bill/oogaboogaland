@@ -24,8 +24,9 @@ export const COPY_FEATURE = "copy-v1";
 export const COPY_PREFIX = "chat:";
 // What a copy's page may say; everything else is ignored, never a kick.
 export const COPY_MESSAGES = Object.freeze(new Set(["pose", "body", "zone", "hub", "visible", "call", "react", "hand", "back", "mute"]));
-// The island view's relay: one call at most every WALK_MS, one in flight.
-export const WALK_MS = 500;
+// The island view's relay: one call at most every WALK_MS (or as often as the chat's fastest viewer asks, down to
+// WALK_MS_MIN, `walk`'s answer `ms`), one in flight.
+export const WALK_MS = 500, WALK_MS_MIN = 160;
 // How long the island keeps a traveller's seat with no word from the chat or the traveller.
 export const AWAY_MS = 2 * 60 * 60 * 1000;
 const CHAT = /^[A-Za-z0-9_-]{1,64}$/;
@@ -105,9 +106,9 @@ export const copyRoom = {
   sendWalk(room) {
     const c = room.copy;
     if (!c.walkDirty || c.walkBusy || c.walkTimer || c.ending || !room.env || !room.env.AUDIENCE) return;
-    const now = Date.now(), since = now - c.walkAt;
-    if (since < WALK_MS) {
-      c.walkTimer = setTimeout(() => { c.walkTimer = 0; copyRoom.sendWalk(room); }, WALK_MS - since);
+    const now = Date.now(), since = now - c.walkAt, every = c.walkMs || WALK_MS;
+    if (since < every) {
+      c.walkTimer = setTimeout(() => { c.walkTimer = 0; copyRoom.sendWalk(room); }, every - since);
       return;
     }
     c.walkDirty = false;
@@ -120,7 +121,10 @@ export const copyRoom = {
     for (const q of room.players.values()) { ids.push(q.id); p.push(q.x, q.y, q.z, q.yaw); }
     let call;
     try { call = Promise.resolve(copyRoom.chatOf(room).walk(c.walkSeq, ids, p)); } catch (error) { call = Promise.reject(error); }
-    room.background(call.catch(() => {}).then(() => { c.walkBusy = false; copyRoom.sendWalk(room); }));
+    room.background(call.then((answer) => {
+      // The chat's fastest viewer sets how often to report, within WALK_MS_MIN and WALK_MS.
+      if (answer && Number.isFinite(answer.ms)) c.walkMs = Math.max(WALK_MS_MIN, Math.min(WALK_MS, answer.ms));
+    }, () => {}).then(() => { c.walkBusy = false; copyRoom.sendWalk(room); }));
   },
   stopWalk(room) {
     if (room.copy.walkTimer) { clearTimeout(room.copy.walkTimer); room.copy.walkTimer = 0; }

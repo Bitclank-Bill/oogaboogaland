@@ -717,18 +717,18 @@ test("a DSB Land chat has no copy yet", async () => {
 
 
 
-test("the island view's feed: walkers' positions to those who asked, at most twice a second, nobody else's and nothing out of bounds", async () => {
+test("the island view's feed: walkers' positions to those who asked, twice a second unless they ask for more, nobody else's and nothing out of bounds", async () => {
   now += START_GAP_MS;
   const w = await world();
   const { chat } = await startChat(w.env, host(1), { title: "View", zone: "main" });
   const amy = await connect(w, chat.id, 1), bea = await connect(w, chat.id, 2), cyd = await connect(w, chat.id, 3);
   const a = w.objects.get(chatName(chat.id)).a;
   await a.walking(["gh:1"]);
-  assert.deepEqual(a.walk(1, [1], [1, 2, 3, 0.5]), { ok: true, sent: false }, "nobody asked: nothing sent");
+  assert.deepEqual(a.walk(1, [1], [1, 2, 3, 0.5]), { ok: true, sent: false, ms: 500 }, "nobody asked: nothing sent");
   await bea.a.webSocketMessage(bea.ws, JSON.stringify({ type: "view", on: true }));
   await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true }));
   now += 1000;
-  assert.deepEqual(a.walk(2, [1], [1.234, 2, -3.06, 0.512]), { ok: true, sent: true });
+  assert.deepEqual(a.walk(2, [1], [1.234, 2, -3.06, 0.512]), { ok: true, sent: true, ms: 500 }, "the copy told to report twice a second");
   const frame = bea.ws.sent.filter((m) => m.type === "walk").at(-1);
   assert.deepEqual(frame, { type: "walk", seq: 2, p: ["gh:1", 1.2, 2, -3.1, 0.51] });
   assert.equal(amy.ws.sent.some((m) => m.type === "walk"), false, "only those who asked");
@@ -742,6 +742,16 @@ test("the island view's feed: walkers' positions to those who asked, at most twi
   const before = cyd.ws.sent.length;
   assert.equal(a.walk(6, [1], [1, 2, 3, 0]).sent, true);
   assert.equal(cyd.ws.sent.length, before, "turned off, none come");
+  // Cyd asks for six a second, Bea keeps two: each is sent at their own rate, and the copy is told to report six times.
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 6 }));
+  const got = (p) => p.ws.sent.filter((m) => m.type === "walk").length, [b0, c0] = [got(bea), got(cyd)];
+  let seq = 10, ms = 0;
+  for (let k = 0; k < 6; k++) { now += 167; ms = a.walk(seq++, [1], [1, 2, 3, 0]).ms; }
+  assert.equal(ms, 167, "the copy reports as often as the fastest viewer is sent to");
+  assert.deepEqual([got(bea) - b0, got(cyd) - c0], [2, 6], "a second: two frames to Bea, six to Cyd");
+  await cyd.a.webSocketMessage(cyd.ws, JSON.stringify({ type: "view", on: true, hz: 60 }));
+  now += 167;
+  assert.equal(a.walk(seq++, [1], [1, 2, 3, 0]).ms, 500, "a rate it does not offer is two a second");
 });
 
 test("a chat with no land: Ooga Chat voice alone, its roster in the main zone's frames, its land none in the list and the chat", async () => {

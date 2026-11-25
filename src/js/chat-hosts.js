@@ -10,9 +10,9 @@
 // if it has one; `shown()` whether the panel can be seen now; `rowFace(row)` a preview tile's portrait; `speakNow`
 // whether Request to speak reads Speak now on an open stage; `goThere`, `{ state(room), press(), subscribe(fn) }`: Go
 // there on the island view (the island's: its Ooga onto the chat's island, Go back while there, chat-copy.js; Ooga
-// Chat's: the chat opened on the island, ooga-chat-hosts.js), `state` its `{ label, words, disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), island(), storageKey }`, the island view's
-// map picture, how the page brings Live view's code, the island it built already (the island page's) and where the
-// viewer's Live view choice is kept (island-view.js). `update(state)` takes the page's state in Ooga Chat's
+// Chat's: the chat opened on the island, ooga-chat-hosts.js), `state` its `{ label, words, disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), scenery, fullscreen }`, the island view's
+// map picture, how the page brings the 3D view's code (none: the flat view alone, as the island page has it), where its
+// baked scenery is served and whether it offers full screen (island-view.js). `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
 // `preview(entry, from)` opens a chat's preview from elsewhere on the page (an entry as `parseList` gives it). It adds:
@@ -755,10 +755,11 @@
       if (!room) drawList();
       watch();
     };
-    // The island view: shown while someone walks the chat's island, the walkers' places asked for only while it can be
-    // seen. `viewSent` is what this connection was last told (null: nothing yet, or a new connection).
-    const isle = islandView && BL.islandView ? BL.islandView.create({ picture: islandView.picture, faceOf: rowFace, loadLive: islandView.loadLive,
-      island: islandView.island, storageKey: islandView.storageKey }) : null;
+    // The island view: in every Main Island chat, the walkers' places asked for only while someone walks and it can be
+    // seen, at the rate the view says this viewer can take (`hz`). `viewSent` is what this connection was last told
+    // ("on:hz", "off", or null: nothing yet, or a new connection).
+    const isle = islandView && BL.islandView ? BL.islandView.create({ picture: islandView.picture, faceOf: rowFace, loadLive: islandView.loadLive || null,
+      scenery: islandView.scenery, fullscreen: !!islandView.fullscreen }) : null;
     let viewSent = null;
     function syncView() {
       if (!state) return;
@@ -768,8 +769,9 @@
       set(strip, "hidden", !place);
       if (isle) isle.update({ place, rows: room ? people : [], talking: state.voice.talking || [], speaking: !!state.voice.speaking, self: me, active: seen });
       if (!room || state.audience.status !== "live") { viewSent = null; return; }
-      if (viewSent === want || viewSent === null && !want) return;
-      if (chats.request("view", { on: want })) viewSent = want;
+      const hz = isle ? isle.hz : 2, told = want ? `on:${hz}` : "off";
+      if (viewSent === told || viewSent === null && !want) return;
+      if (chats.request("view", { on: want, ...(want ? { hz } : {}) })) viewSent = told;
     }
     let observing = false;
     const attach = () => {

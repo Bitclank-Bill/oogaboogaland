@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import { gzipSync } from "node:zlib";
 import { encode, ico, touchIcon } from "./distribution-icons.mjs";
+import { writeCharacters } from "./characters.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const app = join(root, "src", "ooga-chat");
@@ -29,11 +30,12 @@ export const SHARED = ["../js/sign-glyphs.js", "../js/native-icons.js", "../js/d
   "../js/jumbotron-font.js", "../js/factory-kiosk-core.js", "../js/factory-kiosk.js", "../js/donation-popup.js", "../js/chat-policy.js", "../js/emoji-data.js", "../js/reaction-policy.js",
   "../js/zone-map.js", "../js/commons-log.js", "../js/format-large.js", "../js/roster-panel.js", "../js/contributor-identities.js", "../js/activity-repos.js",
   "../js/audience-tiles.js", "../js/reaction-bar.js", "../js/voice-handoff.js", "../js/duel-listening.js", "../js/chat-hosts.js",
-  // The island view (island-view.js, with the hosted chats), and its opt-in Live view: the game's own renderer and the
-  // island's ground (OPT_IN, fetched only when a viewer turns it on).
+  // The island view (island-view.js, with the hosted chats), and its 3D view: the game's own renderer, its models and the
+  // cast to build each speaker's Ooga from, and the baked scenery's reader (OPT_IN, fetched only for a device that can
+  // carry it).
   "../js/island-view-data.js", "../js/island-view.js", "../js/math.js", "../js/daylight.js", "../js/scene.js", "../js/compact-geometry.js",
-  "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js", "../js/convex.js",
-  "../js/terrain.js", "../js/island-view-live.js"];
+  "../js/mirror-ripples.js", "../js/mirror-body.js", "../js/dsb-water.js", "../js/gl-renderer.js", "../js/build-tasks.js", "../js/models.js",
+  "../js/hero-body.js", "../js/characters.js", "../js/characters.gen.js", "../js/island-scene.js", "../js/island-view-live.js"];
 // Deferred groups a visit fetches only on the visitor's word, never ahead of it: kept out of the idle prefetch
 // (ooga-chat-chunks.js) and the service worker's shell, so an install never downloads them either.
 export const OPT_IN = ["live"];
@@ -256,6 +258,9 @@ const guard = (out) => {
 export const build = (out, { fixtures = false } = {}) => {
   out = resolve(root, out);
   guard(out);
+  // The 3D view draws each speaker's own Ooga from the cast (characters.gen.js, gitignored), joined first as the island's
+  // build joins it.
+  writeCharacters();
   const { index, fixture, main, review } = entries();
   rmSync(out, { recursive: true, force: true });
   for (const dir of ["js", "css", "art", "icons"]) mkdirSync(join(out, dir), { recursive: true });
@@ -292,7 +297,18 @@ export const build = (out, { fixtures = false } = {}) => {
     return text;
   };
   const styles = Object.fromEntries([...main.styles].map(([group, path]) => [`${group}.css`, named("css", `ooga-chat-${group}`, "css", styleOf(path))]));
-  const head = `window.BL = window.BL || {};\nwindow.BL.oogaChatScripts = ${JSON.stringify({ ...scripts, ...styles })};\n\n`;
+  // The island view's baked scenery (island-scene.js, scripts/island-scene.mjs): its layers staged as they are, gzipped,
+  // under scene/<hash>/, the folder named by them all, so a new bake is a new address; the page reads the folder from
+  // `BL.oogaChatScenery` (from source it reads art/, where the layers are kept).
+  const sceneFiles = readdirSync(join(app, "art")).filter((file) => /^island-scene-[\w-]+\.bin\.gz$/.test(file)).sort();
+  let sceneDir = "";
+  if (sceneFiles.length) {
+    const layers = sceneFiles.map((file) => [file, readFileSync(join(app, "art", file))]);
+    sceneDir = `scene/${hash(Buffer.concat(layers.map(([, bytes]) => bytes)))}`;
+    mkdirSync(join(out, sceneDir), { recursive: true });
+    for (const [file, bytes] of layers) write(`${sceneDir}/${file}`, bytes);
+  }
+  const head = `window.BL = window.BL || {};\nwindow.BL.oogaChatScripts = ${JSON.stringify({ ...scripts, ...styles })};\n${sceneDir ? `window.BL.oogaChatScenery = ${JSON.stringify(`/${sceneDir}`)};\n` : ""}\n`;
   const firstLoad = (entry) => `${head}${bundle(entry.scripts.filter((src) => !entry.groups.get(src)))}`;
   const used = new Set();
   const js = firstLoad(main);
@@ -353,7 +369,7 @@ export const build = (out, { fixtures = false } = {}) => {
 </html>
 `);
   // Cloudflare's _headers: the policy on every page, no caching for the entry pages, a year for hashed files.
-  const hashed = files.filter((path) => /^(js|css|art|icons)\//.test(path)).sort();
+  const hashed = files.filter((path) => /^(js|css|art|icons|scene)\//.test(path)).sort();
   write("_headers", `/*
   Content-Security-Policy: ${POLICY}; frame-ancestors 'none'
   Referrer-Policy: no-referrer
@@ -411,7 +427,7 @@ const serve = async (out, port, manifest) => {
   const { createServer } = await import("node:http");
   // Only what the build staged, never _headers or build.json.
   const servable = new Set(manifest.files.map((file) => file.path).filter((path) => path !== "_headers"));
-  const TYPES = { ".webmanifest": "application/manifest+json", ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".json": "application/json; charset=utf-8" };
+  const TYPES = { ".webmanifest": "application/manifest+json", ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".json": "application/json; charset=utf-8", ".gz": "application/gzip" };
   const rules = readFileSync(join(out, "_headers"), "utf8");
   createServer((request, response) => {
     const path = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
