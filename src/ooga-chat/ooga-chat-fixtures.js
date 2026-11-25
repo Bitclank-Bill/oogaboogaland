@@ -54,7 +54,7 @@
   const SIGNED_IN = { listener: "listener", contributor: "contributor", ineligible: "ineligible", unknown: "unknown", revoked: "revoked", expiring: "contributor", "signout-fails": "contributor" };
   const ROSTERS = ["mixed", "empty", "crowd", "reconnecting", "reauth", "full", "none"];
   const VOICES = ["ok", "denied", "blocked", "refused", "off", "elsewhere"];
-  const CHATS = ["off", "on"];
+  const CHATS = ["off", "on", "mine"];
   // Hosted chats' sample members, keyed as the server keys an account.
   const member = (n, login, role, extra = {}) => ({ id: `gh:${9000 + n}`, generation: 1, source: "app", role, login, display: login, muted: role === "speaker" ? false : undefined, ...extra });
   const person = (id, source, role, login, extra = {}) => ({ id: `fixture:${id}`, generation: 1, source, role, login, display: login, ...extra });
@@ -211,7 +211,7 @@
     const rooms = new Map();
     const room = (id, title, zone, ago, cast, roles = {}) => rooms.set(id, { id, title, zone, startedAt: now() - ago, cast, host: roles.host, cohosts: new Map((roles.cohosts || []).map((c) => [c, now() - 500000])),
       queue: new Map(roles.queue || []), invites: new Map(roles.invites || []), offers: new Map(), stage: new Set(), removed: new Set(), removedInfo: new Map(), cooldown: new Map(), ended: false, sample: true, feeds: new Set() });
-    if (offered === "on") {
+    if (offered === "on" || offered === "mine") {
       // Listening and speaking from both apps (`via`), each here or on the stage since a different moment (`since`).
       const ago = (s) => now() - s * 1000;
       room("fixtureChatOak01", "Sample Oak's chat", "main", 600000, [member(1, "sample-oak", "speaker", { via: "island", since: ago(590), walking: true }),
@@ -223,6 +223,8 @@
         member(12, "sample-gull", "listener", { via: "app", since: ago(60) })], { host: "gh:9011" });
       // Its stage is open: a request there is approved the moment it is made.
       rooms.get("fixtureChatDune1").open = true;
+      // `mine`: the signed-in sample account hosts a chat already, as after a reload, so its row leads straight back.
+      if (offered === "mine") room("fixtureChatMine1", "sample-contributor's chat", "main", 300000, [member(21, "sample-pine", "listener", { via: "app", since: ago(200) })], { host: "gh:1" });
     }
     const level = (r, id) => id === r.host ? 2 : r.cohosts.has(id) ? 1 : 0;
     const invitedUntil = (r, id) => (r.invites.get(id) || 0) > now() ? r.invites.get(id) : 0;
@@ -271,7 +273,7 @@
     const asked = (name) => name && { ...ACCOUNTS[name], expiresAt };
     let account = asked(SIGNED_IN[state]), disposed = false;
     const bootstrap = async () => state === "unavailable" ? { ok: false, mode: "unavailable", reason: "fixture" }
-      : parseBootstrap(answer(state === "demo-payment" ? "demo" : state === "real-payment", state !== "provider-disabled", voice !== "off", offered === "on"), null, { fixture: true });
+      : parseBootstrap(answer(state === "demo-payment" ? "demo" : state === "real-payment", state !== "provider-disabled", voice !== "off", offered !== "off"), null, { fixture: true });
     const session = async () => disposed || !account ? null : parseSession(account, now());
     const signIn = (boot, provider) => {
       account = asked(provider === "x" ? "listener" : ["ineligible", "unknown", "revoked"].includes(state) ? state : "contributor");

@@ -138,8 +138,8 @@ still waits two minutes and passes to a co-host, as below.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
 modules, so the two apps never drift. Joining a chat by voice there is like taking a call: the island's proximity voice
-pauses until the visitor leaves the chat, and their Ooga carries an "in a chat" mark so nearby players know why they
-can't hear them (the room's `call-v1`: the page sends `{ t: "call", on }`, every page hears `call { id, on }`
+pauses until the visitor leaves the chat, with no mark over their Ooga (the room's `call-v1`, which keeps their island
+voice quiet and their nameplate's voice mark off: the page sends `{ t: "call", on }`, every page hears `call { id, on }`
 and finds `call: true` on such a player in `welcome` and `join`). Online Oogas lists island players by zone, and after
 every zone's group, **In Ooga Chat**: every live hosted chat with how many speak and listen in it (below).
 The same holds across devices: a chat tells the island room when a GitHub account takes or leaves its stage
@@ -183,7 +183,9 @@ number (`cloud-panel.js` `inChats`), so nobody is counted twice. A chat pressed
 and otherwise opens the chat's preview, the same pop-up the Chats list opens (`chat-hosts.js` `preview`, standing in
 the page's body while the Ooga Chat tab is hidden): its stage, its counts, the Open stage tag, **Join as listener** and
 **Ask to speak** (**Join as speaker** on an open stage), either of which shows the Ooga Chat tab and opens the chat there. The chat the visitor is in
-already only shows the tab. A visitor already in another chat is asked first, **Change chats?** (a modal dialog:
+already only shows the tab. A host is never asked to join their own chat: it leads the list as **Hosted by you** (amber, with
+no Start a chat beside it while it lasts), and pressing it, there or in Online Oogas, goes straight back onto the stage
+as host, with no preview; a co-host on its stage sees one button, **Rejoin as co-host**, and no Join as listener. A visitor already in another chat is asked first, **Change chats?** (a modal dialog:
 "You're in <title>. Leave it and join <title>?"), **Switch chats** leaving that chat and opening this one, **Stay**
 changing nothing and giving the chat's row the focus back. Its host is told instead to hand the chat over with Leave
 chat, or end it, first, and offered only Stay.

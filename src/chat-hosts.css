@@ -15,6 +15,9 @@
   border-radius: 6px; background: rgba(0, 0, 0, 0.2); color: var(--paper); font: inherit; text-align: left; cursor: pointer;
 }
 .hc-chat-row:hover, .hc-chat-row:focus-visible { border-color: var(--accent); outline: none; }
+/* The visitor's own chat, gone straight back to: an amber edge and its host line in amber. */
+.hc-chat-mine { border-color: rgba(216, 137, 43, 0.55); }
+.hc-chat-mine .hc-chat-row-host { color: var(--accent-text); }
 .hc-chat-row > .cloud-portrait { --face: 36px; flex: none; width: 36px; height: 36px; }
 .hc-chat-row-text { display: grid; flex: 1; min-width: 0; gap: 2px; font-size: 11px; color: rgba(243, 239, 228, 0.78); }
 .hc-chat-row-title { color: var(--paper); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }

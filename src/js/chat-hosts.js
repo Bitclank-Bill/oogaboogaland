@@ -280,13 +280,14 @@
     const faceOf = (character) => character ? portrait(character) : "";
     const drawList = () => {
       const github = state?.session?.identity.provider === "github";
-      startOpen.hidden = !github;
+      // Hosting one already, the visitor's way back is its row; there is no second chat to start.
+      startOpen.hidden = !github || !!entries && entries.some(hosting);
       if (!entries) { rows.replaceChildren(); return; }
       rows.replaceChildren(...entries.map((c) => {
-        const face = make("span", "cloud-portrait"), url = faceOf(c.host.character);
+        const face = make("span", "cloud-portrait"), url = faceOf(c.host.character), own = hosting(c);
         if (url) { const img = make("img", ""); img.alt = ""; img.src = url; face.append(img); } else face.append(BL.nativeIcons.svg("roster"));
-        const pick = tap("hc-chat-row", face, make("span", "hc-chat-row-text", make("span", "hc-chat-row-title", c.title),
-          make("span", "hc-chat-row-host", `Hosted by ${c.host.display}`), make("span", "hc-chat-row-count", `${c.speakers} speaking · ${c.listeners} listening`)),
+        const pick = tap(own ? "hc-chat-row hc-chat-mine" : "hc-chat-row", face, make("span", "hc-chat-row-text", make("span", "hc-chat-row-title", c.title),
+          make("span", "hc-chat-row-host", own ? "Hosted by you" : `Hosted by ${c.host.display}`), make("span", "hc-chat-row-count", `${c.speakers} speaking · ${c.listeners} listening`)),
         make("span", "panel-chip", ZONE_NAMES[c.zone]));
         pick.addEventListener("click", () => showPreview(c, pick));
         // A row drawn again while its preview is open (a portrait arriving) is where Cancel hands the focus back.
@@ -304,7 +305,8 @@
       // Signed out while it was asked: the answer was for the account that left, so it is not kept.
       if (listeners.signal.aborted || !state?.session) return;
       const parsed = parseList(answer.chats);
-      if (parsed) entries = parsed;
+      // The visitor's own chat first, the rest in the server's order.
+      if (parsed) entries = parsed.filter(hosting).concat(parsed.filter((c) => !hosting(c)));
       again.hidden = !!parsed;
       if (!parsed) set(listNote, "textContent", entries ? "The list may be out of date: it couldn't be read." : "The chats couldn't be read.");
       drawList();
@@ -350,6 +352,10 @@
       t.micWords = speaker ? `${p.display}: ${p.muted ? "Muted their microphone" : "In voice"}` : ""; t.rank = p.rank || ""; t.request = ""; t.reconnecting = !!p.reconnecting;
     };
     let previewing = null, previewFrom = null, previewTimer = 0, wantSpeak = "";
+    // The visitor's own chat (its host is this account): never previewed or joined as a listener, only gone back to, on
+    // the stage, inside the press that chose it (`rejoin`). Roles belong to the account, so the chat still knows them.
+    const hosting = (entry) => !!state?.session && entry.host.login.toLowerCase() === state.session.identity.login.toLowerCase();
+    const rejoin = (entry) => { wantSpeak = entry.id; chats.open(entry); };
     const readPreview = async () => {
       const entry = previewing;
       if (!entry) return;
@@ -359,13 +365,21 @@
       const shown = parsePreview(answer);
       if (!shown) return;
       previewOpen.hidden = !shown.open;
-      set(joinSpeaker, "textContent", shown.open ? "Join as speaker" : "Ask to speak");
+      // A co-host (or the host, under another name) on its stage goes back as what they are: one button, no listening.
+      const mine = shown.stage.find((p) => p.id === me && (p.rank === "host" || p.rank === "cohost"));
+      joinListener.hidden = !!mine;
+      joinSpeaker.classList.toggle("foot-primary", !!mine);
+      set(joinSpeaker, "textContent", mine ? (mine.rank === "host" ? "Back to your chat" : "Rejoin as co-host") : shown.open ? "Join as speaker" : "Ask to speak");
+      if (mine && document.activeElement === joinListener) joinSpeaker.focus();
       previewTiles.draw(shown.stage, previewDescribe);
       set(previewCount, "textContent", `${shown.listeners} listening · ${shown.requests} waiting to speak`);
     };
     // Read when it opens and every PREVIEW_MS while it stays open; nothing runs once it closes. Opened from elsewhere on
     // the page (the island's Online Oogas, `preview`) while the panel is hidden, it stands in the page's body until it closes.
     const showPreview = (entry, from) => {
+      if (hosting(entry)) return rejoin(entry);
+      joinListener.hidden = false;
+      joinSpeaker.classList.remove("foot-primary");
       if (!node.offsetParent && preview.parentNode !== node.ownerDocument.body) node.ownerDocument.body.append(preview);
       previewing = entry;
       previewFrom = from;

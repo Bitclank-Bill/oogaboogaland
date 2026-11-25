@@ -17862,6 +17862,21 @@ const oogaChatAppChecks = async () => {
     islandOk.listener = { map: listenerMap.shown && listenerMap.mode === "flat" && listenerMap.live === "flat" && !listenerMap.chunk && listenerMap.gl === 0 && listenerMap.hz === 2 && listenerMap.faces.length === 2 };
     record("Ooga Chat island view: a chat with speakers walking its island shows each walker's face ringed over them; their places come only while the strip can be seen; one view chosen by the device: 3D over the baked scenery where it can carry it (zoom, Reset view, Full screen with the app's column beside it, a fold button in the chat's title folding it away), else the flat map with no 3D code fetched; a GitHub account that is no contributor keeps the map; leaving the chat takes the strip away; at 1024 and 390 pixels",
       Object.values(islandOk).every((w) => Object.values(w).every(Boolean)), JSON.stringify({ islandOk, islandRuns, listenerMap }));
+    // A host's own chat (the account hosting one already, as after a reload) leads the list as theirs, with no Start a
+    // chat; pressing it goes straight back on the stage as host, never through the preview's Join as listener.
+    b = await page(1024, "state=contributor&roster=mixed&chats=mine");
+    let mine;
+    try {
+      await open(b, "chat", 1500);
+      const listed = await b.evaluate(`(() => { const rows = [...document.querySelectorAll(".hc-chat-row")]; const start = document.querySelector(".hc-chats-head .foot-button");
+        return { first: rows[0]?.classList.contains("hc-chat-mine"), host: rows[0]?.querySelector(".hc-chat-row-host")?.textContent, start: !!start && !start.hidden }; })()`);
+      await click(b, ".hc-chat-mine");
+      await b.sleep(2500);
+      mine = { ...listed, preview: await b.evaluate(`!!document.querySelector("dialog.hc-preview[open]")`), end: await b.evaluate(`!!document.querySelector(".hc-end")?.offsetParent`),
+        title: await b.evaluate(`document.querySelector(".hc-room-title")?.textContent || ""`) };
+    } finally { b.close(); }
+    record("Ooga Chat host: their own chat leads the list as Hosted by you with no Start a chat, and goes straight back on stage as host with no preview",
+      mine.first && mine.host === "Hosted by you" && !mine.start && !mine.preview && mine.end && mine.title === "sample-contributor's chat", JSON.stringify(mine));
   } finally {
     server.close();
     rmSync(out, { recursive: true, force: true });
