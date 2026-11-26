@@ -59,14 +59,22 @@
 /* In a chat on a narrow screen the land's tag (the Chats list and the preview say it) gives its room to the title. */
 @media (max-width: 479px) { .panel[data-space="on"] > .panel-title > .panel-chip:not(.hc-requests) { display: none; } }
 /* Share, a square button of its own size in the title's row, its icon drawn in the text's colour. */
-.hc-share {
-  flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; cursor: pointer;
-  background: rgba(36, 32, 28, 0.72); box-shadow: inset 0 0 0 1px rgba(243, 239, 228, 0.12); color: rgba(243, 239, 228, 0.9);
+.hc-share, .hc-requests {
+  position: relative; flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; cursor: pointer;
+  background: rgba(36, 32, 28, 0.72); box-shadow: inset 0 0 0 1px rgba(243, 239, 228, 0.12); color: rgba(243, 239, 228, 0.9); font: inherit;
 }
-.hc-share[hidden] { display: none; }
-.hc-share svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.hc-share:is(:hover, :focus-visible) { background: rgba(36, 32, 28, 0.92); color: var(--paper); }
-.hc-share:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+:is(.hc-share, .hc-requests)[hidden] { display: none; }
+:is(.hc-share, .hc-requests) svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+:is(.hc-share, .hc-requests):is(:hover, :focus-visible) { background: rgba(36, 32, 28, 0.92); color: var(--paper); }
+:is(.hc-share, .hc-requests):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+/* The Requests bell: amber while its pop-up is open; its words for assistive technology alone; the badge, how many wait. */
+.hc-requests[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--accent); color: #ffd59a; }
+.hc-requests-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.hc-badge {
+  position: absolute; top: -5px; right: -5px; box-sizing: border-box; display: grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 9px; background: var(--accent); box-shadow: 0 0 0 2px #0c0b0a; color: var(--ink); font-size: 10.5px; font-weight: 700; line-height: 1;
+}
+.hc-badge[hidden] { display: none; }
 /* Alone in a chat: the roster gives its room to an invitation to share the chat. */
 .hc-alone { display: grid; flex: 1 1 auto; align-content: center; justify-items: center; gap: 6px; min-height: 0; padding: 12px; text-align: center; }
 .hc-alone[hidden] { display: none; }
@@ -110,19 +118,19 @@
 .hc-invite strong { color: var(--accent-text); font-size: 12px; }
 .hc-invite-go, .hc-start-go { display: flex; flex-wrap: wrap; gap: 8px; }
 .panel[data-space="on"] .cloud-face { cursor: pointer; }
-/* A microphone over the portrait for an open request (audience-tiles.js `data-request`); a host's or co-host's rank is
-   the label under the name, not a badge. */
-.cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before {
-  position: absolute; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid var(--wood-edge);
-  border-radius: 8px; background: var(--plank); color: var(--paper); font-size: 8px; font-weight: 700; letter-spacing: 0.04em; line-height: 1;
+/* An open request's badge at the portrait's top right (audience-tiles.js `.cloud-badge`, by the tile's `data-request`): a
+   round, outlined microphone in amber for one who asked and in green for one invited to speak, an outlined star in the
+   purple of Ooga Chat's hosts for an open co-host offer. A host's or co-host's rank is the label under the name. */
+.cloud-badge {
+  position: absolute; z-index: 2; top: -3px; right: -5px; display: none; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  box-shadow: 0 0 0 2.5px #141110;
 }
-.cloud-tile:is([data-request="asked"], [data-request="invited"]) .cloud-face::before { content: "\1F399\FE0F"; top: -5px; right: -7px; z-index: 1; font-size: 9px; background: var(--accent); }
-.cloud-tile[data-request="invited"] .cloud-face::before { background: #22c55e; }
-/* An open co-host offer: a star on the same badge, in paper over the purple of Ooga Chat's hosts' ring. */
-.cloud-tile[data-request="cohost"] .cloud-face::before {
-  position: absolute; display: grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; top: -5px; right: -7px; z-index: 1;
-  border: 1px solid var(--wood-edge); border-radius: 8px; background: #b18aff; color: var(--ink); content: "\2605"; font-size: 10px; font-weight: 700; line-height: 1;
-}
+.cloud-badge svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cloud-tile:is([data-request="asked"], [data-request="invited"], [data-request="cohost"]) .cloud-badge { display: grid; }
+.cloud-tile[data-request="asked"] .cloud-badge { background: var(--accent); color: var(--ink); }
+.cloud-tile[data-request="invited"] .cloud-badge { background: #22c55e; color: #06210f; }
+.cloud-tile[data-request="cohost"] .cloud-badge { background: #b18aff; color: #1d0f3a; }
+.cloud-tile[data-request="cohost"] .cloud-badge .badge-mic, .cloud-tile:not([data-request="cohost"]) .cloud-badge .badge-star { display: none; }
 /* A dropped speaker's, host's or co-host's tile, kept in place while they reconnect (audience-tiles.js `reconnecting`). */
 .cloud-tile[data-reconnecting] :is(.cloud-face, .cloud-name) { opacity: 0.45; }
 .cloud-tile[data-reconnecting] .cloud-role { color: rgba(243, 239, 228, 0.6); font-style: italic; }
@@ -162,6 +170,19 @@
 }
 /* The Requests pop-up's Removed section, under the requests. */
 .hc-pop-section { margin: 6px 0 0; color: rgba(243, 239, 228, 0.5); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+/* A request's or a removed person's row: their face, their name, then round ✓ and ✕ (a request) or Allow back. */
+.hc-queue-face { flex: none; display: grid; place-items: center; width: 26px; height: 26px; overflow: hidden; border-radius: 50%; background: #3a3734; color: var(--paper); font-size: 12px; font-weight: 700; }
+.hc-queue-face img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.hc-queue-removed :is(.hc-queue-face, .hc-queue-name) { opacity: 0.6; }
+.hc-pop .hc-queue-row .foot-button.hc-round { display: grid; place-items: center; flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; border: 0; border-radius: 50%; box-shadow: none; text-shadow: none; }
+.hc-pop .hc-queue-row .hc-round svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.hc-pop .hc-queue-row .foot-button.hc-approve { background: #22c55e; color: #06210f; }
+.hc-pop .hc-queue-row .foot-button.hc-approve:is(:hover, :focus-visible) { background: #4ade80; }
+.hc-pop .hc-queue-row .foot-button.hc-decline { background: transparent; box-shadow: inset 0 0 0 1.5px rgba(229, 83, 61, 0.75); color: #ff9a8a; }
+.hc-pop .hc-queue-row .foot-button.hc-decline:is(:hover, :focus-visible) { background: rgba(229, 83, 61, 0.16); }
+.hc-pop .hc-queue-row .foot-button.hc-allow { flex: none; min-height: 30px; padding: 0 10px; border: 0; background: transparent; box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.6); color: #9ff0b8; text-shadow: none; }
+.hc-pop .hc-queue-row .foot-button.hc-allow:is(:hover, :focus-visible) { background: rgba(34, 197, 94, 0.14); }
+@media (pointer: coarse) { .hc-pop .hc-queue-row .foot-button.hc-round { width: 38px; height: 38px; } .hc-pop .hc-queue-row .foot-button.hc-allow { min-height: 38px; } }
 /* A chat's preview (chat-hosts.js): its title with the zone and Open stage tags, its stage in the chat's circles to look at
    only, how many listen and wait, and the two ways in. */
 .hc-preview { width: 460px; max-width: calc(100vw - 32px); padding: 14px 16px 16px; font: inherit; }
@@ -299,6 +320,8 @@ html.iv-full .hc-room-strip { display: none; }
 /* The Requests panel in the panel's flow under the chat's bar (chat-hosts.js `dock`): it pushes the roster down, never
    covers it, and scrolls itself when long. Placed last so it wins over the floating pop-up's phone sheet. */
 .hc-pop.hc-docked { position: static; z-index: auto; width: auto; max-width: none; margin: 6px 0 0; padding: 0; inset: auto; }
+/* It takes the chat bar's dark rather than a wood frame, so it reads as part of the bar it drops from. */
+.hc-pop.hc-docked { border: 0; border-radius: 0; background: #0c0b0a; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45); }
 .hc-pop.hc-docked .hc-pop-slab { max-height: min(40vh, 320px); overflow-y: auto; }
 
 /* Review fixes (desktop and phone). The invite and co-host offer cards are slabs but never stretch to fill the panel. */

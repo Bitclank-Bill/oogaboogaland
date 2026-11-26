@@ -50508,7 +50508,7 @@ const oogaChatChecks = async () => {
   const icons = load(["src/js/native-icons.js"], { window: {} }).nativeIcons;
   const inline = [...islandHtml.match(/<svg class="dsb-island-icon"[\s\S]*?<\/svg>/)[0].matchAll(/<path fill="([^"]+)" d="([^"]+)"\/>/g)].map((m) => `${m[1]} ${m[2]}`);
   const marks = { dsb: inline.join("|") === icons.ICONS.dsb[3].map(([fill, d]) => `${fill} ${d}`).join("|") && inline.length === 8,
-    voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/hud.js"), "utf8")) && typeof icons.mic === "function" && typeof icons.drawMic === "function" };
+    voice: /BL\.nativeIcons\.voice\(\)/.test(readFileSync(join(root, "src/js/roster-panel.js"), "utf8")) && typeof icons.mic === "function" && typeof icons.drawMic === "function" };
   record("Ooga Chat marks: DSB Land's is the island's own paths, and the voice mark is the one the island's roster draws",
     Object.values(marks).every(Boolean), JSON.stringify(marks));
 

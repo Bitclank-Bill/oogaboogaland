@@ -29,11 +29,11 @@
 //   the server's refusal in words; from inside a chat (`browsing`), that chat leads the list in purple, "You're in this
 //   chat · <role>", and brings it back, and another chat's preview says what joining does there by the visitor's role
 //   (a host makes a co-host host or ends it first, `hostGo`) and leaves it as it joins (`moveTo`), Stay changing nothing;
-// - in a chat: Back to chats (to the list, the chat playing on: `browse`) and its title; for a host or co-host the Requests chip, in the panel's title right of the
+// - in a chat: Back to chats (to the list, the chat playing on: `browse`) and its title; for a host or co-host the Requests bell, in the panel's title right of the
 //   zone tag, and its pop-up: the queue, then who was removed with Allow back (`allow`, the server's `removed` list); the footer's
 //   Request to speak (Requested · Cancel; `speakNow`, the island's, reads Speak now on an open stage) where a listener
 //   read Join Voice, End chat for its host, Leave chat for everyone (Sign out waits in the other tabs while in a chat); Unmute only for a
-//   speaker or one who may speak; the Requests chip without a count while none wait; an Open stage tag beside the title, and in the Requests
+//   speaker or one who may speak; the Requests bell without a badge while none wait; an Open stage tag beside the title, and in the Requests
 //   pop-up the host's switch for it (`open`);
 //   the invite card, focused as it opens, Start speaking being Join Voice inside its press; the co-host offer card
 //   (Accept, then Join Voice off stage; Not now), again when a co-host left the stage; and a tile's menu, opened by
@@ -60,6 +60,15 @@
     return el;
   };
   const button = (className, text) => { const el = make("button", className, text); el.type = "button"; return el; };
+  // A line icon on a 24-unit grid, drawn in the button's own colour (chat-hosts.css sizes and strokes it).
+  const icon = (d) => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    el.setAttribute("viewBox", "0 0 24 24");
+    el.setAttribute("aria-hidden", "true");
+    path.setAttribute("d", d);
+    el.append(path);
+    return el;
+  };
   const set = (el, key, value) => { if (el[key] !== value) el[key] = value; };
   const attr = (el, key, value) => { if (el.getAttribute(key) !== value) el.setAttribute(key, value); };
   // Text a person chose, without control or direction-override characters, bounded (ooga-chat-config.js `clean`).
@@ -507,27 +516,29 @@
     joinSpeaker.addEventListener("click", () => join(true), { signal });
 
     // --- in a chat: its bar, the invite card and the footer's own buttons ---
-    const back = button("link hc-room-back", "Back to chats"), roomTitle = make("span", "hc-room-title"), requests = button("panel-chip hc-requests", "");
+    const back = button("link hc-room-back", "Back to chats"), roomTitle = make("span", "hc-room-title"), requests = button("hc-requests", "");
     const openTag = make("span", "panel-chip hc-open-tag", "Open stage");
     // Leaving, for everyone but the host, who hands the chat over first (`leaveAsHost`).
     const goOut = (at) => rank === "host" ? leaveAsHost(at) : chats.leave();
     back.addEventListener("click", () => browse(true), { signal });
+    // Requests, a host's or co-host's: a bell with a badge counting who waits, its words beside it for assistive
+    // technology and the tooltip ("Requests 2"); the pop-up holds the queue and who was removed (`openQueue`).
+    const requestsWord = make("span", "hc-requests-word", "Requests"), requestsBadge = make("span", "hc-badge");
+    requestsBadge.hidden = true;
+    requests.append(icon("M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"), requestsWord, requestsBadge);
+    requests.setAttribute("aria-haspopup", "dialog");
     // Under the title, how many speak and listen, so the roster needs no headings of its own.
     const roomCount = make("span", "hc-room-count"), titles = make("span", "hc-room-titles", roomTitle, roomCount);
     const bar = make("div", "hc-room-bar", back, titles, openTag);
     // Share, for everyone in the chat: the page's own address opening this chat (`?chat=<id>`: the island opens it
     // listening, chat-call.js; Ooga Chat its preview, ooga-chat-hosts.js), through the system's share sheet where there is
     // one and copied otherwise. The same press from the alone note's Share link while nobody else has come.
-    const shareIcon = () => {
-      const el = document.createElementNS("http://www.w3.org/2000/svg", "svg"), path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      el.setAttribute("viewBox", "0 0 24 24");
-      el.setAttribute("aria-hidden", "true");
-      path.setAttribute("d", "M12 3v12M7.5 7.5 12 3l4.5 4.5M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2");
-      el.append(path);
-      return el;
-    };
+    // Its icon is the platform's own, as the share sheet it opens is: the arrow over a wide, shallow tray on Apple's devices (iPadOS
+    // says Macintosh), the three joined dots elsewhere.
     const share = button("hc-share", "");
-    share.append(shareIcon());
+    share.append(icon(/iP(hone|ad|od)|Macintosh/.test(navigator.userAgent)
+      ? "M12 3.5v12M7.5 8 12 3.5 16.5 8M3.5 15.5V18a2.5 2.5 0 0 0 2.5 2.5h12a2.5 2.5 0 0 0 2.5-2.5v-2.5"
+      : "M20.5 5a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0zM8.5 12a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0zM20.5 19a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0zM8.2 13.2l7.6 4.6M15.8 6.2l-7.6 4.6"));
     share.setAttribute("aria-label", "Share this chat");
     share.title = "Share this chat";
     const shareChat = () => {
@@ -633,6 +644,7 @@
       if (pop.hidden) return;
       pop.hidden = true;
       pop.replaceChildren();
+      if (popKind === "queue") requests.setAttribute("aria-expanded", "false");
       popKind = "";
       const to = anchor;
       anchor = null;
@@ -742,24 +754,36 @@
       if (!opening && now === queued) return;
       queued = now;
       const held = !opening && pop.contains(document.activeElement);
-      const back = removed.length ? [{ node: make("p", "hc-pop-section", "Removed") }, ...removed.map((p) => {
-        const allow = button("foot-button", "Allow back"), name = make("span", "hc-queue-name", p.display);
+      // A row: the person's face (their portrait, else their initial), their name, then its buttons.
+      const rowOf = (p, ...buttons) => {
+        const face = make("span", "hc-queue-face"), url = rowFace(p), name = make("span", "hc-queue-name", p.display);
+        if (url) { const img = make("img"); img.alt = ""; img.src = url; face.append(img); } else face.textContent = (p.display || "?").slice(0, 1).toUpperCase();
+        name.title = p.display;
+        return make("div", "hc-queue-row", face, name, ...buttons);
+      };
+      // A request's answers, round and alike on every row (a queue of many has no one amber action): a green ✓ and an
+      // outlined red ✕, their words for assistive technology and the tooltip.
+      const round = (kind, path, words, run) => {
+        const b = button(`foot-button hc-round hc-${kind}`, "");
+        b.append(icon(path));
+        b.setAttribute("aria-label", words);
+        b.title = words;
+        b.addEventListener("click", run);
+        return b;
+      };
+      const back = removed.length ? [{ node: make("p", "hc-pop-section", `Removed · ${removed.length}`) }, ...removed.map((p) => {
+        const allow = button("foot-button hc-allow", "Allow back");
         allow.setAttribute("aria-label", `Allow ${p.display} back`);
         allow.addEventListener("click", () => send("allow", { id: p.id }, (msg) => { if (msg.ok) say(`${p.display} can join again`); }));
-        name.title = p.display;
-        return { node: make("div", "hc-queue-row", name, allow) };
+        const row = rowOf(p, allow);
+        row.classList.add("hc-queue-removed");
+        return { node: row };
       })] : [];
-      openPop("queue", requests, "Requests to speak", [...rank === "host" ? [{ node: openLabel }] : [], ...waiting.length ? waiting.map((p) => {
-        // Stone, every row alike: a queue of many has no one amber action.
-        const approve = button("foot-button", "Approve"), decline = button("foot-button", "Decline");
-        approve.setAttribute("aria-label", `Approve ${p.display}`);
-        decline.setAttribute("aria-label", `Decline ${p.display}`);
-        approve.addEventListener("click", () => send("answer", { id: p.id, approve: true }));
-        decline.addEventListener("click", () => send("answer", { id: p.id, approve: false }));
-        const name = make("span", "hc-queue-name", p.display);
-        name.title = p.display;
-        return { node: make("div", "hc-queue-row", name, approve, decline) };
-      }) : [{ node: make("p", "hc-pop-note", "No requests right now.") }], ...back], "dialog", opening);
+      openPop("queue", requests, "Requests to speak", [...rank === "host" ? [{ node: openLabel }] : [], ...waiting.length ? waiting.map((p) => ({ node: rowOf(p,
+        round("approve", "M5 12.5l4.5 4.5L19 7.5", `Approve ${p.display}`, () => send("answer", { id: p.id, approve: true })),
+        round("decline", "M6.5 6.5l11 11M17.5 6.5l-11 11", `Decline ${p.display}`, () => send("answer", { id: p.id, approve: false }))) }))
+        : [{ node: make("p", "hc-pop-note", "No requests right now.") }], ...back], "dialog", opening);
+      requests.setAttribute("aria-expanded", "true");
       if (held && !pop.contains(document.activeElement)) (pop.querySelector("button:not(.hc-pop-close)") || requests).focus();
     };
     requests.addEventListener("click", () => popKind === "queue" ? closePop() : openQueue(true), { signal });
@@ -832,7 +856,13 @@
       }
       const manager = !!LEVEL[you.rank];
       requests.hidden = !r || !manager;
-      if (manager) { const n = queue().length; set(requests, "textContent", n ? `Requests ${n}` : "Requests"); }
+      if (manager) {
+        const n = queue().length;
+        set(requestsWord, "textContent", n ? "Requests " : "Requests");
+        set(requestsBadge, "textContent", n ? String(n) : "");
+        set(requestsBadge, "hidden", !n);
+        set(requests, "title", n ? `Requests to speak: ${n} waiting` : "Requests to speak");
+      }
       if (!manager && popKind === "queue") closePop(false);
       if (popKind === "queue") openQueue(false);
       if (popKind.startsWith("menu:") && !people.some((p) => p.id === popKind.slice(5))) closePop(false);
@@ -950,7 +980,7 @@
       observer.observe(node.parentElement, { attributes: true, attributeFilter: ["hidden"] });
     };
     head.after(bar, dock, noticeHost, list);
-    // The Requests chip stands in the panel's title, right of the zone tag.
+    // The Requests bell stands in the panel's title, right of the zone tag.
     const zoneTag = head.querySelector(".panel-chip");
     if (zoneTag) zoneTag.after(requests); else head.append(requests);
     // Share right of Requests, for everyone in the chat.

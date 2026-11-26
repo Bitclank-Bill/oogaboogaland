@@ -81,7 +81,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
   Approve and Decline. A tile's menu (press a tile, or Enter on the focused tile) offers what the viewer's role allows:
   Invite to speak (Approve request to speak and Decline request for someone who asked), Mute, Move to listener, Make co-host (dimmed with "All 3 co-host slots are taken" while every slot is
   held), Withdraw co-host invitation, Make speaker (a co-host on stage; Make listener off it), Make host, Remove from chat.
-  A tile holding an offer carries a star badge and reads "invited to co-host". The person offered gets a card, **The
+  A tile holding an offer carries an outlined star on a purple badge and reads "invited to co-host" (one asking an amber microphone badge, one invited to speak a green one). The person offered gets a card, **The
   host invited you to co-host** (**You left the stage. Rejoin as co-host?** when it came back), with Accept and Not now.
 - **Approve, or invite** a listener directly: the listener gets an invite card, **A host invited you to speak**, with
   Start speaking and Not now. Start speaking asks for the microphone (inside the press, as Safari needs) and puts them
@@ -122,7 +122,7 @@ editable, at most 60 characters, checked by the island's chat policy) and three 
 only** first (chosen first in Ooga Chat), Main Island and DSB Land. Voice only is a chat with no land (zone `none`: Ooga Chat voice alone, never a
 copy, clouds or Go there), then Start chat (the one amber action) or Cancel. The island's panel opens the
 same dialog with the zone the visitor's Ooga stands in chosen first. A chat opens the panel the app has today (`audience-tiles.js` roster, the emoji bar,
-the footer) with a Back to chats control, the Requests chip for a host or co-host (in the panel's top right corner,
+the footer) with a Back to chats control, the Requests bell for a host or co-host (in the panel's top right corner,
 to the right of the zone tag), a role badge on host and co-host
 tiles, and the footer's Request to speak or, for a host, End chat beside Leave chat.
 
@@ -213,7 +213,7 @@ in the second PR inside each chat's copy.
 
 | Event | Who | What |
 |---|---|---|
-| a request arrives | host and co-hosts | the Requests chip's count, the cloud tab's unread badge (`sheet.setBadge`) while the panel is not watched, a toast "bea asked to speak" (at most one every 5 s, joined into "bea and 2 others asked to speak"), a soft chime once a burst |
+| a request arrives | host and co-hosts | the Requests bell's count, the cloud tab's unread badge (`sheet.setBadge`) while the panel is not watched, a toast "bea asked to speak" (at most one every 5 s, joined into "bea and 2 others asked to speak"), a soft chime once a burst |
 | approved or invited | the requester | the invite card and a toast; a chime |
 | declined | the requester | the footer goes back to Request to speak; a quiet note "Your request wasn't accepted" |
 | muted by a host | the speaker | a toast "A host muted you" |
@@ -424,8 +424,10 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   the Ooga onto the chat's island and back (chat-copy.js); in Ooga Chat, for a GitHub account, the same chat opened on
   the island in the same tab (`ooga-chat-hosts.js`; the bootstrap's `island`, the edge's `ISLAND_ORIGIN`):
   `/?chat=<id>&mic=<0|1>#handoff=<ticket>`.
-- **The chat's bar** (agreed 2026-11-26): the title over a line of how many speak and listen; Requests (a host's), and
-  Share for everyone, which hands out the page's own `/?chat=<id>` through the system's share sheet or copies it (the
+- **The chat's bar** (agreed 2026-11-26): dark in Ooga Chat whether or not the view is expanded; the title over a line of
+  how many speak and listen; Requests, a host's or co-host's bell with a badge counting who waits, whose pop-up lists
+  each request (face, name, a green ✓ and a red ✕) and then who was removed with Allow back; and Share for everyone (the
+  platform's own icon), which hands out the page's own `/?chat=<id>` through the system's share sheet or copies it (the
   island opens such a link listening, as above; Ooga Chat keeps it in the tab through a sign-in and opens that chat's
   preview); alone in a chat, the roster offers the same Share under "Just you so far". In Ooga Chat's full screen the
   bar is solid across the view's top, the view under it with its full-screen button lined up under Share, a host's
