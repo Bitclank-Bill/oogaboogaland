@@ -50196,6 +50196,25 @@ const oogaChatChecks = async () => {
   record("Ooga Chat account: every sign-in lands as a listener with gates only the server's answer opens, a stale window (asked again two minutes before it ends), a failed check or the server's own unsure answer closes them without ending a lease held, sign-out releases capture before the request and offers a retry when unconfirmed, a session the server still holds after it is never adopted again, and another principal or an expired session releases and says so",
     Object.values(flow).every(Boolean), JSON.stringify(flow));
 
+  // Renamed live (worker/src/renames.js, heard through the Commons): the heard name is the account's at once; an answer
+  // still carrying the old one (the server's island answer under its 10 s window) keeps the heard name and is renameAsks again
+  // after that window; one that agrees ends it, and nothing is renameAsks after.
+  const renaming = await signedIn(account("github", "speaker", "eligible", { identity: { display: "Old Name" } }));
+  renaming.auth.renamed("New Name");
+  const atOnce = renaming.auth.state.session.identity.display === "New Name";
+  await renaming.advance(0);
+  await new Promise((resolve) => setImmediate(resolve));
+  const renameAsks = renaming.log.filter((entry) => entry === "session").length;
+  const keptOverOld = renaming.auth.state.session.identity.display === "New Name" && renaming.timers.some((t) => t.at >= NOW + 11_000);
+  renaming.answer = account("github", "speaker", "eligible", { identity: { display: "New Name" } });
+  await renaming.advance(11_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  const agreed = renaming.auth.state.session.identity.display === "New Name" && renaming.log.filter((entry) => entry === "session").length === renameAsks + 1;
+  await renaming.advance(60_000);
+  const settled = renaming.log.filter((entry) => entry === "session").length === renameAsks + 1;
+  record("Ooga Chat account: a name heard live is the account's at once, kept over an answer still carrying the old one, which is asked again after the server's window, until one agrees",
+    atOnce && renameAsks === 2 && keptOverOld && agreed && settled, JSON.stringify({ atOnce, renameAsks, keptOverOld, agreed, settled }));
+
   // The audience roster (audience protocol 1): the space's one order, and a snapshot and deltas applied whole or not at
   // all, by participant and generation, with stale ones dropped and gaps found.
   const R = load(["src/ooga-chat/ooga-chat-config.js", "src/ooga-chat/ooga-chat-roster.js"], { window: {}, URLSearchParams }).oogaChatRoster;

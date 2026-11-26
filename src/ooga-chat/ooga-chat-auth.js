@@ -109,10 +109,40 @@
     };
     // While a sign-out the server didn't confirm stands, the page stays signed out: a session still found is never
     // taken back (only said, with the sign-out to send again), and none found is the confirmation.
+    // A name heard live (`renamed(display)`: the island's worker/src/renames.js, through the Commons) is this account's
+    // name at once, here as in the footer, so a check under way never shows the old one, and the server is asked for it
+    // (`refresh`). An answer still carrying another name (the server's island answer was under its REFRESH_SOON_MS) keeps
+    // the heard one and asks again once that window has passed, RENAME_TRIES at most; one that agrees ends it.
+    const RENAME_AGAIN_MS = 11 * 1000, RENAME_BUSY_MS = 1500, RENAME_TRIES = 3;
+    let heard = null, heardTries = 0, heardTimer = null;
+    const named = (is, display) => is && is.identity.display !== display ? { ...is, identity: { ...is.identity, display } } : is;
+    const askRenamed = (wait) => {
+      if (heardTimer !== null) timers.clear(heardTimer);
+      heardTimer = timers.set(() => {
+        heardTimer = null;
+        if (!heard || disposed) return;
+        if (state.auth === "checking") askRenamed(RENAME_BUSY_MS); else check("renamed");
+      }, wait);
+    };
+    const renamed = (display) => {
+      if (disposed || !state.session || typeof display !== "string" || !display || state.session.identity.display === display) return;
+      heard = display;
+      heardTries = 0;
+      set({ session: named(state.session, display) }, "renamed");
+      askRenamed(0);
+    };
     const adopt = (next, why) => {
       if (state.notice?.kind === "signout") {
         set({ notice: next ? NOTICE.held : null });
         return;
+      }
+      if (heard && next) {
+        if (next.identity.display === heard) heard = null;
+        else {
+          next = named(next, heard);
+          if (why === "renamed" && ++heardTries < RENAME_TRIES) askRenamed(RENAME_AGAIN_MS);
+          else if (why === "renamed") heard = null;
+        }
       }
       const expired = !!state.session && !next;
       const notice = expired ? NOTICE.expired : state.notice?.kind === "check" ? null : state.notice;
@@ -208,8 +238,9 @@
     const dispose = () => {
       disposed = true;
       stop();
+      if (heardTimer !== null) timers.clear(heardTimer);
     };
-    return { start, check, signIn, signOut, retry, resume, dispose, get state() { return state; }, get timed() { return timer !== null; } };
+    return { start, check, renamed, signIn, signOut, retry, resume, dispose, get state() { return state; }, get timed() { return timer !== null; } };
   };
   BL.oogaChatAuth = { create, status, gates, eligibilityAt, RECHECK_MIN_MS, TIMER_MIN_MS, TIMER_MAX_MS, STALE_LEAD_MS, NOTICE, WHY };
 })();
