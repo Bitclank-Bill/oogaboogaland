@@ -164,7 +164,12 @@ that length only for aiming the monkeys and tests the round's whole reach, throu
 - **What is kept.** While anything has been touched, each change and each `here` saves the rules' snapshot, so the
   land keeps its open passages while anyone is there and for `RESUME_MS` after the last has gone. `here` also sends
   the state round again, which puts a page right after the object restarted under it. The record names no account.
-- **What stays on the room.** Presence, poses and voice, as for every scene.
+- **One link for the whole land.** The yard and the keep's halls share the page's link to the object
+  (scene-keep.js `BL.keepLink`): it stays open across the switch between them and both send `here`, so what has
+  been opened is kept however long a visitor stays inside.
+- **What stays on the room.** Presence, poses and voice, as for every scene. The land is far bigger than the room's
+  ±160 m bound on a position, so each pose is sent from the middle of the area it is in, under that area's zone
+  (zone-map.js `FRAME_SETS`).
 
 ## Cost
 

@@ -27,7 +27,8 @@
   // R2 bucket (worker/src/lecture-audio.js `handleKeepMusic`). A track that cannot be had (the page opened from disk,
   // a checkout without the files) is asked for again no sooner than TRACK_RETRY ms later, and the land is silent.
   const TRACK_AT = "/media/keep/", TRACK_RETRY = 30000;
-  const fetchTrack = (file) => fetch(TRACK_AT + file).then((r) => { if (!r.ok) throw new Error("no track"); return r.arrayBuffer(); });
+  // A page opened from disk (the portable page) has no Worker to ask, so it asks nothing and the land is silent.
+  const fetchTrack = (file) => location.protocol === "file:" ? Promise.reject(new Error("no track")) : fetch(TRACK_AT + file).then((r) => { if (!r.ok) throw new Error("no track"); return r.arrayBuffer(); });
   const MASTER = 0.5, TONES = 14, NOISES = 10, NOISE_SECONDS = 2, REF = 14;
   // The drawbridge's level and how long it fades as the leaf or portcullis stops; the wake's level at full speed and
   // how much of each end of its loop is left out (an MP3's padding, so the loop never clicks).

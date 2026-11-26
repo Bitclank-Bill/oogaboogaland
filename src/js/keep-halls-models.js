@@ -331,11 +331,9 @@
     pots: () => { const parts = [B(2.6, 0.08, 0.08, IRON, 0, 0, 0), B(0.04, 2, 0.04, IRON, -1.2, 1, 0), B(0.04, 2, 0.04, IRON, 1.2, 1, 0)];
       for (let k = 0; k < 5; k++) parts.push(moved(lathe({ profile: [[0, 0], [0.18, 0.02], [0.2, 0.18], [0.16, 0.22], [0, 0.22]], segments: 10, color: k % 2 ? "#a85a2e" : "#7a4a2a" }), -1 + k * 0.5, -0.5, 0), B(0.02, 0.28, 0.02, IRON, -1 + k * 0.5, -0.14, 0));
       return merge(...parts); },
-    barrel: () => { const b = lathe({ profile: [[0, 0], [0.38, 0], [0.45, 0.5], [0.38, 1.0], [0, 1.0]], segments: 12, color: "#5c3e24" }); return merge(b, ...[0.15, 0.85].map((y) => moved(torus(0.4, 0.025, IRON, 0, 14, 4), 0, y, 0))); },
-    barrels: () => { const one = () => turnedZ(merge(lathe({ profile: [[0, -0.5], [0.38, -0.5], [0.45, 0], [0.38, 0.5], [0, 0.5]], segments: 12, color: "#5c3e24" }), moved(torus(0.4, 0.025, IRON, 0, 14, 4), 0, -0.35, 0), moved(torus(0.4, 0.025, IRON, 0, 14, 4), 0, 0.35, 0)), Math.PI / 2);
-      const parts = [V(2.8, 0.2, 0.9, OAK_DK, 0, 0.1, 0)];
-      for (const x of [-0.95, 0, 0.95]) parts.push(moved(turnedY(one(), Math.PI / 2), x, 0.65, 0), moved(B(0.08, 0.08, 0.02, "#2a1a10", 0, 0, 0), x, 0.65, 0.5));
-      return merge(...parts); },
+    // The kit's barrel and a row of three, as the yard's (keep-models.js `kit`).
+    barrel: () => BL.keepModels.kit("barrel").geometry,
+    barrels: () => BL.keepModels.kit("barrels").geometry,
     shaft: () => { const parts = []; for (const [x, z] of [[-0.55, -0.55], [0.55, -0.55], [-0.55, 0.55], [0.55, 0.55]]) parts.push(B(0.1, 6.3, 0.1, OAK_DK, x, 3.15, z));
       for (const y of [1.1, 3.2, 5.3]) parts.push(B(1.2, 0.08, 0.08, OAK_DK, 0, y, -0.55), B(1.2, 0.08, 0.08, OAK_DK, 0, y, 0.55), B(0.08, 0.08, 1.2, OAK_DK, -0.55, y, 0), B(0.08, 0.08, 1.2, OAK_DK, 0.55, y, 0));
       parts.push(V(0.9, 0.7, 0.9, "#5c4028", 0, 1.6, 0), B(0.02, 4.2, 0.02, "#8a7350", 0, 4.1, 0)); return merge(...parts); },

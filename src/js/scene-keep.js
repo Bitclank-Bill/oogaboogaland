@@ -112,7 +112,7 @@
 
   let renderer, canvas, game, world, go, root, camera, hud, hooks, input, pilot, fx;
   let people = null, avatar = null, playerWorld = null, scene = null, leaving = false, unsubscribeAccount = null, remotes = null, footsteps = null;
-  let rules = null, link = null, hereAt = 0, wasOpen = false, actPrompt = false, audio = null, clock = 0;
+  let rules = null, link = null, wasOpen = false, actPrompt = false, audio = null, clock = 0;
   const targets = [];
 
   const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name);
@@ -160,7 +160,7 @@
   const turnStatue = (i) => {
     if (leaving) return;
     if (rules.solved("statues")) { hud.toast("The knights have met. They will not turn again."); return; }
-    if (link && link.state === "refused") { link.close(); link = null; }
+    if (link && link.state === "refused") { BL.keepLink.drop(); link = null; }
     if (!link) { if (rules.act("statues", i)) stateChanged(); return; }
     if (!link.send({ t: "act", id: "statues", part: i })) hud.toast("The Keep is still waking. Try again in a moment.");
   };
@@ -578,6 +578,7 @@
       if (!geometry) return;
       const k = p.scale || 1;
       addChild(root, createNode({ geometry, position: { x: p.x, y: Y.y + (p.up || 0), z: p.z }, rotation: { x: 0, y: p.ry, z: 0 }, scale: { x: k, y: k, z: k } }));
+      pieceTargets(p.k, p.x, Y.y + (p.up || 0), p.z, p.ry, k);
     };
     const fire = (x, y, z, reach, tint) => {
       const node = createNode({ geometry: blaze, position: { x, y, z }, scale: { x: TORCH, y: TORCH, z: TORCH }, sightHidden: true });
@@ -5783,10 +5784,13 @@
     let n = 0;
     for (const rec of BL.net.remotes.values()) {
       if (n >= s.others.length) break;
-      if (!rec.body || rec.zone !== BL.net.state.zone || !(rec.y < L.SEA + 2) || !L.seaAt(rec.x, rec.z) || L.shipTop(rec.x, rec.z) !== null || L.deckAt(rec.x, rec.z) !== null) continue;
+      // Anyone in the yard, whichever of its areas they report from (zone-map.js `offsetOf`, added back).
+      if (!rec.body || !yardZone(rec.zone) || rec.poseZone !== rec.zone || !(rec.y < L.SEA + 2)) continue;
+      const at = ZM.offsetOf(rec.zone), x = rec.x + at.x, z = rec.z + at.z;
+      if (!L.seaAt(x, z) || L.shipTop(x, z) !== null || L.deckAt(x, z) !== null) continue;
       const o = s.others[n++], sn = Math.sin(rec.yaw), cs = Math.cos(rec.yaw);
       o.boat.visible = true;
-      poseBoat(o, rec.x - sn * BOAT.rower.z, L.SEA, rec.z - cs * BOAT.rower.z, rec.yaw, elapsed + n * 1.7);
+      poseBoat(o, x - sn * BOAT.rower.z, L.SEA, z - cs * BOAT.rower.z, rec.yaw, elapsed + n * 1.7);
       row(o, (elapsed / STROKE + n * 0.3) % 1, 1);
     }
     for (let i = n; i < s.others.length; i++) s.others[i].boat.visible = false;
@@ -6080,6 +6084,7 @@
       if (o.kind === GREEN_SKEL.kind) return GREEN_SKEL.tip;
       if (o.kind === OGRE.kind) return OGRE.tip;
       if (o.kind === TROLL.kind) return TROLL.tip;
+      if (o.kind === "keep-piece") return PIECE_LINES[o.piece] ? PIECE_LINES[o.piece][0] : "";
       if (o.kind === "keep-cannon") return "A cannon · man it from its turret's deck";
       if (o.kind === "keep-helm") return "A ship's helm · take it to sail her and fire her guns";
       if (o.kind === "keep-ferry") return scene && scene.ferries[o.index].state === "moored" ? "A boat · sit in it and paddle wherever you like" : "A boat";
@@ -6095,6 +6100,7 @@
         if (!hit) return;
         const o = hit.owner;
         if (o.kind === "keep-arch") return hud.toast("Walk through the arch to go back to ₿IFRÖST");
+        if (o.kind === "keep-piece") { const lines = PIECE_LINES[o.piece]; if (lines) hud.toast(lines[1][o.next++ % lines[1].length]); return; }
         if (o.kind === "keep-helm") {
           const w = scene.fleet[o.index], p = pilot.player && pilot.player.root.position;
           if (scene.sail === w) fireSide(scene, w);
@@ -6230,15 +6236,14 @@
       pilot.navigate({ position: { x: at.x, y: at.y || 0, z: at.z }, yaw: at.yaw - Math.PI, pitch: at.pitch ?? 0.2, dist: at.dist ?? 5.5 });
     }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
-    remotes = BL.remotePlayers.create({ root, crew: people, fx, unarmed: true });
+    remotes = BL.remotePlayers.create({ root, crew: people, fx, unarmed: true, visible: (rec) => yardZone(rec.zone) });
     footsteps = BL.footsteps.create();
     audio = BL.keepAudio.create();
     clock = 0;
     // The land's own object, joined only now: its state comes at once, and again whenever anyone moves it.
     wasOpen = false;
     stateChanged(true);
-    link = BL.gameNet.offers("keep") ? BL.gameNet.open("keep", "keep", { state: (msg) => { if (scene && rules.load(msg.s)) stateChanged(!scene.heard); if (scene) scene.heard = true; } }) : null;
-    hereAt = 0;
+    link = BL.keepLink.open((msg) => { if (scene && rules.load(msg.s)) stateChanged(!scene.heard); if (scene) scene.heard = true; });
     poseLeaf(scene);
     lightUp(scene, 0, 0, ARRIVE.x, ARRIVE.z);
     if (avatar) { const p = avatar.root.position; scene.safe = { x: p.x, y: p.y - avatar.baseY, z: p.z }; scene.archZ = p.z; }
@@ -6265,6 +6270,47 @@
   // put it off. The bolt stands `far` m off the view in a random direction, `tall` m from the sea up into the clouds;
   // the flash lifts the sky, the haze and the light by `lift` at its height, `flash` s in all. On a debug page
   // `skybolt=N` strikes every N s instead.
+  // The land's object (worker/src/games/keep.js) over game-net.js, one socket for the page's whole time in Valhodl,
+  // its yard and its halls alike: each scene `open`s it with what it does with the state it is sent, `here(dt)` once a
+  // frame tells the object this page is still in the land once a minute (which keeps what has been opened), `handoff()`
+  // as one Valhodl scene goes to the other keeps it open across the switch, and `leave()` in each scene's `leave` closes
+  // it unless a handoff is under way or the next scene, Valhodl's other, opens it again in the same task (the director
+  // leaves one scene and enters the next together, so the close waits a microtask for that). `drop()` lets go of one
+  // the object refused.
+  BL.keepLink = (() => {
+    let net = null, onState = null, handing = false, since = 0, closing = false;
+    const open = (fn) => {
+      onState = fn; handing = false; closing = false;
+      if (!net && BL.gameNet.offers("keep")) { net = BL.gameNet.open("keep", "keep", { state: (msg) => { if (onState) onState(msg); } }); since = 0; }
+      return net;
+    };
+    const here = (dt) => { if (!net || net.state !== "live" || (since += dt) < 60) return; since = 0; net.send({ t: "here" }); };
+    const drop = () => { if (net) net.close(); net = null; };
+    const handoff = () => { if (net) handing = true; };
+    const leave = () => {
+      onState = null;
+      if (handing || !net) return;
+      closing = true;
+      queueMicrotask(() => { if (closing) { closing = false; drop(); } });
+    };
+    return { open, here, drop, handoff, leave, get net() { return net; } };
+  })();
+  // The kit's pieces among the props (keep-models.js `kit`: crates and barrels), each a poke target at its pick sphere,
+  // the cluster placed at (x, y, z) turned `ry` and `k` times its size; what each says when poked (`PIECE_LINES`).
+  const PIECE_LINES = { crate: ["Crate", ["Nailed shut. Ooga knocks anyway.", "Something rattles inside."]], barrel: ["Barrel", ["Sloshes. Mead, by the smell.", "Full to the bung."]] };
+  const pieceTargets = (kind, x, y, z, ry, k = 1) => {
+    const c = KM.kit(kind);
+    if (!c) return;
+    const P = c.picks, cs = Math.cos(ry), sn = Math.sin(ry);
+    for (let i = 0; i < P.length; i += 6) {
+      const lx = P[i + 2] * k, lz = P[i + 4] * k, node = createNode({ position: { x: x + lx * cs + lz * sn, y: y + P[i + 3] * k, z: z - lx * sn + lz * cs } });
+      BL.scene.updateWorld(node);
+      input.add(node, { kind: "keep-piece", piece: P[i], next: 0 }, { radius: Math.max(0.35, P[i + 5] * k) });
+      targets.push(node);
+    }
+  };
+  // The yard's zones: its own, and each of its areas' (zone-map.js `FRAME_SETS`).
+  const ZM = BL.zoneMap, yardZone = (zone) => zone === "byzantine-keep" || ZM.keepPlace(zone) === "byzantine-keep";
   const SKY_STRIKE = { every: [300, 900], far: [110, 200], tall: [120, 170], flash: 0.7, lift: { sky: 3.2, light: 1.1 }, ahead: 1.1,
     beats: [[0, 0.11, 1], [0.11, 0.19, 0.15], [0.19, 0.3, 0.75], [0.3, 0.7, 0.35]] };
   const SKY_TEST = (() => { const q = new URLSearchParams(location.search), n = Number(q.get("skybolt")); return q.get("debug") === "1" && n > 0 ? [n, n] : null; })();
@@ -6354,14 +6400,17 @@
     const drivenHere = people && people.player;
     BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
     if (drivenHere) {
-      const p = drivenHere.root.position;
-      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y, null, 0, BL.crew.weaponFlags(drivenHere), BL.crew.visualState(drivenHere));
+      // The yard is far bigger than the room's bounds on a position: each is reported from the middle of the area it
+      // is in, under that area's zone (zone-map.js `frameZone`), and other pages add the middle back.
+      const p = drivenHere.root.position, zone = ZM.frameZone("keep-yard", p.x, p.z, BL.net.state.zone), at = ZM.originOf(zone);
+      BL.net.setZone(zone);
+      BL.net.sendPose(p.x - at.x, p.y - drivenHere.baseY, p.z - at.z, drivenHere.root.rotation.y, null, 0, BL.crew.weaponFlags(drivenHere), BL.crew.visualState(drivenHere));
       health.report();
     }
     remotes.update(dt);
     footsteps.update(drivenHere);
     // The land's object hears this page is still here once a minute, which also keeps what has been opened.
-    if (link && link.state === "live" && elapsed - hereAt >= 60) { hereAt = elapsed; link.send({ t: "here" }); }
+    BL.keepLink.here(dt);
 
     // The knights turn to where the rules have them. Their visors, their lights and their dust burn red until
     // both have come round to face each other, and orange from then on.
@@ -6506,15 +6555,16 @@
       s.merchant.position.y = L.ARMORY.y + 0.14 + Math.sin(elapsed * 1.6) * 0.012;
       // Into the halls through the great door or a tower's, walked into.
       const below = !seated && feet - ground < 0.3 && L.galleryExit(p.x, p.z, feet), inside = below ? `towertop-${below.i}` : grounded && doorAt(p.x, p.z, drivenHere.bodyRadius || 0.4);
-      if (inside) { world.pilot = drivenHere.traits.name; BL.keepAudio.music.handoff(); leaving = go("keephalls", inside); }
+      if (inside) { world.pilot = drivenHere.traits.name; BL.keepAudio.music.handoff(); leaving = go("keephalls", inside); if (leaving) BL.keepLink.handoff(); }
       // In under the volcano's arch: underground, into its cave.
-      else if (grounded && L.caveAt(p.x, p.z)) { world.pilot = drivenHere.traits.name; BL.keepAudio.music.handoff(); leaving = go("keephalls", "cave"); }
+      else if (grounded && L.caveAt(p.x, p.z)) { world.pilot = drivenHere.traits.name; BL.keepAudio.music.handoff(); leaving = go("keephalls", "cave"); if (leaving) BL.keepLink.handoff(); }
       // Flown in through one of the keep's arches: on into the halls' level where it came in, still in the air.
       else if (!leaving && L.arcadeAt(feet) && Math.hypot(p.x - KEEP.x, p.z - KEEP.z) < KEEP.r - 0.8) {
         world.pilot = drivenHere.traits.name;
         world.keepDrop = { x: p.x, y: Math.max(L.arcadeAt(feet).floor, feet), z: p.z + (0.4 - KEEP.front), yaw: drivenHere.root.rotation.y };
         BL.keepAudio.music.handoff();
         leaving = go("keephalls", "drop");
+        if (leaving) BL.keepLink.handoff();
       }
       // Home through the arch, walked or flown into from its front.
       if (feet < L.LOW && p.z + r > ARCH.plane && s.archZ + r <= ARCH.plane && Math.abs(p.x) < ARCH.halfW) leaveKeep();
@@ -6583,7 +6633,7 @@
     if (scene && scene.fleet) { if (scene.sail) helmDropped(scene.sail); world.keepFleet = keptFleet(); }
     // The red towers stand whole in the layout again for the next visit.
     if (scene && scene.reds) for (const c of scene.reds) c.t.top = c.t.y + c.t.rise;
-    if (link) link.close();
+    BL.keepLink.leave();
     link = null;
     if (!leaving) world.pilot = pilot.player ? pilot.player.traits.name : null;
     unsubscribeAccount();

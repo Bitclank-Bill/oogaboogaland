@@ -10,6 +10,8 @@
 // them (keep-models.js `castleParts`). Presence and voice ride the island's room under `byzantine-keep.halls`.
 (() => {
   "use strict";
+  // The halls' zones: the keep's own inside and each tower's and the cave's (zone-map.js `FRAME_SETS`).
+  const ZM = window.BL.zoneMap;
   // The land is being built: a debug page plays this Ooga unless it names another (scene-keep.js's too).
   const TEST_PLAYER = "rules-without-rulers";
   const BL = window.BL;
@@ -74,6 +76,7 @@
     world.pilot = pilot.player ? pilot.player.traits.name : null;
     if (id === "keep") BL.keepAudio.music.handoff();
     leaving = go(id, place);
+    if (leaving && id === "keep") BL.keepLink.handoff();
   };
   const accountChanged = () => {
     if (!avatar) return;
@@ -140,6 +143,14 @@
     for (const p of L.PROPS) {
       const g = HM.prop(p);
       if (g) addChild(root, createNode({ geometry: g, position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 } }));
+      // The kit's barrels (keep-models.js `kit`) are poked as the yard's are.
+      const c = KM.kit(p.k);
+      if (c) for (let i = 0, P = c.picks, cs = Math.cos(p.turn), sn = Math.sin(p.turn); i < P.length; i += 6) {
+        const node = createNode({ position: { x: p.x + P[i + 2] * cs + P[i + 4] * sn, y: p.y + P[i + 3], z: p.z - P[i + 2] * sn + P[i + 4] * cs } });
+        BL.scene.updateWorld(node);
+        input.add(node, { kind: "keep-piece", piece: P[i], next: 0 }, { radius: Math.max(0.35, P[i + 5]) });
+        targets.push(node);
+      }
     }
     // The top level's guardians, the yard's knights at life size on the floor itself, the glow behind their visors
     // orange; and the armory's suits of the same plate, smaller and empty, each on its base.
@@ -368,6 +379,9 @@
     root = createNode();
     hud = BL.hud.create({ signal: ctx.signal, roster: BL.contributors.activeRoster });
     BL.keepHealth.show(world);
+    // The land's object stays connected inside the keep and is told the page is here (scene-keep.js `keepLink`), so
+    // what has been opened outside is kept; the state it sends is kept for the yard to load on the way back out.
+    BL.keepLink.open((msg) => { world.keepState = msg.s; });
     BL.keepQuests.book.show((on) => { if (pilot) pilot.setMenuOpen(on); });
     hooks = {};
     input = BL.interact.create({ canvas, renderer, camera, hooks });
@@ -384,10 +398,12 @@
         if (hit && hit.owner.kind === "keep-portal") hud.tooltip.show("₿IFRÖST · the way back", p.x, p.y);
         else if (hit && hit.owner.kind === BL.keepFoes.OGRE.kind) hud.tooltip.show(BL.keepFoes.OGRE.tip, p.x, p.y);
         else if (hit && hit.owner.kind === BL.keepFoes.GREEN_SKEL.kind) hud.tooltip.show(GREEN_TIP, p.x, p.y);
+        else if (hit && hit.owner.kind === "keep-piece") hud.tooltip.show(hit.owner.piece === "crate" ? "Crate" : "Barrel", p.x, p.y);
         else hud.tooltip.hide();
       },
       onTap: (hit) => {
         if (hit && hit.owner.kind === "keep-portal") hud.toast("Walk into the portal to go back to ₿IFRÖST");
+        else if (hit && hit.owner.kind === "keep-piece") hud.toast(["Sloshes. Something strong, by the smell.", "Full to the bung."][hit.owner.next++ % 2]);
       },
       ...pilot.hooks
     });
@@ -444,7 +460,7 @@
       else pilot.navigate({ position: { x: at.x, y: at.y || 0, z: at.z }, yaw: at.yaw - Math.PI, pitch: 0.2, dist: 4.5 });
     }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
-    remotes = BL.remotePlayers.create({ root, crew: people, fx, unarmed: true });
+    remotes = BL.remotePlayers.create({ root, crew: people, fx, unarmed: true, visible: (rec) => ZM.keepPlace(rec.zone) === "byzantine-keep.halls" });
     footsteps = BL.footsteps.create();
     // The ogre in the dungeon (scene-keep.js `BL.keepFoes`), after whoever comes down to it, and back by its post when
     // they go up again. Struck down to no health, the visitor wakes on the islet.
@@ -485,14 +501,18 @@
     if (!leaving) BL.keepAudio.music.play(here && here.cave ? null : "yard");
     if (s.foes) s.foes.unshake(camera);
     if (s.foes) s.foes.undarken(RENDER_OPTS);
+    BL.keepLink.here(dt);
     pilot.readInput(dt);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
     const drivenHere = people && people.player;
     BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
     if (drivenHere) {
-      const p = drivenHere.root.position;
-      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y, null, 0, BL.crew.weaponFlags(drivenHere), BL.crew.visualState(drivenHere));
+      // The towers' and the cave's insides lie far past the room's bounds on a position: each is reported from the
+      // middle of its own area, under that area's zone (zone-map.js `frameZone`), and other pages add the middle back.
+      const p = drivenHere.root.position, zone = ZM.frameZone("keep-halls", p.x, p.z, BL.net.state.zone), at = ZM.originOf(zone);
+      BL.net.setZone(zone);
+      BL.net.sendPose(p.x - at.x, p.y - drivenHere.baseY, p.z - at.z, drivenHere.root.rotation.y, null, 0, BL.crew.weaponFlags(drivenHere), BL.crew.visualState(drivenHere));
       BL.keepHealth.report();
       BL.keepHealth.tick(dt);
       if (!leaving) BL.visitSpot.note("keephalls", "", drivenHere);
@@ -610,6 +630,7 @@
   const leave = () => {
     if (scene && scene.foes) scene.foes.undarken(RENDER_OPTS);
     if (!leaving) world.pilot = pilot.player ? pilot.player.traits.name : null;
+    BL.keepLink.leave();
     unsubscribeAccount();
     unsubscribeAccount = null;
     BL.keepAudio.music.leave();

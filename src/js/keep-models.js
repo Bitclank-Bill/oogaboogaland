@@ -2718,8 +2718,29 @@
   });
   // The shipyard's dressing and the halls' furniture (keep-layout.js `SHIPYARD.props`, a hall's `inside`), each a part
   // with its foot at the origin: `yardProp(kind)`, or null for a kind the keep's halls build (keep-halls-models.js).
-  const cask = (r = 0.42, h = 1.0, color = "#5c3e24") => merge(lathe({ profile: [[0, 0], [r * 0.85, 0], [r, h / 2], [r * 0.85, h], [0, h]], segments: 12, color }), ...[0.15, 0.85].map((k) => moved(torus(r * 0.9, 0.025, IRON, 0, 14, 4), 0, h * k, 0)));
-  const crate = (s, color) => merge(bevelBox({ w: s, h: s, d: s, color, bevel: 0.03, offset: { y: s / 2 } }), ...[-1, 1].flatMap((k) => [box({ w: s + 0.04, h: 0.1, d: 0.1, color: OAK_D, offset: { y: s / 2 + k * (s / 2 - 0.08), z: s / 2 } }), box({ w: 0.1, h: s, d: 0.1, color: OAK_D, offset: { x: k * (s / 2 - 0.08), y: s / 2, z: s / 2 } })]));
+  // Valhodl's crates and barrels come from the set-dressing kit (dressing.js), as every place's do: each cluster a
+  // part with its foot at the origin, its pieces put in a set of its own (kind, x, y, z, quarter turns; a y of "top"
+  // stands a piece on the kit's crate), and `kit(kind)` its baked geometry and its pieces' pick spheres (`picks`, six
+  // numbers a piece as the kit's `build` gives them: kind, variant, then x, y, z and radius in metres), which the
+  // scenes make poke targets of. Null for a kind that is not one.
+  const KIT_CLUSTERS = {
+    crates: [["crate", -0.45, 0, -0.2, 0], ["crate", 0.5, 0, 0.35, 1], ["crate", -0.35, "top", -0.15, 2]],
+    casks: [["barrel", -0.45, 0, 0.1, 0], ["barrel", 0.45, 0, -0.2, 1], ["barrel", 0.05, 0, 0.7, 2]],
+    barrel: [["barrel", 0, 0, 0, 0]],
+    barrels: [["barrel", -0.95, 0, 0, 0], ["barrel", 0, 0, 0, 1], ["barrel", 0.95, 0, 0, 2]]
+  };
+  const kits = new Map();
+  const kit = (kind) => {
+    const spec = KIT_CLUSTERS[kind];
+    if (!spec) return null;
+    if (!kits.has(kind)) {
+      const D = BL.dressing, set = D.set(), top = D.loosePiece("crate", 0).bounds[4];
+      for (const [k, x, y, z, turns] of spec) set.put(k, x, y === "top" ? top : y, z, turns);
+      const out = set.build();
+      kits.set(kind, { geometry: out.solid, picks: out.picks });
+    }
+    return kits.get(kind);
+  };
   const YARD_PROPS = {
     // A timber crane: a post on a cross foot, a braced jib out along +z, its rope down to a hook, and the treadwheel
     // that winds it.
@@ -2729,8 +2750,8 @@
       moved(turnedZ(torus(1.2, 0.09, OAK[2], 0, 16, 6), Math.PI / 2), 0.55, 1.6, -0.9), ...[0, 1, 2, 3].map((k) => moved(turnedX(box({ w: 0.1, h: 2.4, d: 0.1, color: OAK_D }), k * Math.PI / 4), 0.55, 1.6, -0.9))),
     // Sawn timber stacked on bearers, its boards along z.
     lumber: () => { const rand = mulberry32(31), parts = [-1.4, 0, 1.4].map((z) => box({ w: 2.0, h: 0.16, d: 0.18, color: OAK_D, offset: { y: 0.08, z } })); for (let row = 0; row < 5; row++) for (let i = 0; i < 6 - (row > 3 ? 2 : 0); i++) parts.push(box({ w: 0.29, h: 0.13, d: 4 + (rand() - 0.5) * 0.5, color: OAK[Math.floor(rand() * 4)], offset: { x: -0.8 + i * 0.32 + (row > 3 ? 0.3 : 0), y: 0.23 + row * 0.14, z: (rand() - 0.5) * 0.3 } })); return merge(...parts); },
-    crates: () => merge(moved(crate(1.0, OAK[0]), -0.45, 0, -0.2), moved(models.turnedY(crate(0.85, OAK[2]), 0.4), 0.6, 0, 0.3), moved(models.turnedY(crate(0.7, OAK[1]), -0.3), -0.35, 1.0, -0.15), moved(cask(0.3, 0.7), 0.5, 0, -0.7)),
-    casks: () => merge(moved(cask(), -0.45, 0, 0.1), moved(cask(), 0.45, 0, -0.2), moved(cask(0.36, 0.85, "#4a3020"), 0.1, 0, 0.7), moved(turnedX(cask(0.36, 0.85), Math.PI / 2), -0.1, 1.38, 0.2)),
+    crates: () => kit("crates").geometry,
+    casks: () => kit("casks").geometry,
     coil: () => merge(...[0, 1, 2].map((k) => moved(torus(0.42 - k * 0.03, 0.07, ROPE, 0, 14, 6), 0, 0.07 + k * 0.13, 0))),
     // A longship half built on its cradle, its keel along +z: the keel and both posts, pairs of ribs, the first strakes
     // up one side, and shores under it.
@@ -3404,6 +3425,6 @@
     g.beginPath(); g.arc(w / 2, w / 2, w * 0.45, 0, Math.PI * 2); g.stroke();
   }));
 
-  BL.keepModels = { arenaColumn, COLUMN_FIRE, sunBeam, swooshTint, pulseDisc, pulseWave, spiritBall, purpleOrb, runeCircle, auroraBeam, fireSwirl, backBridge, FROST, bladeFlame, lightning, LIGHTNING_LEN, fireSwoosh, keepSpire, storjTower, storjMountain, storjWays, storjCave, STORJ_CAVE, storjDock, snowPine, storjForest, stoneKnight, storjPlinth, captain, questMark, raiderFlag, cbdcFlag, cbdcWall, mallet, longshipGuns, helm, HELM, fireGlow, ashPuff, troll, TROLL, volcanoCone, volcanoDock, groundTorch, TORCH_FLAME, spireFlag, SPIRE_FLAG, knightCape, KNIGHT_CAPE, greenRing, swoosh, whiteOrb, whiteDisc, whiteRing, turret, cannon, CANNON, fireball, aimDot, dropBanana, questCrystal, keepWeapon, skeleton, SKELETON, GREEN_SKELETON, ogre, OGRE, smash, waterCandle, CANDLE, drip, hangChain, balcony, banner, BANNER, paved, layBlocks, BIG_BLOCKS, BIG, glowBeam, greenBeam, whiteBeam, lavaFlame, lavaPool, brewBubble, brewMist, foam, glowDisc, glowRing, castleParts, porch, PORCH, doorLeaf, U, ARENA, PIER_H, SENTINEL_FOOT, CHAIN_LINK, TERRAIN_UNIT, buildSteps, terrain, wall, tower, gatehouse, keep, plinth, towerSkirt, stairs, dock, boat, oar, BOAT, abutment, ruin, flags, pine, farPine, forest, water,
+  BL.keepModels = { kit, arenaColumn, COLUMN_FIRE, sunBeam, swooshTint, pulseDisc, pulseWave, spiritBall, purpleOrb, runeCircle, auroraBeam, fireSwirl, backBridge, FROST, bladeFlame, lightning, LIGHTNING_LEN, fireSwoosh, keepSpire, storjTower, storjMountain, storjWays, storjCave, STORJ_CAVE, storjDock, snowPine, storjForest, stoneKnight, storjPlinth, captain, questMark, raiderFlag, cbdcFlag, cbdcWall, mallet, longshipGuns, helm, HELM, fireGlow, ashPuff, troll, TROLL, volcanoCone, volcanoDock, groundTorch, TORCH_FLAME, spireFlag, SPIRE_FLAG, knightCape, KNIGHT_CAPE, greenRing, swoosh, whiteOrb, whiteDisc, whiteRing, turret, cannon, CANNON, fireball, aimDot, dropBanana, questCrystal, keepWeapon, skeleton, SKELETON, GREEN_SKELETON, ogre, OGRE, smash, waterCandle, CANDLE, drip, hangChain, balcony, banner, BANNER, paved, layBlocks, BIG_BLOCKS, BIG, glowBeam, greenBeam, whiteBeam, lavaFlame, lavaPool, brewBubble, brewMist, foam, glowDisc, glowRing, castleParts, porch, PORCH, doorLeaf, U, ARENA, PIER_H, SENTINEL_FOOT, CHAIN_LINK, TERRAIN_UNIT, buildSteps, terrain, wall, tower, gatehouse, keep, plinth, towerSkirt, stairs, dock, boat, oar, BOAT, abutment, ruin, flags, pine, farPine, forest, water,
     lanternPost, standLantern, hangLantern, fireArrow, arrowFlame, ARROW, warship, WARSHIP_LIGHTS, westBridge, westPortcullis, shipyard, armoryDock, longhouse, yardProp, FURNACE, wordSign, galleon, GALLEON_LIGHTS, barkeep, shipwright, smith, alchemist, leaf, chainLink, portcullis, knight, KNIGHT_UNIT, viking, GUARD_UNIT, dust, sentinelPlinth, firefly, wallBracket, BRACKET, yard, crow, gargoyle };
 })();
