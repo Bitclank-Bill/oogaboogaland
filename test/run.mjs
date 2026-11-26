@@ -47099,7 +47099,7 @@ const cloudPanelChecks = async BL => {
   const c1img = part(list.children[1], "cloud-portrait").children[0];
   // The room names a chat speaker's picture by Ooga Chat's own path, which the island does not serve: no request for it.
   hear({ t: "audience", v: 1, kind: "delta", epoch: 1, rev: 3, base: 2, zone: "main", remove: ["c1"], upsert: [row("tester", "speaker", { source: "chat", self: true, avatar: "/api/chat/avatar/tester" })] });
-  const removed = c1img.tag === "img" && c1img.cleared === 1 && !list.children.some(li => li.dataset.id === "c1") && refreshes.at(-1) === true && $("cloud-foot-name").dataset.source === "chat";
+  const removed = c1img.tag === "img" && c1img.cleared === 1 && !list.children.some(li => li.dataset.id === "c1") && refreshes.at(-1) === true && $("cloud-foot-name").dataset.source === "island";
   const noPicture = part(list.children.find(li => li.dataset.id === "tester"), "cloud-portrait").children[0].tag === "svg";
   // The room drops and is live again: the panel asks for Main Island afresh and says it is joining.
   state.room = "connecting"; tick(); state.room = "live"; tick();
@@ -54449,8 +54449,6 @@ const equipmentAppChecks = async () => {
     const clearRevision = saved.revision;
     await b.evaluate("document.getElementById('studio-hat-save').click()");
     await wait(`!BL.equipment.state.busy && BL.equipment.state.record.revision===${clearRevision + 1}`, "Clearing the wardrobe did not save");
-    record("equipment wardrobe: a signed-in account row links to the studio on the player's own Ooga from the site's root", await b.evaluate(
-      "(() => { const a=document.getElementById('account-look'), u=new URL(a.href); return !a.hidden && u.pathname==='/' && u.searchParams.get('scene')==='studio' && u.searchParams.get('character')==='equipment-preview'; })()"));
     record("equipment wardrobe: Original everywhere saves no wardrobe and gives the body its own look back", writes.at(-1).wardrobe === null && saved.wardrobe === null
       && await b.evaluate("BL.characterWardrobe.wearing(__ooga.studio.cave)===''"));
     record("equipment studio: ordinary save, reload and creator-update flows have a clean console", b.logs.length === 0, b.logs.join("\n"));

@@ -240,7 +240,7 @@ test("removed from a chat: their sockets close, and they stay out until it ends"
   assert.equal(again.ws.closed.code, 4403);
 });
 
-test("the host's hold: two minutes, then a co-host takes over; with none the chat ends for everyone and leaves the list", async () => {
+test("the host's hold: a minute, then a co-host takes over; with none the chat ends for everyone and leaves the list", async () => {
   now += START_GAP_MS;
   const w = await world();
   const { chat } = await startChat(w.env, host(1), { title: "Hold", zone: "main" });
@@ -305,7 +305,7 @@ test("a host gone silent (airplane mode: no close, no pings): found by the alarm
   now = quiet + HOST_HOLD_MS - 1;
   await ctx.storage.setAlarm(null);
   await a.alarm();
-  assert.equal(you(bea).rank, "cohost", "not before the two minutes");
+  assert.equal(you(bea).rank, "cohost", "not before the minute");
   now = quiet + HOST_HOLD_MS;
   await ctx.storage.setAlarm(null);
   await a.alarm();
@@ -333,7 +333,7 @@ test("a drop the runtime reports late counts from the last ping too; one reporte
   await ctx.storage.setAlarm(null);
   await a.alarm();
   await w.settle();
-  assert.equal(you(bea).rank, "host", "two minutes from the last ping");
+  assert.equal(you(bea).rank, "host", "a minute from the last ping");
   // A clean close counts from the moment it came: the old host back, made a co-host by the new one, who then leaves.
   const cyd = await connect(w, chat.id, 1);
   await ask(bea, { type: "cohost", id: "gh:1", on: true });
@@ -346,7 +346,7 @@ test("a drop the runtime reports late counts from the last ping too; one reporte
   now = left + HOST_HOLD_MS - 1;
   await ctx.storage.setAlarm(null);
   await a.alarm();
-  assert.equal(you(cyd).rank, "cohost", "a close reported at once holds the full two minutes");
+  assert.equal(you(cyd).rank, "cohost", "a close reported at once holds the full minute");
 });
 
 test("Go there from Ooga Chat: the same account taking its own voice to the island's page keeps a co-host's rank and the stage", async () => {

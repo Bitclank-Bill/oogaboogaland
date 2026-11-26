@@ -14,7 +14,7 @@
 // map picture, how the page brings the 3D view's code (none: the flat view alone, as the island page has it), where its
 // baked scenery is served and whether it offers full screen (island-view.js); `pageVoice`, true where the page has a voice
 // of its own outside a chat (the island's), whose Unmute and Join voice the page paints in the footer until a chat is
-// chosen (cloud-panel.js). `update(state)` takes the page's state in Ooga Chat's
+// chosen (cloud-panel.js); `mute()` the page's own mute toggle for the chat's microphone. `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
 // `preview(entry, from)` opens a chat's preview from elsewhere on the page (an entry as `parseList` gives it). It adds:
@@ -34,7 +34,7 @@
 // - in a chat: Back to chats (to the list, the chat playing on: `browse`) and its title; for a host or co-host the Requests bell, in the panel's title right of the
 //   zone tag, and its pop-up: the queue, then who was removed with Allow back (`allow`, the server's `removed` list); the footer's
 //   Request to speak (Requested · Cancel; `speakNow`, the island's, reads Speak now on an open stage) where a listener
-//   read Join voice, End chat for its host, Leave chat for everyone (Sign out waits in the other tabs while in a chat); Unmute only for a
+//   read Join voice, End chat for its host, Leave chat for everyone (the name and Sign out on their own line under them); Unmute only for a
 //   speaker or one who may speak; the Requests bell without a badge while none wait; an Open stage tag beside the title, and in the Requests
 //   pop-up the host's switch for it (`open`);
 //   the invite card, focused as it opens, Start speaking being Join voice inside its press; the co-host offer card
@@ -262,7 +262,7 @@
   };
 
   const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "none", toast = null, shown = () => !node.closest("[hidden]"),
-    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null, islandView = null, pageVoice = false }) => {
+    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null, islandView = null, pageVoice = false, mute = null }) => {
     const listeners = new AbortController(), { signal } = listeners;
     let state = null, room = null, me = null, rank = "", people = [], timer = 0, shownTimer = 0, askedTimer = 0, askedAt = -Infinity;
     // `asked` the burst's ids, `askedNames` each one's name as it asked (they may have gone by the time it is said).
@@ -904,7 +904,50 @@
       if (!offer.hidden && !offerShown) (accept.disabled ? offer : accept).focus();
       offerShown = !offer.hidden;
     };
+    // Back on the stage after a sign-out (or a reload): while the visitor speaks in a chat this tab keeps which chat,
+    // the account and whether the microphone was muted (sessionStorage, which a sign-in's redirect keeps); signed out,
+    // it stays BACK_MS, the server's hold on a host's or speaker's place (HOST_HOLD_MS, STAGE_HOLD_MS in
+    // worker/src/chat-roles.js), and rejoining that chat as that account within it joins voice by itself, muted or live
+    // as it was. Leave voice, Leave chat, End chat, another chat, being moved to listener, removed or the chat ending
+    // forget it. `returning` is a return under way: its step ("join", "joining") and whether it was live.
+    const BACK_KEY = "ooga-chat-voice-back", BACK_MS = 60 * 1000, BACK_FRESH_MS = 10 * 1000;
+    // `signingOut`: a Sign out under way (`signOutFrom`), whose leaving the chat on its way out keeps the return.
+    let returning = null, kept = null, signingOut = 0;
+    const keep = (value) => {
+      kept = value;
+      try { if (value) sessionStorage.setItem(BACK_KEY, JSON.stringify(value)); else sessionStorage.removeItem(BACK_KEY); } catch { /* storage off: no return */ }
+    };
+    const keptBack = () => {
+      if (kept) return kept;
+      try { kept = JSON.parse(sessionStorage.getItem(BACK_KEY) || "null"); } catch { kept = null; }
+      return kept;
+    };
+    // Speaking as the page goes (signed out, which takes the panel away on the island, or a reload): the hold starts now.
+    const stamp = () => {
+      const k = keptBack();
+      if (k && (!state?.room || state.room.id === k.chat)) keep({ ...k, at: Date.now() });
+    };
+    const rememberVoice = (next, was) => {
+      const v = next.voice || {}, who = next.session?.identity.participant || null, now = Date.now();
+      if (next.room && next.session && v.role === "speaker" && !v.busy) {
+        const k = keptBack();
+        if (!k || k.chat !== next.room.id || k.who !== who || k.muted !== !!v.muted || now - k.at >= BACK_FRESH_MS) keep({ chat: next.room.id, who, muted: !!v.muted, at: now });
+        return;
+      }
+      const k = keptBack();
+      if (!k || returning) return;
+      if (!next.session) signingOut = 0;
+      // A Sign out stops the microphone before it leaves the chat: nothing it does on its way out forgets the return.
+      if (signingOut && Date.now() < signingOut) { if (!next.room) stamp(); return; }
+      // Signed out with the chat: the hold starts now. Anything else that ends speaking forgets it.
+      if (!next.session && was && was.id === k.chat) stamp();
+      // Left that chat (Leave chat, End chat, removed, ended, another chat), or stopped speaking in it (Leave voice, moved
+      // to listener): the return is forgotten. The list after signing back in leaves it be.
+      else if (next.session && was && was.id === k.chat && (!next.room || next.room.id !== k.chat || v.role !== "speaker" && !v.busy)) keep(null);
+    };
+    addEventListener("pagehide", () => { if (state?.room && state.voice?.role === "speaker") stamp(); }, { signal });
     const update = (next) => {
+      const before = room;
       state = next;
       const voiceNotice = !toast && next.room && next.room.zone === "main" && next.voice ? next.voice.notice || "" : "";
       if (voiceNotice !== voiceSaid) { voiceSaid = voiceNotice; say(voiceNotice); }
@@ -927,6 +970,30 @@
       me = next.session?.identity.participant || null;
       rank = room?.you?.rank || "";
       people = next.audience.list;
+      // Rejoined the chat it was speaking in within the hold: voice comes back by itself, as it was.
+      if (room && room !== was && !returning) {
+        const k = keptBack();
+        if (k && k.chat === room.id && k.who === me && Date.now() - k.at < BACK_MS) returning = { step: "join", live: !k.muted, chat: room.id };
+      }
+      if (returning && (!room || room.id !== returning.chat)) returning = null;
+      if (returning && room.you) {
+        const v = next.voice;
+        if (returning.step === "join") {
+          // Speaking already, or on its way (the voice coming back by itself): wait for it to settle before unmuting.
+          if (v.busy) returning.step = "busy";
+          else if (v.role === "speaker") returning.step = "joined";
+          else if (room.you.speak === "eligible" && !v.busy) { returning.step = "joining"; returning.until = Date.now() + 10 * 1000; if (room.id !== wantSpeak) Promise.resolve().then(joinVoice); }
+          else if (room.you.speak !== "eligible" && room.you.speak !== "pending") { returning = null; keep(null); }
+        // A join starts a moment after it is asked for: refused, it never does, and the return gives up.
+        } else if (returning.step === "joining") returning.step = v.busy ? "busy" : v.role === "speaker" ? "joined" : Date.now() > returning.until ? "failed" : "joining";
+        else if (returning.step === "busy" && !v.busy) returning.step = v.role === "speaker" ? "joined" : "failed";
+        if (returning && returning.step === "joined") {
+          const live = returning.live;
+          returning = null;
+          if (live && v.muted && mute) Promise.resolve().then(mute);
+        } else if (returning && returning.step === "failed") returning = null;
+      }
+      rememberVoice(next, before);
       // Joined as a speaker: once the chat's snapshot says where the visitor stands, they ask (or, allowed already, speak).
       if (room && room.id === wantSpeak && room.you) {
         wantSpeak = "";
@@ -1009,6 +1076,7 @@
     space.parts.footRow.before(invite, offer);
     node.append(pop);
     const dispose = () => {
+      if (state?.room && state.voice?.role === "speaker") stamp();
       listeners.abort();
       observer.disconnect();
       clearInterval(timer);
@@ -1028,7 +1096,16 @@
     // tabs, ooga-chat-panels.js `accountRow`), asking from `at` as the chat's own buttons ask.
     const endFrom = (at) => { if (room && rank === "host") confirm(at, "End this chat for everyone?", "End chat", () => send("end"), true); };
     const leaveFrom = (at) => { if (room) goOut(at); };
-    return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), preview: (entry, from = null) => showPreview(entry, from), endFrom, leaveFrom, dispose };
+    // Sign out from any footer (`go` signs out): a host is asked first, in the panel pressed from, since signing out leaves
+    // the chat with them gone, a co-host taking it over after HOST_HOLD_MS (worker/src/chat-roles.js) or, with none, the
+    // chat ending then unless they come back; anyone else signs out at once.
+    const signOutFrom = (at, go) => {
+      const out = () => { signingOut = Date.now() + 15 * 1000; if (state?.room && state.voice?.role === "speaker") stamp(); go(); };
+      if (!room || rank !== "host") return out();
+      confirm(at, cohostsOf().length ? "Sign out? You'll leave your chat, and a co-host takes it over in about a minute."
+        : "Sign out? Your chat ends in about a minute unless you sign back in.", "Sign out", out, true);
+    };
+    return { update: (next) => { attach(); update(next); }, redraw: () => drawList(), preview: (entry, from = null) => showPreview(entry, from), endFrom, leaveFrom, signOutFrom, dispose };
   };
   BL.chatHosts = { create, startDialog, mainIsland, ZONE_NAMES, ZONE_TAGS, JOIN_WORDS, joinWords, tagged, rosterZone, order, parseRemoved, parsePreview, parseEntry, parseList, actionsFor, noticeText, joinNames, REFUSED, STARTS, LIST_MS, ASKED_MS, COHOST_SLOTS };
 })();

@@ -123,7 +123,6 @@
 .hc-pop-close:is(:hover, :focus-visible) { background: rgba(243, 239, 228, 0.16); color: var(--paper); }
 @media (pointer: coarse) { .hc-pop-close { width: 36px; height: 36px; } }
 .panel-title:has(> .hc-room-bar:not([hidden])) > :is(h2, h3) { display: none; }
-.panel[data-space="on"] .cloud-foot-name, .panel:has(.hc-chat-here) .cloud-foot-name { display: none; }
 .hc-dock { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 /* Empty, it takes no row, so the panel's gap under the title is not doubled. */
 .hc-dock:empty { display: none; }
@@ -353,7 +352,8 @@ html.iv-full .hc-room-strip { display: none; }
   .panel[data-space="on"] .cloud-foot-actions { display: contents; }
   .panel[data-space="on"] .cloud-foot .foot-button { order: 1; flex: 1 1 auto; min-width: 0; padding: 0 6px; letter-spacing: 0.04em; }
   .panel[data-space="on"] .cloud-foot .link { order: 2; flex: none; }
-  .panel[data-space="on"] .cloud-foot > :not(.cloud-foot-name, .cloud-foot-actions) { order: 3; flex-basis: 100%; }
+  .panel[data-space="on"] .cloud-foot > :not(.cloud-foot-who, .cloud-foot-actions) { order: 3; flex-basis: 100%; }
+  .panel[data-space="on"] .cloud-foot > .cloud-foot-who { order: 4; }
 }
 
 /* The Requests panel dropped from the chat's bar (chat-hosts.js `dock`, laid over the view by the rules on the chat
@@ -372,9 +372,8 @@ html.iv-full .hc-room-strip { display: none; }
   .hc-preview .hc-start-go { flex-direction: column-reverse; }
   .hc-preview .hc-start-go .foot-button { width: 100%; }
 }
-/* In a chat, Sign out waits in the other tabs (it sat beside Leave chat, a slip away); Leave chat and Back to chats are
-   real tap targets on a touch screen. */
-.panel[data-space="on"] .cloud-foot-actions > .link:not(.hc-leave) { display: none; }
+/* Sign out stays in a chat on its own line under the buttons (cloud-foot-who), well away from Leave chat; Leave chat and
+   Back to chats are real tap targets on a touch screen. */
 @media (pointer: coarse) {
   .panel[data-space] :is(.hc-room-back, .hc-leave) { min-height: 40px; padding: 0 8px; }
 }

@@ -149,12 +149,17 @@
   const support = voice.support();
   const reason = !support.secure ? "Voice needs a secure page" : !support.webrtc ? "This browser has no WebRTC" : !support.mic ? "This browser has no microphone" : "";
   let footerState = null;
+  // The name's dot says where the visitor is online, the same in every panel: on the island, green, in a chat or not, as
+  // every account row has it (hud.js); Ooga Chat's app draws its own purple.
+  const islandDot = () => {
+    const dot = net.state.me && net.state.room === "live" ? "island" : "";
+    if (footName.dataset.source !== dot) footName.dataset.source = dot;
+  };
   const paintFooter = () => {
     if (chatsOn()) return paintChat();
-    const me = net.state.me, self = model.self();
+    const me = net.state.me;
     set(footName, "textContent", me ? me.display || me.login : "");
-    const dot = self && self.role === "speaker" && self.source === "chat" ? "chat" : "";
-    if (footName.dataset.source !== dot) footName.dataset.source = dot;
+    islandDot();
     footerState = A.footer(model.you, voice.stats, reason);
     BL.nativeIcons.label(mute, footerState.mute.text);
     set(mute, "disabled", footerState.mute.disabled);
@@ -249,7 +254,7 @@
     if (footerState.voice.action === "leave") voice.leave();
     else if (!footerState.voice.disabled) voice.toggle();
   });
-  logout.addEventListener("click", () => net.logout());
+  logout.addEventListener("click", () => signOutFrom(logout, () => net.logout()));
   BL.reactions.mount($("cloud-reactions"), { handAllowed: () => model.canHand() });
 
   // --- hosted chats ---
@@ -277,7 +282,7 @@
         goThere: { state: (room) => BL.chatCopy.button(room), press: () => BL.chatCopy.toggle(), subscribe: BL.chatCopy.subscribe },
         // The island view: the page's own copy of the map, Live view on the renderer the page has, over the island the hub built.
         // The island view: the page's own copy of the map. The island page is the island already, so it keeps the flat view.
-        islandView: { picture: BL.islandViewArt.main }, pageVoice: true });
+        islandView: { picture: BL.islandViewArt.main }, pageVoice: true, mute: () => calls.media.mute() });
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;
@@ -310,7 +315,7 @@
   const islandFoot = () => {
     const me = net.state.me, vs = voice.stats, live = !!me && net.state.room === "live";
     set(footName, "textContent", me ? me.display || me.login : "");
-    if (footName.dataset.source !== "") footName.dataset.source = "";
+    islandDot();
     const inVoice = vs.enabled || vs.returning || vs.reconnecting, micOn = inVoice && !reason, asMic = micOn && !vs.reconnecting;
     footerState = { mute: footerState?.mute, voice: { action: inVoice ? "leave" : "join", disabled: !inVoice && !!reason } };
     set(mute, "hidden", !live);
@@ -328,8 +333,8 @@
   const chatFoot = (s, me) => {
     const v = s.voice, room = s.room;
     set(footName, "textContent", me ? me.display : "");
-    const speaker = v.role === "speaker", source = speaker ? "chat" : "";
-    if (footName.dataset.source !== source) footName.dataset.source = source;
+    const speaker = v.role === "speaker";
+    islandDot();
     set(mute, "disabled", !speaker || v.busy);
     BL.nativeIcons.label(mute, speaker && !v.muted ? "Mute" : "Unmute");
     attr(mute, "aria-pressed", String(speaker && v.muted));
@@ -340,6 +345,12 @@
     set(voiceButton, "title", "");
   };
   subs.push(calls.subscribe(paintChat));
+  // A host signing out is asked first, in the panel pressed from; the banner's Sign out, in no panel, asks in this one.
+  const signOutFrom = (at, go) => {
+    if (!hosts || !calls.room) return go();
+    if (!at.closest(".panel")) { BL.sheet?.selectTab?.("cloud"); at = logout; }
+    hosts.signOutFrom(at, go);
+  };
   // Every tab's footer follows the chat too: in one it is the chat's (hud.js `showAccount`).
   let footChat = null;
   subs.push(calls.subscribe(() => {
@@ -531,6 +542,8 @@
     // End chat and Leave chat from another tab's footer (hud.js `showAccount`): the chat's own confirmation, in that tab.
     endChat: (at) => hosts?.endFrom(at),
     leaveChat: (at) => hosts?.leaveFrom(at),
+    // Sign out from any footer: a chat's host is asked first (chat-hosts.js `signOutFrom`).
+    signOutFrom: (at, go) => signOutFrom(at, go),
     // Who is online, as every "N online" on the island says it: the room's players, Main Island's listeners and everyone
     // in a hosted chat through Ooga Chat's app.
     online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length + inChats() : 0),

@@ -1179,9 +1179,17 @@ body[data-active-scene="block"] .mode-hud {
 .cloud-foot { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; }
 .cloud-foot-name { min-width: 0; color: var(--paper); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 .cloud-foot-name:empty { display: none; }
+.cloud-foot-name[data-source="island"]::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 5px rgba(34, 197, 94, 0.55); vertical-align: 1px;
+}
 .cloud-foot-name[data-source="chat"]::before {
   content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #b18aff; vertical-align: 1px;
 }
+/* The voice buttons, then the visitor's name with Sign out beside it on a line of its own under them, as every account row
+   has it, in a chat too. */
+.cloud-foot-who { display: inline-flex; flex: 1 1 100%; align-items: center; justify-content: center; gap: 10px; min-width: 0; }
+.cloud-foot-who:not(:has(> :not([hidden]):not(:empty))) { display: none; }
 .cloud-foot-actions { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
 .cloud-foot-actions .foot-button { white-space: nowrap; }
 /* Every panel's voice buttons, the island's and Ooga Chat's, at one width, the widest's, so no footer shifts: Mute or
@@ -2132,9 +2140,9 @@ body[data-active-scene="block"] .mode-hud {
 }
 
 /* In a panel's foot the card stands as close as Ooga Chat's own panels put it, in every panel of both apps: 8px off the
-   panel's sides and 6px from the list over it and the account row under it, through the island panel's wider padding
-   (14px) and gap (10px). */
-.panel-foot > .reactions { margin: -4px -6px 0; }
+   panel's sides (through the island panel's 14px padding) and 6px from the list over it (the foot's own trim, above) and
+   the account row under it. */
+.panel-foot > .reactions { margin: 0 -6px; }
 
 .reactions[hidden] { display: none; }
 
@@ -2151,6 +2159,9 @@ body[data-active-scene="block"] .mode-hud {
   gap: 6px 16px;
 }
 
+/* An island panel's foot with the account in it stands 6px from the list over it and from the panel's edge under it, as
+   in Ooga Chat's panels, through the island panel's 10px gap and bottom padding. */
+.sheet-content > .panel > .panel-foot:has(> .account, > .cloud-foot) { margin-block: -4px; }
 .panel-foot > * { flex: 1 1 100%; min-width: 0; }
 .panel-foot > .account { flex: 1 1 100%; width: auto; }
 
@@ -2676,10 +2687,13 @@ body[data-active-scene="block"] .mode-hud {
   min-width: 0;
 }
 
+/* The name with Sign out beside it, on a line of its own under the voice buttons, in a chat too. */
 .account-who {
   display: inline-flex;
+  flex: 1 1 100%;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -2775,6 +2789,10 @@ body[data-active-scene="block"] .mode-hud {
 @media (pointer: coarse) {
   .foot-button { min-height: 40px; }
   .account .link { min-height: 40px; }
+  /* On a phone the name's line sits as tight under the buttons and over the panel's edge as with a mouse: Sign out is
+     tapped through the 6px gaps round it (::after), reaching neither the buttons nor past the panel's foot. */
+  .account-who > .link, .cloud-foot-who > .link { min-height: 0; position: relative; }
+  .account-who > .link::after, .cloud-foot-who > .link::after { content: ""; position: absolute; inset: -6px -8px; }
 }
 
 .bottom-hud,

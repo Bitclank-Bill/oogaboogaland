@@ -78,10 +78,12 @@
       },
       subscribe: () => () => {}
     };
-    const view = BL.chatHosts.create({ node, head, space, chats, joinVoice: () => ctx.actions.joinVoice(), faceOf, islandView, goThere });
+    const view = BL.chatHosts.create({ node, head, space, chats, joinVoice: () => ctx.actions.joinVoice(), mute: () => ctx.actions.mute(), faceOf, islandView, goThere });
     // The list tabs' footers end or leave the chat as the Ooga Chat tab's does (ooga-chat-panels.js `accountRow`).
     ctx.actions.endChat = (at) => view.endFrom(at);
     ctx.actions.leaveChat = (at) => view.leaveFrom(at);
+    // Every Sign out asks a chat's host first (chat-hosts.js `signOutFrom`).
+    ctx.actions.signOutFrom = (at, go) => view.signOutFrom(at, go);
     // A shared chat's address (ooga-chat-app.js keeps its id in this tab): once signed in and in no chat, that chat's
     // preview opens from the live list, where the visitor chooses to join; one no longer listed is let go. Kept an hour.
     const OPEN_KEY = "ooga-chat-open", OPEN_MS = 60 * 60 * 1000;
@@ -106,7 +108,7 @@
       view.update(state);
     };
     const off = BL.oogaChatPortraits.onChange(() => { faces.clear(); view.redraw(); });
-    return { update, dispose() { off(); delete ctx.actions.endChat; delete ctx.actions.leaveChat; view.dispose(); } };
+    return { update, dispose() { off(); delete ctx.actions.endChat; delete ctx.actions.leaveChat; delete ctx.actions.signOutFrom; view.dispose(); } };
   };
   const call = (ask, json, boot, init, query = "") => ask(boot.paths.chats + query, { ...init, headers: { "content-type": "application/json", accept: "application/json" } }, undefined, json)
     .then(({ response, data }) => response.ok ? data : data?.error || {}, () => ({}));

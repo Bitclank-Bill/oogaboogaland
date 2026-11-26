@@ -61,7 +61,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 - **A short drop shows nobody anything.** When a speaker's, co-host's or host's last connection to the chat drops,
   everyone keeps seeing their tile exactly as it was for 5 s (`QUIET_MS`). Past that it stays in its place, dimmed, with
   **Reconnecting…** for its role and no microphone mark, for as long as their place is held: a minute on the stage
-  (`STAGE_HOLD_MS`, a co-host's rank too), the host's 2-minute hold for the host, or until a host or co-host moves them
+  (`STAGE_HOLD_MS`, a co-host's rank too), the host's 1-minute hold for the host, or until a host or co-host moves them
   to listener or removes them. Their place counts against the speaker cap all the while, so the stage never reshuffles.
   Back and speaking again (Ooga Chat does it by itself), their tile carries on where it stood; still gone when the hold
   ends, the roster shows them gone. A microphone that only publishes again after a failed connection (`publish/close`
@@ -101,7 +101,7 @@ voice: nothing said on it is heard in OC, and nothing said in a chat is heard on
 
 ## The host leaving
 
-The host role is held 2 minutes after the host's last connection to the chat goes, for a reconnect. After that the
+The host role is held 1 minute after the host's last connection to the chat goes, for a reconnect. After that the
 longest-serving co-host becomes host; with no co-host, the chat ends.
 
 A connection can go without a word: a phone put in airplane mode sends no close, and the runtime may take minutes to
@@ -109,8 +109,8 @@ notice. So every page pings its chat's socket every 10 s (and once more as it is
 the stage (a lease or a rank) the chat's alarm wakes every 15 s and takes a connection silent for 45 s, not even a ping,
 for gone (`audience.js` `SILENT_MS`, `SWEEP_MS`, `sweepSilent`; closed 4408). A drop noticed late, by the sweep or by the
 runtime, counts from when the connection was last heard (`LATE_MS`): the reconnecting mark, a speaker's held place and
-the host's two minutes run from the last ping, not from the moment it was seen, so a host who drops silently is handed
-over about two minutes after they went quiet. The 45 s allows for pages from before the 10 s ping, still pinging every
+the host's minute runs from the last ping, not from the moment it was seen, so a host who drops silently is handed
+over about a minute after they went quiet. The 45 s allows for pages from before the 10 s ping, still pinging every
 30 s; it can come down to 25 s once those are gone. While nobody holds the stage the alarm does not wake for this. The host may hand over to a co-host or End chat
 at any time. When a chat ends, everyone in it sees **The chat ended**, its voice closes, and it leaves the list.
 
@@ -143,7 +143,7 @@ longest-serving of them amber, and Cancel; the chat is handed over (`handover`) 
 connection dropped stays listed but dimmed, "Reconnecting…" under it, since handed the chat they would leave it with no
 host there; the picker follows them as they drop or come back, and with every co-host reconnecting it says to wait for
 them or end the chat. With no co-host Leave chat does not show, and End chat is the way out. A host's dropped connection
-still waits two minutes and passes to a co-host, as below.
+still waits a minute and passes to a co-host, as below.
 
 **OBL** (`src/js/cloud-panel.js`): the same Chats list and chat view in the sheet's cloud tab, through the same shared
 modules, so the two apps never drift. Joining a chat by voice there is like taking a call: the island's proximity voice
@@ -159,10 +159,17 @@ going live while a chat holds the stage ends the lease there (`yieldVoice`), so 
 there** for a speaker: on the island it takes the visitor's Ooga into the chat's copy of its zone; in Ooga Chat it opens
 the same chat on the island (below). In a chat the island's panel has the chat's own emoji bar
 (`#cloud-chat-reactions`, reaction-bar.js over the chat's socket, as Ooga Chat's footer has it), in place of the room's.
-Every island tab but Bananas keeps the voice footer: before a chat is chosen the Ooga Chat tab's footer is the island's
-own voice (Unmute, Join voice or Leave voice, Sign out), as every other tab's account row is (chat-hosts.js `pageVoice`,
-cloud-panel.js); in a chat every tab's row is the chat's (its microphone, Join voice or Leave voice on its stage, End chat
-for its host or Leave chat), so Unmute in any tab mutes the voice the visitor is in (hud.js `showAccount`).
+Every island tab but Bananas keeps the voice footer, its buttons over a line with the visitor's name and Sign out (in a
+chat too, and in Ooga Chat's app alike), the name's dot the same in every panel: green on the island, purple in Ooga
+Chat's app: before a chat is chosen the Ooga Chat tab's buttons are the island's own voice
+(Unmute, Join voice or Leave voice), as every other tab's account row is (chat-hosts.js `pageVoice`, cloud-panel.js); in
+a chat every tab's buttons are the chat's (its microphone, Join voice or Leave voice on its stage, End chat for its host
+or Leave chat), so Unmute in any tab mutes the voice the visitor is in (hud.js `showAccount`). Sign out asks a host first,
+in the panel pressed from (`signOutFrom`): a co-host takes the chat over in about a minute, or with none it ends then,
+unless they sign back in. A speaker who signs out (or reloads) and rejoins the same chat as the same account within that
+minute speaks again by themselves, muted or live as they were: the tab keeps the chat, the account and the microphone's
+mute in sessionStorage (`ooga-chat-voice-back`), stamped as the page signs out or goes, and Leave voice, Leave chat, End
+chat, being moved to listener or removed, or the chat ending forget it.
 
 **Who the island sees in chats.** Each chat tells the island room its title and counts as they change (the Room's RPC
 `chatMembers(chat, title, speakers, listeners, ids, people)`, from `reportMembers` in `audience.js`, `summaryOf`): how many of
@@ -358,7 +365,7 @@ Everything audience protocol 1 has (docs/ooga-chat-app.md), with these differenc
   (`worker/test/chat-roles.test.mjs`), and the objects are checked through a fake host
   (`worker/test/ooga-chat-hosts.test.mjs`): every rule in this file (who may do what to whom, the caps, the queue, invites,
   cooldowns, the host hold and succession, removal, one lease an identity).
-- **No idle timers.** A chat's alarm is set only for the earliest of a held host's 2 minutes, a held place on the stage,
+- **No idle timers.** A chat's alarm is set only for the earliest of a held host's minute, a held place on the stage,
   a quiet hold's 5 s and its end, an invite's 60 s, a pending lease, a re-authentication, or a word the island room has yet to take
   (kept and retried even after the chat ends, the one thing an ended chat keeps until it is delivered); an empty chat with nothing pending sets none and hibernates. Roles, queue,
   invites and removals are stored (they are small), and the sockets' attachments carry each connection, so a woken
@@ -436,8 +443,8 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   preview); alone in a chat, the roster offers the same Share under "Just you so far". In Ooga Chat's full screen the
   bar is solid across the view's top, the view under it with its full-screen button lined up under Share, a host's
   Requests panel drops from the bar over the view with a ×, and the split's grabber shows a few seconds as it opens.
-  End chat is red and asks first; while in a chat, every list tab's footer is the chat's own in both apps (the
-  microphone, End chat for its host or Leave chat).
+  End chat is red and asks first; while in a chat, every list tab's buttons are the chat's own in both apps (the
+  microphone, End chat for its host or Leave chat), the name and Sign out staying on their line under them.
   A speaker on the stage first asks the chat for a ticket (`{ type: "handoff" }`, answered `{ ticket }`): the Audience
   mints one for that account alone, keeps it a minute (`HANDOFF_MS`) with whether the microphone was open, and a fresh
   one replaces the last. The ticket rides in the fragment, which no server or log sees. The island page (`chat-call.js`)

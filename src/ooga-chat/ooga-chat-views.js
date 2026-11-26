@@ -458,9 +458,11 @@
       if (join.dataset.voice === "speaker") actions.leaveVoice();
       else actions.joinVoice();
     }, { signal });
-    out.addEventListener("click", () => actions.signOut(), { signal });
-    const footActions = make("span", "cloud-foot-actions", mute, join, out);
-    const node = make("div", "cloud-foot", name, footActions, muteWhy, joinWhy);
+    out.addEventListener("click", () => actions.signOutFrom ? actions.signOutFrom(out, actions.signOut) : actions.signOut(), { signal });
+    // The voice buttons, then the name with Sign out beside it on a line of its own under them, in a chat too, as the
+    // island's footer has it.
+    const footActions = make("span", "cloud-foot-actions", mute, join);
+    const node = make("div", "cloud-foot", footActions, muteWhy, joinWhy, make("span", "cloud-foot-who", name, out));
     const update = (state) => {
       set(out, "textContent", state.busy === "signout" ? "Signing out…" : "Sign out");
       set(out, "disabled", !!state.busy);

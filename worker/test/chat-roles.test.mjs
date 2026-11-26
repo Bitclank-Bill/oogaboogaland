@@ -111,7 +111,7 @@ test("removed: every role and request goes, and they stay out until the chat end
   assert.equal(r.rankOf(C), "");
 });
 
-test("the host's hold: two minutes to come back, then the longest-serving co-host (a connected one first), else the end", () => {
+test("the host's hold: a minute to come back, then the longest-serving co-host (a connected one first), else the end", () => {
   const r = createRoles({ host: H, now: 0 });
   assert.equal(r.nextAt(), HOST_HOLD_MS, "the host must connect within the hold");
   r.presence(H, true, 10);

@@ -1745,7 +1745,7 @@
       else if (b === el.modeDestination) BL.destinationMap.open();
       else if (b === el.mode) pressMode();
       else if (b.dataset.action === "account-login") BL.net.login();
-      else if (b.dataset.action === "account-logout") BL.net.logout();
+      else if (b.dataset.action === "account-logout") BL.cloudPanel?.signOutFrom ? BL.cloudPanel.signOutFrom(b, () => BL.net.logout()) : BL.net.logout();
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
       // In a hosted chat the row is the chat's footer (`showAccount`): its microphone, its stage and its way out.
       else if (BL.chatCall?.room && b.dataset.action === "account-mute") BL.chatCall.media.mute();
@@ -2057,8 +2057,9 @@
     if (!recipe.open) recipe.showModal();
   };
   const showAccount = (state) => {
-    const { backend, me, room } = state, online = BL.cloudPanel ? BL.cloudPanel.online(state) : state.online;
-    const live = !!me && room === "live", words = live ? `${online} online` : ROOM_WORDS[room] || "";
+    // The name carries no count of who is online (the Online Oogas tab's title says it): only the room's own trouble.
+    const { backend, me, room } = state;
+    const live = !!me && room === "live", words = live ? "" : ROOM_WORDS[room] || "";
     const top = accountTop(), topTip = me ? `Signed in as ${me.display} · Sign out` : "Sign in with GitHub · needs your own Ooga";
     if (top.hidden !== !backend) top.hidden = !backend;
     if (top.title !== topTip) {
@@ -2068,9 +2069,16 @@
       top.dataset.action = me ? "account-logout" : "account-login";
     }
     writeAccount("account", "hidden", !backend);
-    // In a hosted chat every tab's row is the chat's own footer, as Ooga Chat's tabs have it (ooga-chat-panels.js): the
+    writeAccount("account-name", "textContent", me ? me.display : "");
+    writeAccount("account-name", "hidden", !me);
+    writeAccount("account-login", "hidden", !!me);
+    writeAccount("account-logout", "hidden", !me);
+    writeAccount("account-room", "textContent", words);
+    writeAccount("account-room", "hidden", !me || !words);
+    writeAccount("account-rejoin", "hidden", !me || !ROOM_WORDS[room]);
+    // In a hosted chat every tab's buttons are the chat's, as Ooga Chat's tabs have them (ooga-chat-panels.js): the
     // chat's microphone, Join voice or Leave voice on its stage, then End chat for its host or Leave chat for anyone
-    // else; the name, the count and Sign out wait until the visitor is out of it.
+    // else; the name and Sign out stay under them.
     const calls = BL.chatCall, chat = me && calls && calls.room || null;
     writeAccount("account-chat-end", "hidden", !chat || chat.you?.rank !== "host");
     writeAccount("account-chat-leave", "hidden", !chat || chat.you?.rank === "host");
@@ -2078,7 +2086,6 @@
     if (chat) {
       const v = calls.state.voice, you = chat.you || {}, speaker = v.role === "speaker", host = you.rank === "host";
       const may = speaker || v.busy || you.speak === "eligible" || !!v.elsewhere;
-      for (const id of ["account-name", "account-room", "account-rejoin", "account-login", "account-logout", "account-look"]) writeAccount(id, "hidden", true);
       writeAccount("account-mute", "hidden", !may);
       writeAccount("account-mute", "disabled", !speaker || v.busy);
       writeAccount("account-mute", "title", "");
@@ -2094,21 +2101,9 @@
       writeAccount("account-voice", "title", "");
       // A host stays on the stage while hosting (chat-hosts.js): Mute, never Leave voice.
       writeAccount("account-voice-leave", "hidden", !speaker || host);
-      for (const row of fieldsFor("account")) if (row.dataset.live !== "false") row.dataset.live = "false";
+      for (const row of fieldsFor("account")) if (row.dataset.live !== String(live)) row.dataset.live = String(live);
       return;
     }
-    writeAccount("account-name", "textContent", me ? me.display : "");
-    writeAccount("account-name", "hidden", !me);
-    writeAccount("account-login", "hidden", !!me);
-    writeAccount("account-logout", "hidden", !me);
-    // The studio, where a signed-in player chooses what their own Ooga wears (scene-studio.js), where the Worker keeps it.
-    const own = me && state.equipment ? BL.net.ownCharacter?.() : null;
-    writeAccount("account-look", "hidden", !own);
-    // From the site's root: a routed address (/lightning) outranks `?scene=`.
-    if (own) writeAccount("account-look", "href", new URL(`/?scene=studio&character=${encodeURIComponent(own.handle)}`, location.href).href);
-    writeAccount("account-room", "textContent", words);
-    writeAccount("account-room", "hidden", !me || !words);
-    writeAccount("account-rejoin", "hidden", !me || !ROOM_WORDS[room]);
     const voice = BL.voice.stats;
     const iceBlocked = voice.error === BL.voice.ICE_BLOCKED;
     const voiceFailure = iceBlocked ? voice.error : voice.returning ? voice.micError : voice.enabled ? "" : voice.error || voice.micError;
