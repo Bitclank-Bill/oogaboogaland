@@ -12,7 +12,9 @@
 // there on the island view (the island's: its Ooga onto the chat's island, Go back while there, chat-copy.js; Ooga
 // Chat's: the chat opened on the island, ooga-chat-hosts.js), `state` its `{ label, words, disabled, title }` or null for none; `islandView`, `{ picture, loadLive(), liveAllowed(), scenery, fullscreen }`, the island view's
 // map picture, how the page brings the 3D view's code (none: the flat view alone, as the island page has it), where its
-// baked scenery is served and whether it offers full screen (island-view.js). `update(state)` takes the page's state in Ooga Chat's
+// baked scenery is served and whether it offers full screen (island-view.js); `pageVoice`, true where the page has a voice
+// of its own outside a chat (the island's), whose Unmute and Join Voice the page paints in the footer until a chat is
+// chosen (cloud-panel.js). `update(state)` takes the page's state in Ooga Chat's
 // shape: `session.identity` (`provider`, `display`, `login`, `participant`), `room` (the chat chosen, with its
 // `you`), `voice` (`role`, `busy`, `elsewhere`), `device.online` and `audience.list` (the chat's rows in order);
 // `preview(entry, from)` opens a chat's preview from elsewhere on the page (an entry as `parseList` gives it). It adds:
@@ -260,7 +262,7 @@
   };
 
   const create = ({ node, head, space, chats, joinVoice, faceOf: portrait = () => "", startZone = () => "none", toast = null, shown = () => !node.closest("[hidden]"),
-    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null, islandView = null }) => {
+    rowFace = (p) => p.face || (p.character ? portrait(p.character) : ""), speakNow = false, goThere = null, islandView = null, pageVoice = false }) => {
     const listeners = new AbortController(), { signal } = listeners;
     let state = null, room = null, me = null, rank = "", people = [], timer = 0, shownTimer = 0, askedTimer = 0, askedAt = -Infinity;
     // `asked` the burst's ids, `askedNames` each one's name as it asked (they may have gone by the time it is said).
@@ -829,9 +831,11 @@
       // The host stays on the stage while hosting (Mute instead of Leave Voice): a host and co-hosts always count as
       // speakers, and handing the chat over or ending it is how a host steps down.
       const hosting = you.rank === "host";
-      foot.join.hidden = !r || !speaker && !may || hosting && state.voice.role === "speaker";
-      // A listener who may not speak has no microphone to unmute: the button shows for a speaker or one who may join.
-      foot.mute.hidden = !r || !speaker && !may;
+      if (r || !pageVoice) {
+        foot.join.hidden = !r || !speaker && !may || hosting && state.voice.role === "speaker";
+        // A listener who may not speak has no microphone to unmute: the button shows for a speaker or one who may join.
+        foot.mute.hidden = !r || !speaker && !may;
+      }
       ask.hidden = !r || speaker || may;
       const open = !!r?.chat?.open;
       set(ask, "textContent", you.request === "asked" ? "Requested · Cancel" : speakNow && open ? "Speak now" : "Request to speak");

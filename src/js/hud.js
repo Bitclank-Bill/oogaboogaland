@@ -1747,6 +1747,12 @@
       else if (b.dataset.action === "account-login") BL.net.login();
       else if (b.dataset.action === "account-logout") BL.net.logout();
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
+      // In a hosted chat the row is the chat's footer (`showAccount`): its microphone, its stage and its way out.
+      else if (BL.chatCall?.room && b.dataset.action === "account-mute") BL.chatCall.media.mute();
+      else if (BL.chatCall?.room && b.dataset.action === "account-voice") BL.chatCall.media.join();
+      else if (BL.chatCall?.room && b.dataset.action === "account-voice-leave") BL.chatCall.media.leave();
+      else if (b.dataset.action === "account-chat-end") BL.cloudPanel?.endChat(b);
+      else if (b.dataset.action === "account-chat-leave") BL.cloudPanel?.leaveChat(b);
       else if (b.dataset.action === "account-voice" || b.dataset.action === "account-mute") BL.voice.toggle();
       else if (b.dataset.action === "account-voice-leave") BL.voice.leave();
       else actionHandler && actionHandler(b.dataset.action);
@@ -2062,6 +2068,35 @@
       top.dataset.action = me ? "account-logout" : "account-login";
     }
     writeAccount("account", "hidden", !backend);
+    // In a hosted chat every tab's row is the chat's own footer, as Ooga Chat's tabs have it (ooga-chat-panels.js): the
+    // chat's microphone, Join voice or Leave voice on its stage, then End chat for its host or Leave chat for anyone
+    // else; the name, the count and Sign out wait until the visitor is out of it.
+    const calls = BL.chatCall, chat = me && calls && calls.room || null;
+    writeAccount("account-chat-end", "hidden", !chat || chat.you?.rank !== "host");
+    writeAccount("account-chat-leave", "hidden", !chat || chat.you?.rank === "host");
+    for (const row of fieldsFor("account")) if (row.dataset.chat !== String(!!chat)) row.dataset.chat = String(!!chat);
+    if (chat) {
+      const v = calls.state.voice, you = chat.you || {}, speaker = v.role === "speaker", host = you.rank === "host";
+      const may = speaker || v.busy || you.speak === "eligible" || !!v.elsewhere;
+      for (const id of ["account-name", "account-room", "account-rejoin", "account-login", "account-logout", "account-look"]) writeAccount(id, "hidden", true);
+      writeAccount("account-mute", "hidden", !may);
+      writeAccount("account-mute", "disabled", !speaker || v.busy);
+      writeAccount("account-mute", "title", "");
+      for (const el of fieldsFor("account-mute")) BL.nativeIcons.label(el, speaker && !v.muted ? "Mute" : "Unmute");
+      const mic = speaker && !v.busy ? v.muted ? "muted" : "live" : "", pressed = String(speaker && v.muted);
+      for (const button of fieldsFor("account-mute")) {
+        if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
+        if (button.dataset.mic !== mic) button.dataset.mic = mic;
+      }
+      writeAccount("account-voice", "hidden", speaker || !may);
+      writeAccount("account-voice", "textContent", v.busy ? "Joining…" : "Join voice");
+      writeAccount("account-voice", "disabled", v.busy);
+      writeAccount("account-voice", "title", "");
+      // A host stays on the stage while hosting (chat-hosts.js): Mute, never Leave voice.
+      writeAccount("account-voice-leave", "hidden", !speaker || host);
+      for (const row of fieldsFor("account")) if (row.dataset.live !== "false") row.dataset.live = "false";
+      return;
+    }
     writeAccount("account-name", "textContent", me ? me.display : "");
     writeAccount("account-name", "hidden", !me);
     writeAccount("account-login", "hidden", !!me);

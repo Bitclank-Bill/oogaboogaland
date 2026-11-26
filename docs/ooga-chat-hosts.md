@@ -159,6 +159,10 @@ going live while a chat holds the stage ends the lease there (`yieldVoice`), so 
 there** for a speaker: on the island it takes the visitor's Ooga into the chat's copy of its zone; in Ooga Chat it opens
 the same chat on the island (below). In a chat the island's panel has the chat's own emoji bar
 (`#cloud-chat-reactions`, reaction-bar.js over the chat's socket, as Ooga Chat's footer has it), in place of the room's.
+Every island tab but Bananas keeps the voice footer: before a chat is chosen the Ooga Chat tab's footer is the island's
+own voice (Unmute, Join voice or Leave voice, Sign out), as every other tab's account row is (chat-hosts.js `pageVoice`,
+cloud-panel.js); in a chat every tab's row is the chat's (its microphone, Join voice or Leave voice on its stage, End chat
+for its host or Leave chat), so Unmute in any tab mutes the voice the visitor is in (hud.js `showAccount`).
 
 **Who the island sees in chats.** Each chat tells the island room its title and counts as they change (the Room's RPC
 `chatMembers(chat, title, speakers, listeners, ids, people)`, from `reportMembers` in `audience.js`, `summaryOf`): how many of
@@ -432,8 +436,8 @@ As built (`src/js/island-view.js`, drawn by the shared views, chat-hosts.js, in 
   preview); alone in a chat, the roster offers the same Share under "Just you so far". In Ooga Chat's full screen the
   bar is solid across the view's top, the view under it with its full-screen button lined up under Share, a host's
   Requests panel drops from the bar over the view with a ×, and the split's grabber shows a few seconds as it opens.
-  End chat is red and asks first; while in a chat, Ooga Chat's list tabs' footers are the chat's own (the microphone,
-  End chat for its host or Leave chat).
+  End chat is red and asks first; while in a chat, every list tab's footer is the chat's own in both apps (the
+  microphone, End chat for its host or Leave chat).
   A speaker on the stage first asks the chat for a ticket (`{ type: "handoff" }`, answered `{ ticket }`): the Audience
   mints one for that account alone, keeps it a minute (`HANDOFF_MS`) with whether the microphone was open, and a fresh
   one replaces the last. The ticket rides in the fragment, which no server or log sees. The island page (`chat-call.js`)

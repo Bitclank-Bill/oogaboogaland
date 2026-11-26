@@ -277,7 +277,7 @@
         goThere: { state: (room) => BL.chatCopy.button(room), press: () => BL.chatCopy.toggle(), subscribe: BL.chatCopy.subscribe },
         // The island view: the page's own copy of the map, Live view on the renderer the page has, over the island the hub built.
         // The island view: the page's own copy of the map. The island page is the island already, so it keeps the flat view.
-        islandView: { picture: BL.islandViewArt.main } });
+        islandView: { picture: BL.islandViewArt.main }, pageVoice: true });
       else {
         hosts?.dispose(); hosts = null;
         delete panel.dataset.space;
@@ -297,7 +297,36 @@
     set(statusText, "textContent", words);
     set(status, "hidden", !words);
     set(retry, "hidden", true);
-    // The footer: the chat's voice, as Ooga Chat's footer works it (ooga-chat-views.js `cloudFoot`).
+    set(logout, "hidden", !net.state.me);
+    // Before a chat is chosen the footer is the island's own voice, as every other tab's account row has it (hud.js).
+    if (!room) islandFoot();
+    else chatFoot(s, me);
+    if (!room || !showing) { if (room && chatDrawn !== s.audience.version) tiles.prune((id) => s.audience.list.some((p) => p.id === id)); return; }
+    if (chatDrawn !== s.audience.version) { chatDrawn = s.audience.version; tiles.draw(s.audience.list, chatDescribe); }
+    else tiles.repaint(chatDescribe);
+  };
+  // The island's voice, as hud.js `showAccount` paints the account rows: the microphone first, off until in voice, then
+  // Join Voice or Leave Voice, both only while signed in with the room live.
+  const islandFoot = () => {
+    const me = net.state.me, vs = voice.stats, live = !!me && net.state.room === "live";
+    set(footName, "textContent", me ? me.display || me.login : "");
+    if (footName.dataset.source !== "") footName.dataset.source = "";
+    const inVoice = vs.enabled || vs.returning || vs.reconnecting, micOn = inVoice && !reason, asMic = micOn && !vs.reconnecting;
+    footerState = { mute: footerState?.mute, voice: { action: inVoice ? "leave" : "join", disabled: !inVoice && !!reason } };
+    set(mute, "hidden", !live);
+    set(mute, "disabled", !micOn);
+    BL.nativeIcons.label(mute, micOn && vs.reconnecting ? "Reconnecting voice" : asMic && !vs.muted ? "Mute" : "Unmute");
+    attr(mute, "aria-pressed", String(asMic && vs.muted));
+    const look = asMic ? vs.muted ? "muted" : "live" : "";
+    if (mute.dataset.mic !== look) mute.dataset.mic = look;
+    set(voiceButton, "hidden", !live);
+    set(voiceButton, "textContent", inVoice ? "Leave Voice" : reason || (vs.joining ? "Joining…" : "Join Voice"));
+    set(voiceButton, "disabled", footerState.voice.disabled);
+    set(voiceButton, "title", "");
+  };
+  // In a chat: the chat's voice, as Ooga Chat's footer works it (ooga-chat-views.js `cloudFoot`).
+  const chatFoot = (s, me) => {
+    const v = s.voice, room = s.room;
     set(footName, "textContent", me ? me.display : "");
     const speaker = v.role === "speaker", source = speaker ? "chat" : "";
     if (footName.dataset.source !== source) footName.dataset.source = source;
@@ -309,12 +338,16 @@
     set(voiceButton, "textContent", speaker ? "Leave Voice" : v.phase === "leaving" ? "Leaving…" : v.busy ? "Joining…" : "Join Voice");
     set(voiceButton, "disabled", !speaker && (v.busy || room?.you?.speak !== "eligible"));
     set(voiceButton, "title", "");
-    set(logout, "hidden", !net.state.me);
-    if (!showing) { if (chatDrawn !== s.audience.version) tiles.prune((id) => s.audience.list.some((p) => p.id === id)); return; }
-    if (chatDrawn !== s.audience.version) { chatDrawn = s.audience.version; tiles.draw(s.audience.list, chatDescribe); }
-    else tiles.repaint(chatDescribe);
   };
   subs.push(calls.subscribe(paintChat));
+  // Every tab's footer follows the chat too: in one it is the chat's (hud.js `showAccount`).
+  let footChat = null;
+  subs.push(calls.subscribe(() => {
+    const s = calls.state, key = s.room ? `${s.room.id}|${s.room.you?.rank}|${s.room.you?.speak}|${s.voice.role}|${s.voice.busy}|${s.voice.muted}|${!!s.voice.elsewhere}` : "";
+    if (key === footChat) return;
+    footChat = key;
+    if (BL.hud) BL.hud.showAccount(net.state);
+  }));
   // The speakers' marks fill with their voices' levels on each meter read: the chat's voice in a chat, the island's
   // otherwise (keyed by account, as `describe` keys speaking), the visitor's own from their microphone.
   const chatLevel = (id) => id === myId() ? calls.media.ownLevel() : calls.media.level(id);
@@ -495,6 +528,9 @@
     listeners,
     inChats,
     preview,
+    // End chat and Leave chat from another tab's footer (hud.js `showAccount`): the chat's own confirmation, in that tab.
+    endChat: (at) => hosts?.endFrom(at),
+    leaveChat: (at) => hosts?.leaveFrom(at),
     // Who is online, as every "N online" on the island says it: the room's players, Main Island's listeners and everyone
     // in a hosted chat through Ooga Chat's app.
     online: (state = net.state) => (state.online || 0) + (state.room === "live" ? listeners().length + inChats() : 0),
