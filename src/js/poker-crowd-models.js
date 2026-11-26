@@ -1,5 +1,5 @@
 // The Ember Den's crowd, the cast only: invented guests, opponents, lounge residents and gorilla staff, every one under
-// a name no GitHub login can hold (`<id>/emberden`), so none is ever registered in `BL.characters` or joins the
+// a name no GitHub login can hold (`<id>/ember-den`), so none is ever registered in `BL.characters` or joins the
 // roster. Everyone is dressed for an evening at a grand casino: the men in dinner jackets or dark suits, the women in
 // short cocktail dresses and heels. A caveman member is a clone of `models.caveman` from hashed traits and its own
 // dress hooks, on `bifrost-heimdall.js`'s pattern: the clothes paint the body's own blocks (`torso`, `gear`), hair goes
@@ -13,7 +13,8 @@
   "use strict";
   const BL = window.BL, M = BL.models, S = BL.scene;
   const { fnv1a } = BL.math;
-  const TAG = "/emberden";
+  // The Ember Den's old spelling: each look is hashed from the whole name, so a new suffix would redress the crowd.
+  const TAG = "/ember-den";
   // Giving way: the first has right of way over every later one.
   const TYPES = Object.freeze(["waiter", "security", "pitBoss", "lady", "highRoller", "businessman", "drunk"]);
   const PEARL = "#f3eee2", SHIRT = "#efeadc", BLACK = "#0f0f11", LBD = "#141216";

@@ -70,12 +70,20 @@
     // stand for replaces the address with that zone's route in the same scene and returns it; anything else (no change,
     // a zone the route covers, the land between, a zone with no route) leaves the address and returns null. A place
     // that stands in a zone (EntropyLab's mouth on the island) keeps its address until the visitor leaves that zone.
+    // A zone with no route of its own goes by its land's (zone-map.js `groupOf`): Valhodl's areas by its yard or halls.
     const follow = (scene, zone) => {
       if (zone === zoneAt) return null;
       zoneAt = zone;
-      if (scene !== at.scene || zonesOf(at).includes(zone)) return null;
-      const entry = byZone.get(`${scene} ${zone}`);
-      if (!entry) return null;
+      if (scene !== at.scene) return null;
+      const zones = zonesOf(at);
+      if (zones.includes(zone)) return null;
+      let entry = byZone.get(`${scene} ${zone}`);
+      if (!entry && BL.zoneMap) {
+        const land = BL.zoneMap.groupOf(zone);
+        if (land === zone || zones.includes(land)) return null;
+        entry = byZone.get(`${scene} ${land}`);
+      }
+      if (!entry || entry === at) return null;
       at = entry;
       document.title = routes.title(entry);
       history.replaceState({ scene, place: entry.place }, "", urlOf(entry));

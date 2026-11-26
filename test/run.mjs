@@ -37251,7 +37251,7 @@ scene("poker", { query: "character=portlandhodl", steps: [{ name: "poker floor a
     t0.leave("guest-x"); t0.join(swapId, swapName, true, swapSeat); const back = figures(); rooted.push(onRoot());
     // Re-pinned (Ask Ooga To Move): Add bots stops at five computer opponents a table, so four seats stay open for
     // players; it seated eight before.
-    const dressed = { before, gone, after, rooted, ok: bots.length === 5 && cast.length === 5 && cast.every(n => n.endsWith("/emberden") && !walking.has(n)) &&
+    const dressed = { before, gone, after, rooted, ok: bots.length === 5 && cast.length === 5 && cast.every(n => n.endsWith("/ember-den") && !walking.has(n)) &&
       new Set(cast).size === 5 && gone.every(n => n === null) && after.join() === before.join() && back.join() === before.join() && rooted.join() === "5,0,5,4,0,5" };
     // Each seat's face as the panel shows it: null when hidden, else how many pixels carry ink (alpha above 0) and an
     // FNV-1a hash of every pixel, so two faces differ when any pixel does. Read through a willReadFrequently copy, since
@@ -41555,10 +41555,10 @@ const pokerChecks = (BL) => {
     }
   }
   {
-    // Rule (privacy): every cast member is invented. Its name (`<id>/emberden`) can be no GitHub login, and neither its
+    // Rule (privacy): every cast member is invented. Its name (`<id>/ember-den`) can be no GitHub login, and neither its
     // id nor its display name is any contributor's handle or login; no two share a name or a display name.
     const C = BL.pokerCrowdModels, handles = new Set(BL.characters.all().flatMap(c => [c.handle, c.github].filter(Boolean).map(h => h.toLowerCase())));
-    const names = C.CAST.map(m => m.rig === "caveman" ? m.traits.name : m.id + "/emberden");
+    const names = C.CAST.map(m => m.rig === "caveman" ? m.traits.name : m.id + "/ember-den");
     const displays = C.CAST.filter(m => m.rig === "caveman").map(m => m.traits.display);
     const pick = (d, n) => C.castFor(d, n).map(m => m.id).join();
     // The floor at each cap: exactly the staff `staffFor` names, the rest guests, never an opponent or a lounge
@@ -41570,7 +41570,7 @@ const pokerChecks = (BL) => {
     let nested = true;
     for (let d = 20000; d < 20030; d++) { const full = new Set(C.castFor(d, 64)); for (const n of [6, 12, 18, 24, 30, 40, 48]) nested &&= C.castFor(d, n).every(m => full.has(m)); }
     record("poker crowd cast (privacy): every member invented, no name or display name a contributor's handle or login, the same every time and different each day",
-      new Set(names).size === names.length && names.every(n => n.endsWith("/emberden") && !handles.has(n.split("/")[0].toLowerCase())) &&
+      new Set(names).size === names.length && names.every(n => n.endsWith("/ember-den") && !handles.has(n.split("/")[0].toLowerCase())) &&
       new Set(displays).size === displays.length && displays.every(d => !handles.has(d.toLowerCase()) && !BL.characters.get(d)) &&
       pick(20000, 48) === pick(20000, 48) && pick(20000, 48) !== pick(20001, 48) && C.seatTraits(3, 4).name === C.seatTraits(3, 4).name,
       JSON.stringify({ cast: names.length, clash: displays.filter(d => handles.has(d.toLowerCase())) }));
@@ -41965,14 +41965,14 @@ const pokerChecks = (BL) => {
     }
     record("poker crowd seats: the twelve opponents build, each under its own name and each looking unlike the rest",
       players.length === 12 && playerNames.size === 12 && built === 12 && thrown === null && alike.length === 0 &&
-      players.every((m, i) => m.id === "player-" + (i + 1) && m.traits.name === m.id + "/emberden"), JSON.stringify({ built, thrown, alike }));
+      players.every((m, i) => m.id === "player-" + (i + 1) && m.traits.name === m.id + "/ember-den"), JSON.stringify({ built, thrown, alike }));
     // Rule: only a computer opponent is cast; a human in the same seat shows the stand-in, so a seat changing hands
     // between frames changes the figure's traits, which is what the scene rebuilds on.
     let humans = true, bots = true;
     for (let t = 0; t < 10; t++) for (let s = 0; s < 9; s++) {
       const bot = C.seatFigure(t, s, true), human = C.seatFigure(t, s, false);
-      humans &&= human.name === "Banana Bot " + s && !human.name.endsWith("/emberden") && !BL.characters.get(human.name) && human === C.seatFigure(t, s, false);
-      bots &&= bot === C.seatTraits(t, s) && bot.name.endsWith("/emberden") && bot !== human;
+      humans &&= human.name === "Banana Bot " + s && !human.name.endsWith("/ember-den") && !BL.characters.get(human.name) && human === C.seatFigure(t, s, false);
+      bots &&= bot === C.seatTraits(t, s) && bot.name.endsWith("/ember-den") && bot !== human;
     }
     record("poker crowd seats: a human seat never shows a cast member and a seat changing hands changes its figure", humans && bots, JSON.stringify({ humans, bots }));
   }

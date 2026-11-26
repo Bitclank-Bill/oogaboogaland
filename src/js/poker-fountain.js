@@ -1,7 +1,7 @@
 // The Banana Club's centre fountain: a round marble basin with a raised rim, a pedestal in the pool, and on it a marble
 // Ooga in a toga tipping an urn, whose water falls in a few strands of the lake's moving translucent material onto the
 // pool's surface, where a fixed pool of droplets splashes. The figure is a clone of `models.caveman` under an invented
-// name (`fountain/emberden`, which no GitHub login can hold), dressed in a toga by its own hooks, posed by its parts'
+// name (`fountain/ember-den`, which no GitHub login can hold), dressed in a toga by its own hooks, posed by its parts'
 // rotations and baked with the urn into one geometry whose every colour is turned to marble by its brightness, so it
 // costs one draw. Built round the root's origin with y 0 at the floor; the figure faces +z turned by `FACING`, with its
 // strands and droplets under the same turned node. The scene places the root at (`X`, `Z`) and keeps walkers outside
@@ -14,7 +14,8 @@
   // at FLOOR_Y, and the pool's surface at POOL_Y. The pedestal stands in the pool to PEDESTAL_Y, where the figure stands.
   const RIM_Y = 0.58, INNER = 2.02, FLOOR_Y = 0.16, POOL_Y = 0.46, PEDESTAL_Y = 1.2;
   // The figure's height (the caveman's `height` trait; its head's top stands about 0.4 of it over the pivot) and pose.
-  const FIGURE_H = 1.08, NAME = "fountain/emberden";
+  // The Ember Den's old spelling, as the crowd's (poker-crowd-models.js `TAG`): its look is hashed from it.
+  const FIGURE_H = 1.08, NAME = "fountain/ember-den";
   const TOGA = "#f4f1ea", FOLD = "#9e968a", SKIN = "#c9bfae", LAUREL = "#8d927a";
   // The urn's half height and tip (its mouth turned past level, forward and down), and the water leaving it.
   const URN_HALF = 0.24, TIP = 2.05, POUR_SPEED = 1.1, GRAVITY = 9.8;

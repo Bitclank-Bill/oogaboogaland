@@ -30,7 +30,8 @@
 
   // One invented figure for the seven statues, so the head and face are the same blocks every time. Its traits are made
   // fresh for each build (the build draws from `rand`), never hashed from a person's name.
-  const STATUE_NAME = "statue/emberden";
+  // The Ember Den's old spelling, as the crowd's (poker-crowd-models.js `TAG`): its look is hashed from it.
+  const STATUE_NAME = "statue/ember-den";
   const DRESS = Object.freeze({
     // A toga over the whole trunk, a fold falling from the left shoulder across it.
     torso(k, v) {
