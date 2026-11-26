@@ -17898,9 +17898,18 @@ const oogaChatAppChecks = async () => {
       await b.sleep(2500);
       mine = { ...listed, preview: await b.evaluate(`!!document.querySelector("dialog.hc-preview[open]")`), end: await b.evaluate(`!!document.querySelector(".hc-end")?.offsetParent`),
         title: await b.evaluate(`document.querySelector(".hc-room-title")?.textContent || ""`) };
+      // Back, another chat, End chat and join: the server closes the host's chat before it answers, and the join follows.
+      await click(b, ".hc-room-back");
+      await b.sleep(400);
+      await b.evaluate(`[...document.querySelectorAll(".hc-chat-row")].find((e) => e.offsetParent && /Sample Oak/.test(e.textContent))?.click()`);
+      await b.sleep(500);
+      await pressText(b, "dialog.hc-preview button", "End chat and join");
+      for (let t = 0; t < 6000 && await b.evaluate(`document.querySelector(".hc-room-title")?.textContent`) !== "Sample Oak's chat"; t += 200) await b.sleep(200);
+      mine.joined = await b.evaluate(`({ title: document.querySelector(".hc-room-title")?.textContent || "", space: document.querySelector(".oc-chat").dataset.space })`);
     } finally { b.close(); }
-    record("Ooga Chat host: their own chat leads the list as Hosted by you with no Start a chat, and goes straight back on stage as host with no preview",
-      mine.first && mine.host === "Hosted by you" && !mine.start && !mine.preview && mine.end && mine.title === "sample-contributor's chat", JSON.stringify(mine));
+    record("Ooga Chat host: their own chat leads the list as Hosted by you with no Start a chat, and goes straight back on stage as host with no preview; End chat and join from another chat's preview ends it and joins that one",
+      mine.first && mine.host === "Hosted by you" && !mine.start && !mine.preview && mine.end && mine.title === "sample-contributor's chat"
+        && mine.joined.title === "Sample Oak's chat" && mine.joined.space === "on", JSON.stringify(mine));
   } finally {
     server.close();
     rmSync(out, { recursive: true, force: true });

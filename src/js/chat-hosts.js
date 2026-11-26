@@ -325,7 +325,7 @@
         if (previewing && previewing.id === c.id && previewFrom && rows.contains(previewFrom)) previewFrom = pick;
         return make("li", "", pick);
       }));
-      set(listNote, "textContent", entries.length ? "" : github ? "Nobody is chatting right now. Start one and others can join." : "Nobody is chatting right now. A contributor can start one; you can join and ask to speak.");
+      set(listNote, "textContent", shownRows.length ? "" : !entries ? "" : github ? "Nobody is chatting right now. Start one and others can join." : "Nobody is chatting right now. A contributor can start one; you can join and ask to speak.");
     };
     const read = async (force = false) => {
       if (reading || !force && Date.now() - readAt < LIST_MS) return;
@@ -390,6 +390,8 @@
     // Back to chats in a chat (`browsing`): the list over the chat, which goes on playing; its row leads the list and
     // brings it back (`browse(false)`). Nothing leaves the chat but Leave chat, End chat or choosing another.
     let browsing = false, switchHost = false;
+    // A chat to join once the one its host ended has gone (`{ from, entry }`).
+    let joinAfter = null;
     const browse = (on) => {
       browsing = on && !!room;
       closePop(false);
@@ -446,7 +448,14 @@
           return b;
         }), (() => {
           const b = button("foot-button hc-danger", "End chat and join");
-          b.addEventListener("click", () => send("end", {}, (msg) => { if (msg && msg.ok) moveTo(entry, false); }), { signal });
+          // The server closes the chat before it answers, so the join waits for the chat to go (`update`, `joinAfter`).
+          b.addEventListener("click", () => {
+            const from = room.id;
+            if (!send("end", {}, (msg) => { if (msg && !msg.ok && joinAfter && joinAfter.from === from) joinAfter = null; })) return;
+            joinAfter = { from, entry };
+            previewFrom = null;
+            preview.close();
+          }, { signal });
           return b;
         })()] : []));
       }
@@ -822,6 +831,11 @@
       const was = room;
       room = next.room && next.session ? next.room : null;
       if (!room || !was || room.id !== was.id) browsing = false;
+      if (joinAfter && (!room || room.id !== joinAfter.from)) {
+        const { entry } = joinAfter;
+        joinAfter = null;
+        if (!room && next.session) Promise.resolve().then(() => chats.open(entry));
+      }
       // Signed out: the list, a preview and Start a chat go with the account, and the chats it was shown are forgotten.
       if (!next.session) {
         entries = null; readAt = -Infinity;
@@ -867,8 +881,10 @@
       const want = seen && people.some((p) => p.walking || p.role === "speaker");
       set(strip, "hidden", !place);
       // The one live region floats over the island view while there is one, so a notice takes no room over the roster.
-      if (isle && place && notice.parentNode !== isle.stage) isle.stage.append(notice);
-      else if (isle && !place && notice.parentNode === isle.stage) noticeHost.append(notice);
+      // Folded, the view is out of sight: the notice floats over the roster instead.
+      const over = place && !isle.folded;
+      if (isle && over && notice.parentNode !== isle.stage) isle.stage.append(notice);
+      else if (isle && !over && notice.parentNode === isle.stage) noticeHost.append(notice);
       if (isle) set(isle.fold, "hidden", !place);
       if (isle) isle.update({ place, rows: room ? people : [], talking: state.voice.talking || [], speaking: !!state.voice.speaking, self: me, active: seen });
       if (!room || state.audience.status !== "live") { viewSent = null; return; }
