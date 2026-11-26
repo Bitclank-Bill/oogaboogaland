@@ -5031,7 +5031,7 @@ const deferredLoadingChecks = async () => {
     const waitsForLoad = !settled;
     script.onload(); await pending;
     rows.push({ path: `${id} helpers precede their scene`, ok: beside && held && ordered && waitsForLoad && settled
-      && scene === f.shell && (id === "poker" ? typeof scene.enter === "function" && scene.voiceZone === "ember-den" : f.shell.enter === enter) && f.BL.deferred.load(group) === null && !f.links().length && !f.timers.size });
+      && scene === f.shell && (id === "poker" ? typeof scene.enter === "function" && scene.voiceZone === "emberden" : f.shell.enter === enter) && f.BL.deferred.load(group) === null && !f.links().length && !f.timers.size });
   }
   // After a deploy the hashed file is gone: the error is probed, found 404, marked stale and reported once.
   {
@@ -19450,6 +19450,20 @@ const donationClientChecks = async () => {
   const closedDonate = routeHistory.url === "/" && routeDocument.title === "Home" && routeHistory.state.place === null;
   record("donate route: closing its popup replaces the place with hub home, including URL, title and history state",
     enteredDonate && closedDonate, JSON.stringify({ enteredDonate, closedDonate, url: routeHistory.url, title: routeDocument.title }));
+  // The address follows the visitor's zone: walking into another zone of the scene replaces it with that zone's route,
+  // in place; the land between (no route) leaves it; a place standing in a zone keeps its own address within that zone.
+  {
+    const zoned = { list: [{ path: "", scene: "hub", zone: "outside", title: "Home" }, { path: "bca", scene: "hub", place: "bca", zone: "outside", title: "B.C.A." },
+      { path: "rainforest", scene: "hub", place: "rainforest", zone: "rainforest", title: "Rainforest" }], title: entry => entry.title };
+    const zoneRouter = routeContext.window.BL.router.create({ hub: {} }, zoned, () => true);
+    zoneRouter.arrive("hub", "bca", true);
+    const kept = zoneRouter.follow("hub", "outside") === null && routeHistory.url === "/bca";
+    const moved = zoneRouter.follow("hub", "rainforest")?.place === "rainforest" && routeHistory.url === "/rainforest" && routeHistory.state.place === "rainforest" && routeDocument.title === "Rainforest";
+    const between = zoneRouter.follow("hub", "between") === null && routeHistory.url === "/rainforest";
+    const home = zoneRouter.follow("hub", "outside")?.path === "" && routeHistory.url === "/" && routeHistory.state.place === null && routeDocument.title === "Home";
+    record("router: the address follows the visitor's zone in place, a place keeping its own address within its zone and the last one over the land between",
+      kept && moved && between && home, JSON.stringify({ kept, moved, between, home, url: routeHistory.url }));
+  }
   // Back pressed while a trip is still building: the director refuses the second trip, so the router queues it and
   // takes it once that trip settles, never dropping it.
   {
@@ -24759,8 +24773,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       === room.feeds.find(f => f.channel.id === "factory-lines").source;
     const sharedArcade = room.feeds.find(f => f.channel.id === "arcade-floor").source
       === room.feeds.find(f => f.channel.id === "arcade-mezzanine").source;
-    const sharedHangar = room.feeds.find(f => f.channel.id === "hangar-jet").source
-      === room.feeds.find(f => f.channel.id === "hangar-workshop").source;
+    // Two channels of one place share one observer, read once both are on screens: with more channels than the 32
+    // screens (room 8 opened), the hangar's workshop starts off them and rotates on at the first switch.
+    const shares = (a, b) => { const fa = room.feeds.find(f => f.channel.id === a), fb = room.feeds.find(f => f.channel.id === b);
+      return fa && fb && fa.source && fb.source ? fa.source === fb.source : null; };
+    let sharedHangar = shares("hangar-jet", "hangar-workshop");
     const id = "observatory-regression", rec = { id, body: "test", zone: "bifrost.chamber", poseZone: "bifrost.chamber", x: 1.234, y: 0, z: 2.345, yaw: 0.6 };
     let livePose = false, staleHidden = false;
     BL.net.remotes.set(id, rec);
@@ -24786,6 +24803,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       stable &&= room.feeds.length === 32 && room.feeds.every((f, j) => f.geometry === slots[j])
         && new Set(room.feeds.map(f => f.channel.id)).size === 32;
       for (const feed of room.feeds) seen.add(feed.channel.id);
+      if (sharedHangar === null) sharedHangar = shares("hangar-jet", "hangar-workshop");
     }
     let privateRefused = false;
     try { BL.observatoryTimechain.create(B.renderer, 0); } catch { privateRefused = true; }
@@ -32356,6 +32374,21 @@ const sphereCombatHead = { name: "timechain combat head", why: "regression: an O
   record("timechain combat head: walked through the doorway in combat and back out, the Ooga's head shows at the shoulder and after leaving combat",
     before.aiming && before.view === "shoulder" && inside && out && back.view !== "first-person" && !back.hidden && !carried.aiming && carried.view !== "first-person" && !carried.hidden, JSON.stringify({ before, back, carried }));
 } };
+const heldViewHead = { name: "held view head", why: "regression: a view moved after the pilot judged the head (the moon portrait booth, a held pilot under a tour or a doorway's walk) drew the first-person Ooga with its head hidden", run: async (b) => {
+  const read = `__ooga.pilot.player.parts.head.cameraHidden`;
+  const seen = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, cam = B.camera, a = P.player, r = {};
+    P.enterClose(); B.advance(2, 1 / 60); r.first = ${read};
+    P.setExternalControl(true); B.advance(0.1, 1 / 60);
+    const p = a.root.position; Object.assign(cam.position, { x: p.x + 4, y: p.y + 1.5, z: p.z + 4 }); Object.assign(cam.target, { x: p.x, y: p.y + 1, z: p.z });
+    B.advance(1 / 60, 1 / 60); r.held = ${read};
+    P.setExternalControl(false); B.advance(2, 1 / 60); r.back = ${read};
+    P.exitClose(false); B.advance(2, 1 / 60); r.out = ${read};
+    return r;
+  })()`);
+  record("held view head: a first-person Ooga's head hides, shows the frame a held view moves off it, hides again back in first person and shows out of it",
+    seen.first && !seen.held && seen.back && !seen.out, JSON.stringify(seen));
+} };
 const sphereAccount = { name: "timechain account", why: "regression: account Retry must keep the owned Ooga at the keypad; an unanswered account still offers a solo visit without guessing", run: async (b) => {
   await b.evaluate(`(() => { const B = __ooga, ${sphereLocal}; BL.net.state.resolved = false; ${sphereStand("0.7", "13.8")} })()`);
   await b.key(" ");
@@ -32422,7 +32455,7 @@ const sphereAccount = { name: "timechain account", why: "regression: account Ret
       && retry.before.selected && retry.after.selected && retry.before.held && retry.after.held && retry.before.mode === retry.after.mode && retry.after.lens === "eyes"
       && released.state === "idle" && released.selected === "portlandhodl" && released.refusal === null && released.near < 2, JSON.stringify({ retry, released }));
 } };
-scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereCombatHead, sphereBridgeKeypad, sphereAccount, trip("hub")] });
+scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: { motion: true }, steps: [sphereApproach, sphereThreshold, sphereKeypad, sphereCrossing, sphereCombatHead, sphereBridgeKeypad, sphereAccount, heldViewHead, trip("hub")] });
 // The released hub (phones under 8 GB): the walk-out rebuilds the hub behind the room's held frame.
 scene("hub", { label: "timechain doorway release", query: "solo=1&character=portlandhodl&view=timechain&pos=0&hubcache=release", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
 scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
@@ -37854,7 +37887,9 @@ scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="
   record("rule: the Emote button and its open menu are on screen, and the table still fits", em.ok, JSON.stringify(em));
   if (process.env.POKER_SHOTS) await b.screenshot(join(process.env.POKER_SHOTS, "poker-phone.png"));
 } }] });
-scene("hub", { label: "gorilla population restoration", query: "status=clankin", exclusive: true, opts: { motion: true }, steps: [hubGorillaPopulation] });
+// The island world (island-world.js) decides an NPC's state where it runs, over the `override`s this check sets by hand to
+// test the gorillas' beds; off, the crew's own state decides, as the gorillas read it either way.
+scene("hub", { label: "gorilla population restoration", query: "status=clankin&islandworld=0", exclusive: true, opts: { motion: true }, steps: [hubGorillaPopulation] });
 scene("hub", { label: "weapons", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&weapon=2&mag=1&ammo=6&jetpack=1&gorillarage=1", steps: [hubCombatGate, ...[hubAk, hubMelee, hubJetpack].map(gameCombat)] });
 // Her greeting comes once a page, to a fresh landing nothing has moved, so the guide has its own page.
 scene("hub", { label: "guide", query: "ooga=portlandhodl:clank:lab,obl,lf&character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk, hubTourInput, hubSharedGuide] });
@@ -38457,9 +38492,11 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
       if (u.startsWith("/api/chats/") && u.length === 27) return json(200, { chat: { id: u.slice(-16), open: u.endsWith("AAAAAAAAAAAAAAAA") }, stage: u.endsWith("AAAAAAAAAAAAAAAA") ? stage : stage.slice(0, 1), listeners: 12, requests: 1 });
       if (u.startsWith("/api/chats/")) return json(404, { error: { code: "not_found" } });
       return W.fetch(url, options); };
-    window.WebSocket = class { static OPEN = 1; constructor(url) { this.url = String(url); this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } addEventListener() {} };
+    window.WebSocket = class { static OPEN = 1; constructor(url) { this.url = String(url); this.readyState = 1; this.on = {}; W.sockets.push(this); } send() {} close() { this.readyState = 3; } addEventListener(type, fn) { this.on[type] = fn; } };
     BL.net.state.started = true; BL.net.state.resolved = false; await BL.net.recheck();
     W.room = m => W.sockets.filter((s) => !s.url.includes("/api/chats/")).at(-1).onmessage({ data: JSON.stringify(m) });
+    // The chat's own socket (chat-call.js), which tells the visitor their standing in it.
+    W.chat = m => W.sockets.filter((s) => s.url.includes("/api/chats/")).at(-1).on.message({ data: JSON.stringify(m) });
     const sum = (chat, title, speakers, listeners, app) => ({ chat, title, speakers, listeners, app });
     W.room({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["call-v1", "chat-summary-v1"],
       players: [{ id: 2, login: "bea", display: "Bea", zone: "outside", x: 2, y: 0, z: 3, yaw: 0 }],
@@ -38486,6 +38523,9 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
   const pop = () => b.evaluate(`(() => { const d = document.querySelector("dialog.hc-preview"), r = d && d.open ? d.getBoundingClientRect() : null;
     return r ? { title: d.querySelector("h2").textContent, open: !d.querySelector(".hc-open-tag").hidden, stage: d.querySelectorAll(".hc-preview-stage > *").length, count: d.querySelector(".hc-preview-count").textContent,
       join: [...d.querySelectorAll("button")].map((e) => e.textContent).filter((t) => /^Join/.test(t)).join(), focus: document.activeElement?.textContent || "",
+      line: d.querySelector(".hc-switch-line").hidden ? "" : d.querySelector(".hc-switch-line").textContent,
+      go: d.querySelector(".hc-switch-host").hidden ? "" : [...d.querySelectorAll(".hc-switch-host button")].map((e) => e.textContent).join(),
+      ways: [...d.querySelectorAll(".hc-start-go:not(.hc-switch-host) button")].filter((e) => !e.hidden).map((e) => e.textContent).join(),
       inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1, shown: r.width > 0 && r.height > 0 } : null; })()`);
   const untilPop = async (test) => { let at; for (let t = 0; t < 4000 && !test(at = await pop()); t += 100) await b.sleep(100); return at; };
   const room = () => b.evaluate(`(() => { const d = document.querySelector("dialog.hosted-switch"), r = d && d.open ? d.getBoundingClientRect() : null;
@@ -38507,21 +38547,17 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
   const again = await untilRoom((r) => r.cloud);
   await b.sleep(300);
   const againPop = await pop();
-  // As its host, the routing chat's Join as listener is held: hand the chat over or end it first, with only Stay, which
-  // keeps the call and gives the row the focus back. As anyone else, Switch chats moves.
-  await b.evaluate(`(() => { __inChats.toPlayers(); BL.chatCall.room.you = { rank: "host" }; __inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click(); })()`);
-  await untilPop((p) => p && p.title === "Routing fees, channel liquidity and the rebalancer at work");
+  // From inside another chat the preview says what joining does there (#908). As its host, the ways in give way to
+  // ending it first, and Stay keeps the chat and gives the row the focus back; as anyone else, joining leaves it.
+  const ROUTING = "Routing fees, channel liquidity and the rebalancer at work";
+  await b.evaluate(`(() => { __inChats.toPlayers(); __inChats.chat({ type: "chat", you: { rank: "host" } }); __inChats.rowOf("${ROUTING}").click(); })()`);
+  const hostPop = await untilPop((p) => p && p.title === ROUTING && p.line !== "");
+  await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Stay").click()`);
+  const stayed = await untilRoom((r) => !r.preview && r.focus !== "");
+  await b.evaluate(`(() => { __inChats.chat({ type: "chat", you: { rank: "" } }); __inChats.rowOf("${ROUTING}").click(); })()`);
+  const listenerPop = await untilPop((p) => p && p.title === ROUTING && p.line !== "" && p.ways.includes("Join as listener"));
   await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
-  const asked = await untilRoom((r) => !!r.ask);
-  await b.evaluate(`[...document.querySelectorAll("dialog.hosted-switch button")].find((e) => e.textContent === "Stay").click()`);
-  const stayed = await room();
-  const switchShown = await b.evaluate(`!document.querySelector("dialog.hosted-switch .foot-primary").hidden`);
-  await b.evaluate(`(() => { BL.chatCall.room.you = { rank: "" }; __inChats.rowOf("Routing fees, channel liquidity and the rebalancer at work").click(); })()`);
-  await untilPop((p) => p && p.title === "Routing fees, channel liquidity and the rebalancer at work");
-  await b.evaluate(`[...document.querySelectorAll("dialog.hc-preview button")].find((e) => e.textContent === "Join as listener").click()`);
-  const listenerAsk = await untilRoom((r) => !!r.ask);
-  await b.evaluate(`document.querySelector("dialog.hosted-switch .foot-primary").click()`);
-  const switched = await untilRoom((r) => r.room === "BBBBBBBBBBBBBBBB" && r.cloud && r.title === "Routing fees, channel liquidity and the rebalancer at work");
+  const switched = await untilRoom((r) => r.room === "BBBBBBBBBBBBBBBB" && r.cloud && r.title === ROUTING);
   // A chat the live list no longer has: said to have ended, and nothing changes.
   await b.evaluate(`(() => { __inChats.toPlayers(); __inChats.room({ t: "chat-summary", chat: "EEEEEEEEEEEEEEEE", title: "Gone already", speakers: 1, listeners: 0, app: 1 }); })()`);
   await b.sleep(200);
@@ -38529,16 +38565,15 @@ const hubInOogaChat = (phone) => ({ name: phone ? "in ooga chat phone" : "in oog
   const gone = await untilRoom((r) => /That chat has ended/.test(r.toast));
   await b.evaluate(`(() => { __inChats.room({ t: "chat-summary", chat: "EEEEEEEEEEEEEEEE", title: "", speakers: 0, listeners: 0, app: 0 }); BL.chatCall.leave(); __inChats.toPlayers(); })()`);
   await b.sleep(200);
-  record(`in ooga chat${phone ? " (390 px)" : ""}: a chat pressed in In Ooga Chat opens its preview (its stage, the Open stage tag, its counts, Join as listener focused, on screen) over Online Oogas; Join as listener opens it in the Ooga Chat tab and its row then reads "You're in this chat", and pressing it again only shows that tab; from another chat a preview's Join asks Change chats?: its host is told to hand the chat over or end it first, with only Stay, which keeps the chat and gives the row the focus back, and anyone else gets Switch chats, which moves; a chat no longer listed is said to have ended`,
+  record(`in ooga chat${phone ? " (390 px)" : ""}: a chat pressed in In Ooga Chat opens its preview (its stage, the Open stage tag, its counts, Join as listener focused, on screen) over Online Oogas; Join as listener opens it in the Ooga Chat tab and its row then reads "You're in this chat", and pressing it again only shows that tab; from another chat the preview says what joining does there: its host is told to end it first, with End chat and join and Stay in place of the ways in, Stay keeping the chat and giving the row the focus back, and anyone else is told joining leaves it, Join as listener moving; a chat no longer listed is said to have ended`,
     previewed?.title === "Lightning dev call" && previewed.open && previewed.stage === 3 && previewed.count === "12 listening · 1 waiting to speak" && previewed.join === "Join as speaker,Join as listener" && previewed.focus === "Join as listener" && previewed.inside && previewed.shown
       && joined.room === "AAAAAAAAAAAAAAAA" && joined.cloud && !joined.preview && marked.rows.includes("Lightning dev call=3 speaking · 12 listening=here")
       && again.room === "AAAAAAAAAAAAAAAA" && again.cloud && !againPop
-      && asked.ask?.head === "Change chats?" && asked.ask.text === "You host Lightning dev call. Before joining Routing fees, channel liquidity and the rebalancer at work, hand it to a co-host with Leave chat, or end it."
-      && asked.ask.note === "" && asked.ask.focus === "Stay" && asked.ask.inside && !switchShown
-      && listenerAsk.ask?.text === "You're in Lightning dev call. Leave it and join Routing fees, channel liquidity and the rebalancer at work?" && listenerAsk.ask.focus === "Switch chats"
-      && !stayed.ask && stayed.room === "AAAAAAAAAAAAAAAA" && stayed.focus === "Routing fees, channel liquidity and the rebalancer at work"
+      && hostPop?.line === "You host Lightning dev call. End it first, or add a co-host to hand it to." && hostPop.go === "End chat and join" && hostPop.ways === "Stay" && hostPop.inside
+      && !stayed.preview && stayed.room === "AAAAAAAAAAAAAAAA" && stayed.focus === ROUTING
+      && listenerPop?.line === "Joining leaves Lightning dev call." && listenerPop.go === "" && listenerPop.ways === "Stay,Ask to speak,Join as listener" && listenerPop.focus === "Join as listener"
       && switched.room === "BBBBBBBBBBBBBBBB" && switched.cloud && gone.room === "BBBBBBBBBBBBBBBB" && /That chat has ended/.test(gone.toast) && !gone.preview,
-    JSON.stringify({ previewed, joined, marked, again, againPop, asked, switchShown, listenerAsk, stayed, switched, gone }));
+    JSON.stringify({ previewed, joined, marked, again, againPop, hostPop, stayed, listenerPop, switched, gone }));
   // The counts follow each chat's word, and the group goes with the last chat.
   await b.evaluate(`(() => { __inChats.room({ t: "chat-summary", chat: "CCCCCCCCCCCCCCCC", title: "Quiet room", speakers: 1, listeners: 40 }); __inChats.room({ t: "chat-online", n: 56 }); })()`);
   await b.sleep(100);
@@ -46300,17 +46335,17 @@ const playersTabChecks = async BL => {
   const context = { window: { BL: {} } };
   runInNewContext(readFileSync(join(root, "src/js/zone-map.js"), "utf8"), context);
   const Z = context.window.BL.zoneMap;
-  const steps = [["outside", "rainforest", "rainforest"], ["outside", "factory.hall", "factory"], ["outside", "factory.hangar", "factory"], ["outside", "ember-den", "bifrost"],
+  const steps = [["outside", "rainforest", "rainforest"], ["outside", "factory.hall", "factory"], ["outside", "factory.hangar", "factory"], ["outside", "emberden", "bifrost"],
     ["outside", "dsb-studio", "bifrost"], ["outside", "scene-race", "arcade"], ["outside", "scene-skee", "arcade"], ["outside", "sphere-4", "sphere"], ["outside", "hq", "hq"],
     ["factory", "factory.hangar", "factory.hall"], ["factory.hangar", "outside", "factory.hall"], ["factory.hangar", "arcade.hall", "factory.hall"], ["lab", "rainforest", "outside"],
-    ["bifrost.chamber", "ember-den", "ember-den"], ["ember-den", "dsb-maxis", "bifrost.chamber"], ["dsb-maxis", "dsb-studio", "dsb-outside"], ["sphere-4", "sphere-7", "sphere"],
+    ["bifrost.chamber", "emberden", "emberden"], ["emberden", "dsb-maxis", "bifrost.chamber"], ["dsb-maxis", "dsb-studio", "dsb-outside"], ["sphere-4", "sphere-7", "sphere"],
     ["between", "factory.hall", "factory"], ["between", "rainforest", "rainforest"], ["factory.hall", "between", "factory"], ["outside", "none", null], ["none", "outside", null], ["scene-transition", "lab", null], ["lab", "lab", null], ["outside", "made-up", null], ["outside", "constructor", null], ["constructor", "lab", null],
     ["outside", "ghost-arena", "arcade"], ["arcade.hall", "arcade-hunt", "arcade.haunt"], ["arcade.haunt", "ghost-arena", "ghost-arena.haunt"], ["ghost-arena", "arcade.hall", "ghost-arena.haunt"], ["arcade-hunt", "outside", "ghost-arena"], ["outside", "hq-basement", "hq"], ["outside", "rainforest-under", "rainforest"], ["hq-basement", "lab.hall", "outside"], ["rainforest-under", "factory.hall", "outside"]];
   const routed = steps.map(([from, to, want]) => ({ from, to, want, got: Z.next(from, to) })).filter(r => r.got !== r.want);
   record("players tab routes: the first step between zones goes down toward the target or up toward the island (Factory before the hangar, ₿IFRÖST before the Ember Den and DSB Land, the Arcade before its games), and nowhere has no route",
     routed.length === 0, JSON.stringify(routed));
   const lands = { outside: "The Island", "factory.hall": "Lightning Factory", "factory.hangar": "Lightning Jet Hangar", "arcade.hall": "Ooga Arcade", "bifrost.chamber": "\u20bfIFR\u00d6ST chamber",
-    sphere: "Timechain Exterior", "sphere-3": "TCS \u00b7 Room 3", rainforest: "Mempool Rainforest", "rainforest-under": "Mempool Cave", hq: "HQ", "hq-basement": "Basement", "dsb-maxis": "DSB Land", none: "Between lands", between: "Between lands", "ember-den": "Ember Den",
+    sphere: "Timechain Exterior", "sphere-3": "TCS \u00b7 Room 3", rainforest: "Mempool Rainforest", "rainforest-under": "Mempool Cave", hq: "HQ", "hq-basement": "Basement", "dsb-maxis": "DSB Land", none: "Between lands", between: "Between lands", "emberden": "Ember Den",
     "arcade.haunt": "Ooga Arcade", "ghost-arena.haunt": "Ghost Hunter's Arena", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena" };
   const headings = { outside: "The Island", lab: "The Island", bca: "The Island", factory: "The Island", arcade: "The Island", mirror: "The Island", "cave-c9": "The Island", "factory.hall": "Lightning Factory", "arcade.hall": "Ooga Arcade",
     "arcade.haunt": "Ooga Arcade", "ghost-arena.haunt": "Ghost Hunter's Arena", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena",
@@ -51616,6 +51651,17 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   record("birds-eye north: a portal rebase mid north-up ease continues the exact trajectory without a camera jump", northRebase.cases === 15 && northRebase.failures === 0, JSON.stringify(northRebase));
   const cutaway = await cutawayBoundsProof();
   record("cutaway visibility: active apertures reject remote meshes without vertex scans and retain cells, blends, children, global and rotated local cuts", Object.entries(cutaway).every(([key, value]) => key === "bytes" ? value === 160 : value), JSON.stringify(cutaway));
+  const heads = (() => {
+    const context = { window: {} };
+    for (const name of ["math", "scene"]) runInNewContext(readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
+    const { createNode, hideFromCamera } = context.window.BL.scene, a = {}, b = {}, n = createNode(), base = createNode({ cameraHidden: true }), seen = [];
+    hideFromCamera(n, a, true); hideFromCamera(n, b, true); hideFromCamera(n, a, false); seen.push(n.cameraHidden); hideFromCamera(n, b, false); seen.push(n.cameraHidden);
+    hideFromCamera(n, a, true); hideFromCamera(n, a, true); hideFromCamera(n, b, true); hideFromCamera(n, b, false); seen.push(n.cameraHidden); hideFromCamera(n, a, false); seen.push(n.cameraHidden);
+    hideFromCamera(n, b, false); seen.push(n.cameraHidden);
+    hideFromCamera(base, a, true); hideFromCamera(base, a, false); seen.push(base.cameraHidden);
+    return seen;
+  })();
+  record("camera hiding: a head held by two owners stays hidden until both let go, in either order, and shows as it was before", heads.join() === "true,false,true,false,false,true", heads.join());
   const storage = await visibilityStorageProof({ compact: true, deferred: true });
   record("visibility storage: exact source doubles and signed zero survive queries, demand and bounded screen BVHs", storage.lazyContours && storage.exact && storage.unchanged && storage.bounded && storage.tightBacking && storage.storage && storage.demand && storage.nearBounds && storage.nearCases > 100 && storage.boundaryHits > 0 && storage.disposed && storage.values > 600, JSON.stringify(storage));
   record("visibility lifecycle: shared bakes survive removal and replacement; hidden transforms, clips and geometry restore exact queries", storage.lifecycle, JSON.stringify(storage));
