@@ -24759,8 +24759,11 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       === room.feeds.find(f => f.channel.id === "factory-lines").source;
     const sharedArcade = room.feeds.find(f => f.channel.id === "arcade-floor").source
       === room.feeds.find(f => f.channel.id === "arcade-mezzanine").source;
-    const sharedHangar = room.feeds.find(f => f.channel.id === "hangar-jet").source
-      === room.feeds.find(f => f.channel.id === "hangar-workshop").source;
+    // Two channels of one place share one observer, read once both are on screens: with more channels than the 32
+    // screens (room 8 opened), the hangar's workshop starts off them and rotates on at the first switch.
+    const shares = (a, b) => { const fa = room.feeds.find(f => f.channel.id === a), fb = room.feeds.find(f => f.channel.id === b);
+      return fa && fb && fa.source && fb.source ? fa.source === fb.source : null; };
+    let sharedHangar = shares("hangar-jet", "hangar-workshop");
     const id = "observatory-regression", rec = { id, body: "test", zone: "bifrost.chamber", poseZone: "bifrost.chamber", x: 1.234, y: 0, z: 2.345, yaw: 0.6 };
     let livePose = false, staleHidden = false;
     BL.net.remotes.set(id, rec);
@@ -24786,6 +24789,7 @@ const hubMirror = { name: "hub mirror", why: "rule: rifle shots and melee ripple
       stable &&= room.feeds.length === 32 && room.feeds.every((f, j) => f.geometry === slots[j])
         && new Set(room.feeds.map(f => f.channel.id)).size === 32;
       for (const feed of room.feeds) seen.add(feed.channel.id);
+      if (sharedHangar === null) sharedHangar = shares("hangar-jet", "hangar-workshop");
     }
     let privateRefused = false;
     try { BL.observatoryTimechain.create(B.renderer, 0); } catch { privateRefused = true; }
